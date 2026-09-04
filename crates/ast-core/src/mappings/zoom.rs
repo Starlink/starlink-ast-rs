@@ -63,11 +63,15 @@ impl ZoomMap {
     /// `Zoom` is the whole of the transformation and so feeds the first part of
     /// ZoomMap's own `MapMerge`, which can replace the run of ZoomMaps and
     /// UnitMaps it accumulates with a single `UnitMap` (`zoommap.c:747`). Both
-    /// simplified records are discarded whether the new value is accepted or
-    /// rejected, because `astClearIsSimple` is the first term of C's comma
-    /// expression (`zoommap.c:1698`, the convention at `mapping.h:449-460`).
+    /// simplified records are discarded when the new value differs from the one
+    /// held, and the test is on the raw argument, so a rejected zero still
+    /// discards them: `astClearIsSimple` is the first term of C's comma
+    /// expression and the validation lives in the term that yields the stored
+    /// value (`zoommap.c:1705`, the convention at `mapping.h:449-472`).
     pub fn set_zoom(&mut self, factor: f64) -> AstResult<()> {
-        self.simplified.clear();
+        if factor != self.factor {
+            self.simplified.clear();
+        }
         if factor == 0.0 {
             return Err(AstError::new(
                 ErrorCode::Zoomi,
@@ -340,10 +344,10 @@ impl Serializable for ZoomMap {
         let base = read_mapping_base(node);
         // C reads the raw value against the unset default of zero and then
         // re-applies it through `SetZoom` when `TestZoom` reports it set, i.e.
-        // when it is non-zero (zoommap.c:2237-2238, zoommap.c:1712). That
-        // setter discards the simplified record the parent loader has just
-        // installed from the `IsSimp` card, so a dumped card does not survive
-        // being read back.
+        // when it is non-zero (zoommap.c:2237-2238, zoommap.c:1712). The
+        // re-applied value is the one just constructed with, so the guarded
+        // setter changes nothing and the simplified record the parent loader
+        // installed from the `IsSimp` card survives.
         let raw = node.get_double("Zoom", 0.0);
         let mut m = ZoomMap::new(base.nin, if raw != 0.0 { raw } else { 1.0 })?;
         if base.inverted {

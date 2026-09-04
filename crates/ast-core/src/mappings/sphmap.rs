@@ -72,8 +72,10 @@ impl SphMap {
         // inverse-then-forward pair only when the first SphMap has it set
         // (sphmap.c:771), so a record left in place could decline the
         // cancellation the new value allows (sphmap.c:1394-1396,
-        // `astClearIsSimple` at mapping.h:449-460).
-        self.simplified.clear();
+        // `astClearIsSimple` at mapping.h:449-472).
+        if unit_radius != self.unit_radius {
+            self.simplified.clear();
+        }
         self.unit_radius = unit_radius;
     }
 
@@ -82,12 +84,26 @@ impl SphMap {
         self.polar_long
     }
 
+    /// The value C keeps in the `polarlong` component, which is the raw value
+    /// including the `AST__BAD` unset sentinel (`sphmap.c:1436`). The port stores
+    /// what the getter reports plus a set flag, so the guard on
+    /// [`set_polar_long`](Self::set_polar_long) has to rebuild it.
+    fn stored_polar_long(&self) -> f64 {
+        if self.polar_long_set {
+            self.polar_long
+        } else {
+            BAD_VALUE
+        }
+    }
+
     /// Set the longitude value returned at either pole (radians).
     pub fn set_polar_long(&mut self, polar_long: f64) {
         // `PolarLong` is read by the same MapMerge, which requires the pair
         // to agree on it (sphmap.c:762-763, :932); the record goes for the same
         // reason (sphmap.c:1434-1436).
-        self.simplified.clear();
+        if polar_long != self.stored_polar_long() {
+            self.simplified.clear();
+        }
         self.polar_long = polar_long;
         self.polar_long_set = true;
     }

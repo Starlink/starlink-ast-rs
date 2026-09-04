@@ -184,8 +184,10 @@ impl MathMap {
         // forward-then-inverse pair only when both MathMaps permit it
         // (mathmap.c:4079-4082), so a record left in place could decline the
         // cancellation the new value allows (mathmap.c:5698-5705,
-        // `astClearIsSimple` at mapping.h:449-460).
-        self.simplified.clear();
+        // `astClearIsSimple` at mapping.h:449-472).
+        if Some(val) != self.simp_fi {
+            self.simplified.clear();
+        }
         self.simp_fi = Some(val);
     }
 
@@ -197,7 +199,9 @@ impl MathMap {
     /// Set the SimpIF attribute.
     pub fn set_simp_if(&mut self, val: bool) {
         // `SimpIF` is read by the same MapMerge test (mathmap.c:5771-5778).
-        self.simplified.clear();
+        if Some(val) != self.simp_if {
+            self.simplified.clear();
+        }
         self.simp_if = Some(val);
     }
 
@@ -207,11 +211,23 @@ impl MathMap {
         unsafe { (*self.rng.get()).seed }
     }
 
+    /// The value C keeps in the `rcontext.seed` component, which is the raw
+    /// value including the unset sentinel (`mathmap.c:5616`). The port stores the
+    /// seed and its set flag inside the RNG, so the guard below has to rebuild
+    /// what C would compare against.
+    fn stored_seed(&self) -> i32 {
+        // Safety: single-threaded access, as for `seed`.
+        let rng = unsafe { &*self.rng.get() };
+        if rng.seed_set { rng.seed } else { -i32::MAX }
+    }
+
     /// Set the Seed attribute.
     pub fn set_seed(&mut self, seed: i32) {
         // `Seed` changes the sequence the random-number functions return,
         // hence the transformation itself (mathmap.c:5616-5629).
-        self.simplified.clear();
+        if seed != self.stored_seed() {
+            self.simplified.clear();
+        }
         self.rng.get_mut().set_seed(seed);
     }
 

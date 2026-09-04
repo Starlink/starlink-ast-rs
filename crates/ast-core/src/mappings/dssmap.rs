@@ -814,7 +814,7 @@ impl Serializable for DssMap {
 // than in an external `tests/` crate. The deserialisation-driven coverage
 // (native round-trips, the C-generated `c_dssmap.ast` fixture, and the
 // dssmap-03/07/08 simplify-pathway fixtures) lives in
-// `tests/test_simplify_regression.rs` and `tests/fixtures/dssmap/`.
+// `tests/test_simplify_regression.rs` and `tests/fixtures/serialisation/`.
 // ---------------------------------------------------------------------------
 #[cfg(test)]
 mod tests {
@@ -1112,13 +1112,13 @@ mod tests {
     /// `astDssMap` constructor is protected and the modern FITS path emits a
     /// TPN/WcsMap instead, so a DssMap reaches an application almost exclusively
     /// by loading an older native serialisation. The fixture
-    /// `fixtures/dssmap/c_dssmap.ast` was produced by `astWrite` on the built
+    /// `fixtures/serialisation/c_dssmap.ast` was produced by `astWrite` on the built
     /// reference libast; the expected transform value is the C `astTran2` output
     /// for the same object (oracle-verified).
     #[test]
     fn dssmap_reads_c_written_native_dump() {
         let path = format!(
-            "{}/tests/fixtures/dssmap/c_dssmap.ast",
+            "{}/tests/fixtures/serialisation/c_dssmap.ast",
             env!("CARGO_MANIFEST_DIR")
         );
         let text = std::fs::read_to_string(&path).expect("c_dssmap.ast fixture");

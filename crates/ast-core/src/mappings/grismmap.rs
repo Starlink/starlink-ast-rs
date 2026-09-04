@@ -75,6 +75,21 @@ struct GrismSetFlags {
     theta: bool,
 }
 
+/// C's `MAKE_SET` guards its `astClearIsSimple` on the incoming value differing
+/// from the structure component (`grismmap.c:255`), and that component holds the
+/// raw value including the unset sentinel. The port stores the value the getter
+/// would report plus a separate set flag, so a guard has to rebuild what C would
+/// be comparing against.
+fn stored(set: bool, value: f64) -> f64 {
+    if set { value } else { BAD_VALUE }
+}
+
+/// [`stored`] for `GrismM`, whose unset sentinel is `INT_MAX`
+/// (`grismmap.c:1930`).
+fn stored_int(set: bool, value: i32) -> i32 {
+    if set { value } else { i32::MAX }
+}
+
 impl GrismMap {
     /// Create a new `GrismMap` with the given physical parameters.
     ///
@@ -183,7 +198,7 @@ impl GrismMap {
     /// GrismMap's setters come from a class-local `MAKE_SET`
     /// (`grismmap.c:236-262`) rather than `astMAKE_SET1`. It opens with the same
     /// `astClearIsSimple`, so both simplified records are discarded
-    /// (`mapping.h:449-460`), and it ends by recalculating the derived constants
+    /// (`mapping.h:449-472`), and it ends by recalculating the derived constants
     /// the transformation uses.
     ///
     /// C stores the value raw and reads it back through a getter that reports
@@ -193,7 +208,9 @@ impl GrismMap {
     /// restores the default and leaves the attribute untested, exactly as
     /// `astSetGrismNR( map, AST__BAD )` does.
     pub fn set_grism_nr(&mut self, value: f64) {
-        self.simplified.clear();
+        if value != stored(self.set_flags.nr, self.grism_nr) {
+            self.simplified.clear();
+        }
         self.set_flags.nr = value != BAD_VALUE;
         self.grism_nr = if value == BAD_VALUE { 1.0 } else { value };
         self.update_constants();
@@ -205,7 +222,9 @@ impl GrismMap {
     /// Discards both simplified records and recalculates the derived constants,
     /// as [`set_grism_nr`](Self::set_grism_nr) describes.
     pub fn set_grism_nrp(&mut self, value: f64) {
-        self.simplified.clear();
+        if value != stored(self.set_flags.nrp, self.grism_nrp) {
+            self.simplified.clear();
+        }
         self.set_flags.nrp = value != BAD_VALUE;
         self.grism_nrp = if value == BAD_VALUE { 0.0 } else { value };
         self.update_constants();
@@ -217,7 +236,9 @@ impl GrismMap {
     /// Discards both simplified records and recalculates the derived constants,
     /// as [`set_grism_nr`](Self::set_grism_nr) describes.
     pub fn set_grism_wave_r(&mut self, value: f64) {
-        self.simplified.clear();
+        if value != stored(self.set_flags.wave_r, self.grism_wave_r) {
+            self.simplified.clear();
+        }
         self.set_flags.wave_r = value != BAD_VALUE;
         self.grism_wave_r = if value == BAD_VALUE { 5000.0 } else { value };
         self.update_constants();
@@ -229,7 +250,9 @@ impl GrismMap {
     /// Discards both simplified records and recalculates the derived constants,
     /// as [`set_grism_nr`](Self::set_grism_nr) describes.
     pub fn set_grism_alpha(&mut self, value: f64) {
-        self.simplified.clear();
+        if value != stored(self.set_flags.alpha, self.grism_alpha) {
+            self.simplified.clear();
+        }
         self.set_flags.alpha = value != BAD_VALUE;
         self.grism_alpha = if value == BAD_VALUE { 0.0 } else { value };
         self.update_constants();
@@ -241,7 +264,9 @@ impl GrismMap {
     /// Discards both simplified records and recalculates the derived constants,
     /// as [`set_grism_nr`](Self::set_grism_nr) describes.
     pub fn set_grism_g(&mut self, value: f64) {
-        self.simplified.clear();
+        if value != stored(self.set_flags.g, self.grism_g) {
+            self.simplified.clear();
+        }
         self.set_flags.g = value != BAD_VALUE;
         self.grism_g = if value == BAD_VALUE { 0.0 } else { value };
         self.update_constants();
@@ -255,7 +280,9 @@ impl GrismMap {
     /// sentinel is `INT_MAX` rather than `AST__BAD` (`grismmap.c:1930`), so
     /// `i32::MAX` is what restores the default here.
     pub fn set_grism_m(&mut self, value: i32) {
-        self.simplified.clear();
+        if value != stored_int(self.set_flags.m, self.grism_m) {
+            self.simplified.clear();
+        }
         self.set_flags.m = value != i32::MAX;
         self.grism_m = if value == i32::MAX { 0 } else { value };
         self.update_constants();
@@ -267,7 +294,9 @@ impl GrismMap {
     /// Discards both simplified records and recalculates the derived constants,
     /// as [`set_grism_nr`](Self::set_grism_nr) describes.
     pub fn set_grism_eps(&mut self, value: f64) {
-        self.simplified.clear();
+        if value != stored(self.set_flags.eps, self.grism_eps) {
+            self.simplified.clear();
+        }
         self.set_flags.eps = value != BAD_VALUE;
         self.grism_eps = if value == BAD_VALUE { 0.0 } else { value };
         self.update_constants();
@@ -279,7 +308,9 @@ impl GrismMap {
     /// Discards both simplified records and recalculates the derived constants,
     /// as [`set_grism_nr`](Self::set_grism_nr) describes.
     pub fn set_grism_theta(&mut self, value: f64) {
-        self.simplified.clear();
+        if value != stored(self.set_flags.theta, self.grism_theta) {
+            self.simplified.clear();
+        }
         self.set_flags.theta = value != BAD_VALUE;
         self.grism_theta = if value == BAD_VALUE { 0.0 } else { value };
         self.update_constants();
@@ -369,7 +400,7 @@ impl GrismMap {
         // C builds this merged GrismMap the same way -- astCopy, then a setter
         // per adjusted attribute (grismmap.c:573-592) -- and each of those
         // setters discards both simplified records (grismmap.c:255,
-        // `astClearIsSimple` at mapping.h:449-460).
+        // `astClearIsSimple` at mapping.h:449-472).
         result.simplified.clear();
 
         Some(Box::new(result))

@@ -257,11 +257,14 @@ impl PermMap {
     pub fn set_perm_split(&mut self, value: bool) {
         // `PermSplit` changes only how astMapSplit decomposes the PermMap and
         // PermMap's own MapMerge does not read it, but C discards the records on
-        // every setter it covers, because a record can only ever suppress a
-        // simplification and never make one wrong -- so it errs towards
-        // discarding (permmap.c:2067-2070, `astClearIsSimple` at
-        // mapping.h:449-460).
-        self.simplified.clear();
+        // every setter it covers, because doing so costs only a redundant
+        // simplification (permmap.c:2067-2070, the convention at
+        // mapping.h:449-472). The clear is guarded on the value differing, as C's
+        // is -- see `LutMap::set_interp` for why that guard matters to the
+        // loader.
+        if value != self.perm_split {
+            self.simplified.clear();
+        }
         self.perm_split = value;
     }
 

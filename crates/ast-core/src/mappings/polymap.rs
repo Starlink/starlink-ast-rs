@@ -250,11 +250,14 @@ impl PolyMap {
         // `IterInverse` decides whether the inverse transformation is defined
         // at all, so it changes what a simplification of this PolyMap could
         // conclude. PolyMap's own MapMerge does not read the attribute, but C
-        // discards the records on every setter it covers, because a record can
-        // only ever suppress a simplification and never make one wrong -- so it
-        // errs towards discarding (polymap.c:6340-6347, `astClearIsSimple` at
-        // mapping.h:449-460).
-        self.simplified.clear();
+        // discards the records on every setter it covers, because doing so costs
+        // only a redundant simplification (polymap.c:6340-6347, the convention at
+        // mapping.h:449-472). The clear is guarded on the value differing, as C's
+        // is -- see `LutMap::set_interp` for why that guard matters to the
+        // loader.
+        if Some(v) != self.iter_inverse {
+            self.simplified.clear();
+        }
         self.iter_inverse = Some(v);
         if v && self.nin == self.nout && self.jacobian_terms.is_none() {
             self.jacobian_terms = Some(self.compute_jacobian_terms());
@@ -293,7 +296,9 @@ impl PolyMap {
     pub fn set_niter_inverse(&mut self, v: usize) {
         // `NiterInverse` changes what the iterative inverse computes
         // (polymap.c:6383-6385).
-        self.simplified.clear();
+        if v != self.niter_inverse {
+            self.simplified.clear();
+        }
         self.niter_inverse = v;
     }
 
@@ -306,7 +311,9 @@ impl PolyMap {
     pub fn set_tol_inverse(&mut self, v: f64) {
         // `TolInverse` changes what the iterative inverse computes
         // (polymap.c:6420-6422).
-        self.simplified.clear();
+        if v != self.tol_inverse {
+            self.simplified.clear();
+        }
         self.tol_inverse = v;
     }
 

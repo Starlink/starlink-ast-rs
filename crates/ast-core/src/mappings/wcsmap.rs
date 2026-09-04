@@ -335,11 +335,14 @@ impl WcsMap {
         // longitude outside the projection's primary range (wcsmap.c:2805), so a
         // conclusion an earlier simplification reached about this WcsMap no
         // longer holds. WcsMap's own MapMerge does not read the attribute, but C
-        // discards the records on every setter it covers, because a record can
-        // only ever suppress a simplification and never make one wrong -- so it
-        // errs towards discarding (wcsmap.c:4825-4828, `astClearIsSimple` at
-        // mapping.h:449-460).
-        self.simplified.clear();
+        // discards the records on every setter it covers, because doing so costs
+        // only a redundant simplification (wcsmap.c:4825-4828, the convention at
+        // mapping.h:449-472). The clear is guarded on the value differing, as C's
+        // is -- see `LutMap::set_interp` for why that guard matters to the
+        // loader.
+        if Some(value) != self.lon_check {
+            self.simplified.clear();
+        }
         self.lon_check = Some(value);
     }
 
@@ -361,7 +364,9 @@ impl WcsMap {
     /// header's FITS-WCS projection.
     pub fn set_fits_proj(&mut self, value: bool) {
         // As for `set_lon_check` (wcsmap.c:4750-4753).
-        self.simplified.clear();
+        if Some(value) != self.fits_proj {
+            self.simplified.clear();
+        }
         self.fits_proj = Some(value);
     }
 

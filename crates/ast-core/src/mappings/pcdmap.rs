@@ -91,6 +91,24 @@ impl PcdMap {
         self.disc
     }
 
+    /// The value C keeps in the `disco` component, which is the raw value
+    /// including the `AST__BAD` unset sentinel (`pcdmap.c:2586`). The port stores
+    /// what the getter reports plus a set flag, so the guards below has to
+    /// rebuild it.
+    fn stored_disc(&self) -> f64 {
+        if self.disc_set { self.disc } else { BAD_VALUE }
+    }
+
+    /// [`stored_disc`](Self::stored_disc) for one axis of `PcdCen`
+    /// (`pcdmap.c:506`). `i` is 0-based.
+    fn stored_pcdcen(&self, i: usize) -> f64 {
+        if self.pcdcen_set[i] {
+            self.pcdcen[i]
+        } else {
+            BAD_VALUE
+        }
+    }
+
     /// Set the distortion coefficient — C's `astSetDisco`.
     ///
     /// A zero coefficient is what PcdMap's own `MapMerge` tests for when it
@@ -98,7 +116,7 @@ impl PcdMap {
     /// reference to the neighbouring Mappings in the list"
     /// (`pcdmap.c:1418-1422`), so a conclusion an earlier simplification reached
     /// no longer holds. Both simplified records are discarded (`pcdmap.c:2586`,
-    /// the convention at `mapping.h:449-460`).
+    /// the convention at `mapping.h:449-472`).
     ///
     /// C stores the value raw and reads it back through a getter that reports
     /// 0.0 in place of the `AST__BAD` unset sentinel (`pcdmap.c:2584-2585`).
@@ -107,7 +125,9 @@ impl PcdMap {
     /// leaves the attribute untested, exactly as `astSetDisco( map, AST__BAD )`
     /// does.
     pub fn set_disc(&mut self, disc: f64) {
-        self.simplified.clear();
+        if disc != self.stored_disc() {
+            self.simplified.clear();
+        }
         self.disc_set = disc != BAD_VALUE;
         self.disc = if self.disc_set { disc } else { 0.0 };
     }
@@ -118,7 +138,7 @@ impl PcdMap {
     /// `ErrorCode::Axiin` and changes nothing, as C's class-local `MAKE_SET`
     /// does (`pcdmap.c:490-494`); that macro then discards both simplified
     /// records before storing (`pcdmap.c:506-507`, the convention at
-    /// `mapping.h:449-460`).
+    /// `mapping.h:449-472`).
     ///
     /// `BAD_VALUE` restores the default and leaves the axis untested, as the
     /// sentinel does in C (`pcdmap.c:2637-2639`).
@@ -129,8 +149,10 @@ impl PcdMap {
                 format!("axis index {axis} is out of range 1..=2"),
             ));
         }
-        self.simplified.clear();
         let i = axis - 1;
+        if value != self.stored_pcdcen(i) {
+            self.simplified.clear();
+        }
         self.pcdcen_set[i] = value != BAD_VALUE;
         self.pcdcen[i] = if self.pcdcen_set[i] { value } else { 0.0 };
         Ok(())

@@ -177,11 +177,14 @@ impl SplineMap {
         // `InvNiter` changes what the iterative inverse computes, so a
         // conclusion an earlier simplification reached about this SplineMap no
         // longer holds. SplineMap's own MapMerge does not read the attribute,
-        // but C discards the records on every setter it covers, because a record
-        // can only ever suppress a simplification and never make one wrong --
-        // so it errs towards discarding (splinemap.c:2547-2549,
-        // `astClearIsSimple` at mapping.h:449-460).
-        self.simplified.clear();
+        // but C discards the records on every setter it covers, because doing so
+        // costs only a redundant simplification (splinemap.c:2547-2549, the
+        // convention at mapping.h:449-472). The clear is guarded on the value
+        // differing, as C's is -- see `LutMap::set_interp` for why that guard
+        // matters to the loader.
+        if Some(n) != self.inv_niter {
+            self.simplified.clear();
+        }
         self.inv_niter = Some(n);
     }
 
@@ -193,7 +196,9 @@ impl SplineMap {
     /// Set the target relative error for the iterative inverse.
     pub fn set_inv_tol(&mut self, tol: f64) {
         // As for `set_inv_niter` (splinemap.c:2586-2588).
-        self.simplified.clear();
+        if Some(tol) != self.inv_tol {
+            self.simplified.clear();
+        }
         self.inv_tol = Some(tol);
     }
 
@@ -209,7 +214,9 @@ impl SplineMap {
     pub fn set_out_unit(&mut self, flag: bool) {
         // `OutUnit` changes what the transformation returns outside the
         // spline's bounds (splinemap.c:2630-2632).
-        self.simplified.clear();
+        if flag != self.out_unit {
+            self.simplified.clear();
+        }
         self.out_unit = flag;
     }
 

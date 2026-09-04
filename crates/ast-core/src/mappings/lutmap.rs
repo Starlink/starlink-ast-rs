@@ -103,11 +103,16 @@ impl LutMap {
         // `LutInterp` selects the interpolation the transformation performs,
         // so a conclusion an earlier simplification reached about it no longer
         // holds. LutMap's own MapMerge does not read the attribute, but C
-        // discards the records on every setter it covers, because a record can
-        // only ever suppress a simplification and never make one wrong -- so it
-        // errs towards discarding (lutmap.c:1793-1796, `astClearIsSimple` at
-        // mapping.h:449-460).
-        self.simplified.clear();
+        // discards the records on every setter it covers, because doing so costs
+        // only a redundant simplification (lutmap.c:1793-1796, the convention at
+        // mapping.h:449-472). The clear is guarded on the value differing, as C's
+        // is: a set to the value already held cannot invalidate a recorded
+        // simplification, and the guard is what lets `from_node` re-apply the
+        // value it has just read without discarding the `IsSimp` card that came
+        // with it.
+        if interp != self.interp {
+            self.simplified.clear();
+        }
         self.interp = interp;
     }
 
@@ -125,6 +130,18 @@ impl LutMap {
         self.lut_epsilon
     }
 
+    /// The value C keeps in the `lutepsilon` component, which is the raw value
+    /// including the `AST__BAD` unset sentinel (`lutmap.c:1842`). The port stores
+    /// what the getter reports plus a set flag, so the guard in
+    /// [`set_lut_epsilon`](Self::set_lut_epsilon) has to rebuild it.
+    fn stored_lut_epsilon(&self) -> f64 {
+        if self.lut_epsilon_set {
+            self.lut_epsilon
+        } else {
+            BAD_VALUE
+        }
+    }
+
     /// Set the stated relative error of the table values — C's
     /// `astSetLutEpsilon`.
     ///
@@ -133,12 +150,14 @@ impl LutMap {
     /// replaces the LutMap with a `WinMap` — the first thing that merge does,
     /// before it looks at any neighbour (`lutmap.c:1142`). Both simplified
     /// records are discarded (`lutmap.c:1842`, the convention at
-    /// `mapping.h:449-460`).
+    /// `mapping.h:449-472`).
     /// `BAD_VALUE` restores the `f64::EPSILON` default and leaves the attribute
     /// untested, as the sentinel does in C (`lutmap.c:1839-1843`), so the
     /// `LutEps` card is no longer written.
     pub fn set_lut_epsilon(&mut self, epsilon: f64) {
-        self.simplified.clear();
+        if epsilon != self.stored_lut_epsilon() {
+            self.simplified.clear();
+        }
         self.lut_epsilon_set = epsilon != BAD_VALUE;
         self.lut_epsilon = if self.lut_epsilon_set {
             epsilon
