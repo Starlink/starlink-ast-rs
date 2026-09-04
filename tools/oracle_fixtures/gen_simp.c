@@ -19,11 +19,15 @@
 *     off can be reproduced exactly. Their defaults are the Channel's own
 *     (channel.c:5501, channel.c:5630).
 
+*     The corpus's IntraMap functions are registered on start-up, so an
+*     IntraMap fixture loads like any other.
+
 *  Usage:
 *     gen_simp [-m] <in> <out> [comment] [indent]
 */
 
 #include "ast.h"
+#include "transform_oracle.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -62,6 +66,9 @@ int main( int argc, char **argv ) {
    if( argc > iarg + 3 ) indent = atoi( argv[ iarg + 3 ] );
 
    astBegin;
+
+   int status = 0;
+   oracle_register_intramaps( &status );
 
    src = fopen( infile, "r" );
    if( !src ) {

@@ -15,6 +15,6 @@ SRC=$HERE/reference/starlink-ast
 make -C "$HERE/tools/oracle_fixtures" gen_simp >/dev/null
 
 exec python3 "$HERE/tools/oracle_fixtures/check_simplify_fresh.py" \
-   "$HERE/crates/ast-core/tests/fixtures/native/reference" \
+   "$HERE/crates/ast-core/tests/fixtures" \
    "$HERE/tools/oracle_fixtures/gen_simp" \
    "${TMPDIR:-/tmp}/ast-simplify-oracle"

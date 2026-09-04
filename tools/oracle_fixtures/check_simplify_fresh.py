@@ -27,30 +27,24 @@ from pathlib import Path
 CARD = re.compile(r"^\s*([A-Za-z][A-Za-z0-9_]*)\s*=")
 STRUCT = re.compile(r"^\s*(Begin|End|IsA)\s+(\S+)")
 
-Row = tuple[str, str, str, int, int]
+Row = tuple[str, str, str]
 
 
 def parse_manifest(path: Path) -> list[Row]:
-    """Return (name, input, reference, comment, indent) for every manifest row."""
+    """Return (name, input, reference) for every manifest row.
+
+    Paths are relative to the fixture root, as the upstream harness reads them.
+    """
     rows: list[Row] = []
     for raw in path.read_text().splitlines():
         line = raw.split("#", 1)[0].strip()
         if not line:
             continue
         fields = [f.strip() for f in line.split("|")]
-        while len(fields) < 5:
-            fields.append("")
-        name, inp, ref, _skip, opts = fields[:5]
-        comment, indent = 1, 3
-        for item in (o.strip() for o in opts.split(",") if o.strip()):
-            key, _, value = item.partition("=")
-            if key.strip() == "comment":
-                comment = int(value)
-            elif key.strip() == "indent":
-                indent = int(value)
-            else:
-                raise SystemExit(f"{name}: unknown render option {key!r}")
-        rows.append((name, inp, ref, comment, indent))
+        if len(fields) != 4:
+            raise SystemExit(f"malformed manifest row: {raw!r}")
+        name, inp, ref, _skip = fields
+        rows.append((name, inp, ref))
     return rows
 
 
@@ -113,15 +107,13 @@ def main(argv: list[str]) -> int:
     work.mkdir(parents=True, exist_ok=True)
 
     counts = {"fresh": 0, "numeric": 0, "card": 0, "structural": 0}
-    for name, inp, ref, comment, indent in parse_manifest(
-        corpus / "simplify_tests.txt"
-    ):
+    for name, inp, ref in parse_manifest(corpus / "simplify/cases.txt"):
         reference = (corpus / ref).read_text()
         out = work / f"{name}.freshC"
         command = [str(driver)]
         if top_class(reference) != "FrameSet":
             command.append("-m")
-        command += [str(corpus / inp), str(out), str(comment), str(indent)]
+        command += [str(corpus / inp), str(out), "1", "3"]
         result = subprocess.run(command, capture_output=True, text=True, check=False)
         if result.returncode != 0:
             print(f"CAPTURE-FAILED {name}: {result.stderr.strip()}")

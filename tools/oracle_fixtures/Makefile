@@ -22,6 +22,13 @@ all: $(PROGS)
 %: %.c
 	$(CC) $(CFLAGS) $(INCS) -o $@ $< $(LIBS) $(RPATH)
 
+# gen_simp reads the whole simplify corpus, which includes IntraMap fixtures.
+# An IntraMap names its transformation function in the dump and refuses to load
+# until that function is registered, so link the upstream helper that registers
+# the corpus's four functions rather than keeping a second copy of the table.
+gen_simp: gen_simp.c $(REF)/ast_tester/transform_oracle_util.c
+	$(CC) $(CFLAGS) $(INCS) -I$(REF)/ast_tester -o $@ $^ $(LIBS) $(RPATH)
+
 clean:
 	rm -f $(PROGS)
 
