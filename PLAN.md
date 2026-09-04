@@ -80,7 +80,7 @@ regression corpus.
 |---|---|---|
 | FitsChan C-port gaps | `docs/issues/fitschan-c-port-gaps.md` | PARTIALLY DONE — DSS/SAO/DSBSetUp/SipReplace, `DistortMaps`/`ZPXMapping` and `SIPMapping`'s store-derived powers ported; **all 194 wcsconv cases now byte-compared with `NATIVE_READ_EXCLUDED` empty**; remaining: unported attr quartets, `-TAB` family, public-API helpers, Warn cards |
 | `fset_to_store` port gaps | `docs/issues/fset_to_store-port-gaps.md` | MOSTLY DONE — SIPIntWorld + VELOSYS + Group 3/5 branches ported; only `-TAB` (IsMapTab1D/2D) remains, blocked on the un-ported FitsTable infrastructure |
-| Round-trip harness misses trailing-whitespace divergences and the corpus has no comment-less nested-object card | `crates/ast-core/tests/test_serialisation.rs:1097,1129` | OPEN — `native_round_trip_fixture`'s `trim()`/`split_whitespace()` comparison discards trailing whitespace, so `"Frm1 = "` and `"Frm1 ="` compare equal; separately, `grep -rhcE " =$"` is 0 across all of `simplify_fixtures/`, `frameset_fixtures/` and `generated/` — the four fixtures that do have a comment-less object card (`lsst.ast`, `lsst.simp`, `rigby.simp`, `simplify_fixtures_unsupported/intramap/intramap_inverse_cancel.map`) sit outside every scanned directory; needs the fallback comparison tightened to make trailing whitespace significant and a comment-less-object-card fixture moved into a scanned directory |
+| Round-trip harness misses trailing-whitespace divergences and the corpus has no comment-less nested-object card | `crates/ast-core/tests/test_serialisation.rs` | CLOSED 2026-09-04 — `native_round_trip_fixture` compared whole files with `trim()` and lines with `split_whitespace()`, so `"Frm1 = "` and `"Frm1 ="` compared equal. The whole-file path is now exact and the line walk splits on whitespace *keeping the separators*, so a difference in them is a difference; the 4-ULP tolerance covers numeric values and nothing else. The whole shared corpus passes under it, so the port's dumps are byte-exact including whitespace. The second half of the row is answered by the first: the comparator now normalises nothing, so there is nothing for a missing fixture to hide (the two files in the tree that do carry a `" ="` line, `programs/testyamlchan/lsst_wcs.txt` and `programs/joye_car_headers/total_hi.head`, are not native dumps and are read by their own programs) |
 | Comment-less nested-object card wrote a trailing space C never writes | — | FIXED (`1d2aa8f`, `86810ce`) — C's `WriteObject` (`channel.c:5106-5112`) appends `" ="` and adds the separator only when the comment is non-empty; the Rust Object arm pushed `" = "` unconditionally |
 
 Cross-cutting blocker for the first two rows above: the **FitsTable / `-TAB`
@@ -387,7 +387,7 @@ Closed entries keep their numbers, and each one's write-up is in
 Every section the generator can produce for a fixture that exists in
 `reference/starlink-ast/ast_tester/simplify_fixtures/` is now committed, so of
 the 790 `.map` / `.simp` files in
-`crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/`, 51 carry no
+`crates/ast-core/tests/fixtures/simplify/`, 51 carry no
 oracle section, for two reasons.
 
 **Nine cannot have one.** `cap_matrixmap_04.map`, `cap_specmap_02.map` and

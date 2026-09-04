@@ -1095,23 +1095,42 @@ fn within_ulps(a: f64, b: f64, max_ulps: u64) -> bool {
 /// not byte-equal are treated as equal if both parse as f64 and are
 /// within `NUMERIC_TOLERANCE_ULPS`.
 fn lines_numerically_equivalent(got: &str, want: &str) -> bool {
-    let mut got_tokens = got.split_whitespace();
-    let mut want_tokens = want.split_whitespace();
-    loop {
-        match (got_tokens.next(), want_tokens.next()) {
-            (None, None) => return true,
-            (Some(g), Some(w)) if g == w => continue,
-            (Some(g), Some(w)) => {
-                let (Ok(gv), Ok(wv)) = (g.parse::<f64>(), w.parse::<f64>()) else {
-                    return false;
-                };
-                if !within_ulps(gv, wv, NUMERIC_TOLERANCE_ULPS) {
-                    return false;
-                }
+    // Split on whitespace but keep the separators, so a difference in them is
+    // still a difference. `split_whitespace` would make `"Frm1 = "` and
+    // `"Frm1 ="` compare equal, which is exactly the kind of divergence a
+    // byte-exactness comparator exists to catch -- a comment-less object card
+    // is written with a trailing space, and nothing else in the corpus would
+    // reveal it. The tolerance covers numeric values and nothing else.
+    fn split(s: &str) -> Vec<&str> {
+        let mut out = Vec::new();
+        let mut i = 0;
+        let b = s.as_bytes();
+        while i < b.len() {
+            let start = i;
+            let ws = b[i].is_ascii_whitespace();
+            while i < b.len() && b[i].is_ascii_whitespace() == ws {
+                i += 1;
             }
-            _ => return false,
+            out.push(&s[start..i]);
+        }
+        out
+    }
+    let (g, w) = (split(got), split(want));
+    if g.len() != w.len() {
+        return false;
+    }
+    for (g, w) in g.iter().zip(w.iter()) {
+        if g == w {
+            continue;
+        }
+        let (Ok(gv), Ok(wv)) = (g.parse::<f64>(), w.parse::<f64>()) else {
+            return false;
+        };
+        if !within_ulps(gv, wv, NUMERIC_TOLERANCE_ULPS) {
+            return false;
         }
     }
+    true
 }
 
 /// Round-trip fixtures the Rust reader cannot load yet, each with the class that
@@ -1207,7 +1226,7 @@ fn native_round_trip_fixture(path: &std::path::Path) -> Result<(), String> {
     let output = to_native_string(&obj).map_err(|e| format!("render {}: {e}", path.display()))?;
     let text = strip_leading_comments(&text);
     let output = strip_leading_comments(&output);
-    if output.trim() == text.trim() {
+    if output == text {
         return Ok(());
     }
     // Walk lines: byte-equal lines pass; otherwise fall back to

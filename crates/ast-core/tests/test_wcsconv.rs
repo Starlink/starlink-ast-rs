@@ -1,6 +1,7 @@
 //! WCS conversion regression test harness.
 //!
-//! Data-driven tests from wcsconv_tests.txt that verify encoding round-trips.
+//! Data-driven tests from `fixtures/wcsconv/cases.txt` that verify encoding
+//! round-trips.
 //! Each test reads an input, writes in a target encoding, and compares output.
 //!
 //! `build.rs` generates one `#[test]` per manifest case, each of which panics

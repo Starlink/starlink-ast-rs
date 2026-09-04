@@ -90,7 +90,7 @@ fn only_c_simplify_classes_implement_simplified() {
 /// the card itself, because `Frame` overrides `GetIsSimple` to zero
 /// (`frame.c:5590`) — a Frame's Mapping can still change under it.
 ///
-/// The fixture pair lives in the simplify corpus but not in `simplify_tests.txt`:
+/// The fixture pair lives in the simplify corpus but not in `simplify/cases.txt`:
 /// that harness reduces a FrameSet input to its base→current Mapping, which is
 /// the one thing this case must not do.
 #[test]

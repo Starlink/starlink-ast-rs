@@ -1651,10 +1651,10 @@ fn head_sections_match_oracle() {
 /// `SLAMAP_ORACLE_EXCLUDED`: identified by `(relpath, forward)`, only ever
 /// shrinks, and empty means parity is proven.
 ///
-/// A `LoadFail` on a fixture staged under `simplify_fixtures_unsupported/`
-/// does not belong here — the gate licenses those structurally, since they
-/// name a class the port has not implemented (`PLAN.md` §4, enforced by
-/// `test_deferred_fixtures.rs`). Everything else is a defect to fix.
+/// A `LoadFail` on a fixture naming a class the port has not implemented does
+/// not belong here: those are named in `DEFERRED_LOAD` above, and counted in
+/// `test_deferred_fixtures.rs` (`PLAN.md` §4). Everything else is a defect to
+/// fix.
 const SIMPLIFY_ORACLE_EXCLUDED: &[(&str, bool, &str)] = &[];
 
 /// Number of simplify-corpus oracle section-directions currently gated. The
