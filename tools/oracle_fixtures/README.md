@@ -25,20 +25,21 @@ The output is formatted as a Rust `const` block intended to be pasted
 into the relevant `#[cfg(test)] mod tests` in the ported function's
 source file.
 
-## Native-serialization round-trip probes
+## Native-serialization round-trip corpus
 
-Two probes generate / cross-check the `.ast` FrameSet round-trip corpus
-(`crates/ast-core/tests/fixtures/native/reference/frameset_fixtures/`):
+`crates/ast-core/tests/fixtures/wcsconv/framesets/` is generated upstream, by
+`reference/starlink-ast/ast_tester/gen_frameset_fixtures.c`, and mirrored here by
+copying the tree. It used to be generated on this side by `gen_frameset_fixtures.sh`
+driving two local probes, `head2ast` and `ast2ast`; both are gone with it, because
+a corpus generated twice from two sources is a corpus that can disagree with
+itself. `tools/fixtures/check_mirror.sh` is what asserts the two trees match.
 
-- `head2ast <input.head> [attrs]` — reads a FITS header into a FitsChan,
-  `astRead`s the WCS, and dumps it via an `astChannel` text sink
-  (`Comment=1,Full=0`), mirroring `wcsconverter.c`'s AST branch. Used by
-  `gen_frameset_fixtures.sh` to produce the committed fixtures.
-- `ast2ast <input.ast>` — reads a native `.ast` object through a source
-  Channel and re-dumps it through a sink Channel at the same verbosity.
-  This exercises the C oracle's *own* native round-trip, isolated from
-  FITS, so a Rust round-trip can be diffed against the authoritative
-  C round-trip rather than only against the first dump.
+The round-trip references that used to sit beside each simplify fixture as `.rt`
+are gone too, along with `gen_roundtrip_refs.sh` that captured them. They existed
+because reading a dump was not the identity in C: a subclass loader re-applied a
+validated attribute through a clear-on-set setter and discarded the `IsSimp` card
+`astLoadMapping` had just installed. Upstream `07d0cd2d` guards each clear on the
+value actually differing, so a fixture is now its own round-trip reference.
 
 ## `unitnorm_probe` — what does C on *this* host compute here?
 
@@ -67,8 +68,9 @@ gen_simp [-m] <in> <out> [comment] [indent]
 Reads one native-encoded Object, calls `astSimplify` on it, and writes the
 result. `comment` and `indent` are passed to the output Channel and default to
 the Channel's own defaults (1 and 3), so a reference captured with either turned
-off is reproducible — `lsst.simp` is the one such row in
-`simplify_tests.txt`, captured with `0 0`.
+off is reproducible. No row needs that now: upstream regenerated `lsst.simp`,
+the one reference that had been captured with `Comment` and `Indent` off, with the
+Channel's defaults, and the manifest's render-options column went with it.
 
 `-m` replaces a FrameSet by its base->current Mapping before simplifying. Most
 of the corpus's FrameSet fixtures were captured that way, so their reference is
@@ -81,9 +83,10 @@ This is the instrument behind every re-baseline in the simplify corpus, and
 
 ## `check_simplify_fresh.sh` — is the simplify corpus still the pinned C's output?
 
-Captures every row of
-`crates/ast-core/tests/fixtures/native/reference/simplify_tests.txt` from the
-pinned oracle with `gen_simp` and classifies the difference:
+Captures every row of `crates/ast-core/tests/fixtures/simplify/cases.txt` from
+the pinned oracle with `gen_simp` and classifies the difference. `gen_simp` links
+upstream's `oracle_register_intramaps`, so the corpus's IntraMap fixtures load and
+are compared like any other rather than being reported as structural drift:
 
 - **card** — the reference has a different set of cards. It predates a library
   change; regenerate it with `gen_simp` and commit the regeneration in the same
