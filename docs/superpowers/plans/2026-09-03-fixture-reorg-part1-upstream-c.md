@@ -1583,6 +1583,69 @@ point of writing the list down."
 
 ---
 
+### Task 11 outcome (2026-09-03)
+
+Landed. Coverage rose sharply: simplify 1411 → 1601 sections, framesets 20 → 351,
+headers unchanged at 277, and simplify fixtures with no section 106 → 9.
+
+**Two absences were removed rather than documented.** The generator refused any
+fixture containing an IntraMap, on the stated grounds that such a dump "cannot be
+loaded without registration" — so it now makes the same four registrations
+`simplify.c` does, covering ten fixtures. The registration went into the shared
+`transform_oracle_util.c` rather than the generator, because putting it in only
+one produced sections the checker could not load. The remaining nine have neither
+a forward nor an inverse transformation, so there is nothing to record; the
+generator writes a section whenever either exists, which makes that reason exact.
+
+**The SIP round-trip failures were a generator bug, not something broken.**
+Discovering `wcsconv/framesets/` brought in 331 sections and 126 round-trip
+mismatches across four SIP fixtures, one of them off by 136 pixels. The cause was
+the sampling domain: a `.head` fixture is sampled over its NAXIS grid, while an
+`.ast` dump got a hardcoded 1..1000 — and all four SIP headers are 256 pixels
+square. A SIP inverse is iterative and need not converge that far outside the
+image it was fitted over. The same mappings round-trip cleanly through their
+headers, and comparing the header-read object against its own dump at the same
+points gives *zero* differing rows, so serialisation was never in question. The
+generator now recovers a frameset's originating header from its name and takes its
+grid. 126 mismatches → 2.
+
+Those last two are `tnx-cheb`, which upstream already documents: its TNX Chebyshev
+distortion builds a ChebyMap that cannot represent its own Jacobian, so sky→pixel
+returns BAD for the whole fixture and the round-trip is already disabled for the
+header. The dump needed the same entry, an override being keyed on the relpath.
+
+### The FMA question, which this touched but did not settle
+
+Regenerating changed four values in
+`neg_unitnormmap_inv_fwd_diffcentre.map` from a real direction to `BAD`, and it is
+worth being precise about which of those is the answer we want.
+
+The fixture's inverse chain reconstructs a centre as `B + |A-B| * (A-B)/|A-B|`.
+Whether that lands on `A` exactly — residual zero, so C's guard fires and the
+output is `BAD` — or about 1e-16 away, so the guard misses and the output is a
+unit-vector direction made of rounding noise, depends on whether the compiler
+contracts the multiply and add. The arm64 generator did; this x86-64 build does
+not.
+
+So the regenerated `BAD` is **the non-FMA answer**, and the direction the port
+should be heading is the other one: macOS clang contracts by default, and modern
+gcc is expected to. Two consequences worth carrying forward rather than
+discovering later:
+
+- Upstream already has `simplify/neg_unitnormmap_inv_fwd_diffcentre.map
+  golden-inv off` for exactly this, with the divergence written out. That entry is
+  load-bearing and must not be retired on the strength of this host agreeing with
+  the new values.
+- An earlier note in this plan said regenerating "retires the Rust port's
+  `FMA_SUBSTITUTIONS_LICENSED` table". That is true only while the Rust port is
+  built without contraction. Once it uses FMA — which Part 2's Task 7 already
+  records as a separate audited pass — the substitution becomes needed again, in
+  the other direction. The honest statement is that no value at that point is
+  stable across contraction settings, which is why the golden inverse check is
+  disabled rather than pinned.
+
+---
+
 ## Self-Review
 
 **Spec coverage.** §2.1 `wcsconv/framesets/` → Task 4; `serialisation/` → Task 3; `oracle/keymap_mapsz.txt` → Task 5. §2.3 the `IsSimp` defect → Tasks 1–2 (the 43 `.rt` deletions are Part 2, since the files live in the Rust repo). §3 manifest columns → Tasks 7 (`render_options` retired), 10 (`astequal` added). §4 U1 → Tasks 1–2; U2 → Tasks 3, 4, 5 (`gen_roundtrip_refs` deletion is Part 2, being our tool); U3 → Tasks 6, 7; U4 → Tasks 8, 9, 10; U5 → Task 11. §5 and §6 are entirely Part 2. §7's facts are used as expected values throughout. §8's three risks land in Tasks 2, 9/10 and 11 respectively.
