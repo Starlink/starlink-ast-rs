@@ -258,36 +258,17 @@ fn load_fixture(relpath: &str) -> Result<LoadOutcome, String> {
     Ok(Transformable(Box::new(Loaded { obj, is_frameset })))
 }
 
-/// Resolve an oracle relpath (rooted at the C `ast_tester/` dir) to the
-/// on-disk Rust fixture. Searches a fixed, ordered list of the directories
-/// the corpus was vendored into, trying the full relpath then the basename
-/// in each. `native/generated/` is intentionally excluded: it holds
-/// Rust-produced dumps that differ from the C-provenance source.
+/// Resolve an oracle relpath to its on-disk fixture.
+///
+/// The relpath is relative to the fixture root and names exactly one file, so
+/// this is a join and nothing more. It used to search a list of directories and
+/// fall back to the basename, which the tree no longer permits: the oracles
+/// reference both `serialisation/degen1.ast` and `wcsconv/inputs/degen1.ast`, and
+/// those differ -- the first is the round-tripped form of the second.
 fn resolve_fixture(relpath: &str) -> Option<PathBuf> {
     const ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures");
-    const DIRS: [&str; 8] = [
-        "wcsconv/inputs",
-        "native/reference",
-        "native/reference/simplify_fixtures",
-        "native/reference/simplify_fixtures_unsupported/xphmap",
-        "native/reference/simplify_fixtures_unsupported/intramap",
-        "native/reference/simplify_fixtures_unsupported/stcresourceprofile",
-        "wcsconv/expected",
-        "fits/headers",
-    ];
-    let basename = relpath.rsplit('/').next().unwrap_or(relpath);
-    for dir in DIRS {
-        for candidate in [
-            format!("{ROOT}/{dir}/{relpath}"),
-            format!("{ROOT}/{dir}/{basename}"),
-        ] {
-            let p = PathBuf::from(candidate);
-            if p.is_file() {
-                return Some(p);
-            }
-        }
-    }
-    None
+    let p = PathBuf::from(format!("{ROOT}/{relpath}"));
+    p.is_file().then_some(p)
 }
 
 #[cfg(test)]
@@ -315,13 +296,26 @@ mod resolve_tests {
         assert!(missing.is_empty(), "unresolved fixtures: {missing:?}");
     }
 
+    /// Two fixtures share a basename and differ in content, so resolution must be
+    /// by full relative path. `serialisation/degen1.ast` is the round-tripped form
+    /// of `wcsconv/inputs/degen1.ast`, and the oracles reference both.
     #[test]
-    fn never_resolves_into_generated() {
-        // lsst.ast exists in native/generated (Rust output) and in
-        // native/reference + wcsconv/inputs (C source). The resolver must
-        // pick a non-generated copy.
-        let p = resolve_fixture("lsst.ast").expect("lsst.ast resolves");
-        assert!(!p.to_string_lossy().contains("native/generated"));
+    fn duplicate_basenames_resolve_to_their_own_files() {
+        let a = resolve_fixture("wcsconv/inputs/degen1.ast").expect("wcsconv copy");
+        let b = resolve_fixture("serialisation/degen1.ast").expect("serialisation copy");
+        assert_ne!(a, b);
+        assert_ne!(
+            std::fs::read_to_string(&a).unwrap(),
+            std::fs::read_to_string(&b).unwrap(),
+            "if these two were identical the test would prove nothing"
+        );
+    }
+
+    /// A bare basename is not a key into the tree and must not resolve.
+    #[test]
+    fn bare_basename_does_not_resolve() {
+        assert!(resolve_fixture("degen1.ast").is_none());
+        assert!(resolve_fixture("brad.map").is_none());
     }
 }
 
@@ -367,7 +361,7 @@ mod parse_tests {
             let text = std::fs::read_to_string(format!("{dir}/{name}")).unwrap();
             total += parse_oracle(&text).expect("committed oracle parses").len();
         }
-        assert_eq!(total, 1752);
+        assert_eq!(total, 2229);
     }
 }
 
@@ -435,7 +429,7 @@ mod loader_tests {
 
     #[test]
     fn loads_native_mapping() {
-        let l = load_fixture("simplify_fixtures/matrix_diagonal_to_zoom.map")
+        let l = load_fixture("simplify/matrix_diagonal_to_zoom.map")
             .expect("no error")
             .expect_transformable();
         let m = l.mapping().expect("mapping");
@@ -445,7 +439,7 @@ mod loader_tests {
 
     #[test]
     fn loads_head_frameset_with_frames() {
-        let l = load_fixture("cobe.head")
+        let l = load_fixture("wcsconv/inputs/cobe.head")
             .expect("no error")
             .expect_transformable();
         assert!(l.is_frameset);
@@ -460,7 +454,7 @@ mod loader_tests {
     /// carried into the report so the skip does not have to be re-derived.
     #[test]
     fn bare_frame_is_untransformable_and_says_why() {
-        match load_fixture("specflux.ast").expect("loads") {
+        match load_fixture("wcsconv/inputs/specflux.ast").expect("loads") {
             Transformable(_) => panic!("a bare Frame has no transform in the Rust port"),
             Untransformable(reason) => {
                 assert!(reason.contains("bare Frame"), "reason names the case");
@@ -651,16 +645,51 @@ mod override_tests {
             "/tests/fixtures/oracle/transform_oracle_overrides.txt"
         );
         let o = parse_overrides(&std::fs::read_to_string(path).unwrap());
-        // The committed file declares nothing: no fixture may switch a check
-        // off wholesale. Per-row licences live in the harness, where they are
-        // named and asserted.
-        assert!(
-            o.rtrip.is_empty() && o.golden.is_empty(),
-            "transform_oracle_overrides.txt must declare no overrides; found \
-             rtrip={:?} golden={:?}",
-            o.rtrip,
-            o.golden,
+
+        // Three overrides, each pinned with its reason. An allowlist rather than
+        // an emptiness assertion, so a fourth cannot appear unnoticed, and rather
+        // than no assertion at all, which would let any switch-off through.
+        //
+        // tnx-cheb has no inverse: its TNX Chebyshev distortion builds a ChebyMap,
+        // which cannot represent its own Jacobian, so sky->pixel is BAD throughout
+        // and the round-trip cannot be asserted. It appears twice because an
+        // override is keyed on the relpath and the same object is reached both as
+        // the header and as its dump under wcsconv/framesets/.
+        let mut rtrip_off: Vec<&str> = o
+            .rtrip
+            .iter()
+            .filter(|(_, v)| v.off)
+            .map(|(k, _)| k.as_str())
+            .collect();
+        rtrip_off.sort_unstable();
+        assert_eq!(
+            rtrip_off,
+            vec![
+                "wcsconv/framesets/tnx-cheb-head.ast",
+                "wcsconv/inputs/tnx-cheb.head",
+            ],
+            "unexpected round-trip override"
         );
+        assert!(
+            o.rtrip.values().all(|v| v.off),
+            "no fixture should carry a loosened round-trip tolerance, only a \
+             disabled one; found {:?}",
+            o.rtrip
+        );
+
+        // neg_unitnormmap_inv_fwd_diffcentre's inverse output at the sampled
+        // all-zero input is BAD or a rounding-noise direction depending on
+        // whether the compiler fuses a multiply and an add, so no recorded value
+        // is stable. The forward section stays pinned.
+        let golden: Vec<&str> = o.golden.keys().map(String::as_str).collect();
+        assert_eq!(
+            golden,
+            vec!["simplify/neg_unitnormmap_inv_fwd_diffcentre.map"],
+            "unexpected golden override"
+        );
+        assert!(o.golden_off("simplify/neg_unitnormmap_inv_fwd_diffcentre.map", false));
+        assert!(!o.golden_off("simplify/neg_unitnormmap_inv_fwd_diffcentre.map", true));
+
         // The parser still works, so a future entry would take effect.
         let probe = parse_overrides("a.head off\nb.map golden-inv off\n");
         assert_eq!(probe.rtrip("a.head"), None);
@@ -674,7 +703,9 @@ mod transform_tests {
 
     #[test]
     fn skyframe_longitude_is_cyclic_pixel_is_not() {
-        let l = load_fixture("cobe.head").unwrap().expect_transformable();
+        let l = load_fixture("wcsconv/inputs/cobe.head")
+            .unwrap()
+            .expect_transformable();
         let flags = angular_flags(
             &l,
             &Section {
@@ -694,7 +725,7 @@ mod transform_tests {
 
     #[test]
     fn bare_mapping_all_axes_angular() {
-        let l = load_fixture("simplify_fixtures/matrix_diagonal_to_zoom.map")
+        let l = load_fixture("simplify/matrix_diagonal_to_zoom.map")
             .unwrap()
             .expect_transformable();
         let s = Section {
@@ -710,7 +741,7 @@ mod transform_tests {
 
     #[test]
     fn transform_reproduces_oracle_shape() {
-        let l = load_fixture("simplify_fixtures/matrix_diagonal_to_zoom.map")
+        let l = load_fixture("simplify/matrix_diagonal_to_zoom.map")
             .unwrap()
             .expect_transformable();
         let s = Section {
@@ -801,27 +832,34 @@ fn compare_golden(
 /// assumes the default round-trip tolerances, which is safe while
 /// `transform_oracle_overrides.txt` declares none.
 const RTRIP_REFERENCE_GAPS_LICENSED: &[(&str, &[usize])] = &[
-    // Every row. The TNX Chebyshev distortion builds a ChebyMap, whose
-    // storage cannot hold its own Jacobian (the derivative of a 1st-kind
-    // Chebyshev T_n is a 2nd-kind U_(n-1)), so PolyMap's iterative inverse is
-    // unavailable and C's sky->pixel lands nowhere near the pixel it came
-    // from: row 0 goes 1,1 -> 2375.93,-2531.65, and row 22 is BAD
-    // (`headers.oracle:5542-5600`). The golden checks still pin both
-    // directions against C, which is what proves the port reproduces C's
-    // wrong inverse rather than a different one.
+    // Keyed on the full relpath: the same object appears both as a header and as
+    // its dump under wcsconv/framesets/, and each needs its own entry.
+    //
+    // tnx-cheb has no inverse at all. Its TNX Chebyshev distortion builds a
+    // ChebyMap, which cannot represent its own Jacobian -- the derivative of a
+    // first-kind Chebyshev polynomial is a second-kind one, which ChebyMap's
+    // storage does not hold -- so sky->pixel is BAD for every row. Upstream
+    // disables the round-trip check for both relpaths in
+    // transform_oracle_overrides.txt for that reason.
     (
-        "tnx-cheb.head",
+        "wcsconv/inputs/tnx-cheb.head",
         &[
             0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
         ],
     ),
-    // One row on the tangential spherical cube: the image is wider than the
-    // quad-cube period, so C's inverse returns the aliased preimage
-    // 418.3068181819074 for pixel 1400.125. The port recovers the pixel
-    // itself, so this row passes through `pixel_ok` and never reaches the
-    // reference gate — it is listed because the census is of the corpus, not
-    // of what the gate excuses.
-    ("tsc.head", &[10]),
+    (
+        "wcsconv/framesets/tnx-cheb-head.ast",
+        &[
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
+        ],
+    ),
+    // tsc row 10 is a 360-degree alias: the image is wider than the quad-cube
+    // period, so the inverse returns a different pixel that forward-maps to the
+    // same sky.
+    ("wcsconv/inputs/tsc.head", &[10]),
+    ("wcsconv/framesets/tsc-head.ast", &[10]),
+    // total_hi row 3: an all-sky CAR header whose corner pixel does not recover.
+    ("programs/joye_car_headers/total_hi.head", &[3]),
 ];
 
 /// Oracle rows whose recorded values were produced by the generator host's
@@ -835,30 +873,14 @@ const RTRIP_REFERENCE_GAPS_LICENSED: &[(&str, &[usize])] = &[
 /// `fma_substitutions_replace_rows_that_really_differ` keeps each entry honest
 /// by requiring the recorded values to still be the ones being replaced.
 const FMA_SUBSTITUTIONS_LICENSED: &[(&str, bool, usize, &[f64])] = &[
-    // UnitNormMap's inverse writes `in*norm + centre[coord]`
-    // (`unitnormmap.c:1079`). This fixture's rows 2 and 3 feed the transform an
-    // input whose distance from the centre is zero, which C detects by
-    // `max_relin == 0` at `unitnormmap.c:1024` and answers with BAD on every
-    // axis but the last and 0 on that one. The arm64 generator's compiler fused
-    // the multiply-add, leaving 3.4075347438225656e-16 instead of an exact
-    // zero, so the guard never fired and the row recorded a noise direction:
-    // 0.75853844164804163 0.65162829323331306 3.4075347438225656e-16. Both
-    // fused values are reproducible as fma(u, d, 5.0) and fma(u, d, 6.0).
-    // Any non-contracting build -- Rust anywhere, and C on this repo's x86-64
-    // host, confirmed with `tools/oracle_fixtures/unitnorm_probe` -- takes the
-    // guard. See `docs/issues/c-library-quirks.md`.
-    (
-        "simplify_fixtures/neg_unitnormmap_inv_fwd_diffcentre.map",
-        false,
-        2,
-        &[BAD_VALUE, BAD_VALUE, 0.0],
-    ),
-    (
-        "simplify_fixtures/neg_unitnormmap_inv_fwd_diffcentre.map",
-        false,
-        3,
-        &[BAD_VALUE, BAD_VALUE, 0.0],
-    ),
+    // Empty. It held two rows of
+    // `simplify/neg_unitnormmap_inv_fwd_diffcentre.map`, whose inverse
+    // reconstructs a centre and so lands either exactly on it -- residual zero,
+    // output BAD -- or about 1e-16 away, output a unit vector made of rounding
+    // noise, depending on whether the compiler contracted a multiply and an add.
+    // No value there is stable, so upstream disables that section's inverse
+    // golden check outright rather than pinning a value, and a substitution can
+    // no longer apply. See `docs/issues/c-library-quirks.md`.
 ];
 
 /// The reference a golden comparison should use: the recorded outputs, with any
@@ -1234,7 +1256,7 @@ mod driver_tests {
             &std::fs::read_to_string(format!("{dir}/transform_oracle_overrides.txt")).unwrap(),
         );
         let reports = run_oracle(&oracle, &ov);
-        assert_eq!(reports.len(), 20, "framesets.oracle has 20 sections");
+        assert_eq!(reports.len(), 351, "framesets.oracle has 351 sections");
     }
 }
 
@@ -1544,7 +1566,7 @@ const HEAD_ORACLE_EXCLUDED: &[(&str, bool, &str)] = &[];
 /// Number of `.head` oracle section-directions currently in the corpus. The
 /// gate asserts it examined at least this many, so a rename or deletion of a
 /// fixture cannot make the gate pass vacuously.
-const HEAD_SECTION_FLOOR: usize = 259;
+const HEAD_SECTION_FLOOR: usize = 277;
 
 /// Is this oracle section a `.head` FITS-read fixture?
 fn is_head_section(relpath: &str) -> bool {
@@ -1638,11 +1660,13 @@ const SIMPLIFY_ORACLE_EXCLUDED: &[(&str, bool, &str)] = &[];
 /// Number of simplify-corpus oracle section-directions currently gated. The
 /// gate asserts it examined at least this many, so a rename or deletion of a
 /// fixture cannot make the gate pass vacuously.
-/// Of the 1752 sections, 259 are `.head` and 136 are SlaMap, leaving 1357
+/// Of the 2229 sections, 277 are `.head` and 136 are SlaMap, leaving 1816
 /// here, of which 18 are the deferred-class load-fails licensed below.
-const SIMPLIFY_SECTION_FLOOR: usize = 1339;
+// 1816 sections are simplify-class; the gate skips the 20 DEFERRED_LOAD fixtures
+// in both directions, so it examines 40 fewer.
+const SIMPLIFY_SECTION_FLOOR: usize = 1776;
 
-/// Is this oracle section part of the simplify corpus (a `simplify_fixtures/`
+/// Is this oracle section part of the simplify corpus (a `simplify/`
 /// relpath or a top-level `.ast`/`.map`/`.simp` fixture)? This is everything
 /// the `.head` and SlaMap gates do not already cover.
 fn is_simplify_section(relpath: &str) -> bool {
@@ -1651,19 +1675,90 @@ fn is_simplify_section(relpath: &str) -> bool {
 
 /// Does this section's fixture resolve to the deferred-class staging area?
 ///
-/// Those fixtures are kept in the corpus so the coverage they represent stays
-/// visible, but they instantiate a class the port has not implemented, so they
-/// cannot load. A `LoadFail` on one is expected; any other failure, and any
-/// failure on a fixture outside that area, is a defect.
+/// Oracle sections whose fixture this port cannot load, each with the class that
+/// stops it.
+///
+/// A named list rather than a directory: the fixture tree is a byte-identical
+/// mirror of upstream's, and a carve-out directory would encode a fact about this
+/// port as a property of both repositories. Every entry was checked against the
+/// fixture's own contents, not inferred from its name.
+///
+/// `frame_in_map_slot.ast` is not an unported class but a deliberate refusal: C
+/// accepts a Frame in any Mapping slot because `Frame::Transform` goes through
+/// `astUnitMap(astGetNaxes(this))`, and this port makes Region the only Frame that
+/// is also a Mapping. `test_frame_in_map_slot.rs` pins that, and whether it is
+/// right is the open question in `docs/issues/frame-in-a-mapping-slot.md`.
+const DEFERRED_LOAD: &[(&str, &str)] = &[
+    (
+        "serialisation/frame_in_map_slot.ast",
+        "CmpFrame in a Map<n> slot, refused",
+    ),
+    (
+        "simplify/cap_timemap_02.map",
+        "StcResourceProfile not ported",
+    ),
+    (
+        "simplify/cap_timemap_02.simp",
+        "StcResourceProfile not ported",
+    ),
+    ("simplify/cap_xphmap_01.map", "XphMap not ported"),
+    ("simplify/cap_xphmap_02.map", "XphMap not ported"),
+    ("simplify/cap_xphmap_02.simp", "XphMap not ported"),
+    ("simplify/intra_invfwd_cancel.map", "IntraMap not ported"),
+    (
+        "simplify/intra_invfwd_cancel_tail.map",
+        "IntraMap not ported",
+    ),
+    (
+        "simplify/intramap_inverse_cancel.map",
+        "IntraMap not ported",
+    ),
+    ("simplify/neg_intra_diff_flag.map", "IntraMap not ported"),
+    ("simplify/neg_intra_diff_func.map", "IntraMap not ported"),
+    ("simplify/neg_intra_no_simpfi.map", "IntraMap not ported"),
+    ("simplify/neg_intra_no_simpif.map", "IntraMap not ported"),
+    (
+        "simplify/neg_intra_nonintra_neighbour.map",
+        "IntraMap not ported",
+    ),
+    ("simplify/neg_intra_parallel.map", "IntraMap not ported"),
+    (
+        "simplify/neg_intra_same_direction.map",
+        "IntraMap not ported",
+    ),
+    ("simplify/neg_xph_nonxph_neighbour.map", "XphMap not ported"),
+    ("simplify/neg_xph_not_opposite.map", "XphMap not ported"),
+    ("simplify/neg_xph_parallel.map", "XphMap not ported"),
+    ("simplify/xph_inverse_cancel.map", "XphMap not ported"),
+];
+
 fn is_deferred_class_fixture(relpath: &str) -> bool {
-    resolve_fixture(relpath).is_some_and(|p| {
-        p.components()
-            .any(|c| c.as_os_str() == "simplify_fixtures_unsupported")
-    })
+    DEFERRED_LOAD.iter().any(|(f, _)| *f == relpath)
+}
+
+/// A deferred entry that has started loading must surface, or the port keeps
+/// skipping work it could now do. The complement of the gates' own exclusion
+/// lists: those shrink when a divergence is fixed, this shrinks when a class
+/// lands.
+#[test]
+fn deferred_fixtures_still_fail_to_load() {
+    let mut now_loading = Vec::new();
+    for (file, reason) in DEFERRED_LOAD {
+        let path = resolve_fixture(file).unwrap_or_else(|| panic!("stale entry: {file}"));
+        let text = std::fs::read_to_string(&path).unwrap();
+        if from_native_string(&text).is_ok() {
+            now_loading.push((*file, *reason));
+        }
+    }
+    assert!(
+        now_loading.is_empty(),
+        "these now load -- delete their DEFERRED_LOAD rows and let the gates \
+         cover them: {now_loading:?}"
+    );
 }
 
 /// Regression gate over every oracle section the `.head` and SlaMap gates do
-/// not cover — the simplify corpus, which is the bulk of the 1752 sections.
+/// not cover — the simplify corpus, which is the bulk of the 2229 sections.
 ///
 /// Without this the majority of the corpus was read only by
 /// `transform_oracle_report`, which is `#[ignore]` and does not assert, so a
@@ -1774,7 +1869,7 @@ fn every_oracle_section_is_gated() {
         ungated.is_empty(),
         "oracle sections covered by no gate:\n{ungated:?}",
     );
-    assert_eq!(total, 1752, "gates must span every section");
+    assert_eq!(total, 2229, "gates must span every section");
 }
 
 /// The set of rows where C's own recorded inverse does not recover the pixel is
@@ -1896,7 +1991,7 @@ fn transform_oracle_report() {
         let text = std::fs::read_to_string(format!("{dir}/{name}")).expect("oracle present");
         reports.extend(run_oracle(&text, &ov));
     }
-    assert_eq!(reports.len(), 1752, "harness must cover every section");
+    assert_eq!(reports.len(), 2229, "harness must cover every section");
     let out = concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../../target/transform_oracle_report.json"
