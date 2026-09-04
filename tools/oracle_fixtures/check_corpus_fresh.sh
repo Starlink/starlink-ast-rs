@@ -18,11 +18,12 @@ if [ ! -x "$DEST/wcsconverter" ]; then
    ( cd "$SRC" && git ls-files ) > "$DEST/.files"
    ( cd "$SRC" && tar cf - -T "$DEST/.files" ) | ( cd "$DEST" && tar xf - )
    cmake -S "$DEST" -B "$DEST/build" > "$DEST/cmake.log" 2>&1
-   cmake --build "$DEST/build" --target ast -j8 > "$DEST/build.log" 2>&1
-   YAML=$(ls -d /opt/homebrew/opt/libyaml/lib /usr/local/opt/libyaml/lib 2>/dev/null | head -1)
-   cc "$DEST/ast_tester/wcsconverter.c" -o "$DEST/wcsconverter" \
-      -I "$DEST/build" -L "$DEST/build" ${YAML:+-L "$YAML"} \
-      -Wl,-rpath,"$DEST/build" ${YAML:+-Wl,-rpath,"$YAML"} -last -lyaml -lm
+#  Build the project's own wcsconverter target rather than hand-linking it.
+#  libast does not resolve the Grf entry points on its own -- the project supplies
+#  them from its grf stub libraries -- so a hand-rolled `cc ... -last` link fails,
+#  and would need updating again whenever that link line changes.
+   cmake --build "$DEST/build" --target wcsconverter -j8 > "$DEST/build.log" 2>&1
+   cp "$DEST/build/ast_tester/wcsconverter" "$DEST/wcsconverter"
 fi
 
 exec python3 "$HERE/tools/oracle_fixtures/check_corpus_fresh.py" \
