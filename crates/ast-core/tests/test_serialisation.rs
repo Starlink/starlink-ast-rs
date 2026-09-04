@@ -1114,8 +1114,87 @@ fn lines_numerically_equivalent(got: &str, want: &str) -> bool {
     }
 }
 
+/// Round-trip fixtures the Rust reader cannot load yet, each with the class that
+/// blocks it. Named here rather than passed over by a substring match on the
+/// error text, so the list shrinks only by deliberate edit and
+/// `round_trip_exclusions_still_fail` can check every entry still applies.
+const ROUND_TRIP_EXCLUDED: &[(&str, &str)] = &[
+    // Classes the reader has no loader for. Each of these is also a `DEFERRED`
+    // row in `test_simplify_regression.rs`.
+    ("cap_timemap_02.map", "StcResourceProfile is not ported"),
+    ("cap_timemap_02.simp", "StcResourceProfile is not ported"),
+    ("cap_xphmap_01.map", "XphMap is not ported"),
+    ("cap_xphmap_02.map", "XphMap is not ported"),
+    ("cap_xphmap_02.simp", "XphMap is not ported"),
+    ("intra_invfwd_cancel.map", "IntraMap is not ported"),
+    ("intra_invfwd_cancel_tail.map", "IntraMap is not ported"),
+    ("intramap_inverse_cancel.map", "IntraMap is not ported"),
+    ("neg_intra_diff_flag.map", "IntraMap is not ported"),
+    ("neg_intra_diff_func.map", "IntraMap is not ported"),
+    ("neg_intra_no_simpfi.map", "IntraMap is not ported"),
+    ("neg_intra_no_simpif.map", "IntraMap is not ported"),
+    ("neg_intra_nonintra_neighbour.map", "IntraMap is not ported"),
+    ("neg_intra_parallel.map", "IntraMap is not ported"),
+    ("neg_intra_same_direction.map", "IntraMap is not ported"),
+    ("neg_xph_nonxph_neighbour.map", "XphMap is not ported"),
+    ("neg_xph_not_opposite.map", "XphMap is not ported"),
+    ("neg_xph_parallel.map", "XphMap is not ported"),
+    ("xph_inverse_cancel.map", "XphMap is not ported"),
+    // A FrameSet holding a CmpFrame where a Mapping belongs. C accepts it
+    // because astLoadFrameSet reads that slot with astRead and a Frame is a
+    // Mapping; the port's Mapping loader dispatches on the class name and has
+    // no Frame case. Closing it needs the Mapping loader to accept any
+    // Frame-kind class, which is the read-path half of `Frame`-in-`Mapping`-slot
+    // support. `tools/oracle_fixtures/frame_in_map_slot_probe.c` is the oracle.
+    (
+        "frame_in_map_slot.ast",
+        "a Frame in a Mapping slot; the Mapping loader has no Frame case",
+    ),
+    // The commented-out default `Uni1`/`Uni2` cards. C derives a SkyAxis unit
+    // string from the axis Format specifier -- "hms.3" gives "hh:mm:ss.sss" --
+    // by parsing the specifier into its fields, separator and decimal-place
+    // count (skyaxis.c:3404 ParseDHmsFormat) and assembling the string from
+    // them (skyaxis.c:2383 DHmsUnit). The port has no sexagesimal
+    // format-specifier parser at all: `SkyFrame::format` uses a fixed precision
+    // and `default_units` returns a fixed pair, so any Format other than the
+    // default gives the wrong unit string. Closing it means porting the parser
+    // and having `format`, `unformat` and `default_units` all read it -- fixing
+    // only the unit string would leave `format` ignoring the specifier.
+    (
+        "sparse.ast",
+        "SkyAxis Format specifiers are not parsed (skyaxis.c:3404, :2383)",
+    ),
+];
+
+/// Drop the leading run of comment lines, as the upstream roundtrip driver does
+/// (`cmake/run_roundtrip_test.cmake`).
+///
+/// A fixture may carry a hand-written header saying what it is for -- see
+/// `wcsconv/inputs/degen1.ast` -- and that header is documentation for a
+/// reader, not part of the object, so a dump cannot reproduce it. Nothing else
+/// is normalised: whatever a comparator normalises stops being testable, and
+/// every line from the first `Begin` onwards must match.
+fn strip_leading_comments(text: &str) -> String {
+    let rest = text
+        .lines()
+        .skip_while(|l| l.starts_with('#'))
+        .collect::<Vec<_>>()
+        .join("\n");
+    if text.ends_with('\n') {
+        rest + "\n"
+    } else {
+        rest
+    }
+}
+
 /// Read a C-generated .ast/.map/.simp file, write it back via to_native_string,
-/// and verify the output is byte-exact with the input.
+/// and verify the output reproduces the input.
+///
+/// Reading a dump and writing it straight back is the identity, so any
+/// difference is a serialisation defect. This is the only comparison in the
+/// suite that can see one: every other harness calls `simplify` after reading,
+/// and `astSimplify` re-stamps `IsSimp` on each node it visits, hiding a record
+/// a loader dropped.
 ///
 /// Tokens that disagree by ≤[`NUMERIC_TOLERANCE_ULPS`] when parsed as
 /// f64 are treated as equal — this absorbs the ~1 ULP platform drift in
@@ -1124,28 +1203,10 @@ fn lines_numerically_equivalent(got: &str, want: &str) -> bool {
 fn native_round_trip_fixture(path: &std::path::Path) -> Result<(), String> {
     let text =
         std::fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
-    // A `.map` / `.simp` reference is C's dump of a *simplified* object, and
-    // reading one back is not the identity: a loader that validates an
-    // attribute re-applies it through the private setter, which for a
-    // clear-on-set class discards the simplified record `astLoadMapping`
-    // installed from the `IsSimp` card (`docs/issues/c-library-quirks.md`). The
-    // reference for a round-trip is therefore C's dump of the *loaded* object,
-    // captured beside the fixture as `.rt` by
-    // `tools/oracle_fixtures/gen_roundtrip_refs.sh` wherever the two differ.
-    let rt = path.with_extension(format!(
-        "{}.rt",
-        path.extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or_default()
-    ));
-    let want = if rt.is_file() {
-        std::fs::read_to_string(&rt).map_err(|e| format!("read {}: {e}", rt.display()))?
-    } else {
-        text.clone()
-    };
     let obj = from_native_string(&text).map_err(|e| format!("parse {}: {e}", path.display()))?;
     let output = to_native_string(&obj).map_err(|e| format!("render {}: {e}", path.display()))?;
-    let text = want;
+    let text = strip_leading_comments(&text);
+    let output = strip_leading_comments(&output);
     if output.trim() == text.trim() {
         return Ok(());
     }
@@ -1181,12 +1242,14 @@ fn native_round_trip_fixture(path: &std::path::Path) -> Result<(), String> {
 fn native_byte_exact_round_trip_simplify_fixtures() {
     let fixture_dir = std::path::PathBuf::from(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/tests/fixtures/native/reference/simplify_fixtures"
+        "/tests/fixtures/simplify"
     ));
-    if !fixture_dir.exists() {
-        eprintln!("simplify_fixtures dir not found, skipping");
-        return;
-    }
+    assert!(
+        fixture_dir.is_dir(),
+        "{} is missing. The corpus is committed, so its absence is a broken \
+         checkout rather than a reason for this gate to pass.",
+        fixture_dir.display()
+    );
 
     let mut passed = 0usize;
     let mut failed = Vec::new();
@@ -1199,20 +1262,19 @@ fn native_byte_exact_round_trip_simplify_fixtures() {
         if ext != "map" && ext != "simp" {
             continue;
         }
+        let name = path.file_name().unwrap().to_string_lossy().to_string();
+        if ROUND_TRIP_EXCLUDED.iter().any(|(n, _)| *n == name) {
+            skipped += 1;
+            continue;
+        }
         match native_round_trip_fixture(&path) {
             Ok(()) => passed += 1,
-            Err(e) => {
-                if e.contains("unknown") || e.contains("unsupported") {
-                    skipped += 1;
-                } else {
-                    failed.push(e);
-                }
-            }
+            Err(e) => failed.push(e),
         }
     }
 
     println!(
-        "\nNative round-trip (simplify_fixtures): {} passed, {} failed, {} skipped",
+        "\nNative round-trip (simplify_fixtures): {} passed, {} failed, {} excluded",
         passed,
         failed.len(),
         skipped
@@ -1267,16 +1329,17 @@ const FRAMESET_FIXTURE_EXCLUDED: &[(&str, &str)] = &[];
 fn native_byte_exact_round_trip_frameset_fixtures() {
     let fixture_dir = std::path::PathBuf::from(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/tests/fixtures/native/reference/frameset_fixtures"
+        "/tests/fixtures/wcsconv/framesets"
     ));
-    if !fixture_dir.exists() {
-        eprintln!("frameset_fixtures dir not found, skipping");
-        return;
-    }
+    assert!(
+        fixture_dir.is_dir(),
+        "{} is missing. The corpus is committed, so its absence is a broken \
+         checkout rather than a reason for this gate to pass.",
+        fixture_dir.display()
+    );
 
     let mut passed = 0usize;
     let mut failed = Vec::new();
-    let mut skipped = 0usize;
     let mut excluded = 0usize;
 
     for entry in std::fs::read_dir(&fixture_dir).unwrap() {
@@ -1292,21 +1355,14 @@ fn native_byte_exact_round_trip_frameset_fixtures() {
         }
         match native_round_trip_fixture(&path) {
             Ok(()) => passed += 1,
-            Err(e) => {
-                if e.contains("unknown") || e.contains("unsupported") {
-                    skipped += 1;
-                } else {
-                    failed.push(e);
-                }
-            }
+            Err(e) => failed.push(e),
         }
     }
 
     println!(
-        "\nNative round-trip (frameset_fixtures): {} passed, {} failed, {} skipped, {} excluded",
+        "\nNative round-trip (frameset_fixtures): {} passed, {} failed, {} excluded",
         passed,
         failed.len(),
-        skipped,
         excluded
     );
     for f in &failed {
@@ -1319,74 +1375,109 @@ fn native_byte_exact_round_trip_frameset_fixtures() {
     );
 }
 
+/// Round-trip every other native-encoded fixture in the tree, matching the file
+/// set upstream's `roundtrip_*` ctests glob (`ast_tester/CMakeLists.txt:618`):
+/// `serialisation/*.ast`, `programs/**/*.ast` and `wcsconv/framesets/*.ast` --
+/// the last of which has its own sweep above.
+///
+/// `wcsconv/` itself is deliberately absent: its references are FITS-encoded, so
+/// reading one back needs a FitsChan and the encoding it was written with, which
+/// is what the wcsconv harness already does.
 #[test]
-fn native_byte_exact_round_trip_generated_fixtures() {
-    let fixture_dir = std::path::PathBuf::from(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/tests/fixtures/native/generated"
-    ));
-    if !fixture_dir.exists() {
-        eprintln!("generated fixtures dir not found, skipping");
-        return;
-    }
+fn native_byte_exact_round_trip_serialisation_fixtures() {
+    let root = std::path::PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures"));
+    let fixture_dir = root.join("serialisation");
+    assert!(
+        fixture_dir.is_dir(),
+        "{} is missing. The corpus is committed, so its absence is a broken \
+         checkout rather than a reason for this gate to pass.",
+        fixture_dir.display()
+    );
 
     let mut passed = 0usize;
     let mut failed = Vec::new();
     let mut skipped = 0usize;
 
-    for entry in std::fs::read_dir(&fixture_dir).unwrap() {
-        let entry = entry.unwrap();
-        let path = entry.path();
-        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-        if ext != "ast" {
+    let mut fixtures: Vec<std::path::PathBuf> = Vec::new();
+    let mut stack = vec![fixture_dir.clone(), root.join("programs")];
+    while let Some(dir) = stack.pop() {
+        for entry in std::fs::read_dir(&dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                stack.push(path);
+            } else if path.extension().and_then(|e| e.to_str()) == Some("ast") {
+                fixtures.push(path);
+            }
+        }
+    }
+    fixtures.sort();
+
+    for path in &fixtures {
+        let name = path.file_name().unwrap().to_string_lossy().to_string();
+        if ROUND_TRIP_EXCLUDED.iter().any(|(n, _)| *n == name) {
+            skipped += 1;
             continue;
         }
-        match native_round_trip_fixture(&path) {
+        match native_round_trip_fixture(path) {
             Ok(()) => passed += 1,
-            Err(e) => {
-                if e.contains("unknown") || e.contains("unsupported") {
-                    skipped += 1;
-                } else {
-                    failed.push(e);
-                }
-            }
+            Err(e) => failed.push(e),
         }
     }
 
     println!(
-        "\nNative round-trip (C-generated fixtures): {} passed, {} failed, {} skipped",
+        "\nNative round-trip (serialisation + programs): {} passed, {} failed, {} excluded",
         passed,
         failed.len(),
         skipped
     );
-    if !failed.is_empty() {
-        for f in &failed {
-            eprintln!("  FAIL: {f}");
+    for f in &failed {
+        eprintln!("  FAIL: {f}");
+    }
+    // Every fixture is compared and every failure is fatal. Reading a dump and
+    // writing it back is the identity whatever the fixture holds, so a
+    // difference is a serialisation defect and not a class-support question.
+    assert!(
+        failed.is_empty(),
+        "{} round-trip failures (see the list above)",
+        failed.len()
+    );
+    assert!(
+        passed >= 30,
+        "only {passed} fixtures were round-tripped; the tree held 30 when this \
+         floor was set and fixtures are only ever added"
+    );
+}
+
+/// Every `ROUND_TRIP_EXCLUDED` entry still names a fixture that fails.
+#[test]
+fn round_trip_exclusions_still_fail() {
+    let root = std::path::PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures"));
+    let mut now_passing = Vec::new();
+    for (name, blocker) in ROUND_TRIP_EXCLUDED {
+        let mut found = None;
+        let mut stack = vec![root.clone()];
+        while let Some(dir) = stack.pop() {
+            for entry in std::fs::read_dir(&dir).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_dir() {
+                    stack.push(path);
+                } else if path.file_name().unwrap().to_string_lossy() == *name {
+                    found = Some(path);
+                }
+            }
+        }
+        let path =
+            found.unwrap_or_else(|| panic!("{name} is in ROUND_TRIP_EXCLUDED but not in the tree"));
+        if native_round_trip_fixture(&path).is_ok() {
+            now_passing.push(format!("{name} (was blocked on {blocker})"));
         }
     }
-    // Mapping fixtures must all pass; Frame/FrameSet fixtures are tracked.
-    let mapping_failures: Vec<_> = failed
-        .iter()
-        .filter(|f| {
-            !f.contains("frame")
-                && !f.contains("Frame")
-                && !f.contains("skyframe")
-                && !f.contains("specframe")
-                && !f.contains("timeframe")
-                && !f.contains("specflux")
-                && !f.contains("timj")
-                && !f.contains("lsst")
-                && !f.contains("degen")
-                && !f.contains("splittest")
-        })
-        .collect();
-    if !mapping_failures.is_empty() {
-        panic!(
-            "{} mapping fixture(s) failed byte-exact round-trip: {:?}",
-            mapping_failures.len(),
-            mapping_failures
-        );
-    }
+    assert!(
+        now_passing.is_empty(),
+        "these fixtures now round-trip, so they belong in the gate rather than \
+         in `ROUND_TRIP_EXCLUDED`: {}",
+        now_passing.join(", ")
+    );
 }
 
 // ===========================================================================
