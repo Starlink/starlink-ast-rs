@@ -17,7 +17,7 @@ use std::path::{Path, PathBuf};
 /// The pin is part of the marker on purpose: moving the submodule invalidates
 /// every line number in every repaired checklist, so the pin has to be
 /// re-stated deliberately, in the same change that re-anchors the citations.
-const REPAIRED: &str = "Citations: verified against pin ca610685";
+const REPAIRED: &str = "Citations: verified against pin 756d5ac0";
 
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -449,5 +449,61 @@ fn no_row_is_left_at_gap() {
         gaps.is_empty(),
         "checklist rows still recording a gap:\n  {}",
         gaps.join("\n  ")
+    );
+}
+
+/// No checklist elides the file name from a citation.
+///
+/// A citation is `file.c:123`, and `audit_tools::citations` finds one by walking
+/// back from each colon and requiring what precedes it to end in `.c`, `.h` or
+/// `.rs`. A row that writes the second of two citations as a bare `:456`,
+/// leaving the reader to carry the file name forward, is therefore invisible to
+/// every other test in this file: it is neither resolved, nor checked against
+/// the item it claims, nor counted as covering a C step.
+///
+/// Six of them existed, and had gone stale across two pin moves without any
+/// gate noticing, because nothing looked for them. One was actively misleading
+/// -- `slamap.md` wrote "C's note at `:2978`" directly after a `slamap.rs`
+/// citation, so carrying the nearest file name forward gave the wrong file.
+///
+/// The rule is therefore that every citation names its file, however repetitive
+/// that reads.
+#[test]
+fn no_citation_elides_its_file_name() {
+    let mut bad = Vec::new();
+    for path in checklists() {
+        let text = std::fs::read_to_string(&path).expect("checklist readable");
+        let name = path.file_name().unwrap().to_string_lossy().to_string();
+        for (i, line) in text.lines().enumerate() {
+            let spans: Vec<_> = audit_tools::citations(line)
+                .into_iter()
+                .map(|(_, range)| range)
+                .collect();
+            for (colon, _) in line.match_indices(':') {
+                let next_is_digit = line[colon + 1..]
+                    .chars()
+                    .next()
+                    .is_some_and(|c| c.is_ascii_digit());
+                if !next_is_digit {
+                    continue;
+                }
+                if spans.iter().any(|r| r.contains(&colon)) {
+                    continue;
+                }
+                let from = colon.saturating_sub(30);
+                bad.push(format!(
+                    "{name}:{}: `{}` is a line reference the citation parser \
+                     cannot see — write the file name out",
+                    i + 1,
+                    &line[from..(colon + 8).min(line.len())]
+                ));
+            }
+        }
+    }
+    assert!(
+        bad.is_empty(),
+        "citations with the file name left out, which no other test in this \
+         file can check:\n  {}",
+        bad.join("\n  ")
     );
 }

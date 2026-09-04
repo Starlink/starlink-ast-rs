@@ -412,6 +412,55 @@ fn load_preserves(mut m: impl Mapping, what: &str) {
     );
 }
 
+/// `Seed` carries a separate set flag, so setting an unset `Seed` to the value it
+/// already holds is still a change.
+///
+/// Ancestor: the case added to `testissimp.c` with upstream `1adbc353`. A new
+/// MathMap has an unpredictable default seed, so the integer in the field does
+/// not move when a caller sets that same integer explicitly -- but the attribute
+/// goes from unset to set, which is what makes it a change. C's guard therefore
+/// tests `!seed_set` before comparing values (`mathmap.c:5630`), and a guard that
+/// compared values alone would keep a stale record here.
+#[test]
+fn setting_an_unset_seed_to_its_own_default_discards_the_record() {
+    let mut m = math_map();
+    assert!(
+        !m.test_seed(),
+        "a new MathMap must not report Seed as explicitly set, or the case \
+         proves nothing"
+    );
+    let default_seed = m.seed();
+
+    m.set_has_been_simplified(true);
+    m.set_seed(default_seed);
+
+    assert!(
+        m.test_seed(),
+        "setting the default Seed did not make it explicit"
+    );
+    assert!(
+        !m.has_been_simplified(),
+        "setting an unset Seed to its own default kept the simplified record"
+    );
+}
+
+/// And setting an explicit `Seed` to the value it already holds is not a change.
+///
+/// The other half of the guard: once `Seed` is set, a set to the same value is
+/// the no-op the loader relies on, which is what `load_preserves` covers for the
+/// serialised case.
+#[test]
+fn re_setting_an_explicit_seed_to_the_same_value_keeps_the_record() {
+    let mut m = math_map();
+    m.set_seed(4242);
+    m.set_has_been_simplified(true);
+    m.set_seed(4242);
+    assert!(
+        m.has_been_simplified(),
+        "re-setting Seed to the value it already held discarded the record"
+    );
+}
+
 /// The control: a class with no clear-on-set attribute routes nothing through a
 /// setter, so its loader must honour the card.
 #[test]

@@ -4,7 +4,7 @@ C source: reference/starlink-ast/src/cmpmap.c
 Rust: crates/ast-core/src/mappings/cmpmap.rs
 Audited: 2026-08-21 against pin 3cf4bc5c (rows 1-42, `MapMerge`)
 Audited: 2026-08-24 against pin 07fbe2dc (rows 43-76, `Simplify`)
-Citations: verified against pin ca610685
+Citations: verified against pin 756d5ac0
 Extension points: classified
 
 Uncited C steps:
@@ -272,7 +272,7 @@ with the `IsSimple` short-circuit, as C's one expression does.
 
 `CmpMap::Equal` (`cmpmap.c:458 (fn Equal)`) is the reason the port needed a second
 decomposition entry point. C compares two CmpMaps by decomposing both with
-`astMapList` and walking the lists element by element (`:374`, `:381`, `:399`).
+`astMapList` and walking the lists element by element (`cmpmap.c:537 (fn Equal)`, `cmpmap.c:544 (fn Equal)`, `cmpmap.c:596 (fn Equal)`).
 When both sides refuse to decompose, each list holds one element — the CmpMap it
 came from — so the element-wise comparison is the comparison it started with and
 C recurses without bound. It is unreachable from C's own callers only because

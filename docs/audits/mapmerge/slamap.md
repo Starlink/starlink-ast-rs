@@ -3,7 +3,7 @@
 C source: reference/starlink-ast/src/slamap.c
 Rust: crates/ast-core/src/mappings/slamap.rs
 Audited: 2026-09-02 against pin 3e60abaa
-Citations: verified against pin ca610685
+Citations: verified against pin 756d5ac0
 Extension points: classified
 
 Uncited C steps:
@@ -120,7 +120,7 @@ families; none for galactic, supergalactic and dynamical J2000.
 
 Two conventions survive as special cases because C uses two. The geocentric
 apparent pair is compared crosswise, `a.args[0]` against `b.args[1]` and back
-(`slamap.rs:451-459 (fn try_cancel_pair)`), which is C's note at `:2978` that the argument
+(`slamap.rs:451-459 (fn try_cancel_pair)`), which is C's note at `slamap.c:2978 (fn MapMerge)` that the argument
 order reverses between the directions. Precession is compared crosswise too
 (`slamap.rs:437-442 (fn try_cancel_pair)`) because its inverse is itself with the epochs
 swapped, so `PREC(e1,e2)` followed by `PREC(e2,e1)` cancels — C reaches that same

@@ -211,21 +211,19 @@ impl MathMap {
         unsafe { (*self.rng.get()).seed }
     }
 
-    /// The value C keeps in the `rcontext.seed` component, which is the raw
-    /// value including the unset sentinel (`mathmap.c:5616`). The port stores the
-    /// seed and its set flag inside the RNG, so the guard below has to rebuild
-    /// what C would compare against.
-    fn stored_seed(&self) -> i32 {
-        // Safety: single-threaded access, as for `seed`.
-        let rng = unsafe { &*self.rng.get() };
-        if rng.seed_set { rng.seed } else { -i32::MAX }
-    }
-
     /// Set the Seed attribute.
     pub fn set_seed(&mut self, seed: i32) {
-        // `Seed` changes the sequence the random-number functions return,
-        // hence the transformation itself (mathmap.c:5616-5629).
-        if seed != self.stored_seed() {
+        // `Seed` changes the sequence the random-number functions return, hence
+        // the transformation itself (mathmap.c:5629-5635).
+        //
+        // The guard has two terms because `Seed` carries a separate set flag.
+        // An unset MathMap still *has* a seed -- the unpredictable default -- so
+        // setting that same integer explicitly leaves the field alone while
+        // changing the attribute's state from unset to set, which is a real
+        // change and must discard the records. Comparing values alone would miss
+        // it (upstream `1adbc353`).
+        let rng = self.rng.get_mut();
+        if !rng.seed_set || seed != rng.seed {
             self.simplified.clear();
         }
         self.rng.get_mut().set_seed(seed);

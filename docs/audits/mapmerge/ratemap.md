@@ -3,7 +3,7 @@
 C source: reference/starlink-ast/src/ratemap.c
 Rust: crates/ast-core/src/mappings/ratemap.rs
 Audited: 2026-08-21 against pin 3cf4bc5c
-Citations: verified against pin ca610685
+Citations: verified against pin 756d5ac0
 Extension points: classified
 
 Uncited C steps:
@@ -52,7 +52,7 @@ maps `ax1` to `iout` and `ax2` to `iin` (`ratemap.c:1830-1831 (fn astInitRateMap
 `reduced_child()` orients the encapsulated Mapping to `invert_snapshot` before
 reducing it and restores the stored orientation afterwards, which is C's
 `astSetInvert( emap, map->invert )` … `astSetInvert( emap, old_inv )` pair
-(`ratemap.c:710-715 (fn MapMerge)`, `:806-808`). The snapshot is C's `map->invert`, the value
+(`ratemap.c:710-715 (fn MapMerge)`, `ratemap.c:806-808 (fn MapMerge)`). The snapshot is C's `map->invert`, the value
 the child held at construction and what the `Inv` card carries — not whatever the
 child stores now. Tracing C on `cap_cmpmap_01` shows the difference directly: the
 encapsulated CmpMap dumps `Invert = 1` and C enters `astSimplify` on it with

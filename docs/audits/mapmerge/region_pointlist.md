@@ -3,7 +3,7 @@
 C source: reference/starlink-ast/src/pointlist.c
 Rust: crates/ast-core/src/regions/pointlist.rs
 Audited: 2026-09-02 against pin 3e60abaa
-Citations: verified against pin ca610685
+Citations: verified against pin 756d5ac0
 Extension points: classified
 
 Uncited C steps:

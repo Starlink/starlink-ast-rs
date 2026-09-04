@@ -3,7 +3,7 @@
 C source: reference/starlink-ast/src/polymap.c
 Rust: crates/ast-core/src/mappings/chebymap.rs
 Audited: 2026-08-24 against pin d0346c0d
-Citations: verified against pin ca610685
+Citations: verified against pin 756d5ac0
 Extension points: classified
 
 Uncited C steps:

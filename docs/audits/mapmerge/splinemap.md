@@ -3,7 +3,7 @@
 C source: reference/starlink-ast/src/splinemap.c
 Rust: crates/ast-core/src/mappings/splinemap.rs
 Audited: 2026-08-21 against pin 3cf4bc5c
-Citations: verified against pin ca610685
+Citations: verified against pin 756d5ac0
 Extension points: classified
 
 Uncited C steps:
@@ -38,7 +38,7 @@ UnitMaps.
 | 17 | Leave the neighbour loop | splinemap.c:1838-1841 (fn MapMerge) | mappings/simplify.rs:1378 (fn default_map_merge) | architecture | ported |
 | 18 | Re-instate the nominated SplineMap's Invert flag if it was not replaced | splinemap.c:1842-1846 (fn MapMerge) | -- | ceremony | n/a: nothing was mutated, so nothing is restored |
 | 19 | Return the result | splinemap.c:1847-1848 (fn MapMerge) | splinemap.rs:804 (fn map_merge) | ceremony | ported |
-| 20 | Setting or clearing InvNiter, InvTol or OutUnit clears the simplified record | splinemap.c:2547-2549 (fn astMAKE_CLEAR1), :2586-2588, :2630-2632 | splinemap.rs:176-186 (fn set_inv_niter), :194-196, :209-212 | ceremony | ported |
+| 20 | Setting or clearing InvNiter, InvTol or OutUnit clears the simplified record | splinemap.c:2547-2549 (fn astMAKE_CLEAR1), splinemap.c:2588-2590 (fn astMAKE_CLEAR1), splinemap.c:2634-2636 (fn astMAKE_CLEAR1) | splinemap.rs:176-189 (fn set_inv_niter), splinemap.rs:197-203 (fn set_inv_tol), splinemap.rs:214-221 (fn set_out_unit) | ceremony | ported |
 
 ## Row 12 — the flag C sets, and the comparison Rust makes without it
 

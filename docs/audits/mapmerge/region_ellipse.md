@@ -3,7 +3,7 @@
 C source: reference/starlink-ast/src/ellipse.c
 Rust: crates/ast-core/src/regions/ellipse.rs
 Audited: 2026-09-02 against pin 3e60abaa
-Citations: verified against pin ca610685
+Citations: verified against pin 756d5ac0
 Extension points: classified
 
 Uncited C steps:
@@ -49,7 +49,7 @@ branches count as a simplification. See `region_circle.md`.
 
 Circle wraps the whole re-definition in `if( !astIsAUnitMap( map ) )`
 (`circle.c:1853 (fn Simplify)`). Ellipse does not: it fetches the Mapping, uses it to
-transform the centre, and annuls it (`ellipse.c:1961 (fn Simplify)`, `:2024`), but never
+transform the centre, and annuls it (`ellipse.c:1961 (fn Simplify)`, `ellipse.c:2024 (fn Simplify)`), but never
 tests it. So an Ellipse whose base-to-current Mapping is a UnitMap still gets a
 Circle fitted to its own mesh, and is replaced by that Circle if the fit holds —
 which is the reduction an ellipse with equal axes should undergo, and the reason
