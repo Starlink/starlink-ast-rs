@@ -1365,6 +1365,53 @@ comment naming what varies, so a flag can no longer mean 'nobody looked'."
 
 ---
 
+### Tasks 8 and 9 outcome (2026-09-03)
+
+Landed together. **Task 9's premise was wrong in a way that matters: the 165
+flags are not 165 tolerance opt-outs.**
+
+Measuring every flagged row against `compare_dumps` gave 12 retirable and 155
+that had to stay — the opposite of what the plan expected. The reason is
+structural, not numeric: **151 of the 155 are `neg_*` rows**, and a negative
+fixture's reference is its own *unsimplified* `.map`. `astSimplify` always stamps
+`IsSimp` on whatever it returns, so the output differs from the reference by
+exactly that one card, always, on every platform. No tolerance can fix that and
+none should try.
+
+Those rows are already gated, by the `_noop` test, which strips `IsSimp` before
+comparing and so still asserts that nothing *else* changed. So the flag on a
+`neg_*` row is correct and the manifest header was describing it wrongly. The
+header now says what the value means, including that `yes` is not a tolerance
+opt-out.
+
+That left four non-negative rows, each needing its own answer:
+
+| row | finding |
+|---|---|
+| `cap_winmap_03` | the reference carries `Sft2 = -1.0061396160665481e-16` where the library now produces exactly zero and omits the card. Stale, not tolerant — regenerated, flag cleared |
+| `cap_timemap_02` | its `.simp` still had the pre-normalisation KeyMap order, so entries were compared against the wrong keys and values differed by 1000×. Regenerated from its normalised `.map`, flag cleared. It was the only one of the eight fixtures normalised in Task 2b whose `.simp` needed following — the other seven were formatting-only changes that leave the object identical |
+| `cap_interval_01` | uncertainty coordinates differ by 1.9e-12 relative — some four thousand ULP, deterministic here, reference from another platform. Flag kept, with the magnitude recorded above the row and a note that regenerating would re-anchor it to this host |
+| `cap_pointlist_01` | the same at 1.2e-12. Flag kept, same reasoning |
+
+Final distribution: 336 blank, 151 `yes`, 0 `astequal`.
+
+**On `astequal` being unused here.** The value is supported by the simplify
+driver and no row needs it, which would normally be a path that rots. It is kept
+because Task 10 needs the same vocabulary for `wcsconv/cases.txt`, where rows do
+need it, and divergent vocabularies between the two manifests would be worse.
+The path is verified rather than assumed: `compare_dumps_selftest` covers the
+widened tolerance, and the driver's pass-through was checked end to end with a
+synthetic pair that 4 ULP rejects and `astequal` accepts.
+
+`compare_dumps` links no AST library — it is text and arithmetic only — so a
+`cmake -P` driver can call it without the library on the path. Its self-test is a
+ctest, because a comparator nobody checks is how a gate quietly stops being one:
+it covers exact equality, one ULP, five ULP, opposite signs, a real change,
+non-numeric tokens, a partly numeric token, a dropped value, and `astequal` in
+both directions.
+
+---
+
 ## Task 10: Re-audit the 108 flags in `wcsconv/cases.txt`, and add `astequal`
 
 The wcsconv column needs a third value. The Rust harness distinguishes "relax numeric tokens to AST's `astEQUAL` tolerance" — used for 8 cases whose last bits are cancellation-amplified, such as `OBSALT` derived from `OBSGEO-X/Y/Z` — from "skip the string comparison". One value cannot carry both meanings.
