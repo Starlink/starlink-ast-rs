@@ -20,7 +20,12 @@ pub fn point_has_bad(point: &[f64]) -> bool {
 /// Compare two f64 values with a scalable tolerance.
 ///
 /// Matches the C library's `astEQUALS(a, b, tol)` macro:
-/// `|a - b| <= max(tol * (|a| + |b|) * f64::EPSILON, 1e-12)`
+/// `|a - b| <= max(tol * ((|a| + |b|) * f64::EPSILON), 1e-12)`
+///
+/// The operands are scaled by `f64::EPSILON` before the tolerance multiplier
+/// is applied. Multiplying first overflows for operands near the top of the
+/// double range — `1e5 * f64::MAX` is infinity, and an infinite tolerance
+/// makes every comparison report equality.
 ///
 /// Both BAD values are considered equal. One BAD + one non-BAD are not.
 #[inline]
@@ -31,14 +36,14 @@ pub fn ast_equals(a: f64, b: f64, tol: f64) -> bool {
     if b == BAD_VALUE {
         return false;
     }
-    let eps = (tol * (a.abs() + b.abs()) * f64::EPSILON).max(1.0e-12);
+    let eps = (tol * ((a.abs() + b.abs()) * f64::EPSILON)).max(1.0e-12);
     (a - b).abs() <= eps
 }
 
 /// Compare two f64 values with AST's standard tolerance.
 ///
 /// Matches the C library's `astEQUAL` macro (`astEQUALS(a, b, 1e5)`):
-/// `|a - b| <= max(1e5 * (|a| + |b|) * f64::EPSILON, 1e-12)`
+/// `|a - b| <= max(1e5 * ((|a| + |b|) * f64::EPSILON), 1e-12)`
 ///
 /// Both BAD values are considered equal. One BAD + one non-BAD are not.
 #[inline]
@@ -115,4 +120,44 @@ pub(super) fn full_set_split<M: Mapping + ?Sized>(
     };
 
     Some((out_axes, sub))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ast_equal_does_not_overflow_near_the_top_of_the_range() {
+        // A Frame axis has Top/Bottom of +/-f64::MAX unless they are set, so
+        // bounds tests routinely compare against these values. Scaling by the
+        // tolerance multiplier first would make the tolerance infinite and
+        // every such comparison would report equality.
+        assert!(!ast_equal(f64::MAX, 0.0));
+        assert!(!ast_equal(-f64::MAX, 0.0));
+        assert!(!ast_equal(f64::MAX, -f64::MAX));
+        assert!(ast_equal(f64::MAX, f64::MAX));
+    }
+
+    #[test]
+    fn ast_equals_keeps_its_relative_tolerance() {
+        // 1e5 * eps is about 2.2e-11 relative, so a value perturbed by 1e-13
+        // of its own magnitude compares equal and one perturbed by 1e-9 does
+        // not.
+        let a = 1.4204e9;
+        assert!(ast_equal(a, a * (1.0 + 1.0e-13)));
+        assert!(!ast_equal(a, a * (1.0 + 1.0e-9)));
+    }
+
+    #[test]
+    fn ast_equals_keeps_its_near_zero_floor() {
+        assert!(ast_equal(0.0, 1.0e-13));
+        assert!(!ast_equal(0.0, 1.0e-11));
+    }
+
+    #[test]
+    fn ast_equals_bad_handling() {
+        assert!(ast_equal(BAD_VALUE, BAD_VALUE));
+        assert!(!ast_equal(BAD_VALUE, 0.0));
+        assert!(!ast_equal(0.0, BAD_VALUE));
+    }
 }
