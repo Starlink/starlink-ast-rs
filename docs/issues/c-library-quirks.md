@@ -2630,13 +2630,14 @@ construction — and `astMapRegion` refuses any Mapping that sends a defining
 point to `AST__BAD` (`region.c:5546`), so no route to `astSimplify` can present
 a vertex for the untested loop to pass through.
 
-**Rust behaviour (mirror):** `Polygon::simplified`
-(`crates/ast-core/src/regions/polygon.rs:1251-1262`) clears `ok` on a bad axis-1
-value and leaves axis 2 untested, so the port agrees with C on a hypothetical
-half-bad vertex; a comment at the loop points here.
-No fixture pins it, and none can, for the reason above.
+**Rust behaviour:** inverted at the 9.5.0 sync.
+`Polygon::simplified` (`crates/ast-core/src/regions/polygon.rs`) tests both axes
+of each transformed vertex and keeps the original Polygon if either is bad.
 
-To be raised upstream.
+Fixed upstream in `5613e44d`'s companion `d27cc981`, which carries no test for
+the reason above: the input that would distinguish the two behaviours cannot be
+constructed through either API, so the change is provably a no-op today on both
+sides.
 
 ## The `IsSimp` card does not survive being read back, for twelve classes
 
