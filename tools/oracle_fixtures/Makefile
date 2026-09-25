@@ -1,15 +1,16 @@
 # Build oracle fixture generators against reference libast.
 #
-# libast.so bundles pal and erfa, but its yaml serialisation code pulls
-# in libyaml at link time (the conda env's libyaml-0.so.2 satisfies it
-# at run time). RPATH points back at the build directory so the
-# resulting binaries find the shared library at run time without
-# LD_LIBRARY_PATH gymnastics.
+# libast.so bundles erfa, but pal and cminpack are separate shared
+# libraries, and its yaml serialisation code pulls in libyaml at link
+# time (the conda env's libyaml-0.so.2 satisfies it at run time).
+# RPATH points back at the build directory so the resulting binaries
+# find the shared libraries at run time without LD_LIBRARY_PATH
+# gymnastics.
 
 REF := ../../reference/starlink-ast
 INCS := -I$(REF)/src -I$(REF)/build
 LIBS := -L$(REF)/build -Wl,--whole-archive -last_grf_log -Wl,--no-whole-archive \
-        -last -last_err -last_grf3d -lyaml -lm
+        -last -last_pal -last_cminpack -last_err -last_grf3d -lyaml -lm
 RPATH := -Wl,-rpath,$(abspath $(REF)/build)
 CFLAGS := -O0 -g -Wall
 
