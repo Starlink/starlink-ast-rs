@@ -56,43 +56,48 @@ none `#[ignore]`d.
 
 ## Items outstanding
 
+None. Item J and the `testtabspectrum` row landed on 2026-09-25; what follows
+records what they found, since two of the three corrections this note originally
+queued for item J turned out to be wrong.
+
 ### J — reconcile the two FitsChan gap docs against the code
 
-Not started.
-The spec's item J is a complete statement of the work and should be followed as
-written; it is documentation only and gates nothing.
+Done.
+Both gap docs carry a re-checked header, `PLAN.md` §5's two rows and the `-TAB`
+blocker paragraph are rewritten, and the write-path gaps found alongside
+`c384289f` are recorded in `fitschan-c-port-gaps.md` with the fixture that would
+expose each.
 
-Three corrections to make to the spec itself while doing it, all verified
-against the tree:
+Two of the three corrections this note queued for the item were wrong, which is
+the part worth keeping:
 
-1. **The spec's own file paths are wrong.** It names
-   `sip_int_world.rs:311` and `make_int_world.rs:68` as if they sat under
-   `wcs_write/`. Both live under `fset_to_store/`. Fix the spec in the same
-   change — it has a revision history for exactly this.
+1. **The spec's paths were not wrong.** It cites the two SIP files by bare
+   filename and both are where it says. What *was* stale is its
+   plumbed-but-unreachable bullet: item F made `FitsTol` and `SipOK` reachable,
+   so that bullet is now marked resolved in the spec rather than corrected.
 2. **The `c-oracle-probe-recipe.md` findings queued for this item were wrong,
-   and the correct ones are already committed** in `93adfea`. Do not re-apply
-   the queued versions. `grf_stubs.c` does exist (shipped beside the doc as
-   `c-oracle-probe-grf_stubs.c`), and `libast_grf_5.6.so` still exists in the
-   build. The real 9.5.0 breakage is that `libast_pal` and `libast_cminpack`
-   are now separate shared libraries, so `-last` alone leaves `astPal*`,
-   `astEra*` and the cminpack symbols undefined. Both recipes were also
-   macOS-only. All of this is already corrected in the probe doc, in
-   `mapping-perf-vs-c-oracle.md`, and in `bench_per_class.rs`'s header, each
-   verified by linking and running.
-3. **`c384289f`'s remaining gaps still need recording** in the FitsChan gap
-   docs: the SIP block's position relative to the per-version loop; `AltAxes`
-   unmodelled; `write_cd_matrix`'s `|| i == j` and `write_pc_cdelt`'s `1e-15`
-   against C's `val != 0.0` / `astEQUAL`; `write_pc_cdelt` cannot fail where
-   C's CDELT branch can; and C's `PCFromStore` loops version letters where the
-   port marks FitsPc primary-only.
+   and the correct ones were already committed** in `93adfea`.
+   `grf_stubs.c` does exist, shipped beside the doc as
+   `c-oracle-probe-grf_stubs.c`, and `libast_grf_5.6.so` is still in the build.
+   The real 9.5.0 breakage is that `libast_pal` and `libast_cminpack` are now
+   separate shared libraries, so `-last` alone leaves `astPal*`, `astEra*` and
+   the cminpack symbols undefined; both recipes were also macOS-only.
+3. **`c384289f`'s remaining gaps did need recording**, and now are — all six
+   verified against `fitschan.c` at the new pin rather than transcribed. Two are
+   worth carrying forward as real defects rather than mere divergences:
+   `write_cd_matrix`'s guard is `val != 0.0 || i == j` where C's is
+   `val != 0.0`, so an explicit zero on the CD diagonal gains a card C omits;
+   and `write_pc_cdelt` compares against a literal `1e-15` where C uses
+   `astEQUAL`, which is a tolerance with no analogue in the C source and should
+   become `ast_equal`.
 
-### The `testtabspectrum` PLAN.md row
+### The `testtabspectrum` row
 
-Item E's last row. `testtabspectrum` needs `-TAB`, which is three unported
-things (`Table`, `FitsTable`, and the algorithm), so it is out of scope for this
-sync and needs a migration-tracker row naming the FitsTable blocker and
-deferring to PLAN.md §3, where that blocker already lives correctly.
-`PLAN.md` has no `testtabspectrum` row today.
+Done, but not as a new row: `testtabspectrum` is a function inside
+`testfitschan.c` (`:256`, called at `:1444`), not a standalone test file, so it
+belongs on the existing `testfitschan.c` tracker row and is recorded there.
+A `testxphmap.c` row was added at the same time so its deliberate absence does
+not read as an oversight.
 
 ## Things worth not rediscovering
 

@@ -426,13 +426,14 @@ Understated — the attribute surface.
 `CDMatrix`, `CarLin`, `SipReplace` and the card-level accessors.
 Missing, and worth separating by kind:
 
-- **Plumbed but unreachable** — `FitsTol` is threaded through
-  `make_int_world.rs:68`, `wcs_decompose.rs:89` and `world_axes.rs:42` but fixed
-  at `FITS_TOL_DEFAULT = 0.1` at the entry point; `SipOK` is a real parameter at
-  `make_int_world.rs:69` hardcoded `true` at `make_int_world.rs:796`.
-  The harness says as much at `test_wcsconv.rs:305`.
-  These two are what item F's second and third gates need, so item F reaches
-  them first and this item records the result rather than duplicating it.
+- **Plumbed but unreachable** — `FitsTol` was threaded through
+  `make_int_world.rs`, `wcs_decompose.rs` and `world_axes.rs` but fixed at
+  `FITS_TOL_DEFAULT = 0.1` at the entry point; `SipOK` was a real parameter
+  hardcoded `true`.
+  These two are what item F's second and third gates need, and item F reached
+  them: `FitsTol` now has `set_fits_tol` / `fits_tol`, and `SipOK` is derived
+  from the encoding at `fset_to_store/mod.rs:260`.
+  **Resolved — this bullet records the outcome, not outstanding work.**
 - **No accessor at all** — `Card`, `Clean`, `Iwc`, `PolyTan`, `FitsAxisOrder`,
   `IgnoreBadAlt`, `AltAxes`, `Warnings`.
   `Card` is the substantive one: 540 internal references to card position and no

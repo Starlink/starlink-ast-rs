@@ -1,9 +1,20 @@
 # `fset_to_store` Port Gaps — C Branches Not Yet Ported
 
 **Status: MOSTLY DONE.** SIPIntWorld, VELOSYS, and all Group 3/5 branches are
-ported. The only remaining gaps are the `-TAB` branches (`IsMapTab1D`/
-`IsMapTab2D`), both blocked on the un-ported FitsTable infrastructure (shared
-blocker with `fitschan-c-port-gaps.md`).
+ported. Re-checked against the tree at the AST 9.5.0 pin (2026-09-25).
+
+The `-TAB` branches (`IsMapTab1D` / `IsMapTab2D`) remain, blocked on the
+un-ported FitsTable infrastructure — which is three unported things, not one
+branch: `Table`, `FitsTable`, and the algorithm. `PLAN.md` §3 records that
+blocker; this document and `fitschan-c-port-gaps.md` both defer to it.
+
+Two parameters this pipeline threads were plumbed but unreachable, and both
+became reachable in the 9.5.0 sync, so the body's account of them is stale:
+`FitsTol` was fixed at `FITS_TOL_DEFAULT = 0.1` and now has
+`set_fits_tol` / `fits_tol` accessors; `SipOK` was hardcoded `true` and is now
+derived from the encoding at `fset_to_store/mod.rs:260`. Upstream's SIP
+validation fixes (`0cd7f725`, `c384289f`, `121d12d2`) are what reach them, gated
+in `test_fitschan_wcs_write.rs`.
 
 This document tracks every C branch in `fitschan.c` that is referenced
 by the `fset_to_store` pipeline but is **not yet ported** to the

@@ -1,11 +1,35 @@
 # `fitschan.c` C-vs-Rust Port Gaps
 
-**Status: PARTIALLY DONE.** DSS/SAO/DSBSetUp/SipReplace are ported (all 192/192
-wcsconv cases pass). Remaining gaps: the `-ZPX` distortion PolyMap, the unported
-attribute quartets (`carlin`/`polytan`/`sipok`/`clean`/`iwc`/`fitstol`/`card`
-and the `-TAB` family), the public-API helpers, and Warn cards. The `-TAB`
-branches are blocked on the un-ported FitsTable infrastructure (shared blocker
-with `fset_to_store-port-gaps.md`).
+**Status: PARTIALLY DONE**, and the shape of what remains changed between this
+document's body and the code. Re-checked against the tree at the AST 9.5.0 pin
+(2026-09-25); the body below still describes several things as gaps that are now
+ported, so read this header first where the two disagree.
+
+Ported since the body was written: DSS (`enc_dss.rs`), SAO, DSBSetUp,
+SipReplace, the `-ZPX` distortion PolyMap, DTAI, AXREF and Warn-card emission.
+All 194 wcsconv cases are byte-compared with `NATIVE_READ_EXCLUDED` empty.
+`CarLin` is not "silently ignored" either: it is a struct field with
+`set_car_lin`, honoured by the harness at `test_wcsconv.rs:246`.
+`FitsTol` and `SipOK` were plumbed but unreachable — fixed at
+`FITS_TOL_DEFAULT = 0.1` and hardcoded `true`; both became reachable in the
+9.5.0 sync, `FitsTol` through `set_fits_tol`/`fits_tol` and `SipOK` derived from
+the encoding at `fset_to_store/mod.rs:260`.
+
+What remains is the **attribute surface**, not the read-path algorithms:
+
+- **No accessor at all** — `Card`, `Clean`, `Iwc`, `PolyTan`, `FitsAxisOrder`,
+  `IgnoreBadAlt`, `AltAxes`, `Warnings`. `Card` is the substantive one: 540
+  internal references to card position and no `set_card` / `get_card`, so a
+  client cannot drive the cursor.
+- **Blocked on FitsTable** — `TabOK`, `ForceTab`.
+- **About thirteen public functions** — `astPurgeWCS`,
+  `astSetCard` / `astGetCard`, `astTestFits`, `astShowFits`, and the typed card
+  accessors `astSetFitsCF` / `CI` / `CN` / `T` / `K`. `astRetainFits` has its
+  foundations in the consumed-card work but is not ported.
+
+`-TAB` is three unported things rather than a branch to enable: `Table`,
+`FitsTable`, and the algorithm (`AdaptLut`, `PutTable`, `IsMapTab1D` / `2D`).
+`PLAN.md` §3 is where that blocker is recorded.
 
 This document catalogues C `fitschan.c` logic that is not yet ported
 to the Rust `crates/ast-core/src/fitschan/` tree.
@@ -336,3 +360,41 @@ If a future session picks up these gaps, suggested order
    needs them.
 9. **`Warn` / `ASTWARN` card emission** — quality-of-life, not
    correctness.
+
+## Write-path gaps found alongside the 9.5.0 SIP fixes
+
+Recorded while porting upstream's `c384289f` (report a FITS-WCS write that could
+not describe the object). None of these is reached by the current corpus, so each
+needs the fixture named as the thing that would expose it.
+
+- **The SIP block sits outside the per-version loop.**
+  `WcsFromStore` emits SIP coefficients once; C reaches its SIP writer inside the
+  loop over version letters. A header whose alternate description also carries
+  distortion would differ. **What would expose it**: a FrameSet with a SIP
+  distortion on a non-blank version letter.
+- **`AltAxes` is unmodelled.** The attribute has no accessor and the writer has
+  no equivalent of the per-version axis selection it controls.
+- **`write_cd_matrix` writes a diagonal zero where C writes nothing.**
+  The port's guard is `val != 0.0 || i == j` (`wcs_write/mod.rs:799`); C's is
+  `val != 0.0` alone. A store with an explicit zero on the diagonal therefore
+  gains a `CDi_i = 0.0` card the C library omits. **What would expose it**: a
+  store with a zero diagonal CD element — which the zero-CDELT→1.0 substitution
+  on the read path normally prevents, which is why it is latent.
+- **`write_pc_cdelt` compares against a literal `1e-15`** where C uses
+  `astEQUAL` (`wcs_write/mod.rs:892`). The two differ in scale handling:
+  `astEQUAL` is relative to the operands, the literal is absolute, so they
+  disagree for PC elements far from unity. This is a tolerance with no analogue
+  in the C source and should become `ast_equal`.
+- **`write_pc_cdelt` cannot fail where C's CDELT branch can.**
+  C's `PCFromStore` CDELT loop sets `ok = 0; goto next` on a bad value
+  (`fitschan.c:24833-24838`), abandoning the whole version; the port's function
+  returns `AstResult<()>` but has no such path — a bad CDELT becomes a written
+  card. **What would expose it**: a store with `AST__BAD` in `cdelt`.
+- **C's `PCFromStore` loops version letters where the port marks FitsPc
+  primary-only.** C runs `for( s = ' '; s <= sup; s++ )`
+  (`fitschan.c:24742`) and checks each secondary version's PC matrix against the
+  primary with `astEQUAL` (`:24815`), rejecting the version when they differ,
+  because the encoding shares one PC matrix across versions. The port has no
+  equivalent check. **What would expose it**: a FITS-PC-encoded FrameSet with two
+  descriptions whose PC matrices disagree, which C withholds and the port would
+  write.
