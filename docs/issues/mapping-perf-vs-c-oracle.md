@@ -219,14 +219,17 @@ than load-bearing.
 # 1. Rust side
 cargo run --release --example bench_per_class -p ast-core > /tmp/rust.tsv
 
-# 2. C oracle
+# 2. C oracle. Since 9.5.0 the satellite libraries are separate, so each
+#    must be named; the rpath forces the repo build over any conda libast
+#    on the loader path. On macOS add -I/-L /opt/homebrew for libyaml and
+#    use DYLD_LIBRARY_PATH in place of the rpath flags.
 cc -O2 -o /tmp/bench_per_class_c crates/ast-core/tests/bench_per_class_c.c \
    -I reference/starlink-ast/build-ast -I reference/starlink-ast \
-   -I /opt/homebrew/include \
-   -L reference/starlink-ast/build-ast -L /opt/homebrew/lib \
-   -last -lyaml -lm -lpthread
-DYLD_LIBRARY_PATH=reference/starlink-ast/build-ast /tmp/bench_per_class_c \
-   /tmp/ast_bench_per_class/manifest.tsv > /tmp/c.tsv
+   -L reference/starlink-ast/build-ast \
+   -Wl,-rpath,$PWD/reference/starlink-ast/build-ast -Wl,--disable-new-dtags \
+   -last -last_pal -last_cminpack -last_grf_log -last_grf3d -last_err \
+   -lyaml -lm -lpthread
+/tmp/bench_per_class_c /tmp/ast_bench_per_class/manifest.tsv > /tmp/c.tsv
 
 # 3. Compare per-N
 paste /tmp/rust.tsv /tmp/c.tsv | column -t
@@ -240,3 +243,55 @@ across runs (42-45× observed); it is a real effect, not a transient
 measurement glitch. The mid-tier numbers (`wcsmap`, `slamap`,
 `mathmap`, `chebymap`, `zoommap`) drift by ±15% between runs but the
 bucket membership stays stable.
+
+## Addendum: the 9.5.0 sync (2026-09-25)
+
+Two changes in the 9.4.1 / 9.5.0 upstream sync touch arithmetic that
+comparison paths run, so this is the manual gate CLAUDE.md asks for when a
+transform path is touched.
+
+- `ast_equal` / `ast_equals` regroup their tolerance so the operand sum is
+  scaled by `f64::EPSILON` before the tolerance multiplier is applied, which is
+  what upstream now does in `src/object.h.in` (`39def937`).
+  Multiplying first overflowed for operands near the top of the double range.
+- `Region::GetDefUnc` floors the default uncertainty's half-width at `0.5E-12`
+  where the bounding box and the axis value are both zero, and `PointList`
+  negates its uncertainty before recentring it.
+
+Neither is a per-point cost, which the call graph settles before the bench
+does.
+`ast_equal` is called from `equal`, `try_merge` and the Simplify helpers, and
+from `MatrixMap`'s `compress_matrix`, which runs in `MatrixMap::new` to pick
+between the diagonal and full `MatrixForm` — construction, not transform.
+No `transform`, `transform_into` or `transform_into_nan` body calls it.
+`get_def_unc` is per axis inside a Region's uncertainty construction, and
+`PointList`'s `negated_copy` is hoisted above the per-defining-point loop, one
+allocation per `reg_base_inside` call, which is where C's single
+`astSetNegated` sits.
+
+Measured anyway, since a call-graph argument is not a measurement.
+This branch's `bench_per_class` against the same tree with the `ast_equal`
+regrouping reverted, both built at `--release`, seven interleaved reps per side,
+comparing per-cell minima over 180 variant × direction × N cells:
+
+```
+max 1.026   min 0.941   median 1.000   (after / before)
+rep-to-rep spread within the before side: median 3.0%, p90 11.6%, max 69.1%
+```
+
+No cell is more than 5% slower, and the largest deviation in either direction
+sits well inside the single-side noise. At three reps one cell read 1.061
+(`zoommap_2d_x2.5 forward` at N=256, 3.3 → 3.5 ns/pt); it disappeared at seven,
+and `ZoomMap::transform_into` does not call `ast_equal` at all, so it could not
+have been causal.
+
+The ratios in the table above are not comparable with this run: that snapshot
+is an Apple M4 Max and this is Linux x86_64. This addendum is a before/after on
+one host, which is what the question needs, and it does not re-baseline the
+Rust-vs-C columns.
+
+The `astEQUALS` change was not contingent on the result. It fixes an overflow
+that makes comparisons against values near `f64::MAX` report equality, and a
+Frame axis has Top/Bottom of `±f64::MAX` unless they are set, so bounds tests
+hit it routinely. A measured cost would have been something to record and
+address rather than a reason to keep the defect.

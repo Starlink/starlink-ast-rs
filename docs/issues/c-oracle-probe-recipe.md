@@ -17,7 +17,7 @@ R=$PWD/reference/starlink-ast/build-ast     # cmake build output (see below)
 cc probe.c grf_stubs.c -o /tmp/probe \
   -I "$R" -L "$R" \
   -Wl,-rpath,"$R" -Wl,--disable-new-dtags \
-  -last -lyaml -lm
+  -last -last_pal -last_cminpack -lyaml -lm
 
 LD_LIBRARY_PATH= /tmp/probe                  # note the empty LD_LIBRARY_PATH
 ```
@@ -28,6 +28,10 @@ LD_LIBRARY_PATH= /tmp/probe                  # note the empty LD_LIBRARY_PATH
 - `LD_LIBRARY_PATH=` — clear it at run time as a belt-and-braces measure
   against the conda trap below.
 - `-lyaml -lm` — `libast` pulls in yaml (serialisation) and libm.
+- `-last_pal -last_cminpack` — separate shared libraries since AST 9.5.0, so
+  the linker needs them named. Without them `libast.so` leaves `astPal*`,
+  `astEra*` and the cminpack symbols undefined. They are AST's own forks, not
+  the system pal/cminpack, so they must come from `$R` rather than conda.
 - `grf_stubs.c` — satisfies the grf/grf3d/err plotting symbols the linker
   wants but a probe never calls (see "Satellite symbols" below).
 
@@ -278,6 +282,11 @@ to this doc at
 [`c-oracle-probe-grf_stubs.c`](c-oracle-probe-grf_stubs.c); if it ever needs
 extending, every missing symbol from the linker's "undefined reference" list
 is a one-line no-op returning `0`.
+
+`astPal*`, `astEra*` and the cminpack symbols are a different problem and the
+stubs do not cover them: they are real implementations in `libast_pal` and
+`libast_cminpack`, which 9.5.0 builds as separate shared libraries, so they are
+named on the link line rather than stubbed.
 
 ## When NOT to build a probe
 

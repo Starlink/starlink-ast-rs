@@ -13,12 +13,18 @@
 //!     # 1. Generate `.ast` files + Rust timings into /tmp/ast_bench_per_class/
 //!     cargo run --release --example bench_per_class > /tmp/rust.tsv
 //!
-//!     # 2. Build + run the C side against the same manifest
+//!     # 2. Build + run the C side against the same manifest. Since 9.5.0 the
+//!     #    satellite libraries are separate and each must be named; the rpath
+//!     #    forces the repo build over any conda libast on the loader path.
+//!     #    On macOS add -I/-L /opt/homebrew for libyaml and use
+//!     #    DYLD_LIBRARY_PATH in place of the rpath flags.
 //!     cc -O2 -o /tmp/bench_per_class_c crates/ast-core/tests/bench_per_class_c.c \
-//!        -I reference/starlink-ast/build-ast -I reference/starlink-ast -I /opt/homebrew/include \
-//!        -L reference/starlink-ast/build-ast -L /opt/homebrew/lib -last -lyaml -lm -lpthread
-//!     DYLD_LIBRARY_PATH=reference/starlink-ast/build-ast /tmp/bench_per_class_c \
-//!        /tmp/ast_bench_per_class/manifest.tsv > /tmp/c.tsv
+//!        -I reference/starlink-ast/build-ast -I reference/starlink-ast \
+//!        -L reference/starlink-ast/build-ast \
+//!        -Wl,-rpath,$PWD/reference/starlink-ast/build-ast -Wl,--disable-new-dtags \
+//!        -last -last_pal -last_cminpack -last_grf_log -last_grf3d -last_err \
+//!        -lyaml -lm -lpthread
+//!     /tmp/bench_per_class_c /tmp/ast_bench_per_class/manifest.tsv > /tmp/c.tsv
 //!
 //!     # 3. Merge (join on variant + direction + npoint)
 //!     paste /tmp/rust.tsv /tmp/c.tsv | column -t
