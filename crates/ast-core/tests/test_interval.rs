@@ -644,3 +644,90 @@ fn reg_pins_semi_infinite_boundary_mesh_when_bounded_axis() {
     let mixed = PointSet::from_rows([[10.0_f64, 5.0], [-100.0, 5.0]]);
     assert!(!interval.reg_pins(&mixed, None).unwrap());
 }
+
+// ---- Merging with a PointList inside a Prism ----
+//
+// Ancestor: checkIntervalPointListMerge in
+// reference/starlink-ast/ast_tester/testregions.c.
+//
+// Absorbing a PointList into an Interval attaches one constant per Interval
+// axis to every point, which is only equivalent when the Interval is a point.
+
+#[test]
+fn wide_interval_does_not_merge_into_a_pointlist() {
+    use ast_core::regions::{PointListBuilder, PrismBuilder};
+
+    // An Interval spanning 0 to 10 on axis 1 and unbounded above on axis 2 is
+    // nowhere near a point, so the Prism holds every (x, y, z) with x in
+    // 0..10, y >= 0 and z in {3, 4} while a PointList would hold only its
+    // points.
+    let f1 = BasicFrameBuilder::new(1).build().unwrap();
+    let f2 = BasicFrameBuilder::new(2).build().unwrap();
+    let pl = PointListBuilder::new(f1, vec![vec![3.0], vec![4.0]])
+        .unwrap()
+        .build()
+        .unwrap();
+    let iv = IntervalBuilder::new(f2, vec![0.0, 0.0], vec![10.0, BAD_VALUE])
+        .unwrap()
+        .build()
+        .unwrap();
+
+    let prism = PrismBuilder::new(iv, pl).unwrap().build().unwrap();
+    let simp = <dyn Mapping>::simplify(&prism).unwrap();
+    let simp: &dyn Region = simp
+        .as_ref()
+        .as_any()
+        .downcast_ref::<ast_core::regions::Prism>()
+        .map(|p| p as &dyn Region)
+        .or_else(|| {
+            simp.as_ref()
+                .as_any()
+                .downcast_ref::<ast_core::regions::PointList>()
+                .map(|p| p as &dyn Region)
+        })
+        .expect("the simplified Prism should still be a Region");
+
+    assert!(
+        !simp.as_any().is::<ast_core::regions::PointList>(),
+        "a wide Interval must not merge into a PointList"
+    );
+    assert!(
+        simp.point_in_region(&[2.0, 7.0, 3.0]).unwrap(),
+        "(2,7,3) is inside the Prism"
+    );
+    assert!(
+        !simp.point_in_region(&[20.0, 1.0, 3.0]).unwrap(),
+        "(20,1,3) is outside the Prism"
+    );
+}
+
+#[test]
+fn point_interval_merges_into_a_pointlist() {
+    use ast_core::regions::{PointListBuilder, PrismBuilder};
+
+    // An Interval with zero width on every axis is a point, so the Prism is
+    // the PointList with the point's axis values attached to every member.
+    let f1 = BasicFrameBuilder::new(1).build().unwrap();
+    let f2 = BasicFrameBuilder::new(2).build().unwrap();
+    let pl = PointListBuilder::new(f1, vec![vec![3.0], vec![4.0]])
+        .unwrap()
+        .build()
+        .unwrap();
+    let iv = IntervalBuilder::new(f2, vec![5.0, 0.0], vec![5.0, 0.0])
+        .unwrap()
+        .build()
+        .unwrap();
+
+    let prism = PrismBuilder::new(iv, pl).unwrap().build().unwrap();
+    let simp = <dyn Mapping>::simplify(&prism).unwrap();
+    let merged = simp
+        .as_ref()
+        .as_any()
+        .downcast_ref::<ast_core::regions::PointList>()
+        .expect("a point Interval should merge into a PointList");
+
+    let pts = merged.get_region_points().unwrap();
+    assert_eq!(pts.npoint(), 2);
+    assert_eq!(pts.point(0), &[5.0, 0.0, 3.0]);
+    assert_eq!(pts.point(1), &[5.0, 0.0, 4.0]);
+}

@@ -1531,17 +1531,25 @@ impl Region for Interval {
             if neg_this || other.is_negated() {
                 None
             } else {
-                // C reads the Interval's own bounds into `lbnd`/`ubnd` and then
-                // overwrites both arrays with the base-Frame uncertainty's
-                // bounds, so the axis values the merged PointList receives are
-                // the centre of that uncertainty rather than of the Interval;
-                // its "zero width on every axis" test subtracts a value from
-                // itself and therefore always passes
-                // (docs/issues/c-library-quirks.md). Both are mirrored, so the
-                // port produces C's points.
+                // Attaching one constant per Interval axis to every point is
+                // only equivalent when the Interval is a point, so its width
+                // on each axis must be under a quarter of its uncertainty
+                // there -- the same test MergeBox applies to a Box's
+                // half-width (interval.c:1481-1499). A missing limit is stored
+                // as -DBL_MAX or DBL_MAX, so an unbounded axis fails the test
+                // and the Interval is left alone.
+                let (lbnd, ubnd) = self.reg_base_box().ok()?;
                 let bunc = self.get_unc_frm(FrameRef::Base).ok()?;
-                let (ulb, uub) = bunc.get_region_bounds().ok()?;
-                let axval: Vec<f64> = (0..nax_this).map(|i| 0.5 * (ulb[i] + uub[i])).collect();
+                let (lbnd_unc, ubnd_unc) = bunc.get_region_bounds().ok()?;
+
+                let mut axval = Vec::with_capacity(nax_this);
+                for i in 0..nax_this {
+                    if 0.5 * (ubnd[i] - lbnd[i]).abs() > 0.25 * (ubnd_unc[i] - lbnd_unc[i]).abs() {
+                        return None;
+                    }
+                    axval.push(0.5 * (lbnd[i] + ubnd[i]));
+                }
+
                 let points = other
                     .data
                     .points

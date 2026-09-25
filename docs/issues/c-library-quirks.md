@@ -3009,14 +3009,18 @@ Where no uncertainty was assigned, `astGetUncFrm` supplies the default one, and
 is finite — which is why the values look right in the bounded case and collapse
 to `0.0` on any axis with a missing limit.
 
-**Rust behaviour (mirrored):** `Interval::region_merge`'s PointList arm
-(`crates/ast-core/src/regions/interval.rs:1229-1253`) reads the base-Frame
-uncertainty's bounds, takes their midpoint per axis, and applies no width test,
-so the port produces C's points on every input.
-The uninitialised reads have no Rust counterpart because their only consumer is
-a comparison whose result they cannot change.
+**Rust behaviour:** inverted at the 9.5.0 sync.
+`Interval::region_merge`'s PointList arm (`crates/ast-core/src/regions/interval.rs`)
+reads the uncertainty into its own arrays and tests the Interval's half-width
+against a quarter of the uncertainty width, which is the test `MergeBox` applies
+to a Box's half-width.
+Only an unbounded Interval reaches the branch with non-zero width, because a
+bounded one simplifies to a Box first and `MergeBox` merges a Box that is a
+point, so the branch can now only ever refuse: a missing limit is stored as
+`±DBL_MAX` and fails any width test.
 
-Fixing this upstream changes which Interval/PointList pairs merge at all, so the
-mirror is what keeps the corpus byte-exact; revisit it with the fix.
+`neg_interval_unbounded_pointlist` pins the refusal, and the two
+`*_interval_*_pointlist` cases in `test_interval.rs` check that the Prism keeps
+its interior and that a point Interval still merges.
 
-To be raised upstream.
+Fixed upstream in `9916e19e`.
