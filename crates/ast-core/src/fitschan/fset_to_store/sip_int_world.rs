@@ -306,10 +306,18 @@ pub(crate) fn sip_int_world(
     }
 
     // Step 9: CRPIX = pixel coords of IWC origin via the simplified
-    // chain (smap, before stripping). Mirrors fitschan.c:28883.
+    // chain (smap, before stripping). Mirrors fitschan.c:29180-29185.
     let zero_in = PointSet::from_rows([[0.0_f64, 0.0]]);
     let crpix_pts = smap.transform(&zero_in, false)?;
     let crpix_arr = [crpix_pts.point(0)[0], crpix_pts.point(0)[1]];
+
+    // The inverse transformation may be undefined at the IWC origin, in
+    // which case there is no reference pixel and so the SIP conventions
+    // cannot describe the celestial axes. Mirrors
+    // fitschan.c:29187-29191.
+    if crpix_arr[0] == BAD_VALUE || crpix_arr[1] == BAD_VALUE {
+        return Ok(None);
+    }
 
     // CD matrix from the upper fit.
     let cd_arr = [
