@@ -1097,7 +1097,7 @@ impl Frame for SkyFrame {
         let v1 = pal::dcs2c(from[lp], from[bp]);
         let v2 = pal::dcs2c(to[lp], to[bp]);
 
-        // C reverses the vector order (palDvxv(v2, v1) — skyframe.c:7585)
+        // C reverses the vector order (palDvxv(v2, v1) — skyframe.c:7697)
         // and rotates by +offset; keep that exact form so results match
         // bit-for-bit even where rounding noise dominates the cross
         // product (nearly coincident points).
@@ -1107,14 +1107,16 @@ impl Frame for SkyFrame {
         // Coincident or diametrically opposite points define no great
         // circle. C generates output only when the offset is an exact
         // multiple of pi (rotating v1 by cos(offset)); otherwise the
-        // result is bad (skyframe.c:7592-7615).
+        // result is bad (skyframe.c:7709-7727).
         if axis_len == 0.0 {
             if dist.sin() == 0.0 {
                 let scale = dist.cos();
                 let v3 = [v1[0] * scale, v1[1] * scale, v1[2] * scale];
+                // C constrains the longitude to 0..2*pi, which palDcc2s does
+                // not do itself (skyframe.c:7718-7720).
                 let (lon, lat) = pal::dcc2s(&v3);
                 let mut result = vec![0.0; 2];
-                result[lp] = lon;
+                result[lp] = pal::dranrm(lon);
                 result[bp] = lat;
                 return Ok(result);
             }
@@ -1129,10 +1131,11 @@ impl Frame for SkyFrame {
 
         let rmat = pal::dav2m(&rot_vec);
         let v_out = pal::dmxv(&rmat, &v1);
+        // C constrains the longitude to 0..2*pi (skyframe.c:7744-7746).
         let (lon, lat) = pal::dcc2s(&v_out);
 
         let mut result = vec![0.0; 2];
-        result[lp] = lon;
+        result[lp] = pal::dranrm(lon);
         result[bp] = lat;
         Ok(result)
     }
@@ -1178,7 +1181,7 @@ impl Frame for SkyFrame {
     }
 
     /// Offset along a great circle at a given bearing. Mirrors C
-    /// `SkyFrame::Offset2` (skyframe.c:7829): builds the reference
+    /// `SkyFrame::Offset2` (skyframe.c:7937): builds the reference
     /// vectors via Shcal, offsets via Shapp, normalises, and returns the
     /// bearing of the great circle at the end point.
     fn offset2(&self, point1: &[f64], angle: f64, offset: f64) -> AstResult<(Vec<f64>, f64)> {
@@ -1251,10 +1254,16 @@ impl Frame for SkyFrame {
     }
 
     /// Extend a box to include the effect of the celestial poles. Mirrors
-    /// C `SkyFrame::NormBox` (skyframe.c:7142): tests whether the box (via
+    /// C `SkyFrame::NormBox` (skyframe.c:7244): tests whether the box (via
     /// the supplied region-membership predicate) includes either pole and,
     /// if so, expands the longitude range to 0..2*PI and pins the latitude
     /// limit to the pole.
+    ///
+    /// C tests its error status after transforming the two poles and treats a
+    /// failed transformation as finding neither pole, because the values it
+    /// would otherwise read were never written (skyframe.c:7338-7342). Here the
+    /// predicate returns a `Result`, so a failure propagates instead and the
+    /// limits are left as they arrived — the same outcome without the read.
     fn norm_box(
         &self,
         lbnd: &mut [f64],

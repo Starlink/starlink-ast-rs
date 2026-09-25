@@ -47,6 +47,43 @@ fn construct_with_edge_point() {
     assert!((radius - 5.0).abs() < 1e-10);
 }
 
+/// C stores a Circle built from a radius as centre plus a circumference point
+/// (`CircumPoint`, `circle.c:570`, called at `:2655`), and `CalcPars` then
+/// defines the radius it reports as the geodesic distance back to that point.
+/// `CircumPoint` offsets along the first axis *by the radius*, not by an
+/// arbitrary unit, which is what makes that round-trip exact — and on a
+/// SkyFrame a one-ulp error in the stored radius is enough to flip a
+/// near-pole membership test.
+#[test]
+fn radius_round_trips_exactly_on_a_sky_frame() {
+    use ast_core::frames::{SkyFrame, SkySystem};
+    use std::f64::consts::FRAC_PI_2;
+
+    let radius = 0.3;
+    let circle = CircleBuilder::new(
+        SkyFrame::new(SkySystem::Icrs),
+        vec![0.0, FRAC_PI_2 - radius],
+    )
+    .unwrap()
+    .radius(radius)
+    .build()
+    .unwrap();
+
+    let (_, reported) = circle.get_region_disc().unwrap();
+    assert_eq!(
+        reported, radius,
+        "stored radius must round-trip bit-exactly, got {reported:.17e}"
+    );
+
+    // The pole is 0.30000000000000004441 from the centre, which is one ulp
+    // above the requested radius, so it lies strictly outside the circle — as
+    // the C oracle reports.
+    assert!(
+        !circle.point_in_region(&[0.0, FRAC_PI_2]).unwrap(),
+        "the north pole must lie outside the circle"
+    );
+}
+
 #[test]
 fn construct_requires_matching_axes() {
     let frame = BasicFrameBuilder::new(2).build().unwrap();

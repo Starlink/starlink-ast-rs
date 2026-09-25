@@ -10,6 +10,7 @@ use ast_core::error::ErrorCode;
 use ast_core::frames::{
     BasicFrameBuilder, CmpFrame, Frame, SkyFrame, SkySystem, TimeFrame, TimeSystem,
 };
+use ast_core::regions::{CircleBuilder, Region};
 
 fn make_frame(naxes: usize) -> Box<dyn Frame> {
     Box::new(BasicFrameBuilder::new(naxes).build().unwrap())
@@ -192,10 +193,10 @@ fn cmpframe_angle() {
     assert!((angle + PI / 2.0).abs() < 1e-12, "got {angle}");
 }
 
-// ---- NormBox delegation (cmpframe.c:5830) ----
+// ---- NormBox delegation (cmpframe.c:5838) ----
 
 /// The probe C hands each component Frame carries `AST__BAD` on the other
-/// component's axes (cmpframe.c:5941-5945). Every Region that calls
+/// component's axes (cmpframe.c:5965-5991). Every Region that calls
 /// `astNormBox` passes an un-negated copy of itself, and an un-negated Region
 /// reports a point with a bad axis as outside, so neither pole is ever
 /// detected and the box comes back untouched. Captured from C `astNormBox` on
@@ -249,13 +250,36 @@ fn norm_box_reaches_the_sky_component() {
     assert_eq!(ubnd[2], 1.0);
 }
 
-/// C declares the second component's probe PermMap with `nin = naxes1`
-/// (cmpframe.c:5970) where the loop above it fills `naxes - naxes1` entries,
-/// so a second component whose axis count differs from the first's is rejected
-/// by `astTran2`'s arity check. Captured from C: `astNormBox` on a
-/// CmpFrame(TimeFrame, SkyFrame) raises AST__NCPIN.
+/// The second component's probe takes that component's own axis count, so a
+/// CmpFrame whose components differ in size delegates to both
+/// (cmpframe.c:5981-5991). Captured from C `astNormBox` on a
+/// CmpFrame(TimeFrame, SkyFrame) with a box spanning the north pole: the bounds
+/// come back exactly as supplied, because the SkyFrame's pole test sees the
+/// `AST__BAD` the probe puts on the time axis.
 #[test]
-fn norm_box_rejects_a_second_component_of_a_different_size() {
+fn norm_box_delegates_to_a_second_component_of_a_different_size() {
+    let cmp = CmpFrame::new(
+        Box::new(TimeFrame::new(TimeSystem::Mjd)),
+        Box::new(SkyFrame::new(SkySystem::Icrs)),
+    );
+
+    let mut lbnd = [0.0, -0.3, 1.3];
+    let mut ubnd = [1.0, 0.3, FRAC_PI_2];
+
+    let inside = |point: &[f64]| -> Result<bool, ast_core::error::AstError> {
+        Ok(!point.contains(&BAD_VALUE))
+    };
+    cmp.norm_box(&mut lbnd, &mut ubnd, &inside).unwrap();
+
+    assert_eq!(lbnd, [0.0, -0.3, 1.3]);
+    assert_eq!(ubnd, [1.0, 0.3, FRAC_PI_2]);
+}
+
+/// A predicate that accepts the bad-carrying probe point reaches the pole
+/// widening through the second component too, so the upper split and its
+/// un-permutation are exercised.
+#[test]
+fn norm_box_reaches_a_sky_second_component() {
     let cmp = CmpFrame::new(
         Box::new(TimeFrame::new(TimeSystem::Mjd)),
         Box::new(SkyFrame::new(SkySystem::Icrs)),
@@ -265,6 +289,63 @@ fn norm_box_rejects_a_second_component_of_a_different_size() {
     let mut ubnd = [1.0, 0.3, FRAC_PI_2];
 
     let inside = |_point: &[f64]| -> Result<bool, ast_core::error::AstError> { Ok(true) };
-    let err = cmp.norm_box(&mut lbnd, &mut ubnd, &inside).unwrap_err();
-    assert_eq!(err.code(), ErrorCode::Ncpin);
+    cmp.norm_box(&mut lbnd, &mut ubnd, &inside).unwrap();
+
+    assert_eq!(lbnd, [0.0, 0.0, -FRAC_PI_2]);
+    assert_eq!(ubnd[0], 1.0);
+    assert_eq!(ubnd[1], 2.0 * PI);
+    assert_eq!(ubnd[2], FRAC_PI_2);
+}
+
+/// Region bounds on a CmpFrame that holds a SkyFrame must not depend on which
+/// component the SkyFrame is: the same Circle near the north pole reports the
+/// same limits on `(SkyFrame, 1-D)` and on `(1-D, SkyFrame)`, with the axes
+/// permuted.
+///
+/// Ancestor: `reference/starlink-ast/ast_tester/testcmpframe.c`,
+/// `check_normbox_component_order`.
+#[test]
+fn norm_box_bounds_do_not_depend_on_component_order() {
+    let radius = 0.5;
+    let sky_first = CmpFrame::new(
+        Box::new(SkyFrame::new(SkySystem::Icrs)),
+        Box::new(BasicFrameBuilder::new(1).domain("FPLANE").build().unwrap()),
+    );
+    let sky_last = CmpFrame::new(
+        Box::new(BasicFrameBuilder::new(1).domain("FPLANE").build().unwrap()),
+        Box::new(SkyFrame::new(SkySystem::Icrs)),
+    );
+
+    let c1 = CircleBuilder::new(sky_first, vec![0.0, 1.2707963267948966, 50.0])
+        .unwrap()
+        .radius(radius)
+        .build()
+        .unwrap();
+    let c2 = CircleBuilder::new(sky_last, vec![50.0, 0.0, 1.2707963267948966])
+        .unwrap()
+        .radius(radius)
+        .build()
+        .unwrap();
+
+    let (lb1, ub1) = c1.get_region_bounds().unwrap();
+    let (lb2, ub2) = c2.get_region_bounds().unwrap();
+
+    for axis in 0..3 {
+        assert!(
+            lb1[axis] != BAD_VALUE && ub1[axis] != BAD_VALUE,
+            "axis {} of the sky-first bounds is bad",
+            axis + 1
+        );
+    }
+
+    // Axis 3 of `sky_first` is axis 1 of `sky_last`, and axes 1, 2 are 2, 3.
+    assert!((lb1[2] - lb2[0]).abs() <= 1.0e-10 && (ub1[2] - ub2[0]).abs() <= 1.0e-10);
+    for axis in 0..2 {
+        assert!(
+            (lb1[axis] - lb2[axis + 1]).abs() <= 1.0e-10
+                && (ub1[axis] - ub2[axis + 1]).abs() <= 1.0e-10,
+            "sky axis {} depends on component order",
+            axis + 1
+        );
+    }
 }

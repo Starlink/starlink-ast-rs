@@ -624,19 +624,22 @@ impl Frame for CmpFrame {
     }
 
     /// Extend a box to include the effect of singularities in either
-    /// component Frame. Mirrors C `CmpFrame::NormBox` (cmpframe.c:5830): the
+    /// component Frame. Mirrors C `CmpFrame::NormBox` (cmpframe.c:5838): the
     /// bounds are permuted into the internal order the components use, split
     /// at the first component's axis count, and each component's `norm_box` is
     /// invoked with a predicate that expands a component sub-position back
     /// into a full external position before consulting the caller's predicate.
     ///
-    /// The expansion fills the other component's axes with [`BAD_VALUE`],
-    /// because that is what C's probe PermMap supplies there
-    /// (cmpframe.c:5944-5945). Every caller passes an un-negated Region, which
-    /// reports a point carrying a bad axis as outside, so the singularity is
-    /// never detected and no component ever widens its half of the box. The
-    /// delegation is C's, inertness included; see
-    /// `docs/issues/c-library-quirks.md`.
+    /// Each probe fills the other component's axes with [`BAD_VALUE`], because
+    /// that is what C's probe PermMaps supply there (cmpframe.c:5965-5969,
+    /// 5981-5991). Every caller passes an un-negated Region, which reports a
+    /// point carrying a bad axis as outside, so a component's singularity test
+    /// never sees a position inside the box, and a CmpFrame does not widen the
+    /// box for a singularity in either component: the bounds it returns are
+    /// those it was given. Whether a Region on a CmpFrame contains a
+    /// component's singular point cannot in general be decomposed by
+    /// component, since the Region need not be a product of per-component
+    /// Regions.
     fn norm_box(
         &self,
         lbnd: &mut [f64],
@@ -648,7 +651,7 @@ impl Frame for CmpFrame {
         let perm = &self.perm;
 
         // Permute into the order the component Frames use internally
-        // (cmpframe.c:5921-5924).
+        // (cmpframe.c:5946-5949).
         let mut vl = vec![0.0; naxes];
         let mut vu = vec![0.0; naxes];
         for axis in 0..naxes {
@@ -657,7 +660,7 @@ impl Frame for CmpFrame {
         }
 
         // C wraps the caller's Mapping in `pm1` and its inverse so it can be
-        // applied to an internal-order position (cmpframe.c:5926-5939); here
+        // applied to an internal-order position (cmpframe.c:5951-5963); here
         // that is the un-permutation applied inside each predicate below.
         let external = |internal: &[f64]| -> Vec<f64> {
             (0..naxes).map(|axis| internal[perm[axis]]).collect()
@@ -665,7 +668,7 @@ impl Frame for CmpFrame {
 
         // The first component's predicate. `pm2`'s forward transformation
         // copies the sub-position to internal axes 0..naxes1 and supplies
-        // AST__BAD for the rest (cmpframe.c:5941-5945).
+        // AST__BAD for the rest (cmpframe.c:5965-5969).
         let inside1 = |point: &[f64]| -> AstResult<bool> {
             if point.len() != naxes1 {
                 return Err(AstError::new(
@@ -683,19 +686,29 @@ impl Frame for CmpFrame {
         self.frame1
             .norm_box(&mut vl[..naxes1], &mut vu[..naxes1], &inside1)?;
 
-        // The second component's predicate. C declares `pm3` with
-        // `nin = naxes1` rather than `naxes - naxes1`, and gives it a null
-        // `outperm`, whose forward transformation copies input i to output i
-        // while i < nin (permmap.c:159) — so the second component's
-        // coordinates land on the *first* component's internal axes, and a
-        // component whose axis count differs from `naxes1` is rejected
-        // outright by the arity check in `astTran2`. Both are mirrored; see
-        // `docs/issues/c-library-quirks.md`.
-        let inside2 = |point: &[f64]| -> AstResult<bool> { inside1(point) };
+        // The second component's predicate. `pm3` takes the second component's
+        // own axis count as its input arity, copies those inputs to the upper
+        // internal axes and supplies AST__BAD for the lower ones, mirroring
+        // `pm2` (cmpframe.c:5981-5991).
+        let naxes2 = naxes - naxes1;
+        let inside2 = |point: &[f64]| -> AstResult<bool> {
+            if point.len() != naxes2 {
+                return Err(AstError::new(
+                    ErrorCode::Ncpin,
+                    format!(
+                        "CmpFrame NormBox: probe expects {naxes2} coordinate values, got {}",
+                        point.len()
+                    ),
+                ));
+            }
+            let mut internal = vec![BAD_VALUE; naxes];
+            internal[naxes1..].copy_from_slice(point);
+            inside(&external(&internal))
+        };
         self.frame2
             .norm_box(&mut vl[naxes1..], &mut vu[naxes1..], &inside2)?;
 
-        // Un-permute (cmpframe.c:5973-5976).
+        // Un-permute (cmpframe.c:6005-6008).
         for axis in 0..naxes {
             lbnd[axis] = vl[perm[axis]];
             ubnd[axis] = vu[perm[axis]];

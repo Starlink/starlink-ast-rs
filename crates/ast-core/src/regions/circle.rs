@@ -17,7 +17,7 @@ use crate::mappings::helpers::{is_bad, point_has_bad};
 use crate::mappings::{DynMapping, Mapping, UnitMap, ViaSimplify};
 
 use super::data::{RegionData, RegionGeometry};
-use super::{DynRegion, Overlap, Region};
+use super::{BoxRegion, DynRegion, Overlap, Region};
 
 /// Return a point on the circumference of a circle, mirroring C `CircumPoint`
 /// (circle.c:570): the point where the circle crosses the first Frame axis.
@@ -73,6 +73,18 @@ pub(crate) fn best_circle(
         .uncertainty(unc.clone_region())
         .build()?;
     Ok(Some(circle))
+}
+
+/// A Circle's base-Frame boundary mesh together with the bounding box of that
+/// mesh, which C's `Circle::RegBaseMesh` computes in one pass and caches in the
+/// Circle structure (circle.c:894).
+struct BaseMesh {
+    /// Points on the boundary, in the base Frame.
+    mesh: Vec<Vec<f64>>,
+    /// Lower bound per base-Frame axis, extended for any singularity.
+    lower: Vec<f64>,
+    /// Upper bound per base-Frame axis, extended for any singularity.
+    upper: Vec<f64>,
 }
 
 /// A circular region within a coordinate frame.
@@ -183,15 +195,13 @@ impl CircleBuilder {
             }
             ep
         } else if let Some(r) = self.radius {
-            // Compute an edge point at distance `r` from centre.
-            // We need a "direction" point for Frame::offset. Create one
-            // that differs from centre along axis 1 only.
-            let mut direction = self.centre.clone();
-            direction[0] += 1.0;
-            // Use the frame's offset method to move from centre toward
-            // the direction point by distance r. This correctly handles
-            // both Euclidean and spherical geometry.
-            self.frame.offset(&self.centre, &direction, r)?
+            // C's constructor turns a radius into the point where the circle
+            // crosses the first Frame axis (circle.c:2655), and stores that as
+            // the second defining point. The radius the Circle then reports is
+            // the geodesic distance back to it, so the offset length used to
+            // build the direction position is load-bearing: C offsets along
+            // axis 1 by `radius`, not by one unit.
+            circum_point(self.frame.as_ref(), &self.centre, r)?
         } else {
             return Err(AstError::new(
                 ErrorCode::Naxin,
@@ -254,6 +264,138 @@ impl Circle {
         let base_frame = self.data.frameset.base();
         base_frame.distance(&self.data.points[0], &self.data.points[1])
     }
+
+    /// Build the base-Frame boundary mesh and, alongside it, the bounding box
+    /// of that mesh, extended for any coordinate-system singularity.
+    ///
+    /// Faithful port of C `Circle::RegBaseMesh` (circle.c:894): C computes the
+    /// two together, caching the bounds in the Circle structure so that
+    /// `RegBaseBox` can read them back (circle.c:833-843). The final
+    /// `astNormBox` call is the tail of `RegBaseMesh` and so applies at every
+    /// dimensionality (circle.c:1091-1100).
+    fn base_mesh_bounds(&self) -> AstResult<BaseMesh> {
+        let base_frame = self.data.frameset.base();
+        let naxes = base_frame.naxes();
+        let centre = &self.data.points[0];
+        let radius = self.radius()?;
+        let np = self.data.effective_mesh_size();
+
+        let (mesh, mut lower, mut upper) = if naxes == 1 {
+            // A 1-D "circle" has two boundary points, the extreme values, and
+            // MeshSize is ignored (circle.c:946-960).
+            let lo = centre[0] - radius;
+            let hi = centre[0] + radius;
+            (vec![vec![lo], vec![hi]], vec![lo], vec![hi])
+        } else if naxes == 2 {
+            // Distribute points evenly around the circumference using the
+            // Frame's geodesic offset, and accumulate the bounding box in terms
+            // of axis offsets from the centre so that a box crossing RA=0 or
+            // RA=12h is handled (circle.c:962-1016).
+            let delta = 2.0 * PI / np as f64;
+
+            let mut mesh = Vec::with_capacity(np);
+            let mut lbx = f64::MAX;
+            let mut ubx = -f64::MAX;
+            let mut lby = f64::MAX;
+            let mut uby = -f64::MAX;
+
+            let mut angle = 0.0;
+            for _ in 0..np {
+                let (p, _) = base_frame.offset2(centre, angle, radius)?;
+                if !is_bad(p[0]) && !is_bad(p[1]) {
+                    // C uses `else if` here (circle.c:994-1004): a single
+                    // extreme cannot update both bounds in one iteration.
+                    let dist = base_frame.ax_distance(1, centre[0], p[0])?;
+                    if dist < lbx {
+                        lbx = dist;
+                    } else if dist > ubx {
+                        ubx = dist;
+                    }
+                    let dist = base_frame.ax_distance(2, centre[1], p[1])?;
+                    if dist < lby {
+                        lby = dist;
+                    } else if dist > uby {
+                        uby = dist;
+                    }
+                }
+                mesh.push(p);
+                angle += delta;
+            }
+
+            (
+                mesh,
+                vec![centre[0] + lbx, centre[1] + lby],
+                vec![centre[0] + ubx, centre[1] + uby],
+            )
+        } else {
+            // More than 2 dimensions. Spreading points evenly over a sphere is
+            // a complex task, so C does not attempt a genuinely even spread: it
+            // meshes the bounding box of the sphere and projects each point
+            // radially on to the sphere's surface (circle.c:1018-1089).
+            //
+            // The approximate bounding box is formed by walking the geodesic
+            // from the centre toward a point offset by `radius` along each axis
+            // in turn, taking that axis's coordinate from the result.
+            let mut approx_upper = vec![0.0; naxes];
+            for (j, upper) in approx_upper.iter_mut().enumerate() {
+                let mut work = centre.to_vec();
+                work[j] += radius;
+                *upper = base_frame.offset(centre, &work, radius)?[j];
+            }
+
+            // A Box which just encompasses the circle, meshed with this
+            // Circle's MeshSize (circle.c:1042-1048).
+            let mut boxr =
+                BoxRegion::from_corner_frame(base_frame.snapshot(), centre.to_vec(), approx_upper)?;
+            boxr.set_mesh_size(np);
+            let box_mesh = boxr.get_region_mesh()?;
+
+            // Move each point of that mesh radially so that its distance from
+            // the centre equals this Circle's radius, tracking the bounds of
+            // the result (circle.c:1060-1079).
+            let mut mesh = Vec::with_capacity(box_mesh.npoint());
+            let mut lower = vec![f64::MAX; naxes];
+            let mut upper = vec![-f64::MAX; naxes];
+            for i in 0..box_mesh.npoint() {
+                let p1 = &box_mesh.point(i)[..naxes];
+                let p2 = base_frame.offset(centre, p1, radius)?;
+                for j in 0..naxes {
+                    if !is_bad(p2[j]) {
+                        // C uses `else if` here too (circle.c:1071-1077).
+                        if p2[j] < lower[j] {
+                            lower[j] = p2[j];
+                        } else if p2[j] > upper[j] {
+                            upper[j] = p2[j];
+                        }
+                    }
+                }
+                mesh.push(p2);
+            }
+
+            (mesh, lower, upper)
+        };
+
+        // Extend the box to include the effect of any coordinate-system
+        // singularities (e.g. a pole). The membership predicate mirrors C's
+        // `reg` Mapping argument: it reports whether a point in the base Frame
+        // lies inside the un-negated Circle. C builds that probe by copying the
+        // Circle and clearing Negated (circle.c:1095-1097), leaving Closed as it
+        // was, so the raw Closed value is the effective one here.
+        let inside = |point: &[f64]| -> AstResult<bool> {
+            let dist = base_frame.distance(centre, point)?;
+            if is_bad(dist) {
+                return Ok(false);
+            }
+            Ok(if self.data.closed {
+                dist <= radius
+            } else {
+                dist < radius
+            })
+        };
+        base_frame.norm_box(&mut lower, &mut upper, &inside)?;
+
+        Ok(BaseMesh { mesh, lower, upper })
+    }
 }
 
 impl RegionGeometry for Circle {
@@ -305,14 +447,12 @@ impl RegionGeometry for Circle {
         let base_frame = self.data.frameset.base();
         let naxes = base_frame.naxes();
         let centre = &self.data.points[0];
-        let radius = self.radius()?;
 
-        // Mirrors C circle.c::RegBaseBox (circle.c:757). For a plain Frame
-        // (Euclidean) the bounding box is simply centre ± radius on each
-        // axis. Only a genuine BasicFrame qualifies as "plane geometry";
-        // SkyFrame and other non-Cartesian Frames need the mesh-derived
-        // box plus a singularity (pole) extension.
+        // Mirrors C `Circle::RegBaseBox` (circle.c:757): a simple Frame is
+        // assumed flat, so the box is centre +/- radius on each axis
+        // (circle.c:822-827). Only a genuine BasicFrame qualifies.
         if base_frame.as_any().is::<BasicFrame>() {
+            let radius = self.radius()?;
             let mut lower = vec![0.0; naxes];
             let mut upper = vec![0.0; naxes];
             for i in 0..naxes {
@@ -322,132 +462,15 @@ impl RegionGeometry for Circle {
             return Ok((lower, upper));
         }
 
-        // Non-simple Frame. For a 2-D Frame, generate a mesh of points
-        // around the circumference with the Frame's geodesic offset and
-        // track the bounding box in terms of axis offsets from the centre
-        // (matching circle.c:962-1016, which works in offsets to avoid
-        // problems with boxes that cross RA=0). Then extend the box for any
-        // coordinate-system singularities via the Frame's NormBox.
-        if naxes == 2 {
-            let np = self.data.effective_mesh_size().max(1);
-            let delta = 2.0 * PI / np as f64;
-
-            let mut lbx = f64::MAX;
-            let mut ubx = -f64::MAX;
-            let mut lby = f64::MAX;
-            let mut uby = -f64::MAX;
-
-            let mut angle = 0.0;
-            for _ in 0..np {
-                let (p, _) = base_frame.offset2(centre, angle, radius)?;
-                if !is_bad(p[0]) && !is_bad(p[1]) {
-                    // C uses `else if` here (circle.c:994-1004): a single
-                    // extreme cannot update both bounds in one iteration.
-                    let dist = base_frame.ax_distance(1, centre[0], p[0])?;
-                    if dist < lbx {
-                        lbx = dist;
-                    } else if dist > ubx {
-                        ubx = dist;
-                    }
-                    let dist = base_frame.ax_distance(2, centre[1], p[1])?;
-                    if dist < lby {
-                        lby = dist;
-                    } else if dist > uby {
-                        uby = dist;
-                    }
-                }
-                angle += delta;
-            }
-
-            let mut lower = vec![centre[0] + lbx, centre[1] + lby];
-            let mut upper = vec![centre[0] + ubx, centre[1] + uby];
-
-            // Extend the box to include the effect of any coordinate-system
-            // singularities (e.g. a pole). The membership predicate mirrors
-            // C's `reg` Mapping argument: it reports whether a point in the
-            // base Frame lies inside the un-negated Circle. C builds that
-            // probe by copying the Circle and clearing Negated
-            // (circle.c:1095-1097), leaving Closed as it was, so the raw
-            // Closed value is the effective one here.
-            let inside = |point: &[f64]| -> AstResult<bool> {
-                let dist = base_frame.distance(centre, point)?;
-                if is_bad(dist) {
-                    return Ok(false);
-                }
-                Ok(if self.data.closed {
-                    dist <= radius
-                } else {
-                    dist < radius
-                })
-            };
-            base_frame.norm_box(&mut lower, &mut upper, &inside)?;
-
-            return Ok((lower, upper));
-        }
-
-        // Higher-dimensional non-simple Frame: fall back to axis offsets.
-        let mut lower = vec![0.0; naxes];
-        let mut upper = vec![0.0; naxes];
-        for i in 0..naxes {
-            lower[i] = centre[i] - radius;
-            upper[i] = centre[i] + radius;
-        }
-        Ok((lower, upper))
+        // Any other Frame cannot be assumed flat, so the box is the bounding
+        // box of the boundary mesh, which C caches when `astRegBaseMesh` runs
+        // and reads back here (circle.c:829-843).
+        let bm = self.base_mesh_bounds()?;
+        Ok((bm.lower, bm.upper))
     }
 
     fn reg_base_mesh(&self) -> AstResult<Vec<Vec<f64>>> {
-        let base_frame = self.data.frameset.base();
-        let naxes = base_frame.naxes();
-        let centre = &self.data.points[0];
-        let radius = self.radius()?;
-        let np = self.data.effective_mesh_size();
-
-        if naxes == 1 {
-            // 1-D: the boundary is just the two extreme points.
-            let p1 = vec![centre[0] - radius];
-            let p2 = vec![centre[0] + radius];
-            return Ok(vec![p1, p2]);
-        }
-
-        if naxes == 2 {
-            // 2-D: distribute points evenly around the circumference using
-            // the frame's geodesic offset (circle.c:963-1009). This handles
-            // both Euclidean and spherical geometry — for a SkyFrame the
-            // points lie on a small circle about the centre.
-            let delta = 2.0 * PI / np as f64;
-            let mut mesh = Vec::with_capacity(np);
-
-            let mut angle = 0.0;
-            for _ in 0..np {
-                let (p, _) = base_frame.offset2(centre, angle, radius)?;
-                mesh.push(p);
-                angle += delta;
-            }
-
-            return Ok(mesh);
-        }
-
-        // N-D: approximate by offsetting from centre along each axis
-        // direction pair, then projecting mesh points onto the sphere.
-        // For the initial implementation, use the simple Euclidean
-        // approach: offset along each pair of axes.
-        let points_per_plane = np / (naxes * (naxes - 1) / 2).max(1);
-        let delta = 2.0 * PI / points_per_plane.max(1) as f64;
-        let mut mesh = Vec::new();
-
-        for ax1 in 0..naxes {
-            for ax2 in (ax1 + 1)..naxes {
-                for k in 0..points_per_plane {
-                    let angle = k as f64 * delta;
-                    let mut point = centre.to_vec();
-                    point[ax1] = centre[ax1] + radius * angle.cos();
-                    point[ax2] = centre[ax2] + radius * angle.sin();
-                    mesh.push(point);
-                }
-            }
-        }
-
-        Ok(mesh)
+        Ok(self.base_mesh_bounds()?.mesh)
     }
 
     fn reg_centre(&self) -> AstResult<Vec<f64>> {

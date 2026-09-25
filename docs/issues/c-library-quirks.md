@@ -2786,57 +2786,131 @@ Fixed upstream in `5613e44d`.
 upstream's `checkEllipseAxisRules`, which builds the mixed Frame in both axis
 orderings with radii larger than pi so a folded axis and a raw one cannot agree.
 
-## `CmpFrame::NormBox` can never widen a box, and errors when the components differ in size
+## `CmpFrame::NormBox` can never widen a box
 
-`CmpFrame::NormBox` (`cmpframe.c:5830`) permutes the supplied bounds into
+`CmpFrame::NormBox` (`cmpframe.c:5838`) permutes the supplied bounds into
 internal order, splits them at the first component's axis count, and calls each
 component Frame's `astNormBox` with a probe Mapping that expands a component
-sub-position back into a full position before applying the caller's Mapping. Two
-things are wrong with the probes.
+sub-position back into a full position before applying the caller's Mapping.
 
 **The fill value defeats the test.** `pm2`, the probe for the first component, is
 built so its forward transformation "copies the lower naxes1 inputs to the same
-outputs, and supplies AST__BAD for the other outputs" (`cmpframe.c:5941-5945`).
-Every caller of `astNormBox` — `Circle::RegBaseMesh` (`circle.c:1095-1100`),
-`Ellipse::RegBaseMesh` (`ellipse.c:1177-1184`), `Polygon::RegBaseBox`
-(`polygon.c:4311-4314`) — passes a copy of itself with `Negated` cleared, and an
-un-negated Region maps a position carrying `AST__BAD` to `AST__BAD`. So the
-component's singularity test (`skyframe.c:7196`, `astTran2` on the two poles)
-always sees `AST__BAD` and always concludes the box holds neither pole. A
-CmpFrame therefore never widens a box, for either component.
+outputs, and supplies AST__BAD for the other outputs" (`cmpframe.c:5965-5969`),
+and `pm3` does the same for the second component's axes
+(`cmpframe.c:5981-5991`). Every caller of `astNormBox` — `Circle::RegBaseMesh`
+(`circle.c:1091-1100`), `Ellipse::RegBaseMesh` (`ellipse.c:1176-1189`),
+`Polygon::RegBaseBox` (`polygon.c:4308-4317`) — passes a copy of itself with
+`Negated` cleared, and an un-negated Region maps a position carrying `AST__BAD`
+to `AST__BAD`. So the component's singularity test (`skyframe.c:7336`, `astTran2`
+on the two poles) always sees `AST__BAD` and always concludes the box holds
+neither pole. A CmpFrame therefore never widens a box, for either component.
 
-The asymmetry is visible from the public API. A Circle centred 0.3 radians from
-the north pole with radius 0.3 reports, on a plain SkyFrame, a longitude range of
-`0 .. 2*pi` and a latitude bound pinned to `pi/2`; the same Circle on a
-`CmpFrame(SkyFrame, TimeFrame)` reports the raw mesh bounds,
-`0 .. 6.1537493326940522` and `1.5587964318268464`.
+The asymmetry is not, however, visible from the public API in the obvious place.
+`Circle::RegBaseMesh` accumulates its bounds from the mesh points themselves, and
+a mesh built by `astOffset` on a SkyFrame already has its longitudes normalised
+into `0 .. 2*pi` (`skyframe.c:7746`). A Circle centred 0.3 radians from the north
+pole with radius 0.3 therefore reports, on a `CmpFrame(SkyFrame, TimeFrame)`, a
+longitude range of exactly `0 .. 6.2831853071795862` and a latitude bound of
+`1.5707963267948966` — the pole — with no widening involved. Read the NormBox call
+directly and the failure is plain: given
+`lb = [-0.3, 1.3, 49.7]`, `ub = [0.3, pi/2, 50.3]` and the un-negated Circle as
+the probe, `astNormBox` on that CmpFrame returns those bounds unchanged, where the
+same box on a plain SkyFrame widens to `0 .. 2*pi`.
 
-**The second probe is malformed.** `pm3`, the probe for the second component, is
+Upstream now records this in the function's prologue Notes, along with the reason
+it is not simply a matter of widening the box: whether a Region on a CmpFrame
+contains a component's singular point cannot in general be decomposed by
+component, since the Region need not be a product of per-component Regions. So
+the behaviour stands, documented rather than changed.
+
+**Rust behaviour (mirrored):** `CmpFrame::norm_box`
+(`crates/ast-core/src/frames/cmpframe.rs:643`) performs the same permute / split
+/ delegate / un-permute and fills the other component's axes with `BAD_VALUE`.
+`norm_box_probe_carries_bad_on_the_other_components_axes` in
+`crates/ast-core/tests/test_cmpframe.rs` holds it there: a fill with the box's own
+coordinates would widen the box and fail it, and the companion
+`norm_box_reaches_the_sky_component` proves the delegation runs at all.
+
+Still open upstream as a design question, not a defect.
+
+---
+
+## `CmpFrame::NormBox` built a malformed probe for the second component
+
+**Fixed upstream in `d31f06f3`; the Rust mirror was inverted at the 9.5.0 sync.**
+
+`pm3`, the probe `CmpFrame::NormBox` hands the second component Frame, was
 
     for( axis = 0; axis < naxes - naxes1; axis++ ) inperm[ axis ] = naxes1 + axis;
     pm3 = astPermMap( naxes1, inperm, naxes, NULL, NULL, "", status );
 
-with `nin = naxes1` where the loop fills `naxes - naxes1` entries, and with a
-null `outperm`, whose forward transformation copies input *i* to output *i* while
-`i < nin` and supplies `AST__BAD` after that (`permmap.c:159`). The second
-component's sub-position therefore arrives on the *first* component's internal
-axes. The inverse, built from `inperm`, extracts the correct axes, so only the
-forward direction — the one the probe uses — is affected.
+with `nin = naxes1` — the *first* component's axis count — where the loop fills
+`naxes - naxes1` entries, and with a null `outperm`, whose forward transformation
+copies input *i* to output *i* while `i < nin` and supplies `AST__BAD` after that
+(`permmap.c:159`). The second component's sub-position therefore arrived on the
+*first* component's internal axes. The inverse, built from `inperm`, extracted the
+correct axes, so only the forward direction — the one the probe uses — was
+affected.
 
-When the second component's axis count differs from the first's, the arity check
-in `astTran2` rejects the probe outright: `AST__NCPIN`, "Bad number of input
+Where the second component's axis count differs from the first's, the arity check
+in `astTran2` rejected the probe outright: `AST__NCPIN`, "Bad number of input
 coordinate values". `astGetRegionBounds` on a Circle on a
-`CmpFrame(TimeFrame, SkyFrame)` raises it, and `SkyFrame::NormBox` then reads the
-uninitialised `xo` / `yo` arrays it passed to `astTran2` and widens the box from
-whatever they hold.
+`CmpFrame(TimeFrame, SkyFrame)` raised it, and `SkyFrame::NormBox` then read the
+`xo` / `yo` arrays it had passed to `astTran2` and which were never written.
 
-**Rust behaviour (mirrored):** `frames/cmpframe.rs`, `norm_box` performs the same
-permute / split / delegate / un-permute, fills the other component's axes with
-`BAD_VALUE`, hands both components the same first-component expansion, and
-returns `ErrorCode::Ncpin` where C's arity check fires. What follows that error
-in C is a read of uninitialised memory and is not reproduced.
+The fix gives `pm3` the second component's own axis count as its input arity and
+an explicit `outperm` that copies those inputs to the upper outputs and supplies
+`AST__BAD` on the lower ones — a negative permutation value with no constants
+array — mirroring `pm2` (`cmpframe.c:5981-5991`). `SkyFrame::NormBox` gained a
+status check after `astTran2` so a failed transformation is treated as finding
+neither pole rather than reading what was never written
+(`skyframe.c:7338-7342`).
 
-To be raised upstream.
+**Rust behaviour:** inverted at the 9.5.0 sync. `CmpFrame::norm_box`
+(`crates/ast-core/src/frames/cmpframe.rs:688-708`) gives the second component's
+predicate that component's own arity and copies the sub-position to the upper
+internal axes. `SkyFrame::norm_box`
+(`crates/ast-core/src/frames/skyframe.rs:1264`) has no analogue of C's read: its
+predicate returns an `AstResult<bool>`, so a failure propagates and the limits are
+left as they arrived.
+
+The gates are `norm_box_delegates_to_a_second_component_of_a_different_size`,
+`norm_box_reaches_a_sky_second_component` and
+`norm_box_bounds_do_not_depend_on_component_order` in
+`crates/ast-core/tests/test_cmpframe.rs`, the last ported from
+`check_normbox_component_order` in
+`reference/starlink-ast/ast_tester/testcmpframe.c`. With the mirror restored all
+three fail, and the ported one fails exactly as the C test does — `AST__NCPIN`
+from `astGetRegionBounds` on the Circle whose CmpFrame holds the SkyFrame second.
+
+Reaching that gate through `astGetRegionBounds` also required closing three
+separate port gaps, each of which the C oracle settled:
+
+- `Circle::reg_base_box` called the Frame's `norm_box` only for a 2-D base Frame;
+  C calls it at the tail of `RegBaseMesh` at every dimensionality
+  (`circle.c:1091-1100`), so the N-D branch (`circle.c:1018-1089`) had to be
+  ported with it.
+- `SkyFrame::offset` did not constrain the longitude it returns to `0 .. 2*pi`
+  (gated by `offset_normalises_the_longitude_it_returns` in
+  `crates/ast-core/tests/test_skyframe.rs`).
+  C calls `palDranrm` on both return paths, commented because `palDcc2s` does not
+  do it itself (`skyframe.c:7720` and `:7746`). The mesh a Circle builds by
+  repeated `astOffset` therefore has pre-normalised longitudes in C and raw
+  `palDcc2s` output here, which is what made the raw mesh bounds diverge.
+- `CircleBuilder::build` turned a radius into a circumference point by offsetting
+  the centre one unit along the first axis and walking the geodesic from there
+  (gated by `radius_round_trips_exactly_on_a_sky_frame` in
+  `crates/ast-core/tests/test_circle.rs`).
+  C's `CircumPoint` offsets by `radius`, not by one unit
+  (`circle.c:570`, called at `:2655`), and `CalcPars` then defines the Circle's
+  radius as the geodesic distance back to that stored point. The offset length is
+  therefore load-bearing: with `radius` the round-trip is exact
+  (`astDistance == 0.2999999999999999889` for a requested 0.3), with one unit it
+  comes back as `0.30000000000000004441`. One ulp is enough to flip a
+  centre-to-pole membership test, which is how a Circle 0.3 radians from the pole
+  with radius 0.3 wrongly contained the pole here while C put it outside.
+
+Fixed upstream in `d31f06f3`.
 
 ---
 

@@ -527,6 +527,50 @@ fn offset_equator_toward_pole() {
     assert_close(result[1], FRAC_PI_4, 1.0e-8, "offset lat");
 }
 
+/// C constrains the longitude `Offset` returns to `0 .. 2*pi`, because
+/// `palDcc2s` does not do it itself (`skyframe.c:7720` and `:7746`). Walking
+/// westward across longitude zero must therefore report a longitude just under
+/// `2*pi`, not a small negative one — a Circle's mesh is built by repeated
+/// `Offset`, so a raw negative longitude propagates into its bounds.
+#[test]
+fn offset_normalises_the_longitude_it_returns() {
+    let sky = SkyFrame::new(SkySystem::Fk5);
+    let from = [0.1, 0.0];
+    let to = [0.0, 0.0];
+    let result = sky.offset(&from, &to, 0.2).unwrap();
+    assert!(
+        result[0] >= 0.0 && result[0] < 2.0 * PI,
+        "offset longitude must lie in 0..2*pi, got {}",
+        result[0]
+    );
+    // Oracle-verified: C reports 6.183_185_307_179_587 for this offset.
+    assert_close(
+        result[0],
+        6.183_185_307_179_587,
+        1.0e-15,
+        "offset lon wrapped",
+    );
+
+    // The coincident-points branch normalises too (skyframe.c:7718-7720). C
+    // reaches it only when `sin(offset)` is exactly zero, which in double
+    // precision means `offset == 0.0` — `sin(PI)` is 1.22e-16, so C returns
+    // bad for a nominally antipodal offset.
+    let result = sky.offset(&[-0.1, 0.0], &[-0.1, 0.0], 0.0).unwrap();
+    assert_close(
+        result[0],
+        6.183_185_307_179_587,
+        1.0e-15,
+        "coincident offset lon wrapped",
+    );
+
+    let result = sky.offset(&[0.1, 0.0], &[0.1, 0.0], PI).unwrap();
+    assert_eq!(
+        result,
+        vec![BAD_VALUE, BAD_VALUE],
+        "a non-zero offset between coincident points defines no great circle"
+    );
+}
+
 #[test]
 fn offset_full_distance() {
     let sky = SkyFrame::new(SkySystem::Fk5);
