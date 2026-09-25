@@ -360,8 +360,8 @@ fn every_relaxation_is_the_size_the_ledger_says() {
     }
     for (what, got, _reason) in manifest_relaxations() {
         let want = match what {
-            "simplify manifest: skip_string_compare" => 153,
-            "simplify manifest: negative fixtures stripping IsSimp" => 155,
+            "simplify manifest: skip_string_compare" => 156,
+            "simplify manifest: negative fixtures stripping IsSimp" => 158,
             "simplify manifest: astequal compare mode" => 1,
             "wcsconv manifest: astequal compare mode" => 12,
             other => panic!("unledgered manifest relaxation: {other}"),

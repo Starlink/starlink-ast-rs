@@ -361,7 +361,7 @@ mod parse_tests {
             let text = std::fs::read_to_string(format!("{dir}/{name}")).unwrap();
             total += parse_oracle(&text).expect("committed oracle parses").len();
         }
-        assert_eq!(total, 2229);
+        assert_eq!(total, 2261);
     }
 }
 
@@ -541,6 +541,29 @@ struct RtripRule {
 struct GoldenRule {
     fwd_off: bool,
     inv_off: bool,
+    /// Bitmaps of 0-based row indices to leave uncompared, for rows whose
+    /// recorded value sits on a mathematical singularity. Rows at or beyond 64
+    /// cannot be named, matching the C checker's `uint64_t`.
+    fwd_rows: u64,
+    inv_rows: u64,
+}
+
+/// Parse a comma-separated list of 0-based row indices into a bitmap. Rows at
+/// or beyond 64 are ignored, as is any token that is not a number.
+fn parse_row_list(list: &str) -> u64 {
+    let mut rows = 0u64;
+    for tok in list.split(&[',', ' '][..]) {
+        let tok = tok.trim();
+        if tok.is_empty() {
+            continue;
+        }
+        match tok.parse::<u32>() {
+            Ok(v) if v < 64 => rows |= 1u64 << v,
+            Ok(_) => {}
+            Err(_) => break,
+        }
+    }
+    rows
 }
 
 /// Parsed `transform_oracle_overrides.txt`. Round-trip and golden rules are
@@ -563,14 +586,22 @@ fn parse_overrides(text: &str) -> Overrides {
         };
         if let Some(kind) = what.strip_prefix("golden") {
             let entry = o.golden.entry(rel.to_string()).or_default();
-            let (fwd, inv) = match kind {
-                "" => (true, true), // "golden"
-                "-fwd" => (true, false),
-                "-inv" => (false, true),
-                _ => (false, false),
-            };
-            entry.fwd_off |= fwd;
-            entry.inv_off |= inv;
+            match kind {
+                // A row list narrows the skip instead of disabling the
+                // direction, leaving the rest of the section pinned.
+                "-fwd-rows" => entry.fwd_rows |= parse_row_list(it.next().unwrap_or("")),
+                "-inv-rows" => entry.inv_rows |= parse_row_list(it.next().unwrap_or("")),
+                _ => {
+                    let (fwd, inv) = match kind {
+                        "" => (true, true), // "golden"
+                        "-fwd" => (true, false),
+                        "-inv" => (false, true),
+                        _ => (false, false),
+                    };
+                    entry.fwd_off |= fwd;
+                    entry.inv_off |= inv;
+                }
+            }
         } else if what == "off" {
             o.rtrip.insert(
                 rel.to_string(),
@@ -613,6 +644,14 @@ impl Overrides {
             .get(relpath)
             .is_some_and(|g| if forward { g.fwd_off } else { g.inv_off })
     }
+
+    /// Bitmap of rows the golden comparison should leave uncompared for this
+    /// fixture and direction.
+    fn golden_skip_rows(&self, relpath: &str, forward: bool) -> u64 {
+        self.golden
+            .get(relpath)
+            .map_or(0, |g| if forward { g.fwd_rows } else { g.inv_rows })
+    }
 }
 
 #[cfg(test)]
@@ -626,7 +665,9 @@ mod override_tests {
                     loose.head 2e-3 4e-2\n\
                     noisy.map golden-inv off\n\
                     both.map golden off\n\
-                    fwdonly.map golden-fwd off\n";
+                    fwdonly.map golden-fwd off\n\
+                    rows.map golden-inv-rows 2,3\n\
+                    rows.map golden-fwd-rows 0\n";
         let o = parse_overrides(text);
         assert_eq!(o.rtrip("rtoff.head"), None);
         assert_eq!(o.rtrip("loose.head"), Some((2e-3, 4e-2)));
@@ -636,6 +677,11 @@ mod override_tests {
         assert!(!o.golden_off("noisy.map", true) && o.golden_off("noisy.map", false));
         assert!(o.golden_off("both.map", true) && o.golden_off("both.map", false));
         assert!(o.golden_off("fwdonly.map", true) && !o.golden_off("fwdonly.map", false));
+        // A row list narrows the skip instead of disabling the direction.
+        assert!(!o.golden_off("rows.map", true) && !o.golden_off("rows.map", false));
+        assert_eq!(o.golden_skip_rows("rows.map", false), 0b1100);
+        assert_eq!(o.golden_skip_rows("rows.map", true), 0b1);
+        assert_eq!(o.golden_skip_rows("noisy.map", true), 0);
     }
 
     #[test]
@@ -677,23 +723,32 @@ mod override_tests {
             o.rtrip
         );
 
-        // neg_unitnormmap_inv_fwd_diffcentre's inverse output at the sampled
-        // all-zero input is BAD or a rounding-noise direction depending on
-        // whether the compiler fuses a multiply and an add, so no recorded value
-        // is stable. The forward section stays pinned.
+        // neg_unitnormmap_inv_fwd_diffcentre's inverse output at the all-zero
+        // sample is BAD or a rounding-noise direction depending on whether the
+        // compiler fuses a multiply and an add, so no recorded value is stable
+        // there. Rows 2 and 3 are both that sample (over the +/-1000 sampling
+        // range "zero" and "mid" coincide). Only those rows are skipped: the
+        // rest of the inverse section, and the whole forward section, stay
+        // pinned.
         let golden: Vec<&str> = o.golden.keys().map(String::as_str).collect();
         assert_eq!(
             golden,
             vec!["simplify/neg_unitnormmap_inv_fwd_diffcentre.map"],
             "unexpected golden override"
         );
-        assert!(o.golden_off("simplify/neg_unitnormmap_inv_fwd_diffcentre.map", false));
-        assert!(!o.golden_off("simplify/neg_unitnormmap_inv_fwd_diffcentre.map", true));
+        let unm = "simplify/neg_unitnormmap_inv_fwd_diffcentre.map";
+        assert!(!o.golden_off(unm, false) && !o.golden_off(unm, true));
+        assert_eq!(o.golden_skip_rows(unm, false), 0b1100);
+        assert_eq!(o.golden_skip_rows(unm, true), 0);
 
         // The parser still works, so a future entry would take effect.
-        let probe = parse_overrides("a.head off\nb.map golden-inv off\n");
+        let probe =
+            parse_overrides("a.head off\nb.map golden-inv off\nc.map golden-fwd-rows 0,5,63\n");
         assert_eq!(probe.rtrip("a.head"), None);
         assert!(probe.golden_off("b.map", false));
+        assert!(!probe.golden_off("c.map", true));
+        assert_eq!(probe.golden_skip_rows("c.map", true), 1 | 1 << 5 | 1 << 63);
+        assert_eq!(probe.golden_skip_rows("c.map", false), 0);
     }
 }
 
@@ -800,10 +855,14 @@ fn compare_golden(
     live: &[Vec<f64>],
     recorded: &[Vec<f64>],
     angular: &[bool],
+    skip_rows: u64,
 ) -> Vec<AxisMiss> {
     let mut misses = Vec::new();
     let npoint = recorded.first().map_or(0, Vec::len);
     for row in 0..npoint {
+        if row < 64 && (skip_rows >> row) & 1 == 1 {
+            continue;
+        }
         for (axis, rec_col) in recorded.iter().enumerate() {
             let (got, reference) = (live[axis][row], rec_col[row]);
             if !axis_match(got, reference, GOLDEN_RTOL, GOLDEN_ATOL, angular[axis]) {
@@ -1045,7 +1104,7 @@ mod check_tests {
     fn golden_flags_out_of_tolerance_axis() {
         let live = vec![vec![1.0, 2.0]];
         let recorded = vec![vec![1.0, 2.5]];
-        let misses = compare_golden(CheckKind::GoldenFwd, &live, &recorded, &[false]);
+        let misses = compare_golden(CheckKind::GoldenFwd, &live, &recorded, &[false], 0);
         assert_eq!(misses.len(), 1);
         assert_eq!((misses[0].row, misses[0].axis), (1, 0));
     }
@@ -1163,7 +1222,10 @@ fn run_oracle(oracle_text: &str, overrides: &Overrides) -> Vec<SectionReport> {
         let mut misses: Vec<AxisMiss> = Vec::new();
         let mut skipped_by_override = false;
 
-        // Golden check (fwd or inv), unless disabled by an override.
+        // Golden check (fwd or inv), unless disabled by an override. A row
+        // list narrows the skip to the named rows rather than the direction,
+        // so the section still counts as compared.
+        let skip_rows = overrides.golden_skip_rows(&s.relpath, s.forward);
         if overrides.golden_off(&s.relpath, s.forward) {
             skipped_by_override = true;
         } else {
@@ -1173,7 +1235,7 @@ fn run_oracle(oracle_text: &str, overrides: &Overrides) -> Vec<SectionReport> {
                 CheckKind::GoldenInv
             };
             let reference = substituted_reference(&s.relpath, s.forward, &s.outputs);
-            misses.extend(compare_golden(kind, &live, &reference, &angular));
+            misses.extend(compare_golden(kind, &live, &reference, &angular, skip_rows));
         }
 
         // Round-trip: an inverse section of a GRID fixture paired with the
@@ -1256,7 +1318,7 @@ mod driver_tests {
             &std::fs::read_to_string(format!("{dir}/transform_oracle_overrides.txt")).unwrap(),
         );
         let reports = run_oracle(&oracle, &ov);
-        assert_eq!(reports.len(), 351, "framesets.oracle has 351 sections");
+        assert_eq!(reports.len(), 353, "framesets.oracle has 353 sections");
     }
 }
 
@@ -1660,11 +1722,11 @@ const SIMPLIFY_ORACLE_EXCLUDED: &[(&str, bool, &str)] = &[];
 /// Number of simplify-corpus oracle section-directions currently gated. The
 /// gate asserts it examined at least this many, so a rename or deletion of a
 /// fixture cannot make the gate pass vacuously.
-/// Of the 2229 sections, 277 are `.head` and 136 are SlaMap, leaving 1816
+/// Of the 2261 sections, 277 are `.head` and 136 are SlaMap, leaving 1848
 /// here, of which 18 are the deferred-class load-fails licensed below.
-// 1816 sections are simplify-class; the gate skips the 20 DEFERRED_LOAD fixtures
+// 1848 sections are simplify-class; the gate skips the 20 DEFERRED_LOAD fixtures
 // in both directions, so it examines 40 fewer.
-const SIMPLIFY_SECTION_FLOOR: usize = 1776;
+const SIMPLIFY_SECTION_FLOOR: usize = 1808;
 
 /// Is this oracle section part of the simplify corpus (a `simplify/`
 /// relpath or a top-level `.ast`/`.map`/`.simp` fixture)? This is everything
@@ -1758,7 +1820,7 @@ fn deferred_fixtures_still_fail_to_load() {
 }
 
 /// Regression gate over every oracle section the `.head` and SlaMap gates do
-/// not cover — the simplify corpus, which is the bulk of the 2229 sections.
+/// not cover — the simplify corpus, which is the bulk of the 2261 sections.
 ///
 /// Without this the majority of the corpus was read only by
 /// `transform_oracle_report`, which is `#[ignore]` and does not assert, so a
@@ -1869,7 +1931,7 @@ fn every_oracle_section_is_gated() {
         ungated.is_empty(),
         "oracle sections covered by no gate:\n{ungated:?}",
     );
-    assert_eq!(total, 2229, "gates must span every section");
+    assert_eq!(total, 2261, "gates must span every section");
 }
 
 /// The set of rows where C's own recorded inverse does not recover the pixel is
@@ -1991,7 +2053,7 @@ fn transform_oracle_report() {
         let text = std::fs::read_to_string(format!("{dir}/{name}")).expect("oracle present");
         reports.extend(run_oracle(&text, &ov));
     }
-    assert_eq!(reports.len(), 2229, "harness must cover every section");
+    assert_eq!(reports.len(), 2261, "harness must cover every section");
     let out = concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../../target/transform_oracle_report.json"

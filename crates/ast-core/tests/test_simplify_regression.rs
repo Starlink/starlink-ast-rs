@@ -951,8 +951,8 @@ fn simplify_regression() {
         DEFERRED.len()
     );
     assert!(
-        passed >= 472,
-        "only {passed} cases passed; the corpus held 472 when this floor was \
+        passed >= 480,
+        "only {passed} cases passed; the corpus held 480 when this floor was \
          set and fixtures are only ever added. A drop means cases stopped being \
          run, which no failure count would show."
     );
