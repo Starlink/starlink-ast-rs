@@ -1277,27 +1277,161 @@ fn polymap_does_not_cancel_against_a_different_inverse() {
     );
 }
 
+/// `equal` compares the inverse transformation's own coefficients, and every
+/// array by the axis count it was allocated with.
+///
+/// Ancestor: `reference/starlink-ast/ast_tester/testpolymap.c`, checks
+/// 8019-8024.
+///
+/// The forward transformation is `y = x^2` throughout, because a linear one is
+/// rebuilt as a MatrixMap and a ShiftMap by the branch above the neighbour half
+/// of `MapMerge`, which does not consult the explicit inverse at all; a linear
+/// pair cancels whatever `equal` says.
 #[test]
-fn polymap_cancels_when_only_inverse_coefficient_values_differ() {
+fn polymap_equal_compares_the_inverse_coefficients() {
     use ast_core::mappings::{CmpMap, Composition, UnitMap};
 
-    // Identical forward transformations; inverse transformations with the same
-    // coefficient counts and maximum powers but different coefficient values.
-    // PolyMap's Equal compares the inverse coefficient counts and maximum powers
-    // and then compares the forward coefficients a second time in place of the
-    // inverse ones (polymap.c:778-804), so the values never enter the
-    // comparison and the pair cancels. See docs/issues/c-library-quirks.md.
-    let fwd = vec![term(2.0, &[2], 1)];
-    let a = PolyMap::new(1, 1, &fwd, Some(&[term(0.5, &[1], 1)])).unwrap();
-    let mut b = PolyMap::new(1, 1, &fwd, Some(&[term(0.7, &[1], 1)])).unwrap();
-    b.invert();
+    let fwd = vec![term(1.0, &[2], 1)];
+    let half = [term(0.5, &[1], 1)];
+    let seven = [term(0.7, &[1], 1)];
 
-    let cm = CmpMap::new(Box::new(a), Box::new(b), Composition::Series).unwrap();
+    // Same forward transformation and same inverse: equal, both ways round.
+    let a = PolyMap::new(1, 1, &fwd, Some(&half)).unwrap();
+    let same = PolyMap::new(1, 1, &fwd, Some(&half)).unwrap();
+    assert!(a.equal(&same), "identical PolyMaps compare equal");
+    assert!(same.equal(&a), "equality is symmetric");
+
+    // Same forward transformation, inverses of the same shape but different
+    // coefficient values: not equal.
+    let differ = PolyMap::new(1, 1, &fwd, Some(&seven)).unwrap();
+    assert!(
+        !a.equal(&differ),
+        "the inverse coefficient values differ, so the two are not equal"
+    );
+    assert!(!differ.equal(&a), "in either direction");
+
+    // The consequence in MapMerge: a PolyMap and a neighbour used in the
+    // opposite direction are replaced by a UnitMap when the two compare equal,
+    // so a pair whose inverses differ must not cancel.
+    let mut differ_inv = differ;
+    differ_inv.invert();
+    let cm = CmpMap::new(
+        Box::new(PolyMap::new(1, 1, &fwd, Some(&half)).unwrap()),
+        Box::new(differ_inv),
+        Composition::Series,
+    )
+    .unwrap();
+    let s = <dyn Mapping>::simplify(&cm).unwrap();
+    assert!(
+        !s.as_any().is::<UnitMap>(),
+        "the inverse transformations are different polynomials, so the pair \
+         stands"
+    );
+
+    // The same pair with equal inverses still cancels. This asserts what `equal`
+    // permits, not that the composition is preserved: y = x^2 and x = 0.5y are
+    // not mutually inverse, so cancelling them really does change the transform.
+    // That is a property of the cancellation branch assuming the two directions
+    // of a PolyMap are a genuine inverse pair, not of the comparison tested
+    // here; `polymap_fitted_inverse_cancels_soundly` is the control that holds
+    // the transform.
+    let mut same_inv = PolyMap::new(1, 1, &fwd, Some(&half)).unwrap();
+    same_inv.invert();
+    let cm = CmpMap::new(
+        Box::new(PolyMap::new(1, 1, &fwd, Some(&half)).unwrap()),
+        Box::new(same_inv),
+        Composition::Series,
+    )
+    .unwrap();
     let s = <dyn Mapping>::simplify(&cm).unwrap();
     assert!(
         s.as_any().is::<UnitMap>(),
-        "the two PolyMaps compare equal, so the opposed pair cancels"
+        "identical PolyMaps in opposite directions cancel"
     );
+}
+
+/// With a fitted inverse, the cancellation is sound: the composition it
+/// collapses is close to the identity that replaces it.
+///
+/// Ancestor: `reference/starlink-ast/ast_tester/testpolymap.c`, checks
+/// 8025-8028.
+///
+/// A non-linear PolyMap cannot have an exact polynomial inverse — if `f` and `g`
+/// are both polynomials with `g(f(x)) = x` their degrees multiply to one, so
+/// both are linear — and the forward has to stay non-linear to reach `equal` at
+/// all. A fitted inverse is therefore the best a real caller has, and is what
+/// makes this the meaningful positive control.
+#[test]
+fn polymap_fitted_inverse_cancels_soundly() {
+    use ast_core::mappings::{CmpMap, Composition, UnitMap};
+
+    let raw = PolyMap::new(1, 1, &[term(1.0, &[2], 1)], None).unwrap();
+    // Fit the inverse over x in [1, 1.1], i.e. y in [1, 1.21].
+    let pf = raw
+        .poly_tran(false, 1.0e-9, 1.0e-6, 6, &[1.0], &[1.21])
+        .unwrap()
+        .expect("an inverse fit over [1, 1.21] converges");
+
+    let xs: Vec<f64> = (0..5).map(|i| 1.0 + f64::from(i) * 0.025).collect();
+    let mut pts = PointSet::zeros(5, 1);
+    for (i, &x) in xs.iter().enumerate() {
+        pts.point_mut(i)[0] = x;
+    }
+
+    // The fitted inverse really does invert the forward over the fitted range.
+    let fwd_out = pf.transform(&pts, true).unwrap();
+    let back = pf.transform(&fwd_out, false).unwrap();
+    for (i, &x) in xs.iter().enumerate() {
+        let got = back.point(i)[0];
+        assert!(
+            (got - x).abs() <= 1.0e-6,
+            "the fit does not invert the forward at x = {x}: got {got}"
+        );
+    }
+
+    // The pair cancels, and the composition agrees with the UnitMap it becomes.
+    let mut pfi = pf.clone();
+    pfi.invert();
+    let series = CmpMap::new(Box::new(pf), Box::new(pfi), Composition::Series).unwrap();
+    let simp = <dyn Mapping>::simplify(&series).unwrap();
+    assert!(
+        simp.as_any().is::<UnitMap>(),
+        "a PolyMap and its own inverse cancel"
+    );
+
+    let before = series.transform(&pts, true).unwrap();
+    let after = simp.transform(&pts, true).unwrap();
+    for i in 0..5 {
+        let diff = (after.point(i)[0] - before.point(i)[0]).abs();
+        assert!(
+            diff <= 1.0e-6,
+            "the cancellation changed the transform by {diff}"
+        );
+    }
+}
+
+/// A PolyMap with more outputs than inputs compares equal to its own copy.
+///
+/// Ancestor: `reference/starlink-ast/ast_tester/testpolymap.c`, checks
+/// 8023-8024.
+///
+/// The forward arrays have one element per output except `mxpow_f`, which holds
+/// the maximum power of each input; the inverse arrays are the other way round.
+/// C indexed `mxpow_f` and `ncoeff_i` by the output count, reading past the end
+/// of both, so for `nin = 1` and `nout >= 5` a PolyMap and its own copy could
+/// compare unequal on whatever the heap happened to hold. The port compares term
+/// lists rather than the derived arrays, so it has no equivalent of the
+/// out-of-range read; this covers the shape upstream's sanitizer run caught.
+#[test]
+fn polymap_with_more_outputs_than_inputs_equals_its_copy() {
+    let nwide = 8;
+    let fwd: Vec<PolyTerm> = (1..=nwide).map(|io| term(io as f64, &[1], io)).collect();
+    let inv = [term(1.0, &vec![1; nwide], 1)];
+
+    let wide = PolyMap::new(1, nwide, &fwd, Some(&inv)).unwrap();
+    let copy = wide.clone();
+    assert!(wide.equal(&copy), "a PolyMap equals its own copy");
+    assert!(copy.equal(&wide), "in either direction");
 }
 
 #[test]

@@ -142,15 +142,16 @@ as constructed.
 which is why rows 22 and 25 have nothing to restore. The comparison itself is
 `PolyMap::equal`, C's `Equal` slot.
 
-That slot has a copy-paste bug: the block that should compare the inverse
-coefficient values and power patterns compares the forward ones a second time
-(`polymap.c:778-804 (fn Equal)`), so two PolyMaps agreeing on their forward
-transformations and on the *shape* of their inverses cancel however far apart
-their inverse coefficients are. The oracle confirms the cancellation, so
-`PolyMap::equal` reproduces it through `inverse_shape`
-(`polymap.rs:90-101 (fn inverse_shape)`), which reduces a term list to C's
-`ncoeff_i` and `mxpow_i`. `docs/issues/c-library-quirks.md` records it for
-upstream.
+That slot had a copy-paste bug until AST 9.5.0: the block that should compare the
+inverse coefficient values and power patterns compared the forward ones a second
+time, so two PolyMaps agreeing on their forward transformations and on the *shape*
+of their inverses cancelled however far apart their inverse coefficients were.
+`PolyMap::equal` mirrored it while it stood. Upstream `ec86cfaf` compares the
+inverse transformation's own coefficients and powers
+(`polymap.c:772-822 (fn Equal)`), and the port now compares the inverse terms
+exactly as it compares the forward ones
+(`polymap.rs:1612-1630 (fn equal)`). `docs/issues/c-library-quirks.md` carries
+the history.
 
 ## Row 24 — C leaves two UnitMaps, the port leaves one entry
 

@@ -1718,12 +1718,12 @@ divergences, one of them in the shared driver rather than in PolyMap.
   the comparison.
 
 Closing the third one moved `PolyMap`'s `Equal` onto C's comparison exactly,
-which means adopting a C bug: the block that should compare the inverse
-coefficients and powers compares the *forward* ones a second time
-(`polymap.c:778-804`), so two PolyMaps whose inverse coefficient values differ
-compare equal and cancel. C's own oracle confirms the cancellation.
-`polymap_cancels_when_only_inverse_coefficient_values_differ` pins it and
-`docs/issues/c-library-quirks.md` records it for upstream.
+which meant adopting a C bug: the block that should compare the inverse
+coefficients and powers compared the *forward* ones a second time, so two
+PolyMaps whose inverse coefficient values differ compared equal and cancelled.
+Upstream `ec86cfaf` fixed it at AST 9.5.0 and the mirror was inverted at that
+sync; `polymap_equal_compares_the_inverse_coefficients` is now the gate, and
+`docs/issues/c-library-quirks.md` carries the history.
 
 ---
 
@@ -1744,9 +1744,10 @@ applies to the nominated Mapping, as C does, and calls `equal`.
 
 `chebymap_does_not_cancel_when_the_inverse_shapes_differ` is the control, with a
 quadratic forward transformation so C's linear half does not pre-empt the
-comparison. Routing through `equal` also inherits the `Equal` bug §10.29 records:
-`chebymap_cancels_when_only_inverse_coefficient_values_differ` pins that the
-oracle still cancels a pair whose inverse coefficient *values* differ.
+comparison. Routing through `equal` also inherits whatever the PolyMap comparison does with
+the inverse coefficient *values*, which upstream `ec86cfaf` fixed at AST 9.5.0;
+`chebymap_does_not_cancel_when_only_inverse_coefficient_values_differ` is the
+gate.
 
 ---
 

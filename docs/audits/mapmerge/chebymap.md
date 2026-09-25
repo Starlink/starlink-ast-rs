@@ -78,19 +78,19 @@ once both flags read the same, is each transformation as constructed.
 is why rows 22 and 25 have nothing to restore. Comparing the bounding boxes and
 the forward terms in the merge instead reaches a *weaker* predicate: the inherited
 half also compares the inverse coefficient counts and maximum powers
-(`polymap.c:758-776 (fn Equal)`), so a pair whose inverse transformations have
+(`polymap.c:776-792 (fn Equal)`), so a pair whose inverse transformations have
 different shapes cancels under the hand-rolled test and stands in C. The oracle
 leaves such a pair as a CmpMap of two ChebyMaps; PLAN.md §10.30 records the fix
 and `chebymap_does_not_cancel_when_the_inverse_shapes_differ` is the control.
 
-Going through `equal` also adopts a C bug. The block that should compare the
-inverse coefficient values and power patterns compares the forward ones a second
-time (`polymap.c:778-804 (fn Equal)`), so two ChebyMaps agreeing on their forward
-transformations, their bounding boxes and the *shape* of their inverses cancel
-however far apart their inverse coefficients are. The oracle confirms the
-cancellation, so `PolyMap::equal` reproduces it and ChebyMap inherits it through
+Going through `equal` also inherits whatever the PolyMap comparison does with the
+inverse coefficient *values*. Until AST 9.5.0 that block compared the forward
+ones a second time, so a pair agreeing on their forward transformations, their
+bounding boxes and the *shape* of their inverses cancelled however far apart their
+inverse coefficients were; upstream `ec86cfaf` compares the inverse
+transformation's own coefficients and powers, and ChebyMap picks that up through
 `self.poly.equal` (`chebymap.rs:569 (fn equal)`).
-`docs/issues/c-library-quirks.md` records it for upstream.
+`docs/issues/c-library-quirks.md` carries the history.
 
 ## Rows 9 to 11 — C's linear replacement is unsound for a Chebyshev basis
 

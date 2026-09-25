@@ -1037,15 +1037,15 @@ fn chebymap_does_not_cancel_when_the_inverse_shapes_differ() {
 }
 
 #[test]
-fn chebymap_cancels_when_only_inverse_coefficient_values_differ() {
+fn chebymap_does_not_cancel_when_only_inverse_coefficient_values_differ() {
     use ast_core::mappings::{CmpMap, Composition};
 
     // Identical forward transformations and bounding boxes; inverse
     // transformations with the same coefficient counts and maximum powers but
-    // different coefficient values. The comparison ChebyMap inherits from
-    // PolyMap compares the forward coefficients a second time in place of the
-    // inverse ones (polymap.c:778-804), so the values never enter it and the
-    // pair cancels. See docs/issues/c-library-quirks.md.
+    // different coefficient values. ChebyMap's comparison calls the PolyMap one
+    // before it compares the two bounding boxes (chebymap.c:462-507), and that
+    // compares the inverse transformation's own coefficients
+    // (polymap.c:772-822), so the pair stands.
     let fwd = vec![PolyTerm {
         coeff: 2.0,
         powers: vec![2],
@@ -1088,7 +1088,7 @@ fn chebymap_cancels_when_only_inverse_coefficient_values_differ() {
     let cm = CmpMap::new(Box::new(a), Box::new(b), Composition::Series).unwrap();
     let s = <dyn Mapping>::simplify(&cm).unwrap();
     assert!(
-        s.as_any().is::<UnitMap>(),
-        "the two ChebyMaps compare equal, so the opposed pair cancels"
+        !s.as_any().is::<UnitMap>(),
+        "the inverse coefficient values differ, so the opposed pair stands"
     );
 }

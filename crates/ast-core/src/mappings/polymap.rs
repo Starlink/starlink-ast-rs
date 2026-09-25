@@ -82,25 +82,6 @@ fn compute_max_powers(terms: &[PolyTerm], nin: usize) -> Vec<usize> {
     max_pows
 }
 
-/// The per-axis coefficient counts and per-axis maximum powers of an inverse
-/// transformation: C's `ncoeff_i` and `mxpow_i`, the only inverse properties
-/// `PolyMap`'s `Equal` compares (`polymap.c:758-776`). An inverse term's
-/// `out_axis` indexes the forward inputs and its powers index the forward
-/// outputs, so the counts have length `nin` and the maxima length `nout`.
-fn inverse_shape(terms: &[PolyTerm], nin: usize, nout: usize) -> (Vec<usize>, Vec<usize>) {
-    let mut ncoeff = vec![0usize; nin];
-    let mut mxpow = vec![0usize; nout];
-    for term in terms {
-        if let Some(count) = ncoeff.get_mut(term.out_axis - 1) {
-            *count += 1;
-        }
-        for (max, &power) in mxpow.iter_mut().zip(&term.powers) {
-            *max = (*max).max(power);
-        }
-    }
-    (ncoeff, mxpow)
-}
-
 /// Group term indices by their output axis (0-based output index).
 fn compute_terms_by_output(terms: &[PolyTerm], nout: usize) -> Vec<Vec<usize>> {
     let mut by_output = vec![Vec::new(); nout];
@@ -1628,15 +1609,19 @@ impl Mapping for PolyMap {
                 return false;
             }
         }
-        // Inverse transformation: C compares the per-axis coefficient counts and
-        // the per-axis maximum powers, and then compares the *forward*
-        // coefficients and powers a second time in place of the inverse ones
-        // (`polymap.c:758-804`), so the inverse coefficient values and power
-        // patterns never enter the comparison. Recorded in
-        // docs/issues/c-library-quirks.md.
+        // Inverse transformation: C compares its own per-axis coefficient
+        // counts, per-axis maximum powers, coefficient values and power
+        // patterns (`polymap.c:772-822`), each array indexed by the axis count
+        // it was allocated with. A term list carries all four, so the inverse
+        // terms compare exactly as the forward ones do.
         match (&self.inverse, &other.inverse) {
             (Some(a), Some(b)) => {
-                inverse_shape(a, self.nin, self.nout) == inverse_shape(b, other.nin, other.nout)
+                if a.len() != b.len() {
+                    return false;
+                }
+                a.iter().zip(b).all(|(x, y)| {
+                    ast_equal(x.coeff, y.coeff) && x.powers == y.powers && x.out_axis == y.out_axis
+                })
             }
             (None, None) => true,
             _ => false,

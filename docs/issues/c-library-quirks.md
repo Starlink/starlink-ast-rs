@@ -2934,55 +2934,75 @@ To be raised upstream.
 
 **Status:** Confirmed against the C source at pin `3e60abaa`, and against the
 built oracle.
-**Mirrored in Rust**, with a flag to revisit — see below.
+**Fixed upstream in `ec86cfaf`; the Rust mirror was inverted at the 9.5.0 sync.**
 
 `polymap.c::Equal` compares the two PolyMaps' forward transformations and then
-their inverse ones (`polymap.c:708-804`).
+their inverse ones (`polymap.c:708-804` at the old pin).
 The forward half compares four properties: the per-axis coefficient counts
 `ncoeff_f`, the per-axis maximum powers `mxpow_f`, the coefficient values
 `coeff_f`, and the power patterns `power_f`.
-The inverse half compares `ncoeff_i` and `mxpow_i` (`polymap.c:758-776`) and then
-compares `coeff_f` and `power_f` a second time (`polymap.c:778-804`) where it
-means `coeff_i` and `power_i`.
+The inverse half compared `ncoeff_i` and `mxpow_i` and then compared `coeff_f`
+and `power_f` a second time where it meant `coeff_i` and `power_i`.
 
-The two repeated blocks are byte-for-byte copies of the forward ones, indices
-included, so they can only ever agree with the comparison already made.
-The inverse coefficient *values* and power patterns therefore never enter the
+The two repeated blocks were byte-for-byte copies of the forward ones, indices
+included, so they could only ever agree with the comparison already made.
+The inverse coefficient *values* and power patterns therefore never entered the
 result: two PolyMaps agreeing on their forward transformations and on the shape
 of their inverses — how many inverse coefficients each axis has, and the largest
-power each input is raised to — compare equal however far apart their inverse
-coefficients are.
+power each input is raised to — compared equal however far apart their inverse
+coefficients were.
+
+Two arrays were also indexed by the wrong axis count.
+The forward arrays have one element per output, except `mxpow_f`, which holds the
+maximum power of each *input*; the inverse arrays are the other way round, with
+one element per input, except `mxpow_i`.
+The `mxpow_f` and `ncoeff_i` loops both ran to `nout`, so for a PolyMap with more
+outputs than inputs they read past the end of both allocations, and for
+`Nin = 1` with `Nout >= 5` a PolyMap and its own `astCopy` could compare unequal
+on whatever the heap held.
 
 The consequence reaches `MapMerge`. Its neighbour half forces both PolyMaps'
 `Invert` flags to the direction the merge list applies to the nominated one and
-then calls `astEqual` (`polymap.c:3888-3920`); a pair that compares equal in
+then calls `astEqual` (`polymap.c:3955-3967`); a pair that compares equal in
 opposite directions is replaced by a UnitMap.
-So a PolyMap and its neighbour cancel to a UnitMap even when their inverse
-transformations are different polynomials, and the composition the list held is
-not the one that comes out.
+So a PolyMap and its neighbour cancelled to a UnitMap even when their inverse
+transformations were different polynomials, and the composition the list held was
+not the one that came out.
 
-Confirmed with the oracle: a forward `y = 2x` paired with its inverse-direction
-neighbour, one carrying the inverse `x = 0.5 y` and the other `x = 0.7 y`,
-simplifies to `Begin UnitMap`.
+Confirmed with the oracle before the fix: a forward `y = 2x` paired with its
+inverse-direction neighbour, one carrying the inverse `x = 0.5 y` and the other
+`x = 0.7 y`, simplified to `Begin UnitMap`.
 
-**Rust behaviour (mirrored):** `PolyMap::equal`
-(`crates/ast-core/src/mappings/polymap.rs:1624-1636`) compares the forward terms
-in full and the inverse terms only through `inverse_shape`
-(`crates/ast-core/src/mappings/polymap.rs:90-101`), which reduces a term list to
-C's `ncoeff_i` and `mxpow_i`.
-Comparing the inverse coefficients as well would make the port refuse a
-cancellation the oracle performs, so the mirror is deliberate;
-`polymap_cancels_when_only_inverse_coefficient_values_differ` in
-`crates/ast-core/tests/test_polymap.rs` pins it.
-ChebyMap inherits the comparison — `chebymap.c::Equal` calls the PolyMap one
-before it compares the two bounding boxes (`chebymap.c:462-507`) — so the same
-blindness reaches a ChebyMap pair, pinned by
-`chebymap_cancels_when_only_inverse_coefficient_values_differ` in
-`crates/ast-core/tests/test_chebymap.rs`.
-Revisit when this is fixed upstream, at which point the inverse terms compare
-the same way the forward ones do.
+**Rust behaviour:** inverted at the 9.5.0 sync.
+`PolyMap::equal` (`crates/ast-core/src/mappings/polymap.rs`) compares the inverse
+terms exactly as it compares the forward ones — coefficient values, power
+patterns and output axes — which covers all four of C's inverse arrays at once.
+The `inverse_shape` helper that reduced a term list to `ncoeff_i` and `mxpow_i`
+is gone.
+Comparing term lists rather than the derived per-axis arrays means the port never
+had an equivalent of C's out-of-range read; the shape that exposed it upstream is
+covered by `polymap_with_more_outputs_than_inputs_equals_its_copy`.
+The gates are `polymap_equal_compares_the_inverse_coefficients` and
+`polymap_fitted_inverse_cancels_soundly` in
+`crates/ast-core/tests/test_polymap.rs`, and
+`chebymap_does_not_cancel_when_only_inverse_coefficient_values_differ` in
+`crates/ast-core/tests/test_chebymap.rs` — ChebyMap inherits the comparison,
+since `chebymap.c::Equal` calls the PolyMap one before it compares the two
+bounding boxes (`chebymap.c:462-507`).
+The negative fixture `neg_poly_different_inverse_coeffs` now holds.
 
-To be raised upstream.
+A cancellation of a non-linear PolyMap against an explicit hand-written inverse
+is still not transform-preserving, whatever `equal` says: no two polynomials can
+be exactly mutually inverse unless both are linear, and a linear forward
+transformation never reaches this comparison because `MapMerge` rebuilds it as a
+MatrixMap and a ShiftMap first.
+That is a property of the cancellation branch assuming the two directions of a
+PolyMap are a genuine inverse pair, and upstream `fded6abb` says so in the C test
+rather than changing the branch.
+`polymap_fitted_inverse_cancels_soundly` is the control that holds the transform,
+using an inverse fitted with `poly_tran`.
+
+Fixed upstream in `ec86cfaf`.
 
 ## `MergeInterval`'s PointList branch measures the uncertainty instead of the Interval
 
