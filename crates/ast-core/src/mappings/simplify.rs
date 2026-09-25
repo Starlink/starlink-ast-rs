@@ -2944,17 +2944,17 @@ fn pcd_swap_pair(
     let [xcen, ycen] = pcd.pcdcen();
 
     let (new_pcd, new_other) = if let Some(zm) = other.0.as_any().downcast_ref::<ZoomMap>() {
-        // C reads the `Zoom` attribute itself, which does not depend on the
-        // ZoomMap's direction, and gives the ZoomMap it creates a cleared
-        // Invert flag (pcdmap.c:2369, 2383, 2414). An inverted neighbour
-        // therefore comes out of the swap scaling by its stored factor rather
-        // than by the reciprocal; see the ZoomMap direction entry in
-        // docs/issues/c-library-quirks.md.
-        let zoom = zm.zoom();
+        // `Zoom` is the stored factor whatever the Invert flag says — it is
+        // ZoomMap's Transform that takes the reciprocal when the Mapping is
+        // applied inverted — so the factor the merge list actually applies has
+        // to be formed explicitly (pcdmap.c:2374-2380). The ZoomMap the swap
+        // creates carries a cleared Invert flag (pcdmap.c:2425), so it holds
+        // that factor directly.
+        let zoom = if other.1 { 1.0 / zm.zoom() } else { zm.zoom() };
 
         // The PcdMap applied first sees the un-zoomed coordinates, so after the
         // swap its centre is zoomed and its coefficient divided by the square
-        // of the zoom; applied second, the reverse (pcdmap.c:2388-2398).
+        // of the zoom; applied second, the reverse (pcdmap.c:2399-2409).
         let (cen, disc) = if ipc == 0 {
             ([xcen * zoom, ycen * zoom], disco / (zoom * zoom))
         } else {

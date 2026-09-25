@@ -1630,20 +1630,22 @@ found by re-anchoring `docs/audits/mapmerge/pcdmap.md` against the code:
   class differs from the swapped class. `MatrixMap` and `WinMap` both have this
   branch (`matrix_merge.rs:912-947`, `winmap_merge.rs:766-807`); PcdMap did not.
 
-`pcd_swap_strategy` (`simplify.rs:2693-2751`) is now C's body in C's order, with
-`pcd_steps_to_merge_target` (`:2762-2789`) as C's class-only walk,
-`pcd_swap_pair` (`:2863-2919`) as `PcdZoom` and `PcdPerm` on a copied pair, and
-`pcd_speculative_swap` (`:2795-2832`) as C's two-attempt speculation. The
+`pcd_swap_strategy` (`simplify.rs:2761-2819`) is now C's body in C's order, with
+`pcd_steps_to_merge_target` (`:2830-2857`) as C's class-only walk,
+`pcd_swap_pair` (`:2931-2987`) as `PcdZoom` and `PcdPerm` on a copied pair, and
+`pcd_speculative_swap` (`:2863-2900`) as C's two-attempt speculation. The
 `pcd_swap_at` / `do_pcd_swap_first` / `do_pcd_swap_second` trio it replaces is
 retired.
 
-One arithmetic divergence surfaced with it and is mirrored rather than fixed:
-C reads the neighbour ZoomMap's stored `Zoom` and clears the replacement's Invert
-flag, so an inverted neighbour comes out of the swap scaling by its factor rather
-than by the reciprocal. That is a C defect, recorded in
-`docs/issues/c-library-quirks.md` under "`PcdZoom` discards an inverted
-neighbour ZoomMap's direction" with the flag to revisit once it is fixed
-upstream.
+One arithmetic divergence surfaced with it and was mirrored at the time:
+C read the neighbour ZoomMap's stored `Zoom` and cleared the replacement's Invert
+flag, so an inverted neighbour came out of the swap scaling by its factor rather
+than by the reciprocal. Upstream fixed that in `3a4a2a7b` at AST 9.5.0, and the
+mirror was inverted with the sync — `pcd_swap_pair` now takes the reciprocal when
+the neighbour's list flag is set, gated by
+`pcdmap_swap_past_an_inverted_zoommap_preserves_the_transformation` in
+`crates/ast-core/tests/test_pcdmap.rs` and by the `pcd_inverted_zoom_swap`
+simplify fixture. `docs/issues/c-library-quirks.md` carries the history.
 
 ---
 

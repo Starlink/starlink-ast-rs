@@ -4,7 +4,7 @@
 
 use ast_core::constants::BAD_VALUE;
 use ast_core::coords::PointSet;
-use ast_core::mappings::{Mapping, PcdMap, UnitMap};
+use ast_core::mappings::{CmpMap, Composition, DynMapping, Mapping, PcdMap, UnitMap, ZoomMap};
 use ast_core::{AnyObject, from_native_string, to_native_string};
 
 // ------------------------------------------------------------------ //
@@ -326,4 +326,66 @@ fn pcdmap_multiple_points() {
     // (10, 10): r^2=200, f=1.2, output=(12, 12)
     assert!((out.point(3)[0] - 12.0).abs() < 1e-12);
     assert!((out.point(3)[1] - 12.0).abs() < 1e-12);
+}
+
+// ------------------------------------------------------------------ //
+// Swapping past a ZoomMap                                              //
+// ------------------------------------------------------------------ //
+
+/// Swapping a PcdMap past a neighbouring ZoomMap preserves the composition when
+/// the ZoomMap is used in the inverse direction.
+///
+/// Ancestor: `reference/starlink-ast/ast_tester/testmapping.c`,
+/// `testpcdzoominverted`.
+///
+/// The swap sets both Mappings' `Invert` flags to the values the merge list
+/// holds before reading their attributes. That is effective for the PcdMap,
+/// whose `Disco` and `PcdCen` accessors consult `Invert`, but not for the
+/// ZoomMap: `Zoom` is the stored factor whatever `Invert` says, and it is
+/// `Transform` that takes the reciprocal. So the factor the list applies has to
+/// be formed explicitly, or the swap emits a forward ZoomMap of the original
+/// factor and a PcdMap derived from it.
+///
+/// The trailing inverted PcdMap is what gives the leading one a merge target to
+/// swap towards; without it the swap is not attempted.
+#[test]
+fn pcdmap_swap_past_an_inverted_zoommap_preserves_the_transformation() {
+    let centre = [0.3, -0.2];
+    let points = PointSet::from_rows([[0.1, 0.2], [-0.25, 0.05]]);
+
+    for zoom in [2.0, 0.5] {
+        for inverted in [false, true] {
+            let pm1 = PcdMap::new(0.01, centre);
+            let mut pm2 = PcdMap::new(0.01, centre);
+            pm2.invert();
+            let mut zm = ZoomMap::new(2, zoom).unwrap();
+            if inverted {
+                zm.invert();
+            }
+
+            let inner: DynMapping =
+                Box::new(CmpMap::new(Box::new(zm), Box::new(pm2), Composition::Series).unwrap());
+            let outer: DynMapping =
+                Box::new(CmpMap::new(Box::new(pm1), inner, Composition::Series).unwrap());
+            let simp = outer.simplify().unwrap();
+
+            let before = outer.transform(&points, true).unwrap();
+            let after = simp.transform(&points, true).unwrap();
+
+            let direction = if inverted { "inverted" } else { "forward" };
+            for i in 0..points.npoint() {
+                let (bx, by) = (before.point(i)[0], before.point(i)[1]);
+                let (ax, ay) = (after.point(i)[0], after.point(i)[1]);
+                let mag = bx.abs() + by.abs();
+                let dev = (ax - bx).abs() + (ay - by).abs();
+                assert!(
+                    mag == 0.0 || dev <= 1.0e-9 * mag,
+                    "zoom {zoom} {direction}: ({}, {}) gave ({bx:.12}, {by:.12}) before \
+                     simplification and ({ax:.12}, {ay:.12}) after",
+                    points.point(i)[0],
+                    points.point(i)[1],
+                );
+            }
+        }
+    }
 }

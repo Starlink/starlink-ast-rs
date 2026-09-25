@@ -2885,15 +2885,15 @@ one.
 
 To be raised upstream.
 
-## `PcdZoom` discards an inverted neighbour ZoomMap's direction
+## `PcdZoom` discarded an inverted neighbour ZoomMap's direction
 
 **Status:** Confirmed against the C source at pin `3e60abaa`.
-**Mirrored in Rust**, with a flag to revisit — see below.
+**Fixed upstream in `3a4a2a7b`; the Rust mirror was inverted at the 9.5.0 sync.**
 
 `pcdmap.c::MapMerge` can swap a PcdMap past an adjacent ZoomMap so it lands
-beside a Mapping it can merge with (`pcdmap.c:1617-1626`).
+beside a Mapping it can merge with (`pcdmap.c:1626-1635`).
 `PcdZoom` does the swap, and it starts by setting both Mappings' `Invert`
-attributes to the values the merge list holds for them (`pcdmap.c:2360-2366`), so
+attributes to the values the merge list holds for them (`pcdmap.c:2366-2372`), so
 that the attribute reads which follow see each Mapping the way the list applies
 it.
 
@@ -2901,34 +2901,44 @@ That is effective for the PcdMap, whose `Disco` and `PcdCen` are read through
 accessors that consult `Invert`, but not for the ZoomMap: `Zoom` is
 `astMAKE_GET(ZoomMap,Zoom,double,1.0,...)` returning the stored factor
 (`zoommap.c:1699-1700`), and it is `Transform` that turns the factor into its
-reciprocal when the Mapping is applied inverted (`zoommap.c:1610-1617`).
-So `zoom = astGetZoom( zm )` at `pcdmap.c:2369` is the stored factor whatever
-the list says, and the replacement `zm2 = astZoomMap( 2, zoom )` at
-`pcdmap.c:2383` is stored with `inverts[ ipc ] = 0` at `pcdmap.c:2414`.
+reciprocal when the Mapping is applied inverted (`zoommap.c:1616-1617`).
+So `zoom = astGetZoom( zm )` was the stored factor whatever the list said, and
+the replacement `zm2 = astZoomMap( 2, zoom )` is stored with
+`inverts[ ipc ] = 0` (`pcdmap.c:2395`, `pcdmap.c:2425`).
 
-An inverted ZoomMap of factor 2 — scaling by 0.5 — therefore comes out of the
+An inverted ZoomMap of factor 2 — scaling by 0.5 — therefore came out of the
 swap as a forward ZoomMap of factor 2, and the PcdMap that swapped past it
-carries a centre and coefficient derived from 2 rather than from 0.5.
-The composition is not the one that went in.
+carried a centre and coefficient derived from 2 rather than from 0.5.
+The composition was not the one that went in.
 
 Nothing in the merge list forbids the inverted case: `CanSwap` accepts any
-ZoomMap without consulting its direction (`pcdmap.c:833-838`), and `astMapList`
+ZoomMap without consulting its direction (`pcdmap.c:839`), and `astMapList`
 records an inverted leaf as a forward Mapping with its flag set.
 In a settled list the case is rare, because `zoommap.c::MapMerge` rebuilds an
 effectively inverted lone ZoomMap as a forward one with the reciprocal factor
-before a PcdMap is nominated — which is why the corpus does not reach it.
-It is the nomination order, not the code, that keeps this from being observable.
+before a PcdMap is nominated — which is why the corpus did not reach it until a
+fixture was written for it.
+It was the nomination order, not the code, that kept this from being observable.
 
-**Rust behaviour (mirrored):** `pcd_swap_pair`
-(`crates/ast-core/src/mappings/simplify.rs:2863-2919`) reads `zm.zoom()` and
-ignores the neighbour's list flag, exactly as C does, and stores the ZoomMap it
-builds with a cleared flag.
-Using the effective factor instead would make the port disagree with the oracle
-on any list that reaches the case, so the mirror is deliberate; revisit it when
-this is fixed upstream, and the arithmetic becomes `1.0 / zm.zoom()` for an
-inverted neighbour.
+The fix forms the factor the list applies explicitly, one line after the
+attribute read (`pcdmap.c:2380`); the ZoomMap the swap creates carries a cleared
+`Invert` flag, so it holds that factor directly.
 
-To be raised upstream.
+**Rust behaviour:** inverted at the 9.5.0 sync.
+`pcd_swap_pair` (`crates/ast-core/src/mappings/simplify.rs:2931-2987`) takes the
+reciprocal of `zm.zoom()` when the neighbour's list flag is set, and leaves the
+rest of the arithmetic alone.
+The gate is `pcdmap_swap_past_an_inverted_zoommap_preserves_the_transformation`
+in `crates/ast-core/tests/test_pcdmap.rs`, ported from `testpcdzoominverted` in
+`reference/starlink-ast/ast_tester/testmapping.c`: it checks that simplification
+leaves the transformation alone over both factors and both directions.
+With the mirror restored it reports the same divergence the C test does — an
+inverted ZoomMap of 2 turns `(0.1, 0.2)` into `(0.0501806634, 0.0999429605)`
+before simplification and `(0.1995709345, 0.3993861685)` after.
+The `pcd_inverted_zoom_swap` simplify fixture, which upstream added with the fix,
+now holds; it was the last red in the simplify regression corpus.
+
+Fixed upstream in `3a4a2a7b`.
 
 ## `PolyMap`'s `Equal` never compares the inverse coefficients
 

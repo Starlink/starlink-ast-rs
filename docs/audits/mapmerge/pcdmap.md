@@ -156,16 +156,19 @@ This is the same rule `MatrixMap` and `WinMap` apply in their own swap halves
 (`matrix_merge.rs:912-947 (fn try_speculative_swap)`, `winmap_merge.rs:766-807 (fn try_speculative_swap)`), and
 PcdMap now shares their shape rather than declining the case.
 
-## Row 27 and row 34 — the swap arithmetic reads `Zoom` raw
+## Row 27 and row 34 — the swap arithmetic forms the factor the list applies
 
 `PcdZoom` builds the swapped pair by reading the neighbour's `Zoom` attribute and
 composing it with the PcdMap's centre and distortion. `Zoom` is direction
 independent — the getter returns the stored factor whichever way the ZoomMap is
-being applied, and it is `Transform` that reciprocates — so an inverted
-neighbour contributes its stored factor to the arithmetic, and the ZoomMap C
-creates is stored with a cleared Invert flag. The port mirrors this. See the
-`PcdZoom` entry in `docs/issues/c-library-quirks.md` for why the case is
-unobserved and what it would take to expose it.
+being applied, and it is `Transform` that reciprocates — so the factor the merge
+list actually applies has to be formed explicitly
+(`pcdmap.c:2374-2380 (fn PcdZoom)`), and the ZoomMap the swap creates is stored
+with a cleared Invert flag so it holds that factor directly. The port does the
+same in `simplify.rs:2947-2954 (fn pcd_swap_pair)`, gated by
+`pcdmap_swap_past_an_inverted_zoommap_preserves_the_transformation` in
+`crates/ast-core/tests/test_pcdmap.rs`. C read the stored factor raw until
+`3a4a2a7b`; `docs/issues/c-library-quirks.md` carries the history.
 
 ## Row 38 — declining in parallel is a step, not an omission
 
