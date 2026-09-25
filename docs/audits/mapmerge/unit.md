@@ -3,7 +3,7 @@
 C source: reference/starlink-ast/src/unitmap.c
 Rust: crates/ast-core/src/mappings/unit.rs
 Audited: 2026-08-21 against pin 3cf4bc5c
-Citations: verified against pin 756d5ac0
+Citations: verified against pin 3b9dc639
 Extension points: classified
 
 Uncited C steps:
@@ -28,7 +28,7 @@ parallel is coalesced with adjacent UnitMaps.
 | 11 | Extend the run's start index and accumulate its coordinate count | unitmap.c:557-562 (fn MapMerge) | unit.rs:139-142 (fn try_merge) | architecture | ported |
 | 12 | Repeat for later Mappings in the sequence | unitmap.c:563-571 (fn MapMerge) | mappings/simplify.rs:1345-1375 (fn default_map_merge) | architecture | ported |
 | 13 | Compute the net reduction and check whether it is zero, meaning no adjacent UnitMaps | unitmap.c:572-578 (fn MapMerge) | -- | architecture | n/a: a pairwise hook that finds no UnitMap neighbour returns `None`, which is the same answer without a count |
-| 14 | With no adjacent UnitMaps, clear the nominated UnitMap's Invert flag if set | unitmap.c:579-587 (fn MapMerge) | -- | architecture | n/a: the flag is the list's, folded into the leaf by the generic rebuild rather than by a UnitMap seam (`mappings/simplify.rs:3252-3262 (fn reconstruct_inner)`) |
+| 14 | With no adjacent UnitMaps, clear the nominated UnitMap's Invert flag if set | unitmap.c:579-587 (fn MapMerge) | -- | architecture | n/a: the flag is the list's, folded into the leaf by the generic rebuild rather than by a UnitMap seam (`mappings/simplify.rs:3266-3276 (fn reconstruct_inner)`) |
 | 15 | If UnitMaps can be merged, create the replacement UnitMap | unitmap.c:588-592 (fn MapMerge) | unit.rs:141-142 (fn try_merge) | architecture | ported |
 | 16 | Annul the pointers to all the UnitMaps being replaced | unitmap.c:593-597 (fn MapMerge) | -- | ceremony | n/a: owned values are dropped |
 | 17 | Insert the new pointer and its Invert flag, close the gap, and clear the vacated slots | unitmap.c:598-614 (fn MapMerge) | mappings/simplify.rs:1407-1413 (fn default_map_merge) | architecture | ported |

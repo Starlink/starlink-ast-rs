@@ -17,7 +17,7 @@ use std::path::{Path, PathBuf};
 /// The pin is part of the marker on purpose: moving the submodule invalidates
 /// every line number in every repaired checklist, so the pin has to be
 /// re-stated deliberately, in the same change that re-anchors the citations.
-const REPAIRED: &str = "Citations: verified against pin 756d5ac0";
+const REPAIRED: &str = "Citations: verified against pin 3b9dc639";
 
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))

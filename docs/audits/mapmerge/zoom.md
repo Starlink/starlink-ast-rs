@@ -3,7 +3,7 @@
 C source: reference/starlink-ast/src/zoommap.c
 Rust: crates/ast-core/src/mappings/zoom.rs
 Audited: 2026-08-21 against pin 3cf4bc5c
-Citations: verified against pin 756d5ac0
+Citations: verified against pin 3b9dc639
 Extension points: classified
 
 Uncited C steps:
@@ -54,7 +54,7 @@ must discard the simplified record.
 | 27 | Shuffle the later Mappings down, clear the vacated element, decrement the count and return the lower of the two indices | zoommap.c:1145-1159 (fn MapMerge) | mappings/simplify.rs:1413-1415 (fn default_map_merge) | architecture | ported |
 | 28 | Clear the returned result if an error occurred | zoommap.c:1163-1164 (fn MapMerge) | -- | ceremony | n/a: an error is a `Result::Err`, not a value to be cleared alongside one |
 | 29 | Return the result | zoommap.c:1166-1167 (fn MapMerge) | mappings/simplify.rs:914-918 (fn zoom_map_merge) | architecture | ported |
-| 30 | Setting or clearing Zoom clears the simplified record, both orientations | zoommap.c:1698 (fn astMAKE_CLEAR1),1704 | zoom.rs:71-83 (fn set_zoom) | ceremony | ported |
+| 30 | Setting or clearing Zoom clears the simplified record, both orientations | zoommap.c:1698 (fn astMAKE_CLEAR1),1704 (fn astMAKE_SET1) | zoom.rs:71-83 (fn set_zoom) | ceremony | ported |
 
 ## Rows 7 and 8 — the lone ZoomMap is a run of one
 

@@ -3,7 +3,7 @@
 C source: reference/starlink-ast/src/wcsmap.c
 Rust: crates/ast-core/src/mappings/wcsmap.rs
 Audited: 2026-09-02 against pin 3e60abaa
-Citations: verified against pin 756d5ac0
+Citations: verified against pin 3b9dc639
 Extension points: classified
 
 Uncited C steps:
@@ -40,8 +40,8 @@ helpers, one per C function it needs: `can_swap_wcsmap_past_permmap`
 | 9 | Otherwise try the neighbours, which for a WcsMap can only be done in series | wcsmap.c:3155-3159 (fn MapMerge) | mappings/simplify.rs:1068 (fn wcs_map_merge) | architecture | ported |
 | 10 | Store the classes of the neighbouring Mappings | wcsmap.c:3161-3164 (fn MapMerge) | mappings/simplify.rs:1081-1083 (fn wcs_map_merge) | architecture | ported |
 | 11 | A WcsMap can only combine with its own inverse; note that no mergeable neighbour has been found yet | wcsmap.c:3165-3169 (fn MapMerge) | mappings/simplify.rs:1073-1077 (fn wcs_map_merge) | architecture | ported |
-| 12 | Check the lower neighbour first | wcsmap.c:3170-3177 (fn MapMerge) | mappings/simplify.rs:1074 (fn wcs_map_merge),1078-1085 | architecture | ported |
-| 13 | If the lower neighbour did not merge, check the upper neighbour the same way | wcsmap.c:3178-3186 (fn MapMerge) | mappings/simplify.rs:1075 (fn wcs_map_merge),1077 | architecture | ported |
+| 12 | Check the lower neighbour first | wcsmap.c:3170-3177 (fn MapMerge) | mappings/simplify.rs:1074 (fn wcs_map_merge),1078-1085 (fn wcs_map_merge) | architecture | ported |
+| 13 | If the lower neighbour did not merge, check the upper neighbour the same way | wcsmap.c:3178-3186 (fn MapMerge) | mappings/simplify.rs:1075 (fn wcs_map_merge),1077 (fn wcs_map_merge) | architecture | ported |
 | 14 | A neighbour that passed the checks is this WcsMap's inverse, so the pair can be replaced by a single UnitMap | wcsmap.c:3187-3191 (fn MapMerge) | wcsmap.rs:995-1021 (fn try_merge) | architecture | ported |
 | 15 | Annul the two WcsMaps | wcsmap.c:3192-3195 (fn MapMerge) | -- | ceremony | n/a: owned values are dropped |
 | 16 | Create the UnitMap and store it in place of the first WcsMap, with a cleared Invert flag | wcsmap.c:3196-3200 (fn MapMerge) | wcsmap.rs:1017 (fn try_merge) | architecture | ported |

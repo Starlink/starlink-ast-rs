@@ -3,7 +3,7 @@
 C source: reference/starlink-ast/src/shiftmap.c
 Rust: crates/ast-core/src/mappings/shift.rs
 Audited: 2026-08-21 against pin 3cf4bc5c
-Citations: verified against pin 756d5ac0
+Citations: verified against pin 3b9dc639
 Extension points: classified
 
 Uncited C steps:
@@ -19,7 +19,7 @@ ShiftMap participates in lives in `winmap.c`'s `MapMerge` and is audited in
 | 2 | Check the global error status and bail out | shiftmap.c:668-669 (fn MapMerge) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 3 | A ShiftMap is equivalent to a WinMap with unit scaling; create a WinMap with undefined corners | shiftmap.c:671-678 (fn MapMerge) | shift.rs:169-184 (fn map_merge) | architecture | ported |
 | 4 | Store unit scale terms and the shift terms, negating them when the ShiftMap is applied inverted | shiftmap.c:680-694 (fn MapMerge) | shift.rs:175-180 (fn map_merge) | architecture | ported |
-| 5 | Replace the nominated ShiftMap in the list with the WinMap, recording the old invert flag, and clear that flag | shiftmap.c:695-701 (fn MapMerge) | shift.rs:170 (fn map_merge),187 | architecture | ported |
+| 5 | Replace the nominated ShiftMap in the list with the WinMap, recording the old invert flag, and clear that flag | shiftmap.c:695-701 (fn MapMerge) | shift.rs:170 (fn map_merge),187 (fn map_merge) | architecture | ported |
 | 6 | Delegate to WinMap's MapMerge, recording the list length first | shiftmap.c:703-707 (fn MapMerge) | shift.rs:186-189 (fn map_merge) | architecture | ported |
 | 7 | Detect the round trip where the merge merely turned the WinMap back into an equivalent lone ShiftMap | shiftmap.c:709-719 (fn MapMerge) | shift.rs:191-201 (fn map_merge) | architecture | ported |
 | 8 | Also revert when the merge reported no change at all | shiftmap.c:720-722 (fn MapMerge) | shift.rs:203 (fn map_merge) | architecture | ported |

@@ -32,15 +32,72 @@ pub fn parse_citation(text: &str) -> Option<Citation> {
 ///
 /// A row may cite more than one site, and a citation that is not found is a
 /// citation nothing checks, so all of them are returned rather than the first.
+///
+/// A citation may name further lines in the same file as a comma-separated tail,
+/// as in `simplify.rs:1470 (fn region_map_merge),1482`. Each is returned as a
+/// citation of its own so a number written that way is checked rather than
+/// skipped. It carries the file of the citation it follows but not its item
+/// name: the tail names further lines of the same file, which are often in a
+/// different function, so a tail needs its own `(fn …)` to be checkable.
 pub fn citations(text: &str) -> Vec<(Citation, std::ops::Range<usize>)> {
     let mut out: Vec<(Citation, std::ops::Range<usize>)> = Vec::new();
     for (colon, _) in text.match_indices(':') {
         if out.last().is_some_and(|(_, range)| colon < range.end) {
             continue;
         }
-        if let Some(found) = parse_citation_at(text, colon) {
-            out.push(found);
+        if let Some((cit, range)) = parse_citation_at(text, colon) {
+            let tail = continuations(text, range.end, &cit);
+            out.push((cit, range));
+            out.extend(tail);
         }
+    }
+    out
+}
+
+/// The `,line` and `,line-line` tail that follows a citation ending at `end`.
+///
+/// Each inherits the leading citation's file, which is what the shorthand
+/// means, and nothing else.
+fn continuations(
+    text: &str,
+    end: usize,
+    lead: &Citation,
+) -> Vec<(Citation, std::ops::Range<usize>)> {
+    let mut out = Vec::new();
+    let mut at = end;
+    while let Some(rest) = text.get(at..).and_then(|t| t.strip_prefix(',')) {
+        let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
+        let Ok(start) = digits.parse::<usize>() else {
+            break;
+        };
+        let mut used = 1 + digits.len();
+        let mut range_end = None;
+        if let Some(tail) = text[at + used..].strip_prefix('-') {
+            let d: String = tail.chars().take_while(char::is_ascii_digit).collect();
+            if let Ok(n) = d.parse::<usize>() {
+                range_end = Some(n);
+                used += 1 + d.len();
+            }
+        }
+        let item = text[at + used..]
+            .strip_prefix(" (fn ")
+            .and_then(|t| t.split_once(')'))
+            .map(|(name, _)| name.trim().to_string());
+        let span = match &item {
+            Some(name) => used + " (fn ".len() + name.len() + 1,
+            None => used,
+        };
+        out.push((
+            Citation {
+                file: lead.file.clone(),
+                start,
+                end: range_end,
+                item,
+            },
+            at..at + span,
+        ));
+        used = span;
+        at += used;
     }
     out
 }
@@ -153,9 +210,10 @@ fn attached_start(raw: &[&str], i: usize) -> usize {
 /// The range runs from the start of the item's doc-comment block to the line
 /// closing its body, so a citation to the signature or the documentation
 /// designates the same item a citation to the body does. A declaration with no
-/// body, as in a trait, ends at its semicolon. A semicolon reached with the
-/// parameter list still open belongs to a type inside it, such as the length of
-/// an array parameter, and does not end the signature.
+/// body, as in a trait, ends at its semicolon. A semicolon reached inside a
+/// bracket pair belongs to a type rather than to the signature — the length of
+/// an array parameter, or of an array inside the return type — and does not end
+/// it.
 pub fn rust_items(src: &str) -> Vec<(String, usize, usize)> {
     let raw: Vec<&str> = src.lines().collect();
     let mut out = Vec::new();
@@ -163,6 +221,7 @@ pub fn rust_items(src: &str) -> Vec<(String, usize, usize)> {
     let mut open: Vec<(String, usize, usize)> = Vec::new();
     let mut depth = 0usize;
     let mut parens = 0usize;
+    let mut brackets = 0usize;
     let mut pending: Option<(String, usize)> = None;
     for (i, text) in raw.iter().enumerate() {
         let code = code_only(text);
@@ -173,6 +232,8 @@ pub fn rust_items(src: &str) -> Vec<(String, usize, usize)> {
             match c {
                 '(' => parens += 1,
                 ')' => parens = parens.saturating_sub(1),
+                '[' => brackets += 1,
+                ']' => brackets = brackets.saturating_sub(1),
                 '{' => {
                     depth += 1;
                     if let Some((name, first)) = pending.take() {
@@ -187,7 +248,7 @@ pub fn rust_items(src: &str) -> Vec<(String, usize, usize)> {
                     depth = depth.saturating_sub(1);
                 }
                 // A signature with no body, as in a trait declaration.
-                ';' if parens == 0 => {
+                ';' if parens == 0 && brackets == 0 => {
                     if let Some((name, first)) = pending.take() {
                         out.push((name, first, i + 1));
                     }
@@ -598,6 +659,28 @@ fn wrapped(
         }
     }
 
+    const ARRAY_RETURN: &str = "\
+fn split(
+    xs: &[u32],
+) -> Option<[(u32, bool); 2]> {
+    let a = xs.first()?;
+    Some([(*a, true), (*a, false)])
+}
+";
+
+    #[test]
+    fn a_semicolon_inside_an_array_return_type_does_not_end_the_signature() {
+        // The `;` is the array length in the return type, reached after the
+        // parameter list has closed, so the item still spans its whole body.
+        for line in 1..=6 {
+            assert_eq!(
+                enclosing_rust_item(ARRAY_RETURN, line).as_deref(),
+                Some("split"),
+                "line {line}"
+            );
+        }
+    }
+
     const C: &str = "\
 /* Prototype. */
 static int MapMerge( AstMapping *, int, int * );
@@ -790,6 +873,42 @@ trait T {
         // splice by offset without disturbing the rest of the row.
         let (cit, range) = &found[2];
         assert_eq!(&row[range.clone()], format!("{}:2968-2982", cit.file));
+    }
+
+    #[test]
+    fn a_comma_separated_tail_becomes_a_citation_of_its_own() {
+        let row = "| 12 | step | box.c:1622-1624 (fn MapMerge) | mappings/simplify.rs:1470 (fn region_map_merge),1482,1490-1495 | ported |";
+        let found = citations(row);
+        assert_eq!(found.len(), 4);
+        // Each tail number inherits the file and item of the citation it
+        // follows, which is what the shorthand says, so the gate checks it the
+        // same way.
+        for (i, (cit, _)) in found.iter().enumerate().skip(1) {
+            assert_eq!(cit.file, "mappings/simplify.rs", "citation {i}");
+        }
+        // A tail carries no item of its own until one is written for it: the
+        // lines it names are often in a different function from the citation it
+        // follows, so inheriting that name would assert something untested.
+        assert_eq!(found[2].0.item, None);
+        assert_eq!((found[2].0.start, found[2].0.end), (1482, None));
+        assert_eq!((found[3].0.start, found[3].0.end), (1490, Some(1495)));
+        // The reported range covers just the tail, so a rewrite splices it
+        // without disturbing the citation it hangs off.
+        assert_eq!(&row[found[2].1.clone()], ",1482");
+
+        // A tail that carries its own `(fn …)` is checked against it.
+        let row = "| 1 | step | a.rs:1 (fn f),9 (fn g) | ported |";
+        let found = citations(row);
+        assert_eq!(found.len(), 2);
+        assert_eq!(found[1].0.item.as_deref(), Some("g"));
+        assert_eq!(&row[found[1].1.clone()], ",9 (fn g)");
+
+        // A comma that separates two whole citations is not a tail: the second
+        // names its own file, and inheriting the first's would be wrong.
+        let row = "| 1 | step | a.c:1 (fn F), mappings/simplify.rs:2 (fn g) | ported |";
+        let found = citations(row);
+        assert_eq!(found.len(), 2);
+        assert_eq!(found[1].0.file, "mappings/simplify.rs");
     }
 
     #[test]

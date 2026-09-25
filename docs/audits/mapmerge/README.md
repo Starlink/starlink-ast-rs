@@ -49,6 +49,22 @@ the test that checks them.
 Anchor a repaired file with `cargo run -p audit-tools --bin anchor-citations --
 docs/audits/mapmerge/<file>.md --write`, then read what it wrote: it names the
 item at the line, which is not always the item the row means.
+`anchor-citations` only appends a missing `(fn …)`; it never moves a number.
+
+Moving a number is the other tool's job, and only at a pin move.
+`cargo run -p audit-tools --bin reanchor-citations -- docs/audits/mapmerge/<file>.md`
+diffs each cited line's own baseline against the source now — `git blame` names
+the commit that wrote the row, and that commit's tree, or the submodule pin it
+recorded, is what the citation was written against — and follows a line the diff
+carried through unchanged onto where it landed.
+A line the diff replaced or deleted it refuses and reports, because the content
+the row describes is no longer there: re-anchor that row against the code it now
+describes rather than remapping its number, and check whether the prose around it
+described a C behaviour the pin move changed.
+Run it once against the tree the numbers belong to; against an already-relocated
+tree its baselines are the wrong side of the move.
+Re-state the pin in `REPAIRED` in `crates/ast-core/tests/test_audit_citations.rs`
+and in every `Citations:` marker in the same change as the re-anchors.
 
 ## The extension-point column
 

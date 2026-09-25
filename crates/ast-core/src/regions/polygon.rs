@@ -1270,7 +1270,7 @@ impl Mapping for Polygon {
             let p = transformed.point(i);
             // C clears `ok` if any transformed vertex value is bad, on either
             // axis, and keeps the original Polygon in that case
-            // (polygon.c:5400-5410).
+            // (polygon.c:5402-5411).
             if is_bad(p[0]) || is_bad(p[1]) {
                 return keep_or_overlay(this, simpler);
             }

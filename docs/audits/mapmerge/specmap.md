@@ -3,7 +3,7 @@
 C source: reference/starlink-ast/src/specmap.c
 Rust: crates/ast-core/src/mappings/specmap.rs
 Audited: 2026-09-02 against pin 3e60abaa
-Citations: verified against pin 756d5ac0
+Citations: verified against pin 3b9dc639
 Extension points: classified
 
 Uncited C steps:
@@ -30,14 +30,14 @@ goes, and rebuild one SpecMap or a UnitMap.
 | 5 | Initialise the step count to the number in the nominated SpecMap | specmap.c:2270-2273 (fn MapMerge) | specmap.rs:1203 (fn spec_map_merge) | architecture | ported |
 | 6 | Search adjacent lower-numbered Mappings for SpecMaps of the same axis count, accumulating step counts | specmap.c:2274-2285 (fn MapMerge) | specmap.rs:1183-1186 (fn spec_map_merge) | architecture | ported |
 | 7 | Search adjacent higher-numbered Mappings the same way | specmap.c:2286-2295 (fn MapMerge) | specmap.rs:1187-1190 (fn spec_map_merge) | architecture | ported |
-| 8 | Remember the initial number of transformation steps | specmap.c:2296-2298 (fn MapMerge) | specmap.rs:1195 (fn spec_map_merge),1203 | architecture | ported |
+| 8 | Remember the initial number of transformation steps | specmap.c:2296-2298 (fn MapMerge) | specmap.rs:1195 (fn spec_map_merge),1203 (fn spec_map_merge) | architecture | ported |
 | 9 | Allocate memory for the accumulated step list | specmap.c:2299-2305 (fn MapMerge) | -- | ceremony | n/a: a `Vec` grows as the steps are appended |
 | 10 | Loop to obtain the transformation data for each SpecMap being merged | specmap.c:2306-2309 (fn MapMerge) | specmap.rs:1197-1205 (fn spec_map_merge) | architecture | ported |
 | 11 | Take each SpecMap and note whether it is being applied in its inverse direction | specmap.c:2310-2314 (fn MapMerge) | specmap.rs:1198-1201 (fn spec_map_merge) | architecture | ported |
 | 12 | Set loop limits and an increment so the steps are scanned forward or in reverse as that direction dictates | specmap.c:2315-2321 (fn MapMerge) | specmap.rs:1092-1094 (fn normalized_steps) | architecture | ported |
 | 13 | Loop through each transformation step in the SpecMap | specmap.c:2322-2324 (fn MapMerge) | specmap.rs:1092-1095 (fn normalized_steps) | architecture | ported |
-| 14 | Store the step's type code, obtain its argument count from `CvtString`, and copy the arguments | specmap.c:2325-2334 (fn MapMerge) | specmap.rs:1097 (fn normalized_steps),1106 | architecture | ported |
-| 15 | An inverted SpecMap must not only accumulate its steps in reverse but apply each in reverse; define macros for the changes that needs | specmap.c:2335-2341 (fn MapMerge) | specmap.rs:1089-1091 (fn normalized_steps),1094 | architecture | ported |
+| 14 | Store the step's type code, obtain its argument count from `CvtString`, and copy the arguments | specmap.c:2325-2334 (fn MapMerge) | specmap.rs:1097 (fn normalized_steps),1106 (fn normalized_steps) | architecture | ported |
+| 15 | An inverted SpecMap must not only accumulate its steps in reverse but apply each in reverse; define macros for the changes that needs | specmap.c:2335-2341 (fn MapMerge) | specmap.rs:1089-1091 (fn normalized_steps),1094 (fn normalized_steps) | architecture | ported |
 | 16 | Macro exchanging a transformation type code for its inverse | specmap.c:2342-2350 (fn MapMerge) | specmap.rs:1096 (fn normalized_steps) | architecture | ported |
 | 17 | Macro exchanging the code and reciprocating a specified argument | specmap.c:2351-2371 (fn MapMerge) | specmap.rs:1099-1105 (fn normalized_steps) | architecture | ported |
 | 18 | Macro exchanging the code and negating a specified argument | specmap.c:2372-2388 (fn MapMerge) | -- | ceremony | n/a: `SWAP_CODES3` is defined at 2374 and undefined at 2419 without ever being invoked, so no conversion in the class uses it |

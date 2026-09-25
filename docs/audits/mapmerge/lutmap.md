@@ -3,7 +3,7 @@
 C source: reference/starlink-ast/src/lutmap.c
 Rust: crates/ast-core/src/mappings/lutmap.rs
 Audited: 2026-08-21 against pin 3cf4bc5c
-Citations: verified against pin 756d5ac0
+Citations: verified against pin 3b9dc639
 Extension points: classified
 
 Uncited C steps:
@@ -27,7 +27,7 @@ must discard the simplified record.
 | 3 | Obtain a typed pointer to the nominated LutMap | lutmap.c:1137-1139 (fn MapMerge) | -- | ceremony | n/a: the Rust method already has `&self` |
 | 4 | See if the LutMap is linear, and only then try the replacement | lutmap.c:1140-1144 (fn MapMerge) | lutmap.rs:237 (fn linear_equivalent) | architecture | ported |
 | 5 | Take the input range spanned by the first and last table elements | lutmap.c:1145-1149 (fn MapMerge) | lutmap.rs:241-242 (fn linear_equivalent) | architecture | ported |
-| 6 | Take the matching output range and require the two ends to differ | lutmap.c:1150-1155 (fn MapMerge) | lutmap.rs:243-244 (fn linear_equivalent),218 | architecture | ported |
+| 6 | Take the matching output range and require the two ends to differ | lutmap.c:1150-1155 (fn MapMerge) | lutmap.rs:243-244 (fn linear_equivalent),218 (fn table_is_linear) | architecture | ported |
 | 7 | Build a WinMap for that linear mapping, swapping the ranges when the invert flag is set | lutmap.c:1156-1163 (fn MapMerge) | lutmap.rs:245-249 (fn linear_equivalent) | architecture | ported |
 | 8 | Replace the LutMap with it and clear the associated invert flag | lutmap.c:1164-1170 (fn MapMerge) | lutmap.rs:716-717 (fn map_merge) | architecture | ported |
 | 9 | Assign the result value | lutmap.c:1171-1175 (fn MapMerge) | lutmap.rs:718 (fn map_merge) | architecture | ported |
@@ -56,7 +56,7 @@ must discard the simplified record.
 | 32 | Form a second tolerance from the interpolated value, and use whichever is larger | lutmap.c:618-623 (fn GetLinear) | lutmap.rs:214 (fn table_is_linear) | architecture | ported |
 | 33 | Accept linearity within twice that tolerance, and stop at the first element that fails | lutmap.c:624-630 (fn GetLinear) | lutmap.rs:215-217 (fn table_is_linear) | architecture | ported |
 | 34 | Return the result | lutmap.c:631-632 (fn GetLinear) | lutmap.rs:219 (fn table_is_linear) | architecture | ported |
-| 35 | Setting or clearing LutInterp or LutEpsilon clears the simplified record, both orientations | lutmap.c:1793 (fn astMAKE_CLEAR1),1796 | lutmap.rs:102-117 (fn set_interp) | ceremony | ported |
+| 35 | Setting or clearing LutInterp or LutEpsilon clears the simplified record, both orientations | lutmap.c:1793 (fn astMAKE_CLEAR1),1796 (fn astMAKE_SET1) | lutmap.rs:102-117 (fn set_interp) | ceremony | ported |
 
 ## Rows 4 and 20 to 34 — the linearity test is `GetLinear`
 

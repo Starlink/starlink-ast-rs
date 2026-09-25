@@ -3,7 +3,7 @@
 C source: reference/starlink-ast/src/polymap.c
 Rust: crates/ast-core/src/mappings/chebymap.rs
 Audited: 2026-08-24 against pin d0346c0d
-Citations: verified against pin 756d5ac0
+Citations: verified against pin 3b9dc639
 Extension points: classified
 
 Uncited C steps:
@@ -167,4 +167,4 @@ returning the same index. The merge loop runs to convergence either way, and C's
 own next pass strips the redundant UnitMap, so both routes settle on the same
 list. The dimension is the one C uses: the input count of the pair as applied,
 which is the nominated ChebyMap's effective `nin`
-(`chebymap.rs:501-502 (fn try_merge)`).
+(`chebymap.rs:499-500 (fn try_merge)`).

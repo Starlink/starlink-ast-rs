@@ -3,7 +3,7 @@
 C source: reference/starlink-ast/src/permmap.c
 Rust: crates/ast-core/src/mappings/perm.rs
 Audited: 2026-08-21 against pin 3cf4bc5c
-Citations: verified against pin 756d5ac0
+Citations: verified against pin 3b9dc639
 Extension points: classified
 
 Uncited C steps:
@@ -46,14 +46,14 @@ was actually simplified.
 | 22 | Initialise the replacement's coordinate counts from it | permmap.c:1119-1129 (fn MapMerge) | perm.rs:753-754 (fn try_merge) | architecture | ported |
 | 23 | Search both directions for adjacent PermMaps and UnitMaps, accumulating their effective coordinate counts | permmap.c:1130-1176 (fn MapMerge) | mappings/simplify.rs:1332-1354 (fn default_map_merge) | architecture | ported |
 | 24 | Allocate the replacement arrays and constants list, then build both directions as in series | permmap.c:1177-1303 (fn MapMerge) | perm.rs:756-806 (fn try_merge) | architecture | ported |
-| 25 | Accumulate each Mapping's input and output coordinate offsets across the run | permmap.c:1294-1303 (fn MapMerge) | perm.rs:773 (fn try_merge),795 | architecture | ported |
+| 25 | Accumulate each Mapping's input and output coordinate offsets across the run | permmap.c:1294-1303 (fn MapMerge) | perm.rs:773 (fn try_merge),795 (fn try_merge) | architecture | ported |
 | 26 | Inspect the accumulated `inperm` to decide whether the replacement needs to store it | permmap.c:1304-1320 (fn MapMerge) | perm.rs:134-135 (fn canonical_null_form), via mappings/simplify.rs:1029 (fn perm_map_merge) | architecture | ported |
 | 27 | Convert -1 entries back to non-existent positive indices meaning bad values | permmap.c:1321-1330 (fn MapMerge) | perm.rs:217-236 (fn rebuild_perms), via mappings/simplify.rs:1029 (fn perm_map_merge) | architecture | ported |
 | 28 | Do the same for `outperm` | permmap.c:1331-1344 (fn MapMerge) | perm.rs:237-239 (fn rebuild_perms), via mappings/simplify.rs:1029 (fn perm_map_merge) | architecture | ported |
 | 29 | Count how many adjacent Mappings the merge eliminates | permmap.c:1345-1348 (fn MapMerge) | -- | architecture | n/a: a pairwise merge always removes exactly one entry, so there is nothing to count |
 | 30 | Decide whether the replacement PermMap reduces further to a UnitMap | permmap.c:1349-1355 (fn MapMerge) | perm.rs:134-141 (fn canonical_null_form), via mappings/simplify.rs:1029 (fn perm_map_merge) | architecture | ported |
 | 31 | Determine whether any simplification actually happened, so a no-op is not reported as one | permmap.c:1356-1367 (fn MapMerge) | perm.rs:170-178 (fn canonical_null_form), via mappings/simplify.rs:1029 (fn perm_map_merge) | architecture | ported |
-| 32 | Treat a single initial PermMap with its Invert flag set as simplified | permmap.c:1368-1378 (fn MapMerge) | perm.rs:118 (fn canonical_null_form),170, via mappings/simplify.rs:1029 (fn perm_map_merge) | architecture | ported |
+| 32 | Treat a single initial PermMap with its Invert flag set as simplified | permmap.c:1368-1378 (fn MapMerge) | perm.rs:118 (fn canonical_null_form),170 (fn canonical_null_form), via mappings/simplify.rs:1029 (fn perm_map_merge) | architecture | ported |
 | 33 | Failing that, compare the original and replacement `inperm` arrays in detail | permmap.c:1379-1389 (fn MapMerge) | perm.rs:173 (fn canonical_null_form), via mappings/simplify.rs:1029 (fn perm_map_merge) | architecture | ported |
 | 34 | Compare the `outperm` arrays likewise | permmap.c:1390-1398 (fn MapMerge) | perm.rs:174 (fn canonical_null_form), via mappings/simplify.rs:1029 (fn perm_map_merge) | architecture | ported |
 | 35 | Do nothing more unless something simplified | permmap.c:1399-1401 (fn MapMerge) | perm.rs:176-178 (fn canonical_null_form), via mappings/simplify.rs:1029 (fn perm_map_merge) | architecture | ported |

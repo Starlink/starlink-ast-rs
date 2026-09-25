@@ -3,7 +3,7 @@
 C source: reference/starlink-ast/src/matrixmap.c
 Rust: crates/ast-core/src/mappings/matrix.rs
 Audited: 2026-08-21 against pin 3cf4bc5c
-Citations: verified against pin 756d5ac0
+Citations: verified against pin 3b9dc639
 Extension points: classified
 
 Uncited C steps:
@@ -89,4 +89,4 @@ accept, so the generic pairwise path cannot merge a class C's MatrixMap declines
 On the forward walk C's merge targets are MatrixMap, ZoomMap, an invertable
 PermMap and UnitMap. A WinMap is a swappable class but not a target, so the walk
 passes over it rather than stopping. `is_seek_target` and `is_swappable_class`
-(`matrix_merge.rs:413-417 (fn is_swappable_class),722-738`) keep the two lists distinct for that reason.
+(`matrix_merge.rs:413-417 (fn is_swappable_class),722-738 (fn is_seek_target)`) keep the two lists distinct for that reason.

@@ -3,7 +3,7 @@
 C source: reference/starlink-ast/src/slamap.c
 Rust: crates/ast-core/src/mappings/slamap.rs
 Audited: 2026-09-02 against pin 3e60abaa
-Citations: verified against pin 756d5ac0
+Citations: verified against pin 3b9dc639
 Extension points: classified
 
 Uncited C steps:
@@ -25,18 +25,18 @@ goes, and rebuild one SlaMap or a UnitMap.
 | 1 | Initialise the returned result to -1 | slamap.c:2701-2703 (fn MapMerge) | -- | ceremony | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index |
 | 2 | Check the global error status and bail out | slamap.c:2704-2706 (fn MapMerge) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 3 | SlaMaps merge only in series, or when only one Mapping is present | slamap.c:2707-2711 (fn MapMerge) | slamap.rs:588-590 (fn sla_map_merge) | architecture | ported |
-| 4 | Initialise the step count to the number in the nominated SlaMap | slamap.c:2712-2715 (fn MapMerge) | slamap.rs:605 (fn sla_map_merge),612 | architecture | ported |
+| 4 | Initialise the step count to the number in the nominated SlaMap | slamap.c:2712-2715 (fn MapMerge) | slamap.rs:605 (fn sla_map_merge),612 (fn sla_map_merge) | architecture | ported |
 | 5 | Search adjacent lower-numbered Mappings until one is not an SlaMap, accumulating step counts | slamap.c:2716-2726 (fn MapMerge) | slamap.rs:595-598 (fn sla_map_merge) | architecture | ported |
 | 6 | Search adjacent higher-numbered Mappings the same way | slamap.c:2727-2735 (fn MapMerge) | slamap.rs:599-602 (fn sla_map_merge) | architecture | ported |
-| 7 | Remember the initial number of transformation steps | slamap.c:2736-2738 (fn MapMerge) | slamap.rs:605 (fn sla_map_merge),612 | architecture | ported |
+| 7 | Remember the initial number of transformation steps | slamap.c:2736-2738 (fn MapMerge) | slamap.rs:605 (fn sla_map_merge),612 (fn sla_map_merge) | architecture | ported |
 | 8 | Allocate memory for the accumulated step list | slamap.c:2739-2744 (fn MapMerge) | -- | ceremony | n/a: a `Vec` grows as the steps are appended |
 | 9 | Loop to obtain the transformation data for each SlaMap being merged | slamap.c:2745-2748 (fn MapMerge) | slamap.rs:607-614 (fn sla_map_merge) | architecture | ported |
 | 10 | Take each SlaMap and note whether it is being applied in its inverse direction | slamap.c:2749-2753 (fn MapMerge) | slamap.rs:608-610 (fn sla_map_merge) | architecture | ported |
 | 11 | Set loop limits and an increment so the steps are scanned forward or in reverse as that direction dictates | slamap.c:2754-2760 (fn MapMerge) | slamap.rs:472-477 (fn sla_normalized_steps) | architecture | ported |
 | 12 | Loop through each transformation step in the SlaMap | slamap.c:2761-2763 (fn MapMerge) | slamap.rs:475-478 (fn sla_normalized_steps) | architecture | ported |
 | 13 | Free any extra information cached with the conversion step | slamap.c:2764-2767 (fn MapMerge) | slamap.rs:1172-1183 (fn transform_into) | ceremony | n/a: the star-independent parameters are rebuilt on each transform rather than stored on the step, so a merge has no cache to discard |
-| 14 | Store the step's type code, obtain its argument count from `CvtString`, and copy the arguments | slamap.c:2768-2777 (fn MapMerge) | slamap.rs:479 (fn sla_normalized_steps),484-494 | architecture | ported |
-| 15 | An inverted SlaMap must not only accumulate its steps in reverse but apply each in reverse; define macros for the changes that needs | slamap.c:2778-2784 (fn MapMerge) | slamap.rs:472-474 (fn sla_normalized_steps),477 | architecture | ported |
+| 14 | Store the step's type code, obtain its argument count from `CvtString`, and copy the arguments | slamap.c:2768-2777 (fn MapMerge) | slamap.rs:479 (fn sla_normalized_steps),484-494 (fn sla_normalized_steps) | architecture | ported |
+| 15 | An inverted SlaMap must not only accumulate its steps in reverse but apply each in reverse; define macros for the changes that needs | slamap.c:2778-2784 (fn MapMerge) | slamap.rs:472-474 (fn sla_normalized_steps),477 (fn sla_normalized_steps) | architecture | ported |
 | 16 | Macro swapping two nominated arguments where the type code matches | slamap.c:2785-2793 (fn MapMerge) | slamap.rs:484-488 (fn sla_normalized_steps) | architecture | ported |
 | 17 | Macro exchanging a transformation type code for its inverse | slamap.c:2794-2802 (fn MapMerge) | slamap.rs:479 (fn sla_normalized_steps) | architecture | ported |
 | 18 | Apply the macros only where the SlaMap is inverted | slamap.c:2803-2805 (fn MapMerge) | slamap.rs:472-474 (fn sla_normalized_steps) | architecture | ported |
@@ -44,7 +44,7 @@ goes, and rebuild one SlaMap or a UnitMap.
 | 20 | Exchange the starting and ending Besselian epochs of the FK4 precession model | slamap.c:2811-2815 (fn MapMerge) | slamap.rs:480-488 (fn sla_normalized_steps) | architecture | ported |
 | 21 | Exchange the starting and ending epochs of the FK5 precession model | slamap.c:2816-2820 (fn MapMerge) | slamap.rs:480-488 (fn sla_normalized_steps) | architecture | ported |
 | 22 | Exchange FK4-to-FK5 for its inverse, and vice versa | slamap.c:2821-2825 (fn MapMerge) | slamap.rs:191-192 (fn inverse) | architecture | ported |
-| 23 | For geocentric apparent, exchange the code and also the order of the date and equinox arguments | slamap.c:2826-2833 (fn MapMerge) | slamap.rs:193-194 (fn inverse),480-488 | architecture | ported |
+| 23 | For geocentric apparent, exchange the code and also the order of the date and equinox arguments | slamap.c:2826-2833 (fn MapMerge) | slamap.rs:193-194 (fn inverse),480-488 (fn sla_normalized_steps) | architecture | ported |
 | 24 | Exchange the code for its inverse for the ten remaining families: ecliptic, horizon, galactic, ICRS, supergalactic, the two helioprojective conversions, helio-ecliptic, dynamical J2000 and hour angle | slamap.c:2834-2885 (fn MapMerge) | slamap.rs:195-215 (fn inverse) | architecture | ported |
 | 25 | Undefine the local macros | slamap.c:2886-2889 (fn MapMerge) | -- | ceremony | n/a: the Rust code has no macros to scope |
 | 26 | Count the accumulated transformation steps | slamap.c:2890-2894 (fn MapMerge) | slamap.rs:612-613 (fn sla_map_merge) | architecture | ported |
@@ -71,7 +71,7 @@ goes, and rebuild one SlaMap or a UnitMap.
 | 47 | Eliminate a matching pair of hour angle conversions | slamap.c:3074-3084 (fn MapMerge) | slamap.rs:445-462 (fn try_cancel_pair) | architecture | ported |
 | 48 | Undefine the local macro | slamap.c:3085-3088 (fn MapMerge) | -- | ceremony | n/a: the Rust code has no macros to scope |
 | 49 | A step being kept advances the index identifying its new location | slamap.c:3089-3094 (fn MapMerge) | slamap.rs:549 (fn sla_simplify_steps) | architecture | ported |
-| 50 | Copy the step's data down when its new location differs from its current one | slamap.c:3095-3106 (fn MapMerge) | slamap.rs:513-514 (fn sla_simplify_steps),541 | architecture | ported |
+| 50 | Copy the step's data down when its new location differs from its current one | slamap.c:3095-3106 (fn MapMerge) | slamap.rs:513-514 (fn sla_simplify_steps),541 (fn sla_simplify_steps) | architecture | ported |
 | 51 | Quit when a pass reduced no steps | slamap.c:3107-3111 (fn MapMerge) | slamap.rs:568-570 (fn sla_simplify_steps) | architecture | ported |
 | 52 | Note how many transformation steps now remain | slamap.c:3112-3115 (fn MapMerge) | -- | ceremony | n/a: the surviving steps are the `Vec`'s contents, so its length is the count |
 | 53 | Determine how many Mappings condensing the run eliminates | slamap.c:3116-3120 (fn MapMerge) | slamap.rs:616 (fn sla_map_merge) | architecture | ported |

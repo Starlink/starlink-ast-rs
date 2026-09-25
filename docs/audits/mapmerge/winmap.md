@@ -3,7 +3,7 @@
 C source: reference/starlink-ast/src/winmap.c
 Rust: crates/ast-core/src/mappings/winmap.rs
 Audited: 2026-08-21 against pin 3cf4bc5c
-Citations: verified against pin 756d5ac0
+Citations: verified against pin 3b9dc639
 Extension points: classified
 
 Uncited C steps:
@@ -26,7 +26,7 @@ and, only if nothing else fired, convert an all-unit-scale WinMap to a ShiftMap.
 | 2 | Get the WinMap's axis count and a typed pointer to it | winmap.c:1086-1091 (fn MapMerge) | winmap_merge.rs:378-379 (fn win_map_merge) | architecture | ported |
 | 3 | See if the WinMap can be replaced by something simpler, without reference to its neighbours | winmap.c:1092-1094 (fn MapMerge) | winmap_merge.rs:381-384 (fn win_map_merge) | architecture | ported |
 | 4 | Test whether every shift term is zero, using the raw stored terms | winmap.c:1095-1106 (fn MapMerge) | winmap_merge.rs:385 (fn win_map_merge) | architecture | ported |
-| 5 | Temporarily set the WinMap's Invert attribute to the supplied value | winmap.c:1107-1114 (fn MapMerge) | winmap_merge.rs:379 (fn win_map_merge),384 | architecture | ported |
+| 5 | Temporarily set the WinMap's Invert attribute to the supplied value | winmap.c:1107-1114 (fn MapMerge) | winmap_merge.rs:379 (fn win_map_merge),384 (fn win_map_merge) | architecture | ported |
 | 6 | Take the effective scale terms and build a diagonal MatrixMap from them | winmap.c:1115-1120 (fn MapMerge) | winmap_merge.rs:386-390 (fn win_map_merge) | architecture | ported |
 | 7 | Restore the Invert attribute and free the scale terms | winmap.c:1121-1126 (fn MapMerge) | -- | ceremony | n/a: `extract_linear_params` reads the entry without mutating it, and owned values are dropped |
 | 8 | Replace the WinMap in the list with the MatrixMap, clear the invert flag, and return the index | winmap.c:1127-1136 (fn MapMerge) | winmap_merge.rs:391-393 (fn win_map_merge) | architecture | ported |
@@ -93,4 +93,4 @@ C's speculative swap is kept only if something can be simplified afterwards, and
 it checks two different things in order: whether the two Mappings that were
 separated by the WinMap can now merge with each other, and only then whether
 either swapped Mapping simplifies on its own. `swap_is_worthwhile`
-(`winmap_merge.rs:808-860 (fn swap_is_worthwhile)`) keeps both tests in that order.
+(`winmap_merge.rs:808-862 (fn swap_is_worthwhile)`) keeps both tests in that order.
