@@ -49,7 +49,13 @@ The prototype made the identical mistake: `cmp_map.rs` reached 139% of `cmpmap.c
 **Check.** Before writing Rust for a class, list its `vtab` entries in the C source and classify each as ceremony or architecture.
 The test for architecture is mechanical: **does a generic driver in another file call this through the vtab?** If yes, the Rust port needs the same seam at the same granularity, even when one central `match` would pass today's fixtures.
 
-Known architecture, not boilerplate: `MapMerge`, `Transform`, `Simplify`, `Equal`, `MapSplit`, `Match`, `SubFrame`, `Overlay`, `RegPins`, `RegBaseMesh`, `RegBaseBox`, `GetDefUnc`.
+Known architecture, not boilerplate: `MapMerge`, `Transform`, `Simplify`, `Equal`, `MapSplit`, `Match`, `SubFrame`, `Overlay`, `RegPins`, `RegBaseMesh`, `RegBaseBox`, `GetDefUnc`, `GetAxis`.
+
+`GetAxis` is the entry that shows how quiet this hazard can be.
+`AxDistance` / `AxOffset` / `AxNorm` are each assigned in `frameset.c` and `region.c` as pure forwarders, so they read as boilerplate; `CmpFrame` and `SkyFrame` override none of them and reach their per-axis behaviour entirely through `GetAxis`, whose only assignment is `frame.c:6071`.
+The port collapsed it: a `SkyFrame`-wide `ax_distance` override, a display-only `SkyAxis`, and a frame-wide `has_sky_axis` boolean where C's `GetActiveUnit` (`frame.c:4669`) *derives* that answer from a per-axis `astGetAxis` loop.
+Nothing failed, because the two Frames a fixture reaches for — a SkyFrame, where every axis folds, and a plain Frame, where none does — cannot tell a per-axis rule from a frame-wide one.
+What exposed it was an upstream bug fix (`5613e44d`) whose regression test builds a Frame with one sky axis beside one plain axis: the fix was one character, and landing its gate needed the seam.
 
 ### H2 — Reshaping the structure C builds, because the reshape is equivalent
 

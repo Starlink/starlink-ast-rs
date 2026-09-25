@@ -12,7 +12,7 @@ use crate::serial::{
     FrameToNode, MappingToNode, Node, NodeValue, Serializable, frame_from_node, mapping_from_node,
 };
 
-use super::{DynFrame, Frame, simplify_frame_via_mapping};
+use super::{AxisKind, DynFrame, Frame, simplify_frame_via_mapping};
 
 /// Identifies a frame within a [`FrameSet`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1131,8 +1131,10 @@ impl Frame for FrameSet {
         self.current().offset2(point1, angle, offset)
     }
 
-    fn ax_distance(&self, axis: usize, v1: f64, v2: f64) -> AstResult<f64> {
-        self.current().ax_distance(axis, v1, v2)
+    /// A FrameSet's axes are its current Frame's axes. Mirrors C
+    /// `FrameSet::GetAxis` (frameset.c:4948).
+    fn get_axis(&self, axis: usize) -> AxisKind {
+        self.current().get_axis(axis)
     }
 
     fn norm_box(

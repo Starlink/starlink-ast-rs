@@ -9,7 +9,7 @@ use std::f64::consts::PI;
 use crate::constants::BAD_VALUE;
 use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
-use crate::frames::{DynFrame, Frame, FrameRef, FrameSet, simplify_frame_via_mapping};
+use crate::frames::{AxisKind, DynFrame, Frame, FrameRef, FrameSet, simplify_frame_via_mapping};
 use crate::mappings::helpers::{is_bad, point_has_bad};
 use crate::mappings::{DynMapping, Mapping, ViaSimplify};
 
@@ -285,6 +285,49 @@ impl EllipseBuilder {
         })
     }
 
+    /// Create a builder for an Ellipse from a boxed (dynamic) frame.
+    ///
+    /// The parameters are those of [`EllipseBuilder::new`].
+    pub fn from_dyn(
+        frame: DynFrame,
+        centre: Vec<f64>,
+        semi_axes: [f64; 2],
+        angle: f64,
+    ) -> AstResult<Self> {
+        let naxes = frame.naxes();
+        if naxes != 2 {
+            return Err(AstError::new(
+                ErrorCode::Naxin,
+                format!(
+                    "Ellipse requires a 2-dimensional frame, but got {} axes",
+                    naxes
+                ),
+            ));
+        }
+        if centre.len() != 2 {
+            return Err(AstError::new(
+                ErrorCode::Naxin,
+                format!(
+                    "Ellipse centre has {} coordinates but frame has 2 axes",
+                    centre.len()
+                ),
+            ));
+        }
+        if semi_axes[0] <= 0.0 || semi_axes[1] <= 0.0 {
+            return Err(AstError::new(
+                ErrorCode::Badin,
+                "Ellipse semi-axis lengths must be positive",
+            ));
+        }
+        Ok(EllipseBuilder {
+            frame,
+            centre,
+            semi_axes,
+            angle,
+            uncertainty: None,
+        })
+    }
+
     /// Set an uncertainty region.
     pub fn uncertainty(mut self, unc: DynRegion) -> Self {
         self.uncertainty = Some(unc);
@@ -489,9 +532,10 @@ impl RegionGeometry for Ellipse {
 
             // The box is accumulated as axis offsets from the centre, via
             // ax_distance, so that a cyclic axis wraps correctly
-            // (ellipse.c:1143-1157). Two details of C's loop are mirrored: the
-            // `else if`, which stops one point extending both ends of an axis,
-            // and the axis index, which is 1 for both axes.
+            // (ellipse.c:1143-1157). Each axis is measured by its own axis's
+            // rule, which matters when the two axes normalise differently. C's
+            // `else if` is mirrored: it stops one point extending both ends of
+            // an axis.
             let dist = frm.ax_distance(1, centre[0], p2[0])?;
             if dist < lbx {
                 lbx = dist;
@@ -499,7 +543,7 @@ impl RegionGeometry for Ellipse {
                 ubx = dist;
             }
 
-            let dist = frm.ax_distance(1, centre[1], p2[1])?;
+            let dist = frm.ax_distance(2, centre[1], p2[1])?;
             if dist < lby {
                 lby = dist;
             } else if dist > uby {
@@ -959,6 +1003,13 @@ impl Frame for Ellipse {
 
     fn norm(&self, coords: &mut [f64]) -> AstResult<()> {
         self.data.frameset.current().norm(coords)
+    }
+
+    /// A Region's axes are its encapsulated current Frame's axes. Mirrors
+    /// C `Region::AxDistance` / `AxOffset` / `AxNorm` (region.c:1457, 1610,
+    /// 1536), which all forward to that Frame.
+    fn get_axis(&self, axis: usize) -> AxisKind {
+        self.data.frameset.current().get_axis(axis)
     }
 
     fn snapshot(&self) -> DynFrame {

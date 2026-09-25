@@ -2762,13 +2762,28 @@ read different rules off the same Frame.
 whenever a Frame's two axes normalise differently.
 It does not bite on a SkyFrame, where both axes are SkyAxis objects and
 `AxisDistance` is `palDrange( v2 - v1 )` regardless of which one is asked
-(`skyaxis.c`), which is why no fixture shows a difference today.
+(`skyaxis.c`), nor on a plain Frame, where neither axis folds.
+It bites on a Frame whose two axes are of different classes — one sky axis
+picked out of a SkyFrame beside a plain one — where axis 2 was measured by
+axis 1's rule.
 
-**Rust behaviour (mirrored):** `regions/ellipse.rs`, `reg_base_box` passes 1 for
-both axes, keeping the port's bounds identical to C's on any Frame where the
-distinction would appear.
+**Rust behaviour:** inverted at the 9.5.0 sync.
+`regions/ellipse.rs`, `reg_base_box` passes each axis its own index, so each
+limit is accumulated under the rule of the axis it belongs to.
 
-To be raised upstream.
+Reaching the per-axis rule at all needed C's `astGetAxis` extension point, which
+the port had collapsed: `AxDistance` / `AxOffset` / `AxNorm` are overridden only
+by `FrameSet` and `Region`, both pure forwarders, so `CmpFrame` and `SkyFrame`
+get their per-axis behaviour entirely through `GetAxis` (`frame.c:6071` is its
+only assignment).
+`Frame::get_axis` is now that seam, and the sky-axis identity a picked axis
+carries (`frame.c:11023`, `skyframe.c:10280`) is what the inverted accumulation
+reads.
+
+Fixed upstream in `5613e44d`.
+`ellipse_bounds_measure_each_axis_by_its_own_rule` in `test_ellipse.rs` ports
+upstream's `checkEllipseAxisRules`, which builds the mixed Frame in both axis
+orderings with radii larger than pi so a folded axis and a raw one cannot agree.
 
 ## `CmpFrame::NormBox` can never widen a box, and errors when the components differ in size
 
@@ -2820,7 +2835,7 @@ permute / split / delegate / un-permute, fills the other component's axes with
 returns `ErrorCode::Ncpin` where C's arity check fires. What follows that error
 in C is a read of uninitialised memory and is not reproduced.
 
-To be raised upstream, together with the `Ellipse` `astAxDistance` axis index.
+To be raised upstream.
 
 ---
 

@@ -4,7 +4,7 @@ use crate::constants::BAD_VALUE;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::sky_convert::{SkyRefIs, SkySystem, make_offset_mapping, make_sky_mapping};
 use crate::frames::skyaxis::{SkyAxis, format_sky, unformat_sky};
-use crate::frames::{DynFrame, Frame, FrameRef, LineDef, SkyLineDef};
+use crate::frames::{AxisKind, DynFrame, Frame, FrameRef, LineDef, SkyLineDef};
 use crate::mappings::helpers::is_bad;
 use crate::mappings::{CmpMap, Composition, DynMapping, PermMap, UnitMap};
 use crate::pal;
@@ -1169,15 +1169,12 @@ impl Frame for SkyFrame {
         Ok(())
     }
 
-    /// Signed axis increment from `v1` to `v2`, normalised into +PI to
-    /// -PI. Mirrors C `SkyAxis::AxisDistance` (skyaxis.c:405) via the
-    /// Frame `astAxDistance` dispatch — every SkyFrame axis is a SkyAxis.
-    fn ax_distance(&self, _axis: usize, v1: f64, v2: f64) -> AstResult<f64> {
-        Ok(if is_bad(v1) || is_bad(v2) {
-            BAD_VALUE
-        } else {
-            pal::drange(v2 - v1)
-        })
+    /// Every SkyFrame axis carries a SkyAxis, so the `astAx*` methods get
+    /// celestial wrapping. Which SkyAxis depends on the axis permutation.
+    /// Mirrors the Axis array a SkyFrame inherits from Frame, reached through
+    /// `astGetAxis` (frame.c:5309) after `astValidateAxis` permutes.
+    fn get_axis(&self, axis: usize) -> AxisKind {
+        self.axes[self.perm[axis - 1]].kind()
     }
 
     /// Offset along a great circle at a given bearing. Mirrors C
@@ -1886,11 +1883,6 @@ impl Frame for SkyFrame {
         // (line 10128), but only the metadata-carrying portion: the
         // Mapping is built by the caller (default_sub_frame).
         let mut bf = super::basic::BasicFrameBuilder::new(target_axes.len()).build()?;
-        // The picked axes remain SkyAxis objects in C, which forces the
-        // result's ActiveUnit flag to 0 (frame.c:4626). Record that so
-        // axis-matching against this snapshot skips the Unit-compatibility
-        // step exactly as C does.
-        bf.set_has_sky_axis(true);
         if self.test_domain() {
             bf.set_domain(self.domain().to_string());
         }
@@ -1905,6 +1897,21 @@ impl Frame for SkyFrame {
             let unit = if t == 0 { u_lon } else { u_lat };
             let _ = bf.set_unit(i + 1, unit.to_string());
             let _ = bf.set_symbol(i + 1, self.axis_symbol(t as usize + 1)?);
+            // C's SubFrame attaches the target's own Axis object to the result
+            // (frame.c:11023), so the picked axis stays a SkyAxis. skyframe.c
+            // SubFrame first pins down IsLatitude and CentreZero on it
+            // (skyframe.c:10280): a latitude axis gets both set, a longitude
+            // axis takes CentreZero from the SkyFrame's NegLon. The picked axis
+            // therefore keeps wrapping its values, and its presence forces the
+            // result's ActiveUnit to 0 (frame.c:4669).
+            let is_latitude = t as usize == self.lat_pos();
+            bf.set_axis_kind(
+                i + 1,
+                AxisKind::Sky {
+                    is_latitude,
+                    centre_zero: if is_latitude { true } else { self.neglon },
+                },
+            );
         }
         Ok(Box::new(bf))
     }

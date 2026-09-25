@@ -11,7 +11,7 @@
 
 use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
-use crate::frames::{DynFrame, Frame, FrameRef, FrameSet, simplify_frame_via_mapping};
+use crate::frames::{AxisKind, DynFrame, Frame, FrameRef, FrameSet, simplify_frame_via_mapping};
 use crate::mappings::helpers::{is_bad, point_has_bad};
 use crate::mappings::{DynMapping, Mapping, UnitMap, ViaSimplify};
 
@@ -1121,6 +1121,13 @@ impl Frame for Polygon {
 
     fn norm(&self, coords: &mut [f64]) -> AstResult<()> {
         self.data.frameset.current().norm(coords)
+    }
+
+    /// A Region's axes are its encapsulated current Frame's axes. Mirrors
+    /// C `Region::AxDistance` / `AxOffset` / `AxNorm` (region.c:1457, 1610,
+    /// 1536), which all forward to that Frame.
+    fn get_axis(&self, axis: usize) -> AxisKind {
+        self.data.frameset.current().get_axis(axis)
     }
 
     fn snapshot(&self) -> DynFrame {

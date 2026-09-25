@@ -8,7 +8,7 @@ use std::f64::consts::{FRAC_PI_4, PI};
 
 use ast_core::constants::BAD_VALUE;
 use ast_core::coords::PointSet;
-use ast_core::frames::{BasicFrameBuilder, Frame};
+use ast_core::frames::{BasicFrameBuilder, CmpFrame, Frame, SkyFrame, SkySystem, pick_axes};
 use ast_core::mappings::Mapping;
 use ast_core::regions::{EllipseBuilder, Region};
 
@@ -443,4 +443,59 @@ fn reg_pins_ellipse_full_mesh_on_boundary() {
 
     let mesh = e.get_region_mesh().unwrap();
     assert!(e.reg_pins(&mesh, None).unwrap());
+}
+
+// ---- Per-axis measurement rules ----
+
+/// Each axis of an Ellipse's bounding box is measured by its own axis's rule.
+///
+/// Ancestor: `reference/starlink-ast/ast_tester/testregions.c`,
+/// `checkEllipseAxisRules`.
+///
+/// `ax_distance` dispatches to the Axis on the named axis, so the index matters
+/// whenever a Frame's two axes normalise differently. A sky axis folds its
+/// distances into +/- pi; a plain axis does not. Neither a SkyFrame (both axes
+/// fold) nor a plain Frame (neither does) can tell the two indices apart — it
+/// takes a Frame whose axes are of different classes.
+#[test]
+fn ellipse_bounds_measure_each_axis_by_its_own_rule() {
+    // The radii are deliberately larger than pi, so a folded axis and a raw one
+    // cannot give the same answer.
+    let radii = [4.0, 3.5];
+    // A folded axis cannot report a limit beyond pi, while the plain axis here
+    // reaches the 4.0 primary radius.
+    let raw = PI + 1.0e-8;
+
+    for sky_first in [true, false] {
+        // A CmpFrame of a SkyFrame and a 1-D Frame, reduced to one sky axis
+        // beside the plain one. With `sky_first` the sky axis is axis 1,
+        // otherwise axis 2.
+        let cf = CmpFrame::new(
+            Box::new(SkyFrame::new(SkySystem::Fk5)),
+            Box::new(BasicFrameBuilder::new(1).domain("T").build().unwrap()),
+        );
+        let pick = if sky_first { [1, 3] } else { [3, 1] };
+        let (mixed, _map) = pick_axes(&cf, &pick).unwrap();
+
+        let el = EllipseBuilder::from_dyn(mixed, vec![0.0, 0.0], radii, 0.0)
+            .unwrap()
+            .build()
+            .unwrap();
+        let (lo, hi) = el.get_region_bounds().unwrap();
+
+        let wrapped = hi[1] <= raw && lo[1] >= -raw;
+        if sky_first {
+            assert!(
+                !wrapped,
+                "axis 2 is a plain axis but its range {:.10}..{:.10} was folded",
+                lo[1], hi[1]
+            );
+        } else {
+            assert!(
+                wrapped,
+                "axis 2 is a sky axis but its range {:.10}..{:.10} was not folded",
+                lo[1], hi[1]
+            );
+        }
+    }
 }

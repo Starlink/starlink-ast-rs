@@ -62,6 +62,20 @@ impl SkyAxis {
     pub fn effective_centre_zero(&self) -> bool {
         self.centre_zero.unwrap_or(self.is_latitude)
     }
+
+    /// The kind of Axis this is, as [`Frame::get_axis`] reports it.
+    ///
+    /// Resolves the attributes that drive the `astAxis*` methods to their
+    /// effective values, which is what C's accessors return when the Axis is
+    /// interrogated through the fetched pointer.
+    ///
+    /// [`Frame::get_axis`]: super::Frame::get_axis
+    pub fn kind(&self) -> super::AxisKind {
+        super::AxisKind::Sky {
+            is_latitude: self.is_latitude,
+            centre_zero: self.effective_centre_zero(),
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

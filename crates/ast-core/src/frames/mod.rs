@@ -34,6 +34,212 @@ use crate::serial::AnyObject;
 /// An owned, dynamically-dispatched Frame.
 pub type DynFrame = Box<dyn Frame>;
 
+/// The Axis object attached to one axis of a [`Frame`].
+///
+/// C's Frame holds an array of `Axis` objects, one per axis, and reaches
+/// per-axis behaviour by fetching one with `astGetAxis` and calling an
+/// `astAxis*` method on it (`frame.c:1466` for `astAxDistance`, and likewise
+/// for `astAxOffset` and `astAxNorm`). The Axis class matters: a `SkyAxis`
+/// wraps values into a cyclic range where a plain `Axis` does not.
+///
+/// Crucially the axes of one Frame need not share a class. `CmpFrame` routes
+/// each axis to its owning component (`cmpframe.c:3474`), and `SubFrame`
+/// re-uses the target's Axis objects on the result (`frame.c:11023`), so a sky
+/// axis picked out of a `SkyFrame` stays a sky axis even when it ends up
+/// alongside a plain axis on a `CmpFrame`. This enum is that per-axis fact.
+///
+/// Where C hands out a counted reference to the Axis object, this carries the
+/// attributes that the `astAxis*` methods read, already resolved to their
+/// effective values.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AxisKind {
+    /// A plain Cartesian axis, with no constraint on its values. The
+    /// behaviour of C's base `Axis` class (`axis.c`).
+    Plain,
+    /// A celestial axis, whose values wrap into a cyclic range. The
+    /// behaviour of C's `SkyAxis` class (`skyaxis.c`).
+    Sky {
+        /// True for a latitude axis, which is always wrapped into
+        /// `[-PI,PI]`. Mirrors the `IsLatitude` Axis attribute.
+        is_latitude: bool,
+        /// True when the axis range is centred on zero (`[-PI,PI]`) rather
+        /// than on PI (`[0,2*PI]`). Mirrors the `CentreZero` Axis attribute,
+        /// whose default is `IsLatitude` (`skyaxis.c:4620`).
+        centre_zero: bool,
+    },
+}
+
+impl AxisKind {
+    /// Signed increment from `v1` to `v2` along this axis.
+    ///
+    /// Mirrors `astAxisDistance`: `axis.c:353` for a plain axis (`v2 - v1`),
+    /// `skyaxis.c:412` for a sky axis (the same difference wrapped into
+    /// +PI to -PI).
+    pub fn distance(&self, v1: f64, v2: f64) -> f64 {
+        use crate::constants::BAD_VALUE;
+        use crate::mappings::helpers::is_bad;
+        if is_bad(v1) || is_bad(v2) {
+            return BAD_VALUE;
+        }
+        match self {
+            Self::Plain => v2 - v1,
+            Self::Sky { .. } => crate::pal::drange(v2 - v1),
+        }
+    }
+
+    /// The value reached by adding `dist` to `v1` along this axis.
+    ///
+    /// Mirrors `astAxisOffset`: `axis.c:1165` for a plain axis (`v1 + dist`),
+    /// `skyaxis.c:1300` for a sky axis (the same sum, then normalised).
+    pub fn offset(&self, v1: f64, dist: f64) -> f64 {
+        use crate::constants::BAD_VALUE;
+        use crate::mappings::helpers::is_bad;
+        if is_bad(v1) || is_bad(dist) {
+            return BAD_VALUE;
+        }
+        let mut result = v1 + dist;
+        self.norm(&mut result);
+        result
+    }
+
+    /// Wrap `value` into this axis's canonical range.
+    ///
+    /// Mirrors `astAxisNorm`: `axis.c:1070` for a plain axis (no constraints,
+    /// so no action), `skyaxis.c:1057` for a sky axis.
+    pub fn norm(&self, value: &mut f64) {
+        if let Self::Sky { centre_zero, .. } = self {
+            if !crate::mappings::helpers::is_bad(*value) {
+                *value = if *centre_zero {
+                    crate::pal::drange(*value)
+                } else {
+                    crate::pal::dranrm(*value)
+                };
+            }
+        }
+    }
+
+    /// Normalise `values` in the manner selected by `oper`.
+    ///
+    /// `oper` 0 normalises each value exactly as [`norm`](Self::norm) does.
+    /// `oper` 1 chooses, for a sky longitude axis, whichever of `[0,2*PI]` and
+    /// `[-PI,PI]` leaves the list with the smaller range; a latitude axis is
+    /// always wrapped into `[-PI,PI]`.
+    ///
+    /// Mirrors `astAxisNormValues`: `axis.c:1115` for a plain axis (no action),
+    /// `skyaxis.c:1118` for a sky axis.
+    pub fn norm_values(&self, oper: i32, values: &mut [f64]) {
+        let Self::Sky {
+            is_latitude,
+            centre_zero,
+        } = *self
+        else {
+            return;
+        };
+
+        // C `VAL_OK` (skyaxis.c:1169): bad values, and values outside -1E6 to
+        // +1E6 radians, are returned unchanged, which keeps DBL_MAX-style
+        // sentinels intact.
+        fn val_ok(v: f64) -> bool {
+            !crate::mappings::helpers::is_bad(v) && v.abs() < 1.0e6
+        }
+
+        // Oper 0 mirrors AxisNorm, so it follows CentreZero.
+        if oper == 0 {
+            for v in values.iter_mut() {
+                if val_ok(*v) {
+                    *v = if centre_zero {
+                        crate::pal::drange(*v)
+                    } else {
+                        crate::pal::dranrm(*v)
+                    };
+                }
+            }
+            return;
+        }
+
+        // Latitude axes always normalise into [-PI,+PI].
+        if is_latitude {
+            for v in values.iter_mut() {
+                if val_ok(*v) {
+                    *v = crate::pal::drange(*v);
+                }
+            }
+            return;
+        }
+
+        // Longitude axes: bring every value into [-PI,2*PI] and find the
+        // extremes within each of [-PI,0], [0,PI] and [PI,2PI], so the range
+        // each candidate normalisation would produce can be compared.
+        let two_pi = 2.0 * std::f64::consts::PI;
+        let (mut mx1, mut mn1) = (-f64::MAX, f64::MAX);
+        let (mut mx2, mut mn2) = (-f64::MAX, f64::MAX);
+        let (mut mx3, mut mn3) = (-f64::MAX, f64::MAX);
+
+        for v in values.iter_mut() {
+            if !val_ok(*v) {
+                continue;
+            }
+            while *v > two_pi {
+                *v -= two_pi;
+            }
+            while *v < -std::f64::consts::FRAC_PI_2 {
+                *v += two_pi;
+            }
+            if *v > std::f64::consts::PI {
+                mx3 = mx3.max(*v);
+                mn3 = mn3.min(*v);
+            } else if *v > 0.0 {
+                mx2 = mx2.max(*v);
+                mn2 = mn2.min(*v);
+            } else {
+                mx1 = mx1.max(*v);
+                mn1 = mn1.min(*v);
+            }
+        }
+
+        // The range that normalising into [0,2.PI] would give.
+        let (hi, lo) = if mx1 != -f64::MAX {
+            (
+                mx2.max((mx1 + two_pi).max(mx3)),
+                mn2.min((mn1 + two_pi).min(mn3)),
+            )
+        } else {
+            (mx2.max(mx3), mn2.min(mn3))
+        };
+        let range1 = hi - lo;
+
+        // The range that normalising into [-PI,PI] would give. C tests
+        // `mn3 != -DBL_MAX` (skyaxis.c:1266) where `mn3` starts at `+DBL_MAX`,
+        // so the test always passes; it is kept because both branches agree —
+        // the unset extremes saturate the max/min either way.
+        let (hi, lo) = if mn3 != -f64::MAX {
+            (
+                mx2.max((mx3 - two_pi).max(mx1)),
+                mn2.min((mn3 - two_pi).min(mn1)),
+            )
+        } else {
+            (mx2.max(mx1), mn2.min(mn1))
+        };
+        let range2 = hi - lo;
+
+        // Whichever candidate gives the smaller range wins; a tie keeps
+        // [0,2PI], as C's `<` comparison does.
+        if range2 < range1 {
+            for v in values.iter_mut() {
+                if val_ok(*v) {
+                    *v = crate::pal::drange(*v);
+                }
+            }
+        } else {
+            for v in values.iter_mut() {
+                if val_ok(*v) {
+                    *v = crate::pal::dranrm(*v);
+                }
+            }
+        }
+    }
+}
+
 /// [`Frame::simplify_frame`] for a class that is both a Frame and a Mapping.
 ///
 /// C has one `Simplify` slot, so `astSimplify` on a Region or a FrameSet runs
@@ -848,30 +1054,39 @@ pub trait Frame: AsAny + Send + fmt::Debug {
         Ok(false)
     }
 
+    /// The kind of Axis object attached to a 1-based `axis` of this Frame.
+    ///
+    /// Mirrors C `astGetAxis` (frame.c:5309), which returns the per-axis
+    /// `Axis` object that the `astAx*` and formatting methods then dispatch
+    /// to. A Frame's axes need not all be of the same class — a CmpFrame can
+    /// hold a sky axis beside a plain one — so the per-axis rule cannot be
+    /// derived from the Frame's own class.
+    ///
+    /// The base Frame holds plain `Axis` objects on every axis. Compound and
+    /// permuting Frames (CmpFrame, SkyFrame, FrameSet, Region) override to
+    /// route to the axis's true owner, exactly as C's `GetAxis` overrides do.
+    fn get_axis(&self, _axis: usize) -> AxisKind {
+        AxisKind::Plain
+    }
+
     /// Signed axis increment from `v1` to `v2` on a 1-based `axis`.
-    /// Base (Cartesian): `v2 - v1` with BAD propagation. Mirrors C
-    /// `astAxDistance` (frame.c:1466 -> axis.c AxisDistance).
-    fn ax_distance(&self, _axis: usize, v1: f64, v2: f64) -> AstResult<f64> {
-        use crate::constants::BAD_VALUE;
-        use crate::mappings::helpers::is_bad;
-        Ok(if is_bad(v1) || is_bad(v2) {
-            BAD_VALUE
-        } else {
-            v2 - v1
-        })
+    ///
+    /// Dispatches to the Axis object on that axis. Mirrors C `astAxDistance`
+    /// (frame.c:1466), which fetches the Axis with `astGetAxis` and calls
+    /// `astAxisDistance` on it.
+    fn ax_distance(&self, axis: usize, v1: f64, v2: f64) -> AstResult<f64> {
+        self.validate_frame_axis(axis, "astAxDistance")?;
+        Ok(self.get_axis(axis).distance(v1, v2))
     }
 
     /// Axis value formed by adding `dist` to `v1` on a 1-based `axis`.
-    /// Base (Cartesian): `v1 + dist` with BAD propagation. Mirrors C
-    /// `astAxOffset` (frame.c:1744 -> axis.c AxisOffset).
-    fn ax_offset(&self, _axis: usize, v1: f64, dist: f64) -> AstResult<f64> {
-        use crate::constants::BAD_VALUE;
-        use crate::mappings::helpers::is_bad;
-        Ok(if is_bad(v1) || is_bad(dist) {
-            BAD_VALUE
-        } else {
-            v1 + dist
-        })
+    ///
+    /// Dispatches to the Axis object on that axis. Mirrors C `astAxOffset`
+    /// (frame.c:1744), which fetches the Axis with `astGetAxis` and calls
+    /// `astAxisOffset` on it.
+    fn ax_offset(&self, axis: usize, v1: f64, dist: f64) -> AstResult<f64> {
+        self.validate_frame_axis(axis, "astAxOffset")?;
+        Ok(self.get_axis(axis).offset(v1, dist))
     }
 
     /// Angle, as seen from `a`, between the positive direction of the
@@ -911,14 +1126,32 @@ pub trait Frame: AsAny + Send + fmt::Debug {
     }
 
     /// Normalise an array of axis values on a 1-based `axis`. `oper`
-    /// selects the normalisation mode (0 = like `norm`, 1 = smallest
-    /// range). Base (Cartesian): values are returned unchanged. Mirrors
-    /// C `astAxNorm` (frame.c:1560).
-    fn ax_norm(&self, _axis: usize, oper: i32, _values: &mut [f64]) -> AstResult<()> {
+    /// selects the normalisation mode (0 = like `norm`, 1 = smallest range).
+    ///
+    /// Dispatches to the Axis object on that axis. Mirrors C `astAxNorm`
+    /// (frame.c:1560), which fetches the Axis with `astGetAxis`, validates
+    /// `oper`, and calls `astAxisNormValues` on it.
+    fn ax_norm(&self, axis: usize, oper: i32, values: &mut [f64]) -> AstResult<()> {
+        self.validate_frame_axis(axis, "astAxNorm")?;
         if !(0..=1).contains(&oper) {
             return Err(AstError::new(
                 ErrorCode::Oprin,
                 format!("astAxNorm: invalid operation {oper}"),
+            ));
+        }
+        self.get_axis(axis).norm_values(oper, values);
+        Ok(())
+    }
+
+    /// Validate a 1-based axis index against this Frame's axis count.
+    ///
+    /// Mirrors the `astValidateAxis` call that opens each `astAx*` driver.
+    fn validate_frame_axis(&self, axis: usize, method: &str) -> AstResult<()> {
+        let naxes = self.naxes();
+        if axis < 1 || axis > naxes {
+            return Err(AstError::new(
+                ErrorCode::Axiin,
+                format!("{method}: axis index {axis} is out of range 1..={naxes}"),
             ));
         }
         Ok(())
@@ -1201,8 +1434,12 @@ pub fn pick_axes(frame: &dyn Frame, axes: &[usize]) -> AstResult<(DynFrame, DynM
         }
     }
 
-    // Build the new frame with the correct number of axes.
-    let new_frame: DynFrame = Box::new(BasicFrameBuilder::new(nout).build()?);
+    // Build the new frame by selecting the axes, as C's astPickAxes does via
+    // astSubFrame (frame.c:8815). Going through the class's own snapshot keeps
+    // each picked axis's identity: a sky axis picked out of a SkyFrame stays a
+    // sky axis, and a CmpFrame routes each axis to its owning component.
+    let zero_based: Vec<i32> = axes.iter().map(|&ax| (ax - 1) as i32).collect();
+    let new_frame: DynFrame = frame.pick_axes_snapshot(&zero_based)?;
 
     // Build a PermMap: forward selects the picked axes from the original.
     // outperm (forward): output[i] = input[axes[i]] (1-based).

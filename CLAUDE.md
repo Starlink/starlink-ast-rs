@@ -226,7 +226,7 @@ this through the vtab?** If yes, the Rust port needs the same seam.
 
 Known architecture, not boilerplate: `MapMerge`, `Transform`,
 `Simplify`, `Equal`, `MapSplit`, `Match`, `SubFrame`, `Overlay`,
-`RegPins`, `RegBaseMesh`, `RegBaseBox`, `GetDefUnc`.
+`RegPins`, `RegBaseMesh`, `RegBaseBox`, `GetDefUnc`, `GetAxis`.
 
 Two related rules:
 

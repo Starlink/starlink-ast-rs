@@ -8,7 +8,7 @@ use crate::mappings::helpers::{is_bad, point_has_bad};
 use crate::mappings::{CmpMap, Composition, DynMapping, PermMap, UnitMap};
 use crate::serial::{FrameToNode, Node, NodeValue, Serializable, frame_from_node};
 
-use super::{DynFrame, Frame};
+use super::{AxisKind, DynFrame, Frame};
 
 /// A compound frame that concatenates the axes of two child frames.
 ///
@@ -591,6 +591,15 @@ impl Frame for CmpFrame {
             }
         }
         Ok(result)
+    }
+
+    /// A CmpFrame's axes belong to its components, so the Axis on a given
+    /// axis is whatever the owning component has there — the two components
+    /// need not agree. Mirrors C `CmpFrame::GetAxis` (cmpframe.c:3474), which
+    /// permutes the index and forwards to the owner.
+    fn get_axis(&self, axis: usize) -> AxisKind {
+        let (frame, local) = self.route_axis(axis);
+        frame.get_axis(local)
     }
 
     fn norm(&self, coords: &mut [f64]) -> AstResult<()> {

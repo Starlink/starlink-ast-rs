@@ -6,7 +6,7 @@ use crate::mappings::helpers::{is_bad, point_has_bad};
 use crate::mappings::{DynMapping, UnitMap};
 use crate::serial::{Node, NodeValue, Serializable};
 
-use super::{DynFrame, Frame};
+use super::{AxisKind, DynFrame, Frame};
 
 /// A basic coordinate frame with Euclidean (Cartesian) geometry.
 ///
@@ -33,14 +33,16 @@ pub struct BasicFrame {
     directions: Vec<Option<bool>>,
     /// When false, unit strings do not affect alignment. Default is true.
     act_unt: Option<bool>,
-    /// True when this Frame was produced by picking axes out of a SkyFrame
-    /// (so its axes are, in C terms, SkyAxis objects). C's
-    /// `Frame::GetActiveUnit` (frame.c:4626) always returns 0 for a Frame
-    /// containing a SkyAxis; this flag reproduces that rule so axis-matching
-    /// against such a Frame skips the Unit-compatibility step exactly as C
-    /// does. Transient: never serialised (the byte-exact native form writes
-    /// per-axis Axis objects, which this porting layer does not model).
-    has_sky_axis: bool,
+    /// The Axis object on each axis, in physical (unpermuted) order.
+    ///
+    /// C's `SubFrame` attaches the target's own Axis objects to the result
+    /// (frame.c:11023), so a plain Frame built by picking axes out of a
+    /// SkyFrame carries SkyAxis objects, and keeps their cyclic behaviour.
+    /// The axes need not agree with each other.
+    ///
+    /// Transient: never serialised (the byte-exact native form writes per-axis
+    /// Axis objects, which this porting layer does not model).
+    axis_kinds: Vec<AxisKind>,
     /// Permanent object identification string (Object-level attribute).
     ident: Option<String>,
     // Match-control attributes (used by `astFindFrame` / `astMatch`).
@@ -200,7 +202,7 @@ impl BasicFrameBuilder {
             axis_digits: self.axis_digits,
             directions: self.directions,
             act_unt: self.act_unt,
-            has_sky_axis: false,
+            axis_kinds: vec![AxisKind::Plain; self.naxes],
             ident: self.ident,
             min_axes_opt: None,
             max_axes_opt: None,
@@ -212,15 +214,16 @@ impl BasicFrameBuilder {
 }
 
 impl BasicFrame {
-    /// Mark this Frame as containing SkyAxis axes.
+    /// Attach `kind` to a 1-based `axis` of this Frame.
     ///
-    /// Used when a `SkyFrame` axis is picked into a plain `BasicFrame`
-    /// snapshot: in C the picked axis remains a `SkyAxis`, which forces
-    /// `astGetActiveUnit` to 0 (frame.c:4626). This porting layer does not
-    /// model per-axis `SkyAxis` objects on a `BasicFrame`, so the flag
-    /// records the same fact for the `get_active_unit` query.
-    pub(crate) fn set_has_sky_axis(&mut self, value: bool) {
-        self.has_sky_axis = value;
+    /// Used when axes are picked out of another Frame: C's `SubFrame` gives
+    /// the result the target's own Axis objects (frame.c:11023), so a sky axis
+    /// picked into a plain Frame stays a SkyAxis and keeps wrapping its values.
+    /// Mirrors C `astSetAxis`.
+    pub(crate) fn set_axis_kind(&mut self, axis: usize, kind: AxisKind) {
+        if axis >= 1 && axis <= self.naxes {
+            self.axis_kinds[axis - 1] = kind;
+        }
     }
 
     /// Validate that `axis` is in 1..=naxes, returning an error if not.
@@ -674,13 +677,26 @@ impl Frame for BasicFrame {
     }
 
     fn get_active_unit(&self) -> bool {
-        // C `Frame::GetActiveUnit` (frame.c:4626): a Frame containing a
-        // SkyAxis always reports 0, regardless of the stored flag.
-        // Otherwise the stored value, defaulting to false when unset.
-        if self.has_sky_axis {
+        // C `Frame::GetActiveUnit` (frame.c:4669) loops over the axes with
+        // `astGetAxis` and reports 0 if any is a SkyAxis, whatever the stored
+        // flag says. Otherwise the stored value, defaulting to false.
+        if self
+            .axis_kinds
+            .iter()
+            .any(|k| matches!(k, AxisKind::Sky { .. }))
+        {
             return false;
         }
         self.act_unt.unwrap_or(false)
+    }
+
+    /// The Axis attached to a 1-based `axis`. Mirrors C `astGetAxis`
+    /// (frame.c:5309), which returns the Frame's own Axis object.
+    fn get_axis(&self, axis: usize) -> AxisKind {
+        self.axis_kinds
+            .get(axis - 1)
+            .copied()
+            .unwrap_or(AxisKind::Plain)
     }
 
     fn set_active_unit(&mut self, value: bool) {
@@ -848,6 +864,7 @@ impl Frame for BasicFrame {
         permute_slice(&mut self.tops, perm);
         permute_slice(&mut self.axis_digits, perm);
         permute_slice(&mut self.directions, perm);
+        permute_slice(&mut self.axis_kinds, perm);
         Ok(())
     }
 
@@ -1338,20 +1355,27 @@ mod tests {
     }
 
     #[test]
-    fn sky_axis_flag_forces_active_unit_off() {
-        // C `Frame::GetActiveUnit` (frame.c:4626): a Frame containing a
-        // SkyAxis always reports 0, even after the flag is explicitly set.
+    fn sky_axis_forces_active_unit_off() {
+        // C `Frame::GetActiveUnit` (frame.c:4669) loops over the axes with
+        // `astGetAxis` and reports 0 if any of them is a SkyAxis, even after
+        // the flag has been explicitly set.
         let mut f = BasicFrameBuilder::new(1).build().unwrap();
         f.set_active_unit(true);
         assert!(f.get_active_unit(), "plain frame honours the set flag");
 
-        f.set_has_sky_axis(true);
+        f.set_axis_kind(
+            1,
+            AxisKind::Sky {
+                is_latitude: false,
+                centre_zero: false,
+            },
+        );
         assert!(
             !f.get_active_unit(),
             "a frame carrying a SkyAxis must report ActiveUnit=0 regardless of the stored flag"
         );
 
-        f.set_has_sky_axis(false);
-        assert!(f.get_active_unit(), "clearing the flag restores the value");
+        f.set_axis_kind(1, AxisKind::Plain);
+        assert!(f.get_active_unit(), "clearing the axis restores the value");
     }
 }
