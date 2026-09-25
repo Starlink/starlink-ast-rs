@@ -7,51 +7,55 @@ Citations: verified against pin 756d5ac0
 Extension points: classified
 
 Uncited C steps:
-- polymap.c:3558 (fn MapMerge) — `Local Variables:` is the local-variable declaration block, not a step
+- polymap.c:3576 (fn MapMerge) — `Local Variables:` is the local-variable declaration block, not a step
 
-C's body runs `polymap.c:3597-3961 (fn MapMerge)` in two halves: consolidate the
+C's body runs `polymap.c:3617-4004 (fn MapMerge)` in two halves: consolidate the
 coefficients and, if the result is linear, replace the PolyMap with a ShiftMap and
 MatrixMap; then, failing that, cancel the PolyMap against an adjacent inverse
 PolyMap.
 
-`PolyMap::map_merge` is `polymap.rs:1544-1566 (fn map_merge)`; the two reductions
+`PolyMap::map_merge` is `polymap.rs:1557-1579 (fn map_merge)`; the two reductions
 it runs before it looks at a neighbour are `PolyMap::replace_with_simpler`
-(`polymap.rs:898-1001 (fn replace_with_simpler)`), and the neighbour half is
-`PolyMap::try_merge` (`polymap.rs:1572-1610 (fn try_merge)`) reached through
+(`polymap.rs:970-1014 (fn replace_with_simpler)`), and the neighbour half is
+`PolyMap::try_merge` (`polymap.rs:1585-1623 (fn try_merge)`) reached through
 `default_map_merge`.
 
-ChebyMap inherits this whole body in C and does not in the port; that is audited
-separately in `chebymap.md`.
+ChebyMap inherits this whole body in C, and in the port too: both halves are
+shared, the consolidation through `PolyMap::consolidated_terms` and the linear
+replacement through `PolyMap::linear_replacement`, which takes the ChebyMap's
+input normalisation as an argument. What differs is only which of them
+`ChebyMap::map_merge` calls and with what, which is audited separately in
+`chebymap.md`.
 
 | # | C step | C site | Rust site | extension point | verdict |
 |---|---|---|---|---|---|
-| 1 | Initialise the returned result to -1 | polymap.c:3597-3598 (fn MapMerge) | -- | ceremony | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index |
-| 2 | Check the global error status and bail out | polymap.c:3600-3601 (fn MapMerge) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
-| 3 | Save a pointer to the nominated PolyMap | polymap.c:3603-3604 (fn MapMerge) | -- | ceremony | n/a: the Rust method already has `&self` |
-| 4 | See if the PolyMap can be replaced by something simpler, without reference to its neighbours | polymap.c:3606-3608 (fn MapMerge) | polymap.rs:1550-1559 (fn map_merge) | architecture | ported |
-| 5 | Get the input and output counts of the transformation as constructed | polymap.c:3610-3618 (fn MapMerge) | polymap.rs:931-932 (fn replace_with_simpler) | architecture | ported |
-| 6 | Take a deep copy to modify | polymap.c:3620-3622 (fn MapMerge) | polymap.rs:979-1000 (fn replace_with_simpler) | architecture | ported |
-| 7 | Combine coefficients that refer to the same combination of input powers, forward then inverse | polymap.c:3624-3731 (fn MapMerge) | polymap.rs:852-896 (fn consolidated_terms) | architecture | ported |
-| 8 | If any transformation changed, store the new PolyMap in place of the old and report a change | polymap.c:3732-3745 (fn MapMerge) | polymap.rs:891-895 (fn consolidated_terms), polymap.rs:975-977 (fn replace_with_simpler) | architecture | ported |
-| 9 | Test whether the forward transformation is linear, accumulating an offset vector and a matrix | polymap.c:3747-3842 (fn MapMerge) | polymap.rs:922-957 (fn replace_with_simpler) | architecture | ported |
-| 10 | If it is linear, build the ShiftMap and MatrixMap and compose them | polymap.c:3843-3855 (fn MapMerge) | polymap.rs:959-969 (fn replace_with_simpler) | architecture | ported |
-| 11 | Replace the PolyMap in the list with that composition | polymap.c:3856-3863 (fn MapMerge) | polymap.rs:1560-1561 (fn map_merge) | architecture | ported |
-| 12 | Return the index of the first modified element | polymap.c:3864-3866 (fn MapMerge) | polymap.rs:1562 (fn map_merge) | architecture | ported |
-| 13 | Free the offset and matrix arrays | polymap.c:3868-3875 (fn MapMerge) | -- | ceremony | n/a: owned values are dropped |
-| 14 | Otherwise see if the PolyMap can be merged with a neighbour | polymap.c:3877-3879 (fn MapMerge) | polymap.rs:1565 (fn map_merge) | architecture | ported |
-| 15 | The only merge available is a PolyMap with its own inverse, in series | polymap.c:3881-3886 (fn MapMerge) | polymap.rs:1579-1586 (fn try_merge) | architecture | ported |
-| 16 | Temporarily set the nominated PolyMap's Invert flag to the requested value | polymap.c:3887-3892 (fn MapMerge) | polymap.rs:1594-1598 (fn try_merge) | architecture | ported |
-| 17 | Read the nominated PolyMap's shape at that orientation | polymap.c:3893-3896 (fn MapMerge) | polymap.rs:1606-1608 (fn try_merge) | architecture | ported |
-| 18 | Take each neighbour in turn, skipping one that does not exist or is not a PolyMap | polymap.c:3897-3908 (fn MapMerge) | mappings/simplify.rs:1332-1353 (fn default_map_merge) | architecture | ported |
-| 19 | Require the neighbour to be used in the opposite direction | polymap.c:3909-3911 (fn MapMerge) | polymap.rs:1583-1585 (fn try_merge) | architecture | ported |
-| 20 | Set the neighbour's Invert flag so the equality test compares like with like | polymap.c:3912-3921 (fn MapMerge) | polymap.rs:1599-1601 (fn try_merge) | architecture | ported |
-| 21 | Use astEqual to check the coefficients and the rest are equal | polymap.c:3922-3925 (fn MapMerge) | polymap.rs:1602-1604 (fn try_merge), polymap.rs:1612-1644 (fn equal) | architecture | ported |
-| 22 | Re-instate the neighbour's Invert flag | polymap.c:3926-3928 (fn MapMerge) | -- | ceremony | n/a: the two PolyMaps are compared as copies, so the list entries are never mutated and nothing is restored |
-| 23 | Move on if the neighbour differs | polymap.c:3929-3932 (fn MapMerge) | polymap.rs:1602-1604 (fn try_merge) | architecture | ported |
-| 24 | Otherwise replace both with UnitMaps and leave the loop | polymap.c:3933-3954 (fn MapMerge) | polymap.rs:1608-1609 (fn try_merge), mappings/simplify.rs:1407-1415 (fn default_map_merge) | architecture | ported |
-| 25 | Re-instate the nominated PolyMap's Invert flag if it was not replaced | polymap.c:3955-3959 (fn MapMerge) | -- | ceremony | n/a: nothing was mutated, so nothing is restored |
-| 26 | Return the result | polymap.c:3960-3961 (fn MapMerge) | polymap.rs:1565 (fn map_merge) | ceremony | ported |
-| 27 | Setting or clearing IterInverse, NiterInverse or TolInverse clears the simplified record | polymap.c:6340 (fn astMAKE_CLEAR1),6345 | polymap.rs:249-261 (fn set_iter_inverse), polymap.rs:277-280 (fn clear_iter_inverse), polymap.rs:296-302 (fn set_niter_inverse), polymap.rs:311-317 (fn set_tol_inverse) | ceremony | ported |
+| 1 | Initialise the returned result to -1 | polymap.c:3617-3618 (fn MapMerge) | -- | ceremony | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index |
+| 2 | Check the global error status and bail out | polymap.c:3620-3621 (fn MapMerge) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
+| 3 | Save a pointer to the nominated PolyMap | polymap.c:3623-3624 (fn MapMerge) | -- | ceremony | n/a: the Rust method already has `&self` |
+| 4 | See if the PolyMap can be replaced by something simpler, without reference to its neighbours | polymap.c:3626-3628 (fn MapMerge) | polymap.rs:1563-1576 (fn map_merge) | architecture | ported |
+| 5 | Get the input and output counts of the transformation as constructed | polymap.c:3630-3638 (fn MapMerge) | polymap.rs:905-906 (fn linear_replacement) | architecture | ported |
+| 6 | Take a deep copy to modify | polymap.c:3640-3642 (fn MapMerge) | polymap.rs:992-1013 (fn replace_with_simpler) | architecture | ported |
+| 7 | Combine coefficients that refer to the same combination of input powers, forward then inverse | polymap.c:3644-3750 (fn MapMerge) | polymap.rs:833-877 (fn consolidated_terms) | architecture | ported |
+| 8 | If any transformation changed, store the new PolyMap in place of the old and report a change | polymap.c:3752-3765 (fn MapMerge) | polymap.rs:872-876 (fn consolidated_terms), polymap.rs:974-979 (fn replace_with_simpler) | architecture | ported |
+| 9 | Test whether the forward transformation is linear, accumulating an offset vector and a matrix with the input normalisation folded in | polymap.c:3767-3884 (fn MapMerge) | polymap.rs:897-942 (fn linear_replacement) | architecture | ported |
+| 10 | If it is linear, build the ShiftMap and MatrixMap and compose them | polymap.c:3886-3897 (fn MapMerge) | polymap.rs:944-954 (fn linear_replacement) | architecture | ported |
+| 11 | Replace the PolyMap in the list with that composition | polymap.c:3899-3906 (fn MapMerge) | polymap.rs:1572-1574 (fn map_merge) | architecture | ported |
+| 12 | Return the index of the first modified element | polymap.c:3907-3909 (fn MapMerge) | polymap.rs:1575 (fn map_merge) | architecture | ported |
+| 13 | Free the offset and matrix arrays | polymap.c:3911-3914 (fn MapMerge) | -- | ceremony | n/a: owned values are dropped |
+| 14 | Otherwise see if the PolyMap can be merged with a neighbour | polymap.c:3920-3922 (fn MapMerge) | polymap.rs:1578 (fn map_merge) | architecture | ported |
+| 15 | The only merge available is a PolyMap with its own inverse, in series | polymap.c:3924-3928 (fn MapMerge) | polymap.rs:1592-1599 (fn try_merge) | architecture | ported |
+| 16 | Temporarily set the nominated PolyMap's Invert flag to the requested value | polymap.c:3930-3934 (fn MapMerge) | polymap.rs:1607-1611 (fn try_merge) | architecture | ported |
+| 17 | Read the nominated PolyMap's shape at that orientation | polymap.c:3936-3938 (fn MapMerge) | polymap.rs:1619-1621 (fn try_merge) | architecture | ported |
+| 18 | Take each neighbour in turn, skipping one that does not exist or is not a PolyMap | polymap.c:3940-3950 (fn MapMerge) | mappings/simplify.rs:1332-1353 (fn default_map_merge) | architecture | ported |
+| 19 | Require the neighbour to be used in the opposite direction | polymap.c:3952-3953 (fn MapMerge) | polymap.rs:1596-1598 (fn try_merge) | architecture | ported |
+| 20 | Set the neighbour's Invert flag so the equality test compares like with like | polymap.c:3955-3963 (fn MapMerge) | polymap.rs:1612-1614 (fn try_merge) | architecture | ported |
+| 21 | Use astEqual to check the coefficients and the rest are equal | polymap.c:3965-3967 (fn MapMerge) | polymap.rs:1615-1617 (fn try_merge), polymap.rs:1625-1661 (fn equal) | architecture | ported |
+| 22 | Re-instate the neighbour's Invert flag | polymap.c:3969-3970 (fn MapMerge) | -- | ceremony | n/a: the two PolyMaps are compared as copies, so the list entries are never mutated and nothing is restored |
+| 23 | Move on if the neighbour differs | polymap.c:3972-3974 (fn MapMerge) | polymap.rs:1615-1617 (fn try_merge) | architecture | ported |
+| 24 | Otherwise replace both with UnitMaps and leave the loop | polymap.c:3976-3995 (fn MapMerge) | polymap.rs:1621-1622 (fn try_merge), mappings/simplify.rs:1407-1415 (fn default_map_merge) | architecture | ported |
+| 25 | Re-instate the nominated PolyMap's Invert flag if it was not replaced | polymap.c:3998-4000 (fn MapMerge) | -- | ceremony | n/a: nothing was mutated, so nothing is restored |
+| 26 | Return the result | polymap.c:4003-4004 (fn MapMerge) | polymap.rs:1578 (fn map_merge) | ceremony | ported |
+| 27 | Setting or clearing IterInverse, NiterInverse or TolInverse clears the simplified record | polymap.c:6383 (fn astMAKE_CLEAR1), polymap.c:6388-6393 (fn astMAKE_SET1) | polymap.rs:239-240 (fn set_iter_inverse), polymap.rs:258-261 (fn clear_iter_inverse), polymap.rs:280-283 (fn set_niter_inverse), polymap.rs:295-298 (fn set_tol_inverse) | ceremony | ported |
 
 ## Row 7 — both directions, not just the applied one
 
@@ -67,7 +71,7 @@ C carries a `mod` flag through the consolidation. The port cannot use a
 structural fingerprint in its place: consolidating the *inverse* coefficients
 leaves the forward transformation, and so the fingerprint, untouched.
 `consolidated_terms` compares both coefficient counts against the originals
-(`polymap.rs:887-893 (fn consolidated_terms)`) for that reason, and returns
+(`polymap.rs:868-874 (fn consolidated_terms)`) for that reason, and returns
 `None` — no replacement — only when neither moved.
 
 ## Row 4 — built from the constructed transformation, not the applied one
@@ -77,19 +81,27 @@ inversion, and leaves `invert_list` alone, so the replacement inherits the
 entry's applied direction rather than absorbing it. `replace_with_simpler` reads
 `self.forward` / `self.inverse` and the struct's own coordinate counts, never the
 orientation-aware accessors, so the stored `Invert` flag selects nothing; the
-entry's flag is carried over unchanged at `polymap.rs:1560-1561 (fn map_merge)`.
+entry's flag is carried over unchanged at `polymap.rs:1573-1574 (fn map_merge)`.
 
 ## Row 9 — what makes a PolyMap linear is the forward coefficients, nothing else
 
-C's guard is `if( pmap0->ncoeff_f && nout == nin )` (`polymap.c:3757 (fn MapMerge)`):
+C's guard is `if( pmap0->ncoeff_f && nout == nin )` (`polymap.c:3785 (fn MapMerge)`):
 a constructed forward transformation and matching coordinate counts. It then
 fills a zero-initialised offset vector and coefficient matrix from the
 consolidated terms, so a forward transformation whose coefficients all cancel —
 `+1.0 x` and `-1.0 x` over the same power — is linear with every element zero,
-and C reduces it to a diagonal MatrixMap of zeros. `is_affine`
-(`polymap.rs:933-938 (fn replace_with_simpler)`) tests `forward_defined()` and
+and C reduces it to a diagonal MatrixMap of zeros. The linearity test
+(`polymap.rs:907-912 (fn linear_replacement)`) reads `forward_defined()` and
 `nin == nout` and nothing else for that reason; requiring a non-empty
 consolidated set instead left an empty PolyMap where C leaves a MatrixMap.
+
+Both arrays accumulate rather than assign (`polymap.c:3858-3877 (fn MapMerge)`),
+which is what lets one output collect a constant contribution from several terms.
+For a PolyMap that only matters when the consolidation has left two terms over
+the same powers; for a ChebyMap, whose coefficients belong to a series in the
+normalised input, every linear term carries a constant with it, so the
+accumulation is load-bearing. That normalisation is the `norm` argument
+`linear_replacement` takes, and `chebymap.md` audits the ChebyMap side of it.
 
 ## Row 10 — the composition's shape is `astSimplify`'s answer, not one chosen here
 
@@ -104,8 +116,8 @@ simplifies the pair:
          new = astSimplify( cm );
 ```
 
-`replace_with_simpler` builds the same two Mappings, composes them the same way
-round and calls `simplify` on the pair (`polymap.rs:964-969 (fn replace_with_simpler)`). Deriving the
+`linear_replacement` builds the same two Mappings, composes them the same way
+round and calls `simplify` on the pair (`polymap.rs:949-954 (fn linear_replacement)`). Deriving the
 shape here instead — a bare MatrixMap when every offset is zero, a WinMap when
 the matrix is diagonal — reaches the same Mapping by a different route and loses
 what the call also does: `astSimplify` stamps whatever it returns
@@ -118,7 +130,7 @@ Both replace-with-simpler steps are the head of C's `MapMerge`, not a separate
 `Simplify` override: `polymap.c` has no `Simplify` vtab slot, and the base
 `Simplify` reaches this body by nominating the PolyMap in a list of one
 (`mapping.c:16871-16883 (fn Simplify)`). `replace_with_simpler` is called from
-`map_merge` alone (`polymap.rs:1559 (fn map_merge)`), so a PolyMap reduces only inside the merge
+`map_merge` alone (`polymap.rs:1572 (fn map_merge)`), so a PolyMap reduces only inside the merge
 loop — which is what stops the `IsSimp` card landing on a leaf C never stamps.
 
 It is also what makes the `Ident` guard reach this half. C's public dispatcher
@@ -132,7 +144,7 @@ call site gets it; see PLAN.md §10.29.
 ## Rows 16 to 21 — the Invert forcing is what makes the comparison possible
 
 `PolyMap`'s own `Equal` refuses a pair whose `Invert` flags differ
-(`polymap.c:806-812 (fn Equal)`), and the two list entries being considered here
+(`polymap.c:824-829 (fn Equal)`), and the two list entries being considered here
 are used in opposite directions by construction (row 19). The forcing at rows 16
 and 20 is therefore not an optimisation: without it the comparison could never
 succeed. What it compares, once both flags read the same, is each transformation
@@ -148,9 +160,9 @@ time, so two PolyMaps agreeing on their forward transformations and on the *shap
 of their inverses cancelled however far apart their inverse coefficients were.
 `PolyMap::equal` mirrored it while it stood. Upstream `ec86cfaf` compares the
 inverse transformation's own coefficients and powers
-(`polymap.c:772-822 (fn Equal)`), and the port now compares the inverse terms
+(`polymap.c:776-794 (fn Equal)`), and the port now compares the inverse terms
 exactly as it compares the forward ones
-(`polymap.rs:1612-1630 (fn equal)`). `docs/issues/c-library-quirks.md` carries
+(`polymap.rs:1644-1660 (fn equal)`). `docs/issues/c-library-quirks.md` carries
 the history.
 
 ## Row 24 — C leaves two UnitMaps, the port leaves one entry
@@ -161,4 +173,4 @@ composes the pair into a single UnitMap and closes the gap in `default_map_merge
 returning the same index. The merge loop runs to convergence either way, and C's
 own next pass strips the redundant UnitMap, so both routes settle on the same
 list. The dimension is the one C uses: the input count of the pair as applied,
-which is the nominated PolyMap's effective `nin` (`polymap.rs:1606-1608 (fn try_merge)`).
+which is the nominated PolyMap's effective `nin` (`polymap.rs:1619-1621 (fn try_merge)`).

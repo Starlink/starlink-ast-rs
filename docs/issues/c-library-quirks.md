@@ -2531,20 +2531,19 @@ An out-of-range index still returns `Err` with `ErrorCode::Mpvin`, matching C's 
 
 ---
 
-## PolyMap's linear `MapMerge` reduction changes a ChebyMap's transformation
+## PolyMap's linear `MapMerge` reduction changed a ChebyMap's transformation
 
-**Status:** Confirmed against the C source and against the pinned oracle by numeric probe.
-**Not mirrored in Rust** — mirroring it would mean returning a Mapping that does not agree with the ChebyMap it replaces.
+**Fixed upstream in `abe5baae`; the Rust divergence was retired at the 9.5.0 sync.**
 
-`chebymap.c` fills neither the `Simplify` nor the `MapMerge` vtab slot, and `polymap.c:2439` is the only place `MapMerge` is filled, so a ChebyMap's `MapMerge` is PolyMap's.
-Its replace-with-simpler half tests whether the forward transformation is linear and, if it is, rebuilds it as a MatrixMap and a ShiftMap (`polymap.c:3757-3850`).
-The test and the rebuild both read `pmap0->coeff_f` and `pmap0->power_f` directly, and nothing in that branch consults `scale_f`/`offset_f` — the per-input scale and offset a ChebyMap uses to map its input onto the interval the Chebyshev functions are defined over (`chebymap.c:2120-2126`).
+`chebymap.c` fills neither the `Simplify` nor the `MapMerge` vtab slot, and `polymap.c:2457` is the only place `MapMerge` is filled, so a ChebyMap's `MapMerge` is PolyMap's.
+Its replace-with-simpler half tests whether the forward transformation is linear and, if it is, rebuilds it as a MatrixMap and a ShiftMap (`polymap.c:3767-3918`).
+The test and the rebuild both read `pmap0->coeff_f` and `pmap0->power_f` directly, and nothing in that branch consulted `scale_f`/`offset_f` — the per-input scale and offset a ChebyMap uses to map its input onto the interval the Chebyshev functions are defined over (`chebymap.c:2120-2126`).
 
-For a PolyMap those two arrays are the whole transformation, so the branch is correct.
-For a ChebyMap they are the coefficients of a Chebyshev series in the *normalised* input, and dropping the normalisation drops a scale and an offset.
+For a PolyMap those two arrays are the whole transformation, so the branch was correct.
+For a ChebyMap they are the coefficients of a Chebyshev series in the *normalised* input, and dropping the normalisation dropped a scale and an offset.
 The two agree only when the bounds are exactly `[-1,1]`, which makes the normalisation the identity.
 
-A one-input ChebyMap over bounds `[0,10]` with the single term `2 * T_1` therefore computes `2 * (0.2x - 1)`, and `astSimplify` returns a `ZoomMap` with `Zoom = 2`:
+A one-input ChebyMap over bounds `[0,10]` with the single term `2 * T_1` computes `2 * (0.2x - 1)`, and `astSimplify` returned a `ZoomMap` with `Zoom = 2`:
 
 ```
  Begin ChebyMap                          Begin ZoomMap
@@ -2559,17 +2558,21 @@ A one-input ChebyMap over bounds `[0,10]` with the single term `2 * T_1` therefo
  End ChebyMap
 ```
 
-Transforming `x = 0, 1, 10` through both gives `-2, -1.6, 2` before the simplification and `0, 2, 20` after it.
-`astSimplify` is documented to return a Mapping equivalent to the one supplied, so this is a defect rather than a convention: the reduction is only sound for the identity interval, and the branch has no ChebyMap guard.
+Transforming `x = 0, 1, 10` through both gave `-2, -1.6, 2` before the simplification and `0, 2, 20` after it.
+`astSimplify` is documented to return a Mapping equivalent to the one supplied, so this was a defect rather than a convention: the reduction was only sound for the identity interval, and the branch had no ChebyMap guard.
 
-**Rust behaviour (divergence, not mirror):** `ChebyMap` has no `map_merge`, so a linear ChebyMap is not reduced at all, whatever its bounds.
-The port therefore keeps a ChebyMap where C returns a ZoomMap, and keeps the transformation the ChebyMap defines.
-`PLAN.md` §10.2 records the gap this leaves: the reduction is correct for bounds of `[-1,1]` and the port does not perform it there either.
+The fix folds the normalisation into both arrays.
+Only `T0(z) = 1` and `T1(z) = z` have degree one or less, so a term the linearity test accepts is linear in the input as well as in `z`, and a term `c*T1(z_j)` contributes `c*scale_j` to the matrix and `c*offset_j` to the constant term.
+Both arrays are accumulated rather than assigned, because an output can now collect a constant contribution from each of its linear terms as well as from its own constant term (`polymap.c:3858-3877`).
+A PolyMap has no normalisation and is unchanged.
+The `[0,10]` ChebyMap above now simplifies to a WinMap with `Scl1 = 0.4` and `Sft1 = -2`.
 
-The reproduction is committed as two cases in `reference/starlink-ast/ast_tester/gen_simplify_fixtures.c` — `cheby_linear_lone_reduce` and its non-linear control `neg_cheby_quadratic_no_reduce` — which write into the upstream fixture directory only.
-They are deliberately absent from `crates/ast-core/tests/fixtures/native/reference/simplify_tests.txt`, because a positive fixture there is an assertion that the port reproduces the `.simp` file byte for byte, which for this pair means reproducing the wrong Mapping.
+**Rust behaviour:** the divergence was retired at the 9.5.0 sync.
+`ChebyMap::map_merge` runs both of PolyMap's replace-with-simpler halves, passing its own `scale_f` / `offset_f` to the shared `PolyMap::linear_replacement`, and `PolyMap` passes `None`.
+`cheby_linear_lone_reduce` was the port's one `C_DEFECT_EXCLUDED` row; that exclusion's own gate is what reported the fix, and the row is now compared byte for byte like any other.
+Two tests in `crates/ast-core/tests/test_chebymap.rs` pin the two halves separately — `a_linear_chebymap_reduces_with_its_normalisation_folded_in` fails when the normalisation is dropped, and `a_linear_chebymap_accumulates_each_outputs_constant_contributions` fails when either array is assigned rather than accumulated.
 
-To be raised upstream.
+Fixed upstream in `abe5baae`.
 
 ## `Box::Simplify`'s slice test assigns `isNull` rather than accumulating it, so the last constant-fed input decides
 
@@ -3072,7 +3075,7 @@ The gates are `polymap_equal_compares_the_inverse_coefficients` and
 `chebymap_does_not_cancel_when_only_inverse_coefficient_values_differ` in
 `crates/ast-core/tests/test_chebymap.rs` — ChebyMap inherits the comparison,
 since `chebymap.c::Equal` calls the PolyMap one before it compares the two
-bounding boxes (`chebymap.c:462-507`).
+bounding boxes (`chebymap.c:407-515`).
 The negative fixture `neg_poly_different_inverse_coeffs` now holds.
 
 A cancellation of a non-linear PolyMap against an explicit hand-written inverse

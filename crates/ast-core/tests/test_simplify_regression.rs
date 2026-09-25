@@ -465,20 +465,20 @@ impl Compare {
 }
 
 /// Manifest rows whose reference records a C defect the port deliberately does
-/// not reproduce, each with the reason.
+/// not reproduce, each with the reason. Empty.
 ///
 /// The upstream harness compares these, because upstream's own output is the
-/// reference. Reproducing them here would mean returning a Mapping that does
-/// not agree with the one it replaces, so the rows are excluded from the three
+/// reference. Reproducing one here would mean returning a Mapping that does not
+/// agree with the one it replaces, so such a row is excluded from the three
 /// checks and pinned instead by `c_defect_rows_still_diverge`, which fails if
-/// the port ever starts matching -- whether because upstream fixed the defect
-/// or because the port acquired it.
-const C_DEFECT_EXCLUDED: &[(&str, &str)] = &[(
-    "cheby_linear_lone_reduce",
-    "PolyMap's linear MapMerge reduction reads coeff_f/power_f without the \
-     ChebyMap normalisation (polymap.c:3757-3850), so C returns a ZoomMap of 2 \
-     where the ChebyMap computes 0.4x-2 (docs/issues/c-library-quirks.md)",
-)];
+/// the port ever starts matching -- whether because upstream fixed the defect or
+/// because the port acquired it. `cheby_linear_lone_reduce` was the one entry,
+/// and that gate is what reported the fix: upstream folded the ChebyMap
+/// normalisation into the reduction, the port ported it, and the row is compared
+/// in full like any other.
+///
+/// The table survives empty so a newly diagnosed C-side artefact has a home.
+const C_DEFECT_EXCLUDED: &[(&str, &str)] = &[];
 
 /// Manifest rows whose fixture the Rust reader cannot load yet, each with the
 /// class that blocks it. Named here rather than skipped by a predicate so that
@@ -951,8 +951,8 @@ fn simplify_regression() {
         DEFERRED.len()
     );
     assert!(
-        passed >= 480,
-        "only {passed} cases passed; the corpus held 480 when this floor was \
+        passed >= 481,
+        "only {passed} cases passed; the corpus held 481 when this floor was \
          set and fixtures are only ever added. A drop means cases stopped being \
          run, which no failure count would show."
     );

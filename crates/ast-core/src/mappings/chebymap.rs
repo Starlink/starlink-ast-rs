@@ -6,13 +6,11 @@
 //! [`BAD_VALUE`] outputs.
 //!
 //! C defines no `chebymap.c::MapMerge`, so a ChebyMap inherits PolyMap's
-//! (`polymap.c:3597`). Of its two halves this class ports the coefficient
-//! consolidation (`polymap.c:3624-3745`), which combines terms over the same
-//! basis-function orders; the linear replacement (`:3747-3875`) is not ported,
-//! because it reads the coefficients as monomial and loses the domain scaling
-//! the bounds define. That half is not finished: the `[-1,1]` case, where the
-//! scaling is the identity and C's arithmetic holds, is still unreduced —
-//! marked `UNPORTED` in this class's `map_merge` and tracked as PLAN.md §10.2.
+//! (`polymap.c:3617`), and this class ports both of its halves: the coefficient
+//! consolidation (`polymap.c:3644-3765`), which combines terms over the same
+//! basis-function orders, and the linear replacement (`:3767-3918`), which
+//! rebuilds an all-linear transformation as a `MatrixMap` and a `ShiftMap` with
+//! the input normalisation folded in.
 
 use crate::constants::BAD_VALUE;
 use crate::coords::PointSet;
@@ -480,10 +478,10 @@ impl Mapping for ChebyMap {
 
         // C forces both stored `Invert` flags to the direction the list applies
         // to the nominated Mapping and then calls `astEqual`
-        // (`polymap.c:3888-3920`), which reaches `chebymap.c::Equal`: the
+        // (`polymap.c:3933-3967`), which reaches `chebymap.c::Equal`: the
         // comparison inherited from PolyMap plus the two bounding boxes
-        // (`chebymap.c:462-507`). The inherited half rejects a pair whose
-        // `Invert` flags differ (`polymap.c:806-812`), so the forcing is what
+        // (`chebymap.c:407-515`). The inherited half rejects a pair whose
+        // `Invert` flags differ (`polymap.c:824-829`), so the forcing is what
         // lets two entries pointing in opposite directions compare at all;
         // what it then compares is each transformation as constructed.
         let mut a = self.clone();
@@ -510,23 +508,39 @@ impl Mapping for ChebyMap {
         series: bool,
     ) -> Option<usize> {
         // C has no `chebymap.c::MapMerge`, so a ChebyMap's is PolyMap's whole
-        // body (`polymap.c:3597`). Of its two replace-with-simpler halves only
-        // the coefficient consolidation (`polymap.c:3624-3745`) applies to a
-        // Chebyshev basis; the linear replacement (`:3747-3875`) reads the
-        // coefficients as if they were monomial and drops the domain scaling
-        // these bounds define, so it is not reproduced here.
+        // body (`polymap.c:3617`), and both of its replace-with-simpler halves
+        // run: the coefficient consolidation (`polymap.c:3644-3765`), which
+        // combines terms over the same basis-function orders, and then the
+        // linear replacement (`:3767-3918`) on the terms the first half leaves.
         //
-        // UNPORTED: that leaves a sound case unreduced. When the bounds are
-        // exactly `[-1,1]` the domain scaling is the identity, C's arithmetic is
-        // then correct, and a linear ChebyMap over those bounds should reduce to
-        // a MatrixMap and a ShiftMap here. It does not. See PLAN.md §10.2 for
-        // what closing it needs, and `docs/issues/c-library-quirks.md` for why
-        // the general case stays out.
+        // The coefficients are those of a Chebyshev series in the normalised
+        // input `z = scale*x + offset`, and `T0(z) = 1` and `T1(z) = z` are the
+        // only Chebyshev polynomials of degree one or less, so a term the
+        // linearity test accepts is linear in the input as well as in `z` — with
+        // the normalisation folded into the matrix and the offsets
+        // (`polymap.c:3787-3793`).
         //
         // Like PolyMap, this works from the transformation as *constructed* and
-        // leaves the list's applied direction alone (`polymap.c:3856-3859`), so
+        // leaves the list's applied direction alone (`polymap.c:3899-3902`), so
         // the replacement inherits `eff_inv` rather than absorbing it.
-        if let Some((fwd, inv)) = self.poly.consolidated_terms() {
+        let eff_inv = ctx.entry(where_).1;
+        let consolidation = self.poly.consolidated_terms();
+        let terms = match &consolidation {
+            Some((fwd, _)) => fwd.as_slice(),
+            None => self.poly.forward_terms(),
+        };
+
+        // The normalisation is the one applied to the constructed forward
+        // transformation's inputs, which is what those coefficients belong to.
+        if let Some(linear) = self
+            .poly
+            .linear_replacement(terms, Some((&self.scale_f, &self.offset_f)))
+        {
+            ctx.set_pair_single(where_, (linear, eff_inv, false));
+            return Some(where_);
+        }
+
+        if let Some((fwd, inv)) = consolidation {
             let (nin, nout) = if self.inverted {
                 (self.nout(), self.nin())
             } else {
@@ -546,7 +560,6 @@ impl Mapping for ChebyMap {
             if self.inverted {
                 rebuilt.invert();
             }
-            let eff_inv = ctx.entry(where_).1;
             ctx.set_pair_single(where_, (Box::new(rebuilt), eff_inv, false));
             return Some(where_);
         }

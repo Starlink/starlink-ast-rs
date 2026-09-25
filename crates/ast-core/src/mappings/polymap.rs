@@ -824,7 +824,7 @@ impl PolyMap {
     }
 
     /// Combine coefficients that refer to the same combination of input powers,
-    /// forward then inverse (`polymap.c:3624-3745`). `None` when neither
+    /// forward then inverse (`polymap.c:3644-3765`). `None` when neither
     /// direction changed, which is C leaving `result` at -1 for this half.
     ///
     /// Basis-independent: two terms over the same powers add whether those
@@ -832,7 +832,7 @@ impl PolyMap {
     /// `ChebyMap::map_merge` calls this and not the linear half.
     pub(crate) fn consolidated_terms(&self) -> Option<(Vec<PolyTerm>, Option<Vec<PolyTerm>>)> {
         // Two constant terms for one output become one constant term. C does
-        // the forward transformation and then the inverse (`polymap.c:3630`,
+        // the forward transformation and then the inverse (`polymap.c:3650`,
         // `for( check_fwd = 0; check_fwd < 2; check_fwd++ )`), so both
         // directions are consolidated here too. Doing only one leaves a SIP
         // inverse polynomial holding its identity term and its linear
@@ -851,7 +851,7 @@ impl PolyMap {
                 }
             }
             // Remove zero-coefficient terms. C uses an exact `!= 0.0` test when
-            // shuffling merged coefficients (`polymap.c:3704`), so mirror it
+            // shuffling merged coefficients (`polymap.c:3724`), so mirror it
             // rather than a threshold — a legitimately tiny coefficient
             // survives in C.
             out.retain(|t| t.coeff != 0.0);
@@ -861,7 +861,7 @@ impl PolyMap {
         let consolidated = consolidate(&self.forward);
         let consolidated_inv = self.inverse.as_deref().map(consolidate);
 
-        // C's `mod` flag (`polymap.c:3629`, set at `:3726`, read at `:3734`). A
+        // C's `mod` flag (`polymap.c:3649`, set at `:3746`, read at `:3754`). A
         // structural fingerprint of the forward terms is not enough, because
         // consolidating the *inverse* coefficients leaves the forward
         // transformation, and so the fingerprint, untouched.
@@ -876,8 +876,86 @@ impl PolyMap {
         Some((consolidated, consolidated_inv))
     }
 
+    /// C's linear half (`polymap.c:3767-3918`): a polynomial whose every
+    /// remaining term is constant or first-order is rebuilt out of a
+    /// `MatrixMap` and a `ShiftMap`. Returns the replacement, or `None` when the
+    /// polynomial is not linear.
+    ///
+    /// `terms` are the coefficients the reduction reads, which is C's `pmap0`
+    /// after the consolidation half has had its say.
+    ///
+    /// `norm` is the per-input scale and offset applied to an input *before* the
+    /// coefficients are used, or `None` where the coefficients apply to the
+    /// input itself. A PolyMap has no normalisation; a ChebyMap's coefficients
+    /// are those of a Chebyshev series in `z = scale*x + offset`, which maps its
+    /// bounding box onto `[-1,1]` (`polymap.c:3778-3784`, `:3787-3793`).
+    pub(crate) fn linear_replacement(
+        &self,
+        terms: &[PolyTerm],
+        norm: Option<(&[f64], &[f64])>,
+    ) -> Option<DynMapping> {
+        // A term is constant if the sum of its powers is 0, linear if the sum is
+        // 1 with exactly one power equal to 1. C tests only the constructed
+        // forward transformation, and its own guard is that the forward
+        // coefficients exist and the coordinate counts match (`polymap.c:3785`,
+        // `if( pmap0->ncoeff_f && nout == nin )`). An empty consolidated set is
+        // therefore still linear: a forward transformation whose coefficients all
+        // cancel is the zero matrix, which is what C builds from its
+        // zero-initialised workspace.
+        let nin = self.nin;
+        let nout = self.nout;
+        let is_linear = self.forward_defined()
+            && nin == nout
+            && terms.iter().all(|t| {
+                let power_sum: usize = t.powers.iter().sum();
+                power_sum <= 1 && t.powers.iter().all(|&p| p <= 1)
+            });
+        if !is_linear {
+            return None;
+        }
+
+        // C accumulates into a zero-initialised offset vector and coefficient
+        // matrix (`polymap.c:3858-3877`): a term with no input powers adds to an
+        // offset, and a term with a single unit power adds to a matrix element.
+        // Under a normalisation a term `c*z_j` contributes `c*scale_j` to the
+        // matrix and `c*offset_j` to the constant term, so an output can collect
+        // a constant contribution from each of its linear terms as well as from
+        // its own constant term — which is why both arrays accumulate.
+        let mut offsets = vec![0.0; nout];
+        let mut matrix = vec![0.0; nout * nin];
+
+        for term in terms {
+            let out_idx = term.out_axis - 1;
+            let power_sum: usize = term.powers.iter().sum();
+            if power_sum == 0 {
+                offsets[out_idx] += term.coeff;
+            } else {
+                let in_idx = term.powers.iter().position(|&p| p == 1).unwrap();
+                match norm {
+                    Some((scale, offset)) => {
+                        matrix[out_idx * nin + in_idx] += term.coeff * scale[in_idx];
+                        offsets[out_idx] += term.coeff * offset[in_idx];
+                    }
+                    None => matrix[out_idx * nin + in_idx] += term.coeff,
+                }
+            }
+        }
+
+        // C builds the MatrixMap and the ShiftMap, composes them in series and
+        // hands the pair to `astSimplify` (`polymap.c:3890-3894`), so whatever
+        // shape the linear transformation reduces to is the simplifier's answer
+        // rather than a shape decided here. The simplification is also what
+        // leaves `IsSimp` on the replacement.
+        let m = ndarray::Array2::from_shape_vec((nout, nin), matrix).ok()?;
+        let mm = MatrixMap::new(m).ok()?;
+        let sm = ShiftMap::new(offsets);
+        let cm = CmpMap::new(Box::new(mm), Box::new(sm), Composition::Series).ok()?;
+        let cm: &dyn Mapping = &cm;
+        cm.simplify().ok()
+    }
+
     /// The two "replace with simpler" steps C runs at the head of
-    /// `polymap.c::MapMerge` (`polymap.c:3606-3871`), before it looks at any
+    /// `polymap.c::MapMerge` (`polymap.c:3626-3918`), before it looks at any
     /// neighbour: coefficients over the same combination of input powers are
     /// combined, and a PolyMap whose remaining terms are all constant or
     /// first-order is rebuilt out of a `MatrixMap` and a `ShiftMap`.
@@ -886,13 +964,13 @@ impl PolyMap {
     ///
     /// Everything here reads the transformation as *constructed*: C uses
     /// `coeff_f` / `coeff_i` directly and takes the coordinate counts from
-    /// before any inversion (`polymap.c:3610-3618`, `:3757`), so the stored
+    /// before any inversion (`polymap.c:3630-3638`, `:3785`), so the stored
     /// `Invert` flag selects nothing and the caller keeps the list entry's
     /// direction flag rather than folding it in.
     fn replace_with_simpler(&self) -> Option<DynMapping> {
         // C's consolidation half. When it changes nothing the linear test below
         // runs on the terms as stored, which is C reading `pmap0` when its
-        // `mod` flag is clear (`polymap.c:3733-3745`).
+        // `mod` flag is clear (`polymap.c:3754-3765`).
         let consolidation = self.consolidated_terms();
         let consolidated_changed = consolidation.is_some();
         let (consolidated, consolidated_inv) = match consolidation {
@@ -900,54 +978,8 @@ impl PolyMap {
             None => (self.forward.clone(), self.inverse.clone()),
         };
 
-        // Check if all remaining terms are affine (constant or linear).
-        // A term is constant if sum of powers == 0, linear if sum == 1 with
-        // exactly one power == 1. C tests only the constructed forward
-        // transformation, and its own guard is that the forward coefficients
-        // exist and the coordinate counts match (`polymap.c:3757`,
-        // `if( pmap0->ncoeff_f && nout == nin )`). An empty consolidated set is
-        // therefore still affine: a forward transformation whose coefficients
-        // all cancel is the zero matrix, which is what C builds from its
-        // zero-initialised workspace.
-        let nin = self.nin;
-        let nout = self.nout;
-        let is_affine = self.forward_defined()
-            && nin == nout
-            && consolidated.iter().all(|t| {
-                let power_sum: usize = t.powers.iter().sum();
-                power_sum <= 1 && t.powers.iter().all(|&p| p <= 1)
-            });
-
-        if is_affine {
-            // C fills a zero-initialised offset vector and coefficient matrix
-            // from the consolidated terms (`polymap.c:3760-3841`): a term with
-            // no input powers is an offset, a term with a single unit power is a
-            // matrix element.
-            let mut offsets = vec![0.0; nout];
-            let mut matrix = vec![0.0; nout * nin];
-
-            for term in &consolidated {
-                let out_idx = term.out_axis - 1;
-                let power_sum: usize = term.powers.iter().sum();
-                if power_sum == 0 {
-                    offsets[out_idx] = term.coeff;
-                } else {
-                    let in_idx = term.powers.iter().position(|&p| p == 1).unwrap();
-                    matrix[out_idx * nin + in_idx] = term.coeff;
-                }
-            }
-
-            // C builds the MatrixMap and the ShiftMap, composes them in series
-            // and hands the pair to `astSimplify` (`polymap.c:3847-3851`), so
-            // whatever shape the linear transformation reduces to is the
-            // simplifier's answer rather than a shape decided here. The
-            // simplification is also what leaves `IsSimp` on the replacement.
-            let m = ndarray::Array2::from_shape_vec((nout, nin), matrix).ok()?;
-            let mm = MatrixMap::new(m).ok()?;
-            let sm = ShiftMap::new(offsets);
-            let cm = CmpMap::new(Box::new(mm), Box::new(sm), Composition::Series).ok()?;
-            let cm: &dyn Mapping = &cm;
-            return cm.simplify().ok();
+        if let Some(linear) = self.linear_replacement(&consolidated, None) {
+            return Some(linear);
         }
 
         // The linear test failed, so the only replacement left is the
@@ -959,7 +991,7 @@ impl PolyMap {
 
         // Build a new PolyMap with the consolidated terms. C makes a deep copy
         // of the original and edits the copy's coefficient arrays in place
-        // (`polymap.c:3620-3622`), so the replacement keeps every other
+        // (`polymap.c:3640-3642`), so the replacement keeps every other
         // attribute, the stored `Invert` flag included.
         let mut pm = PolyMap::new(
             self.nin,
@@ -1529,13 +1561,13 @@ impl Mapping for PolyMap {
         series: bool,
     ) -> Option<usize> {
         // C's two replace-with-simpler steps, "without reference to the
-        // neighbouring Mappings in the list" (`polymap.c:3606-3871`), taken
+        // neighbouring Mappings in the list" (`polymap.c:3626-3918`), taken
         // before any neighbour is considered. See
         // [`PolyMap::replace_with_simpler`].
         //
         // C works from the transformation as *constructed*, before any
         // inversion, and leaves `invert_list` untouched
-        // (`polymap.c:3856-3859`) — so the replacement inherits the entry's
+        // (`polymap.c:3899-3902`) — so the replacement inherits the entry's
         // applied direction rather than absorbing it.
         if let Some(simp) = self.replace_with_simpler() {
             let eff_inv = ctx.entry(where_).1;
@@ -1568,8 +1600,8 @@ impl Mapping for PolyMap {
 
         // C forces the stored `Invert` flag of both PolyMaps to the direction
         // the list applies to the nominated one and then compares them with
-        // `astEqual` (`polymap.c:3888-3920`). `PolyMap`'s own `Equal` rejects a
-        // pair whose `Invert` flags differ (`polymap.c:806-812`), so the forcing
+        // `astEqual` (`polymap.c:3933-3967`). `PolyMap`'s own `Equal` rejects a
+        // pair whose `Invert` flags differ (`polymap.c:824-829`), so the forcing
         // is what lets two list entries pointing in opposite directions compare
         // at all; what it then compares is each transformation as constructed.
         let mut a = self.clone();

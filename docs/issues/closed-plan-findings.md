@@ -397,24 +397,54 @@ objects it then discarded. What survives is one card per fixture that a merge
 probe C abandoned left on a shared sub-Mapping, licensed positionally in
 `PLAN.md` §6.
 
-### 10.2 ChebyMap's coefficient consolidation — FIXED
+### 10.2 ChebyMap's `MapMerge` — FIXED, both halves
 
-In C, `chebymap.c` defines no `MapMerge`; only `polymap.c:2439` fills the slot,
-so a ChebyMap's `MapMerge` is PolyMap's whole body at `polymap.c:3597-3961`. In
+In C, `chebymap.c` defines no `MapMerge`; only `polymap.c:2457` fills the slot,
+so a ChebyMap's `MapMerge` is PolyMap's whole body at `polymap.c:3626-3967`. In
 the port, `ChebyMap` is its own struct, and it had no `map_merge` at all, so it
-took the trait default and reached none of PolyMap's replace-with-simpler half.
-Two halves were missing, and they are not equally safe to port; the linear one is
-still deferred and stays in `PLAN.md` §10.2.
+took the trait default and reached neither of PolyMap's replace-with-simpler
+halves.
 
-The coefficient consolidation (`polymap.c:3624-3745`) combines coefficients that
+The coefficient consolidation (`polymap.c:3644-3765`) combines coefficients that
 use the same set of input powers. That is basis-independent — two `T_2` terms for
 one output add exactly as two `x^2` terms do — so it ports as it stands, and now
-does. `PolyMap::consolidated_terms` (`polymap.rs:838`) is C's first half split out
-of `replace_with_simpler` unchanged, and `ChebyMap::map_merge`
-(`chebymap.rs:506-555`) calls it and rebuilds a ChebyMap with the same bounds.
-`cap_cheby_consolidate` is the fixture — two forward `T_2` coefficients of 1.5 and
-2.5 that C writes back as one of 4, with a `T_3` term present so C stays out of
-the linear branch — and it fails byte-exactly with `ChebyMap::map_merge` removed.
+does. `PolyMap::consolidated_terms` is C's first half split out of
+`replace_with_simpler` unchanged, and `ChebyMap::map_merge` calls it and rebuilds
+a ChebyMap with the same bounds. `cap_cheby_consolidate` is the fixture — two
+forward `T_2` coefficients of 1.5 and 2.5 that C writes back as one of 4, with a
+`T_3` term present so C stays out of the linear branch — and it fails
+byte-exactly with `ChebyMap::map_merge` removed.
+
+The linear replacement (`polymap.c:3767-3918`) rebuilds a transformation whose
+every remaining term is constant or first-order as a `MatrixMap` and a
+`ShiftMap`. It was deferred for two AST releases, because C read a ChebyMap's
+`coeff_f` / `power_f` with nothing that distinguished a Chebyshev basis from a
+power basis, and so dropped the scale and offset that map the input onto
+`[-1,1]`: a one-input ChebyMap over `[0,10]` holding the single term `2*T1`
+computes `0.4x - 2`, and `astSimplify` returned a ZoomMap of 2. The port declined
+the step rather than mirror the defect, and `cheby_linear_lone_reduce` was its
+one `C_DEFECT_EXCLUDED` row.
+
+Upstream fixed it in `abe5baae`, and the port ported the fix at the 9.5.0 sync.
+Only `T0(z) = 1` and `T1(z) = z` have degree one or less, so a term the linearity
+test accepts is linear in the input as well as in the normalised `z`, and a term
+`c*T1(z_j)` contributes `c*scale_j` to the matrix and `c*offset_j` to the
+constant term; both arrays accumulate rather than assign, because an output can
+collect a constant contribution from each of its linear terms as well as from its
+own constant term (`polymap.c:3858-3877`). C's half is one shared
+`PolyMap::linear_replacement(terms, norm)` whose `norm` argument is C's
+`norm_scale` / `norm_offset` pair, so the seam sits where C's does: `ChebyMap`
+passes its `scale_f` / `offset_f` and `PolyMap` passes `None`. The `[0,10]`
+ChebyMap now reduces to a WinMap with `Scl1 = 0.4` and `Sft1 = -2`.
+
+The exclusion's own gate is what reported the fix: `c_defect_rows_still_diverge`
+fails when an excluded row starts matching its reference, so the row moved into
+the compared corpus rather than staying silently excluded, and
+`C_DEFECT_EXCLUDED` is now empty. Two tests in `test_chebymap.rs` pin the two
+parts of the fix separately — `a_linear_chebymap_reduces_with_its_normalisation_folded_in`
+fails when the normalisation is dropped, and
+`a_linear_chebymap_accumulates_each_outputs_constant_contributions` fails when
+either array is assigned rather than accumulated.
 
 ---
 
@@ -1703,18 +1733,18 @@ divergences, one of them in the shared driver rather than in PolyMap.
   live in `MergeCtx::may_nominate`.
 - **The linear half's guard had a term C does not have.** C asks only whether
   the forward coefficients exist and the coordinate counts match
-  (`polymap.c:3757`), and fills a zero-initialised matrix and offset vector from
+  (`polymap.c:3785`), and fills a zero-initialised matrix and offset vector from
   whatever terms remain. The port additionally required the consolidated term
   list to be non-empty, so a PolyMap whose coefficients all cancel stayed an
   empty PolyMap where C produces a diagonal MatrixMap of zeroes.
   `polymap_whose_terms_all_cancel_becomes_a_matrixmap` is the control.
 - **The cancellation test was hand-rolled.** C forces both PolyMaps' `Invert`
   flags to the direction the list applies to the nominated one and calls
-  `astEqual` (`polymap.c:3917-3920`). `PolyMap::try_merge` compared the
+  `astEqual` (`polymap.c:3965-3967`). `PolyMap::try_merge` compared the
   coordinate counts and the forward terms itself, so it cancelled a pair whose
   inverse transformations have different coefficient counts — a pair C leaves
   alone, because its `Equal` compares `ncoeff_i` and `mxpow_i`
-  (`polymap.c:758-776`). It now mirrors C's forcing and calls `equal`.
+  (`polymap.c:776-794`). It now mirrors C's forcing and calls `equal`.
   `polymap_does_not_cancel_against_a_different_inverse` is the control, with a
   non-linear forward transformation so the linear half above does not pre-empt
   the comparison.
@@ -1732,9 +1762,9 @@ sync; `polymap_equal_compares_the_inverse_coefficients` is now the gate, and
 ### 10.30 ChebyMap's cancellation test was hand-rolled too — FIXED
 
 `chebymap.c` sets no `MapMerge` slot, so a ChebyMap's is PolyMap's whole body,
-and the neighbour half there calls `astEqual` (`polymap.c:3917-3924`) — which for
+and the neighbour half there calls `astEqual` (`polymap.c:3965-3967`) — which for
 a ChebyMap reaches `chebymap.c::Equal`: the comparison inherited from PolyMap
-plus the two bounding boxes (`chebymap.c:462-507`).
+plus the two bounding boxes (`chebymap.c:407-515`).
 
 `ChebyMap::try_merge` compared the two bounding boxes and the forward terms
 itself and never looked at the inverse ones, so it cancelled a pair whose inverse

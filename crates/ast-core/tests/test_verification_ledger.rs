@@ -177,12 +177,14 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
     (
         "test_simplify_regression.rs",
         "C_DEFECT_EXCLUDED",
-        1,
-        "cheby_linear_lone_reduce, whose reference records a C defect: PolyMap's \
-         linear MapMerge reduction reads a ChebyMap's coefficients without the \
-         normalisation that maps its input onto [-1,1], so C returns a Mapping \
-         that disagrees with the one it replaces. Reproducing it would mean \
-         porting the defect. Gated by c_defect_rows_still_diverge",
+        0,
+        "empty. Its one entry was cheby_linear_lone_reduce, whose reference \
+         recorded a C defect: PolyMap's linear MapMerge reduction read a \
+         ChebyMap's coefficients without the normalisation that maps its input \
+         onto [-1,1], so C returned a Mapping that disagreed with the one it \
+         replaced. Upstream folded the normalisation in and the port ported it, \
+         so the row is compared in full. The table survives so a newly diagnosed \
+         C-side artefact has a home. Gated by c_defect_rows_still_diverge",
     ),
     (
         "test_serialisation.rs",

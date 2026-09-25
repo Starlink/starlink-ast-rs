@@ -1092,3 +1092,128 @@ fn chebymap_does_not_cancel_when_only_inverse_coefficient_values_differ() {
         "the inverse coefficient values differ, so the opposed pair stands"
     );
 }
+
+/// A ChebyMap whose every term is linear in its Chebyshev basis reduces to a
+/// `MatrixMap` and a `ShiftMap` under `simplify`. The coefficients apply to the
+/// normalised input `z = scale*x + offset`, so the reduction has to fold that
+/// normalisation in: over `[0,10]` the map `2*T1(z)` is `0.4x - 2`, not `2x`.
+/// The replacement must therefore agree with the ChebyMap in the forward
+/// direction, and its inverse must recover the input.
+///
+/// Ancestor: `reference/starlink-ast/ast_tester/testchebymap.c`, the linear
+/// reduction block following `stopit( 601 )`.
+#[test]
+fn a_linear_chebymap_reduces_with_its_normalisation_folded_in() {
+    let terms = vec![PolyTerm {
+        coeff: 2.0,
+        powers: vec![1],
+        out_axis: 1,
+    }];
+    let m = ChebyMap::new(1, 1, &terms, None, &[0.0], &[10.0], None, None).unwrap();
+    let s = <dyn Mapping>::simplify(&m).unwrap();
+    assert!(
+        !s.as_any().is::<ChebyMap>(),
+        "a linear ChebyMap must be replaced"
+    );
+
+    let x = vec![vec![0.0], vec![1.0], vec![10.0]];
+    let pts = PointSet::from_rows(x.clone());
+    let reference = m.transform(&pts, true).unwrap();
+    let simplified = s.transform(&pts, true).unwrap();
+    for i in 0..3 {
+        assert!(
+            (simplified.point(i)[0] - reference.point(i)[0]).abs() < 1.0e-10,
+            "point {i}: the replacement gives {} where the ChebyMap gives {}",
+            simplified.point(i)[0],
+            reference.point(i)[0]
+        );
+    }
+
+    // 2*T1(z) over [0,10] is 0.4x - 2.
+    assert!((reference.point(0)[0] + 2.0).abs() < 1.0e-12);
+    assert!((reference.point(2)[0] - 2.0).abs() < 1.0e-12);
+
+    let back = s.transform(&reference, false).unwrap();
+    for (i, input) in x.iter().enumerate() {
+        assert!(
+            (back.point(i)[0] - input[0]).abs() < 1.0e-10,
+            "point {i}: the inverse gives {} where the input was {}",
+            back.point(i)[0],
+            input[0]
+        );
+    }
+}
+
+/// The same reduction with two inputs whose bounds differ and whose outputs each
+/// combine a linear term and a constant term: `fx = 3*T1(x') + 0.5` and
+/// `fy = -T1(y') + 2`. Each linear term's normalisation offset adds to its
+/// output's constant term, so both the matrix and the offset vector have to
+/// accumulate rather than be assigned.
+///
+/// Ancestor: `reference/starlink-ast/ast_tester/testchebymap.c`, the same block.
+#[test]
+fn a_linear_chebymap_accumulates_each_outputs_constant_contributions() {
+    let terms = vec![
+        PolyTerm {
+            coeff: 3.0,
+            powers: vec![1, 0],
+            out_axis: 1,
+        },
+        PolyTerm {
+            coeff: 0.5,
+            powers: vec![0, 0],
+            out_axis: 1,
+        },
+        PolyTerm {
+            coeff: -1.0,
+            powers: vec![0, 1],
+            out_axis: 2,
+        },
+        PolyTerm {
+            coeff: 2.0,
+            powers: vec![0, 0],
+            out_axis: 2,
+        },
+    ];
+    let m = ChebyMap::new(2, 2, &terms, None, &[0.0, -5.0], &[10.0, 5.0], None, None).unwrap();
+    let s = <dyn Mapping>::simplify(&m).unwrap();
+    assert!(
+        !s.as_any().is::<ChebyMap>(),
+        "a linear ChebyMap must be replaced"
+    );
+
+    let x = vec![
+        vec![0.0, -5.0],
+        vec![10.0, 5.0],
+        vec![3.0, 1.0],
+        vec![7.5, -2.0],
+    ];
+    let pts = PointSet::from_rows(x.clone());
+    let reference = m.transform(&pts, true).unwrap();
+    let simplified = s.transform(&pts, true).unwrap();
+    for (i, _) in x.iter().enumerate() {
+        for (axis, (got, want)) in simplified
+            .point(i)
+            .iter()
+            .zip(reference.point(i))
+            .enumerate()
+        {
+            assert!(
+                (got - want).abs() < 1.0e-10,
+                "point {i} axis {}: the replacement gives {got} where the ChebyMap gives {want}",
+                axis + 1,
+            );
+        }
+    }
+
+    let back = s.transform(&reference, false).unwrap();
+    for (i, input) in x.iter().enumerate() {
+        for (axis, (got, want)) in back.point(i).iter().zip(input).enumerate() {
+            assert!(
+                (got - want).abs() < 1.0e-9,
+                "point {i} axis {}: the inverse gives {got} where the input was {want}",
+                axis + 1,
+            );
+        }
+    }
+}
