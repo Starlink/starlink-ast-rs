@@ -9,7 +9,7 @@ use ast_core::constants::BAD_VALUE;
 use ast_core::coords::PointSet;
 use ast_core::frames::{BasicFrameBuilder, Frame};
 use ast_core::mappings::Mapping;
-use ast_core::regions::{BoxRegionBuilder, Region};
+use ast_core::regions::{BoxRegion, BoxRegionBuilder, NullRegion, Region};
 
 // ---- Construction from centre + corner ----
 
@@ -588,4 +588,78 @@ fn reg_pins_mixed_set_reports_false() {
 
     let mixed = PointSet::from_rows([[0.0_f64, 5.0], [5.0, 5.0]]);
     assert!(!b.reg_pins(&mixed, None).unwrap());
+}
+
+// ---- Simplify through a PermMap that feeds several base axes a constant ----
+//
+// Ancestor: checkBoxPermMapSlices in
+// reference/starlink-ast/ast_tester/testregions.c.
+//
+// Each constant-fed base axis is a plane the slice has to lie in, so the
+// Region is a NullRegion unless every constant falls inside the Box, and the
+// order the constants appear in must not matter.
+
+/// Map a 3-D Box onto two current-Frame axes through a PermMap whose base
+/// axes 2 and 3 are each fed a constant, then simplify.
+///
+/// Axis 2 spans 0 to 20 and axis 3 spans 0 to 30, so 99 is outside the Box on
+/// either and 5 and 15 are inside.
+fn simplify_box_permmap_slice(constants: [f64; 2]) -> ast_core::mappings::DynMapping {
+    use ast_core::mappings::PermMap;
+
+    let base = BasicFrameBuilder::new(3).domain("PIXEL").build().unwrap();
+    let curr = BasicFrameBuilder::new(2).domain("SLICE").build().unwrap();
+
+    let pm = PermMap::new(&[1, -1, -2], &[1, 2], &constants).unwrap();
+    let b = BoxRegionBuilder::from_bounds(base, &[0.0, 0.0, 0.0], &[10.0, 20.0, 30.0])
+        .unwrap()
+        .build()
+        .unwrap();
+
+    // astMapRegionId is astMapRegion followed by astSimplify (region.c:14033).
+    let mapped = b.map_region(&pm, &curr).unwrap();
+    <dyn Mapping>::simplify(mapped.as_ref()).unwrap()
+}
+
+#[test]
+fn simplify_permmap_slice_outside_constant_first_is_null() {
+    // Outside, then inside: the first constant's plane misses the Box, and
+    // that verdict must survive the second constant.
+    let r = simplify_box_permmap_slice([99.0, 5.0]);
+    assert!(
+        r.as_ref().as_any().is::<NullRegion>(),
+        "constants 99,5 should give a NullRegion"
+    );
+}
+
+#[test]
+fn simplify_permmap_slice_outside_constant_last_is_null() {
+    // Inside, then outside.
+    let r = simplify_box_permmap_slice([5.0, 99.0]);
+    assert!(
+        r.as_ref().as_any().is::<NullRegion>(),
+        "constants 5,99 should give a NullRegion"
+    );
+}
+
+#[test]
+fn simplify_permmap_slice_both_constants_outside_is_null() {
+    let r = simplify_box_permmap_slice([99.0, 99.0]);
+    assert!(
+        r.as_ref().as_any().is::<NullRegion>(),
+        "constants 99,99 should give a NullRegion"
+    );
+}
+
+#[test]
+fn simplify_permmap_slice_both_constants_inside_keeps_box() {
+    // Both planes meet the Box, so the slice is a Box on the two current
+    // Frame axes.
+    let r = simplify_box_permmap_slice([5.0, 15.0]);
+    let bx = r
+        .as_ref()
+        .as_any()
+        .downcast_ref::<BoxRegion>()
+        .expect("constants 5,15 should give a Box");
+    assert_eq!(bx.naxes(), 2);
 }

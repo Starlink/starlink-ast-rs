@@ -2594,10 +2594,11 @@ The `feed >= nout` case two branches down sets `isNull = 1` unconditionally, so 
 `isNull` is initialised to zero once before the loop (`box.c:3750`), which is what makes the assignment look deliberate at a glance.
 `simpler`, set beside it, is the one flag in the loop that can only be cleared.
 
-**Rust behaviour (mirror):** `BoxRegion::simplify_over_permmap` (`crates/ast-core/src/regions/box_region.rs:474-498`) assigns in the same place, so the port agrees with C on a multi-constant PermMap; a comment at the assignment points here.
-`cap_box_permmap_null` covers the single-constant case, which is unaffected either way.
+**Rust behaviour:** inverted at the 9.5.0 sync.
+`BoxRegion::simplify_over_permmap` (`crates/ast-core/src/regions/box_region.rs`) accumulates the verdict, matching upstream `83925af2`.
+`cap_box_permmap_null` covers the single-constant case, which is unaffected either way; `cap_box_permmap_null_first` orders the constants so the missing plane is seen first, and the four `simplify_permmap_slice_*` cases in `test_box_region.rs` state the property directly.
 
-To be raised upstream.
+Fixed upstream in `83925af2`.
 
 ## `Polygon::Simplify`'s bad-vertex guard tests axis 1 only
 

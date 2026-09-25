@@ -484,18 +484,22 @@ impl BoxRegion {
             let feed = inperm.get(ic).copied().unwrap_or(0);
             if feed < 0 {
                 // Fed a constant: the slice misses the Box unless the constant
-                // lies within the Box's limits on this axis (box.c:3806). C
-                // assigns rather than accumulates here, so the last
-                // constant-fed input decides; see
-                // docs/issues/c-library-quirks.md.
+                // lies within the Box's limits on this axis (box.c:3811). Each
+                // constant-fed input is a separate plane the slice must lie in,
+                // so any one of them falling outside the Box empties the
+                // intersection; the verdict accumulates rather than being
+                // replaced.
                 let k = constant_at(constants, feed);
                 let lb = base_lbnd[ic];
                 let ub = base_ubnd[ic];
-                is_null = if closed == neg {
+                let outside = if closed == neg {
                     k <= lb || k >= ub
                 } else {
                     k < lb || k > ub
                 };
+                if outside {
+                    is_null = true;
+                }
             } else if feed == 0 || feed as usize > nout {
                 // Fed AST__BAD: the input axis is unbounded and so extends
                 // beyond the Box (box.c:3819).
