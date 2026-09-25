@@ -161,17 +161,22 @@ impl RegionGeometry for PointList {
 
     fn reg_base_inside(&self, pts: &PointSet) -> AstResult<Vec<bool>> {
         // Faithful port of the uncertainty-driven PointList membership test
-        // (pointlist.c:2504). A supplied point is inside the (un-negated)
+        // (pointlist.c:2359). A supplied point is inside the (un-negated)
         // PointList iff it coincides — to within the positional uncertainty —
         // with at least one of the defining points. C negates the base-Frame
         // uncertainty Region, recentres it at each defining point in turn, and
         // transforms the supplied points through it, accumulating a BAD mask
         // wherever a point falls inside a recentred uncertainty. The net raw
         // membership is therefore the OR, over all defining points, of "the
-        // supplied point lies inside the uncertainty Region recentred at that
-        // defining point". We compute that directly: negation is applied by
+        // supplied point lies inside the *negated* uncertainty's complement"
+        // — that is, inside the uncertainty Region under the boundary rule a
+        // negated Region applies. Negating flips which side of the boundary
+        // belongs to the Region (`region.c` Closed / Negated), so a point
+        // exactly on the uncertainty's boundary is outside, and the width must
+        // be non-zero for a defining point to match itself at all
+        // (`pointlist.c:2495`). Negation of the PointList itself is applied by
         // the `region_transform` caller, so here we return the un-negated
-        // membership using the un-negated uncertainty.
+        // membership.
         let npoint = pts.npoint();
         let naxes = self.data.frameset.base().naxes();
 
@@ -179,7 +184,8 @@ impl RegionGeometry for PointList {
         // PointList's bounding-box centre). Mirrors astGetUncFrm(this,
         // AST__BASE); its current Frame is the PointList's base Frame, so the
         // supplied base-Frame points can be transformed through it directly.
-        let mut unc = self.get_unc_frm(FrameRef::Base)?;
+        // C negates it before use (astSetNegated(unc, 1), pointlist.c:2495).
+        let mut negated_unc = self.get_unc_frm(FrameRef::Base)?.negated_copy();
 
         let mut result = vec![false; npoint];
         for def_point in &self.data.points {
@@ -189,13 +195,15 @@ impl RegionGeometry for PointList {
 
             // Recentre the uncertainty Region at this defining point
             // (astRegCentre(unc, NULL, ptr_base, point, AST__BASE)).
-            unc.reg_centre_set(&def_point[..naxes], FrameRef::Base)?;
+            negated_unc.reg_centre_set(&def_point[..naxes], FrameRef::Base)?;
 
-            // Transform the supplied points through the (un-negated)
-            // uncertainty: interior points pass through, exterior points
-            // become BAD. A surviving (non-BAD) point coincides with this
-            // defining point.
-            let masked = unc.transform(pts, true)?;
+            // Transform the supplied points through the negated uncertainty:
+            // points *outside* it pass through and points inside become BAD,
+            // so a BAD point coincides with this defining point. C accumulates
+            // the BAD mask across all the defining points and inverts it at the
+            // end (pointlist.c:2545-2573); the sense here is the same, one
+            // defining point at a time.
+            let masked = negated_unc.transform(pts, true)?;
             for (i, r) in result.iter_mut().enumerate() {
                 if *r {
                     continue;
@@ -203,7 +211,7 @@ impl RegionGeometry for PointList {
                 if point_has_bad(pts.point(i)) {
                     continue;
                 }
-                if !point_has_bad(masked.point(i)) {
+                if point_has_bad(masked.point(i)) {
                     *r = true;
                 }
             }

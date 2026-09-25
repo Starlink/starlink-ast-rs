@@ -512,8 +512,12 @@ pub trait Region: Frame + Mapping {
     ///
     /// Mirrors C base `GetDefUnc` (region.c:3488). For each axis with finite
     /// bounds the half-width is `|0.5E-6 * (ubnd - lbnd)|`, or `c * 0.5E-6`
-    /// (with `c` the axis centre) when that width is zero; axes with infinite
-    /// bounds collapse to a zero-width `[0, 0]` interval.
+    /// (with `c` the axis centre) when that width is zero, or `0.5E-12` when
+    /// that is zero too — the absolute floor `astEQUAL` applies to values near
+    /// zero (region.c:3578). At zero there is no scale to be proportional to,
+    /// and a zero-width uncertainty makes a membership test at the Region's own
+    /// points fail. Axes with infinite bounds collapse to a zero-width `[0, 0]`
+    /// interval.
     ///
     /// The bounding box is taken from [`reg_base_box2`](Region::reg_base_box2)
     /// (not [`get_region_bounds`](Region::get_region_bounds)) because C uses
@@ -537,6 +541,9 @@ pub trait Region: Frame + Mapping {
                 let c = 0.5 * (ubnd[i] + lbnd[i]);
                 if hw == 0.0 {
                     hw = c * 0.5e-6;
+                }
+                if hw == 0.0 {
+                    hw = 0.5e-12;
                 }
                 ubnd[i] = c + hw;
                 lbnd[i] = c - hw;

@@ -3144,3 +3144,60 @@ point, so the branch can now only ever refuse: a missing limit is stored as
 its interior and that a point Interval still merges.
 
 Fixed upstream in `9916e19e`.
+
+---
+
+## The default uncertainty had zero width on an axis constant at zero
+
+**Fixed upstream in `dc424b56`; the Rust mirror was inverted at the 9.5.0 sync.**
+
+`Region::GetDefUnc` builds the default uncertainty as a Box covering `1.0E-6` of
+the Region's bounding box on each axis.
+An axis on which that box has zero width falls back to `1.0E-6` of the axis
+value, so a Region that is a point on that axis still gets a tolerance
+proportional to its scale.
+Both are zero where the axis is constant at the origin, and the Box then had zero
+width there.
+
+A `PointList` decides membership by negating its uncertainty Box, recentring it
+on each defining point and asking whether the test position falls outside
+(`pointlist.c:2495`), so a zero-width uncertainty makes every test fail: a
+PointList whose points share the value `0` on any axis reported its own points as
+outside, and a 1-D PointList holding the single point `0` did the same.
+The number of axes and the spread on the other axes were irrelevant; the zero was
+what mattered.
+
+At zero there is no scale to be proportional to, and `astEQUAL` already answers
+that question for the library — its relative tolerance is floored at an absolute
+`1.0E-12` near zero.
+The fix applies the same floor, so the half-width on such an axis is `0.5E-12`
+(`region.c:3578`).
+`Interval::GetDefUnc` carries its own copy of the calculation for an Interval
+that is not equivalent to a Box, and gets the same floor (`interval.c:690`).
+
+**Rust behaviour:** inverted at the 9.5.0 sync.
+`Region::default_bounding_box_unc` (`crates/ast-core/src/regions/mod.rs`) and
+`Interval::get_def_unc` (`crates/ast-core/src/regions/interval.rs`) both apply the
+`0.5E-12` floor.
+`the_default_uncertainty_keeps_a_non_zero_width_at_the_origin` in
+`crates/ast-core/tests/test_regions.rs`, ported from `checkDefaultUncAtOrigin` in
+`reference/starlink-ast/ast_tester/testregions.c`, is the gate; it fails with the
+floor reverted.
+
+Inverting it also exposed a separate port gap that had made the C symptom
+invisible here.
+`PointList::reg_base_inside` transformed the supplied points through the
+*un-negated* uncertainty and treated a surviving point as a match, where C
+negates it first (`astSetNegated( unc, 1 )`, `pointlist.c:2495`) and treats a
+*bad* point as the match.
+Negation flips which side of the boundary belongs to the Region, so the port
+admitted points exactly on the uncertainty's boundary that C rejects, and a
+zero-width uncertainty still matched its own centre.
+Oracle-verified: for a 1-D PointList at `0` with an explicit uncertainty Box
+spanning `-1 .. 1`, C reports the boundary point `1.0` as outside and `0.5` as
+inside; with a zero-width uncertainty Box it reports the PointList's own points as
+outside.
+`membership_uses_the_negated_uncertainty_boundary_rule` in
+`crates/ast-core/tests/test_pointlist.rs` pins all three.
+
+Fixed upstream in `dc424b56`.

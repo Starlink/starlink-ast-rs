@@ -1350,8 +1350,10 @@ impl Region for Interval {
 
         // Otherwise build a Box covering 1.0E-6 of each axis interval using the
         // Interval's OWN cached limits (not the base-class bounding box). An
-        // axis with an infinite limit collapses to a zero-width [0, 0]
-        // interval.
+        // axis whose limits are equal uses 1.0E-6 of the axis value, and one
+        // whose limits are both zero uses 0.5E-12, the absolute floor astEQUAL
+        // applies near zero (interval.c:690). An axis with an infinite limit
+        // collapses to a zero-width [0, 0] interval.
         let nax = cache_lbnd.len();
         let bfrm = self.data.frameset.base().snapshot();
 
@@ -1365,6 +1367,9 @@ impl Region for Interval {
                 let c = 0.5 * (ub + lb);
                 if hw == 0.0 {
                     hw = c * 0.5e-6;
+                }
+                if hw == 0.0 {
+                    hw = 0.5e-12;
                 }
                 ubnd[i] = c + hw;
                 lbnd[i] = c - hw;

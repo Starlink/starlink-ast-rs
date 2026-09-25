@@ -545,3 +545,53 @@ fn reg_pins_incomplete_cover_reports_false() {
     let pts = PointSet::from_rows(supplied.iter().map(|p| p.as_slice()));
     assert!(!pl.reg_pins(&pts, None).unwrap());
 }
+
+/// C negates the uncertainty Region before recentring it on each defining point
+/// (`pointlist.c:2495`), then accumulates the bad mask and inverts it at the end.
+/// Negation flips which side of the boundary belongs to the Region, so a point
+/// exactly on the uncertainty's boundary is *outside* the PointList, and a
+/// zero-width uncertainty matches nothing at all — which is why the default
+/// uncertainty must keep a non-zero width (`region.c:3578`). Oracle-verified: C
+/// reports 0 for the boundary point and 1 for a point strictly inside, and 0 for
+/// a PointList's own point under an explicit zero-width uncertainty.
+#[test]
+fn membership_uses_the_negated_uncertainty_boundary_rule() {
+    use ast_core::regions::BoxRegionBuilder;
+
+    let frame = BasicFrameBuilder::new(1).build().unwrap();
+    let unc = BoxRegionBuilder::from_bounds(frame, &[-1.0], &[1.0])
+        .unwrap()
+        .build()
+        .unwrap();
+    let frame = BasicFrameBuilder::new(1).build().unwrap();
+    let pl = PointListBuilder::new(frame, vec![vec![0.0]])
+        .unwrap()
+        .uncertainty(Box::new(unc))
+        .build()
+        .unwrap();
+
+    assert!(
+        !pl.point_in_region(&[1.0]).unwrap(),
+        "a point on the uncertainty boundary must be outside"
+    );
+    assert!(
+        pl.point_in_region(&[0.5]).unwrap(),
+        "a point strictly within the uncertainty must be inside"
+    );
+
+    // An explicit zero-width uncertainty matches nothing, not even the
+    // PointList's own points.
+    let frame = BasicFrameBuilder::new(1).build().unwrap();
+    let unc = BoxRegionBuilder::from_bounds(frame, &[0.0], &[0.0])
+        .unwrap()
+        .build()
+        .unwrap();
+    let frame = BasicFrameBuilder::new(1).build().unwrap();
+    let pl = PointListBuilder::new(frame, vec![vec![0.0], vec![5.0]])
+        .unwrap()
+        .uncertainty(Box::new(unc))
+        .build()
+        .unwrap();
+    assert!(!pl.point_in_region(&[0.0]).unwrap());
+    assert!(!pl.point_in_region(&[5.0]).unwrap());
+}

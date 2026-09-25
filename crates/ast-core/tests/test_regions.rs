@@ -4107,3 +4107,56 @@ fn an_axis_unbounded_above_gets_a_zero_width_default_uncertainty() {
         "an axis unbounded above must get both default-uncertainty bounds zeroed"
     );
 }
+
+/// An axis on which a Region's bounding box is a point at zero has no scale for
+/// the default uncertainty to be proportional to, so C floors its half-width at
+/// `0.5E-12` — the absolute tolerance `astEQUAL` applies near zero
+/// (`region.c:3578`). Without the floor the uncertainty Box has zero width
+/// there, and a PointList, which decides membership by recentring that Box on
+/// each of its points, reports its own points as outside.
+///
+/// Ancestor: `reference/starlink-ast/ast_tester/testregions.c`,
+/// `checkDefaultUncAtOrigin`.
+#[test]
+fn the_default_uncertainty_keeps_a_non_zero_width_at_the_origin() {
+    use ast_core::regions::PointListBuilder;
+
+    let frame = BasicFrameBuilder::new(3).build().unwrap();
+    let points = vec![vec![5.0, 0.0, 3.0], vec![5.0, 0.0, 4.0]];
+    let pl = PointListBuilder::new(frame, points)
+        .unwrap()
+        .build()
+        .unwrap();
+
+    assert!(
+        pl.point_in_region(&[5.0, 0.0, 3.0]).unwrap(),
+        "a PointList must contain its own point"
+    );
+
+    let unc = pl.get_unc_frm(FrameRef::Base).unwrap();
+    let (lbnd, ubnd) = unc.get_region_bounds().unwrap();
+    assert!(
+        ubnd[1] > lbnd[1],
+        "the default uncertainty must keep a non-zero width on an axis constant \
+         at zero, got [{}, {}]",
+        lbnd[1],
+        ubnd[1]
+    );
+
+    // An Interval with an unbounded axis is not equivalent to a Box and derives
+    // its own default uncertainty (interval.c:690), so it needs the same floor.
+    let frame = BasicFrameBuilder::new(2).build().unwrap();
+    let iv = IntervalBuilder::new(frame, vec![0.0, 1.0], vec![0.0, BAD_VALUE])
+        .unwrap()
+        .build()
+        .unwrap();
+    let unc = iv.get_unc_frm(FrameRef::Base).unwrap();
+    let (lbnd, ubnd) = unc.get_region_bounds().unwrap();
+    assert!(
+        ubnd[0] > lbnd[0],
+        "an Interval's own default uncertainty must keep a non-zero width at \
+         the origin, got [{}, {}]",
+        lbnd[0],
+        ubnd[0]
+    );
+}
