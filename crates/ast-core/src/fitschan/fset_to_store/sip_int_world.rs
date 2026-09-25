@@ -257,10 +257,75 @@ pub(crate) fn sip_int_world(
         polymap = decomp.map2;
     }
 
-    // Step 7: linear fit of map_upper over [-ubnd, ubnd]. Mirrors
-    // fitschan.c:28837. Must have negligible shift.
-    let lbnd_u = vec![-ubnd_x, -ubnd_y];
-    let upper_fit = match map_upper.linear_approx(&lbnd_u, &ubnd, tol) {
+    // Step 7: check that map_upper is linear and introduces no shift of
+    // origin, retaining the fit for the CD matrix. Mirrors
+    // fitschan.c:29063-29148.
+    //
+    // map_upper is not reached directly from grid coordinates — map_lower
+    // and the PolyMap come first — so the box over which it must be linear
+    // is not the grid box Step 5 used. Derive it by pushing a 3x3 grid
+    // spanning the image through both. Two further positions, one pixel
+    // from the image centre along each grid axis, travel with them and
+    // express the supplied tolerance, which is in pixels, in map_upper's
+    // output space.
+    let mut samples = [[0.0_f64; 2]; 11];
+    let mut isamp = 0;
+    for ix in 0..3 {
+        for iy in 0..3 {
+            samples[isamp] = [0.5 * ix as f64 * ubnd_x, 0.5 * iy as f64 * ubnd_y];
+            isamp += 1;
+        }
+    }
+    samples[9] = [0.5 * ubnd_x + 1.0, 0.5 * ubnd_y];
+    samples[10] = [0.5 * ubnd_x, 0.5 * ubnd_y + 1.0];
+
+    let lower_out = map_lower.transform(&PointSet::from_rows(samples), true)?;
+    let iwc = polymap.transform(&lower_out, true)?;
+
+    // Bounding box of the transformed image corners. Give up if any of
+    // them could not be transformed, since map_upper cannot then be
+    // tested over the region in which it is used.
+    let mut lbnd_u = [0.0_f64; 2];
+    let mut ubnd_u = [0.0_f64; 2];
+    for isamp in 0..9 {
+        let pt = iwc.point(isamp);
+        if pt[0] == BAD_VALUE || pt[1] == BAD_VALUE {
+            return Ok(None);
+        }
+        if isamp == 0 {
+            lbnd_u = [pt[0], pt[1]];
+            ubnd_u = [pt[0], pt[1]];
+        } else {
+            lbnd_u[0] = lbnd_u[0].min(pt[0]);
+            ubnd_u[0] = ubnd_u[0].max(pt[0]);
+            lbnd_u[1] = lbnd_u[1].min(pt[1]);
+            ubnd_u[1] = ubnd_u[1].max(pt[1]);
+        }
+    }
+
+    // Displacement in map_upper's output space produced by a one pixel
+    // step in grid coordinates at the centre of the image, used to convert
+    // the tolerance into that space: `linear_approx` expects a
+    // displacement in the output space of the Mapping it is testing,
+    // whereas FitsTol is expressed in pixels.
+    let centre_step = PointSet::from_rows([iwc.point(4), iwc.point(9), iwc.point(10)]);
+    let stepped = map_upper.transform(&centre_step, true)?;
+    let uscale = if (0..3).all(|i| {
+        let pt = stepped.point(i);
+        pt[0] != BAD_VALUE && pt[1] != BAD_VALUE
+    }) {
+        let p0 = stepped.point(0);
+        let dist = |p: &[f64]| ((p[0] - p0[0]).powi(2) + (p[1] - p0[1]).powi(2)).sqrt();
+        dist(stepped.point(1)).max(dist(stepped.point(2)))
+    } else {
+        0.0
+    };
+    if uscale <= 0.0 {
+        return Ok(None);
+    }
+    let utol = tol * uscale;
+
+    let upper_fit = match map_upper.linear_approx(&lbnd_u, &ubnd_u, utol) {
         Some(f) => f,
         None => return Ok(None),
     };

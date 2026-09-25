@@ -94,6 +94,9 @@ pub(crate) struct CelestialAxesArgs<'a> {
     /// `isoff` flag, as documented in
     /// [`fset_to_store::sky_sys::sky_sys`](super::sky_sys::sky_sys).
     pub isoff: i32,
+    /// Linearity tolerance in pixels, from the FitsChan's `FitsTol`
+    /// attribute (C `astGetFitsTol`, fitschan.c:2987).
+    pub fits_tol: f64,
 }
 
 /// Detect celestial axes in `args.fs`, populate the celestial
@@ -323,7 +326,7 @@ pub(crate) fn celestial_axes(args: CelestialAxesArgs<'_>) -> AstResult<DynMappin
         ret.clone_box(),
         Composition::Series,
     )?);
-    if let Some(tperm) = world_axes(pixel_to_iwc.as_ref(), args.dim, FITS_TOL_DEFAULT)?
+    if let Some(tperm) = world_axes(pixel_to_iwc.as_ref(), args.dim, args.fits_tol)?
         && tperm[ilon] == fits_ilat
         && tperm[ilat] == fits_ilon
     {
@@ -343,9 +346,6 @@ pub(crate) fn celestial_axes(args: CelestialAxesArgs<'_>) -> AstResult<DynMappin
     // Step 9: simplify and return. Mirrors C:5591-5595.
     ret.simplify()
 }
-
-/// Default `FitsTol` value (matches the C library's FitsChan default).
-const FITS_TOL_DEFAULT: f64 = 0.1;
 
 /// C `ZEROANG(aa) (fabs(aa) < 1.0E-9)` from fitschan.c:1392.
 fn zero_angle(v: f64) -> bool {
@@ -923,6 +923,7 @@ fn embed_native_rotation(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::fitschan::fset_to_store::FITS_TOL_DEFAULT;
     use crate::frames::sky_convert::SkySystem;
     use crate::frames::{BasicFrameBuilder, FrameRef, FrameSet};
 
@@ -966,6 +967,7 @@ mod tests {
             store: &mut store,
             axis_done: &mut axis_done,
             isoff: 0,
+            fits_tol: FITS_TOL_DEFAULT,
         })
         .unwrap();
 
@@ -1010,6 +1012,7 @@ mod tests {
             store: &mut store,
             axis_done: &mut axis_done,
             isoff: 0,
+            fits_tol: FITS_TOL_DEFAULT,
         })
         .unwrap();
 
@@ -1038,6 +1041,7 @@ mod tests {
             store: &mut store,
             axis_done: &mut axis_done,
             isoff: 0,
+            fits_tol: FITS_TOL_DEFAULT,
         })
         .unwrap();
 

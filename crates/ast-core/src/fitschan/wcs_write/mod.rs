@@ -9,7 +9,7 @@
 mod plane_stores;
 pub(crate) use plane_stores::{PlaneStore, collect_plane_stores};
 
-use super::card_list::CardList;
+use super::card_list::{CardList, NewScope};
 use super::fits_store::FitsStore;
 use super::wcs_decompose::split_cd;
 use crate::constants::BAD_VALUE;
@@ -65,7 +65,8 @@ pub(crate) fn encode_wcs(
     cards: &mut CardList,
     use_cd: bool,
     dim: &[Option<f64>],
-) -> AstResult<()> {
+    fits_tol: f64,
+) -> AstResult<bool> {
     let frameset = match obj {
         AnyObject::FrameSet(fs) => fs,
         _ => {
@@ -91,6 +92,7 @@ pub(crate) fn encode_wcs(
         dim,
         crate::fitschan::Encoding::FitsWcs,
         &primary_crvals,
+        fits_tol,
     )?;
 
     // Last-plane-wins: the alphabetically-last plane's global keyword
@@ -103,36 +105,62 @@ pub(crate) fn encode_wcs(
     // Emit the primary plane (which now carries the last-plane
     // globals) followed by each alt plane (per-axis cards only —
     // their global emissions are gated by `s == ' '`).
-    if let Some(primary) = planes.first() {
-        write_store_to_cards(&primary.store, cards, use_cd, ' ', None)?;
-    }
-    for plane in planes.iter().skip(1) {
-        let domain = alt_plane_domain(frameset, plane.letter);
-        write_store_to_cards(&plane.store, cards, use_cd, plane.letter, domain.as_deref())?;
+    //
+    // Each version either writes a complete axis description or none at
+    // all: the cards a failed version emitted before the defect was
+    // found are removed again, as C does with `FixNew( this, NEW2, !ok,
+    // ... )` at the tail of every pass of its version loop
+    // (fitschan.c:37798). An alternate description is only meaningful
+    // alongside a primary one, so a failed primary abandons the whole
+    // header rather than leaving alternates behind — C's `if( !primok )
+    // break;` at fitschan.c:37812.
+    let mut primok = false;
+    let mut ret = false;
+    for (i, plane) in planes.iter().enumerate() {
+        let (s, frame_name) = if i == 0 {
+            (' ', None)
+        } else {
+            (plane.letter, alt_plane_domain(frameset, plane.letter))
+        };
+        let ok = write_store_to_cards(&plane.store, cards, use_cd, s, frame_name.as_deref())?;
+        if ok {
+            ret = true;
+        }
+        if i == 0 {
+            primok = ok;
+        }
+        cards.fix_new(NewScope::Version, !ok);
+        if !primok {
+            break;
+        }
     }
 
-    // SIP block: emitted after all axis planes. Mirrors C
-    // `WcsFromStore` (fitschan.c:37378-37413) which emits A_*/B_*/AP_*/BP_*
-    // cards at the end of the per-encoding writer, after the
-    // alt-plane axis loop. Only the primary plane's SIP is meaningful
-    // (alt-plane SIP isn't part of the FITS-WCS spec).
-    if let Some(primary) = planes.first() {
-        write_sip_block(primary.store.sip_a_order, &primary.store.sip_a, "A", cards);
-        write_sip_block(primary.store.sip_b_order, &primary.store.sip_b, "B", cards);
-        write_sip_block(
-            primary.store.sip_ap_order,
-            &primary.store.sip_ap,
-            "AP",
-            cards,
-        );
-        write_sip_block(
-            primary.store.sip_bp_order,
-            &primary.store.sip_bp,
-            "BP",
-            cards,
-        );
+    // SIP block, emitted only for a primary description that succeeded.
+    // C emits these coefficients inside its version loop, before the
+    // `FixNew` that discards a failed version's cards; here the block is
+    // emitted after the loop because the alt-plane axis cards must land
+    // between the primary axis block and the coefficients to match the
+    // reference headers. Gating on `primok` gives the same outcome, since
+    // only the primary plane carries SIP.
+    if primok {
+        if let Some(primary) = planes.first() {
+            write_sip_block(primary.store.sip_a_order, &primary.store.sip_a, "A", cards);
+            write_sip_block(primary.store.sip_b_order, &primary.store.sip_b, "B", cards);
+            write_sip_block(
+                primary.store.sip_ap_order,
+                &primary.store.sip_ap,
+                "AP",
+                cards,
+            );
+            write_sip_block(
+                primary.store.sip_bp_order,
+                &primary.store.sip_bp,
+                "BP",
+                cards,
+            );
+        }
     }
-    Ok(())
+    Ok(ret)
 }
 
 /// Propagate observation-global keyword values from the
@@ -251,8 +279,9 @@ pub(crate) fn encode_wcs_to_store(
     obj: &AnyObject,
     cards: &mut CardList,
     dim: &[Option<f64>],
+    fits_tol: f64,
     writer: impl FnOnce(&FitsStore, &mut CardList) -> AstResult<()>,
-) -> AstResult<()> {
+) -> AstResult<bool> {
     let frameset = match obj {
         AnyObject::FrameSet(fs) => fs,
         _ => {
@@ -264,8 +293,15 @@ pub(crate) fn encode_wcs_to_store(
     };
 
     let input_crvals = extract_input_crvals(cards, ' ', frameset.base().naxes());
-    let store = store_from_frameset(frameset, dim, &input_crvals)?;
-    writer(&store, cards)
+    let (store, ok) = store_from_frameset(frameset, dim, &input_crvals, fits_tol)?;
+    // A FrameSet with no describable primary axes yields no store at all in
+    // C, so `Write` has nothing to encode and reports failure
+    // (fitschan.c:12358, 40716).
+    if !ok {
+        return Ok(false);
+    }
+    writer(&store, cards)?;
+    Ok(true)
 }
 
 /// Variant of `encode_wcs_to_store` that drives a per-plane writer.
@@ -284,8 +320,9 @@ pub(crate) fn encode_wcs_per_plane(
     cards: &mut CardList,
     dim: &[Option<f64>],
     encoding: crate::fitschan::Encoding,
+    fits_tol: f64,
     mut writer: impl FnMut(&FitsStore, &mut CardList, char, bool) -> AstResult<()>,
-) -> AstResult<()> {
+) -> AstResult<bool> {
     let frameset = match obj {
         AnyObject::FrameSet(fs) => fs,
         _ => {
@@ -296,7 +333,7 @@ pub(crate) fn encode_wcs_per_plane(
         }
     };
     let primary_crvals = extract_input_crvals(cards, ' ', frameset.base().naxes());
-    let mut planes = collect_plane_stores(frameset, dim, encoding, &primary_crvals)?;
+    let mut planes = collect_plane_stores(frameset, dim, encoding, &primary_crvals, fits_tol)?;
 
     // Last-plane-wins for observation-global keywords (MJD-OBS,
     // DATE-OBS, OBSGEO, TIMESYS, DTAI, DUT1). Mirrors C's `SkySys`
@@ -328,21 +365,29 @@ pub(crate) fn encode_wcs_per_plane(
             | Encoding::FitsClass
     );
 
+    // `collect_plane_stores` returns no plane at all when the primary axes
+    // could not be described, which is C discarding the whole FitsStore
+    // (fitschan.c:12358). `Write` then has nothing to encode and reports
+    // failure (fitschan.c:40716).
     if primary_only {
-        if let Some(primary) = planes.first() {
-            // For primary-only encoders, the single plane is the
-            // last (and only) plane — pass `is_last = true`.
-            writer(&primary.store, cards, primary.letter, true)?;
-        }
-        return Ok(());
+        let Some(primary) = planes.first() else {
+            return Ok(false);
+        };
+        // For primary-only encoders, the single plane is the
+        // last (and only) plane — pass `is_last = true`.
+        writer(&primary.store, cards, primary.letter, true)?;
+        return Ok(true);
     }
 
-    let last_idx = planes.len().saturating_sub(1);
+    if planes.is_empty() {
+        return Ok(false);
+    }
+    let last_idx = planes.len() - 1;
     for (i, plane) in planes.iter().enumerate() {
         let is_last = i == last_idx;
         writer(&plane.store, cards, plane.letter, is_last)?;
     }
-    Ok(())
+    Ok(true)
 }
 
 /// Decompose a FrameSet into a FitsStore using the current frame as the
@@ -355,8 +400,9 @@ pub(crate) fn store_from_frameset(
     fs: &FrameSet,
     dim: &[Option<f64>],
     input_crvals: &[Option<f64>],
-) -> AstResult<FitsStore> {
-    store_from_frameset_to(fs, fs.current_idx(), dim, input_crvals)
+    fits_tol: f64,
+) -> AstResult<(FitsStore, bool)> {
+    store_from_frameset_to(fs, fs.current_idx(), dim, input_crvals, fits_tol)
 }
 
 /// Decompose a FrameSet into a FitsStore using `target_idx` (0-based) as
@@ -372,7 +418,8 @@ fn store_from_frameset_to(
     target_idx: usize,
     dim: &[Option<f64>],
     input_crvals: &[Option<f64>],
-) -> AstResult<FitsStore> {
+    fits_tol: f64,
+) -> AstResult<(FitsStore, bool)> {
     // The new path (fset_to_store) reads the FrameSet's current frame
     // directly; for alt-plane callers (target_idx != current_idx) we
     // clone the FrameSet and bump its current pointer to the requested
@@ -386,11 +433,25 @@ fn store_from_frameset_to(
     // `SpectralAxes` / `CelestialAxes`, fitschan.c:2867+).
     let encoding = crate::fitschan::Encoding::FitsWcs;
     if target_idx == fs.current_idx() {
-        return crate::fitschan::fset_to_store::fset_to_store(fs, dim, encoding, ' ', input_crvals);
+        return crate::fitschan::fset_to_store::fset_to_store(
+            fs,
+            dim,
+            encoding,
+            ' ',
+            input_crvals,
+            fits_tol,
+        );
     }
     let mut alt_fs = fs.clone();
     alt_fs.set_current(FrameRef::Index(target_idx + 1))?;
-    crate::fitschan::fset_to_store::fset_to_store(&alt_fs, dim, encoding, ' ', input_crvals)
+    crate::fitschan::fset_to_store::fset_to_store(
+        &alt_fs,
+        dim,
+        encoding,
+        ' ',
+        input_crvals,
+        fits_tol,
+    )
 }
 
 /// Write FitsStore contents as FITS keyword cards.
@@ -404,8 +465,17 @@ fn write_store_to_cards(
     use_cd: bool,
     s: char,
     frame_name: Option<&str>,
-) -> AstResult<()> {
+) -> AstResult<bool> {
     let naxis = store.naxis;
+
+    // A version must have a complete axis description: without CRPIX1 and
+    // CRVAL1 there is nothing for the other keywords to qualify, so the
+    // whole version is abandoned. C tests this before emitting anything
+    // (fitschan.c:37296-37305) and applies it to the primary as well as
+    // the alternates.
+    if naxis == 0 || store.crpix[0].is_none() || store.crval[0].is_none() {
+        return Ok(false);
+    }
 
     // WCSAXES{S} — mirrors fitschan.c:36987-37000. Emit when:
     //   1. the store explicitly carries a WCSAXES value (the
@@ -453,22 +523,26 @@ fn write_store_to_cards(
         }
     }
 
-    // CRPIXi{S}
+    // CRPIXi{S}. Every axis must have one; C abandons the version
+    // otherwise (fitschan.c:37341-37352).
     for i in 0..naxis {
-        if let Some(val) = store.crpix[i] {
-            let key = fmt_axis_key("CRPIX", i + 1, s);
-            let comment = format!("Reference pixel on axis {}", i + 1);
-            cards.set_float(&key, val, &comment);
-        }
+        let Some(val) = store.crpix[i] else {
+            return Ok(false);
+        };
+        let key = fmt_axis_key("CRPIX", i + 1, s);
+        let comment = format!("Reference pixel on axis {}", i + 1);
+        cards.set_float(&key, val, &comment);
     }
 
-    // CRVALi{S}
+    // CRVALi{S}. Likewise required on every axis
+    // (fitschan.c:37354-37366).
     for i in 0..naxis {
-        if let Some(val) = store.crval[i] {
-            let key = fmt_axis_key("CRVAL", i + 1, s);
-            let comment = format!("Value at ref. pixel on axis {}", i + 1);
-            cards.set_float(&key, val, &comment);
-        }
+        let Some(val) = store.crval[i] else {
+            return Ok(false);
+        };
+        let key = fmt_axis_key("CRVAL", i + 1, s);
+        let comment = format!("Value at ref. pixel on axis {}", i + 1);
+        cards.set_float(&key, val, &comment);
     }
 
     // CTYPEi{S}. If the projection is the AST-specific "TPN" code,
@@ -477,21 +551,25 @@ fn write_store_to_cards(
     // AST does the inverse conversion on read; non-AST software ignores
     // the QV terms and reads a plain TAN projection. Mirrors
     // `WcsFromStore` (fitschan.c:37066-37077).
+    //
+    // A CTYPE is required on every axis; C abandons the version otherwise
+    // (fitschan.c:37371-37377).
     let mut axis_par_qv = vec![false; naxis];
     for (i, qv) in axis_par_qv.iter_mut().enumerate() {
-        if let Some(ref val) = store.ctype[i] {
-            let mut out = val.clone();
-            if val.len() >= 4 && val[val.len() - 4..].eq_ignore_ascii_case("-TPN") {
-                let base = &val[..val.len() - 4];
-                out = format!("{base}-TAN");
-                *qv = true;
-            }
-            let key = fmt_axis_key("CTYPE", i + 1, s);
-            let comment = store.ctype_com[i]
-                .clone()
-                .unwrap_or_else(|| format!("Type of co-ordinate on axis {}", i + 1));
-            cards.set_string(&key, &out, &comment);
+        let Some(ref val) = store.ctype[i] else {
+            return Ok(false);
+        };
+        let mut out = val.clone();
+        if val.len() >= 4 && val[val.len() - 4..].eq_ignore_ascii_case("-TPN") {
+            let base = &val[..val.len() - 4];
+            out = format!("{base}-TAN");
+            *qv = true;
         }
+        let key = fmt_axis_key("CTYPE", i + 1, s);
+        let comment = store.ctype_com[i]
+            .clone()
+            .unwrap_or_else(|| format!("Type of co-ordinate on axis {}", i + 1));
+        cards.set_string(&key, &out, &comment);
     }
 
     // CD matrix or PC+CDELT.
@@ -709,7 +787,7 @@ fn write_store_to_cards(
     // the primary axis block and the SIP coefficient block, matching
     // C `WcsFromStore`'s tail emission at fitschan.c:37378-37413).
 
-    Ok(())
+    Ok(true)
 }
 
 /// Write CD matrix keywords.
@@ -1159,55 +1237,6 @@ pub(crate) fn frames_with_version_letters(fs: &FrameSet) -> Vec<(usize, char)> {
         .into_iter()
         .filter_map(|(idx, opt)| opt.map(|c| (idx, c)))
         .collect()
-}
-
-/// One FITS alt-WCS plane: a version letter (A-Z), the frame domain
-/// (used to populate WCSNAME{S}), and a FitsStore holding axis-indexed
-/// values for that plane.
-#[allow(dead_code)]
-pub(crate) struct AltPlane {
-    pub(crate) letter: char,
-    pub(crate) domain: String,
-    pub(crate) store: FitsStore,
-}
-
-/// Build the primary FitsStore plus per-frame alt planes.
-///
-/// Returns `(primary_store, alt_planes)` where `alt_planes` is a `Vec` of
-/// [`AltPlane`] values. Alt planes are computed using the same
-/// `store_from_frameset_to` logic with each non-base/non-current frame as
-/// the target.
-///
-/// Mirrors `fitschan.c::FsetToStore` (lines 12169-12259).
-#[allow(dead_code)]
-pub(crate) fn store_from_frameset_with_alts(
-    fs: &FrameSet,
-    dim: &[Option<f64>],
-    primary_crvals: &[Option<f64>],
-    cards: &CardList,
-) -> AstResult<(FitsStore, Vec<AltPlane>)> {
-    let naxis = fs.base().naxes();
-    let primary = store_from_frameset(fs, dim, primary_crvals)?;
-    let assignments = frames_with_version_letters(fs);
-
-    let mut alts = Vec::with_capacity(assignments.len());
-    for (frame_idx_1based, letter) in assignments {
-        let target_idx = frame_idx_1based - 1;
-        // Each alt plane gets its own input CRVALs from CRVAL{i}{S}
-        // cards; mirrors the C library re-running ReadCrval per
-        // version letter inside FsetToStore.
-        let alt_crvals = extract_input_crvals(cards, letter, naxis);
-        let alt_store = store_from_frameset_to(fs, target_idx, dim, &alt_crvals)?;
-        let frame = fs.frame(FrameRef::Index(frame_idx_1based))?;
-        let domain = frame.domain().to_string();
-        alts.push(AltPlane {
-            letter,
-            domain,
-            store: alt_store,
-        });
-    }
-
-    Ok((primary, alts))
 }
 
 // ---------------------------------------------------------------------------

@@ -2635,8 +2635,7 @@ fn grism_zoom_merge_at(list: &mut Vec<(DynMapping, bool, bool)>, i: usize) -> bo
         if z != 0.0
             && let Some(merged) = grism.merge_with_zoom(z, false)
         {
-            list[i] = (merged, false, false);
-            list.remove(i + 1);
+            store_merged(list, i, merged);
             return true;
         }
     }
@@ -2665,13 +2664,28 @@ fn grism_zoom_merge_at(list: &mut Vec<(DynMapping, bool, bool)>, i: usize) -> bo
         if z != 0.0
             && let Some(merged) = grism.merge_with_zoom(z, true)
         {
-            list[i] = (merged, false, false);
-            list.remove(i + 1);
+            store_merged(list, i, merged);
             return true;
         }
     }
 
     false
+}
+
+/// Replace the pair at `(i, i+1)` with `merged`, recording its own Invert state
+/// as the element's direction. C `grismmap.c::MapMerge` (1240-1241) stores
+/// `astGetInvert( merged_map )` in the invert list rather than zero, which is
+/// what carries the inversion `CanMerge` applies to a ZoomMap-then-inverted-
+/// GrismMap pair; the list holds each leaf normalised forward, so the flag has
+/// to be lifted out of the mapping here.
+fn store_merged(list: &mut Vec<(DynMapping, bool, bool)>, i: usize, merged: DynMapping) {
+    let mut merged = merged;
+    let inv = merged.is_inverted();
+    if inv {
+        merged.invert();
+    }
+    list[i] = (merged, inv, inv);
+    list.remove(i + 1);
 }
 
 /// Per-class `map_merge` for a nominated `GrismMap`, mirroring the neighbour

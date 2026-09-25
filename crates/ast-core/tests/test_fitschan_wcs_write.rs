@@ -316,5 +316,483 @@ fn grism_interference_order_survives_a_round_trip() {
             back, morder,
             "grism interference order not preserved: in {morder}, out {back}"
         );
+
+        // A grism description is only usable if the linear part came out too:
+        // without a CRPIX the header does not locate the axis at all, and a
+        // CDELT that lost the input's scale silently rewrites the dispersion.
+        // Checking `PV1_1` alone passed while both were wrong.
+        assert_eq!(
+            out.get_fits_f("CRPIX1"),
+            Some(1.0),
+            "grism output must carry a reference pixel for order {morder}"
+        );
+        let cdelt1 = out
+            .get_fits_f("CDELT1")
+            .unwrap_or_else(|| panic!("no CDELT1 written back for order {morder}"));
+        assert!(
+            (cdelt1 - 1.0e-9).abs() < 1.0e-12,
+            "grism output CDELT1 should be the input's 1e-9 m/pixel, got {cdelt1}"
+        );
     }
+}
+
+/// A grism axis sampled over a range wide enough that its non-linearity
+/// exceeds the linearity tolerance must still write, and the header it writes
+/// must reproduce the original axis.
+///
+/// On this header both the C library and the port find the axis linear enough
+/// to describe as a plain `WAVE` axis, so C's own `-GRI`/`-GRA` test and the
+/// `844`/`845` checks it guards do not run. The C output was captured with an
+/// oracle probe and is asserted here card for card, which is what makes the
+/// case a gate rather than a write that happens not to fail.
+///
+/// Ancestor: `stopit( 842 )` to `stopit( 845 )`.
+#[test]
+fn a_non_linear_grism_axis_writes_a_header_that_reads_back() {
+    let header = "NAXIS   =                    1
+NAXIS1  =                10000
+CTYPE1  = 'WAVE-GRI'
+CRVAL1  =            5.000E-07
+CRPIX1  =               5000.0
+CDELT1  =            1.000E-10
+CUNIT1  = 'm'
+RESTFRQ =           5.996E+14
+SPECSYS = 'BARYCENT'
+PV1_0   =            3.000E-06
+PV1_1   =                    1
+PV1_2   =                  0.0
+END";
+    let obj = read_frameset(header);
+
+    let mut fc = FitsChan::new();
+    fc.set_encoding(Encoding::FitsWcs);
+    fc.put_fits("NAXIS   =                    1", false)
+        .unwrap();
+    fc.put_fits("NAXIS1  =                10000", false)
+        .unwrap();
+    let n = fc.write(&obj).expect("write should not error");
+    assert_eq!(n, 1, "a grism FrameSet should write one description");
+
+    // The cards the C library writes for this header, from an oracle probe
+    // against `reference/starlink-ast`.
+    let expected = "\
+NAXIS   =                    1
+NAXIS1  =                10000
+CRPIX1  =               5001.0 / Reference pixel on axis 1
+CRVAL1  =             5.001E-7 / Value at ref. pixel on axis 1
+CTYPE1  = 'WAVE    '           / Type of co-ordinate on axis 1
+CDELT1  =              1.0E-10 / Pixel size on axis 1
+CUNIT1  = 'm       '           / Units for axis 1
+SPECSYS = 'BARYCENT'           / Standard of rest for spectral axis
+VELOSYS =   29327.576999871173 / [m/s] Topo. apparent velocity of rest frame
+RESTWAV = 4.9998742161440962E-7 / [m] Rest wavelength";
+    let written: Vec<String> = fc
+        .to_header()
+        .lines()
+        .map(|l| l.trim_end().to_string())
+        .filter(|l| !l.is_empty() && l != "END")
+        .collect();
+    let want: Vec<String> = expected.lines().map(|l| l.to_string()).collect();
+    assert_eq!(
+        written, want,
+        "grism write should match the C library's cards"
+    );
+
+    fc.rewind();
+    let obj2 = fc
+        .read()
+        .expect("read-back should not error")
+        .expect("read-back should produce a FrameSet");
+
+    let pix = PointSet::from_rows([[5000.0]]);
+    let w1 = obj
+        .as_mapping()
+        .expect("FrameSet should be a Mapping")
+        .transform(&pix, true)
+        .unwrap();
+    let w2 = obj2
+        .as_mapping()
+        .expect("re-read FrameSet should be a Mapping")
+        .transform(&pix, true)
+        .unwrap();
+    let (x1, x2) = (w1.point(0)[0], w2.point(0)[0]);
+    assert!(
+        (x1 - x2).abs() <= 1.0e-6 * x1.abs(),
+        "grism round-trip mismatch at the reference pixel: {x1} vs {x2}"
+    );
+}
+
+// ===========================================================================
+// SIP descriptions must be validated over the image
+//
+// Ancestor: `reference/starlink-ast/ast_tester/testfitschan.c`, the `905`-`912`
+// cases added by upstream commits `c384289f` and `121d12d2`.
+// ===========================================================================
+
+/// Read the DP2 difference-image FrameSet whose pixel→sky Mapping contains a
+/// SplineMap, so has no exact FITS-WCS representation.
+///
+/// Its SIP reference point lies some 20000 pixels outside the image, which is
+/// what made the historic defect reachable: `SIPIntWorld` tested the Mapping
+/// following the SIP polynomial over a box of plus and minus the image
+/// dimensions about that point, and every sample fell outside the spline
+/// knots. The SplineMap sets `OutUnit`, so those points passed through
+/// unchanged and the check saw an exactly linear Mapping.
+fn read_lsst2_frameset() -> ast_core::AnyObject {
+    let path = std::path::Path::new(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/wcsconv/inputs/lsst2.ast"
+    ));
+    let mut ch = ast_core::channel::NativeChannel::from_file(path).expect("lsst2.ast should open");
+    let obj = ch
+        .read()
+        .expect("lsst2.ast should not error")
+        .expect("lsst2.ast should hold an object");
+    assert!(
+        matches!(obj, ast_core::AnyObject::FrameSet(_)),
+        "lsst2.ast should hold a FrameSet"
+    );
+    obj
+}
+
+/// A FitsChan carrying a 1000x1000 image size, so the pixel box is known.
+fn chan_with_dims(tol: Option<f64>) -> FitsChan {
+    let mut fc = FitsChan::new();
+    fc.set_encoding(Encoding::FitsWcs);
+    if let Some(tol) = tol {
+        fc.set_fits_tol(tol);
+    }
+    fc.put_fits("NAXIS1  =                 1000", false)
+        .unwrap();
+    fc.put_fits("NAXIS2  =                 1000", false)
+        .unwrap();
+    fc
+}
+
+/// Collect the keywords a FitsChan holds, in card order.
+fn keywords(fc: &FitsChan) -> Vec<String> {
+    fc.to_header()
+        .lines()
+        .map(|line| line[..8.min(line.len())].trim_end().to_string())
+        .filter(|kw| !kw.is_empty() && kw != "END")
+        .collect()
+}
+
+/// At a FitsTol tight enough that no linear approximation spans the image, the
+/// FrameSet has no FITS-WCS representation at all, so the write reports that
+/// it wrote nothing and leaves the header carrying only what it was given.
+///
+/// Ancestor: `stopit( 906, ... )`.
+#[test]
+fn a_splinemap_frameset_writes_nothing_at_a_tight_fits_tol() {
+    let obj = read_lsst2_frameset();
+    let mut fc = chan_with_dims(Some(1.0e-4));
+    let n = fc.write(&obj).expect("write should not error");
+    assert_eq!(
+        n, 0,
+        "a FrameSet with no adequate linear fit should write nothing"
+    );
+    assert_eq!(
+        keywords(&fc),
+        vec!["NAXIS1", "NAXIS2"],
+        "a failed write should leave only the cards it was given"
+    );
+}
+
+/// The same FrameSet in the shape `lsst.images`' `Transform.as_fits_wcs`
+/// actually writes it: wrapped in an outer FrameSet whose base frame carries
+/// the FITS one-based origin shift.
+///
+/// Ancestor: `stopit( 907, ... )`.
+#[test]
+fn the_as_fits_wcs_wrapping_of_a_splinemap_frameset_also_writes_nothing() {
+    use ast_core::frames::{BasicFrameBuilder, FrameRef, FrameSet, SkyFrame};
+    use ast_core::mappings::ShiftMap;
+
+    let inner = match read_lsst2_frameset() {
+        ast_core::AnyObject::FrameSet(fs) => fs,
+        _ => unreachable!(),
+    };
+
+    let mut detector = BasicFrameBuilder::new(2).build().unwrap();
+    detector.set_ident("detector");
+    let mut outer = FrameSet::new(Box::new(detector));
+    outer
+        .add_frame(
+            FrameRef::Base,
+            Box::new(inner),
+            Box::new(SkyFrame::unset_system()),
+        )
+        .unwrap();
+    let sky_idx = outer.nframe();
+
+    outer
+        .add_frame(
+            FrameRef::Base,
+            Box::new(ShiftMap::new(vec![1.0, 1.0])),
+            Box::new(BasicFrameBuilder::new(2).domain("GRID").build().unwrap()),
+        )
+        .unwrap();
+    outer.set_base(FrameRef::Index(outer.nframe())).unwrap();
+    outer.set_current(FrameRef::Index(sky_idx)).unwrap();
+
+    let mut fc = chan_with_dims(Some(1.0e-4));
+    fc.set_cd_matrix(true);
+    let n = fc
+        .write(&ast_core::AnyObject::FrameSet(outer))
+        .expect("write should not error");
+    assert_eq!(n, 0, "the as_fits_wcs wrapping should write nothing either");
+}
+
+/// An alternate axis description qualifies a primary one and cannot stand on
+/// its own, so a FrameSet whose primary description cannot be written must
+/// write nothing at all — even when its alternates could each be described
+/// perfectly well.
+///
+/// Here the alternates are trivially describable (a UnitMap onto a 2-axis
+/// Frame), while the primary is the SplineMap chain at a FitsTol no linear
+/// approximation meets. At the default tolerance the same FrameSet writes all
+/// three descriptions, which is what makes the tight-tolerance case a check on
+/// the primary gate rather than on the alternates being undescribable.
+///
+/// C's own test suite has no case for this; the gate is C's `if( !primok )
+/// break;` at `fitschan.c:37812`, added by `c384289f` together with the
+/// `primok` flag that feeds it.
+#[test]
+fn alternate_descriptions_are_withheld_when_the_primary_cannot_be_written() {
+    use ast_core::frames::{BasicFrameBuilder, FrameRef};
+    use ast_core::mappings::UnitMap;
+
+    let mut fs = match read_lsst2_frameset() {
+        ast_core::AnyObject::FrameSet(fs) => fs,
+        _ => unreachable!(),
+    };
+    let sky = fs.nframe();
+    let mut alt = BasicFrameBuilder::new(2).domain("MYALT").build().unwrap();
+    alt.set_ident("A");
+    fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(2)), Box::new(alt))
+        .unwrap();
+    fs.set_current(FrameRef::Index(sky)).unwrap();
+    let obj = ast_core::AnyObject::FrameSet(fs);
+
+    // At the default tolerance every description is written, alternates
+    // included, so the alternates are known to be describable.
+    let mut fc = chan_with_dims(None);
+    let n = fc.write(&obj).expect("write should not error");
+    assert_eq!(n, 1, "the default FitsTol should describe this FrameSet");
+    let kw = keywords(&fc);
+    assert!(
+        kw.iter().any(|k| k == "CTYPE1A"),
+        "the alternate description should be present, got {kw:?}"
+    );
+
+    // At a tolerance the primary cannot meet, the describable alternates go
+    // with it.
+    let mut fc = chan_with_dims(Some(1.0e-4));
+    let n = fc.write(&obj).expect("write should not error");
+    assert_eq!(n, 0, "a failed primary description should write nothing");
+    assert_eq!(
+        keywords(&fc),
+        vec!["NAXIS1", "NAXIS2"],
+        "no alternate description may survive a failed primary"
+    );
+}
+
+/// A FrameSet whose pixel-to-world Mapping has no inverse cannot be described
+/// in FITS-WCS at all, because the encoder derives CRPIX by transforming the
+/// IWC origin back into grid coordinates. `astWrite` must report that it wrote
+/// nothing rather than emit a partial header.
+///
+/// Ancestor: `stopit( 904, ... )`.
+#[test]
+fn a_frameset_whose_mapping_has_no_inverse_writes_nothing() {
+    use ast_core::frames::{BasicFrameBuilder, FrameRef, FrameSet};
+    use ast_core::mappings::{Mapping, PolyMap, PolyTerm};
+
+    let term = |coeff: f64, powers: [usize; 2], out_axis: usize| PolyTerm {
+        coeff,
+        powers: powers.to_vec(),
+        out_axis,
+    };
+    // Forward only: no inverse coefficients and IterInverse left off, so the
+    // Mapping cannot be inverted numerically either.
+    let mut poly = PolyMap::new(2, 2, &[term(1.0, [1, 0], 1), term(1.0, [0, 1], 2)], None).unwrap();
+    poly.set_iter_inverse(false);
+    assert!(
+        !poly.has_inverse(),
+        "the probe needs a Mapping with no inverse"
+    );
+
+    let mut fs = FrameSet::new(Box::new(
+        BasicFrameBuilder::new(2).domain("PIXEL").build().unwrap(),
+    ));
+    fs.add_frame(
+        FrameRef::Base,
+        Box::new(poly),
+        Box::new(BasicFrameBuilder::new(2).build().unwrap()),
+    )
+    .unwrap();
+
+    let mut fc = FitsChan::new();
+    fc.set_encoding(Encoding::FitsWcs);
+    fc.put_fits("NAXIS1  =                  100", false)
+        .unwrap();
+    fc.put_fits("NAXIS2  =                  100", false)
+        .unwrap();
+    let n = fc
+        .write(&ast_core::AnyObject::FrameSet(fs))
+        .expect("write should not error");
+    assert_eq!(n, 0, "a non-invertable FrameSet should write nothing");
+    assert_eq!(
+        keywords(&fc),
+        vec!["NAXIS1", "NAXIS2"],
+        "a failed write should leave only the cards it was given"
+    );
+}
+
+/// At the default FitsTol the same FrameSet does have an adequate linear
+/// approximation, so the write succeeds — and the header it produces must be
+/// usable. `astWrite` used to report success while emitting SIP coefficients
+/// and no primary axis description at all, because `SIPIntWorld` returned bad
+/// CRPIX values that `MakeIntWorld` stored as the whole description.
+///
+/// Ancestor: `stopit( 908, ... )` and `stopit( 909, ... )`.
+#[test]
+fn a_splinemap_frameset_writes_a_complete_header_at_the_default_fits_tol() {
+    let obj = read_lsst2_frameset();
+    let mut fc = chan_with_dims(None);
+    let n = fc.write(&obj).expect("write should not error");
+    assert_eq!(
+        n, 1,
+        "the default FitsTol should admit a linear approximation"
+    );
+
+    let kw = keywords(&fc);
+    assert!(
+        kw.iter().any(|k| k == "CTYPE1") && kw.iter().any(|k| k == "CTYPE2"),
+        "a successful write must carry a primary axis description, got {kw:?}"
+    );
+    assert!(
+        !kw.iter().any(|k| k == "A_ORDER"),
+        "no SIP description should be offered here, got {kw:?}"
+    );
+}
+
+/// A FrameSet whose SIP reference point lies 20000 pixels outside the image,
+/// with the Mapping between the SIP polynomial and the CD matrix made slightly
+/// non-linear by a cubic term that is negligible near the reference point but
+/// not over the image.
+///
+/// The SIP linearity test used to run over a box of plus and minus the image
+/// dimensions about the reference point, and passed FitsTol — which is in
+/// pixels — straight to the linear-approximation fit, which wants a
+/// displacement in the Mapping's output space. Both were wrong here, so the
+/// SIP description was accepted with CRPIX and CD fitted where the image is
+/// not. The write must instead fall back to a plain linear approximation,
+/// which the FitsTol check does validate over the image.
+///
+/// Ancestor: `stopit( 911, ... )` and `stopit( 912, ... )`.
+#[test]
+fn a_sip_description_is_rejected_when_it_is_not_linear_over_the_image() {
+    use ast_core::frames::{BasicFrameBuilder, FrameRef, FrameSet};
+    use ast_core::mappings::{
+        CmpMap, Composition, DynMapping, MathMap, PolyMap, PolyTerm, ShiftMap,
+    };
+
+    let base_header = "\
+CTYPE1  = 'RA---TAN'
+CTYPE2  = 'DEC--TAN'
+CRPIX1  =                  0.0
+CRPIX2  =                  0.0
+CRVAL1  =                180.0
+CRVAL2  =                  0.0
+CD1_1   =             -5.5E-05
+CD1_2   =                  0.0
+CD2_1   =                  0.0
+CD2_2   =              5.5E-05
+RADESYS = 'ICRS'
+";
+    let tan = match read_frameset(base_header) {
+        ast_core::AnyObject::FrameSet(fs) => fs,
+        _ => unreachable!(),
+    };
+
+    // A SIP-shaped PolyMap: a unit linear term per axis plus one quadratic
+    // cross term, as the SIP conventions require.
+    let term = |coeff: f64, powers: [usize; 2], out_axis: usize| PolyTerm {
+        coeff,
+        powers: powers.to_vec(),
+        out_axis,
+    };
+    let poly = PolyMap::new(
+        2,
+        2,
+        &[
+            term(1.0, [1, 0], 1),
+            term(1.0e-9, [2, 0], 1),
+            term(1.0, [0, 1], 2),
+            term(1.0e-9, [0, 2], 2),
+        ],
+        Some(&[
+            term(1.0, [1, 0], 1),
+            term(-1.0e-9, [2, 0], 1),
+            term(1.0, [0, 1], 2),
+            term(-1.0e-9, [0, 2], 2),
+        ]),
+    )
+    .unwrap();
+
+    // The cubic term sits between the PolyMap and the CD matrix, so it is
+    // part of the Mapping whose linearity the SIP test judges.
+    let cubic = MathMap::new(
+        2,
+        2,
+        &["u = x + 1.0E-15*x*x*x", "v = y"],
+        &["x = u - 1.0E-15*u*u*u", "y = v"],
+    )
+    .unwrap();
+
+    let series = |a: DynMapping, b: DynMapping| -> DynMapping {
+        Box::new(CmpMap::new(a, b, Composition::Series).unwrap())
+    };
+    let total = series(
+        series(
+            series(
+                Box::new(ShiftMap::new(vec![20000.0, 20000.0])),
+                Box::new(poly),
+            ),
+            Box::new(cubic),
+        ),
+        tan.mapping(FrameRef::Base, FrameRef::Current).unwrap(),
+    );
+
+    let mut fs = FrameSet::new(Box::new(
+        BasicFrameBuilder::new(2).domain("GRID").build().unwrap(),
+    ));
+    fs.add_frame(
+        FrameRef::Base,
+        total,
+        tan.frame(FrameRef::Current).unwrap().snapshot(),
+    )
+    .unwrap();
+
+    let mut fc = FitsChan::new();
+    fc.set_encoding(Encoding::FitsWcs);
+    fc.set_cd_matrix(true);
+    fc.put_fits("NAXIS1  =                 4000", false)
+        .unwrap();
+    fc.put_fits("NAXIS2  =                 4000", false)
+        .unwrap();
+    let n = fc
+        .write(&ast_core::AnyObject::FrameSet(fs))
+        .expect("write should not error");
+    assert_eq!(
+        n, 1,
+        "the plain linear approximation is good enough, so the write should succeed"
+    );
+    assert!(
+        !keywords(&fc).iter().any(|k| k == "A_ORDER"),
+        "a SIP description must not be accepted when the Mapping following the \
+         SIP polynomial is not linear over the image"
+    );
 }

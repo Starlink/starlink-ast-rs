@@ -159,7 +159,7 @@ impl Channel for NativeChannel {
         Ok(Some(obj))
     }
 
-    fn write(&mut self, obj: &AnyObject) -> AstResult<()> {
+    fn write(&mut self, obj: &AnyObject) -> AstResult<usize> {
         self.warnings.clear();
         let node = serial::any_object_to_node(obj)?;
         let options = serial::native_write::RenderOptions {
@@ -174,7 +174,10 @@ impl Channel for NativeChannel {
                 sink.write_line(line);
             }
         }
-        Ok(())
+        // The native encoding can represent every AST class, so a write that
+        // did not error wrote the object. Mirrors C `Write`'s `ret = 1;` on
+        // the NATIVE_ENCODING branch (fitschan.c:40690).
+        Ok(1)
     }
 
     fn warning_texts(&self) -> &[String] {

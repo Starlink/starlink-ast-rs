@@ -39,6 +39,7 @@ pub(crate) fn collect_plane_stores(
     dim: &[Option<f64>],
     encoding: Encoding,
     primary_crvals: &[Option<f64>],
+    fits_tol: f64,
 ) -> AstResult<Vec<PlaneStore>> {
     let mut planes = Vec::new();
 
@@ -48,7 +49,17 @@ pub(crate) fn collect_plane_stores(
     let primary_isoff = is_sky_off(fs, fs.current_idx()) != 0;
 
     // Primary plane (letter ' ').
-    let primary_store = fset_to_store(fs, dim, encoding, ' ', primary_crvals)?;
+    //
+    // An alternate axis description only qualifies a primary one, so when
+    // the primary cannot be described the whole store is worthless and no
+    // plane is returned: C discards it outright with `if( !astOK ||
+    // !primok ) ret = FreeStore( ret, ... )` (fitschan.c:12358), leaving
+    // `Write` with nothing to encode. The alternates are not even
+    // attempted, matching C's `if( primok && astOK && ... )` at 12262.
+    let (primary_store, primok) = fset_to_store(fs, dim, encoding, ' ', primary_crvals, fits_tol)?;
+    if !primok {
+        return Ok(planes);
+    }
     planes.push(PlaneStore {
         letter: ' ',
         store: primary_store,
@@ -84,7 +95,10 @@ pub(crate) fn collect_plane_stores(
         // empty slice — `fset_to_store` will fall back to the
         // central-pixel default. A future commit can plumb
         // alt_crvals through the encode_wcs entry point.
-        let alt_store = fset_to_store(&alt_fs, dim, encoding, *letter, &[])?;
+        let (alt_store, alt_ok) = fset_to_store(&alt_fs, dim, encoding, *letter, &[], fits_tol)?;
+        if !alt_ok {
+            continue;
+        }
         planes.push(PlaneStore {
             letter: *letter,
             store: alt_store,
@@ -98,11 +112,13 @@ pub(crate) fn collect_plane_stores(
     if primary_isoff && next_letter <= b'Z' {
         let letter = next_letter as char;
         next_letter += 1;
-        let abs_store = fset_to_store_absolute(fs, dim, encoding, letter, &[])?;
-        planes.push(PlaneStore {
-            letter,
-            store: abs_store,
-        });
+        let (abs_store, abs_ok) = fset_to_store_absolute(fs, dim, encoding, letter, &[], fits_tol)?;
+        if abs_ok {
+            planes.push(PlaneStore {
+                letter,
+                store: abs_store,
+            });
+        }
     }
 
     // For each alt Frame that is itself an offset SkyFrame, append an
@@ -114,11 +130,14 @@ pub(crate) fn collect_plane_stores(
             next_letter += 1;
             let mut alt_fs = fs.clone();
             alt_fs.set_current(FrameRef::Index(*frame_idx_1based))?;
-            let abs_store = fset_to_store_absolute(&alt_fs, dim, encoding, letter, &[])?;
-            planes.push(PlaneStore {
-                letter,
-                store: abs_store,
-            });
+            let (abs_store, abs_ok) =
+                fset_to_store_absolute(&alt_fs, dim, encoding, letter, &[], fits_tol)?;
+            if abs_ok {
+                planes.push(PlaneStore {
+                    letter,
+                    store: abs_store,
+                });
+            }
         }
     }
 
@@ -128,6 +147,7 @@ pub(crate) fn collect_plane_stores(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::fitschan::fset_to_store::FITS_TOL_DEFAULT;
     use crate::frames::BasicFrameBuilder;
     use crate::mappings::UnitMap;
 
@@ -139,7 +159,8 @@ mod tests {
         fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(2)), Box::new(world))
             .unwrap();
         let dim = vec![Some(100.0), Some(100.0)];
-        let planes = collect_plane_stores(&fs, &dim, Encoding::FitsWcs, &[]).unwrap();
+        let planes =
+            collect_plane_stores(&fs, &dim, Encoding::FitsWcs, &[], FITS_TOL_DEFAULT).unwrap();
         assert_eq!(planes.len(), 1);
         assert_eq!(planes[0].letter, ' ');
     }
@@ -161,7 +182,8 @@ mod tests {
         fs.set_current(FrameRef::Index(2)).unwrap();
 
         let dim = vec![Some(100.0), Some(100.0)];
-        let planes = collect_plane_stores(&fs, &dim, Encoding::FitsWcs, &[]).unwrap();
+        let planes =
+            collect_plane_stores(&fs, &dim, Encoding::FitsWcs, &[], FITS_TOL_DEFAULT).unwrap();
         assert_eq!(planes.len(), 2);
         assert_eq!(planes[0].letter, ' ');
         assert_eq!(planes[1].letter, 'A');

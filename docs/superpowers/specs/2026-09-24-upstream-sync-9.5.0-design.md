@@ -320,6 +320,17 @@ Gates, all in `test_fitschan_wcs_write.rs` alongside item E's:
   negligible there but not over the image is written as a plain linear
   approximation, with no `A_ORDER`.
 - An alternate-only description writes nothing and reports failure.
+  C's own suite has no case for this; the gate is the `if( !primok ) break;`
+  `c384289f` added at `fitschan.c:37812`.
+  The FrameSet is `lsst2` with a UnitMap alternate onto a 2-axis Frame, so the
+  alternate is describable on its own and the tight-tolerance case tests the
+  primary gate rather than the alternate.
+- A FrameSet whose Mapping has no inverse writes nothing.
+  This is `stopit( 904, ... )`, added upstream by `897dbdb2` ("Check an error
+  condition") inside the synced range and missed by item E's inventory; it
+  belongs here rather than with item E because it gates the same
+  failure-reporting path as the three fixes above, which is the reason the port
+  can now express it at all.
 
 ### G. Restructure `docs/issues/c-library-quirks.md`
 

@@ -19,6 +19,20 @@ pub struct CardList {
     /// record consumption without taking `&mut self`. Mirrors the C
     /// `MarkCard` side effect of `GetValue(..., mark=1, ...)`.
     consumed_names: RefCell<Vec<String>>,
+    /// Whether cards added from now on should be stamped as "new" so that
+    /// [`fix_new`](CardList::fix_new) can strip them again. Mirrors C's
+    /// `mark_new` thread-global (fitschan.c:40625).
+    mark_new: bool,
+}
+
+/// Which of C's two "new card" flags a [`fix_new`](CardList::fix_new) call
+/// acts on (fitschan.c:1583-1584).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum NewScope {
+    /// C's `NEW1`: cards added anywhere in the current `astWrite` call.
+    Write,
+    /// C's `NEW2`: cards added during the current per-version pass.
+    Version,
 }
 
 impl CardList {
@@ -28,6 +42,7 @@ impl CardList {
             cards: Vec::new(),
             position: 0,
             consumed_names: RefCell::new(Vec::new()),
+            mark_new: false,
         }
     }
 
@@ -127,11 +142,18 @@ impl CardList {
         false
     }
 
-    /// Insert or replace a card.
+    /// Insert or replace a card, then advance the position past it.
     ///
     /// If `overwrite` is true and a card with the same keyword already exists,
-    /// the first matching card is replaced. Otherwise, the card is inserted
-    /// at the current position.
+    /// the first matching card is replaced. Otherwise, the card is inserted in
+    /// front of the current card, which for a position at end-of-file means it
+    /// is appended.
+    ///
+    /// In both cases the position is left identifying the card *after* the one
+    /// stored, so a run of stores appends in call order. That is C's contract
+    /// for `astPutFits`/`astSetFits<X>`: "In either case, the Card attribute is
+    /// then incremented by one so that it subsequently identifies the card
+    /// following the one stored" (fitschan.c:25501).
     pub fn put(&mut self, card: FitsCard, overwrite: bool) {
         if overwrite {
             // Search for existing card with same keyword.
@@ -142,12 +164,14 @@ impl CardList {
                 .position(|c| c.keyword.eq_ignore_ascii_case(&kw_upper))
             {
                 self.cards[idx] = card;
+                self.position = idx + 1;
                 return;
             }
         }
-        // Insert at current position.
+        // Insert in front of the current card.
         let pos = self.position.min(self.cards.len());
         self.cards.insert(pos, card);
+        self.position = pos + 1;
     }
 
     /// Find the first card matching the given keyword (case-insensitive).
@@ -516,14 +540,66 @@ impl CardList {
         self.position = 0;
     }
 
-    /// Set the current position.
+    /// Set the current position, clamped to end-of-file.
+    ///
+    /// Passing `usize::MAX` is the idiom for "end of file", mirroring C's
+    /// `astSetCard( this, INT_MAX )`.
     pub fn set_position(&mut self, pos: usize) {
-        self.position = pos;
+        self.position = pos.min(self.cards.len());
     }
 
     /// Return the current position.
     pub fn position(&self) -> usize {
         self.position
+    }
+
+    /// Begin marking every subsequently added card as "new", mirroring C's
+    /// `mark_new = 1` at the head of `Write` (fitschan.c:40625). While set,
+    /// [`put_or_append`] stamps both the `NEW1` and `NEW2` equivalents onto
+    /// each card it inserts, so [`fix_new`] can later strip them.
+    pub(crate) fn begin_marking_new(&mut self) {
+        self.mark_new = true;
+    }
+
+    /// Stop marking added cards as "new", mirroring C's `mark_new = 0` at
+    /// the tail of `Write` (fitschan.c:40754).
+    pub(crate) fn end_marking_new(&mut self) {
+        self.mark_new = false;
+    }
+
+    /// Resolve the cards flagged "new" by the current write pass, mirroring
+    /// C `FixNew` (fitschan.c:16376).
+    ///
+    /// When `remove` is set the flagged cards are deleted outright, which is
+    /// how C discards the partial description a failed version emitted;
+    /// otherwise the flag alone is cleared and the cards are kept. The scope
+    /// selects which of C's two flags to act on: [`NewScope::Write`] is
+    /// `NEW1` (the whole `astWrite` call) and [`NewScope::Version`] is `NEW2`
+    /// (one pass of the per-version loop).
+    ///
+    /// As in C, when any card is removed the position is left at
+    /// end-of-file; when none is, the original position is retained.
+    pub(crate) fn fix_new(&mut self, scope: NewScope, remove: bool) {
+        let get = |f: &crate::fitschan::card::CardFlags| match scope {
+            NewScope::Write => f.new_write,
+            NewScope::Version => f.new_version,
+        };
+        if remove {
+            let before = self.cards.len();
+            self.cards.retain(|c| !get(&c.flags));
+            if self.cards.len() != before {
+                self.position = self.cards.len();
+                return;
+            }
+        } else {
+            for c in &mut self.cards {
+                match scope {
+                    NewScope::Write => c.flags.new_write = false,
+                    NewScope::Version => c.flags.new_version = false,
+                }
+            }
+        }
+        self.position = self.position.min(self.cards.len());
     }
 
     /// Return true if the position is at or past the end of the list.
@@ -645,6 +721,10 @@ impl CardList {
     /// survives; when the value changes, the encoder's new comment is used.
     fn put_or_append(&mut self, mut card: FitsCard) {
         card.used = true;
+        if self.mark_new {
+            card.flags.new_write = true;
+            card.flags.new_version = true;
+        }
         let kw_upper = card.keyword.to_uppercase();
         if let Some(idx) = self
             .cards

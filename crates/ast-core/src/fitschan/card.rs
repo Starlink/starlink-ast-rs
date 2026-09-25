@@ -159,6 +159,14 @@ pub(crate) struct CardFlags {
     pub consumption: Consumption,
     /// Set via `astRetainFits`; exempts the card from consumption marking.
     pub protected: bool,
+    /// Set on a card added during the current write pass, mirroring C's
+    /// `NEW1` flag (fitschan.c:1583). Cleared, or used to delete the
+    /// card, once the whole write is known to have succeeded or failed.
+    pub new_write: bool,
+    /// Set on a card added during the current per-version pass, mirroring
+    /// C's `NEW2` flag (fitschan.c:1584). Cleared, or used to delete the
+    /// card, at the end of each axis-description version.
+    pub new_version: bool,
 }
 
 /// A single FITS header card (keyword + value + comment).

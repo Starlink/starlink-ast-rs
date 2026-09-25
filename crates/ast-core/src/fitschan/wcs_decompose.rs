@@ -9,6 +9,7 @@ use ndarray::Array2;
 
 use crate::coords::PointSet;
 use crate::mappings::Mapping;
+use crate::mappings::helpers::is_bad;
 
 // ---------------------------------------------------------------------------
 // FindBasisVectors / FitLine port (fitschan.c:10299-15075)
@@ -57,7 +58,7 @@ fn make_basis_vectors(
     let mut w0 = vec![0.0_f64; nout];
     for j in 0..nout {
         let v = view[[0, j]];
-        if !v.is_finite() {
+        if is_bad(v) {
             return None;
         }
         w0[j] = v;
@@ -66,7 +67,7 @@ fn make_basis_vectors(
     for i in 0..nin {
         for j in 0..nout {
             let v = view[[i + 1, j]];
-            if !v.is_finite() {
+            if is_bad(v) {
                 return None;
             }
             step[i][j] = v;
@@ -177,7 +178,7 @@ fn fit_ok(actual: &[f64], estimated: &[f64], tol: f64) -> bool {
     let mut s1 = 0.0_f64;
     let mut s2 = 0.0_f64;
     for (a, e) in actual.iter().zip(estimated.iter()) {
-        if !a.is_finite() {
+        if is_bad(*a) || is_bad(*e) {
             continue;
         }
         let d = a - e;
@@ -210,7 +211,7 @@ pub(crate) fn fit_line(
     if nout < nin {
         return None;
     }
-    if !w0.iter().all(|v| v.is_finite()) {
+    if w0.iter().any(|&v| is_bad(v)) {
         return None;
     }
     // Mirrors C `FitLine` (~line 14950): when dim is BAD/unknown,
@@ -249,7 +250,7 @@ pub(crate) fn fit_line(
         let mut wmin = f64::MAX;
         for (idx, k) in (-NPO2..=NPO2).enumerate() {
             let v = view[[idx, j]];
-            if !v.is_finite() {
+            if is_bad(v) {
                 continue;
             }
             let kf = k as f64;

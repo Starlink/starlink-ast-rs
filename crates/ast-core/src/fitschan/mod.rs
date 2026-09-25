@@ -109,6 +109,10 @@ pub struct FitsChan {
     /// projection is read as a simple linear pixel-to-sky mapping rather
     /// than as a spherical Cartesian projection.
     car_lin: bool,
+    /// The FitsTol attribute (fitschan.c default 0.1): the maximum
+    /// departure from linearity, in pixels, that a Mapping may show and
+    /// still be described by the linear FITS-WCS keywords.
+    fits_tol: f64,
 }
 
 impl FitsChan {
@@ -128,6 +132,7 @@ impl FitsChan {
             cd_matrix: false,
             sip_replace: true,
             car_lin: false,
+            fits_tol: fset_to_store::FITS_TOL_DEFAULT,
         }
     }
 
@@ -149,6 +154,7 @@ impl FitsChan {
             cd_matrix: false,
             sip_replace: true,
             car_lin: false,
+            fits_tol: fset_to_store::FITS_TOL_DEFAULT,
         })
     }
 
@@ -502,6 +508,21 @@ impl FitsChan {
     /// Return whether CarLin is enabled.
     pub fn car_lin(&self) -> bool {
         self.car_lin
+    }
+
+    /// Set the FitsTol attribute (mirrors C `FitsTol`, default 0.1): the
+    /// maximum departure from linearity, in pixels, that a Mapping may
+    /// show and still be described by the linear FITS-WCS keywords
+    /// (CRPIX, CD, PC, CDELT), with or without SIP distortion. A Mapping
+    /// that departs further has no FITS-WCS representation and
+    /// [`Channel::write`] reports that it wrote nothing.
+    pub fn set_fits_tol(&mut self, tol: f64) {
+        self.fits_tol = tol;
+    }
+
+    /// Return the current FitsTol value.
+    pub fn fits_tol(&self) -> f64 {
+        self.fits_tol
     }
 
     /// Return whether CD matrix notation is enabled.
@@ -887,15 +908,53 @@ impl Channel for FitsChan {
         }
     }
 
-    fn write(&mut self, obj: &AnyObject) -> AstResult<()> {
+    fn write(&mut self, obj: &AnyObject) -> AstResult<usize> {
         self.warnings.clear();
 
+        // Remember the entry card so a failed write can put it back, and
+        // start flagging every card this call adds so a failed write can
+        // remove them again. Mirrors C `Write` (fitschan.c:40621-40625).
+        let card0 = self.cards.position();
+        self.cards.begin_marking_new();
+        let result = self.write_inner(obj);
+
+        // A write that failed, for either reason, leaves the header exactly
+        // as it was found: the cards it had added are removed and the entry
+        // card restored. Mirrors fitschan.c:40745-40761.
+        let wrote = matches!(result, Ok(n) if n > 0);
+        self.cards.fix_new(card_list::NewScope::Write, !wrote);
+        self.cards.fix_new(card_list::NewScope::Version, !wrote);
+        self.cards.end_marking_new();
+        if !wrote {
+            self.cards.set_position(card0);
+        }
+        result
+    }
+
+    fn warning_texts(&self) -> &[String] {
+        &self.warnings
+    }
+
+    fn config(&self) -> &ChannelConfig {
+        &self.config
+    }
+
+    fn config_mut(&mut self) -> &mut ChannelConfig {
+        &mut self.config
+    }
+}
+
+impl FitsChan {
+    /// The body of [`Channel::write`], run inside its card-rollback frame.
+    fn write_inner(&mut self, obj: &AnyObject) -> AstResult<usize> {
         let enc = self.encoding();
         match enc {
             Encoding::Native => {
                 let node = serial::any_object_to_node(obj)?;
                 self.store_keyword_native(obj, &node);
-                Ok(())
+                // The native encoding can represent every AST class.
+                // Mirrors fitschan.c:40689.
+                Ok(1)
             }
             _ => {
                 // For all FITS-WCS encodings, preserve the relative position
@@ -916,14 +975,19 @@ impl Channel for FitsChan {
                 self.cards.mark_all_unused();
 
                 let result = match enc {
-                    Encoding::FitsWcs => {
-                        wcs_write::encode_wcs(obj, &mut self.cards, self.cd_matrix, &dims)
-                    }
+                    Encoding::FitsWcs => wcs_write::encode_wcs(
+                        obj,
+                        &mut self.cards,
+                        self.cd_matrix,
+                        &dims,
+                        self.fits_tol,
+                    ),
                     Encoding::FitsIraf => wcs_write::encode_wcs_per_plane(
                         obj,
                         &mut self.cards,
                         &dims,
                         Encoding::FitsIraf,
+                        self.fits_tol,
                         enc_iraf::write_to_cards,
                     ),
                     Encoding::FitsPc => wcs_write::encode_wcs_per_plane(
@@ -931,6 +995,7 @@ impl Channel for FitsChan {
                         &mut self.cards,
                         &dims,
                         Encoding::FitsPc,
+                        self.fits_tol,
                         enc_pc::write_to_cards,
                     ),
                     Encoding::FitsAips => wcs_write::encode_wcs_per_plane(
@@ -938,6 +1003,7 @@ impl Channel for FitsChan {
                         &mut self.cards,
                         &dims,
                         Encoding::FitsAips,
+                        self.fits_tol,
                         enc_aips::write_to_cards,
                     ),
                     Encoding::FitsAipsPP => wcs_write::encode_wcs_per_plane(
@@ -945,50 +1011,50 @@ impl Channel for FitsChan {
                         &mut self.cards,
                         &dims,
                         Encoding::FitsAipsPP,
+                        self.fits_tol,
                         enc_aips::write_to_cards_pp,
                     ),
                     Encoding::FitsClass => {
-                        wcs_write::encode_wcs_per_plane(
+                        let ok = wcs_write::encode_wcs_per_plane(
                             obj,
                             &mut self.cards,
                             &dims,
                             Encoding::FitsClass,
+                            self.fits_tol,
                             enc_class::write_to_cards,
                         )?;
                         // Then run the SpecFrame velocity computation
                         // that needs the FrameSet directly. Mirrors
                         // fitschan.c:6843-6898.
-                        if let AnyObject::FrameSet(fs) = obj {
-                            enc_class::write_velocities_from_frameset(fs, &mut self.cards)?;
-                            enc_class::write_azel_from_frameset(fs, &mut self.cards)?;
+                        if ok {
+                            if let AnyObject::FrameSet(fs) = obj {
+                                enc_class::write_velocities_from_frameset(fs, &mut self.cards)?;
+                                enc_class::write_azel_from_frameset(fs, &mut self.cards)?;
+                            }
                         }
-                        Ok(())
+                        Ok(ok)
                     }
                     Encoding::Dss => wcs_write::encode_wcs_to_store(
                         obj,
                         &mut self.cards,
                         &dims,
+                        self.fits_tol,
                         enc_dss::write_to_cards,
                     ),
                     Encoding::Native => unreachable!(),
                 };
 
                 self.cards.sweep_unused_wcs();
-                result
+                let ret = usize::from(result?);
+                // A successful write leaves the current card at end-of-file,
+                // so a subsequent write appends after this object. Mirrors
+                // fitschan.c:40732.
+                if ret > 0 {
+                    self.cards.set_position(usize::MAX);
+                }
+                Ok(ret)
             }
         }
-    }
-
-    fn warning_texts(&self) -> &[String] {
-        &self.warnings
-    }
-
-    fn config(&self) -> &ChannelConfig {
-        &self.config
-    }
-
-    fn config_mut(&mut self) -> &mut ChannelConfig {
-        &mut self.config
     }
 }
 

@@ -53,7 +53,7 @@ use world_axes::world_axes;
 
 /// Default `FitsTol` value (matches the C library's FitsChan default).
 /// Mirrors C `astGetFitsTol` default at fitschan.c:2898.
-const FITS_TOL_DEFAULT: f64 = 0.1;
+pub(crate) const FITS_TOL_DEFAULT: f64 = 0.1;
 
 /// Build a [`FitsStore`] describing the primary plane of the supplied
 /// FrameSet. Mirrors the body of `fitschan.c::AddVersion` (~2674) for
@@ -69,17 +69,21 @@ const FITS_TOL_DEFAULT: f64 = 0.1;
 /// `encoding` selects the FITS-WCS variant; this gates whether SIP
 /// distortion headers may be emitted.
 ///
-/// Currently emits primary-plane keywords only. Alternate axis
-/// descriptions (the `s = 'A'..'Z'` loop in C `FsetToStore` after the
-/// primary `AddVersion` call) are out of scope for this port.
+/// The returned flag is C `AddVersion`'s own return value
+/// (fitschan.c:2996): false when the pixel→IWC Mapping has no linear
+/// approximation good enough to describe with CRPIX / CD / PC / CDELT,
+/// with or without SIP distortion. The store then holds only the partial
+/// description built before that test, and the caller must not use this
+/// version.
 pub(crate) fn fset_to_store(
     fs: &FrameSet,
     dim: &[Option<f64>],
     encoding: Encoding,
     s: char,
     input_crvals: &[Option<f64>],
-) -> AstResult<FitsStore> {
-    fset_to_store_impl(fs, dim, encoding, s, input_crvals, false)
+    fits_tol: f64,
+) -> AstResult<(FitsStore, bool)> {
+    fset_to_store_impl(fs, dim, encoding, s, input_crvals, fits_tol, false)
 }
 
 /// Variant of [`fset_to_store`] that describes the *absolute*
@@ -99,8 +103,9 @@ pub(crate) fn fset_to_store_absolute(
     encoding: Encoding,
     s: char,
     input_crvals: &[Option<f64>],
-) -> AstResult<FitsStore> {
-    fset_to_store_impl(fs, dim, encoding, s, input_crvals, true)
+    fits_tol: f64,
+) -> AstResult<(FitsStore, bool)> {
+    fset_to_store_impl(fs, dim, encoding, s, input_crvals, fits_tol, true)
 }
 
 fn fset_to_store_impl(
@@ -109,8 +114,9 @@ fn fset_to_store_impl(
     encoding: Encoding,
     s: char,
     input_crvals: &[Option<f64>],
+    fits_tol: f64,
     absolute_offset: bool,
-) -> AstResult<FitsStore> {
+) -> AstResult<(FitsStore, bool)> {
     // Negative-isoff path of C `AddVersion` (fitschan.c:2787-2820):
     // when the description should be for absolute coordinates but the
     // current Frame is an offset SkyFrame, clear `SkyRefIs` through the
@@ -159,14 +165,14 @@ fn fset_to_store_impl(
     // -TAB fallback path in C is not yet ported, so for now we mirror
     // the non-TAB return).
     if !mapping.has_inverse() {
-        return Ok(store);
+        return Ok((store, false));
     }
 
     // Step 2: choose `wperm[i]` — the FITS axis index for each WCS
     // frame axis. Mirrors C:2792-2802 (FitsAxisOrder + WorldAxes
     // fallback). FitsAxisOrder isn't yet modelled; the auto path via
     // WorldAxes is what the C library defaults to.
-    let mut wperm: Vec<usize> = match world_axes(mapping.as_ref(), dim, FITS_TOL_DEFAULT)? {
+    let mut wperm: Vec<usize> = match world_axes(mapping.as_ref(), dim, fits_tol)? {
         Some(p) => p,
         None => (0..nwcs).collect(),
     };
@@ -217,6 +223,7 @@ fn fset_to_store_impl(
         store: &mut store,
         axis_done: &mut axis_done,
         isoff,
+        fits_tol,
     })?;
 
     let spec_seg = spectral_axes(SpectralAxesArgs {
@@ -251,41 +258,45 @@ fn fset_to_store_impl(
     // Step 7: extract CRPIX / CD / PC / CDELT (and SIP if enabled)
     // via make_int_world. Mirrors C:2870-2871.
     let sip_ok = matches!(encoding, Encoding::FitsWcs);
-    let _ok = make_int_world(
+    let ok = make_int_world(
         pixel_iwc.as_ref(),
         fs.current(),
         &wperm,
         &mut store,
         dim,
-        FITS_TOL_DEFAULT,
+        fits_tol,
         sip_ok,
     )?;
 
-    // Step 8: post-processing.
-    //
-    // (a) Store the WCS Frame's Domain as WCSNAME when explicitly set.
-    //     Mirrors C:2892-2895 (which uses astTestDomain). Each Frame
-    //     class returns true from `test_domain` only when its domain
-    //     attribute has been set by the user, distinguishing that
-    //     from the per-class default ("SKY", "SPECTRUM", "TIME", …).
-    //     Don't overwrite a value sky_sys already populated.
-    if store.wcsname.is_none() {
-        let cur = fs.current();
-        if cur.test_domain() {
-            let d = cur.domain();
-            if !d.is_empty() {
-                store.wcsname = Some(d.to_string());
+    // Step 8: post-processing, which only means anything for a
+    // description Step 7 managed to build. Mirrors C's `if( ret )` at
+    // fitschan.c:3000, guarding WCSNAME, the CRVAL snap and the CRPIX
+    // rounding alike.
+    if ok {
+        // (a) Store the WCS Frame's Domain as WCSNAME when explicitly set.
+        //     Mirrors C:2892-2895 (which uses astTestDomain). Each Frame
+        //     class returns true from `test_domain` only when its domain
+        //     attribute has been set by the user, distinguishing that
+        //     from the per-class default ("SKY", "SPECTRUM", "TIME", …).
+        //     Don't overwrite a value sky_sys already populated.
+        if store.wcsname.is_none() {
+            let cur = fs.current();
+            if cur.test_domain() {
+                let d = cur.domain();
+                if !d.is_empty() {
+                    store.wcsname = Some(d.to_string());
+                }
             }
         }
+
+        // (b) Snap small-CRVAL residue to zero (when |CRVAL| is much
+        //     smaller than the per-pixel scale). Mirrors C:2920-2942.
+        snap_small_crval(&mut store, &wperm, nwcs);
+
+        // (c) Round CRPIX values to the nearest microsecond pixel.
+        //     Mirrors C:2945-2954.
+        round_crpix(&mut store);
     }
-
-    // (b) Snap small-CRVAL residue to zero (when |CRVAL| is much
-    //     smaller than the per-pixel scale). Mirrors C:2920-2942.
-    snap_small_crval(&mut store, &wperm, nwcs);
-
-    // (c) Round CRPIX values to the nearest microsecond pixel.
-    //     Mirrors C:2945-2954.
-    round_crpix(&mut store);
 
     // (d) FITS-CLASS spatial-CRVAL adjustment when the spatial pixel
     //     axes are degenerate. Mirrors fitschan.c:6465-6496 inside
@@ -296,7 +307,7 @@ fn fset_to_store_impl(
         class_adjust_spatial_crval(fs, &mut store, dim, &wperm)?;
     }
 
-    Ok(store)
+    Ok((store, ok))
 }
 
 /// Mirrors C `MakeFitsFrameSet` (fitschan.c:21083) — the writer-side
@@ -1034,7 +1045,12 @@ mod tests {
         .unwrap();
 
         let dim = vec![Some(100.0), Some(100.0)];
-        let store = fset_to_store(&fs, &dim, Encoding::FitsWcs, ' ', &[]).unwrap();
+        let (store, ok) =
+            fset_to_store(&fs, &dim, Encoding::FitsWcs, ' ', &[], FITS_TOL_DEFAULT).unwrap();
+        assert!(
+            ok,
+            "a linear pixel\u{2192}IWC Mapping should be describable"
+        );
 
         // Both axes should have CTYPE / CUNIT populated by other_axes.
         assert!(store.ctype[0].is_some(), "CTYPE1 should be set");
@@ -1064,7 +1080,12 @@ mod tests {
             .unwrap();
 
         let dim = vec![Some(100.0), Some(100.0)];
-        let store = fset_to_store(&fs, &dim, Encoding::FitsWcs, ' ', &[]).unwrap();
+        let (store, ok) =
+            fset_to_store(&fs, &dim, Encoding::FitsWcs, ' ', &[], FITS_TOL_DEFAULT).unwrap();
+        assert!(
+            ok,
+            "a linear pixel\u{2192}IWC Mapping should be describable"
+        );
         let crpix0 = store.crpix[0].unwrap();
         let crpix1 = store.crpix[1].unwrap();
         // dim=100 ⇒ g0 = floor(0.5*(1+100)) = 50.

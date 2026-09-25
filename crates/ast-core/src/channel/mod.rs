@@ -66,7 +66,15 @@ pub trait Channel {
     fn read(&mut self) -> AstResult<Option<AnyObject>>;
 
     /// Write an object to the sink.
-    fn write(&mut self, obj: &AnyObject) -> AstResult<()>;
+    ///
+    /// Returns the number of objects written: 1 normally, 0 when the
+    /// channel's encoding cannot describe the object. Mirrors C `astWrite`,
+    /// which returns a count rather than reporting an error, because
+    /// "this encoding cannot represent this object" is an ordinary answer
+    /// for the foreign FITS encodings — a FrameSet whose Mapping has no
+    /// adequate linear approximation is simply not a FITS-WCS header. An
+    /// `Err` is reserved for a malformed request or an I/O failure.
+    fn write(&mut self, obj: &AnyObject) -> AstResult<usize>;
 
     /// Return the accumulated warning texts from the most recent I/O
     /// operation, in the order they were issued.

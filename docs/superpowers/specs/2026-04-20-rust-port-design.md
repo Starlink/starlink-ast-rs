@@ -2,6 +2,19 @@
 
 ## Revision history
 
+- **2026-09-25 (rev 10)**: `Channel::write` reports how many objects it wrote.
+  `fn write(&mut self, obj: &AnyObject) -> AstResult<usize>`, restoring the
+  count rev 6 had removed.
+  C's `astWrite` returns a count, not a status (`channel.c`, and for FitsChan
+  `fitschan.c:40541`): 0 with `astOK` still true is the documented answer when
+  the encoding cannot describe the object, and callers act on it.
+  `FitsChan` is where this is load-bearing — the FITS-WCS encoder's
+  per-version loop counts the descriptions that succeeded, and upstream
+  `c384289f` made a write that produces no usable description report zero
+  rather than emit a partial header — so a `()` return left the port unable to
+  express the outcome its own encoder computes.
+  `ast-capi` has no `astWrite` shim, so there is no ABI consequence.
+
 - **2026-08-31 (rev 9)**: `Frame` gained the simplify seam it had been missing.
   C has one `Simplify` slot, on the Mapping vtab, and every Frame inherits it
   (`mapping.c:16853`); `CmpFrame` overrides it to simplify its components and
@@ -565,7 +578,7 @@ aliases.
 ```rust
 pub trait Channel {
     fn read(&mut self) -> AstResult<Option<AnyObject>>;      // discriminated by class
-    fn write(&mut self, obj: &AnyObject) -> AstResult<()>;   // rev 6: was `&dyn WritableToChannel -> AstResult<usize>`
+    fn write(&mut self, obj: &AnyObject) -> AstResult<usize>; // rev 10: count restored; rev 6 had `AstResult<()>`
     fn warnings(&self) -> Option<KeyMap>;                    // rev 6: owned, not a borrow
     fn warning_texts(&self) -> &[String];                    // rev 6: added
     fn config(&self) -> &ChannelConfig;                      // rev 6: replaced `encoding()`
