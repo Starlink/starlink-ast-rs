@@ -31,7 +31,11 @@ SCANNED_ENCODINGS = ("native", "ast")
 
 
 def _rows(manifest):
-    """Yield (name, input, expected, encoding, attrs) for each manifest row."""
+    """Yield (name, input, expected, encoding, attrs) for each manifest row.
+
+    The input and expected fields are paths relative to the fixture root, not
+    to the manifest's own directory.
+    """
     for line in manifest.read_text().splitlines():
         if not line.strip() or line.lstrip().startswith("#"):
             continue
@@ -73,20 +77,20 @@ def _issimp(text):
     return [l for l in text.splitlines() if _is_issimp(l)]
 
 
-def classify(fixtures_dir, wcsconverter, workdir):
+def classify(fixtures_root, wcsconverter, workdir):
     """Return {case_name: (verdict, keyword_diffs, value_diffs)}."""
-    fixtures_dir = pathlib.Path(fixtures_dir)
+    fixtures_root = pathlib.Path(fixtures_root)
     workdir = pathlib.Path(workdir)
     workdir.mkdir(parents=True, exist_ok=True)
     out_path = workdir / "corpus_check.out"
     results = {}
 
-    for name, inp, exp, encoding, attrs in _rows(fixtures_dir / "wcsconv_tests.txt"):
+    for name, inp, exp, encoding, attrs in _rows(fixtures_root / "wcsconv" / "cases.txt"):
         if encoding not in SCANNED_ENCODINGS:
             continue
         if out_path.exists():
             out_path.unlink()
-        cmd = [str(wcsconverter), str(fixtures_dir / "inputs" / inp), encoding, str(out_path)]
+        cmd = [str(wcsconverter), str(fixtures_root / inp), encoding, str(out_path)]
         if attrs:
             cmd.append(attrs)
         subprocess.run(cmd, capture_output=True)
@@ -95,7 +99,7 @@ def classify(fixtures_dir, wcsconverter, workdir):
             continue
 
         got = out_path.read_text()
-        want = (fixtures_dir / "expected" / exp).read_text()
+        want = (fixtures_root / exp).read_text()
         if got == want:
             results[name] = (VERDICT_OK, 0, 0)
             continue
@@ -122,7 +126,7 @@ def classify(fixtures_dir, wcsconverter, workdir):
 
 def main(argv):
     if len(argv) != 4:
-        print("usage: check_corpus_fresh.py <fixtures_dir> <wcsconverter> <workdir>",
+        print("usage: check_corpus_fresh.py <fixtures_root> <wcsconverter> <workdir>",
               file=sys.stderr)
         return 2
     results = classify(argv[1], argv[2], argv[3])
