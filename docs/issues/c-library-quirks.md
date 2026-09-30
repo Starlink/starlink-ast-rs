@@ -27,6 +27,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [`CmpFrame::NormBox` can never widen a box](#cmpframenormbox-can-never-widen-a-box)
 - [`UnitNormMap`'s zero-norm guard is defeated by compiler multiply-add contraction](#unitnormmaps-zero-norm-guard-is-defeated-by-compiler-multiply-add-contraction)
 - [A `%` Format on a SkyAxis changes the Unit but not the formatting](#a--format-on-a-skyaxis-changes-the-unit-but-not-the-formatting)
+- [SkyFrame `Offset`'s coincident-points guard is defeated by multiply-add contraction too](#skyframe-offsets-coincident-points-guard-is-defeated-by-multiply-add-contraction-too)
 
 ### [Addressed here, and not going upstream](#addressed-here-and-not-going-upstream)
 
@@ -417,6 +418,18 @@ oracle rows so the port is held to the prescribed value rather than the fused
 one.
 
 To be raised upstream.
+
+### SkyFrame `Offset`'s coincident-points guard is defeated by multiply-add contraction too
+
+`SkyFrame::Offset` (`skyframe.c:7587`) finds the great circle through its two points as the cross product `palDvxv( v2, v1, v3 )` and, when its modulus is exactly zero (`skyframe.c:7709`), treats the points as coincident or antipodal: it returns a point only for an offset whose sine is exactly zero, and bad coordinates otherwise.
+For two identical points the cross product is exactly zero only when each component `a*b - c*d` is computed as written; a compiler that fuses it into a multiply-add leaves a residue of rounding error, the guard does not fire, and the offset is taken along an arbitrary great circle.
+On arm64 macOS, where clang contracts by default, the C library at the submodule pin returns `(0.1 + pi, 0)` for `astOffset` from `(0.1, 0)` to itself by pi; built without contraction it returns bad coordinates, as the source prescribes.
+This is the same failure as the `UnitNormMap` entry above: a guard that must hold exactly, written against a contractable expression.
+
+**Rust behaviour (no mirror):** the port calls the vendored PAL for the cross product, so it inherited the platform's answer, and `offset_normalises_the_longitude_it_returns` in `crates/ast-core/tests/test_skyframe.rs` failed on arm64 (it is what failed CI on `macos-latest`).
+`crates/ast-core/build.rs` now compiles the vendored PAL, ERFA and wcslib with `-ffp-contract=off`, so the port computes what the C source says on every platform, as its Rust code already does.
+
+To be raised upstream, with the `UnitNormMap` entry: building AST with `-ffp-contract=off`, or writing both guards against uncontracted expressions, would settle both.
 
 ### A `%` Format on a SkyAxis changes the Unit but not the formatting
 

@@ -86,11 +86,17 @@ fn compile_pal_erfa(vendor_dir: &Path) {
         vendor_dir.join("palwrap.c").display()
     );
 
+    // Floating-point contraction is switched off so that the vendored C
+    // computes what its source says on every platform, as Rust code does.
+    // Some of its results feed exact comparisons: palDvxv of two identical
+    // vectors is exactly zero only without a fused multiply-add, and
+    // SkyFrame's Offset tests for exactly that (skyframe.c:7709).
     cc::Build::new()
         .file(vendor_dir.join("palwrap.c"))
         .include(vendor_dir)
         .include(vendor_dir.join("pal"))
         .include(vendor_dir.join("erfa"))
+        .flag_if_supported("-ffp-contract=off")
         .warnings(false)
         .compile("ast_pal_erfa");
 }
@@ -121,6 +127,8 @@ fn compile_wcslib(vendor_dir: &Path) {
         .file(wcslib_dir.join("wcstrig.c"))
         .file(wcslib_dir.join("ast_memory_stub.c"))
         .include(&wcslib_dir)
+        // No contraction, for the reason given in `compile_pal_erfa`.
+        .flag_if_supported("-ffp-contract=off")
         .warnings(false)
         .compile("ast_wcslib");
 }
