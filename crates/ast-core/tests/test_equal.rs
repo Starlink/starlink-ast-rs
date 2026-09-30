@@ -634,8 +634,14 @@ fn basicframe_different_epoch_is_equal() {
     // has no Epoch-dependent coordinate transform, so two Frames differing
     // only in Epoch convert via a UnitMap and compare EQUAL. Oracle-
     // verified: astEqual(Frame Epoch=MJD50000, Frame Epoch=MJD51000) == 1.
-    let a = BasicFrameBuilder::new(2).epoch(50000.0).build().unwrap();
-    let b = BasicFrameBuilder::new(2).epoch(51000.0).build().unwrap();
+    let a = BasicFrameBuilder::new(2)
+        .epoch_mjd(50000.0)
+        .build()
+        .unwrap();
+    let b = BasicFrameBuilder::new(2)
+        .epoch_mjd(51000.0)
+        .build()
+        .unwrap();
     assert!(a.equal(&b));
 }
 
@@ -643,7 +649,10 @@ fn basicframe_different_epoch_is_equal() {
 fn basicframe_epoch_set_vs_unset_is_equal() {
     // Same reasoning: Epoch does not affect a plain Frame's conversion, so
     // a set Epoch equals an unset one. Oracle-verified.
-    let a = BasicFrameBuilder::new(2).epoch(50000.0).build().unwrap();
+    let a = BasicFrameBuilder::new(2)
+        .epoch_mjd(50000.0)
+        .build()
+        .unwrap();
     let b = BasicFrameBuilder::new(2).build().unwrap();
     assert!(a.equal(&b));
 }

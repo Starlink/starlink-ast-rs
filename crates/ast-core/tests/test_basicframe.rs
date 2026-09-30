@@ -51,13 +51,16 @@ fn builder_with_labels() {
 #[test]
 fn default_attributes() {
     let frame = BasicFrameBuilder::new(2).build().unwrap();
-    assert_eq!(frame.title(), "");
+    // The defaults C's Frame reports (frame.c GetDefaultTitle,
+    // GetDefaultLabel, GetDefaultSymbol; axis.c GetDefaultFormat).
+    assert_eq!(frame.title(), "2-d coordinate system");
     assert_eq!(frame.domain(), "");
-    assert_eq!(frame.epoch(), None);
-    assert_eq!(frame.label(1).unwrap(), "");
+    assert_eq!(frame.epoch_year(), 2000.0);
+    assert!(!frame.test_epoch());
+    assert_eq!(frame.label(1).unwrap(), "Axis 1");
     assert_eq!(frame.unit(1).unwrap(), "");
-    assert_eq!(frame.symbol(1).unwrap(), "");
-    assert_eq!(frame.format_str(1).unwrap(), "");
+    assert_eq!(frame.symbol(1).unwrap(), "x1");
+    assert_eq!(frame.format_str(1).unwrap(), "%1.7G");
 }
 
 // ---- Set / test / clear cycle ----
@@ -66,9 +69,9 @@ fn default_attributes() {
 fn set_clear_attributes() {
     let mut frame = BasicFrameBuilder::new(2).build().unwrap();
 
-    // Initially unset.
+    // Initially unset, reporting C's default.
     assert!(!frame.test_label(1).unwrap());
-    assert_eq!(frame.label(1).unwrap(), "");
+    assert_eq!(frame.label(1).unwrap(), "Axis 1");
 
     // Set.
     frame.set_label(1, "RA").unwrap();
@@ -78,7 +81,7 @@ fn set_clear_attributes() {
     // Clear.
     frame.clear_label(1).unwrap();
     assert!(!frame.test_label(1).unwrap());
-    assert_eq!(frame.label(1).unwrap(), "");
+    assert_eq!(frame.label(1).unwrap(), "Axis 1");
 }
 
 // ---- Axis validation ----
@@ -103,15 +106,16 @@ fn epoch_attribute() {
     let mut frame = BasicFrameBuilder::new(1).build().unwrap();
 
     assert!(!frame.test_epoch());
-    assert_eq!(frame.epoch(), None);
 
-    frame.set_epoch_year(2000.0);
+    frame.set_epoch_year(1950.0);
     assert!(frame.test_epoch());
-    assert_eq!(frame.epoch_year(), Some(2000.0));
+    assert_eq!(frame.epoch_year(), 1950.0);
+    // B1950.0 is MJD 33281.92345905 (palEpb2d); a year before 1984 is Besselian.
+    assert!((frame.epoch_mjd() - 33281.92345905).abs() < 1e-8);
 
     frame.clear_epoch();
     assert!(!frame.test_epoch());
-    assert_eq!(frame.epoch(), None);
+    assert_eq!(frame.epoch_year(), 2000.0);
 }
 
 // ---- Euclidean distance ----

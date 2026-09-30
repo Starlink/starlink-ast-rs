@@ -4,53 +4,64 @@ use crate::constants::BAD_VALUE;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::mappings::helpers::{is_bad, point_has_bad};
 use crate::mappings::{DynMapping, UnitMap};
-use crate::serial::{Node, NodeValue, Serializable};
+use crate::serial::{Node, Serializable};
 
+use super::axis::Axis;
+use super::frame_attrs::{
+    FrameAttrs, FrameDumpSource, clean_domain, default_epoch_mjd, default_symbol, read_frame_attrs,
+    write_frame_cards,
+};
 use super::{AxisKind, DynFrame, Frame};
+
+/// The coordinate systems a plain Frame can have. C's Frame class knows only
+/// one, `AST__CART` (frame.c, `ValidateSystem`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum FrameSystem {
+    /// Cartesian coordinates, the only System of a plain Frame.
+    #[default]
+    Cartesian,
+}
+
+impl FrameSystem {
+    /// The name C gives the System (frame.c, `SystemString`).
+    pub fn as_str(&self) -> &'static str {
+        "Cartesian"
+    }
+}
 
 /// A basic coordinate frame with Euclidean (Cartesian) geometry.
 ///
-/// `BasicFrame` is the simplest concrete `Frame` implementation. It
-/// represents an N-dimensional Cartesian coordinate system with no
-/// special axis semantics. All geometry methods use straight-line
+/// `BasicFrame` is the simplest concrete `Frame` implementation, C's Frame
+/// class. It represents an N-dimensional Cartesian coordinate system with
+/// no special axis semantics. All geometry methods use straight-line
 /// Euclidean distance.
+///
+/// Every attribute has a getter giving its value, set or default, as C's
+/// `astGet` does, and a setter, a `test_` and a `clear_` method.
 ///
 /// Construct via [`BasicFrameBuilder`].
 #[derive(Debug, Clone)]
 pub struct BasicFrame {
     naxes: usize,
-    title: Option<String>,
-    domain: Option<String>,
-    epoch: Option<f64>,
-    labels: Vec<Option<String>>,
-    units: Vec<Option<String>>,
-    symbols: Vec<Option<String>>,
-    format_strs: Vec<Option<String>>,
-    bottoms: Vec<Option<f64>>,
-    tops: Vec<Option<f64>>,
-    digits: Option<i32>,
-    axis_digits: Vec<Option<i32>>,
-    directions: Vec<Option<bool>>,
-    /// When false, unit strings do not affect alignment. Default is true.
-    act_unt: Option<bool>,
-    /// The Axis object on each axis, in physical (unpermuted) order.
+    attrs: FrameAttrs,
+    /// The Axis-class attributes of each axis, in internal (unpermuted)
+    /// order, as C's Frame holds its Axis objects.
+    axes: Vec<Axis>,
+    /// The kind of Axis on each axis, in internal order.
     ///
     /// C's `SubFrame` attaches the target's own Axis objects to the result
     /// (frame.c:11023), so a plain Frame built by picking axes out of a
     /// SkyFrame carries SkyAxis objects, and keeps their cyclic behaviour.
     /// The axes need not agree with each other.
     ///
-    /// Transient: never serialised (the byte-exact native form writes per-axis
-    /// Axis objects, which this porting layer does not model).
+    /// Transient: never serialised; a SkyAxis in a plain Frame is written
+    /// as a plain Axis (a `PLAN.md` §2 row).
     axis_kinds: Vec<AxisKind>,
-    /// Permanent object identification string (Object-level attribute).
-    ident: Option<String>,
-    // Match-control attributes (used by `astFindFrame` / `astMatch`).
-    min_axes_opt: Option<usize>,
-    max_axes_opt: Option<usize>,
-    match_end_opt: Option<bool>,
-    preserve_axes_opt: Option<bool>,
-    permute_opt: Option<bool>,
+    /// The axis permutation, `perm[external] = internal` (0-based), as C's
+    /// `perm` array.
+    perm: Vec<usize>,
+    system_set: bool,
+    align_system_set: bool,
 }
 
 /// Builder for [`BasicFrame`].
@@ -73,20 +84,8 @@ pub struct BasicFrame {
 #[derive(Debug, Clone)]
 pub struct BasicFrameBuilder {
     naxes: usize,
-    title: Option<String>,
-    domain: Option<String>,
-    epoch: Option<f64>,
-    labels: Vec<Option<String>>,
-    units: Vec<Option<String>>,
-    symbols: Vec<Option<String>>,
-    format_strs: Vec<Option<String>>,
-    bottoms: Vec<Option<f64>>,
-    tops: Vec<Option<f64>>,
-    digits: Option<i32>,
-    axis_digits: Vec<Option<i32>>,
-    directions: Vec<Option<bool>>,
-    act_unt: Option<bool>,
-    ident: Option<String>,
+    attrs: FrameAttrs,
+    axes: Vec<Axis>,
 }
 
 impl BasicFrameBuilder {
@@ -94,85 +93,78 @@ impl BasicFrameBuilder {
     pub fn new(naxes: usize) -> Self {
         Self {
             naxes,
-            title: None,
-            domain: None,
-            epoch: None,
-            labels: vec![None; naxes],
-            units: vec![None; naxes],
-            symbols: vec![None; naxes],
-            format_strs: vec![None; naxes],
-            bottoms: vec![None; naxes],
-            tops: vec![None; naxes],
-            digits: None,
-            axis_digits: vec![None; naxes],
-            directions: vec![None; naxes],
-            act_unt: None,
-            ident: None,
+            attrs: FrameAttrs::default(),
+            axes: vec![Axis::default(); naxes],
         }
+    }
+
+    fn axis_mut(&mut self, axis: usize) -> Option<&mut Axis> {
+        axis.checked_sub(1).and_then(|i| self.axes.get_mut(i))
     }
 
     /// Set the frame title.
     pub fn title(mut self, title: impl Into<String>) -> Self {
-        self.title = Some(title.into());
+        self.attrs.title = Some(title.into());
         self
     }
 
-    /// Set the frame domain.
+    /// Set the frame domain, with white space removed and letters
+    /// upper-cased as C stores it.
     pub fn domain(mut self, domain: impl Into<String>) -> Self {
-        self.domain = Some(domain.into());
+        self.attrs.domain = Some(clean_domain(&domain.into()));
         self
     }
 
-    /// Set the frame epoch.
-    pub fn epoch(mut self, epoch: f64) -> Self {
-        self.epoch = Some(epoch);
+    /// Set the frame epoch as a TDB Modified Julian Date.
+    pub fn epoch_mjd(mut self, mjd: f64) -> Self {
+        self.attrs.epoch = Some(mjd);
         self
     }
 
     /// Set the label for a 1-based axis.
     pub fn label(mut self, axis: usize, label: impl Into<String>) -> Self {
-        if axis >= 1 && axis <= self.naxes {
-            self.labels[axis - 1] = Some(label.into());
+        if let Some(a) = self.axis_mut(axis) {
+            a.label = Some(label.into());
         }
         self
     }
 
     /// Set the unit for a 1-based axis.
     pub fn unit(mut self, axis: usize, unit: impl Into<String>) -> Self {
-        if axis >= 1 && axis <= self.naxes {
-            self.units[axis - 1] = Some(unit.into());
+        if let Some(a) = self.axis_mut(axis) {
+            a.unit = Some(unit.into());
         }
         self
     }
 
     /// Set the symbol for a 1-based axis.
     pub fn symbol(mut self, axis: usize, symbol: impl Into<String>) -> Self {
-        if axis >= 1 && axis <= self.naxes {
-            self.symbols[axis - 1] = Some(symbol.into());
+        if let Some(a) = self.axis_mut(axis) {
+            a.symbol = Some(symbol.into());
         }
         self
     }
 
     /// Set the format string for a 1-based axis.
     pub fn format_str(mut self, axis: usize, fmt: impl Into<String>) -> Self {
-        if axis >= 1 && axis <= self.naxes {
-            self.format_strs[axis - 1] = Some(fmt.into());
+        if let Some(a) = self.axis_mut(axis) {
+            a.format = Some(fmt.into());
         }
         self
     }
 
     /// Set the bottom limit for a 1-based axis.
     pub fn bottom(mut self, axis: usize, bottom: f64) -> Self {
-        if axis >= 1 && axis <= self.naxes {
-            self.bottoms[axis - 1] = Some(bottom);
+        if let Some(a) = self.axis_mut(axis) {
+            a.bottom = Some(bottom);
         }
         self
     }
 
     /// Set the top limit for a 1-based axis.
     pub fn top(mut self, axis: usize, top: f64) -> Self {
-        if axis >= 1 && axis <= self.naxes {
-            self.tops[axis - 1] = Some(top);
+        if let Some(a) = self.axis_mut(axis) {
+            a.top = Some(top);
         }
         self
     }
@@ -189,28 +181,35 @@ impl BasicFrameBuilder {
         }
         Ok(BasicFrame {
             naxes: self.naxes,
-            title: self.title,
-            domain: self.domain,
-            epoch: self.epoch,
-            labels: self.labels,
-            units: self.units,
-            symbols: self.symbols,
-            format_strs: self.format_strs,
-            bottoms: self.bottoms,
-            tops: self.tops,
-            digits: self.digits,
-            axis_digits: self.axis_digits,
-            directions: self.directions,
-            act_unt: self.act_unt,
+            attrs: self.attrs,
+            axes: self.axes,
             axis_kinds: vec![AxisKind::Plain; self.naxes],
-            ident: self.ident,
-            min_axes_opt: None,
-            max_axes_opt: None,
-            match_end_opt: None,
-            preserve_axes_opt: None,
-            permute_opt: None,
+            perm: (0..self.naxes).collect(),
+            system_set: false,
+            align_system_set: false,
         })
     }
+}
+
+/// Generate the get/set/test/clear methods of an optional Frame-class
+/// attribute stored in `FrameAttrs`.
+macro_rules! frame_attr_methods {
+    ($field:ident, $ty:ty, $set:ident, $test:ident, $clear:ident, $what:literal) => {
+        #[doc = concat!("Set ", $what, ".")]
+        pub fn $set(&mut self, value: $ty) {
+            self.attrs.$field = Some(value);
+        }
+
+        #[doc = concat!("Test whether ", $what, " has been set.")]
+        pub fn $test(&self) -> bool {
+            self.attrs.$field.is_some()
+        }
+
+        #[doc = concat!("Clear ", $what, ", which then takes its default.")]
+        pub fn $clear(&mut self) {
+            self.attrs.$field = None;
+        }
+    };
 }
 
 impl BasicFrame {
@@ -222,7 +221,8 @@ impl BasicFrame {
     /// Mirrors C `astSetAxis`.
     pub(crate) fn set_axis_kind(&mut self, axis: usize, kind: AxisKind) {
         if axis >= 1 && axis <= self.naxes {
-            self.axis_kinds[axis - 1] = kind;
+            let internal = self.perm[axis - 1];
+            self.axis_kinds[internal] = kind;
         }
     }
 
@@ -237,51 +237,71 @@ impl BasicFrame {
         Ok(())
     }
 
+    /// The internal index of a validated 1-based external axis.
+    fn internal(&self, axis: usize) -> AstResult<usize> {
+        self.validate_axis(axis)?;
+        Ok(self.perm[axis - 1])
+    }
+
+    fn ax(&self, axis: usize) -> AstResult<&Axis> {
+        Ok(&self.axes[self.internal(axis)?])
+    }
+
+    fn ax_mut(&mut self, axis: usize) -> AstResult<&mut Axis> {
+        let i = self.internal(axis)?;
+        Ok(&mut self.axes[i])
+    }
+
     // --- Frame-level attributes ---
 
-    /// Return the frame title.
-    pub fn title(&self) -> &str {
-        self.title.as_deref().unwrap_or("")
+    /// The Title, set or default (`"<naxes>-d coordinate system"`,
+    /// frame.c `GetDefaultTitle`).
+    pub fn title(&self) -> String {
+        self.attrs
+            .title
+            .clone()
+            .unwrap_or_else(|| format!("{}-d coordinate system", self.naxes))
     }
 
     /// Set the frame title.
     pub fn set_title(&mut self, title: impl Into<String>) {
-        self.title = Some(title.into());
+        self.attrs.title = Some(title.into());
     }
 
     /// Test whether the title attribute has been explicitly set.
     pub fn test_title(&self) -> bool {
-        self.title.is_some()
+        self.attrs.title.is_some()
     }
 
     /// Clear the title attribute, reverting to the default.
     pub fn clear_title(&mut self) {
-        self.title = None;
+        self.attrs.title = None;
     }
 
-    /// Return the frame domain.
+    /// Return the frame domain, which is blank unless set.
     pub fn domain(&self) -> &str {
-        self.domain.as_deref().unwrap_or("")
+        self.attrs.domain.as_deref().unwrap_or("")
     }
 
-    /// Set the frame domain.
+    /// Set the frame domain, with white space removed and letters
+    /// upper-cased as C stores it (frame.c `CleanDomain`).
     pub fn set_domain(&mut self, domain: impl Into<String>) {
-        self.domain = Some(domain.into());
+        self.attrs.domain = Some(clean_domain(&domain.into()));
     }
 
     /// Test whether the domain attribute has been explicitly set.
     pub fn test_domain(&self) -> bool {
-        self.domain.is_some()
+        self.attrs.domain.is_some()
     }
 
     /// Clear the domain attribute, reverting to the default.
     pub fn clear_domain(&mut self) {
-        self.domain = None;
+        self.attrs.domain = None;
     }
 
     /// Return the frame identification string.
     pub fn ident(&self) -> &str {
-        self.ident.as_deref().unwrap_or("")
+        self.attrs.ident.as_deref().unwrap_or("")
     }
 
     /// Set the frame identification string. Mirrors `astSetIdent`.
@@ -289,151 +309,256 @@ impl BasicFrame {
     /// with their version letter (`'A'..'Z'`).
     pub fn set_ident(&mut self, ident: impl Into<String>) {
         let s = ident.into();
-        self.ident = if s.is_empty() { None } else { Some(s) };
+        self.attrs.ident = if s.is_empty() { None } else { Some(s) };
     }
 
-    /// Return the frame epoch as a decimal year, or `None` if not
-    /// set. `BasicFrame` stores the epoch as a year (matching the
-    /// `Epoch = …` value emitted in native serialization); use
-    /// `set_epoch_year` / `epoch_year` for the explicit-units API.
-    pub fn epoch_year(&self) -> Option<f64> {
-        self.epoch
+    /// The Epoch as a TDB Modified Julian Date, set or default (J2000.0).
+    pub fn epoch_mjd(&self) -> f64 {
+        self.attrs.epoch.unwrap_or_else(default_epoch_mjd)
     }
 
-    /// Backwards-compatible accessor; equivalent to `epoch_year`.
-    pub fn epoch(&self) -> Option<f64> {
-        self.epoch
+    /// Set the Epoch as a TDB Modified Julian Date.
+    pub fn set_epoch_mjd(&mut self, mjd: f64) {
+        self.attrs.epoch = Some(mjd);
     }
 
-    /// Set the frame epoch as a decimal year (the unit used in AST
-    /// native serialization). The value is stored as-is.
+    /// The Epoch as a year, Besselian before 1984 and Julian from then on,
+    /// which is how C reports it (frame.c `GetAttrib`).
+    pub fn epoch_year(&self) -> f64 {
+        let mjd = self.epoch_mjd();
+        if mjd < crate::pal::epj2d(1984.0) {
+            crate::pal::epb(mjd)
+        } else {
+            crate::pal::epj(mjd)
+        }
+    }
+
+    /// Set the Epoch from a year, read as Besselian before 1984 and Julian
+    /// from then on, as C reads a bare year (frame.c `astReadDateTime`).
     pub fn set_epoch_year(&mut self, year: f64) {
-        self.epoch = Some(year);
+        self.attrs.epoch = Some(crate::frames::date_time::year_to_mjd_iau1984(year));
     }
 
     /// Test whether the epoch attribute has been explicitly set.
     pub fn test_epoch(&self) -> bool {
-        self.epoch.is_some()
+        self.attrs.epoch.is_some()
     }
 
     /// Clear the epoch attribute.
     pub fn clear_epoch(&mut self) {
-        self.epoch = None;
+        self.attrs.epoch = None;
     }
+
+    /// The System, which for a plain Frame is always Cartesian.
+    pub fn system(&self) -> FrameSystem {
+        FrameSystem::Cartesian
+    }
+
+    /// Set the System. Mirrors `astSetSystem`.
+    pub fn set_system(&mut self, _system: FrameSystem) {
+        self.system_set = true;
+    }
+
+    /// Test whether the System has been set.
+    pub fn test_system(&self) -> bool {
+        self.system_set
+    }
+
+    /// Clear the System.
+    pub fn clear_system(&mut self) {
+        self.system_set = false;
+    }
+
+    /// The AlignSystem, which for a plain Frame is always Cartesian.
+    pub fn align_system(&self) -> FrameSystem {
+        FrameSystem::Cartesian
+    }
+
+    /// Set the AlignSystem. Mirrors `astSetAlignSystem`.
+    pub fn set_align_system(&mut self, _system: FrameSystem) {
+        self.align_system_set = true;
+    }
+
+    /// Test whether the AlignSystem has been set.
+    pub fn test_align_system(&self) -> bool {
+        self.align_system_set
+    }
+
+    /// Clear the AlignSystem.
+    pub fn clear_align_system(&mut self) {
+        self.align_system_set = false;
+    }
+
+    /// The observer's geodetic latitude in radians, set or default (0).
+    pub fn obs_lat(&self) -> f64 {
+        self.attrs.obs_lat.unwrap_or(0.0)
+    }
+    frame_attr_methods!(
+        obs_lat,
+        f64,
+        set_obs_lat,
+        test_obs_lat,
+        clear_obs_lat,
+        "the observer's geodetic latitude, in radians"
+    );
+
+    /// The observer's geodetic longitude in radians, set or default (0).
+    pub fn obs_lon(&self) -> f64 {
+        self.attrs.obs_lon.unwrap_or(0.0)
+    }
+    frame_attr_methods!(
+        obs_lon,
+        f64,
+        set_obs_lon,
+        test_obs_lon,
+        clear_obs_lon,
+        "the observer's geodetic longitude, in radians"
+    );
+
+    /// The observer's geodetic altitude in metres, set or default (0).
+    pub fn obs_alt(&self) -> f64 {
+        self.attrs.obs_alt.unwrap_or(0.0)
+    }
+    frame_attr_methods!(
+        obs_alt,
+        f64,
+        set_obs_alt,
+        test_obs_alt,
+        clear_obs_alt,
+        "the observer's geodetic altitude, in metres"
+    );
+
+    /// TAI-UTC in seconds, or `BAD_VALUE` when unset, which means the
+    /// value is taken from AST's leap-second table (frame.c `GetDtai`).
+    pub fn dtai(&self) -> f64 {
+        self.attrs.dtai.unwrap_or(BAD_VALUE)
+    }
+    frame_attr_methods!(
+        dtai,
+        f64,
+        set_dtai,
+        test_dtai,
+        clear_dtai,
+        "TAI-UTC, in seconds"
+    );
+
+    /// UT1-UTC in seconds, set or default (0).
+    pub fn dut1(&self) -> f64 {
+        self.attrs.dut1.unwrap_or(0.0)
+    }
+    frame_attr_methods!(
+        dut1,
+        f64,
+        set_dut1,
+        test_dut1,
+        clear_dut1,
+        "UT1-UTC, in seconds"
+    );
 
     // --- Per-axis attributes (1-based) ---
 
-    /// Return the label for the given 1-based axis.
-    pub fn label(&self, axis: usize) -> AstResult<&str> {
-        self.validate_axis(axis)?;
-        Ok(self.labels[axis - 1].as_deref().unwrap_or(""))
+    /// The Label of a 1-based axis, set or default (`"Axis <n>"`, with `n`
+    /// the internal axis number, as C's `MAKE_GET` computes it).
+    pub fn label(&self, axis: usize) -> AstResult<String> {
+        let i = self.internal(axis)?;
+        Ok(self.axes[i]
+            .label
+            .clone()
+            .unwrap_or_else(|| format!("Axis {}", i + 1)))
     }
 
     /// Set the label for the given 1-based axis.
     pub fn set_label(&mut self, axis: usize, label: impl Into<String>) -> AstResult<()> {
-        self.validate_axis(axis)?;
-        self.labels[axis - 1] = Some(label.into());
+        self.ax_mut(axis)?.label = Some(label.into());
         Ok(())
     }
 
     /// Test whether the label for the given 1-based axis has been explicitly set.
     pub fn test_label(&self, axis: usize) -> AstResult<bool> {
-        self.validate_axis(axis)?;
-        Ok(self.labels[axis - 1].is_some())
+        Ok(self.ax(axis)?.label.is_some())
     }
 
     /// Clear the label for the given 1-based axis.
     pub fn clear_label(&mut self, axis: usize) -> AstResult<()> {
-        self.validate_axis(axis)?;
-        self.labels[axis - 1] = None;
+        self.ax_mut(axis)?.label = None;
         Ok(())
     }
 
-    /// Return the unit for the given 1-based axis.
+    /// The Unit of a 1-based axis, which is blank unless set.
     pub fn unit(&self, axis: usize) -> AstResult<&str> {
-        self.validate_axis(axis)?;
-        Ok(self.units[axis - 1].as_deref().unwrap_or(""))
+        Ok(self.ax(axis)?.unit.as_deref().unwrap_or(""))
     }
 
     /// Set the unit for the given 1-based axis.
     pub fn set_unit(&mut self, axis: usize, unit: impl Into<String>) -> AstResult<()> {
-        self.validate_axis(axis)?;
-        self.units[axis - 1] = Some(unit.into());
+        self.ax_mut(axis)?.unit = Some(unit.into());
         Ok(())
     }
 
     /// Test whether the unit for the given 1-based axis has been explicitly set.
     pub fn test_unit(&self, axis: usize) -> AstResult<bool> {
-        self.validate_axis(axis)?;
-        Ok(self.units[axis - 1].is_some())
+        Ok(self.ax(axis)?.unit.is_some())
     }
 
     /// Clear the unit for the given 1-based axis.
     pub fn clear_unit(&mut self, axis: usize) -> AstResult<()> {
-        self.validate_axis(axis)?;
-        self.units[axis - 1] = None;
+        self.ax_mut(axis)?.unit = None;
         Ok(())
     }
 
-    /// Return the symbol for the given 1-based axis.
-    ///
-    /// If no symbol has been set, falls back to the label; if no label
-    /// either, returns an empty string.
-    pub fn symbol(&self, axis: usize) -> AstResult<&str> {
-        self.validate_axis(axis)?;
-        let idx = axis - 1;
-        if let Some(s) = &self.symbols[idx] {
-            Ok(s.as_str())
-        } else if let Some(l) = &self.labels[idx] {
-            Ok(l.as_str())
-        } else {
-            Ok("")
-        }
+    /// The Symbol of a 1-based axis, set or default: the Domain if set,
+    /// else `"x"`, followed by the internal axis number (frame.c
+    /// `GetDefaultSymbol`).
+    pub fn symbol(&self, axis: usize) -> AstResult<String> {
+        let i = self.internal(axis)?;
+        Ok(self.axes[i]
+            .symbol
+            .clone()
+            .unwrap_or_else(|| default_symbol(self.attrs.domain.as_deref(), i)))
     }
 
     /// Set the symbol for the given 1-based axis.
     pub fn set_symbol(&mut self, axis: usize, symbol: impl Into<String>) -> AstResult<()> {
-        self.validate_axis(axis)?;
-        self.symbols[axis - 1] = Some(symbol.into());
+        self.ax_mut(axis)?.symbol = Some(symbol.into());
         Ok(())
     }
 
     /// Test whether the symbol for the given 1-based axis has been explicitly set.
     pub fn test_symbol(&self, axis: usize) -> AstResult<bool> {
-        self.validate_axis(axis)?;
-        Ok(self.symbols[axis - 1].is_some())
+        Ok(self.ax(axis)?.symbol.is_some())
     }
 
     /// Clear the symbol for the given 1-based axis.
     pub fn clear_symbol(&mut self, axis: usize) -> AstResult<()> {
-        self.validate_axis(axis)?;
-        self.symbols[axis - 1] = None;
+        self.ax_mut(axis)?.symbol = None;
         Ok(())
     }
 
-    /// Return the format string for the given 1-based axis.
-    pub fn format_str(&self, axis: usize) -> AstResult<&str> {
-        self.validate_axis(axis)?;
-        Ok(self.format_strs[axis - 1].as_deref().unwrap_or(""))
+    /// The Format of a 1-based axis, set or default (`"%1.<Digits>G"`,
+    /// axis.c `GetDefaultFormat`, with the axis Digits falling back to the
+    /// Frame's).
+    pub fn format_str(&self, axis: usize) -> AstResult<String> {
+        let a = self.ax(axis)?;
+        Ok(match &a.format {
+            Some(f) => f.clone(),
+            None => format!("%1.{}G", self.axis_digits(axis)?),
+        })
     }
 
     /// Set the format string for the given 1-based axis.
     pub fn set_format_str(&mut self, axis: usize, fmt: impl Into<String>) -> AstResult<()> {
-        self.validate_axis(axis)?;
-        self.format_strs[axis - 1] = Some(fmt.into());
+        self.ax_mut(axis)?.format = Some(fmt.into());
         Ok(())
     }
 
     /// Test whether the format string for the given 1-based axis has been explicitly set.
     pub fn test_format_str(&self, axis: usize) -> AstResult<bool> {
-        self.validate_axis(axis)?;
-        Ok(self.format_strs[axis - 1].is_some())
+        Ok(self.ax(axis)?.format.is_some())
     }
 
     /// Clear the format string for the given 1-based axis.
     pub fn clear_format_str(&mut self, axis: usize) -> AstResult<()> {
-        self.validate_axis(axis)?;
-        self.format_strs[axis - 1] = None;
+        self.ax_mut(axis)?.format = None;
         Ok(())
     }
 
@@ -441,27 +566,23 @@ impl BasicFrame {
     ///
     /// Defaults to `-f64::MAX`.
     pub fn bottom(&self, axis: usize) -> AstResult<f64> {
-        self.validate_axis(axis)?;
-        Ok(self.bottoms[axis - 1].unwrap_or(-f64::MAX))
+        Ok(self.ax(axis)?.bottom.unwrap_or(-f64::MAX))
     }
 
     /// Set the bottom limit for the given 1-based axis.
     pub fn set_bottom(&mut self, axis: usize, bottom: f64) -> AstResult<()> {
-        self.validate_axis(axis)?;
-        self.bottoms[axis - 1] = Some(bottom);
+        self.ax_mut(axis)?.bottom = Some(bottom);
         Ok(())
     }
 
     /// Test whether the bottom limit for the given 1-based axis has been explicitly set.
     pub fn test_bottom(&self, axis: usize) -> AstResult<bool> {
-        self.validate_axis(axis)?;
-        Ok(self.bottoms[axis - 1].is_some())
+        Ok(self.ax(axis)?.bottom.is_some())
     }
 
     /// Clear the bottom limit for the given 1-based axis.
     pub fn clear_bottom(&mut self, axis: usize) -> AstResult<()> {
-        self.validate_axis(axis)?;
-        self.bottoms[axis - 1] = None;
+        self.ax_mut(axis)?.bottom = None;
         Ok(())
     }
 
@@ -469,75 +590,113 @@ impl BasicFrame {
     ///
     /// Defaults to `f64::MAX`.
     pub fn top(&self, axis: usize) -> AstResult<f64> {
-        self.validate_axis(axis)?;
-        Ok(self.tops[axis - 1].unwrap_or(f64::MAX))
+        Ok(self.ax(axis)?.top.unwrap_or(f64::MAX))
     }
 
     /// Set the top limit for the given 1-based axis.
     pub fn set_top(&mut self, axis: usize, top: f64) -> AstResult<()> {
-        self.validate_axis(axis)?;
-        self.tops[axis - 1] = Some(top);
+        self.ax_mut(axis)?.top = Some(top);
         Ok(())
     }
 
     /// Test whether the top limit for the given 1-based axis has been explicitly set.
     pub fn test_top(&self, axis: usize) -> AstResult<bool> {
-        self.validate_axis(axis)?;
-        Ok(self.tops[axis - 1].is_some())
+        Ok(self.ax(axis)?.top.is_some())
     }
 
     /// Clear the top limit for the given 1-based axis.
     pub fn clear_top(&mut self, axis: usize) -> AstResult<()> {
-        self.validate_axis(axis)?;
-        self.tops[axis - 1] = None;
+        self.ax_mut(axis)?.top = None;
         Ok(())
     }
 
     /// Frame-level Digits, defaulting to 7. Mirrors `astGetDigits`.
     pub fn digits(&self) -> i32 {
-        self.digits.unwrap_or(7)
+        self.attrs.digits.unwrap_or(7)
     }
 
-    /// Set frame-level Digits, constrained to >= 1 (frame.c:13138).
+    /// Set frame-level Digits, constrained to >= 1 (frame.c:13251).
     pub fn set_digits(&mut self, value: i32) {
-        self.digits = Some(value.max(1));
+        self.attrs.digits = Some(value.max(1));
     }
 
     /// Test whether frame-level Digits is explicitly set.
     pub fn test_digits(&self) -> bool {
-        self.digits.is_some()
+        self.attrs.digits.is_some()
+    }
+
+    /// Clear frame-level Digits.
+    pub fn clear_digits(&mut self) {
+        self.attrs.digits = None;
     }
 
     /// Per-axis Digits (1-based), falling back to frame-level Digits.
     pub fn axis_digits(&self, axis: usize) -> AstResult<i32> {
-        self.validate_axis(axis)?;
-        Ok(self.axis_digits[axis - 1].unwrap_or_else(|| self.digits()))
+        Ok(self.ax(axis)?.digits.unwrap_or_else(|| self.digits()))
     }
 
-    /// Set per-axis Digits (1-based), constrained to >= 1.
+    /// Set per-axis Digits (1-based), constrained to >= 1 (axis.c:2617).
     pub fn set_axis_digits(&mut self, axis: usize, value: i32) -> AstResult<()> {
-        self.validate_axis(axis)?;
-        self.axis_digits[axis - 1] = Some(value.max(1));
+        self.ax_mut(axis)?.digits = Some(value.max(1));
         Ok(())
     }
 
     /// Test whether per-axis Digits is explicitly set (1-based).
     pub fn test_axis_digits(&self, axis: usize) -> AstResult<bool> {
-        self.validate_axis(axis)?;
-        Ok(self.axis_digits[axis - 1].is_some())
+        Ok(self.ax(axis)?.digits.is_some())
+    }
+
+    /// Clear per-axis Digits (1-based).
+    pub fn clear_axis_digits(&mut self, axis: usize) -> AstResult<()> {
+        self.ax_mut(axis)?.digits = None;
+        Ok(())
     }
 
     /// Per-axis Direction Plot hint (1-based); default true.
     pub fn direction(&self, axis: usize) -> AstResult<bool> {
-        self.validate_axis(axis)?;
-        Ok(self.directions[axis - 1].unwrap_or(true))
+        Ok(self.ax(axis)?.direction.unwrap_or(true))
     }
 
     /// Set per-axis Direction (1-based).
     pub fn set_direction(&mut self, axis: usize, value: bool) -> AstResult<()> {
-        self.validate_axis(axis)?;
-        self.directions[axis - 1] = Some(value);
+        self.ax_mut(axis)?.direction = Some(value);
         Ok(())
+    }
+
+    /// Test whether per-axis Direction is explicitly set (1-based).
+    pub fn test_direction(&self, axis: usize) -> AstResult<bool> {
+        Ok(self.ax(axis)?.direction.is_some())
+    }
+
+    /// Clear per-axis Direction (1-based).
+    pub fn clear_direction(&mut self, axis: usize) -> AstResult<()> {
+        self.ax_mut(axis)?.direction = None;
+        Ok(())
+    }
+
+    /// Clear MinAxes.
+    pub fn clear_min_axes(&mut self) {
+        self.attrs.min_axes = None;
+    }
+
+    /// Clear MaxAxes.
+    pub fn clear_max_axes(&mut self) {
+        self.attrs.max_axes = None;
+    }
+
+    /// Clear MatchEnd.
+    pub fn clear_match_end(&mut self) {
+        self.attrs.match_end = None;
+    }
+
+    /// Clear Permute.
+    pub fn clear_permute(&mut self) {
+        self.attrs.permute = None;
+    }
+
+    /// Clear PreserveAxes.
+    pub fn clear_preserve_axes(&mut self) {
+        self.attrs.preserve_axes = None;
     }
 }
 
@@ -687,31 +846,27 @@ impl Frame for BasicFrame {
         {
             return false;
         }
-        self.act_unt.unwrap_or(false)
+        self.attrs.active_unit.unwrap_or(false)
     }
 
     /// The Axis attached to a 1-based `axis`. Mirrors C `astGetAxis`
     /// (frame.c:5309), which returns the Frame's own Axis object.
     fn get_axis(&self, axis: usize) -> AxisKind {
-        self.axis_kinds
-            .get(axis - 1)
-            .copied()
+        self.internal(axis)
+            .map(|i| self.axis_kinds[i])
             .unwrap_or(AxisKind::Plain)
     }
 
     fn set_active_unit(&mut self, value: bool) {
-        self.act_unt = Some(value);
+        self.attrs.active_unit = Some(value);
     }
 
     fn test_active_unit(&self) -> bool {
-        self.act_unt.is_some()
+        self.attrs.active_unit.is_some()
     }
 
     fn effective_label(&self, axis: usize) -> String {
-        match BasicFrame::label(self, axis) {
-            Ok(s) if !s.is_empty() => s.to_string(),
-            _ => format!("Axis {axis}"),
-        }
+        BasicFrame::label(self, axis).unwrap_or_default()
     }
 
     fn effective_unit(&self, axis: usize) -> String {
@@ -719,12 +874,7 @@ impl Frame for BasicFrame {
     }
 
     fn effective_symbol(&self, axis: usize) -> String {
-        // BasicFrame::symbol already falls back from Symbol to Label;
-        // when neither is set, fall back to the default label.
-        match BasicFrame::symbol(self, axis) {
-            Ok(s) if !s.is_empty() => s.to_string(),
-            _ => format!("Axis {axis}"),
-        }
+        BasicFrame::symbol(self, axis).unwrap_or_default()
     }
 
     fn test_axis_label(&self, axis: usize) -> bool {
@@ -736,10 +886,30 @@ impl Frame for BasicFrame {
     }
 
     fn effective_format(&self, axis: usize) -> String {
-        match BasicFrame::test_format_str(self, axis) {
-            Ok(true) => BasicFrame::format_str(self, axis).unwrap_or("").to_string(),
-            _ => String::new(),
-        }
+        self.ax(axis)
+            .ok()
+            .and_then(|a| a.format.clone())
+            .unwrap_or_default()
+    }
+
+    fn obs_lat(&self) -> Option<f64> {
+        self.attrs.obs_lat
+    }
+
+    fn obs_lon(&self) -> Option<f64> {
+        self.attrs.obs_lon
+    }
+
+    fn obs_alt(&self) -> Option<f64> {
+        self.attrs.obs_alt
+    }
+
+    fn dtai(&self) -> Option<f64> {
+        self.attrs.dtai
+    }
+
+    fn dut1(&self) -> Option<f64> {
+        self.attrs.dut1
     }
 
     fn unformat(&self, axis: usize, text: &str) -> AstResult<(f64, usize)> {
@@ -801,70 +971,62 @@ impl Frame for BasicFrame {
     }
 
     // Match-control attributes — mirror C `astGet/SetMinAxes` etc.
+    // Match-control attributes. MinAxes and MaxAxes default to Naxes,
+    // MatchEnd and PreserveAxes to false, Permute to true (frame.c).
     fn min_axes(&self) -> usize {
-        self.min_axes_opt.unwrap_or(self.naxes)
+        self.attrs.min_axes.unwrap_or(self.naxes)
     }
     fn set_min_axes(&mut self, n: usize) {
-        self.min_axes_opt = Some(n);
+        self.attrs.min_axes = Some(n);
     }
     fn test_min_axes(&self) -> bool {
-        self.min_axes_opt.is_some()
+        self.attrs.min_axes.is_some()
     }
     fn max_axes(&self) -> usize {
-        self.max_axes_opt.unwrap_or(self.naxes)
+        self.attrs.max_axes.unwrap_or(self.naxes)
     }
     fn set_max_axes(&mut self, n: usize) {
-        self.max_axes_opt = Some(n);
+        self.attrs.max_axes = Some(n);
     }
     fn test_max_axes(&self) -> bool {
-        self.max_axes_opt.is_some()
+        self.attrs.max_axes.is_some()
     }
     fn match_end(&self) -> bool {
-        self.match_end_opt.unwrap_or(false)
+        self.attrs.match_end.unwrap_or(false)
     }
     fn set_match_end(&mut self, v: bool) {
-        self.match_end_opt = Some(v);
+        self.attrs.match_end = Some(v);
     }
     fn test_match_end(&self) -> bool {
-        self.match_end_opt.is_some()
+        self.attrs.match_end.is_some()
     }
     fn preserve_axes(&self) -> bool {
-        self.preserve_axes_opt.unwrap_or(false)
+        self.attrs.preserve_axes.unwrap_or(false)
     }
     fn set_preserve_axes(&mut self, v: bool) {
-        self.preserve_axes_opt = Some(v);
+        self.attrs.preserve_axes = Some(v);
     }
     fn test_preserve_axes(&self) -> bool {
-        self.preserve_axes_opt.is_some()
+        self.attrs.preserve_axes.is_some()
     }
     fn permute(&self) -> bool {
-        // Plain Frame's Permute defaults to true (1) — see frame.c.
-        self.permute_opt.unwrap_or(true)
+        self.attrs.permute.unwrap_or(true)
     }
     fn set_permute(&mut self, v: bool) {
-        self.permute_opt = Some(v);
+        self.attrs.permute = Some(v);
     }
     fn test_permute(&self) -> bool {
-        self.permute_opt.is_some()
+        self.attrs.permute.is_some()
     }
 
+    /// Compose `perm` with the existing permutation, as C's `PermAxes`
+    /// does (frame.c): the axes themselves stay in internal order.
     fn perm_axes(&mut self, perm: &[usize]) -> AstResult<()> {
         super::validate_permutation(perm, self.naxes)?;
-        fn permute_slice<T: Clone>(v: &mut [T], perm: &[usize]) {
-            let old = v.to_vec();
-            for (i, &p) in perm.iter().enumerate() {
-                v[i] = old[p - 1].clone();
-            }
+        let old = self.perm.clone();
+        for (i, &p) in perm.iter().enumerate() {
+            self.perm[i] = old[p - 1];
         }
-        permute_slice(&mut self.labels, perm);
-        permute_slice(&mut self.units, perm);
-        permute_slice(&mut self.symbols, perm);
-        permute_slice(&mut self.format_strs, perm);
-        permute_slice(&mut self.bottoms, perm);
-        permute_slice(&mut self.tops, perm);
-        permute_slice(&mut self.axis_digits, perm);
-        permute_slice(&mut self.directions, perm);
-        permute_slice(&mut self.axis_kinds, perm);
         Ok(())
     }
 
@@ -903,11 +1065,11 @@ impl Frame for BasicFrame {
     }
 
     fn clear_ident(&mut self) {
-        self.ident = None;
+        self.attrs.ident = None;
     }
 
     fn test_ident(&self) -> bool {
-        self.ident.is_some()
+        self.attrs.ident.is_some()
     }
 
     fn match_template(
@@ -933,41 +1095,147 @@ impl Frame for BasicFrame {
         if self.test_domain() {
             snap.set_domain(self.domain());
         }
-        if let Some(ref title) = self.title {
+        if let Some(ref title) = self.attrs.title {
             snap.set_title(title.clone());
         }
         for (i, &t) in target_axes.iter().enumerate() {
             if t < 0 || (t as usize) >= self.naxes {
                 continue;
             }
-            let src = t as usize;
-            if let Some(ref l) = self.labels[src] {
-                let _ = snap.set_label(i + 1, l.clone());
-            }
-            if let Some(ref u) = self.units[src] {
-                let _ = snap.set_unit(i + 1, u.clone());
-            }
-            if let Some(ref s) = self.symbols[src] {
-                let _ = snap.set_symbol(i + 1, s.clone());
-            }
-            if let Some(ref f) = self.format_strs[src] {
-                let _ = snap.set_format_str(i + 1, f.clone());
-            }
+            let src = &self.axes[self.perm[t as usize]];
+            let dst = &mut snap.axes[i];
+            dst.label.clone_from(&src.label);
+            dst.unit.clone_from(&src.unit);
+            dst.symbol.clone_from(&src.symbol);
+            dst.format.clone_from(&src.format);
         }
         Ok(Box::new(snap))
     }
 
-    fn overlay_template(&mut self, template: &dyn Frame, _template_axes: &[i32]) -> AstResult<()> {
-        // Mirrors C `Frame::Overlay`: copy any template attribute that
-        // has been explicitly set onto the target. For BasicFrame the
-        // only Frame-level attribute we care about here is Domain;
-        // per-axis attributes flow through `pick_axes_snapshot`.
-        if template.test_domain() {
-            self.set_domain(template.domain().to_string());
+    /// Mirrors C `Frame::Overlay` (frame.c:8513): the Frame attributes set
+    /// on the template, then its ActiveUnit, then System and AlignSystem when
+    /// valid for a plain Frame, then each template axis's attributes on the
+    /// result axis it corresponds to (`Axis::AxisOverlay`, axis.c:1226).
+    ///
+    /// A template of another class contributes what the `Frame` trait
+    /// exposes of it: its Domain and ActiveUnit.
+    fn overlay_template(&mut self, template: &dyn Frame, template_axes: &[i32]) -> AstResult<()> {
+        let plain = template.as_any().downcast_ref::<BasicFrame>();
+        match plain {
+            Some(t) => self.attrs.overlay_from(&t.attrs),
+            None => {
+                if template.test_domain() {
+                    self.set_domain(template.domain().to_string());
+                }
+            }
         }
-        // Transfer the ActiveUnit flag (frame.c:8578).
         self.set_active_unit(template.get_active_unit());
+        if let Some(t) = plain {
+            if t.system_set {
+                self.system_set = true;
+            }
+            if t.align_system_set {
+                self.align_system_set = true;
+            }
+            for result_axis in 0..self.naxes {
+                let t_axis = if template_axes.is_empty() {
+                    result_axis as i32
+                } else {
+                    template_axes.get(result_axis).copied().unwrap_or(-1)
+                };
+                if t_axis < 0 || t_axis as usize >= t.naxes {
+                    continue;
+                }
+                let t_ax = &t.axes[t.perm[t_axis as usize]];
+                let r = self.perm[result_axis];
+                self.axes[r].overlay_from(t_ax);
+            }
+        }
         Ok(())
+    }
+}
+
+impl FrameDumpSource for BasicFrame {
+    fn attrs(&self) -> &FrameAttrs {
+        &self.attrs
+    }
+    fn dump_naxes(&self) -> usize {
+        self.naxes
+    }
+    fn dump_perm(&self) -> Vec<usize> {
+        self.perm.clone()
+    }
+    fn dump_is_frame(&self) -> bool {
+        true
+    }
+    fn dump_title(&self) -> String {
+        self.title()
+    }
+    fn dump_domain(&self) -> String {
+        self.domain().to_string()
+    }
+    fn dump_epoch(&self) -> f64 {
+        self.epoch_mjd()
+    }
+    fn dump_system(&self) -> (bool, String) {
+        (self.system_set, FrameSystem::Cartesian.as_str().to_string())
+    }
+    fn dump_align_system(&self) -> (bool, String) {
+        (
+            self.align_system_set,
+            FrameSystem::Cartesian.as_str().to_string(),
+        )
+    }
+    fn dump_label(&self, axis: usize) -> String {
+        self.axes[axis]
+            .label
+            .clone()
+            .unwrap_or_else(|| format!("Axis {}", axis + 1))
+    }
+    fn dump_symbol(&self, axis: usize) -> String {
+        self.axes[axis]
+            .symbol
+            .clone()
+            .unwrap_or_else(|| default_symbol(self.attrs.domain.as_deref(), axis))
+    }
+    fn dump_unit(&self, axis: usize) -> String {
+        self.axes[axis].unit.clone().unwrap_or_default()
+    }
+    fn dump_format(&self, axis: usize) -> String {
+        let a = &self.axes[axis];
+        a.format
+            .clone()
+            .unwrap_or_else(|| format!("%1.{}G", a.digits.unwrap_or_else(|| self.digits())))
+    }
+    fn dump_axis_digits(&self, axis: usize) -> Option<i32> {
+        self.axes[axis].digits
+    }
+    fn dump_direction(&self, axis: usize) -> bool {
+        self.axes[axis].direction.unwrap_or(true)
+    }
+    fn dump_bottom(&self, axis: usize) -> f64 {
+        self.axes[axis].bottom.unwrap_or(-f64::MAX)
+    }
+    fn dump_top(&self, axis: usize) -> f64 {
+        self.axes[axis].top.unwrap_or(f64::MAX)
+    }
+    fn dump_preserve_axes(&self) -> bool {
+        self.preserve_axes()
+    }
+    fn dump_permute(&self) -> bool {
+        self.permute()
+    }
+    fn dump_min_axes(&self) -> usize {
+        self.min_axes()
+    }
+    fn dump_max_axes(&self) -> usize {
+        self.max_axes()
+    }
+    fn dump_match_end(&self) -> bool {
+        self.match_end()
+    }
+    fn dump_active_unit(&self) -> Option<bool> {
+        self.attrs.active_unit
     }
 }
 
@@ -980,214 +1248,30 @@ impl Serializable for BasicFrame {
         let mut node = Node::new(self.class_name());
         node.class_comment = Some("Coordinate system description".to_string());
 
-        // --- Object-level attributes (before IsA Object) ---
-        // Ident: written active when set and non-empty (object.c:1681-1689,
-        // helpful = non-empty). A single-space Ident counts as set+non-empty.
-        if let Some(ref ident) = self.ident {
-            if !ident.is_empty() {
-                node.push_string(
-                    "Ident",
-                    ident,
-                    Some("Permanent Object identification string".to_string()),
-                );
-            }
-        }
-        // IsA Object marker, emitted only when an Object-level attribute was
-        // written (mirrors C astWriteIsA's items-written rule).
-        if self.ident.as_deref().is_some_and(|s| !s.is_empty()) {
+        // Object part: Ident, written when set and non-empty (object.c
+        // Dump), followed by the IsA Object marker when it was written.
+        if let Some(ident) = self.attrs.ident.as_deref().filter(|s| !s.is_empty()) {
+            node.push_string(
+                "Ident",
+                ident,
+                Some("Permanent Object identification string".to_string()),
+            );
             node.push_isa("Object", Some("AST Object".to_string()));
         }
 
-        // Title (active if set, commented default otherwise).
-        if let Some(ref title) = self.title {
-            if !title.is_empty() {
-                node.push_string(
-                    "Title",
-                    title,
-                    Some("Title of coordinate system".to_string()),
-                );
-            }
-        } else {
-            let default_title = format!("{}-d coordinate system", self.naxes);
-            node.push_unset(
-                "Title",
-                NodeValue::String(default_title),
-                Some("Title of coordinate system".to_string()),
-            );
-        }
+        write_frame_cards(&mut node, self);
 
-        // Naxes (always active).
-        node.push_int(
-            "Naxes",
-            self.naxes as i64,
-            Some("Number of coordinate axes".to_string()),
-        );
-
-        // Domain (active if set and non-empty).
-        if let Some(ref domain) = self.domain {
-            if !domain.is_empty() {
-                node.push_string(
-                    "Domain",
-                    domain,
-                    Some("Coordinate system domain".to_string()),
-                );
-            }
-        }
-
-        // Epoch (active if set).
-        if let Some(epoch) = self.epoch {
-            node.push_double(
-                "Epoch",
-                epoch,
-                Some("Julian epoch of observation".to_string()),
-            );
-        }
-
-        // Digits (frame-level, active if set).
-        if let Some(d) = self.digits {
-            node.push_int(
-                "Digits",
-                d as i64,
-                Some("Default formatting precision".to_string()),
-            );
-        }
-
-        // Per-axis Label (always commented/unset).
-        // Shows the explicit label if set, otherwise default "Axis N".
-        for i in 0..self.naxes {
-            let label_val = match &self.labels[i] {
-                Some(label) => label.clone(),
-                None => format!("Axis {}", i + 1),
-            };
-            let key = format!("Lbl{}", i + 1);
-            let comment = format!("Label for axis {}", i + 1);
-            node.push_unset(&key, NodeValue::String(label_val), Some(comment));
-        }
-
-        // Per-axis Unit (commented/unset — only emitted when set and non-empty).
-        for i in 0..self.naxes {
-            if let Some(ref unit) = self.units[i] {
-                if !unit.is_empty() {
-                    let key = format!("Uni{}", i + 1);
-                    // C appends the unit's full name only when it differs from
-                    // the unit string itself (frame.c via astUnitLabel +
-                    // strcmp); e.g. "pixel" has no distinct label so no suffix.
-                    let comment = match crate::units::unit_label(unit) {
-                        Some(lab) if lab != unit => format!("Units for axis {} ({lab})", i + 1),
-                        _ => format!("Units for axis {}", i + 1),
-                    };
-                    node.push_unset(&key, NodeValue::String(unit.clone()), Some(comment));
-                }
-            }
-        }
-
-        // Per-axis Bottom / Top aggregates (commented; helpful when the
-        // bound is finite). C `Frame::Dump` (frame.c:14524-14543) writes all
-        // Bot{n} then all Top{n}, each shown only when the bound is not the
-        // ±DBL_MAX default. The aggregates round-trip via the active
-        // Bottom/Top cards on the Axis sub-objects below.
-        for i in 0..self.naxes {
-            if let Some(bottom) = self.bottoms[i] {
-                node.push_unset(
-                    &format!("Bot{}", i + 1),
-                    NodeValue::Double(bottom),
-                    Some("Lowest legal axis value".to_string()),
-                );
-            }
-        }
-        for i in 0..self.naxes {
-            if let Some(top) = self.tops[i] {
-                node.push_unset(
-                    &format!("Top{}", i + 1),
-                    NodeValue::Double(top),
-                    Some("Highest legal axis value".to_string()),
-                );
-            }
-        }
-
-        // ActUnt: written only when explicitly set, with its value
-        // (frame.c:14614).
-        if let Some(v) = self.act_unt {
-            node.push_int(
-                "ActUnt",
-                if v { 1 } else { 0 },
-                Some(if v {
-                    "Unit strings affects alignment".to_string()
-                } else {
-                    "Unit strings do not affect alignment".to_string()
-                }),
-            );
-        }
-
-        // Per-axis Axis child objects.
-        for i in 0..self.naxes {
+        // Axis objects in internal order, each with only its set attributes
+        // (frame.c:14660 dumps them with Full = -1).
+        for (i, axis) in self.axes.iter().enumerate() {
             let mut axis_node = Node::new("Axis");
             axis_node.class_comment = Some("Coordinate axis".to_string());
-
-            // Label.
-            if let Some(ref label) = self.labels[i] {
-                axis_node.push_string("Label", label, Some("Axis Label".to_string()));
-            }
-
-            // Symbol.
-            if let Some(ref symbol) = self.symbols[i] {
-                axis_node.push_string("Symbol", symbol, Some("Axis symbol".to_string()));
-            }
-
-            // Unit. C `Axis::Dump` appends the unit's full name in
-            // parentheses only when it differs from the unit string
-            // (axis.c:2928, `lab && strcmp(lab, sval)`).
-            if let Some(ref unit) = self.units[i] {
-                let comment = match crate::units::unit_label(unit) {
-                    Some(lab) if lab != unit => format!("Axis units ({lab})"),
-                    _ => "Axis units".to_string(),
-                };
-                axis_node.push_string("Unit", unit, Some(comment));
-            }
-
-            // Format.
-            if let Some(ref fmt) = self.format_strs[i] {
-                axis_node.push_string("Format", fmt, Some("Format specifier".to_string()));
-            }
-
-            // Per-axis Digits.
-            if let Some(d) = self.axis_digits[i] {
-                axis_node.push_int(
-                    "Digits",
-                    d as i64,
-                    Some("Default formatting precision".to_string()),
-                );
-            }
-
-            // Direction (Plot hint).
-            if let Some(dir) = self.directions[i] {
-                axis_node.push_int(
-                    "Dirn",
-                    if dir { 1 } else { 0 },
-                    Some(if dir {
-                        "Plot in conventional direction (hint)".to_string()
-                    } else {
-                        "Plot in reverse direction (hint)".to_string()
-                    }),
-                );
-            }
-
-            // Top / Bottom axis range (active when set; Top before Bottom,
-            // axis.c:2960-2966).
-            if let Some(top) = self.tops[i] {
-                axis_node.push_double("Top", top, Some("Maximum legal axis value".to_string()));
-            }
-            if let Some(bottom) = self.bottoms[i] {
-                axis_node.push_double(
-                    "Bottom",
-                    bottom,
-                    Some("Minimum legal axis value".to_string()),
-                );
-            }
-
-            let key = format!("Ax{}", i + 1);
-            let comment = format!("Axis number {}", i + 1);
-            node.push_object(&key, axis_node, Some(comment));
+            axis.write_set_attributes(&mut axis_node);
+            node.push_object(
+                &format!("Ax{}", i + 1),
+                axis_node,
+                Some(format!("Axis number {}", i + 1)),
+            );
         }
 
         Ok(node)
@@ -1202,83 +1286,33 @@ impl Serializable for BasicFrame {
             ));
         }
 
-        let mut builder = BasicFrameBuilder::new(naxes);
-
-        // Title.
-        let title = node.get_string("Title", "");
-        if !title.is_empty() {
-            builder = builder.title(title);
+        let mut frame = BasicFrameBuilder::new(naxes).build()?;
+        frame.attrs = read_frame_attrs(node);
+        // C's loader re-applies the setters, which clamp Digits to at
+        // least 1 (frame.c:15330).
+        if let Some(d) = frame.attrs.digits {
+            frame.attrs.digits = Some(d.max(1));
         }
+        frame.system_set = node.get("System").is_some();
+        frame.align_system_set = node.get("AlSys").is_some();
 
-        // Domain.
-        let domain = node.get_string("Domain", "");
-        if !domain.is_empty() {
-            builder = builder.domain(domain);
-        }
-
-        // Epoch.
-        if node.get("Epoch").is_some() {
-            let epoch = node.get_double("Epoch", 0.0);
-            builder = builder.epoch(epoch);
-        }
-
-        // Digits (frame-level).
-        if node.get("Digits").is_some() {
-            builder.digits = Some(node.get_int("Digits", 7) as i32);
-        }
-
-        // ActUnt: stored only when the token is present, with its value
-        // (frame.c:14614). Absent => unset (default false).
-        if node.get("ActUnt").is_some() {
-            builder.act_unt = Some(node.get_int("ActUnt", 0) != 0);
-        }
-
-        // Ident (Object-level identification string).
-        let ident = node.get_string("Ident", "");
-        if !ident.is_empty() {
-            builder.ident = Some(ident);
-        }
-
-        // Per-axis attributes from Axis child objects.
-        for i in 0..naxes {
-            let key = format!("Ax{}", i + 1);
-            if let Some(axis_node) = node.get_object(&key) {
-                let label = axis_node.get_string("Label", "");
-                if !label.is_empty() {
-                    builder = builder.label(i + 1, label);
-                }
-
-                let symbol = axis_node.get_string("Symbol", "");
-                if !symbol.is_empty() {
-                    builder = builder.symbol(i + 1, symbol);
-                }
-
-                let unit = axis_node.get_string("Unit", "");
-                if !unit.is_empty() {
-                    builder = builder.unit(i + 1, unit);
-                }
-
-                let fmt = axis_node.get_string("Format", "");
-                if !fmt.is_empty() {
-                    builder = builder.format_str(i + 1, fmt);
-                }
-
-                if axis_node.get("Digits").is_some() {
-                    builder.axis_digits[i] = Some(axis_node.get_int("Digits", 7) as i32);
-                }
-                if axis_node.get("Dirn").is_some() {
-                    builder.directions[i] = Some(axis_node.get_int("Dirn", 1) != 0);
-                }
-                if axis_node.get("Top").is_some() {
-                    builder = builder.top(i + 1, axis_node.get_double("Top", 0.0));
-                }
-                if axis_node.get("Bottom").is_some() {
-                    builder = builder.bottom(i + 1, axis_node.get_double("Bottom", 0.0));
-                }
+        for (i, axis) in frame.axes.iter_mut().enumerate() {
+            if let Some(axis_node) = node.get_object(&format!("Ax{}", i + 1)) {
+                *axis = Axis::read(axis_node);
             }
         }
 
-        builder.build()
+        // The permutation, `Prm{n}` being the 1-based internal axis of
+        // external axis n.
+        for ext in 0..naxes {
+            let p = node.get_int(&format!("Prm{}", ext + 1), ext as i64 + 1);
+            if p >= 1 && (p as usize) <= naxes {
+                frame.perm[ext] = p as usize - 1;
+            }
+        }
+        super::validate_permutation(&frame.perm.iter().map(|p| p + 1).collect::<Vec<_>>(), naxes)?;
+
+        Ok(frame)
     }
 }
 #[cfg(test)]

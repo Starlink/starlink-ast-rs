@@ -368,7 +368,8 @@ fn round_trip_basic_frame_default_attributes() {
     // Default attributes should still hold.
     match restored {
         AnyObject::BasicFrame(ref bf) => {
-            assert_eq!(bf.title(), "");
+            assert!(!bf.test_title());
+            assert_eq!(bf.title(), "3-d coordinate system");
             assert_eq!(bf.domain(), "");
         }
         _ => panic!("expected BasicFrame variant"),
@@ -396,7 +397,8 @@ fn round_trip_basic_frame_with_epoch() {
     let restored = from_native_string(&text).unwrap();
     match restored {
         AnyObject::BasicFrame(ref bf) => {
-            assert_eq!(bf.epoch_year(), Some(2000.0));
+            assert!(bf.test_epoch());
+            assert_eq!(bf.epoch_year(), 2000.0);
         }
         _ => panic!("expected BasicFrame variant"),
     }

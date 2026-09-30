@@ -1,5 +1,6 @@
 //! The Frame trait and associated types.
 
+pub(crate) mod axis;
 pub(crate) mod axis_format;
 mod basic;
 mod cmpframe;
@@ -7,6 +8,7 @@ pub(crate) mod date_time;
 mod dsbspecframe;
 pub(crate) mod find_frame;
 mod fluxframe;
+pub(crate) mod frame_attrs;
 mod frameset;
 pub(crate) mod sky_convert;
 pub(crate) mod skyaxis;
@@ -14,7 +16,7 @@ mod skyframe;
 mod specfluxframe;
 pub(crate) mod specframe;
 mod timeframe;
-pub use basic::{BasicFrame, BasicFrameBuilder};
+pub use basic::{BasicFrame, BasicFrameBuilder, FrameSystem};
 pub use cmpframe::CmpFrame;
 pub use dsbspecframe::{DSBSpecFrame, SideBand};
 pub use fluxframe::{FluxFrame, FluxSystem};
@@ -1563,7 +1565,7 @@ pub(crate) fn frame_epoch_if_set(f: &dyn Frame) -> Option<f64> {
         return df.spec().test_epoch().then(|| df.epoch_mjd());
     }
     if let Some(bf) = any.downcast_ref::<BasicFrame>() {
-        return bf.epoch();
+        return bf.test_epoch().then(|| bf.epoch_mjd());
     }
     if let Some(cf) = any.downcast_ref::<CmpFrame>() {
         return cf.test_epoch().then(|| cf.epoch_mjd());
@@ -1596,9 +1598,7 @@ pub(crate) fn frame_epoch_effective_mjd(f: &dyn Frame) -> f64 {
         return cf.epoch_mjd();
     }
     if let Some(bf) = any.downcast_ref::<BasicFrame>() {
-        if let Some(mjd) = bf.epoch() {
-            return mjd;
-        }
+        return bf.epoch_mjd();
     }
     crate::pal::epj2d(2000.0)
 }

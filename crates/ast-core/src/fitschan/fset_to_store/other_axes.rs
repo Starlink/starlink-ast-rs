@@ -316,30 +316,10 @@ fn populate_axis_keywords(
         }
     };
 
-    // Mirrors C `astGetSymbol`. When the axis Symbol is unset, C falls
-    // back to `GetDefaultSymbol` (frame.c:5401-5459) which produces
-    // `<Domain><axis_index+1>` when the Frame's Domain is set, or just
-    // `<axis_index+1>` (with literal "x" prefix from the Axis class
-    // default) otherwise. White space in the resulting string is
-    // replaced by underscores. We mirror that here so alt-plane CTYPE
-    // values come out as e.g. "NORMEDPIXELS1" instead of "AXIS1".
-    let symbol_set = basic.test_symbol(axis).ok().unwrap_or(false);
-    let symbol_owned: String = if symbol_set {
-        basic.symbol(axis).ok().unwrap_or("").to_string()
-    } else if frame.test_domain() {
-        let mut s = format!("{}{}", frame.domain(), axis);
-        // C `AddUnderscores` (frame.c) replaces white space with '_'.
-        s = s
-            .chars()
-            .map(|c| if c.is_whitespace() { '_' } else { c })
-            .collect();
-        s
-    } else {
-        // C Axis-class default symbol is "x"; combined with the axis
-        // index this gives e.g. "x1", "x2".
-        format!("x{axis}")
-    };
-    let label = basic.label(axis).ok().unwrap_or("").to_string();
+    // Mirrors C `astGetSymbol`, whose default when the Symbol is unset is
+    // the Domain (or "x") and the axis number (frame.c `GetDefaultSymbol`).
+    let symbol_owned: String = basic.symbol(axis).unwrap_or_default();
+    let label = basic.label(axis).unwrap_or_default();
     let label_set = basic.test_label(axis).ok().unwrap_or(false);
 
     let ctype = if !symbol_owned.is_empty() {
