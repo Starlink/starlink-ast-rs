@@ -1118,6 +1118,21 @@ macro_rules! frameset_attr {
             self.with_integrity(|f| f.$name())
         }
     };
+    // A per-axis attribute: the axis index comes first.
+    (@axis $get:ident: $ty:ty, $set:ident($arg:ty), $test:ident, $clear:ident) => {
+        fn $get(&self, axis: usize) -> AstResult<$ty> {
+            self.current().$get(axis)
+        }
+        fn $set(&mut self, axis: usize, value: $arg) -> AstResult<()> {
+            self.with_integrity(|f| f.$set(axis, value))
+        }
+        fn $test(&self, axis: usize) -> AstResult<bool> {
+            self.current().$test(axis)
+        }
+        fn $clear(&mut self, axis: usize) -> AstResult<()> {
+            self.with_integrity(|f| f.$clear(axis))
+        }
+    };
     ($get:ident: $ty:ty, $set:ident, $test:ident, $clear:ident) => {
         frameset_attr!(@get $get -> $ty);
         frameset_attr!(@set $set(value: $ty));
@@ -1145,6 +1160,20 @@ impl Frame for FrameSet {
     frameset_attr!(@clear clear_domain);
     frameset_attr!(epoch_mjd: f64, set_epoch_mjd, test_epoch, clear_epoch);
     frameset_attr!(digits: i32, set_digits, test_digits, clear_digits);
+    frameset_attr!(@axis label: String, set_label(&str), test_label, clear_label);
+    frameset_attr!(@axis symbol: String, set_symbol(&str), test_symbol, clear_symbol);
+    frameset_attr!(@axis unit: String, set_unit(&str), test_unit, clear_unit);
+    frameset_attr!(@axis format_str: String, set_format_str(&str), test_format_str, clear_format_str);
+    frameset_attr!(@axis axis_digits: i32, set_axis_digits(i32), test_axis_digits, clear_axis_digits);
+    frameset_attr!(@axis direction: bool, set_direction(bool), test_direction, clear_direction);
+    frameset_attr!(@axis top: f64, set_top(f64), test_top, clear_top);
+    frameset_attr!(@axis bottom: f64, set_bottom(f64), test_bottom, clear_bottom);
+    fn axis_object_top(&self, axis: usize) -> AstResult<f64> {
+        self.current().axis_object_top(axis)
+    }
+    fn axis_object_bottom(&self, axis: usize) -> AstResult<f64> {
+        self.current().axis_object_bottom(axis)
+    }
     frameset_attr!(obs_lat: f64, set_obs_lat, test_obs_lat, clear_obs_lat);
     frameset_attr!(obs_lon: f64, set_obs_lon, test_obs_lon, clear_obs_lon);
     frameset_attr!(obs_alt: f64, set_obs_alt, test_obs_alt, clear_obs_alt);

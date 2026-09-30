@@ -166,6 +166,24 @@ impl CmpFrame {
     /// # Panics
     ///
     /// Panics if `axis` is out of range. Call [`validate_axis`] first.
+    fn axis_component(&self, axis: usize) -> AstResult<(&dyn Frame, usize)> {
+        self.validate_axis(axis)?;
+        Ok(self.route_axis(axis))
+    }
+
+    /// The component holding a 1-based external axis, to change, and the
+    /// axis within it.
+    fn axis_component_mut(&mut self, axis: usize) -> AstResult<(&mut dyn Frame, usize)> {
+        self.validate_axis(axis)?;
+        let orig = self.perm[axis - 1] + 1;
+        let n1 = self.frame1.naxes();
+        Ok(if orig <= n1 {
+            (self.frame1.as_mut(), orig)
+        } else {
+            (self.frame2.as_mut(), orig - n1)
+        })
+    }
+
     fn route_axis(&self, axis: usize) -> (&dyn Frame, usize) {
         let orig = self.perm[axis - 1] + 1; // convert to 1-based original axis
         let n1 = self.frame1.naxes();
@@ -292,65 +310,7 @@ impl Frame for CmpFrame {
         }
     }
 
-    fn effective_label(&self, axis: usize) -> String {
-        // Route to the owning component and its external axis, then let
-        // the component apply its own permutation exactly once. C Cast
-        // copies each axis in external order (cmpframe.c:1335-1338), so we
-        // ask the component for its external axis rather than descending
-        // through primary_frame (which would strip the component's own
-        // permutation and re-permute via the leaf getter).
-        //
-        // C `MAKE_GET(Label)` (cmpframe.c:10263) over-rides the default
-        // label only when the immediate component is a *plain* Frame
-        // (`astGetClass == "Frame"`) with an unset label: it then uses
-        // `"Axis N"` numbered by this CmpFrame level's axis argument. For a
-        // nested CmpFrame (or any non-plain frame) it delegates, so the
-        // enclosing-level numbering is applied at whichever level directly
-        // owns the plain Frame.
-        let (child, local_axis) = self.route_axis(axis);
-        if child.as_any().is::<super::BasicFrame>() && !child.test_axis_label(local_axis) {
-            format!("Axis {axis}")
-        } else {
-            child.effective_label(local_axis)
-        }
-    }
-
-    fn effective_unit(&self, axis: usize) -> String {
-        let (child, local_axis) = self.route_axis(axis);
-        child.effective_unit(local_axis)
-    }
-
-    fn effective_symbol(&self, axis: usize) -> String {
-        // Mirrors C `MAKE_GET(Symbol)` (cmpframe.c:10278): a plain-Frame
-        // component with an unset Symbol takes the `"Axis N"` default
-        // numbered by this level's external axis (BasicFrame falls back
-        // from Symbol to Label to that default), matching Label above.
-        let (child, local_axis) = self.route_axis(axis);
-        if child.as_any().is::<super::BasicFrame>()
-            && !child.test_axis_label(local_axis)
-            && child.effective_symbol(local_axis) == format!("Axis {local_axis}")
-        {
-            format!("Axis {axis}")
-        } else {
-            child.effective_symbol(local_axis)
-        }
-    }
-
-    fn effective_format(&self, axis: usize) -> String {
-        let (child, local_axis) = self.route_axis(axis);
-        child.effective_format(local_axis)
-    }
-
-    fn direction(&self, axis: usize) -> bool {
-        // C routes Direction per external axis to the owning component
-        // (cmpframe.c MAKE_GET(Direction)); the component applies its own
-        // permutation. Out-of-range axes fall back to the trait default.
-        if axis == 0 || axis > self.naxes() {
-            return true;
-        }
-        let (child, local_axis) = self.route_axis(axis);
-        child.direction(local_axis)
-    }
+    cmp_frame_axis_attrs!();
 
     fn system_string(&self) -> Option<&str> {
         Some("Compound")
@@ -939,13 +899,13 @@ impl Serializable for CmpFrame {
         }
 
         // Lbl{n}: internal order, value via `astGetLabel(this,
-        // invperm[axis])` (frame.c:14358). `effective_label` on the
+        // invperm[axis])` (frame.c:14358). `label` on the
         // CmpFrame applies the enclosing-level `"Axis N"` default numbering
         // for plain-Frame components (mirroring C `MAKE_GET(Label)`), so no
         // post-hoc renumbering is needed here.
         for i in 1..=naxes {
             let external = invperm[i - 1];
-            let lbl = self.effective_label(external);
+            let lbl = self.label(external)?;
             node.push_unset(
                 &format!("Lbl{i}"),
                 NodeValue::String(lbl),
@@ -958,7 +918,7 @@ impl Serializable for CmpFrame {
         // when the unit has a known label (frame.c:14438-14447).
         for i in 1..=naxes {
             let (child, local_ax) = internal_child(i);
-            let uni = child.effective_unit(local_ax);
+            let uni = child.unit(local_ax)?;
             if !uni.is_empty() {
                 let comment = match crate::units::unit_label(&uni) {
                     Some(lab) if lab != uni => format!("Units for axis {i} ({lab})"),
@@ -972,7 +932,7 @@ impl Serializable for CmpFrame {
         // 0 (reverse). `direction()` is perm-aware.
         for i in 1..=naxes {
             let (child, local_ax) = internal_child(i);
-            if !child.direction(local_ax) {
+            if !child.direction(local_ax)? {
                 node.push_unset(
                     &format!("Dir{i}"),
                     NodeValue::Int(0),
@@ -2674,20 +2634,20 @@ mod tests {
         let mut sky = SkyFrame::new(SkySystem::Galactic);
         // Overrides are stored against physical axes (lon=0, lat=1) via
         // the unpermuted external indices.
-        sky.set_axis_label(1, "LON_LBL").unwrap();
-        sky.set_axis_label(2, "LAT_LBL").unwrap();
-        sky.set_axis_symbol(1, "LON_SYM").unwrap();
-        sky.set_axis_symbol(2, "LAT_SYM").unwrap();
+        sky.set_label(1, "LON_LBL").unwrap();
+        sky.set_label(2, "LAT_LBL").unwrap();
+        sky.set_symbol(1, "LON_SYM").unwrap();
+        sky.set_symbol(2, "LAT_SYM").unwrap();
         // Swap the SkyFrame's external axis order: external axis 1 now
         // exposes latitude, external axis 2 exposes longitude.
         sky.perm_axes(&[2, 1]).unwrap();
 
         // After the swap the component reports lat on external axis 1 and
         // lon on external axis 2.
-        assert_eq!(sky.effective_label(1), "LAT_LBL");
-        assert_eq!(sky.effective_label(2), "LON_LBL");
-        assert_eq!(sky.effective_symbol(1), "LAT_SYM");
-        assert_eq!(sky.effective_symbol(2), "LON_SYM");
+        assert_eq!(sky.label(1).unwrap(), "LAT_LBL");
+        assert_eq!(sky.label(2).unwrap(), "LON_LBL");
+        assert_eq!(sky.symbol(1).unwrap(), "LAT_SYM");
+        assert_eq!(sky.symbol(2).unwrap(), "LON_SYM");
 
         let cmp = CmpFrame::new(
             Box::new(sky),
@@ -2715,10 +2675,10 @@ mod tests {
     #[test]
     fn cast_cmpframe_unpermuted_component_axis_order() {
         let mut sky = SkyFrame::new(SkySystem::Galactic);
-        sky.set_axis_label(1, "LON_LBL").unwrap();
-        sky.set_axis_label(2, "LAT_LBL").unwrap();
-        sky.set_axis_symbol(1, "LON_SYM").unwrap();
-        sky.set_axis_symbol(2, "LAT_SYM").unwrap();
+        sky.set_label(1, "LON_LBL").unwrap();
+        sky.set_label(2, "LAT_LBL").unwrap();
+        sky.set_symbol(1, "LON_SYM").unwrap();
+        sky.set_symbol(2, "LAT_SYM").unwrap();
 
         let cmp = CmpFrame::new(
             Box::new(sky),

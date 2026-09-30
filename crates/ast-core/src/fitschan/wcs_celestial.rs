@@ -17,7 +17,7 @@
 use std::f64::consts::PI;
 
 use super::fits_store::FitsStore;
-use crate::frames::{SkyFrame, SkySystem};
+use crate::frames::{Frame, SkyFrame, SkySystem};
 use crate::mappings::{CmpMap, Composition, DynMapping, Mapping, PermMap, UnitMap, WcsMap, WinMap};
 use crate::wcslib::WcsProjection;
 
@@ -312,8 +312,8 @@ pub(crate) fn build_celestial_with_def_b1950(
         };
         // Axis numbering is 1-based (SkyFrame lon=1, lat=2 after any perm).
         let (lon_api, lat_api) = if lat_axis < lon_axis { (2, 1) } else { (1, 2) };
-        let _ = sky_frame.set_axis_symbol(lon_api, &lon_sym);
-        let _ = sky_frame.set_axis_symbol(lat_api, &lat_sym);
+        let _ = sky_frame.set_symbol(lon_api, &lon_sym);
+        let _ = sky_frame.set_symbol(lat_api, &lat_sym);
     }
 
     // Step 5b: CNAME → Label. Mirrors C `WcsSkyFrame` (fitschan.c:39378-
@@ -325,10 +325,10 @@ pub(crate) fn build_celestial_with_def_b1950(
     // numbering used for the Symbols above applies here.
     let (lon_api, lat_api) = if lat_axis < lon_axis { (2, 1) } else { (1, 2) };
     if let Some(cname) = &store.cname[lon_axis] {
-        let _ = sky_frame.set_axis_label(lon_api, cname.clone());
+        let _ = sky_frame.set_label(lon_api, cname);
     }
     if let Some(cname) = &store.cname[lat_axis] {
-        let _ = sky_frame.set_axis_label(lat_api, cname.clone());
+        let _ = sky_frame.set_label(lat_api, cname);
     }
 
     // For a genuinely unknown celestial system (not offset sky), emit the

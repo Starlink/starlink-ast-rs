@@ -75,10 +75,10 @@ impl FluxSystem {
     /// Symbol for this system.
     pub fn symbol(&self) -> &'static str {
         match self {
-            Self::FluxDen => "FlxDn",
-            Self::FluxDenW => "FlxDnW",
-            Self::SBright => "SfcBr",
-            Self::SBrightW => "SfcBrW",
+            Self::FluxDen => "S_nu",
+            Self::FluxDenW => "S_lambda",
+            Self::SBright => "mu_nu",
+            Self::SBrightW => "mu_lambda",
         }
     }
 
@@ -162,9 +162,9 @@ pub struct FluxFrame {
     system: FluxSystem,
     /// Whether `system` was set explicitly (mirrors C `astTestSystem`).
     system_set: bool,
-    /// Per-instance axis Unit string (e.g. "Jy"). `None` means the system
-    /// default units are used (mirrors C `astTestUnit`/`astGetUnit`).
-    unit: Option<String>,
+    /// The Axis-class attributes of the single axis. A Unit of `None`
+    /// means the system default units are used.
+    axis: super::axis::Axis,
     spec_val: Option<f64>, // spectral position at which flux is measured
     /// Optional encapsulated SpecFrame defining the coordinate system of
     /// `spec_val` (mirrors C `this->specframe`, fluxframe.c). When `None`,
@@ -192,7 +192,7 @@ impl FluxFrame {
         if specval != BAD_VALUE {
             let sf = self.get_spec_frame();
             let sv = Frame::format(&sf, 1, specval).unwrap_or_default();
-            let su = Frame::effective_unit(&sf, 1);
+            let su = Frame::unit(&sf, 1).unwrap_or_default();
             title.push_str(&format!(" at = {sv} {su}"));
         }
         title
@@ -220,7 +220,7 @@ impl FluxFrame {
             // as unset; otherwise mark it as explicitly set so it can
             // act as a template-side discriminator.
             system_set: !matches!(system, FluxSystem::FluxDen),
-            unit: None,
+            axis: super::axis::Axis::default(),
             spec_val: None,
             specframe: None,
         }
@@ -274,7 +274,7 @@ impl FluxFrame {
     /// is returned.
     pub fn system(&self) -> FluxSystem {
         if !self.system_set {
-            if let Some(ref u) = self.unit {
+            if let Some(ref u) = self.axis.unit {
                 for sys in [
                     FluxSystem::FluxDen,
                     FluxSystem::FluxDenW,
@@ -302,32 +302,29 @@ impl FluxFrame {
         self.system_set = true;
     }
 
-    /// Return the explicitly-set axis Unit string, or `None` for the system
-    /// default. Mirrors `astTestUnit`/`astGetUnit`.
-    pub fn unit(&self) -> Option<&str> {
-        self.unit.as_deref()
+    /// The Axis-class attributes of the single axis, after checking the
+    /// 1-based `axis`.
+    fn ax(&self, axis: usize) -> AstResult<&super::axis::Axis> {
+        super::frame_attrs::validate_axis(axis, 1)?;
+        Ok(&self.axis)
     }
 
-    /// Set the axis Unit string (e.g. `"Jy"`).
-    pub fn set_unit(&mut self, unit: &str) {
-        self.unit = Some(unit.to_string());
+    /// The Axis-class attributes of the single axis, to change.
+    fn ax_mut(&mut self, axis: usize) -> AstResult<&mut super::axis::Axis> {
+        super::frame_attrs::validate_axis(axis, 1)?;
+        Ok(&mut self.axis)
     }
 
-    /// Whether the axis Unit has been explicitly set.
-    pub fn test_unit(&self) -> bool {
-        self.unit.is_some()
-    }
-
-    /// Clear the axis Unit, reverting to the system default.
-    pub fn clear_unit(&mut self) {
-        self.unit = None;
+    /// Clear the Unit of the single axis.
+    pub(crate) fn clear_axis_unit(&mut self) {
+        self.axis.unit = None;
     }
 
     /// The effective axis Unit string: the explicitly-set value, or the
     /// (unit-derived or stored) system's default units. Mirrors C `GetUnit`
     /// (fluxframe.c:1650).
     pub fn unit_or_default(&self) -> &str {
-        match self.unit.as_deref() {
+        match self.axis.unit.as_deref() {
             Some(u) => u,
             None => self.system().default_units(),
         }
@@ -378,7 +375,7 @@ impl FluxFrame {
             return sf.clone();
         }
         let mut sf = super::specframe::SpecFrame::new(self.system.density_spec_system());
-        sf.set_unit(self.system.density_unit());
+        sf.store_unit(self.system.density_unit());
         sf
     }
 
@@ -427,12 +424,12 @@ impl FluxFrame {
             let sfin1 = self.get_spec_frame();
             let mut sfin2 = sfin1.clone();
             sfin2.set_system(sys_in.density_spec_system());
-            sfin2.set_unit(sys_in.density_unit());
+            sfin2.set_unit(1, sys_in.density_unit())?;
 
             let sfout1 = result.get_spec_frame();
             let mut sfout2 = sfout1.clone();
             sfout2.set_system(sys_out.density_spec_system());
-            sfout2.set_unit(sys_out.density_unit());
+            sfout2.set_unit(1, sys_out.density_unit())?;
 
             // smap: standardised result system → standardised target system
             // (fluxframe.c:2163, astConvert(sfout2, sfin2)).
@@ -594,17 +591,32 @@ impl Frame for FluxFrame {
         false
     }
 
-    fn effective_label(&self, _axis: usize) -> String {
-        self.system.label().to_string()
+    /// Mirrors C `FluxFrame::GetLabel` (fluxframe.c:1107): a Label that
+    /// has been set, else the System's name.
+    fn label(&self, axis: usize) -> AstResult<String> {
+        Ok(match &self.ax(axis)?.label {
+            Some(label) => label.clone(),
+            None => self.system.label().to_string(),
+        })
     }
 
-    fn effective_unit(&self, _axis: usize) -> String {
-        self.unit_or_default().to_string()
+    /// Mirrors C `FluxFrame::GetSymbol`: a Symbol that has been set, else
+    /// the System's.
+    fn symbol(&self, axis: usize) -> AstResult<String> {
+        Ok(match &self.ax(axis)?.symbol {
+            Some(symbol) => symbol.clone(),
+            None => self.system.symbol().to_string(),
+        })
     }
 
-    fn effective_symbol(&self, _axis: usize) -> String {
-        self.system.symbol().to_string()
+    /// Mirrors C `FluxFrame::GetUnit` (fluxframe.c:1650).
+    fn unit(&self, axis: usize) -> AstResult<String> {
+        self.ax(axis)?;
+        Ok(self.unit_or_default().to_string())
     }
+
+    axis_attrs_base_get!(format, digits, direction, top, bottom);
+    axis_attrs_store!(label, symbol, unit, format, digits, direction, top, bottom);
 
     fn distance(&self, a: &[f64], b: &[f64]) -> AstResult<f64> {
         let va = a[0];
@@ -788,7 +800,7 @@ impl Frame for FluxFrame {
 /// effect.
 fn fluxframe_overlay(
     template: &dyn Frame,
-    _template_axes: &[i32],
+    template_axes: &[i32],
     result: &mut dyn Frame,
 ) -> AstResult<()> {
     let template_flux = match template.as_any().downcast_ref::<FluxFrame>() {
@@ -809,7 +821,7 @@ fn fluxframe_overlay(
         if new_system != old_system && template_flux.test_system() {
             result_flux.clear_title();
             if new_system.default_units() != old_system.default_units() {
-                result_flux.clear_unit();
+                result_flux.clear_unit(1)?;
             }
         }
 
@@ -826,13 +838,11 @@ fn fluxframe_overlay(
         if template_flux.test_system() {
             result_flux.set_system(template_flux.system);
         }
-        // Axis Unit is overlaid by the parent Frame/Axis Overlay when set on
-        // the template (this is what lets astConvert apply a units scaling
-        // between e.g. a "Jy" FluxFrame and a default-unit one).
-        if template_flux.test_unit() {
-            if let Some(u) = template_flux.unit() {
-                result_flux.set_unit(u);
-            }
+        // Frame::Overlay copies the Axis with astAxisOverlay (frame.c),
+        // which carries the Unit, so astConvert then scales between, say,
+        // units of "s" and "d".
+        if template_axes.first().copied().unwrap_or(0) >= 0 {
+            result_flux.axis.overlay_from(&template_flux.axis);
         }
         // SpecVal: copied when the template has it set
         // (fluxframe.c:2636 OVERLAY(SpecVal)).
@@ -939,15 +949,12 @@ impl Serializable for FluxFrame {
             Some("Coordinate system type".to_string()),
         );
 
-        // Per-axis Unit string, when explicitly set, lives in the Ax1 Axis
-        // child node (mirrors the C Frame/Axis dump's active `Unit` line).
-        if self.test_unit() {
-            let u = self.unit_or_default();
-            let mut axis_node = Node::new("Axis");
-            axis_node.class_comment = Some("Coordinate axis".to_string());
-            axis_node.push_string("Unit", u, Some("Axis units".to_string()));
-            node.push_object("Ax1", axis_node, Some("Axis number 1".to_string()));
-        }
+        // Ax1: the Axis, with the attributes that are set (axis.c Dump).
+        // C's Frame Dump writes every axis (frame.c:14777).
+        let mut axis_node = Node::new("Axis");
+        axis_node.class_comment = Some("Coordinate axis".to_string());
+        self.axis.write_set_attributes(&mut axis_node);
+        node.push_object("Ax1", axis_node, Some("Axis number 1".to_string()));
 
         // ActUnt (if explicitly set to false).
         if let Some(false) = self.attrs.active_unit {
@@ -1026,12 +1033,9 @@ impl Serializable for FluxFrame {
             ff.attrs.ident = Some(ident);
         }
 
-        // Per-axis Unit string from the Ax1 Axis child node.
+        // The Axis attributes from the Ax1 Axis child node.
         if let Some(axis_node) = node.get_object("Ax1") {
-            let unit = axis_node.get_string("Unit", "");
-            if !unit.is_empty() {
-                ff.set_unit(&unit);
-            }
+            ff.axis = super::axis::Axis::read(axis_node);
         }
 
         Ok(ff)

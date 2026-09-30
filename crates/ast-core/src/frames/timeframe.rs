@@ -188,12 +188,8 @@ pub struct TimeFrame {
     /// Whether `timescale` was set explicitly. Mirrors `astTestTimeScale`.
     timescale_set: bool,
     time_origin: Option<f64>, // in default units for current system
-    /// Per-instance axis Unit string (e.g. "s"). `None` means the system
-    /// default units are used (mirrors C `astTestUnit`/`astGetUnit`).
-    unit: Option<String>,
-    /// Per-instance axis Format string (e.g. "iso.0"). `None` means the
-    /// default numeric format (mirrors C `astTestFormat`/`astGetFormat`).
-    format_str: Option<String>,
+    /// The Axis-class attributes of the single axis.
+    axis: super::axis::Axis,
     lt_offset: Option<f64>, // Local Time offset from UTC (hours)
     align_timescale: Option<TimeScale>,
     // Match-control attributes (used by `astFindFrame` / `astMatch`).
@@ -246,8 +242,7 @@ impl TimeFrame {
             timescale,
             timescale_set: false,
             time_origin: None,
-            unit: None,
-            format_str: None,
+            axis: super::axis::Axis::default(),
             lt_offset: None,
             align_timescale: None,
         }
@@ -276,7 +271,7 @@ impl TimeFrame {
             self.origin_system(oldsys);
             self.clear_title();
             if oldsys == TimeSystem::Bepoch {
-                self.clear_unit();
+                self.axis.unit = None;
                 self.clear_timescale();
             }
         }
@@ -346,7 +341,7 @@ impl TimeFrame {
         // Besselian epoch is defined in terms of TT and is always expressed in
         // years; force those before changing the system (C SetSystem).
         if sys == TimeSystem::Bepoch {
-            self.set_unit("yr");
+            self.axis.unit = Some("yr".to_string());
             self.set_timescale(TimeScale::Tt);
         }
 
@@ -435,51 +430,32 @@ impl TimeFrame {
         self.time_origin = None;
     }
 
-    /// Return the explicitly-set axis Unit string, or `None` for the system
-    /// default. Mirrors `astTestUnit`/`astGetUnit`.
-    pub fn unit(&self) -> Option<&str> {
-        self.unit.as_deref()
+    /// The Axis-class attributes of the single axis, after checking the
+    /// 1-based `axis`.
+    fn ax(&self, axis: usize) -> AstResult<&super::axis::Axis> {
+        super::frame_attrs::validate_axis(axis, 1)?;
+        Ok(&self.axis)
     }
 
-    /// Set the axis Unit string.
-    pub fn set_unit(&mut self, unit: &str) {
-        self.unit = Some(unit.to_string());
-    }
-
-    /// Whether the axis Unit has been explicitly set.
-    pub fn test_unit(&self) -> bool {
-        self.unit.is_some()
-    }
-
-    /// Clear the axis Unit, reverting to the system default.
-    pub fn clear_unit(&mut self) {
-        self.unit = None;
+    /// The Axis-class attributes of the single axis, to change.
+    fn ax_mut(&mut self, axis: usize) -> AstResult<&mut super::axis::Axis> {
+        super::frame_attrs::validate_axis(axis, 1)?;
+        Ok(&mut self.axis)
     }
 
     /// Return the effective axis Unit string: the explicitly-set value, or
     /// the current system's default units.
     pub fn unit_or_default(&self) -> &str {
-        self.unit.as_deref().unwrap_or(self.system.default_units())
+        self.axis
+            .unit
+            .as_deref()
+            .unwrap_or(self.system.default_units())
     }
 
-    /// Return the explicitly-set axis Format string, or `""` when unset.
-    pub fn format_str(&self) -> &str {
-        self.format_str.as_deref().unwrap_or("")
-    }
-
-    /// Set the axis Format string (e.g. `"iso.0"`).
-    pub fn set_format_str(&mut self, fmt: &str) {
-        self.format_str = Some(fmt.to_string());
-    }
-
-    /// Whether the axis Format has been explicitly set.
-    pub fn test_format_str(&self) -> bool {
-        self.format_str.is_some()
-    }
-
-    /// Clear the axis Format, reverting to the default numeric format.
-    pub fn clear_format_str(&mut self) {
-        self.format_str = None;
+    /// The Format that has been set, or `""`, which no date format matches,
+    /// as the numeric default C would report does not.
+    fn set_format(&self) -> &str {
+        self.axis.format.as_deref().unwrap_or("")
     }
 
     /// The axis label. Mirrors C `GetLabel` (timeframe.c:2579): a date Format
@@ -489,8 +465,8 @@ impl TimeFrame {
     /// absolute `iso.0` date/time (` offset from <date>`, with a trailing
     /// ` 00:00:00` time-of-day stripped). A Local Time timescale appends the
     /// `(UTC±offset)` suffix.
-    fn axis_label(&self) -> String {
-        let (is_date, ndp, _sep) = date_format(self.format_str());
+    fn default_axis_label(&self) -> String {
+        let (is_date, ndp, _sep) = date_format(self.set_format());
         let mut result = if is_date {
             return if ndp >= 0 {
                 "Date/Time".to_string()
@@ -733,7 +709,7 @@ impl TimeFrame {
         // Append "offset from <date>" when a non-zero origin is set and the
         // Format does not already render an (absolute) date string.
         let orig = self.get_time_origin_cur();
-        if orig != 0.0 && !date_format(self.format_str()).0 {
+        if orig != 0.0 && !date_format(self.set_format()).0 {
             // Format the origin (axis value 0.0) as an absolute iso.0 time.
             if let Ok(date) = self.format_iso0_zero() {
                 title.push_str(" offset from ");
@@ -1311,16 +1287,62 @@ impl Frame for TimeFrame {
         (self, axis)
     }
 
-    fn effective_label(&self, _axis: usize) -> String {
-        self.axis_label()
+    /// Mirrors C `TimeFrame::GetLabel` (timeframe.c:2579).
+    fn label(&self, axis: usize) -> AstResult<String> {
+        Ok(match &self.ax(axis)?.label {
+            Some(label) => label.clone(),
+            None => self.default_axis_label(),
+        })
     }
 
-    fn effective_unit(&self, _axis: usize) -> String {
-        self.unit_or_default().to_string()
+    /// Mirrors C `TimeFrame::GetSymbol` (timeframe.c:2741).
+    fn symbol(&self, axis: usize) -> AstResult<String> {
+        Ok(match &self.ax(axis)?.symbol {
+            Some(symbol) => symbol.clone(),
+            None => match self.system {
+                TimeSystem::Mjd => "MJD",
+                TimeSystem::Jd => "JD",
+                TimeSystem::Bepoch => "BEP",
+                TimeSystem::Jepoch => "JEP",
+            }
+            .to_string(),
+        })
     }
 
-    fn effective_format(&self, _axis: usize) -> String {
-        self.format_str().to_string()
+    /// Mirrors C `TimeFrame::GetUnit` (timeframe.c:3253).
+    fn unit(&self, axis: usize) -> AstResult<String> {
+        Ok(match &self.ax(axis)?.unit {
+            Some(unit) => unit.clone(),
+            None => self.system.default_units().to_string(),
+        })
+    }
+
+    /// Mirrors C `TimeFrame::SetUnit` (timeframe.c:4958): a Besselian
+    /// epoch is in years and takes no other Unit.
+    fn set_unit(&mut self, axis: usize, unit: &str) -> AstResult<()> {
+        self.ax(axis)?;
+        if self.system == TimeSystem::Bepoch && unit != "yr" {
+            return Err(AstError::new(
+                ErrorCode::Attin,
+                format!(
+                    "astSetUnit(TimeFrame): Supplied Unit ({unit}) cannot be used because \
+                     the TimeFrame represents Besselian Epoch which is defined in units \
+                     of years (yr)."
+                ),
+            ));
+        }
+        self.axis.unit = Some(unit.to_string());
+        Ok(())
+    }
+
+    axis_attrs_base_get!(format, digits, direction, top, bottom);
+    axis_attrs_store!(label, symbol, format, digits, direction, top, bottom);
+    fn test_unit(&self, axis: usize) -> AstResult<bool> {
+        Ok(self.ax(axis)?.unit.is_some())
+    }
+    fn clear_unit(&mut self, axis: usize) -> AstResult<()> {
+        self.ax_mut(axis)?.unit = None;
+        Ok(())
     }
 
     fn format(&self, axis: usize, value: f64) -> AstResult<String> {
@@ -1337,11 +1359,13 @@ impl Frame for TimeFrame {
         // If the Format string does not request a date, use the default
         // numeric format. The parent (non-date) Format default is `%1.7G`:
         // 7 *significant* digits (frame.c GetDefaultFormat, default Digits=7).
-        let (is_date, ndp, sep) = date_format(&self.effective_format(1));
+        let (is_date, ndp, sep) = date_format(self.set_format());
         if !is_date {
-            const DIGITS: usize = 7;
+            let digits = self.axis_digits(1)?.max(1) as usize;
             return Ok(crate::frames::axis_format::format_value(
-                "%1.7G", DIGITS, value,
+                &self.format_str(1)?,
+                digits,
+                value,
             ));
         }
 
@@ -1606,7 +1630,7 @@ impl Frame for TimeFrame {
 /// first so the new system's defaults take effect.
 fn timeframe_overlay(
     template: &dyn Frame,
-    _template_axes: &[i32],
+    template_axes: &[i32],
     result: &mut dyn Frame,
 ) -> AstResult<()> {
     let template_time = match template.as_any().downcast_ref::<TimeFrame>() {
@@ -1675,14 +1699,11 @@ fn timeframe_overlay(
                 result_time.set_lt_offset(v);
             }
         }
-        // Axis Unit is overlaid by the parent Frame/Axis Overlay when the
-        // template has it set (frame.c overlays the Axis, which carries the
-        // Unit string). This is what makes astConvert apply a units scaling
-        // between e.g. a "s" frame and a "d" frame.
-        if template_time.test_unit() {
-            if let Some(u) = template_time.unit() {
-                result_time.set_unit(u);
-            }
+        // Frame::Overlay copies the Axis with astAxisOverlay (frame.c),
+        // which carries the Unit, so astConvert then scales between, say,
+        // units of "s" and "d".
+        if template_axes.first().copied().unwrap_or(0) >= 0 {
+            result_time.axis.overlay_from(&template_time.axis);
         }
         return Ok(());
     }
@@ -1819,7 +1840,7 @@ impl Serializable for TimeFrame {
         // label, which a date Format overrides to "Date/Time"/"Date".
         node.push_unset(
             "Lbl1",
-            NodeValue::String(self.axis_label()),
+            NodeValue::String(self.label(1)?),
             Some("Label for axis 1".to_string()),
         );
 
@@ -1858,18 +1879,7 @@ impl Serializable for TimeFrame {
         // dump: an active `Unit` and `Format` inside the `Begin Axis` block).
         let mut axis_node = Node::new("Axis");
         axis_node.class_comment = Some("Coordinate axis".to_string());
-        if self.test_unit() {
-            let u = self.unit_or_default();
-            let desc = Self::unit_description(u);
-            axis_node.push_string("Unit", u, Some(format!("Axis units ({desc})")));
-        }
-        if self.test_format_str() {
-            axis_node.push_string(
-                "Format",
-                self.format_str(),
-                Some("Format specifier".to_string()),
-            );
-        }
+        self.axis.write_set_attributes(&mut axis_node);
         node.push_object("Ax1", axis_node, Some("Axis number 1".to_string()));
 
         // Observer attributes (active only if explicitly set).
@@ -2058,16 +2068,9 @@ impl Serializable for TimeFrame {
             tf.attrs.ident = Some(ident);
         }
 
-        // Per-axis Unit and Format strings live in the Ax1 Axis child node.
+        // The Axis attributes live in the Ax1 Axis child node.
         if let Some(axis_node) = node.get_object("Ax1") {
-            let unit = axis_node.get_string("Unit", "");
-            if !unit.is_empty() {
-                tf.set_unit(&unit);
-            }
-            let fmt = axis_node.get_string("Format", "");
-            if !fmt.is_empty() {
-                tf.set_format_str(&fmt);
-            }
+            tf.axis = super::axis::Axis::read(axis_node);
         }
 
         Ok(tf)

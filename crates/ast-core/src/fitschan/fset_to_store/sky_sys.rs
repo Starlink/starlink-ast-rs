@@ -166,8 +166,8 @@ fn ctype_prefixes_for(
             // pair conforms, use them verbatim. Otherwise fall back
             // to UNLN/UNLT. Mirrors C:29844-29876.
             let (lon_ax, lat_ax) = axes_one_based;
-            let lon_sym = skyfrm.axis_symbol(lon_ax).unwrap_or_default();
-            let lat_sym = skyfrm.axis_symbol(lat_ax).unwrap_or_default();
+            let lon_sym = skyfrm.symbol(lon_ax).unwrap_or_default();
+            let lat_sym = skyfrm.symbol(lat_ax).unwrap_or_default();
             let conforms = if lon_sym.len() == 4 && lat_sym.len() == 4 {
                 let lon_b = lon_sym.as_bytes();
                 let lat_b = lat_sym.as_bytes();
@@ -348,8 +348,8 @@ pub(crate) fn sky_sys(
             // structural behaviour. Future work: route through
             // SkyFrame::format() so the rendering matches the
             // SkyFrame's display convention.
-            let sym_lon = skyfrm.axis_symbol(lon_ax_1b).unwrap_or_default();
-            let sym_lat = skyfrm.axis_symbol(lat_ax_1b).unwrap_or_default();
+            let sym_lon = skyfrm.symbol(lon_ax_1b).unwrap_or_default();
+            let sym_lat = skyfrm.symbol(lat_ax_1b).unwrap_or_default();
             let skyref_text = format!("{:.6},{:.6}", sky_ref[lonax_in_sky], sky_ref[latax_in_sky]);
             // In an offset system the SkyFrame symbol carries a leading "D"
             // (delta) prefix — DRA, DDec, etc. C builds the CTYPE comment from
@@ -402,15 +402,15 @@ pub(crate) fn sky_sys(
 
     // CTYPE comment / CNAME from explicit Label, when set. Mirrors
     // C:29941-29950.
-    if skyfrm.test_axis_label(lat_ax_1b).unwrap_or(false)
-        && let Ok(label) = skyfrm.axis_label(lat_ax_1b)
+    if skyfrm.test_label(lat_ax_1b).unwrap_or(false)
+        && let Ok(label) = skyfrm.label(lat_ax_1b)
         && !label.is_empty()
     {
         store.ctype_com[axlat] = Some(label.clone());
         store.cname[axlat] = Some(label);
     }
-    if skyfrm.test_axis_label(lon_ax_1b).unwrap_or(false)
-        && let Ok(label) = skyfrm.axis_label(lon_ax_1b)
+    if skyfrm.test_label(lon_ax_1b).unwrap_or(false)
+        && let Ok(label) = skyfrm.label(lon_ax_1b)
         && !label.is_empty()
     {
         store.ctype_com[axlon] = Some(label.clone());
@@ -663,8 +663,8 @@ mod tests {
     #[test]
     fn axis_label_emits_ctype_comment_and_cname() {
         let mut sky = SkyFrame::new(SkySystem::Fk5);
-        sky.set_axis_label(1, "MyRA").unwrap();
-        sky.set_axis_label(2, "MyDec").unwrap();
+        sky.set_label(1, "MyRA").unwrap();
+        sky.set_label(2, "MyDec").unwrap();
         let mut s = store(2);
         sky_sys(&sky, 1, WcsProjection::Tan, &mut s, 0, 1, ' ', 0).unwrap();
         // axlon=0 ⇒ longitude axis storage. With default perm,
@@ -692,8 +692,8 @@ mod tests {
         // SkySystem::Unknown with conforming xxLN/xxLT axis Symbols
         // ⇒ those used verbatim in CTYPE prefix. Mirrors C:29850-29854.
         let mut sky = SkyFrame::new(SkySystem::Unknown);
-        sky.set_axis_symbol(1, "QQLN").unwrap();
-        sky.set_axis_symbol(2, "QQLT").unwrap();
+        sky.set_symbol(1, "QQLN").unwrap();
+        sky.set_symbol(2, "QQLT").unwrap();
         let mut s = store(2);
         sky_sys(&sky, 1, WcsProjection::Tan, &mut s, 0, 1, ' ', 0).unwrap();
         assert_eq!(s.ctype[0].as_deref(), Some("QQLN-TAN"));
@@ -704,8 +704,8 @@ mod tests {
     fn unknown_system_symbol_xlonxlat_passes_through() {
         // xLON/xLAT form (FITS-WCS alternate). Mirrors C:29855-29859.
         let mut sky = SkyFrame::new(SkySystem::Unknown);
-        sky.set_axis_symbol(1, "ZLON").unwrap();
-        sky.set_axis_symbol(2, "ZLAT").unwrap();
+        sky.set_symbol(1, "ZLON").unwrap();
+        sky.set_symbol(2, "ZLAT").unwrap();
         let mut s = store(2);
         sky_sys(&sky, 1, WcsProjection::Tan, &mut s, 0, 1, ' ', 0).unwrap();
         assert_eq!(s.ctype[0].as_deref(), Some("ZLON-TAN"));
@@ -735,8 +735,8 @@ mod tests {
     #[test]
     fn unknown_system_non_conforming_falls_back_to_unln_unlt() {
         let mut sky = SkyFrame::new(SkySystem::Unknown);
-        sky.set_axis_symbol(1, "WEIRD").unwrap();
-        sky.set_axis_symbol(2, "ALSOWEIRD").unwrap();
+        sky.set_symbol(1, "WEIRD").unwrap();
+        sky.set_symbol(2, "ALSOWEIRD").unwrap();
         let mut s = store(2);
         sky_sys(&sky, 1, WcsProjection::Tan, &mut s, 0, 1, ' ', 0).unwrap();
         assert_eq!(s.ctype[0].as_deref(), Some("UNLN-TAN"));

@@ -387,8 +387,8 @@ fn test_serialisation_with_unit_and_format() {
     // Unit and Format are stored in the Ax1 Axis node and must round-trip.
     let mut tf = TimeFrame::new(TimeSystem::Mjd);
     tf.set_timescale(TimeScale::Tai);
-    tf.set_unit("s");
-    tf.set_format_str("iso.2");
+    tf.set_unit(1, "s").unwrap();
+    tf.set_format_str(1, "iso.2").unwrap();
 
     let obj = AnyObject::TimeFrame(tf);
     let text = to_native_string(&obj).unwrap();
@@ -409,9 +409,9 @@ fn test_serialisation_with_unit_and_format() {
         AnyObject::TimeFrame(f) => f,
         _ => panic!("Expected TimeFrame"),
     };
-    assert_eq!(tf2.unit(), Some("s"));
-    assert!(tf2.test_format_str());
-    assert_eq!(tf2.format_str(), "iso.2");
+    assert_eq!(tf2.unit(1).unwrap(), "s");
+    assert!(tf2.test_format_str(1).unwrap());
+    assert_eq!(tf2.format_str(1).unwrap(), "iso.2");
 }
 
 // ---------------------------------------------------------------------------
@@ -493,7 +493,7 @@ fn test_default_title_date_format_suppresses_offset() {
     let mut tf = TimeFrame::new(TimeSystem::Mjd);
     tf.set_timescale(TimeScale::Tai);
     tf.set_time_origin(55000.0);
-    tf.set_format_str("iso.0");
+    tf.set_format_str(1, "iso.0").unwrap();
     assert_eq!(default_title(tf), "Modified Julian Date [TAI]");
 }
 
@@ -568,14 +568,14 @@ fn test_same_system_different_origin() {
 #[test]
 fn test_unit_accessors() {
     let mut tf = TimeFrame::new(TimeSystem::Mjd);
-    assert!(!tf.test_unit());
+    assert!(!tf.test_unit(1).unwrap());
     assert_eq!(tf.unit_or_default(), "d");
-    tf.set_unit("s");
-    assert!(tf.test_unit());
-    assert_eq!(tf.unit(), Some("s"));
+    tf.set_unit(1, "s").unwrap();
+    assert!(tf.test_unit(1).unwrap());
+    assert_eq!(tf.unit(1).unwrap(), "s");
     assert_eq!(tf.unit_or_default(), "s");
-    tf.clear_unit();
-    assert!(!tf.test_unit());
+    tf.clear_unit(1).unwrap();
+    assert!(!tf.test_unit(1).unwrap());
     assert_eq!(tf.unit_or_default(), "d");
 }
 
@@ -584,7 +584,7 @@ fn test_convert_seconds_to_days() {
     // A value in seconds converts to the same instant in days: the unit
     // bracketing in MakeMap scales by 86400 (same System/TimeScale/origin).
     let mut tf_s = TimeFrame::new(TimeSystem::Mjd);
-    tf_s.set_unit("s");
+    tf_s.set_unit(1, "s").unwrap();
     let tf_d = TimeFrame::new(TimeSystem::Mjd);
 
     // Both have origin 0, so 86400 s == 1 d (offset from the MJD origin).
@@ -625,14 +625,14 @@ fn test_iso_format_unformat_jepoch() {
     assert!((v - 100.0).abs() < 1.0e-12);
 
     // error 27: format=iso -> date only.
-    tf.set_format_str("iso");
+    tf.set_format_str(1, "iso").unwrap();
     assert_eq!(tf.format(1, 1.0).unwrap(), "2006-01-01");
     let (v, nc) = tf.unformat(1, "2006-01-01").unwrap();
     assert_eq!(nc, "2006-01-01".len());
     assert!((v - 1.0).abs() < 1.0e-9, "got {v}");
 
     // error 28: format=iso.0 -> date + time, no fractional seconds.
-    tf.set_format_str("iso.0");
+    tf.set_format_str(1, "iso.0").unwrap();
     assert_eq!(tf.format(1, 1.0).unwrap(), "2006-01-01 00:00:00");
     let (v, nc) = tf.unformat(1, "2006-01-01 00:00:00").unwrap();
     assert_eq!(nc, "2006-01-01 00:00:00".len());
@@ -644,8 +644,8 @@ fn test_iso_format_unformat_seconds() {
     // C errors 29-30: jepoch frame, timeorigin 2005.0, unit=s, format=iso.2.
     let mut tf = TimeFrame::new(TimeSystem::Jepoch);
     tf.set_time_origin(2005.0);
-    tf.set_unit("s");
-    tf.set_format_str("iso.2");
+    tf.set_unit(1, "s").unwrap();
+    tf.set_format_str(1, "iso.2").unwrap();
 
     assert_eq!(tf.format(1, 10.0).unwrap(), "2004-12-31 18:00:10.00");
     let (v, nc) = tf.unformat(1, "2004-12-31 18:00:10.00").unwrap();
@@ -734,7 +734,7 @@ fn test_iso_format_mjd_tai_iso6() {
     // C errors 35-36 path: an absolute MJD/TAI time formatted with iso.6.
     let mut tf = TimeFrame::new(TimeSystem::Mjd);
     tf.set_timescale(TimeScale::Tai);
-    tf.set_format_str("iso.6");
+    tf.set_format_str(1, "iso.6").unwrap();
     // 1977-01-01 00:00:00 in MJD is 43144.0.
     assert_eq!(tf.format(1, 43144.0).unwrap(), "1977-01-01 00:00:00.000000");
 }
@@ -744,9 +744,9 @@ fn test_iso_format_variants() {
     // Exercise the iso / iso.N / iso.NT format spellings.
     let mut tf = TimeFrame::new(TimeSystem::Mjd);
     tf.set_timescale(TimeScale::Tai);
-    tf.set_format_str("iso");
+    tf.set_format_str(1, "iso").unwrap();
     assert_eq!(tf.format(1, 43144.0).unwrap(), "1977-01-01");
-    tf.set_format_str("iso.0T");
+    tf.set_format_str(1, "iso.0T").unwrap();
     assert_eq!(tf.format(1, 43144.0).unwrap(), "1977-01-01T00:00:00");
 }
 

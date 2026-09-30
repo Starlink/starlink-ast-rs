@@ -39,6 +39,23 @@ macro_rules! forward {
     )*};
 }
 
+macro_rules! forward_axis {
+    ($($get:ident: $ty:ty, $set:ident($arg:ty), $test:ident, $clear:ident;)*) => {$(
+        fn $get(&self, axis: usize) -> AstResult<$ty> {
+            Frame::$get(&self.frame, axis)
+        }
+        fn $set(&mut self, axis: usize, v: $arg) -> AstResult<()> {
+            Frame::$set(&mut self.frame, axis, v)
+        }
+        fn $test(&self, axis: usize) -> AstResult<bool> {
+            Frame::$test(&self.frame, axis)
+        }
+        fn $clear(&mut self, axis: usize) -> AstResult<()> {
+            Frame::$clear(&mut self.frame, axis)
+        }
+    )*};
+}
+
 impl Mapping for DummyRegion {
     fn nin(&self) -> usize {
         2
@@ -89,6 +106,16 @@ impl Frame for DummyRegion {
         match_end: bool, set_match_end, test_match_end, clear_match_end;
         preserve_axes: bool, set_preserve_axes, test_preserve_axes, clear_preserve_axes;
         permute: bool, set_permute, test_permute, clear_permute;
+    }
+    forward_axis! {
+        label: String, set_label(&str), test_label, clear_label;
+        symbol: String, set_symbol(&str), test_symbol, clear_symbol;
+        unit: String, set_unit(&str), test_unit, clear_unit;
+        format_str: String, set_format_str(&str), test_format_str, clear_format_str;
+        axis_digits: i32, set_axis_digits(i32), test_axis_digits, clear_axis_digits;
+        direction: bool, set_direction(bool), test_direction, clear_direction;
+        top: f64, set_top(f64), test_top, clear_top;
+        bottom: f64, set_bottom(f64), test_bottom, clear_bottom;
     }
     fn title(&self) -> String {
         Frame::title(&self.frame)

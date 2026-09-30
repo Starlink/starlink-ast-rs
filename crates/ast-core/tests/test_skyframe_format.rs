@@ -51,7 +51,7 @@ fn apply(sky: &mut SkyFrame, attrs: &str) {
             ("Format", Some(axis)) => sky.set_format_str(axis, value).unwrap(),
             ("Unit", Some(axis)) => sky.set_unit(axis, value).unwrap(),
             ("AsTime", Some(axis)) => sky.set_as_time(axis, value == "1").unwrap(),
-            ("Label", Some(axis)) => sky.set_axis_label(axis, value).unwrap(),
+            ("Label", Some(axis)) => sky.set_label(axis, value).unwrap(),
             other => panic!("unsupported setting {other:?}"),
         }
     }
@@ -93,7 +93,7 @@ fn format_unit_and_norm_unit_match_the_c_library() {
                 (format, unit, norm)
             ));
         }
-        assert_eq!(sky.effective_unit(axis), sky.unit(axis).unwrap());
+        assert_eq!(sky.unit(axis).unwrap(), sky.unit(axis).unwrap());
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }

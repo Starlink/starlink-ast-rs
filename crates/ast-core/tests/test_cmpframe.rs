@@ -49,12 +49,12 @@ fn cmpframe_direction_routes_to_component() {
     let mut f1 = BasicFrameBuilder::new(2).build().unwrap();
     f1.set_direction(1, false).unwrap();
     let cmp = CmpFrame::new(Box::new(f1), make_frame(1));
-    assert!(!cmp.direction(1)); // reversed axis from frame1
-    assert!(cmp.direction(2)); // default
-    assert!(cmp.direction(3)); // frame2 default
-    // Out-of-range axes fall back to the default.
-    assert!(cmp.direction(0));
-    assert!(cmp.direction(4));
+    assert!(!cmp.direction(1).unwrap()); // reversed axis from frame1
+    assert!(cmp.direction(2).unwrap()); // default
+    assert!(cmp.direction(3).unwrap()); // frame2 default
+    // An axis out of range is an error, as C's astValidateAxis makes it.
+    assert!(cmp.direction(0).is_err());
+    assert!(cmp.direction(4).is_err());
 }
 
 // ---- Unformat delegation ----
@@ -158,7 +158,7 @@ fn cmpframe_axis_permutation_round_trips() {
     // Permute so external axes are (wave, lon, lat): external axis 1 ->
     // internal axis 3, 2 -> 1, 3 -> 2.
     cmp.perm_axes(&[3, 1, 2]).unwrap();
-    let labels_before: Vec<String> = (1..=3).map(|a| cmp.effective_label(a)).collect();
+    let labels_before: Vec<String> = (1..=3).map(|a| cmp.label(a).unwrap()).collect();
     assert_eq!(labels_before, ["wave", "lon", "lat"]);
 
     let text = to_native_string(&AnyObject::CmpFrame(cmp)).unwrap();
@@ -171,7 +171,7 @@ fn cmpframe_axis_permutation_round_trips() {
         AnyObject::CmpFrame(c) => c,
         other => panic!("expected CmpFrame, got {other:?}"),
     };
-    let labels_after: Vec<String> = (1..=3).map(|a| back.effective_label(a)).collect();
+    let labels_after: Vec<String> = (1..=3).map(|a| back.label(a).unwrap()).collect();
     assert_eq!(
         labels_after, labels_before,
         "axis permutation must survive native round-trip"

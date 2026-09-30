@@ -556,9 +556,9 @@ pub(crate) fn default_sub_frame(
                     template_axes.iter().enumerate().take(result_naxes)
                 {
                     if template_axis >= 0 {
-                        let tu = t.effective_unit(template_axis as usize + 1);
+                        let tu = t.unit(template_axis as usize + 1)?;
                         if !tu.is_empty() {
-                            rb.set_unit(result_axis + 1, tu)?;
+                            rb.set_unit(result_axis + 1, &tu)?;
                         }
                     }
                 }
@@ -577,8 +577,8 @@ pub(crate) fn default_sub_frame(
                 let target_axis = if unit { result_axis as i32 } else { outperm };
 
                 let aumap = if target_axis >= 0 {
-                    let tu = target.effective_unit(target_axis as usize + 1);
-                    let ru = result.effective_unit(result_axis + 1);
+                    let tu = target.unit(target_axis as usize + 1)?;
+                    let ru = result.unit(result_axis + 1)?;
                     crate::units::unit_mapper(&tu, &ru)
                 } else {
                     None

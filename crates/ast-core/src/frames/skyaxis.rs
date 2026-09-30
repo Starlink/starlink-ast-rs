@@ -12,17 +12,18 @@ use std::f64::consts::PI;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::serial::{Node, Serializable};
 
-/// Per-axis display properties for a sky coordinate axis.
+/// Per-axis display properties for a sky coordinate axis. Extends the
+/// Axis class as C's SkyAxis does (skyaxis.h): the Axis attributes live in
+/// `axis`, except the Format, which a SkyAxis keeps itself (C's
+/// `skyformat`, skyaxis.c `SetAxisFormat`), so `axis.format` is never set.
 #[derive(Debug, Clone)]
 pub(crate) struct SkyAxis {
+    /// The Axis-class attributes.
+    pub axis: super::axis::Axis,
     /// Format as time (hours) rather than angle (degrees).
     pub as_time: Option<bool>,
     /// The SkyAxis Format string (C's `skyformat`), when set.
     pub format: Option<String>,
-    /// The Axis Digits value, when set.
-    pub digits: Option<i32>,
-    /// The Axis Unit value, when set.
-    pub unit: Option<String>,
     /// This is a latitude axis (constrains to +/-90 degrees).
     pub is_latitude: bool,
     /// Normalize to [-pi,pi] (true) or [0,2pi] (false).
@@ -35,10 +36,9 @@ impl SkyAxis {
     /// Defaults: `as_time` = true (hours), `centre_zero` = false ([0,2pi]).
     pub fn longitude() -> Self {
         Self {
+            axis: super::axis::Axis::default(),
             as_time: None,
             format: None,
-            digits: None,
-            unit: None,
             is_latitude: false,
             centre_zero: None,
         }
@@ -49,10 +49,9 @@ impl SkyAxis {
     /// Defaults: `as_time` = false (degrees), `centre_zero` = true ([-pi,pi]).
     pub fn latitude() -> Self {
         Self {
+            axis: super::axis::Axis::default(),
             as_time: None,
             format: None,
-            digits: None,
-            unit: None,
             is_latitude: true,
             centre_zero: None,
         }
@@ -503,34 +502,10 @@ impl SkyAxis {
     /// Write this SkyAxis as C's Dump does (skyaxis.c:4750, after the Axis
     /// class Dump, axis.c): the Axis attributes that are set, the `IsA Axis`
     /// marker when there were any, then the SkyAxis attributes that are set.
-    /// `label` and `symbol` are the Axis Label and Symbol, which the
-    /// SkyFrame stores for its axes.
-    pub(crate) fn to_node_with(&self, label: Option<&str>, symbol: Option<&str>) -> Node {
+    pub(crate) fn to_node_dump(&self) -> Node {
         let mut node = Node::new("SkyAxis");
         node.class_comment = Some("Celestial coordinate axis".to_string());
-
-        if let Some(label) = label {
-            node.push_string("Label", label, Some("Axis Label".to_string()));
-        }
-        if let Some(symbol) = symbol {
-            node.push_string("Symbol", symbol, Some("Axis symbol".to_string()));
-        }
-        if let Some(unit) = &self.unit {
-            // C appends the unit's full name only when it differs from the
-            // unit string (axis.c, `lab && strcmp( lab, sval )`).
-            let comment = match crate::units::unit_label(unit) {
-                Some(lab) if lab != unit => format!("Axis units ({lab})"),
-                _ => "Axis units".to_string(),
-            };
-            node.push_string("Unit", unit, Some(comment));
-        }
-        if let Some(digits) = self.digits {
-            node.push_int(
-                "Digits",
-                digits as i64,
-                Some("Default formatting precision".to_string()),
-            );
-        }
+        self.axis.write_set_attributes(&mut node);
         if !node.items.is_empty() {
             node.push_isa("Axis", Some("Coordinate axis".to_string()));
         }
@@ -570,7 +545,7 @@ impl Serializable for SkyAxis {
     }
 
     fn to_node(&self) -> AstResult<Node> {
-        Ok(self.to_node_with(None, None))
+        Ok(self.to_node_dump())
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
@@ -592,10 +567,8 @@ impl Serializable for SkyAxis {
             axis.as_time = Some(node.get_int("AsTime", 0) != 0);
         }
         axis.format = node.get_string_if_set("Format");
-        if node.get("Digits").is_some() {
-            axis.digits = Some(node.get_int("Digits", 7) as i32);
-        }
-        axis.unit = node.get_string_if_set("Unit");
+        axis.axis = super::axis::Axis::read(node);
+        axis.axis.format = None;
 
         Ok(axis)
     }

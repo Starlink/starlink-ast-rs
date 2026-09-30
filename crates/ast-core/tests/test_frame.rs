@@ -45,7 +45,7 @@ fn norm_unit_equals_unit_when_it_cannot_be_simplified() {
         for axis in 1..=frame.naxes() {
             assert_eq!(
                 frame.norm_unit(axis),
-                frame.effective_unit(axis),
+                frame.unit(axis).unwrap(),
                 "NormUnit({axis}) of a default {name}"
             );
         }
@@ -128,18 +128,18 @@ fn sky_frame_norm_unit_follows_the_format() {
 fn spectral_time_and_flux_frames_normalise_the_unit_they_report() {
     let mut freq = SpecFrame::new(SpecSystem::Freq);
     assert_eq!(freq.norm_unit(1), "GHz");
-    freq.set_unit("MHz*1000");
+    freq.set_unit(1, "MHz*1000").unwrap();
     assert_eq!(freq.norm_unit(1), "GHz");
     assert_eq!(SpecFrame::new(SpecSystem::Wavenum).norm_unit(1), "m**-1");
 
     let mut time = TimeFrame::new(TimeSystem::Mjd);
     assert_eq!(time.norm_unit(1), "d");
-    time.set_unit("1000*s");
+    time.set_unit(1, "1000*s").unwrap();
     assert_eq!(time.norm_unit(1), "ks");
 
     let mut flux = FluxFrame::new(FluxSystem::FluxDen);
     assert_eq!(flux.norm_unit(1), "(W/Hz)*m**-2");
-    flux.set_unit("erg/s/cm**2/Hz");
+    flux.set_unit(1, "erg/s/cm**2/Hz").unwrap();
     assert_eq!(flux.norm_unit(1), "(erg/Hz)*cm**-2/s");
     assert_eq!(
         FluxFrame::new(FluxSystem::SBright).norm_unit(1),
@@ -247,8 +247,8 @@ fn picked_sky_axis_keeps_its_norm_unit() {
         for (axis, want) in [(0, expected[0]), (1, expected[1])] {
             let picked = sky.pick_axes_snapshot(&[axis]).unwrap();
             assert_eq!(
-                picked.effective_unit(1),
-                sky.effective_unit(axis as usize + 1)
+                picked.unit(1).unwrap(),
+                sky.unit(axis as usize + 1).unwrap()
             );
             assert_eq!(picked.norm_unit(1), want, "{system:?} axis {}", axis + 1);
         }

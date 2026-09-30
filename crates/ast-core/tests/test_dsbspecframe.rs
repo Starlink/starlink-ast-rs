@@ -120,7 +120,7 @@ fn sideband_flip_usb_to_lsb() {
     // (the topocentric flip happens in Hz internally). Use Hz so the Hz
     // test inputs/outputs are in the frame's own unit — matching how the
     // FITS reader builds a DSBSpecFrame (CUNIT = Hz).
-    dsb.spec_mut().set_unit("Hz");
+    dsb.spec_mut().set_unit(1, "Hz").unwrap();
     dsb.set_dsb_centre(220.0e9);
     dsb.set_ifr(4.0e9);
     dsb.set_sideband(SideBand::USB);
@@ -144,7 +144,7 @@ fn sideband_flip_usb_to_lsb() {
 #[test]
 fn sideband_flip_lsb_to_usb() {
     let mut dsb = DSBSpecFrame::new(SpecSystem::Freq);
-    dsb.spec_mut().set_unit("Hz");
+    dsb.spec_mut().set_unit(1, "Hz").unwrap();
     dsb.set_dsb_centre(220.0e9);
     dsb.set_ifr(4.0e9);
     dsb.set_sideband(SideBand::LSB);
@@ -182,7 +182,7 @@ fn sideband_identity_when_already_target() {
 #[test]
 fn lo_offset_mapping() {
     let mut dsb = DSBSpecFrame::new(SpecSystem::Freq);
-    dsb.spec_mut().set_unit("Hz");
+    dsb.spec_mut().set_unit(1, "Hz").unwrap();
     dsb.set_dsb_centre(220.0e9);
     dsb.set_ifr(4.0e9);
     dsb.set_sideband(SideBand::USB);
@@ -264,7 +264,7 @@ fn convert_dsb_to_dsb_same_sideband() {
 #[test]
 fn convert_dsb_to_dsb_different_sideband_with_align() {
     let mut from = DSBSpecFrame::new(SpecSystem::Freq);
-    from.spec_mut().set_unit("Hz");
+    from.spec_mut().set_unit(1, "Hz").unwrap();
     from.set_std_of_rest(StdOfRest::Topocentric);
     from.set_dsb_centre(220.0e9);
     from.set_ifr(4.0e9);
@@ -272,7 +272,7 @@ fn convert_dsb_to_dsb_different_sideband_with_align() {
     from.set_align_sideband(true);
 
     let mut to = DSBSpecFrame::new(SpecSystem::Freq);
-    to.spec_mut().set_unit("Hz");
+    to.spec_mut().set_unit(1, "Hz").unwrap();
     to.set_std_of_rest(StdOfRest::Topocentric);
     to.set_dsb_centre(220.0e9);
     to.set_ifr(4.0e9);
@@ -341,7 +341,7 @@ fn convert_dsb_to_specframe() {
 #[test]
 fn imag_freq_computation() {
     let mut dsb = DSBSpecFrame::new(SpecSystem::Freq);
-    dsb.spec_mut().set_unit("Hz");
+    dsb.spec_mut().set_unit(1, "Hz").unwrap();
     dsb.set_std_of_rest(StdOfRest::Topocentric);
     dsb.set_dsb_centre(220.0e9);
     dsb.set_ifr(4.0e9);
@@ -421,7 +421,7 @@ fn frameset_integrity_sideband_change() {
     // When SideBand is changed through with_integrity, the internal
     // mapping should update to reflect the sideband flip.
     let mut dsb = DSBSpecFrame::new(SpecSystem::Freq);
-    dsb.spec_mut().set_unit("Hz");
+    dsb.spec_mut().set_unit(1, "Hz").unwrap();
     dsb.set_std_of_rest(StdOfRest::Topocentric);
     dsb.set_dsb_centre(220.0e9);
     dsb.set_ifr(4.0e9);
@@ -465,7 +465,7 @@ fn frameset_integrity_sideband_change() {
 #[test]
 fn alignment_through_frameset() {
     let mut dsb1 = DSBSpecFrame::new(SpecSystem::Freq);
-    dsb1.spec_mut().set_unit("Hz");
+    dsb1.spec_mut().set_unit(1, "Hz").unwrap();
     dsb1.set_std_of_rest(StdOfRest::Topocentric);
     dsb1.set_dsb_centre(220.0e9);
     dsb1.set_ifr(4.0e9);
@@ -473,7 +473,7 @@ fn alignment_through_frameset() {
     dsb1.set_align_sideband(true);
 
     let mut dsb2 = DSBSpecFrame::new(SpecSystem::Freq);
-    dsb2.spec_mut().set_unit("Hz");
+    dsb2.spec_mut().set_unit(1, "Hz").unwrap();
     dsb2.set_std_of_rest(StdOfRest::Topocentric);
     dsb2.set_dsb_centre(220.0e9);
     dsb2.set_ifr(4.0e9);
@@ -506,7 +506,7 @@ fn alignment_through_frameset() {
 fn alignment_dsb_to_dsb_different_lo() {
     // Two DSBSpecFrames with different LO frequencies.
     let mut dsb1 = DSBSpecFrame::new(SpecSystem::Freq);
-    dsb1.spec_mut().set_unit("Hz");
+    dsb1.spec_mut().set_unit(1, "Hz").unwrap();
     dsb1.set_std_of_rest(StdOfRest::Topocentric);
     dsb1.set_dsb_centre(220.0e9);
     dsb1.set_ifr(4.0e9); // LO = 224 GHz
@@ -514,7 +514,7 @@ fn alignment_dsb_to_dsb_different_lo() {
     dsb1.set_align_sideband(true);
 
     let mut dsb2 = DSBSpecFrame::new(SpecSystem::Freq);
-    dsb2.spec_mut().set_unit("Hz");
+    dsb2.spec_mut().set_unit(1, "Hz").unwrap();
     dsb2.set_std_of_rest(StdOfRest::Topocentric);
     dsb2.set_dsb_centre(230.0e9);
     dsb2.set_ifr(5.0e9); // LO = 235 GHz
@@ -563,7 +563,7 @@ fn dsb_centre_cur_roundtrips_topocentric() {
     // internal topocentric-Hz value (the TopoMap is an identity on a
     // topocentric FREQ frame), so dsb_centre_cur round-trips set_dsb_centre.
     let mut dsb = DSBSpecFrame::new(SpecSystem::Freq);
-    dsb.spec_mut().set_unit("Hz");
+    dsb.spec_mut().set_unit(1, "Hz").unwrap();
     dsb.set_std_of_rest(StdOfRest::Topocentric);
     dsb.set_dsb_centre(3.0e10);
     let cur = dsb.dsb_centre_cur().unwrap();
@@ -575,7 +575,7 @@ fn dsb_centre_cur_roundtrips_topocentric() {
     // set_dsb_centre_cur is the inverse of dsb_centre_cur: setting the
     // current-system value then reading it back is a round-trip.
     let mut dsb2 = DSBSpecFrame::new(SpecSystem::Freq);
-    dsb2.spec_mut().set_unit("Hz");
+    dsb2.spec_mut().set_unit(1, "Hz").unwrap();
     dsb2.set_std_of_rest(StdOfRest::Topocentric);
     dsb2.set_dsb_centre_cur(2.5e10).unwrap();
     assert!((dsb2.dsb_centre_cur().unwrap() - 2.5e10).abs() < 1.0);

@@ -277,8 +277,8 @@ pub(crate) fn spectral_axes(args: SpectralAxesArgs<'_>) -> AstResult<DynMapping>
 
     // CTYPE-comment / CNAME from explicit Label override. Mirrors
     // C:30716-30722.
-    if specfrm.test_axis_label() {
-        let label = specfrm.axis_label();
+    if specfrm.test_label(1)? {
+        let label = specfrm.label(1)?;
         if !label.is_empty() {
             args.store.ctype_com[fits_i] = Some(label.clone());
             args.store.cname[fits_i] = Some(label);
@@ -403,7 +403,7 @@ fn try_x2p_cascade(
         // on a clone rather than mutating the FrameSet in place.
         let mut x_frame = specfrm.clone();
         x_frame.set_system(x_sys);
-        x_frame.clear_unit();
+        x_frame.clear_unit(1)?;
 
         // X → S mapping (forward). Mirrors C:30412-30417 (which
         // builds the "S as a function of X" Mapping). Skip this
@@ -531,7 +531,7 @@ fn try_grism_cascade(
         // system_attr, ...); astSetC(fs, unit_attr, "m");`).
         let mut wave_frame = specfrm.clone();
         wave_frame.set_system(wave_sys);
-        wave_frame.clear_unit();
+        wave_frame.clear_unit(1)?;
 
         // S → wavelength Mapping. If this can't be constructed, skip.
         let s_to_wave = match specfrm.make_spec_mapping(&wave_frame) {
@@ -1123,7 +1123,7 @@ mod tests {
         let pixel = BasicFrameBuilder::new(2).build().unwrap();
         let basic = BasicFrameBuilder::new(1).build().unwrap();
         let mut spec = SpecFrame::new(SpecSystem::Freq);
-        spec.set_axis_label("MyFrequency");
+        spec.set_label(1, "MyFrequency").unwrap();
         let cmp = crate::frames::CmpFrame::new(Box::new(basic), Box::new(spec));
         let mut fs = FrameSet::new(Box::new(pixel));
         fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(2)), Box::new(cmp))
@@ -1220,7 +1220,7 @@ mod tests {
         let pixel = BasicFrameBuilder::new(2).build().unwrap();
         let basic = BasicFrameBuilder::new(1).build().unwrap();
         let mut spec = SpecFrame::new(system);
-        spec.set_unit(unit_str);
+        spec.set_unit(1, unit_str).unwrap();
         let cmp = crate::frames::CmpFrame::new(Box::new(basic), Box::new(spec));
         let mut fs = FrameSet::new(Box::new(pixel));
         fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(2)), Box::new(cmp))

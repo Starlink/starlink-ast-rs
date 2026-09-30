@@ -196,14 +196,14 @@ pub(crate) fn build_spectral(store: &FitsStore) -> Option<SpectralResult> {
         .map(|s| s.to_string())
         .unwrap_or_else(|| system.specmap_units().to_string());
     if !cunit.is_empty() {
-        frame.set_unit(&cunit);
+        frame.set_unit(1, &cunit).ok()?;
     }
 
     // CNAME → axis Label. Mirrors C `WcsSpectral` (fitschan.c:39636-
     // 39638): when the CNAME keyword is set for the spectral axis, it
     // becomes the SpecFrame's (sole) axis Label.
     if let Some(cname) = &store.cname[axis] {
-        frame.set_axis_label(cname.clone());
+        frame.set_label(1, cname).ok()?;
     }
 
     // Step 4: Build the IWC→S mapping. For a linear axis (no algcode)
@@ -304,7 +304,7 @@ fn nonlin_spec_wcs(
     };
     let mut xfrm = specfrm.clone();
     xfrm.set_system(x_system);
-    xfrm.set_unit(x_system.specmap_units());
+    xfrm.set_unit(1, x_system.specmap_units())?;
 
     // Build the S → X mapping via Frame::convert (mirrors
     // C:23606-23612). This returns a FrameSet whose forward mapping
@@ -411,7 +411,7 @@ fn grism_spec_wcs(
     // then set System to wavelength and Unit to metres. Mirrors C:14298-14300.
     let mut wfrm = specfrm.clone();
     wfrm.set_system(wave_system);
-    wfrm.set_unit("m");
+    wfrm.set_unit(1, "m")?;
 
     // Get the S → wavelength mapping via astConvert. Mirrors C:14301-14304.
     let Some(fs) = specfrm.convert_to(&wfrm, &[])? else {

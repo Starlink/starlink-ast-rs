@@ -7,7 +7,7 @@
 use ast_core::AnyObject;
 use ast_core::channel::Channel;
 use ast_core::fitschan::FitsChan;
-use ast_core::frames::{BasicFrame, SkyFrame, SkySystem};
+use ast_core::frames::{BasicFrame, Frame, SkyFrame, SkySystem};
 
 /// A 2-axis Galactic header carrying EQUINOX and no observation date.
 const GALACTIC_EQUINOX_ONLY: &str = "\
@@ -104,10 +104,10 @@ fn cname_supplies_skyframe_axis_labels() {
     let sky = read_sky_frame(&equatorial_header(
         "CNAME1  = 'Right Ascension'\nCNAME2  = 'Declination'\n",
     ));
-    assert!(sky.test_axis_label(1).unwrap());
-    assert!(sky.test_axis_label(2).unwrap());
-    assert_eq!(sky.axis_label(1).unwrap(), "Right Ascension");
-    assert_eq!(sky.axis_label(2).unwrap(), "Declination");
+    assert!(sky.test_label(1).unwrap());
+    assert!(sky.test_label(2).unwrap());
+    assert_eq!(sky.label(1).unwrap(), "Right Ascension");
+    assert_eq!(sky.label(2).unwrap(), "Declination");
 }
 
 /// The same header without CNAME leaves both Labels unset, so the SkyFrame's
@@ -117,10 +117,10 @@ fn cname_supplies_skyframe_axis_labels() {
 #[test]
 fn absent_cname_leaves_skyframe_labels_at_their_defaults() {
     let sky = read_sky_frame(&equatorial_header(""));
-    assert!(!sky.test_axis_label(1).unwrap());
-    assert!(!sky.test_axis_label(2).unwrap());
-    assert_eq!(sky.axis_label(1).unwrap(), "Right ascension");
-    assert_eq!(sky.axis_label(2).unwrap(), "Declination");
+    assert!(!sky.test_label(1).unwrap());
+    assert!(!sky.test_label(2).unwrap());
+    assert_eq!(sky.label(1).unwrap(), "Right ascension");
+    assert_eq!(sky.label(2).unwrap(), "Declination");
 }
 
 /// C `WcsSkyFrame` builds every SkyFrame from an explicit attribute string —

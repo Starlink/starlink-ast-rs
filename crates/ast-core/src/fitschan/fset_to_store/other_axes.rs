@@ -287,7 +287,7 @@ fn populate_axis_keywords(
             // 24388) using the generic Frame accessors `astGetSymbol` /
             // `astGetLabel` / `astTestLabel` / `astGetUnit` /
             // `astTestUnit`.
-            let symbol = frame.effective_symbol(axis);
+            let symbol = frame.symbol(axis).unwrap_or_default();
             let ctype = if !symbol.is_empty() {
                 symbol.clone()
             } else {
@@ -295,8 +295,8 @@ fn populate_axis_keywords(
             };
             store.ctype[fits_i] = Some(ctype);
 
-            let label = frame.effective_label(axis);
-            if frame.test_axis_label(axis) && !label.is_empty() && label != symbol {
+            let label = frame.label(axis).unwrap_or_default();
+            if frame.test_label(axis).unwrap_or(false) && !label.is_empty() && label != symbol {
                 store.ctype_com[fits_i] = Some(label.clone());
                 if store.cname[fits_i].is_none() {
                     store.cname[fits_i] = Some(label);
@@ -306,8 +306,8 @@ fn populate_axis_keywords(
                     Some(format!("Type of co-ordinate on axis {wcs_axis_1based}"));
             }
 
-            if frame.test_axis_unit(axis) {
-                let u = frame.effective_unit(axis);
+            if frame.test_unit(axis).unwrap_or(false) {
+                let u = frame.unit(axis).unwrap_or_default();
                 if !u.is_empty() && store.cunit[fits_i].is_none() {
                     store.cunit[fits_i] = Some(u);
                 }

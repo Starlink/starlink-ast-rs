@@ -125,9 +125,9 @@ fn test_freq_to_wavelength_convert() {
     // wrap a display-unit scaler (default Freq display is "GHz",
     // default Wavelen display is "Angstrom").
     let mut sf_freq = SpecFrame::new(SpecSystem::Freq);
-    sf_freq.set_unit("Hz");
+    sf_freq.set_unit(1, "Hz").unwrap();
     let mut sf_wave = SpecFrame::new(SpecSystem::Wavelen);
-    sf_wave.set_unit("m");
+    sf_wave.set_unit(1, "m").unwrap();
 
     let fs = sf_freq.convert_to(&sf_wave, &[]).unwrap().unwrap();
 
@@ -146,7 +146,7 @@ fn test_freq_to_wavelength_convert() {
 fn test_freq_to_energy() {
     // E = h * f
     let mut sf_freq = SpecFrame::new(SpecSystem::Freq);
-    sf_freq.set_unit("Hz");
+    sf_freq.set_unit(1, "Hz").unwrap();
     let sf_energy = SpecFrame::new(SpecSystem::Energy);
 
     let fs = sf_freq.convert_to(&sf_energy, &[]).unwrap().unwrap();
@@ -162,7 +162,7 @@ fn test_freq_to_energy() {
 fn test_freq_to_wavenum() {
     // k = f / c
     let mut sf_freq = SpecFrame::new(SpecSystem::Freq);
-    sf_freq.set_unit("Hz");
+    sf_freq.set_unit(1, "Hz").unwrap();
     let sf_wn = SpecFrame::new(SpecSystem::Wavenum);
 
     let fs = sf_freq.convert_to(&sf_wn, &[]).unwrap().unwrap();
@@ -184,11 +184,11 @@ fn test_freq_to_vrel() {
     let rf = 1.42040575e9; // HI line in Hz
 
     let mut sf_freq = SpecFrame::new(SpecSystem::Freq);
-    sf_freq.set_unit("Hz");
+    sf_freq.set_unit(1, "Hz").unwrap();
     sf_freq.set_rest_freq(rf);
 
     let mut sf_vrel = SpecFrame::new(SpecSystem::Vrel);
-    sf_vrel.set_unit("m/s");
+    sf_vrel.set_unit(1, "m/s").unwrap();
     sf_vrel.set_rest_freq(rf);
 
     let fs = sf_freq.convert_to(&sf_vrel, &[]).unwrap().unwrap();
@@ -212,11 +212,11 @@ fn test_vradio_to_freq() {
     let rf = 1.42040575e9;
 
     let mut sf_vr = SpecFrame::new(SpecSystem::Vradio);
-    sf_vr.set_unit("m/s");
+    sf_vr.set_unit(1, "m/s").unwrap();
     sf_vr.set_rest_freq(rf);
 
     let mut sf_freq = SpecFrame::new(SpecSystem::Freq);
-    sf_freq.set_unit("Hz");
+    sf_freq.set_unit(1, "Hz").unwrap();
     sf_freq.set_rest_freq(rf);
 
     let fs = sf_vr.convert_to(&sf_freq, &[]).unwrap().unwrap();
@@ -473,13 +473,13 @@ fn test_map_from_system_change() {
     // Use canonical SI units explicitly so the canonical-units chain
     // is identity (no display-unit scaling).
     let mut sf = SpecFrame::new(SpecSystem::Freq);
-    sf.set_unit("Hz");
+    sf.set_unit(1, "Hz").unwrap();
     let snapshot = sf.snapshot();
 
     let mut sf2 = SpecFrame::new(SpecSystem::Freq);
-    sf2.set_unit("Hz");
+    sf2.set_unit(1, "Hz").unwrap();
     sf2.set_system(SpecSystem::Wavelen);
-    sf2.set_unit("m");
+    sf2.set_unit(1, "m").unwrap();
 
     let mapping = sf2.map_from(snapshot.as_ref()).unwrap();
 
@@ -503,11 +503,11 @@ fn test_wavelen_to_voptical() {
     let lambda_0 = C_LIGHT / rf; // rest wavelength
 
     let mut sf_wave = SpecFrame::new(SpecSystem::Wavelen);
-    sf_wave.set_unit("m");
+    sf_wave.set_unit(1, "m").unwrap();
     sf_wave.set_rest_freq(rf);
 
     let mut sf_vopt = SpecFrame::new(SpecSystem::Voptical);
-    sf_vopt.set_unit("m/s");
+    sf_vopt.set_unit(1, "m/s").unwrap();
     sf_vopt.set_rest_freq(rf);
 
     let fs = sf_wave.convert_to(&sf_vopt, &[]).unwrap().unwrap();
@@ -536,9 +536,9 @@ fn test_unit_mhz_to_hz_within_freq() {
     // Source SpecFrame in MHz, target in explicit Hz. Conversion
     // factor: 1 MHz = 1e6 Hz.
     let mut sf_mhz = SpecFrame::new(SpecSystem::Freq);
-    sf_mhz.set_unit("MHz");
+    sf_mhz.set_unit(1, "MHz").unwrap();
     let mut sf_hz = SpecFrame::new(SpecSystem::Freq);
-    sf_hz.set_unit("Hz");
+    sf_hz.set_unit(1, "Hz").unwrap();
 
     let fs = sf_mhz.convert_to(&sf_hz, &[]).unwrap().unwrap();
     let v = transform_fwd(&fs, 1.0);
@@ -550,9 +550,9 @@ fn test_unit_mhz_to_hz_within_freq() {
 fn test_unit_kms_to_ms_within_vrad() {
     // 1 km/s = 1e3 m/s.
     let mut sf_kms = SpecFrame::new(SpecSystem::Vradio);
-    sf_kms.set_unit("km/s");
+    sf_kms.set_unit(1, "km/s").unwrap();
     let mut sf_ms = SpecFrame::new(SpecSystem::Vradio);
-    sf_ms.set_unit("m/s");
+    sf_ms.set_unit(1, "m/s").unwrap();
 
     let fs = sf_kms.convert_to(&sf_ms, &[]).unwrap().unwrap();
     let v = transform_fwd(&fs, 1.0);
@@ -573,9 +573,9 @@ fn test_unit_unchanged_returns_unitmap() {
 fn test_unit_round_trip_mhz_to_ghz() {
     // 1 MHz = 1e-3 GHz.
     let mut sf_mhz = SpecFrame::new(SpecSystem::Freq);
-    sf_mhz.set_unit("MHz");
+    sf_mhz.set_unit(1, "MHz").unwrap();
     let mut sf_ghz = SpecFrame::new(SpecSystem::Freq);
-    sf_ghz.set_unit("GHz");
+    sf_ghz.set_unit(1, "GHz").unwrap();
 
     let fs = sf_mhz.convert_to(&sf_ghz, &[]).unwrap().unwrap();
     let v = transform_fwd(&fs, 1000.0);

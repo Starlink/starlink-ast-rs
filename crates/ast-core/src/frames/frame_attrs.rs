@@ -5,6 +5,7 @@
 //! Title, Domain and Epoch of a SkyFrame, say) are supplied by the owning
 //! class, as C's subclasses over-ride the Frame class's Get methods.
 
+use crate::error::{AstError, AstResult, ErrorCode};
 use crate::serial::{Node, NodeValue};
 
 /// Frame-class attributes. Mirrors the instance variables of C's `AstFrame`
@@ -862,6 +863,7 @@ macro_rules! forward_frame_attrs {
 macro_rules! region_frame_attrs {
     () => {
         forward_frame_attrs!(data.frameset);
+        forward_axis_attrs!(data.frameset);
         fn ident(&self) -> &str {
             self.data.ident.as_deref().unwrap_or("")
         }
@@ -960,6 +962,305 @@ macro_rules! cmp_frame_shared_attr {
             self.attrs.$field = None;
             self.$f1.$clear()?;
             self.$f2.$clear()
+        }
+    };
+}
+
+/// Check a 1-based axis index against a Frame's axis count, as C's
+/// `astValidateAxis` does.
+pub(crate) fn validate_axis(axis: usize, naxes: usize) -> AstResult<()> {
+    if axis == 0 || axis > naxes {
+        return Err(AstError::new_tracked(
+            ErrorCode::Axiin,
+            format!("axis index {axis} is out of range 1..={naxes}"),
+        ));
+    }
+    Ok(())
+}
+
+/// Set, test and clear for the named per-axis attributes, as C's Frame
+/// does them through `astGetAxis` (frame.c `MAKE_SET`, `MAKE_TEST`,
+/// `MAKE_CLEAR`). Used inside `impl Frame for X`, where `X` has inherent
+/// `ax(axis)` and `ax_mut(axis)` returning the `Axis` of a 1-based external
+/// axis. Each name is one of `label`, `symbol`, `unit`, `format`, `digits`,
+/// `direction`, `top` and `bottom`.
+macro_rules! axis_attrs_store {
+    ($($attr:ident),+ $(,)?) => {
+        $(axis_attrs_store!(@one $attr);)+
+    };
+    (@one label) => {
+        axis_attrs_store!(@str set_label, test_label, clear_label, label);
+    };
+    (@one symbol) => {
+        axis_attrs_store!(@str set_symbol, test_symbol, clear_symbol, symbol);
+    };
+    (@one unit) => {
+        axis_attrs_store!(@str set_unit, test_unit, clear_unit, unit);
+    };
+    (@one format) => {
+        axis_attrs_store!(@str set_format_str, test_format_str, clear_format_str, format);
+    };
+    (@one digits) => {
+        // C constrains an axis's Digits to at least 1 (axis.c:2617).
+        fn set_axis_digits(&mut self, axis: usize, value: i32) -> $crate::error::AstResult<()> {
+            self.ax_mut(axis)?.digits = Some(value.max(1));
+            Ok(())
+        }
+        axis_attrs_store!(@test_clear test_axis_digits, clear_axis_digits, digits);
+    };
+    (@one direction) => {
+        axis_attrs_store!(@val set_direction, test_direction, clear_direction, direction, bool);
+    };
+    (@one top) => {
+        axis_attrs_store!(@val set_top, test_top, clear_top, top, f64);
+    };
+    (@one bottom) => {
+        axis_attrs_store!(@val set_bottom, test_bottom, clear_bottom, bottom, f64);
+    };
+    (@str $set:ident, $test:ident, $clear:ident, $field:ident) => {
+        fn $set(&mut self, axis: usize, value: &str) -> $crate::error::AstResult<()> {
+            self.ax_mut(axis)?.$field = Some(value.to_string());
+            Ok(())
+        }
+        axis_attrs_store!(@test_clear $test, $clear, $field);
+    };
+    (@val $set:ident, $test:ident, $clear:ident, $field:ident, $ty:ty) => {
+        fn $set(&mut self, axis: usize, value: $ty) -> $crate::error::AstResult<()> {
+            self.ax_mut(axis)?.$field = Some(value);
+            Ok(())
+        }
+        axis_attrs_store!(@test_clear $test, $clear, $field);
+    };
+    (@test_clear $test:ident, $clear:ident, $field:ident) => {
+        fn $test(&self, axis: usize) -> $crate::error::AstResult<bool> {
+            Ok(self.ax(axis)?.$field.is_some())
+        }
+        fn $clear(&mut self, axis: usize) -> $crate::error::AstResult<()> {
+            self.ax_mut(axis)?.$field = None;
+            Ok(())
+        }
+    };
+}
+
+/// The Frame class's getters for the named per-axis attributes, for a class
+/// whose C counterpart does not over-ride them (frame.c `MAKE_GET`), with the
+/// Frame's Digits standing in for an axis that has none. Same storage
+/// contract as [`axis_attrs_store`]. Each name is one of `unit`, `format`,
+/// `digits`, `direction`, `top` and `bottom`.
+macro_rules! axis_attrs_base_get {
+    ($($attr:ident),+ $(,)?) => {
+        $(axis_attrs_base_get!(@one $attr);)+
+    };
+    (@one unit) => {
+        fn unit(&self, axis: usize) -> $crate::error::AstResult<String> {
+            Ok(self.ax(axis)?.unit.clone().unwrap_or_default())
+        }
+    };
+    (@one format) => {
+        // axis.c `GetDefaultFormat`: "%1.<Digits>G".
+        fn format_str(&self, axis: usize) -> $crate::error::AstResult<String> {
+            match &self.ax(axis)?.format {
+                Some(f) => Ok(f.clone()),
+                None => Ok(format!(
+                    "%1.{}G",
+                    $crate::frames::Frame::axis_digits(self, axis)?
+                )),
+            }
+        }
+    };
+    (@one digits) => {
+        fn axis_digits(&self, axis: usize) -> $crate::error::AstResult<i32> {
+            Ok(self
+                .ax(axis)?
+                .digits
+                .unwrap_or_else(|| $crate::frames::Frame::digits(self)))
+        }
+    };
+    (@one direction) => {
+        fn direction(&self, axis: usize) -> $crate::error::AstResult<bool> {
+            Ok(self.ax(axis)?.direction.unwrap_or(true))
+        }
+    };
+    (@one top) => {
+        fn top(&self, axis: usize) -> $crate::error::AstResult<f64> {
+            Ok(self.ax(axis)?.top.unwrap_or(f64::MAX))
+        }
+    };
+    (@one bottom) => {
+        fn bottom(&self, axis: usize) -> $crate::error::AstResult<f64> {
+            Ok(self.ax(axis)?.bottom.unwrap_or(-f64::MAX))
+        }
+    };
+}
+
+/// Forward every per-axis attribute to `self.<path>`, itself a Frame.
+macro_rules! forward_axis_attrs {
+    ($($path:ident).+) => {
+        forward_axis_attrs!(@get [$($path).+] label -> String);
+        forward_axis_attrs!(@rest [$($path).+]);
+    };
+    // Every attribute but the Label getter, for a class that supplies its
+    // own Label default.
+    (@all_but_label [$($path:ident).+]) => {
+        forward_axis_attrs!(@rest [$($path).+]);
+    };
+    (@rest [$($path:ident).+]) => {
+        forward_axis_attrs!(@get [$($path).+] axis_object_top -> f64);
+        forward_axis_attrs!(@get [$($path).+] axis_object_bottom -> f64);
+        forward_axis_attrs!(@set [$($path).+] set_label(&str));
+        forward_axis_attrs!(@get [$($path).+] test_label -> bool);
+        forward_axis_attrs!(@clear [$($path).+] clear_label);
+        forward_axis_attrs!(@get [$($path).+] symbol -> String);
+        forward_axis_attrs!(@set [$($path).+] set_symbol(&str));
+        forward_axis_attrs!(@get [$($path).+] test_symbol -> bool);
+        forward_axis_attrs!(@clear [$($path).+] clear_symbol);
+        forward_axis_attrs!(@get [$($path).+] unit -> String);
+        forward_axis_attrs!(@set [$($path).+] set_unit(&str));
+        forward_axis_attrs!(@get [$($path).+] test_unit -> bool);
+        forward_axis_attrs!(@clear [$($path).+] clear_unit);
+        forward_axis_attrs!(@get [$($path).+] format_str -> String);
+        forward_axis_attrs!(@set [$($path).+] set_format_str(&str));
+        forward_axis_attrs!(@get [$($path).+] test_format_str -> bool);
+        forward_axis_attrs!(@clear [$($path).+] clear_format_str);
+        forward_axis_attrs!(@get [$($path).+] axis_digits -> i32);
+        forward_axis_attrs!(@set [$($path).+] set_axis_digits(i32));
+        forward_axis_attrs!(@get [$($path).+] test_axis_digits -> bool);
+        forward_axis_attrs!(@clear [$($path).+] clear_axis_digits);
+        forward_axis_attrs!(@get [$($path).+] direction -> bool);
+        forward_axis_attrs!(@set [$($path).+] set_direction(bool));
+        forward_axis_attrs!(@get [$($path).+] test_direction -> bool);
+        forward_axis_attrs!(@clear [$($path).+] clear_direction);
+        forward_axis_attrs!(@get [$($path).+] top -> f64);
+        forward_axis_attrs!(@set [$($path).+] set_top(f64));
+        forward_axis_attrs!(@get [$($path).+] test_top -> bool);
+        forward_axis_attrs!(@clear [$($path).+] clear_top);
+        forward_axis_attrs!(@get [$($path).+] bottom -> f64);
+        forward_axis_attrs!(@set [$($path).+] set_bottom(f64));
+        forward_axis_attrs!(@get [$($path).+] test_bottom -> bool);
+        forward_axis_attrs!(@clear [$($path).+] clear_bottom);
+    };
+    (@get [$($path:ident).+] $name:ident -> $ty:ty) => {
+        fn $name(&self, axis: usize) -> $crate::error::AstResult<$ty> {
+            $crate::frames::Frame::$name(&self.$($path).+, axis)
+        }
+    };
+    (@set [$($path:ident).+] $name:ident($ty:ty)) => {
+        fn $name(&mut self, axis: usize, value: $ty) -> $crate::error::AstResult<()> {
+            $crate::frames::Frame::$name(&mut self.$($path).+, axis, value)
+        }
+    };
+    (@clear [$($path:ident).+] $name:ident) => {
+        fn $name(&mut self, axis: usize) -> $crate::error::AstResult<()> {
+            $crate::frames::Frame::$name(&mut self.$($path).+, axis)
+        }
+    };
+}
+
+/// Call `get` on the component Frame `f` of a compound Frame whose Digits
+/// is `digits`, lending it that Digits when it has none of its own, as the
+/// getters in cmpframe.c `MAKE_GET` do by setting and then clearing it.
+pub(crate) fn with_lent_digits<R>(
+    digits: i32,
+    f: &dyn super::Frame,
+    get: impl FnOnce(&dyn super::Frame) -> AstResult<R>,
+) -> AstResult<R> {
+    if f.test_digits() || f.digits() == digits {
+        return get(f);
+    }
+    let mut lent = f.snapshot();
+    lent.set_digits(digits)?;
+    get(lent.as_ref())
+}
+
+/// The per-axis attributes of a CmpFrame, and of a SpecFluxFrame, which is
+/// one in C, as cmpframe.c's `MAKE_GET`, `MAKE_SET`, `MAKE_TEST` and
+/// `MAKE_CLEAR` do them: each is routed to the component that holds the
+/// axis, a getter lends the CmpFrame's Digits to a component that has none,
+/// and a plain Frame component's default Label and Symbol are numbered by
+/// the CmpFrame's axis. Top and Bottom, which C reaches through
+/// `astGetAxis` and so through the component's own Axis, come from the
+/// component's Axis object, and Digits(axis), which C reads through the
+/// attribute string of the component (cmpframe.c `GetAttrib`), from the
+/// component.
+///
+/// Used inside `impl Frame for X`, where `X` has inherent
+/// `axis_component(axis)` and `axis_component_mut(axis)` returning the
+/// component and its axis for a 1-based external axis.
+macro_rules! cmp_frame_axis_attrs {
+    () => {
+        fn label(&self, axis: usize) -> $crate::error::AstResult<String> {
+            let (f, a) = self.axis_component(axis)?;
+            if f.as_any().is::<$crate::frames::BasicFrame>() && !f.test_label(a)? {
+                return Ok(format!("Axis {axis}"));
+            }
+            $crate::frames::frame_attrs::with_lent_digits(
+                $crate::frames::Frame::digits(self),
+                f,
+                |f| f.label(a),
+            )
+        }
+        fn symbol(&self, axis: usize) -> $crate::error::AstResult<String> {
+            let (f, a) = self.axis_component(axis)?;
+            if f.as_any().is::<$crate::frames::BasicFrame>() && !f.test_symbol(a)? {
+                return Ok(format!("x{axis}"));
+            }
+            $crate::frames::frame_attrs::with_lent_digits(
+                $crate::frames::Frame::digits(self),
+                f,
+                |f| f.symbol(a),
+            )
+        }
+        cmp_frame_axis_attrs!(@lent unit -> String);
+        cmp_frame_axis_attrs!(@lent format_str -> String);
+        cmp_frame_axis_attrs!(@lent direction -> bool);
+        cmp_frame_axis_attrs!(@get axis_digits -> i32);
+        fn top(&self, axis: usize) -> $crate::error::AstResult<f64> {
+            let (f, a) = self.axis_component(axis)?;
+            f.axis_object_top(a)
+        }
+        fn bottom(&self, axis: usize) -> $crate::error::AstResult<f64> {
+            let (f, a) = self.axis_component(axis)?;
+            f.axis_object_bottom(a)
+        }
+        cmp_frame_axis_attrs!(@get axis_object_top -> f64);
+        cmp_frame_axis_attrs!(@get axis_object_bottom -> f64);
+        cmp_frame_axis_attrs!(@rest set_label(&str), test_label, clear_label);
+        cmp_frame_axis_attrs!(@rest set_symbol(&str), test_symbol, clear_symbol);
+        cmp_frame_axis_attrs!(@rest set_unit(&str), test_unit, clear_unit);
+        cmp_frame_axis_attrs!(@rest set_format_str(&str), test_format_str, clear_format_str);
+        cmp_frame_axis_attrs!(@rest set_axis_digits(i32), test_axis_digits, clear_axis_digits);
+        cmp_frame_axis_attrs!(@rest set_direction(bool), test_direction, clear_direction);
+        cmp_frame_axis_attrs!(@rest set_top(f64), test_top, clear_top);
+        cmp_frame_axis_attrs!(@rest set_bottom(f64), test_bottom, clear_bottom);
+    };
+    (@lent $name:ident -> $ty:ty) => {
+        fn $name(&self, axis: usize) -> $crate::error::AstResult<$ty> {
+            let (f, a) = self.axis_component(axis)?;
+            $crate::frames::frame_attrs::with_lent_digits(
+                $crate::frames::Frame::digits(self),
+                f,
+                |f| f.$name(a),
+            )
+        }
+    };
+    (@get $name:ident -> $ty:ty) => {
+        fn $name(&self, axis: usize) -> $crate::error::AstResult<$ty> {
+            let (f, a) = self.axis_component(axis)?;
+            f.$name(a)
+        }
+    };
+    (@rest $set:ident($ty:ty), $test:ident, $clear:ident) => {
+        fn $set(&mut self, axis: usize, value: $ty) -> $crate::error::AstResult<()> {
+            let (f, a) = self.axis_component_mut(axis)?;
+            f.$set(a, value)
+        }
+        fn $test(&self, axis: usize) -> $crate::error::AstResult<bool> {
+            let (f, a) = self.axis_component(axis)?;
+            f.$test(a)
+        }
+        fn $clear(&mut self, axis: usize) -> $crate::error::AstResult<()> {
+            let (f, a) = self.axis_component_mut(axis)?;
+            f.$clear(a)
         }
     };
 }

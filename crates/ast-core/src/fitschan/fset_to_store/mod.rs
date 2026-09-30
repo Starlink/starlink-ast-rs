@@ -42,7 +42,7 @@ mod world_axes;
 use crate::error::AstResult;
 use crate::fitschan::Encoding;
 use crate::fitschan::fits_store::FitsStore;
-use crate::frames::{FrameRef, FrameSet};
+use crate::frames::{Frame, FrameRef, FrameSet};
 use crate::mappings::{CmpMap, Composition, DynMapping};
 
 use celestial_axes::{CelestialAxesArgs, celestial_axes};
@@ -577,7 +577,7 @@ fn apply_unit_remap(fs: &FrameSet) -> AstResult<FrameSet> {
         let axmap: DynMapping = if is_spec || is_sky_domain {
             Box::new(UnitMap::new(1))
         } else {
-            let extunit = pframe.effective_unit(paxis_1);
+            let extunit = pframe.unit(paxis_1)?;
             let intunit = pframe.internal_unit(paxis_1);
             if intunit == extunit {
                 Box::new(UnitMap::new(1))
@@ -691,7 +691,7 @@ fn add_encoding_frame_class(fs: &mut FrameSet) -> AstResult<()> {
     let mut source_spec = matched_spec.clone();
     source_spec.set_system(SpecSystem::Freq);
     source_spec.set_std_of_rest(StdOfRest::Source);
-    source_spec.set_unit("Hz");
+    source_spec.set_unit(1, "Hz")?;
 
     // The spectral component of the canonical template: a DSBSpecFrame
     // (preserving IF / DSBCentre / SideBand) when the matched frame was

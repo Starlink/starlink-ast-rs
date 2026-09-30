@@ -215,13 +215,13 @@ fn test_fluxframe_make_flux_mapping_cross_system_with_specframe() {
     // reference C library, astConvert FLXDN->FLXDNW at 1.4e9 Hz): the flux
     // scale factor is 0.653785630413752.
     let mut sf1 = SpecFrame::new(SpecSystem::Freq);
-    sf1.set_unit("Hz");
+    sf1.set_unit(1, "Hz").unwrap();
     let mut ff1 = FluxFrame::new(FluxSystem::FluxDen);
     ff1.set_spec_frame(sf1);
     ff1.set_spec_val(1.4e9);
 
     let mut sf2 = SpecFrame::new(SpecSystem::Freq);
-    sf2.set_unit("Hz");
+    sf2.set_unit(1, "Hz").unwrap();
     let mut ff2 = FluxFrame::new(FluxSystem::FluxDenW);
     ff2.set_spec_frame(sf2);
     ff2.set_spec_val(1.4e9);
@@ -256,14 +256,14 @@ fn test_fluxframe_make_flux_mapping_surface_brightness_mismatch_none() {
 #[test]
 fn test_fluxframe_unit_accessors() {
     let mut ff = FluxFrame::new(FluxSystem::FluxDen);
-    assert!(!ff.test_unit());
+    assert!(!ff.test_unit(1).unwrap());
     assert_eq!(ff.unit_or_default(), "W/m^2/Hz");
-    ff.set_unit("Jy");
-    assert!(ff.test_unit());
-    assert_eq!(ff.unit(), Some("Jy"));
+    ff.set_unit(1, "Jy").unwrap();
+    assert!(ff.test_unit(1).unwrap());
+    assert_eq!(ff.unit(1).unwrap(), "Jy");
     assert_eq!(ff.unit_or_default(), "Jy");
-    ff.clear_unit();
-    assert!(!ff.test_unit());
+    ff.clear_unit(1).unwrap();
+    assert!(!ff.test_unit(1).unwrap());
     assert_eq!(ff.unit_or_default(), "W/m^2/Hz");
 }
 
@@ -274,13 +274,13 @@ fn test_fluxframe_system_derived_from_unit() {
     // unit-compatible. Oracle: unit=Jy -> FLXDN; W/m^2/Angstrom -> FLXDNW.
     let mut ff = FluxFrame::new(FluxSystem::FluxDen); // unset System
     assert!(!ff.test_system());
-    ff.set_unit("Jy");
+    ff.set_unit(1, "Jy").unwrap();
     assert_eq!(ff.system(), FluxSystem::FluxDen);
     // System remains "unset" (the default is unit-derived, not explicit).
     assert!(!ff.test_system());
 
     let mut ff = FluxFrame::new(FluxSystem::FluxDen);
-    ff.set_unit("W/m^2/Angstrom");
+    ff.set_unit(1, "W/m^2/Angstrom").unwrap();
     assert_eq!(ff.system(), FluxSystem::FluxDenW);
 }
 
@@ -289,7 +289,7 @@ fn test_fluxframe_jy_to_default_units() {
     // Jy = 1e-26 W/m^2/Hz. A FLXDN frame in Jy converting to a default-unit
     // FLXDN frame scales 1.0 Jy -> 1e-26 (oracle-verified astConvert).
     let mut jy = FluxFrame::new(FluxSystem::FluxDen);
-    jy.set_unit("Jy");
+    jy.set_unit(1, "Jy").unwrap();
     let def = FluxFrame::new(FluxSystem::FluxDen);
 
     let map = jy
@@ -325,14 +325,14 @@ fn test_fluxframe_cross_system_with_units() {
     // zoom (0.653785630413752) with the 1e-26 Jy factor (map1). Oracle
     // (astConvert): 1.0 -> 6.5378563041e-27.
     let mut sf1 = SpecFrame::new(SpecSystem::Freq);
-    sf1.set_unit("Hz");
+    sf1.set_unit(1, "Hz").unwrap();
     let mut jy = FluxFrame::new(FluxSystem::FluxDen);
-    jy.set_unit("Jy");
+    jy.set_unit(1, "Jy").unwrap();
     jy.set_spec_frame(sf1);
     jy.set_spec_val(1.4e9);
 
     let mut sf2 = SpecFrame::new(SpecSystem::Freq);
-    sf2.set_unit("Hz");
+    sf2.set_unit(1, "Hz").unwrap();
     let mut w = FluxFrame::new(FluxSystem::FluxDenW); // default W/m^2/Angstrom
     w.set_spec_frame(sf2);
     w.set_spec_val(1.4e9);
@@ -351,7 +351,7 @@ fn test_fluxframe_incompatible_unit_no_conversion() {
     // A dimensionally-incompatible target unit cannot bracket the zoom, so no
     // conversion is formed (C: map1 NULL -> no match).
     let mut bad = FluxFrame::new(FluxSystem::FluxDen);
-    bad.set_unit("m"); // length, not a flux density
+    bad.set_unit(1, "m").unwrap(); // length, not a flux density
     let def = FluxFrame::new(FluxSystem::FluxDen);
     assert!(bad.make_flux_mapping(&def).unwrap().is_none());
 }
@@ -359,14 +359,14 @@ fn test_fluxframe_incompatible_unit_no_conversion() {
 #[test]
 fn test_fluxframe_unit_serialisation_round_trip() {
     let mut ff = FluxFrame::new(FluxSystem::FluxDen);
-    ff.set_unit("Jy");
+    ff.set_unit(1, "Jy").unwrap();
     let text = to_native_string(&AnyObject::FluxFrame(ff)).unwrap();
     assert!(text.contains("Unit = \"Jy\""), "missing Unit: {text}");
 
     let parsed = from_native_string(&text).unwrap();
     let ff2 = parsed.as_frame().unwrap();
     let ff2 = ff2.as_any().downcast_ref::<FluxFrame>().expect("FluxFrame");
-    assert_eq!(ff2.unit(), Some("Jy"));
+    assert_eq!(ff2.unit(1).unwrap(), "Jy");
 }
 
 // ---------------------------------------------------------------------------
@@ -633,9 +633,9 @@ fn sff_convert(target: &SpecFluxFrame, result: &SpecFluxFrame, x: f64, v: f64) -
 /// axis 2.
 fn jy_sff_pair() -> (SpecFluxFrame, SpecFluxFrame) {
     let mut sf = SpecFrame::new(SpecSystem::Freq);
-    sf.set_unit("GHz");
+    sf.set_unit(1, "GHz").unwrap();
     let mut ff = FluxFrame::new(FluxSystem::FluxDen);
-    ff.set_unit("Jy");
+    ff.set_unit(1, "Jy").unwrap();
     ff.set_spec_frame(sf.clone());
     ff.set_spec_val(123.0);
     let sff = SpecFluxFrame::new(sf.clone(), ff);
@@ -685,15 +685,15 @@ fn test_specflux_log_units() {
     // testspecflux.c error 18-20: result FluxFrame Unit=log(W/m2/nm) (FLXDNW).
     // (x=2, v=1) -> (2, -24.8747607).
     let mut sf = SpecFrame::new(SpecSystem::Freq);
-    sf.set_unit("GHz");
+    sf.set_unit(1, "GHz").unwrap();
     let mut ff = FluxFrame::new(FluxSystem::FluxDen);
-    ff.set_unit("Jy");
+    ff.set_unit(1, "Jy").unwrap();
     ff.set_spec_frame(sf.clone());
     ff.set_spec_val(123.0);
     let sff = SpecFluxFrame::new(sf.clone(), ff);
 
     let mut ff2 = FluxFrame::new(FluxSystem::FluxDenW);
-    ff2.set_unit("log(W/m2/nm)");
+    ff2.set_unit(1, "log(W/m2/nm)").unwrap();
     ff2.set_spec_frame(sf.clone());
     let sff2 = SpecFluxFrame::new(sf, ff2);
 
@@ -710,15 +710,15 @@ fn test_specflux_surface_brightness() {
     // testspecflux.c error 24-27: SFCBR (Jy/deg**2) -> SFCBRW (log(W/m2/nm/sr)).
     // (x=2, v=1) -> (2, -21.3585154).
     let mut sf = SpecFrame::new(SpecSystem::Freq);
-    sf.set_unit("GHz");
+    sf.set_unit(1, "GHz").unwrap();
     let mut ff = FluxFrame::new(FluxSystem::SBright);
-    ff.set_unit("Jy/deg**2");
+    ff.set_unit(1, "Jy/deg**2").unwrap();
     ff.set_spec_frame(sf.clone());
     ff.set_spec_val(123.0);
     let sff = SpecFluxFrame::new(sf.clone(), ff);
 
     let mut ff2 = FluxFrame::new(FluxSystem::SBrightW);
-    ff2.set_unit("log(W/m2/nm/sr)");
+    ff2.set_unit(1, "log(W/m2/nm/sr)").unwrap();
     ff2.set_spec_frame(sf.clone());
     let sff2 = SpecFluxFrame::new(sf, ff2);
 

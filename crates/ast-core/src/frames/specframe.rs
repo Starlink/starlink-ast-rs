@@ -294,8 +294,10 @@ pub struct SpecFrame {
     /// to the unset state in which `system` holds the WAVELEN default.
     system_set: bool,
     std_of_rest: StdOfRest,
-    sor_set: bool,        // whether std_of_rest was explicitly set (vs defaulting)
-    unit: Option<String>, // user-facing unit for the current system (e.g. "GHz")
+    sor_set: bool, // whether std_of_rest was explicitly set (vs defaulting)
+    /// The Axis-class attributes of the single axis. Its Unit is the
+    /// user-facing unit for the current system (e.g. "GHz").
+    axis: super::axis::Axis,
     /// Preferred unit recorded per spectral system, mirroring C's
     /// `usedunits[]` (specframe.c SetUnit). Indexed by `SpecSystem::ALL`
     /// position. A unit set while in a given system is remembered here and
@@ -316,11 +318,6 @@ pub struct SpecFrame {
     /// Whether AlignSpecOffset was explicitly set. Mirrors C
     /// `astTestAlignSpecOffset`.
     align_spec_offset_set: bool,
-
-    /// User-set Label override for this frame's single axis. `None`
-    /// means "use the system-derived default from
-    /// [`SpecSystem::label`]".
-    label_override: Option<String>,
     // Match-control attributes (used by `astFindFrame` / `astMatch`).
 }
 
@@ -358,7 +355,7 @@ impl SpecFrame {
             system_set: true,
             std_of_rest: StdOfRest::Heliocentric,
             sor_set: false,
-            unit: None,
+            axis: super::axis::Axis::default(),
             used_units: Default::default(),
             rest_freq: None,
             ref_ra: None,
@@ -371,7 +368,6 @@ impl SpecFrame {
             align_system: None,
             align_spec_offset: false,
             align_spec_offset_set: false,
-            label_override: None,
         }
     }
 
@@ -404,7 +400,7 @@ impl SpecFrame {
             // clear the current unit so the new system's default applies.
             // Mirrors C ClearSystem/SetSystem (specframe.c:628-636). Set the
             // field directly so we don't re-record into used_units.
-            self.unit = self.used_units[sys.used_units_index()].clone();
+            self.axis.unit = self.used_units[sys.used_units_index()].clone();
             // A set SpecOrigin keeps referring to the same spectral
             // position: convert it to the new system (specframe.c:643,
             // OriginSystem).
@@ -453,41 +449,35 @@ impl SpecFrame {
         self.sor_set
     }
 
-    /// Return the user-facing unit for the current system (e.g. "GHz" for FREQ).
-    ///
-    /// Returns `None` if no unit has been explicitly set.
-    pub fn unit(&self) -> Option<&str> {
-        self.unit.as_deref()
+    /// The Axis-class attributes of the single axis, after checking the
+    /// 1-based `axis`.
+    fn ax(&self, axis: usize) -> AstResult<&super::axis::Axis> {
+        super::frame_attrs::validate_axis(axis, 1)?;
+        Ok(&self.axis)
     }
 
-    /// Set the user-facing unit for the current system. Also records it as
-    /// the used unit for the current system, mirroring C `SetUnit`
-    /// (specframe.c:4216-4234) which stores the value in `usedunits[system]`.
-    pub fn set_unit(&mut self, unit: &str) {
-        self.unit = Some(unit.to_string());
+    /// The Axis-class attributes of the single axis, to change.
+    fn ax_mut(&mut self, axis: usize) -> AstResult<&mut super::axis::Axis> {
+        super::frame_attrs::validate_axis(axis, 1)?;
+        Ok(&mut self.axis)
+    }
+
+    /// Set the Unit of the single axis and record it as the one used with
+    /// the current System, as C's `SetUnit` does (specframe.c:4167).
+    pub(crate) fn store_unit(&mut self, unit: &str) {
         self.used_units[self.system.used_units_index()] = Some(unit.to_string());
-    }
-
-    /// Test whether Unit has been explicitly set on this SpecFrame's
-    /// (single) axis.
-    pub fn test_unit(&self) -> bool {
-        self.unit.is_some()
+        self.axis.unit = Some(unit.to_string());
     }
 
     /// Return the user-facing unit, falling back to the system default
     /// (e.g. "GHz" for FREQ, "km/s" for VRAD). Mirrors C's `astGetUnit`,
     /// which always returns a non-NULL string.
     pub fn unit_or_default(&self) -> &str {
-        self.unit
+        self.axis
+            .unit
             .as_deref()
             .filter(|u| !u.is_empty())
             .unwrap_or_else(|| self.system.default_display_units())
-    }
-
-    /// Clear the user-set unit override so that the system's default
-    /// unit (`Hz` for `Freq`, `m` for `Wavelen`, etc.) takes effect.
-    pub fn clear_unit(&mut self) {
-        self.unit = None;
     }
 
     /// Return the alignment standard of rest.
@@ -528,32 +518,6 @@ impl SpecFrame {
     /// Clear AlignSystem back to its class default (`Wavelen`).
     pub fn clear_align_system(&mut self) {
         self.align_system = None;
-    }
-
-    /// Return the explicit Label override if set, otherwise the
-    /// system-derived default ("Frequency", "Wavelength", etc.).
-    /// Mirrors `astGetLabel(specfrm, 0)`.
-    pub fn axis_label(&self) -> String {
-        if let Some(s) = &self.label_override {
-            return s.clone();
-        }
-        self.system.label().to_string()
-    }
-
-    /// Test whether the Label was explicitly set. Mirrors
-    /// `astTestLabel(specfrm, 0)`.
-    pub fn test_axis_label(&self) -> bool {
-        self.label_override.is_some()
-    }
-
-    /// Set an explicit Label override.
-    pub fn set_axis_label(&mut self, label: impl Into<String>) {
-        self.label_override = Some(label.into());
-    }
-
-    /// Clear an explicit Label override.
-    pub fn clear_axis_label(&mut self) {
-        self.label_override = None;
     }
 
     /// Return the rest frequency in Hz.
@@ -1324,6 +1288,7 @@ impl SpecFrame {
         }
         let def = self.system.default_display_units();
         let cur = self
+            .axis
             .unit
             .as_deref()
             .filter(|u| !u.is_empty())
@@ -1359,7 +1324,7 @@ impl SpecFrame {
             return;
         }
         let mut sf1 = self.clone();
-        sf1.unit = None;
+        sf1.axis.unit = None;
         sf1.spec_origin = None;
         sf1.align_spec_offset = false;
         sf1.align_spec_offset_set = false;
@@ -1606,6 +1571,7 @@ impl SpecFrame {
         // (mirrors C `AST__BADUN`).
         let in_default = target_system.specmap_units();
         let in_unit = target
+            .axis
             .unit
             .as_deref()
             .filter(|u| !u.is_empty())
@@ -1623,6 +1589,7 @@ impl SpecFrame {
         }
         let out_default = result_system.specmap_units();
         let out_unit = result
+            .axis
             .unit
             .as_deref()
             .filter(|u| !u.is_empty())
@@ -1698,13 +1665,65 @@ impl Frame for SpecFrame {
         false
     }
 
-    fn effective_label(&self, _axis: usize) -> String {
-        self.axis_label()
+    /// Mirrors C `SpecFrame::GetLabel` (specframe.c:1520): a Label that
+    /// has been set, else the System's name, followed by the SpecOrigin
+    /// when there is one.
+    fn label(&self, axis: usize) -> AstResult<String> {
+        if let Some(label) = &self.ax(axis)?.label {
+            return Ok(label.clone());
+        }
+        let mut label = self.system.label().to_string();
+        let origin = self.spec_origin_cur()?;
+        if origin != 0.0 {
+            label.push_str(&format!(" offset from {}", self.format(axis, origin)?));
+        }
+        Ok(label)
     }
 
-    fn effective_unit(&self, _axis: usize) -> String {
-        self.unit_or_default().to_string()
+    /// Mirrors C `SpecFrame::GetSymbol` (specframe.c:1770): a Symbol that
+    /// has been set, else the System's FITS code.
+    fn symbol(&self, axis: usize) -> AstResult<String> {
+        Ok(self
+            .ax(axis)?
+            .symbol
+            .clone()
+            .unwrap_or_else(|| self.system.as_str().to_string()))
     }
+
+    /// Mirrors C `SpecFrame::GetUnit` (specframe.c:2220): a Unit that has
+    /// been set, else the System's default unit.
+    fn unit(&self, axis: usize) -> AstResult<String> {
+        Ok(self
+            .ax(axis)?
+            .unit
+            .clone()
+            .unwrap_or_else(|| self.system.default_display_units().to_string()))
+    }
+
+    /// Mirrors C `SpecFrame::SetUnit` (specframe.c:4167), which also records
+    /// the Unit as the one used with the current System, so that it comes
+    /// back when the System does.
+    fn set_unit(&mut self, axis: usize, unit: &str) -> AstResult<()> {
+        self.ax(axis)?;
+        self.store_unit(unit);
+        Ok(())
+    }
+
+    /// Mirrors C `SpecFrame::ClearUnit` (specframe.c:691), which also
+    /// forgets the Unit used with the current System.
+    fn clear_unit(&mut self, axis: usize) -> AstResult<()> {
+        self.ax(axis)?;
+        self.used_units[self.system.used_units_index()] = None;
+        self.axis.unit = None;
+        Ok(())
+    }
+
+    fn test_unit(&self, axis: usize) -> AstResult<bool> {
+        Ok(self.ax(axis)?.unit.is_some())
+    }
+
+    axis_attrs_base_get!(format, digits, direction, top, bottom);
+    axis_attrs_store!(label, symbol, format, digits, direction, top, bottom);
 
     fn distance(&self, a: &[f64], b: &[f64]) -> AstResult<f64> {
         let va = a[0];
@@ -1897,8 +1916,8 @@ impl Frame for SpecFrame {
         }
         for (i, &t) in target_axes.iter().enumerate() {
             if t == 0 {
-                let _ = bf.set_label(i + 1, self.axis_label());
-                let _ = bf.set_unit(i + 1, self.unit_or_default().to_string());
+                bf.set_label(i + 1, &self.label(1)?)?;
+                bf.set_unit(i + 1, &self.unit(1)?)?;
             }
         }
         Ok(Box::new(bf))
@@ -1936,10 +1955,9 @@ fn specframe_overlay(
     template_axes: &[i32],
     result: &mut dyn Frame,
 ) -> AstResult<()> {
-    let _ = template_axes; // SpecFrame is 1-axis: per-axis OVERLAY uses
-    // axis 0 unconditionally (specframe.c:3536-3554 — the OVERLAY macro
-    // takes no axis argument because the SpecFrame attributes it
-    // copies are scalar).
+    // The SpecFrame attributes the OVERLAY macro copies are scalar
+    // (specframe.c:3536-3554); `template_axes` only says whether the Axis
+    // is overlaid.
     let template_spec = match template.as_any().downcast_ref::<SpecFrame>() {
         Some(s) => s,
         None => return Ok(()),
@@ -1962,13 +1980,13 @@ fn specframe_overlay(
             let new_def = new_system.specmap_units();
             let old_def = old_system.specmap_units();
             if new_def != old_def {
-                result_spec.clear_unit();
+                result_spec.clear_unit(1)?;
             }
 
-            // Clear axis Label override (specframe.c:3508-3509).
-            // (Symbol has no per-axis storage in the Rust port — the
-            // SpecFrame returns a fixed default — so nothing to do.)
-            result_spec.clear_axis_label();
+            // The Label and Symbol defaults follow the System
+            // (specframe.c:3508-3509).
+            result_spec.axis.label = None;
+            result_spec.axis.symbol = None;
         }
 
         // Parent-class Frame::Overlay copies (frame.c:8567-8594).
@@ -1999,10 +2017,10 @@ fn specframe_overlay(
         if template_spec.test_align_system() {
             result_spec.set_align_system(template_spec.align_system());
         }
-        if template_spec.test_unit() {
-            if let Some(ref u) = template_spec.unit {
-                result_spec.set_unit(u);
-            }
+        // Frame::Overlay copies each axis with astAxisOverlay (frame.c),
+        // straight onto the Axis, so the result's UsedUnits is untouched.
+        if template_axes.first().copied().unwrap_or(0) >= 0 {
+            result_spec.axis.overlay_from(&template_spec.axis);
         }
 
         // SpecFrame-specific OVERLAY block (specframe.c:3545-3554).
@@ -2126,13 +2144,13 @@ fn specframe_sub_frame(
     if !temp.test_domain() {
         temp.set_domain("SPECTRUM");
     }
-    if !temp.test_axis_label() {
-        let lbl = temp.axis_label();
-        temp.set_axis_label(lbl);
+    if !temp.test_label(1)? {
+        let lbl = temp.label(1)?;
+        temp.set_label(1, &lbl)?;
     }
-    if !temp.test_unit() {
-        let u = temp.unit_or_default().to_string();
-        temp.set_unit(&u);
+    if !temp.test_unit(1)? {
+        let u = temp.unit(1)?;
+        temp.set_unit(1, &u)?;
     }
     temp.clear_system();
     temp.clear_align_system();
@@ -2265,6 +2283,7 @@ impl Serializable for SpecFrame {
 
         // Uni1: axis unit (always unset with current unit or system default).
         let display_unit = self
+            .axis
             .unit
             .as_deref()
             .unwrap_or(self.system.default_display_units());
@@ -2323,23 +2342,10 @@ impl Serializable for SpecFrame {
             node.push_int("ActUnt", act as i64, Some(comment.to_string()));
         }
 
-        // Ax1: axis child object. C's Axis Dump writes the fields in the
-        // order Label, Symbol, Unit (axis.c:2909-2934). An explicit Label
-        // override round-trips as an active card here (the Frame-level Lbl1
-        // aggregate stays commented). SpecFrame has no per-axis Symbol
-        // storage, so only Label and Unit are emitted.
+        // Ax1: the Axis, with the attributes that are set (axis.c Dump).
         let mut axis_node = Node::new("Axis");
         axis_node.class_comment = Some("Coordinate axis".to_string());
-        if self.test_axis_label() {
-            axis_node.push_string("Label", &self.axis_label(), Some("Axis Label".to_string()));
-        }
-        if let Some(ref unit) = self.unit {
-            let comment = match crate::units::unit_label(unit) {
-                Some(lab) if lab != unit => format!("Axis units ({lab})"),
-                _ => "Axis units".to_string(),
-            };
-            axis_node.push_string("Unit", unit, Some(comment));
-        }
+        self.axis.write_set_attributes(&mut axis_node);
         node.push_object("Ax1", axis_node, Some("Axis number 1".to_string()));
 
         // IsA Frame marker.
@@ -2441,10 +2447,10 @@ impl Serializable for SpecFrame {
         // recorded used unit, in C's AstSystemType index order
         // (specframe.c:6681-6692, after AlSpOf and before SpOrg). C's
         // SetUnit keeps `usedunits[current]` in step with the current Unit,
-        // so the current system's entry reflects `self.unit`.
+        // so the current system's entry reflects `self.axis.unit`.
         for sys in SpecSystem::ALL {
             let stored = if sys == self.system {
-                self.unit.clone()
+                self.axis.unit.clone()
             } else {
                 self.used_units[sys.used_units_index()].clone()
             };
@@ -2547,21 +2553,15 @@ impl Serializable for SpecFrame {
             ax.get("Unit")
                 .map(|_| ax.get_string("Unit", "").to_string())
         });
-        if let Some(u) = &sf.used_units[system.used_units_index()] {
-            sf.unit = Some(u.clone());
-        } else if node.get("Uni1").is_some() {
-            sf.unit = Some(node.get_string("Uni1", ""));
-        } else if let Some(u) = axis_unit_card {
-            sf.unit = Some(u);
-        }
-
-        // Explicit per-axis Label, carried as an active card inside the
-        // Axis sub-object (mirrors C's Axis Dump).
         if let Some(axis_node) = node.get_object("Ax1") {
-            let axis_label = axis_node.get_string("Label", "");
-            if !axis_label.is_empty() {
-                sf.set_axis_label(axis_label);
-            }
+            sf.axis = super::axis::Axis::read(axis_node);
+        }
+        if let Some(u) = &sf.used_units[system.used_units_index()] {
+            sf.axis.unit = Some(u.clone());
+        } else if node.get("Uni1").is_some() {
+            sf.axis.unit = Some(node.get_string("Uni1", ""));
+        } else if let Some(u) = axis_unit_card {
+            sf.axis.unit = Some(u);
         }
 
         // AlSoR (AlignStdOfRest).
@@ -2799,13 +2799,13 @@ mod tests {
         use crate::frames::find_frame::convert_frames;
 
         let mut vrad = SpecFrame::new(SpecSystem::Vradio);
-        vrad.set_unit("m/s");
+        vrad.set_unit(1, "m/s").unwrap();
         vrad.set_rest_freq(1.0e9);
         vrad.set_std_of_rest(StdOfRest::Topocentric);
         assert!(vrad.test_system());
 
         let mut freq = SpecFrame::new(SpecSystem::Freq);
-        freq.set_unit("Hz");
+        freq.set_unit(1, "Hz").unwrap();
         freq.set_rest_freq(1.0e9);
         freq.set_std_of_rest(StdOfRest::Topocentric);
         assert!(freq.test_system());

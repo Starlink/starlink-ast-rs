@@ -70,14 +70,27 @@ does:
   over-rides.
 - SpecFrame, TimeFrame and FluxFrame gain an `Axis`, holding what they held
   in `unit` (and TimeFrame's `format_str`), so every attribute is stored.
-- SkyFrame keeps its storage until phase 3, gaining Direction, Top and
-  Bottom.
+- `SkyAxis` wraps an `Axis`, as C's SkyAxis extends Axis, and keeps its own
+  Format (C's `skyformat`); SkyFrame's Label and Symbol overrides move into
+  it.
+  This is the storage half of phase 3.
 - CmpFrame routes each call to the component, lending its own Digits to a
   component that has none, as C's `MAKE_GET` in cmpframe.c does.
-  `Digits(axis)` falls back to the CmpFrame's Digits, because C's
-  `GetAttrib` reads it through `astGetAxis` and the queried Frame's Digits.
+  `Digits(axis)` comes from the component, because C reads it only through
+  the attribute string, which a CmpFrame hands to the component
+  (cmpframe.c `GetAttrib`).
+  Top and Bottom come from the component's Axis object, because C reads
+  them through `astGetAxis`; the hidden `axis_object_top` and
+  `axis_object_bottom` trait methods are that seam, and they differ from
+  `top` and `bottom` only for a SkyFrame, whose SkyAxes have no IsLatitude
+  set.
 - FrameSet setters go through `with_integrity`; a Region forwards to its
   FrameSet.
+
+The probe reads each attribute through C's function (`astGetLabel` and so
+on), which is what the trait mirrors.
+For a CmpFrame, `astGetC` and `astSet` differ: they hand an axis-qualified
+attribute straight to the primary Frame, skipping the CmpFrame's over-rides.
 
 Gate: `tests/test_frame_axis_attrs.rs` against the tables from
 `tools/oracle_fixtures/frame_axis_attrs_probe.c`.

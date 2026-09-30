@@ -470,161 +470,6 @@ impl BasicFrame {
         "UT1-UTC, in seconds"
     );
 
-    // --- Per-axis attributes (1-based) ---
-
-    /// The Label of a 1-based axis, set or default (`"Axis <n>"`, with `n`
-    /// the internal axis number, as C's `MAKE_GET` computes it).
-    pub fn label(&self, axis: usize) -> AstResult<String> {
-        let i = self.internal(axis)?;
-        Ok(self.axes[i]
-            .label
-            .clone()
-            .unwrap_or_else(|| format!("Axis {}", i + 1)))
-    }
-
-    /// Set the label for the given 1-based axis.
-    pub fn set_label(&mut self, axis: usize, label: impl Into<String>) -> AstResult<()> {
-        self.ax_mut(axis)?.label = Some(label.into());
-        Ok(())
-    }
-
-    /// Test whether the label for the given 1-based axis has been explicitly set.
-    pub fn test_label(&self, axis: usize) -> AstResult<bool> {
-        Ok(self.ax(axis)?.label.is_some())
-    }
-
-    /// Clear the label for the given 1-based axis.
-    pub fn clear_label(&mut self, axis: usize) -> AstResult<()> {
-        self.ax_mut(axis)?.label = None;
-        Ok(())
-    }
-
-    /// The Unit of a 1-based axis, which is blank unless set.
-    pub fn unit(&self, axis: usize) -> AstResult<&str> {
-        Ok(self.ax(axis)?.unit.as_deref().unwrap_or(""))
-    }
-
-    /// Set the unit for the given 1-based axis.
-    pub fn set_unit(&mut self, axis: usize, unit: impl Into<String>) -> AstResult<()> {
-        self.ax_mut(axis)?.unit = Some(unit.into());
-        Ok(())
-    }
-
-    /// Test whether the unit for the given 1-based axis has been explicitly set.
-    pub fn test_unit(&self, axis: usize) -> AstResult<bool> {
-        Ok(self.ax(axis)?.unit.is_some())
-    }
-
-    /// Clear the unit for the given 1-based axis.
-    pub fn clear_unit(&mut self, axis: usize) -> AstResult<()> {
-        self.ax_mut(axis)?.unit = None;
-        Ok(())
-    }
-
-    /// The Symbol of a 1-based axis, set or default: the Domain if set,
-    /// else `"x"`, followed by the internal axis number (frame.c
-    /// `GetDefaultSymbol`).
-    pub fn symbol(&self, axis: usize) -> AstResult<String> {
-        let i = self.internal(axis)?;
-        Ok(self.axes[i]
-            .symbol
-            .clone()
-            .unwrap_or_else(|| default_symbol(self.attrs.domain.as_deref(), i)))
-    }
-
-    /// Set the symbol for the given 1-based axis.
-    pub fn set_symbol(&mut self, axis: usize, symbol: impl Into<String>) -> AstResult<()> {
-        self.ax_mut(axis)?.symbol = Some(symbol.into());
-        Ok(())
-    }
-
-    /// Test whether the symbol for the given 1-based axis has been explicitly set.
-    pub fn test_symbol(&self, axis: usize) -> AstResult<bool> {
-        Ok(self.ax(axis)?.symbol.is_some())
-    }
-
-    /// Clear the symbol for the given 1-based axis.
-    pub fn clear_symbol(&mut self, axis: usize) -> AstResult<()> {
-        self.ax_mut(axis)?.symbol = None;
-        Ok(())
-    }
-
-    /// The Format of a 1-based axis, set or default (`"%1.<Digits>G"`,
-    /// axis.c `GetDefaultFormat`, with the axis Digits falling back to the
-    /// Frame's).
-    pub fn format_str(&self, axis: usize) -> AstResult<String> {
-        let a = self.ax(axis)?;
-        Ok(match &a.format {
-            Some(f) => f.clone(),
-            None => format!("%1.{}G", self.axis_digits(axis)?),
-        })
-    }
-
-    /// Set the format string for the given 1-based axis.
-    pub fn set_format_str(&mut self, axis: usize, fmt: impl Into<String>) -> AstResult<()> {
-        self.ax_mut(axis)?.format = Some(fmt.into());
-        Ok(())
-    }
-
-    /// Test whether the format string for the given 1-based axis has been explicitly set.
-    pub fn test_format_str(&self, axis: usize) -> AstResult<bool> {
-        Ok(self.ax(axis)?.format.is_some())
-    }
-
-    /// Clear the format string for the given 1-based axis.
-    pub fn clear_format_str(&mut self, axis: usize) -> AstResult<()> {
-        self.ax_mut(axis)?.format = None;
-        Ok(())
-    }
-
-    /// Return the bottom limit for the given 1-based axis.
-    ///
-    /// Defaults to `-f64::MAX`.
-    pub fn bottom(&self, axis: usize) -> AstResult<f64> {
-        Ok(self.ax(axis)?.bottom.unwrap_or(-f64::MAX))
-    }
-
-    /// Set the bottom limit for the given 1-based axis.
-    pub fn set_bottom(&mut self, axis: usize, bottom: f64) -> AstResult<()> {
-        self.ax_mut(axis)?.bottom = Some(bottom);
-        Ok(())
-    }
-
-    /// Test whether the bottom limit for the given 1-based axis has been explicitly set.
-    pub fn test_bottom(&self, axis: usize) -> AstResult<bool> {
-        Ok(self.ax(axis)?.bottom.is_some())
-    }
-
-    /// Clear the bottom limit for the given 1-based axis.
-    pub fn clear_bottom(&mut self, axis: usize) -> AstResult<()> {
-        self.ax_mut(axis)?.bottom = None;
-        Ok(())
-    }
-
-    /// Return the top limit for the given 1-based axis.
-    ///
-    /// Defaults to `f64::MAX`.
-    pub fn top(&self, axis: usize) -> AstResult<f64> {
-        Ok(self.ax(axis)?.top.unwrap_or(f64::MAX))
-    }
-
-    /// Set the top limit for the given 1-based axis.
-    pub fn set_top(&mut self, axis: usize, top: f64) -> AstResult<()> {
-        self.ax_mut(axis)?.top = Some(top);
-        Ok(())
-    }
-
-    /// Test whether the top limit for the given 1-based axis has been explicitly set.
-    pub fn test_top(&self, axis: usize) -> AstResult<bool> {
-        Ok(self.ax(axis)?.top.is_some())
-    }
-
-    /// Clear the top limit for the given 1-based axis.
-    pub fn clear_top(&mut self, axis: usize) -> AstResult<()> {
-        self.ax_mut(axis)?.top = None;
-        Ok(())
-    }
-
     /// Frame-level Digits, defaulting to 7. Mirrors `astGetDigits`.
     pub fn digits(&self) -> i32 {
         self.attrs.digits.unwrap_or(7)
@@ -643,50 +488,6 @@ impl BasicFrame {
     /// Clear frame-level Digits.
     pub fn clear_digits(&mut self) {
         self.attrs.digits = None;
-    }
-
-    /// Per-axis Digits (1-based), falling back to frame-level Digits.
-    pub fn axis_digits(&self, axis: usize) -> AstResult<i32> {
-        Ok(self.ax(axis)?.digits.unwrap_or_else(|| self.digits()))
-    }
-
-    /// Set per-axis Digits (1-based), constrained to >= 1 (axis.c:2617).
-    pub fn set_axis_digits(&mut self, axis: usize, value: i32) -> AstResult<()> {
-        self.ax_mut(axis)?.digits = Some(value.max(1));
-        Ok(())
-    }
-
-    /// Test whether per-axis Digits is explicitly set (1-based).
-    pub fn test_axis_digits(&self, axis: usize) -> AstResult<bool> {
-        Ok(self.ax(axis)?.digits.is_some())
-    }
-
-    /// Clear per-axis Digits (1-based).
-    pub fn clear_axis_digits(&mut self, axis: usize) -> AstResult<()> {
-        self.ax_mut(axis)?.digits = None;
-        Ok(())
-    }
-
-    /// Per-axis Direction Plot hint (1-based); default true.
-    pub fn direction(&self, axis: usize) -> AstResult<bool> {
-        Ok(self.ax(axis)?.direction.unwrap_or(true))
-    }
-
-    /// Set per-axis Direction (1-based).
-    pub fn set_direction(&mut self, axis: usize, value: bool) -> AstResult<()> {
-        self.ax_mut(axis)?.direction = Some(value);
-        Ok(())
-    }
-
-    /// Test whether per-axis Direction is explicitly set (1-based).
-    pub fn test_direction(&self, axis: usize) -> AstResult<bool> {
-        Ok(self.ax(axis)?.direction.is_some())
-    }
-
-    /// Clear per-axis Direction (1-based).
-    pub fn clear_direction(&mut self, axis: usize) -> AstResult<()> {
-        self.ax_mut(axis)?.direction = None;
-        Ok(())
     }
 
     /// Clear MinAxes.
@@ -838,13 +639,29 @@ impl Frame for BasicFrame {
         Some("Cartesian")
     }
 
-    fn axis_digits(&self, axis: usize) -> i32 {
-        BasicFrame::axis_digits(self, axis).unwrap_or(7)
+    /// The Label of a 1-based axis, set or default (`"Axis <n>"`, with `n`
+    /// the internal axis number, as C's `MAKE_GET` computes it).
+    fn label(&self, axis: usize) -> AstResult<String> {
+        let i = self.internal(axis)?;
+        Ok(self.axes[i]
+            .label
+            .clone()
+            .unwrap_or_else(|| format!("Axis {}", i + 1)))
     }
 
-    fn direction(&self, axis: usize) -> bool {
-        BasicFrame::direction(self, axis).unwrap_or(true)
+    /// The Symbol of a 1-based axis, set or default: the Domain if set,
+    /// else `"x"`, followed by the internal axis number (frame.c
+    /// `GetDefaultSymbol`).
+    fn symbol(&self, axis: usize) -> AstResult<String> {
+        let i = self.internal(axis)?;
+        Ok(self.axes[i]
+            .symbol
+            .clone()
+            .unwrap_or_else(|| default_symbol(self.attrs.domain.as_deref(), i)))
     }
+
+    axis_attrs_base_get!(unit, format, digits, direction, top, bottom);
+    axis_attrs_store!(label, symbol, unit, format, digits, direction, top, bottom);
 
     fn get_active_unit(&self) -> bool {
         // C `Frame::GetActiveUnit` (frame.c:4669) loops over the axes with
@@ -874,33 +691,6 @@ impl Frame for BasicFrame {
 
     fn test_active_unit(&self) -> bool {
         self.attrs.active_unit.is_some()
-    }
-
-    fn effective_label(&self, axis: usize) -> String {
-        BasicFrame::label(self, axis).unwrap_or_default()
-    }
-
-    fn effective_unit(&self, axis: usize) -> String {
-        BasicFrame::unit(self, axis).unwrap_or("").to_string()
-    }
-
-    fn effective_symbol(&self, axis: usize) -> String {
-        BasicFrame::symbol(self, axis).unwrap_or_default()
-    }
-
-    fn test_axis_label(&self, axis: usize) -> bool {
-        BasicFrame::test_label(self, axis).unwrap_or(false)
-    }
-
-    fn test_axis_unit(&self, axis: usize) -> bool {
-        BasicFrame::test_unit(self, axis).unwrap_or(false)
-    }
-
-    fn effective_format(&self, axis: usize) -> String {
-        self.ax(axis)
-            .ok()
-            .and_then(|a| a.format.clone())
-            .unwrap_or_default()
     }
 
     fn unformat(&self, axis: usize, text: &str) -> AstResult<(f64, usize)> {

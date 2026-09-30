@@ -350,14 +350,10 @@ pub trait Frame: AsAny + Send + fmt::Debug {
         if crate::mappings::helpers::is_bad(value) {
             return Ok("<bad>".to_string());
         }
-        // Resolve the effective Format string: the per-axis Format if set,
-        // else the default "%1.<Digits>G" with the per-axis Digits
-        // (frame.c:4260 → GetDefaultFormat axis.c:1819).
-        let digits = self.axis_digits(axis).max(1) as usize;
-        let fmt = match self.effective_format(axis) {
-            s if !s.is_empty() => s,
-            _ => format!("%1.{digits}G"),
-        };
+        // The Format, set or default, and the Digits it defaults from
+        // (frame.c:4260, axis.c:1819).
+        let digits = self.axis_digits(axis)?.max(1) as usize;
+        let fmt = self.format_str(axis)?;
         Ok(crate::frames::axis_format::format_value(
             &fmt, digits, value,
         ))
@@ -608,19 +604,6 @@ pub trait Frame: AsAny + Send + fmt::Debug {
     /// Clear Permute.
     fn clear_permute(&mut self) -> AstResult<()>;
 
-    /// Per-axis `Digits(axis)` (1-based). Falls back to the frame-level
-    /// `Digits` when no axis-specific value is set. Mirrors C
-    /// `astGetAxisDigits` resolution in `Format` (frame.c:4260).
-    fn axis_digits(&self, _axis: usize) -> i32 {
-        self.digits()
-    }
-
-    /// Per-axis `Direction(axis)` (1-based). Plot hint; default 1.
-    /// Mirrors C `astGetAxisDirection` (axis.c) — default 1.
-    fn direction(&self, _axis: usize) -> bool {
-        true
-    }
-
     /// Whether unit differences affect alignment in `Match`/`Overlay`.
     /// Mirrors C `astGetActiveUnit` (frame.c:4651): always false when the
     /// Frame has a SkyAxis; otherwise the stored flag, default false.
@@ -633,34 +616,126 @@ pub trait Frame: AsAny + Send + fmt::Debug {
     /// Mirrors C `astTestActiveUnit` (used by `Dump`, frame.c:14614).
     fn test_active_unit(&self) -> bool;
 
-    /// Effective `Label(axis)` (1-based): the explicitly-set per-axis
-    /// label if present, else the class default. Mirrors the Frame
-    /// `astGetLabel` virtual (frame.c:5350) whose default is "Axis N"
-    /// (frame.c:5395). Concrete frames override to return their own
-    /// system-derived or stored label.
-    fn effective_label(&self, axis: usize) -> String {
-        format!("Axis {axis}")
+    // Per-axis attributes. Each takes a 1-based external axis and reports
+    // `AST__AXIIN` for one out of range. C reaches them through
+    // `astGetAxis`, lending the Frame's Digits to an Axis that has none
+    // (frame.c `MAKE_GET`); a class over-rides the getters for which C's
+    // does.
+
+    /// `Label(axis)`, set or default. Mirrors `astGetLabel`; a plain
+    /// Frame's default is `"Axis <n>"` (frame.c:12891).
+    fn label(&self, axis: usize) -> AstResult<String>;
+    /// Set `Label(axis)`.
+    fn set_label(&mut self, axis: usize, label: &str) -> AstResult<()>;
+    /// Whether `Label(axis)` is set.
+    fn test_label(&self, axis: usize) -> AstResult<bool>;
+    /// Clear `Label(axis)`.
+    fn clear_label(&mut self, axis: usize) -> AstResult<()>;
+
+    /// `Symbol(axis)`, set or default. Mirrors `astGetSymbol`; a plain
+    /// Frame's default is built from its Domain (frame.c:12952).
+    fn symbol(&self, axis: usize) -> AstResult<String>;
+    /// Set `Symbol(axis)`.
+    fn set_symbol(&mut self, axis: usize, symbol: &str) -> AstResult<()>;
+    /// Whether `Symbol(axis)` is set.
+    fn test_symbol(&self, axis: usize) -> AstResult<bool>;
+    /// Clear `Symbol(axis)`.
+    fn clear_symbol(&mut self, axis: usize) -> AstResult<()>;
+
+    /// `Unit(axis)`, set or default. Mirrors `astGetUnit`; a plain Frame's
+    /// default is blank, and SpecFrame, TimeFrame, FluxFrame and SkyFrame
+    /// supply their own.
+    fn unit(&self, axis: usize) -> AstResult<String>;
+    /// Set `Unit(axis)`. Mirrors `astSetUnit`; SpecFrame, TimeFrame and
+    /// FluxFrame also record it against their System, as C's do.
+    fn set_unit(&mut self, axis: usize, unit: &str) -> AstResult<()>;
+    /// Whether `Unit(axis)` is set.
+    fn test_unit(&self, axis: usize) -> AstResult<bool>;
+    /// Clear `Unit(axis)`.
+    fn clear_unit(&mut self, axis: usize) -> AstResult<()>;
+
+    /// `Format(axis)`, set or default. Mirrors `astGetFormat`; a plain
+    /// axis's default is `"%1.<Digits>G"` (axis.c `GetAxisFormat`).
+    fn format_str(&self, axis: usize) -> AstResult<String>;
+    /// Set `Format(axis)`.
+    fn set_format_str(&mut self, axis: usize, format: &str) -> AstResult<()>;
+    /// Whether `Format(axis)` is set.
+    fn test_format_str(&self, axis: usize) -> AstResult<bool>;
+    /// Clear `Format(axis)`.
+    fn clear_format_str(&mut self, axis: usize) -> AstResult<()>;
+
+    /// `Digits(axis)`: the axis's own Digits if set, else this Frame's
+    /// [`digits`](Self::digits). Mirrors frame.c `GetAttrib` (frame.c:4885),
+    /// the only way C reads it.
+    fn axis_digits(&self, axis: usize) -> AstResult<i32>;
+    /// Set `Digits(axis)`.
+    fn set_axis_digits(&mut self, axis: usize, digits: i32) -> AstResult<()>;
+    /// Whether `Digits(axis)` is set.
+    fn test_axis_digits(&self, axis: usize) -> AstResult<bool>;
+    /// Clear `Digits(axis)`.
+    fn clear_axis_digits(&mut self, axis: usize) -> AstResult<()>;
+
+    /// `Direction(axis)`, set or default (true), the hint that the axis
+    /// plots in the conventional direction. Mirrors `astGetDirection`;
+    /// a SkyFrame's longitude axis defaults to false.
+    fn direction(&self, axis: usize) -> AstResult<bool>;
+    /// Set `Direction(axis)`.
+    fn set_direction(&mut self, axis: usize, direction: bool) -> AstResult<()>;
+    /// Whether `Direction(axis)` is set.
+    fn test_direction(&self, axis: usize) -> AstResult<bool>;
+    /// Clear `Direction(axis)`.
+    fn clear_direction(&mut self, axis: usize) -> AstResult<()>;
+
+    /// `Top(axis)`, set or default (`f64::MAX`), the largest legal axis
+    /// value. Mirrors `astGetTop`; a SkyFrame's latitude axis defaults to
+    /// pi/2.
+    fn top(&self, axis: usize) -> AstResult<f64>;
+    /// Set `Top(axis)`.
+    fn set_top(&mut self, axis: usize, top: f64) -> AstResult<()>;
+    /// Whether `Top(axis)` is set.
+    fn test_top(&self, axis: usize) -> AstResult<bool>;
+    /// Clear `Top(axis)`.
+    fn clear_top(&mut self, axis: usize) -> AstResult<()>;
+
+    /// `Bottom(axis)`, set or default (`-f64::MAX`), the smallest legal
+    /// axis value. Mirrors `astGetBottom`; a SkyFrame's latitude axis
+    /// defaults to -pi/2.
+    fn bottom(&self, axis: usize) -> AstResult<f64>;
+    /// Set `Bottom(axis)`.
+    fn set_bottom(&mut self, axis: usize, bottom: f64) -> AstResult<()>;
+    /// Whether `Bottom(axis)` is set.
+    fn test_bottom(&self, axis: usize) -> AstResult<bool>;
+    /// Clear `Bottom(axis)`.
+    fn clear_bottom(&mut self, axis: usize) -> AstResult<()>;
+
+    /// The Top that the Axis object of a 1-based axis reports itself: C's
+    /// `astGetAxisTop( astGetAxis( this, axis ) )`, which is how a
+    /// CmpFrame reads the Top of a component's axis (frame.c `MAKE_GET`,
+    /// through `astGetAxis`), bypassing any over-ride of `astGetTop` by the
+    /// component's class. The same as [`top`](Self::top) unless the class
+    /// over-rides `astGetTop`, as SkyFrame does.
+    #[doc(hidden)]
+    fn axis_object_top(&self, axis: usize) -> AstResult<f64> {
+        self.top(axis)
     }
 
-    /// Effective `Unit(axis)` (1-based): the explicitly-set per-axis
-    /// unit if present, else the class default. Mirrors the Frame
-    /// `astGetUnit` virtual (frame.c:13530), whose base default is the
-    /// empty string. Concrete frames override to return their own
-    /// system-derived or stored unit.
-    fn effective_unit(&self, _axis: usize) -> String {
-        String::new()
+    /// The Bottom that the Axis object of a 1-based axis reports itself, as
+    /// [`axis_object_top`](Self::axis_object_top) does for Top.
+    #[doc(hidden)]
+    fn axis_object_bottom(&self, axis: usize) -> AstResult<f64> {
+        self.bottom(axis)
     }
 
     /// Internal `Unit(axis)` (1-based): the units in which this Frame's
     /// Mapping actually computes, before any external-unit conversion.
     /// Mirrors C `astGetInternalUnit` (frame.c). The base default
-    /// equals the external [`effective_unit`](Self::effective_unit), so
+    /// equals the external [`unit`](Self::unit), so
     /// frames whose internal and external units agree trigger no
     /// remapping in `MakeFitsFrameSet`. `SkyFrame` overrides this to
     /// `"rad"` (its axes are angles stored in radians but presented in
     /// degrees).
     fn internal_unit(&self, axis: usize) -> String {
-        self.effective_unit(axis)
+        self.unit(axis).unwrap_or_default()
     }
 
     /// Read-only `NormUnit(axis)` (1-based): the Unit this Frame reports
@@ -678,38 +753,7 @@ pub trait Frame: AsAny + Send + fmt::Debug {
     /// C reports `AST__FMTER` for a result longer than its 127-character
     /// buffer; the port has no such limit.
     fn norm_unit(&self, axis: usize) -> String {
-        crate::units::norm_unit(&self.effective_unit(axis))
-    }
-
-    /// Effective `Symbol(axis)` (1-based): the explicitly-set per-axis
-    /// symbol if present, else the class default. Mirrors the Frame
-    /// `astGetSymbol` virtual (frame.c:5760), whose base default falls
-    /// back to the label. Concrete frames override accordingly.
-    fn effective_symbol(&self, axis: usize) -> String {
-        self.effective_label(axis)
-    }
-
-    /// Effective `Format(axis)` (1-based): the explicitly-set per-axis
-    /// format string, or the empty string when none is set. Mirrors
-    /// `astTestFormat`/`astGetFormat` (frame.c) — only an explicitly
-    /// set Format is load-bearing for a cast; the default format is
-    /// derived from Digits and need not be copied.
-    fn effective_format(&self, _axis: usize) -> String {
-        String::new()
-    }
-
-    /// Test whether `Label(axis)` (1-based) has been explicitly set.
-    /// Mirrors C `astTestLabel` (frame.c). Default `false`; concrete
-    /// frames that track per-axis label state override this.
-    fn test_axis_label(&self, _axis: usize) -> bool {
-        false
-    }
-
-    /// Test whether `Unit(axis)` (1-based) has been explicitly set.
-    /// Mirrors C `astTestUnit` (frame.c). Default `false`; concrete
-    /// frames that track per-axis unit state override this.
-    fn test_axis_unit(&self, _axis: usize) -> bool {
-        false
+        crate::units::norm_unit(&self.unit(axis).unwrap_or_default())
     }
 
     /// Permute the axes of this frame.
@@ -1372,28 +1416,25 @@ pub(crate) fn reduce_to_basic_frame(frame: &dyn Frame) -> AstResult<BasicFrame> 
         bf.set_domain(frame.domain().to_string());
     }
     // Per-axis Axis metadata: C copies each source Axis into the basic
-    // Frame with astSetAxis (cmpframe.c:1335-1338), so the effective
-    // Label/Unit/Symbol/Format and Digits/Direction of every axis carry
-    // through. We read each via the Frame effective getters (the C
-    // astGetLabel/astGetUnit/astGetSymbol/astGetFormat virtuals) and
-    // store them on the BasicFrame.
+    // Frame with astSetAxis (cmpframe.c:1335-1338), so the Label, Unit and
+    // Symbol the source reports, and the Format, Digits and Direction set
+    // on it, carry through.
     for axis in 1..=n {
-        bf.set_label(axis, frame.effective_label(axis))?;
-        bf.set_unit(axis, frame.effective_unit(axis))?;
-        bf.set_symbol(axis, frame.effective_symbol(axis))?;
-        let fmt = frame.effective_format(axis);
-        if !fmt.is_empty() {
-            bf.set_format_str(axis, fmt)?;
+        bf.set_label(axis, &frame.label(axis)?)?;
+        bf.set_unit(axis, &frame.unit(axis)?)?;
+        bf.set_symbol(axis, &frame.symbol(axis)?)?;
+        if frame.test_format_str(axis)? {
+            bf.set_format_str(axis, &frame.format_str(axis)?)?;
         }
         // Digits/Direction default on a plain Frame to 7 and 1; only a
         // non-default value carries information worth transferring (the
         // BasicFrame already defaults to these). Setting unconditionally
         // would spuriously flag the attribute as explicitly set.
-        let digits = frame.axis_digits(axis);
+        let digits = frame.axis_digits(axis)?;
         if digits != 7 {
             bf.set_axis_digits(axis, digits)?;
         }
-        let direction = frame.direction(axis);
+        let direction = frame.direction(axis)?;
         if !direction {
             bf.set_direction(axis, direction)?;
         }

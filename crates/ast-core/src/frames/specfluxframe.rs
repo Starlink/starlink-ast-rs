@@ -50,8 +50,8 @@ impl SpecFluxFrame {
     fn frame_default_title(&self) -> String {
         let t = format!(
             "{} versus {}",
-            Frame::effective_label(&self.flux_frame, 1),
-            Frame::effective_label(&self.spec_frame, 1)
+            Frame::label(&self.flux_frame, 1).unwrap_or_default(),
+            Frame::label(&self.spec_frame, 1).unwrap_or_default()
         );
         let mut c = t.chars();
         match c.next() {
@@ -119,6 +119,23 @@ impl SpecFluxFrame {
         }
     }
 
+    /// The component holding a 1-based axis, and the axis within it.
+    fn axis_component(&self, axis: usize) -> AstResult<(&dyn Frame, usize)> {
+        self.validate_axis(axis)?;
+        Ok(self.route_axis(axis))
+    }
+
+    /// The component holding a 1-based axis, to change, and the axis
+    /// within it.
+    fn axis_component_mut(&mut self, axis: usize) -> AstResult<(&mut dyn Frame, usize)> {
+        self.validate_axis(axis)?;
+        Ok(if axis == 1 {
+            (&mut self.spec_frame, 1)
+        } else {
+            (&mut self.flux_frame, 1)
+        })
+    }
+
     /// Validate that `axis` is 1 or 2.
     fn validate_axis(&self, axis: usize) -> AstResult<()> {
         if !(1..=2).contains(&axis) {
@@ -137,7 +154,7 @@ impl SpecFluxFrame {
     fn std_flux_frame(&self) -> FluxFrame {
         let mut ff = self.flux_frame.clone();
         ff.set_system(self.flux_frame.system());
-        ff.clear_unit();
+        ff.clear_axis_unit();
         ff
     }
 
@@ -148,7 +165,7 @@ impl SpecFluxFrame {
     fn std_spec_frame(&self) -> SpecFrame {
         let mut sf = self.spec_frame.clone();
         sf.set_system(self.flux_frame.system().density_spec_system());
-        sf.set_unit(self.flux_frame.system().density_unit());
+        sf.store_unit(self.flux_frame.system().density_unit());
         sf
     }
 }
@@ -170,6 +187,7 @@ impl Frame for SpecFluxFrame {
     cmp_frame_shared_attr!(concrete spec_frame, flux_frame; obs_alt, obs_alt, set_obs_alt, test_obs_alt, clear_obs_alt);
     cmp_frame_shared_attr!(concrete spec_frame, flux_frame; dtai, dtai, set_dtai, test_dtai, clear_dtai);
     cmp_frame_shared_attr!(concrete spec_frame, flux_frame; dut1, dut1, set_dut1, test_dut1, clear_dut1);
+    cmp_frame_axis_attrs!();
 
     /// The Domain, set or else the components' joined with a hyphen, or
     /// "CMP" when both are blank (cmpframe.c `GetDomain`).

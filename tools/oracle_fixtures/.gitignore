@@ -18,3 +18,4 @@ frame_class_attrs_probe
 # Dumps a probe writes here; the committed copies live under
 # crates/ast-core/tests/fixtures/.
 *.ast
+frame_axis_attrs_probe

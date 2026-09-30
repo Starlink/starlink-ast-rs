@@ -402,7 +402,7 @@ impl DSBSpecFrame {
         let mut dsb_src = self.spec.clone();
         dsb_src.set_std_of_rest(StdOfRest::Source);
         dsb_src.set_system(SpecSystem::Freq);
-        dsb_src.set_unit("Hz");
+        dsb_src.set_unit(1, "Hz")?;
 
         let mut dsb_topo = dsb_src.clone();
         dsb_topo.set_std_of_rest(StdOfRest::Topocentric);
@@ -438,7 +438,7 @@ impl DSBSpecFrame {
             let mut topo = self.clone();
             topo.spec.set_std_of_rest(StdOfRest::Topocentric);
             topo.spec.set_system(SpecSystem::Freq);
-            topo.spec.set_unit("Hz");
+            topo.spec.set_unit(1, "Hz")?;
             let dsbcentre = topo.dsb_centre_cur()?;
 
             // Local-oscillator frequency: half-way between topocentric rest
@@ -533,7 +533,7 @@ impl DSBSpecFrame {
         // C sets Unit explicitly to "Hz" (dsbspecframe.c:653); the
         // sideband flip and topocentric mappings all work in Hz, so the
         // current unit must be Hz (not the FREQ display default of GHz).
-        rf_frame.spec.set_unit("Hz");
+        rf_frame.spec.set_unit(1, "Hz")?;
         rf_frame.set_sideband(self.observed_sideband());
 
         // Mapping from observed sideband to the opposite sideband.
@@ -562,7 +562,7 @@ impl DSBSpecFrame {
         // (dsbspecframe.c:2124, `astSetUnit(tf2, 0, "Hz")`): the internal
         // DSBCentre / IF attributes are topocentric Hz, so the conversion
         // must land in Hz rather than the FREQ display default (GHz).
-        topo_frame.set_unit("Hz");
+        topo_frame.set_unit(1, "Hz")?;
 
         // Copy observer attributes from self.spec to the topo frame.
         if self.spec.test_obs_lat() {
@@ -778,25 +778,18 @@ impl Frame for DSBSpecFrame {
     // Ident is an Object-level attribute (`object.c:5217-5229`), and the
     // component SpecFrame supplies the storage the dump reads back.
 
-    fn effective_label(&self, axis: usize) -> String {
-        // Mirror DSBSpecFrame::GetLabel (dsbspecframe.c:688): take the parent
-        // SpecFrame label, and if it is a default (not explicitly set), append
-        // the sideband indication " (USB)" / " (LSB)" / " (LO)".
-        let label = self.spec.effective_label(axis);
-        if self.spec.test_axis_label() {
+    /// Mirrors C `DSBSpecFrame::GetLabel` (dsbspecframe.c:688): the
+    /// SpecFrame's Label, followed by the sideband when it is a default.
+    fn label(&self, axis: usize) -> AstResult<String> {
+        let label = Frame::label(&self.spec, axis)?;
+        Ok(if Frame::test_label(&self.spec, axis)? {
             label
         } else {
             format!("{label} ({})", self.sideband().as_str())
-        }
+        })
     }
 
-    fn effective_unit(&self, axis: usize) -> String {
-        self.spec.effective_unit(axis)
-    }
-
-    fn effective_symbol(&self, axis: usize) -> String {
-        self.spec.effective_symbol(axis)
-    }
+    forward_axis_attrs!(@all_but_label [spec]);
 
     fn distance(&self, a: &[f64], b: &[f64]) -> AstResult<f64> {
         self.spec.distance(a, b)
@@ -1051,10 +1044,10 @@ impl Serializable for DSBSpecFrame {
         // (DSBSpecFrame::GetLabel, dsbspecframe.c:688): the SpecFrame node
         // emitted the bare system label ("Frequency"), so replace it with
         // this frame's effective label ("Frequency (LSB)"). Stays commented.
-        if !self.spec.test_axis_label() {
+        if !self.spec.test_label(1)? {
             node.replace_or_push(
                 "Lbl1",
-                NodeValue::Unset(Box::new(NodeValue::String(self.effective_label(1)))),
+                NodeValue::Unset(Box::new(NodeValue::String(self.label(1)?))),
             );
         }
 
