@@ -2,13 +2,42 @@
 
 use ast_core::coords::PointSet;
 use ast_core::error::{AstError, AstResult, ErrorCode};
-use ast_core::frames::{DynFrame, Frame};
+use ast_core::frames::{BasicFrame, BasicFrameBuilder, DynFrame, Frame};
 use ast_core::mappings::{DynMapping, Mapping, ViaSimplify};
 use ast_core::regions::{DynRegion, Overlap, Region};
 
 /// A dummy type that implements all three traits, proving they're coherent.
+/// Its Frame-class attributes are those of an inner plain Frame.
 #[derive(Debug)]
-struct DummyRegion;
+struct DummyRegion {
+    frame: BasicFrame,
+}
+
+impl DummyRegion {
+    fn new() -> Self {
+        DummyRegion {
+            frame: BasicFrameBuilder::new(2).build().unwrap(),
+        }
+    }
+}
+
+/// Forward Frame-class attributes to `self.frame` through the trait.
+macro_rules! forward {
+    ($($get:ident: $ty:ty, $set:ident, $test:ident, $clear:ident;)*) => {$(
+        fn $get(&self) -> $ty {
+            Frame::$get(&self.frame)
+        }
+        fn $set(&mut self, v: $ty) -> AstResult<()> {
+            Frame::$set(&mut self.frame, v)
+        }
+        fn $test(&self) -> bool {
+            Frame::$test(&self.frame)
+        }
+        fn $clear(&mut self) -> AstResult<()> {
+            Frame::$clear(&mut self.frame)
+        }
+    )*};
+}
 
 impl Mapping for DummyRegion {
     fn nin(&self) -> usize {
@@ -47,6 +76,65 @@ impl Mapping for DummyRegion {
 }
 
 impl Frame for DummyRegion {
+    forward! {
+        epoch_mjd: f64, set_epoch_mjd, test_epoch, clear_epoch;
+        digits: i32, set_digits, test_digits, clear_digits;
+        obs_lat: f64, set_obs_lat, test_obs_lat, clear_obs_lat;
+        obs_lon: f64, set_obs_lon, test_obs_lon, clear_obs_lon;
+        obs_alt: f64, set_obs_alt, test_obs_alt, clear_obs_alt;
+        dtai: f64, set_dtai, test_dtai, clear_dtai;
+        dut1: f64, set_dut1, test_dut1, clear_dut1;
+        min_axes: usize, set_min_axes, test_min_axes, clear_min_axes;
+        max_axes: usize, set_max_axes, test_max_axes, clear_max_axes;
+        match_end: bool, set_match_end, test_match_end, clear_match_end;
+        preserve_axes: bool, set_preserve_axes, test_preserve_axes, clear_preserve_axes;
+        permute: bool, set_permute, test_permute, clear_permute;
+    }
+    fn title(&self) -> String {
+        Frame::title(&self.frame)
+    }
+    fn set_title(&mut self, title: &str) -> AstResult<()> {
+        Frame::set_title(&mut self.frame, title)
+    }
+    fn test_title(&self) -> bool {
+        Frame::test_title(&self.frame)
+    }
+    fn clear_title(&mut self) -> AstResult<()> {
+        Frame::clear_title(&mut self.frame)
+    }
+    fn domain(&self) -> &str {
+        Frame::domain(&self.frame)
+    }
+    fn set_domain(&mut self, domain: &str) -> AstResult<()> {
+        Frame::set_domain(&mut self.frame, domain)
+    }
+    fn test_domain(&self) -> bool {
+        Frame::test_domain(&self.frame)
+    }
+    fn clear_domain(&mut self) -> AstResult<()> {
+        Frame::clear_domain(&mut self.frame)
+    }
+    fn ident(&self) -> &str {
+        Frame::ident(&self.frame)
+    }
+    fn set_ident(&mut self, ident: &str) -> AstResult<()> {
+        Frame::set_ident(&mut self.frame, ident)
+    }
+    fn clear_ident(&mut self) -> AstResult<()> {
+        Frame::clear_ident(&mut self.frame)
+    }
+    fn test_ident(&self) -> bool {
+        Frame::test_ident(&self.frame)
+    }
+    fn get_active_unit(&self) -> bool {
+        Frame::get_active_unit(&self.frame)
+    }
+    fn set_active_unit(&mut self, value: bool) {
+        Frame::set_active_unit(&mut self.frame, value)
+    }
+    fn test_active_unit(&self) -> bool {
+        Frame::test_active_unit(&self.frame)
+    }
     fn naxes(&self) -> usize {
         2
     }
@@ -186,7 +274,7 @@ impl Region for DummyRegion {
 
 #[test]
 fn dummy_region_implements_all_traits() {
-    let r = DummyRegion;
+    let r = DummyRegion::new();
     assert_eq!(r.nin(), 2);
     assert_eq!(r.naxes(), 2);
     assert!(r.point_in_region(&[0.0, 0.0]).is_err());
@@ -194,9 +282,9 @@ fn dummy_region_implements_all_traits() {
 
 #[test]
 fn region_is_object_safe() {
-    let _: Box<dyn Region> = Box::new(DummyRegion);
-    let _: Box<dyn Frame> = Box::new(DummyRegion);
-    let _: Box<dyn Mapping> = Box::new(DummyRegion);
+    let _: Box<dyn Region> = Box::new(DummyRegion::new());
+    let _: Box<dyn Frame> = Box::new(DummyRegion::new());
+    let _: Box<dyn Mapping> = Box::new(DummyRegion::new());
 }
 
 #[test]

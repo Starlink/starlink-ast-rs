@@ -220,7 +220,7 @@ fn domain_default_is_unset() {
     assert_eq!(dsb.domain(), "DSBSPECTRUM");
     assert!(!dsb.test_domain());
 
-    dsb.set_domain("FOO");
+    dsb.set_domain("FOO").unwrap();
     assert_eq!(dsb.domain(), "FOO");
     assert!(dsb.test_domain());
 }

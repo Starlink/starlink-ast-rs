@@ -1010,6 +1010,8 @@ fn build_null_like(othereg: &DynRegion, negated: bool) -> AstResult<DynRegion> {
 // ============================================================================
 
 impl Frame for CmpRegion {
+    region_frame_attrs!();
+
     fn naxes(&self) -> usize {
         self.data.frameset.current().naxes()
     }
@@ -1085,6 +1087,8 @@ impl Frame for CmpRegion {
 // ============================================================================
 
 impl Mapping for CmpRegion {
+    region_mapping_ident!();
+
     // C's `Frame` overrides `astDoNotSimplify` to zero (frame.c:3511-3554): a
     // set `Ident` is a user label on a coordinate system, not a request to keep
     // a Mapping intact, so a named Frame is still simplified.

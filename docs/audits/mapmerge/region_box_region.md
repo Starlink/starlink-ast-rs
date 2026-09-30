@@ -21,10 +21,10 @@ Region simplify, then works through four ways of re-expressing the Box: an
 explicit PermMap axis swap, a best-fitting Box in the current Frame, a Polygon
 for the 2-D case, and a split into a Prism.
 
-`BoxRegion::map_merge` (`box_region.rs:1855 (fn map_merge)`) delegates to
+`BoxRegion::map_merge` (`box_region.rs:1859 (fn map_merge)`) delegates to
 `simplify::region_map_merge` (`mappings/simplify.rs:1445-1489 (fn region_map_merge)`);
 `BoxRegion::region_merge` is `box_region.rs:1379-1548 (fn region_merge)` and
-`BoxRegion::simplified` is `box_region.rs:1675-1820 (fn simplified)`. The four
+`BoxRegion::simplified` is `box_region.rs:1679-1820 (fn simplified)`. The four
 merge helpers shared with `Interval`, `NullRegion` and `PointList` live in
 `merge_util.rs:64-77 (fn apply_merge_scaling_to)`,
 `merge_util.rs:131-180 (fn finish_region_merge)`,
@@ -114,8 +114,8 @@ merge helpers shared with `Interval`, `NullRegion` and `PointList` live in
 | 79 | `Simplify`: initialise the returned pointer and the working pointers | box.c:3697-3699 (fn Simplify) | -- | ceremony | n/a: the Rust returns `AstResult<(DynMapping, bool)>`, so "no change" is the `false` flag |
 | 80 | Check the global error status and bail out | box.c:3700-3702 (fn Simplify) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 81 | Obtain a pointer to the Region structure | box.c:3703-3705 (fn Simplify) | -- | ceremony | n/a: the Rust method already has `&self` |
-| 82 | Invoke the parent Region Simplify, which simplifies the encapsulated FrameSet and uncertainty | box.c:3706-3709 (fn Simplify) | box_region.rs:1676 (fn simplified) | architecture | ported |
-| 83 | Note whether that simplified anything, by pointer inequality | box.c:3710-3714 (fn Simplify) | box_region.rs:1677 (fn simplified) | architecture | ported |
+| 82 | Invoke the parent Region Simplify, which simplifies the encapsulated FrameSet and uncertainty | box.c:3706-3709 (fn Simplify) | box_region.rs:1680 (fn simplified) | architecture | ported |
+| 83 | Note whether that simplified anything, by pointer inequality | box.c:3710-3714 (fn Simplify) | box_region.rs:1681 (fn simplified) | architecture | ported |
 | 84 | Get the Mapping from base to current Frame | box.c:3715-3717 (fn Simplify) | box_region.rs:1692-1696 (fn simplified) | architecture | ported |
 | 85 | Get that Mapping's input and output counts | box.c:3718-3721 (fn Simplify) | box_region.rs:1784 (fn simplified) | architecture | ported |
 | 86 | If the Mapping is a PermMap, swap the Box axes explicitly rather than fitting through a mesh | box.c:3722-3726 (fn Simplify) | box_region.rs:1704 (fn simplified) | architecture | ported |

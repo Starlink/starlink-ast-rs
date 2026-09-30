@@ -52,3 +52,32 @@ accessor to their current Frame, CmpFrame forwards most to its components.
 
 Each phase ends green on the full suite and on its probe tables, and records
 what it leaves in `PLAN.md` §2.
+
+## Phase 2b design: the per-axis attributes
+
+C reaches every per-axis attribute through `astGetAxis`, lending the Frame's
+Digits to an Axis that has none (frame.c `MAKE_GET`); subclasses over-ride
+only the getters that supply their own defaults, and SpecFrame, TimeFrame and
+FluxFrame also the Unit setter.
+`Axis` is crate-private, so the `Frame` trait does not hand one out.
+Instead the trait carries get, set, test and clear for Label, Symbol, Unit,
+Format, Digits(axis), Direction, Top and Bottom, each taking a 1-based axis
+and returning `AstResult`, and each class implements them where C's class
+does:
+
+- The base behaviour, for a class that stores `Axis` values, comes from a
+  macro over the class's axis storage, with the class supplying the getters C
+  over-rides.
+- SpecFrame, TimeFrame and FluxFrame gain an `Axis`, holding what they held
+  in `unit` (and TimeFrame's `format_str`), so every attribute is stored.
+- SkyFrame keeps its storage until phase 3, gaining Direction, Top and
+  Bottom.
+- CmpFrame routes each call to the component, lending its own Digits to a
+  component that has none, as C's `MAKE_GET` in cmpframe.c does.
+  `Digits(axis)` falls back to the CmpFrame's Digits, because C's
+  `GetAttrib` reads it through `astGetAxis` and the queried Frame's Digits.
+- FrameSet setters go through `with_integrity`; a Region forwards to its
+  FrameSet.
+
+Gate: `tests/test_frame_axis_attrs.rs` against the tables from
+`tools/oracle_fixtures/frame_axis_attrs_probe.c`.

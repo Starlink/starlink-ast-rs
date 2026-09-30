@@ -38,6 +38,10 @@ pub(crate) struct RegionData {
     /// current frame is the user-facing coordinate system.
     pub(crate) frameset: FrameSet,
 
+    /// The Region's own Object-class Ident, which C does not forward to the
+    /// encapsulated Frame (object.c).
+    pub(crate) ident: Option<String>,
+
     /// Defining points in the *base* frame.
     ///
     /// Layout: `points[i]` is the i-th defining point (a Vec of length
@@ -119,6 +123,7 @@ impl Clone for RegionData {
     fn clone(&self) -> Self {
         RegionData {
             frameset: self.frameset.clone(),
+            ident: None,
             points: self.points.clone(),
             negated: self.negated,
             closed: self.closed,
@@ -176,6 +181,7 @@ impl RegionData {
         }
         RegionData {
             frameset: fs,
+            ident: None,
             points,
             negated: false,
             closed: true,

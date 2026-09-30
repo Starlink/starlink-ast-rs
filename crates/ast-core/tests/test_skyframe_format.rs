@@ -46,7 +46,7 @@ fn apply(sky: &mut SkyFrame, attrs: &str) {
                 "ICRS" => SkySystem::Icrs,
                 other => panic!("unexpected System {other}"),
             }),
-            ("Digits", None) => sky.set_digits(value.parse().unwrap()),
+            ("Digits", None) => sky.set_digits(value.parse().unwrap()).unwrap(),
             ("Digits", Some(axis)) => sky.set_axis_digits(axis, value.parse().unwrap()).unwrap(),
             ("Format", Some(axis)) => sky.set_format_str(axis, value).unwrap(),
             ("Unit", Some(axis)) => sky.set_unit(axis, value).unwrap(),
@@ -148,7 +148,7 @@ fn clearing_restores_the_default() {
     assert_eq!(sky.format_str(1).unwrap(), "hms.1");
     assert_eq!(sky.unit(1).unwrap(), "hh:mm:ss.s");
 
-    sky.set_digits(3);
+    sky.set_digits(3).unwrap();
     assert_eq!(sky.format_str(2).unwrap(), "d");
     sky.clear_digits();
     assert_eq!(sky.format_str(2).unwrap(), "dms");

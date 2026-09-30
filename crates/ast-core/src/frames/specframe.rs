@@ -276,17 +276,11 @@ impl StdOfRest {
 /// ```
 #[derive(Debug, Clone)]
 pub struct SpecFrame {
+    /// The Frame-class attributes.
+    attrs: super::frame_attrs::FrameAttrs,
     // Frame-level attributes
-    title: Option<String>,
-    domain: Option<String>,
-    epoch: Option<f64>, // MJD
 
     // Observer
-    obs_lat: Option<f64>, // geodetic latitude (radians)
-    obs_lon: Option<f64>, // geodetic longitude (radians)
-    obs_alt: Option<f64>, // altitude (metres)
-    dtai: Option<f64>,    // TAI-UTC (seconds)
-    dut1: Option<f64>,    // UT1-UTC (seconds)
 
     // SpecFrame-specific
     system: SpecSystem,
@@ -322,40 +316,39 @@ pub struct SpecFrame {
     /// Whether AlignSpecOffset was explicitly set. Mirrors C
     /// `astTestAlignSpecOffset`.
     align_spec_offset_set: bool,
-    /// When false, unit strings do not affect alignment. Default is true.
-    act_unt: Option<bool>,
-    /// Permanent object identification string (Object-level attribute).
-    ident: Option<String>,
 
     /// User-set Label override for this frame's single axis. `None`
     /// means "use the system-derived default from
     /// [`SpecSystem::label`]".
     label_override: Option<String>,
-
     // Match-control attributes (used by `astFindFrame` / `astMatch`).
-    min_axes_opt: Option<usize>,
-    max_axes_opt: Option<usize>,
-    match_end_opt: Option<bool>,
-    preserve_axes_opt: Option<bool>,
-    permute_opt: Option<bool>,
 }
 
 impl SpecFrame {
+    // Defaults of the Frame-class attributes, for the `frame_attrs_*`
+    // macros. Permute is the Frame class's default: SpecFrame does not
+    // over-ride it (frame.c:13572).
+    fn frame_default_title(&self) -> String {
+        self.default_title()
+    }
+    fn frame_default_domain(&self) -> &'static str {
+        "SPECTRUM"
+    }
+    fn frame_default_epoch(&self) -> f64 {
+        super::frame_attrs::default_epoch_mjd()
+    }
+    fn frame_default_permute(&self) -> bool {
+        true
+    }
+
     /// Create a new `SpecFrame` with the given spectral coordinate system.
     ///
     /// Defaults: domain = "SPECTRUM", std_of_rest = Heliocentric.
     pub fn new(system: SpecSystem) -> Self {
         Self {
-            title: None,
+            attrs: super::frame_attrs::FrameAttrs::default(),
             // None = use the default "SPECTRUM". Mirrors C's
             // astTestDomain returning false until set_domain.
-            domain: None,
-            epoch: None,
-            obs_lat: None,
-            obs_lon: None,
-            obs_alt: None,
-            dtai: None,
-            dut1: None,
             system,
             // The caller supplied an explicit System, which is equivalent
             // to C `astSpecFrame("System=...")` invoking astSetSystem — so
@@ -378,14 +371,7 @@ impl SpecFrame {
             align_system: None,
             align_spec_offset: false,
             align_spec_offset_set: false,
-            act_unt: None,
-            ident: None,
             label_override: None,
-            min_axes_opt: None,
-            max_axes_opt: None,
-            match_end_opt: None,
-            preserve_axes_opt: None,
-            permute_opt: None,
         }
     }
 
@@ -393,13 +379,13 @@ impl SpecFrame {
 
     /// Return the frame identification string.
     pub fn ident(&self) -> &str {
-        self.ident.as_deref().unwrap_or("")
+        self.attrs.ident.as_deref().unwrap_or("")
     }
 
     /// Set the frame identification string. Mirrors `astSetIdent`.
     pub fn set_ident(&mut self, ident: impl Into<String>) {
         let s = ident.into();
-        self.ident = if s.is_empty() { None } else { Some(s) };
+        self.attrs.ident = if s.is_empty() { None } else { Some(s) };
     }
 
     /// Return the spectral coordinate system.
@@ -783,7 +769,7 @@ impl SpecFrame {
     ///
     /// Defaults to J2000.0 (MJD 51544.5) if not set.
     pub fn epoch_mjd(&self) -> f64 {
-        self.epoch.unwrap_or(51544.5)
+        self.attrs.epoch.unwrap_or(51544.5)
     }
 
     /// Return the epoch as a decimal year (Besselian if MJD < J1984,
@@ -799,12 +785,12 @@ impl SpecFrame {
 
     /// Set the epoch as MJD.
     pub fn set_epoch_mjd(&mut self, mjd: f64) {
-        self.epoch = Some(mjd);
+        self.attrs.epoch = Some(mjd);
     }
 
     /// Test whether Epoch has been explicitly set.
     pub fn test_epoch(&self) -> bool {
-        self.epoch.is_some()
+        self.attrs.epoch.is_some()
     }
 
     /// Set the epoch as a decimal year.
@@ -814,22 +800,22 @@ impl SpecFrame {
     /// `astReadDateTime` (frame.c:9028-9032) when called from
     /// `astSetEpoch` via the `epoch=…` setting.
     pub fn set_epoch_year(&mut self, year: f64) {
-        self.epoch = Some(crate::frames::date_time::year_to_mjd_iau1984(year));
+        self.attrs.epoch = Some(crate::frames::date_time::year_to_mjd_iau1984(year));
     }
 
     /// Set the title.
     pub fn set_title(&mut self, title: &str) {
-        self.title = Some(title.to_string());
+        self.attrs.title = Some(title.to_string());
     }
 
     /// Test whether Title has been explicitly set.
     pub fn test_title(&self) -> bool {
-        self.title.is_some()
+        self.attrs.title.is_some()
     }
 
     /// Clear Title back to its (computed) default.
     pub fn clear_title(&mut self) {
-        self.title = None;
+        self.attrs.title = None;
     }
 
     /// Compute the default title from the system label and standard of rest.
@@ -855,44 +841,44 @@ impl SpecFrame {
 
     /// Set the domain.
     pub fn set_domain(&mut self, domain: &str) {
-        self.domain = Some(domain.to_string());
+        self.attrs.domain = Some(domain.to_string());
     }
 
     /// Test whether the domain attribute has been explicitly set.
     /// Mirrors C's `astTestDomain` for `SpecFrame`.
     pub fn test_domain(&self) -> bool {
-        self.domain.is_some()
+        self.attrs.domain.is_some()
     }
 
     /// Clear the domain attribute, reverting to the default
     /// `"SPECTRUM"`.
     pub fn clear_domain(&mut self) {
-        self.domain = None;
+        self.attrs.domain = None;
     }
 
     /// Set the observer geodetic latitude (radians).
     pub fn set_obs_lat(&mut self, lat: f64) {
-        self.obs_lat = Some(lat);
+        self.attrs.obs_lat = Some(lat);
     }
 
     /// Set the observer geodetic longitude (radians).
     pub fn set_obs_lon(&mut self, lon: f64) {
-        self.obs_lon = Some(lon);
+        self.attrs.obs_lon = Some(lon);
     }
 
     /// Set the observer altitude (metres).
     pub fn set_obs_alt(&mut self, alt: f64) {
-        self.obs_alt = Some(alt);
+        self.attrs.obs_alt = Some(alt);
     }
 
     /// Set TAI-UTC (seconds).
     pub fn set_dtai(&mut self, dtai: f64) {
-        self.dtai = Some(dtai);
+        self.attrs.dtai = Some(dtai);
     }
 
     /// Set UT1-UTC (seconds).
     pub fn set_dut1(&mut self, dut1: f64) {
-        self.dut1 = Some(dut1);
+        self.attrs.dut1 = Some(dut1);
     }
 
     /// Whether to align in offset coordinate system.
@@ -976,9 +962,9 @@ impl SpecFrame {
     fn add_sor_to_helio(&self, specmap: &mut SpecMap, from: StdOfRest) {
         let ra = self.ref_ra.unwrap_or(0.0);
         let dec = self.ref_dec.unwrap_or(0.0);
-        let lon = self.obs_lon.unwrap_or(0.0);
-        let lat = self.obs_lat.unwrap_or(0.0);
-        let alt = self.obs_alt.unwrap_or(0.0);
+        let lon = self.attrs.obs_lon.unwrap_or(0.0);
+        let lat = self.attrs.obs_lat.unwrap_or(0.0);
+        let alt = self.attrs.obs_alt.unwrap_or(0.0);
         let epoch = self.epoch_mjd();
 
         match from {
@@ -1015,9 +1001,9 @@ impl SpecFrame {
     fn add_helio_to_sor(&self, specmap: &mut SpecMap, to: StdOfRest) {
         let ra = self.ref_ra.unwrap_or(0.0);
         let dec = self.ref_dec.unwrap_or(0.0);
-        let lon = self.obs_lon.unwrap_or(0.0);
-        let lat = self.obs_lat.unwrap_or(0.0);
-        let alt = self.obs_alt.unwrap_or(0.0);
+        let lon = self.attrs.obs_lon.unwrap_or(0.0);
+        let lat = self.attrs.obs_lat.unwrap_or(0.0);
+        let alt = self.attrs.obs_alt.unwrap_or(0.0);
         let epoch = self.epoch_mjd();
 
         match to {
@@ -1211,9 +1197,18 @@ impl SpecFrame {
             }
             StdOfRest::Topocentric => {
                 ast_equal(self.epoch_mjd(), other.epoch_mjd())
-                    && ast_equal(self.obs_alt.unwrap_or(0.0), other.obs_alt.unwrap_or(0.0))
-                    && ast_equal(self.obs_lon.unwrap_or(0.0), other.obs_lon.unwrap_or(0.0))
-                    && ast_equal(self.obs_lat.unwrap_or(0.0), other.obs_lat.unwrap_or(0.0))
+                    && ast_equal(
+                        self.attrs.obs_alt.unwrap_or(0.0),
+                        other.attrs.obs_alt.unwrap_or(0.0),
+                    )
+                    && ast_equal(
+                        self.attrs.obs_lon.unwrap_or(0.0),
+                        other.attrs.obs_lon.unwrap_or(0.0),
+                    )
+                    && ast_equal(
+                        self.attrs.obs_lat.unwrap_or(0.0),
+                        other.attrs.obs_lat.unwrap_or(0.0),
+                    )
             }
             StdOfRest::Lsrk | StdOfRest::Lsrd | StdOfRest::Galactic | StdOfRest::LocalGroup => true,
         }
@@ -1239,9 +1234,9 @@ impl SpecFrame {
             let from = this.std_of_rest;
             let ra = this.ref_ra.unwrap_or(0.0);
             let dec = this.ref_dec.unwrap_or(0.0);
-            let lon = this.obs_lon.unwrap_or(0.0);
-            let lat = this.obs_lat.unwrap_or(0.0);
-            let alt = this.obs_alt.unwrap_or(0.0);
+            let lon = this.attrs.obs_lon.unwrap_or(0.0);
+            let lat = this.attrs.obs_lat.unwrap_or(0.0);
+            let alt = this.attrs.obs_alt.unwrap_or(0.0);
             let epoch = this.epoch_mjd();
 
             match from {
@@ -1280,9 +1275,9 @@ impl SpecFrame {
             let to = that.std_of_rest;
             let ra = that.ref_ra.unwrap_or(0.0);
             let dec = that.ref_dec.unwrap_or(0.0);
-            let lon = that.obs_lon.unwrap_or(0.0);
-            let lat = that.obs_lat.unwrap_or(0.0);
-            let alt = that.obs_alt.unwrap_or(0.0);
+            let lon = that.attrs.obs_lon.unwrap_or(0.0);
+            let lat = that.attrs.obs_lat.unwrap_or(0.0);
+            let alt = that.attrs.obs_alt.unwrap_or(0.0);
             let epoch = that.epoch_mjd();
 
             match to {
@@ -1465,24 +1460,24 @@ impl SpecFrame {
             // unset, mirroring the GET behaviour of the corresponding
             // astGet*).
             let mut at = align_frm.clone();
-            at.epoch = Some(target.epoch_mjd());
+            at.attrs.epoch = Some(target.epoch_mjd());
             at.ref_ra = Some(target.ref_ra.unwrap_or(0.0));
             at.ref_dec = Some(target.ref_dec.unwrap_or(0.0));
             at.source_vrf = Some(target.source_vrf());
             at.source_vel = Some(target.source_vel.unwrap_or(0.0));
-            at.obs_lat = Some(target.obs_lat.unwrap_or(0.0));
-            at.obs_lon = Some(target.obs_lon.unwrap_or(0.0));
-            at.obs_alt = Some(target.obs_alt.unwrap_or(0.0));
+            at.attrs.obs_lat = Some(target.attrs.obs_lat.unwrap_or(0.0));
+            at.attrs.obs_lon = Some(target.attrs.obs_lon.unwrap_or(0.0));
+            at.attrs.obs_alt = Some(target.attrs.obs_alt.unwrap_or(0.0));
 
             let mut ar = align_frm.clone();
-            ar.epoch = Some(result.epoch_mjd());
+            ar.attrs.epoch = Some(result.epoch_mjd());
             ar.ref_ra = Some(result.ref_ra.unwrap_or(0.0));
             ar.ref_dec = Some(result.ref_dec.unwrap_or(0.0));
             ar.source_vrf = Some(result.source_vrf());
             ar.source_vel = Some(result.source_vel.unwrap_or(0.0));
-            ar.obs_lat = Some(result.obs_lat.unwrap_or(0.0));
-            ar.obs_lon = Some(result.obs_lon.unwrap_or(0.0));
-            ar.obs_alt = Some(result.obs_alt.unwrap_or(0.0));
+            ar.attrs.obs_lat = Some(result.attrs.obs_lat.unwrap_or(0.0));
+            ar.attrs.obs_lon = Some(result.attrs.obs_lon.unwrap_or(0.0));
+            ar.attrs.obs_alt = Some(result.attrs.obs_alt.unwrap_or(0.0));
 
             (at, ar)
         };
@@ -1677,6 +1672,14 @@ impl SpecFrame {
 // ---------------------------------------------------------------------------
 
 impl Frame for SpecFrame {
+    frame_attrs_title!();
+    frame_attrs_domain!();
+    frame_attrs_epoch!();
+    frame_attrs_digits!();
+    frame_attrs_observer!();
+    frame_attrs_ident!();
+    frame_attrs_match!();
+
     fn naxes(&self) -> usize {
         1
     }
@@ -1757,51 +1760,6 @@ impl Frame for SpecFrame {
     // SpecFrame defaults Permute to `false` (a 1-axis class can't
     // have a permuted match anyway, and C's specframe.c sets the
     // default to 0).
-    fn min_axes(&self) -> usize {
-        self.min_axes_opt.unwrap_or(1)
-    }
-    fn set_min_axes(&mut self, n: usize) {
-        self.min_axes_opt = Some(n);
-    }
-    fn test_min_axes(&self) -> bool {
-        self.min_axes_opt.is_some()
-    }
-    fn max_axes(&self) -> usize {
-        self.max_axes_opt.unwrap_or(1)
-    }
-    fn set_max_axes(&mut self, n: usize) {
-        self.max_axes_opt = Some(n);
-    }
-    fn test_max_axes(&self) -> bool {
-        self.max_axes_opt.is_some()
-    }
-    fn match_end(&self) -> bool {
-        self.match_end_opt.unwrap_or(false)
-    }
-    fn set_match_end(&mut self, v: bool) {
-        self.match_end_opt = Some(v);
-    }
-    fn test_match_end(&self) -> bool {
-        self.match_end_opt.is_some()
-    }
-    fn preserve_axes(&self) -> bool {
-        self.preserve_axes_opt.unwrap_or(false)
-    }
-    fn set_preserve_axes(&mut self, v: bool) {
-        self.preserve_axes_opt = Some(v);
-    }
-    fn test_preserve_axes(&self) -> bool {
-        self.preserve_axes_opt.is_some()
-    }
-    fn permute(&self) -> bool {
-        self.permute_opt.unwrap_or(false)
-    }
-    fn set_permute(&mut self, v: bool) {
-        self.permute_opt = Some(v);
-    }
-    fn test_permute(&self) -> bool {
-        self.permute_opt.is_some()
-    }
 
     fn map_from(&self, previous: &dyn Frame) -> AstResult<DynMapping> {
         let prev = previous.as_any().downcast_ref::<SpecFrame>();
@@ -1824,60 +1782,8 @@ impl Frame for SpecFrame {
         super::find_frame::frames_equal(self, other)
     }
 
-    fn obs_lat(&self) -> Option<f64> {
-        self.obs_lat
-    }
-
-    fn obs_lon(&self) -> Option<f64> {
-        self.obs_lon
-    }
-
-    fn obs_alt(&self) -> Option<f64> {
-        self.obs_alt
-    }
-
-    fn dtai(&self) -> Option<f64> {
-        self.dtai
-    }
-
-    fn dut1(&self) -> Option<f64> {
-        self.dut1
-    }
-
     fn system_string(&self) -> Option<&str> {
         Some(self.system.as_str())
-    }
-
-    fn domain(&self) -> &str {
-        self.domain.as_deref().unwrap_or("SPECTRUM")
-    }
-
-    fn set_domain(&mut self, domain: &str) {
-        SpecFrame::set_domain(self, domain);
-    }
-
-    fn clear_domain(&mut self) {
-        SpecFrame::clear_domain(self);
-    }
-
-    fn test_domain(&self) -> bool {
-        SpecFrame::test_domain(self)
-    }
-
-    fn ident(&self) -> &str {
-        SpecFrame::ident(self)
-    }
-
-    fn set_ident(&mut self, ident: &str) {
-        SpecFrame::set_ident(self, ident);
-    }
-
-    fn clear_ident(&mut self) {
-        self.ident = None;
-    }
-
-    fn test_ident(&self) -> bool {
-        self.ident.is_some()
     }
 
     // -----------------------------------------------------------------
@@ -2071,20 +1977,20 @@ fn specframe_overlay(
             result_spec.set_domain(template_spec.domain());
         }
         if template_spec.test_title() {
-            if let Some(ref t) = template_spec.title {
+            if let Some(ref t) = template_spec.attrs.title {
                 result_spec.set_title(t);
             }
         }
         if template_spec.test_epoch() {
             result_spec.set_epoch_mjd(template_spec.epoch_mjd());
         }
-        if let Some(v) = template_spec.obs_lat {
+        if let Some(v) = template_spec.attrs.obs_lat {
             result_spec.set_obs_lat(v);
         }
-        if let Some(v) = template_spec.obs_lon {
+        if let Some(v) = template_spec.attrs.obs_lon {
             result_spec.set_obs_lon(v);
         }
-        if let Some(v) = template_spec.obs_alt {
+        if let Some(v) = template_spec.attrs.obs_alt {
             result_spec.set_obs_alt(v);
         }
         if template_spec.test_system() {
@@ -2251,7 +2157,7 @@ impl Serializable for SpecFrame {
         // Ident is written if explicitly set, followed by an `IsA Object`
         // marker. Mirrors the Object Dump that precedes the Frame Dump (the
         // `IDENT`/`IsA Object` block in the reference native dumps).
-        if let Some(ref ident) = self.ident {
+        if let Some(ref ident) = self.attrs.ident {
             node.push_string(
                 "Ident",
                 ident,
@@ -2265,7 +2171,7 @@ impl Serializable for SpecFrame {
         //        [observer], IsA Frame
 
         // Title: active if explicitly set, otherwise unset with default.
-        if let Some(ref title) = self.title {
+        if let Some(ref title) = self.attrs.title {
             if !title.is_empty() {
                 node.push_string(
                     "Title",
@@ -2285,7 +2191,7 @@ impl Serializable for SpecFrame {
         node.push_int("Naxes", 1, Some("Number of coordinate axes".to_string()));
 
         // Domain: active if explicitly set to non-"SPECTRUM", otherwise unset.
-        if let Some(ref domain) = self.domain {
+        if let Some(ref domain) = self.attrs.domain {
             if !domain.is_empty() && domain != "SPECTRUM" {
                 node.push_string(
                     "Domain",
@@ -2310,7 +2216,7 @@ impl Serializable for SpecFrame {
         // Epoch: stored internally as MJD, written as Besselian /
         // Julian decimal year per the IAU 1984 rule (mirrors
         // `frame.c::Dump` lines 14325-14336).
-        let epoch_mjd = self.epoch.unwrap_or(51544.5);
+        let epoch_mjd = self.attrs.epoch.unwrap_or(51544.5);
         let bessyr = epoch_mjd < crate::pal::epj2d(1984.0);
         let epoch_year = if bessyr {
             crate::pal::epb(epoch_mjd)
@@ -2322,7 +2228,7 @@ impl Serializable for SpecFrame {
         } else {
             "Julian epoch of observation"
         };
-        if self.epoch.is_some() {
+        if self.attrs.epoch.is_some() {
             node.push_double("Epoch", epoch_year, Some(epoch_comment.to_string()));
         } else {
             node.push_unset(
@@ -2377,38 +2283,38 @@ impl Serializable for SpecFrame {
         // Observer attributes (active only if explicitly set). C
         // `Frame::Dump` writes these (and Dtai/Dut1) before the Axis
         // sub-objects (frame.c:14584-14609).
-        if let Some(obs_lat) = self.obs_lat {
+        if let Some(obs_lat) = self.attrs.obs_lat {
             node.push_double(
                 "ObsLat",
                 obs_lat,
                 Some("Observers geodetic latitude (rads)".to_string()),
             );
         }
-        if let Some(obs_lon) = self.obs_lon {
+        if let Some(obs_lon) = self.attrs.obs_lon {
             node.push_double(
                 "ObsLon",
                 obs_lon,
                 Some("Observers geodetic longitude (rads)".to_string()),
             );
         }
-        if let Some(obs_alt) = self.obs_alt {
+        if let Some(obs_alt) = self.attrs.obs_alt {
             node.push_double(
                 "ObsAlt",
                 obs_alt,
                 Some("Observers geodetic altitude (metres)".to_string()),
             );
         }
-        if let Some(dtai) = self.dtai {
+        if let Some(dtai) = self.attrs.dtai {
             node.push_double("Dtai", dtai, Some("TAI-UTC in seconds".to_string()));
         }
-        if let Some(dut1) = self.dut1 {
+        if let Some(dut1) = self.attrs.dut1 {
             node.push_double("Dut1", dut1, Some("UT1-UTC in seconds".to_string()));
         }
 
         // ActUnt: written whenever the ActiveUnit flag has been explicitly
         // set (TestActiveUnit, frame.c:14615), carrying its value (0 or 1);
         // an unset flag is suppressed.
-        if let Some(act) = self.act_unt {
+        if let Some(act) = self.attrs.active_unit {
             let comment = if act {
                 "Unit strings affects alignment"
             } else {
@@ -2583,7 +2489,7 @@ impl Serializable for SpecFrame {
         // Domain.
         let domain = node.get_string("Domain", "");
         if !domain.is_empty() {
-            sf.domain = Some(domain);
+            sf.attrs.domain = Some(domain);
         }
 
         // Epoch. AST Native stores Epoch as a decimal year ("Julian
@@ -2597,19 +2503,19 @@ impl Serializable for SpecFrame {
 
         // Observer attributes.
         if node.get("ObsLat").is_some() {
-            sf.obs_lat = Some(node.get_double("ObsLat", 0.0));
+            sf.attrs.obs_lat = Some(node.get_double("ObsLat", 0.0));
         }
         if node.get("ObsLon").is_some() {
-            sf.obs_lon = Some(node.get_double("ObsLon", 0.0));
+            sf.attrs.obs_lon = Some(node.get_double("ObsLon", 0.0));
         }
         if node.get("ObsAlt").is_some() {
-            sf.obs_alt = Some(node.get_double("ObsAlt", 0.0));
+            sf.attrs.obs_alt = Some(node.get_double("ObsAlt", 0.0));
         }
         if node.get("Dtai").is_some() {
-            sf.dtai = Some(node.get_double("Dtai", 0.0));
+            sf.attrs.dtai = Some(node.get_double("Dtai", 0.0));
         }
         if node.get("Dut1").is_some() {
-            sf.dut1 = Some(node.get_double("Dut1", 0.0));
+            sf.attrs.dut1 = Some(node.get_double("Dut1", 0.0));
         }
 
         // SoR (StdOfRest).
@@ -2716,13 +2622,13 @@ impl Serializable for SpecFrame {
         // ActUnt: the flag is set iff the card is present; record its value
         // (0 or 1) so it round-trips. Absent → class default.
         if node.get("ActUnt").is_some() {
-            sf.act_unt = Some(node.get_int("ActUnt", 1) != 0);
+            sf.attrs.active_unit = Some(node.get_int("ActUnt", 1) != 0);
         }
 
         // Ident (Object-level identification string).
         let ident = node.get_string("Ident", "");
         if !ident.is_empty() {
-            sf.ident = Some(ident);
+            sf.attrs.ident = Some(ident);
         }
 
         Ok(sf)
@@ -2850,7 +2756,7 @@ mod tests {
         // exercise. Confirm the oversized template is rejected (no
         // SpecFrame axis present in the target).
         let mut template = SpecFrame::new(SpecSystem::Freq);
-        template.set_max_axes(2);
+        template.set_max_axes(2).unwrap();
         let target = super::super::basic::BasicFrameBuilder::new(2)
             .build()
             .unwrap();

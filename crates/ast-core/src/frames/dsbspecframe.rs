@@ -565,13 +565,16 @@ impl DSBSpecFrame {
         topo_frame.set_unit("Hz");
 
         // Copy observer attributes from self.spec to the topo frame.
-        if let Some(lat) = self.spec.obs_lat() {
+        if self.spec.test_obs_lat() {
+            let lat = self.spec.obs_lat();
             topo_frame.set_obs_lat(lat);
         }
-        if let Some(lon) = self.spec.obs_lon() {
+        if self.spec.test_obs_lon() {
+            let lon = self.spec.obs_lon();
             topo_frame.set_obs_lon(lon);
         }
-        if let Some(alt) = self.spec.obs_alt() {
+        if self.spec.test_obs_alt() {
+            let alt = self.spec.obs_alt();
             topo_frame.set_obs_alt(alt);
         }
         topo_frame.set_epoch_mjd(self.spec.epoch_mjd());
@@ -731,6 +734,39 @@ impl DSBSpecFrame {
 // ---------------------------------------------------------------------------
 
 impl Frame for DSBSpecFrame {
+    // A DSBSpecFrame is a SpecFrame in C, so its Frame-class attributes,
+    // and its Object-class Ident, are the SpecFrame's; only the Domain
+    // default is its own (dsbspecframe.c `GetDomain`).
+    forward_frame_attrs!(@all_but_domain [spec]);
+    fn domain(&self) -> &str {
+        if self.spec.test_domain() {
+            Frame::domain(&self.spec)
+        } else {
+            "DSBSPECTRUM"
+        }
+    }
+    fn set_domain(&mut self, domain: &str) -> AstResult<()> {
+        Frame::set_domain(&mut self.spec, domain)
+    }
+    fn test_domain(&self) -> bool {
+        Frame::test_domain(&self.spec)
+    }
+    fn clear_domain(&mut self) -> AstResult<()> {
+        Frame::clear_domain(&mut self.spec)
+    }
+    fn ident(&self) -> &str {
+        Frame::ident(&self.spec)
+    }
+    fn set_ident(&mut self, ident: &str) -> AstResult<()> {
+        Frame::set_ident(&mut self.spec, ident)
+    }
+    fn clear_ident(&mut self) -> AstResult<()> {
+        Frame::clear_ident(&mut self.spec)
+    }
+    fn test_ident(&self) -> bool {
+        Frame::test_ident(&self.spec)
+    }
+
     fn naxes(&self) -> usize {
         1
     }
@@ -739,48 +775,8 @@ impl Frame for DSBSpecFrame {
         (self, axis)
     }
 
-    /// Effective Domain. Mirrors C `GetDomain` (dsbspecframe.c:531):
-    /// the explicitly set value when present, otherwise the default
-    /// "DSBSPECTRUM".
-    fn domain(&self) -> &str {
-        if self.spec.test_domain() {
-            self.spec.domain()
-        } else {
-            "DSBSPECTRUM"
-        }
-    }
-
-    /// Whether Domain has been explicitly set. The "DSBSPECTRUM"
-    /// default leaves this false, matching C `astTestDomain`.
-    fn test_domain(&self) -> bool {
-        self.spec.test_domain()
-    }
-
-    fn set_domain(&mut self, domain: &str) {
-        self.spec.set_domain(domain);
-    }
-
-    fn clear_domain(&mut self) {
-        self.spec.clear_domain();
-    }
-
     // Ident is an Object-level attribute (`object.c:5217-5229`), and the
     // component SpecFrame supplies the storage the dump reads back.
-    fn ident(&self) -> &str {
-        self.spec.ident()
-    }
-
-    fn set_ident(&mut self, ident: &str) {
-        self.spec.set_ident(ident);
-    }
-
-    fn clear_ident(&mut self) {
-        Frame::clear_ident(&mut self.spec);
-    }
-
-    fn test_ident(&self) -> bool {
-        Frame::test_ident(&self.spec)
-    }
 
     fn effective_label(&self, axis: usize) -> String {
         // Mirror DSBSpecFrame::GetLabel (dsbspecframe.c:688): take the parent
@@ -842,18 +838,6 @@ impl Frame for DSBSpecFrame {
         super::find_frame::frames_equal(self, other)
     }
 
-    fn obs_lat(&self) -> Option<f64> {
-        self.spec.obs_lat()
-    }
-
-    fn obs_lon(&self) -> Option<f64> {
-        self.spec.obs_lon()
-    }
-
-    fn obs_alt(&self) -> Option<f64> {
-        self.spec.obs_alt()
-    }
-
     fn system_string(&self) -> Option<&str> {
         self.spec.system_string()
     }
@@ -862,51 +846,6 @@ impl Frame for DSBSpecFrame {
     // Match-control attributes — delegate to the underlying SpecFrame
     // (same MinAxes / MaxAxes / Permute defaults).
     // -----------------------------------------------------------------
-    fn min_axes(&self) -> usize {
-        self.spec.min_axes()
-    }
-    fn set_min_axes(&mut self, n: usize) {
-        self.spec.set_min_axes(n);
-    }
-    fn test_min_axes(&self) -> bool {
-        self.spec.test_min_axes()
-    }
-    fn max_axes(&self) -> usize {
-        self.spec.max_axes()
-    }
-    fn set_max_axes(&mut self, n: usize) {
-        self.spec.set_max_axes(n);
-    }
-    fn test_max_axes(&self) -> bool {
-        self.spec.test_max_axes()
-    }
-    fn match_end(&self) -> bool {
-        self.spec.match_end()
-    }
-    fn set_match_end(&mut self, v: bool) {
-        self.spec.set_match_end(v);
-    }
-    fn test_match_end(&self) -> bool {
-        self.spec.test_match_end()
-    }
-    fn preserve_axes(&self) -> bool {
-        self.spec.preserve_axes()
-    }
-    fn set_preserve_axes(&mut self, v: bool) {
-        self.spec.set_preserve_axes(v);
-    }
-    fn test_preserve_axes(&self) -> bool {
-        self.spec.test_preserve_axes()
-    }
-    fn permute(&self) -> bool {
-        self.spec.permute()
-    }
-    fn set_permute(&mut self, v: bool) {
-        self.spec.set_permute(v);
-    }
-    fn test_permute(&self) -> bool {
-        self.spec.test_permute()
-    }
 
     fn cast(&self, other: &dyn Frame) -> AstResult<Option<DynFrame>> {
         // DSBSpecFrame -> SpecFrame (truncate to the parent), or

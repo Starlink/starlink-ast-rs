@@ -174,17 +174,11 @@ impl TimeScale {
 /// ```
 #[derive(Debug, Clone)]
 pub struct TimeFrame {
+    /// The Frame-class attributes.
+    attrs: super::frame_attrs::FrameAttrs,
     // Frame-level attributes
-    title: Option<String>,
-    domain: Option<String>,
-    epoch: Option<f64>, // MJD
 
     // Observer
-    obs_lat: Option<f64>, // geodetic latitude (radians)
-    obs_lon: Option<f64>, // geodetic longitude (radians)
-    obs_alt: Option<f64>, // altitude (metres)
-    dut1: Option<f64>,    // UT1-UTC (seconds)
-    dtai: Option<f64>,    // TAI-UTC (seconds)
 
     // TimeFrame-specific
     system: TimeSystem,
@@ -202,20 +196,32 @@ pub struct TimeFrame {
     format_str: Option<String>,
     lt_offset: Option<f64>, // Local Time offset from UTC (hours)
     align_timescale: Option<TimeScale>,
-    /// When false, unit strings do not affect alignment. Default is true.
-    act_unt: Option<bool>,
-    /// Permanent object identification string (Object-level attribute).
-    ident: Option<String>,
-
     // Match-control attributes (used by `astFindFrame` / `astMatch`).
-    min_axes_opt: Option<usize>,
-    max_axes_opt: Option<usize>,
-    match_end_opt: Option<bool>,
-    preserve_axes_opt: Option<bool>,
-    permute_opt: Option<bool>,
 }
 
 impl TimeFrame {
+    // Defaults of the Frame-class attributes, for the `frame_attrs_*`
+    // macros.
+    fn frame_default_title(&self) -> String {
+        self.default_title()
+    }
+    fn frame_default_domain(&self) -> &'static str {
+        "TIME"
+    }
+    /// The TimeOrigin as a TDB MJD when one is set, else J2000.0
+    /// (timeframe.c `GetEpoch`).
+    fn frame_default_epoch(&self) -> f64 {
+        if self.time_origin.is_some() {
+            if let Ok(mjd) = self.epoch_from_time_origin() {
+                return mjd;
+            }
+        }
+        super::frame_attrs::default_epoch_mjd()
+    }
+    fn frame_default_permute(&self) -> bool {
+        true
+    }
+
     /// Create a new `TimeFrame` with the given time coordinate system.
     ///
     /// Defaults: domain = "TIME", timescale = TAI (or TT for Bepoch).
@@ -226,15 +232,8 @@ impl TimeFrame {
             TimeScale::Tai
         };
         Self {
-            title: None,
+            attrs: super::frame_attrs::FrameAttrs::default(),
             // None = use the default "TIME"; mirrors astTestDomain.
-            domain: None,
-            epoch: None,
-            obs_lat: None,
-            obs_lon: None,
-            obs_alt: None,
-            dut1: None,
-            dtai: None,
             system,
             // The caller supplied an explicit System, equivalent to C
             // `astTimeFrame("System=...")` invoking astSetSystem — so
@@ -251,13 +250,6 @@ impl TimeFrame {
             format_str: None,
             lt_offset: None,
             align_timescale: None,
-            act_unt: None,
-            ident: None,
-            min_axes_opt: None,
-            max_axes_opt: None,
-            match_end_opt: None,
-            preserve_axes_opt: None,
-            permute_opt: None,
         }
     }
 
@@ -296,18 +288,18 @@ impl TimeFrame {
     }
 
     /// Frame Title accessor. Returns the empty string when unset.
-    pub fn title(&self) -> &str {
-        self.title.as_deref().unwrap_or("")
+    pub fn title(&self) -> String {
+        Frame::title(self)
     }
 
     /// Whether Title has been explicitly set.
     pub fn test_title(&self) -> bool {
-        self.title.is_some()
+        self.attrs.title.is_some()
     }
 
     /// Clear the Title attribute.
     pub fn clear_title(&mut self) {
-        self.title = None;
+        self.attrs.title = None;
     }
 
     /// Whether `TimeOrigin` has been explicitly set.
@@ -329,13 +321,13 @@ impl TimeFrame {
 
     /// Return the frame identification string.
     pub fn ident(&self) -> &str {
-        self.ident.as_deref().unwrap_or("")
+        self.attrs.ident.as_deref().unwrap_or("")
     }
 
     /// Set the frame identification string. Mirrors `astSetIdent`.
     pub fn set_ident(&mut self, ident: impl Into<String>) {
         let s = ident.into();
-        self.ident = if s.is_empty() { None } else { Some(s) };
+        self.attrs.ident = if s.is_empty() { None } else { Some(s) };
     }
 
     /// Return the time coordinate system.
@@ -557,7 +549,7 @@ impl TimeFrame {
     ///   not critical and DUT1 may be unknown);
     /// - otherwise, the default J2000.0 (MJD 51544.5).
     pub fn epoch_mjd(&self) -> f64 {
-        if let Some(e) = self.epoch {
+        if let Some(e) = self.attrs.epoch {
             return e;
         }
         if self.time_origin.is_some() {
@@ -587,7 +579,7 @@ impl TimeFrame {
         // We force DUT1 to zero on a clone for that hop.
         let zero_dut1 = if ts.is_earth_rotation() {
             let mut z = self.clone();
-            z.dut1 = Some(0.0);
+            z.attrs.dut1 = Some(0.0);
             Some(z)
         } else {
             None
@@ -642,74 +634,74 @@ impl TimeFrame {
     /// Whether the Epoch attribute has been explicitly set. Mirrors
     /// `astTestEpoch`.
     pub fn test_epoch(&self) -> bool {
-        self.epoch.is_some()
+        self.attrs.epoch.is_some()
     }
 
     /// Set the epoch as MJD.
     pub fn set_epoch_mjd(&mut self, mjd: f64) {
-        self.epoch = Some(mjd);
+        self.attrs.epoch = Some(mjd);
     }
 
     /// Set the epoch as a decimal year (IAU 1984 rule:
     /// year < 1984 ⇒ Besselian, ≥ 1984 ⇒ Julian).
     pub fn set_epoch_year(&mut self, year: f64) {
-        self.epoch = Some(crate::frames::date_time::year_to_mjd_iau1984(year));
+        self.attrs.epoch = Some(crate::frames::date_time::year_to_mjd_iau1984(year));
     }
 
     /// Set the title.
     pub fn set_title(&mut self, title: &str) {
-        self.title = Some(title.to_string());
+        self.attrs.title = Some(title.to_string());
     }
 
     /// Set the domain.
     pub fn set_domain(&mut self, domain: &str) {
-        self.domain = Some(domain.to_string());
+        self.attrs.domain = Some(domain.to_string());
     }
 
     /// Test whether the domain attribute has been explicitly set.
     /// Mirrors C's `astTestDomain` for `TimeFrame`.
     pub fn test_domain(&self) -> bool {
-        self.domain.is_some()
+        self.attrs.domain.is_some()
     }
 
     /// Clear the domain attribute, reverting to the default `"TIME"`.
     pub fn clear_domain(&mut self) {
-        self.domain = None;
+        self.attrs.domain = None;
     }
 
     /// Set the observer geodetic latitude (radians).
     pub fn set_obs_lat(&mut self, lat: f64) {
-        self.obs_lat = Some(lat);
+        self.attrs.obs_lat = Some(lat);
     }
 
     /// Set the observer geodetic longitude (radians).
     pub fn set_obs_lon(&mut self, lon: f64) {
-        self.obs_lon = Some(lon);
+        self.attrs.obs_lon = Some(lon);
     }
 
     /// Set the observer altitude (metres).
     pub fn set_obs_alt(&mut self, alt: f64) {
-        self.obs_alt = Some(alt);
+        self.attrs.obs_alt = Some(alt);
     }
 
     /// Return the DUT1 value (UT1-UTC in seconds).
     pub fn get_dut1(&self) -> f64 {
-        self.dut1.unwrap_or(0.0)
+        self.attrs.dut1.unwrap_or(0.0)
     }
 
     /// Set the DUT1 value (UT1-UTC in seconds).
     pub fn set_dut1(&mut self, dut1: f64) {
-        self.dut1 = Some(dut1);
+        self.attrs.dut1 = Some(dut1);
     }
 
     /// Return the DTAI value (TAI-UTC in seconds).
     pub fn get_dtai(&self) -> f64 {
-        self.dtai.unwrap_or(BAD_VALUE)
+        self.attrs.dtai.unwrap_or(BAD_VALUE)
     }
 
     /// Set the DTAI value (TAI-UTC in seconds).
     pub fn set_dtai(&mut self, dtai: f64) {
-        self.dtai = Some(dtai);
+        self.attrs.dtai = Some(dtai);
     }
 
     // --- Serialisation helpers ---
@@ -1008,9 +1000,9 @@ impl TimeFrame {
         if ts1 != ts2 {
             // Source-side observer (negate longitude: Frame stores +ve east,
             // TimeMap needs +ve west).
-            let obs_lon = -(self.obs_lon.unwrap_or(0.0));
-            let obs_lat = self.obs_lat.unwrap_or(0.0);
-            let obs_alt = self.obs_alt.unwrap_or(0.0);
+            let obs_lon = -(self.attrs.obs_lon.unwrap_or(0.0));
+            let obs_lat = self.attrs.obs_lat.unwrap_or(0.0);
+            let obs_alt = self.attrs.obs_alt.unwrap_or(0.0);
             let dtai = self.get_dtai();
             let args = [mjd_off1, obs_lon, obs_lat, obs_alt, dtai];
             let args_ut = [self.get_dut1()];
@@ -1064,9 +1056,9 @@ impl TimeFrame {
 
             // Target-side observer (own frame if cross-frame convert, else self).
             let tgt = tgt_obs.unwrap_or(self);
-            let obs_lon2 = -(tgt.obs_lon.unwrap_or(0.0));
-            let obs_lat2 = tgt.obs_lat.unwrap_or(0.0);
-            let obs_alt2 = tgt.obs_alt.unwrap_or(0.0);
+            let obs_lon2 = -(tgt.attrs.obs_lon.unwrap_or(0.0));
+            let obs_lat2 = tgt.attrs.obs_lat.unwrap_or(0.0);
+            let obs_alt2 = tgt.attrs.obs_alt.unwrap_or(0.0);
             let dtai2 = tgt.get_dtai();
             let args2 = [mjd_off1, obs_lon2, obs_lat2, obs_alt2, dtai2];
             let args_ut2 = [tgt.get_dut1()];
@@ -1293,6 +1285,24 @@ fn date_format(fmt: &str) -> (bool, i32, char) {
 // ---------------------------------------------------------------------------
 
 impl Frame for TimeFrame {
+    /// A TimeFrame always has active units and reports ActiveUnit as unset
+    /// (timeframe.c `GetActiveUnit`, `TestActiveUnit`).
+    fn get_active_unit(&self) -> bool {
+        true
+    }
+    fn set_active_unit(&mut self, _value: bool) {}
+    fn test_active_unit(&self) -> bool {
+        false
+    }
+
+    frame_attrs_title!();
+    frame_attrs_domain!();
+    frame_attrs_epoch!();
+    frame_attrs_digits!();
+    frame_attrs_observer!();
+    frame_attrs_ident!();
+    frame_attrs_match!();
+
     fn naxes(&self) -> usize {
         1
     }
@@ -1487,109 +1497,13 @@ impl Frame for TimeFrame {
         super::find_frame::frames_equal(self, other)
     }
 
-    fn obs_lat(&self) -> Option<f64> {
-        self.obs_lat
-    }
-
-    fn obs_lon(&self) -> Option<f64> {
-        self.obs_lon
-    }
-
-    fn obs_alt(&self) -> Option<f64> {
-        self.obs_alt
-    }
-
-    fn dtai(&self) -> Option<f64> {
-        self.dtai
-    }
-
-    fn dut1(&self) -> Option<f64> {
-        self.dut1
-    }
-
     fn system_string(&self) -> Option<&str> {
         Some(self.system.as_str())
-    }
-
-    fn domain(&self) -> &str {
-        self.domain.as_deref().unwrap_or("TIME")
-    }
-
-    fn clear_domain(&mut self) {
-        TimeFrame::clear_domain(self);
-    }
-
-    fn test_domain(&self) -> bool {
-        TimeFrame::test_domain(self)
-    }
-
-    fn ident(&self) -> &str {
-        TimeFrame::ident(self)
-    }
-
-    fn set_ident(&mut self, ident: &str) {
-        TimeFrame::set_ident(self, ident);
-    }
-
-    fn clear_ident(&mut self) {
-        self.ident = None;
-    }
-
-    fn test_ident(&self) -> bool {
-        self.ident.is_some()
     }
 
     // -----------------------------------------------------------------
     // Match-control attributes (mirror C `astGet/SetMinAxes` etc.).
     // -----------------------------------------------------------------
-
-    fn min_axes(&self) -> usize {
-        self.min_axes_opt.unwrap_or(1)
-    }
-    fn set_min_axes(&mut self, n: usize) {
-        self.min_axes_opt = Some(n);
-    }
-    fn test_min_axes(&self) -> bool {
-        self.min_axes_opt.is_some()
-    }
-    fn max_axes(&self) -> usize {
-        self.max_axes_opt.unwrap_or(1)
-    }
-    fn set_max_axes(&mut self, n: usize) {
-        self.max_axes_opt = Some(n);
-    }
-    fn test_max_axes(&self) -> bool {
-        self.max_axes_opt.is_some()
-    }
-    fn match_end(&self) -> bool {
-        self.match_end_opt.unwrap_or(false)
-    }
-    fn set_match_end(&mut self, v: bool) {
-        self.match_end_opt = Some(v);
-    }
-    fn test_match_end(&self) -> bool {
-        self.match_end_opt.is_some()
-    }
-    fn preserve_axes(&self) -> bool {
-        self.preserve_axes_opt.unwrap_or(false)
-    }
-    fn set_preserve_axes(&mut self, v: bool) {
-        self.preserve_axes_opt = Some(v);
-    }
-    fn test_preserve_axes(&self) -> bool {
-        self.preserve_axes_opt.is_some()
-    }
-    fn permute(&self) -> bool {
-        // TimeFrame is 1-axis: permutations are degenerate. C
-        // inherits the parent Frame default of 1 (true).
-        self.permute_opt.unwrap_or(true)
-    }
-    fn set_permute(&mut self, v: bool) {
-        self.permute_opt = Some(v);
-    }
-    fn test_permute(&self) -> bool {
-        self.permute_opt.is_some()
-    }
 
     // -----------------------------------------------------------------
     // Match / SubFrame / Overlay (timeframe.c).
@@ -1714,29 +1628,29 @@ fn timeframe_overlay(
         // parent Frame Overlay (frame.c:8567-8575): Dtai, Dut1, Epoch,
         // ObsLat, ObsLon, ObsAlt — each only when set on the template.
         // Domain and Title are transferred by the dedicated blocks below.
-        if let Some(v) = template_time.dtai {
+        if let Some(v) = template_time.attrs.dtai {
             result_time.set_dtai(v);
         }
-        if let Some(v) = template_time.dut1 {
+        if let Some(v) = template_time.attrs.dut1 {
             result_time.set_dut1(v);
         }
-        if let Some(v) = template_time.epoch {
+        if let Some(v) = template_time.attrs.epoch {
             result_time.set_epoch_mjd(v);
         }
-        if let Some(v) = template_time.obs_lat {
+        if let Some(v) = template_time.attrs.obs_lat {
             result_time.set_obs_lat(v);
         }
-        if let Some(v) = template_time.obs_lon {
+        if let Some(v) = template_time.attrs.obs_lon {
             result_time.set_obs_lon(v);
         }
-        if let Some(v) = template_time.obs_alt {
+        if let Some(v) = template_time.attrs.obs_alt {
             result_time.set_obs_alt(v);
         }
         if template_time.test_domain() {
             result_time.set_domain(template_time.domain());
         }
         if template_time.test_title() {
-            if let Some(ref t) = template_time.title {
+            if let Some(ref t) = template_time.attrs.title {
                 result_time.set_title(t);
             }
         }
@@ -1831,7 +1745,7 @@ impl Serializable for TimeFrame {
         // Order: Title, Naxes, Domain, Epoch, Lbl1, System, Uni1, Ax1, IsA Frame
 
         // Title: active if explicitly set, otherwise unset with default.
-        if let Some(ref title) = self.title {
+        if let Some(ref title) = self.attrs.title {
             if !title.is_empty() {
                 node.push_string(
                     "Title",
@@ -1851,7 +1765,7 @@ impl Serializable for TimeFrame {
         node.push_int("Naxes", 1, Some("Number of coordinate axes".to_string()));
 
         // Domain: active if explicitly set to non-"TIME", otherwise unset "TIME".
-        if let Some(ref domain) = self.domain {
+        if let Some(ref domain) = self.attrs.domain {
             if !domain.is_empty() && domain != "TIME" {
                 node.push_string(
                     "Domain",
@@ -1891,7 +1805,7 @@ impl Serializable for TimeFrame {
         } else {
             "Julian epoch of observation"
         };
-        if self.epoch.is_some() {
+        if self.attrs.epoch.is_some() {
             node.push_double("Epoch", epoch_year, Some(epoch_comment.to_string()));
         } else {
             node.push_unset(
@@ -1959,21 +1873,21 @@ impl Serializable for TimeFrame {
         node.push_object("Ax1", axis_node, Some("Axis number 1".to_string()));
 
         // Observer attributes (active only if explicitly set).
-        if let Some(obs_lat) = self.obs_lat {
+        if let Some(obs_lat) = self.attrs.obs_lat {
             node.push_double(
                 "ObsLat",
                 obs_lat,
                 Some("Observers geodetic latitude (rads)".to_string()),
             );
         }
-        if let Some(obs_lon) = self.obs_lon {
+        if let Some(obs_lon) = self.attrs.obs_lon {
             node.push_double(
                 "ObsLon",
                 obs_lon,
                 Some("Observers geodetic longitude (rads)".to_string()),
             );
         }
-        if let Some(obs_alt) = self.obs_alt {
+        if let Some(obs_alt) = self.attrs.obs_alt {
             node.push_double(
                 "ObsAlt",
                 obs_alt,
@@ -1982,17 +1896,17 @@ impl Serializable for TimeFrame {
         }
 
         // Dut1 (if set).
-        if let Some(dut1) = self.dut1 {
+        if let Some(dut1) = self.attrs.dut1 {
             node.push_double("Dut1", dut1, Some("UT1-UTC (s)".to_string()));
         }
 
         // Dtai (if set).
-        if let Some(dtai) = self.dtai {
+        if let Some(dtai) = self.attrs.dtai {
             node.push_double("Dtai", dtai, Some("TAI-UTC (s)".to_string()));
         }
 
         // ActUnt: active if explicitly set to false.
-        if let Some(false) = self.act_unt {
+        if let Some(false) = self.attrs.active_unit {
             node.push_int(
                 "ActUnt",
                 0,
@@ -2074,7 +1988,7 @@ impl Serializable for TimeFrame {
         // Domain.
         let domain = node.get_string("Domain", "");
         if !domain.is_empty() {
-            tf.domain = Some(domain);
+            tf.attrs.domain = Some(domain);
         }
 
         // Epoch. AST Native stores the value as a decimal year
@@ -2087,23 +2001,23 @@ impl Serializable for TimeFrame {
 
         // Observer attributes.
         if node.get("ObsLat").is_some() {
-            tf.obs_lat = Some(node.get_double("ObsLat", 0.0));
+            tf.attrs.obs_lat = Some(node.get_double("ObsLat", 0.0));
         }
         if node.get("ObsLon").is_some() {
-            tf.obs_lon = Some(node.get_double("ObsLon", 0.0));
+            tf.attrs.obs_lon = Some(node.get_double("ObsLon", 0.0));
         }
         if node.get("ObsAlt").is_some() {
-            tf.obs_alt = Some(node.get_double("ObsAlt", 0.0));
+            tf.attrs.obs_alt = Some(node.get_double("ObsAlt", 0.0));
         }
 
         // Dut1.
         if node.get("Dut1").is_some() {
-            tf.dut1 = Some(node.get_double("Dut1", 0.0));
+            tf.attrs.dut1 = Some(node.get_double("Dut1", 0.0));
         }
 
         // Dtai.
         if node.get("Dtai").is_some() {
-            tf.dtai = Some(node.get_double("Dtai", 0.0));
+            tf.attrs.dtai = Some(node.get_double("Dtai", 0.0));
         }
 
         // TmScl (TimeScale). Use set_timescale to flip the
@@ -2135,13 +2049,13 @@ impl Serializable for TimeFrame {
         // ActUnt (default is 1 = true; only store when 0).
         let act_unt_val = node.get_int("ActUnt", 1);
         if act_unt_val == 0 {
-            tf.act_unt = Some(false);
+            tf.attrs.active_unit = Some(false);
         }
 
         // Ident (Object-level identification string).
         let ident = node.get_string("Ident", "");
         if !ident.is_empty() {
-            tf.ident = Some(ident);
+            tf.attrs.ident = Some(ident);
         }
 
         // Per-axis Unit and Format strings live in the Ax1 Axis child node.

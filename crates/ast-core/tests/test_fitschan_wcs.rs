@@ -379,7 +379,8 @@ fn serpens_dut1_is_seconds() {
     // DUT1 card value in days; expected SkyFrame value in seconds.
     let dut1_days = -1.145603703e-6_f64;
     let expected = dut1_days * 86_400.0; // -0.09898015993920001
-    let got = fs.dut1().expect("Dut1 must be set from the DUT1 FITS card");
+    assert!(fs.test_dut1(), "Dut1 must be set from the DUT1 FITS card");
+    let got = fs.dut1();
     assert!(
         (got - expected).abs() < 1e-9,
         "Dut1 should be {expected} s (days × 86400), got {got} s"

@@ -66,7 +66,7 @@ pub(crate) fn match_with_subclass(
             if target.test_domain() {
                 let dom = template.domain();
                 if !dom.is_empty() {
-                    super_this.set_domain(dom);
+                    super_this.set_domain(dom)?;
                 }
             }
             return super_this.match_template(target, match_sub);
@@ -123,9 +123,9 @@ pub(crate) fn convert_frames(
             } else {
                 to.snapshot()
             };
-            common0.set_preserve_axes(false);
+            common0.set_preserve_axes(false)?;
             if !domain.is_empty() {
-                common0.set_domain(&domain);
+                common0.set_domain(&domain)?;
             }
 
             // frame1 = (icom ? to : from) (frame.c:3158).
@@ -140,7 +140,7 @@ pub(crate) fn convert_frames(
             };
             let map1 = m1.map;
             let mut common1 = m1.result;
-            common1.set_preserve_axes(false);
+            common1.set_preserve_axes(false)?;
 
             // frame2 = (icom ? from : to) (frame.c:3179).
             let frame2: &dyn Frame = if icom == 1 { from } else { to };

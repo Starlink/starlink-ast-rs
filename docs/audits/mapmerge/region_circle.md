@@ -16,14 +16,14 @@ not leave a circle, so C fits a new Circle to a boundary mesh, falls back to
 fitting an Ellipse in two dimensions, and adopts a fit only when `astRegPins`
 places every mesh point on the fitted boundary.
 
-`Circle::simplified` (`circle.rs:947-1029 (fn simplified)`) is the port of it.
+`Circle::simplified` (`circle.rs:951-1029 (fn simplified)`) is the port of it.
 
 | # | C step | C site | Rust site | extension point | verdict |
 |---|---|---|---|---|---|
 | 1 | Initialise the result | circle.c:1829-1831 (fn Simplify) | -- | ceremony | n/a: the Rust returns `AstResult<(DynMapping, bool)>`, so there is no sentinel to initialise |
 | 2 | Check the global error status and bail out | circle.c:1832-1834 (fn Simplify) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 3 | Obtain a pointer to the supplied Region structure | circle.c:1835-1837 (fn Simplify) | -- | ceremony | n/a: the Rust method already has `&self` |
-| 4 | Invoke the parent Region Simplify, which simplifies the encapsulated FrameSet and the uncertainty | circle.c:1838-1841 (fn Simplify) | circle.rs:947-960 (fn simplified) | architecture | ported |
+| 4 | Invoke the parent Region Simplify, which simplifies the encapsulated FrameSet and the uncertainty | circle.c:1838-1841 (fn Simplify) | circle.rs:951-960 (fn simplified) | architecture | ported |
 | 5 | Note that simplification took place if the parent returned a different pointer | circle.c:1842-1846 (fn Simplify) | circle.rs:961 (fn simplified) | architecture | ported |
 | 6 | Skip the whole re-definition when the base-to-current Mapping is a UnitMap | circle.c:1847-1854 (fn Simplify) | circle.rs:970-974 (fn simplified) | architecture | ported |
 | 7 | Get a mesh of points covering the Circle in its current Frame | circle.c:1855-1857 (fn Simplify) | circle.rs:978-979 (fn simplified) | architecture | ported |

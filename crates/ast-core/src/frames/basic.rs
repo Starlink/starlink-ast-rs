@@ -252,6 +252,21 @@ impl BasicFrame {
         Ok(&mut self.axes[i])
     }
 
+    // Defaults of the Frame-class attributes (frame.c), for the
+    // `frame_attrs_*` macros.
+    fn frame_default_title(&self) -> String {
+        format!("{}-d coordinate system", self.naxes)
+    }
+    fn frame_default_domain(&self) -> &'static str {
+        ""
+    }
+    fn frame_default_epoch(&self) -> f64 {
+        default_epoch_mjd()
+    }
+    fn frame_default_permute(&self) -> bool {
+        true
+    }
+
     // --- Frame-level attributes ---
 
     /// The Title, set or default (`"<naxes>-d coordinate system"`,
@@ -796,6 +811,14 @@ impl Frame for BasicFrame {
         self.naxes
     }
 
+    frame_attrs_title!();
+    frame_attrs_domain!();
+    frame_attrs_epoch!();
+    frame_attrs_digits!();
+    frame_attrs_observer!();
+    frame_attrs_ident!();
+    frame_attrs_match!();
+
     fn primary_frame(&self, axis: usize) -> (&dyn Frame, usize) {
         (self, axis)
     }
@@ -813,18 +836,6 @@ impl Frame for BasicFrame {
 
     fn system_string(&self) -> Option<&str> {
         Some("Cartesian")
-    }
-
-    fn digits(&self) -> i32 {
-        BasicFrame::digits(self)
-    }
-
-    fn set_digits(&mut self, value: i32) {
-        BasicFrame::set_digits(self, value);
-    }
-
-    fn test_digits(&self) -> bool {
-        BasicFrame::test_digits(self)
     }
 
     fn axis_digits(&self, axis: usize) -> i32 {
@@ -892,26 +903,6 @@ impl Frame for BasicFrame {
             .unwrap_or_default()
     }
 
-    fn obs_lat(&self) -> Option<f64> {
-        self.attrs.obs_lat
-    }
-
-    fn obs_lon(&self) -> Option<f64> {
-        self.attrs.obs_lon
-    }
-
-    fn obs_alt(&self) -> Option<f64> {
-        self.attrs.obs_alt
-    }
-
-    fn dtai(&self) -> Option<f64> {
-        self.attrs.dtai
-    }
-
-    fn dut1(&self) -> Option<f64> {
-        self.attrs.dut1
-    }
-
     fn unformat(&self, axis: usize, text: &str) -> AstResult<(f64, usize)> {
         self.validate_axis(axis)?;
         Ok(axis_unformat(text))
@@ -971,54 +962,6 @@ impl Frame for BasicFrame {
     }
 
     // Match-control attributes — mirror C `astGet/SetMinAxes` etc.
-    // Match-control attributes. MinAxes and MaxAxes default to Naxes,
-    // MatchEnd and PreserveAxes to false, Permute to true (frame.c).
-    fn min_axes(&self) -> usize {
-        self.attrs.min_axes.unwrap_or(self.naxes)
-    }
-    fn set_min_axes(&mut self, n: usize) {
-        self.attrs.min_axes = Some(n);
-    }
-    fn test_min_axes(&self) -> bool {
-        self.attrs.min_axes.is_some()
-    }
-    fn max_axes(&self) -> usize {
-        self.attrs.max_axes.unwrap_or(self.naxes)
-    }
-    fn set_max_axes(&mut self, n: usize) {
-        self.attrs.max_axes = Some(n);
-    }
-    fn test_max_axes(&self) -> bool {
-        self.attrs.max_axes.is_some()
-    }
-    fn match_end(&self) -> bool {
-        self.attrs.match_end.unwrap_or(false)
-    }
-    fn set_match_end(&mut self, v: bool) {
-        self.attrs.match_end = Some(v);
-    }
-    fn test_match_end(&self) -> bool {
-        self.attrs.match_end.is_some()
-    }
-    fn preserve_axes(&self) -> bool {
-        self.attrs.preserve_axes.unwrap_or(false)
-    }
-    fn set_preserve_axes(&mut self, v: bool) {
-        self.attrs.preserve_axes = Some(v);
-    }
-    fn test_preserve_axes(&self) -> bool {
-        self.attrs.preserve_axes.is_some()
-    }
-    fn permute(&self) -> bool {
-        self.attrs.permute.unwrap_or(true)
-    }
-    fn set_permute(&mut self, v: bool) {
-        self.attrs.permute = Some(v);
-    }
-    fn test_permute(&self) -> bool {
-        self.attrs.permute.is_some()
-    }
-
     /// Compose `perm` with the existing permutation, as C's `PermAxes`
     /// does (frame.c): the axes themselves stay in internal order.
     fn perm_axes(&mut self, perm: &[usize]) -> AstResult<()> {
@@ -1038,38 +981,6 @@ impl Frame for BasicFrame {
         // C Frame equality is conversion-based (frame.c:3549): same class,
         // astConvert succeeds, and the mapping simplifies to a UnitMap.
         super::find_frame::frames_equal(self, other)
-    }
-
-    fn domain(&self) -> &str {
-        BasicFrame::domain(self)
-    }
-
-    fn set_domain(&mut self, domain: &str) {
-        BasicFrame::set_domain(self, domain.to_string());
-    }
-
-    fn clear_domain(&mut self) {
-        BasicFrame::clear_domain(self);
-    }
-
-    fn test_domain(&self) -> bool {
-        BasicFrame::test_domain(self)
-    }
-
-    fn ident(&self) -> &str {
-        BasicFrame::ident(self)
-    }
-
-    fn set_ident(&mut self, ident: &str) {
-        BasicFrame::set_ident(self, ident);
-    }
-
-    fn clear_ident(&mut self) {
-        self.attrs.ident = None;
-    }
-
-    fn test_ident(&self) -> bool {
-        self.attrs.ident.is_some()
     }
 
     fn match_template(

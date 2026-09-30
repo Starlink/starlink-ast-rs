@@ -1660,6 +1660,8 @@ impl Region for Interval {
 // ============================================================================
 
 impl Frame for Interval {
+    region_frame_attrs!();
+
     fn naxes(&self) -> usize {
         self.data.frameset.current().naxes()
     }
@@ -1735,6 +1737,8 @@ impl Frame for Interval {
 // ============================================================================
 
 impl Mapping for Interval {
+    region_mapping_ident!();
+
     // C's `Frame` overrides `astDoNotSimplify` to zero (frame.c:3511-3554): a
     // set `Ident` is a user label on a coordinate system, not a request to keep
     // a Mapping intact, so a named Frame is still simplified.

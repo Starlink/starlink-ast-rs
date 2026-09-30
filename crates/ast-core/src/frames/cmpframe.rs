@@ -22,38 +22,14 @@ use super::{AxisKind, DynFrame, Frame};
 /// Per-axis operations (`format`, `unformat`, `norm`) are delegated
 /// to the owning child frame.
 pub struct CmpFrame {
+    /// The Frame-class attributes.
+    attrs: super::frame_attrs::FrameAttrs,
     frame1: DynFrame,
     frame2: DynFrame,
     /// Axis permutation: perm[ext_axis_0based] = original_axis_0based.
     /// Initially identity.
     perm: Vec<usize>,
-    /// When false, unit strings do not affect alignment. Default is true.
-    act_unt: Option<bool>,
-    /// Permanent object identification string (Object-level attribute).
-    ident: Option<String>,
-    /// Frame Domain. Empty/unset by default; the serialiser falls back
-    /// to `<dom1>-<dom2>` (or `CMP`) when this is None. Mirrors the
-    /// `Domain` Frame attribute (frame.c).
-    domain: Option<String>,
-    /// Frame Title. Empty/unset by default; the serialiser falls back
-    /// to `"N-d compound coordinate system"` when this is None.
-    title: Option<String>,
     // Match-control attributes (used by `astFindFrame` / `astMatch`).
-    min_axes_opt: Option<usize>,
-    max_axes_opt: Option<usize>,
-    match_end_opt: Option<bool>,
-    preserve_axes_opt: Option<bool>,
-    permute_opt: Option<bool>,
-    /// Epoch (TDB MJD) set on the compound frame itself. Setting it
-    /// also forwards to both components (cmpframe.c SetEpoch).
-    epoch: Option<f64>,
-    /// Observer attributes set on the compound frame itself; setters
-    /// forward to both components (cmpframe.c SetObsLat etc.).
-    obs_lat: Option<f64>,
-    obs_lon: Option<f64>,
-    obs_alt: Option<f64>,
-    dtai: Option<f64>,
-    dut1: Option<f64>,
     /// Cache for the computed default Domain (`"<dom1>-<dom2>"` / `"CMP"`),
     /// invalidated whenever a component becomes reachable mutably.
     domain_default: std::cell::OnceCell<String>,
@@ -65,51 +41,34 @@ impl Clone for CmpFrame {
             frame1: self.frame1.snapshot(),
             frame2: self.frame2.snapshot(),
             perm: self.perm.clone(),
-            act_unt: self.act_unt,
-            ident: self.ident.clone(),
-            domain: self.domain.clone(),
-            title: self.title.clone(),
-            min_axes_opt: self.min_axes_opt,
-            max_axes_opt: self.max_axes_opt,
-            match_end_opt: self.match_end_opt,
-            preserve_axes_opt: self.preserve_axes_opt,
-            permute_opt: self.permute_opt,
-            epoch: self.epoch,
-            obs_lat: self.obs_lat,
-            obs_lon: self.obs_lon,
-            obs_alt: self.obs_alt,
-            dtai: self.dtai,
-            dut1: self.dut1,
+            attrs: self.attrs.clone(),
             domain_default: self.domain_default.clone(),
         }
     }
 }
 
 impl CmpFrame {
+    /// `"<n>-d compound coordinate system"` (cmpframe.c `GetTitle`), for
+    /// the `frame_attrs_title` macro.
+    fn frame_default_title(&self) -> String {
+        format!("{}-d compound coordinate system", self.naxes())
+    }
+
+    /// The Frame class's default, 1 (frame.c:13572).
+    fn frame_default_permute(&self) -> bool {
+        true
+    }
+
     /// Create a compound frame from two child frames.
     ///
     /// The resulting frame has `frame1.naxes() + frame2.naxes()` axes.
     pub fn new(frame1: DynFrame, frame2: DynFrame) -> Self {
         let naxes = frame1.naxes() + frame2.naxes();
         Self {
+            attrs: super::frame_attrs::FrameAttrs::default(),
             frame1,
             frame2,
             perm: (0..naxes).collect(),
-            act_unt: None,
-            ident: None,
-            domain: None,
-            title: None,
-            min_axes_opt: None,
-            max_axes_opt: None,
-            match_end_opt: None,
-            preserve_axes_opt: None,
-            permute_opt: None,
-            epoch: None,
-            obs_lat: None,
-            obs_lon: None,
-            obs_alt: None,
-            dtai: None,
-            dut1: None,
             domain_default: std::cell::OnceCell::new(),
         }
     }
@@ -117,102 +76,38 @@ impl CmpFrame {
     /// Frame Title. When unset, returns the empty string;
     /// serialisation defaults are computed in `Serializable::to_node`.
     /// Mirrors `astGetTitle`.
-    pub fn title(&self) -> &str {
-        self.title.as_deref().unwrap_or("")
+    pub fn title(&self) -> String {
+        Frame::title(self)
     }
 
     /// Set the Frame Title. Mirrors `astSetTitle`. Empty input clears
     /// the explicit set state (i.e. reverts to the default).
     pub fn set_title(&mut self, title: impl Into<String>) {
         let s = title.into();
-        self.title = if s.is_empty() { None } else { Some(s) };
+        self.attrs.title = if s.is_empty() { None } else { Some(s) };
     }
 
     /// Whether Title has been explicitly set. Mirrors `astTestTitle`.
     pub fn test_title(&self) -> bool {
-        self.title.is_some()
+        self.attrs.title.is_some()
     }
 
     /// Set the Frame Domain. Mirrors `astSetDomain`. Empty input
     /// clears the explicit set state.
     pub fn set_domain(&mut self, domain: impl Into<String>) {
         let s = domain.into();
-        self.domain = if s.is_empty() { None } else { Some(s) };
+        self.attrs.domain = if s.is_empty() { None } else { Some(s) };
     }
 
     /// Return the frame identification string.
     pub fn ident(&self) -> &str {
-        self.ident.as_deref().unwrap_or("")
+        self.attrs.ident.as_deref().unwrap_or("")
     }
 
     /// Set the frame identification string. Mirrors `astSetIdent`.
     pub fn set_ident(&mut self, ident: impl Into<String>) {
         let s = ident.into();
-        self.ident = if s.is_empty() { None } else { Some(s) };
-    }
-
-    /// Epoch as TDB MJD: the compound frame's own value if set, else
-    /// the first component's set value, else the second's, else J2000
-    /// (cmpframe.c:3965-3990 Test-chain).
-    pub fn epoch_mjd(&self) -> f64 {
-        self.epoch
-            .or_else(|| super::frame_epoch_if_set(self.frame1.as_ref()))
-            .or_else(|| super::frame_epoch_if_set(self.frame2.as_ref()))
-            .unwrap_or(51544.5)
-    }
-
-    /// Whether Epoch has been set on the compound frame itself or on
-    /// either component.
-    pub fn test_epoch(&self) -> bool {
-        self.epoch.is_some()
-            || super::frame_epoch_if_set(self.frame1.as_ref()).is_some()
-            || super::frame_epoch_if_set(self.frame2.as_ref()).is_some()
-    }
-
-    /// Set the Epoch (TDB MJD), forwarding to both components
-    /// (cmpframe.c:8800-8812).
-    pub fn set_epoch_mjd(&mut self, mjd: f64) {
-        self.epoch = Some(mjd);
-        super::set_frame_epoch_mjd(self.frame1.as_mut(), mjd);
-        super::set_frame_epoch_mjd(self.frame2.as_mut(), mjd);
-    }
-
-    /// Set the observer's geodetic latitude (radians), forwarding to
-    /// both components.
-    pub fn set_obs_lat(&mut self, v: f64) {
-        self.obs_lat = Some(v);
-        super::set_frame_obs(self.frame1.as_mut(), 0, v);
-        super::set_frame_obs(self.frame2.as_mut(), 0, v);
-    }
-
-    /// Set the observer's geodetic longitude (radians), forwarding to
-    /// both components.
-    pub fn set_obs_lon(&mut self, v: f64) {
-        self.obs_lon = Some(v);
-        super::set_frame_obs(self.frame1.as_mut(), 1, v);
-        super::set_frame_obs(self.frame2.as_mut(), 1, v);
-    }
-
-    /// Set the observer's altitude (metres), forwarding to both
-    /// components.
-    pub fn set_obs_alt(&mut self, v: f64) {
-        self.obs_alt = Some(v);
-        super::set_frame_obs(self.frame1.as_mut(), 2, v);
-        super::set_frame_obs(self.frame2.as_mut(), 2, v);
-    }
-
-    /// Set TAI-UTC (seconds), forwarding to both components.
-    pub fn set_dtai(&mut self, v: f64) {
-        self.dtai = Some(v);
-        super::set_frame_obs(self.frame1.as_mut(), 3, v);
-        super::set_frame_obs(self.frame2.as_mut(), 3, v);
-    }
-
-    /// Set UT1-UTC (seconds), forwarding to both components.
-    pub fn set_dut1(&mut self, v: f64) {
-        self.dut1 = Some(v);
-        super::set_frame_obs(self.frame1.as_mut(), 4, v);
-        super::set_frame_obs(self.frame2.as_mut(), 4, v);
+        self.attrs.ident = if s.is_empty() { None } else { Some(s) };
     }
 
     /// Number of axes contributed by the first child frame.
@@ -327,6 +222,60 @@ fn node_naxes(node: &Node) -> usize {
 }
 
 impl Frame for CmpFrame {
+    frame_attrs_title!();
+    frame_attrs_digits!();
+    frame_attrs_ident!();
+    frame_attrs_match!(min = 0, max = 1_000_000);
+    cmp_frame_shared_attr!(frame1, frame2; epoch, epoch_mjd, set_epoch_mjd, test_epoch, clear_epoch);
+    cmp_frame_shared_attr!(frame1, frame2; obs_lat, obs_lat, set_obs_lat, test_obs_lat, clear_obs_lat);
+    cmp_frame_shared_attr!(frame1, frame2; obs_lon, obs_lon, set_obs_lon, test_obs_lon, clear_obs_lon);
+    cmp_frame_shared_attr!(frame1, frame2; obs_alt, obs_alt, set_obs_alt, test_obs_alt, clear_obs_alt);
+    cmp_frame_shared_attr!(frame1, frame2; dtai, dtai, set_dtai, test_dtai, clear_dtai);
+    cmp_frame_shared_attr!(frame1, frame2; dut1, dut1, set_dut1, test_dut1, clear_dut1);
+
+    fn set_domain(&mut self, domain: &str) -> AstResult<()> {
+        self.attrs.domain = Some(super::frame_attrs::clean_domain(domain));
+        Ok(())
+    }
+
+    fn clear_domain(&mut self) -> AstResult<()> {
+        self.attrs.domain = None;
+        // The default is derived from the component domains, so drop the
+        // memoised value along with the explicit one.
+        self.domain_default = std::cell::OnceCell::new();
+        Ok(())
+    }
+
+    fn test_domain(&self) -> bool {
+        self.attrs.domain.is_some()
+    }
+
+    /// Mirrors C `CmpFrame::GetActiveUnit` (cmpframe.c:8369): when set, the
+    /// Frame class's value, which is false if any axis is a SkyAxis
+    /// (frame.c:4669); otherwise true when either component has active
+    /// units.
+    fn get_active_unit(&self) -> bool {
+        match self.attrs.active_unit {
+            Some(v) => {
+                v && !(1..=self.naxes())
+                    .any(|axis| matches!(self.get_axis(axis), AxisKind::Sky { .. }))
+            }
+            None => self.frame1.get_active_unit() || self.frame2.get_active_unit(),
+        }
+    }
+
+    /// Mirrors C `CmpFrame::SetActiveUnit` (cmpframe.c:8280): the value is
+    /// set on the CmpFrame and on both components.
+    fn set_active_unit(&mut self, value: bool) {
+        self.attrs.active_unit = Some(value);
+        self.frame1.set_active_unit(value);
+        self.frame2.set_active_unit(value);
+    }
+
+    fn test_active_unit(&self) -> bool {
+        self.attrs.active_unit.is_some()
+    }
+
     fn naxes(&self) -> usize {
         self.frame1.naxes() + self.frame2.naxes()
     }
@@ -403,28 +352,12 @@ impl Frame for CmpFrame {
         child.direction(local_axis)
     }
 
-    fn ident(&self) -> &str {
-        CmpFrame::ident(self)
-    }
-
-    fn set_ident(&mut self, ident: &str) {
-        CmpFrame::set_ident(self, ident);
-    }
-
-    fn clear_ident(&mut self) {
-        self.ident = None;
-    }
-
-    fn test_ident(&self) -> bool {
-        self.ident.is_some()
-    }
-
     fn system_string(&self) -> Option<&str> {
         Some("Compound")
     }
 
     fn domain(&self) -> &str {
-        if let Some(d) = self.domain.as_deref() {
+        if let Some(d) = self.attrs.domain.as_deref() {
             return d;
         }
         // Default: the component domains joined with a hyphen when
@@ -438,47 +371,6 @@ impl Frame for CmpFrame {
                 format!("{dom1}-{dom2}")
             }
         })
-    }
-
-    fn clear_domain(&mut self) {
-        self.domain = None;
-        // The default is derived from the component domains, so drop the
-        // memoised value along with the explicit one.
-        self.domain_default = std::cell::OnceCell::new();
-    }
-
-    fn test_domain(&self) -> bool {
-        self.domain.is_some()
-    }
-
-    fn obs_lat(&self) -> Option<f64> {
-        self.obs_lat
-            .or_else(|| self.frame1.obs_lat())
-            .or_else(|| self.frame2.obs_lat())
-    }
-
-    fn obs_lon(&self) -> Option<f64> {
-        self.obs_lon
-            .or_else(|| self.frame1.obs_lon())
-            .or_else(|| self.frame2.obs_lon())
-    }
-
-    fn obs_alt(&self) -> Option<f64> {
-        self.obs_alt
-            .or_else(|| self.frame1.obs_alt())
-            .or_else(|| self.frame2.obs_alt())
-    }
-
-    fn dtai(&self) -> Option<f64> {
-        self.dtai
-            .or_else(|| self.frame1.dtai())
-            .or_else(|| self.frame2.dtai())
-    }
-
-    fn dut1(&self) -> Option<f64> {
-        self.dut1
-            .or_else(|| self.frame1.dut1())
-            .or_else(|| self.frame2.dut1())
     }
 
     fn format(&self, axis: usize, value: f64) -> AstResult<String> {
@@ -730,21 +622,21 @@ impl Frame for CmpFrame {
     fn snapshot(&self) -> DynFrame {
         let mut cmp = CmpFrame::new(self.frame1.snapshot(), self.frame2.snapshot());
         cmp.perm = self.perm.clone();
-        cmp.act_unt = self.act_unt;
-        cmp.ident = self.ident.clone();
-        cmp.domain = self.domain.clone();
-        cmp.title = self.title.clone();
-        cmp.min_axes_opt = self.min_axes_opt;
-        cmp.max_axes_opt = self.max_axes_opt;
-        cmp.match_end_opt = self.match_end_opt;
-        cmp.preserve_axes_opt = self.preserve_axes_opt;
-        cmp.permute_opt = self.permute_opt;
-        cmp.epoch = self.epoch;
-        cmp.obs_lat = self.obs_lat;
-        cmp.obs_lon = self.obs_lon;
-        cmp.obs_alt = self.obs_alt;
-        cmp.dtai = self.dtai;
-        cmp.dut1 = self.dut1;
+        cmp.attrs.active_unit = self.attrs.active_unit;
+        cmp.attrs.ident = self.attrs.ident.clone();
+        cmp.attrs.domain = self.attrs.domain.clone();
+        cmp.attrs.title = self.attrs.title.clone();
+        cmp.attrs.min_axes = self.attrs.min_axes;
+        cmp.attrs.max_axes = self.attrs.max_axes;
+        cmp.attrs.match_end = self.attrs.match_end;
+        cmp.attrs.preserve_axes = self.attrs.preserve_axes;
+        cmp.attrs.permute = self.attrs.permute;
+        cmp.attrs.epoch = self.attrs.epoch;
+        cmp.attrs.obs_lat = self.attrs.obs_lat;
+        cmp.attrs.obs_lon = self.attrs.obs_lon;
+        cmp.attrs.obs_alt = self.attrs.obs_alt;
+        cmp.attrs.dtai = self.attrs.dtai;
+        cmp.attrs.dut1 = self.attrs.dut1;
         Box::new(cmp)
     }
 
@@ -779,54 +671,6 @@ impl Frame for CmpFrame {
     // here we use naxes() as the default if not explicitly set,
     // matching the simpler convention sufficient for `astFindFrame`'s
     // use of these attributes from the *template* side.
-    fn min_axes(&self) -> usize {
-        // C default: 0 (cmpframe.c:3702-3760) so a CmpFrame template
-        // matches targets of any axis count.
-        self.min_axes_opt.unwrap_or(0)
-    }
-    fn set_min_axes(&mut self, n: usize) {
-        self.min_axes_opt = Some(n);
-    }
-    fn test_min_axes(&self) -> bool {
-        self.min_axes_opt.is_some()
-    }
-    fn max_axes(&self) -> usize {
-        // C default: 1000000 (cmpframe.c:3638-3690).
-        self.max_axes_opt.unwrap_or(1_000_000)
-    }
-    fn set_max_axes(&mut self, n: usize) {
-        self.max_axes_opt = Some(n);
-    }
-    fn test_max_axes(&self) -> bool {
-        self.max_axes_opt.is_some()
-    }
-    fn match_end(&self) -> bool {
-        self.match_end_opt.unwrap_or(false)
-    }
-    fn set_match_end(&mut self, v: bool) {
-        self.match_end_opt = Some(v);
-    }
-    fn test_match_end(&self) -> bool {
-        self.match_end_opt.is_some()
-    }
-    fn preserve_axes(&self) -> bool {
-        self.preserve_axes_opt.unwrap_or(false)
-    }
-    fn set_preserve_axes(&mut self, v: bool) {
-        self.preserve_axes_opt = Some(v);
-    }
-    fn test_preserve_axes(&self) -> bool {
-        self.preserve_axes_opt.is_some()
-    }
-    fn permute(&self) -> bool {
-        self.permute_opt.unwrap_or(true)
-    }
-    fn set_permute(&mut self, v: bool) {
-        self.permute_opt = Some(v);
-    }
-    fn test_permute(&self) -> bool {
-        self.permute_opt.is_some()
-    }
 
     fn map_from(&self, previous: &dyn Frame) -> AstResult<DynMapping> {
         let prev = match previous.as_any().downcast_ref::<CmpFrame>() {
@@ -965,14 +809,14 @@ impl Serializable for CmpFrame {
         node.class_comment = Some("Compound coordinate system description".to_string());
 
         // --- Object-level attributes (before IsA Object) ---
-        if let Some(ref ident) = self.ident {
+        if let Some(ref ident) = self.attrs.ident {
             node.push_string(
                 "Ident",
                 ident,
                 Some("Permanent Object identification string".to_string()),
             );
         }
-        if self.ident.is_some() {
+        if self.attrs.ident.is_some() {
             node.push_isa("Object", Some("AST Object".to_string()));
         }
 
@@ -985,7 +829,7 @@ impl Serializable for CmpFrame {
 
         // Title: emit explicit value if set, otherwise commented
         // default "N-d compound coordinate system".
-        if let Some(ref title) = self.title {
+        if let Some(ref title) = self.attrs.title {
             if !title.is_empty() {
                 node.push_string(
                     "Title",
@@ -1013,7 +857,7 @@ impl Serializable for CmpFrame {
         // default. C `CmpFrame::GetDomain` (cmpframe.c:3603+) returns
         // "<dom1>-<dom2>" when either child has a non-empty Domain,
         // and the literal "CMP" when both are empty.
-        if let Some(ref domain) = self.domain {
+        if let Some(ref domain) = self.attrs.domain {
             if !domain.is_empty() {
                 node.push_string(
                     "Domain",
@@ -1045,7 +889,7 @@ impl Serializable for CmpFrame {
         // *own* Epoch only, not the component delegation used for the value
         // (`GetEpoch` is overridden, cmpframe.c:3917). The value is converted
         // to a Besselian year below J1984 or a Julian year at/above it.
-        if self.epoch.is_some() {
+        if self.attrs.epoch.is_some() {
             let mjd = self.epoch_mjd();
             let (epoch_year, is_besselian) = if mjd < crate::pal::epj2d(1984.0) {
                 (crate::pal::epb(mjd), true)
@@ -1143,31 +987,31 @@ impl Serializable for CmpFrame {
         // them only when set directly on the compound frame (frame.c:
         // 14584-14611), even though GetDtai etc. fall back to the children
         // for the value. Order matches C: ObsLat, ObsLon, ObsAlt, Dtai, Dut1.
-        if let Some(obs_lat) = self.obs_lat {
+        if let Some(obs_lat) = self.attrs.obs_lat {
             node.push_double(
                 "ObsLat",
                 obs_lat,
                 Some("Observers geodetic latitude (rads)".to_string()),
             );
         }
-        if let Some(obs_lon) = self.obs_lon {
+        if let Some(obs_lon) = self.attrs.obs_lon {
             node.push_double(
                 "ObsLon",
                 obs_lon,
                 Some("Observers geodetic longitude (rads)".to_string()),
             );
         }
-        if let Some(obs_alt) = self.obs_alt {
+        if let Some(obs_alt) = self.attrs.obs_alt {
             node.push_double(
                 "ObsAlt",
                 obs_alt,
                 Some("Observers geodetic altitude (metres)".to_string()),
             );
         }
-        if let Some(dtai) = self.dtai {
+        if let Some(dtai) = self.attrs.dtai {
             node.push_double("Dtai", dtai, Some("TAI-UTC in seconds".to_string()));
         }
-        if let Some(dut1) = self.dut1 {
+        if let Some(dut1) = self.attrs.dut1 {
             node.push_double("Dut1", dut1, Some("UT1-UTC in seconds".to_string()));
         }
 
@@ -1175,7 +1019,7 @@ impl Serializable for CmpFrame {
         // set (TestActiveUnit, frame.c:14615), carrying its value. The
         // default is component-derived, so a set value of either 0 or 1 is
         // emitted; an unset flag is suppressed.
-        if let Some(act) = self.act_unt {
+        if let Some(act) = self.attrs.active_unit {
             let comment = if act {
                 "Unit strings affects alignment"
             } else {
@@ -1297,7 +1141,7 @@ impl Serializable for CmpFrame {
         // ActUnt: the flag is set iff the card is present; record its value
         // (0 or 1) so it round-trips. Absent → component-derived default.
         if node.get("ActUnt").is_some() {
-            cmp.act_unt = Some(node.get_int("ActUnt", 1) != 0);
+            cmp.attrs.active_unit = Some(node.get_int("ActUnt", 1) != 0);
         }
 
         // Frame-level observer attributes and Dtai/Dut1: restored (and
@@ -1305,19 +1149,19 @@ impl Serializable for CmpFrame {
         // setters mirror C's SetObsLat/SetDtai etc. which propagate to both
         // child Frames.
         if node.get("ObsLat").is_some() {
-            cmp.set_obs_lat(node.get_double("ObsLat", 0.0));
+            cmp.set_obs_lat(node.get_double("ObsLat", 0.0))?;
         }
         if node.get("ObsLon").is_some() {
-            cmp.set_obs_lon(node.get_double("ObsLon", 0.0));
+            cmp.set_obs_lon(node.get_double("ObsLon", 0.0))?;
         }
         if node.get("ObsAlt").is_some() {
-            cmp.set_obs_alt(node.get_double("ObsAlt", 0.0));
+            cmp.set_obs_alt(node.get_double("ObsAlt", 0.0))?;
         }
         if node.get("Dtai").is_some() {
-            cmp.set_dtai(node.get_double("Dtai", 0.0));
+            cmp.set_dtai(node.get_double("Dtai", 0.0))?;
         }
         if node.get("Dut1").is_some() {
-            cmp.set_dut1(node.get_double("Dut1", 0.0));
+            cmp.set_dut1(node.get_double("Dut1", 0.0))?;
         }
 
         // Epoch: the base Frame loader reads the Epoch card (a Besselian or
@@ -1327,13 +1171,13 @@ impl Serializable for CmpFrame {
         // restored; a commented default reaches us as absent via `Node::get`.
         if node.get("Epoch").is_some() {
             let year = node.get_double("Epoch", 2000.0);
-            cmp.set_epoch_mjd(crate::frames::date_time::year_to_mjd_iau1984(year));
+            cmp.set_epoch_mjd(crate::frames::date_time::year_to_mjd_iau1984(year))?;
         }
 
         // Ident (Object-level identification string).
         let ident = node.get_string("Ident", "");
         if !ident.is_empty() {
-            cmp.ident = Some(ident);
+            cmp.attrs.ident = Some(ident);
         }
 
         // Domain / Title: only the explicitly-set (active) value is
@@ -1341,11 +1185,11 @@ impl Serializable for CmpFrame {
         // the empty default reaches us as "" and skips the assign.
         let domain = node.get_string("Domain", "");
         if !domain.is_empty() {
-            cmp.domain = Some(domain);
+            cmp.attrs.domain = Some(domain);
         }
         let title = node.get_string("Title", "");
         if !title.is_empty() {
-            cmp.title = Some(title);
+            cmp.attrs.title = Some(title);
         }
 
         Ok(cmp)
@@ -1576,23 +1420,23 @@ pub(crate) fn part_match(
     // template's children in-place and restoring them afterwards; we
     // achieve the same effect by snapshotting the children and
     // mutating the snapshot.
-    let prepare_child = |child: &dyn Frame| -> DynFrame {
+    let prepare_child = |child: &dyn Frame| -> AstResult<DynFrame> {
         let mut snap = child.snapshot();
         if !child.test_match_end() {
-            snap.set_match_end(template.match_end());
+            snap.set_match_end(template.match_end())?;
         }
         if !child.test_preserve_axes() {
-            snap.set_preserve_axes(template.preserve_axes());
+            snap.set_preserve_axes(template.preserve_axes())?;
         }
         // Always force Permute=1 on the snapshot so the child Match
         // considers axis permutations; the CmpFrame-level Permute is
         // applied in the parent CmpFrame::Match (cmpframe.c:5343).
-        snap.set_permute(true);
-        snap
+        snap.set_permute(true)?;
+        Ok(snap)
     };
 
-    let frame1_template = prepare_child(template.frame1());
-    let frame2_template = prepare_child(template.frame2());
+    let frame1_template = prepare_child(template.frame1())?;
+    let frame2_template = prepare_child(template.frame2())?;
 
     // Each child Match goes through the matchsub cast-retry wrapper
     // (C `astMatch`, frame.c:15473), so a specialised component can
@@ -1906,7 +1750,7 @@ pub(crate) fn component_match(
         template.frame2()
     };
     let mut ctemplate = component_src.snapshot();
-    ctemplate.set_preserve_axes(template.preserve_axes());
+    ctemplate.set_preserve_axes(template.preserve_axes())?;
 
     // Run the inner Match on the component template against the
     // target via the matchsub cast-retry wrapper (C `astMatch`,
@@ -2743,8 +2587,8 @@ mod tests {
         assert_eq!(Frame::max_axes(&cf), 1_000_000);
         // Explicit settings still respected.
         let mut cf = cf;
-        Frame::set_min_axes(&mut cf, 3);
-        Frame::set_max_axes(&mut cf, 3);
+        Frame::set_min_axes(&mut cf, 3).unwrap();
+        Frame::set_max_axes(&mut cf, 3).unwrap();
         assert_eq!(Frame::min_axes(&cf), 3);
         assert_eq!(Frame::max_axes(&cf), 3);
     }
@@ -2777,7 +2621,7 @@ mod tests {
     fn set_epoch_forwards_to_components() {
         let mut cf = sky_basic_cmp();
         let mjd = crate::pal::epj2d(1980.0);
-        cf.set_epoch_mjd(mjd);
+        cf.set_epoch_mjd(mjd).unwrap();
         assert!((cf.epoch_mjd() - mjd).abs() < 1e-9);
         let sky = cf.frame1().as_any().downcast_ref::<SkyFrame>().unwrap();
         assert!((sky.epoch_mjd() - mjd).abs() < 1e-9);
@@ -2804,10 +2648,10 @@ mod tests {
     #[test]
     fn obs_lat_set_and_fallback() {
         let mut cf = sky_basic_cmp();
-        cf.set_obs_lat(0.5);
-        assert_eq!(Frame::obs_lat(&cf), Some(0.5));
+        cf.set_obs_lat(0.5).unwrap();
+        assert_eq!(Frame::obs_lat(&cf), 0.5);
         let sky = cf.frame1().as_any().downcast_ref::<SkyFrame>().unwrap();
-        assert_eq!(Frame::obs_lat(sky), Some(0.5));
+        assert_eq!(Frame::obs_lat(sky), 0.5);
 
         // Fallback: set only on the component.
         let mut sky2 = SkyFrame::new(SkySystem::Fk5);
@@ -2816,7 +2660,7 @@ mod tests {
             Box::new(sky2),
             Box::new(BasicFrameBuilder::new(1).build().unwrap()),
         );
-        assert_eq!(Frame::obs_lat(&cf2), Some(0.25));
+        assert_eq!(Frame::obs_lat(&cf2), 0.25);
     }
 
     /// Casting a CmpFrame down to a BasicFrame must copy each axis in
@@ -2959,7 +2803,7 @@ mod tests {
             Box::new(BasicFrameBuilder::new(2).build().unwrap()),
             Box::new(BasicFrameBuilder::new(1).build().unwrap()),
         );
-        template.set_preserve_axes(true);
+        template.set_preserve_axes(true).unwrap();
         let target = BasicFrameBuilder::new(2).build().unwrap();
 
         let m = component_match(&template, &target, false, 0)
@@ -3084,8 +2928,8 @@ mod tests {
         // the partition loop run with naxes1=0..=1, but naxes_min1=2
         // (the first component's MinAxes) so partitioning fails →
         // ComponentMatch is the only path.
-        template.set_min_axes(1);
-        template.set_max_axes(3);
+        template.set_min_axes(1).unwrap();
+        template.set_max_axes(3).unwrap();
         let target = BasicFrameBuilder::new(1).build().unwrap();
         let m = template
             .match_template(&target, false)
@@ -3378,7 +3222,7 @@ mod tests {
             Box::new(BasicFrameBuilder::new(1).build().unwrap()),
         );
         cmp.set_ident("ORIGINAL");
-        cmp.set_epoch_mjd(51544.5);
+        cmp.set_epoch_mjd(51544.5).unwrap();
 
         let mut copy = cmp.clone();
         copy.set_ident("COPY");

@@ -29,6 +29,11 @@ use crate::serial::{Node, Serializable, frame_from_node};
 /// ```
 #[derive(Debug, Clone)]
 pub struct SpecFluxFrame {
+    /// The Frame-class attributes.
+    attrs: super::frame_attrs::FrameAttrs,
+    /// The default Domain, derived from the components' (cmpframe.c
+    /// `GetDomain`), dropped whenever a component is reachable mutably.
+    domain_default: std::cell::OnceCell<String>,
     spec_frame: SpecFrame,
     flux_frame: FluxFrame,
     /// External-axis swap flag. `false` (default) leaves axis 0 as
@@ -36,29 +41,40 @@ pub struct SpecFluxFrame {
     /// Mirrors C `astGetPerm` on a SpecFluxFrame whose component
     /// order has been permuted via `astPermAxes`.
     swap: bool,
-
     // Match-control attributes (used by `astFindFrame` / `astMatch`).
-    min_axes_opt: Option<usize>,
-    max_axes_opt: Option<usize>,
-    match_end_opt: Option<bool>,
-    preserve_axes_opt: Option<bool>,
-    permute_opt: Option<bool>,
 }
 
 impl SpecFluxFrame {
+    /// `"<flux label> versus <spec label>"`, capitalised (specfluxframe.c
+    /// `GetTitle`), for the `frame_attrs_title` macro.
+    fn frame_default_title(&self) -> String {
+        let t = format!(
+            "{} versus {}",
+            Frame::effective_label(&self.flux_frame, 1),
+            Frame::effective_label(&self.spec_frame, 1)
+        );
+        let mut c = t.chars();
+        match c.next() {
+            Some(f) => f.to_ascii_uppercase().to_string() + c.as_str(),
+            None => t,
+        }
+    }
+
+    /// The Frame class's default, 1 (frame.c:13572).
+    fn frame_default_permute(&self) -> bool {
+        true
+    }
+
     /// Create a new `SpecFluxFrame` from a SpecFrame and a FluxFrame.
     ///
     /// The SpecFrame forms axis 1, and the FluxFrame forms axis 2.
     pub fn new(spec_frame: SpecFrame, flux_frame: FluxFrame) -> Self {
         Self {
+            attrs: super::frame_attrs::FrameAttrs::default(),
+            domain_default: std::cell::OnceCell::new(),
             spec_frame,
             flux_frame,
             swap: false,
-            min_axes_opt: None,
-            max_axes_opt: None,
-            match_end_opt: None,
-            preserve_axes_opt: None,
-            permute_opt: None,
         }
     }
 
@@ -76,6 +92,7 @@ impl SpecFluxFrame {
 
     /// Return a mutable reference to the embedded SpecFrame (axis 1).
     pub fn spec_frame_mut(&mut self) -> &mut SpecFrame {
+        self.domain_default = std::cell::OnceCell::new();
         &mut self.spec_frame
     }
 
@@ -86,6 +103,7 @@ impl SpecFluxFrame {
 
     /// Return a mutable reference to the embedded FluxFrame (axis 2).
     pub fn flux_frame_mut(&mut self) -> &mut FluxFrame {
+        self.domain_default = std::cell::OnceCell::new();
         &mut self.flux_frame
     }
 
@@ -140,6 +158,66 @@ impl SpecFluxFrame {
 // ---------------------------------------------------------------------------
 
 impl Frame for SpecFluxFrame {
+    // A SpecFluxFrame is a CmpFrame in C (specfluxframe.c), so its
+    // Frame-class attributes follow CmpFrame's rules.
+    frame_attrs_title!();
+    frame_attrs_digits!();
+    frame_attrs_ident!();
+    frame_attrs_match!(min = 0, max = 1_000_000);
+    cmp_frame_shared_attr!(concrete spec_frame, flux_frame; epoch, epoch_mjd, set_epoch_mjd, test_epoch, clear_epoch);
+    cmp_frame_shared_attr!(concrete spec_frame, flux_frame; obs_lat, obs_lat, set_obs_lat, test_obs_lat, clear_obs_lat);
+    cmp_frame_shared_attr!(concrete spec_frame, flux_frame; obs_lon, obs_lon, set_obs_lon, test_obs_lon, clear_obs_lon);
+    cmp_frame_shared_attr!(concrete spec_frame, flux_frame; obs_alt, obs_alt, set_obs_alt, test_obs_alt, clear_obs_alt);
+    cmp_frame_shared_attr!(concrete spec_frame, flux_frame; dtai, dtai, set_dtai, test_dtai, clear_dtai);
+    cmp_frame_shared_attr!(concrete spec_frame, flux_frame; dut1, dut1, set_dut1, test_dut1, clear_dut1);
+
+    /// The Domain, set or else the components' joined with a hyphen, or
+    /// "CMP" when both are blank (cmpframe.c `GetDomain`).
+    fn domain(&self) -> &str {
+        if let Some(d) = self.attrs.domain.as_deref() {
+            return d;
+        }
+        self.domain_default.get_or_init(|| {
+            let dom1 = Frame::domain(&self.spec_frame);
+            let dom2 = Frame::domain(&self.flux_frame);
+            if dom1.is_empty() && dom2.is_empty() {
+                "CMP".to_string()
+            } else {
+                format!("{dom1}-{dom2}")
+            }
+        })
+    }
+    fn set_domain(&mut self, domain: &str) -> AstResult<()> {
+        self.attrs.domain = Some(super::frame_attrs::clean_domain(domain));
+        Ok(())
+    }
+    fn test_domain(&self) -> bool {
+        self.attrs.domain.is_some()
+    }
+    fn clear_domain(&mut self) -> AstResult<()> {
+        self.attrs.domain = None;
+        Ok(())
+    }
+
+    /// CmpFrame's rule (cmpframe.c:8369): the Frame class's value when set,
+    /// else true when either component has active units.
+    fn get_active_unit(&self) -> bool {
+        match self.attrs.active_unit {
+            Some(v) => v,
+            None => {
+                Frame::get_active_unit(&self.spec_frame) || Frame::get_active_unit(&self.flux_frame)
+            }
+        }
+    }
+    fn set_active_unit(&mut self, value: bool) {
+        self.attrs.active_unit = Some(value);
+        Frame::set_active_unit(&mut self.spec_frame, value);
+        Frame::set_active_unit(&mut self.flux_frame, value);
+    }
+    fn test_active_unit(&self) -> bool {
+        self.attrs.active_unit.is_some()
+    }
+
     fn naxes(&self) -> usize {
         2
     }
@@ -247,52 +325,6 @@ impl Frame for SpecFluxFrame {
     // -----------------------------------------------------------------
     // Match-control attributes (mirror C `astGet/SetMinAxes` etc.).
     // -----------------------------------------------------------------
-
-    fn min_axes(&self) -> usize {
-        self.min_axes_opt.unwrap_or(2)
-    }
-    fn set_min_axes(&mut self, n: usize) {
-        self.min_axes_opt = Some(n);
-    }
-    fn test_min_axes(&self) -> bool {
-        self.min_axes_opt.is_some()
-    }
-    fn max_axes(&self) -> usize {
-        self.max_axes_opt.unwrap_or(2)
-    }
-    fn set_max_axes(&mut self, n: usize) {
-        self.max_axes_opt = Some(n);
-    }
-    fn test_max_axes(&self) -> bool {
-        self.max_axes_opt.is_some()
-    }
-    fn match_end(&self) -> bool {
-        self.match_end_opt.unwrap_or(false)
-    }
-    fn set_match_end(&mut self, v: bool) {
-        self.match_end_opt = Some(v);
-    }
-    fn test_match_end(&self) -> bool {
-        self.match_end_opt.is_some()
-    }
-    fn preserve_axes(&self) -> bool {
-        self.preserve_axes_opt.unwrap_or(false)
-    }
-    fn set_preserve_axes(&mut self, v: bool) {
-        self.preserve_axes_opt = Some(v);
-    }
-    fn test_preserve_axes(&self) -> bool {
-        self.preserve_axes_opt.is_some()
-    }
-    fn permute(&self) -> bool {
-        self.permute_opt.unwrap_or(true)
-    }
-    fn set_permute(&mut self, v: bool) {
-        self.permute_opt = Some(v);
-    }
-    fn test_permute(&self) -> bool {
-        self.permute_opt.is_some()
-    }
 
     // -----------------------------------------------------------------
     // Match / SubFrame / Overlay (specfluxframe.c:1216 / 1428).
@@ -766,7 +798,7 @@ mod tests {
     #[test]
     fn match_template_specflux_swap_blocked_when_permute_false() {
         let mut template = sff();
-        template.set_permute(false);
+        template.set_permute(false).unwrap();
         let mut target = sff();
         // Swap the target axes to force a permutation.
         target.perm_axes(&[2, 1]).unwrap();
@@ -777,7 +809,7 @@ mod tests {
     #[test]
     fn match_template_specflux_swap_allowed_when_permute_true() {
         let mut template = sff();
-        template.set_permute(true);
+        template.set_permute(true).unwrap();
         let mut target = sff();
         target.perm_axes(&[2, 1]).unwrap();
         let m = template

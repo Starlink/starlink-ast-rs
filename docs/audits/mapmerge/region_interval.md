@@ -24,11 +24,11 @@ equivalent Box where there is one, and otherwise re-defines the Interval within
 its current Frame by way of a fully-bounded Box.
 
 `Interval::get_def_unc` (`interval.rs:1342-1385 (fn get_def_unc)`) is `GetDefUnc`.
-`Interval::map_merge` (`interval.rs:1878-1885 (fn map_merge)`) delegates to
+`Interval::map_merge` (`interval.rs:1882-1885 (fn map_merge)`) delegates to
 `simplify::region_map_merge` (`mappings/simplify.rs:1443-1490 (fn region_map_merge)`),
 which every Region shares. `Interval::region_merge`
 (`interval.rs:1467-1651 (fn region_merge)`) is `MergeInterval`, and
-`Interval::simplified` (`interval.rs:1778-1843 (fn simplified)`) is `Simplify`, with
+`Interval::simplified` (`interval.rs:1782-1843 (fn simplified)`) is `Simplify`, with
 its unbounded branch in `simplify_remapped`
 (`interval.rs:542-812 (fn simplify_remapped)`).
 
@@ -136,7 +136,7 @@ lives once.
 | 96 | Check the global error status and bail out | interval.c:3201-3203 (fn Simplify) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 97 | Get a pointer to the supplied Region structure | interval.c:3204-3206 (fn Simplify) | -- | ceremony | n/a: the Rust method already has `&self` |
 | 98 | Get a pointer to the supplied Interval structure | interval.c:3207-3209 (fn Simplify) | -- | ceremony | n/a: the Rust method already has `&self` |
-| 99 | If this Interval is equivalent to a Box, simplify that Box and return the result | interval.c:3210-3215 (fn Simplify) | interval.rs:1780-1783 (fn simplified) | architecture | ported |
+| 99 | If this Interval is equivalent to a Box, simplify that Box and return the result | interval.c:3210-3215 (fn Simplify) | interval.rs:1784-1783 (fn simplified) | architecture | ported |
 | 100 | Otherwise use the implementation appropriate for unbounded intervals | interval.c:3216-3219 (fn Simplify) | interval.rs:1782 (fn simplified) | architecture | ported |
 | 101 | Invoke the parent Region Simplify, which simplifies the encapsulated FrameSet and uncertainty | interval.c:3220-3224 (fn Simplify) | interval.rs:1788 (fn simplified) | architecture | ported |
 | 102 | Note whether any simplification took place, from whether the returned pointer changed | interval.c:3225-3229 (fn Simplify) | interval.rs:1802 (fn simplified) | architecture | ported |
@@ -182,7 +182,7 @@ the reference for what that guard should look like.
 ## Row 99 — the Box path comes first, and it hands the Box to the simplifier
 
 C dispatches on Box-equivalence before doing any remap work, and the port keeps
-that order (`interval.rs:1780-1783 (fn simplified)`). The condition is C's: every
+that order (`interval.rs:1784-1783 (fn simplified)`). The condition is C's: every
 resolved limit finite, every axis sharing axis 1's included/excluded orientation,
 and axis 1 including rather than excluding its interval. A Negated Interval still
 yields a Box — C negates the Box (`interval.c:518 (fn Cache)`) rather than
@@ -210,7 +210,7 @@ equivalent Box. Three C bodies read them — `Simplify`
 so `Interval::cache` returns the pair of arrays alongside the optional Box and all
 three call sites take it from there. `interval.rs:464-527 (fn cache)` is the only
 copy of the classification, reached from `interval.rs:1080 (fn reg_pins_mask)`,
-`interval.rs:1342 (fn get_def_unc)` and `interval.rs:1780 (fn simplified)`.
+`interval.rs:1342 (fn get_def_unc)` and `interval.rs:1784 (fn simplified)`.
 
 ## Rows 104 to 109 — arbitrary limits, then reined back in
 

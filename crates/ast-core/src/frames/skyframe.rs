@@ -33,19 +33,11 @@ use crate::serial::{Node, NodeValue, Serializable};
 /// ```
 #[derive(Debug, Clone)]
 pub struct SkyFrame {
+    /// The Frame-class attributes.
+    attrs: super::frame_attrs::FrameAttrs,
     // Frame-level
-    title: Option<String>,
-    domain: Option<String>,
-    epoch: Option<f64>, // MJD
 
     // Observer (Frame trait in C)
-    obs_lat: Option<f64>, // geodetic latitude (radians)
-    obs_lon: Option<f64>, // geodetic longitude (radians)
-    obs_alt: Option<f64>, // altitude (metres)
-    dtai: Option<f64>,    // TAI-UTC (seconds)
-    /// Frame-level Digits, when set; each axis defaults to it.
-    digits: Option<i32>,
-    dut1: Option<f64>, // UT1-UTC (seconds)
 
     // SkyFrame-specific
     system: SkySystem,
@@ -91,21 +83,10 @@ pub struct SkyFrame {
     /// Physical 0 = longitude, physical 1 = latitude.
     /// After swap: perm = [1, 0] means external axis 0 → latitude.
     perm: [usize; 2],
-
-    /// When false, unit strings do not affect alignment. Default is true.
-    act_unt: Option<bool>,
-    /// Permanent object identification string (Object-level attribute).
-    ident: Option<String>,
-
     // Match-control attributes (used by `astFindFrame` / `astMatch`).
     // None = "use the trait default" (which returns 2 for SkyFrame's
     // naxes-based attributes, false/false/false for the booleans
     // overridden below).
-    min_axes_opt: Option<usize>,
-    max_axes_opt: Option<usize>,
-    match_end_opt: Option<bool>,
-    preserve_axes_opt: Option<bool>,
-    permute_opt: Option<bool>,
 }
 
 impl SkyFrame {
@@ -138,16 +119,8 @@ impl SkyFrame {
     /// call site when that's the intent.
     pub fn new(system: SkySystem) -> Self {
         Self {
-            title: None,
             // None = use the default "SKY". Mirrors C's astTestDomain
             // returning false until set_domain is called.
-            domain: None,
-            epoch: None,
-            obs_lat: None,
-            obs_lon: None,
-            obs_alt: None,
-            dtai: None,
-            dut1: None,
             system,
             // ICRS is the SkyFrame default (mirrors C: AST__ICRS is the
             // default System). Only mark the attribute as explicitly
@@ -170,16 +143,9 @@ impl SkyFrame {
             align_system: None,
             axes: [SkyAxis::longitude(), SkyAxis::latitude()],
             label_overrides: [None, None],
-            digits: None,
+            attrs: super::frame_attrs::FrameAttrs::default(),
             symbol_overrides: [None, None],
             perm: [0, 1],
-            act_unt: None,
-            ident: None,
-            min_axes_opt: None,
-            max_axes_opt: None,
-            match_end_opt: None,
-            preserve_axes_opt: None,
-            permute_opt: None,
         }
     }
 
@@ -398,7 +364,7 @@ impl SkyFrame {
 
     /// Clear the SkyFrame's Digits, which then defaults to 7.
     pub fn clear_digits(&mut self) {
-        self.digits = None;
+        self.attrs.digits = None;
     }
 
     /// Default per-axis Symbol from the current celestial system.
@@ -525,13 +491,30 @@ impl SkyFrame {
     /// `GetEpoch` SkyFrame override, skyframe.c:3210-3225): B1950.0 for
     /// FK4 / FK4-no-E, J2000.0 for every other system.
     pub fn epoch_mjd(&self) -> f64 {
-        match self.epoch {
-            Some(e) => e,
-            None => match self.system {
-                SkySystem::Fk4 | SkySystem::Fk4NoE => pal::epb2d(1950.0),
-                _ => pal::epj2d(2000.0),
-            },
+        self.attrs
+            .epoch
+            .unwrap_or_else(|| self.frame_default_epoch())
+    }
+
+    // Defaults of the Frame-class attributes, for the `frame_attrs_*`
+    // macros.
+
+    /// B1950.0 for the FK4 systems and J2000.0 otherwise (skyframe.c
+    /// `GetEpoch`).
+    fn frame_default_epoch(&self) -> f64 {
+        match self.system {
+            SkySystem::Fk4 | SkySystem::Fk4NoE => pal::epb2d(1950.0),
+            _ => pal::epj2d(2000.0),
         }
+    }
+    fn frame_default_title(&self) -> String {
+        self.default_title()
+    }
+    fn frame_default_domain(&self) -> &'static str {
+        "SKY"
+    }
+    fn frame_default_permute(&self) -> bool {
+        true
     }
 
     /// Return the epoch as a decimal year (Besselian if MJD <
@@ -548,7 +531,7 @@ impl SkyFrame {
     /// Whether the epoch attribute has been explicitly set
     /// (mirrors `astTestEpoch`).
     pub fn test_epoch(&self) -> bool {
-        self.epoch.is_some()
+        self.attrs.epoch.is_some()
     }
 
     /// Lowest valid value for the given 1-based external axis.
@@ -583,7 +566,7 @@ impl SkyFrame {
     /// Clear the explicit `Epoch` value so the attribute reverts to
     /// its default. Mirrors C `astClearEpoch`.
     pub fn clear_epoch(&mut self) {
-        self.epoch = None;
+        self.attrs.epoch = None;
     }
 
     /// Clear the explicit `Equinox` value so the attribute reverts
@@ -594,7 +577,7 @@ impl SkyFrame {
 
     /// Set the epoch as MJD.
     pub fn set_epoch_mjd(&mut self, mjd: f64) {
-        self.epoch = Some(mjd);
+        self.attrs.epoch = Some(mjd);
     }
 
     /// Set the epoch from a bare decimal year (e.g. a FITS `EPOCH`
@@ -742,83 +725,84 @@ impl SkyFrame {
 
     /// Test whether `Title` has been explicitly set.
     pub fn test_title(&self) -> bool {
-        self.title.is_some()
+        self.attrs.title.is_some()
     }
 
     /// Clear the title attribute.
     pub fn clear_title(&mut self) {
-        self.title = None;
+        self.attrs.title = None;
     }
 
     // --- Frame-level attributes ---
 
     /// Return the frame title.
-    pub fn title(&self) -> &str {
-        self.title.as_deref().unwrap_or("")
+    /// The Title, set or default (skyframe.c `GetTitle`).
+    pub fn title(&self) -> String {
+        Frame::title(self)
     }
 
     /// Set the frame title.
     pub fn set_title(&mut self, title: &str) {
-        self.title = Some(title.to_string());
+        self.attrs.title = Some(title.to_string());
     }
 
     /// Return the frame domain.
     pub fn domain(&self) -> &str {
-        self.domain.as_deref().unwrap_or("SKY")
+        self.attrs.domain.as_deref().unwrap_or("SKY")
     }
 
     /// Set the frame domain.
     pub fn set_domain(&mut self, domain: &str) {
-        self.domain = Some(domain.to_string());
+        self.attrs.domain = Some(super::frame_attrs::clean_domain(domain));
     }
 
     /// Test whether the domain attribute has been explicitly set.
     /// Mirrors C's `astTestDomain` for `SkyFrame`.
     pub fn test_domain(&self) -> bool {
-        self.domain.is_some()
+        self.attrs.domain.is_some()
     }
 
     /// Clear the domain attribute, reverting to the default `"SKY"`.
     pub fn clear_domain(&mut self) {
-        self.domain = None;
+        self.attrs.domain = None;
     }
 
     /// Return the frame identification string.
     pub fn ident(&self) -> &str {
-        self.ident.as_deref().unwrap_or("")
+        self.attrs.ident.as_deref().unwrap_or("")
     }
 
     /// Set the frame identification string. Mirrors `astSetIdent`.
     pub fn set_ident(&mut self, ident: impl Into<String>) {
         let s = ident.into();
-        self.ident = if s.is_empty() { None } else { Some(s) };
+        self.attrs.ident = if s.is_empty() { None } else { Some(s) };
     }
 
     // --- Observer attributes ---
 
     /// Set the observer geodetic latitude in radians.
     pub fn set_obs_lat(&mut self, lat: f64) {
-        self.obs_lat = Some(lat);
+        self.attrs.obs_lat = Some(lat);
     }
 
     /// Set the observer geodetic longitude in radians.
     pub fn set_obs_lon(&mut self, lon: f64) {
-        self.obs_lon = Some(lon);
+        self.attrs.obs_lon = Some(lon);
     }
 
     /// Set the observer altitude in metres.
     pub fn set_obs_alt(&mut self, alt: f64) {
-        self.obs_alt = Some(alt);
+        self.attrs.obs_alt = Some(alt);
     }
 
     /// Set TAI-UTC in seconds.
     pub fn set_dtai(&mut self, dtai: f64) {
-        self.dtai = Some(dtai);
+        self.attrs.dtai = Some(dtai);
     }
 
     /// Set UT1-UTC in seconds.
     pub fn set_dut1(&mut self, dut1: f64) {
-        self.dut1 = Some(dut1);
+        self.attrs.dut1 = Some(dut1);
     }
 
     /// Local Apparent Sidereal Time, in radians, at this SkyFrame's
@@ -837,11 +821,11 @@ impl SkyFrame {
     pub(crate) fn compute_last(&self) -> AstResult<f64> {
         compute_last(
             self.epoch_mjd(),
-            self.obs_lon.unwrap_or(0.0),
-            self.obs_lat.unwrap_or(0.0),
-            self.obs_alt.unwrap_or(0.0),
-            self.dut1.unwrap_or(0.0),
-            self.dtai,
+            self.attrs.obs_lon.unwrap_or(0.0),
+            self.attrs.obs_lat.unwrap_or(0.0),
+            self.attrs.obs_alt.unwrap_or(0.0),
+            self.attrs.dut1.unwrap_or(0.0),
+            self.attrs.dtai,
         )
     }
 
@@ -859,8 +843,8 @@ impl SkyFrame {
     pub(crate) fn compute_diurab(&self) -> f64 {
         const SOLSID: f64 = 1.00273790935;
         const C: f64 = 173.14463331;
-        let lat = self.obs_lat.unwrap_or(0.0);
-        let alt = self.obs_alt.unwrap_or(0.0);
+        let lat = self.attrs.obs_lat.unwrap_or(0.0);
+        let alt = self.attrs.obs_alt.unwrap_or(0.0);
         let (uau, _vau) = pal::geoc(lat, alt);
         2.0 * std::f64::consts::PI * uau * SOLSID / C
     }
@@ -977,7 +961,7 @@ impl SkyFrame {
     fn phys_digits(&self, phys: usize) -> i32 {
         self.axes[phys]
             .digits
-            .unwrap_or_else(|| self.digits.unwrap_or(7))
+            .unwrap_or_else(|| self.attrs.digits.unwrap_or(7))
     }
 
     /// The Format for the physical axis `phys`. Mirrors C
@@ -1020,6 +1004,14 @@ impl SkyFrame {
 }
 
 impl Frame for SkyFrame {
+    frame_attrs_title!();
+    frame_attrs_domain!();
+    frame_attrs_epoch!();
+    frame_attrs_digits!();
+    frame_attrs_observer!();
+    frame_attrs_ident!();
+    frame_attrs_match!();
+
     fn naxes(&self) -> usize {
         2
     }
@@ -1113,19 +1105,6 @@ impl Frame for SkyFrame {
             .ok()
             .and_then(|phys| self.axes[phys].format.clone())
             .unwrap_or_default()
-    }
-
-    fn digits(&self) -> i32 {
-        self.digits.unwrap_or(7)
-    }
-
-    /// C constrains the stored value to be at least 1 (frame.c:13251).
-    fn set_digits(&mut self, value: i32) {
-        self.digits = Some(value.max(1));
-    }
-
-    fn test_digits(&self) -> bool {
-        self.digits.is_some()
     }
 
     fn axis_digits(&self, axis: usize) -> i32 {
@@ -1723,58 +1702,6 @@ impl Frame for SkyFrame {
     // SkyFrame defaults Permute to false (mirrors skyframe.c at the
     // SetPermute line); the others inherit the trait default
     // (`naxes()` for cardinality, `false` for booleans).
-    fn min_axes(&self) -> usize {
-        self.min_axes_opt.unwrap_or(2)
-    }
-    fn set_min_axes(&mut self, n: usize) {
-        self.min_axes_opt = Some(n);
-    }
-    fn test_min_axes(&self) -> bool {
-        self.min_axes_opt.is_some()
-    }
-    fn max_axes(&self) -> usize {
-        self.max_axes_opt.unwrap_or(2)
-    }
-    fn set_max_axes(&mut self, n: usize) {
-        self.max_axes_opt = Some(n);
-    }
-    fn test_max_axes(&self) -> bool {
-        self.max_axes_opt.is_some()
-    }
-    fn match_end(&self) -> bool {
-        self.match_end_opt.unwrap_or(false)
-    }
-    fn set_match_end(&mut self, v: bool) {
-        self.match_end_opt = Some(v);
-    }
-    fn test_match_end(&self) -> bool {
-        self.match_end_opt.is_some()
-    }
-    fn preserve_axes(&self) -> bool {
-        self.preserve_axes_opt.unwrap_or(false)
-    }
-    fn set_preserve_axes(&mut self, v: bool) {
-        self.preserve_axes_opt = Some(v);
-    }
-    fn test_preserve_axes(&self) -> bool {
-        self.preserve_axes_opt.is_some()
-    }
-    /// Permute defaults to `true` (`1`). SkyFrame does not override the
-    /// Permute getter, so it inherits the parent Frame default
-    /// (`astMAKE_GET(Frame,Permute,int,0,…)` returns `1` when unset —
-    /// frame.c:13459-13460). This default is load-bearing for the
-    /// `astConvert`/Match path: it lets axis-swapped SkyFrames (e.g.
-    /// CTYPE1=DEC, CTYPE2=RA) align (skyframe.c:6826
-    /// `match = !swap || astGetPermute(template)`).
-    fn permute(&self) -> bool {
-        self.permute_opt.unwrap_or(true)
-    }
-    fn set_permute(&mut self, v: bool) {
-        self.permute_opt = Some(v);
-    }
-    fn test_permute(&self) -> bool {
-        self.permute_opt.is_some()
-    }
 
     fn snapshot(&self) -> DynFrame {
         Box::new(self.clone())
@@ -1810,10 +1737,10 @@ impl Frame for SkyFrame {
                     self.equinox_mjd(),
                     self.epoch_mjd(),
                     self.system, // align in current system
-                    prev_sky.obs_lat.unwrap_or(0.0),
+                    prev_sky.attrs.obs_lat.unwrap_or(0.0),
                     prev_last,
                     prev_sky.compute_diurab(),
-                    self.obs_lat.unwrap_or(0.0),
+                    self.attrs.obs_lat.unwrap_or(0.0),
                     self_last,
                     self.compute_diurab(),
                 )?;
@@ -1874,56 +1801,8 @@ impl Frame for SkyFrame {
         super::find_frame::frames_equal(self, other)
     }
 
-    fn obs_lat(&self) -> Option<f64> {
-        self.obs_lat
-    }
-
-    fn obs_lon(&self) -> Option<f64> {
-        self.obs_lon
-    }
-
-    fn obs_alt(&self) -> Option<f64> {
-        self.obs_alt
-    }
-
-    fn dtai(&self) -> Option<f64> {
-        self.dtai
-    }
-
-    fn dut1(&self) -> Option<f64> {
-        self.dut1
-    }
-
     fn system_string(&self) -> Option<&str> {
         Some(self.system.as_str())
-    }
-
-    fn domain(&self) -> &str {
-        SkyFrame::domain(self)
-    }
-
-    fn clear_domain(&mut self) {
-        SkyFrame::clear_domain(self);
-    }
-
-    fn test_domain(&self) -> bool {
-        SkyFrame::test_domain(self)
-    }
-
-    fn ident(&self) -> &str {
-        SkyFrame::ident(self)
-    }
-
-    fn set_ident(&mut self, ident: &str) {
-        SkyFrame::set_ident(self, ident);
-    }
-
-    fn clear_ident(&mut self) {
-        self.ident = None;
-    }
-
-    fn test_ident(&self) -> bool {
-        self.ident.is_some()
     }
 
     // -----------------------------------------------------------------
@@ -2286,28 +2165,28 @@ fn skyframe_overlay(
             result_sky.set_domain(template_sky.domain());
         }
         if template_sky.test_title() {
-            result_sky.set_title(template_sky.title());
+            result_sky.set_title(&template_sky.title());
         }
         if template_sky.test_epoch() {
             result_sky.set_epoch_mjd(template_sky.epoch_mjd());
         }
-        if let Some(v) = template_sky.obs_lat {
+        if let Some(v) = template_sky.attrs.obs_lat {
             result_sky.set_obs_lat(v);
         }
-        if let Some(v) = template_sky.obs_lon {
+        if let Some(v) = template_sky.attrs.obs_lon {
             result_sky.set_obs_lon(v);
         }
-        if let Some(v) = template_sky.obs_alt {
+        if let Some(v) = template_sky.attrs.obs_alt {
             result_sky.set_obs_alt(v);
         }
-        if let Some(v) = template_sky.dtai {
+        if let Some(v) = template_sky.attrs.dtai {
             result_sky.set_dtai(v);
         }
-        if let Some(v) = template_sky.dut1 {
+        if let Some(v) = template_sky.attrs.dut1 {
             result_sky.set_dut1(v);
         }
-        if let Some(v) = template_sky.digits {
-            result_sky.digits = Some(v);
+        if let Some(v) = template_sky.attrs.digits {
+            result_sky.attrs.digits = Some(v);
         }
 
         // System / AlignSystem (frame.c:8580-8594).
@@ -2542,10 +2421,10 @@ fn skyframe_sub_frame(
             result.equinox_mjd(),
             result.epoch_mjd(),
             align_sys,
-            target.obs_lat.unwrap_or(0.0),
+            target.attrs.obs_lat.unwrap_or(0.0),
             target_last,
             target.compute_diurab(),
-            result.obs_lat.unwrap_or(0.0),
+            result.attrs.obs_lat.unwrap_or(0.0),
             result_last,
             result.compute_diurab(),
         )?;
@@ -2633,7 +2512,7 @@ impl Serializable for SkyFrame {
 
         // --- Object-level attributes (before IsA Object) ---
         // Ident: written if explicitly set.
-        if let Some(ref ident) = self.ident {
+        if let Some(ref ident) = self.attrs.ident {
             node.push_string(
                 "Ident",
                 ident,
@@ -2642,7 +2521,7 @@ impl Serializable for SkyFrame {
         }
 
         // IsA Object marker (only emitted when Ident is present).
-        if self.ident.is_some() {
+        if self.attrs.ident.is_some() {
             node.push_isa("Object", Some("AST Object".to_string()));
         }
 
@@ -2651,7 +2530,7 @@ impl Serializable for SkyFrame {
         //        Uni1, Uni2, Dir1, Bot2, Top2, [observer], Axes
 
         // Title: active if explicitly set, otherwise unset with default.
-        if let Some(ref title) = self.title {
+        if let Some(ref title) = self.attrs.title {
             if !title.is_empty() {
                 node.push_string(
                     "Title",
@@ -2671,7 +2550,7 @@ impl Serializable for SkyFrame {
         node.push_int("Naxes", 2, Some("Number of coordinate axes".to_string()));
 
         // Domain: active if explicitly set to non-"SKY", otherwise unset "SKY".
-        if let Some(ref domain) = self.domain {
+        if let Some(ref domain) = self.attrs.domain {
             if !domain.is_empty() && domain != "SKY" {
                 node.push_string(
                     "Domain",
@@ -2697,7 +2576,7 @@ impl Serializable for SkyFrame {
         // output (matches `frame.c` line 14328: `bessyr = epoch < palEpj2d(1984.0)`).
         // The default MJD depends on the SkyFrame's System — B1950.0 for
         // FK4 / FK4-no-E, J2000.0 elsewhere.
-        let epoch_mjd = self.epoch.unwrap_or_else(|| {
+        let epoch_mjd = self.attrs.epoch.unwrap_or_else(|| {
             if matches!(self.system, SkySystem::Fk4 | SkySystem::Fk4NoE) {
                 pal::epb2d(1950.0)
             } else {
@@ -2715,7 +2594,7 @@ impl Serializable for SkyFrame {
         } else {
             "Julian epoch of observation"
         };
-        if self.epoch.is_some() {
+        if self.attrs.epoch.is_some() {
             node.push_double("Epoch", epoch_year, Some(epoch_comment.to_string()));
         } else {
             node.push_unset(
@@ -2812,7 +2691,7 @@ impl Serializable for SkyFrame {
             }
         }
         let digits_comment = Some("Default formatting precision".to_string());
-        if let Some(d) = self.digits {
+        if let Some(d) = self.attrs.digits {
             node.push_int("Digits", d as i64, digits_comment);
         } else if self.axes.iter().any(|a| a.digits.is_some()) {
             node.push_unset("Digits", NodeValue::Int(7), digits_comment);
@@ -2857,7 +2736,7 @@ impl Serializable for SkyFrame {
         // SkyFrame) reproduces that "never emit" behaviour by construction,
         // even when act_unt was populated by from_node reading a token.
         if self.test_active_unit() {
-            let v = self.act_unt.unwrap_or(false);
+            let v = self.attrs.active_unit.unwrap_or(false);
             node.push_int(
                 "ActUnt",
                 if v { 1 } else { 0 },
@@ -2870,31 +2749,31 @@ impl Serializable for SkyFrame {
         }
 
         // Observer attributes (active only if explicitly set).
-        if let Some(obs_lat) = self.obs_lat {
+        if let Some(obs_lat) = self.attrs.obs_lat {
             node.push_double(
                 "ObsLat",
                 obs_lat,
                 Some("Observers geodetic latitude (rads)".to_string()),
             );
         }
-        if let Some(obs_lon) = self.obs_lon {
+        if let Some(obs_lon) = self.attrs.obs_lon {
             node.push_double(
                 "ObsLon",
                 obs_lon,
                 Some("Observers geodetic longitude (rads)".to_string()),
             );
         }
-        if let Some(obs_alt) = self.obs_alt {
+        if let Some(obs_alt) = self.attrs.obs_alt {
             node.push_double(
                 "ObsAlt",
                 obs_alt,
                 Some("Observers geodetic altitude (metres)".to_string()),
             );
         }
-        if let Some(dtai) = self.dtai {
+        if let Some(dtai) = self.attrs.dtai {
             node.push_double("Dtai", dtai, Some("TAI-UTC in seconds".to_string()));
         }
-        if let Some(dut1) = self.dut1 {
+        if let Some(dut1) = self.attrs.dut1 {
             node.push_double("Dut1", dut1, Some("UT1-UTC in seconds".to_string()));
         }
 
@@ -3112,7 +2991,7 @@ impl Serializable for SkyFrame {
         // Domain.
         let domain = node.get_string("Domain", "");
         if !domain.is_empty() {
-            sky.domain = Some(domain);
+            sky.attrs.domain = Some(domain);
         }
 
         // Epoch and Equinox are stored as decimal years on disk and
@@ -3128,22 +3007,22 @@ impl Serializable for SkyFrame {
 
         // Observer attributes.
         if node.get("ObsLat").is_some() {
-            sky.obs_lat = Some(node.get_double("ObsLat", 0.0));
+            sky.attrs.obs_lat = Some(node.get_double("ObsLat", 0.0));
         }
         if node.get("ObsLon").is_some() {
-            sky.obs_lon = Some(node.get_double("ObsLon", 0.0));
+            sky.attrs.obs_lon = Some(node.get_double("ObsLon", 0.0));
         }
         if node.get("ObsAlt").is_some() {
-            sky.obs_alt = Some(node.get_double("ObsAlt", 0.0));
+            sky.attrs.obs_alt = Some(node.get_double("ObsAlt", 0.0));
         }
         if node.get("Digits").is_some() {
-            sky.digits = Some(node.get_int("Digits", 7) as i32);
+            sky.attrs.digits = Some(node.get_int("Digits", 7) as i32);
         }
         if node.get("Dtai").is_some() {
-            sky.dtai = Some(node.get_double("Dtai", 0.0));
+            sky.attrs.dtai = Some(node.get_double("Dtai", 0.0));
         }
         if node.get("Dut1").is_some() {
-            sky.dut1 = Some(node.get_double("Dut1", 0.0));
+            sky.attrs.dut1 = Some(node.get_double("Dut1", 0.0));
         }
 
         // SkyFrame-specific.
@@ -3206,13 +3085,13 @@ impl Serializable for SkyFrame {
         // ActUnt: stored only when the token is present, with its value
         // (frame.c:14614). Absent => unset (default false).
         if node.get("ActUnt").is_some() {
-            sky.act_unt = Some(node.get_int("ActUnt", 0) != 0);
+            sky.attrs.active_unit = Some(node.get_int("ActUnt", 0) != 0);
         }
 
         // Ident (Object-level identification string).
         let ident = node.get_string("Ident", "");
         if !ident.is_empty() {
-            sky.ident = Some(ident);
+            sky.attrs.ident = Some(ident);
         }
 
         // Read SkyAxis children. Axes are stored in internal (physical)
@@ -3354,7 +3233,12 @@ mod tests {
         assert_close(sky.sky_ref_p()[1], FRAC_PI_2, TOL);
         assert_close(sky.sky_tol(), 0.001, TOL);
         assert!(sky.projection().is_none());
-        assert_eq!(sky.title(), "");
+        // The default C reports (skyframe.c `GetTitle`).
+        assert!(!sky.test_title());
+        assert_eq!(
+            sky.title(),
+            "FK5 equatorial coordinates; mean equinox J2000.0"
+        );
     }
 
     #[test]
@@ -3448,11 +3332,46 @@ mod tests {
         sky.set_obs_alt(4200.0);
         sky.set_dtai(37.0);
         sky.set_dut1(0.3);
-        assert_close(sky.obs_lat().unwrap(), 0.5, TOL);
-        assert_close(sky.obs_lon().unwrap(), 1.0, TOL);
-        assert_close(sky.obs_alt().unwrap(), 4200.0, TOL);
-        assert_close(sky.dtai().unwrap(), 37.0, TOL);
-        assert_close(sky.dut1().unwrap(), 0.3, TOL);
+        assert_close(
+            {
+                assert!(sky.test_obs_lat());
+                sky.obs_lat()
+            },
+            0.5,
+            TOL,
+        );
+        assert_close(
+            {
+                assert!(sky.test_obs_lon());
+                sky.obs_lon()
+            },
+            1.0,
+            TOL,
+        );
+        assert_close(
+            {
+                assert!(sky.test_obs_alt());
+                sky.obs_alt()
+            },
+            4200.0,
+            TOL,
+        );
+        assert_close(
+            {
+                assert!(sky.test_dtai());
+                sky.dtai()
+            },
+            37.0,
+            TOL,
+        );
+        assert_close(
+            {
+                assert!(sky.test_dut1());
+                sky.dut1()
+            },
+            0.3,
+            TOL,
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -4070,7 +3989,7 @@ mod tests {
         let mut target = SkyFrame::new(SkySystem::Fk5);
         target.perm_axes(&[2, 1]).unwrap();
         let mut template = SkyFrame::new(SkySystem::Galactic);
-        template.set_permute(false);
+        template.set_permute(false).unwrap();
         assert!(!template.permute());
         let result = template.match_template(&target, false).unwrap();
         assert!(result.is_none());
@@ -4096,7 +4015,7 @@ mod tests {
         let mut target = SkyFrame::new(SkySystem::Fk5);
         target.perm_axes(&[2, 1]).unwrap();
         let mut template = SkyFrame::new(SkySystem::Galactic);
-        template.set_permute(true);
+        template.set_permute(true).unwrap();
         let m = template
             .match_template(&target, false)
             .unwrap()

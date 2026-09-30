@@ -487,3 +487,479 @@ pub(crate) fn read_frame_attrs(node: &Node) -> FrameAttrs {
         ident: node.get_string_if_set("Ident"),
     }
 }
+
+// ---------------------------------------------------------------------------
+// `Frame` trait implementations over `FrameAttrs`
+// ---------------------------------------------------------------------------
+//
+// Used inside `impl Frame for X`, where `X` has an `attrs: FrameAttrs` field.
+// Each macro implements one group of attributes; a class whose C counterpart
+// over-rides a group writes that group by hand instead. The class supplies
+// its defaults through the inherent hooks the macros name:
+// `frame_default_title`, `frame_default_domain`, `frame_default_epoch` and
+// `frame_default_permute`.
+
+/// Title, from `self.attrs.title` and `self.frame_default_title()`.
+macro_rules! frame_attrs_title {
+    () => {
+        fn title(&self) -> String {
+            self.attrs
+                .title
+                .clone()
+                .unwrap_or_else(|| self.frame_default_title())
+        }
+        fn set_title(&mut self, title: &str) -> $crate::error::AstResult<()> {
+            self.attrs.title = Some(title.to_string());
+            Ok(())
+        }
+        fn test_title(&self) -> bool {
+            self.attrs.title.is_some()
+        }
+        fn clear_title(&mut self) -> $crate::error::AstResult<()> {
+            self.attrs.title = None;
+            Ok(())
+        }
+    };
+}
+
+/// Domain, from `self.attrs.domain` and `self.frame_default_domain()`.
+macro_rules! frame_attrs_domain {
+    () => {
+        fn domain(&self) -> &str {
+            self.attrs
+                .domain
+                .as_deref()
+                .unwrap_or_else(|| self.frame_default_domain())
+        }
+        fn set_domain(&mut self, domain: &str) -> $crate::error::AstResult<()> {
+            self.attrs.domain = Some($crate::frames::frame_attrs::clean_domain(domain));
+            Ok(())
+        }
+        fn test_domain(&self) -> bool {
+            self.attrs.domain.is_some()
+        }
+        fn clear_domain(&mut self) -> $crate::error::AstResult<()> {
+            self.attrs.domain = None;
+            Ok(())
+        }
+    };
+}
+
+/// Epoch, from `self.attrs.epoch` and `self.frame_default_epoch()`.
+macro_rules! frame_attrs_epoch {
+    () => {
+        fn epoch_mjd(&self) -> f64 {
+            self.attrs
+                .epoch
+                .unwrap_or_else(|| self.frame_default_epoch())
+        }
+        fn set_epoch_mjd(&mut self, mjd: f64) -> $crate::error::AstResult<()> {
+            self.attrs.epoch = Some(mjd);
+            Ok(())
+        }
+        fn test_epoch(&self) -> bool {
+            self.attrs.epoch.is_some()
+        }
+        fn clear_epoch(&mut self) -> $crate::error::AstResult<()> {
+            self.attrs.epoch = None;
+            Ok(())
+        }
+    };
+}
+
+/// Digits, from `self.attrs.digits`, default 7.
+macro_rules! frame_attrs_digits {
+    () => {
+        fn digits(&self) -> i32 {
+            self.attrs.digits.unwrap_or(7)
+        }
+        fn set_digits(&mut self, value: i32) -> $crate::error::AstResult<()> {
+            self.attrs.digits = Some(value.max(1));
+            Ok(())
+        }
+        fn test_digits(&self) -> bool {
+            self.attrs.digits.is_some()
+        }
+        fn clear_digits(&mut self) -> $crate::error::AstResult<()> {
+            self.attrs.digits = None;
+            Ok(())
+        }
+    };
+}
+
+/// One optional f64 attribute of `self.attrs` with a fixed default.
+macro_rules! frame_attrs_f64 {
+    ($field:ident, $get:ident, $set:ident, $test:ident, $clear:ident, $default:expr) => {
+        fn $get(&self) -> f64 {
+            self.attrs.$field.unwrap_or($default)
+        }
+        fn $set(&mut self, value: f64) -> $crate::error::AstResult<()> {
+            self.attrs.$field = Some(value);
+            Ok(())
+        }
+        fn $test(&self) -> bool {
+            self.attrs.$field.is_some()
+        }
+        fn $clear(&mut self) -> $crate::error::AstResult<()> {
+            self.attrs.$field = None;
+            Ok(())
+        }
+    };
+}
+
+/// ObsLat, ObsLon, ObsAlt, Dtai and Dut1 from `self.attrs`, with C's
+/// defaults (0, and `BAD_VALUE` for Dtai).
+macro_rules! frame_attrs_observer {
+    () => {
+        frame_attrs_f64!(
+            obs_lat,
+            obs_lat,
+            set_obs_lat,
+            test_obs_lat,
+            clear_obs_lat,
+            0.0
+        );
+        frame_attrs_f64!(
+            obs_lon,
+            obs_lon,
+            set_obs_lon,
+            test_obs_lon,
+            clear_obs_lon,
+            0.0
+        );
+        frame_attrs_f64!(
+            obs_alt,
+            obs_alt,
+            set_obs_alt,
+            test_obs_alt,
+            clear_obs_alt,
+            0.0
+        );
+        frame_attrs_f64!(
+            dtai,
+            dtai,
+            set_dtai,
+            test_dtai,
+            clear_dtai,
+            $crate::constants::BAD_VALUE
+        );
+        frame_attrs_f64!(dut1, dut1, set_dut1, test_dut1, clear_dut1, 0.0);
+    };
+}
+
+/// Ident, from `self.attrs.ident`; setting a blank Ident clears it.
+macro_rules! frame_attrs_ident {
+    () => {
+        fn ident(&self) -> &str {
+            self.attrs.ident.as_deref().unwrap_or("")
+        }
+        fn set_ident(&mut self, ident: &str) -> $crate::error::AstResult<()> {
+            self.attrs.ident = (!ident.is_empty()).then(|| ident.to_string());
+            Ok(())
+        }
+        fn clear_ident(&mut self) -> $crate::error::AstResult<()> {
+            self.attrs.ident = None;
+            Ok(())
+        }
+        fn test_ident(&self) -> bool {
+            self.attrs.ident.is_some()
+        }
+    };
+}
+
+/// MinAxes, MaxAxes, MatchEnd, PreserveAxes and Permute from `self.attrs`.
+/// MinAxes and MaxAxes default to the number of axes, MatchEnd and
+/// PreserveAxes to false, and Permute to `self.frame_default_permute()`.
+macro_rules! frame_attrs_match {
+    () => {
+        frame_attrs_match!(@body |s| s.naxes(), |s| s.naxes());
+    };
+    // Explicit MinAxes and MaxAxes defaults, for a class that over-rides
+    // them (CmpFrame, cmpframe.c `GetMinAxes`, `GetMaxAxes`).
+    (min = $min:expr, max = $max:expr) => {
+        frame_attrs_match!(@body |_s| $min, |_s| $max);
+    };
+    (@body |$smin:ident| $min:expr, |$smax:ident| $max:expr) => {
+        fn min_axes(&self) -> usize {
+            self.attrs.min_axes.unwrap_or_else(|| {
+                let $smin = self;
+                $min
+            })
+        }
+        fn set_min_axes(&mut self, n: usize) -> $crate::error::AstResult<()> {
+            self.attrs.min_axes = Some(n);
+            Ok(())
+        }
+        fn test_min_axes(&self) -> bool {
+            self.attrs.min_axes.is_some()
+        }
+        fn clear_min_axes(&mut self) -> $crate::error::AstResult<()> {
+            self.attrs.min_axes = None;
+            Ok(())
+        }
+        fn max_axes(&self) -> usize {
+            self.attrs.max_axes.unwrap_or_else(|| {
+                let $smax = self;
+                $max
+            })
+        }
+        fn set_max_axes(&mut self, n: usize) -> $crate::error::AstResult<()> {
+            self.attrs.max_axes = Some(n);
+            Ok(())
+        }
+        fn test_max_axes(&self) -> bool {
+            self.attrs.max_axes.is_some()
+        }
+        fn clear_max_axes(&mut self) -> $crate::error::AstResult<()> {
+            self.attrs.max_axes = None;
+            Ok(())
+        }
+        fn match_end(&self) -> bool {
+            self.attrs.match_end.unwrap_or(false)
+        }
+        fn set_match_end(&mut self, v: bool) -> $crate::error::AstResult<()> {
+            self.attrs.match_end = Some(v);
+            Ok(())
+        }
+        fn test_match_end(&self) -> bool {
+            self.attrs.match_end.is_some()
+        }
+        fn clear_match_end(&mut self) -> $crate::error::AstResult<()> {
+            self.attrs.match_end = None;
+            Ok(())
+        }
+        fn preserve_axes(&self) -> bool {
+            self.attrs.preserve_axes.unwrap_or(false)
+        }
+        fn set_preserve_axes(&mut self, v: bool) -> $crate::error::AstResult<()> {
+            self.attrs.preserve_axes = Some(v);
+            Ok(())
+        }
+        fn test_preserve_axes(&self) -> bool {
+            self.attrs.preserve_axes.is_some()
+        }
+        fn clear_preserve_axes(&mut self) -> $crate::error::AstResult<()> {
+            self.attrs.preserve_axes = None;
+            Ok(())
+        }
+        fn permute(&self) -> bool {
+            self.attrs
+                .permute
+                .unwrap_or_else(|| self.frame_default_permute())
+        }
+        fn set_permute(&mut self, v: bool) -> $crate::error::AstResult<()> {
+            self.attrs.permute = Some(v);
+            Ok(())
+        }
+        fn test_permute(&self) -> bool {
+            self.attrs.permute.is_some()
+        }
+        fn clear_permute(&mut self) -> $crate::error::AstResult<()> {
+            self.attrs.permute = None;
+            Ok(())
+        }
+    };
+}
+
+/// Forward every Frame-class attribute to `self.<path>`, which is itself a
+/// Frame. Used by the Regions, which forward to their FrameSet (whose
+/// setters apply FrameSet integrity) as C's Region class does (region.c).
+macro_rules! forward_frame_attrs {
+    ($($path:ident).+) => {
+        forward_frame_attrs!(@all_but_domain [$($path).+]);
+        fn domain(&self) -> &str {
+            $crate::frames::Frame::domain(&self.$($path).+)
+        }
+        forward_frame_attrs!(@set [$($path).+] set_domain(domain: &str));
+        forward_frame_attrs!(@get [$($path).+] test_domain -> bool);
+        forward_frame_attrs!(@clear [$($path).+] clear_domain);
+    };
+    // Every attribute but Domain, for a class that supplies its own Domain
+    // default.
+    (@all_but_domain [$($path:ident).+]) => {
+        forward_frame_attrs!(@get [$($path).+] title -> String);
+        forward_frame_attrs!(@set [$($path).+] set_title(title: &str));
+        forward_frame_attrs!(@get [$($path).+] test_title -> bool);
+        forward_frame_attrs!(@clear [$($path).+] clear_title);
+        forward_frame_attrs!(@get [$($path).+] epoch_mjd -> f64);
+        forward_frame_attrs!(@set [$($path).+] set_epoch_mjd(mjd: f64));
+        forward_frame_attrs!(@get [$($path).+] test_epoch -> bool);
+        forward_frame_attrs!(@clear [$($path).+] clear_epoch);
+        forward_frame_attrs!(@get [$($path).+] digits -> i32);
+        forward_frame_attrs!(@set [$($path).+] set_digits(value: i32));
+        forward_frame_attrs!(@get [$($path).+] test_digits -> bool);
+        forward_frame_attrs!(@clear [$($path).+] clear_digits);
+        forward_frame_attrs!(@get [$($path).+] obs_lat -> f64);
+        forward_frame_attrs!(@set [$($path).+] set_obs_lat(v: f64));
+        forward_frame_attrs!(@get [$($path).+] test_obs_lat -> bool);
+        forward_frame_attrs!(@clear [$($path).+] clear_obs_lat);
+        forward_frame_attrs!(@get [$($path).+] obs_lon -> f64);
+        forward_frame_attrs!(@set [$($path).+] set_obs_lon(v: f64));
+        forward_frame_attrs!(@get [$($path).+] test_obs_lon -> bool);
+        forward_frame_attrs!(@clear [$($path).+] clear_obs_lon);
+        forward_frame_attrs!(@get [$($path).+] obs_alt -> f64);
+        forward_frame_attrs!(@set [$($path).+] set_obs_alt(v: f64));
+        forward_frame_attrs!(@get [$($path).+] test_obs_alt -> bool);
+        forward_frame_attrs!(@clear [$($path).+] clear_obs_alt);
+        forward_frame_attrs!(@get [$($path).+] dtai -> f64);
+        forward_frame_attrs!(@set [$($path).+] set_dtai(v: f64));
+        forward_frame_attrs!(@get [$($path).+] test_dtai -> bool);
+        forward_frame_attrs!(@clear [$($path).+] clear_dtai);
+        forward_frame_attrs!(@get [$($path).+] dut1 -> f64);
+        forward_frame_attrs!(@set [$($path).+] set_dut1(v: f64));
+        forward_frame_attrs!(@get [$($path).+] test_dut1 -> bool);
+        forward_frame_attrs!(@clear [$($path).+] clear_dut1);
+        forward_frame_attrs!(@get [$($path).+] min_axes -> usize);
+        forward_frame_attrs!(@set [$($path).+] set_min_axes(n: usize));
+        forward_frame_attrs!(@get [$($path).+] test_min_axes -> bool);
+        forward_frame_attrs!(@clear [$($path).+] clear_min_axes);
+        forward_frame_attrs!(@get [$($path).+] max_axes -> usize);
+        forward_frame_attrs!(@set [$($path).+] set_max_axes(n: usize));
+        forward_frame_attrs!(@get [$($path).+] test_max_axes -> bool);
+        forward_frame_attrs!(@clear [$($path).+] clear_max_axes);
+        forward_frame_attrs!(@get [$($path).+] match_end -> bool);
+        forward_frame_attrs!(@set [$($path).+] set_match_end(v: bool));
+        forward_frame_attrs!(@get [$($path).+] test_match_end -> bool);
+        forward_frame_attrs!(@clear [$($path).+] clear_match_end);
+        forward_frame_attrs!(@get [$($path).+] preserve_axes -> bool);
+        forward_frame_attrs!(@set [$($path).+] set_preserve_axes(v: bool));
+        forward_frame_attrs!(@get [$($path).+] test_preserve_axes -> bool);
+        forward_frame_attrs!(@clear [$($path).+] clear_preserve_axes);
+        forward_frame_attrs!(@get [$($path).+] permute -> bool);
+        forward_frame_attrs!(@set [$($path).+] set_permute(v: bool));
+        forward_frame_attrs!(@get [$($path).+] test_permute -> bool);
+        forward_frame_attrs!(@clear [$($path).+] clear_permute);
+        fn get_active_unit(&self) -> bool {
+            $crate::frames::Frame::get_active_unit(&self.$($path).+)
+        }
+        fn set_active_unit(&mut self, value: bool) {
+            $crate::frames::Frame::set_active_unit(&mut self.$($path).+, value)
+        }
+        fn test_active_unit(&self) -> bool {
+            $crate::frames::Frame::test_active_unit(&self.$($path).+)
+        }
+    };
+    (@get [$($path:ident).+] $name:ident -> $ty:ty) => {
+        fn $name(&self) -> $ty {
+            $crate::frames::Frame::$name(&self.$($path).+)
+        }
+    };
+    (@set [$($path:ident).+] $name:ident($arg:ident: $ty:ty)) => {
+        fn $name(&mut self, $arg: $ty) -> $crate::error::AstResult<()> {
+            $crate::frames::Frame::$name(&mut self.$($path).+, $arg)
+        }
+    };
+    (@clear [$($path:ident).+] $name:ident) => {
+        fn $name(&mut self) -> $crate::error::AstResult<()> {
+            $crate::frames::Frame::$name(&mut self.$($path).+)
+        }
+    };
+}
+
+/// The Frame-class attributes of a Region: every one forwarded to its
+/// FrameSet, as C's Region class does (region.c), except the Object-class
+/// Ident, which is the Region's own.
+macro_rules! region_frame_attrs {
+    () => {
+        forward_frame_attrs!(data.frameset);
+        fn ident(&self) -> &str {
+            self.data.ident.as_deref().unwrap_or("")
+        }
+        fn set_ident(&mut self, ident: &str) -> $crate::error::AstResult<()> {
+            self.data.ident = (!ident.is_empty()).then(|| ident.to_string());
+            Ok(())
+        }
+        fn clear_ident(&mut self) -> $crate::error::AstResult<()> {
+            self.data.ident = None;
+            Ok(())
+        }
+        fn test_ident(&self) -> bool {
+            self.data.ident.is_some()
+        }
+    };
+}
+
+/// The Mapping-side Ident of a Region, the same value as its Frame side.
+macro_rules! region_mapping_ident {
+    () => {
+        fn ident(&self) -> &str {
+            self.data.ident.as_deref().unwrap_or("")
+        }
+        fn set_ident(&mut self, ident: &str) {
+            self.data.ident = (!ident.is_empty()).then(|| ident.to_string());
+        }
+        fn clear_ident(&mut self) {
+            self.data.ident = None;
+        }
+        fn test_ident(&self) -> bool {
+            self.data.ident.is_some()
+        }
+    };
+}
+
+/// An attribute a CmpFrame shares with its components `$f1` and `$f2`, as C's CmpFrame
+/// over-rides it (cmpframe.c `GetEpoch`, `SetEpoch`, `ClearEpoch` and
+/// the like for ObsLat, ObsLon, ObsAlt, Dtai and Dut1): the value set on
+/// the CmpFrame, else the one set on the first component, else the one set
+/// on the second, else the first component's default. Setting or clearing
+/// it acts on the CmpFrame and on both components; testing it asks the
+/// CmpFrame alone.
+macro_rules! cmp_frame_shared_attr {
+    // Components held by value, reached through the `Frame` trait so that
+    // their own inherent methods do not shadow it.
+    (concrete $f1:ident, $f2:ident; $field:ident, $get:ident, $set:ident, $test:ident, $clear:ident) => {
+        fn $get(&self) -> f64 {
+            use $crate::frames::Frame as F;
+            if let Some(v) = self.attrs.$field {
+                v
+            } else if F::$test(&self.$f1) {
+                F::$get(&self.$f1)
+            } else if F::$test(&self.$f2) {
+                F::$get(&self.$f2)
+            } else {
+                F::$get(&self.$f1)
+            }
+        }
+        fn $set(&mut self, v: f64) -> $crate::error::AstResult<()> {
+            use $crate::frames::Frame as F;
+            self.attrs.$field = Some(v);
+            F::$set(&mut self.$f1, v)?;
+            F::$set(&mut self.$f2, v)
+        }
+        fn $test(&self) -> bool {
+            self.attrs.$field.is_some()
+        }
+        fn $clear(&mut self) -> $crate::error::AstResult<()> {
+            use $crate::frames::Frame as F;
+            self.attrs.$field = None;
+            F::$clear(&mut self.$f1)?;
+            F::$clear(&mut self.$f2)
+        }
+    };
+    ($f1:ident, $f2:ident; $field:ident, $get:ident, $set:ident, $test:ident, $clear:ident) => {
+        fn $get(&self) -> f64 {
+            if let Some(v) = self.attrs.$field {
+                v
+            } else if self.$f1.$test() {
+                self.$f1.$get()
+            } else if self.$f2.$test() {
+                self.$f2.$get()
+            } else {
+                self.$f1.$get()
+            }
+        }
+        fn $set(&mut self, v: f64) -> $crate::error::AstResult<()> {
+            self.attrs.$field = Some(v);
+            self.$f1.$set(v)?;
+            self.$f2.$set(v)
+        }
+        fn $test(&self) -> bool {
+            self.attrs.$field.is_some()
+        }
+        fn $clear(&mut self) -> $crate::error::AstResult<()> {
+            self.attrs.$field = None;
+            self.$f1.$clear()?;
+            self.$f2.$clear()
+        }
+    };
+}

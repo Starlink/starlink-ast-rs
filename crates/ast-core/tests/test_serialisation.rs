@@ -939,11 +939,51 @@ fn round_trip_skyframe_with_observer() {
     let restored = from_native_string(&text).unwrap();
     match restored {
         AnyObject::SkyFrame(ref sf) => {
-            assert_close(sf.obs_lat().unwrap(), 0.3, 1e-10, "obs_lat");
-            assert_close(sf.obs_lon().unwrap(), -2.1, 1e-10, "obs_lon");
-            assert_close(sf.obs_alt().unwrap(), 4200.0, 1e-10, "obs_alt");
-            assert_close(sf.dtai().unwrap(), 37.0, 1e-10, "dtai");
-            assert_close(sf.dut1().unwrap(), 0.27, 1e-10, "dut1");
+            assert_close(
+                {
+                    assert!(sf.test_obs_lat());
+                    sf.obs_lat()
+                },
+                0.3,
+                1e-10,
+                "obs_lat",
+            );
+            assert_close(
+                {
+                    assert!(sf.test_obs_lon());
+                    sf.obs_lon()
+                },
+                -2.1,
+                1e-10,
+                "obs_lon",
+            );
+            assert_close(
+                {
+                    assert!(sf.test_obs_alt());
+                    sf.obs_alt()
+                },
+                4200.0,
+                1e-10,
+                "obs_alt",
+            );
+            assert_close(
+                {
+                    assert!(sf.test_dtai());
+                    sf.dtai()
+                },
+                37.0,
+                1e-10,
+                "dtai",
+            );
+            assert_close(
+                {
+                    assert!(sf.test_dut1());
+                    sf.dut1()
+                },
+                0.27,
+                1e-10,
+                "dut1",
+            );
         }
         _ => panic!("expected SkyFrame variant"),
     }

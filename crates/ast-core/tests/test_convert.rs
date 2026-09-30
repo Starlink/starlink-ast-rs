@@ -148,8 +148,8 @@ fn find_frame_cmp_needs_widened_axes() {
     // Widen the SkyFrame template's axis tolerance => match found, base==cf,
     // current==sf, mapping is a PermMap.
     let mut sf2 = SkyFrame::new(SkySystem::Fk5);
-    sf2.set_max_axes(3);
-    sf2.set_min_axes(1);
+    sf2.set_max_axes(3).unwrap();
+    sf2.set_min_axes(1).unwrap();
     let fs = cf
         .find_frame_template(&sf2, " ")
         .unwrap()

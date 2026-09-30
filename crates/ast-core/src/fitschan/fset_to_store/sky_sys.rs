@@ -311,11 +311,11 @@ pub(crate) fn sky_sys(
     // Observation-global TAI/UT1 offsets — read from the SkyFrame and
     // copy into the store. Last-plane-wins per the global-card
     // contract (see FitsStore::mjdobs doc).
-    if let Some(dtai) = skyfrm.dtai() {
-        store.dtai = Some(dtai);
+    if Frame::test_dtai(skyfrm) {
+        store.dtai = Some(Frame::dtai(skyfrm));
     }
-    if let Some(dut1) = skyfrm.dut1() {
-        store.dut1 = Some(dut1);
+    if Frame::test_dut1(skyfrm) {
+        store.dut1 = Some(Frame::dut1(skyfrm));
     }
 
     // CTYPE construction. Skip the projection suffix path when
@@ -425,15 +425,10 @@ pub(crate) fn sky_sys(
 
     // OBSGEO-X/Y/Z (C:29963-29975). Only emitted on the primary
     // coordinate version (s == ' ') and when both lon and lat are
-    // explicitly set (Option<f64> is the Rust analog of
-    // `astTestObsLon`).
-    if s == ' '
-        && let (Some(geolon), Some(geolat)) = (
-            <SkyFrame as crate::frames::Frame>::obs_lon(skyfrm),
-            <SkyFrame as crate::frames::Frame>::obs_lat(skyfrm),
-        )
-    {
-        let h = <SkyFrame as crate::frames::Frame>::obs_alt(skyfrm).unwrap_or(0.0);
+    // explicitly set (`astTestObsLon`).
+    if s == ' ' && Frame::test_obs_lon(skyfrm) && Frame::test_obs_lat(skyfrm) {
+        let (geolon, geolat) = (Frame::obs_lon(skyfrm), Frame::obs_lat(skyfrm));
+        let h = Frame::obs_alt(skyfrm);
         if let Some(xyz) = crate::pal::gd2gc(geolon, geolat, h) {
             store.obsgeox = Some(xyz[0]);
             store.obsgeoy = Some(xyz[1]);

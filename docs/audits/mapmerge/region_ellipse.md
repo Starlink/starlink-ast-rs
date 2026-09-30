@@ -16,7 +16,7 @@ boundary mesh first — an ellipse can transform into a circle — and falls bac
 fitting an Ellipse in two dimensions, adopting a fit only when `astRegPins`
 places every mesh point on the fitted boundary.
 
-`Ellipse::simplified` (`ellipse.rs:1091-1169 (fn simplified)`) is the port of it. The body
+`Ellipse::simplified` (`ellipse.rs:1095-1169 (fn simplified)`) is the port of it. The body
 is Circle's with two differences: there is no UnitMap short-circuit, and both
 branches count as a simplification. See `region_circle.md`.
 
@@ -25,7 +25,7 @@ branches count as a simplification. See `region_circle.md`.
 | 1 | Initialise the result | ellipse.c:1944-1946 (fn Simplify) | -- | ceremony | n/a: the Rust returns `AstResult<(DynMapping, bool)>`, so there is no sentinel to initialise |
 | 2 | Check the global error status and bail out | ellipse.c:1947-1949 (fn Simplify) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 3 | Obtain a pointer to the supplied Region structure | ellipse.c:1950-1952 (fn Simplify) | -- | ceremony | n/a: the Rust method already has `&self` |
-| 4 | Invoke the parent Region Simplify, which simplifies the encapsulated FrameSet and the uncertainty | ellipse.c:1953-1956 (fn Simplify) | ellipse.rs:1091-1104 (fn simplified) | architecture | ported |
+| 4 | Invoke the parent Region Simplify, which simplifies the encapsulated FrameSet and the uncertainty | ellipse.c:1953-1956 (fn Simplify) | ellipse.rs:1095-1104 (fn simplified) | architecture | ported |
 | 5 | Note that simplification took place if the parent returned a different pointer | ellipse.c:1957-1961 (fn Simplify) | ellipse.rs:1105 (fn simplified) | architecture | ported |
 | 6 | Get the base-to-current Mapping, and attempt the re-definition whatever it is | ellipse.c:1962-1967 (fn Simplify) | ellipse.rs:1115-1118 (fn simplified) | architecture | ported |
 | 7 | Get a mesh of points covering the Ellipse in its current Frame | ellipse.c:1968-1970 (fn Simplify) | ellipse.rs:1121-1122 (fn simplified) | architecture | ported |

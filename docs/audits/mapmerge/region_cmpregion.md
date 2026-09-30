@@ -17,7 +17,7 @@ under AND, a negation pair under OR, identical components, and one component
 contained in the other. `GetDefUnc` (`cmpregion.c:1132-1163 (fn GetDefUnc)`) takes the
 default uncertainty from whichever component carries an explicit one.
 
-The Rust counterparts are `simplified` (`cmpregion.rs:1128-1300 (fn simplified)`) and
+The Rust counterparts are `simplified` (`cmpregion.rs:1132-1300 (fn simplified)`) and
 `get_def_unc` (`cmpregion.rs:947-959 (fn get_def_unc)`).
 
 CmpRegion has no `MapMerge` of its own; it takes the Region base implementation.

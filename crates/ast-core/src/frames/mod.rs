@@ -1,6 +1,8 @@
 //! The Frame trait and associated types.
 
 pub(crate) mod axis;
+#[macro_use]
+pub(crate) mod frame_attrs;
 pub(crate) mod axis_format;
 mod basic;
 mod cmpframe;
@@ -8,7 +10,6 @@ pub(crate) mod date_time;
 mod dsbspecframe;
 pub(crate) mod find_frame;
 mod fluxframe;
-pub(crate) mod frame_attrs;
 mod frameset;
 pub(crate) mod sky_convert;
 pub(crate) mod skyaxis;
@@ -449,179 +450,163 @@ pub trait Frame: AsAny + Send + fmt::Debug {
         Ok(None)
     }
 
-    /// Observer geodetic latitude in radians.
-    fn obs_lat(&self) -> Option<f64> {
-        None
-    }
+    // -----------------------------------------------------------------
+    // Frame-class attributes (frame.c). Every Frame class implements the
+    // full get / set / test / clear set, as C's Frame virtual functions
+    // reach every class; a getter returns the value set or the class's
+    // default, as `astGet` does. FrameSet and Region forward each to the
+    // Frame they present, applying FrameSet integrity on the setters.
+    // -----------------------------------------------------------------
 
-    /// Observer geodetic longitude in radians.
-    fn obs_lon(&self) -> Option<f64> {
-        None
-    }
+    /// Title, set or default. Mirrors `astGetTitle`.
+    fn title(&self) -> String;
+    /// Set Title. Mirrors `astSetTitle`.
+    fn set_title(&mut self, title: &str) -> AstResult<()>;
+    /// Whether Title is set. Mirrors `astTestTitle`.
+    fn test_title(&self) -> bool;
+    /// Clear Title. Mirrors `astClearTitle`.
+    fn clear_title(&mut self) -> AstResult<()>;
 
-    /// Observer altitude in metres.
-    fn obs_alt(&self) -> Option<f64> {
-        None
-    }
+    /// Domain, set or default. Mirrors `astGetDomain`.
+    fn domain(&self) -> &str;
+    /// Set Domain, cleaned as C's `CleanDomain` does (white space removed,
+    /// letters upper-cased). Mirrors `astSetDomain`.
+    fn set_domain(&mut self, domain: &str) -> AstResult<()>;
+    /// Whether Domain is set. Mirrors `astTestDomain`.
+    fn test_domain(&self) -> bool;
+    /// Clear Domain. Mirrors `astClearDomain`.
+    fn clear_domain(&mut self) -> AstResult<()>;
 
-    /// TAI-UTC in seconds.
-    fn dtai(&self) -> Option<f64> {
-        None
-    }
+    /// Epoch as a TDB Modified Julian Date, set or default. Mirrors
+    /// `astGetEpoch`.
+    fn epoch_mjd(&self) -> f64;
+    /// Set Epoch, as a TDB Modified Julian Date. Mirrors `astSetEpoch`.
+    fn set_epoch_mjd(&mut self, mjd: f64) -> AstResult<()>;
+    /// Whether Epoch is set. Mirrors `astTestEpoch`.
+    fn test_epoch(&self) -> bool;
+    /// Clear Epoch. Mirrors `astClearEpoch`.
+    fn clear_epoch(&mut self) -> AstResult<()>;
 
-    /// UT1-UTC in seconds.
-    fn dut1(&self) -> Option<f64> {
-        None
-    }
+    /// Digits, set or default (7). Mirrors `astGetDigits`.
+    fn digits(&self) -> i32;
+    /// Set Digits, constrained to at least 1 (frame.c:13251).
+    fn set_digits(&mut self, value: i32) -> AstResult<()>;
+    /// Whether Digits is set. Mirrors `astTestDigits`.
+    fn test_digits(&self) -> bool;
+    /// Clear Digits. Mirrors `astClearDigits`.
+    fn clear_digits(&mut self) -> AstResult<()>;
+
+    /// Observer's geodetic latitude in radians, set or default (0).
+    fn obs_lat(&self) -> f64;
+    /// Set ObsLat, in radians.
+    fn set_obs_lat(&mut self, rad: f64) -> AstResult<()>;
+    /// Whether ObsLat is set.
+    fn test_obs_lat(&self) -> bool;
+    /// Clear ObsLat.
+    fn clear_obs_lat(&mut self) -> AstResult<()>;
+
+    /// Observer's geodetic longitude in radians, set or default (0).
+    fn obs_lon(&self) -> f64;
+    /// Set ObsLon, in radians.
+    fn set_obs_lon(&mut self, rad: f64) -> AstResult<()>;
+    /// Whether ObsLon is set.
+    fn test_obs_lon(&self) -> bool;
+    /// Clear ObsLon.
+    fn clear_obs_lon(&mut self) -> AstResult<()>;
+
+    /// Observer's geodetic altitude in metres, set or default (0).
+    fn obs_alt(&self) -> f64;
+    /// Set ObsAlt, in metres.
+    fn set_obs_alt(&mut self, metres: f64) -> AstResult<()>;
+    /// Whether ObsAlt is set.
+    fn test_obs_alt(&self) -> bool;
+    /// Clear ObsAlt.
+    fn clear_obs_alt(&mut self) -> AstResult<()>;
+
+    /// TAI-UTC in seconds, or `BAD_VALUE` when unset, meaning the value
+    /// comes from AST's leap-second table (frame.c `GetDtai`).
+    fn dtai(&self) -> f64;
+    /// Set Dtai, in seconds.
+    fn set_dtai(&mut self, seconds: f64) -> AstResult<()>;
+    /// Whether Dtai is set.
+    fn test_dtai(&self) -> bool;
+    /// Clear Dtai.
+    fn clear_dtai(&mut self) -> AstResult<()>;
+
+    /// UT1-UTC in seconds, set or default (0).
+    fn dut1(&self) -> f64;
+    /// Set Dut1, in seconds.
+    fn set_dut1(&mut self, seconds: f64) -> AstResult<()>;
+    /// Whether Dut1 is set.
+    fn test_dut1(&self) -> bool;
+    /// Clear Dut1.
+    fn clear_dut1(&mut self) -> AstResult<()>;
 
     /// Coordinate system name (e.g., "FK5", "GALACTIC"), if applicable.
     fn system_string(&self) -> Option<&str> {
         None
     }
 
-    /// Frame domain, e.g. "GRID", "PIXEL", "SKY", "IWC". Empty string if unset.
-    fn domain(&self) -> &str {
-        ""
-    }
+    /// The Object-class Ident attribute, blank unless set.
+    fn ident(&self) -> &str;
+    /// Set Ident. Mirrors `astSetIdent` (`object.c:5225`).
+    fn set_ident(&mut self, ident: &str) -> AstResult<()>;
+    /// Clear Ident. Mirrors `astClearIdent` (`object.c:5217`).
+    fn clear_ident(&mut self) -> AstResult<()>;
+    /// Whether Ident is set. Mirrors `astTestIdent` (`object.c:5229`).
+    fn test_ident(&self) -> bool;
 
-    /// Set the frame Domain. Default no-op; concrete classes with a
-    /// Domain field override this. Mirrors C `astSetDomain`.
-    fn set_domain(&mut self, _domain: &str) {}
+    // Match-control attributes, used by `astFindFrame` / `astMatch`.
 
-    /// Clear Domain, restoring the class default. Default no-op; concrete
-    /// classes with a Domain field override this. Mirrors C `astClearDomain`,
-    /// which reaches every class through the Frame virtual-function table.
-    fn clear_domain(&mut self) {}
+    /// MinAxes, set or default (the number of axes). Mirrors
+    /// `astGetMinAxes`.
+    fn min_axes(&self) -> usize;
+    /// Set MinAxes.
+    fn set_min_axes(&mut self, n: usize) -> AstResult<()>;
+    /// Whether MinAxes is set.
+    fn test_min_axes(&self) -> bool;
+    /// Clear MinAxes.
+    fn clear_min_axes(&mut self) -> AstResult<()>;
 
-    /// Whether the domain attribute has been explicitly set (non-default).
-    /// Mirrors C's `astTestDomain`. The default implementation returns
-    /// `false`; concrete frames that distinguish "explicit" from
-    /// "default" override this to read their backing `Option<String>`
-    /// state.
-    fn test_domain(&self) -> bool {
-        false
-    }
+    /// MaxAxes, set or default (the number of axes). Mirrors
+    /// `astGetMaxAxes`.
+    fn max_axes(&self) -> usize;
+    /// Set MaxAxes.
+    fn set_max_axes(&mut self, n: usize) -> AstResult<()>;
+    /// Whether MaxAxes is set.
+    fn test_max_axes(&self) -> bool;
+    /// Clear MaxAxes.
+    fn clear_max_axes(&mut self) -> AstResult<()>;
 
-    /// Frame identification token (single uppercase letter recommended for
-    /// FITS-WCS alt-plane assignment). Empty string if unset.
-    fn ident(&self) -> &str {
-        ""
-    }
+    /// MatchEnd, set or default (false): match the final target axes
+    /// rather than the initial ones. Mirrors `astGetMatchEnd`.
+    fn match_end(&self) -> bool;
+    /// Set MatchEnd.
+    fn set_match_end(&mut self, v: bool) -> AstResult<()>;
+    /// Whether MatchEnd is set.
+    fn test_match_end(&self) -> bool;
+    /// Clear MatchEnd.
+    fn clear_match_end(&mut self) -> AstResult<()>;
 
-    /// Set the Ident token. Default no-op; concrete classes with an Ident
-    /// field override this. Mirrors C `astSetIdent`, which is an
-    /// Object-level attribute (`object.c:5225`) and so applies to every
-    /// class.
-    fn set_ident(&mut self, _ident: &str) {}
+    /// PreserveAxes, set or default (false). Mirrors
+    /// `astGetPreserveAxes`.
+    fn preserve_axes(&self) -> bool;
+    /// Set PreserveAxes.
+    fn set_preserve_axes(&mut self, v: bool) -> AstResult<()>;
+    /// Whether PreserveAxes is set.
+    fn test_preserve_axes(&self) -> bool;
+    /// Clear PreserveAxes.
+    fn clear_preserve_axes(&mut self) -> AstResult<()>;
 
-    /// Clear Ident, restoring the unset state. Mirrors C `astClearIdent`
-    /// (`object.c:5217`).
-    fn clear_ident(&mut self) {}
-
-    /// Whether Ident has been explicitly set. Mirrors C `astTestIdent`
-    /// (`object.c:5229`).
-    fn test_ident(&self) -> bool {
-        false
-    }
-
-    // -----------------------------------------------------------------
-    // Match-control attributes (used by `astFindFrame` / `astMatch`).
-    // Mirrors the C virtual getters / setters / testers — see
-    // frame.c (default impls), skyframe.c / specframe.c (overrides).
-    // -----------------------------------------------------------------
-
-    /// Minimum acceptable target axis count when this Frame is used as
-    /// a template. Mirrors C `astGetMinAxes` (frame.c). Default: the
-    /// number of axes in self.
-    fn min_axes(&self) -> usize {
-        self.naxes()
-    }
-
-    /// Set the minimum acceptable target axis count.
-    fn set_min_axes(&mut self, _n: usize) {}
-
-    /// Test whether `MinAxes` has been explicitly set.
-    fn test_min_axes(&self) -> bool {
-        false
-    }
-
-    /// Maximum acceptable target axis count when this Frame is used as
-    /// a template. Mirrors C `astGetMaxAxes`. Default: the number of
-    /// axes in self.
-    fn max_axes(&self) -> usize {
-        self.naxes()
-    }
-
-    /// Set the maximum acceptable target axis count.
-    fn set_max_axes(&mut self, _n: usize) {}
-
-    /// Test whether `MaxAxes` has been explicitly set.
-    fn test_max_axes(&self) -> bool {
-        false
-    }
-
-    /// `MatchEnd`: when the template has fewer axes than the target,
-    /// match the *final* template axes onto the *final* target axes
-    /// (preserving end-alignment) rather than the default initial-axis
-    /// alignment. Mirrors C `astGetMatchEnd`. Default: `false` (`0`).
-    fn match_end(&self) -> bool {
-        false
-    }
-
-    /// Set the `MatchEnd` attribute.
-    fn set_match_end(&mut self, _v: bool) {}
-
-    /// Test whether `MatchEnd` has been explicitly set.
-    fn test_match_end(&self) -> bool {
-        false
-    }
-
-    /// `PreserveAxes`: when set, `Match` returns a result Frame whose
-    /// axis count equals the target's (rather than the template's).
-    /// Mirrors C `astGetPreserveAxes`. Default: `false` (`0`).
-    fn preserve_axes(&self) -> bool {
-        false
-    }
-
-    /// Set the `PreserveAxes` attribute.
-    fn set_preserve_axes(&mut self, _v: bool) {}
-
-    /// Test whether `PreserveAxes` has been explicitly set.
-    fn test_preserve_axes(&self) -> bool {
-        false
-    }
-
-    /// `Permute`: whether the template is willing to match a target
-    /// whose axes are in a permuted order. Mirrors C `astGetPermute`.
-    /// Default: `true` (`1`) for plain Frame; `false` (`0`) for
-    /// SkyFrame and SpecFrame (overridden in those classes).
-    fn permute(&self) -> bool {
-        true
-    }
-
-    /// Set the `Permute` attribute.
-    fn set_permute(&mut self, _v: bool) {}
-
-    /// Test whether `Permute` has been explicitly set.
-    fn test_permute(&self) -> bool {
-        false
-    }
-
-    /// `Digits`: default number of significant figures used when
-    /// formatting coordinate values. Mirrors C `astGetDigits`
-    /// (frame.c:13134) — default 7.
-    fn digits(&self) -> i32 {
-        7
-    }
-
-    /// Set the `Digits` attribute. C constrains the stored value to be
-    /// at least 1 (frame.c:13138).
-    fn set_digits(&mut self, _value: i32) {}
-
-    /// Test whether `Digits` has been explicitly set.
-    fn test_digits(&self) -> bool {
-        false
-    }
+    /// Permute, set or default (true, the Frame class's default, which no
+    /// subclass over-rides; frame.c:13572). Mirrors `astGetPermute`.
+    fn permute(&self) -> bool;
+    /// Set Permute.
+    fn set_permute(&mut self, v: bool) -> AstResult<()>;
+    /// Whether Permute is set.
+    fn test_permute(&self) -> bool;
+    /// Clear Permute.
+    fn clear_permute(&mut self) -> AstResult<()>;
 
     /// Per-axis `Digits(axis)` (1-based). Falls back to the frame-level
     /// `Digits` when no axis-specific value is set. Mirrors C
@@ -639,20 +624,14 @@ pub trait Frame: AsAny + Send + fmt::Debug {
     /// Whether unit differences affect alignment in `Match`/`Overlay`.
     /// Mirrors C `astGetActiveUnit` (frame.c:4651): always false when the
     /// Frame has a SkyAxis; otherwise the stored flag, default false.
-    fn get_active_unit(&self) -> bool {
-        false
-    }
-
+    fn get_active_unit(&self) -> bool;
     /// Set the ActiveUnit flag. Mirrors C `astSetActiveUnit`
     /// (frame.c:9882). SkyFrame ignores it (forced false); SpecFrame /
     /// FluxFrame force true.
-    fn set_active_unit(&mut self, _value: bool) {}
-
+    fn set_active_unit(&mut self, value: bool);
     /// Whether ActiveUnit has been explicitly set (for serialization).
     /// Mirrors C `astTestActiveUnit` (used by `Dump`, frame.c:14614).
-    fn test_active_unit(&self) -> bool {
-        false
-    }
+    fn test_active_unit(&self) -> bool;
 
     /// Effective `Label(axis)` (1-based): the explicitly-set per-axis
     /// label if present, else the class default. Mirrors the Frame
@@ -1331,9 +1310,9 @@ pub trait Frame: AsAny + Send + fmt::Debug {
         // (primary-frame) axis order. frm1 is `&dyn`, so snapshot it and
         // mutate the snapshot.
         let mut probe = frm1.snapshot();
-        probe.set_preserve_axes(true);
-        probe.set_max_axes(10000);
-        probe.set_min_axes(1);
+        probe.set_preserve_axes(true)?;
+        probe.set_max_axes(10000)?;
+        probe.set_min_axes(1)?;
 
         for (ifirst, slot) in axes.iter_mut().enumerate() {
             let (pfrm, pax) = self.primary_frame(ifirst);
@@ -1547,60 +1526,9 @@ pub(crate) fn cartesian_angle(a: &[f64], b: &[f64], c: &[f64]) -> f64 {
     }
 }
 
-/// The Epoch (TDB MJD) of a frame *if explicitly set*, looked up per
-/// concrete class. Stands in for C's virtual `astTestEpoch` /
-/// `astGetEpoch` pair, which the `Frame` trait does not yet expose.
-pub(crate) fn frame_epoch_if_set(f: &dyn Frame) -> Option<f64> {
-    let any = f.as_any();
-    if let Some(sf) = any.downcast_ref::<SkyFrame>() {
-        return sf.test_epoch().then(|| sf.epoch_mjd());
-    }
-    if let Some(sf) = any.downcast_ref::<SpecFrame>() {
-        return sf.test_epoch().then(|| sf.epoch_mjd());
-    }
-    if let Some(tf) = any.downcast_ref::<TimeFrame>() {
-        return tf.test_epoch().then(|| tf.epoch_mjd());
-    }
-    if let Some(df) = any.downcast_ref::<DSBSpecFrame>() {
-        return df.spec().test_epoch().then(|| df.epoch_mjd());
-    }
-    if let Some(bf) = any.downcast_ref::<BasicFrame>() {
-        return bf.test_epoch().then(|| bf.epoch_mjd());
-    }
-    if let Some(cf) = any.downcast_ref::<CmpFrame>() {
-        return cf.test_epoch().then(|| cf.epoch_mjd());
-    }
-    None
-}
-
-/// The *effective* Epoch (TDB MJD) of a frame, mirroring C's
-/// `astGetEpoch`: every concrete class returns a value even when the
-/// attribute was never explicitly set (the class-specific default —
-/// J2000 for most, B1950 for FK4 SkyFrames, and for CmpFrame whatever a
-/// component supplies). Unlike [`frame_epoch_if_set`], this never
-/// returns `None`; the fallback is the J2000 MJD used by the C base
-/// `GetEpoch` (`frame.c:3210`).
+/// The effective Epoch (TDB MJD) of a frame, C's `astGetEpoch`.
 pub(crate) fn frame_epoch_effective_mjd(f: &dyn Frame) -> f64 {
-    let any = f.as_any();
-    if let Some(sf) = any.downcast_ref::<SkyFrame>() {
-        return sf.epoch_mjd();
-    }
-    if let Some(sf) = any.downcast_ref::<SpecFrame>() {
-        return sf.epoch_mjd();
-    }
-    if let Some(tf) = any.downcast_ref::<TimeFrame>() {
-        return tf.epoch_mjd();
-    }
-    if let Some(df) = any.downcast_ref::<DSBSpecFrame>() {
-        return df.epoch_mjd();
-    }
-    if let Some(cf) = any.downcast_ref::<CmpFrame>() {
-        return cf.epoch_mjd();
-    }
-    if let Some(bf) = any.downcast_ref::<BasicFrame>() {
-        return bf.epoch_mjd();
-    }
-    crate::pal::epj2d(2000.0)
+    f.epoch_mjd()
 }
 
 /// The effective Epoch of a frame as a decimal year, using the
@@ -1614,74 +1542,5 @@ pub(crate) fn frame_epoch_effective_year(f: &dyn Frame) -> (f64, bool) {
         (crate::pal::epb(mjd), true)
     } else {
         (crate::pal::epj(mjd), false)
-    }
-}
-
-/// Set the Epoch (TDB MJD) on a frame, per concrete class. Classes
-/// without an epoch setter are skipped (C stores Epoch on the Frame
-/// base struct for every class; the Rust BasicFrame only has a
-/// year-based setter and FluxFrame none, so those are left alone).
-pub(crate) fn set_frame_epoch_mjd(f: &mut dyn Frame, mjd: f64) {
-    let any = f.as_any_mut();
-    if let Some(sf) = any.downcast_mut::<SkyFrame>() {
-        sf.set_epoch_mjd(mjd);
-    } else if let Some(sf) = any.downcast_mut::<SpecFrame>() {
-        sf.set_epoch_mjd(mjd);
-    } else if let Some(tf) = any.downcast_mut::<TimeFrame>() {
-        tf.set_epoch_mjd(mjd);
-    } else if let Some(df) = any.downcast_mut::<DSBSpecFrame>() {
-        df.set_epoch_mjd(mjd);
-    } else if let Some(cf) = any.downcast_mut::<CmpFrame>() {
-        cf.set_epoch_mjd(mjd);
-    }
-}
-
-/// Set an observer attribute on a frame, per concrete class. The
-/// `which` selector: 0 = ObsLat, 1 = ObsLon, 2 = ObsAlt, 3 = Dtai.
-pub(crate) fn set_frame_obs(f: &mut dyn Frame, which: usize, v: f64) {
-    macro_rules! fwd {
-        ($t:ty) => {
-            if let Some(x) = f.as_any_mut().downcast_mut::<$t>() {
-                match which {
-                    0 => x.set_obs_lat(v),
-                    1 => x.set_obs_lon(v),
-                    2 => x.set_obs_alt(v),
-                    3 => x.set_dtai(v),
-                    _ => x.set_dut1(v),
-                }
-                return;
-            }
-        };
-    }
-    fwd!(SkyFrame);
-    fwd!(TimeFrame);
-    if let Some(x) = f.as_any_mut().downcast_mut::<SpecFrame>() {
-        match which {
-            0 => x.set_obs_lat(v),
-            1 => x.set_obs_lon(v),
-            2 => x.set_obs_alt(v),
-            3 => x.set_dtai(v),
-            _ => x.set_dut1(v),
-        }
-        return;
-    }
-    if let Some(x) = f.as_any_mut().downcast_mut::<DSBSpecFrame>() {
-        match which {
-            0 => x.set_obs_lat(v),
-            1 => x.set_obs_lon(v),
-            2 => x.set_obs_alt(v),
-            3 => x.set_dtai(v),
-            _ => x.set_dut1(v),
-        }
-        return;
-    }
-    if let Some(x) = f.as_any_mut().downcast_mut::<CmpFrame>() {
-        match which {
-            0 => x.set_obs_lat(v),
-            1 => x.set_obs_lon(v),
-            2 => x.set_obs_alt(v),
-            3 => x.set_dtai(v),
-            _ => x.set_dut1(v),
-        }
     }
 }

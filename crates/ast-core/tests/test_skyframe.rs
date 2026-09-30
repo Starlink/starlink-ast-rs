@@ -69,7 +69,12 @@ fn construction_fk5_defaults() {
     assert_eq!(sky.naxes(), 2);
     assert_eq!(sky.system(), SkySystem::Fk5);
     assert_eq!(sky.domain(), "SKY");
-    assert_eq!(sky.title(), "");
+    // The default C reports (skyframe.c `GetTitle`).
+    assert!(!sky.test_title());
+    assert_eq!(
+        sky.title(),
+        "FK5 equatorial coordinates; mean equinox J2000.0"
+    );
     assert!(!sky.neglon());
     assert_eq!(sky.sky_ref_is(), SkyRefIs::Ignored);
     assert!(sky.projection().is_none());
@@ -232,11 +237,11 @@ fn set_get_projection() {
 #[test]
 fn set_get_observer_attributes() {
     let mut sky = SkyFrame::new(SkySystem::Fk5);
-    assert!(sky.obs_lat().is_none());
-    assert!(sky.obs_lon().is_none());
-    assert!(sky.obs_alt().is_none());
-    assert!(sky.dtai().is_none());
-    assert!(sky.dut1().is_none());
+    assert!(!sky.test_obs_lat());
+    assert!(!sky.test_obs_lon());
+    assert!(!sky.test_obs_alt());
+    assert!(!sky.test_dtai());
+    assert!(!sky.test_dut1());
 
     sky.set_obs_lat(0.35);
     sky.set_obs_lon(-2.1);
@@ -244,11 +249,51 @@ fn set_get_observer_attributes() {
     sky.set_dtai(37.0);
     sky.set_dut1(0.27);
 
-    assert_close(sky.obs_lat().unwrap(), 0.35, TOL, "obs_lat");
-    assert_close(sky.obs_lon().unwrap(), -2.1, TOL, "obs_lon");
-    assert_close(sky.obs_alt().unwrap(), 4200.0, TOL, "obs_alt");
-    assert_close(sky.dtai().unwrap(), 37.0, TOL, "dtai");
-    assert_close(sky.dut1().unwrap(), 0.27, TOL, "dut1");
+    assert_close(
+        {
+            assert!(sky.test_obs_lat());
+            sky.obs_lat()
+        },
+        0.35,
+        TOL,
+        "obs_lat",
+    );
+    assert_close(
+        {
+            assert!(sky.test_obs_lon());
+            sky.obs_lon()
+        },
+        -2.1,
+        TOL,
+        "obs_lon",
+    );
+    assert_close(
+        {
+            assert!(sky.test_obs_alt());
+            sky.obs_alt()
+        },
+        4200.0,
+        TOL,
+        "obs_alt",
+    );
+    assert_close(
+        {
+            assert!(sky.test_dtai());
+            sky.dtai()
+        },
+        37.0,
+        TOL,
+        "dtai",
+    );
+    assert_close(
+        {
+            assert!(sky.test_dut1());
+            sky.dut1()
+        },
+        0.27,
+        TOL,
+        "dut1",
+    );
 }
 
 // ===========================================================================
@@ -998,11 +1043,51 @@ fn serialise_preserves_all_attributes() {
             assert_close(sf.sky_tol(), 1.0e-7, 1e-15, "sky_tol rt");
             assert_eq!(sf.projection(), Some("SIN"));
             assert!(sf.align_offset());
-            assert_close(sf.obs_lat().unwrap(), 0.5, 1e-10, "obs_lat rt");
-            assert_close(sf.obs_lon().unwrap(), -1.5, 1e-10, "obs_lon rt");
-            assert_close(sf.obs_alt().unwrap(), 2800.0, 1e-10, "obs_alt rt");
-            assert_close(sf.dtai().unwrap(), 37.0, 1e-10, "dtai rt");
-            assert_close(sf.dut1().unwrap(), 0.3, 1e-10, "dut1 rt");
+            assert_close(
+                {
+                    assert!(sf.test_obs_lat());
+                    sf.obs_lat()
+                },
+                0.5,
+                1e-10,
+                "obs_lat rt",
+            );
+            assert_close(
+                {
+                    assert!(sf.test_obs_lon());
+                    sf.obs_lon()
+                },
+                -1.5,
+                1e-10,
+                "obs_lon rt",
+            );
+            assert_close(
+                {
+                    assert!(sf.test_obs_alt());
+                    sf.obs_alt()
+                },
+                2800.0,
+                1e-10,
+                "obs_alt rt",
+            );
+            assert_close(
+                {
+                    assert!(sf.test_dtai());
+                    sf.dtai()
+                },
+                37.0,
+                1e-10,
+                "dtai rt",
+            );
+            assert_close(
+                {
+                    assert!(sf.test_dut1());
+                    sf.dut1()
+                },
+                0.3,
+                1e-10,
+                "dut1 rt",
+            );
         }
         _ => panic!("expected SkyFrame variant"),
     }

@@ -20,11 +20,11 @@ PointList over the combined axes. `Simplify`
 Mapping is already a UnitMap, transforms the defining points into the current
 Frame and rebuilds the PointList there, so the result needs only a UnitMap.
 
-`PointList::map_merge` (`regions/pointlist.rs:933-940 (fn map_merge)`) delegates to
+`PointList::map_merge` (`regions/pointlist.rs:937-940 (fn map_merge)`) delegates to
 `simplify::region_map_merge` (`mappings/simplify.rs:1443-1490 (fn region_map_merge)`), which
 every Region shares. `PointList::region_merge`
 (`regions/pointlist.rs:601-716 (fn region_merge)`) is `MergePointList`, and
-`PointList::simplified` (`regions/pointlist.rs:843-898 (fn simplified)`) is `Simplify`.
+`PointList::simplified` (`regions/pointlist.rs:847-898 (fn simplified)`) is `Simplify`.
 
 `MergePointList` shares its whole tail with `MergeBox` and `MergeInterval`, so the
 rows from the constructor onwards cite `merge_util.rs`, where that tail lives once.

@@ -93,7 +93,8 @@ fn read_top_frame_native_dump(text: &str) -> String {
 fn dtai_set_on_world_frame_for_jcmt() {
     let text = header_with_telescop(Some("JCMT"), Some(37.0));
     let frame = read_top_frame(&text);
-    let dtai = frame.dtai().expect("Dtai should be set for a JCMT header");
+    assert!(frame.test_dtai(), "Dtai should be set for a JCMT header");
+    let dtai = frame.dtai();
     assert!((dtai - 37.0).abs() < 1e-9, "expected Dtai=37.0, got {dtai}");
 
     // The top-level Frame is a CmpFrame (FREQ + RA/Dec). Confirm Dtai is
@@ -123,7 +124,8 @@ fn dtai_set_on_world_frame_for_jcmt() {
 fn dtai_set_on_world_frame_for_ukirt() {
     let text = header_with_telescop(Some("UKIRT"), Some(37.0));
     let frame = read_top_frame(&text);
-    let dtai = frame.dtai().expect("Dtai should be set for a UKIRT header");
+    assert!(frame.test_dtai(), "Dtai should be set for a UKIRT header");
+    let dtai = frame.dtai();
     assert!((dtai - 37.0).abs() < 1e-9, "expected Dtai=37.0, got {dtai}");
 }
 
@@ -131,9 +133,8 @@ fn dtai_set_on_world_frame_for_ukirt() {
 fn dtai_ignored_for_other_telescope() {
     let text = header_with_telescop(Some("HST"), Some(37.0));
     let frame = read_top_frame(&text);
-    assert_eq!(
-        frame.dtai(),
-        None,
+    assert!(
+        !frame.test_dtai(),
         "Dtai should not be set when TELESCOP names a telescope other than JCMT/UKIRT"
     );
 }
@@ -142,9 +143,8 @@ fn dtai_ignored_for_other_telescope() {
 fn dtai_ignored_when_telescop_absent() {
     let text = header_with_telescop(None, Some(37.0));
     let frame = read_top_frame(&text);
-    assert_eq!(
-        frame.dtai(),
-        None,
+    assert!(
+        !frame.test_dtai(),
         "Dtai should not be set when there is no TELESCOP card at all"
     );
 }
@@ -156,9 +156,11 @@ fn dut1_set_on_world_frame_regardless_of_telescop() {
     // seconds (fitschan.c:37883-37888, SPD = 86400.0).
     let text = header_with_telescop(None, None);
     let frame = read_top_frame(&text);
-    let dut1 = frame
-        .dut1()
-        .expect("Dut1 should be set regardless of TELESCOP");
+    assert!(
+        frame.test_dut1(),
+        "Dut1 should be set regardless of TELESCOP"
+    );
+    let dut1 = frame.dut1();
     assert!(
         (dut1 - 0.001 * 86_400.0).abs() < 1e-6,
         "expected Dut1=86.4s, got {dut1}"

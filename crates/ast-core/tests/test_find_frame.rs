@@ -297,8 +297,8 @@ fn frameset_find_frame_no_match_returns_none() {
 #[test]
 fn cmpframe_match_against_skyframe_template_with_max_axes() {
     let mut template = SkyFrame::new(SkySystem::Fk5);
-    template.set_max_axes(3);
-    template.set_min_axes(2);
+    template.set_max_axes(3).unwrap();
+    template.set_min_axes(2).unwrap();
     let target = CmpFrame::new(
         Box::new(SkyFrame::new(SkySystem::Fk5)),
         Box::new(SpecFrame::new(SpecSystem::Freq)),
@@ -328,8 +328,8 @@ fn find_frame_specframe_template_into_cmpframe_sky_spec() {
     let mut template = SpecFrame::new(SpecSystem::Vradio);
     template.set_std_of_rest(StdOfRest::Lsrk);
     template.set_unit("m/s");
-    template.set_min_axes(1);
-    template.set_max_axes(3);
+    template.set_min_axes(1).unwrap();
+    template.set_max_axes(3).unwrap();
 
     // CmpFrame(SkyFrame(FK5) [2 axes], SpecFrame(Freq) [1 axis]) — 3 axes.
     let target = CmpFrame::new(
@@ -358,8 +358,8 @@ fn find_frame_specframe_template_into_cmpframe_sky_spec() {
 #[test]
 fn find_frame_specframe_template_into_cmpframe_spec_sky() {
     let mut template = SpecFrame::new(SpecSystem::Vradio);
-    template.set_min_axes(1);
-    template.set_max_axes(3);
+    template.set_min_axes(1).unwrap();
+    template.set_max_axes(3).unwrap();
 
     let target = CmpFrame::new(
         Box::new(SpecFrame::new(SpecSystem::Freq)),

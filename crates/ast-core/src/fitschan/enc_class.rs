@@ -374,8 +374,8 @@ pub(crate) fn write_velocities_from_frameset(fs: &FrameSet, cards: &mut CardList
         let mut v = SpecFrame::new(SpecSystem::Vradio);
         v.set_std_of_rest(StdOfRest::Lsrk);
         v.set_unit("m/s");
-        v.set_min_axes(1);
-        v.set_max_axes(3);
+        v.set_min_axes(1)?;
+        v.set_max_axes(3)?;
         v
     };
     let Some(found) = Frame::find_frame_template(fs.current(), &velo_template, "")? else {
@@ -560,9 +560,9 @@ pub(crate) fn write_azel_from_frameset(fs: &FrameSet, cards: &mut CardList) -> A
     // in whatever the CTYPE system is.
     let radec_template = {
         let mut sky = SkyFrame::unset_system();
-        sky.set_permute(false);
-        sky.set_min_axes(3);
-        sky.set_max_axes(3);
+        sky.set_permute(false)?;
+        sky.set_min_axes(3)?;
+        sky.set_max_axes(3)?;
         sky
     };
     let Some(fsconv1) = Frame::find_frame_template(curfrm, &radec_template, "")? else {
@@ -572,9 +572,9 @@ pub(crate) fn write_azel_from_frameset(fs: &FrameSet, cards: &mut CardList) -> A
     // SkyFrame template for the AzEl frame. Mirrors C:6912.
     let azel_template = {
         let mut sky = SkyFrame::new(SkySystem::Azel);
-        sky.set_permute(false);
-        sky.set_min_axes(3);
-        sky.set_max_axes(3);
+        sky.set_permute(false)?;
+        sky.set_min_axes(3)?;
+        sky.set_max_axes(3)?;
         sky
     };
     let Some(fsconv2) = Frame::find_frame_template(curfrm, &azel_template, "")? else {

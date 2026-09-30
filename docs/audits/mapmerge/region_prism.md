@@ -16,7 +16,7 @@ Prism to a single Region or a simpler Prism, and only then calls the parent Regi
 simplify. `GetDefUnc` (`prism.c:1251-1280 (fn GetDefUnc)`) builds a Prism from the
 two components' uncertainties.
 
-The Rust bodies are `prism.rs:938-1150 (fn simplified)` and
+The Rust bodies are `prism.rs:942-1150 (fn simplified)` and
 `prism.rs:705-714 (fn get_def_unc)`.
 
 Prism has no `MapMerge` of its own; it takes the Region base implementation.

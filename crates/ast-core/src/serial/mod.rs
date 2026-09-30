@@ -928,6 +928,7 @@ pub(crate) fn read_region_base(node: &Node) -> AstResult<RegionData> {
 
     let mut data = RegionData {
         frameset,
+        ident: None,
         points,
         negated,
         closed,
@@ -1434,7 +1435,7 @@ pub enum AnyObject {
     /// A [`FluxFrame`] (flux/brightness coordinate frame).
     FluxFrame(FluxFrame),
     /// A [`SpecFluxFrame`] (compound spectrum/flux frame).
-    SpecFluxFrame(SpecFluxFrame),
+    SpecFluxFrame(Box<SpecFluxFrame>),
     /// A [`CmpFrame`] (compound frame).
     CmpFrame(CmpFrame),
     /// A [`FrameSet`] (frame + inter-frame mappings).
@@ -1652,7 +1653,7 @@ impl AnyObject {
             AnyObject::DSBSpecFrame(f) => Some(f),
             AnyObject::TimeFrame(f) => Some(f),
             AnyObject::FluxFrame(f) => Some(f),
-            AnyObject::SpecFluxFrame(f) => Some(f),
+            AnyObject::SpecFluxFrame(f) => Some(f.as_ref()),
             AnyObject::CmpFrame(f) => Some(f),
             AnyObject::FrameSet(f) => Some(f),
             // Regions implement Frame.
@@ -1758,7 +1759,7 @@ impl AnyObject {
             AnyObject::DSBSpecFrame(f) => Some(Box::new(f)),
             AnyObject::TimeFrame(f) => Some(Box::new(f)),
             AnyObject::FluxFrame(f) => Some(Box::new(f)),
-            AnyObject::SpecFluxFrame(f) => Some(Box::new(f)),
+            AnyObject::SpecFluxFrame(f) => Some(f),
             AnyObject::CmpFrame(f) => Some(Box::new(f)),
             AnyObject::FrameSet(f) => Some(Box::new(f)),
             // Regions implement Frame.
@@ -1875,7 +1876,9 @@ pub(crate) fn any_object_from_node(node: &Node) -> AstResult<AnyObject> {
         "DSBSpecFrame" => Ok(AnyObject::DSBSpecFrame(DSBSpecFrame::from_node(node)?)),
         "TimeFrame" => Ok(AnyObject::TimeFrame(TimeFrame::from_node(node)?)),
         "FluxFrame" => Ok(AnyObject::FluxFrame(FluxFrame::from_node(node)?)),
-        "SpecFluxFrame" => Ok(AnyObject::SpecFluxFrame(SpecFluxFrame::from_node(node)?)),
+        "SpecFluxFrame" => Ok(AnyObject::SpecFluxFrame(Box::new(
+            SpecFluxFrame::from_node(node)?,
+        ))),
         "CmpFrame" => Ok(AnyObject::CmpFrame(CmpFrame::from_node(node)?)),
         "FrameSet" => Ok(AnyObject::FrameSet(FrameSet::from_node(node)?)),
         // Regions.
@@ -1937,7 +1940,7 @@ pub(crate) fn any_object_to_node(obj: &AnyObject) -> AstResult<Node> {
         AnyObject::DSBSpecFrame(f) => Serializable::to_node(f),
         AnyObject::TimeFrame(f) => Serializable::to_node(f),
         AnyObject::FluxFrame(f) => Serializable::to_node(f),
-        AnyObject::SpecFluxFrame(f) => Serializable::to_node(f),
+        AnyObject::SpecFluxFrame(f) => Serializable::to_node(f.as_ref()),
         AnyObject::CmpFrame(f) => Serializable::to_node(f),
         AnyObject::FrameSet(f) => Serializable::to_node(f),
         // Regions.

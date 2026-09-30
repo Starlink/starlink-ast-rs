@@ -583,7 +583,7 @@ fn test_specfluxframe_serialisation_roundtrip() {
     let sf = SpecFrame::new(SpecSystem::Freq);
     let ff = FluxFrame::new(FluxSystem::FluxDen);
     let sff = SpecFluxFrame::new(sf, ff);
-    let obj = AnyObject::SpecFluxFrame(sff.clone());
+    let obj = AnyObject::SpecFluxFrame(Box::new(sff.clone()));
     let text = to_native_string(&obj).unwrap();
     assert!(text.contains("SpecFluxFrame"));
     assert!(text.contains("SpecFrame"));
@@ -601,7 +601,7 @@ fn test_specfluxframe_serialisation_with_attributes() {
     let mut ff = FluxFrame::new(FluxSystem::SBrightW);
     ff.set_spec_val(4.57e14);
     let sff = SpecFluxFrame::new(sf, ff);
-    let obj = AnyObject::SpecFluxFrame(sff.clone());
+    let obj = AnyObject::SpecFluxFrame(Box::new(sff.clone()));
     let text = to_native_string(&obj).unwrap();
 
     let obj2 = from_native_string(&text).unwrap();

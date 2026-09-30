@@ -1,0 +1,156 @@
+/* frame_class_attrs_probe -- capture the Frame-class attributes of every
+ * Frame class as the C library reports them: each class's defaults, and the
+ * value and astTest result after each attribute is set on its own, including
+ * what a CmpFrame's first component, a FrameSet's current Frame and a
+ * Region's Frame then report.
+ *
+ * Prints Rust source for crates/ast-core/tests/frame_class_oracle/cases.rs:
+ *
+ *   ./frame_class_attrs_probe > ../../crates/ast-core/tests/frame_class_oracle/cases.rs
+ */
+#include <stdio.h>
+#include <string.h>
+#include "ast.h"
+
+static const char *classes[] = {
+   "Frame", "SkyFrame", "SpecFrame", "DSBSpecFrame", "TimeFrame",
+   "FluxFrame", "SpecFluxFrame", "CmpFrame", "FrameSet", "Circle", NULL
+};
+
+static const char *settings[] = {
+   " ", "Title=T", "Domain=d x", "Epoch=1990", "Digits=4", "ObsLat=10",
+   "ObsLon=20", "ObsAlt=30", "Dtai=33", "Dut1=0.1", "MinAxes=1",
+   "MaxAxes=5", "MatchEnd=1", "PreserveAxes=1", "Permute=0", "Ident=abc",
+   NULL
+};
+
+/* Attribute name and kind: s = string, i = integer, d = double, a = the
+   ActiveUnit function (not an attribute). */
+static const struct { const char *name; char kind; } attrs[] = {
+   { "Title", 's' }, { "Domain", 's' }, { "Epoch", 'd' }, { "Digits", 'i' },
+   { "ObsLat", 's' }, { "ObsLon", 's' }, { "ObsAlt", 'd' }, { "Dtai", 'd' },
+   { "Dut1", 'd' }, { "MinAxes", 'i' }, { "MaxAxes", 'i' },
+   { "MatchEnd", 'i' }, { "PreserveAxes", 'i' }, { "Permute", 'i' },
+   { "Ident", 's' }, { "ActiveUnit", 'a' }, { NULL, 0 }
+};
+
+static void lit( const char *s ) {
+   putchar( '"' );
+   for( ; *s; s++ ) {
+      if( *s == '"' || *s == '\\' ) putchar( '\\' );
+      putchar( *s );
+   }
+   putchar( '"' );
+}
+
+static void flit( double value ) {
+   char buf[ 40 ];
+   if( value == AST__BAD ) { fputs( "BAD", stdout ); return; }
+   snprintf( buf, sizeof( buf ), "%.17g", value );
+   fputs( buf, stdout );
+   if( !strpbrk( buf, ".en" ) ) fputs( ".0", stdout );
+}
+
+/* Build one object of a class; the Rust test builds the same. */
+static AstFrame *make( const char *cls ) {
+   if( !strcmp( cls, "Frame" ) ) return astFrame( 2, " " );
+   if( !strcmp( cls, "SkyFrame" ) ) return (AstFrame *) astSkyFrame( " " );
+   if( !strcmp( cls, "SpecFrame" ) ) return (AstFrame *) astSpecFrame( " " );
+   if( !strcmp( cls, "DSBSpecFrame" ) ) return (AstFrame *) astDSBSpecFrame( " " );
+   if( !strcmp( cls, "TimeFrame" ) ) return (AstFrame *) astTimeFrame( " " );
+   if( !strcmp( cls, "FluxFrame" ) ) return (AstFrame *) astFluxFrame( AST__BAD, NULL, " " );
+   if( !strcmp( cls, "SpecFluxFrame" ) ) {
+      return (AstFrame *) astSpecFluxFrame( astSpecFrame( " " ),
+                                            astFluxFrame( AST__BAD, NULL, " " ), " " );
+   }
+   if( !strcmp( cls, "CmpFrame" ) ) {
+      return (AstFrame *) astCmpFrame( astSkyFrame( " " ), astSpecFrame( " " ), " " );
+   }
+   if( !strcmp( cls, "FrameSet" ) ) return (AstFrame *) astFrameSet( astSkyFrame( " " ), " " );
+   if( !strcmp( cls, "Circle" ) ) {
+      double c[ 2 ] = { 0.0, 0.0 }, r = 0.01;
+      return (AstFrame *) astCircle( astSkyFrame( " " ), 1, c, &r, NULL, " " );
+   }
+   return NULL;
+}
+
+/* The Frame whose attributes show the effect of setting one on the object:
+   a CmpFrame's first component, or a FrameSet's or Region's current Frame. */
+static AstFrame *inner( AstFrame *f, const char *cls ) {
+   if( !strcmp( cls, "CmpFrame" ) || !strcmp( cls, "SpecFluxFrame" ) ) {
+      AstMapping *m1, *m2;
+      int series, inv1, inv2;
+      astDecompose( f, &m1, &m2, &series, &inv1, &inv2 );
+      if( m2 ) m2 = astAnnul( m2 );
+      return (AstFrame *) m1;
+   }
+   if( !strcmp( cls, "FrameSet" ) ) return astGetFrame( (AstFrameSet *) f, AST__CURRENT );
+   if( !strcmp( cls, "Circle" ) ) return astGetRegionFrame( f );
+   return NULL;
+}
+
+static void report( const char *cls, const char *setting, const char *who,
+                    AstFrame *f ) {
+   int a;
+   for( a = 0; attrs[ a ].name; a++ ) {
+      printf( "    (" ); lit( cls ); printf( ", " ); lit( setting );
+      printf( ", " ); lit( who ); printf( ", " ); lit( attrs[ a ].name );
+      printf( ", " );
+      if( attrs[ a ].kind == 's' ) {
+         const char *v = astGetC( f, attrs[ a ].name );
+         printf( "V::S(" ); lit( v ? v : "<NULL>" ); printf( ")" );
+      } else if( attrs[ a ].kind == 'i' ) {
+         printf( "V::I(%d)", astGetI( f, attrs[ a ].name ) );
+      } else if( attrs[ a ].kind == 'd' ) {
+         printf( "V::D(" ); flit( astGetD( f, attrs[ a ].name ) ); printf( ")" );
+      } else {
+         printf( "V::I(%d)", astGetActiveUnit( f ) );
+      }
+      /* astTestActiveUnit is protected, so ActiveUnit has no test flag. */
+      if( attrs[ a ].kind == 'a' ) {
+         printf( ", None),\n" );
+      } else {
+         printf( ", Some(%s)),\n", astTest( f, attrs[ a ].name ) ? "true" : "false" );
+      }
+      if( !astOK ) astClearStatus;
+   }
+}
+
+int main( void ) {
+   int status = 0;
+   int c, s;
+   astWatch( &status );
+
+   printf( "// Generated by tools/oracle_fixtures/frame_class_attrs_probe.c against\n"
+           "// the C library at the submodule pin. Do not edit.\n\n"
+           "// Each value is printed with 17 digits so that it reads back exactly.\n"
+           "#![allow(clippy::excessive_precision)]\n\n"
+           "use ast_core::constants::BAD_VALUE as BAD;\n\n"
+           "/// An attribute value as C reports it.\n"
+           "#[derive(Debug, Clone, Copy, PartialEq)]\n"
+           "pub enum V {\n    S(&'static str),\n    I(i32),\n    D(f64),\n}\n\n"
+           "/// `(class, setting, whose, attribute, value, test)`: `whose` is\n"
+           "/// \"self\" for the object itself and \"inner\" for its first\n"
+           "/// component or current Frame; `test` is `None` for ActiveUnit, whose\n"
+           "/// astTestActiveUnit is protected.\n"
+           "pub type Case = (&'static str, &'static str, &'static str, &'static str, V, Option<bool>);\n\n"
+           "pub const CASES: &[Case] = &[\n" );
+
+   for( c = 0; classes[ c ]; c++ ) {
+      for( s = 0; settings[ s ]; s++ ) {
+         AstFrame *f = make( classes[ c ] );
+         AstFrame *in;
+         astSet( f, "%s", settings[ s ] );
+         if( !astOK ) astClearStatus;
+         report( classes[ c ], settings[ s ], "self", f );
+         in = inner( f, classes[ c ] );
+         if( in ) {
+            report( classes[ c ], settings[ s ], "inner", in );
+            in = astAnnul( in );
+         }
+         f = astAnnul( f );
+      }
+   }
+   printf( "];\n" );
+   return astOK ? 0 : 1;
+}

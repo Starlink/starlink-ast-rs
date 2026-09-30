@@ -60,13 +60,15 @@ impl FluxSystem {
         }
     }
 
-    /// Human-readable label for this system.
+    /// Human-readable label for this system: C's `SystemLabel`
+    /// (fluxframe.c:3212) with its first letter capitalised, which is how C
+    /// reports the default Label and Title.
     pub fn label(&self) -> &'static str {
         match self {
-            Self::FluxDen => "Flux Density",
-            Self::FluxDenW => "Flux Density",
-            Self::SBright => "Surface Brightness",
-            Self::SBrightW => "Surface Brightness",
+            Self::FluxDen => "Flux density",
+            Self::FluxDenW => "Flux wavelength density",
+            Self::SBright => "Surface brightness",
+            Self::SBrightW => "Surface brightness (per wavelength)",
         }
     }
 
@@ -152,9 +154,9 @@ impl FluxSystem {
 /// ```
 #[derive(Debug, Clone)]
 pub struct FluxFrame {
+    /// The Frame-class attributes.
+    attrs: super::frame_attrs::FrameAttrs,
     // Frame-level attributes
-    title: Option<String>,
-    domain: Option<String>,
 
     // FluxFrame-specific
     system: FluxSystem,
@@ -170,28 +172,48 @@ pub struct FluxFrame {
     /// (the default `GetSpecFrame` path). Required for a meaningful
     /// cross-density-system flux conversion.
     specframe: Option<Box<super::specframe::SpecFrame>>,
-
     // Object-level attributes
-    act_unt: Option<bool>,
-    ident: Option<String>,
 
     // Match-control attributes (used by `astFindFrame` / `astMatch`).
-    min_axes_opt: Option<usize>,
-    max_axes_opt: Option<usize>,
-    match_end_opt: Option<bool>,
-    preserve_axes_opt: Option<bool>,
-    permute_opt: Option<bool>,
 }
 
 impl FluxFrame {
+    // Defaults of the Frame-class attributes, for the `frame_attrs_*`
+    // macros.
+
+    /// The System label, capitalised, followed by the SpecVal when one is
+    /// set (fluxframe.c `GetTitle`).
+    fn frame_default_title(&self) -> String {
+        let mut title = self.system().label().to_string();
+        if let Some(first) = title.get(..1) {
+            title = first.to_ascii_uppercase() + &title[1..];
+        }
+        let specval = self.spec_val();
+        if specval != BAD_VALUE {
+            let sf = self.get_spec_frame();
+            let sv = Frame::format(&sf, 1, specval).unwrap_or_default();
+            let su = Frame::effective_unit(&sf, 1);
+            title.push_str(&format!(" at = {sv} {su}"));
+        }
+        title
+    }
+    fn frame_default_domain(&self) -> &'static str {
+        "FLUX"
+    }
+    fn frame_default_epoch(&self) -> f64 {
+        super::frame_attrs::default_epoch_mjd()
+    }
+    fn frame_default_permute(&self) -> bool {
+        true
+    }
+
     /// Create a new `FluxFrame` with the given flux coordinate system.
     ///
     /// Defaults: domain = "FLUX".
     pub fn new(system: FluxSystem) -> Self {
         Self {
-            title: None,
+            attrs: super::frame_attrs::FrameAttrs::default(),
             // None = use the default "FLUX"; mirrors astTestDomain.
-            domain: None,
             system,
             // Match the SpecFrame convention: when the constructor is
             // called with the default system (FluxDen here), treat it
@@ -201,13 +223,6 @@ impl FluxFrame {
             unit: None,
             spec_val: None,
             specframe: None,
-            act_unt: None,
-            ident: None,
-            min_axes_opt: None,
-            max_axes_opt: None,
-            match_end_opt: None,
-            preserve_axes_opt: None,
-            permute_opt: None,
         }
     }
 
@@ -223,31 +238,31 @@ impl FluxFrame {
     }
 
     /// Frame Title accessor. Returns the empty string when unset.
-    pub fn title(&self) -> &str {
-        self.title.as_deref().unwrap_or("")
+    pub fn title(&self) -> String {
+        Frame::title(self)
     }
 
     /// Whether Title has been explicitly set. Mirrors `astTestTitle`.
     pub fn test_title(&self) -> bool {
-        self.title.is_some()
+        self.attrs.title.is_some()
     }
 
     /// Clear the Title attribute.
     pub fn clear_title(&mut self) {
-        self.title = None;
+        self.attrs.title = None;
     }
 
     // --- FluxFrame-specific attributes ---
 
     /// Return the frame identification string.
     pub fn ident(&self) -> &str {
-        self.ident.as_deref().unwrap_or("")
+        self.attrs.ident.as_deref().unwrap_or("")
     }
 
     /// Set the frame identification string. Mirrors `astSetIdent`.
     pub fn set_ident(&mut self, ident: impl Into<String>) {
         let s = ident.into();
-        self.ident = if s.is_empty() { None } else { Some(s) };
+        self.attrs.ident = if s.is_empty() { None } else { Some(s) };
     }
 
     /// Return the flux coordinate system.
@@ -507,23 +522,23 @@ impl FluxFrame {
 
     /// Set the title.
     pub fn set_title(&mut self, title: &str) {
-        self.title = Some(title.to_string());
+        self.attrs.title = Some(title.to_string());
     }
 
     /// Set the domain.
     pub fn set_domain(&mut self, domain: &str) {
-        self.domain = Some(domain.to_string());
+        self.attrs.domain = Some(domain.to_string());
     }
 
     /// Test whether the domain attribute has been explicitly set.
     /// Mirrors C's `astTestDomain` for `FluxFrame`.
     pub fn test_domain(&self) -> bool {
-        self.domain.is_some()
+        self.attrs.domain.is_some()
     }
 
     /// Clear the domain attribute, reverting to the default `"FLUX"`.
     pub fn clear_domain(&mut self) {
-        self.domain = None;
+        self.attrs.domain = None;
     }
 }
 
@@ -553,6 +568,14 @@ fn transform1(map: &dyn crate::mappings::Mapping, value: f64, forward: bool) -> 
 // ---------------------------------------------------------------------------
 
 impl Frame for FluxFrame {
+    frame_attrs_title!();
+    frame_attrs_domain!();
+    frame_attrs_epoch!();
+    frame_attrs_digits!();
+    frame_attrs_observer!();
+    frame_attrs_ident!();
+    frame_attrs_match!();
+
     fn naxes(&self) -> usize {
         1
     }
@@ -654,86 +677,9 @@ impl Frame for FluxFrame {
         Some(self.system.as_str())
     }
 
-    fn domain(&self) -> &str {
-        self.domain.as_deref().unwrap_or("FLUX")
-    }
-
-    fn clear_domain(&mut self) {
-        FluxFrame::clear_domain(self);
-    }
-
-    fn test_domain(&self) -> bool {
-        FluxFrame::test_domain(self)
-    }
-
-    fn ident(&self) -> &str {
-        FluxFrame::ident(self)
-    }
-
-    fn set_ident(&mut self, ident: &str) {
-        FluxFrame::set_ident(self, ident);
-    }
-
-    fn clear_ident(&mut self) {
-        self.ident = None;
-    }
-
-    fn test_ident(&self) -> bool {
-        self.ident.is_some()
-    }
-
     // -----------------------------------------------------------------
     // Match-control attributes (mirror C `astGet/SetMinAxes` etc.).
     // -----------------------------------------------------------------
-
-    fn min_axes(&self) -> usize {
-        self.min_axes_opt.unwrap_or(1)
-    }
-    fn set_min_axes(&mut self, n: usize) {
-        self.min_axes_opt = Some(n);
-    }
-    fn test_min_axes(&self) -> bool {
-        self.min_axes_opt.is_some()
-    }
-    fn max_axes(&self) -> usize {
-        self.max_axes_opt.unwrap_or(1)
-    }
-    fn set_max_axes(&mut self, n: usize) {
-        self.max_axes_opt = Some(n);
-    }
-    fn test_max_axes(&self) -> bool {
-        self.max_axes_opt.is_some()
-    }
-    fn match_end(&self) -> bool {
-        self.match_end_opt.unwrap_or(false)
-    }
-    fn set_match_end(&mut self, v: bool) {
-        self.match_end_opt = Some(v);
-    }
-    fn test_match_end(&self) -> bool {
-        self.match_end_opt.is_some()
-    }
-    fn preserve_axes(&self) -> bool {
-        self.preserve_axes_opt.unwrap_or(false)
-    }
-    fn set_preserve_axes(&mut self, v: bool) {
-        self.preserve_axes_opt = Some(v);
-    }
-    fn test_preserve_axes(&self) -> bool {
-        self.preserve_axes_opt.is_some()
-    }
-    fn permute(&self) -> bool {
-        // FluxFrame is 1-axis: permutations are degenerate. C defaults
-        // Permute to 1 (true) for FluxFrame because the parent Frame
-        // class default applies (fluxframe.c does not override).
-        self.permute_opt.unwrap_or(true)
-    }
-    fn set_permute(&mut self, v: bool) {
-        self.permute_opt = Some(v);
-    }
-    fn test_permute(&self) -> bool {
-        self.permute_opt.is_some()
-    }
 
     // -----------------------------------------------------------------
     // Match / SubFrame / Overlay (fluxframe.c:2280 / 2888 / 2470).
@@ -873,7 +819,7 @@ fn fluxframe_overlay(
             result_flux.set_domain(template_flux.domain());
         }
         if template_flux.test_title() {
-            if let Some(ref t) = template_flux.title {
+            if let Some(ref t) = template_flux.attrs.title {
                 result_flux.set_title(t);
             }
         }
@@ -962,7 +908,7 @@ impl Serializable for FluxFrame {
         // --- Frame-level attributes (before IsA Frame) ---
 
         // Title (if set and non-empty).
-        if let Some(ref title) = self.title {
+        if let Some(ref title) = self.attrs.title {
             if !title.is_empty() {
                 node.push_string(
                     "Title",
@@ -976,7 +922,7 @@ impl Serializable for FluxFrame {
         node.push_int("Naxes", 1, Some("Number of coordinate axes".to_string()));
 
         // Domain (if set and != "FLUX", which is the default).
-        if let Some(ref domain) = self.domain {
+        if let Some(ref domain) = self.attrs.domain {
             if !domain.is_empty() && domain != "FLUX" {
                 node.push_string(
                     "Domain",
@@ -1004,7 +950,7 @@ impl Serializable for FluxFrame {
         }
 
         // ActUnt (if explicitly set to false).
-        if let Some(false) = self.act_unt {
+        if let Some(false) = self.attrs.active_unit {
             node.push_int(
                 "ActUnt",
                 0,
@@ -1050,7 +996,7 @@ impl Serializable for FluxFrame {
         // Domain.
         let domain = node.get_string("Domain", "");
         if !domain.is_empty() {
-            ff.domain = Some(domain);
+            ff.attrs.domain = Some(domain);
         }
 
         // SpecVal (SpcVl).
@@ -1071,13 +1017,13 @@ impl Serializable for FluxFrame {
 
         // ActUnt.
         if node.get_int("ActUnt", 1) == 0 {
-            ff.act_unt = Some(false);
+            ff.attrs.active_unit = Some(false);
         }
 
         // Ident.
         let ident = node.get_string("Ident", "");
         if !ident.is_empty() {
-            ff.ident = Some(ident);
+            ff.attrs.ident = Some(ident);
         }
 
         // Per-axis Unit string from the Ax1 Axis child node.

@@ -11,6 +11,7 @@ unitnorm_probe
 frame_in_map_slot_probe
 skyframe_format_probe
 frame_attrs_probe
+frame_class_attrs_probe
 # Debug symbols clang writes beside each binary on macOS.
 *.dSYM/
 

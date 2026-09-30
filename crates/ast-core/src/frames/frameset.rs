@@ -740,7 +740,7 @@ impl FrameSet {
         match map {
             // No Mapping: just rename the currently-selected variant.
             None => {
-                vfs.frame_mut(FrameRef::Current)?.set_domain(&myname);
+                vfs.frame_mut(FrameRef::Current)?.set_domain(&myname)?;
             }
             // A Mapping: append a new variant frame.
             Some(map) => {
@@ -759,7 +759,7 @@ impl FrameSet {
                 // The new variant frame is a copy of the parent frame with its
                 // own variants cleared and Domain set to the variant name.
                 let mut vfrm = self.frames[icur].snapshot();
-                vfrm.set_domain(&myname);
+                vfrm.set_domain(&myname)?;
 
                 let saved_cur = vfs.current_idx;
                 vfs.add_frame(FrameRef::Current, map3, vfrm)?;
@@ -1098,7 +1098,94 @@ impl FrameSet {
 // Frame trait implementation                                              //
 // ====================================================================== //
 
+/// A Frame-class attribute of a FrameSet: read from its current Frame, and
+/// set or cleared on it with FrameSet integrity restored afterwards, as C's
+/// FrameSet does for every Frame attribute (frameset.c, the attribute
+/// access macros and `RestoreIntegrity`).
+macro_rules! frameset_attr {
+    (@get $name:ident -> $ty:ty) => {
+        fn $name(&self) -> $ty {
+            self.current().$name()
+        }
+    };
+    (@set $name:ident($arg:ident: $ty:ty)) => {
+        fn $name(&mut self, $arg: $ty) -> AstResult<()> {
+            self.with_integrity(|f| f.$name($arg))
+        }
+    };
+    (@clear $name:ident) => {
+        fn $name(&mut self) -> AstResult<()> {
+            self.with_integrity(|f| f.$name())
+        }
+    };
+    ($get:ident: $ty:ty, $set:ident, $test:ident, $clear:ident) => {
+        frameset_attr!(@get $get -> $ty);
+        frameset_attr!(@set $set(value: $ty));
+        frameset_attr!(@get $test -> bool);
+        frameset_attr!(@clear $clear);
+    };
+}
+
 impl Frame for FrameSet {
+    fn title(&self) -> String {
+        self.current().title()
+    }
+    fn set_title(&mut self, title: &str) -> AstResult<()> {
+        self.with_integrity(|f| f.set_title(title))
+    }
+    frameset_attr!(@get test_title -> bool);
+    frameset_attr!(@clear clear_title);
+    fn domain(&self) -> &str {
+        self.current().domain()
+    }
+    fn set_domain(&mut self, domain: &str) -> AstResult<()> {
+        self.with_integrity(|f| f.set_domain(domain))
+    }
+    frameset_attr!(@get test_domain -> bool);
+    frameset_attr!(@clear clear_domain);
+    frameset_attr!(epoch_mjd: f64, set_epoch_mjd, test_epoch, clear_epoch);
+    frameset_attr!(digits: i32, set_digits, test_digits, clear_digits);
+    frameset_attr!(obs_lat: f64, set_obs_lat, test_obs_lat, clear_obs_lat);
+    frameset_attr!(obs_lon: f64, set_obs_lon, test_obs_lon, clear_obs_lon);
+    frameset_attr!(obs_alt: f64, set_obs_alt, test_obs_alt, clear_obs_alt);
+    frameset_attr!(dtai: f64, set_dtai, test_dtai, clear_dtai);
+    frameset_attr!(dut1: f64, set_dut1, test_dut1, clear_dut1);
+    frameset_attr!(min_axes: usize, set_min_axes, test_min_axes, clear_min_axes);
+    frameset_attr!(max_axes: usize, set_max_axes, test_max_axes, clear_max_axes);
+    frameset_attr!(match_end: bool, set_match_end, test_match_end, clear_match_end);
+    frameset_attr!(preserve_axes: bool, set_preserve_axes, test_preserve_axes, clear_preserve_axes);
+    frameset_attr!(permute: bool, set_permute, test_permute, clear_permute);
+
+    fn get_active_unit(&self) -> bool {
+        self.current().get_active_unit()
+    }
+    fn set_active_unit(&mut self, value: bool) {
+        let _ = self.with_integrity(|f| {
+            f.set_active_unit(value);
+            Ok(())
+        });
+    }
+    fn test_active_unit(&self) -> bool {
+        self.current().test_active_unit()
+    }
+
+    // Ident is the FrameSet's own Object-class attribute, not its current
+    // Frame's (object.c).
+    fn ident(&self) -> &str {
+        self.ident.as_deref().unwrap_or("")
+    }
+    fn set_ident(&mut self, ident: &str) -> AstResult<()> {
+        self.ident = (!ident.is_empty()).then(|| ident.to_string());
+        Ok(())
+    }
+    fn clear_ident(&mut self) -> AstResult<()> {
+        self.ident = None;
+        Ok(())
+    }
+    fn test_ident(&self) -> bool {
+        self.ident.is_some()
+    }
+
     fn naxes(&self) -> usize {
         self.current().naxes()
     }
@@ -1224,21 +1311,6 @@ impl Frame for FrameSet {
         frameset_find_frame(self, template, domainlist)
     }
 
-    fn obs_lat(&self) -> Option<f64> {
-        self.current().obs_lat()
-    }
-    fn obs_lon(&self) -> Option<f64> {
-        self.current().obs_lon()
-    }
-    fn obs_alt(&self) -> Option<f64> {
-        self.current().obs_alt()
-    }
-    fn dtai(&self) -> Option<f64> {
-        self.current().dtai()
-    }
-    fn dut1(&self) -> Option<f64> {
-        self.current().dut1()
-    }
     fn system_string(&self) -> Option<&str> {
         self.current().system_string()
     }
@@ -1248,94 +1320,6 @@ impl Frame for FrameSet {
     // (frameset.c:6260-6350); without these, trait defaults (constant
     // values) would silently apply.
     // ------------------------------------------------------------------
-
-    fn domain(&self) -> &str {
-        self.current().domain()
-    }
-
-    fn test_domain(&self) -> bool {
-        self.current().test_domain()
-    }
-
-    fn ident(&self) -> &str {
-        self.ident.as_deref().unwrap_or("")
-    }
-
-    fn set_ident(&mut self, ident: &str) {
-        self.ident = if ident.is_empty() {
-            None
-        } else {
-            Some(ident.to_string())
-        };
-    }
-
-    fn clear_ident(&mut self) {
-        self.ident = None;
-    }
-
-    fn test_ident(&self) -> bool {
-        self.ident.is_some()
-    }
-
-    fn min_axes(&self) -> usize {
-        self.current().min_axes()
-    }
-
-    fn set_min_axes(&mut self, n: usize) {
-        self.frames[self.current_idx].set_min_axes(n);
-    }
-
-    fn test_min_axes(&self) -> bool {
-        self.current().test_min_axes()
-    }
-
-    fn max_axes(&self) -> usize {
-        self.current().max_axes()
-    }
-
-    fn set_max_axes(&mut self, n: usize) {
-        self.frames[self.current_idx].set_max_axes(n);
-    }
-
-    fn test_max_axes(&self) -> bool {
-        self.current().test_max_axes()
-    }
-
-    fn match_end(&self) -> bool {
-        self.current().match_end()
-    }
-
-    fn set_match_end(&mut self, v: bool) {
-        self.frames[self.current_idx].set_match_end(v);
-    }
-
-    fn test_match_end(&self) -> bool {
-        self.current().test_match_end()
-    }
-
-    fn preserve_axes(&self) -> bool {
-        self.current().preserve_axes()
-    }
-
-    fn set_preserve_axes(&mut self, v: bool) {
-        self.frames[self.current_idx].set_preserve_axes(v);
-    }
-
-    fn test_preserve_axes(&self) -> bool {
-        self.current().test_preserve_axes()
-    }
-
-    fn permute(&self) -> bool {
-        self.current().permute()
-    }
-
-    fn set_permute(&mut self, v: bool) {
-        self.frames[self.current_idx].set_permute(v);
-    }
-
-    fn test_permute(&self) -> bool {
-        self.current().test_permute()
-    }
 
     fn match_template(
         &self,
@@ -1450,7 +1434,7 @@ fn convert_current_to(from: &dyn Frame, to: &dyn Frame) -> AstResult<DynMapping>
     let mut b = to.snapshot();
     // Force matching Domains so domain gating does not block the conversion.
     let dom = b.domain().to_string();
-    a.set_domain(&dom);
+    a.set_domain(&dom)?;
     let cvt = crate::frames::find_frame::convert_frames(a.as_ref(), b.as_ref(), &dom)?.ok_or_else(
         || {
             AstError::new(

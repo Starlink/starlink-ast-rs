@@ -109,7 +109,7 @@ fn frameset_delegates_domain_but_owns_ident() {
     // Ident is the FrameSet's own, not the current frame's
     // (frameset.c:4841 passes `this`).
     assert_eq!(Frame::ident(&fs), "");
-    Frame::set_ident(&mut fs, "FS");
+    Frame::set_ident(&mut fs, "FS").unwrap();
     assert_eq!(Frame::ident(&fs), "FS");
     assert_eq!(fs.frame(FrameRef::Current).unwrap().ident(), "Q");
 
@@ -125,7 +125,7 @@ fn frameset_delegates_match_control_attributes() {
 
     // Setting through the FrameSet must write through to the current
     // frame (C forwards SetMinAxes etc.).
-    Frame::set_min_axes(&mut fs, 5);
+    Frame::set_min_axes(&mut fs, 5).unwrap();
     assert_eq!(Frame::min_axes(&fs), 5);
     assert_eq!(fs.frame(FrameRef::Current).unwrap().min_axes(), 5);
 }

@@ -287,13 +287,9 @@ pub(crate) fn spectral_axes(args: SpectralAxesArgs<'_>) -> AstResult<DynMapping>
 
     // OBSGEO-X/Y/Z from observer geodetic position. Only emitted on
     // the primary coord version. Mirrors C:30728-30739.
-    if args.s == ' '
-        && let (Some(geolon), Some(geolat)) = (
-            <SpecFrame as Frame>::obs_lon(specfrm),
-            <SpecFrame as Frame>::obs_lat(specfrm),
-        )
-    {
-        let h = <SpecFrame as Frame>::obs_alt(specfrm).unwrap_or(0.0);
+    if args.s == ' ' && Frame::test_obs_lon(specfrm) && Frame::test_obs_lat(specfrm) {
+        let (geolon, geolat) = (Frame::obs_lon(specfrm), Frame::obs_lat(specfrm));
+        let h = Frame::obs_alt(specfrm);
         if let Some(xyz) = crate::pal::gd2gc(geolon, geolat, h) {
             args.store.obsgeox = Some(xyz[0]);
             args.store.obsgeoy = Some(xyz[1]);
