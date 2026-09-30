@@ -682,6 +682,24 @@ pub trait Frame: AsAny + Send + fmt::Debug {
         self.effective_unit(axis)
     }
 
+    /// Read-only `NormUnit(axis)` (1-based): the Unit this Frame reports
+    /// for the axis, simplified where possible (`"s*(m/s)"` gives `"m"`),
+    /// and equal to it when no simplification can be performed, as for a
+    /// blank Unit or a description of axis values such as `"ddd:mm:ss"`.
+    ///
+    /// Mirrors C `astGetNormUnit` (frame.c:13149), which normalises the
+    /// Unit the Frame reports rather than the one stored in the Axis,
+    /// because SpecFrame, TimeFrame, FluxFrame and SkyFrame each report
+    /// Units of their own. C takes the Axis method instead when the Axis
+    /// Unit is set, which normalises the same string. `SkyFrame`
+    /// overrides this, as it does in C.
+    ///
+    /// C reports `AST__FMTER` for a result longer than its 127-character
+    /// buffer; the port has no such limit.
+    fn norm_unit(&self, axis: usize) -> String {
+        crate::units::norm_unit(&self.effective_unit(axis))
+    }
+
     /// Effective `Symbol(axis)` (1-based): the explicitly-set per-axis
     /// symbol if present, else the class default. Mirrors the Frame
     /// `astGetSymbol` virtual (frame.c:5760), whose base default falls

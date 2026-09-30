@@ -12,6 +12,38 @@ Two entries are not here because part of each is still open, and both stay in
 
 ---
 
+## 2. Frames and Mappings
+
+### `NormUnit` — the one unported Frame attribute — CLOSED
+
+The row as it stood when it was opened:
+
+| `NormUnit` — the one unported Frame attribute | its own spec, not yet written | OPEN — no `norm_unit` anywhere in `ast-core`, while all 15 Frame-level attributes and 9 of the 10 per-axis attributes are ported, so this is a bounded gap rather than an audit. C derives it from the Unit the Frame reports (`frame.c:13125 (fn GetNormUnit)`), with the normalise-or-return-unchanged policy in the internal `astNormUnit` (`unit.c:5936`) shared by `axis.c` and `frame.c`, and SkyAxis returning a sexagesimal description unchanged (`skyaxis.c:3095 (fn GetAxisNormUnit)`) because it describes axis values rather than being a unit expression. Upstream reworked all three in `89bf58e2`, `d4a55144` and `51ab0542`. **What would expose it**: a test asserting the documented relationship — `NormUnit` equals `Unit` when no simplification is possible and a simplification of it otherwise — across a default `Frame`, both `SkyFrame` axes, a `SpecFrame` and a `TimeFrame`. Asserting the individual strings instead is how the C defect survived eleven years, because the strings recorded what the library returned rather than what the attribute documents. Nothing fails on account of the gap today, which is why it is written down |
+
+Closed by `Frame::norm_unit` (`crates/ast-core/src/frames/mod.rs`), which
+normalises the Unit the Frame reports, as `astGetNormUnit` (`frame.c:13149`)
+does since upstream `d4a55144`, and `SkyFrame::norm_unit`, which returns a Unit
+that describes the axis values unchanged, as `SkyAxis::GetAxisNormUnit`
+(`skyaxis.c:3095`) does since `51ab0542`.
+The normaliser itself was not in the port: `astUnitNormaliser`, the
+`mathmap = 2` style of `MakeExp` and `ModifyPrefix` are in `crates/ast-core/src/units/`.
+
+The test the row asked for is in `crates/ast-core/tests/test_frame.rs`: the
+relationship across a default Frame, both SkyFrame axes, a SpecFrame and a
+TimeFrame, plus a table of 46 `(Unit, NormUnit)` pairs captured from the C
+library.
+The table found three `unit.c` defects, fixed upstream on `u/timj/norm-unit`
+and in the port, and recorded under "Resolved upstream" in
+`docs/issues/c-library-quirks.md`: a constant numerator was not inverted, so
+`2/m` converted as `0.5/m` (`965b7587`); a result that merely started with a
+number was blanked, so `2*m` normalised to `""` (`25bd4924`); and
+`ModifyPrefix` recursed without end on `2/m` and similar (`8c734154`).
+What the port cannot yet test is the SkyFrame `Format` block of `testframe.c`,
+because the Rust SkyFrame has no `Format` attribute; that is its own row in
+`PLAN.md` §2.
+
+---
+
 ## 8. Upstream sync at `f6762005` — done
 
 The pin moved from `50c2b21b` to `f6762005`: 41 commits, 25 `src/` files,

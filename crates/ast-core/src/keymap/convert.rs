@@ -114,7 +114,7 @@ fn scan_int(s: &str) -> Option<i64> {
 /// covers the forms glibc's `strtod`/`sscanf("%lf")` accept: an optional
 /// sign, `0x`/`0X`, hex digits with an optional `.`, and an optional
 /// binary exponent (`p`/`P`, optional sign, decimal digits).
-fn scan_double(s: &str) -> Option<f64> {
+pub(crate) fn scan_double(s: &str) -> Option<f64> {
     let t = s.trim();
     if t.is_empty() {
         return None;

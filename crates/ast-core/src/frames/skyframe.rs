@@ -861,12 +861,47 @@ impl SkyFrame {
     /// (Galactic, Ecliptic, Supergalactic, Helio-ecliptic, AzEl, Unknown)
     /// default to degrees on both axes.
     fn default_units(&self) -> (&'static str, &'static str) {
+        let (lon, lat) = self.default_axis_units();
+        (lon.text, lat.text)
+    }
+
+    /// [`default_units`](Self::default_units), each with whether it
+    /// describes the formatted axis values rather than naming a unit.
+    ///
+    /// C derives the default Unit from the axis Format with `DHmsUnit`
+    /// (skyaxis.c:2279), which flags a description (its `descr` argument)
+    /// when the Format has more than one field, or a single minutes or
+    /// seconds field of a time. The equatorial defaults come from the
+    /// multi-field Formats `hms.1` and `dms`; the others from the
+    /// single-field decimal Format `d.4` (`GetFormat`, skyframe.c:3394),
+    /// which names a unit.
+    fn default_axis_units(&self) -> (SkyAxisUnit, SkyAxisUnit) {
         if self.system.is_equatorial() {
-            ("hh:mm:ss.s", "ddd:mm:ss")
+            (
+                SkyAxisUnit {
+                    text: "hh:mm:ss.s",
+                    describes_values: true,
+                },
+                SkyAxisUnit {
+                    text: "ddd:mm:ss",
+                    describes_values: true,
+                },
+            )
         } else {
-            ("degrees", "degrees")
+            let degrees = SkyAxisUnit {
+                text: "degrees",
+                describes_values: false,
+            };
+            (degrees, degrees)
         }
     }
+}
+
+/// A SkyFrame axis's default Unit. See [`SkyFrame::default_axis_units`].
+#[derive(Clone, Copy)]
+struct SkyAxisUnit {
+    text: &'static str,
+    describes_values: bool,
 }
 
 impl Frame for SkyFrame {
@@ -917,6 +952,29 @@ impl Frame for SkyFrame {
         // SkyFrame axes are angles stored internally in radians. Mirrors
         // C `astGetInternalUnit` for a SkyAxis returning "rad".
         "rad".to_string()
+    }
+
+    /// Mirrors C `SkyFrame::GetNormUnit` (skyframe.c:4349), which asks the
+    /// SkyAxis, and `SkyAxis::GetAxisNormUnit` (skyaxis.c:3095). A Unit
+    /// that describes the axis values, such as `"hh:mm:ss.s"`, has no
+    /// normalised form and is returned unchanged; this has to be decided
+    /// here rather than by the units parser, which reads the spaces in a
+    /// description such as `"hh mm ss"` as multiplication. A Unit that
+    /// names a unit, such as `"degrees"`, is normalised.
+    ///
+    /// C also normalises a Unit that has been set on the axis, and the
+    /// `"rad"` a `%`-style Format implies. Neither can arise here: this
+    /// SkyFrame has no Unit or Format attribute, so its Unit is always the
+    /// default for its System.
+    fn norm_unit(&self, axis: usize) -> String {
+        let phys = self.physical_axis(axis).unwrap_or(0);
+        let (lon, lat) = self.default_axis_units();
+        let unit = if phys == 0 { lon } else { lat };
+        if unit.describes_values {
+            unit.text.to_string()
+        } else {
+            crate::units::norm_unit(unit.text)
+        }
     }
 
     fn effective_symbol(&self, axis: usize) -> String {
