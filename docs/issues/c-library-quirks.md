@@ -39,6 +39,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 
 ### [Resolved upstream](#resolved-upstream)
 
+- [RESOLVED (upstream 965b7587): `InvertConstants` leaves a constant numerator uninverted, so `"2/m"` converts as `"0.5/m"`](#resolved-upstream-965b7587-invertconstants-leaves-a-constant-numerator-uninverted-so-2m-converts-as-05m)
 - [RESOLVED (upstream e40e71b4): CmpMap `IsSimp` tag placement depends on shared-pointer aliasing during simplification](#resolved-upstream-e40e71b4-cmpmap-issimp-tag-placement-depends-on-shared-pointer-aliasing-during-simplification)
 - [RESOLVED (upstream f54ff1b7): `WcsNative` dumps a vestigial `Invert` on a PermMap shared between two stages](#resolved-upstream-f54ff1b7-wcsnative-dumps-a-vestigial-invert-on-a-permmap-shared-between-two-stages)
 - [RESOLVED (upstream ad04291c): VELOSYS drift via lossy `RefRA`/`RefDec` round-trip](#resolved-upstream-ad04291c-velosys-drift-via-lossy-refrarefdec-round-trip)
@@ -872,6 +873,18 @@ To be raised upstream.
 
 Each entry names the commit that fixed it.
 Where the port mirrored the defect, the entry also records the inversion, because a mirror of a fixed bug is a bug.
+
+The `unit.c` entry immediately below is fixed on upstream branch `u/timj/norm-unit` (not yet merged), which is what the submodule pin points at.
+
+### RESOLVED (upstream 965b7587): `InvertConstants` leaves a constant numerator uninverted, so `"2/m"` converts as `"0.5/m"`
+
+`InvertConstants` (`unit.c:2485` before the fix) turns a units string into the transformation that converts values into those units, which means taking the reciprocal of each constant coefficient.
+It did this for a constant factor of a `MULT` node and a constant denominator of a `DIV` node, but not for a constant numerator.
+`"2/m"` and `"2*m**-1"` name the same unit, yet converting a value of 1 per metre gave 2 in the first and 0.5 in the second; only 0.5 is right.
+This affected every unit conversion (`astUnitMapper`, so Frame `ActiveUnit` matching and SpecFrame / FluxFrame unit changes).
+
+**Rust behaviour:** `invert_constants` in `crates/ast-core/src/units/simplify.rs` had ported the defect faithfully, and now inverts both arguments of a `DIV`, as upstream does.
+`convert_constant_numerator_units` in `crates/ast-core/tests/test_convert.rs` ports upstream's `testconvert.c` Errors 52-53.
 
 ### RESOLVED (upstream e40e71b4): CmpMap `IsSimp` tag placement depends on shared-pointer aliasing during simplification
 

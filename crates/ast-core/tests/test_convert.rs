@@ -177,3 +177,33 @@ fn find_frame_domain_mismatch_returns_none() {
             .is_none()
     );
 }
+
+/// A constant in a units string is a coefficient wherever it appears:
+/// `"2/m"` means "each unit is 2 per metre", the same as `"2*m**-1"`, so a
+/// value of 1 per metre is 0.5 in either (testconvert.c Errors 52-53).
+#[test]
+fn convert_constant_numerator_units() {
+    let cases = [
+        ("1/m", "2/m", 0.5),
+        ("1/m", "2*m**-1", 0.5),
+        ("1/m", "0.5/m", 2.0),
+        ("Hz", "2/s", 0.5),
+    ];
+    for (from, to, expect) in cases {
+        let mut f1 = BasicFrameBuilder::new(1).unit(1, from).build().unwrap();
+        let mut f2 = BasicFrameBuilder::new(1).unit(1, to).build().unwrap();
+        f1.set_active_unit(true);
+        f2.set_active_unit(true);
+        let fs = f1
+            .convert_to(&f2, &[])
+            .unwrap()
+            .unwrap_or_else(|| panic!("no conversion from {from} to {to}"));
+        let map = fs.mapping(FrameRef::Base, FrameRef::Current).unwrap();
+        let out = map.tran1(&[1.0], true).unwrap();
+        assert!(
+            (out[0] - expect).abs() <= 1.0e-12,
+            "1 {from} is {} {to}, expected {expect}",
+            out[0]
+        );
+    }
+}

@@ -374,6 +374,16 @@ commit, so it needs moving again once PR #77 lands. Two port gaps the new
 round-trip sweep exposed are named in §6's ledger with the C function that closes
 each.
 
+Since 2026-09-30 that tip is `8c734154` on `u/timj/norm-unit`, three `unit.c`
+fixes on top of `208d0998` found while porting `NormUnit` (§2); it needs moving
+again when that branch merges too.
+After the move `check_corpus_fresh.sh` reports 95 reproduced, 14 numeric and no
+card-only or structural drift on arm64 macOS, where the numeric residue is the
+Linux-capture drift the protocol leaves alone.
+`check_simplify_fresh.sh` reports 496 fresh, 2 numerically drifted and no
+card-only or structural drift. Upstream's ctest passes 2496 of 2496 at the new
+pin.
+
 ## C → Rust test migration tracker
 
 | C test (`ast_tester/`) | Rust counterpart | Status |

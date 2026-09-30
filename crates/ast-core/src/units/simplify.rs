@@ -268,11 +268,18 @@ pub(crate) fn invert_constants(node: &mut Box<UnitNode>) -> Option<()> {
                 node.arg[i].con = 1.0 / node.arg[i].con;
             }
         }
-    } else if op == Oper::Div && node.arg[1].con != BAD_VALUE {
-        if node.arg[1].con == 0.0 {
-            return None;
+    } else if op == Oper::Div {
+        // A constant numerator is a coefficient just as a constant factor
+        // is ("2/m" is "2*m**-1"), and a constant denominator is the
+        // reciprocal of one, so both are inverted.
+        for i in 0..2 {
+            if node.arg[i].con != BAD_VALUE {
+                if node.arg[i].con == 0.0 {
+                    return None;
+                }
+                node.arg[i].con = 1.0 / node.arg[i].con;
+            }
         }
-        node.arg[1].con = 1.0 / node.arg[1].con;
     } else if op == Oper::Pow && node.arg[1].con == BAD_VALUE {
         // Variable exponent — illegal per FITS-WCS paper I.
         return None;
