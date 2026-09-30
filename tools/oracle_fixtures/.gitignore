@@ -9,6 +9,7 @@ keymap_hash
 gen_simp
 unitnorm_probe
 frame_in_map_slot_probe
+skyframe_format_probe
 # Debug symbols clang writes beside each binary on macOS.
 *.dSYM/
 

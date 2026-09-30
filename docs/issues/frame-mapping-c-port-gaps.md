@@ -348,9 +348,10 @@ The confirmed divergences:
 - **[MED] SkyFrame — Bottom/Top defaults missing.**
   C `GetBottom`/`GetTop` (`skyframe.c:2907`/`3234`) clamp the latitude axis to ±π/2 by default; `skyframe.rs` has no bottom/top handling at all (zero grep hits), which feeds NormBox/Region bounding and the serialised Bot/Top tokens.
 
-- **[MED] SkyAxis — Format attribute and Digits-driven precision unsupported.**
-  Rust `format_sky` (`skyaxis.rs:159`) hardcodes precision 1 (time) / 0 (degrees), which happens to equal the C defaults at Digits=7 (`skyaxis.c GetAxisFormat`: "h"/"hm"/"hms"/"hms.N" by Digits), but there is no per-axis Format string (C accepts specifiers like `+zhms.2`, `g`, `d`, `lbi`, separator control), no Digits attribute, and no `AxisGap`/`AxisAbbrev`/`AxisFields`.
-  Affects astFormat/astUnformat C-API parity and Plot tick labelling.
+- **[MED] SkyAxis — Format attribute and Digits-driven precision unsupported.** *(FORMATTING PORTED 2026-09-30; unformatting and Plot methods remain.)*
+  Rust `format_sky` hardcoded precision 1 (time) / 0 (degrees), which happens to equal the C defaults at Digits=7 (`skyaxis.c GetAxisFormat`: "h"/"hm"/"hms"/"hms.N" by Digits), but there was no per-axis Format string (C accepts specifiers like `+zhms.2`, `g`, `d`, `lbi`, separator control), no Digits attribute, and no `AxisGap`/`AxisAbbrev`/`AxisFields`.
+  Now ported: Format, Digits (Frame and per axis), AsTime and Unit on SkyFrame, with `ParseDHmsFormat`, `DHmsFormat`, `DHmsUnit` and the default-Format rules of `GetAxisFormat` and `SkyFrame::GetFormat`, their Native dump/load and Overlay, all checked against C in `tests/test_skyframe_format.rs`.
+  Still open, each a `PLAN.md` §2 row: `AxisUnformat` does not read the Format, a SkyAxis picked into a plain Frame is not a SkyAxis, and `AxisGap`/`AxisAbbrev`/`AxisFields` wait for Plot.
 
 - **[DEFERRED] SkyFrame — spherical overrides of the missing Frame-method family.**
   `Gap`, `GetDirection`, `Offset2`, `Resolve`/`ResolvePoints`, `Intersect`, `NormBox`, `NormalPoints`, `FrameGrid`, `LineDef`/`LineContains`/`LineCrossing`/`LineOffset`, `MatchAxesX` all have SkyFrame-specific great-circle implementations in C and no Rust counterpart; schedule with the Frame-base family (section 6) since the base methods are prerequisites.

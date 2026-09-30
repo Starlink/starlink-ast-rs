@@ -26,6 +26,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [The `IsSimp` card does not survive being read back, for twelve classes](#the-issimp-card-does-not-survive-being-read-back-for-twelve-classes)
 - [`CmpFrame::NormBox` can never widen a box](#cmpframenormbox-can-never-widen-a-box)
 - [`UnitNormMap`'s zero-norm guard is defeated by compiler multiply-add contraction](#unitnormmaps-zero-norm-guard-is-defeated-by-compiler-multiply-add-contraction)
+- [A `%` Format on a SkyAxis changes the Unit but not the formatting](#a--format-on-a-skyaxis-changes-the-unit-but-not-the-formatting)
 
 ### [Addressed here, and not going upstream](#addressed-here-and-not-going-upstream)
 
@@ -414,6 +415,17 @@ not fuse. `FMA_SUBSTITUTIONS_LICENSED` in
 `crates/ast-core/tests/test_transform_oracle.rs` substitutes the two affected
 oracle rows so the port is held to the prescribed value rather than the fused
 one.
+
+To be raised upstream.
+
+### A `%` Format on a SkyAxis changes the Unit but not the formatting
+
+`SkyAxis::AxisFormat` (`skyaxis.c:809`) hands a Format starting with `%` to the Axis class's `AxisFormat`, meaning the value is to be formatted as a plain number of radians.
+That method reads the Format through the Axis class's private `GetAxisFormat` (`axis.c:731`), which returns the Axis's own Format member; a SkyAxis stores its Format separately (`skyformat`), so the member is never set and the Axis default `%1.<Digits>G` is used (`axis.c:2673`, `GetDefaultFormat`).
+The `%` Format therefore chooses the numeric path and a Unit of `rad` (`GetAxisUnit`, `skyaxis.c:3288`), and nothing else: at the submodule pin an ICRS SkyFrame with `Format(1)=%10.4f` formats 1.0 as `1`, where a plain Frame with the same Format gives `    1.0000`.
+
+**Rust behaviour (mirror):** `SkyFrame::format` formats a `%`-Format axis with `%1.<Digits>G`, and `format_matches_the_c_library` in `crates/ast-core/tests/test_skyframe_format.rs` pins the `%g` and `%10.4f` cases.
+A fix upstream would pass the SkyAxis Format to the parser, or have the SkyAxis `SetAxisFormat` store a `%` Format in the Axis member too.
 
 To be raised upstream.
 
@@ -888,8 +900,8 @@ It did so only for a default Unit; a set Unit was always treated as a units expr
 A SkyFrame, and a CmpFrame, FrameSet or Region holding one, were unaffected: each passes `NormUnit(n)` by name to the SkyFrame's own method.
 Upstream now leaves a set Unit alone when it equals the description the Format produces; `testframe.c` covers four picked axes.
 
-**Rust behaviour:** not reachable. The port's picked SkyFrame axis is a BasicFrame axis with the SkyFrame's default Unit set on it, and without a SkyFrame Format attribute those defaults (`hh:mm:ss.s`, `ddd:mm:ss`, `degrees`) never contain the spaces that trigger the defect; `picked_sky_axis_keeps_its_norm_unit` in `crates/ast-core/tests/test_frame.rs` pins the result.
-It becomes reachable when the SkyFrame Format row in `PLAN.md` §2 is done, and then the picked axis must carry what SkyAxis knows, not only its Unit string.
+**Rust behaviour:** the SkyFrame itself follows the fixed rule (`SkyFrame::norm_unit`, pinned by `tests/test_skyframe_format.rs`). A picked axis does not yet: the port's picked SkyFrame axis is a BasicFrame axis carrying only the Unit string, so with the SkyFrame Format now ported, `Format(1)=bhms` gives a picked axis NormUnit `hh*mm*s`, C's pre-fix answer.
+That is the "SkyAxis picked into a plain Frame" row in `PLAN.md` §2; `picked_sky_axis_keeps_its_norm_unit` in `crates/ast-core/tests/test_frame.rs` covers only the default Formats, whose Units contain no spaces.
 
 ### RESOLVED (upstream 965b7587): `InvertConstants` leaves a constant numerator uninverted, so `"2/m"` converts as `"0.5/m"`
 

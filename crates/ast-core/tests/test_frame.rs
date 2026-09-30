@@ -5,10 +5,6 @@
 //!
 //! - The `astAxAngle` block at the end of `testframe.c` is covered by
 //!   `test_frame_geometry.rs`.
-//! - The C test sets `Format(1)` and `Unit(1)` on a SkyFrame to reach the
-//!   SkyAxis unit descriptions ("hh mm ss", "minutes of time", ...). The
-//!   Rust `SkyFrame` has neither attribute, so its Unit is always the
-//!   default for its System; those defaults are checked instead.
 //! - The table of Unit / NormUnit pairs below is not in `testframe.c`. It
 //!   was captured from the C library at the submodule pin with a probe
 //!   that sets `Unit(1)` on a one-axis Frame and reads `NormUnit(1)`, so
@@ -88,6 +84,43 @@ fn sky_frame_norm_unit() {
         sky.perm_axes(&[2, 1]).unwrap();
         assert_eq!(sky.norm_unit(1), expected[1], "permuted {system:?} axis 1");
         assert_eq!(sky.norm_unit(2), expected[0], "permuted {system:?} axis 2");
+    }
+}
+
+/// A SkyFrame axis reports a description of its values rather than a unit
+/// for them whenever its Format calls for more than one sexagesimal field,
+/// or for a single field of a time. Those descriptions contain spaces,
+/// which the units parser reads as multiplication, so they are left alone.
+/// A Format that names a single field of an angle, and a Unit set
+/// explicitly, both give units expressions, which are simplified.
+#[test]
+fn sky_frame_norm_unit_follows_the_format() {
+    let cases = [
+        ("bhms", None, "hh mm ss", "hh mm ss"),
+        ("bdms.2", None, "ddd mm ss.ss", "ddd mm ss.ss"),
+        ("btm", None, "minutes of time", "minutes of time"),
+        ("bts", None, "seconds of time", "seconds of time"),
+        ("bd", None, "degrees", "deg"),
+        ("", Some("s*(m/s)"), "s*(m/s)", "m"),
+    ];
+    for (format, unit, expected_unit, expected_norm) in cases {
+        let mut sky = SkyFrame::new(SkySystem::Icrs);
+        if !format.is_empty() {
+            sky.set_format_str(1, format).unwrap();
+        }
+        if let Some(unit) = unit {
+            sky.set_unit(1, unit).unwrap();
+        }
+        assert_eq!(
+            sky.unit(1).unwrap(),
+            expected_unit,
+            "Unit(1) with {format:?} {unit:?}"
+        );
+        assert_eq!(
+            sky.norm_unit(1),
+            expected_norm,
+            "NormUnit(1) with {format:?} {unit:?}"
+        );
     }
 }
 

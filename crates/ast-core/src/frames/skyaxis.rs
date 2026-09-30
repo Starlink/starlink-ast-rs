@@ -10,7 +10,6 @@
 use std::f64::consts::PI;
 
 use crate::error::{AstError, AstResult, ErrorCode};
-use crate::mappings::helpers::is_bad;
 use crate::serial::{Node, Serializable};
 
 /// Per-axis display properties for a sky coordinate axis.
@@ -18,6 +17,12 @@ use crate::serial::{Node, Serializable};
 pub(crate) struct SkyAxis {
     /// Format as time (hours) rather than angle (degrees).
     pub as_time: Option<bool>,
+    /// The SkyAxis Format string (C's `skyformat`), when set.
+    pub format: Option<String>,
+    /// The Axis Digits value, when set.
+    pub digits: Option<i32>,
+    /// The Axis Unit value, when set.
+    pub unit: Option<String>,
     /// This is a latitude axis (constrains to +/-90 degrees).
     pub is_latitude: bool,
     /// Normalize to [-pi,pi] (true) or [0,2pi] (false).
@@ -31,6 +36,9 @@ impl SkyAxis {
     pub fn longitude() -> Self {
         Self {
             as_time: None,
+            format: None,
+            digits: None,
+            unit: None,
             is_latitude: false,
             centre_zero: None,
         }
@@ -42,6 +50,9 @@ impl SkyAxis {
     pub fn latitude() -> Self {
         Self {
             as_time: None,
+            format: None,
+            digits: None,
+            unit: None,
             is_latitude: true,
             centre_zero: None,
         }
@@ -79,8 +90,479 @@ impl SkyAxis {
 }
 
 // ---------------------------------------------------------------------------
+// Sexagesimal Format strings
+// ---------------------------------------------------------------------------
+
+/// Radians per hour, as C computes it with `palDtf2r( 1, 0, 0.0, ... )`
+/// (skyaxis.c:3521), written out as `eraTf2a`'s arithmetic on ERFA's
+/// `ERFA_DS2R`; the two are bit-identical.
+// The literal is ERFA's, copied verbatim from erfam.h.
+#[allow(clippy::excessive_precision)]
+const HR2RAD: f64 = (60.0 * (60.0 * 1.0 + 0.0) + 0.0) * 7.272205216643039903848712e-5;
+
+/// Radians per degree, as C computes it with `palDaf2r( 1, 0, 0.0, ... )`
+/// (skyaxis.c:3522), written out as `eraAf2a`'s arithmetic on ERFA's
+/// `ERFA_DAS2R`; the two are bit-identical.
+// The literal is ERFA's, copied verbatim from erfam.h.
+#[allow(clippy::excessive_precision)]
+const DEG2RAD: f64 = (60.0 * (60.0 * 1.0 + 0.0) + 0.0) * 4.848136811095359935899141e-6;
+
+/// Length of C's `DHmsFormat` result buffer
+/// (`AST__SKYAXIS_DHMSFORMAT_BUFF_LEN`, skyaxis.h:216), which caps the
+/// number of decimal places so that the result cannot overflow it.
+const DHMSFORMAT_BUFF_LEN: usize = 70;
+
+/// Field separator of a SkyAxis Format.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DHmsSep {
+    /// A character between the fields: `':'` (`i`) or `' '` (`b`).
+    Char(char),
+    /// Letters after each field, as in `12h34m56s` (`l`, and `g`; see
+    /// [`parse_dhms_format`]).
+    Letters,
+}
+
+/// A SkyAxis Format string, parsed. Mirrors the outputs of C
+/// `ParseDHmsFormat` (skyaxis.c:3536).
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct DHmsFields {
+    pub sep: DHmsSep,
+    /// Prefix a positive value with `+`.
+    pub plus: bool,
+    /// Pad the leading field with zeros.
+    pub lead_zero: bool,
+    /// Format as a time (hours) rather than an angle (degrees).
+    pub as_time: bool,
+    /// A degrees/hours field is present.
+    pub dh: bool,
+    /// A minutes field is present.
+    pub min: bool,
+    /// A seconds field is present.
+    pub sec: bool,
+    /// Decimal places after the final field.
+    pub ndp: usize,
+}
+
+/// Parse a SkyAxis Format string, with `digs` the axis Digits value used by
+/// a `.*` precision. Mirrors C `ParseDHmsFormat` (skyaxis.c:3536).
+///
+/// C turns the `g` separator (graphical escape sequences) into `l` unless
+/// `astEscapes` is on. The port has no escape sequences, which is C's
+/// default, so `g` is always `l` here.
+pub(crate) fn parse_dhms_format(fmt: &str, digs: i32) -> DHmsFields {
+    let mut as_time: Option<bool> = None;
+    let mut f = DHmsFields {
+        sep: DHmsSep::Char(':'),
+        plus: false,
+        lead_zero: false,
+        as_time: false,
+        dh: false,
+        min: false,
+        sec: false,
+        ndp: 0,
+    };
+    let bytes = fmt.as_bytes();
+    let mut decpos: Option<usize> = None;
+    for (i, &c) in bytes.iter().enumerate() {
+        match c {
+            b'+' => f.plus = true,
+            b'Z' | b'z' => f.lead_zero = true,
+            b'I' | b'i' => f.sep = DHmsSep::Char(':'),
+            b'B' | b'b' => f.sep = DHmsSep::Char(' '),
+            b'L' | b'l' | b'G' | b'g' => f.sep = DHmsSep::Letters,
+            b'T' | b't' => {
+                if as_time.is_none() {
+                    as_time = Some(true);
+                }
+            }
+            b'H' | b'h' => {
+                f.dh = true;
+                as_time = Some(true);
+            }
+            b'D' | b'd' => {
+                f.dh = true;
+                as_time = Some(false);
+            }
+            b'M' | b'm' => f.min = true,
+            b'S' | b's' => f.sec = true,
+            b'.' => decpos = Some(i),
+            _ => {}
+        }
+    }
+    f.as_time = as_time.unwrap_or(false);
+
+    // Degrees (or hours) is the default field, and a seconds field needs a
+    // minutes field when a degrees/hours field is present.
+    if !f.min && !f.sec {
+        f.dh = true;
+    }
+    if f.dh && !f.min {
+        f.sec = false;
+    }
+
+    // Decimal places: an integer after the last '.', or '*' for as many as
+    // "digs" digits of precision leave after the fields present.
+    if let Some(decpos) = decpos.filter(|&d| d + 1 < bytes.len()) {
+        let rest = &fmt[decpos + 1..];
+        if let Some(ndpval) = scan_c_int(rest) {
+            if ndpval >= 0 {
+                f.ndp = ndpval as usize;
+            }
+        } else if rest.starts_with('*') {
+            let mut ndp = if f.as_time {
+                let n = digs.max(2);
+                if f.dh { n - 2 } else { n }
+            } else {
+                let n = digs.max(3);
+                if f.dh { n - 3 } else { n }
+            };
+            if f.min {
+                ndp -= 2;
+            }
+            if f.sec {
+                ndp -= 2;
+            }
+            f.ndp = ndp.max(0) as usize;
+        }
+    }
+    f
+}
+
+/// The integer C's `sscanf( text, "%d", &n )` reads from the start of
+/// `text`: optional white space, an optional sign and at least one digit.
+fn scan_c_int(text: &str) -> Option<i64> {
+    let t = text.trim_start_matches([' ', '\t', '\n', '\x0b', '\x0c', '\r']);
+    let (neg, digits) = match t.as_bytes().first() {
+        Some(b'-') => (true, &t[1..]),
+        Some(b'+') => (false, &t[1..]),
+        _ => (false, t),
+    };
+    let n = digits.bytes().take_while(u8::is_ascii_digit).count();
+    if n == 0 {
+        return None;
+    }
+    // C's "%d" is undefined beyond int range; saturate rather than wrap.
+    let v = digits[..n].parse::<i64>().unwrap_or(i64::MAX);
+    Some(if neg { -v } else { v })
+}
+
+/// The default Format of a SkyAxis whose Format is unset, from its Digits
+/// and AsTime values. Mirrors C `GetAxisFormat` (skyaxis.c:2888).
+pub(crate) fn default_dhms_format(digits: i32, as_time: bool) -> String {
+    if as_time {
+        match digits {
+            d if d <= 2 => "h".to_string(),
+            3 | 4 => "hm".to_string(),
+            5 | 6 => "hms".to_string(),
+            d => format!("hms.{}", d - 6),
+        }
+    } else {
+        match digits {
+            d if d <= 3 => "d".to_string(),
+            4 | 5 => "dm".to_string(),
+            6 | 7 => "dms".to_string(),
+            d => format!("dms.{}", d - 7),
+        }
+    }
+}
+
+/// The Unit a SkyAxis Format implies, with whether it describes the axis
+/// values (`"hh:mm:ss.s"`, `"minutes of time"`) rather than naming a unit
+/// (`"degrees"`). Mirrors C `DHmsUnit` (skyaxis.c:2279) with `output` set,
+/// the form every caller in the port needs; `descr` is its `descr` flag.
+pub(crate) fn dhms_unit(fmt: &str, digs: i32) -> (String, bool) {
+    // Decimal places shown before an ellipsis replaces the rest.
+    const MAXDP: usize = 6;
+
+    let f = parse_dhms_format(fmt, digs);
+    match f.sep {
+        DHmsSep::Letters => return (String::new(), false),
+        DHmsSep::Char(_) if f.dh && !f.min && !f.sec => {
+            let u = if f.as_time { "hours" } else { "degrees" };
+            return (u.to_string(), false);
+        }
+        DHmsSep::Char(_) if !f.dh && f.min && !f.sec => {
+            let u = if f.as_time {
+                "minutes of time"
+            } else {
+                "arcminutes"
+            };
+            return (u.to_string(), f.as_time);
+        }
+        DHmsSep::Char(_) if !f.dh && !f.min && f.sec => {
+            let u = if f.as_time {
+                "seconds of time"
+            } else {
+                "arcseconds"
+            };
+            return (u.to_string(), f.as_time);
+        }
+        DHmsSep::Char(_) => {}
+    }
+    let DHmsSep::Char(sep) = f.sep else {
+        unreachable!("letter separators returned above")
+    };
+
+    let mut out = String::new();
+    let mut dpchar = 'd';
+    if f.dh {
+        out.push_str(if f.as_time { "hh" } else { "ddd" });
+        dpchar = if f.as_time { 'h' } else { 'd' };
+    }
+    if f.min {
+        if f.dh {
+            out.push(sep);
+        }
+        out.push_str("mm");
+        dpchar = 'm';
+    }
+    if f.sec {
+        if f.dh || f.min {
+            out.push(sep);
+        }
+        out.push_str("ss");
+        dpchar = 's';
+    }
+    if f.ndp > 0 {
+        out.push('.');
+        for dp in 0..f.ndp {
+            if dp < MAXDP {
+                out.push(dpchar);
+            } else {
+                // After MAXDP places, the last three become an ellipsis.
+                out.truncate(out.len() - 3);
+                out.push_str("...");
+                break;
+            }
+        }
+    }
+    (out, true)
+}
+
+/// Format `value` (radians) with a SkyAxis Format string, `digs` being the
+/// axis Digits value. Mirrors C `DHmsFormat` (skyaxis.c:1561).
+pub(crate) fn dhms_format(fmt: &str, digs: i32, value: f64) -> String {
+    if value == crate::constants::BAD_VALUE {
+        return "<bad>".to_string();
+    }
+    let f = parse_dhms_format(fmt, digs);
+    let ndp = if f.ndp + 11 > DHMSFORMAT_BUFF_LEN {
+        DHMSFORMAT_BUFF_LEN - 11
+    } else {
+        f.ndp
+    };
+
+    // C turns a "minus zero" into zero before testing the sign.
+    let value = if value == 0.0 { 0.0 } else { value };
+    let mut positive = value >= 0.0;
+    let absvalue = if positive { value } else { -value };
+    let unit = if f.as_time { HR2RAD } else { DEG2RAD };
+
+    // Split into fields, each the whole part of what remains (C's modf).
+    let mut fract = absvalue / unit;
+    let mut idh = 0.0;
+    if f.dh {
+        idh = fract.trunc();
+        fract -= idh;
+    }
+    let mut imin = 0.0;
+    if f.min {
+        let v = fract * 60.0;
+        imin = v.trunc();
+        fract = v - imin;
+    }
+    let mut isec = 0.0;
+    if f.sec {
+        if !f.min {
+            fract *= 60.0;
+        }
+        let v = fract * 60.0;
+        isec = v.trunc();
+        fract = v - isec;
+    }
+
+    // Truncate the final field to "ndp" places, then round up if the value
+    // is at least the one whose textual form ends in 5 at the next place,
+    // compared in radians so that a formatted value reads back unchanged.
+    let shift = 10f64.powi(ndp as i32);
+    let mut ifract = (fract * shift).floor();
+    let mut test = (0.5 + ifract) / shift;
+    if f.sec {
+        test = (isec + test) / 60.0;
+    }
+    if f.min {
+        test = (imin + test) / 60.0;
+    } else if f.sec {
+        test /= 60.0;
+    }
+    if f.dh {
+        test += idh;
+    }
+    test *= unit;
+    if absvalue >= test {
+        ifract += 1.0;
+    }
+
+    // Carry a rounded-up fraction into the fields that are present.
+    if ifract / shift >= 1.0 {
+        ifract = 0.0;
+        if f.sec {
+            isec += 1.0;
+            if (isec + 0.5).floor() > 59.5 && f.min {
+                isec = 0.0;
+                imin += 1.0;
+                if (imin + 0.5).floor() > 59.5 && f.dh {
+                    imin = 0.0;
+                    idh += 1.0;
+                }
+            }
+        } else if f.min {
+            imin += 1.0;
+            if (imin + 0.5).floor() > 59.5 && f.dh {
+                imin = 0.0;
+                idh += 1.0;
+            }
+        } else {
+            idh += 1.0;
+        }
+    }
+
+    // A value that formats as zero in every field has no sign.
+    let zero = |v: f64| (v + 0.5).floor() < 0.5;
+    if !positive
+        && (!f.dh || zero(idh))
+        && (!f.min || zero(imin))
+        && (!f.sec || zero(isec))
+        && zero(ifract)
+    {
+        positive = true;
+    }
+
+    let letters = f.sep == DHmsSep::Letters;
+    let mut out = String::new();
+    if !positive {
+        out.push('-');
+    } else if f.plus {
+        out.push('+');
+    }
+    if f.dh {
+        let width = if f.lead_zero {
+            if f.as_time { 2 } else { 3 }
+        } else {
+            1
+        };
+        out.push_str(&format!("{idh:0width$.0}"));
+        if (f.min || f.sec) && letters {
+            out.push(if f.as_time { 'h' } else { 'd' });
+        }
+    }
+    if f.min {
+        if let DHmsSep::Char(sep) = f.sep {
+            if f.dh {
+                out.push(sep);
+            }
+        }
+        let width = if f.dh || f.lead_zero { 2 } else { 1 };
+        out.push_str(&format!("{imin:0width$.0}"));
+        if f.sec && letters {
+            out.push('m');
+        }
+    }
+    if f.sec {
+        if let DHmsSep::Char(sep) = f.sep {
+            if f.dh || f.min {
+                out.push(sep);
+            }
+        }
+        let width = if f.dh || f.min || f.lead_zero { 2 } else { 1 };
+        out.push_str(&format!("{isec:0width$.0}"));
+    }
+    if ndp > 0 {
+        out.push('.');
+        out.push_str(&format!("{ifract:0ndp$.0}"));
+    }
+    if letters {
+        out.push(if f.sec {
+            's'
+        } else if f.min {
+            'm'
+        } else if f.as_time {
+            'h'
+        } else {
+            'd'
+        });
+    }
+    out
+}
+
+// ---------------------------------------------------------------------------
 // Serialisation
 // ---------------------------------------------------------------------------
+
+impl SkyAxis {
+    /// Write this SkyAxis as C's Dump does (skyaxis.c:4750, after the Axis
+    /// class Dump, axis.c): the Axis attributes that are set, the `IsA Axis`
+    /// marker when there were any, then the SkyAxis attributes that are set.
+    /// `label` and `symbol` are the Axis Label and Symbol, which the
+    /// SkyFrame stores for its axes.
+    pub(crate) fn to_node_with(&self, label: Option<&str>, symbol: Option<&str>) -> Node {
+        let mut node = Node::new("SkyAxis");
+        node.class_comment = Some("Celestial coordinate axis".to_string());
+
+        if let Some(label) = label {
+            node.push_string("Label", label, Some("Axis Label".to_string()));
+        }
+        if let Some(symbol) = symbol {
+            node.push_string("Symbol", symbol, Some("Axis symbol".to_string()));
+        }
+        if let Some(unit) = &self.unit {
+            // C appends the unit's full name only when it differs from the
+            // unit string (axis.c, `lab && strcmp( lab, sval )`).
+            let comment = match crate::units::unit_label(unit) {
+                Some(lab) if lab != unit => format!("Axis units ({lab})"),
+                _ => "Axis units".to_string(),
+            };
+            node.push_string("Unit", unit, Some(comment));
+        }
+        if let Some(digits) = self.digits {
+            node.push_int(
+                "Digits",
+                digits as i64,
+                Some("Default formatting precision".to_string()),
+            );
+        }
+        if !node.items.is_empty() {
+            node.push_isa("Axis", Some("Coordinate axis".to_string()));
+        }
+
+        if let Some(format) = &self.format {
+            node.push_string("Format", format, Some("Format specifier".to_string()));
+        }
+        if let Some(cz) = self.centre_zero {
+            node.push_int(
+                "CnZer",
+                i64::from(cz),
+                Some(if cz {
+                    "Display axis values in range -PI -> +PI".to_string()
+                } else {
+                    "Display axis values in range 0 -> 2.PI".to_string()
+                }),
+            );
+        }
+        if let Some(at) = self.as_time {
+            node.push_int(
+                "AsTime",
+                i64::from(at),
+                Some(if at {
+                    "Display values as times (not angles)".to_string()
+                } else {
+                    "Display values as angles (not times)".to_string()
+                }),
+            );
+        }
+        node
+    }
+}
 
 impl Serializable for SkyAxis {
     fn class_name(&self) -> &'static str {
@@ -88,24 +570,7 @@ impl Serializable for SkyAxis {
     }
 
     fn to_node(&self) -> AstResult<Node> {
-        let mut node = Node::new(self.class_name());
-        node.class_comment = Some("Celestial coordinate axis".to_string());
-
-        if let Some(cz) = self.centre_zero {
-            if cz {
-                node.push_int("CnZer", 1, Some("Centre zero for axis range".to_string()));
-            }
-        }
-
-        if let Some(at) = self.as_time {
-            node.push_int(
-                "AsTime",
-                if at { 1 } else { 0 },
-                Some("Format as time".to_string()),
-            );
-        }
-
-        Ok(node)
+        Ok(self.to_node_with(None, None))
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
@@ -117,27 +582,25 @@ impl Serializable for SkyAxis {
             SkyAxis::longitude()
         };
 
-        // CnZer: only set if present in the node.
+        // Each attribute is set only if present in the node. A SkyAxis
+        // stores its Format itself, so the only Format card is the SkyAxis
+        // one (C's Axis-level Format is never set on a SkyAxis).
         if node.get("CnZer").is_some() {
             axis.centre_zero = Some(node.get_int("CnZer", 0) != 0);
         }
-
-        // AsTime: only set if present in the node.
         if node.get("AsTime").is_some() {
             axis.as_time = Some(node.get_int("AsTime", 0) != 0);
         }
+        axis.format = node.get_string_if_set("Format");
+        if node.get("Digits").is_some() {
+            axis.digits = Some(node.get_int("Digits", 7) as i32);
+        }
+        axis.unit = node.get_string_if_set("Unit");
 
         Ok(axis)
     }
 }
 
-/// Format a value in radians as sexagesimal (HMS or DMS).
-///
-/// - `as_time=true`: output `HH:MM:SS.sss` (24h = 2pi radians)
-/// - `as_time=false`: output `+DD:MM:SS.sss` or `-DD:MM:SS.sss`
-/// - `precision`: decimal places on the seconds field
-///
-/// If `value` is `BAD_VALUE` or NaN, returns `"<bad>"`.
 /// Normalise a right-ascension (or any 2π-cyclic angle) into `[0, 2π)`.
 ///
 /// Mirrors `eraAnp` (SOFA "Angle, Normalize, Positive"): the canonical
@@ -174,105 +637,6 @@ pub(crate) fn normalise_dec(angle: f64) -> f64 {
     } else {
         w
     }
-}
-
-pub(crate) fn format_sky(value: f64, as_time: bool, precision: usize) -> String {
-    if is_bad(value) {
-        return "<bad>".to_string();
-    }
-
-    if as_time {
-        format_hms(value, precision)
-    } else {
-        format_dms(value, precision)
-    }
-}
-
-/// Format radians as hours:minutes:seconds.
-fn format_hms(value: f64, precision: usize) -> String {
-    // Convert radians to hours. C's astFormat decomposes via palDr2tf →
-    // eraA2tf/eraD2tf, which does NOT range-reduce the angle (ERFA a2tf
-    // note 3: "the absolute value of angle may exceed 2pi"). A value > 24h
-    // therefore formats verbatim (e.g. an offset SkyRef of 458:21:58.4),
-    // and a negative value carries a leading "-".
-    let hours = value * 12.0 / PI;
-    let sign = if hours < 0.0 { "-" } else { "" };
-    let abs_hours = hours.abs();
-
-    // Determine the rounding limit for seconds based on precision.
-    let sec_limit = round_limit(precision);
-
-    let h = abs_hours.floor() as u32;
-    let rem = (abs_hours - h as f64) * 60.0;
-    let mut m = rem.floor() as u32;
-    let mut s = (rem - m as f64) * 60.0;
-
-    // Handle rounding overflow: if seconds round up to >= 60, carry.
-    if s >= sec_limit {
-        s = 0.0;
-        m += 1;
-    }
-    let mut h_out = h;
-    if m >= 60 {
-        m = 0;
-        h_out += 1;
-    }
-
-    if precision == 0 {
-        format!("{sign}{h_out}:{m:02}:{s:02.0}")
-    } else {
-        // Total width = 2 (min digits) + 1 (decimal point) + precision.
-        let width = 3 + precision;
-        format!("{sign}{h_out}:{m:02}:{s:0width$.precision$}")
-    }
-}
-
-/// Format radians as degrees:minutes:seconds.
-///
-/// A leading `-` is emitted for negative values; positive values carry no
-/// sign, matching C `astFormat` for a `d`/`dms` axis (sla DR2AF returns a
-/// sign character of `+` or `-`, but the AST sexagesimal formatter only
-/// prints it when negative).
-fn format_dms(value: f64, precision: usize) -> String {
-    // Convert radians to degrees.
-    let deg = value * 180.0 / PI;
-
-    let sign = if deg < 0.0 { "-" } else { "" };
-    let abs_deg = deg.abs();
-
-    // Determine the rounding limit for seconds based on precision.
-    let sec_limit = round_limit(precision);
-
-    let d = abs_deg.floor() as u32;
-    let rem = (abs_deg - d as f64) * 60.0;
-    let mut m = rem.floor() as u32;
-    let mut s = (rem - m as f64) * 60.0;
-
-    // Handle rounding overflow.
-    if s >= sec_limit {
-        s = 0.0;
-        m += 1;
-    }
-    let mut d_out = d;
-    if m >= 60 {
-        m = 0;
-        d_out += 1;
-    }
-
-    if precision == 0 {
-        format!("{sign}{d_out}:{m:02}:{s:02.0}")
-    } else {
-        let width = 3 + precision;
-        format!("{sign}{d_out}:{m:02}:{s:0width$.precision$}")
-    }
-}
-
-/// Compute the threshold at which seconds should be rounded up to 60.
-///
-/// For precision=0, seconds >= 59.5 round to 60. For precision=1,
-/// seconds >= 59.95 round to 60, etc.
-fn round_limit(precision: usize) -> f64 {
-    60.0 - 0.5 * 10.0_f64.powi(-(precision as i32))
 }
 
 /// Parse a sexagesimal string back to radians.
@@ -503,42 +867,42 @@ mod tests {
 
     #[test]
     fn format_hms_zero() {
-        assert_eq!(format_sky(0.0, true, 1), "0:00:00.0");
+        assert_eq!(dhms_format("hms.1", 7, 0.0), "0:00:00.0");
     }
 
     #[test]
     fn format_hms_6h() {
         // PI/2 radians = 6 hours
-        assert_eq!(format_sky(PI / 2.0, true, 1), "6:00:00.0");
+        assert_eq!(dhms_format("hms.1", 7, PI / 2.0), "6:00:00.0");
     }
 
     #[test]
     fn format_hms_12h() {
         // PI radians = 12 hours
-        assert_eq!(format_sky(PI, true, 1), "12:00:00.0");
+        assert_eq!(dhms_format("hms.1", 7, PI), "12:00:00.0");
     }
 
     #[test]
     fn format_hms_18h() {
         // 3*PI/2 radians = 18 hours
-        assert_eq!(format_sky(3.0 * PI / 2.0, true, 1), "18:00:00.0");
+        assert_eq!(dhms_format("hms.1", 7, 3.0 * PI / 2.0), "18:00:00.0");
     }
 
     #[test]
     fn format_hms_precision_0() {
-        assert_eq!(format_sky(0.0, true, 0), "0:00:00");
+        assert_eq!(dhms_format("hms", 7, 0.0), "0:00:00");
     }
 
     #[test]
     fn format_hms_precision_3() {
-        assert_eq!(format_sky(PI / 2.0, true, 3), "6:00:00.000");
+        assert_eq!(dhms_format("hms.3", 7, PI / 2.0), "6:00:00.000");
     }
 
     #[test]
     fn format_hms_fractional() {
         // 12h 30m 0s = (12.5/24) * 2*PI = 12.5 * PI / 12
         let val = 12.5 * PI / 12.0;
-        assert_eq!(format_sky(val, true, 1), "12:30:00.0");
+        assert_eq!(dhms_format("hms.1", 7, val), "12:30:00.0");
     }
 
     // ----------------------------------------------------------------
@@ -548,50 +912,50 @@ mod tests {
     #[test]
     fn format_dms_45deg() {
         // PI/4 = 45 degrees
-        assert_eq!(format_sky(PI / 4.0, false, 0), "45:00:00");
+        assert_eq!(dhms_format("dms", 7, PI / 4.0), "45:00:00");
     }
 
     #[test]
     fn format_dms_neg45deg() {
-        assert_eq!(format_sky(-PI / 4.0, false, 0), "-45:00:00");
+        assert_eq!(dhms_format("dms", 7, -PI / 4.0), "-45:00:00");
     }
 
     #[test]
     fn format_dms_90deg() {
-        assert_eq!(format_sky(PI / 2.0, false, 0), "90:00:00");
+        assert_eq!(dhms_format("dms", 7, PI / 2.0), "90:00:00");
     }
 
     #[test]
     fn format_dms_zero() {
-        assert_eq!(format_sky(0.0, false, 0), "0:00:00");
+        assert_eq!(dhms_format("dms", 7, 0.0), "0:00:00");
     }
 
     #[test]
     fn format_dms_1arcsec() {
         // 1 arcsecond = PI/648000 radians
-        assert_eq!(format_sky(ARCSEC, false, 0), "0:00:01");
+        assert_eq!(dhms_format("dms", 7, ARCSEC), "0:00:01");
     }
 
     #[test]
     fn format_dms_neg1arcsec() {
-        assert_eq!(format_sky(-ARCSEC, false, 0), "-0:00:01");
+        assert_eq!(dhms_format("dms", 7, -ARCSEC), "-0:00:01");
     }
 
     #[test]
     fn format_dms_precision_3() {
-        assert_eq!(format_sky(PI / 4.0, false, 3), "45:00:00.000");
+        assert_eq!(dhms_format("dms.3", 7, PI / 4.0), "45:00:00.000");
     }
 
     #[test]
     fn format_dms_180deg() {
-        assert_eq!(format_sky(PI, false, 0), "180:00:00");
+        assert_eq!(dhms_format("dms", 7, PI), "180:00:00");
     }
 
     #[test]
     fn format_dms_fractional() {
         // 45.5 degrees = PI * 45.5 / 180
         let val = 45.5 * PI / 180.0;
-        assert_eq!(format_sky(val, false, 0), "45:30:00");
+        assert_eq!(dhms_format("dms", 7, val), "45:30:00");
     }
 
     // ----------------------------------------------------------------
@@ -600,14 +964,8 @@ mod tests {
 
     #[test]
     fn format_bad_value() {
-        assert_eq!(format_sky(BAD_VALUE, true, 1), "<bad>");
-        assert_eq!(format_sky(BAD_VALUE, false, 0), "<bad>");
-    }
-
-    #[test]
-    fn format_nan() {
-        assert_eq!(format_sky(f64::NAN, true, 1), "<bad>");
-        assert_eq!(format_sky(f64::NAN, false, 0), "<bad>");
+        assert_eq!(dhms_format("hms.1", 7, BAD_VALUE), "<bad>");
+        assert_eq!(dhms_format("dms", 7, BAD_VALUE), "<bad>");
     }
 
     // ----------------------------------------------------------------
@@ -734,7 +1092,7 @@ mod tests {
     fn roundtrip_hms() {
         let values = [0.0, PI / 6.0, PI / 4.0, PI / 2.0, PI, 3.0 * PI / 2.0];
         for &orig in &values {
-            let formatted = format_sky(orig, true, 3);
+            let formatted = dhms_format("hms.3", 7, orig);
             let (parsed, _nc) = unformat_sky(&formatted, true).unwrap();
             // Normalize both to [0, 2*PI) for comparison.
             let orig_norm = orig.rem_euclid(2.0 * PI);
@@ -759,7 +1117,7 @@ mod tests {
             -PI / 2.0,
         ];
         for &orig in &values {
-            let formatted = format_sky(orig, false, 3);
+            let formatted = dhms_format("dms.3", 7, orig);
             let (parsed, _nc) = unformat_sky(&formatted, false).unwrap();
             assert!(
                 (orig - parsed).abs() < 1.0e-6,
@@ -779,7 +1137,7 @@ mod tests {
         // 5h 59m 59.999...s should round to 6:00:00.0 at precision 1.
         let hours = 5.0 + 59.0 / 60.0 + 59.999 / 3600.0;
         let rad = hours * PI / 12.0;
-        let result = format_sky(rad, true, 1);
+        let result = dhms_format("hms.1", 7, rad);
         assert_eq!(result, "6:00:00.0");
     }
 
@@ -788,7 +1146,7 @@ mod tests {
         // 44:59:59.999... degrees should round to 45:00:00 at precision 0.
         let deg = 44.0 + 59.0 / 60.0 + 59.8 / 3600.0;
         let rad = deg * PI / 180.0;
-        let result = format_sky(rad, false, 0);
+        let result = dhms_format("dms", 7, rad);
         assert_eq!(result, "45:00:00");
     }
 
@@ -799,7 +1157,7 @@ mod tests {
         // back to 0 (ERFA a2tf note 3).
         let hours = 23.0 + 59.0 / 60.0 + 59.96 / 3600.0;
         let rad = hours * PI / 12.0;
-        let result = format_sky(rad, true, 1);
+        let result = dhms_format("hms.1", 7, rad);
         assert_eq!(result, "24:00:00.0");
     }
 
@@ -808,12 +1166,12 @@ mod tests {
         // A value exceeding 24h formats verbatim (e.g. an offset SkyRef).
         let hours = 458.0 + 21.0 / 60.0 + 58.4 / 3600.0;
         let rad = hours * PI / 12.0;
-        assert_eq!(format_sky(rad, true, 1), "458:21:58.4");
+        assert_eq!(dhms_format("hms.1", 7, rad), "458:21:58.4");
     }
 
     #[test]
     fn format_hms_negative_signed() {
         // Negative value carries a leading "-" (eraA2tf sign), not a wrap.
-        assert_eq!(format_sky(-PI / 2.0, true, 1), "-6:00:00.0");
+        assert_eq!(dhms_format("hms.1", 7, -PI / 2.0), "-6:00:00.0");
     }
 }
