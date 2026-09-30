@@ -4,14 +4,13 @@ linear_approx
 analyse_poly
 scale_poly_inputs
 orth_vector_set
-find_basis_vectors
-fit_line
-make_int_world
 sip_int_world
 keymap_hash
 gen_simp
 unitnorm_probe
 frame_in_map_slot_probe
+# Debug symbols clang writes beside each binary on macOS.
+*.dSYM/
 
 # Dumps a probe writes here; the committed copies live under
 # crates/ast-core/tests/fixtures/.
