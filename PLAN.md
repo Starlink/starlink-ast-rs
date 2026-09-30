@@ -52,7 +52,7 @@ Detail and C↔Rust locations in `docs/audits/region-class-coverage-audit.md`.
 | CmpMap `inv_a`/`inv_b`: split the load contract from the dump-shaping emulation | `docs/issues/cmpmap-invert-snapshots.md` | DEFERRED to post-oracle-compliance — measured, with a falsifiable go/no-go test: after the §8 pin move, re-run the load-drift probe and collapse the mechanism only if it reports zero |
 | TimeFrame port + Epoch/Equinox API | `docs/issues/timeframe-and-epoch-api-port.md` | OPEN (residual) — Issue A (DATE-OBS/TDB drift) RESOLVED; only Issue-B doc/hygiene items remain (Equinox=UTC note; `_year` setter public/private decision) |
 | `NormUnit` | `crates/ast-core/tests/test_frame.rs` | CLOSED — `Frame::norm_unit`, with the SkyFrame override C has; write-up in [`docs/issues/closed-plan-findings.md`](docs/issues/closed-plan-findings.md) §2 |
-| SkyFrame has no `Format`, `Digits`, `AsTime` or `Unit` attribute of its own | — | OPEN — `SkyFrame::default_units` derives the Unit from the System alone, where C derives it from the axis Format (`DHmsUnit`, skyaxis.c:2279), which follows `Digits` and `AsTime`: C reports `"ddd:mm:ss"` for an ICRS longitude with `AsTime(1)=0` and `"hh:mm"` with `Digits=3`, and the port `"hh:mm:ss.s"` for both. `AsTime` can reach the port from a Native dump but is ignored here. `norm_unit` inherits the gap and nothing else, since it normalises whatever Unit the SkyFrame reports. **What would expose it**: the SkyFrame block of `testframe.c` (`Format(1)=bhms` and five more, each with its C `Unit` and `NormUnit`), which `test_frame.rs` cannot construct today |
+| SkyFrame has no `Format`, `Digits`, `AsTime` or `Unit` attribute of its own | — | OPEN — `SkyFrame::default_units` derives the Unit from the System alone, where C derives it from the axis Format (`DHmsUnit`, skyaxis.c:2279), which follows `Digits` and `AsTime`: C reports `"ddd:mm:ss"` for an ICRS longitude with `AsTime(1)=0` and `"hh:mm"` with `Digits=3`, and the port `"hh:mm:ss.s"` for both. `AsTime` can reach the port from a Native dump but is ignored here. `norm_unit` inherits the gap and nothing else, since it normalises whatever Unit the SkyFrame reports. **What would expose it**: the SkyFrame block of `testframe.c` (`Format(1)=bhms` and five more, each with its C `Unit` and `NormUnit`), which `test_frame.rs` cannot construct today. Porting it also makes upstream `d9e43a6b` reachable: an axis picked out of a SkyFrame is a BasicFrame axis carrying only the Unit string, so a spaced description such as `hh mm ss` would be normalised to `hh*mm*s` unless the picked axis keeps what SkyAxis knows about its Format |
 
 Closed (marked historical in-doc, removed as active work): `mapping-gaps-audit.md`
 (superseded by `frame-mapping-c-port-gaps.md`), `wcsmap-naxis-refactor.md`
@@ -375,9 +375,9 @@ commit, so it needs moving again once PR #77 lands. Two port gaps the new
 round-trip sweep exposed are named in §6's ledger with the C function that closes
 each.
 
-Since 2026-09-30 that tip is `8c734154` on `u/timj/norm-unit`, three `unit.c`
-fixes on top of `208d0998` found while porting `NormUnit` (§2); it needs moving
-again when that branch merges too.
+Since 2026-09-30 that tip is `d9e43a6b` on `u/timj/norm-unit`, three `unit.c`
+fixes and one `skyaxis.c` fix on top of `208d0998` found while porting
+`NormUnit` (§2); it needs moving again when that branch merges too.
 After the move `check_corpus_fresh.sh` reports 95 reproduced, 14 numeric and no
 card-only or structural drift on arm64 macOS, where the numeric residue is the
 Linux-capture drift the protocol leaves alone.

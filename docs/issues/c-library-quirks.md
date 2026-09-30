@@ -39,6 +39,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 
 ### [Resolved upstream](#resolved-upstream)
 
+- [RESOLVED (upstream d9e43a6b): SkyAxis normalises a set Unit that describes the axis values, so a picked-out RA axis reports `hh*mm*s`](#resolved-upstream-d9e43a6b-skyaxis-normalises-a-set-unit-that-describes-the-axis-values-so-a-picked-out-ra-axis-reports-hhmms)
 - [RESOLVED (upstream 965b7587): `InvertConstants` leaves a constant numerator uninverted, so `"2/m"` converts as `"0.5/m"`](#resolved-upstream-965b7587-invertconstants-leaves-a-constant-numerator-uninverted-so-2m-converts-as-05m)
 - [RESOLVED (upstream 25bd4924): `astUnitNormaliser` blanks any result that starts with a number](#resolved-upstream-25bd4924-astunitnormaliser-blanks-any-result-that-starts-with-a-number)
 - [RESOLVED (upstream 8c734154): `ModifyPrefix` recurses without end on `k/unit`](#resolved-upstream-8c734154-modifyprefix-recurses-without-end-on-kunit)
@@ -876,8 +877,19 @@ To be raised upstream.
 Each entry names the commit that fixed it.
 Where the port mirrored the defect, the entry also records the inversion, because a mirror of a fixed bug is a bug.
 
-The three `unit.c` entries immediately below were found while porting `NormUnit`, are fixed on upstream branch `u/timj/norm-unit` (not yet merged), and are what the submodule pin points at.
-All three were found by reading `NormUnit(1)` from a one-axis C Frame across a table of Unit strings, now `C_ORACLE` in `crates/ast-core/tests/test_frame.rs`.
+The four entries immediately below were found while porting `NormUnit`, are fixed on upstream branch `u/timj/norm-unit` (not yet merged), and are what the submodule pin points at.
+The three `unit.c` ones were found by reading `NormUnit(1)` from a one-axis C Frame across a table of Unit strings, now `C_ORACLE` in `crates/ast-core/tests/test_frame.rs`; the SkyAxis one by reading it through each class that can hold a SkyFrame axis.
+
+### RESOLVED (upstream d9e43a6b): SkyAxis normalises a set Unit that describes the axis values, so a picked-out RA axis reports `hh*mm*s`
+
+`SkyAxis::GetAxisNormUnit` (`skyaxis.c:3095` before the fix) returns a Unit that describes the axis values, such as `"hh mm ss"`, unchanged, because the units parser reads its spaces as multiplication.
+It did so only for a default Unit; a set Unit was always treated as a units expression.
+`SkyFrame::SubFrame` (`skyframe.c:10270`, `SET_AXIS(Unit)`) sets the SkyFrame's Unit explicitly on each axis it picks into a plain Frame, so after `astPickAxes` with `Format(1)=bhms` the picked axis reported Unit `hh mm ss` and NormUnit `hh*mm*s` (`min*of*time` for `btm`, `ddd*mm*s**2` for `bdms.2`).
+A SkyFrame, and a CmpFrame, FrameSet or Region holding one, were unaffected: each passes `NormUnit(n)` by name to the SkyFrame's own method.
+Upstream now leaves a set Unit alone when it equals the description the Format produces; `testframe.c` covers four picked axes.
+
+**Rust behaviour:** not reachable. The port's picked SkyFrame axis is a BasicFrame axis with the SkyFrame's default Unit set on it, and without a SkyFrame Format attribute those defaults (`hh:mm:ss.s`, `ddd:mm:ss`, `degrees`) never contain the spaces that trigger the defect; `picked_sky_axis_keeps_its_norm_unit` in `crates/ast-core/tests/test_frame.rs` pins the result.
+It becomes reachable when the SkyFrame Format row in `PLAN.md` §2 is done, and then the picked axis must carry what SkyAxis knows, not only its Unit string.
 
 ### RESOLVED (upstream 965b7587): `InvertConstants` leaves a constant numerator uninverted, so `"2/m"` converts as `"0.5/m"`
 

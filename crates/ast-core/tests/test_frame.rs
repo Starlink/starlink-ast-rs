@@ -198,3 +198,26 @@ fn norm_unit_matches_the_c_library() {
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
+
+/// An axis picked out of a SkyFrame keeps the SkyFrame's Unit and NormUnit.
+/// C sets the SkyFrame's Unit explicitly on the picked axis, and SkyAxis
+/// leaves a set Unit that describes the axis values unchanged, as it does a
+/// default one.
+#[test]
+fn picked_sky_axis_keeps_its_norm_unit() {
+    let cases = [
+        (SkySystem::Icrs, ["hh:mm:ss.s", "ddd:mm:ss"]),
+        (SkySystem::Galactic, ["deg", "deg"]),
+    ];
+    for (system, expected) in cases {
+        let sky = SkyFrame::new(system);
+        for (axis, want) in [(0, expected[0]), (1, expected[1])] {
+            let picked = sky.pick_axes_snapshot(&[axis]).unwrap();
+            assert_eq!(
+                picked.effective_unit(1),
+                sky.effective_unit(axis as usize + 1)
+            );
+            assert_eq!(picked.norm_unit(1), want, "{system:?} axis {}", axis + 1);
+        }
+    }
+}
