@@ -1211,20 +1211,6 @@ const ROUND_TRIP_EXCLUDED: &[(&str, &str)] = &[
         "frame_in_map_slot.ast",
         "a Frame in a Mapping slot; the Mapping loader has no Frame case",
     ),
-    // The commented-out default `Uni1`/`Uni2` cards. C derives a SkyAxis unit
-    // string from the axis Format specifier -- "hms.3" gives "hh:mm:ss.sss" --
-    // by parsing the specifier into its fields, separator and decimal-place
-    // count (skyaxis.c:3404 ParseDHmsFormat) and assembling the string from
-    // them (skyaxis.c:2383 DHmsUnit). The port has no sexagesimal
-    // format-specifier parser at all: `SkyFrame::format` uses a fixed precision
-    // and `default_units` returns a fixed pair, so any Format other than the
-    // default gives the wrong unit string. Closing it means porting the parser
-    // and having `format`, `unformat` and `default_units` all read it -- fixing
-    // only the unit string would leave `format` ignoring the specifier.
-    (
-        "sparse.ast",
-        "SkyAxis Format specifiers are not parsed (skyaxis.c:3404, :2383)",
-    ),
 ];
 
 /// Drop the leading run of comment lines, as the upstream roundtrip driver does

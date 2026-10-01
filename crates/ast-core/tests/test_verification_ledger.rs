@@ -189,13 +189,11 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
     (
         "test_serialisation.rs",
         "ROUND_TRIP_EXCLUDED",
-        21,
+        20,
         "nineteen fixtures holding an unported class -- the same set as \
          DEFERRED_LOAD, counted per file rather than per manifest row -- plus \
-         two port gaps this sweep exposed, each named with the C function that \
-         closes it: a Frame in a Mapping slot, which the Mapping loader has no \
-         case for, and SkyAxis Format specifiers, which C parses to derive the \
-         axis unit string. Gated by round_trip_exclusions_still_fail",
+         one port gap: a Frame in a Mapping slot, which the Mapping loader has \
+         no case for. Gated by round_trip_exclusions_still_fail",
     ),
 ];
 

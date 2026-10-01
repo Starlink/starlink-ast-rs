@@ -6,7 +6,7 @@ use crate::constants::BAD_VALUE;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::mappings::helpers::{is_bad, point_has_bad};
 use crate::mappings::{CmpMap, Composition, DynMapping, PermMap, UnitMap};
-use crate::serial::{FrameToNode, Node, NodeValue, Serializable, frame_from_node};
+use crate::serial::{FrameToNode, Node, Serializable, frame_from_node};
 
 use super::{AxisKind, DynFrame, Frame};
 
@@ -781,212 +781,28 @@ impl Serializable for CmpFrame {
         }
 
         let naxes = self.naxes();
-        let n1 = self.frame1.naxes();
 
         // Serialize child frames to get their Lbl/Uni/Dir info.
         let node_a = FrameToNode::to_node(self.frame1.as_ref())?;
         let node_b = FrameToNode::to_node(self.frame2.as_ref())?;
 
-        // Title: emit explicit value if set, otherwise commented
-        // default "N-d compound coordinate system".
-        if let Some(ref title) = self.attrs.title {
-            if !title.is_empty() {
-                node.push_string(
-                    "Title",
-                    title,
-                    Some("Title of coordinate system".to_string()),
-                );
-            }
-        } else {
-            let default_title = format!("{naxes}-d compound coordinate system");
-            node.push_unset(
-                "Title",
-                NodeValue::String(default_title),
-                Some("Title of coordinate system".to_string()),
-            );
-        }
-
-        // Naxes (commented for CmpFrame — derivable from components)
-        node.push_unset(
-            "Naxes",
-            NodeValue::Int(naxes as i64),
-            Some("Number of coordinate axes".to_string()),
+        // The Frame class's part, read through the CmpFrame's getters
+        // (frame.c:14250). A CmpFrame is a plain Frame in that function's
+        // sense, and its own Frame structure holds no axes, so Naxes is a
+        // comment and there are no Prm cards or Axis objects; the CmpFrame
+        // writes its permutation itself, as Axp.
+        super::frame_attrs::write_frame_cards(
+            &mut node,
+            &super::frame_attrs::TraitDump {
+                frame: self,
+                attrs: &self.attrs,
+                system: (false, "Compound".to_string()),
+                align_system: (false, "Compound".to_string()),
+                perm: self.perm.clone(),
+                is_frame: true,
+                own_naxes: 0,
+            },
         );
-
-        // Domain: emit explicit value if set, otherwise commented
-        // default. C `CmpFrame::GetDomain` (cmpframe.c:3603+) returns
-        // "<dom1>-<dom2>" when either child has a non-empty Domain,
-        // and the literal "CMP" when both are empty.
-        if let Some(ref domain) = self.attrs.domain {
-            if !domain.is_empty() {
-                node.push_string(
-                    "Domain",
-                    domain,
-                    Some("Coordinate system domain".to_string()),
-                );
-            }
-        } else {
-            let domain_a = node_a.get_string_any("Domain").unwrap_or("").to_string();
-            let domain_b = node_b.get_string_any("Domain").unwrap_or("").to_string();
-            let compound_domain = if domain_a.is_empty() && domain_b.is_empty() {
-                "CMP".to_string()
-            } else {
-                format!("{}-{}", domain_a, domain_b)
-            };
-            node.push_unset(
-                "Domain",
-                NodeValue::String(compound_domain),
-                Some("Coordinate system domain".to_string()),
-            );
-        }
-
-        // Epoch. C `Frame::Dump` (frame.c:14333-14343) writes the epoch
-        // after Domain. For a CmpFrame `isFrame = 1` (frame.c:14275-14276),
-        // so `helpful = !isFrame = 0`: the commented default is suppressed at
-        // the Full level, and only an explicitly-set Epoch is emitted (then
-        // uncommented). The `set` flag is `astTestEpoch(this)`, which the
-        // CmpFrame does *not* override — so it reflects the compound frame's
-        // *own* Epoch only, not the component delegation used for the value
-        // (`GetEpoch` is overridden, cmpframe.c:3917). The value is converted
-        // to a Besselian year below J1984 or a Julian year at/above it.
-        if self.attrs.epoch.is_some() {
-            let mjd = self.epoch_mjd();
-            let (epoch_year, is_besselian) = if mjd < crate::pal::epj2d(1984.0) {
-                (crate::pal::epb(mjd), true)
-            } else {
-                (crate::pal::epj(mjd), false)
-            };
-            let comment = if is_besselian {
-                "Besselian epoch of observation"
-            } else {
-                "Julian epoch of observation"
-            };
-            node.push_double("Epoch", epoch_year, Some(comment.to_string()));
-        }
-
-        // Per-axis attributes (Lbl/Uni/Dir) are emitted in INTERNAL
-        // (unpermuted) axis order, mirroring C `Frame::Dump`
-        // (frame.c:14345-14358 Lbl, 14435-14453 Uni, 14508-14518 Dir):
-        // it loops over internal axis `i` and writes the value of
-        // `astGetLabel(this, invperm[i])`. For a CmpFrame, `astGetLabel`
-        // routes the external axis to its owning child and that child's
-        // external axis, where the *child's own* permutation is applied.
-        // We therefore read the value through the child Frame's
-        // perm-aware `effective_*` accessors, NOT from the child's
-        // serialized node (which now stores its attributes in the child's
-        // own internal order). The CmpFrame's own permutation is recorded
-        // separately as `Axp{n}` and replayed by `from_node`.
-        //
-        // Internal CmpFrame slot `i` (1-based) maps to child A's local
-        // axis `i` (when `i <= n1`) or child B's local axis `i - n1`;
-        // that local axis is the child's *external* axis, so the child
-        // accessor applies the child's permutation for us.
-        let internal_child = |i: usize| -> (&dyn Frame, usize) {
-            if i <= n1 {
-                (self.frame1.as_ref(), i)
-            } else {
-                (self.frame2.as_ref(), i - n1)
-            }
-        };
-
-        // `invperm[internal-1] = external` (1-based): the external CmpFrame
-        // axis occupying internal slot `i`. C `astGetLabel`'s default
-        // ("Axis N") uses the external axis number, so a child's generic
-        // default label must be renumbered to the CmpFrame external position.
-        let mut invperm = vec![0usize; naxes];
-        for ext in 1..=naxes {
-            invperm[self.perm[ext - 1]] = ext;
-        }
-
-        // Lbl{n}: internal order, value via `astGetLabel(this,
-        // invperm[axis])` (frame.c:14358). `label` on the
-        // CmpFrame applies the enclosing-level `"Axis N"` default numbering
-        // for plain-Frame components (mirroring C `MAKE_GET(Label)`), so no
-        // post-hoc renumbering is needed here.
-        for i in 1..=naxes {
-            let external = invperm[i - 1];
-            let lbl = self.label(external)?;
-            node.push_unset(
-                &format!("Lbl{i}"),
-                NodeValue::String(lbl),
-                Some(format!("Label for axis {i}")),
-            );
-        }
-
-        // Uni{n}: internal order; emit only when the child reports a
-        // non-empty unit. The C `(fullname)` comment suffix is appended
-        // when the unit has a known label (frame.c:14438-14447).
-        for i in 1..=naxes {
-            let (child, local_ax) = internal_child(i);
-            let uni = child.unit(local_ax)?;
-            if !uni.is_empty() {
-                let comment = match crate::units::unit_label(&uni) {
-                    Some(lab) if lab != uni => format!("Units for axis {i} ({lab})"),
-                    _ => format!("Units for axis {i}"),
-                };
-                node.push_unset(&format!("Uni{i}"), NodeValue::String(uni), Some(comment));
-            }
-        }
-
-        // Dir{n}: internal order — only write if the child's direction is
-        // 0 (reverse). `direction()` is perm-aware.
-        for i in 1..=naxes {
-            let (child, local_ax) = internal_child(i);
-            if !child.direction(local_ax)? {
-                node.push_unset(
-                    &format!("Dir{i}"),
-                    NodeValue::Int(0),
-                    Some(format!("Plot axis {i} in reverse direction")),
-                );
-            }
-        }
-
-        // Frame-level observer attributes and Dtai/Dut1. C gates these on
-        // the CmpFrame's *own* set-ness — CmpFrame does not override the
-        // Test{ObsLat,Dtai,...} methods, so the parent Frame::Dump writes
-        // them only when set directly on the compound frame (frame.c:
-        // 14584-14611), even though GetDtai etc. fall back to the children
-        // for the value. Order matches C: ObsLat, ObsLon, ObsAlt, Dtai, Dut1.
-        if let Some(obs_lat) = self.attrs.obs_lat {
-            node.push_double(
-                "ObsLat",
-                obs_lat,
-                Some("Observers geodetic latitude (rads)".to_string()),
-            );
-        }
-        if let Some(obs_lon) = self.attrs.obs_lon {
-            node.push_double(
-                "ObsLon",
-                obs_lon,
-                Some("Observers geodetic longitude (rads)".to_string()),
-            );
-        }
-        if let Some(obs_alt) = self.attrs.obs_alt {
-            node.push_double(
-                "ObsAlt",
-                obs_alt,
-                Some("Observers geodetic altitude (metres)".to_string()),
-            );
-        }
-        if let Some(dtai) = self.attrs.dtai {
-            node.push_double("Dtai", dtai, Some("TAI-UTC in seconds".to_string()));
-        }
-        if let Some(dut1) = self.attrs.dut1 {
-            node.push_double("Dut1", dut1, Some("UT1-UTC in seconds".to_string()));
-        }
-
-        // ActUnt: written whenever the ActiveUnit flag has been explicitly
-        // set (TestActiveUnit, frame.c:14615), carrying its value. The
-        // default is component-derived, so a set value of either 0 or 1 is
-        // emitted; an unset flag is suppressed.
-        if let Some(act) = self.attrs.active_unit {
-            let comment = if act {
-                "Unit strings affects alignment"
-            } else {
-                "Unit strings do not affect alignment"
-            };
-            node.push_int("ActUnt", act as i64, Some(comment.to_string()));
-        }
 
         // IsA Frame marker
         node.push_isa("Frame", Some("Coordinate system description".to_string()));

@@ -190,14 +190,6 @@ impl Node {
         None
     }
 
-    /// Look up a string attribute, returning it whether set or unset.
-    pub fn get_string_any(&self, key: &str) -> Option<&str> {
-        match self.get_any(key) {
-            Some(NodeValue::String(v)) => Some(v.as_str()),
-            _ => None,
-        }
-    }
-
     /// Look up an integer attribute (set or unset), returning None if absent.
     pub fn get_int_any(&self, key: &str) -> Option<i64> {
         match self.get_any(key) {

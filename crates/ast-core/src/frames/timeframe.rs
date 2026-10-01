@@ -1854,6 +1854,8 @@ impl Serializable for TimeFrame {
                     self.align_system().as_str().to_string(),
                 ),
                 perm: vec![0],
+                is_frame: false,
+                own_naxes: 1,
             },
         );
         let mut axis_node = Node::new("Axis");

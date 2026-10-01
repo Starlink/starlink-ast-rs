@@ -102,6 +102,13 @@ pub(crate) trait FrameDumpSource {
     fn dump_naxes(&self) -> usize;
     /// The permutation, `perm[external] = internal`.
     fn dump_perm(&self) -> Vec<usize>;
+    /// The number of axes the Frame class's own structure holds, C's
+    /// `this->naxes`, which decides whether Naxes is written active and how
+    /// many `Prm` cards there are (frame.c Dump). A CmpFrame keeps its axes
+    /// in its components and holds none.
+    fn dump_own_naxes(&self) -> usize {
+        self.dump_naxes()
+    }
     /// Whether the Frame is a plain Frame (or a CmpFrame, or a FrameSet whose
     /// current Frame is plain), which hides some unset values. Mirrors
     /// `isFrame` in frame.c:14290.
@@ -186,10 +193,11 @@ pub(crate) fn write_frame_cards(node: &mut Node, f: &impl FrameDumpSource) {
         f.dump_title(),
         "Title of coordinate system".into(),
     );
+    let own_naxes = f.dump_own_naxes();
     int(
         node,
         "Naxes",
-        true,
+        own_naxes != 0,
         true,
         naxes as i64,
         "Number of coordinate axes".into(),
@@ -446,7 +454,7 @@ pub(crate) fn write_frame_cards(node: &mut Node, f: &impl FrameDumpSource) {
         );
     }
 
-    for (ext, &internal) in f.dump_perm().iter().enumerate() {
+    for (ext, &internal) in f.dump_perm().iter().enumerate().take(own_naxes) {
         if internal != ext {
             node.push_int(
                 &format!("Prm{}", ext + 1),
@@ -1297,6 +1305,12 @@ pub(crate) struct TraitDump<'a> {
     pub align_system: (bool, String),
     /// The permutation, `perm[external] = internal`.
     pub perm: Vec<usize>,
+    /// Whether the Frame counts as a plain Frame in C's `isFrame` sense
+    /// (frame.c Dump): true for a CmpFrame.
+    pub is_frame: bool,
+    /// C's `this->naxes`: the axes the Frame class's own structure holds,
+    /// none for a CmpFrame.
+    pub own_naxes: usize,
 }
 
 impl TraitDump<'_> {
@@ -1321,7 +1335,10 @@ impl FrameDumpSource for TraitDump<'_> {
         self.perm.clone()
     }
     fn dump_is_frame(&self) -> bool {
-        false
+        self.is_frame
+    }
+    fn dump_own_naxes(&self) -> usize {
+        self.own_naxes
     }
     fn dump_title(&self) -> String {
         self.frame.title()
@@ -1382,9 +1399,12 @@ impl FrameDumpSource for TraitDump<'_> {
     fn dump_match_end(&self) -> bool {
         self.frame.match_end()
     }
-    // frame.c:14615 tests the stored value with the Frame class's own
-    // TestActiveUnit, not the class's over-ride.
+    // frame.c:14729 asks the class's own astTestActiveUnit and
+    // astGetActiveUnit, so a class that over-rides them, as SkyFrame and
+    // TimeFrame do, writes what they report.
     fn dump_active_unit(&self) -> Option<bool> {
-        self.attrs.active_unit
+        self.frame
+            .test_active_unit()
+            .then(|| self.frame.get_active_unit())
     }
 }

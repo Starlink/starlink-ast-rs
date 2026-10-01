@@ -369,7 +369,7 @@ fn imag_freq_computation() {
 fn imag_freq_uses_the_default_rest_freq() {
     let dsb = DSBSpecFrame::unset_system();
     let imag = dsb.imag_freq_ghz().unwrap();
-    assert!((imag - -99931.993345375959).abs() < 1e-9, "got {imag}");
+    assert!((imag - -99_931.993_345_375_96).abs() < 1e-9, "got {imag}");
 }
 
 // ---------------------------------------------------------------------------

@@ -2347,6 +2347,8 @@ impl Serializable for SpecFrame {
                     self.align_system().as_str().to_string(),
                 ),
                 perm: vec![0],
+                is_frame: false,
+                own_naxes: 1,
             },
         );
 
