@@ -321,24 +321,13 @@ fn set_sky_ref_from_celestial(
         return Ok(());
     }
 
-    // C applies the `astTestSkyRef` gate and the offset-domain check to the
-    // CRVAL / RFVAL reference position (fitschan.c:36104-36111) but not to
-    // the AXREF one, which is stored unconditionally (fitschan.c:36214-
-    // 36220).
+    // C stores the CRVAL / RFVAL reference position only when SkyRef is not
+    // already set (fitschan.c:36355), and the AXREF one unconditionally
+    // (fitschan.c:36470). An offset SkyFrame gets it too: TidyOffsets later
+    // sets its SkyRefIs, and the stored position is its origin or pole.
     if !forced {
-        // Skip if the SkyFrame's SkyRef is already set (C `astTestSkyRef`),
-        // or if this is an offset SkyFrame whose SkyRef defines the offset
-        // origin / pole (Domain SKY_OFFSETS / SKY_POLE / SKY_ORIGIN, set by
-        // WcsSkyFrame before tidy_offsets runs). For those, the SkyRef is
-        // the offset definition, not an "ignored" celestial reference, so
-        // stamping the celestial fiducial would corrupt the offset
-        // representation.
-        let cur = fs.current();
-        if let Some(sky) = peek_sky(cur) {
-            if sky.test_sky_ref(0) {
-                return Ok(());
-            }
-            if matches!(sky.domain(), "SKY_OFFSETS" | "SKY_POLE" | "SKY_ORIGIN") {
+        if let Some(sky) = peek_sky(fs.current()) {
+            if sky.test_sky_ref(1)? {
                 return Ok(());
             }
         }
@@ -364,7 +353,7 @@ fn set_sky_ref_on_frame(frame: &mut dyn crate::frames::Frame, reflon: f64, refla
     use crate::frames::sky_convert::SkyRefIs;
     use crate::frames::{CmpFrame, SkyFrame};
     if let Some(sky) = frame.as_any_mut().downcast_mut::<SkyFrame>() {
-        sky.set_sky_ref(reflon, reflat);
+        sky.set_sky_ref_lon_lat(reflon, reflat);
         sky.set_sky_ref_is(SkyRefIs::Ignored);
         return;
     }

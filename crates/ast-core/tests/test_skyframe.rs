@@ -211,9 +211,9 @@ fn set_get_neglon() {
 #[test]
 fn set_get_sky_ref() {
     let mut sky = SkyFrame::new(SkySystem::Fk5);
-    sky.set_sky_ref(1.5, 0.75);
-    assert_close(sky.sky_ref()[0], 1.5, TOL, "sky_ref lon");
-    assert_close(sky.sky_ref()[1], 0.75, TOL, "sky_ref lat");
+    sky.set_sky_ref_lon_lat(1.5, 0.75);
+    assert_close(sky.sky_ref_lon_lat()[0], 1.5, TOL, "sky_ref lon");
+    assert_close(sky.sky_ref_lon_lat()[1], 0.75, TOL, "sky_ref lat");
 }
 
 #[test]
@@ -833,8 +833,8 @@ fn frameset_skyframe_distance_delegation() {
 fn sky_ref_is_origin_offset() {
     // Source frame has offset coordinates; target is standard FK5.
     let mut src = SkyFrame::new(SkySystem::Fk5);
-    src.set_sky_ref(1.0, 0.5);
-    src.set_sky_ref_p(1.0, 0.5 + 0.1);
+    src.set_sky_ref_lon_lat(1.0, 0.5);
+    src.set_sky_ref_p_lon_lat(1.0, 0.5 + 0.1);
     src.set_sky_ref_is(SkyRefIs::Origin);
 
     let dst = SkyFrame::new(SkySystem::Fk5);
@@ -849,8 +849,8 @@ fn sky_ref_is_origin_offset() {
 #[test]
 fn sky_ref_is_origin_round_trip() {
     let mut src = SkyFrame::new(SkySystem::Fk5);
-    src.set_sky_ref(2.0, -0.3);
-    src.set_sky_ref_p(2.0, -0.3 + 0.1);
+    src.set_sky_ref_lon_lat(2.0, -0.3);
+    src.set_sky_ref_p_lon_lat(2.0, -0.3 + 0.1);
     src.set_sky_ref_is(SkyRefIs::Origin);
 
     let dst = SkyFrame::new(SkySystem::Fk5);
@@ -869,8 +869,8 @@ fn sky_ref_is_origin_round_trip() {
 fn sky_ref_is_pole_offset() {
     // With Pole mode, sky_ref becomes the north pole.
     let mut src = SkyFrame::new(SkySystem::Fk5);
-    src.set_sky_ref(1.5, 0.8);
-    src.set_sky_ref_p(0.0, 0.0);
+    src.set_sky_ref_lon_lat(1.5, 0.8);
+    src.set_sky_ref_p_lon_lat(0.0, 0.0);
     src.set_sky_ref_is(SkyRefIs::Pole);
 
     let dst = SkyFrame::new(SkySystem::Fk5);
@@ -884,8 +884,8 @@ fn sky_ref_is_pole_offset() {
 #[test]
 fn sky_ref_is_pole_round_trip() {
     let mut src = SkyFrame::new(SkySystem::Fk5);
-    src.set_sky_ref(0.5, 1.0);
-    src.set_sky_ref_p(0.5, 0.0);
+    src.set_sky_ref_lon_lat(0.5, 1.0);
+    src.set_sky_ref_p_lon_lat(0.5, 0.0);
     src.set_sky_ref_is(SkyRefIs::Pole);
 
     let dst = SkyFrame::new(SkySystem::Fk5);
@@ -903,7 +903,7 @@ fn sky_ref_is_pole_round_trip() {
 fn sky_ref_is_ignored_no_effect() {
     // With Ignored mode, the conversion should be the same as standard.
     let mut src = SkyFrame::new(SkySystem::Fk5);
-    src.set_sky_ref(1.0, 0.5);
+    src.set_sky_ref_lon_lat(1.0, 0.5);
     src.set_sky_ref_is(SkyRefIs::Ignored); // explicit
 
     let dst = SkyFrame::new(SkySystem::Fk5);
@@ -921,13 +921,13 @@ fn sky_ref_is_ignored_no_effect() {
 fn convert_between_offset_frames() {
     // Both source and target have offset coordinates.
     let mut src = SkyFrame::new(SkySystem::Fk5);
-    src.set_sky_ref(0.5, 0.3);
-    src.set_sky_ref_p(0.5, 0.3 + 0.1);
+    src.set_sky_ref_lon_lat(0.5, 0.3);
+    src.set_sky_ref_p_lon_lat(0.5, 0.3 + 0.1);
     src.set_sky_ref_is(SkyRefIs::Origin);
 
     let mut dst = SkyFrame::new(SkySystem::Fk5);
-    dst.set_sky_ref(2.0, -0.4);
-    dst.set_sky_ref_p(2.0, -0.4 + 0.1);
+    dst.set_sky_ref_lon_lat(2.0, -0.4);
+    dst.set_sky_ref_p_lon_lat(2.0, -0.4 + 0.1);
     dst.set_sky_ref_is(SkyRefIs::Origin);
 
     let fs = src.convert_to(&dst, &[]).unwrap().unwrap();
@@ -993,8 +993,8 @@ fn serialise_preserves_equinox() {
 fn serialise_preserves_sky_ref() {
     let mut original = SkyFrame::new(SkySystem::Fk5);
     original.set_sky_ref_is(SkyRefIs::Origin);
-    original.set_sky_ref(1.5, 0.75);
-    original.set_sky_ref_p(0.3, 1.2);
+    original.set_sky_ref_lon_lat(1.5, 0.75);
+    original.set_sky_ref_p_lon_lat(0.3, 1.2);
 
     let text = to_native_string(&AnyObject::SkyFrame(original)).unwrap();
     assert!(text.contains("SRefIs"), "missing SRefIs");
@@ -1005,10 +1005,10 @@ fn serialise_preserves_sky_ref() {
     match restored {
         AnyObject::SkyFrame(ref sf) => {
             assert_eq!(sf.sky_ref_is(), SkyRefIs::Origin);
-            assert_close(sf.sky_ref()[0], 1.5, 1e-10, "sky_ref lon rt");
-            assert_close(sf.sky_ref()[1], 0.75, 1e-10, "sky_ref lat rt");
-            assert_close(sf.sky_ref_p()[0], 0.3, 1e-10, "sky_ref_p lon rt");
-            assert_close(sf.sky_ref_p()[1], 1.2, 1e-10, "sky_ref_p lat rt");
+            assert_close(sf.sky_ref_lon_lat()[0], 1.5, 1e-10, "sky_ref lon rt");
+            assert_close(sf.sky_ref_lon_lat()[1], 0.75, 1e-10, "sky_ref lat rt");
+            assert_close(sf.sky_ref_p_lon_lat()[0], 0.3, 1e-10, "sky_ref_p lon rt");
+            assert_close(sf.sky_ref_p_lon_lat()[1], 1.2, 1e-10, "sky_ref_p lat rt");
         }
         _ => panic!("expected SkyFrame variant"),
     }
@@ -1101,8 +1101,8 @@ fn double_round_trip_skyframe() {
     original.set_equinox_mjd(51544.5);
     original.set_neglon(true);
     original.set_sky_ref_is(SkyRefIs::Pole);
-    original.set_sky_ref(0.5, 0.25);
-    original.set_sky_ref_p(0.1, 1.0);
+    original.set_sky_ref_lon_lat(0.5, 0.25);
+    original.set_sky_ref_p_lon_lat(0.1, 1.0);
     original.set_sky_tol(1.0e-8);
     original.set_projection("TAN");
 

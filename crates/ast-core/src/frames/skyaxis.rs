@@ -7,8 +7,6 @@
 // have callers once SkyFrame lands; suppress dead_code until then.
 #![allow(dead_code)]
 
-use std::f64::consts::PI;
-
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::serial::{Node, Serializable};
 
@@ -24,53 +22,153 @@ pub(crate) struct SkyAxis {
     pub as_time: Option<bool>,
     /// The SkyAxis Format string (C's `skyformat`), when set.
     pub format: Option<String>,
-    /// This is a latitude axis (constrains to +/-90 degrees).
-    pub is_latitude: bool,
-    /// Normalize to [-pi,pi] (true) or [0,2pi] (false).
+    /// The IsLatitude attribute, when set. A SkyFrame never sets it on its
+    /// own axes; SubFrame sets it on an axis it picks out (skyframe.c:10282).
+    pub is_latitude: Option<bool>,
+    /// The CentreZero attribute, when set: normalise to [-pi,pi] (true) or
+    /// [0,2pi] (false).
     pub centre_zero: Option<bool>,
 }
 
 impl SkyAxis {
-    /// Create a longitude axis with default properties.
-    ///
-    /// Defaults: `as_time` = true (hours), `centre_zero` = false ([0,2pi]).
-    pub fn longitude() -> Self {
+    /// A SkyAxis with no attribute set, as C's `astSkyAxis` makes one.
+    pub fn new() -> Self {
         Self {
             axis: super::axis::Axis::default(),
             as_time: None,
             format: None,
-            is_latitude: false,
+            is_latitude: None,
             centre_zero: None,
         }
     }
 
-    /// Create a latitude axis with default properties.
-    ///
-    /// Defaults: `as_time` = false (degrees), `centre_zero` = true ([-pi,pi]).
-    pub fn latitude() -> Self {
-        Self {
-            axis: super::axis::Axis::default(),
-            as_time: None,
-            format: None,
-            is_latitude: true,
-            centre_zero: None,
+    /// AsTime, set or default: true only for an axis explicitly marked as a
+    /// longitude (skyaxis.c:4619).
+    pub fn as_time_value(&self) -> bool {
+        self.as_time.unwrap_or(self.is_latitude == Some(false))
+    }
+
+    /// IsLatitude, set or default (false; skyaxis.c:4631).
+    pub fn is_latitude_value(&self) -> bool {
+        self.is_latitude.unwrap_or(false)
+    }
+
+    /// CentreZero, set or default (IsLatitude; skyaxis.c:4641).
+    pub fn centre_zero_value(&self) -> bool {
+        self.centre_zero.unwrap_or(self.is_latitude_value())
+    }
+
+    /// The Digits used for this axis: its own, else the one the Frame lends
+    /// it (frame.c `MAKE_GET`).
+    pub fn digits_value(&self, frame_digits: i32) -> i32 {
+        self.axis.digits.unwrap_or(frame_digits)
+    }
+
+    /// The Format, set or default. Mirrors `GetAxisFormat` (skyaxis.c:2888).
+    pub fn format_value(&self, frame_digits: i32) -> String {
+        match &self.format {
+            Some(f) => f.clone(),
+            None => default_dhms_format(self.digits_value(frame_digits), self.as_time_value()),
         }
     }
 
-    /// Return the effective `as_time` setting.
-    ///
-    /// If not explicitly set, longitude axes default to time (hours) and
-    /// latitude axes default to angle (degrees).
-    pub fn effective_as_time(&self) -> bool {
-        self.as_time.unwrap_or(!self.is_latitude)
+    /// A value formatted as `SkyAxis::AxisFormat` does (skyaxis.c:809).
+    pub fn format_axis_value(&self, frame_digits: i32, value: f64) -> String {
+        sky_format(
+            &self.format_value(frame_digits),
+            self.digits_value(frame_digits),
+            value,
+        )
     }
 
-    /// Return the effective `centre_zero` setting.
-    ///
-    /// If not explicitly set, latitude axes default to true ([-pi,pi]) and
-    /// longitude axes default to false ([0,2pi]).
-    pub fn effective_centre_zero(&self) -> bool {
-        self.centre_zero.unwrap_or(self.is_latitude)
+    /// The Unit, set or default: `"rad"` for a `%`-style Format, else the
+    /// one the Format describes. Mirrors `GetAxisUnit` (skyaxis.c:3288).
+    pub fn unit_value(&self, frame_digits: i32) -> String {
+        if let Some(u) = &self.axis.unit {
+            return u.clone();
+        }
+        let fmt = self.format_value(frame_digits);
+        if fmt.starts_with('%') {
+            "rad".to_string()
+        } else {
+            dhms_unit(&fmt, self.digits_value(frame_digits)).0
+        }
+    }
+
+    /// The NormUnit. Mirrors `GetAxisNormUnit` (skyaxis.c:3101): a
+    /// description of the axis values is returned unchanged when the Unit is
+    /// the default or has been set to that description; anything else is a
+    /// units expression, normalised as the Axis class does.
+    pub fn norm_unit_value(&self, frame_digits: i32) -> String {
+        let fmt = self.format_value(frame_digits);
+        if !fmt.starts_with('%') {
+            let (description, describes_values) = dhms_unit(&fmt, self.digits_value(frame_digits));
+            if describes_values
+                && self
+                    .axis
+                    .unit
+                    .as_ref()
+                    .is_none_or(|unit| *unit == description)
+            {
+                return description;
+            }
+        }
+        crate::units::norm_unit(&self.unit_value(frame_digits))
+    }
+
+    /// The Label, set or default. Mirrors `GetAxisLabel` (skyaxis.c:3012).
+    pub fn label_value(&self) -> String {
+        if let Some(l) = &self.axis.label {
+            return l.clone();
+        }
+        let as_time = self.as_time_value();
+        match (self.is_latitude, as_time) {
+            (None, true) => "Angle on sky expressed as time",
+            (None, false) => "Angle on sky",
+            (Some(true), true) => "Sky latitude expressed as time",
+            (Some(true), false) => "Sky latitude",
+            (Some(false), true) => "Sky longitude expressed as time",
+            (Some(false), false) => "Sky longitude",
+        }
+        .to_string()
+    }
+
+    /// The Symbol, set or default. Mirrors `GetAxisSymbol` (skyaxis.c:3205).
+    pub fn symbol_value(&self) -> String {
+        if let Some(s) = &self.axis.symbol {
+            return s.clone();
+        }
+        let latitude = match self.is_latitude {
+            Some(lat) => lat,
+            None => !self.as_time_value(),
+        };
+        if latitude { "delta" } else { "alpha" }.to_string()
+    }
+
+    /// The Direction, set or default: an axis formatted as a time plots in
+    /// reverse. Mirrors `GetAxisDirection` (skyaxis.c:2820).
+    pub fn direction_value(&self) -> bool {
+        self.axis.direction.unwrap_or(!self.as_time_value())
+    }
+
+    /// The Top, set or default: pi/2 for a latitude axis, else no limit.
+    /// Mirrors `GetAxisTop` (skyaxis.c:2755).
+    pub fn top_value(&self) -> f64 {
+        self.axis.top.unwrap_or(if self.is_latitude_value() {
+            std::f64::consts::FRAC_PI_2
+        } else {
+            f64::MAX
+        })
+    }
+
+    /// The Bottom, set or default, as [`top_value`](Self::top_value) is.
+    /// Mirrors `GetAxisBottom` (skyaxis.c:2647).
+    pub fn bottom_value(&self) -> f64 {
+        self.axis.bottom.unwrap_or(if self.is_latitude_value() {
+            -std::f64::consts::FRAC_PI_2
+        } else {
+            -f64::MAX
+        })
     }
 
     /// The kind of Axis this is, as [`Frame::get_axis`] reports it.
@@ -82,9 +180,15 @@ impl SkyAxis {
     /// [`Frame::get_axis`]: super::Frame::get_axis
     pub fn kind(&self) -> super::AxisKind {
         super::AxisKind::Sky {
-            is_latitude: self.is_latitude,
-            centre_zero: self.effective_centre_zero(),
+            is_latitude: self.is_latitude_value(),
+            centre_zero: self.centre_zero_value(),
         }
+    }
+}
+
+impl Default for SkyAxis {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -513,6 +617,17 @@ impl SkyAxis {
         if let Some(format) = &self.format {
             node.push_string("Format", format, Some("Format specifier".to_string()));
         }
+        if let Some(lat) = self.is_latitude {
+            node.push_int(
+                "IsLat",
+                i64::from(lat),
+                Some(if lat {
+                    "Latitude axis (not longitude)".to_string()
+                } else {
+                    "Longitude axis (not latitude)".to_string()
+                }),
+            );
+        }
         if let Some(cz) = self.centre_zero {
             node.push_int(
                 "CnZer",
@@ -549,13 +664,10 @@ impl Serializable for SkyAxis {
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
-        let is_lat = node.get_int("IsLat", 0) != 0;
-
-        let mut axis = if is_lat {
-            SkyAxis::latitude()
-        } else {
-            SkyAxis::longitude()
-        };
+        let mut axis = SkyAxis::new();
+        if node.get("IsLat").is_some() {
+            axis.is_latitude = Some(node.get_int("IsLat", 0) != 0);
+        }
 
         // Each attribute is set only if present in the node. A SkyAxis
         // stores its Format itself, so the only Format card is the SkyAxis
@@ -571,6 +683,23 @@ impl Serializable for SkyAxis {
         axis.axis.format = None;
 
         Ok(axis)
+    }
+}
+
+/// A value formatted with the Format `fmt` of a SkyAxis whose Digits is
+/// `digits`, as `SkyAxis::AxisFormat` does (skyaxis.c:809): with
+/// `DHmsFormat`, except that a `%`-style Format goes to the Axis class's
+/// formatter, which reads the Axis's own Format rather than the SkyAxis one
+/// and so always uses its default, `%1.<Digits>G` (axis.c:731, :2673).
+pub(crate) fn sky_format(fmt: &str, digits: i32, value: f64) -> String {
+    if crate::mappings::helpers::is_bad(value) {
+        return "<bad>".to_string();
+    }
+    if fmt.starts_with('%') {
+        let digits = digits.max(1) as usize;
+        crate::frames::axis_format::format_value(&format!("%1.{digits}G"), digits, value)
+    } else {
+        dhms_format(fmt, digits, value)
     }
 }
 
@@ -612,76 +741,306 @@ pub(crate) fn normalise_dec(angle: f64) -> f64 {
     }
 }
 
-/// Parse a sexagesimal string back to radians.
+/// The separators a sky coordinate may use (skyaxis.c `sep_list`), whether
+/// each says the value is an angle (1) or a time (2), and which field it
+/// ends when it is a suffix (1 to 3), zero meaning it does not say.
+const SEP_LIST: &[u8] = b" :hHdDmM'sS\"";
+const ANGLE_OR_TIME_LIST: [u8; 12] = [0, 0, 2, 2, 1, 1, 0, 0, 1, 0, 0, 1];
+const FIELD_ID_LIST: [usize; 12] = [0, 0, 1, 1, 1, 1, 2, 2, 2, 3, 3, 3];
+
+/// C's `isspace` in the "C" locale.
+fn c_isspace(b: u8) -> bool {
+    matches!(b, b' ' | b'\t' | b'\n' | 0x0b | 0x0c | b'\r')
+}
+
+/// The length of the run of ASCII digits at the start of `s`.
+fn digit_run(s: &[u8]) -> usize {
+    s.iter().take_while(|b| b.is_ascii_digit()).count()
+}
+
+/// Read a sky coordinate in radians from the start of `text`, as
+/// `SkyAxis::AxisUnformat` does (skyaxis.c:4068) for an axis whose Format is
+/// `fmt` and whose Digits is `digits`. Returns the value and the number of
+/// characters read, which is zero, with the value unchanged at zero, when
+/// nothing could be read.
 ///
-/// Accepts:
-/// - `HH:MM:SS.ss` or `+/-DD:MM:SS.ss` (colon-separated)
-/// - `HH MM SS.ss` or `+/-DD MM SS.ss` (space-separated)
-/// - `DD.ddd` or `HH.hhh` (decimal degrees/hours)
-///
-/// Returns `(value_in_radians, characters_consumed)`.
-pub(crate) fn unformat_sky(text: &str, as_time: bool) -> AstResult<(f64, usize)> {
-    let bytes = text.as_bytes();
-    let len = bytes.len();
-
-    // Skip leading whitespace.
-    let mut pos = 0;
-    while pos < len && bytes[pos].is_ascii_whitespace() {
-        pos += 1;
+/// The Format says which fields are expected when the string does not
+/// identify them, and whether the value is a time or an angle; separators
+/// such as `h`, `m` and `d` in the string can override both. A `%`-style
+/// Format goes to the Axis class's reader instead.
+pub(crate) fn unformat_sky_axis(text: &str, fmt: &str, digits: i32) -> AstResult<(f64, usize)> {
+    if fmt.starts_with('%') {
+        return Ok(super::basic::axis_unformat(text));
     }
+    let parsed = parse_dhms_format(fmt, digits);
+    let mut as_time = parsed.as_time;
+    let (dh, min) = (parsed.dh, parsed.min);
+    let fieldvalue: [f64; 3] = [1.0, 1.0 / 60.0, 1.0 / 3600.0];
 
-    if pos >= len {
-        return Err(AstError::new_tracked(
-            ErrorCode::Unfer,
-            "empty string cannot be parsed as a sky coordinate",
-        ));
+    let string = text.as_bytes();
+    let at = |i: usize| string.get(i).copied().unwrap_or(0);
+
+    let mut s = 0;
+    while c_isspace(at(s)) {
+        s += 1;
     }
+    let string_start = s;
 
-    // Parse optional sign.
-    let negative = match bytes[pos] {
-        b'-' => {
-            pos += 1;
-            true
-        }
-        b'+' => {
-            pos += 1;
-            false
-        }
-        _ => false,
-    };
-
-    // Parse first number (integer or decimal).
-    let (first, first_end, first_is_int) = parse_number(text, pos)?;
-    pos = first_end;
-
-    // Check for separator (colon or space+digit).
-    let (value_in_units, final_pos) = if pos < len && bytes[pos] == b':' {
-        // Colon-separated sexagesimal.
-        let (val, end) = parse_sexagesimal_fields(text, first, pos)?;
-        (val, end)
-    } else if pos < len
-        && bytes[pos] == b' '
-        && first_is_int
-        && pos + 1 < len
-        && bytes[pos + 1].is_ascii_digit()
+    // An optional sign, surrounded by optional white space (" %1[+-] %n").
+    let mut positive = true;
     {
-        // Space-separated sexagesimal.
-        let (val, end) = parse_sexagesimal_fields(text, first, pos)?;
-        (val, end)
-    } else {
-        // Decimal degrees/hours (the first number is the whole value).
-        (first, pos)
-    };
+        let mut k = s;
+        while c_isspace(at(k)) {
+            k += 1;
+        }
+        if at(k) == b'+' || at(k) == b'-' {
+            positive = at(k) == b'+';
+            k += 1;
+            while c_isspace(at(k)) {
+                k += 1;
+            }
+            s = k;
+        }
+    }
 
-    // Convert to radians.
-    let sign = if negative { -1.0 } else { 1.0 };
-    let radians = if as_time {
-        sign * value_in_units * PI / 12.0
-    } else {
-        sign * value_in_units * PI / 180.0
-    };
+    let mut angle_or_time = 0u8;
+    let mut last_sep = 0u8;
+    let mut next_id = 0usize;
+    let mut nfield = 0usize;
+    let mut sep_used = 0u8;
+    let mut suffix_sep = false;
+    let mut sep_len = 0usize;
+    let mut field = [0.0f64; 3];
+    let mut field_start = [0usize; 3];
+    let mut field_id = [0usize; 3];
+    let mut nc = 0usize;
 
-    Ok((radians, final_pos))
+    for ifield in 0..3 {
+        field[ifield] = 0.0;
+        if ifield > 0 && !suffix_sep {
+            s += sep_len;
+        }
+        field_start[ifield] = s;
+
+        // A sequence of digits, with an optional decimal point.
+        let rest = &string[s.min(string.len())..];
+        let mut decimal = true;
+        let mut exponent = false;
+        let d1 = digit_run(rest);
+        let mut n = 0;
+        if d1 > 0 && rest.get(d1) == Some(&b'.') && digit_run(&rest[d1 + 1..]) > 0 {
+            n = d1 + 1 + digit_run(&rest[d1 + 1..]);
+        } else if d1 > 0 && rest.get(d1) == Some(&b'.') {
+            n = d1 + 1;
+        } else if rest.first() == Some(&b'.') && digit_run(&rest[1..]) > 0 {
+            n = 1 + digit_run(&rest[1..]);
+        } else if d1 > 0 {
+            n = d1;
+            decimal = false;
+        }
+        let matched = n > 0;
+        if matched {
+            // An exponent, with or without a sign.
+            let e = &rest[n..];
+            if matches!(e.first(), Some(b'E' | b'e')) {
+                let signed = matches!(e.get(1), Some(b'+' | b'-'));
+                let start = if signed { 2 } else { 1 };
+                let digs = digit_run(&e[start.min(e.len())..]);
+                if digs > 0 {
+                    n += start + digs;
+                    exponent = true;
+                }
+            }
+        }
+
+        // Read the number from exactly those characters, then any white
+        // space ("%<n>lf %n").
+        let mut nread = 0;
+        if matched {
+            let number = std::str::from_utf8(&rest[..n]).unwrap_or("");
+            if let Ok(v) = number.parse::<f64>() {
+                field[ifield] = v;
+                let mut k = n;
+                while c_isspace(rest.get(k).copied().unwrap_or(0)) {
+                    k += 1;
+                }
+                nread = k;
+                s += nread;
+            }
+        }
+        nc = s;
+
+        // The separator after the field; a space by default, which is
+        // valid if white space followed the number.
+        let mut sep = b' ';
+        let mut good_sep = nread > n;
+        sep_len = 0;
+        let c = at(s);
+        if c != 0 && SEP_LIST.contains(&c) {
+            sep = c;
+            good_sep = true;
+            sep_len = 1;
+            while c_isspace(at(s + sep_len)) {
+                sep_len += 1;
+            }
+        }
+        let sep_index = SEP_LIST.iter().position(|&b| b == sep).unwrap_or(0);
+        let sep_field_id = FIELD_ID_LIST[sep_index];
+        let sep_angle_or_time = ANGLE_OR_TIME_LIST[sep_index];
+
+        if good_sep {
+            if sep_field_id != 0 {
+                good_sep = sep_field_id >= next_id && sep_field_id > ifield;
+            } else {
+                good_sep = sep_used == 0 || sep == sep_used;
+                if sep_used == 0 {
+                    sep_used = sep;
+                }
+            }
+        }
+        if good_sep {
+            if angle_or_time == 0 {
+                angle_or_time = sep_angle_or_time;
+            } else {
+                good_sep = sep_angle_or_time == 0 || sep_angle_or_time == angle_or_time;
+            }
+        }
+        if good_sep {
+            nread += sep_len;
+        }
+        suffix_sep = good_sep && sep_field_id != 0;
+        if suffix_sep {
+            field_id[ifield] = sep_field_id;
+            next_id = sep_field_id + 1;
+            s += sep_len;
+            nc = s;
+        } else {
+            field_id[ifield] = next_id;
+            if next_id != 0 {
+                next_id += 1;
+            }
+        }
+
+        let mut last = false;
+        if nread == 0 && (ifield == 0 || c_isspace(last_sep)) {
+            last = true;
+        } else {
+            nfield += 1;
+        }
+        last = last || decimal || exponent || !good_sep || next_id > 3;
+        if last {
+            break;
+        }
+        last_sep = sep;
+    }
+
+    // Number the fields that no separator identified, working back from
+    // the last, from the fields the Format says are expected.
+    let mut next_id = nfield
+        + if dh {
+            0
+        } else if min {
+            1
+        } else {
+            2
+        };
+    if next_id > 3 {
+        next_id = 3;
+    }
+    for ifield in (0..nfield).rev() {
+        if field_id[ifield] != 0 {
+            next_id = field_id[ifield] - 1;
+        } else {
+            field_id[ifield] = next_id;
+            next_id = next_id.saturating_sub(1);
+        }
+    }
+
+    if nfield == 0 {
+        // "<bad>", with optional white space anywhere.
+        let mut k = 0;
+        let skip = |k: &mut usize| {
+            while c_isspace(at(*k)) {
+                *k += 1;
+            }
+        };
+        skip(&mut k);
+        let mut ok = at(k) == b'<';
+        if ok {
+            k += 1;
+            for &want in b"bad" {
+                skip(&mut k);
+                if at(k).to_ascii_lowercase() == want {
+                    k += 1;
+                } else {
+                    ok = false;
+                    break;
+                }
+            }
+        }
+        if ok {
+            skip(&mut k);
+            ok = at(k) == b'>';
+            if ok {
+                k += 1;
+                skip(&mut k);
+            }
+        }
+        return Ok(if ok {
+            (crate::constants::BAD_VALUE, k)
+        } else {
+            (0.0, 0)
+        });
+    }
+
+    if angle_or_time != 0 {
+        as_time = angle_or_time == 2;
+    }
+
+    // Fields after the first must be below 60, unless only their decimal
+    // places round them up to it.
+    for ifield in 1..nfield {
+        if field[ifield] >= 60.0 {
+            let start = field_start[ifield];
+            let n = digit_run(&string[start.min(string.len())..]);
+            if n > 0 {
+                let whole = std::str::from_utf8(&string[start..start + n])
+                    .ok()
+                    .and_then(|t| t.parse::<f64>().ok());
+                if whole.is_some_and(|v| v >= 60.0) {
+                    let nchar = nc - string_start;
+                    let shown = &string[string_start..string_start + nchar];
+                    let len = shown
+                        .iter()
+                        .rposition(|&b| !c_isspace(b))
+                        .map_or(0, |i| i + 1);
+                    return Err(AstError::new_tracked(
+                        ErrorCode::Unfer,
+                        format!(
+                            "Invalid {}{} value in sky coordinate \"{}\".",
+                            if as_time { "" } else { "arc" },
+                            if field_id[ifield] == 2 {
+                                "minutes"
+                            } else {
+                                "seconds"
+                            },
+                            String::from_utf8_lossy(&shown[..len])
+                        ),
+                    ));
+                }
+            }
+        }
+    }
+
+    let unit = if as_time { HR2RAD } else { DEG2RAD };
+    let mut value = 0.0;
+    for ifield in 0..nfield {
+        value += field[ifield] * fieldvalue[field_id[ifield] - 1] * unit;
+    }
+    if !positive {
+        value = -value;
+    }
+    Ok((value, nc))
 }
 
 /// Parse a number (integer or decimal) starting at `pos` in `text`.
@@ -804,34 +1163,29 @@ mod tests {
     }
 
     #[test]
-    fn longitude_defaults() {
-        let axis = SkyAxis::longitude();
-        assert!(!axis.is_latitude);
-        assert!(axis.as_time.is_none());
-        assert!(axis.centre_zero.is_none());
-        // Effective defaults: as_time=true, centre_zero=false
-        assert!(axis.effective_as_time());
-        assert!(!axis.effective_centre_zero());
-    }
-
-    #[test]
-    fn latitude_defaults() {
-        let axis = SkyAxis::latitude();
-        assert!(axis.is_latitude);
-        assert!(axis.as_time.is_none());
-        assert!(axis.centre_zero.is_none());
-        // Effective defaults: as_time=false, centre_zero=true
-        assert!(!axis.effective_as_time());
-        assert!(axis.effective_centre_zero());
+    fn defaults_follow_is_latitude() {
+        // skyaxis.c:4619-4642: with nothing set, an axis is neither a
+        // latitude nor formatted as a time, and is not centred on zero.
+        let axis = SkyAxis::new();
+        assert!(!axis.as_time_value());
+        assert!(!axis.centre_zero_value());
+        let mut lon = SkyAxis::new();
+        lon.is_latitude = Some(false);
+        assert!(lon.as_time_value());
+        assert!(!lon.centre_zero_value());
+        let mut lat = SkyAxis::new();
+        lat.is_latitude = Some(true);
+        assert!(!lat.as_time_value());
+        assert!(lat.centre_zero_value());
     }
 
     #[test]
     fn explicit_overrides() {
-        let mut axis = SkyAxis::longitude();
+        let mut axis = SkyAxis::new();
         axis.as_time = Some(false);
         axis.centre_zero = Some(true);
-        assert!(!axis.effective_as_time());
-        assert!(axis.effective_centre_zero());
+        assert!(!axis.as_time_value());
+        assert!(axis.centre_zero_value());
     }
 
     // ----------------------------------------------------------------
@@ -949,7 +1303,7 @@ mod tests {
     fn unformat_hms_12h30m() {
         // "12:30:00" as time -> 12.5 hours -> 12.5 * PI / 12
         let expected = 12.5 * PI / 12.0;
-        let (val, nc) = unformat_sky("12:30:00", true).unwrap();
+        let (val, nc) = unformat_sky_axis("12:30:00", "hms", 7).unwrap();
         assert!(
             (val - expected).abs() < TOL,
             "got {val}, expected {expected}"
@@ -960,13 +1314,13 @@ mod tests {
     #[test]
     fn unformat_hms_6h() {
         let expected = PI / 2.0;
-        let (val, _nc) = unformat_sky("6:00:00.0", true).unwrap();
+        let (val, _nc) = unformat_sky_axis("6:00:00.0", "hms", 7).unwrap();
         assert!((val - expected).abs() < TOL);
     }
 
     #[test]
     fn unformat_hms_0h() {
-        let (val, _nc) = unformat_sky("0:00:00", true).unwrap();
+        let (val, _nc) = unformat_sky_axis("0:00:00", "hms", 7).unwrap();
         assert!(val.abs() < TOL);
     }
 
@@ -979,7 +1333,7 @@ mod tests {
         // +45:30:15.5 -> 45 + 30/60 + 15.5/3600 = 45.50430555... degrees
         let expected_deg = 45.0 + 30.0 / 60.0 + 15.5 / 3600.0;
         let expected = expected_deg * PI / 180.0;
-        let (val, nc) = unformat_sky("+45:30:15.5", false).unwrap();
+        let (val, nc) = unformat_sky_axis("+45:30:15.5", "dms", 7).unwrap();
         assert!(
             (val - expected).abs() < TOL,
             "got {val}, expected {expected}"
@@ -991,7 +1345,7 @@ mod tests {
     fn unformat_dms_neg1arcsec() {
         // "-0:00:01" -> -1 arcsecond
         let expected = -ARCSEC;
-        let (val, nc) = unformat_sky("-0:00:01", false).unwrap();
+        let (val, nc) = unformat_sky_axis("-0:00:01", "dms", 7).unwrap();
         assert!(
             (val - expected).abs() < TOL,
             "got {val}, expected {expected}"
@@ -1002,14 +1356,14 @@ mod tests {
     #[test]
     fn unformat_dms_90deg() {
         let expected = PI / 2.0;
-        let (val, _nc) = unformat_sky("+90:00:00", false).unwrap();
+        let (val, _nc) = unformat_sky_axis("+90:00:00", "dms", 7).unwrap();
         assert!((val - expected).abs() < TOL);
     }
 
     #[test]
     fn unformat_decimal_degrees() {
         // "180.0" as degrees -> PI
-        let (val, nc) = unformat_sky("180.0", false).unwrap();
+        let (val, nc) = unformat_sky_axis("180.0", "dms", 7).unwrap();
         assert!((val - PI).abs() < TOL);
         assert_eq!(nc, 5);
     }
@@ -1018,14 +1372,14 @@ mod tests {
     fn unformat_decimal_hours() {
         // "6.0" as time -> 6 hours -> PI/2
         let expected = PI / 2.0;
-        let (val, _nc) = unformat_sky("6.0", true).unwrap();
+        let (val, _nc) = unformat_sky_axis("6.0", "hms", 7).unwrap();
         assert!((val - expected).abs() < TOL);
     }
 
     #[test]
     fn unformat_with_leading_whitespace() {
         let expected = PI / 2.0;
-        let (val, nc) = unformat_sky("  6:00:00", true).unwrap();
+        let (val, nc) = unformat_sky_axis("  6:00:00", "hms", 7).unwrap();
         assert!((val - expected).abs() < TOL);
         assert_eq!(nc, 9); // 2 spaces + 7 chars
     }
@@ -1034,7 +1388,7 @@ mod tests {
     fn unformat_space_separated() {
         // "12 30 00" as time -> 12.5 hours
         let expected = 12.5 * PI / 12.0;
-        let (val, nc) = unformat_sky("12 30 00", true).unwrap();
+        let (val, nc) = unformat_sky_axis("12 30 00", "hms", 7).unwrap();
         assert!(
             (val - expected).abs() < TOL,
             "got {val}, expected {expected}"
@@ -1044,15 +1398,16 @@ mod tests {
 
     #[test]
     fn unformat_empty_string() {
-        assert!(unformat_sky("", true).is_err());
-        assert!(unformat_sky("   ", false).is_err());
+        // skyaxis.c:4530: nothing read is not an error.
+        assert_eq!(unformat_sky_axis("", "hms", 7).unwrap(), (0.0, 0));
+        assert_eq!(unformat_sky_axis("   ", "dms", 7).unwrap(), (0.0, 0));
     }
 
     #[test]
     fn unformat_no_seconds() {
         // "12:30" as time -> 12h 30m 0s = 12.5 hours
         let expected = 12.5 * PI / 12.0;
-        let (val, nc) = unformat_sky("12:30", true).unwrap();
+        let (val, nc) = unformat_sky_axis("12:30", "hms", 7).unwrap();
         assert!((val - expected).abs() < TOL);
         assert_eq!(nc, 5);
     }
@@ -1066,7 +1421,7 @@ mod tests {
         let values = [0.0, PI / 6.0, PI / 4.0, PI / 2.0, PI, 3.0 * PI / 2.0];
         for &orig in &values {
             let formatted = dhms_format("hms.3", 7, orig);
-            let (parsed, _nc) = unformat_sky(&formatted, true).unwrap();
+            let (parsed, _nc) = unformat_sky_axis(&formatted, "hms", 7).unwrap();
             // Normalize both to [0, 2*PI) for comparison.
             let orig_norm = orig.rem_euclid(2.0 * PI);
             let parsed_norm = parsed.rem_euclid(2.0 * PI);
@@ -1091,7 +1446,7 @@ mod tests {
         ];
         for &orig in &values {
             let formatted = dhms_format("dms.3", 7, orig);
-            let (parsed, _nc) = unformat_sky(&formatted, false).unwrap();
+            let (parsed, _nc) = unformat_sky_axis(&formatted, "dms", 7).unwrap();
             assert!(
                 (orig - parsed).abs() < 1.0e-6,
                 "DMS round-trip failed for {orig}: formatted='{}', parsed={parsed}",

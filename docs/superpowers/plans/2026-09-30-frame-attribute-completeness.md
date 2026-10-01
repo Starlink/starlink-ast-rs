@@ -94,3 +94,29 @@ attribute straight to the primary Frame, skipping the CmpFrame's over-rides.
 
 Gate: `tests/test_frame_axis_attrs.rs` against the tables from
 `tools/oracle_fixtures/frame_axis_attrs_probe.c`.
+
+## Phase 3 notes: SkyFrame
+
+- SkyRef and SkyRefP are per external axis, as C's `MAKE_SET` and its
+  relatives in skyframe.c map them through the permutation; the (lon, lat)
+  pair accessors remain, named `*_lon_lat`, for the internal callers that
+  build offset Mappings.
+  SkyRefP's default is computed as `GetSkyRefP` computes it.
+- `SkyAxis.is_latitude` is C's IsLatitude attribute, unset unless something
+  sets it.
+  A SkyFrame never sets it on its own axes, so the Axis methods C reaches
+  through `astGetAxis` treat the latitude like a longitude; the port mirrors
+  this, and `c-library-quirks.md` records it.
+  SkyFrame's own over-rides tell the axes apart by their internal index.
+- A plain Frame holds `FrameAxis::Plain(Axis)` or `FrameAxis::Sky(SkyAxis)`.
+  SkyFrame's SubFrame attaches the picked SkyAxis with the attributes
+  skyframe.c:10230 sets on it, so the picked axis formats, unformats,
+  normalises and dumps as a SkyAxis.
+- `unformat_sky_axis` is a port of `SkyAxis::AxisUnformat`
+  (skyaxis.c:4068); a SkyFrame reads with its own Format, set or default.
+- The C oracle must be built with `-ffp-contract=off` (see
+  `docs/issues/c-oracle-probe-recipe.md`, Trap 1a): Apple clang otherwise
+  fuses the unformatter's accumulation and the values differ by an ULP.
+
+Gates: `tests/test_skyframe_attrs.rs` (`skyframe_attrs_probe.c`) and
+`tests/test_picked_skyaxis.rs` (`picked_skyaxis_probe.c`).

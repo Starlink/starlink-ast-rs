@@ -473,11 +473,19 @@ pub(crate) fn build_celestial_with_def_b1950(
     // Step 7e: SREF / SREFP — non-standard AST keywords describing
     // the SkyRef / SkyRefP positions for an offset SkyFrame. Mirrors
     // C `WcsSkyFrame` (fitschan.c:39331-39340).
-    if let (Some(refl), Some(refb)) = (store.skyref[lon_axis], store.skyref[lat_axis]) {
-        sky_frame.set_sky_ref(refl, refb);
+    // C sets each axis on its own, on the SkyFrame before any permutation,
+    // so axis 1 is the longitude.
+    if let Some(v) = store.skyref[lon_axis] {
+        sky_frame.set_sky_ref(1, v).ok()?;
     }
-    if let (Some(refpl), Some(refpb)) = (store.skyrefp[lon_axis], store.skyrefp[lat_axis]) {
-        sky_frame.set_sky_ref_p(refpl, refpb);
+    if let Some(v) = store.skyref[lat_axis] {
+        sky_frame.set_sky_ref(2, v).ok()?;
+    }
+    if let Some(v) = store.skyrefp[lon_axis] {
+        sky_frame.set_sky_ref_p(1, v).ok()?;
+    }
+    if let Some(v) = store.skyrefp[lat_axis] {
+        sky_frame.set_sky_ref_p(2, v).ok()?;
     }
 
     // Step 7f: SREFIS — non-standard AST keyword recording whether

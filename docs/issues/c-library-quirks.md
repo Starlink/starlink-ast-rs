@@ -28,6 +28,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [`UnitNormMap`'s zero-norm guard is defeated by compiler multiply-add contraction](#unitnormmaps-zero-norm-guard-is-defeated-by-compiler-multiply-add-contraction)
 - [A `%` Format on a SkyAxis changes the Unit but not the formatting](#a--format-on-a-skyaxis-changes-the-unit-but-not-the-formatting)
 - [SkyFrame `Offset`'s coincident-points guard is defeated by multiply-add contraction too](#skyframe-offsets-coincident-points-guard-is-defeated-by-multiply-add-contraction-too)
+- [A SkyFrame's own SkyAxes are not latitude axes, so `astAxOffset` wraps its latitude into 0 to 2pi](#a-skyframes-own-skyaxes-are-not-latitude-axes-so-astaxoffset-wraps-its-latitude-into-0-to-2pi)
 
 ### [Addressed here, and not going upstream](#addressed-here-and-not-going-upstream)
 
@@ -442,6 +443,18 @@ A fix upstream would pass the SkyAxis Format to the parser, or have the SkyAxis 
 
 To be raised upstream.
 
+
+### A SkyFrame's own SkyAxes are not latitude axes, so `astAxOffset` wraps its latitude into 0 to 2pi
+
+A SkyFrame never sets the IsLatitude attribute of its own SkyAxis objects: it sets it only temporarily while formatting (`skyframe.c:3503`) and on a copy when an axis is picked out (`skyframe.c:10282`).
+The SkyAxis defaults then treat both axes alike, IsLatitude 0 and CentreZero 0 (`skyaxis.c:4631`, `:4641`).
+SkyFrame over-rides the Frame methods that know which axis is the latitude (`GetTop`, `GetBottom`, `GetDirection`, `GetAsTime`, `Norm`), but not the ones that go straight to the Axis object through `astGetAxis`: `astAxOffset`, `astAxDistance` and `astAxNormValues`, nor a CmpFrame's `GetTop` and `GetBottom`, which read its component's Axis.
+So at the submodule pin `astAxOffset( skyframe, 2, -0.1, 0.0 )` gives 6.1832 rather than -0.1, and a CmpFrame holding an ICRS SkyFrame reports no Top or Bottom limit on the declination axis, while the SkyFrame itself reports pi/2.
+
+**Rust behaviour (mirror):** `SkyFrame` holds `SkyAxis` values with IsLatitude unset, `SkyFrame::get_axis` reports them as C's do, and `Frame::axis_object_top` is the `astGetAxis` path a CmpFrame takes. `own_axes_have_no_is_latitude` in `crates/ast-core/tests/test_skyframe_attrs.rs` pins it.
+A fix upstream would set IsLatitude and CentreZero on the SkyFrame's axes when it is created and when its axes are permuted, as SubFrame does on a picked copy.
+
+To be raised upstream.
 ---
 
 ## Addressed here, and not going upstream

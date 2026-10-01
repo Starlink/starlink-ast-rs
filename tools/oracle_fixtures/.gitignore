@@ -19,3 +19,5 @@ frame_class_attrs_probe
 # crates/ast-core/tests/fixtures/.
 *.ast
 frame_axis_attrs_probe
+skyframe_attrs_probe
+picked_skyaxis_probe

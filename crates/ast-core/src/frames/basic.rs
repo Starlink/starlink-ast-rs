@@ -6,7 +6,7 @@ use crate::mappings::helpers::{is_bad, point_has_bad};
 use crate::mappings::{DynMapping, UnitMap};
 use crate::serial::{Node, Serializable};
 
-use super::axis::Axis;
+use super::axis::{Axis, FrameAxis};
 use super::frame_attrs::{
     FrameAttrs, FrameDumpSource, clean_domain, default_epoch_mjd, default_symbol, read_frame_attrs,
     write_frame_cards,
@@ -44,19 +44,12 @@ impl FrameSystem {
 pub struct BasicFrame {
     naxes: usize,
     attrs: FrameAttrs,
-    /// The Axis-class attributes of each axis, in internal (unpermuted)
-    /// order, as C's Frame holds its Axis objects.
-    axes: Vec<Axis>,
-    /// The kind of Axis on each axis, in internal order.
-    ///
-    /// C's `SubFrame` attaches the target's own Axis objects to the result
-    /// (frame.c:11023), so a plain Frame built by picking axes out of a
-    /// SkyFrame carries SkyAxis objects, and keeps their cyclic behaviour.
-    /// The axes need not agree with each other.
-    ///
-    /// Transient: never serialised; a SkyAxis in a plain Frame is written
-    /// as a plain Axis (a `PLAN.md` §2 row).
-    axis_kinds: Vec<AxisKind>,
+    /// The Axis object on each axis, in internal (unpermuted) order, as
+    /// C's Frame holds them. C's `SubFrame` attaches the target's own Axis
+    /// objects to the result (frame.c:11023), so a plain Frame built by
+    /// picking axes out of a SkyFrame carries SkyAxis objects, which keep
+    /// formatting, normalising and dumping as a SkyAxis does.
+    axes: Vec<FrameAxis>,
     /// The axis permutation, `perm[external] = internal` (0-based), as C's
     /// `perm` array.
     perm: Vec<usize>,
@@ -182,8 +175,7 @@ impl BasicFrameBuilder {
         Ok(BasicFrame {
             naxes: self.naxes,
             attrs: self.attrs,
-            axes: self.axes,
-            axis_kinds: vec![AxisKind::Plain; self.naxes],
+            axes: self.axes.into_iter().map(FrameAxis::Plain).collect(),
             perm: (0..self.naxes).collect(),
             system_set: false,
             align_system_set: false,
@@ -213,17 +205,37 @@ macro_rules! frame_attr_methods {
 }
 
 impl BasicFrame {
-    /// Attach `kind` to a 1-based `axis` of this Frame.
+    /// Attach an Axis object to a 1-based `axis` of this Frame.
     ///
     /// Used when axes are picked out of another Frame: C's `SubFrame` gives
     /// the result the target's own Axis objects (frame.c:11023), so a sky axis
-    /// picked into a plain Frame stays a SkyAxis and keeps wrapping its values.
-    /// Mirrors C `astSetAxis`.
-    pub(crate) fn set_axis_kind(&mut self, axis: usize, kind: AxisKind) {
+    /// picked into a plain Frame stays a SkyAxis. Mirrors C `astSetAxis`.
+    pub(crate) fn set_axis_object(&mut self, axis: usize, object: FrameAxis) {
         if axis >= 1 && axis <= self.naxes {
             let internal = self.perm[axis - 1];
-            self.axis_kinds[internal] = kind;
+            self.axes[internal] = object;
         }
+    }
+
+    /// Overlay the Frame-class attributes set in `template`, as C's
+    /// `Frame::Overlay` does for a template of another class.
+    pub(crate) fn overlay_frame_attrs(&mut self, template: &FrameAttrs) {
+        self.attrs.overlay_from(template);
+    }
+
+    /// The Axis object of a 1-based external axis.
+    fn axis_object(&self, axis: usize) -> AstResult<&FrameAxis> {
+        Ok(&self.axes[self.internal(axis)?])
+    }
+
+    /// The external (1-based) axis of internal axis `internal`, as C's
+    /// inverse permutation gives it.
+    fn external(&self, internal: usize) -> usize {
+        self.perm
+            .iter()
+            .position(|&p| p == internal)
+            .unwrap_or(internal)
+            + 1
     }
 
     /// Validate that `axis` is in 1..=naxes, returning an error if not.
@@ -244,12 +256,12 @@ impl BasicFrame {
     }
 
     fn ax(&self, axis: usize) -> AstResult<&Axis> {
-        Ok(&self.axes[self.internal(axis)?])
+        Ok(self.axes[self.internal(axis)?].axis())
     }
 
     fn ax_mut(&mut self, axis: usize) -> AstResult<&mut Axis> {
         let i = self.internal(axis)?;
-        Ok(&mut self.axes[i])
+        Ok(self.axes[i].axis_mut())
     }
 
     // Defaults of the Frame-class attributes (frame.c), for the
@@ -644,6 +656,7 @@ impl Frame for BasicFrame {
     fn label(&self, axis: usize) -> AstResult<String> {
         let i = self.internal(axis)?;
         Ok(self.axes[i]
+            .axis()
             .label
             .clone()
             .unwrap_or_else(|| format!("Axis {}", i + 1)))
@@ -655,23 +668,81 @@ impl Frame for BasicFrame {
     fn symbol(&self, axis: usize) -> AstResult<String> {
         let i = self.internal(axis)?;
         Ok(self.axes[i]
+            .axis()
             .symbol
             .clone()
             .unwrap_or_else(|| default_symbol(self.attrs.domain.as_deref(), i)))
     }
 
-    axis_attrs_base_get!(unit, format, digits, direction, top, bottom);
-    axis_attrs_store!(label, symbol, unit, format, digits, direction, top, bottom);
+    // The Frame class's getters (frame.c `MAKE_GET`) ask the Axis object,
+    // lending it the Frame's Digits.
+    fn unit(&self, axis: usize) -> AstResult<String> {
+        Ok(self.axis_object(axis)?.unit_value(self.digits()))
+    }
+    fn format_str(&self, axis: usize) -> AstResult<String> {
+        Ok(self.axis_object(axis)?.format_value(self.digits()))
+    }
+    fn set_format_str(&mut self, axis: usize, format: &str) -> AstResult<()> {
+        let i = self.internal(axis)?;
+        *self.axes[i].format_slot_mut() = Some(format.to_string());
+        Ok(())
+    }
+    fn test_format_str(&self, axis: usize) -> AstResult<bool> {
+        Ok(self.axis_object(axis)?.format_slot().is_some())
+    }
+    fn clear_format_str(&mut self, axis: usize) -> AstResult<()> {
+        let i = self.internal(axis)?;
+        *self.axes[i].format_slot_mut() = None;
+        Ok(())
+    }
+    fn direction(&self, axis: usize) -> AstResult<bool> {
+        Ok(self.axis_object(axis)?.direction_value())
+    }
+    fn top(&self, axis: usize) -> AstResult<f64> {
+        Ok(self.axis_object(axis)?.top_value())
+    }
+    fn bottom(&self, axis: usize) -> AstResult<f64> {
+        Ok(self.axis_object(axis)?.bottom_value())
+    }
+    axis_attrs_base_get!(digits);
+    axis_attrs_store!(label, symbol, unit, digits, direction, top, bottom);
+
+    /// Mirrors C `Frame::Format` (frame.c:4260), which formats with the
+    /// Axis object, lending it the Frame's Digits: axis.c `AxisFormat` or
+    /// skyaxis.c `AxisFormat`.
+    fn format(&self, axis: usize, value: f64) -> AstResult<String> {
+        let digits = self.digits();
+        match self.axis_object(axis)? {
+            FrameAxis::Plain(a) => {
+                if is_bad(value) {
+                    return Ok("<bad>".to_string());
+                }
+                let d = a.digits.unwrap_or(digits).max(1) as usize;
+                let fmt = self.axes[self.internal(axis)?].format_value(digits);
+                Ok(super::axis_format::format_value(&fmt, d, value))
+            }
+            FrameAxis::Sky(s) => Ok(s.format_axis_value(digits, value)),
+        }
+    }
+
+    /// Mirrors C `Frame::GetNormUnit` (frame.c:13149): a SkyAxis supplies its
+    /// own (skyaxis.c:3101).
+    fn norm_unit(&self, axis: usize) -> String {
+        match self
+            .axis_object(axis)
+            .ok()
+            .and_then(|a| a.sky_norm_unit(self.digits()))
+        {
+            Some(u) => u,
+            None => crate::units::norm_unit(&self.unit(axis).unwrap_or_default()),
+        }
+    }
 
     fn get_active_unit(&self) -> bool {
         // C `Frame::GetActiveUnit` (frame.c:4669) loops over the axes with
         // `astGetAxis` and reports 0 if any is a SkyAxis, whatever the stored
         // flag says. Otherwise the stored value, defaulting to false.
-        if self
-            .axis_kinds
-            .iter()
-            .any(|k| matches!(k, AxisKind::Sky { .. }))
-        {
+        if self.axes.iter().any(|a| matches!(a, FrameAxis::Sky(_))) {
             return false;
         }
         self.attrs.active_unit.unwrap_or(false)
@@ -681,7 +752,7 @@ impl Frame for BasicFrame {
     /// (frame.c:5309), which returns the Frame's own Axis object.
     fn get_axis(&self, axis: usize) -> AxisKind {
         self.internal(axis)
-            .map(|i| self.axis_kinds[i])
+            .map(|i| self.axes[i].kind())
             .unwrap_or(AxisKind::Plain)
     }
 
@@ -693,9 +764,20 @@ impl Frame for BasicFrame {
         self.attrs.active_unit.is_some()
     }
 
+    /// Mirrors C `Frame::Unformat` (frame.c:11819): axis.c `AxisUnformat`,
+    /// or skyaxis.c `AxisUnformat` for a SkyAxis.
     fn unformat(&self, axis: usize, text: &str) -> AstResult<(f64, usize)> {
-        self.validate_axis(axis)?;
-        Ok(axis_unformat(text))
+        match self.axis_object(axis)? {
+            FrameAxis::Plain(_) => Ok(axis_unformat(text)),
+            FrameAxis::Sky(s) => {
+                let digits = self.digits();
+                super::skyaxis::unformat_sky_axis(
+                    text,
+                    &s.format_value(digits),
+                    s.digits_value(digits),
+                )
+            }
+        }
     }
 
     fn distance(&self, a: &[f64], b: &[f64]) -> AstResult<f64> {
@@ -803,12 +885,8 @@ impl Frame for BasicFrame {
             if t < 0 || (t as usize) >= self.naxes {
                 continue;
             }
-            let src = &self.axes[self.perm[t as usize]];
-            let dst = &mut snap.axes[i];
-            dst.label.clone_from(&src.label);
-            dst.unit.clone_from(&src.unit);
-            dst.symbol.clone_from(&src.symbol);
-            dst.format.clone_from(&src.format);
+            // C's SubFrame attaches the target's Axis object (frame.c:11023).
+            snap.axes[i] = self.axes[self.perm[t as usize]].clone();
         }
         Ok(Box::new(snap))
     }
@@ -887,38 +965,31 @@ impl FrameDumpSource for BasicFrame {
             FrameSystem::Cartesian.as_str().to_string(),
         )
     }
+    // The Frame dump reads each value with the Frame's getter on the
+    // external axis of each internal one (frame.c:14358).
     fn dump_label(&self, axis: usize) -> String {
-        self.axes[axis]
-            .label
-            .clone()
-            .unwrap_or_else(|| format!("Axis {}", axis + 1))
+        self.label(self.external(axis)).unwrap_or_default()
     }
     fn dump_symbol(&self, axis: usize) -> String {
-        self.axes[axis]
-            .symbol
-            .clone()
-            .unwrap_or_else(|| default_symbol(self.attrs.domain.as_deref(), axis))
+        self.symbol(self.external(axis)).unwrap_or_default()
     }
     fn dump_unit(&self, axis: usize) -> String {
-        self.axes[axis].unit.clone().unwrap_or_default()
+        self.unit(self.external(axis)).unwrap_or_default()
     }
     fn dump_format(&self, axis: usize) -> String {
-        let a = &self.axes[axis];
-        a.format
-            .clone()
-            .unwrap_or_else(|| format!("%1.{}G", a.digits.unwrap_or_else(|| self.digits())))
+        self.format_str(self.external(axis)).unwrap_or_default()
     }
     fn dump_axis_digits(&self, axis: usize) -> Option<i32> {
-        self.axes[axis].digits
+        self.axes[axis].axis().digits
     }
     fn dump_direction(&self, axis: usize) -> bool {
-        self.axes[axis].direction.unwrap_or(true)
+        self.axes[axis].direction_value()
     }
     fn dump_bottom(&self, axis: usize) -> f64 {
-        self.axes[axis].bottom.unwrap_or(-f64::MAX)
+        self.axes[axis].bottom_value()
     }
     fn dump_top(&self, axis: usize) -> f64 {
-        self.axes[axis].top.unwrap_or(f64::MAX)
+        self.axes[axis].top_value()
     }
     fn dump_preserve_axes(&self) -> bool {
         self.preserve_axes()
@@ -965,9 +1036,7 @@ impl Serializable for BasicFrame {
         // Axis objects in internal order, each with only its set attributes
         // (frame.c:14660 dumps them with Full = -1).
         for (i, axis) in self.axes.iter().enumerate() {
-            let mut axis_node = Node::new("Axis");
-            axis_node.class_comment = Some("Coordinate axis".to_string());
-            axis.write_set_attributes(&mut axis_node);
+            let axis_node = axis.to_dump_node();
             node.push_object(
                 &format!("Ax{}", i + 1),
                 axis_node,
@@ -999,7 +1068,7 @@ impl Serializable for BasicFrame {
 
         for (i, axis) in frame.axes.iter_mut().enumerate() {
             if let Some(axis_node) = node.get_object(&format!("Ax{}", i + 1)) {
-                *axis = Axis::read(axis_node);
+                *axis = FrameAxis::read(axis_node)?;
             }
         }
 
@@ -1098,19 +1167,13 @@ mod tests {
         f.set_active_unit(true);
         assert!(f.get_active_unit(), "plain frame honours the set flag");
 
-        f.set_axis_kind(
-            1,
-            AxisKind::Sky {
-                is_latitude: false,
-                centre_zero: false,
-            },
-        );
+        f.set_axis_object(1, FrameAxis::Sky(crate::frames::skyaxis::SkyAxis::new()));
         assert!(
             !f.get_active_unit(),
             "a frame carrying a SkyAxis must report ActiveUnit=0 regardless of the stored flag"
         );
 
-        f.set_axis_kind(1, AxisKind::Plain);
+        f.set_axis_object(1, FrameAxis::default());
         assert!(f.get_active_unit(), "clearing the axis restores the value");
     }
 }

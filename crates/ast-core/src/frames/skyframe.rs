@@ -3,7 +3,7 @@
 use crate::constants::BAD_VALUE;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::sky_convert::{SkyRefIs, SkySystem, make_offset_mapping, make_sky_mapping};
-use crate::frames::skyaxis::{SkyAxis, default_dhms_format, dhms_format, dhms_unit, unformat_sky};
+use crate::frames::skyaxis::{SkyAxis, default_dhms_format, dhms_unit, unformat_sky_axis};
 use crate::frames::{AxisKind, DynFrame, Frame, FrameRef, LineDef, SkyLineDef};
 use crate::mappings::helpers::is_bad;
 use crate::mappings::{CmpMap, Composition, DynMapping, PermMap, UnitMap};
@@ -125,14 +125,14 @@ impl SkyFrame {
             sky_tol: None,
             sky_ref: [0.0, 0.0],
             sky_ref_set: [false, false],
-            sky_ref_p: [0.0, std::f64::consts::FRAC_PI_2],
+            sky_ref_p: [0.0, 0.0],
             sky_ref_p_set: [false, false],
             sky_ref_is: SkyRefIs::Ignored,
             sky_ref_is_set: false,
             align_offset: false,
             align_offset_set: false,
             align_system: None,
-            axes: [SkyAxis::longitude(), SkyAxis::latitude()],
+            axes: [SkyAxis::new(), SkyAxis::new()],
             attrs: super::frame_attrs::FrameAttrs::default(),
             perm: [0, 1],
         }
@@ -147,15 +147,27 @@ impl SkyFrame {
         self.perm
     }
 
-    /// Position of longitude in coordinate arrays (0-based). Mirrors
-    /// `astGetLonAxis(skyframe)`.
+    /// `IsLatAxis(axis)`: whether a 1-based external axis is the latitude
+    /// axis. Mirrors C `astGetIsLatAxis`.
+    pub fn is_lat_axis(&self, axis: usize) -> AstResult<bool> {
+        Ok(self.physical_axis(axis)? == 1)
+    }
+
+    /// `IsLonAxis(axis)`: whether a 1-based external axis is the longitude
+    /// axis. Mirrors C `astGetIsLonAxis`.
+    pub fn is_lon_axis(&self, axis: usize) -> AstResult<bool> {
+        Ok(self.physical_axis(axis)? == 0)
+    }
+
+    /// Position of longitude in coordinate arrays (0-based): C's LonAxis
+    /// attribute less one. Mirrors `astGetLonAxis(skyframe)`.
     #[inline]
     pub fn lon_axis(&self) -> usize {
         if self.perm[0] == 0 { 0 } else { 1 }
     }
 
-    /// Position of latitude in coordinate arrays (0-based). Mirrors
-    /// `astGetLatAxis(skyframe)`.
+    /// Position of latitude in coordinate arrays (0-based): C's LatAxis
+    /// attribute less one. Mirrors `astGetLatAxis(skyframe)`.
     #[inline]
     pub fn lat_axis(&self) -> usize {
         if self.perm[0] == 1 { 0 } else { 1 }
@@ -199,11 +211,9 @@ impl SkyFrame {
         if let Some(set) = self.axes[phys].as_time {
             return set;
         }
-        if self.axes[phys].is_latitude {
-            false
-        } else {
-            is_equatorial(self.system)
-        }
+        // skyframe.c:2503 tells the axes apart by their internal index, not
+        // by the SkyAxis IsLatitude attribute, which a SkyFrame never sets.
+        phys == 0 && is_equatorial(self.system)
     }
 
     /// The Axis-class attributes of a 1-based external axis.
@@ -309,6 +319,11 @@ impl SkyFrame {
     /// Test whether the `AlignSystem` attribute has been explicitly set.
     pub fn test_align_system(&self) -> bool {
         self.align_system.is_some()
+    }
+
+    /// Clear AlignSystem.
+    pub fn clear_align_system(&mut self) {
+        self.align_system = None;
     }
 
     /// Return the equinox as MJD.
@@ -424,7 +439,13 @@ impl SkyFrame {
 
     /// Return whether longitude increases in the negative direction.
     pub fn neglon(&self) -> bool {
-        self.neglon
+        // skyframe.c:11592: offset coordinates centred on the origin
+        // default to negative longitudes.
+        if self.neglon_set {
+            self.neglon
+        } else {
+            self.sky_ref_is == SkyRefIs::Origin
+        }
     }
 
     /// Set whether longitude increases in the negative direction.
@@ -438,21 +459,58 @@ impl SkyFrame {
         self.neglon_set
     }
 
+    /// Clear NegLon.
+    pub fn clear_neglon(&mut self) {
+        self.neglon = false;
+        self.neglon_set = false;
+    }
+
     /// Return the sky reference point `[lon, lat]` in radians.
-    pub fn sky_ref(&self) -> [f64; 2] {
+    pub fn sky_ref_lon_lat(&self) -> [f64; 2] {
         self.sky_ref
     }
 
-    /// Set the sky reference point.
-    pub fn set_sky_ref(&mut self, lon: f64, lat: f64) {
+    /// Set the sky reference point, longitude then latitude, in radians.
+    pub fn set_sky_ref_lon_lat(&mut self, lon: f64, lat: f64) {
         self.sky_ref = [lon, lat];
         self.sky_ref_set = [true, true];
     }
 
-    /// Test whether axis `axis` (0-based) of `SkyRef` has been
-    /// explicitly set.
-    pub fn test_sky_ref(&self, axis: usize) -> bool {
-        self.sky_ref_set.get(axis).copied().unwrap_or(false)
+    /// `SkyRef(axis)` of a 1-based external axis, in radians, set or
+    /// default (0). Mirrors C `astGetSkyRef` (skyframe.c `MAKE_GET`).
+    pub fn sky_ref(&self, axis: usize) -> AstResult<f64> {
+        let phys = self.physical_axis(axis)?;
+        Ok(if self.sky_ref_set[phys] {
+            self.sky_ref[phys]
+        } else {
+            0.0
+        })
+    }
+
+    /// Set `SkyRef(axis)` of a 1-based external axis, in radians.
+    pub fn set_sky_ref(&mut self, axis: usize, value: f64) -> AstResult<()> {
+        let phys = self.physical_axis(axis)?;
+        self.sky_ref[phys] = value;
+        self.sky_ref_set[phys] = true;
+        Ok(())
+    }
+
+    /// Whether `SkyRef(axis)` of a 1-based external axis is set.
+    pub fn test_sky_ref(&self, axis: usize) -> AstResult<bool> {
+        Ok(self.sky_ref_set[self.physical_axis(axis)?])
+    }
+
+    /// Clear `SkyRef(axis)` of a 1-based external axis.
+    pub fn clear_sky_ref(&mut self, axis: usize) -> AstResult<()> {
+        let phys = self.physical_axis(axis)?;
+        self.sky_ref[phys] = 0.0;
+        self.sky_ref_set[phys] = false;
+        Ok(())
+    }
+
+    /// Whether either axis of SkyRef is set (internal order).
+    fn any_sky_ref_set(&self) -> bool {
+        self.sky_ref_set[0] || self.sky_ref_set[1]
     }
 
     /// Return the interpretation of the sky reference point.
@@ -471,21 +529,68 @@ impl SkyFrame {
         self.sky_ref_is_set
     }
 
-    /// Return the sky reference meridian point `[lon, lat]` in radians.
-    pub fn sky_ref_p(&self) -> [f64; 2] {
-        self.sky_ref_p
+    /// Clear SkyRefIs, which then defaults to Ignored.
+    pub fn clear_sky_ref_is(&mut self) {
+        self.sky_ref_is = SkyRefIs::Ignored;
+        self.sky_ref_is_set = false;
     }
 
-    /// Set the sky reference meridian point.
-    pub fn set_sky_ref_p(&mut self, lon: f64, lat: f64) {
+    /// Return the sky reference meridian point `[lon, lat]` in radians.
+    pub fn sky_ref_p_lon_lat(&self) -> [f64; 2] {
+        [self.phys_sky_ref_p(0), self.phys_sky_ref_p(1)]
+    }
+
+    /// `SkyRefP(axis)` of a 1-based external axis, in radians, set or
+    /// default. Mirrors C `GetSkyRefP` (skyframe.c:4089).
+    pub fn sky_ref_p(&self, axis: usize) -> AstResult<f64> {
+        Ok(self.phys_sky_ref_p(self.physical_axis(axis)?))
+    }
+
+    /// SkyRefP of the internal axis `phys`, set or default. The default is
+    /// the north pole, `(0, pi/2)`, unless SkyRef is at a pole, when it is
+    /// the origin (skyframe.c:4089). C tests the latitude it stores for
+    /// SkyRef, which is `AST__BAD` while SkyRef is unset.
+    fn phys_sky_ref_p(&self, phys: usize) -> f64 {
+        if self.sky_ref_p_set[phys] {
+            return self.sky_ref_p[phys];
+        }
+        let ref_lat = if self.sky_ref_set[1] {
+            self.sky_ref[1]
+        } else {
+            BAD_VALUE
+        };
+        if phys == 1 && ref_lat.cos().abs() > 1.0e-10 {
+            std::f64::consts::FRAC_PI_2
+        } else {
+            0.0
+        }
+    }
+
+    /// Set the sky reference meridian point, longitude then latitude.
+    pub fn set_sky_ref_p_lon_lat(&mut self, lon: f64, lat: f64) {
         self.sky_ref_p = [lon, lat];
         self.sky_ref_p_set = [true, true];
     }
 
-    /// Test whether axis `axis` (0-based) of `SkyRefP` has been
-    /// explicitly set.
-    pub fn test_sky_ref_p(&self, axis: usize) -> bool {
-        self.sky_ref_p_set.get(axis).copied().unwrap_or(false)
+    /// Set `SkyRefP(axis)` of a 1-based external axis, in radians.
+    pub fn set_sky_ref_p(&mut self, axis: usize, value: f64) -> AstResult<()> {
+        let phys = self.physical_axis(axis)?;
+        self.sky_ref_p[phys] = value;
+        self.sky_ref_p_set[phys] = true;
+        Ok(())
+    }
+
+    /// Whether `SkyRefP(axis)` of a 1-based external axis is set.
+    pub fn test_sky_ref_p(&self, axis: usize) -> AstResult<bool> {
+        Ok(self.sky_ref_p_set[self.physical_axis(axis)?])
+    }
+
+    /// Clear `SkyRefP(axis)` of a 1-based external axis.
+    pub fn clear_sky_ref_p(&mut self, axis: usize) -> AstResult<()> {
+        let phys = self.physical_axis(axis)?;
+        self.sky_ref_p[phys] = 0.0;
+        self.sky_ref_p_set[phys] = false;
+        Ok(())
     }
 
     /// Return the sky tolerance in arcseconds.
@@ -506,6 +611,11 @@ impl SkyFrame {
     /// Test whether `SkyTol` has been explicitly set.
     pub fn test_sky_tol(&self) -> bool {
         self.sky_tol.is_some()
+    }
+
+    /// Clear SkyTol.
+    pub fn clear_sky_tol(&mut self) {
+        self.sky_tol = None;
     }
 
     /// Test whether `Equinox` has been explicitly set.
@@ -529,6 +639,12 @@ impl SkyFrame {
         self.align_offset_set
     }
 
+    /// Clear AlignOffset.
+    pub fn clear_align_offset(&mut self) {
+        self.align_offset = false;
+        self.align_offset_set = false;
+    }
+
     /// Return the projection description, if set.
     pub fn projection(&self) -> Option<&str> {
         self.projection.as_deref()
@@ -542,6 +658,11 @@ impl SkyFrame {
     /// Test whether `Projection` has been explicitly set.
     pub fn test_projection(&self) -> bool {
         self.projection.is_some()
+    }
+
+    /// Clear Projection.
+    pub fn clear_projection(&mut self) {
+        self.projection = None;
     }
 
     /// Test whether `Title` has been explicitly set.
@@ -676,7 +797,7 @@ impl SkyFrame {
     /// Is an offset coordinate system in use? Mirrors C `GetTitle`/`GetLabel`
     /// (skyframe.c): SkyRef set on either axis and SkyRefIs != IGNORED.
     fn is_offset(&self) -> bool {
-        (self.test_sky_ref(1) || self.test_sky_ref(2)) && self.sky_ref_is != SkyRefIs::Ignored
+        self.any_sky_ref_set() && self.sky_ref_is != SkyRefIs::Ignored
     }
 
     fn default_title(&self) -> String {
@@ -996,26 +1117,18 @@ impl Frame for SkyFrame {
         crate::units::norm_unit(&self.phys_unit(phys))
     }
 
-    /// Mirrors C `SkyFrame::Format` (skyframe.c:2025) and
-    /// `SkyAxis::AxisFormat` (skyaxis.c:809): the axis Format, set or
-    /// default, formats the value with `DHmsFormat`. A `%`-style Format
-    /// goes to the Axis class's formatter instead, which reads the Axis's
-    /// own Format rather than the SkyAxis one and so always uses its
-    /// default, `%1.<Digits>G` (axis.c:731, :2673): the `%` Format itself
-    /// only chooses that path and a Unit of `"rad"`.
+    /// Mirrors C `SkyFrame::Format` (skyframe.c:2025): the axis Format, set
+    /// or default, formats the value as `SkyAxis::AxisFormat` does.
     fn format(&self, axis: usize, value: f64) -> AstResult<String> {
         let phys = self.physical_axis(axis)?;
         if is_bad(value) {
             return Ok("<bad>".to_string());
         }
-        let digits = self.phys_digits(phys);
-        let fmt = self.phys_format(phys);
-        Ok(if fmt.starts_with('%') {
-            let digits = digits.max(1) as usize;
-            crate::frames::axis_format::format_value(&format!("%1.{digits}G"), digits, value)
-        } else {
-            dhms_format(&fmt, digits, value)
-        })
+        Ok(super::skyaxis::sky_format(
+            &self.phys_format(phys),
+            self.phys_digits(phys),
+            value,
+        ))
     }
 
     fn unformat(&self, axis: usize, text: &str) -> AstResult<(f64, usize)> {
@@ -1025,9 +1138,9 @@ impl Frame for SkyFrame {
                 format!("axis index {} is out of range 1..=2", axis),
             ));
         }
+        // skyframe.c:10892 reads with the SkyFrame's Format, set or default.
         let phys = self.perm[axis - 1];
-        let as_time = self.effective_as_time(phys);
-        unformat_sky(text, as_time)
+        unformat_sky_axis(text, &self.phys_format(phys), self.phys_digits(phys))
     }
 
     fn distance(&self, a: &[f64], b: &[f64]) -> AstResult<f64> {
@@ -1213,7 +1326,7 @@ impl Frame for SkyFrame {
             lon += std::f64::consts::PI;
         }
 
-        if self.neglon {
+        if self.neglon() {
             lon = pal::drange(lon);
         } else {
             lon = pal::dranrm(lon);
@@ -1641,7 +1754,7 @@ impl Frame for SkyFrame {
                 // Prepend source offset removal (offset→standard).
                 if let Some(off_map) = make_offset_mapping(
                     prev_sky.sky_ref,
-                    prev_sky.sky_ref_p,
+                    prev_sky.sky_ref_p_lon_lat(),
                     prev_sky.sky_ref_is,
                     prev_sky.sky_ref_set[0] || prev_sky.sky_ref_set[1],
                 )? {
@@ -1651,7 +1764,7 @@ impl Frame for SkyFrame {
                 // Append target offset application (standard→offset = inverse).
                 if let Some(mut off_map) = make_offset_mapping(
                     self.sky_ref,
-                    self.sky_ref_p,
+                    self.sky_ref_p_lon_lat(),
                     self.sky_ref_is,
                     self.sky_ref_set[0] || self.sky_ref_set[1],
                 )? {
@@ -1838,39 +1951,47 @@ impl Frame for SkyFrame {
             return Ok(Box::new(snap));
         }
 
-        // Partial / oversized selection: produce a BasicFrame whose
-        // per-axis attributes follow the picked SkyFrame axes.
-        // Mirrors the parent_subframe branch of skyframe.c SubFrame
-        // (line 10128), but only the metadata-carrying portion: the
-        // Mapping is built by the caller (default_sub_frame).
-        let mut bf = super::basic::BasicFrameBuilder::new(target_axes.len()).build()?;
-        if self.test_domain() {
-            bf.set_domain(self.domain().to_string());
+        // Partial selection: a plain Frame holding the picked SkyAxis
+        // objects. Mirrors skyframe.c SubFrame (skyframe.c:10230): on a copy
+        // of the SkyFrame it sets Domain and Title, and on each axis the
+        // AsTime, Format, Label, Symbol and Unit whose defaults the SkyFrame
+        // class supplies, then IsLatitude and CentreZero on the SkyAxis
+        // (skyframe.c:10280), and clears System and AlignSystem. The Frame
+        // class's SubFrame then attaches those Axis objects to a new Frame
+        // and overlays the copy's Frame attributes onto it (frame.c:11023).
+        // The Mapping is built by the caller (default_sub_frame).
+        let mut temp = self.clone();
+        if !temp.test_domain() {
+            let domain = temp.domain().to_string();
+            temp.attrs.domain = Some(domain);
         }
+        if !Frame::test_title(&temp) {
+            temp.attrs.title = Some(Frame::title(&temp));
+        }
+        let mut bf = super::basic::BasicFrameBuilder::new(target_axes.len()).build()?;
+        bf.overlay_frame_attrs(&temp.attrs);
+        bf.set_active_unit(false);
         for (i, &t) in target_axes.iter().enumerate() {
             if t < 0 || (t as usize) >= 2 {
                 continue;
             }
-            // Use the SkyFrame's effective per-axis label/unit/symbol
-            // for axis `t` (1-based) -> result axis `i + 1`.
-            let _ = bf.set_label(i + 1, &self.label(t as usize + 1)?);
-            let _ = bf.set_unit(i + 1, &self.unit(t as usize + 1)?);
-            let _ = bf.set_symbol(i + 1, &self.symbol(t as usize + 1)?);
-            // C's SubFrame attaches the target's own Axis object to the result
-            // (frame.c:11023), so the picked axis stays a SkyAxis. skyframe.c
-            // SubFrame first pins down IsLatitude and CentreZero on it
-            // (skyframe.c:10280): a latitude axis gets both set, a longitude
-            // axis takes CentreZero from the SkyFrame's NegLon. The picked axis
-            // therefore keeps wrapping its values, and its presence forces the
-            // result's ActiveUnit to 0 (frame.c:4669).
-            let is_latitude = t as usize == self.lat_pos();
-            bf.set_axis_kind(
-                i + 1,
-                AxisKind::Sky {
-                    is_latitude,
-                    centre_zero: if is_latitude { true } else { self.neglon },
-                },
-            );
+            let ext = t as usize + 1;
+            let phys = temp.perm[t as usize];
+            let label = Frame::label(&temp, ext)?;
+            let symbol = Frame::symbol(&temp, ext)?;
+            let as_time = temp.effective_as_time(phys);
+            let format = temp.phys_format(phys);
+            let mut ax = temp.axes[phys].clone();
+            ax.as_time.get_or_insert(as_time);
+            ax.format.get_or_insert(format);
+            ax.axis.label.get_or_insert(label);
+            ax.axis.symbol.get_or_insert(symbol);
+            let unit = super::skyaxis::SkyAxis::unit_value(&ax, temp.digits());
+            ax.axis.unit.get_or_insert(unit);
+            let latitude = phys == 1;
+            ax.is_latitude = Some(latitude);
+            ax.centre_zero = Some(latitude || temp.neglon());
+            bf.set_axis_object(i + 1, super::axis::FrameAxis::Sky(ax));
         }
         Ok(Box::new(bf))
     }
@@ -2148,22 +2269,21 @@ fn skyframe_overlay(
         } else {
             (0, 1)
         };
-        for (result_axis, &t_axis) in [tax0, tax1].iter().enumerate() {
-            if t_axis < 0 || (t_axis as usize) >= 2 {
-                continue;
+        // C addresses both Frames by external axis: template axis `tax0`
+        // or `tax1` onto result axis 1 or 2 (0-based in C).
+        let template_axis = |t: i32| (0..2).contains(&t).then(|| t as usize + 1);
+        for (result_axis, t) in [(1, tax0), (2, tax1)] {
+            if let Some(t) = template_axis(t) {
+                if template_sky.test_sky_ref(t)? {
+                    result_sky.set_sky_ref(result_axis, template_sky.sky_ref(t)?)?;
+                }
             }
-            let t = t_axis as usize;
-            if template_sky.test_sky_ref(t) {
-                let mut sr = result_sky.sky_ref;
-                sr[result_axis] = template_sky.sky_ref[t];
-                result_sky.sky_ref = sr;
-                result_sky.sky_ref_set[result_axis] = true;
-            }
-            if template_sky.test_sky_ref_p(t) {
-                let mut sr = result_sky.sky_ref_p;
-                sr[result_axis] = template_sky.sky_ref_p[t];
-                result_sky.sky_ref_p = sr;
-                result_sky.sky_ref_p_set[result_axis] = true;
+        }
+        for (result_axis, t) in [(1, tax0), (2, tax1)] {
+            if let Some(t) = template_axis(t) {
+                if template_sky.test_sky_ref_p(t)? {
+                    result_sky.set_sky_ref_p(result_axis, template_sky.sky_ref_p(t)?)?;
+                }
             }
         }
 
@@ -2315,7 +2435,7 @@ fn skyframe_sub_frame(
         // Prepend source offset removal (offset→standard).
         if let Some(off_map) = make_offset_mapping(
             target.sky_ref,
-            target.sky_ref_p,
+            target.sky_ref_p_lon_lat(),
             target.sky_ref_is,
             target.sky_ref_set[0] || target.sky_ref_set[1],
         )? {
@@ -2325,7 +2445,7 @@ fn skyframe_sub_frame(
         // Append target offset application (standard→offset = inverse).
         if let Some(mut off_map) = make_offset_mapping(
             result.sky_ref,
-            result.sky_ref_p,
+            result.sky_ref_p_lon_lat(),
             result.sky_ref_is,
             result.sky_ref_set[0] || result.sky_ref_set[1],
         )? {
@@ -2698,12 +2818,16 @@ impl Serializable for SkyFrame {
             );
         }
 
-        // NegLon (if true).
-        if self.neglon {
+        // NegLon, when set (skyframe.c:12098).
+        if self.neglon_set {
             node.push_int(
                 "NegLon",
-                1,
-                Some("Display negative longitude values".to_string()),
+                i64::from(self.neglon),
+                Some(if self.neglon {
+                    "Display negative longitude values".to_string()
+                } else {
+                    "Display positive longitude values".to_string()
+                }),
             );
         }
 
@@ -2777,32 +2901,25 @@ impl Serializable for SkyFrame {
         // `Ref. pos. <Symbol> <Format>`, taking the value in the SkyFrame's
         // external axis order (`SRef<axis_p+1>`) with the symbol/format from
         // the corresponding axis.
-        if self.test_sky_ref(0)
-            || self.test_sky_ref(1)
-            || self.sky_ref[0] != 0.0
-            || self.sky_ref[1] != 0.0
-            || self.sky_ref_is != SkyRefIs::Ignored
-        {
-            // Mirrors C `SkyFrame::Dump` (skyframe.c:12040-12051): the
-            // SRef keyword is written in INTERNAL axis order, looping
-            // `axis_p` over internal axes and resolving the external axis
-            // via the inverse permutation — `SRef{axis_p+1}` carries the
-            // value, symbol and format of external axis `invperm[axis_p]`.
-            // `sky_ref` is stored in internal order, so `sky_ref[axis_p]`
-            // is already the right value; only the symbol/format must use
-            // the resolved external axis.
-            let invperm = [self.lon_axis(), self.lat_axis()]; // invperm[internal] = external (0-based)
-            for (axis_p, &ext0) in invperm.iter().enumerate() {
-                let ext_axis = ext0 + 1; // 1-based external axis
-                let dval = self.sky_ref[axis_p];
-                let symbol = self.symbol(ext_axis).unwrap_or_default();
-                let fmt = self.format(ext_axis, dval).unwrap_or_default();
-                node.push_double(
-                    &format!("SRef{}", axis_p + 1),
-                    dval,
-                    Some(format!("Ref. pos. {symbol} {fmt}")),
-                );
+        // Mirrors C `SkyFrame::Dump` (skyframe.c:12149): each SRef is
+        // written, with `helpful = 0`, only when it is set, looping `axis_p`
+        // over the internal axes; `SRef{axis_p+1}` carries the value of
+        // internal axis `axis_p` with the symbol and format of the external
+        // axis `invperm[axis_p]`.
+        let invperm = [self.lon_axis(), self.lat_axis()]; // invperm[internal] = external (0-based)
+        for (axis_p, &ext0) in invperm.iter().enumerate() {
+            if !self.sky_ref_set[axis_p] {
+                continue;
             }
+            let ext_axis = ext0 + 1;
+            let dval = self.sky_ref[axis_p];
+            let symbol = self.symbol(ext_axis).unwrap_or_default();
+            let fmt = self.format(ext_axis, dval).unwrap_or_default();
+            node.push_double(
+                &format!("SRef{}", axis_p + 1),
+                dval,
+                Some(format!("Ref. pos. {symbol} {fmt}")),
+            );
         }
 
         // SRefP1, SRefP2 (sky_ref_p longitude/latitude). Mirrors C
@@ -2826,11 +2943,16 @@ impl Serializable for SkyFrame {
         }
 
         // AlOff (if true).
-        if self.align_offset {
+        // AlignOffset, when set (skyframe.c:12179).
+        if self.align_offset_set {
             node.push_int(
                 "AlOff",
-                1,
-                Some("Align offset coordinate system".to_string()),
+                i64::from(self.align_offset),
+                Some(if self.align_offset {
+                    "Align in offset coords".to_string()
+                } else {
+                    "Align in system coords".to_string()
+                }),
             );
         }
 
@@ -2967,12 +3089,7 @@ impl Serializable for SkyFrame {
             let key = format!("Ax{}", i + 1);
             if let Some(axis_node) = node.get_object(&key) {
                 if axis_node.class == "SkyAxis" {
-                    let mut axis = SkyAxis::from_node(axis_node)?;
-                    // When IsLat is absent, infer from position (axis 1 = lon, axis 2 = lat).
-                    if axis_node.get("IsLat").is_none() {
-                        axis.is_latitude = i == 1;
-                    }
-                    sky.axes[i] = axis;
+                    sky.axes[i] = SkyAxis::from_node(axis_node)?;
                 }
             }
         }
@@ -3084,10 +3201,10 @@ mod tests {
         assert!(!sky.neglon());
         assert_eq!(sky.sky_ref_is(), SkyRefIs::Ignored);
         assert!(!sky.align_offset());
-        assert_close(sky.sky_ref()[0], 0.0, TOL);
-        assert_close(sky.sky_ref()[1], 0.0, TOL);
-        assert_close(sky.sky_ref_p()[0], 0.0, TOL);
-        assert_close(sky.sky_ref_p()[1], FRAC_PI_2, TOL);
+        assert_close(sky.sky_ref_lon_lat()[0], 0.0, TOL);
+        assert_close(sky.sky_ref_lon_lat()[1], 0.0, TOL);
+        assert_close(sky.sky_ref_p_lon_lat()[0], 0.0, TOL);
+        assert_close(sky.sky_ref_p_lon_lat()[1], FRAC_PI_2, TOL);
         assert_close(sky.sky_tol(), 0.001, TOL);
         assert!(sky.projection().is_none());
         // The default C reports (skyframe.c `GetTitle`).
@@ -3140,9 +3257,9 @@ mod tests {
     #[test]
     fn set_sky_ref() {
         let mut sky = SkyFrame::new(SkySystem::Fk5);
-        sky.set_sky_ref(1.0, 0.5);
-        assert_close(sky.sky_ref()[0], 1.0, TOL);
-        assert_close(sky.sky_ref()[1], 0.5, TOL);
+        sky.set_sky_ref_lon_lat(1.0, 0.5);
+        assert_close(sky.sky_ref_lon_lat()[0], 1.0, TOL);
+        assert_close(sky.sky_ref_lon_lat()[1], 0.5, TOL);
     }
 
     #[test]
@@ -3155,9 +3272,9 @@ mod tests {
     #[test]
     fn set_sky_ref_p() {
         let mut sky = SkyFrame::new(SkySystem::Fk5);
-        sky.set_sky_ref_p(1.0, 0.5);
-        assert_close(sky.sky_ref_p()[0], 1.0, TOL);
-        assert_close(sky.sky_ref_p()[1], 0.5, TOL);
+        sky.set_sky_ref_p_lon_lat(1.0, 0.5);
+        assert_close(sky.sky_ref_p_lon_lat()[0], 1.0, TOL);
+        assert_close(sky.sky_ref_p_lon_lat()[1], 0.5, TOL);
     }
 
     #[test]
@@ -3657,8 +3774,8 @@ mod tests {
     fn convert_with_origin_offset() {
         // Source frame has offset coordinates; target is standard FK5.
         let mut src = SkyFrame::new(SkySystem::Fk5);
-        src.set_sky_ref(1.0, 0.5);
-        src.set_sky_ref_p(1.0, 0.5 + 0.1);
+        src.set_sky_ref_lon_lat(1.0, 0.5);
+        src.set_sky_ref_p_lon_lat(1.0, 0.5 + 0.1);
         src.set_sky_ref_is(SkyRefIs::Origin);
 
         let dst = SkyFrame::new(SkySystem::Fk5);
@@ -3683,8 +3800,8 @@ mod tests {
         let src = SkyFrame::new(SkySystem::Fk5);
 
         let mut dst = SkyFrame::new(SkySystem::Fk5);
-        dst.set_sky_ref(1.0, 0.5);
-        dst.set_sky_ref_p(1.0, 0.5 + 0.1);
+        dst.set_sky_ref_lon_lat(1.0, 0.5);
+        dst.set_sky_ref_p_lon_lat(1.0, 0.5 + 0.1);
         dst.set_sky_ref_is(SkyRefIs::Origin);
 
         let fs = src.convert_to(&dst, &[]).unwrap().unwrap();
@@ -3705,13 +3822,13 @@ mod tests {
     fn convert_between_offset_frames_round_trip() {
         // Both source and target have offsets; round-trip through convert.
         let mut src = SkyFrame::new(SkySystem::Fk5);
-        src.set_sky_ref(0.5, 0.3);
-        src.set_sky_ref_p(0.5, 0.3 + 0.1);
+        src.set_sky_ref_lon_lat(0.5, 0.3);
+        src.set_sky_ref_p_lon_lat(0.5, 0.3 + 0.1);
         src.set_sky_ref_is(SkyRefIs::Origin);
 
         let mut dst = SkyFrame::new(SkySystem::Fk5);
-        dst.set_sky_ref(2.0, -0.4);
-        dst.set_sky_ref_p(2.0, -0.4 + 0.1);
+        dst.set_sky_ref_lon_lat(2.0, -0.4);
+        dst.set_sky_ref_p_lon_lat(2.0, -0.4 + 0.1);
         dst.set_sky_ref_is(SkyRefIs::Origin);
 
         let fs_fwd = src.convert_to(&dst, &[]).unwrap().unwrap();
@@ -3733,8 +3850,8 @@ mod tests {
     fn map_from_with_offsets() {
         // Test map_from with offset source.
         let mut prev = SkyFrame::new(SkySystem::Fk5);
-        prev.set_sky_ref(1.0, 0.5);
-        prev.set_sky_ref_p(1.0, 0.5 + 0.1);
+        prev.set_sky_ref_lon_lat(1.0, 0.5);
+        prev.set_sky_ref_p_lon_lat(1.0, 0.5 + 0.1);
         prev.set_sky_ref_is(SkyRefIs::Origin);
 
         let cur = SkyFrame::new(SkySystem::Fk5);

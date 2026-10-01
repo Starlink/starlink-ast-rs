@@ -902,8 +902,8 @@ fn round_trip_skyframe_with_equinox() {
 fn round_trip_skyframe_with_sky_ref() {
     let mut original = SkyFrame::new(SkySystem::Fk5);
     original.set_sky_ref_is(SkyRefIs::Origin);
-    original.set_sky_ref(1.5, 0.75);
-    original.set_sky_ref_p(0.3, 1.2);
+    original.set_sky_ref_lon_lat(1.5, 0.75);
+    original.set_sky_ref_p_lon_lat(0.3, 1.2);
 
     let text = to_native_string(&AnyObject::SkyFrame(original)).unwrap();
     assert!(text.contains("SRefIs"), "missing SRefIs");
@@ -916,10 +916,10 @@ fn round_trip_skyframe_with_sky_ref() {
     match restored {
         AnyObject::SkyFrame(ref sf) => {
             assert_eq!(sf.sky_ref_is(), SkyRefIs::Origin);
-            assert_close(sf.sky_ref()[0], 1.5, 1e-10, "sky_ref lon");
-            assert_close(sf.sky_ref()[1], 0.75, 1e-10, "sky_ref lat");
-            assert_close(sf.sky_ref_p()[0], 0.3, 1e-10, "sky_ref_p lon");
-            assert_close(sf.sky_ref_p()[1], 1.2, 1e-10, "sky_ref_p lat");
+            assert_close(sf.sky_ref_lon_lat()[0], 1.5, 1e-10, "sky_ref lon");
+            assert_close(sf.sky_ref_lon_lat()[1], 0.75, 1e-10, "sky_ref lat");
+            assert_close(sf.sky_ref_p_lon_lat()[0], 0.3, 1e-10, "sky_ref_p lon");
+            assert_close(sf.sky_ref_p_lon_lat()[1], 1.2, 1e-10, "sky_ref_p lat");
         }
         _ => panic!("expected SkyFrame variant"),
     }
@@ -1032,8 +1032,8 @@ fn double_round_trip_skyframe() {
     original.set_equinox_mjd(51544.5);
     original.set_neglon(true);
     original.set_sky_ref_is(SkyRefIs::Pole);
-    original.set_sky_ref(0.5, 0.25);
-    original.set_sky_ref_p(0.1, 1.0);
+    original.set_sky_ref_lon_lat(0.5, 0.25);
+    original.set_sky_ref_p_lon_lat(0.1, 1.0);
     original.set_sky_tol(1.0e-8);
     original.set_projection("SIN");
     original.set_align_offset(true);

@@ -337,8 +337,8 @@ pub(crate) fn sky_sys(
     if isoff != 0 {
         let lonax_in_sky = skyfrm.lon_axis();
         let latax_in_sky = skyfrm.lat_axis();
-        let sky_ref = skyfrm.sky_ref();
-        let sky_ref_p = skyfrm.sky_ref_p();
+        let sky_ref = skyfrm.sky_ref_lon_lat();
+        let sky_ref_p = skyfrm.sky_ref_p_lon_lat();
         if isoff > 0 {
             // CTYPE comment: "<symbol-without-leading-letter> offset
             // from <SkyRef>". Mirrors C:29893-29909. The C source
@@ -543,7 +543,7 @@ mod tests {
         // isoff>0 path: emit CTYPE comment "<sym> offset from <SkyRef>".
         let mut sky = SkyFrame::new(SkySystem::Fk5);
         sky.set_sky_ref_is(SkyRefIs::Origin);
-        sky.set_sky_ref(0.5, -0.25);
+        sky.set_sky_ref_lon_lat(0.5, -0.25);
         let mut s = store(2);
         sky_sys(&sky, 1, WcsProjection::Tan, &mut s, 0, 1, ' ', 1).unwrap();
         // Default Fk5 symbols are "RA" / "Dec" (C astGetSymbol,
@@ -561,8 +561,8 @@ mod tests {
         // SkyRefIs / SkyRef / SkyRefP AST-extension keywords.
         let mut sky = SkyFrame::new(SkySystem::Fk5);
         sky.set_sky_ref_is(SkyRefIs::Pole);
-        sky.set_sky_ref(0.5, -0.25);
-        sky.set_sky_ref_p(1.0, 0.5);
+        sky.set_sky_ref_lon_lat(0.5, -0.25);
+        sky.set_sky_ref_p_lon_lat(1.0, 0.5);
         let mut s = store(2);
         sky_sys(&sky, 1, WcsProjection::Tan, &mut s, 0, 1, ' ', -1).unwrap();
         // isoff = -1 → "POLE".
@@ -596,7 +596,7 @@ mod tests {
     #[test]
     fn isoff_zero_does_not_emit_skyref_metadata() {
         let mut sky = SkyFrame::new(SkySystem::Fk5);
-        sky.set_sky_ref(1.0, 1.0);
+        sky.set_sky_ref_lon_lat(1.0, 1.0);
         let mut s = store(2);
         sky_sys(&sky, 1, WcsProjection::Tan, &mut s, 0, 1, ' ', 0).unwrap();
         assert!(s.skyrefis.is_none());

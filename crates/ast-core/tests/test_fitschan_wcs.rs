@@ -467,7 +467,7 @@ fn skyref_alt_reads_versioned_sref() {
     // them directly to astSetSkyRef without unit conversion).
     let expected_lon = 236.592_f64;
     let expected_lat = 50.669_f64;
-    let got = sky.sky_ref();
+    let got = sky.sky_ref_lon_lat();
     assert!(
         (got[0] - expected_lon).abs() < 1e-9,
         "alt SkyFrame sky_ref lon should be {expected_lon} (SREF1A), got {}",

@@ -766,7 +766,7 @@ fn skyframe_offset_origin_with_sky_ref_is_not_equal() {
     // (astEqual == 0 for SkyRefIs=Origin + SkyRef=(1,0.5) vs plain).
     let mut a = SkyFrame::new(SkySystem::Fk5);
     a.set_sky_ref_is(SkyRefIs::Origin);
-    a.set_sky_ref(1.0, 0.5);
+    a.set_sky_ref_lon_lat(1.0, 0.5);
     let b = SkyFrame::new(SkySystem::Fk5);
     assert!(!a.equal(&b));
 }
@@ -777,7 +777,7 @@ fn skyframe_sky_ref_without_sky_ref_is_is_equal() {
     // SkyRef entirely, so the conversion is a UnitMap and the frames are
     // equal. Oracle-verified.
     let mut a = SkyFrame::new(SkySystem::Fk5);
-    a.set_sky_ref(1.0, 0.5);
+    a.set_sky_ref_lon_lat(1.0, 0.5);
     let b = SkyFrame::new(SkySystem::Fk5);
     assert!(a.equal(&b));
 }

@@ -78,13 +78,29 @@ Build with **cmake**, never autotools (recorded in the
 ```sh
 git submodule update --init reference/starlink-ast
 cd reference/starlink-ast
-cmake -S . -B build-ast
+cmake -S . -B build-ast -DCMAKE_C_FLAGS=-ffp-contract=off
 cmake --build build-ast -j
 ```
 
 This produces `build-ast/ast.h` and `build-ast/libast.so*`.
 There is also a `build/` tree from an earlier configuration; either works,
 but keep `$R` pointing at whichever you actually built last.
+
+### Trap 1a — floating-point contraction in the oracle
+
+Without `-ffp-contract=off`, clang on Apple arm64 fuses expressions such as
+`value += a * b * c` into a single multiply-add, which rounds once instead
+of twice.
+The answer then differs from the arithmetic the C source writes by an ULP or
+so, and from a Linux x86-64 build, which has no fused multiply-add by
+default.
+The port computes what the source writes, as the vendored C does (it is
+built with the same flag), so an oracle built with contraction reports
+spurious last-bit differences.
+Check a build with `otool -tv libast.dylib | grep -c fmadd`, which is zero
+when contraction is off.
+A table that passes only against a contracted build was captured with the
+wrong oracle; regenerate it.
 
 ### Trap 1b — a `libast` older than the pinned source
 

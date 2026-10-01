@@ -30,7 +30,8 @@ PROGS := linear_approx analyse_poly scale_poly_inputs orth_vector_set \
          sip_int_world keymap_hash gen_simp unitnorm_probe \
          frame_in_map_slot_probe skyframe_format_probe \
          frame_attrs_probe frame_class_attrs_probe \
-         frame_axis_attrs_probe
+         frame_axis_attrs_probe skyframe_attrs_probe \
+         picked_skyaxis_probe
 
 all: $(PROGS)
 
