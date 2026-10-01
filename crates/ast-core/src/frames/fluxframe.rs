@@ -197,6 +197,9 @@ pub struct FluxFrame {
     /// (the default `GetSpecFrame` path). Required for a meaningful
     /// cross-density-system flux conversion.
     specframe: Option<Box<super::specframe::SpecFrame>>,
+    /// The SpecVal used when none is set, given when the FluxFrame is made
+    /// (C's `defspecval`), or `BAD_VALUE`.
+    def_spec_val: f64,
     // Object-level attributes
 
     // Match-control attributes (used by `astFindFrame` / `astMatch`).
@@ -248,6 +251,7 @@ impl FluxFrame {
             axis: super::axis::Axis::default(),
             spec_val: None,
             specframe: None,
+            def_spec_val: BAD_VALUE,
             align_system: None,
             used_units: Default::default(),
         }
@@ -257,6 +261,18 @@ impl FluxFrame {
     /// " " )` makes one.
     pub fn unset_system() -> Self {
         Self::new(FluxSystem::FluxDen)
+    }
+
+    /// A FluxFrame measured at the spectral position `spec_val`, given in
+    /// the coordinate system of `spec_frame`, as `astFluxFrame( specval,
+    /// specfrm, " " )` makes one (fluxframe.c `astInitFluxFrame`):
+    /// `spec_val` is the default SpecVal rather than a set one, and the
+    /// System is unset, so it follows a Unit when one is set.
+    pub fn with_spec_val(spec_val: f64, spec_frame: Option<super::specframe::SpecFrame>) -> Self {
+        let mut f = Self::unset_system();
+        f.def_spec_val = spec_val;
+        f.specframe = spec_frame.map(Box::new);
+        f
     }
 
     /// AlignSystem, set or default (flux density).
@@ -405,7 +421,7 @@ impl FluxFrame {
     ///
     /// Returns `BAD_VALUE` if not set.
     pub fn spec_val(&self) -> f64 {
-        self.spec_val.unwrap_or(BAD_VALUE)
+        self.spec_val.unwrap_or(self.def_spec_val)
     }
 
     /// Set the spectral position at which flux values are measured.
@@ -789,10 +805,8 @@ impl Frame for FluxFrame {
         // does not override it. Within one flux System the conversion is a
         // UnitMap regardless of SpecVal, so two same-System FluxFrames are
         // equal even if their SpecVal differs (oracle-verified). A
-        // cross-System pair needs MakeFluxMapping; while that is unported,
-        // convert_frames yields no conversion, so the frames compare
-        // unequal — which matches the oracle for genuine cross-System
-        // pairs.
+        // cross-System pair converts, when it converts at all, with a
+        // Mapping that is not a UnitMap, so the frames compare unequal.
         super::find_frame::frames_equal(self, other)
     }
 
@@ -921,42 +935,44 @@ fn fluxframe_overlay(
 
     if let Some(result_flux) = result.as_any_mut().downcast_mut::<FluxFrame>() {
         // Use the *effective* systems (which may be unit-derived) for the
-        // change test, mirroring C's astGetSystem (fluxframe.c:92-95).
+        // change test, mirroring C's astGetSystem (fluxframe.c:2561).
         let old_system = result_flux.system();
         let new_system = template_flux.system();
 
-        // fluxframe.c:2570-2590 — if the System will change AND the
-        // template explicitly sets it, clear Title; and, if the default
-        // units differ between the old and new systems, clear the result's
-        // Unit so it reverts to the new system's default (fluxframe.c:109-112).
+        // fluxframe.c:2570-2590: if the System will change and the template
+        // sets it, clear the Title, the Unit when the two systems' default
+        // units differ, and the Label and Symbol.
         if new_system != old_system && template_flux.test_system() {
             result_flux.clear_title();
             if new_system.default_units() != old_system.default_units() {
                 result_flux.clear_unit(1)?;
             }
+            result_flux.axis.label = None;
+            result_flux.axis.symbol = None;
         }
 
-        // Parent Frame::Overlay copies (Domain / Title / SpecVal /
-        // System).
-        if template_flux.test_domain() {
-            result_flux.set_domain(template_flux.domain());
-        }
-        if template_flux.test_title() {
-            if let Some(ref t) = template_flux.attrs.title {
-                result_flux.set_title(t);
-            }
-        }
+        // fluxframe.c:2592: the default SpecVal and the SpecFrame always
+        // come from the template.
+        result_flux.def_spec_val = template_flux.def_spec_val;
+        result_flux.specframe.clone_from(&template_flux.specframe);
+
+        // The Frame class's Overlay (frame.c:8513): the Frame attributes the
+        // template sets, its ActiveUnit, its System and AlignSystem when set,
+        // then each Axis (astAxisOverlay), which carries the Unit, so
+        // astConvert then scales between, say, Jy and W/m^2/Hz.
+        result_flux.attrs.overlay_from(&template_flux.attrs);
+        result_flux.set_active_unit(template_flux.get_active_unit());
         if template_flux.test_system() {
             result_flux.set_system(template_flux.system);
         }
-        // Frame::Overlay copies the Axis with astAxisOverlay (frame.c),
-        // which carries the Unit, so astConvert then scales between, say,
-        // units of "s" and "d".
+        if let Some(sys) = template_flux.align_system {
+            result_flux.align_system = Some(sys);
+        }
         if template_axes.first().copied().unwrap_or(0) >= 0 {
             result_flux.axis.overlay_from(&template_flux.axis);
         }
-        // SpecVal: copied when the template has it set
-        // (fluxframe.c:2636 OVERLAY(SpecVal)).
+
+        // fluxframe.c:2636 OVERLAY(SpecVal).
         if let Some(v) = template_flux.spec_val {
             result_flux.set_spec_val(v);
         }
@@ -1077,6 +1093,15 @@ impl Serializable for FluxFrame {
             node.push_object("SpcFr", sf_node, Some("SpcVl coord system".to_string()));
         }
 
+        // The default SpecVal (fluxframe.c:3838).
+        if !is_bad(self.def_spec_val) {
+            node.push_double(
+                "DfSpc",
+                self.def_spec_val,
+                Some("Default spectral position".to_string()),
+            );
+        }
+
         // UsedUnits (fluxframe.c:3840): the Unit last used with each System.
         for sys in FluxSystem::ALL {
             if let Some(u) = &self.used_units[sys.index()] {
@@ -1125,6 +1150,9 @@ impl Serializable for FluxFrame {
                 ff.specframe = Some(Box::new(sf.clone()));
             }
         }
+
+        // The default SpecVal (fluxframe.c:4222).
+        ff.def_spec_val = node.get_double("DfSpc", BAD_VALUE);
 
         // UsedUnits (fluxframe.c:4232).
         for sys in FluxSystem::ALL {
@@ -1179,9 +1207,9 @@ mod tests {
 
     #[test]
     fn match_template_fluxframe_different_system_returns_none() {
-        // SubFrame returns None for cross-system because the full
-        // MakeFluxMapping conversion is not yet ported. Match should
-        // therefore fail rather than return a fake mapping.
+        // Surface brightness and flux density do not convert
+        // (MakeFluxMapping, fluxframe.c:1971; testflux.c Error 29), so the
+        // match fails.
         let template = FluxFrame::new(FluxSystem::SBright);
         let target = FluxFrame::new(FluxSystem::FluxDenW);
         let result = template.match_template(&target, false).unwrap();
