@@ -13,7 +13,7 @@
 //!   a unit is folded into the unit's prefix where one is closer
 //!   (`ModifyPrefix`, `unit.c`:4262).
 //!
-//! The axis-label style (`mathmap = 0`) is not ported.
+//! The axis-label style (`mathmap = 0`) is in [`super::label`].
 
 use super::complicate::complicate_tree;
 use super::simplify::{fix_constants, simplify_tree};
@@ -36,7 +36,7 @@ const DBL_DIG: usize = 17;
 
 /// Format a constant the way C `MakeExp` does: `"%.*g"` with
 /// `AST__DBL_DIG` precision.
-fn format_const(v: f64) -> String {
+pub(crate) fn format_const(v: f64) -> String {
     // Rust's `{:.*e}` is exponent notation; `%g` chooses between fixed
     // and scientific based on magnitude. We approximate with
     // `format!("{:.*e}", DBL_DIG-1, v)` for very small/large, and

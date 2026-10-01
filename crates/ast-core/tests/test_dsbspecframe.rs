@@ -72,7 +72,7 @@ fn specframe_delegation() {
     assert_eq!(dsb.system(), SpecSystem::Freq);
 
     dsb.set_rest_freq(1.42e9);
-    assert_eq!(dsb.spec().rest_freq(), Some(1.42e9));
+    assert_eq!(dsb.spec().rest_freq(), 1.42e9);
 }
 
 #[test]
@@ -352,7 +352,9 @@ fn imag_freq_computation() {
     // (mirrors C `astGetImagFreq`). Pin the source rest frame to be
     // identical to topocentric so the LO reflection yields exactly
     // the analytic answer with no Doppler-shift residue.
-    dsb.spec_mut().set_source_vrf(StdOfRest::Topocentric);
+    dsb.spec_mut()
+        .set_source_vrf(StdOfRest::Topocentric)
+        .unwrap();
     dsb.spec_mut().set_source_vel(0.0);
 
     // ImagFreq = mirror of rest_freq across LO.
@@ -361,10 +363,13 @@ fn imag_freq_computation() {
     assert!((imag - 223.0e9).abs() < 1.0, "expected 223 GHz, got {imag}");
 }
 
+/// With no RestFreq set, C uses its default, 1e14 Hz (dsbspecframe.c:673),
+/// and reports the image frequency C's `ImagFreq` attribute gives.
 #[test]
-fn imag_freq_no_rest_freq() {
-    let dsb = DSBSpecFrame::new(SpecSystem::Freq);
-    assert!(dsb.imag_freq().is_err());
+fn imag_freq_uses_the_default_rest_freq() {
+    let dsb = DSBSpecFrame::unset_system();
+    let imag = dsb.imag_freq_ghz().unwrap();
+    assert!((imag - -99931.993345375959).abs() < 1e-9, "got {imag}");
 }
 
 // ---------------------------------------------------------------------------

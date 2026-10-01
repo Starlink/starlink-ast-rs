@@ -164,7 +164,7 @@ pub(crate) fn build_spectral(store: &FitsStore) -> Option<SpectralResult> {
     if let Some(ref ssyssrc) = store.ssyssrc
         && let Some(sor) = StdOfRest::parse(ssyssrc)
     {
-        frame.set_source_vrf(sor);
+        frame.set_source_vrf(sor).ok()?;
     }
     if let Some(zsource) = store.zsource {
         // Convert redshift to velocity (relativistic Doppler), mirroring
@@ -603,7 +603,7 @@ mod tests {
         store.restfrq = Some(1.420405751786e9);
 
         let result = build_spectral(&store).unwrap();
-        assert!((result.frame.rest_freq().unwrap() - 1.420405751786e9).abs() < 1.0);
+        assert!((result.frame.rest_freq() - 1.420405751786e9).abs() < 1.0);
     }
 
     #[test]

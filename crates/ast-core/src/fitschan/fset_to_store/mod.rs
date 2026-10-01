@@ -396,7 +396,7 @@ pub(crate) fn make_fits_frameset(fs: &FrameSet, encoding: Encoding) -> AstResult
     // once MakeSpecMapping mirrors the C non-trivial step3+step6
     // behaviour (cf. specframe.c:2750-2754 + 2823+2847).
     let has_ref_radec = peek_spec(owned.current())
-        .map(|s| s.ref_ra().is_some() && s.ref_dec().is_some())
+        .map(|s| s.test_ref_ra() && s.test_ref_dec())
         .unwrap_or(false);
     if !has_ref_radec {
         return Ok(owned);

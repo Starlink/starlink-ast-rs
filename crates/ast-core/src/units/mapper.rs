@@ -125,6 +125,48 @@ fn build_test_tree(in_tree: &UnitNode, out_tree: &UnitNode) -> Option<Box<UnitNo
     testtree
 }
 
+/// A `Mapping` between two unit strings, and the label `in_lab` rewritten
+/// for the new units, as C's `astUnitMapper` gives them when it is passed
+/// an input label (unit.c:5349): the label unchanged when the unit strings
+/// are identical or both blank, and otherwise the label tree joined to the
+/// units tree and printed as a label. The label is `None` where C's is
+/// NULL. `None` overall when no Mapping can be found, or when the label
+/// cannot be parsed, which C reports as an error.
+pub(crate) fn unit_mapper_label(
+    in_unit: &str,
+    out_unit: &str,
+    in_lab: &str,
+) -> Option<(DynMapping, Option<String>)> {
+    if in_unit == out_unit {
+        return Some((Box::new(UnitMap::new(1)), Some(in_lab.to_string())));
+    }
+    let in_tree = create_tree(in_unit, true);
+    let out_tree = create_tree(out_unit, true);
+    let (in_tree, out_tree) = match (in_tree, out_tree) {
+        (None, None) => {
+            return Some((Box::new(UnitMap::new(1)), Some(in_lab.to_string())));
+        }
+        (Some(i), Some(o)) => (i, o),
+        _ => return None,
+    };
+    let (testtree, swapped) = match build_test_tree(&in_tree, &out_tree) {
+        Some(t) => (t, false),
+        None => (build_test_tree(&out_tree, &in_tree)?, true),
+    };
+    let final_tree = if swapped {
+        let mut src = UnitNode::new(Oper::LdVar);
+        src.name = Some("input_units".to_string());
+        invert_tree(&testtree, Box::new(src))?
+    } else {
+        testtree
+    };
+    let map = make_mapping(&final_tree)?;
+    let labtree = super::label::make_label_tree(in_lab)?;
+    let mut total = concat_tree(&labtree, &final_tree)?;
+    simplify_tree(&mut total, true);
+    Some((map, super::label::make_label_exp(&total)))
+}
+
 /// Build a `Mapping` between two unit strings. Returns `None` if
 /// the units are dimensionally incompatible, unparseable, or
 /// uninvertible.

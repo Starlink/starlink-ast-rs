@@ -119,6 +119,52 @@ impl DSBSpecFrame {
         }
     }
 
+    /// A DSBSpecFrame with no attribute set, as `astDSBSpecFrame(" ")`
+    /// makes one.
+    pub fn unset_system() -> Self {
+        Self::from_spec_frame(SpecFrame::unset_system())
+    }
+
+    /// Whether DSBCentre is set.
+    pub fn test_dsb_centre(&self) -> bool {
+        self.dsb_centre.is_some()
+    }
+
+    /// Clear DSBCentre.
+    pub fn clear_dsb_centre(&mut self) {
+        self.dsb_centre = None;
+    }
+
+    /// Whether IF is set.
+    pub fn test_if(&self) -> bool {
+        self.ifr.is_some()
+    }
+
+    /// Clear IF.
+    pub fn clear_if(&mut self) {
+        self.ifr = None;
+    }
+
+    /// Whether SideBand is set.
+    pub fn test_sideband(&self) -> bool {
+        self.sideband.is_some()
+    }
+
+    /// Clear SideBand, which then follows the sign of IF.
+    pub fn clear_sideband(&mut self) {
+        self.sideband = None;
+    }
+
+    /// Whether AlignSideBand is set.
+    pub fn test_align_sideband(&self) -> bool {
+        self.align_sideband.is_some()
+    }
+
+    /// Clear AlignSideBand.
+    pub fn clear_align_sideband(&mut self) {
+        self.align_sideband = None;
+    }
+
     /// Create a `DSBSpecFrame` wrapping an existing [`SpecFrame`].
     ///
     /// All DSB-specific attributes (DSBCentre, IF, SideBand, AlignSideBand)
@@ -279,8 +325,8 @@ impl DSBSpecFrame {
         self.spec.set_std_of_rest(sor);
     }
 
-    /// Return the rest frequency in Hz.
-    pub fn rest_freq(&self) -> Option<f64> {
+    /// RestFreq in Hz, set or default.
+    pub fn rest_freq(&self) -> f64 {
         self.spec.rest_freq()
     }
 
@@ -359,13 +405,13 @@ impl DSBSpecFrame {
         self.spec.set_ref_pos(frm, lon, lat)
     }
 
-    /// Return the reference RA (FK5 J2000, radians).
-    pub fn ref_ra(&self) -> Option<f64> {
+    /// RefRA (FK5 J2000, radians), set or default.
+    pub fn ref_ra(&self) -> f64 {
         self.spec.ref_ra()
     }
 
-    /// Return the reference Dec (FK5 J2000, radians).
-    pub fn ref_dec(&self) -> Option<f64> {
+    /// RefDec (FK5 J2000, radians), set or default.
+    pub fn ref_dec(&self) -> f64 {
         self.spec.ref_dec()
     }
 
@@ -417,7 +463,8 @@ impl DSBSpecFrame {
         )?;
 
         // Step 2 (C:9020-9025). Transform [RestFreq, imagfreq].
-        let rest_freq = self.spec.rest_freq().unwrap_or(bad);
+        // fitschan.c:9109 reads RestFreq, set or default.
+        let rest_freq = self.spec.rest_freq();
         // A 1-input/1-output mapping applied to two points (rest, image),
         // mirroring C `astTran1(fs, 2, in, 1, out)`. The single coordinate
         // axis holds both input values.
@@ -513,14 +560,9 @@ impl DSBSpecFrame {
     /// `SideBand=observed`; that mapping is applied to the rest
     /// frequency to yield the image-sideband frequency.
     ///
-    /// Requires `rest_freq` to be set; returns an error if not.
+    /// Uses RestFreq, set or default, as dsbspecframe.c:673 does.
     pub fn imag_freq(&self) -> AstResult<f64> {
-        let rest_freq = self.spec.rest_freq().ok_or_else(|| {
-            AstError::new(
-                ErrorCode::Norsf,
-                "DSBSpecFrame::imag_freq requires rest_freq to be set",
-            )
-        })?;
+        let rest_freq = self.spec.rest_freq();
 
         // Copy and reset to canonical "rest-frequency frame":
         // SoR=Source, System=Freq, Unit=Hz, SideBand=observed. This
@@ -578,14 +620,14 @@ impl DSBSpecFrame {
             topo_frame.set_obs_alt(alt);
         }
         topo_frame.set_epoch_mjd(self.spec.epoch_mjd());
-        if let Some(ra) = self.spec.ref_ra() {
-            topo_frame.set_ref_ra(ra);
+        if self.spec.test_ref_ra() {
+            topo_frame.set_ref_ra(self.spec.ref_ra());
         }
-        if let Some(dec) = self.spec.ref_dec() {
-            topo_frame.set_ref_dec(dec);
+        if self.spec.test_ref_dec() {
+            topo_frame.set_ref_dec(self.spec.ref_dec());
         }
-        if let Some(rf) = self.spec.rest_freq() {
-            topo_frame.set_rest_freq(rf);
+        if self.spec.test_rest_freq() {
+            topo_frame.set_rest_freq(self.spec.rest_freq());
         }
 
         self.spec.make_spec_mapping(&topo_frame)
@@ -1100,7 +1142,7 @@ impl Serializable for DSBSpecFrame {
         let comment = match sb {
             SideBand::USB => "Represents upper sideband",
             SideBand::LSB => "Represents lower sideband",
-            SideBand::LO => "Represents offset from LO",
+            SideBand::LO => "Represents offset from LO frequency",
         };
         if self.sideband.is_some() {
             node.push_string("SideBn", sb.as_str(), Some(comment.to_string()));

@@ -299,7 +299,8 @@ pub(crate) fn spectral_axes(args: SpectralAxesArgs<'_>) -> AstResult<DynMapping>
 
     // RESTFRQ vs RESTWAV: pick which to emit based on the system.
     // Mirrors C:30740-30751.
-    if let Some(rf) = specfrm.rest_freq() {
+    if specfrm.test_rest_freq() {
+        let rf = specfrm.rest_freq();
         if matches!(
             system,
             SpecSystem::Wavelen | SpecSystem::Voptical | SpecSystem::Redshift | SpecSystem::Airwave
@@ -327,7 +328,8 @@ pub(crate) fn spectral_axes(args: SpectralAxesArgs<'_>) -> AstResult<DynMapping>
     args.store.specsys = Some(specsys_string(specfrm.std_of_rest()));
 
     // SourceVel → ZSOURCE + SSYSSRC. Mirrors C:30761-30772.
-    if let Some(vsource) = specfrm.source_vel()
+    if specfrm.test_source_vel()
+        && let vsource = specfrm.source_vel()
         && vsource.abs() < SPEED_OF_LIGHT
     {
         // Convert m/s velocity to dimensionless redshift via the

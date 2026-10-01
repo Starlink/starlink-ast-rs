@@ -252,8 +252,8 @@ fn set_spec_ref_from_celestial(fs: &mut FrameSet, ref_pos: Option<(f64, f64)>) -
     {
         let cur = fs.current();
         if let Some(spec) = peek_spec(cur)
-            && spec.ref_ra().is_some()
-            && spec.ref_dec().is_some()
+            && spec.test_ref_ra()
+            && spec.test_ref_dec()
         {
             return Ok(());
         }

@@ -29,6 +29,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [A `%` Format on a SkyAxis changes the Unit but not the formatting](#a--format-on-a-skyaxis-changes-the-unit-but-not-the-formatting)
 - [SkyFrame `Offset`'s coincident-points guard is defeated by multiply-add contraction too](#skyframe-offsets-coincident-points-guard-is-defeated-by-multiply-add-contraction-too)
 - [A SkyFrame's own SkyAxes are not latitude axes, so `astAxOffset` wraps its latitude into 0 to 2pi](#a-skyframes-own-skyaxes-are-not-latitude-axes-so-astaxoffset-wraps-its-latitude-into-0-to-2pi)
+- [FluxFrame writes per-wavelength surface brightness as `SFCBRW` but reads it only as `SRCBR`](#fluxframe-writes-per-wavelength-surface-brightness-as-sfcbrw-but-reads-it-only-as-srcbr)
 
 ### [Addressed here, and not going upstream](#addressed-here-and-not-going-upstream)
 
@@ -453,6 +454,16 @@ So at the submodule pin `astAxOffset( skyframe, 2, -0.1, 0.0 )` gives 6.1832 rat
 
 **Rust behaviour (mirror):** `SkyFrame` holds `SkyAxis` values with IsLatitude unset, `SkyFrame::get_axis` reports them as C's do, and `Frame::axis_object_top` is the `astGetAxis` path a CmpFrame takes. `own_axes_have_no_is_latitude` in `crates/ast-core/tests/test_skyframe_attrs.rs` pins it.
 A fix upstream would set IsLatitude and CentreZero on the SkyFrame's axes when it is created and when its axes are permuted, as SubFrame does on a picked copy.
+
+To be raised upstream.
+
+### FluxFrame writes per-wavelength surface brightness as `SFCBRW` but reads it only as `SRCBR`
+
+`FluxSystemString` (`fluxframe.c:733`) names `AST__SBRIGHTW` `"SFCBRW"`, which is what `astGetC( frame, "System" )` returns and what `Dump` writes, but `FluxSystemCode` (`fluxframe.c:3203`) matches `"SRCBR"` for it and nothing for `"SFCBRW"`.
+So at the submodule pin `astSet( fluxframe, "System=SFCBRW" )` fails with "Invalid System description", and a FluxFrame in that system dumps a System card that C cannot read back.
+
+**Rust behaviour (divergence):** `FluxSystem::parse` accepts both `"SFCBRW"` and `"SRCBR"`, so the port reads every setting and dump C produces, as well as its own; it writes `"SFCBRW"`, as C does. `tools/oracle_fixtures/class_attrs_probe.c` sets the system with `"SRCBR"`, the spelling C accepts.
+A fix upstream would match `"SFCBRW"` in `FluxSystemCode`.
 
 To be raised upstream.
 ---

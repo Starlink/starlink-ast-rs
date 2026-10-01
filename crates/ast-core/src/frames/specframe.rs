@@ -371,6 +371,15 @@ impl SpecFrame {
         }
     }
 
+    /// A SpecFrame with no attribute set, as `astSpecFrame(" ")` makes one:
+    /// its System is wavelength by default rather than by being set.
+    pub fn unset_system() -> Self {
+        Self {
+            system_set: false,
+            ..Self::new(SpecSystem::Wavelen)
+        }
+    }
+
     // --- SpecFrame-specific attributes ---
 
     /// Return the frame identification string.
@@ -497,6 +506,18 @@ impl SpecFrame {
         self.align_std_of_rest.is_some()
     }
 
+    /// Clear AlignStdOfRest.
+    pub fn clear_align_std_of_rest(&mut self) {
+        self.align_std_of_rest = None;
+    }
+
+    /// Clear StdOfRest, re-expressing a set SpecOrigin as heliocentric
+    /// first (specframe.c:650).
+    pub fn clear_std_of_rest(&mut self) {
+        self.set_std_of_rest(StdOfRest::Heliocentric);
+        self.sor_set = false;
+    }
+
     /// Return the alignment system.
     ///
     /// Defaults to `Wavelen` if not explicitly set. Mirrors C
@@ -520,9 +541,14 @@ impl SpecFrame {
         self.align_system = None;
     }
 
-    /// Return the rest frequency in Hz.
-    pub fn rest_freq(&self) -> Option<f64> {
-        self.rest_freq
+    /// RestFreq in Hz, set or default (1e14 Hz; specframe.c:6020).
+    pub fn rest_freq(&self) -> f64 {
+        self.rest_freq.unwrap_or(1.0e14)
+    }
+
+    /// Clear RestFreq.
+    pub fn clear_rest_freq(&mut self) {
+        self.rest_freq = None;
     }
 
     /// Set the rest frequency in Hz.
@@ -535,9 +561,14 @@ impl SpecFrame {
         self.rest_freq.is_some()
     }
 
-    /// Return the reference RA (FK5 J2000, radians).
-    pub fn ref_ra(&self) -> Option<f64> {
-        self.ref_ra
+    /// RefRA (FK5 J2000, radians), set or default (0).
+    pub fn ref_ra(&self) -> f64 {
+        self.ref_ra.unwrap_or(0.0)
+    }
+
+    /// Clear RefRA.
+    pub fn clear_ref_ra(&mut self) {
+        self.ref_ra = None;
     }
 
     /// Set the reference RA (FK5 J2000, radians).
@@ -550,9 +581,14 @@ impl SpecFrame {
         self.ref_ra.is_some()
     }
 
-    /// Return the reference Dec (FK5 J2000, radians).
-    pub fn ref_dec(&self) -> Option<f64> {
-        self.ref_dec
+    /// RefDec (FK5 J2000, radians), set or default (0).
+    pub fn ref_dec(&self) -> f64 {
+        self.ref_dec.unwrap_or(0.0)
+    }
+
+    /// Clear RefDec.
+    pub fn clear_ref_dec(&mut self) {
+        self.ref_dec = None;
     }
 
     /// Set the reference Dec (FK5 J2000, radians).
@@ -665,9 +701,45 @@ impl SpecFrame {
         Ok(())
     }
 
-    /// Return the source velocity (m/s or redshift/beta depending on source_sys).
-    pub fn source_vel(&self) -> Option<f64> {
-        self.source_vel
+    /// SourceVel, set or default (0): a velocity in m/s, or a redshift or
+    /// beta factor, according to SourceSys.
+    pub fn source_vel(&self) -> f64 {
+        self.source_vel.unwrap_or(0.0)
+    }
+
+    /// Clear SourceVel.
+    pub fn clear_source_vel(&mut self) {
+        self.source_vel = None;
+    }
+
+    /// Whether SourceSys is a velocity, which C's `SourceVel` attribute
+    /// gives in km/s (specframe.c `GetAttrib`).
+    fn source_vel_is_velocity(&self) -> bool {
+        matches!(
+            self.source_sys(),
+            SpecSystem::Vrel | SpecSystem::Vradio | SpecSystem::Voptical
+        )
+    }
+
+    /// SourceVel as C's attribute reports it: km/s for a velocity, else the
+    /// redshift or beta factor.
+    pub fn source_vel_cur(&self) -> f64 {
+        if self.source_vel_is_velocity() {
+            self.source_vel() * 1.0e-3
+        } else {
+            self.source_vel()
+        }
+    }
+
+    /// Set SourceVel from a value as C's attribute reads it: km/s for a
+    /// velocity, else the redshift or beta factor.
+    pub fn set_source_vel_cur(&mut self, value: f64) {
+        let v = if self.source_vel_is_velocity() {
+            value * 1.0e3
+        } else {
+            value
+        };
+        self.set_source_vel(v);
     }
 
     /// Set the source velocity.
@@ -687,9 +759,30 @@ impl SpecFrame {
         self.source_vrf.unwrap_or(StdOfRest::Heliocentric)
     }
 
-    /// Set the source velocity rest frame.
-    pub fn set_source_vrf(&mut self, sor: StdOfRest) {
+    /// Set the source velocity rest frame, re-expressing a set SourceVel in
+    /// it (specframe.c:6134). The Source rest frame is not allowed.
+    pub fn set_source_vrf(&mut self, sor: StdOfRest) -> AstResult<()> {
+        if sor == StdOfRest::Source {
+            return Err(AstError::new(
+                ErrorCode::Attin,
+                "astSetSourceVRF(SpecFrame): Bad value given for SourceVRF attribute.",
+            ));
+        }
+        if self.test_source_vel() {
+            self.source_vel = Some(self.convert_source_vel(sor, self.source_sys()));
+        }
         self.source_vrf = Some(sor);
+        Ok(())
+    }
+
+    /// Clear SourceVRF, re-expressing a set SourceVel as heliocentric
+    /// (specframe.c:6126).
+    pub fn clear_source_vrf(&mut self) {
+        if self.test_source_vel() {
+            self.source_vel =
+                Some(self.convert_source_vel(StdOfRest::Heliocentric, self.source_sys()));
+        }
+        self.source_vrf = None;
     }
 
     /// Test whether SourceVRF has been explicitly set.
@@ -704,9 +797,37 @@ impl SpecFrame {
         self.source_sys.unwrap_or(SpecSystem::Vrel)
     }
 
-    /// Set the source velocity spectral system.
-    pub fn set_source_sys(&mut self, sys: SpecSystem) {
+    /// Set the source velocity spectral system, re-expressing a set
+    /// SourceVel in it (specframe.c:6201). Only a velocity, a redshift or a
+    /// beta factor is allowed.
+    pub fn set_source_sys(&mut self, sys: SpecSystem) -> AstResult<()> {
+        if !matches!(
+            sys,
+            SpecSystem::Vrel
+                | SpecSystem::Beta
+                | SpecSystem::Vradio
+                | SpecSystem::Redshift
+                | SpecSystem::Voptical
+        ) {
+            return Err(AstError::new(
+                ErrorCode::Attin,
+                "astSetSourceSys(SpecFrame): Bad value given for SourceSys attribute.",
+            ));
+        }
+        if self.test_source_vel() {
+            self.source_vel = Some(self.convert_source_vel(self.source_vrf(), sys));
+        }
         self.source_sys = Some(sys);
+        Ok(())
+    }
+
+    /// Clear SourceSys, re-expressing a set SourceVel as relativistic
+    /// velocity (specframe.c:6194).
+    pub fn clear_source_sys(&mut self) {
+        if self.test_source_vel() {
+            self.source_vel = Some(self.convert_source_vel(self.source_vrf(), SpecSystem::Vrel));
+        }
+        self.source_sys = None;
     }
 
     /// Test whether SourceSys has been explicitly set.
@@ -714,9 +835,15 @@ impl SpecFrame {
         self.source_sys.is_some()
     }
 
-    /// Return the spectral origin (in default units for current system).
-    pub fn spec_origin(&self) -> Option<f64> {
-        self.spec_origin
+    /// SpecOrigin in the default units of the current System, set or
+    /// default (0).
+    pub fn spec_origin(&self) -> f64 {
+        self.spec_origin.unwrap_or(0.0)
+    }
+
+    /// Clear SpecOrigin.
+    pub fn clear_spec_origin(&mut self) {
+        self.spec_origin = None;
     }
 
     /// Set the spectral origin.
@@ -861,65 +988,61 @@ impl SpecFrame {
         self.align_spec_offset_set
     }
 
+    /// Clear AlignSpecOffset.
+    pub fn clear_align_spec_offset(&mut self) {
+        self.align_spec_offset = false;
+        self.align_spec_offset_set = false;
+    }
+
     // --- Conversion helpers ---
 
-    /// Convert source velocity to heliocentric relativistic velocity (m/s).
-    ///
-    /// This is used when computing the "Source" rest frame correction.
-    /// Follows the C `ConvertSourceVel` algorithm.
-    fn convert_source_vel_to_helio_vrel(&self) -> f64 {
-        let vel = match self.source_vel {
-            Some(v) => v,
-            None => return 0.0,
-        };
-
-        let sys = self.source_sys();
+    /// SourceVel re-expressed in the rest frame `new_sor` and the system
+    /// `new_sys`. Mirrors C `ConvertSourceVel` (specframe.c:745): an unset
+    /// SourceVel and RestFreq take their defaults (0 and 1e14 Hz), and the
+    /// conversion goes through relativistic velocity and frequency.
+    fn convert_source_vel(&self, new_sor: StdOfRest, new_sys: SpecSystem) -> f64 {
+        let vel = self.source_vel();
         let sor = self.source_vrf();
-
-        // If already heliocentric + VREL, return directly.
-        if sor == StdOfRest::Heliocentric && sys == SpecSystem::Vrel {
+        let sys = self.source_sys();
+        if sor == new_sor && sys == new_sys {
             return vel;
         }
-
-        // Build a SpecMap chain to convert:
-        //   source_sys → Vrel → freq → (SOR correction) → freq → Vrel
-        let rf = match self.rest_freq {
-            Some(rf) => rf,
-            None => return 0.0,
-        };
-
+        let mut from = self.clone();
+        from.set_std_of_rest(sor);
+        let mut to = self.clone();
+        to.set_std_of_rest(new_sor);
         let mut specmap = SpecMap::new();
-
-        // Convert from source_sys to relativistic velocity.
         match sys {
             SpecSystem::Vradio => specmap.add(SpecCvtType::VrToVl, &[]),
             SpecSystem::Voptical => specmap.add(SpecCvtType::VoToVl, &[]),
             SpecSystem::Redshift => specmap.add(SpecCvtType::ZoToVl, &[]),
             SpecSystem::Beta => specmap.add(SpecCvtType::BtToVl, &[]),
-            SpecSystem::Vrel => {} // already Vrel
-            _ => return 0.0,       // absolute systems invalid for source vel
+            _ => {}
         }
-
-        // Convert velocity to frequency.
+        let rf = self.rest_freq();
         specmap.add(SpecCvtType::VlToFr, &[rf]);
-
-        // Convert from source_vrf to heliocentric (frequency domain).
-        self.add_sor_to_helio(&mut specmap, sor);
-
-        // Convert frequency back to velocity.
+        Self::sor_convert(&from, &to, &mut specmap);
         specmap.add(SpecCvtType::FrToVl, &[rf]);
-
-        // Transform the value.
+        match new_sys {
+            SpecSystem::Vradio => specmap.add(SpecCvtType::VlToVr, &[]),
+            SpecSystem::Voptical => specmap.add(SpecCvtType::VlToVo, &[]),
+            SpecSystem::Redshift => specmap.add(SpecCvtType::VlToZo, &[]),
+            SpecSystem::Beta => specmap.add(SpecCvtType::VlToBt, &[]),
+            _ => {}
+        }
         use crate::coords::PointSet;
         use crate::mappings::Mapping;
         let pts = PointSet::from_rows([[vel]]);
         match specmap.transform(&pts, true) {
-            Ok(out) => {
-                let v = out.point(0)[0];
-                if is_bad(v) { 0.0 } else { v }
-            }
+            Ok(out) => out.point(0)[0],
             Err(_) => 0.0,
         }
+    }
+
+    /// SourceVel as heliocentric relativistic velocity, the form the Source
+    /// rest frame conversions use (specframe.c `SorConvert`).
+    fn convert_source_vel_to_helio_vrel(&self) -> f64 {
+        self.convert_source_vel(StdOfRest::Heliocentric, SpecSystem::Vrel)
     }
 
     /// Add SpecMap steps to convert from a given SOR to heliocentric (frequency domain).
@@ -1275,11 +1398,31 @@ impl SpecFrame {
         }
     }
 
+    /// Set SpecOrigin from a value in the SpecFrame's current units, as
+    /// C's `SpecOrigin` attribute reads a number with no units
+    /// (specframe.c:3893, `ToUnits`).
+    pub fn set_spec_origin_cur(&mut self, value: f64) -> AstResult<()> {
+        let def = self.system.default_display_units();
+        let cur = Frame::unit(self, 1)?;
+        let map = unit_mapper(&cur, def).ok_or_else(|| {
+            AstError::new(
+                ErrorCode::Badun,
+                format!(
+                    "astSetSpecOrigin(SpecFrame): Cannot convert the supplied attribute value from units of {cur} to {def}."
+                ),
+            )
+        })?;
+        let pts = crate::coords::PointSet::from_rows([[value]]);
+        let v = crate::mappings::Mapping::transform(map.as_ref(), &pts, true)?.point(0)[0];
+        self.set_spec_origin(v);
+        Ok(())
+    }
+
     /// The SpecOrigin value converted from its storage basis (the
     /// default units of the current System) to the frame's current
     /// units. Returns 0.0 when unset. Mirrors `GetSpecOriginCur`
     /// (specframe.c:2129).
-    fn spec_origin_cur(&self) -> AstResult<f64> {
+    pub fn spec_origin_cur(&self) -> AstResult<f64> {
         let Some(origin) = self.spec_origin else {
             return Ok(0.0);
         };
@@ -1677,17 +1820,24 @@ impl Frame for SpecFrame {
         if origin != 0.0 {
             label.push_str(&format!(" offset from {}", self.format(axis, origin)?));
         }
-        Ok(label)
+        Ok(super::frame_attrs::relabel_for_unit(
+            label,
+            self.system.default_display_units(),
+            self.axis.unit.as_deref(),
+        ))
     }
 
     /// Mirrors C `SpecFrame::GetSymbol` (specframe.c:1770): a Symbol that
     /// has been set, else the System's FITS code.
     fn symbol(&self, axis: usize) -> AstResult<String> {
-        Ok(self
-            .ax(axis)?
-            .symbol
-            .clone()
-            .unwrap_or_else(|| self.system.as_str().to_string()))
+        if let Some(symbol) = &self.ax(axis)?.symbol {
+            return Ok(symbol.clone());
+        }
+        Ok(super::frame_attrs::relabel_for_unit(
+            self.system.as_str().to_string(),
+            self.system.default_display_units(),
+            self.axis.unit.as_deref(),
+        ))
     }
 
     /// Mirrors C `SpecFrame::GetUnit` (specframe.c:2220): a Unit that has
@@ -2048,10 +2198,10 @@ fn specframe_overlay(
             }
         }
         if template_spec.test_source_sys() {
-            result_spec.set_source_sys(template_spec.source_sys());
+            result_spec.set_source_sys(template_spec.source_sys())?;
         }
         if template_spec.test_source_vrf() {
-            result_spec.set_source_vrf(template_spec.source_vrf());
+            result_spec.set_source_vrf(template_spec.source_vrf())?;
         }
         if template_spec.test_source_vel() {
             if let Some(v) = template_spec.source_vel {
@@ -2184,163 +2334,21 @@ impl Serializable for SpecFrame {
             node.push_isa("Object", Some("AST Object".to_string()));
         }
 
-        // --- Frame-level attributes (before IsA Frame) ---
-        // Order: Title, Naxes, Domain, Epoch, Lbl1, System, Uni1, Ax1,
-        //        [observer], IsA Frame
-
-        // Title: active if explicitly set, otherwise unset with default.
-        if let Some(ref title) = self.attrs.title {
-            if !title.is_empty() {
-                node.push_string(
-                    "Title",
-                    title,
-                    Some("Title of coordinate system".to_string()),
-                );
-            }
-        } else {
-            node.push_unset(
-                "Title",
-                NodeValue::String(self.default_title()),
-                Some("Title of coordinate system".to_string()),
-            );
-        }
-
-        // Naxes = 1 (always active).
-        node.push_int("Naxes", 1, Some("Number of coordinate axes".to_string()));
-
-        // Domain: active if explicitly set to non-"SPECTRUM", otherwise unset.
-        if let Some(ref domain) = self.attrs.domain {
-            if !domain.is_empty() && domain != "SPECTRUM" {
-                node.push_string(
-                    "Domain",
-                    domain,
-                    Some("Coordinate system domain".to_string()),
-                );
-            } else {
-                node.push_unset(
-                    "Domain",
-                    NodeValue::String("SPECTRUM".to_string()),
-                    Some("Coordinate system domain".to_string()),
-                );
-            }
-        } else {
-            node.push_unset(
-                "Domain",
-                NodeValue::String("SPECTRUM".to_string()),
-                Some("Coordinate system domain".to_string()),
-            );
-        }
-
-        // Epoch: stored internally as MJD, written as Besselian /
-        // Julian decimal year per the IAU 1984 rule (mirrors
-        // `frame.c::Dump` lines 14325-14336).
-        let epoch_mjd = self.attrs.epoch.unwrap_or(51544.5);
-        let bessyr = epoch_mjd < crate::pal::epj2d(1984.0);
-        let epoch_year = if bessyr {
-            crate::pal::epb(epoch_mjd)
-        } else {
-            crate::pal::epj(epoch_mjd)
-        };
-        let epoch_comment = if bessyr {
-            "Besselian epoch of observation"
-        } else {
-            "Julian epoch of observation"
-        };
-        if self.attrs.epoch.is_some() {
-            node.push_double("Epoch", epoch_year, Some(epoch_comment.to_string()));
-        } else {
-            node.push_unset(
-                "Epoch",
-                NodeValue::Double(epoch_year),
-                Some(epoch_comment.to_string()),
-            );
-        }
-
-        // Lbl1: axis label (always unset with system-appropriate default).
-        node.push_unset(
-            "Lbl1",
-            NodeValue::String(self.system.label().to_string()),
-            Some("Label for axis 1".to_string()),
+        // The Frame class's part, read through the SpecFrame's getters
+        // (frame.c:14250).
+        super::frame_attrs::write_frame_cards(
+            &mut node,
+            &super::frame_attrs::TraitDump {
+                frame: self,
+                attrs: &self.attrs,
+                system: (self.system_set, self.system.as_str().to_string()),
+                align_system: (
+                    self.align_system.is_some(),
+                    self.align_system().as_str().to_string(),
+                ),
+                perm: vec![0],
+            },
         );
-
-        // System: active when explicitly set, otherwise written commented
-        // with the class default value. Mirrors `frame.c::Dump` lines
-        // 14372-14400 (`set = TestSystem`; value = GetSystem which returns
-        // AST__WAVELEN for an unset SpecFrame, specframe.c:2015).
-        if self.system_set {
-            node.push_string(
-                "System",
-                self.system.as_str(),
-                Some("Coordinate system type".to_string()),
-            );
-        } else {
-            node.push_unset(
-                "System",
-                NodeValue::String(SpecSystem::Wavelen.as_str().to_string()),
-                Some("Coordinate system type".to_string()),
-            );
-        }
-
-        // Uni1: axis unit (always unset with current unit or system default).
-        let display_unit = self
-            .axis
-            .unit
-            .as_deref()
-            .unwrap_or(self.system.default_display_units());
-        if !display_unit.is_empty() {
-            let comment = match crate::units::unit_label(display_unit) {
-                Some(lab) if lab != display_unit => format!("Units for axis 1 ({lab})"),
-                _ => "Units for axis 1".to_string(),
-            };
-            node.push_unset(
-                "Uni1",
-                NodeValue::String(display_unit.to_string()),
-                Some(comment),
-            );
-        }
-
-        // Observer attributes (active only if explicitly set). C
-        // `Frame::Dump` writes these (and Dtai/Dut1) before the Axis
-        // sub-objects (frame.c:14584-14609).
-        if let Some(obs_lat) = self.attrs.obs_lat {
-            node.push_double(
-                "ObsLat",
-                obs_lat,
-                Some("Observers geodetic latitude (rads)".to_string()),
-            );
-        }
-        if let Some(obs_lon) = self.attrs.obs_lon {
-            node.push_double(
-                "ObsLon",
-                obs_lon,
-                Some("Observers geodetic longitude (rads)".to_string()),
-            );
-        }
-        if let Some(obs_alt) = self.attrs.obs_alt {
-            node.push_double(
-                "ObsAlt",
-                obs_alt,
-                Some("Observers geodetic altitude (metres)".to_string()),
-            );
-        }
-        if let Some(dtai) = self.attrs.dtai {
-            node.push_double("Dtai", dtai, Some("TAI-UTC in seconds".to_string()));
-        }
-        if let Some(dut1) = self.attrs.dut1 {
-            node.push_double("Dut1", dut1, Some("UT1-UTC in seconds".to_string()));
-        }
-
-        // ActUnt: written whenever the ActiveUnit flag has been explicitly
-        // set (TestActiveUnit, frame.c:14615), carrying its value (0 or 1);
-        // an unset flag is suppressed.
-        if let Some(act) = self.attrs.active_unit {
-            let comment = if act {
-                "Unit strings affects alignment"
-            } else {
-                "Unit strings do not affect alignment"
-            };
-            node.push_int("ActUnt", act as i64, Some(comment.to_string()));
-        }
 
         // Ax1: the Axis, with the attributes that are set (axis.c Dump).
         let mut axis_node = Node::new("Axis");
@@ -2376,15 +2384,6 @@ impl Serializable for SpecFrame {
                 "AlSoR",
                 asor.as_str(),
                 Some("Alignment standard of rest".to_string()),
-            );
-        }
-
-        // AlSys (AlignSystem, only if explicitly set).
-        if let Some(ref asys) = self.align_system {
-            node.push_string(
-                "AlSys",
-                asys.as_str(),
-                Some("Alignment coordinate system".to_string()),
             );
         }
 
@@ -2687,7 +2686,7 @@ mod tests {
         let mut result: DynFrame = Box::new(target);
         result.overlay_template(&template, &[0]).unwrap();
         let r = result.as_any().downcast_ref::<SpecFrame>().unwrap();
-        assert_eq!(r.rest_freq(), Some(1.420405751e9));
+        assert_eq!(r.rest_freq(), 1.420405751e9);
     }
 
     #[test]
@@ -2844,8 +2843,8 @@ mod tests {
         spec.set_ref_pos(Some(&fk4), 180.0_f64.to_radians(), 45.0_f64.to_radians())
             .unwrap();
 
-        let ra = spec.ref_ra().expect("RefRA set");
-        let dec = spec.ref_dec().expect("RefDec set");
+        let ra = spec.ref_ra();
+        let dec = spec.ref_dec();
         assert!(
             (ra - 3.152_747_005_821_885).abs() < 1.0e-12,
             "RefRA should be 3.1527470058218849, got {ra}"

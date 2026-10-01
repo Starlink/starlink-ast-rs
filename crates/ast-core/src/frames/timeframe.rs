@@ -192,6 +192,8 @@ pub struct TimeFrame {
     axis: super::axis::Axis,
     lt_offset: Option<f64>, // Local Time offset from UTC (hours)
     align_timescale: Option<TimeScale>,
+    /// AlignSystem, when set; the default is MJD (timeframe.c:2858).
+    align_system: Option<TimeSystem>,
     // Match-control attributes (used by `astFindFrame` / `astMatch`).
 }
 
@@ -245,7 +247,73 @@ impl TimeFrame {
             axis: super::axis::Axis::default(),
             lt_offset: None,
             align_timescale: None,
+            align_system: None,
         }
+    }
+
+    /// A TimeFrame with no attribute set, as `astTimeFrame(" ")` makes one:
+    /// its System is MJD by default rather than by being set.
+    pub fn unset_system() -> Self {
+        Self {
+            system_set: false,
+            ..Self::new(TimeSystem::Mjd)
+        }
+    }
+
+    /// AlignSystem, set or default (MJD). Mirrors C `GetAlignSystem`
+    /// (timeframe.c:2858).
+    pub fn align_system(&self) -> TimeSystem {
+        self.align_system.unwrap_or(TimeSystem::Mjd)
+    }
+
+    /// Set AlignSystem.
+    pub fn set_align_system(&mut self, sys: TimeSystem) {
+        self.align_system = Some(sys);
+    }
+
+    /// Whether AlignSystem is set.
+    pub fn test_align_system(&self) -> bool {
+        self.align_system.is_some()
+    }
+
+    /// Clear AlignSystem.
+    pub fn clear_align_system(&mut self) {
+        self.align_system = None;
+    }
+
+    /// Clear AlignTimeScale.
+    pub fn clear_align_timescale(&mut self) {
+        self.align_timescale = None;
+    }
+
+    /// Clear LTOffset.
+    pub fn clear_lt_offset(&mut self) {
+        self.lt_offset = None;
+    }
+
+    /// TimeOrigin in the TimeFrame's current units, as C's `TimeOrigin`
+    /// attribute reports it (timeframe.c `GetTimeOriginCur`).
+    pub fn time_origin_cur(&self) -> f64 {
+        self.get_time_origin_cur()
+    }
+
+    /// Set TimeOrigin from a value in the TimeFrame's current units, as C's
+    /// `TimeOrigin` attribute reads a number with no units (timeframe.c:4748,
+    /// `ToUnits`).
+    pub fn set_time_origin_cur(&mut self, value: f64) -> AstResult<()> {
+        let def = self.system.default_units();
+        let cur = self.unit_or_default().to_string();
+        let Some(map) = crate::units::unit_mapper(&cur, def) else {
+            return Err(AstError::new(
+                ErrorCode::Badun,
+                format!(
+                    "astSetTimeOrigin(TimeFrame): Cannot convert the supplied attribute value from units of {cur} to {def}."
+                ),
+            ));
+        };
+        let v = transform_scalar(map.as_ref(), value, true)?;
+        self.set_time_origin(v);
+        Ok(())
     }
 
     /// Whether `System` has been explicitly set on this TimeFrame.
@@ -468,18 +536,18 @@ impl TimeFrame {
     fn default_axis_label(&self) -> String {
         let (is_date, ndp, _sep) = date_format(self.set_format());
         let mut result = if is_date {
-            return if ndp >= 0 {
+            if ndp >= 0 {
                 "Date/Time".to_string()
             } else {
                 "Date".to_string()
-            };
+            }
         } else {
             self.system.label().to_string()
         };
 
         // Append the TimeOrigin offset as an absolute iso.0 date/time when a
         // non-zero origin is set (C timeframe.c:2670-2699).
-        if self.time_origin() != 0.0 {
+        if !is_date && self.time_origin() != 0.0 {
             if let Ok(mut date) = self.format_iso0_zero() {
                 // Strip a trailing "00:00:00" time-of-day, keeping the space
                 // that precedes it — C only nulls the last 8 characters
@@ -491,8 +559,15 @@ impl TimeFrame {
                 result.push_str(&date);
             }
         }
+        if !is_date {
+            result = super::frame_attrs::relabel_for_unit(
+                result,
+                self.system.default_units(),
+                self.axis.unit.as_deref(),
+            );
+        }
 
-        // Local Time: indicate the offset from UTC (C timeframe.c:2726-2734).
+        // Local Time, whatever the label (C timeframe.c:2726-2734): indicate the offset from UTC (C timeframe.c:2726-2734).
         if self.timescale == TimeScale::Lt {
             let ltoff = self.lt_offset();
             if ltoff >= 0.0 {
@@ -754,16 +829,6 @@ impl TimeFrame {
             "{iy:4}-{im:02}-{id:02} {:02}:{:02}:{:02}",
             ihmsf[0], ihmsf[1], ihmsf[2]
         ))
-    }
-
-    /// Return a human-readable description for a unit abbreviation.
-    fn unit_description(units: &str) -> &'static str {
-        match units {
-            "d" => "day",
-            "yr" => "year",
-            "s" => "second",
-            _ => "",
-        }
     }
 
     // --- Conversion helpers ---
@@ -1297,16 +1362,20 @@ impl Frame for TimeFrame {
 
     /// Mirrors C `TimeFrame::GetSymbol` (timeframe.c:2741).
     fn symbol(&self, axis: usize) -> AstResult<String> {
-        Ok(match &self.ax(axis)?.symbol {
-            Some(symbol) => symbol.clone(),
-            None => match self.system {
-                TimeSystem::Mjd => "MJD",
-                TimeSystem::Jd => "JD",
-                TimeSystem::Bepoch => "BEP",
-                TimeSystem::Jepoch => "JEP",
-            }
-            .to_string(),
-        })
+        if let Some(symbol) = &self.ax(axis)?.symbol {
+            return Ok(symbol.clone());
+        }
+        let symbol = match self.system {
+            TimeSystem::Mjd => "MJD",
+            TimeSystem::Jd => "JD",
+            TimeSystem::Bepoch => "BEP",
+            TimeSystem::Jepoch => "JEP",
+        };
+        Ok(super::frame_attrs::relabel_for_unit(
+            symbol.to_string(),
+            self.system.default_units(),
+            self.axis.unit.as_deref(),
+        ))
     }
 
     /// Mirrors C `TimeFrame::GetUnit` (timeframe.c:3253).
@@ -1762,167 +1831,35 @@ impl Serializable for TimeFrame {
         let mut node = Node::new(self.class_name());
         node.class_comment = Some("Description of time coordinate system".to_string());
 
-        // --- Frame-level attributes (before IsA Frame) ---
-        // Order: Title, Naxes, Domain, Epoch, Lbl1, System, Uni1, Ax1, IsA Frame
-
-        // Title: active if explicitly set, otherwise unset with default.
-        if let Some(ref title) = self.attrs.title {
-            if !title.is_empty() {
-                node.push_string(
-                    "Title",
-                    title,
-                    Some("Title of coordinate system".to_string()),
-                );
-            }
-        } else {
-            node.push_unset(
-                "Title",
-                NodeValue::String(self.default_title()),
-                Some("Title of coordinate system".to_string()),
-            );
-        }
-
-        // Naxes = 1 (always active).
-        node.push_int("Naxes", 1, Some("Number of coordinate axes".to_string()));
-
-        // Domain: active if explicitly set to non-"TIME", otherwise unset "TIME".
-        if let Some(ref domain) = self.attrs.domain {
-            if !domain.is_empty() && domain != "TIME" {
-                node.push_string(
-                    "Domain",
-                    domain,
-                    Some("Coordinate system domain".to_string()),
-                );
-            } else {
-                node.push_unset(
-                    "Domain",
-                    NodeValue::String("TIME".to_string()),
-                    Some("Coordinate system domain".to_string()),
-                );
-            }
-        } else {
-            node.push_unset(
-                "Domain",
-                NodeValue::String("TIME".to_string()),
-                Some("Coordinate system domain".to_string()),
-            );
-        }
-
-        // Epoch: stored internally as MJD, written as Besselian /
-        // Julian decimal year per the IAU 1984 rule (mirrors
-        // `frame.c::Dump` lines 14325-14336). When unset, the displayed
-        // default is the GetEpoch value, which for a TimeFrame with a set
-        // TimeOrigin is the TimeOrigin converted to TDB MJD (timeframe.c:2458)
-        // rather than the J2000.0 fallback.
-        let epoch_mjd = self.epoch_mjd();
-        let bessyr = epoch_mjd < crate::pal::epj2d(1984.0);
-        let epoch_year = if bessyr {
-            crate::pal::epb(epoch_mjd)
-        } else {
-            crate::pal::epj(epoch_mjd)
-        };
-        let epoch_comment = if bessyr {
-            "Besselian epoch of observation"
-        } else {
-            "Julian epoch of observation"
-        };
-        if self.attrs.epoch.is_some() {
-            node.push_double("Epoch", epoch_year, Some(epoch_comment.to_string()));
-        } else {
-            node.push_unset(
-                "Epoch",
-                NodeValue::Double(epoch_year),
-                Some(epoch_comment.to_string()),
-            );
-        }
-
-        // Axis label (always unset). The displayed default is the effective
-        // label, which a date Format overrides to "Date/Time"/"Date".
-        node.push_unset(
-            "Lbl1",
-            NodeValue::String(self.label(1)?),
-            Some("Label for axis 1".to_string()),
-        );
-
-        // System: active when explicitly set, otherwise written commented
-        // with the class default value. Mirrors `frame.c::Dump`
-        // (`set = TestSystem`; value = GetSystem which returns AST__MJD
-        // for an unset TimeFrame, timeframe.c:2911).
-        if self.system_set {
+        // The Object class's part: Ident, when set (object.c Dump).
+        if let Some(ident) = self.attrs.ident.as_deref().filter(|s| !s.is_empty()) {
             node.push_string(
-                "System",
-                self.system.as_str(),
-                Some("Coordinate system type".to_string()),
+                "Ident",
+                ident,
+                Some("Permanent Object identification string".to_string()),
             );
-        } else {
-            node.push_unset(
-                "System",
-                NodeValue::String(TimeSystem::Mjd.as_str().to_string()),
-                Some("Coordinate system type".to_string()),
-            );
+            node.push_isa("Object", Some("AST Object".to_string()));
         }
 
-        // Axis units. The displayed value is the effective unit (the set
-        // Unit string or the system default); the Uni1 line itself is always
-        // written as "un-set" because the Unit is repackaged onto the Axis.
-        let units = self.unit_or_default();
-        let unit_desc = Self::unit_description(units);
-        let uni_comment = format!("Units for axis 1 ({unit_desc})");
-        node.push_unset(
-            "Uni1",
-            NodeValue::String(units.to_string()),
-            Some(uni_comment),
+        // The Frame class's part, read through this class's getters
+        // (frame.c:14250), then the Axis (frame.c:14777).
+        super::frame_attrs::write_frame_cards(
+            &mut node,
+            &super::frame_attrs::TraitDump {
+                frame: self,
+                attrs: &self.attrs,
+                system: (self.system_set, self.system.as_str().to_string()),
+                align_system: (
+                    self.align_system.is_some(),
+                    self.align_system().as_str().to_string(),
+                ),
+                perm: vec![0],
+            },
         );
-
-        // Per-axis Axis child object. The Unit and Format strings, when
-        // explicitly set, are stored on the Axis (mirrors the C Frame/Axis
-        // dump: an active `Unit` and `Format` inside the `Begin Axis` block).
         let mut axis_node = Node::new("Axis");
         axis_node.class_comment = Some("Coordinate axis".to_string());
         self.axis.write_set_attributes(&mut axis_node);
         node.push_object("Ax1", axis_node, Some("Axis number 1".to_string()));
-
-        // Observer attributes (active only if explicitly set).
-        if let Some(obs_lat) = self.attrs.obs_lat {
-            node.push_double(
-                "ObsLat",
-                obs_lat,
-                Some("Observers geodetic latitude (rads)".to_string()),
-            );
-        }
-        if let Some(obs_lon) = self.attrs.obs_lon {
-            node.push_double(
-                "ObsLon",
-                obs_lon,
-                Some("Observers geodetic longitude (rads)".to_string()),
-            );
-        }
-        if let Some(obs_alt) = self.attrs.obs_alt {
-            node.push_double(
-                "ObsAlt",
-                obs_alt,
-                Some("Observers geodetic altitude (metres)".to_string()),
-            );
-        }
-
-        // Dut1 (if set).
-        if let Some(dut1) = self.attrs.dut1 {
-            node.push_double("Dut1", dut1, Some("UT1-UTC (s)".to_string()));
-        }
-
-        // Dtai (if set).
-        if let Some(dtai) = self.attrs.dtai {
-            node.push_double("Dtai", dtai, Some("TAI-UTC (s)".to_string()));
-        }
-
-        // ActUnt: active if explicitly set to false.
-        if let Some(false) = self.attrs.active_unit {
-            node.push_int(
-                "ActUnt",
-                0,
-                Some("Unit strings do not affect alignment".to_string()),
-            );
-        }
 
         // IsA Frame marker.
         node.push_isa("Frame", Some("Coordinate system description".to_string()));
@@ -2066,6 +2003,10 @@ impl Serializable for TimeFrame {
         let ident = node.get_string("Ident", "");
         if !ident.is_empty() {
             tf.attrs.ident = Some(ident);
+        }
+
+        if node.get("AlSys").is_some() {
+            tf.align_system = TimeSystem::parse(&node.get_string("AlSys", ""));
         }
 
         // The Axis attributes live in the Ax1 Axis child node.

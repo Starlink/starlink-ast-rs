@@ -978,6 +978,22 @@ pub(crate) fn validate_axis(axis: usize, naxes: usize) -> AstResult<()> {
     Ok(())
 }
 
+/// A default Label or Symbol rewritten for a Unit that has been set, as the
+/// `GetLabel` and `GetSymbol` of SpecFrame, TimeFrame and FluxFrame do
+/// (specframe.c:1520, timeframe.c:2579, fluxframe.c:1107): through the
+/// label `astUnitMapper` returns for a change from the System's default
+/// units, so that a Unit of `"log(Hz)"` makes `"Frequency"` into
+/// `"log( Frequency )"`. Unchanged when no Unit is set or no label results.
+pub(crate) fn relabel_for_unit(label: String, default_unit: &str, unit: Option<&str>) -> String {
+    let Some(unit) = unit else {
+        return label;
+    };
+    match crate::units::unit_mapper_label(default_unit, unit, &label) {
+        Some((_, Some(new_label))) => new_label,
+        _ => label,
+    }
+}
+
 /// Set, test and clear for the named per-axis attributes, as C's Frame
 /// does them through `astGetAxis` (frame.c `MAKE_SET`, `MAKE_TEST`,
 /// `MAKE_CLEAR`). Used inside `impl Frame for X`, where `X` has inherent
@@ -1263,4 +1279,112 @@ macro_rules! cmp_frame_axis_attrs {
             f.$clear(a)
         }
     };
+}
+
+/// The Frame part of a subclass's dump, read through the `Frame` trait as
+/// C's `Frame::Dump` reads it through the virtual getters, so that each
+/// class's own defaults appear (frame.c:14250). The class supplies its
+/// stored Frame attributes, whether its System and AlignSystem are set and
+/// their names, and the permutation.
+pub(crate) struct TraitDump<'a> {
+    /// The Frame being dumped.
+    pub frame: &'a dyn super::Frame,
+    /// Its stored Frame attributes.
+    pub attrs: &'a FrameAttrs,
+    /// Whether System is set, and its name.
+    pub system: (bool, String),
+    /// Whether AlignSystem is set, and its name.
+    pub align_system: (bool, String),
+    /// The permutation, `perm[external] = internal`.
+    pub perm: Vec<usize>,
+}
+
+impl TraitDump<'_> {
+    /// The 1-based external axis of an internal one.
+    fn ext(&self, internal: usize) -> usize {
+        self.perm
+            .iter()
+            .position(|&p| p == internal)
+            .unwrap_or(internal)
+            + 1
+    }
+}
+
+impl FrameDumpSource for TraitDump<'_> {
+    fn attrs(&self) -> &FrameAttrs {
+        self.attrs
+    }
+    fn dump_naxes(&self) -> usize {
+        self.frame.naxes()
+    }
+    fn dump_perm(&self) -> Vec<usize> {
+        self.perm.clone()
+    }
+    fn dump_is_frame(&self) -> bool {
+        false
+    }
+    fn dump_title(&self) -> String {
+        self.frame.title()
+    }
+    fn dump_domain(&self) -> String {
+        self.frame.domain().to_string()
+    }
+    fn dump_epoch(&self) -> f64 {
+        self.frame.epoch_mjd()
+    }
+    fn dump_system(&self) -> (bool, String) {
+        self.system.clone()
+    }
+    fn dump_align_system(&self) -> (bool, String) {
+        self.align_system.clone()
+    }
+    fn dump_label(&self, axis: usize) -> String {
+        self.frame.label(self.ext(axis)).unwrap_or_default()
+    }
+    fn dump_symbol(&self, axis: usize) -> String {
+        self.frame.symbol(self.ext(axis)).unwrap_or_default()
+    }
+    fn dump_unit(&self, axis: usize) -> String {
+        self.frame.unit(self.ext(axis)).unwrap_or_default()
+    }
+    fn dump_format(&self, axis: usize) -> String {
+        self.frame.format_str(self.ext(axis)).unwrap_or_default()
+    }
+    fn dump_axis_digits(&self, axis: usize) -> Option<i32> {
+        let ext = self.ext(axis);
+        if self.frame.test_axis_digits(ext).unwrap_or(false) {
+            self.frame.axis_digits(ext).ok()
+        } else {
+            None
+        }
+    }
+    fn dump_direction(&self, axis: usize) -> bool {
+        self.frame.direction(self.ext(axis)).unwrap_or(true)
+    }
+    fn dump_bottom(&self, axis: usize) -> f64 {
+        self.frame.bottom(self.ext(axis)).unwrap_or(-f64::MAX)
+    }
+    fn dump_top(&self, axis: usize) -> f64 {
+        self.frame.top(self.ext(axis)).unwrap_or(f64::MAX)
+    }
+    fn dump_preserve_axes(&self) -> bool {
+        self.frame.preserve_axes()
+    }
+    fn dump_permute(&self) -> bool {
+        self.frame.permute()
+    }
+    fn dump_min_axes(&self) -> usize {
+        self.frame.min_axes()
+    }
+    fn dump_max_axes(&self) -> usize {
+        self.frame.max_axes()
+    }
+    fn dump_match_end(&self) -> bool {
+        self.frame.match_end()
+    }
+    // frame.c:14615 tests the stored value with the Frame class's own
+    // TestActiveUnit, not the class's over-ride.
+    fn dump_active_unit(&self) -> Option<bool> {
+        self.attrs.active_unit
+    }
 }

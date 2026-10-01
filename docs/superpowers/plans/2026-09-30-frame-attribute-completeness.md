@@ -120,3 +120,25 @@ Gate: `tests/test_frame_axis_attrs.rs` against the tables from
 
 Gates: `tests/test_skyframe_attrs.rs` (`skyframe_attrs_probe.c`) and
 `tests/test_picked_skyaxis.rs` (`picked_skyaxis_probe.c`).
+
+## Phase 4 notes: TimeFrame, SpecFrame, DSBSpecFrame, FluxFrame
+
+- Getters give C's value, set or default, in the units the class stores;
+  where C's attribute is expressed in the Frame's current units
+  (TimeOrigin, SpecOrigin, DSBCentre) or in km/s (SourceVel), a `*_cur`
+  pair gives that form, converting as C's `ToUnits` and `GetXxxCur` do.
+- Setters with side effects in C keep them: SourceVRF and SourceSys
+  re-express SourceVel (`ConvertSourceVel`), StdOfRest re-expresses
+  SpecOrigin, FluxFrame's Unit and System keep its UsedUnits.
+- Each class writes the Frame part of its dump with `write_frame_cards`
+  through `TraitDump`, which reads it through the `Frame` trait, so the
+  commented defaults are the class's own, as C's subclass `Dump` gets them
+  by calling the Frame class's.
+  SkyFrame and CmpFrame still write their Frame parts themselves; their
+  dumps already match C.
+- A set Unit rewrites the default Label and Symbol through the label
+  `astUnitMapper` returns (`units::label`).
+
+Gate: `tests/test_class_attrs.rs` (`class_attrs_probe.c`). SpecFluxFrame
+and CmpFrame have no attributes of their own beyond those of phases 2a and
+2b.

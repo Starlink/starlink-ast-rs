@@ -25,6 +25,7 @@ mod complicate;
 mod concat;
 mod dim_anal;
 mod invert;
+mod label;
 mod mapper;
 mod parser;
 mod simplify;
@@ -36,7 +37,7 @@ mod tree;
 mod tests;
 
 #[allow(unused_imports)] // wired into SpecFrame in commit 3
-pub(crate) use mapper::unit_mapper;
+pub(crate) use mapper::{unit_mapper, unit_mapper_label};
 
 use crate::keymap::convert::scan_double;
 

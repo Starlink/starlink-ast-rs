@@ -67,9 +67,9 @@ fn test_specframe_attributes() {
 
     assert_eq!(sf.system(), SpecSystem::Wavelen);
     assert_eq!(sf.std_of_rest(), StdOfRest::Lsrk);
-    assert_close(sf.rest_freq().unwrap(), 1.42040575e9, 1.0, "rest_freq");
-    assert_close(sf.ref_ra().unwrap(), 1.234, 1e-15, "ref_ra");
-    assert_close(sf.ref_dec().unwrap(), 0.567, 1e-15, "ref_dec");
+    assert_close(sf.rest_freq(), 1.42040575e9, 1.0, "rest_freq");
+    assert_close(sf.ref_ra(), 1.234, 1e-15, "ref_ra");
+    assert_close(sf.ref_dec(), 0.567, 1e-15, "ref_dec");
     assert_close(sf.epoch_mjd(), 51544.5, 1e-15, "epoch");
 }
 
@@ -402,8 +402,8 @@ fn test_serialise_roundtrip() {
     sf.set_ref_dec(-0.3);
     sf.set_std_of_rest(StdOfRest::Lsrk);
     sf.set_source_vel(25000.0);
-    sf.set_source_vrf(StdOfRest::Heliocentric);
-    sf.set_source_sys(SpecSystem::Vrel);
+    sf.set_source_vrf(StdOfRest::Heliocentric).unwrap();
+    sf.set_source_sys(SpecSystem::Vrel).unwrap();
     sf.set_epoch_mjd(51544.5);
     sf.set_obs_lat(0.5);
     sf.set_obs_lon(-1.0);
@@ -432,19 +432,14 @@ fn test_serialise_roundtrip() {
 
     assert_eq!(sf2.system(), SpecSystem::Wavelen);
     assert_eq!(sf2.std_of_rest(), StdOfRest::Lsrk);
-    assert_close(sf2.rest_freq().unwrap(), 1.42040575e9, 1.0, "rf_roundtrip");
-    assert_close(sf2.ref_ra().unwrap(), 1.5, 1e-14, "refra_roundtrip");
-    assert_close(sf2.ref_dec().unwrap(), -0.3, 1e-14, "refdec_roundtrip");
-    assert_close(
-        sf2.source_vel().unwrap(),
-        25000.0,
-        1e-10,
-        "srcvel_roundtrip",
-    );
+    assert_close(sf2.rest_freq(), 1.42040575e9, 1.0, "rf_roundtrip");
+    assert_close(sf2.ref_ra(), 1.5, 1e-14, "refra_roundtrip");
+    assert_close(sf2.ref_dec(), -0.3, 1e-14, "refdec_roundtrip");
+    assert_close(sf2.source_vel(), 25000.0, 1e-10, "srcvel_roundtrip");
     assert_eq!(sf2.source_vrf(), StdOfRest::Heliocentric);
     assert_eq!(sf2.source_sys(), SpecSystem::Vrel);
     assert_close(sf2.epoch_mjd(), 51544.5, 1e-14, "epoch_roundtrip");
-    assert_close(sf2.spec_origin().unwrap(), 5.0e-7, 1e-20, "sporg_roundtrip");
+    assert_close(sf2.spec_origin(), 5.0e-7, 1e-20, "sporg_roundtrip");
     assert_eq!(sf2.align_std_of_rest(), StdOfRest::Barycentric);
 }
 
@@ -673,12 +668,12 @@ fn set_system_rescales_spec_origin() {
     let mut sf = vrad_lsrk();
     sf.set_spec_origin(10.0);
     sf.set_system(SpecSystem::Freq);
-    let o = sf.spec_origin().unwrap();
+    let o = sf.spec_origin();
     assert!(
         (o - 1.42035837236405).abs() < 1e-9,
         "VRAD->FREQ origin: got {o}"
     );
     sf.set_system(SpecSystem::Vradio);
-    let o = sf.spec_origin().unwrap();
+    let o = sf.spec_origin();
     assert!((o - 10.0).abs() < 1e-8, "FREQ->VRAD origin: got {o}");
 }
