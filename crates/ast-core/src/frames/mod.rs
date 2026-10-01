@@ -1531,6 +1531,43 @@ pub fn validate_permutation(perm: &[usize], naxes: usize) -> AstResult<()> {
     Ok(())
 }
 
+/// Cartesian distance between two points, the Frame-class algorithm
+/// (frame.c Distance): AST__BAD if any coordinate is bad, otherwise the
+/// square root of the summed squared displacements.
+pub(crate) fn cartesian_distance(a: &[f64], b: &[f64]) -> f64 {
+    use crate::constants::BAD_VALUE;
+    use crate::mappings::helpers::is_bad;
+
+    let mut dist = 0.0;
+    for (&p1, &p2) in a.iter().zip(b) {
+        if is_bad(p1) || is_bad(p2) {
+            return BAD_VALUE;
+        }
+        let delta = p1 - p2;
+        dist += delta * delta;
+    }
+    dist.sqrt()
+}
+
+/// The point `dist` along the straight line from `from` towards `to`, the
+/// Frame-class algorithm (frame.c Offset): every coordinate is AST__BAD if
+/// any input coordinate is bad, or if the points coincide and `dist` is not
+/// zero. C applies no check to a bad `dist`; here it gives a bad point too.
+pub(crate) fn cartesian_offset(from: &[f64], to: &[f64], dist: f64) -> Vec<f64> {
+    use crate::constants::BAD_VALUE;
+    use crate::mappings::helpers::is_bad;
+
+    let total = cartesian_distance(from, to);
+    if is_bad(dist) || is_bad(total) || (total == 0.0 && dist != 0.0) {
+        return vec![BAD_VALUE; from.len()];
+    }
+    let fract = if total == 0.0 { 0.0 } else { dist / total };
+    from.iter()
+        .zip(to)
+        .map(|(&p1, &p2)| p1 + fract * (p2 - p1))
+        .collect()
+}
+
 /// Cartesian angle subtended at `b` by `a` and `c` — the Frame-class
 /// algorithm (frame.c:1230-1320): AST__BAD for bad inputs or
 /// zero-length vectors; in 2 dimensions the result is the *signed*

@@ -2,7 +2,7 @@
 
 use crate::constants::BAD_VALUE;
 use crate::error::{AstError, AstResult, ErrorCode};
-use crate::mappings::helpers::{is_bad, point_has_bad};
+use crate::mappings::helpers::is_bad;
 use crate::mappings::{DynMapping, UnitMap};
 use crate::serial::{Node, Serializable};
 
@@ -781,15 +781,7 @@ impl Frame for BasicFrame {
     }
 
     fn distance(&self, a: &[f64], b: &[f64]) -> AstResult<f64> {
-        if point_has_bad(a) || point_has_bad(b) {
-            return Ok(BAD_VALUE);
-        }
-        let sum: f64 = a
-            .iter()
-            .zip(b.iter())
-            .map(|(&ai, &bi)| (ai - bi) * (ai - bi))
-            .sum();
-        Ok(sum.sqrt())
+        Ok(super::cartesian_distance(a, b))
     }
 
     fn angle(&self, a: &[f64], b: &[f64], c: &[f64]) -> AstResult<f64> {
@@ -799,29 +791,7 @@ impl Frame for BasicFrame {
     }
 
     fn offset(&self, from: &[f64], to: &[f64], dist: f64) -> AstResult<Vec<f64>> {
-        if point_has_bad(from) || point_has_bad(to) || is_bad(dist) {
-            return Ok(vec![BAD_VALUE; self.naxes]);
-        }
-        let total = self.distance(from, to)?;
-        if is_bad(total) {
-            return Ok(vec![BAD_VALUE; self.naxes]);
-        }
-        // Coincident points define no direction: C returns bad
-        // coordinates unless the requested offset is zero
-        // (frame.c:8470-8490).
-        if total == 0.0 {
-            if dist != 0.0 {
-                return Ok(vec![BAD_VALUE; self.naxes]);
-            }
-            return Ok(from.to_vec());
-        }
-        let scale = dist / total;
-        let result: Vec<f64> = from
-            .iter()
-            .zip(to.iter())
-            .map(|(&f, &t)| f + scale * (t - f))
-            .collect();
-        Ok(result)
+        Ok(super::cartesian_offset(from, to, dist))
     }
 
     fn norm(&self, _coords: &mut [f64]) -> AstResult<()> {

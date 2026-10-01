@@ -1876,12 +1876,7 @@ impl Frame for SpecFrame {
     axis_attrs_store!(label, symbol, format, digits, direction, top, bottom);
 
     fn distance(&self, a: &[f64], b: &[f64]) -> AstResult<f64> {
-        let va = a[0];
-        let vb = b[0];
-        if is_bad(va) || is_bad(vb) {
-            return Ok(BAD_VALUE);
-        }
-        Ok((va - vb).abs())
+        Ok(super::cartesian_distance(&a[..1], &b[..1]))
     }
 
     fn angle(&self, a: &[f64], b: &[f64], c: &[f64]) -> AstResult<f64> {
@@ -1902,18 +1897,7 @@ impl Frame for SpecFrame {
     }
 
     fn offset(&self, from: &[f64], to: &[f64], dist: f64) -> AstResult<Vec<f64>> {
-        let vf = from[0];
-        let vt = to[0];
-        if is_bad(vf) || is_bad(vt) || is_bad(dist) {
-            return Ok(vec![BAD_VALUE]);
-        }
-        let d = vt - vf;
-        if d == 0.0 {
-            Ok(vec![vf + dist])
-        } else {
-            let sign = d.signum();
-            Ok(vec![vf + sign * dist])
-        }
+        Ok(super::cartesian_offset(&from[..1], &to[..1], dist))
     }
 
     fn norm(&self, _coords: &mut [f64]) -> AstResult<()> {

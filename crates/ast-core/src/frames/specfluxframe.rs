@@ -289,18 +289,30 @@ impl Frame for SpecFluxFrame {
     }
 
     fn offset(&self, from: &[f64], to: &[f64], dist: f64) -> AstResult<Vec<f64>> {
+        // C inherits CmpFrame's Offset (cmpframe.c Offset): the offset is
+        // split between the two one-axis components in proportion to their
+        // distances, so the path passes through the second point, and each
+        // component applies the Frame-class offset to its share.
         if point_has_bad(from) || point_has_bad(to) || is_bad(dist) {
             return Ok(vec![BAD_VALUE; 2]);
         }
-        let total = self.distance(from, to)?;
-        if total == 0.0 || is_bad(total) {
-            return Ok(from.to_vec());
+        let d1 = super::cartesian_distance(&from[..1], &to[..1]);
+        let d2 = super::cartesian_distance(&from[1..2], &to[1..2]);
+        let total = (d1 * d1 + d2 * d2).sqrt();
+        let (off1, off2) = if total == 0.0 {
+            if dist != 0.0 {
+                return Ok(vec![BAD_VALUE; 2]);
+            }
+            (0.0, 0.0)
+        } else {
+            (dist * d1 / total, dist * d2 / total)
+        };
+        let r1 = super::cartesian_offset(&from[..1], &to[..1], off1)[0];
+        let r2 = super::cartesian_offset(&from[1..2], &to[1..2], off2)[0];
+        if is_bad(r1) || is_bad(r2) {
+            return Ok(vec![BAD_VALUE; 2]);
         }
-        let scale = dist / total;
-        Ok(vec![
-            from[0] + scale * (to[0] - from[0]),
-            from[1] + scale * (to[1] - from[1]),
-        ])
+        Ok(vec![r1, r2])
     }
 
     fn norm(&self, coords: &mut [f64]) -> AstResult<()> {

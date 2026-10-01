@@ -465,11 +465,11 @@ impl Frame for CmpFrame {
     }
 
     /// Mirrors C `CmpFrame::ResolvePoints` (cmpframe.c:7962), the batch
-    /// form of [`resolve`](Frame::resolve). As in C, point 4 and the
+    /// form of [`resolve`](Frame::resolve). Each component resolves its
+    /// share of the points in internal axis order; point 4 and the
     /// perpendicular distance come from this Frame's `offset` and
-    /// `distance` applied to points in the CmpFrame's internal axis order
-    /// (cmpframe.c:8240), which are its external order only when the
-    /// CmpFrame is not permuted (recorded in `docs/issues/c-library-quirks.md`).
+    /// `distance`, which take external order, so they are given the
+    /// supplied points.
     fn resolve_points(
         &self,
         point1: &[f64],
@@ -508,7 +508,7 @@ impl Frame for CmpFrame {
         let out2 = self
             .frame2
             .resolve_points(&p1[n1..], &p2[n1..], &part(n1, nax)?)?;
-        for (ipoint, row) in rows.iter().enumerate() {
+        for ipoint in 0..npoint {
             let mut d1_1 = out1.point(ipoint)[0];
             let mut d1_2 = out2.point(ipoint)[0];
             if is_bad(d1_1) && b1 == 0.0 {
@@ -519,9 +519,9 @@ impl Frame for CmpFrame {
             }
             if !is_bad(d1_1) && !is_bad(d1_2) {
                 let d1 = (b1 * d1_1 + b2 * d1_2) / b;
-                let p4 = self.offset(&p1, &p2, d1)?;
+                let p4 = self.offset(point1, point2, d1)?;
                 d1v[ipoint] = d1;
-                d2v[ipoint] = self.distance(&p4, row)?;
+                d2v[ipoint] = self.distance(&p4, &input.point(ipoint)[..nax])?;
             }
         }
         crate::coords::PointSet::from_columns(&[&d1v, &d2v])
