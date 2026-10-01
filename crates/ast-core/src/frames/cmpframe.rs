@@ -166,6 +166,16 @@ impl CmpFrame {
     /// # Panics
     ///
     /// Panics if `axis` is out of range. Call [`validate_axis`] first.
+    /// A point's coordinates in internal axis order, the order of the two
+    /// components, as C's `p[ perm[ axis ] ] = point[ axis ]` gives them.
+    fn to_internal(&self, point: &[f64]) -> Vec<f64> {
+        let mut internal = vec![BAD_VALUE; self.perm.len()];
+        for (axis, &p) in self.perm.iter().enumerate() {
+            internal[p] = point[axis];
+        }
+        internal
+    }
+
     fn axis_component(&self, axis: usize) -> AstResult<(&dyn Frame, usize)> {
         self.validate_axis(axis)?;
         Ok(self.route_axis(axis))
@@ -399,6 +409,122 @@ impl Frame for CmpFrame {
         } else {
             Ok(BAD_VALUE)
         }
+    }
+
+    /// Mirrors C `CmpFrame::Resolve` (cmpframe.c:7753): each component
+    /// resolves its part of the vector, the parallel distances are combined
+    /// weighted by the length of the basis vector in each component, and
+    /// point 4 and the perpendicular distance then come from this Frame's
+    /// own `offset` and `distance`. A component in which the basis vector
+    /// has no length contributes nothing, so its bad parallel distance is
+    /// taken as zero.
+    fn resolve(
+        &self,
+        point1: &[f64],
+        point2: &[f64],
+        point3: &[f64],
+    ) -> AstResult<(Vec<f64>, f64, f64)> {
+        let naxes = self.naxes();
+        let bad = (vec![BAD_VALUE; naxes], BAD_VALUE, BAD_VALUE);
+        if point_has_bad(&point1[..naxes])
+            || point_has_bad(&point2[..naxes])
+            || point_has_bad(&point3[..naxes])
+        {
+            return Ok(bad);
+        }
+        let (p1, p2, p3) = (
+            self.to_internal(point1),
+            self.to_internal(point2),
+            self.to_internal(point3),
+        );
+        let n1 = self.naxes1();
+        let (_, mut d1a, _) = self.frame1.resolve(&p1[..n1], &p2[..n1], &p3[..n1])?;
+        let (_, mut d1b, _) = self.frame2.resolve(&p1[n1..], &p2[n1..], &p3[n1..])?;
+        let da = self.frame1.distance(&p1[..n1], &p2[..n1])?;
+        let db = self.frame2.distance(&p1[n1..], &p2[n1..])?;
+        if is_bad(da) || is_bad(db) {
+            return Ok(bad);
+        }
+        if is_bad(d1a) && da == 0.0 {
+            d1a = 0.0;
+        }
+        if is_bad(d1b) && db == 0.0 {
+            d1b = 0.0;
+        }
+        if is_bad(d1a) || is_bad(d1b) {
+            return Ok(bad);
+        }
+        let d = (da * da + db * db).sqrt();
+        if d == 0.0 {
+            return Ok(bad);
+        }
+        let d1 = (da * d1a + db * d1b) / d;
+        let point4 = self.offset(point1, point2, d1)?;
+        let d2 = self.distance(&point4, point3)?;
+        Ok((point4, d1, d2))
+    }
+
+    /// Mirrors C `CmpFrame::ResolvePoints` (cmpframe.c:7962), the batch
+    /// form of [`resolve`](Frame::resolve). As in C, point 4 and the
+    /// perpendicular distance come from this Frame's `offset` and
+    /// `distance` applied to points in the CmpFrame's internal axis order
+    /// (cmpframe.c:8240), which are its external order only when the
+    /// CmpFrame is not permuted (recorded in `docs/issues/c-library-quirks.md`).
+    fn resolve_points(
+        &self,
+        point1: &[f64],
+        point2: &[f64],
+        input: &crate::coords::PointSet,
+    ) -> AstResult<crate::coords::PointSet> {
+        let nax = self.naxes();
+        let n1 = self.naxes1();
+        let npoint = input.npoint();
+        let mut d1v = vec![BAD_VALUE; npoint];
+        let mut d2v = vec![BAD_VALUE; npoint];
+
+        let p1 = self.to_internal(point1);
+        let p2 = self.to_internal(point2);
+        let b1 = self.frame1.distance(&p1[..n1], &p2[..n1])?;
+        let b2 = self.frame2.distance(&p1[n1..], &p2[n1..])?;
+        if is_bad(b1) || is_bad(b2) || (b1 == 0.0 && b2 == 0.0) {
+            return crate::coords::PointSet::from_columns(&[&d1v, &d2v]);
+        }
+        let b = (b1 * b1 + b2 * b2).sqrt();
+
+        // The input in internal order, split between the components.
+        let rows: Vec<Vec<f64>> = (0..npoint)
+            .map(|p| self.to_internal(&input.point(p)[..nax]))
+            .collect();
+        let part = |lo: usize, hi: usize| -> AstResult<crate::coords::PointSet> {
+            let cols: Vec<Vec<f64>> = (lo..hi)
+                .map(|i| rows.iter().map(|r| r[i]).collect())
+                .collect();
+            let refs: Vec<&[f64]> = cols.iter().map(|c| c.as_slice()).collect();
+            crate::coords::PointSet::from_columns(&refs)
+        };
+        let out1 = self
+            .frame1
+            .resolve_points(&p1[..n1], &p2[..n1], &part(0, n1)?)?;
+        let out2 = self
+            .frame2
+            .resolve_points(&p1[n1..], &p2[n1..], &part(n1, nax)?)?;
+        for (ipoint, row) in rows.iter().enumerate() {
+            let mut d1_1 = out1.point(ipoint)[0];
+            let mut d1_2 = out2.point(ipoint)[0];
+            if is_bad(d1_1) && b1 == 0.0 {
+                d1_1 = 0.0;
+            }
+            if is_bad(d1_2) && b2 == 0.0 {
+                d1_2 = 0.0;
+            }
+            if !is_bad(d1_1) && !is_bad(d1_2) {
+                let d1 = (b1 * d1_1 + b2 * d1_2) / b;
+                let p4 = self.offset(&p1, &p2, d1)?;
+                d1v[ipoint] = d1;
+                d2v[ipoint] = self.distance(&p4, row)?;
+            }
+        }
+        crate::coords::PointSet::from_columns(&[&d1v, &d2v])
     }
 
     fn offset(&self, from: &[f64], to: &[f64], dist: f64) -> AstResult<Vec<f64>> {

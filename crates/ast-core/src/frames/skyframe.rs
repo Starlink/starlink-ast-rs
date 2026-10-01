@@ -1152,6 +1152,98 @@ impl Frame for SkyFrame {
         Ok(pal::dsep(a[lp], a[bp], b[lp], b[bp]))
     }
 
+    /// Mirrors C `SkyFrame::Resolve` (skyframe.c:8321): the vector from
+    /// point 1 to point 3 resolved along and across the great circle from
+    /// point 1 to point 2. `d1` is the signed arc from point 1 to point 4,
+    /// the closest approach, and `d2` the unsigned arc from point 4 to point
+    /// 3, both in radians. Everything is BAD for a bad input, for points 1
+    /// and 2 that coincide or are opposite, or for a point 3 at the pole of
+    /// the great circle.
+    fn resolve(
+        &self,
+        point1: &[f64],
+        point2: &[f64],
+        point3: &[f64],
+    ) -> AstResult<(Vec<f64>, f64, f64)> {
+        let mut point4 = vec![BAD_VALUE, BAD_VALUE];
+        let (mut d1, mut d2) = (BAD_VALUE, BAD_VALUE);
+        if [point1, point2, point3]
+            .iter()
+            .any(|p| is_bad(p[0]) || is_bad(p[1]))
+        {
+            return Ok((point4, d1, d2));
+        }
+        // (longitude, latitude) order.
+        let perm = self.perm;
+        let internal = |p: &[f64]| {
+            let mut q = [0.0; 2];
+            q[perm[0]] = p[0];
+            q[perm[1]] = p[1];
+            q
+        };
+        let (p1, p2, p3) = (internal(point1), internal(point2), internal(point3));
+        let v1 = pal::dcs2c(p1[0], p1[1]);
+        let v2 = pal::dcs2c(p2[0], p2[1]);
+        let v3 = pal::dcs2c(p3[0], p3[1]);
+        // The unit normal to the great circle of the basis vector.
+        let (n1, vmod) = pal::dvn(&pal::dvxv(&v2, &v1));
+        if vmod > 0.0 {
+            // The point 90 degrees from point 1 towards point 2.
+            let v5 = pal::dvxv(&v1, &n1);
+            // The unit normal to the great circle through point 3
+            // perpendicular to the first.
+            let (n2, vmod) = pal::dvn(&pal::dvxv(&v3, &n1));
+            if vmod > 0.0 {
+                // Their intersection, already a unit vector.
+                let v4 = pal::dvxv(&n1, &n2);
+                d1 = pal::dvdv(&v4, &v5).atan2(pal::dvdv(&v4, &v1));
+                d2 = pal::dvdv(&v3, &n1).atan2(pal::dvdv(&v3, &v4)).abs();
+                let (lon, lat) = pal::dcc2s(&v4);
+                let p4 = [pal::dranrm(lon), lat];
+                point4 = vec![p4[perm[0]], p4[perm[1]]];
+            }
+        }
+        Ok((point4, d1, d2))
+    }
+
+    /// Mirrors C `SkyFrame::Intersect` (skyframe.c): where the great circle
+    /// through `a1` and `a2` crosses the one through `b1` and `b2`, choosing
+    /// of the two crossings the one nearer `a1`. BAD for a bad input or
+    /// great circles that coincide.
+    fn intersect(&self, a1: &[f64], a2: &[f64], b1: &[f64], b2: &[f64]) -> AstResult<Vec<f64>> {
+        let mut cross = vec![BAD_VALUE, BAD_VALUE];
+        if [a1, a2, b1, b2]
+            .iter()
+            .any(|p| is_bad(p[0]) || is_bad(p[1]))
+        {
+            return Ok(cross);
+        }
+        let perm = self.perm;
+        let vector = |p: &[f64]| {
+            let mut q = [0.0; 2];
+            q[perm[0]] = p[0];
+            q[perm[1]] = p[1];
+            pal::dcs2c(q[0], q[1])
+        };
+        let (va1, va2, vb1, vb2) = (vector(a1), vector(a2), vector(b1), vector(b2));
+        let na = pal::dvxv(&va1, &va2);
+        let nb = pal::dvxv(&vb1, &vb2);
+        let (mut vpn, vmod) = pal::dvn(&pal::dvxv(&na, &nb));
+        if vmod != 0.0 {
+            // The crossing nearer a1: the larger cosine of the distance.
+            let d1 = pal::dvdv(&vpn, &va1);
+            let opposite = [-vpn[0], -vpn[1], -vpn[2]];
+            let d2 = pal::dvdv(&opposite, &va1);
+            if d1 <= d2 {
+                vpn = opposite;
+            }
+            let (lon, lat) = pal::dcc2s(&vpn);
+            let cc = [pal::dranrm(lon), lat];
+            cross = vec![cc[perm[0]], cc[perm[1]]];
+        }
+        Ok(cross)
+    }
+
     fn resolve_points(
         &self,
         point1: &[f64],

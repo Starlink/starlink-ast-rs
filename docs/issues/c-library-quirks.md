@@ -30,6 +30,8 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [SkyFrame `Offset`'s coincident-points guard is defeated by multiply-add contraction too](#skyframe-offsets-coincident-points-guard-is-defeated-by-multiply-add-contraction-too)
 - [A SkyFrame's own SkyAxes are not latitude axes, so `astAxOffset` wraps its latitude into 0 to 2pi](#a-skyframes-own-skyaxes-are-not-latitude-axes-so-astaxoffset-wraps-its-latitude-into-0-to-2pi)
 - [FluxFrame writes per-wavelength surface brightness as `SFCBRW` but reads it only as `SRCBR`](#fluxframe-writes-per-wavelength-surface-brightness-as-sfcbrw-but-reads-it-only-as-srcbr)
+- [CmpFrame `ResolvePoints` passes internal-order points to methods that expect external order](#cmpframe-resolvepoints-passes-internal-order-points-to-methods-that-expect-external-order)
+- [The public `astPointSet` passes no status to `astPointSetId_`, which expects one](#the-public-astpointset-passes-no-status-to-astpointsetid_-which-expects-one)
 
 ### [Addressed here, and not going upstream](#addressed-here-and-not-going-upstream)
 
@@ -464,6 +466,28 @@ So at the submodule pin `astSet( fluxframe, "System=SFCBRW" )` fails with "Inval
 
 **Rust behaviour (divergence):** `FluxSystem::parse` accepts both `"SFCBRW"` and `"SRCBR"`, so the port reads every setting and dump C produces, as well as its own; it writes `"SFCBRW"`, as C does. `tools/oracle_fixtures/class_attrs_probe.c` sets the system with `"SRCBR"`, the spelling C accepts.
 A fix upstream would match `"SFCBRW"` in `FluxSystemCode`.
+
+To be raised upstream.
+
+### CmpFrame `ResolvePoints` passes internal-order points to methods that expect external order
+
+`CmpFrame::ResolvePoints` (`cmpframe.c:7962`) un-permutes `point1`, `point2` and the input points into the CmpFrame's internal axis order to hand each component its share, then, for each point, calls `astOffset( this, p1, p2, d1, p4 )` and `astDistance( this, p4, p3 )` on the CmpFrame itself with those internal-order arrays (`cmpframe.c:8240`).
+Both methods expect external order, so for a permuted CmpFrame the perpendicular distances are computed between mis-ordered points.
+`CmpFrame::Resolve` (`cmpframe.c:7753`) passes the caller's external-order points to the same two methods and is unaffected, so the single and batch forms disagree for a permuted CmpFrame.
+
+**Rust behaviour (mirror):** `CmpFrame::resolve_points` makes the same calls with internal-order points; `cmp_frame_resolve_points_matches_the_c_library` in `crates/ast-core/tests/test_sky_geometry.rs` pins the permuted cases from `tools/oracle_fixtures/sky_geometry_probe.c`.
+A fix upstream would pass `point1`, `point2` and each input point in external order to `astOffset` and `astDistance`, as `Resolve` does.
+
+To be raised upstream.
+
+### The public `astPointSet` passes no status to `astPointSetId_`, which expects one
+
+The public header declares `astPointSetId_( AstDim, int, const char *, ... )`, as every other public constructor is declared (`astFrameId_( int, const char *, ... )` and so on), but `pointset.c:2845` defines it as `astPointSetId_( AstDim npoint, int ncoord, const char *options, int *status, ... )`.
+The first variable argument, or whatever is in its place, is read as the status pointer, so `astPointSet( 3, 3, " " )` from application code dereferences a null pointer at the first `astOK` and crashes.
+No program in `ast_tester` calls the public constructor, which is how it has gone unnoticed; the protected `astPointSet_` works.
+
+**Rust behaviour:** not applicable to the Rust API; the C ABI shim must not copy the mismatch. `tools/oracle_fixtures/sky_geometry_probe.c` makes its PointSets with `astPointSet_`.
+A fix upstream would drop the `status` parameter from `astPointSetId_` and obtain it with `astGET_GLOBALS` and `astGetStatusPtr`, as the other `Id_` constructors do.
 
 To be raised upstream.
 ---
