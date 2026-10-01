@@ -21,10 +21,10 @@ Region simplify, then works through four ways of re-expressing the Box: an
 explicit PermMap axis swap, a best-fitting Box in the current Frame, a Polygon
 for the 2-D case, and a split into a Prism.
 
-`BoxRegion::map_merge` (`box_region.rs:1859 (fn map_merge)`) delegates to
+`BoxRegion::map_merge` (`box_region.rs:1880 (fn map_merge)`) delegates to
 `simplify::region_map_merge` (`mappings/simplify.rs:1445-1489 (fn region_map_merge)`);
 `BoxRegion::region_merge` is `box_region.rs:1379-1548 (fn region_merge)` and
-`BoxRegion::simplified` is `box_region.rs:1679-1820 (fn simplified)`. The four
+`BoxRegion::simplified` is `box_region.rs:1700-1841 (fn simplified)`. The four
 merge helpers shared with `Interval`, `NullRegion` and `PointList` live in
 `merge_util.rs:64-77 (fn apply_merge_scaling_to)`,
 `merge_util.rs:131-180 (fn finish_region_merge)`,
@@ -114,11 +114,11 @@ merge helpers shared with `Interval`, `NullRegion` and `PointList` live in
 | 79 | `Simplify`: initialise the returned pointer and the working pointers | box.c:3697-3699 (fn Simplify) | -- | ceremony | n/a: the Rust returns `AstResult<(DynMapping, bool)>`, so "no change" is the `false` flag |
 | 80 | Check the global error status and bail out | box.c:3700-3702 (fn Simplify) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 81 | Obtain a pointer to the Region structure | box.c:3703-3705 (fn Simplify) | -- | ceremony | n/a: the Rust method already has `&self` |
-| 82 | Invoke the parent Region Simplify, which simplifies the encapsulated FrameSet and uncertainty | box.c:3706-3709 (fn Simplify) | box_region.rs:1680 (fn simplified) | architecture | ported |
-| 83 | Note whether that simplified anything, by pointer inequality | box.c:3710-3714 (fn Simplify) | box_region.rs:1681 (fn simplified) | architecture | ported |
-| 84 | Get the Mapping from base to current Frame | box.c:3715-3717 (fn Simplify) | box_region.rs:1692-1696 (fn simplified) | architecture | ported |
-| 85 | Get that Mapping's input and output counts | box.c:3718-3721 (fn Simplify) | box_region.rs:1784 (fn simplified) | architecture | ported |
-| 86 | If the Mapping is a PermMap, swap the Box axes explicitly rather than fitting through a mesh | box.c:3722-3726 (fn Simplify) | box_region.rs:1704 (fn simplified) | architecture | ported |
+| 82 | Invoke the parent Region Simplify, which simplifies the encapsulated FrameSet and uncertainty | box.c:3706-3709 (fn Simplify) | box_region.rs:1701 (fn simplified) | architecture | ported |
+| 83 | Note whether that simplified anything, by pointer inequality | box.c:3710-3714 (fn Simplify) | box_region.rs:1702 (fn simplified) | architecture | ported |
+| 84 | Get the Mapping from base to current Frame | box.c:3715-3717 (fn Simplify) | box_region.rs:1713-1717 (fn simplified) | architecture | ported |
+| 85 | Get that Mapping's input and output counts | box.c:3718-3721 (fn Simplify) | box_region.rs:1805 (fn simplified) | architecture | ported |
+| 86 | If the Mapping is a PermMap, swap the Box axes explicitly rather than fitting through a mesh | box.c:3722-3726 (fn Simplify) | box_region.rs:1725 (fn simplified) | architecture | ported |
 | 87 | See whether the new Box is Negated and Closed | box.c:3727-3730 (fn Simplify) | box_region.rs:436-437 (fn simplify_over_permmap) | architecture | ported |
 | 88 | Get a pointer to the Box structure | box.c:3731-3733 (fn Simplify) | -- | ceremony | n/a: the Rust method already has `&self` |
 | 89 | Ensure the cached centre and extent are up to date | box.c:3734-3736 (fn Simplify) | box_region.rs:438 (fn simplify_over_permmap) | ceremony | ported |
@@ -147,16 +147,16 @@ merge helpers shared with `Interval`, `NullRegion` and `PointList` live in
 | 112 | Negate the new Region if the original Box was negated | box.c:3865-3867 (fn Simplify) | box_region.rs:533-535 (fn simplify_over_permmap) | architecture | ported |
 | 113 | Free the uncertainty and Frame pointers | box.c:3868-3874 (fn Simplify) | -- | ceremony | n/a: owned values are dropped |
 | 114 | Free the permutation arrays, the constants and the bounds arrays | box.c:3875-3881 (fn Simplify) | -- | ceremony | n/a: owned values are dropped |
-| 115 | If the Mapping is neither a PermMap nor a UnitMap, try re-defining the Box within its current Frame, testing the result by transforming its boundary | box.c:3882-3888 (fn Simplify) | box_region.rs:1717 (fn simplified) | architecture | ported |
-| 116 | Get a pointer to the current Frame | box.c:3889-3891 (fn Simplify) | box_region.rs:1762 (fn simplified) | architecture | ported |
-| 117 | Get a mesh of points covering the Box in its current Frame | box.c:3892-3894 (fn Simplify) | box_region.rs:1758-1760 (fn simplified) | architecture | ported |
-| 118 | Get the Region describing the positional uncertainty in the current Frame | box.c:3895-3898 (fn Simplify) | box_region.rs:1761 (fn simplified) | architecture | ported |
-| 119 | Find the best-fitting current-Frame Box through those points | box.c:3899-3902 (fn Simplify) | box_region.rs:1764 (fn simplified),631 (fn best_box) | architecture | ported |
-| 120 | See whether every mesh point falls on that Box's boundary, to within the uncertainty | box.c:3903-3906 (fn Simplify) | box_region.rs:1765 (fn simplified) | architecture | ported |
-| 121 | If so, check the converse, transforming the fitted Box's own mesh into the original base Frame for `astRegPins` | box.c:3907-3914 (fn Simplify) | box_region.rs:1771-1774 (fn simplified) | architecture | ported |
-| 122 | If so, use the new Box in place of the original | box.c:3915-3920 (fn Simplify) | box_region.rs:1775-1777 (fn simplified) | architecture | ported |
+| 115 | If the Mapping is neither a PermMap nor a UnitMap, try re-defining the Box within its current Frame, testing the result by transforming its boundary | box.c:3882-3888 (fn Simplify) | box_region.rs:1738 (fn simplified) | architecture | ported |
+| 116 | Get a pointer to the current Frame | box.c:3889-3891 (fn Simplify) | box_region.rs:1783 (fn simplified) | architecture | ported |
+| 117 | Get a mesh of points covering the Box in its current Frame | box.c:3892-3894 (fn Simplify) | box_region.rs:1779-1781 (fn simplified) | architecture | ported |
+| 118 | Get the Region describing the positional uncertainty in the current Frame | box.c:3895-3898 (fn Simplify) | box_region.rs:1782 (fn simplified) | architecture | ported |
+| 119 | Find the best-fitting current-Frame Box through those points | box.c:3899-3902 (fn Simplify) | box_region.rs:1785 (fn simplified),631 (fn best_box) | architecture | ported |
+| 120 | See whether every mesh point falls on that Box's boundary, to within the uncertainty | box.c:3903-3906 (fn Simplify) | box_region.rs:1786 (fn simplified) | architecture | ported |
+| 121 | If so, check the converse, transforming the fitted Box's own mesh into the original base Frame for `astRegPins` | box.c:3907-3914 (fn Simplify) | box_region.rs:1792-1795 (fn simplified) | architecture | ported |
+| 122 | If so, use the new Box in place of the original | box.c:3915-3920 (fn Simplify) | box_region.rs:1796-1798 (fn simplified) | architecture | ported |
 | 123 | Free the fitted Box's mesh | box.c:3921-3923 (fn Simplify) | -- | ceremony | n/a: owned values are dropped |
-| 124 | Otherwise, for a 2-D Box, see whether a Polygon represents it accurately | box.c:3924-3928 (fn Simplify) | box_region.rs:1784 (fn simplified) | architecture | ported |
+| 124 | Otherwise, for a 2-D Box, see whether a Polygon represents it accurately | box.c:3924-3928 (fn Simplify) | box_region.rs:1805 (fn simplified) | architecture | ported |
 | 125 | Create a PointSet holding the base-Frame axis values at the four corners of the Box | box.c:3929-3933 (fn Simplify) | -- | ceremony | n/a: the four corners are a fixed-size array rebuilt per winding at box_region.rs:366-380 (fn convert_to_polygon), so there is no PointSet to allocate up front |
 | 126 | Get the Box structure and refresh its cached centre and extent | box.c:3934-3936 (fn Simplify) | box_region.rs:332-335 (fn convert_to_polygon) | architecture | ported |
 | 127 | For a SkyFrame, transform the Box centre into the current Frame to test the winding against | box.c:3937-3945 (fn Simplify) | box_region.rs:329 (fn convert_to_polygon),347-353 (fn convert_to_polygon) | architecture | ported |
@@ -172,13 +172,13 @@ merge helpers shared with `Interval`, `NullRegion` and `PointList` live in
 | 137 | See whether every point of the Box mesh falls on the Polygon's boundary, to within the uncertainty | box.c:4018-4021 (fn Simplify) | box_region.rs:415 (fn convert_to_polygon) | architecture | ported |
 | 138 | If so, use the new Polygon in place of the original Box | box.c:4022-4027 (fn Simplify) | box_region.rs:416-419 (fn convert_to_polygon),1785-1788 (fn simplified) | architecture | ported |
 | 139 | Free the Polygon and the corner PointSet | box.c:4028-4034 (fn Simplify) | -- | ceremony | n/a: owned values are dropped |
-| 140 | Failing everything so far, split the Box across two axis subsets and join the two simplified halves into a Prism | box.c:4035-4043 (fn Simplify) | box_region.rs:1795-1796 (fn simplified),222 (fn convert_to_prism) | architecture | ported |
-| 141 | Adopt the Prism if it is not a clone of the Box, and annul it otherwise | box.c:4044-4052 (fn Simplify) | box_region.rs:1796-1799 (fn simplified),311 (fn convert_to_prism) | architecture | ported |
+| 140 | Failing everything so far, split the Box across two axis subsets and join the two simplified halves into a Prism | box.c:4035-4043 (fn Simplify) | box_region.rs:1816-1817 (fn simplified),222 (fn convert_to_prism) | architecture | ported |
+| 141 | Adopt the Prism if it is not a clone of the Box, and annul it otherwise | box.c:4044-4052 (fn Simplify) | box_region.rs:1817-1820 (fn simplified),311 (fn convert_to_prism) | architecture | ported |
 | 142 | Free the Frame, mesh, uncertainty, fitted Box and the base-to-current Mapping | box.c:4053-4061 (fn Simplify) | -- | ceremony | n/a: owned values are dropped |
-| 143 | If anything simplified, overlay the supplied Region's attributes onto the result and return it | box.c:4062-4069 (fn Simplify) | box_region.rs:1809-1811 (fn simplified) | architecture | ported |
-| 144 | Otherwise annul the working Region and return a clone of the supplied pointer | box.c:4070-4074 (fn Simplify) | box_region.rs:1813-1814 (fn simplified) | architecture | ported |
+| 143 | If anything simplified, overlay the supplied Region's attributes onto the result and return it | box.c:4062-4069 (fn Simplify) | box_region.rs:1830-1832 (fn simplified) | architecture | ported |
+| 144 | Otherwise annul the working Region and return a clone of the supplied pointer | box.c:4070-4074 (fn Simplify) | box_region.rs:1834-1835 (fn simplified) | architecture | ported |
 | 145 | Annul the returned pointer if an error occurred | box.c:4075-4077 (fn Simplify) | -- | ceremony | n/a: an error is a `Result::Err`, and owned values are dropped |
-| 146 | Return the result | box.c:4078-4080 (fn Simplify) | box_region.rs:1811 (fn simplified),1814 (fn simplified) | architecture | ported |
+| 146 | Return the result | box.c:4078-4080 (fn Simplify) | box_region.rs:1832 (fn simplified),1814 (fn simplified) | architecture | ported |
 
 ## Row 1 — the merged-pair index starts at zero
 
@@ -239,7 +239,7 @@ NullRegion. A permutation that is not bi-directional refuses the simplification
 altogether, and because C clears `simpler` at `box.c:4070 (fn Simplify)` rather than
 merely declining to improve on it, that refusal discards the parent Region
 simplification with it. The port clears the same flag at
-`box_region.rs:1715 (fn simplified)`.
+`box_region.rs:1736 (fn simplified)`.
 
 One representational difference. The port stores the public 1-based permutation
 form, where `+j` names axis `j`, `0` names `AST__BAD` and `-j` names
@@ -276,12 +276,12 @@ the fitted Box's own mesh back into the base Frame
 (`box.c:3907-3914 (fn Simplify)`). The port tries a cheaper route first: transform the
 Box's centre and corner directly and accept the result only if
 `verify_remap_exact` confirms the round trip
-(`box_region.rs:1720-1748 (fn simplified)`). That check is C's inverse-direction test
+(`box_region.rs:1741-1769 (fn simplified)`). That check is C's inverse-direction test
 (`regions/data.rs:478-493 (fn verify_remap_exact)`), and C's forward `astRegPins` test
 is not applied on the fast path. When it fails, the port falls back to C's
-sequence in full: `best_box` (`box_region.rs:1764 (fn simplified)`), the forward
-`reg_pins` (`box_region.rs:1765 (fn simplified)`) and the inverse mesh check
-(`box_region.rs:1771-1774 (fn simplified)`).
+sequence in full: `best_box` (`box_region.rs:1785 (fn simplified)`), the forward
+`reg_pins` (`box_region.rs:1786 (fn simplified)`) and the inverse mesh check
+(`box_region.rs:1792-1795 (fn simplified)`).
 
 ## Rows 124 to 139 — the two windings are exhaustive
 
@@ -305,7 +305,7 @@ C's `astConvertToPrism` attempt is guarded by `if( !simpler )`
 (`box.c:4041 (fn Simplify)`) at the same nesting level as the best-fit and Polygon
 attempts; the brace at `box.c:4058 (fn Simplify)` closes the enclosing "neither
 PermMap nor UnitMap" branch. The port nests it one level deeper, inside the
-else-arm of the corner-transform check (`box_region.rs:1795-1796 (fn simplified)`).
+else-arm of the corner-transform check (`box_region.rs:1816-1817 (fn simplified)`).
 The two are equivalent because the fast path sets `simpler` when it succeeds, so
 C's guard is false on exactly the paths where the port never reaches the arm.
 
@@ -313,7 +313,7 @@ C's guard is false on exactly the paths where the port never reaches the arm.
 
 `astRegOverlay` at `box.c:4066 (fn Simplify)` is called with `unc = 1`, which clears
 the result's uncertainty where the supplied Region had none. The port passes the
-same flag (`box_region.rs:1809-1811 (fn simplified)`), so a Box fitted through a mesh
+same flag (`box_region.rs:1830-1832 (fn simplified)`), so a Box fitted through a mesh
 derived from a *default* uncertainty does not come back carrying that uncertainty
 as an explicit one. Without it, simplifying a Box would set an attribute the
 original did not have, and the difference would show in the dump.

@@ -959,6 +959,23 @@ impl Frame for SkyFrame {
         2
     }
 
+    /// Mirrors C `SkyFrame::MatchAxesX` (skyframe.c:6977): rather than
+    /// matching each axis's primary Frame, the whole SkyFrame is used as the
+    /// target and the two template axes the match associates with it are
+    /// reported, so a permuted SkyFrame reports its axes in its own order.
+    fn match_axes_x(&self, frm1: &dyn Frame) -> AstResult<Vec<i32>> {
+        let mut probe = frm1.snapshot();
+        probe.set_preserve_axes(true)?;
+        probe.set_max_axes(10000)?;
+        probe.set_min_axes(1)?;
+        Ok(
+            match super::find_frame::match_with_subclass(probe.as_ref(), self, true)? {
+                Some(m) => vec![m.template_axes[0] + 1, m.template_axes[1] + 1],
+                None => vec![0, 0],
+            },
+        )
+    }
+
     fn primary_frame(&self, axis: usize) -> (&dyn Frame, usize) {
         // Apply the SkyFrame's external->internal axis permutation so
         // the returned axis is the underlying physical axis
@@ -1910,7 +1927,10 @@ impl Frame for SkyFrame {
             .downcast_ref::<crate::frames::BasicFrame>()
             .is_some()
         {
-            Ok(Some(Box::new(crate::frames::reduce_to_basic_frame(self)?)))
+            Ok(Some(Box::new(crate::frames::cast_to_basic_frame(
+                self,
+                &self.attrs,
+            )?)))
         } else {
             Ok(None)
         }

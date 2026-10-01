@@ -355,6 +355,7 @@ The confirmed divergences:
 
 - **[DEFERRED] SkyFrame — spherical overrides of the missing Frame-method family.**
   `Gap`, `GetDirection`, `Offset2`, `Resolve`/`ResolvePoints`, `Intersect`, `NormBox`, `NormalPoints`, `FrameGrid`, `LineDef`/`LineContains`/`LineCrossing`/`LineOffset`, `MatchAxesX` all have SkyFrame-specific great-circle implementations in C and no Rust counterpart; schedule with the Frame-base family (section 6) since the base methods are prerequisites.
+  Closed 2026-09-30: `Resolve`/`ResolvePoints`, `Intersect` and `MatchAxesX` (`PLAN.md` §2).
 
 ## 6e. Detailed findings: SpecFrame + DSBSpecFrame (audited 2026-06-10)
 

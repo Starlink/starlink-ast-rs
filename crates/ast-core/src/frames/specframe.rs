@@ -322,6 +322,11 @@ pub struct SpecFrame {
 }
 
 impl SpecFrame {
+    /// The Frame-class attributes, for a subclass's cast into a plain Frame.
+    pub(crate) fn frame_attrs(&self) -> &super::frame_attrs::FrameAttrs {
+        &self.attrs
+    }
+
     // Defaults of the Frame-class attributes, for the `frame_attrs_*`
     // macros. Permute is the Frame class's default: SpecFrame does not
     // over-ride it (frame.c:13572).
@@ -1956,7 +1961,10 @@ impl Frame for SpecFrame {
             .downcast_ref::<crate::frames::BasicFrame>()
             .is_some()
         {
-            Ok(Some(Box::new(crate::frames::reduce_to_basic_frame(self)?)))
+            Ok(Some(Box::new(crate::frames::cast_to_basic_frame(
+                self,
+                &self.attrs,
+            )?)))
         } else {
             Ok(None)
         }

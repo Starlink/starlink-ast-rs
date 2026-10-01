@@ -979,6 +979,27 @@ impl Frame for Ellipse {
         self.data.frameset.current().naxes()
     }
 
+    /// Mirrors C `Region::MatchAxesX` (region.c:6413): the axes of the
+    /// current Frame of the Region's FrameSet are matched.
+    fn match_axes_x(&self, frm1: &dyn Frame) -> AstResult<Vec<i32>> {
+        self.data.frameset.current().match_axes_x(frm1)
+    }
+
+    /// Mirrors C `Region::Match` (region.c:6214): the current Frame of the
+    /// Region's FrameSet is matched, through `astMatch` and so with its
+    /// cast retry.
+    fn match_template(
+        &self,
+        target: &dyn Frame,
+        match_sub: bool,
+    ) -> AstResult<Option<crate::frames::find_frame::MatchResult>> {
+        crate::frames::find_frame::match_with_subclass(
+            self.data.frameset.current(),
+            target,
+            match_sub,
+        )
+    }
+
     fn primary_frame(&self, axis: usize) -> (&dyn Frame, usize) {
         self.data.frameset.current().primary_frame(axis)
     }

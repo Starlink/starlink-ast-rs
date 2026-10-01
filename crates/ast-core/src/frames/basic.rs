@@ -223,6 +223,11 @@ impl BasicFrame {
         self.attrs.overlay_from(template);
     }
 
+    /// Replace every Frame-class attribute with those in `attrs`.
+    pub(crate) fn set_frame_attrs(&mut self, attrs: FrameAttrs) {
+        self.attrs = attrs;
+    }
+
     /// The Axis object of a 1-based external axis.
     fn axis_object(&self, axis: usize) -> AstResult<&FrameAxis> {
         Ok(&self.axes[self.internal(axis)?])

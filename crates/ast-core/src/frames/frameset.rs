@@ -1219,6 +1219,12 @@ impl Frame for FrameSet {
         self.current().naxes()
     }
 
+    /// Mirrors C `FrameSet::MatchAxesX` (frameset.c:7398): the current
+    /// Frame's axes are matched.
+    fn match_axes_x(&self, frm1: &dyn Frame) -> AstResult<Vec<i32>> {
+        self.current().match_axes_x(frm1)
+    }
+
     fn primary_frame(&self, axis: usize) -> (&dyn Frame, usize) {
         (self, axis)
     }
@@ -1355,7 +1361,9 @@ impl Frame for FrameSet {
         target: &dyn Frame,
         match_sub: bool,
     ) -> AstResult<Option<crate::frames::find_frame::MatchResult>> {
-        self.current().match_template(target, match_sub)
+        // C `FrameSet::Match` (frameset.c:7173) calls `astMatch` on the
+        // current Frame, so the cast retry applies to it.
+        crate::frames::find_frame::match_with_subclass(self.current(), target, match_sub)
     }
 
     fn sub_frame(

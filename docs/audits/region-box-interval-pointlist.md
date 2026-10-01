@@ -62,7 +62,7 @@ Every claim cites C `file:line` and Rust `file:line`.
 | `RegBaseBox` (pointlist.c:1532) | `reg_base_box` (pointlist.rs:203) | **PORTED (approx)** | Min/max over points. C also expands by the uncertainty bounds; Rust returns the raw point extent only. Minor. |
 | `RegCentre` | `reg_centre` (pointlist.rs:233) | **HEURISTIC** | Rust returns the centroid (mean of points). PointList in C does not define a meaningful settable centre the same way; the getter as centroid is a reasonable but non-canonical choice. |
 | `MergePointList` (pointlist.c:1205) | `region_merge` (pointlist.rs:547) | **PORTED (approx)** | PointList+PointList (single point each, equal Negated) ported faithfully. Same FillFactor/MeshSize post-merge scaling gap (pointlist.c:1427 region + merge_util.rs:43-81). |
-| `Equal` (inherited) | `Mapping::equal` (pointlist.rs:740) | **PORTED (approx)** | Compares points/negated/closed/current-frame; same base-frame/UnitMap omission. |
+| `Equal` (inherited) | `Mapping::equal` (pointlist.rs:761) | **PORTED (approx)** | Compares points/negated/closed/current-frame; same base-frame/UnitMap omission. |
 | `MapRegion` (inherited) | `map_region` (pointlist.rs:489) | **MISSING-BRANCH** | Drops uncertainty (pointlist.rs:500-509); see §3. |
 
 ---

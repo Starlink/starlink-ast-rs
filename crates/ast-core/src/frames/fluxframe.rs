@@ -819,7 +819,10 @@ impl Frame for FluxFrame {
             .downcast_ref::<crate::frames::BasicFrame>()
             .is_some()
         {
-            Ok(Some(Box::new(crate::frames::reduce_to_basic_frame(self)?)))
+            Ok(Some(Box::new(crate::frames::cast_to_basic_frame(
+                self,
+                &self.attrs,
+            )?)))
         } else {
             Ok(None)
         }

@@ -308,6 +308,16 @@ impl Frame for CmpFrame {
         self.frame1.naxes() + self.frame2.naxes()
     }
 
+    /// Mirrors C `CmpFrame::MatchAxesX` (cmpframe.c:5444): each component
+    /// Frame is matched by its own `match_axes_x`, and the results, which
+    /// are in internal axis order, are put into the CmpFrame's external
+    /// order.
+    fn match_axes_x(&self, frm1: &dyn Frame) -> AstResult<Vec<i32>> {
+        let mut work = self.frame1.match_axes_x(frm1)?;
+        work.extend(self.frame2.match_axes_x(frm1)?);
+        Ok(self.perm.iter().map(|&p| work[p]).collect())
+    }
+
     fn primary_frame(&self, axis: usize) -> (&dyn Frame, usize) {
         // External axis -> internal via perm, then descend into the
         // owning component (cmpframe.c PrimaryFrame).

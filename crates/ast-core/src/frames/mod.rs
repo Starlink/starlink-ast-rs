@@ -1360,7 +1360,7 @@ pub trait Frame: AsAny + Send + fmt::Debug {
 
         for (ifirst, slot) in axes.iter_mut().enumerate() {
             let (pfrm, pax) = self.primary_frame(ifirst);
-            if let Some(m) = probe.match_template(pfrm, true)? {
+            if let Some(m) = find_frame::match_with_subclass(probe.as_ref(), pfrm, true)? {
                 // C reads `frm1_axes[pax] + 1`, where frm1_axes is the
                 // template-axis association of the result Frame and, with
                 // PreserveAxes set, the result Frame carries the target
@@ -1408,6 +1408,19 @@ pub trait Frame: AsAny + Send + fmt::Debug {
 /// plain Frame. Mirrors the "create a basic Frame with the same axes
 /// and attributes" path of C `Cast` (cmpframe.c:1326-1344, and the
 /// Object-level CastCopy reduction for leaf frames).
+/// A copy of a Frame of a specialised class cast into a plain Frame, as C's
+/// `astCast` gives it for a class with no `Cast` override: `astCastCopy`
+/// (object.c) keeps the whole Frame-class part of the object, so every
+/// Frame-class attribute in `attrs` carries over, set or unset as it was.
+pub(crate) fn cast_to_basic_frame(
+    frame: &dyn Frame,
+    attrs: &frame_attrs::FrameAttrs,
+) -> AstResult<BasicFrame> {
+    let mut bf = reduce_to_basic_frame(frame)?;
+    bf.set_frame_attrs(attrs.clone());
+    Ok(bf)
+}
+
 pub(crate) fn reduce_to_basic_frame(frame: &dyn Frame) -> AstResult<BasicFrame> {
     let n = frame.naxes();
     let mut bf = BasicFrameBuilder::new(n).build()?;
