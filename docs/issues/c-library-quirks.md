@@ -29,6 +29,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [A `%` Format on a SkyAxis changes the Unit but not the formatting](#a--format-on-a-skyaxis-changes-the-unit-but-not-the-formatting)
 - [SkyFrame `Offset`'s coincident-points guard is defeated by multiply-add contraction too](#skyframe-offsets-coincident-points-guard-is-defeated-by-multiply-add-contraction-too)
 - [A SkyFrame's own SkyAxes are not latitude axes, so `astAxOffset` wraps its latitude into 0 to 2pi](#a-skyframes-own-skyaxes-are-not-latitude-axes-so-astaxoffset-wraps-its-latitude-into-0-to-2pi)
+- [SkyFrame LAST depends on which LAST values the process computed earlier](#skyframe-last-depends-on-which-last-values-the-process-computed-earlier)
 
 ### [Addressed here, and not going upstream](#addressed-here-and-not-going-upstream)
 
@@ -460,6 +461,24 @@ A fix upstream would set IsLatitude and CentreZero on the SkyFrame's axes when i
 To be raised upstream.
 
 ---
+
+### SkyFrame LAST depends on which LAST values the process computed earlier
+
+C location: `skyframe.c:2999` `GetCachedLAST`, `:9122` `SetCachedLAST`, `:1226` `CalcLAST`, `:3752` `GetLAST`.
+
+Every LAST that `CalcLAST` computes for an AZEL conversion goes into a table held in the SkyFrame class's virtual function table, one table per observer position, DUT1 and DTAI, shared by every SkyFrame in the process.
+A later request at an epoch within 0.4 day of two cached entries is answered by linear interpolation between them instead of an exact calculation.
+Each SkyFrame also keeps its own LAST and solar-to-sidereal ratio and extrapolates linearly for Epoch changes under 0.4 day (`GetLAST`).
+The C comment puts the approximation at better than 0.1 arcsec.
+
+Consequence: the Mapping between two AZEL SkyFrames depends on what the process converted before, so the same `astConvert` can give slightly different numbers in two programs.
+A value served from the table is also normalised into 0 to 2π, while the first, uncached calculation can be negative, because `CalcLAST` truncates with `(int)` rather than flooring.
+
+Rust: `compute_last` in `crates/ast-core/src/frames/skyframe.rs` calculates LAST exactly on every call, with no cache, because a process-global mutable table would need a lock in the conversion path and would make results depend on call history.
+It does reproduce the truncation and the 0 to 2π normalisation, which is what C returns for any repeated request, so the AZEL cases in `tests/test_sky_convert.rs` agree with C to the bit, apart from the last-place differences that `SINCOS_MERGE_LICENSED` records there.
+Results can differ from C by up to the interpolation error when C has cached LAST values within 0.4 day of the requested epoch.
+
+Question for upstream: is the history dependence intended, and would an exact calculation (or a cache keyed on the exact epoch only) be acceptable?
 
 ## Addressed here, and not going upstream
 

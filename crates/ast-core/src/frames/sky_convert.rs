@@ -183,7 +183,9 @@ impl SkyRefIs {
 ///          → align_sys(to_epoch) → FK5 J2000.0 → to_sys
 /// ```
 ///
-/// Steps that would be identities are optimised away.
+/// Steps that would be identities are optimised away. A port of
+/// `MakeSkyMapping` (skyframe.c:5956) up to, but not including, the
+/// SkyTol unit test and the offset-system Mappings, which the callers add.
 ///
 /// # Parameters
 ///
@@ -199,9 +201,9 @@ impl SkyRefIs {
 ///   distance from the spin axis returned by `palGeoc(obs_lat, obs_alt)`.
 ///   Pass `0.0` if AZEL is unused or the observer is unknown.
 ///
-/// # Errors
-///
-/// Returns an error if one system is `Unknown` and the other is not.
+/// Returns `None` when no conversion exists, which is when exactly one of
+/// the systems, or a needed alignment system, is `Unknown` (C returns
+/// `match = 0`).
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn make_sky_mapping(
     from_sys: SkySystem,
@@ -217,22 +219,20 @@ pub(crate) fn make_sky_mapping(
     to_obs_lat: f64,
     to_last: f64,
     to_diurab: f64,
-) -> AstResult<DynMapping> {
-    // Both UNKNOWN: return identity.
-    if from_sys == SkySystem::Unknown && to_sys == SkySystem::Unknown {
-        return Ok(Box::new(UnitMap::new(2)));
+) -> AstResult<Option<DynMapping>> {
+    // A system not referenced to an equinox borrows the other frame's
+    // equinox rather than its own arbitrary default (skyframe.c:6070).
+    let (mut from_eq_mjd, mut to_eq_mjd) = (from_eq_mjd, to_eq_mjd);
+    if !eq_ref(to_sys) {
+        to_eq_mjd = from_eq_mjd;
+    }
+    if !eq_ref(from_sys) {
+        from_eq_mjd = to_eq_mjd;
     }
 
-    // One UNKNOWN and the other not: no meaningful conversion.
-    if from_sys == SkySystem::Unknown || to_sys == SkySystem::Unknown {
-        return Err(AstError::new(
-            ErrorCode::Inter,
-            format!(
-                "cannot convert between {} and {} sky coordinates",
-                from_sys.as_str(),
-                to_sys.as_str()
-            ),
-        ));
+    // Both UNKNOWN: assume they are the same (skyframe.c:6077).
+    if from_sys == SkySystem::Unknown && to_sys == SkySystem::Unknown {
+        return Ok(Some(Box::new(UnitMap::new(2))));
     }
 
     // Determine which of the 4 pipeline steps are needed.
@@ -273,8 +273,9 @@ pub(crate) fn make_sky_mapping(
     let mut sla = SlaMap::new();
 
     // Step 1: from_sys → FK5 J2000.0
+    let mut matched = true;
     if step1 {
-        add_system_to_fk5(
+        matched = add_system_to_fk5(
             &mut sla,
             from_sys,
             from_eq_mjd,
@@ -286,8 +287,8 @@ pub(crate) fn make_sky_mapping(
     }
 
     // Step 2: FK5 J2000.0 → align_sys (using from epoch/equinox)
-    if step2 {
-        add_fk5_to_system(
+    if matched && step2 {
+        matched = add_fk5_to_system(
             &mut sla,
             align_sys,
             from_eq_mjd,
@@ -299,17 +300,20 @@ pub(crate) fn make_sky_mapping(
     }
 
     // Step 3: align_sys → FK5 J2000.0 (using to epoch/equinox)
-    if step3 {
-        add_system_to_fk5(
+    if matched && step3 {
+        matched = add_system_to_fk5(
             &mut sla, align_sys, to_eq_mjd, to_ep_mjd, to_obs_lat, to_last, to_diurab,
         );
     }
 
     // Step 4: FK5 J2000.0 → to_sys
-    if step4 {
-        add_fk5_to_system(
+    if matched && step4 {
+        matched = add_fk5_to_system(
             &mut sla, to_sys, to_eq_mjd, to_ep_mjd, to_obs_lat, to_last, to_diurab,
         );
+    }
+    if !matched {
+        return Ok(None);
     }
 
     // Mirror C `MakeSkyMapping` (skyframe.c:6583): simplify the
@@ -327,14 +331,16 @@ pub(crate) fn make_sky_mapping(
     } else {
         Box::new(sla)
     };
-    result.simplify()
+    result.simplify().map(Some)
 }
 
 // ---------------------------------------------------------------------------
 // System → FK5 J2000.0
 // ---------------------------------------------------------------------------
 
-/// Add SlaMap steps to convert from `system` to FK5 J2000.0.
+/// Add SlaMap steps to convert from `system` to FK5 J2000.0: the first and
+/// third phases of `MakeSkyMapping` (skyframe.c:6180, 6420), which are
+/// identical. Returns `false` for `Unknown`, which has no conversion.
 #[allow(clippy::too_many_arguments)]
 fn add_system_to_fk5(
     sla: &mut SlaMap,
@@ -344,20 +350,13 @@ fn add_system_to_fk5(
     obs_lat: f64,
     last: f64,
     diurab: f64,
-) {
+) -> bool {
     let equinox_j = pal::epj(equinox_mjd);
     let equinox_b = pal::epb(equinox_mjd);
     let epoch_j = pal::epj(epoch_mjd);
     let epoch_b = pal::epb(epoch_mjd);
 
     match system {
-        SkySystem::Fk5 => {
-            // FK5 precession from the given equinox to J2000.0.
-            if equinox_j != 2000.0 {
-                sla.add(SlaCvtType::Prec, &[equinox_j, 2000.0]);
-            }
-        }
-
         SkySystem::Fk4 => {
             // Remove E-terms at the given equinox, precess to B1950.0,
             // add E-terms at B1950.0, then FK4→FK5.
@@ -368,67 +367,61 @@ fn add_system_to_fk5(
             }
             sla.add(SlaCvtType::Fk45z, &[epoch_b]);
         }
-
         SkySystem::Fk4NoE => {
-            // FK4 without E-terms: precess to B1950.0, add E-terms,
-            // then FK4→FK5.
             if equinox_b != 1950.0 {
                 sla.add(SlaCvtType::Prebn, &[equinox_b, 1950.0]);
             }
             sla.add(SlaCvtType::Addet, &[1950.0]);
             sla.add(SlaCvtType::Fk45z, &[epoch_b]);
         }
-
-        SkySystem::Icrs | SkySystem::J2000 => {
-            // ICRS (Hipparcos) to FK5 J2000.0.
-            // J2000 dynamical ≈ ICRS via frame tie (~17 mas).
+        SkySystem::Fk5 => {
+            if equinox_j != 2000.0 {
+                sla.add(SlaCvtType::Prec, &[equinox_j, 2000.0]);
+            }
+        }
+        SkySystem::J2000 => {
+            // Dynamical J2000 → ICRS → FK5.
+            sla.add(SlaCvtType::J2000h, &[]);
             sla.add(SlaCvtType::Hfk5z, &[epoch_j]);
         }
-
-        SkySystem::Galactic => {
-            sla.add(SlaCvtType::Galeq, &[]);
+        SkySystem::Gappt => {
+            // AMP takes (date, equinox).
+            sla.add(SlaCvtType::Amp, &[epoch_mjd, 2000.0]);
         }
-
-        SkySystem::Supergalactic => {
-            // Supergalactic → Galactic → FK5 J2000.0
-            sla.add(SlaCvtType::Supgal, &[]);
-            sla.add(SlaCvtType::Galeq, &[]);
-        }
-
         SkySystem::Ecliptic => {
             sla.add(SlaCvtType::Ecleq, &[equinox_mjd]);
         }
-
         SkySystem::Helioecliptic => {
-            // Helio-ecliptic uses epoch rather than equinox.
-            sla.add(SlaCvtType::Ecleq, &[epoch_mjd]);
+            sla.add(SlaCvtType::Heeq, &[epoch_mjd]);
         }
-
-        SkySystem::Gappt => {
-            // Geocentric apparent → FK5 J2000.0
-            sla.add(SlaCvtType::Amp, &[2000.0, epoch_mjd]);
+        SkySystem::Galactic => {
+            sla.add(SlaCvtType::Galeq, &[]);
         }
-
+        SkySystem::Icrs => {
+            sla.add(SlaCvtType::Hfk5z, &[epoch_j]);
+        }
+        SkySystem::Supergalactic => {
+            sla.add(SlaCvtType::Supgal, &[]);
+            sla.add(SlaCvtType::Galeq, &[]);
+        }
         SkySystem::Azel => {
-            // Horizon → equatorial (ha, dec) → RA shift → mean place.
-            // Mirrors skyframe.c:6181 `TRANSFORM_2( "H2E", lat, diurab )`
-            // followed by H2R(last) and AMP(epoch).
+            // Horizon → (ha, dec) → RA → mean place.
             sla.add(SlaCvtType::Dh2e, &[obs_lat, diurab]);
             sla.add(SlaCvtType::H2r, &[last]);
-            sla.add(SlaCvtType::Amp, &[2000.0, epoch_mjd]);
+            sla.add(SlaCvtType::Amp, &[epoch_mjd, 2000.0]);
         }
-
-        SkySystem::Unknown => {
-            // Identity — nothing added.
-        }
+        SkySystem::Unknown => return false,
     }
+    true
 }
 
 // ---------------------------------------------------------------------------
 // FK5 J2000.0 → System
 // ---------------------------------------------------------------------------
 
-/// Add SlaMap steps to convert from FK5 J2000.0 to `system`.
+/// Add SlaMap steps to convert from FK5 J2000.0 to `system`: the second and
+/// fourth phases of `MakeSkyMapping` (skyframe.c:6300, 6540), which are
+/// identical. Returns `false` for `Unknown`, which has no conversion.
 #[allow(clippy::too_many_arguments)]
 fn add_fk5_to_system(
     sla: &mut SlaMap,
@@ -438,23 +431,14 @@ fn add_fk5_to_system(
     obs_lat: f64,
     last: f64,
     diurab: f64,
-) {
+) -> bool {
     let equinox_j = pal::epj(equinox_mjd);
     let equinox_b = pal::epb(equinox_mjd);
     let epoch_j = pal::epj(epoch_mjd);
     let epoch_b = pal::epb(epoch_mjd);
 
     match system {
-        SkySystem::Fk5 => {
-            // FK5 precession from J2000.0 to the given equinox.
-            if equinox_j != 2000.0 {
-                sla.add(SlaCvtType::Prec, &[2000.0, equinox_j]);
-            }
-        }
-
         SkySystem::Fk4 => {
-            // FK5→FK4, then optionally precess from B1950.0 to the
-            // target equinox.
             sla.add(SlaCvtType::Fk54z, &[epoch_b]);
             if equinox_b != 1950.0 {
                 sla.add(SlaCvtType::Subet, &[1950.0]);
@@ -462,55 +446,61 @@ fn add_fk5_to_system(
                 sla.add(SlaCvtType::Addet, &[equinox_b]);
             }
         }
-
         SkySystem::Fk4NoE => {
-            // FK5→FK4, remove E-terms, then optionally precess.
             sla.add(SlaCvtType::Fk54z, &[epoch_b]);
             sla.add(SlaCvtType::Subet, &[1950.0]);
             if equinox_b != 1950.0 {
                 sla.add(SlaCvtType::Prebn, &[1950.0, equinox_b]);
             }
         }
-
-        SkySystem::Icrs | SkySystem::J2000 => {
+        SkySystem::Fk5 => {
+            if equinox_j != 2000.0 {
+                sla.add(SlaCvtType::Prec, &[2000.0, equinox_j]);
+            }
+        }
+        SkySystem::J2000 => {
+            // FK5 → ICRS → dynamical J2000.
             sla.add(SlaCvtType::Fk5hz, &[epoch_j]);
+            sla.add(SlaCvtType::Hj2000, &[]);
         }
-
-        SkySystem::Galactic => {
-            sla.add(SlaCvtType::Eqgal, &[]);
+        SkySystem::Gappt => {
+            // MAP takes (equinox, date).
+            sla.add(SlaCvtType::Map, &[2000.0, epoch_mjd]);
         }
-
-        SkySystem::Supergalactic => {
-            // FK5 J2000.0 → Galactic → Supergalactic
-            sla.add(SlaCvtType::Eqgal, &[]);
-            sla.add(SlaCvtType::Galsup, &[]);
-        }
-
         SkySystem::Ecliptic => {
             sla.add(SlaCvtType::Eqecl, &[equinox_mjd]);
         }
-
         SkySystem::Helioecliptic => {
-            sla.add(SlaCvtType::Eqecl, &[epoch_mjd]);
+            sla.add(SlaCvtType::Eqhe, &[epoch_mjd]);
         }
-
-        SkySystem::Gappt => {
-            sla.add(SlaCvtType::Map, &[2000.0, epoch_mjd]);
+        SkySystem::Galactic => {
+            sla.add(SlaCvtType::Eqgal, &[]);
         }
-
+        SkySystem::Icrs => {
+            sla.add(SlaCvtType::Fk5hz, &[epoch_j]);
+        }
+        SkySystem::Supergalactic => {
+            sla.add(SlaCvtType::Eqgal, &[]);
+            sla.add(SlaCvtType::Galsup, &[]);
+        }
         SkySystem::Azel => {
-            // Mean place → geocentric apparent → RA shift → horizon.
-            // Mirrors skyframe.c:6290-6292: MAP(2000,epoch), R2H(last),
-            // E2H(lat, diurab).
+            // Mean place → apparent → hour angle → horizon.
             sla.add(SlaCvtType::Map, &[2000.0, epoch_mjd]);
             sla.add(SlaCvtType::R2h, &[last]);
             sla.add(SlaCvtType::De2h, &[obs_lat, diurab]);
         }
-
-        SkySystem::Unknown => {
-            // Identity — nothing added.
-        }
+        SkySystem::Unknown => return false,
     }
+    true
+}
+
+/// Whether `system` is referenced to the equinox given by the Equinox
+/// attribute (skyframe.c:405 `EQREF`).
+pub(crate) fn eq_ref(system: SkySystem) -> bool {
+    matches!(
+        system,
+        SkySystem::Fk4 | SkySystem::Fk4NoE | SkySystem::Fk5 | SkySystem::Ecliptic
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -839,7 +829,8 @@ mod tests {
             0.0,
             0.0,
         )
-        .unwrap();
+        .unwrap()
+        .expect("conversion exists");
 
         let (ra, dec) = transform_fwd(&*map, 0.0, 0.0);
         let ra_deg = ra.to_degrees().rem_euclid(360.0);
@@ -870,7 +861,8 @@ mod tests {
             0.0,
             0.0,
         )
-        .unwrap();
+        .unwrap()
+        .expect("conversion exists");
 
         // Should be a UnitMap (identity).
         assert!(map.as_any().is::<UnitMap>());
@@ -909,7 +901,8 @@ mod tests {
             0.0,
             0.0,
         )
-        .unwrap();
+        .unwrap()
+        .expect("conversion exists");
 
         // Precession should produce a small but non-zero change.
         let lon = 1.0;
@@ -951,7 +944,8 @@ mod tests {
             0.0,
             0.0,
         )
-        .unwrap();
+        .unwrap()
+        .expect("conversion exists");
 
         let lon = 1.0;
         let lat = 0.5;
@@ -982,7 +976,8 @@ mod tests {
             0.0,
             0.0,
         )
-        .unwrap();
+        .unwrap()
+        .expect("conversion exists");
 
         // ICRS ≈ FK5 J2000 to within ~20 mas.  The frame tie is tiny.
         let lon = 2.0;
@@ -1014,7 +1009,8 @@ mod tests {
             0.0,
             0.0,
         )
-        .unwrap();
+        .unwrap()
+        .expect("conversion exists");
 
         let lon = 1.5;
         let lat = 0.3;
@@ -1045,7 +1041,8 @@ mod tests {
             0.0,
             0.0,
         )
-        .unwrap();
+        .unwrap()
+        .expect("conversion exists");
 
         // Ecliptic (lon=0, lat=0) is the vernal equinox, which in FK5
         // J2000 is RA=0, Dec=0. ECLEQ normalizes longitude into [0, 2*pi)
@@ -1116,7 +1113,8 @@ mod tests {
                 last,
                 0.0,
             )
-            .unwrap();
+            .unwrap()
+            .expect("conversion exists");
 
             // Either the optimiser returns a UnitMap, or the forward
             // + inverse of the mapping should round-trip.
@@ -1162,12 +1160,13 @@ mod tests {
             0.0,
             0.0,
         )
-        .unwrap();
+        .unwrap()
+        .expect("conversion exists");
         assert!(map.as_any().is::<UnitMap>());
     }
 
     #[test]
-    fn unknown_to_fk5_is_error() {
+    fn unknown_to_fk5_has_no_conversion() {
         let result = make_sky_mapping(
             SkySystem::Unknown,
             j2000_eq(),
@@ -1183,7 +1182,7 @@ mod tests {
             0.0,
             0.0,
         );
-        assert!(result.is_err());
+        assert!(result.unwrap().is_none());
     }
 
     // -----------------------------------------------------------------------
@@ -1211,7 +1210,8 @@ mod tests {
             0.0,
             0.0,
         )
-        .unwrap();
+        .unwrap()
+        .expect("conversion exists");
 
         // Pick a point above the horizon.
         let az = 1.0;
@@ -1250,7 +1250,8 @@ mod tests {
             0.0,
             0.0,
         )
-        .unwrap();
+        .unwrap()
+        .expect("conversion exists");
 
         let lon = 2.0;
         let lat = 0.3;
@@ -1281,7 +1282,8 @@ mod tests {
             0.0,
             0.0,
         )
-        .unwrap();
+        .unwrap()
+        .expect("conversion exists");
 
         let lon = 1.5;
         let lat = 0.2;
@@ -1318,7 +1320,8 @@ mod tests {
             0.0,
             0.0,
         )
-        .unwrap();
+        .unwrap()
+        .expect("conversion exists");
 
         // The epochs differ, so this is NOT a UnitMap — the alignment
         // system (Galactic) has epoch-dependent conversion steps

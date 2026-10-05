@@ -23,3 +23,4 @@ skyframe_attrs_probe
 picked_skyaxis_probe
 class_attrs_probe
 sky_geometry_probe
+sky_convert_probe

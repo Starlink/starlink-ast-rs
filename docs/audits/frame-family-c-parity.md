@@ -36,6 +36,13 @@ Seven root causes account for most findings:
 **Why the tests missed these.** The SkyFrame conversion tests are round-trip only, and a swapped-argument pair round-trips perfectly (SK-1). The FrameSet tests change attributes that SkyFrame handles but no others (theme A). The DSB tests use templates with the same System as the target (DSB-1).
 A single-point oracle assertion per conversion would have caught every theme-C finding.
 
+## Progress
+
+| IDs | Status | Evidence |
+|---|---|---|
+| SK-1, SK-2, SK-3, SK-8, SK-9 | FIXED 2026-10-05: `make_sky_mapping` follows `MakeSkyMapping` branch for branch (AMP argument order, J2000 via `J2000H`/`HJ2000`, HELIOECLIPTIC via `HEEQ`/`EQHE`, the `EQREF` equinox substitution, and `None` for an UNKNOWN step) | `tests/test_sky_convert.rs`: 1584 `astConvert` cases over every System pair and ten AlignSystems, exact except three AZEL cases licensed in `SINCOS_MERGE_LICENSED` |
+| SK-11 | PARTLY FIXED 2026-10-05: LAST is computed only when a step needs it, and truncated and normalised as C serves it; C's history-dependent cache is a documented divergence | `docs/issues/c-library-quirks.md`, "SkyFrame LAST depends on which LAST values the process computed earlier" |
+
 ## Recommended order
 
 1. **SK-1, SK-3, SK-2.** These are argument-order and step-selection fixes in `sky_convert.rs`, each exposed by a one-point oracle test.

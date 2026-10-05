@@ -32,7 +32,7 @@ PROGS := linear_approx analyse_poly scale_poly_inputs orth_vector_set \
          frame_attrs_probe frame_class_attrs_probe \
          frame_axis_attrs_probe skyframe_attrs_probe \
          picked_skyaxis_probe class_attrs_probe sky_geometry_probe \
-         match_axes_probe
+         match_axes_probe sky_convert_probe
 
 all: $(PROGS)
 

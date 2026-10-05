@@ -1832,8 +1832,9 @@ impl Frame for SkyFrame {
                     ));
                 }
 
-                let prev_last = prev_sky.compute_last()?;
-                let self_last = self.compute_last()?;
+                let azel = uses_azel(prev_sky.system, self.system, self.system);
+                let prev_last = if azel { prev_sky.compute_last()? } else { 0.0 };
+                let self_last = if azel { self.compute_last()? } else { 0.0 };
                 let mut mapping: DynMapping = make_sky_mapping(
                     prev_sky.system,
                     prev_sky.equinox_mjd(),
@@ -1848,7 +1849,13 @@ impl Frame for SkyFrame {
                     self.attrs.obs_lat.unwrap_or(0.0),
                     self_last,
                     self.compute_diurab(),
-                )?;
+                )?
+                .ok_or_else(|| {
+                    AstError::new(
+                        ErrorCode::Ilost,
+                        "Cannot maintain FrameSet integrity: no conversion between the old and new sky coordinate systems",
+                    )
+                })?;
 
                 // Replace the system-conversion chain by a UnitMap when
                 // its effect everywhere on the sphere is below the
@@ -2189,8 +2196,20 @@ fn compute_last(
     let out = mapping.transform(&pts, true)?;
     let last_off_mjd = out.point(0)[0];
 
-    let frac = last_off_mjd - last_off_mjd.floor();
-    Ok(frac * 2.0 * std::f64::consts::PI)
+    // C truncates towards zero (`(int) epoch`) rather than flooring, so
+    // the raw value may be negative (skyframe.c:1304).
+    let mut last = (last_off_mjd - last_off_mjd.trunc()) * 2.0 * std::f64::consts::PI;
+
+    // Every LAST that C serves from its cache is first brought into
+    // 0-2pi (skyframe.c:3110, GetCachedLAST), and a repeated query is
+    // always served from the cache, so that is the form returned here.
+    while last > 2.0 * std::f64::consts::PI {
+        last -= 2.0 * std::f64::consts::PI;
+    }
+    while last < 0.0 {
+        last += 2.0 * std::f64::consts::PI;
+    }
+    Ok(last)
 }
 
 /// Determine whether a great-circle segment includes a point known to lie on
@@ -2459,6 +2478,13 @@ fn wrap_with_axis_swap(mapping: DynMapping, target: &SkyFrame, result: &SkyFrame
     out
 }
 
+/// Whether a conversion between `from` and `to`, aligned in `align`, can
+/// need LAST. Only the AZEL steps of `MakeSkyMapping` read it, so the costly
+/// exact calculation is skipped for every other conversion.
+fn uses_azel(from: SkySystem, to: SkySystem, align: SkySystem) -> bool {
+    [from, to, align].contains(&SkySystem::Azel)
+}
+
 /// Returns true if `system` is one of the equatorial SkyFrame systems
 /// (FK4, FK4-no-E, FK5, ICRS, J2000, GAPPT). Mirrors C `IsEquatorial`
 /// (skyframe.c).
@@ -2516,9 +2542,10 @@ fn skyframe_sub_frame(
         // AlignOffset / AST__INTFLAG short-circuit (10055-10065) is
         // currently unused by the Rust callers — they always go
         // through MakeSkyMapping.
-        let target_last = target.compute_last()?;
-        let result_last = result.compute_last()?;
-        let mut map: DynMapping = make_sky_mapping(
+        let azel = uses_azel(target.system, result.system, align_sys);
+        let target_last = if azel { target.compute_last()? } else { 0.0 };
+        let result_last = if azel { result.compute_last()? } else { 0.0 };
+        let Some(mut map) = make_sky_mapping(
             target.system,
             target.equinox_mjd(),
             target.epoch_mjd(),
@@ -2532,7 +2559,10 @@ fn skyframe_sub_frame(
             result.attrs.obs_lat.unwrap_or(0.0),
             result_last,
             result.compute_diurab(),
-        )?;
+        )?
+        else {
+            return Ok(None);
+        };
 
         // Replace the system-conversion chain by a UnitMap when its
         // effect everywhere on the sphere is below the frames' SkyTol
