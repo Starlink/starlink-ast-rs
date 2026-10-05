@@ -13,7 +13,7 @@
 //!   `astFindFrame` (frame.c:3735) for plain Frames and
 //!   `FrameSet::FindFrame` (frameset.c:3790) for FrameSet targets.
 
-use crate::error::AstResult;
+use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::{CmpFrame, DynFrame, Frame, FrameRef, FrameSet};
 use crate::mappings::{CmpMap, Composition, DynMapping, Mapping, PermMap, UnitMap};
 
@@ -73,6 +73,40 @@ pub(crate) fn match_with_subclass(
         }
     }
     Ok(None)
+}
+
+/// The Mapping that restores a FrameSet's integrity after its current Frame
+/// changed from `previous` to `current`: C's `RestoreIntegrity`
+/// (frameset.c:9332), which every Frame class shares.
+///
+/// The recorded copy takes the current Frame's Domain so the two can be
+/// converted, and both carry [`INTFLAG`](super::INTFLAG) during the
+/// conversion so that SkyFrame, SpecFrame and DSBSpecFrame pick their
+/// integrity-restoring alignment. A Region's FrameSet uses the same routine.
+///
+/// # Errors
+///
+/// `AST__ILOST` when no conversion between the two states exists.
+pub(crate) fn integrity_mapping(
+    previous: &dyn Frame,
+    current: &dyn Frame,
+) -> AstResult<DynMapping> {
+    let mut old = previous.snapshot();
+    if current.test_domain() {
+        old.set_domain(current.domain())?;
+    } else {
+        old.clear_domain()?;
+    }
+    old.set_frame_flags(old.frame_flags() | super::INTFLAG);
+    let mut cur = current.snapshot();
+    cur.set_frame_flags(cur.frame_flags() | super::INTFLAG);
+    match convert_frames(old.as_ref(), cur.as_ref(), "")? {
+        Some(cvt) => cvt.mapping(FrameRef::Base, FrameRef::Current),
+        None => Err(AstError::new(
+            ErrorCode::Ilost,
+            "Cannot maintain FrameSet integrity: no conversion between the old and new states of the current Frame",
+        )),
+    }
 }
 
 /// Port of C `astConvertX` (frame.c:3028): negotiate a common

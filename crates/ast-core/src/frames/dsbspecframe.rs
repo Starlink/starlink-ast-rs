@@ -736,39 +736,6 @@ impl DSBSpecFrame {
             SideBand::LO => self.to_lo_mapping(),
         }
     }
-
-    /// Sideband-aware alignment mapping from `self` to `target`.
-    ///
-    /// Algorithm:
-    /// 1. Map self → self's observed sideband
-    /// 2. Apply parent SpecFrame alignment (observed → observed)
-    /// 3. Map target's observed sideband → target (inverse of target's to_observed)
-    ///
-    /// `intflag` selects which `make_spec_mapping_*` overload to use for
-    /// the parent SpecFrame alignment: `true` for the FrameSet
-    /// integrity path (mirrors C `AST__INTFLAG` branch), `false` for
-    /// the convert path.
-    fn make_dsb_mapping_aligned(
-        &self,
-        target: &DSBSpecFrame,
-        intflag: bool,
-    ) -> AstResult<DynMapping> {
-        // map1: self's current → self's observed sideband
-        let map1 = self.to_observed_mapping()?;
-        // parent alignment (observed → observed)
-        let parent_map = if intflag {
-            self.spec.make_spec_mapping_integrity(&target.spec)?
-        } else {
-            self.spec.make_spec_mapping(&target.spec)?
-        };
-        // map2: target's current → target's observed (we need inverse)
-        let mut map2 = target.to_observed_mapping()?;
-        map2.invert();
-        // Compose: map1 → parent_map → map2
-        let step1 = CmpMap::new(map1, parent_map, Composition::Series)?;
-        let result = CmpMap::new(Box::new(step1), map2, Composition::Series)?;
-        Ok(Box::new(result))
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -780,6 +747,12 @@ impl Frame for DSBSpecFrame {
     // and its Object-class Ident, are the SpecFrame's; only the Domain
     // default is its own (dsbspecframe.c `GetDomain`).
     forward_frame_attrs!(@all_but_domain [spec]);
+    fn frame_flags(&self) -> u32 {
+        self.spec.frame_flags()
+    }
+    fn set_frame_flags(&mut self, flags: u32) {
+        self.spec.set_frame_flags(flags);
+    }
     fn domain(&self) -> &str {
         if self.spec.test_domain() {
             Frame::domain(&self.spec)
@@ -854,12 +827,7 @@ impl Frame for DSBSpecFrame {
     }
 
     fn map_from(&self, previous: &dyn Frame) -> AstResult<DynMapping> {
-        if let Some(prev_dsb) = previous.as_any().downcast_ref::<DSBSpecFrame>() {
-            // FrameSet integrity: sideband-aware alignment from previous to self.
-            return prev_dsb.make_dsb_mapping_aligned(self, true);
-        }
-        // Fallback: delegate to SpecFrame's map_from.
-        self.spec.map_from(previous)
+        super::find_frame::integrity_mapping(previous, self)
     }
 
     fn equal(&self, other: &dyn Frame) -> bool {
@@ -1016,12 +984,22 @@ impl Frame for DSBSpecFrame {
                     dsb.set_align_sideband(v);
                 }
 
-                // If both AlignSideBand flags are set, build the
-                // sideband-aware Mapping (mirrors dsbspecframe.c:1640+).
-                // Otherwise fall back to the SpecFrame-level Mapping
-                // already produced.
-                if self.align_sideband() && t_dsb.align_sideband() {
-                    map = self.make_dsb_mapping_aligned(&dsb, false)?;
+                // Restoring FrameSet integrity always aligns sidebands;
+                // otherwise both AlignSideBand flags must be set
+                // (dsbspecframe.c:1628).
+                let alignsb = self.frame_flags() & super::INTFLAG != 0
+                    || (self.align_sideband() && t_dsb.align_sideband());
+                if alignsb {
+                    // Map the target to its observed sideband, apply the
+                    // parent SubFrame's spectral Mapping, then map from the
+                    // observed sideband to the result's (dsbspecframe.c:1690).
+                    let map1 = self.to_observed_mapping()?;
+                    let mut map2 = dsb.to_observed_mapping()?;
+                    map2.invert();
+                    let map3 = CmpMap::new(map1, map, Composition::Series)?;
+                    let joined: DynMapping =
+                        Box::new(CmpMap::new(Box::new(map3), map2, Composition::Series)?);
+                    map = joined.simplify()?;
                 }
             }
             final_result = Box::new(dsb);

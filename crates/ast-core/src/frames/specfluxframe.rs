@@ -181,6 +181,14 @@ impl Frame for SpecFluxFrame {
     frame_attrs_digits!();
     frame_attrs_ident!();
     frame_attrs_match!(min = 0, max = 1_000_000);
+
+    fn set_frame_flags(&mut self, flags: u32) {
+        // A SpecFluxFrame is a CmpFrame in C, whose `SetFrameFlags` gives
+        // the components the same flags (cmpframe.c).
+        self.attrs.flags = flags;
+        self.spec_frame.set_frame_flags(flags);
+        self.flux_frame.set_frame_flags(flags);
+    }
     cmp_frame_shared_attr!(concrete spec_frame, flux_frame; epoch, epoch_mjd, set_epoch_mjd, test_epoch, clear_epoch);
     cmp_frame_shared_attr!(concrete spec_frame, flux_frame; obs_lat, obs_lat, set_obs_lat, test_obs_lat, clear_obs_lat);
     cmp_frame_shared_attr!(concrete spec_frame, flux_frame; obs_lon, obs_lon, set_obs_lon, test_obs_lon, clear_obs_lon);
@@ -326,8 +334,8 @@ impl Frame for SpecFluxFrame {
         Box::new(self.clone())
     }
 
-    fn map_from(&self, _previous: &dyn Frame) -> AstResult<DynMapping> {
-        Ok(Box::new(UnitMap::new(2)))
+    fn map_from(&self, previous: &dyn Frame) -> AstResult<DynMapping> {
+        super::find_frame::integrity_mapping(previous, self)
     }
 
     fn equal(&self, other: &dyn Frame) -> bool {

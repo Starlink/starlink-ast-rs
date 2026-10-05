@@ -1503,16 +1503,6 @@ impl SpecFrame {
         self.make_spec_mapping_full(result, None, false)
     }
 
-    /// Build the SpecMap for converting from `self` (target) to `result`
-    /// in the FrameSet integrity path: align frame is taken from the
-    /// target's (current's) AlignSystem/AlignStdOfRest applied as
-    /// System/StdOfRest, and `intflag=true` so SorConvert sees the
-    /// per-SOR-defining attributes of the original alignment frame
-    /// rather than overlaying target/result attributes onto it.
-    pub(crate) fn make_spec_mapping_integrity(&self, result: &SpecFrame) -> AstResult<DynMapping> {
-        self.make_spec_mapping_full(result, None, true)
-    }
-
     /// Full-form port of C `MakeSpecMapping` (specframe.c:2488-2966).
     ///
     /// Parameters mirror C exactly:
@@ -1920,16 +1910,7 @@ impl Frame for SpecFrame {
     // default to 0).
 
     fn map_from(&self, previous: &dyn Frame) -> AstResult<DynMapping> {
-        let prev = previous.as_any().downcast_ref::<SpecFrame>();
-        match prev {
-            // FrameSet integrity path (C AST__INTFLAG branch in
-            // MakeSpecMapping, specframe.c:2667-2670).
-            Some(prev_spec) => prev_spec.make_spec_mapping_integrity(self),
-            None => {
-                // Previous was not a SpecFrame — return UnitMap.
-                Ok(Box::new(UnitMap::new(1)))
-            }
-        }
+        super::find_frame::integrity_mapping(previous, self)
     }
 
     fn equal(&self, other: &dyn Frame) -> bool {
@@ -2269,7 +2250,8 @@ fn specframe_sub_frame(
 
         // Build the Mapping target → result, taking account of the
         // alignment frame (specframe.c:4891).
-        let mapping = target.make_spec_mapping_full(&result, Some(&align_frm), false)?;
+        let intflag = target.frame_flags() & super::INTFLAG != 0;
+        let mapping = target.make_spec_mapping_full(&result, Some(&align_frm), intflag)?;
 
         let result_box: DynFrame = Box::new(result);
         return Ok(Some((mapping, result_box)));

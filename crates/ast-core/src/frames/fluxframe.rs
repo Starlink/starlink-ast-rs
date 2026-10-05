@@ -778,10 +778,8 @@ impl Frame for FluxFrame {
         Box::new(self.clone())
     }
 
-    fn map_from(&self, _previous: &dyn Frame) -> AstResult<DynMapping> {
-        // FluxFrame attribute changes don't affect coordinate transformations
-        // in the simple case. Return UnitMap.
-        Ok(Box::new(UnitMap::new(1)))
+    fn map_from(&self, previous: &dyn Frame) -> AstResult<DynMapping> {
+        super::find_frame::integrity_mapping(previous, self)
     }
 
     fn equal(&self, other: &dyn Frame) -> bool {

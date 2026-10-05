@@ -36,6 +36,10 @@ pub(crate) struct FrameAttrs {
     pub active_unit: Option<bool>,
     /// The Object-class Ident attribute.
     pub ident: Option<String>,
+    /// C's frame flags (frame.h `flags`, `astGetFrameFlags`): transient
+    /// markers such as [`INTFLAG`](super::INTFLAG), not an attribute, so
+    /// never dumped.
+    pub flags: u32,
 }
 
 impl FrameAttrs {
@@ -494,6 +498,8 @@ pub(crate) fn read_frame_attrs(node: &Node) -> FrameAttrs {
         preserve_axes: bool_of("Presrv"),
         active_unit: bool_of("ActUnt"),
         ident: node.get_string_if_set("Ident"),
+        // A loaded Frame starts with no flags (frame.c:15179).
+        flags: 0,
     }
 }
 
@@ -682,6 +688,9 @@ macro_rules! frame_attrs_ident {
 macro_rules! frame_attrs_match {
     () => {
         frame_attrs_match!(@body |s| s.naxes(), |s| s.naxes());
+        fn set_frame_flags(&mut self, flags: u32) {
+            self.attrs.flags = flags;
+        }
     };
     // Explicit MinAxes and MaxAxes defaults, for a class that over-rides
     // them (CmpFrame, cmpframe.c `GetMinAxes`, `GetMaxAxes`).
@@ -689,6 +698,9 @@ macro_rules! frame_attrs_match {
         frame_attrs_match!(@body |_s| $min, |_s| $max);
     };
     (@body |$smin:ident| $min:expr, |$smax:ident| $max:expr) => {
+        fn frame_flags(&self) -> u32 {
+            self.attrs.flags
+        }
         fn min_axes(&self) -> usize {
             self.attrs.min_axes.unwrap_or_else(|| {
                 let $smin = self;

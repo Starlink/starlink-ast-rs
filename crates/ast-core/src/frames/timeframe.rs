@@ -1556,14 +1556,7 @@ impl Frame for TimeFrame {
     }
 
     fn map_from(&self, previous: &dyn Frame) -> AstResult<DynMapping> {
-        let prev = previous.as_any().downcast_ref::<TimeFrame>();
-        match prev {
-            Some(prev_time) => prev_time.make_time_mapping(self),
-            None => {
-                // Previous was not a TimeFrame — return UnitMap.
-                Ok(Box::new(UnitMap::new(1)))
-            }
-        }
+        super::find_frame::integrity_mapping(previous, self)
     }
 
     fn equal(&self, other: &dyn Frame) -> bool {

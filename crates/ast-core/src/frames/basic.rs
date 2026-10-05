@@ -2,8 +2,8 @@
 
 use crate::constants::BAD_VALUE;
 use crate::error::{AstError, AstResult, ErrorCode};
+use crate::mappings::DynMapping;
 use crate::mappings::helpers::is_bad;
-use crate::mappings::{DynMapping, UnitMap};
 use crate::serial::{Node, Serializable};
 
 use super::axis::{Axis, FrameAxis};
@@ -820,8 +820,8 @@ impl Frame for BasicFrame {
         Ok(())
     }
 
-    fn map_from(&self, _previous: &dyn Frame) -> AstResult<DynMapping> {
-        Ok(Box::new(UnitMap::new(self.naxes)))
+    fn map_from(&self, previous: &dyn Frame) -> AstResult<DynMapping> {
+        super::find_frame::integrity_mapping(previous, self)
     }
 
     fn equal(&self, other: &dyn Frame) -> bool {

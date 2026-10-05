@@ -6,7 +6,7 @@ use crate::frames::sky_convert::{SkyRefIs, SkySystem, make_offset_mapping, make_
 use crate::frames::skyaxis::{SkyAxis, default_dhms_format, dhms_unit, unformat_sky_axis};
 use crate::frames::{AxisKind, DynFrame, Frame, FrameRef, LineDef, SkyLineDef};
 use crate::mappings::helpers::is_bad;
-use crate::mappings::{CmpMap, Composition, DynMapping, PermMap, UnitMap};
+use crate::mappings::{CmpMap, Composition, DynMapping, UnitMap};
 use crate::pal;
 use crate::serial::{Node, NodeValue, Serializable};
 
@@ -285,9 +285,17 @@ impl SkyFrame {
     }
 
     /// Set the celestial coordinate system.
+    ///
+    /// A set SkyRef or SkyRefP is re-expressed in the new System, so that it
+    /// stays at the same place on the sky, and is cleared if no conversion
+    /// to the new System exists (skyframe.c `SetSystem`).
     pub fn set_system(&mut self, sys: SkySystem) {
+        let saved = self.saved_sky_refs();
         self.system = sys;
         self.system_set = true;
+        if let Some(saved) = saved {
+            self.reexpress_sky_refs(saved, true);
+        }
     }
 
     /// Test whether the `System` attribute has been explicitly set.
@@ -296,11 +304,119 @@ impl SkyFrame {
         self.system_set
     }
 
-    /// Clear the explicit-set flag on `System` so the attribute
-    /// reverts to "not set" while keeping the current default value.
-    /// Mirrors C `astClearSystem` for `SkyFrame`.
+    /// Clear the System, which reverts to its default, ICRS. A set SkyRef or
+    /// SkyRefP is re-expressed in ICRS, as for
+    /// [`set_system`](Self::set_system) (skyframe.c `ClearSystem`).
     pub fn clear_system(&mut self) {
+        let saved = self.saved_sky_refs();
+        self.system = SkySystem::Icrs;
         self.system_set = false;
+        if let Some(saved) = saved {
+            self.reexpress_sky_refs(saved, false);
+        }
+    }
+
+    /// A copy of this SkyFrame, taken before its System changes, when
+    /// SkyRef or SkyRefP is set and so will need re-expressing.
+    fn saved_sky_refs(&self) -> Option<SkyFrame> {
+        let set = self
+            .sky_ref_set
+            .iter()
+            .chain(&self.sky_ref_p_set)
+            .any(|&s| s);
+        set.then(|| self.clone())
+    }
+
+    /// Re-express the SkyRef and SkyRefP of `old`, this SkyFrame before its
+    /// System changed, in the current System. `restore_offsets` selects the
+    /// `SetSystem` behaviour, which aligns the two in absolute coordinates and
+    /// then restores AlignOffset and SkyRefIs; `ClearSystem` does neither
+    /// (skyframe.c:9635, 1814).
+    fn reexpress_sky_refs(&mut self, mut old: SkyFrame, restore_offsets: bool) {
+        let skyref_set = old.sky_ref_set[0] || old.sky_ref_set[1];
+        let skyrefp_set = old.sky_ref_p_set[0] || old.sky_ref_p_set[1];
+        // External-order (axis 1, axis 2) values of SkyRef and SkyRefP,
+        // with each one's default where unset, as C's astGetSkyRef gives.
+        let xin = [
+            old.sky_ref(1).unwrap_or(0.0),
+            old.sky_ref_p(1).unwrap_or(0.0),
+        ];
+        let yin = [
+            old.sky_ref(2).unwrap_or(0.0),
+            old.sky_ref_p(2).unwrap_or(0.0),
+        ];
+        let (aloff_set, aloff) = (old.align_offset_set, old.align_offset);
+        let (skyrefis_set, skyrefis) = (old.sky_ref_is_set, old.sky_ref_is);
+
+        // Clear them on both, so the conversion below does not recurse
+        // into this re-expression.
+        if skyref_set {
+            old.sky_ref_set = [false; 2];
+            old.sky_ref = [0.0; 2];
+            self.sky_ref_set = [false; 2];
+            self.sky_ref = [0.0; 2];
+        }
+        if skyrefp_set && restore_offsets {
+            old.sky_ref_p_set = [false; 2];
+            old.sky_ref_p = [0.0; 2];
+            self.sky_ref_p_set = [false; 2];
+            self.sky_ref_p = [0.0; 2];
+        }
+        if restore_offsets {
+            // Align in absolute coordinates.
+            old.set_align_offset(false);
+            old.set_sky_ref_is(SkyRefIs::Ignored);
+        }
+
+        let converted = super::find_frame::convert_frames(&old, &*self, "")
+            .ok()
+            .flatten()
+            .and_then(|fs| fs.mapping(FrameRef::Base, FrameRef::Current).ok())
+            .and_then(|map| map.tran2(&xin, &yin, true).ok());
+        match converted {
+            Some((xout, yout)) => {
+                if skyref_set {
+                    self.set_sky_ref_pair(xout[0], yout[0]);
+                }
+                if skyrefp_set {
+                    self.set_sky_ref_p_pair(xout[1], yout[1]);
+                }
+                if restore_offsets {
+                    if aloff_set {
+                        self.set_align_offset(aloff);
+                    } else {
+                        self.clear_align_offset();
+                    }
+                    if skyrefis_set {
+                        self.set_sky_ref_is(skyrefis);
+                    } else {
+                        self.clear_sky_ref_is();
+                    }
+                }
+            }
+            None => {
+                if skyref_set {
+                    self.sky_ref_set = [false; 2];
+                    self.sky_ref = [0.0; 2];
+                }
+                if skyrefp_set {
+                    self.sky_ref_p_set = [false; 2];
+                    self.sky_ref_p = [0.0; 2];
+                }
+            }
+        }
+    }
+
+    /// Set both SkyRef values from external-order (axis 1, axis 2) values.
+    fn set_sky_ref_pair(&mut self, axis1: f64, axis2: f64) {
+        let _ = self.set_sky_ref(1, axis1);
+        let _ = self.set_sky_ref(2, axis2);
+    }
+
+    /// Set both SkyRefP values from external-order (axis 1, axis 2) values.
+    fn set_sky_ref_p_pair(&mut self, axis1: f64, axis2: f64) {
+        let _ = self.set_sky_ref_p(1, axis1);
+        let _ = self.set_sky_ref_p(2, axis2);
     }
 
     /// Return the alignment coordinate system.
@@ -1813,95 +1929,7 @@ impl Frame for SkyFrame {
     }
 
     fn map_from(&self, previous: &dyn Frame) -> AstResult<DynMapping> {
-        let prev = previous.as_any().downcast_ref::<SkyFrame>();
-        match prev {
-            Some(prev_sky) => {
-                // When both systems are Unknown, C `MakeSkyMapping`
-                // (skyframe.c:5975) returns a UnitMap and returns before the
-                // `SkyOffsetMap` section, so no offset rotation is ever
-                // applied. Two Unknown SkyFrames are assumed identical; this
-                // keeps a bare Title/SkyRefIs change from breaking FrameSet
-                // integrity. Mirror that early return here — applying the
-                // offset maps below would wrongly rotate an Unknown offset
-                // Frame.
-                if prev_sky.system == SkySystem::Unknown && self.system == SkySystem::Unknown {
-                    return Ok(wrap_with_axis_swap(
-                        Box::new(UnitMap::new(2)),
-                        prev_sky,
-                        self,
-                    ));
-                }
-
-                let azel = uses_azel(prev_sky.system, self.system, self.system);
-                let prev_last = if azel { prev_sky.compute_last()? } else { 0.0 };
-                let self_last = if azel { self.compute_last()? } else { 0.0 };
-                let mut mapping: DynMapping = make_sky_mapping(
-                    prev_sky.system,
-                    prev_sky.equinox_mjd(),
-                    prev_sky.epoch_mjd(),
-                    self.system,
-                    self.equinox_mjd(),
-                    self.epoch_mjd(),
-                    self.system, // align in current system
-                    prev_sky.attrs.obs_lat.unwrap_or(0.0),
-                    prev_last,
-                    prev_sky.compute_diurab(),
-                    self.attrs.obs_lat.unwrap_or(0.0),
-                    self_last,
-                    self.compute_diurab(),
-                )?
-                .ok_or_else(|| {
-                    AstError::new(
-                        ErrorCode::Ilost,
-                        "Cannot maintain FrameSet integrity: no conversion between the old and new sky coordinate systems",
-                    )
-                })?;
-
-                // Replace the system-conversion chain by a UnitMap when
-                // its effect everywhere on the sphere is below the
-                // frames' SkyTol (skyframe.c:6546 TestSlaUnit).
-                if crate::frames::sky_convert::is_effectively_unit(
-                    mapping.as_ref(),
-                    prev_sky.sky_tol().min(self.sky_tol()),
-                ) {
-                    mapping = Box::new(UnitMap::new(2));
-                }
-
-                // Prepend source offset removal (offset→standard).
-                if let Some(off_map) = make_offset_mapping(
-                    prev_sky.sky_ref,
-                    prev_sky.sky_ref_p_lon_lat(),
-                    prev_sky.sky_ref_is,
-                    prev_sky.sky_ref_set[0] || prev_sky.sky_ref_set[1],
-                )? {
-                    mapping = Box::new(CmpMap::new(off_map, mapping, Composition::Series)?);
-                }
-
-                // Append target offset application (standard→offset = inverse).
-                if let Some(mut off_map) = make_offset_mapping(
-                    self.sky_ref,
-                    self.sky_ref_p_lon_lat(),
-                    self.sky_ref_is,
-                    self.sky_ref_set[0] || self.sky_ref_set[1],
-                )? {
-                    off_map.invert();
-                    mapping = Box::new(CmpMap::new(mapping, off_map, Composition::Series)?);
-                }
-
-                // Wrap in PermMap swap when either Frame's external axis
-                // 0 is its physical latitude axis (perm = [lat, lon]).
-                // Mirrors C `SubFrame` (skyframe.c:10082-10117): the
-                // make_sky_mapping output is in internal (lon, lat)
-                // order, but the FrameSet's chain feeds and consumes
-                // values in each Frame's external order. Without these
-                // swaps the delta is applied to the wrong axes.
-                Ok(wrap_with_axis_swap(mapping, prev_sky, self))
-            }
-            None => {
-                // Previous was not a SkyFrame -- return UnitMap.
-                Ok(Box::new(UnitMap::new(2)))
-            }
-        }
+        super::find_frame::integrity_mapping(previous, self)
     }
 
     fn equal(&self, other: &dyn Frame) -> bool {
@@ -2440,42 +2468,75 @@ fn skyframe_overlay(
     Ok(())
 }
 
-/// Wrap an internal-axis-order (lon, lat) → (lon, lat) mapping with
-/// PermMap swaps so it operates on each SkyFrame's external axis
-/// order. Mirrors C `SubFrame` (skyframe.c:10082-10117): when the
-/// target's external axis 0 is its physical latitude axis, prepend a
-/// `[lat,lon]→[lon,lat]` PermMap; when the result's external axis 0
-/// is its physical latitude axis, append a `[lon,lat]→[lat,lon]`
-/// PermMap. Both checks are independent because the two SkyFrames may
-/// have different perms (rare, but supported).
-///
-/// Identity-fast when neither needs swapping. The `PermMap::new` and
-/// `CmpMap::new` calls below are infallible for a fixed 2-axis perm
-/// against an already-2-input/2-output mapping; the `expect` messages
-/// document the invariant.
-fn wrap_with_axis_swap(mapping: DynMapping, target: &SkyFrame, result: &SkyFrame) -> DynMapping {
-    let target_swap = target.axis_permutation()[0] != 0;
-    let result_swap = result.axis_permutation()[0] != 0;
-    if !target_swap && !result_swap {
-        return mapping;
+/// The Mapping from `target` to `result` that `MakeSkyMapping`
+/// (skyframe.c:5956) returns: the conversion chain, replaced by a UnitMap
+/// when its effect is below the SkyTol of both frames, between the
+/// offset-system Mappings of the two frames. `None` when no conversion
+/// exists.
+fn make_sky_frame_mapping(
+    target: &SkyFrame,
+    result: &SkyFrame,
+    align_sys: SkySystem,
+) -> AstResult<Option<DynMapping>> {
+    // Two UNKNOWN systems are assumed to be the same, and C returns its
+    // UnitMap before forming the offset-system Mappings (skyframe.c:6077),
+    // so that a change such as a new Title keeps an UNKNOWN FrameSet intact.
+    if target.system == SkySystem::Unknown && result.system == SkySystem::Unknown {
+        return Ok(Some(Box::new(UnitMap::new(2))));
     }
-    let mut out = mapping;
-    if target_swap {
-        let pre = PermMap::new(&[2, 1], &[2, 1], &[]).expect("trivial 2-axis PermMap construction");
-        out = Box::new(
-            CmpMap::new(Box::new(pre), out, Composition::Series)
-                .expect("compose 2-axis PermMap with 2-axis mapping"),
-        );
+    let azel = uses_azel(target.system, result.system, align_sys);
+    let target_last = if azel { target.compute_last()? } else { 0.0 };
+    let result_last = if azel { result.compute_last()? } else { 0.0 };
+    let Some(mut map) = make_sky_mapping(
+        target.system,
+        target.equinox_mjd(),
+        target.epoch_mjd(),
+        result.system,
+        result.equinox_mjd(),
+        result.epoch_mjd(),
+        align_sys,
+        target.attrs.obs_lat.unwrap_or(0.0),
+        target_last,
+        target.compute_diurab(),
+        result.attrs.obs_lat.unwrap_or(0.0),
+        result_last,
+        result.compute_diurab(),
+    )?
+    else {
+        return Ok(None);
+    };
+
+    // Replace the system-conversion chain by a UnitMap when its
+    // effect everywhere on the sphere is below the frames' SkyTol
+    // (skyframe.c:6546 TestSlaUnit).
+    if crate::frames::sky_convert::is_effectively_unit(
+        map.as_ref(),
+        target.sky_tol().min(result.sky_tol()),
+    ) {
+        map = Box::new(UnitMap::new(2));
     }
-    if result_swap {
-        let post =
-            PermMap::new(&[2, 1], &[2, 1], &[]).expect("trivial 2-axis PermMap construction");
-        out = Box::new(
-            CmpMap::new(out, Box::new(post), Composition::Series)
-                .expect("compose 2-axis mapping with 2-axis PermMap"),
-        );
+
+    // Prepend source offset removal (offset→standard).
+    if let Some(off_map) = make_offset_mapping(
+        target.sky_ref,
+        target.sky_ref_p_lon_lat(),
+        target.sky_ref_is,
+        target.sky_ref_set[0] || target.sky_ref_set[1],
+    )? {
+        map = Box::new(CmpMap::new(off_map, map, Composition::Series)?);
     }
-    out
+
+    // Append target offset application (standard→offset = inverse).
+    if let Some(mut off_map) = make_offset_mapping(
+        result.sky_ref,
+        result.sky_ref_p_lon_lat(),
+        result.sky_ref_is,
+        result.sky_ref_set[0] || result.sky_ref_set[1],
+    )? {
+        off_map.invert();
+        map = Box::new(CmpMap::new(map, off_map, Composition::Series)?);
+    }
+    Ok(Some(map))
 }
 
 /// Whether a conversion between `from` and `to`, aligned in `align`, can
@@ -2537,63 +2598,29 @@ fn skyframe_sub_frame(
             target.align_system()
         };
 
-        // Build the Mapping that takes account of changes between
-        // target and result systems (skyframe.c:10071-10074). The
-        // AlignOffset / AST__INTFLAG short-circuit (10055-10065) is
-        // currently unused by the Rust callers — they always go
-        // through MakeSkyMapping.
-        let azel = uses_azel(target.system, result.system, align_sys);
-        let target_last = if azel { target.compute_last()? } else { 0.0 };
-        let result_last = if azel { result.compute_last()? } else { 0.0 };
-        let Some(mut map) = make_sky_mapping(
-            target.system,
-            target.equinox_mjd(),
-            target.epoch_mjd(),
-            result.system,
-            result.equinox_mjd(),
-            result.epoch_mjd(),
-            align_sys,
-            target.attrs.obs_lat.unwrap_or(0.0),
-            target_last,
-            target.compute_diurab(),
-            result.attrs.obs_lat.unwrap_or(0.0),
-            result_last,
-            result.compute_diurab(),
-        )?
-        else {
-            return Ok(None);
+        // Two SkyFrames that both align in offset coordinates are
+        // connected by a UnitMap, except while restoring a FrameSet's
+        // integrity, when the offsets must follow the new System
+        // (skyframe.c:10163).
+        let mut aligned_in_offsets = false;
+        if target.frame_flags() & super::INTFLAG == 0
+            && target.align_offset()
+            && target.sky_ref_is() != SkyRefIs::Ignored
+            && let Some(t) = template.and_then(|t| t.as_any().downcast_ref::<SkyFrame>())
+        {
+            aligned_in_offsets = t.align_offset() && t.sky_ref_is() != SkyRefIs::Ignored;
+        }
+
+        // Otherwise build the Mapping that takes account of changes
+        // between the target and result systems (skyframe.c:10179).
+        let mut map: DynMapping = if aligned_in_offsets {
+            Box::new(UnitMap::new(2))
+        } else {
+            match make_sky_frame_mapping(target, &result, align_sys)? {
+                Some(map) => map,
+                None => return Ok(None),
+            }
         };
-
-        // Replace the system-conversion chain by a UnitMap when its
-        // effect everywhere on the sphere is below the frames' SkyTol
-        // (skyframe.c:6546 TestSlaUnit).
-        if crate::frames::sky_convert::is_effectively_unit(
-            map.as_ref(),
-            target.sky_tol().min(result.sky_tol()),
-        ) {
-            map = Box::new(UnitMap::new(2));
-        }
-
-        // Prepend source offset removal (offset→standard).
-        if let Some(off_map) = make_offset_mapping(
-            target.sky_ref,
-            target.sky_ref_p_lon_lat(),
-            target.sky_ref_is,
-            target.sky_ref_set[0] || target.sky_ref_set[1],
-        )? {
-            map = Box::new(CmpMap::new(off_map, map, Composition::Series)?);
-        }
-
-        // Append target offset application (standard→offset = inverse).
-        if let Some(mut off_map) = make_offset_mapping(
-            result.sky_ref,
-            result.sky_ref_p_lon_lat(),
-            result.sky_ref_is,
-            result.sky_ref_set[0] || result.sky_ref_set[1],
-        )? {
-            off_map.invert();
-            map = Box::new(CmpMap::new(map, off_map, Composition::Series)?);
-        }
 
         // Coordinate-order swaps (skyframe.c:10082-10116). The
         // Mapping built above operates in (longitude, latitude) order

@@ -321,6 +321,10 @@ pub struct SkyLineDef {
     pub q: [f64; 3],
 }
 
+/// The frame flag C sets while a FrameSet's integrity is being restored
+/// (frame.h `AST__INTFLAG`).
+pub(crate) const INTFLAG: u32 = 1;
+
 /// A coordinate frame defining the meaning of coordinate values.
 ///
 /// All concrete frame classes implement this trait. Frames are `Send`
@@ -718,6 +722,19 @@ pub trait Frame: AsAny + Send + fmt::Debug {
     fn axis_object_top(&self, axis: usize) -> AstResult<f64> {
         self.top(axis)
     }
+
+    /// C's protected frame flags (frame.c `GetFrameFlags`): transient
+    /// markers that tell a class's SubFrame why a conversion is being made,
+    /// such as [`INTFLAG`] during FrameSet integrity restoration.
+    #[doc(hidden)]
+    fn frame_flags(&self) -> u32 {
+        0
+    }
+
+    /// Set the frame flags (frame.c `SetFrameFlags`). CmpFrame passes them
+    /// on to its components (cmpframe.c `SetFrameFlags`).
+    #[doc(hidden)]
+    fn set_frame_flags(&mut self, _flags: u32) {}
 
     /// The Bottom that the Axis object of a 1-based axis reports itself, as
     /// [`axis_object_top`](Self::axis_object_top) does for Top.
