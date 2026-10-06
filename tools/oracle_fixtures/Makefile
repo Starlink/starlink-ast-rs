@@ -33,7 +33,7 @@ PROGS := linear_approx analyse_poly scale_poly_inputs orth_vector_set \
          frame_axis_attrs_probe skyframe_attrs_probe \
          picked_skyaxis_probe class_attrs_probe sky_geometry_probe \
          match_axes_probe sky_convert_probe integrity_probe \
-         spec_convert_probe unit_mapper_probe
+         spec_convert_probe unit_mapper_probe time_convert_probe
 
 all: $(PROGS)
 
