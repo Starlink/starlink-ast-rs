@@ -687,7 +687,14 @@ macro_rules! frame_attrs_ident {
 /// PreserveAxes to false, and Permute to `self.frame_default_permute()`.
 macro_rules! frame_attrs_match {
     () => {
-        frame_attrs_match!(@body |s| s.naxes(), |s| s.naxes());
+        // An unset MinAxes defaults to Naxes, but no more than a set
+        // MaxAxes, and an unset MaxAxes to Naxes, but no less than a set
+        // MinAxes (frame.c `DefaultMinAxes`, `DefaultMaxAxes`).
+        frame_attrs_match!(
+            @body
+            |s| s.attrs.max_axes.map_or(s.naxes(), |max| s.naxes().min(max)),
+            |s| s.attrs.min_axes.map_or(s.naxes(), |min| s.naxes().max(min))
+        );
         fn set_frame_flags(&mut self, flags: u32) {
             self.attrs.flags = flags;
         }
@@ -708,6 +715,11 @@ macro_rules! frame_attrs_match {
             })
         }
         fn set_min_axes(&mut self, n: usize) -> $crate::error::AstResult<()> {
+            // A set MaxAxes below the new MinAxes is raised to it
+            // (frame.c `ConsistentMinAxes`).
+            if self.attrs.max_axes.is_some_and(|max| max < n) {
+                self.attrs.max_axes = Some(n);
+            }
             self.attrs.min_axes = Some(n);
             Ok(())
         }
@@ -725,6 +737,11 @@ macro_rules! frame_attrs_match {
             })
         }
         fn set_max_axes(&mut self, n: usize) -> $crate::error::AstResult<()> {
+            // A set MinAxes above the new MaxAxes is lowered to it
+            // (frame.c `ConsistentMaxAxes`).
+            if self.attrs.min_axes.is_some_and(|min| min > n) {
+                self.attrs.min_axes = Some(n);
+            }
             self.attrs.max_axes = Some(n);
             Ok(())
         }

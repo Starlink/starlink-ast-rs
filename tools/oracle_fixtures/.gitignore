@@ -28,3 +28,4 @@ integrity_probe
 spec_convert_probe
 unit_mapper_probe
 time_convert_probe
+min_max_axes_probe
