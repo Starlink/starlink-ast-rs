@@ -490,9 +490,12 @@ The C comment puts the approximation at better than 0.1 arcsec.
 Consequence: the Mapping between two AZEL SkyFrames depends on what the process converted before, so the same `astConvert` can give slightly different numbers in two programs.
 A value served from the table is also normalised into 0 to 2π, while the first, uncached calculation can be negative, because `CalcLAST` truncates with `(int)` rather than flooring.
 
-Rust: `compute_last` in `crates/ast-core/src/frames/skyframe.rs` calculates LAST exactly on every call, with no cache, because a process-global mutable table would need a lock in the conversion path and would make results depend on call history.
-It does reproduce the truncation and the 0 to 2π normalisation, which is what C returns for any repeated request, so the AZEL cases in `tests/test_sky_convert.rs` agree with C to the bit, apart from the last-place differences that `SINCOS_MERGE_LICENSED` records there.
-Results can differ from C by up to the interpolation error when C has cached LAST values within 0.4 day of the requested epoch.
+Rust mirrors both caches (2026-10-06).
+Each SkyFrame keeps its LAST, Epoch and solar-to-sidereal ratio in `Cell`s, extrapolates as `GetLAST` does, and discards them when the observer position, DUT1 or DTAI changes by more than C's thresholds (`skyframe.rs` `get_last`).
+The table is `frames/sky_last.rs`, a port of `CalcLAST`, `GetCachedLAST` and `SetCachedLAST` with C's tolerances.
+The one difference is scope: the Rust table is thread-local rather than process-wide, so the conversion path takes no lock, and each thread's results depend on what that thread converted before.
+As in C, every sky conversion computes the LAST of both frames, and a conversion uses the caller's own SkyFrames rather than copies, so their caches persist (`Frame::convert_to` passes `as_dyn_frame()`).
+`tests/test_sky_last.rs`, from `tools/oracle_fixtures/sky_last_probe.c`, replays a sequence of conversions that exercise both caches and matches C bit for bit.
 
 Question for upstream: is the history dependence intended, and would an exact calculation (or a cache keyed on the exact epoch only) be acceptable?
 

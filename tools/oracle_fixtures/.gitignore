@@ -52,3 +52,4 @@ sky_use_defs_probe
 spec_use_defs_probe
 region_object_probe
 section_load_probe
+sky_last_probe

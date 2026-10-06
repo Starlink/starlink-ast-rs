@@ -241,7 +241,7 @@ pub(crate) fn convert_frames(
 /// would otherwise force every concrete class to implement an
 /// upcaster.
 pub(crate) fn default_find_frame(
-    target: DynFrame,
+    target: &dyn Frame,
     template: &dyn Frame,
     domainlist: &str,
 ) -> AstResult<Option<FindFrameResult>> {
@@ -260,7 +260,7 @@ pub(crate) fn default_find_frame(
     // Per the C contract, astMatch is invoked on the template (with
     // target as second arg). Our trait dispatches this on the
     // template via `template.match_template(target, ...)`.
-    let Some(m) = match_with_subclass(template, &*target, false)? else {
+    let Some(m) = match_with_subclass(template, target, false)? else {
         return Ok(None);
     };
 
@@ -285,7 +285,7 @@ pub(crate) fn default_find_frame(
     let map = <dyn Mapping>::simplify(m.map.as_ref())?;
 
     // Build the 2-frame result FrameSet (base = target, current = result).
-    let mut fs = FrameSet::new(target);
+    let mut fs = FrameSet::new(target.snapshot());
     fs.add_frame(FrameRef::Base, map, m.result)?;
     Ok(Some(fs))
 }

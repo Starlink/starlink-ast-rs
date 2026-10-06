@@ -13,6 +13,7 @@ mod fluxframe;
 mod frameset;
 pub(crate) mod overlay;
 pub(crate) mod sky_convert;
+mod sky_last;
 pub(crate) mod skyaxis;
 mod skyframe;
 mod specfluxframe;
@@ -326,11 +327,25 @@ pub struct SkyLineDef {
 /// (frame.h `AST__INTFLAG`).
 pub(crate) const INTFLAG: u32 = 1;
 
+/// A view of a Frame as `&dyn Frame`, which a default method of [`Frame`]
+/// cannot form from its own `&self`. Implemented for every Frame.
+#[doc(hidden)]
+pub trait AsDynFrame {
+    /// `self` as `&dyn Frame`.
+    fn as_dyn_frame(&self) -> &dyn Frame;
+}
+
+impl<T: Frame> AsDynFrame for T {
+    fn as_dyn_frame(&self) -> &dyn Frame {
+        self
+    }
+}
+
 /// A coordinate frame defining the meaning of coordinate values.
 ///
 /// All concrete frame classes implement this trait. Frames are `Send`
 /// but not `Sync`.
-pub trait Frame: AsAny + Send + fmt::Debug {
+pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// Number of axes in this frame.
     fn naxes(&self) -> usize;
 
@@ -426,11 +441,9 @@ pub trait Frame: AsAny + Send + fmt::Debug {
         } else {
             domains.join(",")
         };
-        // Snapshot `self` to a `dyn Frame`: the trait method's `&self`
-        // cannot be coerced to `&dyn Frame` for the unsized default body
-        // (the same indirection `default_find_frame` uses).
-        let from = self.snapshot();
-        find_frame::convert_frames(from.as_ref(), to, &domainlist)
+        // The Frame itself, not a copy, takes part, as in C: a SkyFrame
+        // keeps the LAST it computes for the conversion.
+        find_frame::convert_frames(self.as_dyn_frame(), to, &domainlist)
     }
 
     /// C `astSimplify` applied to a Frame — the Mapping `Simplify` slot every
@@ -902,7 +915,7 @@ pub trait Frame: AsAny + Send + fmt::Debug {
         template: &dyn Frame,
         domainlist: &str,
     ) -> AstResult<Option<find_frame::FindFrameResult>> {
-        find_frame::default_find_frame(self.snapshot(), template, domainlist)
+        find_frame::default_find_frame(self.as_dyn_frame(), template, domainlist)
     }
 
     /// Snapshot of `self` with only the axes listed in `target_axes`.

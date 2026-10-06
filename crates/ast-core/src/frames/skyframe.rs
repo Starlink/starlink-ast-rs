@@ -1,5 +1,7 @@
 //! The celestial coordinate frame (SkyFrame).
 
+use std::cell::Cell;
+
 use crate::constants::BAD_VALUE;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::sky_convert::{SkyRefIs, SkySystem, make_offset_mapping};
@@ -74,6 +76,16 @@ pub struct SkyFrame {
     /// Physical 0 = longitude, physical 1 = latitude.
     /// After swap: perm = [1, 0] means external axis 0 → latitude.
     perm: [usize; 2],
+    /// The LAST (radians) at the TDB MJD `eplast`, and the ratio of solar
+    /// to sidereal time used to extrapolate from it, or `BAD_VALUE` when
+    /// not yet known (skyframe.c `last`, `eplast`, `klast`). A conversion
+    /// fills them through `&self`, and a copy keeps them, as C's does.
+    last: Cell<f64>,
+    eplast: Cell<f64>,
+    klast: Cell<f64>,
+    /// The magnitude of the diurnal aberration vector, or `BAD_VALUE` when
+    /// not yet known (skyframe.c `diurab`).
+    diurab: Cell<f64>,
     // Match-control attributes (used by `astFindFrame` / `astMatch`).
     // None = "use the trait default" (which returns 2 for SkyFrame's
     // naxes-based attributes, false/false/false for the booleans
@@ -132,6 +144,10 @@ impl SkyFrame {
             axes: [SkyAxis::new(), SkyAxis::new()],
             attrs: super::frame_attrs::FrameAttrs::default(),
             perm: [0, 1],
+            last: Cell::new(BAD_VALUE),
+            eplast: Cell::new(BAD_VALUE),
+            klast: Cell::new(BAD_VALUE),
+            diurab: Cell::new(BAD_VALUE),
         }
     }
 
@@ -836,74 +852,179 @@ impl SkyFrame {
     }
 
     // --- Observer attributes ---
+    //
+    // A SkyFrame caches its LAST and diurnal aberration, so each setter
+    // and clearer discards them when the value changes by more than C's
+    // threshold (skyframe.c SetObsLat, ClearObsLat and the rest). The
+    // Epoch does not discard them: GetLAST extrapolates from the cached
+    // LAST instead.
+
+    /// Discard the cached LAST, and the diurnal aberration too if
+    /// `diurab`.
+    fn discard_last(&self, diurab: bool) {
+        self.last.set(BAD_VALUE);
+        self.eplast.set(BAD_VALUE);
+        self.klast.set(BAD_VALUE);
+        if diurab {
+            self.diurab.set(BAD_VALUE);
+        }
+    }
 
     /// Set the observer geodetic latitude in radians.
     pub fn set_obs_lat(&mut self, lat: f64) {
+        let orig = Frame::obs_lat(self);
         self.attrs.obs_lat = Some(lat);
+        if (orig - lat).abs() > 1.0e-8 {
+            self.discard_last(true);
+        }
     }
 
     /// Set the observer geodetic longitude in radians.
     pub fn set_obs_lon(&mut self, lon: f64) {
+        let orig = Frame::obs_lon(self);
         self.attrs.obs_lon = Some(lon);
+        if (orig - lon).abs() > 1.0e-8 {
+            self.discard_last(false);
+        }
     }
 
     /// Set the observer altitude in metres.
     pub fn set_obs_alt(&mut self, alt: f64) {
+        let orig = Frame::obs_alt(self);
         self.attrs.obs_alt = Some(alt);
+        if (orig - alt).abs() > 0.001 {
+            self.discard_last(true);
+        }
     }
 
     /// Set TAI-UTC in seconds.
     pub fn set_dtai(&mut self, dtai: f64) {
+        let orig = Frame::dtai(self);
         self.attrs.dtai = Some(dtai);
+        if !super::sky_last::equal(orig, dtai, 1.0e-6) {
+            self.discard_last(false);
+        }
     }
 
     /// Set UT1-UTC in seconds.
     pub fn set_dut1(&mut self, dut1: f64) {
+        let orig = Frame::dut1(self);
         self.attrs.dut1 = Some(dut1);
+        if (orig - dut1).abs() > 1.0e-6 {
+            self.discard_last(false);
+        }
     }
 
-    /// Local Apparent Sidereal Time, in radians, at this SkyFrame's
-    /// Epoch and observer location.
+    fn clear_obs_lat_value(&mut self) {
+        let orig = Frame::obs_lat(self);
+        self.attrs.obs_lat = None;
+        if (orig - Frame::obs_lat(self)).abs() > 1.0e-8 {
+            self.discard_last(true);
+        }
+    }
+
+    fn clear_obs_lon_value(&mut self) {
+        let orig = Frame::obs_lon(self);
+        self.attrs.obs_lon = None;
+        if (orig - Frame::obs_lon(self)).abs() > 1.0e-8 {
+            self.discard_last(false);
+        }
+    }
+
+    fn clear_obs_alt_value(&mut self) {
+        let orig = Frame::obs_alt(self);
+        self.attrs.obs_alt = None;
+        if (orig - Frame::obs_alt(self)).abs() > 0.001 {
+            self.discard_last(true);
+        }
+    }
+
+    fn clear_dtai_value(&mut self) {
+        let orig = Frame::dtai(self);
+        self.attrs.dtai = None;
+        if !super::sky_last::equal(orig, Frame::dtai(self), 1.0e-6) {
+            self.discard_last(false);
+        }
+    }
+
+    fn clear_dut1_value(&mut self) {
+        let orig = Frame::dut1(self);
+        self.attrs.dut1 = None;
+        if (orig - Frame::dut1(self)).abs() > 1.0e-6 {
+            self.discard_last(false);
+        }
+    }
+
+    /// Local Apparent Sidereal Time, in radians, at this SkyFrame's Epoch
+    /// and observer (skyframe.c `GetLAST`).
     ///
-    /// Mirrors `skyframe.c::CalcLAST`: builds a TDB-MJD TimeFrame and a
-    /// LAST-MJD TimeFrame, both stamped with the SkyFrame's
-    /// `obs_lon`/`obs_lat`/`obs_alt`/`dut1`/`dtai`, then transforms the
-    /// SkyFrame's Epoch through the TDB→LAST conversion and folds the
-    /// fractional day into radians.
-    ///
-    /// Returns 0.0 when the longitude/latitude are unset — the AzEl
-    /// pipeline only consults LAST when the observer is known anyway,
-    /// so this matches the C behaviour where a missing ObsLon defaults
-    /// to 0 and the resulting LAST is meaningless but harmless.
-    pub(crate) fn compute_last(&self) -> AstResult<f64> {
-        compute_last(
-            self.epoch_mjd(),
-            self.attrs.obs_lon.unwrap_or(0.0),
-            self.attrs.obs_lat.unwrap_or(0.0),
-            self.attrs.obs_alt.unwrap_or(0.0),
-            self.attrs.dut1.unwrap_or(0.0),
-            self.attrs.dtai,
+    /// The SkyFrame keeps the LAST it last computed exactly. For an Epoch
+    /// within 0.4 day of that one, the LAST is extrapolated linearly using
+    /// the ratio of solar to sidereal time, itself found from an exact LAST
+    /// 0.4 day later; C puts the error at under 0.1 arcsec. Otherwise the
+    /// LAST is computed afresh through `sky_last::calc_last`, which may
+    /// serve it from the table of LAST values already computed.
+    pub(crate) fn get_last(&self) -> AstResult<f64> {
+        let eplast = self.eplast.get();
+        if eplast != BAD_VALUE {
+            let delta = self.epoch_mjd() - eplast;
+            if delta == 0.0 {
+                return Ok(self.last.get());
+            }
+            if delta.abs() < 0.4 {
+                if self.klast.get() == BAD_VALUE {
+                    let last1 = self.calc_last(eplast + 0.4)?;
+                    let mut dlast = last1 - self.last.get();
+                    if dlast < 0.0 {
+                        dlast += 2.0 * std::f64::consts::PI;
+                    }
+                    self.klast.set(2.0 * std::f64::consts::PI * 0.4 / dlast);
+                }
+                return Ok(self.last.get() + 2.0 * std::f64::consts::PI * delta / self.klast.get());
+            }
+        }
+        self.set_last()?;
+        Ok(self.last.get())
+    }
+
+    /// Compute the LAST at the Epoch and keep it (skyframe.c `SetLast`).
+    fn set_last(&self) -> AstResult<()> {
+        let epoch = self.epoch_mjd();
+        self.last.set(self.calc_last(epoch)?);
+        self.eplast.set(epoch);
+        self.klast.set(BAD_VALUE);
+        Ok(())
+    }
+
+    /// The LAST at TDB MJD `epoch` for this SkyFrame's observer.
+    fn calc_last(&self, epoch: f64) -> AstResult<f64> {
+        super::sky_last::calc_last(
+            epoch,
+            Frame::obs_lon(self),
+            Frame::obs_lat(self),
+            Frame::obs_alt(self),
+            Frame::dut1(self),
+            Frame::dtai(self),
         )
     }
 
     /// Diurnal aberration vector magnitude, in radians, at this
-    /// SkyFrame's observer location.
+    /// SkyFrame's observer location, kept until the latitude or altitude
+    /// changes (skyframe.c `GetDiurab`).
     ///
-    /// Mirrors `skyframe.c::GetDiurab` (line 3735):
     /// `diurab = 2π · uau · SOLSID / C` with `uau` from
-    /// `palGeoc(obs_lat, obs_alt)`. The constants `SOLSID = 1.00273790935`
-    /// (sidereal/solar ratio) and `C = 173.14463331` (speed of light in
-    /// AU/day) are taken verbatim from skyframe.c:381-382.
-    ///
-    /// Returns 0.0 when neither obs_lat nor obs_alt is set — matches the
-    /// C library's behaviour that uau is computed from default zeros.
-    pub(crate) fn compute_diurab(&self) -> f64 {
+    /// `palGeoc(obs_lat, obs_alt)`, with C's constants `SOLSID =
+    /// 1.00273790935` (sidereal/solar ratio) and `C = 173.14463331` (speed
+    /// of light in AU/day).
+    pub(crate) fn get_diurab(&self) -> f64 {
         const SOLSID: f64 = 1.00273790935;
         const C: f64 = 173.14463331;
-        let lat = self.attrs.obs_lat.unwrap_or(0.0);
-        let alt = self.attrs.obs_alt.unwrap_or(0.0);
-        let (uau, _vau) = pal::geoc(lat, alt);
-        2.0 * std::f64::consts::PI * uau * SOLSID / C
+        if self.diurab.get() == BAD_VALUE {
+            let (uau, _vau) = pal::geoc(Frame::obs_lat(self), Frame::obs_alt(self));
+            self.diurab
+                .set(2.0 * std::f64::consts::PI * uau * SOLSID / C);
+        }
+        self.diurab.get()
     }
 
     // --- Private helpers for serialisation defaults ---
@@ -1088,7 +1209,78 @@ impl Frame for SkyFrame {
     frame_attrs_domain!();
     frame_attrs_epoch!();
     frame_attrs_digits!();
-    frame_attrs_observer!();
+    // The observer attributes, whose setters discard the cached LAST and
+    // diurnal aberration (skyframe.c overrides them for that).
+    fn obs_lat(&self) -> f64 {
+        self.attrs.obs_lat.unwrap_or(0.0)
+    }
+    fn set_obs_lat(&mut self, value: f64) -> AstResult<()> {
+        SkyFrame::set_obs_lat(self, value);
+        Ok(())
+    }
+    fn test_obs_lat(&self) -> bool {
+        self.attrs.obs_lat.is_some()
+    }
+    fn clear_obs_lat(&mut self) -> AstResult<()> {
+        self.clear_obs_lat_value();
+        Ok(())
+    }
+    fn obs_lon(&self) -> f64 {
+        self.attrs.obs_lon.unwrap_or(0.0)
+    }
+    fn set_obs_lon(&mut self, value: f64) -> AstResult<()> {
+        SkyFrame::set_obs_lon(self, value);
+        Ok(())
+    }
+    fn test_obs_lon(&self) -> bool {
+        self.attrs.obs_lon.is_some()
+    }
+    fn clear_obs_lon(&mut self) -> AstResult<()> {
+        self.clear_obs_lon_value();
+        Ok(())
+    }
+    fn obs_alt(&self) -> f64 {
+        self.attrs.obs_alt.unwrap_or(0.0)
+    }
+    fn set_obs_alt(&mut self, value: f64) -> AstResult<()> {
+        SkyFrame::set_obs_alt(self, value);
+        Ok(())
+    }
+    fn test_obs_alt(&self) -> bool {
+        self.attrs.obs_alt.is_some()
+    }
+    fn clear_obs_alt(&mut self) -> AstResult<()> {
+        self.clear_obs_alt_value();
+        Ok(())
+    }
+    fn dtai(&self) -> f64 {
+        self.attrs.dtai.unwrap_or(BAD_VALUE)
+    }
+    fn set_dtai(&mut self, value: f64) -> AstResult<()> {
+        SkyFrame::set_dtai(self, value);
+        Ok(())
+    }
+    fn test_dtai(&self) -> bool {
+        self.attrs.dtai.is_some()
+    }
+    fn clear_dtai(&mut self) -> AstResult<()> {
+        self.clear_dtai_value();
+        Ok(())
+    }
+    fn dut1(&self) -> f64 {
+        self.attrs.dut1.unwrap_or(0.0)
+    }
+    fn set_dut1(&mut self, value: f64) -> AstResult<()> {
+        SkyFrame::set_dut1(self, value);
+        Ok(())
+    }
+    fn test_dut1(&self) -> bool {
+        self.attrs.dut1.is_some()
+    }
+    fn clear_dut1(&mut self) -> AstResult<()> {
+        self.clear_dut1_value();
+        Ok(())
+    }
     frame_attrs_ident!();
     frame_attrs_match!();
 
@@ -2227,78 +2419,6 @@ fn fmt_decimal_yr(year: f64) -> String {
     }
 }
 
-/// transforms the (split) epoch through TDB→LAST and converts the
-/// fractional day to radians.
-///
-/// Splitting the epoch into integer + fractional parts via TimeOrigin
-/// preserves precision; mirrors the C `(int) epoch` trick at
-/// skyframe.c:1303-1308.
-fn compute_last(
-    epoch_mjd: f64,
-    obs_lon: f64,
-    obs_lat: f64,
-    obs_alt: f64,
-    dut1: f64,
-    dtai: Option<f64>,
-) -> AstResult<f64> {
-    use crate::frames::{TimeFrame, TimeScale, TimeSystem};
-
-    let origin = epoch_mjd.floor();
-    let epoch_off = epoch_mjd - origin;
-
-    let mut tdb = TimeFrame::new(TimeSystem::Mjd);
-    tdb.set_timescale(TimeScale::Tdb)?;
-    tdb.set_time_origin(origin);
-    tdb.set_obs_lon(obs_lon);
-    tdb.set_obs_lat(obs_lat);
-    tdb.set_obs_alt(obs_alt);
-    tdb.set_dut1(dut1);
-    if let Some(d) = dtai {
-        tdb.set_dtai(d);
-    }
-
-    let mut last_tf = TimeFrame::new(TimeSystem::Mjd);
-    last_tf.set_timescale(TimeScale::Last)?;
-    last_tf.set_time_origin(origin);
-    last_tf.set_obs_lon(obs_lon);
-    last_tf.set_obs_lat(obs_lat);
-    last_tf.set_obs_alt(obs_alt);
-    last_tf.set_dut1(dut1);
-    if let Some(d) = dtai {
-        last_tf.set_dtai(d);
-    }
-
-    let fs = match tdb.convert_to(&last_tf, &[])? {
-        Some(fs) => fs,
-        None => {
-            return Err(AstError::new(
-                ErrorCode::Inter,
-                "compute_last: TimeFrame TDB->LAST conversion failed",
-            ));
-        }
-    };
-    let mapping = fs.mapping(FrameRef::Base, FrameRef::Current)?;
-
-    let pts = crate::coords::PointSet::from_columns(&[&[epoch_off][..]])?;
-    let out = mapping.transform(&pts, true)?;
-    let last_off_mjd = out.point(0)[0];
-
-    // C truncates towards zero (`(int) epoch`) rather than flooring, so
-    // the raw value may be negative (skyframe.c:1304).
-    let mut last = (last_off_mjd - last_off_mjd.trunc()) * 2.0 * std::f64::consts::PI;
-
-    // Every LAST that C serves from its cache is first brought into
-    // 0-2pi (skyframe.c:3110, GetCachedLAST), and a repeated query is
-    // always served from the cache, so that is the form returned here.
-    while last > 2.0 * std::f64::consts::PI {
-        last -= 2.0 * std::f64::consts::PI;
-    }
-    while last < 0.0 {
-        last += 2.0 * std::f64::consts::PI;
-    }
-    Ok(last)
-}
-
 /// Determine whether a great-circle segment includes a point known to lie on
 /// its great circle. Returns `(included, dist)` where `dist` is the distance in
 /// radians from the line's start to the point, measured forwards along the
@@ -2505,9 +2625,14 @@ fn make_sky_frame_mapping(
     if target.system == SkySystem::Unknown && result.system == SkySystem::Unknown {
         return Ok(Some(Box::new(UnitMap::new(2))));
     }
-    let azel = uses_azel(target.system, result.system, align_sys);
-    let target_last = if azel { target.compute_last()? } else { 0.0 };
-    let result_last = if azel { result.compute_last()? } else { 0.0 };
+    // C obtains the LAST and diurnal aberration of both frames for every
+    // conversion, whether or not a step uses them, the target's LAST first
+    // (skyframe.c:6177, :6416); computing a LAST adds it to the table of
+    // LAST values that later conversions draw on.
+    let target_last = target.get_last()?;
+    let target_diurab = target.get_diurab();
+    let result_diurab = result.get_diurab();
+    let result_last = result.get_last()?;
     let verify = |which: u8, attrs: &str| {
         if exempt {
             Ok(())
@@ -2525,10 +2650,10 @@ fn make_sky_frame_mapping(
         align_sys,
         target.attrs.obs_lat.unwrap_or(0.0),
         target_last,
-        target.compute_diurab(),
+        target_diurab,
         result.attrs.obs_lat.unwrap_or(0.0),
         result_last,
-        result.compute_diurab(),
+        result_diurab,
         &verify,
     )?
     else {
@@ -2566,13 +2691,6 @@ fn make_sky_frame_mapping(
         map = Box::new(CmpMap::new(map, off_map, Composition::Series)?);
     }
     Ok(Some(map))
-}
-
-/// Whether a conversion between `from` and `to`, aligned in `align`, can
-/// need LAST. Only the AZEL steps of `MakeSkyMapping` read it, so the costly
-/// exact calculation is skipped for every other conversion.
-fn uses_azel(from: SkySystem, to: SkySystem, align: SkySystem) -> bool {
-    [from, to, align].contains(&SkySystem::Azel)
 }
 
 /// Returns true if `system` is one of the equatorial SkyFrame systems
