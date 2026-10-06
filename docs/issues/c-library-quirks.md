@@ -30,7 +30,6 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [SkyFrame `Offset`'s coincident-points guard is defeated by multiply-add contraction too](#skyframe-offsets-coincident-points-guard-is-defeated-by-multiply-add-contraction-too)
 - [A SkyFrame's own SkyAxes are not latitude axes, so `astAxOffset` wraps its latitude into 0 to 2pi](#a-skyframes-own-skyaxes-are-not-latitude-axes-so-astaxoffset-wraps-its-latitude-into-0-to-2pi)
 - [A TimeFrame's default Epoch discards the UT1 value it computes from the TimeOrigin](#a-timeframes-default-epoch-discards-the-ut1-value-it-computes-from-the-timeorigin)
-- [With AlignSpecOffset set in a wavelength System, a change of rest frame maps every value to bad](#with-alignspecoffset-set-in-a-wavelength-system-a-change-of-rest-frame-maps-every-value-to-bad)
 - [SkyFrame LAST depends on which LAST values the process computed earlier](#skyframe-last-depends-on-which-last-values-the-process-computed-earlier)
 
 ### [Addressed here, and not going upstream](#addressed-here-and-not-going-upstream)
@@ -51,6 +50,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [RESOLVED (upstream 8c734154): `ModifyPrefix` recurses without end on `k/unit`](#resolved-upstream-8c734154-modifyprefix-recurses-without-end-on-kunit)
 - [RESOLVED (upstream b4457da9): FluxFrame writes per-wavelength surface brightness as `SFCBRW` but reads it only as `SRCBR`](#resolved-upstream-b4457da9-fluxframe-writes-per-wavelength-surface-brightness-as-sfcbrw-but-reads-it-only-as-srcbr)
 - [RESOLVED (upstream 5a2cac2a): CmpFrame `ResolvePoints` passes internal-order points to methods that expect external order](#resolved-upstream-5a2cac2a-cmpframe-resolvepoints-passes-internal-order-points-to-methods-that-expect-external-order)
+- [RESOLVED (upstream 65bd5b6e): With AlignSpecOffset set in a wavelength System, a change of rest frame maps every value to bad](#resolved-upstream-65bd5b6e-with-alignspecoffset-set-in-a-wavelength-system-a-change-of-rest-frame-maps-every-value-to-bad)
 - [RESOLVED (upstream 5ef2a014): The public `astPointSet` passes no status to `astPointSetId_`, which expects one](#resolved-upstream-5ef2a014-the-public-astpointset-passes-no-status-to-astpointsetid_-which-expects-one)
 - [RESOLVED (upstream e40e71b4): CmpMap `IsSimp` tag placement depends on shared-pointer aliasing during simplification](#resolved-upstream-e40e71b4-cmpmap-issimp-tag-placement-depends-on-shared-pointer-aliasing-during-simplification)
 - [RESOLVED (upstream f54ff1b7): `WcsNative` dumps a vestigial `Invert` on a PermMap shared between two stages](#resolved-upstream-f54ff1b7-wcsnative-dumps-a-vestigial-invert-on-a-permmap-shared-between-two-stages)
@@ -474,20 +474,6 @@ The result is the origin taken as a UTC MJD, whatever the System: at the submodu
 **Rust behaviour (mirror):** `TimeFrame::epoch_from_time_origin` in `crates/ast-core/src/frames/timeframe.rs` builds the UT1 Mapping, so that a failure to make it still fails, and converts the raw origin.
 `epoch_from_time_origin_matches_the_c_library` in `crates/ast-core/tests/test_time_epoch.rs` pins 102 cases.
 A fix upstream would convert `result` rather than re-reading the origin; the mirror would then become a bug.
-
-To be raised upstream.
-
-
-### With AlignSpecOffset set in a wavelength System, a change of rest frame maps every value to bad
-
-With AlignSpecOffset set on both Frames, `MakeSpecMapping` takes the result's zero point from the target's origin, 0, transformed through the conversion (`specframe.c:2953`), and shifts the result by it.
-In a wavelength System 0 has no frequency, so that zero point is bad.
-At the submodule pin a SpecFrame or DSBSpecFrame in WAVE with AlignSpecOffset set and no SpecOrigin converts LSRK to heliocentric with a Mapping that gives bad for every value, and with a SpecOrigin set `astSetStdOfRest` fails with AST__ATSER, because `OriginStdOfRest` (`specframe.c:3191`) cannot re-express the origin through that conversion.
-The same Frames in FREQ convert normally.
-
-**Rust behaviour (not yet a mirror):** the port computes the same bad zero point and the same shift inside `make_spec_mapping_full` (`crates/ast-core/src/frames/specframe.rs`), but the conversion `convert_to` assembles from them keeps finite values, so it neither returns bad nor raises AST__ATSER.
-The four cases are named in `SPEC_ORIGIN_SOR_EXCLUDED` in `crates/ast-core/tests/test_spec_origin_sor.rs` (audit DSB-5).
-A fix upstream would skip the shift when the transformed zero point is bad, or align offsets only when a SpecOrigin is set.
 
 To be raised upstream.
 
@@ -992,7 +978,7 @@ Reading `NormUnit` for `"2/m"`, `"3/s"` or `"2/km"` crashed with a stack overflo
 **Rust behaviour:** the port never mirrored the crash; `modify_prefix` in `crates/ast-core/src/units/to_expr.rs` judges the reciprocal's numerator only after it is recomputed, which is now what upstream does.
 The four cases are rows of `C_ORACLE` in `crates/ast-core/tests/test_frame.rs`, and restoring the old flag logic makes that test overflow the stack.
 
-The three entries immediately below were found while porting Frame attributes and geometry, and are fixed on the same branch in commits past the submodule pin.
+The four entries immediately below were found while porting Frame attributes and geometry, and are fixed on the same branch in commits past the submodule pin.
 They moved here from the open questions when those commits landed.
 
 ### RESOLVED (upstream b4457da9): FluxFrame writes per-wavelength surface brightness as `SFCBRW` but reads it only as `SRCBR`
@@ -1023,6 +1009,20 @@ No program in `ast_tester` called the public constructor, which is how it went u
 Upstream now drops the `status` parameter and obtains it with `astGetStatusPtr`, as the other `Id_` constructors do; the new `testpointset.c` calls the public constructor.
 
 **Rust behaviour:** not applicable to the Rust API; the C ABI shim must not copy the mismatch. `tools/oracle_fixtures/sky_geometry_probe.c` makes its PointSets with `astPointSet_`, which works at the submodule pin too.
+
+### RESOLVED (upstream 65bd5b6e): With AlignSpecOffset set in a wavelength System, a change of rest frame maps every value to bad
+
+With AlignSpecOffset set on both Frames, `MakeSpecMapping` takes the result's zero point from the target's origin, 0, transformed through the conversion (`specframe.c:2953`), and shifts the result by it.
+In a wavelength System 0 has no frequency, so the transformed value is `AST__BAD`, and it was negated into a ShiftMap of `+DBL_MAX` without a check.
+`astConvert` builds the same shift on the template side; simplifying the two together inverts one to `-DBL_MAX`, which `WinShift` (`winmap.c`) reads as `AST__BAD`, so the merged WinMap was undefined and every converted value bad.
+`OriginStdOfRest` (`specframe.c:3191`) re-expresses a SpecOrigin through the same conversion, so with a SpecOrigin set `astSetStdOfRest` failed with AST__ATSER.
+A SpecFrame and a DSBSpecFrame were affected alike; the same Frames in FREQ converted normally.
+Upstream now uses the result Frame's own origin when the transformed zero point is bad, as when not aligning offsets; `testspecframe.c` Errors 13-15 cover it.
+
+**Rust behaviour:** `make_spec_mapping_full` in `crates/ast-core/src/frames/specframe.rs` follows the fix.
+Before it, the port matched neither side: it built the same shift, but its WinMap merge did not treat a bad coefficient as undefined, so its two shifts cancelled.
+`compose_linear_terms` in `crates/ast-core/src/mappings/winmap.rs` now does, as `WinWin`, `WinZoom` and `WinShift` do.
+`tests/test_spec_origin_sor.rs` and `tests/test_dsb_topo.rs` pin the fixed behaviour from corpora generated against 65bd5b6e (audit DSB-5).
 
 ### RESOLVED (upstream e40e71b4): CmpMap `IsSimp` tag placement depends on shared-pointer aliasing during simplification
 

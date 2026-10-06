@@ -522,3 +522,35 @@ fn nonuniform_cdelt_chain_keeps_deg2rad_in_the_winmap() {
         assert!(text.contains(token), "expected {token} in:\n{text}");
     }
 }
+
+/// Merging a WinMap with an inverted ShiftMap of `+DBL_MAX`, whose shift is
+/// then the bad value, gives a WinMap with bad terms, as C's `WinShift`
+/// does (checked against the C library: the simplified Mapping is
+/// `WinMap(<bad>, <bad>)` and maps 0.0013 to AST__BAD).
+#[test]
+fn winmap_merge_with_a_bad_term_is_undefined() {
+    use ast_core::mappings::{CmpMap, Composition, DynMapping, ShiftMap, ZoomMap};
+    let w: DynMapping = Box::new(
+        CmpMap::new(
+            Box::new(ZoomMap::new(1, 1e10).unwrap()),
+            Box::new(ShiftMap::new(vec![f64::MAX])),
+            Composition::Series,
+        )
+        .unwrap(),
+    );
+    let w = w.simplify().unwrap();
+    let mut s: DynMapping = Box::new(ShiftMap::new(vec![f64::MAX]));
+    s.invert();
+    let m: DynMapping = Box::new(CmpMap::new(w, s, Composition::Series).unwrap());
+    let simplified = m.simplify().unwrap();
+    assert!(simplified.as_any().is::<WinMap>());
+    let dump = to_native_string(&AnyObject::from_mapping(simplified.as_ref()).unwrap()).unwrap();
+    assert!(
+        dump.contains("Sft1 = <bad>") && dump.contains("Scl1 = <bad>"),
+        "{dump}"
+    );
+    let out = simplified
+        .transform(&PointSet::from_rows([[0.0013]]), true)
+        .unwrap();
+    assert_eq!(out.point(0)[0], BAD_VALUE);
+}

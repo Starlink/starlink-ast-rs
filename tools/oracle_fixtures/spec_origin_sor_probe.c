@@ -4,8 +4,9 @@
  * AlignSpecOffset included, and raises AST__ATSER when the result is bad
  * (specframe.c OriginStdOfRest). With AlignSpecOffset set on both Frames,
  * MakeSpecMapping takes the result's zero point from the target origin
- * transformed through the conversion (specframe.c:2953), which is bad in a
- * wavelength system when no SpecOrigin is set.
+ * transformed through the conversion (specframe.c:2953). That has no value
+ * in a wavelength system when no SpecOrigin is set, and the result's own
+ * origin is used instead since upstream 65bd5b6e, which the corpus needs.
  *
  * Each case builds an LSRK SpecFrame or DSBSpecFrame in the given System
  * and Unit, with the listed settings, then (a) sets StdOfRest=HELIO on a

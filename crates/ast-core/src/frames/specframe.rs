@@ -1824,7 +1824,14 @@ impl SpecFrame {
         let result_origin = if target.align_spec_offset() && result.align_spec_offset() {
             let pts = PointSet::from_columns(&[&[0.0]])?;
             let out = mapping.transform(&pts, true)?;
-            out.point(0)[0]
+            // The target's zero point may have no value in the result
+            // system (zero wavelength has no frequency), and then there is
+            // no offset system to align in, so the result's own origin is
+            // used (specframe.c, fixed upstream in 65bd5b6e).
+            match out.point(0)[0] {
+                v if is_bad(v) => result.spec_origin_cur()?,
+                v => v,
+            }
         } else {
             result.spec_origin_cur()?
         };

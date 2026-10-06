@@ -53,20 +53,6 @@ fn to_lsb(usb: &DSBSpecFrame) -> Option<[f64; 2]> {
     Some([out.point(0)[0], out.point(1)[0]])
 }
 
-/// Cases the port does not yet reproduce, each with what would close it.
-/// `excluded_cases_still_differ` fails when one starts matching.
-const DSB_TOPO_EXCLUDED: &[(&str, &str)] = &[(
-    "origin_align_offset",
-    "C cannot convert between the sidebands. Its SpecFrame SubFrame sets \
-     the StdOfRest of the alignment Frame, whose SpecOrigin \
-     OriginStdOfRest re-expresses through a conversion between rest frames \
-     (specframe.c:3191). With AlignSpecOffset set in a wavelength System \
-     that conversion maps every value to bad in C, a SpecFrame matter \
-     rather than a DSBSpecFrame one, so C reports AST__ATSER; the port's \
-     conversion keeps finite values (audit DSB-5, SPEC_ORIGIN_SOR_EXCLUDED \
-     in test_spec_origin_sor.rs)",
-)];
-
 fn observed(name: &str) -> (Option<f64>, Option<f64>, Option<[f64; 2]>) {
     let f = usb(name);
     (f.dsb_centre_cur().ok(), f.imag_freq_ghz().ok(), to_lsb(&f))
@@ -76,9 +62,6 @@ fn observed(name: &str) -> (Option<f64>, Option<f64>, Option<[f64; 2]>) {
 fn topocentric_conversions_match_the_c_library() {
     let mut failures = Vec::new();
     for &(name, centre, imag, lsb) in cases::CASES {
-        if DSB_TOPO_EXCLUDED.iter().any(|(n, _)| *n == name) {
-            continue;
-        }
         let got = observed(name);
         if got != (centre, imag, lsb) {
             failures.push(format!(
@@ -88,20 +71,4 @@ fn topocentric_conversions_match_the_c_library() {
         }
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
-}
-
-/// Every `DSB_TOPO_EXCLUDED` entry names a case that still differs from C.
-#[test]
-fn excluded_cases_still_differ() {
-    for (name, why) in DSB_TOPO_EXCLUDED {
-        let &(_, centre, imag, lsb) = cases::CASES
-            .iter()
-            .find(|c| c.0 == *name)
-            .unwrap_or_else(|| panic!("{name} is excluded but not a case"));
-        assert_ne!(
-            observed(name),
-            (centre, imag, lsb),
-            "{name} now matches C; remove it from DSB_TOPO_EXCLUDED ({why})"
-        );
-    }
 }

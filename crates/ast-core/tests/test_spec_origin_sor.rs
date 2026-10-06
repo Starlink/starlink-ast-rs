@@ -7,8 +7,9 @@
 //! to a copy of it, AlignSpecOffset included, and raises AST__ATSER when the
 //! result is bad (specframe.c `OriginStdOfRest`). With AlignSpecOffset set
 //! on both Frames, the result's zero point is the target origin transformed
-//! through the conversion (specframe.c:2953), which is bad in a wavelength
-//! system when no SpecOrigin is set.
+//! through the conversion (specframe.c:2953). In a wavelength system that
+//! has no value when no SpecOrigin is set, and the result's own origin is
+//! used instead, as upstream 65bd5b6e has it; the corpus needs that commit.
 
 // Generated; formatted by its generator rather than rustfmt.
 #[rustfmt::skip]
@@ -112,70 +113,10 @@ fn convert(f: &Spec, origin: Option<f64>, value: f64) -> AstResult<Option<f64>> 
     Ok(Some(out.point(0)[0]))
 }
 
-/// Cases the port does not reproduce, as `(class, System settings,
-/// AlignSpecOffset, SpecOrigin set)` with the reason.
-/// `excluded_cases_still_differ` fails when one starts matching.
-const SPEC_ORIGIN_SOR_EXCLUDED: &[(&str, &str, bool, bool, &str)] = &[
-    ("SpecFrame", WAVE, true, false, WAVE_OFFSET),
-    ("SpecFrame", WAVE, true, true, WAVE_OFFSET),
-    ("DSBSpecFrame", WAVE, true, false, WAVE_OFFSET),
-    ("DSBSpecFrame", WAVE, true, true, WAVE_OFFSET),
-];
-
-const WAVE: &str = "System=WAVE,Unit=Angstrom";
-
-/// Why the wavelength cases with AlignSpecOffset are excluded.
-const WAVE_OFFSET: &str = "with AlignSpecOffset set in a wavelength System, C's \
-     conversion between rest frames maps every value to bad, and so cannot \
-     re-express a SpecOrigin (AST__ATSER). The zero point it shifts by is 0 \
-     Angstrom transformed, which is bad, and the port computes the same \
-     zero point and shift inside MakeSpecMapping, but the conversion \
-     astConvert assembles from it keeps C's bad values where the port's \
-     cancels. Where in that assembly C and the port part is not yet found \
-     (audit DSB-5, c-library-quirks.md)";
-
-fn excluded(class: &str, system: &str, offset: bool, origin: Option<f64>) -> Option<&'static str> {
-    SPEC_ORIGIN_SOR_EXCLUDED
-        .iter()
-        .find(|e| e.0 == class && e.1 == system && e.2 == offset && e.3 == origin.is_some())
-        .map(|e| e.4)
-}
-
-/// Every `SPEC_ORIGIN_SOR_EXCLUDED` entry names a case that still differs.
-#[test]
-fn excluded_cases_still_differ() {
-    let mut matched = 0;
-    for &(class, system, offset, origin, value, want_set, want_conv) in cases::CASES {
-        let Some(why) = excluded(class, system, offset, origin) else {
-            continue;
-        };
-        matched += 1;
-        let f = build(class, system, offset, origin, value);
-        let got = (outcome(set_helio(&f)), outcome(convert(&f, origin, value)));
-        let want = (
-            want_set.map_err(str::to_string),
-            want_conv.map_err(str::to_string),
-        );
-        assert_ne!(
-            got, want,
-            "{class} [{system}] offset={offset} origin={origin:?} now matches C; remove it \
-             from SPEC_ORIGIN_SOR_EXCLUDED ({why})"
-        );
-    }
-    assert_eq!(
-        matched,
-        SPEC_ORIGIN_SOR_EXCLUDED.len(),
-        "an excluded case is not in the corpus"
-    );
-}
-
 #[test]
 fn origin_through_rest_frame_change_matches_the_c_library() {
     let mut failures = Vec::new();
     for &(class, system, offset, origin, value, want_set, want_conv) in cases::CASES {
-        if excluded(class, system, offset, origin).is_some() {
-            continue;
-        }
         let f = build(class, system, offset, origin, value);
         let got = (outcome(set_helio(&f)), outcome(convert(&f, origin, value)));
         let want = (

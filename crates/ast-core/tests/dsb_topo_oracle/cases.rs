@@ -32,7 +32,7 @@ pub const CASES: &[Case] = &[
         "origin_align_offset",
         Some(229.99999999999997),
         Some(-99532.008526151112),
-        None,
+        Some([467.4995754917212, 466.99957549172109]),
     ),
     (
         "origin_align_bary",

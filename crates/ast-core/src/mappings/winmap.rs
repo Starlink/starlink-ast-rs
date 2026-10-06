@@ -556,7 +556,10 @@ pub(crate) fn compose_linear_win(
 }
 
 /// Per-axis arithmetic shared by [`compose_linear`] and
-/// [`compose_linear_win`]: `out = s2 + c2 * (s1 + c1 * x)`.
+/// [`compose_linear_win`]: `out = s2 + c2 * (s1 + c1 * x)`. A term that is
+/// bad on either side leaves the axis undefined, so both merged terms are
+/// bad (winmap.c `WinWin`, `WinZoom`, `WinShift`); an inverted ShiftMap of
+/// `+DBL_MAX` is such a term, its shift being the bad value.
 fn compose_linear_terms(
     s1: &[f64],
     c1: &[f64],
@@ -568,6 +571,11 @@ fn compose_linear_terms(
     let mut new_shifts = vec![0.0; n];
     let mut new_scales = vec![0.0; n];
     for i in 0..n {
+        if is_bad(s1[i]) || is_bad(c1[i]) || is_bad(s2[i]) || is_bad(c2[i]) {
+            new_shifts[i] = BAD_VALUE;
+            new_scales[i] = BAD_VALUE;
+            continue;
+        }
         new_scales[i] = c2[i] * c1[i];
         new_shifts[i] = c2[i] * s1[i] + s2[i];
 
