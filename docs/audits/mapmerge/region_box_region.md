@@ -125,7 +125,7 @@ merge helpers shared with `Interval`, `NullRegion` and `PointList` live in
 | 90 | Get the input and output permutation arrays and the constants from the PermMap | box.c:3737-3742 (fn Simplify) | box_region.rs:442-444 (fn simplify_over_permmap) | architecture | ported |
 | 91 | Allocate memory to hold the current-Frame axis bounds, unset | box.c:3743-3747 (fn Simplify) | box_region.rs:446-447 (fn simplify_over_permmap) | architecture | ported |
 | 92 | Check the pointers can be used safely | box.c:3748-3750 (fn Simplify) | -- | ceremony | n/a: `Vec` allocation either succeeds or aborts, so there is no pointer to test |
-| 93 | Set the flags saying the Box simplifies and gives neither a NullRegion nor an Interval | box.c:3751-3756 (fn Simplify) | box_region.rs:448-449 (fn simplify_over_permmap),1713 (fn simplified) | architecture | ported |
+| 93 | Set the flags saying the Box simplifies and gives neither a NullRegion nor an Interval | box.c:3751-3756 (fn Simplify) | box_region.rs:448-449 (fn simplify_over_permmap),1738 (fn simplified) | architecture | ported |
 | 94 | Check each output, which is an axis of the current Frame | box.c:3757-3760 (fn Simplify) | box_region.rs:456 (fn simplify_over_permmap) | architecture | ported |
 | 95 | Find the input feeding that output under the forward transformation | box.c:3761-3764 (fn Simplify) | box_region.rs:457 (fn simplify_over_permmap) | architecture | ported |
 | 96 | An output fed a constant gets both limits equal to that constant | box.c:3765-3770 (fn Simplify) | box_region.rs:458-463 (fn simplify_over_permmap) | architecture | ported |
@@ -170,7 +170,7 @@ merge helpers shared with `Interval`, `NullRegion` and `PointList` live in
 | 135 | Free the rejected Polygon and its transformed corners | box.c:4008-4011 (fn Simplify) | -- | ceremony | n/a: owned values are dropped |
 | 136 | Free the SkyFrame centre-probe PointSets | box.c:4012-4017 (fn Simplify) | -- | ceremony | n/a: owned values are dropped |
 | 137 | See whether every point of the Box mesh falls on the Polygon's boundary, to within the uncertainty | box.c:4018-4021 (fn Simplify) | box_region.rs:415 (fn convert_to_polygon) | architecture | ported |
-| 138 | If so, use the new Polygon in place of the original Box | box.c:4022-4027 (fn Simplify) | box_region.rs:416-419 (fn convert_to_polygon),1785-1788 (fn simplified) | architecture | ported |
+| 138 | If so, use the new Polygon in place of the original Box | box.c:4022-4027 (fn Simplify) | box_region.rs:416-419 (fn convert_to_polygon),1810-1813 (fn simplified) | architecture | ported |
 | 139 | Free the Polygon and the corner PointSet | box.c:4028-4034 (fn Simplify) | -- | ceremony | n/a: owned values are dropped |
 | 140 | Failing everything so far, split the Box across two axis subsets and join the two simplified halves into a Prism | box.c:4035-4043 (fn Simplify) | box_region.rs:1816-1817 (fn simplified),222 (fn convert_to_prism) | architecture | ported |
 | 141 | Adopt the Prism if it is not a clone of the Box, and annul it otherwise | box.c:4044-4052 (fn Simplify) | box_region.rs:1817-1820 (fn simplified),311 (fn convert_to_prism) | architecture | ported |
@@ -277,7 +277,7 @@ the fitted Box's own mesh back into the base Frame
 Box's centre and corner directly and accept the result only if
 `verify_remap_exact` confirms the round trip
 (`box_region.rs:1741-1769 (fn simplified)`). That check is C's inverse-direction test
-(`regions/data.rs:478-493 (fn verify_remap_exact)`), and C's forward `astRegPins` test
+(`regions/data.rs:490-505 (fn verify_remap_exact)`), and C's forward `astRegPins` test
 is not applied on the fast path. When it fails, the port falls back to C's
 sequence in full: `best_box` (`box_region.rs:1785 (fn simplified)`), the forward
 `reg_pins` (`box_region.rs:1786 (fn simplified)`) and the inverse mesh check

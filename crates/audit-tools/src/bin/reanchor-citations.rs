@@ -22,7 +22,12 @@
 //! new line is the one the citation names.
 //!
 //! Usage: reanchor-citations <checklist.md>...
-//!   --write  rewrite in place; without it, report what would change
+//!   --write       rewrite in place; without it, report what would change
+//!   --rust-only   leave C citations alone, for use where the pins the rows
+//!                 recorded are not in the local submodule
+//!   --warn-stuck  report the rows that need a hand re-anchor without
+//!                 failing; the citation gates in `test_audit_citations.rs`
+//!                 still fail on any that no longer designate their item
 
 use audit_tools::Resolution;
 use std::collections::HashMap;
@@ -229,6 +234,8 @@ fn main() {
     let root = repo_root();
     let args: Vec<String> = std::env::args().skip(1).collect();
     let write = args.iter().any(|a| a == "--write");
+    let rust_only = args.iter().any(|a| a == "--rust-only");
+    let warn_stuck = args.iter().any(|a| a == "--warn-stuck");
     let files: Vec<&String> = args.iter().filter(|a| !a.starts_with("--")).collect();
 
     let mut sources = Sources::new();
@@ -249,6 +256,9 @@ fn main() {
             let mut rebuilt = line.to_string();
             // Right to left, so an earlier citation's byte offsets stay valid.
             for (cit, range) in audit_tools::citations(line).into_iter().rev() {
+                if rust_only && !cit.file.ends_with(".rs") {
+                    continue;
+                }
                 let Resolution::Found(src_path) = audit_tools::resolve_source(&root, &cit.file)
                 else {
                     continue;
@@ -385,6 +395,8 @@ fn main() {
         for s in &stuck {
             eprintln!("  {s}");
         }
-        std::process::exit(1);
+        if !warn_stuck {
+            std::process::exit(1);
+        }
     }
 }
