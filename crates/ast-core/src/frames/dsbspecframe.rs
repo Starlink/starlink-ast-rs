@@ -600,6 +600,33 @@ impl DSBSpecFrame {
         Ok(result.point(0)[0])
     }
 
+    /// Check that the IF and DSBCentre named in `attrs` are set, where
+    /// UseDefs is false, reporting AST__NOVAL for `purp` otherwise. Port of
+    /// `VerifyAttrs` (dsbspecframe.c:2286), which `GetLO` calls before the
+    /// sideband Mappings use the LO (dsbspecframe.c:821).
+    fn verify_attrs(&self, purp: &str, attrs: &str) -> AstResult<()> {
+        if Frame::use_defs(self) {
+            return Ok(());
+        }
+        for attr in attrs.split_whitespace() {
+            let (set, desc) = match attr {
+                "DSBCentre" => (self.test_dsb_centre(), "central position of interest"),
+                "IF" => (self.test_if(), "intermediate frequency"),
+                other => unreachable!("VerifyAttrs has no attribute {other}"),
+            };
+            if !set {
+                return Err(AstError::new(
+                    ErrorCode::Noval,
+                    format!(
+                        "astMatch(DSBSpecFrame): Cannot {purp}. No value has been set for the \
+                         AST \"{attr}\" attribute ({desc})."
+                    ),
+                ));
+            }
+        }
+        Ok(())
+    }
+
     /// Create a mapping from the current spectral system/SOR to topocentric
     /// frequency in Hz. Mirrors C `TopoMap` (dsbspecframe.c:2051): the
     /// SpecFrame attributes of this DSBSpecFrame are overlaid onto a new
@@ -633,6 +660,7 @@ impl DSBSpecFrame {
         if self.sideband() == SideBand::USB {
             return Ok(Box::new(UnitMap::new(1)));
         }
+        self.verify_attrs("create a Mapping to another sideband", "IF DSBCentre")?;
         let f_lo = self.lo_freq()?;
         let topo_map = self.to_topo_mapping()?;
         let flip: DynMapping = match self.sideband() {
@@ -657,6 +685,7 @@ impl DSBSpecFrame {
         if self.sideband() == SideBand::LSB {
             return Ok(Box::new(UnitMap::new(1)));
         }
+        self.verify_attrs("create a Mapping to another sideband", "IF DSBCentre")?;
         let f_lo = self.lo_freq()?;
         let topo_map = self.to_topo_mapping()?;
         let flip: DynMapping = match self.sideband() {
@@ -681,6 +710,7 @@ impl DSBSpecFrame {
         if self.sideband() == SideBand::LO {
             return Ok(Box::new(UnitMap::new(1)));
         }
+        self.verify_attrs("create a Mapping to another sideband", "IF DSBCentre")?;
         let f_lo = self.lo_freq()?;
         let topo_map = self.to_topo_mapping()?;
         let flip: DynMapping = match self.sideband() {

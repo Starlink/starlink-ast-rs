@@ -1274,6 +1274,41 @@ fn fmt_g(v: f64) -> String {
         .expect("%g of a double is defined and short")
 }
 
+impl TimeFrame {
+    /// Check that each attribute named in `attrs` has a value set, where
+    /// UseDefs is false and so its default may not be used, reporting
+    /// AST__NOVAL for `purp` otherwise. Port of `VerifyAttrs`
+    /// (timeframe.c:6345).
+    fn verify_attrs(&self, purp: &str, attrs: &str) -> AstResult<()> {
+        if self.use_defs() {
+            return Ok(());
+        }
+        for attr in attrs.split_whitespace() {
+            let (set, desc) = match attr {
+                "ObsLat" => (self.attrs.obs_lat.is_some(), "observer's latitude"),
+                "ObsLon" => (self.attrs.obs_lon.is_some(), "observer's longitude"),
+                "ObsAlt" => (self.attrs.obs_alt.is_some(), "observer's altitude"),
+                "Dtai" => (self.attrs.dtai.is_some(), "TAI-UTC correction"),
+                "Dut1" => (self.attrs.dut1.is_some(), "UT1-UTC correction"),
+                "TimeOrigin" => (self.time_origin.is_some(), "time offset"),
+                "LTOffset" => (self.lt_offset.is_some(), "local time offset"),
+                "TimeScale" => (self.timescale_set, "time scale"),
+                other => unreachable!("VerifyAttrs has no attribute {other}"),
+            };
+            if !set {
+                return Err(AstError::new(
+                    ErrorCode::Noval,
+                    format!(
+                        "astMatch(TimeFrame): Cannot {purp}. No value has been set for the AST \
+                         \"{attr}\" attribute ({desc})."
+                    ),
+                ));
+            }
+        }
+        Ok(())
+    }
+}
+
 /// Transform a single scalar through `map` in the given direction.
 fn transform_scalar(map: &dyn Mapping, value: f64, forward: bool) -> AstResult<f64> {
     let pts = PointSet::from_rows([[value]]);
@@ -1821,6 +1856,11 @@ fn timeframe_sub_frame(
         // template when it is a TimeFrame, and otherwise the target
         // (timeframe.c:5266-5281).
         let mut align_frm = target;
+        // With no template the target's own TimeScale is used, which must
+        // be set where UseDefs is false (timeframe.c:5366).
+        if template.is_none() {
+            target.verify_attrs("convert between different time systems", "TimeScale")?;
+        }
         if let Some(t) = template {
             t.overlay(template_axes, &mut result)?;
             if let Some(t) = t.as_any().downcast_ref::<TimeFrame>() {

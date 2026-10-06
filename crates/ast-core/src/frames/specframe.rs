@@ -944,7 +944,7 @@ impl SpecFrame {
         if self.sor_set {
             title.push_str(&format!(" ({})", self.std_of_rest.as_str()));
         }
-        if !self.system.is_absolute() {
+        if !self.system.is_absolute() && (self.test_rest_freq() || self.use_defs()) {
             // C uses astGetRestFreq, whose default is 1.0E14 Hz.
             let rf_ghz = self.rest_freq.unwrap_or(1.0e14) * 1.0e-9;
             let rf_str = crate::serial::native_write::format_double_g(rf_ghz, 6);
@@ -1025,11 +1025,14 @@ impl SpecFrame {
     /// conversion goes through relativistic velocity and frequency.
     fn convert_source_vel(&self, new_sor: StdOfRest, new_sys: SpecSystem) -> AstResult<f64> {
         let vel = self.source_vel();
+        let purp = "convert source velocity to a new standard of rest";
+        self.verify_attrs(purp, "SourceVel")?;
         let sor = self.source_vrf();
         let sys = self.source_sys();
         if sor == new_sor && sys == new_sys {
             return Ok(vel);
         }
+        self.verify_attrs(purp, "RestFreq")?;
         let mut from = self.clone();
         from.set_std_of_rest(sor)?;
         let mut to = self.clone();
@@ -1195,6 +1198,40 @@ impl SpecFrame {
     /// Add SpecMap steps to convert from the current system to frequency
     /// (step 2 of `MakeSpecMapping`, specframe.c:2782). A velocity system
     /// goes through apparent radial velocity using `rest_freq`.
+    /// Check that each attribute named in `attrs` has a value set, where
+    /// UseDefs is false and so its default may not be used, reporting
+    /// AST__NOVAL for `purp` otherwise. Port of `VerifyAttrs`
+    /// (specframe.c:5621).
+    fn verify_attrs(&self, purp: &str, attrs: &str) -> AstResult<()> {
+        if self.use_defs() {
+            return Ok(());
+        }
+        for attr in attrs.split_whitespace() {
+            let (set, desc) = match attr {
+                "ObsLat" => (self.attrs.obs_lat.is_some(), "observer's latitude"),
+                "ObsLon" => (self.attrs.obs_lon.is_some(), "observer's longitude"),
+                "ObsAlt" => (self.attrs.obs_alt.is_some(), "observer's altitude"),
+                "RefRA" => (self.ref_ra.is_some(), "source RA"),
+                "RefDec" => (self.ref_dec.is_some(), "source Dec"),
+                "RestFreq" => (self.test_rest_freq(), "rest frequency"),
+                "SourceVel" => (self.test_source_vel(), "source velocity"),
+                "StdOfRest" => (self.sor_set, "spectral standard of rest"),
+                "Epoch" => (self.attrs.epoch.is_some(), "epoch of observation"),
+                other => unreachable!("VerifyAttrs has no attribute {other}"),
+            };
+            if !set {
+                return Err(AstError::new(
+                    ErrorCode::Noval,
+                    format!(
+                        "astMatch(SpecFrame): Cannot {purp}. No value has been set for the AST \
+                         \"{attr}\" attribute ({desc})."
+                    ),
+                ));
+            }
+        }
+        Ok(())
+    }
+
     fn add_system_to_freq(specmap: &mut SpecMap, system: SpecSystem, rest_freq: f64) {
         match system {
             SpecSystem::Freq => return,
@@ -1302,15 +1339,20 @@ impl SpecFrame {
             let lat = this.attrs.obs_lat.unwrap_or(0.0);
             let alt = this.attrs.obs_alt.unwrap_or(0.0);
             let epoch = this.epoch_mjd();
+            let purp = "convert between different standards of rest";
+            this.verify_attrs(purp, "RefRA RefDec")?;
 
             match from {
                 StdOfRest::Topocentric => {
+                    this.verify_attrs(purp, "ObsLon ObsLat ObsAlt Epoch")?;
                     specmap.add(SpecCvtType::TpF2Hl, &[lon, lat, alt, epoch, ra, dec]);
                 }
                 StdOfRest::Geocentric => {
+                    this.verify_attrs(purp, "Epoch")?;
                     specmap.add(SpecCvtType::GeF2Hl, &[epoch, ra, dec]);
                 }
                 StdOfRest::Barycentric => {
+                    this.verify_attrs(purp, "Epoch")?;
                     specmap.add(SpecCvtType::ByF2Hl, &[epoch, ra, dec]);
                 }
                 StdOfRest::Lsrk => {
@@ -1343,15 +1385,20 @@ impl SpecFrame {
             let lat = that.attrs.obs_lat.unwrap_or(0.0);
             let alt = that.attrs.obs_alt.unwrap_or(0.0);
             let epoch = that.epoch_mjd();
+            let purp = "convert between different standards of rest";
+            that.verify_attrs(purp, "RefRA RefDec")?;
 
             match to {
                 StdOfRest::Topocentric => {
+                    that.verify_attrs(purp, "ObsLon ObsLat ObsAlt Epoch")?;
                     specmap.add(SpecCvtType::HlF2Tp, &[lon, lat, alt, epoch, ra, dec]);
                 }
                 StdOfRest::Geocentric => {
+                    that.verify_attrs(purp, "Epoch")?;
                     specmap.add(SpecCvtType::HlF2Ge, &[epoch, ra, dec]);
                 }
                 StdOfRest::Barycentric => {
+                    that.verify_attrs(purp, "Epoch")?;
                     specmap.add(SpecCvtType::HlF2By, &[epoch, ra, dec]);
                 }
                 StdOfRest::Lsrk => {
@@ -1564,6 +1611,12 @@ impl SpecFrame {
         let result_system = result.system;
         let mut align_system = align_frm.system;
 
+        // With UseDefs false in either SpecFrame, its StdOfRest must be
+        // set (specframe.c:2641).
+        let vmess = "convert between spectral systems";
+        result.verify_attrs(vmess, "StdOfRest")?;
+        target.verify_attrs(vmess, "StdOfRest")?;
+
         // C lines 2667-2696. `align_target` / `align_result`
         // construction depends on the integrity flag.
         let (align_target, align_result) = if intflag {
@@ -1670,6 +1723,9 @@ impl SpecFrame {
         // Step 2: target system → frequency in target rest frame
         // (C lines 2782-2819).
         if step2 {
+            if target_system.is_velocity() {
+                target.verify_attrs(vmess, "RestFreq")?;
+            }
             Self::add_system_to_freq(&mut specmap, target_system, target_rf);
         }
 
@@ -1683,12 +1739,14 @@ impl SpecFrame {
         // Step 4: frequency in alignment SOR → alignment system in
         // alignment SOR (C lines 2828-2833). Uses target rest freq.
         if step4 && align_system == SpecSystem::Vrel {
+            target.verify_attrs(vmess, "RestFreq")?;
             specmap.add(SpecCvtType::FrToVl, &[target_rf]);
         }
 
         // Step 5: alignment system in alignment SOR → frequency in
         // alignment SOR (C lines 2838-2843). Uses result rest freq.
         if step5 && align_system == SpecSystem::Vrel {
+            result.verify_attrs(vmess, "RestFreq")?;
             specmap.add(SpecCvtType::VlToFr, &[result_rf]);
         }
 
@@ -1702,6 +1760,9 @@ impl SpecFrame {
         // Step 7: frequency in result SOR → result system in result
         // SOR (C lines 2851-2888).
         if step7 {
+            if result_system.is_velocity() {
+                result.verify_attrs(vmess, "RestFreq")?;
+            }
             Self::add_freq_to_system(&mut specmap, result_system, result_rf);
         }
 
@@ -2259,11 +2320,9 @@ fn specframe_sub_frame(
                 target.clone()
             }
         } else {
-            // No template — align in the target's own SOR
-            // (specframe.c:4872-4876). The C VerifyAttrs check that
-            // StdOfRest is set is currently elided; downstream
-            // MakeSpecMapping carries enough state to fail loudly when
-            // alignment is genuinely impossible.
+            // No template: align in the target's own rest frame, which
+            // must be set where UseDefs is false (specframe.c:4872-4876).
+            target.verify_attrs("convert between different spectral systems", "StdOfRest")?;
             target.clone()
         };
 

@@ -49,3 +49,4 @@ flux_badun_probe
 spec_origin_sor_probe
 use_defs_probe
 sky_use_defs_probe
+spec_use_defs_probe
