@@ -151,15 +151,17 @@ impl PermMap {
         // whereas an array carrying dangling constant/bad references that only
         // *accumulates* to null is. Both tests pair with the same (forward)
         // transform, so resolve NullPerm through the applied direction too.
+        // An array C does not store at all (`OutCpy`/`InCpy`, here the
+        // `*_is_copy` flags) is null to `NullPerm` too.
         let (nullperm_out, nullperm_in) = if eff_inv {
             (
-                strict_null_perm(&self.inperm),
-                strict_null_perm(&self.outperm),
+                self.in_is_copy || strict_null_perm(&self.inperm),
+                self.out_is_copy || strict_null_perm(&self.outperm),
             )
         } else {
             (
-                strict_null_perm(&self.outperm),
-                strict_null_perm(&self.inperm),
+                self.out_is_copy || strict_null_perm(&self.outperm),
+                self.in_is_copy || strict_null_perm(&self.inperm),
             )
         };
 

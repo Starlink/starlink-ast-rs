@@ -16,7 +16,7 @@ replaces the run in a single step. Series and parallel are separate
 accumulations of the same shape, sharing the tail that decides whether anything
 was actually simplified.
 
-`PermMap::map_merge` (`perm.rs:546-554 (fn map_merge)`) delegates to `simplify::perm_map_merge`
+`PermMap::map_merge` (`perm.rs:548-556 (fn map_merge)`) delegates to `simplify::perm_map_merge`
 (`mappings/simplify.rs:1008-1036 (fn perm_map_merge)`), which reaches the composition pairwise through
 `default_map_merge` and `PermMap::try_merge` rather than bracketing a run.
 
