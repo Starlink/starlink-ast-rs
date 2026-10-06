@@ -721,6 +721,12 @@ impl Frame for FluxFrame {
     /// the System is recorded as the one used with it, and one that does
     /// not clears the System, which is then taken from the Unit.
     fn set_unit(&mut self, axis: usize, unit: &str) -> AstResult<()> {
+        // The Frame class's SetUnit (frame.c:10775).
+        let unit = unit.trim_end();
+        if self.get_active_unit() {
+            let old = Frame::unit(self, axis)?;
+            super::frame_attrs::new_unit(&mut self.axis, &old, unit);
+        }
         self.ax_mut(axis)?.unit = Some(unit.to_string());
         let system = self.system();
         if crate::units::unit_mapper(system.default_units(), unit).is_some() {
@@ -737,7 +743,13 @@ impl Frame for FluxFrame {
         self.ax(axis)?;
         let system = self.system();
         self.used_units[system.index()] = None;
-        self.axis.unit = None;
+        // The Frame class's ClearUnit (frame.c:2527).
+        if let Some(old) = self.axis.unit.take() {
+            if self.get_active_unit() {
+                let new = Frame::unit(self, axis)?;
+                super::frame_attrs::new_unit(&mut self.axis, &old, &new);
+            }
+        }
         Ok(())
     }
 

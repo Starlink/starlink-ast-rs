@@ -1449,6 +1449,12 @@ impl Frame for TimeFrame {
                 ),
             ));
         }
+        // The Frame class's SetUnit follows (frame.c:10775).
+        let unit = unit.trim_end();
+        if self.get_active_unit() {
+            let old = Frame::unit(self, axis)?;
+            super::frame_attrs::new_unit(&mut self.axis, &old, unit);
+        }
         self.axis.unit = Some(unit.to_string());
         Ok(())
     }
@@ -1459,7 +1465,13 @@ impl Frame for TimeFrame {
         Ok(self.ax(axis)?.unit.is_some())
     }
     fn clear_unit(&mut self, axis: usize) -> AstResult<()> {
-        self.ax_mut(axis)?.unit = None;
+        // The Frame class's ClearUnit (frame.c:2527).
+        if let Some(old) = self.ax_mut(axis)?.unit.take() {
+            if self.get_active_unit() {
+                let new = Frame::unit(self, axis)?;
+                super::frame_attrs::new_unit(&mut self.axis, &old, &new);
+            }
+        }
         Ok(())
     }
 

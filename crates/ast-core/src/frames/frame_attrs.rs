@@ -1043,6 +1043,26 @@ pub(crate) fn validate_axis(axis: usize, naxes: usize) -> AstResult<()> {
     Ok(())
 }
 
+/// C's `NewUnit` (frame.c:7583), run when an axis Unit changes from
+/// `old_units` to `new_units` with ActiveUnit set: a set Label and Symbol
+/// are rewritten for the new Unit through `astUnitMapper` (so that `Dist`
+/// becomes `log( Dist )` for a change from `m` to `log(m)`), and a set
+/// Format is cleared when the Unit actually changes.
+pub(crate) fn new_unit(axis: &mut super::axis::Axis, old_units: &str, new_units: &str) {
+    for text in [&mut axis.label, &mut axis.symbol] {
+        if let Some(current) = text.as_deref() {
+            if let Some((_, Some(rewritten))) =
+                crate::units::unit_mapper_label(old_units, new_units, current)
+            {
+                *text = Some(rewritten);
+            }
+        }
+    }
+    if old_units != new_units {
+        axis.format = None;
+    }
+}
+
 /// A default Label or Symbol rewritten for a Unit that has been set, as the
 /// `GetLabel` and `GetSymbol` of SpecFrame, TimeFrame and FluxFrame do
 /// (specframe.c:1520, timeframe.c:2579, fluxframe.c:1107): through the
@@ -1076,7 +1096,33 @@ macro_rules! axis_attrs_store {
         axis_attrs_store!(@str set_symbol, test_symbol, clear_symbol, symbol);
     };
     (@one unit) => {
-        axis_attrs_store!(@str set_unit, test_unit, clear_unit, unit);
+        // frame.c `SetUnit`: trailing spaces are dropped, and with
+        // ActiveUnit set the change of Unit is applied to the Label,
+        // Symbol and Format (`NewUnit`).
+        fn set_unit(&mut self, axis: usize, value: &str) -> $crate::error::AstResult<()> {
+            let value = value.trim_end();
+            if $crate::frames::Frame::get_active_unit(self) {
+                let old = $crate::frames::Frame::unit(self, axis)?;
+                $crate::frames::frame_attrs::new_unit(self.ax_mut(axis)?, &old, value);
+            }
+            self.ax_mut(axis)?.unit = Some(value.to_string());
+            Ok(())
+        }
+        fn test_unit(&self, axis: usize) -> $crate::error::AstResult<bool> {
+            Ok(self.ax(axis)?.unit.is_some())
+        }
+        // frame.c `ClearUnit`: the change from the set Unit to the default
+        // is applied as `SetUnit` applies one.
+        fn clear_unit(&mut self, axis: usize) -> $crate::error::AstResult<()> {
+            let Some(old) = self.ax_mut(axis)?.unit.take() else {
+                return Ok(());
+            };
+            if $crate::frames::Frame::get_active_unit(self) {
+                let new = $crate::frames::Frame::unit(self, axis)?;
+                $crate::frames::frame_attrs::new_unit(self.ax_mut(axis)?, &old, &new);
+            }
+            Ok(())
+        }
     };
     (@one format) => {
         axis_attrs_store!(@str set_format_str, test_format_str, clear_format_str, format);

@@ -1828,7 +1828,13 @@ impl Frame for SpecFrame {
     /// back when the System does.
     fn set_unit(&mut self, axis: usize, unit: &str) -> AstResult<()> {
         self.ax(axis)?;
+        let old = self.unit_or_default().to_string();
         self.store_unit(unit);
+        // The Frame class's SetUnit follows (frame.c:10775).
+        if self.get_active_unit() {
+            let new = unit.trim_end().to_string();
+            super::frame_attrs::new_unit(&mut self.axis, &old, &new);
+        }
         Ok(())
     }
 
@@ -1837,7 +1843,13 @@ impl Frame for SpecFrame {
     fn clear_unit(&mut self, axis: usize) -> AstResult<()> {
         self.ax(axis)?;
         self.used_units[self.system.used_units_index()] = None;
-        self.axis.unit = None;
+        // The Frame class's ClearUnit follows (frame.c:2527).
+        if let Some(old) = self.axis.unit.take() {
+            if self.get_active_unit() {
+                let new = self.unit_or_default().to_string();
+                super::frame_attrs::new_unit(&mut self.axis, &old, &new);
+            }
+        }
         Ok(())
     }
 

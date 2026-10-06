@@ -45,40 +45,27 @@ pub(crate) fn format_const(v: f64) -> String {
     format_g(v, DBL_DIG)
 }
 
-/// `printf`-equivalent of `%.*g` for `f64`. Selects between `%e` and
-/// `%f` based on magnitude (mirroring C's behaviour).
+/// `printf`-equivalent of `%.*g` for `f64`, as C99 7.19.6.1 defines it:
+/// with `P` significant digits and `X` the exponent the `%e` form would
+/// have after rounding to `P` digits, the fixed form with `P - 1 - X`
+/// decimals is used when `P > X >= -4`, otherwise the `%e` form with
+/// `P - 1` decimals; trailing zeros are then removed, and the exponent has
+/// a sign and at least two digits.
 fn format_g(v: f64, precision: usize) -> String {
     if v == 0.0 {
-        return "0".to_string();
+        return if v.is_sign_negative() { "-0" } else { "0" }.to_string();
     }
-    let abs = v.abs();
-    let mag = abs.log10().floor() as i32;
-    // C's %g: if exponent < -4 or >= precision, use %e style; else %f.
-    if mag < -4 || mag >= precision as i32 {
-        // Scientific. Strip trailing zeros after decimal point in
-        // mantissa, like C's %g does.
-        let s = format!("{:.*e}", precision - 1, v);
-        strip_trailing_zeros_g(&s)
+    let p = precision.max(1);
+    let sci = format!("{:.*e}", p - 1, v);
+    let e_idx = sci.find('e').expect("Rust's {:e} has an exponent");
+    let x: i32 = sci[e_idx + 1..].parse().expect("integer exponent");
+    if (p as i32) > x && x >= -4 {
+        let dec = (p as i32 - 1 - x) as usize;
+        strip_trailing_zeros_in_mantissa(&format!("{:.*}", dec, v))
     } else {
-        // Fixed. Precision = significant digits, so digits-after-decimal
-        // = precision - 1 - mag.
-        let dec = (precision as i32 - 1 - mag).max(0) as usize;
-        let s = format!("{:.*}", dec, v);
-        strip_trailing_zeros_g(&s)
-    }
-}
-
-/// Strip trailing zeros from the mantissa of a `%g`-style string,
-/// preserving structure: e.g. `"1.50000e6"` → `"1.5e6"`,
-/// `"1.500000"` → `"1.5"`.
-fn strip_trailing_zeros_g(s: &str) -> String {
-    // Split off any exponent.
-    if let Some(e_idx) = s.find(['e', 'E']) {
-        let (mantissa, exp) = s.split_at(e_idx);
-        let m = strip_trailing_zeros_in_mantissa(mantissa);
-        format!("{}{}", m, exp)
-    } else {
-        strip_trailing_zeros_in_mantissa(s)
+        let mantissa = strip_trailing_zeros_in_mantissa(&sci[..e_idx]);
+        let sign = if x < 0 { '-' } else { '+' };
+        format!("{mantissa}e{sign}{:02}", x.abs())
     }
 }
 
