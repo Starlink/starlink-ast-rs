@@ -1261,11 +1261,7 @@ impl Frame for SkyFrame {
         if is_bad(value) {
             return Ok("<bad>".to_string());
         }
-        Ok(super::skyaxis::sky_format(
-            &self.phys_format(phys),
-            self.phys_digits(phys),
-            value,
-        ))
+        super::skyaxis::sky_format(&self.phys_format(phys), self.phys_digits(phys), value)
     }
 
     fn unformat(&self, axis: usize, text: &str) -> AstResult<(f64, usize)> {

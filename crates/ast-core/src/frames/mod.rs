@@ -357,11 +357,9 @@ pub trait Frame: AsAny + Send + fmt::Debug {
         }
         // The Format, set or default, and the Digits it defaults from
         // (frame.c:4260, axis.c:1819).
-        let digits = self.axis_digits(axis)?.max(1) as usize;
+        let digits = self.axis_digits(axis)?;
         let fmt = self.format_str(axis)?;
-        Ok(crate::frames::axis_format::format_value(
-            &fmt, digits, value,
-        ))
+        crate::frames::axis_format::format_value(&fmt, digits, value)
     }
 
     /// Parse a formatted coordinate string back to a numeric value.

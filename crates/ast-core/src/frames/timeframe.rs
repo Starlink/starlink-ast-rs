@@ -1271,6 +1271,7 @@ fn unit_mapper_or_err(unit1: &str, unit2: &str) -> AstResult<DynMapping> {
 /// default Title.
 fn fmt_g(v: f64) -> String {
     crate::frames::axis_format::format_value("%g", 6, v)
+        .expect("%g of a double is defined and short")
 }
 
 /// Transform a single scalar through `map` in the given direction.
@@ -1492,12 +1493,8 @@ impl Frame for TimeFrame {
         // 7 *significant* digits (frame.c GetDefaultFormat, default Digits=7).
         let (is_date, ndp, sep) = date_format(self.set_format());
         if !is_date {
-            let digits = self.axis_digits(1)?.max(1) as usize;
-            return Ok(crate::frames::axis_format::format_value(
-                &self.format_str(1)?,
-                digits,
-                value,
-            ));
+            let digits = self.axis_digits(1)?;
+            return crate::frames::axis_format::format_value(&self.format_str(1)?, digits, value);
         }
 
         // Date branch (timeframe.c:1694-1736). Convert the value to an

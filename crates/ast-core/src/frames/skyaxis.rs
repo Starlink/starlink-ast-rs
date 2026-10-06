@@ -85,7 +85,7 @@ impl SkyAxis {
     }
 
     /// A value formatted as `SkyAxis::AxisFormat` does (skyaxis.c:809).
-    pub fn format_axis_value(&self, frame_digits: i32, value: f64) -> String {
+    pub fn format_axis_value(&self, frame_digits: i32, value: f64) -> AstResult<String> {
         sky_format(
             &self.format_value(frame_digits),
             self.digits_value(frame_digits),
@@ -703,15 +703,14 @@ impl Serializable for SkyAxis {
 /// `DHmsFormat`, except that a `%`-style Format goes to the Axis class's
 /// formatter, which reads the Axis's own Format rather than the SkyAxis one
 /// and so always uses its default, `%1.<Digits>G` (axis.c:731, :2673).
-pub(crate) fn sky_format(fmt: &str, digits: i32, value: f64) -> String {
+pub(crate) fn sky_format(fmt: &str, digits: i32, value: f64) -> AstResult<String> {
     if crate::mappings::helpers::is_bad(value) {
-        return "<bad>".to_string();
+        return Ok("<bad>".to_string());
     }
     if fmt.starts_with('%') {
-        let digits = digits.max(1) as usize;
         crate::frames::axis_format::format_value(&format!("%1.{digits}G"), digits, value)
     } else {
-        dhms_format(fmt, digits, value)
+        Ok(dhms_format(fmt, digits, value))
     }
 }
 

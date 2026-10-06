@@ -1,272 +1,526 @@
-//! Port of `axis.c`'s `ParseAxisFormat` and the numeric-formatting
-//! half of `AxisFormat`. Turns an Axis `Format` string plus a `Digits`
-//! precision into the formatted coordinate string, reproducing C
-//! `printf` semantics for the `%G` / `%E` / `%f` / `%d` subset that
-//! AST uses. The default format is `"%1.<Digits>G"`.
+//! Port of `axis.c`'s `ParseAxisFormat` and `AxisFormat`, which format an
+//! axis value by handing the Axis `Format` string to C's `sprintf`, and of
+//! the part of C's `printf` that call needs: a format with at most one
+//! conversion, given an `int` or a `double`.
+//!
+//! `sprintf` is called with one argument, so a Format whose conversions do
+//! not consume exactly that argument has undefined behaviour in C: a second
+//! conversion, a `*` width or precision, a length modifier that changes the
+//! argument type, a conversion of the wrong type (`%ld`, `%s`), or a
+//! trailing `%`. Each is an `AST__FMTER` error here. `%a`, `%A` and the
+//! `'` flag are defined but not ported, and are errors too.
 
-/// Format `value` like C `printf("%1.<prec>G", value)`: `prec`
-/// significant digits, `%E` notation when the decimal exponent is
-/// `< -4` or `>= prec`, otherwise `%f` notation, with trailing zeros
-/// removed and the exponent printed as `E±dd` (>= 2 digits). Mirrors
-/// the C library / glibc `%G` conversion (axis.c:626 formats via this).
-pub(crate) fn format_g(value: f64, prec: usize) -> String {
-    let prec = prec.max(1);
-    if value == 0.0 {
-        return "0".to_string();
-    }
-    if !value.is_finite() {
-        // glibc prints "inf"/"nan"; AST never formats these through a
-        // good path, but stay deterministic.
-        return if value.is_nan() {
-            "nan".to_string()
-        } else if value > 0.0 {
-            "inf".to_string()
-        } else {
-            "-inf".to_string()
-        };
-    }
+use crate::error::{AstError, AstResult, ErrorCode};
 
-    // The decimal exponent that C uses to choose between %E and %f is the
-    // one of the value after rounding to `prec` significant digits, so
-    // derive it from the %E rendering rather than a raw log10 (which can
-    // be off by one near a power of ten, e.g. 9.999999e6).
-    let raw = format!("{value:.*e}", prec - 1);
-    let exp: i32 = raw
-        .split_once('e')
-        .and_then(|(_, e)| e.parse().ok())
-        .expect("exp form");
-    if exp < -4 || exp >= prec as i32 {
-        format_e(value, prec - 1, true)
-    } else {
-        // Fixed notation: prec - 1 - exp fractional digits.
-        let frac = (prec as i32 - 1 - exp).max(0) as usize;
-        let s = format!("{value:.frac$}");
-        trim_g_zeros(&s)
-    }
-}
+/// The text `AxisFormat` writes between "10" and the exponent of a log
+/// Format when graphical escapes are not retained, which is the default
+/// (axis.c:157, object.c:418). Escapes are a Plot feature, not yet ported.
+const LOG_TXT: &str = "10^";
 
-/// Format like C `printf("%.<mant>E")`: one leading digit, `mant`
-/// mantissa fraction digits, exponent `E±dd`. When `strip` is true
-/// (the `%G` caller), trailing mantissa zeros are removed.
-fn format_e(value: f64, mant: usize, strip: bool) -> String {
-    // Rust's `{:e}` gives e.g. "1.234568e3" (lowercase, no sign, no
-    // zero-pad). Re-render into C `%E` form.
-    let raw = format!("{value:.mant$e}");
-    let (mantissa, exp_str) = raw.split_once('e').expect("exp form");
-    let exp: i32 = exp_str.parse().expect("exp int");
-    let mantissa = if strip {
-        trim_g_zeros(mantissa)
-    } else {
-        mantissa.to_string()
-    };
-    let sign = if exp < 0 { '-' } else { '+' };
-    format!("{mantissa}E{sign}{:02}", exp.abs())
-}
+/// The escape sequence `AxisFormat` appends to a log Format, which resets
+/// the graphical attributes (axis.c:794).
+const LOG_END: &str = "%+";
 
-/// Remove trailing zeros after a decimal point, then a trailing bare
-/// decimal point — the `%G` no-`#` behaviour. Leaves integers and
-/// strings without a `.` untouched.
-fn trim_g_zeros(s: &str) -> String {
-    if !s.contains('.') {
-        return s.to_string();
-    }
-    let t = s.trim_end_matches('0');
-    let t = t.strip_suffix('.').unwrap_or(t);
-    t.to_string()
-}
+/// `AST__AXIS_AXISFORMAT_BUFF_LEN` (axis.h:264).
+const BUFF_LEN: usize = 127;
 
-/// Parsed view of an Axis `Format` string. Mirrors the flags returned
-/// by C `ParseAxisFormat` (axis.c:2015) plus the resolved precision and
-/// conversion code needed to format a value.
+/// A Format string as `ParseAxisFormat` (axis.c:2015) returns it, with the
+/// flags it reports.
 pub(crate) struct ParsedFormat {
-    /// Conversion code (`G`, `g`, `E`, `e`, `f`, `F`, `d`, `i`, ...).
-    pub conv: char,
-    /// Explicit precision from the Format string: `Some(n)` for `.N`,
-    /// and `Some(digits)` for the `.*` wildcard (which C rewrites to an
-    /// explicit `digits`). `None` when the spec carries no precision
-    /// field at all, in which case the caller applies the C `printf`
-    /// per-conversion default (6 fraction digits for the float codes).
-    /// C `ParseAxisFormat` only ever injects a precision for `.*`; a
-    /// precision-less spec is passed to `sprintf` unchanged.
-    pub spec_prec: Option<usize>,
-    /// Format the value as `10**x` using graphical escapes. Recognised
-    /// by the parser; its graphical-escape rendering is supplied by the
-    /// Plot layer rather than the numeric formatter.
-    #[allow(dead_code)]
+    /// The Format to hand to `sprintf`: the `&` flag removed, with `+` and
+    /// space when `&` was present, and a `.*` precision replaced by Digits.
+    pub fmt: Vec<u8>,
+    /// Format the value as "10^x".
     pub log: bool,
-    /// Cast the value to `int` before formatting (integer conv code).
+    /// With `log`, put a `+` in front of a positive value.
+    pub sign: bool,
+    /// With `log` and no `sign`, put a space in front of a positive value.
+    pub space: bool,
+    /// The conversion code is an integer one, so the value is cast to
+    /// `int`.
     pub integ: bool,
 }
 
-/// Parse an Axis `Format` string into a [`ParsedFormat`], substituting
-/// `digits` for a `.*` precision field. Mirrors C `ParseAxisFormat`.
-pub(crate) fn parse_axis_format(fmt: &str, digits: usize) -> ParsedFormat {
+/// Whether `b` is a C `isspace` character.
+fn is_c_space(b: u8) -> bool {
+    matches!(b, b' ' | b'\t' | b'\n' | 0x0b | 0x0c | b'\r')
+}
+
+/// Port of `ParseAxisFormat` (axis.c:2015).
+pub(crate) fn parse_axis_format(fmt0: &str, digs: i32) -> ParsedFormat {
     let mut log = false;
+    let mut sign = false;
+    let mut lspace = false;
     let mut integ = false;
-    let mut conv = 'G';
-    let mut spec_prec = None;
 
-    if let Some(perc) = fmt.find('%') {
-        let rest = &fmt[perc + 1..];
+    // The Format without trailing white space (`astChrLen`).
+    let bytes = fmt0.as_bytes();
+    let len = bytes
+        .iter()
+        .rposition(|&b| !is_c_space(b))
+        .map_or(0, |i| i + 1);
+    let mut result = bytes[..len].to_vec();
 
-        // Flags (printf + AST '&'). Mirrors the flag-scan loop.
-        let mut idx_after_flags = 0;
-        for (i, c) in rest.char_indices() {
-            match c {
-                '-' | '+' | ' ' | '#' => {}
-                '&' => log = true,
-                _ => {
-                    idx_after_flags = i;
-                    break;
-                }
+    // Note the flags after the first '%'. Only with the '&' flag is the
+    // Format changed: '&', '+' and ' ' are removed, '-' and '#' kept.
+    if let Some(perc) = result.iter().position(|&b| b == b'%') {
+        let (mut minus, mut plus, mut space, mut hash) = (false, false, false, false);
+        let mut a = perc + 1;
+        while a < result.len() {
+            match result[a] {
+                b'-' => minus = true,
+                b'+' => plus = true,
+                b' ' => space = true,
+                b'#' => hash = true,
+                b'&' => log = true,
+                _ => break,
             }
-            idx_after_flags = i + c.len_utf8();
+            a += 1;
         }
-
-        let tail = &rest[idx_after_flags..];
-
-        // Precision: look for ".<digits>" or ".*". `.*` => digits.
-        if let Some(dot) = tail.find('.') {
-            let after = &tail[dot + 1..];
-            if after.starts_with('*') {
-                spec_prec = Some(digits);
-            } else {
-                let num: String = after.chars().take_while(|c| c.is_ascii_digit()).collect();
-                if let Ok(p) = num.parse::<usize>() {
-                    spec_prec = Some(p);
-                }
+        if log {
+            sign = plus;
+            lspace = space;
+            let mut out = result[..=perc].to_vec();
+            if minus {
+                out.push(b'-');
             }
+            if hash {
+                out.push(b'#');
+            }
+            out.extend_from_slice(&result[a..]);
+            result = out;
         }
+    }
 
-        // Conversion code: first alphabetic char in the tail.
-        if let Some(c) = tail.chars().find(|c| c.is_ascii_alphabetic()) {
-            conv = c;
-            if matches!(c, 'd' | 'i' | 'u' | 'o' | 'x' | 'X' | 'c') {
-                integ = true;
-            }
+    // Skip the flags and field width after the first '%'. The next
+    // alphabetic character is taken as the conversion code, and a ".*"
+    // precision is given the Digits value. C searches for the code without
+    // stopping at the end of the string; the port stops there.
+    if let Some(perc) = result.iter().position(|&b| b == b'%') {
+        let mut a = perc + 1;
+        while a < result.len() && matches!(result[a], b'-' | b'+' | b' ' | b'#') {
+            a += 1;
+        }
+        while a < result.len() && result[a].is_ascii_digit() {
+            a += 1;
+        }
+        if let Some(&c) = result[a..].iter().find(|b| b.is_ascii_alphabetic()) {
+            integ = b"diuoxXc".contains(&c);
+        }
+        if result.get(a) == Some(&b'.') && result.get(a + 1) == Some(&b'*') {
+            let mut out = result[..a].to_vec();
+            out.extend_from_slice(format!(".{digs}").as_bytes());
+            out.extend_from_slice(&result[a + 2..]);
+            result = out;
         }
     }
 
     ParsedFormat {
-        conv,
-        spec_prec,
+        fmt: result,
         log,
+        sign,
+        space: lspace,
         integ,
     }
 }
 
-/// Format `value` according to an Axis `Format` string and the default
-/// `digits` precision. Mirrors the numeric path of C `AxisFormat`
-/// (axis.c:626): default `%1.<digits>G`, integer-cast for integer
-/// conversion codes, `%G`/`%E`/`%f` rendering. The `&` log flag is
-/// parsed; its graphical-escape rendering is deferred (Plot, step 10),
-/// so a log format currently falls back to formatting the raw value.
-pub(crate) fn format_value(fmt: &str, digits: usize, value: f64) -> String {
-    // A Format string with no '%' conversion has nothing for sprintf to
-    // substitute, so C passes it straight to sprintf and the literal
-    // string is returned with the value ignored (axis.c:780; verified
-    // with `sprintf(buf, "3", x)` -> "3"). ParseAxisFormat (axis.c:2127)
-    // returns the unaltered copy in this case.
-    if !fmt.contains('%') {
-        return fmt.to_string();
+/// C's `(int) x`. The conversion is undefined outside the `int` range and
+/// for NaN; this saturates, as the cast instruction does on AArch64.
+fn c_int(x: f64) -> i32 {
+    x as i32
+}
+
+/// Port of `AxisFormat` (axis.c:637): format `value` with the Format `fmt`
+/// and the axis Digits `digits`.
+pub(crate) fn format_value(fmt: &str, digits: i32, value: f64) -> AstResult<String> {
+    if crate::mappings::helpers::is_bad(value) {
+        return Ok("<bad>".to_string());
     }
     let p = parse_axis_format(fmt, digits);
-    if p.integ {
-        // C `AxisFormat` (axis.c:783) casts to a 32-bit `int`:
-        // `sprintf( buf, fmt, (int) x )`. For doubles outside the
-        // `int` range C's `(int)` cast is undefined behaviour, so no
-        // particular overflow result is guaranteed; this mirrors the
-        // 32-bit width and so differs from a 64-bit cast only for
-        // |value| >= 2^31, which does not occur in AST coordinate
-        // formatting.
-        return format!("{}", value as i32);
+
+    // Zero is formatted normally. Otherwise a log Format gives "10^x",
+    // after a sign, with x formatted by the Format.
+    let log = p.log && value != 0.0;
+    let mut buf: Vec<u8> = Vec::new();
+    let mut x = value;
+    if log {
+        if p.sign {
+            buf.push(b'+');
+        } else if p.space {
+            buf.push(b' ');
+        }
+        let magnitude = |v: f64| if p.integ { f64::from(c_int(v)) } else { v };
+        if value > 0.0 {
+            x = magnitude(value).log10();
+        } else {
+            x = magnitude(-value).log10();
+            buf = vec![b'-'];
+        }
+        buf.extend_from_slice(LOG_TXT.as_bytes());
+        if x.abs() < 1.0e-10 {
+            x = 0.0;
+        }
     }
-    // For the float conversion codes, a Format string with no explicit
-    // precision uses C `printf`'s default of 6 fraction digits — C
-    // `ParseAxisFormat` passes a precision-less spec to `sprintf`
-    // unchanged (it injects a precision only for the `.*` wildcard), so
-    // `"%E"`/`"%f"` format with 6 digits, NOT `Digits`. The default
-    // Frame format always carries an explicit `.Digits` precision and so
-    // never reaches this branch.
-    let float_prec = p.spec_prec.unwrap_or(6);
-    match p.conv {
-        'G' | 'g' => format_g(value, float_prec),
-        'E' | 'e' => format_e(value, float_prec, false),
-        'f' | 'F' => format!("{value:.*}", float_prec),
-        // Unknown/unsupported code: fall back to %G with the precision.
-        _ => format_g(value, float_prec),
+
+    let arg = if p.integ {
+        Arg::Int(c_int(x))
+    } else {
+        Arg::Double(x)
+    };
+    buf.extend(sprintf(&p.fmt, arg).map_err(|e| {
+        AstError::new(
+            ErrorCode::Fmter,
+            format!(
+                "astAxisFormat(Axis): Error formatting a coordinate value of {value}: {e}. \
+                 The format string was \"{}\".",
+                String::from_utf8_lossy(&p.fmt)
+            ),
+        )
+    })?);
+    if log {
+        buf.extend_from_slice(LOG_END.as_bytes());
     }
+    if buf.len() > BUFF_LEN {
+        return Err(AstError::new(
+            ErrorCode::Fmter,
+            format!(
+                "astAxisFormat(Axis): Internal buffer overflow while formatting a coordinate \
+                 value of {value} - result exceeds {BUFF_LEN} characters."
+            ),
+        ));
+    }
+
+    // The result is a C string, so it ends at the first NUL, which `%c`
+    // writes for a zero byte.
+    if let Some(nul) = buf.iter().position(|&b| b == 0) {
+        buf.truncate(nul);
+    }
+    String::from_utf8(buf).map_err(|_| {
+        AstError::new(
+            ErrorCode::Fmter,
+            format!("astAxisFormat(Axis): formatting {value} with \"{fmt}\" gave a non-ASCII byte"),
+        )
+    })
+}
+
+/// The one argument `AxisFormat` passes to `sprintf`.
+#[derive(Clone, Copy, Debug)]
+enum Arg {
+    Int(i32),
+    Double(f64),
+}
+
+/// A parsed conversion specification (C99 7.19.6.1).
+#[derive(Default)]
+struct Spec {
+    minus: bool,
+    plus: bool,
+    space: bool,
+    zero: bool,
+    alt: bool,
+    width: usize,
+    prec: Option<usize>,
+}
+
+/// C's `sprintf( buf, fmt, arg )` for a format with at most one
+/// conversion. The error is a short reason; the caller reports it.
+fn sprintf(fmt: &[u8], arg: Arg) -> Result<Vec<u8>, String> {
+    let mut out = Vec::new();
+    let mut used = false;
+    let mut i = 0;
+    while i < fmt.len() {
+        if fmt[i] != b'%' {
+            out.push(fmt[i]);
+            i += 1;
+            continue;
+        }
+        i += 1;
+        if fmt.get(i) == Some(&b'%') {
+            out.push(b'%');
+            i += 1;
+            continue;
+        }
+
+        let mut spec = Spec::default();
+        while let Some(&b) = fmt.get(i) {
+            match b {
+                b'-' => spec.minus = true,
+                b'+' => spec.plus = true,
+                b' ' => spec.space = true,
+                b'0' => spec.zero = true,
+                b'#' => spec.alt = true,
+                b'\'' => return Err("the ' flag is not supported".into()),
+                _ => break,
+            }
+            i += 1;
+        }
+        if fmt.get(i) == Some(&b'*') {
+            return Err("a * field width needs a second argument".into());
+        }
+        while let Some(d) = fmt.get(i).filter(|b| b.is_ascii_digit()) {
+            spec.width = spec
+                .width
+                .saturating_mul(10)
+                .saturating_add(usize::from(d - b'0'));
+            i += 1;
+        }
+        if fmt.get(i) == Some(&b'.') {
+            i += 1;
+            if fmt.get(i) == Some(&b'*') {
+                return Err("a * precision needs a second argument".into());
+            }
+            let mut p = 0usize;
+            while let Some(d) = fmt.get(i).filter(|b| b.is_ascii_digit()) {
+                p = p.saturating_mul(10).saturating_add(usize::from(d - b'0'));
+                i += 1;
+            }
+            spec.prec = Some(p);
+        }
+        // "l" has no effect on a floating conversion; any other length
+        // modifier changes the argument type.
+        let long = fmt.get(i) == Some(&b'l');
+        if long {
+            i += 1;
+        } else if fmt.get(i).is_some_and(|b| b"hLqjzt".contains(b)) {
+            return Err("a length modifier changes the argument type".into());
+        }
+        let Some(&conv) = fmt.get(i) else {
+            return Err("the format ends inside a conversion".into());
+        };
+        i += 1;
+        if used {
+            return Err("a second conversion has no argument".into());
+        }
+        used = true;
+
+        match (conv, arg) {
+            (b'd' | b'i' | b'u' | b'o' | b'x' | b'X', Arg::Int(v)) if !long => {
+                out.extend(format_int(&spec, conv, v));
+            }
+            (b'c', Arg::Int(v)) if !long => {
+                if spec.zero {
+                    return Err("the 0 flag is undefined for %c".into());
+                }
+                // The int is converted to unsigned char.
+                let body = [v as u8];
+                out.extend(pad(&spec, &[], &body, false));
+            }
+            (b'e' | b'E' | b'f' | b'F' | b'g' | b'G', Arg::Double(v)) => {
+                out.extend(format_double(&spec, conv, v));
+            }
+            (b'a' | b'A', Arg::Double(_)) => return Err("%a is not supported".into()),
+            _ => {
+                return Err(format!(
+                    "%{} does not take the {} argument",
+                    conv as char,
+                    match arg {
+                        Arg::Int(_) => "int",
+                        Arg::Double(_) => "double",
+                    }
+                ));
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// Pad `prefix` (sign and radix prefix) and `body` (digits) to the field
+/// width: spaces on the right with `-`, zeros after the prefix when
+/// `zero_pad`, else spaces on the left.
+fn pad(spec: &Spec, prefix: &[u8], body: &[u8], zero_pad: bool) -> Vec<u8> {
+    let len = prefix.len() + body.len();
+    let fill = spec.width.saturating_sub(len);
+    let mut out = Vec::with_capacity(len + fill);
+    if spec.minus {
+        out.extend_from_slice(prefix);
+        out.extend_from_slice(body);
+        out.resize(out.len() + fill, b' ');
+    } else if zero_pad {
+        out.extend_from_slice(prefix);
+        out.resize(out.len() + fill, b'0');
+        out.extend_from_slice(body);
+    } else {
+        out.resize(fill, b' ');
+        out.extend_from_slice(prefix);
+        out.extend_from_slice(body);
+    }
+    out
+}
+
+/// The sign C writes in front of a signed conversion.
+fn sign_prefix(spec: &Spec, negative: bool) -> &'static [u8] {
+    if negative {
+        b"-"
+    } else if spec.plus {
+        b"+"
+    } else if spec.space {
+        b" "
+    } else {
+        b""
+    }
+}
+
+/// `%d`, `%i`, `%u`, `%o`, `%x` and `%X` of an `int`.
+fn format_int(spec: &Spec, conv: u8, v: i32) -> Vec<u8> {
+    let (negative, digits) = match conv {
+        b'd' | b'i' => (v < 0, i64::from(v).unsigned_abs().to_string()),
+        b'u' => (false, (v as u32).to_string()),
+        b'o' => (false, format!("{:o}", v as u32)),
+        b'x' => (false, format!("{:x}", v as u32)),
+        _ => (false, format!("{:X}", v as u32)),
+    };
+    // A precision is the minimum number of digits; zero with precision 0
+    // gives no digits.
+    let mut body = if spec.prec == Some(0) && v == 0 {
+        String::new()
+    } else {
+        digits
+    };
+    if let Some(p) = spec.prec {
+        if body.len() < p {
+            body = format!("{}{body}", "0".repeat(p - body.len()));
+        }
+    }
+    // '#' makes the first octal digit zero, and puts 0x or 0X before a
+    // non-zero hexadecimal value.
+    let mut prefix: Vec<u8> = Vec::new();
+    match conv {
+        b'd' | b'i' => prefix.extend_from_slice(sign_prefix(spec, negative)),
+        b'o' if spec.alt && !body.starts_with('0') => body.insert(0, '0'),
+        b'x' if spec.alt && v != 0 => prefix.extend_from_slice(b"0x"),
+        b'X' if spec.alt && v != 0 => prefix.extend_from_slice(b"0X"),
+        _ => {}
+    }
+    // '0' is ignored with a precision.
+    let zero_pad = spec.zero && spec.prec.is_none();
+    pad(spec, &prefix, body.as_bytes(), zero_pad)
+}
+
+/// `%e`, `%E`, `%f`, `%F`, `%g` and `%G` of a `double`.
+fn format_double(spec: &Spec, conv: u8, v: f64) -> Vec<u8> {
+    let upper = conv.is_ascii_uppercase();
+    let prefix = sign_prefix(spec, v.is_sign_negative());
+    let a = v.abs();
+    if !a.is_finite() {
+        let text = match (a.is_nan(), upper) {
+            (true, false) => "nan",
+            (true, true) => "NAN",
+            (false, false) => "inf",
+            (false, true) => "INF",
+        };
+        return pad(spec, prefix, text.as_bytes(), false);
+    }
+    let prec = spec.prec.unwrap_or(6);
+    let body = match conv.to_ascii_lowercase() {
+        b'e' => exp_form(a, prec, spec.alt, upper),
+        b'f' => fixed_form(a, prec, spec.alt),
+        _ => {
+            // %g: P significant digits, in %e style when the exponent X of
+            // the value rounded to P digits is below -4 or at least P, else
+            // in %f style with P - 1 - X decimals; trailing zeros and a bare
+            // decimal point removed unless '#'.
+            let p = prec.max(1);
+            let x = decimal_exponent(a, p - 1);
+            let s = if x < -4 || x >= p as i32 {
+                exp_form(a, p - 1, spec.alt, upper)
+            } else {
+                fixed_form(a, (p as i32 - 1 - x) as usize, spec.alt)
+            };
+            if spec.alt { s } else { strip_zeros(&s) }
+        }
+    };
+    pad(spec, prefix, body.as_bytes(), spec.zero)
+}
+
+/// The decimal exponent of `a` written with `decimals` digits after the
+/// point in `%e` style.
+fn decimal_exponent(a: f64, decimals: usize) -> i32 {
+    let s = format!("{a:.decimals$e}");
+    s.rsplit_once('e')
+        .and_then(|(_, e)| e.parse().ok())
+        .expect("Rust's {:e} has an exponent")
+}
+
+/// `a` in `%e` style: one digit, `prec` decimals, then the exponent with a
+/// sign and at least two digits. '#' keeps the point when `prec` is 0.
+fn exp_form(a: f64, prec: usize, alt: bool, upper: bool) -> String {
+    let s = format!("{a:.prec$e}");
+    let (mantissa, exp) = s.rsplit_once('e').expect("Rust's {:e} has an exponent");
+    let exp: i32 = exp.parse().expect("Rust's {:e} exponent is an integer");
+    let point = if alt && prec == 0 { "." } else { "" };
+    let e = if upper { 'E' } else { 'e' };
+    let sign = if exp < 0 { '-' } else { '+' };
+    format!("{mantissa}{point}{e}{sign}{:02}", exp.unsigned_abs())
+}
+
+/// `a` in `%f` style with `prec` decimals. '#' keeps the point when `prec`
+/// is 0.
+fn fixed_form(a: f64, prec: usize, alt: bool) -> String {
+    let s = format!("{a:.prec$}");
+    if alt && prec == 0 { s + "." } else { s }
+}
+
+/// Remove trailing zeros from the fraction of a `%g` result, and the point
+/// if no fraction is left.
+fn strip_zeros(s: &str) -> String {
+    let (num, exp) = match s.find(['e', 'E']) {
+        Some(i) => s.split_at(i),
+        None => (s, ""),
+    };
+    let num = if num.contains('.') {
+        num.trim_end_matches('0').trim_end_matches('.')
+    } else {
+        num
+    };
+    format!("{num}{exp}")
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn g_matches_c_examples() {
-        // Verified against C printf("%1.7G", x).
-        assert_eq!(format_g(0.0, 7), "0");
-        assert_eq!(format_g(1234.5678, 7), "1234.568");
-        assert_eq!(format_g(0.00012345678, 7), "0.0001234568");
-        assert_eq!(format_g(123456789.0, 7), "1.234568E+08");
-        assert_eq!(format_g(-9.5, 7), "-9.5");
-        assert_eq!(format_g(1.0, 7), "1");
-        assert_eq!(format_g(9.999999e6, 7), "9999999");
-        assert_eq!(format_g(1e-5, 7), "1E-05");
-        assert_eq!(format_g(0.1, 7), "0.1");
+    fn fmt(f: &str, digits: i32, v: f64) -> String {
+        format_value(f, digits, v).unwrap()
     }
 
     #[test]
-    fn parse_default_and_flags() {
-        let p = parse_axis_format("%1.7G", 7);
-        assert_eq!(p.spec_prec, Some(7));
-        assert_eq!(p.conv, 'G');
+    fn default_format_matches_c() {
+        // Verified against C printf("%1.7G", x).
+        assert_eq!(fmt("%1.7G", 7, 0.0), "0");
+        assert_eq!(fmt("%1.7G", 7, 1234.5678), "1234.568");
+        assert_eq!(fmt("%1.7G", 7, 0.00012345678), "0.0001234568");
+        assert_eq!(fmt("%1.7G", 7, 123456789.0), "1.234568E+08");
+        assert_eq!(fmt("%1.7G", 7, 9.999999e6), "9999999");
+        assert_eq!(fmt("%1.7G", 7, 1e-5), "1E-05");
+    }
+
+    #[test]
+    fn parse_rewrites_as_c_does() {
+        let p = parse_axis_format("%.*G", 5);
+        assert_eq!(p.fmt, b"%.5G");
         assert!(!p.integ && !p.log);
 
-        // ".*" precision is replaced by Digits.
-        let p = parse_axis_format("%.*G", 5);
-        assert_eq!(p.spec_prec, Some(5));
+        let p = parse_axis_format("%+-&#8.2f  ", 7);
+        assert_eq!(p.fmt, b"%-#8.2f");
+        assert!(p.log && p.sign && !p.integ);
 
-        // A precision-less float spec carries no precision; the caller
-        // applies C printf's default of 6 (NOT Digits).
-        let p = parse_axis_format("%E", 7);
-        assert_eq!(p.spec_prec, None);
-        assert_eq!(p.conv, 'E');
-
-        // Integer conversion code.
-        let p = parse_axis_format("%d", 7);
-        assert!(p.integ);
-        assert_eq!(p.conv, 'd');
-
-        // '&' log flag.
-        let p = parse_axis_format("%&G", 7);
-        assert!(p.log);
+        // Without '&' the Format is unchanged apart from trailing space.
+        let p = parse_axis_format("%+ d ", 7);
+        assert_eq!(p.fmt, b"%+ d");
+        assert!(p.integ && !p.log);
     }
 
     #[test]
-    fn format_value_dispatch() {
-        assert_eq!(format_value("%1.7G", 7, 1234.5678), "1234.568");
-        assert_eq!(format_value("%d", 7, 42.9), "42");
-        assert_eq!(format_value("%.2f", 7, 9.87654), "9.88");
+    fn undefined_formats_are_errors() {
+        for f in ["%g %g", "%*g", "%.*g %d", "%ld", "%s", "%Lg", "%a", "%"] {
+            let err = format_value(f, 7, 1.5).expect_err(f);
+            assert_eq!(err.code(), ErrorCode::Fmter, "{f}");
+        }
     }
 
     #[test]
-    fn precision_less_float_defaults_to_six() {
-        // A user-set, precision-less float Format uses C printf's
-        // default of 6 fraction digits, NOT Digits. Verified against
-        // `printf("%E\n", 5.0)` -> "5.000000E+00" and
-        // `printf("%f\n", 5.0)` -> "5.000000".
-        assert_eq!(format_value("%E", 7, 5.0), "5.000000E+00");
-        assert_eq!(format_value("%f", 7, 5.0), "5.000000");
-        // The default/unset Frame path carries an explicit precision and
-        // is unaffected: `%1.7G` still gives 7 significant figures.
-        assert_eq!(format_value("%1.7G", 7, 1234.5678), "1234.568");
-    }
-
-    #[test]
-    fn integer_cast_is_32_bit() {
-        // C casts to a 32-bit int: `printf("%d", -3.9)` -> "-3".
-        assert_eq!(format_value("%d", 7, -3.9), "-3");
-        assert_eq!(format_value("%d", 7, 42.9), "42");
+    fn zero_byte_ends_the_string() {
+        assert_eq!(fmt("ab%cde", 7, 0.0), "ab");
+        assert_eq!(fmt("%3c|", 7, 0.0), "  ");
     }
 }

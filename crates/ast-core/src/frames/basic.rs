@@ -723,11 +723,11 @@ impl Frame for BasicFrame {
                 if is_bad(value) {
                     return Ok("<bad>".to_string());
                 }
-                let d = a.digits.unwrap_or(digits).max(1) as usize;
+                let d = a.digits.unwrap_or(digits);
                 let fmt = self.axes[self.internal(axis)?].format_value(digits);
-                Ok(super::axis_format::format_value(&fmt, d, value))
+                super::axis_format::format_value(&fmt, d, value)
             }
-            FrameAxis::Sky(s) => Ok(s.format_axis_value(digits, value)),
+            FrameAxis::Sky(s) => s.format_axis_value(digits, value),
         }
     }
 
