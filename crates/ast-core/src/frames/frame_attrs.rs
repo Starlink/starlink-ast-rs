@@ -569,7 +569,8 @@ macro_rules! frame_attrs_epoch {
                 .unwrap_or_else(|| self.frame_default_epoch())
         }
         fn set_epoch_mjd(&mut self, mjd: f64) -> $crate::error::AstResult<()> {
-            self.attrs.epoch = Some(mjd);
+            // A bad Epoch is no Epoch (frame.c `TestEpoch` is `!= AST__BAD`).
+            self.attrs.epoch = (mjd != $crate::constants::BAD_VALUE).then_some(mjd);
             Ok(())
         }
         fn test_epoch(&self) -> bool {
@@ -1139,10 +1140,10 @@ macro_rules! axis_attrs_store {
         axis_attrs_store!(@val set_direction, test_direction, clear_direction, direction, bool);
     };
     (@one top) => {
-        axis_attrs_store!(@val set_top, test_top, clear_top, top, f64);
+        axis_attrs_store!(@bad_unset set_top, test_top, clear_top, top);
     };
     (@one bottom) => {
-        axis_attrs_store!(@val set_bottom, test_bottom, clear_bottom, bottom, f64);
+        axis_attrs_store!(@bad_unset set_bottom, test_bottom, clear_bottom, bottom);
     };
     (@str $set:ident, $test:ident, $clear:ident, $field:ident) => {
         fn $set(&mut self, axis: usize, value: &str) -> $crate::error::AstResult<()> {
@@ -1154,6 +1155,15 @@ macro_rules! axis_attrs_store {
     (@val $set:ident, $test:ident, $clear:ident, $field:ident, $ty:ty) => {
         fn $set(&mut self, axis: usize, value: $ty) -> $crate::error::AstResult<()> {
             self.ax_mut(axis)?.$field = Some(value);
+            Ok(())
+        }
+        axis_attrs_store!(@test_clear $test, $clear, $field);
+    };
+    // An attribute whose C TEST is `!= AST__BAD` (axis.c Top, Bottom), so
+    // that setting the bad value clears it.
+    (@bad_unset $set:ident, $test:ident, $clear:ident, $field:ident) => {
+        fn $set(&mut self, axis: usize, value: f64) -> $crate::error::AstResult<()> {
+            self.ax_mut(axis)?.$field = (value != $crate::constants::BAD_VALUE).then_some(value);
             Ok(())
         }
         axis_attrs_store!(@test_clear $test, $clear, $field);

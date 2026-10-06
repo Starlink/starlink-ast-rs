@@ -351,7 +351,8 @@ impl BasicFrame {
 
     /// Set the Epoch as a TDB Modified Julian Date.
     pub fn set_epoch_mjd(&mut self, mjd: f64) {
-        self.attrs.epoch = Some(mjd);
+        // A bad Epoch is no Epoch (frame.c `TestEpoch` is `!= AST__BAD`).
+        self.attrs.epoch = (mjd != crate::constants::BAD_VALUE).then_some(mjd);
     }
 
     /// The Epoch as a year, Besselian before 1984 and Julian from then on,
@@ -799,8 +800,15 @@ impl Frame for BasicFrame {
         Ok(super::cartesian_offset(from, to, dist))
     }
 
-    fn norm(&self, _coords: &mut [f64]) -> AstResult<()> {
-        // No-op for Cartesian frames.
+    /// frame.c `Norm`: each axis value is normalised by its own Axis
+    /// object, so a SkyAxis picked out of a SkyFrame wraps its angle and a
+    /// plain Axis leaves its value alone.
+    fn norm(&self, coords: &mut [f64]) -> AstResult<()> {
+        for (value, &phys) in coords.iter_mut().zip(&self.perm) {
+            if let FrameAxis::Sky(sky) = &self.axes[phys] {
+                *value = sky.axis_norm(*value);
+            }
+        }
         Ok(())
     }
 

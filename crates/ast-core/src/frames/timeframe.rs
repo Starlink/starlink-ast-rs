@@ -710,7 +710,8 @@ impl TimeFrame {
 
     /// Set the epoch as MJD.
     pub fn set_epoch_mjd(&mut self, mjd: f64) {
-        self.attrs.epoch = Some(mjd);
+        // A bad Epoch is no Epoch (frame.c `TestEpoch` is `!= AST__BAD`).
+        self.attrs.epoch = (mjd != crate::constants::BAD_VALUE).then_some(mjd);
     }
 
     /// Set the epoch as a decimal year (IAU 1984 rule:

@@ -254,3 +254,38 @@ fn picked_sky_axis_keeps_its_norm_unit() {
         }
     }
 }
+
+/// Setting Top, Bottom or Epoch to the bad value leaves it unset, since C
+/// tests each as `!= AST__BAD` (axis.c:2643-2663, frame.c:12585).
+#[test]
+fn bad_top_bottom_and_epoch_are_unset() {
+    use ast_core::constants::BAD_VALUE;
+    use ast_core::frames::{BasicFrameBuilder, Frame, SkyFrame};
+
+    let mut f = BasicFrameBuilder::new(1).build().unwrap();
+    f.set_top(1, BAD_VALUE).unwrap();
+    f.set_bottom(1, BAD_VALUE).unwrap();
+    Frame::set_epoch_mjd(&mut f, BAD_VALUE).unwrap();
+    assert!(!f.test_top(1).unwrap());
+    assert!(!f.test_bottom(1).unwrap());
+    assert!(!Frame::test_epoch(&f));
+
+    let mut s = SkyFrame::unset_system();
+    s.set_epoch_mjd(55000.0);
+    s.set_epoch_mjd(BAD_VALUE);
+    assert!(!s.test_epoch());
+}
+
+/// AxAngle reports an invalid axis as an error rather than indexing out
+/// of range (frame.c:1442 `astValidateAxis`).
+#[test]
+fn ax_angle_rejects_an_invalid_axis() {
+    use ast_core::error::ErrorCode;
+    use ast_core::frames::{BasicFrameBuilder, Frame};
+
+    let f = BasicFrameBuilder::new(2).build().unwrap();
+    for axis in [0, 3] {
+        let err = f.ax_angle(&[0.0, 0.0], &[1.0, 1.0], axis).unwrap_err();
+        assert_eq!(err.code(), ErrorCode::Axiin);
+    }
+}

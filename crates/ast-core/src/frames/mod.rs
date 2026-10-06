@@ -1170,6 +1170,8 @@ pub trait Frame: AsAny + Send + fmt::Debug {
     fn ax_angle(&self, a: &[f64], b: &[f64], axis: usize) -> AstResult<f64> {
         use crate::constants::BAD_VALUE;
         use crate::mappings::helpers::is_bad;
+        // frame.c:1442 validates the axis first.
+        self.validate_frame_axis(axis, "astAxAngle")?;
         let naxes = self.naxes();
         let mut aa = vec![0.0; naxes];
         let mut mxab = 0.0;

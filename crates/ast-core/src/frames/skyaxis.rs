@@ -53,6 +53,18 @@ impl SkyAxis {
         self.is_latitude.unwrap_or(false)
     }
 
+    /// A value normalised as skyaxis.c `AxisNorm` does: into -pi..pi when
+    /// the range is centred on zero, else 0..2pi; a bad value is unchanged.
+    pub(crate) fn axis_norm(&self, value: f64) -> f64 {
+        if value == crate::constants::BAD_VALUE {
+            value
+        } else if self.centre_zero_value() {
+            crate::pal::drange(value)
+        } else {
+            crate::pal::dranrm(value)
+        }
+    }
+
     /// CentreZero, set or default (IsLatitude; skyaxis.c:4641).
     pub fn centre_zero_value(&self) -> bool {
         self.centre_zero.unwrap_or(self.is_latitude_value())

@@ -463,7 +463,9 @@ impl SkyFrame {
 
     /// Set the equinox as MJD.
     pub fn set_equinox_mjd(&mut self, mjd: f64) {
-        self.equinox = Some(mjd);
+        // A helio-ecliptic SkyFrame has no Equinox of its own, so setting
+        // one clears it (skyframe.c:11436).
+        self.equinox = (self.system != SkySystem::Helioecliptic).then_some(mjd);
     }
 
     /// Return the epoch as MJD.
@@ -529,7 +531,8 @@ impl SkyFrame {
 
     /// Set the epoch as MJD.
     pub fn set_epoch_mjd(&mut self, mjd: f64) {
-        self.attrs.epoch = Some(mjd);
+        // A bad Epoch is no Epoch (frame.c `TestEpoch` is `!= AST__BAD`).
+        self.attrs.epoch = (mjd != crate::constants::BAD_VALUE).then_some(mjd);
     }
 
     /// Set the epoch from a bare decimal year (e.g. a FITS `EPOCH`
@@ -721,7 +724,8 @@ impl SkyFrame {
 
     /// Set the sky tolerance in arcseconds.
     pub fn set_sky_tol(&mut self, tol: f64) {
-        self.sky_tol = Some(tol);
+        // skyframe.c:11658 stores the absolute value.
+        self.sky_tol = Some(tol.abs());
     }
 
     /// Test whether `SkyTol` has been explicitly set.
@@ -1530,33 +1534,47 @@ impl Frame for SkyFrame {
         Ok(result)
     }
 
+    /// skyframe.c `Norm`: longitude into 0..2pi (or -pi..pi with NegLon),
+    /// latitude into -pi/2..pi/2, moving the longitude through the pole
+    /// when the latitude passes it. A value that is bad leaves the other to
+    /// be normalised alone.
     fn norm(&self, coords: &mut [f64]) -> AstResult<()> {
+        use std::f64::consts::PI;
         if coords.len() < 2 {
             return Ok(());
         }
         let lp = self.lon_pos();
         let bp = self.lat_pos();
-        if is_bad(coords[lp]) || is_bad(coords[bp]) {
-            return Ok(());
-        }
-
-        let mut lat = pal::drange(coords[bp]);
         let mut lon = coords[lp];
-
-        if lat > std::f64::consts::FRAC_PI_2 {
-            lat = std::f64::consts::PI - lat;
-            lon += std::f64::consts::PI;
-        } else if lat < -std::f64::consts::FRAC_PI_2 {
-            lat = -std::f64::consts::PI - lat;
-            lon += std::f64::consts::PI;
-        }
-
-        if self.neglon() {
-            lon = pal::drange(lon);
-        } else {
+        let mut lat = coords[bp];
+        if !is_bad(lon) && !is_bad(lat) {
             lon = pal::dranrm(lon);
+            lat = pal::drange(lat);
+            if lat > PI / 2.0 {
+                lon += if lon < PI { PI } else { -PI };
+                lat = PI - lat;
+            } else if lat < -(PI / 2.0) {
+                lon += if lon < PI { PI } else { -PI };
+                lat = -PI - lat;
+            }
+        } else if !is_bad(lon) {
+            lon = pal::dranrm(lon);
+        } else if !is_bad(lat) {
+            lat = pal::drange(lat);
+            if lat > PI / 2.0 {
+                lat = PI - lat;
+            } else if lat < -(PI / 2.0) {
+                lat = -PI - lat;
+            }
         }
-
+        // A longitude a rounding error short of 2pi becomes zero
+        // (skyframe.c:7195, DBL_EPSILON * FLT_RADIX).
+        if (lon - 2.0 * PI).abs() <= 2.0 * PI * (f64::EPSILON * 2.0) {
+            lon = 0.0;
+        }
+        if !is_bad(lon) && self.neglon() {
+            lon = pal::drange(lon);
+        }
         coords[lp] = lon;
         coords[bp] = lat;
         Ok(())

@@ -171,3 +171,28 @@ fn dump_matches_the_c_library() {
         failures.join("\n")
     );
 }
+
+/// A plain Frame normalises each value through its Axis object (frame.c
+/// `Norm`), so a SkyAxis picked out of a SkyFrame wraps its angle: into
+/// 0..2pi for longitude and -pi..pi for latitude (skyaxis.c `AxisNorm`).
+/// The values are the C library's.
+#[test]
+fn picked_sky_axes_normalise_as_c_does() {
+    use ast_core::frames::{BasicFrameBuilder, Frame, SkyFrame, pick_axes};
+
+    let sky = SkyFrame::unset_system();
+    let (ra, _) = pick_axes(&sky, &[1]).unwrap();
+    let mut v = [7.0];
+    ra.norm(&mut v).unwrap();
+    assert_eq!(v[0], 0.71681469282041377);
+
+    let (dec, _) = pick_axes(&sky, &[2]).unwrap();
+    let mut v = [4.0];
+    dec.norm(&mut v).unwrap();
+    assert_eq!(v[0], -2.2831853071795862);
+
+    let plain = BasicFrameBuilder::new(1).build().unwrap();
+    let mut v = [7.0];
+    plain.norm(&mut v).unwrap();
+    assert_eq!(v[0], 7.0);
+}
