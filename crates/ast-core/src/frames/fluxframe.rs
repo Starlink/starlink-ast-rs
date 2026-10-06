@@ -1120,18 +1120,22 @@ impl Serializable for FluxFrame {
     fn from_node(node: &Node) -> AstResult<Self> {
         let mut ff = FluxFrame::unset_system();
         ff.attrs = super::frame_attrs::read_frame_attrs(node);
-        if let Some(system) = node
-            .get("System")
-            .and_then(|_| FluxSystem::parse(&node.get_string("System", "")))
+        if let Some(system) =
+            super::frame_attrs::read_system_item(node, "System", "System", FluxSystem::parse)?
         {
             ff.system = system;
             ff.system_set = true;
         }
-        if node.get("AlSys").is_some() {
-            ff.align_system = FluxSystem::parse(&node.get_string("AlSys", ""));
+        if let Some(system) =
+            super::frame_attrs::read_system_item(node, "AlSys", "AlignSystem", FluxSystem::parse)?
+        {
+            ff.align_system = Some(system);
         }
         if let Some(axis_node) = node.get_object("Ax1") {
             ff.axis = super::axis::Axis::read(axis_node);
+        }
+        if let Some(f) = ff.axis.apply_frame_axis_keys(node, 1) {
+            ff.axis.format = Some(f);
         }
 
         // SpecVal (SpcVl).

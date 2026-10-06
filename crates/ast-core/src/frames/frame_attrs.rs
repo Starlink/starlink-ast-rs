@@ -475,6 +475,27 @@ pub(crate) fn write_frame_cards(node: &mut Node, f: &impl FrameDumpSource) {
 
 /// Read the Frame-class attributes from a Frame node. Mirrors the attribute
 /// part of C's `astLoadFrame` (frame.c).
+/// Read the System item `key` (`System` or `AlSys`), naming the attribute
+/// `attr` in the error. A name the class does not know is AST__ATTIN, as
+/// `astLoadFrame` reports it through the class's `astSystemCode`
+/// (frame.c:15392).
+pub(crate) fn read_system_item<T>(
+    node: &Node,
+    key: &str,
+    attr: &str,
+    parse: impl Fn(&str) -> Option<T>,
+) -> AstResult<Option<T>> {
+    let Some(name) = node.get_string_if_set(key) else {
+        return Ok(None);
+    };
+    parse(&name).map(Some).ok_or_else(|| {
+        AstError::new(
+            ErrorCode::Attin,
+            format!("astRead(Channel): Invalid {attr} description \"{name}\"."),
+        )
+    })
+}
+
 pub(crate) fn read_frame_attrs(node: &Node) -> FrameAttrs {
     let bool_of = |key: &str| node.get(key).map(|_| node.get_int(key, 0) != 0);
     let usize_of = |key: &str| node.get(key).map(|_| node.get_int(key, 0) as usize);

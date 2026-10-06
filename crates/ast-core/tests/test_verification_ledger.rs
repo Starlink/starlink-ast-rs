@@ -196,6 +196,15 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
          C-side artefact has a home. Gated by c_defect_rows_still_diverge",
     ),
     (
+        "test_frame_load.rs",
+        "FRAME_LOAD_EXCLUDED",
+        2,
+        "two hand-written Native descriptions C's Dump never writes: an AlSys \
+         in the SpecFrame section, which C ignores because astLoadFrame reads \
+         only the Frame section, and a SkyFrame with no Ax objects, which C \
+         gives plain Axis objects. Gated by excluded_descriptions_still_differ",
+    ),
+    (
         "test_serialisation.rs",
         "ROUND_TRIP_EXCLUDED",
         20,

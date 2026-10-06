@@ -2828,12 +2828,11 @@ impl Serializable for SkyFrame {
     fn from_node(node: &Node) -> AstResult<Self> {
         // Read System. Default is ICRS to match the C library
         // (`skyframe.c`: AST__ICRS is the default System).
-        let sys_str = node.get_string("System", "ICRS");
-        let system = SkySystem::parse(&sys_str).unwrap_or(SkySystem::Icrs);
-
-        let mut sky = SkyFrame::new(system);
+        let read =
+            super::frame_attrs::read_system_item(node, "System", "System", SkySystem::parse)?;
+        let mut sky = SkyFrame::new(read.unwrap_or(SkySystem::Icrs));
         // If the System node was explicitly present, mark it as set.
-        if node.get("System").is_some() {
+        if read.is_some() {
             sky.system_set = true;
         }
 
@@ -2932,9 +2931,10 @@ impl Serializable for SkyFrame {
         }
 
         // AlSys (alignment system).
-        let alsys_str = node.get_string("AlSys", "");
-        if !alsys_str.is_empty() {
-            sky.align_system = SkySystem::parse(&alsys_str);
+        if let Some(system) =
+            super::frame_attrs::read_system_item(node, "AlSys", "AlignSystem", SkySystem::parse)?
+        {
+            sky.align_system = Some(system);
         }
 
         // ActUnt: stored only when the token is present, with its value
@@ -2957,6 +2957,9 @@ impl Serializable for SkyFrame {
                 if axis_node.class == "SkyAxis" {
                     sky.axes[i] = SkyAxis::from_node(axis_node)?;
                 }
+            }
+            if let Some(f) = sky.axes[i].axis.apply_frame_axis_keys(node, i + 1) {
+                sky.axes[i].format = Some(f);
             }
         }
 

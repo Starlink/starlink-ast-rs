@@ -1946,9 +1946,10 @@ impl Serializable for TimeFrame {
         // Read System. The unset default is MJD (timeframe.c:2911), so an
         // absent `System=` line decodes to an MJD frame with system_set
         // false.
-        let sys_str = node.get_string("System", "MJD");
-        let system = TimeSystem::parse(&sys_str).unwrap_or(TimeSystem::Mjd);
-        let system_present = node.get("System").is_some();
+        let read =
+            super::frame_attrs::read_system_item(node, "System", "System", TimeSystem::parse)?;
+        let system = read.unwrap_or(TimeSystem::Mjd);
+        let system_present = read.is_some();
 
         let mut tf = TimeFrame::new(system);
         // TimeFrame::new flags System as set; honour the serialised
@@ -1992,13 +1993,18 @@ impl Serializable for TimeFrame {
             tf.lt_offset = Some(node.get_double("LTOff", 0.0));
         }
 
-        if node.get("AlSys").is_some() {
-            tf.align_system = TimeSystem::parse(&node.get_string("AlSys", ""));
+        if let Some(system) =
+            super::frame_attrs::read_system_item(node, "AlSys", "AlignSystem", TimeSystem::parse)?
+        {
+            tf.align_system = Some(system);
         }
 
         // The Axis attributes live in the Ax1 Axis child node.
         if let Some(axis_node) = node.get_object("Ax1") {
             tf.axis = super::axis::Axis::read(axis_node);
+        }
+        if let Some(f) = tf.axis.apply_frame_axis_keys(node, 1) {
+            tf.axis.format = Some(f);
         }
 
         Ok(tf)

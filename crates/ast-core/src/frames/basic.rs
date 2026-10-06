@@ -9,7 +9,7 @@ use crate::serial::{Node, Serializable};
 use super::axis::{Axis, FrameAxis};
 use super::frame_attrs::{
     FrameAttrs, FrameDumpSource, clean_domain, default_epoch_mjd, default_symbol, read_frame_attrs,
-    write_frame_cards,
+    read_system_item, write_frame_cards,
 };
 use super::{AxisKind, DynFrame, Frame};
 
@@ -1014,28 +1014,36 @@ impl Serializable for BasicFrame {
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
-        let naxes = node.get_int("Naxes", 0) as usize;
-        if naxes == 0 {
-            return Err(AstError::new(
-                ErrorCode::Lderr,
-                "Frame: Naxes is 0 or missing",
-            ));
-        }
-
-        let mut frame = BasicFrameBuilder::new(naxes).build()?;
+        // A missing or negative Naxes loads a Frame with no axes
+        // (frame.c:15199), which the public builder does not make.
+        let naxes = node.get_int("Naxes", 0).max(0) as usize;
+        let mut frame = BasicFrame {
+            naxes,
+            attrs: FrameAttrs::default(),
+            axes: vec![FrameAxis::default(); naxes],
+            perm: (0..naxes).collect(),
+            system_set: false,
+            align_system_set: false,
+        };
         frame.attrs = read_frame_attrs(node);
         // C's loader re-applies the setters, which clamp Digits to at
         // least 1 (frame.c:15330).
         if let Some(d) = frame.attrs.digits {
             frame.attrs.digits = Some(d.max(1));
         }
-        frame.system_set = node.get("System").is_some();
-        frame.align_system_set = node.get("AlSys").is_some();
+        let cartesian = |name: &str| {
+            name.eq_ignore_ascii_case(FrameSystem::Cartesian.as_str())
+                .then_some(())
+        };
+        frame.system_set = read_system_item(node, "System", "System", cartesian)?.is_some();
+        frame.align_system_set =
+            read_system_item(node, "AlSys", "AlignSystem", cartesian)?.is_some();
 
         for (i, axis) in frame.axes.iter_mut().enumerate() {
             if let Some(axis_node) = node.get_object(&format!("Ax{}", i + 1)) {
                 *axis = FrameAxis::read(axis_node)?;
             }
+            axis.apply_frame_axis_keys(node, i + 1);
         }
 
         // The permutation, `Prm{n}` being the 1-based internal axis of
@@ -1051,6 +1059,7 @@ impl Serializable for BasicFrame {
         Ok(frame)
     }
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;

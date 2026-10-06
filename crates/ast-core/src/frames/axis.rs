@@ -92,6 +92,42 @@ impl Axis {
         }
     }
 
+    /// Apply the per-axis items of a Frame dump for axis `n` (1-based),
+    /// `Lbl<n>`, `Sym<n>`, `Uni<n>`, `Dir<n>`, `Top<n>`, `Bot<n>` and
+    /// `Dig<n>`, through the Axis setters, as `astLoadFrame` does after
+    /// reading the Axis object (frame.c:15226). Dump writes these commented
+    /// out, so only a hand-written description sets them. `Fmt<n>` is
+    /// returned rather than applied, since a SkyAxis keeps its own Format.
+    pub(crate) fn apply_frame_axis_keys(&mut self, node: &Node, n: usize) -> Option<String> {
+        if let Some(v) = node.get_string_if_set(&format!("Lbl{n}")) {
+            self.label = Some(v);
+        }
+        if let Some(v) = node.get_string_if_set(&format!("Sym{n}")) {
+            self.symbol = Some(v);
+        }
+        if let Some(v) = node.get_string_if_set(&format!("Uni{n}")) {
+            self.unit = Some(v);
+        }
+        let key = format!("Dir{n}");
+        if node.get(&key).is_some() {
+            self.direction = Some(node.get_int(&key, 1) != 0);
+        }
+        let key = format!("Top{n}");
+        if node.get(&key).is_some() {
+            self.top = Some(node.get_double(&key, f64::MAX));
+        }
+        let key = format!("Bot{n}");
+        if node.get(&key).is_some() {
+            self.bottom = Some(node.get_double(&key, -f64::MAX));
+        }
+        // SetAxisDigits keeps at least one digit (axis.c:2617).
+        let key = format!("Dig{n}");
+        if node.get(&key).is_some() {
+            self.digits = Some((node.get_int(&key, 7) as i32).max(1));
+        }
+        node.get_string_if_set(&format!("Fmt{n}"))
+    }
+
     /// Copy the attributes set on `template` onto this axis. Mirrors C's
     /// `Axis::AxisOverlay` (axis.c:1226).
     pub(crate) fn overlay_from(&mut self, template: &Axis) {
@@ -255,6 +291,15 @@ impl FrameAxis {
         } else {
             FrameAxis::Plain(Axis::read(node))
         })
+    }
+
+    /// Apply the per-axis items of a Frame dump for axis `n` (1-based),
+    /// the Format going to a SkyAxis's own Format.
+    /// See [`Axis::apply_frame_axis_keys`].
+    pub(crate) fn apply_frame_axis_keys(&mut self, node: &Node, n: usize) {
+        if let Some(f) = self.axis_mut().apply_frame_axis_keys(node, n) {
+            *self.format_slot_mut() = Some(f);
+        }
     }
 
     /// Overlay the attributes set on the template Axis object. Mirrors

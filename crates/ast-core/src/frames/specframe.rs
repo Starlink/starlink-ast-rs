@@ -2441,9 +2441,10 @@ impl Serializable for SpecFrame {
         // Read System. The unset default is WAVELEN (specframe.c:2015),
         // so an absent `System=` line decodes to a WAVELEN frame with
         // system_set false.
-        let sys_str = node.get_string("System", SpecSystem::Wavelen.as_str());
-        let system = SpecSystem::parse(&sys_str).unwrap_or(SpecSystem::Wavelen);
-        let system_present = node.get("System").is_some();
+        let read =
+            super::frame_attrs::read_system_item(node, "System", "System", SpecSystem::parse)?;
+        let system = read.unwrap_or(SpecSystem::Wavelen);
+        let system_present = read.is_some();
 
         let mut sf = SpecFrame::new(system);
         // SpecFrame::new flags System as set; honour the serialised
@@ -2493,6 +2494,9 @@ impl Serializable for SpecFrame {
         if let Some(axis_node) = node.get_object("Ax1") {
             sf.axis = super::axis::Axis::read(axis_node);
         }
+        if let Some(f) = sf.axis.apply_frame_axis_keys(node, 1) {
+            sf.axis.format = Some(f);
+        }
         if let Some(u) = &sf.used_units[system.used_units_index()] {
             sf.axis.unit = Some(u.clone());
         } else if node.get("Uni1").is_some() {
@@ -2508,9 +2512,10 @@ impl Serializable for SpecFrame {
         }
 
         // AlSys (AlignSystem).
-        let alsys_str = node.get_string("AlSys", "");
-        if !alsys_str.is_empty() {
-            sf.align_system = SpecSystem::parse(&alsys_str);
+        if let Some(system) =
+            super::frame_attrs::read_system_item(node, "AlSys", "AlignSystem", SpecSystem::parse)?
+        {
+            sf.align_system = Some(system);
         }
 
         // RefRA.
