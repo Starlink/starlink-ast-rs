@@ -18,425 +18,275 @@ mod cases;
 use ast_core::coords::PointSet;
 use ast_core::frames::{Frame, FrameRef, TimeFrame, TimeScale, TimeSystem};
 
-/// Cases that differ from C because of the TimeMap port, not the TimeFrame
-/// logic under test: every TCG conversion is offset by a constant, TT/TDB
-/// differs by about half a millisecond, and other conversions differ in the
-/// last bits. The same cases differ between identical Frames (configuration
-/// 0), where no alignment is involved.
+/// Cases that differ from C because the TimeFrame Overlay transfers
+/// TimeScale before TimeOrigin, where C transfers TimeOrigin first and so
+/// re-expresses the template's origin as if it were in the result's old
+/// timescale. The origins differ between identical Frames too
+/// (configuration 0): by about 0.5 ms in TDB, and in the last bits elsewhere.
 const TIMEMAP_EXCLUDED: &[(&str, &str)] = &[
-    ("s0:TAI:UTC", "last bits: TimeMap conversion arithmetic"),
-    ("s0:TAI:UT1", "last bits: TimeMap conversion arithmetic"),
     (
-        "s0:TAI:TCG",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
-    ),
-    ("s0:TAI:LT", "last bits: TimeMap conversion arithmetic"),
-    (
-        "s0:UTC:TCG",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
+        "s0:TAI:UTC",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
     ),
     (
-        "s0:UT1:TCG",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
+        "s0:TAI:UT1",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
     ),
-    ("s0:GMST:TAI", "last bits: TimeMap conversion arithmetic"),
-    ("s0:GMST:TDB", "last bits: TimeMap conversion arithmetic"),
-    ("s0:GMST:TCB", "last bits: TimeMap conversion arithmetic"),
     (
-        "s0:GMST:TCG",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
+        "s0:TAI:LT",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
     ),
-    ("s0:LAST:UTC", "last bits: TimeMap conversion arithmetic"),
-    ("s0:LAST:UT1", "last bits: TimeMap conversion arithmetic"),
-    ("s0:LAST:TT", "last bits: TimeMap conversion arithmetic"),
-    ("s0:LAST:TCB", "last bits: TimeMap conversion arithmetic"),
+    (
+        "s0:GMST:TAI",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
+    ),
+    (
+        "s0:GMST:TDB",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
+    ),
+    (
+        "s0:GMST:TCB",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
+    ),
+    (
+        "s0:LAST:UTC",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
+    ),
+    (
+        "s0:LAST:UT1",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
+    ),
+    (
+        "s0:LAST:TT",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
+    ),
+    (
+        "s0:LAST:TCB",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
+    ),
     (
         "s0:LAST:TCG",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
     ),
-    ("s0:LAST:LT", "last bits: TimeMap conversion arithmetic"),
-    ("s0:LMST:TAI", "last bits: TimeMap conversion arithmetic"),
-    ("s0:LMST:TDB", "last bits: TimeMap conversion arithmetic"),
-    ("s0:LMST:TCB", "last bits: TimeMap conversion arithmetic"),
     (
-        "s0:LMST:TCG",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
+        "s0:LAST:LT",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
     ),
-    ("s0:TT:UTC", "last bits: TimeMap conversion arithmetic"),
-    ("s0:TT:UT1", "last bits: TimeMap conversion arithmetic"),
+    (
+        "s0:LMST:TAI",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
+    ),
+    (
+        "s0:LMST:TDB",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
+    ),
+    (
+        "s0:LMST:TCB",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
+    ),
+    (
+        "s0:TT:UTC",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
+    ),
+    (
+        "s0:TT:UT1",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
+    ),
     (
         "s0:TT:TDB",
-        "TDB: TimeMap TT/TDB differs from C by about 0.5 ms",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
     ),
     (
-        "s0:TT:TCG",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
+        "s0:TT:LT",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
     ),
-    ("s0:TT:LT", "last bits: TimeMap conversion arithmetic"),
     (
         "s0:TDB:TT",
-        "TDB: TimeMap TT/TDB differs from C by about 0.5 ms",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
     ),
     (
-        "s0:TDB:TCG",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
+        "s0:TCB:TAI",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
     ),
-    ("s0:TCB:TAI", "last bits: TimeMap conversion arithmetic"),
-    ("s0:TCB:TT", "last bits: TimeMap conversion arithmetic"),
-    ("s0:TCB:TDB", "last bits: TimeMap conversion arithmetic"),
+    (
+        "s0:TCB:TT",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
+    ),
+    (
+        "s0:TCB:TDB",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
+    ),
     (
         "s0:TCB:TCG",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
-    ),
-    (
-        "s0:TCG:TAI",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
     ),
     (
         "s0:TCG:UTC",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
     ),
     (
         "s0:TCG:UT1",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
-    ),
-    (
-        "s0:TCG:GMST",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
-    ),
-    (
-        "s0:TCG:LAST",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
-    ),
-    (
-        "s0:TCG:LMST",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
-    ),
-    (
-        "s0:TCG:TT",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
-    ),
-    (
-        "s0:TCG:TDB",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
-    ),
-    (
-        "s0:TCG:TCB",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
     ),
     (
         "s0:TCG:LT",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
     ),
     (
-        "s0:LT:TCG",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
-    ),
-    ("s1:TAI:UTC", "last bits: TimeMap conversion arithmetic"),
-    (
-        "s1:TAI:TCG",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
+        "s1:TAI:UTC",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
     ),
     (
-        "s1:UTC:TCG",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
+        "s1:GMST:UTC",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
     ),
-    ("s1:UT1:TCB", "last bits: TimeMap conversion arithmetic"),
     (
-        "s1:UT1:TCG",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
+        "s1:LAST:TT",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
     ),
-    ("s1:GMST:UTC", "last bits: TimeMap conversion arithmetic"),
     (
-        "s1:GMST:TCG",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
+        "s1:LAST:LT",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
     ),
-    ("s1:LAST:TT", "last bits: TimeMap conversion arithmetic"),
-    ("s1:LAST:TCB", "last bits: TimeMap conversion arithmetic"),
     (
-        "s1:LAST:TCG",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
+        "s1:LMST:UTC",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
     ),
-    ("s1:LAST:LT", "last bits: TimeMap conversion arithmetic"),
-    ("s1:LMST:UTC", "last bits: TimeMap conversion arithmetic"),
-    ("s1:LMST:TDB", "last bits: TimeMap conversion arithmetic"),
-    ("s1:LMST:TCB", "last bits: TimeMap conversion arithmetic"),
+    (
+        "s1:LMST:TDB",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
+    ),
+    (
+        "s1:LMST:TCB",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
+    ),
     (
         "s1:LMST:TCG",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
     ),
-    ("s1:TT:UTC", "last bits: TimeMap conversion arithmetic"),
+    (
+        "s1:TT:UTC",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
+    ),
     (
         "s1:TT:TDB",
-        "TDB: TimeMap TT/TDB differs from C by about 0.5 ms",
-    ),
-    (
-        "s1:TT:TCG",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
     ),
     (
         "s1:TDB:TT",
-        "TDB: TimeMap TT/TDB differs from C by about 0.5 ms",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
     ),
     (
-        "s1:TDB:TCG",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
-    ),
-    ("s1:TCB:UTC", "last bits: TimeMap conversion arithmetic"),
-    ("s1:TCB:TDB", "last bits: TimeMap conversion arithmetic"),
-    (
-        "s1:TCB:TCG",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
+        "s1:TCB:UTC",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
     ),
     (
-        "s1:TCG:TAI",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
+        "s1:TCB:TDB",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
     ),
     (
         "s1:TCG:UTC",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
-    ),
-    (
-        "s1:TCG:UT1",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
-    ),
-    (
-        "s1:TCG:GMST",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
-    ),
-    (
-        "s1:TCG:LAST",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
-    ),
-    (
-        "s1:TCG:LMST",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
-    ),
-    (
-        "s1:TCG:TT",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
     ),
     (
         "s1:TCG:TDB",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
     ),
     (
-        "s1:TCG:TCB",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
+        "s2:TAI:UT1",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
     ),
     (
-        "s1:TCG:LT",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
-    ),
-    ("s1:LT:TCB", "last bits: TimeMap conversion arithmetic"),
-    (
-        "s1:LT:TCG",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
-    ),
-    ("s2:TAI:UT1", "last bits: TimeMap conversion arithmetic"),
-    (
-        "s2:TAI:TCG",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
-    ),
-    ("s2:UTC:TCB", "last bits: TimeMap conversion arithmetic"),
-    (
-        "s2:UTC:TCG",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
+        "s2:GMST:UT1",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
     ),
     (
-        "s2:UT1:TCG",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
+        "s2:GMST:TT",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
     ),
-    ("s2:GMST:UT1", "last bits: TimeMap conversion arithmetic"),
-    ("s2:GMST:TT", "last bits: TimeMap conversion arithmetic"),
-    ("s2:GMST:TDB", "last bits: TimeMap conversion arithmetic"),
-    ("s2:GMST:TCB", "last bits: TimeMap conversion arithmetic"),
     (
-        "s2:GMST:TCG",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
+        "s2:GMST:TDB",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
     ),
-    ("s2:GMST:LT", "last bits: TimeMap conversion arithmetic"),
-    ("s2:LAST:TAI", "last bits: TimeMap conversion arithmetic"),
-    ("s2:LAST:TDB", "last bits: TimeMap conversion arithmetic"),
-    ("s2:LAST:TCB", "last bits: TimeMap conversion arithmetic"),
+    (
+        "s2:GMST:TCB",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
+    ),
+    (
+        "s2:GMST:LT",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
+    ),
+    (
+        "s2:LAST:TAI",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
+    ),
+    (
+        "s2:LAST:TDB",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
+    ),
+    (
+        "s2:LAST:TCB",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
+    ),
     (
         "s2:LAST:TCG",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
     ),
-    ("s2:LMST:UT1", "last bits: TimeMap conversion arithmetic"),
-    ("s2:LMST:TT", "last bits: TimeMap conversion arithmetic"),
     (
-        "s2:LMST:TCG",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
+        "s2:LMST:UT1",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
     ),
-    ("s2:LMST:LT", "last bits: TimeMap conversion arithmetic"),
-    ("s2:TT:UT1", "last bits: TimeMap conversion arithmetic"),
+    (
+        "s2:LMST:TT",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
+    ),
+    (
+        "s2:LMST:LT",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
+    ),
+    (
+        "s2:TT:UT1",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
+    ),
     (
         "s2:TT:TDB",
-        "TDB: TimeMap TT/TDB differs from C by about 0.5 ms",
-    ),
-    (
-        "s2:TT:TCG",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
     ),
     (
         "s2:TDB:TT",
-        "TDB: TimeMap TT/TDB differs from C by about 0.5 ms",
-    ),
-    ("s2:TDB:TCB", "last bits: TimeMap conversion arithmetic"),
-    (
-        "s2:TDB:TCG",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
-    ),
-    ("s2:TCB:UT1", "last bits: TimeMap conversion arithmetic"),
-    (
-        "s2:TCB:TCG",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
     ),
     (
-        "s2:TCG:TAI",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
-    ),
-    (
-        "s2:TCG:UTC",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
+        "s2:TCB:UT1",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
     ),
     (
         "s2:TCG:UT1",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
     ),
     (
-        "s2:TCG:GMST",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
+        "s3:GMST:LMST",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
     ),
     (
-        "s2:TCG:LAST",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
+        "s3:LAST:GMST",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
     ),
     (
-        "s2:TCG:LMST",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
-    ),
-    (
-        "s2:TCG:TT",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
-    ),
-    (
-        "s2:TCG:TDB",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
-    ),
-    (
-        "s2:TCG:TCB",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
-    ),
-    (
-        "s2:TCG:LT",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
-    ),
-    ("s2:LT:TCB", "last bits: TimeMap conversion arithmetic"),
-    (
-        "s2:LT:TCG",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
-    ),
-    ("s3:TAI:TCB", "last bits: TimeMap conversion arithmetic"),
-    (
-        "s3:TAI:TCG",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
-    ),
-    (
-        "s3:UTC:TCG",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
-    ),
-    ("s3:UT1:TCB", "last bits: TimeMap conversion arithmetic"),
-    (
-        "s3:UT1:TCG",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
-    ),
-    ("s3:GMST:LMST", "last bits: TimeMap conversion arithmetic"),
-    (
-        "s3:GMST:TCG",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
-    ),
-    ("s3:LAST:GMST", "last bits: TimeMap conversion arithmetic"),
-    ("s3:LAST:LMST", "last bits: TimeMap conversion arithmetic"),
-    (
-        "s3:LAST:TCG",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
-    ),
-    ("s3:LMST:TCB", "last bits: TimeMap conversion arithmetic"),
-    (
-        "s3:LMST:TCG",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
+        "s3:LAST:LMST",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
     ),
     (
         "s3:TT:TDB",
-        "TDB: TimeMap TT/TDB differs from C by about 0.5 ms",
-    ),
-    (
-        "s3:TT:TCG",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
     ),
     (
         "s3:TDB:TT",
-        "TDB: TimeMap TT/TDB differs from C by about 0.5 ms",
-    ),
-    ("s3:TDB:TCB", "last bits: TimeMap conversion arithmetic"),
-    (
-        "s3:TDB:TCG",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
     ),
     (
-        "s3:TCB:TCG",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
-    ),
-    (
-        "s3:TCG:TAI",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
-    ),
-    (
-        "s3:TCG:UTC",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
-    ),
-    (
-        "s3:TCG:UT1",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
-    ),
-    (
-        "s3:TCG:GMST",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
-    ),
-    (
-        "s3:TCG:LAST",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
-    ),
-    (
-        "s3:TCG:LMST",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
-    ),
-    (
-        "s3:TCG:TT",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
-    ),
-    (
-        "s3:TCG:TDB",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
-    ),
-    (
-        "s3:TCG:TCB",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
-    ),
-    (
-        "s3:TCG:TCG",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
-    ),
-    (
-        "s3:TCG:LT",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
-    ),
-    ("s3:LT:UT1", "last bits: TimeMap conversion arithmetic"),
-    (
-        "s3:LT:TCG",
-        "TCG: TimeMap TT/TCG differs from C by a constant 0.63 microseconds",
+        "s3:LT:UT1",
+        "Overlay: TimeScale is transferred before TimeOrigin, unlike C",
     ),
 ];
 

@@ -920,16 +920,16 @@ fn apply_step_forward(cvt: &TimeConversion, time: f64) -> f64 {
             time - rcc(tdb, utc, args[1], args[5], args[6]) / SPD
         }
         TimeCvtType::TtToTcg => {
-            // TT -> TCG: tcg = tt + tt*LG + offset
-            time + time * LG + args[1]
+            // TT -> TCG: C adds the correction as one term (`+=`), which rounds once
+            time + (time * LG + args[1])
         }
         TimeCvtType::TcgToTt => {
             // TCG -> TT: tt = (tcg - offset) / (1 + LG)
             (time - args[1]) / (1.0 + LG)
         }
         TimeCvtType::TdbToTcb => {
-            // TDB -> TCB: tcb = tdb + tdb*LB + offset
-            time + time * LB + args[1]
+            // TDB -> TCB: C adds the correction as one term (`+=`), which rounds once
+            time + (time * LB + args[1])
         }
         TimeCvtType::TcbToTdb => {
             // TCB -> TDB: tdb = (tcb - offset) / (1 + LB)
@@ -1036,7 +1036,7 @@ fn apply_step_inverse(cvt: &TimeConversion, time: f64) -> f64 {
         }
         TimeCvtType::TcgToTt => {
             // Inverse of TCG->TT is TT->TCG
-            time + time * LG + args[1]
+            time + (time * LG + args[1])
         }
         TimeCvtType::TdbToTcb => {
             // Inverse of TDB->TCB is TCB->TDB
@@ -1044,7 +1044,7 @@ fn apply_step_inverse(cvt: &TimeConversion, time: f64) -> f64 {
         }
         TimeCvtType::TcbToTdb => {
             // Inverse of TCB->TDB is TDB->TCB
-            time + time * LB + args[1]
+            time + (time * LB + args[1])
         }
         TimeCvtType::UtToGmst => gmsta(time, args[0], false),
         TimeCvtType::GmstToUt => gmsta(time, args[0], true),
