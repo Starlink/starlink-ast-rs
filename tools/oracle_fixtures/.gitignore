@@ -42,3 +42,4 @@ dsb_topo_probe
 axis_format_probe
 axis_unformat_probe
 time_epoch_probe
+specflux_primary_probe

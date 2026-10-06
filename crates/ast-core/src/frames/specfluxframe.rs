@@ -275,8 +275,14 @@ impl Frame for SpecFluxFrame {
         2
     }
 
+    /// Inherited from CmpFrame (cmpframe.c `PrimaryFrame`): each axis
+    /// belongs to the one-axis SpecFrame or FluxFrame component.
     fn primary_frame(&self, axis: usize) -> (&dyn Frame, usize) {
-        (self, axis)
+        if self.perm()[axis] == 0 {
+            self.spec_frame.primary_frame(0)
+        } else {
+            self.flux_frame.primary_frame(0)
+        }
     }
 
     fn format(&self, axis: usize, value: f64) -> AstResult<String> {
@@ -373,9 +379,10 @@ impl Frame for SpecFluxFrame {
         super::find_frame::frames_equal(self, other)
     }
 
+    /// Inherited from CmpFrame, whose System is always "Compound"
+    /// (cmpframe.c `GetSystem`).
     fn system_string(&self) -> Option<&str> {
-        // SpecFluxFrame is a compound — no single system string.
-        None
+        Some("Compound")
     }
 
     fn perm_axes(&mut self, perm: &[usize]) -> AstResult<()> {
