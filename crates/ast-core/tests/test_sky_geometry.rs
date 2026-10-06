@@ -105,3 +105,47 @@ fn cmp_frame_resolve_points_matches_the_c_library() {
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
+
+/// A FrameSet resolves and intersects in its current Frame
+/// (frameset.c `Resolve`, `Intersect`), so one whose current Frame is a
+/// SkyFrame gives the SkyFrame's great-circle answers.
+#[test]
+fn frameset_resolves_and_intersects_in_its_current_frame() {
+    use ast_core::frames::{BasicFrameBuilder, FrameRef, FrameSet};
+    use ast_core::mappings::UnitMap;
+
+    let in_frameset = |permuted: bool| {
+        let mut fs = FrameSet::new(Box::new(BasicFrameBuilder::new(2).build().unwrap()));
+        fs.add_frame(
+            FrameRef::Base,
+            Box::new(UnitMap::new(2)),
+            Box::new(sky(permuted)),
+        )
+        .unwrap();
+        fs
+    };
+    for &(permuted, p1, p2, p3, p4, d1, d2) in cases::RESOLVE_CASES {
+        let got = Frame::resolve(&in_frameset(permuted), &p1, &p2, &p3).unwrap();
+        assert_eq!(
+            got,
+            (p4.to_vec(), d1, d2),
+            "permuted {permuted} {p1:?} {p2:?} {p3:?}"
+        );
+    }
+    for &(permuted, a1, a2, b1, b2, cross) in cases::INTERSECT_CASES {
+        let got = Frame::intersect(&in_frameset(permuted), &a1, &a2, &b1, &b2).unwrap();
+        assert_eq!(
+            got,
+            cross.to_vec(),
+            "permuted {permuted} {a1:?} {a2:?} {b1:?} {b2:?}"
+        );
+    }
+
+    // PermAxes through the Frame trait permutes the current Frame and
+    // remaps it (frameset.c `PermAxes`).
+    let mut fs = in_frameset(false);
+    Frame::perm_axes(&mut fs as &mut dyn Frame, &[2, 1]).unwrap();
+    let map = fs.mapping(FrameRef::Base, FrameRef::Current).unwrap();
+    let (x, y) = map.tran2(&[1.0], &[0.5], true).unwrap();
+    assert_eq!((x[0], y[0]), (0.5, 1.0));
+}

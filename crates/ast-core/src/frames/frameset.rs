@@ -1225,8 +1225,46 @@ impl Frame for FrameSet {
         self.current().match_axes_x(frm1)
     }
 
+    /// frameset.c `PrimaryFrame`: the current Frame's primary Frame.
     fn primary_frame(&self, axis: usize) -> (&dyn Frame, usize) {
-        (self, axis)
+        self.current().primary_frame(axis)
+    }
+
+    /// frameset.c `IsUnitFrame`.
+    fn is_unit_frame(&self) -> bool {
+        self.current().is_unit_frame()
+    }
+
+    /// frameset.c `PermAxes`: the current Frame's axes are permuted and it
+    /// is remapped so the FrameSet's Mappings follow.
+    fn perm_axes(&mut self, perm: &[usize]) -> AstResult<()> {
+        FrameSet::perm_axes(self, perm)
+    }
+
+    /// frameset.c `Resolve`: resolved in the current Frame, so on great
+    /// circles for a SkyFrame.
+    fn resolve(
+        &self,
+        point1: &[f64],
+        point2: &[f64],
+        point3: &[f64],
+    ) -> AstResult<(Vec<f64>, f64, f64)> {
+        self.current().resolve(point1, point2, point3)
+    }
+
+    /// frameset.c `ResolvePoints`.
+    fn resolve_points(
+        &self,
+        point1: &[f64],
+        point2: &[f64],
+        input: &crate::coords::PointSet,
+    ) -> AstResult<crate::coords::PointSet> {
+        self.current().resolve_points(point1, point2, input)
+    }
+
+    /// frameset.c `Intersect`.
+    fn intersect(&self, a1: &[f64], a2: &[f64], b1: &[f64], b2: &[f64]) -> AstResult<Vec<f64>> {
+        self.current().intersect(a1, a2, b1, b2)
     }
 
     fn format(&self, axis: usize, value: f64) -> AstResult<String> {
