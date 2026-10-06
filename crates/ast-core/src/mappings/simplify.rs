@@ -874,8 +874,8 @@ pub(crate) fn zoom_map_merge(
         while imap1 >= 1 {
             let prev = ctx.entry(imap1 - 1);
             if is_zoom(prev) {
-                let z = eff_zoom(prev)?;
-                zoom_acc *= z;
+                let z = prev.0.as_any().downcast_ref::<ZoomMap>()?.zoom();
+                zoom_acc = if prev.1 { zoom_acc / z } else { zoom_acc * z };
             } else if !is_unit(prev) {
                 break;
             }
@@ -887,8 +887,8 @@ pub(crate) fn zoom_map_merge(
         while imap2 + 1 < n {
             let next = ctx.entry(imap2 + 1);
             if is_zoom(next) {
-                let z = eff_zoom(next)?;
-                zoom_acc *= z;
+                let z = next.0.as_any().downcast_ref::<ZoomMap>()?.zoom();
+                zoom_acc = if next.1 { zoom_acc / z } else { zoom_acc * z };
             } else if !is_unit(next) {
                 break;
             }
