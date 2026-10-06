@@ -184,7 +184,7 @@ fn picked_sky_axes_normalise_as_c_does() {
     let (ra, _) = pick_axes(&sky, &[1]).unwrap();
     let mut v = [7.0];
     ra.norm(&mut v).unwrap();
-    assert_eq!(v[0], 0.71681469282041377);
+    assert_eq!(v[0], 0.716_814_692_820_413_8);
 
     let (dec, _) = pick_axes(&sky, &[2]).unwrap();
     let mut v = [4.0];
