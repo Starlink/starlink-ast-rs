@@ -30,3 +30,4 @@ unit_mapper_probe
 time_convert_probe
 min_max_axes_probe
 time_map_probe
+overlay_probe

@@ -132,6 +132,23 @@ impl CmpFrame {
         self.frame2.as_ref()
     }
 
+    /// Mutable access to both component Frames.
+    pub(crate) fn frames_mut(&mut self) -> (&mut dyn Frame, &mut dyn Frame) {
+        (self.frame1.as_mut(), self.frame2.as_mut())
+    }
+
+    /// The component Frame and its 1-based axis holding 1-based external
+    /// `axis` of this CmpFrame.
+    fn component_axis(&self, axis: usize) -> Option<(usize, usize)> {
+        let internal = *self.perm.get(axis.checked_sub(1)?)?;
+        let n1 = self.frame1.naxes();
+        Some(if internal < n1 {
+            (1, internal + 1)
+        } else {
+            (2, internal - n1 + 1)
+        })
+    }
+
     /// Mutable access to the first child frame — escape hatch.
     ///
     /// Mutations through this reference do not trigger any
@@ -253,6 +270,31 @@ impl Frame for CmpFrame {
     frame_attrs_title!();
     frame_attrs_digits!();
     frame_attrs_ident!();
+    fn overlay(&self, template_axes: &[i32], result: &mut dyn Frame) -> AstResult<()> {
+        super::find_frame::compound_overlay(
+            self.frame1.as_ref(),
+            self.frame2.as_ref(),
+            &self.perm,
+            template_axes,
+            result,
+        )
+    }
+
+    fn axis_overlay_source(&self, axis: usize) -> Option<super::overlay::AxisOverlaySource> {
+        match self.component_axis(axis)? {
+            (1, a) => self.frame1.axis_overlay_source(a),
+            (_, a) => self.frame2.axis_overlay_source(a),
+        }
+    }
+
+    fn apply_axis_overlay(&mut self, axis: usize, source: &super::overlay::AxisOverlaySource) {
+        match self.component_axis(axis) {
+            Some((1, a)) => self.frame1.apply_axis_overlay(a, source),
+            Some((_, a)) => self.frame2.apply_axis_overlay(a, source),
+            None => {}
+        }
+    }
+
     frame_attrs_match!(min = 0, max = 1_000_000);
 
     fn set_frame_flags(&mut self, flags: u32) {

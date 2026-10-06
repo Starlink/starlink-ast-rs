@@ -11,6 +11,7 @@ mod dsbspecframe;
 pub(crate) mod find_frame;
 mod fluxframe;
 mod frameset;
+pub(crate) mod overlay;
 pub(crate) mod sky_convert;
 pub(crate) mod skyaxis;
 mod skyframe;
@@ -31,7 +32,7 @@ pub use timeframe::{TimeFrame, TimeScale, TimeSystem};
 use std::fmt;
 
 use crate::error::{AstError, AstResult, ErrorCode};
-use crate::mappings::{AsAny, DynMapping, Mapping, PermMap};
+use crate::mappings::{AsAny, DynMapping, Mapping};
 use crate::serial::AnyObject;
 
 /// An owned, dynamically-dispatched Frame.
@@ -900,24 +901,37 @@ pub trait Frame: AsAny + Send + fmt::Debug {
         Ok(Box::new(frame))
     }
 
-    /// Overlay `template`'s explicitly-set attributes onto `self`.
+    /// Overlay the attributes set on this Frame, the template, onto
+    /// `result`. `template_axes` is parallel to `result`'s axes, giving the
+    /// (zero-based) template axis from which each result axis takes its
+    /// axis attributes, or `-1` for none; an empty slice means the same
+    /// index. This is C's `astOverlay` (frame.c:8513), a method of the
+    /// template: each class transfers the attributes it defines, and only
+    /// onto a result of its own class.
     ///
-    /// `template_axes` is parallel to `self`'s axes, giving the
-    /// (zero-based) template axis index from which each result axis
-    /// should inherit per-axis attributes. `-1` means no
-    /// association. Mirrors C `astOverlay` (frame.c:8980).
-    ///
-    /// Default implementation copies the template's Domain onto
-    /// `self` if the template has its Domain explicitly set; per-
-    /// axis attributes are class-specific and handled by overrides.
-    fn overlay_template(&mut self, template: &dyn Frame, template_axes: &[i32]) -> AstResult<()> {
-        let _ = template_axes;
-        if template.test_domain() {
-            // No public set_domain on `dyn Frame` — only concrete
-            // classes know how. The default is a no-op; concrete
-            // overrides do the actual copy.
-            let _ = template.domain();
-        }
+    /// The default is the Frame-class part of C's Overlay alone.
+    fn overlay(&self, template_axes: &[i32], result: &mut dyn Frame) -> AstResult<()> {
+        overlay::frame_overlay(self, template_axes, result)
+    }
+
+    /// A copy of the Axis object on 1-based `axis`, for `AxisOverlay`
+    /// (C `astGetAxis` followed by `astAxisOverlay`). `None` for a class
+    /// whose axes the port does not hold as Axis objects.
+    #[doc(hidden)]
+    fn axis_overlay_source(&self, _axis: usize) -> Option<overlay::AxisOverlaySource> {
+        None
+    }
+
+    /// Overlay `source` onto the Axis object on 1-based `axis`, as C's
+    /// `astAxisOverlay` does (axis.c:1226, skyaxis.c:1370).
+    #[doc(hidden)]
+    fn apply_axis_overlay(&mut self, _axis: usize, _source: &overlay::AxisOverlaySource) {}
+
+    /// Set this Frame's System and AlignSystem from `template`'s, where set
+    /// and valid for this class: the System part of C's Frame `Overlay`,
+    /// which skips a System `astValidateSystem` rejects (frame.c:8580).
+    #[doc(hidden)]
+    fn overlay_system_from(&mut self, _template: &dyn std::any::Any) -> AstResult<()> {
         Ok(())
     }
 
@@ -1472,57 +1486,47 @@ pub(crate) fn reduce_to_basic_frame(frame: &dyn Frame) -> AstResult<BasicFrame> 
     Ok(bf)
 }
 
-/// Extract a subset of axes from a frame, returning a new frame and a mapping.
+/// Select axes from `frame` into a new Frame, with the Mapping from the
+/// original Frame to the new one: C's `astPickAxes` (frame.c:8799).
 ///
-/// `axes` is a 1-based array of axis indices to pick from `frame`.
-/// Returns `(new_frame, mapping)` where:
-/// - `new_frame` has `axes.len()` axes, inheriting attributes from the
-///   selected axes of the original frame.
-/// - `mapping` transforms coordinates from the original frame (forward)
-///   to the new frame. The inverse maps from the new frame back to the
-///   original frame (unselected axes get [`BAD_VALUE`](crate::constants::BAD_VALUE)).
-///
-/// For a SkyFrame, picking both axes returns a clone; picking one axis
-/// returns a BasicFrame (a single celestial axis is no longer a sky frame).
+/// `axes` holds 1-based axis numbers. An axis number of 0 or beyond the
+/// Frame's axes gives a new axis with default attributes, whose Mapping
+/// output is bad; selecting the same axis twice is an error (`AST__SELIN`).
+/// The new Frame and Mapping are what the class's SubFrame produces with no
+/// template, so picking every axis of a SkyFrame gives a SkyFrame, a single
+/// sky axis keeps its SkyAxis, and an identity selection gives a UnitMap.
 pub fn pick_axes(frame: &dyn Frame, axes: &[usize]) -> AstResult<(DynFrame, DynMapping)> {
-    let naxes = frame.naxes();
-    let nout = axes.len();
+    // The public interface is 1-based; C's internal one, and SubFrame's,
+    // 0-based (frame.c:16220).
+    let zero_based: Vec<i32> = axes.iter().map(|&ax| ax as i32 - 1).collect();
+    validate_axis_selection(frame, &zero_based, "astPickAxes")?;
+    let (map, new_frame) = frame
+        .sub_frame(None, zero_based.len(), &zero_based, &[])?
+        .ok_or_else(|| AstError::new(ErrorCode::Inter, "astPickAxes: SubFrame found no result"))?;
+    Ok((new_frame, map))
+}
 
-    if nout == 0 {
-        return Err(AstError::new(
-            ErrorCode::Naxin,
-            "must pick at least one axis",
-        ));
-    }
-
-    for &ax in axes {
-        if ax < 1 || ax > naxes {
-            return Err(AstError::new(
-                ErrorCode::Axiin,
-                format!("axis index {} is out of range 1..={}", ax, naxes),
-            ));
+/// Reject a selection of 0-based `axes` that selects any axis of `frame`
+/// more than once (frame.c `ValidateAxisSelection`). Out-of-range entries
+/// are allowed: they select no axis.
+pub(crate) fn validate_axis_selection(
+    frame: &dyn Frame,
+    axes: &[i32],
+    method: &str,
+) -> AstResult<()> {
+    let mut count = vec![0usize; frame.naxes()];
+    for &axis in axes {
+        if let Some(c) = usize::try_from(axis).ok().and_then(|a| count.get_mut(a)) {
+            *c += 1;
         }
     }
-
-    // Build the new frame by selecting the axes, as C's astPickAxes does via
-    // astSubFrame (frame.c:8815). Going through the class's own snapshot keeps
-    // each picked axis's identity: a sky axis picked out of a SkyFrame stays a
-    // sky axis, and a CmpFrame routes each axis to its owning component.
-    let zero_based: Vec<i32> = axes.iter().map(|&ax| (ax - 1) as i32).collect();
-    let new_frame: DynFrame = frame.pick_axes_snapshot(&zero_based)?;
-
-    // Build a PermMap: forward selects the picked axes from the original.
-    // outperm (forward): output[i] = input[axes[i]] (1-based).
-    let outperm: Vec<i64> = axes.iter().map(|&ax| ax as i64).collect();
-    // inperm (inverse): input[axes[i]-1] = output[i+1], others = BAD.
-    let mut inperm = vec![0i64; naxes]; // 0 → BAD_VALUE
-    for (i, &ax) in axes.iter().enumerate() {
-        inperm[ax - 1] = (i + 1) as i64;
+    if count.iter().any(|&c| c > 1) {
+        return Err(AstError::new(
+            ErrorCode::Selin,
+            format!("{method}: Invalid axis selection - each axis may be selected only once."),
+        ));
     }
-
-    let mapping: DynMapping = Box::new(PermMap::new(&inperm, &outperm, &[])?);
-
-    Ok((new_frame, mapping))
+    Ok(())
 }
 
 /// Validate that `perm` is a valid 1-based permutation of length `naxes`.

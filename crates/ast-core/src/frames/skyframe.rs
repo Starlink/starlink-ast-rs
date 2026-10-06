@@ -1949,8 +1949,37 @@ impl Frame for SkyFrame {
     // Match / SubFrame / Overlay (skyframe.c:6604 / 9869 / 8010).
     // -----------------------------------------------------------------
 
-    fn overlay_template(&mut self, template: &dyn Frame, template_axes: &[i32]) -> AstResult<()> {
-        skyframe_overlay(template, template_axes, self)
+    fn overlay(&self, template_axes: &[i32], result: &mut dyn Frame) -> AstResult<()> {
+        skyframe_overlay(self, template_axes, result)
+    }
+
+    fn axis_overlay_source(&self, axis: usize) -> Option<super::overlay::AxisOverlaySource> {
+        let phys = *self.perm.get(axis.checked_sub(1)?)?;
+        Some(super::overlay::AxisOverlaySource(
+            super::axis::FrameAxis::Sky(self.axes[phys].clone()),
+        ))
+    }
+
+    fn apply_axis_overlay(&mut self, axis: usize, source: &super::overlay::AxisOverlaySource) {
+        if let Some(&phys) = axis.checked_sub(1).and_then(|a| self.perm.get(a)) {
+            let mut target = super::axis::FrameAxis::Sky(self.axes[phys].clone());
+            source.apply_to(&mut target);
+            if let super::axis::FrameAxis::Sky(sky) = target {
+                self.axes[phys] = sky;
+            }
+        }
+    }
+
+    fn overlay_system_from(&mut self, template: &dyn std::any::Any) -> AstResult<()> {
+        if let Some(t) = template.downcast_ref::<SkyFrame>() {
+            if t.test_system() {
+                self.set_system(t.system());
+            }
+            if t.test_align_system() {
+                self.set_align_system(t.align_system());
+            }
+        }
+        Ok(())
     }
 
     fn cast(&self, other: &dyn Frame) -> AstResult<Option<DynFrame>> {
@@ -2272,25 +2301,18 @@ fn sky_line_includes(
     (result, t2)
 }
 
-/// Mirrors C `Overlay` for SkyFrame (skyframe.c:8010).
+/// C's SkyFrame `Overlay` (skyframe.c:8010), a method of the template.
 ///
-/// `result` is the Frame receiving the new attribute values; `template`
-/// is the SkyFrame supplying them. Only attributes the template has
-/// explicitly set are transferred. When `result` is itself a SkyFrame
-/// and the System or SkyRef changes, axis-level state that no longer
-/// applies (Title and per-axis Label/Unit/Symbol overrides) is cleared
-/// first so the new system's defaults take effect.
+/// When `result` is a SkyFrame whose System would change, or whose SkyRef
+/// differs, its Title, and if the change crosses between equatorial and
+/// other systems its axis attributes, are cleared first so the new system's
+/// defaults apply. The Frame-class part follows, which sets the System on a
+/// SkyFrame result only, and then the SkyFrame attributes.
 fn skyframe_overlay(
-    template: &dyn Frame,
+    template_sky: &SkyFrame,
     template_axes: &[i32],
     result: &mut dyn Frame,
 ) -> AstResult<()> {
-    let template_sky = match template.as_any().downcast_ref::<SkyFrame>() {
-        Some(s) => s,
-        None => return Ok(()),
-    };
-
-    // Branch 1: result is a SkyFrame.
     if let Some(result_sky) = result.as_any_mut().downcast_mut::<SkyFrame>() {
         let old_system = result_sky.system;
         let new_system = template_sky.system;
@@ -2320,78 +2342,11 @@ fn skyframe_overlay(
                 }
             }
         }
+    }
 
-        // Parent Frame attributes (Domain, Title, Epoch, observer
-        // attrs) — mirror Frame::Overlay (frame.c:8567-8574). Title
-        // copy comes after the optional clear above.
-        if template_sky.test_domain() {
-            result_sky.set_domain(template_sky.domain());
-        }
-        if template_sky.test_title() {
-            result_sky.set_title(&template_sky.title());
-        }
-        if template_sky.test_epoch() {
-            result_sky.set_epoch_mjd(template_sky.epoch_mjd());
-        }
-        if let Some(v) = template_sky.attrs.obs_lat {
-            result_sky.set_obs_lat(v);
-        }
-        if let Some(v) = template_sky.attrs.obs_lon {
-            result_sky.set_obs_lon(v);
-        }
-        if let Some(v) = template_sky.attrs.obs_alt {
-            result_sky.set_obs_alt(v);
-        }
-        if let Some(v) = template_sky.attrs.dtai {
-            result_sky.set_dtai(v);
-        }
-        if let Some(v) = template_sky.attrs.dut1 {
-            result_sky.set_dut1(v);
-        }
-        if let Some(v) = template_sky.attrs.digits {
-            result_sky.attrs.digits = Some(v);
-        }
+    super::overlay::frame_overlay(template_sky, template_axes, result)?;
 
-        // System / AlignSystem (frame.c:8580-8594).
-        if template_sky.test_system() {
-            result_sky.set_system(template_sky.system);
-        }
-        if template_sky.test_align_system() {
-            result_sky.set_align_system(template_sky.align_system());
-        }
-
-        // Per-axis attributes (frame.c:8623-8640), each template axis
-        // overlaid on the result axis it corresponds to by C's Axis and
-        // SkyAxis `AxisOverlay` (axis.c:1226, skyaxis.c:1370): Digits, Label,
-        // Symbol and Unit, then Format, AsTime and CentreZero, each when set
-        // on the template. Direction and IsLatitude are not stored on a
-        // SkyFrame axis, whose values are always their defaults.
-        for result_axis in 0..2 {
-            let t_axis = if template_axes.is_empty() {
-                result_axis as i32
-            } else {
-                template_axes.get(result_axis).copied().unwrap_or(-1)
-            };
-            if !(0..2).contains(&t_axis) {
-                continue;
-            }
-            let tp = template_sky.perm[t_axis as usize];
-            let rp = result_sky.perm[result_axis];
-            let t_ax = &template_sky.axes[tp];
-            let r_ax = &mut result_sky.axes[rp];
-            // skyaxis.c `AxisOverlay` starts with the Axis class's.
-            r_ax.axis.overlay_from(&t_ax.axis);
-            if t_ax.format.is_some() {
-                r_ax.format.clone_from(&t_ax.format);
-            }
-            if t_ax.as_time.is_some() {
-                r_ax.as_time = t_ax.as_time;
-            }
-            if t_ax.centre_zero.is_some() {
-                r_ax.centre_zero = t_ax.centre_zero;
-            }
-        }
-
+    if let Some(result_sky) = result.as_any_mut().downcast_mut::<SkyFrame>() {
         // SkyFrame-specific OVERLAY block (skyframe.c:8198-8205).
         if template_sky.test_equinox() {
             result_sky.set_equinox_mjd(template_sky.equinox_mjd());
@@ -2444,25 +2399,6 @@ fn skyframe_overlay(
                     result_sky.set_sky_ref_p(result_axis, template_sky.sky_ref_p(t)?)?;
                 }
             }
-        }
-
-        return Ok(());
-    }
-
-    // Branch 2: result is not a SkyFrame. Skip System/AlignSystem and
-    // any SkyFrame-specific axis attributes; only Frame-level
-    // attributes flow through (skyframe.c:8146-8154 — which
-    // temporarily clears System/AlignSystem on the template before
-    // calling parent_overlay; we achieve the same by skipping them
-    // here and routing non-system attributes through the BasicFrame's
-    // overlay below).
-    if template_sky.test_domain() {
-        // Use the result's `set_domain` via type-specific dispatch.
-        if let Some(bf) = result
-            .as_any_mut()
-            .downcast_mut::<super::basic::BasicFrame>()
-        {
-            bf.set_domain(template_sky.domain().to_string());
         }
     }
     Ok(())
@@ -2588,7 +2524,7 @@ fn skyframe_sub_frame(
         // directly on `&mut result` to avoid round-tripping through a
         // DynFrame box.
         let align_sys = if let Some(t) = template {
-            skyframe_overlay(t, template_axes, &mut result)?;
+            t.overlay(template_axes, &mut result)?;
             if let Some(template_sky) = t.as_any().downcast_ref::<SkyFrame>() {
                 template_sky.align_system()
             } else {
@@ -3806,14 +3742,14 @@ mod tests {
         assert!(template.test_system());
         let target = SkyFrame::new(SkySystem::Fk5);
         let mut result: DynFrame = Box::new(target);
-        result.overlay_template(&template, &[0, 1]).unwrap();
+        template.overlay(&[0, 1], result.as_mut()).unwrap();
         let result_sky = result.as_any().downcast_ref::<SkyFrame>().unwrap();
         assert_eq!(result_sky.system(), SkySystem::Galactic);
         // Set a known title on the template; after overlay it should
         // copy through.
         template.set_title("custom");
         let mut r2: DynFrame = Box::new(SkyFrame::new(SkySystem::Fk5));
-        r2.overlay_template(&template, &[0, 1]).unwrap();
+        template.overlay(&[0, 1], r2.as_mut()).unwrap();
         let r2_sky = r2.as_any().downcast_ref::<SkyFrame>().unwrap();
         assert_eq!(r2_sky.title(), "custom");
     }
@@ -3828,7 +3764,7 @@ mod tests {
         assert!(!template.test_system());
         let target = SkyFrame::new(SkySystem::Galactic);
         let mut result: DynFrame = Box::new(target);
-        result.overlay_template(&template, &[0, 1]).unwrap();
+        template.overlay(&[0, 1], result.as_mut()).unwrap();
         let r = result.as_any().downcast_ref::<SkyFrame>().unwrap();
         assert_eq!(r.system(), SkySystem::Galactic);
     }

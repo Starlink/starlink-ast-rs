@@ -804,8 +804,36 @@ impl Frame for FluxFrame {
     // Match / SubFrame / Overlay (fluxframe.c:2280 / 2888 / 2470).
     // -----------------------------------------------------------------
 
-    fn overlay_template(&mut self, template: &dyn Frame, template_axes: &[i32]) -> AstResult<()> {
-        fluxframe_overlay(template, template_axes, self)
+    fn overlay(&self, template_axes: &[i32], result: &mut dyn Frame) -> AstResult<()> {
+        fluxframe_overlay(self, template_axes, result)
+    }
+
+    fn axis_overlay_source(&self, axis: usize) -> Option<super::overlay::AxisOverlaySource> {
+        (axis == 1).then(|| {
+            super::overlay::AxisOverlaySource(super::axis::FrameAxis::Plain(self.axis.clone()))
+        })
+    }
+
+    fn apply_axis_overlay(&mut self, axis: usize, source: &super::overlay::AxisOverlaySource) {
+        if axis == 1 {
+            let mut target = super::axis::FrameAxis::Plain(self.axis.clone());
+            source.apply_to(&mut target);
+            if let super::axis::FrameAxis::Plain(a) = target {
+                self.axis = a;
+            }
+        }
+    }
+
+    fn overlay_system_from(&mut self, template: &dyn std::any::Any) -> AstResult<()> {
+        if let Some(t) = template.downcast_ref::<FluxFrame>() {
+            if t.test_system() {
+                self.set_system(t.system);
+            }
+            if let Some(sys) = t.align_system {
+                self.align_system = Some(sys);
+            }
+        }
+        Ok(())
     }
 
     fn cast(&self, other: &dyn Frame) -> AstResult<Option<DynFrame>> {
@@ -902,31 +930,23 @@ impl Frame for FluxFrame {
 // Match / SubFrame / Overlay helpers
 // ---------------------------------------------------------------------------
 
-/// Mirrors C `Overlay` for FluxFrame (fluxframe.c:2470). Only
-/// attributes the template FluxFrame has explicitly set are
-/// transferred onto the result. When `result` is itself a FluxFrame
-/// and overlaying System would change the coordinate type, the
-/// result's Title is cleared first so the new system's defaults take
-/// effect.
+/// C's FluxFrame `Overlay` (fluxframe.c:2470), a method of the template.
+///
+/// When `result` is a FluxFrame whose System the template sets to a new
+/// value, its Title, Label and Symbol are cleared, and its Unit when the
+/// two Systems' default units differ; it always takes the template's
+/// default SpecVal and SpecFrame. The Frame-class part follows, which sets
+/// the System on a FluxFrame result only, and then SpecVal.
 fn fluxframe_overlay(
-    template: &dyn Frame,
+    template_flux: &FluxFrame,
     template_axes: &[i32],
     result: &mut dyn Frame,
 ) -> AstResult<()> {
-    let template_flux = match template.as_any().downcast_ref::<FluxFrame>() {
-        Some(f) => f,
-        None => return Ok(()),
-    };
-
     if let Some(result_flux) = result.as_any_mut().downcast_mut::<FluxFrame>() {
-        // Use the *effective* systems (which may be unit-derived) for the
-        // change test, mirroring C's astGetSystem (fluxframe.c:2561).
+        // The effective Systems, which may follow from the Unit
+        // (fluxframe.c:2561 `astGetSystem`).
         let old_system = result_flux.system();
         let new_system = template_flux.system();
-
-        // fluxframe.c:2570-2590: if the System will change and the template
-        // sets it, clear the Title, the Unit when the two systems' default
-        // units differ, and the Label and Symbol.
         if new_system != old_system && template_flux.test_system() {
             result_flux.clear_title();
             if new_system.default_units() != old_system.default_units() {
@@ -935,45 +955,15 @@ fn fluxframe_overlay(
             result_flux.axis.label = None;
             result_flux.axis.symbol = None;
         }
-
-        // fluxframe.c:2592: the default SpecVal and the SpecFrame always
-        // come from the template.
         result_flux.def_spec_val = template_flux.def_spec_val;
         result_flux.specframe.clone_from(&template_flux.specframe);
-
-        // The Frame class's Overlay (frame.c:8513): the Frame attributes the
-        // template sets, its ActiveUnit, its System and AlignSystem when set,
-        // then each Axis (astAxisOverlay), which carries the Unit, so
-        // astConvert then scales between, say, Jy and W/m^2/Hz.
-        result_flux.attrs.overlay_from(&template_flux.attrs);
-        result_flux.set_active_unit(template_flux.get_active_unit());
-        if template_flux.test_system() {
-            result_flux.set_system(template_flux.system);
-        }
-        if let Some(sys) = template_flux.align_system {
-            result_flux.align_system = Some(sys);
-        }
-        if template_axes.first().copied().unwrap_or(0) >= 0 {
-            result_flux.axis.overlay_from(&template_flux.axis);
-        }
-
-        // fluxframe.c:2636 OVERLAY(SpecVal).
-        if let Some(v) = template_flux.spec_val {
-            result_flux.set_spec_val(v);
-        }
-        return Ok(());
     }
 
-    // Result is not a FluxFrame — fluxframe.c:2602-2611 temporarily
-    // clears System and AlignSystem before invoking parent_overlay.
-    // Reproduce the observable effect: copy only Frame-level
-    // attributes that exist on the result type.
-    if template_flux.test_domain() {
-        if let Some(bf) = result
-            .as_any_mut()
-            .downcast_mut::<super::basic::BasicFrame>()
-        {
-            bf.set_domain(template_flux.domain().to_string());
+    super::overlay::frame_overlay(template_flux, template_axes, result)?;
+
+    if let Some(result_flux) = result.as_any_mut().downcast_mut::<FluxFrame>() {
+        if let Some(v) = template_flux.spec_val {
+            result_flux.set_spec_val(v);
         }
     }
     Ok(())
@@ -994,7 +984,7 @@ fn fluxframe_sub_frame(
 
         // If a template was supplied, overlay it onto the result.
         if let Some(t) = template {
-            fluxframe_overlay(t, template_axes, &mut result)?;
+            t.overlay(template_axes, &mut result)?;
         }
 
         // Build the conversion Mapping via MakeFluxMapping
@@ -1222,7 +1212,7 @@ mod tests {
         assert!(template.test_system());
         let target = FluxFrame::new(FluxSystem::FluxDen);
         let mut result: DynFrame = Box::new(target);
-        result.overlay_template(&template, &[0]).unwrap();
+        template.overlay(&[0], result.as_mut()).unwrap();
         let r = result.as_any().downcast_ref::<FluxFrame>().unwrap();
         assert_eq!(r.system(), FluxSystem::SBright);
     }
@@ -1235,7 +1225,7 @@ mod tests {
         assert!(!template.test_system());
         let target = FluxFrame::new(FluxSystem::SBright);
         let mut result: DynFrame = Box::new(target);
-        result.overlay_template(&template, &[0]).unwrap();
+        template.overlay(&[0], result.as_mut()).unwrap();
         let r = result.as_any().downcast_ref::<FluxFrame>().unwrap();
         assert_eq!(r.system(), FluxSystem::SBright);
     }

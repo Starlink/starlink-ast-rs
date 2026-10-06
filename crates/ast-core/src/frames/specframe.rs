@@ -1889,8 +1889,41 @@ impl Frame for SpecFrame {
     // Match / SubFrame / Overlay (specframe.c:2998 / 4705 / 3381).
     // -----------------------------------------------------------------
 
-    fn overlay_template(&mut self, template: &dyn Frame, template_axes: &[i32]) -> AstResult<()> {
-        specframe_overlay(template, template_axes, self)
+    fn overlay(&self, template_axes: &[i32], result: &mut dyn Frame) -> AstResult<()> {
+        specframe_overlay(self, template_axes, result)
+    }
+
+    fn axis_overlay_source(&self, axis: usize) -> Option<super::overlay::AxisOverlaySource> {
+        (axis == 1).then(|| {
+            super::overlay::AxisOverlaySource(super::axis::FrameAxis::Plain(self.axis.clone()))
+        })
+    }
+
+    fn apply_axis_overlay(&mut self, axis: usize, source: &super::overlay::AxisOverlaySource) {
+        if axis == 1 {
+            let mut target = super::axis::FrameAxis::Plain(self.axis.clone());
+            source.apply_to(&mut target);
+            if let super::axis::FrameAxis::Plain(a) = target {
+                self.axis = a;
+            }
+        }
+    }
+
+    fn overlay_system_from(&mut self, template: &dyn std::any::Any) -> AstResult<()> {
+        let t = template.downcast_ref::<SpecFrame>().or_else(|| {
+            template
+                .downcast_ref::<crate::frames::DSBSpecFrame>()
+                .map(|d| d.spec())
+        });
+        if let Some(t) = t {
+            if t.test_system() {
+                self.set_system(t.system);
+            }
+            if t.test_align_system() {
+                self.set_align_system(t.align_system());
+            }
+        }
+        Ok(())
     }
 
     fn cast(&self, other: &dyn Frame) -> AstResult<Option<DynFrame>> {
@@ -2055,78 +2088,45 @@ pub(crate) fn as_spec_frame(frame: &dyn Frame) -> Option<&SpecFrame> {
     })
 }
 
+/// `frame` as a mutable SpecFrame, when it is one or is a DSBSpecFrame.
+pub(crate) fn as_spec_frame_mut(frame: &mut dyn Frame) -> Option<&mut SpecFrame> {
+    if frame.as_any().is::<SpecFrame>() {
+        return frame.as_any_mut().downcast_mut::<SpecFrame>();
+    }
+    frame
+        .as_any_mut()
+        .downcast_mut::<crate::frames::DSBSpecFrame>()
+        .map(|d| d.spec_mut())
+}
+
+/// C's SpecFrame `Overlay` (specframe.c:3381), a method of the template.
+///
+/// When `result` is a SpecFrame (or DSBSpecFrame) whose System the template
+/// sets to a new value, its Title, Label and Symbol are cleared, and its Unit
+/// when the two Systems' default units differ. The Frame-class part follows,
+/// which sets the System on a SpecFrame result only, and then the SpecFrame
+/// attributes.
 fn specframe_overlay(
-    template: &dyn Frame,
+    template_spec: &SpecFrame,
     template_axes: &[i32],
     result: &mut dyn Frame,
 ) -> AstResult<()> {
-    // The SpecFrame attributes the OVERLAY macro copies are scalar
-    // (specframe.c:3536-3554); `template_axes` only says whether the Axis
-    // is overlaid.
-    let Some(template_spec) = as_spec_frame(template) else {
-        return Ok(());
-    };
-
-    // Branch: result is a SpecFrame.
-    if let Some(result_spec) = result.as_any_mut().downcast_mut::<SpecFrame>() {
+    if let Some(result_spec) = as_spec_frame_mut(result) {
         let old_system = result_spec.system;
         let new_system = template_spec.system;
-
-        // specframe.c:3494-3510 — if the System will change AND the
-        // template explicitly sets it, clear Title (+ Label and Unit
-        // when their default depends on the system).
         if new_system != old_system && template_spec.test_system() {
             result_spec.clear_title();
-
-            // Clear Unit only when the new and old systems' default
-            // units differ. This mirrors the C `DefUnit` comparison at
-            // specframe.c:3499-3502.
-            let new_def = new_system.specmap_units();
-            let old_def = old_system.specmap_units();
-            if new_def != old_def {
+            if new_system.default_display_units() != old_system.default_display_units() {
                 result_spec.clear_unit(1)?;
             }
-
-            // The Label and Symbol defaults follow the System
-            // (specframe.c:3508-3509).
             result_spec.axis.label = None;
             result_spec.axis.symbol = None;
         }
+    }
 
-        // Parent-class Frame::Overlay copies (frame.c:8567-8594).
-        // Mirrors the call at specframe.c:3527.
-        if template_spec.test_domain() {
-            result_spec.set_domain(template_spec.domain());
-        }
-        if template_spec.test_title() {
-            if let Some(ref t) = template_spec.attrs.title {
-                result_spec.set_title(t);
-            }
-        }
-        if template_spec.test_epoch() {
-            result_spec.set_epoch_mjd(template_spec.epoch_mjd());
-        }
-        if let Some(v) = template_spec.attrs.obs_lat {
-            result_spec.set_obs_lat(v);
-        }
-        if let Some(v) = template_spec.attrs.obs_lon {
-            result_spec.set_obs_lon(v);
-        }
-        if let Some(v) = template_spec.attrs.obs_alt {
-            result_spec.set_obs_alt(v);
-        }
-        if template_spec.test_system() {
-            result_spec.set_system(template_spec.system);
-        }
-        if template_spec.test_align_system() {
-            result_spec.set_align_system(template_spec.align_system());
-        }
-        // Frame::Overlay copies each axis with astAxisOverlay (frame.c),
-        // straight onto the Axis, so the result's UsedUnits is untouched.
-        if template_axes.first().copied().unwrap_or(0) >= 0 {
-            result_spec.axis.overlay_from(&template_spec.axis);
-        }
+    super::overlay::frame_overlay(template_spec, template_axes, result)?;
 
+    if let Some(result_spec) = as_spec_frame_mut(result) {
         // SpecFrame-specific OVERLAY block (specframe.c:3545-3554).
         // Note: SourceVRF must be overlayed before SourceVel — this
         // mirrors the explicit ordering call-out at specframe.c:3542.
@@ -2170,22 +2170,6 @@ fn specframe_overlay(
                 result_spec.set_spec_origin(v);
             }
         }
-
-        return Ok(());
-    }
-
-    // Branch: result is not a SpecFrame. Mirrors specframe.c:3516-3522
-    // (clears System and AlignSystem on a deep copy of the template
-    // before invoking parent_overlay) — we reproduce the same
-    // observable effect by skipping System/AlignSystem here and
-    // copying only Frame-level attributes.
-    if template_spec.test_domain() {
-        if let Some(bf) = result
-            .as_any_mut()
-            .downcast_mut::<super::basic::BasicFrame>()
-        {
-            bf.set_domain(template_spec.domain().to_string());
-        }
     }
     Ok(())
 }
@@ -2210,7 +2194,7 @@ fn specframe_sub_frame(
         // only when the template is itself a SpecFrame (specframe.c:4865).
         let mut report = false;
         let align_frm = if let Some(t) = template {
-            specframe_overlay(t, template_axes, &mut result)?;
+            t.overlay(template_axes, &mut result)?;
             if let Some(template_spec) = as_spec_frame(t) {
                 report = true;
                 template_spec.clone()
@@ -2623,7 +2607,7 @@ mod tests {
         let target = SpecFrame::new(SpecSystem::Freq);
         assert!(target.test_system());
         let mut result: DynFrame = Box::new(target);
-        result.overlay_template(&template, &[0]).unwrap();
+        template.overlay(&[0], result.as_mut()).unwrap();
         let r = result.as_any().downcast_ref::<SpecFrame>().unwrap();
         assert_eq!(r.system(), SpecSystem::Vradio);
     }
@@ -2638,7 +2622,7 @@ mod tests {
         assert!(!template.test_system());
         let target = SpecFrame::new(SpecSystem::Vradio);
         let mut result: DynFrame = Box::new(target);
-        result.overlay_template(&template, &[0]).unwrap();
+        template.overlay(&[0], result.as_mut()).unwrap();
         let r = result.as_any().downcast_ref::<SpecFrame>().unwrap();
         assert_eq!(r.system(), SpecSystem::Vradio);
     }
@@ -2649,7 +2633,7 @@ mod tests {
         template.set_rest_freq(1.420405751e9);
         let target = SpecFrame::new(SpecSystem::Freq);
         let mut result: DynFrame = Box::new(target);
-        result.overlay_template(&template, &[0]).unwrap();
+        template.overlay(&[0], result.as_mut()).unwrap();
         let r = result.as_any().downcast_ref::<SpecFrame>().unwrap();
         assert_eq!(r.rest_freq(), 1.420405751e9);
     }

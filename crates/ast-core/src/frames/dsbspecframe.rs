@@ -974,29 +974,38 @@ impl Frame for DSBSpecFrame {
         }
     }
 
-    fn overlay_template(&mut self, template: &dyn Frame, template_axes: &[i32]) -> AstResult<()> {
-        // dsbspecframe.c:1154-1251 — first overlay parent SpecFrame
-        // attributes via the inherited overlay_template, then copy the
-        // DSB-specific attributes (DSBCentre, IF, SideBand,
-        // AlignSideBand) when explicitly set on the template.
-        self.spec.overlay_template(template, template_axes)?;
-
-        if let Some(t_dsb) = template.as_any().downcast_ref::<DSBSpecFrame>() {
-            if let Some(v) = t_dsb.dsb_centre {
-                self.set_dsb_centre(v);
+    fn overlay(&self, template_axes: &[i32], result: &mut dyn Frame) -> AstResult<()> {
+        // dsbspecframe.c:1154 `Overlay`: the parent SpecFrame Overlay, then
+        // the DSBSpecFrame attributes set on this template, onto a
+        // DSBSpecFrame result only.
+        self.spec.overlay(template_axes, result)?;
+        if let Some(r) = result.as_any_mut().downcast_mut::<DSBSpecFrame>() {
+            if let Some(v) = self.dsb_centre {
+                r.set_dsb_centre(v);
             }
-            if let Some(v) = t_dsb.ifr {
-                self.set_ifr(v);
+            if let Some(v) = self.ifr {
+                r.set_ifr(v);
             }
-            if let Some(v) = t_dsb.sideband {
-                self.set_sideband(v);
+            if let Some(v) = self.sideband {
+                r.set_sideband(v);
             }
-            if let Some(v) = t_dsb.align_sideband {
-                self.set_align_sideband(v);
+            if let Some(v) = self.align_sideband {
+                r.set_align_sideband(v);
             }
         }
-
         Ok(())
+    }
+
+    fn axis_overlay_source(&self, axis: usize) -> Option<super::overlay::AxisOverlaySource> {
+        self.spec.axis_overlay_source(axis)
+    }
+
+    fn apply_axis_overlay(&mut self, axis: usize, source: &super::overlay::AxisOverlaySource) {
+        self.spec.apply_axis_overlay(axis, source);
+    }
+
+    fn overlay_system_from(&mut self, template: &dyn std::any::Any) -> AstResult<()> {
+        self.spec.overlay_system_from(template)
     }
 }
 
@@ -1165,9 +1174,7 @@ mod find_frame_tests {
         template.set_align_sideband(true);
 
         let mut target = DSBSpecFrame::new(SpecSystem::Freq);
-        target
-            .overlay_template(&template, &[0])
-            .expect("overlay ok");
+        template.overlay(&[0], &mut target).expect("overlay ok");
         assert_eq!(target.dsb_centre(), 2.5e10);
         assert_eq!(target.ifr(), 3.0e9);
         assert_eq!(target.sideband(), SideBand::USB);
@@ -1181,9 +1188,7 @@ mod find_frame_tests {
         let mut target = DSBSpecFrame::new(SpecSystem::Freq);
         target.set_dsb_centre(7.7e10);
         target.set_ifr(1.5e9);
-        target
-            .overlay_template(&template, &[0])
-            .expect("overlay ok");
+        template.overlay(&[0], &mut target).expect("overlay ok");
         assert_eq!(target.dsb_centre(), 7.7e10);
         assert_eq!(target.ifr(), 1.5e9);
     }

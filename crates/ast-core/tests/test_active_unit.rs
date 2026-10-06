@@ -88,6 +88,6 @@ fn overlay_transfers_active_unit() {
     let mut result = BasicFrameBuilder::new(1).build().unwrap();
     let mut template = BasicFrameBuilder::new(1).build().unwrap();
     template.set_active_unit(true);
-    result.overlay_template(&template, &[0]).unwrap();
+    template.overlay(&[0], &mut result).unwrap();
     assert!(result.get_active_unit());
 }

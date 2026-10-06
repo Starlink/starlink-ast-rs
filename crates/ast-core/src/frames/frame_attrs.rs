@@ -901,6 +901,34 @@ macro_rules! region_frame_attrs {
     () => {
         forward_frame_attrs!(data.frameset);
         forward_axis_attrs!(data.frameset);
+        // region.c `Overlay` (7463): the current Frame of the Region's
+        // FrameSet is the template.
+        fn overlay(
+            &self,
+            template_axes: &[i32],
+            result: &mut dyn $crate::frames::Frame,
+        ) -> $crate::error::AstResult<()> {
+            self.data.frameset.overlay(template_axes, result)
+        }
+        fn axis_overlay_source(
+            &self,
+            axis: usize,
+        ) -> Option<$crate::frames::overlay::AxisOverlaySource> {
+            self.data.frameset.axis_overlay_source(axis)
+        }
+        fn apply_axis_overlay(
+            &mut self,
+            axis: usize,
+            source: &$crate::frames::overlay::AxisOverlaySource,
+        ) {
+            self.data.frameset.apply_axis_overlay(axis, source);
+        }
+        fn overlay_system_from(
+            &mut self,
+            template: &dyn std::any::Any,
+        ) -> $crate::error::AstResult<()> {
+            self.data.frameset.overlay_system_from(template)
+        }
         fn ident(&self) -> &str {
             self.data.ident.as_deref().unwrap_or("")
         }

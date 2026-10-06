@@ -1626,8 +1626,36 @@ impl Frame for TimeFrame {
     // Match / SubFrame / Overlay (timeframe.c).
     // -----------------------------------------------------------------
 
-    fn overlay_template(&mut self, template: &dyn Frame, template_axes: &[i32]) -> AstResult<()> {
-        timeframe_overlay(template, template_axes, self)
+    fn overlay(&self, template_axes: &[i32], result: &mut dyn Frame) -> AstResult<()> {
+        timeframe_overlay(self, template_axes, result)
+    }
+
+    fn axis_overlay_source(&self, axis: usize) -> Option<super::overlay::AxisOverlaySource> {
+        (axis == 1).then(|| {
+            super::overlay::AxisOverlaySource(super::axis::FrameAxis::Plain(self.axis.clone()))
+        })
+    }
+
+    fn apply_axis_overlay(&mut self, axis: usize, source: &super::overlay::AxisOverlaySource) {
+        if axis == 1 {
+            let mut target = super::axis::FrameAxis::Plain(self.axis.clone());
+            source.apply_to(&mut target);
+            if let super::axis::FrameAxis::Plain(a) = target {
+                self.axis = a;
+            }
+        }
+    }
+
+    fn overlay_system_from(&mut self, template: &dyn std::any::Any) -> AstResult<()> {
+        if let Some(t) = template.downcast_ref::<TimeFrame>() {
+            if t.test_system() {
+                self.set_system(t.system);
+            }
+            if t.test_align_system() {
+                self.set_align_system(t.align_system());
+            }
+        }
+        Ok(())
     }
 
     fn cast(&self, other: &dyn Frame) -> AstResult<Option<DynFrame>> {
@@ -1719,73 +1747,30 @@ impl Frame for TimeFrame {
 // Match / SubFrame / Overlay helpers
 // ---------------------------------------------------------------------------
 
-/// Mirrors C `Overlay` for TimeFrame (timeframe.c). Only attributes
-/// the template TimeFrame has explicitly set are transferred onto the
-/// result. When `result` is itself a TimeFrame and overlaying System
-/// would change the coordinate type, the result's Title is cleared
-/// first so the new system's defaults take effect.
+/// C's TimeFrame `Overlay` (timeframe.c:4440), a method of the template.
+///
+/// When `result` is a TimeFrame whose System the template sets to a new
+/// value, its Title, Label and Symbol are cleared. The Frame-class part
+/// follows, which sets the System on a TimeFrame result only, and then the
+/// TimeFrame attributes in C's order: TimeOrigin before TimeScale, so
+/// setting TimeScale re-expresses the template's origin as if it were in
+/// the result's old timescale.
 fn timeframe_overlay(
-    template: &dyn Frame,
+    template_time: &TimeFrame,
     template_axes: &[i32],
     result: &mut dyn Frame,
 ) -> AstResult<()> {
-    let template_time = match template.as_any().downcast_ref::<TimeFrame>() {
-        Some(t) => t,
-        None => return Ok(()),
-    };
+    if let Some(result_time) = result.as_any_mut().downcast_mut::<TimeFrame>() {
+        if template_time.system != result_time.system && template_time.test_system() {
+            result_time.clear_title();
+            result_time.axis.label = None;
+            result_time.axis.symbol = None;
+        }
+    }
+
+    super::overlay::frame_overlay(template_time, template_axes, result)?;
 
     if let Some(result_time) = result.as_any_mut().downcast_mut::<TimeFrame>() {
-        let old_system = result_time.system;
-        let new_system = template_time.system;
-
-        // If System changes (and template explicitly set it), clear
-        // Title so the new system's default takes effect.
-        if new_system != old_system && template_time.test_system() {
-            result_time.clear_title();
-        }
-
-        // Frame-level numeric/observer attributes transferred by the
-        // parent Frame Overlay (frame.c:8567-8575): Dtai, Dut1, Epoch,
-        // ObsLat, ObsLon, ObsAlt — each only when set on the template.
-        // Domain and Title are transferred by the dedicated blocks below.
-        if let Some(v) = template_time.attrs.dtai {
-            result_time.set_dtai(v);
-        }
-        if let Some(v) = template_time.attrs.dut1 {
-            result_time.set_dut1(v);
-        }
-        if let Some(v) = template_time.attrs.epoch {
-            result_time.set_epoch_mjd(v);
-        }
-        if let Some(v) = template_time.attrs.obs_lat {
-            result_time.set_obs_lat(v);
-        }
-        if let Some(v) = template_time.attrs.obs_lon {
-            result_time.set_obs_lon(v);
-        }
-        if let Some(v) = template_time.attrs.obs_alt {
-            result_time.set_obs_alt(v);
-        }
-        if template_time.test_domain() {
-            result_time.set_domain(template_time.domain());
-        }
-        if template_time.test_title() {
-            if let Some(ref t) = template_time.attrs.title {
-                result_time.set_title(t);
-            }
-        }
-        if template_time.test_system() {
-            result_time.set_system(template_time.system);
-        }
-        // Frame::Overlay copies the Axis with astAxisOverlay (frame.c),
-        // which carries the Unit, so astConvert then scales between, say,
-        // units of "s" and "d".
-        if template_axes.first().copied().unwrap_or(0) >= 0 {
-            result_time.axis.overlay_from(&template_time.axis);
-        }
-        // The TimeFrame attributes follow in C's order (timeframe.c Overlay).
-        // TimeOrigin precedes TimeScale, so setting TimeScale re-expresses
-        // the template's origin as if it were in the result's old timescale.
         if let Some(ts) = template_time.align_timescale {
             result_time.set_align_timescale(ts);
         }
@@ -1797,18 +1782,6 @@ fn timeframe_overlay(
         }
         if template_time.test_timescale() {
             result_time.set_timescale(template_time.timescale);
-        }
-        return Ok(());
-    }
-
-    // Result is not a TimeFrame — copy only Frame-level attributes
-    // that have a setter on the result type.
-    if template_time.test_domain() {
-        if let Some(bf) = result
-            .as_any_mut()
-            .downcast_mut::<super::basic::BasicFrame>()
-        {
-            bf.set_domain(template_time.domain().to_string());
         }
     }
     Ok(())
@@ -1833,7 +1806,7 @@ fn timeframe_sub_frame(
         // (timeframe.c:5266-5281).
         let mut align_frm = target;
         if let Some(t) = template {
-            timeframe_overlay(t, template_axes, &mut result)?;
+            t.overlay(template_axes, &mut result)?;
             if let Some(t) = t.as_any().downcast_ref::<TimeFrame>() {
                 align_frm = t;
             }
@@ -2108,7 +2081,7 @@ mod tests {
         assert!(template.test_system());
         let target = TimeFrame::new(TimeSystem::Mjd);
         let mut result: DynFrame = Box::new(target);
-        result.overlay_template(&template, &[0]).unwrap();
+        template.overlay(&[0], result.as_mut()).unwrap();
         let r = result.as_any().downcast_ref::<TimeFrame>().unwrap();
         assert_eq!(r.system(), TimeSystem::Jepoch);
     }
@@ -2120,7 +2093,7 @@ mod tests {
         assert!(!template.test_system());
         let target = TimeFrame::new(TimeSystem::Jd);
         let mut result: DynFrame = Box::new(target);
-        result.overlay_template(&template, &[0]).unwrap();
+        template.overlay(&[0], result.as_mut()).unwrap();
         let r = result.as_any().downcast_ref::<TimeFrame>().unwrap();
         assert_eq!(r.system(), TimeSystem::Jd);
     }

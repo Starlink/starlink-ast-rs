@@ -866,43 +866,26 @@ impl Frame for BasicFrame {
         Ok(Box::new(snap))
     }
 
-    /// Mirrors C `Frame::Overlay` (frame.c:8513): the Frame attributes set
-    /// on the template, then its ActiveUnit, then System and AlignSystem when
-    /// valid for a plain Frame, then each template axis's attributes on the
-    /// result axis it corresponds to (`Axis::AxisOverlay`, axis.c:1226).
-    ///
-    /// A template of another class contributes what the `Frame` trait
-    /// exposes of it: its Domain and ActiveUnit.
-    fn overlay_template(&mut self, template: &dyn Frame, template_axes: &[i32]) -> AstResult<()> {
-        let plain = template.as_any().downcast_ref::<BasicFrame>();
-        match plain {
-            Some(t) => self.attrs.overlay_from(&t.attrs),
-            None => {
-                if template.test_domain() {
-                    self.set_domain(template.domain().to_string());
-                }
-            }
+    fn axis_overlay_source(&self, axis: usize) -> Option<super::overlay::AxisOverlaySource> {
+        let phys = *self.perm.get(axis.checked_sub(1)?)?;
+        Some(super::overlay::AxisOverlaySource(self.axes[phys].clone()))
+    }
+
+    fn apply_axis_overlay(&mut self, axis: usize, source: &super::overlay::AxisOverlaySource) {
+        if let Some(&phys) = axis.checked_sub(1).and_then(|a| self.perm.get(a)) {
+            source.apply_to(&mut self.axes[phys]);
         }
-        self.set_active_unit(template.get_active_unit());
-        if let Some(t) = plain {
+    }
+
+    fn overlay_system_from(&mut self, template: &dyn std::any::Any) -> AstResult<()> {
+        // Cartesian, the only System of a plain Frame, is valid only for a
+        // plain Frame (frame.c `ValidateSystem`).
+        if let Some(t) = template.downcast_ref::<BasicFrame>() {
             if t.system_set {
                 self.system_set = true;
             }
             if t.align_system_set {
                 self.align_system_set = true;
-            }
-            for result_axis in 0..self.naxes {
-                let t_axis = if template_axes.is_empty() {
-                    result_axis as i32
-                } else {
-                    template_axes.get(result_axis).copied().unwrap_or(-1)
-                };
-                if t_axis < 0 || t_axis as usize >= t.naxes {
-                    continue;
-                }
-                let t_ax = &t.axes[t.perm[t_axis as usize]];
-                let r = self.perm[result_axis];
-                self.axes[r].overlay_from(t_ax);
             }
         }
         Ok(())

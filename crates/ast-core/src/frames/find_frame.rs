@@ -290,39 +290,31 @@ pub(crate) fn default_find_frame(
     Ok(Some(fs))
 }
 
-/// Overlay `template`'s explicitly-set attributes onto `result`.
-///
-/// Mirrors the polymorphic dispatch performed by C `astOverlay` on the
-/// template's class. In Rust the trait method `overlay_template` is
-/// dispatched on the *result* frame (`&mut self`), so this free
-/// function inserts the missing template-side dispatch:
-///
-/// - When `template` is a [`CmpFrame`], the C `CmpFrame::Overlay`
-///   algorithm (cmpframe.c:169) is reproduced here: build per-component
-///   axis-association arrays and recurse into `apply_template_overlay`
-///   with each component as a sub-template.
-/// - For any other template class, fall through to
-///   `result.overlay_template(template, template_axes)` so the per-class
-///   override (SkyFrame, SpecFrame, …) handles the copy.
-///
-/// `template_axes` has length equal to `result.naxes()` and gives, for
-/// each result axis, the (zero-based) *external* template axis index
-/// from which axis-dependent attributes should be obtained, or `-1` for
-/// "no association".
+/// Overlay `template` onto `result` (C `astOverlay`, frame.c:8513), which
+/// dispatches on the template's class.
 pub(crate) fn apply_template_overlay(
     template: &dyn Frame,
     template_axes: &[i32],
     result: &mut dyn Frame,
 ) -> AstResult<()> {
-    // Non-CmpFrame templates: defer to the per-class result-side
-    // overlay implementation.
-    let Some(template_cmp) = template.as_any().downcast_ref::<CmpFrame>() else {
-        return result.overlay_template(template, template_axes);
-    };
+    template.overlay(template_axes, result)
+}
 
-    // CmpFrame template: mirrors cmpframe.c:169-427.
-    let perm = template_cmp.perm();
-    let nc1 = template_cmp.frame1().naxes();
+/// C's CmpFrame `Overlay` (cmpframe.c:6225) for a compound template whose
+/// components are `template1` and `template2`, with `perm` mapping each
+/// external template axis to its internal (component) axis. A CmpFrame
+/// result whose component Frames each take all their axes from a different
+/// template component is overlaid component by component; otherwise each
+/// template component overlays the whole result. There is no Frame-class
+/// part: C does not call the parent Overlay here.
+pub(crate) fn compound_overlay(
+    template1: &dyn Frame,
+    template2: &dyn Frame,
+    perm: &[usize],
+    template_axes: &[i32],
+    result: &mut dyn Frame,
+) -> AstResult<()> {
+    let nc1 = template1.naxes();
     let nres = result.naxes();
 
     // Helper: external template axis index for result external axis i.
@@ -342,18 +334,8 @@ pub(crate) fn apply_template_overlay(
     // result subframe's axes all derive from a single template
     // subframe, we recurse into the result's children with the
     // matching template child as the sub-template.
-    if result.as_any().downcast_ref::<CmpFrame>().is_some() {
-        // Borrow the result CmpFrame immutably first to read perm /
-        // child sizes; release the borrow before mutably re-entering
-        // for the recursive overlay calls.
-        let (nres1, nres2, rperm) = {
-            let res_cmp = result.as_any().downcast_ref::<CmpFrame>().unwrap();
-            (
-                res_cmp.frame1().naxes(),
-                res_cmp.frame2().naxes(),
-                res_cmp.perm().to_vec(),
-            )
-        };
+    if let Some((res1, res2, rperm)) = compound_parts(result) {
+        let (nres1, nres2) = (res1.naxes(), res2.naxes());
         let nres_total = nres1 + nres2;
         debug_assert_eq!(nres_total, nres);
 
@@ -448,23 +430,14 @@ pub(crate) fn apply_template_overlay(
         if clean && sides_distinct {
             // Recurse with each template child as a sub-template,
             // mirroring `astOverlay(sub1, axes1, res->frame1)` etc.
-            let result_cmp = result
-                .as_any_mut()
-                .downcast_mut::<CmpFrame>()
-                .expect("result was CmpFrame above");
-
-            // To avoid simultaneous borrows of template_cmp's children
-            // and result_cmp's children we resolve template ptrs first.
-            // (`template_cmp` is borrowed immutably; `result_cmp`
-            // mutably — different objects, so no aliasing.)
-            let (sub1_ref, sub2_ref): (&dyn Frame, &dyn Frame) = if sub1_is_first {
-                (template_cmp.frame1(), template_cmp.frame2())
+            let (sub1, sub2) = if sub1_is_first {
+                (template1, template2)
             } else {
-                (template_cmp.frame2(), template_cmp.frame1())
+                (template2, template1)
             };
-
-            apply_template_overlay(sub1_ref, &axes1, result_cmp.frame1_mut())?;
-            apply_template_overlay(sub2_ref, &axes2, result_cmp.frame2_mut())?;
+            let (res1, res2) = compound_parts_mut(result).expect("result is compound");
+            sub1.overlay(&axes1, res1)?;
+            sub2.overlay(&axes2, res2)?;
             done = true;
         }
     }
@@ -488,16 +461,40 @@ pub(crate) fn apply_template_overlay(
                 axes2[i] = (icmp - nc1) as i32;
             }
         }
-        // Two recursive calls: each with one of the template
-        // components as the sub-template. The component overlay impls
-        // (SkyFrame::overlay_template, SpecFrame::overlay_template,
-        // BasicFrame::overlay_template) inspect the supplied axes and
-        // skip those marked -1 / out of range.
-        apply_template_overlay(template_cmp.frame1(), &axes1, result)?;
-        apply_template_overlay(template_cmp.frame2(), &axes2, result)?;
+        // Each component of the template overlays the whole result, using
+        // only the axes associated with it.
+        template1.overlay(&axes1, result)?;
+        template2.overlay(&axes2, result)?;
     }
 
     Ok(())
+}
+
+/// The components of a compound Frame (a CmpFrame, or a SpecFluxFrame,
+/// which is a CmpFrame in C) and its axis permutation, mapping each
+/// external axis to an internal (component) axis.
+pub(crate) fn compound_parts(frame: &dyn Frame) -> Option<(&dyn Frame, &dyn Frame, Vec<usize>)> {
+    if let Some(cmp) = frame.as_any().downcast_ref::<CmpFrame>() {
+        return Some((cmp.frame1(), cmp.frame2(), cmp.perm().to_vec()));
+    }
+    frame
+        .as_any()
+        .downcast_ref::<super::SpecFluxFrame>()
+        .map(|sff| {
+            let (spec, flux) = sff.components();
+            (spec as &dyn Frame, flux as &dyn Frame, sff.perm())
+        })
+}
+
+/// Mutable access to the components of a compound Frame.
+fn compound_parts_mut(frame: &mut dyn Frame) -> Option<(&mut dyn Frame, &mut dyn Frame)> {
+    if frame.as_any().is::<CmpFrame>() {
+        let cmp = frame.as_any_mut().downcast_mut::<CmpFrame>()?;
+        return Some(cmp.frames_mut());
+    }
+    let sff = frame.as_any_mut().downcast_mut::<super::SpecFluxFrame>()?;
+    let (spec, flux) = sff.components_mut();
+    Some((spec as &mut dyn Frame, flux as &mut dyn Frame))
 }
 
 /// Default `SubFrame` body for plain Frames — mirrors C
@@ -547,13 +544,11 @@ pub(crate) fn default_sub_frame(
         }
     }
 
-    // Build the result Frame: snapshot the target with only the
-    // chosen axes, then overlay the target's and (if supplied) the
-    // template's attributes. C overlays the target Frame onto the
-    // result before the template (frame.c:11033), which transfers the
-    // target's ActiveUnit flag.
+    // Build the result Frame from copies of the chosen target axes, then
+    // overlay the target, whose class decides what it transfers to the
+    // result, and then the template (frame.c:11033-11042).
     let mut result = target.pick_axes_snapshot(target_axes)?;
-    result.set_active_unit(target.get_active_unit());
+    target.overlay(target_axes, result.as_mut())?;
     if let Some(t) = template {
         apply_template_overlay(t, template_axes, result.as_mut())?;
     }
@@ -573,31 +568,6 @@ pub(crate) fn default_sub_frame(
     let mut map = map;
     if let Some(t) = template {
         if t.get_active_unit() && result.get_active_unit() {
-            // C's astOverlay overlays the template Axis attributes onto
-            // the result Axis before the Mapping is built, so the
-            // result carries the template's Unit on each associated
-            // axis (axis.c:1270, frame.c:11042). Reproduce that Unit
-            // transfer here so the per-axis units Mapping below sees the
-            // target -> template unit difference. Only `BasicFrame`
-            // reaches this tail with active units (SkyFrame forces the
-            // flag off; SpecFrame / FluxFrame have their own SubFrame
-            // paths), so the result is always a `BasicFrame`.
-            if let Some(rb) = result
-                .as_any_mut()
-                .downcast_mut::<crate::frames::BasicFrame>()
-            {
-                for (result_axis, &template_axis) in
-                    template_axes.iter().enumerate().take(result_naxes)
-                {
-                    if template_axis >= 0 {
-                        let tu = t.unit(template_axis as usize + 1)?;
-                        if !tu.is_empty() {
-                            rb.set_unit(result_axis + 1, &tu)?;
-                        }
-                    }
-                }
-            }
-
             // Accumulate a parallel CmpMap of per-axis units Mappings.
             let mut umap: Option<DynMapping> = None;
             let mut uunit = true;

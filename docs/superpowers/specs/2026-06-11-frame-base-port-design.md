@@ -372,8 +372,10 @@ the codebase).
   result_unit)`; if any axis can't be mapped, the match fails (return
   `Ok(None)`); if the assembled units map is not all-UnitMap, compose it
   in series after the permutation map and simplify.
-- `Overlay` (frame.c:8578 + NewUnit frame.c:7564): `overlay_template`
-  transfers the ActiveUnit flag; when active and the Unit changes,
+- `Overlay` (frame.c:8578 + NewUnit frame.c:7564): `Frame::overlay`, a
+  method of the template as C's is (amended 2026-10-05; this was a
+  result-side `overlay_template`, which could not dispatch on the
+  template's class), transfers the ActiveUnit flag; when active and the Unit changes,
   rewrite the Label per `NewUnit` (e.g. `Hz`+`frequency` → `log(Hz)`
   gives `log( frequency )`) and clear the axis Format. Port `NewUnit`'s
   label-rewrite + format-clear.

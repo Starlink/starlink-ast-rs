@@ -78,6 +78,22 @@ impl SpecFluxFrame {
         }
     }
 
+    /// The SpecFrame and FluxFrame components.
+    pub(crate) fn components(&self) -> (&SpecFrame, &FluxFrame) {
+        (&self.spec_frame, &self.flux_frame)
+    }
+
+    /// Mutable access to the SpecFrame and FluxFrame components.
+    pub(crate) fn components_mut(&mut self) -> (&mut SpecFrame, &mut FluxFrame) {
+        (&mut self.spec_frame, &mut self.flux_frame)
+    }
+
+    /// The axis permutation as a CmpFrame holds it: the internal axis (0 for
+    /// the SpecFrame, 1 for the FluxFrame) of each external axis.
+    pub(crate) fn perm(&self) -> Vec<usize> {
+        if self.swap { vec![1, 0] } else { vec![0, 1] }
+    }
+
     /// Whether the external axis order is (Flux, Spec) instead of
     /// the default (Spec, Flux). Mirrors a non-identity perm on a
     /// 2-axis CmpFrame.
@@ -431,33 +447,33 @@ impl Frame for SpecFluxFrame {
         specfluxframe_sub_frame(self, template, result_naxes, target_axes, template_axes)
     }
 
-    fn overlay_template(&mut self, template: &dyn Frame, template_axes: &[i32]) -> AstResult<()> {
-        // SpecFluxFrame Overlay forwards to the underlying SpecFrame
-        // and FluxFrame Overlays for whichever axis the template
-        // covers. Mirrors specfluxframe.c which inherits Overlay from
-        // CmpFrame. Without a Rust CmpFrame parent we approximate by
-        // pattern-matching the template type.
-        if let Some(t_sff) = template.as_any().downcast_ref::<SpecFluxFrame>() {
-            // Spec axis: pass template SpecFrame to result SpecFrame.
-            self.spec_frame
-                .overlay_template(&t_sff.spec_frame, &[template_axes[0]])?;
-            // Flux axis: pass template FluxFrame to result FluxFrame.
-            self.flux_frame
-                .overlay_template(&t_sff.flux_frame, &[template_axes[1]])?;
-            return Ok(());
+    fn overlay(&self, template_axes: &[i32], result: &mut dyn Frame) -> AstResult<()> {
+        // A SpecFluxFrame is a CmpFrame in C and uses its Overlay.
+        super::find_frame::compound_overlay(
+            &self.spec_frame,
+            &self.flux_frame,
+            &self.perm(),
+            template_axes,
+            result,
+        )
+    }
+
+    fn axis_overlay_source(&self, axis: usize) -> Option<super::overlay::AxisOverlaySource> {
+        match *self.perm().get(axis.checked_sub(1)?)? {
+            0 => self.spec_frame.axis_overlay_source(1),
+            _ => self.flux_frame.axis_overlay_source(1),
         }
-        // Other template types: rely on each component's overlay
-        // behaviour with the bare template (each will downcast and
-        // skip if the type doesn't match).
-        if !template_axes.is_empty() {
-            self.spec_frame
-                .overlay_template(template, &[template_axes[0]])?;
+    }
+
+    fn apply_axis_overlay(&mut self, axis: usize, source: &super::overlay::AxisOverlaySource) {
+        match axis
+            .checked_sub(1)
+            .and_then(|a| self.perm().get(a).copied())
+        {
+            Some(0) => self.spec_frame.apply_axis_overlay(1, source),
+            Some(_) => self.flux_frame.apply_axis_overlay(1, source),
+            None => {}
         }
-        if template_axes.len() > 1 {
-            self.flux_frame
-                .overlay_template(template, &[template_axes[1]])?;
-        }
-        Ok(())
     }
 
     fn pick_axes_snapshot(&self, target_axes: &[i32]) -> AstResult<DynFrame> {
@@ -713,7 +729,7 @@ fn specfluxframe_sub_frame(
         // Overlay the template attributes (specfluxframe.c:1565).
         if let Some(t) = template {
             let mut result_dyn: DynFrame = Box::new(result);
-            result_dyn.overlay_template(t, template_axes)?;
+            t.overlay(template_axes, result_dyn.as_mut())?;
             // Recover the result SpecFluxFrame after overlay.
             let result = result_dyn
                 .as_any()

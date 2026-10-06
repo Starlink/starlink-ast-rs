@@ -1381,8 +1381,21 @@ impl Frame for FrameSet {
         self.current().pick_axes_snapshot(axes)
     }
 
-    fn overlay_template(&mut self, template: &dyn Frame, template_axes: &[i32]) -> AstResult<()> {
-        self.frames[self.current_idx].overlay_template(template, template_axes)
+    fn overlay(&self, template_axes: &[i32], result: &mut dyn Frame) -> AstResult<()> {
+        // frameset.c `Overlay`: the current Frame is the template.
+        self.current().overlay(template_axes, result)
+    }
+
+    fn axis_overlay_source(&self, axis: usize) -> Option<super::overlay::AxisOverlaySource> {
+        self.current().axis_overlay_source(axis)
+    }
+
+    fn apply_axis_overlay(&mut self, axis: usize, source: &super::overlay::AxisOverlaySource) {
+        self.frames[self.current_idx].apply_axis_overlay(axis, source);
+    }
+
+    fn overlay_system_from(&mut self, template: &dyn std::any::Any) -> AstResult<()> {
+        self.frames[self.current_idx].overlay_system_from(template)
     }
 }
 
