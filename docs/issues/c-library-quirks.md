@@ -50,6 +50,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [RESOLVED (upstream 8c734154): `ModifyPrefix` recurses without end on `k/unit`](#resolved-upstream-8c734154-modifyprefix-recurses-without-end-on-kunit)
 - [RESOLVED (upstream b4457da9): FluxFrame writes per-wavelength surface brightness as `SFCBRW` but reads it only as `SRCBR`](#resolved-upstream-b4457da9-fluxframe-writes-per-wavelength-surface-brightness-as-sfcbrw-but-reads-it-only-as-srcbr)
 - [RESOLVED (upstream 5a2cac2a): CmpFrame `ResolvePoints` passes internal-order points to methods that expect external order](#resolved-upstream-5a2cac2a-cmpframe-resolvepoints-passes-internal-order-points-to-methods-that-expect-external-order)
+- [RESOLVED (upstream 0d05fc29): `astLoadFrameSet` keeps a `Currnt` below 1 as the current Frame index](#resolved-upstream-0d05fc29-astloadframeset-keeps-a-currnt-below-1-as-the-current-frame-index)
 - [RESOLVED (upstream 65bd5b6e): With AlignSpecOffset set in a wavelength System, a change of rest frame maps every value to bad](#resolved-upstream-65bd5b6e-with-alignspecoffset-set-in-a-wavelength-system-a-change-of-rest-frame-maps-every-value-to-bad)
 - [RESOLVED (upstream 5ef2a014): The public `astPointSet` passes no status to `astPointSetId_`, which expects one](#resolved-upstream-5ef2a014-the-public-astpointset-passes-no-status-to-astpointsetid_-which-expects-one)
 - [RESOLVED (upstream e40e71b4): CmpMap `IsSimp` tag placement depends on shared-pointer aliasing during simplification](#resolved-upstream-e40e71b4-cmpmap-issimp-tag-placement-depends-on-shared-pointer-aliasing-during-simplification)
@@ -1012,6 +1013,17 @@ No program in `ast_tester` called the public constructor, which is how it went u
 Upstream now drops the `status` parameter and obtains it with `astGetStatusPtr`, as the other `Id_` constructors do; the new `testpointset.c` calls the public constructor.
 
 **Rust behaviour:** not applicable to the Rust API; the C ABI shim must not copy the mismatch. `tools/oracle_fixtures/sky_geometry_probe.c` makes its PointSets with `astPointSet_`, which works at the submodule pin too.
+
+### RESOLVED (upstream 0d05fc29): `astLoadFrameSet` keeps a `Currnt` below 1 as the current Frame index
+
+C location: `frameset.c` `astLoadFrameSet`, where the reads of `base` and `currnt` are each followed by a check.
+
+The check after reading Base turns a value below 1 into unset (`-INT_MAX`), but the check after reading Current tested Base again.
+A description with `Currnt = 0` therefore loaded with Current set to 0, which names no Frame: `astTest` reported it set and `astGetCurrent` returned 0.
+Only a hand-written description can do this, since Dump never writes an index below 1.
+
+Fixed on `u/timj/norm-unit` in 0d05fc29, which checks Current as Base is checked, with a `testframeset` case (Errors 41-43).
+The port treats a `Currnt` below 1 as unset, as the fixed C does (`frameset.rs` `from_node`), and `tests/test_frameset_current.rs` covers Current's set state against C.
 
 ### RESOLVED (upstream 65bd5b6e): With AlignSpecOffset set in a wavelength System, a change of rest frame maps every value to bad
 
