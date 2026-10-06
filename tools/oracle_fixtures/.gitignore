@@ -37,3 +37,4 @@ new_unit_probe
 sky_norm_probe
 specflux_cmp_probe
 frame_load_probe
+sky_interleave_probe

@@ -2038,9 +2038,10 @@ impl Frame for SkyFrame {
         // Step 2: locate two axes in the target that are derived from
         // a single underlying SkyFrame (in either physical order).
         // Mirrors skyframe.c:6759-6803: walk astPrimaryFrame on each
-        // target axis and check whether the resulting primary Frame
-        // is a SkyFrame; the two SkyFrame axes need not be adjacent
-        // in the target's external axis order.
+        // target axis and take the first whose primary Frame is a
+        // SkyFrame, then search the remaining axes for one from that
+        // same SkyFrame, passing over the axes of any other. The two
+        // axes need not be adjacent in the target's external order.
         let mut target_sky_owned: Option<&SkyFrame> = None;
         let mut target_axis0: Option<usize> = None;
         let mut target_axis1: Option<usize> = None;
@@ -2054,10 +2055,8 @@ impl Frame for SkyFrame {
                     target_axis0 = Some(iaxis);
                     iaxis0 = local_axis;
                 } else {
-                    // Both SkyFrame axes must come from the same
-                    // primary instance.
                     if !std::ptr::eq(target_sky_owned.unwrap() as *const _, sky as *const _) {
-                        return Ok(None);
+                        continue;
                     }
                     target_axis1 = Some(iaxis);
                     iaxis1 = local_axis;
