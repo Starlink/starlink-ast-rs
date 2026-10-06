@@ -56,6 +56,8 @@ pub struct KeyMap {
     key_error: Option<bool>,
     map_locked: Option<bool>,
     sort_by: Option<SortBy>,
+    /// The Object attribute Ident (object.c), which every AST Object has.
+    ident: Option<String>,
     /// The cursor [`KeyMap::map_iterate`] resumes from. An index into
     /// [`KeyMap::sorted_keys`] rather than C's saved hash-table/list
     /// position, which is what keeps a walk bounded even when `SortBy`
@@ -239,6 +241,27 @@ impl KeyMap {
     /// Whether `SortBy` has been set.
     pub fn test_sort_by(&self) -> bool {
         self.sort_by.is_some()
+    }
+
+    /// The Ident attribute, a string identifying the KeyMap, or `""` when
+    /// unset. Mirrors `astGetIdent` (object.c).
+    pub fn ident(&self) -> &str {
+        self.ident.as_deref().unwrap_or("")
+    }
+
+    /// Set Ident. A blank Ident is set, as in C.
+    pub fn set_ident(&mut self, ident: &str) {
+        self.ident = Some(ident.to_string());
+    }
+
+    /// Clear Ident.
+    pub fn clear_ident(&mut self) {
+        self.ident = None;
+    }
+
+    /// Whether Ident has been set.
+    pub fn test_ident(&self) -> bool {
+        self.ident.is_some()
     }
 
     /// Every KeyMap held directly by this one, scalar or vector element.

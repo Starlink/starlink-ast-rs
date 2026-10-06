@@ -45,10 +45,10 @@ pub(crate) trait Serializable {
 /// Write the Object-level attributes that precede the Mapping block. C dumps
 /// the class chain from the top down, so Object's attributes and its `IsA`
 /// marker come before Nin (`object.c:1697`). `Ident` is written active when it
-/// is set and non-empty, and the `IsA Object` marker only when something was
+/// is set, even blank, and the `IsA Object` marker only when something was
 /// written, matching C's `astWriteString` / `astWriteIsA` rules.
 pub(crate) fn write_object_base(node: &mut Node, mapping: &dyn Mapping) {
-    if mapping.test_ident() && !mapping.ident().is_empty() {
+    if mapping.test_ident() {
         node.push_string(
             "Ident",
             mapping.ident(),
@@ -185,11 +185,8 @@ fn apply_mapping_object_items(result: &mut dyn Mapping, node: &Node) {
         result.set_allow_simplify(true);
     }
     let object = node.section("Object");
-    if object.get("Ident").is_some() {
-        let ident = object.get_string("Ident", "");
-        if !ident.is_empty() {
-            result.set_ident(&ident);
-        }
+    if let Some(ident) = object.get_string_if_set("Ident") {
+        result.set_ident(&ident);
     }
 }
 
@@ -947,7 +944,7 @@ pub(crate) fn read_region_base(whole: &Node) -> AstResult<RegionData> {
 
     let mut data = RegionData {
         frameset,
-        ident: object.get_string_if_set("Ident").filter(|s| !s.is_empty()),
+        ident: object.get_string_if_set("Ident"),
         use_defs: object
             .get("UseDfs")
             .map(|_| object.get_int("UseDfs", 1) != 0),

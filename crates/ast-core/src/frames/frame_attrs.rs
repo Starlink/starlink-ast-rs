@@ -736,14 +736,14 @@ macro_rules! frame_attrs_observer {
     };
 }
 
-/// Ident, from `self.attrs.ident`; setting a blank Ident clears it.
+/// Ident, from `self.attrs.ident`. A blank Ident is set, as in C.
 macro_rules! frame_attrs_ident {
     () => {
         fn ident(&self) -> &str {
             self.attrs.ident.as_deref().unwrap_or("")
         }
         fn set_ident(&mut self, ident: &str) -> $crate::error::AstResult<()> {
-            self.attrs.ident = (!ident.is_empty()).then(|| ident.to_string());
+            self.attrs.ident = Some(ident.to_string());
             Ok(())
         }
         fn clear_ident(&mut self) -> $crate::error::AstResult<()> {
@@ -1013,7 +1013,7 @@ macro_rules! region_frame_attrs {
             self.data.ident.as_deref().unwrap_or("")
         }
         fn set_ident(&mut self, ident: &str) -> $crate::error::AstResult<()> {
-            self.data.ident = (!ident.is_empty()).then(|| ident.to_string());
+            self.data.ident = Some(ident.to_string());
             Ok(())
         }
         fn clear_ident(&mut self) -> $crate::error::AstResult<()> {
@@ -1062,7 +1062,7 @@ macro_rules! region_mapping_ident {
             self.data.ident.as_deref().unwrap_or("")
         }
         fn set_ident(&mut self, ident: &str) {
-            self.data.ident = (!ident.is_empty()).then(|| ident.to_string());
+            self.data.ident = Some(ident.to_string());
         }
         fn clear_ident(&mut self) {
             self.data.ident = None;

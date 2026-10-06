@@ -650,11 +650,7 @@ impl Mapping for DssMap {
     }
 
     fn set_ident(&mut self, ident: &str) {
-        self.ident = if ident.is_empty() {
-            None
-        } else {
-            Some(ident.to_string())
-        };
+        self.ident = Some(ident.to_string());
     }
 
     fn clear_ident(&mut self) {

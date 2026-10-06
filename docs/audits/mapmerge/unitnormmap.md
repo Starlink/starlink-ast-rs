@@ -14,9 +14,9 @@ end of the list, asking `MakeMergedMap` (`unitnormmap.c:349-531 (fn MakeMergedMa
 splices in the first result. Both are audited here.
 
 `UnitNormMap::map_merge` (`unitnormmap.rs:410-442 (fn map_merge)`) walks the same pairs and calls
-`make_merged_map` (`unitnormmap.rs:492-520 (fn make_merged_map)`), which dispatches to
+`make_merged_map` (`unitnormmap.rs:488-516 (fn make_merged_map)`), which dispatches to
 `UnitNormMap::try_merge` (`unitnormmap.rs:275-408 (fn try_merge)`) or to
-`try_merge_into_unitnormmap` (`unitnormmap.rs:527-589 (fn try_merge_into_unitnormmap)`) according to
+`try_merge_into_unitnormmap` (`unitnormmap.rs:523-585 (fn try_merge_into_unitnormmap)`) according to
 which member of the pair is the UnitNormMap. The splice itself is
 `MergeCtx::replace_pair_with` (`mappings/simplify.rs:578-592 (fn replace_pair_with)`).
 
@@ -34,9 +34,9 @@ which member of the pair is the UnitNormMap. The splice itself is
 | 10 | Return the result | unitnormmap.c:908-909 (fn MapMerge) | unitnormmap.rs:437 (fn map_merge),441 (fn map_merge) | ceremony | ported |
 | 11 | `MakeMergedMap`: check the global error status and bail out | unitnormmap.c:401-403 (fn MakeMergedMap) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 12 | Initialise the returned Mapping to NULL | unitnormmap.c:404-406 (fn MakeMergedMap) | -- | ceremony | n/a: the Rust helper returns `Option<DynMapping>`, so "no merge" is `None` |
-| 13 | Classify both Mappings as UnitNormMap, ShiftMap, WinMap or other, and decline unless both are classified and at least one is a UnitNormMap | unitnormmap.c:407-418 (fn MakeMergedMap) | unitnormmap.rs:498-508 (fn make_merged_map) | architecture | ported |
-| 14 | ShiftMap followed by a forward UnitNormMap gives a forward UnitNormMap | unitnormmap.c:419-435 (fn MakeMergedMap) | unitnormmap.rs:540-558 (fn try_merge_into_unitnormmap) | architecture | ported |
-| 15 | A unit-scale WinMap followed by a forward UnitNormMap likewise, declining when the scales are not unity | unitnormmap.c:436-456 (fn MakeMergedMap) | unitnormmap.rs:560-586 (fn try_merge_into_unitnormmap) | architecture | ported |
+| 13 | Classify both Mappings as UnitNormMap, ShiftMap, WinMap or other, and decline unless both are classified and at least one is a UnitNormMap | unitnormmap.c:407-418 (fn MakeMergedMap) | unitnormmap.rs:494-504 (fn make_merged_map) | architecture | ported |
+| 14 | ShiftMap followed by a forward UnitNormMap gives a forward UnitNormMap | unitnormmap.c:419-435 (fn MakeMergedMap) | unitnormmap.rs:536-554 (fn try_merge_into_unitnormmap) | architecture | ported |
+| 15 | A unit-scale WinMap followed by a forward UnitNormMap likewise, declining when the scales are not unity | unitnormmap.c:436-456 (fn MakeMergedMap) | unitnormmap.rs:556-582 (fn try_merge_into_unitnormmap) | architecture | ported |
 | 16 | An inverted UnitNormMap followed by a ShiftMap gives an inverted UnitNormMap | unitnormmap.c:457-473 (fn MakeMergedMap) | unitnormmap.rs:340-364 (fn try_merge) | architecture | ported |
 | 17 | An inverted UnitNormMap followed by a WinMap likewise, declining on non-unit scales | unitnormmap.c:474-494 (fn MakeMergedMap) | unitnormmap.rs:367-398 (fn try_merge) | architecture | ported |
 | 18 | Two UnitNormMaps merge only in opposite directions; compare their centres | unitnormmap.c:495-509 (fn MakeMergedMap) | unitnormmap.rs:292-306 (fn try_merge) | architecture | ported |
@@ -57,7 +57,7 @@ and writes the objects' own flags back afterwards. The port passes the two flags
 as arguments instead: `unitnormmap.rs:435 (fn map_merge)` hands `*inv1` and `*inv2` to
 `make_merged_map`, which forwards them to whichever helper takes the pair, and
 each helper folds the argument against the object's stored `inverted` to get the
-effective direction — `unitnormmap.rs:289 (fn try_merge)` and `unitnormmap.rs:533 (fn try_merge_into_unitnormmap)`.
+effective direction — `unitnormmap.rs:289 (fn try_merge)` and `unitnormmap.rs:529 (fn try_merge_into_unitnormmap)`.
 Nothing is mutated, so there is nothing to restore.
 
 ## Rows 14 to 17 — which member of the pair is the UnitNormMap

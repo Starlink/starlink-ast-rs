@@ -341,7 +341,7 @@ impl BasicFrame {
     /// with their version letter (`'A'..'Z'`).
     pub fn set_ident(&mut self, ident: impl Into<String>) {
         let s = ident.into();
-        self.attrs.ident = if s.is_empty() { None } else { Some(s) };
+        self.attrs.ident = Some(s);
     }
 
     /// The Epoch as a TDB Modified Julian Date, set or default (J2000.0).
@@ -978,7 +978,7 @@ impl Serializable for BasicFrame {
         // Dump), followed by the IsA Object marker when it was written.
         super::frame_attrs::write_object_part(
             &mut node,
-            self.attrs.ident.as_deref().filter(|s| !s.is_empty()),
+            self.attrs.ident.as_deref(),
             self.attrs.use_defs,
         );
 

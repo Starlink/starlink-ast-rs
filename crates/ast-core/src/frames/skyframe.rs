@@ -848,7 +848,7 @@ impl SkyFrame {
     /// Set the frame identification string. Mirrors `astSetIdent`.
     pub fn set_ident(&mut self, ident: impl Into<String>) {
         let s = ident.into();
-        self.attrs.ident = if s.is_empty() { None } else { Some(s) };
+        self.attrs.ident = Some(s);
     }
 
     // --- Observer attributes ---

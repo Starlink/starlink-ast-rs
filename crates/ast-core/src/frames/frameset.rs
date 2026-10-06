@@ -1208,7 +1208,7 @@ impl Frame for FrameSet {
         self.ident.as_deref().unwrap_or("")
     }
     fn set_ident(&mut self, ident: &str) -> AstResult<()> {
-        self.ident = (!ident.is_empty()).then(|| ident.to_string());
+        self.ident = Some(ident.to_string());
         Ok(())
     }
     fn clear_ident(&mut self) -> AstResult<()> {
@@ -1844,11 +1844,7 @@ impl Serializable for FrameSet {
         // and writes the `IsA Object` marker only when something preceded it.
         // The value is the FrameSet's own, not the current Frame's
         // (`frameset.c:4841`).
-        super::frame_attrs::write_object_part(
-            &mut node,
-            self.ident.as_deref().filter(|s| !s.is_empty()),
-            self.use_defs,
-        );
+        super::frame_attrs::write_object_part(&mut node, self.ident.as_deref(), self.use_defs);
 
         // Write proxy attributes from the current frame as commented (unset).
         // The C library writes all current-frame attributes as informational
@@ -2093,12 +2089,7 @@ impl Serializable for FrameSet {
 
         // The FrameSet's own Object-level `Ident` (`frameset.c:4841`), absent
         // when unset.
-        let ident_read = object.get_string("Ident", "");
-        let ident = if ident_read.is_empty() {
-            None
-        } else {
-            Some(ident_read)
-        };
+        let ident = object.get_string_if_set("Ident");
 
         // Read frame-to-node mapping (Nod{i}, defaults to identity).
         let mut node_map: Vec<usize> = Vec::with_capacity(nframe);

@@ -20,6 +20,10 @@ impl Serializable for KeyMap {
         let mut node = Node::new("KeyMap");
         node.class_comment = Some("Map of key/value pairs".to_string());
 
+        // The Object part, which holds the Ident when it is set (object.c
+        // Dump).
+        crate::frames::frame_attrs::write_object_part(&mut node, self.ident.as_deref(), None);
+
         // The five attributes, each omitted entirely when unset.
         push_int_attr(
             &mut node,
@@ -83,6 +87,10 @@ impl Serializable for KeyMap {
         let whole = node;
         let node = &whole.section("KeyMap");
         let mut km = KeyMap::new();
+        // Ident, from the Object part (object.c astLoadObject).
+        if let Some(ident) = whole.section("Object").get_string_if_set("Ident") {
+            km.set_ident(&ident);
+        }
 
         // C reads each attribute before any entry, and applies it through
         // its own setter. SizeGuess and KeyCase refuse on a non-empty map,

@@ -338,7 +338,7 @@ impl FluxFrame {
     /// Set the frame identification string. Mirrors `astSetIdent`.
     pub fn set_ident(&mut self, ident: impl Into<String>) {
         let s = ident.into();
-        self.attrs.ident = if s.is_empty() { None } else { Some(s) };
+        self.attrs.ident = Some(s);
     }
 
     /// Return the flux coordinate system.
@@ -1057,7 +1057,7 @@ impl Serializable for FluxFrame {
         // The Object class's part: Ident, when set (object.c Dump).
         super::frame_attrs::write_object_part(
             &mut node,
-            self.attrs.ident.as_deref().filter(|s| !s.is_empty()),
+            self.attrs.ident.as_deref(),
             self.attrs.use_defs,
         );
 
