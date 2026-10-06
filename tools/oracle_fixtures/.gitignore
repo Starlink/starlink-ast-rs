@@ -54,3 +54,4 @@ region_object_probe
 section_load_probe
 sky_last_probe
 ident_probe
+frameset_current_probe

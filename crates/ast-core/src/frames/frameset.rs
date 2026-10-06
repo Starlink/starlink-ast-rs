@@ -83,6 +83,11 @@ pub struct FrameSet {
     /// defaulted. When `false`, `base_idx` still holds the effective base
     /// (frame 0), it is simply written as the implicit default.
     base_set: bool,
+    /// Whether the Current attribute has been set (C's `current !=
+    /// -INT_MAX`). When `false`, `current_idx` holds the default, the last
+    /// Frame, and Current is written as a commented-out default. Adding a
+    /// Frame sets it, as `astAddFrame` calls `astSetCurrent`.
+    current_set: bool,
     /// Per-frame Variants FrameSet (indexed 0-based by frame). `Some(fs)` means
     /// the frame owns a set of named variant Mappings: `fs`'s member frames are
     /// the variants, each variant frame's Domain is its name, and `fs`'s
@@ -129,6 +134,7 @@ impl Clone for FrameSet {
             base_idx: self.base_idx,
             current_idx: self.current_idx,
             base_set: self.base_set,
+            current_set: self.current_set,
             frame_variants: self.frame_variants.clone(),
             varfrm: self.varfrm.clone(),
             nnode: self.nnode,
@@ -169,6 +175,7 @@ impl FrameSet {
             base_idx: 0,
             current_idx: 0,
             base_set: false,
+            current_set: false,
             frame_variants: vec![None],
             varfrm: vec![0],
             nnode: 1,
@@ -239,7 +246,32 @@ impl FrameSet {
     pub fn set_current(&mut self, which: FrameRef) -> AstResult<()> {
         let idx = self.resolve(which)?;
         self.current_idx = idx;
+        self.current_set = true;
         Ok(())
+    }
+
+    /// Whether the Base attribute is set. Mirrors `astTestBase`.
+    pub fn test_base(&self) -> bool {
+        self.base_set
+    }
+
+    /// Clear the Base attribute, so the first frame is the base frame.
+    /// Mirrors `astClearBase`.
+    pub fn clear_base(&mut self) {
+        self.base_set = false;
+        self.base_idx = 0;
+    }
+
+    /// Whether the Current attribute is set. Mirrors `astTestCurrent`.
+    pub fn test_current(&self) -> bool {
+        self.current_set
+    }
+
+    /// Clear the Current attribute, so the last frame is the current frame.
+    /// Mirrors `astClearCurrent`.
+    pub fn clear_current(&mut self) {
+        self.current_set = false;
+        self.current_idx = self.frames.len() - 1;
     }
 
     // ------------------------------------------------------------------ //
@@ -280,6 +312,7 @@ impl FrameSet {
             mapping: map,
         });
         self.current_idx = self.frames.len() - 1;
+        self.current_set = true;
         Ok(())
     }
 
@@ -370,7 +403,8 @@ impl FrameSet {
         // frame *was* the base, clear the attribute so the default (first
         // frame) applies; if it was below the base, decrement. When Base is
         // not set, the default already tracks the first frame, so nothing is
-        // done. Current defaults to the *last* frame instead.
+        // done. Current is treated the same way, but its default is the
+        // *last* frame, which moves when a frame is removed.
         if self.base_set {
             if self.base_idx == idx {
                 self.base_set = false;
@@ -380,10 +414,15 @@ impl FrameSet {
             }
         }
 
-        if self.current_idx == idx {
+        if self.current_set {
+            if self.current_idx == idx {
+                self.current_set = false;
+                self.current_idx = self.frames.len() - 1;
+            } else if self.current_idx > idx {
+                self.current_idx -= 1;
+            }
+        } else {
             self.current_idx = self.frames.len() - 1;
-        } else if self.current_idx > idx {
-            self.current_idx -= 1;
         }
 
         self.tidy_nodes()?;
@@ -768,6 +807,7 @@ impl FrameSet {
                 let saved_cur = vfs.current_idx;
                 vfs.add_frame(FrameRef::Current, map3, vfrm)?;
                 vfs.current_idx = saved_cur;
+                vfs.current_set = true;
             }
         }
 
@@ -855,6 +895,7 @@ impl FrameSet {
         self.remap_frame(FrameRef::Current, correction)?;
         if let Some(vfs) = &mut self.frame_variants[owner] {
             vfs.current_idx = target_1based - 1;
+            vfs.current_set = true;
         }
         Ok(())
     }
@@ -1371,7 +1412,19 @@ impl Frame for FrameSet {
         if self.frames.len() != other.frames.len() {
             return false;
         }
-        if self.base_idx != other.base_idx || self.current_idx != other.current_idx {
+        // C compares the stored Base and Current, so a set index differs
+        // from an unset one even when they select the same Frame.
+        if (
+            self.base_idx,
+            self.base_set,
+            self.current_idx,
+            self.current_set,
+        ) != (
+            other.base_idx,
+            other.base_set,
+            other.current_idx,
+            other.current_set,
+        ) {
             return false;
         }
         if self.edges.len() != other.edges.len() {
@@ -1724,6 +1777,7 @@ impl Mapping for FrameSet {
 
     fn invert(&mut self) {
         std::mem::swap(&mut self.base_idx, &mut self.current_idx);
+        std::mem::swap(&mut self.base_set, &mut self.current_set);
     }
 
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
@@ -1797,7 +1851,19 @@ impl Mapping for FrameSet {
         if self.frames.len() != other.frames.len() {
             return false;
         }
-        if self.base_idx != other.base_idx || self.current_idx != other.current_idx {
+        // C compares the stored Base and Current, so a set index differs
+        // from an unset one even when they select the same Frame.
+        if (
+            self.base_idx,
+            self.base_set,
+            self.current_idx,
+            self.current_set,
+        ) != (
+            other.base_idx,
+            other.base_set,
+            other.current_idx,
+            other.current_set,
+        ) {
             return false;
         }
         if self.edges.len() != other.edges.len() {
@@ -1983,12 +2049,22 @@ impl Serializable for FrameSet {
             );
         }
 
-        // Currnt — 1-based current frame index.
-        node.push_int(
-            "Currnt",
-            (self.current_idx + 1) as i64,
-            Some("Index of current Frame".to_string()),
-        );
+        // Currnt — 1-based current frame index, active only when the
+        // Current attribute is set (frameset.c:12561), otherwise its default
+        // commented out.
+        if self.current_set {
+            node.push_int(
+                "Currnt",
+                (self.current_idx + 1) as i64,
+                Some("Index of current Frame".to_string()),
+            );
+        } else {
+            node.push_unset(
+                "Currnt",
+                NodeValue::Int(self.current_idx as i64 + 1),
+                Some("Index of current Frame".to_string()),
+            );
+        }
 
         // Nnode — only written when nnode != nframe (tree structure).
         if self.nnode != nframe {
@@ -2084,7 +2160,15 @@ impl Serializable for FrameSet {
         let base_active = node.get_int("Base", 0);
         let base_set = base_active >= 1;
         let base = if base_set { base_active as usize } else { 1 };
-        let current = node.get_int("Currnt", 1) as usize;
+        // Currnt likewise; an unset Current defaults to the last Frame
+        // (frameset.c `GetCurrent`).
+        let current_active = node.get_int("Currnt", 0);
+        let current_set = current_active >= 1;
+        let current = if current_set {
+            current_active as usize
+        } else {
+            nframe
+        };
         let nnode = node.get_int("Nnode", nframe as i64) as usize;
 
         // The FrameSet's own Object-level `Ident` (`frameset.c:4841`), absent
@@ -2155,6 +2239,7 @@ impl Serializable for FrameSet {
             base_idx: base - 1,
             current_idx: current - 1,
             base_set,
+            current_set,
             frame_variants,
             varfrm,
             nnode,
