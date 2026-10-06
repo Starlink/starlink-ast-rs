@@ -1942,45 +1942,15 @@ impl Serializable for TimeFrame {
         // set-ness instead (a commented `System=` line means unset).
         tf.system_set = system_present;
 
-        // Title.
-        let title = node.get_string("Title", "");
-        if !title.is_empty() {
-            tf.set_title(&title);
+        // The Frame-class attributes (frame.c `astLoadFrame`), then the
+        // ClLat and ClLon items older versions of AST wrote in place of
+        // ObsLat and ObsLon, read only when those are absent (timeframe.c:7248).
+        tf.attrs = super::frame_attrs::read_frame_attrs(node);
+        if tf.attrs.obs_lat.is_none() && node.get("ClLat").is_some() {
+            tf.attrs.obs_lat = Some(node.get_double("ClLat", 0.0));
         }
-
-        // Domain.
-        let domain = node.get_string("Domain", "");
-        if !domain.is_empty() {
-            tf.attrs.domain = Some(domain);
-        }
-
-        // Epoch. AST Native stores the value as a decimal year
-        // (Julian / Besselian); resolve via the IAU 1984 rule. See
-        // `frame.c::SetAttrib` (line 10185) where the string flow
-        // delegates to `astReadDateTime`.
-        if node.get("Epoch").is_some() {
-            tf.set_epoch_year(node.get_double("Epoch", 0.0));
-        }
-
-        // Observer attributes.
-        if node.get("ObsLat").is_some() {
-            tf.attrs.obs_lat = Some(node.get_double("ObsLat", 0.0));
-        }
-        if node.get("ObsLon").is_some() {
-            tf.attrs.obs_lon = Some(node.get_double("ObsLon", 0.0));
-        }
-        if node.get("ObsAlt").is_some() {
-            tf.attrs.obs_alt = Some(node.get_double("ObsAlt", 0.0));
-        }
-
-        // Dut1.
-        if node.get("Dut1").is_some() {
-            tf.attrs.dut1 = Some(node.get_double("Dut1", 0.0));
-        }
-
-        // Dtai.
-        if node.get("Dtai").is_some() {
-            tf.attrs.dtai = Some(node.get_double("Dtai", 0.0));
+        if tf.attrs.obs_lon.is_none() && node.get("ClLon").is_some() {
+            tf.attrs.obs_lon = Some(node.get_double("ClLon", 0.0));
         }
 
         // TmScl (TimeScale). Use set_timescale to flip the
@@ -2007,18 +1977,6 @@ impl Serializable for TimeFrame {
         // LTOff (LTOffset).
         if node.get("LTOff").is_some() {
             tf.lt_offset = Some(node.get_double("LTOff", 0.0));
-        }
-
-        // ActUnt (default is 1 = true; only store when 0).
-        let act_unt_val = node.get_int("ActUnt", 1);
-        if act_unt_val == 0 {
-            tf.attrs.active_unit = Some(false);
-        }
-
-        // Ident (Object-level identification string).
-        let ident = node.get_string("Ident", "");
-        if !ident.is_empty() {
-            tf.attrs.ident = Some(ident);
         }
 
         if node.get("AlSys").is_some() {

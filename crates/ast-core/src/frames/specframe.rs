@@ -2437,42 +2437,15 @@ impl Serializable for SpecFrame {
         // set-ness instead (a commented `System=` line means unset).
         sf.system_set = system_present;
 
-        // Title.
-        let title = node.get_string("Title", "");
-        if !title.is_empty() {
-            sf.set_title(&title);
+        // The Frame-class attributes (frame.c `astLoadFrame`), then the
+        // GeoLat and GeoLon items older versions of AST wrote in place of
+        // ObsLat and ObsLon, read only when those are absent (specframe.c:7097).
+        sf.attrs = super::frame_attrs::read_frame_attrs(node);
+        if sf.attrs.obs_lat.is_none() && node.get("GeoLat").is_some() {
+            sf.attrs.obs_lat = Some(node.get_double("GeoLat", 0.0));
         }
-
-        // Domain.
-        let domain = node.get_string("Domain", "");
-        if !domain.is_empty() {
-            sf.attrs.domain = Some(domain);
-        }
-
-        // Epoch. AST Native stores Epoch as a decimal year ("Julian
-        // epoch of observation" / "Besselian epoch of observation");
-        // convert to MJD via the IAU 1984 rule. Mirrors C
-        // `astReadDateTime` invoked from `frame.c::SetAttrib` for
-        // the "epoch=..." setting (frame.c:10185).
-        if node.get("Epoch").is_some() {
-            sf.set_epoch_year(node.get_double("Epoch", 0.0));
-        }
-
-        // Observer attributes.
-        if node.get("ObsLat").is_some() {
-            sf.attrs.obs_lat = Some(node.get_double("ObsLat", 0.0));
-        }
-        if node.get("ObsLon").is_some() {
-            sf.attrs.obs_lon = Some(node.get_double("ObsLon", 0.0));
-        }
-        if node.get("ObsAlt").is_some() {
-            sf.attrs.obs_alt = Some(node.get_double("ObsAlt", 0.0));
-        }
-        if node.get("Dtai").is_some() {
-            sf.attrs.dtai = Some(node.get_double("Dtai", 0.0));
-        }
-        if node.get("Dut1").is_some() {
-            sf.attrs.dut1 = Some(node.get_double("Dut1", 0.0));
+        if sf.attrs.obs_lon.is_none() && node.get("GeoLon").is_some() {
+            sf.attrs.obs_lon = Some(node.get_double("GeoLon", 0.0));
         }
 
         // SoR (StdOfRest).
@@ -2568,18 +2541,6 @@ impl Serializable for SpecFrame {
         // SpOrg (SpecOrigin).
         if node.get("SpOrg").is_some() {
             sf.spec_origin = Some(node.get_double("SpOrg", 0.0));
-        }
-
-        // ActUnt: the flag is set iff the card is present; record its value
-        // (0 or 1) so it round-trips. Absent → class default.
-        if node.get("ActUnt").is_some() {
-            sf.attrs.active_unit = Some(node.get_int("ActUnt", 1) != 0);
-        }
-
-        // Ident (Object-level identification string).
-        let ident = node.get_string("Ident", "");
-        if !ident.is_empty() {
-            sf.attrs.ident = Some(ident);
         }
 
         Ok(sf)
