@@ -662,33 +662,21 @@ impl TimeFrame {
         let mut sys = self.system;
         let mut ts = self.timescale;
         let mut u = sys.default_units();
-        let mut oldval = origin;
 
-        // Epoch is a TDB value. Earth-rotation timescales (UT1/GMST/LAST/
-        // LMST) cannot be converted to TDB without DUT1, so C first maps the
-        // stored value to UT1 and then treats UT1 == UTC (i.e. DUT1 == 0).
-        // We force DUT1 to zero on a clone for that hop.
-        let zero_dut1 = if ts.is_earth_rotation() {
-            let mut z = self.clone();
-            z.attrs.dut1 = Some(0.0);
-            Some(z)
-        } else {
-            None
-        };
-
-        if let Some(ref z) = zero_dut1 {
-            let to_ut1 = z.make_map(sys, TimeSystem::Mjd, ts, TimeScale::Ut1, 0.0, 0.0, u, "d")?;
-            oldval = transform_scalar(to_ut1.as_ref(), origin, true)?;
-            // Treat the UT1 result as UTC (DUT1 == 0) for the TDB step.
+        // Epoch is a TDB value. For an Earth-rotation timescale C maps the
+        // origin to UT1, meaning to treat UT1 as UTC for the step to TDB,
+        // but then converts the raw TimeOrigin, not the UT1 value, with the
+        // Mapping from a UTC MJD in days (timeframe.c:2539-2560). The port
+        // does the same, so only a failure to make the UT1 Mapping matters.
+        if ts.is_earth_rotation() {
+            self.make_map(sys, TimeSystem::Mjd, ts, TimeScale::Ut1, 0.0, 0.0, u, "d")?;
             ts = TimeScale::Utc;
             sys = TimeSystem::Mjd;
             u = "d";
         }
 
-        // Convert to TDB.
-        let obs = zero_dut1.as_ref().unwrap_or(self);
-        let map = obs.make_map(sys, TimeSystem::Mjd, ts, TimeScale::Tdb, 0.0, 0.0, u, "d")?;
-        transform_scalar(map.as_ref(), oldval, true)
+        let map = self.make_map(sys, TimeSystem::Mjd, ts, TimeScale::Tdb, 0.0, 0.0, u, "d")?;
+        transform_scalar(map.as_ref(), origin, true)
     }
 
     /// Return the epoch as a decimal year (Besselian if MJD < J1984,

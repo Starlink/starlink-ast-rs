@@ -29,6 +29,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [A `%` Format on a SkyAxis changes the Unit but not the formatting](#a--format-on-a-skyaxis-changes-the-unit-but-not-the-formatting)
 - [SkyFrame `Offset`'s coincident-points guard is defeated by multiply-add contraction too](#skyframe-offsets-coincident-points-guard-is-defeated-by-multiply-add-contraction-too)
 - [A SkyFrame's own SkyAxes are not latitude axes, so `astAxOffset` wraps its latitude into 0 to 2pi](#a-skyframes-own-skyaxes-are-not-latitude-axes-so-astaxoffset-wraps-its-latitude-into-0-to-2pi)
+- [A TimeFrame's default Epoch discards the UT1 value it computes from the TimeOrigin](#a-timeframes-default-epoch-discards-the-ut1-value-it-computes-from-the-timeorigin)
 - [SkyFrame LAST depends on which LAST values the process computed earlier](#skyframe-last-depends-on-which-last-values-the-process-computed-earlier)
 
 ### [Addressed here, and not going upstream](#addressed-here-and-not-going-upstream)
@@ -461,6 +462,20 @@ A fix upstream would set IsLatitude and CentreZero on the SkyFrame's axes when i
 To be raised upstream.
 
 ---
+
+### A TimeFrame's default Epoch discards the UT1 value it computes from the TimeOrigin
+
+With no Epoch set, a TimeFrame with a TimeOrigin derives its Epoch from the origin (`GetEpoch`, `timeframe.c:2480`).
+For UT1, GMST, LAST and LMST the code maps the origin to UT1 so that it can treat UT1 as UTC for the step to TDB, and switches the System to MJD, the timescale to UTC and the unit to days.
+It then re-reads the raw TimeOrigin (`timeframe.c:2556`) and converts that, not the UT1 value, with the Mapping from a UTC MJD in days.
+The result is the origin taken as a UTC MJD, whatever the System: at the submodule pin a JD TimeFrame in UT1 with TimeOrigin 2455000.5 has Epoch 2455000.5008, an MJD some 6000 years in the future, and a GMST TimeFrame ignores the sidereal-to-UT1 step altogether.
+
+**Rust behaviour (mirror):** `TimeFrame::epoch_from_time_origin` in `crates/ast-core/src/frames/timeframe.rs` builds the UT1 Mapping, so that a failure to make it still fails, and converts the raw origin.
+`epoch_from_time_origin_matches_the_c_library` in `crates/ast-core/tests/test_time_epoch.rs` pins 102 cases.
+A fix upstream would convert `result` rather than re-reading the origin; the mirror would then become a bug.
+
+To be raised upstream.
+
 
 ### SkyFrame LAST depends on which LAST values the process computed earlier
 
