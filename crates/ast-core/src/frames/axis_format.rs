@@ -42,7 +42,7 @@ pub(crate) struct ParsedFormat {
 }
 
 /// Whether `b` is a C `isspace` character.
-fn is_c_space(b: u8) -> bool {
+pub(crate) fn is_c_space(b: u8) -> bool {
     matches!(b, b' ' | b'\t' | b'\n' | 0x0b | 0x0c | b'\r')
 }
 
@@ -473,6 +473,211 @@ fn strip_zeros(s: &str) -> String {
         num
     };
     format!("{num}{exp}")
+}
+
+/// C's `strtod` on `s`, without skipping leading white space: the value of
+/// the longest prefix that is a decimal or hexadecimal floating constant,
+/// an infinity or a NaN, and its length, or `None` if no prefix is. An
+/// exponent marker with no digits after it, or a "0x" with no hexadecimal
+/// digits, is not part of the number.
+///
+/// C's `sscanf( "%lf" )` does this on macOS; the C standard instead makes
+/// the input item the longest prefix of a possible number, so a library
+/// following it fails on "1e+x" or "0x", where this reads "1" or "0".
+pub(crate) fn c_strtod(s: &[u8]) -> Option<(f64, usize)> {
+    let mut i = 0;
+    let neg = match s.first() {
+        Some(b'-') => {
+            i = 1;
+            true
+        }
+        Some(b'+') => {
+            i = 1;
+            false
+        }
+        _ => false,
+    };
+    let signed = |v: f64| if neg { -v } else { v };
+    let rest = &s[i..];
+    let starts_with_ci =
+        |word: &[u8]| rest.len() >= word.len() && rest[..word.len()].eq_ignore_ascii_case(word);
+
+    if starts_with_ci(b"infinity") {
+        return Some((signed(f64::INFINITY), i + 8));
+    }
+    if starts_with_ci(b"inf") {
+        return Some((signed(f64::INFINITY), i + 3));
+    }
+    if starts_with_ci(b"nan") {
+        // "nan" may be followed by a parenthesised sequence of letters,
+        // digits and underscores, taken only when it is closed.
+        let mut end = i + 3;
+        if s.get(end) == Some(&b'(') {
+            let close = s[end + 1..]
+                .iter()
+                .position(|b| !(b.is_ascii_alphanumeric() || *b == b'_'));
+            if let Some(k) = close {
+                if s[end + 1 + k] == b')' {
+                    end += k + 2;
+                }
+            }
+        }
+        return Some((f64::NAN, end));
+    }
+
+    if rest.len() >= 2 && rest[0] == b'0' && (rest[1] | 0x20) == b'x' {
+        if let Some((v, len)) = hex_float(&rest[2..]) {
+            return Some((signed(v), i + 2 + len));
+        }
+        // "0x" with no hexadecimal digits is the number 0.
+        return Some((signed(0.0), i + 1));
+    }
+
+    // Decimal: digits with an optional point, at least one digit, then an
+    // optional exponent with at least one digit.
+    let digits = |from: usize| s[from..].iter().take_while(|b| b.is_ascii_digit()).count();
+    let mut j = i + digits(i);
+    let mut ndig = j - i;
+    if s.get(j) == Some(&b'.') {
+        let frac = digits(j + 1);
+        ndig += frac;
+        j += 1 + frac;
+    }
+    if ndig == 0 {
+        return None;
+    }
+    if s.get(j).is_some_and(|b| (b | 0x20) == b'e') {
+        let k = j + 1 + usize::from(matches!(s.get(j + 1), Some(b'+' | b'-')));
+        let exp = digits(k);
+        if exp > 0 {
+            j = k + exp;
+        }
+    }
+    // Rust's parse is correctly rounded, as strtod is.
+    let text = std::str::from_utf8(&s[i..j]).expect("ASCII digits");
+    let v: f64 = text.parse().expect("a decimal floating constant");
+    Some((signed(v), j))
+}
+
+/// The value and length of the hexadecimal floating constant after "0x":
+/// hexadecimal digits with an optional point, at least one digit, then an
+/// optional binary exponent with at least one decimal digit. Correctly
+/// rounded to nearest, ties to even, as strtod rounds.
+fn hex_float(s: &[u8]) -> Option<(f64, usize)> {
+    let hex = |from: usize| {
+        s[from..]
+            .iter()
+            .take_while(|b| b.is_ascii_hexdigit())
+            .count()
+    };
+    let int_len = hex(0);
+    let mut j = int_len;
+    let mut frac_len = 0;
+    if s.get(j) == Some(&b'.') {
+        frac_len = hex(j + 1);
+        j += 1 + frac_len;
+    }
+    if int_len + frac_len == 0 {
+        return None;
+    }
+    let mut exp2: i64 = 0;
+    if s.get(j).is_some_and(|b| (b | 0x20) == b'p') {
+        let k = j + 1 + usize::from(matches!(s.get(j + 1), Some(b'+' | b'-')));
+        let n = s[k..].iter().take_while(|b| b.is_ascii_digit()).count();
+        if n > 0 {
+            for &d in &s[k..k + n] {
+                exp2 = (exp2 * 10 + i64::from(d - b'0')).min(1 << 40);
+            }
+            if s[j + 1] == b'-' {
+                exp2 = -exp2;
+            }
+            j = k + n;
+        }
+    }
+
+    // The first 15 significant hexadecimal digits fit in 60 bits; any
+    // non-zero digit after them only matters as a sticky bit for rounding.
+    let mut mant: u64 = 0;
+    let mut sticky = false;
+    let mut kept = 0;
+    let mut scale: i64 = 0;
+    let int_digits = &s[..int_len];
+    let frac_digits = if frac_len == 0 {
+        &[][..]
+    } else {
+        &s[int_len + 1..int_len + 1 + frac_len]
+    };
+    for (k, &d) in int_digits.iter().chain(frac_digits).enumerate() {
+        let v = u64::from((d as char).to_digit(16).expect("hex digit"));
+        let in_frac = k >= int_len;
+        if mant == 0 && v == 0 {
+            if in_frac {
+                scale -= 4;
+            }
+            continue;
+        }
+        if kept < 15 {
+            mant = mant << 4 | v;
+            kept += 1;
+            if in_frac {
+                scale -= 4;
+            }
+        } else {
+            sticky |= v != 0;
+            if !in_frac {
+                scale += 4;
+            }
+        }
+    }
+    Some((round_to_f64(mant, sticky, exp2 + scale), j))
+}
+
+/// `mant * 2^exp2`, where `sticky` stands for further non-zero bits below
+/// `mant`, rounded to the nearest double, ties to even.
+fn round_to_f64(mant: u64, sticky: bool, exp2: i64) -> f64 {
+    if mant == 0 {
+        return 0.0;
+    }
+    let lz = i64::from(mant.leading_zeros());
+    let m = u128::from(mant) << (64 + lz);
+    // The value is in [2^e, 2^(e + 1)).
+    let e = exp2 - lz + 63;
+    if e > 1023 {
+        return f64::INFINITY;
+    }
+    // Bits of precision available: 53, fewer for a subnormal.
+    let p = if e >= -1022 { 53 } else { 53 - (-1022 - e) };
+    if p < 0 {
+        return 0.0;
+    }
+    let shift = 128 - p as u32;
+    let (mut kept, round, rest) = if shift == 128 {
+        (0u64, m >> 127 == 1, (m << 1) != 0 || sticky)
+    } else {
+        (
+            (m >> shift) as u64,
+            (m >> (shift - 1)) & 1 == 1,
+            m & ((1u128 << (shift - 1)) - 1) != 0 || sticky,
+        )
+    };
+    if round && (rest || kept & 1 == 1) {
+        kept += 1;
+    }
+    if e >= -1022 {
+        let mut e = e;
+        if kept == 1 << 53 {
+            kept >>= 1;
+            e += 1;
+        }
+        if e > 1023 {
+            return f64::INFINITY;
+        }
+        f64::from_bits(((e + 1023) as u64) << 52 | (kept & ((1 << 52) - 1)))
+    } else {
+        // A subnormal counts in units of 2^-1074; a carry to 2^52 is the
+        // smallest normal number, which has the same bits.
+        f64::from_bits(kept)
+    }
 }
 
 #[cfg(test)]

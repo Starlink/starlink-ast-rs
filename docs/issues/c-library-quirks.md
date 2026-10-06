@@ -34,7 +34,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 ### [Addressed here, and not going upstream](#addressed-here-and-not-going-upstream)
 
 - [`CmpMap` dumps `InvA`/`InvB` disagreeing with the child's own `Invert`, recording pointer sharing rather than the Mapping](#cmpmap-dumps-invainvb-disagreeing-with-the-childs-own-invert-recording-pointer-sharing-rather-than-the-mapping)
-- [`Frame::unformat` numeric token: Rust `f64::parse` vs C `strtod`](#frameunformat-numeric-token-rust-f64parse-vs-c-strtod)
+- [`Frame::unformat` reads numbers as the C library's `sscanf` does, which varies between libraries](#frameunformat-reads-numbers-as-the-c-librarys-sscanf-does-which-varies-between-libraries)
 - [CmpMap `Rate` chain-rule override is defined but never installed](#cmpmap-rate-chain-rule-override-is-defined-but-never-installed)
 - [FrameSet variants: stored FrameSet-side, not on the Frame (Rust divergence)](#frameset-variants-stored-frameset-side-not-on-the-frame-rust-divergence)
 - [KeyMap `MapSz` records collision history, so identical KeyMaps can serialise differently](#keymap-mapsz-records-collision-history-so-identical-keymaps-can-serialise-differently)
@@ -624,38 +624,20 @@ entire 3294-test suite reaches **once** — its `Parallel` arm, which its
 eleven-line comment is entirely about, is never reached at all, and removing the
 branch changes no test.
 
-### `Frame::unformat` numeric token: Rust `f64::parse` vs C `strtod`
+### `Frame::unformat` reads numbers as the C library's `sscanf` does, which varies between libraries
 
-This is a documented Rust-vs-C divergence (not a C bug), recorded per
-repo convention because exact matching would require reimplementing
-glibc `strtod`.
+C `AxisUnformat` (`axis.c:1335`) reads the value with `astSscanf( string, "%lf %n", ... )`.
+The port used to parse the longest prefix Rust's `f64::parse` accepts, so it rejected hexadecimal floats such as `0x10` and `nan(...)`.
+Since 2026-10-06 it reads the value through a port of `strtod`, `c_strtod` in `crates/ast-core/src/frames/axis_format.rs` (audit FR-11).
 
-C `astUnformat` for a `BasicFrame`/`Axis` parses the leading numeric
-token with `astSscanf( text, "%lf %n", &value, &nc )`, i.e. glibc
-`strtod`. The Rust port (`crates/ast-core/src/frames/basic.rs`,
-`Frame::unformat`) instead takes the longest numeric prefix and parses
-it with Rust's `f64::parse`. The two accepted grammars differ on two
-pathological inputs that never appear in AST's decimal
-coordinate-string domain:
+What remains is a difference between C libraries rather than between C and the port.
+When an exponent marker or `0x` has no digits after it, or a word is a partial `infinity` or `nan(...)`, the C standard makes the input item the whole prefix, so the conversion fails.
+macOS instead takes the longest prefix `strtod` accepts: `1e+x` reads as 1 with one character used, and `0x` reads as 0.
+An earlier version of this entry said C reads `1e` as two characters; neither behaviour does that.
+The port follows `strtod`, and `tests/test_axis_unformat.rs` pins it with a corpus captured on macOS in which `tools/oracle_fixtures/axis_unformat_probe.c` names the library-dependent cases.
 
-- `"1e"` — a trailing bare exponent marker. C `strtod` consumes `1e`
-  (`nread` 2) and returns value 1; Rust `f64::parse` rejects the bare
-  `e` and accepts only `"1"` (`nread` 1). **The value agrees (1); only
-  `nread` differs.**
-- `"0x10"` — a C99 hex-float literal. C `strtod` parses it as 16.0
-  (`nread` 4); Rust `f64::parse` rejects the `x` and yields value 0.0
-  (`nread` 1).
-
-`inf`/`nan` tokens **do** match between the two (both grammars accept
-them). Neither divergent input occurs in AST decimal coordinate
-strings, so this does not affect any coordinate conversion.
-
-**Decision:** the unformat parser is left unchanged. Reimplementing
-`strtod`'s full grammar (bare-exponent acceptance and C99 hex floats)
-to match these two cases would be disproportionate and is the kind of
-heuristic-free full port the project avoids when there is no domain
-impact. Documented here so the divergence is tracked rather than
-silent.
+**Decision:** follow `strtod`.
+A coordinate string with a dangling exponent marker is malformed input, and choosing one library's reading is better than leaving the port to `f64::parse`, which matches neither.
 
 ### CmpMap `Rate` chain-rule override is defined but never installed
 

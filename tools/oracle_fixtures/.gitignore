@@ -40,3 +40,4 @@ frame_load_probe
 sky_interleave_probe
 dsb_topo_probe
 axis_format_probe
+axis_unformat_probe

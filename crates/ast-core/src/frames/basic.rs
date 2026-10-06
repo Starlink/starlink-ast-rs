@@ -587,28 +587,16 @@ fn scan_bad_token(s: &str) -> Option<usize> {
 /// embedded whitespace allowed) yields `BAD_VALUE`. If neither matches, the
 /// result is `(BAD_VALUE, 0)` — no error is raised (axis.c:1366).
 pub(crate) fn axis_unformat(text: &str) -> (f64, usize) {
-    // Mirror C `astSscanf("%lf %n")`: skip leading whitespace, read the
-    // longest numeric prefix, then count any trailing whitespace.
-    let leading_ws = text.len() - text.trim_start().len();
+    // `%lf` skips leading white space and reads as strtod does; the space
+    // before `%n` then skips trailing white space, which `%n` counts.
+    let bytes = text.as_bytes();
+    let is_space = super::axis_format::is_c_space;
+    let leading_ws = bytes.iter().take_while(|&&b| is_space(b)).count();
     let after_ws = &text[leading_ws..];
-
-    // Longest prefix of `after_ws` parsing as f64.
-    let mut best_len = 0;
-    let mut best_val: Option<f64> = None;
-    for end in 1..=after_ws.len() {
-        if after_ws.is_char_boundary(end) {
-            if let Ok(v) = after_ws[..end].parse::<f64>() {
-                best_len = end;
-                best_val = Some(v);
-            }
-        }
-    }
-
-    if let Some(v) = best_val {
-        // Count trailing whitespace consumed by `%n` after `%lf`.
-        let rest = &after_ws[best_len..];
-        let trailing_ws = rest.len() - rest.trim_start().len();
-        return (v, leading_ws + best_len + trailing_ws);
+    if let Some((v, len)) = super::axis_format::c_strtod(after_ws.as_bytes()) {
+        let end = leading_ws + len;
+        let trailing_ws = bytes[end..].iter().take_while(|&&b| is_space(b)).count();
+        return (v, end + trailing_ws);
     }
 
     // Recognise "<bad>" via the C scanf format
