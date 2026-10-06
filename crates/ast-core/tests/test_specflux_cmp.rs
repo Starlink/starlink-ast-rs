@@ -21,7 +21,7 @@ fn spec(unit: &str) -> SpecFrame {
 
 fn flux() -> FluxFrame {
     let mut f = FluxFrame::with_spec_val(1.4e9, None);
-    f.set_system(FluxSystem::FluxDen);
+    f.set_system(FluxSystem::FluxDen).unwrap();
     f
 }
 
@@ -93,7 +93,7 @@ fn native_dump_matches_the_c_library() {
     else {
         panic!("did not read back a SpecFluxFrame");
     };
-    assert_eq!(back.title(), "MyT");
+    assert_eq!(back.title().unwrap(), "MyT");
     for axis in 1..=2 {
         assert_eq!(back.label(axis).unwrap(), s.label(axis).unwrap());
         assert_eq!(back.unit(axis).unwrap(), s.unit(axis).unwrap());

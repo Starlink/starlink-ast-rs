@@ -79,9 +79,9 @@ fn similar_spec_vals_convert_with_a_unit_map() {
 fn per_frequency_units_scale() {
     let sf = spec(SpecSystem::Freq, "GHz");
     let ff = flux(123.0, &sf, Some("W/m^2/Hz"));
-    assert_eq!(ff.system().as_str(), "FLXDN", "Error 10");
+    assert_eq!(ff.system().unwrap().as_str(), "FLXDN", "Error 10");
     let ff2 = flux(123.0, &sf, Some("W/m^2/GHz"));
-    assert_eq!(ff2.system().as_str(), "FLXDN", "Error 11");
+    assert_eq!(ff2.system().unwrap().as_str(), "FLXDN", "Error 11");
     let map = conversion(&ff2, &ff).expect("Error 12");
     assert!(
         (zoom_of(map.as_ref()) - 1.0e-9).abs() <= 1.0e-24,
@@ -93,10 +93,10 @@ fn per_frequency_units_scale() {
 fn per_wavelength_units_scale() {
     let sf = spec(SpecSystem::Freq, "GHz");
     let ff = flux(123.0, &sf, Some("W/m^2/m"));
-    assert_eq!(ff.system().as_str(), "FLXDNW", "Error 15");
+    assert_eq!(ff.system().unwrap().as_str(), "FLXDNW", "Error 15");
     let sf2 = spec(SpecSystem::Freq, "Hz");
     let ff2 = flux(123.0e9, &sf2, Some("W/m^2/Angstrom"));
-    assert_eq!(ff2.system().as_str(), "FLXDNW", "Error 16");
+    assert_eq!(ff2.system().unwrap().as_str(), "FLXDNW", "Error 16");
     let map = conversion(&ff2, &ff).expect("Error 17");
     assert_eq!(zoom_of(map.as_ref()), 1.0e10, "Error 19");
 }
@@ -105,10 +105,10 @@ fn per_wavelength_units_scale() {
 fn per_wavelength_units_scale_across_spectral_systems() {
     let sf = spec(SpecSystem::Freq, "GHz");
     let ff = flux(123.0, &sf, Some("W/m^2/m"));
-    assert_eq!(ff.system().as_str(), "FLXDNW", "Error 20");
+    assert_eq!(ff.system().unwrap().as_str(), "FLXDNW", "Error 20");
     let sf2 = spec(SpecSystem::Wavelen, "nm");
     let ff2 = flux(2437337.06, &sf2, Some("W/m^2/Angstrom"));
-    assert_eq!(ff2.system().as_str(), "FLXDNW", "Error 21");
+    assert_eq!(ff2.system().unwrap().as_str(), "FLXDNW", "Error 21");
     let map = conversion(&ff, &ff2).expect("Error 22");
     assert_eq!(zoom_of(map.as_ref()), 1.0e-10, "Error 24");
 }
@@ -128,10 +128,10 @@ fn frequency_density_converts_to_wavelength_density() {
 fn surface_brightness_converts() {
     let sf = spec(SpecSystem::Freq, "GHz");
     let ff = flux(123.0, &sf, Some("W/m^2/Hz/arcsec**2"));
-    assert_eq!(ff.system().as_str(), "SFCBR", "Error 27a");
+    assert_eq!(ff.system().unwrap().as_str(), "SFCBR", "Error 27a");
     let sf2 = spec(SpecSystem::Wavelen, "nm");
     let ff2 = flux(2437337.06, &sf2, Some("W/m^2/m/deg**2"));
-    assert_eq!(ff2.system().as_str(), "SFCBRW", "Error 27b");
+    assert_eq!(ff2.system().unwrap().as_str(), "SFCBRW", "Error 27b");
     let map = conversion(&ff, &ff2).expect("Error 27");
     let out = map.tran1(&[1.0e-13], true).unwrap()[0];
     assert!((out - 65402525.8).abs() <= 1.0, "Error 28: {out}");
@@ -149,11 +149,12 @@ fn surface_brightness_does_not_convert_to_flux_density() {
 #[test]
 fn per_wavelength_surface_brightness_reads_back() {
     let mut ff = FluxFrame::unset_system();
-    ff.set_system(FluxSystem::parse("SFCBRW").expect("Error 30"));
-    assert_eq!(ff.system().as_str(), "SFCBRW", "Error 31");
+    ff.set_system(FluxSystem::parse("SFCBRW").expect("Error 30"))
+        .unwrap();
+    assert_eq!(ff.system().unwrap().as_str(), "SFCBRW", "Error 31");
     let text = to_native_string(&AnyObject::FluxFrame(ff)).unwrap();
     let AnyObject::FluxFrame(read) = from_native_string(&text).unwrap() else {
         panic!("Error 32: not a FluxFrame");
     };
-    assert_eq!(read.system().as_str(), "SFCBRW", "Error 32");
+    assert_eq!(read.system().unwrap().as_str(), "SFCBRW", "Error 32");
 }

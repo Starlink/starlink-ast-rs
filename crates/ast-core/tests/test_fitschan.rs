@@ -337,7 +337,7 @@ fn native_round_trip_skyframe() {
     assert_eq!(frame.naxes(), 2);
 
     // Verify it's a SkyFrame by checking system_string.
-    let sys = frame.system_string();
+    let sys = frame.system_string().unwrap();
     assert!(sys.is_some(), "SkyFrame should have a system string");
     assert!(
         sys.unwrap().contains("FK5") || sys.unwrap().contains("Fk5"),

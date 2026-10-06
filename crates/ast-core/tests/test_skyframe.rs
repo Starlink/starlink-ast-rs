@@ -72,7 +72,7 @@ fn construction_fk5_defaults() {
     // The default C reports (skyframe.c `GetTitle`).
     assert!(!sky.test_title());
     assert_eq!(
-        sky.title(),
+        sky.title().unwrap(),
         "FK5 equatorial coordinates; mean equinox J2000.0"
     );
     assert!(!sky.neglon());
@@ -774,7 +774,7 @@ fn frameset_with_skyframe_current() {
     // Frame delegation should go to the current SkyFrame.
     assert_eq!(fs.naxes(), 2);
     assert_eq!(fs.current().naxes(), 2);
-    assert_eq!(fs.current().system_string(), Some("FK5"));
+    assert_eq!(fs.current().system_string().unwrap(), Some("FK5"));
 
     // Transform should work through the FrameSet.
     let pts = PointSet::from_rows([[1.0, 0.5]]);
@@ -1036,7 +1036,7 @@ fn serialise_preserves_all_attributes() {
     match restored {
         AnyObject::SkyFrame(ref sf) => {
             assert_eq!(sf.system(), SkySystem::Galactic);
-            assert_eq!(sf.title(), "Test Sky");
+            assert_eq!(sf.title().unwrap(), "Test Sky");
             assert_eq!(sf.domain(), "CUSTOM");
             assert_close(sf.epoch_mjd(), 53000.0, 1e-10, "epoch rt");
             assert!(sf.neglon());
@@ -1252,9 +1252,9 @@ fn clone_is_independent() {
     let mut clone = sky.clone();
     clone.set_title("clone");
     clone.set_neglon(false);
-    assert_eq!(sky.title(), "original");
+    assert_eq!(sky.title().unwrap(), "original");
     assert!(sky.neglon());
-    assert_eq!(clone.title(), "clone");
+    assert_eq!(clone.title().unwrap(), "clone");
     assert!(!clone.neglon());
 }
 
@@ -1267,10 +1267,10 @@ fn skyframe_is_send() {
 #[test]
 fn system_string() {
     let sky = SkyFrame::new(SkySystem::Galactic);
-    assert_eq!(sky.system_string(), Some("GALACTIC"));
+    assert_eq!(sky.system_string().unwrap(), Some("GALACTIC"));
 
     let sky2 = SkyFrame::new(SkySystem::Fk5);
-    assert_eq!(sky2.system_string(), Some("FK5"));
+    assert_eq!(sky2.system_string().unwrap(), Some("FK5"));
 }
 
 #[test]

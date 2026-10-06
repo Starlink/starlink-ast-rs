@@ -87,7 +87,7 @@ fn run(name: &str) -> AstResult<FrameSet> {
                 fs.set_unit(1, "Jy")?;
             } else {
                 through(&mut fs, |f: &mut FluxFrame| {
-                    f.set_system(FluxSystem::SBright)
+                    f.set_system(FluxSystem::SBright).unwrap()
                 })?;
             }
         }
@@ -204,13 +204,15 @@ fn run(name: &str) -> AstResult<FrameSet> {
         }
         "time_jd" | "time_utc" | "time_origin" => {
             let mut f = TimeFrame::new(TimeSystem::Mjd);
-            f.set_timescale(TimeScale::Tai);
+            f.set_timescale(TimeScale::Tai).unwrap();
             fs = frameset(Box::new(f));
             match name {
-                "time_jd" => through(&mut fs, |f: &mut TimeFrame| f.set_system(TimeSystem::Jd))?,
-                "time_utc" => {
-                    through(&mut fs, |f: &mut TimeFrame| f.set_timescale(TimeScale::Utc))?
-                }
+                "time_jd" => through(&mut fs, |f: &mut TimeFrame| {
+                    f.set_system(TimeSystem::Jd).unwrap()
+                })?,
+                "time_utc" => through(&mut fs, |f: &mut TimeFrame| {
+                    f.set_timescale(TimeScale::Utc).unwrap()
+                })?,
                 _ => through(&mut fs, |f: &mut TimeFrame| f.set_time_origin(55000.0))?,
             }
         }

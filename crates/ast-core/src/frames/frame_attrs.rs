@@ -118,7 +118,7 @@ pub(crate) trait FrameDumpSource {
     /// `isFrame` in frame.c:14290.
     fn dump_is_frame(&self) -> bool;
     /// The Title, set or default.
-    fn dump_title(&self) -> String;
+    fn dump_title(&self) -> AstResult<String>;
     /// The Domain, set or default.
     fn dump_domain(&self) -> String;
     /// The Epoch as an MJD, set or default.
@@ -160,7 +160,7 @@ pub(crate) trait FrameDumpSource {
 /// Write the Frame class's part of a dump, from Title to the permutation, as
 /// C's `Frame::Dump` does (frame.c:14250-14650). The Axis objects, written
 /// after it, are the caller's.
-pub(crate) fn write_frame_cards(node: &mut Node, f: &impl FrameDumpSource) {
+pub(crate) fn write_frame_cards(node: &mut Node, f: &impl FrameDumpSource) -> AstResult<()> {
     let a = f.attrs();
     let naxes = f.dump_naxes();
     let is_frame = f.dump_is_frame();
@@ -194,7 +194,7 @@ pub(crate) fn write_frame_cards(node: &mut Node, f: &impl FrameDumpSource) {
         "Title",
         a.title.is_some(),
         true,
-        f.dump_title(),
+        f.dump_title()?,
         "Title of coordinate system".into(),
     );
     let own_naxes = f.dump_own_naxes();
@@ -471,6 +471,7 @@ pub(crate) fn write_frame_cards(node: &mut Node, f: &impl FrameDumpSource) {
             );
         }
     }
+    Ok(())
 }
 
 /// Read the Frame-class attributes from a Frame node. Mirrors the attribute
@@ -538,11 +539,11 @@ pub(crate) fn read_frame_attrs(node: &Node) -> FrameAttrs {
 /// Title, from `self.attrs.title` and `self.frame_default_title()`.
 macro_rules! frame_attrs_title {
     () => {
-        fn title(&self) -> String {
-            self.attrs
-                .title
-                .clone()
-                .unwrap_or_else(|| self.frame_default_title())
+        fn title(&self) -> $crate::error::AstResult<String> {
+            match &self.attrs.title {
+                Some(t) => Ok(t.clone()),
+                None => self.frame_default_title(),
+            }
         }
         fn set_title(&mut self, title: &str) -> $crate::error::AstResult<()> {
             self.attrs.title = Some(title.to_string());
@@ -837,7 +838,7 @@ macro_rules! forward_frame_attrs {
     // Every attribute but Domain, for a class that supplies its own Domain
     // default.
     (@all_but_domain [$($path:ident).+]) => {
-        forward_frame_attrs!(@get [$($path).+] title -> String);
+        forward_frame_attrs!(@get [$($path).+] title -> $crate::error::AstResult<String>);
         forward_frame_attrs!(@set [$($path).+] set_title(title: &str));
         forward_frame_attrs!(@get [$($path).+] test_title -> bool);
         forward_frame_attrs!(@clear [$($path).+] clear_title);
@@ -1474,7 +1475,7 @@ impl FrameDumpSource for TraitDump<'_> {
     fn dump_own_naxes(&self) -> usize {
         self.own_naxes
     }
-    fn dump_title(&self) -> String {
+    fn dump_title(&self) -> AstResult<String> {
         self.frame.title()
     }
     fn dump_domain(&self) -> String {

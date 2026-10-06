@@ -78,16 +78,16 @@ fn test_defaults_bepoch() {
 fn test_align_timescale_earth_rotation() {
     // For UT1 timescale, the alignment timescale defaults to UT1.
     let mut tf = TimeFrame::new(TimeSystem::Mjd);
-    tf.set_timescale(TimeScale::Ut1);
+    tf.set_timescale(TimeScale::Ut1).unwrap();
     assert_eq!(tf.align_timescale(), TimeScale::Ut1);
 
-    tf.set_timescale(TimeScale::Gmst);
+    tf.set_timescale(TimeScale::Gmst).unwrap();
     assert_eq!(tf.align_timescale(), TimeScale::Ut1);
 
-    tf.set_timescale(TimeScale::Last);
+    tf.set_timescale(TimeScale::Last).unwrap();
     assert_eq!(tf.align_timescale(), TimeScale::Ut1);
 
-    tf.set_timescale(TimeScale::Lmst);
+    tf.set_timescale(TimeScale::Lmst).unwrap();
     assert_eq!(tf.align_timescale(), TimeScale::Ut1);
 }
 
@@ -210,7 +210,7 @@ fn test_tai_to_utc() {
     // MJD 43144.0 is approximately 1977-01-01 (TAI epoch).
     let tf1 = TimeFrame::new(TimeSystem::Mjd); // TAI
     let mut tf2 = TimeFrame::new(TimeSystem::Mjd);
-    tf2.set_timescale(TimeScale::Utc);
+    tf2.set_timescale(TimeScale::Utc).unwrap();
 
     // At a recent epoch (MJD 57844 ~ 2017), TAI-UTC = 37 seconds.
     let xin = 57844.0;
@@ -227,7 +227,7 @@ fn test_tai_to_tt() {
     // TT = TAI + 32.184 seconds.
     let tf1 = TimeFrame::new(TimeSystem::Mjd); // TAI
     let mut tf2 = TimeFrame::new(TimeSystem::Mjd);
-    tf2.set_timescale(TimeScale::Tt);
+    tf2.set_timescale(TimeScale::Tt).unwrap();
 
     let xin = 51544.5; // J2000.0 in TAI
     let xout = convert_value(&tf1, &tf2, xin);
@@ -243,7 +243,7 @@ fn test_tai_to_utc_with_dtai() {
     // When DTAI is explicitly set to 40, TAI-UTC should be 40 seconds.
     let tf1 = TimeFrame::new(TimeSystem::Mjd); // TAI
     let mut tf2 = TimeFrame::new(TimeSystem::Mjd);
-    tf2.set_timescale(TimeScale::Utc);
+    tf2.set_timescale(TimeScale::Utc).unwrap();
     tf2.set_dtai(40.0);
 
     let xin = 57844.0;
@@ -264,12 +264,12 @@ fn test_gmst_to_lmst() {
     // ObsLon = 90 degrees east. LMST = GMST + longitude/360 days.
     // longitude = 90 degrees = 0.25 rotations, so LMST = GMST + 0.25 days.
     let mut tf1 = TimeFrame::new(TimeSystem::Mjd);
-    tf1.set_timescale(TimeScale::Gmst);
+    tf1.set_timescale(TimeScale::Gmst).unwrap();
     tf1.set_obs_lon(90.0_f64.to_radians());
     tf1.set_time_origin(53000.0);
 
     let mut tf2 = TimeFrame::new(TimeSystem::Mjd);
-    tf2.set_timescale(TimeScale::Lmst);
+    tf2.set_timescale(TimeScale::Lmst).unwrap();
     tf2.set_obs_lon(90.0_f64.to_radians());
     tf2.set_time_origin(53000.0);
 
@@ -296,7 +296,7 @@ fn test_mjd_utc_to_bepoch() {
     // tf1: MJD(UTC) with origin 53000, tf2: BEPOCH with origin 2004.
     // Input 100 (MJD 53100 UTC) should give ~0.2601 in Bepoch offset.
     let mut tf1 = TimeFrame::new(TimeSystem::Mjd);
-    tf1.set_timescale(TimeScale::Utc);
+    tf1.set_timescale(TimeScale::Utc).unwrap();
     tf1.set_time_origin(53000.0);
 
     let mut tf2 = TimeFrame::new(TimeSystem::Bepoch);
@@ -339,7 +339,7 @@ fn test_distance() {
 #[test]
 fn test_serialisation_round_trip() {
     let mut tf = TimeFrame::new(TimeSystem::Mjd);
-    tf.set_timescale(TimeScale::Utc);
+    tf.set_timescale(TimeScale::Utc).unwrap();
     tf.set_time_origin(53000.0);
     tf.set_obs_lon(0.5);
     tf.set_obs_lat(0.3);
@@ -363,7 +363,7 @@ fn test_serialisation_round_trip() {
 #[test]
 fn test_serialisation_with_align_timescale() {
     let mut tf = TimeFrame::new(TimeSystem::Jepoch);
-    tf.set_timescale(TimeScale::Tdb);
+    tf.set_timescale(TimeScale::Tdb).unwrap();
     tf.set_align_timescale(TimeScale::Ut1);
     tf.set_lt_offset(5.5);
 
@@ -386,7 +386,7 @@ fn test_serialisation_with_align_timescale() {
 fn test_serialisation_with_unit_and_format() {
     // Unit and Format are stored in the Ax1 Axis node and must round-trip.
     let mut tf = TimeFrame::new(TimeSystem::Mjd);
-    tf.set_timescale(TimeScale::Tai);
+    tf.set_timescale(TimeScale::Tai).unwrap();
     tf.set_unit(1, "s").unwrap();
     tf.set_format_str(1, "iso.2").unwrap();
 
@@ -449,7 +449,7 @@ fn test_default_title_system_only() {
 #[test]
 fn test_default_title_with_timescale() {
     let mut tf = TimeFrame::new(TimeSystem::Mjd);
-    tf.set_timescale(TimeScale::Tai);
+    tf.set_timescale(TimeScale::Tai).unwrap();
     assert_eq!(default_title(tf), "Modified Julian Date [TAI]");
 }
 
@@ -465,7 +465,7 @@ fn test_default_title_offset_from_date() {
 
     // mjd/utc origin 55000 -> "[UTC] offset from 2009-06-18 00:00:00".
     let mut tf = TimeFrame::new(TimeSystem::Mjd);
-    tf.set_timescale(TimeScale::Utc);
+    tf.set_timescale(TimeScale::Utc).unwrap();
     tf.set_time_origin(55000.0);
     assert_eq!(
         default_title(tf),
@@ -477,7 +477,7 @@ fn test_default_title_offset_from_date() {
 fn test_default_title_local_time_offset() {
     // Local Time shows the UTC offset in the timescale brackets.
     let mut tf = TimeFrame::new(TimeSystem::Mjd);
-    tf.set_timescale(TimeScale::Lt);
+    tf.set_timescale(TimeScale::Lt).unwrap();
     tf.set_lt_offset(5.5);
     tf.set_time_origin(55000.0);
     assert_eq!(
@@ -491,7 +491,7 @@ fn test_default_title_date_format_suppresses_offset() {
     // When the Format is itself a date string, the "offset from" suffix is
     // omitted (the date Format is absolute).
     let mut tf = TimeFrame::new(TimeSystem::Mjd);
-    tf.set_timescale(TimeScale::Tai);
+    tf.set_timescale(TimeScale::Tai).unwrap();
     tf.set_time_origin(55000.0);
     tf.set_format_str(1, "iso.0").unwrap();
     assert_eq!(default_title(tf), "Modified Julian Date [TAI]");
@@ -701,7 +701,7 @@ fn test_unformat_b_prefix_uses_tt() {
     //   astropy: Time(52091.8966962715, format="mjd", scale="tt").utc.jyear
     //            - 2005.0  ==  -3.5013115581077727
     let mut tf = TimeFrame::new(TimeSystem::Jepoch);
-    tf.set_timescale(TimeScale::Utc);
+    tf.set_timescale(TimeScale::Utc).unwrap();
     tf.set_time_origin(2005.0);
 
     let (v, nc) = tf.unformat(1, "B2001.5 lunch time").unwrap();
@@ -720,7 +720,7 @@ fn test_unformat_b_prefix_origin_then_timescale() {
     //   reference C: origin -> 2004.9999989859814, unformat -> -3.501310544089165
     let mut tf = TimeFrame::new(TimeSystem::Jepoch);
     tf.set_time_origin(2005.0);
-    tf.set_timescale(TimeScale::Utc);
+    tf.set_timescale(TimeScale::Utc).unwrap();
 
     let (v, _nc) = tf.unformat(1, "B2001.5 lunch time").unwrap();
     assert!(
@@ -733,7 +733,7 @@ fn test_unformat_b_prefix_origin_then_timescale() {
 fn test_iso_format_mjd_tai_iso6() {
     // C errors 35-36 path: an absolute MJD/TAI time formatted with iso.6.
     let mut tf = TimeFrame::new(TimeSystem::Mjd);
-    tf.set_timescale(TimeScale::Tai);
+    tf.set_timescale(TimeScale::Tai).unwrap();
     tf.set_format_str(1, "iso.6").unwrap();
     // 1977-01-01 00:00:00 in MJD is 43144.0.
     assert_eq!(tf.format(1, 43144.0).unwrap(), "1977-01-01 00:00:00.000000");
@@ -743,7 +743,7 @@ fn test_iso_format_mjd_tai_iso6() {
 fn test_iso_format_variants() {
     // Exercise the iso / iso.N / iso.NT format spellings.
     let mut tf = TimeFrame::new(TimeSystem::Mjd);
-    tf.set_timescale(TimeScale::Tai);
+    tf.set_timescale(TimeScale::Tai).unwrap();
     tf.set_format_str(1, "iso").unwrap();
     assert_eq!(tf.format(1, 43144.0).unwrap(), "1977-01-01");
     tf.set_format_str(1, "iso.0T").unwrap();
@@ -780,7 +780,7 @@ fn test_epoch_from_time_origin_ut1() {
     // Earth-rotation timescale exercises the DUT1==0 routing branch.
     // Oracle: astGetD(Epoch) == 2009.4606454922 for mjd/ut1/origin=55000.
     let mut tf = TimeFrame::new(TimeSystem::Mjd);
-    tf.set_timescale(TimeScale::Ut1);
+    tf.set_timescale(TimeScale::Ut1).unwrap();
     tf.set_time_origin(55000.0);
     assert!(
         (tf.epoch_year() - 2009.4606454922).abs() < 1.0e-6,
@@ -806,10 +806,10 @@ fn test_epoch_explicit_overrides_time_origin() {
 fn test_tt_to_tdb() {
     // TDB differs from TT by periodic terms of amplitude ~1.7 ms.
     let mut tf1 = TimeFrame::new(TimeSystem::Mjd);
-    tf1.set_timescale(TimeScale::Tt);
+    tf1.set_timescale(TimeScale::Tt).unwrap();
 
     let mut tf2 = TimeFrame::new(TimeSystem::Mjd);
-    tf2.set_timescale(TimeScale::Tdb);
+    tf2.set_timescale(TimeScale::Tdb).unwrap();
 
     let xin = 51544.5; // J2000.0
     let xout = convert_value(&tf1, &tf2, xin);
@@ -829,7 +829,7 @@ fn test_tt_to_tdb() {
 fn test_map_from_timescale_change() {
     let tf_tai = TimeFrame::new(TimeSystem::Mjd);
     let mut tf_tt = TimeFrame::new(TimeSystem::Mjd);
-    tf_tt.set_timescale(TimeScale::Tt);
+    tf_tt.set_timescale(TimeScale::Tt).unwrap();
 
     // map_from(tai) on tf_tt should give TAI->TT mapping.
     let mapping = tf_tt.map_from(&tf_tai).unwrap();
@@ -851,10 +851,10 @@ fn test_lt_offset() {
     // LT = UTC + offset (in hours).
     // Set LT offset to +5 hours (e.g., EST is UTC-5, but we test positive).
     let mut tf1 = TimeFrame::new(TimeSystem::Mjd);
-    tf1.set_timescale(TimeScale::Utc);
+    tf1.set_timescale(TimeScale::Utc).unwrap();
 
     let mut tf2 = TimeFrame::new(TimeSystem::Mjd);
-    tf2.set_timescale(TimeScale::Lt);
+    tf2.set_timescale(TimeScale::Lt).unwrap();
     tf2.set_lt_offset(5.0); // 5 hours ahead of UTC
 
     let xin = 51544.5;
@@ -898,7 +898,7 @@ fn test_set_timescale_reexpresses_time_origin() {
     tf.set_time_origin(2005.0);
     assert_eq!(tf.timescale(), TimeScale::Tai);
 
-    tf.set_timescale(TimeScale::Utc);
+    tf.set_timescale(TimeScale::Utc).unwrap();
     let origin = tf.time_origin();
     assert!(
         (origin - 2004.9999989859814).abs() < 1.0e-9,
@@ -908,7 +908,7 @@ fn test_set_timescale_reexpresses_time_origin() {
     // Clearing the timescale re-expresses back to the default (TAI). The
     // round-trip through the leap-second conversion leaves a sub-ULP residual,
     // matching the C oracle value 2004.9999999999998 (not exactly 2005.0).
-    tf.clear_timescale();
+    tf.clear_timescale().unwrap();
     assert_eq!(tf.timescale(), TimeScale::Tai);
     let back = tf.time_origin();
     assert!(
@@ -926,10 +926,10 @@ fn test_set_system_reexpresses_time_origin() {
     //   astTimeFrame("system=jepoch, timescale=tai"); TimeOrigin=2005;
     //   set system=mjd -> TimeOrigin == 53370.75
     let mut tf = TimeFrame::new(TimeSystem::Jepoch);
-    tf.set_timescale(TimeScale::Tai);
+    tf.set_timescale(TimeScale::Tai).unwrap();
     tf.set_time_origin(2005.0);
 
-    tf.set_system(TimeSystem::Mjd);
+    tf.set_system(TimeSystem::Mjd).unwrap();
     let origin = tf.time_origin();
     assert!(
         (origin - 53370.75).abs() < 1.0e-6,

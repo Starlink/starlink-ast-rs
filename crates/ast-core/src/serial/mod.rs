@@ -693,7 +693,10 @@ pub(crate) fn write_region_base(node: &mut Node, data: &RegionData) {
 ///
 /// All entries are emitted commented (the `helpful=1` path in C, which
 /// gives the human reader the inherited values but omits them on re-read).
-pub(crate) fn write_frame_inheritance_for_region(node: &mut Node, frame: &dyn Frame) {
+pub(crate) fn write_frame_inheritance_for_region(
+    node: &mut Node,
+    frame: &dyn Frame,
+) -> AstResult<()> {
     let frame_node = FrameToNode::to_node(frame).unwrap_or_else(|_| Node::new("Frame"));
     let naxes = frame.naxes();
 
@@ -757,10 +760,7 @@ pub(crate) fn write_frame_inheritance_for_region(node: &mut Node, frame: &dyn Fr
 
     // System — bare Frame and CmpFrame don't emit System in their own dump
     // (`helpful=!isFrame=0` for them), so the value must come from the trait.
-    let system_str = frame
-        .system_string()
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| "Cartesian".to_string());
+    let system_str = frame.system_string()?.unwrap_or("Cartesian").to_string();
     node.push_unset(
         "System",
         NodeValue::String(system_str),
@@ -811,6 +811,7 @@ pub(crate) fn write_frame_inheritance_for_region(node: &mut Node, frame: &dyn Fr
         };
         node.push_unset(&item.key, value, item.comment.clone());
     }
+    Ok(())
 }
 
 /// Emit the `IsA Region` marker that terminates the Region instance-variable
@@ -1037,14 +1038,14 @@ fn region_to_node_skeleton(
     class: &'static str,
     class_comment: &'static str,
     data: &RegionData,
-) -> Node {
+) -> AstResult<Node> {
     let mut node = Node::new(class);
     node.class_comment = Some(class_comment.to_string());
-    write_frame_inheritance_for_region(&mut node, data.frameset.current());
+    write_frame_inheritance_for_region(&mut node, data.frameset.current())?;
     push_frame_isa_marker(&mut node);
     write_region_base(&mut node, data);
     push_region_isa_marker(&mut node);
-    node
+    Ok(node)
 }
 
 impl Serializable for Circle {
@@ -1053,11 +1054,7 @@ impl Serializable for Circle {
     }
 
     fn to_node(&self) -> AstResult<Node> {
-        Ok(region_to_node_skeleton(
-            "Circle",
-            "Circular or spherical region",
-            &self.data,
-        ))
+        region_to_node_skeleton("Circle", "Circular or spherical region", &self.data)
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
@@ -1073,7 +1070,7 @@ impl Serializable for BoxRegion {
     }
 
     fn to_node(&self) -> AstResult<Node> {
-        Ok(region_to_node_skeleton("Box", "Axis intervals", &self.data))
+        region_to_node_skeleton("Box", "Axis intervals", &self.data)
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
@@ -1089,11 +1086,7 @@ impl Serializable for Ellipse {
     }
 
     fn to_node(&self) -> AstResult<Node> {
-        Ok(region_to_node_skeleton(
-            "Ellipse",
-            "Elliptical region",
-            &self.data,
-        ))
+        region_to_node_skeleton("Ellipse", "Elliptical region", &self.data)
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
@@ -1109,7 +1102,7 @@ impl Serializable for Polygon {
     }
 
     fn to_node(&self) -> AstResult<Node> {
-        let mut node = region_to_node_skeleton("Polygon", "Polygonal region", &self.data);
+        let mut node = region_to_node_skeleton("Polygon", "Polygonal region", &self.data)?;
         // Polygon instance variables (polygon.c::Dump, :6692). SimpVertices is
         // written only when set.
         if let Some(sv) = self.simp_vertices {
@@ -1150,11 +1143,7 @@ impl Serializable for Interval {
     }
 
     fn to_node(&self) -> AstResult<Node> {
-        Ok(region_to_node_skeleton(
-            "Interval",
-            "Axis intervals",
-            &self.data,
-        ))
+        region_to_node_skeleton("Interval", "Axis intervals", &self.data)
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
@@ -1170,11 +1159,7 @@ impl Serializable for NullRegion {
     }
 
     fn to_node(&self) -> AstResult<Node> {
-        Ok(region_to_node_skeleton(
-            "NullRegion",
-            "Boundless region",
-            &self.data,
-        ))
+        region_to_node_skeleton("NullRegion", "Boundless region", &self.data)
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
@@ -1190,11 +1175,7 @@ impl Serializable for PointList {
     }
 
     fn to_node(&self) -> AstResult<Node> {
-        Ok(region_to_node_skeleton(
-            "PointList",
-            "Collection of points",
-            &self.data,
-        ))
+        region_to_node_skeleton("PointList", "Collection of points", &self.data)
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
@@ -1211,7 +1192,7 @@ impl Serializable for CmpRegion {
 
     fn to_node(&self) -> AstResult<Node> {
         let mut node =
-            region_to_node_skeleton("CmpRegion", "Combination of two Regions", &self.data);
+            region_to_node_skeleton("CmpRegion", "Combination of two Regions", &self.data)?;
 
         // CmpRegion-specific: operator and sub-regions. These follow the
         // `IsA Region` marker — written after the parent class skeleton.
@@ -1294,7 +1275,7 @@ impl Serializable for Prism {
             "Prism",
             "Region extrusion into higher dimensions",
             &self.data,
-        );
+        )?;
 
         // Prism-specific: sub-regions, after the `IsA Region` marker.
         let node_a = RegionToNode::to_node(self.region1.as_ref())?;

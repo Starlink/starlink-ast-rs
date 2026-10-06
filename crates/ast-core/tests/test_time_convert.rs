@@ -26,7 +26,7 @@ fn scale(name: &str) -> TimeScale {
 fn scale_frame(c: usize, ts: &str, is_to: bool) -> TimeFrame {
     let mut f = TimeFrame::new(TimeSystem::Mjd);
     f.set_time_origin(55000.5);
-    f.set_timescale(scale(ts));
+    f.set_timescale(scale(ts)).unwrap();
     if c > 0 {
         let p = cases::PROPS[usize::from(is_to)];
         f.set_obs_lon(p[0]);
@@ -55,8 +55,8 @@ fn system_frame(sys: &str) -> TimeFrame {
         other => panic!("unknown system {other}"),
     };
     let mut f = TimeFrame::new(TimeSystem::Mjd);
-    f.set_timescale(TimeScale::Tt);
-    f.set_system(system);
+    f.set_timescale(TimeScale::Tt).unwrap();
+    f.set_system(system).unwrap();
     f.set_time_origin(origin);
     f.set_unit(1, unit).unwrap();
     f

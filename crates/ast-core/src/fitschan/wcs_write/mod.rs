@@ -942,10 +942,15 @@ pub(crate) fn utc_mjd_to_tdb(utc_mjd: f64) -> f64 {
 /// nearest sensible fallback for tests).
 fn convert_time_mjd(mjd: f64, from: TimeScale, to: TimeScale) -> f64 {
     use crate::frames::{Frame, TimeFrame, TimeSystem};
+    // An MJD TimeFrame with no TimeOrigin accepts any timescale.
     let mut from_tf = TimeFrame::new(TimeSystem::Mjd);
-    from_tf.set_timescale(from);
+    from_tf
+        .set_timescale(from)
+        .expect("an MJD TimeFrame accepts any timescale");
     let mut to_tf = TimeFrame::new(TimeSystem::Mjd);
-    to_tf.set_timescale(to);
+    to_tf
+        .set_timescale(to)
+        .expect("an MJD TimeFrame accepts any timescale");
     let Ok(Some(fs)) = Frame::convert_to(&from_tf, &to_tf, &[]) else {
         return mjd;
     };

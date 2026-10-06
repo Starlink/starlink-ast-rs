@@ -1,7 +1,7 @@
 //! The flux coordinate frame (FluxFrame).
 
 use crate::constants::BAD_VALUE;
-use crate::error::AstResult;
+use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::{DynFrame, Frame};
 use crate::mappings::helpers::is_bad;
 use crate::mappings::{DynMapping, UnitMap};
@@ -169,7 +169,7 @@ impl FluxSystem {
 ///
 /// let ff = FluxFrame::new(FluxSystem::FluxDen);
 /// assert_eq!(ff.naxes(), 1);
-/// assert_eq!(ff.system(), FluxSystem::FluxDen);
+/// assert_eq!(ff.system().unwrap(), FluxSystem::FluxDen);
 /// ```
 #[derive(Debug, Clone)]
 pub struct FluxFrame {
@@ -211,19 +211,19 @@ impl FluxFrame {
 
     /// The System label, capitalised, followed by the SpecVal when one is
     /// set (fluxframe.c `GetTitle`).
-    fn frame_default_title(&self) -> String {
-        let mut title = self.system().label().to_string();
+    fn frame_default_title(&self) -> AstResult<String> {
+        let mut title = self.system()?.label().to_string();
         if let Some(first) = title.get(..1) {
             title = first.to_ascii_uppercase() + &title[1..];
         }
         let specval = self.spec_val();
         if specval != BAD_VALUE {
-            let sf = self.get_spec_frame();
-            let sv = Frame::format(&sf, 1, specval).unwrap_or_default();
-            let su = Frame::unit(&sf, 1).unwrap_or_default();
+            let sf = self.get_spec_frame()?;
+            let sv = Frame::format(&sf, 1, specval)?;
+            let su = Frame::unit(&sf, 1)?;
             title.push_str(&format!(" at = {sv} {su}"));
         }
-        title
+        Ok(title)
     }
     fn frame_default_domain(&self) -> &'static str {
         "FLUX"
@@ -307,14 +307,14 @@ impl FluxFrame {
     }
 
     /// Clear the explicit-set state of System.
-    pub fn clear_system(&mut self) {
-        let old = self.system();
+    pub fn clear_system(&mut self) -> AstResult<()> {
+        let old = self.system()?;
         self.system_set = false;
-        self.system_changed(old);
+        self.system_changed(old)
     }
 
     /// Frame Title accessor. Returns the empty string when unset.
-    pub fn title(&self) -> String {
+    pub fn title(&self) -> AstResult<String> {
         Frame::title(self)
     }
 
@@ -348,45 +348,54 @@ impl FluxFrame {
     /// system whose default units are convertible from the set Unit (scanned
     /// in declaration order). Otherwise the stored System (default FluxDen)
     /// is returned.
-    pub fn system(&self) -> FluxSystem {
-        if !self.system_set {
-            if let Some(ref u) = self.axis.unit {
-                for sys in [
-                    FluxSystem::FluxDen,
-                    FluxSystem::FluxDenW,
-                    FluxSystem::SBright,
-                    FluxSystem::SBrightW,
-                ] {
-                    if crate::units::unit_mapper(u, sys.default_units()).is_some() {
-                        return sys;
-                    }
-                }
+    pub fn system(&self) -> AstResult<FluxSystem> {
+        if self.system_set {
+            return Ok(self.system);
+        }
+        let Some(u) = self.axis.unit.as_deref() else {
+            return Ok(FluxSystem::FluxDen);
+        };
+        for sys in [
+            FluxSystem::FluxDen,
+            FluxSystem::FluxDenW,
+            FluxSystem::SBright,
+            FluxSystem::SBrightW,
+        ] {
+            if crate::units::unit_mapper(u, sys.default_units()).is_some() {
+                return Ok(sys);
             }
         }
-        self.system
+        Err(AstError::new(
+            ErrorCode::Badun,
+            format!(
+                "astGetSystem(FluxFrame): The current units ({u}) cannot be used with any of \
+                 the supported flux systems."
+            ),
+        ))
     }
 
-    /// Set the flux coordinate system.
-    pub fn set_system(&mut self, sys: FluxSystem) {
-        let old = self.system();
+    /// Set the flux coordinate system. C's SetSystem reads the old System
+    /// first, so this fails as [`system`](Self::system) does.
+    pub fn set_system(&mut self, sys: FluxSystem) -> AstResult<()> {
+        let old = self.system()?;
         self.system = sys;
         self.system_set = true;
-        self.system_changed(old);
+        self.system_changed(old)
     }
 
     /// After a change of System, re-instate the Unit last used with the new
     /// one, or clear the Unit, and clear the Label, Symbol and Title, whose
     /// defaults follow the System. Mirrors fluxframe.c `SetSystem` and
     /// `ClearSystem` (fluxframe.c:2733, :331).
-    fn system_changed(&mut self, old: FluxSystem) {
-        let new = self.system();
-        if new == old {
-            return;
+    fn system_changed(&mut self, old: FluxSystem) -> AstResult<()> {
+        let new = self.system()?;
+        if new != old {
+            self.axis.unit = self.used_units[new.index()].clone();
+            self.axis.label = None;
+            self.axis.symbol = None;
+            self.attrs.title = None;
         }
-        self.axis.unit = self.used_units[new.index()].clone();
-        self.axis.label = None;
-        self.axis.symbol = None;
-        self.attrs.title = None;
+        Ok(())
     }
 
     /// The Axis-class attributes of the single axis, after checking the
@@ -413,7 +422,11 @@ impl FluxFrame {
     pub fn unit_or_default(&self) -> &str {
         match self.axis.unit.as_deref() {
             Some(u) => u,
-            None => self.system().default_units(),
+            // With no Unit set, the System is always known.
+            None => self
+                .system()
+                .expect("the System of a FluxFrame with no Unit")
+                .default_units(),
         }
     }
 
@@ -457,16 +470,16 @@ impl FluxFrame {
     /// the encapsulated SpecFrame when present, otherwise a default SpecFrame
     /// whose System/Unit are the FluxFrame's density system (FREQ in Hz or
     /// WAVELEN in Angstrom).
-    fn get_spec_frame(&self) -> super::specframe::SpecFrame {
+    fn get_spec_frame(&self) -> AstResult<super::specframe::SpecFrame> {
         if let Some(sf) = self.specframe.as_deref() {
-            return sf.clone();
+            return Ok(sf.clone());
         }
         // The System as C's astGetSystem gives it, which may follow from the
         // Unit (fluxframe.c:1235 `GetDensitySystem`).
-        let system = self.system();
+        let system = self.system()?;
         let mut sf = super::specframe::SpecFrame::new(system.density_spec_system());
         sf.store_unit(system.density_unit());
-        sf
+        Ok(sf)
     }
 
     /// Generate the Mapping that converts flux values from `self` (target) to
@@ -486,8 +499,8 @@ impl FluxFrame {
     pub fn make_flux_mapping(&self, result: &FluxFrame) -> AstResult<Option<DynMapping>> {
         use crate::mappings::{CmpMap, Composition, Mapping, ZoomMap};
 
-        let rsys_in = self.system();
-        let rsys_out = result.system();
+        let rsys_in = self.system()?;
+        let rsys_out = result.system()?;
 
         // Collapse surface-brightness systems onto their flux-density
         // counterparts and record the surface-brightness flags
@@ -511,12 +524,12 @@ impl FluxFrame {
             // Build the SpecFrames encapsulated in (or defaulted for) each
             // FluxFrame (`sfin1`/`sfout1`), plus standardised copies in the
             // density systems (`sfin2`/`sfout2`). Mirrors fluxframe.c:2148-2157.
-            let sfin1 = self.get_spec_frame();
+            let sfin1 = self.get_spec_frame()?;
             let mut sfin2 = sfin1.clone();
             sfin2.set_system(sys_in.density_spec_system());
             sfin2.set_unit(1, sys_in.density_unit())?;
 
-            let sfout1 = result.get_spec_frame();
+            let sfout1 = result.get_spec_frame()?;
             let mut sfout2 = sfout1.clone();
             sfout2.set_system(sys_out.density_spec_system());
             sfout2.set_unit(1, sys_out.density_unit())?;
@@ -689,7 +702,7 @@ impl Frame for FluxFrame {
         }
         // GetSystem, which takes the System from a set Unit when the System
         // is not set.
-        let system = self.system();
+        let system = self.system()?;
         Ok(super::frame_attrs::relabel_for_unit(
             system.label().to_string(),
             system.default_units(),
@@ -703,7 +716,7 @@ impl Frame for FluxFrame {
         if let Some(symbol) = &self.ax(axis)?.symbol {
             return Ok(symbol.clone());
         }
-        let system = self.system();
+        let system = self.system()?;
         Ok(super::frame_attrs::relabel_for_unit(
             system.symbol().to_string(),
             system.default_units(),
@@ -728,7 +741,7 @@ impl Frame for FluxFrame {
             super::frame_attrs::new_unit(&mut self.axis, &old, unit);
         }
         self.ax_mut(axis)?.unit = Some(unit.to_string());
-        let system = self.system();
+        let system = self.system()?;
         if crate::units::unit_mapper(system.default_units(), unit).is_some() {
             self.used_units[system.index()] = Some(unit.to_string());
         } else {
@@ -741,7 +754,7 @@ impl Frame for FluxFrame {
     /// forgets the Unit used with the current System.
     fn clear_unit(&mut self, axis: usize) -> AstResult<()> {
         self.ax(axis)?;
-        let system = self.system();
+        let system = self.system()?;
         self.used_units[system.index()] = None;
         // The Frame class's ClearUnit (frame.c:2527).
         if let Some(old) = self.axis.unit.take() {
@@ -807,8 +820,8 @@ impl Frame for FluxFrame {
         super::find_frame::frames_equal(self, other)
     }
 
-    fn system_string(&self) -> Option<&str> {
-        Some(self.system().as_str())
+    fn system_string(&self) -> AstResult<Option<&str>> {
+        Ok(Some(self.system()?.as_str()))
     }
 
     // -----------------------------------------------------------------
@@ -842,7 +855,7 @@ impl Frame for FluxFrame {
     fn overlay_system_from(&mut self, template: &dyn std::any::Any) -> AstResult<()> {
         if let Some(t) = template.downcast_ref::<FluxFrame>() {
             if t.test_system() {
-                self.set_system(t.system);
+                self.set_system(t.system)?;
             }
             if let Some(sys) = t.align_system {
                 self.align_system = Some(sys);
@@ -964,8 +977,8 @@ fn fluxframe_overlay(
     if let Some(result_flux) = result.as_any_mut().downcast_mut::<FluxFrame>() {
         // The effective Systems, which may follow from the Unit
         // (fluxframe.c:2561 `astGetSystem`).
-        let old_system = result_flux.system();
-        let new_system = template_flux.system();
+        let old_system = result_flux.system()?;
+        let new_system = template_flux.system()?;
         if new_system != old_system && template_flux.test_system() {
             result_flux.clear_title();
             if new_system.default_units() != old_system.default_units() {
@@ -1023,7 +1036,7 @@ fn fluxframe_sub_frame(
     // axes as the Frame class does.
     let mut temp = target.clone();
     super::find_frame::set_class_defaults(&mut temp)?;
-    temp.clear_system();
+    temp.clear_system()?;
     temp.clear_align_system();
     super::find_frame::default_sub_frame(&temp, template, target_axes, template_axes)
 }
@@ -1058,7 +1071,7 @@ impl Serializable for FluxFrame {
             &super::frame_attrs::TraitDump {
                 frame: self,
                 attrs: &self.attrs,
-                system: (self.system_set, self.system().as_str().to_string()),
+                system: (self.system_set, self.system()?.as_str().to_string()),
                 align_system: (
                     self.align_system.is_some(),
                     self.align_system().as_str().to_string(),
@@ -1067,7 +1080,7 @@ impl Serializable for FluxFrame {
                 is_frame: false,
                 own_naxes: 1,
             },
-        );
+        )?;
         let mut axis_node = Node::new("Axis");
         axis_node.class_comment = Some("Coordinate axis".to_string());
         self.axis.write_set_attributes(&mut axis_node);
@@ -1181,7 +1194,7 @@ mod tests {
         assert!(!f.test_system());
         // After explicit set, test_system flips.
         let mut f = FluxFrame::new(FluxSystem::FluxDen);
-        f.set_system(FluxSystem::SBright);
+        f.set_system(FluxSystem::SBright).unwrap();
         assert!(f.test_system());
     }
 
@@ -1196,7 +1209,7 @@ mod tests {
         assert_eq!(m.template_axes, vec![0]);
         assert_eq!(m.target_axes, vec![0]);
         let r = m.result.as_any().downcast_ref::<FluxFrame>().unwrap();
-        assert_eq!(r.system(), FluxSystem::SBright);
+        assert_eq!(r.system().unwrap(), FluxSystem::SBright);
     }
 
     #[test]
@@ -1230,19 +1243,19 @@ mod tests {
         assert_eq!(map.nin(), 1);
         assert_eq!(map.nout(), 1);
         let r = result.as_any().downcast_ref::<FluxFrame>().unwrap();
-        assert_eq!(r.system(), FluxSystem::SBright);
+        assert_eq!(r.system().unwrap(), FluxSystem::SBright);
     }
 
     #[test]
     fn overlay_template_copies_set_system() {
         let mut template = FluxFrame::new(FluxSystem::FluxDen);
-        template.set_system(FluxSystem::SBright);
+        template.set_system(FluxSystem::SBright).unwrap();
         assert!(template.test_system());
         let target = FluxFrame::new(FluxSystem::FluxDen);
         let mut result: DynFrame = Box::new(target);
         template.overlay(&[0], result.as_mut()).unwrap();
         let r = result.as_any().downcast_ref::<FluxFrame>().unwrap();
-        assert_eq!(r.system(), FluxSystem::SBright);
+        assert_eq!(r.system().unwrap(), FluxSystem::SBright);
     }
 
     #[test]
@@ -1255,7 +1268,7 @@ mod tests {
         let mut result: DynFrame = Box::new(target);
         template.overlay(&[0], result.as_mut()).unwrap();
         let r = result.as_any().downcast_ref::<FluxFrame>().unwrap();
-        assert_eq!(r.system(), FluxSystem::SBright);
+        assert_eq!(r.system().unwrap(), FluxSystem::SBright);
     }
 
     #[test]
@@ -1263,6 +1276,6 @@ mod tests {
         let target = FluxFrame::new(FluxSystem::SBright);
         let snap = target.pick_axes_snapshot(&[0]).unwrap();
         let r = snap.as_any().downcast_ref::<FluxFrame>().unwrap();
-        assert_eq!(r.system(), FluxSystem::SBright);
+        assert_eq!(r.system().unwrap(), FluxSystem::SBright);
     }
 }

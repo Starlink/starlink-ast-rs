@@ -50,7 +50,7 @@ pub(crate) fn frame_overlay<T: Frame + ?Sized>(
         result.set_epoch_mjd(template.epoch_mjd())?;
     }
     if template.test_title() {
-        result.set_title(&template.title())?;
+        result.set_title(&template.title()?)?;
     }
     if template.test_obs_lat() {
         result.set_obs_lat(template.obs_lat())?;

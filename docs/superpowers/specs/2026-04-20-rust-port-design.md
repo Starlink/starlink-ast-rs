@@ -2,6 +2,22 @@
 
 ## Revision history
 
+- **2026-10-06 (rev 11)**: an accessor returns `AstResult` wherever its C
+  counterpart can report an error from valid input, rather than returning a
+  plausible value or dropping the error.
+  `Frame::title` is `AstResult<String>` and `Frame::system_string` is
+  `AstResult<Option<&str>>`: a FluxFrame whose Unit fits no flux system has
+  no System, so C's `GetSystem`, and the Title, Label and Symbol defaults
+  built on it, raise AST__BADUN (`fluxframe.c` GetSystem).
+  `FluxFrame::system`, `set_system` and `clear_system` follow, as do
+  `TimeFrame::set_system`, `clear_system`, `set_timescale` and
+  `clear_timescale`: C rejects a TimeScale other than TT for a Besselian
+  epoch with AST__ATTIN, and re-expressing the TimeOrigin can fail
+  (`timeframe.c` SetTimeScale, OriginScale, OriginSystem).
+  The library is unreleased, so these signatures change outright.
+  No `ast.h` prototype changes: the C ABI already reports these errors
+  through the status.
+
 - **2026-09-25 (rev 10)**: `Channel::write` reports how many objects it wrote.
   `fn write(&mut self, obj: &AnyObject) -> AstResult<usize>`, restoring the
   count rev 6 had removed.

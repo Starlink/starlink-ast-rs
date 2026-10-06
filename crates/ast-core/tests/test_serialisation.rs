@@ -868,7 +868,7 @@ fn round_trip_skyframe_galactic_with_attributes() {
     match restored {
         AnyObject::SkyFrame(ref sf) => {
             assert_eq!(sf.system(), SkySystem::Galactic);
-            assert_eq!(sf.title(), "Galactic Test");
+            assert_eq!(sf.title().unwrap(), "Galactic Test");
             assert_close(sf.epoch_mjd(), 53000.0, 1e-10, "epoch");
             assert!(sf.neglon());
             assert_close(sf.sky_tol(), 1.0e-7, 1e-15, "sky_tol");

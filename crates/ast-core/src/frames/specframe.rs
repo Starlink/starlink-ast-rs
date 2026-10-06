@@ -330,8 +330,8 @@ impl SpecFrame {
     // Defaults of the Frame-class attributes, for the `frame_attrs_*`
     // macros. Permute is the Frame class's default: SpecFrame does not
     // over-ride it (frame.c:13572).
-    fn frame_default_title(&self) -> String {
-        self.default_title()
+    fn frame_default_title(&self) -> AstResult<String> {
+        Ok(self.default_title())
     }
     fn frame_default_domain(&self) -> &'static str {
         "SPECTRUM"
@@ -1912,8 +1912,8 @@ impl Frame for SpecFrame {
         super::find_frame::frames_equal(self, other)
     }
 
-    fn system_string(&self) -> Option<&str> {
-        Some(self.system.as_str())
+    fn system_string(&self) -> AstResult<Option<&str>> {
+        Ok(Some(self.system.as_str()))
     }
 
     // -----------------------------------------------------------------
@@ -2313,7 +2313,7 @@ impl Serializable for SpecFrame {
                 is_frame: false,
                 own_naxes: 1,
             },
-        );
+        )?;
 
         // Ax1: the Axis, with the attributes that are set (axis.c Dump).
         let mut axis_node = Node::new("Axis");

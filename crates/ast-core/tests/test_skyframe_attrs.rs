@@ -80,7 +80,7 @@ fn value(f: &SkyFrame, attr: &str, axis: usize) -> V {
         "IsLonAxis" => b(f.is_lon_axis(axis).unwrap()),
         "LatAxis" => V::I(f.lat_axis() as i32 + 1),
         "LonAxis" => V::I(f.lon_axis() as i32 + 1),
-        "Title" => s(Frame::title(f)),
+        "Title" => s(Frame::title(f).unwrap()),
         "Label" => s(Frame::label(f, axis).unwrap()),
         "Symbol" => s(Frame::symbol(f, axis).unwrap()),
         "Unit" => s(Frame::unit(f, axis).unwrap()),

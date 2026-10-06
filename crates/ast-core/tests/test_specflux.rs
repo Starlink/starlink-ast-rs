@@ -47,9 +47,9 @@ fn jansky() -> SpecFluxFrame {
 fn per_wavelength() -> SpecFluxFrame {
     let sf = ghz();
     let mut ff2 = FluxFrame::with_spec_val(123.1, Some(sf.clone()));
-    ff2.set_system(FluxSystem::FluxDenW);
+    ff2.set_system(FluxSystem::FluxDenW).unwrap();
     assert_eq!(Frame::unit(&ff2, 1).unwrap(), "W/m^2/Angstrom", "Error 6B");
-    assert_eq!(ff2.system().as_str(), "FLXDNW", "Error 6C");
+    assert_eq!(ff2.system().unwrap().as_str(), "FLXDNW", "Error 6C");
     SpecFluxFrame::new(sf, ff2)
 }
 
@@ -106,7 +106,7 @@ fn conversion_follows_permuted_axes() {
 #[test]
 fn logarithmic_flux_units_convert() {
     let ff2 = flux_unit(ast_core::constants::BAD_VALUE, None, "log(W/m2/nm)");
-    assert_eq!(ff2.system().as_str(), "FLXDNW", "Error 17");
+    assert_eq!(ff2.system().unwrap().as_str(), "FLXDNW", "Error 17");
     let sff2 = SpecFluxFrame::new(ghz(), ff2);
     let fs = convert(&jansky(), &sff2).expect("Error 18");
     let (x, y) = tran2(&fs, 2.0, 1.0, true);
@@ -120,11 +120,11 @@ fn logarithmic_flux_units_convert() {
 #[test]
 fn surface_brightness_converts() {
     let ff2 = flux_unit(ast_core::constants::BAD_VALUE, None, "log(W/m2/nm/sr)");
-    assert_eq!(ff2.system().as_str(), "SFCBRW", "Error 23");
+    assert_eq!(ff2.system().unwrap().as_str(), "SFCBRW", "Error 23");
     let sff2 = SpecFluxFrame::new(ghz(), ff2);
     let sf = ghz();
     let ff = flux_unit(123.0, Some(&sf), "Jy/deg**2");
-    assert_eq!(ff.system().as_str(), "SFCBR", "Error 24");
+    assert_eq!(ff.system().unwrap().as_str(), "SFCBR", "Error 24");
     let sff = SpecFluxFrame::new(sf, ff);
     let fs = convert(&sff, &sff2).expect("Error 25");
     let (x, y) = tran2(&fs, 2.0, 1.0, true);
@@ -139,9 +139,9 @@ fn surface_brightness_converts() {
 fn equal_when_and_only_when_the_components_are() {
     let esf = SpecFrame::new(SpecSystem::Freq);
     let mut eff = FluxFrame::unset_system();
-    eff.set_system(FluxSystem::FluxDen);
+    eff.set_system(FluxSystem::FluxDen).unwrap();
     let mut eff2 = FluxFrame::unset_system();
-    eff2.set_system(FluxSystem::FluxDenW);
+    eff2.set_system(FluxSystem::FluxDenW).unwrap();
     let ea = SpecFluxFrame::new(esf.clone(), eff.clone());
     let eb = SpecFluxFrame::new(esf.clone(), eff);
     let ec = ea.clone();

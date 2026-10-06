@@ -490,8 +490,8 @@ impl SkyFrame {
             _ => pal::epj2d(2000.0),
         }
     }
-    fn frame_default_title(&self) -> String {
-        self.default_title()
+    fn frame_default_title(&self) -> AstResult<String> {
+        Ok(self.default_title())
     }
     fn frame_default_domain(&self) -> &'static str {
         "SKY"
@@ -799,7 +799,7 @@ impl SkyFrame {
 
     /// Return the frame title.
     /// The Title, set or default (skyframe.c `GetTitle`).
-    pub fn title(&self) -> String {
+    pub fn title(&self) -> AstResult<String> {
         Frame::title(self)
     }
 
@@ -1955,8 +1955,8 @@ impl Frame for SkyFrame {
         super::find_frame::frames_equal(self, other)
     }
 
-    fn system_string(&self) -> Option<&str> {
-        Some(self.system.as_str())
+    fn system_string(&self) -> AstResult<Option<&str>> {
+        Ok(Some(self.system.as_str()))
     }
 
     // -----------------------------------------------------------------
@@ -2155,7 +2155,7 @@ impl Frame for SkyFrame {
             temp.attrs.domain = Some(domain);
         }
         if !Frame::test_title(&temp) {
-            temp.attrs.title = Some(Frame::title(&temp));
+            temp.attrs.title = Some(Frame::title(&temp)?);
         }
         let mut bf = super::basic::BasicFrameBuilder::new(target_axes.len()).build()?;
         bf.overlay_frame_attrs(&temp.attrs);
@@ -2230,7 +2230,7 @@ fn compute_last(
     let epoch_off = epoch_mjd - origin;
 
     let mut tdb = TimeFrame::new(TimeSystem::Mjd);
-    tdb.set_timescale(TimeScale::Tdb);
+    tdb.set_timescale(TimeScale::Tdb)?;
     tdb.set_time_origin(origin);
     tdb.set_obs_lon(obs_lon);
     tdb.set_obs_lat(obs_lat);
@@ -2241,7 +2241,7 @@ fn compute_last(
     }
 
     let mut last_tf = TimeFrame::new(TimeSystem::Mjd);
-    last_tf.set_timescale(TimeScale::Last);
+    last_tf.set_timescale(TimeScale::Last)?;
     last_tf.set_time_origin(origin);
     last_tf.set_obs_lon(obs_lon);
     last_tf.set_obs_lat(obs_lat);
@@ -2652,7 +2652,7 @@ impl Serializable for SkyFrame {
                 is_frame: false,
                 own_naxes: 2,
             },
-        );
+        )?;
 
         // Per-axis SkyAxis children, in internal order (0 = lon, 1 = lat).
         // An explicit Label or Symbol round-trips as an active card inside
@@ -3074,7 +3074,7 @@ mod tests {
         // The default C reports (skyframe.c `GetTitle`).
         assert!(!sky.test_title());
         assert_eq!(
-            sky.title(),
+            sky.title().unwrap(),
             "FK5 equatorial coordinates; mean equinox J2000.0"
         );
     }
@@ -3593,7 +3593,7 @@ mod tests {
     #[test]
     fn system_string() {
         let sky = SkyFrame::new(SkySystem::Galactic);
-        assert_eq!(sky.system_string(), Some("GALACTIC"));
+        assert_eq!(sky.system_string().unwrap(), Some("GALACTIC"));
     }
 
     // -----------------------------------------------------------------------
@@ -3619,8 +3619,8 @@ mod tests {
         sky.set_title("original");
         let mut clone = sky.clone();
         clone.set_title("clone");
-        assert_eq!(sky.title(), "original");
-        assert_eq!(clone.title(), "clone");
+        assert_eq!(sky.title().unwrap(), "original");
+        assert_eq!(clone.title().unwrap(), "clone");
     }
 
     fn _assert_send<T: Send>() {}
@@ -3767,7 +3767,7 @@ mod tests {
         let mut r2: DynFrame = Box::new(SkyFrame::new(SkySystem::Fk5));
         template.overlay(&[0, 1], r2.as_mut()).unwrap();
         let r2_sky = r2.as_any().downcast_ref::<SkyFrame>().unwrap();
-        assert_eq!(r2_sky.title(), "custom");
+        assert_eq!(r2_sky.title().unwrap(), "custom");
     }
 
     #[test]

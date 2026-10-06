@@ -111,9 +111,9 @@ fn make(class: &str, settings: &str) -> Obj {
         }
         match &mut obj {
             Obj::Time(f) => match name {
-                "System" => f.set_system(TimeSystem::parse(value).unwrap()),
+                "System" => f.set_system(TimeSystem::parse(value).unwrap()).unwrap(),
                 "AlignSystem" => f.set_align_system(TimeSystem::parse(value).unwrap()),
-                "TimeScale" => f.set_timescale(TimeScale::parse(value).unwrap()),
+                "TimeScale" => f.set_timescale(TimeScale::parse(value).unwrap()).unwrap(),
                 "AlignTimeScale" => f.set_align_timescale(TimeScale::parse(value).unwrap()),
                 "TimeOrigin" => f.set_time_origin_cur(dbl()).unwrap(),
                 "LTOffset" => f.set_lt_offset(dbl()),
@@ -132,7 +132,7 @@ fn make(class: &str, settings: &str) -> Obj {
                 ),
             },
             Obj::Flux(f) => match name {
-                "System" => f.set_system(FluxSystem::parse(value).unwrap()),
+                "System" => f.set_system(FluxSystem::parse(value).unwrap()).unwrap(),
                 "AlignSystem" => f.set_align_system(FluxSystem::parse(value).unwrap()),
                 "SpecVal" => f.set_spec_val(dbl()),
                 other => panic!("unexpected setting {other}"),
@@ -181,7 +181,7 @@ fn value(obj: &Obj, attr: &str) -> (V, Option<bool>) {
     let s = |v: String| V::S(Box::leak(v.into_boxed_str()));
     let f = obj.frame();
     let common = match attr {
-        "Title" => Some((s(f.title()), f.test_title())),
+        "Title" => Some((s(f.title().unwrap()), f.test_title())),
         "Domain" => Some((s(f.domain().to_string()), f.test_domain())),
         "Label(1)" => Some((s(f.label(1).unwrap()), f.test_label(1).unwrap())),
         "Symbol(1)" => Some((s(f.symbol(1).unwrap()), f.test_symbol(1).unwrap())),
@@ -236,7 +236,10 @@ fn value(obj: &Obj, attr: &str) -> (V, Option<bool>) {
             }
         },
         Obj::Flux(f) => match attr {
-            "System" => (s(f.system().as_str().to_string()), Some(f.test_system())),
+            "System" => (
+                s(f.system().unwrap().as_str().to_string()),
+                Some(f.test_system()),
+            ),
             "AlignSystem" => (
                 s(f.align_system().as_str().to_string()),
                 Some(f.test_align_system()),

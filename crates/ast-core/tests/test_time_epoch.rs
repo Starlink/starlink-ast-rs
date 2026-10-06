@@ -16,8 +16,8 @@ use ast_core::frames::{TimeFrame, TimeScale, TimeSystem};
 
 fn frame(system: &str, scale: &str, origin: f64, extra: &str) -> TimeFrame {
     let mut f = TimeFrame::new(TimeSystem::Mjd);
-    f.set_system(TimeSystem::parse(system).unwrap());
-    f.set_timescale(TimeScale::parse(scale).unwrap());
+    f.set_system(TimeSystem::parse(system).unwrap()).unwrap();
+    f.set_timescale(TimeScale::parse(scale).unwrap()).unwrap();
     f.set_time_origin_cur(origin).unwrap();
     for setting in extra.split(',').filter(|s| !s.is_empty()) {
         match setting.split_once('=').unwrap() {

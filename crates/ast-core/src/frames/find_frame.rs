@@ -509,7 +509,7 @@ pub(crate) fn set_class_defaults(temp: &mut dyn Frame) -> AstResult<()> {
         temp.set_domain(&domain)?;
     }
     if !temp.test_title() {
-        let title = temp.title();
+        let title = temp.title()?;
         temp.set_title(&title)?;
     }
     for axis in 1..=temp.naxes() {

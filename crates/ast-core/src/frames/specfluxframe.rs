@@ -47,17 +47,17 @@ pub struct SpecFluxFrame {
 impl SpecFluxFrame {
     /// `"<flux label> versus <spec label>"`, capitalised (specfluxframe.c
     /// `GetTitle`), for the `frame_attrs_title` macro.
-    fn frame_default_title(&self) -> String {
+    fn frame_default_title(&self) -> AstResult<String> {
         let t = format!(
             "{} versus {}",
-            Frame::label(&self.flux_frame, 1).unwrap_or_default(),
-            Frame::label(&self.spec_frame, 1).unwrap_or_default()
+            Frame::label(&self.flux_frame, 1)?,
+            Frame::label(&self.spec_frame, 1)?
         );
         let mut c = t.chars();
-        match c.next() {
+        Ok(match c.next() {
             Some(f) => f.to_ascii_uppercase().to_string() + c.as_str(),
             None => t,
-        }
+        })
     }
 
     /// The Frame class's default, 1 (frame.c:13572).
@@ -178,22 +178,23 @@ impl SpecFluxFrame {
     /// (to the possibly-unit-derived `system()`) and Unit cleared so it
     /// represents the default units for that System. Mirrors C `GetFluxFrame`
     /// with `std=1` (specfluxframe.c:240).
-    fn std_flux_frame(&self) -> FluxFrame {
+    fn std_flux_frame(&self) -> AstResult<FluxFrame> {
         let mut ff = self.flux_frame.clone();
-        ff.set_system(self.flux_frame.system());
+        ff.set_system(self.flux_frame.system()?)?;
         ff.clear_axis_unit();
-        ff
+        Ok(ff)
     }
 
     /// A standardised copy of the embedded SpecFrame: System and Unit set to
     /// the spectral system and unit used by the FluxFrame's flux density
     /// system (wavelength/Angstrom or frequency/Hz). Mirrors C `GetSpecFrame`
     /// with `std=1` (specfluxframe.c:307).
-    fn std_spec_frame(&self) -> SpecFrame {
+    fn std_spec_frame(&self) -> AstResult<SpecFrame> {
+        let system = self.flux_frame.system()?;
         let mut sf = self.spec_frame.clone();
-        sf.set_system(self.flux_frame.system().density_spec_system());
-        sf.store_unit(self.flux_frame.system().density_unit());
-        sf
+        sf.set_system(system.density_spec_system());
+        sf.store_unit(system.density_unit());
+        Ok(sf)
     }
 }
 
@@ -381,8 +382,8 @@ impl Frame for SpecFluxFrame {
 
     /// Inherited from CmpFrame, whose System is always "Compound"
     /// (cmpframe.c `GetSystem`).
-    fn system_string(&self) -> Option<&str> {
-        Some("Compound")
+    fn system_string(&self) -> AstResult<Option<&str>> {
+        Ok(Some("Compound"))
     }
 
     fn perm_axes(&mut self, perm: &[usize]) -> AstResult<()> {
@@ -587,13 +588,13 @@ fn make_map_i(x1: &SpecFrame, x2: &SpecFrame) -> AstResult<DynMapping> {
 fn make_map2(sff: &SpecFluxFrame) -> AstResult<Option<DynMapping>> {
     // ax1_map: supplied FluxFrame -> default-units FluxFrame.
     let f1 = sff.flux_frame.clone();
-    let f2 = sff.std_flux_frame();
+    let f2 = sff.std_flux_frame()?;
     let Some(ax1_map) = f1.make_flux_mapping(&f2)? else {
         return Ok(None);
     };
     // ax2_map: supplied SpecFrame -> density-system SpecFrame.
     let s1 = sff.spec_frame.clone();
-    let s2 = sff.std_spec_frame();
+    let s2 = sff.std_spec_frame()?;
     let ax2_map = s1.make_spec_mapping(&s2)?;
     // ax3_map: UnitMap on the copied flux axis.
     let ax3_map = UnitMap::new(1);
@@ -609,8 +610,8 @@ fn make_map2(sff: &SpecFluxFrame) -> AstResult<Option<DynMapping>> {
 /// the unmodified `x1 -> x2` spectral mapping.
 fn make_map3(target: &SpecFluxFrame, result: &SpecFluxFrame) -> AstResult<Option<DynMapping>> {
     // Standardised SpecFrames for the flux-scaling TranMap.
-    let sf1 = target.std_spec_frame();
-    let sf2 = result.std_spec_frame();
+    let sf1 = target.std_spec_frame()?;
+    let sf2 = result.std_spec_frame()?;
     let fmap = make_map_f(&sf1, &sf2)?;
     let imap = make_map_i(&sf1, &sf2)?;
     let mapa = TranMap::new(fmap, imap)?;

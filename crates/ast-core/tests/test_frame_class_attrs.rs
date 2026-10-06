@@ -138,7 +138,7 @@ fn c_obs_angle(text: &str) -> f64 {
 fn value(f: &dyn Frame, attr: &str) -> (V, Option<bool>) {
     let s = |v: String| V::S(Box::leak(v.into_boxed_str()));
     match attr {
-        "Title" => (s(f.title()), Some(f.test_title())),
+        "Title" => (s(f.title().unwrap()), Some(f.test_title())),
         "Domain" => (s(f.domain().to_string()), Some(f.test_domain())),
         "Epoch" => (V::D(mjd_to_year(f.epoch_mjd())), Some(f.test_epoch())),
         "Digits" => (V::I(f.digits()), Some(f.test_digits())),

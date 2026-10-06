@@ -192,7 +192,7 @@ fn iraf_frameset_has_sky() {
         );
         assert_eq!(fs.current().naxes(), 2, "Current frame should be 2D");
         // Current frame should be a SkyFrame with FK5 system.
-        let sys = fs.current().system_string();
+        let sys = fs.current().system_string().unwrap();
         assert!(sys.is_some(), "Current frame should have a system string");
         let sys_str = sys.unwrap();
         assert!(
@@ -218,7 +218,7 @@ fn pc_frameset_has_sky() {
             "FrameSet should have 2 frames (pixel + sky)"
         );
         assert_eq!(fs.current().naxes(), 2, "Current frame should be 2D");
-        let sys = fs.current().system_string();
+        let sys = fs.current().system_string().unwrap();
         assert!(sys.is_some(), "Current frame should have a system string");
         let sys_str = sys.unwrap();
         assert!(
@@ -244,7 +244,7 @@ fn dss_frameset_has_sky() {
             "FrameSet should have 2 frames (pixel + sky)"
         );
         assert_eq!(fs.current().naxes(), 2, "Current frame should be 2D");
-        let sys = fs.current().system_string();
+        let sys = fs.current().system_string().unwrap();
         assert!(sys.is_some(), "Current frame should have a system string");
         let sys_str = sys.unwrap();
         assert!(

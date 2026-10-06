@@ -50,8 +50,8 @@ impl Clone for CmpFrame {
 impl CmpFrame {
     /// `"<n>-d compound coordinate system"` (cmpframe.c `GetTitle`), for
     /// the `frame_attrs_title` macro.
-    fn frame_default_title(&self) -> String {
-        format!("{}-d compound coordinate system", self.naxes())
+    fn frame_default_title(&self) -> AstResult<String> {
+        Ok(format!("{}-d compound coordinate system", self.naxes()))
     }
 
     /// The Frame class's default, 1 (frame.c:13572).
@@ -76,7 +76,7 @@ impl CmpFrame {
     /// Frame Title. When unset, returns the empty string;
     /// serialisation defaults are computed in `Serializable::to_node`.
     /// Mirrors `astGetTitle`.
-    pub fn title(&self) -> String {
+    pub fn title(&self) -> AstResult<String> {
         Frame::title(self)
     }
 
@@ -409,8 +409,8 @@ impl Frame for CmpFrame {
 
     cmp_frame_axis_attrs!();
 
-    fn system_string(&self) -> Option<&str> {
-        Some("Compound")
+    fn system_string(&self) -> AstResult<Option<&str>> {
+        Ok(Some("Compound"))
     }
 
     fn domain(&self) -> &str {
@@ -956,7 +956,7 @@ impl Serializable for CmpFrame {
                 is_frame: true,
                 own_naxes: 0,
             },
-        );
+        )?;
 
         // IsA Frame marker
         node.push_isa("Frame", Some("Coordinate system description".to_string()));
@@ -2294,7 +2294,11 @@ fn cmpframe_sub_frame(
     // the result.
     if result_naxes == naxes {
         let target_domain = target.test_domain().then(|| target.domain().to_string());
-        let target_title = target.test_title().then(|| target.title().to_string());
+        let target_title = if target.test_title() {
+            Some(target.title()?)
+        } else {
+            None
+        };
         if let Some(result_cmp) = result_frame.as_any_mut().downcast_mut::<CmpFrame>() {
             if let Some(d) = target_domain {
                 result_cmp.set_domain(d);
@@ -3032,7 +3036,7 @@ mod tests {
             .expect("identity sub_frame");
         let result_cmp = result.as_any().downcast_ref::<CmpFrame>().unwrap();
         assert_eq!(result_cmp.domain(), "MYCMP");
-        assert_eq!(result_cmp.title(), "custom title");
+        assert_eq!(result_cmp.title().unwrap(), "custom title");
         assert!(result_cmp.test_domain());
         assert!(result_cmp.test_title());
     }
@@ -3090,7 +3094,7 @@ mod tests {
             .downcast_ref::<SkyFrame>()
             .unwrap();
         assert_eq!(result_sky.system(), SkySystem::Galactic);
-        assert_eq!(result_sky.title(), "custom-galactic");
+        assert_eq!(result_sky.title().unwrap(), "custom-galactic");
     }
 
     /// Fall-back path (cmpframe.c:382-427): template is a CmpFrame but

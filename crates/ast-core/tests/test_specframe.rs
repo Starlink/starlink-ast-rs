@@ -53,7 +53,7 @@ fn test_specframe_construction() {
     assert_eq!(sf.naxes(), 1);
     assert_eq!(sf.system(), SpecSystem::Freq);
     assert_eq!(sf.std_of_rest(), StdOfRest::Heliocentric);
-    assert_eq!(sf.system_string(), Some("FREQ"));
+    assert_eq!(sf.system_string().unwrap(), Some("FREQ"));
 }
 
 #[test]

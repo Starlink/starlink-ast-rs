@@ -21,32 +21,32 @@ use ast_core::{AnyObject, from_native_string, to_native_string};
 fn test_fluxframe_new_fluxden() {
     let ff = FluxFrame::new(FluxSystem::FluxDen);
     assert_eq!(ff.naxes(), 1);
-    assert_eq!(ff.system(), FluxSystem::FluxDen);
-    assert_eq!(ff.system_string(), Some("FLXDN"));
+    assert_eq!(ff.system().unwrap(), FluxSystem::FluxDen);
+    assert_eq!(ff.system_string().unwrap(), Some("FLXDN"));
 }
 
 #[test]
 fn test_fluxframe_new_fluxdenw() {
     let ff = FluxFrame::new(FluxSystem::FluxDenW);
     assert_eq!(ff.naxes(), 1);
-    assert_eq!(ff.system(), FluxSystem::FluxDenW);
-    assert_eq!(ff.system_string(), Some("FLXDNW"));
+    assert_eq!(ff.system().unwrap(), FluxSystem::FluxDenW);
+    assert_eq!(ff.system_string().unwrap(), Some("FLXDNW"));
 }
 
 #[test]
 fn test_fluxframe_new_sbright() {
     let ff = FluxFrame::new(FluxSystem::SBright);
     assert_eq!(ff.naxes(), 1);
-    assert_eq!(ff.system(), FluxSystem::SBright);
-    assert_eq!(ff.system_string(), Some("SFCBR"));
+    assert_eq!(ff.system().unwrap(), FluxSystem::SBright);
+    assert_eq!(ff.system_string().unwrap(), Some("SFCBR"));
 }
 
 #[test]
 fn test_fluxframe_new_sbrightw() {
     let ff = FluxFrame::new(FluxSystem::SBrightW);
     assert_eq!(ff.naxes(), 1);
-    assert_eq!(ff.system(), FluxSystem::SBrightW);
-    assert_eq!(ff.system_string(), Some("SFCBRW"));
+    assert_eq!(ff.system().unwrap(), FluxSystem::SBrightW);
+    assert_eq!(ff.system_string().unwrap(), Some("SFCBRW"));
 }
 
 // ---------------------------------------------------------------------------
@@ -275,13 +275,13 @@ fn test_fluxframe_system_derived_from_unit() {
     let mut ff = FluxFrame::new(FluxSystem::FluxDen); // unset System
     assert!(!ff.test_system());
     ff.set_unit(1, "Jy").unwrap();
-    assert_eq!(ff.system(), FluxSystem::FluxDen);
+    assert_eq!(ff.system().unwrap(), FluxSystem::FluxDen);
     // System remains "unset" (the default is unit-derived, not explicit).
     assert!(!ff.test_system());
 
     let mut ff = FluxFrame::new(FluxSystem::FluxDen);
     ff.set_unit(1, "W/m^2/Angstrom").unwrap();
-    assert_eq!(ff.system(), FluxSystem::FluxDenW);
+    assert_eq!(ff.system().unwrap(), FluxSystem::FluxDenW);
 }
 
 #[test]
@@ -347,13 +347,17 @@ fn test_fluxframe_cross_system_with_units() {
 }
 
 #[test]
-fn test_fluxframe_incompatible_unit_no_conversion() {
-    // A dimensionally-incompatible target unit cannot bracket the zoom, so no
-    // conversion is formed (C: map1 NULL -> no match).
+fn test_fluxframe_incompatible_unit_is_badun() {
+    // A Unit that fits no flux system clears a set System (fluxframe.c
+    // SetUnit), so the System cannot be determined and converting raises
+    // AST__BADUN, as C's astConvert does (checked against the C library).
     let mut bad = FluxFrame::new(FluxSystem::FluxDen);
+    bad.set_system(FluxSystem::FluxDen).unwrap();
     bad.set_unit(1, "m").unwrap(); // length, not a flux density
-    let def = FluxFrame::new(FluxSystem::FluxDen);
-    assert!(bad.make_flux_mapping(&def).unwrap().is_none());
+    let mut def = FluxFrame::new(FluxSystem::FluxDen);
+    def.set_system(FluxSystem::FluxDen).unwrap();
+    let err = bad.make_flux_mapping(&def).expect_err("no System fits m");
+    assert_eq!(err.code(), ast_core::error::ErrorCode::Badun);
 }
 
 #[test]
@@ -474,7 +478,7 @@ fn test_specfluxframe_components() {
     let sff = SpecFluxFrame::new(sf, ff);
 
     assert_eq!(sff.spec_frame().system(), SpecSystem::Wavelen);
-    assert_eq!(sff.flux_frame().system(), FluxSystem::SBright);
+    assert_eq!(sff.flux_frame().system().unwrap(), FluxSystem::SBright);
 }
 
 #[test]
@@ -483,8 +487,10 @@ fn test_specfluxframe_component_mutation() {
     let ff = FluxFrame::new(FluxSystem::FluxDen);
     let mut sff = SpecFluxFrame::new(sf, ff);
 
-    sff.flux_frame_mut().set_system(FluxSystem::SBright);
-    assert_eq!(sff.flux_frame().system(), FluxSystem::SBright);
+    sff.flux_frame_mut()
+        .set_system(FluxSystem::SBright)
+        .unwrap();
+    assert_eq!(sff.flux_frame().system().unwrap(), FluxSystem::SBright);
 }
 
 // ---------------------------------------------------------------------------
@@ -750,12 +756,12 @@ mod unit_system {
         // SpecVal, and no System.
         let mut a = FluxFrame::with_spec_val(5000.0, None);
         a.set_unit(1, "W/m^2/Angstrom").unwrap();
-        assert_eq!(a.system_string(), Some(cases::SYSTEM));
-        assert_eq!(a.title(), cases::TITLE);
+        assert_eq!(a.system_string().unwrap(), Some(cases::SYSTEM));
+        assert_eq!(a.title().unwrap(), cases::TITLE);
 
         // astFluxFrame( 5.99584916e14, NULL, "System=FLXDN" ).
         let mut b = FluxFrame::with_spec_val(5.99584916e14, None);
-        b.set_system(FluxSystem::FluxDen);
+        b.set_system(FluxSystem::FluxDen).unwrap();
         let fs = a.convert_to(&b, &[]).unwrap().expect("converts");
         let map = fs.mapping(FrameRef::Base, FrameRef::Current).unwrap();
         let out = map

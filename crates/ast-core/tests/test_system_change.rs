@@ -30,7 +30,7 @@ fn spec(system: SpecSystem, unit: &str) -> SpecFrame {
 
 fn time(system: TimeSystem) -> TimeFrame {
     let mut f = TimeFrame::new(TimeSystem::Mjd);
-    f.set_system(system);
+    f.set_system(system).unwrap();
     mine(&mut f);
     f
 }
@@ -57,7 +57,7 @@ fn run(name: &str) -> DynFrame {
         }
         "time_set_jd" => {
             let mut f = time(TimeSystem::Mjd);
-            f.set_system(TimeSystem::Jd);
+            f.set_system(TimeSystem::Jd).unwrap();
             Box::new(f)
         }
         "time_clear" | "time_clear_bepoch" => {
@@ -67,15 +67,15 @@ fn run(name: &str) -> DynFrame {
                 TimeSystem::Bepoch
             };
             let mut f = time(system);
-            f.clear_system();
+            f.clear_system().unwrap();
             Box::new(f)
         }
         "flux_set_sfcbr" => {
             let mut f = FluxFrame::unset_system();
-            f.set_system(FluxSystem::FluxDen);
+            f.set_system(FluxSystem::FluxDen).unwrap();
             f.set_unit(1, "Jy").unwrap();
             mine(&mut f);
-            f.set_system(FluxSystem::SBright);
+            f.set_system(FluxSystem::SBright).unwrap();
             Box::new(f)
         }
         other => panic!("no Rust set-up for case {other}"),
@@ -88,10 +88,10 @@ fn system_changes_match_the_c_library() {
     for &(name, system, label, symbol, title, unit) in cases::CASES {
         let f = run(name);
         let got = (
-            f.system_string().unwrap_or("").to_string(),
+            f.system_string().unwrap().unwrap_or("").to_string(),
             f.label(1).unwrap(),
             f.symbol(1).unwrap(),
-            f.title(),
+            f.title().unwrap(),
             f.unit(1).unwrap(),
         );
         let want = (

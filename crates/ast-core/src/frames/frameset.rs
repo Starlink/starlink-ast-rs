@@ -1142,7 +1142,7 @@ macro_rules! frameset_attr {
 }
 
 impl Frame for FrameSet {
-    fn title(&self) -> String {
+    fn title(&self) -> AstResult<String> {
         self.current().title()
     }
     fn set_title(&mut self, title: &str) -> AstResult<()> {
@@ -1384,7 +1384,7 @@ impl Frame for FrameSet {
         frameset_find_frame(self, template, domainlist)
     }
 
-    fn system_string(&self) -> Option<&str> {
+    fn system_string(&self) -> AstResult<Option<&str>> {
         self.current().system_string()
     }
 

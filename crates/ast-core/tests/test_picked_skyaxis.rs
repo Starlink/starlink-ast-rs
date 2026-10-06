@@ -86,7 +86,7 @@ fn query(f: &dyn Frame, q: &str, axis: usize, second: bool) -> V {
     }
     match q {
         "Domain" => s(f.domain().to_string()),
-        "Title" => s(f.title()),
+        "Title" => s(f.title().unwrap()),
         "Label" => s(f.label(axis).unwrap()),
         "Symbol" => s(f.symbol(axis).unwrap()),
         "Unit" => s(f.unit(axis).unwrap()),

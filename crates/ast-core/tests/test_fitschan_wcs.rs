@@ -98,7 +98,7 @@ fn read_sip_header_frameset() {
         assert_eq!(fs.current().naxes(), 2, "Current frame should have 2 axes");
 
         // Current frame should indicate ICRS system.
-        let sys = fs.current().system_string();
+        let sys = fs.current().system_string().unwrap();
         assert!(sys.is_some(), "Sky frame should have a system_string");
         let sys_str = sys.unwrap();
         assert!(

@@ -238,8 +238,8 @@ pub struct TimeFrame {
 impl TimeFrame {
     // Defaults of the Frame-class attributes, for the `frame_attrs_*`
     // macros.
-    fn frame_default_title(&self) -> String {
-        self.default_title()
+    fn frame_default_title(&self) -> AstResult<String> {
+        Ok(self.default_title())
     }
     fn frame_default_domain(&self) -> &'static str {
         "TIME"
@@ -368,21 +368,22 @@ impl TimeFrame {
     /// into the new (default) system (C `OriginSystem`). If the old system was
     /// Besselian epoch, Unit and TimeScale are also cleared, since those are
     /// constrained while System is Besselian epoch.
-    pub fn clear_system(&mut self) {
+    pub fn clear_system(&mut self) -> AstResult<()> {
         let oldsys = self.system;
         self.system = TimeSystem::Mjd;
         self.system_set = false;
 
         if self.system != oldsys {
-            self.origin_system(oldsys);
+            self.origin_system(oldsys)?;
             self.axis.label = None;
             self.axis.symbol = None;
             self.clear_title();
             if oldsys == TimeSystem::Bepoch {
                 self.axis.unit = None;
-                self.clear_timescale();
+                self.clear_timescale()?;
             }
         }
+        Ok(())
     }
 
     /// Whether `TimeScale` has been explicitly set.
@@ -391,7 +392,7 @@ impl TimeFrame {
     }
 
     /// Frame Title accessor. Returns the empty string when unset.
-    pub fn title(&self) -> String {
+    pub fn title(&self) -> AstResult<String> {
         Frame::title(self)
     }
 
@@ -445,12 +446,12 @@ impl TimeFrame {
     /// → `OriginSystem`). Besselian epoch additionally forces Unit="yr" and
     /// TimeScale=TT, applied (like C) before the system change so the origin is
     /// first brought onto the TT timescale in the old system.
-    pub fn set_system(&mut self, sys: TimeSystem) {
+    pub fn set_system(&mut self, sys: TimeSystem) -> AstResult<()> {
         // Besselian epoch is defined in terms of TT and is always expressed in
-        // years; force those before changing the system (C SetSystem).
+        // years; set those before changing the system (C SetSystem).
         if sys == TimeSystem::Bepoch {
-            self.axis.unit = Some("yr".to_string());
-            self.set_timescale(TimeScale::Tt);
+            Frame::set_unit(self, 1, "yr")?;
+            self.set_timescale(TimeScale::Tt)?;
         }
 
         let oldsys = self.system;
@@ -459,12 +460,13 @@ impl TimeFrame {
 
         if oldsys != sys {
             // Re-express the stored origin from the old system to the new one.
-            self.origin_system(oldsys);
+            self.origin_system(oldsys)?;
             // Attributes with System-specific defaults (timeframe.c:4844).
             self.axis.label = None;
             self.axis.symbol = None;
             self.clear_title();
         }
+        Ok(())
     }
 
     /// Return the time scale.
@@ -479,11 +481,24 @@ impl TimeFrame {
     /// → `OriginScale`). The re-expression happens before the new timescale is
     /// stored, so it converts from the current timescale to `ts`.
     ///
-    /// Note: Besselian epoch system only supports TT timescale.
-    pub fn set_timescale(&mut self, ts: TimeScale) {
-        self.origin_scale(ts);
+    /// A Besselian epoch is defined in terms of TT, so with System BEPOCH
+    /// any other timescale is `AST__ATTIN` (C `SetTimeScale`).
+    pub fn set_timescale(&mut self, ts: TimeScale) -> AstResult<()> {
+        if self.system == TimeSystem::Bepoch && ts != TimeScale::Tt {
+            return Err(AstError::new(
+                ErrorCode::Attin,
+                format!(
+                    "astSetTimeScale(TimeFrame): Supplied TimeScale ({}) cannot be used \
+                     because the TimeFrame represents Besselian Epoch which is defined in \
+                     terms of TT.",
+                    ts.as_str()
+                ),
+            ));
+        }
+        self.origin_scale(ts)?;
         self.timescale = ts;
         self.timescale_set = true;
+        Ok(())
     }
 
     /// Clear the time scale, reverting to the system default (TT for Besselian
@@ -492,9 +507,9 @@ impl TimeFrame {
     /// Mirrors C `astClearTimeScale`: unless the System is Besselian epoch
     /// (whose timescale is always TT), the stored `TimeOrigin` is re-expressed
     /// into the default TAI timescale before the timescale is cleared.
-    pub fn clear_timescale(&mut self) {
+    pub fn clear_timescale(&mut self) -> AstResult<()> {
         if self.system != TimeSystem::Bepoch {
-            self.origin_scale(TimeScale::Tai);
+            self.origin_scale(TimeScale::Tai)?;
         }
         self.timescale = if self.system == TimeSystem::Bepoch {
             TimeScale::Tt
@@ -502,6 +517,7 @@ impl TimeFrame {
             TimeScale::Tai
         };
         self.timescale_set = false;
+        Ok(())
     }
 
     /// Return the alignment time scale.
@@ -872,21 +888,19 @@ impl TimeFrame {
     /// Called *before* the new timescale is stored, so the current
     /// `self.timescale` is the timescale the origin currently refers to. A
     /// no-op when no origin is set or the timescale is unchanged.
-    fn origin_scale(&mut self, newts: TimeScale) {
+    fn origin_scale(&mut self, newts: TimeScale) -> AstResult<()> {
         let Some(oldval) = self.time_origin else {
-            return;
+            return Ok(());
         };
         let oldts = self.timescale;
         if newts == oldts {
-            return;
+            return Ok(());
         }
         let sys = self.system;
         let u = sys.default_units();
-        if let Ok(map) = self.make_map(sys, sys, oldts, newts, 0.0, 0.0, u, u) {
-            if let Ok(newval) = transform_scalar(map.as_ref(), oldval, true) {
-                self.time_origin = Some(newval);
-            }
-        }
+        let map = self.make_map(sys, sys, oldts, newts, 0.0, 0.0, u, u)?;
+        self.time_origin = Some(transform_scalar(map.as_ref(), oldval, true)?);
+        Ok(())
     }
 
     /// Re-express the stored `TimeOrigin` from `oldsys` into the current
@@ -894,22 +908,20 @@ impl TimeFrame {
     ///
     /// Called *after* `self.system` has been updated to the new system. A
     /// no-op when no origin is set or the system is unchanged.
-    fn origin_system(&mut self, oldsys: TimeSystem) {
+    fn origin_system(&mut self, oldsys: TimeSystem) -> AstResult<()> {
         let Some(oldval) = self.time_origin else {
-            return;
+            return Ok(());
         };
         let newsys = self.system;
         if oldsys == newsys {
-            return;
+            return Ok(());
         }
         let ts = self.timescale;
         let oldu = oldsys.default_units();
         let newu = newsys.default_units();
-        if let Ok(map) = self.make_map(oldsys, newsys, ts, ts, 0.0, 0.0, oldu, newu) {
-            if let Ok(newval) = transform_scalar(map.as_ref(), oldval, true) {
-                self.time_origin = Some(newval);
-            }
-        }
+        let map = self.make_map(oldsys, newsys, ts, ts, 0.0, 0.0, oldu, newu)?;
+        self.time_origin = Some(transform_scalar(map.as_ref(), oldval, true)?);
+        Ok(())
     }
 
     /// The Mapping from `self` (the target) to `result`, aligned in the
@@ -1614,8 +1626,8 @@ impl Frame for TimeFrame {
         super::find_frame::frames_equal(self, other)
     }
 
-    fn system_string(&self) -> Option<&str> {
-        Some(self.system.as_str())
+    fn system_string(&self) -> AstResult<Option<&str>> {
+        Ok(Some(self.system.as_str()))
     }
 
     // -----------------------------------------------------------------
@@ -1649,7 +1661,7 @@ impl Frame for TimeFrame {
     fn overlay_system_from(&mut self, template: &dyn std::any::Any) -> AstResult<()> {
         if let Some(t) = template.downcast_ref::<TimeFrame>() {
             if t.test_system() {
-                self.set_system(t.system);
+                self.set_system(t.system)?;
             }
             if t.test_align_system() {
                 self.set_align_system(t.align_system());
@@ -1785,7 +1797,7 @@ fn timeframe_overlay(
             result_time.set_time_origin(v);
         }
         if template_time.test_timescale() {
-            result_time.set_timescale(template_time.timescale);
+            result_time.set_timescale(template_time.timescale)?;
         }
     }
     Ok(())
@@ -1825,7 +1837,7 @@ fn timeframe_sub_frame(
     // axes as the Frame class does.
     let mut temp = target.clone();
     super::find_frame::set_class_defaults(&mut temp)?;
-    temp.clear_system();
+    temp.clear_system()?;
     temp.clear_align_system();
     super::find_frame::default_sub_frame(&temp, template, target_axes, template_axes)
 }
@@ -1869,7 +1881,7 @@ impl Serializable for TimeFrame {
                 is_frame: false,
                 own_naxes: 1,
             },
-        );
+        )?;
         let mut axis_node = Node::new("Axis");
         axis_node.class_comment = Some("Coordinate axis".to_string());
         self.axis.write_set_attributes(&mut axis_node);
@@ -1952,20 +1964,18 @@ impl Serializable for TimeFrame {
             tf.attrs.obs_lon = Some(node.get_double("ClLon", 0.0));
         }
 
-        // TmScl (TimeScale). Use set_timescale to flip the
-        // timescale_set flag so test_timescale reports true after
-        // round-trip.
-        let ts_str = node.get_string("TmScl", "");
-        if !ts_str.is_empty() {
-            if let Some(ts) = TimeScale::parse(&ts_str) {
-                tf.set_timescale(ts);
-            }
+        // TmScl and ATmScl are stored as read, as C's loader does, so a
+        // BEPOCH TimeScale is not checked; a name C does not know is
+        // AST__ATTIN (timeframe.c:7205).
+        let read_scale = |key: &str| {
+            super::frame_attrs::read_system_item(node, key, "time scale", TimeScale::parse)
+        };
+        if let Some(ts) = read_scale("TmScl")? {
+            tf.timescale = ts;
+            tf.timescale_set = true;
         }
-
-        // ATmScl (AlignTimeScale).
-        let ats_str = node.get_string("ATmScl", "");
-        if !ats_str.is_empty() {
-            tf.align_timescale = TimeScale::parse(&ats_str);
+        if let Some(ts) = read_scale("ATmScl")? {
+            tf.align_timescale = Some(ts);
         }
 
         // TmOrg (TimeOrigin).
@@ -2009,7 +2019,7 @@ mod tests {
         assert_eq!(f.system(), TimeSystem::Mjd);
         // Clearing reverts to the unset MJD default.
         let mut f = TimeFrame::new(TimeSystem::Jd);
-        f.clear_system();
+        f.clear_system().unwrap();
         assert!(!f.test_system());
         assert_eq!(f.system(), TimeSystem::Mjd);
     }
@@ -2051,7 +2061,7 @@ mod tests {
     #[test]
     fn overlay_template_copies_set_system() {
         let mut template = TimeFrame::new(TimeSystem::Mjd);
-        template.set_system(TimeSystem::Jepoch);
+        template.set_system(TimeSystem::Jepoch).unwrap();
         assert!(template.test_system());
         let target = TimeFrame::new(TimeSystem::Mjd);
         let mut result: DynFrame = Box::new(target);
@@ -2063,7 +2073,7 @@ mod tests {
     #[test]
     fn overlay_template_skips_unset_system() {
         let mut template = TimeFrame::new(TimeSystem::Mjd);
-        template.clear_system();
+        template.clear_system().unwrap();
         assert!(!template.test_system());
         let target = TimeFrame::new(TimeSystem::Jd);
         let mut result: DynFrame = Box::new(target);

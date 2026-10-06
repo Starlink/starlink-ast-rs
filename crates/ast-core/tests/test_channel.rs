@@ -101,7 +101,7 @@ fn round_trip_skyframe_via_file() {
 
     let f = restored.as_frame().unwrap();
     assert_eq!(f.naxes(), 2);
-    assert_eq!(f.system_string(), Some("FK5"));
+    assert_eq!(f.system_string().unwrap(), Some("FK5"));
 
     // Cleanup.
     let _ = std::fs::remove_file(&path);
@@ -304,7 +304,7 @@ fn round_trip_multiple_types() {
     let restored = from_native_string(&text).unwrap();
     let f = restored.as_frame().unwrap();
     assert_eq!(f.naxes(), 2);
-    assert_eq!(f.system_string(), Some("GALACTIC"));
+    assert_eq!(f.system_string().unwrap(), Some("GALACTIC"));
 
     // FrameSet.
     let base = BasicFrameBuilder::new(2).domain("PIXEL").build().unwrap();

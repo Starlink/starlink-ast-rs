@@ -271,8 +271,8 @@ impl BasicFrame {
 
     // Defaults of the Frame-class attributes (frame.c), for the
     // `frame_attrs_*` macros.
-    fn frame_default_title(&self) -> String {
-        format!("{}-d coordinate system", self.naxes)
+    fn frame_default_title(&self) -> AstResult<String> {
+        Ok(format!("{}-d coordinate system", self.naxes))
     }
     fn frame_default_domain(&self) -> &'static str {
         ""
@@ -641,8 +641,8 @@ impl Frame for BasicFrame {
         }
     }
 
-    fn system_string(&self) -> Option<&str> {
-        Some("Cartesian")
+    fn system_string(&self) -> AstResult<Option<&str>> {
+        Ok(Some("Cartesian"))
     }
 
     /// The Label of a 1-based axis, set or default (`"Axis <n>"`, with `n`
@@ -901,8 +901,8 @@ impl FrameDumpSource for BasicFrame {
     fn dump_is_frame(&self) -> bool {
         true
     }
-    fn dump_title(&self) -> String {
-        self.title()
+    fn dump_title(&self) -> AstResult<String> {
+        Ok(self.title())
     }
     fn dump_domain(&self) -> String {
         self.domain().to_string()
@@ -985,7 +985,7 @@ impl Serializable for BasicFrame {
             node.push_isa("Object", Some("AST Object".to_string()));
         }
 
-        write_frame_cards(&mut node, self);
+        write_frame_cards(&mut node, self)?;
 
         // Axis objects in internal order, each with only its set attributes
         // (frame.c:14660 dumps them with Full = -1).

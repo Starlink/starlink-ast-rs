@@ -25,7 +25,7 @@ fn specflux() -> SpecFluxFrame {
 
 fn flux(template: Option<(usize, &str)>) -> FluxFrame {
     let mut f = FluxFrame::with_spec_val(1.4e9, None);
-    f.set_system(FluxSystem::FluxDen);
+    f.set_system(FluxSystem::FluxDen).unwrap();
     if let Some((max_axes, unit)) = template {
         f.set_max_axes(max_axes).unwrap();
         f.set_unit(1, unit).unwrap();
@@ -56,7 +56,7 @@ fn found(target: &dyn Frame, template: &dyn Frame) -> Option<f64> {
 
 #[test]
 fn system_is_compound_as_in_the_c_library() {
-    assert_eq!(specflux().system_string(), Some(cases::SYSTEM));
+    assert_eq!(specflux().system_string().unwrap(), Some(cases::SYSTEM));
 }
 
 #[test]

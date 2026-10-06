@@ -833,7 +833,7 @@ impl Frame for DSBSpecFrame {
         super::find_frame::frames_equal(self, other)
     }
 
-    fn system_string(&self) -> Option<&str> {
+    fn system_string(&self) -> AstResult<Option<&str>> {
         self.spec.system_string()
     }
 

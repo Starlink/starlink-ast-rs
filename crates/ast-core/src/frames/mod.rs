@@ -457,8 +457,10 @@ pub trait Frame: AsAny + Send + fmt::Debug {
     // Frame they present, applying FrameSet integrity on the setters.
     // -----------------------------------------------------------------
 
-    /// Title, set or default. Mirrors `astGetTitle`.
-    fn title(&self) -> String;
+    /// Title, set or default. Mirrors `astGetTitle`, which fails where the
+    /// default depends on a System that cannot be determined (a FluxFrame
+    /// whose Unit fits no flux system).
+    fn title(&self) -> AstResult<String>;
     /// Set Title. Mirrors `astSetTitle`.
     fn set_title(&mut self, title: &str) -> AstResult<()>;
     /// Whether Title is set. Mirrors `astTestTitle`.
@@ -542,8 +544,10 @@ pub trait Frame: AsAny + Send + fmt::Debug {
     fn clear_dut1(&mut self) -> AstResult<()>;
 
     /// Coordinate system name (e.g., "FK5", "GALACTIC"), if applicable.
-    fn system_string(&self) -> Option<&str> {
-        None
+    /// Mirrors `astGetC( this, "System" )`, which fails for a FluxFrame
+    /// whose System follows from a Unit that fits no flux system.
+    fn system_string(&self) -> AstResult<Option<&str>> {
+        Ok(None)
     }
 
     /// The Object-class Ident attribute, blank unless set.

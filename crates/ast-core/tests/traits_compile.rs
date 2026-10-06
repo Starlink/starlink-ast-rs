@@ -117,7 +117,7 @@ impl Frame for DummyRegion {
         top: f64, set_top(f64), test_top, clear_top;
         bottom: f64, set_bottom(f64), test_bottom, clear_bottom;
     }
-    fn title(&self) -> String {
+    fn title(&self) -> AstResult<String> {
         Frame::title(&self.frame)
     }
     fn set_title(&mut self, title: &str) -> AstResult<()> {

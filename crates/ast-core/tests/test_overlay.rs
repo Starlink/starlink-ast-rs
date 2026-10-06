@@ -136,7 +136,7 @@ fn run(name: &str) -> Option<DynFrame> {
         ),
         "flux_pick_padded" => {
             let mut f = FluxFrame::with_spec_val(1.4e9, None);
-            f.set_system(FluxSystem::FluxDen);
+            f.set_system(FluxSystem::FluxDen).unwrap();
             Some(pick_axes(&f, &[1, 0]).unwrap().0)
         }
         other => panic!("no Rust set-up for case {other}"),
@@ -149,7 +149,7 @@ fn overlay_results_match_the_c_library() {
     for &(name, want) in cases::CASES {
         let got = run(name).map(|f| {
             (
-                f.title(),
+                f.title().unwrap(),
                 f.domain().to_string(),
                 f.digits(),
                 f.test_epoch(),
