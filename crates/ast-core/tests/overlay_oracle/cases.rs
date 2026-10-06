@@ -73,4 +73,52 @@ pub const CASES: &[(&str, Option<Attrs>)] = &[
         )),
     ),
     ("cmp_template_plain_target", None),
+    (
+        "spec_pick_padded",
+        Some((
+            "2-d coordinate system",
+            "SPECTRUM",
+            7,
+            false,
+            51544.5,
+            "Axis 1",
+            "",
+        )),
+    ),
+    (
+        "spec_wave_pick_padded",
+        Some((
+            "Wavelength",
+            "SPECTRUM",
+            7,
+            false,
+            51544.5,
+            "Wavelength",
+            "Angstrom",
+        )),
+    ),
+    (
+        "time_pick_padded",
+        Some((
+            "2-d coordinate system",
+            "TIME",
+            7,
+            false,
+            51544.5,
+            "Axis 1",
+            "d",
+        )),
+    ),
+    (
+        "flux_pick_padded",
+        Some((
+            "Flux density at = 1.4E+09 Hz",
+            "FLUX",
+            7,
+            false,
+            51544.5,
+            "Flux density",
+            "W/m^2/Hz",
+        )),
+    ),
 ];

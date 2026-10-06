@@ -119,6 +119,26 @@ fn run(name: &str) -> Option<DynFrame> {
             let t = CmpFrame::new(Box::new(spec), frame(1, |_| {}));
             found(target.as_ref(), &t)
         }
+        "spec_pick_padded" => {
+            let mut s = SpecFrame::new(SpecSystem::Freq);
+            s.set_unit(1, "GHz").unwrap();
+            Some(pick_axes(&s, &[1, 0]).unwrap().0)
+        }
+        "spec_wave_pick_padded" => Some(
+            pick_axes(&SpecFrame::new(SpecSystem::Wavelen), &[1, 0])
+                .unwrap()
+                .0,
+        ),
+        "time_pick_padded" => Some(
+            pick_axes(&TimeFrame::new(TimeSystem::Jd), &[1, 0])
+                .unwrap()
+                .0,
+        ),
+        "flux_pick_padded" => {
+            let mut f = FluxFrame::with_spec_val(1.4e9, None);
+            f.set_system(FluxSystem::FluxDen);
+            Some(pick_axes(&f, &[1, 0]).unwrap().0)
+        }
         other => panic!("no Rust set-up for case {other}"),
     }
 }

@@ -421,6 +421,10 @@ impl SpecFrame {
             self.rescale_spec_origin(|sf| {
                 sf.system = old;
             });
+            // Attributes with System-specific defaults (specframe.c:4117).
+            self.axis.label = None;
+            self.axis.symbol = None;
+            self.attrs.title = None;
         }
     }
 
@@ -434,8 +438,22 @@ impl SpecFrame {
     /// `astClearSystem` for SpecFrame: after clearing, `astGetSystem`
     /// returns the SpecFrame default `AST__WAVELEN` (specframe.c:2015).
     pub fn clear_system(&mut self) {
+        // specframe.c `ClearSystem`: when the default System differs from
+        // the old one, restore the Unit last used with it (or clear the
+        // Unit), clear the attributes with System-specific defaults, and
+        // re-express a set SpecOrigin.
+        let old = self.system;
         self.system = SpecSystem::Wavelen;
         self.system_set = false;
+        if old != self.system {
+            self.axis.unit = self.used_units[self.system.used_units_index()].clone();
+            self.axis.label = None;
+            self.axis.symbol = None;
+            self.attrs.title = None;
+            self.rescale_spec_origin(|sf| {
+                sf.system = old;
+            });
+        }
     }
 
     /// Return the standard of rest.
@@ -1972,14 +1990,12 @@ impl Frame for SpecFrame {
             return Ok(Box::new(self.clone()));
         }
 
+        // Otherwise a plain Frame holding a copy of the Axis object on each
+        // axis selected from this one (frame.c:11017 `astSetAxis`).
         let mut bf = super::basic::BasicFrameBuilder::new(target_axes.len()).build()?;
-        if self.test_domain() {
-            bf.set_domain(self.domain().to_string());
-        }
         for (i, &t) in target_axes.iter().enumerate() {
             if t == 0 {
-                bf.set_label(i + 1, &self.label(1)?)?;
-                bf.set_unit(i + 1, &self.unit(1)?)?;
+                bf.set_axis_object(i + 1, super::axis::FrameAxis::Plain(self.axis.clone()));
             }
         }
         Ok(Box::new(bf))
@@ -2235,20 +2251,7 @@ fn specframe_sub_frame(
     // AlignSystem (since their values are SpecFrame-specific), then
     // defer to the default Frame-level SubFrame.
     let mut temp = target.clone();
-    if !temp.test_title() {
-        temp.set_title(&temp.default_title());
-    }
-    if !temp.test_domain() {
-        temp.set_domain("SPECTRUM");
-    }
-    if !temp.test_label(1)? {
-        let lbl = temp.label(1)?;
-        temp.set_label(1, &lbl)?;
-    }
-    if !temp.test_unit(1)? {
-        let u = temp.unit(1)?;
-        temp.set_unit(1, &u)?;
-    }
+    super::find_frame::set_class_defaults(&mut temp)?;
     temp.clear_system();
     temp.clear_align_system();
 

@@ -375,6 +375,8 @@ impl TimeFrame {
 
         if self.system != oldsys {
             self.origin_system(oldsys);
+            self.axis.label = None;
+            self.axis.symbol = None;
             self.clear_title();
             if oldsys == TimeSystem::Bepoch {
                 self.axis.unit = None;
@@ -458,9 +460,9 @@ impl TimeFrame {
         if oldsys != sys {
             // Re-express the stored origin from the old system to the new one.
             self.origin_system(oldsys);
-            // Title has a system-specific default; drop any explicit value so
-            // the new system's default is used. (Label/Symbol are derived
-            // dynamically here, so they need no explicit clearing.)
+            // Attributes with System-specific defaults (timeframe.c:4844).
+            self.axis.label = None;
+            self.axis.symbol = None;
             self.clear_title();
         }
     }
@@ -1735,9 +1737,13 @@ impl Frame for TimeFrame {
         if target_axes.len() == 1 && target_axes[0] == 0 {
             return Ok(Box::new(self.clone()));
         }
+        // Otherwise a plain Frame holding a copy of the Axis object on each
+        // axis selected from this one (frame.c:11017 `astSetAxis`).
         let mut bf = super::basic::BasicFrameBuilder::new(target_axes.len()).build()?;
-        if self.test_domain() {
-            bf.set_domain(self.domain().to_string());
+        for (i, &t) in target_axes.iter().enumerate() {
+            if t == 0 {
+                bf.set_axis_object(i + 1, super::axis::FrameAxis::Plain(self.axis.clone()));
+            }
         }
         Ok(Box::new(bf))
     }
@@ -1815,9 +1821,15 @@ fn timeframe_sub_frame(
         return Ok(Some((map, Box::new(result))));
     }
 
-    // parent_subframe branch — produce a BasicFrame-shaped result
-    // via the default Frame::SubFrame.
-    super::find_frame::default_sub_frame(target, template, target_axes, template_axes)
+    // Result is not a TimeFrame (timeframe.c:5325): set explicitly the
+    // attributes whose defaults come from this class, and clear the
+    // System, which only this class understands, on a copy, then select the
+    // axes as the Frame class does.
+    let mut temp = target.clone();
+    super::find_frame::set_class_defaults(&mut temp)?;
+    temp.clear_system();
+    temp.clear_align_system();
+    super::find_frame::default_sub_frame(&temp, template, target_axes, template_axes)
 }
 
 // ---------------------------------------------------------------------------

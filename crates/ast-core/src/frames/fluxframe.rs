@@ -921,9 +921,13 @@ impl Frame for FluxFrame {
         if target_axes.len() == 1 && target_axes[0] == 0 {
             return Ok(Box::new(self.clone()));
         }
+        // Otherwise a plain Frame holding a copy of the Axis object on each
+        // axis selected from this one (frame.c:11017 `astSetAxis`).
         let mut bf = super::basic::BasicFrameBuilder::new(target_axes.len()).build()?;
-        if self.test_domain() {
-            bf.set_domain(self.domain().to_string());
+        for (i, &t) in target_axes.iter().enumerate() {
+            if t == 0 {
+                bf.set_axis_object(i + 1, super::axis::FrameAxis::Plain(self.axis.clone()));
+            }
         }
         Ok(Box::new(bf))
     }
@@ -1001,10 +1005,15 @@ fn fluxframe_sub_frame(
         }
     }
 
-    // parent_subframe branch (fluxframe.c:3072+). Delegate to the
-    // default Frame::SubFrame path which produces a BasicFrame-shaped
-    // result.
-    super::find_frame::default_sub_frame(target, template, target_axes, template_axes)
+    // Result is not a FluxFrame (fluxframe.c:3072): set explicitly the
+    // attributes whose defaults come from this class, and clear the
+    // System, which only this class understands, on a copy, then select the
+    // axes as the Frame class does.
+    let mut temp = target.clone();
+    super::find_frame::set_class_defaults(&mut temp)?;
+    temp.clear_system();
+    temp.clear_align_system();
+    super::find_frame::default_sub_frame(&temp, template, target_axes, template_axes)
 }
 
 // ---------------------------------------------------------------------------

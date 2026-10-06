@@ -59,6 +59,7 @@ int main( void ) {
    int status = 0;
    int pick1[] = { 1 };
    int pick21[] = { 2, 1 };
+   int pick10[] = { 1, 0 };
    AstFrame *f, *t;
    AstMapping *map;
    astWatch( &status );
@@ -117,6 +118,19 @@ int main( void ) {
    t = (AstFrame *) astCmpFrame( astSpecFrame( "Title=CmpSpec,Label(1)=Freq" ),
                                  astFrame( 1, " " ), " " );
    emit( "cmp_template_plain_target", found( f, t ) );
+
+   /* A SpecFrame, TimeFrame and FluxFrame each picked with a padding axis
+      into a plain Frame: SubFrame sets their class defaults explicitly on a
+      copy, then clears the System, which clears them again when the System
+      changes (specframe.c:4920, timeframe.c:5325, fluxframe.c:3072). */
+   f = (AstFrame *) astSpecFrame( "System=FREQ,Unit=GHz" );
+   emit( "spec_pick_padded", astPickAxes( f, 2, pick10, &map ) );
+   f = (AstFrame *) astSpecFrame( "System=WAVE" );
+   emit( "spec_wave_pick_padded", astPickAxes( f, 2, pick10, &map ) );
+   f = (AstFrame *) astTimeFrame( "System=JD" );
+   emit( "time_pick_padded", astPickAxes( f, 2, pick10, &map ) );
+   f = (AstFrame *) astFluxFrame( 1.4e9, NULL, "System=FLXDN" );
+   emit( "flux_pick_padded", astPickAxes( f, 2, pick10, &map ) );
 
    printf( "];\n" );
    return 0;

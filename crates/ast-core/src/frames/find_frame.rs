@@ -497,6 +497,38 @@ fn compound_parts_mut(frame: &mut dyn Frame) -> Option<(&mut dyn Frame, &mut dyn
     Some((spec as &mut dyn Frame, flux as &mut dyn Frame))
 }
 
+/// Set explicitly, on a copy of a target that SubFrame is about to select
+/// axes from into a plain Frame, the Domain, Title, and each axis's Label,
+/// Symbol and Unit, wherever they are unset: their defaults come from the
+/// target's class and would be lost once the axes leave it. This is the
+/// `SET` / `SET_AXIS` block of the SpecFrame, TimeFrame and FluxFrame
+/// SubFrames (e.g. specframe.c:4920).
+pub(crate) fn set_class_defaults(temp: &mut dyn Frame) -> AstResult<()> {
+    if !temp.test_domain() {
+        let domain = temp.domain().to_string();
+        temp.set_domain(&domain)?;
+    }
+    if !temp.test_title() {
+        let title = temp.title();
+        temp.set_title(&title)?;
+    }
+    for axis in 1..=temp.naxes() {
+        if !temp.test_label(axis)? {
+            let label = temp.label(axis)?;
+            temp.set_label(axis, &label)?;
+        }
+        if !temp.test_symbol(axis)? {
+            let symbol = temp.symbol(axis)?;
+            temp.set_symbol(axis, &symbol)?;
+        }
+        if !temp.test_unit(axis)? {
+            let unit = temp.unit(axis)?;
+            temp.set_unit(axis, &unit)?;
+        }
+    }
+    Ok(())
+}
+
 /// Default `SubFrame` body for plain Frames — mirrors C
 /// `Frame::SubFrame` (frame.c:10838).
 ///
