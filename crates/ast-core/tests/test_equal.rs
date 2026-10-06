@@ -788,7 +788,7 @@ fn skyframe_different_neglon_is_equal() {
     // does not change the coordinate conversion, so two SkyFrames differing
     // only in NegLon compare equal. Oracle-verified.
     let mut a = SkyFrame::new(SkySystem::Fk5);
-    a.set_neglon(true);
+    a.set_neg_lon(true);
     let b = SkyFrame::new(SkySystem::Fk5);
     assert!(a.equal(&b));
 }
@@ -906,7 +906,7 @@ fn serialise_round_trip_skyframe() {
     let mut original = SkyFrame::new(SkySystem::Fk5);
     original.set_epoch_mjd(52000.0);
     original.set_equinox_mjd(51544.5);
-    original.set_neglon(true);
+    original.set_neg_lon(true);
     original.set_title("Test Sky");
 
     let native =

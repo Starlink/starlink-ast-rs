@@ -19,6 +19,14 @@
   follow, with the DSBSpecFrame setters that forward to them: re-expressing
   a set SpecOrigin in a new System or rest frame can fail with AST__ATSER
   (`specframe.c` OriginSystem, OriginStdOfRest).
+  Two SkyFrame accessors are brought into line with the rules above:
+  `SkyFrame::lon_axis` and `lat_axis` return 1-based indices, and the
+  NegLon accessors are `neg_lon`, `set_neg_lon`, `test_neg_lon` and
+  `clear_neg_lon`.
+  `SkyFrame::new(system)` now sets the System for every system, ICRS
+  included, as `SpecFrame::new` and `TimeFrame::new` do and as C's
+  `astSkyFrame("System=...")` does; `SkyFrame::unset_system` makes one
+  whose System is unset.
   The library is unreleased, so these signatures change outright.
   No `ast.h` prototype changes: the C ABI already reports these errors
   through the status.

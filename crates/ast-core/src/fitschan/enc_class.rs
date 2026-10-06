@@ -605,8 +605,8 @@ pub(crate) fn write_azel_from_frameset(fs: &FrameSet, cards: &mut CardList) -> A
     // Az at slot 1).
     let (az, el) = if let Some(azel_frame) = fsconv2.current().as_any().downcast_ref::<SkyFrame>() {
         azel_frame.norm(&mut out_pair)?;
-        let lon = out_pair[azel_frame.lon_axis()];
-        let lat = out_pair[azel_frame.lat_axis()];
+        let lon = out_pair[azel_frame.lon_pos()];
+        let lat = out_pair[azel_frame.lat_pos()];
         (lon, lat)
     } else {
         (out_pair[0], out_pair[1])

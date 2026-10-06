@@ -320,10 +320,10 @@ pub(crate) fn sky_sys(
 
     // CTYPE construction. Skip the projection suffix path when
     // wcstype == 0 (mirrors the C switch at line 29879).
-    // Pass 1-based SkyFrame axis indices for the unknown-system
-    // symbol lookup (lon = lon_axis()+1, lat = lat_axis()+1).
-    let lon_ax_1b = skyfrm.lon_axis() + 1;
-    let lat_ax_1b = skyfrm.lat_axis() + 1;
+    // Pass the 1-based SkyFrame axis indices for the unknown-system
+    // symbol lookup.
+    let lon_ax_1b = skyfrm.lon_axis();
+    let lat_ax_1b = skyfrm.lat_axis();
     let (lon_pre, lat_pre) = ctype_prefixes_for(kind, isoff, skyfrm, (lon_ax_1b, lat_ax_1b));
     let prj_name = if wcstype == 0 {
         "-TAB"
@@ -335,8 +335,8 @@ pub(crate) fn sky_sys(
 
     // Offset-coordinate AST-extension fields (C:29890-29936).
     if isoff != 0 {
-        let lonax_in_sky = skyfrm.lon_axis();
-        let latax_in_sky = skyfrm.lat_axis();
+        let lonax_in_sky = skyfrm.lon_pos();
+        let latax_in_sky = skyfrm.lat_pos();
         let sky_ref = skyfrm.sky_ref_lon_lat();
         let sky_ref_p = skyfrm.sky_ref_p_lon_lat();
         if isoff > 0 {
@@ -668,7 +668,7 @@ mod tests {
         let mut s = store(2);
         sky_sys(&sky, 1, WcsProjection::Tan, &mut s, 0, 1, ' ', 0).unwrap();
         // axlon=0 ⇒ longitude axis storage. With default perm,
-        // lon_axis()=0 ⇒ axis 1 → physical 0 ⇒ label "MyRA".
+        // lon_axis()=1 ⇒ physical 0 ⇒ label "MyRA".
         assert_eq!(s.ctype_com[0].as_deref(), Some("MyRA"));
         assert_eq!(s.cname[0].as_deref(), Some("MyRA"));
         assert_eq!(s.ctype_com[1].as_deref(), Some("MyDec"));

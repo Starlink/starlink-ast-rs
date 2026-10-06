@@ -103,7 +103,7 @@ fn format_unit_and_norm_unit_match_the_c_library() {
 #[test]
 fn dump_matches_the_c_library() {
     for &(attrs, expected) in cases::DUMP_CASES {
-        let mut sky = SkyFrame::new(SkySystem::Icrs);
+        let mut sky = SkyFrame::unset_system();
         apply(&mut sky, attrs);
         let written = to_native_string(&AnyObject::SkyFrame(sky)).unwrap();
         assert_eq!(written, expected, "dump for {attrs:?}");

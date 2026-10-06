@@ -92,9 +92,11 @@ impl SkyFrame {
     /// called. Use [`SkyFrame::new`] when you know the system at
     /// construction time and want it marked as set.
     pub fn unset_system() -> Self {
-        // Re-use SkyFrame::new(Icrs) — that branch already leaves
-        // `system_set = false` for ICRS. Mirrors C `astSkyFrame("")`.
-        Self::new(SkySystem::Icrs)
+        // ICRS with the System unset. Mirrors C `astSkyFrame("")`.
+        Self {
+            system_set: false,
+            ..Self::new(SkySystem::Icrs)
+        }
     }
 
     /// Create a new `SkyFrame` with the given coordinate system.
@@ -103,21 +105,16 @@ impl SkyFrame {
     /// (MJD 51544.5), and the default equinox is determined by the
     /// coordinate system.
     ///
-    /// Passing `SkySystem::Icrs` leaves `system_set = false` (the
-    /// SkyFrame default per AST), which makes the resulting frame
-    /// behave as "system unspecified" when used as a `find_frame`
-    /// template. Use [`SkyFrame::unset_system`] for a self-documenting
-    /// call site when that's the intent.
+    /// The System is set, as C's `astSkyFrame("System=...")` sets it, so
+    /// as a `find_frame` template the Frame asks for that System even when
+    /// it is the default, ICRS. [`SkyFrame::unset_system`] makes a Frame
+    /// whose System is unset.
     pub fn new(system: SkySystem) -> Self {
         Self {
             // None = use the default "SKY". Mirrors C's astTestDomain
             // returning false until set_domain is called.
             system,
-            // ICRS is the SkyFrame default (mirrors C: AST__ICRS is the
-            // default System). Only mark the attribute as explicitly
-            // set when the caller picks something else; the matching
-            // serialisation treats ICRS as the "unset default".
-            system_set: !matches!(system, SkySystem::Icrs),
+            system_set: true,
             equinox: None,
             projection: None,
             neglon: false,
@@ -159,30 +156,28 @@ impl SkyFrame {
         Ok(self.physical_axis(axis)? == 0)
     }
 
-    /// Position of longitude in coordinate arrays (0-based): C's LonAxis
-    /// attribute less one. Mirrors `astGetLonAxis(skyframe)`.
+    /// The 1-based index of the longitude axis. Mirrors `astGetLonAxis`.
     #[inline]
     pub fn lon_axis(&self) -> usize {
-        if self.perm[0] == 0 { 0 } else { 1 }
+        self.lon_pos() + 1
     }
 
-    /// Position of latitude in coordinate arrays (0-based): C's LatAxis
-    /// attribute less one. Mirrors `astGetLatAxis(skyframe)`.
+    /// The 1-based index of the latitude axis. Mirrors `astGetLatAxis`.
     #[inline]
     pub fn lat_axis(&self) -> usize {
-        if self.perm[0] == 1 { 0 } else { 1 }
+        self.lat_pos() + 1
     }
 
     /// Position of longitude in coordinate arrays (0-based).
     #[inline]
-    fn lon_pos(&self) -> usize {
-        self.lon_axis()
+    pub(crate) fn lon_pos(&self) -> usize {
+        if self.perm[0] == 0 { 0 } else { 1 }
     }
 
     /// Position of latitude in coordinate arrays (0-based).
     #[inline]
-    fn lat_pos(&self) -> usize {
-        self.lat_axis()
+    pub(crate) fn lat_pos(&self) -> usize {
+        if self.perm[0] == 1 { 0 } else { 1 }
     }
 
     // --- Per-axis Label / Symbol (1-based external API) ---
@@ -557,7 +552,7 @@ impl SkyFrame {
     }
 
     /// Return whether longitude increases in the negative direction.
-    pub fn neglon(&self) -> bool {
+    pub fn neg_lon(&self) -> bool {
         // skyframe.c:11592: offset coordinates centred on the origin
         // default to negative longitudes.
         if self.neglon_set {
@@ -568,18 +563,18 @@ impl SkyFrame {
     }
 
     /// Set whether longitude increases in the negative direction.
-    pub fn set_neglon(&mut self, neg: bool) {
+    pub fn set_neg_lon(&mut self, neg: bool) {
         self.neglon = neg;
         self.neglon_set = true;
     }
 
     /// Test whether the `NegLon` attribute has been explicitly set.
-    pub fn test_neglon(&self) -> bool {
+    pub fn test_neg_lon(&self) -> bool {
         self.neglon_set
     }
 
     /// Clear NegLon.
-    pub fn clear_neglon(&mut self) {
+    pub fn clear_neg_lon(&mut self) {
         self.neglon = false;
         self.neglon_set = false;
     }
@@ -975,7 +970,7 @@ impl SkyFrame {
             // so external axis e (0-based) reads sky_ref at the internal slot
             // it maps to (invperm), and is formatted with that external axis —
             // identical to how the SRef cards' comments are produced below.
-            let invperm = [self.lon_axis(), self.lat_axis()];
+            let invperm = [self.lon_pos(), self.lat_pos()];
             let internal_of_ext =
                 |ext0: usize| invperm.iter().position(|&e| e == ext0).unwrap_or(ext0);
             let v0 = self
@@ -1568,7 +1563,7 @@ impl Frame for SkyFrame {
         if (lon - 2.0 * PI).abs() <= 2.0 * PI * (f64::EPSILON * 2.0) {
             lon = 0.0;
         }
-        if !is_bad(lon) && self.neglon() {
+        if !is_bad(lon) && self.neg_lon() {
             lon = pal::drange(lon);
         }
         coords[lp] = lon;
@@ -2179,7 +2174,7 @@ impl Frame for SkyFrame {
             ax.axis.unit.get_or_insert(unit);
             let latitude = phys == 1;
             ax.is_latitude = Some(latitude);
-            ax.centre_zero = Some(latitude || temp.neglon());
+            ax.centre_zero = Some(latitude || temp.neg_lon());
             bf.set_axis_object(i + 1, super::axis::FrameAxis::Sky(ax));
         }
         Ok(Box::new(bf))
@@ -2369,8 +2364,8 @@ fn skyframe_overlay(
                 result_sky.set_projection(p);
             }
         }
-        if template_sky.test_neglon() {
-            result_sky.set_neglon(template_sky.neglon());
+        if template_sky.test_neg_lon() {
+            result_sky.set_neg_lon(template_sky.neg_lon());
         }
         if template_sky.test_sky_tol() {
             result_sky.set_sky_tol(template_sky.sky_tol());
@@ -2767,7 +2762,7 @@ impl Serializable for SkyFrame {
         // over the internal axes; `SRef{axis_p+1}` carries the value of
         // internal axis `axis_p` with the symbol and format of the external
         // axis `invperm[axis_p]`.
-        let invperm = [self.lon_axis(), self.lat_axis()]; // invperm[internal] = external (0-based)
+        let invperm = [self.lon_pos(), self.lat_pos()]; // invperm[internal] = external (0-based)
         for (axis_p, &ext0) in invperm.iter().enumerate() {
             if !self.sky_ref_set[axis_p] {
                 continue;
@@ -2787,7 +2782,7 @@ impl Serializable for SkyFrame {
         // (skyframe.c:12059-12068): looped over internal axes with `helpful=0`
         // (so only an explicitly-set value is written), with the comment
         // `Ref. north <symbol> <fmt>` resolved on the external axis.
-        let invperm = [self.lon_axis(), self.lat_axis()];
+        let invperm = [self.lon_pos(), self.lat_pos()];
         for (axis_p, &ext0) in invperm.iter().enumerate() {
             if !self.sky_ref_p_set[axis_p] {
                 continue;
@@ -2826,10 +2821,8 @@ impl Serializable for SkyFrame {
         let read =
             super::frame_attrs::read_system_item(node, "System", "System", SkySystem::parse)?;
         let mut sky = SkyFrame::new(read.unwrap_or(SkySystem::Icrs));
-        // If the System node was explicitly present, mark it as set.
-        if read.is_some() {
-            sky.system_set = true;
-        }
+        // Set only when the dump has an active System item.
+        sky.system_set = read.is_some();
 
         // Title.
         let title = node.get_string("Title", "");
@@ -3062,7 +3055,7 @@ mod tests {
         assert_eq!(sky.domain(), "SKY");
         assert_close(sky.epoch_mjd(), 51544.5, TOL);
         assert_close(sky.equinox_mjd(), 51544.5, TOL);
-        assert!(!sky.neglon());
+        assert!(!sky.neg_lon());
         assert_eq!(sky.sky_ref_is(), SkyRefIs::Ignored);
         assert!(!sky.align_offset());
         assert_close(sky.sky_ref_lon_lat()[0], 0.0, TOL);
@@ -3112,10 +3105,10 @@ mod tests {
     }
 
     #[test]
-    fn set_neglon() {
+    fn set_neg_lon() {
         let mut sky = SkyFrame::new(SkySystem::Fk5);
-        sky.set_neglon(true);
-        assert!(sky.neglon());
+        sky.set_neg_lon(true);
+        assert!(sky.neg_lon());
     }
 
     #[test]
@@ -3509,7 +3502,7 @@ mod tests {
     #[test]
     fn norm_neglon_wraps_to_minus_pi_pi() {
         let mut sky = SkyFrame::new(SkySystem::Fk5);
-        sky.set_neglon(true);
+        sky.set_neg_lon(true);
         let mut coords = [4.0, 0.3];
         sky.norm(&mut coords).unwrap();
         // 4.0 radians normalized to [-pi, pi].
@@ -3772,11 +3765,9 @@ mod tests {
 
     #[test]
     fn overlay_template_skips_unset_attrs() {
-        // Template default-constructs as ICRS without any other
-        // attributes set. Overlaying onto a Galactic target must NOT
-        // overwrite the target's system (template ICRS isn't marked as
-        // explicitly set by `SkyFrame::new(Icrs)`).
-        let template = SkyFrame::new(SkySystem::Icrs);
+        // A template whose System is unset. Overlaying onto a Galactic
+        // target must not overwrite the target's System.
+        let template = SkyFrame::unset_system();
         assert!(!template.test_system());
         let target = SkyFrame::new(SkySystem::Galactic);
         let mut result: DynFrame = Box::new(target);

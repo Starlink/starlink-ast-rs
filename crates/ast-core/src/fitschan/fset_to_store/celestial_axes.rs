@@ -210,8 +210,8 @@ pub(crate) fn celestial_axes(args: CelestialAxesArgs<'_>) -> AstResult<DynMappin
     // call SkyFrame::norm to wrap each axis into its conventional
     // range. C:5134-5138.
     let mut skyfid = [skyfid_lon_rad, skyfid_lat_rad];
-    let lonax_in_sky = skyfrm.lon_axis();
-    let latax_in_sky = skyfrm.lat_axis();
+    let lonax_in_sky = skyfrm.lon_pos();
+    let latax_in_sky = skyfrm.lat_pos();
     if zero_angle(skyfid[0]) {
         skyfid[0] = 0.0;
     }

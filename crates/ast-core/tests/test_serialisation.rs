@@ -837,7 +837,7 @@ fn round_trip_skyframe_default_fk5() {
         AnyObject::SkyFrame(ref sf) => {
             assert_eq!(sf.system(), SkySystem::Fk5);
             assert_eq!(sf.domain(), "SKY");
-            assert!(!sf.neglon());
+            assert!(!sf.neg_lon());
             assert_eq!(sf.sky_ref_is(), SkyRefIs::Ignored);
             assert!(!sf.align_offset());
         }
@@ -850,7 +850,7 @@ fn round_trip_skyframe_galactic_with_attributes() {
     let mut original = SkyFrame::new(SkySystem::Galactic);
     original.set_title("Galactic Test");
     original.set_epoch_mjd(53000.0);
-    original.set_neglon(true);
+    original.set_neg_lon(true);
     original.set_sky_tol(1.0e-7);
     original.set_projection("TAN");
     original.set_align_offset(true);
@@ -870,7 +870,7 @@ fn round_trip_skyframe_galactic_with_attributes() {
             assert_eq!(sf.system(), SkySystem::Galactic);
             assert_eq!(sf.title().unwrap(), "Galactic Test");
             assert_close(sf.epoch_mjd(), 53000.0, 1e-10, "epoch");
-            assert!(sf.neglon());
+            assert!(sf.neg_lon());
             assert_close(sf.sky_tol(), 1.0e-7, 1e-15, "sky_tol");
             assert_eq!(sf.projection(), Some("TAN"));
             assert!(sf.align_offset());
@@ -1030,7 +1030,7 @@ fn double_round_trip_skyframe() {
     original.set_title("Double RT");
     original.set_epoch_mjd(53000.0);
     original.set_equinox_mjd(51544.5);
-    original.set_neglon(true);
+    original.set_neg_lon(true);
     original.set_sky_ref_is(SkyRefIs::Pole);
     original.set_sky_ref_lon_lat(0.5, 0.25);
     original.set_sky_ref_p_lon_lat(0.1, 1.0);

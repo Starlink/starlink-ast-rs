@@ -75,7 +75,7 @@ fn construction_fk5_defaults() {
         sky.title().unwrap(),
         "FK5 equatorial coordinates; mean equinox J2000.0"
     );
-    assert!(!sky.neglon());
+    assert!(!sky.neg_lon());
     assert_eq!(sky.sky_ref_is(), SkyRefIs::Ignored);
     assert!(sky.projection().is_none());
 }
@@ -201,11 +201,11 @@ fn set_get_equinox() {
 #[test]
 fn set_get_neglon() {
     let mut sky = SkyFrame::new(SkySystem::Fk5);
-    assert!(!sky.neglon());
-    sky.set_neglon(true);
-    assert!(sky.neglon());
-    sky.set_neglon(false);
-    assert!(!sky.neglon());
+    assert!(!sky.neg_lon());
+    sky.set_neg_lon(true);
+    assert!(sky.neg_lon());
+    sky.set_neg_lon(false);
+    assert!(!sky.neg_lon());
 }
 
 #[test]
@@ -653,7 +653,7 @@ fn norm_latitude_pole_folding() {
 #[test]
 fn norm_neglon_mode() {
     let mut sky = SkyFrame::new(SkySystem::Fk5);
-    sky.set_neglon(true);
+    sky.set_neg_lon(true);
     let mut coords = [4.0, 0.3];
     sky.norm(&mut coords).unwrap();
     // With neglon, longitude should be in [-pi, pi].
@@ -964,7 +964,7 @@ fn serialise_default_fk5() {
             assert_eq!(sf.system(), SkySystem::Fk5);
             assert_eq!(sf.naxes(), 2);
             assert_eq!(sf.domain(), "SKY");
-            assert!(!sf.neglon());
+            assert!(!sf.neg_lon());
             assert_eq!(sf.sky_ref_is(), SkyRefIs::Ignored);
         }
         _ => panic!("expected SkyFrame variant"),
@@ -1020,7 +1020,7 @@ fn serialise_preserves_all_attributes() {
     original.set_title("Test Sky");
     original.set_domain("CUSTOM");
     original.set_epoch_mjd(53000.0);
-    original.set_neglon(true);
+    original.set_neg_lon(true);
     original.set_sky_tol(1.0e-7);
     original.set_projection("SIN");
     original.set_align_offset(true);
@@ -1039,7 +1039,7 @@ fn serialise_preserves_all_attributes() {
             assert_eq!(sf.title().unwrap(), "Test Sky");
             assert_eq!(sf.domain(), "CUSTOM");
             assert_close(sf.epoch_mjd(), 53000.0, 1e-10, "epoch rt");
-            assert!(sf.neglon());
+            assert!(sf.neg_lon());
             assert_close(sf.sky_tol(), 1.0e-7, 1e-15, "sky_tol rt");
             assert_eq!(sf.projection(), Some("SIN"));
             assert!(sf.align_offset());
@@ -1099,7 +1099,7 @@ fn double_round_trip_skyframe() {
     original.set_title("Double RT");
     original.set_epoch_mjd(53000.0);
     original.set_equinox_mjd(51544.5);
-    original.set_neglon(true);
+    original.set_neg_lon(true);
     original.set_sky_ref_is(SkyRefIs::Pole);
     original.set_sky_ref_lon_lat(0.5, 0.25);
     original.set_sky_ref_p_lon_lat(0.1, 1.0);
@@ -1248,14 +1248,14 @@ fn norm_bad_value_no_op() {
 fn clone_is_independent() {
     let mut sky = SkyFrame::new(SkySystem::Fk5);
     sky.set_title("original");
-    sky.set_neglon(true);
+    sky.set_neg_lon(true);
     let mut clone = sky.clone();
     clone.set_title("clone");
-    clone.set_neglon(false);
+    clone.set_neg_lon(false);
     assert_eq!(sky.title().unwrap(), "original");
-    assert!(sky.neglon());
+    assert!(sky.neg_lon());
     assert_eq!(clone.title().unwrap(), "clone");
-    assert!(!clone.neglon());
+    assert!(!clone.neg_lon());
 }
 
 #[test]
@@ -1337,4 +1337,29 @@ fn galactic_north_pole_in_fk5() {
         (dec_deg - 27.13).abs() < 0.5,
         "NGP Dec should be ~27.13 deg, got {dec_deg}"
     );
+}
+
+/// `SkyFrame::new(Icrs)` sets the System, as C's `astSkyFrame("System=ICRS")`
+/// does, so as a template it converts a Galactic target to ICRS, where a
+/// template with the System unset keeps the target's. The values are the C
+/// library's for the same calls.
+#[test]
+fn an_icrs_template_converts_as_the_c_library_does() {
+    use ast_core::frames::{Frame, FrameRef};
+    let target = SkyFrame::new(SkySystem::Galactic);
+    for (template, system, want) in [
+        (
+            SkyFrame::new(SkySystem::Icrs),
+            "ICRS",
+            [4.620_574_201_798_786, 0.571_401_888_770_203_5],
+        ),
+        (SkyFrame::unset_system(), "GALACTIC", [1.0, 0.5]),
+    ] {
+        let fs = target.find_frame_template(&template, "").unwrap().unwrap();
+        let result = fs.frame(FrameRef::Current).unwrap();
+        assert_eq!(result.system_string().unwrap(), Some(system));
+        let map = fs.mapping(FrameRef::Base, FrameRef::Current).unwrap();
+        let (x, y) = map.tran2(&[1.0], &[0.5], true).unwrap();
+        assert_eq!([x[0], y[0]], want, "template System {system}");
+    }
 }

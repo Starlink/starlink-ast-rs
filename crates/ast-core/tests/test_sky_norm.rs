@@ -16,7 +16,7 @@ fn norm_matches_the_c_library() {
             f.perm_axes(&[2, 1]).unwrap();
         }
         if neglon {
-            f.set_neglon(true);
+            f.set_neg_lon(true);
         }
         let mut v = input;
         f.norm(&mut v).unwrap();

@@ -33,7 +33,7 @@ fn sky_frame(settings: &str) -> SkyFrame {
         };
         match (name, axis) {
             ("System", _) => f.set_system(SkySystem::parse(value).unwrap()),
-            ("NegLon", _) => f.set_neglon(value != "0"),
+            ("NegLon", _) => f.set_neg_lon(value != "0"),
             ("Digits", 0) => Frame::set_digits(&mut f, value.parse().unwrap()).unwrap(),
             ("Digits", a) => f.set_axis_digits(a, value.parse().unwrap()).unwrap(),
             ("Format", a) => f.set_format_str(a, value).unwrap(),

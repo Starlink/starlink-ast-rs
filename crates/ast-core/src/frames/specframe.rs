@@ -677,12 +677,12 @@ impl SpecFrame {
         let base_lon = base
             .as_any()
             .downcast_ref::<super::SkyFrame>()
-            .map(|s| s.lon_axis())
+            .map(|s| s.lon_pos())
             .unwrap_or(0);
         let cur_lon = current
             .as_any()
             .downcast_ref::<super::SkyFrame>()
-            .map(|s| s.lon_axis())
+            .map(|s| s.lon_pos())
             .unwrap_or(0);
 
         let (xin, yin) = if base_lon == 0 {
