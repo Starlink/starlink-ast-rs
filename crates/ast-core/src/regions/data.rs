@@ -42,6 +42,10 @@ pub(crate) struct RegionData {
     /// encapsulated Frame (object.c).
     pub(crate) ident: Option<String>,
 
+    /// The Region's own UseDefs, which defaults to that of the
+    /// encapsulated Frame (region.c `GetUseDefs`).
+    pub(crate) use_defs: Option<bool>,
+
     /// Defining points in the *base* frame.
     ///
     /// Layout: `points[i]` is the i-th defining point (a Vec of length
@@ -124,6 +128,7 @@ impl Clone for RegionData {
         RegionData {
             frameset: self.frameset.clone(),
             ident: None,
+            use_defs: None,
             points: self.points.clone(),
             negated: self.negated,
             closed: self.closed,
@@ -182,6 +187,7 @@ impl RegionData {
         RegionData {
             frameset: fs,
             ident: None,
+            use_defs: None,
             points,
             negated: false,
             closed: true,

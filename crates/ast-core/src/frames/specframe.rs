@@ -2316,14 +2316,11 @@ impl Serializable for SpecFrame {
         // Ident is written if explicitly set, followed by an `IsA Object`
         // marker. Mirrors the Object Dump that precedes the Frame Dump (the
         // `IDENT`/`IsA Object` block in the reference native dumps).
-        if let Some(ref ident) = self.attrs.ident {
-            node.push_string(
-                "Ident",
-                ident,
-                Some("Permanent Object identification string".to_string()),
-            );
-            node.push_isa("Object", Some("AST Object".to_string()));
-        }
+        super::frame_attrs::write_object_part(
+            &mut node,
+            self.attrs.ident.as_deref(),
+            self.attrs.use_defs,
+        );
 
         // The Frame class's part, read through the SpecFrame's getters
         // (frame.c:14250).

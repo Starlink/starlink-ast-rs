@@ -27,6 +27,11 @@
   included, as `SpecFrame::new` and `TimeFrame::new` do and as C's
   `astSkyFrame("System=...")` does; `SkyFrame::unset_system` makes one
   whose System is unset.
+  UseDefs, an Object attribute in C that only Frame classes read, is a
+  Frame attribute: `use_defs`, `set_use_defs`, `test_use_defs` and
+  `clear_use_defs`, with `stored_use_defs` and `store_use_defs` as the
+  per-class storage hooks. A CmpFrame takes an unset value from its first
+  component, and a FrameSet and a Region from their current Frame.
   The library is unreleased, so these signatures change outright.
   No `ast.h` prototype changes: the C ABI already reports these errors
   through the status.

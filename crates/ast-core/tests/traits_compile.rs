@@ -153,6 +153,12 @@ impl Frame for DummyRegion {
     fn test_ident(&self) -> bool {
         Frame::test_ident(&self.frame)
     }
+    fn stored_use_defs(&self) -> Option<bool> {
+        self.frame.stored_use_defs()
+    }
+    fn store_use_defs(&mut self, value: Option<bool>) {
+        self.frame.store_use_defs(value);
+    }
     fn get_active_unit(&self) -> bool {
         Frame::get_active_unit(&self.frame)
     }

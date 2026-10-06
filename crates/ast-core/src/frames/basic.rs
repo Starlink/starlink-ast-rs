@@ -976,14 +976,11 @@ impl Serializable for BasicFrame {
 
         // Object part: Ident, written when set and non-empty (object.c
         // Dump), followed by the IsA Object marker when it was written.
-        if let Some(ident) = self.attrs.ident.as_deref().filter(|s| !s.is_empty()) {
-            node.push_string(
-                "Ident",
-                ident,
-                Some("Permanent Object identification string".to_string()),
-            );
-            node.push_isa("Object", Some("AST Object".to_string()));
-        }
+        super::frame_attrs::write_object_part(
+            &mut node,
+            self.attrs.ident.as_deref().filter(|s| !s.is_empty()),
+            self.attrs.use_defs,
+        );
 
         write_frame_cards(&mut node, self)?;
 

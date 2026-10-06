@@ -930,6 +930,7 @@ pub(crate) fn read_region_base(node: &Node) -> AstResult<RegionData> {
     let mut data = RegionData {
         frameset,
         ident: None,
+        use_defs: None,
         points,
         negated,
         closed,

@@ -2618,18 +2618,11 @@ impl Serializable for SkyFrame {
 
         // --- Object-level attributes (before IsA Object) ---
         // Ident: written if explicitly set.
-        if let Some(ref ident) = self.attrs.ident {
-            node.push_string(
-                "Ident",
-                ident,
-                Some("Permanent Object identification string".to_string()),
-            );
-        }
-
-        // IsA Object marker (only emitted when Ident is present).
-        if self.attrs.ident.is_some() {
-            node.push_isa("Object", Some("AST Object".to_string()));
-        }
+        super::frame_attrs::write_object_part(
+            &mut node,
+            self.attrs.ident.as_deref(),
+            self.attrs.use_defs,
+        );
 
         // The Frame class's part, read through the SkyFrame's getters
         // (frame.c:14250).
@@ -2936,6 +2929,7 @@ impl Serializable for SkyFrame {
         if !ident.is_empty() {
             sky.attrs.ident = Some(ident);
         }
+        sky.attrs.use_defs = node.get("UseDfs").map(|_| node.get_int("UseDfs", 1) != 0);
 
         // Read SkyAxis children. Axes are stored in internal (physical)
         // order (0 = lon, 1 = lat).

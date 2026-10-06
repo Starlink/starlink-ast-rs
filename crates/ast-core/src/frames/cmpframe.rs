@@ -298,6 +298,14 @@ impl Frame for CmpFrame {
     frame_attrs_title!();
     frame_attrs_digits!();
     frame_attrs_ident!();
+
+    /// An unset UseDefs is the first component's own, read without that
+    /// component's override (cmpframe.c `GetUseDefs`).
+    fn use_defs(&self) -> bool {
+        self.attrs
+            .use_defs
+            .unwrap_or_else(|| self.frame1().stored_use_defs().unwrap_or(true))
+    }
     fn overlay(&self, template_axes: &[i32], result: &mut dyn Frame) -> AstResult<()> {
         super::find_frame::compound_overlay(
             self.frame1.as_ref(),
@@ -923,16 +931,11 @@ impl Serializable for CmpFrame {
         node.class_comment = Some("Compound coordinate system description".to_string());
 
         // --- Object-level attributes (before IsA Object) ---
-        if let Some(ref ident) = self.attrs.ident {
-            node.push_string(
-                "Ident",
-                ident,
-                Some("Permanent Object identification string".to_string()),
-            );
-        }
-        if self.attrs.ident.is_some() {
-            node.push_isa("Object", Some("AST Object".to_string()));
-        }
+        super::frame_attrs::write_object_part(
+            &mut node,
+            self.attrs.ident.as_deref(),
+            self.attrs.use_defs,
+        );
 
         let naxes = self.naxes();
 
@@ -1109,6 +1112,7 @@ impl Serializable for CmpFrame {
         if !ident.is_empty() {
             cmp.attrs.ident = Some(ident);
         }
+        cmp.attrs.use_defs = node.get("UseDfs").map(|_| node.get_int("UseDfs", 1) != 0);
 
         // Domain / Title: only the explicitly-set (active) value is
         // restored. `Node::get` returns None for `Unset` values, so

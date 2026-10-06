@@ -775,6 +775,12 @@ impl Frame for DSBSpecFrame {
     fn test_ident(&self) -> bool {
         Frame::test_ident(&self.spec)
     }
+    fn stored_use_defs(&self) -> Option<bool> {
+        self.spec.stored_use_defs()
+    }
+    fn store_use_defs(&mut self, value: Option<bool>) {
+        self.spec.store_use_defs(value);
+    }
 
     fn naxes(&self) -> usize {
         1

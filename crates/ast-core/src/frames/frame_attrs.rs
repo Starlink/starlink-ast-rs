@@ -36,6 +36,8 @@ pub(crate) struct FrameAttrs {
     pub active_unit: Option<bool>,
     /// The Object-class Ident attribute.
     pub ident: Option<String>,
+    /// The Object-class UseDefs attribute.
+    pub use_defs: Option<bool>,
     /// C's frame flags (frame.h `flags`, `astGetFrameFlags`): transient
     /// markers such as [`INTFLAG`](super::INTFLAG), not an attribute, so
     /// never dumped.
@@ -476,6 +478,33 @@ pub(crate) fn write_frame_cards(node: &mut Node, f: &impl FrameDumpSource) -> As
 
 /// Read the Frame-class attributes from a Frame node. Mirrors the attribute
 /// part of C's `astLoadFrame` (frame.c).
+/// Write the Object part of a dump: Ident when given, UseDefs when set,
+/// then the `IsA Object` marker when either was written (object.c `Dump`,
+/// where UseDefs is never written unset).
+pub(crate) fn write_object_part(node: &mut Node, ident: Option<&str>, use_defs: Option<bool>) {
+    if let Some(ident) = ident {
+        node.push_string(
+            "Ident",
+            ident,
+            Some("Permanent Object identification string".to_string()),
+        );
+    }
+    if let Some(use_defs) = use_defs {
+        node.push_int(
+            "UseDfs",
+            i64::from(use_defs),
+            Some(if use_defs {
+                "Default attribute values can be used".to_string()
+            } else {
+                "Default values cannot be used".to_string()
+            }),
+        );
+    }
+    if ident.is_some() || use_defs.is_some() {
+        node.push_isa("Object", Some("AST Object".to_string()));
+    }
+}
+
 /// Read the System item `key` (`System` or `AlSys`), naming the attribute
 /// `attr` in the error. A name the class does not know is AST__ATTIN, as
 /// `astLoadFrame` reports it through the class's `astSystemCode`
@@ -520,6 +549,7 @@ pub(crate) fn read_frame_attrs(node: &Node) -> FrameAttrs {
         preserve_axes: bool_of("Presrv"),
         active_unit: bool_of("ActUnt"),
         ident: node.get_string_if_set("Ident"),
+        use_defs: bool_of("UseDfs"),
         // A loaded Frame starts with no flags (frame.c:15179).
         flags: 0,
     }
@@ -701,6 +731,12 @@ macro_rules! frame_attrs_ident {
         }
         fn test_ident(&self) -> bool {
             self.attrs.ident.is_some()
+        }
+        fn stored_use_defs(&self) -> Option<bool> {
+            self.attrs.use_defs
+        }
+        fn store_use_defs(&mut self, value: Option<bool>) {
+            self.attrs.use_defs = value;
         }
     };
 }
@@ -965,6 +1001,19 @@ macro_rules! region_frame_attrs {
         }
         fn test_ident(&self) -> bool {
             self.data.ident.is_some()
+        }
+        // UseDefs is the Region's own, defaulting to that of the
+        // encapsulated Frame (region.c `GetUseDefs`).
+        fn stored_use_defs(&self) -> Option<bool> {
+            self.data.use_defs
+        }
+        fn store_use_defs(&mut self, value: Option<bool>) {
+            self.data.use_defs = value;
+        }
+        fn use_defs(&self) -> bool {
+            self.data
+                .use_defs
+                .unwrap_or_else(|| self.data.frameset.current().use_defs())
         }
     };
 }

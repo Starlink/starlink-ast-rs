@@ -559,6 +559,33 @@ pub trait Frame: AsAny + Send + fmt::Debug {
     /// Whether Ident is set. Mirrors `astTestIdent` (`object.c:5229`).
     fn test_ident(&self) -> bool;
 
+    /// The Object-class UseDefs attribute as stored on this object, `None`
+    /// when unset. C keeps it on every Object, but only Frame classes read
+    /// it, so the port keeps it on Frames.
+    fn stored_use_defs(&self) -> Option<bool>;
+    /// Store UseDefs, `None` to clear it.
+    fn store_use_defs(&mut self, value: Option<bool>);
+    /// UseDefs, set or default: whether default values may be used for
+    /// attributes that have not been set (`object.c:5304`). A FrameSet,
+    /// Region or CmpFrame takes an unset value from a Frame it contains.
+    fn use_defs(&self) -> bool {
+        self.stored_use_defs().unwrap_or(true)
+    }
+    /// Set UseDefs. Mirrors `astSetUseDefs`.
+    fn set_use_defs(&mut self, value: bool) -> AstResult<()> {
+        self.store_use_defs(Some(value));
+        Ok(())
+    }
+    /// Clear UseDefs. Mirrors `astClearUseDefs`.
+    fn clear_use_defs(&mut self) -> AstResult<()> {
+        self.store_use_defs(None);
+        Ok(())
+    }
+    /// Whether UseDefs is set. Mirrors `astTestUseDefs`.
+    fn test_use_defs(&self) -> bool {
+        self.stored_use_defs().is_some()
+    }
+
     // Match-control attributes, used by `astFindFrame` / `astMatch`.
 
     /// MinAxes, set or default (the number of axes). Mirrors

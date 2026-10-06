@@ -16,9 +16,9 @@ copy of the FrameSet and simplifies each internal edge Mapping *individually*,
 leaving the node graph intact, and returns the copy only if at least one edge
 reduced.
 
-`FrameSet::simplified` (`frameset.rs:1737-1731 (fn simplified)`) is the whole
+`FrameSet::simplified` (`frameset.rs:1763-1757 (fn simplified)`) is the whole
 port of it, and `FrameSet::simplify_frame`
-(`frameset.rs:1327 (fn simplify_frame)`) is what lets a Frame-level caller reach
+(`frameset.rs:1353 (fn simplify_frame)`) is what lets a Frame-level caller reach
 it.
 
 | # | C step | C site | Rust site | extension point | verdict |
@@ -26,21 +26,21 @@ it.
 | 1 | Initialise the result to NULL | frameset.c:10164-10166 (fn Simplify) | -- | ceremony | n/a: the Rust returns `AstResult<(DynMapping, bool)>`, so there is no pointer to pre-clear |
 | 2 | Check the global error status and bail out | frameset.c:10167-10169 (fn Simplify) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 3 | Obtain a pointer to the FrameSet structure | frameset.c:10170-10172 (fn Simplify) | -- | ceremony | n/a: the Rust method already has `&self` |
-| 4 | Make a copy of the FrameSet, since we may alter it -- a deep copy, which C calls a minor limitation of the current implementation | frameset.c:10173-10176 (fn Simplify) | frameset.rs:1741 (fn simplified) | architecture | ported |
-| 5 | Loop to examine each of the Mappings between the Frames in the copy | frameset.c:10177-10181 (fn Simplify) | frameset.rs:1730-1718 (fn simplified) | architecture | ported |
-| 6 | Obtain the Mapping pointer and the invert flag the FrameSet applies it with | frameset.c:10182-10185 (fn Simplify) | frameset.rs:1731-1719 (fn simplified) | architecture | ported |
+| 4 | Make a copy of the FrameSet, since we may alter it -- a deep copy, which C calls a minor limitation of the current implementation | frameset.c:10173-10176 (fn Simplify) | frameset.rs:1767 (fn simplified) | architecture | ported |
+| 5 | Loop to examine each of the Mappings between the Frames in the copy | frameset.c:10177-10181 (fn Simplify) | frameset.rs:1756-1744 (fn simplified) | architecture | ported |
+| 6 | Obtain the Mapping pointer and the invert flag the FrameSet applies it with | frameset.c:10182-10185 (fn Simplify) | frameset.rs:1757-1745 (fn simplified) | architecture | ported |
 | 7 | Determine whether the Mapping's own Invert attribute is set, and obtain its value | frameset.c:10186-10190 (fn Simplify) | -- | ceremony | n/a: an `Edge` holds one Mapping already oriented `from`->`to`, so there is no second flag to compare against |
 | 8 | Set the Mapping's Invert attribute to the value the FrameSet requires | frameset.c:10191-10193 (fn Simplify) | -- | ceremony | n/a: as row 7 — the edge Mapping is already in the orientation the edge applies |
-| 9 | Simplify the Mapping | frameset.c:10194-10196 (fn Simplify) | frameset.rs:1732 (fn simplified) | architecture | ported |
+| 9 | Simplify the Mapping | frameset.c:10194-10196 (fn Simplify) | frameset.rs:1758 (fn simplified) | architecture | ported |
 | 10 | Restore the Mapping's original Invert attribute, set or cleared as it was | frameset.c:10197-10206 (fn Simplify) | -- | ceremony | n/a: nothing was mutated, so nothing is restored |
-| 11 | Test whether simplification was performed, by pointer identity | frameset.c:10207-10210 (fn Simplify) | frameset.rs:1732 (fn simplified) | architecture | ported |
-| 12 | On success, substitute the new Mapping and record its Invert value as the new flag | frameset.c:10211-10216 (fn Simplify) | frameset.rs:1733 (fn simplified) | architecture | ported |
-| 13 | Note that some Mapping within the FrameSet simplified | frameset.c:10217-10221 (fn Simplify) | frameset.rs:1734 (fn simplified) | architecture | ported |
+| 11 | Test whether simplification was performed, by pointer identity | frameset.c:10207-10210 (fn Simplify) | frameset.rs:1758 (fn simplified) | architecture | ported |
+| 12 | On success, substitute the new Mapping and record its Invert value as the new flag | frameset.c:10211-10216 (fn Simplify) | frameset.rs:1759 (fn simplified) | architecture | ported |
+| 13 | Note that some Mapping within the FrameSet simplified | frameset.c:10217-10221 (fn Simplify) | frameset.rs:1760 (fn simplified) | architecture | ported |
 | 14 | Annul the pointer to the simplified Mapping | frameset.c:10222-10225 (fn Simplify) | -- | ceremony | n/a: owned values are dropped |
-| 15 | Return the copy if anything simplified, otherwise the original FrameSet | frameset.c:10226-10229 (fn Simplify) | frameset.rs:1739-1730 (fn simplified) | architecture | ported |
+| 15 | Return the copy if anything simplified, otherwise the original FrameSet | frameset.c:10226-10229 (fn Simplify) | frameset.rs:1765-1756 (fn simplified) | architecture | ported |
 | 16 | Annul the copy | frameset.c:10230-10232 (fn Simplify) | -- | ceremony | n/a: owned values are dropped |
 | 17 | Annul the returned pointer if an error occurred | frameset.c:10233-10235 (fn Simplify) | -- | ceremony | n/a: an error is a `Result::Err`, not a value to be cleared alongside one |
-| 18 | Return the result | frameset.c:10236-10238 (fn Simplify) | frameset.rs:1739 (fn simplified) | ceremony | ported |
+| 18 | Return the result | frameset.c:10236-10238 (fn Simplify) | frameset.rs:1765 (fn simplified) | ceremony | ported |
 
 ## Rows 11, 13 and 15 — the `simpler` flag decides which object is returned
 

@@ -1856,14 +1856,11 @@ impl Serializable for TimeFrame {
         node.class_comment = Some("Description of time coordinate system".to_string());
 
         // The Object class's part: Ident, when set (object.c Dump).
-        if let Some(ident) = self.attrs.ident.as_deref().filter(|s| !s.is_empty()) {
-            node.push_string(
-                "Ident",
-                ident,
-                Some("Permanent Object identification string".to_string()),
-            );
-            node.push_isa("Object", Some("AST Object".to_string()));
-        }
+        super::frame_attrs::write_object_part(
+            &mut node,
+            self.attrs.ident.as_deref().filter(|s| !s.is_empty()),
+            self.attrs.use_defs,
+        );
 
         // The Frame class's part, read through this class's getters
         // (frame.c:14250), then the Axis (frame.c:14777).

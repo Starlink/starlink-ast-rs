@@ -109,6 +109,8 @@ pub struct FrameSet {
     /// and a FrameSet reads its own rather than its current Frame's
     /// (`frameset.c:2759`, `:4841`, `:10830` all pass `this`).
     ident: Option<String>,
+    /// The FrameSet's own `UseDefs`, `None` when unset.
+    use_defs: Option<bool>,
 }
 
 impl Clone for FrameSet {
@@ -132,6 +134,7 @@ impl Clone for FrameSet {
             nnode: self.nnode,
             node_map: self.node_map.clone(),
             ident: self.ident.clone(),
+            use_defs: self.use_defs,
         }
     }
 }
@@ -171,6 +174,7 @@ impl FrameSet {
             nnode: 1,
             node_map: vec![0],
             ident: None,
+            use_defs: None,
         }
     }
 
@@ -1214,6 +1218,28 @@ impl Frame for FrameSet {
     fn test_ident(&self) -> bool {
         self.ident.is_some()
     }
+    // UseDefs, as C's attribute access gives it: setting, clearing and
+    // testing it act on the current Frame, as for every Frame attribute,
+    // and an unset value comes from the current Frame (frameset.c
+    // `GetUseDefs`). A value stored on the FrameSet itself, which only a
+    // dump can supply, takes precedence and is written back out.
+    fn stored_use_defs(&self) -> Option<bool> {
+        self.use_defs.or_else(|| self.current().stored_use_defs())
+    }
+    fn store_use_defs(&mut self, value: Option<bool>) {
+        self.use_defs = value;
+    }
+    fn use_defs(&self) -> bool {
+        self.use_defs.unwrap_or_else(|| self.current().use_defs())
+    }
+    // UseDefs changes no coordinates, so integrity is left alone, as C's
+    // leaves the Mappings untouched.
+    fn set_use_defs(&mut self, value: bool) -> AstResult<()> {
+        self.frame_mut(FrameRef::Current)?.set_use_defs(value)
+    }
+    fn clear_use_defs(&mut self) -> AstResult<()> {
+        self.frame_mut(FrameRef::Current)?.clear_use_defs()
+    }
 
     fn naxes(&self) -> usize {
         self.current().naxes()
@@ -1818,16 +1844,11 @@ impl Serializable for FrameSet {
         // and writes the `IsA Object` marker only when something preceded it.
         // The value is the FrameSet's own, not the current Frame's
         // (`frameset.c:4841`).
-        if let Some(ref ident) = self.ident {
-            if !ident.is_empty() {
-                node.push_string(
-                    "Ident",
-                    ident,
-                    Some("Permanent Object identification string".to_string()),
-                );
-                node.push_isa("Object", Some("AST Object".to_string()));
-            }
-        }
+        super::frame_attrs::write_object_part(
+            &mut node,
+            self.ident.as_deref().filter(|s| !s.is_empty()),
+            self.use_defs,
+        );
 
         // Write proxy attributes from the current frame as commented (unset).
         // The C library writes all current-frame attributes as informational
@@ -1853,7 +1874,7 @@ impl Serializable for FrameSet {
                 continue;
             }
             // Skip Object-level and class-specific attributes — not proxied.
-            if item.key == "Ident" || item.key == "AlSys" {
+            if matches!(item.key.as_str(), "Ident" | "UseDfs" | "AlSys") {
                 continue;
             }
             // For CmpFrame the effective (commented) Epoch is reconstructed and
@@ -2143,6 +2164,7 @@ impl Serializable for FrameSet {
             nnode,
             node_map,
             ident,
+            use_defs: node.get("UseDfs").map(|_| node.get_int("UseDfs", 1) != 0),
         })
     }
 }
