@@ -310,9 +310,10 @@ impl DSBSpecFrame {
         self.spec.system()
     }
 
-    /// Set the spectral coordinate system.
-    pub fn set_system(&mut self, sys: SpecSystem) {
-        self.spec.set_system(sys);
+    /// Set the spectral coordinate system. Fails as
+    /// [`SpecFrame::set_system`] does.
+    pub fn set_system(&mut self, sys: SpecSystem) -> AstResult<()> {
+        self.spec.set_system(sys)
     }
 
     /// Return the standard of rest.
@@ -320,9 +321,10 @@ impl DSBSpecFrame {
         self.spec.std_of_rest()
     }
 
-    /// Set the standard of rest.
-    pub fn set_std_of_rest(&mut self, sor: StdOfRest) {
-        self.spec.set_std_of_rest(sor);
+    /// Set the standard of rest. Fails as
+    /// [`SpecFrame::set_std_of_rest`] does.
+    pub fn set_std_of_rest(&mut self, sor: StdOfRest) -> AstResult<()> {
+        self.spec.set_std_of_rest(sor)
     }
 
     /// RestFreq in Hz, set or default.
@@ -446,12 +448,12 @@ impl DSBSpecFrame {
         // same set to topocentric. astConvert(dsb_src, dsb_topo, "") gives a
         // mapping source-rest-FREQ-Hz -> topocentric-FREQ-Hz.
         let mut dsb_src = self.spec.clone();
-        dsb_src.set_std_of_rest(StdOfRest::Source);
-        dsb_src.set_system(SpecSystem::Freq);
+        dsb_src.set_std_of_rest(StdOfRest::Source)?;
+        dsb_src.set_system(SpecSystem::Freq)?;
         dsb_src.set_unit(1, "Hz")?;
 
         let mut dsb_topo = dsb_src.clone();
-        dsb_topo.set_std_of_rest(StdOfRest::Topocentric);
+        dsb_topo.set_std_of_rest(StdOfRest::Topocentric)?;
 
         let Some(fs) = dsb_src.convert_to(&dsb_topo, &[])? else {
             // No conversion found (C:9018 — leaves the frame unchanged).
@@ -483,8 +485,8 @@ impl DSBSpecFrame {
             // frame, set it to topocentric FREQ in Hz, read DSBCentre back
             // (C:9041-9046).
             let mut topo = self.clone();
-            topo.spec.set_std_of_rest(StdOfRest::Topocentric);
-            topo.spec.set_system(SpecSystem::Freq);
+            topo.spec.set_std_of_rest(StdOfRest::Topocentric)?;
+            topo.spec.set_system(SpecSystem::Freq)?;
             topo.spec.set_unit(1, "Hz")?;
             let dsbcentre = topo.dsb_centre_cur()?;
 
@@ -573,8 +575,8 @@ impl DSBSpecFrame {
         // astSetSystem(rf_frame, AST__FREQ); astSetUnit(rf_frame, 0,
         // "Hz"); astSetC(rf_frame, "SideBand", "observed");`.
         let mut rf_frame = self.clone();
-        rf_frame.spec.set_std_of_rest(StdOfRest::Source);
-        rf_frame.spec.set_system(SpecSystem::Freq);
+        rf_frame.spec.set_std_of_rest(StdOfRest::Source)?;
+        rf_frame.spec.set_system(SpecSystem::Freq)?;
         // C sets Unit explicitly to "Hz" (dsbspecframe.c:653); the
         // sideband flip and topocentric mappings all work in Hz, so the
         // current unit must be Hz (not the FREQ display default of GHz).
@@ -610,8 +612,8 @@ impl DSBSpecFrame {
         self.spec.overlay(&[0], &mut tf1)?;
         tf1.set_align_std_of_rest(StdOfRest::Topocentric);
         let mut tf2 = tf1.clone();
-        tf2.set_system(SpecSystem::Freq);
-        tf2.set_std_of_rest(StdOfRest::Topocentric);
+        tf2.set_system(SpecSystem::Freq)?;
+        tf2.set_std_of_rest(StdOfRest::Topocentric)?;
         tf2.set_unit(1, "Hz")?;
         let Some(fs) = tf1.convert_to(&tf2, &[])? else {
             return Err(AstError::new(

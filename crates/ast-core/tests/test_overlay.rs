@@ -113,7 +113,7 @@ fn run(name: &str) -> Option<DynFrame> {
         "cmp_template_plain_target" => {
             let target = frame(2, |f| f.set_domain("SPECTRUM-").unwrap());
             let mut spec = SpecFrame::new(SpecSystem::Wavelen);
-            spec.clear_system();
+            spec.clear_system().unwrap();
             Frame::set_title(&mut spec, "CmpSpec").unwrap();
             spec.set_label(1, "Freq").unwrap();
             let t = CmpFrame::new(Box::new(spec), frame(1, |_| {}));

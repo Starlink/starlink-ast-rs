@@ -192,7 +192,7 @@ impl SpecFluxFrame {
     fn std_spec_frame(&self) -> AstResult<SpecFrame> {
         let system = self.flux_frame.system()?;
         let mut sf = self.spec_frame.clone();
-        sf.set_system(system.density_spec_system());
+        sf.set_system(system.density_spec_system())?;
         sf.store_unit(system.density_unit());
         Ok(sf)
     }

@@ -181,7 +181,7 @@ fn run(name: &str) -> AstResult<FrameSet> {
             f.set_rest_freq(230.538e9);
             fs = frameset(Box::new(f));
             through(&mut fs, |f: &mut SpecFrame| {
-                f.set_system(SpecSystem::Vradio)
+                f.set_system(SpecSystem::Vradio).unwrap()
             })?;
         }
         "spec_lsrk" => {
@@ -191,12 +191,12 @@ fn run(name: &str) -> AstResult<FrameSet> {
             f.set_ref_dec(REF_DEC);
             fs = frameset(Box::new(f));
             through(&mut fs, |f: &mut SpecFrame| {
-                f.set_std_of_rest(StdOfRest::Lsrk)
+                f.set_std_of_rest(StdOfRest::Lsrk).unwrap()
             })?;
         }
         "spec_sourcevel" => {
             let mut f = spec_ghz(SpecSystem::Freq);
-            f.set_std_of_rest(StdOfRest::Source);
+            f.set_std_of_rest(StdOfRest::Source).unwrap();
             f.set_ref_ra(REF_RA);
             f.set_ref_dec(REF_DEC);
             fs = frameset(Box::new(f));

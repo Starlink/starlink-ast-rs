@@ -689,8 +689,8 @@ fn add_encoding_frame_class(fs: &mut FrameSet) -> AstResult<()> {
     // SpecFrame with System=Freq, StdOfRest=Source, Unit=Hz forced
     // (C:2456-2463).
     let mut source_spec = matched_spec.clone();
-    source_spec.set_system(SpecSystem::Freq);
-    source_spec.set_std_of_rest(StdOfRest::Source);
+    source_spec.set_system(SpecSystem::Freq)?;
+    source_spec.set_std_of_rest(StdOfRest::Source)?;
     source_spec.set_unit(1, "Hz")?;
 
     // The spectral component of the canonical template: a DSBSpecFrame

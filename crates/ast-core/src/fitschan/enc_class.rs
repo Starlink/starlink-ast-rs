@@ -372,7 +372,7 @@ pub(crate) fn write_velocities_from_frameset(fs: &FrameSet, cards: &mut CardList
     //                       MinAxes=1, MaxAxes=3)
     let velo_template = {
         let mut v = SpecFrame::new(SpecSystem::Vradio);
-        v.set_std_of_rest(StdOfRest::Lsrk);
+        v.set_std_of_rest(StdOfRest::Lsrk)?;
         v.set_unit(1, "m/s")?;
         v.set_min_axes(1)?;
         v.set_max_axes(3)?;
@@ -390,8 +390,8 @@ pub(crate) fn write_velocities_from_frameset(fs: &FrameSet, cards: &mut CardList
 
     // Build the freq frame (Source-Hz) from a copy of velo_frame.
     let mut freq_frame = velo_frame.clone();
-    freq_frame.set_system(SpecSystem::Freq);
-    freq_frame.set_std_of_rest(StdOfRest::Source);
+    freq_frame.set_system(SpecSystem::Freq)?;
+    freq_frame.set_std_of_rest(StdOfRest::Source)?;
     freq_frame.set_unit(1, "Hz")?;
 
     // Convert freq → velo to get the Mapping that takes Source-Hz

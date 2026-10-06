@@ -46,3 +46,4 @@ specflux_primary_probe
 cmp_match_end_probe
 time_scale_set_probe
 flux_badun_probe
+spec_origin_sor_probe

@@ -18,7 +18,7 @@ use ast_core::frames::{DSBSpecFrame, Frame, FrameRef, SideBand, SpecSystem, StdO
 fn usb(name: &str) -> DSBSpecFrame {
     let mut f = DSBSpecFrame::new(SpecSystem::Freq);
     Frame::set_unit(&mut f, 1, "GHz").unwrap();
-    f.set_std_of_rest(StdOfRest::Lsrk);
+    f.set_std_of_rest(StdOfRest::Lsrk).unwrap();
     f.set_epoch_year(2005.0);
     f.set_if_ghz(4.0);
     f.set_sideband(SideBand::USB);
@@ -58,13 +58,13 @@ fn to_lsb(usb: &DSBSpecFrame) -> Option<[f64; 2]> {
 const DSB_TOPO_EXCLUDED: &[(&str, &str)] = &[(
     "origin_align_offset",
     "C cannot convert between the sidebands. Its SpecFrame SubFrame sets \
-     the System and StdOfRest of the alignment Frame, a copy of the \
-     DSBSpecFrame template, and OriginSystem and OriginStdOfRest re-express \
-     the SpecOrigin through astConvert on that DSBSpecFrame \
-     (specframe.c:3240). With AlignSpecOffset set, the Mapping of that \
-     nested conversion holds a WinMap with bad coefficients, so C reports \
-     AST__ATSER. The port re-expresses the origin at the SpecFrame level \
-     and converts (audit DSB-5)",
+     the StdOfRest of the alignment Frame, whose SpecOrigin \
+     OriginStdOfRest re-expresses through a conversion between rest frames \
+     (specframe.c:3191). With AlignSpecOffset set in a wavelength System \
+     that conversion maps every value to bad in C, a SpecFrame matter \
+     rather than a DSBSpecFrame one, so C reports AST__ATSER; the port's \
+     conversion keeps finite values (audit DSB-5, SPEC_ORIGIN_SOR_EXCLUDED \
+     in test_spec_origin_sor.rs)",
 )];
 
 fn observed(name: &str) -> (Option<f64>, Option<f64>, Option<[f64; 2]>) {

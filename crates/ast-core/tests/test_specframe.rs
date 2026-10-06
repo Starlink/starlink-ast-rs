@@ -62,7 +62,7 @@ fn test_specframe_attributes() {
     sf.set_rest_freq(1.42040575e9); // HI 21cm in Hz
     sf.set_ref_ra(1.234);
     sf.set_ref_dec(0.567);
-    sf.set_std_of_rest(StdOfRest::Lsrk);
+    sf.set_std_of_rest(StdOfRest::Lsrk).unwrap();
     sf.set_epoch_mjd(51544.5);
 
     assert_eq!(sf.system(), SpecSystem::Wavelen);
@@ -236,12 +236,12 @@ fn test_sor_helio_to_lsrk() {
     // Converting between heliocentric and LSRK requires RefRA and RefDec.
     // The LSRK correction is a purely directional effect.
     let mut sf_helio = SpecFrame::new(SpecSystem::Freq);
-    sf_helio.set_std_of_rest(StdOfRest::Heliocentric);
+    sf_helio.set_std_of_rest(StdOfRest::Heliocentric).unwrap();
     sf_helio.set_ref_ra(0.0);
     sf_helio.set_ref_dec(0.0);
 
     let mut sf_lsrk = SpecFrame::new(SpecSystem::Freq);
-    sf_lsrk.set_std_of_rest(StdOfRest::Lsrk);
+    sf_lsrk.set_std_of_rest(StdOfRest::Lsrk).unwrap();
     sf_lsrk.set_ref_ra(0.0);
     sf_lsrk.set_ref_dec(0.0);
 
@@ -384,9 +384,9 @@ fn test_not_equal_different_system() {
 #[test]
 fn test_not_equal_different_sor() {
     let mut sf1 = SpecFrame::new(SpecSystem::Freq);
-    sf1.set_std_of_rest(StdOfRest::Heliocentric);
+    sf1.set_std_of_rest(StdOfRest::Heliocentric).unwrap();
     let mut sf2 = SpecFrame::new(SpecSystem::Freq);
-    sf2.set_std_of_rest(StdOfRest::Lsrk);
+    sf2.set_std_of_rest(StdOfRest::Lsrk).unwrap();
     assert!(!sf1.equal(&sf2));
 }
 
@@ -400,7 +400,7 @@ fn test_serialise_roundtrip() {
     sf.set_rest_freq(1.42040575e9);
     sf.set_ref_ra(1.5);
     sf.set_ref_dec(-0.3);
-    sf.set_std_of_rest(StdOfRest::Lsrk);
+    sf.set_std_of_rest(StdOfRest::Lsrk).unwrap();
     sf.set_source_vel(25000.0);
     sf.set_source_vrf(StdOfRest::Heliocentric).unwrap();
     sf.set_source_sys(SpecSystem::Vrel).unwrap();
@@ -473,7 +473,7 @@ fn test_map_from_system_change() {
 
     let mut sf2 = SpecFrame::new(SpecSystem::Freq);
     sf2.set_unit(1, "Hz").unwrap();
-    sf2.set_system(SpecSystem::Wavelen);
+    sf2.set_system(SpecSystem::Wavelen).unwrap();
     sf2.set_unit(1, "m").unwrap();
 
     let mapping = sf2.map_from(snapshot.as_ref()).unwrap();
@@ -597,7 +597,7 @@ fn test_bad_value_transform() {
 
 fn vrad_lsrk() -> SpecFrame {
     let mut sf = SpecFrame::new(SpecSystem::Vradio);
-    sf.set_std_of_rest(StdOfRest::Lsrk);
+    sf.set_std_of_rest(StdOfRest::Lsrk).unwrap();
     sf.set_rest_freq(1.420405752e9);
     sf
 }
@@ -667,13 +667,13 @@ fn set_system_rescales_spec_origin() {
     // back (round-trip drift through the relativistic formulae).
     let mut sf = vrad_lsrk();
     sf.set_spec_origin(10.0);
-    sf.set_system(SpecSystem::Freq);
+    sf.set_system(SpecSystem::Freq).unwrap();
     let o = sf.spec_origin();
     assert!(
         (o - 1.42035837236405).abs() < 1e-9,
         "VRAD->FREQ origin: got {o}"
     );
-    sf.set_system(SpecSystem::Vradio);
+    sf.set_system(SpecSystem::Vradio).unwrap();
     let o = sf.spec_origin();
     assert!((o - 10.0).abs() < 1e-8, "FREQ->VRAD origin: got {o}");
 }

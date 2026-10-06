@@ -111,7 +111,10 @@ pub(crate) fn build_spectral(store: &FitsStore) -> Option<SpectralResult> {
 
     if let Some(ref specsys) = store.specsys {
         if let Some(sor) = StdOfRest::parse(specsys) {
-            frame.set_std_of_rest(sor);
+            // A new SpecFrame has no SpecOrigin to re-express.
+            frame
+                .set_std_of_rest(sor)
+                .expect("a SpecFrame with no SpecOrigin accepts any StdOfRest");
         }
     }
 
@@ -303,7 +306,7 @@ fn nonlin_spec_wcs(
         _ => return Ok((None, Vec::new())),
     };
     let mut xfrm = specfrm.clone();
-    xfrm.set_system(x_system);
+    xfrm.set_system(x_system)?;
     xfrm.set_unit(1, x_system.specmap_units())?;
 
     // Build the S → X mapping via Frame::convert (mirrors
@@ -410,7 +413,7 @@ fn grism_spec_wcs(
     // Copy the supplied SpecFrame (to inherit std_of_rest, epoch, etc.),
     // then set System to wavelength and Unit to metres. Mirrors C:14298-14300.
     let mut wfrm = specfrm.clone();
-    wfrm.set_system(wave_system);
+    wfrm.set_system(wave_system)?;
     wfrm.set_unit(1, "m")?;
 
     // Get the S → wavelength mapping via astConvert. Mirrors C:14301-14304.

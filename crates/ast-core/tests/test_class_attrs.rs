@@ -66,9 +66,9 @@ fn sexagesimal(text: &str, hours: bool) -> f64 {
 fn apply_spec(f: &mut SpecFrame, name: &str, value: &str) -> bool {
     let dbl = || value.parse::<f64>().unwrap();
     match name {
-        "System" => f.set_system(SpecSystem::parse(value).unwrap()),
+        "System" => f.set_system(SpecSystem::parse(value).unwrap()).unwrap(),
         "AlignSystem" => f.set_align_system(SpecSystem::parse(value).unwrap()),
-        "StdOfRest" => f.set_std_of_rest(StdOfRest::parse(value).unwrap()),
+        "StdOfRest" => f.set_std_of_rest(StdOfRest::parse(value).unwrap()).unwrap(),
         "AlignStdOfRest" => f.set_align_std_of_rest(StdOfRest::parse(value).unwrap()),
         // C reads RestFreq in GHz and SourceVel in km/s.
         "RestFreq" => f.set_rest_freq(dbl() * 1e9),

@@ -39,7 +39,8 @@ fn config(c: usize, sys: &str, is_to: bool) -> SpecFrame {
             StdOfRest::Barycentric
         } else {
             StdOfRest::Lsrk
-        });
+        })
+        .unwrap();
         f.set_epoch_mjd(J2010);
         f.set_ref_ra(REF_RA);
         f.set_ref_dec(REF_DEC);
@@ -103,7 +104,7 @@ fn run(name: &str) -> Result<Option<[f64; 2]>, ()> {
         }
         "dsb_freq_to_vrad" => {
             let mut v = dsb(SideBand::LSB, false);
-            v.set_system(SpecSystem::Vradio);
+            v.set_system(SpecSystem::Vradio).unwrap();
             convert(&dsb(SideBand::LSB, false), &v, freq)
         }
         "dsb_lsb_to_usb" => convert(&dsb(SideBand::LSB, false), &dsb(SideBand::USB, false), freq),
@@ -125,7 +126,7 @@ fn run(name: &str) -> Result<Option<[f64; 2]>, ()> {
                 Box::new(dsb(SideBand::LSB, false)),
             );
             let mut t = dsb(SideBand::LSB, false);
-            t.set_system(SpecSystem::Vradio);
+            t.set_system(SpecSystem::Vradio).unwrap();
             t.set_max_axes(3).unwrap();
             let Some(fs) = cube.find_frame_template(&t, "").map_err(|_| ())? else {
                 return Ok(None);
@@ -165,7 +166,7 @@ fn source_rest_frames_compare_through_their_defaults() {
     use ast_core::mappings::UnitMap;
 
     let mut a = SpecFrame::new(SpecSystem::Freq);
-    a.set_std_of_rest(StdOfRest::Source);
+    a.set_std_of_rest(StdOfRest::Source).unwrap();
     let mut b = a.clone();
     b.set_source_vrf(a.source_vrf()).unwrap();
     let fs = a.convert_to(&b, &[]).unwrap().unwrap();

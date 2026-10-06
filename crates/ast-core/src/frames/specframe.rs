@@ -3,7 +3,7 @@
 use crate::constants::BAD_VALUE;
 use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
-use crate::frames::{DynFrame, Frame};
+use crate::frames::{DynFrame, Frame, FrameRef};
 use crate::mappings::helpers::{ast_equal, is_bad};
 use crate::mappings::{CmpMap, Composition, DynMapping, ShiftMap, SpecCvtType, SpecMap, UnitMap};
 use crate::serial::{Node, NodeValue, Serializable};
@@ -403,8 +403,9 @@ impl SpecFrame {
         self.system
     }
 
-    /// Set the spectral coordinate system.
-    pub fn set_system(&mut self, sys: SpecSystem) {
+    /// Set the spectral coordinate system. Fails as C's `OriginSystem`
+    /// does when a set SpecOrigin cannot be expressed in the new System.
+    pub fn set_system(&mut self, sys: SpecSystem) -> AstResult<()> {
         let old = self.system;
         self.system = sys;
         self.system_set = true;
@@ -418,14 +419,13 @@ impl SpecFrame {
             // A set SpecOrigin keeps referring to the same spectral
             // position: convert it to the new system (specframe.c:643,
             // OriginSystem).
-            self.rescale_spec_origin(|sf| {
-                sf.system = old;
-            });
+            self.origin_system(old, "astSetSystem")?;
             // Attributes with System-specific defaults (specframe.c:4117).
             self.axis.label = None;
             self.axis.symbol = None;
             self.attrs.title = None;
         }
+        Ok(())
     }
 
     /// Test whether System has been explicitly set. Mirrors C
@@ -437,7 +437,7 @@ impl SpecFrame {
     /// Clear System back to its class default. Mirrors C
     /// `astClearSystem` for SpecFrame: after clearing, `astGetSystem`
     /// returns the SpecFrame default `AST__WAVELEN` (specframe.c:2015).
-    pub fn clear_system(&mut self) {
+    pub fn clear_system(&mut self) -> AstResult<()> {
         // specframe.c `ClearSystem`: when the default System differs from
         // the old one, restore the Unit last used with it (or clear the
         // Unit), clear the attributes with System-specific defaults, and
@@ -450,10 +450,9 @@ impl SpecFrame {
             self.axis.label = None;
             self.axis.symbol = None;
             self.attrs.title = None;
-            self.rescale_spec_origin(|sf| {
-                sf.system = old;
-            });
+            self.origin_system(old, "astClearSystem")?;
         }
+        Ok(())
     }
 
     /// Return the standard of rest.
@@ -462,18 +461,14 @@ impl SpecFrame {
     }
 
     /// Set the standard of rest.
-    pub fn set_std_of_rest(&mut self, sor: StdOfRest) {
-        let old = self.std_of_rest;
-        let changed = old != sor;
+    ///
+    /// A set SpecOrigin is first re-expressed in the new rest frame, and
+    /// this fails as C's `OriginStdOfRest` does when it cannot be.
+    pub fn set_std_of_rest(&mut self, sor: StdOfRest) -> AstResult<()> {
+        self.origin_std_of_rest(sor, "astSetStdOfRest")?;
         self.std_of_rest = sor;
         self.sor_set = true;
-        // Mirrors OriginStdOfRest (specframe.c:3191): a set SpecOrigin
-        // keeps referring to the same spectral position.
-        if changed {
-            self.rescale_spec_origin(|sf| {
-                sf.std_of_rest = old;
-            });
-        }
+        Ok(())
     }
 
     /// Test whether StdOfRest has been explicitly set.
@@ -536,9 +531,11 @@ impl SpecFrame {
 
     /// Clear StdOfRest, re-expressing a set SpecOrigin as heliocentric
     /// first (specframe.c:650).
-    pub fn clear_std_of_rest(&mut self) {
-        self.set_std_of_rest(StdOfRest::Heliocentric);
+    pub fn clear_std_of_rest(&mut self) -> AstResult<()> {
+        self.origin_std_of_rest(StdOfRest::Heliocentric, "astClearStdOfRest")?;
+        self.std_of_rest = StdOfRest::Heliocentric;
         self.sor_set = false;
+        Ok(())
     }
 
     /// Return the alignment system.
@@ -792,7 +789,7 @@ impl SpecFrame {
             ));
         }
         if self.test_source_vel() {
-            self.source_vel = Some(self.convert_source_vel(sor, self.source_sys()));
+            self.source_vel = Some(self.convert_source_vel(sor, self.source_sys())?);
         }
         self.source_vrf = Some(sor);
         Ok(())
@@ -800,12 +797,13 @@ impl SpecFrame {
 
     /// Clear SourceVRF, re-expressing a set SourceVel as heliocentric
     /// (specframe.c:6126).
-    pub fn clear_source_vrf(&mut self) {
+    pub fn clear_source_vrf(&mut self) -> AstResult<()> {
         if self.test_source_vel() {
             self.source_vel =
-                Some(self.convert_source_vel(StdOfRest::Heliocentric, self.source_sys()));
+                Some(self.convert_source_vel(StdOfRest::Heliocentric, self.source_sys())?);
         }
         self.source_vrf = None;
+        Ok(())
     }
 
     /// Test whether SourceVRF has been explicitly set.
@@ -838,7 +836,7 @@ impl SpecFrame {
             ));
         }
         if self.test_source_vel() {
-            self.source_vel = Some(self.convert_source_vel(self.source_vrf(), sys));
+            self.source_vel = Some(self.convert_source_vel(self.source_vrf(), sys)?);
         }
         self.source_sys = Some(sys);
         Ok(())
@@ -846,11 +844,12 @@ impl SpecFrame {
 
     /// Clear SourceSys, re-expressing a set SourceVel as relativistic
     /// velocity (specframe.c:6194).
-    pub fn clear_source_sys(&mut self) {
+    pub fn clear_source_sys(&mut self) -> AstResult<()> {
         if self.test_source_vel() {
-            self.source_vel = Some(self.convert_source_vel(self.source_vrf(), SpecSystem::Vrel));
+            self.source_vel = Some(self.convert_source_vel(self.source_vrf(), SpecSystem::Vrel)?);
         }
         self.source_sys = None;
+        Ok(())
     }
 
     /// Test whether SourceSys has been explicitly set.
@@ -1024,17 +1023,17 @@ impl SpecFrame {
     /// `new_sys`. Mirrors C `ConvertSourceVel` (specframe.c:745): an unset
     /// SourceVel and RestFreq take their defaults (0 and 1e14 Hz), and the
     /// conversion goes through relativistic velocity and frequency.
-    fn convert_source_vel(&self, new_sor: StdOfRest, new_sys: SpecSystem) -> f64 {
+    fn convert_source_vel(&self, new_sor: StdOfRest, new_sys: SpecSystem) -> AstResult<f64> {
         let vel = self.source_vel();
         let sor = self.source_vrf();
         let sys = self.source_sys();
         if sor == new_sor && sys == new_sys {
-            return vel;
+            return Ok(vel);
         }
         let mut from = self.clone();
-        from.set_std_of_rest(sor);
+        from.set_std_of_rest(sor)?;
         let mut to = self.clone();
-        to.set_std_of_rest(new_sor);
+        to.set_std_of_rest(new_sor)?;
         let mut specmap = SpecMap::new();
         match sys {
             SpecSystem::Vradio => specmap.add(SpecCvtType::VrToVl, &[]),
@@ -1045,7 +1044,7 @@ impl SpecFrame {
         }
         let rf = self.rest_freq();
         specmap.add(SpecCvtType::VlToFr, &[rf]);
-        Self::sor_convert(&from, &to, &mut specmap);
+        Self::sor_convert(&from, &to, &mut specmap)?;
         specmap.add(SpecCvtType::FrToVl, &[rf]);
         match new_sys {
             SpecSystem::Vradio => specmap.add(SpecCvtType::VlToVr, &[]),
@@ -1057,20 +1056,17 @@ impl SpecFrame {
         use crate::coords::PointSet;
         use crate::mappings::Mapping;
         let pts = PointSet::from_rows([[vel]]);
-        match specmap.transform(&pts, true) {
-            Ok(out) => out.point(0)[0],
-            Err(_) => 0.0,
-        }
+        Ok(specmap.transform(&pts, true)?.point(0)[0])
     }
 
     /// SourceVel as heliocentric relativistic velocity, the form the Source
     /// rest frame conversions use (specframe.c `SorConvert`).
-    fn convert_source_vel_to_helio_vrel(&self) -> f64 {
+    fn convert_source_vel_to_helio_vrel(&self) -> AstResult<f64> {
         self.convert_source_vel(StdOfRest::Heliocentric, SpecSystem::Vrel)
     }
 
     /// Add SpecMap steps to convert from a given SOR to heliocentric (frequency domain).
-    fn add_sor_to_helio(&self, specmap: &mut SpecMap, from: StdOfRest) {
+    fn add_sor_to_helio(&self, specmap: &mut SpecMap, from: StdOfRest) -> AstResult<()> {
         let ra = self.ref_ra.unwrap_or(0.0);
         let dec = self.ref_dec.unwrap_or(0.0);
         let lon = self.attrs.obs_lon.unwrap_or(0.0);
@@ -1102,14 +1098,15 @@ impl SpecFrame {
                 specmap.add(SpecCvtType::GlF2Hl, &[ra, dec]);
             }
             StdOfRest::Source => {
-                let src_vel = self.convert_source_vel_to_helio_vrel();
+                let src_vel = self.convert_source_vel_to_helio_vrel()?;
                 specmap.add(SpecCvtType::UsF2Hl, &[src_vel, ra, dec]);
             }
         }
+        Ok(())
     }
 
     /// Add SpecMap steps to convert from heliocentric to a given SOR (frequency domain).
-    fn add_helio_to_sor(&self, specmap: &mut SpecMap, to: StdOfRest) {
+    fn add_helio_to_sor(&self, specmap: &mut SpecMap, to: StdOfRest) -> AstResult<()> {
         let ra = self.ref_ra.unwrap_or(0.0);
         let dec = self.ref_dec.unwrap_or(0.0);
         let lon = self.attrs.obs_lon.unwrap_or(0.0);
@@ -1141,10 +1138,11 @@ impl SpecFrame {
                 specmap.add(SpecCvtType::HlF2Gl, &[ra, dec]);
             }
             StdOfRest::Source => {
-                let src_vel = self.convert_source_vel_to_helio_vrel();
+                let src_vel = self.convert_source_vel_to_helio_vrel()?;
                 specmap.add(SpecCvtType::HlF2Us, &[src_vel, ra, dec]);
             }
         }
+        Ok(())
     }
 
     /// Topocentric apparent velocity (m/s) of the SpecFrame's
@@ -1161,10 +1159,10 @@ impl SpecFrame {
     /// frame is itself the standard of rest, so the topocentric
     /// velocity is undefined here — C sets `vsource = AST__BAD` in
     /// that branch).
-    pub fn velosys(&self) -> Option<f64> {
+    pub fn velosys(&self) -> AstResult<Option<f64>> {
         let sor = self.std_of_rest();
         if sor == StdOfRest::Source {
-            return None;
+            return Ok(None);
         }
 
         // Mirror C `astGetRestFreq` default of 1.0E14 Hz when RestFreq
@@ -1183,20 +1181,15 @@ impl SpecFrame {
         // sides are Vrel.)
         let mut specmap = SpecMap::new();
         specmap.add(SpecCvtType::VlToFr, &[rf]);
-        self.add_sor_to_helio(&mut specmap, sor);
-        self.add_helio_to_sor(&mut specmap, StdOfRest::Topocentric);
+        self.add_sor_to_helio(&mut specmap, sor)?;
+        self.add_helio_to_sor(&mut specmap, StdOfRest::Topocentric)?;
         specmap.add(SpecCvtType::FrToVl, &[rf]);
 
         use crate::coords::PointSet;
         use crate::mappings::Mapping;
         let pts = PointSet::from_rows([[0.0]]);
-        match specmap.transform(&pts, true) {
-            Ok(out) => {
-                let v = out.point(0)[0];
-                if is_bad(v) { None } else { Some(v) }
-            }
-            Err(_) => None,
-        }
+        let v = specmap.transform(&pts, true)?.point(0)[0];
+        Ok((!is_bad(v)).then_some(v))
     }
 
     /// Add SpecMap steps to convert from the current system to frequency
@@ -1293,10 +1286,10 @@ impl SpecFrame {
     /// SpecFrame's `System`. The conversion is gated on `!EqualSor(this,
     /// that)`: if the two rest frames are equal (per `EqualSor` semantics)
     /// no SpecMap entries are added.
-    fn sor_convert(this: &SpecFrame, that: &SpecFrame, specmap: &mut SpecMap) {
+    fn sor_convert(this: &SpecFrame, that: &SpecFrame, specmap: &mut SpecMap) -> AstResult<()> {
         // No conversion required if the rest frames are equal.
         if this.equal_sor(that) {
-            return;
+            return Ok(());
         }
 
         // Convert from the "this" rest frame to heliocentric, using
@@ -1333,7 +1326,7 @@ impl SpecFrame {
                     specmap.add(SpecCvtType::GlF2Hl, &[ra, dec]);
                 }
                 StdOfRest::Source => {
-                    let src_vel = this.convert_source_vel_to_helio_vrel();
+                    let src_vel = this.convert_source_vel_to_helio_vrel()?;
                     specmap.add(SpecCvtType::UsF2Hl, &[src_vel, ra, dec]);
                 }
                 StdOfRest::Heliocentric => {} // already heliocentric, no-op
@@ -1374,12 +1367,13 @@ impl SpecFrame {
                     specmap.add(SpecCvtType::HlF2Gl, &[ra, dec]);
                 }
                 StdOfRest::Source => {
-                    let src_vel = that.convert_source_vel_to_helio_vrel();
+                    let src_vel = that.convert_source_vel_to_helio_vrel()?;
                     specmap.add(SpecCvtType::HlF2Us, &[src_vel, ra, dec]);
                 }
                 StdOfRest::Heliocentric => {} // already heliocentric, no-op
             }
         }
+        Ok(())
     }
 
     /// Set SpecOrigin from a value in the SpecFrame's current units, as
@@ -1434,41 +1428,75 @@ impl SpecFrame {
         Ok(out.point(0)[0])
     }
 
-    /// Convert a stored SpecOrigin between two attribute states of
-    /// this frame (used when System or StdOfRest changes). Mirrors
-    /// `OriginSystem` / `OriginStdOfRest` (specframe.c:3191-3380):
-    /// the conversion runs between copies with Unit, SpecOrigin and
-    /// AlignSpecOffset cleared, so it operates in the default units
-    /// of each system.
-    fn rescale_spec_origin<F>(&mut self, make_old: F)
-    where
-        F: FnOnce(&mut SpecFrame),
-    {
+    /// Re-express a set SpecOrigin after the System changed from `oldsys`.
+    /// Port of `OriginSystem` (specframe.c:3300): the conversion runs
+    /// between copies with Unit, SpecOrigin and AlignSpecOffset cleared, so
+    /// it works in the default units of each System, and a value that
+    /// cannot be converted is `AST__ATSER`.
+    fn origin_system(&mut self, oldsys: SpecSystem, method: &str) -> AstResult<()> {
         let Some(origin) = self.spec_origin else {
-            return;
+            return Ok(());
         };
-        if is_bad(origin) {
-            return;
-        }
         let mut sf1 = self.clone();
         sf1.axis.unit = None;
         sf1.spec_origin = None;
         sf1.align_spec_offset = false;
         sf1.align_spec_offset_set = false;
         let mut sf2 = sf1.clone();
-        make_old(&mut sf2);
-        let Ok(Some(map)) = sf2.make_spec_mapping_full(&sf1, None, false, false) else {
-            return;
-        };
-        let Ok(pts) = PointSet::from_columns(&[&[origin]]) else {
-            return;
-        };
-        if let Ok(out) = map.transform(&pts, true) {
-            let v = out.point(0)[0];
-            if !is_bad(v) {
-                self.spec_origin = Some(v);
+        sf2.system = oldsys;
+        let neworigin = match sf2.make_spec_mapping_full(&sf1, None, false, false)? {
+            Some(map) => {
+                let pts = PointSet::from_columns(&[&[origin]])?;
+                map.transform(&pts, true)?.point(0)[0]
             }
+            None => BAD_VALUE,
+        };
+        if is_bad(neworigin) {
+            return Err(AstError::new(
+                ErrorCode::Atser,
+                format!(
+                    "{method}(SpecFrame): Cannot convert the SpecOrigin value to a different \
+                     spectral system."
+                ),
+            ));
         }
+        self.spec_origin = Some(neworigin);
+        Ok(())
+    }
+
+    /// Re-express a set SpecOrigin in the rest frame `newsor` before it is
+    /// stored. Port of `OriginStdOfRest` (specframe.c:3191): the origin, in
+    /// the current units, is cleared and converted with a conversion from
+    /// this Frame to a copy in the new rest frame, AlignSpecOffset
+    /// included, and a value that cannot be converted is `AST__ATSER`,
+    /// leaving the origin cleared as C does.
+    fn origin_std_of_rest(&mut self, newsor: StdOfRest, method: &str) -> AstResult<()> {
+        if self.spec_origin.is_none() || newsor == self.std_of_rest {
+            return Ok(());
+        }
+        let origin = self.spec_origin_cur()?;
+        self.spec_origin = None;
+        let mut sf = self.clone();
+        sf.std_of_rest = newsor;
+        sf.sor_set = true;
+        let neworigin = match Frame::convert_to(&*self, &sf, &[])? {
+            Some(fs) => {
+                let map = fs.mapping(FrameRef::Base, FrameRef::Current)?;
+                let pts = PointSet::from_columns(&[&[origin]])?;
+                map.transform(&pts, true)?.point(0)[0]
+            }
+            None => BAD_VALUE,
+        };
+        if is_bad(neworigin) {
+            return Err(AstError::new(
+                ErrorCode::Atser,
+                format!(
+                    "{method}(SpecFrame): Cannot convert the SpecOrigin value to a different \
+                     rest frame."
+                ),
+            ));
+        }
+        self.set_spec_origin_cur(neworigin)
     }
 
     /// Build the SpecMap for converting from `self` (target) to `result`
@@ -1649,7 +1677,7 @@ impl SpecFrame {
         // (C line 2823). Uses target's attrs on the from side and
         // align_target's attrs on the to side.
         if step3 {
-            Self::sor_convert(target, &align_target, &mut specmap);
+            Self::sor_convert(target, &align_target, &mut specmap)?;
         }
 
         // Step 4: frequency in alignment SOR → alignment system in
@@ -1668,7 +1696,7 @@ impl SpecFrame {
         // (C line 2847). Uses align_result's attrs on the from side
         // and result's attrs on the to side.
         if step6 {
-            Self::sor_convert(&align_result, result, &mut specmap);
+            Self::sor_convert(&align_result, result, &mut specmap)?;
         }
 
         // Step 7: frequency in result SOR → result system in result
@@ -1723,7 +1751,7 @@ impl SpecFrame {
         // Step 0: offset to absolute value in the target system —
         // prepend a ShiftMap by the target origin (specframe.c:2937-2945).
         let target_origin = target.spec_origin_cur()?;
-        if target_origin != 0.0 && !is_bad(target_origin) {
+        if target_origin != 0.0 {
             let sm = ShiftMap::new(vec![target_origin]);
             mapping = Box::new(CmpMap::new(Box::new(sm), mapping, Composition::Series)?);
         }
@@ -1739,7 +1767,7 @@ impl SpecFrame {
         } else {
             result.spec_origin_cur()?
         };
-        if result_origin != 0.0 && !is_bad(result_origin) {
+        if result_origin != 0.0 {
             let sm = ShiftMap::new(vec![-result_origin]);
             mapping = Box::new(CmpMap::new(mapping, Box::new(sm), Composition::Series)?);
         }
@@ -1948,7 +1976,7 @@ impl Frame for SpecFrame {
         });
         if let Some(t) = t {
             if t.test_system() {
-                self.set_system(t.system);
+                self.set_system(t.system)?;
             }
             if t.test_align_system() {
                 self.set_align_system(t.align_system());
@@ -2192,7 +2220,7 @@ fn specframe_overlay(
             }
         }
         if template_spec.test_std_of_rest() {
-            result_spec.set_std_of_rest(template_spec.std_of_rest);
+            result_spec.set_std_of_rest(template_spec.std_of_rest)?;
         }
         if template_spec.test_spec_origin() {
             if let Some(v) = template_spec.spec_origin {
@@ -2265,7 +2293,7 @@ fn specframe_sub_frame(
     // defer to the default Frame-level SubFrame.
     let mut temp = target.clone();
     super::find_frame::set_class_defaults(&mut temp)?;
-    temp.clear_system();
+    temp.clear_system()?;
     temp.clear_align_system();
 
     super::find_frame::default_sub_frame(&temp, template, target_axes, template_axes)
@@ -2600,7 +2628,7 @@ mod tests {
         // defaulting to WAVELEN) must not overlay System onto the
         // result. Overlaying onto a VRAD target leaves it VRAD.
         let mut template = SpecFrame::new(SpecSystem::Freq);
-        template.clear_system();
+        template.clear_system().unwrap();
         assert!(!template.test_system());
         let target = SpecFrame::new(SpecSystem::Vradio);
         let mut result: DynFrame = Box::new(target);
@@ -2626,11 +2654,11 @@ mod tests {
         // must produce a 1-axis Mapping and a SpecFrame result whose
         // system is VRAD and SOR is LSRK.
         let mut target = SpecFrame::new(SpecSystem::Freq);
-        target.set_std_of_rest(StdOfRest::Heliocentric);
+        target.set_std_of_rest(StdOfRest::Heliocentric).unwrap();
         target.set_rest_freq(1.420405751e9);
 
         let mut template = SpecFrame::new(SpecSystem::Vradio);
-        template.set_std_of_rest(StdOfRest::Lsrk);
+        template.set_std_of_rest(StdOfRest::Lsrk).unwrap();
         template.set_rest_freq(1.420405751e9);
 
         let template_axes = [0i32];
@@ -2731,13 +2759,13 @@ mod tests {
         let mut vrad = SpecFrame::new(SpecSystem::Vradio);
         vrad.set_unit(1, "m/s").unwrap();
         vrad.set_rest_freq(1.0e9);
-        vrad.set_std_of_rest(StdOfRest::Topocentric);
+        vrad.set_std_of_rest(StdOfRest::Topocentric).unwrap();
         assert!(vrad.test_system());
 
         let mut freq = SpecFrame::new(SpecSystem::Freq);
         freq.set_unit(1, "Hz").unwrap();
         freq.set_rest_freq(1.0e9);
-        freq.set_std_of_rest(StdOfRest::Topocentric);
+        freq.set_std_of_rest(StdOfRest::Topocentric).unwrap();
         assert!(freq.test_system());
 
         let fs = convert_frames(&vrad, &freq, "")

@@ -346,7 +346,7 @@ pub(crate) fn spectral_axes(args: SpectralAxesArgs<'_>) -> AstResult<DynMapping>
     // SpecFrame's existing attributes via `velosys()`. Only emitted
     // on the primary coord version.
     if args.s == ' '
-        && let Some(v) = specfrm.velosys()
+        && let Some(v) = specfrm.velosys()?
     {
         args.store.velosys = Some(v);
     }
@@ -404,7 +404,7 @@ fn try_x2p_cascade(
         // astClear(fs, unit_attr);` (line 30374-30375) — but we work
         // on a clone rather than mutating the FrameSet in place.
         let mut x_frame = specfrm.clone();
-        x_frame.set_system(x_sys);
+        x_frame.set_system(x_sys)?;
         x_frame.clear_unit(1)?;
 
         // X → S mapping (forward). Mirrors C:30412-30417 (which
@@ -532,7 +532,7 @@ fn try_grism_cascade(
         // with default unit. Mirrors C:30487-30488 (`astSetC(fs,
         // system_attr, ...); astSetC(fs, unit_attr, "m");`).
         let mut wave_frame = specfrm.clone();
-        wave_frame.set_system(wave_sys);
+        wave_frame.set_system(wave_sys)?;
         wave_frame.clear_unit(1)?;
 
         // S → wavelength Mapping. If this can't be constructed, skip.

@@ -14,6 +14,11 @@
   `clear_timescale`: C rejects a TimeScale other than TT for a Besselian
   epoch with AST__ATTIN, and re-expressing the TimeOrigin can fail
   (`timeframe.c` SetTimeScale, OriginScale, OriginSystem).
+  `SpecFrame::set_system`, `clear_system`, `set_std_of_rest`,
+  `clear_std_of_rest`, `clear_source_vrf`, `clear_source_sys` and `velosys`
+  follow, with the DSBSpecFrame setters that forward to them: re-expressing
+  a set SpecOrigin in a new System or rest frame can fail with AST__ATSER
+  (`specframe.c` OriginSystem, OriginStdOfRest).
   The library is unreleased, so these signatures change outright.
   No `ast.h` prototype changes: the C ABI already reports these errors
   through the status.

@@ -39,20 +39,20 @@ fn run(name: &str) -> DynFrame {
     match name {
         "spec_set_vrad" | "spec_set_back_to_freq" => {
             let mut f = spec(SpecSystem::Freq, "MHz");
-            f.set_system(SpecSystem::Vradio);
+            f.set_system(SpecSystem::Vradio).unwrap();
             if name == "spec_set_back_to_freq" {
-                f.set_system(SpecSystem::Freq);
+                f.set_system(SpecSystem::Freq).unwrap();
             }
             Box::new(f)
         }
         "spec_clear" => {
             let mut f = spec(SpecSystem::Freq, "MHz");
-            f.clear_system();
+            f.clear_system().unwrap();
             Box::new(f)
         }
         "spec_clear_unchanged" => {
             let mut f = spec(SpecSystem::Wavelen, "nm");
-            f.clear_system();
+            f.clear_system().unwrap();
             Box::new(f)
         }
         "time_set_jd" => {

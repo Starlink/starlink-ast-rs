@@ -526,12 +526,12 @@ impl FluxFrame {
             // density systems (`sfin2`/`sfout2`). Mirrors fluxframe.c:2148-2157.
             let sfin1 = self.get_spec_frame()?;
             let mut sfin2 = sfin1.clone();
-            sfin2.set_system(sys_in.density_spec_system());
+            sfin2.set_system(sys_in.density_spec_system())?;
             sfin2.set_unit(1, sys_in.density_unit())?;
 
             let sfout1 = result.get_spec_frame()?;
             let mut sfout2 = sfout1.clone();
-            sfout2.set_system(sys_out.density_spec_system());
+            sfout2.set_system(sys_out.density_spec_system())?;
             sfout2.set_unit(1, sys_out.density_unit())?;
 
             // smap: standardised result system → standardised target system

@@ -326,7 +326,7 @@ fn cmpframe_match_against_skyframe_template_with_max_axes() {
 #[test]
 fn find_frame_specframe_template_into_cmpframe_sky_spec() {
     let mut template = SpecFrame::new(SpecSystem::Vradio);
-    template.set_std_of_rest(StdOfRest::Lsrk);
+    template.set_std_of_rest(StdOfRest::Lsrk).unwrap();
     template.set_unit(1, "m/s").unwrap();
     template.set_min_axes(1).unwrap();
     template.set_max_axes(3).unwrap();

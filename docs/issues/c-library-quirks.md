@@ -30,6 +30,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [SkyFrame `Offset`'s coincident-points guard is defeated by multiply-add contraction too](#skyframe-offsets-coincident-points-guard-is-defeated-by-multiply-add-contraction-too)
 - [A SkyFrame's own SkyAxes are not latitude axes, so `astAxOffset` wraps its latitude into 0 to 2pi](#a-skyframes-own-skyaxes-are-not-latitude-axes-so-astaxoffset-wraps-its-latitude-into-0-to-2pi)
 - [A TimeFrame's default Epoch discards the UT1 value it computes from the TimeOrigin](#a-timeframes-default-epoch-discards-the-ut1-value-it-computes-from-the-timeorigin)
+- [With AlignSpecOffset set in a wavelength System, a change of rest frame maps every value to bad](#with-alignspecoffset-set-in-a-wavelength-system-a-change-of-rest-frame-maps-every-value-to-bad)
 - [SkyFrame LAST depends on which LAST values the process computed earlier](#skyframe-last-depends-on-which-last-values-the-process-computed-earlier)
 
 ### [Addressed here, and not going upstream](#addressed-here-and-not-going-upstream)
@@ -473,6 +474,20 @@ The result is the origin taken as a UTC MJD, whatever the System: at the submodu
 **Rust behaviour (mirror):** `TimeFrame::epoch_from_time_origin` in `crates/ast-core/src/frames/timeframe.rs` builds the UT1 Mapping, so that a failure to make it still fails, and converts the raw origin.
 `epoch_from_time_origin_matches_the_c_library` in `crates/ast-core/tests/test_time_epoch.rs` pins 102 cases.
 A fix upstream would convert `result` rather than re-reading the origin; the mirror would then become a bug.
+
+To be raised upstream.
+
+
+### With AlignSpecOffset set in a wavelength System, a change of rest frame maps every value to bad
+
+With AlignSpecOffset set on both Frames, `MakeSpecMapping` takes the result's zero point from the target's origin, 0, transformed through the conversion (`specframe.c:2953`), and shifts the result by it.
+In a wavelength System 0 has no frequency, so that zero point is bad.
+At the submodule pin a SpecFrame or DSBSpecFrame in WAVE with AlignSpecOffset set and no SpecOrigin converts LSRK to heliocentric with a Mapping that gives bad for every value, and with a SpecOrigin set `astSetStdOfRest` fails with AST__ATSER, because `OriginStdOfRest` (`specframe.c:3191`) cannot re-express the origin through that conversion.
+The same Frames in FREQ convert normally.
+
+**Rust behaviour (not yet a mirror):** the port computes the same bad zero point and the same shift inside `make_spec_mapping_full` (`crates/ast-core/src/frames/specframe.rs`), but the conversion `convert_to` assembles from them keeps finite values, so it neither returns bad nor raises AST__ATSER.
+The four cases are named in `SPEC_ORIGIN_SOR_EXCLUDED` in `crates/ast-core/tests/test_spec_origin_sor.rs` (audit DSB-5).
+A fix upstream would skip the shift when the transformed zero point is bad, or align offsets only when a SpecOrigin is set.
 
 To be raised upstream.
 
