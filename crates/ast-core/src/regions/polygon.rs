@@ -619,7 +619,7 @@ impl Polygon {
     ///
     /// For a SkyFrame Polygon both lobes are bounded, so "bounded" is taken to
     /// mean the smaller lobe: area < 2π steradians.
-    fn ensure_inside(&mut self) -> AstResult<()> {
+    pub(crate) fn ensure_inside(&mut self) -> AstResult<()> {
         let is_sky = self.data.frameset.base().as_any().is::<SkyFrame>();
         let bounded = if is_sky {
             self.sky_area()? < 2.0 * std::f64::consts::PI

@@ -923,7 +923,11 @@ impl Serializable for LutMap {
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
-        let base = read_mapping_base(node);
+        // Each class's items come from its own part of the description, as
+        // C's loaders read them through astReadClassData (channel.c).
+        let whole = node;
+        let node = &whole.section("LutMap");
+        let base = read_mapping_base(whole);
         let nlut = node.get_int("Nlut", 0) as usize;
         let start = node.get_double("Start", 0.0);
         let inc = node.get_double("Incr", 1.0);

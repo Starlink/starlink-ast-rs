@@ -442,7 +442,11 @@ impl Serializable for PcdMap {
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
-        let base = read_mapping_base(node);
+        // Each class's items come from its own part of the description, as
+        // C's loaders read them through astReadClassData (channel.c).
+        let whole = node;
+        let node = &whole.section("PcdMap");
+        let base = read_mapping_base(whole);
         let disc = node.get_double("Disco", BAD_VALUE);
         let pcdcen0 = node.get_double("PcdCn0", BAD_VALUE);
         let pcdcen1 = node.get_double("PcdCn1", BAD_VALUE);

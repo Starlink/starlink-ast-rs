@@ -142,8 +142,10 @@ pub(crate) struct MappingBaseAttrs {
     pub restricted_simplify: bool,
 }
 
-/// Read common Mapping attributes from a node.
-pub(crate) fn read_mapping_base(node: &Node) -> MappingBaseAttrs {
+/// Read common Mapping attributes from the Mapping part of a description
+/// (mapping.c `astLoadMapping` reads them through astReadClassData).
+pub(crate) fn read_mapping_base(whole: &Node) -> MappingBaseAttrs {
+    let node = &whole.section("Mapping");
     let nin = node.get_int("Nin", 0) as usize;
     let nout_raw = node.get_int("Nout", 0);
     let nout = if nout_raw <= 0 {
@@ -169,22 +171,34 @@ pub(crate) fn read_mapping_base(node: &Node) -> MappingBaseAttrs {
 /// Reconstruct a concrete Mapping from a Node tree, dispatching by class name.
 pub(crate) fn mapping_from_node(node: &Node) -> AstResult<DynMapping> {
     let mut result = mapping_from_node_inner(node)?;
-    // AllowSimplify (C `AlSimp`) is a base-Mapping attribute that can appear
-    // on any component; apply it generically after class dispatch so each
-    // class's `from_node` need not read it individually.
-    if node.get_int("AlSimp", 0) != 0 {
+    apply_mapping_object_items(result.as_mut(), node);
+    Ok(result)
+}
+
+/// Apply the Object and Mapping items that every Mapping class shares and
+/// that the class loaders leave to their caller: AllowSimplify (C `AlSimp`)
+/// from the Mapping part and Ident from the Object part (mapping.c and
+/// object.c load them). Frame-derived classes read their own Ident in
+/// `from_node`, and their Mapping-side setter is a no-op.
+fn apply_mapping_object_items(result: &mut dyn Mapping, node: &Node) {
+    if node.section("Mapping").get_int("AlSimp", 0) != 0 {
         result.set_allow_simplify(true);
     }
-    // Ident is an Object-level attribute that can appear on any class; apply it
-    // generically for the same reason. Frame-derived classes read their own
-    // Ident in `from_node`, and their Mapping-side setter is a no-op.
-    if node.get("Ident").is_some() {
-        let ident = node.get_string("Ident", "");
+    let object = node.section("Object");
+    if object.get("Ident").is_some() {
+        let ident = object.get_string("Ident", "");
         if !ident.is_empty() {
             result.set_ident(&ident);
         }
     }
-    Ok(result)
+}
+
+/// Load a Mapping class as the top-level object of a description, with the
+/// shared items [`mapping_from_node`] applies to a component Mapping.
+fn load_mapping<T: Serializable + Mapping>(node: &Node) -> AstResult<T> {
+    let mut m = T::from_node(node)?;
+    apply_mapping_object_items(&mut m, node);
+    Ok(m)
 }
 
 fn mapping_from_node_inner(node: &Node) -> AstResult<DynMapping> {
@@ -833,7 +847,11 @@ pub(crate) fn push_frame_isa_marker(node: &mut Node) {
 ///
 /// This reads the Region-level attributes, the FrameSet or Frame, the
 /// defining points, and the optional uncertainty region.
-pub(crate) fn read_region_base(node: &Node) -> AstResult<RegionData> {
+pub(crate) fn read_region_base(whole: &Node) -> AstResult<RegionData> {
+    // The Region and Object classes' parts of the description, which their
+    // loaders read through astReadClassData (region.c, object.c).
+    let object = &whole.section("Object");
+    let node = &whole.section("Region");
     let negated = node.get_int("Negate", 0) != 0;
     // A present `Fill`/`MeshSz` line means the attribute was explicitly set
     // (C emits them only when Test<Attr> is true). Their absence leaves the
@@ -929,8 +947,10 @@ pub(crate) fn read_region_base(node: &Node) -> AstResult<RegionData> {
 
     let mut data = RegionData {
         frameset,
-        ident: node.get_string_if_set("Ident").filter(|s| !s.is_empty()),
-        use_defs: node.get("UseDfs").map(|_| node.get_int("UseDfs", 1) != 0),
+        ident: object.get_string_if_set("Ident").filter(|s| !s.is_empty()),
+        use_defs: object
+            .get("UseDfs")
+            .map(|_| object.get_int("UseDfs", 1) != 0),
         points,
         negated,
         closed,
@@ -1130,15 +1150,29 @@ impl Serializable for Polygon {
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
-        let _base = read_mapping_base(node);
-        let data = read_region_base(node)?;
+        // Each class's items come from its own part of the description, as
+        // C's loaders read them through astReadClassData (channel.c).
+        let whole = node;
+        let node = &whole.section("Polygon");
+        let _base = read_mapping_base(whole);
+        let data = read_region_base(whole)?;
         // polygon.c:7300 reads SimpVT back as a boolean; an absent card leaves
         // the attribute unset.
         let simp_vertices = node.get_int_any_if_set("SimpVT").map(|v| v != 0);
-        Ok(Polygon {
+        let mut polygon = Polygon {
             data,
             simp_vertices,
-        })
+        };
+        // A description without a non-zero Order was written by a version of
+        // AST that stored the vertices in the old order, which puts the
+        // inside on the other side, so the Polygon is negated to match the
+        // current (STC) convention; then the vertices are stored so that the
+        // unnegated Polygon is the inside (polygon.c astLoadPolygon).
+        if node.get_int("Order", 0) == 0 {
+            polygon.negate();
+        }
+        polygon.ensure_inside()?;
+        Ok(polygon)
     }
 }
 
@@ -1224,8 +1258,12 @@ impl Serializable for CmpRegion {
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
-        let _base = read_mapping_base(node);
-        let data = read_region_base(node)?;
+        // Each class's items come from its own part of the description, as
+        // C's loaders read them through astReadClassData (channel.c).
+        let whole = node;
+        let node = &whole.section("CmpRegion");
+        let _base = read_mapping_base(whole);
+        let data = read_region_base(whole)?;
 
         let oper_int = node.get_int("Operator", 1);
         let operator = match oper_int {
@@ -1300,8 +1338,12 @@ impl Serializable for Prism {
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
-        let _base = read_mapping_base(node);
-        let data = read_region_base(node)?;
+        // Each class's items come from its own part of the description, as
+        // C's loaders read them through astReadClassData (channel.c).
+        let whole = node;
+        let node = &whole.section("Prism");
+        let _base = read_mapping_base(whole);
+        let data = read_region_base(whole)?;
 
         let node_a = node
             .get_object("RegionA")
@@ -1830,32 +1872,32 @@ impl AnyObject {
 /// Reconstruct an [`AnyObject`] from a [`Node`], dispatching by class name.
 pub(crate) fn any_object_from_node(node: &Node) -> AstResult<AnyObject> {
     match node.class.as_str() {
-        "UnitMap" => Ok(AnyObject::UnitMap(UnitMap::from_node(node)?)),
-        "ZoomMap" => Ok(AnyObject::ZoomMap(ZoomMap::from_node(node)?)),
-        "ShiftMap" => Ok(AnyObject::ShiftMap(ShiftMap::from_node(node)?)),
-        "MatrixMap" => Ok(AnyObject::MatrixMap(MatrixMap::from_node(node)?)),
-        "PermMap" => Ok(AnyObject::PermMap(PermMap::from_node(node)?)),
-        "WinMap" => Ok(AnyObject::WinMap(WinMap::from_node(node)?)),
-        "LutMap" => Ok(AnyObject::LutMap(LutMap::from_node(node)?)),
-        "PolyMap" => Ok(AnyObject::PolyMap(PolyMap::from_node(node)?)),
-        "ChebyMap" => Ok(AnyObject::ChebyMap(ChebyMap::from_node(node)?)),
-        "CmpMap" => Ok(AnyObject::CmpMap(CmpMap::from_node(node)?)),
-        "WcsMap" => Ok(AnyObject::WcsMap(WcsMap::from_node(node)?)),
-        "SlaMap" => Ok(AnyObject::SlaMap(SlaMap::from_node(node)?)),
-        "SpecMap" => Ok(AnyObject::SpecMap(SpecMap::from_node(node)?)),
-        "TimeMap" => Ok(AnyObject::TimeMap(TimeMap::from_node(node)?)),
-        "PcdMap" => Ok(AnyObject::PcdMap(PcdMap::from_node(node)?)),
-        "GrismMap" => Ok(AnyObject::GrismMap(GrismMap::from_node(node)?)),
-        "SphMap" => Ok(AnyObject::SphMap(SphMap::from_node(node)?)),
-        "UnitNormMap" => Ok(AnyObject::UnitNormMap(UnitNormMap::from_node(node)?)),
-        "TranMap" => Ok(AnyObject::TranMap(TranMap::from_node(node)?)),
-        "RateMap" => Ok(AnyObject::RateMap(RateMap::from_node(node)?)),
-        "MathMap" => Ok(AnyObject::MathMap(MathMap::from_node(node)?)),
-        "SplineMap" => Ok(AnyObject::SplineMap(SplineMap::from_node(node)?)),
-        "DssMap" => Ok(AnyObject::DssMap(DssMap::from_node(node)?)),
-        "NormMap" => Ok(AnyObject::NormMap(NormMap::from_node(node)?)),
-        "SelectorMap" => Ok(AnyObject::SelectorMap(SelectorMap::from_node(node)?)),
-        "SwitchMap" => Ok(AnyObject::SwitchMap(SwitchMap::from_node(node)?)),
+        "UnitMap" => Ok(AnyObject::UnitMap(load_mapping::<UnitMap>(node)?)),
+        "ZoomMap" => Ok(AnyObject::ZoomMap(load_mapping::<ZoomMap>(node)?)),
+        "ShiftMap" => Ok(AnyObject::ShiftMap(load_mapping::<ShiftMap>(node)?)),
+        "MatrixMap" => Ok(AnyObject::MatrixMap(load_mapping::<MatrixMap>(node)?)),
+        "PermMap" => Ok(AnyObject::PermMap(load_mapping::<PermMap>(node)?)),
+        "WinMap" => Ok(AnyObject::WinMap(load_mapping::<WinMap>(node)?)),
+        "LutMap" => Ok(AnyObject::LutMap(load_mapping::<LutMap>(node)?)),
+        "PolyMap" => Ok(AnyObject::PolyMap(load_mapping::<PolyMap>(node)?)),
+        "ChebyMap" => Ok(AnyObject::ChebyMap(load_mapping::<ChebyMap>(node)?)),
+        "CmpMap" => Ok(AnyObject::CmpMap(load_mapping::<CmpMap>(node)?)),
+        "WcsMap" => Ok(AnyObject::WcsMap(load_mapping::<WcsMap>(node)?)),
+        "SlaMap" => Ok(AnyObject::SlaMap(load_mapping::<SlaMap>(node)?)),
+        "SpecMap" => Ok(AnyObject::SpecMap(load_mapping::<SpecMap>(node)?)),
+        "TimeMap" => Ok(AnyObject::TimeMap(load_mapping::<TimeMap>(node)?)),
+        "PcdMap" => Ok(AnyObject::PcdMap(load_mapping::<PcdMap>(node)?)),
+        "GrismMap" => Ok(AnyObject::GrismMap(load_mapping::<GrismMap>(node)?)),
+        "SphMap" => Ok(AnyObject::SphMap(load_mapping::<SphMap>(node)?)),
+        "UnitNormMap" => Ok(AnyObject::UnitNormMap(load_mapping::<UnitNormMap>(node)?)),
+        "TranMap" => Ok(AnyObject::TranMap(load_mapping::<TranMap>(node)?)),
+        "RateMap" => Ok(AnyObject::RateMap(load_mapping::<RateMap>(node)?)),
+        "MathMap" => Ok(AnyObject::MathMap(load_mapping::<MathMap>(node)?)),
+        "SplineMap" => Ok(AnyObject::SplineMap(load_mapping::<SplineMap>(node)?)),
+        "DssMap" => Ok(AnyObject::DssMap(load_mapping::<DssMap>(node)?)),
+        "NormMap" => Ok(AnyObject::NormMap(load_mapping::<NormMap>(node)?)),
+        "SelectorMap" => Ok(AnyObject::SelectorMap(load_mapping::<SelectorMap>(node)?)),
+        "SwitchMap" => Ok(AnyObject::SwitchMap(load_mapping::<SwitchMap>(node)?)),
         "Frame" => Ok(AnyObject::BasicFrame(BasicFrame::from_node(node)?)),
         "SkyFrame" => Ok(AnyObject::SkyFrame(SkyFrame::from_node(node)?)),
         "SpecFrame" => Ok(AnyObject::SpecFrame(SpecFrame::from_node(node)?)),

@@ -77,6 +77,11 @@ impl Serializable for KeyMap {
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
+        // The KeyMap class's items come from its own part of the
+        // description, as keymap.c astLoadKeyMap reads them through
+        // astReadClassData.
+        let whole = node;
+        let node = &whole.section("KeyMap");
         let mut km = KeyMap::new();
 
         // C reads each attribute before any entry, and applies it through

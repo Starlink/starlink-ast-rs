@@ -610,7 +610,11 @@ impl Serializable for UnitNormMap {
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
-        let base = read_mapping_base(node);
+        // Each class's items come from its own part of the description, as
+        // C's loaders read them through astReadClassData (channel.c).
+        let whole = node;
+        let node = &whole.section("UnitNormMap");
+        let base = read_mapping_base(whole);
 
         // The centre length equals the number of spatial axes, which is
         // always min(nin, nout) in the forward direction. The serialized

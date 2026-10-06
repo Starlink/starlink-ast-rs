@@ -436,8 +436,12 @@ impl Serializable for SphMap {
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
+        // Each class's items come from its own part of the description, as
+        // C's loaders read them through astReadClassData (channel.c).
+        let whole = node;
+        let node = &whole.section("SphMap");
         use crate::serial::NodeValue;
-        let base = read_mapping_base(node);
+        let base = read_mapping_base(whole);
         let unit_radius = node.get_int("UntRd", 0) != 0;
         // Distinguish "uncommented PlrLg = …" (explicitly set in source) from
         // "#   PlrLg = …" (commented default) — only the former counts as set.

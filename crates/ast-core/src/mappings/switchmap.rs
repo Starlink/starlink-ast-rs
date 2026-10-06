@@ -822,7 +822,11 @@ impl crate::serial::Serializable for SwitchMap {
     fn from_node(node: &crate::serial::Node) -> AstResult<Self> {
         use crate::serial::{mapping_from_node, read_mapping_base};
 
-        let base = read_mapping_base(node);
+        // Each class's items come from its own part of the description, as
+        // C's loaders read them through astReadClassData (channel.c).
+        let whole = node;
+        let node = &whole.section("SwitchMap");
+        let base = read_mapping_base(whole);
 
         let fsmap = node
             .get_object("FSMap")

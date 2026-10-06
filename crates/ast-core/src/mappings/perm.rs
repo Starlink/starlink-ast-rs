@@ -1286,7 +1286,11 @@ impl Serializable for PermMap {
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
-        let base = read_mapping_base(node);
+        // Each class's items come from its own part of the description, as
+        // C's loaders read them through astReadClassData (channel.c).
+        let whole = node;
+        let node = &whole.section("PermMap");
+        let base = read_mapping_base(whole);
 
         // Check for OutCpy shorthand (null forward permutation).
         //

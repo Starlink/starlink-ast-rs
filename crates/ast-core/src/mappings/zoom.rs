@@ -341,7 +341,11 @@ impl Serializable for ZoomMap {
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
-        let base = read_mapping_base(node);
+        // Each class's items come from its own part of the description, as
+        // C's loaders read them through astReadClassData (channel.c).
+        let whole = node;
+        let node = &whole.section("ZoomMap");
+        let base = read_mapping_base(whole);
         // C reads the raw value against the unset default of zero and then
         // re-applies it through `SetZoom` when `TestZoom` reports it set, i.e.
         // when it is non-zero (zoommap.c:2237-2238, zoommap.c:1712). The

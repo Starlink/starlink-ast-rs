@@ -671,7 +671,11 @@ impl Serializable for MathMap {
     where
         Self: Sized,
     {
-        let base = read_mapping_base(node);
+        // Each class's items come from its own part of the description, as
+        // C's loaders read them through astReadClassData (channel.c).
+        let whole = node;
+        let node = &whole.section("MathMap");
+        let base = read_mapping_base(whole);
         let nin = base.nin;
         let nout = base.nout;
 

@@ -21,8 +21,7 @@ use crate::constants::BAD_VALUE;
 use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::serial::{
-    MappingToNode, Node, NodeValue, Serializable, mapping_from_node, read_mapping_base,
-    write_mapping_base,
+    MappingToNode, Node, Serializable, mapping_from_node, read_mapping_base, write_mapping_base,
 };
 
 use super::unit::UnitMap;
@@ -582,7 +581,11 @@ impl Serializable for RateMap {
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
-        let base = read_mapping_base(node);
+        // Each class's items come from its own part of the description, as
+        // C's loaders read them through astReadClassData (channel.c).
+        let whole = node;
+        let node = &whole.section("RateMap");
+        let base = read_mapping_base(whole);
 
         // Read 0-based axis indices (default 0 = first axis).
         let iin = node.get_int("IIn", 0) as usize;
@@ -592,11 +595,10 @@ impl Serializable for RateMap {
         let ax1 = iout + 1;
         let ax2 = iin + 1;
 
-        // Read the encapsulated mapping's invert flag snapshot.
-        // This appears AFTER the IsA marker. Since "Inv" is also used by
-        // the mapping base (for has_inverse), we need to look for the
-        // RateMap-specific one. It appears after the last IsA item.
-        let inv_snapshot = get_int_after_isa(node, "Inv", 0) != 0;
+        // The encapsulated mapping's invert flag. The Mapping part has an
+        // `Inv` item of its own, the Mapping's inverse flag, which the
+        // RateMap part keeps apart.
+        let inv_snapshot = node.get_int("Inv", 0) != 0;
 
         // Read the encapsulated mapping. Keep it in the orientation it was
         // serialised in — its own `Invert` flag is independent of the
@@ -628,36 +630,4 @@ impl Serializable for RateMap {
         rm.set_has_been_simplified(base.has_been_simplified);
         Ok(rm)
     }
-}
-
-/// Look up an integer attribute that appears after the last `IsA` marker
-/// in a node's items. Returns `default` if not found.
-///
-/// This is needed for keys like "Inv" that appear both in the mapping
-/// base (before IsA) and in the derived class (after IsA) with different
-/// semantics.
-fn get_int_after_isa(node: &Node, key: &str, default: i64) -> i64 {
-    // Find the position of the last IsA marker.
-    let last_isa_pos = node.items.iter().rposition(|item| item.key == "IsA");
-
-    let start = match last_isa_pos {
-        Some(pos) => pos + 1,
-        None => 0,
-    };
-
-    // Search for the key after the last IsA marker.
-    for item in &node.items[start..] {
-        if item.key == key {
-            if let NodeValue::Unset(_) = &item.value {
-                continue;
-            }
-            return match &item.value {
-                NodeValue::Int(v) => *v,
-                NodeValue::Double(v) => *v as i64,
-                _ => default,
-            };
-        }
-    }
-
-    default
 }

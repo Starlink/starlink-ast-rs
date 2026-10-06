@@ -1041,7 +1041,11 @@ impl Serializable for SplineMap {
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
-        let base = read_mapping_base(node);
+        // Each class's items come from its own part of the description, as
+        // C's loaders read them through astReadClassData (channel.c).
+        let whole = node;
+        let node = &whole.section("SplineMap");
+        let base = read_mapping_base(whole);
 
         let kx = node.get_int("KX", 0) as usize;
         let ky = node.get_int("KY", 0) as usize;

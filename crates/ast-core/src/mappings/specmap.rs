@@ -1523,7 +1523,11 @@ impl Serializable for SpecMap {
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
-        let base = read_mapping_base(node);
+        // Each class's items come from its own part of the description, as
+        // C's loaders read them through astReadClassData (channel.c).
+        let whole = node;
+        let node = &whole.section("SpecMap");
+        let base = read_mapping_base(whole);
 
         let nspec = node.get_int("Nspec", 0) as usize;
 

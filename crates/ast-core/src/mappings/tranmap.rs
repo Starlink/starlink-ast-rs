@@ -604,7 +604,11 @@ impl Serializable for TranMap {
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
-        let base = read_mapping_base(node);
+        // Each class's items come from its own part of the description, as
+        // C's loaders read them through astReadClassData (channel.c).
+        let whole = node;
+        let node = &whole.section("TranMap");
+        let base = read_mapping_base(whole);
 
         let inv_a = node.get_int("InvA", 0) != 0;
         let inv_b = node.get_int("InvB", 0) != 0;

@@ -896,7 +896,14 @@ impl Serializable for ChebyMap {
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
-        let base = read_mapping_base(node);
+        // Each class's items come from its own part of the description, as
+        // C's loaders read them through astReadClassData (channel.c): the
+        // coefficients from the PolyMap part, the domain from the ChebyMap
+        // part.
+        let whole = node;
+        let poly = &whole.section("PolyMap");
+        let node = &whole.section("ChebyMap");
+        let base = read_mapping_base(whole);
         let nin = base.nin;
         let nout = base.nout;
 
@@ -970,24 +977,24 @@ impl Serializable for ChebyMap {
 
         // --- Read PolyMap coefficient structure ---
         let mut forward = Vec::new();
-        let has_fwd_terms = node.get("MPF1").is_some();
+        let has_fwd_terms = poly.get("MPF1").is_some();
         if has_fwd_terms {
             let mut ncoeff_f = Vec::with_capacity(nout);
             for i in 0..nout {
-                let nc = node.get_int(&format!("NCF{}", i + 1), 0) as usize;
+                let nc = poly.get_int(&format!("NCF{}", i + 1), 0) as usize;
                 ncoeff_f.push(nc);
             }
 
             let total_coeffs: usize = ncoeff_f.iter().sum();
             let mut coeffs = Vec::with_capacity(total_coeffs);
             for iv in 1..=total_coeffs {
-                coeffs.push(node.get_double(&format!("CF{iv}"), BAD_VALUE));
+                coeffs.push(poly.get_double(&format!("CF{iv}"), BAD_VALUE));
             }
 
             let total_powers: usize = total_coeffs * nin;
             let mut powers = Vec::with_capacity(total_powers);
             for iv in 1..=total_powers {
-                powers.push(node.get_double(&format!("PF{iv}"), 0.0) as usize);
+                powers.push(poly.get_double(&format!("PF{iv}"), 0.0) as usize);
             }
 
             let mut coeff_idx = 0;
@@ -1010,24 +1017,24 @@ impl Serializable for ChebyMap {
         }
 
         let mut inverse_terms = Vec::new();
-        let has_inv_terms = node.get("MPI1").is_some();
+        let has_inv_terms = poly.get("MPI1").is_some();
         if has_inv_terms {
             let mut ncoeff_i = Vec::with_capacity(nin);
             for i in 0..nin {
-                let nc = node.get_int(&format!("NCI{}", i + 1), 0) as usize;
+                let nc = poly.get_int(&format!("NCI{}", i + 1), 0) as usize;
                 ncoeff_i.push(nc);
             }
 
             let total_coeffs: usize = ncoeff_i.iter().sum();
             let mut coeffs = Vec::with_capacity(total_coeffs);
             for iv in 1..=total_coeffs {
-                coeffs.push(node.get_double(&format!("CI{iv}"), BAD_VALUE));
+                coeffs.push(poly.get_double(&format!("CI{iv}"), BAD_VALUE));
             }
 
             let total_powers: usize = total_coeffs * nout;
             let mut powers = Vec::with_capacity(total_powers);
             for iv in 1..=total_powers {
-                powers.push(node.get_double(&format!("PI{iv}"), 0.0) as usize);
+                powers.push(poly.get_double(&format!("PI{iv}"), 0.0) as usize);
             }
 
             let mut coeff_idx = 0;

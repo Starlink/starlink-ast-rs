@@ -12,6 +12,7 @@
  *   ./section_load_probe > ../../crates/ast-core/tests/section_load_oracle/cases.rs
  */
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include "ast.h"
 
@@ -39,7 +40,8 @@ static void num( double v ) {
 }
 
 /* Each attribute is named with a one-character prefix giving how to read
-   it: 'S' a string, 'I' an integer, 'Y' a year (Epoch, Equinox). */
+   it: 'S' a string, 'I' an integer, 'D' a double, 'Y' a year (Epoch,
+   Equinox). */
 static void emit( const char *name, const char **text, const char **attrs ) {
    AstChannel *ch;
    AstObject *o;
@@ -73,6 +75,10 @@ static void emit( const char *name, const char **text, const char **attrs ) {
       case 'I':
          printf( "V::I(%d", astGetI( o, a ) );
          break;
+      case 'D':
+         printf( "V::D(" );
+         num( astGetD( o, a ) );
+         break;
       default:
          printf( "V::Y(" );
          num( astGetD( o, a ) );
@@ -86,6 +92,49 @@ static void emit( const char *name, const char **text, const char **attrs ) {
 
 #define FRM( n ) "Begin Frame", "Naxes = " #n, "End Frame"
 
+static char *dumped[ 200 ];
+static int ndumped;
+
+static void sink( const char *line ) {
+   dumped[ ndumped++ ] = strdup( line );
+}
+
+/* Dump "obj" with astWrite and emit the dump with the lines "extra"
+   inserted before the first line that starts with "marker", ignoring
+   leading spaces, or after the "Begin" line if "marker" is NULL. With
+   "extra" NULL, the "marker" line is removed instead. */
+static void emit_dump( const char *name, AstObject *obj, const char *marker,
+                       const char **extra, const char **attrs ) {
+   const char *text[ 220 ];
+   AstChannel *ch;
+   int i, n = 0, done = 0;
+
+   ndumped = 0;
+   ch = astChannel( NULL, sink, " " );
+   astWrite( ch, obj );
+   ch = astAnnul( ch );
+   for( i = 0; i < ndumped; i++ ) {
+      const char *l = dumped[ i ] + strspn( dumped[ i ], " " );
+      if( !done && marker && !strncmp( l, marker, strlen( marker ) ) ) {
+         done = 1;
+         if( !extra ) continue;
+         for( int j = 0; extra[ j ]; j++ ) text[ n++ ] = extra[ j ];
+      }
+      text[ n++ ] = dumped[ i ];
+      if( !done && !marker ) {
+         for( int j = 0; extra[ j ]; j++ ) text[ n++ ] = extra[ j ];
+         done = 1;
+      }
+   }
+   if( !done ) {
+      fprintf( stderr, "%s: no line starts with %s\n", name, marker );
+      exit( 1 );
+   }
+   text[ n ] = NULL;
+   emit( name, text, attrs );
+   for( i = 0; i < ndumped; i++ ) free( dumped[ i ] );
+}
+
 int main( void ) {
    int status = 0;
    astWatch( &status );
@@ -98,6 +147,8 @@ int main( void ) {
            "    S(&'static str),\n"
            "    /// astGetI.\n"
            "    I(i64),\n"
+           "    /// astGetD.\n"
+           "    D(f64),\n"
            "    /// astGetD of an Epoch or Equinox, a decimal year.\n"
            "    Y(f64),\n"
            "}\n\n"
@@ -249,6 +300,57 @@ int main( void ) {
                           "Nframe = 1", "Frm1 =", FRM( 1 ), "End FrameSet", NULL };
       const char *a[] = { "SIdent", NULL };
       emit( "frameset_ident_placed", t, a );
+   }
+
+   /* Mapping and Object parts of a Mapping. */
+   {
+      AstObject *zoom = (AstObject *) astZoomMap( 2, 3.0, " " );
+      const char *a[] = { "SIdent", "IInvert", "DZoom", NULL };
+      const char *ident[] = { "Ident = \"z\"", NULL };
+      const char *ident_obj[] = { "Ident = \"z\"", "IsA Object", NULL };
+      const char *zm[] = { "Zoom = 5", NULL };
+      const char *inv[] = { "Invert = 1", NULL };
+      emit_dump( "zoom_ident_in_mapping", zoom, "IsA Mapping", ident, a );
+      emit_dump( "zoom_ident_placed", zoom, NULL, ident_obj, a );
+      emit_dump( "zoom_zoom_in_mapping", zoom, "IsA Mapping", zm, a );
+      emit_dump( "zoom_invert_in_class", zoom, "End ZoomMap", inv, a );
+      emit_dump( "zoom_invert_placed", zoom, "IsA Mapping", inv, a );
+      zoom = astAnnul( zoom );
+   }
+
+   /* Region part of a Region. */
+   {
+      AstFrame *f = astFrame( 2, " " );
+      double centre[ 2 ] = { 0.0, 0.0 }, radius = 1.0;
+      double pts[ 8 ] = { 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0 };
+      AstObject *circle = (AstObject *) astCircle( f, 1, centre, &radius, NULL, " " );
+      AstObject *poly = (AstObject *) astPolygon( f, 4, 4, pts, NULL, " " );
+      const char *ca[] = { "INegated", "SIdent", NULL };
+      const char *pa[] = { "ISimpVertices", NULL };
+      const char *neg[] = { "Negate = 1", NULL };
+      const char *ident[] = { "Ident = \"c\"", NULL };
+      const char *simp[] = { "SimpVT = 1", NULL };
+      emit_dump( "circle_negate_in_class", circle, "End Circle", neg, ca );
+      emit_dump( "circle_negate_placed", circle, "IsA Region", neg, ca );
+      emit_dump( "circle_ident_in_region", circle, "IsA Region", ident, ca );
+      emit_dump( "polygon_simpvt_in_region", poly, "IsA Region", simp, pa );
+      emit_dump( "polygon_simpvt_placed", poly, "End Polygon", simp, pa );
+      emit_dump( "polygon_no_order", poly, "Order", NULL, ca );
+      circle = astAnnul( circle );
+      poly = astAnnul( poly );
+      f = astAnnul( f );
+   }
+
+   /* KeyMap part of a KeyMap. */
+   {
+      AstKeyMap *km = astKeyMap( " " );
+      const char *a[] = { "SSortBy", NULL };
+      const char *in_obj[] = { "SortBy = \"KeyUp\"", "IsA Object", NULL };
+      const char *placed[] = { "SortBy = \"KeyUp\"", NULL };
+      astMapPut0I( km, "a", 1, NULL );
+      emit_dump( "keymap_sortby_in_object", (AstObject *) km, NULL, in_obj, a );
+      emit_dump( "keymap_sortby_placed", (AstObject *) km, "End KeyMap", placed, a );
+      km = astAnnul( km );
    }
 
    printf( "];\n" );

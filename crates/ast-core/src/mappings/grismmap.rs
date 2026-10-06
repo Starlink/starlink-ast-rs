@@ -714,8 +714,12 @@ impl Serializable for GrismMap {
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
+        // Each class's items come from its own part of the description, as
+        // C's loaders read them through astReadClassData (channel.c).
+        let whole = node;
+        let node = &whole.section("GrismMap");
         use crate::serial::NodeValue;
-        let base = read_mapping_base(node);
+        let base = read_mapping_base(whole);
         let nr = node.get_double("GrmNR", 1.0);
         let nrp = node.get_double("GrmNRP", 0.0);
         let wave_r = node.get_double("GrmWR", 5000.0);
