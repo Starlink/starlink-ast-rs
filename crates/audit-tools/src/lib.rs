@@ -273,10 +273,19 @@ pub fn rust_items(src: &str) -> Vec<(String, usize, usize)> {
 /// implementation of it — from one that landed on an inherent helper. Ask
 /// [`declares_trait_methods`] which of the three a header is.
 pub fn enclosing_rust_block(src: &str, line: usize) -> Option<String> {
+    line.checked_sub(1)
+        .and_then(|i| block_headers(src).into_iter().nth(i))
+        .flatten()
+}
+
+/// The header [`enclosing_rust_block`] gives for each line of `src`, in one
+/// pass over the file.
+fn block_headers(src: &str) -> Vec<Option<String>> {
+    let mut out = Vec::new();
     let mut stack: Vec<(String, usize)> = Vec::new();
     let mut depth = 0usize;
     let mut pending: Option<String> = None;
-    for (i, text) in src.lines().enumerate() {
+    for text in src.lines() {
         let code = code_only(text);
         if let Some(header) = block_header(&code) {
             pending = Some(header);
@@ -298,11 +307,9 @@ pub fn enclosing_rust_block(src: &str, line: usize) -> Option<String> {
                 _ => {}
             }
         }
-        if i + 1 == line {
-            return stack.last().map(|(header, _)| header.clone());
-        }
+        out.push(stack.last().map(|(header, _)| header.clone()));
     }
-    None
+    out
 }
 
 /// Whether a header from [`enclosing_rust_block`] declares trait methods.
@@ -994,13 +1001,32 @@ pub fn resolve_source(root: &std::path::Path, file: &str) -> Resolution {
 /// trait rather than in an implementation of it, and a default method there is
 /// dispatched per class exactly as an implemented one is.
 pub fn trait_method_names(src: &str) -> Vec<String> {
+    let headers = block_headers(src);
     rust_items(src)
         .into_iter()
         .filter(|(_, _, last)| {
-            enclosing_rust_block(src, *last).is_some_and(|header| declares_trait_methods(&header))
+            headers
+                .get(last - 1)
+                .and_then(Option::as_ref)
+                .is_some_and(|header| declares_trait_methods(header))
         })
         .map(|(name, _, _)| name)
         .collect()
+}
+
+/// A Rust source's lines and items, parsed once for the call-graph search.
+struct Parsed<'a> {
+    lines: Vec<&'a str>,
+    items: Vec<(String, usize, usize)>,
+}
+
+impl<'a> Parsed<'a> {
+    fn new(src: &'a str) -> Self {
+        Parsed {
+            lines: src.lines().collect(),
+            items: rust_items(src),
+        }
+    }
 }
 
 /// The names `item` calls, as identifiers that appear before a `(` in its body.
@@ -1008,18 +1034,15 @@ pub fn trait_method_names(src: &str) -> Vec<String> {
 /// Over-collecting is harmless here — a name that calls nothing contributes
 /// nothing to the reachable set — so this looks for the shape of a call rather
 /// than resolving one.
-fn called_names(src: &str, item: &str) -> Vec<String> {
+fn called_names(src: &Parsed, item: &str) -> Vec<String> {
     const KEYWORDS: &[&str] = &[
         "if", "while", "for", "match", "return", "fn", "let", "as", "in", "else", "loop", "move",
     ];
-    let Some((_, first, last)) = rust_items(src)
-        .into_iter()
-        .find(|(name, _, _)| name == item)
-    else {
+    let Some((_, first, last)) = src.items.iter().find(|(name, _, _)| name == item) else {
         return Vec::new();
     };
     let mut out = Vec::new();
-    for line in src.lines().take(last).skip(first - 1) {
+    for line in &src.lines[first - 1..*last] {
         let code = code_only(line);
         let chars: Vec<char> = code.chars().collect();
         for (i, c) in chars.iter().enumerate() {
@@ -1052,6 +1075,7 @@ fn called_names(src: &str, item: &str) -> Vec<String> {
 /// reach `item`.
 pub fn reached_from_trait_method(class_src: &str, cited_src: &str, item: &str) -> bool {
     use std::collections::BTreeSet;
+    let parsed = [Parsed::new(class_src), Parsed::new(cited_src)];
     let mut frontier = trait_method_names(class_src);
     let mut seen: BTreeSet<String> = frontier.iter().cloned().collect();
     // Deep enough for the port's longest chain: the trait method calls the
@@ -1063,7 +1087,7 @@ pub fn reached_from_trait_method(class_src: &str, cited_src: &str, item: &str) -
         }
         let mut next = Vec::new();
         for name in frontier.drain(..) {
-            for src in [class_src, cited_src] {
+            for src in &parsed {
                 for callee in called_names(src, &name) {
                     if seen.insert(callee.clone()) {
                         next.push(callee);

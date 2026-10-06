@@ -54,3 +54,8 @@ all = { level = "deny", priority = -1 }
 # nothing ran rustdoc.
 [workspace.lints.rustdoc]
 all = { level = "deny", priority = -1 }
+
+# The audit gates in ast-core's tests parse every cited source file through
+# audit-tools; built unoptimised, that dominates the test suite's run time.
+[profile.dev.package.audit-tools]
+opt-level = 3
