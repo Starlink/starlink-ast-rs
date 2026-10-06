@@ -1180,83 +1180,43 @@ impl SpecFrame {
         }
     }
 
-    /// Add SpecMap steps to convert from the current system to frequency.
-    fn add_system_to_freq(specmap: &mut SpecMap, system: SpecSystem, rest_freq: Option<f64>) {
+    /// Add SpecMap steps to convert from the current system to frequency
+    /// (step 2 of `MakeSpecMapping`, specframe.c:2782). A velocity system
+    /// goes through apparent radial velocity using `rest_freq`.
+    fn add_system_to_freq(specmap: &mut SpecMap, system: SpecSystem, rest_freq: f64) {
         match system {
-            SpecSystem::Freq => {} // already frequency
-            SpecSystem::Energy => specmap.add(SpecCvtType::EnToFr, &[]),
-            SpecSystem::Wavenum => specmap.add(SpecCvtType::WnToFr, &[]),
-            SpecSystem::Wavelen => specmap.add(SpecCvtType::WvToFr, &[]),
-            SpecSystem::Airwave => specmap.add(SpecCvtType::AwToFr, &[]),
-            SpecSystem::Vradio => {
-                specmap.add(SpecCvtType::VrToVl, &[]);
-                if let Some(rf) = rest_freq {
-                    specmap.add(SpecCvtType::VlToFr, &[rf]);
-                }
-            }
-            SpecSystem::Voptical => {
-                specmap.add(SpecCvtType::VoToVl, &[]);
-                if let Some(rf) = rest_freq {
-                    specmap.add(SpecCvtType::VlToFr, &[rf]);
-                }
-            }
-            SpecSystem::Redshift => {
-                specmap.add(SpecCvtType::ZoToVl, &[]);
-                if let Some(rf) = rest_freq {
-                    specmap.add(SpecCvtType::VlToFr, &[rf]);
-                }
-            }
-            SpecSystem::Beta => {
-                specmap.add(SpecCvtType::BtToVl, &[]);
-                if let Some(rf) = rest_freq {
-                    specmap.add(SpecCvtType::VlToFr, &[rf]);
-                }
-            }
-            SpecSystem::Vrel => {
-                if let Some(rf) = rest_freq {
-                    specmap.add(SpecCvtType::VlToFr, &[rf]);
-                }
-            }
+            SpecSystem::Freq => return,
+            SpecSystem::Energy => return specmap.add(SpecCvtType::EnToFr, &[]),
+            SpecSystem::Wavenum => return specmap.add(SpecCvtType::WnToFr, &[]),
+            SpecSystem::Wavelen => return specmap.add(SpecCvtType::WvToFr, &[]),
+            SpecSystem::Airwave => return specmap.add(SpecCvtType::AwToFr, &[]),
+            SpecSystem::Vradio => specmap.add(SpecCvtType::VrToVl, &[]),
+            SpecSystem::Voptical => specmap.add(SpecCvtType::VoToVl, &[]),
+            SpecSystem::Redshift => specmap.add(SpecCvtType::ZoToVl, &[]),
+            SpecSystem::Beta => specmap.add(SpecCvtType::BtToVl, &[]),
+            SpecSystem::Vrel => {}
         }
+        specmap.add(SpecCvtType::VlToFr, &[rest_freq]);
     }
 
-    /// Add SpecMap steps to convert from frequency to the target system.
-    fn add_freq_to_system(specmap: &mut SpecMap, system: SpecSystem, rest_freq: Option<f64>) {
+    /// Add SpecMap steps to convert from frequency to the given system
+    /// (step 7 of `MakeSpecMapping`, specframe.c:2851).
+    fn add_freq_to_system(specmap: &mut SpecMap, system: SpecSystem, rest_freq: f64) {
         match system {
-            SpecSystem::Freq => {} // already frequency
-            SpecSystem::Energy => specmap.add(SpecCvtType::FrToEn, &[]),
-            SpecSystem::Wavenum => specmap.add(SpecCvtType::FrToWn, &[]),
-            SpecSystem::Wavelen => specmap.add(SpecCvtType::FrToWv, &[]),
-            SpecSystem::Airwave => specmap.add(SpecCvtType::FrToAw, &[]),
-            SpecSystem::Vradio => {
-                if let Some(rf) = rest_freq {
-                    specmap.add(SpecCvtType::FrToVl, &[rf]);
-                }
-                specmap.add(SpecCvtType::VlToVr, &[]);
-            }
-            SpecSystem::Voptical => {
-                if let Some(rf) = rest_freq {
-                    specmap.add(SpecCvtType::FrToVl, &[rf]);
-                }
-                specmap.add(SpecCvtType::VlToVo, &[]);
-            }
-            SpecSystem::Redshift => {
-                if let Some(rf) = rest_freq {
-                    specmap.add(SpecCvtType::FrToVl, &[rf]);
-                }
-                specmap.add(SpecCvtType::VlToZo, &[]);
-            }
-            SpecSystem::Beta => {
-                if let Some(rf) = rest_freq {
-                    specmap.add(SpecCvtType::FrToVl, &[rf]);
-                }
-                specmap.add(SpecCvtType::VlToBt, &[]);
-            }
-            SpecSystem::Vrel => {
-                if let Some(rf) = rest_freq {
-                    specmap.add(SpecCvtType::FrToVl, &[rf]);
-                }
-            }
+            SpecSystem::Freq => return,
+            SpecSystem::Energy => return specmap.add(SpecCvtType::FrToEn, &[]),
+            SpecSystem::Wavenum => return specmap.add(SpecCvtType::FrToWn, &[]),
+            SpecSystem::Wavelen => return specmap.add(SpecCvtType::FrToWv, &[]),
+            SpecSystem::Airwave => return specmap.add(SpecCvtType::FrToAw, &[]),
+            _ => {}
+        }
+        specmap.add(SpecCvtType::FrToVl, &[rest_freq]);
+        match system {
+            SpecSystem::Vradio => specmap.add(SpecCvtType::VlToVr, &[]),
+            SpecSystem::Voptical => specmap.add(SpecCvtType::VlToVo, &[]),
+            SpecSystem::Redshift => specmap.add(SpecCvtType::VlToZo, &[]),
+            SpecSystem::Beta => specmap.add(SpecCvtType::VlToBt, &[]),
+            _ => {}
         }
     }
 
@@ -1478,7 +1438,7 @@ impl SpecFrame {
         sf1.align_spec_offset_set = false;
         let mut sf2 = sf1.clone();
         make_old(&mut sf2);
-        let Ok(map) = sf2.make_spec_mapping_full(&sf1, None, false) else {
+        let Ok(Some(map)) = sf2.make_spec_mapping_full(&sf1, None, false, false) else {
             return;
         };
         let Ok(pts) = PointSet::from_columns(&[&[origin]]) else {
@@ -1500,7 +1460,13 @@ impl SpecFrame {
     /// path. The two-argument signature is the entry point for `convert`
     /// callers (FITS WCS construction, user-driven `astConvert`).
     pub(crate) fn make_spec_mapping(&self, result: &SpecFrame) -> AstResult<DynMapping> {
-        self.make_spec_mapping_full(result, None, false)
+        self.make_spec_mapping_full(result, None, false, true)?
+            .ok_or_else(|| {
+                AstError::new(
+                    ErrorCode::Badun,
+                    "astMatch(SpecFrame): no Mapping between the units",
+                )
+            })
     }
 
     /// Full-form port of C `MakeSpecMapping` (specframe.c:2488-2966).
@@ -1525,7 +1491,8 @@ impl SpecFrame {
         result: &SpecFrame,
         align_frm: Option<&SpecFrame>,
         intflag: bool,
-    ) -> AstResult<DynMapping> {
+        report: bool,
+    ) -> AstResult<Option<DynMapping>> {
         let target = self;
 
         // Derive default alignment frame (mirrors C Match/SubFrame setup
@@ -1543,9 +1510,9 @@ impl SpecFrame {
             }
         };
 
-        // C lines 2629-2634.
-        let target_rf = target.rest_freq.unwrap_or(0.0);
-        let result_rf = result.rest_freq.unwrap_or(0.0);
+        // C lines 2629-2634: RestFreq with its default of 1.0E14 Hz.
+        let target_rf = target.rest_freq();
+        let result_rf = result.rest_freq();
         let target_system = target.system;
         let result_system = result.system;
         let mut align_system = align_frm.system;
@@ -1624,7 +1591,7 @@ impl SpecFrame {
         // C line 2761: steps 4 and 5 are not necessary if alignment
         // system is frequency, or target/result rest frequencies are
         // equal.
-        if align_system == SpecSystem::Freq || ast_equal(result_rf, target_rf) {
+        if align_system == SpecSystem::Freq || result_rf == target_rf {
             step4 = false;
             step5 = false;
         }
@@ -1635,14 +1602,16 @@ impl SpecFrame {
             step6 = false;
         }
 
-        // C lines 2771-2774.
+        // C lines 2771-2774: only a relative system with an unchanged rest
+        // frequency can skip the conversion to and from frequency.
         if !step3
             && !step4
             && !step5
             && !step6
             && target.equal_sor(result)
             && target_system == result_system
-            && (target_system.is_absolute() || ast_equal(result_rf, target_rf))
+            && !target_system.is_absolute()
+            && result_rf == target_rf
         {
             step2 = false;
             step7 = false;
@@ -1654,7 +1623,7 @@ impl SpecFrame {
         // Step 2: target system → frequency in target rest frame
         // (C lines 2782-2819).
         if step2 {
-            Self::add_system_to_freq(&mut specmap, target_system, target.rest_freq);
+            Self::add_system_to_freq(&mut specmap, target_system, target_rf);
         }
 
         // Step 3: frequency in target SOR → frequency in alignment SOR
@@ -1686,63 +1655,51 @@ impl SpecFrame {
         // Step 7: frequency in result SOR → result system in result
         // SOR (C lines 2851-2888).
         if step7 {
-            Self::add_freq_to_system(&mut specmap, result_system, result.rest_freq);
+            Self::add_freq_to_system(&mut specmap, result_system, result_rf);
         }
 
-        // Build the canonical-units chain. SpecMap operates on values
-        // expressed in the canonical SI unit for each system (Hz for
-        // FREQ, m for WAVE, m/s for VEL, etc — see
-        // [`SpecSystem::specmap_units`]).
-        let mut mapping: DynMapping = if specmap.is_empty() {
+        // Steps 1 and 8: the SpecMap works in the default units of each
+        // system, so bracket it with Mappings from the target's Unit and to
+        // the result's (specframe.c:2891-2934).
+        let specmap: DynMapping = if specmap.is_empty() {
             Box::new(UnitMap::new(1))
         } else {
             Box::new(specmap)
         };
-
-        // Wrap in unit-conversion stages at the boundaries to match
-        // C's MakeSpecMapping (specframe.c:2891+). C uses `astGetUnit`,
-        // which always returns a non-NULL string (the explicit Unit if
-        // set, else the system's display default). Wrap whenever the
-        // effective Unit differs from the SpecMap's canonical unit
-        // (e.g. km/s vs m/s for VRAD), even when no explicit Unit is
-        // set. Returns Err on dimensionally-incompatible units
-        // (mirrors C `AST__BADUN`).
-        let in_default = target_system.specmap_units();
-        let in_unit = target
-            .axis
-            .unit
-            .as_deref()
-            .filter(|u| !u.is_empty())
-            .unwrap_or_else(|| target_system.default_display_units());
-        if !in_unit.is_empty() && !in_default.is_empty() && in_unit != in_default {
-            let pre = unit_mapper(in_unit, in_default).ok_or_else(|| {
-                AstError::new(
-                    ErrorCode::Badun,
-                    format!(
-                        "SpecFrame Unit '{in_unit}' incompatible with system default '{in_default}'"
-                    ),
-                )
-            })?;
-            mapping = Box::new(CmpMap::new(pre, mapping, Composition::Series)?);
-        }
-        let out_default = result_system.specmap_units();
-        let out_unit = result
-            .axis
-            .unit
-            .as_deref()
-            .filter(|u| !u.is_empty())
-            .unwrap_or_else(|| result_system.default_display_units());
-        if !out_unit.is_empty() && !out_default.is_empty() && out_unit != out_default {
-            let post = unit_mapper(out_default, out_unit).ok_or_else(|| {
-                AstError::new(
-                    ErrorCode::Badun,
-                    format!(
-                        "SpecFrame Unit '{out_unit}' incompatible with system default '{out_default}'"
-                    ),
-                )
-            })?;
-            mapping = Box::new(CmpMap::new(mapping, post, Composition::Series)?);
-        }
+        let in_unit = target.unit_or_default();
+        let out_unit = result.unit_or_default();
+        let umap1 = unit_mapper(in_unit, target_system.specmap_units());
+        let umap2 = unit_mapper(result_system.specmap_units(), out_unit);
+        let mut matched = true;
+        let mut mapping: DynMapping = match (umap1, umap2) {
+            (Some(umap1), Some(umap2)) => {
+                let map1 = CmpMap::new(umap1, specmap, Composition::Series)?;
+                Box::new(CmpMap::new(Box::new(map1), umap2, Composition::Series)?)
+            }
+            (umap1, _) => {
+                // Without a units Mapping the Frames only match when no
+                // spectral conversion is needed and the units are the same.
+                let simplified = specmap.simplify()?;
+                if !simplified.as_any().is::<UnitMap>() || in_unit != out_unit {
+                    matched = false;
+                    if report {
+                        let (unit, system) = if umap1.is_none() {
+                            (in_unit, target_system)
+                        } else {
+                            (out_unit, result_system)
+                        };
+                        return Err(AstError::new(
+                            ErrorCode::Badun,
+                            format!(
+                                "astMatch(SpecFrame): Inappropriate units ({unit}) specified for a {} axis.",
+                                system.label()
+                            ),
+                        ));
+                    }
+                }
+                simplified
+            }
+        };
 
         // Step 0: offset to absolute value in the target system —
         // prepend a ShiftMap by the target origin (specframe.c:2937-2945).
@@ -1768,7 +1725,10 @@ impl SpecFrame {
             mapping = Box::new(CmpMap::new(mapping, Box::new(sm), Composition::Series)?);
         }
 
-        Ok(mapping)
+        if !matched {
+            return Ok(None);
+        }
+        mapping.simplify().map(Some)
     }
 }
 
@@ -1956,61 +1916,7 @@ impl Frame for SpecFrame {
         target: &dyn Frame,
         match_sub: bool,
     ) -> AstResult<Option<super::find_frame::MatchResult>> {
-        // Mirrors specframe.c:2998. Step 1: defer to the parent (Frame
-        // class) Match for the axis-count + Domain pre-checks. The
-        // axis association arrays returned by the parent are
-        // discarded — SpecFrame is a 1-axis class so we know exactly
-        // what they should be.
-        let parent = super::find_frame::default_match(self, target, match_sub)?;
-        if parent.is_none() {
-            return Ok(None);
-        }
-
-        // Step 2 (specframe.c:3143-3155): walk the target's primary
-        // frames looking for a SpecFrame axis. Stop when one is
-        // found and remember the (zero-based) external axis index.
-        let target_naxes = target.naxes();
-        let mut target_axis0: Option<usize> = None;
-        for iaxis in 0..target_naxes {
-            let (primary, _local_axis) = primary_frame_walk(target, iaxis);
-            // Mirrors C `astIsASpecFrame(frame0)` (specframe.c:3147),
-            // which is true for SpecFrame and any subclass (DSBSpecFrame).
-            // The Rust DSBSpecFrame is a distinct struct embedding a
-            // SpecFrame, so test both class identities.
-            let is_specframe = primary.as_any().downcast_ref::<SpecFrame>().is_some()
-                || primary
-                    .as_any()
-                    .downcast_ref::<crate::frames::DSBSpecFrame>()
-                    .is_some();
-            if is_specframe {
-                target_axis0 = Some(iaxis);
-                break;
-            }
-        }
-        let Some(target_axis0) = target_axis0 else {
-            return Ok(None);
-        };
-
-        // Step 3 (specframe.c:3162-3163): SpecFrame has 1 axis; build
-        // the trivial association arrays. The target axis index
-        // points to the spectral component within the target.
-        let template_axes_vec = vec![0i32];
-        let target_axes_vec = vec![target_axis0 as i32];
-
-        // Step 4 (specframe.c:3170-3171): defer to the target's
-        // SubFrame to build the result + Mapping.
-        let Some((map, result)) =
-            target.sub_frame(Some(self), 1, &target_axes_vec, &template_axes_vec)?
-        else {
-            return Ok(None);
-        };
-
-        Ok(Some(super::find_frame::MatchResult {
-            template_axes: template_axes_vec,
-            target_axes: target_axes_vec,
-            map,
-            result,
-        }))
+        spec_match(self, target, match_sub)
     }
 
     fn sub_frame(
@@ -2073,6 +1979,82 @@ pub(crate) fn primary_frame_walk(frame: &dyn Frame, axis: usize) -> (&dyn Frame,
     frame.primary_frame(axis)
 }
 
+/// SpecFrame `Match` (specframe.c:2998), with the template passed as a
+/// Frame so that DSBSpecFrame, a SpecFrame in C, can use it as its parent
+/// method and still hand itself to the target's SubFrame.
+pub(crate) fn spec_match(
+    template: &dyn Frame,
+    target: &dyn Frame,
+    match_sub: bool,
+) -> AstResult<Option<super::find_frame::MatchResult>> {
+    // Mirrors specframe.c:2998. Step 1: defer to the parent (Frame
+    // class) Match for the axis-count + Domain pre-checks. The
+    // axis association arrays returned by the parent are
+    // discarded — SpecFrame is a 1-axis class so we know exactly
+    // what they should be.
+    let parent = super::find_frame::default_match(template, target, match_sub)?;
+    if parent.is_none() {
+        return Ok(None);
+    }
+
+    // Step 2 (specframe.c:3143-3155): walk the target's primary
+    // frames looking for a SpecFrame axis. Stop when one is
+    // found and remember the (zero-based) external axis index.
+    let target_naxes = target.naxes();
+    let mut target_axis0: Option<usize> = None;
+    for iaxis in 0..target_naxes {
+        let (primary, _local_axis) = primary_frame_walk(target, iaxis);
+        // Mirrors C `astIsASpecFrame(frame0)` (specframe.c:3147),
+        // which is true for SpecFrame and any subclass (DSBSpecFrame).
+        // The Rust DSBSpecFrame is a distinct struct embedding a
+        // SpecFrame, so test both class identities.
+        let is_specframe = primary.as_any().downcast_ref::<SpecFrame>().is_some()
+            || primary
+                .as_any()
+                .downcast_ref::<crate::frames::DSBSpecFrame>()
+                .is_some();
+        if is_specframe {
+            target_axis0 = Some(iaxis);
+            break;
+        }
+    }
+    let Some(target_axis0) = target_axis0 else {
+        return Ok(None);
+    };
+
+    // Step 3 (specframe.c:3162-3163): SpecFrame has 1 axis; build
+    // the trivial association arrays. The target axis index
+    // points to the spectral component within the target.
+    let template_axes_vec = vec![0i32];
+    let target_axes_vec = vec![target_axis0 as i32];
+
+    // Step 4 (specframe.c:3170-3171): defer to the target's
+    // SubFrame to build the result + Mapping.
+    let Some((map, result)) =
+        target.sub_frame(Some(template), 1, &target_axes_vec, &template_axes_vec)?
+    else {
+        return Ok(None);
+    };
+
+    Ok(Some(super::find_frame::MatchResult {
+        template_axes: template_axes_vec,
+        target_axes: target_axes_vec,
+        map,
+        result,
+    }))
+}
+
+/// `frame` as a SpecFrame, when it is one or is a DSBSpecFrame: the Rust
+/// equivalent of C's `astIsASpecFrame`, which is true for the subclass too.
+pub(crate) fn as_spec_frame(frame: &dyn Frame) -> Option<&SpecFrame> {
+    frame.as_any().downcast_ref::<SpecFrame>().or_else(|| {
+        frame
+            .as_any()
+            .downcast_ref::<crate::frames::DSBSpecFrame>()
+            .map(|d| d.spec())
+    })
+}
+
 fn specframe_overlay(
     template: &dyn Frame,
     template_axes: &[i32],
@@ -2081,9 +2063,8 @@ fn specframe_overlay(
     // The SpecFrame attributes the OVERLAY macro copies are scalar
     // (specframe.c:3536-3554); `template_axes` only says whether the Axis
     // is overlaid.
-    let template_spec = match template.as_any().downcast_ref::<SpecFrame>() {
-        Some(s) => s,
-        None => return Ok(()),
+    let Some(template_spec) = as_spec_frame(template) else {
+        return Ok(());
     };
 
     // Branch: result is a SpecFrame.
@@ -2225,9 +2206,13 @@ fn specframe_sub_frame(
         // If a template was supplied, overlay it onto the result and
         // pick the alignment frame from the template (specframe.c:
         // 4853-4868).
+        // MakeSpecMapping reports why two SpecFrames cannot be aligned
+        // only when the template is itself a SpecFrame (specframe.c:4865).
+        let mut report = false;
         let align_frm = if let Some(t) = template {
             specframe_overlay(t, template_axes, &mut result)?;
-            if let Some(template_spec) = t.as_any().downcast_ref::<SpecFrame>() {
+            if let Some(template_spec) = as_spec_frame(t) {
+                report = true;
                 template_spec.clone()
             } else {
                 target.clone()
@@ -2251,7 +2236,11 @@ fn specframe_sub_frame(
         // Build the Mapping target → result, taking account of the
         // alignment frame (specframe.c:4891).
         let intflag = target.frame_flags() & super::INTFLAG != 0;
-        let mapping = target.make_spec_mapping_full(&result, Some(&align_frm), intflag)?;
+        let Some(mapping) =
+            target.make_spec_mapping_full(&result, Some(&align_frm), intflag, report)?
+        else {
+            return Ok(None);
+        };
 
         let result_box: DynFrame = Box::new(result);
         return Ok(Some((mapping, result_box)));

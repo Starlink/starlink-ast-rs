@@ -160,15 +160,6 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
          test asserts both",
     ),
     (
-        "test_frameset_integrity.rs",
-        "UNIT_ZOOM_ROUNDING_EXCLUDED",
-        3,
-        "FrameSet integrity cases whose GHz unit zoom differs from C in the \
-         last bits: unit_mapper(\"Hz\", \"GHz\") rounds the prefix \
-         conversion by a different route than astUnitMapper. The Mapping \
-         structure matches C; the companion test fails once they match",
-    ),
-    (
         "test_frame_in_map_slot.rs",
         "FRAME_IN_MAP_SLOT_UNDECIDED",
         1,

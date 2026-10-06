@@ -23,21 +23,6 @@ use ast_core::frames::{
 };
 use ast_core::mappings::UnitMap;
 
-/// Cases whose values differ from C in the last bits because the units port
-/// rounds a prefix conversion differently: `unit_mapper("Hz", "GHz")` gives
-/// a ZoomMap of 9.9999999999999986e-10 where C's `astUnitMapper` gives
-/// 1.0000000000000001e-09. Everything else about these cases, including the
-/// structure of the Mapping, matches C.
-const UNIT_ZOOM_ROUNDING_EXCLUDED: &[(&str, &str)] = &[
-    ("spec_lsrk", "GHz zoom rounding in unit_mapper"),
-    ("spec_sourcevel", "GHz zoom rounding in unit_mapper"),
-    ("dsb_usb", "GHz zoom rounding in unit_mapper"),
-];
-
-fn excluded(name: &str) -> bool {
-    UNIT_ZOOM_ROUNDING_EXCLUDED.iter().any(|&(n, _)| n == name)
-}
-
 /// J2050 and J2010 as Modified Julian Dates.
 const J2050: f64 = 69807.0;
 const J2010: f64 = 55197.0;
@@ -292,7 +277,6 @@ fn compare(name: &str, expected: Result<&[&[f64]], &str>) -> Result<(), String> 
 fn integrity_matches_the_c_library() {
     let failures: Vec<String> = cases::CASES
         .iter()
-        .filter(|(name, _)| !excluded(name))
         .filter_map(|&(name, expected)| compare(name, expected).err())
         .collect();
     assert!(
@@ -302,21 +286,4 @@ fn integrity_matches_the_c_library() {
         cases::CASES.len(),
         failures.join("\n")
     );
-}
-
-/// Each excluded case still differs from C; one that matches must be
-/// removed from `UNIT_ZOOM_ROUNDING_EXCLUDED`.
-#[test]
-fn excluded_cases_still_differ() {
-    for &(name, reason) in UNIT_ZOOM_ROUNDING_EXCLUDED {
-        let expected = cases::CASES
-            .iter()
-            .find(|c| c.0 == name)
-            .map(|c| c.1)
-            .expect("excluded case is in the corpus");
-        assert!(
-            compare(name, expected).is_err(),
-            "{name} now matches C; remove it from UNIT_ZOOM_ROUNDING_EXCLUDED ({reason})"
-        );
-    }
 }

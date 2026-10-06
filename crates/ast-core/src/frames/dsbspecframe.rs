@@ -883,55 +883,13 @@ impl Frame for DSBSpecFrame {
         target: &dyn Frame,
         match_sub: bool,
     ) -> AstResult<Option<crate::frames::find_frame::MatchResult>> {
-        // dsbspecframe.c:976-1152 — Match defers to the parent
-        // SpecFrame::Match for axis-count / Domain / SpecFrame-target
-        // downcast checks. Then, if the target is a DSBSpecFrame,
-        // re-runs target.sub_frame with `self` (the DSB template) so
-        // the result Frame is a DSBSpecFrame.
-        //
-        // The Rust SpecFrame::match_template downcasts target to
-        // SpecFrame; when target is a DSBSpecFrame the downcast
-        // fails. Handle the DSBSpecFrame target case directly here
-        // by constructing the parent match result from
-        // default_match + a manual SubFrame call.
-
-        let target_is_dsb = target.as_any().is::<DSBSpecFrame>();
-        let target_is_spec = target.as_any().is::<SpecFrame>();
-
-        if target_is_dsb {
-            // Treat the DSBSpecFrame target as a SpecFrame for the
-            // axis-count / Domain check (the parent Frame::Match
-            // doesn't care about class), then build the result via
-            // target.sub_frame so the DSBSpecFrame override builds
-            // a DSBSpecFrame result with sideband-aware Mapping.
-            let parent =
-                crate::frames::find_frame::default_match(self as &dyn Frame, target, match_sub)?;
-            let Some(_) = parent else {
-                return Ok(None);
-            };
-            let template_axes = vec![0i32];
-            let target_axes = vec![0i32];
-            let Some((map, result)) =
-                target.sub_frame(Some(self as &dyn Frame), 1, &target_axes, &template_axes)?
-            else {
-                return Ok(None);
-            };
-            return Ok(Some(crate::frames::find_frame::MatchResult {
-                template_axes,
-                target_axes,
-                map,
-                result,
-            }));
-        }
-
-        if target_is_spec {
-            // Plain SpecFrame target — defer to parent SpecFrame match.
-            return self.spec.match_template(target, match_sub);
-        }
-
-        // Anything else (BasicFrame, CmpFrame in this code path):
-        // not a match for a DSBSpecFrame template.
-        Ok(None)
+        // dsbspecframe.c:976 `Match`: the parent SpecFrame Match, which
+        // accepts any target containing a SpecFrame axis. C then repeats
+        // the target's SubFrame with this template when the matched axis
+        // belongs to a DSBSpecFrame; the port's parent already passes this
+        // DSBSpecFrame as the template to that SubFrame, so its result is
+        // the one C's repeat produces.
+        super::specframe::spec_match(self, target, match_sub)
     }
 
     fn sub_frame(
@@ -954,56 +912,52 @@ impl Frame for DSBSpecFrame {
             return Ok(None);
         };
 
-        // C dsbspecframe.c:1610-1900 modifies the Mapping when both
-        // template and result are DSBSpecFrames. Our SpecFrame-level
-        // SubFrame produces a SpecFrame result Frame in this code path
-        // (because `parent_subframe` calls SpecFrame::SubFrame which
-        // builds a SpecFrame snapshot). Upgrade the result to a
-        // DSBSpecFrame snapshot when the template is a DSBSpecFrame
-        // and the target (self) is a DSBSpecFrame.
-        let mut final_result: DynFrame = result;
-        if let Some(t) = template
-            && t.as_any().is::<DSBSpecFrame>()
-        {
-            // Build a DSBSpecFrame result starting from a snapshot of
-            // self, then apply the template's Overlay (which copies
-            // DSBCentre/IF/SideBand/AlignSideBand).
-            let mut dsb = self.clone();
-            // Overlay the template's DSB-specific attributes.
-            if let Some(t_dsb) = t.as_any().downcast_ref::<DSBSpecFrame>() {
-                if let Some(v) = t_dsb.dsb_centre {
-                    dsb.set_dsb_centre(v);
-                }
-                if let Some(v) = t_dsb.ifr {
-                    dsb.set_ifr(v);
-                }
-                if let Some(v) = t_dsb.sideband {
-                    dsb.set_sideband(v);
-                }
-                if let Some(v) = t_dsb.align_sideband {
-                    dsb.set_align_sideband(v);
-                }
-
-                // Restoring FrameSet integrity always aligns sidebands;
-                // otherwise both AlignSideBand flags must be set
-                // (dsbspecframe.c:1628).
-                let alignsb = self.frame_flags() & super::INTFLAG != 0
-                    || (self.align_sideband() && t_dsb.align_sideband());
-                if alignsb {
-                    // Map the target to its observed sideband, apply the
-                    // parent SubFrame's spectral Mapping, then map from the
-                    // observed sideband to the result's (dsbspecframe.c:1690).
-                    let map1 = self.to_observed_mapping()?;
-                    let mut map2 = dsb.to_observed_mapping()?;
-                    map2.invert();
-                    let map3 = CmpMap::new(map1, map, Composition::Series)?;
-                    let joined: DynMapping =
-                        Box::new(CmpMap::new(Box::new(map3), map2, Composition::Series)?);
-                    map = joined.simplify()?;
-                }
+        // The parent SubFrame forms its result from a copy of the target,
+        // which in C is this DSBSpecFrame, and overlays the template onto
+        // it (specframe.c:4843-4854). The port's parent works on the
+        // SpecFrame part, so put its result back into a copy of `self`,
+        // then add the DSBSpecFrame attributes a DSBSpecFrame template
+        // overlays (dsbspecframe.c:1154 `Overlay`).
+        let Some(spec_result) = result.as_any().downcast_ref::<SpecFrame>() else {
+            // The parent picked axes into a plain Frame; nothing more to do.
+            return Ok(Some((map, result)));
+        };
+        let mut dsb = self.clone();
+        dsb.spec = spec_result.clone();
+        let t_dsb = template.and_then(|t| t.as_any().downcast_ref::<DSBSpecFrame>());
+        if let Some(t_dsb) = t_dsb {
+            if let Some(v) = t_dsb.dsb_centre {
+                dsb.set_dsb_centre(v);
             }
-            final_result = Box::new(dsb);
+            if let Some(v) = t_dsb.ifr {
+                dsb.set_ifr(v);
+            }
+            if let Some(v) = t_dsb.sideband {
+                dsb.set_sideband(v);
+            }
+            if let Some(v) = t_dsb.align_sideband {
+                dsb.set_align_sideband(v);
+            }
+
+            // Restoring FrameSet integrity always aligns sidebands;
+            // otherwise both AlignSideBand flags must be set
+            // (dsbspecframe.c:1628).
+            let alignsb = self.frame_flags() & super::INTFLAG != 0
+                || (self.align_sideband() && t_dsb.align_sideband());
+            if alignsb {
+                // Map the target to its observed sideband, apply the
+                // parent SubFrame's spectral Mapping, then map from the
+                // observed sideband to the result's (dsbspecframe.c:1690).
+                let map1 = self.to_observed_mapping()?;
+                let mut map2 = dsb.to_observed_mapping()?;
+                map2.invert();
+                let map3 = CmpMap::new(map1, map, Composition::Series)?;
+                let joined: DynMapping =
+                    Box::new(CmpMap::new(Box::new(map3), map2, Composition::Series)?);
+                map = joined.simplify()?;
+            }
         }
+        let final_result: DynFrame = Box::new(dsb);
 
         Ok(Some((map, final_result)))
     }

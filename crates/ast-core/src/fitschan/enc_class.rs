@@ -381,11 +381,11 @@ pub(crate) fn write_velocities_from_frameset(fs: &FrameSet, cards: &mut CardList
     let Some(found) = Frame::find_frame_template(fs.current(), &velo_template, "")? else {
         return Ok(());
     };
-    let velo_frame = found
-        .current()
-        .as_any()
-        .downcast_ref::<SpecFrame>()
-        .expect("find_frame returns SpecFrame for SpecFrame template")
+    // The match is a copy of the cube's spectral Frame, which may be a
+    // DSBSpecFrame; C uses it through the SpecFrame interface, and with
+    // AlignSideBand unset a DSBSpecFrame converts as its SpecFrame part does.
+    let velo_frame = crate::frames::specframe::as_spec_frame(found.current())
+        .expect("find_frame returns a SpecFrame for a SpecFrame template")
         .clone();
 
     // Build the freq frame (Source-Hz) from a copy of velo_frame.

@@ -25,3 +25,4 @@ class_attrs_probe
 sky_geometry_probe
 sky_convert_probe
 integrity_probe
+spec_convert_probe
