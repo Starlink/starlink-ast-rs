@@ -43,3 +43,4 @@ axis_format_probe
 axis_unformat_probe
 time_epoch_probe
 specflux_primary_probe
+cmp_match_end_probe

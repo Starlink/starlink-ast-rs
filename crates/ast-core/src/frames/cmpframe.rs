@@ -1393,8 +1393,10 @@ pub(crate) fn part_match(
     let template_naxes1 = template.frame1().naxes();
     let template_naxes = template.naxes();
 
-    let match_end1 = frame1_template.match_end();
-    let match_end2 = frame2_template.match_end();
+    // The components' own MatchEnd: C cleared the value it gave an unset
+    // component for its Match before reading these (cmpframe.c:6882, :6936).
+    let match_end1 = template.frame1().match_end();
+    let match_end2 = template.frame2().match_end();
     let match_end = template.match_end();
 
     // Inverse of the template's external→internal permutation: maps
