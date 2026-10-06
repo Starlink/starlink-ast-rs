@@ -220,6 +220,59 @@ pub(crate) fn make_sky_mapping(
     to_last: f64,
     to_diurab: f64,
 ) -> AstResult<Option<DynMapping>> {
+    make_sky_mapping_verified(
+        from_sys,
+        from_eq_mjd,
+        from_ep_mjd,
+        to_sys,
+        to_eq_mjd,
+        to_ep_mjd,
+        align_sys,
+        from_obs_lat,
+        from_last,
+        from_diurab,
+        to_obs_lat,
+        to_last,
+        to_diurab,
+        &|_, _| Ok(()),
+    )
+}
+
+/// The attributes the conversion step between `system` and FK5 J2000
+/// needs, in either direction, as `MakeSkyMapping` passes them to
+/// `VerifyMSMAttrs` (skyframe.c:6198-6633).
+pub(crate) fn msm_attrs(system: SkySystem) -> &'static str {
+    match system {
+        SkySystem::Fk4 | SkySystem::Fk4NoE => "Equinox Epoch",
+        SkySystem::Fk5 | SkySystem::Ecliptic => "Equinox",
+        SkySystem::J2000 | SkySystem::Gappt | SkySystem::Helioecliptic | SkySystem::Icrs => "Epoch",
+        SkySystem::Azel => "ObsLon ObsLat Epoch",
+        SkySystem::Galactic | SkySystem::Supergalactic | SkySystem::Unknown => "",
+    }
+}
+
+/// [`make_sky_mapping`], calling `verify(which, attrs)` before each step it
+/// makes with the attributes the step needs: `which` is 1 for the steps
+/// from the input system to the alignment system, which use the input
+/// SkyFrame's values, and 3 for those to the output system, as
+/// `MakeSkyMapping` calls `VerifyMSMAttrs` (skyframe.c:6198, :6440).
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn make_sky_mapping_verified(
+    from_sys: SkySystem,
+    from_eq_mjd: f64,
+    from_ep_mjd: f64,
+    to_sys: SkySystem,
+    to_eq_mjd: f64,
+    to_ep_mjd: f64,
+    align_sys: SkySystem,
+    from_obs_lat: f64,
+    from_last: f64,
+    from_diurab: f64,
+    to_obs_lat: f64,
+    to_last: f64,
+    to_diurab: f64,
+    verify: &dyn Fn(u8, &str) -> AstResult<()>,
+) -> AstResult<Option<DynMapping>> {
     // A system not referenced to an equinox borrows the other frame's
     // equinox rather than its own arbitrary default (skyframe.c:6070).
     let (mut from_eq_mjd, mut to_eq_mjd) = (from_eq_mjd, to_eq_mjd);
@@ -275,6 +328,7 @@ pub(crate) fn make_sky_mapping(
     // Step 1: from_sys → FK5 J2000.0
     let mut matched = true;
     if step1 {
+        verify(1, msm_attrs(from_sys))?;
         matched = add_system_to_fk5(
             &mut sla,
             from_sys,
@@ -288,6 +342,7 @@ pub(crate) fn make_sky_mapping(
 
     // Step 2: FK5 J2000.0 → align_sys (using from epoch/equinox)
     if matched && step2 {
+        verify(1, msm_attrs(align_sys))?;
         matched = add_fk5_to_system(
             &mut sla,
             align_sys,
@@ -301,6 +356,7 @@ pub(crate) fn make_sky_mapping(
 
     // Step 3: align_sys → FK5 J2000.0 (using to epoch/equinox)
     if matched && step3 {
+        verify(3, msm_attrs(align_sys))?;
         matched = add_system_to_fk5(
             &mut sla, align_sys, to_eq_mjd, to_ep_mjd, to_obs_lat, to_last, to_diurab,
         );
@@ -308,6 +364,7 @@ pub(crate) fn make_sky_mapping(
 
     // Step 4: FK5 J2000.0 → to_sys
     if matched && step4 {
+        verify(3, msm_attrs(to_sys))?;
         matched = add_fk5_to_system(
             &mut sla, to_sys, to_eq_mjd, to_ep_mjd, to_obs_lat, to_last, to_diurab,
         );

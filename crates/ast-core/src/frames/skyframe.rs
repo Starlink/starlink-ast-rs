@@ -2,7 +2,7 @@
 
 use crate::constants::BAD_VALUE;
 use crate::error::{AstError, AstResult, ErrorCode};
-use crate::frames::sky_convert::{SkyRefIs, SkySystem, make_offset_mapping, make_sky_mapping};
+use crate::frames::sky_convert::{SkyRefIs, SkySystem, make_offset_mapping};
 use crate::frames::skyaxis::{SkyAxis, default_dhms_format, dhms_unit, unformat_sky_axis};
 use crate::frames::{AxisKind, DynFrame, Frame, FrameRef, LineDef, SkyLineDef};
 use crate::mappings::helpers::is_bad;
@@ -920,20 +920,34 @@ impl SkyFrame {
         // "offsets" depending on whether an offset system is in use.
         let offset = self.is_offset();
         let word = if offset { "offsets" } else { "coordinates" };
+        // With UseDefs false, an Equinox or Epoch that has not been set is
+        // left out (skyframe.c:4598).
+        let show_equinox = self.test_equinox() || self.use_defs();
+        let show_epoch = self.test_epoch() || self.use_defs();
         let mut base = match self.system {
             SkySystem::Fk5 => {
-                let eq = fmt_decimal_yr(pal::epj(self.equinox_mjd()));
-                format!("FK5 equatorial {word}; mean equinox J{eq}")
+                let mut t = format!("FK5 equatorial {word}");
+                if show_equinox {
+                    let eq = fmt_decimal_yr(pal::epj(self.equinox_mjd()));
+                    t.push_str(&format!("; mean equinox J{eq}"));
+                }
+                t
             }
             SkySystem::Fk4 | SkySystem::Fk4NoE => {
-                let eq = fmt_decimal_yr(pal::epb(self.equinox_mjd()));
-                let ep = fmt_decimal_yr(pal::epb(self.epoch_mjd()));
-                let stem = if matches!(self.system, SkySystem::Fk4NoE) {
+                let mut t = if matches!(self.system, SkySystem::Fk4NoE) {
                     format!("FK4 equatorial {word}; no E-terms")
                 } else {
                     format!("FK4 equatorial {word}")
                 };
-                format!("{stem}; mean equinox B{eq}; epoch B{ep}")
+                if show_equinox {
+                    let eq = fmt_decimal_yr(pal::epb(self.equinox_mjd()));
+                    t.push_str(&format!("; mean equinox B{eq}"));
+                }
+                if show_epoch {
+                    let ep = fmt_decimal_yr(pal::epb(self.epoch_mjd()));
+                    t.push_str(&format!("; epoch B{ep}"));
+                }
+                t
             }
             SkySystem::J2000 => format!("J2000 equatorial {word}"),
             SkySystem::Icrs => format!("ICRS {word}"),
@@ -945,12 +959,20 @@ impl SkyFrame {
                 format!("Geocentric apparent equatorial {word}; ; epoch J{ep}")
             }
             SkySystem::Ecliptic => {
-                let eq = fmt_decimal_yr(pal::epj(self.equinox_mjd()));
-                format!("Ecliptic {word}; mean equinox J{eq}")
+                let mut t = format!("Ecliptic {word}");
+                if show_equinox {
+                    let eq = fmt_decimal_yr(pal::epj(self.equinox_mjd()));
+                    t.push_str(&format!("; mean equinox J{eq}"));
+                }
+                t
             }
             SkySystem::Helioecliptic => {
-                let ep = fmt_decimal_yr(pal::epj(self.epoch_mjd()));
-                format!("Helio-ecliptic {word}; mean equinox J2000; epoch J{ep}")
+                let mut t = format!("Helio-ecliptic {word}; mean equinox J2000");
+                if show_epoch {
+                    let ep = fmt_decimal_yr(pal::epj(self.epoch_mjd()));
+                    t.push_str(&format!("; epoch J{ep}"));
+                }
+                t
             }
             SkySystem::Galactic => format!("IAU (1958) galactic {word}"),
             SkySystem::Supergalactic => format!("De Vaucouleurs supergalactic {word}"),
@@ -2412,6 +2434,60 @@ fn skyframe_overlay(
     Ok(())
 }
 
+/// Check that `target` (for `which` below 3) and `result` (for `which`
+/// above 1) have values set for the attributes in `attrs` that a conversion
+/// step needs, where its UseDefs is false. Port of `VerifyMSMAttrs`
+/// (skyframe.c:11092), which also clears both Titles before reporting;
+/// the port leaves the caller's Frames unchanged.
+fn verify_msm_attrs(target: &SkyFrame, result: &SkyFrame, which: u8, attrs: &str) -> AstResult<()> {
+    let (usedef1, usedef2) = (target.use_defs(), result.use_defs());
+    if usedef1 && usedef2 {
+        return Ok(());
+    }
+    for attr in attrs.split_whitespace() {
+        let (set1, set2, desc) = match attr {
+            "Equinox" => (
+                target.test_equinox(),
+                result.test_equinox(),
+                "reference equinox",
+            ),
+            "Epoch" => (
+                target.test_epoch(),
+                result.test_epoch(),
+                "epoch of observation",
+            ),
+            "ObsLon" => (
+                Frame::test_obs_lon(target),
+                Frame::test_obs_lon(result),
+                "longitude of observer",
+            ),
+            "ObsLat" => (
+                Frame::test_obs_lat(target),
+                Frame::test_obs_lat(result),
+                "latitude of observer",
+            ),
+            other => unreachable!("VerifyMSMAttrs has no attribute {other}"),
+        };
+        let side = if !usedef1 && !set1 && which < 3 {
+            "input"
+        } else if !usedef2 && !set2 && which > 1 {
+            "output"
+        } else {
+            continue;
+        };
+        return Err(AstError::new(
+            ErrorCode::Noval,
+            format!(
+                "astMatch(SkyFrame): Cannot convert celestial coordinates from {} to {}. No \
+                 value has been set for the \"{attr}\" attribute ({desc}) in the {side} SkyFrame.",
+                target.default_title(),
+                result.default_title()
+            ),
+        ));
+    }
+    Ok(())
+}
+
 /// The Mapping from `target` to `result` that `MakeSkyMapping`
 /// (skyframe.c:5956) returns: the conversion chain, replaced by a UnitMap
 /// when its effect is below the SkyTol of both frames, between the
@@ -2421,6 +2497,7 @@ fn make_sky_frame_mapping(
     target: &SkyFrame,
     result: &SkyFrame,
     align_sys: SkySystem,
+    exempt: bool,
 ) -> AstResult<Option<DynMapping>> {
     // Two UNKNOWN systems are assumed to be the same, and C returns its
     // UnitMap before forming the offset-system Mappings (skyframe.c:6077),
@@ -2431,7 +2508,14 @@ fn make_sky_frame_mapping(
     let azel = uses_azel(target.system, result.system, align_sys);
     let target_last = if azel { target.compute_last()? } else { 0.0 };
     let result_last = if azel { result.compute_last()? } else { 0.0 };
-    let Some(mut map) = make_sky_mapping(
+    let verify = |which: u8, attrs: &str| {
+        if exempt {
+            Ok(())
+        } else {
+            verify_msm_attrs(target, result, which, attrs)
+        }
+    };
+    let Some(mut map) = crate::frames::sky_convert::make_sky_mapping_verified(
         target.system,
         target.equinox_mjd(),
         target.epoch_mjd(),
@@ -2445,6 +2529,7 @@ fn make_sky_frame_mapping(
         result.attrs.obs_lat.unwrap_or(0.0),
         result_last,
         result.compute_diurab(),
+        &verify,
     )?
     else {
         return Ok(None);
@@ -2519,6 +2604,12 @@ fn skyframe_sub_frame(
         && ((target_axes[0] == 0 && target_axes[1] == 1)
             || (target_axes[0] == 1 && target_axes[1] == 0))
     {
+        // Picking axes, with no template or the target as its own, needs
+        // no attribute checks: C clears a false UseDefs on the target for
+        // the conversion and sets it to 0 again on the target and the
+        // result afterwards (skyframe.c:10125, :10185).
+        let exempt = template
+            .is_none_or(|t| std::ptr::addr_eq(t as *const dyn Frame, target as *const SkyFrame));
         // Form the result from a copy of the target (skyframe.c:10029)
         // and apply the requested axis permutation.
         let mut result = target.clone();
@@ -2560,7 +2651,7 @@ fn skyframe_sub_frame(
         let mut map: DynMapping = if aligned_in_offsets {
             Box::new(UnitMap::new(2))
         } else {
-            match make_sky_frame_mapping(target, &result, align_sys)? {
+            match make_sky_frame_mapping(target, &result, align_sys, exempt)? {
                 Some(map) => map,
                 None => return Ok(None),
             }

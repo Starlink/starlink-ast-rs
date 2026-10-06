@@ -40,7 +40,8 @@ PROGS := linear_approx analyse_poly scale_poly_inputs orth_vector_set \
          frame_load_probe sky_interleave_probe dsb_topo_probe \
          axis_format_probe axis_unformat_probe time_epoch_probe \
          specflux_primary_probe cmp_match_end_probe \
-         time_scale_set_probe flux_badun_probe spec_origin_sor_probe use_defs_probe
+         time_scale_set_probe flux_badun_probe spec_origin_sor_probe use_defs_probe \
+         sky_use_defs_probe
 
 all: $(PROGS)
 
