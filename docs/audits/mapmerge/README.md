@@ -51,7 +51,12 @@ docs/audits/mapmerge/<file>.md --write`, then read what it wrote: it names the
 item at the line, which is not always the item the row means.
 `anchor-citations` only appends a missing `(fn …)`; it never moves a number.
 
-Moving a number is the other tool's job, and only at a pin move.
+Moving a number is the other tool's job: for Rust citations on every commit
+that changes `ast-core`'s sources, and for C citations at a pin move.
+The `reanchor-citations` pre-commit hook runs it with `--rust-only --warn-stuck
+--write` over every checklist, so an edit that shifts cited Rust lines rewrites
+the checklists that cite them and stops the commit for them to be added.
+By hand it is
 `cargo run -p audit-tools --bin reanchor-citations -- docs/audits/mapmerge/<file>.md`
 diffs each cited line's own baseline against the source now — `git blame` names
 the commit that wrote the row, and that commit's tree, or the submodule pin it

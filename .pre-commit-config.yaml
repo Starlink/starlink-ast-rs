@@ -104,3 +104,18 @@ repos:
         language: system
         types: [rust]
         pass_filenames: false
+
+      # Follow the audit checklists' Rust citations onto the lines their code
+      # now occupies. A checklist cites `file.rs:line (fn name)`, so an edit
+      # above a cited line moves it; this relocates each citation whose line
+      # survived the edit unchanged and still lies in the named item, and
+      # reports the rest, which need a hand re-anchor. Like cargo fmt, a
+      # rewrite aborts the commit so the re-anchored checklists can be added.
+      # C citations are left alone (`--rust-only`): their baselines are
+      # submodule pins that are mostly absent from a local clone.
+      - id: reanchor-citations
+        name: re-anchor audit citations
+        entry: bash -c 'cargo run -q -p audit-tools --bin reanchor-citations -- --rust-only --warn-stuck --write docs/audits/mapmerge/*.md'
+        language: system
+        files: ^crates/ast-core/src/.*\.rs$
+        pass_filenames: false
