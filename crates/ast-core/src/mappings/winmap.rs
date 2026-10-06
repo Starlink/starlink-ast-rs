@@ -186,14 +186,17 @@ impl Mapping for WinMap {
                     }
                 }
             } else {
-                // inverse: output = (input - shift) / scale
+                // inverse: output = -shift/scale + input/scale, with the
+                // coefficients inverted first as winmap.c `Transform` does,
+                // so the rounding matches C's.
                 for (j, (o, &v)) in outp.iter_mut().zip(inp.iter()).enumerate() {
                     let shift = self.shifts[j];
                     let scale = self.scales[j];
                     if is_bad(v) || is_bad(shift) || is_bad(scale) || scale == 0.0 {
                         *o = BAD_VALUE;
                     } else {
-                        *o = (v - shift) / scale;
+                        let bb = 1.0 / scale;
+                        *o = -shift * bb + bb * v;
                     }
                 }
             }
@@ -247,7 +250,8 @@ impl Mapping for WinMap {
                     *o = if bad_channel[j] {
                         f64::NAN
                     } else {
-                        (v - self.shifts[j]) / self.scales[j]
+                        let bb = 1.0 / self.scales[j];
+                        -self.shifts[j] * bb + bb * v
                     };
                 }
             }

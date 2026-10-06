@@ -196,6 +196,17 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
          C-side artefact has a home. Gated by c_defect_rows_still_diverge",
     ),
     (
+        "test_dsb_topo.rs",
+        "DSB_TOPO_EXCLUDED",
+        1,
+        "one DSBSpecFrame with SpecOrigin and AlignSpecOffset set, which C \
+         cannot convert between sidebands: re-expressing the SpecOrigin of \
+         its alignment Frame goes through a DSBSpecFrame conversion whose \
+         Mapping holds a WinMap with bad coefficients, and C reports \
+         AST__ATSER. The port re-expresses the origin at the SpecFrame level \
+         (audit DSB-5). Gated by excluded_cases_still_differ",
+    ),
+    (
         "test_frame_load.rs",
         "FRAME_LOAD_EXCLUDED",
         2,

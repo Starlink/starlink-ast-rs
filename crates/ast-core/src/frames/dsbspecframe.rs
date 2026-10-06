@@ -7,7 +7,7 @@
 
 use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
-use crate::frames::{DynFrame, Frame, SpecFrame, SpecSystem, StdOfRest};
+use crate::frames::{DynFrame, Frame, FrameRef, SpecFrame, SpecSystem, StdOfRest};
 use crate::mappings::{CmpMap, Composition, DynMapping, UnitMap, WinMap};
 use crate::serial::{Node, NodeValue, Serializable};
 
@@ -599,41 +599,28 @@ impl DSBSpecFrame {
     }
 
     /// Create a mapping from the current spectral system/SOR to topocentric
-    /// frequency in Hz.
+    /// frequency in Hz. Mirrors C `TopoMap` (dsbspecframe.c:2051): the
+    /// SpecFrame attributes of this DSBSpecFrame are overlaid onto a new
+    /// SpecFrame, which is aligned in the topocentric rest frame and
+    /// converted to a copy of itself set to topocentric frequency in Hz.
+    /// The copy keeps the SpecOrigin, re-expressed for its System and
+    /// StdOfRest, so the origin and AlignSpecOffset take part.
     fn to_topo_mapping(&self) -> AstResult<DynMapping> {
-        let mut topo_frame = SpecFrame::new(SpecSystem::Freq);
-        topo_frame.set_std_of_rest(StdOfRest::Topocentric);
-        // Target topocentric frequency in Hz. Mirrors C `TopoMap`
-        // (dsbspecframe.c:2124, `astSetUnit(tf2, 0, "Hz")`): the internal
-        // DSBCentre / IF attributes are topocentric Hz, so the conversion
-        // must land in Hz rather than the FREQ display default (GHz).
-        topo_frame.set_unit(1, "Hz")?;
-
-        // Copy observer attributes from self.spec to the topo frame.
-        if self.spec.test_obs_lat() {
-            let lat = self.spec.obs_lat();
-            topo_frame.set_obs_lat(lat);
-        }
-        if self.spec.test_obs_lon() {
-            let lon = self.spec.obs_lon();
-            topo_frame.set_obs_lon(lon);
-        }
-        if self.spec.test_obs_alt() {
-            let alt = self.spec.obs_alt();
-            topo_frame.set_obs_alt(alt);
-        }
-        topo_frame.set_epoch_mjd(self.spec.epoch_mjd());
-        if self.spec.test_ref_ra() {
-            topo_frame.set_ref_ra(self.spec.ref_ra());
-        }
-        if self.spec.test_ref_dec() {
-            topo_frame.set_ref_dec(self.spec.ref_dec());
-        }
-        if self.spec.test_rest_freq() {
-            topo_frame.set_rest_freq(self.spec.rest_freq());
-        }
-
-        self.spec.make_spec_mapping(&topo_frame)
+        let mut tf1 = SpecFrame::unset_system();
+        self.spec.overlay(&[0], &mut tf1)?;
+        tf1.set_align_std_of_rest(StdOfRest::Topocentric);
+        let mut tf2 = tf1.clone();
+        tf2.set_system(SpecSystem::Freq);
+        tf2.set_std_of_rest(StdOfRest::Topocentric);
+        tf2.set_unit(1, "Hz")?;
+        let Some(fs) = tf1.convert_to(&tf2, &[])? else {
+            return Err(AstError::new(
+                ErrorCode::Inter,
+                "Cannot convert DSBCentre value from the supplied system to \
+                 topocentric frequency (internal AST programming error).",
+            ));
+        };
+        fs.mapping(FrameRef::Base, FrameRef::Current)
     }
 
     /// Create a mapping that converts frequencies from the current sideband
@@ -722,10 +709,12 @@ impl DSBSpecFrame {
         let mut inv_topo = self.to_topo_mapping()?;
         inv_topo.invert();
 
-        // Compose: topo_map → flip → inv_topo
+        // Compose: topo_map → flip → inv_topo, simplified as ToLOMapping,
+        // ToLSBMapping and ToUSBMapping do (dsbspecframe.c:1916, 2034, 2255).
         let step1 = CmpMap::new(topo_map, flip, Composition::Series)?;
-        let result = CmpMap::new(Box::new(step1), inv_topo, Composition::Series)?;
-        Ok(Box::new(result))
+        let result: DynMapping =
+            Box::new(CmpMap::new(Box::new(step1), inv_topo, Composition::Series)?);
+        result.simplify()
     }
 
     /// Mapping from current sideband to the "observed" sideband.

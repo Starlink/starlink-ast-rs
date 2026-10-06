@@ -213,12 +213,14 @@ fn winmap_bad_per_axis() {
     assert_eq!(out.point(0)[1], BAD_VALUE);
     assert_eq!(out.point(0)[2], 3.0 + 4.0 * 7.0); // 31.0
 
-    // Inverse with axis 1 (first) BAD
+    // Inverse with axis 1 (first) BAD. The inverse is -shift/scale +
+    // input/scale, with the coefficients inverted first (winmap.c
+    // `Transform`), so axis 2 gives C's 5.9999999999999991 rather than 6.
     let pts_inv = PointSet::from_rows([[BAD_VALUE, 20.0, 31.0]]);
     let out_inv = wm.transform(&pts_inv, false).unwrap();
     assert_eq!(out_inv.point(0)[0], BAD_VALUE);
-    assert_eq!(out_inv.point(0)[1], (20.0 - 2.0) / 3.0); // 6.0
-    assert_eq!(out_inv.point(0)[2], (31.0 - 3.0) / 4.0); // 7.0
+    assert_eq!(out_inv.point(0)[1], 5.999_999_999_999_999);
+    assert_eq!(out_inv.point(0)[2], 7.0);
 }
 
 #[test]
