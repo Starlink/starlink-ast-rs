@@ -35,3 +35,4 @@ flux_unit_system_probe
 system_change_probe
 new_unit_probe
 sky_norm_probe
+specflux_cmp_probe

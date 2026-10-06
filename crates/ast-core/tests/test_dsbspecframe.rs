@@ -611,3 +611,19 @@ fn dsb_centre_cur_differs_from_internal_for_nontopo_rest() {
         "non-topocentric current-system DSBCentre should differ from internal Hz"
     );
 }
+
+/// The local oscillator frequency must be at least the size of the IF
+/// (dsbspecframe.c `GetLO`), so a negative IF larger than the DSBCentre is
+/// an error rather than a frequency.
+#[test]
+fn lo_below_the_if_is_an_error() {
+    use ast_core::error::ErrorCode;
+    use ast_core::frames::{DSBSpecFrame, SpecSystem};
+
+    let mut f = DSBSpecFrame::new(SpecSystem::Freq);
+    f.set_dsb_centre(5.0e9);
+    f.set_ifr(-4.0e9);
+    assert_eq!(f.lo_freq().unwrap_err().code(), ErrorCode::Attin);
+    f.set_ifr(-2.0e9);
+    assert_eq!(f.lo_freq().unwrap(), 3.0e9);
+}

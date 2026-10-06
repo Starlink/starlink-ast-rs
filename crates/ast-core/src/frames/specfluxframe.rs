@@ -5,7 +5,7 @@ use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::{DynFrame, FluxFrame, Frame, SpecFrame};
 use crate::mappings::helpers::{is_bad, point_has_bad};
 use crate::mappings::{DynMapping, UnitMap};
-use crate::serial::{Node, Serializable, frame_from_node};
+use crate::serial::{Node, Serializable};
 
 /// A compound 2-axis frame combining a SpecFrame (axis 1) and a FluxFrame (axis 2).
 ///
@@ -76,6 +76,17 @@ impl SpecFluxFrame {
             flux_frame,
             swap: false,
         }
+    }
+
+    /// This SpecFluxFrame as the CmpFrame it is in C, for the methods it
+    /// inherits from CmpFrame.
+    pub(crate) fn as_cmp_frame(&self) -> super::CmpFrame {
+        super::CmpFrame::with_parts(
+            Box::new(self.spec_frame.clone()),
+            Box::new(self.flux_frame.clone()),
+            self.perm(),
+            self.attrs.clone(),
+        )
     }
 
     /// The SpecFrame and FluxFrame components.
@@ -387,18 +398,12 @@ impl Frame for SpecFluxFrame {
     fn match_template(
         &self,
         target: &dyn Frame,
-        _match_sub: bool,
+        match_sub: bool,
     ) -> AstResult<Option<super::find_frame::MatchResult>> {
-        // Mirrors specfluxframe.c:1216. For non-SpecFluxFrame targets
-        // C falls back to the CmpFrame parent's Match. The Rust port
-        // does not currently implement a CmpFrame parent for
-        // SpecFluxFrame (it stores its components directly), so for
-        // non-SpecFluxFrame targets we return None — matching the
-        // observable behaviour for any case the C code would have
-        // delegated to a parent that knew nothing about flux/spec
-        // pairings.
+        // specfluxframe.c:1330: a target that is not a SpecFluxFrame is
+        // matched by the parent CmpFrame Match.
         let Some(target_sff) = target.as_any().downcast_ref::<SpecFluxFrame>() else {
-            return Ok(None);
+            return self.as_cmp_frame().match_template(target, match_sub);
         };
 
         // Axis-swap detection (specfluxframe.c:1363-1375).
@@ -752,9 +757,12 @@ fn specfluxframe_sub_frame(
         return Ok(Some((map, Box::new(result))));
     }
 
-    // parent_subframe branch — produce a BasicFrame-shaped result
-    // via the default Frame::SubFrame.
-    super::find_frame::default_sub_frame(target, template, target_axes, template_axes)
+    // specfluxframe.c:1554: any other selection is made by the parent
+    // CmpFrame SubFrame, so a single axis keeps its SpecFrame or
+    // FluxFrame class.
+    target
+        .as_cmp_frame()
+        .sub_frame(template, result_naxes, target_axes, template_axes)
 }
 
 // ---------------------------------------------------------------------------
@@ -766,36 +774,25 @@ impl Serializable for SpecFluxFrame {
         "SpecFluxFrame"
     }
 
+    /// A SpecFluxFrame has no Dump of its own: C writes the CmpFrame it is,
+    /// under its own class name, and then its `IsA CmpFrame` marker.
     fn to_node(&self) -> AstResult<Node> {
-        let mut node = Node::new(self.class_name());
-        node.class_comment = Some("Compound spectrum/flux Frame".to_string());
-
-        // SpecFluxFrame inherits from CmpFrame in the C library, so we
-        // serialise the IsA chain appropriately. The frame data is stored
-        // as CmpFrame-style FrameA and FrameB child objects.
-        node.push_isa("Frame", Some("Coordinate Frame".to_string()));
-
-        // Component frames as nested objects (same as CmpFrame).
-        let node_a = Serializable::to_node(&self.spec_frame)?;
-        let node_b = Serializable::to_node(&self.flux_frame)?;
-        node.push_object("FrameA", node_a, Some("First component Frame".to_string()));
-        node.push_object("FrameB", node_b, Some("Second component Frame".to_string()));
-
+        let mut node = Serializable::to_node(&self.as_cmp_frame())?;
+        node.class = self.class_name().to_string();
+        node.class_comment =
+            Some("Compound spectral/flux coordinate system description".to_string());
+        node.push_isa(
+            "CmpFrame",
+            Some("Compound coordinate system description".to_string()),
+        );
         Ok(node)
     }
 
+    /// Loaded as the CmpFrame it is in C, whose components must be a
+    /// SpecFrame and a FluxFrame.
     fn from_node(node: &Node) -> AstResult<Self> {
-        let node_a = node
-            .get_object("FrameA")
-            .ok_or_else(|| AstError::new(ErrorCode::Lderr, "SpecFluxFrame: missing FrameA"))?;
-        let node_b = node
-            .get_object("FrameB")
-            .ok_or_else(|| AstError::new(ErrorCode::Lderr, "SpecFluxFrame: missing FrameB"))?;
-
-        // FrameA must be a SpecFrame, FrameB must be a FluxFrame.
-        let frame_a = frame_from_node(node_a)?;
-        let frame_b = frame_from_node(node_b)?;
-
+        let cmp = <super::CmpFrame as Serializable>::from_node(node)?;
+        let (frame_a, frame_b, perm, attrs) = cmp.into_parts();
         let spec_frame = frame_a
             .as_any()
             .downcast_ref::<SpecFrame>()
@@ -803,7 +800,6 @@ impl Serializable for SpecFluxFrame {
                 AstError::new(ErrorCode::Lderr, "SpecFluxFrame: FrameA is not a SpecFrame")
             })?
             .clone();
-
         let flux_frame = frame_b
             .as_any()
             .downcast_ref::<FluxFrame>()
@@ -811,8 +807,10 @@ impl Serializable for SpecFluxFrame {
                 AstError::new(ErrorCode::Lderr, "SpecFluxFrame: FrameB is not a FluxFrame")
             })?
             .clone();
-
-        Ok(SpecFluxFrame::new(spec_frame, flux_frame))
+        let mut sff = SpecFluxFrame::new(spec_frame, flux_frame);
+        sff.swap = perm == [1, 0];
+        sff.attrs = attrs;
+        Ok(sff)
     }
 }
 

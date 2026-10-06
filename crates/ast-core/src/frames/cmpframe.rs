@@ -132,6 +132,34 @@ impl CmpFrame {
         self.frame2.as_ref()
     }
 
+    /// A CmpFrame of `frame1` and `frame2` with the given axis permutation
+    /// and Frame attributes: the CmpFrame a class that is one in C (a
+    /// SpecFluxFrame) uses for the methods it inherits.
+    pub(crate) fn with_parts(
+        frame1: DynFrame,
+        frame2: DynFrame,
+        perm: Vec<usize>,
+        attrs: super::frame_attrs::FrameAttrs,
+    ) -> Self {
+        let mut cmp = CmpFrame::new(frame1, frame2);
+        cmp.perm = perm;
+        cmp.attrs = attrs;
+        cmp
+    }
+
+    /// The components, axis permutation and Frame attributes of this
+    /// CmpFrame, the inverse of [`with_parts`](Self::with_parts).
+    pub(crate) fn into_parts(
+        self,
+    ) -> (
+        DynFrame,
+        DynFrame,
+        Vec<usize>,
+        super::frame_attrs::FrameAttrs,
+    ) {
+        (self.frame1, self.frame2, self.perm, self.attrs)
+    }
+
     /// Mutable access to both component Frames.
     pub(crate) fn frames_mut(&mut self) -> (&mut dyn Frame, &mut dyn Frame) {
         (self.frame1.as_mut(), self.frame2.as_mut())

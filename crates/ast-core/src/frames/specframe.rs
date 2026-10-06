@@ -1260,8 +1260,8 @@ impl SpecFrame {
                 ast_equal(
                     self.source_vel.unwrap_or(0.0),
                     other.source_vel.unwrap_or(0.0),
-                ) && self.source_vrf == other.source_vrf
-                    && self.source_sys == other.source_sys
+                ) && self.source_vrf() == other.source_vrf()
+                    && self.source_sys() == other.source_sys()
             }
             StdOfRest::Geocentric | StdOfRest::Barycentric | StdOfRest::Heliocentric => {
                 ast_equal(self.epoch_mjd(), other.epoch_mjd())

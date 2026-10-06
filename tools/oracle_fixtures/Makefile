@@ -36,7 +36,7 @@ PROGS := linear_approx analyse_poly scale_poly_inputs orth_vector_set \
          spec_convert_probe unit_mapper_probe time_convert_probe \
          min_max_axes_probe time_map_probe overlay_probe \
          flux_unit_system_probe system_change_probe new_unit_probe \
-         sky_norm_probe
+         sky_norm_probe specflux_cmp_probe
 
 all: $(PROGS)
 

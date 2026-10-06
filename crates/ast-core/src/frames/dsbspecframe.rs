@@ -531,18 +531,21 @@ impl DSBSpecFrame {
 
     /// Return the local oscillator frequency in Hz.
     ///
-    /// This is `dsb_centre + ifr`. Validates that the result is physically
-    /// sensible (non-negative).
+    /// This is `dsb_centre + ifr`, which must be no less than the size of
+    /// the IF (dsbspecframe.c `GetLO`).
     pub fn lo_freq(&self) -> AstResult<f64> {
-        let lo = self.dsb_centre() + self.ifr();
-        if lo < 0.0 {
+        let f_if = self.ifr();
+        let lo = self.dsb_centre() + f_if;
+        if lo < f_if.abs() {
             return Err(AstError::new(
-                ErrorCode::Bdfts,
+                ErrorCode::Attin,
                 format!(
-                    "DSBSpecFrame LO frequency is negative ({lo} Hz): \
-                     dsb_centre={}, ifr={}",
-                    self.dsb_centre(),
-                    self.ifr()
+                    "astGetLO(DSBSpecFrame): The local oscillator frequency ({lo} Hz) is too \
+                     low (less than the intermediate frequency: {} Hz). This could be \
+                     caused by a bad value for either the IF attribute (currently {f_if} Hz) \
+                     or the DSBCentre attribute (currently {} Hz).",
+                    f_if.abs(),
+                    self.dsb_centre()
                 ),
             ));
         }

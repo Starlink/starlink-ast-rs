@@ -156,3 +156,19 @@ fn convert_matches_the_c_library() {
         failures.join("\n")
     );
 }
+
+/// Two SOURCE rest frames are the same when their SourceVRF and SourceSys
+/// are, whether set or defaulted (specframe.c `EqualSor` uses the getters),
+/// so setting SourceVRF to its default changes nothing.
+#[test]
+fn source_rest_frames_compare_through_their_defaults() {
+    use ast_core::mappings::UnitMap;
+
+    let mut a = SpecFrame::new(SpecSystem::Freq);
+    a.set_std_of_rest(StdOfRest::Source);
+    let mut b = a.clone();
+    b.set_source_vrf(a.source_vrf()).unwrap();
+    let fs = a.convert_to(&b, &[]).unwrap().unwrap();
+    let map = fs.mapping(FrameRef::Base, FrameRef::Current).unwrap();
+    assert!(map.as_any().is::<UnitMap>());
+}
