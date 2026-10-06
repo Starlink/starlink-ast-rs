@@ -1002,10 +1002,14 @@ macro_rules! region_frame_attrs {
         fn test_ident(&self) -> bool {
             self.data.ident.is_some()
         }
-        // UseDefs is the Region's own, defaulting to that of the
-        // encapsulated Frame (region.c `GetUseDefs`).
+        // UseDefs, as C's attribute access gives it: setting, clearing and
+        // testing it act on the encapsulated Frame, and an unset value comes
+        // from it (region.c `GetUseDefs`). A value stored on the Region
+        // itself, which only a dump can supply, takes precedence.
         fn stored_use_defs(&self) -> Option<bool> {
-            self.data.use_defs
+            self.data
+                .use_defs
+                .or_else(|| self.data.frameset.current().stored_use_defs())
         }
         fn store_use_defs(&mut self, value: Option<bool>) {
             self.data.use_defs = value;
@@ -1014,6 +1018,18 @@ macro_rules! region_frame_attrs {
             self.data
                 .use_defs
                 .unwrap_or_else(|| self.data.frameset.current().use_defs())
+        }
+        fn set_use_defs(&mut self, value: bool) -> $crate::error::AstResult<()> {
+            self.data
+                .frameset
+                .frame_mut($crate::frames::FrameRef::Current)?
+                .set_use_defs(value)
+        }
+        fn clear_use_defs(&mut self) -> $crate::error::AstResult<()> {
+            self.data
+                .frameset
+                .frame_mut($crate::frames::FrameRef::Current)?
+                .clear_use_defs()
         }
     };
 }

@@ -108,7 +108,20 @@ impl CmpRegionBuilder {
     }
 
     /// Build the CmpRegion.
-    pub fn build(self) -> AstResult<CmpRegion> {
+    pub fn build(mut self) -> AstResult<CmpRegion> {
+        // A component whose base->current Mapping is a UnitMap need not
+        // dump its FrameSet, so its RegionFS is cleared (cmpregion.c:4855).
+        for region in [&mut self.region1, &mut self.region2] {
+            let fs = region.get_region_frameset();
+            let map = fs.mapping(
+                crate::frames::FrameRef::Base,
+                crate::frames::FrameRef::Current,
+            )?;
+            if map.as_any().is::<crate::mappings::UnitMap>() {
+                region.set_region_fs_flag(false);
+            }
+        }
+
         // Use region1's frame as the CmpRegion's frame.
         let frame = self.region1.get_region_frame();
         let frameset = FrameSet::new(frame);

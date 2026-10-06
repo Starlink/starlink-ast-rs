@@ -796,7 +796,7 @@ pub(crate) fn write_frame_inheritance_for_region(
             // Object-level attributes: in a Region dump these come from the
             // Region itself, not the encapsulated frame, so drop the inner
             // frame's copies.
-            | "Ident" | "ID"
+            | "Ident" | "ID" | "UseDfs"
         ) || item.key.starts_with("Lbl");
         if is_handled {
             continue;
@@ -929,8 +929,8 @@ pub(crate) fn read_region_base(node: &Node) -> AstResult<RegionData> {
 
     let mut data = RegionData {
         frameset,
-        ident: None,
-        use_defs: None,
+        ident: node.get_string_if_set("Ident").filter(|s| !s.is_empty()),
+        use_defs: node.get("UseDfs").map(|_| node.get_int("UseDfs", 1) != 0),
         points,
         negated,
         closed,
@@ -1042,6 +1042,10 @@ fn region_to_node_skeleton(
 ) -> AstResult<Node> {
     let mut node = Node::new(class);
     node.class_comment = Some(class_comment.to_string());
+    // The Region's own Object part, Ident and any UseDefs stored on the
+    // Region itself, comes first (object.c Dump); a UseDefs set through
+    // the Region is the encapsulated Frame's and is written with it.
+    crate::frames::frame_attrs::write_object_part(&mut node, data.ident.as_deref(), data.use_defs);
     write_frame_inheritance_for_region(&mut node, data.frameset.current())?;
     push_frame_isa_marker(&mut node);
     write_region_base(&mut node, data);
