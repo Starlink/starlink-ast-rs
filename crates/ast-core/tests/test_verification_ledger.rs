@@ -160,15 +160,6 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
          test asserts both",
     ),
     (
-        "test_time_convert.rs",
-        "TIMEMAP_EXCLUDED",
-        66,
-        "TimeFrame conversions that differ from C because Overlay transfers \
-         TimeScale before TimeOrigin: about 0.5 ms in TT/TDB and last-bit \
-         differences elsewhere. They differ between identical Frames too, so \
-         the TimeFrame alignment logic is not the cause",
-    ),
-    (
         "test_frame_in_map_slot.rs",
         "FRAME_IN_MAP_SLOT_UNDECIDED",
         1,

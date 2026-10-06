@@ -1777,29 +1777,26 @@ fn timeframe_overlay(
         if template_time.test_system() {
             result_time.set_system(template_time.system);
         }
-        if template_time.test_timescale() {
-            result_time.set_timescale(template_time.timescale);
-        }
-        if template_time.test_align_timescale() {
-            if let Some(ts) = template_time.align_timescale {
-                result_time.set_align_timescale(ts);
-            }
-        }
-        if template_time.test_time_origin() {
-            if let Some(v) = template_time.time_origin {
-                result_time.set_time_origin(v);
-            }
-        }
-        if template_time.test_lt_offset() {
-            if let Some(v) = template_time.lt_offset {
-                result_time.set_lt_offset(v);
-            }
-        }
         // Frame::Overlay copies the Axis with astAxisOverlay (frame.c),
         // which carries the Unit, so astConvert then scales between, say,
         // units of "s" and "d".
         if template_axes.first().copied().unwrap_or(0) >= 0 {
             result_time.axis.overlay_from(&template_time.axis);
+        }
+        // The TimeFrame attributes follow in C's order (timeframe.c Overlay).
+        // TimeOrigin precedes TimeScale, so setting TimeScale re-expresses
+        // the template's origin as if it were in the result's old timescale.
+        if let Some(ts) = template_time.align_timescale {
+            result_time.set_align_timescale(ts);
+        }
+        if let Some(v) = template_time.lt_offset {
+            result_time.set_lt_offset(v);
+        }
+        if let Some(v) = template_time.time_origin {
+            result_time.set_time_origin(v);
+        }
+        if template_time.test_timescale() {
+            result_time.set_timescale(template_time.timescale);
         }
         return Ok(());
     }
