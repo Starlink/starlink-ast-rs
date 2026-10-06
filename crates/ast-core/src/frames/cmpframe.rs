@@ -280,12 +280,14 @@ fn frame_is_cartesian(f: &dyn Frame) -> bool {
 /// `FrameA`/`FrameB` components. Non-compound frames carry a readable
 /// `Naxes` (active or commented, hence `get_int_any`); as a last resort the
 /// count falls back to the number of `Ax{n}` axis sub-objects present.
-fn node_naxes(node: &Node) -> usize {
-    if node.class == "CmpFrame" {
+fn node_naxes(whole: &Node) -> usize {
+    if whole.class == "CmpFrame" {
+        let node = whole.section("CmpFrame");
         let a = node.get_object("FrameA").map(node_naxes).unwrap_or(0);
         let b = node.get_object("FrameB").map(node_naxes).unwrap_or(0);
         return a + b;
     }
+    let node = whole.section("Frame");
     if let Some(n) = node.get_int_any("Naxes") {
         return n as usize;
     }
@@ -996,6 +998,11 @@ impl Serializable for CmpFrame {
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
+        // Each class's items come from its own part of the description, as
+        // C's loaders read them through astReadClassData (channel.c).
+        let whole = node;
+        let frame = &whole.section("Frame");
+        let node = &whole.section("CmpFrame");
         let node_a = node
             .get_object("FrameA")
             .ok_or_else(|| AstError::new(ErrorCode::Lderr, "CmpFrame: missing FrameA"))?;
@@ -1003,23 +1010,11 @@ impl Serializable for CmpFrame {
             .get_object("FrameB")
             .ok_or_else(|| AstError::new(ErrorCode::Lderr, "CmpFrame: missing FrameB"))?;
 
-        // Determine each child's axis count to split the compound axis
-        // attributes (Lbl{n}, Uni{n}, Sym{n}, Fmt{n}, Dir{n}). C's
-        // CmpFrame::SetAttrib forwards an indexed attribute to the
-        // primary Frame containing that axis (cmpframe.c:8396+);
-        // we materialise the same effect by injecting per-axis
-        // overrides into the child node before parsing.
-        // Axis count of a child node. A nested CmpFrame strips its own
-        // (commented) `Naxes` card before being embedded as FrameA/FrameB,
-        // so its count must be derived structurally by summing its
-        // components; otherwise it would read as 0 and the outer
-        // permutation would be mis-sized and dropped. Non-compound frames
-        // carry a readable `Naxes` (active or commented).
+        // The CmpFrame's own Frame part has no axes, so astLoadFrame reads
+        // no per-axis items for it; the component Frames carry their own.
         let n1 = node_naxes(node_a);
         let n2 = node_naxes(node_b);
         let naxes = n1 + n2;
-        let mut node_a = node_a.clone();
-        let mut node_b = node_b.clone();
 
         // Axis permutation array. C `CmpFrame::astLoad`
         // (cmpframe.c:11020-11031) reads `Axp{ext}` (1-based internal
@@ -1029,37 +1024,8 @@ impl Serializable for CmpFrame {
             .map(|ext| node.get_int(&format!("Axp{ext}"), ext as i64) as usize)
             .collect();
 
-        // The stored `Lbl{i}` / `Uni{i}` / etc. on the CmpFrame node are
-        // addressed in *internal* (unpermuted) axis order — matching how
-        // `to_node` writes them (mirroring C `Frame::Dump`, which loops
-        // over internal axes). So forward internal slot `i` straight to
-        // its owning child by splitting on `n1`, with NO permutation
-        // routing. The permutation is replayed separately via `perm_axes`.
-        for prefix in ["Lbl", "Uni", "Sym", "Fmt", "Dir"] {
-            for i in 1..=naxes {
-                let cmp_key = format!("{prefix}{i}");
-                // Forward both set and commented (default) values, but
-                // preserve the `Unset` wrapper (via get_raw, not get_any) so
-                // a commented aggregate does not become an active value on the
-                // child — otherwise the child would treat a display default
-                // (e.g. a SpecFrame's Uni for an unset system unit) as an
-                // explicitly set attribute. The child's own default applies
-                // when the forwarded value stays unset.
-                let Some(value) = node.get_raw(&cmp_key).cloned() else {
-                    continue;
-                };
-                let (child, local_ax) = if i <= n1 {
-                    (&mut node_a, i)
-                } else {
-                    (&mut node_b, i - n1)
-                };
-                let child_key = format!("{prefix}{local_ax}");
-                child.replace_or_push(&child_key, value);
-            }
-        }
-
-        let frame1 = frame_from_node(&node_a)?;
-        let frame2 = frame_from_node(&node_b)?;
+        let frame1 = frame_from_node(node_a)?;
+        let frame2 = frame_from_node(node_b)?;
 
         let mut cmp = CmpFrame::new(frame1, frame2);
 
@@ -1071,30 +1037,40 @@ impl Serializable for CmpFrame {
             cmp.perm_axes(&axp)?;
         }
 
-        // ActUnt: the flag is set iff the card is present; record its value
-        // (0 or 1) so it round-trips. Absent → component-derived default.
-        if node.get("ActUnt").is_some() {
-            cmp.attrs.active_unit = Some(node.get_int("ActUnt", 1) != 0);
-        }
+        // The Frame part's own values: ActUnt, Digits, Domain, Title,
+        // Ident, UseDefs and the matching attributes, which the CmpFrame
+        // does not forward to its components.
+        let attrs = super::frame_attrs::read_frame_attrs(whole);
+        cmp.attrs.active_unit = attrs.active_unit;
+        cmp.attrs.digits = attrs.digits;
+        cmp.attrs.domain = attrs.domain;
+        cmp.attrs.title = attrs.title;
+        cmp.attrs.ident = attrs.ident;
+        cmp.attrs.use_defs = attrs.use_defs;
+        cmp.attrs.min_axes = attrs.min_axes;
+        cmp.attrs.max_axes = attrs.max_axes;
+        cmp.attrs.match_end = attrs.match_end;
+        cmp.attrs.permute = attrs.permute;
+        cmp.attrs.preserve_axes = attrs.preserve_axes;
 
         // Frame-level observer attributes and Dtai/Dut1: restored (and
         // forwarded to the components) when present as active cards. The
         // setters mirror C's SetObsLat/SetDtai etc. which propagate to both
         // child Frames.
-        if node.get("ObsLat").is_some() {
-            cmp.set_obs_lat(node.get_double("ObsLat", 0.0))?;
+        if frame.get("ObsLat").is_some() {
+            cmp.set_obs_lat(frame.get_double("ObsLat", 0.0))?;
         }
-        if node.get("ObsLon").is_some() {
-            cmp.set_obs_lon(node.get_double("ObsLon", 0.0))?;
+        if frame.get("ObsLon").is_some() {
+            cmp.set_obs_lon(frame.get_double("ObsLon", 0.0))?;
         }
-        if node.get("ObsAlt").is_some() {
-            cmp.set_obs_alt(node.get_double("ObsAlt", 0.0))?;
+        if frame.get("ObsAlt").is_some() {
+            cmp.set_obs_alt(frame.get_double("ObsAlt", 0.0))?;
         }
-        if node.get("Dtai").is_some() {
-            cmp.set_dtai(node.get_double("Dtai", 0.0))?;
+        if frame.get("Dtai").is_some() {
+            cmp.set_dtai(frame.get_double("Dtai", 0.0))?;
         }
-        if node.get("Dut1").is_some() {
-            cmp.set_dut1(node.get_double("Dut1", 0.0))?;
+        if frame.get("Dut1").is_some() {
+            cmp.set_dut1(frame.get_double("Dut1", 0.0))?;
         }
 
         // Epoch: the base Frame loader reads the Epoch card (a Besselian or
@@ -1102,28 +1078,9 @@ impl Serializable for CmpFrame {
         // to store its own value and forward to both components
         // (cmpframe.c:8763 SetEpoch). Only an explicitly-set (active) card is
         // restored; a commented default reaches us as absent via `Node::get`.
-        if node.get("Epoch").is_some() {
-            let year = node.get_double("Epoch", 2000.0);
+        if frame.get("Epoch").is_some() {
+            let year = frame.get_double("Epoch", 2000.0);
             cmp.set_epoch_mjd(crate::frames::date_time::year_to_mjd_iau1984(year))?;
-        }
-
-        // Ident (Object-level identification string).
-        let ident = node.get_string("Ident", "");
-        if !ident.is_empty() {
-            cmp.attrs.ident = Some(ident);
-        }
-        cmp.attrs.use_defs = node.get("UseDfs").map(|_| node.get_int("UseDfs", 1) != 0);
-
-        // Domain / Title: only the explicitly-set (active) value is
-        // restored. `Node::get` returns None for `Unset` values, so
-        // the empty default reaches us as "" and skips the assign.
-        let domain = node.get_string("Domain", "");
-        if !domain.is_empty() {
-            cmp.attrs.domain = Some(domain);
-        }
-        let title = node.get_string("Title", "");
-        if !title.is_empty() {
-            cmp.attrs.title = Some(title);
         }
 
         Ok(cmp)

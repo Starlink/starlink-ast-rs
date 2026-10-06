@@ -144,6 +144,35 @@ impl Node {
         None
     }
 
+    /// The part of this object's description that belongs to `class`, as
+    /// C's `astReadClassData` gives it to that class's loader
+    /// (channel.c `ReadClassData`): the items between the previous `IsA`
+    /// marker and `IsA <class>`, or, for the object's own class, those after
+    /// the last `IsA` marker. A part that is not there is empty, as is the
+    /// part of a class whose `IsA` marker was left out because nothing
+    /// preceded it: those items belong to the class named by the next
+    /// marker.
+    pub fn section(&self, class: &str) -> Node {
+        let mut chunks: Vec<(&str, Vec<&NodeItem>)> = Vec::new();
+        let mut current: Vec<&NodeItem> = Vec::new();
+        for item in &self.items {
+            if item.key == "IsA" {
+                if let NodeValue::String(name) = &item.value {
+                    chunks.push((name.as_str(), std::mem::take(&mut current)));
+                }
+            } else {
+                current.push(item);
+            }
+        }
+        chunks.push((self.class.as_str(), current));
+        let mut node = Node::new(self.class.clone());
+        node.class_comment.clone_from(&self.class_comment);
+        if let Some((_, items)) = chunks.into_iter().find(|(name, _)| *name == class) {
+            node.items = items.into_iter().cloned().collect();
+        }
+        node
+    }
+
     /// Remove every `Unset` item from this node and from the objects nested
     /// inside it.
     ///
@@ -179,8 +208,7 @@ impl Node {
 
     /// Look up the first item's raw value with the given key, preserving the
     /// `Unset(inner)` wrapper (unlike [`Node::get_any`], which unwraps it).
-    /// Use when forwarding a value to another node so its set/unset status is
-    /// not silently promoted to "set".
+    #[cfg(test)]
     pub fn get_raw(&self, key: &str) -> Option<&NodeValue> {
         for item in &self.items {
             if item.key.eq_ignore_ascii_case(key) {

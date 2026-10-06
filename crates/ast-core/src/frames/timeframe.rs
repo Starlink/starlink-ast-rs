@@ -1977,11 +1977,16 @@ impl Serializable for TimeFrame {
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
+        // Each class's items come from its own part of the description, as
+        // C's loaders read them through astReadClassData (channel.c).
+        let whole = node;
+        let frame = &whole.section("Frame");
+        let node = &whole.section("TimeFrame");
         // Read System. The unset default is MJD (timeframe.c:2911), so an
         // absent `System=` line decodes to an MJD frame with system_set
         // false.
         let read =
-            super::frame_attrs::read_system_item(node, "System", "System", TimeSystem::parse)?;
+            super::frame_attrs::read_system_item(frame, "System", "System", TimeSystem::parse)?;
         let system = read.unwrap_or(TimeSystem::Mjd);
         let system_present = read.is_some();
 
@@ -1993,7 +1998,7 @@ impl Serializable for TimeFrame {
         // The Frame-class attributes (frame.c `astLoadFrame`), then the
         // ClLat and ClLon items older versions of AST wrote in place of
         // ObsLat and ObsLon, read only when those are absent (timeframe.c:7248).
-        tf.attrs = super::frame_attrs::read_frame_attrs(node);
+        tf.attrs = super::frame_attrs::read_frame_attrs(whole);
         if tf.attrs.obs_lat.is_none() && node.get("ClLat").is_some() {
             tf.attrs.obs_lat = Some(node.get_double("ClLat", 0.0));
         }
@@ -2026,16 +2031,16 @@ impl Serializable for TimeFrame {
         }
 
         if let Some(system) =
-            super::frame_attrs::read_system_item(node, "AlSys", "AlignSystem", TimeSystem::parse)?
+            super::frame_attrs::read_system_item(frame, "AlSys", "AlignSystem", TimeSystem::parse)?
         {
             tf.align_system = Some(system);
         }
 
         // The Axis attributes live in the Ax1 Axis child node.
-        if let Some(axis_node) = node.get_object("Ax1") {
+        if let Some(axis_node) = frame.get_object("Ax1") {
             tf.axis = super::axis::Axis::read(axis_node);
         }
-        if let Some(f) = tf.axis.apply_frame_axis_keys(node, 1) {
+        if let Some(f) = tf.axis.apply_frame_axis_keys(frame, 1) {
             tf.axis.format = Some(f);
         }
 

@@ -676,14 +676,18 @@ impl Serializable for SkyAxis {
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
+        // Each class's items come from its own part of the description, as
+        // C's loaders read them through astReadClassData (channel.c).
+        let whole = node;
+        let node = &whole.section("SkyAxis");
         let mut axis = SkyAxis::new();
         if node.get("IsLat").is_some() {
             axis.is_latitude = Some(node.get_int("IsLat", 0) != 0);
         }
 
         // Each attribute is set only if present in the node. A SkyAxis
-        // stores its Format itself, so the only Format card is the SkyAxis
-        // one (C's Axis-level Format is never set on a SkyAxis).
+        // stores its Format itself, so its Format is the SkyAxis part's
+        // (C's Axis-level Format is never set on a SkyAxis).
         if node.get("CnZer").is_some() {
             axis.centre_zero = Some(node.get_int("CnZer", 0) != 0);
         }
@@ -691,7 +695,7 @@ impl Serializable for SkyAxis {
             axis.as_time = Some(node.get_int("AsTime", 0) != 0);
         }
         axis.format = node.get_string_if_set("Format");
-        axis.axis = super::axis::Axis::read(node);
+        axis.axis = super::axis::Axis::read(whole);
         axis.axis.format = None;
 
         Ok(axis)

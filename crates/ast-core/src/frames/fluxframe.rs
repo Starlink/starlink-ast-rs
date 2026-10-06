@@ -1128,23 +1128,28 @@ impl Serializable for FluxFrame {
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
+        // Each class's items come from its own part of the description, as
+        // C's loaders read them through astReadClassData (channel.c).
+        let whole = node;
+        let frame = &whole.section("Frame");
+        let node = &whole.section("FluxFrame");
         let mut ff = FluxFrame::unset_system();
-        ff.attrs = super::frame_attrs::read_frame_attrs(node);
+        ff.attrs = super::frame_attrs::read_frame_attrs(whole);
         if let Some(system) =
-            super::frame_attrs::read_system_item(node, "System", "System", FluxSystem::parse)?
+            super::frame_attrs::read_system_item(frame, "System", "System", FluxSystem::parse)?
         {
             ff.system = system;
             ff.system_set = true;
         }
         if let Some(system) =
-            super::frame_attrs::read_system_item(node, "AlSys", "AlignSystem", FluxSystem::parse)?
+            super::frame_attrs::read_system_item(frame, "AlSys", "AlignSystem", FluxSystem::parse)?
         {
             ff.align_system = Some(system);
         }
-        if let Some(axis_node) = node.get_object("Ax1") {
+        if let Some(axis_node) = frame.get_object("Ax1") {
             ff.axis = super::axis::Axis::read(axis_node);
         }
-        if let Some(f) = ff.axis.apply_frame_axis_keys(node, 1) {
+        if let Some(f) = ff.axis.apply_frame_axis_keys(frame, 1) {
             ff.axis.format = Some(f);
         }
 

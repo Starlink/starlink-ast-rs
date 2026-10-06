@@ -97,23 +97,15 @@ fn leak(s: String) -> &'static str {
 }
 
 /// Hand-written descriptions the port loads differently from C, each with
-/// what it would take to load it as C does. Neither shape is one C's Dump
+/// what it would take to load it as C does. No shape here is one C's Dump
 /// writes. `excluded_descriptions_still_differ` fails when one starts
 /// matching.
-const FRAME_LOAD_EXCLUDED: &[(&str, &str)] = &[
-    (
-        "spec_bad_alsys",
-        "an AlSys in the SpecFrame section: C's astLoadFrame reads only the \
-         Frame section (astReadClassData), but the port's loaders read a key \
-         from any section of the Node (audit LD-3)",
-    ),
-    (
-        "sky_axis_keys",
-        "a SkyFrame with no Ax objects: C gives it plain Axis objects \
-         (frame.c:15227), which a SkyFrame cannot hold in the port, so their \
-         Unit and Format differ",
-    ),
-];
+const FRAME_LOAD_EXCLUDED: &[(&str, &str)] = &[(
+    "sky_axis_keys",
+    "a SkyFrame with no Ax objects: C gives it plain Axis objects \
+     (frame.c:15227), which a SkyFrame cannot hold in the port, so their \
+     Unit and Format differ",
+)];
 
 fn load_axes(text: &[&str]) -> Result<Vec<cases::Axis>, String> {
     match from_native_string(&text.join("\n")) {

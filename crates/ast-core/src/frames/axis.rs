@@ -77,7 +77,9 @@ impl Axis {
 
     /// Read the attributes present in an Axis node. Mirrors C's
     /// `astLoadAxis` (axis.c), which reads each with its unset default.
-    pub(crate) fn read(node: &Node) -> Self {
+    pub(crate) fn read(whole: &Node) -> Self {
+        // The Axis class's part of the description (astReadClassData).
+        let node = &whole.section("Axis");
         Axis {
             label: node.get_string_if_set("Label"),
             symbol: node.get_string_if_set("Symbol"),

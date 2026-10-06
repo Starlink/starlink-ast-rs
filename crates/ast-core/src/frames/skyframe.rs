@@ -2900,55 +2900,40 @@ impl Serializable for SkyFrame {
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
-        // Read System. Default is ICRS to match the C library
-        // (`skyframe.c`: AST__ICRS is the default System).
+        // Each class's items come from its own part of the description, as
+        // C's loaders read them through astReadClassData (channel.c).
+        let whole = node;
+        let frame = &whole.section("Frame");
+        let node = &whole.section("SkyFrame");
+
+        // System is a Frame item. A SkyFrame section may also carry one,
+        // which skyframe.c astLoadSkyFrame reads only when the Frame part
+        // left System unset, so that dumps from older versions of AST load.
         let read =
-            super::frame_attrs::read_system_item(node, "System", "System", SkySystem::parse)?;
+            super::frame_attrs::read_system_item(frame, "System", "System", SkySystem::parse)?;
+        let read = match read {
+            Some(system) => Some(system),
+            None => {
+                super::frame_attrs::read_system_item(node, "System", "System", SkySystem::parse)?
+            }
+        };
+        // Default is ICRS to match the C library (`skyframe.c`: AST__ICRS is
+        // the default System).
         let mut sky = SkyFrame::new(read.unwrap_or(SkySystem::Icrs));
         // Set only when the dump has an active System item.
         sky.system_set = read.is_some();
+        sky.attrs = super::frame_attrs::read_frame_attrs(whole);
 
-        // Title.
-        let title = node.get_string("Title", "");
-        if !title.is_empty() {
-            sky.set_title(&title);
-        }
-
-        // Domain.
-        let domain = node.get_string("Domain", "");
-        if !domain.is_empty() {
-            sky.attrs.domain = Some(domain);
-        }
-
-        // Epoch and Equinox are stored as decimal years on disk and
-        // resolved to MJD via the SkyFrame's year-aware setters
-        // (which apply the IAU 1984 rule). Mirrors `frame.c`
-        // astLoadFrame, which delegates to astReadDateTime.
-        if node.get("Epoch").is_some() {
+        // Epoch, under the same older-version rule as System. The value is
+        // a year, Besselian before 1984 and Julian from then on.
+        if sky.attrs.epoch.is_none() && node.get("Epoch").is_some() {
             sky.set_epoch_year(node.get_double("Epoch", 0.0));
         }
+
+        // Equinox is stored as a decimal year and resolved to an MJD with
+        // the IAU 1984 rule, as astReadDateTime does.
         if node.get("Eqnox").is_some() {
             sky.set_equinox_year(node.get_double("Eqnox", 0.0));
-        }
-
-        // Observer attributes.
-        if node.get("ObsLat").is_some() {
-            sky.attrs.obs_lat = Some(node.get_double("ObsLat", 0.0));
-        }
-        if node.get("ObsLon").is_some() {
-            sky.attrs.obs_lon = Some(node.get_double("ObsLon", 0.0));
-        }
-        if node.get("ObsAlt").is_some() {
-            sky.attrs.obs_alt = Some(node.get_double("ObsAlt", 0.0));
-        }
-        if node.get("Digits").is_some() {
-            sky.attrs.digits = Some(node.get_int("Digits", 7) as i32);
-        }
-        if node.get("Dtai").is_some() {
-            sky.attrs.dtai = Some(node.get_double("Dtai", 0.0));
-        }
-        if node.get("Dut1").is_some() {
-            sky.attrs.dut1 = Some(node.get_double("Dut1", 0.0));
         }
 
         // SkyFrame-specific.
@@ -3004,34 +2989,21 @@ impl Serializable for SkyFrame {
 
         // AlSys (alignment system).
         if let Some(system) =
-            super::frame_attrs::read_system_item(node, "AlSys", "AlignSystem", SkySystem::parse)?
+            super::frame_attrs::read_system_item(frame, "AlSys", "AlignSystem", SkySystem::parse)?
         {
             sky.align_system = Some(system);
         }
-
-        // ActUnt: stored only when the token is present, with its value
-        // (frame.c:14614). Absent => unset (default false).
-        if node.get("ActUnt").is_some() {
-            sky.attrs.active_unit = Some(node.get_int("ActUnt", 0) != 0);
-        }
-
-        // Ident (Object-level identification string).
-        let ident = node.get_string("Ident", "");
-        if !ident.is_empty() {
-            sky.attrs.ident = Some(ident);
-        }
-        sky.attrs.use_defs = node.get("UseDfs").map(|_| node.get_int("UseDfs", 1) != 0);
 
         // Read SkyAxis children. Axes are stored in internal (physical)
         // order (0 = lon, 1 = lat).
         for i in 0..2 {
             let key = format!("Ax{}", i + 1);
-            if let Some(axis_node) = node.get_object(&key) {
+            if let Some(axis_node) = frame.get_object(&key) {
                 if axis_node.class == "SkyAxis" {
                     sky.axes[i] = SkyAxis::from_node(axis_node)?;
                 }
             }
-            if let Some(f) = sky.axes[i].axis.apply_frame_axis_keys(node, i + 1) {
+            if let Some(f) = sky.axes[i].axis.apply_frame_axis_keys(frame, i + 1) {
                 sky.axes[i].format = Some(f);
             }
         }
@@ -3042,7 +3014,7 @@ impl Serializable for SkyFrame {
         // differs from the identity. `perm_axes` takes a 1-based
         // external→internal mapping, which is exactly the `Prm{n}` values.
         let prm: Vec<usize> = (1..=2)
-            .map(|n| node.get_int(&format!("Prm{n}"), n as i64) as usize)
+            .map(|n| frame.get_int(&format!("Prm{n}"), n as i64) as usize)
             .collect();
         if prm != [1, 2] {
             Frame::perm_axes(&mut sky, &prm)?;

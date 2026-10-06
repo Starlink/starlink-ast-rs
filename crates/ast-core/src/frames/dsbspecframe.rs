@@ -1147,8 +1147,12 @@ impl Serializable for DSBSpecFrame {
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
+        // Each class's items come from its own part of the description, as
+        // C's loaders read them through astReadClassData (channel.c).
+        let whole = node;
+        let node = &whole.section("DSBSpecFrame");
         // Deserialize the SpecFrame portion.
-        let spec = SpecFrame::from_node(node)?;
+        let spec = SpecFrame::from_node(whole)?;
 
         // DSBCen
         let dsb_centre = if node.get("DSBCen").is_some() {

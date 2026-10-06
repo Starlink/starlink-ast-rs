@@ -2069,6 +2069,11 @@ impl Serializable for FrameSet {
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
+        // Each class's items come from its own part of the description, as
+        // C's loaders read them through astReadClassData (channel.c).
+        let whole = node;
+        let object = &whole.section("Object");
+        let node = &whole.section("FrameSet");
         let nframe = node.get_int("Nframe", 0) as usize;
         if nframe == 0 {
             return Err(AstError::new(
@@ -2088,7 +2093,7 @@ impl Serializable for FrameSet {
 
         // The FrameSet's own Object-level `Ident` (`frameset.c:4841`), absent
         // when unset.
-        let ident_read = node.get_string("Ident", "");
+        let ident_read = object.get_string("Ident", "");
         let ident = if ident_read.is_empty() {
             None
         } else {
@@ -2114,7 +2119,7 @@ impl Serializable for FrameSet {
                 AstError::new(ErrorCode::Lderr, format!("FrameSet: missing {key}"))
             })?;
             frames.push(frame_from_node(frame_node)?);
-            let vrnts = match frame_node.get_object("Vrnts") {
+            let vrnts = match frame_node.section("Frame").get_object("Vrnts") {
                 Some(vn) => Some(FrameSet::from_node(vn)?),
                 None => None,
             };
@@ -2164,7 +2169,9 @@ impl Serializable for FrameSet {
             nnode,
             node_map,
             ident,
-            use_defs: node.get("UseDfs").map(|_| node.get_int("UseDfs", 1) != 0),
+            use_defs: object
+                .get("UseDfs")
+                .map(|_| object.get_int("UseDfs", 1) != 0),
         })
     }
 }

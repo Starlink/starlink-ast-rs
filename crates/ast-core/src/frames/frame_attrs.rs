@@ -526,30 +526,51 @@ pub(crate) fn read_system_item<T>(
     })
 }
 
-pub(crate) fn read_frame_attrs(node: &Node) -> FrameAttrs {
+pub(crate) fn read_frame_attrs(whole: &Node) -> FrameAttrs {
+    // The Object and Frame classes' parts of the description, which their
+    // loaders read in C (object.c, frame.c `astLoadFrame`).
+    let object = whole.section("Object");
+    let node = &whole.section("Frame");
     let bool_of = |key: &str| node.get(key).map(|_| node.get_int(key, 0) != 0);
-    let usize_of = |key: &str| node.get(key).map(|_| node.get_int(key, 0) as usize);
     let f64_of = |key: &str| node.get(key).map(|_| node.get_double(key, 0.0));
+    // astLoadFrame passes each value it reads through the class's setter,
+    // so the setters' constraints apply: Digits is at least 1, the axis
+    // counts are not negative, and a MaxAxes below MinAxes lowers MinAxes
+    // (frame.c `ConsistentMaxAxes`).
+    let min_axes = node
+        .get("MinAx")
+        .map(|_| node.get_int("MinAx", 0).max(0) as usize);
+    let max_axes = node
+        .get("MaxAx")
+        .map(|_| node.get_int("MaxAx", 0).max(0) as usize);
+    let min_axes = match (min_axes, max_axes) {
+        (Some(min), Some(max)) if min > max => Some(max),
+        _ => min_axes,
+    };
     FrameAttrs {
         title: node.get_string_if_set("Title"),
         domain: node.get_string_if_set("Domain"),
         // The Epoch is stored as a year, Besselian before 1984 and Julian
         // from then on (frame.c, `astLoadFrame`).
         epoch: f64_of("Epoch").map(crate::frames::date_time::year_to_mjd_iau1984),
-        digits: node.get("Digits").map(|_| node.get_int("Digits", 7) as i32),
+        digits: node
+            .get("Digits")
+            .map(|_| (node.get_int("Digits", 7) as i32).max(1)),
         obs_lat: f64_of("ObsLat"),
         obs_lon: f64_of("ObsLon"),
         obs_alt: f64_of("ObsAlt"),
         dtai: f64_of("Dtai"),
         dut1: f64_of("Dut1"),
         match_end: bool_of("MchEnd"),
-        min_axes: usize_of("MinAx"),
-        max_axes: usize_of("MaxAx"),
+        min_axes,
+        max_axes,
         permute: bool_of("Permut"),
         preserve_axes: bool_of("Presrv"),
         active_unit: bool_of("ActUnt"),
-        ident: node.get_string_if_set("Ident"),
-        use_defs: bool_of("UseDfs"),
+        ident: object.get_string_if_set("Ident"),
+        use_defs: object
+            .get("UseDfs")
+            .map(|_| object.get_int("UseDfs", 1) != 0),
         // A loaded Frame starts with no flags (frame.c:15179).
         flags: 0,
     }

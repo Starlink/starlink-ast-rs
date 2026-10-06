@@ -999,6 +999,10 @@ impl Serializable for BasicFrame {
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
+        // The Frame class's items come from its own part of the description,
+        // as frame.c astLoadFrame reads them through astReadClassData.
+        let whole = node;
+        let node = &whole.section("Frame");
         // A missing or negative Naxes loads a Frame with no axes
         // (frame.c:15199), which the public builder does not make.
         let naxes = node.get_int("Naxes", 0).max(0) as usize;
@@ -1010,12 +1014,7 @@ impl Serializable for BasicFrame {
             system_set: false,
             align_system_set: false,
         };
-        frame.attrs = read_frame_attrs(node);
-        // C's loader re-applies the setters, which clamp Digits to at
-        // least 1 (frame.c:15330).
-        if let Some(d) = frame.attrs.digits {
-            frame.attrs.digits = Some(d.max(1));
-        }
+        frame.attrs = read_frame_attrs(whole);
         let cartesian = |name: &str| {
             name.eq_ignore_ascii_case(FrameSystem::Cartesian.as_str())
                 .then_some(())

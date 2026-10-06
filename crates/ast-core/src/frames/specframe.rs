@@ -2529,11 +2529,16 @@ impl Serializable for SpecFrame {
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
+        // Each class's items come from its own part of the description, as
+        // C's loaders read them through astReadClassData (channel.c).
+        let whole = node;
+        let frame = &whole.section("Frame");
+        let node = &whole.section("SpecFrame");
         // Read System. The unset default is WAVELEN (specframe.c:2015),
         // so an absent `System=` line decodes to a WAVELEN frame with
         // system_set false.
         let read =
-            super::frame_attrs::read_system_item(node, "System", "System", SpecSystem::parse)?;
+            super::frame_attrs::read_system_item(frame, "System", "System", SpecSystem::parse)?;
         let system = read.unwrap_or(SpecSystem::Wavelen);
         let system_present = read.is_some();
 
@@ -2545,7 +2550,7 @@ impl Serializable for SpecFrame {
         // The Frame-class attributes (frame.c `astLoadFrame`), then the
         // GeoLat and GeoLon items older versions of AST wrote in place of
         // ObsLat and ObsLon, read only when those are absent (specframe.c:7097).
-        sf.attrs = super::frame_attrs::read_frame_attrs(node);
+        sf.attrs = super::frame_attrs::read_frame_attrs(whole);
         if sf.attrs.obs_lat.is_none() && node.get("GeoLat").is_some() {
             sf.attrs.obs_lat = Some(node.get_double("GeoLat", 0.0));
         }
@@ -2578,20 +2583,20 @@ impl Serializable for SpecFrame {
         // `usedunits[system]` as the current Unit; a system with no recorded
         // used unit (e.g. a20070718's VRAD, which only carries UFreq) keeps
         // the system default.
-        let axis_unit_card = node.get_object("Ax1").and_then(|ax| {
+        let axis_unit_card = frame.get_object("Ax1").and_then(|ax| {
             ax.get("Unit")
                 .map(|_| ax.get_string("Unit", "").to_string())
         });
-        if let Some(axis_node) = node.get_object("Ax1") {
+        if let Some(axis_node) = frame.get_object("Ax1") {
             sf.axis = super::axis::Axis::read(axis_node);
         }
-        if let Some(f) = sf.axis.apply_frame_axis_keys(node, 1) {
+        if let Some(f) = sf.axis.apply_frame_axis_keys(frame, 1) {
             sf.axis.format = Some(f);
         }
         if let Some(u) = &sf.used_units[system.used_units_index()] {
             sf.axis.unit = Some(u.clone());
-        } else if node.get("Uni1").is_some() {
-            sf.axis.unit = Some(node.get_string("Uni1", ""));
+        } else if frame.get("Uni1").is_some() {
+            sf.axis.unit = Some(frame.get_string("Uni1", ""));
         } else if let Some(u) = axis_unit_card {
             sf.axis.unit = Some(u);
         }
@@ -2604,7 +2609,7 @@ impl Serializable for SpecFrame {
 
         // AlSys (AlignSystem).
         if let Some(system) =
-            super::frame_attrs::read_system_item(node, "AlSys", "AlignSystem", SpecSystem::parse)?
+            super::frame_attrs::read_system_item(frame, "AlSys", "AlignSystem", SpecSystem::parse)?
         {
             sf.align_system = Some(system);
         }

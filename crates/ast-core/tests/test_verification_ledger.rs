@@ -198,11 +198,10 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
     (
         "test_frame_load.rs",
         "FRAME_LOAD_EXCLUDED",
-        2,
-        "two hand-written Native descriptions C's Dump never writes: an AlSys \
-         in the SpecFrame section, which C ignores because astLoadFrame reads \
-         only the Frame section, and a SkyFrame with no Ax objects, which C \
-         gives plain Axis objects. Gated by excluded_descriptions_still_differ",
+        1,
+        "a hand-written Native description C's Dump never writes: a SkyFrame \
+         with no Ax objects, which C gives plain Axis objects. Gated by \
+         excluded_descriptions_still_differ",
     ),
     (
         "test_serialisation.rs",
