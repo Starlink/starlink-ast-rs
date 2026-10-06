@@ -461,8 +461,11 @@ impl FluxFrame {
         if let Some(sf) = self.specframe.as_deref() {
             return sf.clone();
         }
-        let mut sf = super::specframe::SpecFrame::new(self.system.density_spec_system());
-        sf.store_unit(self.system.density_unit());
+        // The System as C's astGetSystem gives it, which may follow from the
+        // Unit (fluxframe.c:1235 `GetDensitySystem`).
+        let system = self.system();
+        let mut sf = super::specframe::SpecFrame::new(system.density_spec_system());
+        sf.store_unit(system.density_unit());
         sf
     }
 
@@ -793,7 +796,7 @@ impl Frame for FluxFrame {
     }
 
     fn system_string(&self) -> Option<&str> {
-        Some(self.system.as_str())
+        Some(self.system().as_str())
     }
 
     // -----------------------------------------------------------------
