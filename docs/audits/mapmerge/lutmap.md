@@ -36,7 +36,7 @@ must discard the simplified record.
 | 12 | Failing that, check the lower neighbour the same way, and otherwise give up | lutmap.c:1188-1199 (fn MapMerge) | lutmap.rs:740-744 (fn map_merge) | architecture | ported |
 | 13 | Cancel the pair only if the two LutMaps are equal with opposite invert flags | lutmap.c:1200-1210 (fn MapMerge) | lutmap.rs:756-761 (fn map_merge) | architecture | ported |
 | 14 | Replace the first of the pair with a UnitMap and clear its invert flag | lutmap.c:1211-1218 (fn MapMerge) | lutmap.rs:762 (fn map_merge) | architecture | ported |
-| 15 | Annul the second and shuffle the rest of the list down | lutmap.c:1219-1226 (fn MapMerge) | mappings/simplify.rs:589-591 (fn replace_pair_with) | ceremony | ported |
+| 15 | Annul the second and shuffle the rest of the list down | lutmap.c:1219-1226 (fn MapMerge) | mappings/simplify.rs:588-590 (fn replace_pair_with) | ceremony | ported |
 | 16 | Clear the vacated element at the end | lutmap.c:1227-1230 (fn MapMerge) | -- | ceremony | n/a: the entry is removed from a `Vec`, so no slot is vacated to be cleared |
 | 17 | Decrement the Mapping count and return the index of the nominated element | lutmap.c:1231-1238 (fn MapMerge) | lutmap.rs:765 (fn map_merge) | architecture | ported |
 | 18 | Clear the returned result if an error occurred | lutmap.c:1239-1241 (fn MapMerge) | -- | ceremony | n/a: an error is a `Result::Err`, not a value to be cleared alongside one |

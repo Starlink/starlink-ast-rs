@@ -561,12 +561,12 @@ impl Frame for NullRegion {
 // ============================================================================
 
 impl Mapping for NullRegion {
-    fn report_attr(&self) -> Option<bool> {
-        self.data.report
+    fn mapping_flags(&self) -> &crate::mappings::MappingFlags {
+        &self.data.mapping_flags
     }
 
-    fn set_report_attr(&mut self, value: Option<bool>) {
-        self.data.report = value;
+    fn mapping_flags_mut(&mut self) -> &mut crate::mappings::MappingFlags {
+        &mut self.data.mapping_flags
     }
 
     /// region.c `ReportPoints`: the current Frame formats the values.

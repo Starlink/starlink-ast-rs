@@ -114,8 +114,8 @@ pub struct FrameSet {
     /// and a FrameSet reads its own rather than its current Frame's
     /// (`frameset.c:2759`, `:4841`, `:10830` all pass `this`).
     ident: Option<String>,
-    /// The Mapping attribute `Report` (mapping.c), `None` when unset.
-    report: Option<bool>,
+    /// The flags C keeps on the base Mapping class (mapping.c).
+    mapping_flags: crate::mappings::MappingFlags,
     /// The FrameSet's own `UseDefs`, `None` when unset.
     use_defs: Option<bool>,
 }
@@ -142,7 +142,7 @@ impl Clone for FrameSet {
             nnode: self.nnode,
             node_map: self.node_map.clone(),
             ident: self.ident.clone(),
-            report: self.report,
+            mapping_flags: self.mapping_flags.clone(),
             use_defs: self.use_defs,
         }
     }
@@ -184,7 +184,7 @@ impl FrameSet {
             nnode: 1,
             node_map: vec![0],
             ident: None,
-            report: None,
+            mapping_flags: crate::mappings::MappingFlags::default(),
             use_defs: None,
         }
     }
@@ -1777,12 +1777,12 @@ fn frameset_convert_to(
 // ====================================================================== //
 
 impl Mapping for FrameSet {
-    fn report_attr(&self) -> Option<bool> {
-        self.report
+    fn mapping_flags(&self) -> &crate::mappings::MappingFlags {
+        &self.mapping_flags
     }
 
-    fn set_report_attr(&mut self, value: Option<bool>) {
-        self.report = value;
+    fn mapping_flags_mut(&mut self) -> &mut crate::mappings::MappingFlags {
+        &mut self.mapping_flags
     }
 
     /// frameset.c `ReportPoints`: the input values are formatted by the
@@ -1954,7 +1954,7 @@ impl Serializable for FrameSet {
         // The value is the FrameSet's own, not the current Frame's
         // (`frameset.c:4841`).
         super::frame_attrs::write_object_part(&mut node, self.ident.as_deref(), self.use_defs);
-        crate::serial::write_report_mapping_part(&mut node, self.report);
+        crate::serial::write_flags_mapping_part(&mut node, &self.mapping_flags);
 
         // Write proxy attributes from the current frame as commented (unset).
         // The C library writes all current-frame attributes as informational
@@ -2289,7 +2289,7 @@ impl Serializable for FrameSet {
             nnode,
             node_map,
             ident,
-            report: crate::serial::read_report(whole),
+            mapping_flags: crate::serial::read_mapping_flags(whole),
             use_defs: object
                 .get("UseDfs")
                 .map(|_| object.get_int("UseDfs", 1) != 0),

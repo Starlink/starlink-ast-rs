@@ -85,8 +85,8 @@ pub struct DssMap {
     /// Whether this mapping has already been simplified (C `IsSimple`).
     simplified: SimplifiedRecord,
     ident: Option<String>,
-    /// The `Report` attribute (mapping.c), `None` when unset.
-    report: Option<bool>,
+    /// The flags C keeps on the base Mapping class (mapping.c).
+    mapping_flags: crate::mappings::MappingFlags,
 }
 
 impl DssMap {
@@ -123,7 +123,7 @@ impl DssMap {
             inverted: false,
             simplified: SimplifiedRecord::default(),
             ident: None,
-            report: None,
+            mapping_flags: crate::mappings::MappingFlags::default(),
         }
     }
 
@@ -426,12 +426,12 @@ impl DssMap {
 }
 
 impl Mapping for DssMap {
-    fn report_attr(&self) -> Option<bool> {
-        self.report
+    fn mapping_flags(&self) -> &crate::mappings::MappingFlags {
+        &self.mapping_flags
     }
 
-    fn set_report_attr(&mut self, value: Option<bool>) {
-        self.report = value;
+    fn mapping_flags_mut(&mut self) -> &mut crate::mappings::MappingFlags {
+        &mut self.mapping_flags
     }
 
     fn nin(&self) -> usize {

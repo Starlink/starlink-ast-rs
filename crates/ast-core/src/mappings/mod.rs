@@ -196,6 +196,34 @@ impl SimplifiedRecord {
     }
 }
 
+/// The flags and attributes C keeps on its base Mapping class, which every
+/// Mapping carries: the `Report` attribute and the `AllowSimplify` and
+/// `RestrictedSimplify` flags of the Mapping `flags` word (mapping.c). A copy
+/// keeps them, as `astCopy` does.
+#[derive(Debug, Default)]
+#[doc(hidden)]
+pub struct MappingFlags {
+    pub(crate) report: Option<bool>,
+    pub(crate) allow_simplify: bool,
+    pub(crate) restricted_simplify: bool,
+    /// Which entry of a merge list the Mapping was, while a merge it may take
+    /// part in runs (`simplify::dispatch_map_merge`); 0 otherwise. It stands
+    /// in for C's comparison of Mapping pointers, so it stays with the
+    /// Mapping as it moves and a copy does not take it.
+    pub(crate) merge_tag: usize,
+}
+
+impl Clone for MappingFlags {
+    fn clone(&self) -> Self {
+        MappingFlags {
+            report: self.report,
+            allow_simplify: self.allow_simplify,
+            restricted_simplify: self.restricted_simplify,
+            merge_tag: 0,
+        }
+    }
+}
+
 /// A coordinate transformation.
 ///
 /// All concrete mapping classes implement this trait. Mappings are `Send`
@@ -622,25 +650,38 @@ pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
     /// mapping.h `AST__RESTRICTED_SIMPLIFY_FLAG`). When set, a simplification
     /// of this mapping may nominate only those components that carry
     /// `AllowSimplify`, and the base driver declines outright for a mapping
-    /// that does not (mapping.c:16853-16855). C keeps the flag in the shared
-    /// Mapping `flags` word; in the port only `CmpMap` has storage for it, the
-    /// only class that can hold components to restrict.
+    /// that does not (mapping.c:16853-16855). Kept in the Mapping's
+    /// [`MappingFlags`], as C keeps it in the Mapping `flags` word.
     /// Serialised as the `ReSimp` token.
     fn restricted_simplify(&self) -> bool {
-        false
+        self.mapping_flags().restricted_simplify
     }
 
     /// Set (or clear) the `RestrictedSimplify` flag (C `ReSimp`).
-    fn set_restricted_simplify(&mut self, _flag: bool) {}
+    fn set_restricted_simplify(&mut self, flag: bool) {
+        self.mapping_flags_mut().restricted_simplify = flag;
+    }
 
-    /// The stored `Report` attribute, `None` when unset. Every Mapping class
-    /// keeps its own, as each C Mapping does (mapping.c `report`).
+    /// The flags and attributes every Mapping carries on the C base class:
+    /// `Report`, `AllowSimplify` and `RestrictedSimplify` (mapping.c).
     #[doc(hidden)]
-    fn report_attr(&self) -> Option<bool>;
+    fn mapping_flags(&self) -> &MappingFlags;
+
+    /// The [`MappingFlags`], to change.
+    #[doc(hidden)]
+    fn mapping_flags_mut(&mut self) -> &mut MappingFlags;
+
+    /// The stored `Report` attribute, `None` when unset.
+    #[doc(hidden)]
+    fn report_attr(&self) -> Option<bool> {
+        self.mapping_flags().report
+    }
 
     /// Store the `Report` attribute; `None` clears it.
     #[doc(hidden)]
-    fn set_report_attr(&mut self, value: Option<bool>);
+    fn set_report_attr(&mut self, value: Option<bool>) {
+        self.mapping_flags_mut().report = value;
+    }
 
     /// Whether [`tran1`](Mapping::tran1) and [`tran2`](Mapping::tran2) report
     /// the effect of each transformation, one line per point, to the
@@ -690,11 +731,13 @@ pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
     /// simplification (mapping.c:24788), so it never reaches a public dump.
     /// Serialised as the `AlSimp` token.
     fn allow_simplify(&self) -> bool {
-        false
+        self.mapping_flags().allow_simplify
     }
 
     /// Set (or clear) the `AllowSimplify` flag (C `AlSimp`).
-    fn set_allow_simplify(&mut self, _flag: bool) {}
+    fn set_allow_simplify(&mut self, flag: bool) {
+        self.mapping_flags_mut().allow_simplify = flag;
+    }
 
     /// The `Ident` token — a user-supplied permanent name for this mapping,
     /// empty when unset. C keeps it on Object (`object.c:5221`), so it applies

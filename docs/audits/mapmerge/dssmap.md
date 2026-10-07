@@ -15,7 +15,7 @@ the WinMap's scale and shift into the DssMap's pixel origin and pixel size, and
 rebuilding the DssMap from the amended FITS cards.
 
 `DssMap::map_merge` (`dssmap.rs:532-544 (fn map_merge)`) calls `default_map_merge`
-(`mappings/simplify.rs:1321-1416 (fn default_map_merge)`), whose neighbour attempt reaches
+(`mappings/simplify.rs:1359-1454 (fn default_map_merge)`), whose neighbour attempt reaches
 `DssMap::try_merge` (`dssmap.rs:581-657 (fn try_merge)`).
 
 | # | C step | C site | Rust site | extension point | verdict |
@@ -32,9 +32,9 @@ rebuilding the DssMap from the amended FITS cards.
 | 10 | Take a copy of the FitsChan holding the DssMap's defining cards | dssmap.c:1061-1066 (fn MapMerge) | -- | ceremony | n/a: the port stores the plate parameters as fields, so it amends those directly instead of round-tripping a FitsChan |
 | 11 | Update each changed keyword in that copy | dssmap.c:1067-1097 (fn MapMerge) | dssmap.rs:647-651 (fn try_merge) | architecture | ported |
 | 12 | If every keyword updated, build the new DssMap from the amended cards | dssmap.c:1098-1102 (fn MapMerge) | dssmap.rs:647-653 (fn try_merge) | architecture | ported |
-| 13 | Replace the DssMap in the list with the new one, leaving the invert flag alone | dssmap.c:1103-1107 (fn MapMerge) | mappings/simplify.rs:1407-1412 (fn default_map_merge) | architecture | ported |
-| 14 | Annul the WinMap and shuffle the remaining Mappings down, clearing the vacated slot | dssmap.c:1108-1119 (fn MapMerge) | mappings/simplify.rs:1413 (fn default_map_merge) | architecture | ported |
-| 15 | Decrement the Mapping count and return the index of the first modified element | dssmap.c:1120-1126 (fn MapMerge) | mappings/simplify.rs:1414-1415 (fn default_map_merge) | architecture | ported |
+| 13 | Replace the DssMap in the list with the new one, leaving the invert flag alone | dssmap.c:1103-1107 (fn MapMerge) | mappings/simplify.rs:1445-1450 (fn default_map_merge) | architecture | ported |
+| 14 | Annul the WinMap and shuffle the remaining Mappings down, clearing the vacated slot | dssmap.c:1108-1119 (fn MapMerge) | mappings/simplify.rs:1451 (fn default_map_merge) | architecture | ported |
+| 15 | Decrement the Mapping count and return the index of the first modified element | dssmap.c:1120-1126 (fn MapMerge) | mappings/simplify.rs:1452-1453 (fn default_map_merge) | architecture | ported |
 | 16 | Annul the amended FitsChan | dssmap.c:1127-1131 (fn MapMerge) | -- | ceremony | n/a: no FitsChan is created |
 | 17 | Free the scale and shift arrays | dssmap.c:1132-1135 (fn MapMerge) | -- | ceremony | n/a: owned values are dropped |
 | 18 | Re-instate the WinMap's original Invert attribute | dssmap.c:1136-1143 (fn MapMerge) | -- | ceremony | n/a: the WinMap entry is read without being mutated |
@@ -73,4 +73,4 @@ Rust site is that call.
 
 A DssMap reduction added later belongs at the top of `map_merge`, which is where
 C would put one, and where the base `Simplify` driver
-(`mappings/simplify.rs:1252-1294 (fn base_simplify)`) reaches it.
+(`mappings/simplify.rs:1251-1293 (fn base_simplify)`) reaches it.

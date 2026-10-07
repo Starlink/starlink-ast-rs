@@ -54,8 +54,8 @@ pub struct RateMap {
     /// Whether simplification is inhibited.
     simplified: SimplifiedRecord,
     ident: Option<String>,
-    /// The `Report` attribute (mapping.c), `None` when unset.
-    report: Option<bool>,
+    /// The flags C keeps on the base Mapping class (mapping.c).
+    mapping_flags: crate::mappings::MappingFlags,
     /// The encapsulated Mapping's Invert flag as it stood when this RateMap was
     /// built — C's `RateMap.invert` (`ratemap.h:152`), written as the `Inv`
     /// card.
@@ -108,7 +108,7 @@ impl RateMap {
             inverted: false,
             simplified: SimplifiedRecord::default(),
             ident: None,
-            report: None,
+            mapping_flags: crate::mappings::MappingFlags::default(),
             invert_snapshot,
         })
     }
@@ -201,19 +201,19 @@ impl Clone for RateMap {
             inverted: self.inverted,
             simplified: self.simplified,
             ident: self.ident.clone(),
-            report: self.report,
+            mapping_flags: self.mapping_flags.clone(),
             invert_snapshot: self.invert_snapshot,
         }
     }
 }
 
 impl Mapping for RateMap {
-    fn report_attr(&self) -> Option<bool> {
-        self.report
+    fn mapping_flags(&self) -> &crate::mappings::MappingFlags {
+        &self.mapping_flags
     }
 
-    fn set_report_attr(&mut self, value: Option<bool>) {
-        self.report = value;
+    fn mapping_flags_mut(&mut self) -> &mut crate::mappings::MappingFlags {
+        &mut self.mapping_flags
     }
 
     fn nin(&self) -> usize {
@@ -628,7 +628,7 @@ impl Serializable for RateMap {
             inverted: false,
             simplified: SimplifiedRecord::default(),
             ident: None,
-            report: None,
+            mapping_flags: crate::mappings::MappingFlags::default(),
             invert_snapshot: inv_snapshot,
         };
 

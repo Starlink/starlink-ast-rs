@@ -498,9 +498,8 @@ impl MergeCtx {
     /// Whether the component at `index` may be nominated for simplification.
     /// Under a restricted simplify, only `AllowSimplify`-flagged components
     /// qualify (C `restricted && !astAllowSimplify(...)`). The flag is read
-    /// live from the component (a merged result is a new mapping without the
-    /// flag, so it drops out of the allowed set — matching C, which clears
-    /// AllowSimplify after simplification).
+    /// live from the component; a Mapping a merge creates has it when every
+    /// Mapping the merge consumed did (`dispatch_map_merge`).
     fn may_nominate(&self, index: usize) -> bool {
         !self.restricted
             || self
@@ -1315,7 +1314,46 @@ pub(crate) fn dispatch_map_merge(
     if nominee.do_not_simplify() {
         return None;
     }
-    nominee.map_merge(ctx, where_, series)
+    // A nominee with AllowSimplify set is probably part of a restricted
+    // simplification, so the flag is passed on to the Mappings the merge
+    // creates when every Mapping it consumed had it (mapping.c
+    // `astMapMerge_`). C tells consumed and created Mappings apart by
+    // pointer; here each entry is tagged with its position before the merge,
+    // and a Mapping the merge makes, or copies, carries no tag.
+    if !nominee.allow_simplify() {
+        return nominee.map_merge(ctx, where_, series);
+    }
+    let allowed: Vec<bool> = ctx
+        .list
+        .iter()
+        .map(|(m, _, _)| m.allow_simplify())
+        .collect();
+    for (i, (m, _, _)) in ctx.list.iter_mut().enumerate() {
+        m.mapping_flags_mut().merge_tag = i + 1;
+    }
+    let result = nominee.map_merge(ctx, where_, series);
+    if result.is_some() {
+        let kept: Vec<usize> = ctx
+            .list
+            .iter()
+            .map(|(m, _, _)| m.mapping_flags().merge_tag)
+            .collect();
+        let all_consumed_allowed = allowed
+            .iter()
+            .enumerate()
+            .all(|(i, &allow)| allow || kept.contains(&(i + 1)));
+        if all_consumed_allowed {
+            for (m, _, _) in ctx.list.iter_mut() {
+                if m.mapping_flags().merge_tag == 0 {
+                    m.set_allow_simplify(true);
+                }
+            }
+        }
+    }
+    for (m, _, _) in ctx.list.iter_mut() {
+        m.mapping_flags_mut().merge_tag = 0;
+    }
+    result
 }
 
 pub(crate) fn default_map_merge(ctx: &mut MergeCtx, where_: usize, series: bool) -> Option<usize> {

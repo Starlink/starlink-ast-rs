@@ -107,8 +107,8 @@ pub struct WcsMap {
     /// Whether this mapping has already been simplified (C `IsSimple`).
     simplified: SimplifiedRecord,
     ident: Option<String>,
-    /// The `Report` attribute (mapping.c), `None` when unset.
-    report: Option<bool>,
+    /// The flags C keeps on the base Mapping class (mapping.c).
+    mapping_flags: crate::mappings::MappingFlags,
     /// Protected `LonCheck` attribute (wcsmap.c:4787). Controls whether the
     /// inverse projection clips returned longitude values to the projection's
     /// primary range. `None` = unset (defaults to `true`); `Some(v)` = the
@@ -191,7 +191,7 @@ impl WcsMap {
                     inverted: false,
                     simplified: SimplifiedRecord::default(),
                     ident: None,
-                    report: None,
+                    mapping_flags: crate::mappings::MappingFlags::default(),
                     lon_check: None,
                     fits_proj: None,
                     tpn_tan: None,
@@ -218,7 +218,7 @@ impl WcsMap {
             inverted: false,
             simplified: SimplifiedRecord::default(),
             ident: None,
-            report: None,
+            mapping_flags: crate::mappings::MappingFlags::default(),
             lon_check: None,
             fits_proj: None,
             tpn_tan: None,
@@ -556,7 +556,7 @@ impl WcsMap {
             // C builds a fresh WcsMap for this rebuild (wcsmap.c:4667), and a
             // fresh Object has no Ident.
             ident: None,
-            report: None,
+            mapping_flags: crate::mappings::MappingFlags::default(),
             lon_check: self.lon_check,
             fits_proj: self.fits_proj,
             tpn_tan: self.tpn_tan,
@@ -606,7 +606,7 @@ impl Clone for WcsMap {
             inverted: self.inverted,
             simplified: self.simplified,
             ident: self.ident.clone(),
-            report: self.report,
+            mapping_flags: self.mapping_flags.clone(),
             lon_check: self.lon_check,
             fits_proj: self.fits_proj,
             tpn_tan: self.tpn_tan,
@@ -615,12 +615,12 @@ impl Clone for WcsMap {
 }
 
 impl Mapping for WcsMap {
-    fn report_attr(&self) -> Option<bool> {
-        self.report
+    fn mapping_flags(&self) -> &crate::mappings::MappingFlags {
+        &self.mapping_flags
     }
 
-    fn set_report_attr(&mut self, value: Option<bool>) {
-        self.report = value;
+    fn mapping_flags_mut(&mut self) -> &mut crate::mappings::MappingFlags {
+        &mut self.mapping_flags
     }
 
     fn nin(&self) -> usize {

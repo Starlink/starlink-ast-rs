@@ -61,3 +61,4 @@ norm_points_probe
 frame_api_probe
 region_grid_probe
 report_probe
+allow_simplify_probe

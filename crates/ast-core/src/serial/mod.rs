@@ -147,12 +147,27 @@ fn push_report(node: &mut Node, report: Option<bool>) {
     }
 }
 
-/// The Mapping part of a FrameSet or Region dump, which holds nothing but
-/// `Report` and so is written, with its `IsA Mapping` marker, only when
-/// `Report` is set (mapping.c `Dump`).
-pub(crate) fn write_report_mapping_part(node: &mut Node, report: Option<bool>) {
-    if report.is_some() {
-        push_report(node, report);
+/// The Mapping part of a FrameSet or Region dump. It holds only the flags
+/// such a Mapping can have set, `ReSimp`, `AlSimp` and `Report` in
+/// mapping.c `Dump` order, and is written, with its `IsA Mapping` marker,
+/// only when one of them is.
+pub(crate) fn write_flags_mapping_part(node: &mut Node, flags: &crate::mappings::MappingFlags) {
+    if flags.restricted_simplify {
+        node.push_int(
+            "ReSimp",
+            1,
+            Some("Simplify restricted to allowed Mappings".to_string()),
+        );
+    }
+    if flags.allow_simplify {
+        node.push_int(
+            "AlSimp",
+            1,
+            Some("Will be used by restricted Simplify".to_string()),
+        );
+    }
+    push_report(node, flags.report);
+    if flags.restricted_simplify || flags.allow_simplify || flags.report.is_some() {
         node.push_isa(
             "Mapping",
             Some("Mapping between coordinate systems".to_string()),
@@ -160,10 +175,16 @@ pub(crate) fn write_report_mapping_part(node: &mut Node, report: Option<bool>) {
     }
 }
 
-/// The `Report` item of a description's Mapping part, if set.
-pub(crate) fn read_report(whole: &Node) -> Option<bool> {
+/// The flags in a description's Mapping part: `Report` if set, and the
+/// `AlSimp` and `ReSimp` flags (mapping.c `astLoadMapping`).
+pub(crate) fn read_mapping_flags(whole: &Node) -> crate::mappings::MappingFlags {
     let node = whole.section("Mapping");
-    node.get("Report").map(|_| node.get_int("Report", 0) != 0)
+    crate::mappings::MappingFlags {
+        report: node.get("Report").map(|_| node.get_int("Report", 0) != 0),
+        allow_simplify: node.get_int("AlSimp", 0) != 0,
+        restricted_simplify: node.get_int("ReSimp", 0) != 0,
+        merge_tag: 0,
+    }
 }
 
 /// Common Mapping attributes read from a serialized node.
@@ -212,15 +233,20 @@ pub(crate) fn mapping_from_node(node: &Node) -> AstResult<DynMapping> {
 }
 
 /// Apply the Object and Mapping items that every Mapping class shares and
-/// that the class loaders leave to their caller: AllowSimplify (C `AlSimp`)
-/// from the Mapping part and Ident from the Object part (mapping.c and
+/// that the class loaders leave to their caller: AllowSimplify (C `AlSimp`),
+/// RestrictedSimplify (`ReSimp`) and Report from the Mapping part, and Ident
+/// from the Object part (mapping.c and
 /// object.c load them). Frame-derived classes read their own Ident in
 /// `from_node`, and their Mapping-side setter is a no-op.
 fn apply_mapping_object_items(result: &mut dyn Mapping, node: &Node) {
-    if node.section("Mapping").get_int("AlSimp", 0) != 0 {
+    let flags = read_mapping_flags(node);
+    if flags.allow_simplify {
         result.set_allow_simplify(true);
     }
-    if let Some(report) = read_report(node) {
+    if flags.restricted_simplify {
+        result.set_restricted_simplify(true);
+    }
+    if let Some(report) = flags.report {
         result.set_report_attr(Some(report));
     }
     let object = node.section("Object");
@@ -984,7 +1010,7 @@ pub(crate) fn read_region_base(whole: &Node) -> AstResult<RegionData> {
     let mut data = RegionData {
         frameset,
         ident: object.get_string_if_set("Ident"),
-        report: read_report(whole),
+        mapping_flags: read_mapping_flags(whole),
         use_defs: object
             .get("UseDfs")
             .map(|_| object.get_int("UseDfs", 1) != 0),
@@ -1103,7 +1129,7 @@ fn region_to_node_skeleton(
     // Region itself, comes first (object.c Dump); a UseDefs set through
     // the Region is the encapsulated Frame's and is written with it.
     crate::frames::frame_attrs::write_object_part(&mut node, data.ident.as_deref(), data.use_defs);
-    write_report_mapping_part(&mut node, data.report);
+    write_flags_mapping_part(&mut node, &data.mapping_flags);
     write_frame_inheritance_for_region(&mut node, data.frameset.current())?;
     push_frame_isa_marker(&mut node);
     write_region_base(&mut node, data);

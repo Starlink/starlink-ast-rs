@@ -105,8 +105,8 @@ pub struct CmpMap {
     inverted: bool,
     simplified: SimplifiedRecord,
     ident: Option<String>,
-    /// The `Report` attribute (mapping.c), `None` when unset.
-    report: Option<bool>,
+    /// The flags C keeps on the base Mapping class (mapping.c).
+    mapping_flags: crate::mappings::MappingFlags,
     /// Whether the forward transform is defined.
     pub(crate) tran_forward: bool,
     /// Whether the inverse transform is defined.
@@ -115,9 +115,6 @@ pub struct CmpMap {
     inv_a: bool,
     /// Recorded Invert flag for second child (snapshot at construction/load).
     inv_b: bool,
-    /// `RestrictedSimplify` flag (C `ReSimp`): when set, `simplify`
-    /// nominates only component Mappings whose `AllowSimplify` flag is set.
-    restricted_simplify: bool,
 }
 
 impl CmpMap {
@@ -151,12 +148,11 @@ impl CmpMap {
             inverted: false,
             simplified: SimplifiedRecord::default(),
             ident: None,
-            report: None,
+            mapping_flags: crate::mappings::MappingFlags::default(),
             tran_forward,
             tran_inverse,
             inv_a,
             inv_b,
-            restricted_simplify: false,
         })
     }
 
@@ -696,23 +692,22 @@ impl Clone for CmpMap {
             inverted: self.inverted,
             simplified: self.simplified,
             ident: self.ident.clone(),
-            report: self.report,
+            mapping_flags: self.mapping_flags.clone(),
             tran_forward: self.tran_forward,
             tran_inverse: self.tran_inverse,
             inv_a: self.inv_a,
             inv_b: self.inv_b,
-            restricted_simplify: self.restricted_simplify,
         }
     }
 }
 
 impl Mapping for CmpMap {
-    fn report_attr(&self) -> Option<bool> {
-        self.report
+    fn mapping_flags(&self) -> &crate::mappings::MappingFlags {
+        &self.mapping_flags
     }
 
-    fn set_report_attr(&mut self, value: Option<bool>) {
-        self.report = value;
+    fn mapping_flags_mut(&mut self) -> &mut crate::mappings::MappingFlags {
+        &mut self.mapping_flags
     }
 
     fn nin(&self) -> usize {
@@ -880,14 +875,6 @@ impl Mapping for CmpMap {
         self.map_split2(in_axes)
     }
 
-    fn restricted_simplify(&self) -> bool {
-        self.restricted_simplify
-    }
-
-    fn set_restricted_simplify(&mut self, flag: bool) {
-        self.restricted_simplify = flag;
-    }
-
     fn ident(&self) -> &str {
         self.ident.as_deref().unwrap_or("")
     }
@@ -1023,12 +1010,11 @@ impl Serializable for CmpMap {
             inverted: false,
             simplified: SimplifiedRecord::default(),
             ident: None,
-            report: None,
+            mapping_flags: crate::mappings::MappingFlags::default(),
             tran_forward: true,
             tran_inverse: true,
             inv_a,
             inv_b,
-            restricted_simplify: false,
         };
         cmp.tran_forward = base.has_forward;
         cmp.tran_inverse = base.has_inverse;

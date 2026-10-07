@@ -21,9 +21,8 @@ pub struct ZoomMap {
     inverted: bool,
     simplified: SimplifiedRecord,
     ident: Option<String>,
-    /// The `Report` attribute (mapping.c), `None` when unset.
-    report: Option<bool>,
-    allow_simplify: bool,
+    /// The flags C keeps on the base Mapping class (mapping.c).
+    mapping_flags: crate::mappings::MappingFlags,
 }
 
 impl ZoomMap {
@@ -43,8 +42,7 @@ impl ZoomMap {
             inverted: false,
             simplified: SimplifiedRecord::default(),
             ident: None,
-            report: None,
-            allow_simplify: false,
+            mapping_flags: crate::mappings::MappingFlags::default(),
         })
     }
 
@@ -101,12 +99,12 @@ impl ZoomMap {
 }
 
 impl Mapping for ZoomMap {
-    fn report_attr(&self) -> Option<bool> {
-        self.report
+    fn mapping_flags(&self) -> &crate::mappings::MappingFlags {
+        &self.mapping_flags
     }
 
-    fn set_report_attr(&mut self, value: Option<bool>) {
-        self.report = value;
+    fn mapping_flags_mut(&mut self) -> &mut crate::mappings::MappingFlags {
+        &mut self.mapping_flags
     }
 
     fn nin(&self) -> usize {
@@ -316,14 +314,6 @@ impl Mapping for ZoomMap {
 
     fn set_has_been_simplified(&mut self, flag: bool) {
         self.simplified.set(self.inverted, flag);
-    }
-
-    fn allow_simplify(&self) -> bool {
-        self.allow_simplify
-    }
-
-    fn set_allow_simplify(&mut self, flag: bool) {
-        self.allow_simplify = flag;
     }
 
     fn clone_box(&self) -> DynMapping {

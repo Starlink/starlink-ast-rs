@@ -42,7 +42,7 @@ PROGS := linear_approx analyse_poly scale_poly_inputs orth_vector_set \
          specflux_primary_probe cmp_match_end_probe \
          time_scale_set_probe flux_badun_probe spec_origin_sor_probe use_defs_probe \
          sky_use_defs_probe spec_use_defs_probe \
-         region_object_probe section_load_probe sky_last_probe ident_probe frameset_current_probe sky_plain_axis_probe box_axin_probe norm_points_probe frame_api_probe region_grid_probe report_probe
+         region_object_probe section_load_probe sky_last_probe ident_probe frameset_current_probe sky_plain_axis_probe box_axin_probe norm_points_probe frame_api_probe region_grid_probe report_probe allow_simplify_probe
 
 all: $(PROGS)
 

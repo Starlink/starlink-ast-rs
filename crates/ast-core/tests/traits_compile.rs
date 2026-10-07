@@ -11,11 +11,13 @@ use ast_core::regions::{DynRegion, Overlap, Region};
 #[derive(Debug)]
 struct DummyRegion {
     frame: BasicFrame,
+    flags: ast_core::mappings::MappingFlags,
 }
 
 impl DummyRegion {
     fn new() -> Self {
         DummyRegion {
+            flags: ast_core::mappings::MappingFlags::default(),
             frame: BasicFrameBuilder::new(2).build().unwrap(),
         }
     }
@@ -57,10 +59,12 @@ macro_rules! forward_axis {
 }
 
 impl Mapping for DummyRegion {
-    fn report_attr(&self) -> Option<bool> {
-        None
+    fn mapping_flags(&self) -> &ast_core::mappings::MappingFlags {
+        &self.flags
     }
-    fn set_report_attr(&mut self, _value: Option<bool>) {}
+    fn mapping_flags_mut(&mut self) -> &mut ast_core::mappings::MappingFlags {
+        &mut self.flags
+    }
     fn nin(&self) -> usize {
         2
     }
