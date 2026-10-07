@@ -13,6 +13,10 @@ use crate::mappings::{CmpMap, Composition, DynMapping, UnitMap};
 use crate::pal;
 use crate::serial::{Node, NodeValue, Serializable};
 
+/// Radians to degrees and back, as C's `AST__DR2D` and `AST__DD2R`.
+const AST_DR2D: f64 = 57.295_779_513_082_32;
+const AST_DD2R: f64 = 0.017_453_292_519_943_295;
+
 /// A celestial coordinate frame.
 ///
 /// `SkyFrame` represents a coordinate frame on the celestial sphere.
@@ -1846,6 +1850,86 @@ impl Frame for SkyFrame {
         coords[lp] = lon;
         coords[bp] = lat;
         Ok(())
+    }
+
+    /// skyframe.c `NormalPoints`: normalise each point, then, when `contig`
+    /// is set, move the longitudes by whole turns so that they lie within
+    /// half a turn of the point opposite the widest gap between them, found
+    /// from a histogram of one-degree bins.
+    fn norm_points(
+        &self,
+        points: &crate::coords::PointSet,
+        contig: bool,
+    ) -> AstResult<crate::coords::PointSet> {
+        let mut out = super::norm_each_point(self, points)?;
+        if !contig {
+            return Ok(out);
+        }
+        let lon = self.perm[0];
+        let mut hist = [0usize; 360];
+        for i in 0..out.npoint() {
+            let v = out.point(i)[lon];
+            if v != BAD_VALUE {
+                // C's `(int)` truncation of the angle in degrees.
+                let ihist = (v * AST_DR2D) as i64;
+                if (0..360).contains(&ihist) {
+                    hist[ihist as usize] += 1;
+                }
+            }
+        }
+        // The widest run of empty bins, and the first and last full ones.
+        let (mut ingap, mut maxgap, mut maxgap_centre) = (false, 0i64, 0i64);
+        let (mut gap_start, mut ifirst, mut ilast) = (0i64, -1i64, -1i64);
+        for (ihist, &count) in hist.iter().enumerate() {
+            let ihist = ihist as i64;
+            if count == 0 {
+                if !ingap {
+                    ingap = true;
+                    gap_start = ihist;
+                }
+            } else {
+                if ingap {
+                    ingap = false;
+                    let gap_end = ihist - 1;
+                    let gap_size = gap_end - gap_start + 1;
+                    if gap_size > maxgap {
+                        maxgap = gap_size;
+                        maxgap_centre = (gap_start + gap_end) / 2;
+                    }
+                }
+                if ifirst == -1 {
+                    ifirst = ihist;
+                }
+                ilast = ihist;
+            }
+        }
+        // The gap made by joining the empty bins at the two ends.
+        let gap_start = ilast - 360;
+        let gap_end = ifirst;
+        let gap_size = gap_end - gap_start + 1;
+        if gap_size > maxgap {
+            maxgap_centre = (gap_start + gap_end) / 2;
+        }
+        // C's integer division truncates towards zero, as Rust's does.
+        let centre = if maxgap_centre > 0 {
+            maxgap_centre - 180
+        } else {
+            maxgap_centre + 180
+        };
+        let lo = (centre - 180) as f64 * AST_DD2R;
+        let hi = lo + 2.0 * std::f64::consts::PI;
+        for i in 0..out.npoint() {
+            let v = &mut out.point_mut(i)[lon];
+            if *v != BAD_VALUE {
+                while *v < lo {
+                    *v += 2.0 * std::f64::consts::PI;
+                }
+                while *v > hi {
+                    *v -= 2.0 * std::f64::consts::PI;
+                }
+            }
+        }
+        Ok(out)
     }
 
     /// Every SkyFrame axis carries a SkyAxis, so the `astAx*` methods get

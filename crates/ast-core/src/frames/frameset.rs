@@ -1377,6 +1377,15 @@ impl Frame for FrameSet {
         self.current().norm(coords)
     }
 
+    /// frameset.c `NormalPoints`: the current Frame normalises the points.
+    fn norm_points(
+        &self,
+        points: &crate::coords::PointSet,
+        contig: bool,
+    ) -> AstResult<crate::coords::PointSet> {
+        self.current().norm_points(points, contig)
+    }
+
     fn snapshot(&self) -> DynFrame {
         // A copy of a FrameSet is a FrameSet, as C `astCopy` gives
         // (`object.c:1174`): the class has to survive, because a FrameSet used

@@ -32,6 +32,7 @@ pub use timeframe::{TimeFrame, TimeScale, TimeSystem};
 
 use std::fmt;
 
+use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::mappings::{AsAny, DynMapping, Mapping};
 use crate::serial::AnyObject;
@@ -1185,6 +1186,19 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
         AxisKind::Plain
     }
 
+    /// Normalise a set of points, each holding one value per axis. Mirrors C
+    /// `astNormalPoints` (frame.c), the per-class method behind the public
+    /// `astNormPoints`: each point is normalised as [`Frame::norm`] does,
+    /// and when `contig` is set a class whose axes wrap may also choose
+    /// among equivalent values so that the points form one contiguous group
+    /// (a SkyFrame keeps the longitudes on one side of the widest gap
+    /// between them). Fails with `AST__NCPIN` unless the points have one
+    /// value per axis.
+    fn norm_points(&self, points: &PointSet, contig: bool) -> AstResult<PointSet> {
+        let _ = contig;
+        norm_each_point(self.as_dyn_frame(), points)
+    }
+
     /// Whether `val` lies between `lo` and `hi` on a 1-based `axis`,
     /// including the limits when `closed`. Mirrors C `astAxIn` (frame.c),
     /// which asks the Axis object: a plain Axis compares the values
@@ -1540,6 +1554,27 @@ pub(crate) fn reduce_to_basic_frame(frame: &dyn Frame) -> AstResult<BasicFrame> 
         }
     }
     Ok(bf)
+}
+
+/// frame.c `NormalPoints`: check that `points` has one value per axis of
+/// `frame`, then normalise each point with [`Frame::norm`].
+pub(crate) fn norm_each_point(frame: &dyn Frame, points: &PointSet) -> AstResult<PointSet> {
+    let naxes = frame.naxes();
+    if points.ncoord() != naxes {
+        return Err(AstError::new(
+            ErrorCode::Ncpin,
+            format!(
+                "astNormalPoints: Bad number of coordinate values ({}) in input PointSet; \
+                 the Frame has {naxes} axes.",
+                points.ncoord()
+            ),
+        ));
+    }
+    let mut out = points.clone();
+    for i in 0..out.npoint() {
+        frame.norm(out.point_mut(i))?;
+    }
+    Ok(out)
 }
 
 /// Select axes from `frame` into a new Frame, with the Mapping from the

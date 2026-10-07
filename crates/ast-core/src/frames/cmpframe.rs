@@ -698,6 +698,55 @@ impl Frame for CmpFrame {
         Ok(())
     }
 
+    /// cmpframe.c `NormalPoints`: the points are put back in the internal
+    /// axis order, split between the two component Frames, normalised by
+    /// each, and permuted back.
+    fn norm_points(
+        &self,
+        points: &crate::coords::PointSet,
+        contig: bool,
+    ) -> AstResult<crate::coords::PointSet> {
+        let n = self.naxes();
+        let n1 = self.frame1.naxes();
+        if points.ncoord() != n {
+            return Err(AstError::new(
+                ErrorCode::Ncpin,
+                format!(
+                    "astNormalPoints(CmpFrame): Bad number of coordinate values ({}) in \
+                     input PointSet; the CmpFrame has {n} axes.",
+                    points.ncoord()
+                ),
+            ));
+        }
+        let npoint = points.npoint();
+        let internal: Vec<Vec<f64>> = (0..npoint)
+            .map(|p| {
+                let mut row = vec![0.0; n];
+                for (i, &v) in points.point(p).iter().enumerate() {
+                    row[self.perm[i]] = v;
+                }
+                row
+            })
+            .collect();
+        let part1 = crate::coords::PointSet::from_rows(internal.iter().map(|r| &r[..n1]));
+        let part2 = crate::coords::PointSet::from_rows(internal.iter().map(|r| &r[n1..]));
+        let out1 = self.frame1.norm_points(&part1, contig)?;
+        let out2 = self.frame2.norm_points(&part2, contig)?;
+        let mut out = points.clone();
+        for p in 0..npoint {
+            let row = out.point_mut(p);
+            for (i, v) in row.iter_mut().enumerate() {
+                let k = self.perm[i];
+                *v = if k < n1 {
+                    out1.point(p)[k]
+                } else {
+                    out2.point(p)[k - n1]
+                };
+            }
+        }
+        Ok(out)
+    }
+
     /// Extend a box to include the effect of singularities in either
     /// component Frame. Mirrors C `CmpFrame::NormBox` (cmpframe.c:5838): the
     /// bounds are permuted into the internal order the components use, split

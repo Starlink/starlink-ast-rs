@@ -268,6 +268,36 @@ pub trait Region: Frame + Mapping {
     /// The number of points is approximately [`mesh_size()`](Region::mesh_size).
     fn get_region_mesh(&self) -> AstResult<PointSet>;
 
+    /// A mesh of points on the boundary of this region, in its current
+    /// Frame. Mirrors C `astGetRegionMesh` with `surface` set (region.c
+    /// `GetRegionMesh`): the base-Frame mesh is transformed by the simplified
+    /// base→current Mapping (`RegMesh`) and normalised as one contiguous
+    /// group ([`Frame::norm_points`]), so a mesh crossing zero longitude does
+    /// not jump. Fails with `AST__MBBNF` for an unbounded region.
+    ///
+    /// C's interior grid (`surface` unset) is not provided: it is built by
+    /// region.c `RegBaseGrid`, which is not yet ported.
+    fn region_mesh(&self) -> AstResult<PointSet> {
+        if !self.is_bounded() {
+            return Err(AstError::new(
+                ErrorCode::Mbbnf,
+                "astGetRegionMesh: The supplied Region is unbounded so no mesh can \
+                 be created to cover it.",
+            ));
+        }
+        let base = self.get_region_mesh()?;
+        let map = self
+            .get_region_frameset()
+            .mapping(FrameRef::Base, FrameRef::Current)?
+            .simplify()?;
+        let mesh = if map.as_any().is::<UnitMap>() {
+            base
+        } else {
+            map.transform(&base, true)?
+        };
+        self.norm_points(&mesh, true)
+    }
+
     /// Get a grid of points filling the interior of this region.
     ///
     /// Returns approximately `npoints` points spread through the volume of

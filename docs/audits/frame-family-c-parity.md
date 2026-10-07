@@ -231,7 +231,7 @@ A KeyMap does not read or write Ident at all; that is a separate gap.
 | C method | Classes | Impact |
 |---|---|---|
 | Abbrev, Centre, Fields, Gap, FrameGrid, AxisGap | Frame, SkyFrame, TimeFrame, CmpFrame | Plot support. Deferred to the Plot step. |
-| NormalPoints / NormPoints | Frame, SkyFrame, CmpFrame, FrameSet | Only the public `astNormPoints` reaches it, plus Region mesh code (`region.c:6671, 9385, 10996`). Visible in Region meshes that cross RA=0. Missing public API. |
+| NormalPoints / NormPoints | Frame, SkyFrame, CmpFrame, FrameSet | PORTED 2026-10-07 as `Frame::norm_points`, with the SkyFrame, CmpFrame, FrameSet and Region overrides C has; it is also the public `astNormPoints`. `Region::region_mesh` ports `astGetRegionMesh` for the boundary mesh and normalises it the same way. The interior grid (`astGetRegionMesh` with `surface` unset) is not provided: it needs region.c `RegBaseGrid`, which the port's `reg_base_grid` does not follow (it fills the bounding box with a regular grid, where C meshes a Box covering it and retries for size). `tests/test_norm_points.rs`, from `tools/oracle_fixtures/norm_points_probe.c`. |
 | AxIn | Frame, Axis, SkyAxis | PORTED 2026-10-07 as `Frame::ax_in`, with `axis::axis_in` and `skyaxis::axis_in`; Box containment uses it, so a Box on sky axes wraps each value into its range. `tests/test_box_axin.rs`, from `tools/oracle_fixtures/box_axin_probe.c`. |
 | ReportPoints | Frame | Diagnostic output for Mapping `Report=1` only. |
 | ValidateAxisSelection | Frame | Its absence shows up as FR-7. |

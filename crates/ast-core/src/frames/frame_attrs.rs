@@ -981,6 +981,15 @@ macro_rules! region_frame_attrs {
     () => {
         forward_frame_attrs!(data.frameset);
         forward_axis_attrs!(data.frameset);
+        // region.c `NormalPoints` (6591): the current Frame of the Region's
+        // FrameSet normalises the points.
+        fn norm_points(
+            &self,
+            points: &$crate::coords::PointSet,
+            contig: bool,
+        ) -> $crate::error::AstResult<$crate::coords::PointSet> {
+            self.data.frameset.current().norm_points(points, contig)
+        }
         // region.c `Overlay` (7463): the current Frame of the Region's
         // FrameSet is the template.
         fn overlay(
