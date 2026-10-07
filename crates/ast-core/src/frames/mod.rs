@@ -1199,6 +1199,17 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
         norm_each_point(self.as_dyn_frame(), points)
     }
 
+    /// A grid of about `size` points covering the box from `lbnd` to
+    /// `ubnd`, one bound per axis. Mirrors C `astFrameGrid` (frame.c), a
+    /// per-class method: a Frame spaces the points evenly along each axis,
+    /// giving more ticks to the longer axes among those that share a Unit;
+    /// a SkyFrame lays them on parallels, roughly equal-area; a CmpFrame
+    /// takes the cross product of its components' grids. Fails with
+    /// `AST__ATTIN` for a `size` below 1 or a bound pair that is bad.
+    fn frame_grid(&self, size: i32, lbnd: &[f64], ubnd: &[f64]) -> AstResult<PointSet> {
+        frame_grid_default(self.as_dyn_frame(), size, lbnd, ubnd)
+    }
+
     /// Whether `val` lies between `lo` and `hi` on a 1-based `axis`,
     /// including the limits when `closed`. Mirrors C `astAxIn` (frame.c),
     /// which asks the Axis object: a plain Axis compares the values
@@ -1554,6 +1565,79 @@ pub(crate) fn reduce_to_basic_frame(frame: &dyn Frame) -> AstResult<BasicFrame> 
         }
     }
     Ok(bf)
+}
+
+/// frame.c `FrameGrid`: evenly spaced points along each axis, the number of
+/// ticks on an axis scaled by its length over the geometric mean length of
+/// the axes that share its Unit, the first axis varying fastest.
+pub(crate) fn frame_grid_default(
+    frame: &dyn Frame,
+    size: i32,
+    lbnd: &[f64],
+    ubnd: &[f64],
+) -> AstResult<PointSet> {
+    use crate::constants::BAD_VALUE;
+    let naxes = frame.naxes();
+    let mut nsame = vec![1i32; naxes];
+    let mut gmean = vec![0.0f64; naxes];
+    let mut bad = false;
+    for iax in 0..naxes {
+        if ubnd[iax] == BAD_VALUE && lbnd[iax] == BAD_VALUE {
+            bad = true;
+            break;
+        }
+        gmean[iax] = ubnd[iax] - lbnd[iax];
+        let unit = frame.unit(iax + 1)?;
+        for jax in 0..naxes {
+            if jax != iax && unit == frame.unit(jax + 1)? {
+                nsame[iax] += 1;
+                gmean[iax] *= ubnd[jax] - lbnd[jax];
+            }
+        }
+    }
+    if bad || size < 1 {
+        return Err(AstError::new(
+            ErrorCode::Attin,
+            if bad {
+                "astFrameGrid: One of more of the supplied bounds is AST__BAD \
+                 (programming error)."
+                    .to_string()
+            } else {
+                format!(
+                    "astFrameGrid: The supplied grid size ({size}) is invalid (programming error)."
+                )
+            },
+        ));
+    }
+    // C assigns the nominal tick count and each axis's count to `int`,
+    // truncating.
+    let ntick0 = ((size as f64).powf(1.0 / naxes as f64) as i32).max(2);
+    for iax in 0..naxes {
+        gmean[iax] = gmean[iax].abs().powf(1.0 / nsame[iax] as f64);
+    }
+    let ntick: Vec<i32> = (0..naxes)
+        .map(|iax| ((ntick0 as f64 * (ubnd[iax] - lbnd[iax]) / gmean[iax]) as i32).max(2))
+        .collect();
+    let np: i32 = ntick.iter().product();
+    let step: Vec<f64> = (0..naxes)
+        .map(|iax| (ubnd[iax] - lbnd[iax]) / (ntick[iax] - 1) as f64)
+        .collect();
+    let mut out = PointSet::zeros(np as usize, naxes);
+    let mut pi = vec![0i32; naxes];
+    for ipp in 0..np as usize {
+        for (iax, v) in out.point_mut(ipp).iter_mut().enumerate() {
+            *v = lbnd[iax] + pi[iax] as f64 * step[iax];
+        }
+        for iax in 0..naxes {
+            pi[iax] += 1;
+            if pi[iax] > ntick[iax] - 1 {
+                pi[iax] = 0;
+            } else {
+                break;
+            }
+        }
+    }
+    Ok(out)
 }
 
 /// frame.c `NormalPoints`: check that `points` has one value per axis of

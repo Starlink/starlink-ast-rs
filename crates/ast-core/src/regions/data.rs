@@ -9,7 +9,7 @@ use std::cell::RefCell;
 
 use crate::constants::BAD_VALUE;
 use crate::coords::PointSet;
-use crate::error::AstResult;
+use crate::error::{AstError, AstResult};
 use crate::frames::{DynFrame, Frame, FrameRef, FrameSet, SkyFrame};
 use crate::mappings::helpers::is_bad;
 use crate::mappings::{Mapping, UnitMap};
@@ -401,78 +401,6 @@ pub(crate) trait RegionGeometry {
     /// through the given mapping and update any derived quantities.
     fn remap_defining_points(&mut self, mapping: &dyn Mapping, forward: bool) -> AstResult<()>;
 
-    /// Return a grid of points spread through the interior of the region.
-    ///
-    /// The default implementation generates a regular grid in the bounding box,
-    /// then filters to keep only points inside the region. The `npoints`
-    /// parameter is the approximate target number of interior points; the actual
-    /// count may differ since grid points outside the region are discarded.
-    ///
-    /// For bounded regions only. Returns an empty Vec for unbounded regions.
-    fn reg_base_grid(&self, npoints: usize) -> AstResult<Vec<Vec<f64>>> {
-        // Get the bounding box.
-        let (lbnd, ubnd) = self.reg_base_box()?;
-        let naxes = lbnd.len();
-
-        // Check all axes are bounded.
-        for i in 0..naxes {
-            if is_bad(lbnd[i]) || is_bad(ubnd[i]) {
-                return Ok(Vec::new());
-            }
-        }
-
-        let npoints = npoints.max(1);
-
-        // Compute number of ticks per axis: ntick = npoints^(1/naxes), at least 2.
-        let ntick_per_axis = (npoints as f64).powf(1.0 / naxes as f64).round() as usize;
-        let ntick_per_axis = ntick_per_axis.max(2);
-
-        // Total grid points.
-        let total = ntick_per_axis.pow(naxes as u32);
-
-        // Generate the regular grid filling the bounding box.
-        let mut grid = Vec::with_capacity(total);
-
-        // Compute step sizes.
-        let steps: Vec<f64> = (0..naxes)
-            .map(|i| (ubnd[i] - lbnd[i]) / (ntick_per_axis - 1).max(1) as f64)
-            .collect();
-
-        // Iterate through all grid positions using multi-index.
-        let mut indices = vec![0usize; naxes];
-        for _ in 0..total {
-            // Build point from current indices.
-            let point: Vec<f64> = (0..naxes)
-                .map(|ax| lbnd[ax] + indices[ax] as f64 * steps[ax])
-                .collect();
-            grid.push(point);
-
-            // Advance multi-index (odometer style).
-            let mut ax = 0;
-            while ax < naxes {
-                indices[ax] += 1;
-                if indices[ax] >= ntick_per_axis {
-                    indices[ax] = 0;
-                    ax += 1;
-                } else {
-                    break;
-                }
-            }
-        }
-
-        // Filter: keep only points inside the region.
-        let pts = PointSet::from_rows(grid.iter().map(|p| p.as_slice()));
-        let inside = self.reg_base_inside(&pts)?;
-
-        let result: Vec<Vec<f64>> = grid
-            .into_iter()
-            .zip(inside)
-            .filter_map(|(p, is_in)| if is_in { Some(p) } else { None })
-            .collect();
-
-        Ok(result)
-    }
-
     /// Verify that a candidate remapped Region (defined in this Region's
     /// *current* Frame by the boundary points `candidate_mesh`) is an exact
     /// representation of `self` after the base→current `map`.
@@ -594,29 +522,16 @@ pub(crate) fn region_transform<R: RegionGeometry>(
 
     // Forward transform: batch-test all points for membership.
     let data = region.region_data();
-    let negated = data.negated;
 
     // Transform input points from current frame to base frame for testing.
     // The region's frameset maps base→current (forward), so we need inverse.
     let base_pts = data.frameset.transform(pts, false)?;
 
-    // Batch predicate: test all points at once.
-    let inside = region.reg_base_inside(&base_pts)?;
+    let inside = region_base_mask(region, &base_pts)?;
 
     // Build output: passthrough for inside, BAD for outside.
     let mut out = PointSet::zeros(npoint, ncoord);
-    for (i, &is_in) in inside.iter().enumerate() {
-        let base_point = base_pts.point(i);
-        let has_bad = base_point.iter().any(|&v| is_bad(v));
-
-        let effective_inside = if has_bad {
-            false
-        } else if negated {
-            !is_in
-        } else {
-            is_in
-        };
-
+    for (i, &effective_inside) in inside.iter().enumerate() {
         if effective_inside {
             let src = pts.point(i);
             let dst = out.point_mut(i);
@@ -628,4 +543,83 @@ pub(crate) fn region_transform<R: RegionGeometry>(
     }
 
     Ok(out)
+}
+
+/// Which base-Frame points lie in the Region, allowing for Negated: the
+/// test the Region's transformation makes once its points are in the base
+/// Frame. A point with a bad axis value is outside. This is what region.c
+/// `BTransform` applies to base-Frame points.
+pub(crate) fn region_base_mask<R: RegionGeometry + ?Sized>(
+    region: &R,
+    base_pts: &PointSet,
+) -> AstResult<Vec<bool>> {
+    let negated = region.region_data().negated;
+    let inside = region.reg_base_inside(base_pts)?;
+    Ok(inside
+        .iter()
+        .enumerate()
+        .map(|(i, &is_in)| {
+            let has_bad = base_pts.point(i).iter().any(|&v| is_bad(v));
+            !has_bad && (is_in != negated)
+        })
+        .collect())
+}
+
+/// region.c `RegBaseGrid`: a grid of about MeshSize points spread through
+/// the Region in its base Frame. A Box covering the Region's base-Frame
+/// bounding box makes a grid (its own `RegBaseGrid`), and the points
+/// outside the Region are dropped. The Box's grid size is adjusted by the
+/// ratio by which the count missed MeshSize, and the grid is remade, until
+/// the count is within 5% of MeshSize or three grids have been made. Box
+/// has its own `RegBaseGrid` and does not come here.
+pub(crate) fn region_base_grid<R>(region: &R) -> AstResult<PointSet>
+where
+    R: RegionGeometry + crate::regions::Region + ?Sized,
+{
+    if !region.is_bounded() {
+        return Err(AstError::new(
+            crate::error::ErrorCode::Mbbnf,
+            "astRegBaseGrid: The Region is unbounded so no grid can be created to \
+             cover it.",
+        ));
+    }
+    let data = region.region_data();
+    let meshsize = data.effective_mesh_size() as i32;
+    let (lbnd, ubnd) = region.reg_base_box()?;
+    let frmb = data.frameset.base().snapshot();
+    let mut bx = crate::regions::BoxRegionBuilder::from_dyn_bounds(frmb, &lbnd, &ubnd)?.build()?;
+    let mut np = meshsize;
+    let mut result = PointSet::zeros(0, lbnd.len());
+    let mut ntry = 0;
+    while ntry < 3 {
+        ntry += 1;
+        crate::regions::Region::set_mesh_size(&mut bx, np as usize);
+        let ps1 = crate::regions::Region::get_region_grid(&bx)?;
+        let inside = region_base_mask(region, &ps1)?;
+        let kept: Vec<usize> = (0..ps1.npoint()).filter(|&i| inside[i]).collect();
+        let ipr = kept.len() as i32;
+        result = PointSet::zeros(kept.len(), lbnd.len());
+        for (k, &i) in kept.iter().enumerate() {
+            result.point_mut(k).copy_from_slice(ps1.point(i));
+        }
+        if ((ipr - meshsize) as f64).abs() / (meshsize as f64) < 0.05 {
+            break;
+        }
+        if ntry < 3 {
+            np = if ipr == 0 {
+                np * 10
+            } else {
+                // C's `np *= (double)meshsize/(double)ipr` truncates.
+                (np as f64 * (meshsize as f64 / ipr as f64)) as i32
+            };
+        }
+    }
+    // C truncates the grid with astSetNpoint, which rejects a count of 0.
+    if result.npoint() == 0 {
+        return Err(AstError::new(
+            crate::error::ErrorCode::Nptin,
+            "astSetNpoint(PointSet): Number of points (0) is not valid.",
+        ));
+    }
+    Ok(result)
 }

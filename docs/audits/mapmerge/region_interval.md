@@ -91,7 +91,7 @@ lives once.
 | 51 | Allocate memory to store the bounds of the returned Interval | interval.c:1394-1397 (fn MergeInterval) | -- | ceremony | n/a: a `Vec` grows as the bounds are appended |
 | 52 | Get the bounds from the Interval into its part of those arrays | interval.c:1398-1404 (fn MergeInterval) | interval.rs:1514-1515 (fn region_merge) | architecture | ported |
 | 53 | Copy the centre and corner from the supplied Box into the other part | interval.c:1405-1415 (fn MergeInterval) | interval.rs:1513 (fn region_merge) | architecture | ported |
-| 54 | Convert those centre and corner positions into upper and lower bounds, swapping any pair the conversion inverts | interval.c:1416-1427 (fn MergeInterval) | box_region.rs:842 (fn reg_base_box) | architecture | ported |
+| 54 | Convert those centre and corner positions into upper and lower bounds, swapping any pair the conversion inverts | interval.c:1416-1427 (fn MergeInterval) | box_region.rs:848 (fn reg_base_box) | architecture | ported |
 | 55 | Create the new Interval, initially with no uncertainty | interval.c:1428-1431 (fn MergeInterval) | merge_util.rs:152-156 (fn finish_region_merge),149 (fn finish_region_merge) | architecture | ported |
 | 56 | Free the bounds arrays | interval.c:1432-1435 (fn MergeInterval) | -- | ceremony | n/a: owned values are dropped |
 | 57 | Now attempt to merge with a NullRegion, giving an Interval; the NullRegion must be negated and the Interval must not | interval.c:1436-1439 (fn MergeInterval) | interval.rs:1518-1522 (fn region_merge) | architecture | ported |
@@ -229,7 +229,7 @@ reduces to, and `astRegOverlay` never installs an uncertainty of its own — its
 only uncertainty action is to *clear* one (`region.c:9928 (fn RegOverlay)`) — so a
 Box built without it stays without it. The port passes the same Region
 (`interval.rs:670-676 (fn simplify_remapped)`), read through `get_unc_frm`
-(`regions/mod.rs:606 (fn get_unc_frm)`), which is `astGetUncFrm`.
+(`regions/mod.rs:639 (fn get_unc_frm)`), which is `astGetUncFrm`.
 
 ## Rows 113 and 114 — the port's "was it simplified?" signal
 

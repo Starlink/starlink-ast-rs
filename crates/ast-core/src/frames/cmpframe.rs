@@ -698,6 +698,58 @@ impl Frame for CmpFrame {
         Ok(())
     }
 
+    /// cmpframe.c `FrameGrid`: the bounds are put in the internal axis
+    /// order and split between the components, each component makes a grid
+    /// of a share of the points in proportion to its axes, and the result is
+    /// their cross product, every point of the first component's grid with
+    /// each point of the second's in turn, permuted back.
+    fn frame_grid(
+        &self,
+        size: i32,
+        lbnd: &[f64],
+        ubnd: &[f64],
+    ) -> AstResult<crate::coords::PointSet> {
+        if size <= 0 {
+            return Err(AstError::new(
+                ErrorCode::Attin,
+                format!(
+                    "astFrameGrid(CmpFrame): The supplied grid size ({size}) is invalid \
+                     (programming error)."
+                ),
+            ));
+        }
+        let nax1 = self.frame1.naxes();
+        let nax2 = self.frame2.naxes();
+        let naxes = nax1 + nax2;
+        let (mut lbnd1, mut ubnd1) = (vec![0.0; nax1], vec![0.0; nax1]);
+        let (mut lbnd2, mut ubnd2) = (vec![0.0; nax2], vec![0.0; nax2]);
+        for axis in 0..naxes {
+            let iaxis = self.perm[axis];
+            if iaxis < nax1 {
+                lbnd1[iaxis] = lbnd[axis];
+                ubnd1[iaxis] = ubnd[axis];
+            } else {
+                lbnd2[iaxis - nax1] = lbnd[axis];
+                ubnd2[iaxis - nax1] = ubnd[axis];
+            }
+        }
+        let size1 = (size as f64).powf(nax1 as f64 / naxes as f64).round() as i32;
+        let size2 = (size as f64 / size1 as f64).round() as i32;
+        let ps1 = self.frame1.frame_grid(size1, &lbnd1, &ubnd1)?;
+        let ps2 = self.frame2.frame_grid(size2, &lbnd2, &ubnd2)?;
+        let mut rows = Vec::with_capacity(ps1.npoint() * ps2.npoint());
+        for ip1 in 0..ps1.npoint() {
+            for ip2 in 0..ps2.npoint() {
+                let mut internal = Vec::with_capacity(naxes);
+                internal.extend_from_slice(ps1.point(ip1));
+                internal.extend_from_slice(ps2.point(ip2));
+                let external: Vec<f64> = (0..naxes).map(|axis| internal[self.perm[axis]]).collect();
+                rows.push(external);
+            }
+        }
+        Ok(crate::coords::PointSet::from_rows(rows))
+    }
+
     /// cmpframe.c `NormalPoints`: the points are put back in the internal
     /// axis order, split between the two component Frames, normalised by
     /// each, and permuted back.

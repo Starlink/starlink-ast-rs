@@ -524,8 +524,8 @@ impl Region for PointList {
         Ok(result)
     }
 
-    fn get_region_grid(&self, npoints: usize) -> AstResult<Vec<Vec<f64>>> {
-        self.reg_base_grid(npoints)
+    fn get_region_grid(&self) -> AstResult<PointSet> {
+        crate::regions::data::region_base_grid(self)
     }
 
     fn get_region_points(&self) -> AstResult<PointSet> {

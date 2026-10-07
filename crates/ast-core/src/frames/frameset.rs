@@ -1377,6 +1377,16 @@ impl Frame for FrameSet {
         self.current().norm(coords)
     }
 
+    /// frameset.c `FrameGrid`: the current Frame makes the grid.
+    fn frame_grid(
+        &self,
+        size: i32,
+        lbnd: &[f64],
+        ubnd: &[f64],
+    ) -> AstResult<crate::coords::PointSet> {
+        self.current().frame_grid(size, lbnd, ubnd)
+    }
+
     /// frameset.c `NormalPoints`: the current Frame normalises the points.
     fn norm_points(
         &self,

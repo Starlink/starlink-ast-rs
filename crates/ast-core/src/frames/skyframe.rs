@@ -1852,6 +1852,84 @@ impl Frame for SkyFrame {
         Ok(())
     }
 
+    /// skyframe.c `FrameGrid`: about `size` points on parallels through the
+    /// centres of roughly square cells of equal area, the longitude bounds
+    /// taken into 0 to 2*pi and the upper one raised a turn if it is not
+    /// above the lower.
+    fn frame_grid(
+        &self,
+        size: i32,
+        lbnd: &[f64],
+        ubnd: &[f64],
+    ) -> AstResult<crate::coords::PointSet> {
+        let ilon = self.perm[0];
+        let ilat = 1 - ilon;
+        let (lolat, hilat) = if lbnd[ilat] <= ubnd[ilat] {
+            (lbnd[ilat], ubnd[ilat])
+        } else {
+            (ubnd[ilat], lbnd[ilat])
+        };
+        let (lolon, hilon) = (lbnd[ilon], ubnd[ilon]);
+        if size <= 0 || [lolat, hilat, lolon, hilon].contains(&BAD_VALUE) {
+            return Err(AstError::new(
+                ErrorCode::Attin,
+                if size < 1 {
+                    format!(
+                        "astFrameGrid(SkyFrame): The supplied grid size ({size}) is \
+                         invalid (programming error)."
+                    )
+                } else {
+                    "astFrameGrid(SkyFrame): One of more of the supplied bounds is \
+                     AST__BAD (programming error)."
+                        .to_string()
+                },
+            ));
+        }
+        let turn = 2.0 * std::f64::consts::PI;
+        let lolon = pal::dranrm(lolon);
+        let mut hilon = pal::dranrm(hilon);
+        if hilon <= lolon && ubnd[ilon] != lbnd[ilon] {
+            hilon += turn;
+        }
+        let dlon = hilon - lolon;
+        let box_area = (dlon * (hilat.sin() - lolat.sin())).abs();
+        let mut lat_size = (box_area / size as f64).sqrt();
+        // C's `(int)( 0.5 + ... )`.
+        let npar = ((0.5 + (hilat - lolat) / lat_size) as i32).max(2);
+        lat_size = (hilat - lolat) / npar as f64;
+        let mut totlen = 0.0;
+        let mut lat = lolat + 0.5 * lat_size;
+        for _ in 0..npar {
+            totlen += dlon * lat.cos();
+            lat += lat_size;
+        }
+        let lon_size = totlen / size as f64;
+        let ipmax = 2 * size;
+        let mut points: Vec<[f64; 2]> = Vec::new();
+        let mut ip = 0i32;
+        lat = lolat + 0.5 * lat_size;
+        for _ in 0..npar {
+            let cl = lat.cos();
+            let mut inclon = if cl != 0.0 { lon_size / cl } else { 0.0 };
+            let mut nmer = (dlon / inclon) as i32;
+            if ip + nmer >= ipmax {
+                nmer = ipmax - ip;
+            }
+            inclon = dlon / nmer as f64;
+            let mut lon = lolon + 0.5 * inclon;
+            for _ in 0..nmer {
+                let mut p = [0.0; 2];
+                p[ilon] = lon;
+                p[ilat] = lat;
+                points.push(p);
+                lon += inclon;
+                ip += 1;
+            }
+            lat += lat_size;
+        }
+        Ok(crate::coords::PointSet::from_rows(points))
+    }
+
     /// skyframe.c `NormalPoints`: normalise each point, then, when `contig`
     /// is set, move the longitudes by whole turns so that they lie within
     /// half a turn of the point opposite the widest gap between them, found

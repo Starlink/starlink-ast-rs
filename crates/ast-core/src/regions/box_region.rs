@@ -83,6 +83,12 @@ impl BoxRegionBuilder {
     /// the corner is set to `ubnd`. Both must have length equal to
     /// `frame.naxes()`.
     pub fn from_bounds(frame: impl Frame + 'static, lbnd: &[f64], ubnd: &[f64]) -> AstResult<Self> {
+        Self::from_dyn_bounds(Box::new(frame), lbnd, ubnd)
+    }
+
+    /// [`from_bounds`](Self::from_bounds) for a Frame already boxed, as C's
+    /// `astBox( frame, 1, lbnd, ubnd, ... )` takes any Frame.
+    pub(crate) fn from_dyn_bounds(frame: DynFrame, lbnd: &[f64], ubnd: &[f64]) -> AstResult<Self> {
         let naxes = frame.naxes();
         if lbnd.len() != naxes {
             return Err(AstError::new(
@@ -112,7 +118,7 @@ impl BoxRegionBuilder {
         let corner: Vec<f64> = ubnd.to_vec();
 
         Ok(BoxRegionBuilder {
-            frame: Box::new(frame),
+            frame,
             centre,
             corner,
             uncertainty: None,
@@ -1246,8 +1252,21 @@ impl Region for BoxRegion {
         Ok(result)
     }
 
-    fn get_region_grid(&self, npoints: usize) -> AstResult<Vec<Vec<f64>>> {
-        self.reg_base_grid(npoints)
+    /// box.c `RegBaseGrid`: the base Frame's grid of MeshSize points over
+    /// the Box's bounds.
+    fn get_region_grid(&self) -> AstResult<PointSet> {
+        if !self.is_bounded() {
+            return Err(AstError::new(
+                ErrorCode::Mbbnf,
+                "astRegBaseGrid(Box): The Box is unbounded so no grid can be created \
+                 to cover it.",
+            ));
+        }
+        let (lbnd, ubnd) = self.reg_base_box()?;
+        self.data
+            .frameset
+            .base()
+            .frame_grid(self.data.effective_mesh_size() as i32, &lbnd, &ubnd)
     }
 
     fn get_region_points(&self) -> AstResult<PointSet> {

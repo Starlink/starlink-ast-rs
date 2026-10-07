@@ -205,85 +205,66 @@ impl RegionGeometry for Prism {
         Ok((lbnd, ubnd))
     }
 
+    /// prism.c `RegBaseMesh`: the Prism's boundary is the first component's
+    /// interior at every point of the second's boundary, and the second's
+    /// interior at every point of the first's. Each component gives its
+    /// current-Frame boundary mesh and interior grid (`RegMesh`, `RegGrid`)
+    /// at sizes that split the Prism's MeshSize between the two, set on the
+    /// component for the purpose; a 1-D component's mesh has 2 points.
     fn reg_base_mesh(&self) -> AstResult<Vec<Vec<f64>>> {
-        let naxes1 = self.naxes1();
-        let naxes2 = self.naxes2();
-
-        // The boundary of a Prism is:
-        //   (interior of region1 × boundary of region2)  — "end caps"
-        //   ∪ (boundary of region1 × interior of region2) — "side walls"
-        //
-        // Following the C library (prism.c RegBaseMesh): we split the Prism's
-        // mesh_size budget between end caps and side walls, get boundary meshes
-        // and interior grids for both sub-regions, then form the cross products.
-
-        let mszp = self.data.effective_mesh_size();
-
-        // Compute mesh/grid sizes for each component region.
-        // For 1-D regions the mesh is always 2 points (lower + upper bound).
-        let msz1 = if naxes1 == 1 {
+        // A component has a mesh if it is bounded when negated or not.
+        let has_mesh = |r: &DynRegion| r.is_bounded() || r.negated_copy().is_bounded();
+        if !has_mesh(&self.region1) || !has_mesh(&self.region2) {
+            return Err(AstError::new(
+                ErrorCode::Inter,
+                "astRegBaseMesh(Prism): No mesh can be produced for the Prism bacause \
+                 one of its component Regions is unbounded.",
+            ));
+        }
+        // C's sizes are `int`s assigned from doubles, so each truncates.
+        let mszp = self.data.effective_mesh_size() as f64;
+        let nax1 = self.region1.naxes();
+        let nax2 = self.region2.naxes();
+        let msz1 = if nax1 == 1 {
             2
         } else {
-            (0.5 * mszp as f64).sqrt() as usize
+            (0.5 * mszp).sqrt() as i32
         };
-        let gsz2 = (0.5 * mszp as f64) as usize / msz1.max(1);
-
-        let msz2 = if naxes2 == 1 {
+        let gsz2 = (0.5 * mszp / msz1 as f64) as i32;
+        let msz2 = if nax2 == 1 {
             2
         } else {
-            (0.5 * mszp as f64).sqrt() as usize
+            (0.5 * mszp).sqrt() as i32
         };
-        let gsz1 = (0.5 * mszp as f64) as usize / msz2.max(1);
+        let gsz1 = (0.5 * mszp / msz2 as f64) as i32;
+        // The sizes are set on copies, which C does by setting them on the
+        // components and putting their own MeshSize back afterwards.
+        let sized = |r: &DynRegion, size: i32| {
+            let mut copy = r.clone_region();
+            copy.set_mesh_size(size.max(0) as usize);
+            copy
+        };
+        let mesh2 = sized(&self.region2, msz2).reg_mesh()?;
+        let grid2 = sized(&self.region2, gsz2).reg_grid()?;
+        let mesh1 = sized(&self.region1, msz1).reg_mesh()?;
+        let grid1 = sized(&self.region1, gsz1).reg_grid()?;
 
-        // Get boundary meshes from both sub-regions.
-        // Use get_region_mesh which uses the sub-region's own mesh_size.
-        let mesh1 = self.region1.get_region_mesh()?;
-        let mesh2 = self.region2.get_region_mesh()?;
-
-        // Get interior grids for both sub-regions using the computed sizes.
-        let grid1 = self.region1.get_region_grid(gsz1)?;
-        let grid2 = self.region2.get_region_grid(gsz2)?;
-
-        let actual_msz1 = mesh1.npoint();
-        let actual_gsz1 = grid1.len();
-        let actual_msz2 = mesh2.npoint();
-        let actual_gsz2 = grid2.len();
-
-        let total = actual_gsz1 * actual_msz2 + actual_msz1 * actual_gsz2;
-        let mut result = Vec::with_capacity(total);
-
-        // End caps: grid1 × mesh2
-        // Replicate the interior grid of region1 at every boundary point
-        // of region2.
-        for i in 0..actual_msz2 {
-            let p2 = mesh2.point(i);
-            if p2[..naxes2].iter().any(|&v| is_bad(v)) {
-                continue;
-            }
-            for grid1_point in &grid1 {
-                let mut point = Vec::with_capacity(naxes1 + naxes2);
-                point.extend_from_slice(&grid1_point[..naxes1]);
-                point.extend_from_slice(&p2[..naxes2]);
+        let mut result =
+            Vec::with_capacity(grid1.npoint() * mesh2.npoint() + mesh1.npoint() * grid2.npoint());
+        for i in 0..mesh2.npoint() {
+            for j in 0..grid1.npoint() {
+                let mut point = grid1.point(j).to_vec();
+                point.extend_from_slice(mesh2.point(i));
                 result.push(point);
             }
         }
-
-        // Side walls: mesh1 × grid2
-        // Replicate the interior grid of region2 at every boundary point
-        // of region1.
-        for i in 0..actual_msz1 {
-            let p1 = mesh1.point(i);
-            if p1[..naxes1].iter().any(|&v| is_bad(v)) {
-                continue;
-            }
-            for grid2_point in &grid2 {
-                let mut point = Vec::with_capacity(naxes1 + naxes2);
-                point.extend_from_slice(&p1[..naxes1]);
-                point.extend_from_slice(&grid2_point[..naxes2]);
+        for i in 0..mesh1.npoint() {
+            for j in 0..grid2.npoint() {
+                let mut point = mesh1.point(i).to_vec();
+                point.extend_from_slice(grid2.point(j));
                 result.push(point);
             }
         }
-
         Ok(result)
     }
 
@@ -651,8 +632,8 @@ impl Region for Prism {
         Ok(result)
     }
 
-    fn get_region_grid(&self, npoints: usize) -> AstResult<Vec<Vec<f64>>> {
-        self.reg_base_grid(npoints)
+    fn get_region_grid(&self) -> AstResult<PointSet> {
+        crate::regions::data::region_base_grid(self)
     }
 
     fn get_region_points(&self) -> AstResult<PointSet> {

@@ -30,6 +30,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [SkyFrame `Offset`'s coincident-points guard is defeated by multiply-add contraction too](#skyframe-offsets-coincident-points-guard-is-defeated-by-multiply-add-contraction-too)
 - [A SkyFrame's own SkyAxes are not latitude axes, so `astAxOffset` wraps its latitude into 0 to 2pi](#a-skyframes-own-skyaxes-are-not-latitude-axes-so-astaxoffset-wraps-its-latitude-into-0-to-2pi)
 - [A TimeFrame's default Epoch discards the UT1 value it computes from the TimeOrigin](#a-timeframes-default-epoch-discards-the-ut1-value-it-computes-from-the-timeorigin)
+- [`RegBaseGrid` fails when no grid point lies in the Region](#regbasegrid-fails-when-no-grid-point-lies-in-the-region)
 - [SkyFrame LAST depends on which LAST values the process computed earlier](#skyframe-last-depends-on-which-last-values-the-process-computed-earlier)
 
 ### [Addressed here, and not going upstream](#addressed-here-and-not-going-upstream)
@@ -50,6 +51,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [RESOLVED (upstream 8c734154): `ModifyPrefix` recurses without end on `k/unit`](#resolved-upstream-8c734154-modifyprefix-recurses-without-end-on-kunit)
 - [RESOLVED (upstream b4457da9): FluxFrame writes per-wavelength surface brightness as `SFCBRW` but reads it only as `SRCBR`](#resolved-upstream-b4457da9-fluxframe-writes-per-wavelength-surface-brightness-as-sfcbrw-but-reads-it-only-as-srcbr)
 - [RESOLVED (upstream 5a2cac2a): CmpFrame `ResolvePoints` passes internal-order points to methods that expect external order](#resolved-upstream-5a2cac2a-cmpframe-resolvepoints-passes-internal-order-points-to-methods-that-expect-external-order)
+- [RESOLVED (upstream db5199d7): CmpFrame `FrameGrid` writes its grid through the PointSet's own data pointers, out of bounds](#resolved-upstream-db5199d7-cmpframe-framegrid-writes-its-grid-through-the-pointsets-own-data-pointers-out-of-bounds)
 - [RESOLVED (upstream 0d05fc29): `astLoadFrameSet` keeps a `Currnt` below 1 as the current Frame index](#resolved-upstream-0d05fc29-astloadframeset-keeps-a-currnt-below-1-as-the-current-frame-index)
 - [RESOLVED (upstream 65bd5b6e): With AlignSpecOffset set in a wavelength System, a change of rest frame maps every value to bad](#resolved-upstream-65bd5b6e-with-alignspecoffset-set-in-a-wavelength-system-a-change-of-rest-frame-maps-every-value-to-bad)
 - [RESOLVED (upstream 5ef2a014): The public `astPointSet` passes no status to `astPointSetId_`, which expects one](#resolved-upstream-5ef2a014-the-public-astpointset-passes-no-status-to-astpointsetid_-which-expects-one)
@@ -96,6 +98,16 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 ---
 
 ## Open questions for upstream
+
+### `RegBaseGrid` fails when no grid point lies in the Region
+
+C location: `region.c` `RegBaseGrid`, the final `astSetNpoint( result, ipr )`.
+
+When none of the covering Box's grid points lies in the Region after the third attempt, `ipr` is 0 and `astSetNpoint` rejects it ("Number of points (0) is not valid"), so `astGetRegionMesh` fails rather than returning an empty grid.
+A sky Polygon whose vertices are in the order that makes it the large region does this: on the sphere the complement of a small polygon is bounded, but its base-Frame bounding box is the small polygon's, so the grid finds no points in it.
+The port mirrors the error (`region_base_grid`).
+
+Question for upstream: should an empty grid be an error, and if so a deliberate one?
 
 These are unresolved upstream.
 Some the port mirrors to keep fixtures round-tripping, some it diverges from deliberately; each entry says which, and what would show the question had been answered.
@@ -1013,6 +1025,16 @@ No program in `ast_tester` called the public constructor, which is how it went u
 Upstream now drops the `status` parameter and obtains it with `astGetStatusPtr`, as the other `Id_` constructors do; the new `testpointset.c` calls the public constructor.
 
 **Rust behaviour:** not applicable to the Rust API; the C ABI shim must not copy the mismatch. `tools/oracle_fixtures/sky_geometry_probe.c` makes its PointSets with `astPointSet_`, which works at the submodule pin too.
+
+### RESOLVED (upstream db5199d7): CmpFrame `FrameGrid` writes its grid through the PointSet's own data pointers, out of bounds
+
+C location: `cmpframe.c` `FrameGrid`, the loop that forms the cross product of the components' grids.
+
+The loop advanced the data pointers `astGetPoints` returned for the result, which are the PointSet's own, and advanced the second component's by `npoint2*sizeof(double)` elements rather than `npoint2`.
+The grid held garbage and the loop wrote out of bounds: `astGetRegionMesh` for the interior of a Box on a CmpFrame returned NaNs and denormals, and could crash.
+
+Fixed on `u/timj/norm-unit` in db5199d7, which stores each point by index, with a `testcmpframe` case.
+The port's `CmpFrame::frame_grid` builds the cross product the fixed C builds, and `tests/test_region_grid.rs` checks it against the fixed C.
 
 ### RESOLVED (upstream 0d05fc29): `astLoadFrameSet` keeps a `Currnt` below 1 as the current Frame index
 

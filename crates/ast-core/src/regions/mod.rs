@@ -270,44 +270,77 @@ pub trait Region: Frame + Mapping {
 
     /// A mesh of points on the boundary of this region, in its current
     /// Frame. Mirrors C `astGetRegionMesh` with `surface` set (region.c
-    /// `GetRegionMesh`): the base-Frame mesh is transformed by the simplified
-    /// base→current Mapping (`RegMesh`) and normalised as one contiguous
-    /// group ([`Frame::norm_points`]), so a mesh crossing zero longitude does
-    /// not jump. Fails with `AST__MBBNF` for an unbounded region.
-    ///
-    /// C's interior grid (`surface` unset) is not provided: it is built by
-    /// region.c `RegBaseGrid`, which is not yet ported.
+    /// `GetRegionMesh`): the current-Frame boundary mesh
+    /// ([`reg_mesh`](Region::reg_mesh)) normalised as one contiguous group
+    /// ([`Frame::norm_points`]), so a mesh crossing zero longitude does not
+    /// jump. Fails with `AST__MBBNF` for an unbounded region.
     fn region_mesh(&self) -> AstResult<PointSet> {
-        if !self.is_bounded() {
-            return Err(AstError::new(
+        self.bounded_for_mesh()?;
+        self.norm_points(&self.reg_mesh()?, true)
+    }
+
+    /// A grid of points spread through this region, in its current Frame.
+    /// Mirrors C `astGetRegionMesh` with `surface` unset: the current-Frame
+    /// grid ([`reg_grid`](Region::reg_grid)) normalised as one contiguous
+    /// group. Fails with `AST__MBBNF` for an unbounded region.
+    fn region_grid(&self) -> AstResult<PointSet> {
+        self.bounded_for_mesh()?;
+        self.norm_points(&self.reg_grid()?, true)
+    }
+
+    /// `AST__MBBNF` unless the region is bounded, as `astGetRegionMesh`
+    /// requires.
+    #[doc(hidden)]
+    fn bounded_for_mesh(&self) -> AstResult<()> {
+        if self.is_bounded() {
+            Ok(())
+        } else {
+            Err(AstError::new(
                 ErrorCode::Mbbnf,
                 "astGetRegionMesh: The supplied Region is unbounded so no mesh can \
                  be created to cover it.",
-            ));
+            ))
         }
-        let base = self.get_region_mesh()?;
+    }
+
+    /// The base-Frame boundary mesh transformed into the current Frame by
+    /// the simplified base->current Mapping (region.c `RegMesh`).
+    #[doc(hidden)]
+    fn reg_mesh(&self) -> AstResult<PointSet> {
+        self.to_current_frame(self.get_region_mesh()?)
+    }
+
+    /// The base-Frame grid transformed into the current Frame by the
+    /// simplified base->current Mapping (region.c `RegGrid`).
+    #[doc(hidden)]
+    fn reg_grid(&self) -> AstResult<PointSet> {
+        self.to_current_frame(self.get_region_grid()?)
+    }
+
+    /// Base-Frame points in the current Frame, by the simplified
+    /// base->current Mapping (region.c `RegMapping`); unchanged when that
+    /// Mapping is a UnitMap.
+    #[doc(hidden)]
+    fn to_current_frame(&self, base: PointSet) -> AstResult<PointSet> {
         let map = self
             .get_region_frameset()
             .mapping(FrameRef::Base, FrameRef::Current)?
             .simplify()?;
-        let mesh = if map.as_any().is::<UnitMap>() {
-            base
+        if map.as_any().is::<UnitMap>() {
+            Ok(base)
         } else {
-            map.transform(&base, true)?
-        };
-        self.norm_points(&mesh, true)
+            map.transform(&base, true)
+        }
     }
 
-    /// Get a grid of points filling the interior of this region.
-    ///
-    /// Returns approximately `npoints` points spread through the volume of
-    /// this region in the base frame. Used by compound regions (e.g. Prism)
-    /// to build cross-product meshes.
-    ///
-    /// The default implementation generates a regular grid in the bounding box
-    /// and filters to keep only interior points. Returns an empty Vec for
-    /// unbounded regions.
-    fn get_region_grid(&self, npoints: usize) -> AstResult<Vec<Vec<f64>>>;
+    /// A grid of about [`mesh_size()`](Region::mesh_size) points spread
+    /// through this region in the base frame. Mirrors C `astRegBaseGrid`, a
+    /// per-class method: a Box spaces the points over itself with its base
+    /// Frame's `astFrameGrid`; every other class keeps the points of a
+    /// covering Box's grid that it contains, adjusting the Box's grid size
+    /// up to three times to bring the count near MeshSize (region.c). Fails
+    /// with `AST__MBBNF` for an unbounded region.
+    fn get_region_grid(&self) -> AstResult<PointSet>;
 
     /// Get the defining points of this region in the base frame.
     ///
