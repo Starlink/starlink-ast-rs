@@ -164,6 +164,36 @@ impl fmt::Debug for FrameSet {
 }
 
 impl FrameSet {
+    /// This FrameSet with the Regions removed from every Mapping and every
+    /// Frame, or `None` when it holds none (frameset.c `RemoveRegions`).
+    fn without_regions(&self) -> Option<FrameSet> {
+        let maps: Vec<Option<DynMapping>> = self
+            .edges
+            .iter()
+            .map(|e| e.mapping.mapping_without_regions())
+            .collect();
+        let frames: Vec<Option<DynFrame>> = self
+            .frames
+            .iter()
+            .map(|f| f.frame_without_regions())
+            .collect();
+        if maps.iter().all(Option::is_none) && frames.iter().all(Option::is_none) {
+            return None;
+        }
+        let mut new = self.clone();
+        for (edge, map) in new.edges.iter_mut().zip(maps) {
+            if let Some(map) = map {
+                edge.mapping = map;
+            }
+        }
+        for (slot, frame) in new.frames.iter_mut().zip(frames) {
+            if let Some(frame) = frame {
+                *slot = frame;
+            }
+        }
+        Some(new)
+    }
+
     // ------------------------------------------------------------------ //
     // Construction                                                        //
     // ------------------------------------------------------------------ //
@@ -1400,6 +1430,10 @@ impl Frame for FrameSet {
         self.current().norm_points(points, contig)
     }
 
+    fn frame_without_regions(&self) -> Option<DynFrame> {
+        self.without_regions().map(|fs| Box::new(fs) as DynFrame)
+    }
+
     fn snapshot(&self) -> DynFrame {
         // A copy of a FrameSet is a FrameSet, as C `astCopy` gives
         // (`object.c:1174`): the class has to survive, because a FrameSet used
@@ -1783,6 +1817,12 @@ impl Mapping for FrameSet {
 
     fn mapping_flags_mut(&mut self) -> &mut crate::mappings::MappingFlags {
         &mut self.mapping_flags
+    }
+
+    /// frameset.c `RemoveRegions`: remove the Regions from every Mapping
+    /// and every Frame.
+    fn mapping_without_regions(&self) -> Option<DynMapping> {
+        self.without_regions().map(|fs| Box::new(fs) as DynMapping)
     }
 
     /// frameset.c `ReportPoints`: the input values are formatted by the

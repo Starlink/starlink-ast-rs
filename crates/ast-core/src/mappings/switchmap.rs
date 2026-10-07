@@ -445,6 +445,40 @@ impl Mapping for SwitchMap {
         &mut self.mapping_flags
     }
 
+    /// switchmap.c `RemoveRegions`: remove the Regions from every route
+    /// Mapping and both selectors.
+    fn mapping_without_regions(&self) -> Option<DynMapping> {
+        let fs = self
+            .fsmap
+            .as_ref()
+            .and_then(|m| m.mapping_without_regions());
+        let is = self
+            .ismap
+            .as_ref()
+            .and_then(|m| m.mapping_without_regions());
+        let routes: Vec<Option<DynMapping>> = self
+            .route_maps
+            .iter()
+            .map(|m| m.mapping_without_regions())
+            .collect();
+        if fs.is_none() && is.is_none() && routes.iter().all(Option::is_none) {
+            return None;
+        }
+        let mut new = self.clone();
+        if let Some(fs) = fs {
+            new.fsmap = Some(fs);
+        }
+        if let Some(is) = is {
+            new.ismap = Some(is);
+        }
+        for (slot, route) in new.route_maps.iter_mut().zip(routes) {
+            if let Some(route) = route {
+                *slot = route;
+            }
+        }
+        Some(Box::new(new))
+    }
+
     fn nin(&self) -> usize {
         if self.inverted {
             self.intrinsic_nout

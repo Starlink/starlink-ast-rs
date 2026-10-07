@@ -541,8 +541,9 @@ pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
     /// `lbnd_in`/`ubnd_in` (length = effective `nin` for the chosen
     /// direction, with `lbnd > ubnd` accepted and silently swapped),
     /// returns the lowest and highest values of output coordinate
-    /// `coord_out` (zero-based) reached within that input volume,
-    /// together with positions where those bounds are attained.
+    /// `coord_out` (1-based, as in C's public `astMapBox`) reached within
+    /// that input volume, together with positions where those bounds are
+    /// attained. An index outside `1..=nout` is `AST__BADCI`.
     ///
     /// The default implementation simplifies the Mapping, runs
     /// SpecialBounds (when nin <= 12) for an initial estimate, then
@@ -555,12 +556,25 @@ pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
         forward: bool,
         coord_out: usize,
     ) -> AstResult<MapBoxResult> {
-        map_box::map_box_default(self, lbnd_in, ubnd_in, forward, coord_out)
+        // C's public interface takes a 1-based index and the method a 0-based
+        // one (mapping.c astMapBoxId_); an index of 0 wraps past every output
+        // and is refused there with the others.
+        map_box::map_box_default(self, lbnd_in, ubnd_in, forward, coord_out.wrapping_sub(1))
     }
 
     /// Whether the forward transform is defined.
     fn has_forward(&self) -> bool {
         true
+    }
+
+    /// This Mapping with every Region it holds replaced by a UnitMap, or
+    /// `None` when it holds none: C's `RemoveRegions` method, whose callers
+    /// test for an unchanged Mapping by finding the same pointer returned.
+    /// Regions and the Mappings that hold other Mappings or Frames override
+    /// it, as in C; [`crate::regions::remove_regions`] is the public entry.
+    #[doc(hidden)]
+    fn mapping_without_regions(&self) -> Option<DynMapping> {
+        None
     }
 
     /// Whether the inverse transform is defined.

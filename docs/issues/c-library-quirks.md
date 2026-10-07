@@ -56,6 +56,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [RESOLVED (upstream db5199d7): CmpFrame `FrameGrid` writes its grid through the PointSet's own data pointers, out of bounds](#resolved-upstream-db5199d7-cmpframe-framegrid-writes-its-grid-through-the-pointsets-own-data-pointers-out-of-bounds)
 - [RESOLVED (upstream 0d05fc29): `astLoadFrameSet` keeps a `Currnt` below 1 as the current Frame index](#resolved-upstream-0d05fc29-astloadframeset-keeps-a-currnt-below-1-as-the-current-frame-index)
 - [RESOLVED (upstream ee96dc91): `LutMap`'s inverse reads one element before its table](#resolved-upstream-ee96dc91-lutmaps-inverse-reads-one-element-before-its-table)
+- [RESOLVED (upstream 80d66b0a): `TranMap`'s `RemoveRegions` doubles its number of axes](#resolved-upstream-80d66b0a-tranmaps-removeregions-doubles-its-number-of-axes)
 - [RESOLVED (upstream 65bd5b6e): With AlignSpecOffset set in a wavelength System, a change of rest frame maps every value to bad](#resolved-upstream-65bd5b6e-with-alignspecoffset-set-in-a-wavelength-system-a-change-of-rest-frame-maps-every-value-to-bad)
 - [RESOLVED (upstream 5ef2a014): The public `astPointSet` passes no status to `astPointSetId_`, which expects one](#resolved-upstream-5ef2a014-the-public-astpointset-passes-no-status-to-astpointsetid_-which-expects-one)
 - [RESOLVED (upstream e40e71b4): CmpMap `IsSimp` tag placement depends on shared-pointer aliasing during simplification](#resolved-upstream-e40e71b4-cmpmap-issimp-tag-placement-depends-on-shared-pointer-aliasing-during-simplification)
@@ -1075,6 +1076,16 @@ Only a hand-written description can do this, since Dump never writes an index be
 
 Fixed on `u/timj/norm-unit` in 0d05fc29, which checks Current as Base is checked, with a `testframeset` case (Errors 41-43).
 The port treats a `Currnt` below 1 as unset, as the fixed C does (`frameset.rs` `from_node`), and `tests/test_frameset_current.rs` covers Current's set state against C.
+
+### RESOLVED (upstream 80d66b0a): `TranMap`'s `RemoveRegions` doubles its number of axes
+
+C location: `tranmap.c` `RemoveRegions`.
+
+When removing the Regions from a TranMap turned both components into UnitMaps, it returned a UnitMap with as many axes as the two components together, the rule for a parallel CmpMap, which it was evidently copied from.
+A TranMap's components both act on its own inputs, so `astRemoveRegions` on a TranMap of two 2-D Regions gave a 4-D UnitMap where a 2-D one was meant.
+
+Fixed on `u/timj/norm-unit` in 80d66b0a, with `testregions` RemoveRegions tests 10 and 11.
+The port's `TranMap::mapping_without_regions` gives the TranMap's number of axes, and `tests/test_remove_regions_oracle.rs` compares it with the fixed C.
 
 ### RESOLVED (upstream ee96dc91): `LutMap`'s inverse reads one element before its table
 

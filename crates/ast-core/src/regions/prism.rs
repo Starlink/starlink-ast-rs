@@ -863,6 +863,11 @@ impl Frame for Prism {
         self.data.frameset.current().get_axis(axis)
     }
 
+    /// region.c `RemoveRegions`: a Region becomes its Frame.
+    fn frame_without_regions(&self) -> Option<DynFrame> {
+        Some(self.get_region_frame())
+    }
+
     fn snapshot(&self) -> DynFrame {
         Box::new(self.clone())
     }
@@ -905,6 +910,12 @@ impl Mapping for Prism {
 
     fn mapping_flags_mut(&mut self) -> &mut crate::mappings::MappingFlags {
         &mut self.data.mapping_flags
+    }
+
+    /// region.c `RemoveRegions`: a Region becomes its Frame, which as a
+    /// Mapping is a UnitMap with its number of axes.
+    fn mapping_without_regions(&self) -> Option<crate::mappings::DynMapping> {
+        Some(Box::new(crate::mappings::UnitMap::new(self.nin())))
     }
 
     /// region.c `ReportPoints`: the current Frame formats the values.

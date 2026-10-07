@@ -915,7 +915,7 @@ fn map_box_dyn_inner<M: Mapping + ?Sized>(
             ErrorCode::Badci,
             format!(
                 "astMapBox: Output coordinate index ({}) invalid - it should be in the range 1 to {}.",
-                coord_out + 1,
+                coord_out.wrapping_add(1),
                 nout
             ),
         ));

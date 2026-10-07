@@ -207,6 +207,28 @@ impl Mapping for TranMap {
         &mut self.mapping_flags
     }
 
+    /// tranmap.c `RemoveRegions`: remove the Regions from both components;
+    /// two UnitMaps become one.
+    fn mapping_without_regions(&self) -> Option<DynMapping> {
+        let new1 = self.map1.mapping_without_regions();
+        let new2 = self.map2.mapping_without_regions();
+        if new1.is_none() && new2.is_none() {
+            return None;
+        }
+        let map1 = new1.unwrap_or_else(|| self.map1.clone_box());
+        let map2 = new2.unwrap_or_else(|| self.map2.clone_box());
+        if map1.as_any().is::<UnitMap>() && map2.as_any().is::<UnitMap>() {
+            // Both components act on the TranMap's own inputs, so the result
+            // has its number of inputs (C gives the sum of the two, fixed
+            // upstream).
+            return Some(Box::new(UnitMap::new(map1.nin())));
+        }
+        let mut new = self.clone();
+        new.map1 = map1;
+        new.map2 = map2;
+        Some(Box::new(new))
+    }
+
     fn nin(&self) -> usize {
         if self.inverted {
             self.intrinsic_nout()

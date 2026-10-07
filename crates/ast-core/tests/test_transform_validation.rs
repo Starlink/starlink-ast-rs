@@ -118,3 +118,18 @@ fn rate_checks_its_axes() {
     rate.invert();
     assert_eq!(code(rate.rate(&[1.0], 1, 1)), ErrorCode::Nodef);
 }
+
+/// `astMapBox` takes a 1-based output index and refuses one outside the
+/// outputs (AST__BADCI).
+#[test]
+fn map_box_takes_a_one_based_output() {
+    let map = WinMap::new(&[1.0, -2.0], &[2.0, 3.0]).unwrap();
+    let (lbnd, ubnd) = ([0.0, 0.0], [1.0, 1.0]);
+    let first = map.map_box(&lbnd, &ubnd, true, 1).unwrap();
+    assert!((first.lbnd_out - 1.0).abs() < 1e-9 && (first.ubnd_out - 3.0).abs() < 1e-9);
+    let second = map.map_box(&lbnd, &ubnd, true, 2).unwrap();
+    assert!((second.lbnd_out + 2.0).abs() < 1e-9 && (second.ubnd_out - 1.0).abs() < 1e-9);
+    for bad in [0, 3] {
+        assert_eq!(code(map.map_box(&lbnd, &ubnd, true, bad)), ErrorCode::Badci);
+    }
+}

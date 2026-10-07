@@ -107,6 +107,15 @@ impl Mapping for NormMap {
         &mut self.mapping_flags
     }
 
+    /// normmap.c `RemoveRegions`: remove the Regions from the Frame whose
+    /// normalisation is applied.
+    fn mapping_without_regions(&self) -> Option<DynMapping> {
+        let frame = self.frame.frame_without_regions()?;
+        let mut new = self.clone();
+        new.frame = frame;
+        Some(Box::new(new))
+    }
+
     fn nin(&self) -> usize {
         // NormMap has same nin and nout regardless of inversion,
         // since both directions do the same thing.

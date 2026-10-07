@@ -41,6 +41,7 @@ use crate::serial::{
     MappingToNode, Node, Serializable, mapping_from_node, read_mapping_base, write_mapping_base,
 };
 
+use super::unit::UnitMap;
 use super::{DynMapping, Mapping, ViaSimplify};
 use crate::mappings::SimplifiedRecord;
 
@@ -708,6 +709,44 @@ impl Mapping for CmpMap {
 
     fn mapping_flags_mut(&mut self) -> &mut crate::mappings::MappingFlags {
         &mut self.mapping_flags
+    }
+
+    /// cmpmap.c `RemoveRegions`: remove the Regions from both components.
+    /// In series, a component that became a UnitMap drops out and the other
+    /// is returned with the Invert flag the CmpMap applies to it; in
+    /// parallel, two UnitMaps become one.
+    fn mapping_without_regions(&self) -> Option<DynMapping> {
+        let new1 = self.first.mapping_without_regions();
+        let new2 = self.second.mapping_without_regions();
+        if new1.is_none() && new2.is_none() {
+            return None;
+        }
+        let map1 = new1.unwrap_or_else(|| self.first.clone_box());
+        let map2 = new2.unwrap_or_else(|| self.second.clone_box());
+        let unit1 = map1.as_any().is::<UnitMap>();
+        let unit2 = map2.as_any().is::<UnitMap>();
+        let alone = |mut map: DynMapping, recorded: bool| -> DynMapping {
+            if map.is_inverted() != recorded {
+                map.invert();
+            }
+            if self.inverted {
+                map.invert();
+            }
+            map
+        };
+        Some(match self.kind {
+            Composition::Series if unit1 => alone(map2, self.inv_b),
+            Composition::Series if unit2 => alone(map1, self.inv_a),
+            Composition::Parallel if unit1 && unit2 => {
+                Box::new(UnitMap::new(map1.nin() + map2.nin()))
+            }
+            _ => {
+                let mut new = self.clone();
+                new.first = map1;
+                new.second = map2;
+                Box::new(new)
+            }
+        })
     }
 
     fn nin(&self) -> usize {

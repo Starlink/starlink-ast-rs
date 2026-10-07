@@ -416,6 +416,14 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// mutation, then `map_from` computes the correction mapping.
     fn snapshot(&self) -> DynFrame;
 
+    /// This Frame with every Region it holds replaced by the Region's Frame,
+    /// or `None` when it holds none: C's `RemoveRegions` method applied to a
+    /// Frame (region.c, cmpframe.c, frameset.c).
+    #[doc(hidden)]
+    fn frame_without_regions(&self) -> Option<DynFrame> {
+        None
+    }
+
     /// Compute the mapping from a previous state of this frame to the current state.
     ///
     /// After mutating a frame attribute, this returns the transformation that

@@ -181,7 +181,7 @@ pub(crate) fn spectral_axes(args: SpectralAxesArgs<'_>) -> AstResult<DynMapping>
     // the post-absorption map. Mirrors fitschan.c:30275 + 30308 +
     // 30323-30329: bounds via astMapBox; if no caller override and
     // dim is known, use mid-bound; else use lower bound.
-    let bounds = map.map_box(&lbnd_p, &ubnd_p, true, spec_iax)?;
+    let bounds = map.map_box(&lbnd_p, &ubnd_p, true, spec_iax + 1)?;
     let lbnd_s = bounds.lbnd_out;
     let ubnd_s = bounds.ubnd_out;
     if is_bad(crval) {

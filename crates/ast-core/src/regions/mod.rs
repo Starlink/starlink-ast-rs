@@ -36,7 +36,7 @@ use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::{DynFrame, Frame, FrameRef, FrameSet};
 use crate::mappings::helpers::is_bad;
-use crate::mappings::{CmpMap, DynMapping, Mapping, UnitMap};
+use crate::mappings::{DynMapping, Mapping, UnitMap};
 
 /// An owned, dynamically-dispatched Region.
 pub type DynRegion = Box<dyn Region>;
@@ -248,7 +248,7 @@ pub trait Region: Frame + Mapping {
         let mut lbnd = vec![0.0; ncur];
         let mut ubnd = vec![0.0; ncur];
         for (i, (lo, hi)) in lbnd.iter_mut().zip(ubnd.iter_mut()).enumerate() {
-            let mb = smap.map_box(&lbndb, &ubndb, true, i)?;
+            let mb = smap.map_box(&lbndb, &ubndb, true, i + 1)?;
             *lo = mb.lbnd_out;
             *hi = mb.ubnd_out;
         }
@@ -1431,89 +1431,16 @@ pub(crate) fn any_as_region(a: &dyn std::any::Any) -> Option<&dyn Region> {
     }
 }
 
-/// Test whether a `dyn Mapping` is a Region.
-fn is_region(mapping: &dyn Mapping) -> bool {
-    let a = mapping.as_any();
-    a.is::<Circle>()
-        || a.is::<BoxRegion>()
-        || a.is::<Ellipse>()
-        || a.is::<Polygon>()
-        || a.is::<Interval>()
-        || a.is::<NullRegion>()
-        || a.is::<CmpRegion>()
-        || a.is::<PointList>()
-        || a.is::<Prism>()
-}
-
-/// Remove all Region nodes from a mapping tree.
+/// Remove every Region from a Mapping: C's `astRemoveRegions`.
 ///
-/// Walks the mapping tree recursively. Any node that is a Region is
-/// replaced with a [`UnitMap`] of matching dimensionality, removing
-/// the region's point-clipping behaviour while preserving the overall
-/// dimensionality of the coordinate transformation.
-///
-/// For a [`CmpMap`], both children are processed recursively.
-/// Other non-Region mappings are returned as clones.
+/// A Region becomes a [`UnitMap`] with its number of axes, so the Mapping
+/// keeps its dimensionality but no longer clips points. C returns the Region's
+/// Frame, which is a unit Mapping too; the port's Frames are not Mappings.
+/// Each class that holds other Mappings or Frames removes them from its own
+/// components, as its C `RemoveRegions` does; a Mapping holding no Region is
+/// returned unchanged.
 pub fn remove_regions(mapping: &dyn Mapping) -> DynMapping {
-    if is_region(mapping) {
-        return Box::new(UnitMap::new(mapping.nin()));
-    }
-
-    if let Some(cmp) = mapping.as_any().downcast_ref::<CmpMap>() {
-        let mut first = remove_regions(cmp.first());
-        let mut second = remove_regions(cmp.second());
-        // Preserve the effective inversion state of each child.
-        if cmp.inv_a() != cmp.first().is_inverted() {
-            first.invert();
-        }
-        if cmp.inv_b() != cmp.second().is_inverted() {
-            second.invert();
-        }
-        let mut new_cmp = CmpMap::new(first, second, cmp.composition())
-            .expect("remove_regions: CmpMap reconstruction failed");
-        if mapping.is_inverted() {
-            new_cmp.invert();
-        }
-        return Box::new(new_cmp);
-    }
-
-    if let Some(sw) = mapping
-        .as_any()
-        .downcast_ref::<crate::mappings::SwitchMap>()
-    {
-        let new_fs = sw.forward_selector().map(remove_regions);
-        let new_is = sw.inverse_selector().map(remove_regions);
-        let new_routes: Vec<DynMapping> = sw
-            .route_maps()
-            .iter()
-            .map(|r| remove_regions(r.as_ref()))
-            .collect();
-
-        let fs_changed = match (sw.forward_selector(), &new_fs) {
-            (Some(orig), Some(new)) => !new.equal(orig),
-            _ => false,
-        };
-        let is_changed = match (sw.inverse_selector(), &new_is) {
-            (Some(orig), Some(new)) => !new.equal(orig),
-            _ => false,
-        };
-        let routes_changed = sw
-            .route_maps()
-            .iter()
-            .zip(new_routes.iter())
-            .any(|(orig, new)| !new.equal(orig.as_ref()));
-
-        if fs_changed || is_changed || routes_changed {
-            let mut new_sw = crate::mappings::SwitchMap::new(new_fs, new_is, new_routes)
-                .expect("remove_regions: SwitchMap reconstruction failed");
-            if mapping.is_inverted() {
-                new_sw.invert();
-            }
-            return Box::new(new_sw);
-        }
-
-        return mapping.clone_box();
-    }
-
-    mapping.clone_box()
+    mapping
+        .mapping_without_regions()
+        .unwrap_or_else(|| mapping.clone_box())
 }

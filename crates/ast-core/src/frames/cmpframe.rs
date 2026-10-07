@@ -903,6 +903,24 @@ impl Frame for CmpFrame {
         Ok(())
     }
 
+    /// cmpframe.c `RemoveRegions`: remove the Regions from both component
+    /// Frames.
+    fn frame_without_regions(&self) -> Option<DynFrame> {
+        let new1 = self.frame1.frame_without_regions();
+        let new2 = self.frame2.frame_without_regions();
+        if new1.is_none() && new2.is_none() {
+            return None;
+        }
+        let mut new = self.clone();
+        if let Some(f) = new1 {
+            new.frame1 = f;
+        }
+        if let Some(f) = new2 {
+            new.frame2 = f;
+        }
+        Some(Box::new(new))
+    }
+
     fn snapshot(&self) -> DynFrame {
         let mut cmp = CmpFrame::new(self.frame1.snapshot(), self.frame2.snapshot());
         cmp.perm = self.perm.clone();

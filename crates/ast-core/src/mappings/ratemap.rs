@@ -216,6 +216,15 @@ impl Mapping for RateMap {
         &mut self.mapping_flags
     }
 
+    /// ratemap.c `RemoveRegions`: remove the Regions from the Mapping whose
+    /// rate is found.
+    fn mapping_without_regions(&self) -> Option<DynMapping> {
+        let map = self.map.mapping_without_regions()?;
+        let mut new = self.clone();
+        new.map = map;
+        Some(Box::new(new))
+    }
+
     fn nin(&self) -> usize {
         if self.inverted {
             self.intrinsic_nout()
