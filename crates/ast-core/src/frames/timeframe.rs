@@ -539,6 +539,49 @@ impl TimeFrame {
         self.align_timescale = Some(ts);
     }
 
+    /// The current system time as a value on this TimeFrame's axis, in its
+    /// System, TimeScale, TimeOrigin and Unit. Mirrors `astCurrentTime`,
+    /// which reads the clock to the whole second (`time()`), so the value
+    /// changes once a second. Fails with `AST__INCTS` when UTC cannot be
+    /// converted to the TimeFrame's TimeScale.
+    pub fn current_time(&self) -> AstResult<f64> {
+        // C takes `difftime( time( NULL ), 0 )`, whole seconds since 1970.
+        let systime = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0.0, |d| d.as_secs() as f64);
+        self.time_at_unix_seconds(systime)
+    }
+
+    /// The value on this TimeFrame's axis of `systime` UTC seconds since
+    /// 1970, as `astCurrentTime` converts the clock: through `MakeMap` from
+    /// an MJD in seconds about the Unix epoch, MJD 40587 (timeframe.c).
+    pub(crate) fn time_at_unix_seconds(&self, systime: f64) -> AstResult<f64> {
+        const UNIX_EPOCH: f64 = 40587.0;
+        let unit = Frame::unit(self, 1)?;
+        let map = self
+            .make_map(
+                TimeSystem::Mjd,
+                self.system(),
+                TimeScale::Utc,
+                self.timescale(),
+                UNIX_EPOCH,
+                self.time_origin(),
+                "s",
+                &unit,
+            )
+            .map_err(|_| {
+                AstError::new(
+                    ErrorCode::Incts,
+                    format!(
+                        "astCurrentTime(TimeFrame): Cannot convert the current system \
+                         time to the required timescale ({}).",
+                        self.timescale().as_str()
+                    ),
+                )
+            })?;
+        transform_scalar(map.as_ref(), systime, true)
+    }
+
     /// Return the time origin (in default units for current system).
     pub fn time_origin(&self) -> f64 {
         self.time_origin.unwrap_or(0.0)
@@ -2130,5 +2173,40 @@ mod tests {
         let snap = target.pick_axes_snapshot(&[0]).unwrap();
         let r = snap.as_any().downcast_ref::<TimeFrame>().unwrap();
         assert_eq!(r.system(), TimeSystem::Jd);
+    }
+}
+
+#[cfg(test)]
+#[allow(dead_code)]
+#[rustfmt::skip]
+#[path = "../../tests/frame_api_oracle/cases.rs"]
+mod frame_api_cases;
+
+/// `current_time` reads the clock, so the conversion behind it is checked
+/// at the clock reading C's `astCurrentTime` used.
+#[cfg(test)]
+mod current_time_tests {
+    use super::*;
+
+    #[test]
+    fn time_at_unix_seconds_follows_astcurrenttime() {
+        let mut jepoch = TimeFrame::unset_system();
+        jepoch.set_system(TimeSystem::Jepoch).unwrap();
+        jepoch.set_timescale(TimeScale::Tdb).unwrap();
+        let mut hours = TimeFrame::unset_system();
+        hours.set_system(TimeSystem::Mjd).unwrap();
+        hours.set_timescale(TimeScale::Utc).unwrap();
+        hours.set_time_origin(60000.0);
+        Frame::set_unit(&mut hours, 1, "h").unwrap();
+        let mut bepoch = TimeFrame::unset_system();
+        bepoch.set_system(TimeSystem::Bepoch).unwrap();
+        bepoch.set_timescale(TimeScale::Tt).unwrap();
+        let frames = [TimeFrame::unset_system(), jepoch, hours, bepoch];
+        for (tf, &(attrs, want)) in frames.iter().zip(frame_api_cases::TIMES) {
+            let got = tf.time_at_unix_seconds(frame_api_cases::SYSTIME).unwrap();
+            assert_eq!(got, want, "{attrs}");
+        }
+        // The live reading lands on the same axis.
+        assert!(TimeFrame::unset_system().current_time().unwrap() > 60000.0);
     }
 }

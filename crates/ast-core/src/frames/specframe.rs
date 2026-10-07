@@ -621,6 +621,50 @@ impl SpecFrame {
         self.ref_dec.is_some()
     }
 
+    /// The reference position, as longitude and latitude in the supplied
+    /// SkyFrame, or the stored RefRA and RefDec (FK5 J2000) when none is
+    /// given. Mirrors `astGetRefPos`. Both values are `BAD_VALUE` when the
+    /// SkyFrame cannot be aligned with FK5.
+    pub fn ref_pos(&self, frm: Option<&super::SkyFrame>) -> AstResult<(f64, f64)> {
+        // With no SkyFrame, the stored RefRA and RefDec (specframe.c
+        // `GetRefPos`).
+        let Some(frm) = frm else {
+            return Ok((self.ref_ra(), self.ref_dec()));
+        };
+        // Otherwise the stored FK5 J2000 position is found in the supplied
+        // SkyFrame, as C does with `astFindFrame( skyframe, frm, "" )`, with
+        // the same FK5 J2000 template `set_ref_pos` uses.
+        let mut canonical = super::SkyFrame::new(super::SkySystem::Fk5);
+        canonical.set_equinox_year(2000.0);
+        let Some(fs) = crate::frames::Frame::find_frame_template(&canonical, frm, " ")? else {
+            // C leaves both values bad when no alignment is possible.
+            return Ok((BAD_VALUE, BAD_VALUE));
+        };
+        let lon_pos = |f: &dyn crate::frames::Frame| {
+            f.as_any()
+                .downcast_ref::<super::SkyFrame>()
+                .map(|s| s.lon_pos())
+                .unwrap_or(0)
+        };
+        let (ra, dec) = (self.ref_ra(), self.ref_dec());
+        let (xin, yin) = if lon_pos(fs.base()) == 0 {
+            (ra, dec)
+        } else {
+            (dec, ra)
+        };
+        let mapping = fs.mapping(
+            crate::frames::FrameRef::Base,
+            crate::frames::FrameRef::Current,
+        )?;
+        let out = mapping.transform(&crate::coords::PointSet::from_rows([[xin, yin]]), true)?;
+        let (xout, yout) = (out.point(0)[0], out.point(0)[1]);
+        Ok(if lon_pos(fs.current()) == 0 {
+            (xout, yout)
+        } else {
+            (yout, xout)
+        })
+    }
+
     /// Set the reference position from a celestial coordinate system.
     /// Mirrors C `astSetRefPos` (specframe.c:3913-4038).
     ///

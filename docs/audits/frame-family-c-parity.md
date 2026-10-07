@@ -235,9 +235,9 @@ A KeyMap does not read or write Ident at all; that is a separate gap.
 | AxIn | Frame, Axis, SkyAxis | PORTED 2026-10-07 as `Frame::ax_in`, with `axis::axis_in` and `skyaxis::axis_in`; Box containment uses it, so a Box on sky axes wraps each value into its range. `tests/test_box_axin.rs`, from `tools/oracle_fixtures/box_axin_probe.c`. |
 | ReportPoints | Frame | Diagnostic output for Mapping `Report=1` only. |
 | ValidateAxisSelection | Frame | Its absence shows up as FR-7. |
-| CurrentTime | TimeFrame | Public and Fortran API only; no internal caller. |
-| GetRefPos | SpecFrame | Public API only. Already in PLAN.md. |
-| GetDensitySystem / GetDensityUnit | FluxFrame | Only private equivalents exist, and those carry the FX-1 bug. |
+| CurrentTime | TimeFrame | PORTED 2026-10-07 as `TimeFrame::current_time`, converting the clock reading through `make_map` as C does; checked at C's clock reading in timeframe.rs. |
+| GetRefPos | SpecFrame | PORTED 2026-10-07 as `SpecFrame::ref_pos`, the counterpart of `set_ref_pos`. `tests/test_frame_api.rs`. |
+| GetDensitySystem / GetDensityUnit | FluxFrame | PORTED 2026-10-07 as `FluxFrame::density_system` and `density_unit`, from the System as `astGetSystem` gives it. `tests/test_frame_api.rs`. |
 | UseDefs | Object | XC-1. |
 | SetAxis | Frame | Covered by the crate-private `set_axis_object` (basic.rs:213). |
 | CheckPerm, CleanAttribs, frame flags | Frame | Internal. `validate_permutation` covers CheckPerm. AST__INTFLAG is modelled ad hoc in SpecFrame and is unused in SkyFrame (see SK-5). |

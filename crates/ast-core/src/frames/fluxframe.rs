@@ -341,6 +341,20 @@ impl FluxFrame {
         self.attrs.ident = Some(s);
     }
 
+    /// The spectral system the flux is a density in: frequency for a "per
+    /// Hz" System, wavelength for a "per Angstrom" one. Mirrors
+    /// `astGetDensitySystem` (fluxframe.c), which reads the System as
+    /// `astGetSystem` gives it.
+    pub fn density_system(&self) -> AstResult<super::specframe::SpecSystem> {
+        Ok(self.system()?.density_spec_system())
+    }
+
+    /// The default unit of the spectral system the flux is a density in:
+    /// "Hz" or "Angstrom". Mirrors `astGetDensityUnit` (fluxframe.c).
+    pub fn density_unit(&self) -> AstResult<&'static str> {
+        Ok(self.system()?.density_unit())
+    }
+
     /// Return the flux coordinate system.
     ///
     /// Mirrors C `GetSystem` (fluxframe.c:1514): when System has not been set
