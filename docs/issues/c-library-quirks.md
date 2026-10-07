@@ -42,6 +42,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [KeyMap `MapSz` records collision history, so identical KeyMaps can serialise differently](#keymap-mapsz-records-collision-history-so-identical-keymaps-can-serialise-differently)
 - [`CheckCircle`'s `AST__KYCIR` guard has no Rust counterpart](#checkcircles-ast__kycir-guard-has-no-rust-counterpart)
 - [An `IsSimp` card can record a merge probe C threw away, because the probe shares its sub-Mappings with the live tree](#an-issimp-card-can-record-a-merge-probe-c-threw-away-because-the-probe-shares-its-sub-mappings-with-the-live-tree)
+- [C treats a NaN input as a number, not as a bad value](#c-treats-a-nan-input-as-a-number-not-as-a-bad-value)
 
 ### [Resolved upstream](#resolved-upstream)
 
@@ -947,6 +948,16 @@ Their `IsSimp` counts are pinned as named exclusions in
 To be raised upstream.
 
 ---
+
+### C treats a NaN input as a number, not as a bad value
+
+C's Mappings test their inputs against `AST__BAD` only; a NaN input enters the arithmetic as a number.
+Its outputs are usually NaN, which C leaves as NaN unless the `AST_REPLACE_NAN` environment variable is `1` (pointset.c `ReplaceNaN`).
+They differ from a bad input's where a Mapping ignores a bad input: a full MatrixMap skips a bad input whose element is zero (matrixmap.c `Transform`), but forms `0*NaN` for a NaN one, so C gives a bad output for a NaN input where it gives a good one for `AST__BAD`.
+
+The port takes a NaN input to be a bad value and makes every bad output `BAD_VALUE` (the design rule in CLAUDE.md), and its NaN protocol carries bad values as NaN through the Mappings, which needs a NaN to behave as a bad value does.
+So the port gives a NaN input the result C gives `AST__BAD`.
+`tools/oracle_fixtures/mapping_bad_probe.c` gives C `AST__BAD` where the port is given NaN, and sets `AST_REPLACE_NAN`; `tests/test_mapping_bad.rs` holds the MatrixMap cases.
 
 ## Resolved upstream
 

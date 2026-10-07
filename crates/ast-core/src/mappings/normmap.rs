@@ -15,6 +15,7 @@
 
 use std::fmt;
 
+use crate::constants::BAD_VALUE;
 use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::{BasicFrame, DynFrame, Frame};
@@ -22,7 +23,6 @@ use crate::serial::{
     FrameToNode, Node, Serializable, frame_from_node, read_mapping_base, write_mapping_base,
 };
 
-use super::helpers::is_bad;
 use super::unit::UnitMap;
 use super::{DynMapping, Mapping};
 use crate::mappings::SimplifiedRecord;
@@ -126,36 +126,8 @@ impl Mapping for NormMap {
     }
 
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
-        // Both forward and inverse perform normalisation — they are identical.
-        // The `forward` and `self.inverted` flags are irrelevant to the actual
-        // computation (both directions call norm), matching the C implementation.
-        let _ = forward; // suppress unused warning; both dirs do the same thing
-
-        let naxes = self.naxes();
-        let npoint = pts.npoint();
-        let mut out = PointSet::zeros(npoint, naxes);
-
-        for ipoint in 0..npoint {
-            let inp = pts.point(ipoint);
-            let outp = out.point_mut(ipoint);
-
-            // Copy input to output work buffer, checking for BAD values.
-            // The C implementation calls astNorm unconditionally (it does not
-            // skip BAD points). However, Frame::norm implementations typically
-            // handle or pass through BAD values. We follow the C approach:
-            // copy input then call norm.
-            outp[..naxes].copy_from_slice(&inp[..naxes]);
-
-            // Check if any coordinate is BAD. If so, skip normalisation
-            // (the C code copies all coords then calls norm which may or may
-            // not handle BAD; to be safe and match test expectations, we
-            // skip points with any BAD coordinate).
-            let has_bad = outp[..naxes].iter().any(|&v| is_bad(v));
-            if !has_bad {
-                self.frame.norm(&mut outp[..naxes])?;
-            }
-        }
-
+        let mut out = PointSet::zeros(pts.npoint(), self.naxes());
+        self.transform_into(pts, forward, &mut out)?;
         Ok(out)
     }
 
@@ -167,23 +139,24 @@ impl Mapping for NormMap {
             let inp = pts.point(ipoint);
             let outp = out.point_mut(ipoint);
 
+            // C normalises every point, bad values included, and leaves each
+            // Frame's Norm to decide what a bad value means (normmap.c
+            // Transform): a SkyFrame still wraps the longitude of a point
+            // whose latitude is bad. Both directions normalise.
             outp[..naxes].copy_from_slice(&inp[..naxes]);
-
-            let has_bad = outp[..naxes].iter().any(|&v| is_bad(v));
-            if !has_bad {
-                self.frame.norm(&mut outp[..naxes])?;
+            self.frame.norm(&mut outp[..naxes])?;
+            for v in &mut outp[..naxes] {
+                if v.is_nan() {
+                    *v = BAD_VALUE;
+                }
             }
         }
 
         Ok(())
     }
 
-    /// NaN-as-bad fast path. Drops the per-point `is_bad` guard. Every
-    /// `Frame::norm` impl in this crate is value-by-value arithmetic (mod
-    /// 2π wrapping, range checks, etc.) — NaN propagates through that
-    /// cleanly to NaN output. The is_bad guard in `transform_into` is a
-    /// "don't bother normalising garbage" optimisation that doesn't affect
-    /// correctness for the NaN-protocol caller.
+    /// NaN-as-bad fast path, the same as `transform_into`: every
+    /// `Frame::norm` treats a NaN coordinate as it treats a bad one.
     fn transform_into_nan(
         &self,
         pts: &PointSet,

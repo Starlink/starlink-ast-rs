@@ -93,7 +93,8 @@ impl Mapping for ShiftMap {
             let inp = pts.point(i);
             let outp = out.point_mut(i);
             for (j, (o, &v)) in outp.iter_mut().zip(inp.iter()).enumerate() {
-                *o = if is_bad(v) {
+                // A bad shift makes its axis bad (shiftmap.c Transform).
+                *o = if is_bad(v) || self.shift[j] == BAD_VALUE {
                     BAD_VALUE
                 } else {
                     v + sign * self.shift[j]
@@ -103,7 +104,8 @@ impl Mapping for ShiftMap {
         Ok(())
     }
 
-    /// NaN-as-bad fast path: pure linear addition; NaN propagates cleanly.
+    /// NaN-as-bad fast path: pure linear addition; NaN propagates cleanly,
+    /// and an axis with a bad shift is NaN.
     fn transform_into_nan(
         &self,
         pts: &PointSet,
@@ -116,7 +118,11 @@ impl Mapping for ShiftMap {
             let inp = pts.point(i);
             let outp = out.point_mut(i);
             for (j, (o, &v)) in outp.iter_mut().zip(inp.iter()).enumerate() {
-                *o = v + sign * self.shift[j];
+                *o = if self.shift[j] == BAD_VALUE {
+                    f64::NAN
+                } else {
+                    v + sign * self.shift[j]
+                };
             }
         }
         Ok(())

@@ -635,9 +635,15 @@ impl Mapping for MatrixMap {
                 for i in 0..pts.npoint() {
                     let inp = pts.point(i);
                     let outp = out.point_mut(i);
+                    // A bad input stays bad even with a zero element, and a bad
+                    // element makes its axis bad (matrixmap.c Transform).
                     for j in 0..nax {
                         let diag = m[[j, j]];
-                        outp[j] = if diag == 0.0 { 0.0 } else { diag * inp[j] };
+                        outp[j] = if diag == BAD_VALUE {
+                            f64::NAN
+                        } else {
+                            diag * inp[j]
+                        };
                     }
                     for o in outp.iter_mut().take(nout).skip(nax) {
                         *o = 0.0;
@@ -654,6 +660,12 @@ impl Mapping for MatrixMap {
                         let mut sum = 0.0;
                         for col in 0..nin {
                             let coeff = m[[row, col]];
+                            // A bad element makes its row bad (matrixmap.c
+                            // Transform).
+                            if coeff == BAD_VALUE {
+                                sum = f64::NAN;
+                                break;
+                            }
                             if coeff != 0.0 {
                                 sum += coeff * inp[col];
                             }
