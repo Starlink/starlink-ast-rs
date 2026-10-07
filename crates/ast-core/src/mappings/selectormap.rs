@@ -420,9 +420,18 @@ impl crate::serial::Serializable for SelectorMap {
         node.class_comment = Some("Region identification Mapping".to_string());
         write_mapping_base(&mut node, self);
 
+        // The first Region's Frame is the Frame of them all, so the second
+        // and later Regions are written without theirs (selectormap.c Dump
+        // clears RegionFS); the loader gives them the first one's.
         for (i, reg) in self.regions.iter().enumerate() {
             let key = format!("Reg{}", i + 1);
-            let reg_node = RegionToNode::to_node(reg.as_ref())?;
+            let reg_node = if i == 0 {
+                RegionToNode::to_node(reg.as_ref())?
+            } else {
+                let mut frameless = reg.clone();
+                frameless.set_region_fs_flag(false);
+                RegionToNode::to_node(frameless.as_ref())?
+            };
             node.push_object(&key, reg_node, Some("Region of input space".to_string()));
         }
 

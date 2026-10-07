@@ -209,3 +209,37 @@ fn selectormap_serialization_roundtrip() {
         assert_eq!(out1.point(i)[0], out2.point(i)[0]);
     }
 }
+
+/// C writes the second and later Regions of a SelectorMap without their
+/// Frame, which the first Region's gives them all (selectormap.c Dump).
+/// `selectormap_oracle/two_regions.ast` is C's dump of a SelectorMap of two
+/// Circles in one Frame, written by
+/// `tools/oracle_fixtures/selectormap_dump_probe.c`.
+#[test]
+fn selectormap_dump_matches_the_c_library() {
+    use ast_core::frames::BasicFrameBuilder;
+    use ast_core::regions::CircleBuilder;
+    use ast_core::{AnyObject, from_native_string, to_native_string};
+
+    let want = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/selectormap_oracle/two_regions.ast"
+    ))
+    .unwrap();
+    let circle = |centre: Vec<f64>| -> DynRegion {
+        Box::new(
+            CircleBuilder::new(BasicFrameBuilder::new(2).build().unwrap(), centre)
+                .unwrap()
+                .radius(1.0)
+                .build()
+                .unwrap(),
+        )
+    };
+    let sm = SelectorMapBuilder::new(vec![circle(vec![0.0, 0.0]), circle(vec![5.0, 5.0])])
+        .unwrap()
+        .build();
+    assert_eq!(to_native_string(&AnyObject::SelectorMap(sm)).unwrap(), want);
+
+    let loaded = from_native_string(&want).unwrap();
+    assert_eq!(to_native_string(&loaded).unwrap(), want);
+}
