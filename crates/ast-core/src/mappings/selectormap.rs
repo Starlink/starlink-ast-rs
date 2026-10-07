@@ -45,7 +45,8 @@ pub struct SelectorMapBuilder {
 impl SelectorMapBuilder {
     /// Create a builder around a non-empty `Vec` of regions.
     ///
-    /// All regions must share the same `naxes()`.
+    /// Every Region must refer to the same coordinate Frame as the first, or
+    /// it is an `AST__BADNI` error (selectormap.c astInitSelectorMap).
     pub fn new(regions: Vec<DynRegion>) -> AstResult<Self> {
         if regions.is_empty() {
             return Err(AstError::new(
@@ -53,16 +54,15 @@ impl SelectorMapBuilder {
                 "SelectorMap: at least one Region is required",
             ));
         }
-        let naxes = regions[0].naxes();
+        let first = regions[0].get_region_frame();
         for (i, reg) in regions.iter().enumerate().skip(1) {
-            if reg.naxes() != naxes {
+            if !reg.get_region_frame().equal(first.as_ref()) {
                 return Err(AstError::new(
-                    ErrorCode::Bdpar,
+                    ErrorCode::Badni,
                     format!(
-                        "SelectorMap: Region {} has {} axes but Region 1 has {}",
-                        i + 1,
-                        reg.naxes(),
-                        naxes
+                        "SelectorMap: Region number {} does not refer to the same \
+                         coordinate Frame as the first Region",
+                        i + 1
                     ),
                 ));
             }

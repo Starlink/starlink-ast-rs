@@ -132,3 +132,34 @@ fn a_splinemap_checks_its_arguments() {
 fn a_unitnormmap_needs_a_centre() {
     assert_eq!(code(UnitNormMap::new(Vec::<f64>::new())), ErrorCode::Badsm);
 }
+
+/// selectormap.c astInitSelectorMap: every Region must refer to the same
+/// coordinate Frame as the first (AST__BADNI).
+#[test]
+fn a_selectormap_needs_regions_in_one_frame() {
+    use ast_core::frames::{BasicFrameBuilder, SkyFrame, SkySystem};
+    use ast_core::mappings::SelectorMapBuilder;
+    use ast_core::regions::{CircleBuilder, DynRegion};
+
+    let plain = || -> DynRegion {
+        Box::new(
+            CircleBuilder::new(BasicFrameBuilder::new(2).build().unwrap(), vec![0.0, 0.0])
+                .unwrap()
+                .radius(1.0)
+                .build()
+                .unwrap(),
+        )
+    };
+    let sky: DynRegion = Box::new(
+        CircleBuilder::new(SkyFrame::new(SkySystem::Icrs), vec![0.0, 0.0])
+            .unwrap()
+            .radius(0.1)
+            .build()
+            .unwrap(),
+    );
+    assert!(SelectorMapBuilder::new(vec![plain(), plain()]).is_ok());
+    assert_eq!(
+        code(SelectorMapBuilder::new(vec![plain(), sky])),
+        ErrorCode::Badni
+    );
+}

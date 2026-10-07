@@ -23,6 +23,21 @@ const DR2D: f64 = 180.0 / std::f64::consts::PI;
 /// Degrees to radians (C `AST__DD2R`).
 const DD2R: f64 = std::f64::consts::PI / 180.0;
 
+/// A wcslib projection status as C's `Map` reads it (wcsmap.c): 0 gives the
+/// projected values, 2 a point that cannot be projected (`None`), and any
+/// other status means the projection parameters are unusable, which
+/// `Transform` reports as `AST__WCSPA`.
+fn wcslib_result((status, a, b): (std::os::raw::c_int, f64, f64)) -> AstResult<Option<(f64, f64)>> {
+    match status {
+        0 => Ok(Some((a, b))),
+        2 => Ok(None),
+        _ => Err(AstError::new(
+            ErrorCode::Wcspa,
+            "WcsMap: the projection parameter values are unusable",
+        )),
+    }
+}
+
 /// The number of `ProjP<m>` keys a legacy dump can hold (wcsmap.h `AST__WCSMX`).
 const AST_WCSMX: usize = 10;
 
@@ -527,6 +542,29 @@ impl WcsMap {
                  transform coordinates",
             ));
         }
+        // PV2_1 of the conic and Bonne projections has no default, so C's
+        // `Map` refuses to transform without it (wcsmap.c InitPrjPrm keeps it
+        // bad, and `Map` returns 401, which `Transform` reports).
+        let undefaultable = matches!(
+            self.proj,
+            WcsProjection::Bon
+                | WcsProjection::Cop
+                | WcsProjection::Coe
+                | WcsProjection::Cod
+                | WcsProjection::Coo
+        );
+        let pv1 = self.params[0].get(1).copied().flatten();
+        if undefaultable && pv1.is_none_or(|v| v == BAD_VALUE) {
+            return Err(AstError::new(
+                ErrorCode::Wcspa,
+                format!(
+                    "WcsMap: required projection parameter PV{}_1 was not supplied for a \
+                     {} projection",
+                    self.latax + 1,
+                    self.proj.code()
+                ),
+            ));
+        }
         Ok(())
     }
 
@@ -729,12 +767,12 @@ impl Mapping for WcsMap {
                 // requires, folding out-of-range latitudes onto the
                 // complementary meridian (wcsmap.c:2820-2839).
                 let (lon_deg, lat_deg) = forward_prep(v1, v2, factor);
-                match prj.forward(lon_deg, lat_deg) {
-                    Ok((x, y)) => {
+                match wcslib_result(prj.forward_raw(lon_deg, lat_deg))? {
+                    Some((x, y)) => {
                         outp[self.lonax] = (DD2R / factor) * x;
                         outp[self.latax] = (DD2R / factor) * y;
                     }
-                    Err(_) => {
+                    None => {
                         outp[self.lonax] = f64::NAN;
                         outp[self.latax] = f64::NAN;
                     }
@@ -742,8 +780,8 @@ impl Mapping for WcsMap {
             } else {
                 let x_deg = (DR2D * factor) * v1;
                 let y_deg = (DR2D * factor) * v2;
-                match prj.reverse(x_deg, y_deg) {
-                    Ok((mut longitude, mut latitude)) => {
+                match wcslib_result(prj.reverse_raw(x_deg, y_deg))? {
+                    Some((mut longitude, mut latitude)) => {
                         // Absorb a one-ULP rounding error at a limit of the
                         // accepted range (wcsmap.c, upstream 460efce3). A WinMap
                         // used by a FITS CAR mapping evaluates an expression such
@@ -787,7 +825,7 @@ impl Mapping for WcsMap {
                             outp[self.latax] = f64::NAN;
                         }
                     }
-                    Err(_) => {
+                    None => {
                         outp[self.lonax] = f64::NAN;
                         outp[self.latax] = f64::NAN;
                     }
@@ -851,12 +889,12 @@ impl Mapping for WcsMap {
                 // requires, folding out-of-range latitudes onto the
                 // complementary meridian (wcsmap.c:2820-2839).
                 let (lon_deg, lat_deg) = forward_prep(v1, v2, factor);
-                match prj.forward(lon_deg, lat_deg) {
-                    Ok((x, y)) => {
+                match wcslib_result(prj.forward_raw(lon_deg, lat_deg))? {
+                    Some((x, y)) => {
                         outp[self.lonax] = (DD2R / factor) * x;
                         outp[self.latax] = (DD2R / factor) * y;
                     }
-                    Err(_) => {
+                    None => {
                         outp[self.lonax] = BAD_VALUE;
                         outp[self.latax] = BAD_VALUE;
                     }
@@ -865,8 +903,8 @@ impl Mapping for WcsMap {
                 // Inverse: projected (x, y) -> native spherical (lon, lat in radians)
                 let x_deg = (DR2D * factor) * v1;
                 let y_deg = (DR2D * factor) * v2;
-                match prj.reverse(x_deg, y_deg) {
-                    Ok((mut longitude, mut latitude)) => {
+                match wcslib_result(prj.reverse_raw(x_deg, y_deg))? {
+                    Some((mut longitude, mut latitude)) => {
                         // Reject solutions outside the physical domain of the
                         // projection (wcsmap.c:2878). Non-cyclic projections
                         // (ARC, AIT, ZPN, ...) only accept longitudes within
@@ -911,7 +949,7 @@ impl Mapping for WcsMap {
                             outp[self.latax] = BAD_VALUE;
                         }
                     }
-                    Err(_) => {
+                    None => {
                         outp[self.lonax] = BAD_VALUE;
                         outp[self.latax] = BAD_VALUE;
                     }

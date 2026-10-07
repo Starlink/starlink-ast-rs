@@ -524,6 +524,11 @@ impl PrjParams {
         } else {
             unsafe { astPRJset(inner.code.as_ptr(), inner) }
         };
+        // C never sets the projection up in advance: InitPrjPrm leaves the
+        // flag clear (wcsmap.c), so the first projection call runs the set-up
+        // and returns its failure as status 1, which C reports as unusable
+        // parameters. The set-up above only installs the function pointers.
+        inner.flag = 0;
         if status != 0 {
             return Err(AstError::new(
                 ErrorCode::Wcsty,
@@ -688,6 +693,7 @@ impl PrjParams {
         }
     }
 
+    #[cfg(test)]
     /// Forward projection: spherical (phi, theta) in degrees to
     /// intermediate world coordinates (x, y).
     ///
@@ -725,6 +731,7 @@ impl PrjParams {
         }
     }
 
+    #[cfg(test)]
     /// Reverse projection: intermediate world coordinates (x, y) to
     /// spherical (phi, theta) in degrees.
     ///
@@ -1035,13 +1042,15 @@ mod tests {
     #[test]
     fn init_prj_prm_keeps_projection_callable() {
         let mut prj = PrjParams::new(WcsProjection::Tan).unwrap();
-        // After init, the projection is set up (flag holds the type code).
-        assert_ne!(prj.inner.flag, 0);
+        // After init the projection functions are installed but the flag is
+        // clear, as C's InitPrjPrm leaves it, so the first call sets up.
+        assert_eq!(prj.inner.flag, 0);
         // Re-initialising with parameters leaves the projection callable.
         prj.init_prj_prm(&[vec![Some(1.0)], Vec::new()], true);
-        assert_ne!(prj.inner.flag, 0);
+        assert_eq!(prj.inner.flag, 0);
         let result = prj.forward(0.0, 90.0);
         assert!(result.is_ok());
+        assert_ne!(prj.inner.flag, 0);
     }
 
     #[test]

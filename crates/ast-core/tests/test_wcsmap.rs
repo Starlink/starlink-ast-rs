@@ -826,3 +826,55 @@ fn set_pv_rejects_an_index_the_projection_cannot_use() {
     assert!(zpn.set_pv(2, 100, 0.0).is_ok());
     assert!(zpn.set_pv(2, 101, 0.0).is_err());
 }
+
+// ===========================================================================
+// Unusable or missing projection parameters (wcsmap.c Map and Transform)
+// ===========================================================================
+
+/// C refuses to transform when PV2_1 of a conic or Bonne projection is
+/// missing, and when wcslib reports the parameters unusable (status 1); a
+/// point wcslib cannot project (status 2) is bad. The expectations are C's,
+/// from `astTran2` on the same WcsMaps.
+#[test]
+fn unusable_projection_parameters_are_errors() {
+    let wcs = |proj, pv: &[(usize, f64)]| {
+        let mut m = WcsMap::new(2, proj, 1, 2).unwrap();
+        for &(i, v) in pv {
+            m.set_pv(2, i, v).unwrap();
+        }
+        m
+    };
+    let pts = PointSet::from_rows([[0.1, 0.2]]);
+    for (name, map) in [
+        ("COP without PV2_1", wcs(WcsProjection::Cop, &[])),
+        ("BON without PV2_1", wcs(WcsProjection::Bon, &[])),
+    ] {
+        for forward in [true, false] {
+            let err = map.transform(&pts, forward).unwrap_err();
+            assert_eq!(err.code(), ErrorCode::Wcspa, "{name} forward={forward}");
+        }
+    }
+
+    // wcslib records its set-up before validating it, so only the first
+    // transformation of these WcsMaps reports the unusable parameters; later
+    // ones give bad points, in C as here (`docs/issues/c-library-quirks.md`,
+    // "A WcsMap reports unusable parameters only on its first
+    // transformation"). The order below is the order C was probed in.
+    let azp = wcs(WcsProjection::Azp, &[(1, -1.0)]);
+    assert_eq!(
+        azp.transform(&pts, true).unwrap_err().code(),
+        ErrorCode::Wcspa
+    );
+    let out = azp.transform(&pts, false).unwrap();
+    assert_eq!(out.point(0), &[BAD_VALUE, BAD_VALUE]);
+
+    let cyp = wcs(WcsProjection::Cyp, &[(1, -1.0), (2, 1.0)]);
+    assert_eq!(
+        cyp.transform(&pts, true).unwrap_err().code(),
+        ErrorCode::Wcspa
+    );
+    assert!(cyp.transform(&pts, false).is_ok());
+
+    let cop = wcs(WcsProjection::Cop, &[(1, 45.0)]);
+    assert!(cop.transform(&pts, true).is_ok());
+}

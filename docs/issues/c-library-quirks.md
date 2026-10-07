@@ -32,6 +32,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [A TimeFrame's default Epoch discards the UT1 value it computes from the TimeOrigin](#a-timeframes-default-epoch-discards-the-ut1-value-it-computes-from-the-timeorigin)
 - [`RegBaseGrid` fails when no grid point lies in the Region](#regbasegrid-fails-when-no-grid-point-lies-in-the-region)
 - [SkyFrame LAST depends on which LAST values the process computed earlier](#skyframe-last-depends-on-which-last-values-the-process-computed-earlier)
+- [A WcsMap reports unusable parameters only on its first transformation](#a-wcsmap-reports-unusable-parameters-only-on-its-first-transformation)
 
 ### [Addressed here, and not going upstream](#addressed-here-and-not-going-upstream)
 
@@ -513,6 +514,22 @@ As in C, every sky conversion computes the LAST of both frames, and a conversion
 `tests/test_sky_last.rs`, from `tools/oracle_fixtures/sky_last_probe.c`, replays a sequence of conversions that exercise both caches and matches C bit for bit.
 
 Question for upstream: is the history dependence intended, and would an exact calculation (or a cache keyed on the exact epoch only) be acceptable?
+
+### A WcsMap reports unusable parameters only on its first transformation
+
+**Status:** Confirmed against the C source and the built oracle (2026-10-07).
+
+`InitPrjPrm` (wcsmap.c) leaves wcslib's `flag` clear, so the first projection call runs the projection's set-up routine, and `Map` turns its failure (status 1) into `AST__WCSPA`.
+The set-up routines record themselves in `flag` before validating the parameters: `azpset` sets `prj->flag` and then returns 1 when `mu` is -1 (`vendor/wcslib/proj.c`).
+The next call therefore skips the set-up and projects with the unusable parameters, and wcslib reports a point it cannot project (status 2), which `Map` makes bad.
+An AZP WcsMap with `PV2_1 = -1` therefore raises `AST__WCSPA` on a first forward transformation and gives bad values on an inverse one after it.
+The inverse path calls the forward projection first, to find the longitude range (`LongRange`), so an inverse transformation of a fresh WcsMap fails the set-up silently there: it raises nothing and gives bad values, and a forward transformation after it projects with the partly set-up parameters, giving `(-0, 0)` for the input `(0.1, 0.2)`.
+
+The port leaves `flag` clear after installing the projection functions (`PrjParams::run_setup`), as `InitPrjPrm` does, and keeps a WcsMap's parameter block across transformations, so a first forward transformation reports `AST__WCSPA` and later ones give bad values, as in C.
+It does not reproduce what C computes from partly set-up parameters: after an inverse first, its forward transformation gives bad values where C gives `(-0, 0)`.
+`unusable_projection_parameters_are_errors` in `crates/ast-core/tests/test_wcsmap.rs` covers the forward-first order, which C and the port agree on.
+
+Question for upstream: should the set-up routines leave `flag` clear when they fail, so that every transformation reports the parameters rather than projecting with them?
 
 ## Addressed here, and not going upstream
 
