@@ -1228,6 +1228,10 @@ impl Serializable for PermMap {
             );
         }
 
+        // The highest constant number the permutations written below refer
+        // to; C writes only the constants up to it (permmap.c Dump).
+        let mut nconst = 0;
+
         // Outperm (forward permutation).
         if self.out_is_copy {
             node.push_int(
@@ -1247,6 +1251,9 @@ impl Serializable for PermMap {
                 } else {
                     format!("Output coordinate {} = constant no. {}", i + 1, -p)
                 };
+                if p < 0 {
+                    nconst = nconst.max(-p);
+                }
                 node.push_int(&format!("Out{}", i + 1), p, Some(comment));
             }
         }
@@ -1268,25 +1275,28 @@ impl Serializable for PermMap {
                 } else {
                     format!("Input coordinate {} = constant no. {}", i + 1, -p)
                 };
+                if p < 0 {
+                    nconst = nconst.max(-p);
+                }
                 node.push_int(&format!("In{}", i + 1), p, Some(comment));
             }
         }
 
-        // Constants.
-        if !self.constants.is_empty() {
-            node.push_int(
-                "Nconst",
-                self.constants.len() as i64,
-                Some("Number of constants".to_string()),
-            );
-            for (i, &c) in self.constants.iter().enumerate() {
-                let key = format!("Con{}", i + 1);
-                let comment = format!("Constant number {}", i + 1);
-                if is_bad(c) {
-                    node.push_string(&key, "<bad>", Some(comment));
-                } else {
-                    node.push_double(&key, c, Some(comment));
-                }
+        // Constants. A bad constant is written unset, so it reads back as
+        // the bad default (permmap.c Dump and Load).
+        if self.constants.is_empty() {
+            nconst = 0;
+        }
+        if nconst != 0 {
+            node.push_int("Nconst", nconst, Some("Number of constants".to_string()));
+        }
+        for (i, &c) in self.constants.iter().take(nconst as usize).enumerate() {
+            let key = format!("Con{}", i + 1);
+            let comment = format!("Constant number {}", i + 1);
+            if is_bad(c) {
+                node.push_unset(&key, NodeValue::String("<bad>".to_string()), Some(comment));
+            } else {
+                node.push_double(&key, c, Some(comment));
             }
         }
 
@@ -1332,13 +1342,15 @@ impl Serializable for PermMap {
             v
         };
 
-        let nconst = node.get_int("Nconst", 0) as usize;
+        // A constant that is absent, or written unset because it is bad,
+        // reads as bad (permmap.c Load).
+        let nconst = node.get_int("Nconst", 0).max(0) as usize;
         let mut constants = Vec::with_capacity(nconst);
         for i in 0..nconst {
             let key = format!("Con{}", i + 1);
             match node.get(&key) {
                 Some(NodeValue::String(s)) if s == "<bad>" => constants.push(BAD_VALUE),
-                _ => constants.push(node.get_double(&key, 0.0)),
+                _ => constants.push(node.get_double(&key, BAD_VALUE)),
             }
         }
 

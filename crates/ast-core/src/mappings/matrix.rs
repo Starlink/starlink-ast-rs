@@ -1142,11 +1142,13 @@ impl Serializable for MatrixMap {
                 rect_eye(nout, nin)
             }
             "Diagonal" => {
-                // Only min(nout, nin) diagonal elements stored.
+                // Only min(nout, nin) diagonal elements stored. A bad element
+                // is not written, so a missing one reads as bad (matrixmap.c
+                // Dump and Load).
                 let nel = nin.min(nout);
                 let mut mat = Array2::zeros((nout, nin));
                 for i in 0..nel {
-                    mat[[i, i]] = node.get_double(&format!("M{i}"), 0.0);
+                    mat[[i, i]] = node.get_double(&format!("M{i}"), BAD_VALUE);
                 }
                 mat
             }

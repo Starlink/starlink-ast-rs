@@ -23,6 +23,9 @@ const DR2D: f64 = 180.0 / std::f64::consts::PI;
 /// Degrees to radians (C `AST__DD2R`).
 const DD2R: f64 = std::f64::consts::PI / 180.0;
 
+/// The number of `ProjP<m>` keys a legacy dump can hold (wcsmap.h `AST__WCSMX`).
+const AST_WCSMX: usize = 10;
+
 /// Prepare native spherical coordinates for a forward WCSLIB projection call.
 ///
 /// The WcsMap forward input is longitude and latitude in radians; WCSLIB
@@ -1275,6 +1278,16 @@ impl Serializable for WcsMap {
         }
         if node.get("TpnTan").is_some() {
             wcs.set_tpn_tan(node.get_int("TpnTan", 1) != 0);
+        }
+
+        // Dumps written before the PVi_m keys hold the latitude axis's
+        // projection parameters as ProjP<m> (wcsmap.c Load). They are read
+        // first, so a PVi_m key for the same parameter takes precedence.
+        for m in 0..AST_WCSMX {
+            let value = node.get_double(&format!("ProjP{m}"), BAD_VALUE);
+            if value != BAD_VALUE {
+                wcs.set_pv(wcs.latax(), m, value)?;
+            }
         }
 
         // Scan items for PV{i}_{m} keys.
