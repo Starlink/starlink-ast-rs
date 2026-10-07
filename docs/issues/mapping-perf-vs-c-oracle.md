@@ -295,3 +295,19 @@ that makes comparisons against values near `f64::MAX` report equality, and a
 Frame axis has Top/Bottom of `±f64::MAX` unless they are set, so bounds tests
 hit it routinely. A measured cost would have been something to record and
 address rather than a reason to keep the defect.
+
+## Addendum: per-term bad values in PolyMap and ChebyMap (2026-10-07)
+
+Porting C's `PolyPowers` seam (`4f51c5eb`) made a bad input spoil only the terms that use it, as C does, where the port had blanked the whole point.
+The shared loop (`polymap.rs` `poly_transform`) checks each power and coefficient for BAD only when the point's `PolyPowers` reports a bad value; otherwise it runs without checks.
+Measured on macOS (arm64) with default features, at 100k points:
+
+| Variant | Before | After | C |
+|---|---|---|---|
+| `polymap_2d_deg5` forward | 53.0 ns/pt | 56.6 | 57.0 |
+| `chebymap_2d_deg3` forward | 70.8 | 37.7 | 38.4 |
+
+A prototype of the bad-to-NaN substitution described in CLAUDE.md, for PolyMap's forward transformation, gave about 53.5 ns/pt (three interleaved runs each), recovering the 5% with results identical to C on `tests/test_poly_bad.rs`.
+It replaced the forward call with: when no coefficient is bad, copy the input with BAD set to NaN, fill the power table with no BAD test (`fill_power_table`), sum each output's terms (`eval_term_with_table`), then set NaN outputs to BAD; a bad coefficient keeps the checked loop.
+NaN gives C's per-term result because power zero is 1.0 whatever the input, so only terms using a power above zero of a bad input become NaN.
+It is not committed: C parity of every Mapping comes first, and the copy costs an allocation per call that the measurement at small N did not separate from noise.
