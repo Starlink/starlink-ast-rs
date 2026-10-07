@@ -86,11 +86,14 @@ impl SplineMap {
     /// - `ny`: Number of B-spline coefficients in Y direction (>= ky).
     /// - `tx`: Knot positions in X direction (length nx + kx), non-decreasing.
     /// - `ty`: Knot positions in Y direction (length ny + ky), non-decreasing.
-    /// - `cu`: Coefficients for the first output (length nx * ny).
-    ///   Stored internally in Fortran/CMLIB order (column-major over
-    ///   the X index). The caller supplies them in this (CMLIB/Fortran)
-    ///   order.
-    /// - `cv`: Coefficients for the second output (length nx * ny).
+    /// - `cu`: Coefficients for the first output (length nx * ny), in the
+    ///   CMLIB order of C's Fortran API: element `i + j*nx` is the
+    ///   coefficient for X index `i` and Y index `j`.
+    /// - `cv`: Coefficients for the second output (length nx * ny), in the
+    ///   same order.
+    ///
+    /// [`SplineMap::from_scipy`] takes the coefficients in the SciPy order
+    /// of C's `astSplineMap`.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         kx: usize,
@@ -155,6 +158,67 @@ impl SplineMap {
         })
     }
 
+    /// Create a new `SplineMap` from coefficients in the order SciPy's
+    /// `RectBivariateSpline` gives them, as C's `astSplineMap` takes them:
+    /// element `j + i*ny` is the coefficient for X index `i` and Y index
+    /// `j`. They are transposed into the CMLIB order [`SplineMap::new`]
+    /// takes (splinemap.c `astSplineMapId_`); the other arguments are as
+    /// for [`SplineMap::new`].
+    #[allow(clippy::too_many_arguments)]
+    pub fn from_scipy(
+        kx: usize,
+        ky: usize,
+        nx: usize,
+        ny: usize,
+        tx: Vec<f64>,
+        ty: Vec<f64>,
+        cu: &[f64],
+        cv: &[f64],
+    ) -> AstResult<Self> {
+        if cu.len() != nx * ny || cv.len() != nx * ny {
+            return Err(AstError::new(
+                ErrorCode::Attin,
+                "SplineMap: the knot or coefficient arrays have the wrong lengths",
+            ));
+        }
+        let transpose = |c: &[f64]| -> Vec<f64> {
+            let mut out = vec![0.0; nx * ny];
+            for j in 0..ny {
+                for i in 0..nx {
+                    out[i + j * nx] = c[j + i * ny];
+                }
+            }
+            out
+        };
+        Self::new(kx, ky, nx, ny, tx, ty, transpose(cu), transpose(cv))
+    }
+
+    /// The coefficients of the spline giving output `axis` (1 for u, 2 for
+    /// v), in the SciPy order [`SplineMap::from_scipy`] takes, as C's
+    /// `astSplineCoeffs` returns them. The Invert flag is ignored: they are
+    /// always those of the forward transformation as constructed. An axis
+    /// other than 1 or 2 is `ErrorCode::Axiin`.
+    pub fn coeffs(&self, axis: usize) -> AstResult<Vec<f64>> {
+        let c = match axis {
+            1 => &self.cu,
+            2 => &self.cv,
+            _ => {
+                return Err(AstError::new(
+                    ErrorCode::Axiin,
+                    format!("SplineMap: the output axis ({axis}) must be 1 or 2"),
+                ));
+            }
+        };
+        let (nx, ny) = (self.nx, self.ny);
+        let mut out = vec![0.0; nx * ny];
+        for j in 0..ny {
+            for i in 0..nx {
+                out[j + i * ny] = c[i + j * nx];
+            }
+        }
+        Ok(out)
+    }
+
     /// The spline order in the X direction.
     pub fn kx(&self) -> usize {
         self.kx
@@ -185,12 +249,14 @@ impl SplineMap {
         &self.ty
     }
 
-    /// Coefficients for the first (u) output.
+    /// Coefficients for the first (u) output, in the CMLIB order
+    /// [`SplineMap::new`] takes.
     pub fn cu(&self) -> &[f64] {
         &self.cu
     }
 
-    /// Coefficients for the second (v) output.
+    /// Coefficients for the second (v) output, in the CMLIB order
+    /// [`SplineMap::new`] takes.
     pub fn cv(&self) -> &[f64] {
         &self.cv
     }

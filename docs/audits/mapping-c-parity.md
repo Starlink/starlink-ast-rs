@@ -62,6 +62,7 @@ A transform-oracle case with one BAD input axis per class, and a load of each cl
 | SL-2 | FIXED 2026-10-07: a SelectorMap writes its second and later Regions without their Frame, as selectormap.c `Dump` does by clearing RegionFS; the loader already gives them the first Region's | `tests/test_selectormap.rs` (`selectormap_dump_matches_the_c_library`): byte-exact against C's dump from `tools/oracle_fixtures/selectormap_dump_probe.c`, and a round trip |
 | WC-1 | FIXED 2026-10-07: the FITS-WCS writer decides whether a projection is zenithal with a port of wcsmap.c `IsZenithal` (`WcsMap::is_zenithal`): TAN, STG, ARC, ZPN, ZEA, AIR and TPN always, AZP, SIN and SZP by their parameters, and not HPX or XPH, so a non-zenithal projection has its pole worked out from its Mappings. C's SZP test reads the wrong parameter, which the port mirrors (`docs/issues/c-library-quirks.md`, "`IsZenithal` tests the wrong SZP parameter"). WC-10 records a read gap the probe found | `tests/test_sky_pole_oracle.rs`: 14 headers read and written, LONPOLE and LATPOLE against C's from `tools/oracle_fixtures/sky_pole_probe.c`; the two C refuses are in `NOT_REFUSED` (WC-10) |
 | CH-3 | FIXED 2026-10-07: `ChebyMap::domain` returns both bounds as C's `astChebyDomain` does, from the stored box or, when the requested transformation has none, by MapBox from the other transformation's box, with bad bounds where neither gives one. C mapped that box in the wrong direction for an inverted ChebyMap and failed; fixed upstream (58786d9c) and ported with the fix (`docs/issues/c-library-quirks.md`, "`ChebyDomain` fails for an inverted ChebyMap with only one transformation") | `tests/test_chebymap.rs` (`chebymap_domain_inverted_forward_only`): a forward-only 2-D ChebyMap and its inverse, against the fixed C |
+| SN-2 | FIXED 2026-10-07: `SplineMap::from_scipy` takes the coefficients in the SciPy order C's `astSplineMap` takes and transposes them into the CMLIB order `SplineMap::new` keeps, as splinemap.c `astSplineMapId_` does; `SplineMap::coeffs` returns them in SciPy order as `astSplineCoeffs` does, ignoring Invert, with AST__AXIIN for an axis other than 1 or 2 where C silently reads the v coefficients | `tests/test_splinemap_c_api.rs`: `testsplinemap_c.c` ported against its 150 by 100 SciPy fixture, coefficients exact and positions within C's 1e-11 |
 
 ## Recommended order
 
@@ -307,11 +308,11 @@ The conversion list (28 types), argument counts, derived-argument setup (AddArgs
 
 | ID | Rating | C | Rust | Finding | Exposed by |
 |---|---|---|---|---|---|
-| SN-1 | MED | splinemap.c:3420-3455 (AST__ATTIN for bad kx/ky/nx/ny and non-monotonic knots) | mappings/splinemap.rs:95-112 | `new` validates with `assert!` (a panic, not an error) and does not check that knots are monotonic. | `SplineMap::new` with decreasing tx. |
+| SN-1 | MED | splinemap.c:3420-3455 (AST__ATTIN for bad kx/ky/nx/ny and non-monotonic knots) | mappings/splinemap.rs:98-115 | `new` validates with `assert!` (a panic, not an error) and does not check that knots are monotonic. | `SplineMap::new` with decreasing tx. |
 | SN-2 | MED | splinemap.c:3265-3285 (public astSplineMap takes SciPy order and transposes), 2160-2180 (astSplineCoeffs transposes back) | mappings/splinemap.rs:79-92, 164-171 | The Rust constructor takes, and `cu()`/`cv()` return, the internal CMLIB/Fortran order (documented). Code ported from the C/pyast API that passes SciPy-ordered coefficients gets a transposed spline and wrong coordinates. No accessor matches astSplineCoeffs. | nx != ny spline built from SciPy coefficients. |
-| SN-3 | LOW | splinemap.c:1562 (palDmat) | mappings/splinemap.rs:683 | The iterative inverse uses Cramer's rule with `\|det\| < 1e-300` instead of palDmat (1e-20 pivot); a constant with no C analogue. | Near-singular Jacobian. |
-| SN-4 | LOW | splinemap.c:1851-1960 (Rate ignores Invert: always the forward spline derivative) | mappings/splinemap.rs:818-836 | Rust uses the analytic rate only when not inverted and falls back to numeric otherwise. C returns the forward derivative even when inverted (a C quirk). | `rate` on an inverted SplineMap. |
-| SN-5 | LOW | splinemap.c:2547-2639, Dump 2962-2975 | mappings/splinemap.rs:174-225, 1018-1046 | No test/clear for InvNiter, InvTol or OutUnit; OutUnit explicitly set to 0 is not dumped. | `set_out_unit(false)`, then dump. |
+| SN-3 | LOW | splinemap.c:1562 (palDmat) | mappings/splinemap.rs:749 | The iterative inverse uses Cramer's rule with `\|det\| < 1e-300` instead of palDmat (1e-20 pivot); a constant with no C analogue. | Near-singular Jacobian. |
+| SN-4 | LOW | splinemap.c:1851-1960 (Rate ignores Invert: always the forward spline derivative) | mappings/splinemap.rs:884-902 | Rust uses the analytic rate only when not inverted and falls back to numeric otherwise. C returns the forward derivative even when inverted (a C quirk). | `rate` on an inverted SplineMap. |
+| SN-5 | LOW | splinemap.c:2547-2639, Dump 2962-2975 | mappings/splinemap.rs:238-291, 1018-1046 | No test/clear for InvNiter, InvTol or OutUnit; OutUnit explicitly set to 0 is not dumped. | `set_out_unit(false)`, then dump. |
 
 ### UnitNormMap
 
@@ -385,7 +386,7 @@ No coordinate path that exists in the port depends on it.
 | `ChebyDomain` MapBox fallback | ChebyMap | Ported (CH-3, fixed). |
 | `IsZenithal` | WcsMap | Re-implemented in FitsChan with different rules (WC-1). |
 | GetPV defaults, `ClearPV` / `TestPV`, `ClearFITSProj` / `ClearTPNTan` / `ClearLonCheck` | WcsMap | WC-2, WC-6; `TestPV` only as `get_pv().is_some()`. |
-| `SplineCoeffs` (SciPy order) | SplineMap | Only the internal order is available (SN-2). |
+| `SplineCoeffs` (SciPy order) | SplineMap | Ported as `SplineMap::coeffs` (SN-2, fixed). |
 | `DssFits` | DssMap | No internal callers (DS-2). |
 | Analytic Rate | TimeMap | Numeric only (TM-2). |
 | 3-D Transform branch, nin=3 constructor | SpecMap | SP-1, SP-2. |
