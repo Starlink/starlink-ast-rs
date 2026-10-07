@@ -415,7 +415,7 @@ fn build_sip_mapping(store: &FitsStore) -> AstResult<DynMapping> {
         match polymap.poly_tran(replace_forward, 0.0001, 0.01, 7, &lbnd, &ubnd)? {
             Some(fitted) => polymap = fitted,
             None => {
-                polymap.set_iter_inverse(true);
+                polymap.set_iter_inverse(true)?;
                 polymap.set_niter_inverse(6);
                 polymap.set_tol_inverse(1.0e-8);
             }

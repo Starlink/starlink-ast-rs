@@ -118,7 +118,7 @@ fn round_trip_polymap_with_iter_inverse() {
         });
     }
     let mut m = PolyMap::new(2, 2, &terms, None).unwrap();
-    m.set_iter_inverse(true);
+    m.set_iter_inverse(true).unwrap();
     m.set_niter_inverse(10);
     m.set_tol_inverse(1e-7);
     assert_double_round_trip(AnyObject::PolyMap(m), "PolyMap (iter inverse)");

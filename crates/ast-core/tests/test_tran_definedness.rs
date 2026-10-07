@@ -22,7 +22,7 @@ fn fwd_only_polymap() -> PolyMap {
         out_axis: 1,
     }];
     let mut pm = PolyMap::new(1, 1, &fwd, None).unwrap();
-    pm.set_iter_inverse(false);
+    pm.set_iter_inverse(false).unwrap();
     pm
 }
 
@@ -36,7 +36,7 @@ fn polymap_forward_only_has_no_inverse() {
 #[test]
 fn polymap_iter_inverse_provides_inverse() {
     let mut pm = fwd_only_polymap();
-    pm.set_iter_inverse(true);
+    pm.set_iter_inverse(true).unwrap();
     assert!(pm.has_forward());
     assert!(pm.has_inverse());
 }

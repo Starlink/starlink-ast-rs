@@ -206,7 +206,7 @@ fn frameset_definedness_follows_path() {
         out_axis: 1,
     }];
     let mut pm = PolyMap::new(1, 1, &fwd, None).unwrap();
-    pm.set_iter_inverse(false);
+    pm.set_iter_inverse(false).unwrap();
 
     let mut fs = FrameSet::new(frame_with_domain(1, "A"));
     fs.add_frame(FrameRef::Base, Box::new(pm), frame_with_domain(1, "B"))

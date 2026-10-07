@@ -617,7 +617,7 @@ fn a_frameset_whose_mapping_has_no_inverse_writes_nothing() {
     // Forward only: no inverse coefficients and IterInverse left off, so the
     // Mapping cannot be inverted numerically either.
     let mut poly = PolyMap::new(2, 2, &[term(1.0, [1, 0], 1), term(1.0, [0, 1], 2)], None).unwrap();
-    poly.set_iter_inverse(false);
+    poly.set_iter_inverse(false).unwrap();
     assert!(
         !poly.has_inverse(),
         "the probe needs a Mapping with no inverse"

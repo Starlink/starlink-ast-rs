@@ -873,24 +873,11 @@ fn substitute_nan_to_bad_in_place(pts: &mut PointSet) {
     }
 }
 
-/// Shared argument validation for [`Mapping::tran1`] and [`Mapping::tran2`].
-///
-/// Port of the relevant arms of C's `ValidateMapping` (`mapping.c`), which
-/// `astTran1` / `astTran2` call before building their PointSets:
-///
-/// - `AST__TRNND` when the requested direction is not defined,
-/// - `AST__NCPIN` when `Nin` or `Nout` is not the arity the entry point
-///   requires,
-/// - `AST__NPTIN` when fewer than one point is supplied.
-///
-/// Note the definedness check lives here because that is where C puts it.
-/// The general [`Mapping::transform`] path does not yet raise `AST__TRNND`
-/// for an undefined direction; that gap is tracked in `PLAN.md` §2.
-fn validate_tran<M: Mapping + ?Sized>(
+/// An `AST__TRNND` error when `map` does not define the requested direction,
+/// as C's base `Transform` reports (mapping.c).
+pub(crate) fn require_direction<M: Mapping + ?Sized>(
     map: &M,
     forward: bool,
-    npoint: usize,
-    arity: usize,
     method: &str,
 ) -> AstResult<()> {
     let defined = if forward {
@@ -905,6 +892,31 @@ fn validate_tran<M: Mapping + ?Sized>(
             format!("{method}: the {dir} coordinate transformation is not defined"),
         ));
     }
+    Ok(())
+}
+
+/// Shared argument validation for [`Mapping::tran1`] and [`Mapping::tran2`].
+///
+/// Port of the relevant arms of C's `ValidateMapping` (`mapping.c`), which
+/// `astTran1` / `astTran2` call before building their PointSets:
+///
+/// - `AST__TRNND` when the requested direction is not defined,
+/// - `AST__NCPIN` when `Nin` or `Nout` is not the arity the entry point
+///   requires,
+/// - `AST__NPTIN` when fewer than one point is supplied.
+///
+/// C raises `AST__TRNND` in its base `Transform` (mapping.c:22333-22380),
+/// which every class's `Transform` calls, so `astTransform` raises it too.
+/// Of the port's [`Mapping::transform`] implementations only some call
+/// [`require_direction`]; the rest are audit finding MB-1.
+fn validate_tran<M: Mapping + ?Sized>(
+    map: &M,
+    forward: bool,
+    npoint: usize,
+    arity: usize,
+    method: &str,
+) -> AstResult<()> {
+    require_direction(map, forward, method)?;
     if map.nin() != arity || map.nout() != arity {
         return Err(AstError::new(
             ErrorCode::Ncpin,

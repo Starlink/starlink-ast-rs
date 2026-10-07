@@ -4,6 +4,7 @@
 
 use ast_core::constants::BAD_VALUE;
 use ast_core::coords::PointSet;
+use ast_core::error::ErrorCode;
 use ast_core::mappings::{Mapping, PolyMap, PolyTerm};
 use ast_core::{AnyObject, from_native_string, to_native_string};
 
@@ -129,7 +130,7 @@ fn polymap_iter_inverse_default_follows_inverse_coefficients() {
 
     // An explicit setting beats the default in both directions.
     let mut m3 = PolyMap::new(1, 1, &fwd, None).unwrap();
-    m3.set_iter_inverse(false);
+    m3.set_iter_inverse(false).unwrap();
     assert!(!m3.iter_inverse());
     assert!(!m3.has_inverse());
 }
@@ -259,7 +260,7 @@ fn polymap_iterative_inverse() {
         }, // x^2
     ];
     let mut m = PolyMap::new(1, 1, &fwd, None).unwrap();
-    m.set_iter_inverse(true);
+    m.set_iter_inverse(true).unwrap();
     m.set_niter_inverse(100);
     m.set_tol_inverse(1e-10);
 
@@ -287,11 +288,11 @@ fn polymap_iterative_inverse() {
 }
 
 // ---------------------------------------------------------------------------
-// No inverse available: all outputs BAD
+// No inverse available: transforming inversely is an error
 // ---------------------------------------------------------------------------
 
 #[test]
-fn polymap_no_inverse_returns_bad() {
+fn polymap_no_inverse_is_an_error() {
     let fwd = vec![PolyTerm {
         coeff: 1.0,
         powers: vec![2],
@@ -300,11 +301,13 @@ fn polymap_no_inverse_returns_bad() {
     // IterInverse defaults on for an inverse-less PolyMap
     // (polymap.c:6311); disable it to exercise the no-inverse path.
     let mut m = PolyMap::new(1, 1, &fwd, None).unwrap();
-    m.set_iter_inverse(false);
+    m.set_iter_inverse(false).unwrap();
 
+    // C's base Transform raises AST__TRNND for an undefined direction
+    // (mapping.c).
     let pts = PointSet::from_rows(vec![vec![3.0]]);
-    let out = m.transform(&pts, false).unwrap();
-    assert_eq!(out.point(0)[0], BAD_VALUE);
+    let err = m.transform(&pts, false).unwrap_err();
+    assert_eq!(err.code(), ErrorCode::Trnnd);
 }
 
 // ---------------------------------------------------------------------------
@@ -427,7 +430,7 @@ fn polymap_setters() {
     }];
     let mut m = PolyMap::new(1, 1, &terms, None).unwrap();
 
-    m.set_iter_inverse(true);
+    m.set_iter_inverse(true).unwrap();
     assert!(m.iter_inverse());
 
     m.set_niter_inverse(10);
@@ -566,7 +569,7 @@ fn polymap_serialisation_iter_inverse_attributes() {
         out_axis: 1,
     }];
     let mut m = PolyMap::new(1, 1, &fwd, None).unwrap();
-    m.set_iter_inverse(true);
+    m.set_iter_inverse(true).unwrap();
     m.set_niter_inverse(10);
     m.set_tol_inverse(1e-8);
 
@@ -635,11 +638,13 @@ fn polymap_constant() {
 
 #[test]
 fn polymap_empty_forward() {
-    // A PolyMap with no forward terms — all forward outputs are 0.
+    // A PolyMap with no forward terms has no forward transformation
+    // (polymap.c GetTranForward), so transforming forward is AST__TRNND.
     let m = PolyMap::new(1, 1, &[], None).unwrap();
+    assert!(!m.has_forward());
     let pts = PointSet::from_rows(vec![vec![5.0]]);
-    let out = m.transform(&pts, true).unwrap();
-    assert_eq!(out.point(0)[0], 0.0);
+    let err = m.transform(&pts, true).unwrap_err();
+    assert_eq!(err.code(), ErrorCode::Trnnd);
 }
 
 // ---------------------------------------------------------------------------
@@ -672,7 +677,7 @@ fn polymap_nr_inverse_2d() {
         },
     ];
     let mut m = PolyMap::new(2, 2, &fwd, None).unwrap();
-    m.set_iter_inverse(true);
+    m.set_iter_inverse(true).unwrap();
     m.set_niter_inverse(100);
     m.set_tol_inverse(1e-10);
 
@@ -716,7 +721,7 @@ fn polymap_bulk_nr_inverse_1d() {
         },
     ];
     let mut m = PolyMap::new(1, 1, &fwd, None).unwrap();
-    m.set_iter_inverse(true);
+    m.set_iter_inverse(true).unwrap();
     m.set_niter_inverse(20);
     m.set_tol_inverse(1e-10);
 
@@ -778,7 +783,7 @@ fn polymap_bulk_nr_inverse_2d() {
         },
     ];
     let mut m = PolyMap::new(2, 2, &fwd, None).unwrap();
-    m.set_iter_inverse(true);
+    m.set_iter_inverse(true).unwrap();
     m.set_niter_inverse(20);
     m.set_tol_inverse(1e-10);
 
@@ -1147,7 +1152,7 @@ fn polymap_bulk_nr_inverse_bad_values() {
         },
     ];
     let mut m = PolyMap::new(2, 2, &fwd, None).unwrap();
-    m.set_iter_inverse(true);
+    m.set_iter_inverse(true).unwrap();
     m.set_niter_inverse(20);
     m.set_tol_inverse(1e-10);
 
@@ -1206,7 +1211,7 @@ fn iter_inverse_takes_priority_over_explicit_inverse_coefficients() {
     assert!((out.point(0)[0] - 8.0).abs() < 1e-12);
 
     // With IterInverse set, the iterative inverse must win: x = y/2.
-    m.set_iter_inverse(true);
+    m.set_iter_inverse(true).unwrap();
     m.set_niter_inverse(20);
     m.set_tol_inverse(1e-10);
     let out = m.transform(&pts, false).unwrap();

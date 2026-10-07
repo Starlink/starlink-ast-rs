@@ -221,16 +221,29 @@ impl PolyMap {
 
     /// Whether the iterative (Newton-Raphson) inverse is enabled.
     ///
-    /// When unset, defaults to "no inverse coefficients were supplied"
-    /// — mirrors C `GetIterInverse` (polymap.c:6311), which makes a
-    /// forward-only PolyMap invertible out of the box.
+    /// When unset, it is set if no inverse coefficients were supplied and
+    /// the PolyMap has as many inputs as outputs, as C's `GetIterInverse`
+    /// default is (polymap.c:6384-6387), which makes such a forward-only
+    /// PolyMap invertible out of the box.
     pub fn iter_inverse(&self) -> bool {
-        self.iter_inverse
-            .unwrap_or_else(|| self.inverse.as_ref().is_none_or(|v| v.is_empty()))
+        self.iter_inverse.unwrap_or_else(|| {
+            self.inverse.as_ref().is_none_or(|v| v.is_empty()) && self.nin == self.nout
+        })
     }
 
     /// Enable or disable the iterative inverse.
-    pub fn set_iter_inverse(&mut self, v: bool) {
+    ///
+    /// An iterative inverse needs as many inputs as outputs, so enabling it
+    /// on any other PolyMap is an `AST__ATTIN` error that leaves the value
+    /// unchanged, as C's `SetIterInverse` is (polymap.c:6388-6393).
+    pub fn set_iter_inverse(&mut self, v: bool) -> AstResult<()> {
+        if v && self.nin != self.nout {
+            return Err(AstError::new(
+                ErrorCode::Attin,
+                "PolyMap: cannot use an iterative inverse because the PolyMap has \
+                 unequal numbers of inputs and outputs",
+            ));
+        }
         // `IterInverse` decides whether the inverse transformation is defined
         // at all, so it changes what a simplification of this PolyMap could
         // conclude. PolyMap's own MapMerge does not read the attribute, but C
@@ -248,6 +261,7 @@ impl PolyMap {
         } else if !v {
             self.jacobian_terms = None;
         }
+        Ok(())
     }
 
     /// Whether IterInverse has been explicitly set. Mirrors C
@@ -1005,7 +1019,7 @@ impl PolyMap {
         .ok()?;
 
         if let Some(v) = self.iter_inverse {
-            pm.set_iter_inverse(v);
+            pm.set_iter_inverse(v).ok()?;
         }
         pm.set_niter_inverse(self.niter_inverse);
         pm.set_tol_inverse(self.tol_inverse);
@@ -1371,6 +1385,7 @@ impl Mapping for PolyMap {
     }
 
     fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()> {
+        super::require_direction(self, forward, "PolyMap transform")?;
         let fwd = self.effective_forward(forward);
 
         if fwd {
@@ -1489,6 +1504,7 @@ impl Mapping for PolyMap {
         forward: bool,
         out: &mut PointSet,
     ) -> AstResult<()> {
+        super::require_direction(self, forward, "PolyMap transform")?;
         let fwd = self.effective_forward(forward);
 
         if fwd {
@@ -2087,7 +2103,7 @@ impl Serializable for PolyMap {
         // run because they carry side effects -- `IterInverse` builds the
         // Jacobian terms.
         if let Some(v) = iter_inv {
-            m.set_iter_inverse(v);
+            m.set_iter_inverse(v)?;
         }
         if node.get("NiterInv").is_some() {
             m.set_niter_inverse(niter_inv);

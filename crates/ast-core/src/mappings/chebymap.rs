@@ -180,7 +180,7 @@ impl ChebyMap {
         // evaluates power-basis terms directly and would invert the
         // wrong function here, so keep the iterative inverse disabled
         // until a basis-aware iteration is ported.
-        poly.set_iter_inverse(false);
+        poly.set_iter_inverse(false)?;
 
         Ok(Self {
             poly,
@@ -1074,7 +1074,7 @@ impl Serializable for ChebyMap {
         let mut poly = PolyMap::new(nin, nout, &forward, inverse.as_deref())?;
         // See ChebyMap::new — the power-basis NR cannot iterate a
         // Chebyshev forward, so the C IterInverse default is disabled.
-        poly.set_iter_inverse(false);
+        poly.set_iter_inverse(false)?;
 
         let mut m = ChebyMap {
             poly,

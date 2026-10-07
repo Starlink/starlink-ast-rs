@@ -316,7 +316,7 @@ fn build_polymap_lsst_shape() -> AnyObject {
     }
     let mut m = PolyMap::new(2, 2, &terms, None).expect("polymap");
     // Iterative inverse so the inverse arm exercises NR.
-    m.set_iter_inverse(true);
+    m.set_iter_inverse(true).expect("a 2-to-2 PolyMap");
     m.set_niter_inverse(10);
     m.set_tol_inverse(1e-7);
     AnyObject::PolyMap(m)

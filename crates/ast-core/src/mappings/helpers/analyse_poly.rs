@@ -184,7 +184,7 @@ pub fn analyse_poly(polymap: &PolyMap) -> AstResult<Option<AnalysePolyResult>> {
     if a == 1.0 && b == 0.0 && c == 0.0 && d == 1.0 {
         // map3 = UnitMap (encoded as None), map2 = pm1.
         let mut map2 = PolyMap::new(2, 2, &pm1_terms, None)?;
-        copy_iter_inverse_attrs_into(&working, &mut map2);
+        copy_iter_inverse_attrs_into(&working, &mut map2)?;
         Ok(Some(AnalysePolyResult {
             map1,
             map2,
@@ -249,7 +249,7 @@ pub fn analyse_poly(polymap: &PolyMap) -> AstResult<Option<AnalysePolyResult>> {
         // Amalgamate same-power terms (mirrors C's `astSimplify(tmap)`).
         let merged = amalgamate(new_terms);
         let mut map2 = PolyMap::new(2, 2, &merged, None)?;
-        copy_iter_inverse_attrs_into(&working, &mut map2);
+        copy_iter_inverse_attrs_into(&working, &mut map2)?;
 
         Ok(Some(AnalysePolyResult {
             map1,
@@ -291,12 +291,13 @@ fn amalgamate(terms: Vec<PolyTerm>) -> Vec<PolyTerm> {
 /// attributes from `src` to `dst`. Mirrors the
 /// `astTestIterInverse → astSetIterInverse` chain at the end of
 /// fitschan.c::AnalysePoly.
-fn copy_iter_inverse_attrs_into(src: &PolyMap, dst: &mut PolyMap) {
+fn copy_iter_inverse_attrs_into(src: &PolyMap, dst: &mut PolyMap) -> AstResult<()> {
     if src.iter_inverse() {
-        dst.set_iter_inverse(true);
+        dst.set_iter_inverse(true)?;
     }
     dst.set_niter_inverse(src.niter_inverse());
     dst.set_tol_inverse(src.tol_inverse());
+    Ok(())
 }
 
 #[cfg(test)]
@@ -375,7 +376,7 @@ mod tests {
 
     fn poly_with_iter_inverse(forward: &[PolyTerm]) -> PolyMap {
         let mut pm = PolyMap::new(2, 2, forward, None).expect("polymap");
-        pm.set_iter_inverse(true);
+        pm.set_iter_inverse(true).unwrap();
         pm
     }
 
@@ -589,7 +590,7 @@ mod tests {
             None,
         )
         .expect("polymap");
-        pm.set_iter_inverse(false);
+        pm.set_iter_inverse(false).unwrap();
         assert!(analyse_poly(&pm).expect("ok").is_none());
     }
 

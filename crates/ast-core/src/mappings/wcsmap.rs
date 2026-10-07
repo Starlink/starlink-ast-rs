@@ -515,6 +515,21 @@ impl WcsMap {
         CmpMap::new(Box::new(self), other, Composition::Parallel)
     }
 
+    /// C has no projection functions for NCP, so transforming through an NCP
+    /// WcsMap is an `AST__WCSTY` error (wcsmap.c `Map` returns 1, which
+    /// `Transform` reports). A FITS header's NCP projection is read as SIN
+    /// with parameters, so only a WcsMap made as NCP reaches this.
+    fn check_transformable(&self) -> AstResult<()> {
+        if self.proj == WcsProjection::Ncp {
+            return Err(AstError::new(
+                ErrorCode::Wcsty,
+                "WcsMap: the AIPS north celestial pole (NCP) projection cannot \
+                 transform coordinates",
+            ));
+        }
+        Ok(())
+    }
+
     /// Rebuild PrjParams from stored parameters (used by clone and simplified).
     fn rebuild_prj(&self) -> AstResult<PrjParams> {
         let underlying = match self.proj {
@@ -666,6 +681,7 @@ impl Mapping for WcsMap {
         forward: bool,
         out: &mut PointSet,
     ) -> AstResult<()> {
+        self.check_transformable()?;
         if self.proj == WcsProjection::Unknown {
             for i in 0..pts.npoint() {
                 out.point_mut(i).copy_from_slice(pts.point(i));
@@ -781,6 +797,7 @@ impl Mapping for WcsMap {
     }
 
     fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()> {
+        self.check_transformable()?;
         // Unknown/blank projection acts as identity — pass through all coords.
         if self.proj == WcsProjection::Unknown {
             for i in 0..pts.npoint() {

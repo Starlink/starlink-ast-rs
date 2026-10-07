@@ -205,7 +205,8 @@ fn mutating_an_attribute_discards_the_record() {
     set.as_any_mut()
         .downcast_mut::<PolyMap>()
         .unwrap()
-        .set_iter_inverse(false);
+        .set_iter_inverse(false)
+        .unwrap();
     assert!(
         !set.has_been_simplified(),
         "setting an attribute left the record in place"
@@ -213,7 +214,7 @@ fn mutating_an_attribute_discards_the_record() {
 
     // Clearing one back to its default changes the Mapping just as much.
     let mut input = PolyMap::new(2, 2, &terms, None).unwrap();
-    input.set_iter_inverse(false);
+    input.set_iter_inverse(false).unwrap();
     let mut cleared: DynMapping = Box::new(input);
     cleared = cleared.simplify().unwrap();
     assert!(cleared.has_been_simplified());

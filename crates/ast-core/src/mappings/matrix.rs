@@ -2,8 +2,9 @@
 //!
 //! `MatrixMap` applies a matrix multiplication to a set of input coordinates,
 //! mapping `nin` inputs to `nout` outputs via an `nout × nin` matrix.
-//! The inverse transformation is available for square non-singular matrices,
-//! and for any matrix that reduces to diagonal or unit storage form.
+//! The inverse transformation is available for square non-singular matrices
+//! with no bad elements, and for any matrix that reduces to diagonal or unit
+//! storage form.
 
 use ndarray::Array2;
 
@@ -69,8 +70,8 @@ impl MatrixMap {
     ///
     /// The inverse is available whenever C would compute one: for a matrix that
     /// compresses to DIAGONAL or UNIT form always, and for one that stays FULL
-    /// only when it is square and non-singular. Transforming in a direction
-    /// with no inverse returns an error.
+    /// only when it is square, non-singular and free of bad elements.
+    /// Transforming in a direction with no inverse returns an error.
     ///
     /// The supplied matrix is always taken as a FULL matrix and then
     /// compressed, mirroring C `astInitMatrixMap` (matrixmap.c:6032-6073),
@@ -1458,13 +1459,20 @@ fn diagonal_inverse(m: &Array2<f64>) -> Array2<f64> {
 /// equal to ~1e-16 but rounds near-zero elements differently, which is
 /// visible in the native dump — e.g. `IM5` of a galactic rotation matrix).
 ///
-/// Returns an error when `palDmat` reports the matrix singular (a pivot
-/// magnitude below its internal `SFA = 1e-20`). `palDmat` also solves
+/// Returns an error when the matrix holds a bad element, which C checks
+/// before inverting (matrixmap.c:1568-1578), or when `palDmat` reports it
+/// singular (a pivot magnitude below its internal `SFA = 1e-20`). `palDmat` also solves
 /// `A·Y = X`; for a pure inverse the right-hand side is the zero vector,
 /// so the solution is carried but unused.
 fn gauss_jordan_inverse(m: &Array2<f64>) -> AstResult<Array2<f64>> {
     let n = m.nrows();
     debug_assert_eq!(n, m.ncols(), "matrix must be square");
+    if m.iter().any(|&v| v == BAD_VALUE) {
+        return Err(AstError::new(
+            ErrorCode::Nodef,
+            "a matrix holding a bad element has no inverse",
+        ));
+    }
 
     // Flatten to the row-major `n*n` block palDmat mutates in place.
     let mut a: Vec<f64> = Vec::with_capacity(n * n);

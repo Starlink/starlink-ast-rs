@@ -121,7 +121,7 @@ fn clearing_math_seed_discards_the_record() {
 #[test]
 fn poly_iter_inverse_discards_the_record() {
     discards(poly_map(), "PolyMap::set_iter_inverse", |m| {
-        m.set_iter_inverse(true)
+        m.set_iter_inverse(true).unwrap()
     });
 }
 
@@ -495,7 +495,7 @@ fn load_preserves_the_record_for_every_clear_on_set_class() {
     load_preserves(lut_eps, "LutMap::LutEpsilon");
 
     let mut poly = poly_map();
-    poly.set_iter_inverse(true);
+    poly.set_iter_inverse(true).unwrap();
     poly.set_niter_inverse(7);
     poly.set_tol_inverse(1e-8);
     load_preserves(poly, "PolyMap::IterInverse");

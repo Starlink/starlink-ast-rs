@@ -81,7 +81,7 @@ fn polytran_returns_none_when_accuracy_unachievable() {
 #[test]
 fn polytran_clears_iter_inverse() {
     let mut pm = linear_1d();
-    pm.set_iter_inverse(true);
+    pm.set_iter_inverse(true).unwrap();
     let fitted = pm
         .poly_tran(false, 1e-8, 1e-6, 5, &[0.0], &[10.0])
         .unwrap()

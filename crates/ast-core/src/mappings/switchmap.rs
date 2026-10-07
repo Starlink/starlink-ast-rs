@@ -455,12 +455,22 @@ impl Mapping for SwitchMap {
         self.inverted = !self.inverted;
     }
 
+    // The selectors define the original directions; Invert swaps them, as the
+    // base class's TranForward and TranInverse do (mapping.c).
     fn has_forward(&self) -> bool {
-        self.fsmap.is_some()
+        if self.inverted {
+            self.ismap.is_some()
+        } else {
+            self.fsmap.is_some()
+        }
     }
 
     fn has_inverse(&self) -> bool {
-        self.ismap.is_some()
+        if self.inverted {
+            self.fsmap.is_some()
+        } else {
+            self.ismap.is_some()
+        }
     }
 
     fn dump_tran_flags(&self) -> (bool, bool) {

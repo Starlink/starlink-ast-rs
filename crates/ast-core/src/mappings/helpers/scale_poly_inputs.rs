@@ -96,7 +96,7 @@ pub fn scale_poly_inputs(polymap: &PolyMap, scales: &[f64]) -> AstResult<Option<
 
     // Copy iter_inverse / niter_inverse / tol_inverse attributes.
     if polymap.iter_inverse() {
-        result.set_iter_inverse(true);
+        result.set_iter_inverse(true)?;
     }
     result.set_niter_inverse(polymap.niter_inverse());
     result.set_tol_inverse(polymap.tol_inverse());
@@ -316,7 +316,7 @@ mod tests {
             None,
         )
         .expect("polymap");
-        pm.set_iter_inverse(true);
+        pm.set_iter_inverse(true).unwrap();
         pm.set_niter_inverse(7);
         pm.set_tol_inverse(1.0e-9);
         let result = scale_poly_inputs(&pm, &[2.0, 2.0])

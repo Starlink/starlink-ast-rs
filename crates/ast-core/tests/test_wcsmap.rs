@@ -2,6 +2,7 @@
 
 use ast_core::constants::BAD_VALUE;
 use ast_core::coords::PointSet;
+use ast_core::error::ErrorCode;
 use ast_core::mappings::{CmpMap, Mapping, PermMap, WcsMap, WcsProjection};
 use ast_core::{AnyObject, from_native_string, to_native_string};
 
@@ -497,23 +498,23 @@ fn multiple_projections_round_trip() {
 }
 
 // ===========================================================================
-// NCP (deprecated alias for SIN)
+// NCP (no projection functions)
 // ===========================================================================
 
 #[test]
 fn ncp_projection() {
-    // NCP is a deprecated alias for SIN.
+    // C has no projection functions for NCP, so a WcsMap made as NCP cannot
+    // transform in either direction (wcsmap.c `Map` returns 1, which
+    // `Transform` reports as AST__WCSTY). FITS readers turn an NCP header into
+    // SIN with parameters instead.
     let wcs = WcsMap::new(2, WcsProjection::Ncp, 1, 2).unwrap();
     assert_eq!(wcs.projection(), WcsProjection::Ncp);
 
-    // It should still work as a projection.
-    let lon = 0.05_f64;
-    let lat = 1.2_f64;
-    let pts = PointSet::from_rows([[lon, lat]]);
-    let out = wcs.transform(&pts, true).unwrap();
-    let back = wcs.transform(&out, false).unwrap();
-    assert_close(back.point(0)[0], lon, 1e-10, "NCP lon round-trip");
-    assert_close(back.point(0)[1], lat, 1e-10, "NCP lat round-trip");
+    let pts = PointSet::from_rows([[0.05, 1.2]]);
+    for forward in [true, false] {
+        let err = wcs.transform(&pts, forward).unwrap_err();
+        assert_eq!(err.code(), ErrorCode::Wcsty, "forward={forward}");
+    }
 }
 
 // ===========================================================================
