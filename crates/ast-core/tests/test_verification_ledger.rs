@@ -198,9 +198,9 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
     (
         "test_frame_load.rs",
         "FRAME_LOAD_EXCLUDED",
-        1,
-        "a hand-written Native description C's Dump never writes: a SkyFrame \
-         with no Ax objects, which C gives plain Axis objects. Gated by \
+        0,
+        "empty: every hand-written Frame description loads as C loads it. \
+         The table survives so a newly found difference has a home. Gated by \
          excluded_descriptions_still_differ",
     ),
     (

@@ -55,3 +55,4 @@ section_load_probe
 sky_last_probe
 ident_probe
 frameset_current_probe
+sky_plain_axis_probe

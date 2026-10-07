@@ -4,6 +4,7 @@ use std::cell::Cell;
 
 use crate::constants::BAD_VALUE;
 use crate::error::{AstError, AstResult, ErrorCode};
+use crate::frames::axis::FrameAxis;
 use crate::frames::sky_convert::{SkyRefIs, SkySystem, make_offset_mapping};
 use crate::frames::skyaxis::{SkyAxis, default_dhms_format, dhms_unit, unformat_sky_axis};
 use crate::frames::{AxisKind, DynFrame, Frame, FrameRef, LineDef, SkyLineDef};
@@ -70,7 +71,12 @@ pub struct SkyFrame {
     align_system: Option<SkySystem>,
 
     // Per-axis properties
-    axes: [SkyAxis; 2], // [longitude, latitude] (physical storage)
+    /// The Axis objects, in physical order: [longitude, latitude]. Each is
+    /// normally a SkyAxis, but C's SkyFrame holds whatever Axis objects it
+    /// is given, and `astLoadFrame` supplies a plain Axis for a description
+    /// with no `Ax<n>` object (frame.c:15227). The methods that need a
+    /// SkyAxis check for one (skyframe.c `astIsASkyAxis`).
+    axes: [FrameAxis; 2],
 
     /// Axis permutation: perm[ext_axis] = physical_axis (0-based).
     /// Physical 0 = longitude, physical 1 = latitude.
@@ -141,7 +147,10 @@ impl SkyFrame {
             align_offset: false,
             align_offset_set: false,
             align_system: None,
-            axes: [SkyAxis::new(), SkyAxis::new()],
+            axes: [
+                FrameAxis::Sky(SkyAxis::new()),
+                FrameAxis::Sky(SkyAxis::new()),
+            ],
             attrs: super::frame_attrs::FrameAttrs::default(),
             perm: [0, 1],
             last: Cell::new(BAD_VALUE),
@@ -219,7 +228,10 @@ impl SkyFrame {
     /// system is equatorial (involves the Earth's equator); the latitude
     /// axis and all non-equatorial longitudes default to angle (degrees).
     fn effective_as_time(&self, phys: usize) -> bool {
-        if let Some(set) = self.axes[phys].as_time {
+        // Only a SkyAxis can have AsTime set (skyframe.c:2563).
+        if let FrameAxis::Sky(sky) = &self.axes[phys]
+            && let Some(set) = sky.as_time
+        {
             return set;
         }
         // skyframe.c:2503 tells the axes apart by their internal index, not
@@ -229,13 +241,13 @@ impl SkyFrame {
 
     /// The Axis-class attributes of a 1-based external axis.
     fn ax(&self, axis: usize) -> AstResult<&super::axis::Axis> {
-        Ok(&self.axes[self.physical_axis(axis)?].axis)
+        Ok(self.axes[self.physical_axis(axis)?].axis())
     }
 
     /// The Axis-class attributes of a 1-based external axis, to change.
     fn ax_mut(&mut self, axis: usize) -> AstResult<&mut super::axis::Axis> {
         let phys = self.physical_axis(axis)?;
-        Ok(&mut self.axes[phys].axis)
+        Ok(self.axes[phys].axis_mut())
     }
 
     // --- Per-axis Format / Unit / AsTime / Digits (1-based external API) ---
@@ -247,23 +259,47 @@ impl SkyFrame {
         Ok(self.effective_as_time(self.physical_axis(axis)?))
     }
 
-    /// Set AsTime for `axis` (1-based). Mirrors `astSetAsTime`.
+    /// Set AsTime for `axis` (1-based). Mirrors `astSetAsTime`, which first
+    /// replaces a plain Axis with a SkyAxis carrying its attributes
+    /// (skyframe.c:8851).
     pub fn set_as_time(&mut self, axis: usize, as_time: bool) -> AstResult<()> {
         let phys = self.physical_axis(axis)?;
-        self.axes[phys].as_time = Some(as_time);
+        self.sky_axis_mut(phys).as_time = Some(as_time);
         Ok(())
     }
 
-    /// Test whether AsTime for `axis` (1-based) has been set.
+    /// Test whether AsTime for `axis` (1-based) has been set, which only a
+    /// SkyAxis can have (skyframe.c:10632).
     pub fn test_as_time(&self, axis: usize) -> AstResult<bool> {
-        Ok(self.axes[self.physical_axis(axis)?].as_time.is_some())
+        Ok(match &self.axes[self.physical_axis(axis)?] {
+            FrameAxis::Sky(sky) => sky.as_time.is_some(),
+            FrameAxis::Plain(_) => false,
+        })
     }
 
-    /// Clear AsTime for `axis` (1-based).
+    /// Clear AsTime for `axis` (1-based), which only a SkyAxis can have
+    /// (skyframe.c:1411).
     pub fn clear_as_time(&mut self, axis: usize) -> AstResult<()> {
         let phys = self.physical_axis(axis)?;
-        self.axes[phys].as_time = None;
+        if let FrameAxis::Sky(sky) = &mut self.axes[phys] {
+            sky.as_time = None;
+        }
         Ok(())
+    }
+
+    /// The SkyAxis on the physical axis `phys`, replacing a plain Axis with
+    /// a SkyAxis that carries its attributes first, as skyframe.c
+    /// `SetAsTime` does with `astAxisOverlay`.
+    fn sky_axis_mut(&mut self, phys: usize) -> &mut SkyAxis {
+        if let FrameAxis::Plain(_) = &self.axes[phys] {
+            let mut upgraded = FrameAxis::Sky(SkyAxis::new());
+            upgraded.overlay_from(&self.axes[phys]);
+            self.axes[phys] = upgraded;
+        }
+        match &mut self.axes[phys] {
+            FrameAxis::Sky(sky) => sky,
+            FrameAxis::Plain(_) => unreachable!("replaced by a SkyAxis above"),
+        }
     }
 
     /// Clear the SkyFrame's Digits, which then defaults to 7.
@@ -1160,7 +1196,7 @@ impl SkyFrame {
     /// (frame.c:4295 in `Format`, and `MAKE_GET`).
     fn phys_digits(&self, phys: usize) -> i32 {
         self.axes[phys]
-            .axis
+            .axis()
             .digits
             .unwrap_or_else(|| self.attrs.digits.unwrap_or(7))
     }
@@ -1171,7 +1207,15 @@ impl SkyFrame {
     /// skyaxis.c:2888), or for any other System decimal degrees (or decimal
     /// hours, when AsTime is set).
     fn phys_format(&self, phys: usize) -> String {
-        if let Some(fmt) = &self.axes[phys].format {
+        // The Frame's method answers for a plain Axis, whose Format syntax
+        // is not the SkyAxis one (skyframe.c:3475).
+        let sky = match &self.axes[phys] {
+            FrameAxis::Sky(sky) => sky,
+            plain @ FrameAxis::Plain(_) => {
+                return plain.format_value(self.attrs.digits.unwrap_or(7));
+            }
+        };
+        if let Some(fmt) = &sky.format {
             return fmt.clone();
         }
         let digits = self.phys_digits(phys);
@@ -1192,8 +1236,12 @@ impl SkyFrame {
     /// that has been set, `"rad"` for a `%`-style Format, and otherwise the
     /// description or unit the Format implies (`DHmsUnit`).
     fn phys_unit(&self, phys: usize) -> String {
-        if let Some(unit) = &self.axes[phys].axis.unit {
+        if let Some(unit) = &self.axes[phys].axis().unit {
             return unit.clone();
+        }
+        // A plain Axis has no Unit unless one is set (axis.c GetAxisUnit).
+        if let FrameAxis::Plain(_) = &self.axes[phys] {
+            return String::new();
         }
         let fmt = self.phys_format(phys);
         if fmt.starts_with('%') {
@@ -1317,14 +1365,14 @@ impl Frame for SkyFrame {
     /// the latitude axis, since every sky system is left-handed.
     fn direction(&self, axis: usize) -> AstResult<bool> {
         let phys = self.physical_axis(axis)?;
-        Ok(self.axes[phys].axis.direction.unwrap_or(phys != 0))
+        Ok(self.axes[phys].axis().direction.unwrap_or(phys != 0))
     }
 
     /// Mirrors C `SkyFrame::GetTop` (skyframe.c:3242): a Top that has been
     /// set, else pi/2 for the latitude axis and no limit for the longitude.
     fn top(&self, axis: usize) -> AstResult<f64> {
         let phys = self.physical_axis(axis)?;
-        Ok(self.axes[phys].axis.top.unwrap_or(if phys == 1 {
+        Ok(self.axes[phys].axis().top.unwrap_or(if phys == 1 {
             std::f64::consts::FRAC_PI_2
         } else {
             f64::MAX
@@ -1335,7 +1383,7 @@ impl Frame for SkyFrame {
     /// [`top`](Frame::top) does `GetTop`.
     fn bottom(&self, axis: usize) -> AstResult<f64> {
         let phys = self.physical_axis(axis)?;
-        Ok(self.axes[phys].axis.bottom.unwrap_or(if phys == 1 {
+        Ok(self.axes[phys].axis().bottom.unwrap_or(if phys == 1 {
             -std::f64::consts::FRAC_PI_2
         } else {
             -f64::MAX
@@ -1358,7 +1406,7 @@ impl Frame for SkyFrame {
     /// been set, else the System's name for the axis.
     fn label(&self, axis: usize) -> AstResult<String> {
         let phys = self.physical_axis(axis)?;
-        if let Some(s) = &self.axes[phys].axis.label {
+        if let Some(s) = &self.axes[phys].axis().label {
             return Ok(s.clone());
         }
         let (lon, lat) = self.default_labels();
@@ -1370,7 +1418,7 @@ impl Frame for SkyFrame {
     /// in front in an offset coordinate system.
     fn symbol(&self, axis: usize) -> AstResult<String> {
         let phys = self.physical_axis(axis)?;
-        if let Some(s) = &self.axes[phys].axis.symbol {
+        if let Some(s) = &self.axes[phys].axis().symbol {
             return Ok(s.clone());
         }
         let (lon, lat) = self.default_symbols();
@@ -1399,17 +1447,17 @@ impl Frame for SkyFrame {
     /// (skyaxis.c `SetAxisFormat`).
     fn set_format_str(&mut self, axis: usize, fmt: &str) -> AstResult<()> {
         let phys = self.physical_axis(axis)?;
-        self.axes[phys].format = Some(fmt.to_string());
+        *self.axes[phys].format_slot_mut() = Some(fmt.to_string());
         Ok(())
     }
 
     fn test_format_str(&self, axis: usize) -> AstResult<bool> {
-        Ok(self.axes[self.physical_axis(axis)?].format.is_some())
+        Ok(self.axes[self.physical_axis(axis)?].format_slot().is_some())
     }
 
     fn clear_format_str(&mut self, axis: usize) -> AstResult<()> {
         let phys = self.physical_axis(axis)?;
-        self.axes[phys].format = None;
+        *self.axes[phys].format_slot_mut() = None;
         Ok(())
     }
 
@@ -1447,12 +1495,16 @@ impl Frame for SkyFrame {
         let Ok(phys) = self.physical_axis(axis) else {
             return String::new();
         };
+        // A plain Axis normalises the Unit it reports (axis.c).
+        if let FrameAxis::Plain(_) = &self.axes[phys] {
+            return crate::units::norm_unit(&self.phys_unit(phys));
+        }
         let fmt = self.phys_format(phys);
         if !fmt.starts_with('%') {
             let (description, describes_values) = dhms_unit(&fmt, self.phys_digits(phys));
             if describes_values
                 && self.axes[phys]
-                    .axis
+                    .axis()
                     .unit
                     .as_ref()
                     .is_none_or(|unit| *unit == description)
@@ -1470,7 +1522,13 @@ impl Frame for SkyFrame {
         if is_bad(value) {
             return Ok("<bad>".to_string());
         }
-        super::skyaxis::sky_format(&self.phys_format(phys), self.phys_digits(phys), value)
+        // The Format is lent to the Axis object, which formats the value as
+        // its own class does (skyframe.c:2025, frame.c `Format`).
+        let (fmt, digits) = (self.phys_format(phys), self.phys_digits(phys));
+        match &self.axes[phys] {
+            FrameAxis::Plain(_) => super::axis_format::format_value(&fmt, digits, value),
+            FrameAxis::Sky(_) => super::skyaxis::sky_format(&fmt, digits, value),
+        }
     }
 
     fn unformat(&self, axis: usize, text: &str) -> AstResult<(f64, usize)> {
@@ -1482,7 +1540,12 @@ impl Frame for SkyFrame {
         }
         // skyframe.c:10892 reads with the SkyFrame's Format, set or default.
         let phys = self.perm[axis - 1];
-        unformat_sky_axis(text, &self.phys_format(phys), self.phys_digits(phys))
+        match &self.axes[phys] {
+            FrameAxis::Plain(_) => Ok(super::basic::axis_unformat(text)),
+            FrameAxis::Sky(_) => {
+                unformat_sky_axis(text, &self.phys_format(phys), self.phys_digits(phys))
+            }
+        }
     }
 
     fn distance(&self, a: &[f64], b: &[f64]) -> AstResult<f64> {
@@ -2178,18 +2241,12 @@ impl Frame for SkyFrame {
 
     fn axis_overlay_source(&self, axis: usize) -> Option<super::overlay::AxisOverlaySource> {
         let phys = *self.perm.get(axis.checked_sub(1)?)?;
-        Some(super::overlay::AxisOverlaySource(
-            super::axis::FrameAxis::Sky(self.axes[phys].clone()),
-        ))
+        Some(super::overlay::AxisOverlaySource(self.axes[phys].clone()))
     }
 
     fn apply_axis_overlay(&mut self, axis: usize, source: &super::overlay::AxisOverlaySource) {
         if let Some(&phys) = axis.checked_sub(1).and_then(|a| self.perm.get(a)) {
-            let mut target = super::axis::FrameAxis::Sky(self.axes[phys].clone());
-            source.apply_to(&mut target);
-            if let super::axis::FrameAxis::Sky(sky) = target {
-                self.axes[phys] = sky;
-            }
+            source.apply_to(&mut self.axes[phys]);
         }
     }
 
@@ -2375,12 +2432,16 @@ impl Frame for SkyFrame {
             }
             let ext = t as usize + 1;
             let phys = temp.perm[t as usize];
+            // C sets each attribute the SkyFrame gives a default to, in the
+            // order AsTime, Format, Label, Symbol, Unit (skyframe.c:10260).
+            // Setting AsTime makes a plain Axis a SkyAxis (`SetAsTime`), so
+            // the Format that follows is the SkyAxis one.
+            let as_time = temp.effective_as_time(phys);
+            temp.sky_axis_mut(phys).as_time.get_or_insert(as_time);
+            let format = temp.phys_format(phys);
             let label = Frame::label(&temp, ext)?;
             let symbol = Frame::symbol(&temp, ext)?;
-            let as_time = temp.effective_as_time(phys);
-            let format = temp.phys_format(phys);
-            let mut ax = temp.axes[phys].clone();
-            ax.as_time.get_or_insert(as_time);
+            let mut ax = temp.sky_axis_mut(phys).clone();
             ax.format.get_or_insert(format);
             ax.axis.label.get_or_insert(label);
             ax.axis.symbol.get_or_insert(symbol);
@@ -2483,12 +2544,15 @@ fn skyframe_overlay(
                 // Unit, and keeps Digits.
                 for axis in 0..2 {
                     let ax = &mut result_sky.axes[axis];
-                    ax.axis.label = None;
-                    ax.axis.symbol = None;
-                    ax.axis.direction = None;
-                    ax.axis.unit = None;
-                    ax.as_time = None;
-                    ax.format = None;
+                    let attrs = ax.axis_mut();
+                    attrs.label = None;
+                    attrs.symbol = None;
+                    attrs.direction = None;
+                    attrs.unit = None;
+                    *ax.format_slot_mut() = None;
+                    if let FrameAxis::Sky(sky) = ax {
+                        sky.as_time = None;
+                    }
                 }
             }
         }
@@ -2856,7 +2920,7 @@ impl Serializable for SkyFrame {
         // the Axis sub-object, while the Frame-level `Lbl{n}` aggregate
         // stays commented, as C's Axis class Dump writes them (axis.c).
         for (i, axis) in self.axes.iter().enumerate() {
-            let axis_node = axis.to_node_dump();
+            let axis_node = axis.to_dump_node();
             let key = format!("Ax{}", i + 1);
             let comment = format!("Axis number {}", i + 1);
             node.push_object(&key, axis_node, Some(comment));
@@ -3116,14 +3180,13 @@ impl Serializable for SkyFrame {
         // order (0 = lon, 1 = lat).
         for i in 0..2 {
             let key = format!("Ax{}", i + 1);
-            if let Some(axis_node) = frame.get_object(&key) {
-                if axis_node.class == "SkyAxis" {
-                    sky.axes[i] = SkyAxis::from_node(axis_node)?;
-                }
-            }
-            if let Some(f) = sky.axes[i].axis.apply_frame_axis_keys(frame, i + 1) {
-                sky.axes[i].format = Some(f);
-            }
+            // An Axis object of either class; with none, astLoadFrame
+            // supplies a plain Axis (frame.c:15227).
+            sky.axes[i] = match frame.get_object(&key) {
+                Some(axis_node) => FrameAxis::read(axis_node)?,
+                None => FrameAxis::Plain(super::axis::Axis::default()),
+            };
+            sky.axes[i].apply_frame_axis_keys(frame, i + 1);
         }
 
         // Axis permutation `Prm{n}` (1-based internal axis for each

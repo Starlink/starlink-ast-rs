@@ -100,12 +100,7 @@ fn leak(s: String) -> &'static str {
 /// what it would take to load it as C does. No shape here is one C's Dump
 /// writes. `excluded_descriptions_still_differ` fails when one starts
 /// matching.
-const FRAME_LOAD_EXCLUDED: &[(&str, &str)] = &[(
-    "sky_axis_keys",
-    "a SkyFrame with no Ax objects: C gives it plain Axis objects \
-     (frame.c:15227), which a SkyFrame cannot hold in the port, so their \
-     Unit and Format differ",
-)];
+const FRAME_LOAD_EXCLUDED: &[(&str, &str)] = &[];
 
 fn load_axes(text: &[&str]) -> Result<Vec<cases::Axis>, String> {
     match from_native_string(&text.join("\n")) {
