@@ -42,6 +42,9 @@ pub struct LutMap {
     interp: LutInterp,
     /// Monotonicity: +1 increasing, -1 decreasing, 0 non-monotonic.
     monotonic: i8,
+    /// The table the inverse searches, when `lut` has bad entries (C's
+    /// `luti`, `flagsi` and `indexi`).
+    inverse_table: Option<InverseTable>,
     /// Whether the mapping is inverted.
     inverted: bool,
     /// The stated relative error of the table values — C's `LutEpsilon`
@@ -84,13 +87,14 @@ impl LutMap {
                 "LutMap increment must not be zero",
             ));
         }
-        let monotonic = compute_monotonicity(lut);
+        let (monotonic, inverse_table) = get_monotonic(lut);
         Ok(Self {
             lut: lut.to_vec(),
             start,
             inc,
             interp: LutInterp::Linear,
             monotonic,
+            inverse_table,
             inverted: false,
             simplified: SimplifiedRecord::default(),
             ident: None,
@@ -352,252 +356,89 @@ impl LutMap {
         }
     }
 
-    /// Inverse transform for a single output value (binary search on table).
+    /// Inverse transform for a single output value (lutmap.c `Transform`,
+    /// inverse branch).
+    ///
+    /// The search runs over the table with its bad entries removed
+    /// ([`InverseTable`]) when it has any, and over the full table otherwise.
+    /// A bisection finds the adjacent pair of entries `i1`, `i2 = i1 + 1`
+    /// bracketing `y`; `i1` is -1 when `y` lies beyond the first entry, and
+    /// `nlut - 2` when it lies beyond the last.
     fn inverse_one(&self, y: f64) -> f64 {
-        if is_bad(y) {
+        if is_bad(y) || self.monotonic == 0 {
             return BAD_VALUE;
         }
-        if self.monotonic == 0 {
-            return BAD_VALUE;
-        }
-        let nlut = self.lut.len();
-        if nlut == 1 {
-            // Single element: inverse only defined if y matches
-            let v = self.lut[0];
-            if is_bad(v) {
-                return BAD_VALUE;
-            }
-            if (y - v).abs() < f64::EPSILON * v.abs().max(1.0) {
-                return self.start;
-            }
-            return BAD_VALUE;
-        }
-
-        let increasing = self.monotonic > 0;
-
-        // Find the bracketing entries via binary search.
-        // We search for the interval [lut[lo], lut[lo+1]] that contains y.
-        let mut low: usize = 0;
-        let mut high: usize = nlut - 1;
-
-        // Check bounds first — skip BAD entries at boundaries
-        let first_good = self.first_good_value();
-        let last_good = self.last_good_value();
-        if first_good.is_none() || last_good.is_none() {
-            return BAD_VALUE;
-        }
-        let (first_idx, first_val) = first_good.unwrap();
-        let (last_idx, last_val) = last_good.unwrap();
-
-        let (lo_val, hi_val) = if increasing {
-            (first_val, last_val)
-        } else {
-            (last_val, first_val)
+        let (lut, flags, index) = match &self.inverse_table {
+            Some(t) => (&t.lut[..], Some(&t.flags[..]), Some(&t.index[..])),
+            None => (&self.lut[..], None, None),
         };
+        let nlutm1 = lut.len() - 1;
+        let up = lut[nlutm1] > lut[0];
 
-        if y < lo_val || y > hi_val {
-            // Outside the range of the table — extrapolate using boundary slope
-            return self.inverse_extrapolate(y, increasing, first_idx, last_idx);
-        }
-
-        // Binary search for bracketing interval
-        while high - low > 1 {
-            let mid = (low + high) / 2;
-            let v_mid = self.lut[mid];
-            if is_bad(v_mid) {
-                // Skip BAD entries — search linearly from mid
-                // Try to find a non-BAD entry near mid
-                let found = self.find_non_bad_near(mid, low, high);
-                match found {
-                    Some(good_mid) => {
-                        let v_good = self.lut[good_mid];
-                        if (increasing && y >= v_good) || (!increasing && y <= v_good) {
-                            low = good_mid;
-                        } else {
-                            high = good_mid;
-                        }
-                    }
-                    None => return BAD_VALUE,
-                }
-                continue;
-            }
-            if (increasing && y >= v_mid) || (!increasing && y <= v_mid) {
-                low = mid;
+        let mut i1: isize = -1;
+        let mut i2: isize = nlutm1 as isize;
+        while i2 > i1 + 1 {
+            let i = (i1 + i2) / 2;
+            if (y >= lut[i as usize]) == up {
+                i1 = i;
             } else {
-                high = mid;
+                i2 = i;
             }
         }
+        let i2 = i2 as usize;
 
-        // Now interpolate between lut[low] and lut[high]
-        let v_lo = self.lut[low];
-        let v_hi = self.lut[high];
-        if is_bad(v_lo) || is_bad(v_hi) {
+        // C reads `lut[i1]` and `flags[i1]` here even when `i1` is -1, which
+        // is outside the array. Below, an `i1` of -1 has no entry, so it
+        // equals no value and is not adjacent to a bad entry.
+        let lo = usize::try_from(i1).ok();
+        let lut_lo = lo.map(|i| lut[i]);
+
+        // A value inside a flat run of the table has no unique inverse.
+        let flat = if let Some(i1) = lo
+            && lut[i1] == y
+        {
+            (i1 > 0 && lut[i1 - 1] == y) || lut[i2] == y
+        } else {
+            lut[i2] == y && i2 < nlutm1 && lut[i2 + 1] == y
+        };
+        if flat {
             return BAD_VALUE;
         }
 
-        // Check for flat sections: if the target value equals one of the
-        // bracket values and a neighbour also has that value, the inverse
-        // is undetermined. Matches C lutmap.c:1669-1679.
-        if v_lo == y {
-            if (low > 0 && !is_bad(self.lut[low - 1]) && self.lut[low - 1] == y) || v_hi == y {
-                return BAD_VALUE;
-            }
-        } else if v_hi == y
-            && high < self.lut.len() - 1
-            && !is_bad(self.lut[high + 1])
-            && self.lut[high + 1] == y
+        // Both entries were next to a bad entry in the full table.
+        if let (Some(flags), Some(i1)) = (flags, lo)
+            && flags[i1]
+            && flags[i2]
         {
             return BAD_VALUE;
         }
 
-        let dv = v_hi - v_lo;
-        if dv == 0.0 {
-            // Flat section — inverse is undetermined, return BAD
-            return BAD_VALUE;
-        }
-        let frac = (y - v_lo) / dv;
-        let idx = low as f64 + frac * (high - low) as f64;
-        self.start + idx * self.inc
-    }
+        let table_index = |i: usize| index.map_or(i, |index| index[i]);
 
-    /// Extrapolate the inverse beyond the table bounds.
-    fn inverse_extrapolate(
-        &self,
-        y: f64,
-        increasing: bool,
-        first_idx: usize,
-        last_idx: usize,
-    ) -> f64 {
-        let nlut = self.lut.len();
-        // Determine which end we need
-        let (lo_val, lo_idx, hi_val, hi_idx) = if increasing {
-            (self.lut[first_idx], first_idx, self.lut[last_idx], last_idx)
-        } else {
-            (self.lut[last_idx], last_idx, self.lut[first_idx], first_idx)
-        };
-
-        if y < lo_val {
-            // Below the low end
-            // Use the slope at the low end of the input range
-            let (slope_idx, slope_idx_next) = if increasing {
-                // Low end is at the start
-                self.find_slope_pair_forward(first_idx, nlut)
-            } else {
-                // Low end is at the end (decreasing)
-                self.find_slope_pair_backward(last_idx)
+        if self.interp == LutInterp::Nearest {
+            // With no lower entry, C's sign test passes only when `y` equals
+            // the first entry, whatever `d1` holds (a decreasing table at its
+            // first value); any other value is beyond the table.
+            let Some(lut_lo) = lut_lo else {
+                return if lut[i2] == y {
+                    self.start + self.inc * table_index(i2) as f64
+                } else {
+                    BAD_VALUE
+                };
             };
-            match (slope_idx, slope_idx_next) {
-                (Some(a), Some(b)) => {
-                    let va = self.lut[a];
-                    let vb = self.lut[b];
-                    let dv = vb - va;
-                    if dv == 0.0 {
-                        return BAD_VALUE;
-                    }
-                    let didx = b as f64 - a as f64;
-                    let slope_input_per_output = didx / dv;
-                    let ref_input = self.start + lo_idx as f64 * self.inc;
-                    ref_input + (y - lo_val) * slope_input_per_output * self.inc
-                }
-                _ => BAD_VALUE,
+            let d1 = lut_lo - y;
+            let d2 = lut[i2] - y;
+            if (d1 > 0.0 && d2 > 0.0) || (d1 < 0.0 && d2 < 0.0) {
+                return BAD_VALUE;
             }
-        } else {
-            // Above the high end
-            let (slope_idx, slope_idx_next) = if increasing {
-                // High end is at the end
-                self.find_slope_pair_backward(last_idx)
-            } else {
-                // High end is at the start (decreasing)
-                self.find_slope_pair_forward(first_idx, nlut)
-            };
-            match (slope_idx, slope_idx_next) {
-                (Some(a), Some(b)) => {
-                    let va = self.lut[a];
-                    let vb = self.lut[b];
-                    let dv = vb - va;
-                    if dv == 0.0 {
-                        return BAD_VALUE;
-                    }
-                    let didx = b as f64 - a as f64;
-                    let slope_input_per_output = didx / dv;
-                    let ref_input = self.start + hi_idx as f64 * self.inc;
-                    ref_input + (y - hi_val) * slope_input_per_output * self.inc
-                }
-                _ => BAD_VALUE,
-            }
+            let nearest = if d1.abs() < d2.abs() { i1 as usize } else { i2 };
+            return self.start + self.inc * table_index(nearest) as f64;
         }
-    }
 
-    /// Find the first non-BAD value in the table. Returns (index, value).
-    fn first_good_value(&self) -> Option<(usize, f64)> {
-        for (i, &v) in self.lut.iter().enumerate() {
-            if !is_bad(v) {
-                return Some((i, v));
-            }
-        }
-        None
-    }
-
-    /// Find the last non-BAD value in the table. Returns (index, value).
-    fn last_good_value(&self) -> Option<(usize, f64)> {
-        for (i, &v) in self.lut.iter().enumerate().rev() {
-            if !is_bad(v) {
-                return Some((i, v));
-            }
-        }
-        None
-    }
-
-    /// Find a non-BAD entry near `mid` within [low, high].
-    fn find_non_bad_near(&self, mid: usize, low: usize, high: usize) -> Option<usize> {
-        // Search outward from mid
-        let mut lo = mid;
-        let mut hi = mid;
-        loop {
-            if lo > low {
-                lo -= 1;
-                if !is_bad(self.lut[lo]) {
-                    return Some(lo);
-                }
-            }
-            if hi < high {
-                hi += 1;
-                if !is_bad(self.lut[hi]) {
-                    return Some(hi);
-                }
-            }
-            if lo <= low && hi >= high {
-                return None;
-            }
-        }
-    }
-
-    /// Find a pair of consecutive good entries going forward from start.
-    fn find_slope_pair_forward(&self, start: usize, end: usize) -> (Option<usize>, Option<usize>) {
-        let mut first = None;
-        for i in start..end {
-            if !is_bad(self.lut[i]) {
-                if let Some(f) = first {
-                    return (Some(f), Some(i));
-                }
-                first = Some(i);
-            }
-        }
-        (first, None)
-    }
-
-    /// Find a pair of consecutive good entries going backward ending at `end`.
-    fn find_slope_pair_backward(&self, end: usize) -> (Option<usize>, Option<usize>) {
-        let mut last = None;
-        for i in (0..=end).rev() {
-            if !is_bad(self.lut[i]) {
-                if let Some(l) = last {
-                    return (Some(i), Some(l));
-                }
-                last = Some(i);
-            }
-        }
-        (None, last)
+        // Linear: interpolate within the bracketing pair, or extrapolate from
+        // the first or last pair when `y` lies outside the table.
+        let i1 = i1.clamp(0, nlutm1 as isize - 1) as usize;
+        self.start + self.inc * (table_index(i1) as f64 + (y - lut[i1]) / (lut[i1 + 1] - lut[i1]))
     }
 
     /// Compose in series with another mapping.
@@ -611,35 +452,56 @@ impl LutMap {
     }
 }
 
-/// Compute monotonicity of a lookup table, ignoring BAD entries.
-///
-/// Returns +1 if strictly increasing, -1 if strictly decreasing,
-/// 0 if non-monotonic (or all BAD, or fewer than 2 good entries).
-fn compute_monotonicity(lut: &[f64]) -> i8 {
-    let mut direction: i8 = 0; // 0 = undetermined
-    let mut prev: Option<f64> = None;
+/// The lookup table the inverse transformation searches when the full table
+/// has bad entries (lutmap.c `GetMonotonic`): its good values in order, whether
+/// each was next to a bad value in the full table, and each one's index there.
+#[derive(Debug, Clone)]
+struct InverseTable {
+    lut: Vec<f64>,
+    flags: Vec<bool>,
+    index: Vec<usize>,
+}
 
-    for &v in lut {
-        if is_bad(v) {
-            continue;
-        }
-        if let Some(p) = prev {
-            if v > p {
-                if direction == -1 {
-                    return 0; // was decreasing, now increasing
+/// Find the monotonicity of a lookup table, ignoring bad entries and runs of
+/// equal values (lutmap.c `GetMonotonic`): +1 if increasing, -1 if
+/// decreasing, 0 if neither or there are fewer than two distinct good values.
+/// Also returns the [`InverseTable`] when the table has bad entries.
+fn get_monotonic(lut: &[f64]) -> (i8, Option<InverseTable>) {
+    let mut result: i8 = 0;
+    let mut lval: Option<f64> = None;
+    for &v in lut.iter().filter(|v| !is_bad(**v)) {
+        match lval {
+            None => lval = Some(v),
+            Some(prev) if v != prev => {
+                if result == 0 {
+                    result = if v > prev { 1 } else { -1 };
+                } else if (result == 1 && v < prev) || (result == -1 && v > prev) {
+                    result = 0;
+                    break;
                 }
-                direction = 1;
-            } else if v < p {
-                if direction == 1 {
-                    return 0; // was increasing, now decreasing
-                }
-                direction = -1;
+                lval = Some(v);
             }
-            // equal values are ignored (flat sections)
+            Some(_) => {}
         }
-        prev = Some(v);
     }
-    direction
+
+    if !lut.iter().any(|v| is_bad(*v)) {
+        return (result, None);
+    }
+    let bad_at = |i: Option<usize>| i.and_then(|i| lut.get(i)).is_some_and(|v| is_bad(*v));
+    let mut table = InverseTable {
+        lut: Vec::new(),
+        flags: Vec::new(),
+        index: Vec::new(),
+    };
+    for (i, &v) in lut.iter().enumerate().filter(|(_, v)| !is_bad(**v)) {
+        table.lut.push(v);
+        table
+            .flags
+            .push(bad_at(i.checked_sub(1)) || bad_at(Some(i + 1)));
+        table.index.push(i);
+    }
+    (result, Some(table))
 }
 
 impl Mapping for LutMap {
@@ -951,13 +813,14 @@ impl Serializable for LutMap {
 
         let lut_epsilon = node.get_double("LutEps", f64::EPSILON);
         let lut_epsilon_set = node.get("LutEps").is_some();
-        let monotonic = compute_monotonicity(&lut);
+        let (monotonic, inverse_table) = get_monotonic(&lut);
         let mut m = LutMap {
             lut,
             start,
             inc,
             interp,
             monotonic,
+            inverse_table,
             lut_epsilon,
             lut_epsilon_set,
             inverted: false,

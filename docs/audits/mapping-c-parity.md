@@ -44,12 +44,13 @@ A transform-oracle case with one BAD input axis per class, and a load of each cl
 
 ## Progress
 
-No finding is fixed yet.
-Record each fix here, as `frame-family-c-parity.md` does, with the test that pins it.
+| IDs | Status | Evidence |
+|---|---|---|
+| LM-1, LM-2 | FIXED 2026-10-06: the inverse is a port of the inverse branch of lutmap.c `Transform`, searching the table with its bad entries removed and flagged as C's `GetMonotonic` builds it, with the nearest-neighbour branch. C reads one element before the table for a value beyond its first entry; the port reads nothing there and gives C's result wherever C's is determined (`docs/issues/c-library-quirks.md`, "`LutMap`'s inverse reads one element before its table") | `tests/test_lutmap_inverse.rs`: 20 C-oracle cases from `tools/oracle_fixtures/lutmap_inverse_probe.c`, bit-exact |
 
 ## Recommended order
 
-1. **LM-1.** The LutMap inverse never terminates on a table with a BAD entry; it is the only hang found, and the bisection fix is local.
+1. **LM-1.** FIXED; see Progress.
 2. **Theme B and C loaders: PM-1, MX-2, WC-5, SP-2.** Each is a loader default or a missing key, exposed by loading one C dump. SP-2 needs SP-1 (the 3-D SpecMap) to be faithful rather than to error.
 3. **Theme D: PY-2 with PY-3, MX-1, SW-1, WC-4.** Make `has_forward`/`has_inverse` follow C's `GetTranForward`/`GetTranInverse` per class, so a transform C refuses is refused.
 4. **Theme A: PY-1 and CH-1 together.** Port C's `PolyPowers` vtab seam (polymap.c:4795, chebymap.c:1165) rather than patching the two evaluators; it is an architecture method (CLAUDE.md, H1), and ChebyMap's PolyTran (CH-4) needs the same seam family. Then NM-1, MX-1's forward counterpart MX-4, and SM-1.

@@ -32,6 +32,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [A TimeFrame's default Epoch discards the UT1 value it computes from the TimeOrigin](#a-timeframes-default-epoch-discards-the-ut1-value-it-computes-from-the-timeorigin)
 - [`RegBaseGrid` fails when no grid point lies in the Region](#regbasegrid-fails-when-no-grid-point-lies-in-the-region)
 - [SkyFrame LAST depends on which LAST values the process computed earlier](#skyframe-last-depends-on-which-last-values-the-process-computed-earlier)
+- [`LutMap`'s inverse reads one element before its table](#lutmaps-inverse-reads-one-element-before-its-table)
 
 ### [Addressed here, and not going upstream](#addressed-here-and-not-going-upstream)
 
@@ -511,6 +512,26 @@ As in C, every sky conversion computes the LAST of both frames, and a conversion
 `tests/test_sky_last.rs`, from `tools/oracle_fixtures/sky_last_probe.c`, replays a sequence of conversions that exercise both caches and matches C bit for bit.
 
 Question for upstream: is the history dependence intended, and would an exact calculation (or a cache keyed on the exact epoch only) be acceptable?
+
+### `LutMap`'s inverse reads one element before its table
+
+**Status:** Confirmed against the C source and the built oracle (2026-10-06).
+
+The inverse branch of `lutmap.c` `Transform` bisects for the pair of adjacent table entries `i1`, `i2` that brackets the value, starting from `i1 = -1` (lutmap.c:1659-1664).
+When the value lies beyond the first entry, `i1` stays -1, and the code then reads `lut[ i1 ]` in the flat-run test (:1674, :1679), `flags[ i1 ]` in the adjacent-to-bad test (:1687), and `lut[ i1 ]` again as `d1` in the nearest-neighbour branch (:1694).
+All three read one element before the array: the first of the table, or of the compressed table `GetMonotonic` builds when the table has bad entries.
+Only the linear branch clamps `i1` to 0, and it does so after these reads.
+The value is beyond the first entry when it is below an increasing table, or above or equal to the first value of a decreasing one, because the bisection compares with `>=`.
+
+The results are deterministic only where the stray value cannot matter.
+A nearest-neighbour inverse of a decreasing table at exactly its first value has `d2 == 0`, so the sign test passes and the `fabs( d1 ) < fabs( d2 )` test fails whatever `d1` holds, giving the first entry.
+Anywhere else beyond the first entry, the nearest-neighbour result depends on the stray value's sign and size, and is evidently meant to be bad.
+A linear inverse there extrapolates from the first two entries unless the stray flag and the first entry's flag are both set.
+
+The port reads nothing outside the table (`LutMap::inverse_one`, `crates/ast-core/src/mappings/lutmap.rs`): with no lower entry, the value equals no table value and is not next to a bad entry, and the nearest-neighbour inverse gives the first entry when the value equals it and bad otherwise.
+That is C's result wherever C's is determined, and on macOS C agrees with it in every case `tests/test_lutmap_inverse.rs` covers, from `tools/oracle_fixtures/lutmap_inverse_probe.c`.
+
+Question for upstream: guard the three reads on `i1 >= 0`, and return bad from the nearest-neighbour branch when `i1` is -1 unless `lut[ i2 ]` equals the value.
 
 ## Addressed here, and not going upstream
 
