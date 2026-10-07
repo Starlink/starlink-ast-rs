@@ -488,7 +488,9 @@ struct SpecConversion {
 /// (frequency, wavelength, velocity, energy, reference frame Doppler shifts).
 /// Each step is one of the [`SpecCvtType`] conversion types.
 ///
-/// Input and output are single spectral-axis values.
+/// Input and output are single spectral-axis values, except in a SpecMap
+/// made by [`SpecMap::with_nin`] with 3 axes, whose second and third axes give
+/// the RA and Dec of each point's source.
 ///
 /// # Example
 ///
@@ -509,6 +511,9 @@ struct SpecConversion {
 #[derive(Debug, Clone)]
 pub struct SpecMap {
     conversions: Vec<SpecConversion>,
+    /// The number of axes: 1, or 3 when the second and third give the RA and
+    /// Dec of each point's source (specmap.c `astSpecMap`).
+    nin: usize,
     inverted: bool,
     simplified: SimplifiedRecord,
     ident: Option<String>,
@@ -521,11 +526,32 @@ impl SpecMap {
     pub fn new() -> Self {
         Self {
             conversions: Vec::new(),
+            nin: 1,
             inverted: false,
             simplified: SimplifiedRecord::default(),
             ident: None,
             mapping_flags: crate::mappings::MappingFlags::default(),
         }
+    }
+
+    /// Create a new, empty `SpecMap` with `nin` axes.
+    ///
+    /// `nin` is 1, or 3 for a SpecMap whose second and third axes give the
+    /// RA and Dec (FK5 J2000, radians) of each point's source. A rest-frame
+    /// conversion then uses each point's position in place of the source
+    /// position in its arguments, and the RA and Dec pass through unchanged
+    /// (specmap.c `Transform` and `FrameChange`).
+    ///
+    /// Returns an `AST__BADNI` error for any other `nin`, as `astSpecMap`
+    /// does.
+    pub fn with_nin(nin: usize) -> AstResult<Self> {
+        if nin != 1 && nin != 3 {
+            return Err(AstError::new(
+                ErrorCode::Badni,
+                format!("SpecMap: the number of axes ({nin}) must be 1 or 3"),
+            ));
+        }
+        Ok(Self { nin, ..Self::new() })
     }
 
     /// Append a conversion step to the chain.
@@ -566,6 +592,41 @@ impl SpecMap {
 
     fn effective_forward(&self, forward: bool) -> bool {
         forward != self.inverted
+    }
+
+    /// Transform the points of a 3-dimensional SpecMap: each rest-frame
+    /// conversion uses the point's own RA and Dec, and the RA and Dec are
+    /// copied to the output (specmap.c `Transform` with `map3d` set).
+    fn transform_3d(&self, pts: &PointSet, forward: bool, out: &mut PointSet) {
+        for i in 0..pts.npoint() {
+            let inp = pts.point(i);
+            let (ra, dec) = (inp[1], inp[2]);
+            let mut val = inp[0];
+            let steps: Box<dyn Iterator<Item = &SpecConversion>> = if forward {
+                Box::new(self.conversions.iter())
+            } else {
+                Box::new(self.conversions.iter().rev())
+            };
+            for cvt in steps {
+                if is_bad(val) {
+                    break;
+                }
+                val = if cvt.cvt_type.is_frame_change() {
+                    frame_change_at(cvt, val, ra, dec, forward)
+                } else if forward {
+                    system_change_forward(cvt, val)
+                } else {
+                    system_change_inverse(cvt, val)
+                };
+            }
+            if !val.is_finite() {
+                val = BAD_VALUE;
+            }
+            let outp = out.point_mut(i);
+            outp[0] = val;
+            outp[1] = ra;
+            outp[2] = dec;
+        }
     }
 
     /// Compose in series with another mapping.
@@ -954,65 +1015,83 @@ fn system_change_inverse(cvt: &SpecConversion, val: f64) -> f64 {
     system_change_forward(&inv_cvt, val)
 }
 
-/// Compute the velocity correction for a frame change and return the
-/// frequency correction factor.
+/// The component away from a source at `ra`, `dec` of the velocity of the
+/// frame a rest-frame conversion goes to or from, relative to the sun (m/s);
+/// C's per-conversion `cvtFunc`. `None` for a conversion that is not a change
+/// of rest frame.
+fn source_velocity(cvt: &SpecConversion, ra: f64, dec: f64) -> Option<f64> {
+    let a = &cvt.args;
+    Some(match cvt.cvt_type {
+        // args: [veluser, refra, refdec, (cached)]
+        SpecCvtType::UsF2Hl | SpecCvtType::HlF2Us => user_vel(ra, dec, a[0], a[1], a[2]),
+        // args: [obslon, obslat, obsalt, epoch, ra, dec, (cached)]
+        SpecCvtType::TpF2Hl | SpecCvtType::HlF2Tp => topo_vel(ra, dec, a[0], a[1], a[2], a[3]),
+        // args: [epoch, ra, dec, (cached)]
+        SpecCvtType::GeF2Hl | SpecCvtType::HlF2Ge => geo_vel(ra, dec, a[0]),
+        SpecCvtType::ByF2Hl | SpecCvtType::HlF2By => bary_vel(ra, dec, a[0]),
+        // args: [ra, dec, (cached)]
+        SpecCvtType::LkF2Hl | SpecCvtType::HlF2Lk => lsrk_vel(ra, dec),
+        SpecCvtType::LdF2Hl | SpecCvtType::HlF2Ld => lsrd_vel(ra, dec),
+        SpecCvtType::LgF2Hl | SpecCvtType::HlF2Lg => lg_vel(ra, dec),
+        SpecCvtType::GlF2Hl | SpecCvtType::HlF2Gl => gal_vel(ra, dec),
+        _ => return None,
+    })
+}
+
+/// The source position in a rest-frame conversion's arguments.
+fn source_position(cvt: &SpecConversion) -> (f64, f64) {
+    let a = &cvt.args;
+    match cvt.cvt_type {
+        SpecCvtType::UsF2Hl
+        | SpecCvtType::HlF2Us
+        | SpecCvtType::GeF2Hl
+        | SpecCvtType::HlF2Ge
+        | SpecCvtType::ByF2Hl
+        | SpecCvtType::HlF2By => (a[1], a[2]),
+        SpecCvtType::TpF2Hl | SpecCvtType::HlF2Tp => (a[4], a[5]),
+        _ => (a[0], a[1]),
+    }
+}
+
+/// Compute the velocity correction for a frame change at the source position
+/// in its arguments and return the frequency correction factor.
 ///
 /// `sign` is -1 for X2HL (frame moving toward heliocentric = frequency increases)
 /// and +1 for HL2X (heliocentric to frame).
 fn compute_frame_correction(cvt: &SpecConversion, sign: f64) -> f64 {
-    let s = sign
-        * match cvt.cvt_type {
-            SpecCvtType::UsF2Hl | SpecCvtType::HlF2Us => {
-                // args: [veluser, ra, dec, (cached)]
-                user_vel(
-                    cvt.args[1],
-                    cvt.args[2],
-                    cvt.args[0],
-                    cvt.args[1],
-                    cvt.args[2],
-                )
-            }
-            SpecCvtType::TpF2Hl | SpecCvtType::HlF2Tp => {
-                // args: [obslon, obslat, obsalt, epoch, ra, dec, (cached)]
-                topo_vel(
-                    cvt.args[4],
-                    cvt.args[5],
-                    cvt.args[0],
-                    cvt.args[1],
-                    cvt.args[2],
-                    cvt.args[3],
-                )
-            }
-            SpecCvtType::GeF2Hl | SpecCvtType::HlF2Ge => {
-                // args: [epoch, ra, dec, (cached)]
-                geo_vel(cvt.args[1], cvt.args[2], cvt.args[0])
-            }
-            SpecCvtType::ByF2Hl | SpecCvtType::HlF2By => {
-                // args: [epoch, ra, dec, (cached)]
-                bary_vel(cvt.args[1], cvt.args[2], cvt.args[0])
-            }
-            SpecCvtType::LkF2Hl | SpecCvtType::HlF2Lk => {
-                // args: [ra, dec, (cached)]
-                lsrk_vel(cvt.args[0], cvt.args[1])
-            }
-            SpecCvtType::LdF2Hl | SpecCvtType::HlF2Ld => {
-                // args: [ra, dec, (cached)]
-                lsrd_vel(cvt.args[0], cvt.args[1])
-            }
-            SpecCvtType::LgF2Hl | SpecCvtType::HlF2Lg => {
-                // args: [ra, dec, (cached)]
-                lg_vel(cvt.args[0], cvt.args[1])
-            }
-            SpecCvtType::GlF2Hl | SpecCvtType::HlF2Gl => {
-                // args: [ra, dec, (cached)]
-                gal_vel(cvt.args[0], cvt.args[1])
-            }
-            _ => return BAD_VALUE,
-        };
+    let (ra, dec) = source_position(cvt);
+    let Some(v) = source_velocity(cvt, ra, dec) else {
+        return BAD_VALUE;
+    };
+    let s = sign * v;
 
     // Compute correction factor: f_out = f_in * sqrt((c - s)/(c + s))
     if s < C_LIGHT && s > -C_LIGHT {
         ((C_LIGHT - s) / (C_LIGHT + s)).sqrt()
+    } else {
+        BAD_VALUE
+    }
+}
+
+/// Apply a frame-change conversion to a frequency whose source is at `ra`,
+/// `dec`, as a 3-dimensional SpecMap does (specmap.c `FrameChange`): the
+/// inverse negates the velocity rather than inverting the factor, and a bad
+/// position gives a bad frequency.
+fn frame_change_at(cvt: &SpecConversion, val: f64, ra: f64, dec: f64, forward: bool) -> f64 {
+    if is_bad(ra) || is_bad(dec) || is_bad(val) {
+        return BAD_VALUE;
+    }
+    let sign = if forward {
+        frame_change_sign(cvt.cvt_type)
+    } else {
+        -frame_change_sign(cvt.cvt_type)
+    };
+    let Some(v) = source_velocity(cvt, ra, dec) else {
+        return BAD_VALUE;
+    };
+    let s = sign * v;
+    if s < C_LIGHT && s > -C_LIGHT {
+        val * ((C_LIGHT - s) / (C_LIGHT + s)).sqrt()
     } else {
         BAD_VALUE
     }
@@ -1179,7 +1258,11 @@ pub(crate) fn spec_map_merge(
         return super::simplify::default_map_merge(ctx, where_, series);
     }
 
-    let is_spec = |entry: &(DynMapping, bool, bool)| entry.0.as_any().is::<SpecMap>();
+    // The run stops at a SpecMap with a different number of axes (specmap.c
+    // MapMerge).
+    let nin = ctx.entry(where_).0.nin();
+    let is_spec =
+        |entry: &(DynMapping, bool, bool)| entry.0.as_any().is::<SpecMap>() && entry.0.nin() == nin;
 
     // Gather the contiguous run of SpecMaps around `where_`.
     let n = ctx.len();
@@ -1217,13 +1300,14 @@ pub(crate) fn spec_map_merge(
     }
 
     let new: DynMapping = if unit {
-        Box::new(UnitMap::new(1))
+        Box::new(UnitMap::new(nin))
     } else {
         // C rebuilds the merged SpecMap via `AddSpecCvt` for each surviving
         // step, which blanks the cached (pre-calculated) argument slots.
         reset_cached_args(&mut steps);
         Box::new(SpecMap {
             conversions: steps,
+            nin,
             inverted: false,
             simplified: SimplifiedRecord::default(),
             ident: None,
@@ -1248,11 +1332,11 @@ impl Mapping for SpecMap {
     }
 
     fn nin(&self) -> usize {
-        1
+        self.nin
     }
 
     fn nout(&self) -> usize {
-        1
+        self.nin
     }
 
     fn is_inverted(&self) -> bool {
@@ -1264,7 +1348,7 @@ impl Mapping for SpecMap {
     }
 
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
-        let mut out = PointSet::zeros(pts.npoint(), 1);
+        let mut out = PointSet::zeros(pts.npoint(), self.nin);
         self.transform_into(pts, forward, &mut out)?;
         Ok(out)
     }
@@ -1294,6 +1378,10 @@ impl Mapping for SpecMap {
 
     fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()> {
         let fwd = self.effective_forward(forward);
+        if self.nin == 3 {
+            self.transform_3d(pts, fwd, out);
+            return Ok(());
+        }
 
         // We need mutable access to args for caching frame correction factors.
         // Clone the conversions for this purpose (matches C behaviour of caching on first use).
@@ -1365,7 +1453,10 @@ impl Mapping for SpecMap {
             return Ok(1.0);
         }
         let cvt = self.conversions[0].cvt_type;
-        if self.conversions.len() == 1 && matches!(cvt, SpecCvtType::WvToFr | SpecCvtType::FrToWv) {
+        if self.nin == 1
+            && self.conversions.len() == 1
+            && matches!(cvt, SpecCvtType::WvToFr | SpecCvtType::FrToWv)
+        {
             let x = at[ax2 - 1];
             if is_bad(x) {
                 return Ok(BAD_VALUE);
@@ -1395,6 +1486,9 @@ impl Mapping for SpecMap {
             return None;
         }
         let other_spec = other.as_any().downcast_ref::<SpecMap>()?;
+        if other_spec.nin != self.nin {
+            return None;
+        }
 
         // Normalize both SpecMaps accounting for their inversion flags.
         let self_steps = normalized_steps(self, self_inv != self.inverted);
@@ -1410,12 +1504,13 @@ impl Mapping for SpecMap {
         simplify_steps(&mut steps);
 
         if steps.is_empty() {
-            Some(Box::new(UnitMap::new(1)))
+            Some(Box::new(UnitMap::new(self.nin)))
         } else {
             // C rebuilds via `AddSpecCvt`, blanking cached argument slots.
             reset_cached_args(&mut steps);
             Some(Box::new(SpecMap {
                 conversions: steps,
+                nin: self.nin,
                 inverted: false,
                 simplified: SimplifiedRecord::default(),
                 ident: None,
@@ -1428,7 +1523,7 @@ impl Mapping for SpecMap {
         let Some(other) = other.as_any().downcast_ref::<SpecMap>() else {
             return false;
         };
-        if self.inverted != other.inverted {
+        if self.nin != other.nin || self.inverted != other.inverted {
             return false;
         }
         if self.conversions.len() != other.conversions.len() {
@@ -1540,7 +1635,7 @@ impl Serializable for SpecMap {
 
         let nspec = node.get_int("Nspec", 0) as usize;
 
-        let mut spec = SpecMap::new();
+        let mut spec = SpecMap::with_nin(base.nin)?;
 
         for i in 0..nspec {
             let idx = i + 1;
