@@ -226,20 +226,49 @@ impl ChebyMap {
         self.poly.inverse_terms()
     }
 
-    /// Get the domain bounds for a given direction, accounting for inversion.
-    ///
-    /// If `forward` is true, returns the bounds for the effective forward
-    /// transformation (which depends on the inverted flag).
-    pub fn domain(&self, forward: bool) -> Option<(&[f64], &[f64])> {
-        let eff_fwd = forward != self.inverted;
-        if eff_fwd {
-            Some((&self.lbnd_f, &self.ubnd_f))
+    /// The bounding box of the input of the forward (`forward`) or inverse
+    /// transformation, as C's `astChebyDomain` gives it (chebymap.c
+    /// `ChebyDomain`): worked out from the stored scaling into [-1, 1], or,
+    /// when that transformation has no box, found by MapBox from the other
+    /// transformation's box. Bounds that cannot be found are `BAD_VALUE`.
+    pub fn domain(&self, forward: bool) -> (Vec<f64>, Vec<f64>) {
+        let box_of = |scale: &[f64], offset: &[f64]| -> (Vec<f64>, Vec<f64>) {
+            scale
+                .iter()
+                .zip(offset)
+                .map(|(&s, &o)| {
+                    if s != 0.0 {
+                        ((-1.0 - o) / s, (1.0 - o) / s)
+                    } else {
+                        (BAD_VALUE, BAD_VALUE)
+                    }
+                })
+                .unzip()
+        };
+        let fwd_scale = Some((&self.scale_f[..], &self.offset_f[..]));
+        let inv_scale = self.scale_i.as_deref().zip(self.offset_i.as_deref());
+        let (own, other, nax) = if forward != self.inverted {
+            (fwd_scale, inv_scale, self.nin())
         } else {
-            match (&self.lbnd_i, &self.ubnd_i) {
-                (Some(li), Some(ui)) => Some((li.as_slice(), ui.as_slice())),
-                _ => None,
+            (inv_scale, fwd_scale, self.nout())
+        };
+        if let Some((scale, offset)) = own {
+            return box_of(scale, offset);
+        }
+        let mut lbnd = vec![BAD_VALUE; nax];
+        let mut ubnd = vec![BAD_VALUE; nax];
+        if let Some((scale, offset)) = other {
+            // The other transformation's box is mapped in the direction
+            // opposite to the requested one, as this ChebyMap stands.
+            let (lbnd_o, ubnd_o) = box_of(scale, offset);
+            for axis in 0..nax {
+                if let Ok(b) = self.map_box(&lbnd_o, &ubnd_o, !forward, axis + 1) {
+                    lbnd[axis] = b.lbnd_out;
+                    ubnd[axis] = b.ubnd_out;
+                }
             }
         }
+        (lbnd, ubnd)
     }
 
     fn effective_forward(&self, forward: bool) -> bool {

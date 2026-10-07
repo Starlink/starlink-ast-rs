@@ -527,13 +527,45 @@ fn chebymap_domain_accessor() {
     assert_eq!(m.inverse_ubnd(), Some(&[1.0][..]));
 
     // domain() accounts for inversion.
-    let (lb, ub) = m.domain(true).unwrap();
-    assert_eq!(lb, &[0.0]);
-    assert_eq!(ub, &[10.0]);
+    let (lb, ub) = m.domain(true);
+    assert_eq!(lb, [0.0]);
+    assert_eq!(ub, [10.0]);
 
-    let (lb_i, ub_i) = m.domain(false).unwrap();
-    assert_eq!(lb_i, &[-1.0]);
-    assert_eq!(ub_i, &[1.0]);
+    let (lb_i, ub_i) = m.domain(false);
+    assert_eq!(lb_i, [-1.0]);
+    assert_eq!(ub_i, [1.0]);
+}
+
+/// A forward-only 2-D ChebyMap has no inverse box, so the inverse domain is
+/// found by MapBox from the forward box. Inverting it swaps the two domains
+/// (testchebymap.c errors 800-803). The values are from C's astChebyDomain.
+#[test]
+fn chebymap_domain_inverted_forward_only() {
+    let terms = [
+        PolyTerm {
+            coeff: 1.0,
+            powers: vec![1, 0],
+            out_axis: 1,
+        },
+        PolyTerm {
+            coeff: 1.0,
+            powers: vec![0, 1],
+            out_axis: 2,
+        },
+        PolyTerm {
+            coeff: 0.25,
+            powers: vec![1, 1],
+            out_axis: 2,
+        },
+    ];
+    let mut m = ChebyMap::new(2, 2, &terms, None, &[0.0, -1.0], &[1.0, 2.0], None, None).unwrap();
+    let forward_box = (vec![0.0, -1.0000000000000002], vec![1.0, 2.0]);
+    let inverse_box = (vec![-1.0, -1.25], vec![1.0, 1.25]);
+    assert_eq!(m.domain(true), forward_box);
+    assert_eq!(m.domain(false), inverse_box);
+    m.invert();
+    assert_eq!(m.domain(true), inverse_box);
+    assert_eq!(m.domain(false), forward_box);
 }
 
 // ---------------------------------------------------------------------------

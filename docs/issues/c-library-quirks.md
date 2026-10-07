@@ -56,6 +56,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [RESOLVED (upstream 5a2cac2a): CmpFrame `ResolvePoints` passes internal-order points to methods that expect external order](#resolved-upstream-5a2cac2a-cmpframe-resolvepoints-passes-internal-order-points-to-methods-that-expect-external-order)
 - [RESOLVED (upstream db5199d7): CmpFrame `FrameGrid` writes its grid through the PointSet's own data pointers, out of bounds](#resolved-upstream-db5199d7-cmpframe-framegrid-writes-its-grid-through-the-pointsets-own-data-pointers-out-of-bounds)
 - [RESOLVED (upstream 0d05fc29): `astLoadFrameSet` keeps a `Currnt` below 1 as the current Frame index](#resolved-upstream-0d05fc29-astloadframeset-keeps-a-currnt-below-1-as-the-current-frame-index)
+- [RESOLVED (upstream 58786d9c): `ChebyDomain` fails for an inverted ChebyMap with only one transformation](#resolved-upstream-58786d9c-chebydomain-fails-for-an-inverted-chebymap-with-only-one-transformation)
 - [RESOLVED (upstream ee96dc91): `LutMap`'s inverse reads one element before its table](#resolved-upstream-ee96dc91-lutmaps-inverse-reads-one-element-before-its-table)
 - [RESOLVED (upstream 80d66b0a): `TranMap`'s `RemoveRegions` doubles its number of axes](#resolved-upstream-80d66b0a-tranmaps-removeregions-doubles-its-number-of-axes)
 - [RESOLVED (upstream 65bd5b6e): With AlignSpecOffset set in a wavelength System, a change of rest frame maps every value to bad](#resolved-upstream-65bd5b6e-with-alignspecoffset-set-in-a-wavelength-system-a-change-of-rest-frame-maps-every-value-to-bad)
@@ -1090,6 +1091,17 @@ Only a hand-written description can do this, since Dump never writes an index be
 
 Fixed on `u/timj/norm-unit` in 0d05fc29, which checks Current as Base is checked, with a `testframeset` case (Errors 41-43).
 The port treats a `Currnt` below 1 as unset, as the fixed C does (`frameset.rs` `from_node`), and `tests/test_frameset_current.rs` covers Current's set state against C.
+
+### RESOLVED (upstream 58786d9c): `ChebyDomain` fails for an inverted ChebyMap with only one transformation
+
+C location: `chebymap.c` `ChebyDomain`.
+
+When the requested transformation has no bounding box, `ChebyDomain` maps the other transformation's box through `astMapBox`, which must run in the direction opposite to the requested one.
+It chose that direction from whether the stored forward or inverse box was in use, so for an inverted ChebyMap it passed the requested direction instead.
+An inverted ChebyMap with forward coefficients only therefore failed with "A forward coordinate transformation is not defined" and "Unable to find a bounding box for a ChebyMap" when asked for its forward domain.
+
+Fixed on `u/timj/norm-unit` in 58786d9c: the direction is always `!forward`; `testchebymap` Errors 800-803.
+The port's `ChebyMap::domain` does the same, and `tests/test_chebymap.rs` (`chebymap_domain_inverted_forward_only`) compares it with the fixed C.
 
 ### RESOLVED (upstream 80d66b0a): `TranMap`'s `RemoveRegions` doubles its number of axes
 
