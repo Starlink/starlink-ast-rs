@@ -1824,6 +1824,7 @@ impl Mapping for FrameSet {
     }
 
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
+        crate::mappings::validate_transform(self, pts, forward, None)?;
         let map = if forward {
             self.mapping(FrameRef::Base, FrameRef::Current)?
         } else {
@@ -1833,6 +1834,7 @@ impl Mapping for FrameSet {
     }
 
     fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()> {
+        crate::mappings::validate_transform(self, pts, forward, Some(out))?;
         let map = if forward {
             self.mapping(FrameRef::Base, FrameRef::Current)?
         } else {

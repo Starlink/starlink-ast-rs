@@ -175,6 +175,7 @@ impl Mapping for WinMap {
     }
 
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
+        crate::mappings::validate_transform(self, pts, forward, None)?;
         let n = self.shifts.len();
         let mut out = PointSet::zeros(pts.npoint(), n);
         self.transform_into(pts, forward, &mut out)?;
@@ -182,6 +183,7 @@ impl Mapping for WinMap {
     }
 
     fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()> {
+        crate::mappings::validate_transform(self, pts, forward, Some(out))?;
         let fwd = self.effective_forward(forward);
         for i in 0..pts.npoint() {
             let inp = pts.point(i);

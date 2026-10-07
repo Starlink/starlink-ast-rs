@@ -123,6 +123,7 @@ impl Mapping for UnitNormMap {
     }
 
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
+        crate::mappings::validate_transform(self, pts, forward, None)?;
         let ncoord = self.ncoord();
         let fwd = self.effective_forward(forward);
         let nout = if fwd { ncoord + 1 } else { ncoord };
@@ -156,6 +157,7 @@ impl Mapping for UnitNormMap {
     }
 
     fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()> {
+        crate::mappings::validate_transform(self, pts, forward, Some(out))?;
         let fwd = self.effective_forward(forward);
         let ncoord = self.ncoord();
 

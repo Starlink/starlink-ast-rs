@@ -3,6 +3,7 @@
 //! Ported from reference/starlink-ast/ast_tester concepts and the
 //! simplify regression fixtures.
 
+use ast_core::error::ErrorCode;
 use ast_core::mappings::{
     CmpMap, Composition, DynMapping, Mapping, RateMap, ShiftMap, UnitMap, ZoomMap,
 };
@@ -145,12 +146,10 @@ fn test_ratemap_inverse_undefined() {
 
     assert!(!rm.has_inverse());
 
-    // Requesting inverse should return BAD values.
+    // Requesting the inverse is AST__TRNND, as C's base Transform reports.
     let pts = ast_core::coords::PointSet::from_columns(&[&[1.0, 2.0]]).unwrap();
-    let result = rm.transform(&pts, false).unwrap();
-    for i in 0..2 {
-        assert!(is_bad(result.point(i)[0]));
-    }
+    let err = rm.transform(&pts, false).unwrap_err();
+    assert_eq!(err.code(), ErrorCode::Trnnd);
 }
 
 // ---------------------------------------------------------------------------
@@ -172,10 +171,10 @@ fn test_ratemap_inverted() {
     assert!(rm.has_inverse());
     assert!(rm.is_inverted());
 
-    // Forward should return BAD (undefined for inverted RateMap).
+    // Forward is undefined for an inverted RateMap: AST__TRNND.
     let pts = ast_core::coords::PointSet::from_columns(&[&[1.0]]).unwrap();
-    let result = rm.transform(&pts, true).unwrap();
-    assert!(is_bad(result.point(0)[0]));
+    let err = rm.transform(&pts, true).unwrap_err();
+    assert_eq!(err.code(), ErrorCode::Trnnd);
 
     // Inverse should compute the rate.
     let result = rm.transform(&pts, false).unwrap();

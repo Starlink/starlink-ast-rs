@@ -19,7 +19,7 @@ adjacency; and, with no such Mapping in reach, swap speculatively and keep the
 swap only if one of the swapped Mappings then simplifies. A PcdMap combines in
 parallel with nothing.
 
-`PcdMap::map_merge` (`pcdmap.rs:341-348 (fn map_merge)`) delegates to
+`PcdMap::map_merge` (`pcdmap.rs:343-350 (fn map_merge)`) delegates to
 `simplify::pcd_map_merge` (`mappings/simplify.rs:2770-2804 (fn pcd_map_merge)`), whose swap half is
 `pcd_swap_strategy` (`mappings/simplify.rs:2813-2871 (fn pcd_swap_strategy)`), so Rust sites below
 are in `mappings/simplify.rs` unless stated.
@@ -43,10 +43,10 @@ must discard the simplified record.
 | 7 | If the PcdMap itself could not be simplified, see whether it merges with the Mappings on either side | pcdmap.c:1440-1443 (fn MapMerge) | mappings/simplify.rs:2792-2799 (fn pcd_map_merge) | architecture | ported |
 | 8 | Store the classes of the neighbouring Mappings in the list | pcdmap.c:1444-1447 (fn MapMerge) | mappings/simplify.rs:1370-1392 (fn default_map_merge) | ceremony | ported |
 | 9 | Everything that follows is in series | pcdmap.c:1448-1451 (fn MapMerge) | mappings/simplify.rs:2788-2790 (fn pcd_map_merge) | architecture | ported |
-| 10 | Look on each side for a neighbour the PcdMap can merge with directly — its own inverse, or a UnitMap | pcdmap.c:1452-1475 (fn MapMerge) | pcdmap.rs:350-384 (fn try_merge) | architecture | ported |
-| 11 | If it can, create the merged Mapping | pcdmap.c:1476-1479 (fn MapMerge) | pcdmap.rs:361-381 (fn try_merge) | architecture | ported |
-| 12 | A PcdMap neighbour must be the nominated Mapping's inverse, so the pair becomes a UnitMap | pcdmap.c:1480-1485 (fn MapMerge) | pcdmap.rs:362-373 (fn try_merge) | architecture | ported |
-| 13 | A UnitMap neighbour merges to a clone of the nominated PcdMap, carrying the entry's Invert flag | pcdmap.c:1486-1492 (fn MapMerge) | pcdmap.rs:376-381 (fn try_merge) | architecture | ported |
+| 10 | Look on each side for a neighbour the PcdMap can merge with directly — its own inverse, or a UnitMap | pcdmap.c:1452-1475 (fn MapMerge) | pcdmap.rs:352-386 (fn try_merge) | architecture | ported |
+| 11 | If it can, create the merged Mapping | pcdmap.c:1476-1479 (fn MapMerge) | pcdmap.rs:363-383 (fn try_merge) | architecture | ported |
+| 12 | A PcdMap neighbour must be the nominated Mapping's inverse, so the pair becomes a UnitMap | pcdmap.c:1480-1485 (fn MapMerge) | pcdmap.rs:364-375 (fn try_merge) | architecture | ported |
+| 13 | A UnitMap neighbour merges to a clone of the nominated PcdMap, carrying the entry's Invert flag | pcdmap.c:1486-1492 (fn MapMerge) | pcdmap.rs:378-383 (fn try_merge) | architecture | ported |
 | 14 | Proceed only if the merged Mapping was built successfully | pcdmap.c:1493-1495 (fn MapMerge) | mappings/simplify.rs:2797 (fn pcd_map_merge) | ceremony | ported |
 | 15 | Annul the first of the two Mappings, replace it with the merged Mapping and set its Invert flag | pcdmap.c:1496-1501 (fn MapMerge) | mappings/simplify.rs:1445-1450 (fn default_map_merge) | architecture | ported |
 | 16 | Annul the second and shuffle the rest of the list down to fill the gap | pcdmap.c:1502-1509 (fn MapMerge) | mappings/simplify.rs:1451 (fn default_map_merge) | architecture | ported |

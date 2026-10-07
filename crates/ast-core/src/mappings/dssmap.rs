@@ -451,6 +451,7 @@ impl Mapping for DssMap {
     }
 
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
+        crate::mappings::validate_transform(self, pts, forward, None)?;
         let mut out = PointSet::zeros(pts.npoint(), 2);
         self.transform_into(pts, forward, &mut out)?;
         Ok(out)
@@ -479,6 +480,7 @@ impl Mapping for DssMap {
     }
 
     fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()> {
+        crate::mappings::validate_transform(self, pts, forward, Some(out))?;
         let fwd = self.effective_forward(forward);
 
         if fwd {

@@ -65,10 +65,12 @@ impl Mapping for UnitMap {
     }
 
     fn transform(&self, pts: &PointSet, _forward: bool) -> AstResult<PointSet> {
+        crate::mappings::validate_transform(self, pts, _forward, None)?;
         Ok(pts.clone())
     }
 
     fn transform_into(&self, pts: &PointSet, _forward: bool, out: &mut PointSet) -> AstResult<()> {
+        crate::mappings::validate_transform(self, pts, _forward, Some(out))?;
         out.view_mut().assign(&pts.view());
         Ok(())
     }

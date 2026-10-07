@@ -4,6 +4,7 @@
 
 use ast_core::constants::BAD_VALUE;
 use ast_core::coords::PointSet;
+use ast_core::error::ErrorCode;
 use ast_core::mappings::{CmpMap, Composition, LutInterp, LutMap, Mapping, UnitMap};
 use ast_core::{AnyObject, from_native_string, to_native_string};
 
@@ -248,11 +249,14 @@ fn lutmap_inverse_monotonic_decreasing() {
 }
 
 #[test]
-fn lutmap_inverse_non_monotonic_returns_bad() {
+fn lutmap_inverse_non_monotonic_is_an_error() {
+    // A non-monotonic table has no inverse (lutmap.c GetMonotonic), so C's
+    // base Transform raises AST__TRNND.
     let m = LutMap::new(&[0.0, 10.0, 5.0, 30.0], 0.0, 1.0).unwrap();
+    assert!(!m.has_inverse());
     let pts = PointSet::from_rows([[15.0]]);
-    let out = m.transform(&pts, false).unwrap();
-    assert_eq!(out.point(0)[0], BAD_VALUE);
+    let err = m.transform(&pts, false).unwrap_err();
+    assert_eq!(err.code(), ErrorCode::Trnnd);
 }
 
 #[test]

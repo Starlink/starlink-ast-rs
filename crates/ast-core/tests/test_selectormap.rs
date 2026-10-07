@@ -6,6 +6,7 @@
 
 use ast_core::constants::BAD_VALUE;
 use ast_core::coords::PointSet;
+use ast_core::error::ErrorCode;
 use ast_core::frames::BasicFrameBuilder;
 use ast_core::mappings::{Mapping, SelectorMap, SelectorMapBuilder};
 use ast_core::regions::{BoxRegionBuilder, DynRegion};
@@ -150,14 +151,15 @@ fn selectormap_first_region_wins() {
 }
 
 #[test]
-fn selectormap_inverse_returns_bad() {
+fn selectormap_inverse_is_an_error() {
+    // A SelectorMap has no inverse (selectormap.c), so C's base Transform
+    // raises AST__TRNND.
     let regions = make_two_boxes();
     let sm = SelectorMapBuilder::new(regions).unwrap().build();
+    assert!(!sm.has_inverse());
     let pts = PointSet::from_rows([[1.0]]);
-    let out = sm.transform(&pts, false).unwrap();
-    assert_eq!(out.ncoord(), 2);
-    assert_eq!(out.point(0)[0], BAD_VALUE);
-    assert_eq!(out.point(0)[1], BAD_VALUE);
+    let err = sm.transform(&pts, false).unwrap_err();
+    assert_eq!(err.code(), ErrorCode::Trnnd);
 }
 
 #[test]

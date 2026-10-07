@@ -266,6 +266,7 @@ impl Mapping for SelectorMap {
     }
 
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
+        crate::mappings::validate_transform(self, pts, forward, None)?;
         let effective_fwd = forward != self.inverted;
         let npoint = pts.npoint();
         let ncoord = self.intrinsic_nin();
@@ -326,6 +327,7 @@ impl Mapping for SelectorMap {
     }
 
     fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()> {
+        crate::mappings::validate_transform(self, pts, forward, Some(out))?;
         let result = self.transform(pts, forward)?;
         out.view_mut().assign(&result.view());
         Ok(())

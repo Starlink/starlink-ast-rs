@@ -343,6 +343,7 @@ impl Mapping for ChebyMap {
     }
 
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
+        crate::mappings::validate_transform(self, pts, forward, None)?;
         let eff_fwd = self.effective_forward(forward);
         let n_out = if eff_fwd { self.nout() } else { self.nin() };
         let mut out = PointSet::zeros(pts.npoint(), n_out);
@@ -356,7 +357,6 @@ impl Mapping for ChebyMap {
         forward: bool,
         out: &mut PointSet,
     ) -> AstResult<()> {
-        super::require_direction(self, forward, "ChebyMap transform")?;
         let fwd = self.effective_forward(forward);
         if let Some(tables) = self.poly.term_tables(fwd) {
             poly_transform(self, fwd, &tables, pts, out, f64::NAN);
@@ -365,9 +365,9 @@ impl Mapping for ChebyMap {
     }
 
     fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()> {
+        crate::mappings::validate_transform(self, pts, forward, Some(out))?;
         // ChebyMap inherits PolyMap's Transform and overrides only the
         // powers (chebymap.c).
-        super::require_direction(self, forward, "ChebyMap transform")?;
         let fwd = self.effective_forward(forward);
         if let Some(tables) = self.poly.term_tables(fwd) {
             poly_transform(self, fwd, &tables, pts, out, BAD_VALUE);

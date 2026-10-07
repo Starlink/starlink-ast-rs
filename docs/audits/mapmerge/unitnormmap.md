@@ -13,10 +13,10 @@ C's body runs `unitnormmap.c:846-909 (fn MapMerge)`. It walks the pairs from `wh
 end of the list, asking `MakeMergedMap` (`unitnormmap.c:349-531 (fn MakeMergedMap)`) about each, and
 splices in the first result. Both are audited here.
 
-`UnitNormMap::map_merge` (`unitnormmap.rs:421-453 (fn map_merge)`) walks the same pairs and calls
-`make_merged_map` (`unitnormmap.rs:499-527 (fn make_merged_map)`), which dispatches to
-`UnitNormMap::try_merge` (`unitnormmap.rs:286-419 (fn try_merge)`) or to
-`try_merge_into_unitnormmap` (`unitnormmap.rs:534-596 (fn try_merge_into_unitnormmap)`) according to
+`UnitNormMap::map_merge` (`unitnormmap.rs:423-455 (fn map_merge)`) walks the same pairs and calls
+`make_merged_map` (`unitnormmap.rs:501-529 (fn make_merged_map)`), which dispatches to
+`UnitNormMap::try_merge` (`unitnormmap.rs:288-421 (fn try_merge)`) or to
+`try_merge_into_unitnormmap` (`unitnormmap.rs:536-598 (fn try_merge_into_unitnormmap)`) according to
 which member of the pair is the UnitNormMap. The splice itself is
 `MergeCtx::replace_pair_with` (`mappings/simplify.rs:577-591 (fn replace_pair_with)`).
 
@@ -24,40 +24,40 @@ which member of the pair is the UnitNormMap. The splice itself is
 |---|---|---|---|---|---|
 | 1 | Initialise the returned result to -1 | unitnormmap.c:846-848 (fn MapMerge) | -- | ceremony | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index |
 | 2 | Check the global error status and bail out | unitnormmap.c:849-851 (fn MapMerge) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
-| 3 | In series, walk the pairs from `where - 1` to the end of the list | unitnormmap.c:854-860 (fn MapMerge) | unitnormmap.rs:441-443 (fn map_merge) | architecture | ported |
-| 4 | Set both members of each pair to the Invert values the list requests, then restore them | unitnormmap.c:861-867 (fn MapMerge) | unitnormmap.rs:444-446 (fn map_merge) | architecture | ported |
-| 5 | Ask `MakeMergedMap` about the pair, stop at the first it accepts, and report no change when none does | unitnormmap.c:868-878 (fn MapMerge) | unitnormmap.rs:446-452 (fn map_merge) | architecture | ported |
-| 6 | Replace the first of the pair with the merged Mapping and update its invert flag | unitnormmap.c:880-885 (fn MapMerge) | unitnormmap.rs:447 (fn map_merge), mappings/simplify.rs:584-588 (fn replace_pair_with) | architecture | ported |
-| 7 | Annul the second of the pair, shuffle the rest down and clear the vacated element | unitnormmap.c:886-897 (fn MapMerge) | unitnormmap.rs:447 (fn map_merge), mappings/simplify.rs:589-590 (fn replace_pair_with) | architecture | ported |
-| 8 | Decrement the Mapping count and return the index of the first modified element | unitnormmap.c:898-900 (fn MapMerge) | unitnormmap.rs:448 (fn map_merge) | architecture | ported |
-| 9 | In parallel, a UnitNormMap combines with nothing | unitnormmap.c:904-906 (fn MapMerge) | unitnormmap.rs:429-431 (fn map_merge) | architecture | ported |
-| 10 | Return the result | unitnormmap.c:908-909 (fn MapMerge) | unitnormmap.rs:448 (fn map_merge),452 (fn map_merge) | ceremony | ported |
+| 3 | In series, walk the pairs from `where - 1` to the end of the list | unitnormmap.c:854-860 (fn MapMerge) | unitnormmap.rs:443-445 (fn map_merge) | architecture | ported |
+| 4 | Set both members of each pair to the Invert values the list requests, then restore them | unitnormmap.c:861-867 (fn MapMerge) | unitnormmap.rs:446-448 (fn map_merge) | architecture | ported |
+| 5 | Ask `MakeMergedMap` about the pair, stop at the first it accepts, and report no change when none does | unitnormmap.c:868-878 (fn MapMerge) | unitnormmap.rs:448-454 (fn map_merge) | architecture | ported |
+| 6 | Replace the first of the pair with the merged Mapping and update its invert flag | unitnormmap.c:880-885 (fn MapMerge) | unitnormmap.rs:449 (fn map_merge), mappings/simplify.rs:584-588 (fn replace_pair_with) | architecture | ported |
+| 7 | Annul the second of the pair, shuffle the rest down and clear the vacated element | unitnormmap.c:886-897 (fn MapMerge) | unitnormmap.rs:449 (fn map_merge), mappings/simplify.rs:589-590 (fn replace_pair_with) | architecture | ported |
+| 8 | Decrement the Mapping count and return the index of the first modified element | unitnormmap.c:898-900 (fn MapMerge) | unitnormmap.rs:450 (fn map_merge) | architecture | ported |
+| 9 | In parallel, a UnitNormMap combines with nothing | unitnormmap.c:904-906 (fn MapMerge) | unitnormmap.rs:431-433 (fn map_merge) | architecture | ported |
+| 10 | Return the result | unitnormmap.c:908-909 (fn MapMerge) | unitnormmap.rs:450 (fn map_merge),454 (fn map_merge) | ceremony | ported |
 | 11 | `MakeMergedMap`: check the global error status and bail out | unitnormmap.c:401-403 (fn MakeMergedMap) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 12 | Initialise the returned Mapping to NULL | unitnormmap.c:404-406 (fn MakeMergedMap) | -- | ceremony | n/a: the Rust helper returns `Option<DynMapping>`, so "no merge" is `None` |
-| 13 | Classify both Mappings as UnitNormMap, ShiftMap, WinMap or other, and decline unless both are classified and at least one is a UnitNormMap | unitnormmap.c:407-418 (fn MakeMergedMap) | unitnormmap.rs:505-515 (fn make_merged_map) | architecture | ported |
-| 14 | ShiftMap followed by a forward UnitNormMap gives a forward UnitNormMap | unitnormmap.c:419-435 (fn MakeMergedMap) | unitnormmap.rs:547-565 (fn try_merge_into_unitnormmap) | architecture | ported |
-| 15 | A unit-scale WinMap followed by a forward UnitNormMap likewise, declining when the scales are not unity | unitnormmap.c:436-456 (fn MakeMergedMap) | unitnormmap.rs:567-593 (fn try_merge_into_unitnormmap) | architecture | ported |
-| 16 | An inverted UnitNormMap followed by a ShiftMap gives an inverted UnitNormMap | unitnormmap.c:457-473 (fn MakeMergedMap) | unitnormmap.rs:351-375 (fn try_merge) | architecture | ported |
-| 17 | An inverted UnitNormMap followed by a WinMap likewise, declining on non-unit scales | unitnormmap.c:474-494 (fn MakeMergedMap) | unitnormmap.rs:378-409 (fn try_merge) | architecture | ported |
-| 18 | Two UnitNormMaps merge only in opposite directions; compare their centres | unitnormmap.c:495-509 (fn MakeMergedMap) | unitnormmap.rs:303-317 (fn try_merge) | architecture | ported |
-| 19 | With identical centres they cancel to a UnitMap | unitnormmap.c:510-514 (fn MakeMergedMap) | unitnormmap.rs:319-328 (fn try_merge) | architecture | ported |
-| 20 | Otherwise a forward then an inverted UnitNormMap gives a ShiftMap | unitnormmap.c:515-531 (fn MakeMergedMap) | unitnormmap.rs:330-342 (fn try_merge) | architecture | ported |
+| 13 | Classify both Mappings as UnitNormMap, ShiftMap, WinMap or other, and decline unless both are classified and at least one is a UnitNormMap | unitnormmap.c:407-418 (fn MakeMergedMap) | unitnormmap.rs:507-517 (fn make_merged_map) | architecture | ported |
+| 14 | ShiftMap followed by a forward UnitNormMap gives a forward UnitNormMap | unitnormmap.c:419-435 (fn MakeMergedMap) | unitnormmap.rs:549-567 (fn try_merge_into_unitnormmap) | architecture | ported |
+| 15 | A unit-scale WinMap followed by a forward UnitNormMap likewise, declining when the scales are not unity | unitnormmap.c:436-456 (fn MakeMergedMap) | unitnormmap.rs:569-595 (fn try_merge_into_unitnormmap) | architecture | ported |
+| 16 | An inverted UnitNormMap followed by a ShiftMap gives an inverted UnitNormMap | unitnormmap.c:457-473 (fn MakeMergedMap) | unitnormmap.rs:353-377 (fn try_merge) | architecture | ported |
+| 17 | An inverted UnitNormMap followed by a WinMap likewise, declining on non-unit scales | unitnormmap.c:474-494 (fn MakeMergedMap) | unitnormmap.rs:380-411 (fn try_merge) | architecture | ported |
+| 18 | Two UnitNormMaps merge only in opposite directions; compare their centres | unitnormmap.c:495-509 (fn MakeMergedMap) | unitnormmap.rs:305-319 (fn try_merge) | architecture | ported |
+| 19 | With identical centres they cancel to a UnitMap | unitnormmap.c:510-514 (fn MakeMergedMap) | unitnormmap.rs:321-330 (fn try_merge) | architecture | ported |
+| 20 | Otherwise a forward then an inverted UnitNormMap gives a ShiftMap | unitnormmap.c:515-531 (fn MakeMergedMap) | unitnormmap.rs:332-344 (fn try_merge) | architecture | ported |
 
 ## Row 3 — the scan reaches past the nominee
 
 C's loop starts at `MAX( where - 1, 0 )` and runs to the end of the list rather
 than stopping after the nominee's own two pairs, so a merge anywhere downstream
-is taken on this nomination. `unitnormmap.rs:441-442 (fn map_merge)` walks the same range.
+is taken on this nomination. `unitnormmap.rs:443-444 (fn map_merge)` walks the same range.
 
 ## Row 4 — the flag C sets, and the argument Rust passes
 
 C has one object per list element and a single `Invert` flag on it, so before
 asking `MakeMergedMap` about a pair it writes the list's flags into both objects
 and writes the objects' own flags back afterwards. The port passes the two flags
-as arguments instead: `unitnormmap.rs:446 (fn map_merge)` hands `*inv1` and `*inv2` to
+as arguments instead: `unitnormmap.rs:448 (fn map_merge)` hands `*inv1` and `*inv2` to
 `make_merged_map`, which forwards them to whichever helper takes the pair, and
 each helper folds the argument against the object's stored `inverted` to get the
-effective direction — `unitnormmap.rs:300 (fn try_merge)` and `unitnormmap.rs:540 (fn try_merge_into_unitnormmap)`.
+effective direction — `unitnormmap.rs:302 (fn try_merge)` and `unitnormmap.rs:542 (fn try_merge_into_unitnormmap)`.
 Nothing is mutated, so there is nothing to restore.
 
 ## Rows 14 to 17 — which member of the pair is the UnitNormMap
@@ -83,7 +83,7 @@ decline for one it cannot.
 
 ## The UnitMap case Rust answers and C declines
 
-`unitnormmap.rs:412-416 (fn try_merge)` merges an adjacent UnitMap by returning the
+`unitnormmap.rs:414-418 (fn try_merge)` merges an adjacent UnitMap by returning the
 UnitNormMap unchanged. C's `GetMappingType` calls a UnitMap type 0, so
 `MakeMergedMap` declines the pair and `unitmap.c`'s own `MapMerge` eliminates the
 UnitMap instead; C records that division of labour in `MakeMergedMap`'s notes.

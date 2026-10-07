@@ -216,6 +216,7 @@ impl Mapping for TranMap {
     }
 
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
+        crate::mappings::validate_transform(self, pts, forward, None)?;
         // Determine the effective direction, accounting for the TranMap's inversion.
         let effective_fwd = forward != self.inverted;
 
@@ -235,6 +236,7 @@ impl Mapping for TranMap {
     }
 
     fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()> {
+        crate::mappings::validate_transform(self, pts, forward, Some(out))?;
         let effective_fwd = forward != self.inverted;
 
         if effective_fwd {

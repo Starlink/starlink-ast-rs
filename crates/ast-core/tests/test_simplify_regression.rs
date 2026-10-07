@@ -652,26 +652,28 @@ fn simplify_regression() {
         let npoints = 10;
         let pts = make_test_points(nin, npoints);
 
-        let out_ref = match ref_mapping.transform(&pts, true) {
-            Ok(o) => o,
-            Err(_) => {
-                // Reference can't be evaluated — skip transform check
-                if structurally_equal {
-                    passed += 1;
+        // A Mapping that defines no forward transformation cannot be
+        // evaluated on either side, as in C (mapping.c `Transform`); the
+        // checks of the dump below still run for it.
+        match (
+            ref_mapping.transform(&pts, true),
+            simplified.transform(&pts, true),
+        ) {
+            (Ok(out_ref), Ok(out_simp)) => {
+                if !outputs_equivalent(&out_simp, &out_ref, 1e-6) {
+                    transform_failures.push(name.to_string());
                 }
-                continue;
             }
-        };
-        let out_simp = match simplified.transform(&pts, true) {
-            Ok(o) => o,
-            Err(e) => {
+            (Err(_), Err(_)) => {}
+            (Ok(_), Err(e)) => {
                 other_failures.push(format!("{name}: simplified transform failed: {e}"));
-                continue;
             }
-        };
-
-        if !outputs_equivalent(&out_simp, &out_ref, 1e-6) {
-            transform_failures.push(name.to_string());
+            (Err(e), Ok(_)) => {
+                other_failures.push(format!(
+                    "{name}: the reference cannot transform ({e}) but the simplified \
+                     Mapping can"
+                ));
+            }
         }
 
         // Every fixture whose `IsSimp` card count differs from C's, collected

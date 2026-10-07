@@ -558,6 +558,7 @@ impl Mapping for MatrixMap {
     }
 
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
+        crate::mappings::validate_transform(self, pts, forward, None)?;
         let fwd = self.effective_forward(forward);
         let (nout_coords, m, form) = if fwd {
             (self.matrix.nrows(), &self.matrix, self.form)
@@ -578,6 +579,7 @@ impl Mapping for MatrixMap {
     }
 
     fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()> {
+        crate::mappings::validate_transform(self, pts, forward, Some(out))?;
         let fwd = self.effective_forward(forward);
         let (m, form) = if fwd {
             (&self.matrix, self.form)

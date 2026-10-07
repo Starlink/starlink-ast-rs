@@ -484,6 +484,7 @@ impl Mapping for PermMap {
     }
 
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
+        crate::mappings::validate_transform(self, pts, forward, None)?;
         let fwd = self.effective_forward(forward);
         let (perm, nout) = if fwd {
             (self.outperm.as_slice(), self.outperm.len())
@@ -496,6 +497,7 @@ impl Mapping for PermMap {
     }
 
     fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()> {
+        crate::mappings::validate_transform(self, pts, forward, Some(out))?;
         let fwd = self.effective_forward(forward);
         let perm = if fwd {
             self.outperm.as_slice()

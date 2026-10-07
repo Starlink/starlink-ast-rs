@@ -158,6 +158,7 @@ impl Mapping for SphMap {
     }
 
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
+        crate::mappings::validate_transform(self, pts, forward, None)?;
         let fwd = self.effective_forward(forward);
         let ncoord_out = if fwd { 2 } else { 3 };
         let mut out = PointSet::zeros(pts.npoint(), ncoord_out);
@@ -222,6 +223,7 @@ impl Mapping for SphMap {
     }
 
     fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()> {
+        crate::mappings::validate_transform(self, pts, forward, Some(out))?;
         let fwd = self.effective_forward(forward);
 
         if fwd {

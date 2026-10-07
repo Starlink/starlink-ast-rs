@@ -1519,6 +1519,7 @@ impl Mapping for PolyMap {
     }
 
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
+        crate::mappings::validate_transform(self, pts, forward, None)?;
         let n_out = if self.effective_forward(forward) {
             self.nout
         } else {
@@ -1530,7 +1531,7 @@ impl Mapping for PolyMap {
     }
 
     fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()> {
-        super::require_direction(self, forward, "PolyMap transform")?;
+        crate::mappings::validate_transform(self, pts, forward, Some(out))?;
         let fwd = self.effective_forward(forward);
 
         if fwd {
@@ -1608,7 +1609,6 @@ impl Mapping for PolyMap {
         forward: bool,
         out: &mut PointSet,
     ) -> AstResult<()> {
-        super::require_direction(self, forward, "PolyMap transform")?;
         let fwd = self.effective_forward(forward);
 
         if fwd {

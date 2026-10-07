@@ -295,6 +295,7 @@ impl Mapping for MathMap {
     }
 
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
+        crate::mappings::validate_transform(self, pts, forward, None)?;
         let effective_forward = forward != self.inverted;
         let ncoord_out = if effective_forward {
             self.nout
@@ -333,6 +334,7 @@ impl Mapping for MathMap {
     }
 
     fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()> {
+        crate::mappings::validate_transform(self, pts, forward, Some(out))?;
         let effective_forward = forward != self.inverted;
         let npoint = pts.npoint();
         let ncoord_in = if effective_forward {

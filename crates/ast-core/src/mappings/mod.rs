@@ -800,6 +800,7 @@ impl dyn Mapping {
     /// the CLAUDE.md output contract), whereas an arbitrary `transform`
     /// implementation might pass NaN through.
     pub fn transform_nan_protocol(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
+        validate_transform(self, pts, forward, None)?;
         // Boundary substitution: BAD_VALUE → NaN. Allocates a new PointSet
         // rather than mutating the caller's input. For very large inputs we
         // could add an in-place variant if profiling motivates it.
@@ -873,6 +874,59 @@ fn substitute_nan_to_bad_in_place(pts: &mut PointSet) {
     }
 }
 
+/// The checks C's base-class `Transform` makes before any class transforms a
+/// point (mapping.c:22333-22380), which every class's `Transform` calls
+/// first: the requested direction must be defined (`AST__TRNND`), the input
+/// must have one coordinate per Mapping input (`AST__NCPIN`), and a supplied
+/// output must hold every point (`AST__NOPTS`) and every output coordinate
+/// (`AST__NOCTS`).
+pub(crate) fn validate_transform<M: Mapping + ?Sized>(
+    map: &M,
+    pts: &PointSet,
+    forward: bool,
+    out: Option<&PointSet>,
+) -> AstResult<()> {
+    require_direction(map, forward, "astTransform")?;
+    let (nin, nout) = if forward {
+        (map.nin(), map.nout())
+    } else {
+        (map.nout(), map.nin())
+    };
+    if pts.ncoord() != nin {
+        return Err(AstError::new(
+            ErrorCode::Ncpin,
+            format!(
+                "astTransform: bad number of coordinate values ({}) in the input; \
+                 the Mapping requires {nin} for each point",
+                pts.ncoord()
+            ),
+        ));
+    }
+    if let Some(out) = out {
+        if out.npoint() < pts.npoint() {
+            return Err(AstError::new(
+                ErrorCode::Nopts,
+                format!(
+                    "astTransform: too few points ({}) in the output; {} are needed",
+                    out.npoint(),
+                    pts.npoint()
+                ),
+            ));
+        }
+        if out.ncoord() < nout {
+            return Err(AstError::new(
+                ErrorCode::Nocts,
+                format!(
+                    "astTransform: too few coordinate values per point ({}) in the \
+                     output; {nout} are needed",
+                    out.ncoord()
+                ),
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// An `AST__TRNND` error when `map` does not define the requested direction,
 /// as C's base `Transform` reports (mapping.c).
 pub(crate) fn require_direction<M: Mapping + ?Sized>(
@@ -905,10 +959,9 @@ pub(crate) fn require_direction<M: Mapping + ?Sized>(
 ///   requires,
 /// - `AST__NPTIN` when fewer than one point is supplied.
 ///
-/// C raises `AST__TRNND` in its base `Transform` (mapping.c:22333-22380),
-/// which every class's `Transform` calls, so `astTransform` raises it too.
-/// Of the port's [`Mapping::transform`] implementations only some call
-/// [`require_direction`]; the rest are audit finding MB-1.
+/// C raises `AST__TRNND` in its base `Transform` too (mapping.c:22333-22380),
+/// which every class's `Transform` calls; the port's equivalent is
+/// [`validate_transform`].
 fn validate_tran<M: Mapping + ?Sized>(
     map: &M,
     forward: bool,
