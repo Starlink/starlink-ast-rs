@@ -330,17 +330,18 @@ fn polymap_bad_value_propagation() {
     ];
     let m = PolyMap::new(2, 2, &terms, None).unwrap();
 
-    // One BAD input -> all outputs BAD
+    // A BAD input spoils only the output whose terms use it (polymap.c
+    // Transform): y2 = x2 stays good.
     let pts = PointSet::from_rows(vec![vec![BAD_VALUE, 3.0]]);
     let out = m.transform(&pts, true).unwrap();
     assert_eq!(out.point(0)[0], BAD_VALUE);
-    assert_eq!(out.point(0)[1], BAD_VALUE);
+    assert_eq!(out.point(0)[1], 3.0);
 
-    // NaN input also -> BAD output
+    // So does a NaN input.
     let pts2 = PointSet::from_rows(vec![vec![f64::NAN, 3.0]]);
     let out2 = m.transform(&pts2, true).unwrap();
     assert_eq!(out2.point(0)[0], BAD_VALUE);
-    assert_eq!(out2.point(0)[1], BAD_VALUE);
+    assert_eq!(out2.point(0)[1], 3.0);
 }
 
 // ---------------------------------------------------------------------------

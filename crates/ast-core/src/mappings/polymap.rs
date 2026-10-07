@@ -335,6 +335,24 @@ impl PolyMap {
     /// Whether the original (uninverted) inverse transformation is
     /// defined: inverse coefficients were supplied or the iterative
     /// inverse is enabled. Mirrors C `GetTranInverse` (polymap.c:2285).
+    /// The coefficient tables of the original forward (`forward`) or inverse
+    /// transformation, if it has coefficients.
+    pub(crate) fn term_tables(&self, forward: bool) -> Option<TermTables<'_>> {
+        if forward {
+            Some(TermTables {
+                terms: &self.forward,
+                by_output: &self.forward_by_output,
+                max_pows: &self.forward_max_pows,
+            })
+        } else {
+            Some(TermTables {
+                terms: self.inverse.as_deref()?,
+                by_output: self.inverse_by_output.as_deref()?,
+                max_pows: &self.inverse_max_pows,
+            })
+        }
+    }
+
     fn inverse_defined(&self) -> bool {
         self.inverse.as_ref().is_some_and(|v| !v.is_empty()) || self.iter_inverse()
     }
@@ -1035,6 +1053,133 @@ impl PolyMap {
 // Polynomial evaluation (power-table approach)
 // ---------------------------------------------------------------------------
 
+/// The values a polynomial term multiplies its coefficient by: C's
+/// `PolyPowers`, the method PolyMap's `Transform` calls once per point
+/// (polymap.c:4725) and ChebyMap overrides to give Chebyshev polynomials in
+/// place of powers (chebymap.c:1062).
+///
+/// `work[axis][p]` receives the value standing for the input on `axis` raised
+/// to power `p`, for `p` up to `max_pows[axis]`; `work[axis][0]` is always 1.
+/// A value that cannot be formed, such as any power above zero of a bad input,
+/// is `BAD_VALUE`. `forward` says which of the original transformations the
+/// terms belong to. Returns whether every value is good, which lets the
+/// caller skip the per-term checks.
+pub(crate) trait PolyPowers {
+    fn poly_powers(
+        &self,
+        work: &mut [Vec<f64>],
+        max_pows: &[usize],
+        input: &[f64],
+        forward: bool,
+    ) -> bool;
+}
+
+/// The coefficients of one of a PolyMap's original transformations, with the
+/// indices of each output's terms and the highest power of each input.
+pub(crate) struct TermTables<'a> {
+    pub(crate) terms: &'a [PolyTerm],
+    pub(crate) by_output: &'a [Vec<usize>],
+    pub(crate) max_pows: &'a [usize],
+}
+
+/// Transform `pts` through polynomial terms, as PolyMap's `Transform` does
+/// (polymap.c:6180-6283): the powers come from `basis`, a term with a bad
+/// coefficient or a bad power makes its output bad, and every other term
+/// adds to its output. An output that is bad, or NaN, is set to `bad`, which
+/// is `BAD_VALUE` or, for the NaN protocol, NaN.
+pub(crate) fn poly_transform<P: PolyPowers + ?Sized>(
+    basis: &P,
+    forward: bool,
+    tables: &TermTables<'_>,
+    pts: &PointSet,
+    out: &mut PointSet,
+    bad: f64,
+) {
+    // C allocates at least two values per axis, since ChebyMap stores the
+    // first-degree value whatever the highest power (polymap.c:6199).
+    let mut work: Vec<Vec<f64>> = tables
+        .max_pows
+        .iter()
+        .map(|&m| vec![0.0; m.max(1) + 1])
+        .collect();
+    let bad_coeff = tables.terms.iter().any(|t| t.coeff == BAD_VALUE);
+    for i in 0..pts.npoint() {
+        let all_good = basis.poly_powers(&mut work, tables.max_pows, pts.point(i), forward);
+        let outp = out.point_mut(i);
+        if all_good && !bad_coeff {
+            // No term can be bad, so this is the loop below without its checks.
+            for (out_idx, term_indices) in tables.by_output.iter().enumerate() {
+                let mut outval = 0.0;
+                for &idx in term_indices {
+                    outval += eval_term_with_table(&tables.terms[idx], &work);
+                }
+                outp[out_idx] = if outval.is_nan() { bad } else { outval };
+            }
+            continue;
+        }
+        for (out_idx, term_indices) in tables.by_output.iter().enumerate() {
+            let mut outval = 0.0;
+            'terms: for &idx in term_indices {
+                let term = &tables.terms[idx];
+                let mut value = term.coeff;
+                if value == BAD_VALUE {
+                    outval = BAD_VALUE;
+                    break;
+                }
+                for (axis, &pow) in term.powers.iter().enumerate() {
+                    if pow > 0 {
+                        let xp = work[axis][pow];
+                        if xp == BAD_VALUE {
+                            outval = BAD_VALUE;
+                            break 'terms;
+                        }
+                        value *= xp;
+                    }
+                }
+                outval += value;
+            }
+            outp[out_idx] = if outval == BAD_VALUE || outval.is_nan() {
+                bad
+            } else {
+                outval
+            };
+        }
+    }
+}
+
+/// Fill `work` with the powers of each input value (polymap.c `PolyPowers`):
+/// a bad input has bad powers above zero. Returns whether every power is
+/// good.
+pub(crate) fn monomial_powers(work: &mut [Vec<f64>], max_pows: &[usize], input: &[f64]) -> bool {
+    let mut all_good = true;
+    for (axis, pwork) in work.iter_mut().enumerate() {
+        pwork[0] = 1.0;
+        let x = input[axis];
+        let mp = max_pows[axis];
+        if x == BAD_VALUE {
+            pwork[1..=mp].fill(BAD_VALUE);
+            all_good &= mp == 0;
+        } else {
+            for p in 1..=mp {
+                pwork[p] = pwork[p - 1] * x;
+            }
+        }
+    }
+    all_good
+}
+
+impl PolyPowers for PolyMap {
+    fn poly_powers(
+        &self,
+        work: &mut [Vec<f64>],
+        max_pows: &[usize],
+        input: &[f64],
+        _forward: bool,
+    ) -> bool {
+        monomial_powers(work, max_pows, input)
+    }
+}
+
 /// Fill the power table for one point's input values.
 ///
 /// `power_table[axis][p] = input[axis]^p`, computed incrementally:
@@ -1403,27 +1548,8 @@ impl Mapping for PolyMap {
                 }
             }
 
-            // Forward transform using pre-computed power-table indices.
-            let mut power_table: Vec<Vec<f64>> = self
-                .forward_max_pows
-                .iter()
-                .map(|&m| vec![0.0; m + 1])
-                .collect();
-            for i in 0..pts.npoint() {
-                let inp = pts.point(i);
-                let outp = out.point_mut(i);
-                if point_has_bad(inp) {
-                    outp.fill(BAD_VALUE);
-                } else {
-                    fill_power_table(inp, &self.forward_max_pows, &mut power_table);
-                    for (out_idx, term_indices) in self.forward_by_output.iter().enumerate() {
-                        let mut sum = 0.0;
-                        for &idx in term_indices {
-                            sum += eval_term_with_table(&self.forward[idx], &power_table);
-                        }
-                        outp[out_idx] = sum;
-                    }
-                }
+            if let Some(tables) = self.term_tables(true) {
+                poly_transform(self, true, &tables, pts, out, BAD_VALUE);
             }
         } else {
             // Inverse transform. The iterative inverse takes priority over
@@ -1445,32 +1571,10 @@ impl Mapping for PolyMap {
                     }
                 }
                 self.newton_raphson_inverse(pts, out, BAD_VALUE)?;
-            } else if let Some(ref inv_terms) = self.inverse {
+            } else if let Some(tables) = self.term_tables(false) {
                 // Explicit inverse terms: the inverse maps from nout-space
-                // to nin-space. Input powers have length nout, output goes
-                // to nin axes.
-                let inv_by_output = self.inverse_by_output.as_ref().unwrap();
-                let mut power_table: Vec<Vec<f64>> = self
-                    .inverse_max_pows
-                    .iter()
-                    .map(|&m| vec![0.0; m + 1])
-                    .collect();
-                for i in 0..pts.npoint() {
-                    let inp = pts.point(i);
-                    let outp = out.point_mut(i);
-                    if point_has_bad(inp) {
-                        outp.fill(BAD_VALUE);
-                    } else {
-                        fill_power_table(inp, &self.inverse_max_pows, &mut power_table);
-                        for (out_idx, term_indices) in inv_by_output.iter().enumerate() {
-                            let mut sum = 0.0;
-                            for &idx in term_indices {
-                                sum += eval_term_with_table(&inv_terms[idx], &power_table);
-                            }
-                            outp[out_idx] = sum;
-                        }
-                    }
-                }
+                // to nin-space.
+                poly_transform(self, false, &tables, pts, out, BAD_VALUE);
             } else {
                 // No inverse available: fill with BAD.
                 for i in 0..pts.npoint() {
@@ -1518,24 +1622,8 @@ impl Mapping for PolyMap {
                     return Ok(());
                 }
             }
-            let mut power_table: Vec<Vec<f64>> = self
-                .forward_max_pows
-                .iter()
-                .map(|&m| vec![0.0; m + 1])
-                .collect();
-            for i in 0..pts.npoint() {
-                let inp = pts.point(i);
-                let outp = out.point_mut(i);
-                // No `point_has_bad` gate: NaN propagates through `eval_term`
-                // multiplications cleanly.
-                fill_power_table(inp, &self.forward_max_pows, &mut power_table);
-                for (out_idx, term_indices) in self.forward_by_output.iter().enumerate() {
-                    let mut sum = 0.0;
-                    for &idx in term_indices {
-                        sum += eval_term_with_table(&self.forward[idx], &power_table);
-                    }
-                    outp[out_idx] = sum;
-                }
+            if let Some(tables) = self.term_tables(true) {
+                poly_transform(self, true, &tables, pts, out, f64::NAN);
             }
         } else if self.iter_inverse() {
             // The iterative inverse takes priority over any supplied inverse
@@ -1553,25 +1641,8 @@ impl Mapping for PolyMap {
             // downstream NaN-aware stages receive the protocol-canonical
             // sentinel with no post-pass needed.
             self.newton_raphson_inverse(pts, out, f64::NAN)?;
-        } else if let Some(ref inv_terms) = self.inverse {
-            let inv_by_output = self.inverse_by_output.as_ref().unwrap();
-            let mut power_table: Vec<Vec<f64>> = self
-                .inverse_max_pows
-                .iter()
-                .map(|&m| vec![0.0; m + 1])
-                .collect();
-            for i in 0..pts.npoint() {
-                let inp = pts.point(i);
-                let outp = out.point_mut(i);
-                fill_power_table(inp, &self.inverse_max_pows, &mut power_table);
-                for (out_idx, term_indices) in inv_by_output.iter().enumerate() {
-                    let mut sum = 0.0;
-                    for &idx in term_indices {
-                        sum += eval_term_with_table(&inv_terms[idx], &power_table);
-                    }
-                    outp[out_idx] = sum;
-                }
-            }
+        } else if let Some(tables) = self.term_tables(false) {
+            poly_transform(self, false, &tables, pts, out, f64::NAN);
         } else {
             // No inverse available: emit NaN (was BAD).
             for i in 0..pts.npoint() {
@@ -1979,14 +2050,13 @@ impl Serializable for PolyMap {
                     coeff_idx += 1;
                     let term_powers: Vec<usize> = powers[power_idx..power_idx + nin].to_vec();
                     power_idx += nin;
-                    // Skip BAD coefficients (they represent absent terms).
-                    if coeff != BAD_VALUE {
-                        forward.push(PolyTerm {
-                            coeff,
-                            powers: term_powers,
-                            out_axis: out_ax + 1,
-                        });
-                    }
+                    // A coefficient missing from the dump is bad, as C reads it
+                    // (polymap.c:7388), and makes its output bad.
+                    forward.push(PolyTerm {
+                        coeff,
+                        powers: term_powers,
+                        out_axis: out_ax + 1,
+                    });
                 }
             }
         }
@@ -2021,13 +2091,11 @@ impl Serializable for PolyMap {
                     coeff_idx += 1;
                     let term_powers: Vec<usize> = powers[power_idx..power_idx + nout].to_vec();
                     power_idx += nout;
-                    if coeff != BAD_VALUE {
-                        inverse_terms.push(PolyTerm {
-                            coeff,
-                            powers: term_powers,
-                            out_axis: out_ax + 1,
-                        });
-                    }
+                    inverse_terms.push(PolyTerm {
+                        coeff,
+                        powers: term_powers,
+                        out_axis: out_ax + 1,
+                    });
                 }
             }
         }

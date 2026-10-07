@@ -4,6 +4,7 @@
 
 use ast_core::constants::BAD_VALUE;
 use ast_core::coords::PointSet;
+use ast_core::error::ErrorCode;
 use ast_core::mappings::{ChebyMap, Mapping, PolyTerm, UnitMap};
 use ast_core::{AnyObject, from_native_string, to_native_string};
 
@@ -226,17 +227,18 @@ fn chebymap_bad_value_propagation() {
     )
     .unwrap();
 
-    // One BAD input -> all outputs BAD
+    // A BAD input spoils only the output whose terms use it (chebymap.c
+    // PolyPowers): y2 = T1(x2) stays good.
     let pts = PointSet::from_rows(vec![vec![BAD_VALUE, 3.0]]);
     let out = m.transform(&pts, true).unwrap();
     assert_eq!(out.point(0)[0], BAD_VALUE);
-    assert_eq!(out.point(0)[1], BAD_VALUE);
+    assert!((out.point(0)[1] - 0.3).abs() < 1e-15);
 
-    // NaN input -> BAD output
+    // So does a NaN input.
     let pts2 = PointSet::from_rows(vec![vec![f64::NAN, 3.0]]);
     let out2 = m.transform(&pts2, true).unwrap();
     assert_eq!(out2.point(0)[0], BAD_VALUE);
-    assert_eq!(out2.point(0)[1], BAD_VALUE);
+    assert!((out2.point(0)[1] - 0.3).abs() < 1e-15);
 }
 
 // ---------------------------------------------------------------------------
@@ -470,11 +472,11 @@ fn chebymap_invert() {
 }
 
 // ---------------------------------------------------------------------------
-// No inverse returns BAD
+// No inverse: transforming inversely is an error
 // ---------------------------------------------------------------------------
 
 #[test]
-fn chebymap_no_inverse_returns_bad() {
+fn chebymap_no_inverse_is_an_error() {
     let fwd = vec![PolyTerm {
         coeff: 1.0,
         powers: vec![1],
@@ -482,9 +484,11 @@ fn chebymap_no_inverse_returns_bad() {
     }];
     let m = ChebyMap::new(1, 1, &fwd, None, &[0.0], &[10.0], None, None).unwrap();
 
+    // C's base Transform raises AST__TRNND for an undefined direction.
+    assert!(!m.has_inverse());
     let pts = PointSet::from_rows(vec![vec![5.0]]);
-    let out = m.transform(&pts, false).unwrap();
-    assert_eq!(out.point(0)[0], BAD_VALUE);
+    let err = m.transform(&pts, false).unwrap_err();
+    assert_eq!(err.code(), ErrorCode::Trnnd);
 }
 
 // ---------------------------------------------------------------------------

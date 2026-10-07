@@ -21,15 +21,15 @@ ChebyMap in a list of one (`mapping.c:16871-16883 (fn Simplify)`) and calls
 default.
 
 The Rust ChebyMap does not delegate to `PolyMap::map_merge`
-(`polymap.rs:1584-1606 (fn map_merge)`). It has its own
-(`chebymap.rs:515-579 (fn map_merge)`), which runs the coefficient consolidation
+(`polymap.rs:1655-1677 (fn map_merge)`). It has its own
+(`chebymap.rs:419-483 (fn map_merge)`), which runs the coefficient consolidation
 through `PolyMap::consolidated_terms`
-(`polymap.rs:850-894 (fn consolidated_terms)`) and then falls through to the
+(`polymap.rs:868-912 (fn consolidated_terms)`) and then falls through to the
 shared direct merge; the neighbour cancellation is
-`ChebyMap::try_merge` (`chebymap.rs:474-513 (fn try_merge)`).
+`ChebyMap::try_merge` (`chebymap.rs:378-417 (fn try_merge)`).
 
 C's linear replacement is there too, reached through
-`PolyMap::linear_replacement` (`polymap.rs:909-972 (fn linear_replacement)`) with
+`PolyMap::linear_replacement` (`polymap.rs:927-990 (fn linear_replacement)`) with
 the ChebyMap's own `scale_f` / `offset_f` passed as the normalisation. Until AST
 9.5.0 that half dropped the Chebyshev domain scaling and so changed the
 transformation, and the port declined it; upstream `abe5baae` folds the
@@ -40,29 +40,29 @@ normalisation into the matrix and the offsets, and the port follows.
 | 1 | Initialise the returned index to -1 | polymap.c:3617-3618 (fn MapMerge) | -- | ceremony | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index |
 | 2 | Check the global error status and bail out | polymap.c:3620-3621 (fn MapMerge) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 3 | Save a pointer to the nominated PolyMap | polymap.c:3623-3624 (fn MapMerge) | -- | ceremony | n/a: the Rust method already has `&self` |
-| 4 | See if the PolyMap can be replaced by a simpler Mapping, without reference to its neighbours | polymap.c:3626-3628 (fn MapMerge) | chebymap.rs:537-576 (fn map_merge) | architecture | ported |
-| 5 | Get the input and output counts of the transformation as constructed | polymap.c:3630-3638 (fn MapMerge) | chebymap.rs:555-559 (fn map_merge) | architecture | ported |
-| 6 | Take a deep copy to modify | polymap.c:3640-3642 (fn MapMerge) | chebymap.rs:560-573 (fn map_merge) | architecture | ported |
-| 7 | Combine coefficients that refer to the same combination of input powers, forward then inverse | polymap.c:3644-3750 (fn MapMerge) | polymap.rs:850-894 (fn consolidated_terms) | architecture | ported |
-| 8 | If any transformation changed, store the new PolyMap in place of the old and report a change | polymap.c:3752-3765 (fn MapMerge) | polymap.rs:889-893 (fn consolidated_terms), chebymap.rs:574-575 (fn map_merge) | architecture | ported |
-| 9 | Test whether the forward transformation is linear, accumulating an offset vector and a matrix with the input normalisation folded in | polymap.c:3767-3884 (fn MapMerge) | polymap.rs:914-959 (fn linear_replacement), chebymap.rs:546-548 (fn map_merge) | architecture | ported |
-| 10 | If it is linear, build the ShiftMap and MatrixMap and compose them | polymap.c:3886-3897 (fn MapMerge) | polymap.rs:961-971 (fn linear_replacement) | architecture | ported |
-| 11 | Replace the PolyMap in the list with that composition | polymap.c:3899-3906 (fn MapMerge) | chebymap.rs:550 (fn map_merge) | architecture | ported |
-| 12 | Return the index of the first modified element | polymap.c:3907-3909 (fn MapMerge) | chebymap.rs:551 (fn map_merge) | architecture | ported |
+| 4 | See if the PolyMap can be replaced by a simpler Mapping, without reference to its neighbours | polymap.c:3626-3628 (fn MapMerge) | chebymap.rs:441-480 (fn map_merge) | architecture | ported |
+| 5 | Get the input and output counts of the transformation as constructed | polymap.c:3630-3638 (fn MapMerge) | chebymap.rs:459-463 (fn map_merge) | architecture | ported |
+| 6 | Take a deep copy to modify | polymap.c:3640-3642 (fn MapMerge) | chebymap.rs:464-477 (fn map_merge) | architecture | ported |
+| 7 | Combine coefficients that refer to the same combination of input powers, forward then inverse | polymap.c:3644-3750 (fn MapMerge) | polymap.rs:868-912 (fn consolidated_terms) | architecture | ported |
+| 8 | If any transformation changed, store the new PolyMap in place of the old and report a change | polymap.c:3752-3765 (fn MapMerge) | polymap.rs:907-911 (fn consolidated_terms), chebymap.rs:478-479 (fn map_merge) | architecture | ported |
+| 9 | Test whether the forward transformation is linear, accumulating an offset vector and a matrix with the input normalisation folded in | polymap.c:3767-3884 (fn MapMerge) | polymap.rs:932-977 (fn linear_replacement), chebymap.rs:450-452 (fn map_merge) | architecture | ported |
+| 10 | If it is linear, build the ShiftMap and MatrixMap and compose them | polymap.c:3886-3897 (fn MapMerge) | polymap.rs:979-989 (fn linear_replacement) | architecture | ported |
+| 11 | Replace the PolyMap in the list with that composition | polymap.c:3899-3906 (fn MapMerge) | chebymap.rs:454 (fn map_merge) | architecture | ported |
+| 12 | Return the index of the first modified element | polymap.c:3907-3909 (fn MapMerge) | chebymap.rs:455 (fn map_merge) | architecture | ported |
 | 13 | Free the offset and matrix arrays | polymap.c:3911-3914 (fn MapMerge) | -- | ceremony | n/a: owned values are dropped |
-| 14 | Otherwise see if the PolyMap can be merged with a neighbour | polymap.c:3920-3922 (fn MapMerge) | chebymap.rs:578 (fn map_merge) | architecture | ported |
-| 15 | The only merge available is a PolyMap with its own inverse, in series | polymap.c:3924-3928 (fn MapMerge) | chebymap.rs:481-488 (fn try_merge) | architecture | ported |
-| 16 | Temporarily set the nominated PolyMap's Invert flag to the requested value | polymap.c:3930-3934 (fn MapMerge) | chebymap.rs:498-502 (fn try_merge) | architecture | ported |
-| 17 | Read the nominated PolyMap's shape at that orientation | polymap.c:3936-3938 (fn MapMerge) | chebymap.rs:511-512 (fn try_merge) | architecture | ported |
+| 14 | Otherwise see if the PolyMap can be merged with a neighbour | polymap.c:3920-3922 (fn MapMerge) | chebymap.rs:482 (fn map_merge) | architecture | ported |
+| 15 | The only merge available is a PolyMap with its own inverse, in series | polymap.c:3924-3928 (fn MapMerge) | chebymap.rs:385-392 (fn try_merge) | architecture | ported |
+| 16 | Temporarily set the nominated PolyMap's Invert flag to the requested value | polymap.c:3930-3934 (fn MapMerge) | chebymap.rs:402-406 (fn try_merge) | architecture | ported |
+| 17 | Read the nominated PolyMap's shape at that orientation | polymap.c:3936-3938 (fn MapMerge) | chebymap.rs:415-416 (fn try_merge) | architecture | ported |
 | 18 | Take each neighbour in turn, skipping one that does not exist or is not a PolyMap | polymap.c:3940-3950 (fn MapMerge) | mappings/simplify.rs:1370-1391 (fn default_map_merge) | architecture | ported |
-| 19 | Require the neighbour to be used in the opposite direction | polymap.c:3952-3953 (fn MapMerge) | chebymap.rs:485-487 (fn try_merge) | architecture | ported |
-| 20 | Set the neighbour's Invert flag so the equality test compares like with like | polymap.c:3955-3963 (fn MapMerge) | chebymap.rs:503-505 (fn try_merge) | architecture | ported |
-| 21 | Use astEqual to check the coefficients and the rest are equal | polymap.c:3965-3967 (fn MapMerge) | chebymap.rs:506-508 (fn try_merge), chebymap.rs:585-629 (fn equal) | architecture | ported |
+| 19 | Require the neighbour to be used in the opposite direction | polymap.c:3952-3953 (fn MapMerge) | chebymap.rs:389-391 (fn try_merge) | architecture | ported |
+| 20 | Set the neighbour's Invert flag so the equality test compares like with like | polymap.c:3955-3963 (fn MapMerge) | chebymap.rs:407-409 (fn try_merge) | architecture | ported |
+| 21 | Use astEqual to check the coefficients and the rest are equal | polymap.c:3965-3967 (fn MapMerge) | chebymap.rs:410-412 (fn try_merge), chebymap.rs:489-533 (fn equal) | architecture | ported |
 | 22 | Re-instate the neighbour's Invert flag | polymap.c:3969-3970 (fn MapMerge) | -- | ceremony | n/a: the two ChebyMaps are compared as copies, so the list entries are never mutated and nothing is restored |
-| 23 | Move on if the neighbour differs | polymap.c:3972-3974 (fn MapMerge) | chebymap.rs:506-508 (fn try_merge) | architecture | ported |
-| 24 | Replace both entries with UnitMaps and leave the loop | polymap.c:3976-3995 (fn MapMerge) | chebymap.rs:511-512 (fn try_merge), mappings/simplify.rs:1445-1453 (fn default_map_merge) | architecture | ported |
+| 23 | Move on if the neighbour differs | polymap.c:3972-3974 (fn MapMerge) | chebymap.rs:410-412 (fn try_merge) | architecture | ported |
+| 24 | Replace both entries with UnitMaps and leave the loop | polymap.c:3976-3995 (fn MapMerge) | chebymap.rs:415-416 (fn try_merge), mappings/simplify.rs:1445-1453 (fn default_map_merge) | architecture | ported |
 | 25 | Re-instate the nominated PolyMap's Invert flag if it was not replaced | polymap.c:3998-4000 (fn MapMerge) | -- | ceremony | n/a: nothing was mutated, so nothing is restored |
-| 26 | Return the result | polymap.c:4003-4004 (fn MapMerge) | chebymap.rs:578 (fn map_merge) | ceremony | ported |
+| 26 | Return the result | polymap.c:4003-4004 (fn MapMerge) | chebymap.rs:482 (fn map_merge) | ceremony | ported |
 
 ## Rows 16 to 21 — the comparison is `astEqual`, both here and in C
 
@@ -91,7 +91,7 @@ ones a second time, so a pair agreeing on their forward transformations, their
 bounding boxes and the *shape* of their inverses cancelled however far apart their
 inverse coefficients were; upstream `ec86cfaf` compares the inverse
 transformation's own coefficients and powers, and ChebyMap picks that up through
-`self.poly.equal` (`chebymap.rs:585 (fn equal)`).
+`self.poly.equal` (`chebymap.rs:489 (fn equal)`).
 `docs/issues/c-library-quirks.md` carries the history.
 
 ## Rows 9 to 11 — the linear replacement, with the normalisation folded in
@@ -167,4 +167,4 @@ returning the same index. The merge loop runs to convergence either way, and C's
 own next pass strips the redundant UnitMap, so both routes settle on the same
 list. The dimension is the one C uses: the input count of the pair as applied,
 which is the nominated ChebyMap's effective `nin`
-(`chebymap.rs:510-511 (fn try_merge)`).
+(`chebymap.rs:414-415 (fn try_merge)`).

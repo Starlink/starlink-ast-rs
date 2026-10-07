@@ -18,8 +18,8 @@ use crate::error::{AstError, AstResult, ErrorCode};
 use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
 
 use super::cmpmap::{CmpMap, Composition};
-use super::helpers::{ast_equal, point_has_bad};
-use super::polymap::{PolyMap, PolyTerm};
+use super::helpers::ast_equal;
+use super::polymap::{PolyMap, PolyPowers, PolyTerm, monomial_powers, poly_transform};
 use super::rate::numeric_rate;
 use super::unit::UnitMap;
 use super::{DynMapping, Mapping};
@@ -264,86 +264,51 @@ impl ChebyMap {
 // Chebyshev evaluation helpers
 // ---------------------------------------------------------------------------
 
-/// Evaluate the Chebyshev polynomial of the first kind T_n(x).
-///
-/// Uses the recurrence relation:
-/// - T_0(x) = 1
-/// - T_1(x) = x
-/// - T_{k+1}(x) = 2*x*T_k(x) - T_{k-1}(x)
-#[inline]
-fn chebyshev_t(n: usize, x: f64) -> f64 {
-    match n {
-        0 => 1.0,
-        1 => x,
-        _ => {
-            let mut t_prev = 1.0; // T_0
-            let mut t_curr = x; // T_1
-            for _ in 2..=n {
-                let t_next = 2.0 * x * t_curr - t_prev;
-                t_prev = t_curr;
-                t_curr = t_next;
+impl PolyPowers for ChebyMap {
+    /// The Chebyshev polynomials of the first kind of each input, scaled
+    /// into [-1, 1] by the transformation's bounding box, in place of its
+    /// powers (chebymap.c `PolyPowers`). An input that is bad, or outside the
+    /// box, has bad values above degree zero. A transformation with no box is
+    /// an ordinary polynomial.
+    fn poly_powers(
+        &self,
+        work: &mut [Vec<f64>],
+        max_pows: &[usize],
+        input: &[f64],
+        forward: bool,
+    ) -> bool {
+        let (scale, offset) = if forward {
+            (Some(&self.scale_f[..]), Some(&self.offset_f[..]))
+        } else {
+            (self.scale_i.as_deref(), self.offset_i.as_deref())
+        };
+        let (Some(scale), Some(offset)) = (scale, offset) else {
+            return monomial_powers(work, max_pows, input);
+        };
+        let mut all_good = true;
+        for (axis, pwork) in work.iter_mut().enumerate() {
+            pwork[0] = 1.0;
+            let mp = max_pows[axis];
+            let x = input[axis];
+            if x == BAD_VALUE {
+                pwork[1..=mp].fill(BAD_VALUE);
+                all_good &= mp == 0;
+                continue;
             }
-            t_curr
+            let x = x * scale[axis] + offset[axis];
+            if x.abs() <= 1.0 {
+                // T1(x) = x, and T(n+1)(x) = 2 x Tn(x) - T(n-1)(x).
+                pwork[1] = x;
+                for ip in 2..=mp {
+                    pwork[ip] = 2.0 * x * pwork[ip - 1] - pwork[ip - 2];
+                }
+            } else {
+                pwork[1..=mp].fill(BAD_VALUE);
+                all_good &= mp == 0;
+            }
         }
+        all_good
     }
-}
-
-/// Evaluate Chebyshev polynomial terms for a single input point.
-///
-/// 1. Checks each input is within [lbnd, ubnd]. If any is outside, all
-///    outputs are BAD_VALUE.
-/// 2. Normalizes inputs: `x_norm[i] = input[i] * scale[i] + offset[i]`
-/// 3. For each output axis, sums matching terms:
-///    `coeff * product(T_{powers[i]}(x_norm[i]))`
-#[allow(clippy::too_many_arguments)]
-fn eval_cheby(
-    terms: &[PolyTerm],
-    n_in: usize,
-    n_out: usize,
-    input: &[f64],
-    scale: &[f64],
-    offset: &[f64],
-    lbnd: &[f64],
-    ubnd: &[f64],
-) -> Vec<f64> {
-    debug_assert_eq!(input.len(), n_in);
-    debug_assert_eq!(scale.len(), n_in);
-    debug_assert_eq!(offset.len(), n_in);
-    debug_assert_eq!(lbnd.len(), n_in);
-    debug_assert_eq!(ubnd.len(), n_in);
-
-    // Check for bad input values.
-    if point_has_bad(input) {
-        return vec![BAD_VALUE; n_out];
-    }
-
-    // Normalize inputs to [-1, 1] and reject points outside the bounding box.
-    // C applies the scaling first, then tests `fabs(x*scale + offset) <= 1.0`
-    // (chebymap.c:1170-1174) — the bounds test is on the *scaled* coordinate,
-    // not the raw input against lbnd/ubnd, so the two agree to the last bit at
-    // the box boundary. (`lbnd`/`ubnd` are unused here, kept for the signature.)
-    let _ = (lbnd, ubnd);
-    // `point_has_bad` above already rejected non-finite inputs, so every
-    // `x_norm[i]` here is finite and `> 1.0` is exactly C's `!(fabs(x) <= 1.0)`.
-    let mut x_norm = vec![0.0; n_in];
-    for i in 0..n_in {
-        x_norm[i] = input[i] * scale[i] + offset[i];
-        if x_norm[i].abs() > 1.0 {
-            return vec![BAD_VALUE; n_out];
-        }
-    }
-
-    // Evaluate terms.
-    let mut output = vec![0.0; n_out];
-    for term in terms {
-        debug_assert_eq!(term.powers.len(), n_in);
-        let mut val = term.coeff;
-        for (i, &power) in term.powers.iter().enumerate() {
-            val *= chebyshev_t(power, x_norm[i]);
-        }
-        output[term.out_axis - 1] += val;
-    }
-    output
 }
 
 // ---------------------------------------------------------------------------
@@ -385,88 +350,27 @@ impl Mapping for ChebyMap {
         Ok(out)
     }
 
-    /// NaN-as-bad fast path. ChebyMap's `transform_into` has two BAD-emit
-    /// sites (the is_bad input gate and the domain-bounds check) and a
-    /// Chebyshev recurrence that propagates NaN cleanly. Cheapest correct
-    /// adaptation is to call `transform_into` and translate any `BAD_VALUE`
-    /// in the output to `f64::NAN` so downstream NaN-aware stages receive
-    /// the protocol-canonical sentinel. The translation is O(N × ncoord),
-    /// comparable to a single per-point is_bad check.
     fn transform_into_nan(
         &self,
         pts: &PointSet,
         forward: bool,
         out: &mut PointSet,
     ) -> AstResult<()> {
-        self.transform_into(pts, forward, out)?;
-        let mut view = out.view_mut();
-        let flat = view.as_slice_mut().expect("PointSet is C-contiguous");
-        for v in flat.iter_mut() {
-            if *v == BAD_VALUE {
-                *v = f64::NAN;
-            }
+        super::require_direction(self, forward, "ChebyMap transform")?;
+        let fwd = self.effective_forward(forward);
+        if let Some(tables) = self.poly.term_tables(fwd) {
+            poly_transform(self, fwd, &tables, pts, out, f64::NAN);
         }
         Ok(())
     }
 
     fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()> {
-        let eff_fwd = self.effective_forward(forward);
-
-        // Get the underlying (un-inverted) dimensions.
-        let (base_nin, base_nout) = if self.inverted {
-            (self.poly.nout(), self.poly.nin())
-        } else {
-            (self.poly.nin(), self.poly.nout())
-        };
-
-        if eff_fwd {
-            // Forward: use forward terms with forward scale/offset/bounds.
-            let terms = self.poly.forward_terms();
-            if terms.is_empty() {
-                // No forward terms: all outputs zero (matching PolyMap).
-                for i in 0..pts.npoint() {
-                    out.point_mut(i).fill(0.0);
-                }
-            } else {
-                for i in 0..pts.npoint() {
-                    let inp = pts.point(i);
-                    let result = eval_cheby(
-                        terms,
-                        base_nin,
-                        base_nout,
-                        inp,
-                        &self.scale_f,
-                        &self.offset_f,
-                        &self.lbnd_f,
-                        &self.ubnd_f,
-                    );
-                    out.point_mut(i).copy_from_slice(&result);
-                }
-            }
-        } else {
-            // Inverse: use inverse terms with inverse scale/offset/bounds.
-            if let Some(inv_terms) = self.poly.inverse_terms() {
-                if let (Some(si), Some(oi), Some(li), Some(ui)) =
-                    (&self.scale_i, &self.offset_i, &self.lbnd_i, &self.ubnd_i)
-                {
-                    for i in 0..pts.npoint() {
-                        let inp = pts.point(i);
-                        let result =
-                            eval_cheby(inv_terms, base_nout, base_nin, inp, si, oi, li, ui);
-                        out.point_mut(i).copy_from_slice(&result);
-                    }
-                } else {
-                    // Inverse terms exist but no domain bounds: fill with BAD.
-                    for i in 0..pts.npoint() {
-                        out.point_mut(i).fill(BAD_VALUE);
-                    }
-                }
-            } else {
-                // No inverse available: fill with BAD.
-                for i in 0..pts.npoint() {
-                    out.point_mut(i).fill(BAD_VALUE);
-                }
-            }
+        // ChebyMap inherits PolyMap's Transform and overrides only the
+        // powers (chebymap.c).
+        super::require_direction(self, forward, "ChebyMap transform")?;
+        let fwd = self.effective_forward(forward);
+        if let Some(tables) = self.poly.term_tables(fwd) {
+            poly_transform(self, fwd, &tables, pts, out, BAD_VALUE);
         }
         Ok(())
     }
@@ -1012,13 +916,13 @@ impl Serializable for ChebyMap {
                     coeff_idx += 1;
                     let term_powers: Vec<usize> = powers[power_idx..power_idx + nin].to_vec();
                     power_idx += nin;
-                    if coeff != BAD_VALUE {
-                        forward.push(PolyTerm {
-                            coeff,
-                            powers: term_powers,
-                            out_axis: out_ax + 1,
-                        });
-                    }
+                    // A coefficient missing from the dump is bad, as C reads it,
+                    // and makes its output bad.
+                    forward.push(PolyTerm {
+                        coeff,
+                        powers: term_powers,
+                        out_axis: out_ax + 1,
+                    });
                 }
             }
         }
@@ -1052,7 +956,7 @@ impl Serializable for ChebyMap {
                     coeff_idx += 1;
                     let term_powers: Vec<usize> = powers[power_idx..power_idx + nout].to_vec();
                     power_idx += nout;
-                    if coeff != BAD_VALUE && coeff != 0.0 {
+                    if coeff != 0.0 {
                         inverse_terms.push(PolyTerm {
                             coeff,
                             powers: term_powers,
