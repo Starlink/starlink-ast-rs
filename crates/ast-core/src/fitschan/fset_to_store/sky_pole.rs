@@ -113,8 +113,8 @@ pub(crate) fn sky_pole(
         // degrees, so convert to radians for this function's internal
         // (radian) contract before the final `* DR2D` store.
         if proj != WcsProjection::Tpn {
-            lonpole_rad = wcsmap.get_pv(axlon_1based, 3).map(|v| v * DD2R);
-            latpole_rad = wcsmap.get_pv(axlon_1based, 4).map(|v| v * DD2R);
+            lonpole_rad = wcsmap.stored_pv(axlon_1based, 3).map(|v| v * DD2R);
+            latpole_rad = wcsmap.stored_pv(axlon_1based, 4).map(|v| v * DD2R);
         }
         // For TPN both stay None — TPN uses PV(lonax, 3/4) as
         // polynomial slots.

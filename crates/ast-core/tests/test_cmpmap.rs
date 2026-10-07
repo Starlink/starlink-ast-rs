@@ -248,3 +248,70 @@ fn parallel_with_inverted_cmpmap_child_canonicalises_for_serialisation() {
         "no inner CmpMap should carry Invert=1 after canonicalisation:\n{s}"
     );
 }
+
+/// C compares CmpMaps by setting each component's Invert flag to the one the
+/// CmpMap applies and asking the component's own Equal (cmpmap.c Equal), so
+/// an inverted UnitMap equals a UnitMap and an inverted ZoomMap(2) equals
+/// ZoomMap(0.5); ZoomMap(2) does not. The expectations are C's.
+#[test]
+fn cmpmap_equality_compares_components_as_applied() {
+    let series =
+        |a: Box<dyn Mapping>, b: Box<dyn Mapping>| CmpMap::new(a, b, Composition::Series).unwrap();
+    let inverted = |mut m: Box<dyn Mapping>| {
+        m.invert();
+        m
+    };
+    let zoom = |f: f64| -> Box<dyn Mapping> { Box::new(ZoomMap::new(1, f).unwrap()) };
+    let shift = || -> Box<dyn Mapping> { Box::new(ShiftMap::new(vec![1.0])) };
+
+    let a = series(inverted(Box::new(UnitMap::new(1))), zoom(2.0));
+    let b = series(Box::new(UnitMap::new(1)), zoom(2.0));
+    assert!(a.equal(&b));
+
+    let a = series(inverted(zoom(2.0)), shift());
+    let b = series(zoom(0.5), shift());
+    assert!(a.equal(&b));
+
+    let a = series(zoom(2.0), shift());
+    let b = series(zoom(0.5), shift());
+    assert!(!a.equal(&b));
+}
+
+/// A FrameSet given as a component is replaced by its base-to-current
+/// Mapping, as C's astInitCmpMap does. The expected dump is C's for the same
+/// construction.
+#[test]
+fn a_frameset_component_becomes_its_mapping() {
+    use ast_core::frames::{BasicFrameBuilder, FrameRef, FrameSet};
+    use ast_core::{AnyObject, to_native_string};
+
+    let frame = || Box::new(BasicFrameBuilder::new(2).build().unwrap());
+    let mut fs = FrameSet::new(frame());
+    fs.add_frame(
+        FrameRef::Base,
+        Box::new(ZoomMap::new(2, 3.0).unwrap()),
+        frame(),
+    )
+    .unwrap();
+    let cmp = CmpMap::new(Box::new(fs), Box::new(UnitMap::new(2)), Composition::Series).unwrap();
+    let want = [
+        " Begin CmpMap \t# Compound Mapping",
+        "    Nin = 2 \t# Number of input coordinates",
+        " IsA Mapping \t# Mapping between coordinate systems",
+        "    MapA = \t# First component Mapping",
+        "       Begin ZoomMap \t# Zoom about the origin",
+        "          Nin = 2 \t# Number of input coordinates",
+        "       IsA Mapping \t# Mapping between coordinate systems",
+        "          Zoom = 3 \t# Zoom factor",
+        "       End ZoomMap",
+        "    MapB = \t# Second component Mapping",
+        "       Begin UnitMap \t# Unit (null) Mapping",
+        "          Nin = 2 \t# Number of input coordinates",
+        "       IsA Mapping \t# Mapping between coordinate systems",
+        "       End UnitMap",
+        " End CmpMap",
+    ]
+    .join("\n")
+        + "\n";
+    assert_eq!(to_native_string(&AnyObject::CmpMap(cmp)).unwrap(), want);
+}

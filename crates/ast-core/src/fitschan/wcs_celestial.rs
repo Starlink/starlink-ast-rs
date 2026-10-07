@@ -212,12 +212,12 @@ pub(crate) fn build_celestial_with_def_b1950(
     // Skip for TPN — PV3/PV4 there are polynomial coefficients.
     let is_tpn = matches!(proj, WcsProjection::Tpn);
     if !is_tpn {
-        if wcsmap.get_pv(lon_axis + 1, 3).is_none()
+        if wcsmap.stored_pv(lon_axis + 1, 3).is_none()
             && let Some(lon_deg) = store.lonpole
         {
             let _ = wcsmap.set_pv(lon_axis + 1, 3, lon_deg);
         }
-        if wcsmap.get_pv(lon_axis + 1, 4).is_none()
+        if wcsmap.stored_pv(lon_axis + 1, 4).is_none()
             && let Some(lat_deg) = store.latpole
         {
             let _ = wcsmap.set_pv(lon_axis + 1, 4, lat_deg);

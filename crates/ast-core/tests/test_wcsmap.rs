@@ -818,7 +818,7 @@ fn set_pv_rejects_an_index_the_projection_cannot_use() {
     assert!(map.set_pv(1, 4, 0.0).is_ok());
     assert!(map.set_pv(1, 5, 0.0).is_err());
     // A rejected parameter is not stored.
-    assert_eq!(map.get_pv(2, 1), None);
+    assert!(!map.test_pv(2, 1));
 
     // ZPN's latitude axis accepts the full polynomial range.
     let mut zpn = WcsMap::new(2, WcsProjection::Zpn, 1, 2).unwrap();

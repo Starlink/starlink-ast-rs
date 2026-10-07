@@ -123,7 +123,21 @@ impl CmpMap {
     ///
     /// - `Series`: `first.nout()` must equal `second.nin()`.
     /// - `Parallel`: no dimension constraint.
+    ///
+    /// A FrameSet component is replaced by its base-to-current Mapping, as
+    /// C's `astInitCmpMap` does.
     pub fn new(first: DynMapping, second: DynMapping, kind: Composition) -> AstResult<Self> {
+        let as_mapping = |map: DynMapping| -> AstResult<DynMapping> {
+            match map.as_any().downcast_ref::<crate::frames::FrameSet>() {
+                Some(fs) => fs.mapping(
+                    crate::frames::FrameRef::Base,
+                    crate::frames::FrameRef::Current,
+                ),
+                None => Ok(map),
+            }
+        };
+        let first = as_mapping(first)?;
+        let second = as_mapping(second)?;
         if kind == Composition::Series && first.nout() != second.nin() {
             return Err(AstError::new(
                 ErrorCode::Innco,
@@ -900,10 +914,22 @@ impl Mapping for CmpMap {
         if list_self.len() != list_other.len() {
             return false;
         }
+        // C sets each component's Invert flag to the one the list applies and
+        // lets the component's own Equal decide (cmpmap.c Equal), so an
+        // inverted ZoomMap equals one with the reciprocal factor.
+        let applied = |map: &DynMapping, inv: bool| {
+            let mut map = map.clone();
+            if map.is_inverted() != inv {
+                map.invert();
+            }
+            map
+        };
         list_self
             .iter()
             .zip(list_other.iter())
-            .all(|((m1, inv1, _), (m2, inv2, _))| inv1 == inv2 && m1.equal(m2.as_ref()))
+            .all(|((m1, inv1, _), (m2, inv2, _))| {
+                applied(m1, *inv1).equal(applied(m2, *inv2).as_ref())
+            })
     }
 
     fn map_split_zero_based(&self, in_axes: &[usize]) -> Option<(Vec<usize>, DynMapping)> {

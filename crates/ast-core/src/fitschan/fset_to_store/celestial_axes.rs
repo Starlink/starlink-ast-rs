@@ -240,7 +240,7 @@ pub(crate) fn celestial_axes(args: CelestialAxesArgs<'_>) -> AstResult<DynMappin
     // `(axlon_1, axlat_1)` indices match the full-pipeline axis
     // numbering.
     for m in 0..WCSLIB_MXPAR {
-        if let Some(pv) = wcsmap_full.get_pv(axlon_1, m)
+        if let Some(pv) = wcsmap_full.stored_pv(axlon_1, m)
             && pv.is_finite()
             && (m < 3 || m > 4 || tpn)
             && fits_ilon < args.store.pv.len()
@@ -248,7 +248,7 @@ pub(crate) fn celestial_axes(args: CelestialAxesArgs<'_>) -> AstResult<DynMappin
         {
             args.store.pv[fits_ilon][m] = Some(pv);
         }
-        if let Some(pv) = wcsmap_full.get_pv(axlat_1, m)
+        if let Some(pv) = wcsmap_full.stored_pv(axlat_1, m)
             && pv.is_finite()
             && fits_ilat < args.store.pv.len()
             && m < args.store.pv[fits_ilat].len()
@@ -263,7 +263,7 @@ pub(crate) fn celestial_axes(args: CelestialAxesArgs<'_>) -> AstResult<DynMappin
     // point, so PPC ≠ IWC and a translation is needed. We compute it
     // by inverting the WcsMap on the native fiducial.
     let mut ppcfid = vec![0.0_f64; nwcs];
-    if !tpn && wcsmap_full.get_pv(axlon_1, 0).unwrap_or(0.0) != 0.0 {
+    if !tpn && wcsmap_full.stored_pv(axlon_1, 0).unwrap_or(0.0) != 0.0 {
         if let Some((x0, y0)) = compute_fiducial_ppc(wcsmap)? {
             // x0/y0 are radians at the native lon/lat axes — convert
             // to degrees for IWC and place at ilon/ilat positions in
@@ -584,12 +584,12 @@ fn lift_wcsmap_to_full_axes(
     let src_lon = wm.lonax();
     let src_lat = wm.latax();
     for m in 0..100 {
-        if let Some(v) = wm.get_pv(src_lon, m)
+        if let Some(v) = wm.stored_pv(src_lon, m)
             && v.is_finite()
         {
             let _ = new_wm.set_pv(lon_1b, m, v);
         }
-        if let Some(v) = wm.get_pv(src_lat, m)
+        if let Some(v) = wm.stored_pv(src_lat, m)
             && v.is_finite()
         {
             let _ = new_wm.set_pv(lat_1b, m, v);

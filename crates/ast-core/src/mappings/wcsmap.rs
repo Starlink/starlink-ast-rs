@@ -331,11 +331,66 @@ impl WcsMap {
         self.proj
     }
 
-    /// Get the PV parameter value for the given 1-based axis and
-    /// 0-based parameter index. Returns `None` if the parameter has
-    /// not been set, or `axis` is neither the longitude nor latitude
-    /// axis. Inverse of [`Self::set_pv`].
-    pub fn get_pv(&self, axis: usize, m: usize) -> Option<f64> {
+    /// The value of the projection parameter `m` (0-based) of axis `axis`
+    /// (1-based), as C's `astGetPV` gives it (wcsmap.c `GetPV`).
+    ///
+    /// A latitude parameter not set takes its default, which is bad for the
+    /// conic and Bonne projections' PV2_1; a longitude parameter not set is
+    /// bad, except that, other than for TPN, PVi_0 defaults to 0 and PVi_1
+    /// and PVi_2 to the native longitude and latitude of the reference point
+    /// in degrees. An axis index outside the Mapping, or a parameter index
+    /// beyond [`Self::pv_max`] for the axis, is an `AST__AXIIN` error; an axis
+    /// that is neither the longitude nor the latitude axis has no parameters.
+    pub fn get_pv(&self, axis: usize, m: usize) -> AstResult<f64> {
+        if axis == 0 || axis > self.ncoord {
+            return Err(AstError::new(
+                ErrorCode::Axiin,
+                format!(
+                    "WcsMap: axis index ({axis}) is invalid in PV{axis}_{m}; it should be in \
+                     the range 1 to {}",
+                    self.ncoord
+                ),
+            ));
+        }
+        if self.pv_max(axis).is_none_or(|max| m > max) {
+            return Err(AstError::new(
+                ErrorCode::Axiin,
+                format!(
+                    "WcsMap: parameter index ({m}) is invalid in PV{axis}_{m} for a \
+                     \"{}\" projection",
+                    self.proj.code()
+                ),
+            ));
+        }
+        let mut value = if axis - 1 == self.latax {
+            self.prj.borrow().get_param(0, m).unwrap_or(BAD_VALUE)
+        } else {
+            self.params[1]
+                .get(m)
+                .copied()
+                .flatten()
+                .unwrap_or(BAD_VALUE)
+        };
+        if value == BAD_VALUE && axis - 1 == self.lonax && self.proj != WcsProjection::Tpn {
+            value = match m {
+                0 => 0.0,
+                1 => self.nat_lon() * DR2D,
+                2 => self.nat_lat() * DR2D,
+                _ => BAD_VALUE,
+            };
+        }
+        Ok(value)
+    }
+
+    /// Whether projection parameter `m` of axis `axis` (1-based) has been
+    /// set, as C's `astTestPV` reports.
+    pub fn test_pv(&self, axis: usize, m: usize) -> bool {
+        self.stored_pv(axis, m).is_some()
+    }
+
+    /// The value set for projection parameter `m` of axis `axis` (1-based),
+    /// or `None` when it is unset or the axis has no parameters.
+    pub(crate) fn stored_pv(&self, axis: usize, m: usize) -> Option<f64> {
         let prj_axis = if axis == 0 || axis > self.ncoord {
             return None;
         } else if axis - 1 == self.latax {
