@@ -1185,6 +1185,18 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
         AxisKind::Plain
     }
 
+    /// Whether `val` lies between `lo` and `hi` on a 1-based `axis`,
+    /// including the limits when `closed`. Mirrors C `astAxIn` (frame.c),
+    /// which asks the Axis object: a plain Axis compares the values
+    /// (axis.c `AxisIn`), and a SkyAxis first moves `val` by whole turns
+    /// into the range (skyaxis.c `AxisIn`).
+    fn ax_in(&self, axis: usize, lo: f64, hi: f64, val: f64, closed: bool) -> bool {
+        match self.get_axis(axis) {
+            AxisKind::Sky { .. } => skyaxis::axis_in(lo, hi, val, closed),
+            AxisKind::Plain => axis::axis_in(lo, hi, val, closed),
+        }
+    }
+
     /// Signed axis increment from `v1` to `v2` on a 1-based `axis`.
     ///
     /// Dispatches to the Axis object on that axis. Mirrors C `astAxDistance`

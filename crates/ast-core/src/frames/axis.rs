@@ -326,3 +326,13 @@ impl FrameAxis {
         }
     }
 }
+
+/// Whether `val` lies between `lo` and `hi`, including the limits when
+/// `closed`. Mirrors axis.c `AxisIn`.
+pub(crate) fn axis_in(lo: f64, hi: f64, val: f64, closed: bool) -> bool {
+    if closed {
+        lo <= val && val <= hi
+    } else {
+        lo < val && val < hi
+    }
+}

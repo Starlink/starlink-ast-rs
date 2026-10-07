@@ -1144,6 +1144,31 @@ fn parse_sexagesimal_fields(text: &str, first: f64, sep_pos: usize) -> AstResult
     Ok((total, pos))
 }
 
+/// Whether the angle `val` lies between `lo` and `hi`, including the limits
+/// when `closed`, after moving it by whole turns into the range. Mirrors
+/// skyaxis.c `AxisIn`.
+pub(crate) fn axis_in(lo: f64, hi: f64, val: f64, closed: bool) -> bool {
+    let turn = 2.0 * std::f64::consts::PI;
+    let mut val = val;
+    if closed {
+        while val > hi {
+            val -= turn;
+        }
+        while val < lo {
+            val += turn;
+        }
+        val <= hi
+    } else {
+        while val >= hi {
+            val -= turn;
+        }
+        while val <= lo {
+            val += turn;
+        }
+        val < hi
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

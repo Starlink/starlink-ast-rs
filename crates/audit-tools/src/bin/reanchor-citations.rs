@@ -60,14 +60,17 @@ fn git(root: &Path, args: &[&str]) -> Option<String> {
 /// The submodule holding the pinned C source.
 const SUBMODULE: &str = "reference/starlink-ast";
 
-/// The commit that wrote each line of `path`, 1-based, from `git blame`.
+/// The commit that wrote each line of `path` as it stands in the working
+/// tree, 1-based, from `git blame`.
 ///
 /// A checklist's rows are written by different commits, and a row's own commit
 /// is the state its citation was checked against, so the baseline has to be read
-/// per line rather than per file.
+/// per line rather than per file. The working tree is blamed, not `HEAD`, so
+/// the lines are the ones the tool reads; a line not yet committed comes back
+/// as the all-zero commit.
 fn blame(root: &Path, path: &Path) -> Option<Vec<String>> {
     let rel = path.strip_prefix(root).unwrap_or(path).to_string_lossy();
-    let out = git(root, &["blame", "--porcelain", "HEAD", "--", &rel])?;
+    let out = git(root, &["blame", "--porcelain", "--", &rel])?;
     let mut shas = Vec::new();
     for line in out.lines() {
         // A porcelain header is "<sha> <orig-line> <final-line> [<count>]", and
@@ -274,6 +277,12 @@ fn main() {
                     ));
                     continue;
                 };
+                // A row not yet committed was written, or already re-anchored,
+                // against the sources as they stand, so it has nothing to
+                // follow. Relocating it again would move it twice.
+                if sha.chars().all(|c| c == '0') {
+                    continue;
+                }
                 let in_submodule = src_path.starts_with(root.join(SUBMODULE));
                 let rev = if in_submodule {
                     match pin_at(&root, sha) {

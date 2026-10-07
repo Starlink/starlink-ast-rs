@@ -809,6 +809,10 @@ impl RegionGeometry for BoxRegion {
         let naxes = self.data.points[0].len();
         let (lbnd, ubnd) = self.bounds();
         let closed = self.data.closed_for_base_inside();
+        // Each axis value is tested by the base Frame's Axis object, so a
+        // sky axis wraps the value into the Box's range (box.c:4268,
+        // `astAxIn`).
+        let frame = self.data.frameset.base();
 
         let mut result = vec![false; npoint];
 
@@ -823,17 +827,7 @@ impl RegionGeometry for BoxRegion {
             // Check each axis constraint.
             let mut all_pass = true;
             for ax in 0..naxes {
-                let p = point[ax];
-                let lb = lbnd[ax];
-                let ub = ubnd[ax];
-
-                let pass = if closed {
-                    lb <= p && p <= ub
-                } else {
-                    lb < p && p < ub
-                };
-
-                if !pass {
+                if !frame.ax_in(ax + 1, lbnd[ax], ubnd[ax], point[ax], closed) {
                     all_pass = false;
                     break;
                 }

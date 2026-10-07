@@ -232,7 +232,7 @@ A KeyMap does not read or write Ident at all; that is a separate gap.
 |---|---|---|
 | Abbrev, Centre, Fields, Gap, FrameGrid, AxisGap | Frame, SkyFrame, TimeFrame, CmpFrame | Plot support. Deferred to the Plot step. |
 | NormalPoints / NormPoints | Frame, SkyFrame, CmpFrame, FrameSet | Only the public `astNormPoints` reaches it, plus Region mesh code (`region.c:6671, 9385, 10996`). Visible in Region meshes that cross RA=0. Missing public API. |
-| AxIn | Frame, Axis, SkyAxis | Range test with sky wrap, used by `box.c`. Visible in Box containment on sky axes. |
+| AxIn | Frame, Axis, SkyAxis | PORTED 2026-10-07 as `Frame::ax_in`, with `axis::axis_in` and `skyaxis::axis_in`; Box containment uses it, so a Box on sky axes wraps each value into its range. `tests/test_box_axin.rs`, from `tools/oracle_fixtures/box_axin_probe.c`. |
 | ReportPoints | Frame | Diagnostic output for Mapping `Report=1` only. |
 | ValidateAxisSelection | Frame | Its absence shows up as FR-7. |
 | CurrentTime | TimeFrame | Public and Fortran API only; no internal caller. |
