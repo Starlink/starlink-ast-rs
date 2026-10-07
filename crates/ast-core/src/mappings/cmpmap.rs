@@ -725,6 +725,11 @@ impl Mapping for CmpMap {
         &mut self.mapping_flags
     }
 
+    /// cmpmap.c `GetIsLinear`: linear when both components are.
+    fn is_linear(&self) -> bool {
+        self.first.is_linear() && self.second.is_linear()
+    }
+
     /// cmpmap.c `RemoveRegions`: remove the Regions from both components.
     /// In series, a component that became a UnitMap drops out and the other
     /// is returned with the Invert flag the CmpMap applies to it; in

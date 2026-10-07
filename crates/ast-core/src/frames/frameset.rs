@@ -1819,6 +1819,12 @@ impl Mapping for FrameSet {
         &mut self.mapping_flags
     }
 
+    /// frameset.c `GetIsLinear`: whether the base-to-current Mapping is.
+    fn is_linear(&self) -> bool {
+        self.mapping(FrameRef::Base, FrameRef::Current)
+            .is_ok_and(|map| map.is_linear())
+    }
+
     /// frameset.c `RemoveRegions`: remove the Regions from every Mapping
     /// and every Frame.
     fn mapping_without_regions(&self) -> Option<DynMapping> {

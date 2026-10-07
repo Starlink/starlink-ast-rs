@@ -1134,6 +1134,12 @@ impl Mapping for CmpRegion {
         &mut self.data.mapping_flags
     }
 
+    /// A Region is a Frame, which C's frame.c `GetIsLinear` reports as
+    /// linear.
+    fn is_linear(&self) -> bool {
+        true
+    }
+
     /// region.c `RemoveRegions`: a Region becomes its Frame, which as a
     /// Mapping is a UnitMap with its number of axes.
     fn mapping_without_regions(&self) -> Option<crate::mappings::DynMapping> {

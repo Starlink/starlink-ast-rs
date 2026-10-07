@@ -161,6 +161,11 @@ impl Mapping for WinMap {
         &mut self.mapping_flags
     }
 
+    /// Linear, as C's `GetIsLinear` for the class reports.
+    fn is_linear(&self) -> bool {
+        true
+    }
+
     fn nin(&self) -> usize {
         self.shifts.len()
     }

@@ -18,7 +18,7 @@ comments: simplify the CmpMap on its own; decompose a series CmpMap into the
 list; merge adjacent CmpMaps; update the list for that merge; and swap a series
 CmpMap past a neighbouring PermMap.
 
-The Rust `CmpMap::map_merge` (`cmpmap.rs:849-856 (fn map_merge)`) delegates to
+The Rust `CmpMap::map_merge` (`cmpmap.rs:854-861 (fn map_merge)`) delegates to
 `simplify::cmp_map_merge` (`mappings/simplify.rs:694-813 (fn cmp_map_merge)`), so Rust sites below are in
 `mappings/simplify.rs` unless stated.
 
@@ -145,9 +145,9 @@ engine for every composite Mapping: decompose the tree into a series or parallel
 list, drive each component's `astMapMerge` from a nominate loop until the list
 stops improving, and fold the survivors back into a right-associated CmpMap.
 
-The Rust `CmpMap::simplified` (`cmpmap.rs:842-847 (fn simplified)`) delegates to
+The Rust `CmpMap::simplified` (`cmpmap.rs:847-852 (fn simplified)`) delegates to
 `simplify::simplify_mapping` (`mappings/simplify.rs:3489-3584 (fn simplify_mapping_reporting_change)`), so Rust sites below are in
-`mappings/simplify.rs` unless stated. The `has_been_simplified` test at `cmpmap.rs:843 (fn simplified)` is
+`mappings/simplify.rs` unless stated. The `has_been_simplified` test at `cmpmap.rs:848 (fn simplified)` is
 C's `astGetIsSimple` short-circuit, which C performs one level up in
 `astSimplify_` (`mapping.c:24802-24804 (fn astSimplify_)`) and the port performs both there
 (`simplify_entry.rs:69 (fn simplify_reporting_change)`) and here.
@@ -246,7 +246,7 @@ whose `AlSimp` card the fold clears).
 
 C removes a UnitMap from a series sequence in `UnitMap::MapMerge`
 (`unitmap.c:516-538 (fn MapMerge)`), when the UnitMap is nominated, and the port ports that
-(`unit.rs:149-152 (fn map_merge)`, `unit.md` rows 5-7). That is now the only place the port
+(`unit.rs:154-157 (fn map_merge)`, `unit.md` rows 5-7). That is now the only place the port
 strips one: `merge_loop_restricted` is the nominate loop and nothing else.
 
 It used to strip series UnitMaps twice more, at neither of which C strips

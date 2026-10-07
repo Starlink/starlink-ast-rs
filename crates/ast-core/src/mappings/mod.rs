@@ -567,6 +567,13 @@ pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
         true
     }
 
+    /// The read-only `IsLinear` attribute: whether the Mapping is known to be
+    /// linear (mapping.c `GetIsLinear`). The base class does not claim it;
+    /// the classes C marks linear override it.
+    fn is_linear(&self) -> bool {
+        false
+    }
+
     /// This Mapping with every Region it holds replaced by a UnitMap, or
     /// `None` when it holds none: C's `RemoveRegions` method, whose callers
     /// test for an unchanged Mapping by finding the same pointer returned.
