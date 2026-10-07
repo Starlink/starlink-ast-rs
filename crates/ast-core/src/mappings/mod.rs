@@ -1013,7 +1013,9 @@ pub(crate) fn require_direction<M: Mapping + ?Sized>(
 /// - `AST__TRNND` when the requested direction is not defined,
 /// - `AST__NCPIN` when `Nin` or `Nout` is not the arity the entry point
 ///   requires,
-/// - `AST__NPTIN` when fewer than one point is supplied.
+/// - `AST__NPTIN` when fewer than one point is supplied. `ValidateMapping`
+///   itself refuses only a negative count; C refuses zero when
+///   `astInitPointSet` builds the PointSet (pointset.c:3011).
 ///
 /// C raises `AST__TRNND` in its base `Transform` too (mapping.c:22333-22380),
 /// which every class's `Transform` calls; the port's equivalent is

@@ -67,8 +67,9 @@ fn tran1_propagates_bad_values() {
 
 #[test]
 fn tran1_rejects_an_empty_input() {
-    // C's ValidateMapping reports AST__NPTIN for npoint < 1 (mapping.c:179),
-    // so an empty slice is an error rather than a no-op. Keeping C's rule means
+    // C's astTran1 reports AST__NPTIN for npoint < 1 when astInitPointSet
+    // builds its PointSet (pointset.c:3011), so an empty slice is an error
+    // rather than a no-op. Keeping C's rule means
     // the Rust API and the eventual C-ABI shim agree; a caller that wants an
     // empty input to be a no-op guards with `if !xin.is_empty()`.
     let zoom = ZoomMap::new(1, 2.0).expect("1-D ZoomMap");

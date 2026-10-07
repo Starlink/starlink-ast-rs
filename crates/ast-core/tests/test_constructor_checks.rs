@@ -3,8 +3,9 @@
 
 use ast_core::error::{AstResult, ErrorCode};
 use ast_core::mappings::{
-    DynMapping, Mapping, RateMap, SlaCvtType, SlaMap, SpecCvtType, SpecMap, SplineMap, SwitchMap,
-    TimeCvtType, TimeMap, TranMap, UnitMap, UnitNormMap, ZoomMap,
+    DynMapping, Mapping, MathMap, PolyMap, PolyTerm, RateMap, SlaCvtType, SlaMap, SpecCvtType,
+    SpecMap, SplineMap, SwitchMap, TimeCvtType, TimeMap, TranMap, UnitMap, UnitNormMap, WcsMap,
+    WcsProjection, ZoomMap,
 };
 
 fn code<T>(r: AstResult<T>) -> ErrorCode {
@@ -161,5 +162,54 @@ fn a_selectormap_needs_regions_in_one_frame() {
     assert_eq!(
         code(SelectorMapBuilder::new(vec![plain(), sky])),
         ErrorCode::Badni
+    );
+}
+
+/// polymap.c StoreArrays: a term for an output that does not exist is
+/// AST__BADCI.
+#[test]
+fn a_polymap_term_needs_a_real_output() {
+    let term = |out_axis| PolyTerm {
+        coeff: 1.0,
+        powers: vec![1],
+        out_axis,
+    };
+    for out_axis in [0, 2] {
+        assert_eq!(
+            code(PolyMap::new(1, 1, &[term(out_axis)], None)),
+            ErrorCode::Badci
+        );
+        assert_eq!(
+            code(PolyMap::new(1, 1, &[term(1)], Some(&[term(out_axis)]))),
+            ErrorCode::Badci
+        );
+    }
+}
+
+/// wcsmap.c SetPV: an axis out of range, or one that is not celestial, is
+/// AST__AXIIN.
+#[test]
+fn a_wcsmap_pv_needs_a_celestial_axis() {
+    let mut wcs = WcsMap::new(3, WcsProjection::Tan, 1, 2).unwrap();
+    for axis in [0, 3, 4] {
+        assert_eq!(
+            code(wcs.set_pv(axis, 1, 0.0)),
+            ErrorCode::Axiin,
+            "axis {axis}"
+        );
+    }
+}
+
+/// mathmap.c astInitMathMap: too few functions in either direction is
+/// AST__INNTF.
+#[test]
+fn a_mathmap_needs_a_function_per_output() {
+    assert_eq!(
+        code(MathMap::new(1, 2, &["y=x"], &["x=y"])),
+        ErrorCode::Inntf
+    );
+    assert_eq!(
+        code(MathMap::new(2, 1, &["y=x1"], &["x1=y"])),
+        ErrorCode::Inntf
     );
 }

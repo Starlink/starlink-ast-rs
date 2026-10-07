@@ -126,9 +126,10 @@ impl MathMap {
                 "MathMap nout must be at least 1".to_string(),
             ));
         }
+        // mathmap.c astInitMathMap: AST__INNTF for too few functions.
         if fwd.len() < nout {
             return Err(AstError::new(
-                ErrorCode::Badni,
+                ErrorCode::Inntf,
                 format!(
                     "MathMap needs at least {} forward expressions, got {}",
                     nout,
@@ -138,7 +139,7 @@ impl MathMap {
         }
         if inv.len() < nin {
             return Err(AstError::new(
-                ErrorCode::Badni,
+                ErrorCode::Inntf,
                 format!(
                     "MathMap needs at least {} inverse expressions, got {}",
                     nin,

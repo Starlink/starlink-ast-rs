@@ -274,10 +274,17 @@ impl WcsMap {
     pub fn set_pv(&mut self, axis: usize, m: usize, value: f64) -> AstResult<()> {
         // Determine which wcslib axis this corresponds to.
         // axis is 1-based.  latax is 0-based internally.
+        // wcsmap.c SetPV: AST__AXIIN for an axis out of range, and for any
+        // parameter on an axis other than the two celestial ones, where
+        // `astGetPVMax` gives -1.
         let prj_axis = if axis == 0 || axis > self.ncoord {
             return Err(AstError::new(
-                ErrorCode::Wcsax,
-                format!("WcsMap set_pv axis {axis} out of range 1..={}", self.ncoord),
+                ErrorCode::Axiin,
+                format!(
+                    "WcsMap: axis index ({axis}) is invalid in attribute PV{axis}_{m} - it \
+                     should be in the range 1 to {}",
+                    self.ncoord
+                ),
             ));
         } else if axis - 1 == self.latax {
             0 // latitude -> p storage
@@ -285,9 +292,12 @@ impl WcsMap {
             1 // longitude -> p2 storage
         } else {
             return Err(AstError::new(
-                ErrorCode::Wcsax,
+                ErrorCode::Axiin,
                 format!(
-                    "WcsMap set_pv axis {axis} is neither longitude ({}) nor latitude ({})",
+                    "WcsMap: parameter index ({m}) is invalid in attribute PV{axis}_{m} for a \
+                     \"-{}\" projection - axis {axis} is neither the longitude ({}) nor the \
+                     latitude ({}) axis",
+                    self.proj.code(),
                     self.lonax + 1,
                     self.latax + 1,
                 ),

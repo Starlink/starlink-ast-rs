@@ -137,12 +137,15 @@ impl PolyMap {
                     ),
                 ));
             }
+            // polymap.c StoreArrays: AST__BADCI.
             if term.out_axis < 1 || term.out_axis > nout {
                 return Err(AstError::new(
-                    ErrorCode::Badin,
+                    ErrorCode::Badci,
                     format!(
-                        "forward term {} has out_axis {} but nout = {}",
-                        i, term.out_axis, nout
+                        "PolyMap: forward coefficient {} referred to an illegal output \
+                         coordinate {}; this number should be in the range 1 to {nout}",
+                        i + 1,
+                        term.out_axis
                     ),
                 ));
             }
@@ -164,10 +167,12 @@ impl PolyMap {
                 }
                 if term.out_axis < 1 || term.out_axis > nin {
                     return Err(AstError::new(
-                        ErrorCode::Badin,
+                        ErrorCode::Badci,
                         format!(
-                            "inverse term {} has out_axis {} but nin = {}",
-                            i, term.out_axis, nin
+                            "PolyMap: inverse coefficient {} referred to an illegal input \
+                             coordinate {}; this number should be in the range 1 to {nin}",
+                            i + 1,
+                            term.out_axis
                         ),
                     ));
                 }
