@@ -41,26 +41,6 @@ const DPIBY2: f64 = std::f64::consts::FRAC_PI_2;
 const TOL1: f64 = 1.0e-13;
 const TOL2: f64 = 1.0e-10;
 
-/// Whether `proj` is one of the zenithal projections — for these the
-/// LONPOLE/LATPOLE port path is simply "read PV(axlon, 3/4) if set".
-fn is_zenithal(proj: WcsProjection) -> bool {
-    matches!(
-        proj,
-        WcsProjection::Azp
-            | WcsProjection::Szp
-            | WcsProjection::Tan
-            | WcsProjection::Stg
-            | WcsProjection::Sin
-            | WcsProjection::Arc
-            | WcsProjection::Zpn
-            | WcsProjection::Zea
-            | WcsProjection::Air
-            | WcsProjection::Xph
-            | WcsProjection::Hpx
-            | WcsProjection::Tpn
-    )
-}
-
 /// Write LONPOLE / LATPOLE (and the PV-3 / PV-4 copies on the
 /// longitude axis for non-TPN projections) into `store`. Mirrors
 /// `fitschan.c::SkyPole`.
@@ -106,7 +86,7 @@ pub(crate) fn sky_pole(
     let mut lonpole_rad: Option<f64> = None;
     let mut latpole_rad: Option<f64> = None;
 
-    if is_zenithal(proj) {
+    if wcsmap.is_zenithal() {
         // Zenithal projections (other than TPN): read the explicit
         // PV-3 / PV-4 overrides if the user set them. Mirrors
         // C:29505-29511. WcsMap PV parameters are stored in FITS-WCS

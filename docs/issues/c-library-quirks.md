@@ -33,6 +33,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [`RegBaseGrid` fails when no grid point lies in the Region](#regbasegrid-fails-when-no-grid-point-lies-in-the-region)
 - [SkyFrame LAST depends on which LAST values the process computed earlier](#skyframe-last-depends-on-which-last-values-the-process-computed-earlier)
 - [A WcsMap reports unusable parameters only on its first transformation](#a-wcsmap-reports-unusable-parameters-only-on-its-first-transformation)
+- [`IsZenithal` tests the wrong SZP parameter](#iszenithal-tests-the-wrong-szp-parameter)
 
 ### [Addressed here, and not going upstream](#addressed-here-and-not-going-upstream)
 
@@ -531,6 +532,19 @@ It does not reproduce what C computes from partly set-up parameters: after an in
 `unusable_projection_parameters_are_errors` in `crates/ast-core/tests/test_wcsmap.rs` covers the forward-first order, which C and the port agree on.
 
 Question for upstream: should the set-up routines leave `flag` clear when they fail, so that every transformation reports the parameters rather than projecting with them?
+
+### `IsZenithal` tests the wrong SZP parameter
+
+**Status:** Confirmed against the C source (2026-10-07).
+
+`wcsmap.c` `IsZenithal` decides whether an SZP projection is zenithal by reading `astGetPV( this, latax, 2 )` into a variable named `p3`, defaulting it to 90 and testing for +/-90.
+SZP's parameters are `mu` (1), `phi_c` (2) and `theta_c` (3); the projection is zenithal when the point of projection lies on the polar axis, `theta_c = +/-90`, which is parameter 3, whose default is 90.
+Reading parameter 2, whose default is 0, makes a default SZP projection non-zenithal, so a FITS-WCS write works out its LONPOLE and LATPOLE from its Mappings rather than writing only those set.
+`fitschan.c` `SkyPole` is the only caller.
+
+The port mirrors it (`WcsMap::is_zenithal`); no fixture holds an SZP header, so the corpora are unaffected either way, and `tests/test_sky_pole_oracle.rs` covers a default SZP header against C.
+
+Question for upstream: should the test read parameter 3, as the variable name and the projection's geometry suggest?
 
 ## Addressed here, and not going upstream
 

@@ -382,6 +382,37 @@ impl WcsMap {
         Ok(value)
     }
 
+    /// Whether the projection is zenithal for the purpose of FITS-WCS
+    /// LONPOLE and LATPOLE (wcsmap.c `IsZenithal`): TAN, STG, ARC, ZPN, ZEA,
+    /// AIR and TPN always, AZP when PV2_2 is zero, SIN when PV2_1 and PV2_2
+    /// are, and SZP according to its latitude parameter 2.
+    ///
+    /// The SZP test reads parameter 2, the native longitude of the source of
+    /// projection, and compares it with +/-90, where its comment and the
+    /// projection's geometry point to parameter 3, the native latitude, which
+    /// defaults to 90; the port mirrors C (`docs/issues/c-library-quirks.md`,
+    /// "`IsZenithal` tests the wrong SZP parameter").
+    pub(crate) fn is_zenithal(&self) -> bool {
+        let lat = |m: usize| self.get_pv(self.latax + 1, m).unwrap_or(BAD_VALUE);
+        let or = |v: f64, default: f64| if v == BAD_VALUE { default } else { v };
+        match self.proj {
+            WcsProjection::Tan
+            | WcsProjection::Stg
+            | WcsProjection::Arc
+            | WcsProjection::Zpn
+            | WcsProjection::Zea
+            | WcsProjection::Air
+            | WcsProjection::Tpn => true,
+            WcsProjection::Azp => or(lat(2), 0.0) == 0.0,
+            WcsProjection::Sin => or(lat(1), 0.0) == 0.0 && or(lat(2), 0.0) == 0.0,
+            WcsProjection::Szp => {
+                let p = or(lat(2), 90.0);
+                p == 90.0 || p == -90.0
+            }
+            _ => false,
+        }
+    }
+
     /// Whether projection parameter `m` of axis `axis` (1-based) has been
     /// set, as C's `astTestPV` reports.
     pub fn test_pv(&self, axis: usize, m: usize) -> bool {
