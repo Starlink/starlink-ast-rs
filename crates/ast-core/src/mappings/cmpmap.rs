@@ -803,6 +803,7 @@ impl Mapping for CmpMap {
     }
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
+        crate::mappings::validate_rate(self, at, ax1, ax2)?;
         // C `cmpmap.c` defines a chain-rule `Rate` override (sum of
         // component-rate products for series, owning-component dispatch with
         // exact 0.0 across-component for parallel) but leaves it *unregistered*

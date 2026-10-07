@@ -24,7 +24,7 @@ fn transform_one(tm: &TimeMap, val: f64, forward: bool) -> f64 {
 fn mjd_to_jd() {
     let mut tm = TimeMap::new();
     // Offsets of 0.0 mean: input is raw MJD, output is raw JD.
-    tm.add(TimeCvtType::MjdToJd, &[0.0, 0.0]);
+    tm.add(TimeCvtType::MjdToJd, &[0.0, 0.0]).unwrap();
 
     // MJD 51544.5 + 2400000.5 = JD 2451545.0 (J2000.0)
     let jd = transform_one(&tm, 51544.5, true);
@@ -37,7 +37,7 @@ fn mjd_to_jd() {
 #[test]
 fn jd_to_mjd() {
     let mut tm = TimeMap::new();
-    tm.add(TimeCvtType::JdToMjd, &[0.0, 0.0]);
+    tm.add(TimeCvtType::JdToMjd, &[0.0, 0.0]).unwrap();
 
     // JD 2451545.0 - 2400000.5 = MJD 51544.5
     let mjd = transform_one(&tm, 2_451_545.0, true);
@@ -50,8 +50,8 @@ fn jd_to_mjd() {
 #[test]
 fn mjd_jd_round_trip() {
     let mut tm = TimeMap::new();
-    tm.add(TimeCvtType::MjdToJd, &[0.0, 0.0]);
-    tm.add(TimeCvtType::JdToMjd, &[0.0, 0.0]);
+    tm.add(TimeCvtType::MjdToJd, &[0.0, 0.0]).unwrap();
+    tm.add(TimeCvtType::JdToMjd, &[0.0, 0.0]).unwrap();
 
     let result = transform_one(&tm, 51544.5, true);
     assert!(
@@ -67,7 +67,7 @@ fn mjd_jd_round_trip() {
 #[test]
 fn mjd_to_julian_epoch() {
     let mut tm = TimeMap::new();
-    tm.add(TimeCvtType::MjdToJep, &[0.0, 0.0]);
+    tm.add(TimeCvtType::MjdToJep, &[0.0, 0.0]).unwrap();
 
     // MJD 51544.5 = J2000.0
     let jep = transform_one(&tm, 51544.5, true);
@@ -80,7 +80,7 @@ fn mjd_to_julian_epoch() {
 #[test]
 fn julian_epoch_to_mjd() {
     let mut tm = TimeMap::new();
-    tm.add(TimeCvtType::JepToMjd, &[0.0, 0.0]);
+    tm.add(TimeCvtType::JepToMjd, &[0.0, 0.0]).unwrap();
 
     // J2000.0 -> MJD 51544.5
     let mjd = transform_one(&tm, 2000.0, true);
@@ -93,7 +93,7 @@ fn julian_epoch_to_mjd() {
 #[test]
 fn mjd_jep_round_trip() {
     let mut tm = TimeMap::new();
-    tm.add(TimeCvtType::MjdToJep, &[0.0, 0.0]);
+    tm.add(TimeCvtType::MjdToJep, &[0.0, 0.0]).unwrap();
 
     // Forward and inverse should round-trip.
     let jep = transform_one(&tm, 51544.5, true);
@@ -111,7 +111,7 @@ fn mjd_jep_round_trip() {
 #[test]
 fn mjd_to_besselian_epoch() {
     let mut tm = TimeMap::new();
-    tm.add(TimeCvtType::MjdToBep, &[0.0, 0.0]);
+    tm.add(TimeCvtType::MjdToBep, &[0.0, 0.0]).unwrap();
 
     // B1950.0 = MJD 33281.92346 (approximately)
     let bep = transform_one(&tm, 33281.92346, true);
@@ -124,7 +124,7 @@ fn mjd_to_besselian_epoch() {
 #[test]
 fn mjd_bep_round_trip() {
     let mut tm = TimeMap::new();
-    tm.add(TimeCvtType::MjdToBep, &[0.0, 0.0]);
+    tm.add(TimeCvtType::MjdToBep, &[0.0, 0.0]).unwrap();
 
     let test_mjd = 40000.0;
     let bep = transform_one(&tm, test_mjd, true);
@@ -146,7 +146,8 @@ fn utc_to_tai_at_j2000() {
     tm.add(
         TimeCvtType::UtcToTai,
         &[0.0, ast_core::constants::BAD_VALUE],
-    );
+    )
+    .unwrap();
 
     // At J2000.0 (MJD 51544.5), TAI-UTC = 32 seconds.
     let tai = transform_one(&tm, 51544.5, true);
@@ -163,7 +164,8 @@ fn tai_to_utc_at_j2000() {
     tm.add(
         TimeCvtType::TaiToUtc,
         &[0.0, ast_core::constants::BAD_VALUE],
-    );
+    )
+    .unwrap();
 
     // TAI = 51544.5 + 32/86400 should give UTC = 51544.5
     let tai = 51544.5 + 32.0 / 86400.0;
@@ -180,7 +182,8 @@ fn utc_tai_round_trip() {
     tm.add(
         TimeCvtType::UtcToTai,
         &[0.0, ast_core::constants::BAD_VALUE],
-    );
+    )
+    .unwrap();
 
     let utc = 51544.5;
     let tai = transform_one(&tm, utc, true);
@@ -198,7 +201,7 @@ fn utc_tai_round_trip() {
 #[test]
 fn tai_to_tt() {
     let mut tm = TimeMap::new();
-    tm.add(TimeCvtType::TaiToTt, &[0.0]);
+    tm.add(TimeCvtType::TaiToTt, &[0.0]).unwrap();
 
     // TT-TAI = 32.184 seconds.
     let tai = 51544.5;
@@ -213,7 +216,7 @@ fn tai_to_tt() {
 #[test]
 fn tt_to_tai() {
     let mut tm = TimeMap::new();
-    tm.add(TimeCvtType::TtToTai, &[0.0]);
+    tm.add(TimeCvtType::TtToTai, &[0.0]).unwrap();
 
     let tt = 51544.5 + 32.184 / 86400.0;
     let tai = transform_one(&tm, tt, true);
@@ -232,7 +235,7 @@ fn mjd_to_mjd_offset() {
     let mut tm = TimeMap::new();
     // Input offset 50000, output offset 51000.
     // The conversion just shifts: output = input + (50000 - 51000) = input - 1000
-    tm.add(TimeCvtType::MjdToMjd, &[50000.0, 51000.0]);
+    tm.add(TimeCvtType::MjdToMjd, &[50000.0, 51000.0]).unwrap();
 
     let result = transform_one(&tm, 1544.5, true);
     // Input MJD = 1544.5 (relative to 50000, so absolute = 51544.5)
@@ -250,7 +253,7 @@ fn mjd_to_mjd_offset() {
 #[test]
 fn tt_tcg_round_trip() {
     let mut tm = TimeMap::new();
-    tm.add(TimeCvtType::TtToTcg, &[51544.0]);
+    tm.add(TimeCvtType::TtToTcg, &[51544.0]).unwrap();
 
     let tt = 0.5; // offset from 51544.0
     let tcg = transform_one(&tm, tt, true);
@@ -268,7 +271,7 @@ fn tt_tcg_round_trip() {
 #[test]
 fn tdb_tcb_round_trip() {
     let mut tm = TimeMap::new();
-    tm.add(TimeCvtType::TdbToTcb, &[51544.0]);
+    tm.add(TimeCvtType::TdbToTcb, &[51544.0]).unwrap();
 
     let tdb = 0.5;
     let tcb = transform_one(&tm, tdb, true);
@@ -286,7 +289,7 @@ fn tdb_tcb_round_trip() {
 #[test]
 fn ut_gmst_round_trip() {
     let mut tm = TimeMap::new();
-    tm.add(TimeCvtType::UtToGmst, &[51544.0]);
+    tm.add(TimeCvtType::UtToGmst, &[51544.0]).unwrap();
 
     let ut = 0.5;
     let gmst = transform_one(&tm, ut, true);
@@ -305,7 +308,7 @@ fn ut_gmst_round_trip() {
 fn ut_utc_dut1() {
     let mut tm = TimeMap::new();
     // DUT1 = 0.3 seconds
-    tm.add(TimeCvtType::UtToUtc, &[0.3]);
+    tm.add(TimeCvtType::UtToUtc, &[0.3]).unwrap();
 
     let ut1 = 51544.5;
     let utc = transform_one(&tm, ut1, true);
@@ -325,7 +328,7 @@ fn ut_utc_dut1() {
 fn lt_utc_timezone() {
     let mut tm = TimeMap::new();
     // Timezone offset = 5 hours (e.g. EST)
-    tm.add(TimeCvtType::LtToUtc, &[5.0]);
+    tm.add(TimeCvtType::LtToUtc, &[5.0]).unwrap();
 
     let lt = 51544.5;
     let utc = transform_one(&tm, lt, true);
@@ -344,7 +347,7 @@ fn lt_utc_timezone() {
 #[test]
 fn inversion() {
     let mut tm = TimeMap::new();
-    tm.add(TimeCvtType::MjdToJep, &[0.0, 0.0]);
+    tm.add(TimeCvtType::MjdToJep, &[0.0, 0.0]).unwrap();
 
     // Forward: MJD 51544.5 -> J2000.0
     let jep = transform_one(&tm, 51544.5, true);
@@ -366,7 +369,7 @@ fn inversion() {
 #[test]
 fn bad_value_propagation() {
     let mut tm = TimeMap::new();
-    tm.add(TimeCvtType::MjdToJd, &[0.0, 0.0]);
+    tm.add(TimeCvtType::MjdToJd, &[0.0, 0.0]).unwrap();
 
     let result = transform_one(&tm, ast_core::constants::BAD_VALUE, true);
     assert_eq!(
@@ -387,8 +390,9 @@ fn chain_utc_to_tt() {
     tm.add(
         TimeCvtType::UtcToTai,
         &[0.0, ast_core::constants::BAD_VALUE],
-    );
-    tm.add(TimeCvtType::TaiToTt, &[0.0]);
+    )
+    .unwrap();
+    tm.add(TimeCvtType::TaiToTt, &[0.0]).unwrap();
 
     // At J2000.0: TAI-UTC=32s, TT-TAI=32.184s, so TT-UTC = 64.184s
     let utc = 51544.5;
@@ -409,12 +413,13 @@ fn serialisation_round_trip() {
     use ast_core::{AnyObject, from_native_string, to_native_string};
 
     let mut tm = TimeMap::new();
-    tm.add(TimeCvtType::MjdToJd, &[100.0, 200.0]);
+    tm.add(TimeCvtType::MjdToJd, &[100.0, 200.0]).unwrap();
     tm.add(
         TimeCvtType::UtcToTai,
         &[51544.0, ast_core::constants::BAD_VALUE],
-    );
-    tm.add(TimeCvtType::TaiToTt, &[51544.0]);
+    )
+    .unwrap();
+    tm.add(TimeCvtType::TaiToTt, &[51544.0]).unwrap();
 
     // Serialise.
     let text = to_native_string(&AnyObject::TimeMap(tm.clone())).unwrap();
@@ -444,7 +449,8 @@ fn serialisation_round_trip() {
 fn tt_tdb_round_trip() {
     let mut tm = TimeMap::new();
     // args: mjd_offset=51544.0, obslon=0.0, obslat=0.0, obsalt=0.0, dtai=32.0
-    tm.add(TimeCvtType::TtToTdb, &[51544.0, 0.0, 0.0, 0.0, 32.0]);
+    tm.add(TimeCvtType::TtToTdb, &[51544.0, 0.0, 0.0, 0.0, 32.0])
+        .unwrap();
 
     let tt = 0.5; // offset
     let tdb = transform_one(&tm, tt, true);
@@ -470,7 +476,8 @@ fn tt_tdb_round_trip() {
 fn gmst_lmst_round_trip() {
     let mut tm = TimeMap::new();
     // obslon=1.0 rad, obslat=0.5 rad
-    tm.add(TimeCvtType::GmstToLmst, &[51544.0, 1.0, 0.5]);
+    tm.add(TimeCvtType::GmstToLmst, &[51544.0, 1.0, 0.5])
+        .unwrap();
 
     let gmst = 0.5;
     let lmst = transform_one(&tm, gmst, true);
@@ -489,7 +496,8 @@ fn gmst_lmst_round_trip() {
 fn lmst_last_round_trip() {
     let mut tm = TimeMap::new();
     // obslon=0.5 rad, obslat=0.8 rad
-    tm.add(TimeCvtType::LmstToLast, &[51544.0, 0.5, 0.8]);
+    tm.add(TimeCvtType::LmstToLast, &[51544.0, 0.5, 0.8])
+        .unwrap();
 
     let lmst = 0.5;
     let last = transform_one(&tm, lmst, true);
@@ -510,18 +518,18 @@ fn lmst_last_round_trip() {
 #[test]
 fn equality() {
     let mut tm1 = TimeMap::new();
-    tm1.add(TimeCvtType::MjdToJd, &[0.0, 0.0]);
-    tm1.add(TimeCvtType::UtcToTai, &[0.0, 32.0]);
+    tm1.add(TimeCvtType::MjdToJd, &[0.0, 0.0]).unwrap();
+    tm1.add(TimeCvtType::UtcToTai, &[0.0, 32.0]).unwrap();
 
     let mut tm2 = TimeMap::new();
-    tm2.add(TimeCvtType::MjdToJd, &[0.0, 0.0]);
-    tm2.add(TimeCvtType::UtcToTai, &[0.0, 32.0]);
+    tm2.add(TimeCvtType::MjdToJd, &[0.0, 0.0]).unwrap();
+    tm2.add(TimeCvtType::UtcToTai, &[0.0, 32.0]).unwrap();
 
     assert!(tm1.equal(&tm2));
 
     let mut tm3 = TimeMap::new();
-    tm3.add(TimeCvtType::MjdToJd, &[0.0, 0.0]);
-    tm3.add(TimeCvtType::UtcToTai, &[0.0, 33.0]);
+    tm3.add(TimeCvtType::MjdToJd, &[0.0, 0.0]).unwrap();
+    tm3.add(TimeCvtType::UtcToTai, &[0.0, 33.0]).unwrap();
 
     assert!(!tm1.equal(&tm3));
 }
@@ -533,10 +541,10 @@ fn equality() {
 #[test]
 fn try_merge_cancellation() {
     let mut tm1 = TimeMap::new();
-    tm1.add(TimeCvtType::MjdToJep, &[0.0, 0.0]);
+    tm1.add(TimeCvtType::MjdToJep, &[0.0, 0.0]).unwrap();
 
     let mut tm2 = TimeMap::new();
-    tm2.add(TimeCvtType::MjdToJep, &[0.0, 0.0]);
+    tm2.add(TimeCvtType::MjdToJep, &[0.0, 0.0]).unwrap();
 
     // Same TimeMap with opposite inversions should cancel.
     let merged = tm1.try_merge(&tm2, true, false, true);
@@ -588,9 +596,9 @@ fn timemap_merge_concatenates() {
     use ast_core::mappings::UnitMap;
 
     let mut tm1 = TimeMap::new();
-    tm1.add(TimeCvtType::MjdToMjd, &[0.0, 51544.5]);
+    tm1.add(TimeCvtType::MjdToMjd, &[0.0, 51544.5]).unwrap();
     let mut tm2 = TimeMap::new();
-    tm2.add(TimeCvtType::TaiToUtc, &[]);
+    tm2.add(TimeCvtType::TaiToUtc, &[0.0, 37.0]).unwrap();
 
     let merged = tm1.try_merge(&tm2, true, false, false);
     assert!(merged.is_some(), "Adjacent TimeMaps should always merge");
@@ -611,9 +619,9 @@ fn timemap_merge_cancels_inverse() {
     use ast_core::mappings::UnitMap;
 
     let mut tm1 = TimeMap::new();
-    tm1.add(TimeCvtType::TaiToUtc, &[]);
+    tm1.add(TimeCvtType::TaiToUtc, &[0.0, 37.0]).unwrap();
     let mut tm2 = TimeMap::new();
-    tm2.add(TimeCvtType::TaiToUtc, &[]);
+    tm2.add(TimeCvtType::TaiToUtc, &[0.0, 37.0]).unwrap();
 
     // Same steps, opposite direction → should cancel to UnitMap
     let merged = tm1.try_merge(&tm2, true, false, true);
@@ -630,7 +638,7 @@ fn timemap_merge_eliminates_no_effect() {
 
     // MjdToMjd with zero offset is a no-op
     let mut tm1 = TimeMap::new();
-    tm1.add(TimeCvtType::MjdToMjd, &[0.0, 0.0]);
+    tm1.add(TimeCvtType::MjdToMjd, &[0.0, 0.0]).unwrap();
 
     let s = <dyn Mapping>::simplify(&tm1).unwrap();
     assert!(
@@ -644,9 +652,9 @@ fn timemap_merge_mjd_to_jd_cancels() {
     use ast_core::mappings::UnitMap;
 
     let mut tm1 = TimeMap::new();
-    tm1.add(TimeCvtType::MjdToJd, &[100.0, 200.0]);
+    tm1.add(TimeCvtType::MjdToJd, &[100.0, 200.0]).unwrap();
     let mut tm2 = TimeMap::new();
-    tm2.add(TimeCvtType::JdToMjd, &[200.0, 100.0]);
+    tm2.add(TimeCvtType::JdToMjd, &[200.0, 100.0]).unwrap();
 
     // MjdToJd(a,b) followed by JdToMjd(b,a) cancels
     let merged = tm1.try_merge(&tm2, true, false, false);
@@ -663,7 +671,7 @@ fn timemap_merge_mjd_to_mjd_equal_offsets() {
 
     // MjdToMjd where both offsets are equal (not zero) is still identity
     let mut tm1 = TimeMap::new();
-    tm1.add(TimeCvtType::MjdToMjd, &[51544.5, 51544.5]);
+    tm1.add(TimeCvtType::MjdToMjd, &[51544.5, 51544.5]).unwrap();
 
     let s = <dyn Mapping>::simplify(&tm1).unwrap();
     assert!(
@@ -681,11 +689,13 @@ fn timemap_simplified_chain() {
     tm.add(
         TimeCvtType::TaiToUtc,
         &[51544.0, ast_core::constants::BAD_VALUE],
-    );
+    )
+    .unwrap();
     tm.add(
         TimeCvtType::UtcToTai,
         &[51544.0, ast_core::constants::BAD_VALUE],
-    );
+    )
+    .unwrap();
 
     let s = <dyn Mapping>::simplify(&tm).unwrap();
     assert!(
@@ -713,9 +723,9 @@ fn utc_tai_roundtrip_pre1972_eras() {
     ];
 
     let mut fwd = TimeMap::new();
-    fwd.add(TimeCvtType::UtcToTai, &[0.0, BAD_VALUE]);
+    fwd.add(TimeCvtType::UtcToTai, &[0.0, BAD_VALUE]).unwrap();
     let mut inv = TimeMap::new();
-    inv.add(TimeCvtType::TaiToUtc, &[0.0, BAD_VALUE]);
+    inv.add(TimeCvtType::TaiToUtc, &[0.0, BAD_VALUE]).unwrap();
 
     for (utc, dt) in era_utc.iter().zip(era_dt.iter()) {
         let tai = transform_one(&fwd, *utc, true); // UTC -> TAI (MJD)

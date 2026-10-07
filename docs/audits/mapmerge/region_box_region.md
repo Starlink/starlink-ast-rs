@@ -21,7 +21,7 @@ Region simplify, then works through four ways of re-expressing the Box: an
 explicit PermMap axis swap, a best-fitting Box in the current Frame, a Polygon
 for the 2-D case, and a split into a Prism.
 
-`BoxRegion::map_merge` (`box_region.rs:1911 (fn map_merge)`) delegates to
+`BoxRegion::map_merge` (`box_region.rs:1912 (fn map_merge)`) delegates to
 `simplify::region_map_merge` (`mappings/simplify.rs:1483-1527 (fn region_map_merge)`);
 `BoxRegion::region_merge` is `box_region.rs:1392-1561 (fn region_merge)` and
 `BoxRegion::simplified` is `box_region.rs:1731-1872 (fn simplified)`. The four

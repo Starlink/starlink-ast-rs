@@ -133,6 +133,13 @@ impl SwitchMap {
         }
 
         if let Some(ref fs) = fsmap {
+            if !fs.has_forward() {
+                return Err(AstError::new(
+                    ErrorCode::Intrd,
+                    "SwitchMap: the forward selector Mapping is not able to transform \
+                     coordinates in the forward direction",
+                ));
+            }
             if fs.nin() != nin {
                 return Err(AstError::new(
                     ErrorCode::Badni,
@@ -155,6 +162,13 @@ impl SwitchMap {
         }
 
         if let Some(ref is) = ismap {
+            if !is.has_inverse() {
+                return Err(AstError::new(
+                    ErrorCode::Intrd,
+                    "SwitchMap: the inverse selector Mapping is not able to transform \
+                     coordinates in the inverse direction",
+                ));
+            }
             if is.nout() != nout {
                 return Err(AstError::new(
                     ErrorCode::Badno,
@@ -601,6 +615,7 @@ impl Mapping for SwitchMap {
     }
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
+        crate::mappings::validate_rate(self, at, ax1, ax2)?;
         let sel = match self.resolve_selector(true) {
             Some(s) => s,
             None => return crate::mappings::rate::numeric_rate(self, at, ax1, ax2),

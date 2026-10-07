@@ -248,6 +248,7 @@ impl Mapping for NormMap {
     }
 
     fn rate(&self, _at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
+        crate::mappings::validate_rate(self, _at, ax1, ax2)?;
         // The C implementation returns 1.0 for matching axes, 0.0 otherwise.
         // This is because norm() is treated as approximately identity for
         // rate-of-change purposes (it only affects values at wrap boundaries).

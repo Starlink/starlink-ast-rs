@@ -408,7 +408,7 @@ struct TimeConversion {
 ///
 /// let mut tm = TimeMap::new();
 /// // Convert MJD to Julian epoch (J2000.0 = MJD 51544.5)
-/// tm.add(TimeCvtType::MjdToJep, &[0.0, 0.0]);
+/// tm.add(TimeCvtType::MjdToJep, &[0.0, 0.0]).unwrap();
 ///
 /// let pts = PointSet::from_rows([[51544.5_f64]]);
 /// let out = tm.transform(&pts, true).unwrap();
@@ -436,11 +436,31 @@ impl TimeMap {
         }
     }
 
-    /// Append a conversion step to the chain.
+    /// Append a conversion step to the chain, as C's `astTimeAdd` does.
     ///
-    /// `args` must have at least `cvt_type.nargs()` elements.
-    /// Extra elements are silently ignored.
-    pub fn add(&mut self, cvt_type: TimeCvtType, args: &[f64]) {
+    /// `args` must hold exactly `cvt_type.nargs()` values; any other number is
+    /// an `AST__TIMIN` error (timemap.c AddTimeCvt).
+    pub fn add(&mut self, cvt_type: TimeCvtType, args: &[f64]) -> AstResult<()> {
+        if args.len() != cvt_type.nargs() {
+            return Err(AstError::new(
+                ErrorCode::Timin,
+                format!(
+                    "TimeAdd: invalid number of arguments for time coordinate conversion \
+                     {}: {} supplied, {} required",
+                    cvt_type.code_string(),
+                    args.len(),
+                    cvt_type.nargs()
+                ),
+            ));
+        }
+        self.add_conversion(cvt_type, args);
+        Ok(())
+    }
+
+    /// Append a conversion step whose arguments the caller has already
+    /// checked, such as one rebuilt from a stored conversion: arguments beyond
+    /// `cvt_type.nargs()` are ignored.
+    pub(crate) fn add_conversion(&mut self, cvt_type: TimeCvtType, args: &[f64]) {
         let szargs = cvt_type.szargs();
         let nargs = cvt_type.nargs();
         let mut full_args = vec![BAD_VALUE; szargs];
@@ -1378,6 +1398,7 @@ impl Mapping for TimeMap {
     }
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
+        crate::mappings::validate_rate(self, at, ax1, ax2)?;
         numeric_rate(self, at, ax1, ax2)
     }
 
@@ -1585,7 +1606,7 @@ impl Serializable for TimeMap {
             }
 
             // Use `add` which recomputes derived values from user args.
-            tm.add(cvt_type, &user_args);
+            tm.add_conversion(cvt_type, &user_args);
         }
 
         if base.inverted {

@@ -61,6 +61,22 @@ impl TranMap {
     /// - `map1` must have a forward transformation defined.
     /// - `map2` must have an inverse transformation defined.
     pub fn new(map1: DynMapping, map2: DynMapping) -> AstResult<Self> {
+        // The forward transformation is map1's and the inverse map2's, so C
+        // requires both to exist (tranmap.c astInitTranMap).
+        if !map1.has_forward() {
+            return Err(AstError::new(
+                ErrorCode::Intrd,
+                "TranMap: the first Mapping is not able to transform coordinates in \
+                 the forward direction",
+            ));
+        }
+        if !map2.has_inverse() {
+            return Err(AstError::new(
+                ErrorCode::Intrd,
+                "TranMap: the second Mapping is not able to transform coordinates in \
+                 the inverse direction",
+            ));
+        }
         // Validate dimensions match.
         if map1.nin() != map2.nin() {
             return Err(AstError::new(
@@ -421,6 +437,7 @@ impl Mapping for TranMap {
     }
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
+        crate::mappings::validate_rate(self, at, ax1, ax2)?;
         super::rate::numeric_rate(self, at, ax1, ax2)
     }
 

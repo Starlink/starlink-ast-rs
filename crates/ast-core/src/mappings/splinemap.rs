@@ -12,7 +12,7 @@
 
 use crate::constants::BAD_VALUE;
 use crate::coords::PointSet;
-use crate::error::AstResult;
+use crate::error::{AstError, AstResult, ErrorCode};
 use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
 
 use super::helpers::{ast_equal, is_bad};
@@ -101,17 +101,42 @@ impl SplineMap {
         ty: Vec<f64>,
         cu: Vec<f64>,
         cv: Vec<f64>,
-    ) -> Self {
-        assert!((1..=MAX_K).contains(&kx), "kx must be in [1, {MAX_K}]");
-        assert!((1..=MAX_K).contains(&ky), "ky must be in [1, {MAX_K}]");
-        assert!(nx >= kx, "nx must be >= kx");
-        assert!(ny >= ky, "ny must be >= ky");
-        assert_eq!(tx.len(), nx + kx, "tx must have length nx + kx");
-        assert_eq!(ty.len(), ny + ky, "ty must have length ny + ky");
-        assert_eq!(cu.len(), nx * ny, "cu must have length nx * ny");
-        assert_eq!(cv.len(), nx * ny, "cv must have length nx * ny");
+    ) -> AstResult<Self> {
+        // splinemap.c astInitSplineMap: each is AST__ATTIN.
+        let attin = |msg: String| Err(AstError::new(ErrorCode::Attin, format!("SplineMap: {msg}")));
+        if !(1..=MAX_K).contains(&kx) {
+            return attin(format!(
+                "the spline order in X ({kx}) must be in the range [1,{MAX_K}]"
+            ));
+        }
+        if !(1..=MAX_K).contains(&ky) {
+            return attin(format!(
+                "the spline order in Y ({ky}) must be in the range [1,{MAX_K}]"
+            ));
+        }
+        if nx < kx {
+            return attin(format!(
+                "the number of coefficients in X ({nx}) must be at least {kx}"
+            ));
+        }
+        if ny < ky {
+            return attin(format!(
+                "the number of coefficients in Y ({ny}) must be at least {ky}"
+            ));
+        }
+        // The array lengths C takes on trust from its arguments.
+        if tx.len() != nx + kx || ty.len() != ny + ky || cu.len() != nx * ny || cv.len() != nx * ny
+        {
+            return attin("the knot or coefficient arrays have the wrong lengths".to_string());
+        }
+        if tx.windows(2).any(|w| w[0] > w[1]) {
+            return attin("the knots in the X direction are not monotonic increasing".to_string());
+        }
+        if ty.windows(2).any(|w| w[0] > w[1]) {
+            return attin("the knots in the Y direction are not monotonic increasing".to_string());
+        }
 
-        Self {
+        Ok(Self {
             kx,
             ky,
             nx,
@@ -127,7 +152,7 @@ impl SplineMap {
             simplified: SimplifiedRecord::default(),
             ident: None,
             mapping_flags: crate::mappings::MappingFlags::default(),
-        }
+        })
     }
 
     /// The spline order in the X direction.
@@ -818,6 +843,7 @@ impl Mapping for SplineMap {
     }
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
+        crate::mappings::validate_rate(self, at, ax1, ax2)?;
         // Use analytic derivatives from the B-spline when possible
         if !self.inverted && !is_bad(at[0]) && !is_bad(at[1]) {
             // ax1, ax2 are 1-based

@@ -51,15 +51,17 @@ fn chebymap_bad_bounds_len_rejected() {
 }
 
 #[test]
-fn chebymap_bad_bounds_order_rejected() {
+fn chebymap_zero_width_bounds_rejected() {
     let terms = vec![PolyTerm {
         coeff: 1.0,
         powers: vec![0],
         out_axis: 1,
     }];
-    // lbnd >= ubnd.
-    let result = ChebyMap::new(1, 1, &terms, None, &[10.0], &[0.0], None, None);
-    assert!(result.is_err());
+    // Only a box of zero width is an error (chebymap.c astInitChebyMap);
+    // reversed bounds give a negative scale.
+    let err = ChebyMap::new(1, 1, &terms, None, &[5.0], &[5.0], None, None).unwrap_err();
+    assert_eq!(err.code(), ast_core::error::ErrorCode::Badbx);
+    assert!(ChebyMap::new(1, 1, &terms, None, &[10.0], &[0.0], None, None).is_ok());
 }
 
 // ---------------------------------------------------------------------------

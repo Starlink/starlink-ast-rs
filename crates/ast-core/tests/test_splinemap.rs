@@ -27,6 +27,7 @@ fn make_constant_spline(cu_val: f64, cv_val: f64) -> SplineMap {
         vec![cu_val],   // cu
         vec![cv_val],   // cv
     )
+    .unwrap()
 }
 
 /// Helper to build a linear (order 2) SplineMap that acts as identity: u=x, v=y.
@@ -51,6 +52,7 @@ fn make_identity_spline() -> SplineMap {
         vec![0.0, 1.0, 0.0, 1.0], // cu: u(x,y) = x
         vec![0.0, 0.0, 1.0, 1.0], // cv: v(x,y) = y
     )
+    .unwrap()
 }
 
 /// Helper to build a linear SplineMap with perturbation: u = x + 0.01, v = y + 0.02.
@@ -67,6 +69,7 @@ fn make_perturbed_identity() -> SplineMap {
         // cv: v(x,y) = y + 0.02. Coefficients: all shifted by 0.02
         vec![0.02, 0.02, 1.02, 1.02],
     )
+    .unwrap()
 }
 
 #[test]

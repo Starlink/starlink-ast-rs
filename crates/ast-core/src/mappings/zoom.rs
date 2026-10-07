@@ -175,6 +175,7 @@ impl Mapping for ZoomMap {
     }
 
     fn rate(&self, _at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
+        crate::mappings::validate_rate(self, _at, ax1, ax2)?;
         if ax1 != ax2 {
             return Ok(0.0);
         }

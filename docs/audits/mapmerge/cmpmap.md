@@ -246,7 +246,7 @@ whose `AlSimp` card the fold clears).
 
 C removes a UnitMap from a series sequence in `UnitMap::MapMerge`
 (`unitmap.c:516-538 (fn MapMerge)`), when the UnitMap is nominated, and the port ports that
-(`unit.rs:127-130 (fn map_merge)`, `unit.md` rows 5-7). That is now the only place the port
+(`unit.rs:149-152 (fn map_merge)`, `unit.md` rows 5-7). That is now the only place the port
 strips one: `merge_loop_restricted` is the nominate loop and nothing else.
 
 It used to strip series UnitMaps twice more, at neither of which C strips

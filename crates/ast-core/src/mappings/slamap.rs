@@ -352,7 +352,7 @@ struct SlaConversion {
 /// use ast_core::coords::PointSet;
 ///
 /// let mut sla = SlaMap::new();
-/// sla.add(SlaCvtType::Eqgal, &[]);
+/// sla.add(SlaCvtType::Eqgal, &[]).unwrap();
 ///
 /// // RA=0, Dec=0 in FK5 J2000 -> Galactic
 /// let pts = PointSet::from_rows([[0.0_f64, 0.0_f64]]);
@@ -381,11 +381,31 @@ impl SlaMap {
         }
     }
 
-    /// Append a conversion step to the chain.
+    /// Append a conversion step to the chain, as C's `astSlaAdd` does.
     ///
-    /// `args` must have at least `cvt_type.nargs()` elements.
-    /// Extra elements are silently ignored.
-    pub fn add(&mut self, cvt_type: SlaCvtType, args: &[f64]) {
+    /// `args` must hold exactly `cvt_type.nargs()` values; any other number is
+    /// an `AST__TIMIN` error (slamap.c AddSlaCvt).
+    pub fn add(&mut self, cvt_type: SlaCvtType, args: &[f64]) -> AstResult<()> {
+        if args.len() != cvt_type.nargs() {
+            return Err(AstError::new(
+                ErrorCode::Timin,
+                format!(
+                    "SlaAdd: invalid number of arguments for SLALIB sky coordinate conversion \
+                     {}: {} supplied, {} required",
+                    cvt_type.code_string(),
+                    args.len(),
+                    cvt_type.nargs()
+                ),
+            ));
+        }
+        self.add_conversion(cvt_type, args);
+        Ok(())
+    }
+
+    /// Append a conversion step whose arguments the caller has already
+    /// checked, such as one rebuilt from a stored conversion: arguments beyond
+    /// `cvt_type.nargs()` are ignored.
+    pub(crate) fn add_conversion(&mut self, cvt_type: SlaCvtType, args: &[f64]) {
         self.conversions.push(SlaConversion {
             cvt_type,
             args: args.to_vec(),
@@ -629,7 +649,7 @@ pub(crate) fn sla_map_merge(
     } else {
         let mut result = SlaMap::new();
         for cvt in steps {
-            result.add(cvt.cvt_type, &cvt.args);
+            result.add_conversion(cvt.cvt_type, &cvt.args);
         }
         Box::new(result)
     };
@@ -1251,6 +1271,7 @@ impl Mapping for SlaMap {
     }
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
+        crate::mappings::validate_rate(self, at, ax1, ax2)?;
         numeric_rate(self, at, ax1, ax2)
     }
 
@@ -1294,7 +1315,7 @@ impl Mapping for SlaMap {
         } else {
             let mut result = SlaMap::new();
             for cvt in steps {
-                result.add(cvt.cvt_type, &cvt.args);
+                result.add_conversion(cvt.cvt_type, &cvt.args);
             }
             Some(Box::new(result))
         }
@@ -1435,7 +1456,7 @@ impl Serializable for SlaMap {
                 args.push(val);
             }
 
-            sla.add(cvt_type, &args);
+            sla.add_conversion(cvt_type, &args);
         }
 
         if base.inverted {

@@ -18,7 +18,7 @@ fn is_bad(v: f64) -> bool {
 #[test]
 fn forward_basic_origin() {
     // centre = [0, 0], input = [3, 4] → norm = 5, unit = [0.6, 0.8]
-    let unm = UnitNormMap::new(vec![0.0, 0.0]);
+    let unm = UnitNormMap::new(vec![0.0, 0.0]).unwrap();
     assert_eq!(unm.nin(), 2);
     assert_eq!(unm.nout(), 3);
 
@@ -36,7 +36,7 @@ fn forward_basic_origin() {
 fn forward_with_centre() {
     // centre = [1, -1], input = [5, 2] → v = [4, 3], norm = 5
     // unit = [0.8, 0.6], output = [0.8, 0.6, 5.0]
-    let unm = UnitNormMap::new(vec![1.0, -1.0]);
+    let unm = UnitNormMap::new(vec![1.0, -1.0]).unwrap();
     let pts = PointSet::from_rows([[5.0, 2.0]]);
     let out = unm.transform(&pts, true).unwrap();
 
@@ -49,7 +49,7 @@ fn forward_with_centre() {
 #[test]
 fn forward_zero_vector() {
     // Input equals centre → norm = 0, unit vector = BAD
-    let unm = UnitNormMap::new(vec![1.0, 2.0]);
+    let unm = UnitNormMap::new(vec![1.0, 2.0]).unwrap();
     let pts = PointSet::from_rows([[1.0, 2.0]]);
     let out = unm.transform(&pts, true).unwrap();
 
@@ -62,7 +62,7 @@ fn forward_zero_vector() {
 #[test]
 fn forward_bad_input() {
     // Any bad input → all outputs bad
-    let unm = UnitNormMap::new(vec![0.0, 0.0]);
+    let unm = UnitNormMap::new(vec![0.0, 0.0]).unwrap();
     let pts = PointSet::from_rows([[BAD_VALUE, 4.0]]);
     let out = unm.transform(&pts, true).unwrap();
 
@@ -74,7 +74,7 @@ fn forward_bad_input() {
 
 #[test]
 fn forward_multiple_points() {
-    let unm = UnitNormMap::new(vec![0.0, 0.0, 0.0]);
+    let unm = UnitNormMap::new(vec![0.0, 0.0, 0.0]).unwrap();
     // 3D: [1,0,0] → unit=[1,0,0], norm=1
     //     [0,0,0] → zero vector case
     let pts = PointSet::from_rows([[1.0, 0.0, 0.0], [0.0, 0.0, 0.0]]);
@@ -102,7 +102,7 @@ fn forward_multiple_points() {
 #[test]
 fn inverse_basic() {
     // Inverse: unit = [0.6, 0.8], norm = 5, centre = [0, 0] → [3, 4]
-    let unm = UnitNormMap::new(vec![0.0, 0.0]);
+    let unm = UnitNormMap::new(vec![0.0, 0.0]).unwrap();
     let pts = PointSet::from_rows([[0.6, 0.8, 5.0]]);
     let out = unm.transform(&pts, false).unwrap();
 
@@ -114,7 +114,7 @@ fn inverse_basic() {
 #[test]
 fn inverse_with_centre() {
     // unit = [0.8, 0.6], norm = 5, centre = [1, -1] → [5, 2]
-    let unm = UnitNormMap::new(vec![1.0, -1.0]);
+    let unm = UnitNormMap::new(vec![1.0, -1.0]).unwrap();
     let pts = PointSet::from_rows([[0.8, 0.6, 5.0]]);
     let out = unm.transform(&pts, false).unwrap();
 
@@ -126,7 +126,7 @@ fn inverse_with_centre() {
 #[test]
 fn inverse_zero_norm() {
     // Norm = 0 → output is the centre, regardless of unit vector
-    let unm = UnitNormMap::new(vec![3.0, 7.0]);
+    let unm = UnitNormMap::new(vec![3.0, 7.0]).unwrap();
     let pts = PointSet::from_rows([[999.0, -42.0, 0.0]]);
     let out = unm.transform(&pts, false).unwrap();
 
@@ -138,7 +138,7 @@ fn inverse_zero_norm() {
 #[test]
 fn inverse_bad_norm() {
     // Bad norm → all outputs bad
-    let unm = UnitNormMap::new(vec![0.0, 0.0]);
+    let unm = UnitNormMap::new(vec![0.0, 0.0]).unwrap();
     let pts = PointSet::from_rows([[0.6, 0.8, BAD_VALUE]]);
     let out = unm.transform(&pts, false).unwrap();
 
@@ -150,7 +150,7 @@ fn inverse_bad_norm() {
 #[test]
 fn inverse_bad_component() {
     // Bad unit vector component → corresponding output is bad
-    let unm = UnitNormMap::new(vec![0.0, 0.0]);
+    let unm = UnitNormMap::new(vec![0.0, 0.0]).unwrap();
     let pts = PointSet::from_rows([[BAD_VALUE, 0.8, 5.0]]);
     let out = unm.transform(&pts, false).unwrap();
 
@@ -165,7 +165,7 @@ fn inverse_bad_component() {
 
 #[test]
 fn roundtrip_forward_inverse() {
-    let unm = UnitNormMap::new(vec![2.0, -3.0, 1.5]);
+    let unm = UnitNormMap::new(vec![2.0, -3.0, 1.5]).unwrap();
     let pts = PointSet::from_rows([[5.0, -1.0, 4.0]]);
 
     // Forward
@@ -182,7 +182,7 @@ fn roundtrip_forward_inverse() {
 #[test]
 fn roundtrip_inverse_forward() {
     // Start with a unit-norm representation and go inverse then forward.
-    let unm = UnitNormMap::new(vec![1.0, 1.0]);
+    let unm = UnitNormMap::new(vec![1.0, 1.0]).unwrap();
 
     // Start with unit=[0.6, 0.8], norm=10 → point=[7, 9]
     let pts = PointSet::from_rows([[0.6, 0.8, 10.0]]);
@@ -201,7 +201,7 @@ fn roundtrip_inverse_forward() {
 
 #[test]
 fn inverted_nin_nout() {
-    let mut unm = UnitNormMap::new(vec![0.0, 0.0]);
+    let mut unm = UnitNormMap::new(vec![0.0, 0.0]).unwrap();
     assert_eq!(unm.nin(), 2);
     assert_eq!(unm.nout(), 3);
     assert!(!unm.is_inverted());
@@ -215,7 +215,7 @@ fn inverted_nin_nout() {
 #[test]
 fn inverted_transform() {
     // When inverted, forward request does the inverse math and vice versa.
-    let mut unm = UnitNormMap::new(vec![0.0, 0.0]);
+    let mut unm = UnitNormMap::new(vec![0.0, 0.0]).unwrap();
     unm.invert();
 
     // "forward" on inverted map = inverse math: [0.6, 0.8, 5.0] → [3, 4]
@@ -232,29 +232,29 @@ fn inverted_transform() {
 
 #[test]
 fn equal_same() {
-    let a = UnitNormMap::new(vec![1.0, 2.0, 3.0]);
-    let b = UnitNormMap::new(vec![1.0, 2.0, 3.0]);
+    let a = UnitNormMap::new(vec![1.0, 2.0, 3.0]).unwrap();
+    let b = UnitNormMap::new(vec![1.0, 2.0, 3.0]).unwrap();
     assert!(a.equal(&b));
 }
 
 #[test]
 fn equal_different_centre() {
-    let a = UnitNormMap::new(vec![1.0, 2.0]);
-    let b = UnitNormMap::new(vec![1.0, 3.0]);
+    let a = UnitNormMap::new(vec![1.0, 2.0]).unwrap();
+    let b = UnitNormMap::new(vec![1.0, 3.0]).unwrap();
     assert!(!a.equal(&b));
 }
 
 #[test]
 fn equal_different_dim() {
-    let a = UnitNormMap::new(vec![1.0, 2.0]);
-    let b = UnitNormMap::new(vec![1.0, 2.0, 0.0]);
+    let a = UnitNormMap::new(vec![1.0, 2.0]).unwrap();
+    let b = UnitNormMap::new(vec![1.0, 2.0, 0.0]).unwrap();
     assert!(!a.equal(&b));
 }
 
 #[test]
 fn equal_different_invert() {
-    let a = UnitNormMap::new(vec![1.0, 2.0]);
-    let mut b = UnitNormMap::new(vec![1.0, 2.0]);
+    let a = UnitNormMap::new(vec![1.0, 2.0]).unwrap();
+    let mut b = UnitNormMap::new(vec![1.0, 2.0]).unwrap();
     b.invert();
     assert!(!a.equal(&b));
 }
@@ -267,7 +267,7 @@ fn equal_different_invert() {
 fn serialization_roundtrip() {
     use ast_core::{AnyObject, from_native_string, to_native_string};
 
-    let unm = UnitNormMap::new(vec![1.5, -2.0, 0.0]);
+    let unm = UnitNormMap::new(vec![1.5, -2.0, 0.0]).unwrap();
     let obj = AnyObject::UnitNormMap(unm.clone());
     let s = to_native_string(&obj).unwrap();
 
@@ -292,7 +292,7 @@ fn serialization_roundtrip() {
 fn serialization_inverted_roundtrip() {
     use ast_core::{AnyObject, from_native_string, to_native_string};
 
-    let mut unm = UnitNormMap::new(vec![10.0, 20.0]);
+    let mut unm = UnitNormMap::new(vec![10.0, 20.0]).unwrap();
     unm.invert();
 
     let obj = AnyObject::UnitNormMap(unm.clone());
@@ -320,8 +320,8 @@ fn merge_inverse_cancel_same_centre() {
     // with effective inversion carried by the bool flags.
     use ast_core::mappings::UnitMap;
 
-    let unm_fwd = UnitNormMap::new(vec![1.0, 2.0]);
-    let unm_other = UnitNormMap::new(vec![1.0, 2.0]); // stored in forward state
+    let unm_fwd = UnitNormMap::new(vec![1.0, 2.0]).unwrap();
+    let unm_other = UnitNormMap::new(vec![1.0, 2.0]).unwrap(); // stored in forward state
 
     // self_inv=false (forward), other_inv=true (effectively inverted)
     let result = unm_fwd
@@ -334,8 +334,8 @@ fn merge_inverse_cancel_same_centre() {
 #[test]
 fn merge_different_centre_to_shift() {
     // UnitNormMap(fwd, centre1) + UnitNormMap(inv, centre2) → ShiftMap(centre2 - centre1)
-    let unm1 = UnitNormMap::new(vec![1.0, 2.0]);
-    let unm2 = UnitNormMap::new(vec![4.0, 6.0]); // stored forward, inv flag = true
+    let unm1 = UnitNormMap::new(vec![1.0, 2.0]).unwrap();
+    let unm2 = UnitNormMap::new(vec![4.0, 6.0]).unwrap(); // stored forward, inv flag = true
 
     // self_inv=false (forward), other_inv=true (effectively inverted)
     let result = unm1
@@ -357,7 +357,7 @@ fn merge_different_centre_to_shift() {
 fn merge_unitnormmap_inv_plus_shift() {
     // UnitNormMap(inv) + ShiftMap → UnitNormMap(inv) with adjusted centre
     // In the simplify engine, self has inverted=false, self_inv=true
-    let unm = UnitNormMap::new(vec![1.0, 2.0]);
+    let unm = UnitNormMap::new(vec![1.0, 2.0]).unwrap();
     let shift = ShiftMap::new(vec![3.0, -1.0]);
 
     // self=unm (stored forward, but effectively inverted via self_inv=true)
@@ -377,7 +377,7 @@ fn merge_unitnormmap_inv_plus_shift() {
 fn merge_shift_plus_unitnormmap_fwd() {
     // ShiftMap + UnitNormMap(fwd) → UnitNormMap(fwd) with adjusted centre
     let shift = ShiftMap::new(vec![3.0, -1.0]);
-    let unm = UnitNormMap::new(vec![5.0, 10.0]);
+    let unm = UnitNormMap::new(vec![5.0, 10.0]).unwrap();
 
     // ShiftMap.try_merge(UnitNormMap, series=true, shift_inv=false, unm_inv=false)
     let result = shift
@@ -396,7 +396,7 @@ fn merge_winmap_unit_scale_plus_unitnormmap_fwd() {
     // WinMap(unit scale, shift=[2,3]) + UnitNormMap(fwd, centre=[5,10])
     // → UnitNormMap(fwd, centre=[5-2, 10-3]=[3, 7])
     let win = WinMap::new(&[2.0, 3.0], &[1.0, 1.0]).unwrap();
-    let unm = UnitNormMap::new(vec![5.0, 10.0]);
+    let unm = UnitNormMap::new(vec![5.0, 10.0]).unwrap();
 
     let result = win
         .try_merge(&unm as &dyn Mapping, true, false, false)
@@ -412,7 +412,7 @@ fn merge_winmap_unit_scale_plus_unitnormmap_fwd() {
 fn no_merge_winmap_non_unit_scale() {
     // WinMap with non-unit scale should NOT merge with UnitNormMap.
     let win = WinMap::new(&[2.0, 3.0], &[2.0, 1.0]).unwrap();
-    let unm = UnitNormMap::new(vec![5.0, 10.0]);
+    let unm = UnitNormMap::new(vec![5.0, 10.0]).unwrap();
 
     let result = win.try_merge(&unm as &dyn Mapping, true, false, false);
     assert!(result.is_none());
@@ -423,7 +423,7 @@ fn merge_unitnormmap_inv_plus_winmap_unit_scale() {
     // UnitNormMap(inv, centre=[1,2]) + WinMap(unit scale, shift=[3,-1])
     // → UnitNormMap(inv, centre=[4,1])
     // Stored in forward state, effective inv via self_inv=true
-    let unm = UnitNormMap::new(vec![1.0, 2.0]);
+    let unm = UnitNormMap::new(vec![1.0, 2.0]).unwrap();
     let win = WinMap::new(&[3.0, -1.0], &[1.0, 1.0]).unwrap();
 
     let result = unm
@@ -439,8 +439,8 @@ fn merge_unitnormmap_inv_plus_winmap_unit_scale() {
 #[test]
 fn no_merge_parallel() {
     // UnitNormMaps cannot merge in parallel.
-    let unm1 = UnitNormMap::new(vec![0.0, 0.0]);
-    let unm2 = UnitNormMap::new(vec![0.0, 0.0]);
+    let unm1 = UnitNormMap::new(vec![0.0, 0.0]).unwrap();
+    let unm2 = UnitNormMap::new(vec![0.0, 0.0]).unwrap();
     let result = unm1.try_merge(&unm2 as &dyn Mapping, false, false, false);
     assert!(result.is_none());
 }
@@ -452,7 +452,7 @@ fn no_merge_parallel() {
 #[test]
 fn one_dimensional() {
     // 1D: centre = [2], input = [5] → v = [3], norm = 3, unit = [1]
-    let unm = UnitNormMap::new(vec![2.0]);
+    let unm = UnitNormMap::new(vec![2.0]).unwrap();
     assert_eq!(unm.nin(), 1);
     assert_eq!(unm.nout(), 2);
 
@@ -478,7 +478,7 @@ fn one_dimensional() {
 fn large_values_no_overflow() {
     // Values near f64::MAX / 2 should not overflow in norm calculation.
     let big = 1.0e300;
-    let unm = UnitNormMap::new(vec![0.0, 0.0]);
+    let unm = UnitNormMap::new(vec![0.0, 0.0]).unwrap();
     let pts = PointSet::from_rows([[big, big]]);
     let out = unm.transform(&pts, true).unwrap();
 

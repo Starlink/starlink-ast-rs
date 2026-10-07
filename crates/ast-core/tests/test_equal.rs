@@ -474,27 +474,27 @@ fn wcsmap_different_axes() {
 #[test]
 fn slamap_same() {
     let mut a = SlaMap::new();
-    a.add(SlaCvtType::Eqgal, &[]);
+    a.add(SlaCvtType::Eqgal, &[]).unwrap();
     let mut b = SlaMap::new();
-    b.add(SlaCvtType::Eqgal, &[]);
+    b.add(SlaCvtType::Eqgal, &[]).unwrap();
     assert!(a.equal(&b));
 }
 
 #[test]
 fn slamap_different_type() {
     let mut a = SlaMap::new();
-    a.add(SlaCvtType::Eqgal, &[]);
+    a.add(SlaCvtType::Eqgal, &[]).unwrap();
     let mut b = SlaMap::new();
-    b.add(SlaCvtType::Galeq, &[]);
+    b.add(SlaCvtType::Galeq, &[]).unwrap();
     assert!(!a.equal(&b));
 }
 
 #[test]
 fn slamap_different_args() {
     let mut a = SlaMap::new();
-    a.add(SlaCvtType::Prec, &[50000.0, 51000.0]);
+    a.add(SlaCvtType::Prec, &[50000.0, 51000.0]).unwrap();
     let mut b = SlaMap::new();
-    b.add(SlaCvtType::Prec, &[50000.0, 52000.0]);
+    b.add(SlaCvtType::Prec, &[50000.0, 52000.0]).unwrap();
     assert!(!a.equal(&b));
 }
 

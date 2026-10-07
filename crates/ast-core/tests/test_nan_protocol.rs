@@ -95,7 +95,7 @@ fn nan_protocol_slamap_matches_transform() {
     use ast_core::mappings::{SlaCvtType, SlaMap};
 
     let mut map = SlaMap::new();
-    map.add(SlaCvtType::Eqgal, &[]);
+    map.add(SlaCvtType::Eqgal, &[]).unwrap();
 
     let mut rows: Vec<Vec<f64>> = (0..256)
         .map(|i| {
@@ -315,7 +315,11 @@ fn nan_protocol_timemap() {
     use ast_core::mappings::{TimeCvtType, TimeMap};
     let mut map = TimeMap::new();
     // TAI -> UTC conversion (needs an MJD-ish argument).
-    map.add(TimeCvtType::TaiToUtc, &[50000.0]);
+    map.add(
+        TimeCvtType::TaiToUtc,
+        &[50000.0, ast_core::constants::BAD_VALUE],
+    )
+    .unwrap();
 
     let mut rows: Vec<Vec<f64>> = (0..32).map(|i| vec![50000.0 + i as f64 * 0.1]).collect();
     rows[7][0] = BAD_VALUE;
@@ -329,7 +333,7 @@ fn nan_protocol_timemap() {
 fn nan_protocol_specmap() {
     use ast_core::mappings::{SpecCvtType, SpecMap};
     let mut map = SpecMap::new();
-    map.add(SpecCvtType::WnToFr, &[]);
+    map.add(SpecCvtType::WnToFr, &[]).unwrap();
 
     let mut rows: Vec<Vec<f64>> = (1..33).map(|i| vec![i as f64]).collect();
     rows[7][0] = BAD_VALUE;
@@ -358,7 +362,7 @@ fn nan_protocol_normmap() {
 #[test]
 fn nan_protocol_unitnormmap() {
     use ast_core::mappings::UnitNormMap;
-    let map = UnitNormMap::new(vec![0.0, 0.0]);
+    let map = UnitNormMap::new(vec![0.0, 0.0]).unwrap();
     let mut rows: Vec<Vec<f64>> = (1..33).map(|i| vec![i as f64, i as f64 * 0.5]).collect();
     rows[5][0] = BAD_VALUE;
     rows[7][1] = f64::NAN;

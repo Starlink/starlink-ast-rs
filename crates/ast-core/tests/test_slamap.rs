@@ -64,8 +64,8 @@ fn new_empty() {
 #[test]
 fn add_steps() {
     let mut sla = SlaMap::new();
-    sla.add(SlaCvtType::Prec, &[2000.0, 2020.0]);
-    sla.add(SlaCvtType::Eqgal, &[]);
+    sla.add(SlaCvtType::Prec, &[2000.0, 2020.0]).unwrap();
+    sla.add(SlaCvtType::Eqgal, &[]).unwrap();
     assert_eq!(sla.len(), 2);
     assert!(!sla.is_empty());
 }
@@ -165,7 +165,7 @@ fn cvt_inverse_pairs() {
 #[test]
 fn galactic_to_fk5() {
     let mut sla = SlaMap::new();
-    sla.add(SlaCvtType::Galeq, &[]);
+    sla.add(SlaCvtType::Galeq, &[]).unwrap();
 
     // Galactic centre: l=0, b=0
     let pts = PointSet::from_rows([[0.0_f64, 0.0_f64]]);
@@ -186,7 +186,7 @@ fn galactic_to_fk5() {
 #[test]
 fn fk5_gal_fk5_round_trip() {
     let mut fwd = SlaMap::new();
-    fwd.add(SlaCvtType::Eqgal, &[]);
+    fwd.add(SlaCvtType::Eqgal, &[]).unwrap();
 
     let ra = 1.5_f64;
     let dec = 0.3_f64;
@@ -209,7 +209,7 @@ fn fk5_gal_fk5_round_trip() {
 #[test]
 fn precession_round_trip() {
     let mut sla = SlaMap::new();
-    sla.add(SlaCvtType::Prec, &[2000.0, 2020.0]);
+    sla.add(SlaCvtType::Prec, &[2000.0, 2020.0]).unwrap();
 
     let ra = 1.0_f64;
     let dec = 0.5_f64;
@@ -238,8 +238,8 @@ fn precession_round_trip() {
 #[test]
 fn multi_step_fk4_fk5_galactic() {
     let mut sla = SlaMap::new();
-    sla.add(SlaCvtType::Fk45z, &[1950.0]);
-    sla.add(SlaCvtType::Eqgal, &[]);
+    sla.add(SlaCvtType::Fk45z, &[1950.0]).unwrap();
+    sla.add(SlaCvtType::Eqgal, &[]).unwrap();
 
     // A known FK4 coordinate
     let ra_fk4 = deg2rad(180.0);
@@ -267,8 +267,8 @@ fn multi_step_fk4_fk5_galactic() {
 #[test]
 fn inversion_identity() {
     let mut sla = SlaMap::new();
-    sla.add(SlaCvtType::Prec, &[2000.0, 2020.0]);
-    sla.add(SlaCvtType::Eqgal, &[]);
+    sla.add(SlaCvtType::Prec, &[2000.0, 2020.0]).unwrap();
+    sla.add(SlaCvtType::Eqgal, &[]).unwrap();
 
     let ra = 2.0_f64;
     let dec = -0.3_f64;
@@ -284,7 +284,7 @@ fn inversion_identity() {
 #[test]
 fn invert_flag() {
     let mut sla = SlaMap::new();
-    sla.add(SlaCvtType::Eqgal, &[]);
+    sla.add(SlaCvtType::Eqgal, &[]).unwrap();
 
     let ra = 1.0_f64;
     let dec = 0.5_f64;
@@ -331,7 +331,7 @@ fn empty_slamap_is_identity() {
 #[test]
 fn bad_value_propagation() {
     let mut sla = SlaMap::new();
-    sla.add(SlaCvtType::Galeq, &[]);
+    sla.add(SlaCvtType::Galeq, &[]).unwrap();
 
     // BAD in first coord
     let pts = PointSet::from_rows([[BAD_VALUE, 0.5]]);
@@ -359,8 +359,8 @@ fn bad_value_propagation() {
 #[test]
 fn serialisation_round_trip() {
     let mut sla = SlaMap::new();
-    sla.add(SlaCvtType::Prec, &[2000.0, 2020.0]);
-    sla.add(SlaCvtType::Eqgal, &[]);
+    sla.add(SlaCvtType::Prec, &[2000.0, 2020.0]).unwrap();
+    sla.add(SlaCvtType::Eqgal, &[]).unwrap();
 
     let obj = AnyObject::SlaMap(sla.clone());
     let text = to_native_string(&obj).unwrap();
@@ -390,8 +390,8 @@ fn serialisation_round_trip() {
 #[test]
 fn text_structure() {
     let mut sla = SlaMap::new();
-    sla.add(SlaCvtType::Prec, &[2000.0, 2020.0]);
-    sla.add(SlaCvtType::Eqgal, &[]);
+    sla.add(SlaCvtType::Prec, &[2000.0, 2020.0]).unwrap();
+    sla.add(SlaCvtType::Eqgal, &[]).unwrap();
 
     let obj = AnyObject::SlaMap(sla);
     let text = to_native_string(&obj).unwrap();
@@ -411,7 +411,7 @@ fn text_structure() {
 fn ecliptic_round_trip() {
     let mut sla = SlaMap::new();
     // MJD of J2000.0 = 51544.5
-    sla.add(SlaCvtType::Eqecl, &[51544.5]);
+    sla.add(SlaCvtType::Eqecl, &[51544.5]).unwrap();
 
     let ra = 1.0_f64;
     let dec = 0.5_f64;
@@ -427,7 +427,7 @@ fn ecliptic_round_trip() {
 #[test]
 fn supergalactic_round_trip() {
     let mut sla = SlaMap::new();
-    sla.add(SlaCvtType::Galsup, &[]);
+    sla.add(SlaCvtType::Galsup, &[]).unwrap();
 
     let gl = 1.0_f64;
     let gb = 0.3_f64;
@@ -443,7 +443,7 @@ fn supergalactic_round_trip() {
 #[test]
 fn fk5_icrs_round_trip() {
     let mut sla = SlaMap::new();
-    sla.add(SlaCvtType::Fk5hz, &[2000.0]);
+    sla.add(SlaCvtType::Fk5hz, &[2000.0]).unwrap();
 
     let ra = 2.0_f64;
     let dec = 0.4_f64;
@@ -460,7 +460,7 @@ fn fk5_icrs_round_trip() {
 fn horizon_round_trip() {
     let mut sla = SlaMap::new();
     // Observer latitude = 0.8 rad, diurnal aberration = 0.0
-    sla.add(SlaCvtType::De2h, &[0.8, 0.0]);
+    sla.add(SlaCvtType::De2h, &[0.8, 0.0]).unwrap();
 
     let ha = 0.5_f64;
     let dec = 0.4_f64;
@@ -476,7 +476,7 @@ fn horizon_round_trip() {
 #[test]
 fn aberration_round_trip() {
     let mut sla = SlaMap::new();
-    sla.add(SlaCvtType::Addet, &[1984.0]);
+    sla.add(SlaCvtType::Addet, &[1984.0]).unwrap();
 
     let rm = 1.0_f64;
     let dm = 0.5_f64;
@@ -492,7 +492,7 @@ fn aberration_round_trip() {
 #[test]
 fn mean_apparent_round_trip() {
     let mut sla = SlaMap::new();
-    sla.add(SlaCvtType::Map, &[2000.0, 51544.5]);
+    sla.add(SlaCvtType::Map, &[2000.0, 51544.5]).unwrap();
 
     let rm = 2.0_f64;
     let dm = 0.3_f64;
@@ -508,7 +508,7 @@ fn mean_apparent_round_trip() {
 #[test]
 fn bessel_newcomb_precession_round_trip() {
     let mut sla = SlaMap::new();
-    sla.add(SlaCvtType::Prebn, &[1950.0, 2000.0]);
+    sla.add(SlaCvtType::Prebn, &[1950.0, 2000.0]).unwrap();
 
     let ra = 1.0_f64;
     let dec = 0.5_f64;
@@ -524,7 +524,7 @@ fn bessel_newcomb_precession_round_trip() {
 #[test]
 fn fk4_fk5_round_trip() {
     let mut sla = SlaMap::new();
-    sla.add(SlaCvtType::Fk45z, &[1984.0]);
+    sla.add(SlaCvtType::Fk45z, &[1984.0]).unwrap();
 
     let ra = 1.0_f64;
     let dec = 0.5_f64;
@@ -549,7 +549,7 @@ fn fk4_fk5_round_trip() {
 #[test]
 fn multiple_points() {
     let mut sla = SlaMap::new();
-    sla.add(SlaCvtType::Eqgal, &[]);
+    sla.add(SlaCvtType::Eqgal, &[]).unwrap();
 
     let pts = PointSet::from_rows([[0.0, 0.0], [1.0, 0.5], [BAD_VALUE, 0.3], [2.0, -0.4]]);
 
@@ -573,7 +573,7 @@ fn multiple_points() {
 #[test]
 fn serialise_inverted() {
     let mut sla = SlaMap::new();
-    sla.add(SlaCvtType::Eqgal, &[]);
+    sla.add(SlaCvtType::Eqgal, &[]).unwrap();
     sla.invert();
 
     let obj = AnyObject::SlaMap(sla);
@@ -597,9 +597,9 @@ fn slamap_merge_concatenates_steps() {
 
     // Two SlaMaps with non-cancelling steps: should merge into one combined SlaMap.
     let mut sla1 = SlaMap::new();
-    sla1.add(SlaCvtType::Fk45z, &[1950.0]);
+    sla1.add(SlaCvtType::Fk45z, &[1950.0]).unwrap();
     let mut sla2 = SlaMap::new();
-    sla2.add(SlaCvtType::Prec, &[2000.0, 2010.0]);
+    sla2.add(SlaCvtType::Prec, &[2000.0, 2010.0]).unwrap();
 
     // Merging in series should concatenate steps into a single SlaMap.
     let merged = sla1.try_merge(&sla2, true, false, false);
@@ -614,9 +614,9 @@ fn slamap_merge_cancels_inverse_pairs() {
 
     // FK4->FK5 followed by inverted FK4->FK5 should cancel to UnitMap.
     let mut sla1 = SlaMap::new();
-    sla1.add(SlaCvtType::Fk45z, &[1950.0]);
+    sla1.add(SlaCvtType::Fk45z, &[1950.0]).unwrap();
     let mut sla2 = SlaMap::new();
-    sla2.add(SlaCvtType::Fk45z, &[1950.0]);
+    sla2.add(SlaCvtType::Fk45z, &[1950.0]).unwrap();
 
     let merged = sla1.try_merge(&sla2, true, false, true);
     assert!(merged.is_some());
@@ -630,9 +630,9 @@ fn slamap_merge_combines_precession() {
 
     // Prec(2000,2010) + Prec(2010,2020) should merge to Prec(2000,2020).
     let mut sla1 = SlaMap::new();
-    sla1.add(SlaCvtType::Prec, &[2000.0, 2010.0]);
+    sla1.add(SlaCvtType::Prec, &[2000.0, 2010.0]).unwrap();
     let mut sla2 = SlaMap::new();
-    sla2.add(SlaCvtType::Prec, &[2010.0, 2020.0]);
+    sla2.add(SlaCvtType::Prec, &[2010.0, 2020.0]).unwrap();
 
     let merged = sla1.try_merge(&sla2, true, false, false);
     assert!(merged.is_some());
@@ -647,9 +647,9 @@ fn slamap_merge_precession_to_identity() {
 
     // Prec(2000,2010) + Prec(2010,2000) = Prec(2000,2000) = identity.
     let mut sla1 = SlaMap::new();
-    sla1.add(SlaCvtType::Prec, &[2000.0, 2010.0]);
+    sla1.add(SlaCvtType::Prec, &[2000.0, 2010.0]).unwrap();
     let mut sla2 = SlaMap::new();
-    sla2.add(SlaCvtType::Prec, &[2010.0, 2000.0]);
+    sla2.add(SlaCvtType::Prec, &[2010.0, 2000.0]).unwrap();
 
     let merged = sla1.try_merge(&sla2, true, false, false);
     assert!(merged.is_some());
@@ -663,7 +663,7 @@ fn slamap_merge_precession_to_identity() {
 #[test]
 fn simplified_returns_clone() {
     let mut sla = SlaMap::new();
-    sla.add(SlaCvtType::Eqgal, &[]);
+    sla.add(SlaCvtType::Eqgal, &[]).unwrap();
 
     let simplified = <dyn Mapping>::simplify(&sla).unwrap();
     assert_eq!(simplified.nin(), 2);
@@ -687,8 +687,8 @@ fn simplified_returns_clone() {
 fn r2h_h2r_preserves_raw_longitude() {
     let last = 3.5;
     let mut m = SlaMap::new();
-    m.add(SlaCvtType::R2h, &[last]); // alpha' = last - alpha
-    m.add(SlaCvtType::H2r, &[last]); // alpha'' = last - alpha' = alpha
+    m.add(SlaCvtType::R2h, &[last]).unwrap(); // alpha' = last - alpha
+    m.add(SlaCvtType::H2r, &[last]).unwrap(); // alpha'' = last - alpha' = alpha
     // A longitude far outside [0, 2pi): the net map is the identity, and C
     // returns it unchanged rather than wrapping it.
     let raw_lon = -1000.0_f64;
@@ -709,7 +709,7 @@ fn matrix_op_longitude_is_normalized_to_0_2pi() {
     // longitude equals palDranrm(input longitude). A negative input
     // longitude must come back wrapped into [0, 2pi).
     let mut m = SlaMap::new();
-    m.add(SlaCvtType::Prec, &[2000.0, 2000.0]);
+    m.add(SlaCvtType::Prec, &[2000.0, 2000.0]).unwrap();
     let neg_lon = -1.0_f64; // ~ -57 deg
     let pin = PointSet::from_rows([[neg_lon, 0.2]].iter().map(|p| p.as_slice()));
     let out = m.transform(&pin, true).unwrap();
@@ -736,7 +736,7 @@ fn eqecl_matches_c_off_j2000() {
     // linked against reference/starlink-ast/build-ast/libast.so.
     let date = 55197.0;
     let mut m = SlaMap::new();
-    m.add(SlaCvtType::Eqecl, &[date]);
+    m.add(SlaCvtType::Eqecl, &[date]).unwrap();
     let pin = PointSet::from_rows(
         [[deg2rad(83.0), deg2rad(22.0)]]
             .iter()
@@ -756,7 +756,7 @@ fn bad_arg_propagates_to_bad_output() {
     // ECLEQ needs one arg (the date). Supply BAD_VALUE: the step outputs
     // BAD for all points regardless of input, matching slamap.c:3672-3687.
     let mut m = SlaMap::new();
-    m.add(SlaCvtType::Eqecl, &[BAD_VALUE]);
+    m.add(SlaCvtType::Eqecl, &[BAD_VALUE]).unwrap();
     let pin = PointSet::from_rows([[0.5, 0.2], [1.0, -0.3]].iter().map(|p| p.as_slice()));
     let out = m.transform(&pin, true).unwrap();
     for i in 0..2 {
@@ -777,8 +777,8 @@ fn amp_map_round_trip() {
     let eq = 2000.0;
     let date = 55197.0; // MJD 2010-01-01
     let mut m = SlaMap::new();
-    m.add(SlaCvtType::Amp, &[date, eq]); // apparent -> mean  (args: DATE, EQ)
-    m.add(SlaCvtType::Map, &[eq, date]); // mean -> apparent  (args: EQ, DATE)
+    m.add(SlaCvtType::Amp, &[date, eq]).unwrap(); // apparent -> mean  (args: DATE, EQ)
+    m.add(SlaCvtType::Map, &[eq, date]).unwrap(); // mean -> apparent  (args: EQ, DATE)
 
     let ra = deg2rad(120.0);
     let dec = deg2rad(-15.0);
@@ -795,7 +795,7 @@ fn amp_map_round_trip() {
 #[test]
 fn bad_and_nan_input_produce_bad_output() {
     let mut m = SlaMap::new();
-    m.add(SlaCvtType::Prec, &[2000.0, 2010.0]);
+    m.add(SlaCvtType::Prec, &[2000.0, 2010.0]).unwrap();
     let pin = PointSet::from_rows(
         [[BAD_VALUE, 0.2], [f64::NAN, 0.3], [0.5, BAD_VALUE]]
             .iter()
@@ -818,7 +818,7 @@ fn simplify_inverted_map_step_swaps_date_and_equinox() {
     let eq = 2000.0;
     let date = 55197.0;
     let mut m = SlaMap::new();
-    m.add(SlaCvtType::Map, &[eq, date]); // mean -> apparent (args: EQ, DATE)
+    m.add(SlaCvtType::Map, &[eq, date]).unwrap(); // mean -> apparent (args: EQ, DATE)
     m.invert();
 
     let simplified = <dyn Mapping>::simplify(&m).unwrap();

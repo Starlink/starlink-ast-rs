@@ -149,12 +149,12 @@ fn cmpmap_of_two_way_components_has_both_directions() {
 }
 
 #[test]
-fn tranmap_definedness_follows_components() {
-    // TranMap forward uses map1's forward; inverse uses map2's inverse.
-    // map2 has no inverse, so the TranMap has no inverse.
+fn tranmap_needs_both_directions() {
+    // TranMap forward uses map1's forward and its inverse map2's inverse, so
+    // C refuses a map2 with no inverse (tranmap.c astInitTranMap,
+    // AST__INTRD) rather than making a TranMap without one.
     let zm = ZoomMap::new(1, 2.0).unwrap();
     let pm = fwd_only_polymap();
-    let tm = TranMap::new(Box::new(zm), Box::new(pm)).unwrap();
-    assert!(tm.has_forward());
-    assert!(!tm.has_inverse());
+    let err = TranMap::new(Box::new(zm), Box::new(pm)).unwrap_err();
+    assert_eq!(err.code(), ast_core::error::ErrorCode::Intrd);
 }

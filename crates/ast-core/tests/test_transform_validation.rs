@@ -95,3 +95,26 @@ fn a_region_and_a_frameset_check_too() {
     let frameset = FrameSet::new(Box::new(BasicFrameBuilder::new(2).build().unwrap()));
     assert_eq!(code(frameset.transform(&pts, true)), ErrorCode::Ncpin);
 }
+
+/// `astRate` checks both axis indices before any class finds a rate
+/// (mapping.c `astRate_`), and the base class's numeric rate needs the
+/// forward transformation (mapping.c `Rate`).
+#[test]
+fn rate_checks_its_axes() {
+    for map in mappings() {
+        let at = [1.0, 2.0];
+        for (ax1, ax2) in [(0, 1), (3, 1), (1, 0), (1, 3)] {
+            assert_eq!(
+                code(map.rate(&at, ax1, ax2)),
+                ErrorCode::Axiin,
+                "{map:?} {ax1} {ax2}"
+            );
+        }
+        assert!(map.rate(&at, 1, 1).is_ok(), "{map:?}");
+        assert_eq!(code(map.rate(&[1.0], 1, 1)), ErrorCode::Ncpin, "{map:?}");
+    }
+
+    let mut rate = RateMap::new(Box::new(ZoomMap::new(1, 3.0).unwrap()), 1, 1).unwrap();
+    rate.invert();
+    assert_eq!(code(rate.rate(&[1.0], 1, 1)), ErrorCode::Nodef);
+}

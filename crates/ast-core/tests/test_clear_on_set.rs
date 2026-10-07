@@ -81,6 +81,7 @@ fn spline_map() -> SplineMap {
         vec![1.0],
         vec![2.0],
     )
+    .unwrap()
 }
 
 fn perm_map() -> PermMap {

@@ -110,16 +110,15 @@ impl ChebyMap {
             ));
         }
 
-        // Validate bounds: lower < upper.
+        // Only a box of zero width is an error (chebymap.c astInitChebyMap):
+        // reversed bounds give a negative scale.
         for i in 0..nin {
-            if lbnd_f[i] >= ubnd_f[i] {
+            if lbnd_f[i] == ubnd_f[i] {
                 return Err(AstError::new(
-                    ErrorCode::Badin,
+                    ErrorCode::Badbx,
                     format!(
-                        "forward domain axis {}: lbnd ({}) >= ubnd ({})",
-                        i + 1,
-                        lbnd_f[i],
-                        ubnd_f[i]
+                        "ChebyMap: input bounding box has zero width on input axis {}",
+                        i + 1
                     ),
                 ));
             }
@@ -149,14 +148,12 @@ impl ChebyMap {
                     ));
                 }
                 for i in 0..nout {
-                    if li[i] >= ui[i] {
+                    if li[i] == ui[i] {
                         return Err(AstError::new(
-                            ErrorCode::Badin,
+                            ErrorCode::Badbx,
                             format!(
-                                "inverse domain axis {}: lbnd ({}) >= ubnd ({})",
-                                i + 1,
-                                li[i],
-                                ui[i]
+                                "ChebyMap: output bounding box has zero width on output axis {}",
+                                i + 1
                             ),
                         ));
                     }
@@ -483,6 +480,7 @@ impl Mapping for ChebyMap {
     }
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
+        crate::mappings::validate_rate(self, at, ax1, ax2)?;
         numeric_rate(self, at, ax1, ax2)
     }
 

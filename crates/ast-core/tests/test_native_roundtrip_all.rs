@@ -175,7 +175,7 @@ fn round_trip_grismmap() {
 
 #[test]
 fn round_trip_unitnormmap() {
-    let m = UnitNormMap::new(vec![0.5, -0.5]);
+    let m = UnitNormMap::new(vec![0.5, -0.5]).unwrap();
     assert_double_round_trip(AnyObject::UnitNormMap(m.clone()), "UnitNormMap");
     // Also assert the serialised text *mentions* the non-zero centre.
     // (Double round-trip passes for both [0,0] and [0.5,-0.5] because
@@ -228,21 +228,25 @@ fn round_trip_ratemap() {
 #[test]
 fn round_trip_slamap() {
     let mut m = SlaMap::new();
-    m.add(SlaCvtType::Eqgal, &[]);
+    m.add(SlaCvtType::Eqgal, &[]).unwrap();
     assert_double_round_trip(AnyObject::SlaMap(m), "SlaMap eqgal");
 }
 
 #[test]
 fn round_trip_timemap() {
     let mut m = TimeMap::new();
-    m.add(TimeCvtType::TaiToUtc, &[50000.0]);
+    m.add(
+        TimeCvtType::TaiToUtc,
+        &[50000.0, ast_core::constants::BAD_VALUE],
+    )
+    .unwrap();
     assert_double_round_trip(AnyObject::TimeMap(m), "TimeMap tai->utc");
 }
 
 #[test]
 fn round_trip_specmap() {
     let mut m = SpecMap::new();
-    m.add(SpecCvtType::WnToFr, &[]);
+    m.add(SpecCvtType::WnToFr, &[]).unwrap();
     assert_double_round_trip(AnyObject::SpecMap(m), "SpecMap wn->fr");
 }
 
@@ -266,7 +270,7 @@ fn round_trip_splinemap() {
             cv[j * nx + i] = j as f64 / (ny - 1) as f64 + 0.05 * i as f64;
         }
     }
-    let m = SplineMap::new(kx, ky, nx, ny, tx, ty, cu, cv);
+    let m = SplineMap::new(kx, ky, nx, ny, tx, ty, cu, cv).unwrap();
     assert_double_round_trip(AnyObject::SplineMap(m), "SplineMap");
 }
 

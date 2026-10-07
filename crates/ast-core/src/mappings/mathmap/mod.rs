@@ -367,9 +367,17 @@ impl Mapping for MathMap {
 
         let nfun = exprs.len();
 
-        // Collect input data as column vectors
+        // Collect input data as column vectors. A NaN input is a bad value
+        // (CLAUDE.md), which the evaluator tests for as C's does.
         let input_data: Vec<Vec<f64>> = (0..ncoord_in)
-            .map(|c| (0..npoint).map(|p| pts.point(p)[c]).collect())
+            .map(|c| {
+                (0..npoint)
+                    .map(|p| {
+                        let v = pts.point(p)[c];
+                        if v.is_nan() { BAD_VALUE } else { v }
+                    })
+                    .collect()
+            })
             .collect();
         let input_refs: Vec<&[f64]> = input_data.iter().map(Vec::as_slice).collect();
 
@@ -439,7 +447,8 @@ impl Mapping for MathMap {
             .take(npoint)
         {
             for (coord, val) in row.iter_mut().enumerate().take(ncoord_out) {
-                *val = outputs[coord][i];
+                let v = outputs[coord][i];
+                *val = if v.is_nan() { BAD_VALUE } else { v };
             }
         }
 
@@ -460,6 +469,7 @@ impl Mapping for MathMap {
     }
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
+        crate::mappings::validate_rate(self, at, ax1, ax2)?;
         numeric_rate(self, at, ax1, ax2)
     }
 

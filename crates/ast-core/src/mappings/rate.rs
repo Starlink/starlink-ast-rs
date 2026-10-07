@@ -7,7 +7,7 @@
 
 use crate::constants::BAD_VALUE;
 use crate::coords::PointSet;
-use crate::error::AstResult;
+use crate::error::{AstError, AstResult, ErrorCode};
 
 use super::Mapping;
 use super::helpers::is_bad;
@@ -29,6 +29,14 @@ const NN: usize = 50;
 /// sub-interval gradients are most consistent (smallest range between
 /// max and min gradients), following the C AST library's approach.
 pub fn numeric_rate(mapping: &dyn Mapping, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
+    // The base class's Rate needs the forward transformation (mapping.c
+    // Rate).
+    if !mapping.has_forward() {
+        return Err(AstError::new(
+            ErrorCode::Nodef,
+            "astRate: the Mapping does not have a defined forward transformation",
+        ));
+    }
     let ax2_idx = ax2 - 1;
     let ax1_idx = ax1 - 1;
 

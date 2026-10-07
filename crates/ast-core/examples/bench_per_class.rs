@@ -413,7 +413,7 @@ fn build_grismmap() -> AnyObject {
 fn build_unitnormmap() -> AnyObject {
     // 2D vector → 3-element output (unit vector + norm). Non-zero centre so
     // the centre-attribute serialisation participates in the round-trip.
-    let m = UnitNormMap::new(vec![0.5, -0.5]);
+    let m = UnitNormMap::new(vec![0.5, -0.5]).unwrap();
     AnyObject::UnitNormMap(m)
 }
 
@@ -459,19 +459,19 @@ fn build_ratemap() -> AnyObject {
 
 fn build_slamap() -> AnyObject {
     let mut m = SlaMap::new();
-    m.add(SlaCvtType::Eqgal, &[]);
+    m.add(SlaCvtType::Eqgal, &[]).unwrap();
     AnyObject::SlaMap(m)
 }
 
 fn build_timemap() -> AnyObject {
     let mut m = TimeMap::new();
-    m.add(TimeCvtType::TaiToUtc, &[50000.0]);
+    m.add(TimeCvtType::TaiToUtc, &[50000.0]).unwrap();
     AnyObject::TimeMap(m)
 }
 
 fn build_specmap() -> AnyObject {
     let mut m = SpecMap::new();
-    m.add(SpecCvtType::WnToFr, &[]);
+    m.add(SpecCvtType::WnToFr, &[]).unwrap();
     AnyObject::SpecMap(m)
 }
 
@@ -510,7 +510,7 @@ fn build_splinemap() -> AnyObject {
             cv[j * nx + i] = j as f64 / (ny - 1) as f64 + 0.05 * i as f64;
         }
     }
-    let m = SplineMap::new(kx, ky, nx, ny, tx, ty, cu, cv);
+    let m = SplineMap::new(kx, ky, nx, ny, tx, ty, cu, cv).unwrap();
     AnyObject::SplineMap(m)
 }
 

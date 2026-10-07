@@ -57,7 +57,7 @@ fn transformations_match_the_c_library() {
 #[test]
 fn a_built_specmap_dumps_as_c_does() {
     let mut map = SpecMap::with_nin(3).unwrap();
-    map.add(SpecCvtType::LkF2Hl, &[0.1, 0.2]);
+    map.add(SpecCvtType::LkF2Hl, &[0.1, 0.2]).unwrap();
     let got = to_native_string(&AnyObject::SpecMap(map)).unwrap();
     let &(_, dump, ..) = cases::CASES.iter().find(|c| c.0 == "lsrk").expect("a case");
     assert_eq!(got, text(dump));

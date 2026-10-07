@@ -26,7 +26,7 @@ fn transform_inv(spec: &SpecMap, val: f64) -> f64 {
 #[test]
 fn freq_to_wavelength() {
     let mut spec = SpecMap::new();
-    spec.add(SpecCvtType::FrToWv, &[]);
+    spec.add(SpecCvtType::FrToWv, &[]).unwrap();
 
     let freq = 5.0e14; // Hz
     let wv = transform_fwd(&spec, freq);
@@ -41,7 +41,7 @@ fn freq_to_wavelength() {
 #[test]
 fn freq_to_energy() {
     let mut spec = SpecMap::new();
-    spec.add(SpecCvtType::FrToEn, &[]);
+    spec.add(SpecCvtType::FrToEn, &[]).unwrap();
 
     let freq = 5.0e14;
     let energy = transform_fwd(&spec, freq);
@@ -56,7 +56,7 @@ fn freq_to_energy() {
 #[test]
 fn energy_to_freq() {
     let mut spec = SpecMap::new();
-    spec.add(SpecCvtType::EnToFr, &[]);
+    spec.add(SpecCvtType::EnToFr, &[]).unwrap();
 
     let energy = 3.313e-19;
     let freq = transform_fwd(&spec, energy);
@@ -71,8 +71,8 @@ fn energy_to_freq() {
 #[test]
 fn roundtrip_freq_wavelength() {
     let mut spec = SpecMap::new();
-    spec.add(SpecCvtType::FrToWv, &[]);
-    spec.add(SpecCvtType::WvToFr, &[]);
+    spec.add(SpecCvtType::FrToWv, &[]).unwrap();
+    spec.add(SpecCvtType::WvToFr, &[]).unwrap();
 
     let freq = 4.567e14;
     let result = transform_fwd(&spec, freq);
@@ -87,8 +87,8 @@ fn roundtrip_freq_wavelength() {
 fn roundtrip_freq_velocity() {
     let rest_freq = 1.42e9; // 21cm hydrogen line
     let mut spec = SpecMap::new();
-    spec.add(SpecCvtType::FrToVl, &[rest_freq]);
-    spec.add(SpecCvtType::VlToFr, &[rest_freq]);
+    spec.add(SpecCvtType::FrToVl, &[rest_freq]).unwrap();
+    spec.add(SpecCvtType::VlToFr, &[rest_freq]).unwrap();
 
     let freq = 1.41e9; // slightly shifted
     let result = transform_fwd(&spec, freq);
@@ -102,7 +102,7 @@ fn roundtrip_freq_velocity() {
 #[test]
 fn freq_to_wavenum() {
     let mut spec = SpecMap::new();
-    spec.add(SpecCvtType::FrToWn, &[]);
+    spec.add(SpecCvtType::FrToWn, &[]).unwrap();
 
     let freq = 3.0e14;
     let wn = transform_fwd(&spec, freq);
@@ -117,7 +117,7 @@ fn freq_to_wavenum() {
 #[test]
 fn wavenum_to_freq() {
     let mut spec = SpecMap::new();
-    spec.add(SpecCvtType::WnToFr, &[]);
+    spec.add(SpecCvtType::WnToFr, &[]).unwrap();
 
     let wn = 1.0e6; // 1 million cycles/m
     let freq = transform_fwd(&spec, wn);
@@ -132,7 +132,7 @@ fn wavenum_to_freq() {
 #[test]
 fn beta_to_velocity() {
     let mut spec = SpecMap::new();
-    spec.add(SpecCvtType::BtToVl, &[]);
+    spec.add(SpecCvtType::BtToVl, &[]).unwrap();
 
     let beta = 0.5;
     let vel = transform_fwd(&spec, beta);
@@ -147,7 +147,7 @@ fn beta_to_velocity() {
 #[test]
 fn velocity_to_beta() {
     let mut spec = SpecMap::new();
-    spec.add(SpecCvtType::VlToBt, &[]);
+    spec.add(SpecCvtType::VlToBt, &[]).unwrap();
 
     let vel = 1.5e8; // 0.5c
     let beta = transform_fwd(&spec, vel);
@@ -167,7 +167,7 @@ fn velocity_to_beta() {
 #[test]
 fn rate_wvtofr_is_analytic() {
     let mut spec = SpecMap::new();
-    spec.add(SpecCvtType::WvToFr, &[]);
+    spec.add(SpecCvtType::WvToFr, &[]).unwrap();
 
     let wave = 0.21106199521261618_f64; // metres
     let rate = spec.rate(&[wave], 1, 1).unwrap();
@@ -186,7 +186,7 @@ fn rate_wvtofr_is_analytic() {
 #[test]
 fn rate_frtowv_is_analytic() {
     let mut spec = SpecMap::new();
-    spec.add(SpecCvtType::FrToWv, &[]);
+    spec.add(SpecCvtType::FrToWv, &[]).unwrap();
 
     let freq = 1.4204e9_f64; // Hz
     let rate = spec.rate(&[freq], 1, 1).unwrap();
@@ -204,8 +204,8 @@ fn rate_frtowv_is_analytic() {
 #[test]
 fn rate_multistep_falls_back_to_numeric() {
     let mut spec = SpecMap::new();
-    spec.add(SpecCvtType::FrToWv, &[]);
-    spec.add(SpecCvtType::WvToFr, &[]); // net identity, two steps
+    spec.add(SpecCvtType::FrToWv, &[]).unwrap();
+    spec.add(SpecCvtType::WvToFr, &[]).unwrap(); // net identity, two steps
 
     let freq = 1.4204e9_f64;
     let rate = spec.rate(&[freq], 1, 1).unwrap();
@@ -220,8 +220,8 @@ fn rate_multistep_falls_back_to_numeric() {
 #[test]
 fn roundtrip_redshift_velocity() {
     let mut spec = SpecMap::new();
-    spec.add(SpecCvtType::ZoToVl, &[]);
-    spec.add(SpecCvtType::VlToZo, &[]);
+    spec.add(SpecCvtType::ZoToVl, &[]).unwrap();
+    spec.add(SpecCvtType::VlToZo, &[]).unwrap();
 
     let z = 0.1;
     let result = transform_fwd(&spec, z);
@@ -235,8 +235,8 @@ fn roundtrip_redshift_velocity() {
 #[test]
 fn roundtrip_radio_velocity() {
     let mut spec = SpecMap::new();
-    spec.add(SpecCvtType::VrToVl, &[]);
-    spec.add(SpecCvtType::VlToVr, &[]);
+    spec.add(SpecCvtType::VrToVl, &[]).unwrap();
+    spec.add(SpecCvtType::VlToVr, &[]).unwrap();
 
     let vr = 1.0e7; // 10 km/s in m/s... actually 10000 km/s
     let result = transform_fwd(&spec, vr);
@@ -250,8 +250,8 @@ fn roundtrip_radio_velocity() {
 #[test]
 fn roundtrip_optical_velocity() {
     let mut spec = SpecMap::new();
-    spec.add(SpecCvtType::VoToVl, &[]);
-    spec.add(SpecCvtType::VlToVo, &[]);
+    spec.add(SpecCvtType::VoToVl, &[]).unwrap();
+    spec.add(SpecCvtType::VlToVo, &[]).unwrap();
 
     let vo = 5.0e7;
     let result = transform_fwd(&spec, vo);
@@ -265,8 +265,8 @@ fn roundtrip_optical_velocity() {
 #[test]
 fn roundtrip_air_wavelength() {
     let mut spec = SpecMap::new();
-    spec.add(SpecCvtType::FrToAw, &[]);
-    spec.add(SpecCvtType::AwToFr, &[]);
+    spec.add(SpecCvtType::FrToAw, &[]).unwrap();
+    spec.add(SpecCvtType::AwToFr, &[]).unwrap();
 
     let freq = 5.0e14; // visible light
     let result = transform_fwd(&spec, freq);
@@ -281,7 +281,7 @@ fn roundtrip_air_wavelength() {
 fn freq_to_velocity() {
     let rest_freq = 1.42e9; // 21cm line
     let mut spec = SpecMap::new();
-    spec.add(SpecCvtType::FrToVl, &[rest_freq]);
+    spec.add(SpecCvtType::FrToVl, &[rest_freq]).unwrap();
 
     // At rest frequency, velocity should be 0
     let vel = transform_fwd(&spec, rest_freq);
@@ -305,7 +305,7 @@ fn freq_to_velocity() {
 fn velocity_to_freq() {
     let rest_freq = 1.42e9;
     let mut spec = SpecMap::new();
-    spec.add(SpecCvtType::VlToFr, &[rest_freq]);
+    spec.add(SpecCvtType::VlToFr, &[rest_freq]).unwrap();
 
     // At zero velocity, should give rest frequency
     let freq = transform_fwd(&spec, 0.0);
@@ -322,7 +322,7 @@ fn lsrk_correction() {
     let dec = std::f64::consts::PI / 6.0; // 30 degrees
 
     let mut spec = SpecMap::new();
-    spec.add(SpecCvtType::LkF2Hl, &[ra, dec]);
+    spec.add(SpecCvtType::LkF2Hl, &[ra, dec]).unwrap();
 
     let freq = 1.42e9;
     let shifted = transform_fwd(&spec, freq);
@@ -349,8 +349,8 @@ fn lsrk_roundtrip() {
     let dec = 0.5;
 
     let mut spec = SpecMap::new();
-    spec.add(SpecCvtType::LkF2Hl, &[ra, dec]);
-    spec.add(SpecCvtType::HlF2Lk, &[ra, dec]);
+    spec.add(SpecCvtType::LkF2Hl, &[ra, dec]).unwrap();
+    spec.add(SpecCvtType::HlF2Lk, &[ra, dec]).unwrap();
 
     let freq = 1.42e9;
     let result = transform_fwd(&spec, freq);
@@ -368,8 +368,8 @@ fn lsrd_roundtrip() {
     let dec = -0.3;
 
     let mut spec = SpecMap::new();
-    spec.add(SpecCvtType::LdF2Hl, &[ra, dec]);
-    spec.add(SpecCvtType::HlF2Ld, &[ra, dec]);
+    spec.add(SpecCvtType::LdF2Hl, &[ra, dec]).unwrap();
+    spec.add(SpecCvtType::HlF2Ld, &[ra, dec]).unwrap();
 
     let freq = 5.0e14;
     let result = transform_fwd(&spec, freq);
@@ -386,8 +386,8 @@ fn lg_roundtrip() {
     let dec = 0.8;
 
     let mut spec = SpecMap::new();
-    spec.add(SpecCvtType::LgF2Hl, &[ra, dec]);
-    spec.add(SpecCvtType::HlF2Lg, &[ra, dec]);
+    spec.add(SpecCvtType::LgF2Hl, &[ra, dec]).unwrap();
+    spec.add(SpecCvtType::HlF2Lg, &[ra, dec]).unwrap();
 
     let freq = 1.0e10;
     let result = transform_fwd(&spec, freq);
@@ -404,8 +404,8 @@ fn galactic_roundtrip() {
     let dec = -1.0;
 
     let mut spec = SpecMap::new();
-    spec.add(SpecCvtType::GlF2Hl, &[ra, dec]);
-    spec.add(SpecCvtType::HlF2Gl, &[ra, dec]);
+    spec.add(SpecCvtType::GlF2Hl, &[ra, dec]).unwrap();
+    spec.add(SpecCvtType::HlF2Gl, &[ra, dec]).unwrap();
 
     let freq = 2.0e9;
     let result = transform_fwd(&spec, freq);
@@ -423,8 +423,8 @@ fn geocentric_roundtrip() {
     let dec = 0.3;
 
     let mut spec = SpecMap::new();
-    spec.add(SpecCvtType::GeF2Hl, &[epoch, ra, dec]);
-    spec.add(SpecCvtType::HlF2Ge, &[epoch, ra, dec]);
+    spec.add(SpecCvtType::GeF2Hl, &[epoch, ra, dec]).unwrap();
+    spec.add(SpecCvtType::HlF2Ge, &[epoch, ra, dec]).unwrap();
 
     let freq = 1.42e9;
     let result = transform_fwd(&spec, freq);
@@ -442,8 +442,8 @@ fn barycentric_roundtrip() {
     let dec = -0.5;
 
     let mut spec = SpecMap::new();
-    spec.add(SpecCvtType::ByF2Hl, &[epoch, ra, dec]);
-    spec.add(SpecCvtType::HlF2By, &[epoch, ra, dec]);
+    spec.add(SpecCvtType::ByF2Hl, &[epoch, ra, dec]).unwrap();
+    spec.add(SpecCvtType::HlF2By, &[epoch, ra, dec]).unwrap();
 
     let freq = 1.42e9;
     let result = transform_fwd(&spec, freq);
@@ -467,11 +467,13 @@ fn topocentric_roundtrip() {
     spec.add(
         SpecCvtType::TpF2Hl,
         &[obslon, obslat, obsalt, epoch, ra, dec],
-    );
+    )
+    .unwrap();
     spec.add(
         SpecCvtType::HlF2Tp,
         &[obslon, obslat, obsalt, epoch, ra, dec],
-    );
+    )
+    .unwrap();
 
     let freq = 1.42e9;
     let result = transform_fwd(&spec, freq);
@@ -490,8 +492,8 @@ fn user_defined_roundtrip() {
     let dec = 0.5;
 
     let mut spec = SpecMap::new();
-    spec.add(SpecCvtType::UsF2Hl, &[voff, ra, dec]);
-    spec.add(SpecCvtType::HlF2Us, &[voff, ra, dec]);
+    spec.add(SpecCvtType::UsF2Hl, &[voff, ra, dec]).unwrap();
+    spec.add(SpecCvtType::HlF2Us, &[voff, ra, dec]).unwrap();
 
     let freq = 1.42e9;
     let result = transform_fwd(&spec, freq);
@@ -506,7 +508,7 @@ fn user_defined_roundtrip() {
 fn inversion() {
     let rest_freq = 1.42e9;
     let mut spec = SpecMap::new();
-    spec.add(SpecCvtType::FrToVl, &[rest_freq]);
+    spec.add(SpecCvtType::FrToVl, &[rest_freq]).unwrap();
 
     let freq = 1.41e9;
 
@@ -534,11 +536,11 @@ fn inversion() {
 #[test]
 fn multistep_chain() {
     let mut spec = SpecMap::new();
-    spec.add(SpecCvtType::FrToWv, &[]); // freq -> vacuum wavelength
+    spec.add(SpecCvtType::FrToWv, &[]).unwrap(); // freq -> vacuum wavelength
     // vacuum wavelength is NOT directly available as air wavelength conversion...
     // but we can go freq -> air wavelength via FrToAw
     let mut spec2 = SpecMap::new();
-    spec2.add(SpecCvtType::FrToAw, &[]);
+    spec2.add(SpecCvtType::FrToAw, &[]).unwrap();
 
     let freq = 5.0e14;
     let air_wv = transform_fwd(&spec2, freq);
@@ -563,10 +565,10 @@ fn serialisation_roundtrip() {
     use ast_core::{AnyObject, from_native_string, to_native_string};
 
     let mut spec = SpecMap::new();
-    spec.add(SpecCvtType::FrToWv, &[]);
-    spec.add(SpecCvtType::WvToFr, &[]);
-    spec.add(SpecCvtType::FrToVl, &[1.42e9]);
-    spec.add(SpecCvtType::LkF2Hl, &[1.0, 0.5]);
+    spec.add(SpecCvtType::FrToWv, &[]).unwrap();
+    spec.add(SpecCvtType::WvToFr, &[]).unwrap();
+    spec.add(SpecCvtType::FrToVl, &[1.42e9]).unwrap();
+    spec.add(SpecCvtType::LkF2Hl, &[1.0, 0.5]).unwrap();
 
     let native = to_native_string(&AnyObject::SpecMap(spec.clone())).unwrap();
 
@@ -618,7 +620,7 @@ fn bad_value_propagation() {
     use ast_core::constants::BAD_VALUE;
 
     let mut spec = SpecMap::new();
-    spec.add(SpecCvtType::FrToWv, &[]);
+    spec.add(SpecCvtType::FrToWv, &[]).unwrap();
 
     let result = transform_fwd(&spec, BAD_VALUE);
     assert_eq!(result, BAD_VALUE, "BAD input should produce BAD output");
@@ -628,19 +630,19 @@ fn bad_value_propagation() {
 #[test]
 fn equality() {
     let mut spec1 = SpecMap::new();
-    spec1.add(SpecCvtType::FrToWv, &[]);
-    spec1.add(SpecCvtType::LkF2Hl, &[1.0, 0.5]);
+    spec1.add(SpecCvtType::FrToWv, &[]).unwrap();
+    spec1.add(SpecCvtType::LkF2Hl, &[1.0, 0.5]).unwrap();
 
     let mut spec2 = SpecMap::new();
-    spec2.add(SpecCvtType::FrToWv, &[]);
-    spec2.add(SpecCvtType::LkF2Hl, &[1.0, 0.5]);
+    spec2.add(SpecCvtType::FrToWv, &[]).unwrap();
+    spec2.add(SpecCvtType::LkF2Hl, &[1.0, 0.5]).unwrap();
 
     assert!(spec1.equal(&spec2));
 
     // Different args
     let mut spec3 = SpecMap::new();
-    spec3.add(SpecCvtType::FrToWv, &[]);
-    spec3.add(SpecCvtType::LkF2Hl, &[2.0, 0.5]);
+    spec3.add(SpecCvtType::FrToWv, &[]).unwrap();
+    spec3.add(SpecCvtType::LkF2Hl, &[2.0, 0.5]).unwrap();
 
     assert!(!spec1.equal(&spec3));
 }
@@ -652,9 +654,9 @@ fn equality() {
 fn specmap_always_merges_adjacent() {
     // Two SpecMaps with non-cancelling steps should still merge.
     let mut sm1 = SpecMap::new();
-    sm1.add(SpecCvtType::FrToWv, &[]);
+    sm1.add(SpecCvtType::FrToWv, &[]).unwrap();
     let mut sm2 = SpecMap::new();
-    sm2.add(SpecCvtType::VrToVl, &[]);
+    sm2.add(SpecCvtType::VrToVl, &[]).unwrap();
 
     let merged = sm1.try_merge(&sm2, true, false, false);
     assert!(merged.is_some(), "Adjacent SpecMaps should always merge");

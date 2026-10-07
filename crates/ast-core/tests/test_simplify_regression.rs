@@ -1863,9 +1863,9 @@ fn winmap_does_not_distribute_when_branches_dont_simplify() {
     // 2-input WinMap ; (SpecMap || SpecMap), each branch 1-axis non-linear.
     let wm = WinMap::new(&[1.0, 2.0], &[3.0, 5.0]).unwrap();
     let mut sm1 = SpecMap::new();
-    sm1.add(SpecCvtType::FrToVl, &[330_000_000_000.0]);
+    sm1.add(SpecCvtType::FrToVl, &[330_000_000_000.0]).unwrap();
     let mut sm2 = SpecMap::new();
-    sm2.add(SpecCvtType::FrToVl, &[140_000_000_000.0]);
+    sm2.add(SpecCvtType::FrToVl, &[140_000_000_000.0]).unwrap();
 
     let par = CmpMap::new(Box::new(sm1), Box::new(sm2), Composition::Parallel).unwrap();
     let full = CmpMap::new(Box::new(wm), Box::new(par), Composition::Series).unwrap();

@@ -16,7 +16,7 @@ C's `MapMerge` body runs `grismmap.c:1191-1269 (fn MapMerge)` and is thin: it as
 comes back. The rule itself lives in `CanMerge`
 (`grismmap.c:466-600 (fn CanMerge)`), so both are audited here.
 
-`GrismMap::map_merge` (`grismmap.rs:560-567 (fn map_merge)`) delegates to
+`GrismMap::map_merge` (`grismmap.rs:561-568 (fn map_merge)`) delegates to
 `simplify::grism_map_merge` (`mappings/simplify.rs:2737-2757 (fn grism_map_merge)`),
 whose per-pair body is
 `grism_zoom_merge_at` (`mappings/simplify.rs:2651-2711 (fn grism_zoom_merge_at)`).
@@ -40,10 +40,10 @@ whose per-pair body is
 | 15 | Check the global error status and bail out | grismmap.c:479-480 (fn CanMerge) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 16 | Initialise the GrismMap pointer and the invert flag to silence compiler warnings | grismmap.c:482-485 (fn CanMerge) | -- | ceremony | n/a: the Rust locals are initialised where they are declared |
 | 17 | Initialise the adjacent ZoomMap's factor to mean "none found" | grismmap.c:487-489 (fn CanMerge) | -- | ceremony | n/a: each pattern reads its own zoom factor inside the branch that matched, so there is no sentinel spanning the branches |
-| 18 | If the first Mapping is a GrismMap | grismmap.c:491-494 (fn CanMerge) | mappings/simplify.rs:2657 (fn grism_zoom_merge_at), grismmap.rs:581 (fn try_merge) | architecture | ported |
-| 19 | Two GrismMaps merge to a UnitMap when one is the inverse of the other | grismmap.c:495-499 (fn CanMerge) | grismmap.rs:581 (fn try_merge) | architecture | ported |
-| 20 | Require the two GrismMaps to have equal attribute values | grismmap.c:500-509 (fn CanMerge) | grismmap.rs:585-592 (fn try_merge) | architecture | ported |
-| 21 | Require them to be applied in opposite senses, then return a UnitMap | grismmap.c:510-514 (fn CanMerge) | grismmap.rs:593-595 (fn try_merge) | architecture | ported |
+| 18 | If the first Mapping is a GrismMap | grismmap.c:491-494 (fn CanMerge) | mappings/simplify.rs:2657 (fn grism_zoom_merge_at), grismmap.rs:582 (fn try_merge) | architecture | ported |
+| 19 | Two GrismMaps merge to a UnitMap when one is the inverse of the other | grismmap.c:495-499 (fn CanMerge) | grismmap.rs:582 (fn try_merge) | architecture | ported |
+| 20 | Require the two GrismMaps to have equal attribute values | grismmap.c:500-509 (fn CanMerge) | grismmap.rs:586-593 (fn try_merge) | architecture | ported |
+| 21 | Require them to be applied in opposite senses, then return a UnitMap | grismmap.c:510-514 (fn CanMerge) | grismmap.rs:594-596 (fn try_merge) | architecture | ported |
 | 22 | A GrismMap followed by a non-GrismMap merges only if the GrismMap is un-inverted, so its output is the wavelength | grismmap.c:515-523 (fn CanMerge) | mappings/simplify.rs:2657-2660 (fn grism_zoom_merge_at) | architecture | ported |
 | 23 | Note that the merged Mapping will not need inverting | grismmap.c:524-527 (fn CanMerge) | mappings/simplify.rs:2674 (fn grism_zoom_merge_at) | architecture | ported |
 | 24 | Require the second Mapping to be a ZoomMap, and take its zoom factor at the right Invert setting | grismmap.c:528-538 (fn CanMerge) | mappings/simplify.rs:2658-2671 (fn grism_zoom_merge_at) | architecture | ported |
@@ -74,7 +74,7 @@ ZoomMap case lives in `grism_zoom_merge_at` because C's rule is
 order-sensitive — an un-inverted GrismMap must come *before* the ZoomMap, and the
 mirror case is re-expressed into that form — and `try_merge` is called without
 telling the callee which side of the pair it is. The comment at
-`grismmap.rs:600-603 (fn try_merge)` records that.
+`grismmap.rs:601-604 (fn try_merge)` records that.
 
 ## Rows 6 and 7 — the order is observable
 

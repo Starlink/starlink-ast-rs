@@ -328,43 +328,13 @@ fn lutmap_inverse_bad_input() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn lutmap_single_element_linear() {
-    // Single-element table: always returns that value (zero slope extrapolation)
-    let m = LutMap::new(&[42.0], 0.0, 1.0).unwrap();
-    let pts = PointSet::from_rows([[0.0]]);
-    let out = m.transform(&pts, true).unwrap();
-    assert!((out.point(0)[0] - 42.0).abs() < 1e-10);
-
-    // Even for inputs far away
-    let pts2 = PointSet::from_rows([[100.0]]);
-    let out2 = m.transform(&pts2, true).unwrap();
-    assert!((out2.point(0)[0] - 42.0).abs() < 1e-10);
+fn lutmap_single_element_is_an_error() {
+    // C needs at least two table elements (lutmap.c astInitLutMap).
+    let err = LutMap::new(&[42.0], 0.0, 1.0).unwrap_err();
+    assert_eq!(err.code(), ErrorCode::Lutin);
+    let err = LutMap::new(&[1.0, 2.0], 0.0, 0.0).unwrap_err();
+    assert_eq!(err.code(), ErrorCode::Lutii);
 }
-
-#[test]
-fn lutmap_single_element_nearest() {
-    let mut m = LutMap::new(&[42.0], 0.0, 1.0).unwrap();
-    m.set_interp(LutInterp::Nearest);
-
-    // At the exact index
-    let pts = PointSet::from_rows([[0.0]]);
-    let out = m.transform(&pts, true).unwrap();
-    assert!((out.point(0)[0] - 42.0).abs() < 1e-10);
-
-    // Just barely within rounding
-    let pts2 = PointSet::from_rows([[0.4]]);
-    let out2 = m.transform(&pts2, true).unwrap();
-    assert!((out2.point(0)[0] - 42.0).abs() < 1e-10);
-
-    // Outside bounds
-    let pts3 = PointSet::from_rows([[1.0]]);
-    let out3 = m.transform(&pts3, true).unwrap();
-    assert_eq!(out3.point(0)[0], BAD_VALUE);
-}
-
-// ---------------------------------------------------------------------------
-// Invert flag
-// ---------------------------------------------------------------------------
 
 #[test]
 fn lutmap_invert_flag() {
@@ -706,14 +676,6 @@ fn lutmap_has_been_simplified_respected() {
     let mut lm = LutMap::new(&lut, 0.0, 1.0).unwrap();
     lm.set_has_been_simplified(true);
 
-    let s = <dyn Mapping>::simplify(&lm).unwrap();
-    assert!(s.as_any().is::<LutMap>());
-}
-
-#[test]
-fn lutmap_single_element_no_simplify() {
-    // Single-element table cannot determine linearity
-    let lm = LutMap::new(&[42.0], 0.0, 1.0).unwrap();
     let s = <dyn Mapping>::simplify(&lm).unwrap();
     assert!(s.as_any().is::<LutMap>());
 }

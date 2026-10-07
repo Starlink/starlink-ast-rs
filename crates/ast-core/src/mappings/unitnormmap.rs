@@ -14,7 +14,7 @@
 
 use crate::constants::BAD_VALUE;
 use crate::coords::PointSet;
-use crate::error::AstResult;
+use crate::error::{AstError, AstResult, ErrorCode};
 use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
 
 use super::cmpmap::{CmpMap, Composition};
@@ -53,15 +53,24 @@ impl UnitNormMap {
     /// Create a new `UnitNormMap` with the given centre.
     ///
     /// `centre` defines the origin from which the unit vector and norm
-    /// are computed. Its length determines the number of spatial axes.
-    pub fn new(centre: impl Into<Vec<f64>>) -> Self {
-        Self {
-            centre: centre.into(),
+    /// are computed. Its length determines the number of spatial axes; an
+    /// empty centre is an `AST__BADSM` error (unitnormmap.c
+    /// astInitUnitNormMap).
+    pub fn new(centre: impl Into<Vec<f64>>) -> AstResult<Self> {
+        let centre = centre.into();
+        if centre.is_empty() {
+            return Err(AstError::new(
+                ErrorCode::Badsm,
+                "UnitNormMap: the centre must have at least one axis",
+            ));
+        }
+        Ok(Self {
+            centre,
             inverted: false,
             simplified: SimplifiedRecord::default(),
             ident: None,
             mapping_flags: crate::mappings::MappingFlags::default(),
-        }
+        })
     }
 
     /// The centre vector.
@@ -264,6 +273,7 @@ impl Mapping for UnitNormMap {
     }
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
+        crate::mappings::validate_rate(self, at, ax1, ax2)?;
         numeric_rate(self, at, ax1, ax2)
     }
 
@@ -371,7 +381,7 @@ impl Mapping for UnitNormMap {
                 .map(|(&c, &s)| c + shift_mult * s)
                 .collect();
 
-            let mut result = UnitNormMap::new(new_centre);
+            let mut result = UnitNormMap::new(new_centre).ok()?;
             result.invert(); // Return in inverted state
             return Some(Box::new(result));
         }
@@ -405,7 +415,7 @@ impl Mapping for UnitNormMap {
                 .map(|(&c, &s)| c + shift_mult * s)
                 .collect();
 
-            let mut result = UnitNormMap::new(new_centre);
+            let mut result = UnitNormMap::new(new_centre).ok()?;
             result.invert(); // Return in inverted state
             return Some(Box::new(result));
         }
@@ -563,7 +573,7 @@ pub(crate) fn try_merge_into_unitnormmap(
             .map(|(&c, &s)| c - shift_mult * s)
             .collect();
 
-        return Some(Box::new(UnitNormMap::new(new_centre)));
+        return Some(Box::new(UnitNormMap::new(new_centre).ok()?));
     }
 
     if let Some(win_map) = first.as_any().downcast_ref::<WinMap>() {
@@ -591,7 +601,7 @@ pub(crate) fn try_merge_into_unitnormmap(
             .map(|(&c, &s)| c - shift_mult * s)
             .collect();
 
-        return Some(Box::new(UnitNormMap::new(new_centre)));
+        return Some(Box::new(UnitNormMap::new(new_centre).ok()?));
     }
 
     None
@@ -638,7 +648,7 @@ impl Serializable for UnitNormMap {
             *c = node.get_double(&key, 0.0);
         }
 
-        let mut m = UnitNormMap::new(centre);
+        let mut m = UnitNormMap::new(centre)?;
         if base.inverted {
             m.invert();
         }

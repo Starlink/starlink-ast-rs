@@ -24,7 +24,7 @@ equivalent Box where there is one, and otherwise re-defines the Interval within
 its current Frame by way of a fully-bounded Box.
 
 `Interval::get_def_unc` (`interval.rs:1342-1385 (fn get_def_unc)`) is `GetDefUnc`.
-`Interval::map_merge` (`interval.rs:1921-1924 (fn map_merge)`) delegates to
+`Interval::map_merge` (`interval.rs:1922-1925 (fn map_merge)`) delegates to
 `simplify::region_map_merge` (`mappings/simplify.rs:1481-1528 (fn region_map_merge)`),
 which every Region shares. `Interval::region_merge`
 (`interval.rs:1467-1651 (fn region_merge)`) is `MergeInterval`, and

@@ -418,54 +418,54 @@ fn add_system_to_fk5(
             // Remove E-terms at the given equinox, precess to B1950.0,
             // add E-terms at B1950.0, then FK4→FK5.
             if equinox_b != 1950.0 {
-                sla.add(SlaCvtType::Subet, &[equinox_b]);
-                sla.add(SlaCvtType::Prebn, &[equinox_b, 1950.0]);
-                sla.add(SlaCvtType::Addet, &[1950.0]);
+                sla.add_conversion(SlaCvtType::Subet, &[equinox_b]);
+                sla.add_conversion(SlaCvtType::Prebn, &[equinox_b, 1950.0]);
+                sla.add_conversion(SlaCvtType::Addet, &[1950.0]);
             }
-            sla.add(SlaCvtType::Fk45z, &[epoch_b]);
+            sla.add_conversion(SlaCvtType::Fk45z, &[epoch_b]);
         }
         SkySystem::Fk4NoE => {
             if equinox_b != 1950.0 {
-                sla.add(SlaCvtType::Prebn, &[equinox_b, 1950.0]);
+                sla.add_conversion(SlaCvtType::Prebn, &[equinox_b, 1950.0]);
             }
-            sla.add(SlaCvtType::Addet, &[1950.0]);
-            sla.add(SlaCvtType::Fk45z, &[epoch_b]);
+            sla.add_conversion(SlaCvtType::Addet, &[1950.0]);
+            sla.add_conversion(SlaCvtType::Fk45z, &[epoch_b]);
         }
         SkySystem::Fk5 => {
             if equinox_j != 2000.0 {
-                sla.add(SlaCvtType::Prec, &[equinox_j, 2000.0]);
+                sla.add_conversion(SlaCvtType::Prec, &[equinox_j, 2000.0]);
             }
         }
         SkySystem::J2000 => {
             // Dynamical J2000 → ICRS → FK5.
-            sla.add(SlaCvtType::J2000h, &[]);
-            sla.add(SlaCvtType::Hfk5z, &[epoch_j]);
+            sla.add_conversion(SlaCvtType::J2000h, &[]);
+            sla.add_conversion(SlaCvtType::Hfk5z, &[epoch_j]);
         }
         SkySystem::Gappt => {
             // AMP takes (date, equinox).
-            sla.add(SlaCvtType::Amp, &[epoch_mjd, 2000.0]);
+            sla.add_conversion(SlaCvtType::Amp, &[epoch_mjd, 2000.0]);
         }
         SkySystem::Ecliptic => {
-            sla.add(SlaCvtType::Ecleq, &[equinox_mjd]);
+            sla.add_conversion(SlaCvtType::Ecleq, &[equinox_mjd]);
         }
         SkySystem::Helioecliptic => {
-            sla.add(SlaCvtType::Heeq, &[epoch_mjd]);
+            sla.add_conversion(SlaCvtType::Heeq, &[epoch_mjd]);
         }
         SkySystem::Galactic => {
-            sla.add(SlaCvtType::Galeq, &[]);
+            sla.add_conversion(SlaCvtType::Galeq, &[]);
         }
         SkySystem::Icrs => {
-            sla.add(SlaCvtType::Hfk5z, &[epoch_j]);
+            sla.add_conversion(SlaCvtType::Hfk5z, &[epoch_j]);
         }
         SkySystem::Supergalactic => {
-            sla.add(SlaCvtType::Supgal, &[]);
-            sla.add(SlaCvtType::Galeq, &[]);
+            sla.add_conversion(SlaCvtType::Supgal, &[]);
+            sla.add_conversion(SlaCvtType::Galeq, &[]);
         }
         SkySystem::Azel => {
             // Horizon → (ha, dec) → RA → mean place.
-            sla.add(SlaCvtType::Dh2e, &[obs_lat, diurab]);
-            sla.add(SlaCvtType::H2r, &[last]);
-            sla.add(SlaCvtType::Amp, &[epoch_mjd, 2000.0]);
+            sla.add_conversion(SlaCvtType::Dh2e, &[obs_lat, diurab]);
+            sla.add_conversion(SlaCvtType::H2r, &[last]);
+            sla.add_conversion(SlaCvtType::Amp, &[epoch_mjd, 2000.0]);
         }
         SkySystem::Unknown => return false,
     }
@@ -496,55 +496,55 @@ fn add_fk5_to_system(
 
     match system {
         SkySystem::Fk4 => {
-            sla.add(SlaCvtType::Fk54z, &[epoch_b]);
+            sla.add_conversion(SlaCvtType::Fk54z, &[epoch_b]);
             if equinox_b != 1950.0 {
-                sla.add(SlaCvtType::Subet, &[1950.0]);
-                sla.add(SlaCvtType::Prebn, &[1950.0, equinox_b]);
-                sla.add(SlaCvtType::Addet, &[equinox_b]);
+                sla.add_conversion(SlaCvtType::Subet, &[1950.0]);
+                sla.add_conversion(SlaCvtType::Prebn, &[1950.0, equinox_b]);
+                sla.add_conversion(SlaCvtType::Addet, &[equinox_b]);
             }
         }
         SkySystem::Fk4NoE => {
-            sla.add(SlaCvtType::Fk54z, &[epoch_b]);
-            sla.add(SlaCvtType::Subet, &[1950.0]);
+            sla.add_conversion(SlaCvtType::Fk54z, &[epoch_b]);
+            sla.add_conversion(SlaCvtType::Subet, &[1950.0]);
             if equinox_b != 1950.0 {
-                sla.add(SlaCvtType::Prebn, &[1950.0, equinox_b]);
+                sla.add_conversion(SlaCvtType::Prebn, &[1950.0, equinox_b]);
             }
         }
         SkySystem::Fk5 => {
             if equinox_j != 2000.0 {
-                sla.add(SlaCvtType::Prec, &[2000.0, equinox_j]);
+                sla.add_conversion(SlaCvtType::Prec, &[2000.0, equinox_j]);
             }
         }
         SkySystem::J2000 => {
             // FK5 → ICRS → dynamical J2000.
-            sla.add(SlaCvtType::Fk5hz, &[epoch_j]);
-            sla.add(SlaCvtType::Hj2000, &[]);
+            sla.add_conversion(SlaCvtType::Fk5hz, &[epoch_j]);
+            sla.add_conversion(SlaCvtType::Hj2000, &[]);
         }
         SkySystem::Gappt => {
             // MAP takes (equinox, date).
-            sla.add(SlaCvtType::Map, &[2000.0, epoch_mjd]);
+            sla.add_conversion(SlaCvtType::Map, &[2000.0, epoch_mjd]);
         }
         SkySystem::Ecliptic => {
-            sla.add(SlaCvtType::Eqecl, &[equinox_mjd]);
+            sla.add_conversion(SlaCvtType::Eqecl, &[equinox_mjd]);
         }
         SkySystem::Helioecliptic => {
-            sla.add(SlaCvtType::Eqhe, &[epoch_mjd]);
+            sla.add_conversion(SlaCvtType::Eqhe, &[epoch_mjd]);
         }
         SkySystem::Galactic => {
-            sla.add(SlaCvtType::Eqgal, &[]);
+            sla.add_conversion(SlaCvtType::Eqgal, &[]);
         }
         SkySystem::Icrs => {
-            sla.add(SlaCvtType::Fk5hz, &[epoch_j]);
+            sla.add_conversion(SlaCvtType::Fk5hz, &[epoch_j]);
         }
         SkySystem::Supergalactic => {
-            sla.add(SlaCvtType::Eqgal, &[]);
-            sla.add(SlaCvtType::Galsup, &[]);
+            sla.add_conversion(SlaCvtType::Eqgal, &[]);
+            sla.add_conversion(SlaCvtType::Galsup, &[]);
         }
         SkySystem::Azel => {
             // Mean place → apparent → hour angle → horizon.
-            sla.add(SlaCvtType::Map, &[2000.0, epoch_mjd]);
-            sla.add(SlaCvtType::R2h, &[last]);
-            sla.add(SlaCvtType::De2h, &[obs_lat, diurab]);
+            sla.add_conversion(SlaCvtType::Map, &[2000.0, epoch_mjd]);
+            sla.add_conversion(SlaCvtType::R2h, &[last]);
+            sla.add_conversion(SlaCvtType::De2h, &[obs_lat, diurab]);
         }
         SkySystem::Unknown => return false,
     }
@@ -1404,7 +1404,7 @@ mod tests {
         let last = 1.5; // LAST in radians
 
         let mut sla = SlaMap::new();
-        sla.add(SlaCvtType::H2r, &[last]);
+        sla.add_conversion(SlaCvtType::H2r, &[last]);
 
         let ha = 0.8;
         let dec = 0.4;

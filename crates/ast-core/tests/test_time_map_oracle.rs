@@ -30,7 +30,7 @@ fn steps_match_the_c_library() {
         .flat_map(|&(name, code, args, points, fwd, inv)| {
             let cvt = TimeCvtType::from_code(code).expect("known conversion code");
             let mut map = TimeMap::new();
-            map.add(cvt, args);
+            map.add(cvt, args).unwrap();
             let got_fwd = apply(&map, points, true);
             let got_inv = apply(&map, points, false);
             [

@@ -1,5 +1,6 @@
 //! The identity mapping.
 
+use crate::constants::BAD_VALUE;
 use crate::coords::PointSet;
 use crate::error::AstResult;
 use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
@@ -64,24 +65,45 @@ impl Mapping for UnitMap {
         self.inverted = !self.inverted;
     }
 
-    fn transform(&self, pts: &PointSet, _forward: bool) -> AstResult<PointSet> {
-        crate::mappings::validate_transform(self, pts, _forward, None)?;
-        Ok(pts.clone())
+    fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
+        crate::mappings::validate_transform(self, pts, forward, None)?;
+        let mut out = PointSet::zeros(pts.npoint(), pts.ncoord());
+        self.transform_into(pts, forward, &mut out)?;
+        Ok(out)
     }
 
-    fn transform_into(&self, pts: &PointSet, _forward: bool, out: &mut PointSet) -> AstResult<()> {
-        crate::mappings::validate_transform(self, pts, _forward, Some(out))?;
+    /// A copy of the input, with a NaN, which is a bad value, made
+    /// `BAD_VALUE`.
+    fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()> {
+        crate::mappings::validate_transform(self, pts, forward, Some(out))?;
+        out.view_mut().assign(&pts.view());
+        let mut view = out.view_mut();
+        for v in view
+            .as_slice_mut()
+            .expect("PointSet is C-contiguous")
+            .iter_mut()
+        {
+            if v.is_nan() {
+                *v = BAD_VALUE;
+            }
+        }
+        Ok(())
+    }
+
+    /// The NaN protocol carries bad values as NaN, so this is a plain copy.
+    fn transform_into_nan(
+        &self,
+        pts: &PointSet,
+        forward: bool,
+        out: &mut PointSet,
+    ) -> AstResult<()> {
+        crate::mappings::validate_transform(self, pts, forward, Some(out))?;
         out.view_mut().assign(&pts.view());
         Ok(())
     }
 
-    // `transform_into_nan` is intentionally not overridden: the inherited
-    // default delegates to `transform_into` above, which is a pure copy with
-    // no per-point `is_bad` check or value-dependent branching. NaN inputs
-    // pass through to NaN outputs naturally, so the trait default already
-    // satisfies the NaN-as-bad protocol.
-
     fn rate(&self, _at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
+        crate::mappings::validate_rate(self, _at, ax1, ax2)?;
         Ok(if ax1 == ax2 { 1.0 } else { 0.0 })
     }
 

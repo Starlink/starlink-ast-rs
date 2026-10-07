@@ -855,6 +855,7 @@ impl Mapping for MatrixMap {
     }
 
     fn rate(&self, _at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
+        crate::mappings::validate_rate(self, _at, ax1, ax2)?;
         let m = if self.inverted {
             match &self.inverse {
                 Some(inv) => inv,

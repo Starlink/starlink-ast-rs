@@ -3610,7 +3610,7 @@ mod tests {
         use crate::mappings::UnitMap;
 
         let mut sla1 = SlaMap::new();
-        sla1.add(SlaCvtType::Hfk5z, &[2000.0]);
+        sla1.add_conversion(SlaCvtType::Hfk5z, &[2000.0]);
         let pair1: DynMapping = Box::new(
             CmpMap::new(
                 Box::new(sla1),
@@ -3630,7 +3630,7 @@ mod tests {
         );
 
         let mut sla2 = SlaMap::new();
-        sla2.add(SlaCvtType::Fk5hz, &[2000.0]);
+        sla2.add_conversion(SlaCvtType::Fk5hz, &[2000.0]);
         let pair3: DynMapping = Box::new(
             CmpMap::new(
                 Box::new(sla2),
@@ -4462,9 +4462,9 @@ mod tests {
         use crate::mappings::{SlaCvtType, SlaMap};
 
         let mut fwd = SlaMap::new();
-        fwd.add(SlaCvtType::Eqgal, &[]);
+        fwd.add_conversion(SlaCvtType::Eqgal, &[]);
         let mut inv = SlaMap::new();
-        inv.add(SlaCvtType::Eqgal, &[]);
+        inv.add_conversion(SlaCvtType::Eqgal, &[]);
         inv.invert();
         let cmp = CmpMap::new(dyn_map(fwd), dyn_map(inv), Composition::Series).unwrap();
         let result = simplify_mapping(&cmp).unwrap();
@@ -4478,9 +4478,9 @@ mod tests {
 
         // Different conversions should NOT cancel.
         let mut fwd = SlaMap::new();
-        fwd.add(SlaCvtType::Eqgal, &[]);
+        fwd.add_conversion(SlaCvtType::Eqgal, &[]);
         let mut inv = SlaMap::new();
-        inv.add(SlaCvtType::Galeq, &[]);
+        inv.add_conversion(SlaCvtType::Galeq, &[]);
         inv.invert();
         let cmp = CmpMap::new(dyn_map(fwd), dyn_map(inv), Composition::Series).unwrap();
         let result = simplify_mapping(&cmp).unwrap();

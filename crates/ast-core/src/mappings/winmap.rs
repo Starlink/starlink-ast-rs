@@ -395,6 +395,7 @@ impl Mapping for WinMap {
     }
 
     fn rate(&self, _at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
+        crate::mappings::validate_rate(self, _at, ax1, ax2)?;
         // For a diagonal linear mapping, the rate is known analytically.
         if ax1 == ax2 {
             let idx = ax1 - 1;

@@ -1138,9 +1138,9 @@ impl TimeFrame {
         // Step 1: Convert source system → MJD (if needed).
         match sys1 {
             TimeSystem::Mjd => {}
-            TimeSystem::Jd => timemap.add(TimeCvtType::JdToMjd, &[off1, mjd_off1]),
-            TimeSystem::Jepoch => timemap.add(TimeCvtType::JepToMjd, &[off1, mjd_off1]),
-            TimeSystem::Bepoch => timemap.add(TimeCvtType::BepToMjd, &[off1, mjd_off1]),
+            TimeSystem::Jd => timemap.add_conversion(TimeCvtType::JdToMjd, &[off1, mjd_off1]),
+            TimeSystem::Jepoch => timemap.add_conversion(TimeCvtType::JepToMjd, &[off1, mjd_off1]),
+            TimeSystem::Bepoch => timemap.add_conversion(TimeCvtType::BepToMjd, &[off1, mjd_off1]),
         }
 
         // Step 2 & 3: timescale conversion via TAI.
@@ -1158,91 +1158,91 @@ impl TimeFrame {
 
             match ts1 {
                 TimeScale::Tai => {}
-                TimeScale::Utc => timemap.add(TimeCvtType::UtcToTai, &args_tai),
-                TimeScale::Tt => timemap.add(TimeCvtType::TtToTai, &args[..1]),
+                TimeScale::Utc => timemap.add_conversion(TimeCvtType::UtcToTai, &args_tai),
+                TimeScale::Tt => timemap.add_conversion(TimeCvtType::TtToTai, &args[..1]),
                 TimeScale::Tdb => {
-                    timemap.add(TimeCvtType::TdbToTt, &args);
-                    timemap.add(TimeCvtType::TtToTai, &args[..1]);
+                    timemap.add_conversion(TimeCvtType::TdbToTt, &args);
+                    timemap.add_conversion(TimeCvtType::TtToTai, &args[..1]);
                 }
                 TimeScale::Tcg => {
-                    timemap.add(TimeCvtType::TcgToTt, &args[..1]);
-                    timemap.add(TimeCvtType::TtToTai, &args[..1]);
+                    timemap.add_conversion(TimeCvtType::TcgToTt, &args[..1]);
+                    timemap.add_conversion(TimeCvtType::TtToTai, &args[..1]);
                 }
                 TimeScale::Tcb => {
-                    timemap.add(TimeCvtType::TcbToTdb, &args[..1]);
-                    timemap.add(TimeCvtType::TdbToTt, &args);
-                    timemap.add(TimeCvtType::TtToTai, &args[..1]);
+                    timemap.add_conversion(TimeCvtType::TcbToTdb, &args[..1]);
+                    timemap.add_conversion(TimeCvtType::TdbToTt, &args);
+                    timemap.add_conversion(TimeCvtType::TtToTai, &args[..1]);
                 }
                 TimeScale::Lt => {
-                    timemap.add(TimeCvtType::LtToUtc, &args_lt);
-                    timemap.add(TimeCvtType::UtcToTai, &args_tai);
+                    timemap.add_conversion(TimeCvtType::LtToUtc, &args_lt);
+                    timemap.add_conversion(TimeCvtType::UtcToTai, &args_tai);
                 }
                 TimeScale::Ut1 => {
-                    timemap.add(TimeCvtType::UtToUtc, &args_ut);
-                    timemap.add(TimeCvtType::UtcToTai, &args_tai);
+                    timemap.add_conversion(TimeCvtType::UtToUtc, &args_ut);
+                    timemap.add_conversion(TimeCvtType::UtcToTai, &args_tai);
                 }
                 TimeScale::Gmst => {
-                    timemap.add(TimeCvtType::GmstToUt, &args[..1]);
-                    timemap.add(TimeCvtType::UtToUtc, &args_ut);
-                    timemap.add(TimeCvtType::UtcToTai, &args_tai);
+                    timemap.add_conversion(TimeCvtType::GmstToUt, &args[..1]);
+                    timemap.add_conversion(TimeCvtType::UtToUtc, &args_ut);
+                    timemap.add_conversion(TimeCvtType::UtcToTai, &args_tai);
                 }
                 TimeScale::Last => {
-                    timemap.add(TimeCvtType::LastToLmst, &args[..3]);
-                    timemap.add(TimeCvtType::LmstToGmst, &args[..3]);
-                    timemap.add(TimeCvtType::GmstToUt, &args[..1]);
-                    timemap.add(TimeCvtType::UtToUtc, &args_ut);
-                    timemap.add(TimeCvtType::UtcToTai, &args_tai);
+                    timemap.add_conversion(TimeCvtType::LastToLmst, &args[..3]);
+                    timemap.add_conversion(TimeCvtType::LmstToGmst, &args[..3]);
+                    timemap.add_conversion(TimeCvtType::GmstToUt, &args[..1]);
+                    timemap.add_conversion(TimeCvtType::UtToUtc, &args_ut);
+                    timemap.add_conversion(TimeCvtType::UtcToTai, &args_tai);
                 }
                 TimeScale::Lmst => {
-                    timemap.add(TimeCvtType::LmstToGmst, &args[..3]);
-                    timemap.add(TimeCvtType::GmstToUt, &args[..1]);
-                    timemap.add(TimeCvtType::UtToUtc, &args_ut);
-                    timemap.add(TimeCvtType::UtcToTai, &args_tai);
+                    timemap.add_conversion(TimeCvtType::LmstToGmst, &args[..3]);
+                    timemap.add_conversion(TimeCvtType::GmstToUt, &args[..1]);
+                    timemap.add_conversion(TimeCvtType::UtToUtc, &args_ut);
+                    timemap.add_conversion(TimeCvtType::UtcToTai, &args_tai);
                 }
             }
 
             match ts2 {
                 TimeScale::Tai => {}
-                TimeScale::Utc => timemap.add(TimeCvtType::TaiToUtc, &args_tai),
-                TimeScale::Tt => timemap.add(TimeCvtType::TaiToTt, &args[..1]),
+                TimeScale::Utc => timemap.add_conversion(TimeCvtType::TaiToUtc, &args_tai),
+                TimeScale::Tt => timemap.add_conversion(TimeCvtType::TaiToTt, &args[..1]),
                 TimeScale::Tdb => {
-                    timemap.add(TimeCvtType::TaiToTt, &args[..1]);
-                    timemap.add(TimeCvtType::TtToTdb, &args);
+                    timemap.add_conversion(TimeCvtType::TaiToTt, &args[..1]);
+                    timemap.add_conversion(TimeCvtType::TtToTdb, &args);
                 }
                 TimeScale::Tcg => {
-                    timemap.add(TimeCvtType::TaiToTt, &args[..1]);
-                    timemap.add(TimeCvtType::TtToTcg, &args[..1]);
+                    timemap.add_conversion(TimeCvtType::TaiToTt, &args[..1]);
+                    timemap.add_conversion(TimeCvtType::TtToTcg, &args[..1]);
                 }
                 TimeScale::Tcb => {
-                    timemap.add(TimeCvtType::TaiToTt, &args[..1]);
-                    timemap.add(TimeCvtType::TtToTdb, &args);
-                    timemap.add(TimeCvtType::TdbToTcb, &args[..1]);
+                    timemap.add_conversion(TimeCvtType::TaiToTt, &args[..1]);
+                    timemap.add_conversion(TimeCvtType::TtToTdb, &args);
+                    timemap.add_conversion(TimeCvtType::TdbToTcb, &args[..1]);
                 }
                 TimeScale::Lt => {
-                    timemap.add(TimeCvtType::TaiToUtc, &args_tai);
-                    timemap.add(TimeCvtType::UtcToLt, &args_lt);
+                    timemap.add_conversion(TimeCvtType::TaiToUtc, &args_tai);
+                    timemap.add_conversion(TimeCvtType::UtcToLt, &args_lt);
                 }
                 TimeScale::Ut1 => {
-                    timemap.add(TimeCvtType::TaiToUtc, &args_tai);
-                    timemap.add(TimeCvtType::UtcToUt, &args_ut);
+                    timemap.add_conversion(TimeCvtType::TaiToUtc, &args_tai);
+                    timemap.add_conversion(TimeCvtType::UtcToUt, &args_ut);
                 }
                 TimeScale::Gmst => {
-                    timemap.add(TimeCvtType::TaiToUtc, &args_tai);
-                    timemap.add(TimeCvtType::UtcToUt, &args_ut);
-                    timemap.add(TimeCvtType::UtToGmst, &args[..1]);
+                    timemap.add_conversion(TimeCvtType::TaiToUtc, &args_tai);
+                    timemap.add_conversion(TimeCvtType::UtcToUt, &args_ut);
+                    timemap.add_conversion(TimeCvtType::UtToGmst, &args[..1]);
                 }
                 TimeScale::Last => {
-                    timemap.add(TimeCvtType::TaiToUtc, &args_tai);
-                    timemap.add(TimeCvtType::UtcToUt, &args_ut);
-                    timemap.add(TimeCvtType::UtToGmst, &args[..1]);
-                    timemap.add(TimeCvtType::GmstToLmst, &args[..3]);
-                    timemap.add(TimeCvtType::LmstToLast, &args[..3]);
+                    timemap.add_conversion(TimeCvtType::TaiToUtc, &args_tai);
+                    timemap.add_conversion(TimeCvtType::UtcToUt, &args_ut);
+                    timemap.add_conversion(TimeCvtType::UtToGmst, &args[..1]);
+                    timemap.add_conversion(TimeCvtType::GmstToLmst, &args[..3]);
+                    timemap.add_conversion(TimeCvtType::LmstToLast, &args[..3]);
                 }
                 TimeScale::Lmst => {
-                    timemap.add(TimeCvtType::TaiToUtc, &args_tai);
-                    timemap.add(TimeCvtType::UtcToUt, &args_ut);
-                    timemap.add(TimeCvtType::UtToGmst, &args[..1]);
-                    timemap.add(TimeCvtType::GmstToLmst, &args[..3]);
+                    timemap.add_conversion(TimeCvtType::TaiToUtc, &args_tai);
+                    timemap.add_conversion(TimeCvtType::UtcToUt, &args_ut);
+                    timemap.add_conversion(TimeCvtType::UtToGmst, &args[..1]);
+                    timemap.add_conversion(TimeCvtType::GmstToLmst, &args[..3]);
                 }
             }
         }
@@ -1251,12 +1251,12 @@ impl TimeFrame {
         match sys2 {
             TimeSystem::Mjd => {
                 if mjd_off1 != off2 {
-                    timemap.add(TimeCvtType::MjdToMjd, &[mjd_off1, off2]);
+                    timemap.add_conversion(TimeCvtType::MjdToMjd, &[mjd_off1, off2]);
                 }
             }
-            TimeSystem::Jd => timemap.add(TimeCvtType::MjdToJd, &[mjd_off1, off2]),
-            TimeSystem::Jepoch => timemap.add(TimeCvtType::MjdToJep, &[mjd_off1, off2]),
-            TimeSystem::Bepoch => timemap.add(TimeCvtType::MjdToBep, &[mjd_off1, off2]),
+            TimeSystem::Jd => timemap.add_conversion(TimeCvtType::MjdToJd, &[mjd_off1, off2]),
+            TimeSystem::Jepoch => timemap.add_conversion(TimeCvtType::MjdToJep, &[mjd_off1, off2]),
+            TimeSystem::Bepoch => timemap.add_conversion(TimeCvtType::MjdToBep, &[mjd_off1, off2]),
         }
     }
 

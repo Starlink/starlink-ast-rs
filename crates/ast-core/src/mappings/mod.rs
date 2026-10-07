@@ -874,6 +874,41 @@ fn substitute_nan_to_bad_in_place(pts: &mut PointSet) {
     }
 }
 
+/// The checks C's public `astRate` makes before any class finds a rate
+/// (mapping.c `astRate_`): `ax1` must name an output and `ax2` an input,
+/// both 1-based, or it is `AST__AXIIN`. `at` must also hold a value for every
+/// input, which a C array cannot be checked for (`AST__NCPIN`).
+pub(crate) fn validate_rate<M: Mapping + ?Sized>(
+    map: &M,
+    at: &[f64],
+    ax1: usize,
+    ax2: usize,
+) -> AstResult<()> {
+    let (nin, nout) = (map.nin(), map.nout());
+    if ax1 < 1 || ax1 > nout {
+        return Err(AstError::new(
+            ErrorCode::Axiin,
+            format!("astRate: invalid output index ({ax1}); it should be in the range 1 to {nout}"),
+        ));
+    }
+    if ax2 < 1 || ax2 > nin {
+        return Err(AstError::new(
+            ErrorCode::Axiin,
+            format!("astRate: invalid input index ({ax2}); it should be in the range 1 to {nin}"),
+        ));
+    }
+    if at.len() != nin {
+        return Err(AstError::new(
+            ErrorCode::Ncpin,
+            format!(
+                "astRate: {} input values supplied; the Mapping has {nin} inputs",
+                at.len()
+            ),
+        ));
+    }
+    Ok(())
+}
+
 /// The checks C's base-class `Transform` makes before any class transforms a
 /// point (mapping.c:22333-22380), which every class's `Transform` calls
 /// first: the requested direction must be defined (`AST__TRNND`), the input

@@ -73,18 +73,23 @@ impl LutMap {
     /// `lut` is the table of output values, `start` is the input coordinate
     /// at the first entry, and `inc` is the spacing between entries.
     ///
-    /// Returns an error if `lut` is empty or `inc` is zero.
+    /// A table of fewer than two values is an `AST__LUTIN` error, and a zero
+    /// `inc` an `AST__LUTII` error, as in C's `astInitLutMap`.
     pub fn new(lut: &[f64], start: f64, inc: f64) -> AstResult<Self> {
-        if lut.is_empty() {
+        if lut.len() < 2 {
             return Err(AstError::new(
-                ErrorCode::Badin,
-                "LutMap lookup table must not be empty",
+                ErrorCode::Lutin,
+                format!(
+                    "LutMap: invalid number of lookup table elements ({}); it should be \
+                     at least 2",
+                    lut.len()
+                ),
             ));
         }
         if inc == 0.0 {
             return Err(AstError::new(
-                ErrorCode::Badin,
-                "LutMap increment must not be zero",
+                ErrorCode::Lutii,
+                "LutMap: the input value increment between lookup table elements is zero",
             ));
         }
         let (monotonic, inverse_table) = get_monotonic(lut);
@@ -638,6 +643,7 @@ impl Mapping for LutMap {
     }
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
+        crate::mappings::validate_rate(self, at, ax1, ax2)?;
         numeric_rate(self, at, ax1, ax2)
     }
 

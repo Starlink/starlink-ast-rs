@@ -1083,21 +1083,21 @@ impl SpecFrame {
         to.set_std_of_rest(new_sor)?;
         let mut specmap = SpecMap::new();
         match sys {
-            SpecSystem::Vradio => specmap.add(SpecCvtType::VrToVl, &[]),
-            SpecSystem::Voptical => specmap.add(SpecCvtType::VoToVl, &[]),
-            SpecSystem::Redshift => specmap.add(SpecCvtType::ZoToVl, &[]),
-            SpecSystem::Beta => specmap.add(SpecCvtType::BtToVl, &[]),
+            SpecSystem::Vradio => specmap.add_conversion(SpecCvtType::VrToVl, &[]),
+            SpecSystem::Voptical => specmap.add_conversion(SpecCvtType::VoToVl, &[]),
+            SpecSystem::Redshift => specmap.add_conversion(SpecCvtType::ZoToVl, &[]),
+            SpecSystem::Beta => specmap.add_conversion(SpecCvtType::BtToVl, &[]),
             _ => {}
         }
         let rf = self.rest_freq();
-        specmap.add(SpecCvtType::VlToFr, &[rf]);
+        specmap.add_conversion(SpecCvtType::VlToFr, &[rf]);
         Self::sor_convert(&from, &to, &mut specmap)?;
-        specmap.add(SpecCvtType::FrToVl, &[rf]);
+        specmap.add_conversion(SpecCvtType::FrToVl, &[rf]);
         match new_sys {
-            SpecSystem::Vradio => specmap.add(SpecCvtType::VlToVr, &[]),
-            SpecSystem::Voptical => specmap.add(SpecCvtType::VlToVo, &[]),
-            SpecSystem::Redshift => specmap.add(SpecCvtType::VlToZo, &[]),
-            SpecSystem::Beta => specmap.add(SpecCvtType::VlToBt, &[]),
+            SpecSystem::Vradio => specmap.add_conversion(SpecCvtType::VlToVr, &[]),
+            SpecSystem::Voptical => specmap.add_conversion(SpecCvtType::VlToVo, &[]),
+            SpecSystem::Redshift => specmap.add_conversion(SpecCvtType::VlToZo, &[]),
+            SpecSystem::Beta => specmap.add_conversion(SpecCvtType::VlToBt, &[]),
             _ => {}
         }
         use crate::coords::PointSet;
@@ -1124,29 +1124,29 @@ impl SpecFrame {
         match from {
             StdOfRest::Heliocentric => {} // no-op
             StdOfRest::Topocentric => {
-                specmap.add(SpecCvtType::TpF2Hl, &[lon, lat, alt, epoch, ra, dec]);
+                specmap.add_conversion(SpecCvtType::TpF2Hl, &[lon, lat, alt, epoch, ra, dec]);
             }
             StdOfRest::Geocentric => {
-                specmap.add(SpecCvtType::GeF2Hl, &[epoch, ra, dec]);
+                specmap.add_conversion(SpecCvtType::GeF2Hl, &[epoch, ra, dec]);
             }
             StdOfRest::Barycentric => {
-                specmap.add(SpecCvtType::ByF2Hl, &[epoch, ra, dec]);
+                specmap.add_conversion(SpecCvtType::ByF2Hl, &[epoch, ra, dec]);
             }
             StdOfRest::Lsrk => {
-                specmap.add(SpecCvtType::LkF2Hl, &[ra, dec]);
+                specmap.add_conversion(SpecCvtType::LkF2Hl, &[ra, dec]);
             }
             StdOfRest::Lsrd => {
-                specmap.add(SpecCvtType::LdF2Hl, &[ra, dec]);
+                specmap.add_conversion(SpecCvtType::LdF2Hl, &[ra, dec]);
             }
             StdOfRest::LocalGroup => {
-                specmap.add(SpecCvtType::LgF2Hl, &[ra, dec]);
+                specmap.add_conversion(SpecCvtType::LgF2Hl, &[ra, dec]);
             }
             StdOfRest::Galactic => {
-                specmap.add(SpecCvtType::GlF2Hl, &[ra, dec]);
+                specmap.add_conversion(SpecCvtType::GlF2Hl, &[ra, dec]);
             }
             StdOfRest::Source => {
                 let src_vel = self.convert_source_vel_to_helio_vrel()?;
-                specmap.add(SpecCvtType::UsF2Hl, &[src_vel, ra, dec]);
+                specmap.add_conversion(SpecCvtType::UsF2Hl, &[src_vel, ra, dec]);
             }
         }
         Ok(())
@@ -1164,29 +1164,29 @@ impl SpecFrame {
         match to {
             StdOfRest::Heliocentric => {} // no-op
             StdOfRest::Topocentric => {
-                specmap.add(SpecCvtType::HlF2Tp, &[lon, lat, alt, epoch, ra, dec]);
+                specmap.add_conversion(SpecCvtType::HlF2Tp, &[lon, lat, alt, epoch, ra, dec]);
             }
             StdOfRest::Geocentric => {
-                specmap.add(SpecCvtType::HlF2Ge, &[epoch, ra, dec]);
+                specmap.add_conversion(SpecCvtType::HlF2Ge, &[epoch, ra, dec]);
             }
             StdOfRest::Barycentric => {
-                specmap.add(SpecCvtType::HlF2By, &[epoch, ra, dec]);
+                specmap.add_conversion(SpecCvtType::HlF2By, &[epoch, ra, dec]);
             }
             StdOfRest::Lsrk => {
-                specmap.add(SpecCvtType::HlF2Lk, &[ra, dec]);
+                specmap.add_conversion(SpecCvtType::HlF2Lk, &[ra, dec]);
             }
             StdOfRest::Lsrd => {
-                specmap.add(SpecCvtType::HlF2Ld, &[ra, dec]);
+                specmap.add_conversion(SpecCvtType::HlF2Ld, &[ra, dec]);
             }
             StdOfRest::LocalGroup => {
-                specmap.add(SpecCvtType::HlF2Lg, &[ra, dec]);
+                specmap.add_conversion(SpecCvtType::HlF2Lg, &[ra, dec]);
             }
             StdOfRest::Galactic => {
-                specmap.add(SpecCvtType::HlF2Gl, &[ra, dec]);
+                specmap.add_conversion(SpecCvtType::HlF2Gl, &[ra, dec]);
             }
             StdOfRest::Source => {
                 let src_vel = self.convert_source_vel_to_helio_vrel()?;
-                specmap.add(SpecCvtType::HlF2Us, &[src_vel, ra, dec]);
+                specmap.add_conversion(SpecCvtType::HlF2Us, &[src_vel, ra, dec]);
             }
         }
         Ok(())
@@ -1227,10 +1227,10 @@ impl SpecFrame {
         // (The system-conversion VrToVl etc. is a no-op when both
         // sides are Vrel.)
         let mut specmap = SpecMap::new();
-        specmap.add(SpecCvtType::VlToFr, &[rf]);
+        specmap.add_conversion(SpecCvtType::VlToFr, &[rf]);
         self.add_sor_to_helio(&mut specmap, sor)?;
         self.add_helio_to_sor(&mut specmap, StdOfRest::Topocentric)?;
-        specmap.add(SpecCvtType::FrToVl, &[rf]);
+        specmap.add_conversion(SpecCvtType::FrToVl, &[rf]);
 
         use crate::coords::PointSet;
         use crate::mappings::Mapping;
@@ -1279,17 +1279,17 @@ impl SpecFrame {
     fn add_system_to_freq(specmap: &mut SpecMap, system: SpecSystem, rest_freq: f64) {
         match system {
             SpecSystem::Freq => return,
-            SpecSystem::Energy => return specmap.add(SpecCvtType::EnToFr, &[]),
-            SpecSystem::Wavenum => return specmap.add(SpecCvtType::WnToFr, &[]),
-            SpecSystem::Wavelen => return specmap.add(SpecCvtType::WvToFr, &[]),
-            SpecSystem::Airwave => return specmap.add(SpecCvtType::AwToFr, &[]),
-            SpecSystem::Vradio => specmap.add(SpecCvtType::VrToVl, &[]),
-            SpecSystem::Voptical => specmap.add(SpecCvtType::VoToVl, &[]),
-            SpecSystem::Redshift => specmap.add(SpecCvtType::ZoToVl, &[]),
-            SpecSystem::Beta => specmap.add(SpecCvtType::BtToVl, &[]),
+            SpecSystem::Energy => return specmap.add_conversion(SpecCvtType::EnToFr, &[]),
+            SpecSystem::Wavenum => return specmap.add_conversion(SpecCvtType::WnToFr, &[]),
+            SpecSystem::Wavelen => return specmap.add_conversion(SpecCvtType::WvToFr, &[]),
+            SpecSystem::Airwave => return specmap.add_conversion(SpecCvtType::AwToFr, &[]),
+            SpecSystem::Vradio => specmap.add_conversion(SpecCvtType::VrToVl, &[]),
+            SpecSystem::Voptical => specmap.add_conversion(SpecCvtType::VoToVl, &[]),
+            SpecSystem::Redshift => specmap.add_conversion(SpecCvtType::ZoToVl, &[]),
+            SpecSystem::Beta => specmap.add_conversion(SpecCvtType::BtToVl, &[]),
             SpecSystem::Vrel => {}
         }
-        specmap.add(SpecCvtType::VlToFr, &[rest_freq]);
+        specmap.add_conversion(SpecCvtType::VlToFr, &[rest_freq]);
     }
 
     /// Add SpecMap steps to convert from frequency to the given system
@@ -1297,18 +1297,18 @@ impl SpecFrame {
     fn add_freq_to_system(specmap: &mut SpecMap, system: SpecSystem, rest_freq: f64) {
         match system {
             SpecSystem::Freq => return,
-            SpecSystem::Energy => return specmap.add(SpecCvtType::FrToEn, &[]),
-            SpecSystem::Wavenum => return specmap.add(SpecCvtType::FrToWn, &[]),
-            SpecSystem::Wavelen => return specmap.add(SpecCvtType::FrToWv, &[]),
-            SpecSystem::Airwave => return specmap.add(SpecCvtType::FrToAw, &[]),
+            SpecSystem::Energy => return specmap.add_conversion(SpecCvtType::FrToEn, &[]),
+            SpecSystem::Wavenum => return specmap.add_conversion(SpecCvtType::FrToWn, &[]),
+            SpecSystem::Wavelen => return specmap.add_conversion(SpecCvtType::FrToWv, &[]),
+            SpecSystem::Airwave => return specmap.add_conversion(SpecCvtType::FrToAw, &[]),
             _ => {}
         }
-        specmap.add(SpecCvtType::FrToVl, &[rest_freq]);
+        specmap.add_conversion(SpecCvtType::FrToVl, &[rest_freq]);
         match system {
-            SpecSystem::Vradio => specmap.add(SpecCvtType::VlToVr, &[]),
-            SpecSystem::Voptical => specmap.add(SpecCvtType::VlToVo, &[]),
-            SpecSystem::Redshift => specmap.add(SpecCvtType::VlToZo, &[]),
-            SpecSystem::Beta => specmap.add(SpecCvtType::VlToBt, &[]),
+            SpecSystem::Vradio => specmap.add_conversion(SpecCvtType::VlToVr, &[]),
+            SpecSystem::Voptical => specmap.add_conversion(SpecCvtType::VlToVo, &[]),
+            SpecSystem::Redshift => specmap.add_conversion(SpecCvtType::VlToZo, &[]),
+            SpecSystem::Beta => specmap.add_conversion(SpecCvtType::VlToBt, &[]),
             _ => {}
         }
     }
@@ -1389,31 +1389,31 @@ impl SpecFrame {
             match from {
                 StdOfRest::Topocentric => {
                     this.verify_attrs(purp, "ObsLon ObsLat ObsAlt Epoch")?;
-                    specmap.add(SpecCvtType::TpF2Hl, &[lon, lat, alt, epoch, ra, dec]);
+                    specmap.add_conversion(SpecCvtType::TpF2Hl, &[lon, lat, alt, epoch, ra, dec]);
                 }
                 StdOfRest::Geocentric => {
                     this.verify_attrs(purp, "Epoch")?;
-                    specmap.add(SpecCvtType::GeF2Hl, &[epoch, ra, dec]);
+                    specmap.add_conversion(SpecCvtType::GeF2Hl, &[epoch, ra, dec]);
                 }
                 StdOfRest::Barycentric => {
                     this.verify_attrs(purp, "Epoch")?;
-                    specmap.add(SpecCvtType::ByF2Hl, &[epoch, ra, dec]);
+                    specmap.add_conversion(SpecCvtType::ByF2Hl, &[epoch, ra, dec]);
                 }
                 StdOfRest::Lsrk => {
-                    specmap.add(SpecCvtType::LkF2Hl, &[ra, dec]);
+                    specmap.add_conversion(SpecCvtType::LkF2Hl, &[ra, dec]);
                 }
                 StdOfRest::Lsrd => {
-                    specmap.add(SpecCvtType::LdF2Hl, &[ra, dec]);
+                    specmap.add_conversion(SpecCvtType::LdF2Hl, &[ra, dec]);
                 }
                 StdOfRest::LocalGroup => {
-                    specmap.add(SpecCvtType::LgF2Hl, &[ra, dec]);
+                    specmap.add_conversion(SpecCvtType::LgF2Hl, &[ra, dec]);
                 }
                 StdOfRest::Galactic => {
-                    specmap.add(SpecCvtType::GlF2Hl, &[ra, dec]);
+                    specmap.add_conversion(SpecCvtType::GlF2Hl, &[ra, dec]);
                 }
                 StdOfRest::Source => {
                     let src_vel = this.convert_source_vel_to_helio_vrel()?;
-                    specmap.add(SpecCvtType::UsF2Hl, &[src_vel, ra, dec]);
+                    specmap.add_conversion(SpecCvtType::UsF2Hl, &[src_vel, ra, dec]);
                 }
                 StdOfRest::Heliocentric => {} // already heliocentric, no-op
             }
@@ -1435,31 +1435,31 @@ impl SpecFrame {
             match to {
                 StdOfRest::Topocentric => {
                     that.verify_attrs(purp, "ObsLon ObsLat ObsAlt Epoch")?;
-                    specmap.add(SpecCvtType::HlF2Tp, &[lon, lat, alt, epoch, ra, dec]);
+                    specmap.add_conversion(SpecCvtType::HlF2Tp, &[lon, lat, alt, epoch, ra, dec]);
                 }
                 StdOfRest::Geocentric => {
                     that.verify_attrs(purp, "Epoch")?;
-                    specmap.add(SpecCvtType::HlF2Ge, &[epoch, ra, dec]);
+                    specmap.add_conversion(SpecCvtType::HlF2Ge, &[epoch, ra, dec]);
                 }
                 StdOfRest::Barycentric => {
                     that.verify_attrs(purp, "Epoch")?;
-                    specmap.add(SpecCvtType::HlF2By, &[epoch, ra, dec]);
+                    specmap.add_conversion(SpecCvtType::HlF2By, &[epoch, ra, dec]);
                 }
                 StdOfRest::Lsrk => {
-                    specmap.add(SpecCvtType::HlF2Lk, &[ra, dec]);
+                    specmap.add_conversion(SpecCvtType::HlF2Lk, &[ra, dec]);
                 }
                 StdOfRest::Lsrd => {
-                    specmap.add(SpecCvtType::HlF2Ld, &[ra, dec]);
+                    specmap.add_conversion(SpecCvtType::HlF2Ld, &[ra, dec]);
                 }
                 StdOfRest::LocalGroup => {
-                    specmap.add(SpecCvtType::HlF2Lg, &[ra, dec]);
+                    specmap.add_conversion(SpecCvtType::HlF2Lg, &[ra, dec]);
                 }
                 StdOfRest::Galactic => {
-                    specmap.add(SpecCvtType::HlF2Gl, &[ra, dec]);
+                    specmap.add_conversion(SpecCvtType::HlF2Gl, &[ra, dec]);
                 }
                 StdOfRest::Source => {
                     let src_vel = that.convert_source_vel_to_helio_vrel()?;
-                    specmap.add(SpecCvtType::HlF2Us, &[src_vel, ra, dec]);
+                    specmap.add_conversion(SpecCvtType::HlF2Us, &[src_vel, ra, dec]);
                 }
                 StdOfRest::Heliocentric => {} // already heliocentric, no-op
             }
@@ -1784,14 +1784,14 @@ impl SpecFrame {
         // alignment SOR (C lines 2828-2833). Uses target rest freq.
         if step4 && align_system == SpecSystem::Vrel {
             target.verify_attrs(vmess, "RestFreq")?;
-            specmap.add(SpecCvtType::FrToVl, &[target_rf]);
+            specmap.add_conversion(SpecCvtType::FrToVl, &[target_rf]);
         }
 
         // Step 5: alignment system in alignment SOR → frequency in
         // alignment SOR (C lines 2838-2843). Uses result rest freq.
         if step5 && align_system == SpecSystem::Vrel {
             result.verify_attrs(vmess, "RestFreq")?;
-            specmap.add(SpecCvtType::VlToFr, &[result_rf]);
+            specmap.add_conversion(SpecCvtType::VlToFr, &[result_rf]);
         }
 
         // Step 6: frequency in alignment SOR → frequency in result SOR

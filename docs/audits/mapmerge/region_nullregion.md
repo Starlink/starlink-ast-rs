@@ -18,7 +18,7 @@ when the base-to-current Mapping is not a UnitMap, rebuilds the NullRegion on th
 current Frame. `GetDefUnc` (`nullregion.c:218-235 (fn GetDefUnc)`) is a zero-radius Circle
 at the origin.
 
-`NullRegion::map_merge` (`nullregion.rs:730-733 (fn map_merge)`) delegates to
+`NullRegion::map_merge` (`nullregion.rs:731-734 (fn map_merge)`) delegates to
 `simplify::region_map_merge` (`mappings/simplify.rs:1481-1528 (fn region_map_merge)`), which every
 Region shares; `NullRegion::simplified` (`nullregion.rs:624-692 (fn simplified)`) and
 `NullRegion::get_def_unc` (`nullregion.rs:309-319 (fn get_def_unc)`) are the other two.
@@ -93,7 +93,7 @@ C offers the lower neighbour before the upper, and passes `intfirst = 0` for the
 first and `1` for the second, which is the order the merged Region's axes end up
 in. `region_map_merge` keeps that order and that flag
 (`mappings/simplify.rs:1506 (fn region_map_merge)`,1480). The lower-neighbour case cannot come
-through `NullRegion::try_merge` (`nullregion.rs:711-724 (fn try_merge)`), because
+through `NullRegion::try_merge` (`nullregion.rs:712-725 (fn try_merge)`), because
 `default_map_merge` only ever offers a nominee the entry at `where + 1`; sharing
 this body across the Region classes is what gives every one of them C's
 lower-neighbour branch.

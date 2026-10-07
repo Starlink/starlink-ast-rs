@@ -1355,6 +1355,7 @@ impl Mapping for Polygon {
     }
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
+        crate::mappings::validate_rate(self, at, ax1, ax2)?;
         crate::mappings::rate::numeric_rate(self, at, ax1, ax2)
     }
 

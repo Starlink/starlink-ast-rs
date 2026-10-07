@@ -499,7 +499,7 @@ struct SpecConversion {
 /// use ast_core::coords::PointSet;
 ///
 /// let mut spec = SpecMap::new();
-/// spec.add(SpecCvtType::FrToWv, &[]);
+/// spec.add(SpecCvtType::FrToWv, &[]).unwrap();
 ///
 /// // Convert 5e14 Hz to vacuum wavelength
 /// let pts = PointSet::from_rows([[5.0e14_f64]]);
@@ -554,11 +554,31 @@ impl SpecMap {
         Ok(Self { nin, ..Self::new() })
     }
 
-    /// Append a conversion step to the chain.
+    /// Append a conversion step to the chain, as C's `astSpecAdd` does.
     ///
-    /// `args` must have at least `cvt_type.nargs()` elements.
-    /// Extra elements are silently ignored.
-    pub fn add(&mut self, cvt_type: SpecCvtType, args: &[f64]) {
+    /// `args` must hold exactly `cvt_type.nargs()` values; any other number is
+    /// an `AST__TIMIN` error (specmap.c AddSpecCvt).
+    pub fn add(&mut self, cvt_type: SpecCvtType, args: &[f64]) -> AstResult<()> {
+        if args.len() != cvt_type.nargs() {
+            return Err(AstError::new(
+                ErrorCode::Timin,
+                format!(
+                    "SpecAdd: invalid number of arguments for spectral coordinate conversion \
+                     {}: {} supplied, {} required",
+                    cvt_type.code_string(),
+                    args.len(),
+                    cvt_type.nargs()
+                ),
+            ));
+        }
+        self.add_conversion(cvt_type, args);
+        Ok(())
+    }
+
+    /// Append a conversion step whose arguments the caller has already
+    /// checked, such as one rebuilt from a stored conversion: arguments beyond
+    /// `cvt_type.nargs()` are ignored.
+    pub(crate) fn add_conversion(&mut self, cvt_type: SpecCvtType, args: &[f64]) {
         let szargs = cvt_type.szargs();
         let mut stored_args = Vec::with_capacity(szargs);
         // Copy user-supplied args (up to nargs)
@@ -1438,6 +1458,7 @@ impl Mapping for SpecMap {
     }
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
+        crate::mappings::validate_rate(self, at, ax1, ax2)?;
         // SpecMap overrides the base finite-difference `astRate` with an
         // analytic derivative for a single frequency<->wavelength conversion,
         // mirroring `Rate` in `reference/starlink-ast/src/specmap.c:2640`.
