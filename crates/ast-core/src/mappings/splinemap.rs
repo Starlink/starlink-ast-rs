@@ -9,6 +9,19 @@
 //! The inverse is evaluated using a Newton-Raphson iteration that
 //! assumes the forward transformation represents a small perturbation
 //! of the identity: u = x + Pu(x,y), v = y + Pv(x,y).
+//!
+//! # Coefficient order differs from C's C API
+//!
+//! [`SplineMap::new`] takes the coefficients in CMLIB order, X index
+//! fastest (`i + j*nx`), which is the order of C's Fortran API
+//! (`AST_SPLINEMAP`) and of the internal storage, the Native dump and
+//! [`SplineMap::cu`] / [`SplineMap::cv`]. C's C API (`astSplineMap`, and
+//! pyast through it) takes the SciPy `RectBivariateSpline.get_coeffs()`
+//! order, Y index fastest (`j + i*ny`), and transposes it on entry
+//! (splinemap.c `astSplineMapId_`); [`SplineMap::from_scipy`] and
+//! [`SplineMap::coeffs`] are that API's order. Both orders have `nx * ny`
+//! elements, so SciPy coefficients given to `new` build a transposed spline,
+//! square grids included, with no error.
 
 use crate::constants::BAD_VALUE;
 use crate::coords::PointSet;
