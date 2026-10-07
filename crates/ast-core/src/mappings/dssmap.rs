@@ -13,7 +13,7 @@
 
 use crate::constants::BAD_VALUE;
 use crate::coords::PointSet;
-use crate::error::AstResult;
+use crate::error::{AstError, AstResult, ErrorCode};
 use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
 
 use super::cmpmap::{CmpMap, Composition};
@@ -688,6 +688,13 @@ impl Mapping for DssMap {
     }
 }
 
+/// A plate solution coefficient that defaults to 0 when missing (dssmap.c
+/// Load).
+fn optional(node: &Node, key: &str) -> f64 {
+    let value = node.get_double(key, BAD_VALUE);
+    if value == BAD_VALUE { 0.0 } else { value }
+}
+
 impl Serializable for DssMap {
     fn class_name(&self) -> &'static str {
         "DssMap"
@@ -771,33 +778,55 @@ impl Serializable for DssMap {
         let node = &whole.section("DssMap");
         let base = read_mapping_base(whole);
 
-        let plate_ra = node.get_double("PltRA", BAD_VALUE);
-        let plate_dec = node.get_double("PltDec", BAD_VALUE);
-        let plate_scale = node.get_double("PltScl", BAD_VALUE);
-        let x_pixel_offset = node.get_double("CNPix1", BAD_VALUE);
-        let y_pixel_offset = node.get_double("CNPix2", BAD_VALUE);
-        let x_pixel_size = node.get_double("XPixSz", BAD_VALUE);
-        let y_pixel_size = node.get_double("YPixSz", BAD_VALUE);
+        // dssmap.c Load: the plate parameters, PPO3, PPO6 and the first 13
+        // plate solution coefficients on each axis are required, and a
+        // missing one is AST__RDERR; the other coefficients default to 0.
+        let required = |key: &str, what: &str| -> AstResult<f64> {
+            let value = node.get_double(key, BAD_VALUE);
+            if value == BAD_VALUE {
+                return Err(AstError::new(
+                    ErrorCode::Rderr,
+                    format!("astRead(DssMap): '{key}' object ({what}) missing from input."),
+                ));
+            }
+            Ok(value)
+        };
+        let plate_ra = required("PltRA", "Plate centre RA")?;
+        let plate_dec = required("PltDec", "Plate centre Dec")?;
+        let plate_scale = required("PltScl", "Plate scale")?;
+        let x_pixel_offset = required("CNPix1", "X pixel offset")?;
+        let y_pixel_offset = required("CNPix2", "Y pixel offset")?;
+        let x_pixel_size = required("XPixSz", "X pixel size")?;
+        let y_pixel_size = required("YPixSz", "Y pixel size")?;
 
         let mut ppo_coeff = [0.0; 6];
         for (i, coeff) in ppo_coeff.iter_mut().enumerate() {
             let name = format!("PPO{}", i + 1);
-            let val = node.get_double(&name, BAD_VALUE);
-            *coeff = if is_bad(val) { 0.0 } else { val };
+            *coeff = if i == 2 || i == 5 {
+                required(&name, &format!("orientation coefficient {}", i + 1))?
+            } else {
+                optional(node, &name)
+            };
         }
 
         let mut amd_x_coeff = [0.0; 19];
         for (i, coeff) in amd_x_coeff.iter_mut().enumerate() {
             let name = format!("AMDX{}", i + 1);
-            let val = node.get_double(&name, BAD_VALUE);
-            *coeff = if is_bad(val) { 0.0 } else { val };
+            *coeff = if i < 13 {
+                required(&name, &format!("plate solution X coefficient {}", i + 1))?
+            } else {
+                optional(node, &name)
+            };
         }
 
         let mut amd_y_coeff = [0.0; 19];
         for (i, coeff) in amd_y_coeff.iter_mut().enumerate() {
             let name = format!("AMDY{}", i + 1);
-            let val = node.get_double(&name, BAD_VALUE);
-            *coeff = if is_bad(val) { 0.0 } else { val };
+            *coeff = if i < 13 {
+                required(&name, &format!("plate solution Y coefficient {}", i + 1))?
+            } else {
+                optional(node, &name)
+            };
         }
 
         let mut m = DssMap::from_plate_params(

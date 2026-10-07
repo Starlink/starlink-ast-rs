@@ -327,3 +327,29 @@ fn rate_at_zero() {
     assert!(rate.is_finite());
     assert!(rate != 0.0);
 }
+
+/// A GrismMap made with no attribute values leaves every attribute unset, as
+/// C's `astGrismMap("")` does, so its dump writes the defaults commented out.
+/// The expected dump is C's.
+#[test]
+fn default_grismmap_dumps_as_c_does() {
+    let want = [
+        " Begin GrismMap \t# Map 1-d coordinates using a spectral disperser",
+        "    Nin = 1 \t# Number of input coordinates",
+        " IsA Mapping \t# Mapping between coordinate systems",
+        "#   GrmNR = 1 \t# Refractive index at the ref. wavelength",
+        "#   GrmNRP = 0 \t# Rate of change of refractive index",
+        "#   GrmWR = 5000 \t# Ref. wavelength",
+        "#   GrmAlp = 0 \t# Angle of incidence of incoming light",
+        "#   GrmG = 0 \t# Grating ruling density",
+        "#   GrmM = 0 \t# The interference order",
+        "#   GrmEps = 0 \t# Angle between grating normal and dispersion plane",
+        "#   GrmTh = 0 \t# Angle between detector normal and reference ray",
+        " End GrismMap",
+    ]
+    .join("\n")
+        + "\n";
+    let got = ast_core::to_native_string(&ast_core::AnyObject::GrismMap(GrismMap::default_map()))
+        .unwrap();
+    assert_eq!(got, want);
+}

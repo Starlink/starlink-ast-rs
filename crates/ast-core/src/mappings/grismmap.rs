@@ -150,9 +150,13 @@ impl GrismMap {
         map
     }
 
-    /// Create a `GrismMap` with all default attribute values.
+    /// Create a `GrismMap` with every attribute unset, taking its default
+    /// value, as C's `astGrismMap` with no attribute settings does; its dump
+    /// writes the defaults commented out.
     pub fn default_map() -> Self {
-        Self::new(1.0, 0.0, 5000.0, 0.0, 0.0, 0, 0.0, 0.0)
+        let mut map = Self::new(1.0, 0.0, 5000.0, 0.0, 0.0, 0, 0.0, 0.0);
+        map.set_flags = GrismSetFlags::default();
+        map
     }
 
     /// The refractive index at the reference wavelength.

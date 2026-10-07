@@ -84,6 +84,12 @@ fn compute_max_powers(terms: &[PolyTerm], nin: usize) -> Vec<usize> {
     max_pows
 }
 
+/// The terms with non-zero coefficients, which are the ones C stores
+/// (polymap.c `AddCoeff`).
+fn nonzero(terms: &[PolyTerm]) -> Vec<PolyTerm> {
+    terms.iter().filter(|t| t.coeff != 0.0).cloned().collect()
+}
+
 /// Group term indices by their output axis (0-based output index).
 fn compute_terms_by_output(terms: &[PolyTerm], nout: usize) -> Vec<Vec<usize>> {
     let mut by_output = vec![Vec::new(); nout];
@@ -102,7 +108,9 @@ impl PolyMap {
     /// `inverse`, if provided, defines the explicit inverse: each term's
     /// `powers` must have length `nout`, and `out_axis` must be in `1..=nin`.
     ///
-    /// Returns an error if any term is invalid.
+    /// A term with a zero coefficient contributes nothing and is dropped, as
+    /// C's `AddCoeff` drops it (polymap.c). Returns an error if any term is
+    /// invalid.
     pub fn new(
         nin: usize,
         nout: usize,
@@ -138,12 +146,6 @@ impl PolyMap {
                     ),
                 ));
             }
-            if term.coeff == 0.0 {
-                return Err(AstError::new(
-                    ErrorCode::Badin,
-                    format!("forward term {} has zero coefficient", i),
-                ));
-            }
         }
 
         // Validate inverse terms, if provided.
@@ -169,19 +171,13 @@ impl PolyMap {
                         ),
                     ));
                 }
-                if term.coeff == 0.0 {
-                    return Err(AstError::new(
-                        ErrorCode::Badin,
-                        format!("inverse term {} has zero coefficient", i),
-                    ));
-                }
             }
-            Some(inv_terms.to_vec())
+            Some(nonzero(inv_terms))
         } else {
             None
         };
 
-        let fwd_vec = forward.to_vec();
+        let fwd_vec = nonzero(forward);
         let forward_by_output = compute_terms_by_output(&fwd_vec, nout);
         let forward_max_pows = compute_max_powers(&fwd_vec, nin);
         let (inverse_by_output, inverse_max_pows) = if let Some(ref inv_terms) = inv {

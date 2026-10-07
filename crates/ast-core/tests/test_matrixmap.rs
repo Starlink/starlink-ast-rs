@@ -577,3 +577,17 @@ fn mtr_mult_non_square_product() {
     assert_eq!(fwd(&prod, &[1.0, 0.0]), vec![2.0, 0.0]);
     assert_eq!(fwd(&prod, &[0.0, 1.0]), vec![1.0, 1.0]);
 }
+
+/// An inverted non-square MatrixMap has no matrix in the direction it
+/// applies, so C compares the stored forward matrices instead (matrixmap.c
+/// Equal) and finds it equal to its own copy.
+#[test]
+fn an_inverted_non_square_matrixmap_equals_its_copy() {
+    let mut m = MatrixMap::new(ndarray::array![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]).unwrap();
+    m.invert();
+    assert!(!m.has_forward());
+    assert!(m.equal(&m.clone()));
+    let mut other = MatrixMap::new(ndarray::array![[1.0, 2.0, 3.0], [4.0, 5.0, 7.0]]).unwrap();
+    other.invert();
+    assert!(!m.equal(&other));
+}

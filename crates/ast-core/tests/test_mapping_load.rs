@@ -82,3 +82,29 @@ fn permmap_dumps_match_the_c_library() {
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
+
+/// A DssMap dump missing a plate parameter, PPO3, PPO6 or one of the first
+/// 13 plate solution coefficients on an axis is an AST__RDERR error, as C's
+/// loader reports; a later coefficient defaults to 0 (dssmap.c Load).
+#[test]
+fn a_dssmap_dump_needs_its_plate_solution() {
+    let dump = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/serialisation/c_dssmap.ast"
+    ))
+    .unwrap();
+    let without = |key: &str| -> String {
+        dump.lines()
+            .filter(|l| !l.trim_start().starts_with(&format!("{key} =")))
+            .map(|l| format!("{l}\n"))
+            .collect()
+    };
+    assert!(from_native_string(&dump).is_ok());
+    for key in ["PltRA", "YPixSz", "PPO3", "PPO6", "AMDX1", "AMDY13"] {
+        let err = from_native_string(&without(key)).unwrap_err();
+        assert_eq!(err.code(), ast_core::error::ErrorCode::Rderr, "{key}");
+    }
+    for key in ["PPO1", "AMDX14", "AMDY19"] {
+        assert!(from_native_string(&without(key)).is_ok(), "{key}");
+    }
+}

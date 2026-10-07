@@ -18,7 +18,7 @@ comments: simplify the CmpMap on its own; decompose a series CmpMap into the
 list; merge adjacent CmpMaps; update the list for that merge; and swap a series
 CmpMap past a neighbouring PermMap.
 
-The Rust `CmpMap::map_merge` (`cmpmap.rs:846-853 (fn map_merge)`) delegates to
+The Rust `CmpMap::map_merge` (`cmpmap.rs:849-856 (fn map_merge)`) delegates to
 `simplify::cmp_map_merge` (`mappings/simplify.rs:694-813 (fn cmp_map_merge)`), so Rust sites below are in
 `mappings/simplify.rs` unless stated.
 
@@ -145,9 +145,9 @@ engine for every composite Mapping: decompose the tree into a series or parallel
 list, drive each component's `astMapMerge` from a nominate loop until the list
 stops improving, and fold the survivors back into a right-associated CmpMap.
 
-The Rust `CmpMap::simplified` (`cmpmap.rs:839-844 (fn simplified)`) delegates to
+The Rust `CmpMap::simplified` (`cmpmap.rs:842-847 (fn simplified)`) delegates to
 `simplify::simplify_mapping` (`mappings/simplify.rs:3489-3584 (fn simplify_mapping_reporting_change)`), so Rust sites below are in
-`mappings/simplify.rs` unless stated. The `has_been_simplified` test at `cmpmap.rs:840 (fn simplified)` is
+`mappings/simplify.rs` unless stated. The `has_been_simplified` test at `cmpmap.rs:843 (fn simplified)` is
 C's `astGetIsSimple` short-circuit, which C performs one level up in
 `astSimplify_` (`mapping.c:24802-24804 (fn astSimplify_)`) and the port performs both there
 (`simplify_entry.rs:69 (fn simplify_reporting_change)`) and here.

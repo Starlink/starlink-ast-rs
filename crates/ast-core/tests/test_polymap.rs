@@ -77,17 +77,6 @@ fn polymap_bad_out_axis_rejected() {
 }
 
 #[test]
-fn polymap_zero_coeff_rejected() {
-    let terms = vec![PolyTerm {
-        coeff: 0.0,
-        powers: vec![1],
-        out_axis: 1,
-    }];
-    let result = PolyMap::new(1, 1, &terms, None);
-    assert!(result.is_err());
-}
-
-#[test]
 fn polymap_defaults() {
     let terms = vec![PolyTerm {
         coeff: 1.0,
@@ -1472,4 +1461,19 @@ fn ident_set_polymap_nominated_in_a_list_is_left_alone() {
         text.contains("NCF1 = 2"),
         "both cubic coefficients survive unconsolidated:\n{text}"
     );
+}
+
+/// A zero coefficient contributes nothing, and C's AddCoeff drops it rather
+/// than refusing it (polymap.c), so a PolyMap given one equals one without.
+#[test]
+fn a_zero_coefficient_is_dropped() {
+    let term = |coeff: f64, p: usize| PolyTerm {
+        coeff,
+        powers: vec![p],
+        out_axis: 1,
+    };
+    let with_zero = PolyMap::new(1, 1, &[term(0.0, 0), term(2.0, 1)], None).unwrap();
+    let without = PolyMap::new(1, 1, &[term(2.0, 1)], None).unwrap();
+    assert!(with_zero.equal(&without));
+    assert_eq!(with_zero.forward_terms().len(), 1);
 }

@@ -877,31 +877,34 @@ impl Mapping for MatrixMap {
         let Some(other) = other.as_any().downcast_ref::<MatrixMap>() else {
             return false;
         };
-        // Compare effective forward matrices (resolving invert flags).
-        // When inverted, the "effective forward" is the stored inverse matrix.
-        let self_fwd = if self.inverted {
-            match &self.inverse {
-                Some(inv) => inv,
-                None => return false,
-            }
-        } else {
-            &self.matrix
-        };
-        let other_fwd = if other.inverted {
-            match &other.inverse {
-                Some(inv) => inv,
-                None => return false,
-            }
-        } else {
-            &other.matrix
-        };
-        if self_fwd.shape() != other_fwd.shape() {
+        // matrixmap.c Equal: compare the matrices of the direction each
+        // applies forward, or, when either lacks one, of the other direction;
+        // MatrixMaps of the same shape with neither pair available are equal.
+        if self.nin() != other.nin() || self.nout() != other.nout() {
             return false;
         }
-        self_fwd
-            .iter()
-            .zip(other_fwd.iter())
-            .all(|(a, b)| ast_equal(*a, *b))
+        fn applied(m: &MatrixMap) -> Option<&Array2<f64>> {
+            if m.inverted {
+                m.inverse.as_ref()
+            } else {
+                Some(&m.matrix)
+            }
+        }
+        fn opposite(m: &MatrixMap) -> Option<&Array2<f64>> {
+            if m.inverted {
+                Some(&m.matrix)
+            } else {
+                m.inverse.as_ref()
+            }
+        }
+        let pair = match (applied(self), applied(other)) {
+            (Some(a), Some(b)) => Some((a, b)),
+            _ => opposite(self).zip(opposite(other)),
+        };
+        match pair {
+            Some((a, b)) => a.iter().zip(b.iter()).all(|(x, y)| ast_equal(*x, *y)),
+            None => true,
+        }
     }
 
     fn map_split_zero_based(&self, in_axes: &[usize]) -> Option<(Vec<usize>, DynMapping)> {
