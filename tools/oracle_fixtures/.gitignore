@@ -60,3 +60,4 @@ box_axin_probe
 norm_points_probe
 frame_api_probe
 region_grid_probe
+report_probe

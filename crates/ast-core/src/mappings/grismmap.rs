@@ -57,6 +57,8 @@ pub struct GrismMap {
     inverted: bool,
     simplified: SimplifiedRecord,
     ident: Option<String>,
+    /// The `Report` attribute (mapping.c), `None` when unset.
+    report: Option<bool>,
     /// Per-attribute "was this set by the user / source" flags, mirroring
     /// the C library's `Test*` predicates so we can choose commented vs
     /// uncommented dump output to match byte-exact.
@@ -132,6 +134,7 @@ impl GrismMap {
             inverted: false,
             simplified: SimplifiedRecord::default(),
             ident: None,
+            report: None,
             set_flags: GrismSetFlags {
                 nr: true,
                 nrp: true,
@@ -408,6 +411,14 @@ impl GrismMap {
 }
 
 impl Mapping for GrismMap {
+    fn report_attr(&self) -> Option<bool> {
+        self.report
+    }
+
+    fn set_report_attr(&mut self, value: Option<bool>) {
+        self.report = value;
+    }
+
     fn nin(&self) -> usize {
         1
     }

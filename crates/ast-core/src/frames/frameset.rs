@@ -114,6 +114,8 @@ pub struct FrameSet {
     /// and a FrameSet reads its own rather than its current Frame's
     /// (`frameset.c:2759`, `:4841`, `:10830` all pass `this`).
     ident: Option<String>,
+    /// The Mapping attribute `Report` (mapping.c), `None` when unset.
+    report: Option<bool>,
     /// The FrameSet's own `UseDefs`, `None` when unset.
     use_defs: Option<bool>,
 }
@@ -140,6 +142,7 @@ impl Clone for FrameSet {
             nnode: self.nnode,
             node_map: self.node_map.clone(),
             ident: self.ident.clone(),
+            report: self.report,
             use_defs: self.use_defs,
         }
     }
@@ -181,6 +184,7 @@ impl FrameSet {
             nnode: 1,
             node_map: vec![0],
             ident: None,
+            report: None,
             use_defs: None,
         }
     }
@@ -1773,6 +1777,26 @@ fn frameset_convert_to(
 // ====================================================================== //
 
 impl Mapping for FrameSet {
+    fn report_attr(&self) -> Option<bool> {
+        self.report
+    }
+
+    fn set_report_attr(&mut self, value: Option<bool>) {
+        self.report = value;
+    }
+
+    /// frameset.c `ReportPoints`: the input values are formatted by the
+    /// base Frame and the output values by the current Frame, the other way
+    /// round for the inverse.
+    fn report_points(&self, forward: bool, inp: &PointSet, out: &PointSet) {
+        let (from, to) = if forward {
+            (self.base(), self.current())
+        } else {
+            (self.current(), self.base())
+        };
+        crate::mappings::report::write_report(&super::frame_report_lines(from, to, inp, out));
+    }
+
     // C's `Frame` overrides `astDoNotSimplify` to zero (frame.c:3511-3554): a
     // set `Ident` is a user label on a coordinate system, not a request to keep
     // a Mapping intact, so a named Frame is still simplified.
@@ -1930,6 +1954,7 @@ impl Serializable for FrameSet {
         // The value is the FrameSet's own, not the current Frame's
         // (`frameset.c:4841`).
         super::frame_attrs::write_object_part(&mut node, self.ident.as_deref(), self.use_defs);
+        crate::serial::write_report_mapping_part(&mut node, self.report);
 
         // Write proxy attributes from the current frame as commented (unset).
         // The C library writes all current-frame attributes as informational
@@ -2264,6 +2289,7 @@ impl Serializable for FrameSet {
             nnode,
             node_map,
             ident,
+            report: crate::serial::read_report(whole),
             use_defs: object
                 .get("UseDfs")
                 .map(|_| object.get_int("UseDfs", 1) != 0),

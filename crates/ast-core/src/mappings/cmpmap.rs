@@ -105,6 +105,8 @@ pub struct CmpMap {
     inverted: bool,
     simplified: SimplifiedRecord,
     ident: Option<String>,
+    /// The `Report` attribute (mapping.c), `None` when unset.
+    report: Option<bool>,
     /// Whether the forward transform is defined.
     pub(crate) tran_forward: bool,
     /// Whether the inverse transform is defined.
@@ -149,6 +151,7 @@ impl CmpMap {
             inverted: false,
             simplified: SimplifiedRecord::default(),
             ident: None,
+            report: None,
             tran_forward,
             tran_inverse,
             inv_a,
@@ -693,6 +696,7 @@ impl Clone for CmpMap {
             inverted: self.inverted,
             simplified: self.simplified,
             ident: self.ident.clone(),
+            report: self.report,
             tran_forward: self.tran_forward,
             tran_inverse: self.tran_inverse,
             inv_a: self.inv_a,
@@ -703,6 +707,14 @@ impl Clone for CmpMap {
 }
 
 impl Mapping for CmpMap {
+    fn report_attr(&self) -> Option<bool> {
+        self.report
+    }
+
+    fn set_report_attr(&mut self, value: Option<bool>) {
+        self.report = value;
+    }
+
     fn nin(&self) -> usize {
         // The "forward nin" of the CmpMap (before considering self.inverted)
         // is determined by the children in the CmpMap's nominal forward direction.
@@ -1011,6 +1023,7 @@ impl Serializable for CmpMap {
             inverted: false,
             simplified: SimplifiedRecord::default(),
             ident: None,
+            report: None,
             tran_forward: true,
             tran_inverse: true,
             inv_a,

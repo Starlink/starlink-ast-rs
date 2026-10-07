@@ -46,6 +46,8 @@ pub struct PermMap {
     /// Whether this mapping has already been simplified (C `IsSimple`).
     simplified: SimplifiedRecord,
     ident: Option<String>,
+    /// The `Report` attribute (mapping.c), `None` when unset.
+    report: Option<bool>,
     /// Serialize outperm as `OutCpy=1` (identity shorthand).
     out_is_copy: bool,
     /// Serialize inperm as `InCpy=1` (identity shorthand).
@@ -79,6 +81,7 @@ impl PermMap {
             inverted: false,
             simplified: SimplifiedRecord::default(),
             ident: None,
+            report: None,
             out_is_copy: false,
             in_is_copy: false,
             perm_split: false,
@@ -186,6 +189,7 @@ impl PermMap {
             inverted: false,
             simplified: SimplifiedRecord::default(),
             ident: None,
+            report: None,
             out_is_copy,
             in_is_copy,
             perm_split: self.perm_split,
@@ -447,6 +451,14 @@ fn compose_perms(
 }
 
 impl Mapping for PermMap {
+    fn report_attr(&self) -> Option<bool> {
+        self.report
+    }
+
+    fn set_report_attr(&mut self, value: Option<bool>) {
+        self.report = value;
+    }
+
     fn nin(&self) -> usize {
         if self.inverted {
             self.outperm.len()

@@ -107,6 +107,8 @@ pub struct WcsMap {
     /// Whether this mapping has already been simplified (C `IsSimple`).
     simplified: SimplifiedRecord,
     ident: Option<String>,
+    /// The `Report` attribute (mapping.c), `None` when unset.
+    report: Option<bool>,
     /// Protected `LonCheck` attribute (wcsmap.c:4787). Controls whether the
     /// inverse projection clips returned longitude values to the projection's
     /// primary range. `None` = unset (defaults to `true`); `Some(v)` = the
@@ -189,6 +191,7 @@ impl WcsMap {
                     inverted: false,
                     simplified: SimplifiedRecord::default(),
                     ident: None,
+                    report: None,
                     lon_check: None,
                     fits_proj: None,
                     tpn_tan: None,
@@ -215,6 +218,7 @@ impl WcsMap {
             inverted: false,
             simplified: SimplifiedRecord::default(),
             ident: None,
+            report: None,
             lon_check: None,
             fits_proj: None,
             tpn_tan: None,
@@ -552,6 +556,7 @@ impl WcsMap {
             // C builds a fresh WcsMap for this rebuild (wcsmap.c:4667), and a
             // fresh Object has no Ident.
             ident: None,
+            report: None,
             lon_check: self.lon_check,
             fits_proj: self.fits_proj,
             tpn_tan: self.tpn_tan,
@@ -601,6 +606,7 @@ impl Clone for WcsMap {
             inverted: self.inverted,
             simplified: self.simplified,
             ident: self.ident.clone(),
+            report: self.report,
             lon_check: self.lon_check,
             fits_proj: self.fits_proj,
             tpn_tan: self.tpn_tan,
@@ -609,6 +615,14 @@ impl Clone for WcsMap {
 }
 
 impl Mapping for WcsMap {
+    fn report_attr(&self) -> Option<bool> {
+        self.report
+    }
+
+    fn set_report_attr(&mut self, value: Option<bool>) {
+        self.report = value;
+    }
+
     fn nin(&self) -> usize {
         self.ncoord
     }

@@ -365,6 +365,8 @@ pub struct SlaMap {
     inverted: bool,
     simplified: SimplifiedRecord,
     ident: Option<String>,
+    /// The `Report` attribute (mapping.c), `None` when unset.
+    report: Option<bool>,
 }
 
 impl SlaMap {
@@ -375,6 +377,7 @@ impl SlaMap {
             inverted: false,
             simplified: SimplifiedRecord::default(),
             ident: None,
+            report: None,
         }
     }
 
@@ -1139,6 +1142,14 @@ fn apply_step_inverse(
 // ---------------------------------------------------------------------------
 
 impl Mapping for SlaMap {
+    fn report_attr(&self) -> Option<bool> {
+        self.report
+    }
+
+    fn set_report_attr(&mut self, value: Option<bool>) {
+        self.report = value;
+    }
+
     fn nin(&self) -> usize {
         2
     }

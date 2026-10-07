@@ -85,6 +85,8 @@ pub struct DssMap {
     /// Whether this mapping has already been simplified (C `IsSimple`).
     simplified: SimplifiedRecord,
     ident: Option<String>,
+    /// The `Report` attribute (mapping.c), `None` when unset.
+    report: Option<bool>,
 }
 
 impl DssMap {
@@ -121,6 +123,7 @@ impl DssMap {
             inverted: false,
             simplified: SimplifiedRecord::default(),
             ident: None,
+            report: None,
         }
     }
 
@@ -423,6 +426,14 @@ impl DssMap {
 }
 
 impl Mapping for DssMap {
+    fn report_attr(&self) -> Option<bool> {
+        self.report
+    }
+
+    fn set_report_attr(&mut self, value: Option<bool>) {
+        self.report = value;
+    }
+
     fn nin(&self) -> usize {
         2
     }

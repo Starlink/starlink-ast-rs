@@ -9,7 +9,7 @@ use crate::serial::node::{Node, NodeValue};
 
 /// Number of significant digits for double formatting, matching C11's
 /// `DBL_DECIMAL_DIG` (AST's `AST__DBL_DIG`).
-const DBL_DIG: usize = 17;
+pub(crate) const DBL_DIG: usize = 17;
 
 // ---------------------------------------------------------------------------
 // Double formatting — faithful reproduction of C's `sprintf(buf, "%.*g", prec, value)`

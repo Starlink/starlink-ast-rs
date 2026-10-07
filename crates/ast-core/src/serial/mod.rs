@@ -124,10 +124,46 @@ pub(crate) fn write_mapping_base(node: &mut Node, mapping: &dyn Mapping) {
             Some("Inverse transformation not defined".to_string()),
         );
     }
+    push_report(node, mapping.report_attr());
     node.push_isa(
         "Mapping",
         Some("Mapping between coordinate systems".to_string()),
     );
+}
+
+/// Write the `Report` item when it is set, as mapping.c `Dump` does last in
+/// the Mapping part.
+fn push_report(node: &mut Node, report: Option<bool>) {
+    if let Some(report) = report {
+        node.push_int(
+            "Report",
+            i64::from(report),
+            Some(if report {
+                "Report coordinate transformations".to_string()
+            } else {
+                "Don't report coordinate transformations".to_string()
+            }),
+        );
+    }
+}
+
+/// The Mapping part of a FrameSet or Region dump, which holds nothing but
+/// `Report` and so is written, with its `IsA Mapping` marker, only when
+/// `Report` is set (mapping.c `Dump`).
+pub(crate) fn write_report_mapping_part(node: &mut Node, report: Option<bool>) {
+    if report.is_some() {
+        push_report(node, report);
+        node.push_isa(
+            "Mapping",
+            Some("Mapping between coordinate systems".to_string()),
+        );
+    }
+}
+
+/// The `Report` item of a description's Mapping part, if set.
+pub(crate) fn read_report(whole: &Node) -> Option<bool> {
+    let node = whole.section("Mapping");
+    node.get("Report").map(|_| node.get_int("Report", 0) != 0)
 }
 
 /// Common Mapping attributes read from a serialized node.
@@ -183,6 +219,9 @@ pub(crate) fn mapping_from_node(node: &Node) -> AstResult<DynMapping> {
 fn apply_mapping_object_items(result: &mut dyn Mapping, node: &Node) {
     if node.section("Mapping").get_int("AlSimp", 0) != 0 {
         result.set_allow_simplify(true);
+    }
+    if let Some(report) = read_report(node) {
+        result.set_report_attr(Some(report));
     }
     let object = node.section("Object");
     if let Some(ident) = object.get_string_if_set("Ident") {
@@ -945,6 +984,7 @@ pub(crate) fn read_region_base(whole: &Node) -> AstResult<RegionData> {
     let mut data = RegionData {
         frameset,
         ident: object.get_string_if_set("Ident"),
+        report: read_report(whole),
         use_defs: object
             .get("UseDfs")
             .map(|_| object.get_int("UseDfs", 1) != 0),
@@ -1063,6 +1103,7 @@ fn region_to_node_skeleton(
     // Region itself, comes first (object.c Dump); a UseDefs set through
     // the Region is the encapsulated Frame's and is written with it.
     crate::frames::frame_attrs::write_object_part(&mut node, data.ident.as_deref(), data.use_defs);
+    write_report_mapping_part(&mut node, data.report);
     write_frame_inheritance_for_region(&mut node, data.frameset.current())?;
     push_frame_isa_marker(&mut node);
     write_region_base(&mut node, data);

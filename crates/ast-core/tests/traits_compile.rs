@@ -57,6 +57,10 @@ macro_rules! forward_axis {
 }
 
 impl Mapping for DummyRegion {
+    fn report_attr(&self) -> Option<bool> {
+        None
+    }
+    fn set_report_attr(&mut self, _value: Option<bool>) {}
     fn nin(&self) -> usize {
         2
     }

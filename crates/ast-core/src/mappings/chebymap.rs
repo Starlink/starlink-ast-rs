@@ -60,6 +60,8 @@ pub struct ChebyMap {
     /// Whether this mapping has already been simplified (C `IsSimple`).
     simplified: SimplifiedRecord,
     ident: Option<String>,
+    /// The `Report` attribute (mapping.c), `None` when unset.
+    report: Option<bool>,
 }
 
 impl ChebyMap {
@@ -193,6 +195,7 @@ impl ChebyMap {
             inverted: false,
             simplified: SimplifiedRecord::default(),
             ident: None,
+            report: None,
         })
     }
 
@@ -348,6 +351,14 @@ fn eval_cheby(
 // ---------------------------------------------------------------------------
 
 impl Mapping for ChebyMap {
+    fn report_attr(&self) -> Option<bool> {
+        self.report
+    }
+
+    fn set_report_attr(&mut self, value: Option<bool>) {
+        self.report = value;
+    }
+
     fn nin(&self) -> usize {
         self.poly.nin()
     }
@@ -1078,6 +1089,7 @@ impl Serializable for ChebyMap {
             inverted: false,
             simplified: SimplifiedRecord::for_orientation(base.inverted, base.has_been_simplified),
             ident: None,
+            report: None,
         };
         if base.inverted {
             m.invert();

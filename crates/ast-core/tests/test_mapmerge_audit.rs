@@ -20,6 +20,7 @@ const MAPPING_HELPERS: &[&str] = &[
     "map_box",
     "polymap_simd",
     "rate",
+    "report",
 ];
 
 /// The Region trait methods this audit covers. A region module that overrides

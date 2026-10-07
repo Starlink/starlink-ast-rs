@@ -44,6 +44,8 @@ pub struct SphMap {
     inverted: bool,
     simplified: SimplifiedRecord,
     ident: Option<String>,
+    /// The `Report` attribute (mapping.c), `None` when unset.
+    report: Option<bool>,
 }
 
 impl SphMap {
@@ -58,6 +60,7 @@ impl SphMap {
             inverted: false,
             simplified: SimplifiedRecord::default(),
             ident: None,
+            report: None,
         }
     }
 
@@ -130,6 +133,14 @@ impl Default for SphMap {
 }
 
 impl Mapping for SphMap {
+    fn report_attr(&self) -> Option<bool> {
+        self.report
+    }
+
+    fn set_report_attr(&mut self, value: Option<bool>) {
+        self.report = value;
+    }
+
     fn nin(&self) -> usize {
         if self.inverted { 2 } else { 3 }
     }
@@ -460,6 +471,7 @@ impl Serializable for SphMap {
             inverted: false,
             simplified: SimplifiedRecord::for_orientation(base.inverted, base.has_been_simplified),
             ident: None,
+            report: None,
         };
         if base.inverted {
             m.invert();

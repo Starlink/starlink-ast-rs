@@ -512,6 +512,8 @@ pub struct SpecMap {
     inverted: bool,
     simplified: SimplifiedRecord,
     ident: Option<String>,
+    /// The `Report` attribute (mapping.c), `None` when unset.
+    report: Option<bool>,
 }
 
 impl SpecMap {
@@ -522,6 +524,7 @@ impl SpecMap {
             inverted: false,
             simplified: SimplifiedRecord::default(),
             ident: None,
+            report: None,
         }
     }
 
@@ -1224,6 +1227,7 @@ pub(crate) fn spec_map_merge(
             inverted: false,
             simplified: SimplifiedRecord::default(),
             ident: None,
+            report: None,
         })
     };
     ctx.replace_range_with(imap1, imap2, new);
@@ -1235,6 +1239,14 @@ pub(crate) fn spec_map_merge(
 // ---------------------------------------------------------------------------
 
 impl Mapping for SpecMap {
+    fn report_attr(&self) -> Option<bool> {
+        self.report
+    }
+
+    fn set_report_attr(&mut self, value: Option<bool>) {
+        self.report = value;
+    }
+
     fn nin(&self) -> usize {
         1
     }
@@ -1407,6 +1419,7 @@ impl Mapping for SpecMap {
                 inverted: false,
                 simplified: SimplifiedRecord::default(),
                 ident: None,
+                report: None,
             }))
         }
     }

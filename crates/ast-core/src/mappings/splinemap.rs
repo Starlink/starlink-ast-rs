@@ -71,6 +71,8 @@ pub struct SplineMap {
     /// Whether this mapping has already been simplified (C `IsSimple`).
     simplified: SimplifiedRecord,
     ident: Option<String>,
+    /// The `Report` attribute (mapping.c), `None` when unset.
+    report: Option<bool>,
 }
 
 impl SplineMap {
@@ -124,6 +126,7 @@ impl SplineMap {
             inverted: false,
             simplified: SimplifiedRecord::default(),
             ident: None,
+            report: None,
         }
     }
 
@@ -720,6 +723,14 @@ impl SplineMap {
 }
 
 impl Mapping for SplineMap {
+    fn report_attr(&self) -> Option<bool> {
+        self.report
+    }
+
+    fn set_report_attr(&mut self, value: Option<bool>) {
+        self.report = value;
+    }
+
     fn nin(&self) -> usize {
         2
     }
@@ -1102,6 +1113,7 @@ impl Serializable for SplineMap {
             inverted: false,
             simplified: SimplifiedRecord::default(),
             ident: None,
+            report: None,
         };
 
         if base.inverted {

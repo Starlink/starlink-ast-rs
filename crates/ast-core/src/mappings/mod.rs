@@ -2,6 +2,7 @@
 
 pub(crate) mod helpers;
 pub(crate) mod rate;
+pub mod report;
 pub(crate) mod simplify;
 mod simplify_entry;
 pub use simplify_entry::ViaSimplify;
@@ -236,6 +237,11 @@ pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
         validate_tran(self, forward, xin.len(), 1, "tran1")?;
         let pts = PointSet::from_columns(&[xin])?;
         let out = self.transform(&pts, forward)?;
+        // C reports from its array wrappers, not from astTransform
+        // (mapping.c `Tran1`).
+        if self.report() {
+            self.report_points(forward, &pts, &out);
+        }
         Ok(out.axis_iter(0).collect())
     }
 
@@ -260,6 +266,9 @@ pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
         validate_tran(self, forward, xin.len(), 2, "tran2")?;
         let pts = PointSet::from_columns(&[xin, yin])?;
         let out = self.transform(&pts, forward)?;
+        if self.report() {
+            self.report_points(forward, &pts, &out);
+        }
         Ok((out.axis_iter(0).collect(), out.axis_iter(1).collect()))
     }
 
@@ -623,6 +632,54 @@ pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
 
     /// Set (or clear) the `RestrictedSimplify` flag (C `ReSimp`).
     fn set_restricted_simplify(&mut self, _flag: bool) {}
+
+    /// The stored `Report` attribute, `None` when unset. Every Mapping class
+    /// keeps its own, as each C Mapping does (mapping.c `report`).
+    #[doc(hidden)]
+    fn report_attr(&self) -> Option<bool>;
+
+    /// Store the `Report` attribute; `None` clears it.
+    #[doc(hidden)]
+    fn set_report_attr(&mut self, value: Option<bool>);
+
+    /// Whether [`tran1`](Mapping::tran1) and [`tran2`](Mapping::tran2) report
+    /// the effect of each transformation, one line per point, to the
+    /// thread's report writer ([`report::set_report_sink`], standard output
+    /// by default). Mirrors the `Report` attribute (mapping.c), false unless
+    /// set.
+    fn report(&self) -> bool {
+        self.report_attr().unwrap_or(false)
+    }
+
+    /// Set `Report`.
+    fn set_report(&mut self, value: bool) {
+        self.set_report_attr(Some(value));
+    }
+
+    /// Whether `Report` is set.
+    fn test_report(&self) -> bool {
+        self.report_attr().is_some()
+    }
+
+    /// Clear `Report`.
+    fn clear_report(&mut self) {
+        self.set_report_attr(None);
+    }
+
+    /// Write the effect of a transformation, `inp` mapped to `out`, to the
+    /// thread's report writer. Mirrors C `astReportPoints`, a per-class
+    /// method: a Mapping writes each value to 17 significant digits or as
+    /// `<bad>`; a FrameSet formats them with its base and current Frames,
+    /// and a Region with its current Frame.
+    fn report_points(&self, forward: bool, inp: &PointSet, out: &PointSet) {
+        let _ = forward;
+        report::write_report(&report::report_lines(
+            inp,
+            out,
+            report::plain_value,
+            report::plain_value,
+        ));
+    }
 
     /// Whether this mapping carries the `AllowSimplify` flag (C `AlSimp`,
     /// mapping.h `AST__ALLOW_SIMPLIFY_FLAG`). Only consulted when the

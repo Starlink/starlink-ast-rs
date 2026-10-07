@@ -53,6 +53,8 @@ pub struct MathMap {
     inverted: bool,
     simplified: SimplifiedRecord,
     ident: Option<String>,
+    /// The `Report` attribute (mapping.c), `None` when unset.
+    report: Option<bool>,
     /// Whether the forward transform is defined.
     has_forward: bool,
     /// Whether the inverse transform is defined.
@@ -92,6 +94,7 @@ impl Clone for MathMap {
             inverted: self.inverted,
             simplified: self.simplified,
             ident: self.ident.clone(),
+            report: self.report,
             has_forward: self.has_forward,
             has_inverse: self.has_inverse,
         }
@@ -168,6 +171,7 @@ impl MathMap {
             inverted: false,
             simplified: SimplifiedRecord::default(),
             ident: None,
+            report: None,
             has_forward,
             has_inverse,
         })
@@ -244,6 +248,14 @@ impl MathMap {
 }
 
 impl Mapping for MathMap {
+    fn report_attr(&self) -> Option<bool> {
+        self.report
+    }
+
+    fn set_report_attr(&mut self, value: Option<bool>) {
+        self.report = value;
+    }
+
     fn nin(&self) -> usize {
         if self.inverted { self.nout } else { self.nin }
     }
@@ -732,6 +744,7 @@ impl Serializable for MathMap {
             inverted: base.inverted,
             simplified: SimplifiedRecord::for_orientation(base.inverted, base.has_been_simplified),
             ident: None,
+            report: None,
             has_forward,
             has_inverse,
         };

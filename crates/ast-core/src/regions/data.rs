@@ -41,6 +41,8 @@ pub(crate) struct RegionData {
     /// The Region's own Object-class Ident, which C does not forward to the
     /// encapsulated Frame (object.c).
     pub(crate) ident: Option<String>,
+    /// The Mapping attribute `Report` (mapping.c), `None` when unset.
+    pub(crate) report: Option<bool>,
 
     /// The Region's own UseDefs, which defaults to that of the
     /// encapsulated Frame (region.c `GetUseDefs`).
@@ -128,6 +130,7 @@ impl Clone for RegionData {
         RegionData {
             frameset: self.frameset.clone(),
             ident: None,
+            report: None,
             use_defs: None,
             points: self.points.clone(),
             negated: self.negated,
@@ -187,6 +190,7 @@ impl RegionData {
         RegionData {
             frameset: fs,
             ident: None,
+            report: None,
             use_defs: None,
             points,
             negated: false,

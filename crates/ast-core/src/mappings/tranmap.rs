@@ -38,6 +38,8 @@ pub struct TranMap {
     inverted: bool,
     simplified: SimplifiedRecord,
     ident: Option<String>,
+    /// The `Report` attribute (mapping.c), `None` when unset.
+    report: Option<bool>,
     /// Whether the forward transform is defined.
     tran_forward: bool,
     /// Whether the inverse transform is defined.
@@ -97,6 +99,7 @@ impl TranMap {
             inverted: false,
             simplified: SimplifiedRecord::default(),
             ident: None,
+            report: None,
             tran_forward,
             tran_inverse,
             inv_a,
@@ -170,6 +173,7 @@ impl Clone for TranMap {
             inverted: self.inverted,
             simplified: self.simplified,
             ident: self.ident.clone(),
+            report: self.report,
             tran_forward: self.tran_forward,
             tran_inverse: self.tran_inverse,
             inv_a: self.inv_a,
@@ -179,6 +183,14 @@ impl Clone for TranMap {
 }
 
 impl Mapping for TranMap {
+    fn report_attr(&self) -> Option<bool> {
+        self.report
+    }
+
+    fn set_report_attr(&mut self, value: Option<bool>) {
+        self.report = value;
+    }
+
     fn nin(&self) -> usize {
         if self.inverted {
             self.intrinsic_nout()
@@ -640,6 +652,7 @@ impl Serializable for TranMap {
             inverted: false,
             simplified: SimplifiedRecord::default(),
             ident: None,
+            report: None,
             tran_forward,
             tran_inverse,
             inv_a,

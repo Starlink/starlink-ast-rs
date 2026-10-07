@@ -420,6 +420,8 @@ pub struct TimeMap {
     inverted: bool,
     simplified: SimplifiedRecord,
     ident: Option<String>,
+    /// The `Report` attribute (mapping.c), `None` when unset.
+    report: Option<bool>,
 }
 
 impl TimeMap {
@@ -430,6 +432,7 @@ impl TimeMap {
             inverted: false,
             simplified: SimplifiedRecord::default(),
             ident: None,
+            report: None,
         }
     }
 
@@ -1285,6 +1288,14 @@ pub(crate) fn time_map_merge(
 // ---------------------------------------------------------------------------
 
 impl Mapping for TimeMap {
+    fn report_attr(&self) -> Option<bool> {
+        self.report
+    }
+
+    fn set_report_attr(&mut self, value: Option<bool>) {
+        self.report = value;
+    }
+
     fn nin(&self) -> usize {
         1
     }

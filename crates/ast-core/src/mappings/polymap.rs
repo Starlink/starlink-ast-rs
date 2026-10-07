@@ -50,6 +50,8 @@ pub struct PolyMap {
     inverted: bool,
     simplified: SimplifiedRecord,
     ident: Option<String>,
+    /// The `Report` attribute (mapping.c), `None` when unset.
+    report: Option<bool>,
     /// Pre-computed Jacobian polynomial terms (one set of terms per input axis).
     /// Only populated when `iter_inverse` is true and `nin == nout`.
     jacobian_terms: Option<Vec<Vec<PolyTerm>>>,
@@ -202,6 +204,7 @@ impl PolyMap {
             inverted: false,
             simplified: SimplifiedRecord::default(),
             ident: None,
+            report: None,
             jacobian_terms: None,
             forward_by_output,
             forward_max_pows,
@@ -1332,6 +1335,14 @@ fn lm_inverse(
 // ---------------------------------------------------------------------------
 
 impl Mapping for PolyMap {
+    fn report_attr(&self) -> Option<bool> {
+        self.report
+    }
+
+    fn set_report_attr(&mut self, value: Option<bool>) {
+        self.report = value;
+    }
+
     fn nin(&self) -> usize {
         if self.inverted { self.nout } else { self.nin }
     }
@@ -2059,6 +2070,7 @@ impl Serializable for PolyMap {
             inverted: false,
             simplified: SimplifiedRecord::for_orientation(base.inverted, base.has_been_simplified),
             ident: None,
+            report: None,
             jacobian_terms,
             forward_by_output,
             forward_max_pows,

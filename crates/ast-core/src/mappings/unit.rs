@@ -15,6 +15,8 @@ pub struct UnitMap {
     inverted: bool,
     simplified: SimplifiedRecord,
     ident: Option<String>,
+    /// The `Report` attribute (mapping.c), `None` when unset.
+    report: Option<bool>,
 }
 
 impl UnitMap {
@@ -25,6 +27,7 @@ impl UnitMap {
             inverted: false,
             simplified: SimplifiedRecord::default(),
             ident: None,
+            report: None,
         }
     }
 
@@ -40,6 +43,14 @@ impl UnitMap {
 }
 
 impl Mapping for UnitMap {
+    fn report_attr(&self) -> Option<bool> {
+        self.report
+    }
+
+    fn set_report_attr(&mut self, value: Option<bool>) {
+        self.report = value;
+    }
+
     fn nin(&self) -> usize {
         self.ncoord
     }
@@ -194,6 +205,7 @@ impl Serializable for UnitMap {
             inverted: base.inverted,
             simplified: SimplifiedRecord::for_orientation(base.inverted, base.has_been_simplified),
             ident: None,
+            report: None,
         })
     }
 }

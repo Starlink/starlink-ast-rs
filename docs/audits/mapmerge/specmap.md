@@ -14,69 +14,69 @@ TimeMap: gather the conversion steps of a run of adjacent SpecMaps, normalise
 each for its applied direction, cancel adjacent inverse pairs until nothing more
 goes, and rebuild one SpecMap or a UnitMap.
 
-`SpecMap::map_merge` (`specmap.rs:1366-1373 (fn map_merge)`) delegates to `spec_map_merge`
-(`specmap.rs:1170-1231 (fn spec_map_merge)`); the helpers are `normalized_steps`
-(`specmap.rs:1088-1112 (fn normalized_steps)`), `steps_cancel`
-(`specmap.rs:1065-1079 (fn steps_cancel)`), `simplify_steps`
-(`specmap.rs:1137-1158 (fn simplify_steps)`) and `reset_cached_args`
-(`specmap.rs:1124-1131 (fn reset_cached_args)`).
+`SpecMap::map_merge` (`specmap.rs:1378-1385 (fn map_merge)`) delegates to `spec_map_merge`
+(`specmap.rs:1173-1235 (fn spec_map_merge)`); the helpers are `normalized_steps`
+(`specmap.rs:1091-1115 (fn normalized_steps)`), `steps_cancel`
+(`specmap.rs:1068-1082 (fn steps_cancel)`), `simplify_steps`
+(`specmap.rs:1140-1161 (fn simplify_steps)`) and `reset_cached_args`
+(`specmap.rs:1127-1134 (fn reset_cached_args)`).
 
 | # | C step | C site | Rust site | extension point | verdict |
 |---|---|---|---|---|---|
 | 1 | Initialise the returned result to -1 | specmap.c:2256-2258 (fn MapMerge) | -- | ceremony | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index |
 | 2 | Check the global error status and bail out | specmap.c:2259-2261 (fn MapMerge) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
-| 3 | SpecMaps merge only in series, or when only one Mapping is present | specmap.c:2262-2266 (fn MapMerge) | specmap.rs:1175-1177 (fn spec_map_merge) | architecture | ported |
+| 3 | SpecMaps merge only in series, or when only one Mapping is present | specmap.c:2262-2266 (fn MapMerge) | specmap.rs:1178-1180 (fn spec_map_merge) | architecture | ported |
 | 4 | Save the nominated SpecMap's input count | specmap.c:2267-2269 (fn MapMerge) | -- | architecture | n/a: it exists only for the axis-count guard in rows 6 and 7, which cannot fire here |
-| 5 | Initialise the step count to the number in the nominated SpecMap | specmap.c:2270-2273 (fn MapMerge) | specmap.rs:1203 (fn spec_map_merge) | architecture | ported |
-| 6 | Search adjacent lower-numbered Mappings for SpecMaps of the same axis count, accumulating step counts | specmap.c:2274-2285 (fn MapMerge) | specmap.rs:1183-1186 (fn spec_map_merge) | architecture | ported |
-| 7 | Search adjacent higher-numbered Mappings the same way | specmap.c:2286-2295 (fn MapMerge) | specmap.rs:1187-1190 (fn spec_map_merge) | architecture | ported |
-| 8 | Remember the initial number of transformation steps | specmap.c:2296-2298 (fn MapMerge) | specmap.rs:1195 (fn spec_map_merge),1203 (fn spec_map_merge) | architecture | ported |
+| 5 | Initialise the step count to the number in the nominated SpecMap | specmap.c:2270-2273 (fn MapMerge) | specmap.rs:1206 (fn spec_map_merge) | architecture | ported |
+| 6 | Search adjacent lower-numbered Mappings for SpecMaps of the same axis count, accumulating step counts | specmap.c:2274-2285 (fn MapMerge) | specmap.rs:1186-1189 (fn spec_map_merge) | architecture | ported |
+| 7 | Search adjacent higher-numbered Mappings the same way | specmap.c:2286-2295 (fn MapMerge) | specmap.rs:1190-1193 (fn spec_map_merge) | architecture | ported |
+| 8 | Remember the initial number of transformation steps | specmap.c:2296-2298 (fn MapMerge) | specmap.rs:1198 (fn spec_map_merge),1206 (fn spec_map_merge) | architecture | ported |
 | 9 | Allocate memory for the accumulated step list | specmap.c:2299-2305 (fn MapMerge) | -- | ceremony | n/a: a `Vec` grows as the steps are appended |
-| 10 | Loop to obtain the transformation data for each SpecMap being merged | specmap.c:2306-2309 (fn MapMerge) | specmap.rs:1197-1205 (fn spec_map_merge) | architecture | ported |
-| 11 | Take each SpecMap and note whether it is being applied in its inverse direction | specmap.c:2310-2314 (fn MapMerge) | specmap.rs:1198-1201 (fn spec_map_merge) | architecture | ported |
-| 12 | Set loop limits and an increment so the steps are scanned forward or in reverse as that direction dictates | specmap.c:2315-2321 (fn MapMerge) | specmap.rs:1092-1094 (fn normalized_steps) | architecture | ported |
-| 13 | Loop through each transformation step in the SpecMap | specmap.c:2322-2324 (fn MapMerge) | specmap.rs:1092-1095 (fn normalized_steps) | architecture | ported |
-| 14 | Store the step's type code, obtain its argument count from `CvtString`, and copy the arguments | specmap.c:2325-2334 (fn MapMerge) | specmap.rs:1097 (fn normalized_steps),1106 (fn normalized_steps) | architecture | ported |
-| 15 | An inverted SpecMap must not only accumulate its steps in reverse but apply each in reverse; define macros for the changes that needs | specmap.c:2335-2341 (fn MapMerge) | specmap.rs:1089-1091 (fn normalized_steps),1094 (fn normalized_steps) | architecture | ported |
-| 16 | Macro exchanging a transformation type code for its inverse | specmap.c:2342-2350 (fn MapMerge) | specmap.rs:1096 (fn normalized_steps) | architecture | ported |
-| 17 | Macro exchanging the code and reciprocating a specified argument | specmap.c:2351-2371 (fn MapMerge) | specmap.rs:1099-1105 (fn normalized_steps) | architecture | ported |
+| 10 | Loop to obtain the transformation data for each SpecMap being merged | specmap.c:2306-2309 (fn MapMerge) | specmap.rs:1200-1208 (fn spec_map_merge) | architecture | ported |
+| 11 | Take each SpecMap and note whether it is being applied in its inverse direction | specmap.c:2310-2314 (fn MapMerge) | specmap.rs:1201-1204 (fn spec_map_merge) | architecture | ported |
+| 12 | Set loop limits and an increment so the steps are scanned forward or in reverse as that direction dictates | specmap.c:2315-2321 (fn MapMerge) | specmap.rs:1095-1097 (fn normalized_steps) | architecture | ported |
+| 13 | Loop through each transformation step in the SpecMap | specmap.c:2322-2324 (fn MapMerge) | specmap.rs:1095-1098 (fn normalized_steps) | architecture | ported |
+| 14 | Store the step's type code, obtain its argument count from `CvtString`, and copy the arguments | specmap.c:2325-2334 (fn MapMerge) | specmap.rs:1100 (fn normalized_steps),1109 (fn normalized_steps) | architecture | ported |
+| 15 | An inverted SpecMap must not only accumulate its steps in reverse but apply each in reverse; define macros for the changes that needs | specmap.c:2335-2341 (fn MapMerge) | specmap.rs:1092-1094 (fn normalized_steps),1097 (fn normalized_steps) | architecture | ported |
+| 16 | Macro exchanging a transformation type code for its inverse | specmap.c:2342-2350 (fn MapMerge) | specmap.rs:1099 (fn normalized_steps) | architecture | ported |
+| 17 | Macro exchanging the code and reciprocating a specified argument | specmap.c:2351-2371 (fn MapMerge) | specmap.rs:1102-1108 (fn normalized_steps) | architecture | ported |
 | 18 | Macro exchanging the code and negating a specified argument | specmap.c:2372-2388 (fn MapMerge) | -- | ceremony | n/a: `SWAP_CODES3` is defined at 2374 and undefined at 2419 without ever being invoked, so no conversion in the class uses it |
-| 19 | Apply the macros only where the SpecMap is inverted | specmap.c:2389-2391 (fn MapMerge) | specmap.rs:1089-1091 (fn normalized_steps) | architecture | ported |
+| 19 | Apply the macros only where the SpecMap is inverted | specmap.c:2389-2391 (fn MapMerge) | specmap.rs:1092-1094 (fn normalized_steps) | architecture | ported |
 | 20 | Exchange the nine code pairs whose inversion leaves the arguments alone | specmap.c:2392-2402 (fn MapMerge) | specmap.rs:349-360 (fn inverse) | architecture | ported |
-| 21 | Exchange the eight code pairs whose inversion also reciprocates the frequency correction factor | specmap.c:2403-2415 (fn MapMerge) | specmap.rs:1099-1105 (fn normalized_steps) | architecture | ported |
+| 21 | Exchange the eight code pairs whose inversion also reciprocates the frequency correction factor | specmap.c:2403-2415 (fn MapMerge) | specmap.rs:1102-1108 (fn normalized_steps) | architecture | ported |
 | 22 | Undefine the local macros | specmap.c:2416-2420 (fn MapMerge) | -- | ceremony | n/a: the Rust code has no macros to scope |
-| 23 | Count the accumulated transformation steps | specmap.c:2421-2425 (fn MapMerge) | specmap.rs:1204 (fn spec_map_merge) | architecture | ported |
-| 24 | Loop, simplifying the step sequence until no further improvement is possible | specmap.c:2426-2430 (fn MapMerge) | specmap.rs:1139-1156 (fn simplify_steps) | architecture | ported |
-| 25 | Examine each remaining transformation step in turn | specmap.c:2431-2434 (fn MapMerge) | specmap.rs:1142 (fn simplify_steps) | architecture | ported |
+| 23 | Count the accumulated transformation steps | specmap.c:2421-2425 (fn MapMerge) | specmap.rs:1207 (fn spec_map_merge) | architecture | ported |
+| 24 | Loop, simplifying the step sequence until no further improvement is possible | specmap.c:2426-2430 (fn MapMerge) | specmap.rs:1142-1159 (fn simplify_steps) | architecture | ported |
+| 25 | Examine each remaining transformation step in turn | specmap.c:2431-2434 (fn MapMerge) | specmap.rs:1145 (fn simplify_steps) | architecture | ported |
 | 26 | Initially assume the current step will be retained | specmap.c:2435-2437 (fn MapMerge) | -- | ceremony | n/a: the Rust pass removes the eliminated steps instead of marking the survivors |
-| 27 | Every simplification in this class combines adjacent steps, so apply them only while two steps remain | specmap.c:2438-2442 (fn MapMerge) | specmap.rs:1142 (fn simplify_steps) | architecture | ported |
-| 28 | Macro testing whether two adjacent type codes have given values | specmap.c:2443-2448 (fn MapMerge) | specmap.rs:1066 (fn steps_cancel) | architecture | ported |
-| 29 | Macro testing the same pair either way round | specmap.c:2449-2454 (fn MapMerge) | specmap.rs:1066 (fn steps_cancel) | architecture | ported |
-| 30 | Eliminate a correction followed by its inverse, starting with the conversions that have no user-supplied arguments | specmap.c:2455-2469 (fn MapMerge) | specmap.rs:1070-1071 (fn steps_cancel) | architecture | ported |
-| 31 | The same for conversions with a single user-supplied argument | specmap.c:2470-2476 (fn MapMerge) | specmap.rs:1070-1077 (fn steps_cancel) | architecture | ported |
-| 32 | The same with two user-supplied arguments | specmap.c:2477-2488 (fn MapMerge) | specmap.rs:1070-1077 (fn steps_cancel) | architecture | ported |
-| 33 | The same with three user-supplied arguments | specmap.c:2489-2501 (fn MapMerge) | specmap.rs:1070-1077 (fn steps_cancel) | architecture | ported |
-| 34 | The same with six user-supplied arguments | specmap.c:2502-2521 (fn MapMerge) | specmap.rs:1070-1077 (fn steps_cancel) | architecture | ported |
+| 27 | Every simplification in this class combines adjacent steps, so apply them only while two steps remain | specmap.c:2438-2442 (fn MapMerge) | specmap.rs:1145 (fn simplify_steps) | architecture | ported |
+| 28 | Macro testing whether two adjacent type codes have given values | specmap.c:2443-2448 (fn MapMerge) | specmap.rs:1069 (fn steps_cancel) | architecture | ported |
+| 29 | Macro testing the same pair either way round | specmap.c:2449-2454 (fn MapMerge) | specmap.rs:1069 (fn steps_cancel) | architecture | ported |
+| 30 | Eliminate a correction followed by its inverse, starting with the conversions that have no user-supplied arguments | specmap.c:2455-2469 (fn MapMerge) | specmap.rs:1073-1074 (fn steps_cancel) | architecture | ported |
+| 31 | The same for conversions with a single user-supplied argument | specmap.c:2470-2476 (fn MapMerge) | specmap.rs:1073-1080 (fn steps_cancel) | architecture | ported |
+| 32 | The same with two user-supplied arguments | specmap.c:2477-2488 (fn MapMerge) | specmap.rs:1073-1080 (fn steps_cancel) | architecture | ported |
+| 33 | The same with three user-supplied arguments | specmap.c:2489-2501 (fn MapMerge) | specmap.rs:1073-1080 (fn steps_cancel) | architecture | ported |
+| 34 | The same with six user-supplied arguments | specmap.c:2502-2521 (fn MapMerge) | specmap.rs:1073-1080 (fn steps_cancel) | architecture | ported |
 | 35 | Undefine the local macros | specmap.c:2522-2526 (fn MapMerge) | -- | ceremony | n/a: the Rust code has no macros to scope |
-| 36 | A step being kept advances the index identifying its new location | specmap.c:2527-2532 (fn MapMerge) | specmap.rs:1150 (fn simplify_steps) | architecture | ported |
-| 37 | Copy the step's data down when its new location differs from its current one | specmap.c:2533-2545 (fn MapMerge) | specmap.rs:1144-1145 (fn simplify_steps) | architecture | ported |
-| 38 | Quit when a pass reduced no steps | specmap.c:2546-2550 (fn MapMerge) | specmap.rs:1153-1155 (fn simplify_steps) | architecture | ported |
+| 36 | A step being kept advances the index identifying its new location | specmap.c:2527-2532 (fn MapMerge) | specmap.rs:1153 (fn simplify_steps) | architecture | ported |
+| 37 | Copy the step's data down when its new location differs from its current one | specmap.c:2533-2545 (fn MapMerge) | specmap.rs:1147-1148 (fn simplify_steps) | architecture | ported |
+| 38 | Quit when a pass reduced no steps | specmap.c:2546-2550 (fn MapMerge) | specmap.rs:1156-1158 (fn simplify_steps) | architecture | ported |
 | 39 | Note how many transformation steps now remain | specmap.c:2551-2554 (fn MapMerge) | -- | ceremony | n/a: the surviving steps are the `Vec`'s contents, so its length is the count |
-| 40 | Determine how many Mappings condensing the run eliminates | specmap.c:2555-2559 (fn MapMerge) | specmap.rs:1207 (fn spec_map_merge) | architecture | ported |
-| 41 | Determine whether the replacement can be a UnitMap, which needs every step eliminated | specmap.c:2560-2564 (fn MapMerge) | specmap.rs:1209 (fn spec_map_merge) | architecture | ported |
-| 42 | Determine whether simplification is possible, on any of the four clauses | specmap.c:2565-2573 (fn MapMerge) | specmap.rs:1211 (fn spec_map_merge) | architecture | ported |
-| 43 | Do nothing more unless simplification is possible | specmap.c:2574-2576 (fn MapMerge) | specmap.rs:1212-1214 (fn spec_map_merge) | architecture | ported |
-| 44 | Create the UnitMap replacement where that is the answer | specmap.c:2577-2581 (fn MapMerge) | specmap.rs:1216-1217 (fn spec_map_merge) | architecture | ported |
-| 45 | Otherwise create a replacement SpecMap and add each surviving step to it | specmap.c:2582-2591 (fn MapMerge) | specmap.rs:1221-1228 (fn spec_map_merge) | architecture | ported |
+| 40 | Determine how many Mappings condensing the run eliminates | specmap.c:2555-2559 (fn MapMerge) | specmap.rs:1210 (fn spec_map_merge) | architecture | ported |
+| 41 | Determine whether the replacement can be a UnitMap, which needs every step eliminated | specmap.c:2560-2564 (fn MapMerge) | specmap.rs:1212 (fn spec_map_merge) | architecture | ported |
+| 42 | Determine whether simplification is possible, on any of the four clauses | specmap.c:2565-2573 (fn MapMerge) | specmap.rs:1214 (fn spec_map_merge) | architecture | ported |
+| 43 | Do nothing more unless simplification is possible | specmap.c:2574-2576 (fn MapMerge) | specmap.rs:1215-1217 (fn spec_map_merge) | architecture | ported |
+| 44 | Create the UnitMap replacement where that is the answer | specmap.c:2577-2581 (fn MapMerge) | specmap.rs:1219-1220 (fn spec_map_merge) | architecture | ported |
+| 45 | Otherwise create a replacement SpecMap and add each surviving step to it | specmap.c:2582-2591 (fn MapMerge) | specmap.rs:1224-1232 (fn spec_map_merge) | architecture | ported |
 | 46 | Annul the pointers to the Mappings being eliminated | specmap.c:2592-2597 (fn MapMerge) | -- | ceremony | n/a: owned values are dropped |
-| 47 | Insert the replacement pointer with a cleared invert value | specmap.c:2598-2601 (fn MapMerge) | specmap.rs:1229 (fn spec_map_merge) | architecture | ported |
-| 48 | Move the subsequent Mapping information down to close the gap | specmap.c:2602-2607 (fn MapMerge) | specmap.rs:1229 (fn spec_map_merge) | architecture | ported |
+| 47 | Insert the replacement pointer with a cleared invert value | specmap.c:2598-2601 (fn MapMerge) | specmap.rs:1233 (fn spec_map_merge) | architecture | ported |
+| 48 | Move the subsequent Mapping information down to close the gap | specmap.c:2602-2607 (fn MapMerge) | specmap.rs:1233 (fn spec_map_merge) | architecture | ported |
 | 49 | Blank out the information left at the end of the arrays | specmap.c:2608-2613 (fn MapMerge) | -- | ceremony | n/a: the list is a `Vec`, so the removed entries leave no slots to blank |
-| 50 | Decrement the Mapping count and return the index of the first eliminated Mapping | specmap.c:2614-2618 (fn MapMerge) | specmap.rs:1229-1230 (fn spec_map_merge) | architecture | ported |
+| 50 | Decrement the Mapping count and return the index of the first eliminated Mapping | specmap.c:2614-2618 (fn MapMerge) | specmap.rs:1233-1234 (fn spec_map_merge) | architecture | ported |
 | 51 | Annul the new Mapping if an error occurred | specmap.c:2619-2625 (fn MapMerge) | -- | ceremony | n/a: an error is a `Result::Err`, and owned values are dropped |
 | 52 | Free the memory used for the transformation steps | specmap.c:2626-2632 (fn MapMerge) | -- | ceremony | n/a: owned values are dropped |
 | 53 | Clear the returned value if an error occurred | specmap.c:2633-2635 (fn MapMerge) | -- | ceremony | n/a: an error is a `Result::Err`, not a value to be cleared alongside one |
-| 54 | Return the result | specmap.c:2636-2637 (fn MapMerge) | specmap.rs:1230 (fn spec_map_merge) | ceremony | ported |
+| 54 | Return the result | specmap.c:2636-2637 (fn MapMerge) | specmap.rs:1234 (fn spec_map_merge) | ceremony | ported |
 
 ## Rows 4, 6 and 7 — C's axis-count guard cannot fire here
 
@@ -85,8 +85,8 @@ because `astInitMapping( …, nin, nin, 1, 1 )` (`specmap.c:4429-4431 (fn astIni
 gives a SpecMap however many axes it was constructed with. Two consequences:
 adjacent SpecMaps in a *series* list must already agree, since a SpecMap's input
 and output counts are equal; and the port's `SpecMap` is fixed at one axis
-(`specmap.rs:1238-1240 (fn nin)`), so no two of them can differ. `is_spec`
-(`specmap.rs:1179 (fn spec_map_merge)`) therefore tests only the class, and the guard
+(`specmap.rs:1250-1252 (fn nin)`), so no two of them can differ. `is_spec`
+(`specmap.rs:1182 (fn spec_map_merge)`) therefore tests only the class, and the guard
 is unreachable rather than dropped.
 
 The one-axis restriction is a class limitation, not a `MapMerge` gap, and is not
@@ -96,13 +96,13 @@ tracked here.
 
 C writes a separate test per argument count because its macro needs the count
 spelled out. `steps_cancel` asks the conversion type for its `nargs()`
-(`specmap.rs:1070 (fn steps_cancel)`) and compares that many, which covers none, one, two,
+(`specmap.rs:1073 (fn steps_cancel)`) and compares that many, which covers none, one, two,
 three and six without enumerating them. The cached arguments beyond `nargs()` are
 excluded from the comparison, which is C's "we do not need to test values stored
 internally".
 
 `reset_cached_args` then clears those slots on the rebuilt SpecMap
-(`specmap.rs:1126-1129 (fn reset_cached_args)`), which is what C's `AddSpecCvt` does when a
+(`specmap.rs:1129-1132 (fn reset_cached_args)`), which is what C's `AddSpecCvt` does when a
 step is added to a new SpecMap (`specmap.c:708 (fn AddSpecCvt)`), so a cached correction
 factor from before the merge cannot leak into the replacement.
 

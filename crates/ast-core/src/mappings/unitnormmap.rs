@@ -45,6 +45,8 @@ pub struct UnitNormMap {
     inverted: bool,
     simplified: SimplifiedRecord,
     ident: Option<String>,
+    /// The `Report` attribute (mapping.c), `None` when unset.
+    report: Option<bool>,
 }
 
 impl UnitNormMap {
@@ -58,6 +60,7 @@ impl UnitNormMap {
             inverted: false,
             simplified: SimplifiedRecord::default(),
             ident: None,
+            report: None,
         }
     }
 
@@ -87,6 +90,14 @@ impl UnitNormMap {
 }
 
 impl Mapping for UnitNormMap {
+    fn report_attr(&self) -> Option<bool> {
+        self.report
+    }
+
+    fn set_report_attr(&mut self, value: Option<bool>) {
+        self.report = value;
+    }
+
     fn nin(&self) -> usize {
         if self.inverted {
             self.ncoord() + 1

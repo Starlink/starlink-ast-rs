@@ -16,7 +16,7 @@ Prism to a single Region or a simpler Prism, and only then calls the parent Regi
 simplify. `GetDefUnc` (`prism.c:1251-1280 (fn GetDefUnc)`) builds a Prism from the
 two components' uncertainties.
 
-The Rust bodies are `prism.rs:944-1152 (fn simplified)` and
+The Rust bodies are `prism.rs:960-1168 (fn simplified)` and
 `prism.rs:686-695 (fn get_def_unc)`.
 
 Prism has no `MapMerge` of its own; it takes the Region base implementation.
@@ -26,39 +26,39 @@ Prism has no `MapMerge` of its own; it takes the Region base implementation.
 | 1 | `Simplify`: initialise the returned pointer | prism.c:3286-3288 (fn Simplify) | -- | ceremony | n/a: the Rust returns `AstResult<(DynMapping, bool)>`, so there is no pointer to pre-set |
 | 2 | Check the global error status and bail out | prism.c:3289-3291 (fn Simplify) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 3 | Get a pointer to the Region structure | prism.c:3292-3294 (fn Simplify) | -- | ceremony | n/a: the Rust method already has `&self` |
-| 4 | Get the two component Regions and the Prism's Negated flag | prism.c:3295-3297 (fn Simplify) | prism.rs:950-952 (fn simplified) | architecture | ported |
-| 5 | Get the parent FrameSet's current Frame and its base-to-current Mapping, since the components describe areas in that FrameSet's base Frame | prism.c:3298-3304 (fn Simplify) | prism.rs:955-959 (fn simplified) | architecture | ported |
-| 6 | Combine the two Regions into a parallel CmpMap, using the fact that a Region is a Mapping, and simplify it so the per-class `astMapMerge` methods decide whether they combine | prism.c:3305-3312 (fn Simplify) | prism.rs:964-969 (fn simplified) | architecture | ported |
-| 7 | Initially assume no new Region can be formed from the simplified CmpMap | prism.c:3313-3316 (fn Simplify) | prism.rs:973 (fn simplified) | architecture | ported |
-| 8 | If the result is a Region, use it | prism.c:3317-3320 (fn Simplify) | prism.rs:976-977 (fn simplified) | architecture | ported |
-| 9 | If it is a parallel CmpMap whose two components are Regions differing from the originals, form a new Prism from them | prism.c:3321-3332 (fn Simplify) | prism.rs:981-995 (fn simplified) | architecture | ported |
+| 4 | Get the two component Regions and the Prism's Negated flag | prism.c:3295-3297 (fn Simplify) | prism.rs:966-968 (fn simplified) | architecture | ported |
+| 5 | Get the parent FrameSet's current Frame and its base-to-current Mapping, since the components describe areas in that FrameSet's base Frame | prism.c:3298-3304 (fn Simplify) | prism.rs:971-975 (fn simplified) | architecture | ported |
+| 6 | Combine the two Regions into a parallel CmpMap, using the fact that a Region is a Mapping, and simplify it so the per-class `astMapMerge` methods decide whether they combine | prism.c:3305-3312 (fn Simplify) | prism.rs:980-985 (fn simplified) | architecture | ported |
+| 7 | Initially assume no new Region can be formed from the simplified CmpMap | prism.c:3313-3316 (fn Simplify) | prism.rs:989 (fn simplified) | architecture | ported |
+| 8 | If the result is a Region, use it | prism.c:3317-3320 (fn Simplify) | prism.rs:992-993 (fn simplified) | architecture | ported |
+| 9 | If it is a parallel CmpMap whose two components are Regions differing from the originals, form a new Prism from them | prism.c:3321-3332 (fn Simplify) | prism.rs:997-1011 (fn simplified) | architecture | ported |
 | 10 | Free resources | prism.c:3333-3339 (fn Simplify) | -- | ceremony | n/a: owned values are dropped |
-| 11 | If that produced a simplified Region, map it into the parent's current Frame and simplify it | prism.c:3340-3347 (fn Simplify) | prism.rs:1000-1006 (fn simplified) | architecture | ported |
-| 12 | If it did not, try a different approach | prism.c:3348-3350 (fn Simplify) | prism.rs:1007 (fn simplified) | architecture | ported |
-| 13 | Get the number of axes in each component Region | prism.c:3351-3354 (fn Simplify) | prism.rs:1011-1012 (fn simplified) | architecture | ported |
-| 14 | Use `astMapSplit` to see whether the first component's axes correspond to a distinct set of current-Frame axes | prism.c:3355-3369 (fn Simplify) | prism.rs:1017-1018 (fn simplified) | architecture | ported |
-| 15 | Do the same for the second component | prism.c:3370-3379 (fn Simplify) | prism.rs:1019-1020 (fn simplified) | architecture | ported |
-| 16 | Assume for the moment that the components cannot be simplified, in which case a clone of the supplied Prism is the answer | prism.c:3380-3383 (fn Simplify) | prism.rs:1024 (fn simplified) | architecture | ported |
-| 17 | Determine the number of outputs from those two Mappings, counting a missing Mapping as none | prism.c:3384-3395 (fn Simplify) | prism.rs:1026-1027 (fn simplified),1011-1018 (fn simplified) | architecture | ported |
-| 18 | Determine the number of axes in the Prism's current Frame | prism.c:3396-3398 (fn Simplify) | prism.rs:1028 (fn simplified) | architecture | ported |
-| 19 | If the second component contributes no axes to the Prism, drop it: pick the first component's subspace Frame, remap and simplify the component into it, negate it if the Prism was negated, and restore the axis order | prism.c:3399-3415 (fn Simplify) | prism.rs:1041-1059 (fn simplified) | architecture | ported |
-| 20 | If the first component contributes none, drop that one the same way instead | prism.c:3416-3432 (fn Simplify) | prism.rs:1060-1076 (fn simplified) | architecture | ported |
-| 21 | If both components correspond to a distinct subspace of the current Frame, try expressing each within the current Frame | prism.c:3433-3437 (fn Simplify) | prism.rs:1077 (fn simplified) | architecture | ported |
-| 22 | Create a Frame for the subspace matching the first component's axes | prism.c:3438-3441 (fn Simplify) | prism.rs:1081-1082 (fn simplified) | architecture | ported |
-| 23 | Remap the first component so that it represents an area in that subspace | prism.c:3442-3445 (fn Simplify) | prism.rs:1083 (fn simplified) | architecture | ported |
-| 24 | Attempt to simplify the remapped Region | prism.c:3446-3448 (fn Simplify) | prism.rs:1084 (fn simplified) | architecture | ported |
-| 25 | Do the same for the second component Region | prism.c:3449-3454 (fn Simplify) | prism.rs:1086-1089 (fn simplified) | architecture | ported |
-| 26 | If either component simplified, create a new Prism from the two results | prism.c:3455-3460 (fn Simplify) | prism.rs:1094-1102 (fn simplified) | architecture | ported |
-| 27 | Give the new Prism the original's Negated attribute | prism.c:3461-3463 (fn Simplify) | prism.rs:1104-1106 (fn simplified) | architecture | ported |
-| 28 | Give it the original current Frame's axis order | prism.c:3464-3474 (fn Simplify) | prism.rs:1109-1116 (fn simplified) | architecture | ported |
+| 11 | If that produced a simplified Region, map it into the parent's current Frame and simplify it | prism.c:3340-3347 (fn Simplify) | prism.rs:1016-1022 (fn simplified) | architecture | ported |
+| 12 | If it did not, try a different approach | prism.c:3348-3350 (fn Simplify) | prism.rs:1023 (fn simplified) | architecture | ported |
+| 13 | Get the number of axes in each component Region | prism.c:3351-3354 (fn Simplify) | prism.rs:1027-1028 (fn simplified) | architecture | ported |
+| 14 | Use `astMapSplit` to see whether the first component's axes correspond to a distinct set of current-Frame axes | prism.c:3355-3369 (fn Simplify) | prism.rs:1033-1034 (fn simplified) | architecture | ported |
+| 15 | Do the same for the second component | prism.c:3370-3379 (fn Simplify) | prism.rs:1035-1036 (fn simplified) | architecture | ported |
+| 16 | Assume for the moment that the components cannot be simplified, in which case a clone of the supplied Prism is the answer | prism.c:3380-3383 (fn Simplify) | prism.rs:1040 (fn simplified) | architecture | ported |
+| 17 | Determine the number of outputs from those two Mappings, counting a missing Mapping as none | prism.c:3384-3395 (fn Simplify) | prism.rs:1042-1043 (fn simplified),1027-1034 (fn simplified) | architecture | ported |
+| 18 | Determine the number of axes in the Prism's current Frame | prism.c:3396-3398 (fn Simplify) | prism.rs:1044 (fn simplified) | architecture | ported |
+| 19 | If the second component contributes no axes to the Prism, drop it: pick the first component's subspace Frame, remap and simplify the component into it, negate it if the Prism was negated, and restore the axis order | prism.c:3399-3415 (fn Simplify) | prism.rs:1057-1075 (fn simplified) | architecture | ported |
+| 20 | If the first component contributes none, drop that one the same way instead | prism.c:3416-3432 (fn Simplify) | prism.rs:1076-1092 (fn simplified) | architecture | ported |
+| 21 | If both components correspond to a distinct subspace of the current Frame, try expressing each within the current Frame | prism.c:3433-3437 (fn Simplify) | prism.rs:1093 (fn simplified) | architecture | ported |
+| 22 | Create a Frame for the subspace matching the first component's axes | prism.c:3438-3441 (fn Simplify) | prism.rs:1097-1098 (fn simplified) | architecture | ported |
+| 23 | Remap the first component so that it represents an area in that subspace | prism.c:3442-3445 (fn Simplify) | prism.rs:1099 (fn simplified) | architecture | ported |
+| 24 | Attempt to simplify the remapped Region | prism.c:3446-3448 (fn Simplify) | prism.rs:1100 (fn simplified) | architecture | ported |
+| 25 | Do the same for the second component Region | prism.c:3449-3454 (fn Simplify) | prism.rs:1102-1105 (fn simplified) | architecture | ported |
+| 26 | If either component simplified, create a new Prism from the two results | prism.c:3455-3460 (fn Simplify) | prism.rs:1110-1118 (fn simplified) | architecture | ported |
+| 27 | Give the new Prism the original's Negated attribute | prism.c:3461-3463 (fn Simplify) | prism.rs:1120-1122 (fn simplified) | architecture | ported |
+| 28 | Give it the original current Frame's axis order | prism.c:3464-3474 (fn Simplify) | prism.rs:1125-1132 (fn simplified) | architecture | ported |
 | 29 | Free resources | prism.c:3475-3483 (fn Simplify) | -- | ceremony | n/a: owned values are dropped |
 | 30 | Free resources | prism.c:3484-3490 (fn Simplify) | -- | ceremony | n/a: owned values are dropped |
-| 31 | Pass any uncertainty stored explicitly on the supplied Prism on to the new Region | prism.c:3491-3499 (fn Simplify) | prism.rs:1130-1132 (fn simplified) | architecture | ported |
-| 32 | Only now invoke the parent Region Simplify, which simplifies the encapsulated FrameSet and uncertainty | prism.c:3500-3505 (fn Simplify) | prism.rs:1133-1136 (fn simplified) | architecture | ported |
+| 31 | Pass any uncertainty stored explicitly on the supplied Prism on to the new Region | prism.c:3491-3499 (fn Simplify) | prism.rs:1146-1148 (fn simplified) | architecture | ported |
+| 32 | Only now invoke the parent Region Simplify, which simplifies the encapsulated FrameSet and uncertainty | prism.c:3500-3505 (fn Simplify) | prism.rs:1149-1152 (fn simplified) | architecture | ported |
 | 33 | Free resources | prism.c:3506-3511 (fn Simplify) | -- | ceremony | n/a: owned values are dropped |
-| 34 | If anything simplified, copy the supplied Region's attributes onto the result and return it | prism.c:3512-3515 (fn Simplify) | prism.rs:1146-1149 (fn simplified) | architecture | ported |
+| 34 | If anything simplified, copy the supplied Region's attributes onto the result and return it | prism.c:3512-3515 (fn Simplify) | prism.rs:1162-1165 (fn simplified) | architecture | ported |
 | 35 | Annul the returned Mapping if an error occurred | prism.c:3516-3518 (fn Simplify) | -- | ceremony | n/a: an error is a `Result::Err`, and owned values are dropped |
-| 36 | Return the result | prism.c:3519-3521 (fn Simplify) | prism.rs:1151 (fn simplified) | architecture | ported |
+| 36 | Return the result | prism.c:3519-3521 (fn Simplify) | prism.rs:1167 (fn simplified) | architecture | ported |
 | 37 | `GetDefUnc`: initialise the returned pointer | prism.c:1251-1253 (fn GetDefUnc) | -- | ceremony | n/a: the Rust returns `AstResult<DynRegion>`, so there is no pointer to pre-set |
 | 38 | Check the global error status and bail out | prism.c:1254-1256 (fn GetDefUnc) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 39 | Get a pointer to the Prism structure | prism.c:1257-1259 (fn GetDefUnc) | -- | ceremony | n/a: the Rust method already has `&self` |
@@ -82,7 +82,7 @@ reachable from a parallel CmpMap's own merge.
 The second approach turns on whether each component's axes reach a *distinct* set
 of current-Frame axes, which is exactly what `astMapSplit` answers and nothing
 else does. The port calls `Mapping::map_split`
-(`prism.rs:1017-1020 (fn simplified)`), the trait method every class implements at C's
+(`prism.rs:1033-1036 (fn simplified)`), the trait method every class implements at C's
 granularity, rather than re-deriving the answer from the Mapping's class. A
 component whose split fails contributes zero outputs (row 17), which is how the
 `naxout1 == naxt && naxout2 == 0` tests in rows 19 and 20 can fire at all.
@@ -94,7 +94,7 @@ first contributes nothing, then both split successfully. The order matters,
 because a component that splits to zero outputs also satisfies `nmap1 && nmap2`
 when its split succeeded with no outputs, and the earlier arms must claim it
 first. The port keeps the chain and its order
-(`prism.rs:1041 (fn simplified)`, `prism.rs:1060 (fn simplified)`, `prism.rs:1077 (fn simplified)`), and the final
+(`prism.rs:1057 (fn simplified)`, `prism.rs:1076 (fn simplified)`, `prism.rs:1093 (fn simplified)`), and the final
 `else` is absent in both: with none of the three matching, `new` keeps the clone
 row 16 assigned.
 
@@ -103,7 +103,7 @@ row 16 assigned.
 Every other Region calls the parent Region simplify first. Prism calls it *last*,
 on whatever Region the component work produced, because the components' own
 simplification changes which FrameSet the parent would be simplifying. The port
-keeps that ordering (`prism.rs:1133-1136 (fn simplified)`); calling the parent first
+keeps that ordering (`prism.rs:1149-1152 (fn simplified)`); calling the parent first
 would simplify a FrameSet that is about to be replaced.
 
 The C split path always leaves `new` non-NULL, since row 16 assigns a clone of the
@@ -115,10 +115,10 @@ single comparison sufficient.
 
 C passes `unc = 0` at `prism.c:3514 (fn Simplify)`, unlike Box which passes 1: the
 uncertainty was dealt with explicitly at row 31, so the overlay must not overwrite
-it. The port passes the same flag (`prism.rs:1148 (fn simplified)`).
+it. The port passes the same flag (`prism.rs:1164 (fn simplified)`).
 
 Prism keeps no `simpler` flag: C decides both the overlay and whether anything
 reduced from the single test `result != this_mapping`
 (`prism.c:3513 (fn Simplify)`). Owned values make that a structural comparison
-(`prism.rs:1146 (fn simplified)`) rather than a pointer test, which is stricter — a
+(`prism.rs:1162 (fn simplified)`) rather than a pointer test, which is stricter — a
 rebuilt but identical Prism reports no change where C would report one.

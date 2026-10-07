@@ -561,6 +561,22 @@ impl Frame for NullRegion {
 // ============================================================================
 
 impl Mapping for NullRegion {
+    fn report_attr(&self) -> Option<bool> {
+        self.data.report
+    }
+
+    fn set_report_attr(&mut self, value: Option<bool>) {
+        self.data.report = value;
+    }
+
+    /// region.c `ReportPoints`: the current Frame formats the values.
+    fn report_points(&self, _forward: bool, inp: &PointSet, out: &PointSet) {
+        let frame = self.data.frameset.current();
+        crate::mappings::report::write_report(&crate::frames::frame_report_lines(
+            frame, frame, inp, out,
+        ));
+    }
+
     region_mapping_ident!();
 
     // C's `Frame` overrides `astDoNotSimplify` to zero (frame.c:3511-3554): a

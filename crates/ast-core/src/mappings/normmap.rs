@@ -46,6 +46,8 @@ pub struct NormMap {
     /// Whether simplification is inhibited.
     simplified: SimplifiedRecord,
     ident: Option<String>,
+    /// The `Report` attribute (mapping.c), `None` when unset.
+    report: Option<bool>,
 }
 
 impl NormMap {
@@ -59,6 +61,7 @@ impl NormMap {
             inverted: false,
             simplified: SimplifiedRecord::default(),
             ident: None,
+            report: None,
         }
     }
 
@@ -90,11 +93,20 @@ impl Clone for NormMap {
             inverted: self.inverted,
             simplified: self.simplified,
             ident: self.ident.clone(),
+            report: self.report,
         }
     }
 }
 
 impl Mapping for NormMap {
+    fn report_attr(&self) -> Option<bool> {
+        self.report
+    }
+
+    fn set_report_attr(&mut self, value: Option<bool>) {
+        self.report = value;
+    }
+
     fn nin(&self) -> usize {
         // NormMap has same nin and nout regardless of inversion,
         // since both directions do the same thing.
@@ -379,6 +391,7 @@ impl Serializable for NormMap {
             inverted: false,
             simplified: SimplifiedRecord::default(),
             ident: None,
+            report: None,
         };
 
         if base.inverted {

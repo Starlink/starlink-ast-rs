@@ -71,6 +71,8 @@ pub struct SwitchMap {
     inverted: bool,
     simplified: SimplifiedRecord,
     ident: Option<String>,
+    /// The `Report` attribute (mapping.c), `None` when unset.
+    report: Option<bool>,
     intrinsic_nin: usize,
     intrinsic_nout: usize,
 }
@@ -188,6 +190,7 @@ impl SwitchMap {
             inverted: false,
             simplified: SimplifiedRecord::default(),
             ident: None,
+            report: None,
             intrinsic_nin: nin,
             intrinsic_nout: nout,
         })
@@ -221,6 +224,7 @@ impl SwitchMap {
             inverted: false,
             simplified: SimplifiedRecord::default(),
             ident: None,
+            report: None,
             intrinsic_nin: nin,
             intrinsic_nout: nout,
         })
@@ -411,6 +415,7 @@ impl Clone for SwitchMap {
             inverted: self.inverted,
             simplified: self.simplified,
             ident: self.ident.clone(),
+            report: self.report,
             intrinsic_nin: self.intrinsic_nin,
             intrinsic_nout: self.intrinsic_nout,
         }
@@ -418,6 +423,14 @@ impl Clone for SwitchMap {
 }
 
 impl Mapping for SwitchMap {
+    fn report_attr(&self) -> Option<bool> {
+        self.report
+    }
+
+    fn set_report_attr(&mut self, value: Option<bool>) {
+        self.report = value;
+    }
+
     fn nin(&self) -> usize {
         if self.inverted {
             self.intrinsic_nout

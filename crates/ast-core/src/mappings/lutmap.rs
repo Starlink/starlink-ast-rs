@@ -58,6 +58,8 @@ pub struct LutMap {
     /// Whether this mapping has already been simplified (C `IsSimple`).
     simplified: SimplifiedRecord,
     ident: Option<String>,
+    /// The `Report` attribute (mapping.c), `None` when unset.
+    report: Option<bool>,
     /// Whether the inverse transform is defined.
     tran_inverse: bool,
 }
@@ -92,6 +94,7 @@ impl LutMap {
             inverted: false,
             simplified: SimplifiedRecord::default(),
             ident: None,
+            report: None,
             tran_inverse: monotonic != 0,
             lut_epsilon: f64::EPSILON,
             lut_epsilon_set: false,
@@ -640,6 +643,14 @@ fn compute_monotonicity(lut: &[f64]) -> i8 {
 }
 
 impl Mapping for LutMap {
+    fn report_attr(&self) -> Option<bool> {
+        self.report
+    }
+
+    fn set_report_attr(&mut self, value: Option<bool>) {
+        self.report = value;
+    }
+
     fn nin(&self) -> usize {
         1
     }
@@ -952,6 +963,7 @@ impl Serializable for LutMap {
             inverted: false,
             simplified: SimplifiedRecord::for_orientation(base.inverted, base.has_been_simplified),
             ident: None,
+            report: None,
             tran_inverse: base.has_inverse,
         };
         if base.inverted {

@@ -32,6 +32,8 @@ pub struct SelectorMap {
     inverted: bool,
     simplified: SimplifiedRecord,
     ident: Option<String>,
+    /// The `Report` attribute (mapping.c), `None` when unset.
+    report: Option<bool>,
 }
 
 /// Builder for [`SelectorMap`].
@@ -85,6 +87,7 @@ impl SelectorMapBuilder {
             inverted: false,
             simplified: SimplifiedRecord::default(),
             ident: None,
+            report: None,
         }
     }
 }
@@ -159,6 +162,7 @@ impl SelectorMap {
             inverted: self.inverted,
             simplified: SimplifiedRecord::default(),
             ident: None,
+            report: None,
         }))
     }
 }
@@ -182,11 +186,20 @@ impl Clone for SelectorMap {
             inverted: self.inverted,
             simplified: self.simplified,
             ident: self.ident.clone(),
+            report: self.report,
         }
     }
 }
 
 impl Mapping for SelectorMap {
+    fn report_attr(&self) -> Option<bool> {
+        self.report
+    }
+
+    fn set_report_attr(&mut self, value: Option<bool>) {
+        self.report = value;
+    }
+
     fn nin(&self) -> usize {
         if self.inverted {
             1

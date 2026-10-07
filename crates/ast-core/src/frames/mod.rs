@@ -1567,6 +1567,25 @@ pub(crate) fn reduce_to_basic_frame(frame: &dyn Frame) -> AstResult<BasicFrame> 
     Ok(bf)
 }
 
+/// frame.c `ReportPoints`: one line per point, `(in, ...) --> (out, ...)`,
+/// the input values formatted by `frame_in` and the output values by
+/// `frame_out`, each with [`Frame::format`].
+pub(crate) fn frame_report_lines(
+    frame_in: &dyn Frame,
+    frame_out: &dyn Frame,
+    inp: &PointSet,
+    out: &PointSet,
+) -> String {
+    let fmt =
+        |frame: &dyn Frame, coord: usize, v: f64| frame.format(coord + 1, v).unwrap_or_default();
+    crate::mappings::report::report_lines(
+        inp,
+        out,
+        |c, v| fmt(frame_in, c, v),
+        |c, v| fmt(frame_out, c, v),
+    )
+}
+
 /// frame.c `FrameGrid`: evenly spaced points along each axis, the number of
 /// ticks on an axis scaled by its length over the geometric mean length of
 /// the axes that share its Unit, the first axis varying fastest.
