@@ -17,6 +17,7 @@
 use std::f64::consts::PI;
 
 use super::fits_store::FitsStore;
+use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::{Frame, SkyFrame, SkySystem};
 use crate::mappings::{CmpMap, Composition, DynMapping, Mapping, PermMap, UnitMap, WcsMap, WinMap};
 use crate::wcslib::WcsProjection;
@@ -112,7 +113,7 @@ pub(crate) struct CelestialResult {
 /// Returns `None` if no celestial axis pair is found.
 #[cfg(test)]
 pub(crate) fn build_celestial(store: &FitsStore) -> Option<CelestialResult> {
-    build_celestial_with_def_b1950(store, false, None)
+    build_celestial_with_def_b1950(store, false, None).unwrap()
 }
 
 /// Encoding-aware variant. `def_b1950` mirrors the FitsChan
@@ -129,9 +130,11 @@ pub(crate) fn build_celestial_with_def_b1950(
     store: &FitsStore,
     def_b1950: bool,
     rfval: Option<&[Option<f64>]>,
-) -> Option<CelestialResult> {
+) -> AstResult<Option<CelestialResult>> {
     // Step 1: Find the celestial axis pair.
-    let (lon_axis, lat_axis) = store.celestial_axes()?;
+    let Some((lon_axis, lat_axis)) = store.celestial_axes() else {
+        return Ok(None);
+    };
 
     // Step 2: Get the projection code. C `WcsCelestial` takes it from the
     // last four characters of CTYPE, and when the CTYPE is too short to
@@ -151,8 +154,13 @@ pub(crate) fn build_celestial_with_def_b1950(
         // An unrecognised four-character code is C's `AST__WCSBAD`, which C
         // turns into an error report (fitschan.c:35758-35764); leave the
         // header undecoded here.
-        let proj_code = store.projection_code(lon_axis)?;
-        (WcsProjection::from_code(&proj_code)?, false)
+        let Some(proj) = store
+            .projection_code(lon_axis)
+            .and_then(|code| WcsProjection::from_code(&code))
+        else {
+            return Ok(None);
+        };
+        (proj, false)
     };
 
     // C keeps one local `carlin`, initialised from the attribute
@@ -166,7 +174,7 @@ pub(crate) fn build_celestial_with_def_b1950(
     // Non-celestial axes pass through unchanged. Mirrors C
     // `WcsCelestial` (fitschan.c:35458) which builds the celestial
     // contribution as an N-axis mapping at the top level.
-    let mut wcsmap = WcsMap::new(store.naxis, proj, lon_axis + 1, lat_axis + 1).ok()?;
+    let mut wcsmap = WcsMap::new(store.naxis, proj, lon_axis + 1, lat_axis + 1)?;
 
     // Warning messages to emit as ASTWARN cards, in generation order — C
     // appends them to the FitsChan as each `Warn` call is reached, and the
@@ -476,16 +484,16 @@ pub(crate) fn build_celestial_with_def_b1950(
     // C sets each axis on its own, on the SkyFrame before any permutation,
     // so axis 1 is the longitude.
     if let Some(v) = store.skyref[lon_axis] {
-        sky_frame.set_sky_ref(1, v).ok()?;
+        sky_frame.set_sky_ref(1, v)?;
     }
     if let Some(v) = store.skyref[lat_axis] {
-        sky_frame.set_sky_ref(2, v).ok()?;
+        sky_frame.set_sky_ref(2, v)?;
     }
     if let Some(v) = store.skyrefp[lon_axis] {
-        sky_frame.set_sky_ref_p(1, v).ok()?;
+        sky_frame.set_sky_ref_p(1, v)?;
     }
     if let Some(v) = store.skyrefp[lat_axis] {
-        sky_frame.set_sky_ref_p(2, v).ok()?;
+        sky_frame.set_sky_ref_p(2, v)?;
     }
 
     // Step 7f: SREFIS — non-standard AST keyword recording whether
@@ -510,7 +518,7 @@ pub(crate) fn build_celestial_with_def_b1950(
     // Step 8: Build the mapping.
     // The IWC values are in degrees; WcsMap works in radians.
     // Pipeline: IWC(deg) → deg2rad → WcsMap(inverse: projected→native) → rotation
-    let (mapping, ref_pos, ref_pos_forced) = build_iwc_to_sky_mapping(
+    let Some((mapping, ref_pos, ref_pos_forced)) = build_iwc_to_sky_mapping(
         store,
         wcsmap,
         store.naxis,
@@ -518,7 +526,10 @@ pub(crate) fn build_celestial_with_def_b1950(
         lat_axis,
         rfval,
         car_lin,
-    )?;
+    )?
+    else {
+        return Ok(None);
+    };
 
     // `mapping` emits cel_lon at FITS slot `lon_axis` and cel_lat at FITS
     // slot `lat_axis`, with identity on every other axis: the PermMap
@@ -529,7 +540,7 @@ pub(crate) fn build_celestial_with_def_b1950(
     // cel_lon) at slots (0, 1), matching the SkyFrame's permuted external
     // layout. `build_general_iwc_to_world` composes the per-class mappings
     // in series — no axis-permute step is needed at the composer.
-    Some(CelestialResult {
+    Ok(Some(CelestialResult {
         mapping,
         frame: sky_frame,
         lon_axis,
@@ -537,7 +548,7 @@ pub(crate) fn build_celestial_with_def_b1950(
         ref_pos,
         ref_pos_forced,
         warnings,
-    })
+    }))
 }
 
 /// Determine the sky coordinate system from RADESYS and EQUINOX.
@@ -690,7 +701,7 @@ fn build_iwc_to_sky_mapping(
     lat_axis: usize,
     rfval: Option<&[Option<f64>]>,
     car_lin: bool,
-) -> Option<(DynMapping, Option<(f64, f64)>, bool)> {
+) -> AstResult<Option<(DynMapping, Option<(f64, f64)>, bool)>> {
     let deg2rad = PI / 180.0;
 
     // Read the projection before `wcsmap` is consumed by the inverse binding
@@ -716,7 +727,7 @@ fn build_iwc_to_sky_mapping(
     let mut zoom_mat: Array2<f64> = Array2::eye(naxis);
     zoom_mat[[lon_axis, lon_axis]] = deg2rad;
     zoom_mat[[lat_axis, lat_axis]] = deg2rad;
-    let zoom = crate::mappings::MatrixMap::new(zoom_mat).ok()?;
+    let zoom = crate::mappings::MatrixMap::new(zoom_mat)?;
 
     // A `-CAR` projection read under CarLin is a plain linear mapping of IWC
     // to celestial coordinates, so the native-spherical rotation is skipped
@@ -724,9 +735,12 @@ fn build_iwc_to_sky_mapping(
     // reference-position overrides afterwards, in common with the spherical
     // path, so hand off to the shared tail rather than returning the seed.
     if car_lin && matches!(proj, WcsProjection::Car) {
-        let (full, seed) = build_linear_car_mapping(store, naxis, lon_axis, lat_axis, zoom)?;
+        let Some((full, seed)) = build_linear_car_mapping(store, naxis, lon_axis, lat_axis, zoom)
+        else {
+            return Ok(None);
+        };
         let (ref_pos, ref_pos_forced) = apply_ref_overrides(store, rfval, lon_axis, lat_axis, seed);
-        return Some((full, ref_pos, ref_pos_forced));
+        return Ok(Some((full, ref_pos, ref_pos_forced)));
     }
 
     // Step 2: WcsMap inverse maps from projected plane to native spherical.
@@ -840,12 +854,14 @@ fn build_iwc_to_sky_mapping(
     };
     let (ref_pos, ref_pos_forced) = apply_ref_overrides(store, rfval, lon_axis, lat_axis, seed);
 
-    let rotation_naxis = embed_celestial_in_naxis(rotation, naxis, lon_axis, lat_axis)?;
+    let Some(rotation_naxis) = embed_celestial_in_naxis(rotation, naxis, lon_axis, lat_axis) else {
+        return Ok(None);
+    };
 
     // Pipeline: zoom (N→N diagonal) → wcsmap_inv (N→N) → rotation_naxis (N→N)
-    let step1 = CmpMap::new(Box::new(zoom), Box::new(wcsmap_inv), Composition::Series).ok()?;
-    let full = CmpMap::new(Box::new(step1), rotation_naxis, Composition::Series).ok()?;
-    Some((Box::new(full), ref_pos, ref_pos_forced))
+    let step1 = CmpMap::new(Box::new(zoom), Box::new(wcsmap_inv), Composition::Series)?;
+    let full = CmpMap::new(Box::new(step1), rotation_naxis, Composition::Series)?;
+    Ok(Some((Box::new(full), ref_pos, ref_pos_forced)))
 }
 
 /// Apply the `RFVAL<i>` and `AXREF<i>` overrides to a celestial reference
@@ -1060,14 +1076,16 @@ fn embed_celestial_in_naxis(
 /// `lonpole` and `latpole` are FITS-supplied values in radians; pass
 /// `None` for "default — let `wcs_nat_pole` pick".
 ///
-/// Mirrors `fitschan.c::WcsNative` (~38188-38302).
+/// Mirrors `fitschan.c::WcsNative` (~38188-38302): a pole `WcsNatPole`
+/// cannot place, because LONPOLE cannot hold for the reference point, is
+/// `ErrorCode::Bdfts`.
 pub(crate) fn build_native_to_celestial_rotation_for_wcsmap(
     wcsmap: &WcsMap,
     crval_lon: f64,
     crval_lat: f64,
     lonpole: Option<f64>,
     latpole: Option<f64>,
-) -> Option<DynMapping> {
+) -> AstResult<DynMapping> {
     use crate::fitschan::fset_to_store::fiducial::get_fiducial_nsc;
     use crate::fitschan::fset_to_store::sky_pole::wcs_nat_pole;
 
@@ -1090,7 +1108,11 @@ pub(crate) fn build_native_to_celestial_rotation_for_wcsmap(
         &mut deltap,
     );
     if !ok {
-        return None;
+        return Err(AstError::new(
+            ErrorCode::Bdfts,
+            "Conversion from FITS WCS native coordinates to celestial coordinates is \
+             ill-conditioned.",
+        ));
     }
 
     build_rotation_from_pole(phi0, phip, alphap, deltap, crval_lon)
@@ -1106,7 +1128,7 @@ fn build_rotation_from_pole(
     alphap: f64,
     deltap: f64,
     alpha0: f64,
-) -> Option<DynMapping> {
+) -> AstResult<DynMapping> {
     use crate::mappings::{MatrixMap, SphMap};
     use ndarray::Array2;
 
@@ -1168,7 +1190,7 @@ fn build_rotation_from_pole(
             inv[[i, j]] = inv_matrix[i][j];
         }
     }
-    let rot_map = MatrixMap::new_with_inverse(mat, inv).ok()?;
+    let rot_map = MatrixMap::new_with_inverse(mat, inv)?;
 
     // cart_to_sph: cartesian (x, y, z) → spherical (lon, lat).
     // C creates this with `astSphMap("UnitRadius=1", ...)` at
@@ -1182,10 +1204,9 @@ fn build_rotation_from_pole(
         Box::new(sph_to_cart),
         Box::new(rot_map),
         Composition::Series,
-    )
-    .ok()?;
-    let full = CmpMap::new(Box::new(step1), Box::new(cart_to_sph), Composition::Series).ok()?;
-    Some(Box::new(full))
+    )?;
+    let full = CmpMap::new(Box::new(step1), Box::new(cart_to_sph), Composition::Series)?;
+    Ok(Box::new(full))
 }
 
 /// Rotate the 3×3 matrix `mat` by `theta` radians about the given unit axis,

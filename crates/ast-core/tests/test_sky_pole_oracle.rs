@@ -13,23 +13,8 @@
 mod cases;
 
 use ast_core::channel::Channel;
+use ast_core::error::ErrorCode;
 
-/// Cases C refuses that the port reads. With an explicit LONPOLE that cannot
-/// hold for the reference point, C's `WcsNative` reports the native-to-
-/// celestial conversion ill-conditioned (AST__BDFTS, fitschan.c:38553); the
-/// port's reader returns no rotation from `wcs_nat_pole` and carries on.
-/// That is a FitsChan read gap, recorded in `docs/audits/mapping-c-parity.md`
-/// beside WC-1, not a SkyPole one.
-const NOT_REFUSED: &[(&str, &str)] = &[
-    (
-        "hpx_pole",
-        "the port reads a LONPOLE C finds ill-conditioned",
-    ),
-    (
-        "car_pole",
-        "the port reads a LONPOLE C finds ill-conditioned",
-    ),
-];
 use ast_core::fitschan::{Encoding, FitsChan};
 
 fn header(proj: &str, extra: &str) -> String {
@@ -71,9 +56,6 @@ fn written(proj: &str, extra: &str) -> Option<(Option<f64>, Option<f64>)> {
 fn sky_pole_matches_the_c_library() {
     let mut failures = Vec::new();
     for &(name, proj, extra, lonpole, latpole, ok) in cases::CASES {
-        if NOT_REFUSED.iter().any(|(n, _)| *n == name) {
-            continue;
-        }
         let written = written(proj, extra);
         let got = match written {
             Some((lon, lat)) if ok => lon == lonpole && lat == latpole,
@@ -89,20 +71,17 @@ fn sky_pole_matches_the_c_library() {
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
-/// Every case in `NOT_REFUSED` is one C refuses and the port still reads; one
-/// the port starts refusing has to leave the list.
+/// The cases C refuses are those with an explicit LONPOLE that cannot hold
+/// for the reference point, which C's `WcsNative` reports as an
+/// ill-conditioned native-to-celestial conversion (fitschan.c:38553).
 #[test]
-fn not_refused_cases_are_still_read() {
-    for (name, reason) in NOT_REFUSED {
-        let &(_, proj, extra, _, _, ok) =
-            cases::CASES.iter().find(|c| c.0 == *name).expect("a case");
-        assert!(
-            !ok,
-            "{name}: C reads it, so it does not belong in NOT_REFUSED"
-        );
-        assert!(
-            written(proj, extra).is_some(),
-            "{name} is now refused, as C refuses it; remove it from NOT_REFUSED ({reason})"
-        );
+fn refused_cases_are_ill_conditioned() {
+    let refused: Vec<_> = cases::CASES.iter().filter(|c| !c.5).collect();
+    assert!(!refused.is_empty());
+    for &&(name, proj, extra, ..) in &refused {
+        let mut fc = FitsChan::from_header(&header(proj, extra)).unwrap();
+        fc.set_encoding(Encoding::FitsWcs);
+        let err = fc.read().expect_err(name);
+        assert_eq!(err.code(), ErrorCode::Bdfts, "{name}: {err}");
     }
 }

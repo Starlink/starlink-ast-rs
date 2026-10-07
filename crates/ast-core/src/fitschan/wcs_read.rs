@@ -78,7 +78,7 @@ pub(crate) fn decode_wcs_inner(
 
     // Step 2: Try to decode celestial axes.
     let rfval = read_rfval(cards, naxis, s);
-    let celestial = wcs_celestial::build_celestial_with_def_b1950(store, def_b1950, Some(&rfval));
+    let celestial = wcs_celestial::build_celestial_with_def_b1950(store, def_b1950, Some(&rfval))?;
     // Capture the celestial fiducial position (radians) before the decoder
     // result is consumed below; it is stamped onto the SkyFrame as SkyRef.
     let celestial_ref_pos = celestial.as_ref().and_then(|c| c.ref_pos);
@@ -530,7 +530,7 @@ pub(crate) fn decode_wcs_with_alts_inner(
         let alt_store = &alt_store;
         let rfval = read_rfval(cards, alt_store.naxis, *letter);
         let celestial =
-            wcs_celestial::build_celestial_with_def_b1950(alt_store, def_b1950, Some(&rfval));
+            wcs_celestial::build_celestial_with_def_b1950(alt_store, def_b1950, Some(&rfval))?;
         // Capture the alt plane's celestial fiducial before the decoder is
         // consumed, so the alt SkyFrame gets the same SkyRef/SkyRefIs=Ignored
         // stamp as the primary (C applies WcsCelestial's SkyRef-from-fiducial

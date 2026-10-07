@@ -730,13 +730,7 @@ fn build_wcs_to_iwc(
             crval_deg[1] * DD2R,
             lonpole_rad,
             latpole_rad,
-        )
-        .ok_or_else(|| {
-            crate::error::AstError::new(
-                crate::error::ErrorCode::Nodef,
-                "celestial_axes: failed to build native→celestial rotation",
-            )
-        })?;
+        )?;
 
     // Celestial chain (PPC → WCS):
     //   map2b (full N-axis WcsMap, inverted: PPC → native spherical)
