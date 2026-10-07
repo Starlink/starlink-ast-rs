@@ -9,15 +9,22 @@
  *   ./lutmap_inverse_probe > ../../crates/ast-core/tests/lutmap_inverse_oracle/cases.rs
  */
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include "ast.h"
 
 #define BAD AST__BAD
 
-/* Print a value as a Rust f64 literal. */
+/* Print a value as a Rust f64 literal, with the fewest digits that read
+   back as the same value. */
 static void lit( double v ) {
    char buf[ 40 ];
-   sprintf( buf, "%.17g", v );
+   int prec;
+   for( prec = 1; prec < 17; prec++ ) {
+      sprintf( buf, "%.*g", prec, v );
+      if( strtod( buf, NULL ) == v ) break;
+   }
+   sprintf( buf, "%.*g", prec, v );
    printf( "%s%s", buf, strpbrk( buf, ".e" ) ? "" : ".0" );
 }
 
