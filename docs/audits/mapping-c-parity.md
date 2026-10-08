@@ -44,6 +44,9 @@ A transform-oracle case with one BAD input axis per class, and a load of each cl
 
 ## Progress
 
+**Closed 2026-10-07.** Every finding below is fixed, recorded as not a defect, or recorded as a deliberate divergence (PY-10); CH-4 and CH-5 wait on upstream Starlink/ast pull request 81.
+The C defects found along the way are fixed on `u/timj/norm-unit`, past the submodule pin, and listed under "Resolved upstream" in `docs/issues/c-library-quirks.md`.
+
 | IDs | Status | Evidence |
 |---|---|---|
 | LM-1, LM-2 | FIXED 2026-10-06: the inverse is a port of the inverse branch of lutmap.c `Transform`, searching the table with its bad entries removed and flagged as C's `GetMonotonic` builds it, with the nearest-neighbour branch. C reads one element before the table for a value beyond its first entry; the port reads nothing there and gives C's result wherever C's is determined (fixed upstream in ee96dc91, past the submodule pin; `docs/issues/c-library-quirks.md`) | `tests/test_lutmap_inverse.rs`: 20 C-oracle cases from `tools/oracle_fixtures/lutmap_inverse_probe.c`, bit-exact |
