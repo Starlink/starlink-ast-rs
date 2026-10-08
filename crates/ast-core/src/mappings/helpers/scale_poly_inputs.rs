@@ -95,11 +95,16 @@ pub fn scale_poly_inputs(polymap: &PolyMap, scales: &[f64]) -> AstResult<Option<
     }
 
     // Copy iter_inverse / niter_inverse / tol_inverse attributes.
-    if polymap.iter_inverse() {
-        result.set_iter_inverse(true)?;
+    // Each only when set, as fitschan.c does (:4640-4654, :27261-27275).
+    if polymap.test_iter_inverse() {
+        result.set_iter_inverse(polymap.iter_inverse())?;
     }
-    result.set_niter_inverse(polymap.niter_inverse());
-    result.set_tol_inverse(polymap.tol_inverse());
+    if polymap.test_niter_inverse() {
+        result.set_niter_inverse(polymap.niter_inverse());
+    }
+    if polymap.test_tol_inverse() {
+        result.set_tol_inverse(polymap.tol_inverse());
+    }
 
     Ok(Some(result))
 }

@@ -199,6 +199,126 @@ impl GrismMap {
         self.grism_theta
     }
 
+    /// Whether `GrismNR` is set (grismmap.c `TestGrismNR`).
+    pub fn test_grism_nr(&self) -> bool {
+        self.set_flags.nr
+    }
+
+    /// Unset `GrismNR`, so that it reads as its default, `1.0` (grismmap.c
+    /// `ClearGrismNR`, which discards both simplified records and recalculates
+    /// the derived constants).
+    pub fn clear_grism_nr(&mut self) {
+        self.simplified.clear();
+        self.set_flags.nr = false;
+        self.grism_nr = 1.0;
+        self.update_constants();
+    }
+
+    /// Whether `GrismNRP` is set (grismmap.c `TestGrismNRP`).
+    pub fn test_grism_nrp(&self) -> bool {
+        self.set_flags.nrp
+    }
+
+    /// Unset `GrismNRP`, so that it reads as its default, `0.0` (grismmap.c
+    /// `ClearGrismNRP`, which discards both simplified records and recalculates
+    /// the derived constants).
+    pub fn clear_grism_nrp(&mut self) {
+        self.simplified.clear();
+        self.set_flags.nrp = false;
+        self.grism_nrp = 0.0;
+        self.update_constants();
+    }
+
+    /// Whether `GrismWaveR` is set (grismmap.c `TestGrismWaveR`).
+    pub fn test_grism_wave_r(&self) -> bool {
+        self.set_flags.wave_r
+    }
+
+    /// Unset `GrismWaveR`, so that it reads as its default, `5000.0` (grismmap.c
+    /// `ClearGrismWaveR`, which discards both simplified records and recalculates
+    /// the derived constants).
+    pub fn clear_grism_wave_r(&mut self) {
+        self.simplified.clear();
+        self.set_flags.wave_r = false;
+        self.grism_wave_r = 5000.0;
+        self.update_constants();
+    }
+
+    /// Whether `GrismAlpha` is set (grismmap.c `TestGrismAlpha`).
+    pub fn test_grism_alpha(&self) -> bool {
+        self.set_flags.alpha
+    }
+
+    /// Unset `GrismAlpha`, so that it reads as its default, `0.0` (grismmap.c
+    /// `ClearGrismAlpha`, which discards both simplified records and recalculates
+    /// the derived constants).
+    pub fn clear_grism_alpha(&mut self) {
+        self.simplified.clear();
+        self.set_flags.alpha = false;
+        self.grism_alpha = 0.0;
+        self.update_constants();
+    }
+
+    /// Whether `GrismG` is set (grismmap.c `TestGrismG`).
+    pub fn test_grism_g(&self) -> bool {
+        self.set_flags.g
+    }
+
+    /// Unset `GrismG`, so that it reads as its default, `0.0` (grismmap.c
+    /// `ClearGrismG`, which discards both simplified records and recalculates
+    /// the derived constants).
+    pub fn clear_grism_g(&mut self) {
+        self.simplified.clear();
+        self.set_flags.g = false;
+        self.grism_g = 0.0;
+        self.update_constants();
+    }
+
+    /// Whether `GrismM` is set (grismmap.c `TestGrismM`).
+    pub fn test_grism_m(&self) -> bool {
+        self.set_flags.m
+    }
+
+    /// Unset `GrismM`, so that it reads as its default, `0` (grismmap.c
+    /// `ClearGrismM`, which discards both simplified records and recalculates
+    /// the derived constants).
+    pub fn clear_grism_m(&mut self) {
+        self.simplified.clear();
+        self.set_flags.m = false;
+        self.grism_m = 0;
+        self.update_constants();
+    }
+
+    /// Whether `GrismEps` is set (grismmap.c `TestGrismEps`).
+    pub fn test_grism_eps(&self) -> bool {
+        self.set_flags.eps
+    }
+
+    /// Unset `GrismEps`, so that it reads as its default, `0.0` (grismmap.c
+    /// `ClearGrismEps`, which discards both simplified records and recalculates
+    /// the derived constants).
+    pub fn clear_grism_eps(&mut self) {
+        self.simplified.clear();
+        self.set_flags.eps = false;
+        self.grism_eps = 0.0;
+        self.update_constants();
+    }
+
+    /// Whether `GrismTheta` is set (grismmap.c `TestGrismTheta`).
+    pub fn test_grism_theta(&self) -> bool {
+        self.set_flags.theta
+    }
+
+    /// Unset `GrismTheta`, so that it reads as its default, `0.0` (grismmap.c
+    /// `ClearGrismTheta`, which discards both simplified records and recalculates
+    /// the derived constants).
+    pub fn clear_grism_theta(&mut self) {
+        self.simplified.clear();
+        self.set_flags.theta = false;
+        self.grism_theta = 0.0;
+        self.update_constants();
+    }
+
     /// Set the refractive index at the reference wavelength — C's
     /// `astSetGrismNR`.
     ///

@@ -77,8 +77,9 @@ pub struct SplineMap {
     inv_niter: Option<usize>,
     /// Target relative error for iterative inverse (None = default).
     inv_tol: Option<f64>,
-    /// How to handle out-of-bounds: false = BAD, true = unit (identity).
-    out_unit: bool,
+    /// How to handle out-of-bounds: false = BAD, true = unit (identity);
+    /// `None` while unset (C's `-INT_MAX`), reading as false.
+    out_unit: Option<bool>,
     /// Whether the mapping is inverted.
     inverted: bool,
     /// Whether this mapping has already been simplified (C `IsSimple`).
@@ -163,7 +164,7 @@ impl SplineMap {
             cv,
             inv_niter: None,
             inv_tol: None,
-            out_unit: false,
+            out_unit: None,
             inverted: false,
             simplified: SimplifiedRecord::default(),
             ident: None,
@@ -303,15 +304,17 @@ impl SplineMap {
     /// Set the target relative error for the iterative inverse.
     pub fn set_inv_tol(&mut self, tol: f64) {
         // As for `set_inv_niter` (splinemap.c:2586-2588).
-        if Some(tol) != self.inv_tol {
+        // C compares the raw value, AST__BAD while unset (splinemap.c:2590).
+        if tol != self.inv_tol.unwrap_or(BAD_VALUE) {
             self.simplified.clear();
         }
-        self.inv_tol = Some(tol);
+        // AST__BAD is C's unset value, so setting it unsets the attribute.
+        self.inv_tol = (tol != BAD_VALUE).then_some(tol);
     }
 
     /// Whether out-of-bounds inputs are handled as unit (identity) mapping.
     pub fn out_unit(&self) -> bool {
-        self.out_unit
+        self.out_unit.unwrap_or(false)
     }
 
     /// Set how out-of-bounds inputs are handled.
@@ -321,10 +324,46 @@ impl SplineMap {
     pub fn set_out_unit(&mut self, flag: bool) {
         // `OutUnit` changes what the transformation returns outside the
         // spline's bounds (splinemap.c:2630-2632).
-        if flag != self.out_unit {
+        if Some(flag) != self.out_unit {
             self.simplified.clear();
         }
-        self.out_unit = flag;
+        self.out_unit = Some(flag);
+    }
+
+    /// Whether InvNiter is set (splinemap.c `TestInvNiter`).
+    pub fn test_inv_niter(&self) -> bool {
+        self.inv_niter.is_some()
+    }
+
+    /// Unset InvNiter, so that it reads as 6 (splinemap.c `ClearInvNiter`,
+    /// which also discards both simplified records).
+    pub fn clear_inv_niter(&mut self) {
+        self.simplified.clear();
+        self.inv_niter = None;
+    }
+
+    /// Whether InvTol is set (splinemap.c `TestInvTol`).
+    pub fn test_inv_tol(&self) -> bool {
+        self.inv_tol.is_some()
+    }
+
+    /// Unset InvTol, so that it reads as 1e-6 (splinemap.c `ClearInvTol`,
+    /// which also discards both simplified records).
+    pub fn clear_inv_tol(&mut self) {
+        self.simplified.clear();
+        self.inv_tol = None;
+    }
+
+    /// Whether OutUnit is set, `false` included (splinemap.c `TestOutUnit`).
+    pub fn test_out_unit(&self) -> bool {
+        self.out_unit.is_some()
+    }
+
+    /// Unset OutUnit, so that it reads as `false` (splinemap.c
+    /// `ClearOutUnit`, which also discards both simplified records).
+    pub fn clear_out_unit(&mut self) {
+        self.simplified.clear();
+        self.out_unit = None;
     }
 
     /// Whether the effective forward direction is true forward.
@@ -611,8 +650,8 @@ impl SplineMap {
 
     /// Evaluate the forward transform for a single point.
     fn forward_point(&self, x: f64, y: f64) -> (f64, f64) {
-        let def_u = if self.out_unit { x } else { BAD_VALUE };
-        let def_v = if self.out_unit { y } else { BAD_VALUE };
+        let def_u = if self.out_unit() { x } else { BAD_VALUE };
+        let def_v = if self.out_unit() { y } else { BAD_VALUE };
         let u = self.db2val(def_u, x, y, 0, 0, &self.cu);
         let v = self.db2val(def_v, x, y, 0, 0, &self.cv);
         (u, v)
@@ -660,8 +699,8 @@ impl SplineMap {
                 continue;
             }
 
-            let def_u = if self.out_unit { u } else { BAD_VALUE };
-            let def_v = if self.out_unit { v } else { BAD_VALUE };
+            let def_u = if self.out_unit() { u } else { BAD_VALUE };
+            let def_v = if self.out_unit() { v } else { BAD_VALUE };
 
             let a_val = self.db2val(def_u, u, v, 0, 0, &self.cu);
             if !is_bad(u) && !is_bad(a_val) {
@@ -753,10 +792,10 @@ impl SplineMap {
                 }
 
                 // Compute Jacobian at current guess
-                let def_du_dx = if self.out_unit { 1.0 } else { BAD_VALUE };
-                let def_du_dy = if self.out_unit { 0.0 } else { BAD_VALUE };
-                let def_dv_dx = if self.out_unit { 0.0 } else { BAD_VALUE };
-                let def_dv_dy = if self.out_unit { 1.0 } else { BAD_VALUE };
+                let def_du_dx = if self.out_unit() { 1.0 } else { BAD_VALUE };
+                let def_du_dy = if self.out_unit() { 0.0 } else { BAD_VALUE };
+                let def_dv_dx = if self.out_unit() { 0.0 } else { BAD_VALUE };
+                let def_dv_dy = if self.out_unit() { 1.0 } else { BAD_VALUE };
 
                 let j00 = self.db2val(def_du_dx, outp_x, outp_y, 1, 0, &self.cu);
                 let j01 = self.db2val(def_du_dy, outp_x, outp_y, 0, 1, &self.cu);
@@ -928,7 +967,7 @@ impl Mapping for SplineMap {
             // ax1, ax2 are 1-based
             let coef = if ax1 == 1 { &self.cu } else { &self.cv };
             let (xder, yder) = if ax2 == 1 { (1, 0) } else { (0, 1) };
-            let def = if self.out_unit {
+            let def = if self.out_unit() {
                 if ax1 == ax2 { 1.0 } else { 0.0 }
             } else {
                 BAD_VALUE
@@ -1133,11 +1172,11 @@ impl Serializable for SplineMap {
             );
         }
 
-        let out_unit_set = self.out_unit; // default is false
-        if out_unit_set {
+        // splinemap.c Dump writes OutUnit whenever it is set, 0 included.
+        if let Some(out_unit) = self.out_unit {
             node.push_int(
                 "OutUnit",
-                if self.out_unit { 1 } else { 0 },
+                out_unit as i64,
                 Some("How to handle out-of-bounds points".to_string()),
             );
         }
@@ -1188,15 +1227,11 @@ impl Serializable for SplineMap {
         let inv_niter = if inv_niter_raw == i64::MIN {
             None
         } else {
-            Some(inv_niter_raw as usize)
+            Some(inv_niter_raw.max(0) as usize)
         };
 
         let out_unit_raw = node.get_int("OutUnit", i64::MIN);
-        let out_unit = if out_unit_raw == i64::MIN {
-            false
-        } else {
-            out_unit_raw != 0
-        };
+        let out_unit = (out_unit_raw != i64::MIN).then_some(out_unit_raw != 0);
 
         let inv_tol_raw = node.get_double("TolInv", BAD_VALUE);
         let inv_tol = if is_bad(inv_tol_raw) {
@@ -1237,7 +1272,7 @@ impl Serializable for SplineMap {
         if let Some(tol) = inv_tol {
             m.set_inv_tol(tol);
         }
-        if node.get("OutUnit").is_some() {
+        if let Some(out_unit) = out_unit {
             m.set_out_unit(out_unit);
         }
         Ok(m)

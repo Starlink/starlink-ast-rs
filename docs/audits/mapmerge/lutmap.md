@@ -25,42 +25,42 @@ must discard the simplified record.
 | 1 | Initialise the returned result to -1 | lutmap.c:1135-1137 (fn MapMerge) | -- | ceremony | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index |
 | 2 | Check the global error status and bail out | lutmap.c:1138-1140 (fn MapMerge) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 3 | Obtain a typed pointer to the nominated LutMap | lutmap.c:1141-1143 (fn MapMerge) | -- | ceremony | n/a: the Rust method already has `&self` |
-| 4 | See if the LutMap is linear, and only then try the replacement | lutmap.c:1144-1148 (fn MapMerge) | lutmap.rs:249 (fn linear_equivalent) | architecture | ported |
-| 5 | Take the input range spanned by the first and last table elements | lutmap.c:1149-1153 (fn MapMerge) | lutmap.rs:253-254 (fn linear_equivalent) | architecture | ported |
-| 6 | Take the matching output range and require the two ends to differ | lutmap.c:1154-1159 (fn MapMerge) | lutmap.rs:255-256 (fn linear_equivalent),230 (fn table_is_linear) | architecture | ported |
-| 7 | Build a WinMap for that linear mapping, swapping the ranges when the invert flag is set | lutmap.c:1160-1167 (fn MapMerge) | lutmap.rs:257-261 (fn linear_equivalent) | architecture | ported |
-| 8 | Replace the LutMap with it and clear the associated invert flag | lutmap.c:1168-1174 (fn MapMerge) | lutmap.rs:596-597 (fn map_merge) | architecture | ported |
-| 9 | Assign the result value | lutmap.c:1175-1179 (fn MapMerge) | lutmap.rs:598 (fn map_merge) | architecture | ported |
-| 10 | Otherwise, in series only, look for an adjacent LutMap to cancel against | lutmap.c:1180-1183 (fn MapMerge) | lutmap.rs:605 (fn map_merge) | architecture | ported |
-| 11 | Check the higher neighbour first, noting the lower index of the pair | lutmap.c:1184-1191 (fn MapMerge) | lutmap.rs:606-608 (fn map_merge) | architecture | ported |
-| 12 | Failing that, check the lower neighbour the same way, and otherwise give up | lutmap.c:1192-1203 (fn MapMerge) | lutmap.rs:609-613 (fn map_merge) | architecture | ported |
-| 13 | Cancel the pair only if the two LutMaps are equal with opposite invert flags | lutmap.c:1204-1214 (fn MapMerge) | lutmap.rs:625-630 (fn map_merge) | architecture | ported |
-| 14 | Replace the first of the pair with a UnitMap and clear its invert flag | lutmap.c:1215-1222 (fn MapMerge) | lutmap.rs:631 (fn map_merge) | architecture | ported |
+| 4 | See if the LutMap is linear, and only then try the replacement | lutmap.c:1144-1148 (fn MapMerge) | lutmap.rs:276 (fn linear_equivalent) | architecture | ported |
+| 5 | Take the input range spanned by the first and last table elements | lutmap.c:1149-1153 (fn MapMerge) | lutmap.rs:280-281 (fn linear_equivalent) | architecture | ported |
+| 6 | Take the matching output range and require the two ends to differ | lutmap.c:1154-1159 (fn MapMerge) | lutmap.rs:282-283 (fn linear_equivalent),230 (fn table_is_linear) | architecture | ported |
+| 7 | Build a WinMap for that linear mapping, swapping the ranges when the invert flag is set | lutmap.c:1160-1167 (fn MapMerge) | lutmap.rs:284-288 (fn linear_equivalent) | architecture | ported |
+| 8 | Replace the LutMap with it and clear the associated invert flag | lutmap.c:1168-1174 (fn MapMerge) | lutmap.rs:623-624 (fn map_merge) | architecture | ported |
+| 9 | Assign the result value | lutmap.c:1175-1179 (fn MapMerge) | lutmap.rs:625 (fn map_merge) | architecture | ported |
+| 10 | Otherwise, in series only, look for an adjacent LutMap to cancel against | lutmap.c:1180-1183 (fn MapMerge) | lutmap.rs:632 (fn map_merge) | architecture | ported |
+| 11 | Check the higher neighbour first, noting the lower index of the pair | lutmap.c:1184-1191 (fn MapMerge) | lutmap.rs:633-635 (fn map_merge) | architecture | ported |
+| 12 | Failing that, check the lower neighbour the same way, and otherwise give up | lutmap.c:1192-1203 (fn MapMerge) | lutmap.rs:636-640 (fn map_merge) | architecture | ported |
+| 13 | Cancel the pair only if the two LutMaps are equal with opposite invert flags | lutmap.c:1204-1214 (fn MapMerge) | lutmap.rs:652-657 (fn map_merge) | architecture | ported |
+| 14 | Replace the first of the pair with a UnitMap and clear its invert flag | lutmap.c:1215-1222 (fn MapMerge) | lutmap.rs:658 (fn map_merge) | architecture | ported |
 | 15 | Annul the second and shuffle the rest of the list down | lutmap.c:1223-1230 (fn MapMerge) | mappings/simplify.rs:588-590 (fn replace_pair_with) | ceremony | ported |
 | 16 | Clear the vacated element at the end | lutmap.c:1231-1234 (fn MapMerge) | -- | ceremony | n/a: the entry is removed from a `Vec`, so no slot is vacated to be cleared |
-| 17 | Decrement the Mapping count and return the index of the nominated element | lutmap.c:1235-1242 (fn MapMerge) | lutmap.rs:634 (fn map_merge) | architecture | ported |
+| 17 | Decrement the Mapping count and return the index of the nominated element | lutmap.c:1235-1242 (fn MapMerge) | lutmap.rs:661 (fn map_merge) | architecture | ported |
 | 18 | Clear the returned result if an error occurred | lutmap.c:1243-1245 (fn MapMerge) | -- | ceremony | n/a: an error is a `Result::Err`, not a value to be cleared alongside one |
-| 19 | Return the result | lutmap.c:1246-1247 (fn MapMerge) | lutmap.rs:642 (fn map_merge) | architecture | ported |
+| 19 | Return the result | lutmap.c:1246-1247 (fn MapMerge) | lutmap.rs:669 (fn map_merge) | architecture | ported |
 | 20 | `GetLinear`: initialise the answer to "not linear" | lutmap.c:571-573 (fn GetLinear) | -- | ceremony | n/a: each path returns its own `bool` |
 | 21 | Check the global error status and bail out | lutmap.c:574-576 (fn GetLinear) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 22 | Obtain a typed pointer to the LutMap structure | lutmap.c:577-579 (fn GetLinear) | -- | ceremony | n/a: the Rust method already has `&self` |
-| 23 | A nearest-neighbour LutMap is never linear, because of the discontinuities at the ends of the table | lutmap.c:580-583 (fn GetLinear) | lutmap.rs:199-201 (fn table_is_linear) | architecture | ported |
-| 24 | Obtain the lookup table and its length | lutmap.c:584-587 (fn GetLinear) | lutmap.rs:202 (fn table_is_linear) | architecture | ported |
-| 25 | Loop to find the largest and smallest values in the table | lutmap.c:588-596 (fn GetLinear) | lutmap.rs:206-214 (fn table_is_linear) | architecture | ported |
-| 26 | A table whose values are all the same is linear, inverse or no inverse | lutmap.c:597-601 (fn GetLinear) | lutmap.rs:217-219 (fn table_is_linear) | architecture | ported |
-| 27 | Take the relative error of the table values from the LutEpsilon attribute | lutmap.c:602-604 (fn GetLinear) | lutmap.rs:220 (fn table_is_linear) | architecture | ported |
-| 28 | Form a tolerance from the overall range of table values times that error | lutmap.c:605-608 (fn GetLinear) | lutmap.rs:221 (fn table_is_linear) | architecture | ported |
-| 29 | Loop over every table element except the first and the last | lutmap.c:609-613 (fn GetLinear) | lutmap.rs:222-223 (fn table_is_linear) | architecture | ported |
-| 30 | Take the fractional position of the current element within the table | lutmap.c:614-617 (fn GetLinear) | lutmap.rs:224 (fn table_is_linear) | architecture | ported |
-| 31 | Interpolate linearly between the first and last values to get the value the element should have | lutmap.c:618-621 (fn GetLinear) | lutmap.rs:225 (fn table_is_linear) | architecture | ported |
-| 32 | Form a second tolerance from the interpolated value, and use whichever is larger | lutmap.c:622-627 (fn GetLinear) | lutmap.rs:226 (fn table_is_linear) | architecture | ported |
-| 33 | Accept linearity within twice that tolerance, and stop at the first element that fails | lutmap.c:628-634 (fn GetLinear) | lutmap.rs:227-229 (fn table_is_linear) | architecture | ported |
-| 34 | Return the result | lutmap.c:635-636 (fn GetLinear) | lutmap.rs:231 (fn table_is_linear) | architecture | ported |
-| 35 | Setting or clearing LutInterp or LutEpsilon clears the simplified record, both orientations | lutmap.c:1802 (fn astMAKE_CLEAR1),1805 (fn astMAKE_SET1) | lutmap.rs:114-129 (fn set_interp) | ceremony | ported |
+| 23 | A nearest-neighbour LutMap is never linear, because of the discontinuities at the ends of the table | lutmap.c:580-583 (fn GetLinear) | lutmap.rs:226-228 (fn table_is_linear) | architecture | ported |
+| 24 | Obtain the lookup table and its length | lutmap.c:584-587 (fn GetLinear) | lutmap.rs:229 (fn table_is_linear) | architecture | ported |
+| 25 | Loop to find the largest and smallest values in the table | lutmap.c:588-596 (fn GetLinear) | lutmap.rs:233-241 (fn table_is_linear) | architecture | ported |
+| 26 | A table whose values are all the same is linear, inverse or no inverse | lutmap.c:597-601 (fn GetLinear) | lutmap.rs:244-246 (fn table_is_linear) | architecture | ported |
+| 27 | Take the relative error of the table values from the LutEpsilon attribute | lutmap.c:602-604 (fn GetLinear) | lutmap.rs:247 (fn table_is_linear) | architecture | ported |
+| 28 | Form a tolerance from the overall range of table values times that error | lutmap.c:605-608 (fn GetLinear) | lutmap.rs:248 (fn table_is_linear) | architecture | ported |
+| 29 | Loop over every table element except the first and the last | lutmap.c:609-613 (fn GetLinear) | lutmap.rs:249-250 (fn table_is_linear) | architecture | ported |
+| 30 | Take the fractional position of the current element within the table | lutmap.c:614-617 (fn GetLinear) | lutmap.rs:251 (fn table_is_linear) | architecture | ported |
+| 31 | Interpolate linearly between the first and last values to get the value the element should have | lutmap.c:618-621 (fn GetLinear) | lutmap.rs:252 (fn table_is_linear) | architecture | ported |
+| 32 | Form a second tolerance from the interpolated value, and use whichever is larger | lutmap.c:622-627 (fn GetLinear) | lutmap.rs:253 (fn table_is_linear) | architecture | ported |
+| 33 | Accept linearity within twice that tolerance, and stop at the first element that fails | lutmap.c:628-634 (fn GetLinear) | lutmap.rs:254-256 (fn table_is_linear) | architecture | ported |
+| 34 | Return the result | lutmap.c:635-636 (fn GetLinear) | lutmap.rs:258 (fn table_is_linear) | architecture | ported |
+| 35 | Setting or clearing LutInterp or LutEpsilon clears the simplified record, both orientations | lutmap.c:1802 (fn astMAKE_CLEAR1),1805 (fn astMAKE_SET1) | lutmap.rs:116-131 (fn set_interp) | ceremony | ported |
 
 ## Rows 4 and 20 to 34 — the linearity test is `GetLinear`
 
-`table_is_linear` (`lutmap.rs:198-232 (fn table_is_linear)`) is C's `GetLinear`:
+`table_is_linear` (`lutmap.rs:225-259 (fn table_is_linear)`) is C's `GetLinear`:
 the tolerance is scaled by `lut_epsilon`, C's `LutEpsilon` attribute defaulting to
 `f64::EPSILON`, and taken as the larger of an estimate from the table's full range
 and one from the interpolated value at the element under test, with linearity
@@ -74,7 +74,7 @@ port's earlier hardcoded `1e-10` converted both.
 
 `GetLinear` is only ever called from `MapMerge`
 (`lutmap.c:1146 (fn MapMerge)`), so the port folds it into the same seam:
-`linear_equivalent` (`lutmap.rs:244-262 (fn linear_equivalent)`) asks
+`linear_equivalent` (`lutmap.rs:271-289 (fn linear_equivalent)`) asks
 `table_is_linear` and, when the answer is yes, returns the WinMap C would build.
 The two-stage shape keeps C's ordering — the linearity test decides which half of
 `MapMerge` runs, and the `b1 != b2` guard (`lutmap.c:1158 (fn MapMerge)`) sits
@@ -123,7 +123,7 @@ it in the list, inverts it, compares with `astEqual`, and puts the flag back
 (`lutmap.c:1208-1213 (fn MapMerge)`). Owned values make that a comparison rather
 than a mutation: `map_merge` clones the neighbour, folds the list flag and the
 inversion into the clone, and hands it to `applied_equal`
-(`lutmap.rs:267-273 (fn applied_equal)`), which folds the nominated LutMap's own
+(`lutmap.rs:294-300 (fn applied_equal)`), which folds the nominated LutMap's own
 applied direction in the same way before calling `equal`. `equal` compares stored
 orientation, so both sides have to be brought to their applied one first.
 
@@ -146,9 +146,9 @@ because it decides whether the table is a staircase. Both attributes get the rul
 through the `astMAKE_SET1` and `astMAKE_CLEAR1` macros, whose `astClearIsSimple`
 term runs before the value is stored.
 
-`set_interp` (`lutmap.rs:114-129 (fn set_interp)`) discards both records, as
+`set_interp` (`lutmap.rs:116-131 (fn set_interp)`) discards both records, as
 `astSetLutInterp` does. `set_lut_epsilon`
-(`lutmap.rs:169-179 (fn set_lut_epsilon)`) does the same, and treats `BAD_VALUE`
+(`lutmap.rs:183-193 (fn set_lut_epsilon)`) does the same, and treats `BAD_VALUE`
 as the unset sentinel so the default is C's `DBL_EPSILON` and the `LutEps` card is
 omitted — the value feeds row 27 directly, which is the first thing `MapMerge`
 consults.

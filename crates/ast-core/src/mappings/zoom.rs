@@ -3,7 +3,7 @@
 use crate::constants::BAD_VALUE;
 use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
-use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
+use crate::serial::{Node, NodeValue, Serializable, read_mapping_base, write_mapping_base};
 
 use super::cmpmap::{CmpMap, Composition};
 use super::helpers::{ast_equal, is_bad};
@@ -49,10 +49,10 @@ impl ZoomMap {
     /// The zoom factor — C's `Zoom` attribute.
     ///
     /// C reports 1.0 for an unset attribute (`zoommap.c:1699-1700`, where 0.0 is
-    /// the unset sentinel). A constructed `ZoomMap` always carries a non-zero
-    /// factor, so there is no unset state to report.
+    /// the unset sentinel). A constructed `ZoomMap` has its factor set; only
+    /// [`ZoomMap::clear_zoom`] unsets it.
     pub fn zoom(&self) -> f64 {
-        self.factor
+        if self.factor == 0.0 { 1.0 } else { self.factor }
     }
 
     /// Set the zoom factor — C's `astSetZoom`.
@@ -81,6 +81,18 @@ impl ZoomMap {
         }
         self.factor = factor;
         Ok(())
+    }
+
+    /// Whether Zoom is set (zoommap.c `TestZoom`: a non-zero stored value).
+    pub fn test_zoom(&self) -> bool {
+        self.factor != 0.0
+    }
+
+    /// Unset Zoom, so that it reads as 1.0 (zoommap.c `ClearZoom`, which also
+    /// discards both simplified records).
+    pub fn clear_zoom(&mut self) {
+        self.simplified.clear();
+        self.factor = 0.0;
     }
 
     fn effective_forward(&self, forward: bool) -> bool {
@@ -135,7 +147,7 @@ impl Mapping for ZoomMap {
     fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()> {
         crate::mappings::validate_transform(self, pts, forward, Some(out))?;
         let fwd = self.effective_forward(forward);
-        let scale = if fwd { self.factor } else { 1.0 / self.factor };
+        let scale = if fwd { self.zoom() } else { 1.0 / self.zoom() };
         for i in 0..pts.npoint() {
             let inp = pts.point(i);
             let outp = out.point_mut(i);
@@ -159,7 +171,7 @@ impl Mapping for ZoomMap {
         out: &mut PointSet,
     ) -> AstResult<()> {
         let fwd = self.effective_forward(forward);
-        let scale = if fwd { self.factor } else { 1.0 / self.factor };
+        let scale = if fwd { self.zoom() } else { 1.0 / self.zoom() };
         for i in 0..pts.npoint() {
             let inp = pts.point(i);
             let outp = out.point_mut(i);
@@ -185,9 +197,9 @@ impl Mapping for ZoomMap {
             return Ok(0.0);
         }
         Ok(if !self.inverted {
-            self.factor
+            self.zoom()
         } else {
-            1.0 / self.factor
+            1.0 / self.zoom()
         })
     }
 
@@ -199,9 +211,9 @@ impl Mapping for ZoomMap {
             return false;
         }
         if self.inverted == other.inverted {
-            ast_equal(self.factor, other.factor)
+            ast_equal(self.zoom(), other.zoom())
         } else {
-            ast_equal(self.factor * other.factor, 1.0)
+            ast_equal(self.zoom() * other.zoom(), 1.0)
         }
     }
 
@@ -211,7 +223,7 @@ impl Mapping for ZoomMap {
         // same-indexed outputs via a smaller ZoomMap with the same factor.
         let nin = self.nin();
         crate::mappings::helpers::validate_in_axes(in_axes, nin)?;
-        let mut sub = ZoomMap::new(in_axes.len(), self.factor).ok()?;
+        let mut sub = ZoomMap::new(in_axes.len(), self.zoom()).ok()?;
         if self.inverted {
             sub.invert();
         }
@@ -229,14 +241,14 @@ impl Mapping for ZoomMap {
             // Parallel merge: ZoomMap alongside ZoomMap.
             let other_zoom = other.as_any().downcast_ref::<ZoomMap>()?;
             let f1 = if self_inv {
-                1.0 / self.factor
+                1.0 / self.zoom()
             } else {
-                self.factor
+                self.zoom()
             };
             let f2 = if other_inv {
-                1.0 / other_zoom.factor
+                1.0 / other_zoom.zoom()
             } else {
-                other_zoom.factor
+                other_zoom.zoom()
             };
             let n1 = self.ncoord;
             let n2 = other_zoom.ncoord;
@@ -265,14 +277,14 @@ impl Mapping for ZoomMap {
                 return None;
             }
             let f1 = if self_inv {
-                1.0 / self.factor
+                1.0 / self.zoom()
             } else {
-                self.factor
+                self.zoom()
             };
             let f2 = if other_inv {
-                1.0 / other_zoom.factor
+                1.0 / other_zoom.zoom()
             } else {
-                other_zoom.factor
+                other_zoom.zoom()
             };
             let product = f1 * f2;
             if ast_equal(product, 1.0) {
@@ -285,9 +297,9 @@ impl Mapping for ZoomMap {
 
         // Cross-type: ZoomMap + {WinMap, ShiftMap} → WinMap or UnitMap.
         let f1 = if self_inv {
-            1.0 / self.factor
+            1.0 / self.zoom()
         } else {
-            self.factor
+            self.zoom()
         };
         let s1 = vec![0.0; self.ncoord];
         let c1 = vec![f1; self.ncoord];
@@ -338,10 +350,17 @@ impl Serializable for ZoomMap {
         let mut node = Node::new(self.class_name());
         node.class_comment = Some("Zoom about the origin".to_string());
         write_mapping_base(&mut node, self);
-        // C library treats Zoom as set whenever non-zero (`astMAKE_TEST`),
-        // which is always the case for a constructed ZoomMap. Emit
-        // uncommented to match C output.
-        node.push_double("Zoom", self.factor, Some("Zoom factor".to_string()));
+        // zoommap.c Dump: Zoom is "helpful", so an unset value is written
+        // commented, as its default 1.0.
+        if self.test_zoom() {
+            node.push_double("Zoom", self.zoom(), Some("Zoom factor".to_string()));
+        } else {
+            node.push_unset(
+                "Zoom",
+                NodeValue::Double(self.zoom()),
+                Some("Zoom factor".to_string()),
+            );
+        }
         Ok(node)
     }
 
@@ -359,6 +378,8 @@ impl Serializable for ZoomMap {
         // installed from the `IsSimp` card survives.
         let raw = node.get_double("Zoom", 0.0);
         let mut m = ZoomMap::new(base.nin, if raw != 0.0 { raw } else { 1.0 })?;
+        // An absent Zoom stays unset, as C's `astReadDouble(..., 0.0)` leaves it.
+        m.factor = raw;
         if base.inverted {
             m.invert();
         }

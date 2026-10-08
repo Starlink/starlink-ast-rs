@@ -166,6 +166,51 @@ impl PcdMap {
         self.pcdcen
     }
 
+    /// Whether `Disco` is set (pcdmap.c `TestDisco`).
+    pub fn test_disc(&self) -> bool {
+        self.disc_set
+    }
+
+    /// Unset `Disco`, so that it reads as 0.0 (pcdmap.c `ClearDisco`, which
+    /// also discards both simplified records).
+    pub fn clear_disc(&mut self) {
+        self.simplified.clear();
+        self.disc_set = false;
+        self.disc = 0.0;
+    }
+
+    /// Whether `PcdCen` is set on `axis` (1-based), as C's `astTestPcdCen`
+    /// reports; an index outside 1..=2 is `ErrorCode::Axiin`.
+    pub fn test_pcd_cen(&self, axis: usize) -> AstResult<bool> {
+        Ok(self.pcdcen_set[Self::pcd_cen_index(axis, "astTestPcdCen")?])
+    }
+
+    /// Unset `PcdCen` on `axis` (1-based), so that it reads as 0.0, as C's
+    /// `astClearPcdCen` does, discarding both simplified records; an index
+    /// outside 1..=2 is `ErrorCode::Axiin` and changes nothing.
+    pub fn clear_pcd_cen(&mut self, axis: usize) -> AstResult<()> {
+        let i = Self::pcd_cen_index(axis, "astClearPcdCen")?;
+        self.simplified.clear();
+        self.pcdcen_set[i] = false;
+        self.pcdcen[i] = 0.0;
+        Ok(())
+    }
+
+    /// The 0-based index of a 1-based `PcdCen` axis, or C's AST__AXIIN.
+    fn pcd_cen_index(axis: usize, method: &str) -> AstResult<usize> {
+        if (1..=2).contains(&axis) {
+            Ok(axis - 1)
+        } else {
+            Err(AstError::new(
+                ErrorCode::Axiin,
+                format!(
+                    "{method}(PcdMap): Index ({axis}) is invalid for attribute PcdCen - it \
+                     should be in the range 1 to 2."
+                ),
+            ))
+        }
+    }
+
     /// Get the effective distortion coefficient, accounting for inversion state.
     ///
     /// When the PcdMap is inverted, the disc value is still the same

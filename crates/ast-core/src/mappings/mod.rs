@@ -242,6 +242,20 @@ pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
     /// Invert this mapping in place.
     fn invert(&mut self);
 
+    /// Set the Invert attribute: invert this mapping if it is not already in
+    /// the orientation `invert` asks for (C's `astSetInvert`).
+    fn set_invert(&mut self, invert: bool) {
+        if self.is_inverted() != invert {
+            self.invert();
+        }
+    }
+
+    /// Clear the Invert attribute, returning this mapping to its original
+    /// orientation (C's `astClearInvert`, whose default is 0).
+    fn clear_invert(&mut self) {
+        self.set_invert(false);
+    }
+
     /// Transform a set of points.
     ///
     /// If `forward` is true, applies the forward transformation; otherwise

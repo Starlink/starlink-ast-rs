@@ -55,7 +55,8 @@ pub struct PermMap {
     /// `PermSplit`: select the alternative `map_split` strategy. When set,
     /// `map_split` ignores `outperm` and treats `inperm` as the exact inverse
     /// of the forward transform (permmap.c PermSplit attribute, ~2010).
-    perm_split: bool,
+    /// `None` while unset (C's `-INT_MAX`).
+    perm_split: Option<bool>,
 }
 
 impl PermMap {
@@ -84,7 +85,7 @@ impl PermMap {
             mapping_flags: crate::mappings::MappingFlags::default(),
             out_is_copy: false,
             in_is_copy: false,
-            perm_split: false,
+            perm_split: None,
         })
     }
 
@@ -252,7 +253,7 @@ impl PermMap {
     /// forward transform is ignored and `inperm` is assumed to be its exact
     /// inverse, yielding a `UnitMap`-based split (permmap.c `PermSplit`).
     pub fn perm_split(&self) -> bool {
-        self.perm_split
+        self.perm_split.unwrap_or(false)
     }
 
     /// Set the `PermSplit` attribute.
@@ -267,27 +268,24 @@ impl PermMap {
         // simplification (permmap.c:2067-2070, the convention at
         // mapping.h:449-472). The clear is guarded on the value differing, as C's
         // is -- see `LutMap::set_interp` for why that guard matters to the
-        // loader.
-        if value != self.perm_split {
+        // loader. An unset value differs from both, as C's `-INT_MAX` does.
+        if Some(value) != self.perm_split {
             self.simplified.clear();
         }
-        self.perm_split = value;
+        self.perm_split = Some(value);
     }
 
-    /// Test whether `PermSplit` has been explicitly set.
-    ///
-    /// The Rust port stores `PermSplit` as a plain `bool` rather than C's
-    /// "unset" sentinel, so this reports whether the value differs from the
-    /// `false` default — sufficient for the native-dump `set` flag.
+    /// Whether `PermSplit` has been set, `false` included (permmap.c
+    /// `TestPermSplit`).
     pub fn test_perm_split(&self) -> bool {
-        self.perm_split
+        self.perm_split.is_some()
     }
 
     /// Clear the `PermSplit` attribute, restoring the `false` default.
     pub fn clear_perm_split(&mut self) {
         // As for `set_perm_split` (permmap.c:2067).
         self.simplified.clear();
-        self.perm_split = false;
+        self.perm_split = None;
     }
 
     fn effective_forward(&self, forward: bool) -> bool {
@@ -609,7 +607,7 @@ impl Mapping for PermMap {
         // `inperm` values of the selected inputs. The split fails if a
         // selected input is fed by a constant (negative entry) or if two
         // selected inputs are fed by the same output.
-        if self.perm_split {
+        if self.perm_split() {
             // C `PERMVAL(inp, iin, npout)` reduced to a zero-based output
             // index (mirroring the macro at permmap.c:146). When the parent's
             // inverse array is the NULL identity (`in_is_copy`), C uses
@@ -1221,14 +1219,15 @@ impl Serializable for PermMap {
         node.class_comment = Some("Coordinate permutation".to_string());
         write_mapping_base(&mut node, self);
 
-        // PermSplit (permmap.c Dump, "pmsplt"). Written only when set; the
-        // value is informational when unset (matching C's `set` flag).
-        if self.perm_split {
-            node.push_int(
-                "pmsplt",
-                1,
-                Some("Use alternative astMapSplit implementation".to_string()),
-            );
+        // PermSplit (permmap.c Dump, "pmsplt"): written whenever it is set,
+        // 0 included. C's unset value is not "helpful", so it is not written.
+        if let Some(v) = self.perm_split {
+            let comment = if v {
+                "Use alternative astMapSplit implementation"
+            } else {
+                "Use normal astMapSplit implementation"
+            };
+            node.push_int("pmsplt", v as i64, Some(comment.to_string()));
         }
 
         // The highest constant number the permutations written below refer
@@ -1373,7 +1372,7 @@ impl Serializable for PermMap {
         // survive.
         if node.get("PmSplt").is_some() {
             let value = node.get_int("PmSplt", 0) != 0;
-            m.perm_split = value;
+            m.perm_split = Some(value);
             m.set_perm_split(value);
         }
         Ok(m)

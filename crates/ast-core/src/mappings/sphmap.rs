@@ -33,7 +33,8 @@ use crate::mappings::SimplifiedRecord;
 ///   (i.e. `x == 0` and `y == 0`).
 #[derive(Debug, Clone)]
 pub struct SphMap {
-    unit_radius: bool,
+    /// `None` while unset (C's -1), reading as false.
+    unit_radius: Option<bool>,
     polar_long: f64,
     /// Tracks whether `polar_long` was explicitly set by the user (or read
     /// from a serialised representation with `set=1`). Mirrors the C
@@ -54,7 +55,7 @@ impl SphMap {
     /// Default: `unit_radius = false`, `polar_long = 0.0`.
     pub fn new() -> Self {
         Self {
-            unit_radius: false,
+            unit_radius: None,
             polar_long: 0.0,
             polar_long_set: false,
             inverted: false,
@@ -66,7 +67,7 @@ impl SphMap {
 
     /// Whether input Cartesian vectors are assumed to have unit length.
     pub fn unit_radius(&self) -> bool {
-        self.unit_radius
+        self.unit_radius.unwrap_or(false)
     }
 
     /// Set whether input Cartesian vectors are assumed to have unit length.
@@ -76,10 +77,23 @@ impl SphMap {
         // (sphmap.c:771), so a record left in place could decline the
         // cancellation the new value allows (sphmap.c:1394-1396,
         // `astClearIsSimple` at mapping.h:449-472).
-        if unit_radius != self.unit_radius {
+        if Some(unit_radius) != self.unit_radius {
             self.simplified.clear();
         }
-        self.unit_radius = unit_radius;
+        self.unit_radius = Some(unit_radius);
+    }
+
+    /// Whether UnitRadius is set, `false` included (sphmap.c
+    /// `TestUnitRadius`).
+    pub fn test_unit_radius(&self) -> bool {
+        self.unit_radius.is_some()
+    }
+
+    /// Unset UnitRadius, so that it reads as `false` (sphmap.c
+    /// `ClearUnitRadius`, which also discards both simplified records).
+    pub fn clear_unit_radius(&mut self) {
+        self.simplified.clear();
+        self.unit_radius = None;
     }
 
     /// The longitude value returned at either pole.
@@ -100,6 +114,8 @@ impl SphMap {
     }
 
     /// Set the longitude value returned at either pole (radians).
+    /// `BAD_VALUE` is C's unset value, so it unsets the attribute, which then
+    /// reads as 0.0 (sphmap.c:1437-1441).
     pub fn set_polar_long(&mut self, polar_long: f64) {
         // `PolarLong` is read by the same MapMerge, which requires the pair
         // to agree on it (sphmap.c:762-763, :932); the record goes for the same
@@ -107,8 +123,21 @@ impl SphMap {
         if polar_long != self.stored_polar_long() {
             self.simplified.clear();
         }
-        self.polar_long = polar_long;
-        self.polar_long_set = true;
+        self.polar_long_set = polar_long != BAD_VALUE;
+        self.polar_long = if self.polar_long_set { polar_long } else { 0.0 };
+    }
+
+    /// Whether PolarLong is set (sphmap.c `TestPolarLong`).
+    pub fn test_polar_long(&self) -> bool {
+        self.polar_long_set
+    }
+
+    /// Unset PolarLong, so that it reads as 0.0 (sphmap.c `ClearPolarLong`,
+    /// which also discards both simplified records).
+    pub fn clear_polar_long(&mut self) {
+        self.simplified.clear();
+        self.polar_long_set = false;
+        self.polar_long = 0.0;
     }
 
     fn effective_forward(&self, forward: bool) -> bool {
@@ -353,7 +382,7 @@ impl Mapping for SphMap {
             // C path: invert_list[imap1]==0 && invert_list[imap2]==1.
             // Requires UnitRadius on the forward (self) map. C does
             // NOT check PolarLong here.
-            if !self.unit_radius {
+            if !self.unit_radius() {
                 return None;
             }
             3
@@ -365,9 +394,11 @@ impl Mapping for SphMap {
         let Some(other) = other.as_any().downcast_ref::<SphMap>() else {
             return false;
         };
+        // sphmap.c Equal compares the stored values, so an unset attribute
+        // differs from one set to its default.
         self.inverted == other.inverted
             && self.unit_radius == other.unit_radius
-            && ast_equal(self.polar_long, other.polar_long)
+            && ast_equal(self.stored_polar_long(), other.stored_polar_long())
     }
 
     fn ident(&self) -> &str {
@@ -422,12 +453,15 @@ impl Serializable for SphMap {
             "Mapping",
             Some("Mapping between coordinate systems".to_string()),
         );
-        if self.unit_radius {
-            node.push_int(
-                "UntRd",
-                1,
-                Some("All input vectors have unit length".to_string()),
-            );
+        // sphmap.c Dump writes UntRd whenever it is set, 0 included; it is
+        // not "helpful", so an unset value is not written.
+        if let Some(unit_radius) = self.unit_radius {
+            let comment = if unit_radius {
+                "All input vectors have unit length"
+            } else {
+                "Input vectors do not all have unit length"
+            };
+            node.push_int("UntRd", unit_radius as i64, Some(comment.to_string()));
         }
         if self.polar_long_set {
             node.push_double(
@@ -452,7 +486,7 @@ impl Serializable for SphMap {
         let node = &whole.section("SphMap");
         use crate::serial::NodeValue;
         let base = read_mapping_base(whole);
-        let unit_radius = node.get_int("UntRd", 0) != 0;
+        let unit_radius = node.get("UntRd").map(|_| node.get_int("UntRd", 0) != 0);
         // Distinguish "uncommented PlrLg = …" (explicitly set in source) from
         // "#   PlrLg = …" (commented default) — only the former counts as set.
         // `get_any` unwraps `Unset(inner)`, so we have to walk `items` directly.
@@ -483,7 +517,7 @@ impl Serializable for SphMap {
         // the setter, so the set changes nothing and the setter's guarded
         // `astClearIsSimple` does not fire (sphmap.c:2040-2046): the struct literal
         // above already holds the values read from the cards.
-        if node.get("UntRd").is_some() {
+        if let Some(unit_radius) = unit_radius {
             m.set_unit_radius(unit_radius);
         }
         if polar_long_set {

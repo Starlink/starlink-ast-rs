@@ -38,8 +38,10 @@ pub struct LutMap {
     start: f64,
     /// Input spacing between entries.
     inc: f64,
-    /// Interpolation method.
-    interp: LutInterp,
+    /// Interpolation method, `None` while unset (C's `-INT_MAX`). The
+    /// constructor and the loader both set it, as C's do (lutmap.c:2418, 2586),
+    /// so only [`LutMap::clear_interp`] unsets it.
+    interp: Option<LutInterp>,
     /// Monotonicity: +1 increasing, -1 decreasing, 0 non-monotonic.
     monotonic: i8,
     /// The table the inverse searches, when `lut` has bad entries (C's
@@ -97,7 +99,7 @@ impl LutMap {
             lut: lut.to_vec(),
             start,
             inc,
-            interp: LutInterp::Linear,
+            interp: Some(LutInterp::Linear),
             monotonic,
             inverse_table,
             inverted: false,
@@ -122,15 +124,27 @@ impl LutMap {
         // simplification, and the guard is what lets `from_node` re-apply the
         // value it has just read without discarding the `IsSimp` card that came
         // with it.
-        if interp != self.interp {
+        if Some(interp) != self.interp {
             self.simplified.clear();
         }
-        self.interp = interp;
+        self.interp = Some(interp);
     }
 
-    /// Return the interpolation method.
+    /// Return the interpolation method, linear when unset.
     pub fn interp(&self) -> LutInterp {
-        self.interp
+        self.interp.unwrap_or(LutInterp::Linear)
+    }
+
+    /// Whether `LutInterp` is set (lutmap.c `TestLutInterp`).
+    pub fn test_interp(&self) -> bool {
+        self.interp.is_some()
+    }
+
+    /// Unset `LutInterp`, so that it reads as linear (lutmap.c
+    /// `ClearLutInterp`, which also discards both simplified records).
+    pub fn clear_interp(&mut self) {
+        self.simplified.clear();
+        self.interp = None;
     }
 
     /// The stated relative error of the table values — C's `LutEpsilon`.
@@ -178,6 +192,19 @@ impl LutMap {
         };
     }
 
+    /// Whether `LutEpsilon` is set (lutmap.c `TestLutEpsilon`).
+    pub fn test_lut_epsilon(&self) -> bool {
+        self.lut_epsilon_set
+    }
+
+    /// Unset `LutEpsilon`, so that it reads as `f64::EPSILON` (lutmap.c
+    /// `ClearLutEpsilon`, which also discards both simplified records).
+    pub fn clear_lut_epsilon(&mut self) {
+        self.simplified.clear();
+        self.lut_epsilon_set = false;
+        self.lut_epsilon = f64::EPSILON;
+    }
+
     /// Return the number of entries in the lookup table.
     pub fn nlut(&self) -> usize {
         self.lut.len()
@@ -196,7 +223,7 @@ impl LutMap {
     /// so that values near zero do not get an unusably tight bound. Linearity is
     /// accepted within twice that.
     fn table_is_linear(&self) -> bool {
-        if self.interp == LutInterp::Nearest {
+        if self.interp() == LutInterp::Nearest {
             return false;
         }
         let n = self.lut.len();
@@ -302,7 +329,7 @@ impl LutMap {
         let nlut = self.lut.len();
         let idx = (x - self.start) / self.inc;
 
-        match self.interp {
+        match self.interp() {
             LutInterp::Linear => {
                 if nlut == 1 {
                     // Single-element table: can only return that value at
@@ -420,7 +447,7 @@ impl LutMap {
 
         let table_index = |i: usize| index.map_or(i, |index| index[i]);
 
-        if self.interp == LutInterp::Nearest {
+        if self.interp() == LutInterp::Nearest {
             // With no lower entry, C's sign test passes only when `y` equals
             // the first entry, whatever `d1` holds (a decreasing table at its
             // first value); any other value is beyond the table.
@@ -767,15 +794,18 @@ impl Serializable for LutMap {
                 Some("Input value increment between elements".to_string()),
             );
         }
-        let interp_val = match self.interp {
+        // lutmap.c Dump: LutInt is "helpful", so an unset value is written
+        // commented, as its linear default.
+        let interp_val = match self.interp() {
             LutInterp::Linear => 0,
             LutInterp::Nearest => 1,
         };
-        node.push_int(
-            "LutInt",
-            interp_val,
-            Some("Interpolation method".to_string()),
-        );
+        let comment = Some("Interpolation method".to_string());
+        if self.test_interp() {
+            node.push_int("LutInt", interp_val, comment);
+        } else {
+            node.push_unset("LutInt", NodeValue::Int(interp_val), comment);
+        }
         // C writes the precision only when it has been set (lutmap.c:2009-2013).
         if self.lut_epsilon_set {
             node.push_double(
@@ -826,7 +856,7 @@ impl Serializable for LutMap {
             lut,
             start,
             inc,
-            interp,
+            interp: Some(interp),
             monotonic,
             inverse_table,
             lut_epsilon,

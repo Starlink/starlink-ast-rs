@@ -45,8 +45,10 @@ pub struct PolyMap {
     /// IterInverse attribute. `None` = unset; the effective default is
     /// "no inverse coefficients supplied" (polymap.c:6311).
     iter_inverse: Option<bool>,
-    niter_inverse: usize,
-    tol_inverse: f64,
+    /// `None` while unset (C's `-INT_MAX`), reading as 4.
+    niter_inverse: Option<usize>,
+    /// `None` while unset (C's `AST__BAD`), reading as 1e-6.
+    tol_inverse: Option<f64>,
     inverted: bool,
     simplified: SimplifiedRecord,
     ident: Option<String>,
@@ -200,8 +202,8 @@ impl PolyMap {
             forward: fwd_vec,
             inverse: inv,
             iter_inverse: None,
-            niter_inverse: 4,
-            tol_inverse: 1e-6,
+            niter_inverse: None,
+            tol_inverse: None,
             inverted: false,
             simplified: SimplifiedRecord::default(),
             ident: None,
@@ -288,32 +290,58 @@ impl PolyMap {
 
     /// Maximum number of iterations for the iterative inverse.
     pub fn niter_inverse(&self) -> usize {
-        self.niter_inverse
+        self.niter_inverse.unwrap_or(4)
     }
 
     /// Set the maximum number of iterations for the iterative inverse.
     pub fn set_niter_inverse(&mut self, v: usize) {
         // `NiterInverse` changes what the iterative inverse computes
         // (polymap.c:6383-6385).
-        if v != self.niter_inverse {
+        if Some(v) != self.niter_inverse {
             self.simplified.clear();
         }
-        self.niter_inverse = v;
+        self.niter_inverse = Some(v);
+    }
+
+    /// Whether NiterInverse is set (polymap.c `TestNiterInverse`).
+    pub fn test_niter_inverse(&self) -> bool {
+        self.niter_inverse.is_some()
+    }
+
+    /// Unset NiterInverse, so that it reads as 4 (polymap.c
+    /// `ClearNiterInverse`, which also discards both simplified records).
+    pub fn clear_niter_inverse(&mut self) {
+        self.simplified.clear();
+        self.niter_inverse = None;
     }
 
     /// Target relative error for the iterative inverse.
     pub fn tol_inverse(&self) -> f64 {
-        self.tol_inverse
+        self.tol_inverse.unwrap_or(1e-6)
     }
 
     /// Set the target relative error for the iterative inverse.
     pub fn set_tol_inverse(&mut self, v: f64) {
         // `TolInverse` changes what the iterative inverse computes
         // (polymap.c:6420-6422).
-        if v != self.tol_inverse {
+        // C compares the raw value, AST__BAD while unset (polymap.c:6467).
+        if v != self.tol_inverse.unwrap_or(BAD_VALUE) {
             self.simplified.clear();
         }
-        self.tol_inverse = v;
+        // AST__BAD is C's unset value, so setting it unsets the attribute.
+        self.tol_inverse = (v != BAD_VALUE).then_some(v);
+    }
+
+    /// Whether TolInverse is set (polymap.c `TestTolInverse`).
+    pub fn test_tol_inverse(&self) -> bool {
+        self.tol_inverse.is_some()
+    }
+
+    /// Unset TolInverse, so that it reads as 1e-6 (polymap.c
+    /// `ClearTolInverse`, which also discards both simplified records).
+    pub fn clear_tol_inverse(&mut self) {
+        self.simplified.clear();
+        self.tol_inverse = None;
     }
 
     /// Return a reference to the forward polynomial terms.
@@ -693,8 +721,8 @@ impl PolyMap {
         // Use cached Jacobian terms.
         let jac_terms = self.get_jacobian_terms();
 
-        let max_iter = self.niter_inverse;
-        let tol_sq = self.tol_inverse * self.tol_inverse;
+        let max_iter = self.niter_inverse();
+        let tol_sq = self.tol_inverse() * self.tol_inverse();
         let mut converged = vec![false; npoint];
 
         // Mark invalid-input points as already converged and fill their
@@ -1040,8 +1068,8 @@ impl PolyMap {
         if let Some(v) = self.iter_inverse {
             pm.set_iter_inverse(v).ok()?;
         }
-        pm.set_niter_inverse(self.niter_inverse);
-        pm.set_tol_inverse(self.tol_inverse);
+        pm.niter_inverse = self.niter_inverse;
+        pm.tol_inverse = self.tol_inverse;
         if self.inverted {
             pm.invert();
         }
@@ -1986,17 +2014,19 @@ impl Serializable for PolyMap {
             };
             node.push_int("IterInv", v as i64, Some(comment.to_string()));
         }
-        if self.niter_inverse != 4 {
+        // polymap.c Dump writes each whenever it is set, its default value
+        // included; neither is "helpful", so an unset one is not written.
+        if let Some(niter) = self.niter_inverse {
             node.push_int(
                 "NiterInv",
-                self.niter_inverse as i64,
+                niter as i64,
                 Some("Max number of iterations for iterative inverse".to_string()),
             );
         }
-        if self.tol_inverse != 1e-6 {
+        if let Some(tol) = self.tol_inverse {
             node.push_double(
                 "TolInv",
-                self.tol_inverse,
+                tol,
                 Some("Target relative error for iterative inverse".to_string()),
             );
         }
@@ -2112,14 +2142,15 @@ impl Serializable for PolyMap {
         // the attribute unset so the C default (no inverse coefficients
         // supplied) applies.
         let iter_inv = node.get_int_any("IterInv").map(|v| v != 0);
-        let niter_inv = {
-            let v = node.get_int("NiterInv", 4);
-            if v <= 0 { 4 } else { v as usize }
-        };
-        let tol_inv = {
-            let v = node.get_double("TolInv", 1e-6);
-            if v == BAD_VALUE { 1e-6 } else { v }
-        };
+        // C reads each raw, with its unset value as the default (polymap.c
+        // :7512-7517). A negative count runs no iterations, as 0 does.
+        let niter_inv = node
+            .get("NiterInv")
+            .map(|_| node.get_int("NiterInv", 0).max(0) as usize);
+        let tol_inv = node
+            .get("TolInv")
+            .map(|_| node.get_double("TolInv", BAD_VALUE))
+            .filter(|&v| v != BAD_VALUE);
 
         // Build directly rather than using `new()` to avoid re-validation
         // of terms that may include BAD_VALUE sentinel coefficients from the
@@ -2175,11 +2206,11 @@ impl Serializable for PolyMap {
         if let Some(v) = iter_inv {
             m.set_iter_inverse(v)?;
         }
-        if node.get("NiterInv").is_some() {
-            m.set_niter_inverse(niter_inv);
+        if let Some(v) = niter_inv {
+            m.set_niter_inverse(v);
         }
-        if node.get("TolInv").is_some() {
-            m.set_tol_inverse(tol_inv);
+        if let Some(v) = tol_inv {
+            m.set_tol_inverse(v);
         }
         Ok(m)
     }

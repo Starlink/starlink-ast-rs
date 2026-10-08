@@ -292,11 +292,16 @@ fn amalgamate(terms: Vec<PolyTerm>) -> Vec<PolyTerm> {
 /// `astTestIterInverse → astSetIterInverse` chain at the end of
 /// fitschan.c::AnalysePoly.
 fn copy_iter_inverse_attrs_into(src: &PolyMap, dst: &mut PolyMap) -> AstResult<()> {
-    if src.iter_inverse() {
-        dst.set_iter_inverse(true)?;
+    // Each only when set, as fitschan.c does (:4640-4654, :27261-27275).
+    if src.test_iter_inverse() {
+        dst.set_iter_inverse(src.iter_inverse())?;
     }
-    dst.set_niter_inverse(src.niter_inverse());
-    dst.set_tol_inverse(src.tol_inverse());
+    if src.test_niter_inverse() {
+        dst.set_niter_inverse(src.niter_inverse());
+    }
+    if src.test_tol_inverse() {
+        dst.set_tol_inverse(src.tol_inverse());
+    }
     Ok(())
 }
 

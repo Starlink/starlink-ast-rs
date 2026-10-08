@@ -210,6 +210,30 @@ impl MathMap {
         self.simp_if = Some(val);
     }
 
+    /// Whether SimpFI is set, `false` included (mathmap.c `TestSimpFI`).
+    pub fn test_simp_fi(&self) -> bool {
+        self.simp_fi.is_some()
+    }
+
+    /// Unset SimpFI, so that it reads as `false` (mathmap.c `ClearSimpFI`,
+    /// which also discards both simplified records).
+    pub fn clear_simp_fi(&mut self) {
+        self.simplified.clear();
+        self.simp_fi = None;
+    }
+
+    /// Whether SimpIF is set, `false` included (mathmap.c `TestSimpIF`).
+    pub fn test_simp_if(&self) -> bool {
+        self.simp_if.is_some()
+    }
+
+    /// Unset SimpIF, so that it reads as `false` (mathmap.c `ClearSimpIF`,
+    /// which also discards both simplified records).
+    pub fn clear_simp_if(&mut self) {
+        self.simplified.clear();
+        self.simp_if = None;
+    }
+
     /// Get the Seed attribute.
     pub fn seed(&self) -> i32 {
         // Safety: single-threaded access

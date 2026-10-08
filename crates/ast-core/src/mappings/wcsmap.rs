@@ -325,7 +325,9 @@ impl WcsMap {
         if m >= pv.len() {
             pv.resize(m + 1, None);
         }
-        pv[m] = Some(value);
+        // AST__BAD is C's unset value, so storing it unsets the parameter
+        // (wcsmap.c `TestPV` tests for it).
+        pv[m] = (value != BAD_VALUE).then_some(value);
 
         // Rebuild the wcslib parameter arrays with defaults reapplied and the
         // fwd/rev pointers reinstalled (C SetPV → InitPrjPrm, wcsmap.c:3939).
@@ -423,6 +425,39 @@ impl WcsMap {
         }
     }
 
+    /// Unset projection parameter `m` of axis `axis` (1-based), as C's
+    /// `astClearPV` does: an axis out of range is `ErrorCode::Axiin`, and a
+    /// parameter the axis does not use is ignored.
+    pub fn clear_pv(&mut self, axis: usize, m: usize) -> AstResult<()> {
+        if axis == 0 || axis > self.ncoord {
+            return Err(AstError::new(
+                ErrorCode::Axiin,
+                format!(
+                    "WcsMap: axis index ({axis}) is invalid in attribute PV{axis}_{m} - it \
+                     should be in the range 1 to {}",
+                    self.ncoord
+                ),
+            ));
+        }
+        let prj_axis = if axis - 1 == self.latax {
+            Some(0)
+        } else if axis - 1 == self.lonax {
+            Some(1)
+        } else {
+            None
+        };
+        if let Some(prj_axis) = prj_axis
+            && m <= self.pv_max(axis).unwrap_or(0)
+            && let Some(slot) = self.params[prj_axis].get_mut(m)
+        {
+            *slot = None;
+        }
+        self.prj
+            .borrow_mut()
+            .init_prj_prm(&self.params, self.tpn_tan());
+        Ok(())
+    }
+
     /// Whether projection parameter `m` of axis `axis` (1-based) has been
     /// set, as C's `astTestPV` reports.
     pub fn test_pv(&self, axis: usize, m: usize) -> bool {
@@ -476,6 +511,13 @@ impl WcsMap {
         self.lon_check.is_some()
     }
 
+    /// Unset `LonCheck`, so that it reads as `true` (wcsmap.c `ClearLonCheck`,
+    /// which also discards both simplified records).
+    pub fn clear_lon_check(&mut self) {
+        self.simplified.clear();
+        self.lon_check = None;
+    }
+
     /// Set the protected `FITSProj` attribute, mirroring C `astSetFITSProj`
     /// (wcsmap.c:4744). Clear it on a WcsMap that only supplies a distortion
     /// correction, so the FitsChan write path does not mistake it for the
@@ -500,6 +542,13 @@ impl WcsMap {
         self.fits_proj.is_some()
     }
 
+    /// Unset `FITSProj`, so that it reads as `true` (wcsmap.c
+    /// `ClearFITSProj`, which also discards both simplified records).
+    pub fn clear_fits_proj(&mut self) {
+        self.simplified.clear();
+        self.fits_proj = None;
+    }
+
     /// Set the protected `TPNTan` attribute, mirroring C `astSetTPNTan`
     /// (wcsmap.c:3942). Clearing it makes a TPN projection apply only its
     /// polynomial correction, omitting the TAN projection itself. Like C, the
@@ -522,6 +571,15 @@ impl WcsMap {
     /// (wcsmap.c:4782).
     pub fn test_tpn_tan(&self) -> bool {
         self.tpn_tan.is_some()
+    }
+
+    /// Unset `TPNTan`, so that it reads as `true`, and re-initialise the
+    /// wcslib parameter block, as C's `ClearTPNTan` does.
+    pub fn clear_tpn_tan(&mut self) {
+        self.tpn_tan = None;
+        self.prj
+            .borrow_mut()
+            .init_prj_prm(&self.params, self.tpn_tan());
     }
 
     /// Determine the acceptable longitude range and cyclicity for the
