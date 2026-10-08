@@ -146,14 +146,14 @@ the combined uncertainty with `astSetUnc`, and `astSetUnc` re-centres the
 uncertainty on the merged Region's first defining point
 (`region.c:10889-10894 (fn SetUnc)`); for a Box uncertainty, `Box`'s `RegCentre` rebuilds
 the corner as a geodesic offset in the combined base Frame
-(`box.c:2927 (fn RegCentre)`). A merge that assigns the uncertainty into place instead
+(`box.c:2890 (fn RegCentre)`). A merge that assigns the uncertainty into place instead
 performs rows 36 to 39, 44 and 54 correctly and still produces a different
 Region, because the corner it carries is the one it was handed rather than the one
 C regenerates.
 
 Row 35 is the one place the three merges differ: `MergePointList` propagates the
 Negated value its two PointLists share, where `MergeBox` and `MergeInterval` clear
-it outright (`box.c:1993 (fn MergeBox)`, `interval.c:1558 (fn MergeInterval)`).
+it outright (`box.c:1956 (fn MergeBox)`, `interval.c:1558 (fn MergeInterval)`).
 `MergeOverlay`'s `negated` field (`merge_util.rs:146 (fn finish_region_merge)`) is what
 carries that difference through the shared tail.
 

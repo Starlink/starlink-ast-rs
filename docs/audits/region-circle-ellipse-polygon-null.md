@@ -95,7 +95,7 @@ at all, which is the root cause of several gaps below.
 
 ## Blocking dependencies
 
-### cap_slamap_02 — Polygon from Box corners (`box.c:3917`)
+### cap_slamap_02 — Polygon from Box corners (`box.c:3880`)
 `Box::Simplify` transforms 4 corners into 2-D and constructs a Polygon,
 then validates the fit with `astRegPins` on the boundary mesh. The Rust
 `BoxRegion::simplified` (box_region.rs:940) has **no** 2-D-Box→Polygon

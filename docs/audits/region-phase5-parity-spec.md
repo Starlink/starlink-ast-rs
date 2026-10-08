@@ -374,7 +374,7 @@ but omitted the scaling.
   data.rs:117-118). Used by box_region.rs (merge) and interval.rs (merge).
 - `pointlist.rs::region_merge` and `nullregion.rs::region_merge`: same omission.
 
-### C reference — `box.c:2049-2085` (MergeBox), identical in interval.c
+### C reference — `box.c:2012-2048` (MergeBox), identical in interval.c
 After `astMapRegion(new, bcmap, cfrm)` produces `result`:
 - FillFactor: `if(astTestFillFactor(reg) || astTestFillFactor(this))
   astSetFillFactor(result, astGetFillFactor(reg)*astGetFillFactor(this))`.

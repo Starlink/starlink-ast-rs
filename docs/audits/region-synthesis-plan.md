@@ -62,7 +62,7 @@ blocks (— = correctness/parity gap not on any of the 4 critical paths).
 | R-PINS | `reg_pins` interior not on-boundary+uncertainty | HEURISTIC | data.rs:191 + all per-class | 02, 07 |
 | R-OVL | `compute_overlap` 90% threshold not `OverlapX` | HEURISTIC | overlap.rs:40 | 07 |
 | R-UNC | `map_region` drops uncertainty (all 9 classes) | MISSING-BRANCH | box_region.rs:674 etc. | parity |
-| B-POLY | `Box::simplified` missing 2-D→Polygon branch | MISSING-BRANCH | box_region.rs:941 (C box.c:3917) | 02 |
+| B-POLY | `Box::simplified` missing 2-D→Polygon branch | MISSING-BRANCH | box_region.rs:941 (C box.c:3880) | 02 |
 | P-ENSURE | Polygon `EnsureInside` (vertex order + Negated) absent | ABSENT | polygon.rs ctor:162 (C polygon.c:1768) | 02 |
 | P-ACW | Polygon `acw`/`Cache` interior-point absent | ABSENT | polygon.rs (C polygon.c:575) | 02 |
 | P-BOUND | Polygon `GetBounded` hardcoded true | MISSING-BRANCH | polygon.rs:482 (C polygon.c:2749) | 02 |
@@ -80,7 +80,7 @@ blocks (— = correctness/parity gap not on any of the 4 critical paths).
 | SETUNC | `set_uncertainty` bare field store | STUB | box_region.rs:656 (C region.c:10761) | parity |
 | RCENT | `reg_centre` get-only (no re-centre) | MISSING-BRANCH | data.rs:215 (C region.c:8401) | R-PINS dep |
 | SIMP-STAB | parent-Simplify uncertainty 0.1% stability check | ABSENT | (C region.c:11203) | parity |
-| MERGE-FF | merge helpers omit FillFactor/MeshSize scaling | MISSING-BRANCH | merge_util.rs:43 (C box.c:2049) | parity |
+| MERGE-FF | merge helpers omit FillFactor/MeshSize scaling | MISSING-BRANCH | merge_util.rs:43 (C box.c:2012) | parity |
 | CE-FIT | Circle/Ellipse Simplify no re-fit/validate/degrade | STUB | circle.rs:603, ellipse.rs:565 | parity |
 
 Note "02b" = the residual Interval reclassification path some analyses attribute
@@ -129,7 +129,7 @@ CmpRegion).
 The keystone. Introduce a real on-boundary predicate with the `unc` argument
 and the `0.5*(l1+l2)` uncertainty band. Requires RCENT (re-centre) as a
 sub-dependency for uncertainty positioning. Port per class following C
-box.c:3115 / interval.c:2640 / pointlist.c:1985 / circle.c:1450 /
+box.c:3078 / interval.c:2640 / pointlist.c:1985 / circle.c:1450 /
 ellipse.c:1538 / polygon.c:4737. Do NOT delete the existing interior
 `point_in_region` (Transform still needs it) — add `reg_pins` as the distinct
 boundary test C uses in Simplify/Overlap.
@@ -140,7 +140,7 @@ boundary test C uses in Simplify/Overlap.
 2. P-BOUND: real `GetBounded` (`!negated` for ACW, `negated` for CW, SkyFrame
    always bounded).
 3. P-SIMP: `nout==2` guard + bend validation via the Phase-1 `reg_pins`.
-4. B-POLY: add the 2-D-Box→Polygon branch to `Box::simplified` (box.c:3917).
+4. B-POLY: add the 2-D-Box→Polygon branch to `Box::simplified` (box.c:3880).
    The existing A2 `convert_to_prism` then composes: the sky half simplifies to
    a Polygon, so the Prism forms.
 
@@ -168,7 +168,7 @@ The pre-refactor line numbers in §2 are stale; verdicts below supersede them.
   deep-copies uncertainty via `clone_region()` (data.rs:87); the axis-reducing
   path slices uncertainty per-class in `reg_base_pick_axes` (box_region.rs:984,
   interval.rs:934, pointlist.rs:523, nullregion.rs:270), faithfully mirroring C
-  `RegBasePick` (box.c:2731 etc.). Matches C `astMapRegion` (region.c:5708).
+  `RegBasePick` (box.c:2694 etc.). Matches C `astMapRegion` (region.c:5708).
 - **PR-MAP** — C `Prism` has no `MapRegion` vtab override; the Rust shared
   default is the faithful behaviour.
 
@@ -195,7 +195,7 @@ The pre-refactor line numbers in §2 are stale; verdicts below supersede them.
   shared parent-simplify benefits CE-FIT too.
 - **MERGE-FF** (medium) — merge helpers omit FillFactor (product) and MeshSize
   (product-of-ratios × default) scaling (merge_util.rs:43, pointlist.rs:588,
-  nullregion.rs:315) per C `MergeBox` (box.c:2049-2085). Blocked on adding
+  nullregion.rs:315) per C `MergeBox` (box.c:2012-2048). Blocked on adding
   `mesh_size_set` / `fill_factor_set` tracking flags to `RegionData` (only
   `closed_set` exists today).
 - **CE-FIT** (large) — Circle/Ellipse `simplified()` (circle.rs, ellipse.rs) are

@@ -444,7 +444,7 @@ impl BoxRegion {
     fn simplify_over_permmap(&self, pm: &PermMap) -> AstResult<Option<DynRegion>> {
         let neg = self.is_negated();
         let closed = self.is_closed();
-        let (base_lbnd, base_ubnd) = self.bounds();
+        let (base_lbnd, base_ubnd) = self.bounds()?;
 
         let nin = pm.nin();
         let nout = pm.nout();
@@ -546,27 +546,42 @@ impl BoxRegion {
         Ok(Some(new))
     }
 
-    /// Compute the effective lower and upper bounds from centre and corner.
-    ///
-    /// The box extends symmetrically around the centre: the opposite corner
-    /// is at `2*centre - corner`. For each axis, lbnd is the minimum and
-    /// ubnd is the maximum of the two corners.
-    fn bounds(&self) -> (Vec<f64>, Vec<f64>) {
-        let naxes = self.data.points[0].len();
+    /// The Box's limits in its base Frame, as box.c `Cache` computes them:
+    /// on each axis the centre plus or minus the extent, which is the base
+    /// Frame's axis distance from the centre to the corner, so a sky axis
+    /// takes the short way round.
+    fn bounds(&self) -> AstResult<(Vec<f64>, Vec<f64>)> {
         let centre = &self.data.points[0];
         let corner = &self.data.points[1];
-
-        let mut lbnd = Vec::with_capacity(naxes);
-        let mut ubnd = Vec::with_capacity(naxes);
-
-        for i in 0..naxes {
-            let c = centre[i];
-            let extent = (corner[i] - c).abs();
+        let frame = self.data.frameset.base();
+        let mut lbnd = Vec::with_capacity(centre.len());
+        let mut ubnd = Vec::with_capacity(centre.len());
+        for (i, (&c, &k)) in centre.iter().zip(corner).enumerate() {
+            let extent = frame.ax_distance(i + 1, k, c)?.abs();
             lbnd.push(c - extent);
             ubnd.push(c + extent);
         }
+        Ok((lbnd, ubnd))
+    }
 
-        (lbnd, ubnd)
+    /// The limits box.c `Transform` tests points against: [`bounds`](Self::bounds),
+    /// and for an un-negated closed Box or a negated open one, each axis at
+    /// least as wide as the bounding box of the uncertainty, so a Box of
+    /// zero width on an axis still has an inside.
+    fn transform_bounds(&self) -> AstResult<(Vec<f64>, Vec<f64>)> {
+        let (mut lbnd, mut ubnd) = self.bounds()?;
+        if self.is_negated() != self.is_closed() {
+            let (lu, uu) = self.get_unc_frm(FrameRef::Base)?.get_region_bounds()?;
+            let centre = &self.data.points[0];
+            for i in 0..lbnd.len() {
+                let wid = 0.5 * (uu[i] - lu[i]);
+                if 0.5 * (ubnd[i] - lbnd[i]) < wid {
+                    lbnd[i] = centre[i] - wid;
+                    ubnd[i] = centre[i] + wid;
+                }
+            }
+        }
+        Ok((lbnd, ubnd))
     }
 }
 
@@ -816,7 +831,7 @@ impl RegionGeometry for BoxRegion {
     fn reg_base_inside(&self, pts: &PointSet) -> AstResult<Vec<bool>> {
         let npoint = pts.npoint();
         let naxes = self.data.points[0].len();
-        let (lbnd, ubnd) = self.bounds();
+        let (lbnd, ubnd) = self.transform_bounds()?;
         let closed = self.data.closed_for_base_inside();
         // Each axis value is tested by the base Frame's Axis object, so a
         // sky axis wraps the value into the Box's range (box.c:4268,
@@ -849,12 +864,12 @@ impl RegionGeometry for BoxRegion {
     }
 
     fn reg_base_box(&self) -> AstResult<(Vec<f64>, Vec<f64>)> {
-        Ok(self.bounds())
+        self.bounds()
     }
 
     fn reg_base_mesh(&self) -> AstResult<Vec<Vec<f64>>> {
         let naxes = self.data.points[0].len();
-        let (lbnd, ubnd) = self.bounds();
+        let (lbnd, ubnd) = self.bounds()?;
         let np = self.data.effective_mesh_size();
 
         // Check if the box occupies a single point.
@@ -1040,7 +1055,7 @@ impl Region for BoxRegion {
         // Faithful port of box.c::RegPins (box.c:2952): a point lies on the
         // boundary of the Box iff it falls inside a Box widened by the joint
         // uncertainty band and outside a Box narrowed by the same band.
-        let (lbnd_box, ubnd_box) = self.bounds();
+        let (lbnd_box, ubnd_box) = self.bounds()?;
         let naxes = lbnd_box.len();
         if pts.ncoord() != naxes {
             return Err(AstError::new(
@@ -1415,7 +1430,7 @@ impl Region for BoxRegion {
             if neg_this || other.is_negated() {
                 None
             } else {
-                let (blb, bub) = self.bounds();
+                let (blb, bub) = self.bounds().ok()?;
                 let lbnd = concat(&blb, &other.data.points[0]);
                 let ubnd = concat(&bub, &other.data.points[1]);
                 Some(MergedRegion::Interval(lbnd, ubnd))
@@ -1426,7 +1441,7 @@ impl Region for BoxRegion {
             if neg_this || !other.is_negated() {
                 None
             } else {
-                let (blb, bub) = self.bounds();
+                let (blb, bub) = self.bounds().ok()?;
                 let bad = vec![BAD_VALUE; nax_reg];
                 let lbnd = concat(&blb, &bad);
                 let ubnd = concat(&bub, &bad);
@@ -1439,7 +1454,7 @@ impl Region for BoxRegion {
             if neg_this || other.is_negated() {
                 None
             } else {
-                let (blb, bub) = self.bounds();
+                let (blb, bub) = self.bounds().ok()?;
                 if !super::merge_util::region_is_point(&blb, &bub, self.data.uncertainty.as_ref()) {
                     None
                 } else {

@@ -1098,6 +1098,16 @@ Only a hand-written description can do this, since Dump never writes an index be
 Fixed on `u/timj/norm-unit` in 0d05fc29, which checks Current as Base is checked, with a `testframeset` case (Errors 41-43).
 The port treats a `Currnt` below 1 as unset, as the fixed C does (`frameset.rs` `from_node`), and `tests/test_frameset_current.rs` covers Current's set state against C.
 
+### RESOLVED (upstream d0853dcd): whether a Box contains a point just off a zero-width axis depends on call order
+
+C location: `box.c` `Cache` and `Transform`.
+
+`Transform` asked `Cache` to widen the cached limits of an un-negated closed or negated open Box to at least the width of its uncertainty, but `Cache` returns at once when the cache is up to date.
+So the widening happened only if `Transform` was the first method to fill the cache: the point (1.5, 5+1e-6) was inside a fresh Box [1,2]x[5,5] and outside an identical one whose bounding box had been asked for first, and once `Transform` had filled the cache, `astGetRegionBounds` reported y bounds of 4.9999975 to 5.0000025 rather than 5 to 5.
+
+Fixed on `u/timj/norm-unit` in d0853dcd: `Transform` widens its own copy of the limits; `testregions` `checkBoxTransformAfterBounds`.
+The port widens in the Box's membership test only, as fixed; `tests/test_region_box_oracle.rs`, whose probe needs the fixed library.
+
 ### RESOLVED (upstream ba5a6199): PointList `Mask<X>` writes beyond the array for a point outside the grid
 
 C location: `pointlist.c` `Mask<X>`.
