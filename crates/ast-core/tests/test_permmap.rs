@@ -353,19 +353,19 @@ fn perm_split_alternative_uses_inperm() {
     assert!(pm.perm_split());
 
     // Pick inputs {1,2} (1-based) -> UnitMap(2), outs [2,1] (1-based).
-    let (outs, sub) = pm.map_split(&[1, 2]).expect("split {1,2}");
+    let (outs, sub) = pm.map_split(&[1, 2]).unwrap().expect("split {1,2}");
     assert_eq!(sub.nin(), 2);
     assert_eq!(sub.nout(), 2);
     assert!(is_unit_map(sub.as_ref()));
     assert_eq!(outs, vec![2, 1]);
 
     // Single inputs.
-    let (outs, sub) = pm.map_split(&[1]).expect("split {1}");
+    let (outs, sub) = pm.map_split(&[1]).unwrap().expect("split {1}");
     assert!(is_unit_map(sub.as_ref()));
     assert_eq!(sub.nin(), 1);
     assert_eq!(outs, vec![2]);
 
-    let (outs, sub) = pm.map_split(&[2]).expect("split {2}");
+    let (outs, sub) = pm.map_split(&[2]).unwrap().expect("split {2}");
     assert!(is_unit_map(sub.as_ref()));
     assert_eq!(outs, vec![1]);
 }
@@ -375,7 +375,7 @@ fn perm_split_alternative_rejects_constant_fed_input() {
     let mut pm = PermMap::new(&[2, 1, -1], &[2, 1], &[99.0]).unwrap();
     pm.set_perm_split(true);
     // Input 3 (1-based) is fed by a constant -> cannot split.
-    assert!(pm.map_split(&[3]).is_none());
+    assert!(pm.map_split(&[3]).unwrap().is_none());
 }
 
 #[test]
@@ -384,9 +384,9 @@ fn perm_split_alternative_rejects_duplicate_output() {
     let mut pm = PermMap::new(&[1, 1], &[1], &[]).unwrap();
     pm.set_perm_split(true);
     // Selecting both inputs: two inputs fed by the same output -> NONE.
-    assert!(pm.map_split(&[1, 2]).is_none());
+    assert!(pm.map_split(&[1, 2]).unwrap().is_none());
     // Selecting a single input still works.
-    let (outs, sub) = pm.map_split(&[1]).expect("split {1}");
+    let (outs, sub) = pm.map_split(&[1]).unwrap().expect("split {1}");
     assert!(is_unit_map(sub.as_ref()));
     assert_eq!(outs, vec![1]);
 }
@@ -405,7 +405,10 @@ fn perm_split_roundtrips_through_native_dump() {
     };
     assert!(reread.perm_split());
     // And it still drives the alternative split after a round-trip.
-    let (outs, sub) = reread.map_split(&[1, 2]).expect("split after reload");
+    let (outs, sub) = reread
+        .map_split(&[1, 2])
+        .unwrap()
+        .expect("split after reload");
     assert!(is_unit_map(sub.as_ref()));
     assert_eq!(outs, vec![2, 1]);
 }

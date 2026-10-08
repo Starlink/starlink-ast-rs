@@ -566,7 +566,15 @@ impl Mapping for PermMap {
         super::simplify::perm_map_merge(self, ctx, where_, series)
     }
 
-    fn map_split_zero_based(&self, in_axes: &[usize]) -> Option<(Vec<usize>, DynMapping)> {
+    fn map_split_zero_based(
+        &self,
+        in_axes: &[usize],
+    ) -> AstResult<Option<(Vec<usize>, DynMapping)>> {
+        // C allocates the returned output indices with astMalloc, which
+        // gives NULL for none, so an empty selection gives no split.
+        if in_axes.is_empty() {
+            return Ok(None);
+        }
         // Mirrors permmap.c::MapSplit (~1438). For a PermMap, the split is
         // determined by walking the effective forward perm: each output `iout`
         // whose source is one of the kept inputs joins the sub-mapping. The
@@ -585,11 +593,14 @@ impl Mapping for PermMap {
         // negative=constant and 0=BAD. So `p > 0` here matches C's
         // `iin >= 0 && iin < npin`, and `p <= 0` matches C's `iin < 0`.
         //
-        // Project convention: reject duplicate or out-of-range axes (Task 1.1
-        // set the precedent; C only checks the in-range half).
+        // An input out of range gives no split (fixed upstream in 010b5e85,
+        // where C read the permutation arrays beyond their ends). A repeated
+        // input is allowed: each output it feeds is kept once.
         let npin = self.nin();
         let npout = self.nout();
-        crate::mappings::helpers::validate_in_axes(in_axes, npin)?;
+        if in_axes.iter().any(|&ix| ix >= npin) {
+            return Ok(None);
+        }
 
         // Effective forward (`outp`) and inverse (`inp`) perms, accounting
         // for Invert. Matches C: `outp = this->inperm` when inverted, etc.
@@ -637,18 +648,18 @@ impl Mapping for PermMap {
 
                 // C: a constant-fed input cannot be split (permmap.c:1643).
                 if permval < 0 {
-                    return None;
+                    return Ok(None);
                 }
                 // C: fail if this output already feeds an earlier picked input
                 // (permmap.c:1649).
                 if result.contains(&permval) {
-                    return None;
+                    return Ok(None);
                 }
                 result.push(permval);
             }
             let out_idx: Vec<usize> = result.iter().map(|&v| v as usize).collect();
             let unit: DynMapping = Box::new(UnitMap::new(in_axes.len()));
-            return Some((out_idx, unit));
+            return Ok(Some((out_idx, unit)));
         }
 
         // Walk the forward perm: pick outputs whose source input is kept.
@@ -672,7 +683,7 @@ impl Mapping for PermMap {
 
         // C: "If the returned Mapping has no outputs, do not return it."
         if kept_outs.is_empty() {
-            return None;
+            return Ok(None);
         }
 
         // Walk the inverse perm: each kept input must be fed by either a
@@ -684,7 +695,9 @@ impl Mapping for PermMap {
                 let iout = (p as usize) - 1;
                 if iout < npout {
                     // Source is an output index: must be in kept_outs.
-                    let pos = kept_outs.iter().position(|&v| v == iout)?;
+                    let Some(pos) = kept_outs.iter().position(|&v| v == iout) else {
+                        return Ok(None);
+                    };
                     inpm.push((pos as i64) + 1);
                 } else {
                     // Out-of-range positive: C transform treats this as BAD;
@@ -702,8 +715,8 @@ impl Mapping for PermMap {
         // constants. The new PermMap has Invert=0; this matches C, where
         // the effective directions of the parent become the raw directions
         // of the child (so we do NOT propagate `self.inverted`).
-        let sub = PermMap::new(&inpm, &outpm, &self.constants).ok()?;
-        Some((kept_outs, Box::new(sub)))
+        let sub = PermMap::new(&inpm, &outpm, &self.constants)?;
+        Ok(Some((kept_outs, Box::new(sub))))
     }
 
     fn rate(&self, _at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {

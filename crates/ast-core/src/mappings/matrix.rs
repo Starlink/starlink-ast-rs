@@ -912,7 +912,15 @@ impl Mapping for MatrixMap {
         }
     }
 
-    fn map_split_zero_based(&self, in_axes: &[usize]) -> Option<(Vec<usize>, DynMapping)> {
+    fn map_split_zero_based(
+        &self,
+        in_axes: &[usize],
+    ) -> AstResult<Option<(Vec<usize>, DynMapping)>> {
+        // C allocates the returned output indices with astMalloc, which
+        // gives NULL for none, so an empty selection gives no split.
+        if in_axes.is_empty() {
+            return Ok(None);
+        }
         // Mirrors matrixmap.c::MapSplit (~2282). A MatrixMap split succeeds
         // only when the input/output dependency graph is block-diagonal w.r.t.
         // the chosen inputs: each output row's nonzero, non-BAD columns must
@@ -927,18 +935,24 @@ impl Mapping for MatrixMap {
         // the effective-forward sub-matrix, so we do not propagate
         // is_inverted onto the sub-mapping.
         //
-        // Project convention: reject duplicate or out-of-range axes (Task
-        // 1.1 set this precedent for UnitMap / ZoomMap / ShiftMap; the C
-        // function only checks the in-range half).
+        // The parent's MapSplit runs first: an input out of range is
+        // AST__AXIIN, and a selection of every input, each once, returns this
+        // MatrixMap whole, Invert and inverse matrix included. A repeated
+        // input selects its column again, as in C.
+        if let Some(r) = crate::mappings::helpers::base_map_split(self, in_axes)? {
+            return Ok(Some(r));
+        }
         let nin = self.nin();
         let nout = self.nout();
-        crate::mappings::helpers::validate_in_axes(in_axes, nin)?;
 
         // Pick the effective forward matrix, matching C's `mat` selection.
         // When inverted but no inverse is available, the split is impossible
         // (C: `if( !mat || !astOK ) ok = 0`).
         let m: &Array2<f64> = if self.inverted {
-            self.inverse.as_ref()?
+            let Some(inverse) = self.inverse.as_ref() else {
+                return Ok(None);
+            };
+            inverse
         } else {
             &self.matrix
         };
@@ -960,39 +974,38 @@ impl Mapping for MatrixMap {
                     }
                 }
             }
+            if sel && !unsel {
+                kept_outs.push(j);
+                // A BAD element does not count as a dependency above, so a
+                // kept row can have one in a selected column; C declines the
+                // split then, rather than build a matrix with a gap in it.
+                for &i in in_axes {
+                    if is_bad(m[[j, i]]) {
+                        return Ok(None);
+                    }
+                    good = true;
+                }
+            }
             if sel && unsel {
                 // Cross-coupled: split impossible.
-                return None;
-            }
-            if sel {
-                kept_outs.push(j);
-                // Track whether the row contributes any non-BAD value across
-                // the kept columns (mirrors C's `good` flag).
-                for &i in in_axes {
-                    if !is_bad(m[[j, i]]) {
-                        good = true;
-                    }
-                }
+                return Ok(None);
             }
         }
 
-        // C requires nout > 0 && good (line 2499).
+        // C requires nout > 0 && good.
         if kept_outs.is_empty() || !good {
-            return None;
+            return Ok(None);
         }
 
         // Build sub-matrix from kept_outs × in_axes.
-        // Note: C's matrixmap.c:2478-2485 advances pmat only on astISGOOD,
-        // leaving uninitialised heap in BAD slots. We write all kept entries
-        // into a zero-initialised Array2 — see docs/issues/c-library-quirks.md.
         let mut sub_m = Array2::<f64>::zeros((kept_outs.len(), in_axes.len()));
         for (rj, &j) in kept_outs.iter().enumerate() {
             for (ri, &i) in in_axes.iter().enumerate() {
                 sub_m[[rj, ri]] = m[[j, i]];
             }
         }
-        let sub = MatrixMap::new(sub_m).ok()?;
-        Some((kept_outs, Box::new(sub)))
+        let sub = MatrixMap::new(sub_m)?;
+        Ok(Some((kept_outs, Box::new(sub))))
     }
 
     fn ident(&self) -> &str {

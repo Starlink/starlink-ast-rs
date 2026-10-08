@@ -217,17 +217,25 @@ impl Mapping for ZoomMap {
         }
     }
 
-    fn map_split_zero_based(&self, in_axes: &[usize]) -> Option<(Vec<usize>, DynMapping)> {
-        // Mirrors zoommap.c::MapSplit (~1164). ZoomMap is per-axis scaling
-        // by a single shared factor, so any subset of inputs maps to the
-        // same-indexed outputs via a smaller ZoomMap with the same factor.
-        let nin = self.nin();
-        crate::mappings::helpers::validate_in_axes(in_axes, nin)?;
-        let mut sub = ZoomMap::new(in_axes.len(), self.zoom()).ok()?;
-        if self.inverted {
-            sub.invert();
+    fn map_split_zero_based(
+        &self,
+        in_axes: &[usize],
+    ) -> AstResult<Option<(Vec<usize>, DynMapping)>> {
+        // C allocates the returned output indices with astMalloc, which
+        // gives NULL for none, so an empty selection gives no split.
+        if in_axes.is_empty() {
+            return Ok(None);
         }
-        Some((in_axes.to_vec(), Box::new(sub)))
+        // zoommap.c MapSplit: any selection of inputs in range splits off a
+        // ZoomMap of as many axes with the same Zoom, a repeated one
+        // included, whose Invert is set to this one's; one out of range gives
+        // no split.
+        if in_axes.iter().any(|&ix| ix >= self.nin()) {
+            return Ok(None);
+        }
+        let mut sub = ZoomMap::new(in_axes.len(), self.zoom())?;
+        sub.set_invert(self.inverted);
+        Ok(Some((in_axes.to_vec(), Box::new(sub))))
     }
 
     fn try_merge(

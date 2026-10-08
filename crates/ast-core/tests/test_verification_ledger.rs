@@ -212,6 +212,16 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
          one port gap: a Frame in a Mapping slot, which the Mapping loader has \
          no case for. Gated by round_trip_exclusions_still_fail",
     ),
+    (
+        "test_map_split_oracle.rs",
+        "ISSIMP_COMPONENT_EXCLUDED",
+        2,
+        "two full permuted splits whose simplified PermMap-and-Mapping CmpMap \
+         C dumps with one IsSimp card more, on a component; compared with \
+         IsSimp lines set aside, every other line byte for byte. Why C stamps \
+         the component is not established. Gated by \
+         issimp_component_exclusions_still_differ",
+    ),
 ];
 
 /// Relaxations that are not a `const` at all, counted from their manifest.

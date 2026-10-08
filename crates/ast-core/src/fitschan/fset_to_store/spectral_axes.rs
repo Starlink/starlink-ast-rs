@@ -759,7 +759,7 @@ fn nearest_pix_value(map: &dyn Mapping, val: f64, axis: usize) -> AstResult<f64>
     let (tmap, tmap_axis): (DynMapping, usize) = if !map.has_inverse() {
         let mut inv_map = map.clone_box();
         inv_map.invert();
-        match inv_map.map_split_zero_based(&[axis]) {
+        match inv_map.map_split_zero_based(&[axis])? {
             Some((_ins, mut sub)) if sub.nout() == 1 => {
                 sub.invert();
                 (sub, 0)

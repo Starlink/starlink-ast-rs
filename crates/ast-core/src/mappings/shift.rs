@@ -160,18 +160,27 @@ impl Mapping for ShiftMap {
         }
     }
 
-    fn map_split_zero_based(&self, in_axes: &[usize]) -> Option<(Vec<usize>, DynMapping)> {
-        // Mirrors shiftmap.c::MapSplit (~750). ShiftMap is per-axis additive
-        // offset, so a subset of inputs maps to the same-indexed outputs
-        // via a smaller ShiftMap built from the chosen axes' shift values.
-        let nin = self.nin();
-        crate::mappings::helpers::validate_in_axes(in_axes, nin)?;
+    fn map_split_zero_based(
+        &self,
+        in_axes: &[usize],
+    ) -> AstResult<Option<(Vec<usize>, DynMapping)>> {
+        // C allocates the returned output indices with astMalloc, which
+        // gives NULL for none, so an empty selection gives no split.
+        if in_axes.is_empty() {
+            return Ok(None);
+        }
+        // shiftmap.c MapSplit: any selection of inputs in range splits off a
+        // ShiftMap of the selected shifts, a repeated one included, inverted
+        // when this one is; one out of range gives no split.
+        if in_axes.iter().any(|&ix| ix >= self.nin()) {
+            return Ok(None);
+        }
         let shifts: Vec<f64> = in_axes.iter().map(|&ix| self.shift[ix]).collect();
         let mut sub = ShiftMap::new(shifts);
         if self.inverted {
             sub.invert();
         }
-        Some((in_axes.to_vec(), Box::new(sub)))
+        Ok(Some((in_axes.to_vec(), Box::new(sub))))
     }
 
     fn map_merge(

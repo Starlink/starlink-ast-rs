@@ -520,26 +520,26 @@ pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
     /// `Vec<usize>` holds 1-based output indices and has length equal to the
     /// sub-mapping's nout.
     ///
+    /// `Ok(None)` means the selected inputs cannot be split off. Whether an
+    /// index out of range is an error (`ErrorCode::Axiin`) or no split
+    /// depends on the class, as in C: the base `MapSplit` and the classes
+    /// that call it first report it, and the others return no split. A
+    /// repeated index is likewise handled as each class's C handles it.
+    ///
     /// This is a thin ±1 wrapper over [`Mapping::map_split_zero_based`], which
     /// implements the algorithm in C's protected, 0-based encoding. Concrete
     /// classes override the zero-based method, not this one — exactly as C
     /// keeps a 0-based protected `MapSplit` (mapping.c:7798) behind the
     /// 1-based public shim.
-    fn map_split(&self, in_axes: &[usize]) -> Option<(Vec<usize>, DynMapping)> {
-        // Decrement to 0-based (astMapSplitId_, mapping.c:25429). A 0 entry
-        // would underflow; treat it as out-of-range, matching the validation
-        // that rejects axis indices outside 1..=nin.
-        let mut in_zero = Vec::with_capacity(in_axes.len());
-        for &ax in in_axes {
-            if ax == 0 {
-                return None;
-            }
-            in_zero.push(ax - 1);
-        }
-        let (out_zero, sub) = self.map_split_zero_based(&in_zero)?;
+    fn map_split(&self, in_axes: &[usize]) -> AstResult<Option<(Vec<usize>, DynMapping)>> {
+        // Decrement to 0-based (astMapSplitId_, mapping.c:25429). C turns an
+        // index of 0 into -1, which every class's range check refuses; the
+        // wrapped `usize::MAX` is refused by the same checks.
+        let in_zero: Vec<usize> = in_axes.iter().map(|&ax| ax.wrapping_sub(1)).collect();
         // Increment the returned output axes back to 1-based (mapping.c:25437).
-        let out_one = out_zero.into_iter().map(|o| o + 1).collect();
-        Some((out_one, sub))
+        Ok(self
+            .map_split_zero_based(&in_zero)?
+            .map(|(out_zero, sub)| (out_zero.into_iter().map(|o| o + 1).collect(), sub)))
     }
 
     /// Protected, **0-based** implementation of [`Mapping::map_split`].
@@ -550,11 +550,15 @@ pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
     /// method concrete classes override; the public 1-based [`Mapping::map_split`]
     /// wraps it with ±1 conversion at the boundary.
     ///
-    /// The default implementation handles the trivial case
-    /// `in_axes.len() == self.nin()` by composing a `PermMap` with `self`;
-    /// classes that can split for partial input selections override.
-    fn map_split_zero_based(&self, in_axes: &[usize]) -> Option<(Vec<usize>, DynMapping)> {
-        helpers::full_set_split(self, in_axes)
+    /// The default implementation is C's base `MapSplit`: an index out of
+    /// range is `ErrorCode::Axiin`, and only a selection of every input,
+    /// each once, splits, by composing a `PermMap` with `self`. Classes that
+    /// can split partial selections override.
+    fn map_split_zero_based(
+        &self,
+        in_axes: &[usize],
+    ) -> AstResult<Option<(Vec<usize>, DynMapping)>> {
+        helpers::base_map_split(self, in_axes)
     }
 
     /// Best-fit affine approximation to the forward transform over a

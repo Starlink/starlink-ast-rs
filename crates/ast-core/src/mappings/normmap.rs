@@ -314,26 +314,28 @@ impl Mapping for NormMap {
         Box::new(self.clone())
     }
 
-    fn map_split_zero_based(&self, in_axes: &[usize]) -> Option<(Vec<usize>, DynMapping)> {
-        // Mirrors normmap.c::MapSplit (~line 736). The C body first calls
-        // the parent (default) impl for the full-input case, then falls
-        // back to a per-class implementation for partial selections:
-        // pick the requested axes from the encapsulated Frame and build
-        // a new NormMap.  Output indices equal the input indices because
-        // NormMap is identity per axis.
-        if let Some(r) = crate::mappings::helpers::full_set_split(self, in_axes) {
-            return Some(r);
+    fn map_split_zero_based(
+        &self,
+        in_axes: &[usize],
+    ) -> AstResult<Option<(Vec<usize>, DynMapping)>> {
+        // C allocates the returned output indices with astMalloc, which
+        // gives NULL for none, so an empty selection gives no split.
+        if in_axes.is_empty() {
+            return Ok(None);
         }
-        crate::mappings::helpers::validate_in_axes(in_axes, self.nin())?;
+        // normmap.c MapSplit: the parent's MapSplit first (an input out of
+        // range is AST__AXIIN, and a full selection splits whole), then a
+        // NormMap of the selected axes of the encapsulated Frame, picked as
+        // `astPickAxes` picks them, so a repeated axis is AST__SELIN. The new
+        // NormMap is not inverted: a NormMap's transformation is the same in
+        // both directions. Output indices equal the input indices.
+        if let Some(r) = crate::mappings::helpers::base_map_split(self, in_axes)? {
+            return Ok(Some(r));
+        }
         // pick_axes is 1-based at the public API.
         let axes_1based: Vec<usize> = in_axes.iter().map(|&i| i + 1).collect();
-        let (sub_frame, _pick_map) =
-            crate::frames::pick_axes(self.frame.as_ref(), &axes_1based).ok()?;
-        let mut sub = NormMap::new(sub_frame);
-        if self.inverted {
-            sub.invert();
-        }
-        Some((in_axes.to_vec(), Box::new(sub)))
+        let (sub_frame, _pick_map) = crate::frames::pick_axes(self.frame.as_ref(), &axes_1based)?;
+        Ok(Some((in_axes.to_vec(), Box::new(NormMap::new(sub_frame)))))
     }
 }
 

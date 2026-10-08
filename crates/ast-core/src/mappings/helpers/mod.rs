@@ -5,6 +5,7 @@ pub(crate) mod poly_tran;
 pub mod scale_poly_inputs;
 
 use crate::constants::BAD_VALUE;
+use crate::error::{AstError, AstResult, ErrorCode};
 use crate::mappings::{CmpMap, Composition, DynMapping, Mapping, PermMap};
 
 #[inline]
@@ -51,14 +52,10 @@ pub fn ast_equal(a: f64, b: f64) -> bool {
     ast_equals(a, b, 1.0e5)
 }
 
-/// Validate that `in_axes` is a permutation of a subset of `0..nin` —
-/// i.e., every entry is in range and no entry is duplicated. Returns
-/// `Some(())` on success, `None` on any violation. Used by
-/// `Mapping::map_split` impls to gate input validation up-front.
-///
-/// The Rust pattern rejects duplicates; the C `astMapSplit` permits
-/// duplicates and produces a degenerate output. The Rust convention,
-/// established in Task 1.1 across all per-class impls, is stricter.
+/// Whether every entry of `in_axes` is in `0..nin` and none is repeated:
+/// `Some(())` if so. C's base `MapSplit` splits a full selection only when
+/// it is such a permutation (mapping.c), which [`full_set_split`] tests with
+/// this.
 pub(super) fn validate_in_axes(in_axes: &[usize], nin: usize) -> Option<()> {
     for (i, &ix) in in_axes.iter().enumerate() {
         if ix >= nin || in_axes[..i].contains(&ix) {
@@ -66,6 +63,32 @@ pub(super) fn validate_in_axes(in_axes: &[usize], nin: usize) -> Option<()> {
         }
     }
     Some(())
+}
+
+/// C's base `MapSplit` (mapping.c): an index out of range is
+/// `ErrorCode::Axiin`, and otherwise [`full_set_split`]. The classes whose C
+/// `MapSplit` calls the parent first call this first.
+pub(crate) fn base_map_split<M: Mapping + ?Sized>(
+    this: &M,
+    in_axes: &[usize],
+) -> AstResult<Option<(Vec<usize>, DynMapping)>> {
+    // C allocates the returned output indices with astMalloc, which
+    // gives NULL for none, so an empty selection gives no split.
+    if in_axes.is_empty() {
+        return Ok(None);
+    }
+    let mapnin = this.nin();
+    if let Some(&bad) = in_axes.iter().find(|&&ix| ix >= mapnin) {
+        return Err(AstError::new(
+            ErrorCode::Axiin,
+            format!(
+                "astMapSplit: one of the supplied Mapping input indices has value {} \
+                 which is invalid; it should be in the range 1 to {mapnin}",
+                bad.wrapping_add(1) as isize,
+            ),
+        ));
+    }
+    Ok(full_set_split(this, in_axes))
 }
 
 /// Default `Mapping::map_split` body for the full-input case

@@ -56,6 +56,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [RESOLVED (upstream 5a2cac2a): CmpFrame `ResolvePoints` passes internal-order points to methods that expect external order](#resolved-upstream-5a2cac2a-cmpframe-resolvepoints-passes-internal-order-points-to-methods-that-expect-external-order)
 - [RESOLVED (upstream db5199d7): CmpFrame `FrameGrid` writes its grid through the PointSet's own data pointers, out of bounds](#resolved-upstream-db5199d7-cmpframe-framegrid-writes-its-grid-through-the-pointsets-own-data-pointers-out-of-bounds)
 - [RESOLVED (upstream 0d05fc29): `astLoadFrameSet` keeps a `Currnt` below 1 as the current Frame index](#resolved-upstream-0d05fc29-astloadframeset-keeps-a-currnt-below-1-as-the-current-frame-index)
+- [RESOLVED (upstream 010b5e85): PermMap `MapSplit` reads beyond its permutation arrays for an input index out of range](#resolved-upstream-010b5e85-permmap-mapsplit-reads-beyond-its-permutation-arrays-for-an-input-index-out-of-range)
 - [RESOLVED (upstream 11c2367b): SelectorMap `Equal` accepts either a matching Region count or a matching bad value](#resolved-upstream-11c2367b-selectormap-equal-accepts-either-a-matching-region-count-or-a-matching-bad-value)
 - [RESOLVED (upstream 4b313e0d): `Rate` of an inverted TimeMap is the forward slope](#resolved-upstream-4b313e0d-rate-of-an-inverted-timemap-is-the-forward-slope)
 - [RESOLVED (upstream fb43dfb3): `Rate` of an inverted SplineMap is the forward spline's derivative](#resolved-upstream-fb43dfb3-rate-of-an-inverted-splinemap-is-the-forward-splines-derivative)
@@ -1094,6 +1095,16 @@ Only a hand-written description can do this, since Dump never writes an index be
 
 Fixed on `u/timj/norm-unit` in 0d05fc29, which checks Current as Base is checked, with a `testframeset` case (Errors 41-43).
 The port treats a `Currnt` below 1 as unset, as the fixed C does (`frameset.rs` `from_node`), and `tests/test_frameset_current.rs` covers Current's set state against C.
+
+### RESOLVED (upstream 010b5e85): PermMap `MapSplit` reads beyond its permutation arrays for an input index out of range
+
+C location: `permmap.c` `MapSplit`.
+
+`MapSplit` checked that every selected input index was in range, setting a flag it then never read, and went on to use each index to look up the permutation arrays.
+An index out of range, or one of 0 through the public interface, therefore read beyond the arrays; the result depended on whatever lay there, and came out as no split only by chance.
+
+Fixed on `u/timj/norm-unit` in 010b5e85: an index out of range gives no split, as the other classes' `MapSplit` that check the range themselves do; `testcmpmap` Errors 14 and 15.
+The port's `PermMap::map_split_zero_based` does the same, and `tests/test_map_split_oracle.rs` compares it with the fixed C.
 
 ### RESOLVED (upstream 11c2367b): SelectorMap `Equal` accepts either a matching Region count or a matching bad value
 

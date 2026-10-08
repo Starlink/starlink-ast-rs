@@ -542,9 +542,9 @@ impl Region for Prism {
         // Split the Mapping on the base-Frame axes of each component
         // (prism.c:1057-1075). `map_split` takes and returns 1-based axes.
         let axin1: Vec<usize> = (1..=nax1).collect();
-        let split1 = map.map_split(&axin1);
+        let split1 = map.map_split(&axin1)?;
         let axin2: Vec<usize> = (nax1 + 1..=nax1 + nax2).collect();
-        let split2 = map.map_split(&axin2);
+        let split2 = map.map_split(&axin2)?;
 
         // Where either component's axes do not split out, the parent method is
         // used (prism.c:1085-1087).
@@ -1054,9 +1054,9 @@ impl Mapping for Prism {
             // second component's axes (nax1..nax1+nax2). map_split takes
             // 1-based input axes and returns 1-based output-axis indices.
             let axin1: Vec<usize> = (0..nax1).map(|i| i + 1).collect();
-            let split1 = bcmap.map_split(&axin1);
+            let split1 = bcmap.map_split(&axin1)?;
             let axin2: Vec<usize> = (0..nax2).map(|i| nax1 + i + 1).collect();
-            let split2 = bcmap.map_split(&axin2);
+            let split2 = bcmap.map_split(&axin2)?;
 
             // Assume the component Regions cannot be simplified: use a clone
             // of the supplied Prism (prism.c:3382).

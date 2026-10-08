@@ -56,7 +56,7 @@ fn split_child(
     child: &dyn Mapping,
     forward: bool,
     in_axes: &[usize],
-) -> Option<(Vec<usize>, DynMapping)> {
+) -> AstResult<Option<(Vec<usize>, DynMapping)>> {
     if forward {
         child.map_split_zero_based(in_axes)
     } else {
@@ -375,7 +375,7 @@ impl CmpMap {
     /// direction, and compose the results. Returns `None` when the
     /// recursive decomposition can't find a clean partition; the caller
     /// then falls back to [`Self::map_split2`].
-    fn map_split_forward(&self, in_axes: &[usize]) -> Option<(Vec<usize>, DynMapping)> {
+    fn map_split_forward(&self, in_axes: &[usize]) -> AstResult<Option<(Vec<usize>, DynMapping)>> {
         let fwd = !self.inverted;
         let fwd1 = self.first_dir(fwd);
         let fwd2 = self.second_dir(fwd);
@@ -391,10 +391,14 @@ impl CmpMap {
                     (self.second.as_ref(), self.first.as_ref(), fwd2, fwd1)
                 };
 
-                let (mid_outs, sub1) = split_child(first_in_flow, dir1, in_axes)?;
-                let (out_outs, sub2) = split_child(second_in_flow, dir2, &mid_outs)?;
-                let composed = CmpMap::new(sub1, sub2, Composition::Series).ok()?;
-                Some((out_outs, Box::new(composed)))
+                let Some((mid_outs, sub1)) = split_child(first_in_flow, dir1, in_axes)? else {
+                    return Ok(None);
+                };
+                let Some((out_outs, sub2)) = split_child(second_in_flow, dir2, &mid_outs)? else {
+                    return Ok(None);
+                };
+                let composed = CmpMap::new(sub1, sub2, Composition::Series)?;
+                Ok(Some((out_outs, Box::new(composed))))
             }
             Composition::Parallel => {
                 let nin1 = self.effective_first_nin(fwd);
@@ -419,27 +423,39 @@ impl CmpMap {
                 let mut combined_outs: Vec<usize> = Vec::new();
                 let result_map: DynMapping =
                     match (first_inputs.is_empty(), second_inputs.is_empty()) {
-                        (true, true) => return None,
+                        (true, true) => return Ok(None),
                         (false, true) => {
-                            let (outs, sub) =
-                                split_child(self.first.as_ref(), fwd1, &first_inputs)?;
+                            let Some((outs, sub)) =
+                                split_child(self.first.as_ref(), fwd1, &first_inputs)?
+                            else {
+                                return Ok(None);
+                            };
                             combined_outs.extend(outs);
                             sub
                         }
                         (true, false) => {
-                            let (outs, sub) =
-                                split_child(self.second.as_ref(), fwd2, &second_inputs)?;
+                            let Some((outs, sub)) =
+                                split_child(self.second.as_ref(), fwd2, &second_inputs)?
+                            else {
+                                return Ok(None);
+                            };
                             combined_outs.extend(outs.iter().map(|&o| o + nout1));
                             sub
                         }
                         (false, false) => {
-                            let (outs1, sub1) =
-                                split_child(self.first.as_ref(), fwd1, &first_inputs)?;
+                            let Some((outs1, sub1)) =
+                                split_child(self.first.as_ref(), fwd1, &first_inputs)?
+                            else {
+                                return Ok(None);
+                            };
                             combined_outs.extend(outs1);
-                            let (outs2, sub2) =
-                                split_child(self.second.as_ref(), fwd2, &second_inputs)?;
+                            let Some((outs2, sub2)) =
+                                split_child(self.second.as_ref(), fwd2, &second_inputs)?
+                            else {
+                                return Ok(None);
+                            };
                             combined_outs.extend(outs2.iter().map(|&o| o + nout1));
-                            Box::new(CmpMap::new(sub1, sub2, Composition::Parallel).ok()?)
+                            Box::new(CmpMap::new(sub1, sub2, Composition::Parallel)?)
                         }
                     };
 
@@ -449,13 +465,17 @@ impl CmpMap {
                     for (i, &orig) in sorted_orig.iter().enumerate() {
                         inperm[orig] = (i as i64) + 1;
                     }
-                    let pmap = super::PermMap::new(&inperm, &outperm, &[]).ok()?;
-                    Box::new(CmpMap::new(Box::new(pmap), result_map, Composition::Series).ok()?)
+                    let pmap = super::PermMap::new(&inperm, &outperm, &[])?;
+                    Box::new(CmpMap::new(
+                        Box::new(pmap),
+                        result_map,
+                        Composition::Series,
+                    )?)
                 } else {
                     result_map
                 };
 
-                Some((combined_outs, final_map))
+                Ok(Some((combined_outs, final_map)))
             }
         }
     }
@@ -477,10 +497,10 @@ impl CmpMap {
     ///
     /// O(sum_{m=1..nout-1} P(nout, m)) calls to `map_split` — slow but
     /// correct. Used only when [`Self::map_split_forward`] fails.
-    fn map_split2(&self, in_axes: &[usize]) -> Option<(Vec<usize>, DynMapping)> {
+    fn map_split2(&self, in_axes: &[usize]) -> AstResult<Option<(Vec<usize>, DynMapping)>> {
         let nout = self.nout();
         if nout < 2 {
-            return None;
+            return Ok(None);
         }
         let nin_req = in_axes.len();
 
@@ -504,9 +524,9 @@ impl CmpMap {
                     // MapSplit2 path of its own). Both `out` and the
                     // returned indices are 0-based here.
                     let recursive = if let Some(cm) = inv.as_any().downcast_ref::<CmpMap>() {
-                        cm.map_split_forward(&out)
+                        cm.map_split_forward(&out)?
                     } else {
-                        inv.map_split_zero_based(&out)
+                        inv.map_split_zero_based(&out)?
                     };
 
                     if let Some((result2, mut map2)) = recursive {
@@ -514,7 +534,7 @@ impl CmpMap {
                             && result2.iter().zip(in_axes.iter()).all(|(a, b)| a == b)
                         {
                             map2.invert();
-                            return Some((out, map2));
+                            return Ok(Some((out, map2)));
                         }
                     }
                 }
@@ -537,7 +557,7 @@ impl CmpMap {
             }
         }
 
-        None
+        Ok(None)
     }
 
     // ------------------------------------------------------------------ //
@@ -937,13 +957,24 @@ impl Mapping for CmpMap {
             })
     }
 
-    fn map_split_zero_based(&self, in_axes: &[usize]) -> Option<(Vec<usize>, DynMapping)> {
+    fn map_split_zero_based(
+        &self,
+        in_axes: &[usize],
+    ) -> AstResult<Option<(Vec<usize>, DynMapping)>> {
+        // C allocates the returned output indices with astMalloc, which
+        // gives NULL for none, so an empty selection gives no split.
+        if in_axes.is_empty() {
+            return Ok(None);
+        }
         // Mirrors cmpmap.c::MapSplit (~line 2788) -> MapSplit0 (~line 2405),
         // including the MapSplit2 brute-force inverse fallback (~line 2214)
-        // when the forward decomposition fails.
-        crate::mappings::helpers::validate_in_axes(in_axes, self.nin())?;
-        if let Some(r) = self.map_split_forward(in_axes) {
-            return Some(r);
+        // when the forward decomposition fails. MapSplit0 gives no split for
+        // an input out of range, and passes a repeated one to the components.
+        if in_axes.iter().any(|&ix| ix >= self.nin()) {
+            return Ok(None);
+        }
+        if let Some(r) = self.map_split_forward(in_axes)? {
+            return Ok(Some(r));
         }
         self.map_split2(in_axes)
     }

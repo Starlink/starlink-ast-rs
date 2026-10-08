@@ -159,14 +159,25 @@ impl Mapping for UnitMap {
         super::simplify::default_map_merge(ctx, where_, series)
     }
 
-    fn map_split_zero_based(&self, in_axes: &[usize]) -> Option<(Vec<usize>, DynMapping)> {
-        // Mirrors unitmap.c::MapSplit (~629). UnitMap is identity per axis,
-        // so any subset of inputs is splittable: the result is just a
-        // smaller UnitMap, and the chosen output indices match the chosen
-        // input indices.
-        let nin = self.nin();
-        crate::mappings::helpers::validate_in_axes(in_axes, nin)?;
-        Some((in_axes.to_vec(), Box::new(UnitMap::new(in_axes.len()))))
+    fn map_split_zero_based(
+        &self,
+        in_axes: &[usize],
+    ) -> AstResult<Option<(Vec<usize>, DynMapping)>> {
+        // C allocates the returned output indices with astMalloc, which
+        // gives NULL for none, so an empty selection gives no split.
+        if in_axes.is_empty() {
+            return Ok(None);
+        }
+        // unitmap.c MapSplit: any selection of inputs in range splits off a
+        // UnitMap of as many axes, a repeated one included; one out of range
+        // gives no split.
+        if in_axes.iter().any(|&ix| ix >= self.nin()) {
+            return Ok(None);
+        }
+        Ok(Some((
+            in_axes.to_vec(),
+            Box::new(UnitMap::new(in_axes.len())),
+        )))
     }
 
     fn try_merge(

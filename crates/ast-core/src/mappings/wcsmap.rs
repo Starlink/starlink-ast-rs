@@ -1118,7 +1118,15 @@ impl Mapping for WcsMap {
         numeric_rate(self, at, ax1, ax2)
     }
 
-    fn map_split_zero_based(&self, in_axes: &[usize]) -> Option<(Vec<usize>, DynMapping)> {
+    fn map_split_zero_based(
+        &self,
+        in_axes: &[usize],
+    ) -> AstResult<Option<(Vec<usize>, DynMapping)>> {
+        // C allocates the returned output indices with astMalloc, which
+        // gives NULL for none, so an empty selection gives no split.
+        if in_axes.is_empty() {
+            return Ok(None);
+        }
         // Mirrors wcsmap.c::MapSplit (~3342). C first defers to the parent
         // (basic-Mapping) MapSplit, which only succeeds when every input is
         // selected (`nin == mapnin`). If that fails, the WcsMap-specific
@@ -1130,13 +1138,9 @@ impl Mapping for WcsMap {
         //                                       (yields BAD on inverse) — only
         //                                       valid when nin > 1
         //
-        // Validation note: project convention rejects out-of-range or
-        // duplicate input indices up front (UnitMap/ZoomMap/ShiftMap/etc. set
-        // this precedent in Tasks 1.1-1.4). C's parent path errors on
-        // out-of-range and rejects duplicates implicitly, while the WcsMap
-        // override only checks the in-range half. The Rust gate is stricter
-        // but never accepts a case C would reject.
-        let mapnin = self.nin();
+        // An input out of range is AST__AXIIN from the parent's MapSplit. A
+        // repeated input is classified once per occurrence, as in C, so a
+        // repeated celestial axis counts as that axis alone.
         let nin = in_axes.len();
 
         // Full-set path: delegate to the shared helper, which mirrors C's
@@ -1144,12 +1148,11 @@ impl Mapping for WcsMap {
         // returns `self`; for any other permutation it builds PermMap+self
         // and simplifies (the simplifier may absorb the perm back into a
         // single WcsMap with permuted axes).
-        if let Some(result) = crate::mappings::helpers::full_set_split(self, in_axes) {
-            return Some(result);
+        if let Some(result) = crate::mappings::helpers::base_map_split(self, in_axes)? {
+            return Ok(Some(result));
         }
 
         // Partial-set path: WcsMap-specific override.
-        crate::mappings::helpers::validate_in_axes(in_axes, mapnin)?;
         let lonax = self.lonax;
         let latax = self.latax;
         let mut ilon: Option<usize> = None;
@@ -1173,18 +1176,22 @@ impl Mapping for WcsMap {
             // the longitude/latitude axes remapped to their positions in the
             // kept-input ordering. Mirrors C's astWcsMap+CopyPV+SetInvert.
             (Some(ilon), Some(ilat)) => {
-                let new_wcs = self.with_permuted_axes(nin, ilon, ilat)?;
-                Some((result, Box::new(new_wcs)))
+                let Some(mut new_wcs) = self.with_permuted_axes(nin, ilon, ilat) else {
+                    return Ok(None);
+                };
+                // C sets the new WcsMap's Invert explicitly.
+                new_wcs.set_invert(self.inverted);
+                Ok(Some((result, Box::new(new_wcs))))
             }
             // Neither celestial axis selected: returned mapping is a UnitMap
             // over the kept pass-through axes. Mirrors C's astUnitMap branch.
-            (None, None) => Some((result, Box::new(UnitMap::new(nin)))),
+            (None, None) => Ok(Some((result, Box::new(UnitMap::new(nin))))),
             // Only one celestial axis selected: drop it. The C code treats
             // this as nin > 1 only — for nin == 1 (the lone kept input is
             // the celestial), it frees the result and returns NULL.
             _ => {
                 if nin <= 1 {
-                    return None;
+                    return Ok(None);
                 }
                 // Drop the celestial position from `result` (length becomes
                 // nin - 1, matching the new mapping's nout).
@@ -1206,8 +1213,8 @@ impl Mapping for WcsMap {
                     inperm[i] = i as i64;
                     outperm[i - 1] = (i + 1) as i64;
                 }
-                let pm = PermMap::new(&inperm, &outperm, &[]).ok()?;
-                Some((result, Box::new(pm)))
+                let pm = PermMap::new(&inperm, &outperm, &[])?;
+                Ok(Some((result, Box::new(pm))))
             }
         }
     }

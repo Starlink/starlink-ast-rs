@@ -99,7 +99,7 @@ the arithmetic follows C rather than C's comment.
 C skips an axis whose upper bound is `+DBL_MAX` or whose lower bound is
 `-DBL_MAX` (`region.c:3574 (fn GetDefUnc)`), setting both output bounds to zero.
 `is_bad(v)` is `v == BAD_VALUE || !v.is_finite()`
-(`mappings/helpers/mod.rs:11-13 (fn is_bad)`) with `BAD_VALUE == -f64::MAX`, so
+(`mappings/helpers/mod.rs:12-14 (fn is_bad)`) with `BAD_VALUE == -f64::MAX`, so
 an `is_bad` test on its own covers only the lower half; `+f64::MAX` is an
 ordinary finite number and takes the bounded branch, where it earns a half-width
 of about `0.5e-6 * f64::MAX`.

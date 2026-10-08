@@ -555,16 +555,24 @@ impl Mapping for TranMap {
         Box::new(self.clone())
     }
 
-    fn map_split_zero_based(&self, in_axes: &[usize]) -> Option<(Vec<usize>, DynMapping)> {
+    fn map_split_zero_based(
+        &self,
+        in_axes: &[usize],
+    ) -> AstResult<Option<(Vec<usize>, DynMapping)>> {
+        // C allocates the returned output indices with astMalloc, which
+        // gives NULL for none, so an empty selection gives no split.
+        if in_axes.is_empty() {
+            return Ok(None);
+        }
         // Mirrors tranmap.c::MapSplit (~line 1017). The C body first calls
         // the parent (default) impl for the full-input case, then a
         // per-class fallback that splits both the forward and inverse
         // mappings, verifies they recover the same input set, and builds
         // a new TranMap from the pair.
-        if let Some(r) = crate::mappings::helpers::full_set_split(self, in_axes) {
-            return Some(r);
+        // An input out of range is AST__AXIIN from the parent's MapSplit.
+        if let Some(r) = crate::mappings::helpers::base_map_split(self, in_axes)? {
+            return Ok(Some(r));
         }
-        crate::mappings::helpers::validate_in_axes(in_axes, self.nin())?;
 
         // Pick the forward and inverse component mappings, with their
         // construction-snapshot Invert flags. Mirrors C lines 1115-1125.
@@ -605,19 +613,23 @@ impl Mapping for TranMap {
 
         // Split the forward mapping by the requested inputs (0-based, to
         // match this protected method's encoding).
-        let (out, rfmap) = fmap_view.map_split_zero_based(in_axes)?;
+        let Some((out, rfmap)) = fmap_view.map_split_zero_based(in_axes)? else {
+            return Ok(None);
+        };
 
         // Invert the inverse-mapping view so its forward direction matches
         // the original-forward semantics, then split by the recovered output
         // indices. C: astInvert(imap); ires = astMapSplit(imap, nout, out).
         let mut imap_view_inv = imap_view;
         imap_view_inv.invert();
-        let (ires, rimap_inv_view) = imap_view_inv.map_split_zero_based(&out)?;
+        let Some((ires, rimap_inv_view)) = imap_view_inv.map_split_zero_based(&out)? else {
+            return Ok(None);
+        };
 
         // Verify the recovered inputs match the requested inputs in order
         // (C lines 1151-1158). If not, the TranMap can't be split this way.
         if ires.len() != in_axes.len() || ires.iter().zip(in_axes).any(|(a, b)| a != b) {
-            return None;
+            return Ok(None);
         }
 
         // Invert the inverse-side sub-mapping back to the inverse-mapping
@@ -626,8 +638,8 @@ impl Mapping for TranMap {
         rimap.invert();
 
         // Build the new TranMap.
-        let new_tm = TranMap::new(rfmap, rimap).ok()?;
-        Some((out, Box::new(new_tm)))
+        let new_tm = TranMap::new(rfmap, rimap)?;
+        Ok(Some((out, Box::new(new_tm))))
     }
 }
 

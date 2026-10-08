@@ -197,7 +197,7 @@ impl Interval {
             return Ok(true);
         }
         for i in 0..nout {
-            match map.map_split(&[i + 1]) {
+            match map.map_split(&[i + 1])? {
                 Some((outs, sub)) if outs.len() == 1 && sub.nout() == 1 => {}
                 _ => return Ok(false),
             }
