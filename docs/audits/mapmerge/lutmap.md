@@ -29,18 +29,18 @@ must discard the simplified record.
 | 5 | Take the input range spanned by the first and last table elements | lutmap.c:1149-1153 (fn MapMerge) | lutmap.rs:280-281 (fn linear_equivalent) | architecture | ported |
 | 6 | Take the matching output range and require the two ends to differ | lutmap.c:1154-1159 (fn MapMerge) | lutmap.rs:282-283 (fn linear_equivalent),230 (fn table_is_linear) | architecture | ported |
 | 7 | Build a WinMap for that linear mapping, swapping the ranges when the invert flag is set | lutmap.c:1160-1167 (fn MapMerge) | lutmap.rs:284-288 (fn linear_equivalent) | architecture | ported |
-| 8 | Replace the LutMap with it and clear the associated invert flag | lutmap.c:1168-1174 (fn MapMerge) | lutmap.rs:623-624 (fn map_merge) | architecture | ported |
-| 9 | Assign the result value | lutmap.c:1175-1179 (fn MapMerge) | lutmap.rs:625 (fn map_merge) | architecture | ported |
-| 10 | Otherwise, in series only, look for an adjacent LutMap to cancel against | lutmap.c:1180-1183 (fn MapMerge) | lutmap.rs:632 (fn map_merge) | architecture | ported |
-| 11 | Check the higher neighbour first, noting the lower index of the pair | lutmap.c:1184-1191 (fn MapMerge) | lutmap.rs:633-635 (fn map_merge) | architecture | ported |
-| 12 | Failing that, check the lower neighbour the same way, and otherwise give up | lutmap.c:1192-1203 (fn MapMerge) | lutmap.rs:636-640 (fn map_merge) | architecture | ported |
-| 13 | Cancel the pair only if the two LutMaps are equal with opposite invert flags | lutmap.c:1204-1214 (fn MapMerge) | lutmap.rs:652-657 (fn map_merge) | architecture | ported |
-| 14 | Replace the first of the pair with a UnitMap and clear its invert flag | lutmap.c:1215-1222 (fn MapMerge) | lutmap.rs:658 (fn map_merge) | architecture | ported |
+| 8 | Replace the LutMap with it and clear the associated invert flag | lutmap.c:1168-1174 (fn MapMerge) | lutmap.rs:605-606 (fn map_merge) | architecture | ported |
+| 9 | Assign the result value | lutmap.c:1175-1179 (fn MapMerge) | lutmap.rs:607 (fn map_merge) | architecture | ported |
+| 10 | Otherwise, in series only, look for an adjacent LutMap to cancel against | lutmap.c:1180-1183 (fn MapMerge) | lutmap.rs:614 (fn map_merge) | architecture | ported |
+| 11 | Check the higher neighbour first, noting the lower index of the pair | lutmap.c:1184-1191 (fn MapMerge) | lutmap.rs:615-617 (fn map_merge) | architecture | ported |
+| 12 | Failing that, check the lower neighbour the same way, and otherwise give up | lutmap.c:1192-1203 (fn MapMerge) | lutmap.rs:618-622 (fn map_merge) | architecture | ported |
+| 13 | Cancel the pair only if the two LutMaps are equal with opposite invert flags | lutmap.c:1204-1214 (fn MapMerge) | lutmap.rs:634-639 (fn map_merge) | architecture | ported |
+| 14 | Replace the first of the pair with a UnitMap and clear its invert flag | lutmap.c:1215-1222 (fn MapMerge) | lutmap.rs:640 (fn map_merge) | architecture | ported |
 | 15 | Annul the second and shuffle the rest of the list down | lutmap.c:1223-1230 (fn MapMerge) | mappings/simplify.rs:588-590 (fn replace_pair_with) | ceremony | ported |
 | 16 | Clear the vacated element at the end | lutmap.c:1231-1234 (fn MapMerge) | -- | ceremony | n/a: the entry is removed from a `Vec`, so no slot is vacated to be cleared |
-| 17 | Decrement the Mapping count and return the index of the nominated element | lutmap.c:1235-1242 (fn MapMerge) | lutmap.rs:661 (fn map_merge) | architecture | ported |
+| 17 | Decrement the Mapping count and return the index of the nominated element | lutmap.c:1235-1242 (fn MapMerge) | lutmap.rs:643 (fn map_merge) | architecture | ported |
 | 18 | Clear the returned result if an error occurred | lutmap.c:1243-1245 (fn MapMerge) | -- | ceremony | n/a: an error is a `Result::Err`, not a value to be cleared alongside one |
-| 19 | Return the result | lutmap.c:1246-1247 (fn MapMerge) | lutmap.rs:669 (fn map_merge) | architecture | ported |
+| 19 | Return the result | lutmap.c:1246-1247 (fn MapMerge) | lutmap.rs:651 (fn map_merge) | architecture | ported |
 | 20 | `GetLinear`: initialise the answer to "not linear" | lutmap.c:571-573 (fn GetLinear) | -- | ceremony | n/a: each path returns its own `bool` |
 | 21 | Check the global error status and bail out | lutmap.c:574-576 (fn GetLinear) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 22 | Obtain a typed pointer to the LutMap structure | lutmap.c:577-579 (fn GetLinear) | -- | ceremony | n/a: the Rust method already has `&self` |

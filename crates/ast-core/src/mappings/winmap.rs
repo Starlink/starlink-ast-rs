@@ -285,11 +285,23 @@ impl Mapping for WinMap {
         if self.shifts.len() != other.shifts.len() {
             return false;
         }
-        // Compare effective parameters (resolving inversion).
-        let (s1, c1) = winmap_effective_params(&self.shifts, &self.scales, self.inverted);
-        let (s2, c2) = winmap_effective_params(&other.shifts, &other.scales, other.inverted);
-        s1.iter().zip(&s2).all(|(a, b)| ast_equal(*a, *b))
-            && c1.iter().zip(&c2).all(|(a, b)| ast_equal(*a, *b))
+        let same = |s1: &[f64], c1: &[f64], s2: &[f64], c2: &[f64]| {
+            s1.iter().zip(s2).all(|(a, b)| ast_equal(*a, *b))
+                && c1.iter().zip(c2).all(|(a, b)| ast_equal(*a, *b))
+        };
+        // winmap.c Equal: identical stored terms are equal only with the
+        // same Invert flag, so a self-inverse WinMap differs from its
+        // inverted copy. Otherwise, with different Invert flags, the terms
+        // each applies are compared.
+        if same(&self.shifts, &self.scales, &other.shifts, &other.scales) {
+            self.inverted == other.inverted
+        } else if self.inverted != other.inverted {
+            let (s1, c1) = winmap_effective_params(&self.shifts, &self.scales, self.inverted);
+            let (s2, c2) = winmap_effective_params(&other.shifts, &other.scales, other.inverted);
+            same(&s1, &c1, &s2, &c2)
+        } else {
+            false
+        }
     }
 
     fn map_split_zero_based(&self, in_axes: &[usize]) -> Option<(Vec<usize>, DynMapping)> {

@@ -322,68 +322,50 @@ impl LutMap {
     }
 
     /// Forward transform for a single input value.
-    fn forward_one(&self, x: f64) -> f64 {
-        if is_bad(x) {
+    fn forward_one(&self, value_in: f64) -> f64 {
+        // lutmap.c Transform, forward branch, transcribed: the scale is
+        // `1/inc` applied as a product, nearest-neighbour takes
+        // `floor(x + 0.5)`, and linear interpolation extrapolates from the
+        // last two entries at and above the last node. The constructor
+        // refuses a table of fewer than two entries, as C's does.
+        if is_bad(value_in) {
             return BAD_VALUE;
         }
-        let nlut = self.lut.len();
-        let idx = (x - self.start) / self.inc;
-
-        match self.interp() {
-            LutInterp::Linear => {
-                if nlut == 1 {
-                    // Single-element table: can only return that value at
-                    // the exact index, extrapolation has zero slope.
-                    return self.lut[0];
-                }
-                if idx >= 0.0 && idx <= (nlut - 1) as f64 {
-                    // Within bounds: linear interpolation
-                    let lo = idx.floor() as usize;
-                    let hi = lo + 1;
-                    if hi >= nlut {
-                        // Exactly at the last entry
-                        let v = self.lut[lo];
-                        if is_bad(v) { BAD_VALUE } else { v }
-                    } else {
-                        let v_lo = self.lut[lo];
-                        let v_hi = self.lut[hi];
-                        if is_bad(v_lo) || is_bad(v_hi) {
-                            BAD_VALUE
-                        } else {
-                            let frac = idx - lo as f64;
-                            v_lo + frac * (v_hi - v_lo)
-                        }
-                    }
-                } else if idx < 0.0 {
-                    // Below bounds: extrapolate using slope at start
-                    let v0 = self.lut[0];
-                    let v1 = self.lut[1];
-                    if is_bad(v0) || is_bad(v1) {
-                        BAD_VALUE
-                    } else {
-                        let slope = v1 - v0;
-                        v0 + idx * slope
-                    }
-                } else {
-                    // Above bounds: extrapolate using slope at end
-                    let v_last = self.lut[nlut - 1];
-                    let v_prev = self.lut[nlut - 2];
-                    if is_bad(v_last) || is_bad(v_prev) {
-                        BAD_VALUE
-                    } else {
-                        let slope = v_last - v_prev;
-                        v_last + (idx - (nlut - 1) as f64) * slope
-                    }
-                }
+        let lut = &self.lut;
+        let nlut = lut.len() as i64;
+        let nlutm1 = nlut - 1;
+        let scale = 1.0 / self.inc;
+        let x = (value_in - self.start) * scale;
+        if self.interp() == LutInterp::Nearest {
+            let ix = (x + 0.5).floor() as i64;
+            return if ix < 0 || ix >= nlut {
+                BAD_VALUE
+            } else {
+                lut[ix as usize]
+            };
+        }
+        let xi = x.floor();
+        let ix = xi as i64;
+        let n1 = nlutm1 as usize;
+        if ix < 0 {
+            if !is_bad(lut[0]) && !is_bad(lut[1]) {
+                lut[0] + x * (lut[1] - lut[0])
+            } else {
+                BAD_VALUE
             }
-            LutInterp::Nearest => {
-                let rounded = idx.round() as i64;
-                if rounded < 0 || rounded >= nlut as i64 {
-                    BAD_VALUE
-                } else {
-                    let v = self.lut[rounded as usize];
-                    if is_bad(v) { BAD_VALUE } else { v }
-                }
+        } else if ix >= nlutm1 {
+            if !is_bad(lut[n1]) && !is_bad(lut[n1 - 1]) {
+                lut[n1] + (x - nlutm1 as f64) * (lut[n1] - lut[n1 - 1])
+            } else {
+                BAD_VALUE
+            }
+        } else {
+            let ix = ix as usize;
+            if !is_bad(lut[ix]) && !is_bad(lut[ix + 1]) {
+                let fract = x - xi;
+                lut[ix] * (1.0 - fract) + lut[ix + 1] * fract
+            } else {
+                BAD_VALUE
             }
         }
     }
@@ -570,7 +552,7 @@ impl Mapping for LutMap {
 
     /// NaN-as-bad fast path. LutMap's lookup logic has many internal
     /// `BAD_VALUE` emit sites (binary search, BAD-skip logic, extrapolation
-    /// boundary handling, etc.) and an `idx.round() as i64` cast in the
+    /// boundary handling, etc.) and a `floor(x + 0.5) as i64` cast in the
     /// Nearest interp path that cannot accept NaN (NaN-as-i64 has unspecified
     /// behaviour pre-Rust 1.45 and saturates to 0 / i64::MAX after, neither
     /// of which gives a useful table entry). So we keep the existing logic

@@ -386,7 +386,11 @@ impl Mapping for SelectorMap {
         let Some(other_sel) = other.as_any().downcast_ref::<SelectorMap>() else {
             return false;
         };
-        if self.inverted != other_sel.inverted {
+        // selectormap.c Equal compares the number of inputs, the Regions and
+        // the bad value, not the Invert flag. Inverting swaps the numbers of
+        // inputs and outputs, so only a one-dimensional SelectorMap can equal
+        // its inverted copy.
+        if self.nin() != other_sel.nin() {
             return false;
         }
         if self.regions.len() != other_sel.regions.len() {

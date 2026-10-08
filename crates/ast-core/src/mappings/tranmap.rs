@@ -487,19 +487,27 @@ impl Mapping for TranMap {
             return false;
         }
 
-        // If both have the same inversion state, compare components directly.
+        // tranmap.c Equal compares the components in the orientations each
+        // TranMap recorded when it was made. With the same Invert flag the
+        // components must match pairwise; with different ones, an inverted
+        // TranMap(A, B) is TranMap(inv B, inv A).
+        let oriented = |map: &DynMapping, invert: bool, flip: bool| -> DynMapping {
+            let mut m = map.clone_box();
+            if m.is_inverted() != (invert != flip) {
+                m.invert();
+            }
+            m
+        };
+        let a1 = oriented(&self.map1, self.inv_a, false);
+        let a2 = oriented(&self.map2, self.inv_b, false);
         if self.inverted == other_tm.inverted {
-            self.map1.equal(other_tm.map1.as_ref()) && self.map2.equal(other_tm.map2.as_ref())
+            let b1 = oriented(&other_tm.map1, other_tm.inv_a, false);
+            let b2 = oriented(&other_tm.map2, other_tm.inv_b, false);
+            a1.equal(b1.as_ref()) && a2.equal(b2.as_ref())
         } else {
-            // Different inversion states: an inverted TranMap(A, B) is
-            // equivalent to TranMap(inv(B), inv(A)). So compare:
-            // self.map1 with inv(other.map2) and self.map2 with inv(other.map1).
-            let mut other_map1_inv = other_tm.map1.clone();
-            other_map1_inv.invert();
-            let mut other_map2_inv = other_tm.map2.clone();
-            other_map2_inv.invert();
-
-            self.map1.equal(other_map2_inv.as_ref()) && self.map2.equal(other_map1_inv.as_ref())
+            let b1 = oriented(&other_tm.map1, other_tm.inv_a, true);
+            let b2 = oriented(&other_tm.map2, other_tm.inv_b, true);
+            a1.equal(b2.as_ref()) && a2.equal(b1.as_ref())
         }
     }
 

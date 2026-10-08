@@ -56,6 +56,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [RESOLVED (upstream 5a2cac2a): CmpFrame `ResolvePoints` passes internal-order points to methods that expect external order](#resolved-upstream-5a2cac2a-cmpframe-resolvepoints-passes-internal-order-points-to-methods-that-expect-external-order)
 - [RESOLVED (upstream db5199d7): CmpFrame `FrameGrid` writes its grid through the PointSet's own data pointers, out of bounds](#resolved-upstream-db5199d7-cmpframe-framegrid-writes-its-grid-through-the-pointsets-own-data-pointers-out-of-bounds)
 - [RESOLVED (upstream 0d05fc29): `astLoadFrameSet` keeps a `Currnt` below 1 as the current Frame index](#resolved-upstream-0d05fc29-astloadframeset-keeps-a-currnt-below-1-as-the-current-frame-index)
+- [RESOLVED (upstream 11c2367b): SelectorMap `Equal` accepts either a matching Region count or a matching bad value](#resolved-upstream-11c2367b-selectormap-equal-accepts-either-a-matching-region-count-or-a-matching-bad-value)
 - [RESOLVED (upstream 4b313e0d): `Rate` of an inverted TimeMap is the forward slope](#resolved-upstream-4b313e0d-rate-of-an-inverted-timemap-is-the-forward-slope)
 - [RESOLVED (upstream fb43dfb3): `Rate` of an inverted SplineMap is the forward spline's derivative](#resolved-upstream-fb43dfb3-rate-of-an-inverted-splinemap-is-the-forward-splines-derivative)
 - [RESOLVED (upstream 58786d9c): `ChebyDomain` fails for an inverted ChebyMap with only one transformation](#resolved-upstream-58786d9c-chebydomain-fails-for-an-inverted-chebymap-with-only-one-transformation)
@@ -1093,6 +1094,16 @@ Only a hand-written description can do this, since Dump never writes an index be
 
 Fixed on `u/timj/norm-unit` in 0d05fc29, which checks Current as Base is checked, with a `testframeset` case (Errors 41-43).
 The port treats a `Currnt` below 1 as unset, as the fixed C does (`frameset.rs` `from_node`), and `tests/test_frameset_current.rs` covers Current's set state against C.
+
+### RESOLVED (upstream 11c2367b): SelectorMap `Equal` accepts either a matching Region count or a matching bad value
+
+C location: `selectormap.c` `Equal`.
+
+`Equal` tested `that->nreg == nreg || astEQUAL( that->badval, this->badval )` where both conditions were meant, and then compared as many Regions as the first SelectorMap held.
+A SelectorMap holding only the first of another's Regions, with the same bad value, therefore compared equal to it, and one holding more read beyond the other's list of Regions.
+
+Fixed on `u/timj/norm-unit` in 11c2367b: both conditions are required; `testregions` "SelectorMap Equal" tests 1-3.
+The port's `SelectorMap::equal` always required both; `tests/test_equal_oracle.rs` compares it with the fixed C.
 
 ### RESOLVED (upstream 4b313e0d): `Rate` of an inverted TimeMap is the forward slope
 
