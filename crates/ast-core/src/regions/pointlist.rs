@@ -7,8 +7,8 @@
 //!
 //! When used as a Mapping, a forward transform passes through points that
 //! match any defining point, and sets exterior points to
-//! [`BAD_VALUE`](crate::constants::BAD_VALUE). The inverse transform
-//! always passes points unchanged.
+//! [`BAD_VALUE`](crate::constants::BAD_VALUE). The inverse transform is
+//! the same.
 
 use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
@@ -17,7 +17,7 @@ use crate::mappings::helpers::{is_bad, point_has_bad};
 use crate::mappings::{DynMapping, Mapping, UnitMap, ViaSimplify};
 
 use super::data::{RegionData, RegionGeometry};
-use super::{DynRegion, Overlap, Region};
+use super::{DynRegion, Region};
 
 /// A region consisting of a discrete set of points within a coordinate frame.
 ///
@@ -329,10 +329,6 @@ impl Region for PointList {
         } else {
             Ok(inside)
         }
-    }
-
-    fn overlap(&self, other: &dyn Region) -> AstResult<Overlap> {
-        super::overlap::compute_overlap(self, other)
     }
 
     fn reg_pins_mask(

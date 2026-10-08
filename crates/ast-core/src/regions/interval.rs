@@ -1048,7 +1048,56 @@ impl Region for Interval {
         if let Some(code) = self.interval_overlap(other)? {
             return Ok(super::overlap::code_to_overlap(code));
         }
-        super::overlap::compute_overlap(self, other)
+        other.overlap_x(self)
+    }
+
+    /// interval.c `BndBaseMesh`: the boundary mesh of the equivalent Box
+    /// when there is one; otherwise of a base-Frame Box taking the
+    /// Interval's limits where it has them and the base-Frame bounds of the
+    /// current-Frame box `[lbnd, ubnd]` where it does not. A Box with an
+    /// excluded axis gives one bad point.
+    fn bnd_base_mesh(&self, lbnd: &[f64], ubnd: &[f64]) -> AstResult<PointSet> {
+        let (lim_l, lim_u, equivalent_box) = self.cache()?;
+        if let Some(bx) = equivalent_box {
+            return bx.bnd_base_mesh(lbnd, ubnd);
+        }
+
+        // The base-Frame box that just encloses the current-Frame box.
+        let map = self
+            .data
+            .frameset
+            .mapping(FrameRef::Current, FrameRef::Base)?;
+        let nbase = map.nout();
+        let mut lbndb = vec![0.0; nbase];
+        let mut ubndb = vec![0.0; nbase];
+        for i in 0..nbase {
+            let bounds = map.map_box(lbnd, ubnd, true, i + 1)?;
+            lbndb[i] = bounds.lbnd_out;
+            ubndb[i] = bounds.ubnd_out;
+        }
+
+        // Take the Interval's own limits where it has them.
+        let mut closed = true;
+        for i in 0..nbase {
+            if lim_u[i] != f64::MAX {
+                ubndb[i] = lim_u[i];
+            }
+            if lim_l[i] != -f64::MAX {
+                lbndb[i] = lim_l[i];
+            }
+            if lbndb[i] > ubndb[i] {
+                closed = false;
+            }
+        }
+
+        if closed {
+            let bfrm = self.data.frameset.base().snapshot();
+            super::BoxRegion::from_bounds_frame(bfrm, &lbndb, &ubndb)?.get_region_mesh()
+        } else {
+            Ok(PointSet::from_rows(std::iter::once(
+                vec![BAD_VALUE; nbase].as_slice(),
+            )))
+        }
     }
 
     fn reg_pins_mask(

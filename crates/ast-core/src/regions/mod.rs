@@ -43,9 +43,12 @@ pub type DynRegion = Box<dyn Region>;
 
 /// Result of comparing two regions for overlap.
 ///
-/// These values mirror the C library's `AST__OVERLAP_*` constants.
+/// These values mirror the codes 0 to 6 C's `astOverlap` returns.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Overlap {
+    /// The regions cannot be compared, because the second could not be
+    /// mapped into the coordinate system of the first (C code 0).
+    Incomparable,
     /// No overlap between the regions (neither contains any points of the other).
     None,
     /// The first region is entirely inside the second.
@@ -71,13 +74,27 @@ pub enum CmpOperator {
     Or,
 }
 
+/// A view of a Region as `&dyn Region`, which a default method of
+/// [`Region`] cannot form from its own `&self`. Implemented for every Region.
+#[doc(hidden)]
+pub trait AsDynRegion {
+    /// `self` as `&dyn Region`.
+    fn as_dyn_region(&self) -> &dyn Region;
+}
+
+impl<T: Region> AsDynRegion for T {
+    fn as_dyn_region(&self) -> &dyn Region {
+        self
+    }
+}
+
 /// A region of a coordinate frame.
 ///
 /// Regions implement both [`Frame`] (they describe a coordinate system)
 /// and [`Mapping`] (they transform points via the inside/outside
 /// predicate). A forward transform passes interior points unchanged
 /// and sets exterior points to [`BAD_VALUE`](crate::constants::BAD_VALUE);
-/// the inverse always passes points unchanged.
+/// the inverse transform is the same.
 ///
 /// # Negation
 ///
@@ -90,7 +107,7 @@ pub enum CmpOperator {
 /// A closed region (the default) includes boundary points; an open
 /// region excludes them. For most practical purposes with floating-point
 /// coordinates, boundary membership is academic.
-pub trait Region: Frame + Mapping {
+pub trait Region: Frame + Mapping + AsDynRegion {
     // ------------------------------------------------------------------
     // Point membership
     // ------------------------------------------------------------------
@@ -102,12 +119,41 @@ pub trait Region: Frame + Mapping {
     /// Returns `true` if the point is inside (respecting negation).
     fn point_in_region(&self, point: &[f64]) -> AstResult<bool>;
 
-    /// Determine the overlap between this region and another.
+    /// Determine the overlap between this region and another, as
+    /// `astOverlap(this, that)`.
     ///
-    /// Both regions must have the same number of axes. The method
-    /// accounts for any difference in coordinate frame between the two
-    /// regions by aligning them before comparison.
-    fn overlap(&self, other: &dyn Region) -> AstResult<Overlap>;
+    /// The method accounts for any difference in coordinate frame between
+    /// the two regions by aligning them before comparison. The default is
+    /// region.c `Overlap`: the work is dispatched on the class of `that`,
+    /// through [`overlap_x`](Region::overlap_x). A class with its own
+    /// algorithm for the case where it is the first Region overrides this.
+    fn overlap(&self, that: &dyn Region) -> AstResult<Overlap> {
+        that.overlap_x(self.as_dyn_region())
+    }
+
+    /// The overlap of `this` with this Region, `astOverlap(this, self)`,
+    /// computed by the class of the second Region (region.c `OverlapX`).
+    ///
+    /// The default is the generic algorithm, which meshes the boundary of
+    /// one Region and tests the mesh against the other. A class whose
+    /// boundary cannot be meshed, or which knows the answer directly,
+    /// overrides it.
+    #[doc(hidden)]
+    fn overlap_x(&self, this: &dyn Region) -> AstResult<Overlap> {
+        overlap::region_overlap_x(self.as_dyn_region(), this)
+    }
+
+    /// A mesh on the part of this Region's boundary inside the current-Frame
+    /// box `[lbnd, ubnd]`, in the base Frame (region.c `BndBaseMesh`). A
+    /// boundary that does not reach the box gives one bad point.
+    ///
+    /// The generic overlap uses it when this Region has no finite boundary
+    /// mesh of its own. The default intersects the Region with the box; a
+    /// class whose `overlap` cannot handle that box overrides it.
+    #[doc(hidden)]
+    fn bnd_base_mesh(&self, lbnd: &[f64], ubnd: &[f64]) -> AstResult<PointSet> {
+        overlap::region_bnd_base_mesh(self.as_dyn_region(), lbnd, ubnd)
+    }
 
     // ------------------------------------------------------------------
     // Negation

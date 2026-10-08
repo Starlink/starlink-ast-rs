@@ -16,7 +16,7 @@ use crate::mappings::helpers::{is_bad, point_has_bad};
 use crate::mappings::{DynMapping, Mapping, UnitMap, ViaSimplify};
 
 use super::data::{RegionData, RegionGeometry};
-use super::{DynRegion, Overlap, Region};
+use super::{DynRegion, Region};
 use crate::constants::BAD_VALUE;
 use crate::frames::{LineDef, SkyFrame};
 
@@ -827,10 +827,6 @@ impl Region for Polygon {
         } else {
             Ok(inside)
         }
-    }
-
-    fn overlap(&self, other: &dyn Region) -> AstResult<Overlap> {
-        super::overlap::compute_overlap(self, other)
     }
 
     fn reg_pins_mask(

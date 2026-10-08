@@ -29,7 +29,7 @@ Rust `reg_pins` (data.rs:191 and every per-class override) is instead an
 takes no `unc` argument, and never tests boundary proximity. Confirmed in
 all classes: box_region.rs:310, interval.rs:406, pointlist.rs:161 (fabricates
 a `1e-10 × bbox-diagonal` tolerance), circle.rs:182, ellipse.rs:194,
-polygon.rs:278, prism.rs:156, cmpregion.rs:177.
+polygon.rs:278, prism.rs:256, cmpregion.rs:177.
 
 Consumers that are consequently unfaithful:
 - `verify_remap_exact` (data.rs:313) — the Box-simplify exactness check.
@@ -45,7 +45,7 @@ test-point logic with a touch/Closed rule.
 
 Rust `compute_overlap` (overlap.rs:40): NullRegion special-cases,
 bounding-box quick reject, then counts mesh points inside with a hard-coded
-90% `THRESHOLD` (overlap.rs:24). It never returns value-6 (negation),
+90% `THRESHOLD` (overlap.rs:21). It never returns value-6 (negation),
 does no `astConvert` alignment, drops the touch/Closed rule. It depends on
 R-PINS being fixed to become faithful.
 
@@ -70,18 +70,18 @@ blocks (— = correctness/parity gap not on any of the 4 critical paths).
 | P-SIMP | Polygon `Simplify` nout==2 guard + bend validation | MISSING-BRANCH | polygon.rs:795 (C polygon.c:5291) | 02 |
 | I-CACHE | Interval Box-reclass guard `!neg && closed` too strict | MISSING-BRANCH | interval.rs:1043 (C interval.c:489) | 01, 02b |
 | I-PLIST | Interval+PointList merge branch not ported | ABSENT | interval.rs:876 (C interval.c:1458) | 02b |
-| C-SIMP | `CmpRegion::simplified` is a stub (no decision tables) | STUB | cmpregion.rs:736 (C cmpregion.c:3517) | 07 |
+| C-SIMP | `CmpRegion::simplified` is a stub (no decision tables) | STUB | cmpregion.rs:732 (C cmpregion.c:3517) | 07 |
 | C-GETREG | `GetRegions` De Morgan rewrite absent | ABSENT | — (C cmpregion.c:981) | 07 |
 | C-BOUND | CmpRegion `GetBounded` omits negation + unbounded-AND | MISSING-BRANCH | cmpregion.rs:384 (C cmpregion.c:703) | 07 |
-| PR-MAP | `Prism::map_region` discards the mapping | STUB | prism.rs:514 | parity |
-| RB-PICK | base `reg_base_pick_axes` default always None | MISSING-BRANCH | mod.rs:255 (C region.c:8345) | parity |
+| PR-MAP | `Prism::map_region` discards the mapping | STUB | prism.rs:624 | parity |
+| RB-PICK | base `reg_base_pick_axes` default always None | MISSING-BRANCH | mod.rs:301 (C region.c:8345) | parity |
 | GBND-SKY | `GetBounded` lacks SkyFrame-always-bounded rule | MISSING-BRANCH | box_region.rs:579 (C region.c:3406) | 07-adj |
 | DEFUNC | No default-uncertainty Region (`GetDefUnc`) | ABSENT | (C region.c:3488) | parity |
 | SETUNC | `set_uncertainty` bare field store | STUB | box_region.rs:656 (C region.c:10754) | parity |
 | RCENT | `reg_centre` get-only (no re-centre) | MISSING-BRANCH | data.rs:215 (C region.c:8397) | R-PINS dep |
 | SIMP-STAB | parent-Simplify uncertainty 0.1% stability check | ABSENT | (C region.c:11196) | parity |
 | MERGE-FF | merge helpers omit FillFactor/MeshSize scaling | MISSING-BRANCH | merge_util.rs:43 (C box.c:2049) | parity |
-| CE-FIT | Circle/Ellipse Simplify no re-fit/validate/degrade | STUB | circle.rs:607, ellipse.rs:565 | parity |
+| CE-FIT | Circle/Ellipse Simplify no re-fit/validate/degrade | STUB | circle.rs:603, ellipse.rs:565 | parity |
 
 Note "02b" = the residual Interval reclassification path some analyses attribute
 to cap_interval_01/cap_pointlist_02.
@@ -164,26 +164,26 @@ Re-verified against HEAD (2026-08-01, after the shared-`map_region` refactor).
 The pre-refactor line numbers in §2 are stale; verdicts below supersede them.
 
 **CLOSED by the refactor (no work needed):**
-- **R-UNC** — `map_region` is now a shared trait default (mod.rs:394) that
+- **R-UNC** — `map_region` is now a shared trait default (mod.rs:440) that
   deep-copies uncertainty via `clone_region()` (data.rs:87); the axis-reducing
   path slices uncertainty per-class in `reg_base_pick_axes` (box_region.rs:984,
-  interval.rs:934, pointlist.rs:527, nullregion.rs:263), faithfully mirroring C
+  interval.rs:934, pointlist.rs:523, nullregion.rs:270), faithfully mirroring C
   `RegBasePick` (box.c:2731 etc.). Matches C `astMapRegion` (region.c:5704).
 - **PR-MAP** — C `Prism` has no `MapRegion` vtab override; the Rust shared
   default is the faithful behaviour.
 
 **OPEN — genuine gaps, each independently landable, re-run byte-exact corpus:**
-- **RB-PICK** (small) — base `reg_base_pick_axes` (mod.rs:568) always returns
+- **RB-PICK** (small) — base `reg_base_pick_axes` (mod.rs:614) always returns
   `None`; C base (region.c:8342-8388) returns a *copy* when ALL base axes are
   selected (permuted if needed), NULL only for a strict subset. Also missing
-  `CmpRegion` (cmpregion.c:2096) and `Prism` (prism.c:2287) overrides; the
-  mod.rs:565-567 doc comment wrongly lists them as using the default.
-- **DEFUNC** (medium, PARTIAL) — base `get_def_unc` (mod.rs:257) arithmetic is
+  `CmpRegion` (cmpregion.c:2096) and `Prism` (prism.c:2293) overrides; the
+  mod.rs:611-613 doc comment wrongly lists them as using the default.
+- **DEFUNC** (medium, PARTIAL) — base `get_def_unc` (mod.rs:303) arithmetic is
   correct, but 4 per-class overrides are missing: Interval (interval.c:583, uses
   own limits not bounds), NullRegion (nullregion.c:170, zero-radius Circle not
-  Box), Prism (prism.c:1207, Prism of component default uncs), CmpRegion
+  Box), Prism (prism.c:1212, Prism of component default uncs), CmpRegion
   (cmpregion.c:1090, delegates to a component with explicit unc).
-- **SETUNC** (medium) — bare field store in 9 classes (mod.rs:240 + per-class);
+- **SETUNC** (medium) — bare field store in 9 classes (mod.rs:286 + per-class);
   C `SetUnc` (region.c:10754-10911) remaps the unc into the base Frame,
   validates centro-symmetry via `astRegCentre`, negates if unbounded, clears
   `RegionFS` on UnitMap, re-centres at the first defining point, resets cache.
@@ -194,8 +194,8 @@ The pre-refactor line numbers in §2 are stale; verdicts below supersede them.
   base→current map simplify inline and none touch uncertainty). Factoring out a
   shared parent-simplify benefits CE-FIT too.
 - **MERGE-FF** (medium) — merge helpers omit FillFactor (product) and MeshSize
-  (product-of-ratios × default) scaling (merge_util.rs:43, pointlist.rs:592,
-  nullregion.rs:308) per C `MergeBox` (box.c:2049-2085). Blocked on adding
+  (product-of-ratios × default) scaling (merge_util.rs:43, pointlist.rs:588,
+  nullregion.rs:315) per C `MergeBox` (box.c:2049-2085). Blocked on adding
   `mesh_size_set` / `fill_factor_set` tracking flags to `RegionData` (only
   `closed_set` exists today).
 - **CE-FIT** (large) — Circle/Ellipse `simplified()` (circle.rs, ellipse.rs) are

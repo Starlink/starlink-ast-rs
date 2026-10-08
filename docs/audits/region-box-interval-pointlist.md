@@ -45,7 +45,7 @@ Every claim cites C `file:line` and Rust `file:line`.
 | `RegBaseMesh` (interval.c:2257) | `reg_base_mesh` (interval.rs:482) | **MISSING-BRANCH** | C delegates to the equivalent Box's mesh and **errors (`AST__INTER`) if unbounded** (interval.c:2317). Rust returns an empty Vec for unbounded (interval.rs:490-493) and generates 2^naxes corners for the bounded case rather than the Box's edge-distributed mesh — so even the bounded mesh differs from C's Box-derived mesh. |
 | `RegCentre` (interval.c:2451) | `reg_centre` getter (interval.rs:514) | **MISSING-BRANCH** | Read path only (bounded intervals). The set/re-centre path is ABSENT. |
 | `MergeInterval` (interval.c:1224) | `region_merge` (interval.rs:810) | **MISSING-BRANCH** | Interval+Interval/Box/NullRegion branches ported. The **Interval+PointList** branch (interval.c:1458) is deliberately not ported (interval.rs:876-891) — argued unreachable and defective upstream; acceptable but note it is a real C branch. Same FillFactor/MeshSize post-merge scaling gap as MergeBox (merge_util.rs:43-81). |
-| `Equal` (inherited region.c:2631) | `Mapping::equal` (interval.rs:1084) | **PORTED (approx)** | Same base-frame/UnitMap omission as Box. |
+| `Equal` (inherited region.c:2631) | `Mapping::equal` (interval.rs:1133) | **PORTED (approx)** | Same base-frame/UnitMap omission as Box. |
 | `MapRegion` (inherited region.c:5375) | `map_region` (interval.rs:757) | **MISSING-BRANCH** | Drops uncertainty (interval.rs:766-776); see §3. |
 
 ---
@@ -54,16 +54,16 @@ Every claim cites C `file:line` and Rust `file:line`.
 
 | C method (file:line) | Rust (file:line) | Status | Gap description |
 |---|---|---|---|
-| `Simplify` (pointlist.c:2161) | `Mapping::simplified` (pointlist.rs:708) | **PORTED** | UnitMap short-circuit + transform-points-into-current-Frame + rebuild in current Frame with UnitMap. Faithful to pointlist.c:2240-2260. |
-| `RegBasePick` (pointlist.c:1738) | `reg_base_pick_axes` (pointlist.rs:512) | **PORTED** | Slices each point to selected axes, uncertainty propagate/drop. Faithful. |
+| `Simplify` (pointlist.c:2161) | `Mapping::simplified` (pointlist.rs:704) | **PORTED** | UnitMap short-circuit + transform-points-into-current-Frame + rebuild in current Frame with UnitMap. Faithful to pointlist.c:2240-2260. |
+| `RegBasePick` (pointlist.c:1738) | `reg_base_pick_axes` (pointlist.rs:508) | **PORTED** | Slices each point to selected axes, uncertainty propagate/drop. Faithful. |
 | `RegPins` (pointlist.c:1868) | `reg_pins` (pointlist.rs:161) | **HEURISTIC** | C does a bidirectional membership test using the actual **uncertainty Region** (transform points through the PointList/uncertainty, check no BAD both ways — pointlist.c:1970-2047). Rust invents a relative tolerance from the bounding-box diagonal (`DEFAULT_TOLERANCE = 1e-10 × extent`, pointlist.rs:150,290-327) and does a `Frame::distance` threshold. When an explicit uncertainty is set, C uses it; Rust ignores it in `reg_pins`. This is a fabricated tolerance, not a port. |
 | `Transform` (pointlist.c:2359) | `region_transform` (data.rs, shared) | **HEURISTIC (consequence)** | C membership uses the negated uncertainty Region re-centred at each point (pointlist.c:2494-2570). The Rust `reg_pins` tolerance path feeds `point_in_region`; the uncertainty-based masking algorithm is not reproduced. |
 | `RegBaseMesh` (pointlist.c:1667) | `reg_base_mesh` (pointlist.rs:227) | **PORTED** | Mesh = copy of the defining points. Faithful. |
 | `RegBaseBox` (pointlist.c:1532) | `reg_base_box` (pointlist.rs:203) | **PORTED (approx)** | Min/max over points. C also expands by the uncertainty bounds; Rust returns the raw point extent only. Minor. |
 | `RegCentre` | `reg_centre` (pointlist.rs:233) | **HEURISTIC** | Rust returns the centroid (mean of points). PointList in C does not define a meaningful settable centre the same way; the getter as centroid is a reasonable but non-canonical choice. |
-| `MergePointList` (pointlist.c:1205) | `region_merge` (pointlist.rs:547) | **PORTED (approx)** | PointList+PointList (single point each, equal Negated) ported faithfully. Same FillFactor/MeshSize post-merge scaling gap (pointlist.c:1427 region + merge_util.rs:43-81). |
-| `Equal` (inherited) | `Mapping::equal` (pointlist.rs:761) | **PORTED (approx)** | Compares points/negated/closed/current-frame; same base-frame/UnitMap omission. |
-| `MapRegion` (inherited) | `map_region` (pointlist.rs:489) | **MISSING-BRANCH** | Drops uncertainty (pointlist.rs:500-509); see §3. |
+| `MergePointList` (pointlist.c:1205) | `region_merge` (pointlist.rs:543) | **PORTED (approx)** | PointList+PointList (single point each, equal Negated) ported faithfully. Same FillFactor/MeshSize post-merge scaling gap (pointlist.c:1427 region + merge_util.rs:43-81). |
+| `Equal` (inherited) | `Mapping::equal` (pointlist.rs:757) | **PORTED (approx)** | Compares points/negated/closed/current-frame; same base-frame/UnitMap omission. |
+| `MapRegion` (inherited) | `map_region` (pointlist.rs:485) | **MISSING-BRANCH** | Drops uncertainty (pointlist.rs:496-505); see §3. |
 
 ---
 
@@ -111,7 +111,7 @@ which **retains the uncertainty Region**, then re-frames it. All three Rust
 
 - Box: box_region.rs:674-684
 - Interval: interval.rs:766-776
-- PointList: pointlist.rs:500-509
+- PointList: pointlist.rs:496-505
 
 This matches the known cross-cutting gap "map_region drops uncertainty" in
 project memory. Impact: any pipeline that maps an uncertain Region into a new
@@ -144,5 +144,5 @@ All three C merge helpers scale the result's FillFactor by the product of the
 inputs' fill factors and scale MeshSize by the product of used/default ratios
 (box.c:2049-2085; interval.c ~1601 region; pointlist.c ~1427). The shared Rust
 `finish_region_merge` (merge_util.rs:43-81) and PointList's inline merge
-(pointlist.rs:594-601) copy only Closed/Adaptive/Negated/uncertainty. FillFactor
+(pointlist.rs:590-597) copy only Closed/Adaptive/Negated/uncertainty. FillFactor
 product and MeshSize scaling are not applied.

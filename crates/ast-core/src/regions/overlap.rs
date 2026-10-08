@@ -1,10 +1,12 @@
-//! Geometric overlap algorithm for determining how two Regions relate.
+//! The generic overlap algorithm of region.c, and NullRegion's.
 //!
-//! This module provides the shared [`compute_overlap`] function that is a
-//! faithful port of the C library's `region.c` `OverlapX` function
-//! (region.c:6996), together with the `NullRegion`-specific table
-//! (`nullregion.c:874`) and the `GetSubMesh` helper (region.c:3688).
-//! Each concrete Region's `overlap()` method delegates here.
+//! C's `astOverlap(this, that)` is two per-class methods: `Overlap`,
+//! dispatched on the class of `this`, whose default (region.c:6923) calls
+//! `OverlapX(that, this)`, dispatched on the class of `that`. The defaults
+//! of [`Region::overlap`] and [`Region::overlap_x`] are that dispatch, and
+//! this module holds the generic `OverlapX` (region.c:7007) and `BndBaseMesh`
+//! (region.c:1689) they fall back on, the `NullRegion` `OverlapX`
+//! (nullregion.c:874), and the `GetSubMesh` helper (region.c:3688).
 
 use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
@@ -16,62 +18,44 @@ use super::nullregion::NullRegion;
 use super::{Overlap, Region};
 
 /// Map a C `astOverlap` return code (0-6) to the Rust [`Overlap`] enum.
-///
-/// C code 0 ("the check could not be performed because the second Region
-/// could not be mapped into the coordinate system of the first Region")
-/// has no distinct variant; it collapses to [`Overlap::None`], matching the
-/// enum's inability to represent the un-mappable case.
 pub(crate) fn code_to_overlap(code: i32) -> Overlap {
     match code {
+        1 => Overlap::None,
         2 => Overlap::FirstInside,
         3 => Overlap::SecondInside,
         4 => Overlap::Partial,
         5 => Overlap::Same,
         6 => Overlap::Negation,
-        // 0 (cannot perform) and 1 (no overlap) both map to None.
-        _ => Overlap::None,
+        _ => Overlap::Incomparable,
     }
 }
 
-/// Compute the overlap relationship between two Regions.
-///
-/// `region_a` plays the role of `this` in the public `astOverlap(this, that)`
-/// and `region_b` the role of `that`. C's public method swaps the arguments
-/// and invokes `OverlapX(that, this)`, dispatching the method on the class of
-/// `that` (region.c:6992). We reproduce that dispatch here: when `region_b`
-/// (the `that` argument) is a [`NullRegion`], the `NullRegion` override
-/// (`nullregion.c:874`) is used; otherwise the generic geometric `OverlapX`
-/// (region.c:6996) runs.
-pub(crate) fn compute_overlap(region_a: &dyn Region, region_b: &dyn Region) -> AstResult<Overlap> {
-    // NullRegion overrides both `Overlap` and `OverlapX` (nullregion.c:317-318),
-    // so its special-casing fires when *either* operand is a NullRegion: with
-    // `this` a NullRegion, `NullRegion::Overlap` calls its own `OverlapX`; with
-    // `that` a NullRegion, the base `Region::Overlap` dispatches `astOverlapX`
-    // onto it. `null_overlap` inspects both operands and returns the
-    // `astOverlap(this, that)` convention, so the fixed `(region_b, region_a)`
-    // argument order yields `astOverlap(region_a, region_b)` in either case.
-    if region_a.as_any().is::<NullRegion>() || region_b.as_any().is::<NullRegion>() {
-        return Ok(code_to_overlap(null_overlap(region_b, region_a)?));
+/// The C `astOverlap` code of an [`Overlap`].
+pub(crate) fn overlap_to_code(overlap: Overlap) -> i32 {
+    match overlap {
+        Overlap::Incomparable => 0,
+        Overlap::None => 1,
+        Overlap::FirstInside => 2,
+        Overlap::SecondInside => 3,
+        Overlap::Partial => 4,
+        Overlap::Same => 5,
+        Overlap::Negation => 6,
     }
-    // Otherwise the generic geometric OverlapX (region.c:6996) runs, dispatched
-    // on the class of `that` (== region_b).
-    Ok(code_to_overlap(overlap_x(region_b, region_a)?))
 }
 
-/// Faithful port of `NullRegion::OverlapX` (nullregion.c:874).
+/// `NullRegion::OverlapX` (nullregion.c:874), which NullRegion's `Overlap`
+/// also calls with its arguments swapped.
 ///
-/// Parameters follow the C signature `OverlapX(that, this)`: `that` is the
-/// Region the method was dispatched on (always a [`NullRegion`] here), `this`
-/// is the other Region. The returned code is expressed in the public
-/// `astOverlap(this, that)` convention (2 = `this` inside `that`, etc).
-fn null_overlap(that: &dyn Region, this: &dyn Region) -> AstResult<i32> {
+/// Parameters follow the C signature `OverlapX(that, this)`, and the result
+/// is `astOverlap(this, that)`.
+pub(crate) fn null_region_overlap_x(that: &dyn Region, this: &dyn Region) -> AstResult<Overlap> {
     // Check that the Regions can be compared meaningfully (astConvert).
     if this
         .get_region_frame()
         .convert_to(that.get_region_frame().as_ref(), &[])?
         .is_none()
     {
-        return Ok(0);
+        return Ok(Overlap::Incomparable);
     }
 
     let this_null = this.as_any().is::<NullRegion>();
@@ -96,13 +80,19 @@ fn null_overlap(that: &dyn Region, this: &dyn Region) -> AstResult<i32> {
         4
     };
 
-    Ok(result)
+    Ok(code_to_overlap(result))
 }
 
-/// Faithful port of the generic `Region::OverlapX` (region.c:6996).
+/// The generic `OverlapX` (region.c:7007), the default of
+/// [`Region::overlap_x`].
 ///
-/// Parameters follow the C signature `OverlapX(that, this)`. The returned
-/// code is in the public `astOverlap(this, that)` convention.
+/// Parameters follow the C signature `OverlapX(that, this)`, and the result
+/// is `astOverlap(this, that)`.
+pub(crate) fn region_overlap_x(that: &dyn Region, this: &dyn Region) -> AstResult<Overlap> {
+    overlap_x(that, this).map(code_to_overlap)
+}
+
+/// The generic `OverlapX` as C writes it, returning C's code.
 // `result` is declared without an initialiser and assigned from four nested
 // branches that mirror C's control flow (`region.c:7204-7409`). That is
 // deliberate: it makes "every path assigns a result" a compile-time
@@ -158,15 +148,18 @@ fn overlap_x(that: &dyn Region, this: &dyn Region) -> AstResult<i32> {
     // L1 (region.c:7100): try to mesh reg2 and transform it into reg1's base
     // Frame; on failure (no mesh, or no good transformed points) swap the
     // regions once and retry.
+    let neither = || {
+        AstError::new(
+            ErrorCode::Inter,
+            "astOverlap(Region): Neither of the two supplied Regions has a finite boundary. \
+             The current implementation of astOverlap cannot determine the overlap \
+             between two Regions unless at least one of them has a finite boundary.",
+        )
+    };
     let (ps1, reg2_mesh, map, map_reg1) = loop {
-        // astRegMesh(reg2): reg2's boundary mesh in its *current* Frame. The
-        // Rust get_region_mesh returns *base* Frame points, so map them
-        // base->current to match C.
-        let base_mesh = reg2.get_region_mesh()?;
-        let cur_mesh = reg2.get_region_frameset().transform(&base_mesh, true)?;
-
-        let usable = mesh_has_good(&cur_mesh);
-        if !usable {
+        // astRegMesh(reg2): reg2's boundary mesh in its current Frame. C
+        // suppresses any error, which means no mesh (region.c:7105-7108).
+        let Ok(cur_mesh) = reg2.reg_mesh() else {
             if first {
                 std::mem::swap(&mut reg1, &mut reg2);
                 reg2_is_that = !reg2_is_that;
@@ -174,14 +167,8 @@ fn overlap_x(that: &dyn Region, this: &dyn Region) -> AstResult<i32> {
                 first = false;
                 continue;
             }
-            // Neither Region generated a usable mesh: cannot determine
-            // overlap (region.c:7179).
-            return Err(AstError::new(
-                ErrorCode::Inter,
-                "astOverlap(Region): neither of the two supplied Regions has a finite boundary"
-                    .to_string(),
-            ));
-        }
+            return Err(neither());
+        };
 
         // map_reg1: reg1 current -> base (region.c:7125).
         let m_reg1 = reg1
@@ -215,12 +202,18 @@ fn overlap_x(that: &dyn Region, this: &dyn Region) -> AstResult<i32> {
             }
         }
 
-        if !good && first {
-            std::mem::swap(&mut reg1, &mut reg2);
-            reg2_is_that = !reg2_is_that;
-            cmap.invert();
-            first = false;
-            continue;
+        // A mesh with no good points is discarded: swap and retry on the
+        // first attempt, and on the second there is no mesh at all
+        // (region.c:7158-7186).
+        if !good {
+            if first {
+                std::mem::swap(&mut reg1, &mut reg2);
+                reg2_is_that = !reg2_is_that;
+                cmap.invert();
+                first = false;
+                continue;
+            }
+            return Err(neither());
         }
 
         break (transformed, cur_mesh, m, m_reg1);
@@ -315,28 +308,24 @@ fn overlap_x(that: &dyn Region, this: &dyn Region) -> AstResult<i32> {
         } else {
             // Use a mesh on reg1's boundary to differentiate the remaining
             // cases (region.c:7315-7409).
-            let ps3 = reg1.get_region_mesh()?; // base Frame mesh
-            let ps3 = if mesh_has_good(&ps3) {
-                Some(ps3)
-            } else {
-                // reg1 unbounded: use the part of its boundary overlapping a
-                // box twice the size of reg2's bounding box (region.c:7329).
-                let mut lb2 = lbnd.clone();
-                let mut ub2 = ubnd.clone();
-                for i in 0..nc {
-                    lb2[i] *= 2.0;
-                    ub2[i] *= 2.0;
+            // reg1's boundary mesh in its base Frame. C suppresses any error,
+            // which means no mesh; an unbounded reg1 then gives the part of
+            // its boundary inside a box twice the size of reg2's bounding box,
+            // again with errors suppressed (region.c:7319-7350).
+            let ps3 = match reg1.get_region_mesh() {
+                Ok(mesh) => mesh,
+                Err(_) => {
+                    let lb2: Vec<f64> = lbnd[..nc].iter().map(|v| v * 2.0).collect();
+                    let ub2: Vec<f64> = ubnd[..nc].iter().map(|v| v * 2.0).collect();
+                    reg1.bnd_base_mesh(&lb2, &ub2).map_err(|_| {
+                        AstError::new(
+                            ErrorCode::Inter,
+                            "astOverlap: The current implementation of astOverlap cannot \
+                             determine the overlap between the supplied Regions.",
+                        )
+                    })?
                 }
-                bnd_base_mesh(reg1, &lb2[..nc], &ub2[..nc])?
             };
-
-            let ps3 = ps3.ok_or_else(|| {
-                AstError::new(
-                    ErrorCode::Inter,
-                    "astOverlap: cannot determine the overlap between the supplied Regions"
-                        .to_string(),
-                )
-            })?;
 
             // Transform reg1's boundary mesh into reg2's current Frame
             // (map inverse), then mask with reg2 (region.c:7352-7355).
@@ -388,33 +377,32 @@ fn overlap_x(that: &dyn Region, this: &dyn Region) -> AstResult<i32> {
     Ok(result)
 }
 
-/// Faithful port of `astBndBaseMesh` (region.c:1683): a mesh on the part of
-/// `reg1`'s boundary that overlaps the current-Frame box `[lbnd, ubnd]`,
-/// returned in `reg1`'s base Frame. Returns `None` when the box does not
-/// partially overlap the Region.
-fn bnd_base_mesh(reg1: &dyn Region, lbnd: &[f64], ubnd: &[f64]) -> AstResult<Option<PointSet>> {
+/// The generic `BndBaseMesh` (region.c:1689), the default of
+/// [`Region::bnd_base_mesh`]: the boundary mesh of the intersection of
+/// `reg` with the current-Frame box `[lbnd, ubnd]`, in `reg`'s base Frame,
+/// or one bad point when the two do not partially overlap.
+pub(crate) fn region_bnd_base_mesh(
+    reg: &dyn Region,
+    lbnd: &[f64],
+    ubnd: &[f64],
+) -> AstResult<PointSet> {
     use super::box_region::BoxRegion;
     use super::{CmpOperator, CmpRegionBuilder};
 
-    // Form a Box describing the required box in reg1's current Frame.
-    let boxreg = BoxRegion::from_bounds_frame(reg1.get_region_frame(), lbnd, ubnd)?;
+    // A Box describing the required box in reg's current Frame.
+    let boxreg = BoxRegion::from_bounds_frame(reg.get_region_frame(), lbnd, ubnd)?;
 
-    // Only proceed if there is partial (or greater) overlap: astOverlap > 3.
-    let ov = reg1.overlap(&boxreg)?;
-    let code = match ov {
-        Overlap::Partial => 4,
-        Overlap::Same => 5,
-        Overlap::Negation => 6,
-        _ => 0,
-    };
-    if code > 3 {
-        // Intersection of reg1 and the box; its boundary mesh.
+    // Partial overlap or more: astOverlap > 3.
+    if overlap_to_code(reg.overlap(&boxreg)?) > 3 {
         let cmpreg =
-            CmpRegionBuilder::from_dyn(reg1.clone_region(), Box::new(boxreg), CmpOperator::And)?
+            CmpRegionBuilder::from_dyn(reg.clone_region(), Box::new(boxreg), CmpOperator::And)?
                 .build()?;
-        Ok(Some(cmpreg.get_region_mesh()?))
+        cmpreg.get_region_mesh()
     } else {
-        Ok(None)
+        let nc = reg.get_region_frameset().base().naxes();
+        Ok(PointSet::from_rows(std::iter::once(
+            vec![crate::constants::BAD_VALUE; nc].as_slice(),
+        )))
     }
 }
 
@@ -433,14 +421,4 @@ fn get_sub_mesh(mask: &[bool], input: &PointSet) -> PointSet {
     } else {
         PointSet::from_rows(rows.iter().map(|r| r.as_slice()))
     }
-}
-
-/// Whether a PointSet contains at least one point with all-good coordinates.
-fn mesh_has_good(pts: &PointSet) -> bool {
-    for ip in 0..pts.npoint() {
-        if !pts.point(ip).iter().any(|&v| is_bad(v)) {
-            return true;
-        }
-    }
-    false
 }

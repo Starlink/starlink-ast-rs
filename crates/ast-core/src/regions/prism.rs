@@ -145,6 +145,106 @@ impl Prism {
     fn naxes2(&self) -> usize {
         self.region2.naxes()
     }
+
+    /// prism.c `Overlap`: where the Mapping from this Prism's base Frame to
+    /// `that`'s current Frame splits into the extrusion axes and the base
+    /// axes, and `that` yields a Region on each, the two components are
+    /// compared separately and the codes combined; otherwise the inherited
+    /// `OverlapX` decides.
+    fn prism_overlap(&self, that: &dyn Region) -> AstResult<Overlap> {
+        // How the overlap of the base Regions (first index) and of the
+        // extrusion Regions (second index) combine, for un-negated Prisms
+        // (prism.c:1687).
+        const RTABLE: [[i32; 7]; 7] = [
+            [0, 0, 0, 0, 0, 0, 0],
+            [0, 1, 1, 1, 1, 1, 1],
+            [0, 1, 2, 4, 4, 2, 1],
+            [0, 1, 4, 3, 4, 3, 1],
+            [0, 1, 4, 4, 4, 4, 1],
+            [0, 1, 2, 3, 4, 5, 1],
+            [0, 1, 1, 1, 1, 1, 6],
+        ];
+        let this_reg1 = self.region1.as_ref();
+        let this_reg2 = self.region2.as_ref();
+        let this_neg = self.data.negated;
+        let nbase = this_reg1.naxes();
+        let next = this_reg2.naxes();
+
+        let mut result = 0;
+        if let Some(fs) = self
+            .get_region_frame()
+            .convert_to(that.get_region_frame().as_ref(), &[])?
+        {
+            // This Prism's base Frame to that's current Frame, simplified.
+            let map1 = self
+                .data
+                .frameset
+                .mapping(FrameRef::Base, FrameRef::Current)?;
+            let map2 = fs.mapping(FrameRef::Base, FrameRef::Current)?;
+            let map =
+                crate::mappings::CmpMap::new(map1, map2, crate::mappings::Composition::Series)?;
+            let smap = <dyn Mapping>::simplify(&map)?;
+
+            // The axes of that corresponding to the extrusion axes, then to
+            // the base axes, each picked from that as a Region.
+            let inax: Vec<usize> = (nbase..nbase + next).collect();
+            if let Some((outax, emap)) = smap.map_split_zero_based(&inax)?
+                && emap.nout() == next
+                && let super::PickedAxes::Region(that_ext) = super::pick_axes_region(that, &outax)?
+            {
+                let inax: Vec<usize> = (0..nbase).collect();
+                if let Some((outax, bmap)) = smap.map_split_zero_based(&inax)?
+                    && bmap.nout() == nbase
+                    && let super::PickedAxes::Region(that_base) =
+                        super::pick_axes_region(that, &outax)?
+                {
+                    // Map the two Regions picked from that into the Frames of
+                    // this Prism's components, and compare each pair.
+                    let mut emap = emap;
+                    emap.invert();
+                    let efrm = this_reg2.get_region_frame();
+                    let that_ext2 = that_ext.map_region(emap.as_ref(), efrm.as_ref())?;
+                    let mut bmap = bmap;
+                    bmap.invert();
+                    let bfrm = this_reg1.get_region_frame();
+                    let that_base2 = that_base.map_region(bmap.as_ref(), bfrm.as_ref())?;
+
+                    let rbase =
+                        super::overlap::overlap_to_code(this_reg1.overlap(that_base2.as_ref())?);
+                    let rext =
+                        super::overlap::overlap_to_code(this_reg2.overlap(that_ext2.as_ref())?);
+                    result = RTABLE[rbase as usize][rext as usize];
+
+                    // Allow for negation of either Prism (prism.c:1777-1820).
+                    let that_neg = that.is_negated();
+                    result = match (this_neg, that_neg, result) {
+                        (true, true, 1) => 4,
+                        (true, true, 2) => 3,
+                        (true, true, 3) => 2,
+                        (true, false, 1) => 3,
+                        (true, false, 2) => 4,
+                        (true, false, 3) => 1,
+                        (true, false, 5) => 6,
+                        (true, false, 6) => 5,
+                        (false, true, 1) => 2,
+                        (false, true, 2) => 1,
+                        (false, true, 3) => 4,
+                        (false, true, 5) => 6,
+                        (false, true, 6) => 5,
+                        (_, _, r) => r,
+                    };
+                }
+            }
+        }
+
+        // Otherwise the inherited OverlapX, which takes the Regions as
+        // (that, this). C passed them as (this, that), which described that
+        // against this Prism; fixed upstream (0516a13d).
+        if result == 0 {
+            return super::overlap::region_overlap_x(that, self);
+        }
+        Ok(super::overlap::code_to_overlap(result))
+    }
 }
 
 // ============================================================================
@@ -336,8 +436,18 @@ impl Region for Prism {
         }
     }
 
-    fn overlap(&self, other: &dyn Region) -> AstResult<Overlap> {
-        super::overlap::compute_overlap(self, other)
+    fn overlap(&self, that: &dyn Region) -> AstResult<Overlap> {
+        self.prism_overlap(that)
+    }
+
+    /// prism.c `OverlapX`: the Prism's own `Overlap`, with the result
+    /// turned round to describe `this` against the Prism.
+    fn overlap_x(&self, this: &dyn Region) -> AstResult<Overlap> {
+        Ok(match self.prism_overlap(this)? {
+            Overlap::FirstInside => Overlap::SecondInside,
+            Overlap::SecondInside => Overlap::FirstInside,
+            other => other,
+        })
     }
 
     fn reg_pins_mask(

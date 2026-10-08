@@ -1098,6 +1098,16 @@ Only a hand-written description can do this, since Dump never writes an index be
 Fixed on `u/timj/norm-unit` in 0d05fc29, which checks Current as Base is checked, with a `testframeset` case (Errors 41-43).
 The port treats a `Currnt` below 1 as unset, as the fixed C does (`frameset.rs` `from_node`), and `tests/test_frameset_current.rs` covers Current's set state against C.
 
+### RESOLVED (upstream 0516a13d): Prism `Overlap` passes the Regions to the inherited `OverlapX` in the wrong order
+
+C location: `prism.c` `Overlap`.
+
+When the Prism's base and extrusion components cannot be compared with the other Region separately, `Overlap` falls back to the inherited `OverlapX`, which takes the two Regions as `(that, this)`.
+It was called as `(this, that)`, so the result described the other Region against the Prism: a Prism inside a Box mapped by a rotation, whose axes cannot be picked out separately, gave 3 where a Prism inside the unrotated Box gave 2.
+
+Fixed on `u/timj/norm-unit` in 0516a13d: the Regions are passed as `(that, this)`; `testregions` `checkPrismOverlapFallback`.
+The port's `Prism::overlap` is `Overlap` as fixed; `tests/test_region_overlap_oracle.rs` (`prism_in_rotated_box`), whose probe needs the fixed library.
+
 ### RESOLVED (upstream 436f069f): `astPolyCoeffs` reads beyond the coefficient arrays of an inverted PolyMap with different numbers of inputs and outputs
 
 C location: `polymap.c` `PolyCoeffs`.

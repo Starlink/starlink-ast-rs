@@ -71,9 +71,9 @@ landed; the mod.rs doc comment was corrected. Two distinct sub-gaps shared one
 root.
 
 ### Rust target
-- `regions/mod.rs:568` — base default returns `Ok(None)` unconditionally.
+- `regions/mod.rs:614` — base default returns `Ok(None)` unconditionally.
 - `regions/cmpregion.rs`, `regions/prism.rs` — no `reg_base_pick_axes` override.
-- `regions/mod.rs:565-567` doc comment wrongly lists CmpRegion/Prism as using
+- `regions/mod.rs:611-613` doc comment wrongly lists CmpRegion/Prism as using
   the default.
 
 ### C reference
@@ -84,12 +84,12 @@ root.
   Returns NULL only for a strict subset.
 - CmpRegion `RegBasePick` — `cmpregion.c:2096`: pick the same base axes from each
   sub-region; if both yield Regions, build a `CmpRegion` with the same `oper`.
-- Prism `RegBasePick` — `prism.c:2287`: partition `axes` at `nax1` between the
+- Prism `RegBasePick` — `prism.c:2293`: partition `axes` at `nax1` between the
   two sub-regions, pick from each, return the single sub-region clone or an
   `astPrism` of both.
 
 ### Why it is a genuine divergence (not just uncovered)
-`pick_axes_region` (mod.rs:647) turns a `None` from `reg_base_pick_axes` into a
+`pick_axes_region` (mod.rs:693) turns a `None` from `reg_base_pick_axes` into a
 plain `Frame`, losing the Region type. C `PickAxes` (region.c:7713-7727) uses the
 copy from `astRegBasePick` to build a Region. So `astPickAxes` on a
 Circle/Ellipse/Polygon selecting all axes in permuted order yields a Region in C
@@ -97,16 +97,16 @@ but only a Frame in Rust — and subset-axis picks on a CmpRegion/Prism yield a
 Region in C but `None` in Rust.
 
 ### Faithful-port sketch
-1. Base mod.rs:568: port region.c:8342-8388 — if `axes.len() == base_naxes` and
+1. Base mod.rs:614: port region.c:8342-8388 — if `axes.len() == base_naxes` and
    `axes` is a permutation of `0..base_naxes`, return `Some(self.clone_region())`
    with FrameSet reset to the base Frame (`astSetRegFS` analogue) and
    `reg_perm_axes(axes)` when not the identity; else `Ok(None)`.
 2. CmpRegion override (port cmpregion.c:2096): `pick_axes_region` each component
    on the same base axes; if both are Regions build a `CmpRegion` with the same
    operator; else `None`.
-3. Prism override (port prism.c:2287): split `axes` at `nax1`; pick from each
+3. Prism override (port prism.c:2293): split `axes` at `nax1`; pick from each
    component; return the single clone or an `astPrism` of both.
-4. Fix the mod.rs:565-567 doc comment.
+4. Fix the mod.rs:611-613 doc comment.
 
 ### Required C fixtures
 Add to `gen_region_fixtures()` in `gen_simplify_fixtures.c` — these drive
@@ -136,7 +136,7 @@ answer, the unit test asserts the Rust API contract.
 CLOSED (`c608570`). The four class overrides (Interval, NullRegion, Prism,
 CmpRegion) were ported on top of the faithful base `get_def_unc` port, along with
 the RegBaseBox2 distinction. Previously PARTIAL: the base arithmetic
-(mod.rs:257-276) mirrored C base `GetDefUnc` (region.c:3488-3588) but every
+(mod.rs:303-322) mirrored C base `GetDefUnc` (region.c:3488-3588) but every
 concrete class incorrectly fell through to the base.
 
 ### C reference (all four bodies read in full)
@@ -148,7 +148,7 @@ concrete class incorrectly fell through to the base.
   region bounding box the base method reads.
 - **NullRegion** — `nullregion.c:170-235`: returns a **zero-radius Circle**
   centred at the origin (`astCircle(this, 1, cen={0..}, &rad=0, ...)`), not a Box.
-- **Prism** — `prism.c:1207-1275`: `astPrism(astGetUncFrm(region1, CURRENT),
+- **Prism** — `prism.c:1212-1280`: `astPrism(astGetUncFrm(region1, CURRENT),
   astGetUncFrm(region2, CURRENT))` — a Prism of the two component current-Frame
   uncertainties (the components' current Frames == the Prism's base Frame).
 - **CmpRegion** — `cmpregion.c:1090-1160`: if `astTestUnc(region1)` →
@@ -181,7 +181,7 @@ needed once the overrides land.
 
 ### Faithful-port sketch
 Add `fn get_def_unc` overrides to Interval, NullRegion, Prism, CmpRegion mirroring
-the four C bodies above. Prism/CmpRegion reuse `get_unc_frm(Current)` (mod.rs:285)
+the four C bodies above. Prism/CmpRegion reuse `get_unc_frm(Current)` (mod.rs:331)
 which already exists.
 
 ### Required C fixtures
@@ -243,12 +243,12 @@ In order:
 ### Missing Rust primitives (add first)
 - **`reg_centre` query form** — C `astRegCentre(unc, NULL, NULL, 0, CURRENT)`
   returns the centre (or NULL for a non-centro-symmetric class). Rust only has
-  `reg_centre_set` (mod.rs:365). Add `fn reg_centre(&self) -> Option<Vec<f64>>`
+  `reg_centre_set` (mod.rs:411). Add `fn reg_centre(&self) -> Option<Vec<f64>>`
   (returns `None` for classes that are not centro-symmetric — the same set that
   can't be an uncertainty: PointList, Polygon, CmpRegion, Prism, NullRegion
   return `None`; Box/Circle/Ellipse/Interval return their centre).
 - Everything else exists: `convert_to` (Conv analogue, frames/mod.rs:190),
-  `map_region` (mod.rs:394), `is_bounded`/`negate` (mod.rs:151/120),
+  `map_region` (mod.rs:440), `is_bounded`/`negate` (mod.rs:197/120),
   `set_region_fs`/`dummy_fs` (data.rs:134/70 — the RegionFS-omission flag),
   `invalidate_cache` (data.rs:154 — the `astResetCache` analogue).
 
@@ -292,7 +292,7 @@ exercise the `Unc` read/write path under a non-trivial Frame relationship.
 CLOSED (`24ce72e`). The shared parent-Region simplify helper was factored out and
 the 0.1%-tolerance uncertainty-stability check ported into it. Previously OPEN:
 the check was absent from every Rust `simplified()` and each class re-implemented
-the base→current-map simplify inline (e.g. box_region.rs:1223-1231) without
+the base→current-map simplify inline (e.g. box_region.rs:1219-1227) without
 touching the uncertainty Region.
 
 ### C reference — `region.c:11042-11328`, stability block read in full (11145-11312)
@@ -325,10 +325,10 @@ class-specific geometry work on the result. This also benefits CE-FIT (below),
 which C structures the same way.
 
 ### Primitives
-- `reg_centre` get + set (`reg_centre_set` exists mod.rs:365; the query form is
+- `reg_centre` get + set (`reg_centre_set` exists mod.rs:411; the query form is
   the same one SETUNC needs — build SETUNC first or land them together).
 - `get_region_bounds` / `reg_base_box` (present), `is_bounded` (present),
-  `test_unc` (add per DEFUNC), `get_unc_frm(Base)` (present, mod.rs:285).
+  `test_unc` (add per DEFUNC), `get_unc_frm(Base)` (present, mod.rs:331).
 - `set_uncertainty` (the real SETUNC port — SIMP-STAB calls `astSetUnc(new,
   sunc)`, so SETUNC must land first or concurrently).
 
@@ -477,7 +477,7 @@ UnitMap guard around it) and tries `astBestCircle` first, degrading
    `best_circle` + `reg_pins_mask` (Circle::reg_pins_mask exists circle.rs:358),
    adopt on all-on-boundary; else if `nc==2` try `best_ellipse` +
    `reg_pins_mask` (Ellipse ellipse.rs:323); finish with `reg_overlay`
-   (mod.rs:578). Circle keeps its `!UnitMap` guard; Ellipse always attempts and
+   (mod.rs:624). Circle keeps its `!UnitMap` guard; Ellipse always attempts and
    can degrade to Circle.
 
 ### Dependency note

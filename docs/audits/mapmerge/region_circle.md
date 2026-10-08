@@ -16,33 +16,33 @@ not leave a circle, so C fits a new Circle to a boundary mesh, falls back to
 fitting an Ellipse in two dimensions, and adopts a fit only when `astRegPins`
 places every mesh point on the fitted boundary.
 
-`Circle::simplified` (`circle.rs:1007-1085 (fn simplified)`) is the port of it.
+`Circle::simplified` (`circle.rs:1003-1081 (fn simplified)`) is the port of it.
 
 | # | C step | C site | Rust site | extension point | verdict |
 |---|---|---|---|---|---|
 | 1 | Initialise the result | circle.c:1829-1831 (fn Simplify) | -- | ceremony | n/a: the Rust returns `AstResult<(DynMapping, bool)>`, so there is no sentinel to initialise |
 | 2 | Check the global error status and bail out | circle.c:1832-1834 (fn Simplify) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 3 | Obtain a pointer to the supplied Region structure | circle.c:1835-1837 (fn Simplify) | -- | ceremony | n/a: the Rust method already has `&self` |
-| 4 | Invoke the parent Region Simplify, which simplifies the encapsulated FrameSet and the uncertainty | circle.c:1838-1841 (fn Simplify) | circle.rs:1007-1016 (fn simplified) | architecture | ported |
-| 5 | Note that simplification took place if the parent returned a different pointer | circle.c:1842-1846 (fn Simplify) | circle.rs:1017 (fn simplified) | architecture | ported |
-| 6 | Skip the whole re-definition when the base-to-current Mapping is a UnitMap | circle.c:1847-1854 (fn Simplify) | circle.rs:1026-1030 (fn simplified) | architecture | ported |
-| 7 | Get a mesh of points covering the Circle in its current Frame | circle.c:1855-1857 (fn Simplify) | circle.rs:1034-1035 (fn simplified) | architecture | ported |
-| 8 | Get the uncertainty Region in the current Frame | circle.c:1858-1861 (fn Simplify) | circle.rs:1038 (fn simplified) | architecture | ported |
-| 9 | Transform the centre into the current Frame and copy its axis values out | circle.c:1862-1869 (fn Simplify) | circle.rs:1042-1045 (fn simplified) | architecture | ported |
-| 10 | Clear `ok` if any transformed centre axis is `AST__BAD` | circle.c:1870-1875 (fn Simplify) | circle.rs:1046 (fn simplified) | architecture | ported |
-| 11 | Fit the best Circle through the mesh, or nothing if the centre is bad | circle.c:1876-1879 (fn Simplify) | circle.rs:1051-1052 (fn simplified) | architecture | ported |
-| 12 | See whether every mesh point falls on that Circle's boundary within the uncertainty | circle.c:1880-1883 (fn Simplify) | circle.rs:1053 (fn simplified) | architecture | ported |
-| 13 | If so, adopt the fitted Circle — without recording a simplification | circle.c:1884-1887 (fn Simplify) | circle.rs:1056-1057 (fn simplified) | architecture | ported |
-| 14 | Otherwise, in two dimensions, see whether an Ellipse can represent the mesh | circle.c:1888-1891 (fn Simplify) | circle.rs:1064 (fn simplified) | architecture | ported |
-| 15 | Discard the Circle and fit the best Ellipse through the mesh | circle.c:1892-1896 (fn Simplify) | circle.rs:1065 (fn simplified) | architecture | ported |
-| 16 | See whether every mesh point falls on that Ellipse's boundary | circle.c:1897-1900 (fn Simplify) | circle.rs:1066 (fn simplified) | architecture | ported |
-| 17 | If so, adopt the Ellipse and record a simplification | circle.c:1901-1907 (fn Simplify) | circle.rs:1067-1068 (fn simplified) | architecture | ported |
+| 4 | Invoke the parent Region Simplify, which simplifies the encapsulated FrameSet and the uncertainty | circle.c:1838-1841 (fn Simplify) | circle.rs:1003-1012 (fn simplified) | architecture | ported |
+| 5 | Note that simplification took place if the parent returned a different pointer | circle.c:1842-1846 (fn Simplify) | circle.rs:1013 (fn simplified) | architecture | ported |
+| 6 | Skip the whole re-definition when the base-to-current Mapping is a UnitMap | circle.c:1847-1854 (fn Simplify) | circle.rs:1022-1026 (fn simplified) | architecture | ported |
+| 7 | Get a mesh of points covering the Circle in its current Frame | circle.c:1855-1857 (fn Simplify) | circle.rs:1030-1031 (fn simplified) | architecture | ported |
+| 8 | Get the uncertainty Region in the current Frame | circle.c:1858-1861 (fn Simplify) | circle.rs:1034 (fn simplified) | architecture | ported |
+| 9 | Transform the centre into the current Frame and copy its axis values out | circle.c:1862-1869 (fn Simplify) | circle.rs:1038-1041 (fn simplified) | architecture | ported |
+| 10 | Clear `ok` if any transformed centre axis is `AST__BAD` | circle.c:1870-1875 (fn Simplify) | circle.rs:1042 (fn simplified) | architecture | ported |
+| 11 | Fit the best Circle through the mesh, or nothing if the centre is bad | circle.c:1876-1879 (fn Simplify) | circle.rs:1047-1048 (fn simplified) | architecture | ported |
+| 12 | See whether every mesh point falls on that Circle's boundary within the uncertainty | circle.c:1880-1883 (fn Simplify) | circle.rs:1049 (fn simplified) | architecture | ported |
+| 13 | If so, adopt the fitted Circle — without recording a simplification | circle.c:1884-1887 (fn Simplify) | circle.rs:1052-1053 (fn simplified) | architecture | ported |
+| 14 | Otherwise, in two dimensions, see whether an Ellipse can represent the mesh | circle.c:1888-1891 (fn Simplify) | circle.rs:1060 (fn simplified) | architecture | ported |
+| 15 | Discard the Circle and fit the best Ellipse through the mesh | circle.c:1892-1896 (fn Simplify) | circle.rs:1061 (fn simplified) | architecture | ported |
+| 16 | See whether every mesh point falls on that Ellipse's boundary | circle.c:1897-1900 (fn Simplify) | circle.rs:1062 (fn simplified) | architecture | ported |
+| 17 | If so, adopt the Ellipse and record a simplification | circle.c:1901-1907 (fn Simplify) | circle.rs:1063-1064 (fn simplified) | architecture | ported |
 | 18 | Free the fitted Region | circle.c:1908-1911 (fn Simplify) | -- | ceremony | n/a: owned values are dropped |
 | 19 | Free the transformed centre, the centre array, the mesh, the uncertainty and the Mapping | circle.c:1912-1918 (fn Simplify) | -- | ceremony | n/a: owned values are dropped |
-| 20 | On simplification, overlay the supplied Region's attributes onto the result and return it | circle.c:1919-1926 (fn Simplify) | circle.rs:1074-1076 (fn simplified) | architecture | ported |
-| 21 | Otherwise return a clone of the supplied Region | circle.c:1927-1931 (fn Simplify) | circle.rs:1078-1079 (fn simplified) | architecture | ported |
+| 20 | On simplification, overlay the supplied Region's attributes onto the result and return it | circle.c:1919-1926 (fn Simplify) | circle.rs:1070-1072 (fn simplified) | architecture | ported |
+| 21 | Otherwise return a clone of the supplied Region | circle.c:1927-1931 (fn Simplify) | circle.rs:1074-1075 (fn simplified) | architecture | ported |
 | 22 | Annul the returned pointer if an error occurred | circle.c:1932-1934 (fn Simplify) | -- | ceremony | n/a: an error is a `Result::Err`, not a value to be cleared alongside one |
-| 23 | Return the result | circle.c:1935-1937 (fn Simplify) | circle.rs:1076 (fn simplified),1058 (fn simplified) | architecture | ported |
+| 23 | Return the result | circle.c:1935-1937 (fn Simplify) | circle.rs:1072 (fn simplified),1058 (fn simplified) | architecture | ported |
 
 ## Row 13 — adopting a fitted Circle does not count as a simplification
 
@@ -54,7 +54,7 @@ simplified nothing, C returns the original Circle and the fit is discarded.
 
 Ellipse's own body sets the flag in both branches
 (`ellipse.c:1999 (fn Simplify)`, `ellipse.c:2017 (fn Simplify)`), so this is Circle-specific. The port
-mirrors it, with the omission spelled out at `circle.rs:1054-1055 (fn simplified)` so it reads
+mirrors it, with the omission spelled out at `circle.rs:1050-1051 (fn simplified)` so it reads
 as deliberate rather than dropped. Nothing in the corpus distinguishes the two
 behaviours, because reaching the branch at all requires a non-UnitMap
 base-to-current Mapping that still leaves a circle a circle — and such a Mapping
@@ -65,8 +65,8 @@ is normally simplified by the parent, which sets the flag anyway.
 C's structure is `if( circle fits ) { adopt } else if( ok && nc == 2 ) { fit an
 ellipse }`, so a successful Circle ends the attempt. The port has two separate
 `if` blocks rather than a chain, and carries `adopted`
-(`circle.rs:1050 (fn simplified)`,976) to reproduce the `else`. It also tests `ok` before
-calling `best_circle` (`circle.rs:1051 (fn simplified)`), which C gets for free: `newreg` is
+(`circle.rs:1046 (fn simplified)`,976) to reproduce the `else`. It also tests `ok` before
+calling `best_circle` (`circle.rs:1047 (fn simplified)`), which C gets for free: `newreg` is
 `NULL` when `ok` is clear, so C's `if( newreg && … )` cannot fire.
 
 ## Row 9 — the centre is transformed through the simplified Mapping
@@ -74,7 +74,7 @@ calling `best_circle` (`circle.rs:1051 (fn simplified)`), which C gets for free:
 C calls `astRegTransform( this, this->points, 1, NULL, NULL )` on the *supplied*
 Region, using its original base-to-current Mapping. The port transforms the
 parent-simplified copy's points through the copy's Mapping
-(`circle.rs:1043 (fn simplified)`).
+(`circle.rs:1039 (fn simplified)`).
 
 The two agree: `Region::Simplify` alters only the encapsulated FrameSet's
 Mapping and the uncertainty (see `region_mod.md` rows 5-8), never the defining

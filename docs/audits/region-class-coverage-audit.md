@@ -89,13 +89,13 @@ than the mesh path; no current test compares grid layout. Requires porting
 
 ### BND-INT — Interval `BndBaseMesh` override missing *(reported)*
 
-- **Rust**: generic `bnd_base_mesh` in `regions/overlap.rs:376` (builds a
+- **Rust**: generic `bnd_base_mesh` in `regions/overlap.rs:365` (builds a
   CmpRegion AND of region ∩ box and meshes it); Interval has no own override.
 - **C**: `interval.c:215` `BndBaseMesh` — class-specific construction from the
   finite interval bounds, handling unbounded/semi-infinite axes directly.
 
 The generic path may diverge for partially-unbounded Intervals; used inside
-overlap (`overlap.rs:315`). Worth checking whether `test_interval.rs` covers
+overlap (`overlap.rs:308`). Worth checking whether `test_interval.rs` covers
 semi-infinite overlap before deciding this needs the bespoke override.
 
 ### RT-TRACE — `RegTrace` boundary tracing entirely unported *(reported)*

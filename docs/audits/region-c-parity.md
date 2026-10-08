@@ -7,8 +7,8 @@ Scope: the Region base class (`region.c`) and the nine ported Region classes (Bo
 `ast-capi` is out of scope: no string-attribute dispatch exists, so C's `GetAttrib`, `SetAttrib`, `TestAttrib` and `ClearAttrib` overrides have no counterpart by design, but the typed accessor for every attribute is in scope.
 Plot-only methods (`RegTrace`, `RegSplit`, `BndMesh`) are listed as gated.
 
-C line numbers refer to the `reference/starlink-ast` checkout on branch `u/timj/norm-unit` at `436f069f`, relative to `src/`.
-Rust line numbers refer to branch `tickets/DM-54793` at `d250706f`, relative to `crates/ast-core/src/`.
+The audit was made against C on branch `u/timj/norm-unit` at `436f069f` and Rust at `d250706f`.
+Line numbers are re-anchored as the code changes, so they refer to the current `reference/starlink-ast` checkout (relative to `src/`) and the current `crates/ast-core/src/`; a finding describes the code as it was when audited unless the Progress table says it is fixed.
 These older Region audits are superseded by this one, and the status of each of their findings is in the last section of Appendices A and B: `region-base.md`, `region-box-interval-pointlist.md`, `region-circle-ellipse-polygon-null.md`, `region-cmpregion-prism.md`, `region-synthesis-plan.md` and `region-class-coverage-audit.md`.
 The last of these recorded `RegSetAttrib`/`RegClearAttrib` and the transform direction as matching C; neither did.
 
@@ -60,6 +60,7 @@ Seams first, because the HIGH findings in themes B to F, and the Stc port, are f
 | IDs | Status | Evidence |
 |---|---|---|
 | (transform direction) | FIXED 2026-10-08 in `d250706f`: the inverse transformation masks as the forward does | `tests/test_box_region.rs` (`inverse_transform_masks_as_forward_does`) and the `*_masks_as_forward` test of each class |
+| RB-1, RB-6, RB-7, RB-8, IN-4, PR-2 | FIXED 2026-10-08: `overlap`, `overlap_x` and `bnd_base_mesh` are Region trait methods with C's defaults (region.c `Overlap`, `OverlapX`, `BndBaseMesh`), so the generic overlap meshes an unbounded Interval through Interval's own `BndBaseMesh` instead of recursing, and NullRegion and Prism override them as C's do. Code 0 is `Overlap::Incomparable`, which CmpRegion's bounds and simplification treat as C does. A mesh that fails or has no good points is discarded and the Regions swapped as C does, and the generic `BndBaseMesh` returns one bad point when the boundary misses the box. C's Prism fallback passed the Regions to `OverlapX` the wrong way round; fixed upstream (0516a13d) and ported with the fix | `tests/test_region_overlap_oracle.rs`: 10 Region pairs in both orders against C's codes from `tools/oracle_fixtures/region_overlap_probe.c` |
 | PL-1 | WITHDRAWN: a C probe masks the same two pixels as the port with a UnitMap; the Mapping direction is RB-12 | Appendix C |
 
 
@@ -72,74 +73,74 @@ C-side claims marked UNVERIFIED were established by reading region.c.
 
 | C name (region.c:line) | Rust counterpart | Kind | Status |
 |---|---|---|---|
-| Negated Get/Set (attr 12533-12536) | `Region::is_negated/negate/negated_copy` (regions/mod.rs:117-123) | ceremony | PORTED (no set(bool)) |
+| Negated Get/Set (attr 12533-12536) | `Region::is_negated/negate/negated_copy` (regions/mod.rs:163-169) | ceremony | PORTED (no set(bool)) |
 | TestNegated/ClearNegated | NONE | ceremony | MISSING (RB-14) |
-| RegionFS Get/Set (12614-12620) | `region_fs_flag/set_region_fs_flag` (mod.rs:394-400, doc-hidden) | ceremony | PORTED |
+| RegionFS Get/Set (12614-12620) | `region_fs_flag/set_region_fs_flag` (mod.rs:440-446, doc-hidden) | ceremony | PORTED |
 | TestRegionFS/ClearRegionFS | NONE (bool, no unset state) | ceremony | MISSING (RB-14) |
-| Closed Get/Set/Test (12773-12778) | `is_closed/set_closed/test_closed/set_closed_raw` (mod.rs:130-144) | ceremony | PORTED |
+| Closed Get/Set/Test (12773-12778) | `is_closed/set_closed/test_closed/set_closed_raw` (mod.rs:176-190) | ceremony | PORTED |
 | ClearClosed | NONE | ceremony | MISSING (RB-14) |
-| MeshSize G/S/T/C (12722-12725) | `mesh_size/set_mesh_size/test_mesh_size/clear_mesh_size` (mod.rs:165-174; data.rs:249-286) | ceremony | PORTED (load not clamped, RB-10) |
-| Adaptive Get/Set (12489-12494) | `is_adaptive/set_adaptive` (mod.rs:180-183) | ceremony | DIVERGENT: has no effect (RB-3) |
+| MeshSize G/S/T/C (12722-12725) | `mesh_size/set_mesh_size/test_mesh_size/clear_mesh_size` (mod.rs:211-220; data.rs:249-286) | ceremony | PORTED (load not clamped, RB-10) |
+| Adaptive Get/Set (12489-12494) | `is_adaptive/set_adaptive` (mod.rs:226-229) | ceremony | DIVERGENT: has no effect (RB-3) |
 | TestAdaptive/ClearAdaptive | NONE | ceremony | MISSING (RB-14) |
-| FillFactor G/S/T/C (12658-12666) | `fill_factor/set_fill_factor/test_fill_factor/clear_fill_factor` (mod.rs:150-159) | ceremony | DIVERGENT: no AST__ATSER range check (RB-10) |
+| FillFactor G/S/T/C (12658-12666) | `fill_factor/set_fill_factor/test_fill_factor/clear_fill_factor` (mod.rs:196-205) | ceremony | DIVERGENT: no AST__ATSER range check (RB-10) |
 | Bounded (read-only) / GetBounded (3364) | `is_bounded` per class + `RegionData::closed_curve_bounded` (data.rs:331) | architecture | PORTED (SkyFrame rule present) |
 | ResetCache (10219) | `RegionData::invalidate_cache` (data.rs:295) | ceremony | PORTED |
 | RegTrace (11605) | NONE | architecture | GATED(Plot) |
-| TestUnc (4100) | `test_unc` (mod.rs:569) | ceremony | PORTED |
-| ClearUnc (2755) | `store_uncertainty(None)` (mod.rs:384) | ceremony | PORTED |
+| TestUnc (4100) | `test_unc` (mod.rs:615) | ceremony | PORTED |
+| ClearUnc (2755) | `store_uncertainty(None)` (mod.rs:430) | ceremony | PORTED |
 | GetRegionFrame (4401) | `get_region_frame` per class | ceremony | PORTED |
 | GetRegionFrameSet (4472) | `get_region_frameset` per class | ceremony | PORTED |
-| MapRegion (5386) | `Region::map_region` default (mod.rs:789) | architecture (not overridden in C) | DIVERGENT minor (RB-11) |
+| MapRegion (5386) | `Region::map_region` default (mod.rs:835) | architecture (not overridden in C) | DIVERGENT minor (RB-11) |
 | Overlap (6923) | `Region::overlap` per class -> `overlap::compute_overlap` (overlap.rs:45) | architecture | DIVERGENT (RB-1, RB-6, RB-7) |
-| OverlapX (7007) | `overlap::overlap_x` (overlap.rs:114), free fn; NullRegion special-cased centrally (overlap.rs:53) | architecture | DIVERGENT: no per-class seam (RB-7), error paths (RB-8) |
+| OverlapX (7007) | `overlap::overlap_x` (overlap.rs:104), free fn; NullRegion special-cased centrally (overlap.rs:53) | architecture | DIVERGENT: no per-class seam (RB-7), error paths (RB-8) |
 | Negate (6483) | `negate` per class | ceremony | PORTED |
 | BndMesh (1790) | NONE | architecture | GATED(Plot) |
 | BndBaseMesh (1689) | `overlap::bnd_base_mesh` (overlap.rs:395), free fn | architecture (Interval overrides) | DIVERGENT: no seam, stack overflow (RB-1) |
 | RegBaseGrid (7971) | `data::region_base_grid` (data.rs:573) + Box override | architecture | PORTED (no cache) |
 | RegBaseMesh (8232) | `RegionGeometry::reg_base_mesh` (data.rs:393) | architecture | PORTED (seam) |
 | RegSplit (8161) | NONE | architecture | GATED(Plot) |
-| RegBaseBox (7866) | `RegionGeometry::reg_base_box` / `region_base_box` (data.rs:388; mod.rs:219) | architecture | PORTED |
-| RegBaseBox2 (7920) | `reg_base_box2` (mod.rs:228), CmpRegion override | architecture | PORTED |
-| RegBasePick (8288) | `reg_base_pick_axes` (mod.rs:971) | architecture | PORTED |
-| RegCentre (8408) | `reg_centre_set` / `reg_centre_query` (mod.rs:740, 763) | architecture | PORTED |
-| RegGrid (8656) | `reg_grid` (mod.rs:316) | ceremony | PORTED |
-| RegMesh (8742) | `reg_mesh` (mod.rs:309) | architecture (NullRegion overrides) | PORTED |
+| RegBaseBox (7866) | `RegionGeometry::reg_base_box` / `region_base_box` (data.rs:388; mod.rs:265) | architecture | PORTED |
+| RegBaseBox2 (7920) | `reg_base_box2` (mod.rs:274), CmpRegion override | architecture | PORTED |
+| RegBasePick (8288) | `reg_base_pick_axes` (mod.rs:1017) | architecture | PORTED |
+| RegCentre (8408) | `reg_centre_set` / `reg_centre_query` (mod.rs:786, 763) | architecture | PORTED |
+| RegGrid (8656) | `reg_grid` (mod.rs:362) | ceremony | PORTED |
+| RegMesh (8742) | `reg_mesh` (mod.rs:355) | architecture (NullRegion overrides) | PORTED |
 | RegClearAttrib (8495) | NONE | architecture (CmpRegion/Prism/Stc override) | MISSING (RB-3) |
 | RegSetAttrib (9934) | `with_region_integrity` non-adaptive branch (data.rs:473-497) | architecture (CmpRegion/Prism/Stc override) | STUB (RB-3) |
-| GetDefUnc (3494) | `get_def_unc` / `default_bounding_box_unc` (mod.rs:592, 628) + 4 overrides | architecture | PORTED |
+| GetDefUnc (3494) | `get_def_unc` / `default_bounding_box_unc` (mod.rs:638, 628) + 4 overrides | architecture | PORTED |
 | GetNegation (3601) | `negated_copy` | ceremony | PORTED |
-| GetUncFrm (3923) | `get_unc_frm` (mod.rs:639) | ceremony | PORTED |
-| SetUnc (10765) | `set_uncertainty` (mod.rs:455) | ceremony | DIVERGENT: errors swallowed (RB-9) |
+| GetUncFrm (3923) | `get_unc_frm` (mod.rs:685) | ceremony | PORTED |
+| SetUnc (10765) | `set_uncertainty` (mod.rs:501) | ceremony | DIVERGENT: errors swallowed (RB-9) |
 | GetUnc (3795, public) | `get_uncertainty` (base Frame, explicit only) + `get_unc_frm(Current)` | ceremony | PORTED in shape (no `def` flag) |
 | ShowMesh (10924) | NONE | ceremony (debug) | MISSING, LOW (RB-19) |
-| GetRegionBounds (8959) | `region_bounds_current` (mod.rs:1239) | ceremony | PORTED |
-| GetRegionBounds2 (9150) | `get_region_bounds2` (mod.rs:239) | ceremony | PORTED |
-| GetRegionMesh (9248) | `region_mesh` / `region_grid` (mod.rs:277, 286) | ceremony | PORTED |
+| GetRegionBounds (8959) | `region_bounds_current` (mod.rs:1285) | ceremony | PORTED |
+| GetRegionBounds2 (9150) | `get_region_bounds2` (mod.rs:285) | ceremony | PORTED |
+| GetRegionMesh (9248) | `region_mesh` / `region_grid` (mod.rs:323, 286) | ceremony | PORTED |
 | GetRegionPoints (9442) | `get_region_points` per class (base Frame) | ceremony | DIVERGENT (RB-13) |
-| GetRegionDisc (9647) | required per-class `get_region_disc` (mod.rs:263) | ceremony (generic, never overridden in C) | DIVERGENT (RB-4) |
+| GetRegionDisc (9647) | required per-class `get_region_disc` (mod.rs:309) | ceremony (generic, never overridden in C) | DIVERGENT (RB-4) |
 | PointInRegion (7761) | per-class `point_in_region` | ceremony | PORTED (duplicated per class) |
-| RegOverlay (9872) | `reg_overlay` (mod.rs:1161) | ceremony | PORTED |
+| RegOverlay (9872) | `reg_overlay` (mod.rs:1207) | ceremony | PORTED |
 | RegFrame (4145) | `get_region_frame` | ceremony | PORTED |
 | RegDummyFS (8825) | `has_dummy_fs` | ceremony | PORTED |
-| RegMapping (4190) | `to_current_frame` (mod.rs:324) | ceremony | PORTED |
-| RegPins (8890) | `reg_pins` / `reg_pins_mask` (mod.rs:680, 696) | architecture | PORTED (seam) |
-| RegTransform (11936) | `to_current_frame`, `reg_tran_point` (mod.rs:713) | ceremony | PORTED |
+| RegMapping (4190) | `to_current_frame` (mod.rs:370) | ceremony | PORTED |
+| RegPins (8890) | `reg_pins` / `reg_pins_mask` (mod.rs:726, 696) | architecture | PORTED (seam) |
+| RegTransform (11936) | `to_current_frame`, `reg_tran_point` (mod.rs:759) | ceremony | PORTED |
 | BTransform (1876) | `data::region_base_mask` (data.rs:550) | ceremony | PORTED |
 | GetRegFS / SetRegFS (3654 / 10685) | `RegionData::set_region_fs` (data.rs:219) | architecture (many overrides) | PORTED |
 | MaskB..MaskUS, MaskLD (5979 macro) | `masking::mask` free fn (masking.rs:42) | architecture (PointList overrides) | DIVERGENT (RB-12) |
-| object Equal (2637) | per-class `Mapping::equal` (box_region.rs:1900 etc.) | architecture (subclasses chain to it) | DIVERGENT (RB-2) |
+| object Equal (2637) | per-class `Mapping::equal` (box_region.rs:1896 etc.) | architecture (subclasses chain to it) | DIVERGENT (RB-2) |
 | object Get/Set/Test/ClearAttrib | NONE (by design) | ceremony | OUT-OF-SCOPE |
 | object GetUseDefs (4036) | `region_frame_attrs!` use_defs (frames/frame_attrs.rs:1037-1063) | ceremony | PORTED |
 | object Cast / GetObjSize / ManageLock / Delete | NONE | ceremony | OUT-OF-SCOPE |
-| Copy (astClearRegionFS) | `copy_region` / `clear_region_fs_deep` (mod.rs:413, 428) | ceremony | PORTED |
+| Copy (astClearRegionFS) | `copy_region` / `clear_region_fs_deep` (mod.rs:459, 428) | ceremony | PORTED |
 | Dump (13003) | `write_region_base` (serial/mod.rs:662), `region_to_node_skeleton` (serial/mod.rs:1136) | ceremony | PORTED (RB-16 latent) |
 | Load (13490-13620) | `read_region_base` (serial/mod.rs:927) | ceremony | DIVERGENT minor (RB-15) |
 | mapping ReportPoints | per-class `report_points` | ceremony | PORTED |
-| mapping RemoveRegions (10105) | `remove_regions` (mod.rs:1442) | ceremony | PORTED |
-| mapping Simplify (11125) | `parent_region_simplify` (mod.rs:1033) | architecture | OUT-OF-SCOPE (see note in RB-18) |
+| mapping RemoveRegions (10105) | `remove_regions` (mod.rs:1488) | ceremony | PORTED |
+| mapping Simplify (11125) | `parent_region_simplify` (mod.rs:1079) | architecture | OUT-OF-SCOPE (see note in RB-18) |
 | frame Get/Set/Test/Clear of Digits, Domain, Title, Label, Symbol, Unit, Format, Direction, Top, Bottom, Epoch, ObsLat/Lon/Alt, MatchEnd, Min/MaxAxes, Permute, PreserveAxes, ActiveUnit (MAKE_* macros, 330-830) | `region_frame_attrs!` -> `forward_frame_attrs!` to FrameSet (frame_attrs.rs:980) | ceremony | PORTED (always integrity, RB-3) |
 | frame Get/Set/Test/Clear System, AlignSystem | NONE generic (only via `with_integrity` + downcast) | ceremony | PORTED-partial |
-| frame Format, Unformat, Distance, Angle, Offset, Norm, NormalPoints, Overlay, GetAxis, GetNaxes, PermAxes, Match, ValidateAxis | per class / macro (box_region.rs:1573-1660) | Match/GetAxis/Overlay architecture | PORTED |
+| frame Format, Unformat, Distance, Angle, Offset, Norm, NormalPoints, Overlay, GetAxis, GetNaxes, PermAxes, Match, ValidateAxis | per class / macro (box_region.rs:1569-1656) | Match/GetAxis/Overlay architecture | PORTED |
 | frame Offset2, Resolve, ResolvePoints, Intersect, LineDef/Contains/Crossing/Offset, NormBox, SubFrame, PickAxes, SystemString/SystemCode, AxAngle (region.c:4720-4800) | NONE: Frame-trait Cartesian/BasicFrame defaults | SubFrame/PickAxes architecture | DIVERGENT (RB-5) |
 | frame Abbrev, Gap, Centre, CheckPerm, FindFrame, GetPerm, MatchAxes(X), IsUnitFrame, ValidateSystem, SetAxis, ConvertX/Convert | not individually checked (Gap/Centre/Abbrev are Plot-axis helpers) | — | GATED(Plot) for Gap/Centre/Abbrev; rest not audited |
 
@@ -147,13 +148,13 @@ C-side claims marked UNVERIFIED were established by reading region.c.
 
 #### RB-1 HIGH — Overlap recurses without bound (stack overflow) when one Region has no finite mesh
 - C: `OverlapX` calls `astRegBaseMesh(reg1)` with errors suppressed; if that fails it calls the **vtab** `astBndBaseMesh(reg1, …)` (region.c:7329-7345). Interval overrides `BndBaseMesh` (interval.c, vtab line 822) and builds the mesh directly from its limits, with no `astOverlap` call; Interval's `RegBaseMesh` raises AST__INTER for an unbounded Interval, which is what routes C there. The base `BndBaseMesh` (region.c:1689-1736) returns a one-point all-BAD PointSet, not NULL, when the box does not overlap, so OverlapX still produces a code.
-- Rust: `bnd_base_mesh` is a free function with no per-class seam (overlap.rs:395-419). It calls `reg1.overlap(box)`, and `Interval::overlap` (interval.rs:1042-1052) falls back to `compute_overlap`, which re-enters `overlap_x` and `bnd_base_mesh` with a box twice the size. That recursion never terminates. It also returns `None`, which is turned into AST__INTER (overlap.rs:333-339), where C returns one bad point.
+- Rust: `bnd_base_mesh` is a free function with no per-class seam (overlap.rs:395-419). It calls `reg1.overlap(box)`, and `Interval::overlap` (interval.rs:1042-1101) falls back to `compute_overlap`, which re-enters `overlap_x` and `bnd_base_mesh` with a box twice the size. That recursion never terminates. It also returns `None`, which is turned into AST__INTER (overlap.rs:333-339), where C returns one bad point.
 - Probe P7: an Interval `x>=0` (unbounded) against a Box at x in [-10,-9]. Both `box.overlap(&interval)` and `interval.overlap(&box)` abort with a stack overflow. The lldb backtrace shows 98 cycles of `Interval::overlap -> compute_overlap -> overlap_x -> bnd_base_mesh`.
 - Exposure: any overlap involving a partially unbounded Interval where the bounded Region does not reach the Interval's boundary. The C oracle should return 1 (UNVERIFIED).
 
 #### RB-2 HIGH — Region Equal ignores the base Frame and the base->current Mapping, so Overlap reports Same for different Regions
 - C `Equal` (region.c:2637-2700) requires the same class, equal PointSets, an equal **base** Frame, an equal current Frame, an equal **base->current Mapping**, and equal `astGetNegated` and `astGetClosed` (through the vtab).
-- Rust: every class copies the same body: raw `negated`, raw `closed`, points `==`, and the current Frame only. See box_region.rs:1900-1908, circle.rs:163-172, ellipse.rs:159, polygon.rs:184, interval.rs:146, pointlist.rs:136, nullregion.rs:153, cmpregion.rs:253, prism.rs:293. `Frame::equal` on a Region compares the current Frame only (box_region.rs:1659).
+- Rust: every class copies the same body: raw `negated`, raw `closed`, points `==`, and the current Frame only. See box_region.rs:1896-1904, circle.rs:163-172, ellipse.rs:159, polygon.rs:184, interval.rs:146, pointlist.rs:136, nullregion.rs:153, cmpregion.rs:253, prism.rs:393. `Frame::equal` on a Region compares the current Frame only (box_region.rs:1655).
 - Probe P9: `b = a.map_region(ZoomMap(2), sameFrame)` gives `a.equal(b) == true` and `a.overlap(b) == Same`. However `b.bounds = [0,2]²`, `b` contains (1.5,1.5) and `a` does not. C would fail `Equal` and return 2.
 - Raw `closed` also differs from C for PointList, whose GetClosed override (pointlist.c:376) is honoured in C's comparison.
 - Exposure: an overlap test, or a simplify cancellation, between a Region and a remapped copy of it.
@@ -161,7 +162,7 @@ C-side claims marked UNVERIFIED were established by reading region.c.
 #### RB-3 HIGH — the `Adaptive` attribute has no effect, and RegSetAttrib/RegClearAttrib are absent
 - C public `astSet`/`astClear` on a Region use `astSet(this->frameset, …)` (remap) when Adaptive is set, else `astRegSetAttrib`/`astRegClearAttrib` (region.c:10609-10618, 2308-2317).
   - `RegSetAttrib` (9934-10095) sets the attribute on the current Frame without remapping. It also sets it on the **base** Frame, translating an axis index via `astMapSplit`, and on the **uncertainty** Region (recursively), then resets the cache.
-  - CmpRegion and Prism override it to reach their components (cmpregion.c:1280-1283, prism.c:1398-1402).
+  - CmpRegion and Prism override it to reach their components (cmpregion.c:1280-1283, prism.c:1403-1407).
 - Rust public Frame setters on a Region (`set_unit`, `set_epoch_mjd`, `set_label`, …) are generated by `region_frame_attrs!` (frames/frame_attrs.rs:980-984). They forward to `FrameSet`'s Frame impl, which always runs `with_integrity` (frames/frameset.rs:1223-1265), so Adaptive is never consulted.
   - Probe P1: a Box [0,1]² in metres with ActiveUnit and Adaptive=false, then `set_unit(1,"km")`. The result is identical to Adaptive=true: (0.5,0.5) is outside, base unit stays "m", current unit is "km". C's RegSetAttrib would give both Frames "km" with a UnitMap, so (0.5,0.5) would be inside.
 - The only Adaptive-aware path is the inherent `with_integrity` (for example box_region.rs:204) via `with_region_integrity`. Its non-adaptive branch (data.rs:473-497) applies the closure to the current Frame only. The base Frame, the uncertainty and the axis translation are left alone, and the code comments say so.
@@ -175,17 +176,17 @@ C-side claims marked UNVERIFIED were established by reading region.c.
   - It reports AST__INVAR unless the Region is 2-D, and temporarily clears Negated.
   - It returns radius AST__BAD for an unbounded Region.
   - Otherwise it meshes the boundary in the **current** Frame (`astRegMesh`), builds a local frame with `astResolve`/`astAngle`/`astOffset2`, takes the max `astDistance` from that centre, and multiplies by 1.000001 (region.c:9647-9862).
-- Rust: required per-class `get_region_disc` (mod.rs:263), with these implementations:
-  - Box/Interval: the half-diagonal of the base box (box_region.rs:1220, interval.rs:1259).
-  - Circle: base centre plus radius (circle.rs:705).
-  - Ellipse: `max(a,b)` (ellipse.rs:847).
-  - Polygon: Euclidean distance from the vertex centroid (polygon.rs:1007).
-  - PointList: distance from the centroid (pointlist.rs:492).
-  - CmpRegion/Prism: from the base box, with AST__REGCN errors (cmpregion.rs:860, prism.rs:587).
-  - NullRegion: AST__REGCN (nullregion.rs:255).
+- Rust: required per-class `get_region_disc` (mod.rs:309), with these implementations:
+  - Box/Interval: the half-diagonal of the base box (box_region.rs:1216, interval.rs:1308).
+  - Circle: base centre plus radius (circle.rs:701).
+  - Ellipse: `max(a,b)` (ellipse.rs:843).
+  - Polygon: Euclidean distance from the vertex centroid (polygon.rs:1003).
+  - PointList: distance from the centroid (pointlist.rs:488).
+  - CmpRegion/Prism: from the base box, with AST__REGCN errors (cmpregion.rs:856, prism.rs:697).
+  - NullRegion: AST__REGCN (nullregion.rs:262).
   - None of them checks for 2-D, uses the current Frame, returns BAD for an unbounded Region, or applies the 1.000001 factor. Polygon and Box ignore sky geometry.
 - Probe P6: a Box [0,2]² mapped by ZoomMap(10) returns `([1,1], 1.414)`. Its current-Frame bounds are [0,20]², so C would give a centre near (10,10) and a radius near 14.14.
-- Also used internally by `Prism::reg_centre` (prism.rs:273) and `CmpRegion` (cmpregion.rs:583). Both take component **base** coordinates where the parent's base Frame is the components' current Frame.
+- Also used internally by `Prism::reg_centre` (prism.rs:373) and `CmpRegion` (cmpregion.rs:583). Both take component **base** coordinates where the parent's base Frame is the components' current Frame.
 
 #### RB-5 HIGH — Region does not forward the Frame geometry and architecture methods; it falls back to Cartesian/BasicFrame defaults
 - C region.c overrides these to act on the current Frame of the FrameSet (vtab 4720-4800): Offset2, Resolve, ResolvePoints, Intersect, LineDef, LineContains, LineCrossing, LineOffset, NormBox, SubFrame, PickAxes, SystemString, SystemCode, AxAngle.
@@ -199,12 +200,12 @@ C-side claims marked UNVERIFIED were established by reading region.c.
 - Exposure: any geometry call on a sky Region, or `astConvert(frame, region)`.
 
 #### RB-6 MED — Overlap code 0 ("cannot compare") is collapsed into `Overlap::None` ("no overlap")
-- overlap.rs:24-33 maps code 0 to `None`, and there is no enum variant for 0. C returns 0 when `astConvert` fails (region.c:7088-7089).
+- overlap.rs:21-30 maps code 0 to `None`, and there is no enum variant for 0. C returns 0 when `astConvert` fails (region.c:7088-7089).
 - Probe P3: Boxes in Domain AAA and Domain BBB give `Ok(None)`.
 - Effect: a caller cannot tell "disjoint" from "incomparable". Any C-ported logic that treats 1 as a positive disjointness result (for example the CmpRegion simplify tables) is fed a false 1.
 
 #### RB-7 MED — no OverlapX dispatch seam; NullRegion is special-cased centrally
-- C: `Overlap` (region.c:6923) is a vtab method dispatched on `this`'s class. It calls the vtab `astOverlapX(that, this)`, dispatched on `that`'s class. Overrides: NullRegion Overlap+OverlapX (nullregion.c:317-318), Prism Overlap+OverlapX (prism.c:1415, 1396; 1663, 1919), Interval Overlap (interval.c:801).
+- C: `Overlap` (region.c:6923) is a vtab method dispatched on `this`'s class. It calls the vtab `astOverlapX(that, this)`, dispatched on `that`'s class. Overrides: NullRegion Overlap+OverlapX (nullregion.c:317-318), Prism Overlap+OverlapX (prism.c:1420, 1396; 1663, 1919), Interval Overlap (interval.c:801).
 - Rust has no `overlap_x` trait method. `compute_overlap` (overlap.rs:45-59) hard-codes `is::<NullRegion>()` on either operand and otherwise runs the generic `overlap_x`. `Prism::overlap` (prism.rs:339) just calls `compute_overlap`, so Prism's own algorithm is unreachable whether the Prism is `this` or `that`. Interval's override is reachable only as `this`, which matches C.
 - Exposure: Prism-vs-Region overlap fixtures against the C oracle. The per-class Prism port is for the other auditor, but the missing seam is a base-class gap.
 
@@ -215,7 +216,7 @@ C-side claims marked UNVERIFIED were established by reading region.c.
 
 #### RB-9 MED — `set_uncertainty` drops errors silently
 - C `SetUnc` reports AST__BADIN when the shape is not re-centrable (region.c:10906-10909). It reports AST__BADIN plus AST__NCPIN when the Frames cannot be converted (10897-10904).
-- Rust `set_uncertainty` returns `()`: in both cases it removes the existing uncertainty and returns (mod.rs:466-526). A user who passes a Polygon or PointList uncertainty gets no error and silently loses the uncertainty. Every builder routes through it.
+- Rust `set_uncertainty` returns `()`: in both cases it removes the existing uncertainty and returns (mod.rs:512-572). A user who passes a Polygon or PointList uncertainty gets no error and silently loses the uncertainty. Every builder routes through it.
 - Exposure: `set_uncertainty(PointList)`, then check `test_unc()`.
 
 #### RB-10 MED — FillFactor range check and Load validation are missing
@@ -224,7 +225,7 @@ C-side claims marked UNVERIFIED were established by reading region.c.
 
 #### RB-11 MED — MapRegion axis reduction runs when `axflags` is absent (UNVERIFIED)
 - C counts `ntotal` only when `axflags` exists. With no `axflags` (defining points contain BAD values, or there are no points), `ntotal = 0 != nkept` and neither branch runs, so the Region is not axis-reduced (region.c:5612-5700).
-- Rust takes the reduction branch when `axflags.is_none()` (mod.rs:910).
+- Rust takes the reduction branch when `axflags.is_none()` (mod.rs:956).
 - Exposure: map an Interval with an unbounded (BAD) limit, or a Prism/CmpRegion/NullRegion, through a Mapping with fewer outputs (for example a PermMap that drops an axis). Then compare the dump with C.
 
 #### RB-12 MED — Mask: the Mapping runs the opposite way to C, and there is no per-class seam
@@ -235,13 +236,13 @@ C-side claims marked UNVERIFIED were established by reading region.c.
 
 #### RB-13 MED — `get_region_points` returns base-Frame points
 - C public `astGetRegionPoints` transforms `this->points` through the FrameSet into the **current** Frame (region.c:9442-9500).
-- Rust `get_region_points` returns the raw base points in every class (for example box_region.rs:1272). The doc comment says "base frame", and there is no current-Frame equivalent.
+- Rust `get_region_points` returns the raw base points in every class (for example box_region.rs:1268). The doc comment says "base frame", and there is no current-Frame equivalent.
 - Same pattern for `get_region_mesh`, which is base-Frame, although `region_mesh` exists for the current Frame.
 - Exposure: any remapped Region.
 
 #### RB-14 LOW — Missing typed accessors
 - No `test_negated`/`clear_negated`/`set_negated(bool)`, `test_adaptive`/`clear_adaptive`, `clear_closed`, or `test`/`clear` for RegionFS.
-- `reg_overlay` forces Adaptive to "set" (mod.rs:1172), whereas C copies the raw field including the unset sentinel. This is not visible in dumps, because Dump writes Negate and Adapt based on value (region.c:13058, 13088).
+- `reg_overlay` forces Adaptive to "set" (mod.rs:1218), whereas C copies the raw field including the unset sentinel. This is not visible in dumps, because Dump writes Negate and Adapt based on value (region.c:13058, 13088).
 
 #### RB-15 LOW — Load differences
 - No AST__REGIN check that `naxpt == nax` (region.c:13605-13612).
@@ -253,22 +254,22 @@ C-side claims marked UNVERIFIED were established by reading region.c.
 - Probe P4 with ZoomMap(1) still wrote `Frm`, because the edge had already been simplified, so this is not exposed today. A FrameSet with a multi-edge base->current path would dump `FrmSet` where C dumps `Frm`.
 
 #### RB-17 LOW — SetUnc's Conv aligns only the uncertainty's current Frame
-- mod.rs:482-486 uses `unc.get_region_frame().convert_to(target, [domain])`.
+- mod.rs:528-532 uses `unc.get_region_frame().convert_to(target, [domain])`.
 - C `Conv` (region.c:2321-2378) runs `astConvert` FrameSet-to-FrameSet, which can match any Frame in the uncertainty's FrameSet. The two agree whenever the current Frame matches.
 
 #### RB-18 LOW — Helpers with no C analogue
 - `RegionGeometry::reg_centre` (data.rs:396) is a centroid used only by the invented `get_region_disc`s.
 - `RegionGeometry::verify_remap_exact` (data.rs:422) is an interior-membership check used by Simplify (out of scope).
-- `parent_region_simplify` detects a FrameSet change with conversion-based `Mapping::equal` (mod.rs:1045) where C tests pointer identity (11140). It uses `simplify_reporting_change` for the uncertainty, two lines later. Noted for the Simplify owners.
+- `parent_region_simplify` detects a FrameSet change with conversion-based `Mapping::equal` (mod.rs:1091) where C tests pointer identity (11140). It uses `simplify_reporting_change` for the uncertainty, two lines later. Noted for the Simplify owners.
 
 #### RB-19 LOW — Not ported
 - `ShowMesh` (debug) is missing.
 - `RegTrace`, `RegSplit` and `BndMesh` are GATED(Plot).
 
 #### Dump against overridden getters: no defect (with a caveat)
-- `write_region_base` reads the raw `RegionData` fields: `negated`, `fill_factor_set`/`fill_factor`, `mesh_size_set`/`mesh_size`, `closed_set`/`closed`, `adaptive` (serial/mod.rs:667-713). That matches C's private `TestX`/`GetX`. The trait getters remain per-class and overridable (for example PointList `is_closed`, pointlist.rs:414), so the two stay distinct.
+- `write_region_base` reads the raw `RegionData` fields: `negated`, `fill_factor_set`/`fill_factor`, `mesh_size_set`/`mesh_size`, `closed_set`/`closed`, `adaptive` (serial/mod.rs:667-713). That matches C's private `TestX`/`GetX`. The trait getters remain per-class and overridable (for example PointList `is_closed`, pointlist.rs:410), so the two stay distinct.
 - Caveat 1: per-class `Mapping::equal` uses the raw `closed` where C uses `astGetClosed` (in RB-2).
-- Caveat 2: CmpRegion and Prism override GetFillFactor, SetClosed, SetMeshSize, ClearClosed and ClearMeshSize in C (cmpregion.c:1264-1277, prism.c:1380-1393). The Rust impls are plain field writes (cmpregion.rs:749, prism.rs:435). The seam exists but the propagation is not ported; that belongs to the per-class auditor.
+- Caveat 2: CmpRegion and Prism override GetFillFactor, SetClosed, SetMeshSize, ClearClosed and ClearMeshSize in C (cmpregion.c:1264-1277, prism.c:1385-1398). The Rust impls are plain field writes (cmpregion.rs:745, prism.rs:545). The seam exists but the propagation is not ported; that belongs to the per-class auditor.
 
 #### Transform direction
 Fixed in `d250706f`; see Progress.
@@ -277,21 +278,21 @@ Fixed in `d250706f`; see Progress.
 
 | Old finding | Status at HEAD | Evidence |
 |---|---|---|
-| R-PINS: `reg_pins` was an interior test | FIXED | `reg_pins_mask(pts, unc)` seam (mod.rs:696); per-class boundary and uncertainty ports (box_region.rs:1040, circle.rs:538, …) |
-| R-OVL: 90% threshold, no astConvert, no code 6 | FIXED, with residuals RB-1, RB-6, RB-7, RB-8 | overlap.rs:114-389 (astConvert at 129, code 6 at 121, touch/Closed rule at 378) |
-| MapRegion drops uncertainty / no axis reduction | FIXED, residual RB-11 | mod.rs:789-952 (`copy_region` keeps unc; split/axflags 880-935) |
-| RegBasePick default always None | FIXED | mod.rs:971-1013 |
-| RegOverlay: missing RegionFS, `unc` flag, else-clear | FIXED | mod.rs:1161-1187 |
-| Parent Simplify uncertainty stability (SIMP-STAB) | FIXED | mod.rs:1033-1149 |
-| GetUncFrm: no default, no Frame mapping | FIXED | mod.rs:639-657 |
-| GetDefUnc absent (DEFUNC) | FIXED | mod.rs:592-630, plus overrides in interval/nullregion/prism/cmpregion |
-| SetUnc a bare store | FIXED in behaviour; errors still swallowed (RB-9) | mod.rs:455-559 |
+| R-PINS: `reg_pins` was an interior test | FIXED | `reg_pins_mask(pts, unc)` seam (mod.rs:742); per-class boundary and uncertainty ports (box_region.rs:1036, circle.rs:534, …) |
+| R-OVL: 90% threshold, no astConvert, no code 6 | FIXED, with residuals RB-1, RB-6, RB-7, RB-8 | overlap.rs:104-378 (astConvert at 129, code 6 at 121, touch/Closed rule at 378) |
+| MapRegion drops uncertainty / no axis reduction | FIXED, residual RB-11 | mod.rs:835-998 (`copy_region` keeps unc; split/axflags 880-935) |
+| RegBasePick default always None | FIXED | mod.rs:1017-1059 |
+| RegOverlay: missing RegionFS, `unc` flag, else-clear | FIXED | mod.rs:1207-1233 |
+| Parent Simplify uncertainty stability (SIMP-STAB) | FIXED | mod.rs:1079-1195 |
+| GetUncFrm: no default, no Frame mapping | FIXED | mod.rs:685-703 |
+| GetDefUnc absent (DEFUNC) | FIXED | mod.rs:638-676, plus overrides in interval/nullregion/prism/cmpregion |
+| SetUnc a bare store | FIXED in behaviour; errors still swallowed (RB-9) | mod.rs:501-605 |
 | GetBounded lacks the SkyFrame rule (GBND-SKY) | FIXED | data.rs:331-337 |
 | RegGrid / RegBaseGrid odometer heuristic (GRID-FRM) | FIXED (3-try refinement); no cache, which is a performance matter only | data.rs:573-623 |
-| RegBaseBox2 absent | FIXED | mod.rs:228, CmpRegion override |
-| GetRegionBounds returned the base box | FIXED | mod.rs:1239-1329, used by all classes except NullRegion and Prism (their own C overrides) |
-| RegCentre get-only | FIXED | mod.rs:740-765 |
-| astConvert alignment absent in overlap | FIXED | overlap.rs:129-135 |
+| RegBaseBox2 absent | FIXED | mod.rs:274, CmpRegion override |
+| GetRegionBounds returned the base box | FIXED | mod.rs:1285-1375, used by all classes except NullRegion and Prism (their own C overrides) |
+| RegCentre get-only | FIXED | mod.rs:786-811 |
+| astConvert alignment absent in overlap | FIXED | overlap.rs:119-125 |
 | RegSetAttrib STUB (non-adaptive `with_region_integrity`) | **OPEN**, and wider than recorded (RB-3) | data.rs:473-497; frame_attrs.rs:980 |
 | Mask: zero-volume / PointList | **OPEN**, plus the Mapping-direction issue (RB-12) | masking.rs:42 |
 | BND-INT: Interval BndBaseMesh missing ("reported") | **OPEN, now HIGH**: stack overflow (RB-1) | overlap.rs:395 |
@@ -308,7 +309,7 @@ Its coverage tables, findings, and the status of the earlier audits' class findi
 #### Box (box.c vtab 1209-1257)
 | C name | Rust | kind | status |
 |---|---|---|---|
-| BoxPoints (251, protected) | `get_region_points` (box_region.rs:1272) | ceremony | PORTED |
+| BoxPoints (251, protected) | `get_region_points` (box_region.rs:1268) | ceremony | PORTED |
 | GetObjSize (1078) | NONE | ceremony | OUT-OF-SCOPE |
 | Transform (4082) + Cache (673) | `reg_base_inside` (813) via `region_transform` | architecture | DIVERGENT (BX-1, BX-2) |
 | Simplify (3609) | `simplified` | architecture | OUT-OF-SCOPE |
@@ -376,7 +377,7 @@ Its coverage tables, findings, and the status of the earlier audits' class findi
 #### Interval (interval.c vtab 781-824)
 | C name | Rust | kind | status |
 |---|---|---|---|
-| IntervalPoints (protected) | `get_region_points` (interval.rs:1307) | ceremony | PORTED |
+| IntervalPoints (protected) | `get_region_points` (interval.rs:1356) | ceremony | PORTED |
 | Transform (3542) + Cache (379) | `reg_base_inside` (828) | architecture | DIVERGENT (IN-1) |
 | Simplify (3101) | `simplified` | architecture | OUT-OF-SCOPE |
 | Overlap (1765) | `overlap` (1042) -> `interval_overlap` (218) | architecture | PORTED |
@@ -428,7 +429,7 @@ Its coverage tables, findings, and the status of the earlier audits' class findi
 | C name | Rust | kind | status |
 |---|---|---|---|
 | astInitCmpRegion (4700) | `CmpRegionBuilder` (cmpregion.rs:44-149) | ctor | DIVERGENT (CR-1, CR-2, CR-5) |
-| XOR operator / XORCheck (4005) | NONE (`CmpOperator` has And/Or, mod.rs:67) | public API | MISSING (CR-2) |
+| XOR operator / XORCheck (4005) | NONE (`CmpOperator` has And/Or, mod.rs:70) | public API | MISSING (CR-2) |
 | CmpRegionList (228, protected) | NONE | architecture (stcschan, simplify) | MISSING (LOW, stcschan gated) |
 | Transform (3791) | `reg_base_inside` (295) | architecture | PORTED |
 | Simplify (3517) | | architecture | OUT-OF-SCOPE |
@@ -481,7 +482,7 @@ Its coverage tables, findings, and the status of the earlier audits' class findi
 
 **X-1 MED — `get_region_disc` is a per-class ad-hoc reimplementation of a single base method, in the wrong Frame.**
 C has one `GetRegionDisc` (region.c:9647): rejects non-2-D with `AST__INVAR` (9739), temporarily clears Negated (9750), returns BAD radius when unbounded, and works on `astRegMesh` (current Frame, 9757) in a local tangent system.
-Rust: Box (box_region.rs:1220, base-Frame centre + Euclidean half-diagonal), Circle (circle.rs:705, base-Frame centre/radius), Ellipse (ellipse.rs:847, planar a/b), Polygon (polygon.rs:1007, vertex mean, Euclidean), PointList (pointlist.rs:492), Interval (interval.rs:1259), CmpRegion/Prism (bbox midpoint, cmpregion.rs:860, prism.rs:587).
+Rust: Box (box_region.rs:1216, base-Frame centre + Euclidean half-diagonal), Circle (circle.rs:701, base-Frame centre/radius), Ellipse (ellipse.rs:843, planar a/b), Polygon (polygon.rs:1003, vertex mean, Euclidean), PointList (pointlist.rs:488), Interval (interval.rs:1308), CmpRegion/Prism (bbox midpoint, cmpregion.rs:856, prism.rs:697).
 Effect: any Region whose base->current Mapping is not a UnitMap (every `map_region` result) returns its disc in base coordinates; sky regions get Euclidean radii; non-2-D input is accepted; negation is ignored.
 Exposed by: `astGetRegionDisc` on a `map_region`-ed Circle, or on a Polygon in a SkyFrame. UNVERIFIED; probe: C `astGetRegionDisc` on `astMapRegion(circle, zoommap(2), frame)` vs Rust.
 
@@ -642,13 +643,13 @@ Exposed by: `CmpRegion(Circle in FK5, Box in GALACTIC, AND)` membership. UNVERIF
 
 **CR-2 HIGH (load) / MED (API) — XOR unsupported.**
 C supports `AST__XOR` (cmpregion.c:4785-4806): it stores the OR of two ANDs and keeps `xor1/xor2`, and Dump writes `Operator = 3` with RegionA/B = the original operands (4232ff).
-Rust `CmpOperator` has only And/Or (mod.rs:67-72), and `from_node` maps any operator other than 2 to And (serial/mod.rs:1347-1351).
+Rust `CmpOperator` has only And/Or (mod.rs:70-75), and `from_node` maps any operator other than 2 to And (serial/mod.rs:1347-1351).
 Effect: loading a C-written XOR CmpRegion yields `A AND B` silently (wrong region); XOR cannot be constructed; illegal operator codes are not rejected (C `AST__INTRD`, 4743).
 Exposed by: a C dump of `astCmpRegion(a,b,AST__XOR,"")`.
 
 **CR-3 HIGH — RegBaseMesh uses component *base*-Frame meshes and drops unbounded-component handling.**
 C (cmpregion.c:1957-1968) uses `astRegMesh(reg)` (the component's current Frame = the CmpRegion base Frame); when one component has no mesh even when negated it uses `astBndMesh` within the other's bounds; it raises `AST__INTER` for no mesh or for OR with a mesh-less component.
-Rust (502-567) calls `get_region_mesh()`, documented as the component *base* Frame (mod.rs:265-269), with no BndMesh path and no errors.
+Rust (502-567) calls `get_region_mesh()`, documented as the component *base* Frame (mod.rs:311-315), with no BndMesh path and no errors.
 Effect: wrong mesh coordinates whenever a component has a non-UnitMap FrameSet (any `map_region` result used as a component); missing boundary for unbounded components such as half-plane Intervals. This also corrupts the bbox (`reg_base_box` bounded path, 353) and the generic `bnd_base_mesh` (IN-4).
 Exposed by: `CmpRegion(circle.map_region(zoom2), box, AND)` then `astGetRegionMesh`.
 
@@ -660,7 +661,7 @@ Effect: `set_closed(false)` on a CmpRegion has no effect on boundary membership 
 **CR-5 LOW — `CmpRegionList` (cmpregion.c:228) missing.** Protected; used by stcschan (gated) and internally.
 
 **CR-6 MED — RegSetAttrib/RegClearAttrib component propagation missing (CmpRegion and Prism).**
-C (cmpregion.c:2380, prism.c:2990) forward a base-Frame attribute setting into both components.
+C (cmpregion.c:2380, prism.c:2996) forward a base-Frame attribute setting into both components.
 Rust has no seam; the non-adaptive `with_region_integrity` path is a stub (data.rs:473-497, base auditor), so with Adaptive=0 the component Frames are never updated.
 
 **CR-7 LOW — stale `is_bounded_inner` (cmpregion.rs:593-600)** with the pre-GetRegions logic.
@@ -669,28 +670,28 @@ It is dead for `is_bounded` (795 uses `get_bounded`), but any `RegionGeometry` c
 #### Prism
 
 **PR-1 MED — GetBounded ignores the Prism's Negated flag.**
-C (prism.c:779-820) negates both components when the Prism is negated and requires both to be bounded.
-Rust `is_bounded_inner` (prism.rs:281-284) ignores `data.negated`.
+C (prism.c:784-825) negates both components when the Prism is negated and requires both to be bounded.
+Rust `is_bounded_inner` (prism.rs:381-384) ignores `data.negated`.
 Effect: a negated Prism of bounded components reports bounded, so the mesh/grid/overlap paths proceed where C treats it as unbounded.
 
 **PR-2 MED — Prism Overlap/OverlapX seam missing.**
-C prism.c:1663-1918 splits the other Region on the Prism's base/extrusion axes and combines the two sub-overlaps through `rtable` plus the negation tables; this handles unbounded extrusions exactly.
+C prism.c:1668-1924 splits the other Region on the Prism's base/extrusion axes and combines the two sub-overlaps through `rtable` plus the negation tables; this handles unbounded extrusions exactly.
 Rust `overlap` (339) goes straight to the mesh-based `compute_overlap`, which errors via `reg_base_mesh` (219) for mesh-less components and is approximate otherwise.
 Exposed by: `astOverlap(prism(circle, interval(t>0)), box)`.
 
 **PR-3 MED — constructor does not clear component RegionFS (dump not byte-exact).**
-C astInitPrism (prism.c:4238-4244) calls `astSetRegionFS(reg, 0)` on each component whose base->current Mapping is a UnitMap, so a freshly built Prism dumps its components without `Frm`.
+C astInitPrism (prism.c:4244-4250) calls `astSetRegionFS(reg, 0)` on each component whose base->current Mapping is a UnitMap, so a freshly built Prism dumps its components without `Frm`.
 Rust `PrismBuilder::build` (86-108) does not, while `CmpRegionBuilder` does (cmpregion.rs:114-123).
 Effect: a fresh Prism's dump carries `Frm` blocks in RegionA/RegionB that C omits. Simplify output already has them in C, because astCopy resets RegionFS (as in cap_slamap_02.simp).
 UNVERIFIED; probe: `astShow(astPrism(box, interval))`.
 
 **PR-4 MED — Closed/MeshSize propagation and FillFactor default missing.**
-This is the same as CR-4: C prism.c:630-713 propagates Set/Clear to components and GetFillFactor (871) defaults to region1's; Rust prism.rs:435-479 does not.
+This is the same as CR-4: C prism.c:635-718 propagates Set/Clear to components and GetFillFactor (871) defaults to region1's; Rust prism.rs:545-589 does not.
 
 ### Status of findings from the earlier audits
 - MESH-GEO: OPEN (PG-1).
 - PLY-DOWN: Simplify parity concern REFUTED (DownsizePoly not used by Simplify); public `astDownsize`/`astOutline` still MISSING (PG-2).
-- GRID-FRM: FIXED (Box `get_region_grid` box_region.rs:1257 uses `frame_grid`; base iterative grid data.rs:573).
+- GRID-FRM: FIXED (Box `get_region_grid` box_region.rs:1253 uses `frame_grid`; base iterative grid data.rs:573).
 - BND-INT: OPEN (IN-4).
 - RT-TRACE, RS-SPLIT: OPEN, GATED(Plot).
 - ACC-PARS: OPEN for the public `astCirclePars`/`astEllipsePars` (CI-2, EL-3) and protected `CmpRegionList` (CR-5); the protected point accessors are covered by `get_region_points`.
@@ -699,7 +700,7 @@ This is the same as CR-4: C prism.c:630-713 propagates Set/Clear to components a
   - FIXED: Box RegPins (1040), RegCentre set (1317); Interval Overlap (218/1042), RegPins (1054), RegCentre set (1402); PointList RegPins (338) and uncertainty-driven Transform (162).
   - FIXED, out of scope for this audit: Box PermMap/Polygon/BestBox (441/331/637).
   - STILL OPEN: Box RegBaseMesh geodesic edges (BX-3); Interval RegBaseMesh (IN-3); Interval RegBaseBox (now IN-6, a different divergence); PointList RegBaseBox wrap (PL-2).
-  - Per-class `map_region` uncertainty drop: superseded by the shared `Region::map_region` (mod.rs:789), base-auditor scope.
+  - Per-class `map_region` uncertainty drop: superseded by the shared `Region::map_region` (mod.rs:835), base-auditor scope.
 - region-circle-ellipse-polygon-null.md:
   - FIXED Circle: RegPins (538), RegBaseBox (446), RegBaseMesh (276), RegCentre (779).
   - FIXED Ellipse: RegBaseBox (513), RegBaseMesh (582), RegCentre (920).

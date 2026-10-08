@@ -17,7 +17,7 @@ use crate::mappings::helpers::{is_bad, point_has_bad};
 use crate::mappings::{DynMapping, Mapping, UnitMap, ViaSimplify};
 
 use super::data::{RegionData, RegionGeometry};
-use super::{BoxRegion, DynRegion, Overlap, Region};
+use super::{BoxRegion, DynRegion, Region};
 
 /// Return a point on the circumference of a circle, mirroring C `CircumPoint`
 /// (circle.c:570): the point where the circle crosses the first Frame axis.
@@ -529,10 +529,6 @@ impl Region for Circle {
         } else {
             Ok(inside)
         }
-    }
-
-    fn overlap(&self, other: &dyn Region) -> AstResult<Overlap> {
-        super::overlap::compute_overlap(self, other)
     }
 
     fn reg_pins_mask(

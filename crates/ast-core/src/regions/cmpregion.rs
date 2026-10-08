@@ -660,10 +660,6 @@ impl Region for CmpRegion {
         }
     }
 
-    fn overlap(&self, other: &dyn Region) -> AstResult<Overlap> {
-        super::overlap::compute_overlap(self, other)
-    }
-
     fn reg_pins_mask(
         &self,
         pts: &PointSet,

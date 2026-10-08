@@ -14,7 +14,7 @@ use crate::mappings::helpers::{is_bad, point_has_bad};
 use crate::mappings::{DynMapping, Mapping, ViaSimplify};
 
 use super::data::{RegionData, RegionGeometry};
-use super::{DynRegion, Overlap, Region};
+use super::{DynRegion, Region};
 
 /// Offset of pi/2 from the primary to the secondary ellipse axis
 /// (C `AST__DPIBY2`).
@@ -666,10 +666,6 @@ impl Region for Ellipse {
         } else {
             Ok(inside)
         }
-    }
-
-    fn overlap(&self, other: &dyn Region) -> AstResult<Overlap> {
-        super::overlap::compute_overlap(self, other)
     }
 
     fn reg_pins_mask(

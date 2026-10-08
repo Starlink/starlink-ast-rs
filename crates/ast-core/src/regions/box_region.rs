@@ -18,7 +18,7 @@ use crate::mappings::{DynMapping, Mapping, PermMap, UnitMap, ViaSimplify};
 
 use super::data::{RegionData, RegionGeometry};
 use super::merge_util::MergedRegion;
-use super::{DynRegion, Interval, NullRegion, NullRegionBuilder, Overlap, PointList, Region};
+use super::{DynRegion, Interval, NullRegion, NullRegionBuilder, PointList, Region};
 
 /// An axis-aligned box region within a coordinate frame.
 ///
@@ -1031,10 +1031,6 @@ impl Region for BoxRegion {
         } else {
             Ok(inside)
         }
-    }
-
-    fn overlap(&self, other: &dyn Region) -> AstResult<Overlap> {
-        super::overlap::compute_overlap(self, other)
     }
 
     fn reg_pins_mask(
