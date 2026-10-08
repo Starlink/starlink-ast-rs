@@ -7,5 +7,9 @@ pub const CASES: &[(&str, bool)] = &[
     ("selectormap_one_region_vs_two", false),
     ("selectormap_vs_inverted_copy", false),
     ("selectormap_1d_vs_inverted_copy", true),
+    ("wcsmap_pv_vs_none", false),
+    ("wcsmap_zero_pv_vs_none", false),
+    ("wcsmap_pv_vs_pv_with_one_cleared", true),
+    ("wcsmap_same_pv", true),
     ("tranmap_vs_reread_without_component_invert", true),
 ];

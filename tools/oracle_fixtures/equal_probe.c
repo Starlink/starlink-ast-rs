@@ -3,7 +3,8 @@
  * the stored terms first, then the applied ones), a SelectorMap (number of
  * inputs, Regions and bad value, not the Invert flag) and a TranMap read
  * from a dump whose recorded component orientation (InvA) differs from the
- * component's Invert (tranmap.c Equal restores the recorded orientation).
+ * component's Invert (tranmap.c Equal restores the recorded orientation);
+ * and WcsMaps whose projection parameters are set, unset or cleared.
  *
  * Prints Rust source for crates/ast-core/tests/equal_oracle/cases.rs:
  *
@@ -106,6 +107,21 @@ int main( void ) {
       b = astCopy( a );
       astInvert( b );
       emit( "selectormap_1d_vs_inverted_copy", a, b );
+   }
+
+   /* WcsMaps compare each projection parameter, an unset one differing
+      from one set to zero (wcsmap.c Equal, fixed upstream in 47826767). */
+   {
+      AstObject *plain = (AstObject *) astWcsMap( 2, AST__SIN, 1, 2, " " );
+      a = (AstObject *) astWcsMap( 2, AST__SIN, 1, 2, "PV2_1=0.5" );
+      emit( "wcsmap_pv_vs_none", a, plain );
+      b = (AstObject *) astWcsMap( 2, AST__SIN, 1, 2, "PV2_1=0.0" );
+      emit( "wcsmap_zero_pv_vs_none", b, plain );
+      b = (AstObject *) astWcsMap( 2, AST__SIN, 1, 2, "PV2_1=0.5,PV2_2=1.0" );
+      astClear( b, "PV2_2" );
+      emit( "wcsmap_pv_vs_pv_with_one_cleared", a, b );
+      b = (AstObject *) astWcsMap( 2, AST__SIN, 1, 2, "PV2_1=0.5" );
+      emit( "wcsmap_same_pv", a, b );
    }
 
    /* A TranMap whose first component was inverted when it was made, read

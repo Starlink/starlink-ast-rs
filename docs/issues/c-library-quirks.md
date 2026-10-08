@@ -56,6 +56,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [RESOLVED (upstream 5a2cac2a): CmpFrame `ResolvePoints` passes internal-order points to methods that expect external order](#resolved-upstream-5a2cac2a-cmpframe-resolvepoints-passes-internal-order-points-to-methods-that-expect-external-order)
 - [RESOLVED (upstream db5199d7): CmpFrame `FrameGrid` writes its grid through the PointSet's own data pointers, out of bounds](#resolved-upstream-db5199d7-cmpframe-framegrid-writes-its-grid-through-the-pointsets-own-data-pointers-out-of-bounds)
 - [RESOLVED (upstream 0d05fc29): `astLoadFrameSet` keeps a `Currnt` below 1 as the current Frame index](#resolved-upstream-0d05fc29-astloadframeset-keeps-a-currnt-below-1-as-the-current-frame-index)
+- [RESOLVED (upstream 47826767): WcsMap `Equal` ignores projection parameters that only one WcsMap has](#resolved-upstream-47826767-wcsmap-equal-ignores-projection-parameters-that-only-one-wcsmap-has)
 - [RESOLVED (upstream 010b5e85): PermMap `MapSplit` reads beyond its permutation arrays for an input index out of range](#resolved-upstream-010b5e85-permmap-mapsplit-reads-beyond-its-permutation-arrays-for-an-input-index-out-of-range)
 - [RESOLVED (upstream 11c2367b): SelectorMap `Equal` accepts either a matching Region count or a matching bad value](#resolved-upstream-11c2367b-selectormap-equal-accepts-either-a-matching-region-count-or-a-matching-bad-value)
 - [RESOLVED (upstream 4b313e0d): `Rate` of an inverted TimeMap is the forward slope](#resolved-upstream-4b313e0d-rate-of-an-inverted-timemap-is-the-forward-slope)
@@ -1095,6 +1096,18 @@ Only a hand-written description can do this, since Dump never writes an index be
 
 Fixed on `u/timj/norm-unit` in 0d05fc29, which checks Current as Base is checked, with a `testframeset` case (Errors 41-43).
 The port treats a `Currnt` below 1 as unset, as the fixed C does (`frameset.rs` `from_node`), and `tests/test_frameset_current.rs` covers Current's set state against C.
+
+### RESOLVED (upstream 47826767): WcsMap `Equal` ignores projection parameters that only one WcsMap has
+
+C location: `wcsmap.c` `Equal`.
+
+`Equal` compared the projection parameters only when both WcsMaps had some stored: the `else` meant to make a WcsMap with parameters differ from one without was attached to the test of projection type and axes instead.
+A WcsMap with PV2_1 = 0.5 therefore compared equal to the same WcsMap with none.
+Where both had parameters, it compared the lengths of the stored arrays, which grow as parameters are set and do not shrink when they are cleared, so a parameter set and then cleared made two otherwise identical WcsMaps differ; and it tested one WcsMap's array against itself where the other's was meant.
+
+Fixed on `u/timj/norm-unit` in 47826767: each parameter is compared, unset in both or set in both to equal values, an unset one being AST__BAD and so differing from one set to zero; `testmapping` `testwcsmapequal`.
+The fix leaves every reference in the simplify corpus unchanged (all 2497 C ctests pass).
+The port had compared an unset parameter as 0.0; `WcsMap::equal` now compares it as the fixed C does, and `tests/test_equal_oracle.rs` compares it with the fixed C.
 
 ### RESOLVED (upstream 010b5e85): PermMap `MapSplit` reads beyond its permutation arrays for an input index out of range
 

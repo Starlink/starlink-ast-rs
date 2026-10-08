@@ -783,15 +783,18 @@ impl WcsMap {
         self.latax
     }
 
-    /// Compare projection parameters between two WcsMaps.
+    /// Whether each projection parameter is unset in both WcsMaps or set in
+    /// both to equal values, as wcsmap.c `Equal` compares them (fixed
+    /// upstream in 47826767): an unset parameter is AST__BAD, so it differs
+    /// from one set to zero.
     fn params_equal(&self, other: &WcsMap) -> bool {
         for axis in 0..2 {
             let p1 = self.params.get(axis).map(|v| v.as_slice()).unwrap_or(&[]);
             let p2 = other.params.get(axis).map(|v| v.as_slice()).unwrap_or(&[]);
             let max_len = p1.len().max(p2.len());
             for m in 0..max_len {
-                let v1 = p1.get(m).copied().flatten().unwrap_or(0.0);
-                let v2 = p2.get(m).copied().flatten().unwrap_or(0.0);
+                let v1 = p1.get(m).copied().flatten().unwrap_or(BAD_VALUE);
+                let v2 = p2.get(m).copied().flatten().unwrap_or(BAD_VALUE);
                 if !ast_equal(v1, v2) {
                     return false;
                 }
