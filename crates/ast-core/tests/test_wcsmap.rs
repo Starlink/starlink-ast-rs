@@ -878,3 +878,17 @@ fn unusable_projection_parameters_are_errors() {
     let cop = wcs(WcsProjection::Cop, &[(1, 45.0)]);
     assert!(cop.transform(&pts, true).is_ok());
 }
+
+/// wcsmap.c GetNatLat: a conic projection's native latitude is its PV2_1,
+/// bad while that is unset; other projections take theta0 from the table.
+/// The values are C's, probed with `astGetNatLat_`.
+#[test]
+fn conic_native_latitude_is_its_pv() {
+    let cop = WcsMap::new(2, WcsProjection::Cop, 1, 2).unwrap();
+    assert_eq!(cop.nat_lat(), ast_core::constants::BAD_VALUE);
+    let mut cop = WcsMap::new(2, WcsProjection::Cop, 1, 2).unwrap();
+    cop.set_pv(2, 1, 45.0).unwrap();
+    assert_eq!(cop.nat_lat(), std::f64::consts::FRAC_PI_4);
+    let tan = WcsMap::new(2, WcsProjection::Tan, 1, 2).unwrap();
+    assert_eq!(tan.nat_lat(), std::f64::consts::FRAC_PI_2);
+}

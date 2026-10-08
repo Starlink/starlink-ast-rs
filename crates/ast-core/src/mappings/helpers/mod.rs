@@ -65,6 +65,15 @@ pub(super) fn validate_in_axes(in_axes: &[usize], nin: usize) -> Option<()> {
     Some(())
 }
 
+/// The form of `s` that C's `astChrMatch` (memory.c) compares: matching is
+/// case-insensitive and ignores trailing white space, as C's `isspace`
+/// defines it. Matching the upper-cased result against upper-case names is
+/// `astChrMatch` against those names.
+pub(crate) fn chr_match_key(s: &str) -> String {
+    s.trim_end_matches([' ', '\t', '\n', '\x0b', '\x0c', '\r'])
+        .to_ascii_uppercase()
+}
+
 /// C's base `MapSplit` (mapping.c): an index out of range is
 /// `ErrorCode::Axiin`, and otherwise [`full_set_split`]. The classes whose C
 /// `MapSplit` calls the parent first call this first.

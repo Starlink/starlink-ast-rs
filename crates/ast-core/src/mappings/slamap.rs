@@ -143,9 +143,11 @@ impl SlaCvtType {
         }
     }
 
-    /// Parse a code string (case-insensitive) into a conversion type.
+    /// Parse a code string into a conversion type, as slamap.c `CvtCode`
+    /// does: case-insensitive and ignoring trailing white space.
     pub fn from_code(s: &str) -> Option<Self> {
-        match s.to_ascii_uppercase().as_str() {
+        // C's CvtCode matches with astChrMatch.
+        match crate::mappings::helpers::chr_match_key(s).as_str() {
             "ADDET" => Some(Self::Addet),
             "SUBET" => Some(Self::Subet),
             "PREBN" => Some(Self::Prebn),
@@ -170,8 +172,8 @@ impl SlaCvtType {
             "EQHE" => Some(Self::Eqhe),
             "J2000H" => Some(Self::J2000h),
             "HJ2000" => Some(Self::Hj2000),
-            "H2E" | "DH2E" => Some(Self::Dh2e),
-            "E2H" | "DE2H" => Some(Self::De2h),
+            "H2E" => Some(Self::Dh2e),
+            "E2H" => Some(Self::De2h),
             "R2H" => Some(Self::R2h),
             "H2R" => Some(Self::H2r),
             _ => None,

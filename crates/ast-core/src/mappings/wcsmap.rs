@@ -666,6 +666,20 @@ impl WcsMap {
         if self.proj == WcsProjection::Unknown {
             return 0.0;
         }
+        // The conics have no fixed native latitude (C's table holds
+        // AST__BAD, wcsmap.c:721-724): it is projection parameter 1 on the
+        // latitude axis, through `astGetPV`, so bad when that is unset.
+        if matches!(
+            self.proj,
+            WcsProjection::Cop | WcsProjection::Coe | WcsProjection::Cod | WcsProjection::Coo
+        ) {
+            let pv = self.get_pv(self.latax + 1, 1).unwrap_or(BAD_VALUE);
+            return if pv == BAD_VALUE {
+                BAD_VALUE
+            } else {
+                pv * DD2R
+            };
+        }
         let (_phi0, theta0) = self.prj.borrow().reference_point();
         theta0.to_radians()
     }

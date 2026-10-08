@@ -12,6 +12,7 @@
 
 use crate::constants::BAD_VALUE;
 use crate::coords::PointSet;
+use crate::error::{AstError, AstResult, ErrorCode};
 use crate::mappings::Mapping;
 use crate::mappings::helpers::is_bad;
 
@@ -62,7 +63,9 @@ impl LinearFit {
 /// Returns `Some(fit)` when the fit reproduces every test point
 /// within `tol` (Cartesian distance, output space). Returns `None`
 /// if `map` is non-linear over the box, or if every output is BAD
-/// at every test point.
+/// at every test point. A transformation error is returned, as C's
+/// errors propagate from `astLinearApprox`, and so is bounds of the
+/// wrong length (`ErrorCode::Ncpin`).
 ///
 /// Outputs that produce BAD values at any test point have their
 /// shift set to `BAD_VALUE` and corresponding matrix rows filled
@@ -73,14 +76,22 @@ pub(crate) fn linear_approx_default<M: Mapping + ?Sized>(
     lbnd: &[f64],
     ubnd: &[f64],
     tol: f64,
-) -> Option<LinearFit> {
+) -> AstResult<Option<LinearFit>> {
     let ndim_in = map.nin();
     let ndim_out = map.nout();
     if lbnd.len() != ndim_in || ubnd.len() != ndim_in {
-        return None;
+        return Err(AstError::new(
+            ErrorCode::Ncpin,
+            format!(
+                "astLinearApprox: the bounds give {} and {} values; the Mapping has \
+                 {ndim_in} inputs",
+                lbnd.len(),
+                ubnd.len()
+            ),
+        ));
     }
     if ndim_in == 0 || ndim_out == 0 {
-        return None;
+        return Ok(None);
     }
 
     // Initialise fit array to BAD. fit layout: [zero[0..nout], grad[0..nin*nout]]
@@ -106,7 +117,7 @@ pub(crate) fn linear_approx_default<M: Mapping + ?Sized>(
     }
 
     // Forward-transform the face centres.
-    let pts_out_f = map.transform(&pts_in_f, true).ok()?;
+    let pts_out_f = map.transform(&pts_in_f, true)?;
 
     // Step 2: extract per-output gradients and zero points from face pairs.
     // grad lives in fit[ndim_out..], zero lives in fit[..ndim_out].
@@ -178,7 +189,7 @@ pub(crate) fn linear_approx_default<M: Mapping + ?Sized>(
         // `None`. (Oracle-verified: astLinearApprox on an all-BAD MathMap
         // returns 0 with fit all AST__BAD, contradicting the SUN/211 note
         // about returning the unit transform.)
-        return None;
+        return Ok(None);
     }
 
     // Step 4: build test points and verify the fit reproduces the
@@ -269,7 +280,7 @@ pub(crate) fn linear_approx_default<M: Mapping + ?Sized>(
     }
 
     // Transform the test points and verify every point is within tol.
-    let pts_out_t = map.transform(&pts_in_t, true).ok()?;
+    let pts_out_t = map.transform(&pts_in_t, true)?;
 
     let (zero_slice, grad_slice) = fit.split_at_mut(ndim_out);
     let mut linear_ok = true;
@@ -313,13 +324,13 @@ pub(crate) fn linear_approx_default<M: Mapping + ?Sized>(
     }
 
     if !linear_ok {
-        return None;
+        return Ok(None);
     }
 
     // Pack into LinearFit.
     let shift: Vec<f64> = fit[..ndim_out].to_vec();
     let matrix: Vec<f64> = fit[ndim_out..].to_vec();
-    Some(LinearFit { shift, matrix })
+    Ok(Some(LinearFit { shift, matrix }))
 }
 
 #[cfg(test)]
@@ -400,6 +411,7 @@ mod tests {
         let pm = identity_polymap();
         let fit = pm
             .linear_approx(&[-1.0, -1.0], &[1.0, 1.0], 0.001)
+            .unwrap()
             .expect("rust returned a fit");
         let expected = LINEAR_APPROX_IDENTITY_POLY.expect("oracle returned a fit");
         assert_close(&fit.as_c_layout(), expected, 1e-12, "identity polymap");
@@ -410,6 +422,7 @@ mod tests {
         let sm = ShiftMap::new(vec![10.0, 20.0, 30.0]);
         let fit = sm
             .linear_approx(&[0.0, 0.0, 0.0], &[100.0, 100.0, 100.0], 0.001)
+            .unwrap()
             .expect("rust returned a fit");
         let expected = LINEAR_APPROX_SHIFT_3D.expect("oracle returned a fit");
         assert_close(&fit.as_c_layout(), expected, 1e-12, "shift 3d");
@@ -420,6 +433,7 @@ mod tests {
         let zm = ZoomMap::new(1, 7.5).expect("zoommap");
         let fit = zm
             .linear_approx(&[-2.0], &[2.0], 0.001)
+            .unwrap()
             .expect("rust returned a fit");
         let expected = LINEAR_APPROX_ZOOM_1D.expect("oracle returned a fit");
         assert_close(&fit.as_c_layout(), expected, 1e-12, "zoom 1d");
@@ -436,6 +450,7 @@ mod tests {
         let mm = MatrixMap::new(m).expect("matrixmap");
         let fit = mm
             .linear_approx(&[-5.0, -5.0], &[5.0, 5.0], 0.001)
+            .unwrap()
             .expect("rust returned a fit");
         let expected = LINEAR_APPROX_MATRIX_2X3.expect("oracle returned a fit");
         assert_close(&fit.as_c_layout(), expected, 1e-12, "matrix 2x3");
@@ -448,7 +463,9 @@ mod tests {
         // *exactly* identity even at this scale; with tol=1e-9 it fails).
         // Verify we agree with the C oracle.
         let wm = WcsMap::new(2, WcsProjection::Tan, 1, 2).expect("wcsmap");
-        let fit = wm.linear_approx(&[-0.001, -0.001], &[0.001, 0.001], 1.0e-9);
+        let fit = wm
+            .linear_approx(&[-0.001, -0.001], &[0.001, 0.001], 1.0e-9)
+            .unwrap();
         assert_eq!(LINEAR_APPROX_TAN_TINY, None);
         assert!(
             fit.is_none(),
@@ -460,22 +477,33 @@ mod tests {
     fn tan_too_large_refuses() {
         // TAN over [-1, 1] rad is highly non-linear → C refuses.
         let wm = WcsMap::new(2, WcsProjection::Tan, 1, 2).expect("wcsmap");
-        let fit = wm.linear_approx(&[-1.0, -1.0], &[1.0, 1.0], 0.001);
+        let fit = wm.linear_approx(&[-1.0, -1.0], &[1.0, 1.0], 0.001).unwrap();
         assert_eq!(LINEAR_APPROX_TAN_LARGE, None);
         assert!(fit.is_none(), "expected non-linear refusal");
     }
 
     #[test]
-    fn dimension_mismatch_returns_none() {
+    fn dimension_mismatch_is_an_error() {
         let zm = ZoomMap::new(2, 1.0).expect("zoommap");
-        // Wrong-length lbnd → None.
-        assert!(zm.linear_approx(&[0.0], &[1.0, 2.0], 1e-3).is_none());
+        let err = zm.linear_approx(&[0.0], &[1.0, 2.0], 1e-3).unwrap_err();
+        assert_eq!(err.code(), crate::error::ErrorCode::Ncpin);
+    }
+
+    #[test]
+    fn transform_error_is_reported() {
+        // mapping.c astLinearApprox: an error from astTransform propagates.
+        // A forward-only RateMap inverted has no forward transformation.
+        let mut rm =
+            crate::mappings::RateMap::new(Box::new(ZoomMap::new(1, 2.0).unwrap()), 1, 1).unwrap();
+        rm.invert();
+        let err = rm.linear_approx(&[0.0], &[1.0], 1e-3).unwrap_err();
+        assert_eq!(err.code(), crate::error::ErrorCode::Trnnd);
     }
 
     #[test]
     fn returns_correct_type() {
-        // Type assertion: trait method returns Option<LinearFit>.
+        // Type assertion: trait method returns AstResult<Option<LinearFit>>.
         let zm = ZoomMap::new(1, 2.0).expect("zoommap");
-        let _: Option<LinearFit> = zm.linear_approx(&[0.0], &[1.0], 1e-3);
+        let _: crate::error::AstResult<Option<LinearFit>> = zm.linear_approx(&[0.0], &[1.0], 1e-3);
     }
 }

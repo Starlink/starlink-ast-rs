@@ -198,7 +198,7 @@ pub(crate) fn sip_int_world(
     let lbnd = vec![0.0_f64, 0.0];
     let ubnd = vec![ubnd_x, ubnd_y];
 
-    let lower_fit = match map_lower.linear_approx(&lbnd, &ubnd, tol) {
+    let lower_fit = match map_lower.linear_approx(&lbnd, &ubnd, tol)? {
         Some(f) => f,
         None => return Ok(None),
     };
@@ -325,7 +325,7 @@ pub(crate) fn sip_int_world(
     }
     let utol = tol * uscale;
 
-    let upper_fit = match map_upper.linear_approx(&lbnd_u, &ubnd_u, utol) {
+    let upper_fit = match map_upper.linear_approx(&lbnd_u, &ubnd_u, utol)? {
         Some(f) => f,
         None => return Ok(None),
     };

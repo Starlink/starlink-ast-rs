@@ -857,3 +857,15 @@ fn simplify_inverted_map_step_swaps_date_and_equinox() {
         "dec preserved",
     );
 }
+
+/// slamap.c CvtCode recognises only the documented names, matched as
+/// astChrMatch matches: case-insensitive, ignoring trailing white space.
+#[test]
+fn cvt_codes_match_as_c_matches_them() {
+    use ast_core::mappings::SlaCvtType;
+    assert_eq!(SlaCvtType::from_code("h2e "), Some(SlaCvtType::Dh2e));
+    assert_eq!(SlaCvtType::from_code("E2H\t"), Some(SlaCvtType::De2h));
+    assert_eq!(SlaCvtType::from_code("DH2E"), None);
+    assert_eq!(SlaCvtType::from_code("DE2H"), None);
+    assert_eq!(SlaCvtType::from_code(" H2E"), None);
+}

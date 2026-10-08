@@ -647,7 +647,11 @@ impl Mapping for DssMap {
                 return None;
             }
 
+            // C rebuilds the DssMap from the FITS cards `DssFits` writes, so
+            // the plate centre passes through its sexagesimal cards.
             let mut result = self.clone();
+            (result.plate_ra, result.plate_dec) =
+                plate_centre_through_fits(self.plate_ra, self.plate_dec);
             result.x_pixel_offset = cnpix1_rounded;
             result.y_pixel_offset = cnpix2_rounded;
             result.x_pixel_size = xpixelsz;
@@ -686,6 +690,39 @@ impl Mapping for DssMap {
     fn clone_box(&self) -> DynMapping {
         Box::new(self.clone())
     }
+}
+
+/// C's `NINT` (dssmap.c): round half away from zero to an integer.
+fn nint(x: f64) -> f64 {
+    (x + if x > 0.0 { 0.5 } else { -0.5 }).trunc()
+}
+
+/// The plate centre (radians) as it comes back from the FITS cards C's
+/// `DssFits` writes and the DssMap constructor reads (dssmap.c): the RA as
+/// whole hours and minutes, each rounded by `NINT`, and seconds, the Dec as
+/// a sign, whole degrees and minutes, likewise rounded, and seconds, each
+/// recombined. The other plate parameters pass through the FitsChan as the
+/// same doubles.
+fn plate_centre_through_fits(plate_ra: f64, plate_dec: f64) -> (f64, f64) {
+    let modf = |x: f64| (x.fract(), x.trunc());
+    let (ra, rah) = modf(plate_ra / (DD2R * 15.0));
+    let (ra, ram) = modf(60.0 * ra);
+    let ras = 60.0 * ra;
+    let ra_hours = nint(rah) + (nint(ram) / 60.0) + (ras / 3600.0);
+
+    let mut dec = plate_dec / DD2R;
+    let dsign = if dec < 0.0 {
+        dec = -dec;
+        -1.0
+    } else {
+        1.0
+    };
+    let (dec, decd) = modf(dec);
+    let (dec, decm) = modf(60.0 * dec);
+    let decs = 60.0 * dec;
+    let dec_deg = dsign * (nint(decd) + (nint(decm) / 60.0) + (decs / 3600.0));
+
+    (DD2R * 15.0 * ra_hours, DD2R * dec_deg)
 }
 
 /// A plate solution coefficient that defaults to 0 when missing (dssmap.c

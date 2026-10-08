@@ -306,7 +306,8 @@ impl SpecCvtType {
 
     /// Parse a code string (case-insensitive) into a conversion type.
     pub fn from_code(s: &str) -> Option<Self> {
-        match s.to_ascii_uppercase().as_str() {
+        // C's CvtCode matches with astChrMatch.
+        match crate::mappings::helpers::chr_match_key(s).as_str() {
             "FRTOVL" => Some(Self::FrToVl),
             "VLTOFR" => Some(Self::VlToFr),
             "ENTOFR" => Some(Self::EnToFr),

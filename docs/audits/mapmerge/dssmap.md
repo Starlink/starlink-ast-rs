@@ -16,7 +16,7 @@ rebuilding the DssMap from the amended FITS cards.
 
 `DssMap::map_merge` (`dssmap.rs:534-546 (fn map_merge)`) calls `default_map_merge`
 (`mappings/simplify.rs:1359-1454 (fn default_map_merge)`), whose neighbour attempt reaches
-`DssMap::try_merge` (`dssmap.rs:584-660 (fn try_merge)`).
+`DssMap::try_merge` (`dssmap.rs:584-664 (fn try_merge)`).
 
 | # | C step | C site | Rust site | extension point | verdict |
 |---|---|---|---|---|---|
@@ -29,9 +29,9 @@ rebuilding the DssMap from the amended FITS cards.
 | 7 | Read the keywords defining the DssMap's pixel origin and scales | dssmap.c:1031-1040 (fn MapMerge) | dssmap.rs:622-625 (fn try_merge) | architecture | ported |
 | 8 | Compute new values that account for the WinMap | dssmap.c:1041-1054 (fn MapMerge) | dssmap.rs:629-641 (fn try_merge) | architecture | ported |
 | 9 | CNPIX1 and CNPIX2 are integer keywords, so accept only values integral to one hundredth of a pixel | dssmap.c:1055-1060 (fn MapMerge) | dssmap.rs:644-648 (fn try_merge) | architecture | ported |
-| 10 | Take a copy of the FitsChan holding the DssMap's defining cards | dssmap.c:1061-1066 (fn MapMerge) | -- | ceremony | n/a: the port stores the plate parameters as fields, so it amends those directly instead of round-tripping a FitsChan |
-| 11 | Update each changed keyword in that copy | dssmap.c:1067-1097 (fn MapMerge) | dssmap.rs:650-654 (fn try_merge) | architecture | ported |
-| 12 | If every keyword updated, build the new DssMap from the amended cards | dssmap.c:1098-1102 (fn MapMerge) | dssmap.rs:650-656 (fn try_merge) | architecture | ported |
+| 10 | Take a copy of the FitsChan holding the DssMap's defining cards | dssmap.c:1061-1066 (fn MapMerge) | -- | ceremony | n/a: the port stores the plate parameters as fields, so it amends those directly instead of round-tripping a FitsChan; the round trip's one numeric effect, the plate centre passing through its sexagesimal cards, is reproduced by `plate_centre_through_fits` (`tests/test_dss_merge_oracle.rs`) |
+| 11 | Update each changed keyword in that copy | dssmap.c:1067-1097 (fn MapMerge) | dssmap.rs:652-658 (fn try_merge) | architecture | ported |
+| 12 | If every keyword updated, build the new DssMap from the amended cards | dssmap.c:1098-1102 (fn MapMerge) | dssmap.rs:652-660 (fn try_merge) | architecture | ported |
 | 13 | Replace the DssMap in the list with the new one, leaving the invert flag alone | dssmap.c:1103-1107 (fn MapMerge) | mappings/simplify.rs:1445-1450 (fn default_map_merge) | architecture | ported |
 | 14 | Annul the WinMap and shuffle the remaining Mappings down, clearing the vacated slot | dssmap.c:1108-1119 (fn MapMerge) | mappings/simplify.rs:1451 (fn default_map_merge) | architecture | ported |
 | 15 | Decrement the Mapping count and return the index of the first modified element | dssmap.c:1120-1126 (fn MapMerge) | mappings/simplify.rs:1452-1453 (fn default_map_merge) | architecture | ported |

@@ -571,8 +571,10 @@ pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
     /// speed; the default implementation samples and fits, mirroring
     /// `mapping.c::astLinearApprox`.
     ///
-    /// `lbnd` / `ubnd` must each have length `self.nin()`.
-    fn linear_approx(&self, lbnd: &[f64], ubnd: &[f64], tol: f64) -> Option<LinearFit> {
+    /// `lbnd` / `ubnd` must each have length `self.nin()`, or it is
+    /// `ErrorCode::Ncpin`; an error transforming the sample points is
+    /// returned, as it propagates from C's `astLinearApprox`.
+    fn linear_approx(&self, lbnd: &[f64], ubnd: &[f64], tol: f64) -> AstResult<Option<LinearFit>> {
         linear_approx::linear_approx_default(self, lbnd, ubnd, tol)
     }
 
