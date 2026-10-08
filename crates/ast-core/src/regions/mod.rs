@@ -430,6 +430,20 @@ pub trait Region: Frame + Mapping + AsDynRegion {
     #[doc(hidden)]
     fn region_frameset_mut(&mut self) -> &mut FrameSet;
 
+    /// Which pixels of a grid `astMask<X>` sets for this Region, and the
+    /// number it returns: region.c `Mask<X>` by default, which PointList
+    /// overrides. See [`mask`](crate::regions::mask).
+    #[doc(hidden)]
+    fn mask_plan(
+        &self,
+        map: Option<&dyn Mapping>,
+        inside: bool,
+        lbnd: &[i64],
+        ubnd: &[i64],
+    ) -> AstResult<masking::MaskPlan> {
+        masking::region_mask_plan(self.as_dyn_region(), map, inside, lbnd, ubnd)
+    }
+
     /// Make a change to a Frame attribute without remapping the Region, as
     /// region.c `RegSetAttrib` and `RegClearAttrib` do: to the current Frame
     /// and to the base Frame (translating an axis index between them), and to

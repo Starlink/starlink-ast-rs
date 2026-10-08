@@ -148,7 +148,7 @@ invariant (commit landing with this doc).
 
 ### Lower-confidence note — PointList `Mask`
 
-C `PointList` overrides `Mask` (`pointlist.c:796`) to stamp only the discrete
+C `PointList` overrides `Mask` (`pointlist.c:800`) to stamp only the discrete
 listed points rather than an area; Rust `masking.rs` is generic/region-agnostic.
 This is a *possible* divergence but PointList masking is an edge case — flagged
 for confirmation only if PointList mask parity is required.

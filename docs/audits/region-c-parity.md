@@ -65,6 +65,7 @@ Seams first, because the HIGH findings in themes B to F, and the Stc port, are f
 | RB-5, RB-21 | FIXED 2026-10-08: a Region forwards to the current Frame of its FrameSet the Frame methods region.c overrides: `offset2`, `resolve`, `resolve_points`, `intersect`, the `line_*` methods, `norm_box`, `sub_frame`, `system_string`, the `ax_*` methods and `validate_frame_axis`; it is never a unit Frame; `perm_axes` permutes its FrameSet; and `pick_axes_snapshot` gives a Region where the class can form one, as `astPickAxes` does. A FrameSet's `perm_axes` remaps its current Frame through the PermMap with `remap_frame`, as frameset.c `PermAxes` does through `astRemapFrame`, so the result is simplified | `tests/test_region_frame_oracle.rs`: Offset2, Resolve, AxDistance, AxOffset, System, PickAxes and astConvert in both directions for an ICRS Circle, bit-exact against C from `tools/oracle_fixtures/region_frame_probe.c`; `tests/test_region_attrib_oracle.rs` (`permuted_box`) |
 | RB-2 | FIXED 2026-10-08: every Region's equality starts from one port of region.c `Equal` (`data::region_equal`): the same class, defining points equal within pointset.c `Equal`'s default accuracy, equal base and current Frames, an equal base->current Mapping, and the same Negated and Closed values as the class reports them; CmpRegion and Prism then compare their components, and CmpRegion its operator, as their C overrides do. The simplify regression's equality check now compares the simplified Mapping as read back from its dump, as the C harness's `ast_astequal` does, since a dump written with `Frm` does not carry the base Frame equality compares | `tests/test_region_equal_oracle.rs`: 5 pairs, equality and overlap, against C from `tools/oracle_fixtures/region_equal_probe.c` |
 | RB-4, X-1, RB-13, RB-18 (reg_centre), NR-1, CI-2 | FIXED 2026-10-08: `get_region_disc` is one port of region.c `GetRegionDisc`, which no class overrides (`regions::region_disc`): AST__INVAR unless 2-dimensional, the Region taken un-negated, a bad centre and radius when unbounded, and otherwise the centre found in a local system along the current-Frame boundary mesh and the radius the greatest distance to it, times 1.000001. The nine per-class versions, and the `RegionGeometry::reg_centre` centroids only they used, are gone. `region_points` gives the defining points in the current Frame, as `astGetRegionPoints` does; `get_region_points` stays the base-Frame points the port's algorithms use. NullRegion's `reg_mesh` is AST__INTER, as its C `RegMesh` is, so its disc is that error. `Circle::circle_pars` is `astCirclePars`: the centre and circumference point in the current Frame and the Frame's distance between them. A sky Ellipse built by `EllipseBuilder` with angle 0 has its major axis along the first axis where C's has it along the second (EL-2), so the C-oracle case reads C's dump | `tests/test_region_disc_oracle.rs`: 10 Regions against C from `tools/oracle_fixtures/region_disc_probe.c` (the sky Polygon and bounded Interval wait on PG-1 and IN-3, whose meshes the disc is built from); `tests/test_region_frame_oracle.rs` (`region_points_are_in_the_current_frame`) |
+| RB-12 | FIXED 2026-10-08: `mask` is `astMask<X>`: its Mapping is optional and goes from the Region's Frame to the grid, the grid's dimensions and bounds are checked with C's AST__NGDIN and AST__GBDIN, and which pixels it sets comes from the per-class `mask_plan` seam: region.c `Mask<X>` by default (the bounding-box fill and, within the box, the pixels whose centres the Region maps to bad, which is what C's nearest-neighbour `astResample` through the Region sets) and pointlist.c `Mask<X>` for a PointList. Pixel centres on a Region's boundary are masked neither inside nor outside, as in C. C wrote beyond the array for a PointList point outside the grid; fixed upstream (ba5a6199) and ported with the fix | `tests/test_region_mask_oracle.rs`: 10 masks, pixels and counts, against C from `tools/oracle_fixtures/region_mask_probe.c` |
 | PL-1 | WITHDRAWN: a C probe masks the same two pixels as the port with a UnitMap; the Mapping direction is RB-12 | Appendix C |
 
 
@@ -160,7 +161,7 @@ C-side claims marked UNVERIFIED were established by reading region.c.
 - C `Equal` (region.c:2641-2704) requires the same class, equal PointSets, an equal **base** Frame, an equal current Frame, an equal **base->current Mapping**, and equal `astGetNegated` and `astGetClosed` (through the vtab).
 - Rust: every class copies the same body: raw `negated`, raw `closed`, points `==`, and the current Frame only. See box_region.rs:1896-1904, circle.rs:163-172, ellipse.rs:159, polygon.rs:184, interval.rs:146, pointlist.rs:136, nullregion.rs:153, cmpregion.rs:253, prism.rs:393. `Frame::equal` on a Region compares the current Frame only (box_region.rs:1655).
 - Probe P9: `b = a.map_region(ZoomMap(2), sameFrame)` gives `a.equal(b) == true` and `a.overlap(b) == Same`. However `b.bounds = [0,2]²`, `b` contains (1.5,1.5) and `a` does not. C would fail `Equal` and return 2.
-- Raw `closed` also differs from C for PointList, whose GetClosed override (pointlist.c:376) is honoured in C's comparison.
+- Raw `closed` also differs from C for PointList, whose GetClosed override (pointlist.c:380) is honoured in C's comparison.
 - Exposure: an overlap test, or a simplify cancellation, between a Region and a remapped copy of it.
 
 #### RB-3 HIGH — the `Adaptive` attribute has no effect, and RegSetAttrib/RegClearAttrib are absent
@@ -234,7 +235,7 @@ C-side claims marked UNVERIFIED were established by reading region.c.
 
 #### RB-12 MED — Mask: the Mapping runs the opposite way to C, and there is no per-class seam
 - (a) C `Mask<X>` requires `map` to go from Region Frame to grid: `nin == naxes(region)`, `nout == ndim`, then `astMapRegion(this, map, gridframe)` (region.c:5983-6044). Rust `mask` takes grid to Region (masking.rs:24-25, check at 64). The same Mapping object therefore gives a different mask, or a dimension error. `map` is also optional in C but required in Rust.
-- (b) PointList overrides every MaskX in C (pointlist.c:637-648) to stamp the listed points. Rust `mask` is a free function using `point_in_region` per pixel centre, so a PointList masks almost nothing.
+- (b) PointList overrides every MaskX in C (pointlist.c:641-652) to stamp the listed points. Rust `mask` is a free function using `point_in_region` per pixel centre, so a PointList masks almost nothing.
 - (c) The error codes are AST__NGDIN/AST__GBDIN in C but `Dimin` in Rust.
 - Exposure: the C ast_tester mask tests (testregions.c), run with the same Mapping.
 
@@ -615,13 +616,13 @@ Rust (881-902) rewrites excluded axes to [-MAX, MAX].
 #### PointList
 
 **PL-1 HIGH — Mask override missing (silent data loss).**
-C `Mask<X>` (pointlist.c:797-960) stamps exactly the pixels containing the listed points (or everything except them).
+C `Mask<X>` (pointlist.c:801-975) stamps exactly the pixels containing the listed points (or everything except them).
 Rust uses the generic `masking::mask` (masking.rs:42), which tests each pixel centre for membership within the tiny uncertainty, so essentially no pixel matches and nothing is masked.
-Note for the base auditor: `masking::mask` documents its Mapping as grid->region, while C `astMask` takes region->grid (`astMapRegion(this, map, grid_frame)`, pointlist.c:858).
+Note for the base auditor: `masking::mask` documents its Mapping as grid->region, while C `astMask` takes region->grid (`astMapRegion(this, map, grid_frame)`, pointlist.c:863).
 Exposed by: `mask(pointlist, unitmap, true, …)` on a grid containing one of the points.
 
 **PL-2 MED — RegBaseBox ignores longitude wrap.**
-C (pointlist.c:1633) uses `astAxDistance`/`astAxOffset` relative to the first point.
+C (pointlist.c:1648) uses `astAxDistance`/`astAxOffset` relative to the first point.
 Rust (pointlist.rs:222-244) takes raw min/max.
 Effect: a sky PointList straddling RA=0 gets a ~2π-wide box, and the base default uncertainty (built from that bbox) becomes ~600× too large, which loosens PointList membership.
 UNVERIFIED; probe: C `astGetRegionBounds` and `astGetUncFrm` on a PointList at RA 0.01 and 6.27.

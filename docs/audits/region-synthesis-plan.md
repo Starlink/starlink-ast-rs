@@ -129,7 +129,7 @@ CmpRegion).
 The keystone. Introduce a real on-boundary predicate with the `unc` argument
 and the `0.5*(l1+l2)` uncertainty band. Requires RCENT (re-centre) as a
 sub-dependency for uncertainty positioning. Port per class following C
-box.c:3115 / interval.c:2640 / pointlist.c:1970 / circle.c:1450 /
+box.c:3115 / interval.c:2640 / pointlist.c:1985 / circle.c:1450 /
 ellipse.c:1538 / polygon.c:4737. Do NOT delete the existing interior
 `point_in_region` (Transform still needs it) — add `reg_pins` as the distinct
 boundary test C uses in Simplify/Overlap.
