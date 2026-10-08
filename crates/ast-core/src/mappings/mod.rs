@@ -211,6 +211,9 @@ pub struct MappingFlags {
     /// in for C's comparison of Mapping pointers, so it stays with the
     /// Mapping as it moves and a copy does not take it.
     pub(crate) merge_tag: usize,
+    /// Whether Invert is set to 0, which C tells from an unset Invert
+    /// (mapping.c `TestInvert`); a set 1 is `is_inverted`.
+    pub(crate) invert_zero: bool,
 }
 
 impl Clone for MappingFlags {
@@ -220,6 +223,7 @@ impl Clone for MappingFlags {
             allow_simplify: self.allow_simplify,
             restricted_simplify: self.restricted_simplify,
             merge_tag: 0,
+            invert_zero: self.invert_zero,
         }
     }
 }
@@ -239,21 +243,41 @@ pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
     /// Whether this mapping is currently inverted.
     fn is_inverted(&self) -> bool;
 
-    /// Invert this mapping in place.
-    fn invert(&mut self);
+    /// Invert this mapping in place, as C's `astInvert` does: Invert is left
+    /// set when the result is inverted and unset when it is not.
+    fn invert(&mut self) {
+        self.invert_orientation();
+        self.mapping_flags_mut().invert_zero = false;
+    }
 
-    /// Set the Invert attribute: invert this mapping if it is not already in
-    /// the orientation `invert` asks for (C's `astSetInvert`).
+    /// Flip this mapping's orientation: the class-specific part of
+    /// [`Mapping::invert`], which callers use instead.
+    #[doc(hidden)]
+    fn invert_orientation(&mut self);
+
+    /// Set the Invert attribute (C's `astSetInvert`), inverting this mapping
+    /// if it is not already in the orientation asked for. Setting it to
+    /// `false` leaves it set, so [`Mapping::test_invert`] is true.
     fn set_invert(&mut self, invert: bool) {
         if self.is_inverted() != invert {
-            self.invert();
+            self.invert_orientation();
         }
+        self.mapping_flags_mut().invert_zero = !invert;
     }
 
     /// Clear the Invert attribute, returning this mapping to its original
     /// orientation (C's `astClearInvert`, whose default is 0).
     fn clear_invert(&mut self) {
-        self.set_invert(false);
+        if self.is_inverted() {
+            self.invert_orientation();
+        }
+        self.mapping_flags_mut().invert_zero = false;
+    }
+
+    /// Whether the Invert attribute is set (C's `astTestInvert`): true when
+    /// this mapping is inverted, or when Invert has been set to `false`.
+    fn test_invert(&self) -> bool {
+        self.is_inverted() || self.mapping_flags().invert_zero
     }
 
     /// Transform a set of points.

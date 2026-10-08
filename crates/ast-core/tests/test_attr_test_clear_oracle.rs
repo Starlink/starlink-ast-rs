@@ -15,8 +15,8 @@
 mod cases;
 
 use ast_core::mappings::{
-    GrismMap, LutInterp, LutMap, MathMap, PcdMap, PermMap, PolyMap, PolyTerm, SphMap, SplineMap,
-    WcsMap, WcsProjection, ZoomMap,
+    GrismMap, LutInterp, LutMap, Mapping, MathMap, PcdMap, PermMap, PolyMap, PolyTerm, SphMap,
+    SplineMap, WcsMap, WcsProjection, ZoomMap,
 };
 use ast_core::{AnyObject, from_native_string, to_native_string};
 
@@ -182,6 +182,24 @@ fn build(name: &str) -> (AnyObject, Vec<bool>) {
             m.clear_simp_if();
             let t = vec![m.test_simp_fi(), m.test_simp_if()];
             (AnyObject::MathMap(m), t)
+        }
+        "invert_set_zero" | "invert_once" | "invert_zero_inverted_twice" | "invert_cleared" => {
+            let mut m = ZoomMap::new(1, 2.0).unwrap();
+            match name {
+                "invert_set_zero" => m.set_invert(false),
+                "invert_once" => m.invert(),
+                "invert_zero_inverted_twice" => {
+                    m.set_invert(false);
+                    m.invert();
+                    m.invert();
+                }
+                _ => {
+                    m.set_invert(true);
+                    m.clear_invert();
+                }
+            }
+            let t = vec![m.test_invert()];
+            (AnyObject::ZoomMap(m), t)
         }
         _ => panic!("no Rust construction for case {name}"),
     }

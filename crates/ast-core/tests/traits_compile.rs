@@ -74,7 +74,7 @@ impl Mapping for DummyRegion {
     fn is_inverted(&self) -> bool {
         false
     }
-    fn invert(&mut self) {}
+    fn invert_orientation(&mut self) {}
     fn transform(&self, _pts: &PointSet, _forward: bool) -> AstResult<PointSet> {
         Err(AstError::new(ErrorCode::Nodef, "not implemented"))
     }

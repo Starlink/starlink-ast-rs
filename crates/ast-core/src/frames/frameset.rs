@@ -1864,7 +1864,7 @@ impl Mapping for FrameSet {
         false
     }
 
-    fn invert(&mut self) {
+    fn invert_orientation(&mut self) {
         std::mem::swap(&mut self.base_idx, &mut self.current_idx);
         std::mem::swap(&mut self.base_set, &mut self.current_set);
     }

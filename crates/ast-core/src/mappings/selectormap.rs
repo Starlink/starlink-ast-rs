@@ -220,7 +220,7 @@ impl Mapping for SelectorMap {
         self.inverted
     }
 
-    fn invert(&mut self) {
+    fn invert_orientation(&mut self) {
         self.inverted = !self.inverted;
     }
 

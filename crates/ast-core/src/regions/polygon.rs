@@ -1243,7 +1243,7 @@ impl Mapping for Polygon {
         false
     }
 
-    fn invert(&mut self) {
+    fn invert_orientation(&mut self) {
         // A Region's forward and inverse transforms are identical (membership
         // is direction-independent), so inverting has no effect on behaviour.
     }

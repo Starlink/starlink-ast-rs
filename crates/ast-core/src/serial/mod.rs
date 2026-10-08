@@ -184,6 +184,9 @@ pub(crate) fn read_mapping_flags(whole: &Node) -> crate::mappings::MappingFlags 
         allow_simplify: node.get_int("AlSimp", 0) != 0,
         restricted_simplify: node.get_int("ReSimp", 0) != 0,
         merge_tag: 0,
+        // C reads Invert with its unset value as the default
+        // (mapping.c:24130), so an `Invert = 0` card leaves it set to 0.
+        invert_zero: node.get("Invert").is_some() && node.get_int("Invert", 0) == 0,
     }
 }
 
@@ -248,6 +251,9 @@ fn apply_mapping_object_items(result: &mut dyn Mapping, node: &Node) {
     }
     if let Some(report) = flags.report {
         result.set_report_attr(Some(report));
+    }
+    if flags.invert_zero {
+        result.mapping_flags_mut().invert_zero = true;
     }
     let object = node.section("Object");
     if let Some(ident) = object.get_string_if_set("Ident") {

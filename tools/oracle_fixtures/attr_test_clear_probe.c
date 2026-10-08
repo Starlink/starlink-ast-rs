@@ -172,6 +172,19 @@ int main( void ) {
    obj = cp;
    emit( "mathmap_cleared", obj, "SimpFI,SimpIF" );
 
+   obj = (AstObject *) astZoomMap( 1, 2.0, "Invert=0" );
+   emit( "invert_set_zero", obj, "Invert" );
+   obj = (AstObject *) astZoomMap( 1, 2.0, " " );
+   astInvert( obj );
+   emit( "invert_once", obj, "Invert" );
+   obj = (AstObject *) astZoomMap( 1, 2.0, "Invert=0" );
+   astInvert( obj );
+   astInvert( obj );
+   emit( "invert_zero_inverted_twice", obj, "Invert" );
+   obj = (AstObject *) astZoomMap( 1, 2.0, "Invert=1" );
+   astClear( obj, "Invert" );
+   emit( "invert_cleared", obj, "Invert" );
+
    printf( "];\n" );
    return status;
 }

@@ -249,7 +249,7 @@ impl Mapping for TranMap {
         self.inverted
     }
 
-    fn invert(&mut self) {
+    fn invert_orientation(&mut self) {
         self.inverted = !self.inverted;
     }
 

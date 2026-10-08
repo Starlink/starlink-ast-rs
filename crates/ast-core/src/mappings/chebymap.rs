@@ -362,7 +362,7 @@ impl Mapping for ChebyMap {
         self.inverted
     }
 
-    fn invert(&mut self) {
+    fn invert_orientation(&mut self) {
         self.inverted = !self.inverted;
         // Keep the inner PolyMap in sync.
         self.poly.invert();
