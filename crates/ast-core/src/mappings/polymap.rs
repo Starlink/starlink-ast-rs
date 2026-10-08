@@ -9,7 +9,7 @@ use crate::error::{AstError, AstResult, ErrorCode};
 use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
 
 use super::cmpmap::{CmpMap, Composition};
-use super::helpers::{ast_equal, point_has_bad};
+use super::helpers::ast_equal;
 use super::matrix::MatrixMap;
 use super::rate::numeric_rate;
 use super::shift::ShiftMap;
@@ -344,14 +344,40 @@ impl PolyMap {
         self.tol_inverse = None;
     }
 
-    /// Return a reference to the forward polynomial terms.
+    /// Return a reference to the forward polynomial terms of the original,
+    /// uninverted PolyMap, in the order they were given.
+    /// [`PolyMap::coeffs`] is C's `astPolyCoeffs`, relative to the Invert
+    /// flag.
     pub fn forward_terms(&self) -> &[PolyTerm] {
         &self.forward
     }
 
-    /// Return a reference to the inverse polynomial terms, if defined.
+    /// Return a reference to the inverse polynomial terms of the original,
+    /// uninverted PolyMap, if defined, in the order they were given.
     pub fn inverse_terms(&self) -> Option<&[PolyTerm]> {
         self.inverse.as_deref()
+    }
+
+    /// The coefficients of the forward (`forward`) or inverse transformation
+    /// of this PolyMap as it stands, as C's `astPolyCoeffs` returns them: the
+    /// transformation is relative to the Invert flag, so an inverted
+    /// PolyMap's forward coefficients are the original inverse ones, and they
+    /// are grouped by the output each defines, in the order each output's
+    /// were given. Empty when the transformation has no coefficients.
+    pub fn coeffs(&self, forward: bool) -> Vec<PolyTerm> {
+        let (terms, by_output) = if forward != self.inverted {
+            (Some(&self.forward), Some(&self.forward_by_output))
+        } else {
+            (self.inverse.as_ref(), self.inverse_by_output.as_ref())
+        };
+        match (terms, by_output) {
+            (Some(terms), Some(by_output)) => by_output
+                .iter()
+                .flatten()
+                .map(|&i| terms[i].clone())
+                .collect(),
+            _ => Vec::new(),
+        }
     }
 
     /// Whether the original (uninverted) forward transformation is
@@ -556,334 +582,177 @@ impl PolyMap {
         self.jacobian_terms.as_ref().unwrap()
     }
 
-    /// Compute a linear approximation of the inverse and use it as the
-    /// initial guess for Newton-Raphson iteration.
-    ///
-    /// Extracts the constant and linear terms from the forward polynomial,
-    /// builds the linear system `y = offset + A*x`, inverts A, and applies
-    /// `x0 = A^{-1} * (target - offset)`.
-    ///
-    /// Falls back to copying target values (identity guess) if the linear
-    /// part is singular.
-    fn compute_linear_guess(&self, target: &PointSet, result: &mut PointSet, converged: &[bool]) {
-        let ncoord = self.nin;
-        let npoint = target.npoint();
-
-        // Extract constant terms (power sum = 0) and linear terms (exactly
-        // one power = 1, rest = 0) from the forward polynomial.
-        let mut offset = vec![0.0; ncoord];
-        let mut matrix = vec![0.0; ncoord * ncoord]; // row-major: matrix[out*ncoord + in]
-
-        for term in &self.forward {
-            let power_sum: usize = term.powers.iter().sum();
-            let out_idx = term.out_axis - 1;
-            if power_sum == 0 {
-                offset[out_idx] += term.coeff;
-            } else if power_sum == 1 {
-                for (j, &p) in term.powers.iter().enumerate() {
-                    if p == 1 {
-                        matrix[out_idx * ncoord + j] += term.coeff;
-                        break;
-                    }
-                }
-            }
-        }
-
-        // Try to invert the linear matrix.
-        let inv_matrix = if ncoord == 1 {
-            let a = matrix[0];
-            if a.abs() > 1e-30 {
-                Some(vec![1.0 / a])
-            } else {
-                None
-            }
-        } else if ncoord == 2 {
-            let a = matrix[0];
-            let b = matrix[1];
-            let c = matrix[2];
-            let d = matrix[3];
-            let det = a * d - b * c;
-            if det.abs() > 1e-30 {
-                let inv_det = 1.0 / det;
-                Some(vec![d * inv_det, -b * inv_det, -c * inv_det, a * inv_det])
-            } else {
-                None
-            }
+    /// The linear truncation of this PolyMap's transformation, as polymap.c
+    /// `LinearGuess` builds it: a MatrixMap of the linear coefficients
+    /// followed by a ShiftMap of the constant ones, from the forward
+    /// coefficients, or from the inverse ones (and then inverted) when there
+    /// are no forward ones. A later coefficient for the same input replaces
+    /// an earlier one rather than adding to it, as C assigns them. A row
+    /// with no linear coefficient gets 1.0 on the diagonal so that the
+    /// matrix can be inverted, and a matrix that still cannot be inverted
+    /// is replaced by a UnitMap.
+    fn linear_guess(&self) -> AstResult<DynMapping> {
+        let (terms, by_output, nin, nout, inverse) = if !self.forward.is_empty() {
+            (
+                &self.forward,
+                &self.forward_by_output,
+                self.nin,
+                self.nout,
+                false,
+            )
         } else {
-            // General NxN: attempt inversion via Gaussian elimination.
-            // Build augmented identity and solve.
-            let mut aug = vec![0.0; ncoord * ncoord];
-            aug.copy_from_slice(&matrix);
-            let mut inv = vec![0.0; ncoord * ncoord];
-            for i in 0..ncoord {
-                inv[i * ncoord + i] = 1.0;
+            match (self.inverse.as_ref(), self.inverse_by_output.as_ref()) {
+                (Some(terms), Some(by_output)) => (terms, by_output, self.nout, self.nin, true),
+                _ => (
+                    &self.forward,
+                    &self.forward_by_output,
+                    self.nin,
+                    self.nout,
+                    false,
+                ),
             }
-            // Forward elimination with partial pivoting.
-            let mut ok = true;
-            for col in 0..ncoord {
-                let mut max_val = aug[col * ncoord + col].abs();
-                let mut max_row = col;
-                for row in (col + 1)..ncoord {
-                    let v = aug[row * ncoord + col].abs();
-                    if v > max_val {
-                        max_val = v;
-                        max_row = row;
-                    }
-                }
-                if max_val < 1e-30 {
-                    ok = false;
-                    break;
-                }
-                if max_row != col {
-                    for k in 0..ncoord {
-                        aug.swap(col * ncoord + k, max_row * ncoord + k);
-                        inv.swap(col * ncoord + k, max_row * ncoord + k);
-                    }
-                }
-                let pivot = aug[col * ncoord + col];
-                for k in 0..ncoord {
-                    aug[col * ncoord + k] /= pivot;
-                    inv[col * ncoord + k] /= pivot;
-                }
-                for row in 0..ncoord {
-                    if row == col {
-                        continue;
-                    }
-                    let factor = aug[row * ncoord + col];
-                    for k in 0..ncoord {
-                        aug[row * ncoord + k] -= factor * aug[col * ncoord + k];
-                        inv[row * ncoord + k] -= factor * inv[col * ncoord + k];
-                    }
-                }
-            }
-            if ok { Some(inv) } else { None }
         };
-
-        // Apply the linear inverse guess.
-        #[allow(clippy::needless_range_loop)]
-        if let Some(ref inv_mat) = inv_matrix {
-            for ip in 0..npoint {
-                if converged[ip] {
-                    continue;
-                }
-                let t = target.point(ip);
-                let r = result.point_mut(ip);
-                for i in 0..ncoord {
-                    let mut sum = 0.0;
-                    for j in 0..ncoord {
-                        sum += inv_mat[i * ncoord + j] * (t[j] - offset[j]);
+        let mut matrix = ndarray::Array2::<f64>::zeros((nout, nin));
+        let mut vector = vec![0.0; nout];
+        for (iout, indices) in by_output.iter().enumerate() {
+            for &ico in indices {
+                let term = &terms[ico];
+                // 0: constant, 1: linear in input `jin`, 2: anything else.
+                let mut flag = 0;
+                let mut jin = 0;
+                for (iin, &pow) in term.powers.iter().enumerate() {
+                    if pow != 0 {
+                        if pow != 1 || flag == 1 {
+                            flag = 2;
+                            break;
+                        }
+                        flag = 1;
+                        jin = iin;
                     }
-                    r[i] = sum;
                 }
-            }
-        } else {
-            for ip in 0..npoint {
-                if converged[ip] {
-                    continue;
+                match flag {
+                    0 => vector[iout] = term.coeff,
+                    1 => matrix[[iout, jin]] = term.coeff,
+                    _ => {}
                 }
-                result.point_mut(ip).copy_from_slice(target.point(ip));
             }
         }
+        for iout in 0..nout {
+            if (0..nin).all(|iin| matrix[[iout, iin]] == 0.0) {
+                matrix[[iout, iout]] = 1.0;
+            }
+        }
+        let mm = MatrixMap::new(matrix)?;
+        let mm: DynMapping = if mm.has_inverse() {
+            Box::new(mm)
+        } else {
+            Box::new(UnitMap::new(nin))
+        };
+        let mut result: DynMapping = Box::new(CmpMap::new(
+            mm,
+            Box::new(ShiftMap::new(vector)),
+            Composition::Series,
+        )?);
+        if inverse {
+            result.invert();
+        }
+        Ok(result)
     }
 
-    /// Perform a bulk Newton-Raphson iterative inverse.
-    ///
-    /// Given target output positions in `target`, compute the input
-    /// positions that produce them under the forward polynomial, writing
-    /// results into `result`.
-    ///
-    /// Optimizations:
-    /// - Pre-computed Jacobian polynomial terms (computed once, reused across calls)
-    /// - Linear initial guess (faster convergence, fewer iterations needed)
-    /// - Combined forward+Jacobian evaluation: a single power table is computed
-    ///   once per point and reused to evaluate both the forward polynomial and
-    ///   all Jacobian columns, avoiding redundant power computation.
-    ///
-    /// `bad_sentinel` is the value written to outputs that fail (input
-    /// flagged as invalid up-front, singular Jacobian mid-iteration).
-    /// Callers from the BAD_VALUE world pass `BAD_VALUE`; callers in the
-    /// NaN-as-bad protocol pass `f64::NAN` so downstream stages receive
-    /// the protocol-canonical sentinel without an extra post-pass. Pre-
-    /// marking uses [`point_has_bad`], which folds both `BAD_VALUE` and
-    /// `!is_finite()` (NaN, ±∞) into the same "skip this point" decision,
-    /// so the NaN-protocol caller gets the same iteration-skipping the
-    /// BAD caller does.
-    fn newton_raphson_inverse(
-        &self,
-        target: &PointSet,
-        result: &mut PointSet,
-        bad_sentinel: f64,
-    ) -> AstResult<()> {
+    /// The iterative inverse, transcribing polymap.c `Transform` with
+    /// IterInverse set. The initial guess is the inverse of
+    /// [`PolyMap::linear_guess`]. Each Newton-Raphson iteration transforms
+    /// the current guesses with the forward transformation and with the
+    /// Jacobian's PolyMaps, one per input, as C's `astTransform` calls do,
+    /// and solves the Jacobian equation for each point not yet converged
+    /// with `palDmat`. A singular Jacobian makes the point bad. A point has
+    /// converged when `|dx|^2 <= tol^2 |x|^2`. Bad values are carried
+    /// through the arithmetic as C carries them, so a point bad on one axis
+    /// can keep a value on another. Each result C gets from `astTransform`
+    /// has its non-finite values replaced by bad ones, as `astTransform`
+    /// does, and so does the final one.
+    fn newton_raphson_inverse(&self, target: &PointSet, result: &mut PointSet) -> AstResult<()> {
         let npoint = target.npoint();
         let ncoord = self.nin; // nin == nout for iterative inverse
         debug_assert_eq!(self.nin, self.nout);
 
-        // Use cached Jacobian terms.
-        let jac_terms = self.get_jacobian_terms();
+        // The Jacobian, one PolyMap per input, each giving the derivatives of
+        // every output with respect to that input (polymap.c GetJacobian).
+        let jacob: Vec<PolyMap> = self
+            .get_jacobian_terms()
+            .iter()
+            .map(|terms| PolyMap::new(ncoord, ncoord, terms, None))
+            .collect::<AstResult<_>>()?;
 
-        let max_iter = self.niter_inverse();
-        let tol_sq = self.tol_inverse() * self.tol_inverse();
-        let mut converged = vec![false; npoint];
+        self.linear_guess()?.transform_into(target, false, result)?;
+        super::substitute_nan_to_bad_in_place(result);
 
-        // Mark invalid-input points as already converged and fill their
-        // output with the sentinel. `point_has_bad` catches both BAD_VALUE
-        // and NaN, so this works for both the BAD caller and the NaN-
-        // protocol caller.
-        #[allow(clippy::needless_range_loop)]
-        for i in 0..npoint {
-            if point_has_bad(target.point(i)) {
-                converged[i] = true;
-                result.point_mut(i).fill(bad_sentinel);
-            }
-        }
+        let maxiter = self.niter_inverse();
+        let maxerr = self.tol_inverse() * self.tol_inverse();
+        let tables = self
+            .term_tables(true)
+            .expect("an iterative inverse needs forward coefficients");
+        let mut work = PointSet::zeros(npoint, ncoord);
+        let mut ps_jac: Vec<PointSet> = (0..ncoord)
+            .map(|_| PointSet::zeros(npoint, ncoord))
+            .collect();
+        let mut flags = vec![false; npoint];
+        let mut nconv = 0;
+        let mut mat = vec![0.0; ncoord * ncoord];
+        let mut vec = vec![0.0; ncoord];
 
-        // Better initial guess via linear truncation of forward polynomial.
-        self.compute_linear_guess(target, result, &converged);
-
-        // Pre-compute max powers across forward AND all Jacobian terms
-        // so that the shared power table covers everything.
-        let mut nr_max_pows = self.forward_max_pows.clone();
-        for jcol in jac_terms {
-            for term in jcol {
-                for (i, &p) in term.powers.iter().enumerate().take(ncoord) {
-                    if p > nr_max_pows[i] {
-                        nr_max_pows[i] = p;
-                    }
+        let mut iter = 0;
+        while iter < maxiter && nconv < npoint {
+            iter += 1;
+            poly_transform(self, true, &tables, result, &mut work, BAD_VALUE);
+            super::substitute_nan_to_bad_in_place(&mut work);
+            for ip in 0..npoint {
+                let t = target.point(ip);
+                let w = work.point_mut(ip);
+                for ic in 0..ncoord {
+                    w[ic] = if t[ic] != BAD_VALUE && w[ic] != BAD_VALUE {
+                        t[ic] - w[ic]
+                    } else {
+                        BAD_VALUE
+                    };
                 }
             }
-        }
-
-        // Pre-group Jacobian terms by output axis for each column.
-        let jac_by_output: Vec<Vec<Vec<usize>>> = jac_terms
-            .iter()
-            .map(|col_terms| compute_terms_by_output(col_terms, ncoord))
-            .collect();
-
-        // Allocate shared power table (reused for all points across all iterations).
-        let mut power_table: Vec<Vec<f64>> =
-            nr_max_pows.iter().map(|&m| vec![0.0; m + 1]).collect();
-
-        // Scratch space for forward output, Jacobian matrix, and RHS.
-        let mut fwd_out = vec![0.0; ncoord];
-        let mut jac_matrix = vec![0.0; ncoord * ncoord];
-        let mut dy = vec![0.0; ncoord];
-
-        // Bulk-flat slice access: walking the underlying contiguous buffer
-        // skips per-point ndarray row-view + as_slice + expect machinery
-        // that `point_mut(ip)` performs. With ~50k per-point-iter calls on
-        // the LSST bench, removing that dispatch is measurable.
-        let target_view = target.view();
-        let target_flat: &[f64] = target_view.to_slice().expect("PointSet is C-contiguous");
-        let mut result_view = result.view_mut();
-        let result_flat: &mut [f64] = result_view
-            .as_slice_mut()
-            .expect("PointSet is C-contiguous");
-
-        for _iter in 0..max_iter {
-            if converged.iter().all(|&c| c) {
-                break;
+            for (map, ps) in jacob.iter().zip(ps_jac.iter_mut()) {
+                map.transform_into(result, true, ps)?;
+                super::substitute_nan_to_bad_in_place(ps);
             }
-
-            #[allow(clippy::needless_range_loop)]
-            for ip in 0..npoint {
-                if converged[ip] {
+            for (ip, flag) in flags.iter_mut().enumerate() {
+                if *flag {
                     continue;
                 }
-
-                let base = ip * ncoord;
-                let pt = &mut result_flat[base..base + ncoord];
-
-                // Fill power table once for this point (pt reborrows as &[f64]).
-                fill_power_table(pt, &nr_max_pows, &mut power_table);
-
-                // Evaluate forward polynomial using the power table.
-                for (out_idx, term_indices) in self.forward_by_output.iter().enumerate() {
-                    let mut sum = 0.0;
-                    for &idx in term_indices {
-                        sum += eval_term_with_table(&self.forward[idx], &power_table);
+                for irow in 0..ncoord {
+                    for icol in 0..ncoord {
+                        mat[irow * ncoord + icol] = ps_jac[icol].point(ip)[irow];
                     }
-                    fwd_out[out_idx] = sum;
+                    vec[irow] = work.point(ip)[irow];
                 }
-
-                // Evaluate Jacobian columns using the same power table.
-                // J[row][col] = d(F_row)/d(x_col)
-                for col in 0..ncoord {
-                    let col_terms = &jac_terms[col];
-                    for (row, term_indices) in jac_by_output[col].iter().enumerate() {
-                        let mut sum = 0.0;
-                        for &idx in term_indices {
-                            sum += eval_term_with_table(&col_terms[idx], &power_table);
-                        }
-                        jac_matrix[row * ncoord + col] = sum;
-                    }
-                }
-
-                // Compute residual: dy = target - forward(guess).
-                let tgt = &target_flat[base..base + ncoord];
-                for ic in 0..ncoord {
-                    dy[ic] = tgt[ic] - fwd_out[ic];
-                }
-
-                // Solve J * dx = dy.
-                if ncoord == 1 {
-                    let j00 = jac_matrix[0];
-                    if j00.abs() < 1e-30 {
-                        pt.fill(bad_sentinel);
-                        converged[ip] = true;
-                        continue;
-                    }
-                    let dx = dy[0] / j00;
-                    pt[0] += dx;
-                    let xlensq = pt[0] * pt[0];
-                    if dx * dx < tol_sq * xlensq || xlensq == 0.0 {
-                        converged[ip] = true;
-                    }
-                } else if ncoord == 2 {
-                    // Direct 2x2 solve via Cramer's rule.
-                    let a = jac_matrix[0];
-                    let b = jac_matrix[1];
-                    let c = jac_matrix[2];
-                    let d = jac_matrix[3];
-                    let det = a * d - b * c;
-                    if det.abs() < 1e-30 {
-                        pt.fill(bad_sentinel);
-                        converged[ip] = true;
-                        continue;
-                    }
-                    let dx0 = (d * dy[0] - b * dy[1]) / det;
-                    let dx1 = (a * dy[1] - c * dy[0]) / det;
-                    pt[0] += dx0;
-                    pt[1] += dx1;
-
-                    let xlensq = pt[0] * pt[0] + pt[1] * pt[1];
-                    let vlensq = dx0 * dx0 + dx1 * dx1;
-                    if vlensq < tol_sq * xlensq || xlensq == 0.0 {
-                        converged[ip] = true;
-                    }
+                let x = result.point_mut(ip);
+                if !crate::pal::dmat(ncoord, &mut mat, &mut vec) {
+                    x.fill(BAD_VALUE);
+                    *flag = true;
+                    nconv += 1;
                 } else {
-                    // General NxN: Gaussian elimination with partial pivoting.
-                    let mut mat = jac_matrix[..ncoord * ncoord].to_vec();
-                    let mut rhs = dy.clone();
-                    let ok = solve_linear_system(&mut mat, &mut rhs, ncoord);
-                    if !ok {
-                        pt.fill(bad_sentinel);
-                        converged[ip] = true;
-                        continue;
-                    }
                     let mut vlensq = 0.0;
                     let mut xlensq = 0.0;
-                    for (ic, &dx_ic) in rhs.iter().enumerate().take(ncoord) {
-                        pt[ic] += dx_ic;
-                        vlensq += dx_ic * dx_ic;
-                        xlensq += pt[ic] * pt[ic];
+                    for ic in 0..ncoord {
+                        let xx = x[ic] + vec[ic];
+                        x[ic] = xx;
+                        xlensq += xx * xx;
+                        vlensq += vec[ic] * vec[ic];
                     }
-                    if vlensq < tol_sq * xlensq || xlensq == 0.0 {
-                        converged[ip] = true;
+                    if vlensq <= maxerr * xlensq {
+                        *flag = true;
+                        nconv += 1;
                     }
                 }
             }
         }
-
+        super::substitute_nan_to_bad_in_place(result);
         Ok(())
     }
 
@@ -1600,7 +1469,7 @@ impl Mapping for PolyMap {
                         return Ok(());
                     }
                 }
-                self.newton_raphson_inverse(pts, out, BAD_VALUE)?;
+                self.newton_raphson_inverse(pts, out)?;
             } else if let Some(tables) = self.term_tables(false) {
                 // Explicit inverse terms: the inverse maps from nout-space
                 // to nin-space.
@@ -1626,12 +1495,9 @@ impl Mapping for PolyMap {
     /// 2. **Explicit inverse polynomial.** Same shape as forward — drop the
     ///    `point_has_bad` check, NaN propagates.
     /// 3. **Iterative NR inverse.** SIMD path is NaN-correct. The scalar
-    ///    fallback (`newton_raphson_inverse`) emits `BAD_VALUE` for bad inputs;
-    ///    to keep the protocol's "NaN inside the pipeline" invariant we do a
-    ///    cheap one-pass `BAD_VALUE → NaN` translation on the output. This is
-    ///    O(npoint × ncoord) — comparable to the per-point BAD check we saved
-    ///    elsewhere — and only triggers when SIMD is off, so the cost is
-    ///    bounded. Writing a NaN-native NR is follow-up work.
+    ///    fallback (`newton_raphson_inverse`) works in C's bad values, so NaN
+    ///    inputs are translated to `BAD_VALUE` before it and bad outputs to
+    ///    NaN after it.
     fn transform_into_nan(
         &self,
         pts: &PointSet,
@@ -1665,11 +1531,25 @@ impl Mapping for PolyMap {
                     return Ok(());
                 }
             }
-            // Fallback: scalar NR with the NaN sentinel — emits f64::NAN
-            // directly for invalid inputs and singular Jacobian, so
-            // downstream NaN-aware stages receive the protocol-canonical
-            // sentinel with no post-pass needed.
-            self.newton_raphson_inverse(pts, out, f64::NAN)?;
+            // Fallback: the scalar iterative inverse works in C's bad values,
+            // so NaN inputs become BAD_VALUE on the way in and bad outputs
+            // NaN on the way out.
+            let mut bad_in = pts.clone();
+            {
+                let mut view = bad_in.view_mut();
+                for v in view.as_slice_mut().expect("PointSet is C-contiguous") {
+                    if v.is_nan() {
+                        *v = BAD_VALUE;
+                    }
+                }
+            }
+            self.newton_raphson_inverse(&bad_in, out)?;
+            let mut view = out.view_mut();
+            for v in view.as_slice_mut().expect("PointSet is C-contiguous") {
+                if *v == BAD_VALUE {
+                    *v = f64::NAN;
+                }
+            }
         } else if let Some(tables) = self.term_tables(false) {
             poly_transform(self, false, &tables, pts, out, f64::NAN);
         } else {

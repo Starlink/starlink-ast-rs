@@ -1159,16 +1159,17 @@ fn polymap_bulk_nr_inverse_bad_values() {
     assert!((inv.point(0)[0] - 3.0).abs() < 1e-3);
     assert!((inv.point(0)[1] - 4.0).abs() < 1e-3);
 
-    // Point 1: BAD
+    // Point 1: a bad u gives a bad x, and C's iteration carries the bad
+    // value through its arithmetic without spoiling y, which C gives as 4.
     assert_eq!(inv.point(1)[0], BAD_VALUE);
-    assert_eq!(inv.point(1)[1], BAD_VALUE);
+    assert_eq!(inv.point(1)[1], 4.0);
 
     // Point 2: good
     assert!((inv.point(2)[0] - 4.0).abs() < 1e-3);
     assert!((inv.point(2)[1] - 5.0).abs() < 1e-3);
 
-    // Point 3: BAD
-    assert_eq!(inv.point(3)[0], BAD_VALUE);
+    // Point 3: likewise, C gives x = 3 and a bad y.
+    assert_eq!(inv.point(3)[0], 3.0);
     assert_eq!(inv.point(3)[1], BAD_VALUE);
 }
 
@@ -1476,4 +1477,27 @@ fn a_zero_coefficient_is_dropped() {
     let without = PolyMap::new(1, 1, &[term(2.0, 1)], None).unwrap();
     assert!(with_zero.equal(&without));
     assert_eq!(with_zero.forward_terms().len(), 1);
+}
+
+/// `coeffs` is C's `astPolyCoeffs`: relative to the Invert flag, so an
+/// inverted PolyMap's forward coefficients are the original inverse ones,
+/// grouped by output (testmapping.c `testpolycoeffsinverted`, after the
+/// upstream fix 436f069f for a PolyMap with different numbers of inputs and
+/// outputs).
+#[test]
+fn coeffs_are_relative_to_invert_and_grouped_by_output() {
+    let term = |coeff, out_axis, powers: Vec<usize>| PolyTerm {
+        coeff,
+        powers,
+        out_axis,
+    };
+    let fwd = vec![term(2.0, 1, vec![1, 0]), term(3.0, 1, vec![0, 1])];
+    let inv = vec![term(0.25, 2, vec![1]), term(0.5, 1, vec![1])];
+    let mut pm = PolyMap::new(2, 1, &fwd, Some(&inv)).unwrap();
+    let grouped = vec![term(0.5, 1, vec![1]), term(0.25, 2, vec![1])];
+    assert_eq!(pm.coeffs(true), fwd);
+    assert_eq!(pm.coeffs(false), grouped);
+    pm.invert();
+    assert_eq!(pm.coeffs(true), grouped);
+    assert_eq!(pm.coeffs(false), fwd);
 }

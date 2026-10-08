@@ -194,3 +194,24 @@ fn inverted_rate_is_the_inverse_rate() {
     assert!((sm.rate(&[1.0, 1.5], 1, 1).unwrap() - 0.5).abs() <= 1.0e-6);
     assert!(sm.rate(&[1.0, 1.5], 1, 2).unwrap().abs() <= 1.0e-6);
 }
+
+// Generated; formatted by its generator rather than rustfmt.
+#[rustfmt::skip]
+#[path = "spline_inverse_oracle/cases.rs"]
+mod inverse_cases;
+
+/// The forward transformation, and the iterative inverse of its results,
+/// bit for bit against C's (`tools/oracle_fixtures/spline_inverse_probe.c`):
+/// the inverse's Newton-Raphson steps are solved by palDmat, as in C.
+#[test]
+fn forward_and_inverse_match_the_c_library_bit_for_bit() {
+    let s = read_spline();
+    let sm = scipy_spline_map(&s);
+    let (u, v) = sm.tran2(&XIN, &YIN, true).unwrap();
+    let (x, y) = sm.tran2(&u, &v, false).unwrap();
+    let bits = |a: &[f64]| a.iter().map(|v| v.to_bits()).collect::<Vec<_>>();
+    assert_eq!(bits(&u), bits(&inverse_cases::U), "forward u");
+    assert_eq!(bits(&v), bits(&inverse_cases::V), "forward v");
+    assert_eq!(bits(&x), bits(&inverse_cases::X), "inverse x");
+    assert_eq!(bits(&y), bits(&inverse_cases::Y), "inverse y");
+}

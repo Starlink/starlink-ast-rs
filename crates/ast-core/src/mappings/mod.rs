@@ -924,9 +924,12 @@ fn substitute_bad_to_nan(pts: &PointSet) -> PointSet {
 }
 
 /// Replace every `f64::NAN` (and ±∞) value in `pts` with `BAD_VALUE` in
-/// place. Used at the output boundary of [`dyn Mapping::transform_nan_protocol`]
-/// to restore the canonical sentinel value before returning to the caller.
-fn substitute_nan_to_bad_in_place(pts: &mut PointSet) {
+/// place, as C's `astReplaceNaN` does with AST_REPLACE_NAN set, which C's
+/// `astTransform` applies to every result (mapping.c `astTransform_`). Used
+/// at the output boundary of [`dyn Mapping::transform_nan_protocol`] to
+/// restore the canonical sentinel value before returning to the caller, and
+/// wherever a port follows C through an internal `astTransform`.
+pub(crate) fn substitute_nan_to_bad_in_place(pts: &mut PointSet) {
     use crate::constants::BAD_VALUE;
     let mut view = pts.view_mut();
     let flat: &mut [f64] = view.as_slice_mut().expect("PointSet is C-contiguous");

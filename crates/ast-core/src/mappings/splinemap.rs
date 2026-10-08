@@ -733,11 +733,9 @@ impl SplineMap {
                 break;
             }
 
-            // Clamp current guesses to knot domain
+            // Clamp every guess to the knot domain, converged ones included,
+            // as C does at the start of each iteration.
             for ipoint in 0..npoint {
-                if flags[ipoint] {
-                    continue;
-                }
                 let outp = out.point_mut(ipoint);
                 if !is_bad(outp[0]) {
                     outp[0] = outp[0].clamp(xlo, xhi);
@@ -822,9 +820,11 @@ impl SplineMap {
                     continue;
                 }
 
-                let det = j00 * j11 - j01 * j10;
-                if det.abs() < 1.0e-300 {
-                    // Singular matrix
+                // Solve J * d = vec with palDmat, as C does; a singular
+                // matrix makes the point bad.
+                let mut mat = [j00, j01, j10, j11];
+                let mut vec = [vec0, vec1];
+                if !crate::pal::dmat(2, &mut mat, &mut vec) {
                     let outp = out.point_mut(ipoint);
                     outp[0] = BAD_VALUE;
                     outp[1] = BAD_VALUE;
@@ -832,10 +832,7 @@ impl SplineMap {
                     nconv += 1;
                     continue;
                 }
-
-                // Solve: d = J^{-1} * vec
-                let dx = (j11 * vec0 - j01 * vec1) / det;
-                let dy = (j00 * vec1 - j10 * vec0) / det;
+                let [dx, dy] = vec;
 
                 // Update guess
                 let outp = out.point_mut(ipoint);
