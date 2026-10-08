@@ -24,7 +24,7 @@ use ast_core::regions::{
     BoxRegionBuilder, CmpOperator, CmpRegionBuilder, DynRegion, IntervalBuilder, PrismBuilder,
     Region,
 };
-use ast_core::{AnyObject, from_native_string, to_native_string};
+use ast_core::{AnyObject, to_native_string};
 
 /// The unit square in a Frame with axes in metres and ActiveUnit set.
 fn metre_box() -> DynRegion {
@@ -49,10 +49,11 @@ fn unit_box(lbnd: [f64; 2], ubnd: [f64; 2], unc: Option<DynRegion>) -> DynRegion
     Box::new(builder.build().unwrap())
 }
 
-/// A Region read from the dump C made of `case`.
-fn c_region(case: &str) -> DynRegion {
-    let dump = cases::CASES.iter().find(|c| c.0 == case).unwrap().2;
-    from_native_string(dump).unwrap().into_region().unwrap()
+/// The unit Box [0, 1] x [0, 2] with its current-Frame axes swapped.
+fn permuted_box() -> DynRegion {
+    let mut reg = unit_box([0.0, 0.0], [1.0, 2.0], None);
+    reg.perm_axes(&[2, 1]).unwrap();
+    reg
 }
 
 fn region(name: &str) -> DynRegion {
@@ -76,12 +77,9 @@ fn region(name: &str) -> DynRegion {
             reg.clear_unit(1).unwrap();
             reg
         }
-        // C's own permuted Box, read rather than built: the port's PermAxes
-        // on a Region leaves a different (equivalent) FrameSet, which is a
-        // finding of its own in docs/audits/region-c-parity.md.
-        "permuted_box" => c_region("permuted_box"),
+        "permuted_box" => permuted_box(),
         "label_after_permaxes" => {
-            let mut reg = c_region("permuted_box");
+            let mut reg = permuted_box();
             reg.set_adaptive(false);
             reg.set_label(1, "Swapped").unwrap();
             reg

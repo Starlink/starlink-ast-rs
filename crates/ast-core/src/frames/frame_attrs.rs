@@ -1011,6 +1011,114 @@ macro_rules! region_frame_attrs {
     () => {
         forward_frame_attrs!(region data.frameset);
         forward_axis_attrs!(region data.frameset);
+        // The Frame methods region.c overrides to act on the current Frame
+        // of the Region's FrameSet (region.c:4700-4830).
+        fn offset2(&self, point1: &[f64], angle: f64, offset: f64)
+        -> $crate::error::AstResult<(Vec<f64>, f64)> {
+            self.data.frameset.current().offset2(point1, angle, offset)
+        }
+        fn resolve(
+            &self,
+            point1: &[f64],
+            point2: &[f64],
+            point3: &[f64],
+        ) -> $crate::error::AstResult<(Vec<f64>, f64, f64)> {
+            self.data.frameset.current().resolve(point1, point2, point3)
+        }
+        fn resolve_points(
+            &self,
+            point1: &[f64],
+            point2: &[f64],
+            input: &$crate::coords::PointSet,
+        ) -> $crate::error::AstResult<$crate::coords::PointSet> {
+            self.data.frameset.current().resolve_points(point1, point2, input)
+        }
+        fn intersect(&self, a1: &[f64], a2: &[f64], b1: &[f64], b2: &[f64])
+        -> $crate::error::AstResult<Vec<f64>> {
+            self.data.frameset.current().intersect(a1, a2, b1, b2)
+        }
+        fn line_def(&self, start: &[f64], end: &[f64])
+        -> $crate::error::AstResult<Option<$crate::frames::LineDef>> {
+            self.data.frameset.current().line_def(start, end)
+        }
+        fn line_contains(&self, l: &$crate::frames::LineDef, point: &[f64])
+        -> $crate::error::AstResult<bool> {
+            self.data.frameset.current().line_contains(l, point)
+        }
+        fn line_crossing(&self, l1: &$crate::frames::LineDef, l2: &$crate::frames::LineDef)
+        -> $crate::error::AstResult<(bool, [f64; 2], f64)> {
+            self.data.frameset.current().line_crossing(l1, l2)
+        }
+        fn line_offset(&self, line: &$crate::frames::LineDef, par: f64, prp: f64)
+        -> $crate::error::AstResult<[f64; 2]> {
+            self.data.frameset.current().line_offset(line, par, prp)
+        }
+        fn norm_box(
+            &self,
+            lbnd: &mut [f64],
+            ubnd: &mut [f64],
+            inside: &dyn Fn(&[f64]) -> $crate::error::AstResult<bool>,
+        ) -> $crate::error::AstResult<()> {
+            self.data.frameset.current().norm_box(lbnd, ubnd, inside)
+        }
+        fn sub_frame(
+            &self,
+            template: Option<&dyn $crate::frames::Frame>,
+            result_naxes: usize,
+            target_axes: &[i32],
+            template_axes: &[i32],
+        ) -> $crate::error::AstResult<
+            Option<($crate::mappings::DynMapping, $crate::frames::DynFrame)>,
+        > {
+            self.data
+                .frameset
+                .current()
+                .sub_frame(template, result_naxes, target_axes, template_axes)
+        }
+        fn system_string(&self) -> $crate::error::AstResult<Option<&str>> {
+            self.data.frameset.current().system_string()
+        }
+        fn ax_angle(&self, a: &[f64], b: &[f64], axis: usize) -> $crate::error::AstResult<f64> {
+            self.validate_frame_axis(axis, "astAxAngle")?;
+            self.data.frameset.current().ax_angle(a, b, axis)
+        }
+        fn ax_distance(&self, axis: usize, v1: f64, v2: f64) -> $crate::error::AstResult<f64> {
+            self.validate_frame_axis(axis, "astAxDistance")?;
+            self.data.frameset.current().ax_distance(axis, v1, v2)
+        }
+        fn ax_norm(&self, axis: usize, oper: i32, values: &mut [f64])
+        -> $crate::error::AstResult<()> {
+            self.validate_frame_axis(axis, "astAxNorm")?;
+            self.data.frameset.current().ax_norm(axis, oper, values)
+        }
+        fn ax_offset(&self, axis: usize, v1: f64, dist: f64) -> $crate::error::AstResult<f64> {
+            self.validate_frame_axis(axis, "astAxOffset")?;
+            self.data.frameset.current().ax_offset(axis, v1, dist)
+        }
+        fn validate_frame_axis(&self, axis: usize, method: &str) -> $crate::error::AstResult<()> {
+            self.data.frameset.current().validate_frame_axis(axis, method)
+        }
+        // region.c `IsUnitFrame`: a Region is never equivalent to a UnitMap.
+        fn is_unit_frame(&self) -> bool {
+            false
+        }
+        // region.c `PermAxes`: the FrameSet's axes are permuted.
+        fn perm_axes(&mut self, perm: &[usize]) -> $crate::error::AstResult<()> {
+            self.data.perm_axes(perm)
+        }
+        // region.c `PickAxes`: a Region of the picked axes where the Region's
+        // class can form one, otherwise the picked current-Frame axes.
+        fn pick_axes_snapshot(&self, target_axes: &[i32])
+        -> $crate::error::AstResult<$crate::frames::DynFrame> {
+            if target_axes.iter().any(|&a| a < 0) {
+                return self.data.frameset.current().pick_axes_snapshot(target_axes);
+            }
+            let axes: Vec<usize> = target_axes.iter().map(|&a| a as usize).collect();
+            Ok(match $crate::regions::pick_axes_region(self, &axes)? {
+                $crate::regions::PickedAxes::Region(region) => region,
+                $crate::regions::PickedAxes::Frame(frame) => frame,
+            })
+        }
         // region.c `NormalPoints` (6591): the current Frame of the Region's
         // FrameSet normalises the points.
         fn norm_points(

@@ -1018,30 +1018,9 @@ impl FrameSet {
 
         let pm = PermMap::new(&inperm, &outperm, &[])?;
 
-        // Compose onto the existing edge touching the current frame.
-        // The new mapping is: old_mapping then PermMap (forward direction).
-        let cur_node = self.node_map[self.current_idx];
-        for edge in &mut self.edges {
-            if edge.to == cur_node {
-                // Edge goes from→current: compose PermMap after existing.
-                let combined =
-                    CmpMap::new(edge.mapping.clone(), Box::new(pm), Composition::Series)?;
-                edge.mapping = Box::new(combined);
-                return Ok(());
-            }
-            if edge.from == cur_node {
-                // Edge goes current→to: compose PermMap (inverted) before existing.
-                let mut pm_inv = pm;
-                pm_inv.invert();
-                let combined =
-                    CmpMap::new(Box::new(pm_inv), edge.mapping.clone(), Composition::Series)?;
-                edge.mapping = Box::new(combined);
-                return Ok(());
-            }
-        }
-
-        // No edge (single-frame FrameSet) — nothing to compose onto.
-        Ok(())
+        // Keep the coordinate values with their permuted axes by remapping
+        // the current Frame through the PermMap (frameset.c `PermAxes`).
+        self.remap_frame(FrameRef::Current, Box::new(pm))
     }
 
     // ================================================================== //

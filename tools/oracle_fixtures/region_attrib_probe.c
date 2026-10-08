@@ -7,7 +7,7 @@
  * CmpRegion and Prism extend to their components. Also whether the point
  * (0.5, 0.5) is inside the Box, whose axes are in metres before Unit(1) is
  * set to km. The "permuted_box" case is the Box before Label(1) is set in
- * "label_after_permaxes", for the port to read rather than build.
+ * "label_after_permaxes".
  *
  * Prints Rust source for crates/ast-core/tests/region_attrib_oracle/cases.rs:
  *
