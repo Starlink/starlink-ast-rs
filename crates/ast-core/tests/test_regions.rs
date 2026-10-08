@@ -2053,38 +2053,6 @@ fn sky_ellipse_rotated_membership() {
     );
 }
 
-#[test]
-fn sky_ellipse_disc() {
-    // Disc of ellipse should encompass the semi-major axis.
-    let sky = SkyFrame::new(SkySystem::Icrs);
-    let centre = [2.0, 0.3];
-    let semi_axes = [0.1, 0.05];
-    let angle = 0.0;
-
-    let ellipse = EllipseBuilder::new(sky, centre.to_vec(), semi_axes, angle)
-        .unwrap()
-        .build()
-        .unwrap();
-
-    let (disc_centre, disc_radius) = ellipse.get_region_disc().unwrap();
-
-    // Disc centre should be near the ellipse centre.
-    assert!(
-        (disc_centre[0] - centre[0]).abs() < 1.0e-3,
-        "SkyEllipse disc: centre RA"
-    );
-    assert!(
-        (disc_centre[1] - centre[1]).abs() < 1.0e-3,
-        "SkyEllipse disc: centre Dec"
-    );
-    // Disc radius should be at least the semi-major axis.
-    assert!(
-        disc_radius >= semi_axes[0] * 0.99,
-        "SkyEllipse disc: radius >= semi-major, got {}",
-        disc_radius
-    );
-}
-
 /// A sky Polygon straddling RA = 0 must report a narrow longitude range. C
 /// accumulates the bounds as `astAxDistance` offsets from the first vertex
 /// precisely so the wrap does not widen the box (polygon.c:4263-4297).

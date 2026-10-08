@@ -304,12 +304,16 @@ pub trait Region: Frame + Mapping + AsDynRegion {
         Ok((lbnd, ubnd))
     }
 
-    /// Get a bounding disc for this region.
+    /// A disc in the current Frame that encloses this 2-dimensional Region,
+    /// as `(centre, radius)`, the radius measured as the Frame measures
+    /// distance (an arc on the sky). An unbounded Region gives a bad centre
+    /// and radius, and a Region that is not 2-dimensional is AST__INVAR.
     ///
-    /// Returns `(centre, radius)` where `centre` has length `naxes()`
-    /// and `radius` is a single scalar angular radius (for sky regions)
-    /// or Cartesian distance.
-    fn get_region_disc(&self) -> AstResult<(Vec<f64>, f64)>;
+    /// region.c `GetRegionDisc`, which no class overrides: see
+    /// [`region_disc`].
+    fn get_region_disc(&self) -> AstResult<(Vec<f64>, f64)> {
+        region_disc(self.as_dyn_region())
+    }
 
     /// Get a mesh of points on the boundary of this region.
     ///
@@ -391,11 +395,21 @@ pub trait Region: Frame + Mapping + AsDynRegion {
     /// with `AST__MBBNF` for an unbounded region.
     fn get_region_grid(&self) -> AstResult<PointSet>;
 
-    /// Get the defining points of this region in the base frame.
+    /// Get the defining points of this region in the base frame, as the
+    /// Region stores them (C's `this->points`); [`region_points`](Region::region_points)
+    /// gives them in the current Frame, as `astGetRegionPoints` does.
     ///
     /// The meaning depends on the concrete region type (e.g., centre +
     /// edge for Circle, corners for Box).
     fn get_region_points(&self) -> AstResult<PointSet>;
+
+    /// The defining points of this Region in its current Frame, as C's
+    /// public `astGetRegionPoints` returns them (region.c `GetRegionPoints`):
+    /// the stored base-Frame points transformed by the FrameSet.
+    fn region_points(&self) -> AstResult<PointSet> {
+        self.get_region_frameset()
+            .transform(&self.get_region_points()?, true)
+    }
 
     // ------------------------------------------------------------------
     // Frame access
@@ -1490,6 +1504,86 @@ pub(crate) fn any_as_region(a: &dyn std::any::Any) -> Option<&dyn Region> {
     } else {
         None
     }
+}
+
+/// region.c `GetRegionDisc`: a disc enclosing a 2-dimensional Region.
+///
+/// The Region is taken un-negated. Its boundary mesh in the current Frame
+/// may lie on the sky, so its centre is found in a local system: distances
+/// parallel and perpendicular to the line from the first mesh point to the
+/// one half way round, from `resolve`. The centre of the bounding box of
+/// about 200 mesh points in that system is taken back into the Frame with
+/// `offset2`, and the radius is the greatest distance from it to a mesh
+/// point, increased by one part in 10^6 for rounding. A centre and radius
+/// that cannot be found (an unbounded Region, or bad first mesh points) are
+/// bad, where C leaves the caller's centre unchanged.
+pub fn region_disc(region: &dyn Region) -> AstResult<(Vec<f64>, f64)> {
+    if region.naxes() != 2 {
+        return Err(AstError::new(
+            ErrorCode::Invar,
+            "astGetRegionDisc(Region): Supplied Region is not 2-dimensional.",
+        ));
+    }
+    let unnegated;
+    let region: &dyn Region = if region.is_negated() {
+        unnegated = region.negated_copy();
+        unnegated.as_ref()
+    } else {
+        region
+    };
+    let unknown = Ok((
+        vec![crate::constants::BAD_VALUE; 2],
+        crate::constants::BAD_VALUE,
+    ));
+    if !region.is_bounded() {
+        return unknown;
+    }
+
+    let mesh = region.reg_mesh()?;
+    let npoint = mesh.npoint();
+    let point1 = mesh.point(0).to_vec();
+    let point2 = mesh.point(npoint / 2).to_vec();
+    if point1.iter().chain(&point2).any(|&v| is_bad(v)) {
+        return unknown;
+    }
+
+    // The bounding box of about 200 mesh points in the local system.
+    let step = if npoint > 200 { npoint / 200 } else { 1 };
+    let (mut dxmax, mut dxmin, mut dymax, mut dymin) = (0.0f64, 0.0f64, 0.0f64, 0.0f64);
+    for ipoint in (step..npoint).step_by(step) {
+        let point3 = mesh.point(ipoint);
+        if point3.iter().any(|&v| is_bad(v)) {
+            continue;
+        }
+        let (point4, dx, mut dy) = region.resolve(&point1, &point2, point3)?;
+        // `resolve` gives |dy|; its sign is that of the angle at point4.
+        if region.angle(&point1, &point4, point3)? < 0.0 {
+            dy = -dy;
+        }
+        dxmax = dxmax.max(dx);
+        dxmin = dxmin.min(dx);
+        dymax = dymax.max(dy);
+        dymin = dymin.min(dy);
+    }
+    let dx = 0.5 * (dxmax + dxmin);
+    let dy = 0.5 * (dymax + dymin);
+
+    // Back into the Region's Frame: along the basis vector by dx, then at
+    // right angles by dy.
+    let dist = region.distance(&point1, &point2)?;
+    let north = [point1[0], point1[1] + 0.001 * dist];
+    let angle = region.angle(&north, &point1, &point2)?;
+    let (point3, angle) = region.offset2(&point1, angle, dx)?;
+    let (centre, _) = region.offset2(&point3, angle - std::f64::consts::FRAC_PI_2, dy)?;
+
+    let mut radius = 0.0f64;
+    for ipoint in 0..npoint {
+        let d = region.distance(&centre, mesh.point(ipoint))?;
+        if !is_bad(d) {
+            radius = radius.max(d);
+        }
+    }
+    Ok((centre, radius * 1.000001))
 }
 
 /// Remove every Region from a Mapping: C's `astRemoveRegions`.

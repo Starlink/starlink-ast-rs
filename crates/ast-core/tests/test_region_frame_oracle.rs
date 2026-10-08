@@ -67,3 +67,24 @@ fn conversions_to_and_from_the_region() {
     assert_eq!(found, cases::CONVERTS);
     assert!(!(&c as &dyn Region).is_unit_frame());
 }
+
+/// `region_points` gives the defining points in the current Frame, as
+/// `astGetRegionPoints` does, here of a Box mapped by a ZoomMap.
+#[test]
+fn region_points_are_in_the_current_frame() {
+    let frame = || ast_core::frames::BasicFrameBuilder::new(2).build().unwrap();
+    let b = ast_core::regions::BoxRegionBuilder::from_bounds(frame(), &[0.0, 0.0], &[1.0, 1.0])
+        .unwrap()
+        .build()
+        .unwrap();
+    let zoom = ast_core::mappings::ZoomMap::new(2, 2.0).unwrap();
+    let mapped = b.map_region(&zoom, &frame()).unwrap();
+    let pts = mapped.region_points().unwrap();
+    let got = [
+        pts.point(0)[0],
+        pts.point(1)[0],
+        pts.point(0)[1],
+        pts.point(1)[1],
+    ];
+    assert_eq!(got, cases::MAPPED_BOX_POINTS);
+}

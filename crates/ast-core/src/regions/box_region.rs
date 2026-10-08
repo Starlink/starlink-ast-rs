@@ -975,10 +975,6 @@ impl RegionGeometry for BoxRegion {
         Ok(mesh)
     }
 
-    fn reg_centre(&self) -> AstResult<Vec<f64>> {
-        Ok(self.data.points[0].clone())
-    }
-
     fn is_bounded_inner(&self) -> bool {
         // Base Region::GetBounded (region.c:3358): a closed-curve region is
         // bounded unless negated, except within a SkyFrame where a finite
@@ -1214,22 +1210,6 @@ impl Region for BoxRegion {
 
     fn region_base_box(&self) -> AstResult<(Vec<f64>, Vec<f64>)> {
         self.reg_base_box()
-    }
-
-    fn get_region_disc(&self) -> AstResult<(Vec<f64>, f64)> {
-        let centre = self.data.points[0].clone();
-        let (lbnd, ubnd) = self.bounds();
-
-        // Radius = half-diagonal of the bounding box.
-        let naxes = centre.len();
-        let mut sum_sq = 0.0;
-        for i in 0..naxes {
-            let half_width = 0.5 * (ubnd[i] - lbnd[i]);
-            sum_sq += half_width * half_width;
-        }
-        let radius = sum_sq.sqrt();
-
-        Ok((centre, radius))
     }
 
     fn get_region_mesh(&self) -> AstResult<PointSet> {

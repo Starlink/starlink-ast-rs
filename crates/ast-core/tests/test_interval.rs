@@ -357,17 +357,6 @@ fn centre_of_bounded_interval() {
     assert!((centre[1] - 5.0).abs() < 1e-10);
 }
 
-#[test]
-fn centre_of_unbounded_interval_fails() {
-    let frame = BasicFrameBuilder::new(2).build().unwrap();
-    let interval = IntervalBuilder::new(frame, vec![BAD_VALUE, 0.0], vec![10.0, 10.0])
-        .unwrap()
-        .build()
-        .unwrap();
-
-    assert!(interval.get_region_disc().is_err());
-}
-
 // ---- Mesh ----
 
 #[test]

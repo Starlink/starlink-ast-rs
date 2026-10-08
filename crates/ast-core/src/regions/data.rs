@@ -392,9 +392,6 @@ pub(crate) trait RegionGeometry {
     /// The mesh should contain approximately `mesh_size` points.
     fn reg_base_mesh(&self) -> AstResult<Vec<Vec<f64>>>;
 
-    /// Return the centre of the region in the base frame.
-    fn reg_centre(&self) -> AstResult<Vec<f64>>;
-
     /// Whether this region is bounded (finite extent in all axes).
     fn is_bounded_inner(&self) -> bool;
 

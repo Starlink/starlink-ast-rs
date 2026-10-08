@@ -230,6 +230,21 @@ impl CircleBuilder {
 // ============================================================================
 
 impl Circle {
+    /// The Circle's centre, radius and a point on its circumference, in its
+    /// current Frame, as `astCirclePars` gives them (circle.c `CirclePars`):
+    /// the defining points transformed by the FrameSet, and the radius the
+    /// Frame's distance between them, so an arc on the sky.
+    pub fn circle_pars(&self) -> AstResult<(Vec<f64>, f64, Vec<f64>)> {
+        let pts = self
+            .data
+            .frameset
+            .transform(&self.get_region_points()?, true)?;
+        let centre = pts.point(0).to_vec();
+        let p1 = pts.point(1).to_vec();
+        let radius = self.data.frameset.current().distance(&centre, &p1)?;
+        Ok((centre, radius, p1))
+    }
+
     /// Mutate the current frame with region integrity enforcement.
     ///
     /// When adaptive (the default), the FrameSet's base→current mapping is
@@ -476,10 +491,6 @@ impl RegionGeometry for Circle {
         Ok(self.base_mesh_bounds()?.mesh)
     }
 
-    fn reg_centre(&self) -> AstResult<Vec<f64>> {
-        Ok(self.data.points[0].clone())
-    }
-
     fn is_bounded_inner(&self) -> bool {
         self.data.closed_curve_bounded()
     }
@@ -699,12 +710,6 @@ impl Region for Circle {
 
     fn region_base_box(&self) -> AstResult<(Vec<f64>, Vec<f64>)> {
         self.reg_base_box()
-    }
-
-    fn get_region_disc(&self) -> AstResult<(Vec<f64>, f64)> {
-        let centre = self.data.points[0].clone();
-        let radius = self.radius()?;
-        Ok((centre, radius))
     }
 
     fn get_region_mesh(&self) -> AstResult<PointSet> {

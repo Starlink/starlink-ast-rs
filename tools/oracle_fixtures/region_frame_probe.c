@@ -2,7 +2,8 @@
  * current Frame of its FrameSet (region.c Offset2, Resolve, AxDistance,
  * AxOffset, SystemString, PickAxes, SubFrame through astConvert), for a
  * Circle in an ICRS SkyFrame, where a Cartesian answer differs from the
- * spherical one.
+ * spherical one; and astGetRegionPoints, which gives the defining points in
+ * the current Frame, for a mapped Box.
  *
  * Prints Rust source for crates/ast-core/tests/region_frame_oracle/cases.rs:
  *
@@ -83,5 +84,18 @@ int main( void ) {
            "pub const CONVERTS: (bool, bool) = (%s, %s);\n",
            astConvert( gal, circle, "" ) ? "true" : "false",
            astConvert( circle, gal, "" ) ? "true" : "false" );
+
+   /* astGetRegionPoints of a Box [0,1]x[0,1] mapped by ZoomMap(2). */
+   {
+      double l[] = { 0.0, 0.0 }, u[] = { 1.0, 1.0 }, pts[ 4 ];
+      int npoint;
+      AstFrame *f = astFrame( 2, " " );
+      AstRegion *b = astMapRegion( astBox( f, 1, l, u, NULL, " " ),
+                                   astZoomMap( 2, 2.0, " " ), f );
+      astGetRegionPoints( b, 2, 2, &npoint, pts );
+      printf( "/// astGetRegionPoints of a Box [0,1]x[0,1] mapped by ZoomMap(2): x of\n"
+              "/// each point, then y.\n" );
+      array( "MAPPED_BOX_POINTS", pts, 4 );
+   }
    return status;
 }

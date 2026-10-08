@@ -620,10 +620,6 @@ impl RegionGeometry for Ellipse {
         Ok(mesh)
     }
 
-    fn reg_centre(&self) -> AstResult<Vec<f64>> {
-        Ok(self.data.points[0].clone())
-    }
-
     fn is_bounded_inner(&self) -> bool {
         self.data.closed_curve_bounded()
     }
@@ -841,14 +837,6 @@ impl Region for Ellipse {
 
     fn region_base_box(&self) -> AstResult<(Vec<f64>, Vec<f64>)> {
         self.reg_base_box()
-    }
-
-    fn get_region_disc(&self) -> AstResult<(Vec<f64>, f64)> {
-        let centre = self.data.points[0].clone();
-        let (a, b, _angle) = self.ellipse_params()?;
-        // Bounding disc radius is the semi-major axis (the largest extent).
-        let radius = a.max(b);
-        Ok((centre, radius))
     }
 
     fn get_region_mesh(&self) -> AstResult<PointSet> {

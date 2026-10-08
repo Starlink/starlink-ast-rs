@@ -249,36 +249,6 @@ impl RegionGeometry for PointList {
         Ok(self.data.points.clone())
     }
 
-    fn reg_centre(&self) -> AstResult<Vec<f64>> {
-        let naxes = self.data.frameset.base().naxes();
-        let npoints = self.data.points.len();
-
-        if npoints == 0 {
-            return Ok(vec![0.0; naxes]);
-        }
-
-        // Compute the centroid (mean of all points).
-        let mut centre = vec![0.0; naxes];
-        let mut count = vec![0usize; naxes];
-
-        for point in &self.data.points {
-            for (i, &val) in point.iter().enumerate().take(naxes) {
-                if !is_bad(val) {
-                    centre[i] += val;
-                    count[i] += 1;
-                }
-            }
-        }
-
-        for i in 0..naxes {
-            if count[i] > 0 {
-                centre[i] /= count[i] as f64;
-            }
-        }
-
-        Ok(centre)
-    }
-
     fn is_bounded_inner(&self) -> bool {
         // Discrete points are always bounded.
         true
@@ -483,22 +453,6 @@ impl Region for PointList {
 
     fn region_base_box(&self) -> AstResult<(Vec<f64>, Vec<f64>)> {
         self.reg_base_box()
-    }
-
-    fn get_region_disc(&self) -> AstResult<(Vec<f64>, f64)> {
-        let centre = self.reg_centre()?;
-        let base_frame = self.data.frameset.base();
-
-        // Radius is the maximum distance from centroid to any defining point.
-        let mut max_dist: f64 = 0.0;
-        for point in &self.data.points {
-            let dist = base_frame.distance(&centre, point)?;
-            if !is_bad(dist) && dist > max_dist {
-                max_dist = dist;
-            }
-        }
-
-        Ok((centre, max_dist))
     }
 
     fn get_region_mesh(&self) -> AstResult<PointSet> {

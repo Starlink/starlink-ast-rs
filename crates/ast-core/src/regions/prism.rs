@@ -383,16 +383,6 @@ impl RegionGeometry for Prism {
         Ok(result)
     }
 
-    fn reg_centre(&self) -> AstResult<Vec<f64>> {
-        // Concatenate centres of both sub-regions.
-        let (centre1, _) = self.region1.get_region_disc()?;
-        let (centre2, _) = self.region2.get_region_disc()?;
-
-        let mut centre = centre1;
-        centre.extend(centre2);
-        Ok(centre)
-    }
-
     fn is_bounded_inner(&self) -> bool {
         // A Prism is bounded if both sub-regions are bounded.
         self.region1.is_bounded() && self.region2.is_bounded()
@@ -707,29 +697,6 @@ impl Region for Prism {
         }
 
         Ok((lbnd, ubnd))
-    }
-
-    fn get_region_disc(&self) -> AstResult<(Vec<f64>, f64)> {
-        // Compute bounding disc from the bounding box.
-        let (lbnd, ubnd) = self.reg_base_box()?;
-        let naxes = lbnd.len();
-
-        let mut centre = vec![0.0; naxes];
-        let mut sum_sq = 0.0;
-        for i in 0..naxes {
-            if is_bad(lbnd[i]) || is_bad(ubnd[i]) {
-                return Err(AstError::new(
-                    ErrorCode::Regcn,
-                    "Prism has unbounded axes; cannot compute bounding disc",
-                ));
-            }
-            centre[i] = 0.5 * (lbnd[i] + ubnd[i]);
-            let half_width = 0.5 * (ubnd[i] - lbnd[i]);
-            sum_sq += half_width * half_width;
-        }
-        let radius = sum_sq.sqrt();
-
-        Ok((centre, radius))
     }
 
     fn get_region_mesh(&self) -> AstResult<PointSet> {

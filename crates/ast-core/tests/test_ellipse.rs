@@ -24,11 +24,12 @@ fn construct_axis_aligned() {
 
     assert_eq!(ellipse.naxes(), 2);
 
-    let (centre, radius) = ellipse.get_region_disc().unwrap();
-    assert!((centre[0]).abs() < 1e-10);
-    assert!((centre[1]).abs() < 1e-10);
-    // Disc radius should be the semi-major axis.
-    assert!((radius - 5.0).abs() < 1e-10);
+    // The semi-axes lie along the Frame's axes: 5 on the first, 3 on the
+    // second.
+    assert!(ellipse.point_in_region(&[4.9, 0.0]).unwrap());
+    assert!(!ellipse.point_in_region(&[5.1, 0.0]).unwrap());
+    assert!(ellipse.point_in_region(&[0.0, 2.9]).unwrap());
+    assert!(!ellipse.point_in_region(&[0.0, 3.1]).unwrap());
 }
 
 #[test]

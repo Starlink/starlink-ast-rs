@@ -570,30 +570,6 @@ impl RegionGeometry for CmpRegion {
         Ok(result)
     }
 
-    fn reg_centre(&self) -> AstResult<Vec<f64>> {
-        // Use the midpoint of the bounding box if available,
-        // otherwise fall back to the first sub-region's centre.
-        let (lbnd, ubnd) = self.reg_base_box()?;
-        let naxes = lbnd.len();
-
-        // Check if any bounds are BAD.
-        let all_valid = (0..naxes).all(|i| !is_bad(lbnd[i]) && !is_bad(ubnd[i]));
-
-        if all_valid {
-            let centre: Vec<f64> = (0..naxes).map(|i| 0.5 * (lbnd[i] + ubnd[i])).collect();
-            Ok(centre)
-        } else {
-            // Fall back to first sub-region's centre via get_region_disc.
-            match self.region1.get_region_disc() {
-                Ok((centre, _)) => Ok(centre),
-                Err(_) => {
-                    // If that also fails, return BAD on all axes.
-                    Ok(vec![BAD_VALUE; naxes])
-                }
-            }
-        }
-    }
-
     fn is_bounded_inner(&self) -> bool {
         match self.operator {
             // AND (intersection): bounded if either sub-region is bounded.
@@ -855,30 +831,6 @@ impl Region for CmpRegion {
             }
         }
         Ok((lbnd, ubnd))
-    }
-
-    fn get_region_disc(&self) -> AstResult<(Vec<f64>, f64)> {
-        // Compute bounding disc from the bounding box.
-        let (lbnd, ubnd) = self.reg_base_box()?;
-        let naxes = lbnd.len();
-
-        // Compute centre as midpoint of bounding box.
-        let mut centre = vec![0.0; naxes];
-        let mut sum_sq = 0.0;
-        for i in 0..naxes {
-            if is_bad(lbnd[i]) || is_bad(ubnd[i]) {
-                return Err(AstError::new(
-                    ErrorCode::Regcn,
-                    "CmpRegion has unbounded axes; cannot compute bounding disc",
-                ));
-            }
-            centre[i] = 0.5 * (lbnd[i] + ubnd[i]);
-            let half_width = 0.5 * (ubnd[i] - lbnd[i]);
-            sum_sq += half_width * half_width;
-        }
-        let radius = sum_sq.sqrt();
-
-        Ok((centre, radius))
     }
 
     fn get_region_mesh(&self) -> AstResult<PointSet> {

@@ -463,23 +463,6 @@ fn mesh_is_defining_points() {
 
 // ---- Disc ----
 
-#[test]
-fn get_region_disc() {
-    let frame = BasicFrameBuilder::new(2).build().unwrap();
-    let points = vec![vec![0.0, 0.0], vec![3.0, 0.0], vec![0.0, 4.0]];
-    let pl = PointListBuilder::new(frame, points)
-        .unwrap()
-        .build()
-        .unwrap();
-
-    let (centre, radius) = pl.get_region_disc().unwrap();
-    // Centroid is (1.0, 4/3).
-    assert!((centre[0] - 1.0).abs() < 1e-10);
-    assert!((centre[1] - 4.0 / 3.0).abs() < 1e-10);
-    // Radius should be max distance from centroid to any point.
-    assert!(radius > 0.0);
-}
-
 // ---- Integrity ----
 
 #[test]

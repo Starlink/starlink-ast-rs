@@ -231,11 +231,10 @@ fn box_3d() {
     assert_eq!(b.naxes(), 3);
     assert!(b.is_bounded());
 
-    // Centre should be (2.5, 4, 6).
-    let (centre, _) = b.get_region_disc().unwrap();
-    assert!((centre[0] - 2.5).abs() < 1e-10);
-    assert!((centre[1] - 4.0).abs() < 1e-10);
-    assert!((centre[2] - 6.0).abs() < 1e-10);
+    // Bounds should be (1, 2, 3) to (4, 6, 9).
+    let (lbnd, ubnd) = b.get_region_bounds().unwrap();
+    assert_eq!(lbnd, [1.0, 2.0, 3.0]);
+    assert_eq!(ubnd, [4.0, 6.0, 9.0]);
 
     // Points inside.
     assert!(b.point_in_region(&[2.5, 4.0, 6.0]).unwrap());
@@ -466,21 +465,6 @@ fn clone_is_independent() {
 }
 
 // ---- Region disc ----
-
-#[test]
-fn get_region_disc() {
-    let frame = BasicFrameBuilder::new(2).build().unwrap();
-    let b = BoxRegionBuilder::from_bounds(frame, &[0.0, 0.0], &[6.0, 8.0])
-        .unwrap()
-        .build()
-        .unwrap();
-
-    let (centre, radius) = b.get_region_disc().unwrap();
-    assert!((centre[0] - 3.0).abs() < 1e-10);
-    assert!((centre[1] - 4.0).abs() < 1e-10);
-    // Half-diagonal: sqrt(3^2 + 4^2) = 5.
-    assert!((radius - 5.0).abs() < 1e-10);
-}
 
 // ---- Integrity ----
 

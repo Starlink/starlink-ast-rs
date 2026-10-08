@@ -6,7 +6,7 @@
 
 use crate::constants::BAD_VALUE;
 use crate::coords::PointSet;
-use crate::error::{AstError, AstResult, ErrorCode};
+use crate::error::AstResult;
 use crate::frames::{AxisKind, DynFrame, Frame, FrameRef, FrameSet, simplify_frame_via_mapping};
 use crate::mappings::{Composition, DynMapping, Mapping, UnitMap, ViaSimplify};
 
@@ -124,10 +124,6 @@ impl RegionGeometry for NullRegion {
     fn reg_base_mesh(&self) -> AstResult<Vec<Vec<f64>>> {
         // NullRegion has no boundary, so the mesh is empty.
         Ok(Vec::new())
-    }
-
-    fn reg_centre(&self) -> AstResult<Vec<f64>> {
-        Err(AstError::new(ErrorCode::Regcn, "NullRegion has no centre"))
     }
 
     fn is_bounded_inner(&self) -> bool {
@@ -261,13 +257,6 @@ impl Region for NullRegion {
         // whatever the base->current Mapping is.
         let naxes = self.data.frameset.base().naxes();
         Ok((vec![1.0; naxes], vec![-1.0; naxes]))
-    }
-
-    fn get_region_disc(&self) -> AstResult<(Vec<f64>, f64)> {
-        Err(AstError::new(
-            ErrorCode::Regcn,
-            "NullRegion has no bounding disc",
-        ))
     }
 
     fn get_region_mesh(&self) -> AstResult<PointSet> {
@@ -469,6 +458,16 @@ impl Region for NullRegion {
         setting: &super::FrameSetting<'a>,
     ) -> AstResult<super::FrameSetting<'a>> {
         super::data::region_frame_attrib(self, setting)
+    }
+
+    /// nullregion.c `RegMesh`: a NullRegion has no boundary to mesh.
+    fn reg_mesh(&self) -> AstResult<PointSet> {
+        Err(crate::error::AstError::new(
+            crate::error::ErrorCode::Inter,
+            "astRegMesh(NullRegion): The NullRegion class does not implement the \
+             astRegMesh method inherited from the Region class (internal AST \
+             programming error).",
+        ))
     }
 
     fn clone_region(&self) -> DynRegion {

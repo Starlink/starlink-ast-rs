@@ -23,8 +23,8 @@ fn construct_with_radius() {
     // Verify naxes delegation.
     assert_eq!(circle.naxes(), 2);
 
-    // Verify the disc parameters.
-    let (centre, radius) = circle.get_region_disc().unwrap();
+    // Verify the circle parameters.
+    let (centre, radius, _) = circle.circle_pars().unwrap();
     assert_eq!(centre.len(), 2);
     assert!((centre[0]).abs() < 1e-10);
     assert!((centre[1]).abs() < 1e-10);
@@ -41,7 +41,7 @@ fn construct_with_edge_point() {
         .unwrap();
 
     // Distance from (1,2) to (4,6) = sqrt(9+16) = 5.
-    let (centre, radius) = circle.get_region_disc().unwrap();
+    let (centre, radius, _) = circle.circle_pars().unwrap();
     assert!((centre[0] - 1.0).abs() < 1e-10);
     assert!((centre[1] - 2.0).abs() < 1e-10);
     assert!((radius - 5.0).abs() < 1e-10);
@@ -69,7 +69,7 @@ fn radius_round_trips_exactly_on_a_sky_frame() {
     .build()
     .unwrap();
 
-    let (_, reported) = circle.get_region_disc().unwrap();
+    let (_, reported, _) = circle.circle_pars().unwrap();
     assert_eq!(
         reported, radius,
         "stored radius must round-trip bit-exactly, got {reported:.17e}"
@@ -404,21 +404,6 @@ fn bounding_box_3d() {
 
 // ---- Disc ----
 
-#[test]
-fn get_region_disc() {
-    let frame = BasicFrameBuilder::new(2).build().unwrap();
-    let circle = CircleBuilder::new(frame, vec![3.0, 4.0])
-        .unwrap()
-        .radius(7.0)
-        .build()
-        .unwrap();
-
-    let (centre, radius) = circle.get_region_disc().unwrap();
-    assert!((centre[0] - 3.0).abs() < 1e-10);
-    assert!((centre[1] - 4.0).abs() < 1e-10);
-    assert!((radius - 7.0).abs() < 1e-10);
-}
-
 // ---- Mesh ----
 
 #[test]
@@ -726,7 +711,7 @@ fn with_integrity_callable_multiple_times() {
     }
 
     // Circle should still be functional.
-    let (centre, radius) = circle.get_region_disc().unwrap();
+    let (centre, radius, _) = circle.circle_pars().unwrap();
     assert!((centre[0] - 1.0).abs() < 1e-10);
     assert!((centre[1] - 2.0).abs() < 1e-10);
     assert!((radius - 3.0).abs() < 1e-10);

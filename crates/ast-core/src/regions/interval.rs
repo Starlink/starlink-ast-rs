@@ -937,26 +937,6 @@ impl RegionGeometry for Interval {
         Ok(mesh)
     }
 
-    fn reg_centre(&self) -> AstResult<Vec<f64>> {
-        let naxes = self.data.points[0].len();
-
-        // Only return a centre if the interval is bounded (equivalent to a Box).
-        if !self.is_bounded_inner() {
-            return Err(AstError::new(
-                ErrorCode::Regcn,
-                "Interval is unbounded and has no centre",
-            ));
-        }
-
-        let (lbnd, ubnd) = self.effective_bounds();
-        let mut centre = Vec::with_capacity(naxes);
-        for i in 0..naxes {
-            centre.push(0.5 * (lbnd[i] + ubnd[i]));
-        }
-
-        Ok(centre)
-    }
-
     fn is_bounded_inner(&self) -> bool {
         // Bounded only if ALL axes have BOTH finite bounds, and none are
         // excluded intervals (lb > ub makes it effectively unbounded
@@ -1307,23 +1287,6 @@ impl Region for Interval {
 
     fn region_base_box(&self) -> AstResult<(Vec<f64>, Vec<f64>)> {
         self.reg_base_box()
-    }
-
-    fn get_region_disc(&self) -> AstResult<(Vec<f64>, f64)> {
-        // Only meaningful for bounded intervals.
-        let centre = self.reg_centre()?;
-        let (lbnd, ubnd) = self.effective_bounds();
-
-        // Radius = half-diagonal of the bounding box.
-        let naxes = centre.len();
-        let mut sum_sq = 0.0;
-        for i in 0..naxes {
-            let half_width = 0.5 * (ubnd[i] - lbnd[i]);
-            sum_sq += half_width * half_width;
-        }
-        let radius = sum_sq.sqrt();
-
-        Ok((centre, radius))
     }
 
     fn get_region_mesh(&self) -> AstResult<PointSet> {

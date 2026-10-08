@@ -182,14 +182,6 @@ fn mesh_is_single_bad_point() {
     assert!(is_bad(p[1]));
 }
 
-#[test]
-fn no_centre() {
-    let frame = BasicFrameBuilder::new(2).build().unwrap();
-    let nr = NullRegionBuilder::new(frame).build().unwrap();
-
-    assert!(nr.get_region_disc().is_err());
-}
-
 // ---- Frame delegation ----
 
 #[test]

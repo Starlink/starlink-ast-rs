@@ -17,3 +17,6 @@ pub const SYSTEM: &str = "ICRS";
 /// Whether astConvert(galactic, circle) and astConvert(circle, galactic)
 /// find a conversion.
 pub const CONVERTS: (bool, bool) = (true, true);
+/// astGetRegionPoints of a Box [0,1]x[0,1] mapped by ZoomMap(2): x of
+/// each point, then y.
+pub const MAPPED_BOX_POINTS: [f64; 4] = [1.0, 2.0, 1.0, 2.0];

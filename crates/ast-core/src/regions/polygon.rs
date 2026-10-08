@@ -762,18 +762,6 @@ impl RegionGeometry for Polygon {
         Ok(mesh)
     }
 
-    fn reg_centre(&self) -> AstResult<Vec<f64>> {
-        // Centroid = average of vertices.
-        let nv = self.data.points.len();
-        let mut cx = 0.0;
-        let mut cy = 0.0;
-        for v in &self.data.points {
-            cx += v[0];
-            cy += v[1];
-        }
-        Ok(vec![cx / nv as f64, cy / nv as f64])
-    }
-
     fn is_bounded_inner(&self) -> bool {
         // Mirrors C GetBounded (polygon.c:2749): SkyFrame Polygons are always
         // bounded; otherwise it depends on vertex order and negation. If the
@@ -1001,21 +989,6 @@ impl Region for Polygon {
 
     fn region_base_box(&self) -> AstResult<(Vec<f64>, Vec<f64>)> {
         self.reg_base_box()
-    }
-
-    fn get_region_disc(&self) -> AstResult<(Vec<f64>, f64)> {
-        let centre = self.reg_centre()?;
-        // Disc radius = maximum distance from centroid to any vertex.
-        let mut max_dist = 0.0_f64;
-        for v in &self.data.points {
-            let dx = v[0] - centre[0];
-            let dy = v[1] - centre[1];
-            let d = (dx * dx + dy * dy).sqrt();
-            if d > max_dist {
-                max_dist = d;
-            }
-        }
-        Ok((centre, max_dist))
     }
 
     fn get_region_mesh(&self) -> AstResult<PointSet> {
