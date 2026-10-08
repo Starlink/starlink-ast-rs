@@ -962,23 +962,24 @@ impl Mapping for SplineMap {
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
         crate::mappings::validate_rate(self, at, ax1, ax2)?;
-        // Use analytic derivatives from the B-spline when possible
-        if !self.inverted && !is_bad(at[0]) && !is_bad(at[1]) {
-            // ax1, ax2 are 1-based
-            let coef = if ax1 == 1 { &self.cu } else { &self.cv };
-            let (xder, yder) = if ax2 == 1 { (1, 0) } else { (0, 1) };
-            let def = if self.out_unit() {
-                if ax1 == ax2 { 1.0 } else { 0.0 }
-            } else {
-                BAD_VALUE
-            };
-            let result = self.db2val(def, at[0], at[1], xder, yder, coef);
-            if !is_bad(result) {
-                return Ok(result);
-            }
+        // splinemap.c Rate: the splines give the forward transformation's
+        // derivatives only, so an inverted SplineMap's rate, that of its
+        // inverse, is found numerically by the parent method.
+        if self.inverted {
+            return numeric_rate(self, at, ax1, ax2);
         }
-        // Fall back to numeric rate for inverted or out-of-range
-        numeric_rate(self, at, ax1, ax2)
+        if is_bad(at[0]) || is_bad(at[1]) {
+            return Ok(BAD_VALUE);
+        }
+        // ax1, ax2 are 1-based
+        let coef = if ax1 == 1 { &self.cu } else { &self.cv };
+        let (xder, yder) = if ax2 == 1 { (1, 0) } else { (0, 1) };
+        let def = if self.out_unit() {
+            if ax1 == ax2 { 1.0 } else { 0.0 }
+        } else {
+            BAD_VALUE
+        };
+        Ok(self.db2val(def, at[0], at[1], xder, yder, coef))
     }
 
     fn equal(&self, other: &dyn Mapping) -> bool {

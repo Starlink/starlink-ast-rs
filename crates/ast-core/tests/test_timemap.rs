@@ -741,3 +741,15 @@ fn utc_tai_roundtrip_pre1972_eras() {
         );
     }
 }
+
+/// testtime.c errors 62 and 63: the rate is the slope of the conversions in
+/// the direction the TimeMap applies, exactly as C's analytic `Rate` gives
+/// it.
+#[test]
+fn rate_is_the_analytic_slope_in_either_direction() {
+    let mut tm = TimeMap::new();
+    tm.add(TimeCvtType::MjdToJep, &[0.0, 0.0]).unwrap();
+    assert_eq!(tm.rate(&[51544.5], 1, 1).unwrap(), 1.0 / 365.25);
+    tm.invert();
+    assert_eq!(tm.rate(&[2000.0], 1, 1).unwrap(), 365.25);
+}

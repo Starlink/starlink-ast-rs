@@ -1399,7 +1399,26 @@ impl Mapping for TimeMap {
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
         crate::mappings::validate_rate(self, at, ax1, ax2)?;
-        numeric_rate(self, at, ax1, ax2)
+        // timemap.c Rate: the product of each conversion's slope. The epoch
+        // conversions are linear; GMST is not, so its presence defers to the
+        // parent's numeric rate. Heuristic, as in C: every other time-scale
+        // conversion is taken to have unit slope, which it has only nearly.
+        let mut result = 1.0;
+        for conversion in &self.conversions {
+            match conversion.cvt_type {
+                TimeCvtType::MjdToBep => result *= 1.0 / 365.242198781,
+                TimeCvtType::BepToMjd => result *= 365.242198781,
+                TimeCvtType::MjdToJep => result *= 1.0 / 365.25,
+                TimeCvtType::JepToMjd => result *= 365.25,
+                TimeCvtType::UtToGmst | TimeCvtType::GmstToUt => {
+                    return numeric_rate(self, at, ax1, ax2);
+                }
+                _ => {}
+            }
+        }
+        // The product is the forward slope, so an inverted TimeMap's is its
+        // reciprocal.
+        Ok(if self.inverted { 1.0 / result } else { result })
     }
 
     fn map_merge(

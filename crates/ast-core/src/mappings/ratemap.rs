@@ -264,28 +264,22 @@ impl Mapping for RateMap {
             return PointSet::from_columns(&col_refs);
         }
 
-        // Forward (not inverted): compute rate for each point.
-        let npoint = pts.npoint();
-        let nin = self.intrinsic_nin();
-        let mut results = vec![BAD_VALUE; npoint];
-
-        for (ipoint, result) in results.iter_mut().enumerate().take(npoint) {
-            // Extract the input position for this point.
-            let point = pts.point(ipoint);
-
-            // Check if point has any BAD values.
-            let has_bad = point
-                .iter()
-                .take(nin)
-                .any(|&v| crate::mappings::helpers::is_bad(v));
-            if has_bad {
-                continue; // result stays BAD_VALUE
-            }
-
-            // Compute the rate of change using the encapsulated mapping's
-            // rate method.
-            *result = self.map.rate(point, self.ax1, self.ax2)?;
-        }
+        // ratemap.c Transform asks the encapsulated Mapping's Rate at every
+        // point, bad inputs included, since an analytic Rate may not depend
+        // on the axis that is bad. The Mapping is first set back to the
+        // orientation it had when the RateMap was made.
+        let reoriented;
+        let emap: &dyn Mapping = if self.map.is_inverted() != self.invert_snapshot {
+            let mut m = self.map.clone_box();
+            m.invert();
+            reoriented = m;
+            reoriented.as_ref()
+        } else {
+            self.map.as_ref()
+        };
+        let results = (0..pts.npoint())
+            .map(|ipoint| emap.rate(pts.point(ipoint), self.ax1, self.ax2))
+            .collect::<AstResult<Vec<f64>>>()?;
 
         PointSet::from_columns(&[&results])
     }

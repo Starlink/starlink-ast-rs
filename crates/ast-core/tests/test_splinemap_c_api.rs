@@ -171,3 +171,26 @@ fn order_one_inverse_is_bad() {
         .unwrap();
     assert_eq!(rec.point(0), [BAD_VALUE, BAD_VALUE]);
 }
+
+/// testsplinemap_c.c Errors 11-13: the spline u = 2x, v = 3y has du/dx = 2,
+/// and inverted, dx/du = 0.5 and dx/dv = 0, found numerically as C's
+/// parent Rate does.
+#[test]
+fn inverted_rate_is_the_inverse_rate() {
+    let knots = vec![0.0, 0.0, 1.0, 1.0];
+    let mut sm = SplineMap::from_scipy(
+        2,
+        2,
+        2,
+        2,
+        knots.clone(),
+        knots,
+        &[0.0, 0.0, 2.0, 2.0],
+        &[0.0, 3.0, 0.0, 3.0],
+    )
+    .unwrap();
+    assert!((sm.rate(&[0.5, 0.5], 1, 1).unwrap() - 2.0).abs() <= 1.0e-12);
+    sm.invert();
+    assert!((sm.rate(&[1.0, 1.5], 1, 1).unwrap() - 0.5).abs() <= 1.0e-6);
+    assert!(sm.rate(&[1.0, 1.5], 1, 2).unwrap().abs() <= 1.0e-6);
+}

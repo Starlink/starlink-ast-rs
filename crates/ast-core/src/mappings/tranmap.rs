@@ -460,7 +460,21 @@ impl Mapping for TranMap {
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
         crate::mappings::validate_rate(self, at, ax1, ax2)?;
-        super::rate::numeric_rate(self, at, ax1, ax2)
+        // tranmap.c Rate asks the component that supplies the forward
+        // transformation: the first, in its recorded orientation, or for an
+        // inverted TranMap the second, in the opposite one.
+        let (component, invert) = if self.inverted {
+            (&self.map2, !self.inv_b)
+        } else {
+            (&self.map1, self.inv_a)
+        };
+        if component.is_inverted() == invert {
+            component.rate(at, ax1, ax2)
+        } else {
+            let mut component = component.clone_box();
+            component.invert();
+            component.rate(at, ax1, ax2)
+        }
     }
 
     fn equal(&self, other: &dyn Mapping) -> bool {

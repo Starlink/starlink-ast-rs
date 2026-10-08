@@ -56,6 +56,8 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [RESOLVED (upstream 5a2cac2a): CmpFrame `ResolvePoints` passes internal-order points to methods that expect external order](#resolved-upstream-5a2cac2a-cmpframe-resolvepoints-passes-internal-order-points-to-methods-that-expect-external-order)
 - [RESOLVED (upstream db5199d7): CmpFrame `FrameGrid` writes its grid through the PointSet's own data pointers, out of bounds](#resolved-upstream-db5199d7-cmpframe-framegrid-writes-its-grid-through-the-pointsets-own-data-pointers-out-of-bounds)
 - [RESOLVED (upstream 0d05fc29): `astLoadFrameSet` keeps a `Currnt` below 1 as the current Frame index](#resolved-upstream-0d05fc29-astloadframeset-keeps-a-currnt-below-1-as-the-current-frame-index)
+- [RESOLVED (upstream 4b313e0d): `Rate` of an inverted TimeMap is the forward slope](#resolved-upstream-4b313e0d-rate-of-an-inverted-timemap-is-the-forward-slope)
+- [RESOLVED (upstream fb43dfb3): `Rate` of an inverted SplineMap is the forward spline's derivative](#resolved-upstream-fb43dfb3-rate-of-an-inverted-splinemap-is-the-forward-splines-derivative)
 - [RESOLVED (upstream 58786d9c): `ChebyDomain` fails for an inverted ChebyMap with only one transformation](#resolved-upstream-58786d9c-chebydomain-fails-for-an-inverted-chebymap-with-only-one-transformation)
 - [RESOLVED (upstream ee96dc91): `LutMap`'s inverse reads one element before its table](#resolved-upstream-ee96dc91-lutmaps-inverse-reads-one-element-before-its-table)
 - [RESOLVED (upstream 80d66b0a): `TranMap`'s `RemoveRegions` doubles its number of axes](#resolved-upstream-80d66b0a-tranmaps-removeregions-doubles-its-number-of-axes)
@@ -1091,6 +1093,25 @@ Only a hand-written description can do this, since Dump never writes an index be
 
 Fixed on `u/timj/norm-unit` in 0d05fc29, which checks Current as Base is checked, with a `testframeset` case (Errors 41-43).
 The port treats a `Currnt` below 1 as unset, as the fixed C does (`frameset.rs` `from_node`), and `tests/test_frameset_current.rs` covers Current's set state against C.
+
+### RESOLVED (upstream 4b313e0d): `Rate` of an inverted TimeMap is the forward slope
+
+C location: `timemap.c` `Rate`.
+
+`Rate` multiplies the slopes of the TimeMap's conversions, falling back to the numeric parent method only for GMST, and returned the product whatever the Invert flag.
+An inverted TimeMap therefore reported the slope of its forward transformation: 1/365.25 for an inverted `JEPTOMJD`, whose slope is 365.25.
+
+Fixed on `u/timj/norm-unit` in 4b313e0d: an inverted TimeMap returns the reciprocal, exact because every conversion that contributes a slope is linear; `testtime` errors 62 and 63.
+The port's `TimeMap::rate` does the same, and keeps C's heuristic that the other time-scale conversions have unit slope, named as one; `tests/test_timemap.rs` (`rate_is_the_analytic_slope_in_either_direction`).
+
+### RESOLVED (upstream fb43dfb3): `Rate` of an inverted SplineMap is the forward spline's derivative
+
+C location: `splinemap.c` `Rate`.
+
+`Rate` evaluated the derivative of the forward spline whatever the Invert flag, so an inverted SplineMap reported the forward transformation's rate, or a bad value where the position lay outside the knots.
+
+Fixed on `u/timj/norm-unit` in fb43dfb3: an inverted SplineMap uses the parent class's numeric `Rate` on its inverse transformation; `testsplinemap_c` Errors 11-13.
+The port's `SplineMap::rate` does the same, and its forward rate no longer falls back to a numeric estimate where C returns the default; `tests/test_splinemap_c_api.rs` (`inverted_rate_is_the_inverse_rate`).
 
 ### RESOLVED (upstream 58786d9c): `ChebyDomain` fails for an inverted ChebyMap with only one transformation
 

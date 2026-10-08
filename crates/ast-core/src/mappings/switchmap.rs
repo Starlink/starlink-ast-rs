@@ -650,9 +650,9 @@ impl Mapping for SwitchMap {
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
         crate::mappings::validate_rate(self, at, ax1, ax2)?;
-        let sel = match self.resolve_selector(true) {
-            Some(s) => s,
-            None => return crate::mappings::rate::numeric_rate(self, at, ax1, ax2),
+        // switchmap.c Rate: with no forward selector the rate is bad.
+        let Some(sel) = self.resolve_selector(true) else {
+            return Ok(BAD_VALUE);
         };
 
         let pts = PointSet::from_rows([at]);
@@ -668,15 +668,9 @@ impl Mapping for SwitchMap {
             return Ok(BAD_VALUE);
         }
 
-        // The resolved route is already oriented for a forward application;
-        // its rate is the SwitchMap's forward rate. If the route ends up
-        // applied in its inverse direction, fall back to a numeric estimate.
-        let route = self.resolve_route(idx as usize);
-        if !route.is_inverted() {
-            route.rate(at, ax1, ax2)
-        } else {
-            crate::mappings::rate::numeric_rate(self, at, ax1, ax2)
-        }
+        // The resolved route is oriented as this SwitchMap applies it, and
+        // C asks that route's own Rate whatever its orientation.
+        self.resolve_route(idx as usize).rate(at, ax1, ax2)
     }
 
     fn equal(&self, other: &dyn Mapping) -> bool {

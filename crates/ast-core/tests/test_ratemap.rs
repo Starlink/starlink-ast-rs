@@ -11,11 +11,6 @@ use ast_core::{AnyObject, from_native_string, to_native_string};
 
 const BAD_VALUE: f64 = -f64::MAX;
 
-/// Helper: check if a value is BAD.
-fn is_bad(v: f64) -> bool {
-    v == BAD_VALUE
-}
-
 // ---------------------------------------------------------------------------
 // Construction
 // ---------------------------------------------------------------------------
@@ -119,8 +114,11 @@ fn test_ratemap_off_diagonal_zero() {
     }
 }
 
+/// A RateMap asks its Mapping's rate at a bad input too, as ratemap.c
+/// Transform does, and a ZoomMap's rate does not depend on the position, so
+/// C gives 3.0 there (`rate_oracle`, `ratemap_zoommap_bad_input`).
 #[test]
-fn test_ratemap_bad_input_propagation() {
+fn test_ratemap_bad_input_asks_the_mapping() {
     let zm: DynMapping = Box::new(ZoomMap::new(1, 3.0).unwrap());
     let rm = RateMap::new(zm, 1, 1).unwrap();
 
@@ -129,8 +127,8 @@ fn test_ratemap_bad_input_propagation() {
 
     // Point 0: should be 3.0.
     assert!((result.point(0)[0] - 3.0).abs() < 1e-6);
-    // Point 1: BAD input → BAD output.
-    assert!(is_bad(result.point(1)[0]));
+    // Point 1: a bad input still has the ZoomMap's rate.
+    assert_eq!(result.point(1)[0], 3.0);
     // Point 2: should be 3.0.
     assert!((result.point(2)[0] - 3.0).abs() < 1e-6);
 }
