@@ -1184,9 +1184,6 @@ const ROUND_TRIP_EXCLUDED: &[(&str, &str)] = &[
     // row in `test_simplify_regression.rs`.
     ("cap_timemap_02.map", "StcResourceProfile is not ported"),
     ("cap_timemap_02.simp", "StcResourceProfile is not ported"),
-    ("cap_xphmap_01.map", "XphMap is not ported"),
-    ("cap_xphmap_02.map", "XphMap is not ported"),
-    ("cap_xphmap_02.simp", "XphMap is not ported"),
     ("intra_invfwd_cancel.map", "IntraMap is not ported"),
     ("intra_invfwd_cancel_tail.map", "IntraMap is not ported"),
     ("intramap_inverse_cancel.map", "IntraMap is not ported"),
@@ -1197,10 +1194,6 @@ const ROUND_TRIP_EXCLUDED: &[(&str, &str)] = &[
     ("neg_intra_nonintra_neighbour.map", "IntraMap is not ported"),
     ("neg_intra_parallel.map", "IntraMap is not ported"),
     ("neg_intra_same_direction.map", "IntraMap is not ported"),
-    ("neg_xph_nonxph_neighbour.map", "XphMap is not ported"),
-    ("neg_xph_not_opposite.map", "XphMap is not ported"),
-    ("neg_xph_parallel.map", "XphMap is not ported"),
-    ("xph_inverse_cancel.map", "XphMap is not ported"),
     // A FrameSet holding a CmpFrame where a Mapping belongs. C accepts it
     // because astLoadFrameSet reads that slot with astRead and a Frame is a
     // Mapping; the port's Mapping loader dispatches on the class name and has

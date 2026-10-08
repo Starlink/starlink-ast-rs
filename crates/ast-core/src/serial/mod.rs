@@ -16,7 +16,7 @@ use crate::frames::{
 use crate::mappings::{
     ChebyMap, CmpMap, DssMap, DynMapping, GrismMap, LutMap, Mapping, MathMap, MatrixMap, NormMap,
     PcdMap, PermMap, PolyMap, RateMap, SelectorMap, ShiftMap, SlaMap, SpecMap, SphMap, SplineMap,
-    SwitchMap, TimeMap, TranMap, UnitMap, UnitNormMap, WcsMap, WinMap, ZoomMap,
+    SwitchMap, TimeMap, TranMap, UnitMap, UnitNormMap, WcsMap, WinMap, XphMap, ZoomMap,
 };
 use crate::regions::data::RegionData;
 use crate::regions::{
@@ -289,6 +289,7 @@ fn mapping_from_node_inner(node: &Node) -> AstResult<DynMapping> {
         "SphMap" => Ok(Box::new(SphMap::from_node(node)?)),
         "GrismMap" => Ok(Box::new(GrismMap::from_node(node)?)),
         "UnitNormMap" => Ok(Box::new(UnitNormMap::from_node(node)?)),
+        "XphMap" => Ok(Box::new(XphMap::from_node(node)?)),
         "TranMap" => Ok(Box::new(TranMap::from_node(node)?)),
         "RateMap" => Ok(Box::new(RateMap::from_node(node)?)),
         "SplineMap" => Ok(Box::new(SplineMap::from_node(node)?)),
@@ -379,6 +380,9 @@ impl MappingToNode for dyn Mapping {
             return m.to_node();
         }
         if let Some(m) = self.as_any().downcast_ref::<UnitNormMap>() {
+            return m.to_node();
+        }
+        if let Some(m) = self.as_any().downcast_ref::<XphMap>() {
             return m.to_node();
         }
         if let Some(m) = self.as_any().downcast_ref::<TranMap>() {
@@ -1504,6 +1508,8 @@ pub enum AnyObject {
     SphMap(SphMap),
     /// A [`UnitNormMap`] (unit vector + norm decomposition).
     UnitNormMap(UnitNormMap),
+    /// An [`XphMap`] (between HEALPix projections).
+    XphMap(XphMap),
     /// A [`TranMap`] (compound transformation mapping).
     TranMap(TranMap),
     /// A [`RateMap`] (differential mapping — Jacobian element).
@@ -1631,6 +1637,9 @@ impl AnyObject {
         if let Some(x) = m.as_any().downcast_ref::<UnitNormMap>() {
             return Some(AnyObject::UnitNormMap(x.clone()));
         }
+        if let Some(x) = m.as_any().downcast_ref::<XphMap>() {
+            return Some(AnyObject::XphMap(x.clone()));
+        }
         if let Some(x) = m.as_any().downcast_ref::<TranMap>() {
             return Some(AnyObject::TranMap(x.clone()));
         }
@@ -1710,6 +1719,7 @@ impl AnyObject {
             AnyObject::GrismMap(m) => Some(m),
             AnyObject::SphMap(m) => Some(m),
             AnyObject::UnitNormMap(m) => Some(m),
+            AnyObject::XphMap(m) => Some(m),
             AnyObject::TranMap(m) => Some(m),
             AnyObject::RateMap(m) => Some(m),
             AnyObject::MathMap(m) => Some(m),
@@ -1782,6 +1792,7 @@ impl AnyObject {
             | AnyObject::GrismMap(_)
             | AnyObject::SphMap(_)
             | AnyObject::UnitNormMap(_)
+            | AnyObject::XphMap(_)
             | AnyObject::TranMap(_)
             | AnyObject::RateMap(_)
             | AnyObject::MathMap(_)
@@ -1816,6 +1827,7 @@ impl AnyObject {
             AnyObject::GrismMap(m) => Some(Box::new(m)),
             AnyObject::SphMap(m) => Some(Box::new(m)),
             AnyObject::UnitNormMap(m) => Some(Box::new(m)),
+            AnyObject::XphMap(m) => Some(Box::new(m)),
             AnyObject::TranMap(m) => Some(Box::new(m)),
             AnyObject::RateMap(m) => Some(Box::new(m)),
             AnyObject::MathMap(m) => Some(Box::new(m)),
@@ -1888,6 +1900,7 @@ impl AnyObject {
             | AnyObject::GrismMap(_)
             | AnyObject::SphMap(_)
             | AnyObject::UnitNormMap(_)
+            | AnyObject::XphMap(_)
             | AnyObject::TranMap(_)
             | AnyObject::RateMap(_)
             | AnyObject::MathMap(_)
@@ -1960,6 +1973,7 @@ pub(crate) fn any_object_from_node(node: &Node) -> AstResult<AnyObject> {
         "GrismMap" => Ok(AnyObject::GrismMap(load_mapping::<GrismMap>(node)?)),
         "SphMap" => Ok(AnyObject::SphMap(load_mapping::<SphMap>(node)?)),
         "UnitNormMap" => Ok(AnyObject::UnitNormMap(load_mapping::<UnitNormMap>(node)?)),
+        "XphMap" => Ok(AnyObject::XphMap(load_mapping::<XphMap>(node)?)),
         "TranMap" => Ok(AnyObject::TranMap(load_mapping::<TranMap>(node)?)),
         "RateMap" => Ok(AnyObject::RateMap(load_mapping::<RateMap>(node)?)),
         "MathMap" => Ok(AnyObject::MathMap(load_mapping::<MathMap>(node)?)),
@@ -2024,6 +2038,7 @@ pub(crate) fn any_object_to_node(obj: &AnyObject) -> AstResult<Node> {
         AnyObject::GrismMap(m) => Serializable::to_node(m),
         AnyObject::SphMap(m) => Serializable::to_node(m),
         AnyObject::UnitNormMap(m) => Serializable::to_node(m),
+        AnyObject::XphMap(m) => Serializable::to_node(m),
         AnyObject::TranMap(m) => Serializable::to_node(m),
         AnyObject::RateMap(m) => Serializable::to_node(m),
         AnyObject::MathMap(m) => Serializable::to_node(m),

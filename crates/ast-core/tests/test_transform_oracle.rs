@@ -1763,9 +1763,6 @@ const DEFERRED_LOAD: &[(&str, &str)] = &[
         "simplify/cap_timemap_02.simp",
         "StcResourceProfile not ported",
     ),
-    ("simplify/cap_xphmap_01.map", "XphMap not ported"),
-    ("simplify/cap_xphmap_02.map", "XphMap not ported"),
-    ("simplify/cap_xphmap_02.simp", "XphMap not ported"),
     ("simplify/intra_invfwd_cancel.map", "IntraMap not ported"),
     (
         "simplify/intra_invfwd_cancel_tail.map",
@@ -1788,10 +1785,6 @@ const DEFERRED_LOAD: &[(&str, &str)] = &[
         "simplify/neg_intra_same_direction.map",
         "IntraMap not ported",
     ),
-    ("simplify/neg_xph_nonxph_neighbour.map", "XphMap not ported"),
-    ("simplify/neg_xph_not_opposite.map", "XphMap not ported"),
-    ("simplify/neg_xph_parallel.map", "XphMap not ported"),
-    ("simplify/xph_inverse_cancel.map", "XphMap not ported"),
 ];
 
 fn is_deferred_class_fixture(relpath: &str) -> bool {

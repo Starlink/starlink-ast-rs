@@ -486,8 +486,6 @@ const C_DEFECT_EXCLUDED: &[(&str, &str)] = &[];
 /// can assert that every one of them really does still fail to load.
 const DEFERRED: &[(&str, &str)] = &[
     ("cap_timemap_02", "StcResourceProfile"),
-    ("cap_xphmap_01", "XphMap"),
-    ("cap_xphmap_02", "XphMap"),
     ("intra_invfwd_cancel", "IntraMap"),
     ("intra_invfwd_cancel_tail", "IntraMap"),
     ("intramap_inverse_cancel", "IntraMap"),
@@ -498,10 +496,6 @@ const DEFERRED: &[(&str, &str)] = &[
     ("neg_intra_nonintra_neighbour", "IntraMap"),
     ("neg_intra_parallel", "IntraMap"),
     ("neg_intra_same_direction", "IntraMap"),
-    ("neg_xph_nonxph_neighbour", "XphMap"),
-    ("neg_xph_not_opposite", "XphMap"),
-    ("neg_xph_parallel", "XphMap"),
-    ("xph_inverse_cancel", "XphMap"),
 ];
 
 #[test]

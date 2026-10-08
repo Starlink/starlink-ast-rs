@@ -93,7 +93,7 @@ pub(crate) mod trace {
         use crate::mappings::{
             CmpMap, Composition, GrismMap, LutMap, MatrixMap, NormMap, PcdMap, PermMap, RateMap,
             ShiftMap, SlaMap, SpecMap, SphMap, SwitchMap, TimeMap, TranMap, UnitMap, UnitNormMap,
-            WcsMap, WinMap, ZoomMap,
+            WcsMap, WinMap, XphMap, ZoomMap,
         };
         if let Some(c) = m.as_any().downcast_ref::<CmpMap>() {
             return if c.composition() == Composition::Series {
@@ -127,6 +127,7 @@ pub(crate) mod trace {
             RateMap,
             TranMap,
             SwitchMap,
+            XphMap,
         );
         "?"
     }

@@ -306,7 +306,7 @@ const C_SIMPLIFY_SEAMS: &[(&str, &str)] = &[
     ("unitnormmap.c", "unitnormmap"),
     ("wcsmap.c", "wcsmap"),
     ("winmap.c", "winmap"),
-    ("xphmap.c", "deferred: XphMap"),
+    ("xphmap.c", "xphmap"),
     ("zoommap.c", "zoom"),
 ];
 

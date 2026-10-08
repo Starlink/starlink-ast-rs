@@ -22,7 +22,7 @@ explicit PermMap axis swap, a best-fitting Box in the current Frame, a Polygon
 for the 2-D case, and a split into a Prism.
 
 `BoxRegion::map_merge` (`box_region.rs:1929 (fn map_merge)`) delegates to
-`simplify::region_map_merge` (`mappings/simplify.rs:1483-1527 (fn region_map_merge)`);
+`simplify::region_map_merge` (`mappings/simplify.rs:1485-1529 (fn region_map_merge)`);
 `BoxRegion::region_merge` is `box_region.rs:1392-1561 (fn region_merge)` and
 `BoxRegion::simplified` is `box_region.rs:1748-1889 (fn simplified)`. The four
 merge helpers shared with `Interval`, `NullRegion` and `PointList` live in
@@ -37,20 +37,20 @@ merge helpers shared with `Interval`, `NullRegion` and `PointList` live in
 | 2 | Check the global error status and bail out | box.c:1573-1575 (fn MapMerge) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 3 | Get a pointer to the Box | box.c:1576-1578 (fn MapMerge) | -- | ceremony | n/a: the Rust function already has `this: &dyn Region` |
 | 4 | Banner: first see whether the Box reduces on its own, without reference to its neighbours | box.c:1579-1582 (fn MapMerge) | -- | ceremony | n/a: a section banner, not a step |
-| 5 | Simplify the Box, assuming a changed pointer means something happened | box.c:1583-1586 (fn MapMerge) | mappings/simplify.rs:1493-1494 (fn region_map_merge) | architecture | ported |
-| 6 | Annul the Box pointer in the list, replace it with the new Region, and mark it forward | box.c:1587-1593 (fn MapMerge) | mappings/simplify.rs:1495 (fn region_map_merge) | architecture | ported |
-| 7 | Return the index of the first modified element | box.c:1594-1597 (fn MapMerge) | mappings/simplify.rs:1496 (fn region_map_merge) | architecture | ported |
-| 8 | Failing that, merge with the Regions on either side — which is possible in parallel only | box.c:1598-1602 (fn MapMerge) | mappings/simplify.rs:1501 (fn region_map_merge) | architecture | ported |
+| 5 | Simplify the Box, assuming a changed pointer means something happened | box.c:1583-1586 (fn MapMerge) | mappings/simplify.rs:1495-1496 (fn region_map_merge) | architecture | ported |
+| 6 | Annul the Box pointer in the list, replace it with the new Region, and mark it forward | box.c:1587-1593 (fn MapMerge) | mappings/simplify.rs:1497 (fn region_map_merge) | architecture | ported |
+| 7 | Return the index of the first modified element | box.c:1594-1597 (fn MapMerge) | mappings/simplify.rs:1498 (fn region_map_merge) | architecture | ported |
+| 8 | Failing that, merge with the Regions on either side — which is possible in parallel only | box.c:1598-1602 (fn MapMerge) | mappings/simplify.rs:1503 (fn region_map_merge) | architecture | ported |
 | 9 | Annul the unwanted simplified pointer | box.c:1603-1604 (fn MapMerge) | -- | ceremony | n/a: owned values are dropped |
-| 10 | Attempt to merge the Box with its lower neighbour, if that neighbour is a Region | box.c:1605-1613 (fn MapMerge) | mappings/simplify.rs:1503-1511 (fn region_map_merge) | architecture | ported |
-| 11 | Failing that, attempt the upper neighbour the same way | box.c:1614-1624 (fn MapMerge) | mappings/simplify.rs:1515-1524 (fn region_map_merge) | architecture | ported |
-| 12 | Act only if one of the two produced a merged Region | box.c:1625-1627 (fn MapMerge) | mappings/simplify.rs:1508 (fn region_map_merge),1520 (fn region_map_merge) | architecture | ported |
-| 13 | Annul the first of the two Mappings, replace it with the merged Region, and clear its invert flag | box.c:1628-1633 (fn MapMerge) | mappings/simplify.rs:588 (fn replace_pair_with) | architecture | ported |
-| 14 | Annul the second and shuffle the rest of the list down to fill the gap | box.c:1634-1641 (fn MapMerge) | mappings/simplify.rs:589-590 (fn replace_pair_with) | architecture | ported |
+| 10 | Attempt to merge the Box with its lower neighbour, if that neighbour is a Region | box.c:1605-1613 (fn MapMerge) | mappings/simplify.rs:1505-1513 (fn region_map_merge) | architecture | ported |
+| 11 | Failing that, attempt the upper neighbour the same way | box.c:1614-1624 (fn MapMerge) | mappings/simplify.rs:1517-1526 (fn region_map_merge) | architecture | ported |
+| 12 | Act only if one of the two produced a merged Region | box.c:1625-1627 (fn MapMerge) | mappings/simplify.rs:1510 (fn region_map_merge),1520 (fn region_map_merge) | architecture | ported |
+| 13 | Annul the first of the two Mappings, replace it with the merged Region, and clear its invert flag | box.c:1628-1633 (fn MapMerge) | mappings/simplify.rs:590 (fn replace_pair_with) | architecture | ported |
+| 14 | Annul the second and shuffle the rest of the list down to fill the gap | box.c:1634-1641 (fn MapMerge) | mappings/simplify.rs:591-592 (fn replace_pair_with) | architecture | ported |
 | 15 | Clear the vacated element at the end | box.c:1642-1645 (fn MapMerge) | -- | ceremony | n/a: the list is a `Vec`, so the removed entry leaves no slot to blank |
-| 16 | Decrement the Mapping count and return the index of the first modified element | box.c:1646-1651 (fn MapMerge) | mappings/simplify.rs:1510 (fn region_map_merge),1522 (fn region_map_merge) | architecture | ported |
+| 16 | Decrement the Mapping count and return the index of the first modified element | box.c:1646-1651 (fn MapMerge) | mappings/simplify.rs:1512 (fn region_map_merge),1522 (fn region_map_merge) | architecture | ported |
 | 17 | In series, annul the simplified pointer and do nothing | box.c:1652-1655 (fn MapMerge) | -- | ceremony | n/a: owned values are dropped, and the series case falls through to `None` |
-| 18 | Return the result | box.c:1656-1658 (fn MapMerge) | mappings/simplify.rs:1527 (fn region_map_merge) | architecture | ported |
+| 18 | Return the result | box.c:1656-1658 (fn MapMerge) | mappings/simplify.rs:1529 (fn region_map_merge) | architecture | ported |
 | 19 | `MergeBox`: initialise the returned pointer and the working arrays | box.c:1742-1744 (fn MergeBox) | -- | ceremony | n/a: the Rust returns `Option<DynMapping>`, so "no merge" is `None` |
 | 20 | Check the local error status and bail out | box.c:1745-1747 (fn MergeBox) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 21 | Both Regions must agree on Closed, and either both or neither must have a defined uncertainty | box.c:1748-1754 (fn MergeBox) | box_region.rs:1397-1401 (fn region_merge) | architecture | ported |
@@ -198,7 +198,7 @@ C wraps the whole neighbour-merge half of `MapMerge` in a parallel test, because
 two Regions in series are not a Region: the first Region's output feeds the
 second's input, which is a constraint on a transformed position rather than a
 region of a combined Frame. `region_map_merge`
-(`mappings/simplify.rs:1501 (fn region_map_merge)`) makes the same test and returns
+(`mappings/simplify.rs:1503 (fn region_map_merge)`) makes the same test and returns
 `None` for series, which sends the pair back to the generic path.
 
 ## Rows 49 to 51 — a zero-width Box, tested without aliasing
