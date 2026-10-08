@@ -79,7 +79,7 @@ serialization-parity risk on polygon round-trips.
 
 - **Rust**: `regions/data.rs:354` `reg_base_grid` — uniform rectangular odometer
   grid in the bounding box, filtered by `reg_base_inside`. No `basegrid` cache.
-- **C**: base `region.c:7960`; Box overrides at `box.c:2179` calling
+- **C**: base `region.c:7964`; Box overrides at `box.c:2179` calling
   `astFrameGrid(frm, meshsize, lbnd, ubnd)` (Frame-aware, spherical-uniform) and
   caching the result in `this->basegrid`.
 
@@ -102,7 +102,7 @@ semi-infinite overlap before deciding this needs the bespoke override.
 
 - **Rust**: absent — no `reg_trace` anywhere; the `Region` trait has no such
   method.
-- **C**: base `region.c:11594` (returns 0 = "not implemented"); real overrides
+- **C**: base `region.c:11601` (returns 0 = "not implemented"); real overrides
   in `box.c:3216`, `circle.c:1544`, `ellipse.c:1631`, `polygon.c:4820`,
   `interval.c:2887`, `cmpregion.c:2685`.
 
@@ -115,7 +115,7 @@ trait plumbing).
 
 - **Rust**: absent — no `reg_split`. The trivial base clone-self behaviour is
   effectively available via `clone_region`.
-- **C**: base `region.c:8150` (clones self); CmpRegion override `cmpregion.c:2472`
+- **C**: base `region.c:8154` (clones self); CmpRegion override `cmpregion.c:2472`
   (walks the OR-tree into a disjoint-component list).
 
 Callers are `plot.c:9700` and internally `cmpregion.c:2561`. Same

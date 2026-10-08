@@ -37,7 +37,7 @@ Consumers that are consequently unfaithful:
 
 ### R-OVL — `compute_overlap` is a 90%-threshold heuristic, not `OverlapX`
 
-C `Overlap`→`OverlapX` (region.c:6912/6996): tries `astEqual`(→5) and
+C `Overlap`→`OverlapX` (region.c:6916/6996): tries `astEqual`(→5) and
 negated-equal(→6), does `astConvert` frame alignment, meshes, transforms
 into the first region's base frame, calls `astRegPins` with the mapped
 uncertainty to detect equivalent boundaries, then a submesh + edge
@@ -74,12 +74,12 @@ blocks (— = correctness/parity gap not on any of the 4 critical paths).
 | C-GETREG | `GetRegions` De Morgan rewrite absent | ABSENT | — (C cmpregion.c:981) | 07 |
 | C-BOUND | CmpRegion `GetBounded` omits negation + unbounded-AND | MISSING-BRANCH | cmpregion.rs:384 (C cmpregion.c:703) | 07 |
 | PR-MAP | `Prism::map_region` discards the mapping | STUB | prism.rs:624 | parity |
-| RB-PICK | base `reg_base_pick_axes` default always None | MISSING-BRANCH | mod.rs:301 (C region.c:8345) | parity |
-| GBND-SKY | `GetBounded` lacks SkyFrame-always-bounded rule | MISSING-BRANCH | box_region.rs:579 (C region.c:3406) | 07-adj |
-| DEFUNC | No default-uncertainty Region (`GetDefUnc`) | ABSENT | (C region.c:3488) | parity |
-| SETUNC | `set_uncertainty` bare field store | STUB | box_region.rs:656 (C region.c:10754) | parity |
-| RCENT | `reg_centre` get-only (no re-centre) | MISSING-BRANCH | data.rs:215 (C region.c:8397) | R-PINS dep |
-| SIMP-STAB | parent-Simplify uncertainty 0.1% stability check | ABSENT | (C region.c:11196) | parity |
+| RB-PICK | base `reg_base_pick_axes` default always None | MISSING-BRANCH | mod.rs:301 (C region.c:8349) | parity |
+| GBND-SKY | `GetBounded` lacks SkyFrame-always-bounded rule | MISSING-BRANCH | box_region.rs:579 (C region.c:3410) | 07-adj |
+| DEFUNC | No default-uncertainty Region (`GetDefUnc`) | ABSENT | (C region.c:3492) | parity |
+| SETUNC | `set_uncertainty` bare field store | STUB | box_region.rs:656 (C region.c:10761) | parity |
+| RCENT | `reg_centre` get-only (no re-centre) | MISSING-BRANCH | data.rs:215 (C region.c:8401) | R-PINS dep |
+| SIMP-STAB | parent-Simplify uncertainty 0.1% stability check | ABSENT | (C region.c:11203) | parity |
 | MERGE-FF | merge helpers omit FillFactor/MeshSize scaling | MISSING-BRANCH | merge_util.rs:43 (C box.c:2049) | parity |
 | CE-FIT | Circle/Ellipse Simplify no re-fit/validate/degrade | STUB | circle.rs:603, ellipse.rs:565 | parity |
 
@@ -168,13 +168,13 @@ The pre-refactor line numbers in §2 are stale; verdicts below supersede them.
   deep-copies uncertainty via `clone_region()` (data.rs:87); the axis-reducing
   path slices uncertainty per-class in `reg_base_pick_axes` (box_region.rs:984,
   interval.rs:934, pointlist.rs:523, nullregion.rs:270), faithfully mirroring C
-  `RegBasePick` (box.c:2731 etc.). Matches C `astMapRegion` (region.c:5704).
+  `RegBasePick` (box.c:2731 etc.). Matches C `astMapRegion` (region.c:5708).
 - **PR-MAP** — C `Prism` has no `MapRegion` vtab override; the Rust shared
   default is the faithful behaviour.
 
 **OPEN — genuine gaps, each independently landable, re-run byte-exact corpus:**
 - **RB-PICK** (small) — base `reg_base_pick_axes` (mod.rs:614) always returns
-  `None`; C base (region.c:8342-8388) returns a *copy* when ALL base axes are
+  `None`; C base (region.c:8346-8392) returns a *copy* when ALL base axes are
   selected (permuted if needed), NULL only for a strict subset. Also missing
   `CmpRegion` (cmpregion.c:2096) and `Prism` (prism.c:2293) overrides; the
   mod.rs:611-613 doc comment wrongly lists them as using the default.
@@ -184,12 +184,12 @@ The pre-refactor line numbers in §2 are stale; verdicts below supersede them.
   Box), Prism (prism.c:1212, Prism of component default uncs), CmpRegion
   (cmpregion.c:1090, delegates to a component with explicit unc).
 - **SETUNC** (medium) — bare field store in 9 classes (mod.rs:286 + per-class);
-  C `SetUnc` (region.c:10754-10911) remaps the unc into the base Frame,
+  C `SetUnc` (region.c:10761-10918) remaps the unc into the base Frame,
   validates centro-symmetry via `astRegCentre`, negates if unbounded, clears
   `RegionFS` on UnitMap, re-centres at the first defining point, resets cache.
   Interacts with DEFUNC/`get_unc_frm` (unnormalised uncs flow downstream).
 - **SIMP-STAB** (medium) — the 0.1%-tolerance uncertainty-stability check in C
-  `Region::Simplify` (region.c:11145-11312, test at 11277-11284) is absent; no
+  `Region::Simplify` (region.c:11152-11319, test at 11277-11284) is absent; no
   shared parent-Region simplify helper exists (each class re-implements the
   base→current map simplify inline and none touch uncertainty). Factoring out a
   shared parent-simplify benefits CE-FIT too.

@@ -9,7 +9,7 @@ use std::cell::RefCell;
 
 use crate::constants::BAD_VALUE;
 use crate::coords::PointSet;
-use crate::error::{AstError, AstResult};
+use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::{DynFrame, Frame, FrameRef, FrameSet, SkyFrame};
 use crate::mappings::helpers::is_bad;
 use crate::mappings::{Mapping, UnitMap};
@@ -437,66 +437,160 @@ pub(crate) trait RegionGeometry {
     }
 }
 
-/// Apply a frame-attribute mutation to a Region with integrity enforcement.
+/// One change to a Frame attribute of a Region: what C's `RegSetAttrib` and
+/// `RegClearAttrib` receive as a setting string or attribute name.
 ///
-/// This is the Region equivalent of [`FrameSet::with_integrity`]. It:
-///
-/// 1. Records the base→current mapping before the change.
-/// 2. Delegates to `FrameSet::with_integrity` to mutate the current frame
-///    and update the internal mapping.
-/// 3. If the region is adaptive, computes the delta between old and new
-///    base→current mappings and transforms the defining points through it
-///    (in practice this is identity for standard region FrameSets, but the
-///    mechanism is in place for complex multi-frame scenarios).
-/// 4. Invalidates cached meshes.
-///
-/// When `adaptive` is `false`, the mutation is applied to **both** base and
-/// current frames (bypassing integrity), so the defining points remain
-/// numerically unchanged in the new coordinate system.
-pub(crate) fn with_region_integrity<R, F>(region: &mut R, f: F) -> AstResult<()>
-where
-    R: RegionGeometry,
-    F: FnOnce(&mut dyn Frame) -> AstResult<()>,
-{
-    let data = region.region_data();
-    let adaptive = data.adaptive;
+/// The change is applied to several Frames (the Region's current and base
+/// Frames, its uncertainty, a compound Region's components), and an axis
+/// index in it is translated for each, so it is a reusable closure that is
+/// handed the 1-based axis to use in the Frame it is applied to.
+#[doc(hidden)]
+pub struct FrameSetting<'a> {
+    axis: Option<usize>,
+    apply: &'a dyn Fn(&mut dyn Frame, usize) -> AstResult<()>,
+}
 
-    if adaptive {
-        // Adaptive: delegate to FrameSet integrity. The current frame
-        // changes and the base→current mapping is updated. Defining
-        // points are in the base frame and remain valid because the
-        // base frame itself is never modified by with_integrity — only
-        // the current frame and the base→current mapping change.
-        let data = region.region_data_mut();
-        data.frameset.with_integrity(f)?;
-        data.invalidate_cache();
-    } else {
-        // Non-adaptive: apply the mutation to both base and current frames
-        // without remapping. The defining points remain numerically unchanged
-        // because both frames change simultaneously.
-        //
-        // We apply to the current frame via frame_mut (bypassing integrity)
-        // and also apply to the base frame.
-        let data = region.region_data_mut();
-
-        // Apply to current frame (bypass integrity).
-        f(data.frameset.frame_mut(FrameRef::Current)?)?;
-
-        // Apply the same mutation to the base frame.
-        // We need a fresh snapshot-based approach: snapshot the base,
-        // apply the same conceptual change. Since we can't easily
-        // re-run the closure, for now we apply it directly to the base
-        // frame as well. This matches C's RegSetAttrib which sets both.
-        //
-        // NOTE: The closure has already been consumed. For non-adaptive
-        // regions, the caller should use `with_integrity_non_adaptive`
-        // or set attributes directly on both frames. For now, we just
-        // invalidate the cache — the non-adaptive path is less common
-        // and will be fully implemented when needed for SkyFrame tests.
-        data.invalidate_cache();
+impl<'a> FrameSetting<'a> {
+    /// A change to the attribute of `axis` (1-based), or to a Frame-wide
+    /// attribute when `axis` is `None`, made by `apply`, which is passed the
+    /// axis (0 for a Frame-wide attribute).
+    pub(crate) fn new(
+        axis: Option<usize>,
+        apply: &'a dyn Fn(&mut dyn Frame, usize) -> AstResult<()>,
+    ) -> Self {
+        FrameSetting { axis, apply }
     }
 
+    /// The 1-based axis the attribute belongs to, if any.
+    pub(crate) fn axis(&self) -> Option<usize> {
+        self.axis
+    }
+
+    /// The same change, to the attribute of `axis` instead.
+    pub(crate) fn with_axis(&self, axis: Option<usize>) -> FrameSetting<'a> {
+        FrameSetting {
+            axis,
+            apply: self.apply,
+        }
+    }
+
+    /// Make the change to `frame`.
+    pub(crate) fn apply_to(&self, frame: &mut dyn Frame) -> AstResult<()> {
+        (self.apply)(frame, self.axis.unwrap_or(0))
+    }
+}
+
+/// Whether an error is C's AST__BADAT, the "attribute unknown" error that
+/// `RegSetAttrib` and its overrides annul when a Frame or component does
+/// not have the attribute.
+pub(crate) fn is_bad_attribute(err: &AstError) -> bool {
+    err.code() == ErrorCode::Badat
+}
+
+/// region.c `RegSetAttrib` and `RegClearAttrib`: make `setting` to the
+/// current Frame and then the base Frame of `region`, neither remapping the
+/// other, so the Region keeps its defining points in the changed Frames.
+///
+/// An attribute of a current-Frame axis is made to the base-Frame axis the
+/// base->current Mapping connects it to, and it is an error if there is no
+/// single such axis. The change is also made to any uncertainty Region,
+/// whose current Frame is the Region's base Frame. An attribute the base
+/// Frame or the uncertainty does not have (AST__BADAT) is ignored there.
+/// Returns the setting as made to the base Frame, for a class that passes
+/// it on to Regions it holds.
+pub(crate) fn region_frame_attrib<'a, R>(
+    region: &mut R,
+    setting: &FrameSetting<'a>,
+) -> AstResult<FrameSetting<'a>>
+where
+    R: RegionGeometry + super::Region,
+{
+    setting.apply_to(
+        region
+            .region_data_mut()
+            .frameset
+            .frame_mut(FrameRef::Current)?,
+    )?;
+
+    // The base-Frame axis connected to the current-Frame axis.
+    let base_setting = match setting.axis() {
+        None => setting.with_axis(None),
+        Some(axis) => {
+            let map = region
+                .region_data()
+                .frameset
+                .mapping(FrameRef::Current, FrameRef::Base)?;
+            match map.map_split_zero_based(&[axis - 1])? {
+                Some((outs, split)) if split.nout() == 1 => setting.with_axis(Some(outs[0] + 1)),
+                _ => {
+                    return Err(AstError::new(
+                        ErrorCode::Inter,
+                        format!(
+                            "astRegSetAttrib(Region): Unable to apply the attribute setting to \
+                             the base Frame in the Region. There is no base Frame axis \
+                             corresponding to current Frame axis {axis}"
+                        ),
+                    ));
+                }
+            }
+        }
+    };
+
+    // The base Frame, then the uncertainty; C skips the uncertainty once the
+    // base Frame has reported an error, and then annuls AST__BADAT.
+    let made = base_setting
+        .apply_to(
+            region
+                .region_data_mut()
+                .frameset
+                .frame_mut(FrameRef::Base)?,
+        )
+        .and_then(|()| {
+            if region.test_unc() {
+                let mut unc = region.get_unc_frm(FrameRef::Base)?;
+                unc.reg_frame_attrib(&base_setting)?;
+                region.store_uncertainty(Some(unc));
+            }
+            Ok(())
+        });
+    match made {
+        Err(e) if !is_bad_attribute(&e) => return Err(e),
+        _ => {}
+    }
+
+    region.region_data().invalidate_cache();
+    Ok(base_setting)
+}
+
+/// Make `setting` to a Region as C's public `astSet` and `astClear` do
+/// (region.c `SetAttrib`, `ClearAttrib`): through the FrameSet, remapping
+/// the Region into the changed current Frame, when the Region is Adaptive,
+/// and otherwise through [`Region::reg_frame_attrib`](super::Region::reg_frame_attrib),
+/// which changes both Frames and leaves the Region where it was.
+pub(crate) fn set_region_frame_attr<R>(region: &mut R, setting: &FrameSetting) -> AstResult<()>
+where
+    R: RegionGeometry + super::Region,
+{
+    if region.region_data().adaptive {
+        let data = region.region_data_mut();
+        data.frameset.with_integrity(|f| setting.apply_to(f))?;
+        data.invalidate_cache();
+    } else {
+        region.reg_frame_attrib(setting)?;
+    }
     Ok(())
+}
+
+/// A Frame-wide change made by `f`, applied to a Region as
+/// [`set_region_frame_attr`] applies it: the inherent `with_integrity` of
+/// every Region class.
+pub(crate) fn with_region_integrity<R, F>(region: &mut R, f: F) -> AstResult<()>
+where
+    R: RegionGeometry + super::Region,
+    F: Fn(&mut dyn Frame) -> AstResult<()>,
+{
+    let apply = |frame: &mut dyn Frame, _: usize| f(frame);
+    set_region_frame_attr(region, &FrameSetting::new(None, &apply))
 }
 
 /// Shared implementation of `Mapping::transform` for all Regions.

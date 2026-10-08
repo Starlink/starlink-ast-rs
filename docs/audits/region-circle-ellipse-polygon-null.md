@@ -33,7 +33,7 @@ at all, which is the root cause of several gaps below.
 | `RegCentre` (circle.c:1114) | `reg_centre` (circle.rs:296) get-only | MISSING-BRANCH | C supports both *get* and *set* (re-centre) of the circle centre, shifting the edge point accordingly (circle.c:1206+). Rust only returns `points[0]`; no re-centre path. `astRegCentre(...,cen,...)` is used by C `RegPins` to re-centre uncertainty — absent here. |
 | `Overlap`/`OverlapX` (inherited from region.c) | `overlap` → `compute_overlap` (circle.rs:354, overlap.rs:40) | HEURISTIC | Mesh-count-with-90%-threshold (overlap.rs:21, THRESHOLD=0.90) rather than C's `astRegPins`-based classification. No `Same`/negation (value 6) detection except NullRegion special cases. |
 | `RegBasePick` (base default → NULL) | `reg_base_pick_axes` default `None` (mod.rs:301) | PORTED | Circle correctly uses the default (returns None). Matches C. |
-| `map_region` (region.c:5375 `MapRegion`) | `map_region` (circle.rs:472) | MISSING-BRANCH | **Uncertainty dropped.** C `astMapRegion` takes `astCopy(usethis)` (region.c:5704), preserving the uncertainty Region. Rust builds a fresh `RegionData` and never copies `self.data.uncertainty` (circle.rs:486-492). Also omits the bad-value validation (region.c:5507-5551) and the fewer-axes MapSplit reduction (region.c:5593). |
+| `map_region` (region.c:5379 `MapRegion`) | `map_region` (circle.rs:472) | MISSING-BRANCH | **Uncertainty dropped.** C `astMapRegion` takes `astCopy(usethis)` (region.c:5708), preserving the uncertainty Region. Rust builds a fresh `RegionData` and never copies `self.data.uncertainty` (circle.rs:486-492). Also omits the bad-value validation (region.c:5511-5555) and the fewer-axes MapSplit reduction (region.c:5597). |
 | `Equal` (inherited) | `Mapping::equal` (circle.rs:636) | PORTED (approx) | Compares points+flags+frame. Reasonable; C `Region` Equal is also geometry+frame based. |
 | `GetBounded` (base → always bounded) | `is_bounded_inner` → true (circle.rs:300) | PORTED | Circle always bounded; matches base Region default. |
 
@@ -141,7 +141,7 @@ mis-call near-tangent regions. That is the real cap_slamap_07 exposure
 
 ### Uncertainty dropped in `map_region` (per class)
 C `astMapRegion` deep-copies the whole Region including its uncertainty
-(`result = astCopy(usethis)`, region.c:5704). Every Rust `map_region`
+(`result = astCopy(usethis)`, region.c:5708). Every Rust `map_region`
 constructs a fresh `RegionData` and never copies `self.data.uncertainty`:
 - Circle: circle.rs:486-492 (no `data.uncertainty = ...`).
 - Ellipse: ellipse.rs:447-453.
@@ -151,8 +151,8 @@ constructs a fresh `RegionData` and never copies `self.data.uncertainty`:
 This is the same cross-cutting gap already recorded for other region
 classes in the `map_region drops uncertainty` memory note; it applies to
 all four classes here. Additionally all four omit the C forward/inverse
-bad-value validation (region.c:5507-5551) and the `nnew < nold` MapSplit
-axis-reduction (region.c:5593).
+bad-value validation (region.c:5511-5555) and the `nnew < nold` MapSplit
+axis-reduction (region.c:5597).
 
 ### `reg_pins` heuristic status (per class)
 None of the four classes implement C's on-boundary `astRegPins`. Instead

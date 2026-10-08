@@ -888,7 +888,11 @@ pub(crate) fn write_frame_inheritance_for_region(
             // Region itself, not the encapsulated frame, so drop the inner
             // frame's copies.
             | "Ident" | "ID" | "UseDfs"
-        ) || item.key.starts_with("Lbl");
+        ) || item.key.starts_with("Lbl")
+            // The axis permutation is the current Frame's; the Region's own
+            // Frame part, which frame.c dumps here, is never permuted, since
+            // region.c `PermAxes` permutes the FrameSet instead.
+            || item.key.starts_with("Prm");
         if is_handled {
             continue;
         }
@@ -900,7 +904,13 @@ pub(crate) fn write_frame_inheritance_for_region(
             NodeValue::Unset(inner) => (**inner).clone(),
             other => other.clone(),
         };
-        node.push_unset(&item.key, value, item.comment.clone());
+        // frame.c `Dump` writes ActUnt as set whenever the Frame's
+        // ActiveUnit is set, whichever class is dumping (frame.c:14729).
+        if let ("ActUnt", NodeValue::Int(v)) = (item.key.as_str(), &value) {
+            node.push_int(&item.key, *v, item.comment.clone());
+        } else {
+            node.push_unset(&item.key, value, item.comment.clone());
+        }
     }
     Ok(())
 }

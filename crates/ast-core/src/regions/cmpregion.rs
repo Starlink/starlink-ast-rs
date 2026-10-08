@@ -150,10 +150,14 @@ impl CmpRegionBuilder {
 // ============================================================================
 
 impl CmpRegion {
-    /// Mutate the current frame with region integrity enforcement.
+    /// Mutate the current frame with region integrity enforcement: remapping
+    /// the Region when it is Adaptive, otherwise changing both Frames.
+    ///
+    /// `f` makes the change to each Frame it is made to, so it may be called
+    /// more than once.
     pub fn with_integrity<F>(&mut self, f: F) -> AstResult<()>
     where
-        F: FnOnce(&mut dyn Frame) -> AstResult<()>,
+        F: Fn(&mut dyn Frame) -> AstResult<()>,
     {
         super::data::with_region_integrity(self, f)
     }
@@ -987,6 +991,26 @@ impl Region for CmpRegion {
 
         let result = CmpRegionBuilder::from_dyn(picked1, picked2, self.operator)?.build()?;
         Ok(Some(Box::new(result)))
+    }
+
+    /// cmpregion.c `RegSetAttrib` and `RegClearAttrib`: the change is made
+    /// to the CmpRegion's own Frames, then its base-Frame form to both
+    /// components, whose current Frames are that base Frame. A component
+    /// without the attribute (AST__BADAT) ends the propagation, the error
+    /// annulled, as C's status does.
+    fn reg_frame_attrib<'a>(
+        &mut self,
+        setting: &super::FrameSetting<'a>,
+    ) -> AstResult<super::FrameSetting<'a>> {
+        let base = super::data::region_frame_attrib(self, setting)?;
+        let made = self
+            .region1
+            .reg_frame_attrib(&base)
+            .and_then(|_| self.region2.reg_frame_attrib(&base));
+        match made {
+            Err(e) if !super::data::is_bad_attribute(&e) => Err(e),
+            _ => Ok(base),
+        }
     }
 
     fn clone_region(&self) -> DynRegion {

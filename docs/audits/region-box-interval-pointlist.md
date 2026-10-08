@@ -28,8 +28,8 @@ Every claim cites C `file:line` and Rust `file:line`.
 | `RegBaseGrid` (box.c:2179) | `reg_base_grid` default (data.rs:235) | **PORTED (generic)** | Box does not use a class-specific grid in Rust; the generic bounded-box grid+filter is equivalent for an axis-aligned box. |
 | `RegTrace` (box.c:3216) | ABSENT | **ABSENT** | 2-D boundary tracing not ported. Out of stated scope but noted. |
 | `MergeBox` (box.c:1658) | `region_merge` (box_region.rs:720) | **MISSING-BRANCH** | Box+Box/Interval/NullRegion/PointList branches ported faithfully (incl. the point-width guard for PointList). BUT the post-merge attribute propagation is incomplete: C scales the result **FillFactor** by the product of the two inputs' fill factors (box.c:2051-2054) and scales **MeshSize** by the product of the used/default ratios (box.c:2056-2085). Rust `finish_region_merge` (merge_util.rs:43-81) copies only Closed/Adaptive/Negated/uncertainty — FillFactor product and MeshSize scaling are ABSENT. |
-| `Equal` (inherited, region.c:2631) | `Mapping::equal` (box_region.rs:994) | **PORTED (approx)** | Compares negated/closed/points/current-frame. C also requires equal *base* Frames and a UnitMap base→current mapping (region.c:2666-2670); Rust compares only the current frame and does not verify the base-frame/UnitMap condition. Adequate for UnitMap-based regions; diverges for remapped regions. |
-| `MapRegion` (inherited, region.c:5375) | `map_region` (box_region.rs:665) | **MISSING-BRANCH** | C `astMapRegion` takes a deep copy (`astCopy`, region.c:5704) which **preserves the uncertainty Region**, then re-frames it. Rust builds a fresh `RegionData` copying negated/closed/mesh/fill/adaptive but **drops `data.uncertainty`** (box_region.rs:674-684). See Cross-cutting §3. Also omits the bad-value validation and axis-removal (`astMapSplit`) logic. |
+| `Equal` (inherited, region.c:2635) | `Mapping::equal` (box_region.rs:994) | **PORTED (approx)** | Compares negated/closed/points/current-frame. C also requires equal *base* Frames and a UnitMap base→current mapping (region.c:2670-2674); Rust compares only the current frame and does not verify the base-frame/UnitMap condition. Adequate for UnitMap-based regions; diverges for remapped regions. |
+| `MapRegion` (inherited, region.c:5379) | `map_region` (box_region.rs:665) | **MISSING-BRANCH** | C `astMapRegion` takes a deep copy (`astCopy`, region.c:5708) which **preserves the uncertainty Region**, then re-frames it. Rust builds a fresh `RegionData` copying negated/closed/mesh/fill/adaptive but **drops `data.uncertainty`** (box_region.rs:674-684). See Cross-cutting §3. Also omits the bad-value validation and axis-removal (`astMapSplit`) logic. |
 
 ---
 
@@ -45,8 +45,8 @@ Every claim cites C `file:line` and Rust `file:line`.
 | `RegBaseMesh` (interval.c:2257) | `reg_base_mesh` (interval.rs:482) | **MISSING-BRANCH** | C delegates to the equivalent Box's mesh and **errors (`AST__INTER`) if unbounded** (interval.c:2317). Rust returns an empty Vec for unbounded (interval.rs:490-493) and generates 2^naxes corners for the bounded case rather than the Box's edge-distributed mesh — so even the bounded mesh differs from C's Box-derived mesh. |
 | `RegCentre` (interval.c:2451) | `reg_centre` getter (interval.rs:514) | **MISSING-BRANCH** | Read path only (bounded intervals). The set/re-centre path is ABSENT. |
 | `MergeInterval` (interval.c:1224) | `region_merge` (interval.rs:810) | **MISSING-BRANCH** | Interval+Interval/Box/NullRegion branches ported. The **Interval+PointList** branch (interval.c:1458) is deliberately not ported (interval.rs:876-891) — argued unreachable and defective upstream; acceptable but note it is a real C branch. Same FillFactor/MeshSize post-merge scaling gap as MergeBox (merge_util.rs:43-81). |
-| `Equal` (inherited region.c:2631) | `Mapping::equal` (interval.rs:1133) | **PORTED (approx)** | Same base-frame/UnitMap omission as Box. |
-| `MapRegion` (inherited region.c:5375) | `map_region` (interval.rs:757) | **MISSING-BRANCH** | Drops uncertainty (interval.rs:766-776); see §3. |
+| `Equal` (inherited region.c:2635) | `Mapping::equal` (interval.rs:1133) | **PORTED (approx)** | Same base-frame/UnitMap omission as Box. |
+| `MapRegion` (inherited region.c:5379) | `map_region` (interval.rs:757) | **MISSING-BRANCH** | Drops uncertainty (interval.rs:766-776); see §3. |
 
 ---
 
@@ -104,7 +104,7 @@ Every claim cites C `file:line` and Rust `file:line`.
 
 ### Uncertainty dropped in `map_region` (all three classes)
 
-C `astMapRegion` (region.c:5704) deep-copies the source Region with `astCopy`,
+C `astMapRegion` (region.c:5708) deep-copies the source Region with `astCopy`,
 which **retains the uncertainty Region**, then re-frames it. All three Rust
 `map_region` impls build a fresh `RegionData` and copy the scalar attributes but
 **omit `data.uncertainty`**:

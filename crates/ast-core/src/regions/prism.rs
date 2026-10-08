@@ -83,7 +83,18 @@ impl PrismBuilder {
     }
 
     /// Build the Prism.
-    pub fn build(self) -> AstResult<Prism> {
+    pub fn build(mut self) -> AstResult<Prism> {
+        // A component whose base->current Mapping is a UnitMap need not
+        // dump its FrameSet, so its RegionFS is cleared (prism.c:4244-4251).
+        for region in [&mut self.region1, &mut self.region2] {
+            let map = region
+                .get_region_frameset()
+                .mapping(FrameRef::Base, FrameRef::Current)?;
+            if map.as_any().is::<crate::mappings::UnitMap>() {
+                region.set_region_fs_flag(false);
+            }
+        }
+
         // Create a CmpFrame combining the frames of both sub-regions.
         let frame1 = self.region1.get_region_frame();
         let frame2 = self.region2.get_region_frame();
@@ -113,10 +124,14 @@ impl PrismBuilder {
 // ============================================================================
 
 impl Prism {
-    /// Mutate the current frame with region integrity enforcement.
+    /// Mutate the current frame with region integrity enforcement: remapping
+    /// the Region when it is Adaptive, otherwise changing both Frames.
+    ///
+    /// `f` makes the change to each Frame it is made to, so it may be called
+    /// more than once.
     pub fn with_integrity<F>(&mut self, f: F) -> AstResult<()>
     where
-        F: FnOnce(&mut dyn Frame) -> AstResult<()>,
+        F: Fn(&mut dyn Frame) -> AstResult<()>,
     {
         super::data::with_region_integrity(self, f)
     }
@@ -899,6 +914,41 @@ impl Region for Prism {
         };
 
         Ok(result)
+    }
+
+    /// prism.c `RegSetAttrib` and `RegClearAttrib`: the change is made to
+    /// the Prism's own Frames, then its base-Frame form to the components,
+    /// whose current Frames together make that base Frame: an axis
+    /// attribute to the component holding the axis, with the axis numbered
+    /// within it, and any other to both. A component without the attribute
+    /// (AST__BADAT) ends the propagation, the error annulled, as C's status
+    /// does.
+    fn reg_frame_attrib<'a>(
+        &mut self,
+        setting: &super::FrameSetting<'a>,
+    ) -> AstResult<super::FrameSetting<'a>> {
+        let base = super::data::region_frame_attrib(self, setting)?;
+        let made = match base.axis() {
+            Some(axis) => {
+                let nax1 = self.region1.naxes();
+                if axis <= nax1 {
+                    self.region1.reg_frame_attrib(&base).map(|_| ())
+                } else {
+                    self.region2
+                        .reg_frame_attrib(&base.with_axis(Some(axis - nax1)))
+                        .map(|_| ())
+                }
+            }
+            None => self
+                .region1
+                .reg_frame_attrib(&base)
+                .and_then(|_| self.region2.reg_frame_attrib(&base))
+                .map(|_| ()),
+        };
+        match made {
+            Err(e) if !super::data::is_bad_attribute(&e) => Err(e),
+            _ => Ok(base),
+        }
     }
 
     fn clone_region(&self) -> DynRegion {

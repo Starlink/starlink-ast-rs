@@ -1098,6 +1098,16 @@ Only a hand-written description can do this, since Dump never writes an index be
 Fixed on `u/timj/norm-unit` in 0d05fc29, which checks Current as Base is checked, with a `testframeset` case (Errors 41-43).
 The port treats a `Currnt` below 1 as unset, as the fixed C does (`frameset.rs` `from_node`), and `tests/test_frameset_current.rs` covers Current's set state against C.
 
+### RESOLVED (upstream bb287a61): `RegSetAttrib` lower-cases the value of a setting made through a Region that is not Adaptive
+
+C location: `region.c` `RegSetAttrib`.
+
+`RegSetAttrib`, which `astSet` uses on a Region that is not Adaptive, lower-cased the whole setting before applying it to the current and base Frames, so `Label(1)=Mixed Case` gave the Label `mixed case`, and the same for Title, Symbol, Domain and every other string attribute.
+`astSet` already passes the attribute name in lower case (object.c), so the conversion only damaged the value; `RegClearAttrib`, which has no value, is unaffected.
+
+Fixed on `u/timj/norm-unit` in bb287a61: only the attribute name is lower-cased; `testregions` `checkNonAdaptiveSettingCase`.
+The port's typed setters never pass a value through a string, so it does not have the defect; `tests/test_region_attrib_oracle.rs`, whose probe needs the fixed library.
+
 ### RESOLVED (upstream 0516a13d): Prism `Overlap` passes the Regions to the inherited `OverlapX` in the wrong order
 
 C location: `prism.c` `Overlap`.

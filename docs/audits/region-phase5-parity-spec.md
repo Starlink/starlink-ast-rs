@@ -77,7 +77,7 @@ root.
   the default.
 
 ### C reference
-- Base `RegBasePick` — `region.c:8342-8388`: get base-Frame naxes; proceed only
+- Base `RegBasePick` — `region.c:8346-8392`: get base-Frame naxes; proceed only
   when `nax == naxes` (ALL base axes selected); verify `axes` is a genuine
   permutation (each index once); if so `result = astCopy(this)`,
   `astSetRegFS(result, fr)`, and `astPermAxes(result, axes)` when not identity.
@@ -90,14 +90,14 @@ root.
 
 ### Why it is a genuine divergence (not just uncovered)
 `pick_axes_region` (mod.rs:693) turns a `None` from `reg_base_pick_axes` into a
-plain `Frame`, losing the Region type. C `PickAxes` (region.c:7713-7727) uses the
+plain `Frame`, losing the Region type. C `PickAxes` (region.c:7717-7731) uses the
 copy from `astRegBasePick` to build a Region. So `astPickAxes` on a
 Circle/Ellipse/Polygon selecting all axes in permuted order yields a Region in C
 but only a Frame in Rust — and subset-axis picks on a CmpRegion/Prism yield a
 Region in C but `None` in Rust.
 
 ### Faithful-port sketch
-1. Base mod.rs:614: port region.c:8342-8388 — if `axes.len() == base_naxes` and
+1. Base mod.rs:614: port region.c:8346-8392 — if `axes.len() == base_naxes` and
    `axes` is a permutation of `0..base_naxes`, return `Some(self.clone_region())`
    with FrameSet reset to the base Frame (`astSetRegFS` analogue) and
    `reg_perm_axes(axes)` when not the identity; else `Ok(None)`.
@@ -136,7 +136,7 @@ answer, the unit test asserts the Rust API contract.
 CLOSED (`c608570`). The four class overrides (Interval, NullRegion, Prism,
 CmpRegion) were ported on top of the faithful base `get_def_unc` port, along with
 the RegBaseBox2 distinction. Previously PARTIAL: the base arithmetic
-(mod.rs:303-322) mirrored C base `GetDefUnc` (region.c:3488-3588) but every
+(mod.rs:303-322) mirrored C base `GetDefUnc` (region.c:3492-3592) but every
 concrete class incorrectly fell through to the base.
 
 ### C reference (all four bodies read in full)
@@ -155,7 +155,7 @@ concrete class incorrectly fell through to the base.
   `astGetUncFrm(region1, CURRENT)`; else if `astTestUnc(region2)` →
   `astGetUncFrm(region2, CURRENT)`; else defer to the parent (base) method.
 
-### Base-method subtlety (region.c:3550-3558)
+### Base-method subtlety (region.c:3554-3562)
 C base uses `astRegBaseBox2`, NOT `astRegBaseBox`, so compound regions propagate
 a "not inverted" assumption into components. Rust base calls
 `get_region_bounds()` (the `RegBaseBox` analogue). This only bites classes that
@@ -219,7 +219,7 @@ CLOSED (`d5e78b6`). The full C `SetUnc` body (validate/remap/negate-to-bound/
 RegionFS/recentre/cache) landed as a shared default trait method, replacing the
 9 bare `self.data.uncertainty = Some(unc)` stores. Previously OPEN.
 
-### C reference — `region.c:10754-10911`, read in full
+### C reference — `region.c:10761-10918`, read in full
 In order:
 1. Annul existing uncertainty; set `changed` if one was present (10826-10832).
 2. Validate class: `cen0 = astRegCentre(unc, NULL, NULL, 0, CURRENT)`; NULL
@@ -253,7 +253,7 @@ In order:
   `invalidate_cache` (data.rs:154 — the `astResetCache` analogue).
 
 ### Faithful-port sketch
-Port region.c:10754-10911 into a **shared** default trait method
+Port region.c:10761-10918 into a **shared** default trait method
 `set_uncertainty` on `Region` (the C body is fully generic — it touches only
 `frameset`, `unc`, `points`, cache). Each class currently has an identical bare
 store; replace them with one default and delete the per-class copies. Steps map
@@ -295,7 +295,7 @@ the check was absent from every Rust `simplified()` and each class re-implemente
 the base→current-map simplify inline (e.g. box_region.rs:1219-1227) without
 touching the uncertainty Region.
 
-### C reference — `region.c:11042-11328`, stability block read in full (11145-11312)
+### C reference — `region.c:11049-11335`, stability block read in full (11145-11312)
 The base `Region::Simplify` runs BEFORE each class's own simplify work (invoked
 as `parent_simplify`). It:
 1. Deep-copies the Region; simplifies the encapsulated FrameSet; notes if it
@@ -383,7 +383,7 @@ After `astMapRegion(new, bcmap, cfrm)` produces `result`:
   clearing), then `astSetMeshSize(result, fac_this*fac_reg*
   astGetMeshSize(result))`; reinstate the source MeshSize values.
 
-This is deliberately NOT `astRegOverlay`'s plain copy (region.c:9910-9916 fires
+This is deliberately NOT `astRegOverlay`'s plain copy (region.c:9914-9920 fires
 only when axis counts match; after a merge `nax = nax_this + nax_reg`, so it
 never fires — hence the explicit scaling).
 

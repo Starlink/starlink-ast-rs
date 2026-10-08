@@ -239,9 +239,12 @@ impl Circle {
     ///
     /// See the internal `with_region_integrity` function for the full
     /// algorithm.
+    ///
+    /// `f` makes the change to each Frame it is made to, so it may be called
+    /// more than once.
     pub fn with_integrity<F>(&mut self, f: F) -> AstResult<()>
     where
-        F: FnOnce(&mut dyn Frame) -> AstResult<()>,
+        F: Fn(&mut dyn Frame) -> AstResult<()>,
     {
         super::data::with_region_integrity(self, f)
     }
@@ -812,6 +815,13 @@ impl Region for Circle {
 
     fn reg_perm_axes(&mut self, perm: &[usize]) -> AstResult<()> {
         self.perm_axes(perm)
+    }
+
+    fn reg_frame_attrib<'a>(
+        &mut self,
+        setting: &super::FrameSetting<'a>,
+    ) -> AstResult<super::FrameSetting<'a>> {
+        super::data::region_frame_attrib(self, setting)
     }
 
     fn clone_region(&self) -> DynRegion {

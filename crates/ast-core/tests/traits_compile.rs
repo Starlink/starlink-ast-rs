@@ -297,6 +297,12 @@ impl Region for DummyRegion {
     fn reg_perm_axes(&mut self, _perm: &[usize]) -> AstResult<()> {
         Err(AstError::new(ErrorCode::Nodef, "not implemented"))
     }
+    fn reg_frame_attrib<'a>(
+        &mut self,
+        _setting: &ast_core::regions::FrameSetting<'a>,
+    ) -> AstResult<ast_core::regions::FrameSetting<'a>> {
+        Err(AstError::new(ErrorCode::Nodef, "not implemented"))
+    }
     fn store_uncertainty(&mut self, _unc: Option<DynRegion>) {}
     fn set_region_fs_flag(&mut self, _value: bool) {}
     fn region_fs_flag(&self) -> bool {

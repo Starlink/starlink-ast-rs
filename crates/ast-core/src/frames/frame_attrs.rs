@@ -892,61 +892,73 @@ macro_rules! forward_frame_attrs {
         forward_frame_attrs!(@get [$($path).+] test_domain -> bool);
         forward_frame_attrs!(@clear [$($path).+] clear_domain);
     };
+    // A Region: getters read its FrameSet, while setters and clears go
+    // through the Region, which remaps itself only when it is Adaptive
+    // (region.c `SetAttrib`, `ClearAttrib`).
+    (region $($path:ident).+) => {
+        forward_frame_attrs!(@all_but_domain region [$($path).+]);
+        fn domain(&self) -> &str {
+            $crate::frames::Frame::domain(&self.$($path).+)
+        }
+        forward_frame_attrs!(@set region [$($path).+] set_domain(domain: &str));
+        forward_frame_attrs!(@get [$($path).+] test_domain -> bool);
+        forward_frame_attrs!(@clear region [$($path).+] clear_domain);
+    };
     // Every attribute but Domain, for a class that supplies its own Domain
     // default.
-    (@all_but_domain [$($path:ident).+]) => {
+    (@all_but_domain $($mode:ident)? [$($path:ident).+]) => {
         forward_frame_attrs!(@get [$($path).+] title -> $crate::error::AstResult<String>);
-        forward_frame_attrs!(@set [$($path).+] set_title(title: &str));
+        forward_frame_attrs!(@set $($mode)? [$($path).+] set_title(title: &str));
         forward_frame_attrs!(@get [$($path).+] test_title -> bool);
-        forward_frame_attrs!(@clear [$($path).+] clear_title);
+        forward_frame_attrs!(@clear $($mode)? [$($path).+] clear_title);
         forward_frame_attrs!(@get [$($path).+] epoch_mjd -> f64);
-        forward_frame_attrs!(@set [$($path).+] set_epoch_mjd(mjd: f64));
+        forward_frame_attrs!(@set $($mode)? [$($path).+] set_epoch_mjd(mjd: f64));
         forward_frame_attrs!(@get [$($path).+] test_epoch -> bool);
-        forward_frame_attrs!(@clear [$($path).+] clear_epoch);
+        forward_frame_attrs!(@clear $($mode)? [$($path).+] clear_epoch);
         forward_frame_attrs!(@get [$($path).+] digits -> i32);
-        forward_frame_attrs!(@set [$($path).+] set_digits(value: i32));
+        forward_frame_attrs!(@set $($mode)? [$($path).+] set_digits(value: i32));
         forward_frame_attrs!(@get [$($path).+] test_digits -> bool);
-        forward_frame_attrs!(@clear [$($path).+] clear_digits);
+        forward_frame_attrs!(@clear $($mode)? [$($path).+] clear_digits);
         forward_frame_attrs!(@get [$($path).+] obs_lat -> f64);
-        forward_frame_attrs!(@set [$($path).+] set_obs_lat(v: f64));
+        forward_frame_attrs!(@set $($mode)? [$($path).+] set_obs_lat(v: f64));
         forward_frame_attrs!(@get [$($path).+] test_obs_lat -> bool);
-        forward_frame_attrs!(@clear [$($path).+] clear_obs_lat);
+        forward_frame_attrs!(@clear $($mode)? [$($path).+] clear_obs_lat);
         forward_frame_attrs!(@get [$($path).+] obs_lon -> f64);
-        forward_frame_attrs!(@set [$($path).+] set_obs_lon(v: f64));
+        forward_frame_attrs!(@set $($mode)? [$($path).+] set_obs_lon(v: f64));
         forward_frame_attrs!(@get [$($path).+] test_obs_lon -> bool);
-        forward_frame_attrs!(@clear [$($path).+] clear_obs_lon);
+        forward_frame_attrs!(@clear $($mode)? [$($path).+] clear_obs_lon);
         forward_frame_attrs!(@get [$($path).+] obs_alt -> f64);
-        forward_frame_attrs!(@set [$($path).+] set_obs_alt(v: f64));
+        forward_frame_attrs!(@set $($mode)? [$($path).+] set_obs_alt(v: f64));
         forward_frame_attrs!(@get [$($path).+] test_obs_alt -> bool);
-        forward_frame_attrs!(@clear [$($path).+] clear_obs_alt);
+        forward_frame_attrs!(@clear $($mode)? [$($path).+] clear_obs_alt);
         forward_frame_attrs!(@get [$($path).+] dtai -> f64);
-        forward_frame_attrs!(@set [$($path).+] set_dtai(v: f64));
+        forward_frame_attrs!(@set $($mode)? [$($path).+] set_dtai(v: f64));
         forward_frame_attrs!(@get [$($path).+] test_dtai -> bool);
-        forward_frame_attrs!(@clear [$($path).+] clear_dtai);
+        forward_frame_attrs!(@clear $($mode)? [$($path).+] clear_dtai);
         forward_frame_attrs!(@get [$($path).+] dut1 -> f64);
-        forward_frame_attrs!(@set [$($path).+] set_dut1(v: f64));
+        forward_frame_attrs!(@set $($mode)? [$($path).+] set_dut1(v: f64));
         forward_frame_attrs!(@get [$($path).+] test_dut1 -> bool);
-        forward_frame_attrs!(@clear [$($path).+] clear_dut1);
+        forward_frame_attrs!(@clear $($mode)? [$($path).+] clear_dut1);
         forward_frame_attrs!(@get [$($path).+] min_axes -> usize);
-        forward_frame_attrs!(@set [$($path).+] set_min_axes(n: usize));
+        forward_frame_attrs!(@set $($mode)? [$($path).+] set_min_axes(n: usize));
         forward_frame_attrs!(@get [$($path).+] test_min_axes -> bool);
-        forward_frame_attrs!(@clear [$($path).+] clear_min_axes);
+        forward_frame_attrs!(@clear $($mode)? [$($path).+] clear_min_axes);
         forward_frame_attrs!(@get [$($path).+] max_axes -> usize);
-        forward_frame_attrs!(@set [$($path).+] set_max_axes(n: usize));
+        forward_frame_attrs!(@set $($mode)? [$($path).+] set_max_axes(n: usize));
         forward_frame_attrs!(@get [$($path).+] test_max_axes -> bool);
-        forward_frame_attrs!(@clear [$($path).+] clear_max_axes);
+        forward_frame_attrs!(@clear $($mode)? [$($path).+] clear_max_axes);
         forward_frame_attrs!(@get [$($path).+] match_end -> bool);
-        forward_frame_attrs!(@set [$($path).+] set_match_end(v: bool));
+        forward_frame_attrs!(@set $($mode)? [$($path).+] set_match_end(v: bool));
         forward_frame_attrs!(@get [$($path).+] test_match_end -> bool);
-        forward_frame_attrs!(@clear [$($path).+] clear_match_end);
+        forward_frame_attrs!(@clear $($mode)? [$($path).+] clear_match_end);
         forward_frame_attrs!(@get [$($path).+] preserve_axes -> bool);
-        forward_frame_attrs!(@set [$($path).+] set_preserve_axes(v: bool));
+        forward_frame_attrs!(@set $($mode)? [$($path).+] set_preserve_axes(v: bool));
         forward_frame_attrs!(@get [$($path).+] test_preserve_axes -> bool);
-        forward_frame_attrs!(@clear [$($path).+] clear_preserve_axes);
+        forward_frame_attrs!(@clear $($mode)? [$($path).+] clear_preserve_axes);
         forward_frame_attrs!(@get [$($path).+] permute -> bool);
-        forward_frame_attrs!(@set [$($path).+] set_permute(v: bool));
+        forward_frame_attrs!(@set $($mode)? [$($path).+] set_permute(v: bool));
         forward_frame_attrs!(@get [$($path).+] test_permute -> bool);
-        forward_frame_attrs!(@clear [$($path).+] clear_permute);
+        forward_frame_attrs!(@clear $($mode)? [$($path).+] clear_permute);
         fn get_active_unit(&self) -> bool {
             $crate::frames::Frame::get_active_unit(&self.$($path).+)
         }
@@ -960,6 +972,24 @@ macro_rules! forward_frame_attrs {
     (@get [$($path:ident).+] $name:ident -> $ty:ty) => {
         fn $name(&self) -> $ty {
             $crate::frames::Frame::$name(&self.$($path).+)
+        }
+    };
+    (@set region [$($path:ident).+] $name:ident($arg:ident: $ty:ty)) => {
+        fn $name(&mut self, $arg: $ty) -> $crate::error::AstResult<()> {
+            let apply = |f: &mut dyn $crate::frames::Frame, _: usize| f.$name($arg);
+            $crate::regions::data::set_region_frame_attr(
+                self,
+                &$crate::regions::data::FrameSetting::new(None, &apply),
+            )
+        }
+    };
+    (@clear region [$($path:ident).+] $name:ident) => {
+        fn $name(&mut self) -> $crate::error::AstResult<()> {
+            let apply = |f: &mut dyn $crate::frames::Frame, _: usize| f.$name();
+            $crate::regions::data::set_region_frame_attr(
+                self,
+                &$crate::regions::data::FrameSetting::new(None, &apply),
+            )
         }
     };
     (@set [$($path:ident).+] $name:ident($arg:ident: $ty:ty)) => {
@@ -979,8 +1009,8 @@ macro_rules! forward_frame_attrs {
 /// Ident, which is the Region's own.
 macro_rules! region_frame_attrs {
     () => {
-        forward_frame_attrs!(data.frameset);
-        forward_axis_attrs!(data.frameset);
+        forward_frame_attrs!(region data.frameset);
+        forward_axis_attrs!(region data.frameset);
         // region.c `NormalPoints` (6591): the current Frame of the Region's
         // FrameSet normalises the points.
         fn norm_points(
@@ -1353,49 +1383,73 @@ macro_rules! forward_axis_attrs {
         forward_axis_attrs!(@get [$($path).+] label -> String);
         forward_axis_attrs!(@rest [$($path).+]);
     };
+    // A Region: getters read its FrameSet, while setters and clears go
+    // through the Region, which remaps itself only when it is Adaptive.
+    (region $($path:ident).+) => {
+        forward_axis_attrs!(@get [$($path).+] label -> String);
+        forward_axis_attrs!(@rest region [$($path).+]);
+    };
     // Every attribute but the Label getter, for a class that supplies its
     // own Label default.
     (@all_but_label [$($path:ident).+]) => {
         forward_axis_attrs!(@rest [$($path).+]);
     };
-    (@rest [$($path:ident).+]) => {
+    (@rest $($mode:ident)? [$($path:ident).+]) => {
         forward_axis_attrs!(@get [$($path).+] axis_object_top -> f64);
         forward_axis_attrs!(@get [$($path).+] axis_object_bottom -> f64);
-        forward_axis_attrs!(@set [$($path).+] set_label(&str));
+        forward_axis_attrs!(@set $($mode)? [$($path).+] set_label(&str));
         forward_axis_attrs!(@get [$($path).+] test_label -> bool);
-        forward_axis_attrs!(@clear [$($path).+] clear_label);
+        forward_axis_attrs!(@clear $($mode)? [$($path).+] clear_label);
         forward_axis_attrs!(@get [$($path).+] symbol -> String);
-        forward_axis_attrs!(@set [$($path).+] set_symbol(&str));
+        forward_axis_attrs!(@set $($mode)? [$($path).+] set_symbol(&str));
         forward_axis_attrs!(@get [$($path).+] test_symbol -> bool);
-        forward_axis_attrs!(@clear [$($path).+] clear_symbol);
+        forward_axis_attrs!(@clear $($mode)? [$($path).+] clear_symbol);
         forward_axis_attrs!(@get [$($path).+] unit -> String);
-        forward_axis_attrs!(@set [$($path).+] set_unit(&str));
+        forward_axis_attrs!(@set $($mode)? [$($path).+] set_unit(&str));
         forward_axis_attrs!(@get [$($path).+] test_unit -> bool);
-        forward_axis_attrs!(@clear [$($path).+] clear_unit);
+        forward_axis_attrs!(@clear $($mode)? [$($path).+] clear_unit);
         forward_axis_attrs!(@get [$($path).+] format_str -> String);
-        forward_axis_attrs!(@set [$($path).+] set_format_str(&str));
+        forward_axis_attrs!(@set $($mode)? [$($path).+] set_format_str(&str));
         forward_axis_attrs!(@get [$($path).+] test_format_str -> bool);
-        forward_axis_attrs!(@clear [$($path).+] clear_format_str);
+        forward_axis_attrs!(@clear $($mode)? [$($path).+] clear_format_str);
         forward_axis_attrs!(@get [$($path).+] axis_digits -> i32);
-        forward_axis_attrs!(@set [$($path).+] set_axis_digits(i32));
+        forward_axis_attrs!(@set $($mode)? [$($path).+] set_axis_digits(i32));
         forward_axis_attrs!(@get [$($path).+] test_axis_digits -> bool);
-        forward_axis_attrs!(@clear [$($path).+] clear_axis_digits);
+        forward_axis_attrs!(@clear $($mode)? [$($path).+] clear_axis_digits);
         forward_axis_attrs!(@get [$($path).+] direction -> bool);
-        forward_axis_attrs!(@set [$($path).+] set_direction(bool));
+        forward_axis_attrs!(@set $($mode)? [$($path).+] set_direction(bool));
         forward_axis_attrs!(@get [$($path).+] test_direction -> bool);
-        forward_axis_attrs!(@clear [$($path).+] clear_direction);
+        forward_axis_attrs!(@clear $($mode)? [$($path).+] clear_direction);
         forward_axis_attrs!(@get [$($path).+] top -> f64);
-        forward_axis_attrs!(@set [$($path).+] set_top(f64));
+        forward_axis_attrs!(@set $($mode)? [$($path).+] set_top(f64));
         forward_axis_attrs!(@get [$($path).+] test_top -> bool);
-        forward_axis_attrs!(@clear [$($path).+] clear_top);
+        forward_axis_attrs!(@clear $($mode)? [$($path).+] clear_top);
         forward_axis_attrs!(@get [$($path).+] bottom -> f64);
-        forward_axis_attrs!(@set [$($path).+] set_bottom(f64));
+        forward_axis_attrs!(@set $($mode)? [$($path).+] set_bottom(f64));
         forward_axis_attrs!(@get [$($path).+] test_bottom -> bool);
-        forward_axis_attrs!(@clear [$($path).+] clear_bottom);
+        forward_axis_attrs!(@clear $($mode)? [$($path).+] clear_bottom);
     };
     (@get [$($path:ident).+] $name:ident -> $ty:ty) => {
         fn $name(&self, axis: usize) -> $crate::error::AstResult<$ty> {
             $crate::frames::Frame::$name(&self.$($path).+, axis)
+        }
+    };
+    (@set region [$($path:ident).+] $name:ident($ty:ty)) => {
+        fn $name(&mut self, axis: usize, value: $ty) -> $crate::error::AstResult<()> {
+            let apply = |f: &mut dyn $crate::frames::Frame, a: usize| f.$name(a, value);
+            $crate::regions::data::set_region_frame_attr(
+                self,
+                &$crate::regions::data::FrameSetting::new(Some(axis), &apply),
+            )
+        }
+    };
+    (@clear region [$($path:ident).+] $name:ident) => {
+        fn $name(&mut self, axis: usize) -> $crate::error::AstResult<()> {
+            let apply = |f: &mut dyn $crate::frames::Frame, a: usize| f.$name(a);
+            $crate::regions::data::set_region_frame_attr(
+                self,
+                &$crate::regions::data::FrameSetting::new(Some(axis), &apply),
+            )
         }
     };
     (@set [$($path:ident).+] $name:ident($ty:ty)) => {

@@ -32,6 +32,9 @@ pub use prism::{Prism, PrismBuilder};
 
 pub use masking::mask;
 
+#[doc(hidden)]
+pub use data::FrameSetting;
+
 use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::{DynFrame, Frame, FrameRef, FrameSet};
@@ -412,6 +415,18 @@ pub trait Region: Frame + Mapping + AsDynRegion {
     /// `&mut self.data.frameset`.
     #[doc(hidden)]
     fn region_frameset_mut(&mut self) -> &mut FrameSet;
+
+    /// Make a change to a Frame attribute without remapping the Region, as
+    /// region.c `RegSetAttrib` and `RegClearAttrib` do: to the current Frame
+    /// and to the base Frame (translating an axis index between them), and to
+    /// the uncertainty. Returns the change as made to the base Frame.
+    ///
+    /// The change is the same closure whether it sets or clears, so this one
+    /// method is both C methods. A Region holding other Regions in its base
+    /// Frame overrides it to pass the base-Frame change on to them, as C's
+    /// CmpRegion and Prism do.
+    #[doc(hidden)]
+    fn reg_frame_attrib<'a>(&mut self, setting: &FrameSetting<'a>) -> AstResult<FrameSetting<'a>>;
 
     // ------------------------------------------------------------------
     // Uncertainty

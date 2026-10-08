@@ -20,11 +20,11 @@ PointList over the combined axes. `Simplify`
 Mapping is already a UnitMap, transforms the defining points into the current
 Frame and rebuilds the PointList there, so the result needs only a UnitMap.
 
-`PointList::map_merge` (`regions/pointlist.rs:990-993 (fn map_merge)`) delegates to
+`PointList::map_merge` (`regions/pointlist.rs:997-1000 (fn map_merge)`) delegates to
 `simplify::region_map_merge` (`mappings/simplify.rs:1484-1531 (fn region_map_merge)`), which
 every Region shares. `PointList::region_merge`
-(`regions/pointlist.rs:597-712 (fn region_merge)`) is `MergePointList`, and
-`PointList::simplified` (`regions/pointlist.rs:899-950 (fn simplified)`) is `Simplify`.
+(`regions/pointlist.rs:597-719 (fn region_merge)`) is `MergePointList`, and
+`PointList::simplified` (`regions/pointlist.rs:906-957 (fn simplified)`) is `Simplify`.
 
 `MergePointList` shares its whole tail with `MergeBox` and `MergeInterval`, so the
 rows from the constructor onwards cite `merge_util.rs`, where that tail lives once.
@@ -88,20 +88,20 @@ rows from the constructor onwards cite `merge_util.rs`, where that tail lives on
 | 55 | `Simplify`: initialise the returned pointer | pointlist.c:2217-2219 (fn Simplify) | -- | ceremony | n/a: the Rust returns `AstResult<(DynMapping, bool)>`, so there is no sentinel to initialise |
 | 56 | Check the global error status and bail out | pointlist.c:2220-2222 (fn Simplify) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 57 | Obtain a pointer to the Region structure | pointlist.c:2223-2225 (fn Simplify) | -- | ceremony | n/a: the Rust method already has `&self` |
-| 58 | Invoke the parent Region Simplify, which simplifies the encapsulated FrameSet and uncertainty | pointlist.c:2226-2229 (fn Simplify) | regions/pointlist.rs:899 (fn simplified) | architecture | ported |
-| 59 | Note whether any simplification took place, from whether the returned pointer changed | pointlist.c:2230-2234 (fn Simplify) | regions/pointlist.rs:913 (fn simplified) | architecture | ported |
-| 60 | Get the base-to-current Mapping and act only when it is not already a UnitMap | pointlist.c:2235-2241 (fn Simplify) | regions/pointlist.rs:915-919 (fn simplified) | architecture | ported |
-| 61 | Get a pointer to the current Region Frame | pointlist.c:2242-2244 (fn Simplify) | regions/pointlist.rs:931 (fn simplified) | architecture | ported |
-| 62 | Get the PointSet holding the base Frame positions that define this PointList | pointlist.c:2245-2248 (fn Simplify) | regions/pointlist.rs:929 (fn simplified) | architecture | ported |
-| 63 | Transform the PointSet using that Mapping | pointlist.c:2249-2251 (fn Simplify) | regions/pointlist.rs:930 (fn simplified) | architecture | ported |
-| 64 | Get the positional uncertainty of the simplified PointList in its current Frame | pointlist.c:2252-2255 (fn Simplify) | regions/pointlist.rs:942 (fn simplified) | architecture | ported |
-| 65 | Create a new PointList from the transformed points and that uncertainty, use it in place of the original, and record that something simplified | pointlist.c:2256-2261 (fn Simplify) | regions/pointlist.rs:943-945 (fn simplified),932 (fn simplified) | architecture | ported |
+| 58 | Invoke the parent Region Simplify, which simplifies the encapsulated FrameSet and uncertainty | pointlist.c:2226-2229 (fn Simplify) | regions/pointlist.rs:906 (fn simplified) | architecture | ported |
+| 59 | Note whether any simplification took place, from whether the returned pointer changed | pointlist.c:2230-2234 (fn Simplify) | regions/pointlist.rs:920 (fn simplified) | architecture | ported |
+| 60 | Get the base-to-current Mapping and act only when it is not already a UnitMap | pointlist.c:2235-2241 (fn Simplify) | regions/pointlist.rs:922-926 (fn simplified) | architecture | ported |
+| 61 | Get a pointer to the current Region Frame | pointlist.c:2242-2244 (fn Simplify) | regions/pointlist.rs:938 (fn simplified) | architecture | ported |
+| 62 | Get the PointSet holding the base Frame positions that define this PointList | pointlist.c:2245-2248 (fn Simplify) | regions/pointlist.rs:936 (fn simplified) | architecture | ported |
+| 63 | Transform the PointSet using that Mapping | pointlist.c:2249-2251 (fn Simplify) | regions/pointlist.rs:937 (fn simplified) | architecture | ported |
+| 64 | Get the positional uncertainty of the simplified PointList in its current Frame | pointlist.c:2252-2255 (fn Simplify) | regions/pointlist.rs:949 (fn simplified) | architecture | ported |
+| 65 | Create a new PointList from the transformed points and that uncertainty, use it in place of the original, and record that something simplified | pointlist.c:2256-2261 (fn Simplify) | regions/pointlist.rs:950-952 (fn simplified),939 (fn simplified) | architecture | ported |
 | 66 | Free the Frame, PointSet and uncertainty resources | pointlist.c:2262-2266 (fn Simplify) | -- | ceremony | n/a: owned values are dropped |
 | 67 | Free the base-to-current Mapping | pointlist.c:2267-2270 (fn Simplify) | -- | ceremony | n/a: owned values are dropped |
-| 68 | If anything simplified, overlay the supplied Region's attributes onto the result and return it | pointlist.c:2271-2278 (fn Simplify) | regions/pointlist.rs:946 (fn simplified),932 (fn simplified) | architecture | ported |
-| 69 | Otherwise return a clone of the supplied pointer | pointlist.c:2279-2283 (fn Simplify) | regions/pointlist.rs:921-926 (fn simplified) | architecture | ported |
+| 68 | If anything simplified, overlay the supplied Region's attributes onto the result and return it | pointlist.c:2271-2278 (fn Simplify) | regions/pointlist.rs:953 (fn simplified),939 (fn simplified) | architecture | ported |
+| 69 | Otherwise return a clone of the supplied pointer | pointlist.c:2279-2283 (fn Simplify) | regions/pointlist.rs:928-933 (fn simplified) | architecture | ported |
 | 70 | Annul the returned pointer if an error occurred | pointlist.c:2284-2286 (fn Simplify) | -- | ceremony | n/a: an error is a `Result::Err`, and owned values are dropped |
-| 71 | Return the result | pointlist.c:2287-2289 (fn Simplify) | regions/pointlist.rs:949 (fn simplified) | architecture | ported |
+| 71 | Return the result | pointlist.c:2287-2289 (fn Simplify) | regions/pointlist.rs:956 (fn simplified) | architecture | ported |
 
 ## Row 60 — why the rebuild is worth doing
 
@@ -109,20 +109,20 @@ C's comment gives the reason: rebuilding the PointList in the current Frame mean
 the simplified Region needs only a UnitMap, which lets the rest of the simplifier
 treat it as already reduced and lets the serialiser record one Frame instead of a
 whole FrameSet. The port keeps the same short-circuit when the Mapping is already
-a UnitMap (`regions/pointlist.rs:919 (fn simplified)`), so the rebuild happens exactly when it
+a UnitMap (`regions/pointlist.rs:926 (fn simplified)`), so the rebuild happens exactly when it
 buys something.
 
 ## Rows 64 and 65 — the uncertainty is installed through the constructor
 
 C reads the uncertainty with `astGetUncFrm( new, AST__CURRENT )` and hands it to
 `astPointList`, whose `astInitRegion` calls the private `SetUnc`
-(`region.c:10765 (fn SetUnc)`). That maps the supplied uncertainty into the new
+(`region.c:10772 (fn SetUnc)`). That maps the supplied uncertainty into the new
 PointList's base Frame, ensures it is bounded, and re-centres it on the first
-defining position (`region.c:10882-10887 (fn SetUnc)`). Reading in the current Frame is
+defining position (`region.c:10889-10894 (fn SetUnc)`). Reading in the current Frame is
 what makes the mapping meaningful: the rebuilt PointList's base Frame *is* the old
 current Frame. The port takes the same two steps —
 `get_unc_frm(FrameRef::Current)` then `set_uncertainty`
-(`regions/pointlist.rs:942 (fn simplified)`,874) — where `set_uncertainty` is the port of that
+(`regions/pointlist.rs:949 (fn simplified)`,874) — where `set_uncertainty` is the port of that
 private `SetUnc`. The `reg_overlay` of row 68 then clears the result's uncertainty
 again when the supplied Region had none of its own, which is why row 64 needs no
 `astTestUnc` guard.
@@ -131,8 +131,8 @@ again when the supplied Region had none of its own, which is why row 64 needs no
 
 C reaches one tail from both branches, because its UnitMap test only decides
 whether `new` was rebuilt. The port returns from inside the UnitMap branch
-(`regions/pointlist.rs:921-926 (fn simplified)`) and again at the end
-(`regions/pointlist.rs:946-949 (fn simplified)`), so the `reg_overlay`-and-return pair appears
+(`regions/pointlist.rs:928-933 (fn simplified)`) and again at the end
+(`regions/pointlist.rs:953-956 (fn simplified)`), so the `reg_overlay`-and-return pair appears
 twice. The conditions agree: the second copy is reached only through the
 non-UnitMap branch, where C has already set `simpler = 1` unconditionally, so its
 `true` is not an assumption.
@@ -144,7 +144,7 @@ as well, in the same order, so it lives once in
 `merge_util.rs:131-180 (fn finish_region_merge)`. Row 40 is the one that matters. C installs
 the combined uncertainty with `astSetUnc`, and `astSetUnc` re-centres the
 uncertainty on the merged Region's first defining point
-(`region.c:10882-10887 (fn SetUnc)`); for a Box uncertainty, `Box`'s `RegCentre` rebuilds
+(`region.c:10889-10894 (fn SetUnc)`); for a Box uncertainty, `Box`'s `RegCentre` rebuilds
 the corner as a geodesic offset in the combined base Frame
 (`box.c:2927 (fn RegCentre)`). A merge that assigns the uncertainty into place instead
 performs rows 36 to 39, 44 and 54 correctly and still produces a different

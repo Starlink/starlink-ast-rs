@@ -3650,10 +3650,11 @@ fn defunc_fixture_map(name: &str) -> String {
 /// uncertainty directly.
 fn defunc_native(region: &dyn Region) -> String {
     let mut unc = region.get_unc_frm(FrameRef::Current).unwrap();
-    // Mirror the public C `astGetUnc` (region.c:3808): clear RegionFS on the
-    // returned copy so the uncertainty's Frame is always dumped, even when its
-    // FrameSet was internally flagged for omission (as `set_uncertainty` does).
-    unc.set_region_fs_flag(true);
+    // Mirror the public C `astGetUnc` (region.c:3808), which returns a copy:
+    // copying a Region clears RegionFS on it and on every Region it holds, so
+    // each one's Frame is dumped, even when its FrameSet was flagged for
+    // omission (as `set_uncertainty` and the Prism constructor do).
+    unc.clear_region_fs_deep();
     let any = if let Some(r) = unc.as_any().downcast_ref::<BoxRegion>() {
         AnyObject::BoxRegion(r.clone())
     } else if let Some(r) = unc.as_any().downcast_ref::<Circle>() {
