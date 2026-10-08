@@ -266,7 +266,7 @@ fn transform_forward_masks_outside() {
 }
 
 #[test]
-fn transform_inverse_passes_all() {
+fn transform_inverse_masks_as_forward() {
     let frame = BasicFrameBuilder::new(2).build().unwrap();
     let circle = CircleBuilder::new(frame.clone(), vec![0.0, 0.0])
         .unwrap()
@@ -285,11 +285,14 @@ fn transform_inverse_passes_all() {
 
     let pts = PointSet::from_rows([[10.0, 10.0].as_slice(), [0.0, 0.0].as_slice()]);
 
-    // Inverse transform always passes points through unchanged.
-    let result = cmp.transform(&pts, false).unwrap();
-    let p0 = result.point(0);
-    assert!((p0[0] - 10.0).abs() < 1e-10);
-    assert!((p0[1] - 10.0).abs() < 1e-10);
+    // C's Region classes transform identically in both directions, so a
+    // point outside the Region is bad on the inverse too.
+    let inverse = cmp.transform(&pts, false).unwrap();
+    let forward = cmp.transform(&pts, true).unwrap();
+    for i in 0..pts.npoint() {
+        assert_eq!(inverse.point(i), forward.point(i), "point {i}");
+    }
+    assert!(inverse.point(0).iter().all(|&v| v == BAD_VALUE));
 }
 
 // ---- is_bounded logic ----

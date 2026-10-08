@@ -274,7 +274,7 @@ fn forward_transform_filters_points() {
 }
 
 #[test]
-fn inverse_transform_passes_all() {
+fn inverse_transform_masks_as_forward() {
     let prism = PrismBuilder::new(make_circle(), make_interval())
         .unwrap()
         .build()
@@ -288,11 +288,14 @@ fn inverse_transform_passes_all() {
         .copied(),
     );
 
-    let out = prism.transform(&pts, false).unwrap();
-    let p0 = out.point(0);
-    assert!((p0[0] - 10.0).abs() < 1e-10);
-    assert!((p0[1] - 10.0).abs() < 1e-10);
-    assert!((p0[2] - 10.0).abs() < 1e-10);
+    // C's Region classes transform identically in both directions, so a
+    // point outside the Region is bad on the inverse too.
+    let inverse = prism.transform(&pts, false).unwrap();
+    let forward = prism.transform(&pts, true).unwrap();
+    for i in 0..pts.npoint() {
+        assert_eq!(inverse.point(i), forward.point(i), "point {i}");
+    }
+    assert!(inverse.point(0).iter().all(|&v| v == BAD_VALUE));
 }
 
 // ---- Sub-region access ----

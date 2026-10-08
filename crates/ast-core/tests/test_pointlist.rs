@@ -306,7 +306,7 @@ fn transform_passes_matching_points() {
 }
 
 #[test]
-fn transform_inverse_passes_all() {
+fn transform_inverse_masks_as_forward() {
     let frame = BasicFrameBuilder::new(2).build().unwrap();
     let points = vec![vec![1.0, 2.0]];
     let pl = PointListBuilder::new(frame, points)
@@ -315,12 +315,15 @@ fn transform_inverse_passes_all() {
         .unwrap();
 
     let pts = PointSet::from_rows([[99.0, 88.0], [1.0, 2.0]]);
-    let result = pl.transform(&pts, false).unwrap();
 
-    assert!((result.point(0)[0] - 99.0).abs() < 1e-10);
-    assert!((result.point(0)[1] - 88.0).abs() < 1e-10);
-    assert!((result.point(1)[0] - 1.0).abs() < 1e-10);
-    assert!((result.point(1)[1] - 2.0).abs() < 1e-10);
+    // C's Region classes transform identically in both directions, so a
+    // point outside the Region is bad on the inverse too.
+    let inverse = pl.transform(&pts, false).unwrap();
+    let forward = pl.transform(&pts, true).unwrap();
+    for i in 0..pts.npoint() {
+        assert_eq!(inverse.point(i), forward.point(i), "point {i}");
+    }
+    assert!(inverse.point(0).iter().all(|&v| v == BAD_VALUE));
 }
 
 #[test]

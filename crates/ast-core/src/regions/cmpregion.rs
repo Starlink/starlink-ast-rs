@@ -1182,7 +1182,7 @@ impl Mapping for CmpRegion {
 
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
         crate::mappings::validate_transform(self, pts, forward, None)?;
-        super::data::region_transform(self, pts, forward)
+        super::data::region_transform(self, pts)
     }
 
     fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()> {

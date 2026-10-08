@@ -1155,8 +1155,8 @@ impl Region for Interval {
         // Points are on the boundary iff inside both the large Interval and
         // the negated small Interval: chain the two forward transforms; a point
         // is on the boundary iff the result has no BAD (interval.c:2799-2855).
-        let ps1 = super::data::region_transform(&large_int, pts, true)?;
-        let ps2 = super::data::region_transform(&small_int, &ps1, true)?;
+        let ps1 = super::data::region_transform(&large_int, pts)?;
+        let ps2 = super::data::region_transform(&small_int, &ps1)?;
         let mask: Vec<bool> = (0..ps2.npoint())
             .map(|j| !ps2.point(j).iter().any(|&v| is_bad(v)))
             .collect();
@@ -1819,7 +1819,7 @@ impl Mapping for Interval {
 
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
         crate::mappings::validate_transform(self, pts, forward, None)?;
-        super::data::region_transform(self, pts, forward)
+        super::data::region_transform(self, pts)
     }
 
     fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()> {

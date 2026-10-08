@@ -1115,8 +1115,8 @@ impl Region for BoxRegion {
         // Points on the boundary of "this" are inside both the large box and
         // the negated small box (box.c:3134-3135): chain the two forward
         // transforms; a point is on the boundary iff the result has no BAD.
-        let ps1 = super::data::region_transform(&large_box, pts, true)?;
-        let ps2 = super::data::region_transform(&small_box, &ps1, true)?;
+        let ps1 = super::data::region_transform(&large_box, pts)?;
+        let ps2 = super::data::region_transform(&small_box, &ps1)?;
 
         let mask: Vec<bool> = (0..ps2.npoint())
             .map(|j| !ps2.point(j).iter().any(|&v| is_bad(v)))
@@ -1729,7 +1729,7 @@ impl Mapping for BoxRegion {
 
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
         crate::mappings::validate_transform(self, pts, forward, None)?;
-        super::data::region_transform(self, pts, forward)
+        super::data::region_transform(self, pts)
     }
 
     fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()> {

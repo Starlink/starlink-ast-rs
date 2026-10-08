@@ -505,26 +505,20 @@ where
 /// set to [`BAD_VALUE`]. The negation flag is respected. Points with
 /// any BAD input coordinate always produce BAD output.
 ///
-/// This is the "region transform" described in the C library: forward
-/// maps interior → pass-through, exterior → BAD; inverse always passes
-/// points unchanged.
+/// The forward and inverse transformations are identical, as every C
+/// Region class says of its `Transform`: interior points pass through and
+/// exterior points become BAD in either direction.
 ///
 /// Uses the batch `reg_base_inside` predicate for efficient processing of
 /// large point sets (tens of thousands of points at a time).
 pub(crate) fn region_transform<R: RegionGeometry>(
     region: &R,
     pts: &PointSet,
-    forward: bool,
 ) -> AstResult<PointSet> {
     let npoint = pts.npoint();
     let ncoord = pts.ncoord();
 
-    // Inverse transform: always pass points through unchanged.
-    if !forward {
-        return Ok(pts.clone());
-    }
-
-    // Forward transform: batch-test all points for membership.
+    // Batch-test all points for membership.
     let data = region.region_data();
 
     // Transform input points from current frame to base frame for testing.

@@ -300,7 +300,7 @@ fn transform_mixed() {
 }
 
 #[test]
-fn transform_inverse_passes_all() {
+fn transform_inverse_masks_as_forward() {
     let frame = BasicFrameBuilder::new(2).build().unwrap();
     let circle = CircleBuilder::new(frame, vec![0.0, 0.0])
         .unwrap()
@@ -310,12 +310,15 @@ fn transform_inverse_passes_all() {
 
     // Inverse transform always passes points through unchanged.
     let pts = PointSet::from_rows([[10.0, 10.0], [0.0, 0.0]]);
-    let result = circle.transform(&pts, false).unwrap();
 
-    assert!((result.point(0)[0] - 10.0).abs() < 1e-10);
-    assert!((result.point(0)[1] - 10.0).abs() < 1e-10);
-    assert!((result.point(1)[0]).abs() < 1e-10);
-    assert!((result.point(1)[1]).abs() < 1e-10);
+    // C's Region classes transform identically in both directions, so a
+    // point outside the Region is bad on the inverse too.
+    let inverse = circle.transform(&pts, false).unwrap();
+    let forward = circle.transform(&pts, true).unwrap();
+    for i in 0..pts.npoint() {
+        assert_eq!(inverse.point(i), forward.point(i), "point {i}");
+    }
+    assert!(inverse.point(0).iter().all(|&v| v == BAD_VALUE));
 }
 
 // ---- Frame delegation ----

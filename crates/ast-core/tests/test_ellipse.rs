@@ -341,7 +341,7 @@ fn transform_forward_passes_interior() {
 }
 
 #[test]
-fn transform_inverse_passes_all() {
+fn transform_inverse_masks_as_forward() {
     let frame = BasicFrameBuilder::new(2).build().unwrap();
     let ellipse = EllipseBuilder::new(frame, vec![0.0, 0.0], [5.0, 3.0], 0.0)
         .unwrap()
@@ -350,16 +350,14 @@ fn transform_inverse_passes_all() {
 
     let pts = PointSet::from_rows([[6.0, 0.0].as_slice(), [100.0, 200.0].as_slice()]);
 
-    let result = ellipse.transform(&pts, false).unwrap();
-
-    // Inverse always passes points through unchanged.
-    let p0 = result.point(0);
-    assert!((p0[0] - 6.0).abs() < 1e-10);
-    assert!((p0[1] - 0.0).abs() < 1e-10);
-
-    let p1 = result.point(1);
-    assert!((p1[0] - 100.0).abs() < 1e-10);
-    assert!((p1[1] - 200.0).abs() < 1e-10);
+    // C's Region classes transform identically in both directions, so a
+    // point outside the Region is bad on the inverse too.
+    let inverse = ellipse.transform(&pts, false).unwrap();
+    let forward = ellipse.transform(&pts, true).unwrap();
+    for i in 0..pts.npoint() {
+        assert_eq!(inverse.point(i), forward.point(i), "point {i}");
+    }
+    assert!(inverse.point(0).iter().all(|&v| v == BAD_VALUE));
 }
 
 // ---- Mesh ----

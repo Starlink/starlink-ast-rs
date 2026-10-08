@@ -333,16 +333,19 @@ fn batch_transform_bad_input() {
 }
 
 #[test]
-fn inverse_transform_passes_all() {
+fn inverse_transform_masks_as_forward() {
     let poly = make_square();
 
     let points = PointSet::from_rows([[5.0, 5.0], [0.5, 0.5]].iter().map(|p| p.as_slice()));
 
-    // Inverse transform passes all points unchanged.
-    let result = poly.transform(&points, false).unwrap();
-    let p0 = result.point(0);
-    assert!((p0[0] - 5.0).abs() < 1e-10);
-    assert!((p0[1] - 5.0).abs() < 1e-10);
+    // C's Region classes transform identically in both directions, so a
+    // point outside the Region is bad on the inverse too.
+    let inverse = poly.transform(&points, false).unwrap();
+    let forward = poly.transform(&points, true).unwrap();
+    for i in 0..points.npoint() {
+        assert_eq!(inverse.point(i), forward.point(i), "point {i}");
+    }
+    assert!(inverse.point(0).iter().all(|&v| v == BAD_VALUE));
 }
 
 // ---- Mesh and centroid ----

@@ -284,21 +284,6 @@ fn transform_masks_exterior() {
     assert_eq!(result.point(1)[1], BAD_VALUE);
 }
 
-#[test]
-fn transform_inverse_passes_all() {
-    let frame = BasicFrameBuilder::new(2).build().unwrap();
-    let b = BoxRegionBuilder::from_bounds(frame, &[0.0, 0.0], &[10.0, 10.0])
-        .unwrap()
-        .build()
-        .unwrap();
-
-    let pts = PointSet::from_rows([[-100.0, 200.0], [5.0, 5.0]]);
-    let result = b.transform(&pts, false).unwrap();
-
-    assert!((result.point(0)[0] - (-100.0)).abs() < 1e-10);
-    assert!((result.point(0)[1] - 200.0).abs() < 1e-10);
-}
-
 // ---- Batch transform (10k points) ----
 
 #[test]
@@ -662,4 +647,21 @@ fn simplify_permmap_slice_both_constants_inside_keeps_box() {
         .downcast_ref::<BoxRegion>()
         .expect("constants 5,15 should give a Box");
     assert_eq!(bx.naxes(), 2);
+}
+
+/// A Region's forward and inverse transformations are identical (box.c
+/// `Transform`): an exterior point is bad in either direction. The values
+/// are those C gives for astTran2 on astBox(frame, 1, [0,0], [1,1]).
+#[test]
+fn inverse_transform_masks_as_forward_does() {
+    let frame = BasicFrameBuilder::new(2).build().unwrap();
+    let b = BoxRegionBuilder::from_bounds(frame, &[0.0, 0.0], &[1.0, 1.0])
+        .unwrap()
+        .build()
+        .unwrap();
+    for forward in [true, false] {
+        let (x, y) = b.tran2(&[0.5, 2.0], &[0.5, 2.0], forward).unwrap();
+        assert_eq!(x, [0.5, BAD_VALUE], "forward={forward}");
+        assert_eq!(y, [0.5, BAD_VALUE], "forward={forward}");
+    }
 }

@@ -103,7 +103,7 @@ fn forward_transform_sets_all_bad() {
 }
 
 #[test]
-fn inverse_transform_passes_through() {
+fn inverse_transform_masks_as_forward() {
     let frame = BasicFrameBuilder::new(2).build().unwrap();
     let nr = NullRegionBuilder::new(frame).build().unwrap();
 
@@ -113,16 +113,14 @@ fn inverse_transform_passes_through() {
             .map(|p| p.as_slice()),
     );
 
-    let result = nr.transform(&pts, false).unwrap();
-    assert_eq!(result.npoint(), 3);
-
-    // Inverse always passes points through unchanged.
-    for i in 0..3 {
-        let p = result.point(i);
-        let orig = pts.point(i);
-        assert_eq!(p[0], orig[0]);
-        assert_eq!(p[1], orig[1]);
+    // C's Region classes transform identically in both directions, so a
+    // point outside the Region is bad on the inverse too.
+    let inverse = nr.transform(&pts, false).unwrap();
+    let forward = nr.transform(&pts, true).unwrap();
+    for i in 0..pts.npoint() {
+        assert_eq!(inverse.point(i), forward.point(i), "point {i}");
     }
+    assert!(inverse.point(0).iter().all(|&v| v == BAD_VALUE));
 }
 
 #[test]
