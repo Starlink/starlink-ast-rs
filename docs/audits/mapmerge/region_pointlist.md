@@ -20,7 +20,7 @@ PointList over the combined axes. `Simplify`
 Mapping is already a UnitMap, transforms the defining points into the current
 Frame and rebuilds the PointList there, so the result needs only a UnitMap.
 
-`PointList::map_merge` (`regions/pointlist.rs:997-1000 (fn map_merge)`) delegates to
+`PointList::map_merge` (`regions/pointlist.rs:992-995 (fn map_merge)`) delegates to
 `simplify::region_map_merge` (`mappings/simplify.rs:1484-1531 (fn region_map_merge)`), which
 every Region shares. `PointList::region_merge`
 (`regions/pointlist.rs:597-719 (fn region_merge)`) is `MergePointList`, and

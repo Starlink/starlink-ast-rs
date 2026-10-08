@@ -1397,19 +1397,15 @@ impl Mapping for CmpRegion {
         crate::mappings::rate::numeric_rate(self, at, ax1, ax2)
     }
 
+    /// cmpregion.c `Equal`: region.c `Equal`, then equal components and the
+    /// same boolean operator.
     fn equal(&self, other: &dyn Mapping) -> bool {
-        let Some(other) = other.as_any().downcast_ref::<CmpRegion>() else {
-            return false;
-        };
-        // Mirror C cmpregion.c::Equal (502): the parent Region check covers
-        // class, Negated, Closed, and the current Frame; equivalence then
-        // requires equal component Regions and an equal boolean operator.
-        self.data.negated == other.data.negated
-            && self.data.closed == other.data.closed
-            && self.operator == other.operator
-            && Frame::equal(self.data.frameset.current(), other.data.frameset.current())
-            && (self.region1.as_ref() as &dyn Mapping).equal(other.region1.as_ref() as &dyn Mapping)
-            && (self.region2.as_ref() as &dyn Mapping).equal(other.region2.as_ref() as &dyn Mapping)
+        super::data::region_equal(self, other).is_some_and(|other| {
+            (self.region1.as_ref() as &dyn Mapping).equal(other.region1.as_ref() as &dyn Mapping)
+                && (self.region2.as_ref() as &dyn Mapping)
+                    .equal(other.region2.as_ref() as &dyn Mapping)
+                && self.operator == other.operator
+        })
     }
 
     fn clone_box(&self) -> DynMapping {

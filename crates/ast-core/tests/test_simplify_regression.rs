@@ -4,8 +4,9 @@
 //! harness reads, with the same paths -- and for each entry: loads the input
 //! .map file,
 //! simplifies it, and verifies:
-//!   1. `equal()` — the simplified result must be structurally equal to the
-//!      C reference (.simp file). This is the primary assertion.
+//!   1. `equal()` — the simplified result must be equal to the C reference
+//!      (.simp file), both read from their dumps, as the C harness's
+//!      `ast_astequal` compares them. This is the primary assertion.
 //!   2. Transform equivalence — the simplified result must produce the same
 //!      numerical output as the C reference on test points.
 //!   3. Serialization — unless the manifest's fourth column says otherwise,
@@ -430,6 +431,14 @@ fn mapping_to_native_string(m: &dyn Mapping) -> Option<String> {
     to_native_string(&mapping_to_any_object(m)?).ok()
 }
 
+/// `m` written to a dump and read back, as the C harness reads the
+/// simplified Mapping it compares with the reference.
+fn reread(m: &dyn Mapping) -> Option<Box<dyn Mapping>> {
+    from_native_string(&mapping_to_native_string(m)?)
+        .ok()?
+        .into_mapping()
+}
+
 /// How a manifest row asks for the serialised dump to be compared -- the
 /// fourth column of `fixtures/simplify/cases.txt`, shared verbatim with the
 /// upstream C harness (`ast_tester/CMakeLists.txt`).
@@ -624,8 +633,12 @@ fn simplify_regression() {
             }
         };
 
-        // === Check 1: equal() — structural equality with C reference ===
-        let structurally_equal = simplified.equal(ref_mapping.as_ref());
+        // === Check 1: equal() — equality with the C reference ===
+        // The C harness compares the two dumps read back (`ast_astequal`),
+        // and so does this: a dump does not carry everything equality looks
+        // at, such as a base Frame written only through `Frm`.
+        let structurally_equal =
+            reread(simplified.as_ref()).is_some_and(|m| m.equal(ref_mapping.as_ref()));
         if !structurally_equal {
             equal_failures.push(name.to_string());
         }
@@ -976,7 +989,7 @@ fn c_defect_rows_still_diverge() {
         };
         let simplified = <dyn Mapping>::simplify(input_map.as_ref())
             .unwrap_or_else(|e| panic!("{name}: simplify failed: {e}"));
-        if simplified.equal(ref_map.as_ref()) {
+        if reread(simplified.as_ref()).is_some_and(|m| m.equal(ref_map.as_ref())) {
             now_agree.push(format!("{name} ({reason})"));
         }
     }

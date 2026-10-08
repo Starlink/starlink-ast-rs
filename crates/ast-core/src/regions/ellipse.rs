@@ -1239,14 +1239,9 @@ impl Mapping for Ellipse {
         crate::mappings::rate::numeric_rate(self, at, ax1, ax2)
     }
 
+    /// region.c `Equal`, which this class does not extend.
     fn equal(&self, other: &dyn Mapping) -> bool {
-        let Some(other) = other.as_any().downcast_ref::<Ellipse>() else {
-            return false;
-        };
-        self.data.negated == other.data.negated
-            && self.data.closed == other.data.closed
-            && self.data.points == other.data.points
-            && Frame::equal(self.data.frameset.current(), other.data.frameset.current())
+        super::data::region_equal(self, other).is_some()
     }
 
     fn clone_box(&self) -> DynMapping {

@@ -1355,18 +1355,13 @@ impl Mapping for Prism {
         crate::mappings::rate::numeric_rate(self, at, ax1, ax2)
     }
 
+    /// prism.c `Equal`: region.c `Equal`, then equal components.
     fn equal(&self, other: &dyn Mapping) -> bool {
-        let Some(other) = other.as_any().downcast_ref::<Prism>() else {
-            return false;
-        };
-        // Mirror C prism.c::Equal (516): the parent Region check covers
-        // class, Negated, Closed, and the current Frame; equivalence then
-        // requires both component Regions to be equal.
-        self.data.negated == other.data.negated
-            && self.data.closed == other.data.closed
-            && Frame::equal(self.data.frameset.current(), other.data.frameset.current())
-            && (self.region1.as_ref() as &dyn Mapping).equal(other.region1.as_ref() as &dyn Mapping)
-            && (self.region2.as_ref() as &dyn Mapping).equal(other.region2.as_ref() as &dyn Mapping)
+        super::data::region_equal(self, other).is_some_and(|other| {
+            (self.region1.as_ref() as &dyn Mapping).equal(other.region1.as_ref() as &dyn Mapping)
+                && (self.region2.as_ref() as &dyn Mapping)
+                    .equal(other.region2.as_ref() as &dyn Mapping)
+        })
     }
 
     fn clone_box(&self) -> DynMapping {

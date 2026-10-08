@@ -437,6 +437,57 @@ pub(crate) trait RegionGeometry {
     }
 }
 
+/// Whether two Regions' defining points are equal, as pointset.c `Equal`
+/// compares them: the same number of points and axes, bad in the same
+/// places, and otherwise each pair within the two values' accuracies
+/// combined in quadrature. A Region's PointSet never has a PointAccuracy
+/// set, so each value's accuracy is C's default, 1000 times the larger of
+/// its magnitude times DBL_EPSILON and the square root of DBL_MIN.
+fn points_equal(a: &[Vec<f64>], b: &[Vec<f64>]) -> bool {
+    let small = f64::MIN_POSITIVE.sqrt();
+    let accuracy = |v: f64| (v.abs() * f64::EPSILON).max(small) * 1.0e3;
+    a.len() == b.len()
+        && a.iter().zip(b).all(|(p, q)| {
+            p.len() == q.len()
+                && p.iter()
+                    .zip(q)
+                    .all(|(&x, &y)| match (is_bad(x), is_bad(y)) {
+                        (true, true) => true,
+                        (false, false) => {
+                            let (ax, ay) = (accuracy(x), accuracy(y));
+                            (x - y).abs() <= (ax * ax + ay * ay).sqrt()
+                        }
+                        _ => false,
+                    })
+        })
+}
+
+/// region.c `Equal`, which each Region class's equality starts from:
+/// `that` is the same class as `this`, with equal defining points, equal
+/// base and current Frames, an equal base->current Mapping, and the same
+/// Negated and Closed values as the class reports them. Returns `that` as
+/// the class, for a class that goes on to compare what it holds.
+pub(crate) fn region_equal<'a, R>(this: &R, that: &'a dyn Mapping) -> Option<&'a R>
+where
+    R: RegionGeometry + super::Region + 'static,
+{
+    let that = that.as_any().downcast_ref::<R>()?;
+    let (fs1, fs2) = (&this.region_data().frameset, &that.region_data().frameset);
+    let equal = points_equal(&this.region_data().points, &that.region_data().points)
+        && Frame::equal(fs1.base(), fs2.base())
+        && Frame::equal(fs1.current(), fs2.current())
+        && match (
+            fs1.mapping(FrameRef::Base, FrameRef::Current),
+            fs2.mapping(FrameRef::Base, FrameRef::Current),
+        ) {
+            (Ok(m1), Ok(m2)) => m1.equal(m2.as_ref()),
+            _ => false,
+        }
+        && this.is_negated() == that.is_negated()
+        && this.is_closed() == that.is_closed();
+    equal.then_some(that)
+}
+
 /// One change to a Frame attribute of a Region: what C's `RegSetAttrib` and
 /// `RegClearAttrib` receive as a setting string or attribute name.
 ///
