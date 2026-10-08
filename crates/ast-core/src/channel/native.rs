@@ -66,6 +66,15 @@ impl NativeChannel {
         }
     }
 
+    /// Create a `NativeChannel` that reads from the given in-memory string
+    /// and gives the IntraMaps it reads the transformations in `intra`.
+    pub(crate) fn from_string_with(text: &str, intra: IntraRegistry) -> Self {
+        Self {
+            intra,
+            ..Self::from_string(text)
+        }
+    }
+
     /// Create a `NativeChannel` that reads from the given in-memory string.
     pub fn from_string(text: &str) -> Self {
         Self {

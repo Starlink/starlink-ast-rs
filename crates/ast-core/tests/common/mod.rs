@@ -285,19 +285,12 @@ pub fn test_intra_transforms() -> Vec<std::sync::Arc<dyn ast_core::mappings::Int
     .collect()
 }
 
-/// Read Native text as `ast_core::from_native_string` does, with the C test
-/// programs' IntraMap transformations registered, so the IntraMap fixtures
-/// load as they do for C's harnesses.
+/// Read Native text with the C test programs' IntraMap transformations
+/// registered, so the IntraMap fixtures load as they do for C's harnesses.
 pub fn from_native_string(text: &str) -> ast_core::error::AstResult<ast_core::AnyObject> {
-    use ast_core::channel::{Channel, NativeChannel};
-    let mut ch = NativeChannel::from_string(text);
+    let mut registry = ast_core::mappings::IntraRegistry::new();
     for t in test_intra_transforms() {
-        ch.register_intra(t)?;
+        registry.register(t)?;
     }
-    ch.read()?.ok_or_else(|| {
-        ast_core::error::AstError::new(
-            ast_core::error::ErrorCode::Rderr,
-            "no object found in input",
-        )
-    })
+    ast_core::from_native_string_with(text, &registry)
 }

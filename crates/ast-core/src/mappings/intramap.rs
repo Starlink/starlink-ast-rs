@@ -17,7 +17,9 @@
 //! thread-local slot that only that read can see ([`with_registry`]), since
 //! the loaders of the Mappings an IntraMap can sit inside see only their own
 //! part of the dump. An IntraMap made in code holds its transformation
-//! directly and needs no registry.
+//! directly and needs no registry. Reading from a string,
+//! [`from_native_string_with`](crate::from_native_string_with) takes a
+//! registry in place of a Channel.
 //!
 //! The transformation is shared, as `Arc<dyn IntraTransform>`, because one
 //! transformation serves every IntraMap that names it and the registries

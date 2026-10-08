@@ -18,8 +18,10 @@ use ast_core::channel::{Channel, NativeChannel};
 use ast_core::constants::BAD_VALUE;
 use ast_core::coords::PointSet;
 use ast_core::error::{AstError, AstResult, ErrorCode};
-use ast_core::mappings::{IntraFlags, IntraMap, IntraRegistry, IntraTransform, Mapping};
-use ast_core::{AnyObject, from_native_string, to_native_string};
+use ast_core::mappings::{
+    CmpMap, Composition, IntraFlags, IntraMap, IntraRegistry, IntraTransform, Mapping, ZoomMap,
+};
+use ast_core::{AnyObject, from_native_string, from_native_string_with, to_native_string};
 
 /// A doubling transformation, as the probe registers it: forward y = 2x,
 /// inverse x = y/2, bad staying bad.
@@ -205,6 +207,37 @@ fn reading_needs_the_transformation_registered() {
     };
     assert!(back.equal(&dbl));
     assert_eq!(dump_of(&back), text);
+}
+
+/// `from_native_string_with` gives an IntraMap nested inside another
+/// Mapping its transformation, and a registry without it is AST__URITF.
+#[test]
+fn from_native_string_with_reads_a_nested_intramap() {
+    let cmp = CmpMap::new(
+        Box::new(ZoomMap::new(1, 3.0).unwrap()),
+        Box::new(IntraMap::new(double(), 1, 1).unwrap()),
+        Composition::Series,
+    )
+    .unwrap();
+    let text = to_native_string(&AnyObject::CmpMap(cmp.clone())).unwrap();
+
+    let mut reg = IntraRegistry::new();
+    reg.register(nofwd()).unwrap();
+    assert_eq!(
+        from_native_string_with(&text, &reg).unwrap_err().code(),
+        ErrorCode::Uritf
+    );
+
+    reg.register(double()).unwrap();
+    let back = from_native_string_with(&text, &reg)
+        .unwrap()
+        .into_mapping()
+        .unwrap();
+    assert_eq!(back.tran1(&[1.5], true).unwrap(), [9.0]);
+    assert_eq!(
+        to_native_string(&AnyObject::from_mapping(back.as_ref()).unwrap()).unwrap(),
+        text
+    );
 }
 
 /// intramap.c Equal: the same transformation and an IntraFlag set on both

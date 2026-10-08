@@ -13,12 +13,12 @@ use crate::frames::{
     BasicFrame, BasicFrameBuilder, CmpFrame, DSBSpecFrame, DynFrame, FluxFrame, Frame, FrameRef,
     FrameSet, SkyFrame, SpecFluxFrame, SpecFrame, TimeFrame,
 };
-use crate::mappings::IntraMap;
 use crate::mappings::{
     ChebyMap, CmpMap, DssMap, DynMapping, GrismMap, LutMap, Mapping, MathMap, MatrixMap, NormMap,
     PcdMap, PermMap, PolyMap, RateMap, SelectorMap, ShiftMap, SlaMap, SpecMap, SphMap, SplineMap,
     SwitchMap, TimeMap, TranMap, UnitMap, UnitNormMap, WcsMap, WinMap, XphMap, ZoomMap,
 };
+use crate::mappings::{IntraMap, IntraRegistry};
 use crate::regions::data::RegionData;
 use crate::regions::{
     BoxRegion, Circle, CmpOperator, CmpRegion, DynRegion, Ellipse, Interval, NullRegion, PointList,
@@ -2111,10 +2111,23 @@ pub fn to_native_string(obj: &AnyObject) -> AstResult<String> {
 /// [`AnyObject::into_mapping`], or [`AnyObject::into_frame`] to extract
 /// the concrete trait object.
 ///
-/// This delegates to [`NativeChannel`](crate::channel::NativeChannel).
+/// This delegates to [`NativeChannel`](crate::channel::NativeChannel), which
+/// knows no IntraMap transformations, so text holding an IntraMap fails with
+/// AST__URITF; read it with [`from_native_string_with`].
 pub fn from_native_string(s: &str) -> AstResult<AnyObject> {
+    from_native_string_with(s, &IntraRegistry::new())
+}
+
+/// Deserialise an AST object from Native text format, giving any IntraMap in
+/// it, however deeply nested, its transformation from `registry`.
+///
+/// This is [`from_native_string`] reading through a
+/// [`NativeChannel`](crate::channel::NativeChannel) that has had each
+/// transformation in `registry` registered with
+/// [`Channel::register_intra`](crate::channel::Channel::register_intra).
+pub fn from_native_string_with(s: &str, registry: &IntraRegistry) -> AstResult<AnyObject> {
     use crate::channel::{Channel, NativeChannel};
-    let mut ch = NativeChannel::from_string(s);
+    let mut ch = NativeChannel::from_string_with(s, registry.clone());
     ch.read()?
         .ok_or_else(|| AstError::new(ErrorCode::Rderr, "no object found in input"))
 }
