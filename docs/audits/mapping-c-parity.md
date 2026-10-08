@@ -132,14 +132,14 @@ C's base `Transform` (mapping.c:22333-22380), which every class's `Transform` ca
 
 | ID | Rating | C | Rust | Finding | Exposed by |
 |---|---|---|---|---|---|
-| MB-1 | MED | mapping.c:22333-22380 (base `Transform`, reached by every class through `parent_transform`) | mappings/mod.rs:291,255; e.g. mappings/zoom.rs:126-138, mappings/cmpmap.rs:671 | `transform`/`transform_into` raise none of `AST__TRNND`, `AST__NCPIN`, `AST__NOPTS`, `AST__NOCTS`. A PointSet with the wrong `ncoord` is silently truncated or zero-filled (ZoomMap zips), or panics (CmpMap parallel slice). | `ZoomMap::new(2,2.0)` transform of a 1-coord PointSet: C NCPIN, Rust returns 2 coords with axis 2 = 0.0. `RateMap.transform(..., false)`: C TRNND, Rust all-BAD. |
+| MB-1 | MED | mapping.c:22333-22380 (base `Transform`, reached by every class through `parent_transform`) | mappings/mod.rs:295,255; e.g. mappings/zoom.rs:126-138, mappings/cmpmap.rs:671 | `transform`/`transform_into` raise none of `AST__TRNND`, `AST__NCPIN`, `AST__NOPTS`, `AST__NOCTS`. A PointSet with the wrong `ncoord` is silently truncated or zero-filled (ZoomMap zips), or panics (CmpMap parallel slice). | `ZoomMap::new(2,2.0)` transform of a 1-coord PointSet: C NCPIN, Rust returns 2 coords with axis 2 = 0.0. `RateMap.transform(..., false)`: C TRNND, Rust all-BAD. |
 | MB-2 | MED | mapping.c:24815 (`astReplaceNaN(result)` in `astTransform_`); pointset.c:1614-1630 (`AST_REPLACE_NAN`) | mappings/unit.rs:67-69; mappings/normmap.rs:150-158 | C converts NaN outputs to AST__BAD only when the `AST_REPLACE_NAN` environment variable is `1`; by default it leaves them NaN (probed). The port's design makes every output use BAD (CLAUDE.md), which is C's `AST_REPLACE_NAN=1` behaviour, but classes that copy values through leak NaN. Oracle probes for this should set `AST_REPLACE_NAN=1`. | `UnitMap::new(1).transform([[NaN]])`: C with `AST_REPLACE_NAN=1` BAD, Rust NaN. The same holds for NormMap with a NaN input. |
 | MB-3 | MED | mapping.c:8998-9015, 24733-24742 | mappings/rate.rs:32-33; mappings/winmap.rs:427; mappings/matrix.rs:851; mappings/unit.rs:82; mappings/zoom.rs:187 | `rate` does no `AST__AXIIN` validation of `ax1`/`ax2` and no `AST__NODEF` check that a forward transform exists. Axis 0 underflows `usize`, which panics in debug builds and indexes out of bounds in release. Out-of-range axes return 0.0 or the zoom factor silently. | `WinMap.rate(&at,0,0)`: Rust panics, C reports AXIIN. `ZoomMap(2).rate(&at,5,5)`: C AXIIN, Rust returns the factor. |
 | MB-4 | MED | mapping.c:1628 (base GetIsLinear = 0); overrides cmpmap.c:631, unitmap.c:342, zoommap.c:555, shiftmap.c:504, matrixmap.c:1424, winmap.c:880 | none | The public read-only `IsLinear` attribute has no counterpart. | `astGetI(map,"IsLinear")` cannot be served by ast-core. |
-| MB-5 | MED | mapping.c:25064-25075 (`astMapBoxId_` decrements `coord_out`) | mappings/mod.rs:592,551-559; mappings/map_box.rs:913 | `map_box` takes a 0-based `coord_out`, while `rate` and `map_split` take 1-based indices. That breaks the 1-based rule in CLAUDE.md, and a caller using public C numbering silently gets the next axis. | `map.map_box(.., true, 1)` returns the bounds of output 2. |
-| MB-6 | LOW | mapping.c:23269-23273, 6342-6352 | mappings/mod.rs:244-247 | `Invert` has only a toggle (`invert`) and a getter (`is_inverted`). There is no `set_invert`, `clear_invert` or `test_invert`. C `astInvert` clears and then sets only when needed, so `TestInvert` is 0 after a double inversion. | `astSetI(m,"Invert",1)`, `astTest(m,"Invert")`. |
-| MB-7 | LOW | mapping.c:23208 (`npoint < 0` only) | mappings/mod.rs:970 | `tran1`/`tran2` reject 0 points with `AST__NPTIN`, but C accepts `npoint == 0`. | `m.tran1(&[], true)`: C OK, Rust Err. |
-| MB-8 | LOW | mapping.c:7848-7856 (AXIIN) | mappings/mod.rs:532-547; mappings/helpers/mod.rs:59-101 | `map_split` returns `None` for out-of-range or 0 indices instead of raising `AST__AXIIN`. It also rejects duplicate indices, which C per-class splits accept (this is documented in the helper). | `m.map_split(&[0])`, `m.map_split(&[nin+1])`. |
+| MB-5 | MED | mapping.c:25064-25075 (`astMapBoxId_` decrements `coord_out`) | mappings/mod.rs:596,551-559; mappings/map_box.rs:913 | `map_box` takes a 0-based `coord_out`, while `rate` and `map_split` take 1-based indices. That breaks the 1-based rule in CLAUDE.md, and a caller using public C numbering silently gets the next axis. | `map.map_box(.., true, 1)` returns the bounds of output 2. |
+| MB-6 | LOW | mapping.c:23269-23273, 6342-6352 | mappings/mod.rs:248-251 | `Invert` has only a toggle (`invert`) and a getter (`is_inverted`). There is no `set_invert`, `clear_invert` or `test_invert`. C `astInvert` clears and then sets only when needed, so `TestInvert` is 0 after a double inversion. | `astSetI(m,"Invert",1)`, `astTest(m,"Invert")`. |
+| MB-7 | LOW | mapping.c:23208 (`npoint < 0` only) | mappings/mod.rs:974 | `tran1`/`tran2` reject 0 points with `AST__NPTIN`, but C accepts `npoint == 0`. | `m.tran1(&[], true)`: C OK, Rust Err. |
+| MB-8 | LOW | mapping.c:7848-7856 (AXIIN) | mappings/mod.rs:536-551; mappings/helpers/mod.rs:59-101 | `map_split` returns `None` for out-of-range or 0 indices instead of raising `AST__AXIIN`. It also rejects duplicate indices, which C per-class splits accept (this is documented in the helper). | `m.map_split(&[0])`, `m.map_split(&[nin+1])`. |
 | MB-9 | LOW | mapping.c:6556,6830 (errors propagate) | mappings/linear_approx.rs:110, ~300 (`transform(..).ok()?`) | `linear_approx` turns a transform error into `None` ("not linear") instead of reporting the error. | A Mapping with an undefined forward transform. |
 
 ### CmpMap
@@ -376,14 +376,16 @@ platepos, platepix and Transform match C exactly.
 
 The function and operator table (all 55 names plus the operators), constant parsing (`d` exponent), per-operation BAD and overflow semantics, tristate AND/OR, QIF with an unchecked condition, bit operations, max/min, and the ran2 generator with its Seed handling all match C.
 
-### IntraMap (no Rust class) and XphMap (ported)
+### IntraMap and XphMap (both ported)
 
 **IntraMap** (intramap.c) wraps a user-registered C or Fortran transformation function (`astIntraReg`/`astIntraRegFor`) under a name, with the flags AST__NOFWD, AST__NOINV, AST__SIMPFI and AST__SIMPIF and the attribute IntraFlag.
 Its vtab provides Transform (calling the registered function), MapMerge (cancelling forward/inverse pairs when SIMPFI/SIMPIF are set and the IntraFlags match), Equal, the GetNin/GetNout overrides, and IntraFlag get/set/test/clear.
 Nothing inside AST creates one; the only callers are user code and fintramap.c.
 Without it, applications that register private transforms lose the feature, and any dump containing an IntraMap fails to load (C also fails unless the function is registered in-process).
-It blocks 10 deferred fixtures (`tests/test_deferred_fixtures.rs:27`; the IntraMap simplify exclusions are at `tests/test_transform_oracle.rs:1766-1786`).
-A port needs a closure registry; a closure cannot be serialised, so C's contract of a name plus a registry lookup must be kept, presumably in `ast-capi`.
+
+**Ported 2026-10-08** as `mappings/intramap.rs`: the transformation is an `Arc<dyn IntraTransform>`, as the design spec has it, and the registry a dump's function name is looked up in belongs to the Channel that reads it (`Channel::register_intra`, holding an `IntraRegistry`) rather than to the process.
+Transform, Equal (both IntraFlags set and equal), MapMerge (the class's own trait method, `docs/audits/mapmerge/intramap.md`), the NOFWD/NOINV definedness, IntraFlag get/set/test/clear and the dump follow C.
+The 10 fixtures it blocked are back in the simplify, serialisation and transform-oracle gates, which read with the C test programs' four identity transformations registered (`tests/common/mod.rs`).
 
 **XphMap** (xphmap.c) maps grid coordinates in one of four HEALPix layouts (HPX0, HPX12, XPHN, XPHS) at a given order onto HPX12 grid coordinates.
 Its vtab provides Transform, Equal, GetIsLinear (linear only for HPX12) and MapMerge (an equal and opposite pair cancels).
@@ -416,7 +418,6 @@ FitsChan does not use it; the HPX and XPH FITS projections go through WcsMap and
 | Analytic Rate | TimeMap | Numeric only (TM-2). |
 | 3-D Transform branch, nin=3 constructor | SpecMap | SP-1, SP-2. |
 | String-coded `SlaAdd` / `SpecAdd` / `TimeAdd` argument-count validation | SlaMap, SpecMap, TimeMap | The typed `add()` exists but does not validate the count (SA-1, SP-3, TM-1). |
-| Every method of IntraMap | IntraMap | See above. |
 
 ## Attribute status
 
@@ -440,7 +441,7 @@ SlaMap, SpecMap, TimeMap, UnitNormMap, DssMap, CmpMap, TranMap, RateMap, NormMap
 | SplineMap | InvNiter, InvTol, OutUnit | get/set/test/clear | get/set only (SN-5) |
 | SphMap | UnitRadius, PolarLong | get/set/test/clear | get/set only (SH-1 to SH-3) |
 | MathMap | SimpFI, SimpIF | get/set/test/clear | get/set only (MM-1) |
-| IntraMap | IntraFlag | get/set/test/clear | missing (class unported) |
+| IntraMap | IntraFlag | get/set/test/clear | ported with the class (2026-10-08) |
 
 ## Corrections to other documents
 

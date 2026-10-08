@@ -13,7 +13,9 @@ use ast_core::constants::BAD_VALUE;
 use ast_core::coords::PointSet;
 use ast_core::fitschan::FitsChan;
 use ast_core::frames::{Frame, FrameRef};
-use ast_core::from_native_string;
+use common::from_native_string;
+
+mod common;
 use ast_core::mappings::Mapping;
 
 /// Golden tolerance: live outputs vs recorded oracle values. Wide enough to
@@ -1762,28 +1764,6 @@ const DEFERRED_LOAD: &[(&str, &str)] = &[
     (
         "simplify/cap_timemap_02.simp",
         "StcResourceProfile not ported",
-    ),
-    ("simplify/intra_invfwd_cancel.map", "IntraMap not ported"),
-    (
-        "simplify/intra_invfwd_cancel_tail.map",
-        "IntraMap not ported",
-    ),
-    (
-        "simplify/intramap_inverse_cancel.map",
-        "IntraMap not ported",
-    ),
-    ("simplify/neg_intra_diff_flag.map", "IntraMap not ported"),
-    ("simplify/neg_intra_diff_func.map", "IntraMap not ported"),
-    ("simplify/neg_intra_no_simpfi.map", "IntraMap not ported"),
-    ("simplify/neg_intra_no_simpif.map", "IntraMap not ported"),
-    (
-        "simplify/neg_intra_nonintra_neighbour.map",
-        "IntraMap not ported",
-    ),
-    ("simplify/neg_intra_parallel.map", "IntraMap not ported"),
-    (
-        "simplify/neg_intra_same_direction.map",
-        "IntraMap not ported",
     ),
 ];
 

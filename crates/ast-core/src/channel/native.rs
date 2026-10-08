@@ -2,10 +2,13 @@
 
 use std::io;
 use std::path::Path;
+use std::sync::Arc;
 
 use super::source_sink::{FileSink, FileSource, StringSink, StringSource};
 use super::{Channel, ChannelConfig, Sink, Source};
 use crate::error::AstResult;
+use crate::mappings::intramap::with_registry;
+use crate::mappings::{IntraRegistry, IntraTransform};
 use crate::serial::{self, AnyObject};
 
 // ---------------------------------------------------------------------------
@@ -44,6 +47,8 @@ pub struct NativeChannel {
     source: Option<Box<dyn Source>>,
     sink: Option<SinkKind>,
     warnings: Vec<String>,
+    /// The transformations IntraMaps read here can name.
+    intra: IntraRegistry,
 }
 
 impl NativeChannel {
@@ -57,6 +62,7 @@ impl NativeChannel {
             source: None,
             sink: None,
             warnings: Vec::new(),
+            intra: IntraRegistry::new(),
         }
     }
 
@@ -67,6 +73,7 @@ impl NativeChannel {
             source: Some(Box::new(StringSource::new(text))),
             sink: None,
             warnings: Vec::new(),
+            intra: IntraRegistry::new(),
         }
     }
 
@@ -80,6 +87,7 @@ impl NativeChannel {
             source: None,
             sink: Some(SinkKind::String(StringSink::new())),
             warnings: Vec::new(),
+            intra: IntraRegistry::new(),
         }
     }
 
@@ -91,6 +99,7 @@ impl NativeChannel {
             source: Some(Box::new(source)),
             sink: None,
             warnings: Vec::new(),
+            intra: IntraRegistry::new(),
         })
     }
 
@@ -102,6 +111,7 @@ impl NativeChannel {
             source: None,
             sink: Some(SinkKind::Boxed(Box::new(sink))),
             warnings: Vec::new(),
+            intra: IntraRegistry::new(),
         })
     }
 
@@ -155,7 +165,7 @@ impl Channel for NativeChannel {
             None => return Ok(None),
         };
         let node = serial::native_read::parse_native(&text)?;
-        let obj = serial::any_object_from_node(&node)?;
+        let obj = with_registry(&self.intra, || serial::any_object_from_node(&node))?;
         Ok(Some(obj))
     }
 
@@ -182,6 +192,10 @@ impl Channel for NativeChannel {
 
     fn warning_texts(&self) -> &[String] {
         &self.warnings
+    }
+
+    fn register_intra(&mut self, transform: Arc<dyn IntraTransform>) -> AstResult<()> {
+        self.intra.register(transform)
     }
 
     fn config(&self) -> &ChannelConfig {

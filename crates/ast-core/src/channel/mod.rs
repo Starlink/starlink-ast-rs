@@ -9,8 +9,11 @@
 pub mod native;
 pub mod source_sink;
 
+use std::sync::Arc;
+
 use crate::error::AstResult;
 use crate::keymap::KeyMap;
+use crate::mappings::IntraTransform;
 use crate::serial::AnyObject;
 
 pub use native::NativeChannel;
@@ -75,6 +78,12 @@ pub trait Channel {
     /// adequate linear approximation is simply not a FITS-WCS header. An
     /// `Err` is reserved for a malformed request or an I/O failure.
     fn write(&mut self, obj: &AnyObject) -> AstResult<usize>;
+
+    /// Make `transform` available to the IntraMaps this channel reads, which
+    /// find their transformation by name, as C's `astIntraReg` does for the
+    /// whole process. A name already registered here is refused with
+    /// AST__MRITF unless it is the same transformation.
+    fn register_intra(&mut self, transform: Arc<dyn IntraTransform>) -> AstResult<()>;
 
     /// Return the accumulated warning texts from the most recent I/O
     /// operation, in the order they were issued.

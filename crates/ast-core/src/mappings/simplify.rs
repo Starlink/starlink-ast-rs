@@ -91,9 +91,9 @@ pub(crate) mod trace {
     #[cfg(feature = "tracing")]
     fn class_of(m: &dyn Mapping) -> &'static str {
         use crate::mappings::{
-            CmpMap, Composition, GrismMap, LutMap, MatrixMap, NormMap, PcdMap, PermMap, RateMap,
-            ShiftMap, SlaMap, SpecMap, SphMap, SwitchMap, TimeMap, TranMap, UnitMap, UnitNormMap,
-            WcsMap, WinMap, XphMap, ZoomMap,
+            CmpMap, Composition, GrismMap, IntraMap, LutMap, MatrixMap, NormMap, PcdMap, PermMap,
+            RateMap, ShiftMap, SlaMap, SpecMap, SphMap, SwitchMap, TimeMap, TranMap, UnitMap,
+            UnitNormMap, WcsMap, WinMap, XphMap, ZoomMap,
         };
         if let Some(c) = m.as_any().downcast_ref::<CmpMap>() {
             return if c.composition() == Composition::Series {
@@ -128,6 +128,7 @@ pub(crate) mod trace {
             TranMap,
             SwitchMap,
             XphMap,
+            IntraMap,
         );
         "?"
     }

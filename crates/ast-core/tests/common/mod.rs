@@ -182,3 +182,122 @@ pub fn is_map_sz_card(line: &str) -> bool {
         .trim_start()
         .starts_with("MapSz =")
 }
+
+/// The identity transformation the C test programs register for IntraMap
+/// fixtures (`TestIntraTran` in `ast_tester/simplify.c`, `roundtrip.c` and
+/// `ast_astequal.c`): each output coordinate copies the input coordinate of
+/// the same index, bad where there is none.
+struct TestIntraTran {
+    name: &'static str,
+    flags: ast_core::mappings::IntraFlags,
+    purpose: &'static str,
+}
+
+impl ast_core::mappings::IntraTransform for TestIntraTran {
+    fn name(&self) -> &str {
+        self.name
+    }
+    fn nin(&self) -> Option<usize> {
+        Some(1)
+    }
+    fn nout(&self) -> Option<usize> {
+        Some(1)
+    }
+    fn flags(&self) -> ast_core::mappings::IntraFlags {
+        self.flags
+    }
+    fn purpose(&self) -> &str {
+        self.purpose
+    }
+    fn author(&self) -> &str {
+        "AST test suite"
+    }
+    fn contact(&self) -> &str {
+        "starlink-ast"
+    }
+    fn transform(
+        &self,
+        _map: &ast_core::mappings::IntraMap,
+        input: &ast_core::coords::PointSet,
+        _forward: bool,
+        out: &mut ast_core::coords::PointSet,
+    ) -> ast_core::error::AstResult<()> {
+        let ncoord_in = input.ncoord();
+        for ip in 0..input.npoint() {
+            let row = input.point(ip).to_vec();
+            for (ic, v) in out.point_mut(ip).iter_mut().enumerate() {
+                *v = if ic < ncoord_in {
+                    row[ic]
+                } else {
+                    ast_core::constants::BAD_VALUE
+                };
+            }
+        }
+        Ok(())
+    }
+}
+
+/// The four transformations the C test programs register for the IntraMap
+/// simplify fixtures, with the same names, flags and descriptions.
+pub fn test_intra_transforms() -> Vec<std::sync::Arc<dyn ast_core::mappings::IntraTransform>> {
+    use ast_core::mappings::IntraFlags;
+    let both = IntraFlags {
+        simp_fi: true,
+        simp_if: true,
+        ..IntraFlags::default()
+    };
+    [
+        (
+            "simplifyidentity",
+            both,
+            "Identity IntraMap for simplify fixtures",
+        ),
+        (
+            "simplifyidentity2",
+            both,
+            "Second identity IntraMap for simplify fixtures",
+        ),
+        (
+            "nosimpfi",
+            IntraFlags {
+                simp_if: true,
+                ..IntraFlags::default()
+            },
+            "IntraMap without SIMPFI for simplify fixtures",
+        ),
+        (
+            "nosimpif",
+            IntraFlags {
+                simp_fi: true,
+                ..IntraFlags::default()
+            },
+            "IntraMap without SIMPIF for simplify fixtures",
+        ),
+    ]
+    .into_iter()
+    .map(|(name, flags, purpose)| {
+        std::sync::Arc::new(TestIntraTran {
+            name,
+            flags,
+            purpose,
+        }) as std::sync::Arc<dyn ast_core::mappings::IntraTransform>
+    })
+    .collect()
+}
+
+/// Read Native text as `ast_core::from_native_string` does, with the C test
+/// programs' IntraMap transformations registered, so the IntraMap fixtures
+/// load as they do for C's harnesses.
+pub fn from_native_string(text: &str) -> ast_core::error::AstResult<ast_core::AnyObject> {
+    use ast_core::channel::{Channel, NativeChannel};
+    let mut ch = NativeChannel::from_string(text);
+    for t in test_intra_transforms() {
+        ch.register_intra(t)?;
+    }
+    ch.read()?.ok_or_else(|| {
+        ast_core::error::AstError::new(
+            ast_core::error::ErrorCode::Rderr,
+            "no object found in input",
+        )
+    })
+}

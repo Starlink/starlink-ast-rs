@@ -18,7 +18,8 @@ use ast_core::constants::BAD_VALUE;
 use ast_core::coords::PointSet;
 use ast_core::frames::FrameRef;
 use ast_core::mappings::Mapping;
-use ast_core::{AnyObject, from_native_string, to_native_string};
+use ast_core::{AnyObject, to_native_string};
+use common::from_native_string;
 
 mod common;
 
@@ -484,19 +485,7 @@ const C_DEFECT_EXCLUDED: &[(&str, &str)] = &[];
 /// class that blocks it. Named here rather than skipped by a predicate so that
 /// the list shrinks only by deliberate edit, and so `deferred_rows_still_fail`
 /// can assert that every one of them really does still fail to load.
-const DEFERRED: &[(&str, &str)] = &[
-    ("cap_timemap_02", "StcResourceProfile"),
-    ("intra_invfwd_cancel", "IntraMap"),
-    ("intra_invfwd_cancel_tail", "IntraMap"),
-    ("intramap_inverse_cancel", "IntraMap"),
-    ("neg_intra_diff_flag", "IntraMap"),
-    ("neg_intra_diff_func", "IntraMap"),
-    ("neg_intra_no_simpfi", "IntraMap"),
-    ("neg_intra_no_simpif", "IntraMap"),
-    ("neg_intra_nonintra_neighbour", "IntraMap"),
-    ("neg_intra_parallel", "IntraMap"),
-    ("neg_intra_same_direction", "IntraMap"),
-];
+const DEFERRED: &[(&str, &str)] = &[("cap_timemap_02", "StcResourceProfile")];
 
 #[test]
 fn simplify_regression() {
@@ -562,8 +551,8 @@ fn simplify_regression() {
         }
 
         // Parse input .map. A present-but-unparseable fixture is a parse
-        // skip: an unported class (IntraMap/XphMap — but those are BLOCKED
-        // in the manifest, so should not reach here) or a genuine parser gap.
+        // skip: an unported class (those are in `DEFERRED`, so should not
+        // reach here) or a genuine parser gap.
         let input_text = match std::fs::read_to_string(&input_path) {
             Ok(t) => t,
             Err(_) => {
@@ -813,8 +802,8 @@ fn simplify_regression() {
     if !parse_skipped.is_empty() {
         eprintln!(
             "  parse-skipped (fixture present but not parseable — a parser \
-             or class-support gap; IntraMap/XphMap are BLOCKED in the \
-             manifest and should not appear here):"
+             or class-support gap; unported classes are in `DEFERRED` and \
+             should not appear here):"
         );
         for n in &parse_skipped {
             eprintln!("    {n}");

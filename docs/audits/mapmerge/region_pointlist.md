@@ -21,7 +21,7 @@ Mapping is already a UnitMap, transforms the defining points into the current
 Frame and rebuilds the PointList there, so the result needs only a UnitMap.
 
 `PointList::map_merge` (`regions/pointlist.rs:994-997 (fn map_merge)`) delegates to
-`simplify::region_map_merge` (`mappings/simplify.rs:1483-1530 (fn region_map_merge)`), which
+`simplify::region_map_merge` (`mappings/simplify.rs:1484-1531 (fn region_map_merge)`), which
 every Region shares. `PointList::region_merge`
 (`regions/pointlist.rs:601-716 (fn region_merge)`) is `MergePointList`, and
 `PointList::simplified` (`regions/pointlist.rs:903-954 (fn simplified)`) is `Simplify`.
@@ -35,20 +35,20 @@ rows from the constructor onwards cite `merge_util.rs`, where that tail lives on
 | 2 | Check the global error status and bail out | pointlist.c:1117-1119 (fn MapMerge) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 3 | Get a pointer to the PointList | pointlist.c:1120-1122 (fn MapMerge) | -- | ceremony | n/a: the Rust function already has `this: &dyn Region` |
 | 4 | Banner: first see whether the PointList reduces on its own, without reference to its neighbours | pointlist.c:1123-1126 (fn MapMerge) | -- | ceremony | n/a: a section banner, not a step |
-| 5 | Simplify the PointList, assuming a changed pointer means something happened | pointlist.c:1127-1130 (fn MapMerge) | mappings/simplify.rs:1495-1496 (fn region_map_merge) | architecture | ported |
-| 6 | Annul the PointList pointer in the list, replace it with the new Region, and mark it forward | pointlist.c:1131-1137 (fn MapMerge) | mappings/simplify.rs:1497 (fn region_map_merge) | architecture | ported |
-| 7 | Return the index of the first modified element | pointlist.c:1138-1141 (fn MapMerge) | mappings/simplify.rs:1498 (fn region_map_merge) | architecture | ported |
-| 8 | Failing that, merge with the Regions on either side — which is possible in parallel only | pointlist.c:1142-1146 (fn MapMerge) | mappings/simplify.rs:1503 (fn region_map_merge) | architecture | ported |
+| 5 | Simplify the PointList, assuming a changed pointer means something happened | pointlist.c:1127-1130 (fn MapMerge) | mappings/simplify.rs:1496-1497 (fn region_map_merge) | architecture | ported |
+| 6 | Annul the PointList pointer in the list, replace it with the new Region, and mark it forward | pointlist.c:1131-1137 (fn MapMerge) | mappings/simplify.rs:1498 (fn region_map_merge) | architecture | ported |
+| 7 | Return the index of the first modified element | pointlist.c:1138-1141 (fn MapMerge) | mappings/simplify.rs:1499 (fn region_map_merge) | architecture | ported |
+| 8 | Failing that, merge with the Regions on either side — which is possible in parallel only | pointlist.c:1142-1146 (fn MapMerge) | mappings/simplify.rs:1504 (fn region_map_merge) | architecture | ported |
 | 9 | Annul the unwanted simplified pointer | pointlist.c:1147-1148 (fn MapMerge) | -- | ceremony | n/a: owned values are dropped |
-| 10 | Attempt to merge the PointList with its lower neighbour, if that neighbour is a Region | pointlist.c:1149-1157 (fn MapMerge) | mappings/simplify.rs:1505-1513 (fn region_map_merge) | architecture | ported |
-| 11 | Failing that, attempt the upper neighbour the same way | pointlist.c:1158-1168 (fn MapMerge) | mappings/simplify.rs:1517-1526 (fn region_map_merge) | architecture | ported |
-| 12 | Act only if one of the two produced a merged Region | pointlist.c:1169-1171 (fn MapMerge) | mappings/simplify.rs:1510 (fn region_map_merge),1520 (fn region_map_merge) | architecture | ported |
-| 13 | Annul the first of the two Mappings, replace it with the merged Region, and clear its invert flag | pointlist.c:1172-1177 (fn MapMerge) | mappings/simplify.rs:590 (fn replace_pair_with) | architecture | ported |
-| 14 | Annul the second and shuffle the rest of the list down to fill the gap | pointlist.c:1178-1185 (fn MapMerge) | mappings/simplify.rs:591-592 (fn replace_pair_with) | architecture | ported |
+| 10 | Attempt to merge the PointList with its lower neighbour, if that neighbour is a Region | pointlist.c:1149-1157 (fn MapMerge) | mappings/simplify.rs:1506-1514 (fn region_map_merge) | architecture | ported |
+| 11 | Failing that, attempt the upper neighbour the same way | pointlist.c:1158-1168 (fn MapMerge) | mappings/simplify.rs:1518-1527 (fn region_map_merge) | architecture | ported |
+| 12 | Act only if one of the two produced a merged Region | pointlist.c:1169-1171 (fn MapMerge) | mappings/simplify.rs:1511 (fn region_map_merge),1520 (fn region_map_merge) | architecture | ported |
+| 13 | Annul the first of the two Mappings, replace it with the merged Region, and clear its invert flag | pointlist.c:1172-1177 (fn MapMerge) | mappings/simplify.rs:591 (fn replace_pair_with) | architecture | ported |
+| 14 | Annul the second and shuffle the rest of the list down to fill the gap | pointlist.c:1178-1185 (fn MapMerge) | mappings/simplify.rs:592-593 (fn replace_pair_with) | architecture | ported |
 | 15 | Clear the vacated element at the end | pointlist.c:1186-1189 (fn MapMerge) | -- | ceremony | n/a: the list is a `Vec`, so the removed entry leaves no slot to blank |
-| 16 | Decrement the Mapping count and return the index of the first modified element | pointlist.c:1190-1195 (fn MapMerge) | mappings/simplify.rs:1512 (fn region_map_merge),1522 (fn region_map_merge) | architecture | ported |
+| 16 | Decrement the Mapping count and return the index of the first modified element | pointlist.c:1190-1195 (fn MapMerge) | mappings/simplify.rs:1513 (fn region_map_merge),1522 (fn region_map_merge) | architecture | ported |
 | 17 | In series, annul the simplified pointer and do nothing | pointlist.c:1196-1199 (fn MapMerge) | -- | ceremony | n/a: owned values are dropped, and the series case falls through to `None` |
-| 18 | Return the result | pointlist.c:1200-1202 (fn MapMerge) | mappings/simplify.rs:1529 (fn region_map_merge) | architecture | ported |
+| 18 | Return the result | pointlist.c:1200-1202 (fn MapMerge) | mappings/simplify.rs:1530 (fn region_map_merge) | architecture | ported |
 | 19 | `MergePointList`: initialise the returned pointer | pointlist.c:1279-1281 (fn MergePointList) | -- | ceremony | n/a: the Rust returns `Option<DynMapping>`, so "no merge" is `None` |
 | 20 | Check the local error status and bail out | pointlist.c:1282-1284 (fn MergePointList) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 21 | Both Regions must agree on Closed, and either both or neither must have a defined uncertainty | pointlist.c:1285-1291 (fn MergePointList) | regions/pointlist.rs:611-612 (fn region_merge) | architecture | ported |

@@ -74,7 +74,7 @@ C builds a parallel CmpMap from the two Regions — using the fact that a Region
 a Mapping — and simplifies it, so the per-class `MapMerge` methods do the work of
 deciding whether the two Regions combine. That is why `Interval`, `Box`,
 `NullRegion` and `PointList` each need a Region `MapMerge` at all, and why
-`region_map_merge` (`mappings/simplify.rs:1485-1529 (fn region_map_merge)`) must be
+`region_map_merge` (`mappings/simplify.rs:1486-1530 (fn region_map_merge)`) must be
 reachable from a parallel CmpMap's own merge.
 
 ## Rows 14 and 15 — `MapSplit` is the seam, not a convenience

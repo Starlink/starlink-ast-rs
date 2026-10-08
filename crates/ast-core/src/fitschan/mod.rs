@@ -30,8 +30,12 @@ pub(crate) mod wcs_write;
 use card::{FitsCard, FitsValue};
 use card_list::CardList;
 
+use std::sync::Arc;
+
 use crate::channel::{Channel, ChannelConfig};
 use crate::error::{AstError, AstResult, ErrorCode};
+use crate::mappings::intramap::with_registry;
+use crate::mappings::{IntraRegistry, IntraTransform};
 use crate::serial::node::Node;
 use crate::serial::{self, AnyObject};
 
@@ -113,6 +117,8 @@ pub struct FitsChan {
     /// departure from linearity, in pixels, that a Mapping may show and
     /// still be described by the linear FITS-WCS keywords.
     fits_tol: f64,
+    /// The transformations IntraMaps read here can name.
+    intra: IntraRegistry,
 }
 
 impl FitsChan {
@@ -127,6 +133,7 @@ impl FitsChan {
             cards: CardList::new(),
             encoding: None,
             warnings: Vec::new(),
+            intra: IntraRegistry::new(),
             fits_digits: DEFAULT_FITS_DIGITS,
             fits_rounding: 10,
             cd_matrix: false,
@@ -149,6 +156,7 @@ impl FitsChan {
             cards,
             encoding: None,
             warnings: Vec::new(),
+            intra: IntraRegistry::new(),
             fits_digits: DEFAULT_FITS_DIGITS,
             fits_rounding: 10,
             cd_matrix: false,
@@ -762,7 +770,7 @@ impl Channel for FitsChan {
                     return Ok(None);
                 }
                 let node = serial::native_read::parse_native(&text)?;
-                let obj = serial::any_object_from_node(&node)?;
+                let obj = with_registry(&self.intra, || serial::any_object_from_node(&node))?;
 
                 // C `Read` calls `FixUsed( this, 0, 1, remove )` with
                 // `remove` set for NATIVE encoding (fitschan.c:25811-25817),
@@ -929,6 +937,10 @@ impl Channel for FitsChan {
             self.cards.set_position(card0);
         }
         result
+    }
+
+    fn register_intra(&mut self, transform: Arc<dyn IntraTransform>) -> AstResult<()> {
+        self.intra.register(transform)
     }
 
     fn warning_texts(&self) -> &[String] {

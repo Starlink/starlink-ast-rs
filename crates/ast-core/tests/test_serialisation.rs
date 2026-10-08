@@ -16,7 +16,10 @@ use ast_core::regions::{
     BoxRegionBuilder, CircleBuilder, CmpOperator, CmpRegionBuilder, EllipseBuilder,
     IntervalBuilder, NullRegionBuilder, PointListBuilder, PolygonBuilder, PrismBuilder, Region,
 };
-use ast_core::{AnyObject, from_native_string, to_native_string};
+use ast_core::{AnyObject, to_native_string};
+use common::from_native_string;
+
+mod common;
 use ndarray::array;
 
 // ===========================================================================
@@ -1184,16 +1187,6 @@ const ROUND_TRIP_EXCLUDED: &[(&str, &str)] = &[
     // row in `test_simplify_regression.rs`.
     ("cap_timemap_02.map", "StcResourceProfile is not ported"),
     ("cap_timemap_02.simp", "StcResourceProfile is not ported"),
-    ("intra_invfwd_cancel.map", "IntraMap is not ported"),
-    ("intra_invfwd_cancel_tail.map", "IntraMap is not ported"),
-    ("intramap_inverse_cancel.map", "IntraMap is not ported"),
-    ("neg_intra_diff_flag.map", "IntraMap is not ported"),
-    ("neg_intra_diff_func.map", "IntraMap is not ported"),
-    ("neg_intra_no_simpfi.map", "IntraMap is not ported"),
-    ("neg_intra_no_simpif.map", "IntraMap is not ported"),
-    ("neg_intra_nonintra_neighbour.map", "IntraMap is not ported"),
-    ("neg_intra_parallel.map", "IntraMap is not ported"),
-    ("neg_intra_same_direction.map", "IntraMap is not ported"),
     // A FrameSet holding a CmpFrame where a Mapping belongs. C accepts it
     // because astLoadFrameSet reads that slot with astRead and a Frame is a
     // Mapping; the port's Mapping loader dispatches on the class name and has

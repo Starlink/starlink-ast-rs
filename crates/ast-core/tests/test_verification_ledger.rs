@@ -170,14 +170,14 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
     (
         "test_deferred_fixtures.rs",
         "UNPORTED_CLASSES",
-        2,
-        "IntraMap and StcResourceProfile are unported classes, not \
-         relaxations of a gate that could otherwise pass",
+        1,
+        "StcResourceProfile is an unported class, not a relaxation of a gate \
+         that could otherwise pass",
     ),
     (
         "test_transform_oracle.rs",
         "DEFERRED_LOAD",
-        13,
+        3,
         "fixtures holding an unported class, so the oracle's sections for them \
          cannot be checked. Not a tolerance: the reader cannot build the \
          Mapping at all. Gated by deferred_fixtures_still_fail_to_load, which \
@@ -206,8 +206,8 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
     (
         "test_serialisation.rs",
         "ROUND_TRIP_EXCLUDED",
-        13,
-        "twelve fixtures holding an unported class -- the same set as \
+        3,
+        "two fixtures holding an unported class -- the same set as \
          DEFERRED_LOAD, counted per file rather than per manifest row -- plus \
          one port gap: a Frame in a Mapping slot, which the Mapping loader has \
          no case for. Gated by round_trip_exclusions_still_fail",

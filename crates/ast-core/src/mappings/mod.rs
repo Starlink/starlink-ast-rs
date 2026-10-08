@@ -46,6 +46,8 @@ mod splinemap;
 pub use splinemap::SplineMap;
 pub(crate) mod unitnormmap;
 pub use unitnormmap::UnitNormMap;
+pub(crate) mod intramap;
+pub use intramap::{IntraFlags, IntraMap, IntraRegistry, IntraTransform};
 pub(crate) mod xphmap;
 pub use xphmap::{XphMap, XphProjection};
 mod sphmap;

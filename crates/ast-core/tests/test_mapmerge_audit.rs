@@ -274,7 +274,7 @@ const C_SIMPLIFY_SEAMS: &[(&str, &str)] = &[
     ("frameset.c", "frame_frameset"),
     ("grismmap.c", "grismmap"),
     ("interval.c", "region_interval"),
-    ("intramap.c", "deferred: IntraMap"),
+    ("intramap.c", "intramap"),
     ("lutmap.c", "lutmap"),
     (
         "mapping.c",

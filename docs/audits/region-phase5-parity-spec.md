@@ -398,8 +398,8 @@ or the product may land on a default). Add `mesh_size_set: bool` and
 1. Add fields to `RegionData` (mirror `closed_set`: Clone data.rs:83-85, `new`
    defaults false data.rs:116-118).
 2. Set them in `set_mesh_size` / `set_fill_factor`.
-3. Switch serial/mod.rs:568,562 emit-guards from value-comparison to the
-   set-flag; read them back in from-node (serial/mod.rs:777-778) — a present
+3. Switch serial/mod.rs:573,562 emit-guards from value-comparison to the
+   set-flag; read them back in from-node (serial/mod.rs:782-783) — a present
    `Fill`/`MeshSz` node means set=true. **This changes serialization emit
    conditions, so the byte-exact corpus must be re-run and the failure set
    compared before/after (baseline 649/677).**

@@ -15,7 +15,9 @@
 //! unported class fails here with the class named, rather than in two other
 //! binaries as a parse error.
 
-use ast_core::from_native_string;
+use common::from_native_string;
+
+mod common;
 use std::path::PathBuf;
 
 /// `(class, number of fixtures naming it)`.
@@ -23,7 +25,7 @@ use std::path::PathBuf;
 /// When a class lands, its fixtures start loading, `unported_classes_still_fail`
 /// fails, and the row is deleted along with the matching entries in the two
 /// exclusion lists.
-const UNPORTED_CLASSES: &[(&str, usize)] = &[("IntraMap", 10), ("StcResourceProfile", 2)];
+const UNPORTED_CLASSES: &[(&str, usize)] = &[("StcResourceProfile", 2)];
 
 fn simplify_dir() -> PathBuf {
     PathBuf::from(concat!(
