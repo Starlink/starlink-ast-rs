@@ -403,6 +403,25 @@ pub(crate) trait RegionGeometry {
         Ok(result[0])
     }
 
+    /// Which base-Frame points lie in the Region, allowing for Negated: what
+    /// the class's `Transform` decides once the points are in the base Frame,
+    /// which is where region.c `BTransform` hands them to it. The default is
+    /// the test every class but Stc makes: inside the un-negated Region
+    /// unless Negated, and outside wherever an axis value is bad. A class
+    /// whose `Transform` decides differently overrides this.
+    fn reg_base_mask(&self, base_pts: &PointSet) -> AstResult<Vec<bool>> {
+        let negated = self.region_data().negated;
+        let inside = self.reg_base_inside(base_pts)?;
+        Ok(inside
+            .iter()
+            .enumerate()
+            .map(|(i, &is_in)| {
+                let has_bad = base_pts.point(i).iter().any(|&v| is_bad(v));
+                !has_bad && (is_in != negated)
+            })
+            .collect())
+    }
+
     /// Return the bounding box of the un-negated region in the base frame.
     ///
     /// Returns `(lower, upper)`, each of length `naxes`.
@@ -486,6 +505,7 @@ where
 pub struct FrameSetting<'a> {
     axis: Option<usize>,
     apply: &'a dyn Fn(&mut dyn Frame, usize) -> AstResult<()>,
+    clear: bool,
 }
 
 impl<'a> FrameSetting<'a> {
@@ -496,7 +516,29 @@ impl<'a> FrameSetting<'a> {
         axis: Option<usize>,
         apply: &'a dyn Fn(&mut dyn Frame, usize) -> AstResult<()>,
     ) -> Self {
-        FrameSetting { axis, apply }
+        FrameSetting {
+            axis,
+            apply,
+            clear: false,
+        }
+    }
+
+    /// A clearing of the attribute, which C makes through `RegClearAttrib`
+    /// rather than `RegSetAttrib`.
+    pub(crate) fn clearing(
+        axis: Option<usize>,
+        apply: &'a dyn Fn(&mut dyn Frame, usize) -> AstResult<()>,
+    ) -> Self {
+        FrameSetting {
+            axis,
+            apply,
+            clear: true,
+        }
+    }
+
+    /// Whether this is a clearing (`RegClearAttrib`) rather than a setting.
+    pub(crate) fn is_clear(&self) -> bool {
+        self.clear
     }
 
     /// The 1-based axis the attribute belongs to, if any.
@@ -509,6 +551,7 @@ impl<'a> FrameSetting<'a> {
         FrameSetting {
             axis,
             apply: self.apply,
+            clear: self.clear,
         }
     }
 
@@ -691,22 +734,13 @@ pub(crate) fn region_transform<R: RegionGeometry>(
 
 /// Which base-Frame points lie in the Region, allowing for Negated: the
 /// test the Region's transformation makes once its points are in the base
-/// Frame. A point with a bad axis value is outside. This is what region.c
+/// Frame ([`RegionGeometry::reg_base_mask`]). This is what region.c
 /// `BTransform` applies to base-Frame points.
 pub(crate) fn region_base_mask<R: RegionGeometry + ?Sized>(
     region: &R,
     base_pts: &PointSet,
 ) -> AstResult<Vec<bool>> {
-    let negated = region.region_data().negated;
-    let inside = region.reg_base_inside(base_pts)?;
-    Ok(inside
-        .iter()
-        .enumerate()
-        .map(|(i, &is_in)| {
-            let has_bad = base_pts.point(i).iter().any(|&v| is_bad(v));
-            !has_bad && (is_in != negated)
-        })
-        .collect())
+    region.reg_base_mask(base_pts)
 }
 
 /// region.c `RegBaseGrid`: a grid of about MeshSize points spread through

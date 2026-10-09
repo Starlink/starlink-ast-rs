@@ -988,7 +988,7 @@ macro_rules! forward_frame_attrs {
             let apply = |f: &mut dyn $crate::frames::Frame, _: usize| f.$name();
             $crate::regions::data::set_region_frame_attr(
                 self,
-                &$crate::regions::data::FrameSetting::new(None, &apply),
+                &$crate::regions::data::FrameSetting::clearing(None, &apply),
             )
         }
     };
@@ -1009,6 +1009,18 @@ macro_rules! forward_frame_attrs {
 /// Ident, which is the Region's own.
 macro_rules! region_frame_attrs {
     () => {
+        region_frame_attrs!(@common);
+        fn use_defs(&self) -> bool {
+            self.data
+                .use_defs
+                .unwrap_or_else(|| self.data.frameset.current().use_defs())
+        }
+    };
+    // A class that finds an unset UseDefs elsewhere defines `use_defs`.
+    (own_use_defs) => {
+        region_frame_attrs!(@common);
+    };
+    (@common) => {
         forward_frame_attrs!(region data.frameset);
         forward_axis_attrs!(region data.frameset);
         // The Frame methods region.c overrides to act on the current Frame
@@ -1181,11 +1193,6 @@ macro_rules! region_frame_attrs {
         }
         fn store_use_defs(&mut self, value: Option<bool>) {
             self.data.use_defs = value;
-        }
-        fn use_defs(&self) -> bool {
-            self.data
-                .use_defs
-                .unwrap_or_else(|| self.data.frameset.current().use_defs())
         }
         fn set_use_defs(&mut self, value: bool) -> $crate::error::AstResult<()> {
             self.data
@@ -1556,7 +1563,7 @@ macro_rules! forward_axis_attrs {
             let apply = |f: &mut dyn $crate::frames::Frame, a: usize| f.$name(a);
             $crate::regions::data::set_region_frame_attr(
                 self,
-                &$crate::regions::data::FrameSetting::new(Some(axis), &apply),
+                &$crate::regions::data::FrameSetting::clearing(Some(axis), &apply),
             )
         }
     };

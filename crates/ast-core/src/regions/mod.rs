@@ -20,6 +20,7 @@ mod nullregion;
 mod pointlist;
 mod polygon;
 mod prism;
+mod stc;
 pub use box_region::{BoxRegion, BoxRegionBuilder};
 pub use circle::{Circle, CircleBuilder};
 pub(crate) use cmpregion::Oper as CmpOper;
@@ -30,6 +31,11 @@ pub use nullregion::{NullRegion, NullRegionBuilder};
 pub use pointlist::{PointList, PointListBuilder};
 pub use polygon::{PixelOper, PixelValue, Polygon, PolygonBuilder};
 pub use prism::{Prism, PrismBuilder};
+pub(crate) use stc::stc_set_coord_frames;
+pub use stc::{
+    ResourceProfile, STC_ERROR, STC_NAME, STC_PIXSZ, STC_RES, STC_SIZE, STC_VALUE, Stc, StcBuilder,
+    StcKind, StcResourceProfile, StcResourceProfileBuilder,
+};
 
 pub use masking::mask;
 
@@ -194,6 +200,23 @@ pub trait Region: Frame + Mapping + AsDynRegion {
     /// `astClearNegated`).
     fn clear_negated(&mut self) {
         self.set_negated_raw(false, false);
+    }
+
+    /// The Negated value held in this Region's own fields and whether it is
+    /// set, C's `this->negated`, which region.c `RegOverlay` and `Dump` read
+    /// directly. It is what [`is_negated`](Region::is_negated) and
+    /// [`test_negated`](Region::test_negated) report, except in a class
+    /// whose Negated accessors read another Region (Stc).
+    #[doc(hidden)]
+    fn raw_negated(&self) -> (bool, bool) {
+        (self.is_negated(), self.test_negated())
+    }
+
+    /// The Closed value held in this Region's own fields and whether it is
+    /// set, C's `this->closed`; see [`raw_negated`](Region::raw_negated).
+    #[doc(hidden)]
+    fn raw_closed(&self) -> (bool, bool) {
+        (self.is_closed(), self.test_closed())
     }
 
     // ------------------------------------------------------------------
@@ -1379,8 +1402,10 @@ pub trait Region: Frame + Mapping + AsDynRegion {
         // `adaptive` as raw field assignments, propagating the `-INT_MAX`
         // unset sentinel; mirror that by copying each value with its
         // explicitly-set state.
-        self.set_negated_raw(that.is_negated(), that.test_negated());
-        self.set_closed_raw(that.is_closed(), that.test_closed());
+        let (negated, negated_set) = that.raw_negated();
+        self.set_negated_raw(negated, negated_set);
+        let (closed, closed_set) = that.raw_closed();
+        self.set_closed_raw(closed, closed_set);
         self.set_region_fs_raw(that.region_fs_flag(), that.test_region_fs());
         self.set_adaptive_raw(that.is_adaptive(), that.test_adaptive());
         if self.naxes() == that.naxes() {
@@ -1433,6 +1458,13 @@ pub trait Region: Frame + Mapping + AsDynRegion {
     // ------------------------------------------------------------------
     // Cloning (object-safe deep copy)
     // ------------------------------------------------------------------
+
+    /// The Region an Stc encapsulates (stc.c `region`), or `None` for a
+    /// Region that is not an Stc, as `astIsAStc` decides.
+    #[doc(hidden)]
+    fn stc_region(&self) -> Option<&dyn Region> {
+        None
+    }
 
     /// Clone this region into a boxed trait object.
     #[doc(hidden)]
@@ -1640,13 +1672,15 @@ pub(crate) fn any_as_region(a: &dyn std::any::Any) -> Option<&dyn Region> {
         Some(r)
     } else if let Some(r) = a.downcast_ref::<Prism>() {
         Some(r)
+    } else if let Some(r) = a.downcast_ref::<StcResourceProfile>() {
+        Some(r)
     } else {
         None
     }
 }
 
 /// The AST class name of a Region, as C's `astGetClass` gives it.
-fn class_name(region: &dyn std::any::Any) -> &'static str {
+pub(crate) fn class_name(region: &dyn std::any::Any) -> &'static str {
     if region.is::<BoxRegion>() {
         "Box"
     } else if region.is::<Circle>() {
@@ -1665,6 +1699,8 @@ fn class_name(region: &dyn std::any::Any) -> &'static str {
         "Polygon"
     } else if region.is::<Prism>() {
         "Prism"
+    } else if region.is::<StcResourceProfile>() {
+        "StcResourceProfile"
     } else {
         "Region"
     }

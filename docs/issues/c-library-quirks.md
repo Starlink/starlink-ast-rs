@@ -1098,6 +1098,16 @@ Only a hand-written description can do this, since Dump never writes an index be
 Fixed on `u/timj/norm-unit` in 0d05fc29, which checks Current as Base is checked, with a `testframeset` case (Errors 41-43).
 The port treats a `Currnt` below 1 as unset, as the fixed C does (`frameset.rs` `from_node`), and `tests/test_frameset_current.rs` covers Current's set state against C.
 
+### RESOLVED (upstream f24ee843): a negated Stc covers the same points as the un-negated one
+
+C location: `stc.c` `GetRegion`.
+
+An Stc's Negated attribute is read from, and set on, its encapsulated Region (`GetNegated`, `SetNegated`).
+`GetRegion` took the encapsulated Region's value and then inverted it when the Stc was negated, and the two values being the same, that cancelled the negation: a negated Stc transformed points and reported its bounds as the un-negated one did.
+
+Fixed on `u/timj/norm-unit` in f24ee843: `GetRegion` returns the encapsulated Region's value unchanged; `testregions` `checkStcNegated`.
+The port's `Stc` reads Negated from the encapsulated Region and applies it once; `tests/test_region_stc_oracle.rs` (`negated`), whose probe needs the fixed library.
+
 ### RESOLVED (upstream 41c78908): `CmpRegionList` lists an XOR component of an OR CmpRegion as two Regions of the OR
 
 C location: `cmpregion.c` `CmpRegionList`.

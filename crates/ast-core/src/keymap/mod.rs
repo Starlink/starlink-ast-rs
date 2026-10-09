@@ -288,6 +288,32 @@ impl KeyMap {
             .collect()
     }
 
+    /// Every Object held directly by this KeyMap, scalar or vector element,
+    /// to change where it is stored, as C changes an Object through the
+    /// pointer `astMapGet0A` returns.
+    pub(crate) fn objects_mut(&mut self) -> Vec<&mut AnyObject> {
+        self.entries
+            .values_mut()
+            .filter_map(|entry| match &mut entry.value {
+                EntryValue::Object(objs) => Some(objs.as_mut_slice()),
+                _ => None,
+            })
+            .flatten()
+            .filter_map(|obj| obj.as_deref_mut())
+            .collect()
+    }
+
+    /// The Object stored as the first value of `key`, to change where it is
+    /// stored, or `None` if `key` holds no Object.
+    pub(crate) fn object_mut(&mut self, key: &str) -> Option<&mut AnyObject> {
+        let nkey = table::convert_key(key, self.key_case(), "astMapGet0A").ok()?;
+        let entry = self.entries.get_mut(nkey.trim_end_matches(' '))?;
+        match &mut entry.value {
+            EntryValue::Object(objs) => objs.as_mut_slice().first_mut()?.as_deref_mut(),
+            _ => None,
+        }
+    }
+
     /// Store `value`, replacing any existing entry at `key`. Mirrors
     /// `astMapPut0I`. Fails with `AST__BADKEY` when `MapLocked` is set and
     /// `key` is new.

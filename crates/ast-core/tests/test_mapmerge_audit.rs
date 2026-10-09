@@ -298,7 +298,7 @@ const C_SIMPLIFY_SEAMS: &[(&str, &str)] = &[
     ("specmap.c", "specmap"),
     ("sphmap.c", "sphmap"),
     ("splinemap.c", "splinemap"),
-    ("stc.c", "deferred: StcResourceProfile"),
+    ("stc.c", "region_stc"),
     ("switchmap.c", "switchmap"),
     ("timemap.c", "timemap"),
     ("tranmap.c", "tranmap"),

@@ -17,7 +17,7 @@ use std::path::{Path, PathBuf};
 /// `grep -l 'static AstMapping \*Simplify' reference/starlink-ast/src/*.c`
 /// returns `box circle cmpframe cmpmap cmpregion ellipse frameset interval
 /// mapping nullregion pointlist polygon prism region stc`. `mapping` is the base
-/// every other class inherits, and `cmpframe` and `stc` have no port counterpart.
+/// every other class inherits, and `cmpframe` has no port counterpart.
 const C_SIMPLIFY_CLASSES: &[&str] = &[
     "mappings/cmpmap.rs",
     "frames/frameset.rs",
@@ -30,6 +30,7 @@ const C_SIMPLIFY_CLASSES: &[&str] = &[
     "regions/pointlist.rs",
     "regions/polygon.rs",
     "regions/prism.rs",
+    "regions/stc.rs",
 ];
 
 fn src_root() -> PathBuf {

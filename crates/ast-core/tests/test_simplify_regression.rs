@@ -494,7 +494,7 @@ const C_DEFECT_EXCLUDED: &[(&str, &str)] = &[];
 /// class that blocks it. Named here rather than skipped by a predicate so that
 /// the list shrinks only by deliberate edit, and so `deferred_rows_still_fail`
 /// can assert that every one of them really does still fail to load.
-const DEFERRED: &[(&str, &str)] = &[("cap_timemap_02", "StcResourceProfile")];
+const DEFERRED: &[(&str, &str)] = &[];
 
 #[test]
 fn simplify_regression() {

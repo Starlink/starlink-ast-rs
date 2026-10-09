@@ -181,8 +181,8 @@ const FIXTURE: &str = concat!(
 
 /// Lift the one `Begin KeyMap` … `End KeyMap` block out of a Native dump.
 ///
-/// The enclosing `StcResourceProfile` is not a ported class, so the file
-/// cannot be loaded whole; the block is a self-contained document.
+/// The block is a self-contained document, so the KeyMap is read on its own,
+/// apart from the `StcResourceProfile` that holds it.
 fn extract_keymap_block(text: &str) -> String {
     let lines: Vec<&str> = text.lines().collect();
     let begin = lines

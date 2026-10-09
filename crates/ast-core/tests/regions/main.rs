@@ -78,5 +78,7 @@ mod test_region_overlap_oracle;
 mod test_region_polygon_oracle;
 #[path = "../test_region_showmesh_oracle.rs"]
 mod test_region_showmesh_oracle;
+#[path = "../test_region_stc_oracle.rs"]
+mod test_region_stc_oracle;
 #[path = "../test_regions.rs"]
 mod test_regions;

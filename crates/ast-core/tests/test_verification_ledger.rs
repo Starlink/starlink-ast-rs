@@ -170,18 +170,19 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
     (
         "test_deferred_fixtures.rs",
         "UNPORTED_CLASSES",
-        1,
-        "StcResourceProfile is an unported class, not a relaxation of a gate \
-         that could otherwise pass",
+        0,
+        "empty: every class a fixture names has a loader. Its one row was \
+         StcResourceProfile, which landed on 2026-10-09",
     ),
     (
         "test_transform_oracle.rs",
         "DEFERRED_LOAD",
-        3,
-        "fixtures holding an unported class, so the oracle's sections for them \
-         cannot be checked. Not a tolerance: the reader cannot build the \
-         Mapping at all. Gated by deferred_fixtures_still_fail_to_load, which \
-         fails when one starts loading",
+        1,
+        "a fixture the reader cannot build, so the oracle's sections for it \
+         cannot be checked: a Frame in a Mapping slot, which the Mapping \
+         loader refuses. Not a tolerance. Gated by \
+         deferred_fixtures_still_fail_to_load, which fails when it starts \
+         loading",
     ),
     (
         "test_simplify_regression.rs",
@@ -206,10 +207,8 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
     (
         "test_serialisation.rs",
         "ROUND_TRIP_EXCLUDED",
-        3,
-        "two fixtures holding an unported class -- the same set as \
-         DEFERRED_LOAD, counted per file rather than per manifest row -- plus \
-         one port gap: a Frame in a Mapping slot, which the Mapping loader has \
+        1,
+        "one port gap: a Frame in a Mapping slot, which the Mapping loader has \
          no case for. Gated by round_trip_exclusions_still_fail",
     ),
     (
@@ -285,10 +284,10 @@ fn manifest_relaxations() -> Vec<(&'static str, usize, &'static str)> {
             "simplify manifest: astequal compare mode",
             simp_astequal,
             "upstream's own column: one row, cap_timemap_02, whose uncertainty \
-             coordinates move by about 7e-12 relative under FMA contraction. \
-             The port never reaches it -- StcResourceProfile is unported, so it \
-             is a DEFERRED row -- but the comparator honours the column so the \
-             two harnesses cannot diverge on what a row asks for",
+             coordinates move by about 7e-12 relative under FMA contraction, so \
+             its dump is compared within astEQUAL rather than byte for byte. \
+             The comparator honours the column so the two harnesses cannot \
+             diverge on what a row asks for",
         ),
         (
             "wcsconv manifest: astequal compare mode",

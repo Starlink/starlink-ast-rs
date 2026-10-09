@@ -1751,20 +1751,10 @@ fn is_simplify_section(relpath: &str) -> bool {
 /// `astUnitMap(astGetNaxes(this))`, and this port makes Region the only Frame that
 /// is also a Mapping. `test_frame_in_map_slot.rs` pins that, and whether it is
 /// right is the open question in `docs/issues/frame-in-a-mapping-slot.md`.
-const DEFERRED_LOAD: &[(&str, &str)] = &[
-    (
-        "serialisation/frame_in_map_slot.ast",
-        "CmpFrame in a Map<n> slot, refused",
-    ),
-    (
-        "simplify/cap_timemap_02.map",
-        "StcResourceProfile not ported",
-    ),
-    (
-        "simplify/cap_timemap_02.simp",
-        "StcResourceProfile not ported",
-    ),
-];
+const DEFERRED_LOAD: &[(&str, &str)] = &[(
+    "serialisation/frame_in_map_slot.ast",
+    "CmpFrame in a Map<n> slot, refused",
+)];
 
 fn is_deferred_class_fixture(relpath: &str) -> bool {
     DEFERRED_LOAD.iter().any(|(f, _)| *f == relpath)

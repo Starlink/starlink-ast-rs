@@ -1182,10 +1182,6 @@ fn lines_numerically_equivalent(got: &str, want: &str) -> bool {
 /// error text, so the list shrinks only by deliberate edit and
 /// `round_trip_exclusions_still_fail` can check every entry still applies.
 const ROUND_TRIP_EXCLUDED: &[(&str, &str)] = &[
-    // Classes the reader has no loader for. Each of these is also a `DEFERRED`
-    // row in `test_simplify_regression.rs`.
-    ("cap_timemap_02.map", "StcResourceProfile is not ported"),
-    ("cap_timemap_02.simp", "StcResourceProfile is not ported"),
     // A FrameSet holding a CmpFrame where a Mapping belongs. C accepts it
     // because astLoadFrameSet reads that slot with astRead and a Frame is a
     // Mapping; the port's Mapping loader dispatches on the class name and has

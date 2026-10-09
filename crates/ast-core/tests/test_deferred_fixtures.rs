@@ -24,7 +24,7 @@ use std::path::PathBuf;
 /// When a class lands, its fixtures start loading, `unported_classes_still_fail`
 /// fails, and the row is deleted along with the matching entries in the two
 /// exclusion lists.
-const UNPORTED_CLASSES: &[(&str, usize)] = &[("StcResourceProfile", 2)];
+const UNPORTED_CLASSES: &[(&str, usize)] = &[];
 
 fn simplify_dir() -> PathBuf {
     PathBuf::from(concat!(

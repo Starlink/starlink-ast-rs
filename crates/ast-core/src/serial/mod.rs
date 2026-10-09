@@ -22,7 +22,7 @@ use crate::mappings::{IntraMap, IntraRegistry};
 use crate::regions::data::{RegionData, check_fill_factor};
 use crate::regions::{
     BoxRegion, Circle, CmpOperator, CmpRegion, CmpRegionBuilder, DynRegion, Ellipse, Interval,
-    NullRegion, PointList, Polygon, Prism, Region,
+    NullRegion, PointList, Polygon, Prism, Region, StcResourceProfile,
 };
 
 /// Internal trait for serialising AST objects to/from Node trees.
@@ -311,6 +311,7 @@ fn mapping_from_node_inner(node: &Node) -> AstResult<DynMapping> {
         "CmpRegion" => Ok(Box::new(CmpRegion::from_node(node)?)),
         "PointList" => Ok(Box::new(PointList::from_node(node)?)),
         "Prism" => Ok(Box::new(Prism::from_node(node)?)),
+        "StcResourceProfile" => Ok(Box::new(StcResourceProfile::from_node(node)?)),
         other => Err(AstError::new(
             ErrorCode::Lderr,
             format!("unknown Mapping class: {other}"),
@@ -445,6 +446,9 @@ impl MappingToNode for dyn Mapping {
         if let Some(r) = self.as_any().downcast_ref::<Prism>() {
             return Serializable::to_node(r);
         }
+        if let Some(r) = self.as_any().downcast_ref::<StcResourceProfile>() {
+            return Serializable::to_node(r);
+        }
         Err(AstError::new(
             ErrorCode::Lderr,
             "unsupported Mapping type for serialisation",
@@ -519,6 +523,9 @@ impl FrameToNode for dyn Frame {
         if let Some(r) = self.as_any().downcast_ref::<Prism>() {
             return Serializable::to_node(r);
         }
+        if let Some(r) = self.as_any().downcast_ref::<StcResourceProfile>() {
+            return Serializable::to_node(r);
+        }
         Err(AstError::new(
             ErrorCode::Lderr,
             "unsupported Frame type for serialisation",
@@ -548,6 +555,7 @@ pub(crate) fn frame_from_node(node: &Node) -> AstResult<DynFrame> {
         "CmpRegion" => Ok(Box::new(CmpRegion::from_node(node)?)),
         "PointList" => Ok(Box::new(PointList::from_node(node)?)),
         "Prism" => Ok(Box::new(Prism::from_node(node)?)),
+        "StcResourceProfile" => Ok(Box::new(StcResourceProfile::from_node(node)?)),
         other => Err(AstError::new(
             ErrorCode::Lderr,
             format!("unknown or unsupported Frame class: {other}"),
@@ -1156,6 +1164,9 @@ impl RegionToNode for dyn Region {
         if let Some(r) = self.as_any().downcast_ref::<Prism>() {
             return Serializable::to_node(r);
         }
+        if let Some(r) = self.as_any().downcast_ref::<StcResourceProfile>() {
+            return Serializable::to_node(r);
+        }
         Err(AstError::new(
             ErrorCode::Lderr,
             "unsupported Region type for serialisation",
@@ -1175,6 +1186,7 @@ pub(crate) fn region_from_node(node: &Node) -> AstResult<DynRegion> {
         "CmpRegion" => Ok(Box::new(CmpRegion::from_node(node)?)),
         "PointList" => Ok(Box::new(PointList::from_node(node)?)),
         "Prism" => Ok(Box::new(Prism::from_node(node)?)),
+        "StcResourceProfile" => Ok(Box::new(StcResourceProfile::from_node(node)?)),
         other => Err(AstError::new(
             ErrorCode::Lderr,
             format!("unknown Region class: {other}"),
@@ -1468,6 +1480,80 @@ impl Serializable for CmpRegion {
     }
 }
 
+impl<K: crate::regions::StcKind> Serializable for crate::regions::Stc<K> {
+    fn class_name(&self) -> &'static str {
+        K::CLASS
+    }
+
+    /// stc.c `Dump` after region.c's: the encapsulated Region, the number of
+    /// AstroCoords elements when there are any, and each element's KeyMap.
+    /// region.c writes Negated from the Stc's own field when that is set,
+    /// and otherwise from its accessor, which reads the encapsulated Region.
+    fn to_node(&self) -> AstResult<Node> {
+        let mut data = self.data.clone();
+        if !data.negated_set {
+            data.negated = self.region.is_negated();
+        }
+        let mut node = region_to_node_skeleton(K::CLASS, K::COMMENT, &data)?;
+        node.push_object(
+            "Region",
+            RegionToNode::to_node(self.region.as_ref())?,
+            Some("STC Region".to_string()),
+        );
+        if !self.coords.is_empty() {
+            node.push_int(
+                "Ncoord",
+                self.coords.len() as i64,
+                Some("Number of AstroCoords elements".to_string()),
+            );
+        }
+        for (i, coord) in self.coords.iter().enumerate() {
+            node.push_object(
+                &format!("Coord{}", i + 1),
+                Serializable::to_node(coord)?,
+                Some(format!("AstroCoords number {}", i + 1)),
+            );
+        }
+        node.push_isa("Stc", Some("An IVOA Space-Time-Coords object".to_string()));
+        Ok(node)
+    }
+
+    /// stc.c `astLoadStc`: a Region with no Frame of its own, the
+    /// encapsulated Region or one in an AstroCoords element, is given the
+    /// Stc's base Frame unless the Stc itself has none yet; an AstroCoords
+    /// Region given it is stored again with its comment.
+    fn from_node(node: &Node) -> AstResult<Self> {
+        let whole = node;
+        let node = &whole.section("Stc");
+        let _base = read_mapping_base(whole);
+        let data = read_region_base(whole)?;
+
+        let region_node = node.get_object("Region").ok_or_else(|| {
+            AstError::new(ErrorCode::Lderr, format!("{}: missing Region", K::CLASS))
+        })?;
+        let mut region = region_from_node(region_node)?;
+        let f1 = data.frameset.base().snapshot();
+        if !data.dummy_fs && region.has_dummy_fs() {
+            region.set_region_fs(f1.as_ref());
+        }
+
+        let ncoord = node.get_int("Ncoord", 0).max(0) as usize;
+        let mut coords = Vec::with_capacity(ncoord);
+        for ico in 1..=ncoord {
+            let key = format!("Coord{ico}");
+            let km_node = node.get_object(&key).ok_or_else(|| {
+                AstError::new(ErrorCode::Lderr, format!("{}: missing {key}", K::CLASS))
+            })?;
+            let mut keymap = <crate::keymap::KeyMap as Serializable>::from_node(km_node)?;
+            if !data.dummy_fs {
+                crate::regions::stc_set_coord_frames(&mut keymap, f1.as_ref())?;
+            }
+            coords.push(keymap);
+        }
+        Ok(crate::regions::Stc::from_parts(data, region, coords))
+    }
+}
+
 impl Serializable for Prism {
     fn class_name(&self) -> &'static str {
         "Prism"
@@ -1655,6 +1741,8 @@ pub enum AnyObject {
     PointList(PointList),
     /// A [`Prism`] (extruded region).
     Prism(Prism),
+    /// A [`StcResourceProfile`] (STC resource coverage).
+    StcResourceProfile(StcResourceProfile),
     /// A [`crate::keymap::KeyMap`] (string-keyed heterogeneous map).
     ///
     /// Implements neither [`Mapping`] nor [`Frame`]; [`as_mapping`](AnyObject::as_mapping),
@@ -1790,6 +1878,9 @@ impl AnyObject {
         if let Some(x) = m.as_any().downcast_ref::<Prism>() {
             return Some(AnyObject::Prism(x.clone()));
         }
+        if let Some(x) = m.as_any().downcast_ref::<StcResourceProfile>() {
+            return Some(AnyObject::StcResourceProfile(x.clone()));
+        }
         None
     }
 
@@ -1836,6 +1927,7 @@ impl AnyObject {
             AnyObject::CmpRegion(r) => Some(r),
             AnyObject::PointList(r) => Some(r),
             AnyObject::Prism(r) => Some(r),
+            AnyObject::StcResourceProfile(r) => Some(r),
             AnyObject::BasicFrame(_)
             | AnyObject::SkyFrame(_)
             | AnyObject::SpecFrame(_)
@@ -1871,6 +1963,7 @@ impl AnyObject {
             AnyObject::CmpRegion(r) => Some(r),
             AnyObject::PointList(r) => Some(r),
             AnyObject::Prism(r) => Some(r),
+            AnyObject::StcResourceProfile(r) => Some(r),
             AnyObject::UnitMap(_)
             | AnyObject::ZoomMap(_)
             | AnyObject::ShiftMap(_)
@@ -1946,6 +2039,7 @@ impl AnyObject {
             AnyObject::CmpRegion(r) => Some(Box::new(r)),
             AnyObject::PointList(r) => Some(Box::new(r)),
             AnyObject::Prism(r) => Some(Box::new(r)),
+            AnyObject::StcResourceProfile(r) => Some(Box::new(r)),
             AnyObject::BasicFrame(_)
             | AnyObject::SkyFrame(_)
             | AnyObject::SpecFrame(_)
@@ -1981,6 +2075,7 @@ impl AnyObject {
             AnyObject::CmpRegion(r) => Some(Box::new(r)),
             AnyObject::PointList(r) => Some(Box::new(r)),
             AnyObject::Prism(r) => Some(Box::new(r)),
+            AnyObject::StcResourceProfile(r) => Some(Box::new(r)),
             AnyObject::UnitMap(_)
             | AnyObject::ZoomMap(_)
             | AnyObject::ShiftMap(_)
@@ -2026,6 +2121,25 @@ impl AnyObject {
             AnyObject::CmpRegion(r) => Some(r),
             AnyObject::PointList(r) => Some(r),
             AnyObject::Prism(r) => Some(r),
+            AnyObject::StcResourceProfile(r) => Some(r),
+            _ => None,
+        }
+    }
+
+    /// The contained object as a `&mut dyn Region`, or `None` if the variant
+    /// does not implement [`Region`].
+    pub(crate) fn as_region_mut(&mut self) -> Option<&mut dyn Region> {
+        match self {
+            AnyObject::Circle(r) => Some(r),
+            AnyObject::BoxRegion(r) => Some(r),
+            AnyObject::Ellipse(r) => Some(r),
+            AnyObject::Polygon(r) => Some(r),
+            AnyObject::Interval(r) => Some(r),
+            AnyObject::NullRegion(r) => Some(r),
+            AnyObject::CmpRegion(r) => Some(r),
+            AnyObject::PointList(r) => Some(r),
+            AnyObject::Prism(r) => Some(r),
+            AnyObject::StcResourceProfile(r) => Some(r),
             _ => None,
         }
     }
@@ -2043,6 +2157,7 @@ impl AnyObject {
             AnyObject::CmpRegion(r) => Some(Box::new(r)),
             AnyObject::PointList(r) => Some(Box::new(r)),
             AnyObject::Prism(r) => Some(Box::new(r)),
+            AnyObject::StcResourceProfile(r) => Some(Box::new(r)),
             _ => None,
         }
     }
@@ -2104,6 +2219,9 @@ pub(crate) fn any_object_from_node(node: &Node) -> AstResult<AnyObject> {
         "CmpRegion" => Ok(AnyObject::CmpRegion(CmpRegion::from_node(node)?)),
         "PointList" => Ok(AnyObject::PointList(PointList::from_node(node)?)),
         "Prism" => Ok(AnyObject::Prism(Prism::from_node(node)?)),
+        "StcResourceProfile" => Ok(AnyObject::StcResourceProfile(
+            StcResourceProfile::from_node(node)?,
+        )),
         "KeyMap" => Ok(AnyObject::KeyMap(Box::new(
             crate::keymap::KeyMap::from_node(node)?,
         ))),
@@ -2168,6 +2286,7 @@ pub(crate) fn any_object_to_node(obj: &AnyObject) -> AstResult<Node> {
         AnyObject::CmpRegion(r) => Serializable::to_node(r),
         AnyObject::PointList(r) => Serializable::to_node(r),
         AnyObject::Prism(r) => Serializable::to_node(r),
+        AnyObject::StcResourceProfile(r) => Serializable::to_node(r),
         AnyObject::KeyMap(m) => Serializable::to_node(m.as_ref()),
     }
 }
