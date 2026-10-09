@@ -83,68 +83,206 @@ fn polywidth(
     Ok((result, cen))
 }
 
-/// Compute the 2D convex hull using Andrew's monotone chain algorithm.
-///
-/// Input points are sorted in-place. Returns the hull vertices in
-/// counter-clockwise order. The input must have at least 3 points.
-fn convex_hull_2d(points: &mut [[f64; 2]]) -> Vec<[f64; 2]> {
-    let n = points.len();
-    if n < 3 {
-        return points.to_vec();
-    }
-
-    // Sort by x, then by y.
-    points.sort_by(|a, b| {
-        a[0].partial_cmp(&b[0])
-            .unwrap()
-            .then(a[1].partial_cmp(&b[1]).unwrap())
-    });
-
-    // Remove duplicates (points are sorted, so consecutive dupes are adjacent).
-    let mut unique: Vec<[f64; 2]> = Vec::with_capacity(n);
-    for &p in points.iter() {
-        if unique
-            .last()
-            .is_none_or(|last| last[0] != p[0] || last[1] != p[1])
-        {
-            unique.push(p);
-        }
-    }
-    let points = &unique;
-    let n = points.len();
-    if n < 3 {
-        return points.to_vec();
-    }
-
-    let mut hull: Vec<[f64; 2]> = Vec::with_capacity(2 * n);
-
-    // Build lower hull.
-    for p in points.iter() {
-        while hull.len() >= 2 && cross(&hull[hull.len() - 2], &hull[hull.len() - 1], p) <= 0.0 {
-            hull.pop();
-        }
-        hull.push(*p);
-    }
-
-    // Build upper hull.
-    let lower_len = hull.len() + 1;
-    for p in points.iter().rev() {
-        while hull.len() >= lower_len
-            && cross(&hull[hull.len() - 2], &hull[hull.len() - 1], p) <= 0.0
-        {
-            hull.pop();
-        }
-        hull.push(*p);
-    }
-
-    // Remove the last point (same as first).
-    hull.pop();
-    hull
+/// The test `Polygon::convex` applies to each pixel value: a pixel is selected
+/// when its value compares with the supplied value in this way (polygon.c
+/// `ISVALID`, and the `AST__LT` ... `AST__NE` codes of polygon.h and
+/// timeframe.h).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PixelOper {
+    /// Pixel value less than the supplied value.
+    Lt,
+    /// Pixel value less than or equal to the supplied value.
+    Le,
+    /// Pixel value equal to the supplied value.
+    Eq,
+    /// Pixel value not equal to the supplied value.
+    Ne,
+    /// Pixel value greater than or equal to the supplied value.
+    Ge,
+    /// Pixel value greater than the supplied value.
+    Gt,
 }
 
-/// Cross product of vectors OA and OB (2D).
-fn cross(o: &[f64; 2], a: &[f64; 2], b: &[f64; 2]) -> f64 {
-    (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+impl PixelOper {
+    fn selects<T: PartialOrd>(self, v: T, value: T) -> bool {
+        match self {
+            PixelOper::Lt => v < value,
+            PixelOper::Le => v <= value,
+            PixelOper::Eq => v == value,
+            PixelOper::Ne => v != value,
+            PixelOper::Ge => v >= value,
+            PixelOper::Gt => v > value,
+        }
+    }
+}
+
+/// A 2-D array, row by row with X varying fastest, and the test that selects
+/// its pixels. Pixels are addressed by 1-based GRID indices, as polygon.c
+/// addresses them.
+struct PixelSelection<'a, T> {
+    value: T,
+    oper: PixelOper,
+    array: &'a [T],
+    xdim: i64,
+    ydim: i64,
+}
+
+impl<T: PartialOrd + Copy> PixelSelection<'_, T> {
+    fn selected(&self, index: i64) -> bool {
+        self.oper.selects(self.array[index as usize], self.value)
+    }
+
+    /// polygon.c `FindBoxEdge`: the lower (`low`) or upper edge, on GRID axis
+    /// `axis` (0 or 1), of the bounding box of the selected pixels, and the
+    /// highest and lowest GRID index on the other axis of the selected pixels
+    /// on that edge, as `(val, valmax, valmin)`. `val` is zero when no pixel
+    /// is selected.
+    fn find_box_edge(&self, axis: usize, low: bool) -> (i64, i64, i64) {
+        let (astep, bstep, alen, blen) = if axis == 1 {
+            (self.xdim, 1, self.ydim, self.xdim)
+        } else {
+            (1, self.xdim, self.xdim, self.ydim)
+        };
+        let (a0, a1, inc) = if low { (1, alen, 1) } else { (alen, 1, -1) };
+        let (b0, b1) = (1, blen);
+
+        let (mut val, mut valmax, mut valmin) = (0, 0, 0);
+        let mut a = a0;
+        loop {
+            let mut pc = (a - 1) * astep + (b0 - 1) * bstep;
+            for b in b0..=b1 {
+                if self.selected(pc) {
+                    if valmin == 0 {
+                        valmin = b;
+                    }
+                    valmax = b;
+                }
+                pc += bstep;
+            }
+            if valmax != 0 {
+                val = a;
+                break;
+            }
+            if a != a1 {
+                a += inc;
+            } else {
+                break;
+            }
+        }
+        (val, valmax, valmin)
+    }
+
+    /// polygon.c `PartHull`: the vertices of the convex hull of the selected
+    /// pixels on the far side of the line from GRID pixel (xs,ys) to (xe,ye),
+    /// as PIXEL coordinates. With `starpix` pixel centres are at half-integer
+    /// PIXEL coordinates, otherwise at integers.
+    fn part_hull(
+        &self,
+        (xs, ys): (i64, i64),
+        (xe, ye): (i64, i64),
+        starpix: bool,
+        lbnd: [i64; 2],
+    ) -> AstResult<Vec<[f64; 2]>> {
+        if xs == xe && ys == ye {
+            return Ok(vec![if starpix {
+                [(xs + lbnd[0]) as f64 - 1.5, (ys + lbnd[1]) as f64 - 1.5]
+            } else {
+                [(xs + lbnd[0]) as f64 - 1.0, (ys + lbnd[1]) as f64 - 1.0]
+            }]);
+        }
+        if xs == xe {
+            return Err(AstError::new(
+                ErrorCode::Inter,
+                "astOutline(Polygon): Bounding box has zero width (internal AST \
+                 programming error).",
+            ));
+        } else if ys == ye {
+            return Err(AstError::new(
+                ErrorCode::Inter,
+                "astOutline(Polygon): Bounding box has zero height (internal AST \
+                 programming error).",
+            ));
+        }
+
+        let xdelta = (xe - xs) as f64 / (ye - ys) as f64;
+        let (xl, xr) = if xe > xs { (xs, xe) } else { (xe, xs) };
+        let yinc = if ye > ys { 1 } else { -1 };
+
+        let mut hull: Vec<[f64; 2]> = Vec::new();
+        let mut iy = ys;
+        loop {
+            // The GRID X where the line crosses this row; the cast truncates,
+            // as C's cast to AstDim does.
+            let xlim = (0.5 + xs as f64 + xdelta * (iy - ys) as f64) as i64;
+            let (x0, x1) = if yinc < 0 { (xl, xlim) } else { (xlim, xr) };
+
+            let row = (iy - 1) * self.xdim - 1;
+            for ix in x0..=x1 {
+                if self.selected(row + ix) {
+                    let p = [ix as f64, iy as f64];
+                    // Remove hull vertices until the new pixel is to the left
+                    // of the line through the last two, then add it.
+                    loop {
+                        let n = hull.len();
+                        if n < 2 {
+                            hull.push(p);
+                            break;
+                        }
+                        let dx1 = hull[n - 1][0] - hull[n - 2][0];
+                        let dy1 = hull[n - 1][1] - hull[n - 2][1];
+                        let dx2 = p[0] - hull[n - 2][0];
+                        let dy2 = p[1] - hull[n - 2][1];
+                        if dx1 * dy2 > dx2 * dy1 {
+                            hull.push(p);
+                            break;
+                        }
+                        hull.pop();
+                    }
+                }
+            }
+
+            if iy == ye {
+                break;
+            }
+            iy += yinc;
+        }
+
+        // GRID to PIXEL.
+        let xoff = if starpix {
+            lbnd[0] as f64 - 1.5
+        } else {
+            lbnd[0] as f64 - 1.0
+        };
+        let yoff = if starpix {
+            lbnd[1] as f64 - 1.5
+        } else {
+            lbnd[1] as f64 - 1.0
+        };
+        for v in &mut hull {
+            v[0] += xoff;
+            v[1] += yoff;
+        }
+        Ok(hull)
+    }
+
+    /// polygon.c `ConvexHull`: the convex hull of the selected pixels, as the
+    /// hulls of the four corners of their bounding box, bottom right, top
+    /// right, top left and bottom left, or `None` when no pixel is selected.
+    fn convex_hull(&self, lbnd: [i64; 2], starpix: bool) -> AstResult<Option<Vec<[f64; 2]>>> {
+        let (ylo, yloxmax, yloxmin) = self.find_box_edge(1, true);
+        if ylo <= 0 {
+            return Ok(None);
+        }
+        let (yhi, yhixmax, yhixmin) = self.find_box_edge(1, false);
+        let (xlo, xloymax, xloymin) = self.find_box_edge(0, true);
+        let (xhi, xhiymax, xhiymin) = self.find_box_edge(0, false);
+
+        let mut hull = self.part_hull((yloxmax, ylo), (xhi, xhiymin), starpix, lbnd)?;
+        hull.extend(self.part_hull((xhi, xhiymax), (yhixmax, yhi), starpix, lbnd)?);
+        hull.extend(self.part_hull((yhixmin, yhi), (xlo, xloymax), starpix, lbnd)?);
+        hull.extend(self.part_hull((xlo, xloymin), (yloxmin, ylo), starpix, lbnd)?);
+        Ok(Some(hull))
+    }
 }
 
 /// A polygonal region within a 2-D coordinate frame.
@@ -365,71 +503,76 @@ impl Polygon {
         self.data.perm_axes(perm)
     }
 
-    /// Compute the convex hull of pixels matching a condition in a 2D array.
+    /// The convex hull of the pixels of a 2-D array whose values pass a test,
+    /// as a Polygon in a PIXEL Frame (polygon.c `astConvex<X>` and
+    /// `astConvex8<X>`).
     ///
-    /// Scans the 2D `data` array (stored row-major, dimensions `nx` × `ny`)
-    /// for pixels whose value equals `value` (when `equal` is true) or does
-    /// not equal `value` (when `equal` is false). The grid coordinates of
-    /// matching pixels are computed using `lbnd` (the grid coordinates of
-    /// pixel `[0, 0]`). Returns a Polygon representing the convex hull.
+    /// `array` holds the pixels row by row, X varying fastest, with pixel
+    /// indices `lbnd` to `ubnd` inclusive on each axis. A pixel is selected
+    /// when its value compares with `value` as `oper` says. With `starpix`,
+    /// the Starlink convention, pixel centres are at half-integer PIXEL
+    /// coordinates; otherwise, as in `astResample`, at integers.
     ///
-    /// This matches the C library's `astConvexF`.
-    pub fn convex_hull_f32(
-        value: f32,
-        equal: bool,
-        data: &[f32],
-        nx: usize,
-        ny: usize,
+    /// The vertices are the centres of selected pixels, one per corner of
+    /// each of the four parts of the hull, so a vertex may repeat. The result
+    /// is `None` when no pixel is selected, as C returns a null pointer
+    /// without an error.
+    ///
+    /// # Errors
+    ///
+    /// [`ErrorCode::Dimin`] if `ubnd` is below `lbnd` on either axis or
+    /// `array` is shorter than the pixel count; C reads past the array in
+    /// those cases.
+    pub fn convex<T: PartialOrd + Copy>(
+        value: T,
+        oper: PixelOper,
+        array: &[T],
         lbnd: [i64; 2],
-    ) -> AstResult<Self> {
+        ubnd: [i64; 2],
+        starpix: bool,
+    ) -> AstResult<Option<Polygon>> {
         use crate::frames::BasicFrameBuilder;
 
-        if data.len() < nx * ny {
+        let xdim = ubnd[0] - lbnd[0] + 1;
+        let ydim = ubnd[1] - lbnd[1] + 1;
+        if xdim < 1 || ydim < 1 || (array.len() as i64) < xdim * ydim {
             return Err(AstError::new(
                 ErrorCode::Dimin,
                 format!(
-                    "data array has {} elements but nx*ny = {}",
-                    data.len(),
-                    nx * ny
+                    "astConvex: the array has {} elements, which does not cover \
+                     pixel bounds ({}:{},{}:{}).",
+                    array.len(),
+                    lbnd[0],
+                    ubnd[0],
+                    lbnd[1],
+                    ubnd[1]
                 ),
             ));
         }
+        let pixels = PixelSelection {
+            value,
+            oper,
+            array,
+            xdim,
+            ydim,
+        };
+        let Some(hull) = pixels.convex_hull(lbnd, starpix)? else {
+            return Ok(None);
+        };
 
-        // Collect grid coordinates of matching pixels.
-        let mut points: Vec<[f64; 2]> = Vec::new();
-        for row in 0..ny {
-            for col in 0..nx {
-                let pixel = data[col + row * nx];
-                let matches = if equal {
-                    pixel == value
-                } else {
-                    pixel != value
-                };
-                if matches {
-                    let x = (lbnd[0] + col as i64) as f64;
-                    let y = (lbnd[1] + row as i64) as f64;
-                    points.push([x, y]);
-                }
-            }
-        }
-
-        if points.len() < 3 {
-            return Err(AstError::new(
-                ErrorCode::Ngdin,
-                format!(
-                    "convex hull requires at least 3 matching pixels, found {}",
-                    points.len()
-                ),
-            ));
-        }
-
-        // Compute convex hull using Andrew's monotone chain algorithm.
-        let hull = convex_hull_2d(&mut points);
-
-        // Build a Polygon from the hull vertices.
-        let frame = BasicFrameBuilder::new(2).build()?;
-        let vertices: Vec<Vec<f64>> = hull.iter().map(|p| vec![p[0], p[1]]).collect();
-        PolygonBuilder::new(frame, vertices)?.build()
+        // C builds a Polygon round three junk vertices and then replaces its
+        // PointSet, so the vertex order is not checked by EnsureInside.
+        let frame = BasicFrameBuilder::new(2)
+            .domain("PIXEL")
+            .unit(1, "pixel")
+            .unit(2, "pixel")
+            .title("Pixel coordinates")
+            .build()?;
+        let points = hull.iter().map(|v| v.to_vec()).collect();
+        Ok(Some(Polygon {
+            data: RegionData::new(FrameSet::new(Box::new(frame)), points),
+            simp_vertices: None,
+        }))
     }
 
     /// Un-negated base-Frame membership, with the effective `Closed` value
