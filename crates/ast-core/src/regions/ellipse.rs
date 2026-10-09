@@ -429,6 +429,50 @@ impl Ellipse {
         Ok((a, b))
     }
 
+    /// The Ellipse's centre, axis half-lengths, angle and axis ends in its
+    /// current Frame, as `astEllipsePars` gives them (ellipse.c
+    /// `EllipsePars`): the defining points transformed by the FrameSet, and
+    /// the axes from ellipse.c `CalcPars` in the current Frame. `p2` is the
+    /// end of the secondary axis, which `CalcPars` puts in place of the
+    /// second defining point. When either half-length is not positive, `a`,
+    /// `b` and `angle` are BAD.
+    pub fn ellipse_pars(&self) -> AstResult<EllipsePars> {
+        let pts = self
+            .data
+            .frameset
+            .transform(&self.get_region_points()?, true)?;
+        let centre = pts.point(0).to_vec();
+        let p1 = pts.point(1).to_vec();
+        let mut p2 = pts.point(2).to_vec();
+        let frm = self.data.frameset.current();
+
+        let a = frm.distance(&centre, &p1)?;
+        let (mut b, mut angle) = (BAD_VALUE, BAD_VALUE);
+        if a > 0.0 {
+            let (_, x, y) = frm.resolve(&centre, &p1, &p2)?;
+            b = a * a - x * x;
+            if b > 0.0 {
+                b = a * y / b.sqrt();
+            }
+            let up = [centre[0], centre[1] + (0.1 * a).abs()];
+            angle = frm.angle(&up, &centre, &p1)?;
+            p2 = frm.offset2(&centre, angle + DPIBY2, b)?.0;
+        }
+        let (a, b, angle) = if a <= 0.0 || b <= 0.0 {
+            (BAD_VALUE, BAD_VALUE, BAD_VALUE)
+        } else {
+            (a, b, angle)
+        };
+        Ok(EllipsePars {
+            centre,
+            a,
+            b,
+            angle,
+            p1,
+            p2,
+        })
+    }
+
     /// ellipse.c `CalcPars` in the base Frame: the half-lengths of the
     /// primary and secondary axes, and the angle from the second axis to
     /// the primary axis, positive towards the first axis.
@@ -469,6 +513,24 @@ impl Ellipse {
         let (p2, _) = frame.offset2(&centre, angle + DPIBY2, axes[1])?;
         Ellipse::from_defining_points(frame, centre, p1, p2, None)
     }
+}
+
+/// What [`Ellipse::ellipse_pars`] returns: the outputs of `astEllipsePars`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct EllipsePars {
+    /// The centre, in the current Frame.
+    pub centre: Vec<f64>,
+    /// The half-length of the primary axis.
+    pub a: f64,
+    /// The half-length of the secondary axis.
+    pub b: f64,
+    /// The angle from the second axis to the primary axis, positive towards
+    /// the first axis, in radians.
+    pub angle: f64,
+    /// The end of the primary axis.
+    pub p1: Vec<f64>,
+    /// The end of the secondary axis.
+    pub p2: Vec<f64>,
 }
 
 // ============================================================================

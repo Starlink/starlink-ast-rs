@@ -77,6 +77,7 @@ Seams first, because the HIGH findings in themes B to F, and the Stc port, are f
 | PR-1, PL-3, IN-6, PL-2 | FIXED 2026-10-08: a PointList is bounded as region.c `GetBounded` decides, so a negated PointList is unbounded unless its Frame is a SkyFrame. A negated Prism is bounded only if both components are bounded once negated, as prism.c `GetBounded` tests them. An Interval's `reg_base_box` is its limits as stored, so an excluded axis keeps its lower limit above its upper where it was widened to the whole axis. A PointList's `reg_base_box` is pointlist.c `RegBaseBox`: the least and greatest `ax_distance` from the first point, turned back into axis values with `ax_offset`, so a sky PointList either side of RA 0 has a box that wraps, and a default uncertainty about 600 times smaller than the raw minimum and maximum gave | `tests/test_region_bounded_oracle.rs`: bounded flags and bounding boxes against C from `tools/oracle_fixtures/region_bounded_probe.c` |
 | CR-4, PR-4 | FIXED 2026-10-08: setting or clearing Closed or MeshSize on a CmpRegion or Prism sets or clears it on both components too, as their `MAKE_SET` and `MAKE_CLEAR` accessors do. The Region trait gains `clear_closed`, C's `astClearClosed`, which it lacked. An unset FillFactor is the first component's for a CmpRegion and the product of the components' for a Prism. The CmpRegion builder copies the first component's set MeshSize and Closed onto the CmpRegion, and so onto both components, as `astInitCmpRegion` does; `astInitPrism` copies nothing | `tests/test_region_compound_attr_oracle.rs`: a CmpRegion and a Prism dumped byte-exact against C as made, after setting and after clearing, and their FillFactors, from `tools/oracle_fixtures/region_compound_attr_probe.c` |
 | RB-11, RB-20 | FIXED 2026-10-08: C's protected `astMapRegion` is `reg_map_region`, hidden like the other protected Region methods, and the port's algorithms call it. The public `map_region` is `astMapRegionId_`: the same, simplified, so a Box mapped through a PermMap comes back as a Box in the new Frame. `reg_map_region` drops axes only when the split it makes keeps as many axes as are wanted, so a Region with a BAD defining point, which has no flags saying which axes give good values, keeps every axis as C's does. Matching C's dump of that case exposed a simplifier divergence: the PermMap `MapMerge` test of whether an array was already null (`NullPerm`) compared the public encoding, where C stores a bad entry as the number of coordinates on the other side, so a bad entry at that index counts as null; a 3-in, 2-out PermMap with inperm (1, 2, 0) now simplifies to itself as in C | `tests/test_region_mapregion_oracle.rs`: both forms and the PermMap against C's dumps from `tools/oracle_fixtures/region_mapregion_probe.c` |
+| EL-3 | FIXED 2026-10-09: `Ellipse::ellipse_pars` is `astEllipsePars`: the centre and axis ends in the current Frame, the half-lengths and the angle from ellipse.c `CalcPars` in that Frame, with the second point replaced by the end of the secondary axis as `CalcPars` replaces it, and BAD half-lengths and angle when either half-length is not positive | `tests/test_region_ellipsepars_oracle.rs`: a Cartesian and a sky Ellipse, a form-0 Ellipse and an Ellipse mapped through a ZoomMap, exact against C from `tools/oracle_fixtures/region_ellipsepars_probe.c` |
 | PL-1 | WITHDRAWN: a C probe masks the same two pixels as the port with a UnitMap; the Mapping direction is RB-12 | Appendix C |
 
 
@@ -368,7 +369,7 @@ Its coverage tables, findings, and the status of the earlier audits' class findi
 #### Ellipse (ellipse.c vtab 543-566)
 | C name | Rust | kind | status |
 |---|---|---|---|
-| EllipsePars (793, public) | NONE | public API | MISSING (EL-3) |
+| EllipsePars (793, public) | `Ellipse::ellipse_pars` | public API | PORTED (EL-3 fixed) |
 | Transform (2052)/Cache (586)/CalcPars (702) | `reg_base_inside` (ellipse.rs:477) + `ellipse_params` (435) | architecture | DIVERGENT (EL-1) |
 | Simplify (1884) | `simplified` | architecture | OUT-OF-SCOPE |
 | SetRegFS/ResetCache | RegionData | ceremony | PORTED |
@@ -720,7 +721,7 @@ GetFillFactor (871) defaults to the product of the components' FillFactors, not 
 - GRID-FRM: FIXED (Box `get_region_grid` box_region.rs:1253 uses `frame_grid`; base iterative grid data.rs:573).
 - BND-INT: OPEN (IN-4).
 - RT-TRACE, RS-SPLIT: OPEN, GATED(Plot).
-- ACC-PARS: OPEN for the public `astCirclePars`/`astEllipsePars` (CI-2, EL-3) and protected `CmpRegionList` (CR-5); the protected point accessors are covered by `get_region_points`.
+- ACC-PARS: the public `astCirclePars` and `astEllipsePars` are ported (CI-2, EL-3); still OPEN for the protected `CmpRegionList` (CR-5). The protected point accessors are covered by `get_region_points`.
 - PointList Mask (lower-confidence note): CONFIRMED (PL-1).
 - region-box-interval-pointlist.md:
   - FIXED: Box RegPins (1040), RegCentre set (1317); Interval Overlap (218/1042), RegPins (1054), RegCentre set (1402); PointList RegPins (338) and uncertainty-driven Transform (162).

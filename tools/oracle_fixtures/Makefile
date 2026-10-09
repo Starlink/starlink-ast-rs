@@ -26,7 +26,7 @@ LIBS := -L$(REF)/build $(GRF_LOG) \
 RPATH := -Wl,-rpath,$(abspath $(REF)/build)
 CFLAGS := -O0 -g -Wall
 
-PROGS := attr_test_clear_probe region_mapregion_probe region_compound_attr_probe region_bounded_probe region_errors_probe region_cmpregion_probe region_polygon_probe region_ellipse_probe region_interval_probe region_box_probe region_mask_probe region_disc_probe region_equal_probe region_frame_probe region_attrib_probe region_overlap_probe intramap_probe xphmap_probe dss_merge_probe spline_inverse_probe poly_iter_inverse_probe map_split_probe equal_probe rate_probe lutmap_forward_probe linear_approx analyse_poly scale_poly_inputs orth_vector_set \
+PROGS := attr_test_clear_probe region_ellipsepars_probe region_mapregion_probe region_compound_attr_probe region_bounded_probe region_errors_probe region_cmpregion_probe region_polygon_probe region_ellipse_probe region_interval_probe region_box_probe region_mask_probe region_disc_probe region_equal_probe region_frame_probe region_attrib_probe region_overlap_probe intramap_probe xphmap_probe dss_merge_probe spline_inverse_probe poly_iter_inverse_probe map_split_probe equal_probe rate_probe lutmap_forward_probe linear_approx analyse_poly scale_poly_inputs orth_vector_set \
          sip_int_world keymap_hash gen_simp unitnorm_probe \
          frame_in_map_slot_probe skyframe_format_probe \
          frame_attrs_probe frame_class_attrs_probe \

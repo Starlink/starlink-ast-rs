@@ -24,7 +24,7 @@ pub use box_region::{BoxRegion, BoxRegionBuilder};
 pub use circle::{Circle, CircleBuilder};
 pub(crate) use cmpregion::Oper as CmpOper;
 pub use cmpregion::{CmpRegion, CmpRegionBuilder};
-pub use ellipse::{Ellipse, EllipseBuilder};
+pub use ellipse::{Ellipse, EllipseBuilder, EllipsePars};
 pub use interval::{Interval, IntervalBuilder};
 pub use nullregion::{NullRegion, NullRegionBuilder};
 pub use pointlist::{PointList, PointListBuilder};
