@@ -398,7 +398,7 @@ impl Ellipse {
         // Validate that the supplied points determine an ellipse (a > 0 and a
         // finite, positive secondary axis), matching the CalcPars check in
         // astInitEllipse (ellipse.c:654).
-        let (a, b, _) = ellipse.ellipse_params()?;
+        let (a, b) = ellipse.calc_axes()?;
         if a <= 0.0 || is_bad(a) || b <= 0.0 || is_bad(b) {
             return Err(AstError::new(
                 ErrorCode::Badin,
@@ -429,38 +429,54 @@ impl Ellipse {
         self.data.perm_axes(perm)
     }
 
-    /// Compute the geometric parameters (semi-axes and angle) from the
-    /// defining points.
-    ///
-    /// Returns `(a, b, angle)` where `a` is the semi-major length, `b`
-    /// is the semi-minor length, and `angle` is the position angle in
-    /// radians from axis 1 toward axis 2.
-    fn ellipse_params(&self) -> AstResult<(f64, f64, f64)> {
+    /// The half-lengths of the primary and secondary axes, as ellipse.c
+    /// `CalcPars` finds them in the base Frame: the primary from the
+    /// Frame's distance between the centre and point 1, the secondary from
+    /// point 2 resolved along and across the primary axis.
+    fn calc_axes(&self) -> AstResult<(f64, f64)> {
+        let (a, b, _) = self.calc_pars()?;
+        Ok((a, b))
+    }
+
+    /// ellipse.c `CalcPars` in the base Frame: the half-lengths of the
+    /// primary and secondary axes, and the angle from the second axis to
+    /// the primary axis, positive towards the first axis.
+    fn calc_pars(&self) -> AstResult<(f64, f64, f64)> {
+        let frm = self.data.frameset.base();
         let centre = &self.data.points[0];
-        let p1 = &self.data.points[1];
-
-        // Semi-major axis: distance from centre to point1.
-        let dx = p1[0] - centre[0];
-        let dy = p1[1] - centre[1];
-        let a = (dx * dx + dy * dy).sqrt();
-
+        let point1 = &self.data.points[1];
+        let point2 = &self.data.points[2];
+        let a = frm.distance(centre, point1)?;
         if a <= 0.0 {
             return Err(AstError::new(
                 ErrorCode::Badin,
                 "Ellipse semi-major axis length is zero",
             ));
         }
-
-        // Position angle from axis 1 toward axis 2.
-        let angle = dy.atan2(dx);
-
-        // Semi-minor axis: distance from centre to point2.
-        let p2 = &self.data.points[2];
-        let dx2 = p2[0] - centre[0];
-        let dy2 = p2[1] - centre[1];
-        let b = (dx2 * dx2 + dy2 * dy2).sqrt();
-
+        let (_, x, y) = frm.resolve(centre, point1, point2)?;
+        let mut b = a * a - x * x;
+        if b > 0.0 {
+            b = a * y / b.sqrt();
+        }
+        let up = [centre[0], centre[1] + (0.1 * a).abs()];
+        let angle = frm.angle(&up, centre, point1)?;
         Ok((a, b, angle))
+    }
+
+    /// An Ellipse in `frame` as ellipse.c's form-1 constructor makes it: the
+    /// end of the primary axis `axes[0]` from `centre` at `angle` (from the
+    /// second axis, positive towards the first), and the end of the
+    /// secondary axis `axes[1]` from it a quarter turn further, each placed
+    /// with the Frame's `offset2`.
+    fn from_axes(
+        frame: DynFrame,
+        centre: Vec<f64>,
+        axes: [f64; 2],
+        angle: f64,
+    ) -> AstResult<Ellipse> {
+        let (p1, _) = frame.offset2(&centre, angle, axes[0])?;
+        let (p2, _) = frame.offset2(&centre, angle + DPIBY2, axes[1])?;
+        Ellipse::from_defining_points(frame, centre, p1, p2, None)
     }
 }
 
@@ -477,40 +493,30 @@ impl RegionGeometry for Ellipse {
         &mut self.data
     }
 
+    /// ellipse.c `Transform`: each point resolved, in the base Frame,
+    /// into components along and across the primary axis, and compared
+    /// with the axes' half-lengths.
     fn reg_base_inside(&self, pts: &PointSet) -> AstResult<Vec<bool>> {
-        let npoint = pts.npoint();
-        let (a, b, angle) = self.ellipse_params()?;
+        let (a, b) = self.calc_axes()?;
         let centre = &self.data.points[0];
+        let point1 = &self.data.points[1];
         let closed = self.data.closed_for_base_inside();
-
-        // Pre-compute trigonometric and reciprocal values for efficiency.
-        let cos_a = angle.cos();
-        let sin_a = angle.sin();
-        let inv_a2 = 1.0 / (a * a);
-        let inv_b2 = 1.0 / (b * b);
-
-        let mut result = vec![false; npoint];
-
-        for (r, point) in result.iter_mut().zip((0..npoint).map(|i| pts.point(i))) {
-            if point_has_bad(&point[..2]) {
-                continue;
-            }
-
-            // Translate relative to centre.
-            let dx = point[0] - centre[0];
-            let dy = point[1] - centre[1];
-
-            // Rotate by negative angle to align with ellipse axes.
-            let u = dx * cos_a + dy * sin_a;
-            let v = -dx * sin_a + dy * cos_a;
-
-            // Compute normalised distance.
-            let d = u * u * inv_a2 + v * v * inv_b2;
-
-            *r = if closed { d <= 1.0 } else { d < 1.0 };
-        }
-
-        Ok(result)
+        let res = self
+            .data
+            .frameset
+            .base()
+            .resolve_points(centre, point1, pts)?;
+        let (c1, c2) = (1.0 / (a * a), 1.0 / (b * b));
+        Ok((0..res.npoint())
+            .map(|i| {
+                let p = res.point(i);
+                if is_bad(p[0]) || is_bad(p[1]) {
+                    return false;
+                }
+                let d = c1 * p[0] * p[0] + c2 * p[1] * p[1];
+                if closed { d <= 1.0 } else { d < 1.0 }
+            })
+            .collect())
     }
 
     fn reg_base_box(&self) -> AstResult<(Vec<f64>, Vec<f64>)> {
@@ -562,19 +568,18 @@ impl RegionGeometry for Ellipse {
         // giving it the base Frame and clearing Negated (ellipse.c:1170-1173),
         // so the predicate is membership of the un-negated Ellipse and the raw
         // Closed value is the effective one.
-        let (a, b, angle) = self.ellipse_params()?;
-        let cos_a = angle.cos();
-        let sin_a = angle.sin();
+        let (a, b) = self.calc_axes()?;
+        let point1 = &self.data.points[1];
         let closed = self.data.closed;
         let inside = |point: &[f64]| -> AstResult<bool> {
             if point_has_bad(&point[..2]) {
                 return Ok(false);
             }
-            let dx = point[0] - centre[0];
-            let dy = point[1] - centre[1];
-            let u = dx * cos_a + dy * sin_a;
-            let v = -dx * sin_a + dy * cos_a;
-            let d = u * u / (a * a) + v * v / (b * b);
+            let (_, x, y) = frm.resolve(centre, point1, point)?;
+            if is_bad(x) || is_bad(y) {
+                return Ok(false);
+            }
+            let d = x * x / (a * a) + y * y / (b * b);
             Ok(if closed { d <= 1.0 } else { d < 1.0 })
         };
         frm.norm_box(&mut lower, &mut upper, &inside)?;
@@ -584,22 +589,13 @@ impl RegionGeometry for Ellipse {
 
     fn reg_base_mesh(&self) -> AstResult<Vec<Vec<f64>>> {
         let centre = &self.data.points[0];
-        let point1 = &self.data.points[1];
-        let point2 = &self.data.points[2];
         let frm = self.data.frameset.base();
         let np = self.data.effective_mesh_size();
 
         // Ellipse parameters in the geodesic convention used by the mesh
         // (CalcPars, ellipse.c:697): the angle is measured from the positive
         // direction of axis 2 to the primary ellipse axis.
-        let a = frm.distance(centre, point1)?;
-        let (_, x, y) = frm.resolve(centre, point1, point2)?;
-        let b = {
-            let bb = a * a - x * x;
-            if bb > 0.0 { a * y / bb.sqrt() } else { a }
-        };
-        let point3 = vec![centre[0], centre[1] + (0.1 * a).abs()];
-        let angle = frm.angle(&point3, centre, point1)?;
+        let (a, b, angle) = self.calc_pars()?;
 
         let delta = 2.0 * PI / np as f64;
         let mut mesh = Vec::with_capacity(np);
@@ -705,35 +701,23 @@ impl Region for Ellipse {
         };
 
         let drad = 0.5 * (l1 + l2);
-        let (a, b, angle) = self.ellipse_params()?;
+        let (a, b, angle) = self.calc_pars()?;
         let centre = &self.data.points[0];
 
-        // Reconstruct the two defining boundary points from the centre, the
-        // (adjusted) semi-axes, and the unchanged angle — as `build()` does.
-        let make_ellipse = |sa: f64, sb: f64, negated: bool| -> Ellipse {
-            let cos_a = angle.cos();
-            let sin_a = angle.sin();
-            let p1 = vec![centre[0] + sa * cos_a, centre[1] + sa * sin_a];
-            let p2 = vec![centre[0] - sb * sin_a, centre[1] + sb * cos_a];
-            let frameset = FrameSet::new(bfrm.snapshot());
-            let mut data = RegionData::new(frameset, vec![centre.clone(), p1, p2]);
-            data.negated = negated;
-            Ellipse { data }
-        };
-
-        let large_ellipse = make_ellipse(a + 0.5 * drad, b + 0.5 * drad, false);
-
+        // The Ellipses whose axes are wider and narrower by half the border,
+        // made as C makes them, with its form-1 constructor (ellipse.c:1531).
+        let large_ellipse = Ellipse::from_axes(
+            bfrm.snapshot(),
+            centre.clone(),
+            [a + 0.5 * drad, b + 0.5 * drad],
+            angle,
+        )?;
         let lim = 1.0E-6 * drad;
-        let mut small_a = a - 0.5 * drad;
-        let mut small_b = b - 0.5 * drad;
-        if small_a < lim {
-            small_a = lim;
-        }
-        if small_b < lim {
-            small_b = lim;
-        }
+        let small_axes = [(a - 0.5 * drad).max(lim), (b - 0.5 * drad).max(lim)];
+        let mut small_ellipse =
+            Ellipse::from_axes(bfrm.snapshot(), centre.clone(), small_axes, angle)?;
         // Negate the smaller region (ellipse.c:1550).
-        let small_ellipse = make_ellipse(small_a, small_b, true);
+        small_ellipse.negate();
 
         // On the boundary iff inside both the large Ellipse and the negated
         // small Ellipse: chain the two forward transforms; a point is on the
