@@ -898,27 +898,11 @@ impl RegionGeometry for Interval {
         Ok(result)
     }
 
+    /// interval.c `RegBaseBox`: the limits as stored, a missing one as
+    /// `-MAX` or `MAX`, and an excluded axis with its lower limit above its
+    /// upper.
     fn reg_base_box(&self) -> AstResult<(Vec<f64>, Vec<f64>)> {
-        // Return the bounds directly. For unbounded directions, use the
-        // effective bounds (±MAX).
-        let (lbnd, ubnd) = self.effective_bounds();
-
-        // For excluded intervals (lb > ub), the bounding box is
-        // the full range since the region wraps around.
-        let naxes = lbnd.len();
-        let mut lower = lbnd;
-        let mut upper = ubnd;
-
-        for i in 0..naxes {
-            if lower[i] > upper[i] {
-                // Excluded interval — the region covers from -MAX to ub
-                // and from lb to MAX, so the bbox is the whole axis.
-                lower[i] = -f64::MAX;
-                upper[i] = f64::MAX;
-            }
-        }
-
-        Ok((lower, upper))
+        Ok(self.effective_bounds())
     }
 
     /// interval.c `RegBaseMesh`: the equivalent Box's boundary mesh, and an

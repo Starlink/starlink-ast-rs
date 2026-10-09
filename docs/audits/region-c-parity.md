@@ -74,6 +74,7 @@ Seams first, because the HIGH findings in themes B to F, and the Stc port, are f
 | CR-1, CR-2, CR-3 | FIXED 2026-10-08: the CmpRegion builder is `astInitCmpRegion`: the second Region is mapped into the first's Frame when a Mapping joins them (AST__INTRD when none does), and `CmpOperator::Xor` is made, as C makes it, as the OR of each Region ANDed with the negation of the other, keeping the two Regions XORed; the dump writes those with Operator 3, and the loader rebuilds the XOR from them. The CmpRegion's mesh is cmpregion.c `RegBaseMesh`: each component's current-Frame mesh, or region.c `BndMesh` for a component with no finite boundary, kept where it lies inside (AND) or outside (OR) the other component, with C's AST__INTER where no mesh can be made | `tests/test_region_cmpregion_oracle.rs`: an FK5 Circle ANDed with a Galactic Box (membership and a 200-point mesh, bit-exact) and an XOR of two Boxes (membership, dump byte-exact, and reading C's dump), from `tools/oracle_fixtures/region_cmpregion_probe.c` |
 | EL-2 | FIXED 2026-10-08: `EllipseBuilder` takes the arguments of `astEllipse` form 1: the angle from the second axis to the primary axis, positive towards the first, and the axis ends placed with the Frame's `offset2`, so a sky Ellipse's axes are arcs. It measured the angle from the first axis and placed the ends on a plane; tests that built Ellipses take their angles in C's convention | `tests/test_region_ellipse_oracle.rs` (`builder_matches_astellipse_form1`): a sky and a Cartesian Ellipse built by `EllipseBuilder` dump exactly as C's |
 | RB-9, RB-10, BX-4, CI-1 | FIXED 2026-10-08: `set_uncertainty` returns `AstResult`. A shape that cannot be re-centred, or a Frame that cannot be converted to the Region's base Frame, is AST__NCPIN, the status C's second `astError` leaves, and C's first message is the error's message. Either way the Region is left with no uncertainty, as C annuls the old one first. `set_fill_factor` is AST__ATSER outside 0 to 1 and leaves the attribute unchanged, and `reg_overlay`, which C makes through `astSetFillFactor`, passes that on. The loader rejects an out-of-range `Fill` the same way and raises a `MeshSz` below 5 to 5, where a negative one became a huge mesh. `BoxRegionBuilder::new` and `from_bounds` reject a BAD (or NaN) coordinate in either supplied point as AST__BADIN, and `CircleBuilder::build` does so for the centre and the circumference point, which a BAD radius makes BAD. Still open: the parallel merges (`region_merge` and `finish_region_merge`) return `Option`, so an uncertainty or FillFactor error inside one declines the merge where C's status would end the simplification; a failing uncertainty in a parallel `CmpMap` of Boxes would expose it | `tests/test_region_errors_oracle.rs`: 8 cases against C's status codes and repaired values from `tools/oracle_fixtures/region_errors_probe.c` |
+| PR-1, PL-3, IN-6, PL-2 | FIXED 2026-10-08: a PointList is bounded as region.c `GetBounded` decides, so a negated PointList is unbounded unless its Frame is a SkyFrame. A negated Prism is bounded only if both components are bounded once negated, as prism.c `GetBounded` tests them. An Interval's `reg_base_box` is its limits as stored, so an excluded axis keeps its lower limit above its upper where it was widened to the whole axis. A PointList's `reg_base_box` is pointlist.c `RegBaseBox`: the least and greatest `ax_distance` from the first point, turned back into axis values with `ax_offset`, so a sky PointList either side of RA 0 has a box that wraps, and a default uncertainty about 600 times smaller than the raw minimum and maximum gave | `tests/test_region_bounded_oracle.rs`: bounded flags and bounding boxes against C from `tools/oracle_fixtures/region_bounded_probe.c` |
 | PL-1 | WITHDRAWN: a C probe masks the same two pixels as the port with a UnitMap; the Mapping direction is RB-12 | Appendix C |
 
 
@@ -412,7 +413,7 @@ Its coverage tables, findings, and the status of the earlier audits' class findi
 | RegTrace (2887) | NONE | architecture | GATED(Plot) |
 | RegBaseMesh (2271) | `reg_base_mesh` (904) | architecture | DIVERGENT (IN-3) |
 | BndBaseMesh (224) | NONE (generic `overlap.rs:395`) | architecture | MISSING (IN-4 = BND-INT) |
-| RegBaseBox (2205) | `reg_base_box` (881) | architecture | DIVERGENT (IN-6) |
+| RegBaseBox (2205) | `reg_base_box` (881) | architecture | PORTED (IN-6 fixed) |
 | RegBasePick (2328) | `reg_base_pick_axes` (1436) | architecture | PORTED |
 | ManageLock | NONE | ceremony | OUT-OF-SCOPE |
 | Dump/Load (4042) | serial/mod.rs:1258 | ceremony | PORTED |
@@ -426,11 +427,11 @@ Its coverage tables, findings, and the status of the earlier audits' class findi
 | Transform (2359) | `reg_base_inside` (162) | architecture | PORTED |
 | Simplify (2161), MapMerge (972) | | architecture | OUT-OF-SCOPE |
 | RegBaseMesh (1667) | `reg_base_mesh` (246) | architecture | PORTED |
-| RegBaseBox (1532) | `reg_base_box` (222) | architecture | DIVERGENT (PL-2) |
+| RegBaseBox (1532) | `reg_base_box` (222) | architecture | PORTED (PL-2 fixed) |
 | RegBasePick | `reg_base_pick_axes` (566) | architecture | PORTED |
 | RegPins (1868) | `reg_pins_mask` (338) | architecture | PORTED |
 | GetClosed (376) | `is_closed` (414) | architecture | PORTED |
-| GetBounded (inherited base) | `is_bounded_inner` (282) -> always true | architecture | DIVERGENT (PL-3) |
+| GetBounded (inherited base) | `is_bounded_inner` (282) | architecture | PORTED (PL-3 fixed) |
 | Mask<X>/MaskLD (797) | NONE (generic `masking::mask`) | architecture | MISSING (PL-1) |
 | astInitPointList | `PointListBuilder` | ctor | PORTED (LOW: NPTIN/NAXIN vs C NCPIN) |
 
@@ -493,7 +494,7 @@ Its coverage tables, findings, and the status of the earlier audits' class findi
 | RegBaseBox (1969) | `reg_base_box` (194) | architecture | PORTED |
 | RegBaseMesh (2046) | `reg_base_mesh` (214) | architecture | PORTED |
 | RegPins (2627) | `reg_pins_mask` (343) | architecture | PORTED |
-| GetBounded (779) | `is_bounded_inner` (281) | architecture | DIVERGENT (PR-1) |
+| GetBounded (779) | `is_bounded_inner` (281) | architecture | PORTED (PR-1 fixed) |
 | RegCentre (2451) | `reg_centre_query/set` (697/719) | architecture | PORTED |
 | RegBasePick (2287) | `reg_base_pick_axes` (742) | architecture | PORTED |
 | Dump (3787)/Load (4266) | serial/mod.rs:1385-1460 | ceremony | DIVERGENT (PR-3) |
@@ -721,7 +722,7 @@ This is the same as CR-4: C prism.c:635-718 propagates Set/Clear to components a
 - region-box-interval-pointlist.md:
   - FIXED: Box RegPins (1040), RegCentre set (1317); Interval Overlap (218/1042), RegPins (1054), RegCentre set (1402); PointList RegPins (338) and uncertainty-driven Transform (162).
   - FIXED, out of scope for this audit: Box PermMap/Polygon/BestBox (441/331/637).
-  - STILL OPEN: Box RegBaseMesh geodesic edges (BX-3); Interval RegBaseMesh (IN-3); Interval RegBaseBox (now IN-6, a different divergence); PointList RegBaseBox wrap (PL-2).
+  - STILL OPEN: Box RegBaseMesh geodesic edges (BX-3); Interval RegBaseMesh (IN-3); Interval RegBaseBox (now IN-6, a different divergence, since fixed); PointList RegBaseBox wrap (PL-2, since fixed).
   - Per-class `map_region` uncertainty drop: superseded by the shared `Region::map_region` (mod.rs:835), base-auditor scope.
 - region-circle-ellipse-polygon-null.md:
   - FIXED Circle: RegPins (538), RegBaseBox (446), RegBaseMesh (276), RegCentre (779).

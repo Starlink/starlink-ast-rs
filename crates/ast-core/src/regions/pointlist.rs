@@ -219,27 +219,37 @@ impl RegionGeometry for PointList {
         Ok(result)
     }
 
+    /// pointlist.c `RegBaseBox`: on each axis the least and greatest
+    /// `ax_distance` of the points from the first, turned back into axis
+    /// values with `ax_offset`, so a box on a sky axis wraps where the points
+    /// straddle the origin of the longitude.
     fn reg_base_box(&self) -> AstResult<(Vec<f64>, Vec<f64>)> {
-        let base_frame = self.data.frameset.base();
-        let naxes = base_frame.naxes();
-
-        let mut lower = vec![f64::MAX; naxes];
-        let mut upper = vec![f64::MIN; naxes];
-
-        for point in &self.data.points {
-            for (i, &val) in point.iter().enumerate().take(naxes) {
-                if is_bad(val) {
-                    continue;
+        let frm = self.data.frameset.base();
+        let Some(first) = self.data.points.first() else {
+            return Err(AstError::new(
+                ErrorCode::Inter,
+                "astRegBaseBox(PointList): The PointList has no points (internal AST \
+                 programming error).",
+            ));
+        };
+        let nc = first.len();
+        let mut lower = vec![0.0; nc];
+        let mut upper = vec![0.0; nc];
+        for ic in 0..nc {
+            let p0 = first[ic];
+            let (mut lb, mut ub) = (0.0, 0.0);
+            for point in &self.data.points[1..] {
+                let d = frm.ax_distance(ic + 1, p0, point[ic])?;
+                if d < lb {
+                    lb = d;
                 }
-                if val < lower[i] {
-                    lower[i] = val;
-                }
-                if val > upper[i] {
-                    upper[i] = val;
+                if d > ub {
+                    ub = d;
                 }
             }
+            lower[ic] = frm.ax_offset(ic + 1, p0, lb)?;
+            upper[ic] = frm.ax_offset(ic + 1, p0, ub)?;
         }
-
         Ok((lower, upper))
     }
 
@@ -249,9 +259,10 @@ impl RegionGeometry for PointList {
         Ok(self.data.points.clone())
     }
 
+    /// PointList inherits region.c `GetBounded`: bounded unless negated, or
+    /// always in a SkyFrame, where the negation of a finite set is finite.
     fn is_bounded_inner(&self) -> bool {
-        // Discrete points are always bounded.
-        true
+        self.data.closed_curve_bounded()
     }
 
     fn remap_defining_points(&mut self, mapping: &dyn Mapping, forward: bool) -> AstResult<()> {

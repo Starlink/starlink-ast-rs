@@ -383,9 +383,17 @@ impl RegionGeometry for Prism {
         Ok(result)
     }
 
+    /// prism.c `GetBounded`: bounded only if both components are, with the
+    /// components negated when the Prism is.
     fn is_bounded_inner(&self) -> bool {
-        // A Prism is bounded if both sub-regions are bounded.
-        self.region1.is_bounded() && self.region2.is_bounded()
+        if !self.data.negated {
+            return self.region1.is_bounded() && self.region2.is_bounded();
+        }
+        let mut reg1 = self.region1.clone_region();
+        let mut reg2 = self.region2.clone_region();
+        reg1.negate();
+        reg2.negate();
+        reg1.is_bounded() && reg2.is_bounded()
     }
 
     fn remap_defining_points(&mut self, _mapping: &dyn Mapping, _forward: bool) -> AstResult<()> {
