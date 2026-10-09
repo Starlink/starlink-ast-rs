@@ -79,7 +79,7 @@ serialization-parity risk on polygon round-trips.
 
 - **Rust**: `regions/data.rs:354` `reg_base_grid` — uniform rectangular odometer
   grid in the bounding box, filtered by `reg_base_inside`. No `basegrid` cache.
-- **C**: base `region.c:7964`; Box overrides at `box.c:2142` calling
+- **C**: base `region.c:7964`; Box overrides at `box.c:2146` calling
   `astFrameGrid(frm, meshsize, lbnd, ubnd)` (Frame-aware, spherical-uniform) and
   caching the result in `this->basegrid`.
 
@@ -103,7 +103,7 @@ semi-infinite overlap before deciding this needs the bespoke override.
 - **Rust**: absent — no `reg_trace` anywhere; the `Region` trait has no such
   method.
 - **C**: base `region.c:11601` (returns 0 = "not implemented"); real overrides
-  in `box.c:3179`, `circle.c:1544`, `ellipse.c:1631`, `polygon.c:4820`,
+  in `box.c:3183`, `circle.c:1544`, `ellipse.c:1631`, `polygon.c:4820`,
   `interval.c:2887`, `cmpregion.c:2685`.
 
 `astRegTrace` returns parametrized boundary positions (dist 0..1). Sole caller is

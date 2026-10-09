@@ -4,7 +4,9 @@
  * and a Box of zero width on one axis, un-negated, negated and open, and
  * negated and closed, where Transform widens the limits to the width of
  * the uncertainty only when Negated and Closed differ. Also the sky Box's
- * bounding box.
+ * bounding box, and the boundary meshes (box.c RegBaseMesh) of a flat 2-D
+ * Box, one whose axes have different units, a sky Box, a 3-D Box and a
+ * single-point Box, which needs box.c from 4785102b or later.
  *
  * The zero-width cases need box.c from d0853dcd or later, before which the
  * widening depended on whether the limits had been cached first.
@@ -40,6 +42,22 @@ static void emit( const char *name, AstRegion *reg, int np, const double *x,
    printf( "\"),\n" );
 }
 
+/* One mesh case, the current-Frame mesh (astGetRegionMesh) point by point. */
+static void mesh( const char *name, AstRegion *reg ) {
+   static double m[ 3 * 4000 ];
+   int np, nax, ip, ic;
+   nax = astGetI( reg, "Naxes" );
+   astGetRegionMesh( reg, 1, 4000, nax, &np, m );
+   printf( "    (\"%s\", &[", name );
+   for( ip = 0; ip < np; ip++ ) {
+      for( ic = 0; ic < nax; ic++ ) {
+         lit( m[ ic*4000 + ip ] );
+         printf( ", " );
+      }
+   }
+   printf( "]),\n" );
+}
+
 int main( void ) {
    int status = 0, i;
    AstRegion *reg;
@@ -73,6 +91,26 @@ int main( void ) {
       reg = (AstRegion *) astBox( f, 1, l, u, NULL, " " );
       astNegate( reg );
       emit( "zero_width_negated_closed", reg, 4, zx, zy );
+   }
+   printf( "];\n\n/// `(case, the boundary mesh: the points in turn, each axis in turn)`.\n"
+           "pub const MESHES: &[(&str, &[f64])] = &[\n" );
+   {
+      double l[] = { 0.0, 0.0 }, u[] = { 3.0, 1.0 };
+      mesh( "flat", (AstRegion *) astBox( astFrame( 2, " " ), 1, l, u, NULL, " " ) );
+      mesh( "mixed_units", (AstRegion *) astBox( astFrame( 2, "Unit(1)=Hz,Unit(2)=m" ),
+                                                 1, l, u, NULL, " " ) );
+   }
+   {
+      double l[] = { 1.0, 0.2 }, u[] = { 1.3, 0.4 };
+      mesh( "sky", (AstRegion *) astBox( astSkyFrame( "System=ICRS" ), 1, l, u, NULL, " " ) );
+   }
+   {
+      double l[] = { 0.0, 0.0, 0.0 }, u[] = { 1.0, 2.0, 3.0 };
+      mesh( "three_d", (AstRegion *) astBox( astFrame( 3, " " ), 1, l, u, NULL, " " ) );
+   }
+   {
+      double l[] = { 1.0, 3.0 }, u[] = { 1.0, 3.0 };
+      mesh( "single_point", (AstRegion *) astBox( astFrame( 2, " " ), 1, l, u, NULL, " " ) );
    }
    printf( "];\n\n/// The sky Box's bounding box: lower, then upper.\n"
            "pub const SKY_BOUNDS: [f64; 4] = [" );

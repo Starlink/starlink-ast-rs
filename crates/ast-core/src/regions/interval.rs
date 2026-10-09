@@ -157,6 +157,27 @@ impl Interval {
         (lbnd, ubnd)
     }
 
+    /// The Box this Interval is equivalent to, in its base Frame, with its
+    /// Negated and Closed: what interval.c `Transform`, `RegBaseMesh` and
+    /// `BndBaseMesh` hand their work to (`this->box`, whose base Frame is the
+    /// Interval's). `None` when the Interval is not equivalent to a Box.
+    fn equivalent_base_box(&self) -> AstResult<Option<super::BoxRegion>> {
+        let (lbnd, ubnd, equivalent) = self.cache()?;
+        if equivalent.is_none() {
+            return Ok(None);
+        }
+        let bfrm = self.data.frameset.base().snapshot();
+        let mut bbox = super::BoxRegion::from_bounds_frame(bfrm, &lbnd, &ubnd)?;
+        if self.data.uncertainty.is_some() {
+            bbox.set_uncertainty(self.get_unc_frm(FrameRef::Base)?);
+        }
+        if self.data.negated {
+            bbox.negate();
+        }
+        bbox.set_closed(self.data.closed);
+        Ok(Some(bbox))
+    }
+
     /// Resolve the axis limits into finite values and, when the Interval is
     /// equivalent to a Box, build that Box.
     ///
@@ -829,14 +850,32 @@ impl RegionGeometry for Interval {
         &mut self.data
     }
 
+    /// interval.c `Transform`: the equivalent Box decides when there is one;
+    /// otherwise each axis is tested against its limits, and limits that
+    /// are equal are first separated by the width of the uncertainty, which
+    /// C does for a closed un-negated Interval and an open negated one (the
+    /// two for which the effective Closed here is true).
     fn reg_base_inside(&self, pts: &PointSet) -> AstResult<Vec<bool>> {
+        if let Some(bbox) = self.equivalent_base_box()? {
+            return bbox.reg_base_inside(pts);
+        }
         let npoint = pts.npoint();
         let naxes = self.data.points[0].len();
-        let (lbnd, ubnd) = self.effective_bounds();
+        let (mut lbnd, mut ubnd) = self.effective_bounds();
         let closed = self.data.closed_for_base_inside();
 
-        let mut result = vec![false; npoint];
+        if closed && (0..naxes).any(|ax| lbnd[ax] == ubnd[ax]) {
+            let (lu, uu) = self.get_unc_frm(FrameRef::Base)?.get_region_bounds()?;
+            for ax in 0..naxes {
+                if lbnd[ax] == ubnd[ax] {
+                    let wid = 0.5 * (uu[ax] - lu[ax]);
+                    lbnd[ax] -= wid;
+                    ubnd[ax] += wid;
+                }
+            }
+        }
 
+        let mut result = vec![false; npoint];
         for (idx, inside) in result.iter_mut().enumerate() {
             let point = pts.point(idx);
 
@@ -845,38 +884,15 @@ impl RegionGeometry for Interval {
                 continue;
             }
 
-            // Check each axis constraint.
-            let mut all_pass = true;
-            for ax in 0..naxes {
-                let p = point[ax];
-                let lb = lbnd[ax];
-                let ub = ubnd[ax];
-
-                let pass = if closed {
-                    // Closed: boundary points are included.
-                    if lb <= ub {
-                        // Normal included interval.
-                        lb <= p && p <= ub
-                    } else {
-                        // Excluded interval (lb > ub): outside [ub, lb].
-                        p <= ub || lb <= p
-                    }
-                } else {
-                    // Open: boundary points are excluded.
-                    if lb <= ub {
-                        lb < p && p < ub
-                    } else {
-                        p < ub || lb < p
-                    }
-                };
-
-                if !pass {
-                    all_pass = false;
-                    break;
+            *inside = (0..naxes).all(|ax| {
+                let (p, lb, ub) = (point[ax], lbnd[ax], ubnd[ax]);
+                match (closed, lb <= ub) {
+                    (true, true) => lb <= p && p <= ub,
+                    (true, false) => p <= ub || lb <= p,
+                    (false, true) => lb < p && p < ub,
+                    (false, false) => p < ub || lb < p,
                 }
-            }
-
-            *inside = all_pass;
+            });
         }
 
         Ok(result)
@@ -905,71 +921,24 @@ impl RegionGeometry for Interval {
         Ok((lower, upper))
     }
 
+    /// interval.c `RegBaseMesh`: the equivalent Box's boundary mesh, and an
+    /// error for an Interval that is not equivalent to a Box, which has no
+    /// finite boundary.
     fn reg_base_mesh(&self) -> AstResult<Vec<Vec<f64>>> {
-        let naxes = self.data.points[0].len();
-        let (lbnd, ubnd) = self.effective_bounds();
-
-        // For unbounded intervals, we cannot produce a meaningful mesh.
-        // Only generate corner points for bounded axes. If any axis is
-        // unbounded (|bound| == MAX), skip it in corner generation.
-        // Check if interval is fully bounded.
-        if !self.is_bounded_inner() {
-            // Unbounded intervals have no finite boundary mesh.
-            return Ok(Vec::new());
+        match self.equivalent_base_box()? {
+            Some(bbox) => bbox.reg_base_mesh(),
+            None => Err(AstError::new(
+                ErrorCode::Inter,
+                "astRegBaseMesh(Interval): The Interval given is unbounded and therefore \
+                 no boundary mesh can be produced (internal AST programming error).",
+            )),
         }
-
-        // Generate corner points of the box: 2^naxes corners.
-        let ncorners = 1_usize << naxes;
-        let mut mesh = Vec::with_capacity(ncorners);
-
-        for corner_idx in 0..ncorners {
-            let mut point = Vec::with_capacity(naxes);
-            for ax in 0..naxes {
-                if (corner_idx >> ax) & 1 == 0 {
-                    point.push(lbnd[ax]);
-                } else {
-                    point.push(ubnd[ax]);
-                }
-            }
-            mesh.push(point);
-        }
-
-        Ok(mesh)
     }
 
+    /// interval.c `GetBounded`: bounded exactly when equivalent to a Box,
+    /// whatever its Negated.
     fn is_bounded_inner(&self) -> bool {
-        // Bounded only if ALL axes have BOTH finite bounds, and none are
-        // excluded intervals (lb > ub makes it effectively unbounded
-        // in the C implementation's sense — but actually a closed excluded
-        // interval IS bounded for purposes of this check when it's equivalent
-        // to a Box). Following C: bounded iff equivalent to a Box, i.e. all
-        // bounds are finite (not BAD/±MAX) and all axis intervals have the
-        // same orientation.
-        let naxes = self.data.points[0].len();
-
-        if naxes == 0 {
-            return false;
-        }
-
-        let (lbnd, ubnd) = self.effective_bounds();
-
-        // Check all bounds are finite.
-        for i in 0..naxes {
-            if lbnd[i].abs() == f64::MAX || ubnd[i].abs() == f64::MAX {
-                return false;
-            }
-        }
-
-        // Check consistency: all axes must have the same orientation.
-        // (If some are included and some excluded, it's not equivalent to a Box.)
-        let first_neg = lbnd[0] > ubnd[0];
-        for i in 1..naxes {
-            if (lbnd[i] > ubnd[i]) != first_neg {
-                return false;
-            }
-        }
-
-        true
+        matches!(self.cache(), Ok((_, _, Some(_))))
     }
 
     fn remap_defining_points(&mut self, mapping: &dyn Mapping, forward: bool) -> AstResult<()> {

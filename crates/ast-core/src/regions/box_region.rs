@@ -867,126 +867,149 @@ impl RegionGeometry for BoxRegion {
         self.bounds()
     }
 
+    /// box.c `RegBaseMesh`. A Box of one point is that point; a 1-D Box its
+    /// two ends. A 2-D Box shares MeshSize points between its four edges in
+    /// proportion to their lengths, measured along each edge as the base
+    /// Frame measures distance (in 49 steps, unless the Frame is flat), when
+    /// its axes have one measure of distance (the same Unit, or the same
+    /// primary Frame), and a quarter to each edge otherwise; the points are
+    /// stepped from each corner by repeated addition, as C steps them. An
+    /// N-D Box has a grid of points on each of its faces, the upper face of
+    /// each axis first.
     fn reg_base_mesh(&self) -> AstResult<Vec<Vec<f64>>> {
+        /// Points for measuring an edge.
+        const NP_EDGE: usize = 50;
+
         let naxes = self.data.points[0].len();
         let (lbnd, ubnd) = self.bounds()?;
-        let np = self.data.effective_mesh_size();
+        let mut np = self.data.effective_mesh_size();
+        let frm = self.data.frameset.base();
 
-        // Check if the box occupies a single point.
-        let single = (0..naxes).all(|i| ubnd[i] <= lbnd[i]);
-        if single {
-            let centre = &self.data.points[0];
-            return Ok(vec![centre.clone()]);
+        if (0..naxes).all(|i| ubnd[i] <= lbnd[i]) {
+            return Ok(vec![
+                (0..naxes).map(|i| 0.5 * (lbnd[i] + ubnd[i])).collect(),
+            ]);
         }
-
         if naxes == 1 {
-            // 1-D: the boundary is the two extreme points.
             return Ok(vec![vec![lbnd[0]], vec![ubnd[0]]]);
         }
 
         if naxes == 2 {
-            // 2-D: distribute points evenly along 4 edges.
-            // Corners: (lbnd[0],lbnd[1]) -> (lbnd[0],ubnd[1]) ->
-            //          (ubnd[0],ubnd[1]) -> (ubnd[0],lbnd[1]) -> back
-            let corners = [
+            let c = [
                 [lbnd[0], lbnd[1]],
                 [lbnd[0], ubnd[1]],
                 [ubnd[0], ubnd[1]],
                 [ubnd[0], lbnd[1]],
+                [lbnd[0], lbnd[1]],
             ];
+            let (pfrm0, _) = frm.primary_frame(0);
+            let (pfrm1, _) = frm.primary_frame(1);
+            let simple =
+                |f: &dyn Frame| f.as_any().is::<crate::frames::BasicFrame>() || f.naxes() == 1;
+            let flat = simple(pfrm0) && simple(pfrm1);
+            let same_primary = std::ptr::eq(
+                pfrm0 as *const dyn Frame as *const u8,
+                pfrm1 as *const dyn Frame as *const u8,
+            );
+            let metric = frm.unit(1)? == frm.unit(2)? || same_primary;
 
-            // For flat geometry, compute edge lengths as coordinate differences.
-            let mut edge_lengths = [0.0_f64; 4];
-            for iedge in 0..4 {
-                let next = (iedge + 1) % 4;
-                let dx = corners[next][0] - corners[iedge][0];
-                let dy = corners[next][1] - corners[iedge][1];
-                edge_lengths[iedge] = (dx * dx + dy * dy).sqrt();
-            }
-
-            let total_len: f64 = edge_lengths.iter().sum();
-
-            // Compute points per edge proportional to edge length.
-            let mut np_edge = [0_usize; 4];
-            let mut total_np = 0;
-            if total_len > 0.0 {
-                let ppd = np as f64 / total_len;
+            let mut np_edge = [0usize; 4];
+            if metric {
+                let mut edge_len = [0.0f64; 4];
+                let mut total_len = 0.0;
                 for iedge in 0..4 {
-                    np_edge[iedge] = (edge_lengths[iedge] * ppd) as usize;
-                    if np_edge[iedge] == 0 {
-                        np_edge[iedge] = 1;
+                    let dx = (c[iedge + 1][0] - c[iedge][0]) / (NP_EDGE - 1) as f64;
+                    let dy = (c[iedge + 1][1] - c[iedge][1]) / (NP_EDGE - 1) as f64;
+                    let mut p0 = c[iedge];
+                    let mut len = 0.0;
+                    for _ in 1..NP_EDGE {
+                        let p1 = p0;
+                        p0 = [p1[0] + dx, p1[1] + dy];
+                        len += if flat {
+                            (dx + dy).abs()
+                        } else {
+                            frm.distance(&p0, &p1)?
+                        };
                     }
-                    total_np += np_edge[iedge];
+                    edge_len[iedge] = len;
+                    total_len += len;
+                }
+                if total_len > 0.0 {
+                    let ppd = np as f64 / total_len;
+                    np = 0;
+                    for iedge in 0..4 {
+                        np_edge[iedge] = ((edge_len[iedge] * ppd) as usize).max(1);
+                        np += np_edge[iedge];
+                    }
+                } else {
+                    return Err(AstError::new(
+                        ErrorCode::Inter,
+                        "astRegBaseMesh(Box): Distance around box perimeter is zero \
+                         (internal AST programming error).",
+                    ));
                 }
             } else {
-                // Degenerate: give equal points to each edge.
-                let np0 = np / 4;
-                for edge_np in &mut np_edge {
-                    *edge_np = np0.max(1);
-                    total_np += *edge_np;
-                }
+                let np0 = (0.25 * np as f64) as usize;
+                np_edge = [np0; 4];
+                np = 4 * np0;
             }
 
-            let mut mesh = Vec::with_capacity(total_np);
-
+            let mut mesh = Vec::with_capacity(np);
             for iedge in 0..4 {
-                let next = (iedge + 1) % 4;
-                let n = np_edge[iedge];
-                let dx = (corners[next][0] - corners[iedge][0]) / n as f64;
-                let dy = (corners[next][1] - corners[iedge][1]) / n as f64;
-
-                for i in 0..n {
-                    let x = corners[iedge][0] + dx * i as f64;
-                    let y = corners[iedge][1] + dy * i as f64;
-                    mesh.push(vec![x, y]);
+                let n = np_edge[iedge] as f64;
+                let dx = (c[iedge + 1][0] - c[iedge][0]) / n;
+                let dy = (c[iedge + 1][1] - c[iedge][1]) / n;
+                let (mut lax, mut lay) = (c[iedge][0], c[iedge][1]);
+                mesh.push(vec![lax, lay]);
+                for _ in 1..np_edge[iedge] {
+                    lax += dx;
+                    lay += dy;
+                    mesh.push(vec![lax, lay]);
                 }
             }
-
             return Ok(mesh);
         }
 
-        // N-D (naxes > 2): generate points on each face of the hyper-box.
-        // Each face is defined by fixing one axis at either its lower or
-        // upper bound and varying all other axes. Following the C approach:
-        // compute np_axis samples per axis, yielding np_axis^(naxes-1) points
-        // per face, with 2*naxes faces.
+        // N-D: a grid on each face, the upper then the lower face of each
+        // axis in turn (box.c `MakeGrid`).
         let np_axis =
-            1 + ((np as f64 / (2 * naxes) as f64).powf(1.0 / (naxes - 1) as f64)) as usize;
-        let np_axis = np_axis.max(2);
-
+            (1 + (np as f64 / (2 * naxes) as f64).powf(1.0 / (naxes - 1) as f64) as usize).max(2);
+        let step: Vec<f64> = (0..naxes)
+            .map(|i| (ubnd[i] - lbnd[i]) / (np_axis - 1) as f64)
+            .collect();
         let mut mesh = Vec::new();
-
-        // For each axis, create the upper and lower faces.
-        for fixed_axis in 0..naxes {
-            for &fixed_val in &[lbnd[fixed_axis], ubnd[fixed_axis]] {
-                // Generate a grid over the remaining axes.
-                let free_axes: Vec<usize> = (0..naxes).filter(|&a| a != fixed_axis).collect();
-                let n_free = free_axes.len();
-
-                // Total number of points on this face: np_axis^n_free
-                let n_face = np_axis.pow(n_free as u32);
-
-                for idx in 0..n_face {
-                    let mut point = vec![0.0; naxes];
-                    point[fixed_axis] = fixed_val;
-
-                    let mut remainder = idx;
-                    for &ax in &free_axes {
-                        let step = remainder % np_axis;
-                        remainder /= np_axis;
-                        // Linearly interpolate between lbnd and ubnd for this axis.
-                        point[ax] = if np_axis > 1 {
-                            lbnd[ax] + (ubnd[ax] - lbnd[ax]) * step as f64 / (np_axis - 1) as f64
+        for iaxis in 0..naxes {
+            for axval in [ubnd[iaxis], lbnd[iaxis]] {
+                let mut pi = vec![0usize; naxes];
+                loop {
+                    mesh.push(
+                        (0..naxes)
+                            .map(|i| {
+                                if i == iaxis {
+                                    axval
+                                } else {
+                                    lbnd[i] + pi[i] as f64 * step[i]
+                                }
+                            })
+                            .collect(),
+                    );
+                    let mut i = 0;
+                    while i < naxes {
+                        let maxi = if i == iaxis { 0 } else { np_axis - 1 };
+                        pi[i] += 1;
+                        if pi[i] > maxi {
+                            pi[i] = 0;
+                            i += 1;
                         } else {
-                            0.5 * (lbnd[ax] + ubnd[ax])
-                        };
+                            break;
+                        }
                     }
-
-                    mesh.push(point);
+                    if i == naxes {
+                        break;
+                    }
                 }
             }
         }
-
         Ok(mesh)
     }
 

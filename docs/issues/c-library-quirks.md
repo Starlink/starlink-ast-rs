@@ -1098,6 +1098,15 @@ Only a hand-written description can do this, since Dump never writes an index be
 Fixed on `u/timj/norm-unit` in 0d05fc29, which checks Current as Base is checked, with a `testframeset` case (Errors 41-43).
 The port treats a `Currnt` below 1 as unset, as the fixed C does (`frameset.rs` `from_node`), and `tests/test_frameset_current.rs` covers Current's set state against C.
 
+### RESOLVED (upstream 4785102b): the mesh of a single-point Box has the first axis's value on every axis
+
+C location: `box.c` `RegBaseMesh`.
+
+A Box occupying a single point is meshed as that one point, but each axis was given `0.5*(lbnd[0]+ubnd[0])`, so the Box [1,1]x[3,3] meshed as (1,1).
+
+Fixed on `u/timj/norm-unit` in 4785102b: each axis takes its own value; `testregions` `checkSinglePointBoxMesh`.
+The port's Box mesh is `RegBaseMesh` as fixed; `tests/test_region_box_oracle.rs` (`single_point`), whose probe needs the fixed library.
+
 ### RESOLVED (upstream d0853dcd): whether a Box contains a point just off a zero-width axis depends on call order
 
 C location: `box.c` `Cache` and `Transform`.

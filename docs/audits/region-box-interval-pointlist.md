@@ -17,17 +17,17 @@ Every claim cites C `file:line` and Rust `file:line`.
 
 | C method (file:line) | Rust (file:line) | Status | Gap description |
 |---|---|---|---|
-| `Simplify` (box.c:3569) | `Mapping::simplified` (box_region.rs:941) | **MISSING-BRANCH** | Three of the four C branches are absent. (a) **PermMap fast path** (box.c:3685-3837): C reads InPerm/OutPerm/Constants to build a new Box, or `NullRegion`/`Interval` when an output is fed a constant/`AST__BAD` or a slice misses the box. Rust has no PermMap branch — a PermMap base→current mapping falls into the generic `verify_remap_exact` path. (b) **2-D→Polygon branch** (box.c:3880-3990): the KNOWN gap — when `BestBox`+`RegPins` fails and `nin==nout==2`, C builds an `astPolygon` from the 4 transformed corners (with clockwise/anti-clockwise + SkyFrame `right_way_round` selection). Rust jumps straight from a failed `verify_remap_exact` to `convert_to_prism` (box_region.rs:976-986), never attempting a Polygon. (c) The `BestBox` fitting (box.c:3858) is replaced by a direct point-transform + `verify_remap_exact` heuristic (box_region.rs:952-977) rather than the least-squares axis fit. |
-| `Simplify` → `astConvertToPrism` (box.c:3999) | `convert_to_prism` (box_region.rs:180-271) | **PORTED** | Subset scan + pick/simplify/Prism/permute/remap is a faithful port. Correctly reached only after the earlier paths fail. |
-| `BestBox` (box.c:414) | ABSENT | **ABSENT** | The least-squares best-fitting-box-through-a-mesh routine is not ported; Rust uses direct corner transforms instead (box_region.rs:952). Consequence: shear/near-degenerate mappings that C would still fit as a Box are not simplified. |
-| `RegPins` (box.c:2915) | `reg_pins` (box_region.rs:310) | **HEURISTIC** | C builds a *larger* and a *negated smaller* Box (widened/narrowed by half the combined uncertainty widths, box.c:3078-3092) and tests membership of both, i.e. a true "on the boundary within uncertainty" band test. Rust's `reg_pins` is a plain point-in-box interior test with no boundary-band and no uncertainty widening. This is the region-`RegPins` semantic (used by Simplify/Overlap), fundamentally different from C's boundary test. |
-| `RegBasePick` (box.c:2618) | `reg_base_pick_axes` (box_region.rs:687) | **PORTED** | Slices centre/corner to selected axes, picks base Frame, propagates+drops uncertainty per box.c:2690-2699. Faithful. |
-| `RegCentre` (box.c:2741) | `reg_centre` getter only (box_region.rs:478) | **MISSING-BRANCH** | Rust implements only the *read* path (return centre). The *set/re-centre* path (box.c:2848-2907 — recompute corner via `GeoCorner`, update points, reset cache/basemesh/basegrid) is ABSENT. No public re-centre entry point exists for Box. |
-| `RegBaseBox` (box.c:2069) | `reg_base_box` (box_region.rs:351) | **PORTED** | Returns `bounds()` (centre±extent). Equivalent. |
-| `RegBaseMesh` (box.c:2240) | `reg_base_mesh` (box_region.rs:355) | **MISSING-BRANCH** | 1-D/2-D/single-point paths present. But C computes per-edge point counts using **geodesic** edge lengths via the Frame metric (box.c NP_EDGE sampling, `astDistance`); Rust uses flat Euclidean `sqrt(dx²+dy²)` (box_region.rs:389). For a curved/SkyFrame base this distributes mesh points differently. The N-D face-grid path (box_region.rs:433-475) is a plausible reconstruction, not a line-for-line port. |
-| `RegBaseGrid` (box.c:2142) | `reg_base_grid` default (data.rs:235) | **PORTED (generic)** | Box does not use a class-specific grid in Rust; the generic bounded-box grid+filter is equivalent for an axis-aligned box. |
-| `RegTrace` (box.c:3179) | ABSENT | **ABSENT** | 2-D boundary tracing not ported. Out of stated scope but noted. |
-| `MergeBox` (box.c:1621) | `region_merge` (box_region.rs:720) | **MISSING-BRANCH** | Box+Box/Interval/NullRegion/PointList branches ported faithfully (incl. the point-width guard for PointList). BUT the post-merge attribute propagation is incomplete: C scales the result **FillFactor** by the product of the two inputs' fill factors (box.c:2014-2017) and scales **MeshSize** by the product of the used/default ratios (box.c:2019-2048). Rust `finish_region_merge` (merge_util.rs:43-81) copies only Closed/Adaptive/Negated/uncertainty — FillFactor product and MeshSize scaling are ABSENT. |
+| `Simplify` (box.c:3573) | `Mapping::simplified` (box_region.rs:941) | **MISSING-BRANCH** | Three of the four C branches are absent. (a) **PermMap fast path** (box.c:3689-3841): C reads InPerm/OutPerm/Constants to build a new Box, or `NullRegion`/`Interval` when an output is fed a constant/`AST__BAD` or a slice misses the box. Rust has no PermMap branch — a PermMap base→current mapping falls into the generic `verify_remap_exact` path. (b) **2-D→Polygon branch** (box.c:3884-3994): the KNOWN gap — when `BestBox`+`RegPins` fails and `nin==nout==2`, C builds an `astPolygon` from the 4 transformed corners (with clockwise/anti-clockwise + SkyFrame `right_way_round` selection). Rust jumps straight from a failed `verify_remap_exact` to `convert_to_prism` (box_region.rs:976-986), never attempting a Polygon. (c) The `BestBox` fitting (box.c:3862) is replaced by a direct point-transform + `verify_remap_exact` heuristic (box_region.rs:952-977) rather than the least-squares axis fit. |
+| `Simplify` → `astConvertToPrism` (box.c:4003) | `convert_to_prism` (box_region.rs:180-271) | **PORTED** | Subset scan + pick/simplify/Prism/permute/remap is a faithful port. Correctly reached only after the earlier paths fail. |
+| `BestBox` (box.c:418) | ABSENT | **ABSENT** | The least-squares best-fitting-box-through-a-mesh routine is not ported; Rust uses direct corner transforms instead (box_region.rs:952). Consequence: shear/near-degenerate mappings that C would still fit as a Box are not simplified. |
+| `RegPins` (box.c:2919) | `reg_pins` (box_region.rs:310) | **HEURISTIC** | C builds a *larger* and a *negated smaller* Box (widened/narrowed by half the combined uncertainty widths, box.c:3082-3096) and tests membership of both, i.e. a true "on the boundary within uncertainty" band test. Rust's `reg_pins` is a plain point-in-box interior test with no boundary-band and no uncertainty widening. This is the region-`RegPins` semantic (used by Simplify/Overlap), fundamentally different from C's boundary test. |
+| `RegBasePick` (box.c:2622) | `reg_base_pick_axes` (box_region.rs:687) | **PORTED** | Slices centre/corner to selected axes, picks base Frame, propagates+drops uncertainty per box.c:2694-2703. Faithful. |
+| `RegCentre` (box.c:2745) | `reg_centre` getter only (box_region.rs:478) | **MISSING-BRANCH** | Rust implements only the *read* path (return centre). The *set/re-centre* path (box.c:2852-2911 — recompute corner via `GeoCorner`, update points, reset cache/basemesh/basegrid) is ABSENT. No public re-centre entry point exists for Box. |
+| `RegBaseBox` (box.c:2073) | `reg_base_box` (box_region.rs:351) | **PORTED** | Returns `bounds()` (centre±extent). Equivalent. |
+| `RegBaseMesh` (box.c:2244) | `reg_base_mesh` (box_region.rs:355) | **MISSING-BRANCH** | 1-D/2-D/single-point paths present. But C computes per-edge point counts using **geodesic** edge lengths via the Frame metric (box.c NP_EDGE sampling, `astDistance`); Rust uses flat Euclidean `sqrt(dx²+dy²)` (box_region.rs:389). For a curved/SkyFrame base this distributes mesh points differently. The N-D face-grid path (box_region.rs:433-475) is a plausible reconstruction, not a line-for-line port. |
+| `RegBaseGrid` (box.c:2146) | `reg_base_grid` default (data.rs:235) | **PORTED (generic)** | Box does not use a class-specific grid in Rust; the generic bounded-box grid+filter is equivalent for an axis-aligned box. |
+| `RegTrace` (box.c:3183) | ABSENT | **ABSENT** | 2-D boundary tracing not ported. Out of stated scope but noted. |
+| `MergeBox` (box.c:1625) | `region_merge` (box_region.rs:720) | **MISSING-BRANCH** | Box+Box/Interval/NullRegion/PointList branches ported faithfully (incl. the point-width guard for PointList). BUT the post-merge attribute propagation is incomplete: C scales the result **FillFactor** by the product of the two inputs' fill factors (box.c:2018-2021) and scales **MeshSize** by the product of the used/default ratios (box.c:2023-2052). Rust `finish_region_merge` (merge_util.rs:43-81) copies only Closed/Adaptive/Negated/uncertainty — FillFactor product and MeshSize scaling are ABSENT. |
 | `Equal` (inherited, region.c:2635) | `Mapping::equal` (box_region.rs:994) | **PORTED (approx)** | Compares negated/closed/points/current-frame. C also requires equal *base* Frames and a UnitMap base→current mapping (region.c:2670-2674); Rust compares only the current frame and does not verify the base-frame/UnitMap condition. Adequate for UnitMap-based regions; diverges for remapped regions. |
 | `MapRegion` (inherited, region.c:5379) | `map_region` (box_region.rs:665) | **MISSING-BRANCH** | C `astMapRegion` takes a deep copy (`astCopy`, region.c:5708) which **preserves the uncertainty Region**, then re-frames it. Rust builds a fresh `RegionData` copying negated/closed/mesh/fill/adaptive but **drops `data.uncertainty`** (box_region.rs:674-684). See Cross-cutting §3. Also omits the bad-value validation and axis-removal (`astMapSplit`) logic. |
 
@@ -70,14 +70,14 @@ Every claim cites C `file:line` and Rust `file:line`.
 ## Blocking dependencies
 
 - **cap_slamap_02 (Box→Prism, needs Box→Polygon branch)** — BLOCKED by the
-  **missing 2-D→Polygon branch** in `Box::simplified` (C box.c:3880-3990; Rust
+  **missing 2-D→Polygon branch** in `Box::simplified` (C box.c:3884-3994; Rust
   box_region.rs:976 jumps from failed `verify_remap_exact` directly to
   `convert_to_prism`). When a 2-D Box under a rotation/shear cannot be re-fit as
   an axis-aligned Box, C produces a Polygon of the 4 transformed corners; Rust
   instead attempts a Prism split, which does not yield the expected Polygon form.
   The `Polygon`/`PolygonBuilder` type exists (polygon.rs:91) so the branch is
   portable — this is the primary fix. Secondary: the **missing `BestBox` fit**
-  (box.c:414) and **PermMap fast path** (box.c:3685) mean some cases never reach
+  (box.c:418) and **PermMap fast path** (box.c:3689) mean some cases never reach
   even the Box-refit decision the way C does.
 
 - **cap_interval_01 (nested Prism→Interval)** — Depends on
@@ -90,7 +90,7 @@ Every claim cites C `file:line` and Rust `file:line`.
   Box the way C does, blocking the downstream Prism collapse.
 
 - **cap_pointlist_02 (Prism→PointList via Interval+PointList merge)** — BLOCKED.
-  The C route runs through `Box::MergeBox`'s PointList branch (box.c:1870) or the
+  The C route runs through `Box::MergeBox`'s PointList branch (box.c:1874) or the
   Interval+PointList path; the **Interval+PointList branch is intentionally not
   ported** (interval.rs:876-891). The Box+PointList branch *is* ported
   (box_region.rs:784), so the outcome depends on whether the Prism's sub-Interval
@@ -123,7 +123,7 @@ band widths downstream.
 C's `RegPins` for each class is a *boundary* test: build a slightly larger and a
 negated slightly smaller region (widened by half the combined `this`+supplied
 uncertainty widths) and require the point to be inside both — i.e. within an
-uncertainty-scaled band around the boundary (box.c:3078-3149;
+uncertainty-scaled band around the boundary (box.c:3082-3153;
 interval.c:2640-...; pointlist.c bidirectional uncertainty test 1970-2047). The
 Rust `reg_pins` methods (box_region.rs:310, interval.rs:406, pointlist.rs:161)
 are plain point-membership tests:
@@ -133,7 +133,7 @@ are plain point-membership tests:
 - PointList fabricates a `1e-10 × bbox-diagonal` tolerance (pointlist.rs:290)
   instead of using the uncertainty Region.
 
-Because `Box::Simplify`'s exactness check relies on `astRegPins` (box.c:3862,
+Because `Box::Simplify`'s exactness check relies on `astRegPins` (box.c:3866,
 3907), the Rust substitute `verify_remap_exact` (data.rs:313) — an all-points-
 inside interior test — is a *different* predicate and can accept/reject
 simplifications differently from C, compounding the Simplify gaps above.
@@ -142,7 +142,7 @@ simplifications differently from C, compounding the Simplify gaps above.
 
 All three C merge helpers scale the result's FillFactor by the product of the
 inputs' fill factors and scale MeshSize by the product of used/default ratios
-(box.c:2012-2048; interval.c ~1601 region; pointlist.c ~1427). The shared Rust
+(box.c:2016-2052; interval.c ~1601 region; pointlist.c ~1427). The shared Rust
 `finish_region_merge` (merge_util.rs:43-81) and PointList's inline merge
 (pointlist.rs:590-597) copy only Closed/Adaptive/Negated/uncertainty. FillFactor
 product and MeshSize scaling are not applied.

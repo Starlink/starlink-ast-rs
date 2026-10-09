@@ -359,8 +359,10 @@ fn centre_of_bounded_interval() {
 
 // ---- Mesh ----
 
+/// The boundary mesh of a bounded Interval is its equivalent Box's
+/// (interval.c `RegBaseMesh`); tests/test_region_interval_oracle.rs has C's.
 #[test]
-fn mesh_of_bounded_2d_has_corners() {
+fn mesh_of_bounded_2d_is_the_box_mesh() {
     let frame = BasicFrameBuilder::new(2).build().unwrap();
     let interval = IntervalBuilder::new(frame, vec![0.0, 0.0], vec![10.0, 10.0])
         .unwrap()
@@ -368,22 +370,20 @@ fn mesh_of_bounded_2d_has_corners() {
         .unwrap();
 
     let mesh = interval.get_region_mesh().unwrap();
-    // 2^2 = 4 corners.
-    assert_eq!(mesh.npoint(), 4);
+    assert_eq!(mesh.npoint(), 200);
 }
 
+/// An unbounded Interval has no finite boundary, so no mesh
+/// (interval.c `RegBaseMesh` reports AST__INTER).
 #[test]
-fn mesh_of_unbounded_is_single_bad() {
+fn mesh_of_unbounded_is_an_error() {
     let frame = BasicFrameBuilder::new(2).build().unwrap();
     let interval = IntervalBuilder::new(frame, vec![BAD_VALUE, 0.0], vec![10.0, 10.0])
         .unwrap()
         .build()
         .unwrap();
 
-    let mesh = interval.get_region_mesh().unwrap();
-    // Unbounded: single BAD point.
-    assert_eq!(mesh.npoint(), 1);
-    assert!(is_bad(mesh.point(0)[0]));
+    assert!(interval.get_region_mesh().is_err());
 }
 
 // ---- map_region ----
