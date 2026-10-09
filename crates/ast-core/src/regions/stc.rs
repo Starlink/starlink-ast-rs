@@ -4,9 +4,11 @@
 //! AstroCoords elements, each a [`KeyMap`] that may hold a name for each axis
 //! and Regions describing the value, error, resolution, size and pixel size
 //! of a position. The Stc covers exactly the points the encapsulated Region
-//! covers. The concrete classes, such as [`StcResourceProfile`], differ only
-//! in their class name, so they are one generic type, [`Stc`], with a marker
-//! [`StcKind`] naming the class.
+//! covers. The concrete classes, [`StcResourceProfile`], [`StcSearchLocation`],
+//! [`StcCatalogEntryLocation`] and [`StcObsDataLocation`], differ only in
+//! their class name, and the last in an observatory position it may hold, so
+//! they are one generic type, [`Stc`], with a marker [`StcKind`] naming the
+//! class.
 //!
 //! The encapsulated Region describes an area in the base Frame of the Stc's
 //! own FrameSet, which is the Region's current Frame.
@@ -48,7 +50,7 @@ use crate::serial::AnyObject;
 
 use super::data::{RegionData, RegionGeometry};
 use super::merge_util::mapping_into_region;
-use super::{DynRegion, Overlap, Region};
+use super::{DynRegion, Overlap, PointList, Region};
 
 /// The AstroCoords key for the axis names (stc.h `AST__STCNAME`).
 pub const STC_NAME: &str = "Name";
@@ -103,6 +105,63 @@ pub type StcResourceProfile = Stc<ResourceProfile>;
 /// The builder for a [`StcResourceProfile`].
 pub type StcResourceProfileBuilder = StcBuilder<ResourceProfile>;
 
+/// The marker for [`StcSearchLocation`].
+#[derive(Debug, Clone, Copy, Default)]
+pub struct SearchLocation;
+
+impl sealed::Sealed for SearchLocation {}
+
+impl StcKind for SearchLocation {
+    const CLASS: &'static str = "StcSearchLocation";
+    const COMMENT: &'static str = "Query coverage";
+}
+
+/// The area of a coordinate system that a query covers (C's
+/// `StcSearchLocation`, stcsearchlocation.c).
+pub type StcSearchLocation = Stc<SearchLocation>;
+
+/// The builder for a [`StcSearchLocation`].
+pub type StcSearchLocationBuilder = StcBuilder<SearchLocation>;
+
+/// The marker for [`StcCatalogEntryLocation`].
+#[derive(Debug, Clone, Copy, Default)]
+pub struct CatalogEntryLocation;
+
+impl sealed::Sealed for CatalogEntryLocation {}
+
+impl StcKind for CatalogEntryLocation {
+    const CLASS: &'static str = "StcCatalogEntryLocation";
+    // stccatalogentrylocation.c gives the class the same comment as
+    // StcResourceProfile.
+    const COMMENT: &'static str = "Resource coverage";
+}
+
+/// The area of a coordinate system that a catalogue entry covers (C's
+/// `StcCatalogEntryLocation`, stccatalogentrylocation.c).
+pub type StcCatalogEntryLocation = Stc<CatalogEntryLocation>;
+
+/// The builder for a [`StcCatalogEntryLocation`].
+pub type StcCatalogEntryLocationBuilder = StcBuilder<CatalogEntryLocation>;
+
+/// The marker for [`StcObsDataLocation`].
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ObsDataLocation;
+
+impl sealed::Sealed for ObsDataLocation {}
+
+impl StcKind for ObsDataLocation {
+    const CLASS: &'static str = "StcObsDataLocation";
+    const COMMENT: &'static str = "Observation coverage";
+}
+
+/// The area of a coordinate system that an observation covers, with the
+/// position of the observatory (C's `StcObsDataLocation`,
+/// stcobsdatalocation.c).
+pub type StcObsDataLocation = Stc<ObsDataLocation>;
+
+/// The builder for a [`StcObsDataLocation`].
+pub type StcObsDataLocationBuilder = StcBuilder<ObsDataLocation>;
+
 /// An STC Region: an encapsulated Region and its AstroCoords elements.
 #[derive(Debug, Clone)]
 pub struct Stc<K: StcKind> {
@@ -113,6 +172,9 @@ pub struct Stc<K: StcKind> {
     pub(crate) region: DynRegion,
     /// The AstroCoords elements (C's `coord`).
     pub(crate) coords: Vec<KeyMap>,
+    /// The observatory position of an [`StcObsDataLocation`] (C's `obs`),
+    /// which only that class can be given.
+    pub(crate) obs: Option<PointList>,
     kind: PhantomData<K>,
 }
 
@@ -169,6 +231,7 @@ impl<K: StcKind> StcBuilder<K> {
             data,
             region: reg.clone_region(),
             coords: Vec::new(),
+            obs: None,
             kind: PhantomData,
         };
 
@@ -343,11 +406,17 @@ pub(crate) fn stc_set_coord_frames(keymap: &mut KeyMap, frame: &dyn Frame) -> As
 
 impl<K: StcKind> Stc<K> {
     /// An Stc from its parts as a dump gives them.
-    pub(crate) fn from_parts(data: RegionData, region: DynRegion, coords: Vec<KeyMap>) -> Self {
+    pub(crate) fn from_parts(
+        data: RegionData,
+        region: DynRegion,
+        coords: Vec<KeyMap>,
+        obs: Option<PointList>,
+    ) -> Self {
         Stc {
             data,
             region,
             coords,
+            obs,
             kind: PhantomData,
         }
     }
@@ -452,6 +521,19 @@ impl<K: StcKind> Stc<K> {
             }
         }
         Ok(())
+    }
+}
+
+impl Stc<ObsDataLocation> {
+    /// The position of the observatory, if it has been given one.
+    pub fn obs(&self) -> Option<&PointList> {
+        self.obs.as_ref()
+    }
+
+    /// Give the observatory position, or remove it with `None` (C's
+    /// protected `astStcSetObs`, stcobsdatalocation.c `StcSetObs`).
+    pub fn stc_set_obs(&mut self, obs: Option<PointList>) {
+        self.obs = obs;
     }
 }
 
@@ -751,7 +833,8 @@ impl<K: StcKind> Region for Stc<K> {
 
     fn clear_region_fs_deep(&mut self) {
         // C copies the encapsulated Region and the AstroCoords KeyMaps, and
-        // so each Region they hold (stc.c `Copy`).
+        // so each Region they hold (stc.c `Copy`), and the observatory
+        // position (stcobsdatalocation.c `Copy`).
         self.clear_region_fs();
         if let Some(mut unc) = self.get_uncertainty() {
             unc.clear_region_fs_deep();
@@ -760,6 +843,9 @@ impl<K: StcKind> Region for Stc<K> {
         self.region.clear_region_fs_deep();
         for keymap in &mut self.coords {
             clear_region_fs_in(keymap);
+        }
+        if let Some(obs) = self.obs.as_mut() {
+            obs.clear_region_fs_deep();
         }
     }
 

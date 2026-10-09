@@ -33,8 +33,10 @@ pub use polygon::{PixelOper, PixelValue, Polygon, PolygonBuilder};
 pub use prism::{Prism, PrismBuilder};
 pub(crate) use stc::stc_set_coord_frames;
 pub use stc::{
-    ResourceProfile, STC_ERROR, STC_NAME, STC_PIXSZ, STC_RES, STC_SIZE, STC_VALUE, Stc, StcBuilder,
-    StcKind, StcResourceProfile, StcResourceProfileBuilder,
+    CatalogEntryLocation, ObsDataLocation, ResourceProfile, STC_ERROR, STC_NAME, STC_PIXSZ,
+    STC_RES, STC_SIZE, STC_VALUE, SearchLocation, Stc, StcBuilder, StcCatalogEntryLocation,
+    StcCatalogEntryLocationBuilder, StcKind, StcObsDataLocation, StcObsDataLocationBuilder,
+    StcResourceProfile, StcResourceProfileBuilder, StcSearchLocation, StcSearchLocationBuilder,
 };
 
 pub use masking::mask;
@@ -1674,6 +1676,12 @@ pub(crate) fn any_as_region(a: &dyn std::any::Any) -> Option<&dyn Region> {
         Some(r)
     } else if let Some(r) = a.downcast_ref::<StcResourceProfile>() {
         Some(r)
+    } else if let Some(r) = a.downcast_ref::<StcSearchLocation>() {
+        Some(r)
+    } else if let Some(r) = a.downcast_ref::<StcCatalogEntryLocation>() {
+        Some(r)
+    } else if let Some(r) = a.downcast_ref::<StcObsDataLocation>() {
+        Some(r)
     } else {
         None
     }
@@ -1701,6 +1709,12 @@ pub(crate) fn class_name(region: &dyn std::any::Any) -> &'static str {
         "Prism"
     } else if region.is::<StcResourceProfile>() {
         "StcResourceProfile"
+    } else if region.is::<StcSearchLocation>() {
+        "StcSearchLocation"
+    } else if region.is::<StcCatalogEntryLocation>() {
+        "StcCatalogEntryLocation"
+    } else if region.is::<StcObsDataLocation>() {
+        "StcObsDataLocation"
     } else {
         "Region"
     }

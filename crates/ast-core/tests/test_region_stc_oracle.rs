@@ -4,7 +4,10 @@
 //! base->current Mapping is a ZoomMap, and of that mapped Stc simplified; two
 //! test points transformed by each and whether it is bounded; its overlap with
 //! a Circle each way round; the AstroCoords element `get_stc_coord` gives; and
-//! the errors for an AstroCoords index out of range and an unknown key.
+//! the errors for an AstroCoords index out of range and an unknown key. The
+//! other Stc classes too: an `StcSearchLocation`, an `StcCatalogEntryLocation`
+//! with the sky AstroCoords, and an `StcObsDataLocation` with an observatory
+//! position and without one.
 //!
 //! Each Stc is built through the public API and compared with C's, and each of
 //! C's dumps is read back and written again as C writes it again: a Region in
@@ -25,8 +28,9 @@ use ast_core::frames::{BasicFrameBuilder, Frame, SkyFrame, SkySystem};
 use ast_core::keymap::KeyMap;
 use ast_core::mappings::{Mapping, ZoomMap};
 use ast_core::regions::{
-    CircleBuilder, DynRegion, Overlap, Region, STC_ERROR, STC_NAME, StcResourceProfile,
-    StcResourceProfileBuilder,
+    CircleBuilder, DynRegion, Overlap, PointListBuilder, Region, STC_ERROR, STC_NAME,
+    StcCatalogEntryLocationBuilder, StcObsDataLocationBuilder, StcResourceProfile,
+    StcResourceProfileBuilder, StcSearchLocationBuilder,
 };
 use ast_core::{AnyObject, from_native_string, to_native_string};
 
@@ -47,7 +51,11 @@ fn plain() -> StcResourceProfile {
         .unwrap()
 }
 
-fn sky() -> StcResourceProfile {
+fn plain_circle() -> DynRegion {
+    circle(BasicFrameBuilder::new(2).build().unwrap(), [0.0, 0.0], 1.0)
+}
+
+fn sky_coord() -> KeyMap {
     let err = circle(SkyFrame::new(SkySystem::Galactic), [2.0, -0.3], 0.0001);
     let mut coord = KeyMap::new();
     coord.put_1c(STC_NAME, &["RA", "Dec"], None).unwrap();
@@ -58,9 +66,16 @@ fn sky() -> StcResourceProfile {
             None,
         )
         .unwrap();
-    let region = circle(SkyFrame::unset_system(), [1.0, 0.5], 0.01);
-    StcResourceProfileBuilder::from_dyn(region)
-        .coords(vec![coord])
+    coord
+}
+
+fn sky_circle() -> DynRegion {
+    circle(SkyFrame::unset_system(), [1.0, 0.5], 0.01)
+}
+
+fn sky() -> StcResourceProfile {
+    StcResourceProfileBuilder::from_dyn(sky_circle())
+        .coords(vec![sky_coord()])
         .build()
         .unwrap()
 }
@@ -96,6 +111,35 @@ fn built(name: &str) -> DynRegion {
                 .unwrap()
                 .into_region()
                 .unwrap()
+        }
+        "search" => Box::new(
+            StcSearchLocationBuilder::from_dyn(plain_circle())
+                .build()
+                .unwrap(),
+        ),
+        "catalog_entry" => Box::new(
+            StcCatalogEntryLocationBuilder::from_dyn(sky_circle())
+                .coords(vec![sky_coord()])
+                .build()
+                .unwrap(),
+        ),
+        "obs_data_without_obs" => Box::new(
+            StcObsDataLocationBuilder::from_dyn(plain_circle())
+                .build()
+                .unwrap(),
+        ),
+        "obs_data" => {
+            let mut stc = StcObsDataLocationBuilder::from_dyn(plain_circle())
+                .build()
+                .unwrap();
+            let mut geo = BasicFrameBuilder::new(3).build().unwrap();
+            Frame::set_domain(&mut geo, "GEO").unwrap();
+            let obs = PointListBuilder::new(geo, vec![vec![1.0, 2.0, 3.0]])
+                .unwrap()
+                .build()
+                .unwrap();
+            stc.stc_set_obs(Some(obs));
+            Box::new(stc)
         }
         other => panic!("no case {other}"),
     }

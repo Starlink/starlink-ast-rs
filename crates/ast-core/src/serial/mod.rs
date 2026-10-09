@@ -22,7 +22,8 @@ use crate::mappings::{IntraMap, IntraRegistry};
 use crate::regions::data::{RegionData, check_fill_factor};
 use crate::regions::{
     BoxRegion, Circle, CmpOperator, CmpRegion, CmpRegionBuilder, DynRegion, Ellipse, Interval,
-    NullRegion, PointList, Polygon, Prism, Region, StcResourceProfile,
+    NullRegion, PointList, Polygon, Prism, Region, StcCatalogEntryLocation, StcObsDataLocation,
+    StcResourceProfile, StcSearchLocation,
 };
 
 /// Internal trait for serialising AST objects to/from Node trees.
@@ -312,6 +313,9 @@ fn mapping_from_node_inner(node: &Node) -> AstResult<DynMapping> {
         "PointList" => Ok(Box::new(PointList::from_node(node)?)),
         "Prism" => Ok(Box::new(Prism::from_node(node)?)),
         "StcResourceProfile" => Ok(Box::new(StcResourceProfile::from_node(node)?)),
+        "StcSearchLocation" => Ok(Box::new(StcSearchLocation::from_node(node)?)),
+        "StcCatalogEntryLocation" => Ok(Box::new(StcCatalogEntryLocation::from_node(node)?)),
+        "StcObsDataLocation" => Ok(Box::new(StcObsDataLocation::from_node(node)?)),
         other => Err(AstError::new(
             ErrorCode::Lderr,
             format!("unknown Mapping class: {other}"),
@@ -449,6 +453,15 @@ impl MappingToNode for dyn Mapping {
         if let Some(r) = self.as_any().downcast_ref::<StcResourceProfile>() {
             return Serializable::to_node(r);
         }
+        if let Some(r) = self.as_any().downcast_ref::<StcSearchLocation>() {
+            return Serializable::to_node(r);
+        }
+        if let Some(r) = self.as_any().downcast_ref::<StcCatalogEntryLocation>() {
+            return Serializable::to_node(r);
+        }
+        if let Some(r) = self.as_any().downcast_ref::<StcObsDataLocation>() {
+            return Serializable::to_node(r);
+        }
         Err(AstError::new(
             ErrorCode::Lderr,
             "unsupported Mapping type for serialisation",
@@ -526,6 +539,15 @@ impl FrameToNode for dyn Frame {
         if let Some(r) = self.as_any().downcast_ref::<StcResourceProfile>() {
             return Serializable::to_node(r);
         }
+        if let Some(r) = self.as_any().downcast_ref::<StcSearchLocation>() {
+            return Serializable::to_node(r);
+        }
+        if let Some(r) = self.as_any().downcast_ref::<StcCatalogEntryLocation>() {
+            return Serializable::to_node(r);
+        }
+        if let Some(r) = self.as_any().downcast_ref::<StcObsDataLocation>() {
+            return Serializable::to_node(r);
+        }
         Err(AstError::new(
             ErrorCode::Lderr,
             "unsupported Frame type for serialisation",
@@ -556,6 +578,9 @@ pub(crate) fn frame_from_node(node: &Node) -> AstResult<DynFrame> {
         "PointList" => Ok(Box::new(PointList::from_node(node)?)),
         "Prism" => Ok(Box::new(Prism::from_node(node)?)),
         "StcResourceProfile" => Ok(Box::new(StcResourceProfile::from_node(node)?)),
+        "StcSearchLocation" => Ok(Box::new(StcSearchLocation::from_node(node)?)),
+        "StcCatalogEntryLocation" => Ok(Box::new(StcCatalogEntryLocation::from_node(node)?)),
+        "StcObsDataLocation" => Ok(Box::new(StcObsDataLocation::from_node(node)?)),
         other => Err(AstError::new(
             ErrorCode::Lderr,
             format!("unknown or unsupported Frame class: {other}"),
@@ -1167,6 +1192,15 @@ impl RegionToNode for dyn Region {
         if let Some(r) = self.as_any().downcast_ref::<StcResourceProfile>() {
             return Serializable::to_node(r);
         }
+        if let Some(r) = self.as_any().downcast_ref::<StcSearchLocation>() {
+            return Serializable::to_node(r);
+        }
+        if let Some(r) = self.as_any().downcast_ref::<StcCatalogEntryLocation>() {
+            return Serializable::to_node(r);
+        }
+        if let Some(r) = self.as_any().downcast_ref::<StcObsDataLocation>() {
+            return Serializable::to_node(r);
+        }
         Err(AstError::new(
             ErrorCode::Lderr,
             "unsupported Region type for serialisation",
@@ -1187,6 +1221,9 @@ pub(crate) fn region_from_node(node: &Node) -> AstResult<DynRegion> {
         "PointList" => Ok(Box::new(PointList::from_node(node)?)),
         "Prism" => Ok(Box::new(Prism::from_node(node)?)),
         "StcResourceProfile" => Ok(Box::new(StcResourceProfile::from_node(node)?)),
+        "StcSearchLocation" => Ok(Box::new(StcSearchLocation::from_node(node)?)),
+        "StcCatalogEntryLocation" => Ok(Box::new(StcCatalogEntryLocation::from_node(node)?)),
+        "StcObsDataLocation" => Ok(Box::new(StcObsDataLocation::from_node(node)?)),
         other => Err(AstError::new(
             ErrorCode::Lderr,
             format!("unknown Region class: {other}"),
@@ -1515,6 +1552,15 @@ impl<K: crate::regions::StcKind> Serializable for crate::regions::Stc<K> {
             );
         }
         node.push_isa("Stc", Some("An IVOA Space-Time-Coords object".to_string()));
+        // stcobsdatalocation.c `Dump`: the observatory position, where there
+        // is one, which only an StcObsDataLocation can hold.
+        if let Some(obs) = &self.obs {
+            node.push_object(
+                "ObsLoc",
+                Serializable::to_node(obs)?,
+                Some("Observatory position".to_string()),
+            );
+        }
         Ok(node)
     }
 
@@ -1550,7 +1596,13 @@ impl<K: crate::regions::StcKind> Serializable for crate::regions::Stc<K> {
             }
             coords.push(keymap);
         }
-        Ok(crate::regions::Stc::from_parts(data, region, coords))
+        // stcobsdatalocation.c `astLoadStcObsDataLocation`: the observatory
+        // position, a PointList, read as optional.
+        let obs = match whole.section(K::CLASS).get_object("ObsLoc") {
+            Some(obs_node) => Some(PointList::from_node(obs_node)?),
+            None => None,
+        };
+        Ok(crate::regions::Stc::from_parts(data, region, coords, obs))
     }
 }
 
@@ -1743,6 +1795,12 @@ pub enum AnyObject {
     Prism(Prism),
     /// A [`StcResourceProfile`] (STC resource coverage).
     StcResourceProfile(StcResourceProfile),
+    /// A [`StcSearchLocation`] (STC search location).
+    StcSearchLocation(StcSearchLocation),
+    /// A [`StcCatalogEntryLocation`] (STC catalogue entry location).
+    StcCatalogEntryLocation(StcCatalogEntryLocation),
+    /// A [`StcObsDataLocation`] (STC observation location).
+    StcObsDataLocation(StcObsDataLocation),
     /// A [`crate::keymap::KeyMap`] (string-keyed heterogeneous map).
     ///
     /// Implements neither [`Mapping`] nor [`Frame`]; [`as_mapping`](AnyObject::as_mapping),
@@ -1881,6 +1939,15 @@ impl AnyObject {
         if let Some(x) = m.as_any().downcast_ref::<StcResourceProfile>() {
             return Some(AnyObject::StcResourceProfile(x.clone()));
         }
+        if let Some(x) = m.as_any().downcast_ref::<StcSearchLocation>() {
+            return Some(AnyObject::StcSearchLocation(x.clone()));
+        }
+        if let Some(x) = m.as_any().downcast_ref::<StcCatalogEntryLocation>() {
+            return Some(AnyObject::StcCatalogEntryLocation(x.clone()));
+        }
+        if let Some(x) = m.as_any().downcast_ref::<StcObsDataLocation>() {
+            return Some(AnyObject::StcObsDataLocation(x.clone()));
+        }
         None
     }
 
@@ -1928,6 +1995,9 @@ impl AnyObject {
             AnyObject::PointList(r) => Some(r),
             AnyObject::Prism(r) => Some(r),
             AnyObject::StcResourceProfile(r) => Some(r),
+            AnyObject::StcSearchLocation(r) => Some(r),
+            AnyObject::StcCatalogEntryLocation(r) => Some(r),
+            AnyObject::StcObsDataLocation(r) => Some(r),
             AnyObject::BasicFrame(_)
             | AnyObject::SkyFrame(_)
             | AnyObject::SpecFrame(_)
@@ -1964,6 +2034,9 @@ impl AnyObject {
             AnyObject::PointList(r) => Some(r),
             AnyObject::Prism(r) => Some(r),
             AnyObject::StcResourceProfile(r) => Some(r),
+            AnyObject::StcSearchLocation(r) => Some(r),
+            AnyObject::StcCatalogEntryLocation(r) => Some(r),
+            AnyObject::StcObsDataLocation(r) => Some(r),
             AnyObject::UnitMap(_)
             | AnyObject::ZoomMap(_)
             | AnyObject::ShiftMap(_)
@@ -2040,6 +2113,9 @@ impl AnyObject {
             AnyObject::PointList(r) => Some(Box::new(r)),
             AnyObject::Prism(r) => Some(Box::new(r)),
             AnyObject::StcResourceProfile(r) => Some(Box::new(r)),
+            AnyObject::StcSearchLocation(r) => Some(Box::new(r)),
+            AnyObject::StcCatalogEntryLocation(r) => Some(Box::new(r)),
+            AnyObject::StcObsDataLocation(r) => Some(Box::new(r)),
             AnyObject::BasicFrame(_)
             | AnyObject::SkyFrame(_)
             | AnyObject::SpecFrame(_)
@@ -2076,6 +2152,9 @@ impl AnyObject {
             AnyObject::PointList(r) => Some(Box::new(r)),
             AnyObject::Prism(r) => Some(Box::new(r)),
             AnyObject::StcResourceProfile(r) => Some(Box::new(r)),
+            AnyObject::StcSearchLocation(r) => Some(Box::new(r)),
+            AnyObject::StcCatalogEntryLocation(r) => Some(Box::new(r)),
+            AnyObject::StcObsDataLocation(r) => Some(Box::new(r)),
             AnyObject::UnitMap(_)
             | AnyObject::ZoomMap(_)
             | AnyObject::ShiftMap(_)
@@ -2122,6 +2201,9 @@ impl AnyObject {
             AnyObject::PointList(r) => Some(r),
             AnyObject::Prism(r) => Some(r),
             AnyObject::StcResourceProfile(r) => Some(r),
+            AnyObject::StcSearchLocation(r) => Some(r),
+            AnyObject::StcCatalogEntryLocation(r) => Some(r),
+            AnyObject::StcObsDataLocation(r) => Some(r),
             _ => None,
         }
     }
@@ -2140,6 +2222,9 @@ impl AnyObject {
             AnyObject::PointList(r) => Some(r),
             AnyObject::Prism(r) => Some(r),
             AnyObject::StcResourceProfile(r) => Some(r),
+            AnyObject::StcSearchLocation(r) => Some(r),
+            AnyObject::StcCatalogEntryLocation(r) => Some(r),
+            AnyObject::StcObsDataLocation(r) => Some(r),
             _ => None,
         }
     }
@@ -2158,6 +2243,9 @@ impl AnyObject {
             AnyObject::PointList(r) => Some(Box::new(r)),
             AnyObject::Prism(r) => Some(Box::new(r)),
             AnyObject::StcResourceProfile(r) => Some(Box::new(r)),
+            AnyObject::StcSearchLocation(r) => Some(Box::new(r)),
+            AnyObject::StcCatalogEntryLocation(r) => Some(Box::new(r)),
+            AnyObject::StcObsDataLocation(r) => Some(Box::new(r)),
             _ => None,
         }
     }
@@ -2221,6 +2309,15 @@ pub(crate) fn any_object_from_node(node: &Node) -> AstResult<AnyObject> {
         "Prism" => Ok(AnyObject::Prism(Prism::from_node(node)?)),
         "StcResourceProfile" => Ok(AnyObject::StcResourceProfile(
             StcResourceProfile::from_node(node)?,
+        )),
+        "StcSearchLocation" => Ok(AnyObject::StcSearchLocation(StcSearchLocation::from_node(
+            node,
+        )?)),
+        "StcCatalogEntryLocation" => Ok(AnyObject::StcCatalogEntryLocation(
+            StcCatalogEntryLocation::from_node(node)?,
+        )),
+        "StcObsDataLocation" => Ok(AnyObject::StcObsDataLocation(
+            StcObsDataLocation::from_node(node)?,
         )),
         "KeyMap" => Ok(AnyObject::KeyMap(Box::new(
             crate::keymap::KeyMap::from_node(node)?,
@@ -2287,6 +2384,9 @@ pub(crate) fn any_object_to_node(obj: &AnyObject) -> AstResult<Node> {
         AnyObject::PointList(r) => Serializable::to_node(r),
         AnyObject::Prism(r) => Serializable::to_node(r),
         AnyObject::StcResourceProfile(r) => Serializable::to_node(r),
+        AnyObject::StcSearchLocation(r) => Serializable::to_node(r),
+        AnyObject::StcCatalogEntryLocation(r) => Serializable::to_node(r),
+        AnyObject::StcObsDataLocation(r) => Serializable::to_node(r),
         AnyObject::KeyMap(m) => Serializable::to_node(m.as_ref()),
     }
 }

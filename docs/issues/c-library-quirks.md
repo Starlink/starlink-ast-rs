@@ -1098,6 +1098,16 @@ Only a hand-written description can do this, since Dump never writes an index be
 Fixed on `u/timj/norm-unit` in 0d05fc29, which checks Current as Base is checked, with a `testframeset` case (Errors 41-43).
 The port treats a `Currnt` below 1 as unset, as the fixed C does (`frameset.rs` `from_node`), and `tests/test_frameset_current.rs` covers Current's set state against C.
 
+### RESOLVED (upstream a4f0566e): writing an StcObsDataLocation with no observatory position crashes
+
+C location: `stcobsdatalocation.c` `Dump`.
+
+An StcObsDataLocation has no observatory position until the protected `astStcSetObs` gives it one, and the public constructor does not.
+`Dump` passed the NULL position to `astWriteObject`, which dumps the Object it is given, so writing such an Object crashed in `astDump`.
+
+Fixed on `u/timj/norm-unit` in a4f0566e: the position is written only when there is one, and the loader already reads it as optional; `testregions` `checkStcObsDump`.
+The port writes `ObsLoc` only when the Stc holds a position; `tests/test_region_stc_oracle.rs` (`obs_data_without_obs`), whose probe needs the fixed library.
+
 ### RESOLVED (upstream f24ee843): a negated Stc covers the same points as the un-negated one
 
 C location: `stc.c` `GetRegion`.
