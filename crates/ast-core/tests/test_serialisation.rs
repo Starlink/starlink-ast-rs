@@ -1643,10 +1643,15 @@ fn round_trip_null_region() {
 #[test]
 fn round_trip_ellipse() {
     let frame = BasicFrameBuilder::new(2).build().unwrap();
-    let ellipse = EllipseBuilder::new(frame, vec![5.0, 5.0], [3.0, 2.0], 0.0)
-        .unwrap()
-        .build()
-        .unwrap();
+    let ellipse = EllipseBuilder::new(
+        frame,
+        vec![5.0, 5.0],
+        [3.0, 2.0],
+        std::f64::consts::FRAC_PI_2,
+    )
+    .unwrap()
+    .build()
+    .unwrap();
 
     let text = to_native_string(&AnyObject::Ellipse(ellipse)).unwrap();
 

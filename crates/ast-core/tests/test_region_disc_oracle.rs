@@ -5,8 +5,7 @@
 //! one that is not 2-dimensional.
 //!
 //! The values come from `tools/oracle_fixtures/region_disc_probe.c`. The
-//! sky Ellipse is read from C's dump, since the port's `EllipseBuilder`
-//! takes its angle differently (EL-2 in docs/audits/region-c-parity.md).
+//! sky Ellipse is read from C's dump.
 
 // Generated; formatted by its generator rather than rustfmt.
 #[rustfmt::skip]

@@ -4,7 +4,7 @@
 //! for axis-aligned and rotated ellipses, negation, bounding box, batch
 //! transform.
 
-use std::f64::consts::{FRAC_PI_4, PI};
+use std::f64::consts::{FRAC_PI_2, FRAC_PI_4, PI};
 
 use ast_core::constants::BAD_VALUE;
 use ast_core::coords::PointSet;
@@ -17,7 +17,7 @@ use ast_core::regions::{EllipseBuilder, Region};
 #[test]
 fn construct_axis_aligned() {
     let frame = BasicFrameBuilder::new(2).build().unwrap();
-    let ellipse = EllipseBuilder::new(frame, vec![0.0, 0.0], [5.0, 3.0], 0.0)
+    let ellipse = EllipseBuilder::new(frame, vec![0.0, 0.0], [5.0, 3.0], FRAC_PI_2)
         .unwrap()
         .build()
         .unwrap();
@@ -46,25 +46,25 @@ fn construct_rotated() {
 #[test]
 fn construct_rejects_non_2d_frame() {
     let frame = BasicFrameBuilder::new(3).build().unwrap();
-    let result = EllipseBuilder::new(frame, vec![0.0, 0.0, 0.0], [5.0, 3.0], 0.0);
+    let result = EllipseBuilder::new(frame, vec![0.0, 0.0, 0.0], [5.0, 3.0], FRAC_PI_2);
     assert!(result.is_err());
 }
 
 #[test]
 fn construct_rejects_wrong_centre_length() {
     let frame = BasicFrameBuilder::new(2).build().unwrap();
-    let result = EllipseBuilder::new(frame, vec![0.0, 0.0, 0.0], [5.0, 3.0], 0.0);
+    let result = EllipseBuilder::new(frame, vec![0.0, 0.0, 0.0], [5.0, 3.0], FRAC_PI_2);
     assert!(result.is_err());
 }
 
 #[test]
 fn construct_rejects_non_positive_axes() {
     let frame = BasicFrameBuilder::new(2).build().unwrap();
-    let result = EllipseBuilder::new(frame, vec![0.0, 0.0], [0.0, 3.0], 0.0);
+    let result = EllipseBuilder::new(frame, vec![0.0, 0.0], [0.0, 3.0], FRAC_PI_2);
     assert!(result.is_err());
 
     let frame2 = BasicFrameBuilder::new(2).build().unwrap();
-    let result2 = EllipseBuilder::new(frame2, vec![0.0, 0.0], [5.0, -1.0], 0.0);
+    let result2 = EllipseBuilder::new(frame2, vec![0.0, 0.0], [5.0, -1.0], FRAC_PI_2);
     assert!(result2.is_err());
 }
 
@@ -74,7 +74,7 @@ fn construct_rejects_non_positive_axes() {
 fn point_inside_axis_aligned() {
     let frame = BasicFrameBuilder::new(2).build().unwrap();
     // Semi-major = 5 along axis 1, semi-minor = 3 along axis 2.
-    let ellipse = EllipseBuilder::new(frame, vec![0.0, 0.0], [5.0, 3.0], 0.0)
+    let ellipse = EllipseBuilder::new(frame, vec![0.0, 0.0], [5.0, 3.0], FRAC_PI_2)
         .unwrap()
         .build()
         .unwrap();
@@ -95,7 +95,7 @@ fn point_inside_axis_aligned() {
 #[test]
 fn point_outside_axis_aligned() {
     let frame = BasicFrameBuilder::new(2).build().unwrap();
-    let ellipse = EllipseBuilder::new(frame, vec![0.0, 0.0], [5.0, 3.0], 0.0)
+    let ellipse = EllipseBuilder::new(frame, vec![0.0, 0.0], [5.0, 3.0], FRAC_PI_2)
         .unwrap()
         .build()
         .unwrap();
@@ -113,7 +113,7 @@ fn point_outside_axis_aligned() {
 #[test]
 fn point_on_boundary_axis_aligned() {
     let frame = BasicFrameBuilder::new(2).build().unwrap();
-    let ellipse = EllipseBuilder::new(frame, vec![0.0, 0.0], [5.0, 3.0], 0.0)
+    let ellipse = EllipseBuilder::new(frame, vec![0.0, 0.0], [5.0, 3.0], FRAC_PI_2)
         .unwrap()
         .build()
         .unwrap();
@@ -130,7 +130,7 @@ fn point_on_boundary_axis_aligned() {
 #[test]
 fn point_on_boundary_open() {
     let frame = BasicFrameBuilder::new(2).build().unwrap();
-    let mut ellipse = EllipseBuilder::new(frame, vec![0.0, 0.0], [5.0, 3.0], 0.0)
+    let mut ellipse = EllipseBuilder::new(frame, vec![0.0, 0.0], [5.0, 3.0], FRAC_PI_2)
         .unwrap()
         .build()
         .unwrap();
@@ -216,7 +216,7 @@ fn point_on_boundary_rotated() {
 #[test]
 fn negation() {
     let frame = BasicFrameBuilder::new(2).build().unwrap();
-    let mut ellipse = EllipseBuilder::new(frame, vec![0.0, 0.0], [5.0, 3.0], 0.0)
+    let mut ellipse = EllipseBuilder::new(frame, vec![0.0, 0.0], [5.0, 3.0], FRAC_PI_2)
         .unwrap()
         .build()
         .unwrap();
@@ -239,7 +239,7 @@ fn negation() {
 #[test]
 fn negated_copy() {
     let frame = BasicFrameBuilder::new(2).build().unwrap();
-    let ellipse = EllipseBuilder::new(frame, vec![0.0, 0.0], [5.0, 3.0], 0.0)
+    let ellipse = EllipseBuilder::new(frame, vec![0.0, 0.0], [5.0, 3.0], FRAC_PI_2)
         .unwrap()
         .build()
         .unwrap();
@@ -265,7 +265,7 @@ fn negated_copy() {
 #[test]
 fn bounding_box_axis_aligned() {
     let frame = BasicFrameBuilder::new(2).build().unwrap();
-    let ellipse = EllipseBuilder::new(frame, vec![1.0, 2.0], [5.0, 3.0], 0.0)
+    let ellipse = EllipseBuilder::new(frame, vec![1.0, 2.0], [5.0, 3.0], FRAC_PI_2)
         .unwrap()
         .build()
         .unwrap();
@@ -287,7 +287,7 @@ fn bounding_box_axis_aligned() {
 #[test]
 fn bounding_box_rotated() {
     let frame = BasicFrameBuilder::new(2).build().unwrap();
-    let ellipse = EllipseBuilder::new(frame, vec![0.0, 0.0], [4.0, 2.0], PI / 2.0)
+    let ellipse = EllipseBuilder::new(frame, vec![0.0, 0.0], [4.0, 2.0], 0.0)
         .unwrap()
         .build()
         .unwrap();
@@ -305,7 +305,7 @@ fn bounding_box_rotated() {
 #[test]
 fn transform_forward_passes_interior() {
     let frame = BasicFrameBuilder::new(2).build().unwrap();
-    let ellipse = EllipseBuilder::new(frame, vec![0.0, 0.0], [5.0, 3.0], 0.0)
+    let ellipse = EllipseBuilder::new(frame, vec![0.0, 0.0], [5.0, 3.0], FRAC_PI_2)
         .unwrap()
         .build()
         .unwrap();
@@ -344,7 +344,7 @@ fn transform_forward_passes_interior() {
 #[test]
 fn transform_inverse_masks_as_forward() {
     let frame = BasicFrameBuilder::new(2).build().unwrap();
-    let ellipse = EllipseBuilder::new(frame, vec![0.0, 0.0], [5.0, 3.0], 0.0)
+    let ellipse = EllipseBuilder::new(frame, vec![0.0, 0.0], [5.0, 3.0], FRAC_PI_2)
         .unwrap()
         .build()
         .unwrap();
@@ -366,7 +366,7 @@ fn transform_inverse_masks_as_forward() {
 #[test]
 fn mesh_points_lie_on_boundary() {
     let frame = BasicFrameBuilder::new(2).build().unwrap();
-    let ellipse = EllipseBuilder::new(frame, vec![1.0, 2.0], [5.0, 3.0], 0.3)
+    let ellipse = EllipseBuilder::new(frame, vec![1.0, 2.0], [5.0, 3.0], FRAC_PI_2 - 0.3)
         .unwrap()
         .build()
         .unwrap();
@@ -406,7 +406,7 @@ fn mesh_points_lie_on_boundary() {
 fn reg_pins_ellipse_edge_on_boundary() {
     // Axis-aligned ellipse: a=5 along axis 1, b=3 along axis 2.
     let frame = BasicFrameBuilder::new(2).build().unwrap();
-    let e = EllipseBuilder::new(frame, vec![0.0, 0.0], [5.0, 3.0], 0.0)
+    let e = EllipseBuilder::new(frame, vec![0.0, 0.0], [5.0, 3.0], FRAC_PI_2)
         .unwrap()
         .build()
         .unwrap();
@@ -421,7 +421,7 @@ fn reg_pins_ellipse_edge_on_boundary() {
 #[test]
 fn reg_pins_ellipse_interior_and_exterior_off_boundary() {
     let frame = BasicFrameBuilder::new(2).build().unwrap();
-    let e = EllipseBuilder::new(frame, vec![0.0, 0.0], [5.0, 3.0], 0.0)
+    let e = EllipseBuilder::new(frame, vec![0.0, 0.0], [5.0, 3.0], FRAC_PI_2)
         .unwrap()
         .build()
         .unwrap();
@@ -435,7 +435,7 @@ fn reg_pins_ellipse_interior_and_exterior_off_boundary() {
 #[test]
 fn reg_pins_ellipse_full_mesh_on_boundary() {
     let frame = BasicFrameBuilder::new(2).build().unwrap();
-    let e = EllipseBuilder::new(frame, vec![0.0, 0.0], [5.0, 3.0], 0.0)
+    let e = EllipseBuilder::new(frame, vec![0.0, 0.0], [5.0, 3.0], FRAC_PI_2)
         .unwrap()
         .build()
         .unwrap();
@@ -476,7 +476,7 @@ fn ellipse_bounds_measure_each_axis_by_its_own_rule() {
         let pick = if sky_first { [1, 3] } else { [3, 1] };
         let (mixed, _map) = pick_axes(&cf, &pick).unwrap();
 
-        let el = EllipseBuilder::from_dyn(mixed, vec![0.0, 0.0], radii, 0.0)
+        let el = EllipseBuilder::from_dyn(mixed, vec![0.0, 0.0], radii, FRAC_PI_2)
             .unwrap()
             .build()
             .unwrap();

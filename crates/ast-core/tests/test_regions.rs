@@ -1981,11 +1981,11 @@ fn sky_box_overlap_partial() {
 #[test]
 fn sky_ellipse_basic_membership() {
     // Ellipse on SkyFrame at (1.0, 0.5) with semi-axes [0.1, 0.05]
-    // and angle 0 (semi-major aligned with RA axis).
+    // and its primary axis along RA (angle pi/2 from the Dec axis).
     let sky = SkyFrame::new(SkySystem::Icrs);
     let centre = [1.0, 0.5];
     let semi_axes = [0.1, 0.05]; // a=0.1 rad along axis 1, b=0.05 along axis 2
-    let angle = 0.0;
+    let angle = std::f64::consts::FRAC_PI_2;
 
     let ellipse = EllipseBuilder::new(sky, centre.to_vec(), semi_axes, angle)
         .unwrap()
@@ -2095,7 +2095,7 @@ fn ellipse_sky_pole_bounds_span_all_longitudes() {
     // 0.5 radians long and pointing south along the centre's meridian, so the
     // mesh runs over the pole.
     let centre = vec![0.0, FRAC_PI_2 - 0.2];
-    let ellipse = EllipseBuilder::new(sky, centre, [0.5, 0.3], -FRAC_PI_2)
+    let ellipse = EllipseBuilder::new(sky, centre, [0.5, 0.3], std::f64::consts::PI)
         .unwrap()
         .build()
         .unwrap();

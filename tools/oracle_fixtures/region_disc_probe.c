@@ -3,8 +3,7 @@
  * Cartesian Box, negated and not, an ICRS Circle and Polygon, a Cartesian
  * Circle and PointList, a NullRegion, an unbounded Interval (bad centre and radius)
  * and a 3-D Box (AST__INVAR); and an ICRS Ellipse, with its dump for the
- * port to read, since its EllipseBuilder takes the angle differently (EL-2
- * in docs/audits/region-c-parity.md).
+ * port to read.
  *
  * Prints Rust source for crates/ast-core/tests/region_disc_oracle/cases.rs:
  *

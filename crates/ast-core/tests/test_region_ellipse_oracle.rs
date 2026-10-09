@@ -2,7 +2,8 @@
 //! axes from `CalcPars`): a three-point Ellipse whose second point is not the
 //! end of its secondary axis, and an Ellipse in an ICRS SkyFrame over a grid,
 //! where the components along and across the primary axis are measured on
-//! the sky. Each Ellipse is read from C's dump.
+//! the sky. Each Ellipse is read from C's dump, and `EllipseBuilder`, which
+//! takes the arguments of C's form-1 constructor, reproduces those dumps.
 //!
 //! The values come from `tools/oracle_fixtures/region_ellipse_probe.c`.
 
@@ -12,7 +13,10 @@
 mod cases;
 
 use ast_core::constants::BAD_VALUE;
-use ast_core::from_native_string;
+use ast_core::frames::{BasicFrameBuilder, Frame, SkyFrame, SkySystem};
+use ast_core::mappings::Mapping;
+use ast_core::regions::EllipseBuilder;
+use ast_core::{AnyObject, from_native_string, to_native_string};
 
 #[test]
 fn membership_matches_the_c_library() {
@@ -25,6 +29,7 @@ fn membership_matches_the_c_library() {
         let (x, y): (&[f64], &[f64]) = match name {
             "form0" => (&cases::FORM0_X, &cases::FORM0_Y),
             "sky" => (&gx, &gy),
+            "form1" => (&cases::FORM1_X, &cases::FORM1_Y),
             other => panic!("no test points for case {other}"),
         };
         let (xo, _) = reg.tran2(x, y, true).unwrap();
@@ -39,4 +44,33 @@ fn membership_matches_the_c_library() {
             .count();
         assert_eq!(differ, 0, "{name}: {differ} points differ from C");
     }
+}
+
+fn built(frame: impl Frame + 'static, centre: [f64; 2], axes: [f64; 2], angle: f64) -> String {
+    let e = EllipseBuilder::new(frame, centre.to_vec(), axes, angle)
+        .unwrap()
+        .build()
+        .unwrap();
+    to_native_string(&AnyObject::from_mapping(&e as &dyn Mapping).unwrap()).unwrap()
+}
+
+/// `EllipseBuilder` takes the arguments of `astEllipse` form 1, the angle
+/// from the second axis towards the first, and places the axis ends as C
+/// does: its Ellipses dump exactly as C's.
+#[test]
+fn builder_matches_astellipse_form1() {
+    let want = |name: &str| cases::CASES.iter().find(|c| c.0 == name).unwrap().1;
+    assert_eq!(
+        built(SkyFrame::new(SkySystem::Icrs), [1.0, 0.8], [0.2, 0.1], 0.3),
+        want("sky")
+    );
+    assert_eq!(
+        built(
+            BasicFrameBuilder::new(2).build().unwrap(),
+            [1.0, 2.0],
+            [2.0, 1.0],
+            0.3
+        ),
+        want("form1")
+    );
 }

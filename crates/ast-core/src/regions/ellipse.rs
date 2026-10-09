@@ -1,7 +1,9 @@
 //! Ellipse region: a rotated elliptical area within a 2-D Frame.
 //!
-//! An [`Ellipse`] is defined by a centre point, semi-major and semi-minor
-//! axis lengths, and a position angle (measured from axis 1 toward axis 2).
+//! An [`Ellipse`] is defined by a centre point, the half-lengths of its
+//! primary and secondary axes, and the angle of its primary axis, measured
+//! from the second axis of the Frame towards the first, as C's `astEllipse`
+//! measures it.
 //! The ellipse is restricted to 2-dimensional frames.
 
 use std::f64::consts::PI;
@@ -242,9 +244,11 @@ impl EllipseBuilder {
     ///
     /// - `frame`: A 2-D frame (naxes must be 2).
     /// - `centre`: Coordinates of the ellipse centre (length 2).
-    /// - `semi_axes`: `[a, b]` — semi-major and semi-minor axis lengths.
-    /// - `angle`: Position angle in radians, measured from axis 1 toward
-    ///   axis 2. An angle of 0 aligns the semi-major axis with axis 1.
+    /// - `semi_axes`: `[a, b]`, the half-lengths of the primary and
+    ///   secondary axes, measured as the Frame measures distance.
+    /// - `angle`: the angle in radians from the second axis of the Frame to
+    ///   the primary axis, positive towards the first axis, as `astEllipse`
+    ///   takes it: an angle of 0 lays the primary axis along the second axis.
     pub fn new(
         frame: impl Frame + 'static,
         centre: Vec<f64>,
@@ -334,25 +338,12 @@ impl EllipseBuilder {
         self
     }
 
-    /// Build the Ellipse.
+    /// Build the Ellipse, as `astEllipse` with form 1 does: the end of the
+    /// primary axis is `a` from the centre at `angle`, and the end of the
+    /// secondary axis `b` from it a quarter turn further, each placed with
+    /// the Frame's `offset2`, so on the sky they are along great circles.
     pub fn build(self) -> AstResult<Ellipse> {
-        let [a, b] = self.semi_axes;
-        let angle = self.angle;
-        let cos_a = angle.cos();
-        let sin_a = angle.sin();
-
-        // Compute the end of the semi-major axis.
-        let p1 = vec![self.centre[0] + a * cos_a, self.centre[1] + a * sin_a];
-
-        // Compute a point on the boundary at the end of the semi-minor axis.
-        // The semi-minor axis is perpendicular to the semi-major axis
-        // (rotated by +90 degrees).
-        let p2 = vec![self.centre[0] - b * sin_a, self.centre[1] + b * cos_a];
-
-        let frameset = FrameSet::new(self.frame);
-        let points = vec![self.centre, p1, p2];
-        let data = RegionData::new(frameset, points);
-        let mut region = Ellipse { data };
+        let mut region = Ellipse::from_axes(self.frame, self.centre, self.semi_axes, self.angle)?;
 
         // astSetUnc, as C's constructor calls it (region.c:13372).
         if let Some(unc) = self.uncertainty {
