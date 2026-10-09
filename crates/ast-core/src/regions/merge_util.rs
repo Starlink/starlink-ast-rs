@@ -9,6 +9,7 @@
 //! out the parts common to both so each class only has to build the
 //! per-class bounds/points.
 
+use crate::error::AstResult;
 use crate::frames::{DynFrame, FrameSet};
 use crate::mappings::{DynMapping, Mapping};
 
@@ -61,9 +62,12 @@ pub(super) struct MergeScaling {
 /// C applies both to the Region `astMapRegion` returned (nullregion.c:740-776
 /// and the same order elsewhere), not to the Region built before it, so the
 /// result's own axis count is what sets the MeshSize default.
-pub(super) fn apply_merge_scaling_to(region: &mut dyn super::Region, scaling: &MergeScaling) {
+pub(super) fn apply_merge_scaling_to(
+    region: &mut dyn super::Region,
+    scaling: &MergeScaling,
+) -> AstResult<()> {
     if scaling.fill_this.1 || scaling.fill_reg.1 {
-        region.set_fill_factor(scaling.fill_this.0 * scaling.fill_reg.0);
+        region.set_fill_factor(scaling.fill_this.0 * scaling.fill_reg.0)?;
     }
 
     if scaling.msz_this.1 || scaling.msz_reg.1 {
@@ -74,6 +78,7 @@ pub(super) fn apply_merge_scaling_to(region: &mut dyn super::Region, scaling: &M
         let def_result = default_mesh_size(region.naxes()) as f64;
         region.set_mesh_size((fac_this * fac_reg * def_result).round() as usize);
     }
+    Ok(())
 }
 
 /// The Frames and Mapping a cross-type merge builds its result through: the
@@ -167,11 +172,11 @@ pub(super) fn finish_region_merge(
     };
 
     if let Some(unc) = uncertainty {
-        new.set_uncertainty(unc);
+        new.set_uncertainty(unc).ok()?;
     }
 
     let mut result = new.map_region(bcmap.as_ref(), cfrm.as_ref()).ok()?;
-    apply_merge_scaling_to(result.as_mut(), &scaling);
+    apply_merge_scaling_to(result.as_mut(), &scaling).ok()?;
 
     // C returns the mapped Region as it stands. A fully-bounded Interval
     // reclassifies to a Box on the simplify loop's next visit to this list

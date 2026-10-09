@@ -66,7 +66,7 @@ impl NullRegionBuilder {
         // (`if( this->points )`, region.c:10871-10876); the remap, the
         // negate-if-unbounded and the RegionFS tag all still apply.
         if let Some(unc) = self.uncertainty {
-            region.set_uncertainty(unc);
+            region.set_uncertainty(unc)?;
         }
 
         Ok(region)
@@ -198,8 +198,8 @@ impl Region for NullRegion {
         self.data.effective_fill_factor()
     }
 
-    fn set_fill_factor(&mut self, factor: f64) {
-        self.data.set_fill_factor(factor);
+    fn set_fill_factor(&mut self, factor: f64) -> AstResult<()> {
+        self.data.set_fill_factor(factor)
     }
 
     fn test_fill_factor(&self) -> bool {
@@ -381,7 +381,7 @@ impl Region for NullRegion {
         // overlays from `this` alone, not from a combination of the two, and
         // asks for the uncertainty to be cleared so the one installed below is
         // the only one.
-        new.reg_overlay(self, true);
+        new.reg_overlay(self, true).ok()?;
 
         // Ensure Negated is set correctly (nullregion.c:678-682). The guard
         // above already requires the two to agree.
@@ -403,7 +403,7 @@ impl Region for NullRegion {
                 .ok()?;
             let sbunc = <dyn Mapping>::simplify(&bunc).ok()?;
             let sbunc = super::merge_util::mapping_into_region(sbunc)?;
-            new.set_uncertainty(sbunc);
+            new.set_uncertainty(sbunc).ok()?;
         }
 
         // The current Frames, combined in the same order (nullregion.c:713-721).
@@ -446,7 +446,7 @@ impl Region for NullRegion {
             fill_this: (self.data.effective_fill_factor(), self.data.fill_factor_set),
             fill_reg: (other.fill_factor(), other.test_fill_factor()),
         };
-        super::merge_util::apply_merge_scaling_to(result.as_mut(), &scaling);
+        super::merge_util::apply_merge_scaling_to(result.as_mut(), &scaling).ok()?;
 
         // A Region is a Mapping; the sibling-trait port needs the upcast
         // written down.
@@ -706,7 +706,7 @@ impl Mapping for NullRegion {
             // base Frame.
             if new.test_unc() {
                 let unc = new.get_unc_frm(FrameRef::Current)?;
-                region.set_uncertainty(unc);
+                region.set_uncertainty(unc)?;
             }
             Box::new(region)
         };
@@ -722,7 +722,7 @@ impl Mapping for NullRegion {
         // supplied pointer.
         let changed = simpler || !map.as_any().is::<UnitMap>();
         if changed {
-            result.reg_overlay(self, true);
+            result.reg_overlay(self, true)?;
             Ok((result.clone_box(), true))
         } else {
             Ok((self.clone_box(), false))

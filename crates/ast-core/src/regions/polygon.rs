@@ -297,7 +297,7 @@ impl PolygonBuilder {
         // the uncertainty is re-centred on the first vertex as supplied -- before
         // any reversal below can change which vertex that is.
         if let Some(unc) = self.uncertainty {
-            polygon.set_uncertainty(unc);
+            polygon.set_uncertainty(unc)?;
         }
 
         // Mirror C astInitPolygon (polygon.c:7160): reverse the vertex order if
@@ -937,8 +937,8 @@ impl Region for Polygon {
         self.data.effective_fill_factor()
     }
 
-    fn set_fill_factor(&mut self, factor: f64) {
-        self.data.set_fill_factor(factor);
+    fn set_fill_factor(&mut self, factor: f64) -> AstResult<()> {
+        self.data.set_fill_factor(factor)
     }
 
     fn test_fill_factor(&self) -> bool {
@@ -1275,7 +1275,7 @@ impl Mapping for Polygon {
                 return Ok((self.clone_box(), false));
             }
             let mut result = new.clone_region();
-            result.reg_overlay(self, true);
+            result.reg_overlay(self, true)?;
             Ok((result.clone_box(), true))
         };
 
@@ -1327,7 +1327,7 @@ impl Mapping for Polygon {
             data: RegionData::new(FrameSet::new(current_frame), new_points),
             simp_vertices: None,
         };
-        newpol.set_uncertainty(unc);
+        newpol.set_uncertainty(unc)?;
         newpol.ensure_inside()?;
 
         // With SimpVertices zero, check that the transformation did not bend
@@ -1348,7 +1348,7 @@ impl Mapping for Polygon {
         // A new Polygon was built from the remapped vertices, which is where C
         // sets `simpler = 1` unconditionally (polygon.c:5436).
         let mut result: DynRegion = Box::new(newpol);
-        result.reg_overlay(self, true);
+        result.reg_overlay(self, true)?;
         Ok((result.clone_box(), true))
     }
 

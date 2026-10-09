@@ -204,7 +204,10 @@ pub trait Region: Frame + Mapping + AsDynRegion {
     fn fill_factor(&self) -> f64;
 
     /// Set the fill factor.
-    fn set_fill_factor(&mut self, factor: f64);
+    ///
+    /// Fails with `AST__ATSER`, leaving the attribute unchanged, unless
+    /// `factor` lies in `0.0..=1.0` (C `astSetFillFactor`, region.c:12669).
+    fn set_fill_factor(&mut self, factor: f64) -> AstResult<()>;
 
     /// Whether the fill factor has been explicitly set (C `TestFillFactor`).
     fn test_fill_factor(&self) -> bool;
@@ -531,7 +534,10 @@ pub trait Region: Frame + Mapping + AsDynRegion {
     /// an uncertainty Region describing the positional uncertainty of points
     /// on its boundary. The supplied `unc` must be of a centro-symmetric class
     /// (`Box`, `Circle`, `Ellipse`) or a `Prism` of such — i.e. a class that
-    /// can be re-centred; otherwise an [`ErrorCode::Badin`] error is reported.
+    /// can be re-centred, and its Frame must be convertible to this Region's
+    /// base Frame. Either failure is reported as [`ErrorCode::Ncpin`], the
+    /// status C's second `astError` leaves, and leaves this Region with no
+    /// uncertainty, as C annuls the old one first.
     ///
     /// The supplied Region is deep-copied and remapped into this Region's base
     /// Frame, negated if it is unbounded (so it becomes bounded), tagged to omit
@@ -546,25 +552,26 @@ pub trait Region: Frame + Mapping + AsDynRegion {
     /// (region.c:11303-11305) and the cross-class merges. The one exception is
     /// the loader, which stores what the Channel read verbatim
     /// (region.c:13559), so reading a Region back is an identity.
-    fn set_uncertainty(&mut self, unc: DynRegion) {
-        // Validate that the supplied Region is of a re-centreable
-        // (centro-symmetric) class. C tests this via
-        // astRegCentre(unc, NULL, NULL, 0, CURRENT) returning non-NULL
-        // (region.c:10836).
-        let usable = match unc.reg_centre_query(FrameRef::Current) {
-            Ok(Some(_)) => true,
-            Ok(None) => false,
-            Err(_) => false,
-        };
+    fn set_uncertainty(&mut self, unc: DynRegion) -> AstResult<()> {
+        // C annuls any existing uncertainty before validating the new one
+        // (region.c:10826-10832), so every failure below leaves the Region
+        // with none.
+        if self.get_uncertainty().is_some() {
+            self.store_uncertainty(None);
+        }
 
-        if !usable {
-            // Annul any existing uncertainty and report the error, mirroring
-            // C (region.c:10826-10832, 10899-10904). The bad shape leaves the
-            // Region with no uncertainty.
-            if self.get_uncertainty().is_some() {
-                self.store_uncertainty(None);
-            }
-            return;
+        // The supplied Region must be of a re-centreable (centro-symmetric)
+        // class. C tests this via astRegCentre(unc, NULL, NULL, 0, CURRENT)
+        // returning non-NULL (region.c:10836); its errors propagate.
+        if unc.reg_centre_query(FrameRef::Current)?.is_none() {
+            return Err(AstError::new(
+                ErrorCode::Ncpin,
+                "astSetUnc: Bad uncertainty shape supplied.",
+            )
+            .with_context(
+                "The uncertainty Region must be an instance of a centro-symetric \
+                 subclass of Region (e.g. Box, Circle, Ellipse, etc).",
+            ));
         }
 
         // Map the supplied uncertainty into this Region's base Frame. C
@@ -577,7 +584,7 @@ pub trait Region: Frame + Mapping + AsDynRegion {
         let domain = target.domain().to_string();
         let converted = unc
             .get_region_frame()
-            .convert_to(target.as_ref(), &[&domain]);
+            .convert_to(target.as_ref(), &[&domain])?;
 
         // `Conv` re-instates each FrameSet's original base Frame index with
         // astSetBase (region.c:2373-2374). That restores the index it read,
@@ -587,37 +594,24 @@ pub trait Region: Frame + Mapping + AsDynRegion {
         // is inverted across the call, so there astSetBase writes the Current
         // slot instead (frameset.c:9836) — an index this port always dumps as
         // active, so it needs no flag of its own.
-        let _ = unc.region_frameset_mut().set_base(FrameRef::Base);
+        unc.region_frameset_mut().set_base(FrameRef::Base)?;
 
-        let conv = match converted {
-            Ok(Some(fs)) => fs,
-            _ => {
-                // Frames not convertible: annul existing, mirroring C's error
-                // branch (region.c:10889-10896) which leaves no uncertainty.
-                if self.get_uncertainty().is_some() {
-                    self.store_uncertainty(None);
-                }
-                return;
-            }
+        // Frames that cannot be converted are an error (region.c:10889-10896).
+        let Some(conv) = converted else {
+            let title = unc.title()?;
+            return Err(AstError::new(
+                ErrorCode::Ncpin,
+                format!(
+                    "astSetUnc: Bad {} dimensional uncertainty Frame ({} {}) supplied.",
+                    unc.naxes(),
+                    unc.domain(),
+                    title
+                ),
+            )
+            .with_context("Cannot convert it to the Frame of the new Region."));
         };
-        let map = match conv.mapping(FrameRef::Base, FrameRef::Current) {
-            Ok(m) => m,
-            Err(_) => {
-                if self.get_uncertainty().is_some() {
-                    self.store_uncertainty(None);
-                }
-                return;
-            }
-        };
-        let mut new_unc = match unc.map_region(map.as_ref(), target.as_ref()) {
-            Ok(u) => u,
-            Err(_) => {
-                if self.get_uncertainty().is_some() {
-                    self.store_uncertainty(None);
-                }
-                return;
-            }
-        };
+        let map = conv.mapping(FrameRef::Base, FrameRef::Current)?;
+        let mut new_unc = unc.map_region(map.as_ref(), target.as_ref())?;
 
         // Ensure the uncertainty is bounded. Negating an unbounded
         // uncertainty makes it bounded because it consists of Circles, Boxes
@@ -646,10 +640,11 @@ pub trait Region: Frame + Mapping + AsDynRegion {
             && points.npoint() > 0
         {
             let first = points.point(0).to_vec();
-            let _ = new_unc.reg_centre_set(&first, FrameRef::Current);
+            new_unc.reg_centre_set(&first, FrameRef::Current)?;
         }
 
         self.store_uncertainty(Some(new_unc));
+        Ok(())
     }
 
     /// Get a copy of the uncertainty region, if one has been set.
@@ -1234,7 +1229,7 @@ pub trait Region: Frame + Mapping + AsDynRegion {
                 // (region.c:11303-11306).
                 if ok {
                     simpler = true;
-                    new.set_uncertainty(sunc);
+                    new.set_uncertainty(sunc)?;
                 }
             }
         }
@@ -1252,7 +1247,7 @@ pub trait Region: Frame + Mapping + AsDynRegion {
     /// uncertainty is cleared — mirroring the C `if( unc && !astTestUnc(that) )
     /// astClearUnc(this)` branch, which is how a simplified Region built from a
     /// default-uncertainty source ends up carrying no explicit uncertainty.
-    fn reg_overlay(&mut self, that: &dyn Region, clear_unc: bool) {
+    fn reg_overlay(&mut self, that: &dyn Region, clear_unc: bool) -> AstResult<()> {
         if self.is_negated() != that.is_negated() {
             self.negate();
         }
@@ -1269,7 +1264,7 @@ pub trait Region: Frame + Mapping + AsDynRegion {
                 self.set_mesh_size(that.mesh_size());
             }
             if that.test_fill_factor() {
-                self.set_fill_factor(that.fill_factor());
+                self.set_fill_factor(that.fill_factor())?;
             }
         } else {
             self.clear_mesh_size();
@@ -1278,6 +1273,7 @@ pub trait Region: Frame + Mapping + AsDynRegion {
         if clear_unc && !that.test_unc() {
             self.store_uncertainty(None);
         }
+        Ok(())
     }
 
     /// Permute the axes of this region's current Frame, updating the
@@ -1477,7 +1473,7 @@ pub fn pick_axes_region(region: &dyn Region, axes: &[usize]) -> AstResult<Picked
             let mut creg = breg.map_region(fsmap.as_ref(), picked_frame.as_ref())?;
             // Copy properties from the old Region to the new Region
             // (region.c:7723 passes unc=0: uncertainty is left untouched).
-            creg.reg_overlay(region, false);
+            creg.reg_overlay(region, false)?;
             return Ok(PickedAxes::Region(creg));
         }
     }

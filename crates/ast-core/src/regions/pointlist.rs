@@ -112,7 +112,7 @@ impl PointListBuilder {
 
         // astSetUnc, as C's constructor calls it (region.c:13372).
         if let Some(unc) = self.uncertainty {
-            region.set_uncertainty(unc);
+            region.set_uncertainty(unc)?;
         }
 
         Ok(region)
@@ -399,8 +399,8 @@ impl Region for PointList {
         self.data.effective_fill_factor()
     }
 
-    fn set_fill_factor(&mut self, factor: f64) {
-        self.data.set_fill_factor(factor);
+    fn set_fill_factor(&mut self, factor: f64) -> AstResult<()> {
+        self.data.set_fill_factor(factor)
     }
 
     fn test_fill_factor(&self) -> bool {
@@ -898,7 +898,7 @@ impl Mapping for PointList {
                 return Ok((self.clone_box(), false));
             }
             let mut result = this.clone_region();
-            result.reg_overlay(self, true);
+            result.reg_overlay(self, true)?;
             return Ok((result.clone_box(), true));
         }
         // Transform defining points to current frame.
@@ -918,8 +918,8 @@ impl Mapping for PointList {
         let unc = this.get_unc_frm(FrameRef::Current)?;
         let data = RegionData::new(frameset, new_points);
         let mut result: DynRegion = Box::new(PointList { data });
-        result.set_uncertainty(unc);
-        result.reg_overlay(self, true);
+        result.set_uncertainty(unc)?;
+        result.reg_overlay(self, true)?;
         // Reaching here means the base->current Mapping was not a UnitMap, which
         // is where C sets `simpler = 1` unconditionally (pointlist.c:2258).
         Ok((result.clone_box(), true))

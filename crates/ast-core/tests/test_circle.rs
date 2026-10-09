@@ -516,7 +516,7 @@ fn region_attributes() {
     circle.set_mesh_size(500);
     assert_eq!(circle.mesh_size(), 500);
 
-    circle.set_fill_factor(0.5);
+    circle.set_fill_factor(0.5).unwrap();
     assert!((circle.fill_factor() - 0.5).abs() < 1e-10);
 
     circle.set_adaptive(false);

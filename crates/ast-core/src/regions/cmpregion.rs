@@ -191,7 +191,7 @@ impl CmpRegionBuilder {
 
         // astSetUnc, as C's constructor calls it (region.c:13372).
         if let Some(unc) = self.uncertainty {
-            region.set_uncertainty(unc);
+            region.set_uncertainty(unc)?;
         }
 
         Ok(region)
@@ -801,8 +801,8 @@ impl Region for CmpRegion {
         self.data.effective_fill_factor()
     }
 
-    fn set_fill_factor(&mut self, factor: f64) {
-        self.data.set_fill_factor(factor);
+    fn set_fill_factor(&mut self, factor: f64) -> AstResult<()> {
+        self.data.set_fill_factor(factor)
     }
 
     fn test_fill_factor(&self) -> bool {

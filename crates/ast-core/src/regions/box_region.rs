@@ -40,6 +40,26 @@ pub struct BoxRegionBuilder {
     uncertainty: Option<DynRegion>,
 }
 
+/// C `astInitBox`'s check that no supplied coordinate is BAD (box.c:4877),
+/// made on the two points as supplied: the centre and a corner, or the two
+/// corners. A NaN counts as BAD, as on every input.
+fn check_box_points(point1: &[f64], point2: &[f64]) -> AstResult<()> {
+    for (i, (&p1, &p2)) in point1.iter().zip(point2).enumerate() {
+        for (v, ip) in [(p1, 1), (p2, 2)] {
+            if v == BAD_VALUE || v.is_nan() {
+                return Err(AstError::new(
+                    ErrorCode::Badin,
+                    format!(
+                        "astInitBox: The value of axis {} is undefined at point {ip} of the box.",
+                        i + 1
+                    ),
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 impl BoxRegionBuilder {
     /// Create a builder for a BoxRegion in the given frame from a centre
     /// point and one corner.
@@ -69,6 +89,7 @@ impl BoxRegionBuilder {
                 ),
             ));
         }
+        check_box_points(&centre, &corner)?;
         Ok(BoxRegionBuilder {
             frame: Box::new(frame),
             centre,
@@ -110,6 +131,7 @@ impl BoxRegionBuilder {
                 ),
             ));
         }
+        check_box_points(lbnd, ubnd)?;
         let centre: Vec<f64> = lbnd
             .iter()
             .zip(ubnd.iter())
@@ -146,7 +168,7 @@ impl BoxRegionBuilder {
         // when its base->current Mapping is a UnitMap, and re-centres it on this
         // Region's first defining point.
         if let Some(unc) = self.uncertainty {
-            region.set_uncertainty(unc);
+            region.set_uncertainty(unc)?;
         }
 
         Ok(region)
@@ -170,6 +192,7 @@ impl BoxRegion {
         lbnd: &[f64],
         ubnd: &[f64],
     ) -> AstResult<BoxRegion> {
+        check_box_points(lbnd, ubnd)?;
         let centre: Vec<f64> = lbnd
             .iter()
             .zip(ubnd.iter())
@@ -537,7 +560,7 @@ impl BoxRegion {
             Box::new(BoxRegion::from_bounds_frame(frm, &lbnd, &ubnd)?)
         };
         if let Some(unc) = unc {
-            new.set_uncertainty(unc);
+            new.set_uncertainty(unc)?;
         }
         if neg {
             new.negate();
@@ -1194,8 +1217,8 @@ impl Region for BoxRegion {
         self.data.effective_fill_factor()
     }
 
-    fn set_fill_factor(&mut self, factor: f64) {
-        self.data.set_fill_factor(factor);
+    fn set_fill_factor(&mut self, factor: f64) -> AstResult<()> {
+        self.data.set_fill_factor(factor)
     }
 
     fn test_fill_factor(&self) -> bool {
@@ -1908,7 +1931,7 @@ impl Mapping for BoxRegion {
         // Region had none, so a Box fitted through a default-uncertainty mesh
         // does not acquire a spurious explicit uncertainty.
         if simpler {
-            new.reg_overlay(self, true);
+            new.reg_overlay(self, true)?;
             Ok((new.clone_box(), true))
         } else {
             // C's `else`: `result = astClone( this )` (box.c:4066).

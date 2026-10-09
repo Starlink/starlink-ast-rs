@@ -93,7 +93,7 @@ impl IntervalBuilder {
 
         // astSetUnc, as C's constructor calls it (region.c:13372).
         if let Some(unc) = self.uncertainty {
-            region.set_uncertainty(unc);
+            region.set_uncertainty(unc)?;
         }
 
         Ok(region)
@@ -169,7 +169,7 @@ impl Interval {
         let bfrm = self.data.frameset.base().snapshot();
         let mut bbox = super::BoxRegion::from_bounds_frame(bfrm, &lbnd, &ubnd)?;
         if self.data.uncertainty.is_some() {
-            bbox.set_uncertainty(self.get_unc_frm(FrameRef::Base)?);
+            bbox.set_uncertainty(self.get_unc_frm(FrameRef::Base)?)?;
         }
         if self.data.negated {
             bbox.negate();
@@ -530,7 +530,7 @@ impl Interval {
         // through `astSetUnc` like any other constructor (interval.c:492).
         if self.data.uncertainty.is_some() {
             let unc = self.get_unc_frm(FrameRef::Base)?;
-            bbox.set_uncertainty(unc);
+            bbox.set_uncertainty(unc)?;
         }
 
         let map = self
@@ -697,7 +697,7 @@ impl Interval {
         // (interval.c:3337).
         if self.data.uncertainty.is_some() {
             let unc = self.get_unc_frm(FrameRef::Base)?;
-            box_reg.set_uncertainty(unc);
+            box_reg.set_uncertainty(unc)?;
         }
         let current_frame = self.data.frameset.current().snapshot();
         let box2 = box_reg.map_region(map, current_frame.as_ref())?;
@@ -831,7 +831,7 @@ impl Interval {
         // base->current Mapping.
         if self.data.uncertainty.is_some() {
             let unc = self.get_unc_frm(FrameRef::Current)?;
-            result.set_uncertainty(unc);
+            result.set_uncertainty(unc)?;
         }
         Ok(Some(Box::new(result)))
     }
@@ -1202,8 +1202,8 @@ impl Region for Interval {
         self.data.effective_fill_factor()
     }
 
-    fn set_fill_factor(&mut self, factor: f64) {
-        self.data.set_fill_factor(factor);
+    fn set_fill_factor(&mut self, factor: f64) -> AstResult<()> {
+        self.data.set_fill_factor(factor)
     }
 
     fn test_fill_factor(&self) -> bool {
@@ -1868,7 +1868,7 @@ impl Mapping for Interval {
                 return Ok((self.clone_box(), false));
             }
             let mut result = this.clone_region();
-            result.reg_overlay(self, true);
+            result.reg_overlay(self, true)?;
             return Ok((result.clone_box(), true));
         }
 
@@ -1887,7 +1887,7 @@ impl Mapping for Interval {
             None => (this.clone_region(), simpler),
         };
         if changed {
-            result.reg_overlay(self, true);
+            result.reg_overlay(self, true)?;
             Ok((result.clone_box(), true))
         } else {
             Ok((self.clone_box(), false))

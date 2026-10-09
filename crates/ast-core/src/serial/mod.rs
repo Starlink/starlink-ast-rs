@@ -19,7 +19,7 @@ use crate::mappings::{
     SwitchMap, TimeMap, TranMap, UnitMap, UnitNormMap, WcsMap, WinMap, XphMap, ZoomMap,
 };
 use crate::mappings::{IntraMap, IntraRegistry};
-use crate::regions::data::RegionData;
+use crate::regions::data::{RegionData, check_fill_factor};
 use crate::regions::{
     BoxRegion, Circle, CmpOperator, CmpRegion, CmpRegionBuilder, DynRegion, Ellipse, Interval,
     NullRegion, PointList, Polygon, Prism, Region,
@@ -949,12 +949,22 @@ pub(crate) fn read_region_base(whole: &Node) -> AstResult<RegionData> {
         .find(|i| i.key == "Fill")
         .is_some_and(|i| !matches!(&i.value, NodeValue::Unset(_)));
     let fill_factor = node.get_double("Fill", 1.0);
+    // C's `Load` passes a read value through `SetFillFactor` and
+    // `SetMeshSize` (region.c:13535-13541), so an out-of-range Fill is an
+    // error and a MeshSz below 5 is raised to 5.
+    if fill_factor_set {
+        check_fill_factor(fill_factor)?;
+    }
     let mesh_size_set = node
         .items
         .iter()
         .find(|i| i.key == "MeshSz")
         .is_some_and(|i| !matches!(&i.value, NodeValue::Unset(_)));
-    let mesh_size = node.get_int("MeshSz", 0) as usize;
+    let mesh_size = if mesh_size_set {
+        node.get_int("MeshSz", 0).max(5) as usize
+    } else {
+        0
+    };
     let closed = node.get_int("Closed", 1) != 0;
     // C tracks Closed via `closed != -INT_MAX` (`region.c` line 12766). For
     // the round-trip we model the same explicit-set state via `closed_set`:

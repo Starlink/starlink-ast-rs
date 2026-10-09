@@ -73,6 +73,7 @@ Seams first, because the HIGH findings in themes B to F, and the Stc port, are f
 | PG-1 | FIXED 2026-10-08: a Polygon's boundary mesh is polygon.c `RegBaseMesh`: each edge's length is the base Frame's distance, an edge gets `1 + (int)(len*mp)` points, starting at its normalised first vertex and stepped along it with the Frame's `offset`, so a sky Polygon's mesh follows great circles; a boundary of no length is AST__BADIN | `tests/test_region_polygon_oracle.rs`: 3 meshes bit-exact against C from `tools/oracle_fixtures/region_polygon_probe.c`; the sky Polygon's disc in `tests/test_region_disc_oracle.rs` |
 | CR-1, CR-2, CR-3 | FIXED 2026-10-08: the CmpRegion builder is `astInitCmpRegion`: the second Region is mapped into the first's Frame when a Mapping joins them (AST__INTRD when none does), and `CmpOperator::Xor` is made, as C makes it, as the OR of each Region ANDed with the negation of the other, keeping the two Regions XORed; the dump writes those with Operator 3, and the loader rebuilds the XOR from them. The CmpRegion's mesh is cmpregion.c `RegBaseMesh`: each component's current-Frame mesh, or region.c `BndMesh` for a component with no finite boundary, kept where it lies inside (AND) or outside (OR) the other component, with C's AST__INTER where no mesh can be made | `tests/test_region_cmpregion_oracle.rs`: an FK5 Circle ANDed with a Galactic Box (membership and a 200-point mesh, bit-exact) and an XOR of two Boxes (membership, dump byte-exact, and reading C's dump), from `tools/oracle_fixtures/region_cmpregion_probe.c` |
 | EL-2 | FIXED 2026-10-08: `EllipseBuilder` takes the arguments of `astEllipse` form 1: the angle from the second axis to the primary axis, positive towards the first, and the axis ends placed with the Frame's `offset2`, so a sky Ellipse's axes are arcs. It measured the angle from the first axis and placed the ends on a plane; tests that built Ellipses take their angles in C's convention | `tests/test_region_ellipse_oracle.rs` (`builder_matches_astellipse_form1`): a sky and a Cartesian Ellipse built by `EllipseBuilder` dump exactly as C's |
+| RB-9, RB-10, BX-4, CI-1 | FIXED 2026-10-08: `set_uncertainty` returns `AstResult`. A shape that cannot be re-centred, or a Frame that cannot be converted to the Region's base Frame, is AST__NCPIN, the status C's second `astError` leaves, and C's first message is the error's message. Either way the Region is left with no uncertainty, as C annuls the old one first. `set_fill_factor` is AST__ATSER outside 0 to 1 and leaves the attribute unchanged, and `reg_overlay`, which C makes through `astSetFillFactor`, passes that on. The loader rejects an out-of-range `Fill` the same way and raises a `MeshSz` below 5 to 5, where a negative one became a huge mesh. `BoxRegionBuilder::new` and `from_bounds` reject a BAD (or NaN) coordinate in either supplied point as AST__BADIN, and `CircleBuilder::build` does so for the centre and the circumference point, which a BAD radius makes BAD. Still open: the parallel merges (`region_merge` and `finish_region_merge`) return `Option`, so an uncertainty or FillFactor error inside one declines the merge where C's status would end the simplification; a failing uncertainty in a parallel `CmpMap` of Boxes would expose it | `tests/test_region_errors_oracle.rs`: 8 cases against C's status codes and repaired values from `tools/oracle_fixtures/region_errors_probe.c` |
 | PL-1 | WITHDRAWN: a C probe masks the same two pixels as the port with a UnitMap; the Mapping direction is RB-12 | Appendix C |
 
 
@@ -91,10 +92,10 @@ C-side claims marked UNVERIFIED were established by reading region.c.
 | TestRegionFS/ClearRegionFS | NONE (bool, no unset state) | ceremony | MISSING (RB-14) |
 | Closed Get/Set/Test (12773-12778) | `is_closed/set_closed/test_closed/set_closed_raw` (mod.rs:176-190) | ceremony | PORTED |
 | ClearClosed | NONE | ceremony | MISSING (RB-14) |
-| MeshSize G/S/T/C (12722-12725) | `mesh_size/set_mesh_size/test_mesh_size/clear_mesh_size` (mod.rs:211-220; data.rs:249-286) | ceremony | PORTED (load not clamped, RB-10) |
+| MeshSize G/S/T/C (12722-12725) | `mesh_size/set_mesh_size/test_mesh_size/clear_mesh_size` (mod.rs:211-220; data.rs:249-286) | ceremony | PORTED |
 | Adaptive Get/Set (12489-12494) | `is_adaptive/set_adaptive` (mod.rs:226-229) | ceremony | DIVERGENT: has no effect (RB-3) |
 | TestAdaptive/ClearAdaptive | NONE | ceremony | MISSING (RB-14) |
-| FillFactor G/S/T/C (12658-12666) | `fill_factor/set_fill_factor/test_fill_factor/clear_fill_factor` (mod.rs:196-205) | ceremony | DIVERGENT: no AST__ATSER range check (RB-10) |
+| FillFactor G/S/T/C (12658-12666) | `fill_factor/set_fill_factor/test_fill_factor/clear_fill_factor` (mod.rs:196-205) | ceremony | PORTED (RB-10 fixed) |
 | Bounded (read-only) / GetBounded (3364) | `is_bounded` per class + `RegionData::closed_curve_bounded` (data.rs:331) | architecture | PORTED (SkyFrame rule present) |
 | ResetCache (10219) | `RegionData::invalidate_cache` (data.rs:295) | ceremony | PORTED |
 | RegTrace (11605) | NONE | architecture | GATED(Plot) |
@@ -122,7 +123,7 @@ C-side claims marked UNVERIFIED were established by reading region.c.
 | GetDefUnc (3494) | `get_def_unc` / `default_bounding_box_unc` (mod.rs:638, 628) + 4 overrides | architecture | PORTED |
 | GetNegation (3601) | `negated_copy` | ceremony | PORTED |
 | GetUncFrm (3923) | `get_unc_frm` (mod.rs:685) | ceremony | PORTED |
-| SetUnc (10765) | `set_uncertainty` (mod.rs:501) | ceremony | DIVERGENT: errors swallowed (RB-9) |
+| SetUnc (10765) | `set_uncertainty` (mod.rs:501) | ceremony | PORTED (RB-9 fixed) |
 | GetUnc (3795, public) | `get_uncertainty` (base Frame, explicit only) + `get_unc_frm(Current)` | ceremony | PORTED in shape (no `def` flag) |
 | ShowMesh (10924) | NONE | ceremony (debug) | MISSING, LOW (RB-19) |
 | GetRegionBounds (8959) | `region_bounds_current` (mod.rs:1285) | ceremony | PORTED |
@@ -307,7 +308,7 @@ Fixed in `d250706f`; see Progress.
 | Parent Simplify uncertainty stability (SIMP-STAB) | FIXED | mod.rs:1079-1195 |
 | GetUncFrm: no default, no Frame mapping | FIXED | mod.rs:685-703 |
 | GetDefUnc absent (DEFUNC) | FIXED | mod.rs:638-676, plus overrides in interval/nullregion/prism/cmpregion |
-| SetUnc a bare store | FIXED in behaviour; errors still swallowed (RB-9) | mod.rs:501-605 |
+| SetUnc a bare store | FIXED (RB-9) | mod.rs:501-605 |
 | GetBounded lacks the SkyFrame rule (GBND-SKY) | FIXED | data.rs:331-337 |
 | RegGrid / RegBaseGrid odometer heuristic (GRID-FRM) | FIXED (3-try refinement); no cache, which is a performance matter only | data.rs:573-623 |
 | RegBaseBox2 absent | FIXED | mod.rs:274, CmpRegion override |
@@ -343,7 +344,7 @@ Its coverage tables, findings, and the status of the earlier audits' class findi
 | RegPins (2955) | `reg_pins_mask` (1040) | architecture | PORTED (extent per BX-1) |
 | RegTrace (3219) | NONE | architecture | GATED(Plot) |
 | RegCentre (2781) | `reg_centre_query/set` (1307/1317) | architecture | PORTED |
-| astInitBox (4748) | `BoxRegionBuilder` (43-153) | ctor | DIVERGENT (BX-4) |
+| astInitBox (4748) | `BoxRegionBuilder` (43-153) | ctor | PORTED (BX-4 fixed) |
 | Dump (4415)/Load (4928) | serial/mod.rs:1171 | ceremony | PORTED (no class cards) |
 
 #### Circle (circle.c vtab 714-737)
@@ -358,7 +359,7 @@ Its coverage tables, findings, and the status of the earlier audits' class findi
 | RegBaseMesh (850) | `base_mesh_bounds` (276) | architecture | PORTED |
 | RegBaseBox (757) | `reg_base_box` (446) | architecture | PORTED |
 | RegCentre (1114) | `reg_centre_query/set` (769/779) | architecture | PORTED |
-| astInitCircle (2528) | `CircleBuilder` (110-226) | ctor | DIVERGENT (CI-1) |
+| astInitCircle (2528) | `CircleBuilder` (110-226) | ctor | PORTED (CI-1 fixed) |
 | Dump/Load (2226/2714) | serial/mod.rs:1155 | ceremony | PORTED |
 
 #### Ellipse (ellipse.c vtab 543-566)

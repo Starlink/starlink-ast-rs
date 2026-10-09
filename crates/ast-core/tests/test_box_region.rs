@@ -388,7 +388,7 @@ fn region_attributes() {
     b.set_mesh_size(500);
     assert_eq!(b.mesh_size(), 500);
 
-    b.set_fill_factor(0.5);
+    b.set_fill_factor(0.5).unwrap();
     assert!((b.fill_factor() - 0.5).abs() < 1e-10);
 
     b.set_adaptive(false);

@@ -3559,7 +3559,7 @@ fn set_uncertainty_unitmap_clears_region_fs() {
         .build()
         .unwrap();
 
-    region.set_uncertainty(Box::new(unc));
+    region.set_uncertainty(Box::new(unc)).unwrap();
 
     let got = ast_core::to_native_string(&AnyObject::BoxRegion(region)).unwrap();
     assert_eq!(got, setunc_fixture_map("setunc_unitmap_regionfs_omitted"));
@@ -3585,7 +3585,7 @@ fn set_uncertainty_negates_unbounded() {
         .unwrap();
     unc.negate();
 
-    region.set_uncertainty(Box::new(unc));
+    region.set_uncertainty(Box::new(unc)).unwrap();
 
     let got = ast_core::to_native_string(&AnyObject::BoxRegion(region)).unwrap();
     assert_eq!(got, setunc_fixture_map("setunc_unbounded_negated"));
@@ -3718,7 +3718,7 @@ fn get_def_unc_cmpregion_uses_component_uncertainty() {
         .unwrap()
         .build()
         .unwrap();
-    reg1.set_uncertainty(Box::new(unc));
+    reg1.set_uncertainty(Box::new(unc)).unwrap();
 
     let f2 = BasicFrameBuilder::new(2).build().unwrap();
     let reg2 = BoxRegionBuilder::new(f2, vec![5.0, 5.0], vec![15.0, 15.0])
@@ -4030,14 +4030,14 @@ fn parallel_merge_scales_fill_factor() {
         .unwrap()
         .build()
         .unwrap();
-    b1.set_fill_factor(0.5);
+    b1.set_fill_factor(0.5).unwrap();
 
     let f2 = BasicFrameBuilder::new(1).build().unwrap();
     let mut b2 = BoxRegionBuilder::from_bounds(f2, &[0.0], &[10.0])
         .unwrap()
         .build()
         .unwrap();
-    b2.set_fill_factor(0.8);
+    b2.set_fill_factor(0.8).unwrap();
 
     let cm = CmpMap::new(Box::new(b1), Box::new(b2), Composition::Parallel).unwrap();
     let simp = <dyn Mapping>::simplify(&cm).unwrap();

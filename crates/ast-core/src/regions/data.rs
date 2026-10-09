@@ -272,11 +272,14 @@ impl RegionData {
         self.invalidate_cache();
     }
 
-    /// Set the FillFactor and raise the set-flag. Callers supply a value in
-    /// the C `SetFillFactor` valid range `0.0..=1.0` (region.c:12651).
-    pub(crate) fn set_fill_factor(&mut self, value: f64) {
+    /// Set the FillFactor and raise the set-flag, or fail with `AST__ATSER`
+    /// and leave it unchanged when `value` is outside `0.0..=1.0`
+    /// (region.c:12669).
+    pub(crate) fn set_fill_factor(&mut self, value: f64) -> AstResult<()> {
+        check_fill_factor(value)?;
         self.fill_factor = value;
         self.fill_factor_set = true;
+        Ok(())
     }
 
     /// Clear the MeshSize attribute, mirroring C `astClearMeshSize`.
@@ -531,6 +534,20 @@ impl<'a> FrameSetting<'a> {
 /// Whether an error is C's AST__BADAT, the "attribute unknown" error that
 /// `RegSetAttrib` and its overrides annul when a Frame or component does
 /// not have the attribute.
+/// Fail with `AST__ATSER` unless `value` is a valid FillFactor, `0.0..=1.0`
+/// (region.c:12669). The loader applies the same check, as C's `Load` sets
+/// a read value through `SetFillFactor` (region.c:13536).
+pub(crate) fn check_fill_factor(value: f64) -> AstResult<()> {
+    if (0.0..=1.0).contains(&value) {
+        return Ok(());
+    }
+    Err(AstError::new(
+        ErrorCode::Atser,
+        format!("astSetFillFactor: Invalid value ({value}) supplied for attribute FillFactor."),
+    )
+    .with_context("FillFactor values should be in the range 0.0 to 1.0"))
+}
+
 pub(crate) fn is_bad_attribute(err: &AstError) -> bool {
     err.code() == ErrorCode::Badat
 }

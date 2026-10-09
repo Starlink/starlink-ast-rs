@@ -63,28 +63,28 @@ rows from the constructor onwards cite `merge_util.rs`, where that tail lives on
 | 30 | Get pointers to its data | pointlist.c:1349-1351 (fn MergePointList) | -- | ceremony | n/a: a `Vec<f64>` is written directly, with no separate data-pointer step |
 | 31 | Check the pointers can be used safely | pointlist.c:1352-1354 (fn MergePointList) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test |
 | 32 | Copy the point positions of the selected axes across in the requested order | pointlist.c:1355-1373 (fn MergePointList) | regions/pointlist.rs:579-585 (fn region_merge) | architecture | ported |
-| 33 | Create the new PointList on the combined base Frame | pointlist.c:1374-1377 (fn MergePointList) | merge_util.rs:162-166 (fn finish_region_merge),149 (fn finish_region_merge) | architecture | ported |
-| 34 | Propagate the remaining attributes of the supplied Region to it | pointlist.c:1378-1380 (fn MergePointList) | merge_util.rs:140-147 (fn finish_region_merge) | architecture | ported |
-| 35 | Ensure the Negated flag is set correctly in the returned PointList | pointlist.c:1381-1387 (fn MergePointList) | merge_util.rs:146 (fn finish_region_merge) | architecture | ported |
-| 36 | Assign the result an uncertainty only when both supplied Regions have one | pointlist.c:1388-1391 (fn MergePointList) | merge_util.rs:290 (fn combine_uncertainties) | architecture | ported |
+| 33 | Create the new PointList on the combined base Frame | pointlist.c:1374-1377 (fn MergePointList) | merge_util.rs:167-171 (fn finish_region_merge),154 (fn finish_region_merge) | architecture | ported |
+| 34 | Propagate the remaining attributes of the supplied Region to it | pointlist.c:1378-1380 (fn MergePointList) | merge_util.rs:145-152 (fn finish_region_merge) | architecture | ported |
+| 35 | Ensure the Negated flag is set correctly in the returned PointList | pointlist.c:1381-1387 (fn MergePointList) | merge_util.rs:151 (fn finish_region_merge) | architecture | ported |
+| 36 | Assign the result an uncertainty only when both supplied Regions have one | pointlist.c:1388-1391 (fn MergePointList) | merge_util.rs:295 (fn combine_uncertainties) | architecture | ported |
 | 37 | Get the base-Frame uncertainties from the two supplied Regions | pointlist.c:1392-1395 (fn MergePointList) | regions/pointlist.rs:637-641 (fn region_merge) | architecture | ported |
-| 38 | Combine them into a single Prism, in the correct order | pointlist.c:1396-1402 (fn MergePointList) | merge_util.rs:291 (fn combine_uncertainties),293-295 (fn combine_uncertainties) | architecture | ported |
-| 39 | Attempt to simplify the Prism | pointlist.c:1403-1405 (fn MergePointList) | merge_util.rs:296 (fn combine_uncertainties) | architecture | ported |
-| 40 | Use the simplified Prism as the uncertainty for the returned Region | pointlist.c:1406-1408 (fn MergePointList) | merge_util.rs:169-171 (fn finish_region_merge) | architecture | ported |
+| 38 | Combine them into a single Prism, in the correct order | pointlist.c:1396-1402 (fn MergePointList) | merge_util.rs:296 (fn combine_uncertainties),298-300 (fn combine_uncertainties) | architecture | ported |
+| 39 | Attempt to simplify the Prism | pointlist.c:1403-1405 (fn MergePointList) | merge_util.rs:301 (fn combine_uncertainties) | architecture | ported |
+| 40 | Use the simplified Prism as the uncertainty for the returned Region | pointlist.c:1406-1408 (fn MergePointList) | merge_util.rs:174-176 (fn finish_region_merge) | architecture | ported |
 | 41 | Free the uncertainty resources | pointlist.c:1409-1414 (fn MergePointList) | -- | ceremony | n/a: owned values are dropped |
 | 42 | Combine the two current Frames into one CmpFrame, in the same order | pointlist.c:1415-1425 (fn MergePointList) | regions/pointlist.rs:597-603 (fn region_merge) | architecture | ported |
 | 43 | Combine the two base-to-current Mappings into one parallel CmpMap | pointlist.c:1426-1439 (fn MergePointList) | regions/pointlist.rs:606-633 (fn region_merge) | architecture | ported |
-| 44 | Map the new Region into the new current Frame | pointlist.c:1440-1442 (fn MergePointList) | merge_util.rs:173 (fn finish_region_merge) | architecture | ported |
-| 45 | The result's FillFactor is the product of the two supplied FillFactors, set only when either was set | pointlist.c:1443-1449 (fn MergePointList) | merge_util.rs:65-67 (fn apply_merge_scaling_to) | architecture | ported |
-| 46 | Scale the result's MeshSize only when either supplied MeshSize was set | pointlist.c:1450-1457 (fn MergePointList) | merge_util.rs:69 (fn apply_merge_scaling_to) | architecture | ported |
-| 47 | Get the two MeshSize values, then clear them so the defaults are returned | pointlist.c:1458-1465 (fn MergePointList) | merge_util.rs:70-71 (fn apply_merge_scaling_to) | architecture | ported |
-| 48 | Form each Region's ratio of used to default MeshSize | pointlist.c:1466-1470 (fn MergePointList) | merge_util.rs:72-73 (fn apply_merge_scaling_to) | architecture | ported |
-| 49 | Set the result's MeshSize to its own default scaled by the product of the two ratios | pointlist.c:1471-1474 (fn MergePointList) | merge_util.rs:74-75 (fn apply_merge_scaling_to) | architecture | ported |
+| 44 | Map the new Region into the new current Frame | pointlist.c:1440-1442 (fn MergePointList) | merge_util.rs:178 (fn finish_region_merge) | architecture | ported |
+| 45 | The result's FillFactor is the product of the two supplied FillFactors, set only when either was set | pointlist.c:1443-1449 (fn MergePointList) | merge_util.rs:69-71 (fn apply_merge_scaling_to) | architecture | ported |
+| 46 | Scale the result's MeshSize only when either supplied MeshSize was set | pointlist.c:1450-1457 (fn MergePointList) | merge_util.rs:73 (fn apply_merge_scaling_to) | architecture | ported |
+| 47 | Get the two MeshSize values, then clear them so the defaults are returned | pointlist.c:1458-1465 (fn MergePointList) | merge_util.rs:74-75 (fn apply_merge_scaling_to) | architecture | ported |
+| 48 | Form each Region's ratio of used to default MeshSize | pointlist.c:1466-1470 (fn MergePointList) | merge_util.rs:76-77 (fn apply_merge_scaling_to) | architecture | ported |
+| 49 | Set the result's MeshSize to its own default scaled by the product of the two ratios | pointlist.c:1471-1474 (fn MergePointList) | merge_util.rs:78-79 (fn apply_merge_scaling_to) | architecture | ported |
 | 50 | Re-instate the original MeshSize values on the supplied Regions | pointlist.c:1475-1480 (fn MergePointList) | -- | ceremony | n/a: nothing was cleared on the supplied Regions, so there is nothing to restore |
 | 51 | Free the Frame, Mapping and intermediate-Region resources | pointlist.c:1481-1490 (fn MergePointList) | -- | ceremony | n/a: owned values are dropped |
 | 52 | Free the combined base Frame and the PointSet | pointlist.c:1491-1495 (fn MergePointList) | -- | ceremony | n/a: owned values are dropped |
 | 53 | Annul the returned pointer if an error occurred | pointlist.c:1496-1499 (fn MergePointList) | -- | ceremony | n/a: an error is a `Result::Err`, and owned values are dropped |
-| 54 | Return the result | pointlist.c:1500-1502 (fn MergePointList) | merge_util.rs:179 (fn finish_region_merge) | architecture | ported |
+| 54 | Return the result | pointlist.c:1500-1502 (fn MergePointList) | merge_util.rs:184 (fn finish_region_merge) | architecture | ported |
 | 55 | `Simplify`: initialise the returned pointer | pointlist.c:2232-2234 (fn Simplify) | -- | ceremony | n/a: the Rust returns `AstResult<(DynMapping, bool)>`, so there is no sentinel to initialise |
 | 56 | Check the global error status and bail out | pointlist.c:2235-2237 (fn Simplify) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 57 | Obtain a pointer to the Region structure | pointlist.c:2238-2240 (fn Simplify) | -- | ceremony | n/a: the Rust method already has `&self` |
@@ -141,7 +141,7 @@ non-UnitMap branch, where C has already set `simpler = 1` unconditionally, so it
 
 Everything from the constructor onwards is what `MergeBox` and `MergeInterval` do
 as well, in the same order, so it lives once in
-`merge_util.rs:131-180 (fn finish_region_merge)`. Row 40 is the one that matters. C installs
+`merge_util.rs:136-185 (fn finish_region_merge)`. Row 40 is the one that matters. C installs
 the combined uncertainty with `astSetUnc`, and `astSetUnc` re-centres the
 uncertainty on the merged Region's first defining point
 (`region.c:10889-10894 (fn SetUnc)`); for a Box uncertainty, `Box`'s `RegCentre` rebuilds
@@ -154,7 +154,7 @@ C regenerates.
 Row 35 is the one place the three merges differ: `MergePointList` propagates the
 Negated value its two PointLists share, where `MergeBox` and `MergeInterval` clear
 it outright (`box.c:1960 (fn MergeBox)`, `interval.c:1558 (fn MergeInterval)`).
-`MergeOverlay`'s `negated` field (`merge_util.rs:146 (fn finish_region_merge)`) is what
+`MergeOverlay`'s `negated` field (`merge_util.rs:151 (fn finish_region_merge)`) is what
 carries that difference through the shared tail.
 
 ## Rows 47 and 50 — the defaults are computed, not cleared and restored
@@ -163,10 +163,10 @@ C has no way to ask a Region for its *default* MeshSize while a value is set, so
 it clears both attributes, reads the defaults back, then re-instates the original
 values — a round trip that mutates the two supplied Regions and undoes it.
 `apply_merge_scaling_to` asks `default_mesh_size` for the same number from the axis
-count (`merge_util.rs:70-71 (fn apply_merge_scaling_to)`), which is the function C's
+count (`merge_util.rs:74-75 (fn apply_merge_scaling_to)`), which is the function C's
 `astGetMeshSize` default branch computes, so nothing is mutated and row 50 has
 nothing to restore. The scaling arithmetic and the result's own default
-(`merge_util.rs:74-75 (fn apply_merge_scaling_to)`) are C's, unchanged.
+(`merge_util.rs:78-79 (fn apply_merge_scaling_to)`) are C's, unchanged.
 
 ## `cap_pointlist_01`
 

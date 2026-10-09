@@ -112,7 +112,7 @@ impl PrismBuilder {
 
         // astSetUnc, as C's constructor calls it (region.c:13372).
         if let Some(unc) = self.uncertainty {
-            region.set_uncertainty(unc);
+            region.set_uncertainty(unc)?;
         }
 
         Ok(region)
@@ -565,8 +565,8 @@ impl Region for Prism {
         self.data.effective_fill_factor()
     }
 
-    fn set_fill_factor(&mut self, factor: f64) {
-        self.data.set_fill_factor(factor);
+    fn set_fill_factor(&mut self, factor: f64) -> AstResult<()> {
+        self.data.set_fill_factor(factor)
     }
 
     fn test_fill_factor(&self) -> bool {
@@ -1294,7 +1294,7 @@ impl Mapping for Prism {
         let mut result = match new {
             Some(mut region) => {
                 if let Some(unc) = self.data.uncertainty.clone() {
-                    region.set_uncertainty(unc);
+                    region.set_uncertainty(unc)?;
                 }
                 match region.parent_region_simplify()? {
                     Some(simplified) => simplified,
@@ -1311,7 +1311,7 @@ impl Mapping for Prism {
         // so it is left untouched here.
         let changed = !(result.as_ref() as &dyn Mapping).equal(self as &dyn Mapping);
         if changed {
-            result.reg_overlay(self, false);
+            result.reg_overlay(self, false)?;
         }
 
         Ok((result.clone_box(), changed))

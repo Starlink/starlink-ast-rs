@@ -243,7 +243,9 @@ impl Region for DummyRegion {
     fn fill_factor(&self) -> f64 {
         1.0
     }
-    fn set_fill_factor(&mut self, _factor: f64) {}
+    fn set_fill_factor(&mut self, _factor: f64) -> AstResult<()> {
+        Ok(())
+    }
     fn test_fill_factor(&self) -> bool {
         false
     }

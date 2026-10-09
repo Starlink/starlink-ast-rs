@@ -209,6 +209,27 @@ impl CircleBuilder {
             ));
         };
 
+        // C `astInitCircle` rejects a BAD centre or circumference value
+        // (circle.c:2670), after a radius has become a circumference point. A
+        // NaN counts as BAD, as on every input.
+        let bad = |v: f64| v == BAD_VALUE || v.is_nan();
+        for (i, (&c, &e)) in self.centre.iter().zip(&edge).enumerate() {
+            let place = if bad(c) {
+                "at the circle centre"
+            } else if bad(e) {
+                "on the circumference of the circle"
+            } else {
+                continue;
+            };
+            return Err(AstError::new(
+                ErrorCode::Badin,
+                format!(
+                    "astInitCircle: The value of axis {} is undefined {place}.",
+                    i + 1
+                ),
+            ));
+        }
+
         // Create a FrameSet with the frame as both base and current.
         let frameset = FrameSet::new(self.frame);
 
@@ -218,7 +239,7 @@ impl CircleBuilder {
 
         // astSetUnc, as C's constructor calls it (region.c:13372).
         if let Some(unc) = self.uncertainty {
-            region.set_uncertainty(unc);
+            region.set_uncertainty(unc)?;
         }
 
         Ok(region)
@@ -656,8 +677,8 @@ impl Region for Circle {
         self.data.effective_fill_factor()
     }
 
-    fn set_fill_factor(&mut self, factor: f64) {
-        self.data.set_fill_factor(factor);
+    fn set_fill_factor(&mut self, factor: f64) -> AstResult<()> {
+        self.data.set_fill_factor(factor)
     }
 
     fn test_fill_factor(&self) -> bool {
@@ -1091,7 +1112,7 @@ impl Mapping for Circle {
         }
 
         if simpler {
-            new.reg_overlay(self, true);
+            new.reg_overlay(self, true)?;
             Ok((new.clone_box(), true))
         } else {
             // C's `else`: `result = astClone( this )` (circle.c:1929).
