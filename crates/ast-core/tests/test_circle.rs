@@ -823,3 +823,33 @@ fn loaded_frameless_uncertainty_takes_the_base_frame() {
     let unc = restored.get_unc_frm(FrameRef::Base).unwrap();
     assert_eq!(unc.get_region_frame().domain(), "FOO");
 }
+
+#[test]
+fn copy_keeps_ident_report_and_own_use_defs() {
+    // A copy is C's astCopy, which keeps the Object and Mapping attributes:
+    // Ident, Report, and a UseDefs held by the Region itself (which only a
+    // dump supplies).
+    let mut circle = CircleBuilder::new(BasicFrameBuilder::new(2).build().unwrap(), vec![1.0, 2.0])
+        .unwrap()
+        .radius(0.5)
+        .build()
+        .unwrap();
+    Frame::set_ident(&mut circle, "C1").unwrap();
+    let text = ast_core::to_native_string(&ast_core::AnyObject::Circle(circle)).unwrap();
+    let text = text.replacen(
+        "    Ident = \"C1\" \t# Permanent Object identification string\n",
+        "    Ident = \"C1\" \t# Permanent Object identification string\n    UseDfs = 0 \t# Use default values\n",
+        1,
+    );
+    let mut circle = ast_core::from_native_string(&text)
+        .unwrap()
+        .into_region()
+        .unwrap();
+    assert!(!circle.use_defs());
+    circle.set_report(true);
+
+    let copy = circle.clone_region();
+    assert_eq!(Frame::ident(copy.as_ref()), "C1");
+    assert!(copy.report());
+    assert!(!copy.use_defs());
+}

@@ -142,9 +142,9 @@ impl Clone for RegionData {
     fn clone(&self) -> Self {
         RegionData {
             frameset: self.frameset.clone(),
-            ident: None,
-            mapping_flags: crate::mappings::MappingFlags::default(),
-            use_defs: None,
+            ident: self.ident.clone(),
+            mapping_flags: self.mapping_flags.clone(),
+            use_defs: self.use_defs,
             points: self.points.clone(),
             negated: self.negated,
             negated_set: self.negated_set,
