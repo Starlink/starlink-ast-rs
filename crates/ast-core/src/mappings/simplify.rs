@@ -1489,14 +1489,13 @@ pub(crate) fn region_map_merge(
     use crate::regions::as_region;
 
     // ---- 1. Self-simplify head (astSimplify(this)) ----
-    // C compares object pointers (`new != oldint`); the Rust analogue is a
-    // structural inequality test via `Mapping::equal`, since Region simplify
-    // returns a clone of `this` when nothing changed.
-    if let Ok(simplified) = <dyn Mapping>::simplify(this) {
-        if !simplified.equal(this as &dyn Mapping) {
-            ctx.set_pair_single(where_, (simplified, false, false));
-            return Some(where_);
-        }
+    // C compares object pointers (`new != oldint`), which
+    // `simplify_reporting_change` reports. A Region re-expressed in its
+    // current Frame covers the same points, so a conversion-based `equal`
+    // would not see that change.
+    if let Ok((simplified, true)) = <dyn Mapping>::simplify_reporting_change(this) {
+        ctx.set_pair_single(where_, (simplified, false, false));
+        return Some(where_);
     }
 
     // ---- 2. Parallel-only neighbour merge ----

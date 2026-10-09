@@ -1212,13 +1212,13 @@ pub trait Region: Frame + Mapping + AsDynRegion {
         let mut simpler = false;
 
         // Simplify the encapsulated FrameSet, noting whether it changed
-        // (region.c:11135-11143). FrameSet::simplified simplifies each internal
-        // edge Mapping and returns a FrameSet.
+        // (region.c:11160-11170). C's test is `fs != new->frameset`, pointer
+        // identity, which `simplify_reporting_change` reports. FrameSet's
+        // simplification simplifies each internal edge Mapping and returns a
+        // FrameSet.
         let fs = new.get_region_frameset();
-        let simplified_map = <dyn Mapping>::simplify(&fs)?;
-        if let Some(new_fs) = simplified_map.as_any().downcast_ref::<FrameSet>()
-            && !Mapping::equal(&fs, new_fs)
-        {
+        let (simplified_map, fs_changed) = <dyn Mapping>::simplify_reporting_change(&fs)?;
+        if fs_changed && let Some(new_fs) = simplified_map.as_any().downcast_ref::<FrameSet>() {
             *new.region_frameset_mut() = new_fs.clone();
             simpler = true;
         }

@@ -1859,91 +1859,44 @@ impl Mapping for BoxRegion {
                 None => simpler = false,
             }
         } else if !simple_map.as_ref().as_any().is::<UnitMap>() {
-            // Transform defining points to current frame to form a candidate
-            // remapped Box.
-            let pts = PointSet::from_rows(this.data.points.iter().map(|p| p.as_slice()));
-            let transformed = simple_map.transform(&pts, true)?;
-            let current_frame = this.data.frameset.current().snapshot();
-            let naxes = current_frame.naxes();
-            let new_points: Vec<Vec<f64>> = (0..this.data.points.len())
-                .map(|i| transformed.point(i)[..naxes].to_vec())
-                .collect();
-            let frameset = FrameSet::new(current_frame);
-            let mut data = RegionData::new(frameset, new_points);
-            data.negated = this.data.negated;
-            data.negated_set = this.data.negated_set;
-            data.closed = this.data.closed;
-            data.closed_set = this.data.closed_set;
-            data.mesh_size = this.data.mesh_size;
-            data.mesh_size_set = this.data.mesh_size_set;
-            data.fill_factor = this.data.fill_factor;
-            data.fill_factor_set = this.data.fill_factor_set;
-            data.adaptive = this.data.adaptive;
-            data.adaptive_set = this.data.adaptive_set;
-            data.uncertainty = this.data.uncertainty.clone();
-            let candidate = BoxRegion { data };
+            // Re-define the Box within its current Frame (box.c:3854-3887):
+            // fit the best Box through a mesh covering it there, and accept the
+            // fit if every mesh point lies on its boundary and every point of
+            // its own mesh, taken back into the base Frame, lies on the
+            // original's.
+            let base_mesh = this.reg_base_mesh()?;
+            let base_mesh_ps = PointSet::from_rows(base_mesh.iter().map(|p| p.as_slice()));
+            let mesh = simple_map.transform(&base_mesh_ps, true)?;
+            let unc = this.get_unc_frm(FrameRef::Current)?;
+            let cur_frame = this.data.frameset.current().snapshot();
+            let newbox = best_box(cur_frame.as_ref(), &mesh, unc.as_ref())?;
+            let fits = match &newbox {
+                Some(nb) => nb.reg_pins(&mesh, None)?,
+                None => false,
+            };
+            if let Some(nb) = newbox.filter(|_| fits) {
+                let nb_base_mesh = nb.reg_base_mesh()?;
+                let nb_mesh_ps = PointSet::from_rows(nb_base_mesh.iter().map(|p| p.as_slice()));
+                let nb_basemesh = simple_map.transform(&nb_mesh_ps, false)?;
+                if this.reg_pins(&nb_basemesh, None)? {
+                    new = Box::new(nb);
+                    simpler = true;
+                }
+            } else if simple_map.nin() == 2 && simple_map.nout() == 2 {
+                // Only when no Box fits: a 2-D Box may be a Polygon whose four
+                // vertices are the transformed corners (box.c:3894-3997).
+                if let Some(poly) = this.convert_to_polygon(simple_map.as_ref())? {
+                    new = poly;
+                    simpler = true;
+                }
+            }
 
-            // A direct point transform only yields a valid axis-aligned Box
-            // when the base->current Mapping preserves axis-alignment
-            // (diagonal scale, shift, permutation). For a shear or rotation
-            // the candidate box is strictly larger than the true region;
-            // verify via the boundary round-trip (box.c::Simplify, 3905).
-            let candidate_mesh = candidate.reg_base_mesh()?;
-            if this.verify_remap_exact(simple_map.as_ref(), &candidate_mesh)? {
-                new = Box::new(candidate);
+            // Failing any simplification so far, including the parent's, try
+            // splitting the Box into a Prism of two Regions on distinct axis
+            // subsets (box.c:4002-4017).
+            if !simpler && let Some(prism) = this.convert_to_prism()? {
+                new = prism;
                 simpler = true;
-            } else {
-                // The Box could not be re-defined as an axis-aligned Box by a
-                // direct corner transform. Fit the best Box through the
-                // current-Frame mesh (box.c::Simplify, 3895 → BestBox): a mesh
-                // whose points all fall on the fitted Box boundary (to within
-                // the uncertainty) means the current-Frame region really is a
-                // Box even though the corner transform was not exact — this
-                // keeps a nonlinear-but-separable remap (e.g. u=x*x) a Box
-                // rather than degrading it.
-                let base_mesh = this.reg_base_mesh()?;
-                let base_mesh_ps = PointSet::from_rows(base_mesh.iter().map(|p| p.as_slice()));
-                let mesh = simple_map.transform(&base_mesh_ps, true)?;
-                let unc = this.get_unc_frm(FrameRef::Current)?;
-                let cur_frame = this.data.frameset.current().snapshot();
-                let mut replaced = false;
-                if let Some(newbox) = best_box(cur_frame.as_ref(), &mesh, unc.as_ref())?
-                    && newbox.reg_pins(&mesh, None)?
-                {
-                    // Confirm the inverse: transform the fitted Box's own
-                    // boundary mesh back into the original base Frame and check
-                    // it lies on the original Box's boundary
-                    // (box.c::Simplify, 3905).
-                    let nb_base_mesh = newbox.reg_base_mesh()?;
-                    let nb_mesh_ps = PointSet::from_rows(nb_base_mesh.iter().map(|p| p.as_slice()));
-                    let nb_basemesh = simple_map.transform(&nb_mesh_ps, false)?;
-                    if this.reg_pins(&nb_basemesh, None)? {
-                        new = Box::new(newbox);
-                        simpler = true;
-                        replaced = true;
-                    }
-                }
-                // The Box could not be re-defined as a Box in its current
-                // Frame. For a 2-D→2-D Box, try representing it as a Polygon
-                // whose four vertices are the transformed Box corners
-                // (box.c::Simplify, 3921).
-                if !replaced && simple_map.nin() == 2 && simple_map.nout() == 2 {
-                    if let Some(poly) = this.convert_to_polygon(simple_map.as_ref())? {
-                        new = poly;
-                        simpler = true;
-                        replaced = true;
-                    }
-                }
-                // Otherwise try splitting it into two sub-regions on distinct
-                // axis subsets and joining them into a Prism (box.c::Simplify,
-                // 4036, calls astConvertToPrism when no simpler single Region
-                // was found).
-                if !replaced {
-                    if let Some(prism) = this.convert_to_prism()? {
-                        new = prism;
-                        simpler = true;
-                    }
-                }
             }
         }
 

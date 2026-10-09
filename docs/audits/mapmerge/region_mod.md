@@ -29,7 +29,7 @@ calls the parent — and `default_bounding_box_unc`
 | 2 | Check the global error status and bail out | region.c:11149-11151 (fn Simplify) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 3 | Obtain a pointer to the Region structure | region.c:11152-11154 (fn Simplify) | -- | ceremony | n/a: the Rust method already has `&self` |
 | 4 | Take a deep copy of the supplied Region, so the returned pointer differs from the supplied one when anything simplifies | region.c:11155-11159 (fn Simplify) | regions/mod.rs:1211 (fn parent_region_simplify) | architecture | ported |
-| 5 | Simplify the encapsulated FrameSet, noting whether any simplification took place | region.c:11160-11164 (fn Simplify) | regions/mod.rs:1217-1221 (fn parent_region_simplify) | architecture | ported |
+| 5 | Simplify the encapsulated FrameSet, noting whether any simplification took place | region.c:11160-11164 (fn Simplify) | regions/mod.rs:1219-1224 (fn parent_region_simplify) | architecture | ported |
 | 6 | If so, annul the existing FrameSet and use the simpler one | region.c:11165-11171 (fn Simplify) | regions/mod.rs:1222-1223 (fn parent_region_simplify) | architecture | ported |
 | 7 | A default uncertainty is simplified by deleting it, since it is regenerated on demand from the simplified Region | region.c:11172-11176 (fn Simplify) | -- | ceremony | n/a: C annuls its cached `defunc`; the port caches nothing, so `get_def_unc` already regenerates the default from whatever the Region now is |
 | 8 | An uncertainty supplied explicitly is simplified in place instead | region.c:11177-11180 (fn Simplify) | regions/mod.rs:1229 (fn parent_region_simplify) | architecture | ported |
