@@ -1372,8 +1372,9 @@ impl Serializable for CmpRegion {
 
         // CmpRegion-specific: operator and sub-regions. These follow the
         // `IsA Region` marker — written after the parent class skeleton.
-        // A CmpRegion made with XOR is written as the two Regions XORed, as
-        // cmpregion.c `Dump` writes `xor1` and `xor2`.
+        // A CmpRegion made with XOR, or equivalent to an XOR, is written as
+        // the two Regions XORed, as cmpregion.c `Dump` writes `xor1` and
+        // `xor2` after `XORCheck`.
         let (oper, oper_comment) = match self.operator() {
             CmpOperator::And => (1, "Regions combined using Boolean AND"),
             CmpOperator::Or => (2, "Regions combined using Boolean OR"),
@@ -1381,9 +1382,11 @@ impl Serializable for CmpRegion {
         };
         node.push_int("Operator", oper, Some(oper_comment.to_string()));
 
-        let (reg_a, reg_b) = self
-            .xor_regions()
-            .unwrap_or((self.region1.as_ref(), self.region2.as_ref()));
+        let xor = self.xor_regions();
+        let (reg_a, reg_b) = match &xor {
+            Some((a, b)) => (a.as_ref(), b.as_ref()),
+            None => (self.region1.as_ref(), self.region2.as_ref()),
+        };
         let node_a = RegionToNode::to_node(reg_a)?;
         let node_b = RegionToNode::to_node(reg_b)?;
         node.push_object(

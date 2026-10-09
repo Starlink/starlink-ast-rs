@@ -84,6 +84,10 @@ impl PrismBuilder {
 
     /// Build the Prism.
     pub fn build(mut self) -> AstResult<Prism> {
+        // astInitPrism takes deep copies of the components, and a copy clears
+        // RegionFS throughout (prism.c:4218-4219, region.c Copy).
+        self.region1.clear_region_fs_deep();
+        self.region2.clear_region_fs_deep();
         // A component whose base->current Mapping is a UnitMap need not
         // dump its FrameSet, so its RegionFS is cleared (prism.c:4244-4251).
         for region in [&mut self.region1, &mut self.region2] {

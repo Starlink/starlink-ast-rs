@@ -125,8 +125,12 @@ impl CmpRegionBuilder {
     /// Mapping joins them), and an XOR is made as the OR of each Region ANDed
     /// with the negation of the other.
     pub fn build(self) -> AstResult<CmpRegion> {
+        // astInitCmpRegion takes deep copies of the components, and a copy
+        // clears RegionFS throughout (cmpregion.c:4758-4759, region.c Copy).
         let mut reg1 = self.region1;
         let mut reg2 = self.region2;
+        reg1.clear_region_fs_deep();
+        reg2.clear_region_fs_deep();
         let Some(fs) = reg2
             .get_region_frame()
             .convert_to(reg1.get_region_frame().as_ref(), &[])?
@@ -230,19 +234,91 @@ impl CmpRegion {
         self.data.perm_axes(perm)
     }
 
-    /// The boolean operator this CmpRegion was made with: XOR for one made
-    /// with XOR, whose components are then the two ANDs C makes it from.
+    /// The boolean operator this CmpRegion combines its Regions with: XOR
+    /// for one made with XOR, whose components are then the two ANDs C makes
+    /// it from, or for an OR of two ANDs equivalent to an XOR, as cmpregion.c
+    /// `XORCheck` finds it.
     pub fn operator(&self) -> CmpOperator {
-        match (self.operator, &self.xor) {
-            (_, Some(_)) => CmpOperator::Xor,
-            (Oper::And, None) => CmpOperator::And,
-            (Oper::Or, None) => CmpOperator::Or,
+        if self.xor_regions().is_some() {
+            return CmpOperator::Xor;
+        }
+        match self.operator {
+            Oper::And => CmpOperator::And,
+            Oper::Or => CmpOperator::Or,
         }
     }
 
-    /// For a CmpRegion made with XOR, the two Regions XORed.
-    pub(crate) fn xor_regions(&self) -> Option<(&dyn Region, &dyn Region)> {
-        self.xor.as_ref().map(|(a, b)| (a.as_ref(), b.as_ref()))
+    /// The two Regions XORed: those a CmpRegion made with XOR was given, or
+    /// for an OR of two ANDs that is equivalent to an XOR, the two Regions
+    /// cmpregion.c `XORCheck` finds, with whichever of them was negated
+    /// un-negated. C negates the first Region of the first AND in place to
+    /// compare it, and back, which leaves its Negated attribute set; the
+    /// copies compared here leave it untouched.
+    pub(crate) fn xor_regions(&self) -> Option<(DynRegion, DynRegion)> {
+        if let Some((a, b)) = &self.xor {
+            return Some((a.clone_region(), b.clone_region()));
+        }
+        if self.operator != Oper::Or {
+            return None;
+        }
+        let c1 = self.region1.as_any().downcast_ref::<CmpRegion>()?;
+        let c2 = self.region2.as_any().downcast_ref::<CmpRegion>()?;
+        if c1.operator != Oper::And || c2.operator != Oper::And {
+            return None;
+        }
+        let same = |a: &DynRegion, b: &DynRegion| Mapping::equal(a.as_ref(), b.as_ref());
+        let neg1 = c1.region1.negated_copy();
+        let neg2 = c1.region2.negated_copy();
+        let xor = if same(&neg1, &c2.region1) {
+            same(&neg2, &c2.region2)
+        } else if same(&neg1, &c2.region2) {
+            same(&neg2, &c2.region1)
+        } else {
+            false
+        };
+        if !xor {
+            return None;
+        }
+        let mut xor1 = c1.region1.clone_region();
+        let mut xor2 = c1.region2.clone_region();
+        if xor1.is_negated() {
+            xor1.negate();
+        } else {
+            xor2.negate();
+        }
+        Some((xor1, xor2))
+    }
+
+    /// cmpregion.c `CmpRegionList`: the Regions this CmpRegion combines and
+    /// the one operator that combines them. A component CmpRegion that uses
+    /// the same operator is replaced by its own Regions, recursively, unless
+    /// it is equivalent to an XOR; a CmpRegion equivalent to an XOR gives
+    /// its two XORed Regions and XOR.
+    #[doc(hidden)]
+    pub fn reg_cmp_region_list(&self) -> (CmpOperator, Vec<DynRegion>) {
+        let mut list = Vec::new();
+        let oper = self.cmp_region_list_into(&mut list);
+        (oper, list)
+    }
+
+    fn cmp_region_list_into(&self, list: &mut Vec<DynRegion>) -> CmpOperator {
+        if let Some((xor1, xor2)) = self.xor_regions() {
+            list.push(xor1);
+            list.push(xor2);
+            return CmpOperator::Xor;
+        }
+        for component in [&self.region1, &self.region2] {
+            match component.as_any().downcast_ref::<CmpRegion>() {
+                Some(cmp) if cmp.operator == self.operator && cmp.xor_regions().is_none() => {
+                    cmp.cmp_region_list_into(list);
+                }
+                _ => list.push(component.clone_region()),
+            }
+        }
+        match self.operator {
+            Oper::And => CmpOperator::And,
+            Oper::Or => CmpOperator::Or,
+        }
     }
 
     /// Get a reference to the first component region.

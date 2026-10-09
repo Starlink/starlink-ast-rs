@@ -1098,6 +1098,15 @@ Only a hand-written description can do this, since Dump never writes an index be
 Fixed on `u/timj/norm-unit` in 0d05fc29, which checks Current as Base is checked, with a `testframeset` case (Errors 41-43).
 The port treats a `Currnt` below 1 as unset, as the fixed C does (`frameset.rs` `from_node`), and `tests/test_frameset_current.rs` covers Current's set state against C.
 
+### RESOLVED (upstream 41c78908): `CmpRegionList` lists an XOR component of an OR CmpRegion as two Regions of the OR
+
+C location: `cmpregion.c` `CmpRegionList`.
+
+A CmpRegion equivalent to an XOR stores its operator as OR, so `CmpRegionList` descended into such a component of an OR CmpRegion and listed its two XORed Regions with the parent's OR: "A OR (B XOR C)" was listed as "A OR B OR C", which StcsChan writes.
+
+Fixed on `u/timj/norm-unit` in 41c78908: the component is checked with `XORCheck` first and added as a single Region when it is an XOR; `testregions` `checkCmpRegionListXor`.
+The port's `reg_cmp_region_list` is `CmpRegionList` as fixed; `tests/test_region_cmplist_oracle.rs`, whose probe needs the fixed library.
+
 ### RESOLVED (upstream e07c87ce): Region `Load` leaves a frame-less uncertainty with a dummy Frame when the Region has a FrameSet
 
 C location: `region.c` `Load`.
