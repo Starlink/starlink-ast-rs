@@ -197,6 +197,12 @@ pub trait Region: Frame + Mapping + AsDynRegion {
     /// appear explicitly set.
     fn set_closed_raw(&mut self, closed: bool, set: bool);
 
+    /// Clear the closed/open flag, reverting to its default of closed (C
+    /// `astClearClosed`).
+    fn clear_closed(&mut self) {
+        self.set_closed_raw(true, false);
+    }
+
     /// The fill factor (fraction of the bounding box that is interior).
     ///
     /// Used by the mesh and overlap algorithms to estimate point density.

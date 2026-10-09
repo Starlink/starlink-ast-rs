@@ -75,6 +75,7 @@ Seams first, because the HIGH findings in themes B to F, and the Stc port, are f
 | EL-2 | FIXED 2026-10-08: `EllipseBuilder` takes the arguments of `astEllipse` form 1: the angle from the second axis to the primary axis, positive towards the first, and the axis ends placed with the Frame's `offset2`, so a sky Ellipse's axes are arcs. It measured the angle from the first axis and placed the ends on a plane; tests that built Ellipses take their angles in C's convention | `tests/test_region_ellipse_oracle.rs` (`builder_matches_astellipse_form1`): a sky and a Cartesian Ellipse built by `EllipseBuilder` dump exactly as C's |
 | RB-9, RB-10, BX-4, CI-1 | FIXED 2026-10-08: `set_uncertainty` returns `AstResult`. A shape that cannot be re-centred, or a Frame that cannot be converted to the Region's base Frame, is AST__NCPIN, the status C's second `astError` leaves, and C's first message is the error's message. Either way the Region is left with no uncertainty, as C annuls the old one first. `set_fill_factor` is AST__ATSER outside 0 to 1 and leaves the attribute unchanged, and `reg_overlay`, which C makes through `astSetFillFactor`, passes that on. The loader rejects an out-of-range `Fill` the same way and raises a `MeshSz` below 5 to 5, where a negative one became a huge mesh. `BoxRegionBuilder::new` and `from_bounds` reject a BAD (or NaN) coordinate in either supplied point as AST__BADIN, and `CircleBuilder::build` does so for the centre and the circumference point, which a BAD radius makes BAD. Still open: the parallel merges (`region_merge` and `finish_region_merge`) return `Option`, so an uncertainty or FillFactor error inside one declines the merge where C's status would end the simplification; a failing uncertainty in a parallel `CmpMap` of Boxes would expose it | `tests/test_region_errors_oracle.rs`: 8 cases against C's status codes and repaired values from `tools/oracle_fixtures/region_errors_probe.c` |
 | PR-1, PL-3, IN-6, PL-2 | FIXED 2026-10-08: a PointList is bounded as region.c `GetBounded` decides, so a negated PointList is unbounded unless its Frame is a SkyFrame. A negated Prism is bounded only if both components are bounded once negated, as prism.c `GetBounded` tests them. An Interval's `reg_base_box` is its limits as stored, so an excluded axis keeps its lower limit above its upper where it was widened to the whole axis. A PointList's `reg_base_box` is pointlist.c `RegBaseBox`: the least and greatest `ax_distance` from the first point, turned back into axis values with `ax_offset`, so a sky PointList either side of RA 0 has a box that wraps, and a default uncertainty about 600 times smaller than the raw minimum and maximum gave | `tests/test_region_bounded_oracle.rs`: bounded flags and bounding boxes against C from `tools/oracle_fixtures/region_bounded_probe.c` |
+| CR-4, PR-4 | FIXED 2026-10-08: setting or clearing Closed or MeshSize on a CmpRegion or Prism sets or clears it on both components too, as their `MAKE_SET` and `MAKE_CLEAR` accessors do. The Region trait gains `clear_closed`, C's `astClearClosed`, which it lacked. An unset FillFactor is the first component's for a CmpRegion and the product of the components' for a Prism. The CmpRegion builder copies the first component's set MeshSize and Closed onto the CmpRegion, and so onto both components, as `astInitCmpRegion` does; `astInitPrism` copies nothing | `tests/test_region_compound_attr_oracle.rs`: a CmpRegion and a Prism dumped byte-exact against C as made, after setting and after clearing, and their FillFactors, from `tools/oracle_fixtures/region_compound_attr_probe.c` |
 | PL-1 | WITHDRAWN: a C probe masks the same two pixels as the port with a UnitMap; the Mapping direction is RB-12 | Appendix C |
 
 
@@ -460,8 +461,8 @@ Its coverage tables, findings, and the status of the earlier audits' class findi
 | SetRegFS (3463)/ResetCache (3115) | `set_region_fs` (811) | ceremony | PORTED |
 | Equal (502) | `Mapping::equal` | architecture | PORTED |
 | GetObjSize/ManageLock | NONE | ceremony | OUT-OF-SCOPE |
-| Set/ClearClosed, Set/ClearMeshSize (620-702) | NONE (plain RegionData setters) | architecture | MISSING (CR-4) |
-| GetFillFactor (848) | NONE | architecture | MISSING (CR-4) |
+| Set/ClearClosed, Set/ClearMeshSize (620-702) | `set_closed`, `clear_closed`, `set_mesh_size`, `clear_mesh_size` | architecture | PORTED (CR-4 fixed) |
+| GetFillFactor (848) | `fill_factor` | architecture | PORTED (CR-4 fixed) |
 | RegSetAttrib/RegClearAttrib (2380/3030) | NONE | architecture | MISSING (CR-6) |
 | Decompose (408) | NONE (no Mapping decompose API) | architecture | MISSING (LOW; `region1()/region2()/operator()` accessors exist) |
 | RegBaseBox (1508) | `reg_base_box` (344) | architecture | PORTED |
@@ -485,8 +486,8 @@ Its coverage tables, findings, and the status of the earlier audits' class findi
 | GetDefUnc (1207) | `get_def_unc` (686) | architecture | PORTED |
 | SetRegFS (3123) | `set_region_fs` (497) | ceremony | PORTED |
 | Equal (516) | `Mapping::equal` (~1200) | architecture | PORTED |
-| Set/ClearClosed, Set/ClearMeshSize (630-713) | NONE | architecture | MISSING (PR-4) |
-| GetFillFactor (871) | NONE | architecture | MISSING (PR-4) |
+| Set/ClearClosed, Set/ClearMeshSize (630-713) | `set_closed`, `clear_closed`, `set_mesh_size`, `clear_mesh_size` | architecture | PORTED (PR-4 fixed) |
+| GetFillFactor (871) | `fill_factor` | architecture | PORTED (PR-4 fixed) |
 | Overlap (1663) / OverlapX (1919) | NONE (`overlap` (339) -> generic `compute_overlap`) | architecture | MISSING (PR-2) |
 | RegSetAttrib/RegClearAttrib (2990/2865) | NONE | architecture | MISSING (CR-6 applies) |
 | GetRegionBounds (941) | `get_region_bounds` (527) | architecture | PORTED |
@@ -709,7 +710,8 @@ Effect: a fresh Prism's dump carries `Frm` blocks in RegionA/RegionB that C omit
 UNVERIFIED; probe: `astShow(astPrism(box, interval))`.
 
 **PR-4 MED — Closed/MeshSize propagation and FillFactor default missing.**
-This is the same as CR-4: C prism.c:635-718 propagates Set/Clear to components and GetFillFactor (871) defaults to region1's; Rust prism.rs:545-589 does not.
+This is the same as CR-4: C prism.c:635-718 propagates Set/Clear to components; Rust prism.rs:545-589 does not.
+GetFillFactor (871) defaults to the product of the components' FillFactors, not to region1's as CR-4's does.
 
 ### Status of findings from the earlier audits
 - MESH-GEO: OPEN (PG-1).

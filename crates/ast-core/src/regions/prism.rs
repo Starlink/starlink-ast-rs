@@ -555,9 +555,20 @@ impl Region for Prism {
         self.data.closed
     }
 
+    /// prism.c `SetClosed` sets the value on both components too.
     fn set_closed(&mut self, closed: bool) {
         self.data.closed = closed;
         self.data.closed_set = true;
+        self.region1.set_closed(closed);
+        self.region2.set_closed(closed);
+    }
+
+    /// prism.c `ClearClosed` clears the value on both components too.
+    fn clear_closed(&mut self) {
+        self.data.closed = true;
+        self.data.closed_set = false;
+        self.region1.clear_closed();
+        self.region2.clear_closed();
     }
 
     fn test_closed(&self) -> bool {
@@ -569,8 +580,13 @@ impl Region for Prism {
         self.data.closed_set = set;
     }
 
+    /// prism.c `GetFillFactor`: the value set, or by default the product of the components'.
     fn fill_factor(&self) -> f64 {
-        self.data.effective_fill_factor()
+        if self.data.fill_factor_set {
+            self.data.fill_factor
+        } else {
+            self.region1.fill_factor() * self.region2.fill_factor()
+        }
     }
 
     fn set_fill_factor(&mut self, factor: f64) -> AstResult<()> {
@@ -589,16 +605,22 @@ impl Region for Prism {
         self.data.effective_mesh_size()
     }
 
+    /// prism.c `SetMeshSize` sets the value on both components too.
     fn set_mesh_size(&mut self, size: usize) {
         self.data.set_mesh_size(size);
+        self.region1.set_mesh_size(size);
+        self.region2.set_mesh_size(size);
     }
 
     fn test_mesh_size(&self) -> bool {
         self.data.mesh_size_set
     }
 
+    /// prism.c `ClearMeshSize` clears the value on both components too.
     fn clear_mesh_size(&mut self) {
         self.data.clear_mesh_size();
+        self.region1.clear_mesh_size();
+        self.region2.clear_mesh_size();
     }
 
     fn is_bounded(&self) -> bool {
