@@ -24,12 +24,20 @@ fn construct_triangle() {
     assert_eq!(poly.naxes(), 2);
 }
 
+/// astInitPolygon has no minimum vertex count; only an empty PointSet is
+/// rejected, by astPointSet.
 #[test]
-fn construct_rejects_less_than_3_vertices() {
+fn construct_accepts_fewer_than_3_vertices() {
     let frame = BasicFrameBuilder::new(2).build().unwrap();
     let vertices = vec![vec![0.0, 0.0], vec![1.0, 1.0]];
-    let result = PolygonBuilder::new(frame, vertices);
-    assert!(result.is_err());
+    assert!(
+        PolygonBuilder::new(frame, vertices)
+            .unwrap()
+            .build()
+            .is_ok()
+    );
+    let frame = BasicFrameBuilder::new(2).build().unwrap();
+    assert!(PolygonBuilder::new(frame, vec![]).is_err());
 }
 
 #[test]
@@ -408,7 +416,7 @@ fn open_polygon_excludes_boundary() {
 #[test]
 fn is_bounded() {
     let poly = make_triangle();
-    assert!(poly.is_bounded());
+    assert!(poly.is_bounded().unwrap());
 }
 
 #[test]

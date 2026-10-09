@@ -334,8 +334,8 @@ impl CmpRegion {
             reg2 = reg2.negated_copy();
         }
 
-        let reg1b = reg1.is_bounded();
-        let reg2b = reg2.is_bounded();
+        let reg1b = reg1.is_bounded()?;
+        let reg2b = reg2.is_bounded()?;
 
         let result = match oper {
             Oper::And => {
@@ -586,8 +586,10 @@ impl RegionGeometry for CmpRegion {
     fn reg_base_mesh(&self) -> AstResult<Vec<Vec<f64>>> {
         let reg1 = self.region1.as_ref();
         let reg2 = self.region2.as_ref();
-        let has_mesh = |r: &dyn Region| r.is_bounded() || r.negated_copy().is_bounded();
-        let (has1, has2) = (has_mesh(reg1), has_mesh(reg2));
+        let has_mesh = |r: &dyn Region| -> AstResult<bool> {
+            Ok(r.is_bounded()? || r.negated_copy().is_bounded()?)
+        };
+        let (has1, has2) = (has_mesh(reg1)?, has_mesh(reg2)?);
         if !has1 && !has2 {
             return Err(AstError::new(
                 ErrorCode::Inter,
@@ -641,13 +643,8 @@ impl RegionGeometry for CmpRegion {
             .collect())
     }
 
-    fn is_bounded_inner(&self) -> bool {
-        match self.operator {
-            // AND (intersection): bounded if either sub-region is bounded.
-            Oper::And => self.region1.is_bounded() || self.region2.is_bounded(),
-            // OR (union): bounded only if both sub-regions are bounded.
-            Oper::Or => self.region1.is_bounded() && self.region2.is_bounded(),
-        }
+    fn is_bounded_inner(&self) -> AstResult<bool> {
+        self.get_bounded()
     }
 
     fn remap_defining_points(&mut self, _mapping: &dyn Mapping, _forward: bool) -> AstResult<()> {
@@ -861,8 +858,8 @@ impl Region for CmpRegion {
         self.region2.clear_mesh_size();
     }
 
-    fn is_bounded(&self) -> bool {
-        self.get_bounded().unwrap_or(false)
+    fn is_bounded(&self) -> AstResult<bool> {
+        self.get_bounded()
     }
 
     fn is_adaptive(&self) -> bool {

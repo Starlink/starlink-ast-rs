@@ -396,7 +396,7 @@ pub(crate) trait RegionGeometry {
     fn reg_base_mesh(&self) -> AstResult<Vec<Vec<f64>>>;
 
     /// Whether this region is bounded (finite extent in all axes).
-    fn is_bounded_inner(&self) -> bool;
+    fn is_bounded_inner(&self) -> AstResult<bool>;
 
     /// Remap defining points through a mapping.
     ///
@@ -733,7 +733,7 @@ pub(crate) fn region_base_grid<R>(region: &R) -> AstResult<PointSet>
 where
     R: RegionGeometry + crate::regions::Region + ?Sized,
 {
-    if !region.is_bounded() {
+    if !region.is_bounded()? {
         return Err(AstError::new(
             crate::error::ErrorCode::Mbbnf,
             "astRegBaseGrid: The Region is unbounded so no grid can be created to \

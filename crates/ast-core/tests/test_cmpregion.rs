@@ -315,7 +315,7 @@ fn and_bounded_if_either_bounded() {
         .build()
         .unwrap();
     unbounded.negate();
-    assert!(!unbounded.is_bounded());
+    assert!(!unbounded.is_bounded().unwrap());
 
     // AND of bounded + unbounded -> bounded (intersection can't be larger
     // than the bounded component). C cmpregion.c GetBounded: result = 1 when
@@ -324,7 +324,7 @@ fn and_bounded_if_either_bounded() {
         .unwrap()
         .build()
         .unwrap();
-    assert!(cmp.is_bounded());
+    assert!(cmp.is_bounded().unwrap());
 }
 
 #[test]
@@ -334,11 +334,11 @@ fn null_region_is_bounded() {
     // region.c:3358 -> !Negated). Its negated form (the whole space) is not.
     let frame = BasicFrameBuilder::new(2).build().unwrap();
     let null = NullRegionBuilder::new(frame.clone()).build().unwrap();
-    assert!(null.is_bounded());
+    assert!(null.is_bounded().unwrap());
 
     let mut neg_null = NullRegionBuilder::new(frame).build().unwrap();
     neg_null.negate();
-    assert!(!neg_null.is_bounded());
+    assert!(!neg_null.is_bounded().unwrap());
 }
 
 #[test]
@@ -366,7 +366,7 @@ fn and_unbounded_if_both_unbounded() {
         .unwrap()
         .build()
         .unwrap();
-    assert!(!cmp.is_bounded());
+    assert!(!cmp.is_bounded().unwrap());
 }
 
 #[test]
@@ -393,7 +393,7 @@ fn or_bounded_only_if_both_bounded() {
         .unwrap()
         .build()
         .unwrap();
-    assert!(!cmp.is_bounded());
+    assert!(!cmp.is_bounded().unwrap());
 
     // OR of two bounded -> bounded.
     let circle2 = CircleBuilder::new(frame, vec![1.0, 1.0])
@@ -405,7 +405,7 @@ fn or_bounded_only_if_both_bounded() {
         .unwrap()
         .build()
         .unwrap();
-    assert!(cmp2.is_bounded());
+    assert!(cmp2.is_bounded().unwrap());
 }
 
 // ---- Bounding box ----

@@ -428,7 +428,7 @@ impl BoxRegion {
             let right_way_round = if let Some(sc) = &sky_centre {
                 newpoly.point_in_region(sc)?
             } else {
-                newpoly.is_bounded()
+                newpoly.is_bounded()?
             };
 
             if right_way_round {
@@ -1036,11 +1036,11 @@ impl RegionGeometry for BoxRegion {
         Ok(mesh)
     }
 
-    fn is_bounded_inner(&self) -> bool {
+    fn is_bounded_inner(&self) -> AstResult<bool> {
         // Base Region::GetBounded (region.c:3358): a closed-curve region is
         // bounded unless negated, except within a SkyFrame where a finite
         // region always has a finite negation.
-        self.data.closed_curve_bounded()
+        Ok(self.data.closed_curve_bounded())
     }
 
     fn remap_defining_points(&mut self, mapping: &dyn Mapping, forward: bool) -> AstResult<()> {
@@ -1245,7 +1245,7 @@ impl Region for BoxRegion {
         self.data.clear_mesh_size();
     }
 
-    fn is_bounded(&self) -> bool {
+    fn is_bounded(&self) -> AstResult<bool> {
         self.is_bounded_inner()
     }
 
@@ -1295,7 +1295,7 @@ impl Region for BoxRegion {
     /// box.c `RegBaseGrid`: the base Frame's grid of MeshSize points over
     /// the Box's bounds.
     fn get_region_grid(&self) -> AstResult<PointSet> {
-        if !self.is_bounded() {
+        if !self.is_bounded()? {
             return Err(AstError::new(
                 ErrorCode::Mbbnf,
                 "astRegBaseGrid(Box): The Box is unbounded so no grid can be created \

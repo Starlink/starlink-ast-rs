@@ -30,3 +30,28 @@ pub const CIRCLE_CENTRE: i32 = 233933202;
 pub const CIRCLE_RADIUS: i32 = 233933202;
 /// astCircle form 0 with a BAD circumference point.
 pub const CIRCLE_CIRCUM: i32 = 233933202;
+/// astPolygon in a 3-D Frame, and with no vertices.
+pub const POLY_NAXES: i32 = 233933202;
+pub const POLY_EMPTY: i32 = 233933586;
+/// astPolygon with a BAD Y at vertex 2 and a BAD X at vertex 3.
+pub const POLY_BAD: i32 = 233933202;
+/// Bounded for a Polygon of vertex (0,0), and of vertices (0,0) and (1,0).
+pub const POLY_ONE_BOUNDED: bool = true;
+pub const POLY_TWO_BOUNDED: bool = true;
+pub const POLY_FEW: i32 = 0;
+/// astEllipse form 1 in a 3-D Frame, and with a BAD centre, axis and angle.
+pub const ELL_NAXES: i32 = 233933202;
+pub const ELL_CENTRE: i32 = 233933202;
+pub const ELL_AXIS: i32 = 233933202;
+pub const ELL_ANGLE: i32 = 233933202;
+/// astEllipse form 1 with axes (-2, 1): built, and (0.5, 0.5) transformed.
+pub const ELL_NEGATIVE: i32 = 0;
+pub const ELL_NEGATIVE_OUT: [f64; 2] = [0.5, 0.5];
+pub const ELL_NEGATIVE_USE: i32 = 0;
+/// astEllipse form 1 with axes (0, 1): built, then used.
+pub const ELL_ZERO: i32 = 0;
+pub const ELL_ZERO_USE: i32 = 233933202;
+/// The dump of a form-0 Ellipse whose first point is its centre, read and used.
+pub const ELL_DEGENERATE_DUMP: &str = " Begin Ellipse 	# Elliptical region\n#   Title = \"2-d coordinate system\" 	# Title of coordinate system\n#   Naxes = 2 	# Number of coordinate axes\n#   Epoch = 2000 	# Julian epoch of observation\n#   Lbl1 = \"Axis 1\" 	# Label for axis 1\n#   Lbl2 = \"Axis 2\" 	# Label for axis 2\n#   System = \"Cartesian\" 	# Coordinate system type\n IsA Frame 	# Coordinate system description\n    Adapt = 1 	# Region adapts to coord sys changes\n    Frm = 	# Coordinate system\n       Begin Frame 	# Coordinate system description\n#         Title = \"2-d coordinate system\" 	# Title of coordinate system\n          Naxes = 2 	# Number of coordinate axes\n#         Lbl1 = \"Axis 1\" 	# Label for axis 1\n#         Lbl2 = \"Axis 2\" 	# Label for axis 2\n          Ax1 = 	# Axis number 1\n             Begin Axis 	# Coordinate axis\n             End Axis\n          Ax2 = 	# Axis number 2\n             Begin Axis 	# Coordinate axis\n             End Axis\n       End Frame\n    Points = 	# Points defining the shape\n       Begin PointSet 	# Container for a set of points\n          Npoint = 3 	# Number of points\n          Ncoord = 2 	# Number of coordinates per point\n          X1 = 0 	# Coordinate values...\n          X2 = 0\n          X3 = 0\n          X4 = 0\n          X5 = 1\n          X6 = 1\n       End PointSet\n IsA Region 	# An area within a coordinate system\n End Ellipse\n";
+pub const ELL_DEGENERATE_LOAD: i32 = 0;
+pub const ELL_DEGENERATE_USE: i32 = 233933202;

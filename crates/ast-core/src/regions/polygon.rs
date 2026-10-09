@@ -969,49 +969,18 @@ impl PolygonBuilder {
     ///
     /// - `frame`: A 2-D frame (naxes must be 2).
     /// - `vertices`: Ordered list of vertex positions. Each vertex is a
-    ///   `Vec<f64>` of length 2. Must have at least 3 vertices.
+    ///   `Vec<f64>` of length 2.
     ///
     /// # Errors
     ///
-    /// Returns an error if:
-    /// - The frame does not have exactly 2 axes.
-    /// - Fewer than 3 vertices are supplied.
-    /// - Any vertex does not have length equal to `frame.naxes()`.
+    /// - [`ErrorCode::Badin`] if the frame does not have exactly 2 axes, as
+    ///   astInitPolygon reports it, or (from [`PolygonBuilder::build`]) a
+    ///   vertex is BAD.
+    /// - [`ErrorCode::Nptin`] if no vertices are supplied, as astPointSet
+    ///   reports it. One or two vertices are accepted, as C accepts them.
+    /// - [`ErrorCode::Naxin`] if a vertex does not have 2 coordinates.
     pub fn new(frame: impl Frame + 'static, vertices: Vec<Vec<f64>>) -> AstResult<Self> {
-        let naxes = frame.naxes();
-        if naxes != 2 {
-            return Err(AstError::new(
-                ErrorCode::Naxin,
-                format!("Polygon requires a 2-D frame but got {} axes", naxes),
-            ));
-        }
-        if vertices.len() < 3 {
-            return Err(AstError::new(
-                ErrorCode::Naxin,
-                format!(
-                    "Polygon requires at least 3 vertices but got {}",
-                    vertices.len()
-                ),
-            ));
-        }
-        for (i, v) in vertices.iter().enumerate() {
-            if v.len() != naxes {
-                return Err(AstError::new(
-                    ErrorCode::Naxin,
-                    format!(
-                        "Polygon vertex {} has {} coordinates but frame has {} axes",
-                        i,
-                        v.len(),
-                        naxes
-                    ),
-                ));
-            }
-        }
-        Ok(PolygonBuilder {
-            frame: Box::new(frame),
-            vertices,
-            uncertainty: None,
-        })
+        Self::from_dyn(Box::new(frame), vertices)
     }
 
     /// Create a builder for a Polygon from an owned [`DynFrame`].
@@ -1023,17 +992,18 @@ impl PolygonBuilder {
         let naxes = frame.naxes();
         if naxes != 2 {
             return Err(AstError::new(
-                ErrorCode::Naxin,
-                format!("Polygon requires a 2-D frame but got {} axes", naxes),
+                ErrorCode::Badin,
+                format!(
+                    "astInitPolygon(Polygon): The supplied {} has {naxes} axes - polygons must \
+                     have exactly 2 axes.",
+                    crate::frames::find_frame::frame_class_name(frame.as_ref())
+                ),
             ));
         }
-        if vertices.len() < 3 {
+        if vertices.is_empty() {
             return Err(AstError::new(
-                ErrorCode::Naxin,
-                format!(
-                    "Polygon requires at least 3 vertices but got {}",
-                    vertices.len()
-                ),
+                ErrorCode::Nptin,
+                "astInitPointSet(PointSet): Number of points (0) is not valid.",
             ));
         }
         for (i, v) in vertices.iter().enumerate() {
@@ -1066,12 +1036,17 @@ impl PolygonBuilder {
     pub fn build(self) -> AstResult<Polygon> {
         let frameset = FrameSet::new(self.frame);
 
-        // A vertex may not be bad (polygon.c:7131).
-        for v in &self.vertices {
-            if v.contains(&BAD_VALUE) {
+        // A vertex may not be bad (polygon.c:7131). C checks every X value
+        // before any Y value, so reports the first vertex with a bad X.
+        for axis in 0..2 {
+            if let Some(j) = self.vertices.iter().position(|v| v[axis] == BAD_VALUE) {
                 return Err(AstError::new(
                     ErrorCode::Badin,
-                    "One or more of the supplied vertex coordinates is bad".to_string(),
+                    format!(
+                        "astInitPolygon(Polygon): One or more bad axis values supplied for \
+                         the vertex number {}.",
+                        j + 1
+                    ),
                 ));
             }
         }
@@ -1668,12 +1643,10 @@ impl RegionGeometry for Polygon {
         Ok(mesh)
     }
 
-    fn is_bounded_inner(&self) -> bool {
-        // Mirrors C GetBounded (polygon.c:2749): SkyFrame Polygons are always
-        // bounded; otherwise it depends on vertex order and negation. If the
-        // geometric probe fails (bad edges), fall back to treating the region
-        // as bounded — the historical default for a well-formed Polygon.
-        self.bounded_impl().unwrap_or(true)
+    fn is_bounded_inner(&self) -> AstResult<bool> {
+        // polygon.c GetBounded (polygon.c:2752): SkyFrame Polygons are always
+        // bounded; otherwise it depends on vertex order and negation.
+        self.bounded_impl()
     }
 
     fn remap_defining_points(&mut self, mapping: &dyn Mapping, forward: bool) -> AstResult<()> {
@@ -1869,7 +1842,7 @@ impl Region for Polygon {
         self.data.clear_mesh_size();
     }
 
-    fn is_bounded(&self) -> bool {
+    fn is_bounded(&self) -> AstResult<bool> {
         self.is_bounded_inner()
     }
 

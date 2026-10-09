@@ -512,8 +512,8 @@ impl RegionGeometry for Circle {
         Ok(self.base_mesh_bounds()?.mesh)
     }
 
-    fn is_bounded_inner(&self) -> bool {
-        self.data.closed_curve_bounded()
+    fn is_bounded_inner(&self) -> AstResult<bool> {
+        Ok(self.data.closed_curve_bounded())
     }
 
     fn remap_defining_points(&mut self, mapping: &dyn Mapping, forward: bool) -> AstResult<()> {
@@ -705,7 +705,7 @@ impl Region for Circle {
         self.data.clear_mesh_size();
     }
 
-    fn is_bounded(&self) -> bool {
+    fn is_bounded(&self) -> AstResult<bool> {
         self.is_bounded_inner()
     }
 

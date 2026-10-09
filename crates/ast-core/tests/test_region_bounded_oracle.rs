@@ -39,12 +39,12 @@ const POINTS: [[f64; 2]; 3] = [[0.0, 0.0], [1.0, 2.0], [3.0, 1.0]];
 #[test]
 fn negated_pointlist_is_unbounded_unless_on_the_sky() {
     let mut pl = pointlist(frame(2), &POINTS);
-    assert_eq!(pl.is_bounded(), cases::POINTLIST);
+    assert_eq!(pl.is_bounded().unwrap(), cases::POINTLIST);
     pl.negate();
-    assert_eq!(pl.is_bounded(), cases::POINTLIST_NEGATED);
+    assert_eq!(pl.is_bounded().unwrap(), cases::POINTLIST_NEGATED);
     let mut sky = pointlist(SkyFrame::new(SkySystem::Icrs), &POINTS);
     sky.negate();
-    assert_eq!(sky.is_bounded(), cases::SKY_POINTLIST_NEGATED);
+    assert_eq!(sky.is_bounded().unwrap(), cases::SKY_POINTLIST_NEGATED);
 }
 
 #[test]
@@ -58,9 +58,9 @@ fn negated_prism_tests_negated_components() {
         .build()
         .unwrap();
     let mut prism = PrismBuilder::new(bx, iv).unwrap().build().unwrap();
-    assert_eq!(prism.is_bounded(), cases::PRISM);
+    assert_eq!(prism.is_bounded().unwrap(), cases::PRISM);
     prism.negate();
-    assert_eq!(prism.is_bounded(), cases::PRISM_NEGATED);
+    assert_eq!(prism.is_bounded().unwrap(), cases::PRISM_NEGATED);
 }
 
 #[test]

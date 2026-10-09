@@ -64,31 +64,32 @@ impl PointListBuilder {
     ///
     /// # Errors
     ///
-    /// Returns an error if:
-    /// - `points` is empty.
-    /// - Any point has a length different from `frame.naxes()`.
+    /// - [`ErrorCode::Nptin`] if `points` is empty, as astPointSet reports
+    ///   it.
+    /// - [`ErrorCode::Ncpin`] if a point has a length different from
+    ///   `frame.naxes()`, as astInitPointList reports it.
     pub fn new(frame: impl Frame + 'static, points: Vec<Vec<f64>>) -> AstResult<Self> {
-        let naxes = frame.naxes();
+        let nin = frame.naxes();
 
         if points.is_empty() {
             return Err(AstError::new(
                 ErrorCode::Nptin,
-                "PointList requires at least one point",
+                "astInitPointSet(PointSet): Number of points (0) is not valid.",
             ));
         }
 
-        for (i, p) in points.iter().enumerate() {
-            if p.len() != naxes {
-                return Err(AstError::new(
-                    ErrorCode::Naxin,
-                    format!(
-                        "PointList point {} has {} coordinates but frame has {} axes",
-                        i,
-                        p.len(),
-                        naxes
-                    ),
-                ));
-            }
+        if let Some(p) = points.iter().find(|p| p.len() != nin) {
+            return Err(AstError::new(
+                ErrorCode::Ncpin,
+                format!(
+                    "astInitPointList(): Bad number of coordinate values ({}).",
+                    p.len()
+                ),
+            )
+            .with_context(format!(
+                "The {} given requires {nin} coordinate value(s) for each input point.",
+                crate::frames::find_frame::frame_class_name(&frame)
+            )));
         }
 
         Ok(PointListBuilder {
@@ -261,8 +262,8 @@ impl RegionGeometry for PointList {
 
     /// PointList inherits region.c `GetBounded`: bounded unless negated, or
     /// always in a SkyFrame, where the negation of a finite set is finite.
-    fn is_bounded_inner(&self) -> bool {
-        self.data.closed_curve_bounded()
+    fn is_bounded_inner(&self) -> AstResult<bool> {
+        Ok(self.data.closed_curve_bounded())
     }
 
     fn remap_defining_points(&mut self, mapping: &dyn Mapping, forward: bool) -> AstResult<()> {
@@ -438,7 +439,7 @@ impl Region for PointList {
         self.data.clear_mesh_size();
     }
 
-    fn is_bounded(&self) -> bool {
+    fn is_bounded(&self) -> AstResult<bool> {
         self.is_bounded_inner()
     }
 

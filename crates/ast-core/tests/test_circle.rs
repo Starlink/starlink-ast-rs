@@ -504,7 +504,7 @@ fn region_attributes() {
     // Defaults.
     assert!(circle.is_closed());
     assert!(!circle.is_negated());
-    assert!(circle.is_bounded());
+    assert!(circle.is_bounded().unwrap());
     assert!(circle.is_adaptive()); // C default is true
     assert_eq!(circle.mesh_size(), 200);
     assert!((circle.fill_factor() - 1.0).abs() < 1e-10);

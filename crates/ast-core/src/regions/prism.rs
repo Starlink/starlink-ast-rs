@@ -328,8 +328,10 @@ impl RegionGeometry for Prism {
     /// component for the purpose; a 1-D component's mesh has 2 points.
     fn reg_base_mesh(&self) -> AstResult<Vec<Vec<f64>>> {
         // A component has a mesh if it is bounded when negated or not.
-        let has_mesh = |r: &DynRegion| r.is_bounded() || r.negated_copy().is_bounded();
-        if !has_mesh(&self.region1) || !has_mesh(&self.region2) {
+        let has_mesh = |r: &DynRegion| -> AstResult<bool> {
+            Ok(r.is_bounded()? || r.negated_copy().is_bounded()?)
+        };
+        if !has_mesh(&self.region1)? || !has_mesh(&self.region2)? {
             return Err(AstError::new(
                 ErrorCode::Inter,
                 "astRegBaseMesh(Prism): No mesh can be produced for the Prism bacause \
@@ -385,15 +387,15 @@ impl RegionGeometry for Prism {
 
     /// prism.c `GetBounded`: bounded only if both components are, with the
     /// components negated when the Prism is.
-    fn is_bounded_inner(&self) -> bool {
+    fn is_bounded_inner(&self) -> AstResult<bool> {
         if !self.data.negated {
-            return self.region1.is_bounded() && self.region2.is_bounded();
+            return Ok(self.region1.is_bounded()? && self.region2.is_bounded()?);
         }
         let mut reg1 = self.region1.clone_region();
         let mut reg2 = self.region2.clone_region();
         reg1.negate();
         reg2.negate();
-        reg1.is_bounded() && reg2.is_bounded()
+        Ok(reg1.is_bounded()? && reg2.is_bounded()?)
     }
 
     fn remap_defining_points(&mut self, _mapping: &dyn Mapping, _forward: bool) -> AstResult<()> {
@@ -623,7 +625,7 @@ impl Region for Prism {
         self.region2.clear_mesh_size();
     }
 
-    fn is_bounded(&self) -> bool {
+    fn is_bounded(&self) -> AstResult<bool> {
         self.is_bounded_inner()
     }
 

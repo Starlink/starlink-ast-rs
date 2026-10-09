@@ -25,7 +25,7 @@ fn construct_bounded_2d() {
         .unwrap();
 
     assert_eq!(interval.naxes(), 2);
-    assert!(interval.is_bounded());
+    assert!(interval.is_bounded().unwrap());
     assert!(!interval.is_negated());
     assert!(interval.is_closed());
 }
@@ -39,7 +39,7 @@ fn construct_unbounded_axis() {
         .build()
         .unwrap();
 
-    assert!(!interval.is_bounded());
+    assert!(!interval.is_bounded().unwrap());
 }
 
 #[test]
@@ -719,4 +719,31 @@ fn point_interval_merges_into_a_pointlist() {
     assert_eq!(pts.npoint(), 2);
     assert_eq!(pts.point(0), &[5.0, 0.0, 3.0]);
     assert_eq!(pts.point(1), &[5.0, 0.0, 4.0]);
+}
+
+/// Ported from testregions.c `checkIntervalCentreFrame`: an Interval mapped
+/// through a ZoomMap of 2 without simplification keeps its base Frame limits
+/// of 1 and 3, so its centre is 2 in the base Frame and 4 in the current
+/// Frame (interval.c `RegCentre`).
+#[test]
+fn interval_centre_is_given_in_the_frame_asked_for() {
+    use ast_core::frames::FrameRef;
+    use ast_core::mappings::ZoomMap;
+
+    let frame = || BasicFrameBuilder::new(1).build().unwrap();
+    let iv = IntervalBuilder::new(frame(), vec![1.0], vec![3.0])
+        .unwrap()
+        .build()
+        .unwrap();
+    let mapped = iv
+        .reg_map_region(&ZoomMap::new(1, 2.0).unwrap(), &frame())
+        .unwrap();
+    assert_eq!(
+        mapped.reg_centre_query(FrameRef::Base).unwrap(),
+        Some(vec![2.0])
+    );
+    assert_eq!(
+        mapped.reg_centre_query(FrameRef::Current).unwrap(),
+        Some(vec![4.0])
+    );
 }

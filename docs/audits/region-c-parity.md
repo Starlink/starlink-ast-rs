@@ -80,6 +80,7 @@ Seams first, because the HIGH findings in themes B to F, and the Stc port, are f
 | EL-3 | FIXED 2026-10-09: `Ellipse::ellipse_pars` is `astEllipsePars`: the centre and axis ends in the current Frame, the half-lengths and the angle from ellipse.c `CalcPars` in that Frame, with the second point replaced by the end of the secondary axis as `CalcPars` replaces it, and BAD half-lengths and angle when either half-length is not positive | `tests/test_region_ellipsepars_oracle.rs`: a Cartesian and a sky Ellipse, a form-0 Ellipse and an Ellipse mapped through a ZoomMap, exact against C from `tools/oracle_fixtures/region_ellipsepars_probe.c` |
 | PG-3 | FIXED 2026-10-09: `Polygon::convex` is `astConvex<X>`, generic over the pixel type, with every comparison as `PixelOper` and the `starpix` convention: a port of polygon.c `ConvexHull`, `FindBoxEdge` and `PartHull`, with C's vertex order and repeated corner vertices, a PIXEL Frame, no `EnsureInside`, and `None` when no pixel is selected; `convex_hull_f32` is removed | `tests/test_region_convex_oracle.rs`: all six comparisons, `starpix`, an int array, one pixel and none, exact against C dumps from `tools/oracle_fixtures/region_convex_probe.c`; `test_regions.rs` `convex_hull_basic` checks checkConvex's vertex order |
 | PG-2 | FIXED 2026-10-09: `Polygon::downsize` is `astDownsize`, a port of polygon.c `DownsizePoly` with `FindMax` (plane geometry in a plain Frame, `resolve_points` otherwise) and the Segment chain ordered by error; `Polygon::outline` is `astOutline<X>`, a port of `FindInsidePoint`'s spiral search, the rightward search that crosses holes, `TraceEdge`, `SmoothPoly` and the box-size rules, in a PIXEL Frame; both take any `PixelValue` type, whose C type code names the function in error messages | `tests/test_region_outline_oracle.rs`: downsizing by error, vertex count, both and neither, and on the sky; outlines for every comparison, smoothed and downsized, `starpix`, across a hole, by spiral search and for an int array, exact against C dumps from `tools/oracle_fixtures/region_outline_probe.c`, and the `AST__NONIN` message |
+| PG-6, CR-7, PG-4, EL-4, IN-5, NR-3 | FIXED 2026-10-09: `Region::is_bounded` and `RegionGeometry::is_bounded_inner` return `AstResult<bool>`, as C's GetBounded can raise, so a Polygon's geometry error and a CmpRegion's overlap error propagate instead of reading as bounded and unbounded; CmpRegion's `is_bounded_inner` is its `get_bounded`. The Polygon constructor reports a non-2-D Frame and a BAD vertex as `AST__BADIN` with C's messages, checking every X before any Y, no vertices as `AST__NPTIN`, and accepts one or two vertices. The Ellipse constructor checks the axis count and BAD centre, axis and angle values with C's codes and messages, accepts negative axes, and leaves points that do not determine an ellipse to be rejected on first use, as ellipse.c `Cache` rejects them, which also covers a loaded Ellipse. The PointList constructor reports a point of the wrong length as `AST__NCPIN` and no points as `AST__NPTIN`, with C's messages. C's Interval `RegCentre` query returned the base Frame centre whatever Frame was asked for, and C's NullRegion `GetDefUnc` built the uncertainty in the current Frame; both fixed upstream (93803141, 74e0e51c), and the port already behaved as the fixes do | `tests/test_region_errors_oracle.rs`: the Polygon and Ellipse cases against C codes from `tools/oracle_fixtures/region_errors_probe.c`, with C's messages; `tests/test_interval.rs` and `tests/test_nullregion.rs` port the new testregions checks |
 | PL-1 | WITHDRAWN: a C probe masks the same two pixels as the port with a UnitMap; the Mapping direction is RB-12 | Appendix C |
 
 
@@ -381,7 +382,7 @@ Its coverage tables, findings, and the status of the earlier audits' class findi
 | RegCentre (1211) | `reg_centre_query/set` (910/920) | architecture | PORTED |
 | RegTrace (1636) | NONE | architecture | GATED(Plot) |
 | astInitEllipse (2668) | `EllipseBuilder` (238-364), `from_defining_points` (380) | ctor | DIVERGENT (EL-2, EL-4) |
-| Dump/Load (2345) | serial/mod.rs:1187 | ceremony | DIVERGENT (EL-4: no Cache validation on load, LOW) |
+| Dump/Load (2345) | serial/mod.rs:1187 | ceremony | PORTED (EL-4 fixed: validated on first use, as C validates) |
 
 #### Polygon (polygon.c vtab 2897-2935)
 | C name | Rust | kind | status |
@@ -399,7 +400,7 @@ Its coverage tables, findings, and the status of the earlier audits' class findi
 | RegTrace (4820) | NONE | architecture | GATED(Plot) |
 | GetBounded (2749) | `bounded_impl` (601) | architecture | PORTED (PG-6) |
 | EnsureInside (1768), SkyArea (5469) | `ensure_inside` (622), `sky_area` (567) | internal | PORTED |
-| astInitPolygon (7100) | `PolygonBuilder` (173-309) | ctor | PORTED (LOW: <3 vertices rejected with NAXIN; C has no check; naxes!=2 is BADIN in C) |
+| astInitPolygon (7100) | `PolygonBuilder` (173-309) | ctor | PORTED (PG-4 fixed) |
 | Dump (6638)/Load (SimpVT, Order) | serial/mod.rs:1203-1256 | ceremony | PORTED |
 
 #### Interval (interval.c vtab 781-824)
@@ -411,7 +412,7 @@ Its coverage tables, findings, and the status of the earlier audits' class findi
 | Overlap (1765) | `overlap` (1042) -> `interval_overlap` (218) | architecture | PORTED |
 | SetRegFS/ResetCache/SetUnc (3060) | RegionData | ceremony | PORTED |
 | MapMerge | `region_merge` | architecture | OUT-OF-SCOPE |
-| RegCentre (2465) | `reg_centre_query/set` (1387/1402) | architecture | DIVERGENT (IN-5, LOW) |
+| RegCentre (2465) | `reg_centre_query/set` (1387/1402) | architecture | PORTED (IN-5: C fixed upstream) |
 | GetBounded (537) | `is_bounded_inner` (956) | architecture | DIVERGENT (IN-2) |
 | GetDefUnc (592) | `get_def_unc` (1342) | architecture | PORTED |
 | RegPins (2580) | `reg_pins_mask` (1054) | architecture | PORTED |
@@ -438,14 +439,14 @@ Its coverage tables, findings, and the status of the earlier audits' class findi
 | GetClosed (376) | `is_closed` (414) | architecture | PORTED |
 | GetBounded (inherited base) | `is_bounded_inner` (282) | architecture | PORTED (PL-3 fixed) |
 | Mask<X>/MaskLD (797) | NONE (generic `masking::mask`) | architecture | MISSING (PL-1) |
-| astInitPointList | `PointListBuilder` | ctor | PORTED (LOW: NPTIN/NAXIN vs C NCPIN) |
+| astInitPointList | `PointListBuilder` | ctor | PORTED (NCPIN and NPTIN as C) |
 
 #### NullRegion (nullregion.c vtab 307-323)
 | C name | Rust | kind | status |
 |---|---|---|---|
 | Transform (1410) | `reg_base_inside` (nullregion.rs:108) + `region_transform` | architecture | DIVERGENT (NR-2, LOW) |
 | Simplify (1314), MapMerge (338) | | architecture | OUT-OF-SCOPE |
-| GetDefUnc (170) | `get_def_unc` (309) | architecture | PORTED (NR-3, LOW) |
+| GetDefUnc (170) | `get_def_unc` (309) | architecture | PORTED (NR-3: C fixed upstream) |
 | Overlap/OverlapX (798/874) | hard-coded in `overlap.rs:45`/`null_overlap` (67) | architecture | PORTED (no seam; fine for NullRegion) |
 | RegBaseBox (961) | `reg_base_box` (113) | architecture | PORTED |
 | RegBaseMesh (1024) | `get_region_mesh` (262) | architecture | PORTED |

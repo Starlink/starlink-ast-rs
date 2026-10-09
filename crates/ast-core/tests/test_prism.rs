@@ -213,7 +213,7 @@ fn bounded_when_both_bounded() {
         .build()
         .unwrap();
 
-    assert!(prism.is_bounded());
+    assert!(prism.is_bounded().unwrap());
 }
 
 #[test]
@@ -230,7 +230,7 @@ fn unbounded_when_interval_unbounded() {
         .build()
         .unwrap();
 
-    assert!(!prism.is_bounded());
+    assert!(!prism.is_bounded().unwrap());
 }
 
 // ---- Batch transform (Mapping trait) ----

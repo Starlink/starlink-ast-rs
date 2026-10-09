@@ -57,15 +57,24 @@ fn construct_rejects_wrong_centre_length() {
     assert!(result.is_err());
 }
 
+/// astInitEllipse checks only for BAD values: a negative half-length places
+/// the axis end the other way, and a zero one is rejected only when the
+/// Ellipse is used (ellipse.c `Cache`).
 #[test]
-fn construct_rejects_non_positive_axes() {
+fn construct_accepts_non_positive_axes() {
     let frame = BasicFrameBuilder::new(2).build().unwrap();
-    let result = EllipseBuilder::new(frame, vec![0.0, 0.0], [0.0, 3.0], FRAC_PI_2);
-    assert!(result.is_err());
+    let zero = EllipseBuilder::new(frame, vec![0.0, 0.0], [0.0, 3.0], FRAC_PI_2)
+        .unwrap()
+        .build()
+        .unwrap();
+    assert!(zero.point_in_region(&[0.0, 0.0]).is_err());
 
     let frame2 = BasicFrameBuilder::new(2).build().unwrap();
-    let result2 = EllipseBuilder::new(frame2, vec![0.0, 0.0], [5.0, -1.0], FRAC_PI_2);
-    assert!(result2.is_err());
+    let negative = EllipseBuilder::new(frame2, vec![0.0, 0.0], [5.0, -1.0], FRAC_PI_2)
+        .unwrap()
+        .build()
+        .unwrap();
+    assert!(negative.point_in_region(&[0.0, 0.0]).unwrap());
 }
 
 // ---- Point inside/outside/boundary: axis-aligned (angle=0) ----

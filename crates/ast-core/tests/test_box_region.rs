@@ -229,7 +229,7 @@ fn box_3d() {
         .unwrap();
 
     assert_eq!(b.naxes(), 3);
-    assert!(b.is_bounded());
+    assert!(b.is_bounded().unwrap());
 
     // Bounds should be (1, 2, 3) to (4, 6, 9).
     let (lbnd, ubnd) = b.get_region_bounds().unwrap();
@@ -377,7 +377,7 @@ fn region_attributes() {
 
     assert!(b.is_closed());
     assert!(!b.is_negated());
-    assert!(b.is_bounded());
+    assert!(b.is_bounded().unwrap());
     assert!(b.is_adaptive());
     assert_eq!(b.mesh_size(), 200);
     assert!((b.fill_factor() - 1.0).abs() < 1e-10);

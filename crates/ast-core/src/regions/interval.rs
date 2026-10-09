@@ -921,8 +921,8 @@ impl RegionGeometry for Interval {
 
     /// interval.c `GetBounded`: bounded exactly when equivalent to a Box,
     /// whatever its Negated.
-    fn is_bounded_inner(&self) -> bool {
-        matches!(self.cache(), Ok((_, _, Some(_))))
+    fn is_bounded_inner(&self) -> AstResult<bool> {
+        Ok(self.cache()?.2.is_some())
     }
 
     fn remap_defining_points(&mut self, mapping: &dyn Mapping, forward: bool) -> AstResult<()> {
@@ -1214,7 +1214,7 @@ impl Region for Interval {
         self.data.clear_mesh_size();
     }
 
-    fn is_bounded(&self) -> bool {
+    fn is_bounded(&self) -> AstResult<bool> {
         self.is_bounded_inner()
     }
 
@@ -1357,7 +1357,7 @@ impl Region for Interval {
         // An Interval can only be re-centred (or report a centre) when it is
         // effectively a closed Box (interval.c:2534-2567). Otherwise there is
         // no centre and the query returns None without error.
-        if !self.is_bounded_inner() {
+        if !self.is_bounded_inner()? {
             return Ok(None);
         }
         let (lbnd, ubnd) = self.effective_bounds();
@@ -1370,7 +1370,7 @@ impl Region for Interval {
 
     fn reg_centre_set(&mut self, cen: &[f64], ifrm: FrameRef) -> AstResult<()> {
         // Only re-centreable when effectively a closed Box (interval.c:2569).
-        if !self.is_bounded_inner() {
+        if !self.is_bounded_inner()? {
             return Err(AstError::new(
                 ErrorCode::Regcn,
                 "The supplied Interval is not a closed Interval and so cannot be re-centred"

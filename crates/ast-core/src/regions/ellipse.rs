@@ -255,38 +255,7 @@ impl EllipseBuilder {
         semi_axes: [f64; 2],
         angle: f64,
     ) -> AstResult<Self> {
-        let naxes = frame.naxes();
-        if naxes != 2 {
-            return Err(AstError::new(
-                ErrorCode::Naxin,
-                format!(
-                    "Ellipse requires a 2-dimensional frame, but got {} axes",
-                    naxes
-                ),
-            ));
-        }
-        if centre.len() != 2 {
-            return Err(AstError::new(
-                ErrorCode::Naxin,
-                format!(
-                    "Ellipse centre has {} coordinates but frame has 2 axes",
-                    centre.len()
-                ),
-            ));
-        }
-        if semi_axes[0] <= 0.0 || semi_axes[1] <= 0.0 {
-            return Err(AstError::new(
-                ErrorCode::Badin,
-                "Ellipse semi-axis lengths must be positive",
-            ));
-        }
-        Ok(EllipseBuilder {
-            frame: Box::new(frame),
-            centre,
-            semi_axes,
-            angle,
-            uncertainty: None,
-        })
+        Self::from_dyn(Box::new(frame), centre, semi_axes, angle)
     }
 
     /// Create a builder for an Ellipse from a boxed (dynamic) frame.
@@ -298,16 +267,7 @@ impl EllipseBuilder {
         semi_axes: [f64; 2],
         angle: f64,
     ) -> AstResult<Self> {
-        let naxes = frame.naxes();
-        if naxes != 2 {
-            return Err(AstError::new(
-                ErrorCode::Naxin,
-                format!(
-                    "Ellipse requires a 2-dimensional frame, but got {} axes",
-                    naxes
-                ),
-            ));
-        }
+        check_naxes(frame.as_ref())?;
         if centre.len() != 2 {
             return Err(AstError::new(
                 ErrorCode::Naxin,
@@ -315,12 +275,6 @@ impl EllipseBuilder {
                     "Ellipse centre has {} coordinates but frame has 2 axes",
                     centre.len()
                 ),
-            ));
-        }
-        if semi_axes[0] <= 0.0 || semi_axes[1] <= 0.0 {
-            return Err(AstError::new(
-                ErrorCode::Badin,
-                "Ellipse semi-axis lengths must be positive",
             ));
         }
         Ok(EllipseBuilder {
@@ -365,9 +319,10 @@ impl Ellipse {
     /// defined by the centre, the coordinates at the end of the primary axis
     /// (`point1`), and the coordinates of any other point on the boundary
     /// (`point2`). The three points are stored directly as the defining
-    /// points, exactly as C stores them; the geometric parameters are derived
-    /// on demand. Returns an error if the points do not determine an ellipse
-    /// (zero-length primary axis or non-positive secondary axis).
+    /// points, exactly as C stores them, after C's checks for a 2-D Frame and
+    /// BAD values. Points that do not determine an ellipse are accepted
+    /// here, as C accepts them, and rejected when the Ellipse is first used
+    /// (ellipse.c `Cache`).
     pub(crate) fn from_defining_points(
         frame: DynFrame,
         centre: Vec<f64>,
@@ -375,28 +330,30 @@ impl Ellipse {
         point2: Vec<f64>,
         uncertainty: Option<DynRegion>,
     ) -> AstResult<Self> {
-        if frame.naxes() != 2 {
-            return Err(AstError::new(
-                ErrorCode::Naxin,
-                "Ellipse requires a 2-dimensional frame",
-            ));
+        check_naxes(frame.as_ref())?;
+        for i in 0..2 {
+            for (v, place) in [
+                (centre[i], "the ellipse centre"),
+                (point1[i], "point 1 on the circumference of the ellipse"),
+                (point2[i], "point 2 on the circumference of the ellipse"),
+            ] {
+                if is_bad(v) {
+                    return Err(AstError::new(
+                        ErrorCode::Badin,
+                        format!(
+                            "astInitEllipse(Ellipse): The value of axis {} is undefined at \
+                             {place}.",
+                            i + 1
+                        ),
+                    ));
+                }
+            }
         }
         let frameset = FrameSet::new(frame);
         let points = vec![centre, point1, point2];
         let mut data = RegionData::new(frameset, points);
         data.uncertainty = uncertainty;
-        let ellipse = Ellipse { data };
-        // Validate that the supplied points determine an ellipse (a > 0 and a
-        // finite, positive secondary axis), matching the CalcPars check in
-        // astInitEllipse (ellipse.c:654).
-        let (a, b) = ellipse.calc_axes()?;
-        if a <= 0.0 || is_bad(a) || b <= 0.0 || is_bad(b) {
-            return Err(AstError::new(
-                ErrorCode::Badin,
-                "The supplied points do not determine an ellipse",
-            ));
-        }
-        Ok(ellipse)
+        Ok(Ellipse { data })
     }
 
     /// Mutate the current frame with region integrity enforcement.
@@ -425,7 +382,7 @@ impl Ellipse {
     /// Frame's distance between the centre and point 1, the secondary from
     /// point 2 resolved along and across the primary axis.
     fn calc_axes(&self) -> AstResult<(f64, f64)> {
-        let (a, b, _) = self.calc_pars()?;
+        let (a, b, _) = self.cache()?;
         Ok((a, b))
     }
 
@@ -475,26 +432,37 @@ impl Ellipse {
 
     /// ellipse.c `CalcPars` in the base Frame: the half-lengths of the
     /// primary and secondary axes, and the angle from the second axis to
-    /// the primary axis, positive towards the first axis.
+    /// the primary axis, positive towards the first axis. When the primary
+    /// half-length is not positive, the others are BAD.
     fn calc_pars(&self) -> AstResult<(f64, f64, f64)> {
         let frm = self.data.frameset.base();
         let centre = &self.data.points[0];
         let point1 = &self.data.points[1];
         let point2 = &self.data.points[2];
         let a = frm.distance(centre, point1)?;
-        if a <= 0.0 {
+        let (mut b, mut angle) = (BAD_VALUE, BAD_VALUE);
+        if a > 0.0 {
+            let (_, x, y) = frm.resolve(centre, point1, point2)?;
+            b = a * a - x * x;
+            if b > 0.0 {
+                b = a * y / b.sqrt();
+            }
+            let up = [centre[0], centre[1] + (0.1 * a).abs()];
+            angle = frm.angle(&up, centre, point1)?;
+        }
+        Ok((a, b, angle))
+    }
+
+    /// ellipse.c `Cache`: [`Ellipse::calc_pars`], or `AST__BADIN` when the
+    /// defining points do not determine an ellipse.
+    fn cache(&self) -> AstResult<(f64, f64, f64)> {
+        let (a, b, angle) = self.calc_pars()?;
+        if a <= 0.0 || is_bad(a) || b <= 0.0 || is_bad(b) {
             return Err(AstError::new(
                 ErrorCode::Badin,
-                "Ellipse semi-major axis length is zero",
+                "astInitEllipse(Ellipse): The supplied points do not determine an ellipse.",
             ));
         }
-        let (_, x, y) = frm.resolve(centre, point1, point2)?;
-        let mut b = a * a - x * x;
-        if b > 0.0 {
-            b = a * y / b.sqrt();
-        }
-        let up = [centre[0], centre[1] + (0.1 * a).abs()];
-        let angle = frm.angle(&up, centre, point1)?;
         Ok((a, b, angle))
     }
 
@@ -648,7 +616,7 @@ impl RegionGeometry for Ellipse {
         // Ellipse parameters in the geodesic convention used by the mesh
         // (CalcPars, ellipse.c:697): the angle is measured from the positive
         // direction of axis 2 to the primary ellipse axis.
-        let (a, b, angle) = self.calc_pars()?;
+        let (a, b, angle) = self.cache()?;
 
         let delta = 2.0 * PI / np as f64;
         let mut mesh = Vec::with_capacity(np);
@@ -669,8 +637,8 @@ impl RegionGeometry for Ellipse {
         Ok(mesh)
     }
 
-    fn is_bounded_inner(&self) -> bool {
-        self.data.closed_curve_bounded()
+    fn is_bounded_inner(&self) -> AstResult<bool> {
+        Ok(self.data.closed_curve_bounded())
     }
 
     fn remap_defining_points(&mut self, mapping: &dyn Mapping, forward: bool) -> AstResult<()> {
@@ -754,7 +722,7 @@ impl Region for Ellipse {
         };
 
         let drad = 0.5 * (l1 + l2);
-        let (a, b, angle) = self.calc_pars()?;
+        let (a, b, angle) = self.cache()?;
         let centre = &self.data.points[0];
 
         // The Ellipses whose axes are wider and narrower by half the border,
@@ -848,7 +816,7 @@ impl Region for Ellipse {
         self.data.clear_mesh_size();
     }
 
-    fn is_bounded(&self) -> bool {
+    fn is_bounded(&self) -> AstResult<bool> {
         self.is_bounded_inner()
     }
 
@@ -1272,4 +1240,20 @@ impl Mapping for Ellipse {
     fn clone_box(&self) -> DynMapping {
         Box::new(self.clone())
     }
+}
+
+/// astInitEllipse's check that `frame` is 2-D.
+fn check_naxes(frame: &dyn Frame) -> AstResult<()> {
+    let nc = frame.naxes();
+    if nc != 2 {
+        return Err(AstError::new(
+            ErrorCode::Badin,
+            format!(
+                "astInitEllipse(Ellipse): The supplied {} has {nc} axes - ellipses must have \
+                 exactly 2 axes.",
+                crate::frames::find_frame::frame_class_name(frame)
+            ),
+        ));
+    }
+    Ok(())
 }

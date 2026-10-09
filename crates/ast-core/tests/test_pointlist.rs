@@ -272,7 +272,7 @@ fn is_bounded_always_true() {
         .build()
         .unwrap();
 
-    assert!(pl.is_bounded());
+    assert!(pl.is_bounded().unwrap());
 }
 
 // ---- Batch transform ----
@@ -378,7 +378,7 @@ fn region_attributes() {
     // Defaults.
     assert!(pl.is_closed());
     assert!(!pl.is_negated());
-    assert!(pl.is_bounded());
+    assert!(pl.is_bounded().unwrap());
     assert!(pl.is_adaptive());
     assert_eq!(pl.mesh_size(), 200);
     assert!((pl.fill_factor() - 1.0).abs() < 1e-10);

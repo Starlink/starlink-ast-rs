@@ -3,7 +3,11 @@
 //! whose Frame cannot be converted (region.c `SetUnc`), `astSetFillFactor`
 //! outside 0 to 1, a dump with an out-of-range `Fill` or a `MeshSz` below 5
 //! (region.c `Load`), and BAD coordinates given to `astBox` (box.c
-//! `astInitBox`) and `astCircle` (circle.c `astInitCircle`).
+//! `astInitBox`) and `astCircle` (circle.c `astInitCircle`); `astPolygon`
+//! given a 3-D Frame, no vertices, one or two, or a BAD vertex (polygon.c
+//! `astInitPolygon`); and `astEllipse` given a 3-D Frame, BAD values, a
+//! negative or zero axis, or points that do not determine an ellipse, which
+//! C rejects only when the Ellipse is used (ellipse.c `Cache`).
 //!
 //! Each expected code is the status C is left holding.
 //!
@@ -15,10 +19,13 @@
 mod cases;
 
 use ast_core::constants::BAD_VALUE;
+use ast_core::coords::PointSet;
 use ast_core::error::AstResult;
 use ast_core::frames::{BasicFrame, BasicFrameBuilder};
 use ast_core::from_native_string;
-use ast_core::regions::{BoxRegionBuilder, Circle, CircleBuilder, PolygonBuilder, Region};
+use ast_core::regions::{
+    BoxRegionBuilder, Circle, CircleBuilder, EllipseBuilder, PolygonBuilder, Region,
+};
 
 fn frame(naxes: usize) -> BasicFrame {
     BasicFrameBuilder::new(naxes).build().unwrap()
@@ -152,4 +159,95 @@ fn circle_rejects_bad_coordinates() {
         .edge_point(vec![1.0, BAD_VALUE])
         .build();
     assert_eq!(code(by_point), cases::CIRCLE_CIRCUM);
+}
+
+fn polygon(naxes: usize, vertices: Vec<Vec<f64>>) -> AstResult<ast_core::regions::Polygon> {
+    PolygonBuilder::new(frame(naxes), vertices)?.build()
+}
+
+#[test]
+fn polygon_constructor_errors_match_c() {
+    let tri = || vec![vec![0.0, 0.0], vec![1.0, 0.0], vec![0.0, 1.0]];
+    assert_eq!(code(polygon(3, tri())), cases::POLY_NAXES);
+    assert_eq!(code(polygon(2, vec![])), cases::POLY_EMPTY);
+    let err = polygon(
+        2,
+        vec![vec![0.0, 0.0], vec![1.0, BAD_VALUE], vec![BAD_VALUE, 1.0]],
+    )
+    .unwrap_err();
+    assert_eq!(err.code().as_raw() as i32, cases::POLY_BAD);
+    assert_eq!(
+        err.message(),
+        "astInitPolygon(Polygon): One or more bad axis values supplied for the vertex number 3."
+    );
+}
+
+#[test]
+fn polygon_of_one_or_two_vertices_is_accepted() {
+    assert_eq!(cases::POLY_FEW, 0);
+    let one = polygon(2, vec![vec![0.0, 0.0]]).unwrap();
+    assert_eq!(one.is_bounded().unwrap(), cases::POLY_ONE_BOUNDED);
+    let two = polygon(2, vec![vec![0.0, 0.0], vec![1.0, 0.0]]).unwrap();
+    assert_eq!(two.is_bounded().unwrap(), cases::POLY_TWO_BOUNDED);
+}
+
+fn ellipse(
+    naxes: usize,
+    centre: Vec<f64>,
+    axes: [f64; 2],
+    angle: f64,
+) -> AstResult<ast_core::regions::Ellipse> {
+    EllipseBuilder::new(frame(naxes), centre, axes, angle)?.build()
+}
+
+fn transform(region: &dyn Region) -> AstResult<Vec<f64>> {
+    let out = region.transform(&PointSet::from_rows([[0.5, 0.5]]), true)?;
+    Ok(out.point(0).to_vec())
+}
+
+#[test]
+fn ellipse_constructor_errors_match_c() {
+    assert_eq!(
+        code(ellipse(3, vec![0.0, 0.0], [2.0, 1.0], 0.3)),
+        cases::ELL_NAXES
+    );
+    assert_eq!(
+        code(ellipse(2, vec![BAD_VALUE, 0.0], [2.0, 1.0], 0.3)),
+        cases::ELL_CENTRE
+    );
+    assert_eq!(
+        code(ellipse(2, vec![0.0, 0.0], [2.0, BAD_VALUE], 0.3)),
+        cases::ELL_AXIS
+    );
+    assert_eq!(
+        code(ellipse(2, vec![0.0, 0.0], [2.0, 1.0], BAD_VALUE)),
+        cases::ELL_ANGLE
+    );
+}
+
+#[test]
+fn ellipse_with_a_negative_axis_is_an_ellipse() {
+    assert_eq!(cases::ELL_NEGATIVE, 0);
+    assert_eq!(cases::ELL_NEGATIVE_USE, 0);
+    let e = ellipse(2, vec![0.0, 0.0], [-2.0, 1.0], 0.3).unwrap();
+    assert_eq!(transform(&e).unwrap(), cases::ELL_NEGATIVE_OUT);
+}
+
+#[test]
+fn ellipse_that_is_no_ellipse_fails_when_used() {
+    assert_eq!(cases::ELL_ZERO, 0);
+    let e = ellipse(2, vec![0.0, 0.0], [0.0, 1.0], 0.3).unwrap();
+    assert_eq!(code(transform(&e)), cases::ELL_ZERO_USE);
+
+    assert_eq!(cases::ELL_DEGENERATE_LOAD, 0);
+    let loaded = from_native_string(cases::ELL_DEGENERATE_DUMP)
+        .unwrap()
+        .into_region()
+        .unwrap();
+    let err = transform(loaded.as_ref()).unwrap_err();
+    assert_eq!(err.code().as_raw() as i32, cases::ELL_DEGENERATE_USE);
+    assert_eq!(
+        err.message(),
+        "astInitEllipse(Ellipse): The supplied points do not determine an ellipse."
+    );
 }

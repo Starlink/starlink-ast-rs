@@ -126,13 +126,13 @@ impl RegionGeometry for NullRegion {
         Ok(Vec::new())
     }
 
-    fn is_bounded_inner(&self) -> bool {
+    fn is_bounded_inner(&self) -> AstResult<bool> {
         // NullRegion does not override the base Region GetBounded
         // (nullregion.c has no Bounded logic), so it inherits the base rule
         // (region.c:3358): bounded unless negated, and always bounded within a
         // SkyFrame. An un-negated NullRegion (the empty set) is therefore
         // bounded; its negated form (the whole coordinate system) is not.
-        self.data.closed_curve_bounded()
+        Ok(self.data.closed_curve_bounded())
     }
 
     fn remap_defining_points(&mut self, _mapping: &dyn Mapping, _forward: bool) -> AstResult<()> {
@@ -226,7 +226,7 @@ impl Region for NullRegion {
         self.data.clear_mesh_size();
     }
 
-    fn is_bounded(&self) -> bool {
+    fn is_bounded(&self) -> AstResult<bool> {
         self.is_bounded_inner()
     }
 

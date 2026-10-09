@@ -4,7 +4,12 @@
  * converted (region.c SetUnc); astSetFillFactor outside 0 to 1 (region.c
  * astMAKE_SET for FillFactor); a dump whose Fill is out of range, or whose
  * MeshSz is below 5 (region.c Load); and BAD coordinates given to astBox
- * (box.c astInitBox) and astCircle (circle.c astInitCircle).
+ * (box.c astInitBox) and astCircle (circle.c astInitCircle); astPolygon
+ * given a 3-D Frame, no vertices, one or two vertices, or a BAD vertex
+ * (polygon.c astInitPolygon); and astEllipse given a 3-D Frame, BAD values,
+ * a negative or zero axis, or form-0 points that do not determine an
+ * ellipse, which C accepts and rejects only when the Ellipse is used
+ * (ellipse.c astInitEllipse and Cache).
  *
  * Each error is recorded as the status C is left holding, which for a pair
  * of astError calls is the second one's.
@@ -163,5 +168,73 @@ int main( void ) {
    printf( "/// astCircle form 0 with a BAD circumference point.\n" );
    astCircle( astFrame( 2, " " ), 0, c, b1, NULL, " " );
    code( "CIRCLE_CIRCUM", &status );
+   printf( "/// astPolygon in a 3-D Frame, and with no vertices.\n" );
+   astPolygon( astFrame( 3, " " ), 3, 3, x, NULL, " " );
+   code( "POLY_NAXES", &status );
+   astPolygon( astFrame( 2, " " ), 0, 3, x, NULL, " " );
+   code( "POLY_EMPTY", &status );
+   printf( "/// astPolygon with a BAD Y at vertex 2 and a BAD X at vertex 3.\n" );
+   {
+      double v[] = { 0.0, 1.0, AST__BAD, 0.0, AST__BAD, 1.0 };
+      astPolygon( astFrame( 2, " " ), 3, 3, v, NULL, " " );
+      code( "POLY_BAD", &status );
+   }
+   printf( "/// Bounded for a Polygon of vertex (0,0), and of vertices (0,0) and (1,0).\n" );
+   {
+      double v1[] = { 0.0, 0.0 }, v2[] = { 0.0, 1.0, 0.0, 0.0 };
+      printf( "pub const POLY_ONE_BOUNDED: bool = %s;\n",
+              astGetI( astPolygon( astFrame( 2, " " ), 1, 1, v1, NULL, " " ), "Bounded" ) ? "true" : "false" );
+      printf( "pub const POLY_TWO_BOUNDED: bool = %s;\n",
+              astGetI( astPolygon( astFrame( 2, " " ), 2, 2, v2, NULL, " " ), "Bounded" ) ? "true" : "false" );
+   }
+   code( "POLY_FEW", &status );
+
+   printf( "/// astEllipse form 1 in a 3-D Frame, and with a BAD centre, axis and angle.\n" );
+   {
+      double c3[] = { 0.0, 0.0, 0.0 }, ax[] = { 2.0, 1.0 }, ang = 0.3;
+      double axbad[] = { 2.0, AST__BAD }, cbad[] = { AST__BAD, 0.0 };
+      double inx[] = { 0.5 }, iny[] = { 0.5 }, outx[ 1 ], outy[ 1 ];
+      AstRegion *e;
+      astEllipse( astFrame( 3, " " ), 1, c3, ax, &ang, NULL, " " );
+      code( "ELL_NAXES", &status );
+      astEllipse( astFrame( 2, " " ), 1, cbad, ax, &ang, NULL, " " );
+      code( "ELL_CENTRE", &status );
+      astEllipse( astFrame( 2, " " ), 1, c, axbad, &ang, NULL, " " );
+      code( "ELL_AXIS", &status );
+      astEllipse( astFrame( 2, " " ), 1, c, ax, &bad, NULL, " " );
+      code( "ELL_ANGLE", &status );
+
+      printf( "/// astEllipse form 1 with axes (-2, 1): built, and (0.5, 0.5) transformed.\n" );
+      ax[ 0 ] = -2.0;
+      e = (AstRegion *) astEllipse( astFrame( 2, " " ), 1, c, ax, &ang, NULL, " " );
+      code( "ELL_NEGATIVE", &status );
+      astTran2( e, 1, inx, iny, 1, outx, outy );
+      printf( "pub const ELL_NEGATIVE_OUT: [f64; 2] = [%.17g, %.17g];\n", outx[ 0 ], outy[ 0 ] );
+      code( "ELL_NEGATIVE_USE", &status );
+
+      printf( "/// astEllipse form 1 with axes (0, 1): built, then used.\n" );
+      ax[ 0 ] = 0.0;
+      e = (AstRegion *) astEllipse( astFrame( 2, " " ), 1, c, ax, &ang, NULL, " " );
+      code( "ELL_ZERO", &status );
+      astTran2( e, 1, inx, iny, 1, outx, outy );
+      code( "ELL_ZERO_USE", &status );
+
+      printf( "/// The dump of a form-0 Ellipse whose first point is its centre, read and used.\n" );
+      e = (AstRegion *) astEllipse( astFrame( 2, " " ), 0, c, c, p, NULL, " " );
+      dump[ 0 ] = 0;
+      ch = astChannel( NULL, sink, " " );
+      astWrite( ch, e );
+      ch = astAnnul( ch );
+      printf( "pub const ELL_DEGENERATE_DUMP: &str = " );
+      str( dump );
+      printf( ";\n" );
+      next_line = dump;
+      ch = astChannel( source, NULL, " " );
+      loaded = astRead( ch );
+      ch = astAnnul( ch );
+      code( "ELL_DEGENERATE_LOAD", &status );
+      astTran2( loaded, 1, inx, iny, 1, outx, outy );
+      code( "ELL_DEGENERATE_USE", &status );
+   }
    return 0;
 }

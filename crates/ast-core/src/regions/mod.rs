@@ -237,7 +237,7 @@ pub trait Region: Frame + Mapping + AsDynRegion {
     fn clear_mesh_size(&mut self);
 
     /// Whether this region is bounded (has finite extent in all directions).
-    fn is_bounded(&self) -> bool;
+    fn is_bounded(&self) -> AstResult<bool>;
 
     /// Whether adaptive meshing is enabled.
     fn is_adaptive(&self) -> bool;
@@ -359,7 +359,7 @@ pub trait Region: Frame + Mapping + AsDynRegion {
     /// requires.
     #[doc(hidden)]
     fn bounded_for_mesh(&self) -> AstResult<()> {
-        if self.is_bounded() {
+        if self.is_bounded()? {
             Ok(())
         } else {
             Err(AstError::new(
@@ -622,7 +622,7 @@ pub trait Region: Frame + Mapping + AsDynRegion {
         // Ensure the uncertainty is bounded. Negating an unbounded
         // uncertainty makes it bounded because it consists of Circles, Boxes
         // and/or Ellipses (region.c:10853-10856).
-        if !new_unc.is_bounded() {
+        if !new_unc.is_bounded()? {
             new_unc.negate();
         }
 
@@ -1213,7 +1213,7 @@ pub trait Region: Frame + Mapping + AsDynRegion {
                 // The test box: this Region's base bounding box if bounded,
                 // else a box 100× the uncertainty size centred on the
                 // uncertainty centre (region.c:11221-11236).
-                let (lbnd, ubnd) = if self.is_bounded() {
+                let (lbnd, ubnd) = if self.is_bounded()? {
                     self.region_base_box()?
                 } else {
                     let (slb, sub) = sunc.get_region_bounds()?;
@@ -1374,7 +1374,7 @@ where
 
     // A bounded Region has a genuine mesh of points on its boundary
     // (region.c:9048-9049).
-    let bmesh = if this.is_bounded() {
+    let bmesh = if this.is_bounded()? {
         let mesh = this.reg_base_mesh()?;
         PointSet::from_rows(mesh.iter().map(|p| p.as_slice()))
     } else {
@@ -1581,7 +1581,7 @@ pub fn region_disc(region: &dyn Region) -> AstResult<(Vec<f64>, f64)> {
         vec![crate::constants::BAD_VALUE; 2],
         crate::constants::BAD_VALUE,
     ));
-    if !region.is_bounded() {
+    if !region.is_bounded()? {
         return unknown;
     }
 

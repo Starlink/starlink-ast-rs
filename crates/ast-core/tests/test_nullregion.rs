@@ -25,13 +25,13 @@ fn construct_basic() {
     assert!(!nr.is_negated());
     // Un-negated NullRegion is the empty set: bounded (a finite region has a
     // finite negation). Only the negation (the whole space) is unbounded.
-    assert!(nr.is_bounded());
+    assert!(nr.is_bounded().unwrap());
 
     let mut neg = NullRegionBuilder::new(BasicFrameBuilder::new(2).build().unwrap())
         .build()
         .unwrap();
     neg.negate();
-    assert!(!neg.is_bounded());
+    assert!(!neg.is_bounded().unwrap());
 }
 
 #[test]
@@ -207,7 +207,7 @@ fn map_region_preserves_null() {
 
     // Still a NullRegion — nothing inside, and (un-negated) bounded.
     assert!(!mapped.point_in_region(&[0.0, 0.0]).unwrap());
-    assert!(mapped.is_bounded());
+    assert!(mapped.is_bounded().unwrap());
 }
 
 #[test]
@@ -238,4 +238,25 @@ fn bad_input_returns_false() {
     let frame2 = BasicFrameBuilder::new(2).build().unwrap();
     let nr2 = NullRegionBuilder::new(frame2).build().unwrap();
     assert!(!nr2.point_in_region(&[BAD_VALUE, 0.0]).unwrap());
+}
+
+/// Ported from testregions.c `checkNullRegionDefUnc`: the default
+/// uncertainty of a NullRegion mapped from 2-D to 3-D by a PermMap is a
+/// zero-radius Circle built in the 2-D base Frame (nullregion.c
+/// `GetDefUnc`), which maps on into the 3-D current Frame.
+#[test]
+fn default_uncertainty_is_built_in_the_base_frame() {
+    use ast_core::frames::FrameRef;
+    use ast_core::mappings::PermMap;
+
+    let nr = NullRegionBuilder::new(BasicFrameBuilder::new(2).build().unwrap())
+        .build()
+        .unwrap();
+    let pm = PermMap::new(&[1, 2], &[1, 2, -1], &[5.0]).unwrap();
+    let mapped = nr
+        .reg_map_region(&pm, &BasicFrameBuilder::new(3).build().unwrap())
+        .unwrap();
+    let unc = mapped.get_unc_frm(FrameRef::Current).unwrap();
+    assert_eq!(unc.naxes(), 3);
+    assert_eq!(mapped.get_unc_frm(FrameRef::Base).unwrap().naxes(), 2);
 }

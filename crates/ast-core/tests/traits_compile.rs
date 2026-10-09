@@ -258,8 +258,8 @@ impl Region for DummyRegion {
         false
     }
     fn clear_mesh_size(&mut self) {}
-    fn is_bounded(&self) -> bool {
-        true
+    fn is_bounded(&self) -> AstResult<bool> {
+        Ok(true)
     }
     fn is_adaptive(&self) -> bool {
         true

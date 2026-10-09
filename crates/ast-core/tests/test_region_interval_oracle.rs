@@ -70,7 +70,7 @@ fn membership_and_bounded_match_the_c_library() {
             other => panic!("no Rust construction for case {other}"),
         };
         assert_eq!(got, want, "{name}: membership");
-        assert_eq!(reg.is_bounded(), bounded, "{name}: Bounded");
+        assert_eq!(reg.is_bounded().unwrap(), bounded, "{name}: Bounded");
     }
 }
 
