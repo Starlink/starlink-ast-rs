@@ -15,14 +15,14 @@
 
 use std::path::PathBuf;
 
+use crate::common::from_native_string;
 use ast_core::constants::BAD_VALUE;
 use ast_core::coords::PointSet;
 use ast_core::frames::FrameRef;
 use ast_core::mappings::Mapping;
 use ast_core::{AnyObject, to_native_string};
-use common::from_native_string;
 
-mod common;
+use crate::common;
 
 /// Generate deterministic test points for a mapping with `nin` inputs.
 /// Points are in the range [0.1, 1.1] to avoid singularities at zero.

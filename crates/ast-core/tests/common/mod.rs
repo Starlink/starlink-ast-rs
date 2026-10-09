@@ -1,9 +1,9 @@
 //! Shared helpers for the integration test binaries.
 //!
-//! Integration tests each compile as a separate crate, so code shared
-//! between them lives here and is pulled in with `mod common;`. Declaring an
-//! item `pub` but leaving it unused in a given binary trips `dead_code`, so
-//! the module is annotated to allow it.
+//! Each area program that needs these declares `mod common;` once in its
+//! `main.rs`, and its test files reach them through `crate::common`. Declaring
+//! an item `pub` but leaving it unused in a given program trips `dead_code`,
+//! so the module is annotated to allow it.
 #![allow(dead_code)]
 
 /// Compare two native (`.ast`) serialisations for equivalence: byte-equal

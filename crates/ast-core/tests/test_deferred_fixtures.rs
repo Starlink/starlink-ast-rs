@@ -15,9 +15,8 @@
 //! unported class fails here with the class named, rather than in two other
 //! binaries as a parse error.
 
-use common::from_native_string;
+use crate::common::from_native_string;
 
-mod common;
 use std::path::PathBuf;
 
 /// `(class, number of fixtures naming it)`.

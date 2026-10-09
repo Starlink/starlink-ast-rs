@@ -5,6 +5,11 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 description = "Pure-Rust port of the Starlink AST world coordinate system library"
+# The files in tests/ are modules of a few test programs, one per area, each
+# tests/<area>/main.rs, rather than one program each: every test program links
+# all of ast-core, and on macOS each new program is scanned on its first run,
+# so one program per file made the test suite take most of an hour.
+autotests = false
 
 [lints]
 workspace = true
@@ -42,3 +47,31 @@ required-features = ["simd-eval"]
 
 [build-dependencies]
 cc.workspace = true
+
+[[test]]
+name = "mappings"
+path = "tests/mappings/main.rs"
+
+[[test]]
+name = "frames"
+path = "tests/frames/main.rs"
+
+[[test]]
+name = "domain_frames"
+path = "tests/domain_frames/main.rs"
+
+[[test]]
+name = "regions"
+path = "tests/regions/main.rs"
+
+[[test]]
+name = "fitschan"
+path = "tests/fitschan/main.rs"
+
+[[test]]
+name = "serial"
+path = "tests/serial/main.rs"
+
+[[test]]
+name = "meta"
+path = "tests/meta/main.rs"

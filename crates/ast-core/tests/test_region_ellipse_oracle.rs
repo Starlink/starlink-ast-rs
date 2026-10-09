@@ -8,9 +8,10 @@
 //! The values come from `tools/oracle_fixtures/region_ellipse_probe.c`.
 
 // Generated; formatted by its generator rather than rustfmt.
+// `test_region_ellipsepars_oracle` reads its form-0 dump.
 #[rustfmt::skip]
 #[path = "region_ellipse_oracle/cases.rs"]
-mod cases;
+pub(crate) mod cases;
 
 use ast_core::constants::BAD_VALUE;
 use ast_core::frames::{BasicFrameBuilder, Frame, SkyFrame, SkySystem};

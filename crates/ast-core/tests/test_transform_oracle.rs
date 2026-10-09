@@ -7,15 +7,14 @@
 //! the Rust outputs diverge from the C reference values. This harness never
 //! regenerates the oracle: the C values are the frozen baseline.
 
+use crate::common::from_native_string;
 use ast_core::AnyObject;
 use ast_core::channel::Channel;
 use ast_core::constants::BAD_VALUE;
 use ast_core::coords::PointSet;
 use ast_core::fitschan::FitsChan;
 use ast_core::frames::{Frame, FrameRef};
-use common::from_native_string;
 
-mod common;
 use ast_core::mappings::Mapping;
 
 /// Golden tolerance: live outputs vs recorded oracle values. Wide enough to
@@ -2005,7 +2004,7 @@ fn fma_substitutions_replace_rows_that_really_differ() {
 }
 
 /// Investigative harness. Not part of the normal suite or CI: run with
-///   cargo test -p ast-core --test test_transform_oracle -- --ignored --nocapture
+///   cargo test -p ast-core --test mappings test_transform_oracle:: -- --ignored --nocapture
 /// It runs every oracle section, prints a summary, and writes a JSON report
 /// to `target/transform_oracle_report.json`. It never asserts on divergence
 /// (the whole point is to measure it); it panics only on a broken harness.

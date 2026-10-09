@@ -14,7 +14,7 @@ use ast_core::AnyObject;
 use ast_core::channel::Channel;
 use ast_core::fitschan::{Encoding, FitsChan};
 
-mod common;
+use crate::common;
 
 /// How the produced output is compared against the reference fixture.
 ///

@@ -4,6 +4,7 @@
 //! Each concrete type is serialised to Native text, checked for structural markers,
 //! then deserialised and verified for both attribute fidelity and functional equivalence.
 
+use crate::common::from_native_string;
 use ast_core::coords::PointSet;
 use ast_core::frames::{
     BasicFrameBuilder, CmpFrame, Frame, FrameRef, FrameSet, SkyFrame, SkyRefIs, SkySystem,
@@ -17,9 +18,7 @@ use ast_core::regions::{
     IntervalBuilder, NullRegionBuilder, PointListBuilder, PolygonBuilder, PrismBuilder, Region,
 };
 use ast_core::{AnyObject, to_native_string};
-use common::from_native_string;
 
-mod common;
 use ndarray::array;
 
 // ===========================================================================

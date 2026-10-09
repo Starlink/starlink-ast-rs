@@ -112,6 +112,7 @@ fn bench_transform(mapping: &dyn Mapping, npoint: usize, forward: bool) -> std::
 }
 
 #[test]
+#[ignore = "a timing benchmark, not a check; run with --ignored"]
 fn benchmark_lsst_frameset() {
     println!("\n=== LSST FrameSet Transform Benchmark ===\n");
 

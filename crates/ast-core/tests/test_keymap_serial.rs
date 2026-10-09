@@ -5,7 +5,7 @@
 //! separately against the C probe's committed output; see
 //! `common::is_map_sz_card` and `tests/fixtures/oracle/keymap_mapsz.txt`.
 
-mod common;
+use crate::common;
 
 use ast_core::keymap::{KeyMap, SortBy};
 use ast_core::{AnyObject, from_native_string, to_native_string};

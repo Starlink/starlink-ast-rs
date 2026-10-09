@@ -64,7 +64,7 @@ Two principles:
 ```shell
 cargo build                                  # everything, no submodule needed
 cargo test -p ast-core                       # tier 1: idiomatic Rust tests
-cargo test -p ast-core --test '*-regression' # tier 2: native-format byte-exact
+cargo test -p ast-core --test meta test_simplify_regression::  # tier 2: native-format byte-exact
 
 # Tiers requiring the submodule:
 git submodule update --init reference/starlink-ast
@@ -284,7 +284,8 @@ it lands).
    `#[no_mangle] extern "C" fn` per public method, plus the
    constructor.
 7. Add a Rust test under `crates/ast-core/tests/` ported from the
-   matching `reference/starlink-ast/ast_tester/test<name>.c`.
+   matching `reference/starlink-ast/ast_tester/test<name>.c`, and add
+   it to its area's test program (see "Porting a test" below).
    Copy any reference fixtures into
    `crates/ast-core/tests/fixtures/`.
 8. Mark the test ported in `PLAN.md`'s "C → Rust test migration"
@@ -313,7 +314,13 @@ same commit range:
    what it covers.
 2. Create `crates/ast-core/tests/<test>.rs` with a header comment
    recording the C ancestor's path and any idiomatic Rust
-   divergences.
+   divergences, and add it as a module to the area program it belongs
+   to, `crates/ast-core/tests/<area>/main.rs`. The package sets
+   `autotests = false` because one test program per file made the suite
+   take most of an hour (each program links all of ast-core, and macOS
+   scans each new program on its first run); `test_area_membership`
+   fails for a file no area program names. Run one file's tests with
+   `cargo test -p ast-core --test <area> <test>::`.
 3. Use the **public Rust API only** (no private modules from
    `ast-core`). The Rust test should also serve as a worked example
    for users.

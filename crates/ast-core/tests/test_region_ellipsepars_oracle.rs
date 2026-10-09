@@ -14,17 +14,12 @@
 #[path = "region_ellipsepars_oracle/cases.rs"]
 mod cases;
 
-// Generated; formatted by its generator rather than rustfmt. Only its form-0
-// dump is used here.
-#[rustfmt::skip]
-#[allow(dead_code)]
-#[path = "region_ellipse_oracle/cases.rs"]
-mod ellipse_cases;
-
 use ast_core::frames::{BasicFrameBuilder, Frame, SkyFrame, SkySystem};
 use ast_core::from_native_string;
 use ast_core::mappings::ZoomMap;
 use ast_core::regions::{Ellipse, EllipseBuilder, Region};
+
+use crate::test_region_ellipse_oracle::cases as ellipse_cases;
 
 fn form1(frame: impl Frame + 'static, centre: [f64; 2], axes: [f64; 2]) -> Ellipse {
     EllipseBuilder::new(frame, centre.to_vec(), axes, 0.3)
