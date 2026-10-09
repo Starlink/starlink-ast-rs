@@ -15,7 +15,7 @@ use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::{AxisKind, DynFrame, Frame, FrameRef, FrameSet, simplify_frame_via_mapping};
 use crate::mappings::helpers::{ast_equals as helper_ast_equals, is_bad, point_has_bad};
-use crate::mappings::{AsAny, DynMapping, Mapping, UnitMap, ViaSimplify};
+use crate::mappings::{DynMapping, Mapping, UnitMap, ViaSimplify};
 
 use super::data::{RegionData, RegionGeometry};
 use super::merge_util::{MergedRegion, finish_region_merge};
@@ -701,49 +701,33 @@ impl Interval {
         }
         let current_frame = self.data.frameset.current().snapshot();
         let box2 = box_reg.reg_map_region(map, current_frame.as_ref())?;
-        let sreg = (box2.as_ref() as &dyn Mapping).simplify()?;
+        let (sreg, simplified) = (box2.as_ref() as &dyn Mapping).simplify_reporting_change()?;
 
-        // The Box only simplifies (changes concrete geometry) when the
-        // mapping preserves a 1-to-1 axis correspondence. Detect this: our
-        // BoxRegion::simplified returns an unchanged clone (still a Box whose
-        // base->current mapping is *not* a UnitMap) when it cannot simplify.
-        //
-        // A NullRegion is the answer in its own right: it is already expressed
-        // in the current Frame, so C uses it as the simplified Region
-        // (interval.c:3352-3355).
+        // Only a Box that simplified is used (interval.c:3349, `sreg !=
+        // box2`). A NullRegion is the answer in its own right, already in
+        // the current Frame (interval.c:3352-3355); a Box or Interval gives
+        // the current-Frame limits, its base and current Frames being taken
+        // to be the same.
+        if !simplified {
+            return Ok(None);
+        }
         if let Some(null) = sreg.as_any().downcast_ref::<super::NullRegion>() {
             return Ok(Some(Box::new(null.clone())));
         }
-        let sreg_is_box = sreg.as_any().downcast_ref::<super::BoxRegion>();
-        let sreg_is_interval = sreg.as_any().downcast_ref::<Interval>();
-
-        // Recover the simplified Box/Interval's base bounding box; bail to a
-        // clone if it did not reduce to a simple axis-aligned Region.
-        let (mut slbnd, mut subnd, snc) = if let Some(b) = sreg_is_box {
-            // A simplified Box has a UnitMap base->current mapping.
-            let m = b.data.frameset.mapping(FrameRef::Base, FrameRef::Current)?;
-            if !m.as_any().is::<UnitMap>() {
+        let (mut slbnd, mut subnd, snc) =
+            if let Some(b) = sreg.as_any().downcast_ref::<super::BoxRegion>() {
+                let (lb, ub) = b.reg_base_box()?;
+                let snc = lb.len();
+                (lb, ub, snc)
+            } else if let Some(iv) = sreg.as_any().downcast_ref::<Interval>() {
+                let snc = iv.data.points[0].len();
+                (iv.data.points[0].clone(), iv.data.points[1].clone(), snc)
+            } else {
+                // `astSimplify` of a Region always yields a Region, and the two
+                // classes above plus the NullRegion handled earlier are every class
+                // C admits here (interval.c:3352-3358).
                 return Ok(None);
-            }
-            let (lb, ub) = b.reg_base_box()?;
-            let snc = lb.len();
-            (lb, ub, snc)
-        } else if let Some(iv) = sreg_is_interval {
-            let m = iv
-                .data
-                .frameset
-                .mapping(FrameRef::Base, FrameRef::Current)?;
-            if !m.as_any().is::<UnitMap>() {
-                return Ok(None);
-            }
-            let snc = iv.data.points[0].len();
-            (iv.data.points[0].clone(), iv.data.points[1].clone(), snc)
-        } else {
-            // `astSimplify` of a Region always yields a Region, and the two
-            // classes above plus the NullRegion handled earlier are every class
-            // C admits here (interval.c:3352-3358).
-            return Ok(None);
-        };
+            };
 
         // 5. Determine the base<->current axis correspondence and transfer
         //    missing/equal/reversed limits (interval.c:3377-3484).
@@ -1865,12 +1849,13 @@ impl Mapping for Interval {
         };
         let simpler = parent.is_some();
 
+        // C tests the base->current Mapping as `astGetMapping` gives it,
+        // without simplifying it (interval.c:3215-3216).
         let map = this
             .data
             .frameset
             .mapping(FrameRef::Base, FrameRef::Current)?;
-        let simple_map = map.simplify()?;
-        if simple_map.as_ref().as_any().is::<UnitMap>() {
+        if map.as_ref().as_any().is::<UnitMap>() {
             // C's `else` at interval.c:3516 — `result = astClone( this )`.
             if !simpler {
                 return Ok((self.clone_box(), false));
@@ -1882,7 +1867,7 @@ impl Mapping for Interval {
 
         // Non-UnitMap base->current: attempt to re-express the Interval in
         // its current Frame. Port of interval.c::Simplify (3216-3517).
-        let (mut result, changed) = match this.simplify_remapped(simple_map.as_ref())? {
+        let (mut result, changed) = match this.simplify_remapped(map.as_ref())? {
             // C builds the current-Frame Interval and sets `simpler = 1`
             // (interval.c:3481-3483).
             Some(simplified) => (

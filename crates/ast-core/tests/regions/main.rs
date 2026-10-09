@@ -60,6 +60,8 @@ mod test_region_frame_oracle;
 mod test_region_grid;
 #[path = "../test_region_interval_oracle.rs"]
 mod test_region_interval_oracle;
+#[path = "../test_region_interval_remap_oracle.rs"]
+mod test_region_interval_remap_oracle;
 #[path = "../test_region_mapregion_oracle.rs"]
 mod test_region_mapregion_oracle;
 #[path = "../test_region_mask_oracle.rs"]
