@@ -1,7 +1,7 @@
 /* region_disc_probe -- capture astGetRegionDisc (region.c GetRegionDisc)
  * for Regions whose boundary meshes the port already makes as C does: a
- * Cartesian Box, negated and not, an ICRS Circle, a Cartesian Circle and
- * PointList, a NullRegion, an unbounded Interval (bad centre and radius)
+ * Cartesian Box, negated and not, an ICRS Circle and Polygon, a Cartesian
+ * Circle and PointList, a NullRegion, an unbounded Interval (bad centre and radius)
  * and a 3-D Box (AST__INVAR); and an ICRS Ellipse, with its dump for the
  * port to read, since its EllipseBuilder takes the angle differently (EL-2
  * in docs/audits/region-c-parity.md).
@@ -115,6 +115,11 @@ int main( void ) {
       double pts[] = { 0.0, 3.0, 0.0, 0.0, 0.0, 4.0 };
       reg = (AstRegion *) astPointList( f2, 3, 2, 3, pts, NULL, " " );
       disc( "pointlist_3", reg, &status );
+   }
+   {
+      double xy[] = { 0.0, 1.0, 1.0, 0.0,   0.2, 0.2, 0.8, 0.8 };
+      reg = (AstRegion *) astPolygon( astSkyFrame( "System=ICRS" ), 4, 4, xy, NULL, " " );
+      disc( "sky_polygon", reg, &status );
    }
    reg = (AstRegion *) astNullRegion( f2, NULL, " " );
    disc( "null_region", reg, &status );

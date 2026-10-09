@@ -22,6 +22,7 @@ mod polygon;
 mod prism;
 pub use box_region::{BoxRegion, BoxRegionBuilder};
 pub use circle::{Circle, CircleBuilder};
+pub(crate) use cmpregion::Oper as CmpOper;
 pub use cmpregion::{CmpRegion, CmpRegionBuilder};
 pub use ellipse::{Ellipse, EllipseBuilder};
 pub use interval::{Interval, IntervalBuilder};
@@ -75,6 +76,10 @@ pub enum CmpOperator {
     And,
     /// Boolean OR: interior is the union.
     Or,
+    /// Boolean XOR: interior is where exactly one of the two is inside.
+    /// Made, as C makes it, as the OR of each Region ANDed with the
+    /// negation of the other.
+    Xor,
 }
 
 /// A view of a Region as `&dyn Region`, which a default method of

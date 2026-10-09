@@ -229,7 +229,7 @@ reduces to, and `astRegOverlay` never installs an uncertainty of its own — its
 only uncertainty action is to *clear* one (`region.c:9932 (fn RegOverlay)`) — so a
 Box built without it stays without it. The port passes the same Region
 (`interval.rs:695-701 (fn simplify_remapped)`), read through `get_unc_frm`
-(`regions/mod.rs:728 (fn get_unc_frm)`), which is `astGetUncFrm`.
+(`regions/mod.rs:733 (fn get_unc_frm)`), which is `astGetUncFrm`.
 
 ## Rows 113 and 114 — the port's "was it simplified?" signal
 

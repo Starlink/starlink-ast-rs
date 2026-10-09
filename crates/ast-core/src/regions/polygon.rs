@@ -712,53 +712,55 @@ impl RegionGeometry for Polygon {
         Ok((lower, upper))
     }
 
+    /// polygon.c `RegBaseMesh`: MeshSize points shared between the edges by
+    /// their lengths as the base Frame measures distance, `1 + (int)(len*mp)`
+    /// to an edge; each edge starts at its normalised first vertex, and its
+    /// other points are placed along it with the Frame's `offset`, so on the
+    /// sky they follow the great circle. An edge of undefined length is left
+    /// out, and a boundary of no length is AST__BADIN.
     fn reg_base_mesh(&self) -> AstResult<Vec<Vec<f64>>> {
-        let nv = self.data.points.len();
-        let np = self.data.effective_mesh_size();
+        let frm = self.data.frameset.base();
+        let vertices = &self.data.points;
+        let nv = vertices.len();
 
-        // Compute edge lengths.
-        let mut edge_lengths = Vec::with_capacity(nv);
-        let mut total_len = 0.0;
-
-        for i in 0..nv {
-            let j = (i + 1) % nv;
-            let dx = self.data.points[j][0] - self.data.points[i][0];
-            let dy = self.data.points[j][1] - self.data.points[i][1];
-            let len = (dx * dx + dy * dy).sqrt();
-            edge_lengths.push(len);
-            total_len += len;
+        // The length of the edge ending at each vertex; the edge ending at
+        // vertex 0 starts at the last vertex.
+        let mut lens = vec![BAD_VALUE; nv];
+        let mut total = 0.0;
+        for iv in 0..nv {
+            let start = &vertices[(iv + nv - 1) % nv];
+            let d = frm.distance(start, &vertices[iv])?;
+            if !is_bad(d) {
+                total += d.abs();
+            }
+            lens[iv] = d;
         }
-
-        if total_len == 0.0 {
-            // Degenerate polygon: all vertices coincide.
-            return Ok(vec![self.data.points[0].clone()]);
+        if total <= 0.0 {
+            return Err(AstError::new(
+                ErrorCode::Badin,
+                "astRegBaseMesh(Polygon): The boundary of the supplied Polygon has an \
+                 undefined length.",
+            ));
         }
+        let mp = self.data.effective_mesh_size() as f64 / total;
 
-        // Distribute mesh_size points proportional to edge length.
-        let mut np_edge = Vec::with_capacity(nv);
-        let mut total_np = 0;
-        let ppd = np as f64 / total_len;
-
-        for elen in &edge_lengths {
-            let n = ((elen * ppd).round() as usize).max(1);
-            np_edge.push(n);
-            total_np += n;
-        }
-
-        let mut mesh = Vec::with_capacity(total_np);
-
-        for (i, &n) in np_edge.iter().enumerate() {
-            let j = (i + 1) % nv;
-            let dx = (self.data.points[j][0] - self.data.points[i][0]) / n as f64;
-            let dy = (self.data.points[j][1] - self.data.points[i][1]) / n as f64;
-
-            for k in 0..n {
-                let x = self.data.points[i][0] + dx * k as f64;
-                let y = self.data.points[i][1] + dy * k as f64;
-                mesh.push(vec![x, y]);
+        // The edges ending at vertices 1..nv, then the one ending at vertex 0.
+        let mut mesh = Vec::new();
+        for iv in (1..nv).chain(std::iter::once(0)) {
+            if is_bad(lens[iv]) {
+                continue;
+            }
+            let mut start = vertices[(iv + nv - 1) % nv].clone();
+            frm.norm(&mut start)?;
+            mesh.push(start.clone());
+            let n = 1 + (lens[iv] * mp) as usize;
+            if n > 1 {
+                let delta = lens[iv] / n as f64;
+                for ip in 1..n {
+                    mesh.push(frm.offset(&start, &vertices[iv], delta * ip as f64)?);
+                }
             }
         }
-
         Ok(mesh)
     }
 

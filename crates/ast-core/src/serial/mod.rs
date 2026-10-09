@@ -21,8 +21,8 @@ use crate::mappings::{
 use crate::mappings::{IntraMap, IntraRegistry};
 use crate::regions::data::RegionData;
 use crate::regions::{
-    BoxRegion, Circle, CmpOperator, CmpRegion, DynRegion, Ellipse, Interval, NullRegion, PointList,
-    Polygon, Prism, Region,
+    BoxRegion, Circle, CmpOperator, CmpRegion, CmpRegionBuilder, DynRegion, Ellipse, Interval,
+    NullRegion, PointList, Polygon, Prism, Region,
 };
 
 /// Internal trait for serialising AST objects to/from Node trees.
@@ -1324,14 +1324,20 @@ impl Serializable for CmpRegion {
 
         // CmpRegion-specific: operator and sub-regions. These follow the
         // `IsA Region` marker — written after the parent class skeleton.
-        let (oper, oper_comment) = match self.operator {
+        // A CmpRegion made with XOR is written as the two Regions XORed, as
+        // cmpregion.c `Dump` writes `xor1` and `xor2`.
+        let (oper, oper_comment) = match self.operator() {
             CmpOperator::And => (1, "Regions combined using Boolean AND"),
             CmpOperator::Or => (2, "Regions combined using Boolean OR"),
+            CmpOperator::Xor => (3, "Regions combined using Boolean XOR"),
         };
         node.push_int("Operator", oper, Some(oper_comment.to_string()));
 
-        let node_a = RegionToNode::to_node(self.region1.as_ref())?;
-        let node_b = RegionToNode::to_node(self.region2.as_ref())?;
+        let (reg_a, reg_b) = self
+            .xor_regions()
+            .unwrap_or((self.region1.as_ref(), self.region2.as_ref()));
+        let node_a = RegionToNode::to_node(reg_a)?;
+        let node_b = RegionToNode::to_node(reg_b)?;
         node.push_object(
             "RegionA",
             node_a,
@@ -1355,10 +1361,6 @@ impl Serializable for CmpRegion {
         let data = read_region_base(whole)?;
 
         let oper_int = node.get_int("Operator", 1);
-        let operator = match oper_int {
-            2 => CmpOperator::Or,
-            _ => CmpOperator::And,
-        };
 
         let node_a = node
             .get_object("RegionA")
@@ -1383,11 +1385,34 @@ impl Serializable for CmpRegion {
             }
         }
 
+        // An XOR is rebuilt from the two Regions XORed, as the OR of each
+        // ANDed with the negation of the other (cmpregion.c Load).
+        let (region1, region2, operator, xor) = match oper_int {
+            3 => {
+                let and = |a: DynRegion, b: DynRegion| -> AstResult<DynRegion> {
+                    Ok(Box::new(
+                        CmpRegionBuilder::from_dyn(a, b, CmpOperator::And)?.build()?,
+                    ))
+                };
+                let new1 = and(region1.negated_copy(), region2.clone_region())?;
+                let new2 = and(region1.clone_region(), region2.negated_copy())?;
+                (
+                    new1,
+                    new2,
+                    crate::regions::CmpOper::Or,
+                    Some((region1, region2)),
+                )
+            }
+            2 => (region1, region2, crate::regions::CmpOper::Or, None),
+            _ => (region1, region2, crate::regions::CmpOper::And, None),
+        };
+
         Ok(CmpRegion {
             data,
             region1,
             region2,
             operator,
+            xor,
         })
     }
 }

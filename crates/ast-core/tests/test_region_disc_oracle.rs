@@ -18,7 +18,7 @@ use ast_core::frames::{BasicFrameBuilder, SkyFrame, SkySystem};
 use ast_core::from_native_string;
 use ast_core::regions::{
     BoxRegionBuilder, CircleBuilder, DynRegion, IntervalBuilder, NullRegionBuilder,
-    PointListBuilder,
+    PointListBuilder, PolygonBuilder,
 };
 
 fn region(name: &str) -> DynRegion {
@@ -61,6 +61,20 @@ fn region(name: &str) -> DynRegion {
                 .unwrap()
                 .build()
                 .unwrap(),
+        ),
+        "sky_polygon" => Box::new(
+            PolygonBuilder::new(
+                SkyFrame::new(SkySystem::Icrs),
+                vec![
+                    vec![0.0, 0.2],
+                    vec![1.0, 0.2],
+                    vec![1.0, 0.8],
+                    vec![0.0, 0.8],
+                ],
+            )
+            .unwrap()
+            .build()
+            .unwrap(),
         ),
         "null_region" => Box::new(NullRegionBuilder::new(f2()).build().unwrap()),
         "sky_ellipse" => from_native_string(cases::SKY_ELLIPSE)

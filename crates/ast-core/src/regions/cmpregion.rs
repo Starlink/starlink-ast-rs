@@ -34,8 +34,21 @@ pub struct CmpRegion {
     pub(crate) region1: DynRegion,
     /// Second component region.
     pub(crate) region2: DynRegion,
-    /// Boolean operator combining the two regions.
-    pub(crate) operator: CmpOperator,
+    /// Boolean operator combining the two regions: AND or OR, as C's
+    /// `oper` is, an XOR being made from them.
+    pub(crate) operator: Oper,
+    /// For a CmpRegion made with XOR, the two Regions XORed (C's `xor1` and
+    /// `xor2`), which its dump writes in place of the components.
+    pub(crate) xor: Option<(DynRegion, DynRegion)>,
+}
+
+/// The operator a CmpRegion applies to its two components.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Oper {
+    /// Boolean AND.
+    And,
+    /// Boolean OR.
+    Or,
 }
 
 /// Builder for constructing a [`CmpRegion`].
@@ -107,11 +120,55 @@ impl CmpRegionBuilder {
         self
     }
 
-    /// Build the CmpRegion.
-    pub fn build(mut self) -> AstResult<CmpRegion> {
+    /// Build the CmpRegion, as `astInitCmpRegion` does: the second Region is
+    /// mapped into the first's Frame when the two differ (AST__INTRD when no
+    /// Mapping joins them), and an XOR is made as the OR of each Region ANDed
+    /// with the negation of the other.
+    pub fn build(self) -> AstResult<CmpRegion> {
+        let mut reg1 = self.region1;
+        let mut reg2 = self.region2;
+        let Some(fs) = reg2
+            .get_region_frame()
+            .convert_to(reg1.get_region_frame().as_ref(), &[])?
+        else {
+            return Err(AstError::new(
+                ErrorCode::Intrd,
+                "astInitCmpRegion(CmpRegion): No Mapping can be found between the two \
+                 supplied Regions.",
+            ));
+        };
+        let frame = fs.current().snapshot();
+        let smap = fs
+            .mapping(
+                crate::frames::FrameRef::Base,
+                crate::frames::FrameRef::Current,
+            )?
+            .simplify()?;
+        if !smap.as_any().is::<crate::mappings::UnitMap>() {
+            reg2 = reg2.map_region(smap.as_ref(), frame.as_ref())?;
+        }
+
+        let (oper, xor) = match self.operator {
+            CmpOperator::And => (Oper::And, None),
+            CmpOperator::Or => (Oper::Or, None),
+            CmpOperator::Xor => {
+                let and = |a: DynRegion, b: DynRegion| -> AstResult<DynRegion> {
+                    Ok(Box::new(
+                        CmpRegionBuilder::from_dyn(a, b, CmpOperator::And)?.build()?,
+                    ))
+                };
+                let new1 = and(reg1.negated_copy(), reg2.clone_region())?;
+                let new2 = and(reg1.clone_region(), reg2.negated_copy())?;
+                let xor = (reg1, reg2);
+                reg1 = new1;
+                reg2 = new2;
+                (Oper::Or, Some(xor))
+            }
+        };
+
         // A component whose base->current Mapping is a UnitMap need not
         // dump its FrameSet, so its RegionFS is cleared (cmpregion.c:4855).
-        for region in [&mut self.region1, &mut self.region2] {
+        for region in [&mut reg1, &mut reg2] {
             let fs = region.get_region_frameset();
             let map = fs.mapping(
                 crate::frames::FrameRef::Base,
@@ -122,18 +179,14 @@ impl CmpRegionBuilder {
             }
         }
 
-        // Use region1's frame as the CmpRegion's frame.
-        let frame = self.region1.get_region_frame();
         let frameset = FrameSet::new(frame);
-
-        // CmpRegion has no defining points of its own (geometry is in sub-regions).
-        let points = Vec::new();
-        let data = RegionData::new(frameset, points);
+        let data = RegionData::new(frameset, Vec::new());
         let mut region = CmpRegion {
             data,
-            region1: self.region1,
-            region2: self.region2,
-            operator: self.operator,
+            region1: reg1,
+            region2: reg2,
+            operator: oper,
+            xor,
         };
 
         // astSetUnc, as C's constructor calls it (region.c:13372).
@@ -167,9 +220,19 @@ impl CmpRegion {
         self.data.perm_axes(perm)
     }
 
-    /// Get the boolean operator combining the two component regions.
+    /// The boolean operator this CmpRegion was made with: XOR for one made
+    /// with XOR, whose components are then the two ANDs C makes it from.
     pub fn operator(&self) -> CmpOperator {
-        self.operator
+        match (self.operator, &self.xor) {
+            (_, Some(_)) => CmpOperator::Xor,
+            (Oper::And, None) => CmpOperator::And,
+            (Oper::Or, None) => CmpOperator::Or,
+        }
+    }
+
+    /// For a CmpRegion made with XOR, the two Regions XORed.
+    pub(crate) fn xor_regions(&self) -> Option<(&dyn Region, &dyn Region)> {
+        self.xor.as_ref().map(|(a, b)| (a.as_ref(), b.as_ref()))
     }
 
     /// Get a reference to the first component region.
@@ -194,7 +257,7 @@ impl CmpRegion {
     /// *required* flags — a caller that needs a component to actually carry
     /// its required flag replaces it with [`Region::negated_copy`] when the two
     /// differ (cmpregion.c:775-788, 3617).
-    fn get_regions(&self) -> (DynRegion, DynRegion, CmpOperator, bool, bool) {
+    fn get_regions(&self) -> (DynRegion, DynRegion, Oper, bool, bool) {
         let reg1 = self.region1.clone_region();
         let reg2 = self.region2.clone_region();
         let mut oper = self.operator;
@@ -202,8 +265,8 @@ impl CmpRegion {
         let mut neg2 = self.region2.is_negated();
         if self.data.negated {
             oper = match oper {
-                CmpOperator::And => CmpOperator::Or,
-                CmpOperator::Or => CmpOperator::And,
+                Oper::And => Oper::Or,
+                Oper::Or => Oper::And,
             };
             neg1 = !neg1;
             neg2 = !neg2;
@@ -265,7 +328,7 @@ impl CmpRegion {
         let reg2b = reg2.is_bounded();
 
         let result = match oper {
-            CmpOperator::And => {
+            Oper::And => {
                 if reg1b || reg2b {
                     true
                 } else {
@@ -277,7 +340,7 @@ impl CmpRegion {
                     )
                 }
             }
-            CmpOperator::Or => reg1b && reg2b,
+            Oper::Or => reg1b && reg2b,
         };
         Ok(result)
     }
@@ -307,7 +370,7 @@ impl RegionGeometry for CmpRegion {
         let mut result = vec![false; npoint];
 
         match self.operator {
-            CmpOperator::And => {
+            Oper::And => {
                 // AND (intersection): point must be inside both regions.
                 // Short-circuit: test region1 first, then only test region2
                 // for points that passed region1.
@@ -323,7 +386,7 @@ impl RegionGeometry for CmpRegion {
                     *r = in2;
                 }
             }
-            CmpOperator::Or => {
+            Oper::Or => {
                 // OR (union): point must be inside at least one region.
                 // Short-circuit: test region1 first, only test region2
                 // for points that failed region1.
@@ -444,7 +507,7 @@ impl RegionGeometry for CmpRegion {
             }
 
             match self.operator {
-                CmpOperator::And => {
+                Oper::And => {
                     // AND: overlap of the axis intervals, depending on whether
                     // each interval is included or excluded.
                     if inc1 {
@@ -487,7 +550,7 @@ impl RegionGeometry for CmpRegion {
                         };
                     }
                 }
-                CmpOperator::Or => {
+                Oper::Or => {
                     // OR: union of the axis intervals.
                     if inc1 && inc2 {
                         lbnd[i] = clbnd1[i].min(clbnd2[i]);
@@ -503,79 +566,77 @@ impl RegionGeometry for CmpRegion {
         Ok((lbnd, ubnd))
     }
 
+    /// cmpregion.c `RegBaseMesh`: each component's boundary mesh in its
+    /// current Frame (the CmpRegion's base Frame), or, for a component with
+    /// no finite boundary, the part of its boundary within the other's
+    /// bounding box (region.c `BndMesh`); then the points of each mesh inside
+    /// the other component for AND, or outside it for OR. A component has a
+    /// mesh if it is bounded either way round; with neither, or with only one
+    /// under OR, there is no mesh (AST__INTER).
     fn reg_base_mesh(&self) -> AstResult<Vec<Vec<f64>>> {
-        let naxes = self.data.frameset.base().naxes();
+        let reg1 = self.region1.as_ref();
+        let reg2 = self.region2.as_ref();
+        let has_mesh = |r: &dyn Region| r.is_bounded() || r.negated_copy().is_bounded();
+        let (has1, has2) = (has_mesh(reg1), has_mesh(reg2));
+        if !has1 && !has2 {
+            return Err(AstError::new(
+                ErrorCode::Inter,
+                "astRegBaseMesh(CmpRegion): No mesh can be produced for the CmpRegion \
+                 bacause neither of its component Regions has a mesh (internal AST \
+                 programming error).",
+            ));
+        }
+        if (!has1 || !has2) && self.operator == Oper::Or {
+            return Err(AstError::new(
+                ErrorCode::Inter,
+                "astRegBaseMesh(CmpRegion): No mesh can be produced for the CmpRegion \
+                 bacause one its component Regions has no mesh and the union of the \
+                 Regions is required (internal AST programming error).",
+            ));
+        }
 
-        // Get boundary meshes from both sub-regions. The sub-regions' current
-        // frame = CmpRegion's base frame, so mesh points are already in the
-        // correct coordinate system.
-        let mesh1 = self.region1.get_region_mesh()?;
-        let mesh2 = self.region2.get_region_mesh()?;
-
-        // For AND (intersection): boundary of the intersection consists of
-        // boundary points of region1 that lie inside region2, plus boundary
-        // points of region2 that lie inside region1.
-        //
-        // For OR (union): boundary of the union consists of boundary points
-        // of region1 that lie OUTSIDE region2, plus boundary points of
-        // region2 that lie OUTSIDE region1.
-        //
-        // The C library achieves this by using regions as mappings:
-        // forward-transform passes interior points through, sets exterior to BAD.
-        // For OR it temporarily negates the regions (so "inside" becomes "outside").
-
-        // Use the region transform to filter mesh points.
-        // For AND: transform mesh1 through region2 (keeps points inside region2)
-        //          transform mesh2 through region1 (keeps points inside region1)
-        // For OR:  negate and transform (keeps points outside the other region)
-
-        let (filtered1, filtered2) = match self.operator {
-            CmpOperator::And => {
-                // Transform mesh1 through region2: keeps mesh1 points inside region2
-                let f1 = self.region2.transform(&mesh1, true)?;
-                // Transform mesh2 through region1: keeps mesh2 points inside region1
-                let f2 = self.region1.transform(&mesh2, true)?;
-                (f1, f2)
-            }
-            CmpOperator::Or => {
-                // For OR we need points OUTSIDE the other region.
-                // Use negated copies so the transform keeps exterior points.
-                let neg1 = self.region1.negated_copy();
-                let neg2 = self.region2.negated_copy();
-                // Transform mesh1 through negated region2: keeps mesh1 points outside region2
-                let f1 = neg2.transform(&mesh1, true)?;
-                // Transform mesh2 through negated region1: keeps mesh2 points outside region1
-                let f2 = neg1.transform(&mesh2, true)?;
-                (f1, f2)
-            }
+        // region.c `BndMesh`: the base-Frame boundary mesh within a box,
+        // taken into the current Frame.
+        let bnd_mesh = |r: &dyn Region, other: &dyn Region| -> AstResult<PointSet> {
+            let (lbnd, ubnd) = other.get_region_bounds()?;
+            r.to_current_frame(r.bnd_base_mesh(&lbnd, &ubnd)?)
+        };
+        let (mesh1, mesh2) = if has1 {
+            let mesh1 = reg1.reg_mesh()?;
+            let mesh2 = if has2 {
+                reg2.reg_mesh()?
+            } else {
+                bnd_mesh(reg2, reg1)?
+            };
+            (mesh1, mesh2)
+        } else {
+            let mesh2 = reg2.reg_mesh()?;
+            (bnd_mesh(reg1, reg2)?, mesh2)
         };
 
-        // Collect all non-BAD points from both filtered meshes.
-        let mut result = Vec::new();
+        // The points of each mesh inside the other component (AND), or
+        // outside it (OR), the components negated to find those.
+        let (filter1, filter2): (DynRegion, DynRegion) = match self.operator {
+            Oper::And => (reg1.clone_region(), reg2.clone_region()),
+            Oper::Or => (reg1.negated_copy(), reg2.negated_copy()),
+        };
+        let mesh1b = filter2.transform(&mesh1, true)?;
+        let mesh2b = filter1.transform(&mesh2, true)?;
 
-        for i in 0..filtered1.npoint() {
-            let point = filtered1.point(i);
-            if !point[..naxes].iter().any(|&v| is_bad(v)) {
-                result.push(point[..naxes].to_vec());
-            }
-        }
-
-        for i in 0..filtered2.npoint() {
-            let point = filtered2.point(i);
-            if !point[..naxes].iter().any(|&v| is_bad(v)) {
-                result.push(point[..naxes].to_vec());
-            }
-        }
-
-        Ok(result)
+        Ok([mesh1b, mesh2b]
+            .iter()
+            .flat_map(|m| (0..m.npoint()).map(move |i| m.point(i)))
+            .filter(|p| !p.iter().any(|&v| is_bad(v)))
+            .map(|p| p.to_vec())
+            .collect())
     }
 
     fn is_bounded_inner(&self) -> bool {
         match self.operator {
             // AND (intersection): bounded if either sub-region is bounded.
-            CmpOperator::And => self.region1.is_bounded() || self.region2.is_bounded(),
+            Oper::And => self.region1.is_bounded() || self.region2.is_bounded(),
             // OR (union): bounded only if both sub-regions are bounded.
-            CmpOperator::Or => self.region1.is_bounded() && self.region2.is_bounded(),
+            Oper::Or => self.region1.is_bounded() && self.region2.is_bounded(),
         }
     }
 
@@ -614,7 +675,7 @@ impl Region for CmpRegion {
         // takes points in their current frame. Since the CmpRegion's base
         // frame = sub-regions' current frame, pass the base point directly.
         let inside = match self.operator {
-            CmpOperator::And => {
+            Oper::And => {
                 let in1 = self.region1.point_in_region(&base_point[..naxes])?;
                 if !in1 {
                     false
@@ -622,7 +683,7 @@ impl Region for CmpRegion {
                     self.region2.point_in_region(&base_point[..naxes])?
                 }
             }
-            CmpOperator::Or => {
+            Oper::Or => {
                 let in1 = self.region1.point_in_region(&base_point[..naxes])?;
                 if in1 {
                     true
@@ -677,8 +738,8 @@ impl Region for CmpRegion {
         // is outside that component. For OR the components are temporarily
         // negated so the test reports "outside" rather than "inside".
         let (pset1, pset2) = match self.operator {
-            CmpOperator::And => (reg1.transform(pts, true)?, reg2.transform(pts, true)?),
-            CmpOperator::Or => {
+            Oper::And => (reg1.transform(pts, true)?, reg2.transform(pts, true)?),
+            Oper::Or => {
                 let neg1 = reg1.negated_copy();
                 let neg2 = reg2.negated_copy();
                 (neg1.transform(pts, true)?, neg2.transform(pts, true)?)
@@ -820,11 +881,11 @@ impl Region for CmpRegion {
         let mut ubnd = vec![0.0; naxes];
         for i in 0..naxes {
             match self.operator {
-                CmpOperator::And => {
+                Oper::And => {
                     lbnd[i] = clbnd1[i].max(clbnd2[i]);
                     ubnd[i] = cubnd1[i].min(cubnd2[i]);
                 }
-                CmpOperator::Or => {
+                Oper::Or => {
                     lbnd[i] = clbnd1[i].min(clbnd2[i]);
                     ubnd[i] = cubnd1[i].max(cubnd2[i]);
                 }
@@ -941,7 +1002,7 @@ impl Region for CmpRegion {
             super::PickedAxes::Frame(_) => return Ok(None),
         };
 
-        let result = CmpRegionBuilder::from_dyn(picked1, picked2, self.operator)?.build()?;
+        let result = CmpRegionBuilder::from_dyn(picked1, picked2, self.operator.into())?.build()?;
         Ok(Some(Box::new(result)))
     }
 
@@ -1241,11 +1302,11 @@ impl Mapping for CmpRegion {
             if !nullreg.is_negated() {
                 // Null (empty) component.
                 match oper {
-                    CmpOperator::And => {
+                    Oper::And => {
                         // empty AND x = empty.
                         newb = Some(build_null_like(othereg, false)?);
                     }
-                    CmpOperator::Or => {
+                    Oper::Or => {
                         // empty OR x = x.
                         newb = Some(othereg.clone_region());
                     }
@@ -1253,11 +1314,11 @@ impl Mapping for CmpRegion {
             } else {
                 // Infinite component.
                 match oper {
-                    CmpOperator::And => {
+                    Oper::And => {
                         // infinite AND x = x.
                         newb = Some(othereg.clone_region());
                     }
-                    CmpOperator::Or => {
+                    Oper::Or => {
                         // infinite OR x = infinite.
                         newb = Some(build_null_like(othereg, true)?);
                     }
@@ -1272,14 +1333,14 @@ impl Mapping for CmpRegion {
             match (overlap, oper) {
                 // No overlap (or exact negation) combined with AND: the
                 // intersection is empty (cmpregion.c:3699).
-                (Overlap::None | Overlap::Negation, CmpOperator::And) => {
+                (Overlap::None | Overlap::Negation, Oper::And) => {
                     newb = Some(build_null_like(&sreg1, false)?);
                     simpler = true;
                 }
                 // One component is the negation of the other, combined with
                 // OR: the union is infinite, represented by a negated null
                 // Region (cmpregion.c:3706).
-                (Overlap::Negation, CmpOperator::Or) => {
+                (Overlap::Negation, Oper::Or) => {
                     newb = Some(build_null_like(&sreg1, true)?);
                     simpler = true;
                 }
@@ -1291,21 +1352,21 @@ impl Mapping for CmpRegion {
                 }
                 // First component contained within the second: AND keeps the
                 // first, OR keeps the second (cmpregion.c:3725).
-                (Overlap::FirstInside, CmpOperator::And) => {
+                (Overlap::FirstInside, Oper::And) => {
                     newb = Some(sreg1.clone_region());
                     simpler = true;
                 }
-                (Overlap::FirstInside, CmpOperator::Or) => {
+                (Overlap::FirstInside, Oper::Or) => {
                     newb = Some(sreg2.clone_region());
                     simpler = true;
                 }
                 // Second component contained within the first: AND keeps the
                 // second, OR keeps the first (cmpregion.c:3732).
-                (Overlap::SecondInside, CmpOperator::And) => {
+                (Overlap::SecondInside, Oper::And) => {
                     newb = Some(sreg2.clone_region());
                     simpler = true;
                 }
-                (Overlap::SecondInside, CmpOperator::Or) => {
+                (Overlap::SecondInside, Oper::Or) => {
                     newb = Some(sreg1.clone_region());
                     simpler = true;
                 }
@@ -1316,7 +1377,7 @@ impl Mapping for CmpRegion {
                         let cr = CmpRegionBuilder::from_dyn(
                             sreg1.clone_region(),
                             sreg2.clone_region(),
-                            oper,
+                            oper.into(),
                         )?
                         .build()?;
                         newb = Some(Box::new(cr) as DynRegion);
@@ -1362,5 +1423,14 @@ impl Mapping for CmpRegion {
 
     fn clone_box(&self) -> DynMapping {
         Box::new(self.clone())
+    }
+}
+
+impl From<Oper> for CmpOperator {
+    fn from(oper: Oper) -> Self {
+        match oper {
+            Oper::And => CmpOperator::And,
+            Oper::Or => CmpOperator::Or,
+        }
     }
 }
