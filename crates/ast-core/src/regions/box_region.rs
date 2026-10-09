@@ -1166,7 +1166,7 @@ impl Region for BoxRegion {
 
         let large_box = BoxRegion::from_corner_frame(bfrm.snapshot(), centre.clone(), large)?;
         let mut small_box = BoxRegion::from_corner_frame(bfrm.snapshot(), centre.clone(), small)?;
-        small_box.data.negated = true;
+        small_box.data.negate();
 
         // Points on the boundary of "this" are inside both the large box and
         // the negated small box (box.c:3134-3135): chain the two forward
@@ -1183,16 +1183,25 @@ impl Region for BoxRegion {
 
     fn negated_copy(&self) -> DynRegion {
         let mut copy = self.clone();
-        copy.data.negated = !copy.data.negated;
+        copy.data.negate();
         Box::new(copy)
     }
 
     fn negate(&mut self) {
-        self.data.negated = !self.data.negated;
+        self.data.negate();
     }
 
     fn is_negated(&self) -> bool {
         self.data.negated
+    }
+
+    fn test_negated(&self) -> bool {
+        self.data.negated_set
+    }
+
+    fn set_negated_raw(&mut self, negated: bool, set: bool) {
+        self.data.negated = negated;
+        self.data.negated_set = set;
     }
 
     fn is_closed(&self) -> bool {
@@ -1253,8 +1262,13 @@ impl Region for BoxRegion {
         self.data.adaptive
     }
 
-    fn set_adaptive(&mut self, adaptive: bool) {
+    fn test_adaptive(&self) -> bool {
+        self.data.adaptive_set
+    }
+
+    fn set_adaptive_raw(&mut self, adaptive: bool, set: bool) {
         self.data.adaptive = adaptive;
+        self.data.adaptive_set = set;
     }
 
     fn has_dummy_fs(&self) -> bool {
@@ -1332,8 +1346,13 @@ impl Region for BoxRegion {
         self.data.invalidate_cache();
     }
 
-    fn set_region_fs_flag(&mut self, value: bool) {
-        self.data.set_region_fs_flag(value);
+    fn test_region_fs(&self) -> bool {
+        self.data.region_fs_set
+    }
+
+    fn set_region_fs_raw(&mut self, value: bool, set: bool) {
+        self.data.region_fs = value;
+        self.data.region_fs_set = set;
     }
 
     fn region_fs_flag(&self) -> bool {
@@ -1593,6 +1612,7 @@ impl Region for BoxRegion {
                 closed: self.data.closed,
                 closed_set: self.data.closed_set,
                 adaptive: self.data.adaptive,
+                adaptive_set: self.data.adaptive_set,
                 negated: false,
             },
             unc,
@@ -1851,6 +1871,7 @@ impl Mapping for BoxRegion {
             let frameset = FrameSet::new(current_frame);
             let mut data = RegionData::new(frameset, new_points);
             data.negated = this.data.negated;
+            data.negated_set = this.data.negated_set;
             data.closed = this.data.closed;
             data.closed_set = this.data.closed_set;
             data.mesh_size = this.data.mesh_size;
@@ -1858,6 +1879,7 @@ impl Mapping for BoxRegion {
             data.fill_factor = this.data.fill_factor;
             data.fill_factor_set = this.data.fill_factor_set;
             data.adaptive = this.data.adaptive;
+            data.adaptive_set = this.data.adaptive_set;
             data.uncertainty = this.data.uncertainty.clone();
             let candidate = BoxRegion { data };
 

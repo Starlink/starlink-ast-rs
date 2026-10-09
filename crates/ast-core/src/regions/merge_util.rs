@@ -103,10 +103,13 @@ pub(super) struct MergeOverlay {
     pub(super) closed_set: bool,
     /// `this`'s Adaptive value.
     pub(super) adaptive: bool,
+    /// Whether `this` has Adaptive set explicitly.
+    pub(super) adaptive_set: bool,
     /// The Negated value the merged Region ends with. `MergeBox` and
     /// `MergeInterval` clear it unconditionally (box.c:1990,
-    /// interval.c:1544); `MergePointList` propagates the common Negated
-    /// value of the two supplied PointLists (pointlist.c:1367-1371).
+    /// interval.c:1544); `MergePointList` sets the common Negated value of
+    /// the two supplied PointLists when it is true and clears it otherwise
+    /// (pointlist.c:1367-1371), so Negated is set exactly when it is true.
     pub(super) negated: bool,
 }
 
@@ -148,7 +151,9 @@ pub(super) fn finish_region_merge(
         data.closed = overlay.closed;
         data.closed_set = overlay.closed_set;
         data.adaptive = overlay.adaptive;
+        data.adaptive_set = overlay.adaptive_set;
         data.negated = overlay.negated;
+        data.negated_set = overlay.negated;
     };
 
     let frameset = FrameSet::new(bfrm);

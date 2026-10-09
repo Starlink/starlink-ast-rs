@@ -146,9 +146,11 @@ impl RegionGeometry for NullRegion {
 // ============================================================================
 
 impl Region for NullRegion {
-    fn point_in_region(&self, _point: &[f64]) -> AstResult<bool> {
-        // Un-negated NullRegion contains nothing; negated contains everything.
-        Ok(self.data.negated)
+    fn point_in_region(&self, point: &[f64]) -> AstResult<bool> {
+        // A point is inside when `transform` leaves it good: an un-negated
+        // NullRegion contains nothing, and a negated one passes every point
+        // through as given, so a point with a BAD axis stays outside.
+        Ok(self.data.negated && !crate::mappings::helpers::point_has_bad(point))
     }
 
     /// nullregion.c `Overlap`: its own `OverlapX` with the arguments
@@ -164,16 +166,25 @@ impl Region for NullRegion {
 
     fn negated_copy(&self) -> DynRegion {
         let mut copy = self.clone();
-        copy.data.negated = !copy.data.negated;
+        copy.data.negate();
         Box::new(copy)
     }
 
     fn negate(&mut self) {
-        self.data.negated = !self.data.negated;
+        self.data.negate();
     }
 
     fn is_negated(&self) -> bool {
         self.data.negated
+    }
+
+    fn test_negated(&self) -> bool {
+        self.data.negated_set
+    }
+
+    fn set_negated_raw(&mut self, negated: bool, set: bool) {
+        self.data.negated = negated;
+        self.data.negated_set = set;
     }
 
     fn is_closed(&self) -> bool {
@@ -234,8 +245,13 @@ impl Region for NullRegion {
         self.data.adaptive
     }
 
-    fn set_adaptive(&mut self, adaptive: bool) {
+    fn test_adaptive(&self) -> bool {
+        self.data.adaptive_set
+    }
+
+    fn set_adaptive_raw(&mut self, adaptive: bool, set: bool) {
         self.data.adaptive = adaptive;
+        self.data.adaptive_set = set;
     }
 
     fn has_dummy_fs(&self) -> bool {
@@ -294,8 +310,13 @@ impl Region for NullRegion {
         self.data.invalidate_cache();
     }
 
-    fn set_region_fs_flag(&mut self, value: bool) {
-        self.data.set_region_fs_flag(value);
+    fn test_region_fs(&self) -> bool {
+        self.data.region_fs_set
+    }
+
+    fn set_region_fs_raw(&mut self, value: bool, set: bool) {
+        self.data.region_fs = value;
+        self.data.region_fs_set = set;
     }
 
     fn region_fs_flag(&self) -> bool {
@@ -383,9 +404,11 @@ impl Region for NullRegion {
         // the only one.
         new.reg_overlay(self, true).ok()?;
 
-        // Ensure Negated is set correctly (nullregion.c:678-682). The guard
-        // above already requires the two to agree.
+        // Ensure Negated is set correctly (nullregion.c:678-682): set when
+        // true, cleared otherwise. The guard above already requires the two
+        // to agree.
         new.data.negated = self.data.negated;
+        new.data.negated_set = self.data.negated;
 
         // When both supplied Regions have an uncertainty, the merged Region's
         // uncertainty is a Prism of the two base-Frame uncertainties,
@@ -637,9 +660,19 @@ impl Mapping for NullRegion {
         // is direction-independent), so inverting has no effect on behaviour.
     }
 
+    /// nullregion.c `Transform`: the parent Transform, Frame's, copies the
+    /// points unchanged, which a negated NullRegion keeps, as it contains
+    /// every point; an un-negated one contains none, so every value is BAD.
+    /// Neither looks at the FrameSet.
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
         crate::mappings::validate_transform(self, pts, forward, None)?;
-        super::data::region_transform(self, pts)
+        let mut out = pts.clone();
+        if !self.data.negated {
+            for i in 0..out.npoint() {
+                out.point_mut(i).fill(BAD_VALUE);
+            }
+        }
+        Ok(out)
     }
 
     fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()> {
@@ -691,6 +724,7 @@ impl Mapping for NullRegion {
             let frameset = FrameSet::new(current_frame);
             let mut data = RegionData::new(frameset, Vec::new());
             data.negated = new.data.negated;
+            data.negated_set = new.data.negated_set;
             data.closed = new.data.closed;
             data.closed_set = new.data.closed_set;
             data.mesh_size = new.data.mesh_size;
@@ -698,6 +732,7 @@ impl Mapping for NullRegion {
             data.fill_factor = new.data.fill_factor;
             data.fill_factor_set = new.data.fill_factor_set;
             data.adaptive = new.data.adaptive;
+            data.adaptive_set = new.data.adaptive_set;
             let mut region = NullRegion { data };
             // C reads the uncertainty with `astGetUnc( new, 0 )`, which yields
             // the *current*-Frame uncertainty and nothing at all when none was

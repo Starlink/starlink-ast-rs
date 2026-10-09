@@ -176,6 +176,26 @@ pub trait Region: Frame + Mapping + AsDynRegion {
     /// Whether this region is currently negated.
     fn is_negated(&self) -> bool;
 
+    /// Whether `Negated` has been explicitly set (C `TestNegated`). Negating
+    /// a Region sets it.
+    fn test_negated(&self) -> bool;
+
+    /// Store `Negated` together with its explicitly-set state, as C's raw
+    /// field assignment `this->negated = that->negated` does.
+    #[doc(hidden)]
+    fn set_negated_raw(&mut self, negated: bool, set: bool);
+
+    /// Set `Negated` (C `astSetNegated`).
+    fn set_negated(&mut self, negated: bool) {
+        self.set_negated_raw(negated, true);
+    }
+
+    /// Clear `Negated`, reverting to its default of false (C
+    /// `astClearNegated`).
+    fn clear_negated(&mut self) {
+        self.set_negated_raw(false, false);
+    }
+
     // ------------------------------------------------------------------
     // Attributes: Closed, FillFactor, MeshSize, Bounded, Adaptive
     // ------------------------------------------------------------------
@@ -242,8 +262,24 @@ pub trait Region: Frame + Mapping + AsDynRegion {
     /// Whether adaptive meshing is enabled.
     fn is_adaptive(&self) -> bool;
 
-    /// Set the adaptive meshing flag.
-    fn set_adaptive(&mut self, adaptive: bool);
+    /// Whether `Adaptive` has been explicitly set (C `TestAdaptive`).
+    fn test_adaptive(&self) -> bool;
+
+    /// Store `Adaptive` together with its explicitly-set state, as C's raw
+    /// field assignment `this->adaptive = that->adaptive` does.
+    #[doc(hidden)]
+    fn set_adaptive_raw(&mut self, adaptive: bool, set: bool);
+
+    /// Set the adaptive meshing flag (C `astSetAdaptive`).
+    fn set_adaptive(&mut self, adaptive: bool) {
+        self.set_adaptive_raw(adaptive, true);
+    }
+
+    /// Clear `Adaptive`, reverting to its default of true (C
+    /// `astClearAdaptive`).
+    fn clear_adaptive(&mut self) {
+        self.set_adaptive_raw(true, false);
+    }
 
     /// Whether this region currently carries a *dummy* FrameSet, i.e. it
     /// was deserialised without its own `Frm`/`FrmSet` and inherits the
@@ -494,7 +530,25 @@ pub trait Region: Frame + Mapping + AsDynRegion {
     /// UnitMap. This is distinct from [`set_region_fs`](Region::set_region_fs),
     /// which installs a real FrameSet.
     #[doc(hidden)]
-    fn set_region_fs_flag(&mut self, value: bool);
+    fn set_region_fs_flag(&mut self, value: bool) {
+        self.set_region_fs_raw(value, true);
+    }
+
+    /// Whether `RegionFS` has been explicitly set (C `TestRegionFS`).
+    #[doc(hidden)]
+    fn test_region_fs(&self) -> bool;
+
+    /// Store `RegionFS` together with its explicitly-set state, as C's raw
+    /// field assignment `this->regionfs = that->regionfs` does.
+    #[doc(hidden)]
+    fn set_region_fs_raw(&mut self, value: bool, set: bool);
+
+    /// Clear `RegionFS`, reverting to its default of true (C
+    /// `astClearRegionFS`).
+    #[doc(hidden)]
+    fn clear_region_fs(&mut self) {
+        self.set_region_fs_raw(true, false);
+    }
 
     /// The current value of the boolean `RegionFS` attribute (whether the
     /// encapsulated FrameSet is included in a dump). Mirrors reading C's
@@ -514,7 +568,7 @@ pub trait Region: Frame + Mapping + AsDynRegion {
     /// takes a new reference with `astClone`, and those must leave `RegionFS`
     /// alone. Compound classes override this to reach their component Regions.
     fn clear_region_fs_deep(&mut self) {
-        self.set_region_fs_flag(true);
+        self.clear_region_fs();
         if let Some(mut unc) = self.get_uncertainty() {
             unc.clear_region_fs_deep();
             self.store_uncertainty(Some(unc));
@@ -1279,17 +1333,14 @@ pub trait Region: Frame + Mapping + AsDynRegion {
     /// astClearUnc(this)` branch, which is how a simplified Region built from a
     /// default-uncertainty source ends up carrying no explicit uncertainty.
     fn reg_overlay(&mut self, that: &dyn Region, clear_unc: bool) -> AstResult<()> {
-        if self.is_negated() != that.is_negated() {
-            self.negate();
-        }
-        // C `astRegOverlay` copies `this->closed = that->closed` as a raw
-        // field assignment, propagating the `-INT_MAX` unset sentinel; mirror
-        // that by copying both the value and its explicitly-set state rather
-        // than forcing the attribute set (which would spuriously emit `Closed`
-        // on re-dump).
+        // C `astRegOverlay` copies `negated`, `closed`, `regionfs` and
+        // `adaptive` as raw field assignments, propagating the `-INT_MAX`
+        // unset sentinel; mirror that by copying each value with its
+        // explicitly-set state.
+        self.set_negated_raw(that.is_negated(), that.test_negated());
         self.set_closed_raw(that.is_closed(), that.test_closed());
-        self.set_region_fs_flag(that.region_fs_flag());
-        self.set_adaptive(that.is_adaptive());
+        self.set_region_fs_raw(that.region_fs_flag(), that.test_region_fs());
+        self.set_adaptive_raw(that.is_adaptive(), that.test_adaptive());
         if self.naxes() == that.naxes() {
             if that.test_mesh_size() {
                 self.set_mesh_size(that.mesh_size());

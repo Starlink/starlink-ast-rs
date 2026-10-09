@@ -816,6 +816,7 @@ impl Interval {
         let frameset = FrameSet::new(current_frame);
         let mut data = RegionData::new(frameset, vec![slbnd, subnd]);
         data.negated = self.data.negated;
+        data.negated_set = self.data.negated_set;
         data.closed = self.data.closed;
         data.closed_set = self.data.closed_set;
         data.mesh_size = self.data.mesh_size;
@@ -823,6 +824,7 @@ impl Interval {
         data.fill_factor = self.data.fill_factor;
         data.fill_factor_set = self.data.fill_factor_set;
         data.adaptive = self.data.adaptive;
+        data.adaptive_set = self.data.adaptive_set;
         let mut result = Interval { data };
         // C hands the constructor the uncertainty read in the *current* Frame
         // (interval.c:3479), and the constructor's SetUnc maps it back into the
@@ -1131,7 +1133,9 @@ impl Region for Interval {
         let make_interval = |lb: Vec<f64>, ub: Vec<f64>, negated: bool| -> Interval {
             let frameset = FrameSet::new(self.data.frameset.base().snapshot());
             let mut data = RegionData::new(frameset, vec![lb, ub]);
-            data.negated = negated;
+            if negated {
+                data.negate();
+            }
             Interval { data }
         };
         let large_int = make_interval(large_lbnd, large_ubnd, false);
@@ -1152,16 +1156,25 @@ impl Region for Interval {
 
     fn negated_copy(&self) -> DynRegion {
         let mut copy = self.clone();
-        copy.data.negated = !copy.data.negated;
+        copy.data.negate();
         Box::new(copy)
     }
 
     fn negate(&mut self) {
-        self.data.negated = !self.data.negated;
+        self.data.negate();
     }
 
     fn is_negated(&self) -> bool {
         self.data.negated
+    }
+
+    fn test_negated(&self) -> bool {
+        self.data.negated_set
+    }
+
+    fn set_negated_raw(&mut self, negated: bool, set: bool) {
+        self.data.negated = negated;
+        self.data.negated_set = set;
     }
 
     fn is_closed(&self) -> bool {
@@ -1222,8 +1235,13 @@ impl Region for Interval {
         self.data.adaptive
     }
 
-    fn set_adaptive(&mut self, adaptive: bool) {
+    fn test_adaptive(&self) -> bool {
+        self.data.adaptive_set
+    }
+
+    fn set_adaptive_raw(&mut self, adaptive: bool, set: bool) {
         self.data.adaptive = adaptive;
+        self.data.adaptive_set = set;
     }
 
     fn has_dummy_fs(&self) -> bool {
@@ -1296,8 +1314,13 @@ impl Region for Interval {
         self.data.invalidate_cache();
     }
 
-    fn set_region_fs_flag(&mut self, value: bool) {
-        self.data.set_region_fs_flag(value);
+    fn test_region_fs(&self) -> bool {
+        self.data.region_fs_set
+    }
+
+    fn set_region_fs_raw(&mut self, value: bool, set: bool) {
+        self.data.region_fs = value;
+        self.data.region_fs_set = set;
     }
 
     fn region_fs_flag(&self) -> bool {
@@ -1612,6 +1635,7 @@ impl Region for Interval {
                 closed: self.data.closed,
                 closed_set: self.data.closed_set,
                 adaptive: self.data.adaptive,
+                adaptive_set: self.data.adaptive_set,
                 negated: false,
             },
             unc,

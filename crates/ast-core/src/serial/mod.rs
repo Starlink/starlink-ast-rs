@@ -940,6 +940,17 @@ pub(crate) fn read_region_base(whole: &Node) -> AstResult<RegionData> {
     let object = &whole.section("Object");
     let node = &whole.section("Region");
     let negated = node.get_int("Negate", 0) != 0;
+    // C reads Negate and Adapt with a default of the unset sentinel, so each
+    // is set only when the dump has an uncommented line for it
+    // (region.c:13530, 13550).
+    let is_set = |key: &str| {
+        node.items
+            .iter()
+            .find(|i| i.key == key)
+            .is_some_and(|i| !matches!(&i.value, NodeValue::Unset(_)))
+    };
+    let negated_set = is_set("Negate");
+    let adaptive_set = is_set("Adapt");
     // A present `Fill`/`MeshSz` line means the attribute was explicitly set
     // (C emits them only when Test<Attr> is true). Their absence leaves the
     // effective value at the class default.
@@ -1051,6 +1062,7 @@ pub(crate) fn read_region_base(whole: &Node) -> AstResult<RegionData> {
             .map(|_| object.get_int("UseDfs", 1) != 0),
         points,
         negated,
+        negated_set,
         closed,
         closed_set,
         mesh_size,
@@ -1058,9 +1070,13 @@ pub(crate) fn read_region_base(whole: &Node) -> AstResult<RegionData> {
         fill_factor,
         fill_factor_set,
         adaptive,
+        adaptive_set,
         uncertainty,
         dummy_fs,
         region_fs,
+        // Load always sets RegionFS: to 1 with a Frame, to the value read
+        // with a FrameSet, and to 0 with neither (region.c:13589-13620).
+        region_fs_set: true,
         cached_base_mesh: RefCell::new(None),
     };
 

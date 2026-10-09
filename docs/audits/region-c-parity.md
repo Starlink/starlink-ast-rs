@@ -81,6 +81,7 @@ Seams first, because the HIGH findings in themes B to F, and the Stc port, are f
 | PG-3 | FIXED 2026-10-09: `Polygon::convex` is `astConvex<X>`, generic over the pixel type, with every comparison as `PixelOper` and the `starpix` convention: a port of polygon.c `ConvexHull`, `FindBoxEdge` and `PartHull`, with C's vertex order and repeated corner vertices, a PIXEL Frame, no `EnsureInside`, and `None` when no pixel is selected; `convex_hull_f32` is removed | `tests/test_region_convex_oracle.rs`: all six comparisons, `starpix`, an int array, one pixel and none, exact against C dumps from `tools/oracle_fixtures/region_convex_probe.c`; `test_regions.rs` `convex_hull_basic` checks checkConvex's vertex order |
 | PG-2 | FIXED 2026-10-09: `Polygon::downsize` is `astDownsize`, a port of polygon.c `DownsizePoly` with `FindMax` (plane geometry in a plain Frame, `resolve_points` otherwise) and the Segment chain ordered by error; `Polygon::outline` is `astOutline<X>`, a port of `FindInsidePoint`'s spiral search, the rightward search that crosses holes, `TraceEdge`, `SmoothPoly` and the box-size rules, in a PIXEL Frame; both take any `PixelValue` type, whose C type code names the function in error messages | `tests/test_region_outline_oracle.rs`: downsizing by error, vertex count, both and neither, and on the sky; outlines for every comparison, smoothed and downsized, `starpix`, across a hole, by spiral search and for an int array, exact against C dumps from `tools/oracle_fixtures/region_outline_probe.c`, and the `AST__NONIN` message |
 | PG-6, CR-7, PG-4, EL-4, IN-5, NR-3 | FIXED 2026-10-09: `Region::is_bounded` and `RegionGeometry::is_bounded_inner` return `AstResult<bool>`, as C's GetBounded can raise, so a Polygon's geometry error and a CmpRegion's overlap error propagate instead of reading as bounded and unbounded; CmpRegion's `is_bounded_inner` is its `get_bounded`. The Polygon constructor reports a non-2-D Frame and a BAD vertex as `AST__BADIN` with C's messages, checking every X before any Y, no vertices as `AST__NPTIN`, and accepts one or two vertices. The Ellipse constructor checks the axis count and BAD centre, axis and angle values with C's codes and messages, accepts negative axes, and leaves points that do not determine an ellipse to be rejected on first use, as ellipse.c `Cache` rejects them, which also covers a loaded Ellipse. The PointList constructor reports a point of the wrong length as `AST__NCPIN` and no points as `AST__NPTIN`, with C's messages. C's Interval `RegCentre` query returned the base Frame centre whatever Frame was asked for, and C's NullRegion `GetDefUnc` built the uncertainty in the current Frame; both fixed upstream (93803141, 74e0e51c), and the port already behaved as the fixes do | `tests/test_region_errors_oracle.rs`: the Polygon and Ellipse cases against C codes from `tools/oracle_fixtures/region_errors_probe.c`, with C's messages; `tests/test_interval.rs` and `tests/test_nullregion.rs` port the new testregions checks |
+| NR-2, RB-14 | FIXED 2026-10-09: a NullRegion's `transform` is nullregion.c `Transform`: the input copied unchanged when negated, as the inherited unit Transform copies it, BAD axes and all and whatever the FrameSet, and every value BAD otherwise; `point_in_region` is a point left good. Negated, Adaptive and RegionFS carry an explicitly-set state, with `test_negated`/`set_negated`/`clear_negated`, `test_adaptive`/`clear_adaptive` and `test_region_fs`/`clear_region_fs` beside the existing accessors: negating sets Negated, as `astNegate` does through `astSetNegated`; `reg_overlay` copies all three raw with their set state, as `astRegOverlay` copies the fields; the merges clear Negated or set it only when true, as C does; Load sets RegionFS and reads Negate and Adapt as set only when uncommented; and a copy clears RegionFS | `tests/test_region_nulltran_oracle.rs`: negated, mapped and un-negated NullRegions against C from `tools/oracle_fixtures/region_nulltran_probe.c`; `tests/test_region_attr_test_oracle.rs`: 11 states of a Box against C from `tools/oracle_fixtures/region_attr_test_probe.c` |
 | PL-1 | WITHDRAWN: a C probe masks the same two pixels as the port with a UnitMap; the Mapping direction is RB-12 | Appendix C |
 
 
@@ -94,14 +95,14 @@ C-side claims marked UNVERIFIED were established by reading region.c.
 | C name (region.c:line) | Rust counterpart | Kind | Status |
 |---|---|---|---|
 | Negated Get/Set (attr 12533-12536) | `Region::is_negated/negate/negated_copy` (regions/mod.rs:163-169) | ceremony | PORTED (no set(bool)) |
-| TestNegated/ClearNegated | NONE | ceremony | MISSING (RB-14) |
+| TestNegated/ClearNegated | `test_negated`/`clear_negated` | ceremony | PORTED (RB-14 fixed) |
 | RegionFS Get/Set (12614-12620) | `region_fs_flag/set_region_fs_flag` (mod.rs:440-446, doc-hidden) | ceremony | PORTED |
-| TestRegionFS/ClearRegionFS | NONE (bool, no unset state) | ceremony | MISSING (RB-14) |
+| TestRegionFS/ClearRegionFS | `test_region_fs`/`clear_region_fs` | ceremony | PORTED (RB-14 fixed) |
 | Closed Get/Set/Test (12773-12778) | `is_closed/set_closed/test_closed/set_closed_raw` (mod.rs:176-190) | ceremony | PORTED |
-| ClearClosed | NONE | ceremony | MISSING (RB-14) |
+| ClearClosed | `clear_closed` | ceremony | PORTED (RB-14 fixed) |
 | MeshSize G/S/T/C (12722-12725) | `mesh_size/set_mesh_size/test_mesh_size/clear_mesh_size` (mod.rs:211-220; data.rs:249-286) | ceremony | PORTED |
 | Adaptive Get/Set (12489-12494) | `is_adaptive/set_adaptive` (mod.rs:226-229) | ceremony | DIVERGENT: has no effect (RB-3) |
-| TestAdaptive/ClearAdaptive | NONE | ceremony | MISSING (RB-14) |
+| TestAdaptive/ClearAdaptive | `test_adaptive`/`clear_adaptive` | ceremony | PORTED (RB-14 fixed) |
 | FillFactor G/S/T/C (12658-12666) | `fill_factor/set_fill_factor/test_fill_factor/clear_fill_factor` (mod.rs:196-205) | ceremony | PORTED (RB-10 fixed) |
 | Bounded (read-only) / GetBounded (3364) | `is_bounded` per class + `RegionData::closed_curve_bounded` (data.rs:331) | architecture | PORTED (SkyFrame rule present) |
 | ResetCache (10219) | `RegionData::invalidate_cache` (data.rs:295) | ceremony | PORTED |
@@ -444,7 +445,7 @@ Its coverage tables, findings, and the status of the earlier audits' class findi
 #### NullRegion (nullregion.c vtab 307-323)
 | C name | Rust | kind | status |
 |---|---|---|---|
-| Transform (1410) | `reg_base_inside` (nullregion.rs:108) + `region_transform` | architecture | DIVERGENT (NR-2, LOW) |
+| Transform (1410) | `reg_base_inside` (nullregion.rs:108) + `region_transform` | architecture | PORTED (NR-2 fixed) |
 | Simplify (1314), MapMerge (338) | | architecture | OUT-OF-SCOPE |
 | GetDefUnc (170) | `get_def_unc` (309) | architecture | PORTED (NR-3: C fixed upstream) |
 | Overlap/OverlapX (798/874) | hard-coded in `overlap.rs:45`/`null_overlap` (67) | architecture | PORTED (no seam; fine for NullRegion) |

@@ -754,16 +754,25 @@ impl Region for Ellipse {
 
     fn negated_copy(&self) -> DynRegion {
         let mut copy = self.clone();
-        copy.data.negated = !copy.data.negated;
+        copy.data.negate();
         Box::new(copy)
     }
 
     fn negate(&mut self) {
-        self.data.negated = !self.data.negated;
+        self.data.negate();
     }
 
     fn is_negated(&self) -> bool {
         self.data.negated
+    }
+
+    fn test_negated(&self) -> bool {
+        self.data.negated_set
+    }
+
+    fn set_negated_raw(&mut self, negated: bool, set: bool) {
+        self.data.negated = negated;
+        self.data.negated_set = set;
     }
 
     fn is_closed(&self) -> bool {
@@ -824,8 +833,13 @@ impl Region for Ellipse {
         self.data.adaptive
     }
 
-    fn set_adaptive(&mut self, adaptive: bool) {
+    fn test_adaptive(&self) -> bool {
+        self.data.adaptive_set
+    }
+
+    fn set_adaptive_raw(&mut self, adaptive: bool, set: bool) {
         self.data.adaptive = adaptive;
+        self.data.adaptive_set = set;
     }
 
     fn has_dummy_fs(&self) -> bool {
@@ -887,8 +901,13 @@ impl Region for Ellipse {
         self.data.invalidate_cache();
     }
 
-    fn set_region_fs_flag(&mut self, value: bool) {
-        self.data.set_region_fs_flag(value);
+    fn test_region_fs(&self) -> bool {
+        self.data.region_fs_set
+    }
+
+    fn set_region_fs_raw(&mut self, value: bool, set: bool) {
+        self.data.region_fs = value;
+        self.data.region_fs_set = set;
     }
 
     fn region_fs_flag(&self) -> bool {

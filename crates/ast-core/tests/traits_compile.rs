@@ -232,6 +232,10 @@ impl Region for DummyRegion {
     fn is_negated(&self) -> bool {
         false
     }
+    fn test_negated(&self) -> bool {
+        false
+    }
+    fn set_negated_raw(&mut self, _negated: bool, _set: bool) {}
     fn is_closed(&self) -> bool {
         true
     }
@@ -264,7 +268,10 @@ impl Region for DummyRegion {
     fn is_adaptive(&self) -> bool {
         true
     }
-    fn set_adaptive(&mut self, _adaptive: bool) {}
+    fn test_adaptive(&self) -> bool {
+        false
+    }
+    fn set_adaptive_raw(&mut self, _adaptive: bool, _set: bool) {}
     fn has_dummy_fs(&self) -> bool {
         false
     }
@@ -306,7 +313,10 @@ impl Region for DummyRegion {
         Err(AstError::new(ErrorCode::Nodef, "not implemented"))
     }
     fn store_uncertainty(&mut self, _unc: Option<DynRegion>) {}
-    fn set_region_fs_flag(&mut self, _value: bool) {}
+    fn test_region_fs(&self) -> bool {
+        false
+    }
+    fn set_region_fs_raw(&mut self, _value: bool, _set: bool) {}
     fn region_fs_flag(&self) -> bool {
         false
     }

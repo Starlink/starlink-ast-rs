@@ -58,6 +58,10 @@ pub(crate) struct RegionData {
     /// Whether the region is negated (inside/outside sense flipped).
     pub(crate) negated: bool,
 
+    /// Tracks whether `negated` was explicitly set, as C's `TestNegated`
+    /// (`this->negated != -INT_MAX`). `astNegate` sets it.
+    pub(crate) negated_set: bool,
+
     /// Whether boundary points are considered interior (closed=true)
     /// or exterior (closed=false).
     pub(crate) closed: bool,
@@ -97,6 +101,10 @@ pub(crate) struct RegionData {
     /// Whether adaptive meshing is enabled.
     pub(crate) adaptive: bool,
 
+    /// Tracks whether `adaptive` was explicitly set, as C's `TestAdaptive`
+    /// (`this->adaptive != -INT_MAX`).
+    pub(crate) adaptive_set: bool,
+
     /// The uncertainty region, if set.
     pub(crate) uncertainty: Option<DynRegion>,
 
@@ -121,6 +129,11 @@ pub(crate) struct RegionData {
     /// only when `regionfs != 0` (`region.c:13099-13107`).
     pub(crate) region_fs: bool,
 
+    /// Tracks whether `region_fs` was explicitly set, as C's `TestRegionFS`
+    /// (`this->regionfs != -INT_MAX`). A constructed Region leaves it unset;
+    /// a loaded one always has it set (region.c `Load`).
+    pub(crate) region_fs_set: bool,
+
     /// Cached base-frame boundary mesh (lazily computed).
     pub(crate) cached_base_mesh: RefCell<Option<Vec<Vec<f64>>>>,
 }
@@ -134,6 +147,7 @@ impl Clone for RegionData {
             use_defs: None,
             points: self.points.clone(),
             negated: self.negated,
+            negated_set: self.negated_set,
             closed: self.closed,
             closed_set: self.closed_set,
             mesh_size: self.mesh_size,
@@ -141,9 +155,11 @@ impl Clone for RegionData {
             fill_factor: self.fill_factor,
             fill_factor_set: self.fill_factor_set,
             adaptive: self.adaptive,
+            adaptive_set: self.adaptive_set,
             uncertainty: self.uncertainty.clone(),
             dummy_fs: self.dummy_fs,
             region_fs: self.region_fs,
+            region_fs_set: self.region_fs_set,
             cached_base_mesh: RefCell::new(self.cached_base_mesh.borrow().clone()),
         }
     }
@@ -194,6 +210,7 @@ impl RegionData {
             use_defs: None,
             points,
             negated: false,
+            negated_set: false,
             closed: true,
             closed_set: false,
             mesh_size: 0,
@@ -201,9 +218,11 @@ impl RegionData {
             fill_factor: 1.0,
             fill_factor_set: false,
             adaptive: true,
+            adaptive_set: false,
             uncertainty: None,
             dummy_fs: false,
             region_fs: true,
+            region_fs_set: false,
             cached_base_mesh: RefCell::new(None),
         }
     }
@@ -234,12 +253,11 @@ impl RegionData {
         }
     }
 
-    /// Set the boolean `RegionFS` attribute (C `astSetRegionFS`,
-    /// region.c:12603). When `false`, the encapsulated FrameSet is omitted
-    /// from a dump. Unlike [`set_region_fs`](Self::set_region_fs), this does
-    /// not install a new FrameSet — it only toggles the dump flag.
-    pub(crate) fn set_region_fs_flag(&mut self, value: bool) {
-        self.region_fs = value;
+    /// C `astNegate`: `astSetNegated( this, !astGetNegated( this ) )`, which
+    /// leaves Negated set.
+    pub(crate) fn negate(&mut self) {
+        self.negated = !self.negated;
+        self.negated_set = true;
     }
 
     /// The effective MeshSize: the explicitly-set value if any, otherwise
