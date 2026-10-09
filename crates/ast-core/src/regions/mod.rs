@@ -28,7 +28,7 @@ pub use ellipse::{Ellipse, EllipseBuilder, EllipsePars};
 pub use interval::{Interval, IntervalBuilder};
 pub use nullregion::{NullRegion, NullRegionBuilder};
 pub use pointlist::{PointList, PointListBuilder};
-pub use polygon::{PixelOper, Polygon, PolygonBuilder};
+pub use polygon::{PixelOper, PixelValue, Polygon, PolygonBuilder};
 pub use prism::{Prism, PrismBuilder};
 
 pub use masking::mask;

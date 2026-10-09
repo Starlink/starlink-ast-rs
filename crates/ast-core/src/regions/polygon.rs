@@ -116,18 +116,90 @@ impl PixelOper {
     }
 }
 
-/// A 2-D array, row by row with X varying fastest, and the test that selects
-/// its pixels. Pixels are addressed by 1-based GRID indices, as polygon.c
-/// addresses them.
+/// A pixel type [`Polygon::convex`] and [`Polygon::outline`] accept: one of
+/// the types polygon.c generates `astConvex<X>` and `astOutline<X>` for.
+pub trait PixelValue: PartialOrd + Copy + private::Sealed {
+    /// The code C appends to the function name for this type, as in
+    /// `astOutlineF`.
+    const CODE: &'static str;
+    /// The value as a double, as C's `(double) value`.
+    fn to_f64(self) -> f64;
+}
+
+mod private {
+    pub trait Sealed {}
+}
+
+macro_rules! pixel_value {
+    ($($t:ty => $code:literal),* $(,)?) => {$(
+        impl private::Sealed for $t {}
+        impl PixelValue for $t {
+            const CODE: &'static str = $code;
+            fn to_f64(self) -> f64 {
+                self as f64
+            }
+        }
+    )*};
+}
+
+pixel_value!(
+    f64 => "D", f32 => "F", i64 => "L", u64 => "UL", i32 => "I", u32 => "UI",
+    i16 => "S", u16 => "US", i8 => "B", u8 => "UB",
+);
+
+/// A 2-D array, row by row with X varying fastest, with pixel indices `lbnd`
+/// to `ubnd` inclusive, and the test that selects its pixels. `ConvexHull`
+/// addresses pixels by 1-based GRID indices, `Outline` by pixel indices.
 struct PixelSelection<'a, T> {
     value: T,
     oper: PixelOper,
     array: &'a [T],
+    lbnd: [i64; 2],
+    ubnd: [i64; 2],
     xdim: i64,
     ydim: i64,
 }
 
-impl<T: PartialOrd + Copy> PixelSelection<'_, T> {
+impl<'a, T: PixelValue> PixelSelection<'a, T> {
+    /// The selection, or [`ErrorCode::Dimin`] naming C function `fname` if
+    /// the bounds are empty or `array` does not cover them; C reads past the
+    /// array in those cases.
+    fn new(
+        value: T,
+        oper: PixelOper,
+        array: &'a [T],
+        lbnd: [i64; 2],
+        ubnd: [i64; 2],
+        fname: &str,
+    ) -> AstResult<Self> {
+        let xdim = ubnd[0] - lbnd[0] + 1;
+        let ydim = ubnd[1] - lbnd[1] + 1;
+        if xdim < 1 || ydim < 1 || (array.len() as i64) < xdim * ydim {
+            return Err(AstError::new(
+                ErrorCode::Dimin,
+                format!(
+                    "{fname}{}: the array has {} elements, which does not cover \
+                     pixel bounds ({}:{},{}:{}).",
+                    T::CODE,
+                    array.len(),
+                    lbnd[0],
+                    ubnd[0],
+                    lbnd[1],
+                    ubnd[1]
+                ),
+            ));
+        }
+        Ok(PixelSelection {
+            value,
+            oper,
+            array,
+            lbnd,
+            ubnd,
+            xdim,
+            ydim,
+        })
+    }
+
     fn selected(&self, index: i64) -> bool {
         self.oper.selects(self.array[index as usize], self.value)
     }
@@ -268,7 +340,8 @@ impl<T: PartialOrd + Copy> PixelSelection<'_, T> {
     /// polygon.c `ConvexHull`: the convex hull of the selected pixels, as the
     /// hulls of the four corners of their bounding box, bottom right, top
     /// right, top left and bottom left, or `None` when no pixel is selected.
-    fn convex_hull(&self, lbnd: [i64; 2], starpix: bool) -> AstResult<Option<Vec<[f64; 2]>>> {
+    fn convex_hull(&self, starpix: bool) -> AstResult<Option<Vec<[f64; 2]>>> {
+        let lbnd = self.lbnd;
         let (ylo, yloxmax, yloxmin) = self.find_box_edge(1, true);
         if ylo <= 0 {
             return Ok(None);
@@ -282,6 +355,587 @@ impl<T: PartialOrd + Copy> PixelSelection<'_, T> {
         hull.extend(self.part_hull((yhixmin, yhi), (xlo, xloymax), starpix, lbnd)?);
         hull.extend(self.part_hull((xlo, xloymin), (yloxmin, ylo), starpix, lbnd)?);
         Ok(Some(hull))
+    }
+}
+
+/// The perturbation, in pixels, that `TraceEdge` moves each outline vertex
+/// towards the inside of the outline, off the pixel corner (polygon.c
+/// `DELTA`).
+const TRACE_DELTA: f64 = 0.01;
+
+impl<T: PixelValue> PixelSelection<'_, T> {
+    /// polygon.c `FindInsidePoint`: the pixel indices and vector index of the
+    /// central pixel if it is selected, or else of the first selected pixel
+    /// met by a spiral search out from it, each ring searched anti-clockwise
+    /// from the middle of its right edge. The search stops at the largest
+    /// ring that fits in the array.
+    fn find_inside_point(&self) -> AstResult<(i64, i64, i64)> {
+        let (lbnd, ubnd, nx) = (self.lbnd, self.ubnd, self.xdim);
+        let mut inx = (ubnd[0] + lbnd[0]) / 2;
+        let mut iny = (ubnd[1] + lbnd[1]) / 2;
+        let mut iv = (inx - lbnd[0]) + nx * (iny - lbnd[1]);
+        if self.selected(iv) {
+            return Ok((inx, iny, iv));
+        }
+
+        let cy = iny;
+        let nskin = (ubnd[0] - inx)
+            .min(inx - lbnd[0])
+            .min(ubnd[1] - iny)
+            .min(iny - lbnd[1]);
+        let (mut xlo, mut xhi, mut ylo, mut yhi) = (inx, inx, iny, iny);
+        for _ in 0..nskin {
+            xhi += 1;
+            xlo -= 1;
+            yhi += 1;
+            ylo -= 1;
+            iv += 1;
+            inx += 1;
+
+            // Up the right edge from the middle.
+            iny = cy;
+            while iny <= yhi {
+                if self.selected(iv) {
+                    return Ok((inx, iny, iv));
+                }
+                iv += nx;
+                iny += 1;
+            }
+            iv -= nx;
+            iny -= 1;
+
+            // Left along the top edge.
+            inx = xhi;
+            while inx >= xlo {
+                if self.selected(iv) {
+                    return Ok((inx, iny, iv));
+                }
+                iv -= 1;
+                inx -= 1;
+            }
+            iv += 1;
+            inx += 1;
+
+            // Down the left edge.
+            iny = yhi;
+            while iny >= ylo {
+                if self.selected(iv) {
+                    return Ok((inx, iny, iv));
+                }
+                iv -= nx;
+                iny -= 1;
+            }
+            iv += nx;
+            iny += 1;
+
+            // Right along the bottom edge.
+            inx = xlo;
+            while inx <= xhi {
+                if self.selected(iv) {
+                    return Ok((inx, iny, iv));
+                }
+                iv += 1;
+                inx += 1;
+            }
+            iv -= 1;
+            inx -= 1;
+
+            // Up the right edge to just below the middle.
+            iny = ylo;
+            while iny < cy {
+                if self.selected(iv) {
+                    return Ok((inx, iny, iv));
+                }
+                iv += nx;
+                iny += 1;
+            }
+        }
+
+        let text = match self.oper {
+            PixelOper::Lt => "less than",
+            PixelOper::Le => "less than or equal to",
+            PixelOper::Eq => "equal to",
+            PixelOper::Ne => "not equal to",
+            PixelOper::Ge => "greater than or equal to",
+            PixelOper::Gt => "greater than",
+        };
+        Err(AstError::new(
+            ErrorCode::Nonin,
+            format!(
+                "astOutline{}: Could not find a pixel value {text} {} in the supplied array.",
+                T::CODE,
+                crate::frames::axis_format::format_value("%g", 6, self.value.to_f64())?
+            ),
+        ))
+    }
+
+    /// polygon.c `TraceEdge`: the outline, as PIXEL coordinates, of the
+    /// selected pixels round pixel (ix0,iy0), whose right neighbour is not
+    /// selected, traced anti-clockwise from corner to pixel corner, each
+    /// vertex moved [`TRACE_DELTA`] towards the inside. With `full` every
+    /// corner is a vertex, otherwise only those where the outline turns.
+    /// `None` when the outline turns more often right than left, so encloses
+    /// a hole rather than the selected pixels.
+    fn trace_edge(
+        &self,
+        ix0: i64,
+        iy0: i64,
+        starpix: bool,
+        full: bool,
+    ) -> Option<(Vec<f64>, Vec<f64>)> {
+        let (lbnd, ubnd, nx) = (self.lbnd, self.ubnd, self.xdim);
+        let (mut xvert, mut yvert) = (Vec::new(), Vec::new());
+
+        // The corners of a pixel are 0 bottom left, 1 top left, 2 top right
+        // and 3 bottom right. The trace starts up the right edge of
+        // (ix0,iy0), arriving at its top right corner.
+        let (mut ix, mut iy) = (ix0, iy0);
+        let mut at = 2;
+        let mut pa = (ix - lbnd[0]) + nx * (iy - lbnd[1]);
+        let mut nright = 0i64;
+        loop {
+            let (xx, yy, pc, dx, dy);
+            match at {
+                0 => {
+                    (xx, yy) = if starpix {
+                        (ix as f64 - 1.0, iy as f64 - 1.0)
+                    } else {
+                        (ix as f64 - 0.5, iy as f64 - 0.5)
+                    };
+                    let pb = pa - nx - 1;
+                    pc = pb + 1;
+                    if iy > lbnd[1] && ix > lbnd[0] && self.selected(pb) {
+                        nright += 1;
+                        pa = pb;
+                        at = 1;
+                        ix -= 1;
+                        iy -= 1;
+                        (dx, dy) = (TRACE_DELTA, -TRACE_DELTA);
+                    } else if iy > lbnd[1] && self.selected(pc) {
+                        pa = pc;
+                        at = 0;
+                        iy -= 1;
+                        (dx, dy) = (TRACE_DELTA, 0.0);
+                    } else {
+                        nright -= 1;
+                        at = 3;
+                        (dx, dy) = (TRACE_DELTA, TRACE_DELTA);
+                    }
+                }
+                1 => {
+                    (xx, yy) = if starpix {
+                        (ix as f64 - 1.0, iy as f64)
+                    } else {
+                        (ix as f64 - 0.5, iy as f64 + 0.5)
+                    };
+                    let pb = pa + nx - 1;
+                    pc = pa - 1;
+                    if iy < ubnd[1] && ix > lbnd[0] && self.selected(pb) {
+                        nright += 1;
+                        pa = pb;
+                        at = 2;
+                        ix -= 1;
+                        iy += 1;
+                        (dx, dy) = (-TRACE_DELTA, -TRACE_DELTA);
+                    } else if ix > lbnd[0] && self.selected(pc) {
+                        pa = pc;
+                        at = 1;
+                        ix -= 1;
+                        (dx, dy) = (0.0, -TRACE_DELTA);
+                    } else {
+                        nright -= 1;
+                        at = 0;
+                        (dx, dy) = (TRACE_DELTA, -TRACE_DELTA);
+                    }
+                }
+                2 => {
+                    (xx, yy) = if starpix {
+                        (ix as f64, iy as f64)
+                    } else {
+                        (ix as f64 + 0.5, iy as f64 + 0.5)
+                    };
+                    let pb = pa + nx + 1;
+                    pc = pa + nx;
+                    if iy < ubnd[1] && ix < ubnd[0] && self.selected(pb) {
+                        nright += 1;
+                        pa = pb;
+                        at = 3;
+                        ix += 1;
+                        iy += 1;
+                        (dx, dy) = (-TRACE_DELTA, TRACE_DELTA);
+                    } else if iy < ubnd[1] && self.selected(pc) {
+                        pa = pc;
+                        at = 2;
+                        iy += 1;
+                        (dx, dy) = (-TRACE_DELTA, 0.0);
+                    } else {
+                        nright -= 1;
+                        at = 1;
+                        (dx, dy) = (-TRACE_DELTA, -TRACE_DELTA);
+                    }
+                }
+                _ => {
+                    (xx, yy) = if starpix {
+                        (ix as f64, iy as f64 - 1.0)
+                    } else {
+                        (ix as f64 + 0.5, iy as f64 - 0.5)
+                    };
+                    let pb = pa - (nx - 1);
+                    pc = pa + 1;
+                    if iy > lbnd[1] && ix < ubnd[0] && self.selected(pb) {
+                        nright += 1;
+                        pa = pb;
+                        at = 0;
+                        ix += 1;
+                        iy -= 1;
+                        (dx, dy) = (TRACE_DELTA, TRACE_DELTA);
+                    } else if ix < ubnd[0] && self.selected(pc) {
+                        pa = pc;
+                        at = 3;
+                        ix += 1;
+                        (dx, dy) = (0.0, TRACE_DELTA);
+                    } else {
+                        nright -= 1;
+                        at = 2;
+                        (dx, dy) = (-TRACE_DELTA, TRACE_DELTA);
+                    }
+                }
+            }
+            // A corner where the outline bends, or every corner when the
+            // outline is to be smoothed.
+            if full || pa != pc {
+                xvert.push(xx + dx);
+                yvert.push(yy + dy);
+            }
+            if ix == ix0 && iy == iy0 && at == 2 {
+                break;
+            }
+        }
+        (nright <= 0).then_some((xvert, yvert))
+    }
+}
+
+/// polygon.c `SmoothPoly`: replace each vertex by `strength` times the mean
+/// of the vertices in a box of `2*boxsize+1` vertices centred on it, plus
+/// `1-strength` times itself. The box wraps round the ends of the polygon,
+/// and is narrowed to leave room for two boxes round it.
+fn smooth_poly(x: &mut [f64], y: &mut [f64], boxsize: i32, strength: f64) {
+    let nv = x.len();
+    let (ox, oy) = (x.to_vec(), y.to_vec());
+    let b = 1.0 - strength;
+
+    let mut half_width = nv as i64 / 4 - 1;
+    if i64::from(boxsize) < half_width {
+        half_width = i64::from(boxsize);
+    }
+    if half_width < 1 {
+        half_width = 1;
+    }
+    let half_width = half_width as usize;
+    let a = strength / (2 * half_width + 1) as f64;
+
+    // The sums over the box centred on the first vertex, which takes
+    // vertices from the end of the polygon.
+    let (mut px, mut qx) = (1, nv);
+    let (mut sx, mut sy) = (ox[0], oy[0]);
+    for _ in 0..half_width {
+        qx -= 1;
+        sx += ox[px] + ox[qx];
+        sy += oy[px] + oy[qx];
+        px += 1;
+    }
+
+    // Each step forms the new vertex, then moves the box on one vertex: the
+    // first half box drops vertices from the end of the polygon, the middle
+    // drops them from the start, and the last half box adds them from the
+    // start.
+    let mut i = 0;
+    let mut step = |i: usize, px: usize, qx: usize, sx: &mut f64, sy: &mut f64| {
+        x[i] = a * *sx + b * ox[i];
+        y[i] = a * *sy + b * oy[i];
+        *sx += ox[px] - ox[qx];
+        *sy += oy[px] - oy[qx];
+    };
+    while i < half_width {
+        step(i, px, qx, &mut sx, &mut sy);
+        px += 1;
+        qx += 1;
+        i += 1;
+    }
+    qx = 0;
+    while i < nv - half_width - 1 {
+        step(i, px, qx, &mut sx, &mut sy);
+        px += 1;
+        qx += 1;
+        i += 1;
+    }
+    px = 0;
+    while i < nv {
+        step(i, px, qx, &mut sx, &mut sy);
+        px += 1;
+        qx += 1;
+        i += 1;
+    }
+}
+
+/// One edge of a downsized polygon (polygon.c `Segment`): the indices of the
+/// original vertices at its ends, `i1` in the first cycle and `i2` possibly
+/// in the second (so `i2 > i1`), and the largest distance of an original
+/// vertex between them from the edge, at vertex `imax`.
+#[derive(Debug, Clone, Copy)]
+struct Segment {
+    i1: usize,
+    i2: usize,
+    error: f64,
+    imax: usize,
+}
+
+impl Segment {
+    /// polygon.c `NewSegment` given no Segment to reuse. C leaves `error`
+    /// and `imax` uninitialised; they are set by `find_max` before use, but
+    /// for an edge whose original vertices all lie more than one unit to its
+    /// left, a signed `find_max` leaves `imax` as it was, and this sets it to
+    /// the start.
+    fn new(i1: usize, i2: usize, nv: usize) -> Self {
+        let mut seg = Segment {
+            i1,
+            i2,
+            error: 0.0,
+            imax: i1,
+        };
+        seg.reset(i1, i2, nv);
+        seg.imax = seg.i1;
+        seg
+    }
+
+    /// polygon.c `NewSegment` given a Segment to reuse: set the ends, keeping
+    /// `error` and `imax`.
+    fn reset(&mut self, i1: usize, mut i2: usize, nv: usize) {
+        if i2 < i1 {
+            i2 += nv;
+        }
+        if i1 < nv {
+            self.i1 = i1;
+            self.i2 = i2;
+        } else {
+            self.i1 = i1 - nv;
+            self.i2 = i2 - nv;
+        }
+    }
+
+    /// polygon.c `FindMax`: the original vertex between the ends furthest
+    /// from the line joining them, to the right of it, or either side when
+    /// `abs`. In a plain Frame this is plane geometry; otherwise the Frame's
+    /// `resolve_points` gives the distances.
+    fn find_max(&mut self, frm: &dyn Frame, x: &[f64], y: &[f64], abs: bool) -> AstResult<()> {
+        let nv = x.len();
+        let i1 = self.i1;
+        let mut i2 = self.i2;
+        let n = i2 as i64 - i1 as i64 - 1;
+        let mut i2b = i2;
+        if i2 >= nv {
+            i2 -= nv;
+            i2b = nv;
+        }
+
+        if n < 1 {
+            self.error = 0.0;
+            self.imax = i1;
+        } else if frm.as_any().is::<crate::frames::BasicFrame>() {
+            let (ax, ay) = (x[i1], y[i1]);
+            let bax = x[i2] - ax;
+            let bay = y[i2] - ay;
+            let ba = (bax * bax + bay * bay).sqrt();
+            self.error = -1.0;
+            let mut test = |i: usize, imax: usize| {
+                let cax = x[i] - ax;
+                let cay = y[i] - ay;
+                let mut error = (bay * cax - cay * bax) / ba;
+                if abs {
+                    error = error.abs();
+                }
+                if error > self.error {
+                    self.error = error;
+                    self.imax = imax;
+                }
+            };
+            for i in i1 + 1..i2b {
+                test(i, i);
+            }
+            if i2b != i2 {
+                for i in 0..i2 {
+                    test(i, i + i2b);
+                }
+            }
+        } else {
+            let mut between: Vec<[f64; 2]> = (i1 + 1..i2b).map(|i| [x[i], y[i]]).collect();
+            if i2b != i2 {
+                between.extend((0..i2).map(|i| [x[i], y[i]]));
+            }
+            let resolved = frm.resolve_points(
+                &[x[i1], y[i1]],
+                &[x[i2], y[i2]],
+                &PointSet::from_rows(&between),
+            )?;
+            self.error = -1.0;
+            for i in 1..=n as usize {
+                let mut error = resolved.point(i - 1)[1];
+                if abs {
+                    error = error.abs();
+                }
+                if error > self.error {
+                    self.error = error;
+                    self.imax = i + i1;
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+/// polygon.c `AddToChain`: insert Segment `seg` into `chain`, which is
+/// ordered by decreasing error, after every Segment whose error it does not
+/// exceed.
+fn add_to_chain(chain: &mut Vec<usize>, segs: &[Segment], seg: usize) {
+    let error = segs[seg].error;
+    let at = if chain.is_empty() || error > segs[chain[0]].error {
+        0
+    } else {
+        (1..chain.len())
+            .find(|&k| error > segs[chain[k]].error)
+            .unwrap_or(chain.len())
+    };
+    chain.insert(at, seg);
+}
+
+/// polygon.c `DownsizePoly`: the vertices of a polygon, given as `x` and `y`
+/// in Frame `frm`, reduced to a subset that keeps every original vertex
+/// within `maxerr` of the result, or that has `maxvert` vertices, whichever
+/// comes first. `maxerr` at or below zero means no error limit, and
+/// `maxvert` below 3 no vertex limit. The vertices are added one at a time
+/// to a triangle, each time the one furthest from the edge that departs
+/// furthest from the original.
+fn downsize_poly(
+    x: &[f64],
+    y: &[f64],
+    maxerr: f64,
+    maxvert: usize,
+    frm: &dyn Frame,
+) -> AstResult<Vec<Vec<f64>>> {
+    let nv = x.len();
+    let copy = || (0..nv).map(|i| vec![x[i], y[i]]).collect();
+    if maxerr <= 0.0 && (maxvert < 3 || maxvert >= nv) {
+        return Ok(copy());
+    }
+
+    // Three widely spaced vertices: the extremes on the axis of greater
+    // range, and the vertex furthest from the line between them.
+    let (mut x1, mut x2, mut y1, mut y2) = (f64::MAX, -f64::MAX, f64::MAX, -f64::MAX);
+    let (mut i1x, mut i1y) = (0, 0);
+    let (mut i2x, mut i2y) = (nv / 2, nv / 2);
+    for i in 0..nv {
+        if y[i] < y1 {
+            y1 = y[i];
+            i1y = i;
+        } else if y[i] > y2 {
+            y2 = y[i];
+            i2y = i;
+        }
+        if x[i] < x1 {
+            x1 = x[i];
+            i1x = i;
+        } else if x[i] > x2 {
+            x2 = x[i];
+            i2x = i;
+        }
+    }
+    let (i1, mut i2) = if y2 - y1 > x2 - x1 {
+        (i1y, i2y)
+    } else {
+        (i1x, i2x)
+    };
+
+    let mut seg1 = Segment::new(i1, i2, nv);
+    seg1.find_max(frm, x, y, false)?;
+    let mut seg2 = Segment::new(i2, i1, nv);
+    seg2.find_max(frm, x, y, false)?;
+
+    // Order the three anti-clockwise.
+    let mut i3;
+    if seg2.error > seg1.error {
+        i3 = seg2.imax;
+        seg1.reset(i1, i3, nv);
+        seg1.find_max(frm, x, y, false)?;
+        i2 = seg1.imax;
+    } else {
+        i2 = seg1.imax;
+        seg1.reset(i2, i1, nv);
+        seg1.find_max(frm, x, y, false)?;
+        i3 = seg1.imax;
+    }
+    if i2 >= nv {
+        i2 -= nv;
+    }
+    if i3 >= nv {
+        i3 -= nv;
+    }
+
+    seg1.reset(i1, i2, nv);
+    seg2.reset(i2, i3, nv);
+    let mut seg3 = Segment::new(i3, i1, nv);
+    let mut newpoly = vec![i1, i2, i3];
+
+    // The edges, held in `segs` and listed in `chain` by decreasing error.
+    seg3.find_max(frm, x, y, true)?;
+    seg1.find_max(frm, x, y, true)?;
+    seg2.find_max(frm, x, y, true)?;
+    let mut segs = vec![seg3, seg1, seg2];
+    let mut chain = vec![0];
+    add_to_chain(&mut chain, &segs, 1);
+    add_to_chain(&mut chain, &segs, 2);
+
+    let maxvert = if maxvert < 3 { nv } else { maxvert };
+
+    // Split the edge of largest error at its furthest vertex until the
+    // error is small enough or there are enough vertices.
+    while segs[chain[0]].error > maxerr && newpoly.len() < maxvert {
+        let head = chain.remove(0);
+        let imax = segs[head].imax;
+        newpoly.push(if imax >= nv { imax - nv } else { imax });
+
+        let mut split = Segment::new(imax, segs[head].i2, nv);
+        segs[head].i2 = imax;
+        split.find_max(frm, x, y, true)?;
+        segs.push(split);
+        add_to_chain(&mut chain, &segs, segs.len() - 1);
+        segs[head].find_max(frm, x, y, true)?;
+        add_to_chain(&mut chain, &segs, head);
+    }
+
+    if newpoly.len() == nv {
+        return Ok(copy());
+    }
+    newpoly.sort_unstable();
+    Ok(newpoly.iter().map(|&i| vec![x[i], y[i]]).collect())
+}
+
+/// The Frame `astConvex` and `astOutline` define their Polygon in.
+fn pixel_frame() -> AstResult<crate::frames::BasicFrame> {
+    crate::frames::BasicFrameBuilder::new(2)
+        .domain("PIXEL")
+        .unit(1, "pixel")
+        .unit(2, "pixel")
+        .title("Pixel coordinates")
+        .build()
+}
+
+/// A Polygon in `frame` with vertices `points` as given. C builds a Polygon
+/// round three junk vertices and then replaces its PointSet, so the vertex
+/// order is not checked by `EnsureInside`.
+fn pixel_polygon(frame: crate::frames::BasicFrame, points: Vec<Vec<f64>>) -> Polygon {
+    Polygon {
+        data: RegionData::new(FrameSet::new(Box::new(frame)), points),
+        simp_vertices: None,
     }
 }
 
@@ -521,9 +1175,8 @@ impl Polygon {
     /// # Errors
     ///
     /// [`ErrorCode::Dimin`] if `ubnd` is below `lbnd` on either axis or
-    /// `array` is shorter than the pixel count; C reads past the array in
-    /// those cases.
-    pub fn convex<T: PartialOrd + Copy>(
+    /// `array` is shorter than the pixel count, where C reads past the array.
+    pub fn convex<T: PixelValue>(
         value: T,
         oper: PixelOper,
         array: &[T],
@@ -531,48 +1184,156 @@ impl Polygon {
         ubnd: [i64; 2],
         starpix: bool,
     ) -> AstResult<Option<Polygon>> {
-        use crate::frames::BasicFrameBuilder;
-
-        let xdim = ubnd[0] - lbnd[0] + 1;
-        let ydim = ubnd[1] - lbnd[1] + 1;
-        if xdim < 1 || ydim < 1 || (array.len() as i64) < xdim * ydim {
-            return Err(AstError::new(
-                ErrorCode::Dimin,
-                format!(
-                    "astConvex: the array has {} elements, which does not cover \
-                     pixel bounds ({}:{},{}:{}).",
-                    array.len(),
-                    lbnd[0],
-                    ubnd[0],
-                    lbnd[1],
-                    ubnd[1]
-                ),
-            ));
-        }
-        let pixels = PixelSelection {
-            value,
-            oper,
-            array,
-            xdim,
-            ydim,
-        };
-        let Some(hull) = pixels.convex_hull(lbnd, starpix)? else {
+        let pixels = PixelSelection::new(value, oper, array, lbnd, ubnd, "astConvex")?;
+        let Some(hull) = pixels.convex_hull(starpix)? else {
             return Ok(None);
         };
-
-        // C builds a Polygon round three junk vertices and then replaces its
-        // PointSet, so the vertex order is not checked by EnsureInside.
-        let frame = BasicFrameBuilder::new(2)
-            .domain("PIXEL")
-            .unit(1, "pixel")
-            .unit(2, "pixel")
-            .title("Pixel coordinates")
-            .build()?;
         let points = hull.iter().map(|v| v.to_vec()).collect();
-        Ok(Some(Polygon {
-            data: RegionData::new(FrameSet::new(Box::new(frame)), points),
-            simp_vertices: None,
-        }))
+        Ok(Some(pixel_polygon(pixel_frame()?, points)))
+    }
+
+    /// A Polygon with a subset of this one's vertices that approximates it
+    /// to within `maxerr`, a distance in its base Frame, or that has
+    /// `maxvert` vertices, whichever is reached first (polygon.c
+    /// `astDownsize`). `maxerr` at or below zero means no error limit, and
+    /// `maxvert` below 3 no vertex limit. The vertices kept are densest where
+    /// the boundary bends most.
+    ///
+    /// # Errors
+    ///
+    /// Any error from the base Frame's `resolve_points`.
+    pub fn downsize(&self, maxerr: f64, maxvert: usize) -> AstResult<Polygon> {
+        let x: Vec<f64> = self.data.points.iter().map(|p| p[0]).collect();
+        let y: Vec<f64> = self.data.points.iter().map(|p| p[1]).collect();
+        let points = downsize_poly(&x, &y, maxerr, maxvert, self.data.frameset.base())?;
+        let mut result = self.clone();
+        result.data.points = points;
+        result.data.invalidate_cache();
+        Ok(result)
+    }
+
+    /// A Polygon outlining the region of a 2-D array whose pixels pass a
+    /// test and that contains a given pixel, in a PIXEL Frame (polygon.c
+    /// `astOutline<X>` and `astOutline8<X>`).
+    ///
+    /// `array` holds the pixels row by row, X varying fastest, with pixel
+    /// indices `lbnd` to `ubnd` inclusive on each axis, and a pixel is
+    /// selected when its value compares with `value` as `oper` says. The
+    /// outline is of the selected region containing pixel `inside`, given by
+    /// its pixel indices; if that pixel is outside the array or not selected,
+    /// the selected pixel nearest the centre of the array found by a spiral
+    /// search is used. The outline follows pixel edges, so holes in the
+    /// region are not part of it. With `starpix` pixel centres are at
+    /// half-integer PIXEL coordinates; otherwise, as in `astResample`, at
+    /// integers.
+    ///
+    /// When `maxerr` is above zero or `maxvert` above 2, the full outline is
+    /// smoothed and then reduced as [`Polygon::downsize`] reduces a Polygon.
+    ///
+    /// # Errors
+    ///
+    /// [`ErrorCode::Nonin`] if the spiral search finds no selected pixel, and
+    /// [`ErrorCode::Dimin`] if `ubnd` is below `lbnd` on either axis or
+    /// `array` is shorter than the pixel count, where C reads past the array.
+    #[allow(clippy::too_many_arguments)]
+    pub fn outline<T: PixelValue>(
+        value: T,
+        oper: PixelOper,
+        array: &[T],
+        lbnd: [i64; 2],
+        ubnd: [i64; 2],
+        maxerr: f64,
+        maxvert: usize,
+        inside: [i64; 2],
+        starpix: bool,
+    ) -> AstResult<Polygon> {
+        let pixels = PixelSelection::new(value, oper, array, lbnd, ubnd, "astOutline")?;
+
+        // Smoothing needs every corner of the outline, not only the bends.
+        let smooth = maxerr > 0.0 || maxvert > 2;
+
+        let [mut inx, mut iny] = inside;
+        let mut iv = 0;
+        let mut valid = inx >= lbnd[0] && inx <= ubnd[0] && iny >= lbnd[1] && iny <= ubnd[1];
+        if valid {
+            iv = (inx - lbnd[0]) + (iny - lbnd[1]) * pixels.xdim;
+            valid = pixels.selected(iv);
+        }
+        if !valid {
+            (inx, iny, iv) = pixels.find_inside_point()?;
+        }
+
+        // Move right from the inside pixel to the edge of its region. An
+        // edge whose outline does not enclose the inside pixel is the edge
+        // of a hole, which is crossed to look for the next edge.
+        let mut candidate = None;
+        let mut pv = iv;
+        let mut ixv = inx;
+        let mut stop_at_invalid = true;
+        loop {
+            ixv += 1;
+            if ixv > ubnd[0] {
+                break;
+            }
+            pv += 1;
+            let valid = pixels.selected(pv);
+            if stop_at_invalid {
+                if !valid {
+                    candidate = pixels.trace_edge(ixv - 1, iny, starpix, smooth);
+                    if candidate.is_some() {
+                        break;
+                    }
+                    stop_at_invalid = false;
+                }
+            } else if valid {
+                stop_at_invalid = true;
+            }
+        }
+        // Otherwise the region reaches the right edge of the array.
+        let candidate = candidate.or_else(|| pixels.trace_edge(ixv - 1, iny, starpix, smooth));
+        let Some((mut xv, mut yv)) = candidate else {
+            // Not expected: the outline of a hole encloses it, so the search
+            // leaves every hole before the edge of the array. C would pass a
+            // null PointSet on.
+            return Err(AstError::new(
+                ErrorCode::Inter,
+                format!(
+                    "astOutline{}: No outline encloses pixel ({inx},{iny}) (internal AST \
+                     programming error).",
+                    T::CODE
+                ),
+            ));
+        };
+
+        if smooth {
+            let mut boxsize = if maxerr > 0.0 {
+                maxerr as i32
+            } else {
+                i32::MAX
+            };
+            let nv0 = xv.len() as i64;
+            let tmp = if maxvert > 2 {
+                nv0 / (2 * maxvert as i64)
+            } else {
+                i64::from(i32::MAX)
+            };
+            if tmp < i64::from(boxsize) {
+                boxsize = tmp as i32;
+            }
+            // Room for at least ten full boxes round the outline.
+            let tmp = nv0 / 20;
+            if tmp < i64::from(boxsize) {
+                boxsize = tmp as i32;
+            }
+            if boxsize == 0 {
+                boxsize = 1;
+            }
+            smooth_poly(&mut xv, &mut yv, boxsize, 1.0);
+        }
+
+        let frame = pixel_frame()?;
+        let points = downsize_poly(&xv, &yv, maxerr, maxvert, &frame)?;
+        Ok(pixel_polygon(frame, points))
     }
 
     /// Un-negated base-Frame membership, with the effective `Closed` value
