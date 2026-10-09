@@ -226,7 +226,7 @@ C reads `astGetUncFrm( new, AST__BASE )` and hands it to `astBox`
 whole branch is built with the Interval's uncertainty rather than with none. That
 matters twice: `Box::Simplify` consults the uncertainty when deciding what the Box
 reduces to, and `astRegOverlay` never installs an uncertainty of its own — its
-only uncertainty action is to *clear* one (`region.c:9936 (fn RegOverlay)`) — so a
+only uncertainty action is to *clear* one (`region.c:9945 (fn RegOverlay)`) — so a
 Box built without it stays without it. The port passes the same Region
 (`interval.rs:695-701 (fn simplify_remapped)`), read through `get_unc_frm`
 (`regions/mod.rs:788 (fn get_unc_frm)`), which is `astGetUncFrm`.

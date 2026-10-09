@@ -66,3 +66,20 @@ fn set_states_match_the_c_library() {
     let want: Vec<(&str, [bool; 6])> = cases::CASES.to_vec();
     assert_eq!(got, want);
 }
+
+/// A Box whose Adaptive attribute is set to 0 dumps `Adapt = 0` uncommented,
+/// so it survives a dump and read (region.c `Dump`).
+#[test]
+fn not_adaptive_dump_matches_the_c_library() {
+    let mut bx = BoxRegionBuilder::from_bounds(
+        BasicFrameBuilder::new(2).build().unwrap(),
+        &[0.0, 0.0],
+        &[1.0, 1.0],
+    )
+    .unwrap()
+    .build()
+    .unwrap();
+    bx.set_adaptive(false);
+    let text = to_native_string(&AnyObject::from_mapping(&bx).unwrap()).unwrap();
+    assert_eq!(text, cases::NOT_ADAPTIVE_DUMP);
+}

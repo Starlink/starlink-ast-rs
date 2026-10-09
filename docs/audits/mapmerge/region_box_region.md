@@ -262,7 +262,7 @@ constant first, where an assignment would lose it. The four
 `simplify_permmap_slice_*` cases in `crates/ast-core/tests/test_box_region.rs`
 port upstream's `checkBoxPermMapSlices`. The unbounded exit has no
 oracle fixture, because `astMapRegion` refuses to build a Region whose forward
-transformation gives a bad axis value (`region.c:5554 (fn MapRegion)`), so it is
+transformation gives a bad axis value (`region.c:5563 (fn MapRegion)`), so it is
 covered by the in-crate Rust test
 `box_region.rs::tests::permmap_bad_output_simplifies_to_unbounded_interval` — see
 PLAN.md §10.13.

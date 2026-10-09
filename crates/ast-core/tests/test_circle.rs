@@ -785,3 +785,41 @@ fn reg_pins_circle_full_mesh_on_boundary() {
     let mesh = c.get_region_mesh().unwrap();
     assert!(c.reg_pins(&mesh, None).unwrap());
 }
+
+/// Ported from testregions.c `checkLoadedUncFrame`: an uncertainty set on a
+/// Circle whose current Frame differs from its base Frame is dumped without a
+/// Frame, and reading the dump gives it the Circle's base Frame (region.c
+/// `Load`), so it keeps the Domain FOO.
+#[test]
+fn loaded_frameless_uncertainty_takes_the_base_frame() {
+    use ast_core::frames::FrameRef;
+    use ast_core::mappings::ZoomMap;
+    use ast_core::{AnyObject, from_native_string, to_native_string};
+
+    let foo = || {
+        let mut f = BasicFrameBuilder::new(2).build().unwrap();
+        f.set_domain("FOO");
+        f
+    };
+    let mut bar = BasicFrameBuilder::new(2).build().unwrap();
+    bar.set_domain("BAR");
+    let unc = CircleBuilder::new(foo(), vec![1.0, 0.5])
+        .unwrap()
+        .radius(0.001)
+        .build()
+        .unwrap();
+    let circle = CircleBuilder::new(foo(), vec![1.0, 0.5])
+        .unwrap()
+        .radius(0.1)
+        .build()
+        .unwrap();
+    let mut mapped = circle
+        .reg_map_region(&ZoomMap::new(2, 2.0).unwrap(), &bar)
+        .unwrap();
+    mapped.set_uncertainty(Box::new(unc)).unwrap();
+
+    let text = to_native_string(&AnyObject::from_mapping(mapped.as_ref()).unwrap()).unwrap();
+    let restored = from_native_string(&text).unwrap().into_region().unwrap();
+    let unc = restored.get_unc_frm(FrameRef::Base).unwrap();
+    assert_eq!(unc.get_region_frame().domain(), "FOO");
+}

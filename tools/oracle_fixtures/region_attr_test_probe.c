@@ -4,6 +4,8 @@
  * dump (region.c Load) and copying (region.c Copy). RegionFS is protected,
  * so it is reached with astMakePointer.
  *
+ * Also the dump of a Box whose Adaptive attribute is set to 0.
+ *
  * Prints Rust source for crates/ast-core/tests/region_attr_test_oracle/cases.rs:
  *
  *   ./region_attr_test_probe > ../../crates/ast-core/tests/region_attr_test_oracle/cases.rs
@@ -92,5 +94,22 @@ int main( void ) {
    emit( "no_region_fs", box );
    emit( "no_region_fs_copy", astCopy( box ) );
    printf( "];\n" );
+
+   {
+      const char *c;
+      box = (AstObject *) astBox( astFrame( 2, " " ), 1, lo, hi, NULL, "Adaptive=0" );
+      (void) reread( box );
+      printf( "\n/// The dump of a Box whose Adaptive attribute is set to 0.\n"
+              "pub const NOT_ADAPTIVE_DUMP: &str = \"" );
+      for( c = dump; *c; c++ ) {
+         if( *c == '\n' ) {
+            printf( "\\n" );
+         } else {
+            if( *c == '"' || *c == '\\' ) putchar( '\\' );
+            putchar( *c );
+         }
+      }
+      printf( "\";\n" );
+   }
    return status;
 }

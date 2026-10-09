@@ -116,9 +116,9 @@ buys something.
 
 C reads the uncertainty with `astGetUncFrm( new, AST__CURRENT )` and hands it to
 `astPointList`, whose `astInitRegion` calls the private `SetUnc`
-(`region.c:10772 (fn SetUnc)`). That maps the supplied uncertainty into the new
+(`region.c:10781 (fn SetUnc)`). That maps the supplied uncertainty into the new
 PointList's base Frame, ensures it is bounded, and re-centres it on the first
-defining position (`region.c:10889-10894 (fn SetUnc)`). Reading in the current Frame is
+defining position (`region.c:10898-10903 (fn SetUnc)`). Reading in the current Frame is
 what makes the mapping meaningful: the rebuilt PointList's base Frame *is* the old
 current Frame. The port takes the same two steps —
 `get_unc_frm(FrameRef::Current)` then `set_uncertainty`
@@ -144,7 +144,7 @@ as well, in the same order, so it lives once in
 `merge_util.rs:139-190 (fn finish_region_merge)`. Row 40 is the one that matters. C installs
 the combined uncertainty with `astSetUnc`, and `astSetUnc` re-centres the
 uncertainty on the merged Region's first defining point
-(`region.c:10889-10894 (fn SetUnc)`); for a Box uncertainty, `Box`'s `RegCentre` rebuilds
+(`region.c:10898-10903 (fn SetUnc)`); for a Box uncertainty, `Box`'s `RegCentre` rebuilds
 the corner as a geodesic offset in the combined base Frame
 (`box.c:2894 (fn RegCentre)`). A merge that assigns the uncertainty into place instead
 performs rows 36 to 39, 44 and 54 correctly and still produces a different

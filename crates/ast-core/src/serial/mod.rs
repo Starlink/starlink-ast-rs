@@ -701,15 +701,18 @@ pub(crate) fn write_region_base(node: &mut Node, data: &RegionData) {
             ),
         );
     }
-    // Adapt: C library emits `Adapt = 1` uncommented (matches the
-    // `set = (ival != 0)` rule above) when adaptive, and omits entirely
-    // when not. This is the opposite polarity from what reads naturally
-    // — see `region.c` line 13086.
-    if data.adaptive {
+    // Adapt: written as set when it is non-zero or has been set
+    // explicitly (region.c `Dump`), so a default Region writes `Adapt = 1`
+    // and one set to 0 writes `Adapt = 0`.
+    if data.adaptive || data.adaptive_set {
         node.push_int(
             "Adapt",
-            1,
-            Some("Region adapts to coord sys changes".to_string()),
+            i64::from(data.adaptive),
+            Some(if data.adaptive {
+                "Region adapts to coord sys changes".to_string()
+            } else {
+                "Region does not adapt to coord sys changes".to_string()
+            }),
         );
     }
 

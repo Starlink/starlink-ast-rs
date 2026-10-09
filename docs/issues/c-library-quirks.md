@@ -1098,6 +1098,45 @@ Only a hand-written description can do this, since Dump never writes an index be
 Fixed on `u/timj/norm-unit` in 0d05fc29, which checks Current as Base is checked, with a `testframeset` case (Errors 41-43).
 The port treats a `Currnt` below 1 as unset, as the fixed C does (`frameset.rs` `from_node`), and `tests/test_frameset_current.rs` covers Current's set state against C.
 
+### RESOLVED (upstream e07c87ce): Region `Load` leaves a frame-less uncertainty with a dummy Frame when the Region has a FrameSet
+
+C location: `region.c` `Load`.
+
+An uncertainty set on a Region whose current Frame differs from its base Frame is dumped without a Frame, its RegionFS being zero, and is read with a dummy FrameSet.
+`Load` replaced that FrameSet only when the Region itself was read with a single Frame, through `astSetRegFS`; with a FrameSet the uncertainty kept the dummy Frame, losing its Domain, System and so on.
+
+Fixed on `u/timj/norm-unit` in e07c87ce: `Load` gives the uncertainty the Region's base Frame in that case too; `testregions` `checkLoadedUncFrame`.
+The port's loader did so already; `tests/test_circle.rs` (`loaded_frameless_uncertainty_takes_the_base_frame`).
+
+### RESOLVED (upstream 09ffc7e5): Region `Dump` loses `Adaptive=0`
+
+C location: `region.c` `Dump`.
+
+`Dump` wrote `Adapt` as set only when its value was non-zero, so a Region whose Adaptive attribute was set to zero wrote it commented out, and the Region read back from the dump was Adaptive.
+
+Fixed on `u/timj/norm-unit` in 09ffc7e5: `Adapt` is written as set when it is non-zero or has been set explicitly, which leaves the dump of every other Region unchanged; `testregions` `checkAdaptiveDump`.
+The port's writer follows; `tests/test_region_attr_test_oracle.rs`, whose probe needs the fixed library.
+
+### RESOLVED (upstream 74e0e51c): NullRegion `GetDefUnc` builds the uncertainty in the current Frame
+
+C location: `nullregion.c` `GetDefUnc`.
+
+`astGetDefUnc` returns a Region in the base Frame, but the NullRegion override built its zero-radius Circle with `astCircle( this, ... )`, which takes the NullRegion's current Frame.
+A NullRegion mapped from 2-D to 3-D by a PermMap without simplification then failed when its uncertainty was mapped on into the current Frame through the 2-input Mapping.
+
+Fixed on `u/timj/norm-unit` in 74e0e51c: the Circle is built in the base Frame; `testregions` `checkNullRegionDefUnc`.
+The port built it in the base Frame already; `tests/test_nullregion.rs` (`default_uncertainty_is_built_in_the_base_frame`).
+
+### RESOLVED (upstream 93803141): Interval `RegCentre` returns the base Frame centre whatever Frame is asked for
+
+C location: `interval.c` `RegCentre`.
+
+The query branch asked the equivalent Box for its centre with `AST__BASE` rather than the `ifrm` it was given, so an Interval whose current Frame differs from its base Frame reported its base Frame centre when asked for its current Frame centre, as Prism `RegCentre` and `SetUnc` ask for it.
+An Interval with limits 1 and 3 mapped through a ZoomMap of 2 reported a current Frame centre of 2 rather than 4.
+
+Fixed on `u/timj/norm-unit` in 93803141: `ifrm` is passed on to the Box, which carries the Interval's base->current Mapping; `testregions` `checkIntervalCentreFrame`.
+The port honoured `ifrm` already; `tests/test_interval.rs` (`interval_centre_is_given_in_the_frame_asked_for`).
+
 ### RESOLVED (upstream 4785102b): the mesh of a single-point Box has the first axis's value on every axis
 
 C location: `box.c` `RegBaseMesh`.

@@ -52,7 +52,7 @@ one reads:
   carries the history. No fixture pins the guard, and none can: a
   Polygon cannot hold a bad vertex (`polygon.c:7136 (fn astInitPolygon_)` rejects one, as
   `PolygonBuilder::build` now does), and `astMapRegion` refuses any Mapping that
-  sends a defining point to `AST__BAD` (`region.c:5562-5566 (fn MapRegion)`), so no construction
+  sends a defining point to `AST__BAD` (`region.c:5571-5575 (fn MapRegion)`), so no construction
   available through either public API reaches it.
 - **Row 13.** C's `SimpVertices` attribute exists precisely because transforming
   the vertices can leave the *edges* in the wrong place: a non-linear Mapping

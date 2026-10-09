@@ -96,7 +96,7 @@ about the wrong region.
 C reads the components from `newc`, the parent-simplified copy, rather than from
 the supplied Region; the port reads them from `self`
 (`cmpregion.rs:1301 (fn simplified)`). The two agree because the parent
-`Simplify` (`region.c:11060 (fn Simplify)`) rewrites only the encapsulated FrameSet and
+`Simplify` (`region.c:11069 (fn Simplify)`) rewrites only the encapsulated FrameSet and
 the uncertainty, and `newc` holds deep copies of the components either way.
 
 ## Rows 13, 14 and 20 — C's unknown-operator error has nowhere to arise
@@ -119,7 +119,7 @@ the negation code alongside the no-overlap one
 
 ## Row 24 — the mapped result is returned as it stands
 
-`astMapRegion` (`region.c:5390 (fn MapRegion)`) re-expresses the base-Frame candidate
+`astMapRegion` (`region.c:5399 (fn MapRegion)`) re-expresses the base-Frame candidate
 in the current Frame by adding the Mapping and Frame to a copy of its FrameSet.
 C returns that copy directly (`cmpregion.c:3764 (fn Simplify)`) without simplifying it
 again, and the port matches (`cmpregion.rs:1437 (fn simplified)`). This is the point
