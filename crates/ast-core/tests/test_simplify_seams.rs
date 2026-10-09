@@ -33,6 +33,17 @@ const C_SIMPLIFY_CLASSES: &[&str] = &[
     "regions/stc.rs",
 ];
 
+/// Port files whose C class inherits region.c's `Simplify` (the `region`
+/// entry above) without overriding it. A Rust trait has no parent method to
+/// inherit, so such a class implements `simplified()` to call
+/// `parent_region_simplify`, region.c's `Simplify`; the base Mapping
+/// simplification would skip the FrameSet and uncertainty a Region carries.
+///
+/// Derived, not chosen: the Region subclasses in
+/// `grep -l 'astMAKE_ISA(\w*,Region)' reference/starlink-ast/src/*.c` that are
+/// not in the list above and have a port counterpart.
+const REGION_SIMPLIFY_INHERITORS: &[&str] = &["regions/moc.rs"];
+
 fn src_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("src")
 }
@@ -63,7 +74,10 @@ fn only_c_simplify_classes_implement_simplified() {
                 .to_string_lossy()
                 .replace('\\', "/");
             // `mappings/mod.rs` declares the method; it does not implement it.
-            if rel == "mappings/mod.rs" || C_SIMPLIFY_CLASSES.contains(&rel.as_str()) {
+            if rel == "mappings/mod.rs"
+                || C_SIMPLIFY_CLASSES.contains(&rel.as_str())
+                || REGION_SIMPLIFY_INHERITORS.contains(&rel.as_str())
+            {
                 continue;
             }
             stray.push(rel);

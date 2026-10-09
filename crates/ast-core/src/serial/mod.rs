@@ -21,7 +21,7 @@ use crate::mappings::{
 use crate::mappings::{IntraMap, IntraRegistry};
 use crate::regions::data::{RegionData, check_fill_factor};
 use crate::regions::{
-    BoxRegion, Circle, CmpOperator, CmpRegion, CmpRegionBuilder, DynRegion, Ellipse, Interval,
+    BoxRegion, Circle, CmpOperator, CmpRegion, CmpRegionBuilder, DynRegion, Ellipse, Interval, Moc,
     NullRegion, PointList, Polygon, Prism, Region, StcCatalogEntryLocation, StcObsDataLocation,
     StcResourceProfile, StcSearchLocation,
 };
@@ -312,6 +312,7 @@ fn mapping_from_node_inner(node: &Node) -> AstResult<DynMapping> {
         "CmpRegion" => Ok(Box::new(CmpRegion::from_node(node)?)),
         "PointList" => Ok(Box::new(PointList::from_node(node)?)),
         "Prism" => Ok(Box::new(Prism::from_node(node)?)),
+        "Moc" => Ok(Box::new(Moc::from_node(node)?)),
         "StcResourceProfile" => Ok(Box::new(StcResourceProfile::from_node(node)?)),
         "StcSearchLocation" => Ok(Box::new(StcSearchLocation::from_node(node)?)),
         "StcCatalogEntryLocation" => Ok(Box::new(StcCatalogEntryLocation::from_node(node)?)),
@@ -450,6 +451,9 @@ impl MappingToNode for dyn Mapping {
         if let Some(r) = self.as_any().downcast_ref::<Prism>() {
             return Serializable::to_node(r);
         }
+        if let Some(r) = self.as_any().downcast_ref::<Moc>() {
+            return Serializable::to_node(r);
+        }
         if let Some(r) = self.as_any().downcast_ref::<StcResourceProfile>() {
             return Serializable::to_node(r);
         }
@@ -536,6 +540,9 @@ impl FrameToNode for dyn Frame {
         if let Some(r) = self.as_any().downcast_ref::<Prism>() {
             return Serializable::to_node(r);
         }
+        if let Some(r) = self.as_any().downcast_ref::<Moc>() {
+            return Serializable::to_node(r);
+        }
         if let Some(r) = self.as_any().downcast_ref::<StcResourceProfile>() {
             return Serializable::to_node(r);
         }
@@ -577,6 +584,7 @@ pub(crate) fn frame_from_node(node: &Node) -> AstResult<DynFrame> {
         "CmpRegion" => Ok(Box::new(CmpRegion::from_node(node)?)),
         "PointList" => Ok(Box::new(PointList::from_node(node)?)),
         "Prism" => Ok(Box::new(Prism::from_node(node)?)),
+        "Moc" => Ok(Box::new(Moc::from_node(node)?)),
         "StcResourceProfile" => Ok(Box::new(StcResourceProfile::from_node(node)?)),
         "StcSearchLocation" => Ok(Box::new(StcSearchLocation::from_node(node)?)),
         "StcCatalogEntryLocation" => Ok(Box::new(StcCatalogEntryLocation::from_node(node)?)),
@@ -1189,6 +1197,9 @@ impl RegionToNode for dyn Region {
         if let Some(r) = self.as_any().downcast_ref::<Prism>() {
             return Serializable::to_node(r);
         }
+        if let Some(r) = self.as_any().downcast_ref::<Moc>() {
+            return Serializable::to_node(r);
+        }
         if let Some(r) = self.as_any().downcast_ref::<StcResourceProfile>() {
             return Serializable::to_node(r);
         }
@@ -1220,6 +1231,7 @@ pub(crate) fn region_from_node(node: &Node) -> AstResult<DynRegion> {
         "CmpRegion" => Ok(Box::new(CmpRegion::from_node(node)?)),
         "PointList" => Ok(Box::new(PointList::from_node(node)?)),
         "Prism" => Ok(Box::new(Prism::from_node(node)?)),
+        "Moc" => Ok(Box::new(Moc::from_node(node)?)),
         "StcResourceProfile" => Ok(Box::new(StcResourceProfile::from_node(node)?)),
         "StcSearchLocation" => Ok(Box::new(StcSearchLocation::from_node(node)?)),
         "StcCatalogEntryLocation" => Ok(Box::new(StcCatalogEntryLocation::from_node(node)?)),
@@ -1606,6 +1618,126 @@ impl<K: crate::regions::StcKind> Serializable for crate::regions::Stc<K> {
     }
 }
 
+impl Serializable for Moc {
+    fn class_name(&self) -> &'static str {
+        "Moc"
+    }
+
+    /// moc.c `Dump`: MaxOrder and MinOrder where set, the number of ranges,
+    /// and each range's bounds, each 64 bit value as its low and high 32 bit
+    /// halves (`I` and `J` for the lower bound, `K` and `L` for the upper),
+    /// each written only when non-zero, and the upper bound only when it
+    /// differs from the lower.
+    fn to_node(&self) -> AstResult<Node> {
+        let mut node = region_to_node_skeleton("Moc", "IVOA Multi-Order Coverage map", &self.data)?;
+        if let Some(order) = self.max_order {
+            node.push_int(
+                "MaxOrder",
+                i64::from(order),
+                Some("Maximum HEALPix order".to_string()),
+            );
+        }
+        if let Some(order) = self.min_order {
+            node.push_int(
+                "MinOrder",
+                i64::from(order),
+                Some("Minimum HEALPix order".to_string()),
+            );
+        }
+        let nrange = self.range.len() / 2;
+        node.push_int(
+            "NRange",
+            nrange as i64,
+            Some("Number of ranges".to_string()),
+        );
+        let halves = |v: i64| (v as u64 as u32 as i32, ((v as u64) >> 32) as u32 as i32);
+        for (irange, r) in self.range.chunks(2).enumerate() {
+            let (lo, hi) = halves(r[0]);
+            if lo != 0 {
+                node.push_int(&format!("I{irange}"), i64::from(lo), None);
+            }
+            if hi != 0 {
+                node.push_int(&format!("J{irange}"), i64::from(hi), None);
+            }
+            if r[1] != r[0] {
+                let (lo, hi) = halves(r[1]);
+                if lo != 0 {
+                    node.push_int(&format!("K{irange}"), i64::from(lo), None);
+                }
+                if hi != 0 {
+                    node.push_int(&format!("L{irange}"), i64::from(hi), None);
+                }
+            }
+        }
+        Ok(node)
+    }
+
+    /// moc.c `astLoadMoc`: MaxOrder through its setter, MinOrder clamped,
+    /// and the ranges, each an increasing pair of indices below the number
+    /// of cells at MaxOrder and above the previous range (AST__LDERR
+    /// otherwise).
+    fn from_node(node: &Node) -> AstResult<Self> {
+        let whole = node;
+        let node = &whole.section("Moc");
+        let _base = read_mapping_base(whole);
+        let data = read_region_base(whole)?;
+        let is_set = |key: &str| {
+            node.items.iter().any(|i| {
+                i.key.eq_ignore_ascii_case(key) && !matches!(&i.value, NodeValue::Unset(_))
+            })
+        };
+        let mut moc = Moc::from_parts(data, None, None, Vec::new());
+        if is_set("MaxOrder") {
+            moc.store_max_order(node.get_int("MaxOrder", 0) as i32)?;
+        }
+        if is_set("MinOrder") {
+            moc.set_min_order(node.get_int("MinOrder", 0) as i32);
+        }
+        let max_nest = if moc.test_max_order() {
+            12 * (1_i64 << (2 * moc.max_order()))
+        } else {
+            i64::MAX
+        };
+        let join = |lo: i64, hi: i64| ((hi as u32 as u64) << 32 | (lo as u32 as u64)) as i64;
+        let ill_formed = |detail: String| {
+            AstError::new(ErrorCode::Lderr, "astLoadMoc(Moc): Ill-formed Moc.").with_context(detail)
+        };
+        let nrange = node.get_int("NRange", 0).max(0) as usize;
+        let mut range = Vec::with_capacity(2 * nrange);
+        let (mut llast, mut ulast) = (0_i64, 0_i64);
+        for irange in 0..nrange {
+            let lo = join(
+                node.get_int(&format!("I{irange}"), 0),
+                node.get_int(&format!("J{irange}"), 0),
+            );
+            let hi = join(
+                node.get_int(&format!("K{irange}"), 0),
+                node.get_int(&format!("L{irange}"), 0),
+            );
+            let hi = if hi > 0 { hi } else { lo };
+            if hi >= max_nest {
+                return Err(ill_formed(format!(
+                    "Upper bound ({hi}) is too high for order {}.",
+                    moc.max_order()
+                )));
+            } else if lo > hi {
+                return Err(ill_formed(format!(
+                    "Upper bound ({hi}) lower than lower bound ({lo})."
+                )));
+            } else if lo <= ulast && irange != 0 {
+                return Err(ill_formed(format!(
+                    "Range [{lo}:{hi}] overlaps range [{llast}:{ulast}]."
+                )));
+            }
+            range.extend([lo, hi]);
+            llast = lo;
+            ulast = hi;
+        }
+        moc.range = range;
+        Ok(moc)
+    }
+}
+
 impl Serializable for Prism {
     fn class_name(&self) -> &'static str {
         "Prism"
@@ -1793,6 +1925,8 @@ pub enum AnyObject {
     PointList(PointList),
     /// A [`Prism`] (extruded region).
     Prism(Prism),
+    /// A [`Moc`] (HEALPix multi-order coverage).
+    Moc(Moc),
     /// A [`StcResourceProfile`] (STC resource coverage).
     StcResourceProfile(StcResourceProfile),
     /// A [`StcSearchLocation`] (STC search location).
@@ -1936,6 +2070,9 @@ impl AnyObject {
         if let Some(x) = m.as_any().downcast_ref::<Prism>() {
             return Some(AnyObject::Prism(x.clone()));
         }
+        if let Some(x) = m.as_any().downcast_ref::<Moc>() {
+            return Some(AnyObject::Moc(x.clone()));
+        }
         if let Some(x) = m.as_any().downcast_ref::<StcResourceProfile>() {
             return Some(AnyObject::StcResourceProfile(x.clone()));
         }
@@ -1994,6 +2131,7 @@ impl AnyObject {
             AnyObject::CmpRegion(r) => Some(r),
             AnyObject::PointList(r) => Some(r),
             AnyObject::Prism(r) => Some(r),
+            AnyObject::Moc(r) => Some(r),
             AnyObject::StcResourceProfile(r) => Some(r),
             AnyObject::StcSearchLocation(r) => Some(r),
             AnyObject::StcCatalogEntryLocation(r) => Some(r),
@@ -2033,6 +2171,7 @@ impl AnyObject {
             AnyObject::CmpRegion(r) => Some(r),
             AnyObject::PointList(r) => Some(r),
             AnyObject::Prism(r) => Some(r),
+            AnyObject::Moc(r) => Some(r),
             AnyObject::StcResourceProfile(r) => Some(r),
             AnyObject::StcSearchLocation(r) => Some(r),
             AnyObject::StcCatalogEntryLocation(r) => Some(r),
@@ -2112,6 +2251,7 @@ impl AnyObject {
             AnyObject::CmpRegion(r) => Some(Box::new(r)),
             AnyObject::PointList(r) => Some(Box::new(r)),
             AnyObject::Prism(r) => Some(Box::new(r)),
+            AnyObject::Moc(r) => Some(Box::new(r)),
             AnyObject::StcResourceProfile(r) => Some(Box::new(r)),
             AnyObject::StcSearchLocation(r) => Some(Box::new(r)),
             AnyObject::StcCatalogEntryLocation(r) => Some(Box::new(r)),
@@ -2151,6 +2291,7 @@ impl AnyObject {
             AnyObject::CmpRegion(r) => Some(Box::new(r)),
             AnyObject::PointList(r) => Some(Box::new(r)),
             AnyObject::Prism(r) => Some(Box::new(r)),
+            AnyObject::Moc(r) => Some(Box::new(r)),
             AnyObject::StcResourceProfile(r) => Some(Box::new(r)),
             AnyObject::StcSearchLocation(r) => Some(Box::new(r)),
             AnyObject::StcCatalogEntryLocation(r) => Some(Box::new(r)),
@@ -2200,6 +2341,7 @@ impl AnyObject {
             AnyObject::CmpRegion(r) => Some(r),
             AnyObject::PointList(r) => Some(r),
             AnyObject::Prism(r) => Some(r),
+            AnyObject::Moc(r) => Some(r),
             AnyObject::StcResourceProfile(r) => Some(r),
             AnyObject::StcSearchLocation(r) => Some(r),
             AnyObject::StcCatalogEntryLocation(r) => Some(r),
@@ -2221,6 +2363,7 @@ impl AnyObject {
             AnyObject::CmpRegion(r) => Some(r),
             AnyObject::PointList(r) => Some(r),
             AnyObject::Prism(r) => Some(r),
+            AnyObject::Moc(r) => Some(r),
             AnyObject::StcResourceProfile(r) => Some(r),
             AnyObject::StcSearchLocation(r) => Some(r),
             AnyObject::StcCatalogEntryLocation(r) => Some(r),
@@ -2242,6 +2385,7 @@ impl AnyObject {
             AnyObject::CmpRegion(r) => Some(Box::new(r)),
             AnyObject::PointList(r) => Some(Box::new(r)),
             AnyObject::Prism(r) => Some(Box::new(r)),
+            AnyObject::Moc(r) => Some(Box::new(r)),
             AnyObject::StcResourceProfile(r) => Some(Box::new(r)),
             AnyObject::StcSearchLocation(r) => Some(Box::new(r)),
             AnyObject::StcCatalogEntryLocation(r) => Some(Box::new(r)),
@@ -2307,6 +2451,7 @@ pub(crate) fn any_object_from_node(node: &Node) -> AstResult<AnyObject> {
         "CmpRegion" => Ok(AnyObject::CmpRegion(CmpRegion::from_node(node)?)),
         "PointList" => Ok(AnyObject::PointList(PointList::from_node(node)?)),
         "Prism" => Ok(AnyObject::Prism(Prism::from_node(node)?)),
+        "Moc" => Ok(AnyObject::Moc(Moc::from_node(node)?)),
         "StcResourceProfile" => Ok(AnyObject::StcResourceProfile(
             StcResourceProfile::from_node(node)?,
         )),
@@ -2383,6 +2528,7 @@ pub(crate) fn any_object_to_node(obj: &AnyObject) -> AstResult<Node> {
         AnyObject::CmpRegion(r) => Serializable::to_node(r),
         AnyObject::PointList(r) => Serializable::to_node(r),
         AnyObject::Prism(r) => Serializable::to_node(r),
+        AnyObject::Moc(r) => Serializable::to_node(r),
         AnyObject::StcResourceProfile(r) => Serializable::to_node(r),
         AnyObject::StcSearchLocation(r) => Serializable::to_node(r),
         AnyObject::StcCatalogEntryLocation(r) => Serializable::to_node(r),

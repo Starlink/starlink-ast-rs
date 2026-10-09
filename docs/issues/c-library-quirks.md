@@ -1098,6 +1098,27 @@ Only a hand-written description can do this, since Dump never writes an index be
 Fixed on `u/timj/norm-unit` in 0d05fc29, which checks Current as Base is checked, with a `testframeset` case (Errors 41-43).
 The port treats a `Currnt` below 1 as unset, as the fixed C does (`frameset.rs` `from_node`), and `tests/test_frameset_current.rs` covers Current's set state against C.
 
+### RESOLVED (upstream c95aa801): a Moc's boundary mesh depends on the platform's `qsort`, and an empty Moc's `Transform` indexes out of bounds
+
+C location: `moc.c` `Comp_corner` and `Transform`.
+
+`RegBaseMesh` merges coincident cell corners after sorting them by Dec, within a tolerance, then exactly by RA.
+Two corners with the same RA and nearly the same Dec compared as equal, so which was kept, and supplied the mesh point, depended on how `qsort` orders equal elements, which macOS and glibc do differently.
+`Transform` asked for the HPX12 Mapping at MaxOrder, -1 for a Moc that has never had a cell, indexing the cache of Mappings out of bounds.
+
+Fixed on `u/timj/norm-unit` in c95aa801: in the exact sort such corners are ordered by Dec, and an empty Moc needs no Mapping; `testmoc` `checkMeshTieBreak` and `checkEmptyTransform`.
+The port sorts with the same order, by a stable merge sort since the comparison is not a total order, and skips the Mapping for an empty Moc; `tests/test_region_moc_oracle.rs`.
+
+### RESOLVED (upstream 2b631e08): bounding an empty or whole-sky Moc never returns, and a Moc's `RegPins` mask flags the wrong points
+
+C location: `moc.c` `RegBaseBox` and `RegPins`.
+
+`RegBaseBox` brought each mesh RA into range by adding or subtracting 2*pi; the mesh of an empty or whole-sky Moc is one bad point, whose RA never comes into range, so `astGetRegionBounds` looped forever.
+`RegPins` takes the points in order of Dec and filled its mask in that order rather than at each point's own index.
+
+Fixed on `u/timj/norm-unit` in 2b631e08: an empty Moc gets the box of an empty Region (upper bounds below lower) and a whole-sky Moc the whole sky, and the mask is filled at each point's index; `testmoc` `checkEmptyBounds` and `checkPinsMask`.
+The port follows both; `tests/test_region_moc_oracle.rs` (`empty`, `reg_pins_flags_each_point_in_place`).
+
 ### RESOLVED (upstream a4f0566e): writing an StcObsDataLocation with no observatory position crashes
 
 C location: `stcobsdatalocation.c` `Dump`.

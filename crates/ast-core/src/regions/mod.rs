@@ -16,6 +16,7 @@ mod cmpregion;
 mod ellipse;
 mod interval;
 mod merge_util;
+mod moc;
 mod nullregion;
 mod pointlist;
 mod polygon;
@@ -27,6 +28,7 @@ pub(crate) use cmpregion::Oper as CmpOper;
 pub use cmpregion::{CmpRegion, CmpRegionBuilder};
 pub use ellipse::{Ellipse, EllipseBuilder, EllipsePars};
 pub use interval::{Interval, IntervalBuilder};
+pub use moc::{MOC_MAX_ORDER, Moc};
 pub use nullregion::{NullRegion, NullRegionBuilder};
 pub use pointlist::{PointList, PointListBuilder};
 pub use polygon::{PixelOper, PixelValue, Polygon, PolygonBuilder};
@@ -1674,6 +1676,8 @@ pub(crate) fn any_as_region(a: &dyn std::any::Any) -> Option<&dyn Region> {
         Some(r)
     } else if let Some(r) = a.downcast_ref::<Prism>() {
         Some(r)
+    } else if let Some(r) = a.downcast_ref::<Moc>() {
+        Some(r)
     } else if let Some(r) = a.downcast_ref::<StcResourceProfile>() {
         Some(r)
     } else if let Some(r) = a.downcast_ref::<StcSearchLocation>() {
@@ -1707,6 +1711,8 @@ pub(crate) fn class_name(region: &dyn std::any::Any) -> &'static str {
         "Polygon"
     } else if region.is::<Prism>() {
         "Prism"
+    } else if region.is::<Moc>() {
+        "Moc"
     } else if region.is::<StcResourceProfile>() {
         "StcResourceProfile"
     } else if region.is::<StcSearchLocation>() {
