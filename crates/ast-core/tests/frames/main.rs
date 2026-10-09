@@ -24,6 +24,8 @@ mod test_cmp_match_end;
 mod test_cmpframe;
 #[path = "../test_convert.rs"]
 mod test_convert;
+#[path = "../test_convert_frameset_oracle.rs"]
+mod test_convert_frameset_oracle;
 #[path = "../test_equal_oracle.rs"]
 mod test_equal_oracle;
 #[path = "../test_find_frame.rs"]

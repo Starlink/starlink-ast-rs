@@ -439,17 +439,24 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// (frame.c:2965), which swaps its first two arguments and defers to
     /// the generic `astConvertX` driver (frame.c:3028).
     ///
-    /// The default body joins `domains` into the comma-separated list C
-    /// expects (an empty slice becomes a single blank field that permits
-    /// any domain) and delegates to the generic driver. No Frame subclass
-    /// overrides it; all class-specific alignment lives in `match_template`
-    /// / `sub_frame`, exactly as in C.
+    /// The body joins `domains` into the comma-separated list C expects (an
+    /// empty slice becomes a single blank field that permits any domain).
+    /// This is frame.c `Convert`, which dispatches `astConvertX` on the class
+    /// of `to`: when `to` is a FrameSet, the FrameSet `ConvertX`
+    /// (frameset.c:3204) searches every Frame of it; otherwise the generic
+    /// driver runs. FrameSet overrides this method, as frameset.c overrides
+    /// `Convert`, so that a FrameSet `self` reaches its `ConvertX` too. All
+    /// other class-specific alignment lives in `match_template` /
+    /// `sub_frame`, exactly as in C.
     fn convert_to(&self, to: &dyn Frame, domains: &[&str]) -> AstResult<Option<FrameSet>> {
         let domainlist = if domains.is_empty() {
             " ".to_string()
         } else {
             domains.join(",")
         };
+        if let Some(to_fs) = to.as_any().downcast_ref::<FrameSet>() {
+            return frameset::frameset_convert_x(to_fs, self.as_dyn_frame(), &domainlist);
+        }
         // The Frame itself, not a copy, takes part, as in C: a SkyFrame
         // keeps the LAST it computes for the conversion.
         find_frame::convert_frames(self.as_dyn_frame(), to, &domainlist)
