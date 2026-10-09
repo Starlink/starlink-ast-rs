@@ -391,6 +391,44 @@ pub trait Region: Frame + Mapping + AsDynRegion {
         self.norm_points(&self.reg_grid()?, true)
     }
 
+    /// Write a table of the points of this region's boundary mesh to standard
+    /// output, as C's public `astShowMesh` does (region.c `ShowMesh`); the
+    /// text is [`show_mesh_text`](Region::show_mesh_text).
+    fn show_mesh(&self, format: bool, ttl: Option<&str>) -> AstResult<()> {
+        print!("{}", self.show_mesh_text(format, ttl)?);
+        Ok(())
+    }
+
+    /// The table [`show_mesh`](Region::show_mesh) writes (region.c
+    /// `ShowMesh`): the title, if any, between blank lines; one line per
+    /// point of the current-Frame boundary mesh, normalised as one contiguous
+    /// group, giving each axis value followed by a tab; then `ENDMESH` and a
+    /// blank line. A bad value is `<bad>`; otherwise a value is formatted by
+    /// the axis Format when `format` is set, and as C's `%g` when it is not.
+    /// The number of points is set by MeshSize.
+    fn show_mesh_text(&self, format: bool, ttl: Option<&str>) -> AstResult<String> {
+        let mesh = self.norm_points(&self.reg_mesh()?, true)?;
+        let mut out = String::new();
+        if let Some(ttl) = ttl {
+            out.push_str(&format!("\n{ttl}\n\n"));
+        }
+        for j in 0..mesh.npoint() {
+            for (i, &value) in mesh.point(j).iter().enumerate() {
+                if value == crate::constants::BAD_VALUE {
+                    out.push_str("<bad>");
+                } else if format {
+                    out.push_str(&self.format(i + 1, value)?);
+                } else {
+                    out.push_str(&crate::frames::axis_format::format_value("%g", 6, value)?);
+                }
+                out.push('\t');
+            }
+            out.push('\n');
+        }
+        out.push_str("ENDMESH\n\n");
+        Ok(out)
+    }
+
     /// `AST__MBBNF` unless the region is bounded, as `astGetRegionMesh`
     /// requires.
     #[doc(hidden)]
