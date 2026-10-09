@@ -25,9 +25,15 @@
 //! Not ported yet: `RegTrace`, which only `Plot` uses, and with it the trace
 //! of each perimeter that moc.c `RegBaseMesh` makes after the mesh points are
 //! found (moc.c:7672-8170, the `dist` and `meshdist` values). The mesh points
-//! themselves do not depend on it. Adding Regions, pixel masks, MOC strings
-//! and MOC data (`AddRegion`, `AddPixelMask<X>`, `AddMocString`,
-//! `AddMocData` and their `Get` counterparts) is also still to come.
+//! themselves do not depend on it. Adding MOC strings and MOC data
+//! (`AddMocString`, `AddMocData` and their `Get` counterparts) is also still
+//! to come.
+//!
+//! `add_region` and `add_pixel_mask` are moc.c `AddRegion` and
+//! `AddPixelMask<X>`, with `PutCell`, `IncorporateCells`, `FindSkyAxes`,
+//! `GetPixelArea` and `TestPixels`. Like C they map the Region with
+//! `reg_map_region`, which does not simplify, since inside the library
+//! `astMapRegion` is the unsimplifying `astMapRegion_`.
 
 use std::cell::RefCell;
 
@@ -44,7 +50,9 @@ use crate::mappings::{
 };
 
 use super::data::{RegionData, RegionGeometry};
-use super::{CircleBuilder, CmpOperator, DynRegion, Region};
+use super::{CircleBuilder, CmpOperator, DynRegion, PixelOper, PixelValue, Region};
+use crate::frames::FrameRef;
+use crate::mappings::{XphMap, XphProjection};
 
 /// The highest HEALPix order a Moc may use (xphmap.h `AST__MXORDHPX`).
 pub const MOC_MAX_ORDER: i32 = 27;
@@ -163,6 +171,14 @@ fn xy_to_nested(order: i32, ix: i32, iy: i32) -> i64 {
 /// HEALPix cell (moc.c `GetHPX12FrameSet`, inverted as `GetCachedMapping`
 /// takes it from the FrameSet).
 fn hpx12_mapping(order: i32) -> AstResult<DynMapping> {
+    let mut map = hpx12_grid_to_icrs(order)?;
+    map.invert();
+    Ok(Box::new(map))
+}
+
+/// The Mapping from HPX12 grid coordinates at `order` to ICRS, as moc.c
+/// `GetHPX12FrameSet` builds it.
+fn hpx12_grid_to_icrs(order: i32) -> AstResult<CmpMap> {
     let nppf = f64::from(1_i32 << order);
     let s = -0.5 * (1.0 + 5.0 * nppf);
     let sm1 = ShiftMap::new(vec![s, s]);
@@ -175,9 +191,7 @@ fn hpx12_mapping(order: i32) -> AstResult<DynMapping> {
     let sm2 = ShiftMap::new(vec![DPI, 0.0]);
     let map1 = CmpMap::new(Box::new(sm1), Box::new(mm), Composition::Series)?;
     let map2 = CmpMap::new(Box::new(map1), Box::new(wm), Composition::Series)?;
-    let mut map3 = CmpMap::new(Box::new(map2), Box::new(sm2), Composition::Series)?;
-    map3.invert();
-    Ok(Box::new(map3))
+    CmpMap::new(Box::new(map2), Box::new(sm2), Composition::Series)
 }
 
 /// A value derived from a Moc's ranges and MaxOrder, kept until they change
@@ -1285,6 +1299,724 @@ impl Moc {
             .map(|&k| vec![mesh.corners[k].ra, mesh.corners[k].dec])
             .collect())
     }
+}
+
+// ============================================================================
+// Adding Regions and pixel masks
+// ============================================================================
+
+/// The cells found inside a region of interest at each order, as grid
+/// coordinates in one HPX-like projection, with the Mapping from that
+/// projection to HPX12 at each order (moc.c `CellList`).
+struct CellList {
+    maxorder: i32,
+    maps: Vec<Option<DynMapping>>,
+    ix: Vec<Vec<i64>>,
+    iy: Vec<Vec<i64>>,
+}
+
+/// The positions, in the coordinates of the region of interest, that lie
+/// in it.
+type InsideTest<'a> = dyn Fn(&PointSet) -> AstResult<Vec<bool>> + 'a;
+
+/// The indices of the sky axes in `frame`, the first the longitude axis of
+/// a SkyFrame and the second its latitude (moc.c `FindSkyAxes`).
+fn sky_axes(frame: &dyn Frame, method: &str, class: &str) -> AstResult<[usize; 2]> {
+    let mut skyaxes = [None, None];
+    for iax in 0..frame.naxes() {
+        let (frm, pax) = frame.primary_frame(iax);
+        if frm.as_any().is::<SkyFrame>() {
+            skyaxes[usize::from(pax != 0)] = Some(iax);
+        }
+    }
+    match skyaxes {
+        [Some(a), Some(b)] => Ok([a, b]),
+        _ => Err(AstError::new(
+            ErrorCode::Nosky,
+            format!(
+                "{method}(Moc): The supplied {class} does not contain a pair of celestial \
+                 coordinate axes."
+            ),
+        )),
+    }
+}
+
+/// moc.c `FindSkyAxes` for a Region: the Region its sky axes span
+/// (AST__BDSKY when those axes do not form a Region).
+fn find_sky_axes_region(region: &dyn Region, method: &str) -> AstResult<DynRegion> {
+    let class = super::class_name(region.as_any());
+    let axes = sky_axes(region.get_region_frame().as_ref(), method, class)?;
+    match super::pick_axes_region(region, &axes)? {
+        super::PickedAxes::Region(r) => Ok(r),
+        super::PickedAxes::Frame(_) => Err(AstError::new(
+            ErrorCode::Bdsky,
+            format!(
+                "{method}(Moc): The region of sky described by the supplied {class} cannot be \
+                 determined."
+            ),
+        )),
+    }
+}
+
+/// moc.c `FindSkyAxes` for a FrameSet: a FrameSet whose current Frame holds
+/// the sky axes of `wcs` and whose base Frame the base axes they depend on,
+/// the base axes picked by the sky axes' indices as C picks them (AST__BDSKY
+/// when the sky axes cannot be split from the others).
+fn find_sky_axes_frameset(wcs: &FrameSet, method: &str) -> AstResult<FrameSet> {
+    let axes = sky_axes(wcs.current(), method, "FrameSet")?;
+    let one_based = [axes[0] + 1, axes[1] + 1];
+    let mut inverted = wcs.clone();
+    inverted.invert();
+    match inverted.map_split(&one_based)? {
+        Some((outs, mut map)) if map.nout() == 2 => {
+            let (bfrm, _) = crate::frames::pick_axes(wcs.base(), &one_based)?;
+            let mut result = FrameSet::new(bfrm);
+            map.invert();
+            let perm: Vec<i64> = outs.iter().map(|&a| a as i64 - 1).collect();
+            if perm[0] != 0 {
+                let pm = crate::mappings::PermMap::new(&perm, &perm, &[])?;
+                map = Box::new(CmpMap::new(Box::new(pm), map, Composition::Series)?);
+            }
+            let (frm, _) = crate::frames::pick_axes(wcs.current(), &one_based)?;
+            result.add_frame(FrameRef::Base, map, frm)?;
+            Ok(result)
+        }
+        _ => Err(AstError::new(
+            ErrorCode::Bdsky,
+            format!(
+                "{method}(Moc): The sky axes in the supplied WCS FrameSet cannot be split from \
+                 the other axes."
+            ),
+        )),
+    }
+}
+
+/// moc.c `GetPixelArea`: the area, in square arc-seconds, of the pixel at
+/// the centre of an array of `dims` pixels, from the distances to its
+/// neighbours along each grid axis; bad if either distance is.
+fn get_pixel_area(wcs: &FrameSet, dims: [usize; 2]) -> AstResult<f64> {
+    let x0 = 0.5 * (dims[0] as f64 + 1.0);
+    let y0 = 0.5 * (dims[1] as f64 + 1.0);
+    let pts = PointSet::from_rows(
+        [[x0, y0], [x0 + 1.0, y0], [x0, y0 + 1.0]]
+            .iter()
+            .map(|p| p.as_slice()),
+    );
+    let sky = wcs.transform(&pts, true)?;
+    let d1 = Frame::distance(wcs, sky.point(0), sky.point(1))?;
+    let d2 = Frame::distance(wcs, sky.point(0), sky.point(2))?;
+    if is_bad(d1) || is_bad(d2) {
+        return Ok(BAD_VALUE);
+    }
+    let scale = (180.0 / DPI) * 3600.0;
+    Ok((d1 * scale) * (d2 * scale))
+}
+
+/// The Mapping from grid coordinates at each order from `minorder` to
+/// `maxorder` in an HPX-like projection to the coordinates `top` gives at
+/// `maxorder`: each lower order's grid divided into four of the next, by a
+/// WinMap ahead of the Mapping for the order above (the loop moc.c
+/// `AddRegion` and `AddPixelMask<X>` share).
+fn order_maps(top: DynMapping, maxorder: i32, minorder: i32) -> AstResult<Vec<Option<DynMapping>>> {
+    let incmap =
+        crate::mappings::WinMap::from_corners(&[0.5, 0.5], &[1.5, 1.5], &[0.5, 0.5], &[2.5, 2.5])?;
+    let mut maps: Vec<Option<DynMapping>> = vec![None; (maxorder + 1) as usize];
+    let mut map = top;
+    for i in (0..=maxorder).rev() {
+        if i >= minorder {
+            maps[i as usize] = Some(map.simplify()?);
+            map = Box::new(CmpMap::new(
+                Box::new(incmap.clone()),
+                map,
+                Composition::Series,
+            )?);
+        }
+    }
+    Ok(maps)
+}
+
+/// The grid bounds at `maxorder`, `[lx, ly, ux, uy]`, taken to `minorder`
+/// with a one cell margin (the step moc.c `AddRegion` and
+/// `AddPixelMask<X>` share).
+fn bounds_at_minorder(
+    maps: &[Option<DynMapping>],
+    maxorder: i32,
+    minorder: i32,
+    b: [i64; 4],
+) -> AstResult<[i64; 4]> {
+    let top = maps[maxorder as usize]
+        .as_ref()
+        .expect("map at maxorder")
+        .clone_box();
+    let mut low = maps[minorder as usize]
+        .as_ref()
+        .expect("map at minorder")
+        .clone_box();
+    low.invert();
+    let map: DynMapping = Box::new(CmpMap::new(top, low, Composition::Series)?);
+    let map = map.simplify()?;
+    let pts = PointSet::from_rows(
+        [[b[0] as f64, b[1] as f64], [b[2] as f64, b[3] as f64]]
+            .iter()
+            .map(|p| p.as_slice()),
+    );
+    let out = map.transform(&pts, true)?;
+    Ok([
+        out.point(0)[0].round() as i64 - 1,
+        out.point(0)[1].round() as i64 - 1,
+        out.point(1)[0].round() as i64 + 1,
+        out.point(1)[1].round() as i64 + 1,
+    ])
+}
+
+impl Moc {
+    /// Combine a Region with the Moc (C's `astAddRegion`): AND keeps what
+    /// both cover, OR what either covers, and XOR what one but not both
+    /// covers. The Moc's own Negated is ignored. A Moc is combined cell for
+    /// cell. Any other Region must have a pair of sky axes (AST__NOSKY);
+    /// cells at `MinOrder` over its bounding box in the HPX-like projection
+    /// where it is smallest are tested at nine points, those wholly inside
+    /// kept, those partly inside divided, down to `MaxOrder`, where a cell is
+    /// in if its centre is. MaxOrder, if not set, becomes the order whose
+    /// cells are about 0.1% of the Region's size.
+    pub fn add_region(&mut self, cmode: CmpOperator, region: &dyn Region) -> AstResult<()> {
+        if let Some(that) = region.as_any().downcast_ref::<Moc>() {
+            return self.add_moc(cmode, that);
+        }
+        let method = "astAddRegion";
+        let mut picked = find_sky_axes_region(region, method)?;
+        let negated = picked.is_negated();
+        picked.clear_negated();
+
+        let mut maxorder = if self.test_max_order() {
+            self.max_order()
+        } else {
+            let (_, radius) = picked.get_region_disc()?;
+            let order = res_to_order(0.001 * radius * (180.0 / DPI) * 3600.0);
+            self.store_max_order(order)?;
+            order
+        };
+        let mut minorder = self.min_order();
+        let mut oversample = 0;
+        if minorder >= maxorder {
+            oversample = minorder - maxorder;
+            maxorder = minorder;
+            minorder = maxorder - 1;
+        }
+        if minorder < 0 {
+            return Err(AstError::new(
+                ErrorCode::Invar,
+                format!(
+                    "{method}(Moc): Invalid value ({minorder}) supplied for parameter 'MinOrder'."
+                ),
+            ));
+        }
+
+        let picked_frame = picked.get_region_frame();
+        let mut fs = hpx12_frameset(maxorder)?;
+        let gridframe = fs.base().snapshot();
+        fs.invert();
+        let Some(fsconv) = picked_frame.convert_to(&fs, &[])? else {
+            return Err(AstError::new(
+                ErrorCode::Nodef,
+                format!(
+                    "{method}(Moc): The supplied {} cannot be mapped to HEALPix coordinates.",
+                    super::class_name(region.as_any())
+                ),
+            ));
+        };
+        let reg2hpx12 = fsconv.mapping(FrameRef::Base, FrameRef::Current)?;
+
+        // The HPX-like projection in which the Region's bounding box covers
+        // the fewest cells.
+        let mut best: Option<(usize, [i64; 4], DynRegion)> = None;
+        let mut npix_min = 0_usize;
+        for (iproj, proj) in XPH_PROJECTIONS.iter().enumerate() {
+            let mut xph = XphMap::new(maxorder as u32, *proj);
+            xph.invert();
+            let reg2proj = CmpMap::new(reg2hpx12.clone_box(), Box::new(xph), Composition::Series)?;
+            let mapped = match picked.reg_map_region(&reg2proj, gridframe.as_ref()) {
+                Ok(m) => m,
+                Err(e) if e.code() == ErrorCode::Nodef => continue,
+                Err(e) => return Err(e),
+            };
+            let (glbnd, gubnd) = mapped.get_region_bounds()?;
+            let npix =
+                (((gubnd[0] - glbnd[0] + 1.0) * (gubnd[1] - glbnd[1] + 1.0)) as i32) as usize;
+            if iproj == 0 || npix < npix_min {
+                let d0 = 0.05 * (gubnd[0] - glbnd[0] + 1.0);
+                let d1 = 0.05 * (gubnd[1] - glbnd[1] + 1.0);
+                let b = [
+                    (glbnd[0] + HALF - d0) as i64,
+                    (glbnd[1] + HALF - d1) as i64,
+                    (gubnd[0] + HALF + d0) as i64,
+                    (gubnd[1] + HALF + d1) as i64,
+                ];
+                npix_min = npix;
+                best = Some((iproj, b, mapped));
+            }
+        }
+        let Some((iproj_min, b, mapped_min)) = best else {
+            return Err(AstError::new(
+                ErrorCode::Nodef,
+                format!(
+                    "{method}(Moc): The supplied {} cannot be mapped to HEALPix coordinates.",
+                    super::class_name(region.as_any())
+                ),
+            ));
+        };
+
+        let maps = order_maps(Box::new(UnitMap::new(2)), maxorder, minorder)?;
+        let b = bounds_at_minorder(&maps, maxorder, minorder, b)?;
+        let test = |pts: &PointSet| -> AstResult<Vec<bool>> {
+            let out = mapped_min.transform(pts, true)?;
+            Ok((0..out.npoint())
+                .map(|i| !is_bad(out.point(i)[0]))
+                .collect())
+        };
+        self.fill_cells(
+            &maps, maxorder, minorder, oversample, iproj_min, b, &test, negated, cmode, method,
+        )
+    }
+
+    /// moc.c `AddRegion` for a Moc: its ranges, taken to this Moc's
+    /// MaxOrder, combined with this Moc's, negated if it is.
+    fn add_moc(&mut self, cmode: CmpOperator, that: &Moc) -> AstResult<()> {
+        if that.range.is_empty() {
+            if cmode == CmpOperator::And {
+                self.range.clear();
+                self.clear_cache();
+            }
+            return Ok(());
+        }
+        let that_order = that.max_order();
+        let maxorder = if self.test_max_order() {
+            self.max_order()
+        } else {
+            self.store_max_order(that_order)?;
+            that_order
+        };
+        let nold = self.nrange();
+        let shift = 2 * (maxorder - that_order);
+        for r in that.range.chunks(2) {
+            let (ilow, ihigh) = if shift > 0 {
+                (r[0] << shift, ((r[1] + 1) << shift) - 1)
+            } else {
+                (r[0] >> -shift, r[1] >> -shift)
+            };
+            self.range.extend([ilow, ihigh]);
+        }
+        self.moc_norm(that.is_negated(), cmode, nold, maxorder, "astAddRegion")
+    }
+
+    /// Combine the pixels of a 2-dimensional array that pass a test with the
+    /// Moc (C's `astAddPixelMask<X>`): those whose value compares with
+    /// `value` as `oper` says, and, if `bad` is given, whose value is not
+    /// `bad`. `wcs` takes grid coordinates in the array to coordinates with
+    /// a pair of sky axes (AST__NOSKY); `dims` are the array's dimensions,
+    /// its first axis varying fastest. MaxOrder, if not set, becomes the
+    /// lowest order whose cells are no larger than a quarter of the pixel at
+    /// the array's centre. The cells are found as `add_region` finds them.
+    #[allow(clippy::too_many_arguments)]
+    pub fn add_pixel_mask<T: PixelValue>(
+        &mut self,
+        cmode: CmpOperator,
+        wcs: &FrameSet,
+        value: T,
+        oper: PixelOper,
+        bad: Option<T>,
+        array: &[T],
+        dims: [usize; 2],
+    ) -> AstResult<()> {
+        let method = format!("astAddPixelMask{}", T::CODE);
+        if dims[0] < 1 || dims[1] < 1 {
+            return Err(AstError::new(
+                ErrorCode::Invar,
+                format!(
+                    "{method}(Moc): Invalid values ({},{}) supplied for parameter 'dims'.",
+                    dims[0], dims[1]
+                ),
+            ));
+        }
+        if array.len() < dims[0] * dims[1] {
+            return Err(AstError::new(
+                ErrorCode::Invar,
+                format!(
+                    "{method}(Moc): The array has {} values, fewer than the {} its dimensions \
+                     need.",
+                    array.len(),
+                    dims[0] * dims[1]
+                ),
+            ));
+        }
+        let mut picked = find_sky_axes_frameset(wcs, &method)?;
+
+        let mut maxorder = if self.test_max_order() {
+            self.max_order()
+        } else {
+            let pixarea = get_pixel_area(&picked, dims)?;
+            let res = (0.25 * pixarea).sqrt();
+            let mut order = res_to_order(res);
+            let res = order_to_res(order);
+            if res * res > 0.25 * pixarea {
+                order += 1;
+            }
+            self.store_max_order(order)?;
+            order
+        };
+        let mut minorder = self.min_order();
+        let mut oversample = 0;
+        if minorder >= maxorder {
+            oversample = minorder - maxorder;
+            maxorder = minorder;
+            minorder = maxorder - 1;
+        }
+        if minorder < 0 {
+            return Err(AstError::new(
+                ErrorCode::Invar,
+                format!(
+                    "{method}(Moc): Invalid value ({minorder}) supplied for parameter 'MinOrder'."
+                ),
+            ));
+        }
+        picked.invert();
+
+        // The grid bounds of the selected pixels (GetSelectionBounds<Oper><X>).
+        let passes = |v: T| pixel_passes(v, value, oper);
+        let (mut lx, mut hx, mut ly, mut hy) = (i64::MAX, -i64::MAX, i64::MAX, -i64::MAX);
+        for iy in 1..=dims[1] {
+            for ix in 1..=dims[0] {
+                if passes(array[(ix - 1) + (iy - 1) * dims[0]]) {
+                    let (x, y) = (ix as i64, iy as i64);
+                    lx = lx.min(x);
+                    hx = hx.max(x);
+                    ly = ly.min(y);
+                    hy = hy.max(y);
+                }
+            }
+        }
+        if !(lx <= hx && ly <= hy) {
+            if cmode == CmpOperator::And {
+                self.range.clear();
+                self.clear_cache();
+            }
+            return Ok(());
+        }
+
+        let mut fs = hpx12_frameset(maxorder)?;
+        fs.invert();
+        let Some(fsconv) = Frame::convert_to(&picked, &fs, &[])? else {
+            return Err(AstError::new(
+                ErrorCode::Nodef,
+                format!(
+                    "{method}(Moc): The supplied pixel array cannot be mapped to HEALPix coordinates."
+                ),
+            ));
+        };
+        let array2hpx12 = fsconv.mapping(FrameRef::Base, FrameRef::Current)?;
+
+        let mut best: Option<(usize, [i64; 4], DynMapping)> = None;
+        let mut npix_min = 0_i64;
+        let lbnd_in = [lx as f64 - HALF, ly as f64 - HALF];
+        let ubnd_in = [hx as f64 + HALF, hy as f64 + HALF];
+        for (iproj, proj) in XPH_PROJECTIONS.iter().enumerate() {
+            let mut xph = XphMap::new(maxorder as u32, *proj);
+            xph.invert();
+            let array2proj =
+                CmpMap::new(array2hpx12.clone_box(), Box::new(xph), Composition::Series)?;
+            let bx = array2proj.map_box(&lbnd_in, &ubnd_in, true, 1)?;
+            let by = array2proj.map_box(&lbnd_in, &ubnd_in, true, 2)?;
+            let (glbnd, gubnd) = ([bx.lbnd_out, by.lbnd_out], [bx.ubnd_out, by.ubnd_out]);
+            let npix = ((gubnd[0] - glbnd[0] + 1.0) * (gubnd[1] - glbnd[1] + 1.0)) as i64;
+            if iproj == 0 || npix < npix_min {
+                let d0 = 0.05 * (gubnd[0] - glbnd[0] + 1.0);
+                let d1 = 0.05 * (gubnd[1] - glbnd[1] + 1.0);
+                let b = [
+                    (glbnd[0] - d0) as i64,
+                    (glbnd[1] - d1) as i64,
+                    (gubnd[0] + d0) as i64,
+                    (gubnd[1] + d1) as i64,
+                ];
+                npix_min = npix;
+                best = Some((iproj, b, Box::new(array2proj)));
+            }
+        }
+        let (iproj_min, b, mut array2proj_min) = best.expect("four projections tried");
+        array2proj_min.invert();
+        let maps = order_maps(array2proj_min, maxorder, minorder)?;
+        let b = bounds_at_minorder(&maps, maxorder, minorder, b)?;
+        let (nx, ny) = (dims[0] as i64, dims[1] as i64);
+        let test = |pts: &PointSet| -> AstResult<Vec<bool>> {
+            Ok((0..pts.npoint())
+                .map(|i| {
+                    let p = pts.point(i);
+                    if is_bad(p[0]) || is_bad(p[1]) {
+                        return false;
+                    }
+                    let ix = p[0].round() as i64;
+                    let iy = p[1].round() as i64;
+                    if ix > 0 && ix <= nx && iy > 0 && iy <= ny {
+                        let v = array[((ix - 1) + (iy - 1) * nx) as usize];
+                        bad.is_none_or(|b| v != b) && passes(v)
+                    } else {
+                        false
+                    }
+                })
+                .collect())
+        };
+        self.fill_cells(
+            &maps, maxorder, minorder, oversample, iproj_min, b, &test, false, cmode, &method,
+        )
+    }
+
+    /// The cells over the bounding box `b` at `minorder` that `test` finds
+    /// in the region of interest, put into a CellList by moc.c `PutCell` and
+    /// incorporated into the Moc by `IncorporateCells`.
+    #[allow(clippy::too_many_arguments)]
+    fn fill_cells(
+        &mut self,
+        maps: &[Option<DynMapping>],
+        maxorder: i32,
+        minorder: i32,
+        oversample: i32,
+        iproj: usize,
+        b: [i64; 4],
+        test: &InsideTest,
+        negate: bool,
+        cmode: CmpOperator,
+        method: &str,
+    ) -> AstResult<()> {
+        let mut clist = CellList {
+            maxorder,
+            maps: (0..=maxorder)
+                .map(|i| {
+                    (i >= minorder).then(|| {
+                        Box::new(XphMap::new(i as u32, XPH_PROJECTIONS[iproj])) as DynMapping
+                    })
+                })
+                .collect(),
+            ix: vec![Vec::new(); (maxorder + 1) as usize],
+            iy: vec![Vec::new(); (maxorder + 1) as usize],
+        };
+        let mut ix = Vec::new();
+        let mut iy = Vec::new();
+        for j in b[1]..=b[3] {
+            for i in b[0]..=b[2] {
+                ix.push(i);
+                iy.push(j);
+            }
+        }
+        put_cell(maps, &ix, &iy, minorder, &mut clist, test, None, method)?;
+        self.incorporate_cells(&clist, oversample, negate, cmode, method)
+    }
+
+    /// moc.c `IncorporateCells`: the cells in `clist`, at each order taken to
+    /// HPX12 nested indices, sorted, gathered into ranges and taken to
+    /// MaxOrder, combined with the Moc.
+    fn incorporate_cells(
+        &mut self,
+        clist: &CellList,
+        oversample: i32,
+        negate: bool,
+        cmode: CmpOperator,
+        method: &str,
+    ) -> AstResult<()> {
+        let nold = self.nrange();
+        for order in 0..=clist.maxorder {
+            let o = order as usize;
+            let len = clist.ix[o].len();
+            if len == 0 {
+                continue;
+            }
+            let pts = PointSet::from_rows(
+                clist.ix[o]
+                    .iter()
+                    .zip(&clist.iy[o])
+                    .map(|(&x, &y)| [x as f64, y as f64])
+                    .collect::<Vec<_>>()
+                    .iter()
+                    .map(|p| p.as_slice()),
+            );
+            let map = clist.maps[o].as_ref().expect("map at each order in use");
+            let hpx = map.transform(&pts, true)?;
+            let mut nested = Vec::with_capacity(len);
+            for i in 0..len {
+                let p = hpx.point(i);
+                if is_bad(p[0]) || is_bad(p[1]) {
+                    return Err(AstError::new(
+                        ErrorCode::Inter,
+                        format!(
+                            "{method}(Moc): Bad HPX12 grid coord element {i} order {order} \
+                             (internal programming error)."
+                        ),
+                    ));
+                }
+                nested.push(xy_to_nested(
+                    order,
+                    p[0].round() as i32,
+                    p[1].round() as i32,
+                ));
+            }
+            nested.sort_unstable();
+            let shift = 2 * (clist.maxorder - order - oversample);
+            let mut k = 0;
+            while k < nested.len() {
+                let ilow = nested[k];
+                let mut ihigh = ilow;
+                k += 1;
+                while k < nested.len() && nested[k] == ihigh + 1 {
+                    ihigh += 1;
+                    k += 1;
+                }
+                if shift > 0 {
+                    self.range
+                        .extend([ilow << shift, ((ihigh + 1) << shift) - 1]);
+                } else {
+                    self.range.extend([ilow >> -shift, ihigh >> -shift]);
+                }
+            }
+        }
+        // The ranges are at the Moc's own MaxOrder, below the order of the
+        // finest cells by `oversample` (moc.c fixed upstream in 28473801).
+        self.moc_norm(negate, cmode, nold, clist.maxorder - oversample, method)
+    }
+}
+
+/// The four HPX-like projections, in the order of their C codes 0 to 3.
+const XPH_PROJECTIONS: [XphProjection; 4] = [
+    XphProjection::Hpx0,
+    XphProjection::Hpx12,
+    XphProjection::Xphn,
+    XphProjection::Xphs,
+];
+
+/// Whether `v` passes the test `oper` against `value`.
+fn pixel_passes<T: PixelValue>(v: T, value: T, oper: PixelOper) -> bool {
+    match oper {
+        PixelOper::Lt => v < value,
+        PixelOper::Le => v <= value,
+        PixelOper::Eq => v == value,
+        PixelOper::Ne => v != value,
+        PixelOper::Ge => v >= value,
+        PixelOper::Gt => v > value,
+    }
+}
+
+/// moc.c `GetHPX12FrameSet`: a FrameSet whose base Frame is HPX12 grid
+/// coordinates at `order` and whose current Frame is ICRS.
+fn hpx12_frameset(order: i32) -> AstResult<FrameSet> {
+    let mut grid = crate::frames::BasicFrameBuilder::new(2).build()?;
+    Frame::set_domain(&mut grid, "GRID")?;
+    let mut fs = FrameSet::new(Box::new(grid));
+    fs.add_frame(
+        FrameRef::Base,
+        Box::new(hpx12_grid_to_icrs(order)?),
+        Box::new(SkyFrame::new(SkySystem::Icrs)),
+    )?;
+    Ok(fs)
+}
+
+/// moc.c `PutCell`: test each cell at order `order` (at its centre at
+/// MaxOrder, otherwise at nine points over it), unless `inorout` says it is
+/// wholly in (negative) or out (positive); keep a cell wholly in, and below
+/// MaxOrder divide one partly in into its four children, each marked in or
+/// out where its four corners agree, and test those in turn.
+#[allow(clippy::too_many_arguments)]
+fn put_cell(
+    maps: &[Option<DynMapping>],
+    ix: &[i64],
+    iy: &[i64],
+    order: i32,
+    clist: &mut CellList,
+    test: &InsideTest,
+    inorout: Option<&[i32]>,
+    method: &str,
+) -> AstResult<()> {
+    let ncell = ix.len();
+    let npoint = if order == clist.maxorder { 1 } else { 9 };
+    let unknown = |icell: usize| inorout.is_none_or(|io| io[icell] == 0);
+    let mut rows: Vec<[f64; 2]> = Vec::new();
+    for icell in 0..ncell {
+        if !unknown(icell) {
+            continue;
+        }
+        let (x, y) = (ix[icell] as f64, iy[icell] as f64);
+        if npoint == 1 {
+            rows.push([x, y]);
+        } else {
+            for j in -1..=1 {
+                for i in -1..=1 {
+                    rows.push([x + HALF * f64::from(i), y + HALF * f64::from(j)]);
+                }
+            }
+        }
+    }
+    let inside = if rows.is_empty() {
+        Vec::new()
+    } else {
+        let ps1 = PointSet::from_rows(rows.iter().map(|p| p.as_slice()));
+        let map = maps[order as usize]
+            .as_ref()
+            .expect("map at each order in use");
+        test(&map.transform(&ps1, true)?)?
+    };
+
+    let o = order as usize;
+    let mut sub_ix = Vec::new();
+    let mut sub_iy = Vec::new();
+    let mut sub_io = Vec::new();
+    let mut pin = 0;
+    for icell in 0..ncell {
+        let (allin, allout, flags) = if unknown(icell) {
+            let flags = &inside[pin..pin + npoint];
+            pin += npoint;
+            (
+                flags.iter().all(|&f| f),
+                !flags.iter().any(|&f| f),
+                Some(flags),
+            )
+        } else if inorout.expect("known in or out")[icell] > 0 {
+            (false, true, None)
+        } else {
+            (true, false, None)
+        };
+        if allin {
+            if clist.ix[o].len() >= (i32::MAX - 2) as usize {
+                return Err(AstError::new(
+                    ErrorCode::Bgmoc,
+                    format!("{method}(Moc): The normalised MOC has too many elements."),
+                ));
+            }
+            clist.ix[o].push(ix[icell]);
+            clist.iy[o].push(iy[icell]);
+        } else if !allout && order < clist.maxorder {
+            let flags = flags.expect("a partly inside cell was tested");
+            for (j, k0) in [(0, 0), (1, 3)] {
+                for (i, dk) in [(0, 0), (1, 1)] {
+                    let k = k0 + dk;
+                    let corners = [flags[k], flags[k + 1], flags[k + 3], flags[k + 4]];
+                    let sin = corners.iter().all(|&f| f);
+                    let sout = !corners.iter().any(|&f| f);
+                    sub_ix.push(2 * ix[icell] - 1 + i);
+                    sub_iy.push(2 * iy[icell] - 1 + j);
+                    sub_io.push(i32::from(sout) - i32::from(sin));
+                }
+            }
+        }
+    }
+    if !sub_ix.is_empty() {
+        put_cell(
+            maps,
+            &sub_ix,
+            &sub_iy,
+            order + 1,
+            clist,
+            test,
+            Some(&sub_io),
+            method,
+        )?;
+    }
+    Ok(())
 }
 
 // ============================================================================

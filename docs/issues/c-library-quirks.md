@@ -1098,6 +1098,16 @@ Only a hand-written description can do this, since Dump never writes an index be
 Fixed on `u/timj/norm-unit` in 0d05fc29, which checks Current as Base is checked, with a `testframeset` case (Errors 41-43).
 The port treats a `Currnt` below 1 as unset, as the fixed C does (`frameset.rs` `from_node`), and `tests/test_frameset_current.rs` covers Current's set state against C.
 
+### RESOLVED (upstream 28473801): `astAddRegion` reads out of bounds with MaxOrder 0, and a negated Region added with MinOrder above MaxOrder covers the sky several times over
+
+C location: `moc.c` `AddRegion` and `IncorporateCells`.
+
+With MaxOrder 0, `AddRegion` lowers MinOrder to -1 and inverts the Mapping for order -1, read from below the start of a stack array (ASan: stack-buffer-overflow); `AddPixelMask<X>` already reported AST__INVAR for this.
+When MinOrder exceeds MaxOrder, `IncorporateCells` takes the ranges to MaxOrder but negates them at the higher order of the finest cells, so a negated Region covered 4 times the sky per order of oversampling.
+
+Fixed on `u/timj/norm-unit` in 28473801: `AddRegion` reports AST__INVAR, and the ranges are negated at MaxOrder; `testmoc` `checkAddRegionOrderZero` and `checkOversampleNegate`, which segfault and fail without the fixes.
+The port follows both; `tests/test_region_moc_add_oracle.rs` (`oversample_negated`, `errors_match_c`).
+
 ### RESOLVED (upstream c95aa801): a Moc's boundary mesh depends on the platform's `qsort`, and an empty Moc's `Transform` indexes out of bounds
 
 C location: `moc.c` `Comp_corner` and `Transform`.
