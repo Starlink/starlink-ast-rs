@@ -159,13 +159,13 @@ impl PermMap {
         // `*_is_copy` flags) is null to `NullPerm` too.
         let (nullperm_out, nullperm_in) = if eff_inv {
             (
-                self.in_is_copy || strict_null_perm(&self.inperm),
-                self.out_is_copy || strict_null_perm(&self.outperm),
+                self.in_is_copy || strict_null_perm(&self.inperm, self.outperm.len()),
+                self.out_is_copy || strict_null_perm(&self.outperm, self.inperm.len()),
             )
         } else {
             (
-                self.out_is_copy || strict_null_perm(&self.outperm),
-                self.in_is_copy || strict_null_perm(&self.inperm),
+                self.out_is_copy || strict_null_perm(&self.outperm, self.inperm.len()),
+                self.in_is_copy || strict_null_perm(&self.inperm, self.outperm.len()),
             )
         };
 
@@ -367,16 +367,25 @@ fn is_null_perm(perm: &[i64], max: usize) -> bool {
 }
 
 /// Report whether a *stored* permutation array is a "null axis permutation"
-/// in the sense of C `permmap.c::NullPerm` (1695): every element `i` refers
-/// to the same-index coordinate (`perm[i] == i` in C's internal 0-based
-/// encoding). In the Rust public encoding that is `perm[i] == i + 1`.
+/// in the sense of C `permmap.c::NullPerm` (1705): every element `i` holds
+/// `i` in C's internal encoding, where a coordinate reference is 0-based, a
+/// constant is negative, and "bad" is stored as `nother`, the number of
+/// coordinates on the other side (permmap.c:2690-2712). `nother` matters:
+/// a bad entry at index `nother` reads as `i` to C, so `inperm = [1, 2, 0]`
+/// of a 3-in, 2-out PermMap is null to `NullPerm`.
 ///
-/// Unlike [`is_null_perm`], this is not dimension-aware: it makes no
-/// allowance for surplus entries becoming "bad". It matches C's strict
-/// identity test on the raw stored array, which is used only to decide
-/// whether dropping an array counts as a *new* simplification.
-fn strict_null_perm(perm: &[i64]) -> bool {
-    perm.iter().enumerate().all(|(i, &p)| p == i as i64 + 1)
+/// Unlike [`is_null_perm`], this is not otherwise dimension-aware. It
+/// matches C's strict test on the raw stored array, which is used only to
+/// decide whether dropping an array counts as a *new* simplification.
+fn strict_null_perm(perm: &[i64], nother: usize) -> bool {
+    perm.iter().enumerate().all(|(i, &p)| {
+        let internal = match p {
+            0 => nother as i64,
+            p if p > 0 => p - 1,
+            p => p,
+        };
+        internal == i as i64
+    })
 }
 
 /// Add a constant value to the pool, deduplicating via `ast_equal`.

@@ -334,7 +334,7 @@ impl BoxRegion {
             // CmpFrame, then simplify the Prism.
             let frm = self.data.frameset.current().snapshot();
             let um = UnitMap::new(nout);
-            let newprism = prism.map_region(&um, frm.as_ref())?;
+            let newprism = prism.reg_map_region(&um, frm.as_ref())?;
             let simplified = <dyn Mapping>::simplify(newprism.as_ref())?;
             let result = super::merge_util::mapping_into_region(simplified).unwrap_or(newprism);
             return Ok(Some(result));
@@ -1992,7 +1992,7 @@ mod tests {
     /// (box.c:3771, 3784).
     ///
     /// The base->current edge is installed here directly rather than through
-    /// [`Region::map_region`], because `map_region` rejects a Mapping whose
+    /// [`Region::reg_map_region`], because `reg_map_region` rejects a Mapping whose
     /// forward transformation yields a bad axis value (region.c:5539) — the C
     /// library does the same, so no fixture generated through a public C
     /// constructor can reach this exit.

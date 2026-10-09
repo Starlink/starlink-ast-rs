@@ -145,7 +145,7 @@ impl CmpRegionBuilder {
             )?
             .simplify()?;
         if !smap.as_any().is::<crate::mappings::UnitMap>() {
-            reg2 = reg2.map_region(smap.as_ref(), frame.as_ref())?;
+            reg2 = reg2.reg_map_region(smap.as_ref(), frame.as_ref())?;
         }
 
         let (oper, xor) = match self.operator {
@@ -290,7 +290,7 @@ impl CmpRegion {
     /// Faithful port of C `MatchRegion` (cmpregion.c:1406): find the conversion
     /// FrameSet from `that`'s current Frame to the requested Frame of `into`
     /// (its base Frame when `use_base` is true, else its current Frame), then
-    /// [`map_region`](Region::map_region) `that` through the base->current
+    /// [`reg_map_region`](Region::reg_map_region) `that` through the base->current
     /// Mapping of that FrameSet. Used to express a supplied point uncertainty
     /// in the base Frame of each component Region.
     fn match_region(into: &dyn Region, use_base: bool, that: &dyn Region) -> AstResult<DynRegion> {
@@ -311,7 +311,7 @@ impl CmpRegion {
                 )
             })?;
         let map = fs.mapping(FrameRef::Base, FrameRef::Current)?;
-        that.map_region(map.as_ref(), target_frm.as_ref())
+        that.reg_map_region(map.as_ref(), target_frm.as_ref())
     }
 
     /// Whether this CmpRegion is bounded.
@@ -1427,7 +1427,7 @@ impl Mapping for CmpRegion {
             return Ok((self.clone_box(), false));
         }
         let result: DynRegion = if let Some(nb) = newb {
-            nb.map_region(bcmap.as_ref(), cfrm.as_ref())?
+            nb.reg_map_region(bcmap.as_ref(), cfrm.as_ref())?
         } else {
             // No base-Frame result: use the parent-simplified copy
             // (cmpregion.c:3767 `result = astClone( newc )`).

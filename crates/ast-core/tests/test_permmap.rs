@@ -413,11 +413,11 @@ fn perm_split_roundtrips_through_native_dump() {
     assert_eq!(outs, vec![2, 1]);
 }
 
-/// A PermMap that keeps the first two of three axes simplifies to the form
-/// C writes, with both arrays dropped (`OutCpy`, `InCpy`), and simplifying
-/// that again changes nothing. C's `NullPerm` (permmap.c:1695) treats an
-/// array that is not stored as null, so the canonical form is not reported
-/// as a further simplification.
+/// A PermMap that keeps the first two of three axes is already simple, as C
+/// finds it: C's `NullPerm` (permmap.c:1705) reads the inverse array's bad
+/// third entry, stored internally as the number of outputs, as the same
+/// index, so dropping that array is not a simplification and C keeps both
+/// arrays as given. Simplifying again changes nothing.
 #[test]
 fn perm_map_keeping_leading_axes_simplifies_once() {
     let pm = PermMap::new(&[1, 2, 0], &[1, 2], &[]).unwrap();
@@ -428,7 +428,7 @@ fn perm_map_keeping_leading_axes_simplifies_once() {
     };
     let text = dump(once.as_ref());
     assert!(
-        text.contains("OutCpy = 1") && text.contains("InCpy = 1"),
+        text.contains("Out2 = 2") && text.contains("In3 = 0") && !text.contains("Cpy"),
         "{text}"
     );
     assert_eq!(dump(twice.as_ref()), text);

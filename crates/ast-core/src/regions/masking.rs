@@ -106,7 +106,7 @@ fn grid_region(
                 ));
             }
             let grid = BasicFrameBuilder::new(ndim).domain("GRID").build()?;
-            region.map_region(map, &grid)?
+            region.reg_map_region(map, &grid)?
         }
         None => {
             if ndim != nax || ndim < 1 {

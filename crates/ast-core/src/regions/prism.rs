@@ -218,11 +218,11 @@ impl Prism {
                     let mut emap = emap;
                     emap.invert();
                     let efrm = this_reg2.get_region_frame();
-                    let that_ext2 = that_ext.map_region(emap.as_ref(), efrm.as_ref())?;
+                    let that_ext2 = that_ext.reg_map_region(emap.as_ref(), efrm.as_ref())?;
                     let mut bmap = bmap;
                     bmap.invert();
                     let bfrm = this_reg1.get_region_frame();
-                    let that_base2 = that_base.map_region(bmap.as_ref(), bfrm.as_ref())?;
+                    let that_base2 = that_base.reg_map_region(bmap.as_ref(), bfrm.as_ref())?;
 
                     let rbase =
                         super::overlap::overlap_to_code(this_reg1.overlap(that_base2.as_ref())?);
@@ -706,9 +706,9 @@ impl Region for Prism {
 
         // Bound each component within its own part of the current Frame
         // (prism.c:1099-1109).
-        let reg1 = self.region1.map_region(map1.as_ref(), cfrm1.as_ref())?;
+        let reg1 = self.region1.reg_map_region(map1.as_ref(), cfrm1.as_ref())?;
         let (tlbnd1, tubnd1) = reg1.get_region_bounds()?;
-        let reg2 = self.region2.map_region(map2.as_ref(), cfrm2.as_ref())?;
+        let reg2 = self.region2.reg_map_region(map2.as_ref(), cfrm2.as_ref())?;
         let (tlbnd2, tubnd2) = reg2.get_region_bounds()?;
 
         // Undo any axis permutation the Prism's FrameSet introduced
@@ -1194,7 +1194,7 @@ impl Mapping for Prism {
         // If the above produced a simplified Region, map it into the current
         // Frame of the parent and simplify it (prism.c:3342).
         if let Some(region) = new.take() {
-            let mapped = region.map_region(bcmap.as_ref(), cfrm.as_ref())?;
+            let mapped = region.reg_map_region(bcmap.as_ref(), cfrm.as_ref())?;
             let simplified = <dyn Mapping>::simplify(mapped.as_ref())?;
             // astSimplify of a Region always yields a Region; if the concrete
             // simplified form is not a plain Region class, keep the mapped
@@ -1240,7 +1240,7 @@ impl Mapping for Prism {
                 let (_, nmap1) = split1.as_ref().unwrap();
                 let target: Vec<i32> = axout1.iter().map(|&a| a as i32).collect();
                 let newfrm1 = cfrm.pick_axes_snapshot(&target)?;
-                let newreg1 = reg1.map_region(nmap1.as_ref(), newfrm1.as_ref())?;
+                let newreg1 = reg1.reg_map_region(nmap1.as_ref(), newfrm1.as_ref())?;
                 let mut simplified = super::merge_util::mapping_into_region(
                     <dyn Mapping>::simplify(newreg1.as_ref())?,
                 )
@@ -1259,7 +1259,7 @@ impl Mapping for Prism {
                 let (_, nmap2) = split2.as_ref().unwrap();
                 let target: Vec<i32> = axout2.iter().map(|&a| a as i32).collect();
                 let newfrm2 = cfrm.pick_axes_snapshot(&target)?;
-                let newreg2 = reg2.map_region(nmap2.as_ref(), newfrm2.as_ref())?;
+                let newreg2 = reg2.reg_map_region(nmap2.as_ref(), newfrm2.as_ref())?;
                 let mut simplified = super::merge_util::mapping_into_region(
                     <dyn Mapping>::simplify(newreg2.as_ref())?,
                 )
@@ -1276,12 +1276,12 @@ impl Mapping for Prism {
                 // (prism.c:3436).
                 let target1: Vec<i32> = axout1.iter().map(|&a| a as i32).collect();
                 let newfrm1 = cfrm.pick_axes_snapshot(&target1)?;
-                let newreg1 = reg1.map_region(nmap1.as_ref(), newfrm1.as_ref())?;
+                let newreg1 = reg1.reg_map_region(nmap1.as_ref(), newfrm1.as_ref())?;
                 let snewreg1_map = <dyn Mapping>::simplify(newreg1.as_ref())?;
 
                 let target2: Vec<i32> = axout2.iter().map(|&a| a as i32).collect();
                 let newfrm2 = cfrm.pick_axes_snapshot(&target2)?;
-                let newreg2 = reg2.map_region(nmap2.as_ref(), newfrm2.as_ref())?;
+                let newreg2 = reg2.reg_map_region(nmap2.as_ref(), newfrm2.as_ref())?;
                 let snewreg2_map = <dyn Mapping>::simplify(newreg2.as_ref())?;
 
                 // Detect whether either component actually simplified by

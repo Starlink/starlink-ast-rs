@@ -226,7 +226,7 @@ fn overlap_x(that: &dyn Region, this: &dyn Region) -> AstResult<i32> {
     // Transform the uncertainty of reg2 into reg1's base Frame (region.c:7193).
     let unc = reg2.get_unc_frm(FrameRef::Current)?;
     let bfrm_reg1 = reg1.get_region_frameset().base().snapshot();
-    let unc1 = unc.map_region(map.as_ref(), bfrm_reg1.as_ref())?;
+    let unc1 = unc.reg_map_region(map.as_ref(), bfrm_reg1.as_ref())?;
 
     // See if every transformed mesh point lies on reg1's boundary, to within
     // the joint uncertainty. If so the two boundaries are equivalent

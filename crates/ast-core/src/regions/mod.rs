@@ -437,7 +437,7 @@ pub trait Region: Frame + Mapping + AsDynRegion {
 
     /// Mutable access to the encapsulated FrameSet.
     ///
-    /// Used by the shared [`map_region`](Region::map_region) default to
+    /// Used by the shared [`reg_map_region`](Region::reg_map_region) default to
     /// perform the base→current edge surgery C's `astMapRegion` does on
     /// `result->frameset` directly. Every concrete class returns
     /// `&mut self.data.frameset`.
@@ -617,7 +617,7 @@ pub trait Region: Frame + Mapping + AsDynRegion {
             .with_context("Cannot convert it to the Frame of the new Region."));
         };
         let map = conv.mapping(FrameRef::Base, FrameRef::Current)?;
-        let mut new_unc = unc.map_region(map.as_ref(), target.as_ref())?;
+        let mut new_unc = unc.reg_map_region(map.as_ref(), target.as_ref())?;
 
         // Ensure the uncertainty is bounded. Negating an unbounded
         // uncertainty makes it bounded because it consists of Circles, Boxes
@@ -745,7 +745,7 @@ pub trait Region: Frame + Mapping + AsDynRegion {
                     Ok(unc)
                 } else {
                     let frm = fs.current().snapshot();
-                    unc.map_region(map.as_ref(), frm.as_ref())
+                    unc.reg_map_region(map.as_ref(), frm.as_ref())
                 }
             }
         }
@@ -869,7 +869,28 @@ pub trait Region: Frame + Mapping + AsDynRegion {
     /// to the new `frame`. Returns a new Region representing the same area in
     /// the new coordinate system.
     ///
-    /// Faithful port of C `astMapRegion` / `MapRegion` (region.c:5375). The C
+    /// Port of C's public `astMapRegion` (`astMapRegionId_`, region.c:13947):
+    /// the Region [`reg_map_region`](Region::reg_map_region) returns,
+    /// simplified, so a Box mapped through a PermMap comes back as a Box in
+    /// `frame`.
+    fn map_region(&self, mapping: &dyn Mapping, frame: &dyn Frame) -> AstResult<DynRegion> {
+        let mapped = self.reg_map_region(mapping, frame)?;
+        let simplified = (mapped.as_ref() as &dyn Mapping).simplify()?;
+        merge_util::mapping_into_region(simplified).ok_or_else(|| {
+            AstError::new(
+                ErrorCode::Inter,
+                "astMapRegion: simplifying a Region did not give a Region (internal AST \
+                 programming error).",
+            )
+        })
+    }
+
+    /// Map this region into a new frame without simplifying the result.
+    ///
+    /// The `mapping` transforms coordinates from this region's current Frame
+    /// to the new `frame`.
+    ///
+    /// Faithful port of C's protected `astMapRegion` / `MapRegion` (region.c:5375). The C
     /// method is defined **once** on the Region base class (`vtab->MapRegion =
     /// MapRegion`, region.c:4620) and is *not* overridden per subclass, so this
     /// is a single shared default rather than a per-class implementation.
@@ -881,20 +902,21 @@ pub trait Region: Frame + Mapping + AsDynRegion {
     /// new current Frame connected via `mapping` and removing the original
     /// current Frame. The base and current Frames of the result therefore
     /// differ in general (so the Region dumps its full FrameSet).
-    fn map_region(&self, mapping: &dyn Mapping, frame: &dyn Frame) -> AstResult<DynRegion> {
+    #[doc(hidden)]
+    fn reg_map_region(&self, mapping: &dyn Mapping, frame: &dyn Frame) -> AstResult<DynRegion> {
         // The supplied Mapping must define both a forward and an inverse
         // transformation (region.c:5488-5498).
         if !mapping.has_inverse() {
             return Err(AstError::new(
                 ErrorCode::Nodef,
-                "map_region: the supplied Mapping does not define an inverse transformation"
+                "reg_map_region: the supplied Mapping does not define an inverse transformation"
                     .to_string(),
             ));
         }
         if !mapping.has_forward() {
             return Err(AstError::new(
                 ErrorCode::Nodef,
-                "map_region: the supplied Mapping does not define a forward transformation"
+                "reg_map_region: the supplied Mapping does not define a forward transformation"
                     .to_string(),
             ));
         }
@@ -943,7 +965,7 @@ pub trait Region: Frame + Mapping + AsDynRegion {
                 if !ok {
                     return Err(AstError::new(
                         ErrorCode::Nodef,
-                        "map_region: the region which results from the supplied Mapping is \
+                        "reg_map_region: the region which results from the supplied Mapping is \
                          undefined"
                             .to_string(),
                     ));
@@ -1002,7 +1024,10 @@ pub trait Region: Frame + Mapping + AsDynRegion {
                 }
                 let ntotal = keep.len();
 
-                if axflags.is_none() || ntotal == nkept {
+                // Without `axflags` (some defining point is bad) `ntotal` is 0,
+                // so neither branch runs unless the split kept no axes, and the
+                // Region keeps all its axes (region.c:5631-5652).
+                if ntotal == nkept {
                     // The split mapping can be used as-is: pick the retained
                     // old axes from the Region and use the (re-inverted) split
                     // mapping (region.c:5651-5668).
@@ -1476,7 +1501,7 @@ pub fn pick_axes_region(region: &dyn Region, axes: &[usize]) -> AstResult<Picked
             // axes, then map the base region into the picked current Frame.
             let mut fsmap = fsmap;
             fsmap.invert();
-            let mut creg = breg.map_region(fsmap.as_ref(), picked_frame.as_ref())?;
+            let mut creg = breg.reg_map_region(fsmap.as_ref(), picked_frame.as_ref())?;
             // Copy properties from the old Region to the new Region
             // (region.c:7723 passes unc=0: uncertainty is left untouched).
             creg.reg_overlay(region, false)?;

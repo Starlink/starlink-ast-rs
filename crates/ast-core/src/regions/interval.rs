@@ -194,7 +194,7 @@ impl Interval {
     ///
     /// The Box is built in the base Frame and then, when the base→current
     /// Mapping is not a `UnitMap`, mapped into the current Frame with
-    /// `map_region` (interval.c:495-499) — which extends the Box's FrameSet
+    /// `reg_map_region` (interval.c:495-499) — which extends the Box's FrameSet
     /// rather than moving its points, so the returned Box represents the same
     /// area in the same Frame the Interval represents. The Interval's negation
     /// and its `Closed` value are then transferred (interval.c:509, 512), the
@@ -287,7 +287,7 @@ impl Interval {
         let unc_temp = that_iv.get_unc_frm(FrameRef::Base)?;
         let this_fset = self.get_region_frameset();
         let this_base_frame = this_fset.frame(FrameRef::Base)?;
-        let unc_that = unc_temp.map_region(smap.as_ref(), this_base_frame)?;
+        let unc_that = unc_temp.reg_map_region(smap.as_ref(), this_base_frame)?;
         let (lbndu_this, ubndu_this) = unc_this.get_region_bounds()?;
         let (lbndu_that, ubndu_that) = unc_that.get_region_bounds()?;
 
@@ -541,7 +541,7 @@ impl Interval {
             Box::new(bbox)
         } else {
             let cfrm = self.data.frameset.current().snapshot();
-            bbox.map_region(map.as_ref(), cfrm.as_ref())?
+            bbox.reg_map_region(map.as_ref(), cfrm.as_ref())?
         };
 
         if self.data.negated {
@@ -700,7 +700,7 @@ impl Interval {
             box_reg.set_uncertainty(unc)?;
         }
         let current_frame = self.data.frameset.current().snapshot();
-        let box2 = box_reg.map_region(map, current_frame.as_ref())?;
+        let box2 = box_reg.reg_map_region(map, current_frame.as_ref())?;
         let sreg = (box2.as_ref() as &dyn Mapping).simplify()?;
 
         // The Box only simplifies (changes concrete geometry) when the

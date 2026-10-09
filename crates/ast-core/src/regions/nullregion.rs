@@ -432,7 +432,7 @@ impl Region for NullRegion {
         };
 
         // Map the merged Region into the new current Frame (nullregion.c:738).
-        let mut result = new.map_region(&bcmap, &cfrm).ok()?;
+        let mut result = new.reg_map_region(&bcmap, &cfrm).ok()?;
 
         // FillFactor product and MeshSize ratio scaling, applied to the mapped
         // result as C applies them (nullregion.c:740-776).

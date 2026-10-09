@@ -175,7 +175,7 @@ pub(super) fn finish_region_merge(
         new.set_uncertainty(unc).ok()?;
     }
 
-    let mut result = new.map_region(bcmap.as_ref(), cfrm.as_ref()).ok()?;
+    let mut result = new.reg_map_region(bcmap.as_ref(), cfrm.as_ref()).ok()?;
     apply_merge_scaling_to(result.as_mut(), &scaling).ok()?;
 
     // C returns the mapped Region as it stands. A fully-bounded Interval

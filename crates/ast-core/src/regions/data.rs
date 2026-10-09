@@ -401,7 +401,7 @@ pub(crate) trait RegionGeometry {
     /// Remap defining points through a mapping.
     ///
     /// Called when the region's coordinate system changes (e.g., via
-    /// `map_region`). The implementation should transform `self.points`
+    /// `reg_map_region`). The implementation should transform `self.points`
     /// through the given mapping and update any derived quantities.
     fn remap_defining_points(&mut self, mapping: &dyn Mapping, forward: bool) -> AstResult<()>;
 
