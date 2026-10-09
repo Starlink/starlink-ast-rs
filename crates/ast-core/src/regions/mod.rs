@@ -436,10 +436,13 @@ pub trait Region: Frame + Mapping + AsDynRegion {
         if self.is_bounded()? {
             Ok(())
         } else {
+            let class = class_name(self.as_any());
             Err(AstError::new(
                 ErrorCode::Mbbnf,
-                "astGetRegionMesh: The supplied Region is unbounded so no mesh can \
-                 be created to cover it.",
+                format!(
+                    "astGetRegionMesh({class}): The supplied {class} is unbounded so no \
+                     mesh can be created to cover it."
+                ),
             ))
         }
     }
@@ -1639,6 +1642,31 @@ pub(crate) fn any_as_region(a: &dyn std::any::Any) -> Option<&dyn Region> {
         Some(r)
     } else {
         None
+    }
+}
+
+/// The AST class name of a Region, as C's `astGetClass` gives it.
+fn class_name(region: &dyn std::any::Any) -> &'static str {
+    if region.is::<BoxRegion>() {
+        "Box"
+    } else if region.is::<Circle>() {
+        "Circle"
+    } else if region.is::<CmpRegion>() {
+        "CmpRegion"
+    } else if region.is::<Ellipse>() {
+        "Ellipse"
+    } else if region.is::<Interval>() {
+        "Interval"
+    } else if region.is::<NullRegion>() {
+        "NullRegion"
+    } else if region.is::<PointList>() {
+        "PointList"
+    } else if region.is::<Polygon>() {
+        "Polygon"
+    } else if region.is::<Prism>() {
+        "Prism"
+    } else {
+        "Region"
     }
 }
 

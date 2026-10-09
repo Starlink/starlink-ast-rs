@@ -5,6 +5,7 @@
 
 use ast_core::constants::BAD_VALUE;
 use ast_core::coords::PointSet;
+use ast_core::error::ErrorCode;
 use ast_core::frames::{BasicFrameBuilder, Frame};
 use ast_core::mappings::Mapping;
 use ast_core::regions::{IntervalBuilder, Region};
@@ -745,5 +746,25 @@ fn interval_centre_is_given_in_the_frame_asked_for() {
     assert_eq!(
         mapped.reg_centre_query(FrameRef::Current).unwrap(),
         Some(vec![4.0])
+    );
+}
+
+#[test]
+fn mesh_of_an_unbounded_interval_names_the_class() {
+    // region.c `GetRegionMesh`, checked against the C library.
+    let interval = IntervalBuilder::new(
+        BasicFrameBuilder::new(1).build().unwrap(),
+        vec![BAD_VALUE],
+        vec![1.0],
+    )
+    .unwrap()
+    .build()
+    .unwrap();
+    let err = interval.region_mesh().unwrap_err();
+    assert_eq!(err.code(), ErrorCode::Mbbnf);
+    assert_eq!(
+        err.message(),
+        "astGetRegionMesh(Interval): The supplied Interval is unbounded so no mesh can be \
+         created to cover it."
     );
 }
