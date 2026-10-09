@@ -7,7 +7,11 @@
 //! given a 3-D Frame, no vertices, one or two, or a BAD vertex (polygon.c
 //! `astInitPolygon`); and `astEllipse` given a 3-D Frame, BAD values, a
 //! negative or zero axis, or points that do not determine an ellipse, which
-//! C rejects only when the Ellipse is used (ellipse.c `Cache`).
+//! C rejects only when the Ellipse is used (ellipse.c `Cache`); and a Box
+//! dump whose points have three values for its 2-D Frame (region.c `Load`).
+//! Also `astSetUnc` given an uncertainty whose current Frame is in another
+//! Domain but whose base Frame is in the Region's, which region.c `Conv`
+//! finds by converting FrameSet to FrameSet.
 //!
 //! Each expected code is the status C is left holding.
 //!
@@ -250,4 +254,41 @@ fn ellipse_that_is_no_ellipse_fails_when_used() {
         err.message(),
         "astInitEllipse(Ellipse): The supplied points do not determine an ellipse."
     );
+}
+
+#[test]
+fn loader_rejects_points_of_the_wrong_length() {
+    let err = from_native_string(cases::LOAD_NCOORD_DUMP).unwrap_err();
+    assert_eq!(err.code().as_raw() as i32, cases::LOAD_NCOORD);
+    assert_eq!(
+        err.message(),
+        "astLoadRegion(Box): Corrupt Box contains  incorrect number of coordinate values per point (3)."
+    );
+}
+
+#[test]
+fn set_uncertainty_matches_any_frame_of_the_uncertainty() {
+    use ast_core::mappings::ZoomMap;
+    use ast_core::{AnyObject, to_native_string};
+
+    assert_eq!(cases::SETUNC_OTHER_CURRENT, 0);
+    let with_domain = |d: &str| {
+        let mut f = frame(2);
+        f.set_domain(d);
+        f
+    };
+    let circle_in = |d: &str, r: f64| {
+        CircleBuilder::new(with_domain(d), vec![1.0, 0.5])
+            .unwrap()
+            .radius(r)
+            .build()
+            .unwrap()
+    };
+    let mut target = circle_in("FOO", 0.1);
+    let unc = circle_in("FOO", 0.01)
+        .reg_map_region(&ZoomMap::new(2, 2.0).unwrap(), &with_domain("BAR"))
+        .unwrap();
+    target.set_uncertainty(unc).unwrap();
+    let text = to_native_string(&AnyObject::from_mapping(&target).unwrap()).unwrap();
+    assert_eq!(text, cases::SETUNC_OTHER_CURRENT_DUMP);
 }

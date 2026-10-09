@@ -636,15 +636,15 @@ pub trait Region: Frame + Mapping + AsDynRegion {
 
         // Map the supplied uncertainty into this Region's base Frame. C
         // inverts this->frameset, runs Conv(unc->frameset, ...), then
-        // astMapRegion (region.c:10840-10850). The base Frame of this Region
-        // is the target coordinate system, and `Conv` aligns in the Domain of
-        // that Frame (region.c:2367-2370).
+        // astMapRegion (region.c:10840-10850). `Conv` converts FrameSet to
+        // FrameSet, so any Frame of the uncertainty's FrameSet may match, and
+        // aligns in the Domain of the current Frame of the inverted FrameSet,
+        // which is this Region's base Frame (region.c:2367-2370).
         let mut unc = unc;
-        let target = self.get_region_frameset().base().snapshot();
-        let domain = target.domain().to_string();
-        let converted = unc
-            .get_region_frame()
-            .convert_to(target.as_ref(), &[&domain])?;
+        let mut to = self.get_region_frameset();
+        to.invert();
+        let domain = to.current().domain().to_string();
+        let converted = unc.get_region_frameset().convert_to(&to, &[&domain])?;
 
         // `Conv` re-instates each FrameSet's original base Frame index with
         // astSetBase (region.c:2373-2374). That restores the index it read,
@@ -671,7 +671,8 @@ pub trait Region: Frame + Mapping + AsDynRegion {
             .with_context("Cannot convert it to the Frame of the new Region."));
         };
         let map = conv.mapping(FrameRef::Base, FrameRef::Current)?;
-        let mut new_unc = unc.reg_map_region(map.as_ref(), target.as_ref())?;
+        let frm = conv.current().snapshot();
+        let mut new_unc = unc.reg_map_region(map.as_ref(), frm.as_ref())?;
 
         // Ensure the uncertainty is bounded. Negating an unbounded
         // uncertainty makes it bounded because it consists of Circles, Boxes

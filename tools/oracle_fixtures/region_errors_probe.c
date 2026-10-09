@@ -9,7 +9,11 @@
  * (polygon.c astInitPolygon); and astEllipse given a 3-D Frame, BAD values,
  * a negative or zero axis, or form-0 points that do not determine an
  * ellipse, which C accepts and rejects only when the Ellipse is used
- * (ellipse.c astInitEllipse and Cache).
+ * (ellipse.c astInitEllipse and Cache); and a Box dump whose points have
+ * three values for its 2-D Frame (region.c Load). Also astSetUnc given an
+ * uncertainty whose current Frame is in another Domain but whose base
+ * Frame is in the Region's, which region.c Conv finds by converting
+ * FrameSet to FrameSet, and the dump of the Region it gives.
  *
  * Each error is recorded as the status C is left holding, which for a pair
  * of astError calls is the second one's.
@@ -21,6 +25,9 @@
 #include <stdio.h>
 #include <string.h>
 #include "ast.h"
+
+extern void *astMapRegion_( void *, void *, void *, int * );
+extern AstObject *astMakeId_( AstObject *, int * );
 
 static char dump[ 20000 ];
 static char *next_line;
@@ -235,6 +242,61 @@ int main( void ) {
       code( "ELL_DEGENERATE_LOAD", &status );
       astTran2( loaded, 1, inx, iny, 1, outx, outy );
       code( "ELL_DEGENERATE_USE", &status );
+   }
+   printf( "/// A 2-D Box dump holding a 3-D Box's PointSet, and reading it.\n" );
+   {
+      static char d2[ 20000 ], d3[ 20000 ], out[ 20000 ];
+      char *p2, *e2, *p3, *e3;
+      double lo3[] = { 0.0, 0.0, 0.0 }, hi3[] = { 1.0, 1.0, 1.0 };
+      AstObject *b2 = (AstObject *) astBox( astFrame( 2, " " ), 1, c, p, NULL, " " );
+      AstObject *b3 = (AstObject *) astBox( astFrame( 3, " " ), 1, lo3, hi3, NULL, " " );
+      dump[ 0 ] = 0;
+      ch = astChannel( NULL, sink, " " );
+      astWrite( ch, b2 );
+      ch = astAnnul( ch );
+      strcpy( d2, dump );
+      dump[ 0 ] = 0;
+      ch = astChannel( NULL, sink, " " );
+      astWrite( ch, b3 );
+      ch = astAnnul( ch );
+      strcpy( d3, dump );
+      p2 = strstr( d2, "Begin PointSet" );
+      e2 = strstr( p2, "End PointSet" );
+      p3 = strstr( d3, "Begin PointSet" );
+      e3 = strstr( p3, "End PointSet" );
+      out[ 0 ] = 0;
+      strncat( out, d2, (size_t)( p2 - d2 ) );
+      strncat( out, p3, (size_t)( e3 - p3 ) );
+      strcat( out, e2 );
+      strcpy( dump, out );
+      printf( "pub const LOAD_NCOORD_DUMP: &str = " );
+      str( dump );
+      printf( ";\n" );
+      next_line = dump;
+      ch = astChannel( source, NULL, " " );
+      loaded = astRead( ch );
+      ch = astAnnul( ch );
+      code( "LOAD_NCOORD", &status );
+   }
+   printf( "/// astSetUnc given a Circle in Domain FOO mapped by a ZoomMap of 2 into\n"
+           "/// Domain BAR, on a Circle in Domain FOO, and the dump of the result.\n" );
+   {
+      double cen[] = { 1.0, 0.5 }, rad = 0.1, urad = 0.01;
+      int s = 0;
+      AstRegion *target = (AstRegion *) astCircle( astFrame( 2, "Domain=FOO" ), 1, cen, &rad, NULL, " " );
+      AstRegion *u = (AstRegion *) astCircle( astFrame( 2, "Domain=FOO" ), 1, cen, &urad, NULL, " " );
+      AstObject *umapped = astMakeId_( astMapRegion_( astMakePointer( u ),
+                                       astMakePointer( astZoomMap( 2, 2.0, " " ) ),
+                                       astMakePointer( astFrame( 2, "Domain=BAR" ) ), &s ), &s );
+      astSetUnc( target, umapped );
+      code( "SETUNC_OTHER_CURRENT", &status );
+      dump[ 0 ] = 0;
+      ch = astChannel( NULL, sink, " " );
+      astWrite( ch, target );
+      ch = astAnnul( ch );
+      printf( "pub const SETUNC_OTHER_CURRENT_DUMP: &str = " );
+      str( dump );
+      printf( ";\n" );
    }
    return 0;
 }

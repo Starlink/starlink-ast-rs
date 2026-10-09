@@ -6,7 +6,10 @@
  * public form (region.c astMapRegionId_), which simplifies what the
  * protected form returns, given a Box and a PermMap that swaps its axes.
  * Also astSimplify of the PermMap the first case uses, whose inperm C
- * stores as it was given (permmap.c MapMerge and NullPerm).
+ * stores as it was given (permmap.c MapMerge and NullPerm). And the dump of
+ * a Circle mapped by the protected form through a ZoomMap of 2 then one of
+ * 0.5, whose base->current Mapping simplifies to a UnitMap, so the dump
+ * (region.c Dump, which tests astRegMapping) writes only its Frame.
  *
  * Prints Rust source for crates/ast-core/tests/region_mapregion_oracle/cases.rs:
  *
@@ -81,6 +84,16 @@ int main( void ) {
       printf( "/// The Box [0,2]x[1,4] through a PermMap swapping its axes, mapped by\n"
               "/// the public astMapRegion.\n" );
       emit( "SWAPPED_PUBLIC", (AstObject *) astMapRegion( reg, pm, astFrame( 2, " " ) ) );
+   }
+   {
+      double c[] = { 1.0, 0.5 }, r = 0.1;
+      AstRegion *circ = (AstRegion *) astCircle( astFrame( 2, "Domain=FOO" ), 1, c, &r, NULL, " " );
+      void *cm = astCmpMap( astZoomMap( 2, 2.0, " " ), astZoomMap( 2, 0.5, " " ), 1, " " );
+      void *p = astMapRegion_( astMakePointer( circ ), astMakePointer( cm ),
+                               astMakePointer( astFrame( 2, "Domain=BAR" ) ), &s );
+      printf( "/// A Circle in Domain FOO through a ZoomMap of 2 then one of 0.5 into\n"
+              "/// Domain BAR, by the protected form.\n" );
+      emit( "IDENTITY_CHAIN", astMakeId_( p, &s ) );
    }
    return status + s;
 }

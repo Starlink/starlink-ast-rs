@@ -725,9 +725,11 @@ pub(crate) fn write_region_base(node: &mut Node, data: &RegionData) {
     // omits both `Frm` and the `RegFS` line entirely. If the mapping is not
     // a UnitMap, dump the whole FrameSet and emit `RegFS` uncommented only
     // when RegionFS was explicitly set to 0.
-    let mapping = data.frameset.mapping(FrameRef::Base, FrameRef::Current);
-    let is_unit = mapping
-        .as_ref()
+    // C tests `astRegMapping`, the simplified base->current Mapping.
+    let is_unit = data
+        .frameset
+        .mapping(FrameRef::Base, FrameRef::Current)
+        .and_then(|m| <dyn Mapping>::simplify(m.as_ref()))
         .map(|m| m.as_any().is::<UnitMap>())
         .unwrap_or(false);
 
@@ -1015,13 +1017,10 @@ pub(crate) fn read_region_base(whole: &Node) -> AstResult<RegionData> {
     // dummy FrameSet with RegionFS=0 (`region.c:13593-13601`) that the
     // parent later replaces via `astSetRegFS`; we mirror that with the
     // `dummy_fs` flag.
-    // C loader `region.c:13563-13603`: `Frm` present → RegionFS = 1;
+    // C loader (region.c `Load`): `Frm` present → RegionFS = 1; otherwise
     // `FrmSet` present → read RegFS (default 1); neither → dummy FrameSet
-    // with RegionFS = 0.
-    let (frameset, dummy_fs, region_fs) = if let Some(fs_node) = node.get_object("FrmSet") {
-        let region_fs = node.get_int("RegFS", 1) != 0;
-        (FrameSet::from_node(fs_node)?, false, region_fs)
-    } else if let Some(frm_node) = node.get_object("Frm") {
+    // with RegionFS = 0. `nax` is the number of base Frame axes.
+    let (frameset, dummy_fs, region_fs, nax) = if let Some(frm_node) = node.get_object("Frm") {
         // Only a single Frame stored — create a 2-frame FrameSet with
         // UnitMap connecting base to current (matches the C library and
         // keeps with_integrity working).
@@ -1031,7 +1030,12 @@ pub(crate) fn read_region_base(whole: &Node) -> AstResult<RegionData> {
         let mut fs = FrameSet::new(frame);
         fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(naxes)), current_snap)
             .expect("adding current frame to region FrameSet");
-        (fs, false, true)
+        (fs, false, true, naxes)
+    } else if let Some(fs_node) = node.get_object("FrmSet") {
+        let region_fs = node.get_int("RegFS", 1) != 0;
+        let fs = FrameSet::from_node(fs_node)?;
+        let nin = fs.base().naxes();
+        (fs, false, region_fs, nin)
     } else {
         // Dummy FrameSet: a default BasicFrame of `naxpt` axes (>= 1),
         // marked dummy so the parent re-associates the real frame.
@@ -1046,8 +1050,23 @@ pub(crate) fn read_region_base(whole: &Node) -> AstResult<RegionData> {
         let mut fs = FrameSet::new(frame);
         fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(nax)), current_snap)
             .expect("adding current frame to dummy region FrameSet");
-        (fs, true, false)
+        (fs, true, false, nax)
     };
+
+    // The points must have one value per base Frame axis (region.c `Load`).
+    if !points.is_empty() && naxpt != nax {
+        let class = &whole.class;
+        return Err(AstError::new(
+            ErrorCode::Regin,
+            format!(
+                "astLoadRegion({class}): Corrupt {class} contains  incorrect number of \
+                 coordinate values per point ({naxpt})."
+            ),
+        )
+        .with_context(format!(
+            "The {class} requires {nax} coordinate value(s) for each point."
+        )));
+    }
 
     // Read uncertainty.
     let uncertainty = if let Some(unc_node) = node.get_object("Unc") {

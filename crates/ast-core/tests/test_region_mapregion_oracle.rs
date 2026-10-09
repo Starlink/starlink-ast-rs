@@ -6,6 +6,10 @@
 //! `map_region`), which simplifies the protected form's result, given a Box
 //! and a PermMap that swaps its axes. Also `simplify` of the first case's
 //! PermMap, whose inperm C keeps as given (permmap.c `MapMerge`, `NullPerm`).
+//! And the dump of a Circle mapped through a ZoomMap of 2 then one of 0.5,
+//! whose base->current Mapping simplifies to a UnitMap, so its dump writes
+//! only its Frame (region.c `Dump`, which tests the simplified
+//! `astRegMapping`).
 //!
 //! The values come from `tools/oracle_fixtures/region_mapregion_probe.c`.
 
@@ -55,4 +59,27 @@ fn permmap_with_bad_input_simplifies_as_c_does() {
     let pm = PermMap::new(&[1, 2, 0], &[1, 2], &[]).unwrap();
     let simplified = (&pm as &dyn Mapping).simplify().unwrap();
     assert_eq!(dump(simplified.as_ref()), cases::PERMMAP_SIMPLIFIED);
+}
+
+#[test]
+fn identity_chain_dumps_only_the_frame() {
+    use ast_core::mappings::{CmpMap, Composition, ZoomMap};
+    let with_domain = |d: &str| {
+        let mut f = frame(2);
+        f.set_domain(d);
+        f
+    };
+    let circle = ast_core::regions::CircleBuilder::new(with_domain("FOO"), vec![1.0, 0.5])
+        .unwrap()
+        .radius(0.1)
+        .build()
+        .unwrap();
+    let chain = CmpMap::new(
+        Box::new(ZoomMap::new(2, 2.0).unwrap()),
+        Box::new(ZoomMap::new(2, 0.5).unwrap()),
+        Composition::Series,
+    )
+    .unwrap();
+    let mapped = circle.reg_map_region(&chain, &with_domain("BAR")).unwrap();
+    assert_eq!(dump(mapped.as_ref()), cases::IDENTITY_CHAIN);
 }
