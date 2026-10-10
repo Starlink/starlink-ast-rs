@@ -14,6 +14,8 @@ mod test_circle;
 mod test_cmpregion;
 #[path = "../test_ellipse.rs"]
 mod test_ellipse;
+#[path = "../test_huge.rs"]
+mod test_huge;
 #[path = "../test_interval.rs"]
 mod test_interval;
 #[path = "../test_masking.rs"]
