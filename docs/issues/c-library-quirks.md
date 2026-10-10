@@ -34,6 +34,8 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [SkyFrame LAST depends on which LAST values the process computed earlier](#skyframe-last-depends-on-which-last-values-the-process-computed-earlier)
 - [A WcsMap reports unusable parameters only on its first transformation](#a-wcsmap-reports-unusable-parameters-only-on-its-first-transformation)
 - [`IsZenithal` tests the wrong SZP parameter](#iszenithal-tests-the-wrong-szp-parameter)
+- [The `SombCos` resampling kernel is half `Somb` everywhere except at zero offset](#the-sombcos-resampling-kernel-is-half-somb-everywhere-except-at-zero-offset)
+- [Block averaging with variances lets one pixel's bad variance decide for others](#block-averaging-with-variances-lets-one-pixels-bad-variance-decide-for-others)
 
 ### [Addressed here, and not going upstream](#addressed-here-and-not-going-upstream)
 
@@ -552,6 +554,27 @@ Reading parameter 2, whose default is 0, makes a default SZP projection non-zeni
 The port mirrors it (`WcsMap::is_zenithal`); no fixture holds an SZP header, so the corpora are unaffected either way, and `tests/test_sky_pole_oracle.rs` covers a default SZP header against C.
 
 Question for upstream: should the test read parameter 3, as the variable name and the projection's geometry suggest?
+
+### The `SombCos` resampling kernel is half `Somb` everywhere except at zero offset
+
+`SombCos` (`mapping.c`, after `Somb`) forms its first factor as `J1(x) / x`, where `Somb` uses `2.0 * J1(x) / x`, but still takes the factor as 1 at zero offset, where `J1(x) / x` tends to a half.
+SUN/211 describes `AST__SOMBCOS` as `somb(pi*x)*cos(k*pi*x)`.
+Because kernel weights are normalised, the halving cancels unless one of the contributing offsets is exactly zero; it then counts the pixel at the interpolation point twice as heavily as the documented kernel does.
+That happens whenever a position falls on a pixel centre along some axis, as for a UnitMap or an integer shift.
+
+The port mirrors it: `kernels::somb_cos` in `crates/ast-core/src/mappings/resample/kernels.rs`.
+The `sombcos_unit` case of `crates/ast-core/tests/test_resample_oracle.rs` pins it; it fails if the factor of 2 is added.
+Resolved when upstream either adds the factor or documents the kernel as it is.
+
+### Block averaging with variances lets one pixel's bad variance decide for others
+
+`InterpolateBlockAverage<X>` (`mapping.c`, the `ASSEMBLE_INPUT_*` macros under `MAKE_INTERPOLATE_BLOCKAVE`) means to skip any pixel whose variance is bad, but it tests `bad_var`, which it resets only once per output pixel.
+For a signed type without `AST__USEBAD`, `bad_var = bad_var || var < 0` accumulates, so after the first negative variance every later pixel of the block is skipped too.
+With `AST__USEBAD`, `bad_var` is reassigned per pixel, so the skipping is right, but `CALC_AND_ASSIGN_OUTPUT` then reads the value left by the last pixel of the block whose data value was good, so the output variance is bad exactly when that pixel's variance was.
+
+The port mirrors both: `interp::block_average` in `crates/ast-core/src/mappings/resample/interp.rs` keeps C's single `bad_var`.
+In `crates/ast-core/tests/test_resample_oracle.rs`, the `blockave_novarbad` and `blockave_win3` cases fail if the flag is reset for each pixel, and `blockave_cubic`, `blockave_zoom` and `conserve_win3` fail if the last pixel's value is ignored.
+Resolved when upstream resets the flag per pixel; the cases would then need regenerating.
 
 ## Addressed here, and not going upstream
 

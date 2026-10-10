@@ -26,6 +26,8 @@ pub trait SumValue:
 {
     /// Zero.
     const ZERO: Self;
+    /// One.
+    const ONE: Self;
     /// One half, which C adds to or subtracts from a value it rounds.
     const HALF: Self;
     /// The double `v` in this type, as C's `(Xfloattype) v`.
@@ -37,6 +39,7 @@ impl private::SealedSum for f64 {}
 
 impl SumValue for f32 {
     const ZERO: Self = 0.0;
+    const ONE: Self = 1.0;
     const HALF: Self = 0.5;
     fn from_f64(v: f64) -> Self {
         v as f32
@@ -45,6 +48,7 @@ impl SumValue for f32 {
 
 impl SumValue for f64 {
     const ZERO: Self = 0.0;
+    const ONE: Self = 1.0;
     const HALF: Self = 0.5;
     fn from_f64(v: f64) -> Self {
         v
@@ -67,6 +71,12 @@ pub trait PixelValue: PartialOrd + Copy + Send + Sync + std::fmt::Debug + privat
     type Sum: SumValue;
     /// Zero, which a variance is tested against.
     const ZERO: Self;
+    /// The sums at or below which an interpolated value overflows this type
+    /// when rounded (C's `LO_<X>`); zero, and unused, for a floating type.
+    const LO_LIM: Self::Sum;
+    /// The sums at or above which an interpolated value overflows this type
+    /// when rounded (C's `HI_<X>`); zero, and unused, for a floating type.
+    const HI_LIM: Self::Sum;
     /// The value as a double, as C's `(double) value`.
     fn to_f64(self) -> f64;
     /// The value as its sum type, as C's `(Xfloattype) value`.
@@ -76,10 +86,14 @@ pub trait PixelValue: PartialOrd + Copy + Send + Sync + std::fmt::Debug + privat
     /// away from zero by adding or subtracting a half and truncating. C's
     /// cast is undefined for a value out of range; Rust's saturates.
     fn from_sum(v: Self::Sum) -> Self;
+    /// The double `v` in this type, as C's `(Xtype) v`: truncated toward
+    /// zero for an integer type. C's cast is undefined for a value out of
+    /// range; Rust's saturates.
+    fn from_f64(v: f64) -> Self;
 }
 
 macro_rules! pixel_value {
-    ($($t:ty => $code:literal, $floating:literal, $signed:literal, $sum:ty);* $(;)?) => {$(
+    ($($t:ty => $code:literal, $floating:literal, $signed:literal, $sum:ty, $lo:expr, $hi:expr);* $(;)?) => {$(
         impl private::Sealed for $t {}
         impl PixelValue for $t {
             const CODE: &'static str = $code;
@@ -87,6 +101,8 @@ macro_rules! pixel_value {
             const SIGNED: bool = $signed;
             type Sum = $sum;
             const ZERO: Self = 0 as $t;
+            const LO_LIM: $sum = $lo;
+            const HI_LIM: $sum = $hi;
             fn to_f64(self) -> f64 {
                 self as f64
             }
@@ -101,19 +117,22 @@ macro_rules! pixel_value {
                     (v + if v >= <$sum as SumValue>::ZERO { half } else { -half }) as $t
                 }
             }
+            fn from_f64(v: f64) -> Self {
+                v as $t
+            }
         }
     )*};
 }
 
 pixel_value!(
-    f64 => "D", true, true, f64;
-    f32 => "F", true, true, f32;
-    i64 => "L", false, true, f64;
-    u64 => "UL", false, false, f64;
-    i32 => "I", false, true, f64;
-    u32 => "UI", false, false, f64;
-    i16 => "S", false, true, f32;
-    u16 => "US", false, false, f32;
-    i8 => "B", false, true, f32;
-    u8 => "UB", false, false, f32;
+    f64 => "D", true, true, f64, 0.0, 0.0;
+    f32 => "F", true, true, f32, 0.0, 0.0;
+    i64 => "L", false, true, f64, -0.5 + i64::MIN as f64, 0.5 + i64::MAX as f64;
+    u64 => "UL", false, false, f64, -0.5, 0.5 + u64::MAX as f64;
+    i32 => "I", false, true, f64, -0.5 + i32::MIN as f64, 0.5 + i32::MAX as f64;
+    u32 => "UI", false, false, f64, -0.5, 0.5 + u32::MAX as f64;
+    i16 => "S", false, true, f32, -0.5 + i16::MIN as f32, 0.5 + i16::MAX as f32;
+    u16 => "US", false, false, f32, -0.5, 0.5 + u16::MAX as f32;
+    i8 => "B", false, true, f32, -0.5 + i8::MIN as f32, 0.5 + i8::MAX as f32;
+    u8 => "UB", false, false, f32, -0.5, 0.5 + u8::MAX as f32;
 );

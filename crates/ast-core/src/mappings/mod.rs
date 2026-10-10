@@ -77,7 +77,8 @@ pub mod resample;
 mod tran_grid;
 pub use map_box::MapBoxResult;
 pub use resample::{
-    Interp, ResampleFlags, ResampleInput, ResampleOptions, ResampleOutput, resample,
+    Interp, InterpArgs, InterpFn, Kernel1Fn, ResampleFlags, ResampleInput, ResampleOptions,
+    ResampleOutput, resample,
 };
 
 use std::any::Any;

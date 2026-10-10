@@ -2,6 +2,16 @@
 
 ## Revision history
 
+- **2026-10-10 (rev 13)**: Resampling as built.
+  `astResample<X>` is the free function `mappings::resample`, generic over
+  `pixel::PixelValue` (one implementation per C type suffix, `L` and `K`
+  sharing `i64`), not a `Mapping` method over `SampleType`. Its grids are
+  `ResampleInput` and `ResampleOutput`, borrowed slices with bounds, rather
+  than an owned `DataCube<T>`, so a caller resamples into arrays it already
+  holds, as C's callers do. The scheme is the enum `Interp`; C's `finterp`
+  function pointer becomes a borrowed closure carried by `Interp::UKern1` or
+  `Interp::UInterp`, which return `AstResult` where C's report through the
+  status. Rebin and RebinSeq will follow the same shape.
 - **2026-10-09 (rev 12)**: Channels are objects.
   `AnyObject` gains `NativeChannel` (C's `Channel`) and `MocChan`, so a
   Channel can be written to another and read back, as C's Channel `Dump` and
@@ -846,10 +856,10 @@ impl Region for PointList { .. }
 - **Grid transforms**
   `fn transform_grid(&self, lbnd: &[i64], ubnd: &[i64], tol: f64,
   maxpix: usize, forward: bool) -> AstResult<PointSet>`.
-- **Resample / Rebin** generic over `SampleType`. A `DataCube<T>` type
-  (sibling of `PointSet` for N-D gridded data with optional variance)
-  is the input/output. Detailed signatures deferred to the implementation
-  plan.
+- **Resample / Rebin** generic over the pixel type, with borrowed input
+  and output grids. Rev 13 records the shape as built
+  (`mappings::resample`, `pixel::PixelValue`); it replaced the
+  `SampleType` / `DataCube<T>` sketch here.
 
 Generics-over-`Frame` for compile-time coordinate-system checking was
 discussed on the PR and dropped: the interaction with AST's dynamic

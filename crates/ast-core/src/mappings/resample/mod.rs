@@ -15,24 +15,108 @@
 //! [`PixelValue`], whose items are the macro arguments.
 
 // The loops mirror the C source index for index.
-#![allow(clippy::needless_range_loop)]
+#![allow(clippy::needless_range_loop, clippy::explicit_counter_loop)]
 
 mod interp;
+mod kernels;
 
+use crate::constants::BAD_VALUE;
 use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::mappings::{DynMapping, Mapping, substitute_nan_to_bad_in_place};
 use crate::pixel::PixelValue;
 
-/// The sub-pixel interpolation scheme of [`resample`] (C's `interp`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Interp {
+/// The sub-pixel interpolation scheme of [`resample`] (C's `interp` and
+/// `finterp`), for pixel type `T`.
+///
+/// The kernel schemes weight the input pixels within a distance `N` of the
+/// position along each axis by the product of a 1-d kernel evaluated at
+/// their offsets along each axis. `N` is `params[0]` rounded to the nearest
+/// integer; where it is zero or less a default applies, as the variants
+/// say. Where a variant uses `params[1]`, `params` needs two elements.
+pub enum Interp<'a, T> {
     /// The value of the input pixel whose centre is nearest
     /// (`AST__NEAREST`).
     Nearest,
     /// Linear interpolation between the nearest input pixels along each axis
     /// (`AST__LINEAR`, C's default).
     Linear,
+    /// The kernel `sinc(pi x)` (`AST__SINC`); `N` defaults to 2.
+    Sinc,
+    /// The kernel `sinc(pi x) sinc(k pi x)`, out to the first zero of the
+    /// second factor, where `params[1]` is that zero's offset and `k` is a
+    /// half over it (`AST__SINCSINC`). `N` is at most `params[1]` rounded
+    /// up, and defaults to it.
+    SincSinc,
+    /// The kernel `sinc(pi x) cos(k pi x)`, out to the first zero of the
+    /// second factor, defined as for [`Interp::SincSinc`]
+    /// (`AST__SINCCOS`).
+    SincCos,
+    /// The kernel `sinc(pi x) exp(-k x^2)`, where `params[1]` is the full
+    /// width at half maximum of the Gaussian (at least 0.1) (`AST__SINCGAUSS`).
+    /// `N` defaults to where the Gaussian falls to 1% of its peak.
+    SincGauss,
+    /// The kernel `exp(-k x^2)`, with `params[1]` and `N` as for
+    /// [`Interp::SincGauss`] (`AST__GAUSS`).
+    Gauss,
+    /// The kernel `somb(pi x)`, that is `2 J1(pi x) / (pi x)` (`AST__SOMB`);
+    /// `N` defaults to 2.
+    Somb,
+    /// The kernel `somb(pi x) cos(k pi x)`, with `params[1]` and `N` as for
+    /// [`Interp::SincCos`] (`AST__SOMBCOS`). As in C, the first factor is
+    /// `J1(pi x) / (pi x)`, half of [`Interp::Somb`]'s, except at zero
+    /// offset, where it is 1.
+    SombCos,
+    /// The mean of the input pixels in the block reaching `params[0]`
+    /// pixels (rounded) either side of the position along each axis,
+    /// weighted by the reciprocals of their variances when variances are
+    /// resampled (`AST__BLOCKAVE`).
+    BlockAve,
+    /// A 1-d kernel of the caller's (`AST__UKERN1`), given each pixel's
+    /// offset along an axis, `params` and the flags. `N` is at least 1.
+    UKern1(Kernel1Fn<'a>),
+    /// An interpolator of the caller's (`AST__UINTERP`). It is given the
+    /// input and the positions of a block of output pixels, sets each output
+    /// pixel (and variance, if any) at its offset, and returns the number
+    /// it set bad.
+    UInterp(InterpFn<'a, T>),
+}
+
+/// A caller's 1-d kernel ([`Interp::UKern1`]): the kernel's value at an
+/// offset, given the offset, the parameters and the flags.
+pub type Kernel1Fn<'a> = &'a dyn Fn(f64, &[f64], ResampleFlags) -> AstResult<f64>;
+
+/// A caller's interpolator ([`Interp::UInterp`]): given the input and the
+/// positions of a block of output pixels, it sets the output values (and
+/// variances, if given) and returns the number it set bad.
+pub type InterpFn<'a, T> =
+    &'a dyn Fn(&InterpArgs<'_, T>, &mut [T], Option<&mut [T]>) -> AstResult<usize>;
+
+impl<T> Clone for Interp<'_, T> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<T> Copy for Interp<'_, T> {}
+
+impl<T> std::fmt::Debug for Interp<'_, T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Interp::Nearest => "Nearest",
+            Interp::Linear => "Linear",
+            Interp::Sinc => "Sinc",
+            Interp::SincSinc => "SincSinc",
+            Interp::SincCos => "SincCos",
+            Interp::SincGauss => "SincGauss",
+            Interp::Gauss => "Gauss",
+            Interp::Somb => "Somb",
+            Interp::SombCos => "SombCos",
+            Interp::BlockAve => "BlockAve",
+            Interp::UKern1(_) => "UKern1",
+            Interp::UInterp(_) => "UInterp",
+        })
+    }
 }
 
 /// The flags of [`resample`] (C's `flags`).
@@ -43,6 +127,37 @@ pub struct ResampleFlags {
     /// Output pixels that would be bad are left as they are
     /// (`AST__NOBAD`).
     pub no_bad: bool,
+    /// Output values are scaled by the ratio of output to input pixel
+    /// sizes, and variances by its square, so that total flux is conserved
+    /// (`AST__CONSERVEFLUX`). It needs a non-zero `tol`, a Mapping with as
+    /// many inputs as outputs and linear enough to fit within `tol`, and
+    /// cannot be used with `no_bad`.
+    pub conserve_flux: bool,
+}
+
+/// What an interpolator is given: the input grid, and for each output
+/// point its input position and its offset in the output array.
+#[derive(Debug, Clone, Copy)]
+pub struct InterpArgs<'a, T> {
+    /// The lowest pixel index of the input grid on each axis.
+    pub lbnd_in: &'a [i64],
+    /// The highest pixel index of the input grid on each axis.
+    pub ubnd_in: &'a [i64],
+    /// The input data.
+    pub input: &'a [T],
+    /// The input variances, when variances are resampled.
+    pub in_var: Option<&'a [T]>,
+    /// The offset of each output point in the output arrays.
+    pub offset: &'a [i64],
+    /// The input position of each output point: `coords[axis][point]`,
+    /// bad where there is none.
+    pub coords: &'a [Vec<f64>],
+    /// The parameters given to [`resample`].
+    pub params: &'a [f64],
+    /// The flags given to [`resample`].
+    pub flags: ResampleFlags,
+    /// The bad value.
+    pub badval: T,
 }
 
 /// An input grid: its pixel index bounds, with the first axis varying
@@ -79,10 +194,10 @@ pub struct ResampleOutput<'a, T> {
 
 /// How [`resample`] interpolates.
 #[derive(Debug, Clone, Copy)]
-pub struct ResampleOptions<'a> {
+pub struct ResampleOptions<'a, T> {
     /// The interpolation scheme.
-    pub interp: Interp,
-    /// The scheme's parameters (C's `params`); the schemes here use none.
+    pub interp: Interp<'a, T>,
+    /// The scheme's parameters (C's `params`), as [`Interp`] describes.
     pub params: &'a [f64],
     /// The flags.
     pub flags: ResampleFlags,
@@ -110,12 +225,17 @@ pub struct ResampleOptions<'a> {
 /// bound, or a region outside the output grid, is AST__GBDIN; too many
 /// pixels is AST__EXSPIX; a negative `tol` is AST__PATIN; a Mapping with no
 /// inverse is AST__TRNND; and a data or variance array of the wrong length,
-/// or bounds of different lengths, is AST__DIMIN.
+/// bounds of different lengths, or fewer `params` than the scheme uses, is
+/// AST__DIMIN. Flux conservation with a zero `tol`, a Mapping with different
+/// numbers of inputs and outputs, or a section of the output over which no
+/// linear fit is found, is AST__CNFLX, and with `no_bad` is AST__BADFLG. An
+/// error from a caller's kernel or interpolator is returned with context
+/// added.
 pub fn resample<T: PixelValue>(
     map: &dyn Mapping,
     input: &ResampleInput<'_, T>,
     output: &mut ResampleOutput<'_, T>,
-    opts: &ResampleOptions<'_>,
+    opts: &ResampleOptions<'_, T>,
     badval: T,
 ) -> AstResult<usize> {
     let method = format!("astResample{}", T::CODE);
@@ -214,7 +334,28 @@ pub fn resample<T: PixelValue>(
         })?;
     }
 
-    // Arrays shorter than their grids, which C cannot check.
+    if opts.flags.conserve_flux {
+        if opts.tol == 0.0 {
+            return fail(
+                &method,
+                ErrorCode::Cnflx,
+                "Flux conservation was requested but cannot be performed because zero \
+                 tolerance was also specified."
+                    .to_string(),
+            );
+        } else if nin != nout {
+            return fail(
+                &method,
+                ErrorCode::Cnflx,
+                "Flux conservation was requested but cannot be performed because the Mapping \
+                 has different numbers of inputs and outputs."
+                    .to_string(),
+            );
+        }
+    }
+
+    // Arrays shorter than their grids, and parameters fewer than the scheme
+    // reads, which C cannot check.
     let check_len = |what: &str, len: usize, want: usize| {
         if len != want {
             fail(
@@ -233,6 +374,32 @@ pub fn resample<T: PixelValue>(
     check_len("output data", output.data.len(), npix_out)?;
     if let Some(v) = &output.var {
         check_len("output variance", v.len(), npix_out)?;
+    }
+    let nparam = match opts.interp {
+        Interp::Nearest | Interp::Linear | Interp::UInterp(_) => 0,
+        Interp::Sinc | Interp::Somb | Interp::BlockAve | Interp::UKern1(_) => 1,
+        Interp::SincSinc
+        | Interp::SincCos
+        | Interp::SombCos
+        | Interp::SincGauss
+        | Interp::Gauss => 2,
+    };
+    if opts.params.len() < nparam {
+        return fail(
+            &method,
+            ErrorCode::Dimin,
+            format!(
+                "The {:?} scheme needs {nparam} parameter{} but {} {} given.",
+                opts.interp,
+                if nparam == 1 { "" } else { "s" },
+                opts.params.len(),
+                if opts.params.len() == 1 {
+                    "was"
+                } else {
+                    "were"
+                }
+            ),
+        );
     }
 
     // Simplify only when there are enough pixels to make it worthwhile.
@@ -254,6 +421,8 @@ pub fn resample<T: PixelValue>(
         map: simple.as_ref(),
         input,
         opts,
+        scheme: Scheme::new(opts),
+        method: &method,
         badval,
         lbnd_out: output.lbnd,
         ubnd_out: output.ubnd,
@@ -306,11 +475,93 @@ fn grid_size(lbnd: &[i64], ubnd: &[i64], what: &str) -> AstResult<usize> {
     })
 }
 
+/// The interpolator `ResampleSection` calls, with the kernel, number of
+/// neighbouring pixels and kernel parameters it sets up for a kernel scheme.
+enum Scheme<'a, T> {
+    Nearest,
+    Linear,
+    Kernel1 {
+        kernel: interp::Kernel<'a>,
+        neighb: i64,
+        params: Vec<f64>,
+    },
+    BlockAve,
+    UInterp(InterpFn<'a, T>),
+}
+
+impl<'a, T> Scheme<'a, T> {
+    /// `ResampleSection`'s set-up of the scheme `opts.interp`.
+    fn new(opts: &ResampleOptions<'a, T>) -> Self {
+        let params = opts.params;
+        // C's `MaxD`, `MaxI` and `MinI`.
+        let max_d = |a: f64, b: f64| if a > b { a } else { b };
+        let max_i = |a: i32, b: i32| if a > b { a } else { b };
+        let min_i = |a: i32, b: i32| if a < b { a } else { b };
+        let nearest_int = |v: f64| (v + 0.5).floor() as i32;
+        let kernel1 = |f: fn(f64, &[f64]) -> f64, neighb: i32, par: Vec<f64>| Scheme::Kernel1 {
+            kernel: interp::Kernel::Builtin(f),
+            neighb: i64::from(neighb),
+            params: par,
+        };
+        // Sinc and Somb: two neighbours by default.
+        let default_two = || {
+            let n = nearest_int(params[0]);
+            if n <= 0 { 2 } else { max_i(1, n) }
+        };
+        // The kernels cut off at the first zero of a factor whose offset is
+        // params[1]: at most that many neighbours, and that many by default.
+        let to_zero = || {
+            let mut n = nearest_int(params[0]);
+            if n <= 0 {
+                n = i32::MAX;
+            }
+            min_i(n, max_d(1.0, params[1]).ceil() as i32)
+        };
+        let k_zero = || vec![0.5 / max_d(1.0, params[1])];
+        // The Gaussian kernels: out to 1% of the peak by default.
+        let gaussian = || {
+            let fwhm = max_d(0.1, params[1]);
+            let k = 4.0 * 2.0_f64.ln() / (fwhm * fwhm);
+            let mut n = nearest_int(params[0]);
+            if n <= 0 {
+                n = (-(0.01_f64.ln()) / k).sqrt().ceil() as i32;
+            }
+            (n, vec![k])
+        };
+        match opts.interp {
+            Interp::Nearest => Scheme::Nearest,
+            Interp::Linear => Scheme::Linear,
+            Interp::Sinc => kernel1(kernels::sinc, default_two(), Vec::new()),
+            Interp::Somb => kernel1(kernels::somb, default_two(), Vec::new()),
+            Interp::SincCos => kernel1(kernels::sinc_cos, to_zero(), k_zero()),
+            Interp::SincSinc => kernel1(kernels::sinc_sinc, to_zero(), k_zero()),
+            Interp::SombCos => kernel1(kernels::somb_cos, to_zero(), k_zero()),
+            Interp::SincGauss => {
+                let (n, par) = gaussian();
+                kernel1(kernels::sinc_gauss, n, par)
+            }
+            Interp::Gauss => {
+                let (n, par) = gaussian();
+                kernel1(kernels::gauss, n, par)
+            }
+            Interp::BlockAve => Scheme::BlockAve,
+            Interp::UKern1(f) => Scheme::Kernel1 {
+                kernel: interp::Kernel::User(f),
+                neighb: i64::from(max_i(1, nearest_int(params[0]))),
+                params: params.to_vec(),
+            },
+            Interp::UInterp(f) => Scheme::UInterp(f),
+        }
+    }
+}
+
 /// The arguments every level of the resampling shares.
 struct Resampler<'a, 'b, T> {
     map: &'a dyn Mapping,
     input: &'a ResampleInput<'b, T>,
-    opts: &'a ResampleOptions<'b>,
+    opts: &'a ResampleOptions<'b, T>,
+    scheme: Scheme<'b, T>,
+    method: &'a str,
     badval: T,
     lbnd_out: &'a [i64],
     ubnd_out: &'a [i64],
@@ -363,7 +614,7 @@ impl<T: PixelValue> Resampler<'_, '_, T> {
             linear_fit = inverse
                 .linear_approx(&flbnd, &fubnd, self.opts.tol)?
                 .map(|fit| fit.as_c_layout())
-                .filter(|fit| !fit.contains(&crate::constants::BAD_VALUE));
+                .filter(|fit| !fit.contains(&BAD_VALUE));
             linear_fit.is_none()
         };
 
@@ -433,9 +684,19 @@ impl<T: PixelValue> Resampler<'_, '_, T> {
             ubnd_block[idim] = (lbnd[idim] + dim_block[idim] - 1).min(ubnd[idim]);
         }
 
+        // The factor that conserves flux: the ratio of output to input pixel
+        // sizes, from the fit's gradients.
+        let factor = match linear_fit {
+            Some(fit) if self.opts.flags.conserve_flux => {
+                let ndim_in = self.input.lbnd.len();
+                matrix_det(ndim_in, ndim_out, &fit[ndim_in..]).abs()
+            }
+            _ => 1.0,
+        };
+
         let mut result = 0;
         loop {
-            result += self.section(linear_fit, &lbnd_block, &ubnd_block)?;
+            result += self.section(linear_fit, &lbnd_block, &ubnd_block, factor)?;
             let mut idim = 0;
             loop {
                 if ubnd_block[idim] < ubnd[idim] {
@@ -455,13 +716,24 @@ impl<T: PixelValue> Resampler<'_, '_, T> {
 
     /// `ResampleSection`: the input position of each output pixel of the
     /// block `[lbnd, ubnd]`, from the linear fit or the Mapping, and the
-    /// interpolated values there.
+    /// interpolated values there, scaled by `factor` when conserving flux.
     fn section(
         &mut self,
         linear_fit: Option<&[f64]>,
         lbnd: &[i64],
         ubnd: &[i64],
+        factor: f64,
     ) -> AstResult<usize> {
+        // Flux conservation needs bad values to tell which output pixels
+        // were assigned.
+        let conserve = self.opts.flags.conserve_flux;
+        if self.opts.flags.no_bad && conserve {
+            return Err(AstError::new(
+                ErrorCode::Badflg,
+                "astResample: Cannot use the AST__NOBAD and AST__CONSERVEFLUX flags together \
+                 (programming error).",
+            ));
+        }
         let ndim_out = lbnd.len();
         let ndim_in = self.input.lbnd.len();
         let (lbnd_out, ubnd_out) = (self.lbnd_out, self.ubnd_out);
@@ -534,6 +806,16 @@ impl<T: PixelValue> Resampler<'_, '_, T> {
                 }
             }
         } else {
+            // Flux can be conserved only where a linear fit gives the ratio
+            // of pixel sizes.
+            if conserve {
+                return Err(AstError::new(
+                    ErrorCode::Cnflx,
+                    "astResampleSection: Flux conservation was requested but cannot be \
+                     performed because either the Mapping is too non-linear, or the requested \
+                     tolerance is too small.",
+                ));
+            }
             let mut pset_out = PointSet::zeros(npoint, ndim_out);
             {
                 let mut v = pset_out.view_mut();
@@ -585,25 +867,103 @@ impl<T: PixelValue> Resampler<'_, '_, T> {
 
         let input = self.input;
         let usevar = input.var.is_some() && self.out_var.is_some();
-        let args = interp::Args {
+        let args = InterpArgs {
             lbnd_in: input.lbnd,
             ubnd_in: input.ubnd,
             input: input.data,
             in_var: if usevar { input.var } else { None },
             offset: &offset,
             coords: &coords,
+            params: self.opts.params,
             flags: self.opts.flags,
             badval: self.badval,
         };
-        let out_var = if usevar {
+        let out = &mut *self.out;
+        let mut out_var = if usevar {
             self.out_var.as_deref_mut()
         } else {
             None
         };
-        Ok(match self.opts.interp {
-            Interp::Nearest => interp::nearest(&args, self.out, out_var),
-            Interp::Linear => interp::linear(&args, self.out, out_var),
+        let result = match &self.scheme {
+            Scheme::Nearest => interp::nearest(&args, out, out_var.as_deref_mut()),
+            Scheme::Linear => interp::linear(&args, out, out_var.as_deref_mut()),
+            Scheme::Kernel1 {
+                kernel,
+                neighb,
+                params,
+            } => interp::kernel1(&args, *kernel, *neighb, params, out, out_var.as_deref_mut())
+                .map_err(|e| {
+                    e.with_context(format!(
+                        "{}: Error signalled by user-supplied 1-d interpolation kernel.",
+                        self.method
+                    ))
+                })?,
+            Scheme::BlockAve => interp::block_average(&args, out, out_var.as_deref_mut()),
+            Scheme::UInterp(f) => f(&args, out, out_var.as_deref_mut()).map_err(|e| {
+                e.with_context(format!(
+                    "{}: Error signalled by user-supplied sub-pixel interpolation function.",
+                    self.method
+                ))
+            })?,
+        };
+
+        // mapping.c `ConserveFlux<X>`: C multiplies each value in its own
+        // type by the double factor, so an integer result is truncated.
+        if conserve {
+            for &off in &offset {
+                let v = &mut out[off as usize];
+                if *v != self.badval {
+                    *v = T::from_f64(v.to_f64() * factor);
+                }
+            }
+            if let Some(out_var) = out_var {
+                let factor = factor * factor;
+                for &off in &offset {
+                    let v = &mut out_var[off as usize];
+                    if *v != self.badval {
+                        *v = T::from_f64(v.to_f64() * factor);
+                    }
+                }
+            }
+        }
+        Ok(result)
+    }
+}
+
+/// mapping.c `MatrixDet`: the determinant of the `nrow` by `ncol` matrix
+/// `matrix` (row-major) once the rows and columns holding only zeros or bad
+/// values are removed, or `BAD_VALUE` if what remains is not square.
+pub(crate) fn matrix_det(nrow: usize, ncol: usize, matrix: &[f64]) -> f64 {
+    let used = |v: f64| v != BAD_VALUE && v != 0.0;
+    let userow: Vec<bool> = (0..nrow)
+        .map(|r| (0..ncol).any(|c| used(matrix[r * ncol + c])))
+        .collect();
+    let usecol: Vec<bool> = (0..ncol)
+        .map(|c| (0..nrow).any(|r| used(matrix[r * ncol + c])))
+        .collect();
+    let ndim = userow.iter().filter(|&&u| u).count();
+    if ndim != usecol.iter().filter(|&&u| u).count() {
+        return BAD_VALUE;
+    }
+    let sqmat: Vec<f64> = (0..nrow)
+        .filter(|&r| userow[r])
+        .flat_map(|r| {
+            let usecol = &usecol;
+            (0..ncol)
+                .filter(move |&c| usecol[c])
+                .map(move |c| matrix[r * ncol + c])
         })
+        .collect();
+    match ndim {
+        // C allocates nothing for an empty matrix, so leaves the result bad.
+        0 => BAD_VALUE,
+        1 => sqmat[0],
+        2 => sqmat[0] * sqmat[3] - sqmat[1] * sqmat[2],
+        _ => {
+            let mut a = sqmat;
+            let mut y = vec![1.0; ndim];
+            crate::pal::dmat_det(ndim, &mut a, &mut y).1
+        }
     }
 }
 

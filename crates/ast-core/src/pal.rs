@@ -233,6 +233,12 @@ pub(crate) fn dvn(v: &[f64; 3]) -> ([f64; 3], f64) {
 /// `SFA = 1e-20`); in that case the contents of `a` and `y` are
 /// unspecified. `a.len()` must equal `n*n` and `y.len()` must equal `n`.
 pub(crate) fn dmat(n: usize, a: &mut [f64], y: &mut [f64]) -> bool {
+    dmat_det(n, a, y).0
+}
+
+/// [`dmat`], also returning `palDmat`'s determinant of `a`, which is zero
+/// when the matrix is singular.
+pub(crate) fn dmat_det(n: usize, a: &mut [f64], y: &mut [f64]) -> (bool, f64) {
     debug_assert_eq!(a.len(), n * n, "matrix must be n*n");
     debug_assert_eq!(y.len(), n, "rhs must have length n");
     let mut d = 0.0_f64;
@@ -249,7 +255,7 @@ pub(crate) fn dmat(n: usize, a: &mut [f64], y: &mut [f64]) -> bool {
             iw.as_mut_ptr(),
         );
     }
-    jf == 0
+    (jf == 0, d)
 }
 
 // ---------------------------------------------------------------------------

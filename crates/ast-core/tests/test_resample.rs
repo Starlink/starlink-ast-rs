@@ -1,10 +1,8 @@
 //! `mappings::resample` on known data.
 //!
-//! C ancestor: `reference/starlink-ast/ast_tester/testresample.c`. Ported
-//! here: test 1 for nearest-neighbour and linear interpolation, and tests
-//! 2, 3 and 5-9. Test 1's kernel schemes and test 4 need the kernel
-//! interpolators, which are not ported yet; test 10 (`astQuadApprox`) is
-//! the `poly` case of `test_tran_grid_oracle.rs`.
+//! C ancestor: `reference/starlink-ast/ast_tester/testresample.c`, tests 1
+//! to 9; test 10 (`astQuadApprox`) is the `poly` case of
+//! `test_tran_grid_oracle.rs`.
 //!
 //! Divergence from C: the arrays and bounds are passed as slices, so the
 //! variance arrays are `Option`s rather than pointers, and `AST__USEVAR`,
@@ -26,7 +24,7 @@ fn run<T: PixelValue>(
     ubnd_in: &[i64],
     data: &[T],
     var: Option<&[T]>,
-    interp: Interp,
+    interp: Interp<'_, T>,
     flags: ResampleFlags,
     badval: T,
     lbnd: &[i64],
@@ -65,7 +63,15 @@ fn run<T: PixelValue>(
 #[test]
 fn test1_unitmap_is_the_identity() {
     let input: Vec<f64> = (1..=30).map(f64::from).collect();
-    for interp in [Interp::Nearest, Interp::Linear] {
+    for interp in [
+        Interp::Nearest,
+        Interp::Linear,
+        Interp::Sinc,
+        Interp::SincSinc,
+        Interp::SincCos,
+        Interp::SincGauss,
+        Interp::SombCos,
+    ] {
         let mut out = vec![0.0; 30];
         run(
             &UnitMap::new(1),
@@ -83,6 +89,32 @@ fn test1_unitmap_is_the_identity() {
         );
         for i in 3..27 {
             assert!((out[i] - input[i]).abs() <= 1.0e-10, "{interp:?} pixel {i}");
+        }
+    }
+}
+
+/// The smoothing schemes reproduce constant data.
+#[test]
+fn test1_smoothing_schemes_keep_constant_data() {
+    let input = vec![42.0; 30];
+    for interp in [Interp::Gauss, Interp::Somb, Interp::BlockAve] {
+        let mut out = vec![0.0; 30];
+        run(
+            &UnitMap::new(1),
+            &[1],
+            &[30],
+            &input,
+            None,
+            interp,
+            ResampleFlags::default(),
+            BAD_VALUE,
+            &[1],
+            &[30],
+            &mut out,
+            None,
+        );
+        for (i, v) in out.iter().enumerate().take(27).skip(3) {
+            assert!((v - 42.0).abs() <= 1.0e-10, "{interp:?} pixel {i}");
         }
     }
 }
@@ -138,6 +170,40 @@ fn test3_half_pixel_shift_linear() {
         for ix in 0..18 {
             let expected = f64::from(ix as i32 + 2 + iy as i32 + 2 - 1);
             assert!((out[iy * 18 + ix] - expected).abs() <= 1.0e-10);
+        }
+    }
+}
+
+#[test]
+fn test4_kernels_keep_constant_data() {
+    let input = vec![42.0; 400];
+    for interp in [
+        Interp::Sinc,
+        Interp::SincSinc,
+        Interp::SincCos,
+        Interp::SincGauss,
+        Interp::Gauss,
+        Interp::Somb,
+        Interp::SombCos,
+        Interp::BlockAve,
+    ] {
+        let mut out = vec![0.0; 16 * 16];
+        run(
+            &ShiftMap::new(vec![0.5, 0.5]),
+            &[1, 1],
+            &[20, 20],
+            &input,
+            None,
+            interp,
+            ResampleFlags::default(),
+            BAD_VALUE,
+            &[3, 3],
+            &[18, 18],
+            &mut out,
+            None,
+        );
+        for (i, v) in out.iter().enumerate() {
+            assert!((v - 42.0).abs() <= 1.0e-8, "{interp:?} pixel {i}");
         }
     }
 }
@@ -287,6 +353,7 @@ fn test9_no_bad_leaves_bad_output_alone() {
         ResampleFlags {
             use_bad: true,
             no_bad: true,
+            ..Default::default()
         },
         BAD_VALUE,
         &[1],

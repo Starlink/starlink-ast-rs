@@ -40,6 +40,8 @@ No subclass overrides them; `region.c` `Mask<X>` calls `astResample<X>`.
 
 ## Stages
 
+Stages 1 and 2 are done: `mappings::resample` has every scheme of `astResample<X>`.
+
 1. **Resample framework, nearest and linear.** The public `Mapping::resample`
    generic over a pixel-type trait; the validation and errors of
    `Resample<X>`; `ResampleAdaptively`, `ResampleWithBlocking` and
