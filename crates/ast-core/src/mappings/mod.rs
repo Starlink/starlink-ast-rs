@@ -70,7 +70,10 @@ mod switchmap;
 pub use switchmap::SwitchMap;
 mod linear_approx;
 pub use linear_approx::LinearFit;
+mod quad_approx;
+pub use quad_approx::QuadFit;
 mod map_box;
+mod tran_grid;
 pub use map_box::MapBoxResult;
 
 use std::any::Any;
@@ -580,6 +583,56 @@ pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
     /// returned, as it propagates from C's `astLinearApprox`.
     fn linear_approx(&self, lbnd: &[f64], ubnd: &[f64], tol: f64) -> AstResult<Option<LinearFit>> {
         linear_approx::linear_approx_default(self, lbnd, ubnd, tol)
+    }
+
+    /// Quadratic least-squares fit to the forward transform of a Mapping
+    /// with 2 inputs (C's `astQuadApprox`).
+    ///
+    /// Each output is modeled as
+    /// `a0 + a1*x + a2*y + a3*x*y + a4*x*x + a5*y*y`, fitted to a grid of
+    /// `nx` × `ny` positions (each at least 3) spanning `lbnd` to `ubnd`,
+    /// first and last positions on the bounds. Positions where an output is
+    /// bad are left out of that output's fit. To fit the inverse, invert the
+    /// Mapping first.
+    ///
+    /// A Mapping without exactly 2 inputs is `ErrorCode::Badni`.
+    fn quad_approx(
+        &self,
+        lbnd: [f64; 2],
+        ubnd: [f64; 2],
+        nx: usize,
+        ny: usize,
+    ) -> AstResult<QuadFit> {
+        quad_approx::quad_approx(self, lbnd, ubnd, nx, ny)
+    }
+
+    /// Transform every position of a regular grid (C's `astTranGrid`).
+    ///
+    /// The grid holds the integer positions from `lbnd` to `ubnd` inclusive
+    /// on each input axis. The result has one row per position, first axis
+    /// varying fastest, and one column per output of the transform used.
+    ///
+    /// When `tol` is positive, the Mapping is replaced by linear fits over
+    /// sections of the grid wherever they are accurate to within `tol`
+    /// (an output-space distance), which is much faster for large grids.
+    /// The grid is first divided until no section is longer than `maxpix`
+    /// on any axis. A `tol` of zero transforms every position through the
+    /// Mapping.
+    ///
+    /// Bounds of different lengths, or a length that is not the number of
+    /// inputs of the transform used, is `ErrorCode::Ncpin`; a lower bound
+    /// above its upper bound is `ErrorCode::Gbdin`; a negative `tol` is
+    /// `ErrorCode::Patin`; and a transform that is not defined is
+    /// `ErrorCode::Trnnd`.
+    fn tran_grid(
+        &self,
+        lbnd: &[i64],
+        ubnd: &[i64],
+        tol: f64,
+        maxpix: usize,
+        forward: bool,
+    ) -> AstResult<PointSet> {
+        tran_grid::tran_grid(self.as_dyn_mapping(), lbnd, ubnd, tol, maxpix, forward)
     }
 
     /// Find the bounding box of a nominated output coordinate over a

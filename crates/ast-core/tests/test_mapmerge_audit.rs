@@ -19,8 +19,10 @@ const MAPPING_HELPERS: &[&str] = &[
     "linear_approx",
     "map_box",
     "polymap_simd",
+    "quad_approx",
     "rate",
     "report",
+    "tran_grid",
 ];
 
 /// The Region trait methods this audit covers. A region module that overrides

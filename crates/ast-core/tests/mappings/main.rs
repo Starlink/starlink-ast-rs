@@ -101,6 +101,10 @@ mod test_tran1_tran2;
 mod test_tran_definedness;
 #[path = "../test_tran_definedness_oracle.rs"]
 mod test_tran_definedness_oracle;
+#[path = "../test_tran_grid_oracle.rs"]
+mod test_tran_grid_oracle;
+#[path = "../test_trangrid.rs"]
+mod test_trangrid;
 #[path = "../test_tranmap.rs"]
 mod test_tranmap;
 #[path = "../test_transform_oracle.rs"]

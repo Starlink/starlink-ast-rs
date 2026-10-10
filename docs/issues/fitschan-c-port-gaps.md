@@ -207,6 +207,20 @@ present.
 and as an `ASTWARN` card to the card list.
 Wire it into the call sites where the comments say "we silently leave".
 
+### Axis count of a foreign-encoding header
+
+**File:** `crates/ast-core/src/fitschan/enc_aips.rs` (and `enc_pc.rs`, `enc_iraf.rs`).
+**C reference:** `FitsToStore` (fitschan.c:11517-11540).
+
+C reads every foreign encoding other than DSS through `SpecTrans` and `WcsToStore`, then counts the axes as the highest index of any primary or alternate CRPIX keyword.
+The port's FITS-AIPS, PC and IRAF readers count them from `WCSAXES`, `NAXIS` or the highest `NAXISn`, and refuse a header with none of those.
+
+**Impact:** the FITS-WCS header of `testtrangrid.c` (CROTA1, no NAXIS), which C reads, is refused.
+`test_trangrid.rs::tan_header_without_naxis_is_not_read` fails when the port reads it.
+
+**Action:** count the axes as C does.
+The FITS-WCS reader's `infer_axis_count_from_indexed_keywords` is a different rule and should be checked against C's at the same time.
+
 ---
 
 ## FitsChan attribute coverage

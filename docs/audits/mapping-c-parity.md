@@ -35,7 +35,7 @@ Six root causes account for most findings:
 | C. Lost or ignored dump content | Cards that C reads are dropped: legacy keys, Nin for a 3-D SpecMap, set-to-default attributes. | WC-5, SP-2, PY-8, SH-3, SN-5, PM-3, GR-1, SL-2 |
 | D. Definedness | `has_forward`/`has_inverse` disagree with C's `TranForward`/`TranInverse`, so Rust attempts a transform C refuses and returns numbers, panics, or loops. | PY-2, PY-3, MX-1, SW-1, WC-4, LM-1 |
 | E. Missing validation | C raises an error on malformed constructor arguments or PointSets; Rust accepts them, panics, or pads them. | MB-1, MB-3, TR-1, SW-2, LM-3, SA-1, SP-3, TM-1, SN-1, UN-1, CH-2, WC-3, SL-1 |
-| F. Missing public API | Resample, Rebin, TranGrid, QuadApprox, Decompose, IsLinear, test/clear accessors, the RemoveRegions overrides, and the IntraMap and XphMap classes. | MB-4, MB-6, TR-3, RM-3, NM-2, and the tables below |
+| F. Missing public API | Resample, Rebin, Decompose, IsLinear, test/clear accessors, the RemoveRegions overrides, and the IntraMap and XphMap classes. | MB-4, MB-6, TR-3, RM-3, NM-2, and the tables below |
 
 **Why the tests missed these.** The Mapping tests build their objects with Rust constructors from good values and transform good points.
 BAD reaches a coefficient or table entry only through a C dump or an explicit argument, and neither is exercised (themes A and B).
@@ -109,7 +109,7 @@ They differ in the layout of the caller's arrays, not in what they compute:
 | `astTran2` | an x array and a y array | `Mapping::tran2` |
 | `astTranN` | one array, a coordinate's values a stride apart | none |
 | `astTranP` | one pointer per coordinate | none |
-| `astTranGrid` | a regular grid of input positions, optionally by piecewise linear approximation | none |
+| `astTranGrid` | a regular grid of input positions, optionally by piecewise linear approximation | `Mapping::tran_grid` |
 
 `astTranN` and `astTranP` exist in C because a C array does not carry its shape.
 A Rust `PointSet` is a two-dimensional array that does, so `transform` covers both layouts and the Rust API needs neither.
@@ -121,7 +121,7 @@ Two consequences follow:
   The port's `transform` does not report either, which is faithful, so a Rust caller who wants the report uses `tran1` or `tran2`.
   The `ast-capi` exports of all four must call `report_points` when `Report` is set.
 - `astTranGrid` is a separate algorithm, not a layout: it transforms every position of a regular grid, approximating the Mapping by linear fits over sub-regions where that is accurate enough (`TranGridAdaptively`, `TranGridSection`, `TranGridWithBlocking`).
-  The port has no counterpart; see "C methods with no Rust counterpart".
+  The port has it as `Mapping::tran_grid` (`mappings/tran_grid.rs`), which returns a `PointSet` with a row per grid position.
 
 The validation the wrappers share is not where PLAN.md §2 places it.
 C's base `Transform` (mapping.c:22333-22380), which every class's `Transform` calls first, raises `AST__TRNND`, `AST__NCPIN`, `AST__NOPTS` and `AST__NOCTS`, so `astTransform` validates as fully as the wrappers do (MB-1).
@@ -401,9 +401,7 @@ FitsChan does not use it; the HPX and XPH FITS projections go through WcsMap and
 |---|---|---|
 | `astResample<X>` (4- and 8-byte, all data types), with `astUinterp`/`astUkern1` | Mapping | Image regridding, used by KAPPA, SMURF and pyast. Deferred in PLAN.md §7. |
 | `astRebin<X>`, `astRebinSeq<X>` | Mapping | Flux-conserving rebinning and SMURF map-making. Deferred in PLAN.md §7. |
-| `astTranGrid` | Mapping | Bulk grid transform with adaptive linear approximation (see "The `astTran*` interfaces"). Deferred. |
 | `astTranN`, `astTranP` | Mapping | Not needed by the Rust API; `ast-capi` must provide them (see "The `astTran*` interfaces"). |
-| `astQuadApprox` | Mapping | 2-D quadratic fit used by FITS-WCS SIP-style fitting. Deferred. |
 | `astDecompose` | Mapping (base), CmpMap (cmpmap.c:881), TranMap (tranmap.c:368) | The component accessors are `pub(crate)` (mappings/cmpmap.rs:166-177, TranMap `map1`/`map2`), so `ast-capi` cannot implement it on the public API either; `docs/issues/frame-mapping-c-port-gaps.md` defers it to `ast-capi`. |
 | `GetIsLinear` / `IsLinear` | Mapping, CmpMap, UnitMap, ZoomMap, ShiftMap, MatrixMap, WinMap, XphMap | MB-4. |
 | `SetInvert` / `ClearInvert` / `TestInvert` | Mapping | Only a toggle exists (MB-6). |
