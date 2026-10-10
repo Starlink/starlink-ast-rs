@@ -311,3 +311,27 @@ A prototype of the bad-to-NaN substitution described in CLAUDE.md, for PolyMap's
 It replaced the forward call with: when no coefficient is bad, copy the input with BAD set to NaN, fill the power table with no BAD test (`fill_power_table`), sum each output's terms (`eval_term_with_table`), then set NaN outputs to BAD; a bad coefficient keeps the checked loop.
 NaN gives C's per-term result because power zero is 1.0 whatever the input, so only terms using a power above zero of a bad input become NaN.
 It is not committed: C parity of every Mapping comes first, and the copy costs an allocation per call that the measurement at small N did not separate from noise.
+
+## Addendum: transform memory (2026-10-10)
+
+`testhuge.c` ran out of memory in `Moc::add_pixel_mask`, and the cause was general.
+A series CmpMap holds its first component's result while the second runs, and the port held a full-size copy of the points at each level of a nested series, where cmpmap.c `Transform` passes them through 8192 at a time for exactly that reason.
+`PointSet::from_rows` also gave every point its own `Vec`, about 70 bytes per 2-D point.
+Both are fixed (`d7df68c7`); `tests/test_transform_memory.rs` counts allocations per thread to hold the bounds.
+On `astAddPixelMask8F` over a 12001 x 12001 image the peak fell from 11.5 GB to 2.2 GB, against C's 2.3 GB.
+The batches cost about 1 ns per point for copying each batch in and out, a few percent on a deep chain and up to a quarter on a two-stage chain of trivial Mappings; letting a PointSet borrow a slice of another's points would remove the copies.
+
+Peak memory of each class's own transform, as a multiple of its output, at a million points with `bench_per_class`'s variants:
+
+| Variant | Forward | Inverse |
+|---|---|---|
+| Every other variant | 1.00 | 1.00 or no inverse |
+| `polymap_2d_deg5` | 1.00 | 4.06 |
+| `ratemap_polymap` | 2.05 | no inverse |
+
+Two remain above the output alone, both bounded (they do not grow with chain depth) and not yet compared with C:
+
+- **PolyMap's iterative inverse** (`polymap_2d_deg5`, used when no inverse polynomial is given) holds about three copies of the points beyond its result. C's `PolyMap` iterative inverse (polymap.c `IterInverse`) is the reference for what it needs.
+- **RateMap** holds about one copy beyond its result. C's `RateMap` Transform (ratemap.c) estimates the rate through `astRate` per point, which is the reference.
+
+Parallel CmpMaps also copy each component's input and output where cmpmap.c uses `astSetSubPoints` views, a constant factor of about two that does not grow with depth.
