@@ -11,6 +11,7 @@ use crate::constants::BAD_VALUE;
 use crate::error::AstResult;
 use crate::pixel::{PixelValue, SumValue};
 
+use super::kernels::KernelFn;
 use super::{InterpArgs as Args, Kernel1Fn, ResampleFlags};
 
 /// The input grid's strides and coordinate limits, pixel edges included.
@@ -327,7 +328,7 @@ pub(super) fn linear<T: PixelValue>(
 pub(super) enum Kernel<'a> {
     /// A kernel of mapping.c, given the parameters `ResampleSection`
     /// derives for it.
-    Builtin(fn(f64, &[f64]) -> f64),
+    Builtin(KernelFn),
     /// The caller's kernel, given the caller's parameters and flags.
     User(Kernel1Fn<'a>),
 }

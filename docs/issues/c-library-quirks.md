@@ -36,6 +36,8 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [`IsZenithal` tests the wrong SZP parameter](#iszenithal-tests-the-wrong-szp-parameter)
 - [The `SombCos` resampling kernel is half `Somb` everywhere except at zero offset](#the-sombcos-resampling-kernel-is-half-somb-everywhere-except-at-zero-offset)
 - [Block averaging with variances lets one pixel's bad variance decide for others](#block-averaging-with-variances-lets-one-pixels-bad-variance-decide-for-others)
+- [`astRebin<X>` zeroes only the first output element after an argument error](#astrebinx-zeroes-only-the-first-output-element-after-an-argument-error)
+- [Rebinning `B` and `UB` data relies on out-of-range conversions wrapping](#rebinning-b-and-ub-data-relies-on-out-of-range-conversions-wrapping)
 
 ### [Addressed here, and not going upstream](#addressed-here-and-not-going-upstream)
 
@@ -575,6 +577,25 @@ With `AST__USEBAD`, `bad_var` is reassigned per pixel, so the skipping is right,
 The port mirrors both: `interp::block_average` in `crates/ast-core/src/mappings/resample/interp.rs` keeps C's single `bad_var`.
 In `crates/ast-core/tests/test_resample_oracle.rs`, the `blockave_novarbad` and `blockave_win3` cases fail if the flag is reset for each pixel, and `blockave_cubic`, `blockave_zoom` and `conserve_win3` fail if the last pixel's value is ignored.
 Resolved when upstream resets the flag per pixel; the cases would then need regenerating.
+
+### `astRebin<X>` zeroes only the first output element after an argument error
+
+`Rebin<X>` (`mapping.c`, `MAKE_REBIN`) reports a bad argument and carries on to its "initialise the output arrays to hold zeros" loops, which run whatever the status.
+Their length, `npix_out`, starts at 1 and is counted only once the argument checks have passed, so after an error in the axis counts, bounds, region or tolerance the output's first element is zeroed and the rest left alone; after a later error, such as a Mapping with no forward transformation, the whole output is zeroed.
+
+The port mirrors it: `rebin` in `crates/ast-core/src/mappings/rebin/mod.rs` zeroes the number of elements C would have.
+`errors_match_c` in `crates/ast-core/tests/test_rebin_oracle.rs` records the first two output values after each error, and fails if the whole output is zeroed.
+Resolved when upstream either returns before touching the output or zeroes all of it.
+
+### Rebinning `B` and `UB` data relies on out-of-range conversions wrapping
+
+The spreading functions (`SpreadNearest<X>`, `SpreadLinear<X>` and `SpreadKernel1<X>` in `mapping.c`) assign doubles to the pixel type, as in `c = CONV(IntType, pfac*in_val)`.
+A kernel with negative lobes, such as `AST__SINC`, gives negative contributions, and the C standard leaves converting a negative double to `unsigned char` undefined.
+clang on arm64 and x86-64 converts through a 32-bit integer, so the value wraps, and the wrapped contributions then sum back to the right total once it is in range; a saturating conversion would clip each negative contribution to zero and bias the result.
+
+The port mirrors the compiled behaviour: `RebinValue::from_c` in `crates/ast-core/src/pixel.rs` converts through `i32` for `B` and `UB`, and saturates for `I` as arm64 does (x86-64 gives `INT_MIN` instead, which no fixture exercises).
+In `crates/ast-core/tests/test_rebin_oracle.rs`, eight `UB` kernel cases fail with a saturating conversion.
+Resolved when upstream accumulates in a wider type or clamps explicitly.
 
 ## Addressed here, and not going upstream
 

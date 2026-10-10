@@ -136,3 +136,65 @@ pixel_value!(
     i8 => "B", false, true, f32, -0.5 + i8::MIN as f32, 0.5 + i8::MAX as f32;
     u8 => "UB", false, false, f32, -0.5, 0.5 + u8::MAX as f32;
 );
+
+/// A pixel type the rebinning functions accept (C's `astRebin<X>` and
+/// `astRebinSeq<X>` exist for `D`, `F`, `I`, `B` and `UB` only), with the
+/// arithmetic their spreading functions do in the type itself.
+///
+/// C's integer arithmetic is undefined on overflow; the port wraps where C
+/// adds in the type and saturates where C converts a double, as Rust's
+/// casts do.
+pub trait RebinValue: PixelValue {
+    /// C's `CONV( IntType, v )`: `v` rounded half away from zero for an
+    /// integer type (through `int`), and `v` itself otherwise. The
+    /// expression's type is `double` in both cases.
+    fn conv(v: f64) -> f64;
+    /// C's `a += b` with both in this type.
+    fn add(self, b: Self) -> Self;
+    /// C's `c * c` in this type's arithmetic (after promotion), as a
+    /// double.
+    fn square(self) -> f64;
+    /// The double `v` assigned to this type, as C's `(Xtype) v` compiles on
+    /// the supported platforms: for `B` and `UB` through a 32-bit integer,
+    /// so a value out of range wraps, and saturating for `I`, as arm64
+    /// does. The standard leaves an out-of-range value undefined, but the
+    /// spreading relies on the wrap: a kernel's negative lobes add
+    /// wrapped values to an unsigned pixel that sum back into range.
+    fn from_c(v: f64) -> Self;
+}
+
+macro_rules! rebin_value {
+    ($($t:ty => $int:literal, $add:expr, $sq:expr, $from:expr);* $(;)?) => {$(
+        impl RebinValue for $t {
+            fn conv(v: f64) -> f64 {
+                if $int {
+                    (v + if v > 0.0 { 0.5 } else { -0.5 }) as i32 as f64
+                } else {
+                    v
+                }
+            }
+            fn add(self, b: Self) -> Self {
+                let f: fn($t, $t) -> $t = $add;
+                f(self, b)
+            }
+            fn square(self) -> f64 {
+                let f: fn($t) -> f64 = $sq;
+                f(self)
+            }
+            fn from_c(v: f64) -> Self {
+                let f: fn(f64) -> $t = $from;
+                f(v)
+            }
+        }
+    )*};
+}
+
+rebin_value!(
+    f64 => false, |a, b| a + b, |c| c * c, |v| v;
+    f32 => false, |a, b| a + b, |c| f64::from(c * c), |v| v as f32;
+    i32 => true, |a, b| a.wrapping_add(b), |c| f64::from(c.wrapping_mul(c)), |v| v as i32;
+    i8 => true, |a, b| a.wrapping_add(b), |c| f64::from(i32::from(c) * i32::from(c)),
+        |v| v as i32 as i8;
+    u8 => true, |a, b| a.wrapping_add(b), |c| f64::from(i32::from(c) * i32::from(c)),
+        |v| v as i32 as u8;
+);

@@ -67,6 +67,10 @@ mod test_polytran;
 mod test_rate_oracle;
 #[path = "../test_ratemap.rs"]
 mod test_ratemap;
+#[path = "../test_rebin.rs"]
+mod test_rebin;
+#[path = "../test_rebin_oracle.rs"]
+mod test_rebin_oracle;
 #[path = "../test_remove_regions_oracle.rs"]
 mod test_remove_regions_oracle;
 #[path = "../test_resample.rs"]

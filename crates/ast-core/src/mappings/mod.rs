@@ -73,9 +73,11 @@ pub use linear_approx::LinearFit;
 mod quad_approx;
 pub use quad_approx::QuadFit;
 mod map_box;
+pub mod rebin;
 pub mod resample;
 mod tran_grid;
 pub use map_box::MapBoxResult;
+pub use rebin::{RebinFlags, RebinInput, RebinOptions, RebinOutput, Spread, rebin};
 pub use resample::{
     Interp, InterpArgs, InterpFn, Kernel1Fn, ResampleFlags, ResampleInput, ResampleOptions,
     ResampleOutput, resample,

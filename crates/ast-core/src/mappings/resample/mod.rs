@@ -18,13 +18,15 @@
 #![allow(clippy::needless_range_loop, clippy::explicit_counter_loop)]
 
 mod interp;
-mod kernels;
+pub(crate) mod kernels;
 
 use crate::constants::BAD_VALUE;
 use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::mappings::{DynMapping, Mapping, substitute_nan_to_bad_in_place};
 use crate::pixel::PixelValue;
+
+use kernels::Builtin;
 
 /// The sub-pixel interpolation scheme of [`resample`] (C's `interp` and
 /// `finterp`), for pixel type `T`.
@@ -492,63 +494,30 @@ enum Scheme<'a, T> {
 impl<'a, T> Scheme<'a, T> {
     /// `ResampleSection`'s set-up of the scheme `opts.interp`.
     fn new(opts: &ResampleOptions<'a, T>) -> Self {
-        let params = opts.params;
-        // C's `MaxD`, `MaxI` and `MinI`.
-        let max_d = |a: f64, b: f64| if a > b { a } else { b };
-        let max_i = |a: i32, b: i32| if a > b { a } else { b };
-        let min_i = |a: i32, b: i32| if a < b { a } else { b };
-        let nearest_int = |v: f64| (v + 0.5).floor() as i32;
-        let kernel1 = |f: fn(f64, &[f64]) -> f64, neighb: i32, par: Vec<f64>| Scheme::Kernel1 {
-            kernel: interp::Kernel::Builtin(f),
-            neighb: i64::from(neighb),
-            params: par,
-        };
-        // Sinc and Somb: two neighbours by default.
-        let default_two = || {
-            let n = nearest_int(params[0]);
-            if n <= 0 { 2 } else { max_i(1, n) }
-        };
-        // The kernels cut off at the first zero of a factor whose offset is
-        // params[1]: at most that many neighbours, and that many by default.
-        let to_zero = || {
-            let mut n = nearest_int(params[0]);
-            if n <= 0 {
-                n = i32::MAX;
+        let builtin = |kernel| {
+            let (f, neighb, params) = kernels::setup(kernel, opts.params);
+            Scheme::Kernel1 {
+                kernel: interp::Kernel::Builtin(f),
+                neighb,
+                params,
             }
-            min_i(n, max_d(1.0, params[1]).ceil() as i32)
-        };
-        let k_zero = || vec![0.5 / max_d(1.0, params[1])];
-        // The Gaussian kernels: out to 1% of the peak by default.
-        let gaussian = || {
-            let fwhm = max_d(0.1, params[1]);
-            let k = 4.0 * 2.0_f64.ln() / (fwhm * fwhm);
-            let mut n = nearest_int(params[0]);
-            if n <= 0 {
-                n = (-(0.01_f64.ln()) / k).sqrt().ceil() as i32;
-            }
-            (n, vec![k])
         };
         match opts.interp {
             Interp::Nearest => Scheme::Nearest,
             Interp::Linear => Scheme::Linear,
-            Interp::Sinc => kernel1(kernels::sinc, default_two(), Vec::new()),
-            Interp::Somb => kernel1(kernels::somb, default_two(), Vec::new()),
-            Interp::SincCos => kernel1(kernels::sinc_cos, to_zero(), k_zero()),
-            Interp::SincSinc => kernel1(kernels::sinc_sinc, to_zero(), k_zero()),
-            Interp::SombCos => kernel1(kernels::somb_cos, to_zero(), k_zero()),
-            Interp::SincGauss => {
-                let (n, par) = gaussian();
-                kernel1(kernels::sinc_gauss, n, par)
-            }
-            Interp::Gauss => {
-                let (n, par) = gaussian();
-                kernel1(kernels::gauss, n, par)
-            }
+            Interp::Sinc => builtin(Builtin::Sinc),
+            Interp::SincSinc => builtin(Builtin::SincSinc),
+            Interp::SincCos => builtin(Builtin::SincCos),
+            Interp::SincGauss => builtin(Builtin::SincGauss),
+            Interp::Gauss => builtin(Builtin::Gauss),
+            Interp::Somb => builtin(Builtin::Somb),
+            Interp::SombCos => builtin(Builtin::SombCos),
             Interp::BlockAve => Scheme::BlockAve,
+            // C's `MaxI( 1, (int) floor( params[ 0 ] + 0.5 ) )`.
             Interp::UKern1(f) => Scheme::Kernel1 {
                 kernel: interp::Kernel::User(f),
-                neighb: i64::from(max_i(1, nearest_int(params[0]))),
-                params: params.to_vec(),
+                neighb: i64::from(((opts.params[0] + 0.5).floor() as i32).max(1)),
+                params: opts.params.to_vec(),
             },
             Interp::UInterp(f) => Scheme::UInterp(f),
         }

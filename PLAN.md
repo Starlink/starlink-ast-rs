@@ -300,8 +300,8 @@ because it constrains the registry's slot representation.
 Absent classes, for completeness (52,168 code lines of C, 28% of the library by
 code volume, with no Rust counterpart): `Plot` / `Plot3D` + `grf*`, `YamlChan`,
 `XmlChan`, `StcsChan`, `Table` /
-`FitsTable`. Absent `Mapping`-level algorithms: `astRebin` and
-`astRebinSeq` (`astResample` is ported; see
+`FitsTable`. Absent `Mapping`-level algorithms: `astRebinSeq`
+(`astResample` and `astRebin` are ported; see
 `docs/superpowers/plans/2026-10-09-resample-rebin.md`). Of these only
 `Table` / `FitsTable` (§3, §5) currently gate active work.
 
@@ -423,6 +423,7 @@ pin.
 | compare_dumps.c | (not ported) | the comparator upstream's fixture-driven ctests use: token-wise with a 4-ULP budget and an `--astequal` mode. `tests/common/mod.rs` is the Rust equivalent and predates it (`native_strings_equivalent`, `native_strings_astequal`, `ast_equal_close`); the two were reconciled during the sync, which is where C's missing `1e-12` absolute floor and the port's invented `astEQUAL` tolerance were both found |
 | testxphmap.c | crates/ast-core/tests/test_xphmap.rs | ported 2026-10-07 with XphMap: loading each projection type, the round trip, the HPX12 inverse and the refused Type; plus C's forward and inverse transformations of every type, bit for bit, from `tools/oracle_fixtures/xphmap_probe.c`. The C test's leak check has no counterpart, since nothing leaks the projection name in Rust |
 | testtrangrid.c | crates/ast-core/tests/test_trangrid.rs | ported 2026-10-09 with `Mapping::tran_grid`; the FITS-WCS header gains an `NAXIS` card (see the §5 FITS-AIPS reader row). `test_tran_grid_oracle.rs` compares the grids bit for bit with `tools/oracle_fixtures/tran_grid_probe.c` |
+| testrebin.c | crates/ast-core/tests/test_rebin.rs | ported 2026-10-10 with `mappings::rebin`: tests 1-9 for the `D`, `F` and `I` types and C's six spreading schemes. `test_rebin_oracle.rs` compares 135 cases over every pixel type and scheme, and 10 error results, with `tools/oracle_fixtures/rebin_probe.c` |
 | testresample.c | crates/ast-core/tests/test_resample.rs, test_tran_grid_oracle.rs (Test 10) | ported 2026-10-10: tests 1-9 in `test_resample.rs`; test 10, `astQuadApprox`, is the `poly` case of `QUADS`. `test_resample_oracle.rs` compares 370 cases over every pixel type and interpolation scheme, flux conservation included, and 15 error statuses with `tools/oracle_fixtures/resample_probe.c` |
 | testmocchan.c | crates/ast-core/tests/test_mocchan.rs | ported 2026-10-09 with `MocChan`, including `checkZeroLineLen` and `checkDumpFormat` added upstream at `7ef81c01` and `checkLoadNegativeLineLen` at `228a0310`. `test_mocchan_oracle.rs` compares writes, reads and attributes with `tools/oracle_fixtures/mocchan_probe.c`, and `test_channel_dump_oracle.rs` Channel and MocChan dumps with `tools/oracle_fixtures/channel_dump_probe.c` |
 | testmoc.c | crates/ast-core/tests/test_moc.rs | ported 2026-10-09, with the ten `check*` functions added upstream on `u/timj/norm-unit`. Its pixel mask needed FrameSet `MapSplit` (frameset.c), ported with it. `checkPinsMask` uses the port's public `Region::reg_pins_mask` for C's protected `astRegPins` |

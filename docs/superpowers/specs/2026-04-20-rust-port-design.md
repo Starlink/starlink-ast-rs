@@ -11,7 +11,10 @@
   holds, as C's callers do. The scheme is the enum `Interp`; C's `finterp`
   function pointer becomes a borrowed closure carried by `Interp::UKern1` or
   `Interp::UInterp`, which return `AstResult` where C's report through the
-  status. Rebin and RebinSeq will follow the same shape.
+  status. `astRebin<X>` is `mappings::rebin` in the same shape, with the
+  enum `Spread` and the input region on `RebinInput`; it is generic over
+  `pixel::RebinValue`, implemented only for the types C provides it for
+  (`f64`, `f32`, `i32`, `i8`, `u8`). RebinSeq will follow.
 - **2026-10-09 (rev 12)**: Channels are objects.
   `AnyObject` gains `NativeChannel` (C's `Channel`) and `MocChan`, so a
   Channel can be written to another and read back, as C's Channel `Dump` and

@@ -21,6 +21,7 @@ const MAPPING_HELPERS: &[&str] = &[
     "polymap_simd",
     "quad_approx",
     "rate",
+    "rebin",
     "report",
     "resample",
     "tran_grid",
