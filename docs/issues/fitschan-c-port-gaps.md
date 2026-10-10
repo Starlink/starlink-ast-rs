@@ -1,5 +1,8 @@
 # `fitschan.c` C-vs-Rust Port Gaps
 
+**Superseded for the attributes, public functions and card behaviour by [`docs/audits/fitschan-c-parity.md`](../audits/fitschan-c-parity.md) (2026-10-10).**
+The "FitsChan attribute coverage" and "Public API gaps" sections below are out of date; this document remains the record of the encoding read and write paths.
+
 **Status: PARTIALLY DONE**, and the shape of what remains changed between this
 document's body and the code. Re-checked against the tree at the AST 9.5.0 pin
 (2026-09-25); the body below still describes several things as gaps that are now
