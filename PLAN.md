@@ -423,6 +423,7 @@ pin.
 | testtrangrid.c | crates/ast-core/tests/test_trangrid.rs | ported 2026-10-09 with `Mapping::tran_grid`; the FITS-WCS header gains an `NAXIS` card (see the §5 FITS-AIPS reader row). `test_tran_grid_oracle.rs` compares the grids bit for bit with `tools/oracle_fixtures/tran_grid_probe.c` |
 | testresample.c | crates/ast-core/tests/test_tran_grid_oracle.rs (Test 10 only) | Test 10, `astQuadApprox`, is the `poly` case of `QUADS`, compared bit for bit with C. Tests 1-9 need `astResample`, which is not ported (§7) |
 | testmocchan.c | crates/ast-core/tests/test_mocchan.rs | ported 2026-10-09 with `MocChan`, including `checkZeroLineLen` added upstream at `7ef81c01`. `checkDumpFormat` is not ported, as no Channel is serializable in the port. `test_mocchan_oracle.rs` compares writes, reads and attributes with `tools/oracle_fixtures/mocchan_probe.c` |
+| testmoc.c | crates/ast-core/tests/test_moc.rs | ported 2026-10-09, with the ten `check*` functions added upstream on `u/timj/norm-unit`. Its pixel mask needed FrameSet `MapSplit` (frameset.c), ported with it. `checkPinsMask` uses the port's public `Region::reg_pins_mask` for C's protected `astRegPins` |
 | testobjectkeymap.c | (deferred) | tests the Object-associated retained KeyMap (`object.c:1736`, `:2480`), `astGetObjSize` and `astSame`; those calls (`astMapPut0I`, `astMapGet0I`, `astMapSize`) are only reachable through the protected `astGetKeyMap`/`astHasKeyMap` machinery, an explicit spec Non-goal of the owned-value port |
 
 ## 9. Findings from the fixture regeneration

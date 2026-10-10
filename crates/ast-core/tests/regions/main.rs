@@ -18,6 +18,8 @@ mod test_ellipse;
 mod test_interval;
 #[path = "../test_masking.rs"]
 mod test_masking;
+#[path = "../test_moc.rs"]
+mod test_moc;
 #[path = "../test_mocchan.rs"]
 mod test_mocchan;
 #[path = "../test_mocchan_oracle.rs"]

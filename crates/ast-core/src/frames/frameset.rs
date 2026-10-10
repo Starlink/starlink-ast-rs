@@ -1827,6 +1827,15 @@ impl Mapping for FrameSet {
             .is_ok_and(|map| map.is_linear())
     }
 
+    /// frameset.c `MapSplit`: split the base-to-current Mapping.
+    fn map_split_zero_based(
+        &self,
+        in_axes: &[usize],
+    ) -> AstResult<Option<(Vec<usize>, DynMapping)>> {
+        self.mapping(FrameRef::Base, FrameRef::Current)?
+            .map_split_zero_based(in_axes)
+    }
+
     /// frameset.c `RemoveRegions`: remove the Regions from every Mapping
     /// and every Frame.
     fn mapping_without_regions(&self) -> Option<DynMapping> {

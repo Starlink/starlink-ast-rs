@@ -1201,3 +1201,31 @@ fn public_map_split_permmap_constant_output_dropped() {
     assert_eq!(sub.nin(), 1);
     assert_eq!(sub.nout(), 1);
 }
+
+/// frameset.c `MapSplit`: a FrameSet splits its base-to-current Mapping,
+/// in whichever direction the FrameSet currently runs.
+#[test]
+fn frameset_splits_its_base_to_current_mapping() {
+    use ast_core::frames::{BasicFrameBuilder, FrameRef, FrameSet};
+    use ast_core::mappings::{CmpMap, Composition};
+
+    let map = CmpMap::new(
+        Box::new(ZoomMap::new(1, 2.0).unwrap()),
+        Box::new(ShiftMap::new(vec![5.0])),
+        Composition::Parallel,
+    )
+    .unwrap();
+    let frame = || Box::new(BasicFrameBuilder::new(2).build().unwrap());
+    let mut fs = FrameSet::new(frame());
+    fs.add_frame(FrameRef::Base, Box::new(map), frame())
+        .unwrap();
+
+    let (outs, sub) = fs.map_split(&[2]).unwrap().expect("the second axis splits");
+    assert_eq!(outs, vec![2]);
+    assert_eq!(sub.tran1(&[1.0], true).unwrap(), vec![6.0]);
+
+    fs.invert();
+    let (outs, sub) = fs.map_split(&[2]).unwrap().expect("the inverse splits too");
+    assert_eq!(outs, vec![2]);
+    assert_eq!(sub.tran1(&[6.0], true).unwrap(), vec![1.0]);
+}
