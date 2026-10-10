@@ -322,7 +322,9 @@ fn run_case(case: &TestCase, force_comparison: bool) -> Result<(), String> {
     };
 
     // Write into the FitsChan for every FITS encoding and for `native`.
+    // `wcsconverter.c` clears Card first, so the cards go at the top.
     if text_output.is_none() {
+        fc_out.clear_card();
         fc_out.write(&obj).map_err(|e| format!("write: {e}"))?;
     }
 

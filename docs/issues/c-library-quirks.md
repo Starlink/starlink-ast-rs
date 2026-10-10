@@ -1308,6 +1308,17 @@ So the widening happened only if `Transform` was the first method to fill the ca
 Fixed on `u/timj/norm-unit` in d0853dcd: `Transform` widens its own copy of the limits; `testregions` `checkBoxTransformAfterBounds`.
 The port widens in the Box's membership test only, as fixed; `tests/test_region_box_oracle.rs`, whose probe needs the fixed library.
 
+### RESOLVED (upstream 4d24a55c): `CnvType` mishandles CONTINUE strings and two-part complex strings
+
+C location: `fitschan.c` `CnvType`.
+
+The branch for a stored string value tested `otype == AST__STRING || type == AST__CONTINUE`, the second test naming the requested type where the stored type was meant.
+`astGetFitsS` of a CONTINUE card therefore fell through to an internal-error report, and `astGetFitsCN` of an integer, logical or complex card read the value's bytes as a string.
+The string-to-complex conversions tested for one value from the reads `"%lf %lf %n"` and `"%d %d %n"`, which return 2 for a string holding both parts, so such a string always fell through to the one-value read and was rejected.
+
+Fixed on `u/timj/norm-unit` in 4d24a55c; `testfitschan` `testcnvtype`.
+The port's `card_value::cnv_type` is `CnvType` as fixed; `tests/test_fitschan_cursor_oracle.rs` (the `conversions` case), whose probe needs the fixed library.
+
 ### RESOLVED (upstream ba5a6199): PointList `Mask<X>` writes beyond the array for a point outside the grid
 
 C location: `pointlist.c` `Mask<X>`.

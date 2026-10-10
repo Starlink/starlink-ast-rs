@@ -30,19 +30,22 @@ fn load_sip_header() -> String {
 #[test]
 fn parse_sip_header() {
     let text = load_sip_header();
-    let fc = FitsChan::from_header(&text).unwrap();
+    let mut fc = FitsChan::from_header(&text).unwrap();
 
     // The SIP header has well over 50 cards (288 lines, many are cards).
     assert!(fc.ncard() > 50, "expected > 50 cards, got {}", fc.ncard());
 
     // Verify known keywords.
-    assert_eq!(fc.get_fits_i("NAXIS"), Some(2));
-    assert_eq!(fc.get_fits_i("NAXIS1"), Some(256));
-    assert_eq!(fc.get_fits_i("NAXIS2"), Some(256));
-    assert_eq!(fc.get_fits_l("SIMPLE"), Some(true));
+    assert_eq!(fc.get_fits_i(Some("NAXIS")).unwrap(), Some(2));
+    assert_eq!(fc.get_fits_i(Some("NAXIS1")).unwrap(), Some(256));
+    assert_eq!(fc.get_fits_i(Some("NAXIS2")).unwrap(), Some(256));
+    assert_eq!(fc.get_fits_l(Some("SIMPLE")).unwrap(), Some(true));
 
     // CTYPE1 should be RA---TAN-SIP.
-    let ctype1 = fc.get_fits_s("CTYPE1").expect("CTYPE1 should exist");
+    let ctype1 = fc
+        .get_fits_s(Some("CTYPE1"))
+        .unwrap()
+        .expect("CTYPE1 should exist");
     assert!(
         ctype1.contains("RA"),
         "CTYPE1 should contain 'RA', got '{ctype1}'"
@@ -53,7 +56,10 @@ fn parse_sip_header() {
     );
 
     // CRPIX1 = 128.0
-    let crpix1 = fc.get_fits_f("CRPIX1").expect("CRPIX1 should exist");
+    let crpix1 = fc
+        .get_fits_f(Some("CRPIX1"))
+        .unwrap()
+        .expect("CRPIX1 should exist");
     assert!(
         (crpix1 - 128.0).abs() < 1e-10,
         "CRPIX1 expected 128.0, got {crpix1}"
@@ -67,43 +73,49 @@ fn parse_sip_header() {
 #[test]
 fn get_fits_typed_values() {
     let text = load_sip_header();
-    let fc = FitsChan::from_header(&text).unwrap();
+    let mut fc = FitsChan::from_header(&text).unwrap();
 
     // Integer.
-    assert_eq!(fc.get_fits_i("NAXIS"), Some(2));
-    assert_eq!(fc.get_fits_i("BITPIX"), Some(-32));
+    assert_eq!(fc.get_fits_i(Some("NAXIS")).unwrap(), Some(2));
+    assert_eq!(fc.get_fits_i(Some("BITPIX")).unwrap(), Some(-32));
 
     // Float.
-    let crval1 = fc.get_fits_f("CRVAL1").expect("CRVAL1 should exist");
+    let crval1 = fc
+        .get_fits_f(Some("CRVAL1"))
+        .unwrap()
+        .expect("CRVAL1 should exist");
     assert!(
         (crval1 - 202.482322805429).abs() < 1e-6,
         "CRVAL1 expected ~202.48, got {crval1}"
     );
-    let crpix2 = fc.get_fits_f("CRPIX2").expect("CRPIX2 should exist");
+    let crpix2 = fc
+        .get_fits_f(Some("CRPIX2"))
+        .unwrap()
+        .expect("CRPIX2 should exist");
     assert!(
         (crpix2 - 128.0).abs() < 1e-10,
         "CRPIX2 expected 128.0, got {crpix2}"
     );
 
     // String.
-    let ctype1 = fc.get_fits_s("CTYPE1").unwrap();
+    let ctype1 = fc.get_fits_s(Some("CTYPE1")).unwrap().unwrap();
     assert!(ctype1.contains("RA"));
-    let telescop = fc.get_fits_s("TELESCOP").unwrap();
+    let telescop = fc.get_fits_s(Some("TELESCOP")).unwrap().unwrap();
     assert!(
         telescop.contains("Spitzer"),
         "TELESCOP expected 'Spitzer', got '{telescop}'"
     );
 
     // Logical.
-    assert_eq!(fc.get_fits_l("SIMPLE"), Some(true));
+    assert_eq!(fc.get_fits_l(Some("SIMPLE")).unwrap(), Some(true));
     // HDRMODE = F
-    assert_eq!(fc.get_fits_l("HDRMODE"), Some(false));
+    assert_eq!(fc.get_fits_l(Some("HDRMODE")).unwrap(), Some(false));
 
     // Non-existent keyword returns None.
-    assert_eq!(fc.get_fits_i("NONEXIST"), None);
-    assert_eq!(fc.get_fits_f("NONEXIST"), None);
-    assert_eq!(fc.get_fits_s("NONEXIST"), None);
-    assert_eq!(fc.get_fits_l("NONEXIST"), None);
+    assert_eq!(fc.get_fits_i(Some("NONEXIST")).unwrap(), None);
+    assert_eq!(fc.get_fits_f(Some("NONEXIST")).unwrap(), None);
+    assert_eq!(fc.get_fits_s(Some("NONEXIST")).unwrap(), None);
+    assert_eq!(fc.get_fits_l(Some("NONEXIST")).unwrap(), None);
 }
 
 // ===========================================================================
@@ -120,8 +132,8 @@ fn put_fits_find_fits_round_trip() {
     assert_eq!(fc.ncard(), 1);
 
     // Find it back.
-    fc.rewind();
-    let found = fc.find_fits("TESTKEY", false);
+    fc.clear_card();
+    let found = fc.find_fits("TESTKEY", false).unwrap();
     assert!(found.is_some(), "TESTKEY should be found");
 
     let found_card = found.unwrap();
@@ -138,15 +150,16 @@ fn put_fits_find_fits_round_trip() {
 #[test]
 fn set_get_round_trip_integer() {
     let mut fc = FitsChan::new();
-    fc.set_fits_i("NAXIS", 4, "Number of axes", false);
-    assert_eq!(fc.get_fits_i("NAXIS"), Some(4));
+    fc.set_fits_i("NAXIS", 4, "Number of axes", false).unwrap();
+    assert_eq!(fc.get_fits_i(Some("NAXIS")).unwrap(), Some(4));
 }
 
 #[test]
 fn set_get_round_trip_float() {
     let mut fc = FitsChan::new();
-    fc.set_fits_f("CRVAL1", 123.456789012345, "Reference value", false);
-    let val = fc.get_fits_f("CRVAL1").unwrap();
+    fc.set_fits_f("CRVAL1", 123.456789012345, "Reference value", false)
+        .unwrap();
+    let val = fc.get_fits_f(Some("CRVAL1")).unwrap().unwrap();
     assert!(
         (val - 123.456789012345).abs() < 1e-12,
         "Float round-trip failed: got {val}"
@@ -156,18 +169,24 @@ fn set_get_round_trip_float() {
 #[test]
 fn set_get_round_trip_string() {
     let mut fc = FitsChan::new();
-    fc.set_fits_s("CTYPE1", "RA---TAN-SIP", "Axis type", false);
-    assert_eq!(fc.get_fits_s("CTYPE1"), Some("RA---TAN-SIP".to_string()));
+    fc.set_fits_s("CTYPE1", "RA---TAN-SIP", "Axis type", false)
+        .unwrap();
+    assert_eq!(
+        fc.get_fits_s(Some("CTYPE1")).unwrap(),
+        Some("RA---TAN-SIP".to_string())
+    );
 }
 
 #[test]
 fn set_get_round_trip_logical() {
     let mut fc = FitsChan::new();
-    fc.set_fits_l("SIMPLE", true, "Standard FITS", false);
-    assert_eq!(fc.get_fits_l("SIMPLE"), Some(true));
+    fc.set_fits_l("SIMPLE", true, "Standard FITS", false)
+        .unwrap();
+    assert_eq!(fc.get_fits_l(Some("SIMPLE")).unwrap(), Some(true));
 
-    fc.set_fits_l("EXTEND", false, "No extensions", false);
-    assert_eq!(fc.get_fits_l("EXTEND"), Some(false));
+    fc.set_fits_l("EXTEND", false, "No extensions", false)
+        .unwrap();
+    assert_eq!(fc.get_fits_l(Some("EXTEND")).unwrap(), Some(false));
 }
 
 // ===========================================================================
@@ -177,26 +196,26 @@ fn set_get_round_trip_logical() {
 #[test]
 fn del_fits_removes_card() {
     let mut fc = FitsChan::new();
-    fc.set_fits_i("ALPHA", 1, "First", false);
-    fc.set_fits_i("BETA", 2, "Second", false);
-    fc.set_fits_i("GAMMA", 3, "Third", false);
+    fc.set_fits_i("ALPHA", 1, "First", false).unwrap();
+    fc.set_fits_i("BETA", 2, "Second", false).unwrap();
+    fc.set_fits_i("GAMMA", 3, "Third", false).unwrap();
     assert_eq!(fc.ncard(), 3);
 
     // Find BETA and position on it.
-    fc.rewind();
-    let found = fc.find_fits("BETA", false);
+    fc.clear_card();
+    let found = fc.find_fits("BETA", false).unwrap();
     assert!(found.is_some());
 
     // Delete it.
-    fc.del_fits().unwrap();
+    fc.del_fits();
     assert_eq!(fc.ncard(), 2);
 
     // Verify BETA is gone.
-    assert_eq!(fc.get_fits_i("BETA"), None);
+    assert_eq!(fc.get_fits_i(Some("BETA")).unwrap(), None);
 
     // ALPHA and GAMMA still present.
-    assert_eq!(fc.get_fits_i("ALPHA"), Some(1));
-    assert_eq!(fc.get_fits_i("GAMMA"), Some(3));
+    assert_eq!(fc.get_fits_i(Some("ALPHA")).unwrap(), Some(1));
+    assert_eq!(fc.get_fits_i(Some("GAMMA")).unwrap(), Some(3));
 }
 
 // ===========================================================================
@@ -213,8 +232,8 @@ fn empty_fits_clears_header() {
     assert_eq!(fc.ncard(), 0);
 
     // All keywords should now return None.
-    assert_eq!(fc.get_fits_i("NAXIS"), None);
-    assert_eq!(fc.get_fits_s("CTYPE1"), None);
+    assert_eq!(fc.get_fits_i(Some("NAXIS")).unwrap(), None);
+    assert_eq!(fc.get_fits_s(Some("CTYPE1")).unwrap(), None);
 }
 
 // ===========================================================================
@@ -224,51 +243,48 @@ fn empty_fits_clears_header() {
 #[test]
 fn find_fits_iteration_with_inc() {
     let mut fc = FitsChan::new();
-    fc.set_fits_i("KEY1", 10, "", false);
-    fc.set_fits_i("KEY2", 20, "", false);
-    fc.set_fits_i("KEY3", 30, "", false);
-    fc.set_fits_i("KEY4", 40, "", false);
+    fc.set_fits_i("KEY1", 10, "", false).unwrap();
+    fc.set_fits_i("KEY2", 20, "", false).unwrap();
+    fc.set_fits_i("KEY3", 30, "", false).unwrap();
+    fc.set_fits_i("KEY4", 40, "", false).unwrap();
 
     // Iterate through all cards from beginning using find_fits with a
     // common prefix search won't work directly since each keyword differs.
     // Instead, verify sequential find operations work properly.
-    fc.rewind();
+    fc.clear_card();
 
-    let card1 = fc.find_fits("KEY1", true);
+    let card1 = fc.find_fits("KEY1", true).unwrap();
     assert!(card1.is_some());
     assert!(card1.unwrap().contains("10"));
 
-    let card2 = fc.find_fits("KEY2", true);
+    let card2 = fc.find_fits("KEY2", true).unwrap();
     assert!(card2.is_some());
     assert!(card2.unwrap().contains("20"));
 
-    let card3 = fc.find_fits("KEY3", true);
+    let card3 = fc.find_fits("KEY3", true).unwrap();
     assert!(card3.is_some());
     assert!(card3.unwrap().contains("30"));
 
-    let card4 = fc.find_fits("KEY4", true);
+    let card4 = fc.find_fits("KEY4", true).unwrap();
     assert!(card4.is_some());
     assert!(card4.unwrap().contains("40"));
 }
 
 #[test]
-fn find_fits_wraps_around() {
+fn find_fits_searches_forward_only() {
     let mut fc = FitsChan::new();
-    fc.set_fits_i("FIRST", 1, "", false);
-    fc.set_fits_i("SECOND", 2, "", false);
-    fc.set_fits_i("THIRD", 3, "", false);
+    fc.set_fits_i("FIRST", 1, "", false).unwrap();
+    fc.set_fits_i("SECOND", 2, "", false).unwrap();
+    fc.set_fits_i("THIRD", 3, "", false).unwrap();
 
     // Advance past SECOND.
-    fc.rewind();
-    fc.find_fits("SECOND", true);
+    fc.clear_card();
+    fc.find_fits("SECOND", true).unwrap();
 
-    // Now search for FIRST — should wrap around and find it.
-    let found = fc.find_fits("FIRST", true);
-    assert!(
-        found.is_some(),
-        "find_fits should wrap around to find FIRST"
-    );
-    assert!(found.unwrap().contains("1"));
+    // C's astFindFits searches forward from the current card only, so FIRST
+    // is not found and the FitsChan is left at end-of-file.
+    assert_eq!(fc.find_fits("FIRST", true).unwrap(), None);
+    assert_eq!(fc.card(), fc.ncard() + 1);
 }
 
 // ===========================================================================
@@ -289,7 +305,7 @@ fn native_round_trip_zoommap() {
     assert!(fc.ncard() > 0, "FitsChan should have cards after write");
 
     // Read it back.
-    fc.rewind();
+    fc.clear_card();
     let result = fc.read().expect("read should succeed");
     assert!(result.is_some(), "read should return an object");
 
@@ -326,7 +342,7 @@ fn native_round_trip_skyframe() {
     assert!(fc.ncard() > 0);
 
     // Read back.
-    fc.rewind();
+    fc.clear_card();
     let result = fc.read().expect("read should succeed");
     assert!(result.is_some(), "read should return an object");
 
@@ -417,20 +433,22 @@ fn fits_digits_default_and_set() {
 #[test]
 fn overwrite_true_replaces_card() {
     let mut fc = FitsChan::new();
-    fc.set_fits_i("NAXIS", 2, "Original", false);
+    fc.set_fits_i("NAXIS", 2, "Original", false).unwrap();
     assert_eq!(fc.ncard(), 1);
 
-    // Overwrite with new value.
-    fc.set_fits_i("NAXIS", 3, "Updated", true);
+    // Overwriting replaces the current card, so make NAXIS current first;
+    // at end-of-file the card would be appended instead.
+    fc.clear_card();
+    fc.set_fits_i("NAXIS", 3, "Updated", true).unwrap();
     assert_eq!(fc.ncard(), 1); // Still only one card.
-    assert_eq!(fc.get_fits_i("NAXIS"), Some(3));
+    assert_eq!(fc.get_fits_i(Some("NAXIS")).unwrap(), Some(3));
 }
 
 #[test]
 fn overwrite_false_appends_duplicate() {
     let mut fc = FitsChan::new();
-    fc.set_fits_i("NAXIS", 2, "First", false);
-    fc.set_fits_i("NAXIS", 3, "Second", false);
+    fc.set_fits_i("NAXIS", 2, "First", false).unwrap();
+    fc.set_fits_i("NAXIS", 3, "Second", false).unwrap();
     // Both cards stored (first occurrence wins for get).
     assert_eq!(fc.ncard(), 2);
 }
@@ -457,14 +475,14 @@ fn native_rewind_and_reread() {
     fc.write(&AnyObject::ZoomMap(zm)).unwrap();
 
     // Read the object.
-    fc.rewind();
+    fc.clear_card();
     let obj1 = fc.read().unwrap().expect("first read");
     let m1 = obj1.as_mapping().unwrap();
     assert_eq!(m1.nin(), 2);
 
     // Rewind and read again — the cards are gone, so there is nothing left
     // to read.
-    fc.rewind();
+    fc.clear_card();
     let obj2 = fc.read().unwrap();
     assert!(obj2.is_none(), "second read should find no object");
 }

@@ -1496,20 +1496,19 @@ fn translate_class(cards: &mut CardList) {
         cards.set_string("SPECSYS", "SOURCE", "Standard of rest");
     }
 
-    // Mirrors C ClassTrans (fitschan.c:7097-7118): a bare celestial CTYPE
-    // (coordinate name only, no "-PRJ" projection suffix) defaults to "-GLS",
-    // which SpecTrans translation #11 later remaps to "-SFL". A CTYPE that
-    // already carries a projection suffix has more than 4 characters; a bare
-    // name such as "RA--" or "DEC-" is at most 4 characters. The coordinate
-    // name is padded to 4 chars before "-GLS" is appended, matching C's
-    // strncpy(newtype, cval, 4) layout.
+    // Mirrors C ClassTrans (fitschan.c:7153-7175): a celestial CTYPE whose
+    // projection code is blank, such as 'RA--    ', defaults to "-GLS",
+    // which SpecTrans translation #11 later remaps to "-SFL". C tests for
+    // four spaces after the first four characters of the value as stored,
+    // trailing spaces included. The coordinate name is padded to 4 chars
+    // before "-GLS" is appended, matching C's strncpy(newtype, cval, 4).
     for ax in [axlon, axlat] {
         let key = format!("CTYPE{}", ax + 1);
         if let Some(ctype) = cards.get_string_marked(&key)
-            && !ctype.is_empty()
-            && ctype.len() <= 4
+            && ctype.len() > 4
+            && ctype.as_bytes().get(4..8) == Some(b"    ".as_slice())
         {
-            let coord = format!("{:<4}", ctype);
+            let coord = format!("{:<4}", &ctype[..4]);
             let new_ctype = format!("{coord}-GLS");
             let comment = cards
                 .find(&key)
@@ -2193,7 +2192,7 @@ mod tests {
         spec_trans_inplace(&mut cards, Encoding::FitsWcs, false, &mut Vec::new());
         let after = cards.iter().count();
         assert_eq!(before, after);
-        assert_eq!(cards.get_string("RADESYS"), Some("FK5".to_string()));
+        assert_eq!(cards.get_string("RADESYS"), Some("FK5     ".to_string()));
     }
 
     #[test]
@@ -2235,7 +2234,7 @@ mod tests {
             CardList::from_header("RADECSYS= 'FK5     '           / Reference frame\nEND").unwrap();
         assert!(rename_keyword(&mut cards, "RADECSYS", "RADESYS"));
         assert!(cards.find("RADECSYS").is_none());
-        assert_eq!(cards.get_string("RADESYS"), Some("FK5".to_string()));
+        assert_eq!(cards.get_string("RADESYS"), Some("FK5     ".to_string()));
     }
 
     #[test]
@@ -2257,7 +2256,7 @@ mod tests {
         assert!(!rename_keyword(&mut cards, "RADECSYS", "RADESYS"));
         // Source consumed; destination preserved.
         assert!(cards.find("RADECSYS").is_none());
-        assert_eq!(cards.get_string("RADESYS"), Some("FK5".to_string()));
+        assert_eq!(cards.get_string("RADESYS"), Some("FK5     ".to_string()));
     }
 
     #[test]
@@ -2266,7 +2265,7 @@ mod tests {
             CardList::from_header("RADECSYS= 'FK5     '           / Old-style frame\nEND").unwrap();
         spec_trans_inplace(&mut cards, Encoding::FitsPc, false, &mut Vec::new());
         assert!(cards.find("RADECSYS").is_none());
-        assert_eq!(cards.get_string("RADESYS"), Some("FK5".to_string()));
+        assert_eq!(cards.get_string("RADESYS"), Some("FK5     ".to_string()));
     }
 
     #[test]
@@ -2274,7 +2273,7 @@ mod tests {
         let mut cards =
             CardList::from_header("RADECSYS= 'FK4     '\nRADESYS = 'FK5     '\nEND").unwrap();
         spec_trans_inplace(&mut cards, Encoding::FitsPc, false, &mut Vec::new());
-        assert_eq!(cards.get_string("RADESYS"), Some("FK5".to_string()));
+        assert_eq!(cards.get_string("RADESYS"), Some("FK5     ".to_string()));
     }
 
     #[test]

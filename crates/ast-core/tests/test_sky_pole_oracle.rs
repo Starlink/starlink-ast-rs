@@ -49,7 +49,10 @@ fn written(proj: &str, extra: &str) -> Option<(Option<f64>, Option<f64>)> {
     let mut out = FitsChan::new();
     out.set_encoding(Encoding::FitsWcs);
     out.write(&obj).ok()?;
-    Some((out.get_fits_f("LONPOLE"), out.get_fits_f("LATPOLE")))
+    Some((
+        out.get_fits_f(Some("LONPOLE")).unwrap(),
+        out.get_fits_f(Some("LATPOLE")).unwrap(),
+    ))
 }
 
 #[test]

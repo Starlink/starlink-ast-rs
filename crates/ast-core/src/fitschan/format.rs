@@ -98,7 +98,7 @@ pub fn format_significant_rounded(value: f64, digits: usize, fitsrnd: usize) -> 
 /// is left in place but any trailing digits beyond it are zeroed.
 /// Trailing zeros after a decimal point are trimmed (keeping at least
 /// one).
-fn round_fstring(text: &str, fitsrnd: usize) -> String {
+pub(crate) fn round_fstring(text: &str, fitsrnd: usize) -> String {
     const NSEQ: usize = 4;
     let fitsrnd = fitsrnd.max(1);
 

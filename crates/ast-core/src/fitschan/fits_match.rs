@@ -19,15 +19,27 @@ fn is_fits(c: u8) -> bool {
     c.is_ascii_alphanumeric() || c == b'-' || c == b'_'
 }
 
+thread_local! {
+    /// The first illegal type specifier `match_char` was asked to test
+    /// against during the current match, which C's `MatchChar` reports as
+    /// AST__BDFMT.
+    static BAD_TYPE: std::cell::Cell<Option<char>> = const { std::cell::Cell::new(None) };
+}
+
 /// Does `test` belong to the character set named by `ty`?
 fn match_char(test: u8, ty: char) -> bool {
     match ty {
         'd' => test.is_ascii_digit(),
         'c' => test.is_ascii_uppercase(),
         'f' => is_fits(test),
-        // C reports an error for any other type specifier; the templates in
-        // this crate are compile-time literals, so treat it as no match.
-        _ => false,
+        _ => {
+            BAD_TYPE.with(|b| {
+                if b.get().is_none() {
+                    b.set(Some(ty));
+                }
+            });
+            false
+        }
     }
 }
 
@@ -177,6 +189,27 @@ pub(crate) fn match_keyword(test: &str, template: &str, maxfld: usize) -> Option
     } else {
         None
     }
+}
+
+/// [`match_keyword`] for a template a caller supplied: an illegal field
+/// type met while matching is AST__BDFMT, as C's `MatchChar` reports it.
+pub(crate) fn match_keyword_checked(
+    test: &str,
+    template: &str,
+    method: &str,
+) -> crate::error::AstResult<bool> {
+    BAD_TYPE.with(|b| b.set(None));
+    let matched = match_keyword(test, template, 0).is_some();
+    if let Some(ty) = BAD_TYPE.with(|b| b.take()) {
+        return Err(crate::error::AstError::new(
+            crate::error::ErrorCode::Bdfmt,
+            format!(
+                "{method}(FitsChan): Illegal field type or width specifier '{ty}' found in \
+                 filter template '{template}'."
+            ),
+        ));
+    }
+    Ok(matched)
 }
 
 #[cfg(test)]

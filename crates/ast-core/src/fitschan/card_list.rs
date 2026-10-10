@@ -3,6 +3,7 @@
 use std::cell::RefCell;
 
 use super::card::{Consumption, FitsCard, FitsValue, check_fits_name};
+use super::fits_match::match_keyword_checked;
 use crate::error::AstResult;
 
 /// An ordered collection of [`FitsCard`]s with position-based iteration.
@@ -61,15 +62,14 @@ impl CardList {
         self.cards.push(card);
     }
 
-    /// Insert a block of cards at the front of the list, preserving their
-    /// order. Used by the NATIVE writer, which (like C `astWrite` after a
-    /// card rewind) prepends the AST object block ahead of the retained
-    /// original header cards.
-    pub(crate) fn insert_front(&mut self, block: Vec<FitsCard>) {
+    /// Insert a block of cards in front of the current card, preserving
+    /// their order, and leave that card current. Used by the NATIVE writer,
+    /// whose cards C stores one at a time with `InsCard`.
+    pub(crate) fn insert_at_current(&mut self, block: Vec<FitsCard>) {
         let n = block.len();
-        self.cards.splice(0..0, block);
-        // Keep the current position pointing at the same logical card.
-        self.position += n;
+        let at = self.position.min(self.cards.len());
+        self.cards.splice(at..at, block);
+        self.position = at + n;
     }
 
     /// Insert a block of `ASTWARN` comment cards holding `text` in front of the
@@ -231,7 +231,7 @@ impl CardList {
             .position(|c| c.keyword.eq_ignore_ascii_case(keyword))?;
         let value = match &self.cards[idx].value {
             FitsValue::Float(v) => *v,
-            FitsValue::Int(v) => *v as f64,
+            FitsValue::Int(v) | FitsValue::KInt(v) => *v as f64,
             _ => return None,
         };
         self.position = idx;
@@ -256,7 +256,7 @@ impl CardList {
     /// Get the integer value of the first card matching keyword.
     pub fn get_int(&self, keyword: &str) -> Option<i64> {
         self.find(keyword).and_then(|c| match &c.value {
-            FitsValue::Int(v) => Some(*v),
+            FitsValue::Int(v) | FitsValue::KInt(v) => Some(*v),
             FitsValue::Float(v) => Some(*v as i64),
             _ => None,
         })
@@ -266,7 +266,7 @@ impl CardList {
     pub fn get_float(&self, keyword: &str) -> Option<f64> {
         self.find(keyword).and_then(|c| match &c.value {
             FitsValue::Float(v) => Some(*v),
-            FitsValue::Int(v) => Some(*v as f64),
+            FitsValue::Int(v) | FitsValue::KInt(v) => Some(*v as f64),
             _ => None,
         })
     }
@@ -600,6 +600,199 @@ impl CardList {
             }
         }
         self.position = self.position.min(self.cards.len());
+    }
+
+    // -----------------------------------------------------------------------
+    // The current card, as C's FitsChan models it
+    //
+    // C keeps a pointer to the current card, or NULL at end-of-file, and its
+    // public functions skip cards a read has consumed (`CARDUSED` with the
+    // default `ignore_used` of 1). Here the current card is `position`, an
+    // index into `cards`, which still holds the consumed cards; `len()` is
+    // end-of-file.
+    // -----------------------------------------------------------------------
+
+    /// Whether card `i` is skipped by the public card functions.
+    fn hidden(&self, i: usize) -> bool {
+        self.cards[i].is_consumed()
+    }
+
+    /// The current card, or `None` at end-of-file.
+    pub(crate) fn current(&self) -> Option<&FitsCard> {
+        self.cards.get(self.position)
+    }
+
+    /// C's `MoveCard`: move `mv` cards towards end-of-file (or, if negative,
+    /// towards the first card), counting only cards not consumed. Returns the
+    /// number of cards moved.
+    pub(crate) fn move_card(&mut self, mv: i64) -> i64 {
+        if self.cards.is_empty() || mv == 0 {
+            return 0;
+        }
+        let n = self.cards.len();
+        let mut card = self.position;
+        let mut moved = 0;
+        if mv > 0 {
+            while moved < mv && card < n {
+                card += 1;
+                if card < n && !self.hidden(card) {
+                    moved += 1;
+                }
+            }
+        } else if card != 0 {
+            // From end-of-file the first step back reaches the last card.
+            while moved < -mv {
+                let mut card0 = card;
+                loop {
+                    card0 -= 1;
+                    if card0 == 0 || !self.hidden(card0) {
+                        break;
+                    }
+                }
+                if self.hidden(card0) {
+                    break;
+                }
+                card = card0;
+                moved += 1;
+                if card == 0 {
+                    break;
+                }
+            }
+        }
+        self.position = card;
+        moved
+    }
+
+    /// C's `ClearCard`: make the first card not consumed the current card.
+    pub(crate) fn clear_card(&mut self) {
+        if self.cards.is_empty() {
+            return;
+        }
+        self.position = 0;
+        if self.hidden(0) {
+            self.move_card(1);
+        }
+    }
+
+    /// C's `GetCard`: the 1-based index of the current card among the cards
+    /// not consumed, one more than their number at end-of-file, and 0 for an
+    /// empty list.
+    pub(crate) fn get_card(&mut self) -> usize {
+        if self.cards.is_empty() {
+            return 0;
+        }
+        let card0 = self.position;
+        self.clear_card();
+        let mut index = 1;
+        while self.position != card0 && self.position < self.cards.len() {
+            index += 1;
+            self.move_card(1);
+        }
+        index
+    }
+
+    /// C's `SetCard`: rewind, then move forward `icard - 1` cards.
+    pub(crate) fn set_card(&mut self, icard: i64) {
+        self.clear_card();
+        self.move_card(icard.saturating_sub(1));
+    }
+
+    /// C's `TestCard`: whether the current card is not the first.
+    pub(crate) fn test_card(&mut self) -> bool {
+        let card = self.get_card();
+        self.clear_card();
+        if self.get_card() == card {
+            false
+        } else {
+            self.set_card(card as i64);
+            true
+        }
+    }
+
+    /// C's `GetNcard`: the number of cards not consumed.
+    pub(crate) fn ncard(&self) -> usize {
+        self.cards.iter().filter(|c| !c.is_consumed()).count()
+    }
+
+    /// C's `GetNkey`: the number of different keywords among the cards not
+    /// consumed.
+    pub(crate) fn nkey(&self) -> usize {
+        let names: std::collections::HashSet<&str> = self
+            .cards
+            .iter()
+            .filter(|c| !c.is_consumed())
+            .map(|c| c.c_name())
+            .collect();
+        names.len()
+    }
+
+    /// C's `DeleteCard`: delete the current card, making the next card not
+    /// consumed the current one. Does nothing at end-of-file.
+    pub(crate) fn delete_card(&mut self) {
+        let card = self.position;
+        if card >= self.cards.len() {
+            return;
+        }
+        self.move_card(1);
+        self.cards.remove(card);
+        // The cards after the deleted one move down one place.
+        if self.position > card {
+            self.position -= 1;
+        }
+        if self.cards.is_empty() {
+            self.position = 0;
+        }
+    }
+
+    /// C's `InsCard`: with `overwrite`, delete the current card; then insert
+    /// `card` in front of the current card (appending at end-of-file), which
+    /// stays current. The card is flagged new when the list is marking new
+    /// cards (C's `mark_new`).
+    pub(crate) fn ins_card(&mut self, mut card: FitsCard, overwrite: bool) {
+        if overwrite {
+            self.delete_card();
+        }
+        if self.mark_new {
+            card.flags.new_write = true;
+            card.flags.new_version = true;
+        }
+        let pos = self.position.min(self.cards.len());
+        self.cards.insert(pos, card);
+        self.position = pos + 1;
+    }
+
+    /// C's `FindKeyCard`: search forward from the current card for one whose
+    /// keyword matches the template `name` (see [`match_keyword`]), leaving
+    /// it current, or end-of-file if there is none.
+    pub(crate) fn find_key_card(&mut self, name: &str, method: &str) -> AstResult<bool> {
+        while let Some(card) = self.current() {
+            if match_keyword_checked(card.c_name(), name, method)? {
+                return Ok(true);
+            }
+            self.move_card(1);
+        }
+        Ok(false)
+    }
+
+    /// C's `SearchCard`: if the card after the current one has keyword
+    /// `name`, make it current; otherwise search from the first card with
+    /// [`Self::find_key_card`].
+    pub(crate) fn search_card(&mut self, name: &str, method: &str) -> AstResult<bool> {
+        self.move_card(1);
+        if let Some(card) = self.current() {
+            // C's `Ustrncmp( CardName, name, FITSNAMLEN )`.
+            let a = card
+                .c_name()
+                .bytes()
+                .take(8)
+                .map(|c| c.to_ascii_uppercase());
+            let b = name.bytes().take(8).map(|c| c.to_ascii_uppercase());
+            if a.eq(b) {
+                return Ok(true);
+            }
+        }
+        self.clear_card();
+        self.find_key_card(name, method)
     }
 
     /// Return true if the position is at or past the end of the list.
@@ -1157,7 +1350,9 @@ fn values_similar(a: &FitsValue, b: &FitsValue) -> bool {
             sa.trim_end().eq_ignore_ascii_case(sb.trim_end())
         }
         (FitsValue::Float(fa), FitsValue::Float(fb)) => floats_similar(*fa, *fb),
-        (FitsValue::Int(ia), FitsValue::Int(ib)) => ia == ib,
+        (FitsValue::Int(ia), FitsValue::Int(ib)) | (FitsValue::KInt(ia), FitsValue::KInt(ib)) => {
+            ia == ib
+        }
         (FitsValue::Logical(la), FitsValue::Logical(lb)) => la == lb,
         (FitsValue::ComplexFloat(ra, ia), FitsValue::ComplexFloat(rb, ib)) => {
             floats_similar(*ra, *rb) && floats_similar(*ia, *ib)

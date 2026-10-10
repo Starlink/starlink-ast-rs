@@ -86,13 +86,17 @@ fn make_wcs(dims: [usize; 2]) -> FrameSet {
         fc.put_fits(card, false).unwrap();
     }
     // As C, NAXIS2 is set from the first dimension.
-    fc.set_fits_i("NAXIS1", dims[0] as i64, " ", false);
-    fc.set_fits_i("NAXIS2", dims[0] as i64, " ", false);
-    fc.set_fits_f("CRPIX1", 0.5 * (1.0 + dims[0] as f64), " ", false);
-    fc.set_fits_f("CRPIX2", 0.5 * (1.0 + dims[1] as f64), " ", false);
-    fc.set_fits_f("CDELT1", 10.0 / dims[0] as f64, " ", false);
-    fc.set_fits_f("CDELT2", 10.0 / dims[1] as f64, " ", false);
-    fc.rewind();
+    fc.set_fits_i("NAXIS1", dims[0] as i32, " ", false).unwrap();
+    fc.set_fits_i("NAXIS2", dims[0] as i32, " ", false).unwrap();
+    fc.set_fits_f("CRPIX1", 0.5 * (1.0 + dims[0] as f64), " ", false)
+        .unwrap();
+    fc.set_fits_f("CRPIX2", 0.5 * (1.0 + dims[1] as f64), " ", false)
+        .unwrap();
+    fc.set_fits_f("CDELT1", 10.0 / dims[0] as f64, " ", false)
+        .unwrap();
+    fc.set_fits_f("CDELT2", 10.0 / dims[1] as f64, " ", false)
+        .unwrap();
+    fc.clear_card();
     let Some(AnyObject::FrameSet(wcs)) = fc.read().unwrap() else {
         panic!("expected a FrameSet");
     };

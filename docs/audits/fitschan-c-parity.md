@@ -27,6 +27,14 @@ Each "behaves as the default" entry below was checked by reading the port's code
 Where an attribute is missing the port mostly behaves as C does at the attribute's default, so existing callers get C's results and cannot change the default.
 The exception is SipOK (FA-9): the port ties it to the encoding where C does not, and writes headers for SIP-distorted FrameSets that C refuses or writes differently.
 
+## Progress
+
+| IDs | Status | Evidence |
+|---|---|---|
+| FA-1, FA-2, FA-4, CA-1, CA-2, CA-3, CA-4, CA-5, CA-8, CA-10, CA-11, CA-15, CA-16, CA-18, CA-23 | FIXED 2026-10-10: the current card is C's: `card`, `set_card`, `clear_card` (replacing `rewind`), `test_card`, `card_name`, `card_type`, `card_comm` and `nkey`; overwriting replaces the current card and keeps its comment when the new one is blank; `put_cards` replaces the cards; `find_fits` searches forward with `Match` templates and formats with FitsDigits; the getters find their card as `SearchCard` does; a read of an encoding other than NATIVE happens only from the first card and leaves the FitsChan at end-of-file; setter names are read as `Split` reads them; `set_fits_cm` stores a blank keyword; `del_fits` does nothing at end-of-file; a complex integer's imaginary part ends in column 51 | `tests/test_fitschan_cursor_oracle.rs`: 20 scripts of card operations, each step's result and the whole FitsChan after it, byte-exact against C from `tools/oracle_fixtures/fitschan_cursor_probe.c` |
+| CA-6, CA-7, CA-25, FF-7, FF-8, FF-9, FF-10 | FIXED 2026-10-10: the getters convert between types as `CnvType` does (fixed upstream in 4d24a55c, see c-library-quirks.md) and report AST__FTCNV and AST__FUNDEF; they take `Option<&str>`, `None` being the current card; a string keeps its trailing spaces until `get_fits_s` strips those of a short one; `get_fits_k` / `set_fits_k`, `_cn`, `_cf` and `_ci` added, and integers parsed as C's AST__KINT are `FitsValue::KInt` | the `conversions` script: 25 cards of every type through all 8 getters; `typed_setters` and `current_card_values` |
+| CA-9 | PARTLY FIXED: the getters skip consumed cards, as `SearchCard` does; the encoding guess does not yet | — |
+
 ## Attributes
 
 C default in brackets.

@@ -462,7 +462,7 @@ fn read_sip_coeffs(cards: &CardList, prefix: &str, s: char) -> Vec<Vec<f64>> {
         // when the conversion fails (fitschan.c:36900-36913).
         let value = match &card.value {
             FitsValue::Float(v) => *v,
-            FitsValue::Int(v) => *v as f64,
+            FitsValue::Int(v) | FitsValue::KInt(v) => *v as f64,
             FitsValue::String(text) => match text.trim().parse::<f64>() {
                 Ok(v) => v,
                 Err(_) => continue,

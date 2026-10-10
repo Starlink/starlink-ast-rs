@@ -158,7 +158,7 @@ pub(crate) fn format_value(value: &FitsValue) -> Option<FormattedValue> {
                 Some(FormattedValue::Scalar(format!("\"{escaped}\"")))
             }
         }
-        FitsValue::Int(n) => Some(FormattedValue::Scalar(n.to_string())),
+        FitsValue::Int(n) | FitsValue::KInt(n) => Some(FormattedValue::Scalar(n.to_string())),
         FitsValue::Float(f) => Some(FormattedValue::Scalar(format_native_float(*f))),
         // Logical, Comment, Undefined, Continue, ComplexFloat, ComplexInt are not native scalars.
         _ => None,

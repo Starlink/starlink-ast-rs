@@ -222,6 +222,13 @@ struct Spec {
     prec: Option<usize>,
 }
 
+/// C's `sprintf( buf, fmt, value )` for a format with one floating
+/// conversion, such as `"%.17g"`.
+pub(crate) fn sprintf_double(fmt: &str, value: f64) -> String {
+    let bytes = sprintf(fmt.as_bytes(), Arg::Double(value)).expect("a valid double format");
+    String::from_utf8(bytes).expect("printf output is ASCII")
+}
+
 /// C's `sprintf( buf, fmt, arg )` for a format with at most one
 /// conversion. The error is a short reason; the caller reports it.
 fn sprintf(fmt: &[u8], arg: Arg) -> Result<Vec<u8>, String> {

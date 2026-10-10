@@ -2,6 +2,20 @@
 
 ## Revision history
 
+- **2026-10-10 (rev 14)**: FitsChan's card functions follow C's current
+  card. `put_fits`, the `set_fits_*` setters, `find_fits`, `del_fits`, the
+  `get_fits_*` getters and `read` use and move the current card as
+  `astPutFits`, `astSetFits<X>`, `astFindFits`, `astDelFits`,
+  `astGetFits<X>` and `astRead` do, and `Card`, `CardName`, `CardType`,
+  `CardComm`, `Ncard` and `Nkey` are typed accessors (`card`, `set_card`,
+  `clear_card`, `test_card`, ...; `clear_card` replaces `rewind`). The
+  getters take `Option<&str>`, `None` being C's NULL name (the current
+  card), and return `AstResult<Option<T>>`: `None` for a missing keyword,
+  AST__FTCNV or AST__FUNDEF where C raises them. The setters and
+  `find_fits` return `AstResult`, as C's can raise. `get_fits_i` and
+  `set_fits_i` take C's `int` (`i32`); the 64-bit integer, CONTINUE string
+  and complex forms are `get_fits_k` / `set_fits_k`, `_cn`, `_cf` and
+  `_ci`. `docs/audits/fitschan-c-parity.md` records the findings.
 - **2026-10-10 (rev 13)**: Resampling as built.
   `astResample<X>` is the free function `mappings::resample`, generic over
   `pixel::PixelValue` (one implementation per C type suffix, `L` and `K`

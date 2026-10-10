@@ -45,7 +45,7 @@ fn tan() -> DynMapping {
     ] {
         fc.put_fits(card, false).unwrap();
     }
-    fc.rewind();
+    fc.clear_card();
     match fc.read().unwrap() {
         Some(AnyObject::FrameSet(fs)) => Box::new(fs),
         other => panic!("expected a FrameSet, got {other:?}"),

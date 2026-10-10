@@ -1439,26 +1439,21 @@ impl Moc {
             "BINTABLE",
             "HEALPix Multi Order Coverage map",
             true,
-        );
-        fc.set_fits_i("BITPIX", 8, "", true);
-        fc.set_fits_i("NAXIS", 2, "", true);
-        fc.set_fits_i("NAXIS1", i64::from(mtype), "Bytes per row", true);
-        fc.set_fits_i("NAXIS2", moclen as i64, "No. of rows", true);
-        fc.set_fits_i("PCOUNT", 0, "", true);
-        fc.set_fits_i("GCOUNT", 1, "", true);
-        fc.set_fits_i("TFIELDS", 1, "", true);
-        fc.set_fits_s("TFORM1", if mtype == 4 { "1J" } else { "1K" }, "", true);
-        fc.set_fits_s("TTYPE1", "UNIQ", "HEALPix UNIQ pixel number", true);
-        fc.set_fits_s("PIXTYPE", "HEALPIX", "HEALPix magic code", true);
-        fc.set_fits_s("ORDERING", "NUNIQ", "NUNIQ coding method", true);
-        fc.set_fits_s("COORDSYS", "C", "ICRS coordinates", true);
-        fc.set_fits_i(
-            "MOCORDER",
-            i64::from(maxorder),
-            "MOC resolution (best order)",
-            true,
-        );
-        fc.set_fits_s("MOCTOOL", PACKAGE_STRING, "Name of the MOC generator", true);
+        )?;
+        fc.set_fits_i("BITPIX", 8, "", true)?;
+        fc.set_fits_i("NAXIS", 2, "", true)?;
+        fc.set_fits_i("NAXIS1", mtype, "Bytes per row", true)?;
+        fc.set_fits_i("NAXIS2", moclen as i32, "No. of rows", true)?;
+        fc.set_fits_i("PCOUNT", 0, "", true)?;
+        fc.set_fits_i("GCOUNT", 1, "", true)?;
+        fc.set_fits_i("TFIELDS", 1, "", true)?;
+        fc.set_fits_s("TFORM1", if mtype == 4 { "1J" } else { "1K" }, "", true)?;
+        fc.set_fits_s("TTYPE1", "UNIQ", "HEALPix UNIQ pixel number", true)?;
+        fc.set_fits_s("PIXTYPE", "HEALPIX", "HEALPix magic code", true)?;
+        fc.set_fits_s("ORDERING", "NUNIQ", "NUNIQ coding method", true)?;
+        fc.set_fits_s("COORDSYS", "C", "ICRS coordinates", true)?;
+        fc.set_fits_i("MOCORDER", maxorder, "MOC resolution (best order)", true)?;
+        fc.set_fits_s("MOCTOOL", PACKAGE_STRING, "Name of the MOC generator", true)?;
         Ok(fc)
     }
 

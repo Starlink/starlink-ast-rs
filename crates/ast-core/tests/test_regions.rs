@@ -2918,7 +2918,7 @@ CDELT2  =  5.5555555555555E-04
 CROTA2  =              0.00000
 ";
     let mut fc = FitsChan::from_header(header).unwrap();
-    fc.rewind();
+    fc.clear_card();
     let obj = fc
         .read()
         .unwrap()

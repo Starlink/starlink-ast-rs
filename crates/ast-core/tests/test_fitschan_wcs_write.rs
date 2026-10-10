@@ -70,22 +70,22 @@ fn write_to_fitschan(obj: &ast_core::AnyObject) -> FitsChan {
 #[test]
 fn write_produces_fits_cards() {
     let obj = read_frameset(MINIMAL_TAN_HEADER);
-    let fc = write_to_fitschan(&obj);
+    let mut fc = write_to_fitschan(&obj);
 
     // The output should contain some cards.
     assert!(fc.ncard() > 0, "Written FitsChan should have cards, got 0");
 
     // Check that fundamental WCS keywords are present.
     assert!(
-        fc.get_fits_f("CRPIX1").is_some(),
+        fc.get_fits_f(Some("CRPIX1")).unwrap().is_some(),
         "CRPIX1 should be present in output"
     );
     assert!(
-        fc.get_fits_f("CRVAL1").is_some(),
+        fc.get_fits_f(Some("CRVAL1")).unwrap().is_some(),
         "CRVAL1 should be present in output"
     );
     assert!(
-        fc.get_fits_s("CTYPE1").is_some(),
+        fc.get_fits_s(Some("CTYPE1")).unwrap().is_some(),
         "CTYPE1 should be present in output"
     );
 }
@@ -97,10 +97,16 @@ fn write_produces_fits_cards() {
 #[test]
 fn write_celestial_has_correct_ctype() {
     let obj = read_frameset(MINIMAL_TAN_HEADER);
-    let fc = write_to_fitschan(&obj);
+    let mut fc = write_to_fitschan(&obj);
 
-    let ctype1 = fc.get_fits_s("CTYPE1").expect("CTYPE1 should be present");
-    let ctype2 = fc.get_fits_s("CTYPE2").expect("CTYPE2 should be present");
+    let ctype1 = fc
+        .get_fits_s(Some("CTYPE1"))
+        .unwrap()
+        .expect("CTYPE1 should be present");
+    let ctype2 = fc
+        .get_fits_s(Some("CTYPE2"))
+        .unwrap()
+        .expect("CTYPE2 should be present");
 
     // CTYPE1 should indicate RA with TAN projection.
     assert!(
@@ -122,10 +128,11 @@ fn write_celestial_has_correct_ctype() {
 #[test]
 fn write_celestial_has_radesys() {
     let obj = read_frameset(MINIMAL_TAN_HEADER);
-    let fc = write_to_fitschan(&obj);
+    let mut fc = write_to_fitschan(&obj);
 
     let radesys = fc
-        .get_fits_s("RADESYS")
+        .get_fits_s(Some("RADESYS"))
+        .unwrap()
         .expect("RADESYS should be present in output");
 
     assert!(
@@ -148,7 +155,7 @@ fn round_trip_read_write_read() {
     let mut fc2 = write_to_fitschan(&obj1);
 
     // Step 3: Read the written cards back into a new FrameSet.
-    fc2.rewind();
+    fc2.clear_card();
     let obj2 = fc2
         .read()
         .expect("re-read should not error")
@@ -209,7 +216,7 @@ fn round_trip_read_write_read() {
 #[test]
 fn write_spectral_frameset() {
     let obj = read_frameset(SPECTRAL_HEADER);
-    let fc = write_to_fitschan(&obj);
+    let mut fc = write_to_fitschan(&obj);
 
     // The output should contain cards.
     assert!(
@@ -219,7 +226,8 @@ fn write_spectral_frameset() {
 
     // CTYPE1 should contain "FREQ".
     let ctype1 = fc
-        .get_fits_s("CTYPE1")
+        .get_fits_s(Some("CTYPE1"))
+        .unwrap()
         .expect("CTYPE1 should be present for spectral output");
     assert!(
         ctype1.contains("FREQ"),
@@ -241,7 +249,7 @@ fn write_spectral_round_trip() {
     let mut fc2 = write_to_fitschan(&obj1);
 
     // Step 3: Read back.
-    fc2.rewind();
+    fc2.clear_card();
     let obj2 = fc2
         .read()
         .expect("re-read should not error")
@@ -308,9 +316,10 @@ fn grism_interference_order_survives_a_round_trip() {
              END"
         );
         let obj = read_frameset(&header);
-        let out = write_to_fitschan(&obj);
+        let mut out = write_to_fitschan(&obj);
         let back = out
-            .get_fits_f("PV1_1")
+            .get_fits_f(Some("PV1_1"))
+            .unwrap()
             .unwrap_or_else(|| panic!("no PV1_1 written back for order {morder}"));
         assert_eq!(
             back, morder,
@@ -322,12 +331,13 @@ fn grism_interference_order_survives_a_round_trip() {
         // CDELT that lost the input's scale silently rewrites the dispersion.
         // Checking `PV1_1` alone passed while both were wrong.
         assert_eq!(
-            out.get_fits_f("CRPIX1"),
+            out.get_fits_f(Some("CRPIX1")).unwrap(),
             Some(1.0),
             "grism output must carry a reference pixel for order {morder}"
         );
         let cdelt1 = out
-            .get_fits_f("CDELT1")
+            .get_fits_f(Some("CDELT1"))
+            .unwrap()
             .unwrap_or_else(|| panic!("no CDELT1 written back for order {morder}"));
         assert!(
             (cdelt1 - 1.0e-9).abs() < 1.0e-12,
@@ -398,7 +408,7 @@ RESTWAV = 4.9998742161440962E-7 / [m] Rest wavelength";
         "grism write should match the C library's cards"
     );
 
-    fc.rewind();
+    fc.clear_card();
     let obj2 = fc
         .read()
         .expect("read-back should not error")

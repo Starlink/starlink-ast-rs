@@ -94,20 +94,20 @@ fn makeimage() -> (Vec<f32>, [usize; 2], FrameSet) {
         }
     }
     let mut fc = FitsChan::new();
-    fc.set_fits_f("CRVAL1", 35.0, " ", true);
-    fc.set_fits_f("CRVAL2", 55.0, " ", true);
-    fc.set_fits_f("CRPIX1", 50.5, " ", true);
-    fc.set_fits_f("CRPIX2", 50.5, " ", true);
-    fc.set_fits_f("CDELT1", -0.01, " ", true);
-    fc.set_fits_f("CDELT2", 0.01, " ", true);
-    fc.set_fits_s("CTYPE1", "RA---TAN", " ", true);
-    fc.set_fits_s("CTYPE2", "DEC--TAN", " ", true);
-    fc.set_fits_f("CRVAL3", -22.9, " ", true);
-    fc.set_fits_f("CRPIX3", 1.0, " ", true);
-    fc.set_fits_f("CDELT3", 1.27, " ", true);
-    fc.set_fits_s("CTYPE3", "VRAD    ", " ", true);
-    fc.set_fits_s("CUNIT3", "km/s    ", " ", true);
-    fc.rewind();
+    fc.set_fits_f("CRVAL1", 35.0, " ", true).unwrap();
+    fc.set_fits_f("CRVAL2", 55.0, " ", true).unwrap();
+    fc.set_fits_f("CRPIX1", 50.5, " ", true).unwrap();
+    fc.set_fits_f("CRPIX2", 50.5, " ", true).unwrap();
+    fc.set_fits_f("CDELT1", -0.01, " ", true).unwrap();
+    fc.set_fits_f("CDELT2", 0.01, " ", true).unwrap();
+    fc.set_fits_s("CTYPE1", "RA---TAN", " ", true).unwrap();
+    fc.set_fits_s("CTYPE2", "DEC--TAN", " ", true).unwrap();
+    fc.set_fits_f("CRVAL3", -22.9, " ", true).unwrap();
+    fc.set_fits_f("CRPIX3", 1.0, " ", true).unwrap();
+    fc.set_fits_f("CDELT3", 1.27, " ", true).unwrap();
+    fc.set_fits_s("CTYPE3", "VRAD    ", " ", true).unwrap();
+    fc.set_fits_s("CUNIT3", "km/s    ", " ", true).unwrap();
+    fc.clear_card();
     let Some(AnyObject::FrameSet(fs)) = fc.read().unwrap() else {
         panic!("expected a FrameSet");
     };
@@ -175,11 +175,14 @@ fn larger_circle() {
     assert_eq!(moc.moc_type().unwrap(), 4);
     let ln = moc.moc_length().unwrap();
     assert_eq!(ln, 832);
-    let fc = moc.get_moc_header().unwrap();
-    assert_eq!(fc.get_fits_i("NAXIS1"), Some(4));
-    assert_eq!(fc.get_fits_i("NAXIS2"), Some(ln as i64));
-    assert_eq!(fc.get_fits_s("TFORM1").as_deref(), Some("1J"));
-    assert_eq!(fc.get_fits_i("MOCORDER"), Some(8));
+    let mut fc = moc.get_moc_header().unwrap();
+    assert_eq!(fc.get_fits_i(Some("NAXIS1")).unwrap(), Some(4));
+    assert_eq!(fc.get_fits_i(Some("NAXIS2")).unwrap(), Some(ln as i32));
+    assert_eq!(
+        fc.get_fits_s(Some("TFORM1")).unwrap().as_deref(),
+        Some("1J")
+    );
+    assert_eq!(fc.get_fits_i(Some("MOCORDER")).unwrap(), Some(8));
 
     datacheck(&moc, "Error 13A");
 

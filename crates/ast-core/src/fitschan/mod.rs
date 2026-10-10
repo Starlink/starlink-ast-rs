@@ -6,6 +6,7 @@
 
 pub mod card;
 pub mod card_list;
+mod card_value;
 pub(crate) mod enc_aips;
 pub(crate) mod enc_class;
 pub(crate) mod enc_dss;
@@ -27,8 +28,10 @@ pub(crate) mod wcs_read;
 pub(crate) mod wcs_spectral;
 pub(crate) mod wcs_write;
 
+pub use card::CardType;
 use card::{FitsCard, FitsValue};
 use card_list::CardList;
+use card_value::{Got, Want};
 
 use std::sync::Arc;
 
@@ -86,7 +89,7 @@ const DEFAULT_FITS_DIGITS: usize = 17;
 ///               END";
 /// let mut fc = FitsChan::from_header(header).unwrap();
 /// assert_eq!(fc.ncard(), 3); // SIMPLE, NAXIS, END
-/// assert_eq!(fc.get_fits_i("NAXIS"), Some(2));
+/// assert_eq!(fc.get_fits_i(Some("NAXIS")).unwrap(), Some(2));
 /// ```
 pub struct FitsChan {
     config: ChannelConfig,
@@ -143,14 +146,15 @@ impl FitsChan {
         }
     }
 
-    /// Create a FitsChan from FITS header text.
+    /// Create a FitsChan from FITS header text, with the first card current.
     ///
     /// The text is split into lines and each is parsed as a FITS card. An
     /// `END` card has no `=` in column 9, so it is stored as an ordinary
     /// commentary card, just like `HISTORY`, `COMMENT` or a blank keyword.
     /// Unparseable lines are silently ignored.
     pub fn from_header(text: &str) -> AstResult<Self> {
-        let cards = CardList::from_header(text)?;
+        let mut cards = CardList::from_header(text)?;
+        cards.clear_card();
         Ok(Self {
             config: ChannelConfig::default(),
             cards,
@@ -167,13 +171,79 @@ impl FitsChan {
     }
 
     // -----------------------------------------------------------------------
+    // The current card
+    // -----------------------------------------------------------------------
+
+    /// The `Card` attribute: the 1-based index of the current card, counting
+    /// only cards not consumed by a read; one more than [`ncard`](Self::ncard)
+    /// at end-of-file, and 0 when there are no cards.
+    pub fn card(&mut self) -> usize {
+        self.cards.get_card()
+    }
+
+    /// Set `Card`: rewind, then move forward `icard - 1` cards, stopping at
+    /// end-of-file. A value below 1 makes the first card current.
+    pub fn set_card(&mut self, icard: i64) {
+        self.cards.set_card(icard);
+    }
+
+    /// Clear `Card`: make the first card current (C's "rewind").
+    pub fn clear_card(&mut self) {
+        self.cards.clear_card();
+    }
+
+    /// Whether `Card` is set, which C defines as the current card not being
+    /// the first.
+    pub fn test_card(&mut self) -> bool {
+        self.cards.test_card()
+    }
+
+    /// The `CardName` attribute: the keyword of the current card (eight
+    /// spaces for a blank keyword), or `None` at end-of-file.
+    pub fn card_name(&self) -> Option<String> {
+        self.cards.current().map(|c| c.c_name().to_string())
+    }
+
+    /// The `CardComm` attribute: the comment of the current card, or the text
+    /// of a commentary card; empty when there is none.
+    pub fn card_comm(&self) -> String {
+        self.cards
+            .current()
+            .and_then(|c| c.c_comment())
+            .unwrap_or("")
+            .to_string()
+    }
+
+    /// The `CardType` attribute: the data type of the current card, or
+    /// [`CardType::NoType`] at end-of-file.
+    pub fn card_type(&self) -> CardType {
+        self.cards
+            .current()
+            .map_or(CardType::NoType, |c| c.card_type())
+    }
+
+    /// The `Ncard` attribute: the number of cards, not counting those a read
+    /// consumed.
+    pub fn ncard(&self) -> usize {
+        self.cards.ncard()
+    }
+
+    /// The `Nkey` attribute: the number of different keywords among the cards
+    /// a read has not consumed.
+    pub fn nkey(&self) -> usize {
+        self.cards.nkey()
+    }
+
+    // -----------------------------------------------------------------------
     // Card manipulation API
     // -----------------------------------------------------------------------
 
-    /// Parse and store an 80-character FITS card string.
+    /// Store a FITS header card (C's `astPutFits`).
     ///
-    /// If `overwrite` is true and a card with the same keyword already exists,
-    /// it is replaced. Otherwise the card is inserted at the current position.
+    /// The card is inserted in front of the current card, or, with
+    /// `overwrite`, replaces it; either way the card after it becomes
+    /// current. At end-of-file the card is appended. A blank comment, when
+    /// overwriting, keeps the comment of the card replaced.
     pub fn put_fits(&mut self, card: &str, overwrite: bool) -> AstResult<()> {
         let parsed = FitsCard::parse(card)?;
         // Emit ASTWARN cards for an illegal keyword name, mirroring C
@@ -181,100 +251,77 @@ impl FitsChan {
         if let Some(text) = crate::fitschan::card::check_fits_name(card) {
             self.cards.push_astwarn(&text);
         }
-        self.cards.put(parsed, overwrite);
+        match parsed.value {
+            // `PutFits` hands a commentary card to `SetFitsCom`.
+            FitsValue::Comment(ref text) => {
+                let text = text.trim_end().to_string();
+                self.set_fits_com(&parsed.keyword, &text, overwrite)?;
+            }
+            _ => {
+                let comment = parsed.comment.clone().unwrap_or_default();
+                self.store_card(parsed.keyword, parsed.value, &comment, overwrite);
+            }
+        }
         Ok(())
     }
 
-    /// Store multiple FITS cards from a multi-line string.
-    ///
-    /// Each line is parsed and appended. This is equivalent to calling
-    /// `put_fits` for each line with `overwrite = false`.
+    /// Replace every card with `cards`, a string holding header cards of 80
+    /// characters each with no separators (the last may be shorter), and
+    /// make the first card current (C's `astPutCards`). Storing stops at the
+    /// first card that cannot be read, whose error is returned.
     pub fn put_cards(&mut self, cards: &str) -> AstResult<()> {
-        for line in cards.lines() {
-            if line.trim().is_empty() {
-                continue;
-            }
-            match FitsCard::parse(line) {
-                Ok(card) => {
-                    // Emit ASTWARN cards for an illegal keyword name before the
-                    // offending card, mirroring C `CheckFitsName`/`Warn` in
-                    // `astPutFits` (fitschan.c:32259).
-                    if let Some(text) = card::check_fits_name(line) {
-                        // `push_astwarn` inserts in front of the current card.
-                        // These cards are appended, so the cursor belongs at
-                        // the end of the list — where C's is while
-                        // `astPutFits` appends.
-                        self.cards.set_position(self.cards.len());
-                        self.cards.push_astwarn(&text);
-                    }
-                    self.cards.push(card);
-                }
-                Err(_) => continue,
-            }
+        self.empty_fits();
+        let bytes = cards.as_bytes();
+        for chunk in bytes.chunks(80) {
+            let card = String::from_utf8_lossy(chunk);
+            self.put_fits(&card, true)?;
         }
+        self.cards.clear_card();
         Ok(())
     }
 
-    /// Search for a FITS card by keyword.
+    /// Search forward from the current card for one whose keyword matches
+    /// `name` (C's `astFindFits`), and return the card's text.
     ///
-    /// Returns the formatted 80-character card string if found.
-    /// If `inc` is true, the position is advanced past the found card;
-    /// if false, it remains at the found card.
-    ///
-    /// The search always starts from the current position and wraps to the
-    /// beginning if not found from the current position forward.
-    pub fn find_fits(&mut self, name: &str, inc: bool) -> Option<String> {
-        // Search forward from current position, skipping consumed cards.
-        if self.cards.find_next_visible(name).is_some() {
-            let found_pos = self.cards.position(); // one past the found card
-            let card_idx = found_pos - 1;
-            let formatted = self.cards.iter().nth(card_idx).unwrap().format();
-            if !inc {
-                self.cards.set_position(card_idx);
-            }
-            return Some(formatted);
+    /// `name` is a template in which `%d` matches digits, `%c` upper-case
+    /// letters and `%f` any keyword character, each with an optional width
+    /// (`%1d`; `%0d` for zero or more); `%f` or `%0f` alone matches the
+    /// current card. Trailing spaces in `name` are ignored. The card found
+    /// becomes current, or the next one with `inc`; if none is found the
+    /// FitsChan is left at end-of-file. An illegal field type is
+    /// AST__BDFMT.
+    pub fn find_fits(&mut self, name: &str, inc: bool) -> AstResult<Option<String>> {
+        let lname = name.trim_end_matches(' ');
+        let found = if lname == "%f" || lname == "%0f" {
+            !self.cards.at_eof()
+        } else {
+            self.cards.find_key_card(lname, "astFindFits")?
+        };
+        if !found {
+            return Ok(None);
         }
-        // If not found from current position, try from beginning.
-        let saved_pos = self.cards.position();
-        self.cards.rewind();
-        if self.cards.find_next_visible(name).is_some() {
-            let found_pos = self.cards.position(); // one past the found card
-            // Only accept if we found it before the original position.
-            if found_pos <= saved_pos {
-                let card_idx = found_pos - 1;
-                let formatted = self.cards.iter().nth(card_idx).unwrap().format();
-                if !inc {
-                    self.cards.set_position(card_idx);
-                }
-                return Some(formatted);
-            }
+        let text = self
+            .cards
+            .current()
+            .expect("a card was found")
+            .format_with_digits_and_rounding(self.fits_digits, self.fits_rounding);
+        if inc {
+            self.cards.move_card(1);
         }
-        // Not found at all — restore position.
-        self.cards.set_position(saved_pos);
-        None
+        Ok(Some(text))
     }
 
-    /// Delete the card at the current position.
-    pub fn del_fits(&mut self) -> AstResult<()> {
-        if self.cards.at_eof() {
-            return Err(AstError::new(
-                ErrorCode::Bdfts,
-                "no card at current position to delete",
-            ));
-        }
-        self.cards.delete_at_position();
-        Ok(())
+    /// Delete the current card, making the next card current (C's
+    /// `astDelFits`). Does nothing at end-of-file.
+    pub fn del_fits(&mut self) {
+        self.cards.delete_card();
     }
 
-    /// Remove all cards from the FitsChan.
+    /// Delete every card, and the warnings recorded by reads (C's
+    /// `astEmptyFits`).
     pub fn empty_fits(&mut self) {
         self.cards = CardList::new();
-    }
-
-    /// Return the number of cards currently stored, excluding cards consumed
-    /// by a read (mirroring C `astGetNcard` honouring `ignore_used`).
-    pub fn ncard(&self) -> usize {
-        self.cards.iter().filter(|c| !c.is_consumed()).count()
+        self.warnings.clear();
     }
 
     /// Format all stored cards as a FITS header string.
@@ -307,123 +354,378 @@ impl FitsChan {
     // Typed getters
     // -----------------------------------------------------------------------
 
-    /// Get the integer value of a FITS keyword.
-    pub fn get_fits_i(&self, name: &str) -> Option<i64> {
-        self.cards.get_int(name)
+    /// C's `MAKE_FGET`: find the card with keyword `name` (the card after
+    /// the current one if it has that keyword, otherwise the first that does,
+    /// `name` being a template as for [`find_fits`](Self::find_fits)) and
+    /// make it current, or, with no `name`, use the current card; then
+    /// convert its value. A missing keyword leaves the FitsChan at
+    /// end-of-file and gives `None`.
+    fn get_value(
+        &mut self,
+        name: Option<&str>,
+        want: Want,
+        method: &str,
+    ) -> AstResult<Option<Got>> {
+        let lname = match name {
+            Some(name) => {
+                let (lname, _) = split_name(name)?;
+                if let Some(text) = crate::fitschan::card::check_fits_name(name) {
+                    self.cards.push_astwarn(&text);
+                }
+                Some(lname)
+            }
+            None => None,
+        };
+        let context = |e: AstError, lname: &Option<String>| match lname {
+            Some(n) if !n.is_empty() => AstError::new(
+                e.code(),
+                format!("{e}\n{method}(FitsChan): Cannot get value for FITS keyword '{n}'."),
+            ),
+            _ => e,
+        };
+        if let Some(n) = &lname
+            && !self
+                .cards
+                .search_card(n, method)
+                .map_err(|e| context(e, &lname))?
+        {
+            return Ok(None);
+        }
+        let current = self.cards.current();
+        let card_name = current.map(|c| c.c_name().to_string()).unwrap_or_default();
+        match card_value::cnv_type(
+            current.map(|c| &c.value),
+            want,
+            self.fits_rounding,
+            &card_name,
+        )
+        .map_err(|e| context(e, &lname))?
+        {
+            Some(got) => Ok(Some(got)),
+            None => Err(context(
+                AstError::new(
+                    ErrorCode::Ftcnv,
+                    format!(
+                        "{method}(FitsChan): Cannot convert FITS keyword '{card_name}' to {}.",
+                        want.c_name()
+                    ),
+                ),
+                &lname,
+            )),
+        }
     }
 
-    /// Get the floating-point value of a FITS keyword.
-    pub fn get_fits_f(&self, name: &str) -> Option<f64> {
-        self.cards.get_float(name)
+    /// The value of keyword `name`, or of the current card when `name` is
+    /// `None`, as an `int` (C's `astGetFitsI`); the search is as for
+    /// [`get_fits_f`](Self::get_fits_f). A value that cannot be converted is
+    /// AST__FTCNV, an undefined one AST__FUNDEF.
+    pub fn get_fits_i(&mut self, name: Option<&str>) -> AstResult<Option<i32>> {
+        Ok(match self.get_value(name, Want::Int, "astGetFitsI")? {
+            Some(Got::Int(v)) => Some(v),
+            _ => None,
+        })
     }
 
-    /// Get the string value of a FITS keyword.
-    pub fn get_fits_s(&self, name: &str) -> Option<String> {
-        self.cards.get_string(name)
+    /// As [`get_fits_i`](Self::get_fits_i) for a 64-bit integer (C's
+    /// `astGetFitsK`).
+    pub fn get_fits_k(&mut self, name: Option<&str>) -> AstResult<Option<i64>> {
+        Ok(match self.get_value(name, Want::KInt, "astGetFitsK")? {
+            Some(Got::KInt(v)) => Some(v),
+            _ => None,
+        })
     }
 
-    /// Get the logical value of a FITS keyword.
-    pub fn get_fits_l(&self, name: &str) -> Option<bool> {
-        self.cards.get_logical(name)
+    /// The value of keyword `name`, or of the current card when `name` is
+    /// `None`, as a floating value (C's `astGetFitsF`).
+    ///
+    /// The card searched for is the one after the current card if it has
+    /// that keyword, otherwise the first that does (`name` may be a
+    /// template, as for [`find_fits`](Self::find_fits)); it becomes current.
+    /// A missing keyword gives `None` and leaves the FitsChan at
+    /// end-of-file. A value that cannot be converted is AST__FTCNV, an
+    /// undefined one AST__FUNDEF.
+    pub fn get_fits_f(&mut self, name: Option<&str>) -> AstResult<Option<f64>> {
+        Ok(match self.get_value(name, Want::Float, "astGetFitsF")? {
+            Some(Got::Float(v)) => Some(v),
+            _ => None,
+        })
+    }
+
+    /// As [`get_fits_f`](Self::get_fits_f) for a string (C's
+    /// `astGetFitsS`). A string of 8 characters or fewer loses its trailing
+    /// spaces.
+    pub fn get_fits_s(&mut self, name: Option<&str>) -> AstResult<Option<String>> {
+        Ok(match self.get_value(name, Want::String, "astGetFitsS")? {
+            Some(Got::Str(v)) => Some(if v.len() <= 8 {
+                v.trim_end_matches(' ').to_string()
+            } else {
+                v
+            }),
+            _ => None,
+        })
+    }
+
+    /// As [`get_fits_f`](Self::get_fits_f) for a CONTINUE (long) string
+    /// (C's `astGetFitsCN`).
+    pub fn get_fits_cn(&mut self, name: Option<&str>) -> AstResult<Option<String>> {
+        Ok(
+            match self.get_value(name, Want::Continue, "astGetFitsCN")? {
+                Some(Got::Str(v)) => Some(v),
+                _ => None,
+            },
+        )
+    }
+
+    /// As [`get_fits_f`](Self::get_fits_f) for a logical value (C's
+    /// `astGetFitsL`).
+    pub fn get_fits_l(&mut self, name: Option<&str>) -> AstResult<Option<bool>> {
+        Ok(match self.get_value(name, Want::Logical, "astGetFitsL")? {
+            Some(Got::Logical(v)) => Some(v),
+            _ => None,
+        })
+    }
+
+    /// As [`get_fits_f`](Self::get_fits_f) for a complex floating value,
+    /// real part first (C's `astGetFitsCF`).
+    pub fn get_fits_cf(&mut self, name: Option<&str>) -> AstResult<Option<(f64, f64)>> {
+        Ok(
+            match self.get_value(name, Want::ComplexF, "astGetFitsCF")? {
+                Some(Got::ComplexF(re, im)) => Some((re, im)),
+                _ => None,
+            },
+        )
+    }
+
+    /// As [`get_fits_f`](Self::get_fits_f) for a complex integer value,
+    /// real part first (C's `astGetFitsCI`).
+    pub fn get_fits_ci(&mut self, name: Option<&str>) -> AstResult<Option<(i32, i32)>> {
+        Ok(
+            match self.get_value(name, Want::ComplexI, "astGetFitsCI")? {
+                Some(Got::ComplexI(re, im)) => Some((re, im)),
+                _ => None,
+            },
+        )
     }
 
     // -----------------------------------------------------------------------
     // Typed setters
     // -----------------------------------------------------------------------
 
-    /// Set an integer-valued FITS keyword.
-    pub fn set_fits_i(&mut self, name: &str, value: i64, comment: &str, overwrite: bool) {
-        let card = FitsCard {
-            keyword: name.to_uppercase(),
-            value: FitsValue::Int(value),
-            comment: if comment.is_empty() {
-                None
-            } else {
-                Some(comment.to_string())
-            },
-            used: false,
-            flags: crate::fitschan::card::CardFlags::default(),
-        };
-        self.cards.put(card, overwrite);
-    }
-
-    /// Set a floating-point-valued FITS keyword.
+    /// C's `MAKE_FSET`: store a card with keyword `name` and `value`.
     ///
-    /// The value is formatted using [`format_fits_double`](format::format_fits_double)
-    /// with the current `fits_digits` setting, but stored as a typed Float value.
-    pub fn set_fits_f(&mut self, name: &str, value: f64, comment: &str, overwrite: bool) {
-        let card = FitsCard {
-            keyword: name.to_uppercase(),
-            value: FitsValue::Float(value),
-            comment: if comment.is_empty() {
-                None
-            } else {
-                Some(comment.to_string())
-            },
-            used: false,
-            flags: crate::fitschan::card::CardFlags::default(),
+    /// `name` is read as C reads a card, so its first 8 characters are the
+    /// keyword and, when `comment` is blank, any text after them the
+    /// comment. A comment still blank keeps the comment of the card
+    /// replaced when overwriting. The card is inserted in front of the
+    /// current card or replaces it, as for [`put_fits`](Self::put_fits).
+    fn set_value(
+        &mut self,
+        name: &str,
+        value: FitsValue,
+        comment: &str,
+        overwrite: bool,
+    ) -> AstResult<()> {
+        let (lname, lcom) = split_name(name)?;
+        let com = if comment.trim().is_empty() {
+            lcom
+        } else {
+            comment.to_string()
         };
-        self.cards.put(card, overwrite);
+        self.store_card(lname, value, &com, overwrite);
+        Ok(())
     }
 
-    /// Set a string-valued FITS keyword.
-    pub fn set_fits_s(&mut self, name: &str, value: &str, comment: &str, overwrite: bool) {
+    /// `InsCard` with a comment that, when blank and overwriting, is taken
+    /// from the card replaced. Leading and trailing spaces are removed from
+    /// the comment, as C's `NewCard` does for a card with a value.
+    fn store_card(&mut self, keyword: String, value: FitsValue, comment: &str, overwrite: bool) {
+        let mut com = comment.trim().to_string();
+        if com.is_empty() && overwrite {
+            com = self
+                .cards
+                .current()
+                .and_then(|c| c.c_comment())
+                .unwrap_or("")
+                .trim()
+                .to_string();
+        }
         let card = FitsCard {
-            keyword: name.to_uppercase(),
-            value: FitsValue::String(value.to_string()),
-            comment: if comment.is_empty() {
-                None
-            } else {
-                Some(comment.to_string())
-            },
+            keyword: keyword.to_uppercase(),
+            value,
+            comment: (!com.is_empty()).then_some(com),
             used: false,
             flags: crate::fitschan::card::CardFlags::default(),
         };
-        self.cards.put(card, overwrite);
+        self.cards.ins_card(card, overwrite);
     }
 
-    /// Set a logical-valued FITS keyword.
-    pub fn set_fits_l(&mut self, name: &str, value: bool, comment: &str, overwrite: bool) {
-        let card = FitsCard {
-            keyword: name.to_uppercase(),
-            value: FitsValue::Logical(value),
-            comment: if comment.is_empty() {
-                None
-            } else {
-                Some(comment.to_string())
-            },
-            used: false,
-            flags: crate::fitschan::card::CardFlags::default(),
-        };
-        self.cards.put(card, overwrite);
+    /// Store an integer (C's `astSetFitsI`). The card is inserted in front of
+    /// the current card, or replaces it with `overwrite`, and the card after
+    /// it becomes current. The first 8 characters of `name` are the keyword;
+    /// with a blank `comment` any further text is the comment, and failing
+    /// that, when overwriting, the comment of the card replaced.
+    pub fn set_fits_i(
+        &mut self,
+        name: &str,
+        value: i32,
+        comment: &str,
+        overwrite: bool,
+    ) -> AstResult<()> {
+        self.set_value(name, FitsValue::Int(i64::from(value)), comment, overwrite)
     }
 
-    /// Set an undefined-valued FITS keyword (keyword with no value).
-    pub fn set_fits_u(&mut self, name: &str, comment: &str, overwrite: bool) {
-        let card = FitsCard {
-            keyword: name.to_uppercase(),
-            value: FitsValue::Undef,
-            comment: if comment.is_empty() {
-                None
-            } else {
-                Some(comment.to_string())
-            },
-            used: false,
-            flags: crate::fitschan::card::CardFlags::default(),
-        };
-        self.cards.put(card, overwrite);
+    /// As [`set_fits_i`](Self::set_fits_i) for a 64-bit integer (C's
+    /// `astSetFitsK`).
+    pub fn set_fits_k(
+        &mut self,
+        name: &str,
+        value: i64,
+        comment: &str,
+        overwrite: bool,
+    ) -> AstResult<()> {
+        self.set_value(name, FitsValue::KInt(value), comment, overwrite)
     }
 
-    /// Set a comment-only FITS card.
-    pub fn set_fits_cm(&mut self, comment: &str, overwrite: bool) {
-        let card = FitsCard {
-            keyword: "COMMENT".to_string(),
-            value: FitsValue::Comment(format!(" {comment}")),
-            comment: None,
-            used: false,
-            flags: crate::fitschan::card::CardFlags::default(),
+    /// As [`set_fits_i`](Self::set_fits_i) for a floating value (C's
+    /// `astSetFitsF`). The value is formatted with the FitsDigits and
+    /// FitsRounding attributes when the card is written.
+    pub fn set_fits_f(
+        &mut self,
+        name: &str,
+        value: f64,
+        comment: &str,
+        overwrite: bool,
+    ) -> AstResult<()> {
+        self.set_value(name, FitsValue::Float(value), comment, overwrite)
+    }
+
+    /// As [`set_fits_i`](Self::set_fits_i) for a string (C's
+    /// `astSetFitsS`).
+    pub fn set_fits_s(
+        &mut self,
+        name: &str,
+        value: &str,
+        comment: &str,
+        overwrite: bool,
+    ) -> AstResult<()> {
+        self.set_value(
+            name,
+            FitsValue::String(value.to_string()),
+            comment,
+            overwrite,
+        )
+    }
+
+    /// As [`set_fits_i`](Self::set_fits_i) for a CONTINUE (long) string
+    /// (C's `astSetFitsCN`).
+    pub fn set_fits_cn(
+        &mut self,
+        name: &str,
+        value: &str,
+        comment: &str,
+        overwrite: bool,
+    ) -> AstResult<()> {
+        self.set_value(
+            name,
+            FitsValue::Continue(value.to_string()),
+            comment,
+            overwrite,
+        )
+    }
+
+    /// As [`set_fits_i`](Self::set_fits_i) for a logical value (C's
+    /// `astSetFitsL`).
+    pub fn set_fits_l(
+        &mut self,
+        name: &str,
+        value: bool,
+        comment: &str,
+        overwrite: bool,
+    ) -> AstResult<()> {
+        self.set_value(name, FitsValue::Logical(value), comment, overwrite)
+    }
+
+    /// As [`set_fits_i`](Self::set_fits_i) for a complex floating value,
+    /// real part first (C's `astSetFitsCF`).
+    pub fn set_fits_cf(
+        &mut self,
+        name: &str,
+        value: (f64, f64),
+        comment: &str,
+        overwrite: bool,
+    ) -> AstResult<()> {
+        self.set_value(
+            name,
+            FitsValue::ComplexFloat(value.0, value.1),
+            comment,
+            overwrite,
+        )
+    }
+
+    /// As [`set_fits_i`](Self::set_fits_i) for a complex integer value, real
+    /// part first (C's `astSetFitsCI`).
+    pub fn set_fits_ci(
+        &mut self,
+        name: &str,
+        value: (i32, i32),
+        comment: &str,
+        overwrite: bool,
+    ) -> AstResult<()> {
+        self.set_value(
+            name,
+            FitsValue::ComplexInt(i64::from(value.0), i64::from(value.1)),
+            comment,
+            overwrite,
+        )
+    }
+
+    /// As [`set_fits_i`](Self::set_fits_i) for a keyword with no value (C's
+    /// `astSetFitsU`).
+    pub fn set_fits_u(&mut self, name: &str, comment: &str, overwrite: bool) -> AstResult<()> {
+        self.set_value(name, FitsValue::Undef, comment, overwrite)
+    }
+
+    /// Store a commentary card with a blank keyword and the text `comment`
+    /// (C's `astSetFitsCM`), inserted or overwriting as for
+    /// [`set_fits_i`](Self::set_fits_i).
+    pub fn set_fits_cm(&mut self, comment: &str, overwrite: bool) -> AstResult<()> {
+        self.set_fits_com("", comment, overwrite)
+    }
+
+    /// C's `SetFitsCom`: store a commentary card with keyword `name`. When
+    /// overwriting a card with the same keyword, the card keeps its type and
+    /// value and takes the new comment.
+    fn set_fits_com(&mut self, name: &str, comment: &str, overwrite: bool) -> AstResult<()> {
+        let (lname, _) = split_name(name)?;
+        let com = if comment.trim().is_empty() {
+            None
+        } else {
+            Some(comment.to_string())
         };
-        self.cards.put(card, overwrite);
+        let same = self.cards.current().is_some_and(|c| c.keyword == lname);
+        let card = if !overwrite || !same {
+            FitsCard {
+                keyword: lname,
+                value: FitsValue::Comment(com.unwrap_or_default()),
+                comment: None,
+                used: false,
+                flags: crate::fitschan::card::CardFlags::default(),
+            }
+        } else {
+            let old = self.cards.current().expect("an overwritten card").clone();
+            match old.value {
+                FitsValue::Comment(_) => FitsCard {
+                    value: FitsValue::Comment(com.unwrap_or_default()),
+                    ..old
+                },
+                _ => FitsCard {
+                    comment: com.map(|c| c.trim().to_string()).filter(|c| !c.is_empty()),
+                    ..old
+                },
+            }
+        };
+        self.cards.ins_card(card, overwrite);
+        Ok(())
     }
 
     // -----------------------------------------------------------------------
@@ -536,11 +838,6 @@ impl FitsChan {
     /// Return whether CD matrix notation is enabled.
     pub fn cd_matrix(&self) -> bool {
         self.cd_matrix
-    }
-
-    /// Reset the card position to the beginning.
-    pub fn rewind(&mut self) {
-        self.cards.rewind();
     }
 
     /// Expose the internal card list for use in unit tests within this crate.
@@ -678,7 +975,7 @@ impl FitsChan {
             ));
         }
 
-        self.cards.insert_front(block);
+        self.cards.insert_at_current(block);
     }
 
     /// Flag the cards a completed FITS-WCS-family read consumed, then promote
@@ -742,6 +1039,22 @@ impl FitsChan {
     }
 }
 
+/// The keyword and comment C's `Split` finds when it reads a setter's or
+/// getter's keyword name as a card: the first 8 characters, in their own
+/// case (`NewCard` upper-cases them when a card is stored), and any text
+/// after them.
+fn split_name(name: &str) -> AstResult<(String, String)> {
+    let card = FitsCard::parse(name)?;
+    let comment = match &card.value {
+        FitsValue::Comment(text) => text.trim().to_string(),
+        _ => card.comment.clone().unwrap_or_default(),
+    };
+    let raw: String = name.chars().take(8).collect();
+    let keyword = raw.trim_end().to_string();
+    debug_assert!(keyword.eq_ignore_ascii_case(&card.keyword));
+    Ok((keyword, comment))
+}
+
 impl Default for FitsChan {
     fn default() -> Self {
         Self::new()
@@ -753,167 +1066,190 @@ impl Channel for FitsChan {
         self.warnings.clear();
 
         let enc = self.encoding();
-        match enc {
-            Encoding::Native => {
-                // Two storage variants: keyword-card (BEGAST_xx / ENDAST_xx)
-                // and COMMENT-card (`COMMENT  AST +++  AST` markers).
-                // The keyword-card variant takes precedence when present.
-                let text = if enc_native::has_keyword_native(&self.cards) {
-                    enc_native::cards_to_native_text(&self.cards)?
-                } else {
-                    match self.extract_native_text() {
-                        Some(t) => t,
-                        None => return Ok(None),
+        // The encodings other than NATIVE hold one FrameSet, read only when
+        // the first card is current; a successful read leaves the FitsChan at
+        // end-of-file and any other rewinds it (fitschan.c `Read`).
+        if enc != Encoding::Native && self.cards.test_card() {
+            return Ok(None);
+        }
+        let mut read_encoded = || -> AstResult<Option<AnyObject>> {
+            match enc {
+                Encoding::Native => {
+                    // Two storage variants: keyword-card (BEGAST_xx / ENDAST_xx)
+                    // and COMMENT-card (`COMMENT  AST +++  AST` markers).
+                    // The keyword-card variant takes precedence when present.
+                    let text = if enc_native::has_keyword_native(&self.cards) {
+                        enc_native::cards_to_native_text(&self.cards)?
+                    } else {
+                        match self.extract_native_text() {
+                            Some(t) => t,
+                            None => return Ok(None),
+                        }
+                    };
+                    if text.trim().is_empty() {
+                        return Ok(None);
                     }
-                };
-                if text.trim().is_empty() {
-                    return Ok(None);
-                }
-                let node = serial::native_read::parse_native(&text)?;
-                let obj = with_registry(&self.intra, || serial::any_object_from_node(&node))?;
+                    let node = serial::native_read::parse_native(&text)?;
+                    let obj = with_registry(&self.intra, || serial::any_object_from_node(&node))?;
 
-                // C `Read` calls `FixUsed( this, 0, 1, remove )` with
-                // `remove` set for NATIVE encoding (fitschan.c:25811-25817),
-                // so the cards a successful native read consumed are deleted
-                // rather than merely flagged.
-                if let Some((first, last)) = enc_native::native_span(&self.cards) {
-                    for i in first..=last {
-                        self.cards.mark_at(i);
+                    // C `Read` calls `FixUsed( this, 0, 1, remove )` with
+                    // `remove` set for NATIVE encoding (fitschan.c:25811-25817),
+                    // so the cards a successful native read consumed are deleted
+                    // rather than merely flagged.
+                    if let Some((first, last)) = enc_native::native_span(&self.cards) {
+                        for i in first..=last {
+                            self.cards.mark_at(i);
+                        }
+                        self.cards.mark_com_block(first, -1);
+                        self.cards.mark_com_block(last, 1);
+                        self.cards.fix_used(true, true);
                     }
-                    self.cards.mark_com_block(first, -1);
-                    self.cards.mark_com_block(last, 1);
-                    self.cards.fix_used(true, true);
-                }
 
-                Ok(Some(obj))
-            }
-            Encoding::FitsWcs => {
-                // Run SpecTrans first to normalise non-standard
-                // keywords. Although FITS-WCS is the canonical form,
-                // SpecTrans translations 7-10, 17-22, 24 still apply
-                // (EPOCH/EQUINOX, AIPS spectral CTYPE, RESTFREQ, CUNIT
-                // case, IRAF mini-WCS strip, etc.). Returns a
-                // separate "trans" CardList so the original
-                // self.cards layout is preserved for write-time
-                // round-trip — mirrors fitschan.c:11430-11438 which
-                // creates a temporary FitsChan `ret` and deletes it
-                // after WcsToStore.
-                // C's `Warn` calls inside `SpecTrans` target the source chan
-                // rather than the translation chan, so their text comes back
-                // out to be stored on `self.cards`.
-                let mut trans_warnings: Vec<String> = Vec::new();
-                let trans = spec_trans::spec_trans(
-                    &self.cards,
-                    Encoding::FitsWcs,
-                    self.car_lin,
-                    &mut trans_warnings,
-                );
-                let (mut primary, mut alts) = wcs_keywords::extract_wcs_keywords_with_alts(&trans)?;
-                primary.sip_replace = self.sip_replace;
-                primary.car_lin = self.car_lin;
-                for (_, st) in &mut alts {
-                    st.sip_replace = self.sip_replace;
-                    st.car_lin = self.car_lin;
+                    Ok(Some(obj))
                 }
-                let naxes = primary.naxis;
-                let (obj, warnings) =
-                    wcs_read::decode_wcs_with_alts_inner(&primary, &alts, false, &self.cards)?;
-                self.push_read_warnings(trans_warnings, warnings, naxes);
-                self.finish_read_consumption(&trans)?;
-                Ok(Some(obj))
-            }
-            Encoding::FitsPc => {
-                // Run SpecTrans first to normalise non-standard
-                // keywords (Cnxxx alt-axis form, CDjjjiii, CROTA,
-                // PROJP, etc.) into their canonical equivalents.
-                // After SpecTrans, alt-axis cards are in the *A..*Z
-                // form, so we route through the multi-plane
-                // FitsWcs decoder to pick up secondary planes.
-                let mut trans_warnings: Vec<String> = Vec::new();
-                let trans = spec_trans::spec_trans(
-                    &self.cards,
-                    Encoding::FitsPc,
-                    self.car_lin,
-                    &mut trans_warnings,
-                );
-                let (mut primary, mut alts) = wcs_keywords::extract_wcs_keywords_with_alts(&trans)?;
-                primary.sip_replace = self.sip_replace;
-                primary.car_lin = self.car_lin;
-                for (_, st) in &mut alts {
-                    st.sip_replace = self.sip_replace;
-                    st.car_lin = self.car_lin;
+                Encoding::FitsWcs => {
+                    // Run SpecTrans first to normalise non-standard
+                    // keywords. Although FITS-WCS is the canonical form,
+                    // SpecTrans translations 7-10, 17-22, 24 still apply
+                    // (EPOCH/EQUINOX, AIPS spectral CTYPE, RESTFREQ, CUNIT
+                    // case, IRAF mini-WCS strip, etc.). Returns a
+                    // separate "trans" CardList so the original
+                    // self.cards layout is preserved for write-time
+                    // round-trip — mirrors fitschan.c:11430-11438 which
+                    // creates a temporary FitsChan `ret` and deletes it
+                    // after WcsToStore.
+                    // C's `Warn` calls inside `SpecTrans` target the source chan
+                    // rather than the translation chan, so their text comes back
+                    // out to be stored on `self.cards`.
+                    let mut trans_warnings: Vec<String> = Vec::new();
+                    let trans = spec_trans::spec_trans(
+                        &self.cards,
+                        Encoding::FitsWcs,
+                        self.car_lin,
+                        &mut trans_warnings,
+                    );
+                    let (mut primary, mut alts) =
+                        wcs_keywords::extract_wcs_keywords_with_alts(&trans)?;
+                    primary.sip_replace = self.sip_replace;
+                    primary.car_lin = self.car_lin;
+                    for (_, st) in &mut alts {
+                        st.sip_replace = self.sip_replace;
+                        st.car_lin = self.car_lin;
+                    }
+                    let naxes = primary.naxis;
+                    let (obj, warnings) =
+                        wcs_read::decode_wcs_with_alts_inner(&primary, &alts, false, &self.cards)?;
+                    self.push_read_warnings(trans_warnings, warnings, naxes);
+                    self.finish_read_consumption(&trans)?;
+                    Ok(Some(obj))
                 }
-                let naxes = primary.naxis;
-                let (obj, warnings) =
-                    wcs_read::decode_wcs_with_alts_inner(&primary, &alts, true, &self.cards)?;
-                self.push_read_warnings(trans_warnings, warnings, naxes);
-                self.finish_read_consumption(&trans)?;
-                Ok(Some(obj))
-            }
-            Encoding::FitsIraf => {
-                let mut trans_warnings: Vec<String> = Vec::new();
-                let trans = spec_trans::spec_trans(
-                    &self.cards,
-                    Encoding::FitsIraf,
-                    self.car_lin,
-                    &mut trans_warnings,
-                );
-                let (mut primary, mut alts) = wcs_keywords::extract_wcs_keywords_with_alts(&trans)?;
-                primary.sip_replace = self.sip_replace;
-                primary.car_lin = self.car_lin;
-                for (_, st) in &mut alts {
-                    st.sip_replace = self.sip_replace;
-                    st.car_lin = self.car_lin;
+                Encoding::FitsPc => {
+                    // Run SpecTrans first to normalise non-standard
+                    // keywords (Cnxxx alt-axis form, CDjjjiii, CROTA,
+                    // PROJP, etc.) into their canonical equivalents.
+                    // After SpecTrans, alt-axis cards are in the *A..*Z
+                    // form, so we route through the multi-plane
+                    // FitsWcs decoder to pick up secondary planes.
+                    let mut trans_warnings: Vec<String> = Vec::new();
+                    let trans = spec_trans::spec_trans(
+                        &self.cards,
+                        Encoding::FitsPc,
+                        self.car_lin,
+                        &mut trans_warnings,
+                    );
+                    let (mut primary, mut alts) =
+                        wcs_keywords::extract_wcs_keywords_with_alts(&trans)?;
+                    primary.sip_replace = self.sip_replace;
+                    primary.car_lin = self.car_lin;
+                    for (_, st) in &mut alts {
+                        st.sip_replace = self.sip_replace;
+                        st.car_lin = self.car_lin;
+                    }
+                    let naxes = primary.naxis;
+                    let (obj, warnings) =
+                        wcs_read::decode_wcs_with_alts_inner(&primary, &alts, true, &self.cards)?;
+                    self.push_read_warnings(trans_warnings, warnings, naxes);
+                    self.finish_read_consumption(&trans)?;
+                    Ok(Some(obj))
                 }
-                let naxes = primary.naxis;
-                let (obj, warnings) =
-                    wcs_read::decode_wcs_with_alts_inner(&primary, &alts, true, &self.cards)?;
-                self.push_read_warnings(trans_warnings, warnings, naxes);
-                self.finish_read_consumption(&trans)?;
-                Ok(Some(obj))
-            }
-            Encoding::FitsAips | Encoding::FitsAipsPP => {
-                let mut trans_warnings: Vec<String> = Vec::new();
-                let trans =
-                    spec_trans::spec_trans(&self.cards, enc, self.car_lin, &mut trans_warnings);
-                let store = enc_aips::read_from_cards(&trans)?;
-                let naxes = store.naxis;
-                let (obj, warnings) = wcs_read::decode_wcs_inner(&store, true, &self.cards, ' ')?;
-                self.push_read_warnings(trans_warnings, warnings, naxes);
-                self.finish_read_consumption(&trans)?;
-                Ok(Some(obj))
-            }
-            Encoding::FitsClass => {
-                let mut trans_warnings: Vec<String> = Vec::new();
-                let trans = spec_trans::spec_trans(
-                    &self.cards,
-                    Encoding::FitsClass,
-                    self.car_lin,
-                    &mut trans_warnings,
-                );
-                let store = enc_class::read_from_cards(&trans)?;
-                let naxes = store.naxis;
-                let (obj, warnings) = wcs_read::decode_wcs_inner(&store, true, &self.cards, ' ')?;
-                self.push_read_warnings(trans_warnings, warnings, naxes);
-                self.finish_read_consumption(&trans)?;
-                Ok(Some(obj))
-            }
-            Encoding::Dss => {
-                // Dss is a separate format; SpecTrans's translations
-                // are mostly inapplicable. Keep the existing reader. The
-                // reader records consumed names directly on `self.cards`
-                // (no SpecTrans copy), so promote them in place.
-                let store = enc_dss::read_from_cards(&self.cards)?;
-                let naxes = store.naxis;
-                let (obj, warnings) = wcs_read::decode_wcs_inner(&store, true, &self.cards, ' ')?;
-                self.push_read_warnings(Vec::new(), warnings, naxes);
-                for name in self.cards.take_consumed_names() {
-                    self.cards.mark_card(&name);
+                Encoding::FitsIraf => {
+                    let mut trans_warnings: Vec<String> = Vec::new();
+                    let trans = spec_trans::spec_trans(
+                        &self.cards,
+                        Encoding::FitsIraf,
+                        self.car_lin,
+                        &mut trans_warnings,
+                    );
+                    let (mut primary, mut alts) =
+                        wcs_keywords::extract_wcs_keywords_with_alts(&trans)?;
+                    primary.sip_replace = self.sip_replace;
+                    primary.car_lin = self.car_lin;
+                    for (_, st) in &mut alts {
+                        st.sip_replace = self.sip_replace;
+                        st.car_lin = self.car_lin;
+                    }
+                    let naxes = primary.naxis;
+                    let (obj, warnings) =
+                        wcs_read::decode_wcs_with_alts_inner(&primary, &alts, true, &self.cards)?;
+                    self.push_read_warnings(trans_warnings, warnings, naxes);
+                    self.finish_read_consumption(&trans)?;
+                    Ok(Some(obj))
                 }
-                self.cards.fix_used(true, false);
-                Ok(Some(obj))
+                Encoding::FitsAips | Encoding::FitsAipsPP => {
+                    let mut trans_warnings: Vec<String> = Vec::new();
+                    let trans =
+                        spec_trans::spec_trans(&self.cards, enc, self.car_lin, &mut trans_warnings);
+                    let store = enc_aips::read_from_cards(&trans)?;
+                    let naxes = store.naxis;
+                    let (obj, warnings) =
+                        wcs_read::decode_wcs_inner(&store, true, &self.cards, ' ')?;
+                    self.push_read_warnings(trans_warnings, warnings, naxes);
+                    self.finish_read_consumption(&trans)?;
+                    Ok(Some(obj))
+                }
+                Encoding::FitsClass => {
+                    let mut trans_warnings: Vec<String> = Vec::new();
+                    let trans = spec_trans::spec_trans(
+                        &self.cards,
+                        Encoding::FitsClass,
+                        self.car_lin,
+                        &mut trans_warnings,
+                    );
+                    let store = enc_class::read_from_cards(&trans)?;
+                    let naxes = store.naxis;
+                    let (obj, warnings) =
+                        wcs_read::decode_wcs_inner(&store, true, &self.cards, ' ')?;
+                    self.push_read_warnings(trans_warnings, warnings, naxes);
+                    self.finish_read_consumption(&trans)?;
+                    Ok(Some(obj))
+                }
+                Encoding::Dss => {
+                    // Dss is a separate format; SpecTrans's translations
+                    // are mostly inapplicable. Keep the existing reader. The
+                    // reader records consumed names directly on `self.cards`
+                    // (no SpecTrans copy), so promote them in place.
+                    let store = enc_dss::read_from_cards(&self.cards)?;
+                    let naxes = store.naxis;
+                    let (obj, warnings) =
+                        wcs_read::decode_wcs_inner(&store, true, &self.cards, ' ')?;
+                    self.push_read_warnings(Vec::new(), warnings, naxes);
+                    for name in self.cards.take_consumed_names() {
+                        self.cards.mark_card(&name);
+                    }
+                    self.cards.fix_used(true, false);
+                    Ok(Some(obj))
+                }
+            }
+        };
+        let result = read_encoded();
+        if enc != Encoding::Native {
+            if matches!(result, Ok(Some(_))) {
+                self.cards.set_position(usize::MAX);
+            } else {
+                self.cards.clear_card();
             }
         }
+        result
     }
 
     fn write(&mut self, obj: &AnyObject) -> AstResult<usize> {
@@ -1191,8 +1527,8 @@ mod tests {
             .unwrap();
         assert_eq!(fc.ncard(), 2);
 
-        fc.rewind();
-        let found = fc.find_fits("CRVAL1", true);
+        fc.clear_card();
+        let found = fc.find_fits("CRVAL1", true).unwrap();
         assert!(found.is_some());
         let card_str = found.unwrap();
         assert!(card_str.contains("266.41666666666"));
@@ -1201,47 +1537,53 @@ mod tests {
     #[test]
     fn set_fits_f_and_get_fits_f() {
         let mut fc = FitsChan::new();
-        fc.set_fits_f("CRVAL1", 123.456, "Test value", false);
-        let val = fc.get_fits_f("CRVAL1").unwrap();
+        fc.set_fits_f("CRVAL1", 123.456, "Test value", false)
+            .unwrap();
+        let val = fc.get_fits_f(Some("CRVAL1")).unwrap().unwrap();
         assert!((val - 123.456).abs() < 1e-10);
     }
 
     #[test]
     fn set_fits_i_and_get_fits_i() {
         let mut fc = FitsChan::new();
-        fc.set_fits_i("NAXIS", 3, "Number of axes", false);
-        assert_eq!(fc.get_fits_i("NAXIS"), Some(3));
+        fc.set_fits_i("NAXIS", 3, "Number of axes", false).unwrap();
+        assert_eq!(fc.get_fits_i(Some("NAXIS")).unwrap(), Some(3));
     }
 
     #[test]
     fn set_fits_s_and_get_fits_s() {
         let mut fc = FitsChan::new();
-        fc.set_fits_s("CTYPE1", "RA---TAN", "Axis type", false);
-        assert_eq!(fc.get_fits_s("CTYPE1"), Some("RA---TAN".to_string()));
+        fc.set_fits_s("CTYPE1", "RA---TAN", "Axis type", false)
+            .unwrap();
+        assert_eq!(
+            fc.get_fits_s(Some("CTYPE1")).unwrap(),
+            Some("RA---TAN".to_string())
+        );
     }
 
     #[test]
     fn set_fits_l_and_get_fits_l() {
         let mut fc = FitsChan::new();
-        fc.set_fits_l("SIMPLE", true, "Standard FITS", false);
-        assert_eq!(fc.get_fits_l("SIMPLE"), Some(true));
+        fc.set_fits_l("SIMPLE", true, "Standard FITS", false)
+            .unwrap();
+        assert_eq!(fc.get_fits_l(Some("SIMPLE")).unwrap(), Some(true));
     }
 
     #[test]
     fn ncard_tracks_insertions() {
         let mut fc = FitsChan::new();
         assert_eq!(fc.ncard(), 0);
-        fc.set_fits_i("A", 1, "", false);
+        fc.set_fits_i("A", 1, "", false).unwrap();
         assert_eq!(fc.ncard(), 1);
-        fc.set_fits_i("B", 2, "", false);
+        fc.set_fits_i("B", 2, "", false).unwrap();
         assert_eq!(fc.ncard(), 2);
     }
 
     #[test]
     fn empty_fits_clears_all() {
         let mut fc = FitsChan::new();
-        fc.set_fits_i("NAXIS", 2, "", false);
-        fc.set_fits_i("NAXIS1", 100, "", false);
+        fc.set_fits_i("NAXIS", 2, "", false).unwrap();
+        fc.set_fits_i("NAXIS1", 100, "", false).unwrap();
         assert_eq!(fc.ncard(), 2);
         fc.empty_fits();
         assert_eq!(fc.ncard(), 0);
@@ -1250,10 +1592,12 @@ mod tests {
     #[test]
     fn overwrite_replaces_existing() {
         let mut fc = FitsChan::new();
-        fc.set_fits_i("NAXIS", 2, "Original", false);
-        fc.set_fits_i("NAXIS", 3, "Updated", true);
+        fc.set_fits_i("NAXIS", 2, "Original", false).unwrap();
+        // Overwriting replaces the current card.
+        fc.clear_card();
+        fc.set_fits_i("NAXIS", 3, "Updated", true).unwrap();
         assert_eq!(fc.ncard(), 1); // still only one card
-        assert_eq!(fc.get_fits_i("NAXIS"), Some(3));
+        assert_eq!(fc.get_fits_i(Some("NAXIS")).unwrap(), Some(3));
     }
 
     #[test]
@@ -1278,12 +1622,12 @@ mod tests {
     #[test]
     fn del_fits_removes_current() {
         let mut fc = FitsChan::new();
-        fc.set_fits_i("A", 1, "", false);
-        fc.set_fits_i("B", 2, "", false);
-        fc.set_fits_i("C", 3, "", false);
-        fc.rewind();
+        fc.set_fits_i("A", 1, "", false).unwrap();
+        fc.set_fits_i("B", 2, "", false).unwrap();
+        fc.set_fits_i("C", 3, "", false).unwrap();
+        fc.clear_card();
         // Position at first card, delete it.
-        fc.del_fits().unwrap();
+        fc.del_fits();
         assert_eq!(fc.ncard(), 2);
     }
 
@@ -1301,7 +1645,7 @@ mod tests {
         assert!(fc.ncard() > 0);
 
         // Read it back.
-        fc.rewind();
+        fc.clear_card();
         let result = fc.read().expect("read should succeed");
         assert!(result.is_some());
         let read_obj = result.unwrap();
@@ -1319,7 +1663,7 @@ mod tests {
     #[test]
     fn set_fits_u_stores_undef() {
         let mut fc = FitsChan::new();
-        fc.set_fits_u("BLANK", "Undefined", false);
+        fc.set_fits_u("BLANK", "Undefined", false).unwrap();
         let card = fc.cards.find("BLANK").unwrap();
         assert_eq!(card.value, FitsValue::Undef);
     }
@@ -1327,24 +1671,27 @@ mod tests {
     #[test]
     fn set_fits_cm_stores_comment() {
         let mut fc = FitsChan::new();
-        fc.set_fits_cm("This is a test", false);
+        fc.set_fits_cm("This is a test", false).unwrap();
         assert_eq!(fc.ncard(), 1);
-        let card = fc.cards.find("COMMENT").unwrap();
-        if let FitsValue::Comment(text) = &card.value {
-            assert!(text.contains("This is a test"));
-        } else {
-            panic!("Expected Comment value");
-        }
+        // C's astSetFitsCM stores a commentary card with a blank keyword.
+        fc.clear_card();
+        assert_eq!(fc.card_type(), CardType::Comment);
+        assert_eq!(fc.card_name().as_deref(), Some("        "));
+        assert_eq!(fc.card_comm(), "This is a test");
     }
 
     #[test]
     fn put_cards_multi_line() {
         let mut fc = FitsChan::new();
-        let cards = "SIMPLE  =                    T / Fits standard\n\
-                     NAXIS   =                    2 / Number of axes\n\
-                     END";
-        fc.put_cards(cards).unwrap();
+        // Cards of 80 characters with no separators; the last may be short.
+        let cards = format!(
+            "{:<80}{:<80}END",
+            "SIMPLE  =                    T / Fits standard",
+            "NAXIS   =                    2 / Number of axes"
+        );
+        fc.put_cards(&cards).unwrap();
         assert_eq!(fc.ncard(), 3); // END is stored as a commentary card
+        assert_eq!(fc.card(), 1);
     }
 
     #[test]
@@ -1354,10 +1701,10 @@ mod tests {
         )
         .unwrap();
         // Advance position.
-        fc.find_fits("NAXIS1", true);
-        fc.rewind();
+        fc.find_fits("NAXIS1", true).unwrap();
+        fc.clear_card();
         // Should be able to find from beginning again.
-        let found = fc.find_fits("NAXIS", true);
+        let found = fc.find_fits("NAXIS", true).unwrap();
         assert!(found.is_some());
     }
 

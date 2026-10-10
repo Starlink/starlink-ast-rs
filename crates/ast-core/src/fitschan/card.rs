@@ -77,11 +77,20 @@ const FITS_RL_COL: usize = 29;
 #[allow(dead_code)]
 const FITS_ST_COL: usize = 19;
 
+/// The number of decimal digits in `INT_MAX`, C's `int_dig` in `Split`
+/// (fitschan.c:32866): an integer value with this many digits or more is
+/// held as a 64-bit integer.
+const INT_DIG: usize = 10;
+
 /// A typed value from a FITS header card.
 #[derive(Debug, Clone, PartialEq)]
 pub enum FitsValue {
-    /// Integer value (FITS allows up to 64-bit).
+    /// Integer value that C holds as an `int` (`AST__INT`).
     Int(i64),
+    /// Integer value that C holds as an `int64_t` (`AST__KINT`): one read
+    /// from a card with too many digits or too large a value for an `int`,
+    /// or stored by [`FitsChan::set_fits_k`](super::FitsChan::set_fits_k).
+    KInt(i64),
     /// Floating-point value.
     Float(f64),
     /// Character string value (single-quoted in FITS).
@@ -169,6 +178,53 @@ pub(crate) struct CardFlags {
     pub new_version: bool,
 }
 
+/// The data type of a FITS card, as C's `CardType` gives it (the `AST__*`
+/// type codes of fitschan.h).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CardType {
+    /// No current card (`AST__NOTYPE`).
+    NoType,
+    /// A commentary card (`AST__COMMENT`).
+    Comment,
+    /// An integer held as an `int` (`AST__INT`).
+    Int,
+    /// A floating value (`AST__FLOAT`).
+    Float,
+    /// A string (`AST__STRING`).
+    String,
+    /// A complex floating value (`AST__COMPLEXF`).
+    ComplexF,
+    /// A complex integer value (`AST__COMPLEXI`).
+    ComplexI,
+    /// A logical value (`AST__LOGICAL`).
+    Logical,
+    /// A CONTINUE card (`AST__CONTINUE`).
+    Continue,
+    /// A keyword with no value (`AST__UNDEF`).
+    Undef,
+    /// An integer held as an `int64_t` (`AST__KINT`).
+    KInt,
+}
+
+impl CardType {
+    /// C's integer code for the type.
+    pub fn code(self) -> i32 {
+        match self {
+            CardType::NoType => -1,
+            CardType::Comment => 0,
+            CardType::Int => 1,
+            CardType::Float => 2,
+            CardType::String => 3,
+            CardType::ComplexF => 4,
+            CardType::ComplexI => 5,
+            CardType::Logical => 6,
+            CardType::Continue => 7,
+            CardType::Undef => 8,
+            CardType::KInt => 9,
+        }
+    }
+}
+
 /// A single FITS header card (keyword + value + comment).
 #[derive(Debug, Clone)]
 pub struct FitsCard {
@@ -188,6 +244,45 @@ pub struct FitsCard {
 }
 
 impl FitsCard {
+    /// The card's data type (C's `CardType`).
+    pub fn card_type(&self) -> CardType {
+        match self.value {
+            FitsValue::Int(_) => CardType::Int,
+            FitsValue::KInt(_) => CardType::KInt,
+            FitsValue::Float(_) => CardType::Float,
+            FitsValue::String(_) => CardType::String,
+            FitsValue::Logical(_) => CardType::Logical,
+            FitsValue::ComplexFloat(..) => CardType::ComplexF,
+            FitsValue::ComplexInt(..) => CardType::ComplexI,
+            FitsValue::Comment(_) => CardType::Comment,
+            FitsValue::Undef => CardType::Undef,
+            FitsValue::Continue(_) => CardType::Continue,
+        }
+    }
+
+    /// The keyword as C's `CardName` gives it: an 8-space name for a card
+    /// with a blank keyword.
+    pub(crate) fn c_name(&self) -> &str {
+        if self.keyword.is_empty() {
+            "        "
+        } else {
+            &self.keyword
+        }
+    }
+
+    /// The comment as C's `CardComm` gives it: for a commentary card the
+    /// text from column 9 without trailing blanks, otherwise the comment
+    /// after the value. `None` when there is none.
+    pub(crate) fn c_comment(&self) -> Option<&str> {
+        match &self.value {
+            FitsValue::Comment(text) => {
+                let t = text.trim_end();
+                (!t.is_empty()).then_some(t)
+            }
+            _ => self.comment.as_deref().filter(|c| !c.is_empty()),
+        }
+    }
+
     /// Whether this card has been consumed by a completed read and so must be
     /// excluded from output (mirrors the C `USED` flag / `CARDUSED` macro).
     pub(crate) fn is_consumed(&self) -> bool {
@@ -325,12 +420,19 @@ impl FitsCard {
                     flags: crate::fitschan::card::CardFlags::default(),
                 });
             }
-            // Try single integer (64-bit).
+            // Try single integer (64-bit). C's `Split` keeps it an `int`
+            // only when it fits one and has fewer digits than `INT_MAX`.
             if let Ok(ival) = val_trimmed.parse::<i64>() {
                 let comment = trim_comment(comment_str);
+                let ndig = val_trimmed.bytes().filter(u8::is_ascii_digit).count();
+                let fits_int = i32::try_from(ival).is_ok() && ndig < INT_DIG;
                 return Ok(FitsCard {
                     keyword,
-                    value: FitsValue::Int(ival),
+                    value: if fits_int {
+                        FitsValue::Int(ival)
+                    } else {
+                        FitsValue::KInt(ival)
+                    },
                     comment,
                     used: false,
                     flags: crate::fitschan::card::CardFlags::default(),
@@ -423,7 +525,7 @@ impl FitsCard {
                 buf.push_str("= ");
                 append_comment(&mut buf, self.comment.as_deref());
             }
-            FitsValue::Int(v) => {
+            FitsValue::Int(v) | FitsValue::KInt(v) => {
                 buf.push_str("= ");
                 // Right-justify integer to column 30 (index 29).
                 // Columns used for value: indices 10..30, i.e. 20 chars.
@@ -498,7 +600,9 @@ impl FitsCard {
                     }
                 }
                 buf.push_str(&r_fmt);
-                let i_width = 20;
+                // C's `%*d` with width FITSIMCOL - FITSRLCOL + 1 (fitschan.c
+                // `EncodeValue`).
+                let i_width = 21;
                 if i_fmt.len() < i_width {
                     for _ in 0..(i_width - i_fmt.len()) {
                         buf.push(' ');
@@ -572,15 +676,9 @@ fn parse_string_value(
     // If we ended the loop with last_was_quote true and didn't break,
     // that means the closing quote was at the end of the area.
 
-    // The FITS standard pads string values shorter than 8 characters with
-    // trailing spaces, so those spaces carry no information and are
-    // stripped. Longer values may have significant trailing spaces, which
-    // are preserved (C fitschan.c:15343-15352 and the MAKE_FGET macro).
-    let result = if result.len() <= 8 {
-        result.trim_end().to_string()
-    } else {
-        result
-    };
+    // The value is kept as written, trailing spaces included: C's `Split`
+    // stores it so, and only `astGetFitsS` (`MAKE_FGET`) strips the
+    // trailing spaces of a value of 8 characters or fewer.
 
     // Everything after the closing quote is potential comment area.
     // Find the '/' comment separator in the remainder.
@@ -819,7 +917,7 @@ mod tests {
         let card = "BIGINT  =       9999999999999 / Large int";
         let parsed = FitsCard::parse(card).unwrap();
         assert_eq!(parsed.keyword, "BIGINT");
-        assert_eq!(parsed.value, FitsValue::Int(9_999_999_999_999));
+        assert_eq!(parsed.value, FitsValue::KInt(9_999_999_999_999));
     }
 
     #[test]
@@ -885,13 +983,14 @@ mod tests {
     }
 
     #[test]
-    fn parse_string_value_strips_padding_on_short_values() {
-        // An 8-character value is stripped, as C does.
+    fn parse_string_value_keeps_padding_on_short_values() {
+        // C's Split stores the value as written; only astGetFitsS strips
+        // the trailing spaces of a short value.
         let card = FitsCard::parse(
             "CTYPE1  = 'RA--    '           / Axis type                                     ",
         )
         .unwrap();
-        assert_eq!(card.value, FitsValue::String("RA--".to_string()));
+        assert_eq!(card.value, FitsValue::String("RA--    ".to_string()));
     }
 
     #[test]

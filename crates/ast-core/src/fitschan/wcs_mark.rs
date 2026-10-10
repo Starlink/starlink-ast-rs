@@ -184,6 +184,7 @@ fn convert(value: &FitsValue, want: Want, undef: bool) -> Convert {
             }
         },
         FitsValue::Int(_)
+        | FitsValue::KInt(_)
         | FitsValue::Float(_)
         | FitsValue::Logical(_)
         | FitsValue::ComplexFloat(_, _)
