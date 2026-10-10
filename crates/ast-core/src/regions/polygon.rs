@@ -116,36 +116,7 @@ impl PixelOper {
     }
 }
 
-/// A pixel type [`Polygon::convex`] and [`Polygon::outline`] accept: one of
-/// the types polygon.c generates `astConvex<X>` and `astOutline<X>` for.
-pub trait PixelValue: PartialOrd + Copy + private::Sealed {
-    /// The code C appends to the function name for this type, as in
-    /// `astOutlineF`.
-    const CODE: &'static str;
-    /// The value as a double, as C's `(double) value`.
-    fn to_f64(self) -> f64;
-}
-
-mod private {
-    pub trait Sealed {}
-}
-
-macro_rules! pixel_value {
-    ($($t:ty => $code:literal),* $(,)?) => {$(
-        impl private::Sealed for $t {}
-        impl PixelValue for $t {
-            const CODE: &'static str = $code;
-            fn to_f64(self) -> f64 {
-                self as f64
-            }
-        }
-    )*};
-}
-
-pixel_value!(
-    f64 => "D", f32 => "F", i64 => "L", u64 => "UL", i32 => "I", u32 => "UI",
-    i16 => "S", u16 => "US", i8 => "B", u8 => "UB",
-);
+pub use crate::pixel::PixelValue;
 
 /// A 2-D array, row by row with X varying fastest, with pixel indices `lbnd`
 /// to `ubnd` inclusive, and the test that selects its pixels. `ConvexHull`

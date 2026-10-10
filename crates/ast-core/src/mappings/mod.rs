@@ -73,8 +73,12 @@ pub use linear_approx::LinearFit;
 mod quad_approx;
 pub use quad_approx::QuadFit;
 mod map_box;
+pub mod resample;
 mod tran_grid;
 pub use map_box::MapBoxResult;
+pub use resample::{
+    Interp, ResampleFlags, ResampleInput, ResampleOptions, ResampleOutput, resample,
+};
 
 use std::any::Any;
 use std::fmt;

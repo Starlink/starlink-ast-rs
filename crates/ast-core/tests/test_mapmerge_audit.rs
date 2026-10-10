@@ -22,6 +22,7 @@ const MAPPING_HELPERS: &[&str] = &[
     "quad_approx",
     "rate",
     "report",
+    "resample",
     "tran_grid",
 ];
 

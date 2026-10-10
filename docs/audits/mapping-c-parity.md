@@ -35,7 +35,7 @@ Six root causes account for most findings:
 | C. Lost or ignored dump content | Cards that C reads are dropped: legacy keys, Nin for a 3-D SpecMap, set-to-default attributes. | WC-5, SP-2, PY-8, SH-3, SN-5, PM-3, GR-1, SL-2 |
 | D. Definedness | `has_forward`/`has_inverse` disagree with C's `TranForward`/`TranInverse`, so Rust attempts a transform C refuses and returns numbers, panics, or loops. | PY-2, PY-3, MX-1, SW-1, WC-4, LM-1 |
 | E. Missing validation | C raises an error on malformed constructor arguments or PointSets; Rust accepts them, panics, or pads them. | MB-1, MB-3, TR-1, SW-2, LM-3, SA-1, SP-3, TM-1, SN-1, UN-1, CH-2, WC-3, SL-1 |
-| F. Missing public API | Resample, Rebin, Decompose, IsLinear, test/clear accessors, the RemoveRegions overrides, and the IntraMap and XphMap classes. | MB-4, MB-6, TR-3, RM-3, NM-2, and the tables below |
+| F. Missing public API | Resample (nearest and linear only so far), Rebin, Decompose, IsLinear, test/clear accessors, the RemoveRegions overrides, and the IntraMap and XphMap classes. | MB-4, MB-6, TR-3, RM-3, NM-2, and the tables below |
 
 **Why the tests missed these.** The Mapping tests build their objects with Rust constructors from good values and transform good points.
 BAD reaches a coefficient or table entry only through a C dump or an explicit argument, and neither is exercised (themes A and B).
@@ -399,7 +399,7 @@ FitsChan does not use it; the HPX and XPH FITS projections go through WcsMap and
 
 | C method | Classes | Impact |
 |---|---|---|
-| `astResample<X>` (4- and 8-byte, all data types), with `astUinterp`/`astUkern1` | Mapping | Image regridding, used by KAPPA, SMURF and pyast. Deferred in PLAN.md §7. |
+| `astResample<X>` (4- and 8-byte, all data types), with `astUinterp`/`astUkern1` | Mapping | Image regridding, used by KAPPA, SMURF and pyast. `mappings::resample` has nearest and linear interpolation; the kernels follow (`docs/superpowers/plans/2026-10-09-resample-rebin.md`). |
 | `astRebin<X>`, `astRebinSeq<X>` | Mapping | Flux-conserving rebinning and SMURF map-making. Deferred in PLAN.md §7. |
 | `astTranN`, `astTranP` | Mapping | Not needed by the Rust API; `ast-capi` must provide them (see "The `astTran*` interfaces"). |
 | `astDecompose` | Mapping (base), CmpMap (cmpmap.c:881), TranMap (tranmap.c:368) | The component accessors are `pub(crate)` (mappings/cmpmap.rs:166-177, TranMap `map1`/`map2`), so `ast-capi` cannot implement it on the public API either; `docs/issues/frame-mapping-c-port-gaps.md` defers it to `ast-capi`. |

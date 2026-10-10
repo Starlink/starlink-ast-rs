@@ -69,6 +69,10 @@ mod test_rate_oracle;
 mod test_ratemap;
 #[path = "../test_remove_regions_oracle.rs"]
 mod test_remove_regions_oracle;
+#[path = "../test_resample.rs"]
+mod test_resample;
+#[path = "../test_resample_oracle.rs"]
+mod test_resample_oracle;
 #[path = "../test_selectormap.rs"]
 mod test_selectormap;
 #[path = "../test_shiftmap.rs"]

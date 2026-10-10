@@ -7,6 +7,7 @@ pub mod constants;
 pub mod coords;
 pub mod error;
 pub mod fitschan;
+pub mod pixel;
 #[macro_use]
 pub mod frames;
 pub mod keymap;
