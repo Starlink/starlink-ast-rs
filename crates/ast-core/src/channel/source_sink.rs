@@ -150,3 +150,25 @@ impl Drop for FileSink {
         let _ = self.writer.flush();
     }
 }
+
+// ---------------------------------------------------------------------------
+// Internal sink wrapper — allows extracting string output
+// ---------------------------------------------------------------------------
+
+/// Internal enum so we can store either a generic `Box<dyn Sink>` or a
+/// known `StringSink` (from which we can later extract the accumulated text).
+pub(crate) enum SinkKind {
+    /// A [`StringSink`] whose output can be extracted via `into_string`.
+    String(StringSink),
+    /// An opaque boxed sink (file, user-provided, etc.).
+    Boxed(Box<dyn Sink>),
+}
+
+impl SinkKind {
+    pub(crate) fn write_line(&mut self, line: &str) {
+        match self {
+            SinkKind::String(s) => s.write_line(line),
+            SinkKind::Boxed(b) => b.write_line(line),
+        }
+    }
+}

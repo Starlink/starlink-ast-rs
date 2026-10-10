@@ -1521,10 +1521,10 @@ impl Moc {
     /// `chunks` of its text, returning whether it was JSON. The ranges are
     /// at MaxOrder, which, if not set, becomes `maxorder` or, if that is
     /// negative, the highest order in the text. They are not normalised.
-    pub(crate) fn add_moc_text<'a>(
+    pub(crate) fn add_moc_text(
         &mut self,
         maxorder: i32,
-        chunks: impl IntoIterator<Item = &'a [u8]>,
+        chunks: impl IntoIterator<Item = impl AsRef<[u8]>>,
         method: &str,
     ) -> AstResult<bool> {
         if maxorder > MXORDHPX {
@@ -1559,6 +1559,7 @@ impl Moc {
         let mut first = false;
 
         for text in chunks {
+            let text = text.as_ref();
             let mut pt = 0;
             while pt < text.len() && text[pt] != 0 {
                 let c = text[pt];

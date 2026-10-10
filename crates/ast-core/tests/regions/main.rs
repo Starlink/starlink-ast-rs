@@ -18,6 +18,10 @@ mod test_ellipse;
 mod test_interval;
 #[path = "../test_masking.rs"]
 mod test_masking;
+#[path = "../test_mocchan.rs"]
+mod test_mocchan;
+#[path = "../test_mocchan_oracle.rs"]
+mod test_mocchan_oracle;
 #[path = "../test_nullregion.rs"]
 mod test_nullregion;
 #[path = "../test_overlap.rs"]

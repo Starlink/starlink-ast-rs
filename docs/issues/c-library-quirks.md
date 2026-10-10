@@ -1098,6 +1098,19 @@ Only a hand-written description can do this, since Dump never writes an index be
 Fixed on `u/timj/norm-unit` in 0d05fc29, which checks Current as Base is checked, with a `testframeset` case (Errors 41-43).
 The port treats a `Currnt` below 1 as unset, as the fixed C does (`frameset.rs` `from_node`), and `tests/test_frameset_current.rs` covers Current's set state against C.
 
+### RESOLVED (upstream 7ef81c01): a MocChan with a MocLineLen of zero or less crashes on writing, and its dump names the MocFormat the wrong way round
+
+C location: `moc.c` `astGetMocText` (`TOKEN_WRITE`) and `mocchan.c` `Dump` and `astLoadMocChan`.
+
+`MocLineLen` stores a negative value as zero, and `astWrite` passes it to `astGetMocText` as the buffer length.
+With a buffer length of zero, the search for the last space or comma starts at the byte before the null buffer and reads address `0xffffffffffffffff`.
+`astGetMocString` never passes zero, as it replaces it with 80.
+`Dump` and `astLoadMocChan` index the `MocEnc` names with `{ "JSON", "STRING" }`, whose order is the reverse of the format values, so a STRING MocFormat is dumped as `MocEnc = "JSON"` and read back as STRING; the two swaps cancel on a round trip.
+
+Fixed on `u/timj/norm-unit` in 7ef81c01: a zero buffer length is reported as AST__SMBUF and the names are indexed by format; `testmocchan` `checkZeroLineLen` (which segfaults without the fix) and `checkDumpFormat`.
+Dumps written by C before the fix name the format the wrong way round, and the fixed C reads them back with the other format.
+The port follows the fixed `astGetMocText`; `tests/test_mocchan.rs` (`zero_line_len_is_too_small`). It has no MocChan dump.
+
 ### RESOLVED (upstream 7beab7b1, 7d06331e): reading malformed MOC text or data overruns, misreads or corrupts the Moc, and an empty Moc is written as JSON `}`
 
 C location: `moc.c` `astAddMocText`, `astGetMocText` and `AddMocData`.

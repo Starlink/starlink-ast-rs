@@ -4,8 +4,10 @@
 //! (text line consumer) to the serialisation machinery, allowing AST objects
 //! to be read from and written to external storage.
 //!
-//! The built-in [`NativeChannel`] uses the AST Native text format.
+//! The built-in [`NativeChannel`] uses the AST Native text format, and
+//! [`MocChan`] the IVOA MOC serializations.
 
+pub mod mocchan;
 pub mod native;
 pub mod source_sink;
 
@@ -16,6 +18,7 @@ use crate::keymap::KeyMap;
 use crate::mappings::IntraTransform;
 use crate::serial::AnyObject;
 
+pub use mocchan::{MocChan, MocFormat};
 pub use native::NativeChannel;
 pub use source_sink::{FileSink, FileSource, StringSink, StringSource};
 
