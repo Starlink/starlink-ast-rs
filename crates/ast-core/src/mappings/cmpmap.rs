@@ -76,6 +76,9 @@ pub enum Composition {
     Parallel,
 }
 
+/// The most points cmpmap.c `Transform` passes through a series at once.
+const SERIES_BATCH: usize = 8192;
+
 /// A mapping formed by composing two component mappings.
 ///
 /// See [`Composition`] for the two modes.
@@ -564,16 +567,34 @@ impl CmpMap {
     // Series helpers                                                       //
     // ------------------------------------------------------------------ //
 
+    /// The two components in the order a series applies them in direction
+    /// `fwd`, each with the direction to apply it in.
+    fn series_stages(&self, fwd: bool) -> [(&dyn Mapping, bool); 2] {
+        let one = (self.first.as_ref(), self.first_dir(fwd));
+        let two = (self.second.as_ref(), self.second_dir(fwd));
+        if fwd { [one, two] } else { [two, one] }
+    }
+
+    /// The points `start..end` of `pts`, as a PointSet of their own.
+    fn batch_of(pts: &PointSet, start: usize, end: usize) -> PointSet {
+        PointSet::from_ndarray(pts.view().slice(ndarray::s![start..end, ..]).to_owned())
+    }
+
+    /// A series applies one component and then the other, holding the
+    /// intermediate result in between. A component may itself be a series
+    /// holding its own, so cmpmap.c `Transform` takes the points
+    /// [`SERIES_BATCH`] at a time to bound the memory nested series need.
     fn series_transform(&self, pts: &PointSet, fwd: bool) -> AstResult<PointSet> {
-        let fwd1 = self.first_dir(fwd);
-        let fwd2 = self.second_dir(fwd);
-        if fwd {
-            let mid = self.first.transform(pts, fwd1)?;
-            self.second.transform(&mid, fwd2)
-        } else {
-            let mid = self.second.transform(pts, fwd2)?;
-            self.first.transform(&mid, fwd1)
+        let [(m1, d1), (m2, d2)] = self.series_stages(fwd);
+        let npoint = pts.npoint();
+        if npoint <= SERIES_BATCH {
+            let mid = m1.transform(pts, d1)?;
+            return m2.transform(&mid, d2);
         }
+        let nout = if d2 { m2.nout() } else { m2.nin() };
+        let mut out = PointSet::zeros(npoint, nout);
+        self.series_transform_batches(pts, fwd, &mut out)?;
+        Ok(out)
     }
 
     fn series_transform_into(
@@ -582,15 +603,32 @@ impl CmpMap {
         fwd: bool,
         out: &mut PointSet,
     ) -> AstResult<()> {
-        let fwd1 = self.first_dir(fwd);
-        let fwd2 = self.second_dir(fwd);
-        if fwd {
-            let mid = self.first.transform(pts, fwd1)?;
-            self.second.transform_into(&mid, fwd2, out)
-        } else {
-            let mid = self.second.transform(pts, fwd2)?;
-            self.first.transform_into(&mid, fwd1, out)
+        let [(m1, d1), (m2, d2)] = self.series_stages(fwd);
+        if pts.npoint() <= SERIES_BATCH {
+            let mid = m1.transform(pts, d1)?;
+            return m2.transform_into(&mid, d2, out);
         }
+        self.series_transform_batches(pts, fwd, out)
+    }
+
+    /// [`Self::series_transform_into`] [`SERIES_BATCH`] points at a time.
+    fn series_transform_batches(
+        &self,
+        pts: &PointSet,
+        fwd: bool,
+        out: &mut PointSet,
+    ) -> AstResult<()> {
+        let [(m1, d1), (m2, d2)] = self.series_stages(fwd);
+        let npoint = pts.npoint();
+        for start in (0..npoint).step_by(SERIES_BATCH) {
+            let end = (start + SERIES_BATCH).min(npoint);
+            let mid = m1.transform(&Self::batch_of(pts, start, end), d1)?;
+            let res = m2.transform(&mid, d2)?;
+            out.view_mut()
+                .slice_mut(ndarray::s![start..end, ..])
+                .assign(&res.view());
+        }
+        Ok(())
     }
 
     /// Same shape as `series_transform_into` but threads through each child
@@ -598,28 +636,34 @@ impl CmpMap {
     /// the chain. Each stage's `transform_into_nan` is its own opt-in: if a
     /// child hasn't overridden it, the trait default falls through to
     /// `transform_into`, which re-checks BAD locally — correct but skipping
-    /// the boundary-amortization win for that one stage.
+    /// the boundary-amortization win for that one stage. The points go
+    /// [`SERIES_BATCH`] at a time, as in [`Self::series_transform`].
     fn series_transform_into_nan(
         &self,
         pts: &PointSet,
         fwd: bool,
         out: &mut PointSet,
     ) -> AstResult<()> {
-        let fwd1 = self.first_dir(fwd);
-        let fwd2 = self.second_dir(fwd);
-        let mid_n = if fwd {
-            self.effective_first_nout(true)
-        } else {
-            self.effective_second_nin(true)
-        };
-        let mut mid = PointSet::zeros(pts.npoint(), mid_n);
-        if fwd {
-            self.first.transform_into_nan(pts, fwd1, &mut mid)?;
-            self.second.transform_into_nan(&mid, fwd2, out)
-        } else {
-            self.second.transform_into_nan(pts, fwd2, &mut mid)?;
-            self.first.transform_into_nan(&mid, fwd1, out)
+        let [(m1, d1), (m2, d2)] = self.series_stages(fwd);
+        let mid_n = if d1 { m1.nout() } else { m1.nin() };
+        let npoint = pts.npoint();
+        if npoint <= SERIES_BATCH {
+            let mut mid = PointSet::zeros(npoint, mid_n);
+            m1.transform_into_nan(pts, d1, &mut mid)?;
+            return m2.transform_into_nan(&mid, d2, out);
         }
+        let nout = out.ncoord();
+        for start in (0..npoint).step_by(SERIES_BATCH) {
+            let end = (start + SERIES_BATCH).min(npoint);
+            let mut mid = PointSet::zeros(end - start, mid_n);
+            m1.transform_into_nan(&Self::batch_of(pts, start, end), d1, &mut mid)?;
+            let mut res = PointSet::zeros(end - start, nout);
+            m2.transform_into_nan(&mid, d2, &mut res)?;
+            out.view_mut()
+                .slice_mut(ndarray::s![start..end, ..])
+                .assign(&res.view());
+        }
+        Ok(())
     }
 
     // ------------------------------------------------------------------ //

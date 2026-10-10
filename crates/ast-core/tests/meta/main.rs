@@ -29,6 +29,8 @@ mod test_nan_protocol;
 mod test_simplify_regression;
 #[path = "../test_tracing_feature.rs"]
 mod test_tracing_feature;
+#[path = "../test_transform_memory.rs"]
+mod test_transform_memory;
 #[path = "../test_verification_ledger.rs"]
 mod test_verification_ledger;
 #[path = "../traits_compile.rs"]

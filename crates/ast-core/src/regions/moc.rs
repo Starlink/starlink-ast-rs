@@ -2526,15 +2526,10 @@ impl Moc {
             if len == 0 {
                 continue;
             }
-            let pts = PointSet::from_rows(
-                clist.ix[o]
-                    .iter()
-                    .zip(&clist.iy[o])
-                    .map(|(&x, &y)| [x as f64, y as f64])
-                    .collect::<Vec<_>>()
-                    .iter()
-                    .map(|p| p.as_slice()),
-            );
+            let mut pts = PointSet::zeros(len, 2);
+            for (i, (&x, &y)) in clist.ix[o].iter().zip(&clist.iy[o]).enumerate() {
+                pts.point_mut(i).copy_from_slice(&[x as f64, y as f64]);
+            }
             let map = clist.maps[o].as_ref().expect("map at each order in use");
             let hpx = map.transform(&pts, true)?;
             let mut nested = Vec::with_capacity(len);
@@ -2633,26 +2628,30 @@ fn put_cell(
     let ncell = ix.len();
     let npoint = if order == clist.maxorder { 1 } else { 9 };
     let unknown = |icell: usize| inorout.is_none_or(|io| io[icell] == 0);
-    let mut rows: Vec<[f64; 2]> = Vec::new();
-    for icell in 0..ncell {
-        if !unknown(icell) {
-            continue;
-        }
-        let (x, y) = (ix[icell] as f64, iy[icell] as f64);
-        if npoint == 1 {
-            rows.push([x, y]);
-        } else {
-            for j in -1..=1 {
-                for i in -1..=1 {
-                    rows.push([x + HALF * f64::from(i), y + HALF * f64::from(j)]);
+    let psize = (0..ncell).filter(|&icell| unknown(icell)).count();
+    let inside = if psize == 0 {
+        Vec::new()
+    } else {
+        let mut ps1 = PointSet::zeros(psize * npoint, 2);
+        let mut ip = 0;
+        for icell in 0..ncell {
+            if !unknown(icell) {
+                continue;
+            }
+            let (x, y) = (ix[icell] as f64, iy[icell] as f64);
+            if npoint == 1 {
+                ps1.point_mut(ip).copy_from_slice(&[x, y]);
+                ip += 1;
+            } else {
+                for j in -1..=1 {
+                    for i in -1..=1 {
+                        ps1.point_mut(ip)
+                            .copy_from_slice(&[x + HALF * f64::from(i), y + HALF * f64::from(j)]);
+                        ip += 1;
+                    }
                 }
             }
         }
-    }
-    let inside = if rows.is_empty() {
-        Vec::new()
-    } else {
-        let ps1 = PointSet::from_rows(rows.iter().map(|p| p.as_slice()));
         let map = maps[order as usize]
             .as_ref()
             .expect("map at each order in use");

@@ -25,14 +25,26 @@ impl PointSet {
     ///
     /// All points must have the same length. Panics if the iterator is empty.
     pub fn from_rows(rows: impl IntoIterator<Item = impl AsRef<[f64]>>) -> Self {
-        let rows: Vec<Vec<f64>> = rows.into_iter().map(|r| r.as_ref().to_vec()).collect();
-        assert!(
-            !rows.is_empty(),
-            "PointSet::from_rows requires at least one row"
-        );
-        let ncoord = rows[0].len();
-        let npoint = rows.len();
-        let flat: Vec<f64> = rows.into_iter().flatten().collect();
+        let mut rows = rows.into_iter();
+        let (nhint, _) = rows.size_hint();
+        let first = rows
+            .next()
+            .expect("PointSet::from_rows requires at least one row");
+        let first = first.as_ref();
+        let ncoord = first.len();
+        let mut flat = Vec::with_capacity(nhint.max(1) * ncoord);
+        flat.extend_from_slice(first);
+        let mut npoint = 1;
+        for row in rows {
+            let row = row.as_ref();
+            assert_eq!(
+                row.len(),
+                ncoord,
+                "PointSet::from_rows needs every point to have {ncoord} coordinates"
+            );
+            flat.extend_from_slice(row);
+            npoint += 1;
+        }
         let data = Array2::from_shape_vec((npoint, ncoord), flat).unwrap();
         Self { data }
     }
