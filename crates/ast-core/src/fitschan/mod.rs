@@ -618,7 +618,7 @@ impl FitsChan {
     /// which rewinds the card pointer before writing so the AST description
     /// precedes the retained original header cards.
     fn store_keyword_native(&mut self, obj: &AnyObject, node: &Node) {
-        let comm = self.config.comment;
+        let comm = self.config.comment();
         let class = node.class.as_str();
         let is_frameset = matches!(obj, AnyObject::FrameSet(_));
 

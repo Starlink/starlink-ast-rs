@@ -4,21 +4,21 @@
 //! a few cells is written in string and then JSON form, the lines are
 //! checked and read back to an equal Moc, and the `MocFormat` a read leaves
 //! is checked; then a Moc made from a small Circle makes the same round
-//! trips. `checkZeroLineLen`, added upstream at `7ef81c01`, is
-//! `zero_line_len_is_too_small`.
+//! trips. The checks added upstream are `zero_line_len_is_too_small`
+//! (`checkZeroLineLen`, `7ef81c01`), `dump_names_the_format`
+//! (`checkDumpFormat`, `7ef81c01`) and `negative_line_len_loads_as_zero`
+//! (`checkLoadNegativeLineLen`, `228a0310`).
 //!
-//! Divergences from C:
-//! - The lines go to an in-memory sink and are read back through
-//!   `MocChan::from_string`, rather than through source and sink functions
-//!   over a static array. The C sink drops blank lines; none is written.
-//! - `checkDumpFormat` is not ported: no Channel is a serializable object
-//!   in this port, so a MocChan cannot be dumped.
+//! Divergence from C: the lines go to an in-memory sink and are read back
+//! through `MocChan::from_string`, rather than through source and sink
+//! functions over a static array. The C sink drops blank lines; none is
+//! written.
 
 use ast_core::error::ErrorCode;
 use ast_core::frames::{SkyFrame, SkySystem};
 use ast_core::mappings::Mapping;
 use ast_core::regions::{CircleBuilder, CmpOperator, Moc};
-use ast_core::{AnyObject, Channel, MocChan, MocFormat};
+use ast_core::{AnyObject, Channel, MocChan, MocFormat, from_native_string, to_native_string};
 
 /// Write `moc` through a MocChan with the given format, returning the lines.
 fn write(moc: &Moc, format: MocFormat) -> String {
@@ -94,4 +94,28 @@ fn zero_line_len_is_too_small() {
     assert_eq!(ch.moc_line_len(), 0);
     let err = ch.write(&AnyObject::Moc(moc)).unwrap_err();
     assert_eq!(err.code(), ErrorCode::Smbuf);
+}
+
+#[test]
+fn dump_names_the_format() {
+    for (format, name) in [(MocFormat::String, "STRING"), (MocFormat::Json, "JSON")] {
+        let mut ch = MocChan::new();
+        ch.set_moc_format(format);
+        let text = to_native_string(&AnyObject::MocChan(Box::new(ch))).unwrap();
+        assert!(text.contains(&format!("MocEnc = \"{name}\"")), "{text}");
+        let AnyObject::MocChan(back) = from_native_string(&text).unwrap() else {
+            panic!("expected a MocChan");
+        };
+        assert_eq!(back.moc_format(), format);
+    }
+}
+
+#[test]
+fn negative_line_len_loads_as_zero() {
+    let AnyObject::MocChan(ch) =
+        from_native_string(" Begin MocChan\n    MocLLn = -3\n End MocChan").unwrap()
+    else {
+        panic!("expected a MocChan");
+    };
+    assert_eq!(ch.moc_line_len(), 0);
 }

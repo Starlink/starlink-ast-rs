@@ -151,7 +151,7 @@ fn config_comment_false_suppresses_comments() {
 
     // Write with comments disabled.
     let mut ch_without = NativeChannel::with_string_sink();
-    ch_without.config_mut().comment = false;
+    ch_without.config_mut().set_comment(false);
     ch_without.write(&obj).unwrap();
     let text_without = ch_without.into_string();
 
@@ -199,7 +199,7 @@ fn config_full_minus_one_shorter_output() {
 
     // Write with full=-1 (minimal — skip Unset/default lines).
     let mut ch_minimal = NativeChannel::with_string_sink();
-    ch_minimal.config_mut().full = -1;
+    ch_minimal.config_mut().set_full(-1);
     ch_minimal.write(&obj).unwrap();
     let text_minimal = ch_minimal.into_string();
 
@@ -245,7 +245,7 @@ fn config_indent_6_wider_indentation() {
 
     // Write with indent=6.
     let mut ch_wide = NativeChannel::with_string_sink();
-    ch_wide.config_mut().indent = 6;
+    ch_wide.config_mut().set_indent(6);
     ch_wide.write(&obj).unwrap();
     let text_wide = ch_wide.into_string();
 
@@ -490,23 +490,28 @@ fn write_and_read_frameset_via_channel() {
 fn config_defaults_are_sensible() {
     let ch = NativeChannel::new();
     let cfg = ch.config();
-    assert!(cfg.comment);
-    assert_eq!(cfg.full, 0);
-    assert_eq!(cfg.indent, 3);
-    assert!(!cfg.skip);
-    assert!(!cfg.strict);
+    assert!(cfg.comment());
+    assert_eq!(cfg.full(), 0);
+    assert_eq!(cfg.indent(), 3);
+    assert!(!cfg.skip());
+    assert!(!cfg.strict());
+    assert_eq!(cfg.report_level(), 1);
+    assert!(!cfg.test_comment() && !cfg.test_full() && !cfg.test_indent());
 }
 
 #[test]
 fn config_mut_is_honoured() {
     let mut ch = NativeChannel::with_string_sink();
-    ch.config_mut().comment = false;
-    ch.config_mut().full = -1;
-    ch.config_mut().indent = 5;
+    ch.config_mut().set_comment(false);
+    ch.config_mut().set_full(-4);
+    ch.config_mut().set_indent(5);
 
-    assert!(!ch.config().comment);
-    assert_eq!(ch.config().full, -1);
-    assert_eq!(ch.config().indent, 5);
+    assert!(!ch.config().comment());
+    assert_eq!(ch.config().full(), -1);
+    assert_eq!(ch.config().indent(), 5);
+    assert!(ch.config().test_full());
+    ch.config_mut().clear_full();
+    assert_eq!(ch.config().full(), 0);
 }
 
 // ===========================================================================

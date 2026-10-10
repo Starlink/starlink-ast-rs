@@ -1,0 +1,222 @@
+//! The part every Channel shares: C's Channel class part.
+//!
+//! A Channel's source and sink are held through shared handles, so a clone
+//! reads from and writes to the same place as the original, as a copy made
+//! by C's `astCopy` calls the same source and sink functions. A Channel read
+//! from a dump has neither, as C's `astLoadChannel` sets them to NULL.
+
+use std::fmt;
+use std::sync::{Arc, Mutex, MutexGuard};
+
+use super::source_sink::{StringSink, StringSource};
+use super::{ChannelConfig, Sink, Source};
+use crate::error::AstResult;
+use crate::mappings::IntraRegistry;
+use crate::serial::Node;
+
+/// A sink that is either a [`StringSink`], whose text can be taken back,
+/// or any other.
+enum SinkKind {
+    String(StringSink),
+    Boxed(Box<dyn Sink>),
+}
+
+/// Lock `m`, recovering the value from a panic in another holder, which
+/// cannot leave a line source or sink half-updated.
+fn lock<T: ?Sized>(m: &Mutex<T>) -> MutexGuard<'_, T> {
+    m.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// The Channel class part of a Channel: its Object and Channel attributes,
+/// source and sink, the warnings from its last read or write, and the
+/// transformations the IntraMaps it reads can name.
+#[derive(Clone, Default)]
+pub(crate) struct ChannelBase {
+    pub(crate) config: ChannelConfig,
+    pub(crate) ident: Option<String>,
+    source: Option<Arc<Mutex<Box<dyn Source>>>>,
+    sink: Option<Arc<Mutex<SinkKind>>>,
+    pub(crate) warnings: Vec<String>,
+    pub(crate) intra: IntraRegistry,
+}
+
+impl fmt::Debug for ChannelBase {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ChannelBase")
+            .field("config", &self.config)
+            .field("ident", &self.ident)
+            .field("source", &self.source.is_some())
+            .field("sink", &self.sink.is_some())
+            .field("warnings", &self.warnings)
+            .finish()
+    }
+}
+
+impl ChannelBase {
+    /// Read from the lines of `text`.
+    pub(crate) fn with_string_source(text: &str) -> Self {
+        let mut base = Self::default();
+        base.set_source(Box::new(StringSource::new(text)));
+        base
+    }
+
+    /// Write to a [`StringSink`], whose text [`into_string`] gives.
+    ///
+    /// [`into_string`]: ChannelBase::into_string
+    pub(crate) fn with_string_sink() -> Self {
+        Self {
+            sink: Some(Arc::new(Mutex::new(SinkKind::String(StringSink::new())))),
+            ..Self::default()
+        }
+    }
+
+    pub(crate) fn set_source(&mut self, source: Box<dyn Source>) {
+        self.source = Some(Arc::new(Mutex::new(source)));
+    }
+
+    pub(crate) fn set_sink(&mut self, sink: Box<dyn Sink>) {
+        self.sink = Some(Arc::new(Mutex::new(SinkKind::Boxed(sink))));
+    }
+
+    /// The next line from the source, or `None` at its end or if there is
+    /// none.
+    pub(crate) fn read_line(&self) -> Option<String> {
+        lock(self.source.as_ref()?).read_line()
+    }
+
+    /// Pass `line` to the sink, if there is one.
+    pub(crate) fn write_line(&self, line: &str) {
+        if let Some(sink) = &self.sink {
+            match &mut *lock(sink) {
+                SinkKind::String(s) => s.write_line(line),
+                SinkKind::Boxed(b) => b.write_line(line),
+            }
+        }
+    }
+
+    /// The text written to the [`StringSink`] of a Channel made by
+    /// [`with_string_sink`](Self::with_string_sink), or an empty string.
+    pub(crate) fn into_string(self) -> String {
+        match self.sink {
+            Some(sink) => match &*lock(&sink) {
+                SinkKind::String(s) => s.as_str().to_string(),
+                SinkKind::Boxed(_) => String::new(),
+            },
+            None => String::new(),
+        }
+    }
+
+    /// Write the Object and Channel parts of a dump: the Object's `Ident`,
+    /// then the Channel attributes that are set, in the order of channel.c
+    /// `Dump`, each with its marker only if something came before it.
+    pub(crate) fn write_parts(&self, node: &mut Node, own_class: bool) {
+        crate::frames::frame_attrs::write_object_part(node, self.ident.as_deref(), None);
+        let c = &self.config;
+        let before = node.items.len();
+        if c.test_indent() {
+            node.push_int(
+                "Indnt",
+                i64::from(c.indent()),
+                Some("Indentation increment".to_string()),
+            );
+        }
+        if c.test_report_level() {
+            node.push_int(
+                "RpLev",
+                i64::from(c.report_level()),
+                Some("Error reporting level".to_string()),
+            );
+        }
+        if c.test_skip() {
+            node.push_int(
+                "Skip",
+                i64::from(c.skip()),
+                Some(
+                    if c.skip() {
+                        "Ignore data between Objects"
+                    } else {
+                        "No data allowed between Objects"
+                    }
+                    .to_string(),
+                ),
+            );
+        }
+        if c.test_strict() {
+            // "insead" is C's spelling, kept so that dumps match.
+            node.push_int(
+                "Strict",
+                i64::from(c.strict()),
+                Some(
+                    if c.strict() {
+                        "Report errors insead of warnings"
+                    } else {
+                        "Report warnings instead of errors"
+                    }
+                    .to_string(),
+                ),
+            );
+        }
+        if c.test_full() {
+            let full = c.full();
+            node.push_int(
+                "Full",
+                i64::from(full),
+                Some(
+                    match full {
+                        f if f < 0 => "Suppress non-essential output",
+                        0 => "Output standard information",
+                        _ => "Output maximum information",
+                    }
+                    .to_string(),
+                ),
+            );
+        }
+        if c.test_comment() {
+            node.push_int(
+                "Comm",
+                i64::from(c.comment()),
+                Some(
+                    if c.comment() {
+                        "Display comments"
+                    } else {
+                        "Omit comments"
+                    }
+                    .to_string(),
+                ),
+            );
+        }
+        if !own_class && node.items.len() > before {
+            node.push_isa("Channel", Some("Basic I/O Channel".to_string()));
+        }
+    }
+
+    /// Read the Object and Channel parts of a dump, applying each Channel
+    /// attribute through its setter as channel.c `astLoadChannel` does.
+    pub(crate) fn read_parts(node: &Node) -> AstResult<Self> {
+        let mut base = Self::default();
+        if let Some(ident) = node.section("Object").get_string_if_set("Ident") {
+            base.ident = Some(ident);
+        }
+        let part = node.section("Channel");
+        let c = &mut base.config;
+        if let Some(v) = part.get_int_any_if_set("Indnt") {
+            c.set_indent(v as i32);
+        }
+        if let Some(v) = part.get_int_any_if_set("RpLev") {
+            c.set_report_level(v as i32);
+        }
+        if let Some(v) = part.get_int_any_if_set("Skip") {
+            c.set_skip(v != 0);
+        }
+        if let Some(v) = part.get_int_any_if_set("Strict") {
+            c.set_strict(v != 0);
+        }
+        if let Some(v) = part.get_int_any_if_set("Full") {
+            c.set_full(v as i32);
+        }
+        if let Some(v) = part.get_int_any_if_set("Comm") {
+            c.set_comment(v != 0);
+        }
+        Ok(base)
+    }
+}

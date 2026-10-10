@@ -1941,6 +1941,13 @@ pub enum AnyObject {
     /// [`as_frame`](AnyObject::as_frame), [`into_mapping`](AnyObject::into_mapping)
     /// and [`into_frame`](AnyObject::into_frame) all give `None` for it.
     KeyMap(Box<crate::keymap::KeyMap>),
+    /// A [`crate::channel::NativeChannel`], C's `Channel`. Implements neither
+    /// [`Mapping`] nor [`Frame`]. It shares its source and sink with the
+    /// channel it was cloned from; one read from a dump has neither.
+    NativeChannel(Box<crate::channel::NativeChannel>),
+    /// A [`crate::channel::MocChan`]. Implements neither [`Mapping`] nor
+    /// [`Frame`]; its source and sink are shared as a `NativeChannel`'s are.
+    MocChan(Box<crate::channel::MocChan>),
 }
 
 impl AnyObject {
@@ -2144,7 +2151,9 @@ impl AnyObject {
             | AnyObject::FluxFrame(_)
             | AnyObject::SpecFluxFrame(_)
             | AnyObject::CmpFrame(_)
-            | AnyObject::KeyMap(_) => None,
+            | AnyObject::KeyMap(_)
+            | AnyObject::NativeChannel(_)
+            | AnyObject::MocChan(_) => None,
         }
     }
 
@@ -2204,7 +2213,9 @@ impl AnyObject {
             | AnyObject::NormMap(_)
             | AnyObject::SelectorMap(_)
             | AnyObject::SwitchMap(_)
-            | AnyObject::KeyMap(_) => None,
+            | AnyObject::KeyMap(_)
+            | AnyObject::NativeChannel(_)
+            | AnyObject::MocChan(_) => None,
         }
     }
 
@@ -2264,7 +2275,9 @@ impl AnyObject {
             | AnyObject::FluxFrame(_)
             | AnyObject::SpecFluxFrame(_)
             | AnyObject::CmpFrame(_)
-            | AnyObject::KeyMap(_) => None,
+            | AnyObject::KeyMap(_)
+            | AnyObject::NativeChannel(_)
+            | AnyObject::MocChan(_) => None,
         }
     }
 
@@ -2324,7 +2337,9 @@ impl AnyObject {
             | AnyObject::NormMap(_)
             | AnyObject::SelectorMap(_)
             | AnyObject::SwitchMap(_)
-            | AnyObject::KeyMap(_) => None,
+            | AnyObject::KeyMap(_)
+            | AnyObject::NativeChannel(_)
+            | AnyObject::MocChan(_) => None,
         }
     }
 
@@ -2467,6 +2482,12 @@ pub(crate) fn any_object_from_node(node: &Node) -> AstResult<AnyObject> {
         "KeyMap" => Ok(AnyObject::KeyMap(Box::new(
             crate::keymap::KeyMap::from_node(node)?,
         ))),
+        "Channel" => Ok(AnyObject::NativeChannel(Box::new(
+            crate::channel::NativeChannel::from_node(node)?,
+        ))),
+        "MocChan" => Ok(AnyObject::MocChan(Box::new(
+            crate::channel::MocChan::from_node(node)?,
+        ))),
         other => Err(AstError::new(
             ErrorCode::Lderr,
             format!("unknown AST class: {other}"),
@@ -2534,6 +2555,8 @@ pub(crate) fn any_object_to_node(obj: &AnyObject) -> AstResult<Node> {
         AnyObject::StcCatalogEntryLocation(r) => Serializable::to_node(r),
         AnyObject::StcObsDataLocation(r) => Serializable::to_node(r),
         AnyObject::KeyMap(m) => Serializable::to_node(m.as_ref()),
+        AnyObject::NativeChannel(c) => Serializable::to_node(c.as_ref()),
+        AnyObject::MocChan(c) => Serializable::to_node(c.as_ref()),
     }
 }
 

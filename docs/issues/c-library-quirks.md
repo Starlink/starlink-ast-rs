@@ -1109,7 +1109,17 @@ With a buffer length of zero, the search for the last space or comma starts at t
 
 Fixed on `u/timj/norm-unit` in 7ef81c01: a zero buffer length is reported as AST__SMBUF and the names are indexed by format; `testmocchan` `checkZeroLineLen` (which segfaults without the fix) and `checkDumpFormat`.
 Dumps written by C before the fix name the format the wrong way round, and the fixed C reads them back with the other format.
-The port follows the fixed `astGetMocText`; `tests/test_mocchan.rs` (`zero_line_len_is_too_small`). It has no MocChan dump.
+The port follows both; `tests/test_mocchan.rs` (`zero_line_len_is_too_small`, `dump_names_the_format`).
+
+### RESOLVED (upstream 228a0310): a MocChan read from a dump keeps a negative MocLineLen
+
+C location: `mocchan.c` `astLoadMocChan`.
+
+Every other Channel attribute is loaded through its setter, but MocLLn was stored as read, so a dump holding `MocLLn = -3` gave a MocChan whose `astWrite` asked `astGetMocText` for a buffer of about 2^64 bytes; the setter maps a negative value to zero.
+Dumps written by C hold the clamped value, so only an edited dump exposes it.
+
+Fixed on `u/timj/norm-unit` in 228a0310: MocLineLen is loaded through its setter; `testmocchan` `checkLoadNegativeLineLen`, which fails without the fix.
+The port follows it; `tests/test_mocchan.rs` (`negative_line_len_loads_as_zero`) and `tests/test_channel_dump_oracle.rs` (`mocchan_values`).
 
 ### RESOLVED (upstream 7beab7b1, 7d06331e): reading malformed MOC text or data overruns, misreads or corrupts the Moc, and an empty Moc is written as JSON `}`
 

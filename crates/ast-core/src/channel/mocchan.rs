@@ -17,12 +17,13 @@ use std::io;
 use std::path::Path;
 use std::sync::Arc;
 
-use super::source_sink::{FileSink, FileSource, SinkKind, StringSink, StringSource};
+use super::base::ChannelBase;
+use super::source_sink::{FileSink, FileSource};
 use super::{Channel, ChannelConfig, Sink, Source};
-use crate::error::AstResult;
-use crate::mappings::{IntraRegistry, IntraTransform};
+use crate::error::{AstError, AstResult, ErrorCode};
+use crate::mappings::IntraTransform;
 use crate::regions::{CmpOperator, Moc};
-use crate::serial::AnyObject;
+use crate::serial::{AnyObject, Node, NodeValue, Serializable};
 
 /// The `MocFormat` attribute of a [`MocChan`]: the serialization of the
 /// last MOC read, and the one used to write.
@@ -46,12 +47,9 @@ const DEFAULT_LINE_LEN: i32 = 80;
 /// Writing an object other than a [`Moc`] writes nothing and returns 0.
 /// Reading makes a Moc from all the remaining source text; reading when
 /// there is none, or text that is not a MOC, is `ErrorCode::Inmoc`.
+#[derive(Debug, Clone, Default)]
 pub struct MocChan {
-    config: ChannelConfig,
-    source: Option<Box<dyn Source>>,
-    sink: Option<SinkKind>,
-    warnings: Vec<String>,
-    intra: IntraRegistry,
+    base: ChannelBase,
     moc_format: MocFormat,
     moc_line_len: Option<i32>,
 }
@@ -59,69 +57,76 @@ pub struct MocChan {
 impl MocChan {
     /// Create a `MocChan` with no source or sink.
     pub fn new() -> Self {
-        Self {
-            config: ChannelConfig::default(),
-            source: None,
-            sink: None,
-            warnings: Vec::new(),
-            intra: IntraRegistry::new(),
-            moc_format: MocFormat::Unknown,
-            moc_line_len: None,
-        }
+        Self::default()
     }
 
     /// Create a `MocChan` that reads from the given in-memory string, one
     /// line at a time.
     pub fn from_string(text: &str) -> Self {
         Self {
-            source: Some(Box::new(StringSource::new(text))),
+            base: ChannelBase::with_string_source(text),
             ..Self::new()
         }
     }
 
-    /// Create a `MocChan` with an internal [`StringSink`] for writing; see
+    /// Create a `MocChan` with an internal [`StringSink`](super::StringSink) for writing; see
     /// [`into_string`](Self::into_string).
     pub fn with_string_sink() -> Self {
         Self {
-            sink: Some(SinkKind::String(StringSink::new())),
+            base: ChannelBase::with_string_sink(),
             ..Self::new()
         }
     }
 
     /// Create a `MocChan` that reads from the file at `path`.
     pub fn from_file(path: &Path) -> io::Result<Self> {
-        Ok(Self {
-            source: Some(Box::new(FileSource::open(path)?)),
-            ..Self::new()
-        })
+        let mut ch = Self::new();
+        ch.set_source(Box::new(FileSource::open(path)?));
+        Ok(ch)
     }
 
     /// Create a `MocChan` that writes to the file at `path`.
     pub fn to_file(path: &Path) -> io::Result<Self> {
-        Ok(Self {
-            sink: Some(SinkKind::Boxed(Box::new(FileSink::create(path)?))),
-            ..Self::new()
-        })
+        let mut ch = Self::new();
+        ch.set_sink(Box::new(FileSink::create(path)?));
+        Ok(ch)
     }
 
     /// Consume the channel and return the text written to its internal
-    /// [`StringSink`], one line per sink line, or an empty string if it has
+    /// [`StringSink`](super::StringSink), one line per sink line, or an empty string if it has
     /// none.
     pub fn into_string(self) -> String {
-        match self.sink {
-            Some(SinkKind::String(ss)) => ss.into_string(),
-            _ => String::new(),
-        }
+        self.base.into_string()
     }
 
     /// Set a custom source for reading.
     pub fn set_source(&mut self, source: Box<dyn Source>) {
-        self.source = Some(source);
+        self.base.set_source(source);
     }
 
     /// Set a custom sink for writing.
     pub fn set_sink(&mut self, sink: Box<dyn Sink>) {
-        self.sink = Some(SinkKind::Boxed(sink));
+        self.base.set_sink(sink);
+    }
+
+    /// The Object-class `Ident` attribute, blank unless set.
+    pub fn ident(&self) -> &str {
+        self.base.ident.as_deref().unwrap_or("")
+    }
+
+    /// Set `Ident`.
+    pub fn set_ident(&mut self, ident: &str) {
+        self.base.ident = Some(ident.to_string());
+    }
+
+    /// Whether `Ident` is set.
+    pub fn test_ident(&self) -> bool {
+        self.base.ident.is_some()
+    }
+
+    /// Clear `Ident`.
+    pub fn clear_ident(&mut self) {
+        self.base.ident = None;
     }
 
     /// The `MocFormat` attribute. A read sets it to the serialization it
@@ -172,20 +177,14 @@ impl MocChan {
     }
 }
 
-impl Default for MocChan {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl Channel for MocChan {
     /// mocchan.c `Read`: a Moc with no MaxOrder set from all the source
     /// text, normalized; `MocFormat` is then set to the serialization read.
     fn read(&mut self) -> AstResult<Option<AnyObject>> {
-        self.warnings.clear();
+        self.base.warnings.clear();
         let mut moc = Moc::new();
-        let source = &mut self.source;
-        let lines = std::iter::from_fn(|| source.as_mut()?.read_line());
+        let base = &self.base;
+        let lines = std::iter::from_fn(|| base.read_line());
         let json = moc.add_moc_text(-1, lines, "astRead")?;
         let maxorder = moc.max_order();
         moc.moc_norm(false, CmpOperator::Or, 0, maxorder, "astRead")?;
@@ -200,20 +199,18 @@ impl Channel for MocChan {
     /// mocchan.c `Write`: a Moc as text in lines of at most `MocLineLen`
     /// characters, returning 1; anything else writes nothing and returns 0.
     fn write(&mut self, obj: &AnyObject) -> AstResult<usize> {
-        self.warnings.clear();
+        self.base.warnings.clear();
         let AnyObject::Moc(moc) = obj else {
             return Ok(0);
         };
         let json = self.moc_format == MocFormat::Json;
         let buflen = self.moc_line_len() as usize;
-        let sink = &mut self.sink;
+        let base = &self.base;
         moc.get_moc_text(
             json,
             buflen,
             &mut |line| {
-                if let Some(sink) = sink.as_mut() {
-                    sink.write_line(line);
-                }
+                base.write_line(line);
                 Ok(())
             },
             "astWrite",
@@ -222,18 +219,91 @@ impl Channel for MocChan {
     }
 
     fn register_intra(&mut self, transform: Arc<dyn IntraTransform>) -> AstResult<()> {
-        self.intra.register(transform)
+        self.base.intra.register(transform)
     }
 
     fn warning_texts(&self) -> &[String] {
-        &self.warnings
+        &self.base.warnings
     }
 
     fn config(&self) -> &ChannelConfig {
-        &self.config
+        &self.base.config
     }
 
     fn config_mut(&mut self) -> &mut ChannelConfig {
-        &mut self.config
+        &mut self.base.config
+    }
+}
+
+impl MocFormat {
+    /// The name a dump gives it (mocchan.c `xencod`).
+    fn dump_name(self) -> &'static str {
+        match self {
+            MocFormat::Unknown => "UNKNOWN",
+            MocFormat::String => "STRING",
+            MocFormat::Json => "JSON",
+        }
+    }
+}
+
+impl Serializable for MocChan {
+    fn class_name(&self) -> &'static str {
+        "MocChan"
+    }
+
+    /// mocchan.c `Dump`, after the Object and Channel parts. The class
+    /// comment is C's, copied from StcsChan.
+    fn to_node(&self) -> AstResult<Node> {
+        let mut node = Node::new("MocChan");
+        node.class_comment = Some("STC-S I/O Channel".to_string());
+        self.base.write_parts(&mut node, false);
+        // C writes MocEnc even when unset, as a comment.
+        let name = self.moc_format.dump_name();
+        let comment = Some("Format".to_string());
+        if self.test_moc_format() {
+            node.push_string("MocEnc", name, comment);
+        } else {
+            node.push_unset("MocEnc", NodeValue::String(name.to_string()), comment);
+        }
+        if let Some(len) = self.moc_line_len {
+            node.push_int(
+                "MocLLn",
+                i64::from(len),
+                Some("Moc line length".to_string()),
+            );
+        }
+        Ok(node)
+    }
+
+    /// mocchan.c `astLoadMocChan`: each attribute through its setter. A
+    /// MocEnc other than `UNKNOWN` must name a format, ignoring case, or it
+    /// is AST__RDERR.
+    fn from_node(node: &Node) -> AstResult<Self> {
+        let mut ch = MocChan {
+            base: ChannelBase::read_parts(node)?,
+            ..MocChan::new()
+        };
+        let part = node.section("MocChan");
+        if let Some(name) = part.get_string_if_set("MocEnc")
+            && name != "UNKNOWN"
+        {
+            ch.moc_format = if name.eq_ignore_ascii_case("STRING") {
+                MocFormat::String
+            } else if name.eq_ignore_ascii_case("JSON") {
+                MocFormat::Json
+            } else {
+                return Err(AstError::new(
+                    ErrorCode::Rderr,
+                    format!(
+                        "astRead(Channel): Illegal value '{name}' supplied for the MocChan \
+                         component 'MocEnc'."
+                    ),
+                ));
+            };
+        }
+        if let Some(len) = part.get_int_any_if_set("MocLLn") {
+            ch.set_moc_line_len(len as i32);
+        }
+        Ok(ch)
     }
 }

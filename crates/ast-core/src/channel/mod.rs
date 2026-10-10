@@ -7,6 +7,7 @@
 //! The built-in [`NativeChannel`] uses the AST Native text format, and
 //! [`MocChan`] the IVOA MOC serializations.
 
+pub(crate) mod base;
 pub mod mocchan;
 pub mod native;
 pub mod source_sink;
@@ -22,44 +23,160 @@ pub use mocchan::{MocChan, MocFormat};
 pub use native::NativeChannel;
 pub use source_sink::{FileSink, FileSource, StringSink, StringSource};
 
-/// Configuration controlling Channel I/O behaviour.
-#[derive(Debug, Clone)]
+/// The Channel attributes that control I/O (channel.c): each is set or
+/// not, with C's default when not, as a dump records only those set.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ChannelConfig {
-    /// Include comments in output (default: true).
-    pub comment: bool,
-    /// Output verbosity: -1=minimal, 0=normal, 1=verbose (default: 0).
-    pub full: i8,
-    /// Skip non-object data between objects (default: false).
-    pub skip: bool,
-    /// Report unexpected input data as errors (default: false).
-    pub strict: bool,
-    /// Indentation increment per nesting level (default: 3).
-    pub indent: usize,
-    /// Error reporting level (default: 0).
-    pub report_level: i32,
+    comment: Option<bool>,
+    full: Option<i32>,
+    skip: Option<bool>,
+    strict: Option<bool>,
+    indent: Option<i32>,
+    report_level: Option<i32>,
 }
 
-impl Default for ChannelConfig {
-    fn default() -> Self {
-        Self {
-            comment: true,
-            full: 0,
-            skip: false,
-            strict: false,
-            indent: 3,
-            report_level: 0,
-        }
+impl ChannelConfig {
+    /// `Comment`: whether output includes comments. The default is true.
+    pub fn comment(&self) -> bool {
+        self.comment.unwrap_or(true)
+    }
+
+    /// Set `Comment`.
+    pub fn set_comment(&mut self, comment: bool) {
+        self.comment = Some(comment);
+    }
+
+    /// Whether `Comment` is set.
+    pub fn test_comment(&self) -> bool {
+        self.comment.is_some()
+    }
+
+    /// Clear `Comment`.
+    pub fn clear_comment(&mut self) {
+        self.comment = None;
+    }
+
+    /// `Full`: -1 for minimal output, 0 for normal and 1 for verbose. The
+    /// default is 0.
+    pub fn full(&self) -> i32 {
+        self.full.unwrap_or(0)
+    }
+
+    /// Set `Full`; any positive value is stored as 1 and any negative one as
+    /// -1, as C does.
+    pub fn set_full(&mut self, full: i32) {
+        self.full = Some(full.signum());
+    }
+
+    /// Whether `Full` is set.
+    pub fn test_full(&self) -> bool {
+        self.full.is_some()
+    }
+
+    /// Clear `Full`.
+    pub fn clear_full(&mut self) {
+        self.full = None;
+    }
+
+    /// `Skip`: whether data between objects is ignored. The default is
+    /// false.
+    pub fn skip(&self) -> bool {
+        self.skip.unwrap_or(false)
+    }
+
+    /// Set `Skip`.
+    pub fn set_skip(&mut self, skip: bool) {
+        self.skip = Some(skip);
+    }
+
+    /// Whether `Skip` is set.
+    pub fn test_skip(&self) -> bool {
+        self.skip.is_some()
+    }
+
+    /// Clear `Skip`.
+    pub fn clear_skip(&mut self) {
+        self.skip = None;
+    }
+
+    /// `Strict`: whether unexpected input is an error rather than a
+    /// warning. The default is false.
+    pub fn strict(&self) -> bool {
+        self.strict.unwrap_or(false)
+    }
+
+    /// Set `Strict`.
+    pub fn set_strict(&mut self, strict: bool) {
+        self.strict = Some(strict);
+    }
+
+    /// Whether `Strict` is set.
+    pub fn test_strict(&self) -> bool {
+        self.strict.is_some()
+    }
+
+    /// Clear `Strict`.
+    pub fn clear_strict(&mut self) {
+        self.strict = None;
+    }
+
+    /// `Indent`: the indentation added for each level of nesting. The
+    /// default is 3.
+    pub fn indent(&self) -> i32 {
+        self.indent.unwrap_or(3)
+    }
+
+    /// Set `Indent`. C stores any value, negative ones included.
+    pub fn set_indent(&mut self, indent: i32) {
+        self.indent = Some(indent);
+    }
+
+    /// Whether `Indent` is set.
+    pub fn test_indent(&self) -> bool {
+        self.indent.is_some()
+    }
+
+    /// Clear `Indent`.
+    pub fn clear_indent(&mut self) {
+        self.indent = None;
+    }
+
+    /// `ReportLevel`: how much is reported about objects read. The default
+    /// is 1.
+    pub fn report_level(&self) -> i32 {
+        self.report_level.unwrap_or(1)
+    }
+
+    /// Set `ReportLevel`.
+    pub fn set_report_level(&mut self, level: i32) {
+        self.report_level = Some(level);
+    }
+
+    /// Whether `ReportLevel` is set.
+    pub fn test_report_level(&self) -> bool {
+        self.report_level.is_some()
+    }
+
+    /// Clear `ReportLevel`.
+    pub fn clear_report_level(&mut self) {
+        self.report_level = None;
     }
 }
 
 /// Provides lines of text for Channel reading.
-pub trait Source {
+///
+/// A Channel and its clones share one source, so it must be `Send` for the
+/// Channel to be.
+pub trait Source: Send {
     /// Return the next line of text, or `None` at end-of-input.
     fn read_line(&mut self) -> Option<String>;
 }
 
 /// Receives lines of text from Channel writing.
-pub trait Sink {
+///
+/// A Channel and its clones share one sink, so it must be `Send` for the
+/// Channel to be.
+pub trait Sink: Send {
     /// Accept one line of output text.
     fn write_line(&mut self, line: &str);
 }

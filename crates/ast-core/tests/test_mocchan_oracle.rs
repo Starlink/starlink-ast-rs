@@ -19,8 +19,7 @@ mod cases;
 use ast_core::mappings::ZoomMap;
 use ast_core::regions::{CmpOperator, Moc};
 use ast_core::{AnyObject, Channel, MocChan, MocFormat, Sink, Source};
-use std::cell::RefCell;
-use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 
 fn low() -> Moc {
     let mut m = Moc::new();
@@ -53,11 +52,11 @@ fn format(name: &str) -> MocFormat {
 
 /// A sink that keeps each line, shared so the test can see it.
 #[derive(Clone, Default)]
-struct Lines(Rc<RefCell<Vec<String>>>);
+struct Lines(Arc<Mutex<Vec<String>>>);
 
 impl Sink for Lines {
     fn write_line(&mut self, line: &str) {
-        self.0.borrow_mut().push(line.to_string());
+        self.0.lock().unwrap().push(line.to_string());
     }
 }
 
@@ -101,7 +100,7 @@ fn writes_match_c() {
             ch.set_moc_line_len(linelen);
         }
         let result = ch.write(&obj);
-        assert_eq!(*sink.0.borrow(), lines, "{name}: lines");
+        assert_eq!(*sink.0.lock().unwrap(), lines, "{name}: lines");
         match result {
             Ok(n) => {
                 assert_eq!(n as i32, ret, "{name}: returned value");

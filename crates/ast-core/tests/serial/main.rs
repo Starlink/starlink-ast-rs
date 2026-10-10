@@ -9,6 +9,8 @@ mod common;
 
 #[path = "../test_channel.rs"]
 mod test_channel;
+#[path = "../test_channel_dump_oracle.rs"]
+mod test_channel_dump_oracle;
 #[path = "../test_deferred_fixtures.rs"]
 mod test_deferred_fixtures;
 #[path = "../test_frame_load.rs"]

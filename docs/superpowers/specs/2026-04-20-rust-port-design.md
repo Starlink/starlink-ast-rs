@@ -2,6 +2,21 @@
 
 ## Revision history
 
+- **2026-10-09 (rev 12)**: Channels are objects.
+  `AnyObject` gains `NativeChannel` (C's `Channel`) and `MocChan`, so a
+  Channel can be written to another and read back, as C's Channel `Dump` and
+  `astLoadChannel` allow; `FitsChan` is not yet one (PLAN.md §5).
+  A Channel is `Clone`, and a clone shares the original's source and sink,
+  as a copy made by C's `astCopy` calls the same source and sink functions.
+  They are held as `Arc<Mutex<..>>`, so `Source` and `Sink` require `Send`.
+  The lock is taken once per line read or written, which is not a hot path.
+  A Channel read from a dump has no source or sink, as in C.
+  `ChannelConfig` keeps each attribute set or unset, with C's default when
+  unset (`ReportLevel` is 1, not the 0 the struct defaulted to), behind
+  `comment` / `set_comment` / `test_comment` / `clear_comment` and the like
+  for `full`, `skip`, `strict`, `indent` and `report_level`, in place of
+  public fields: a dump records only the attributes that are set.
+
 - **2026-10-06 (rev 11)**: an accessor returns `AstResult` wherever its C
   counterpart can report an error from valid input, rather than returning a
   plausible value or dropping the error.
@@ -704,7 +719,9 @@ lock-free. This matches the performance constraint from the review: no
 mutex in the hot paths.
 
 Channels (`FitsChan`, etc.) are also `Send` but not `Sync` — they hold
-live I/O state.
+live I/O state. A Channel's source and sink are the one exception to the
+no-lock rule: they sit behind an `Arc<Mutex<..>>` so that a cloned Channel
+shares them, as a C copy does (rev 12).
 
 ### Channel / Plot split
 
