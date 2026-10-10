@@ -223,6 +223,13 @@ The FITS-WCS reader's `infer_axis_count_from_indexed_keywords` is a different ru
 
 ---
 
+## Channel-level gaps to take up with this audit
+
+PLAN.md §5, row "Channels as objects", lists what remains after `NativeChannel` and `MocChan` became objects (2026-10-09): FitsChan is not an `AnyObject` variant and cannot be dumped, the Object `ID` attribute is absent, `NativeChannel` ignores `Skip` and `Strict` and reads all its text at once, and no class writes non-helpful unset attributes at `Full` above zero.
+FitsChan's own `Dump` writes its cards and attributes, so the first item belongs with this audit.
+
+---
+
 ## FitsChan attribute coverage
 
 C exposes 18 attributes via `Get`/`Set`/`Test`/`Clear` quartets.
