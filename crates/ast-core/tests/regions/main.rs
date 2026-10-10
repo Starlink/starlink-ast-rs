@@ -70,6 +70,8 @@ mod test_region_mask_oracle;
 mod test_region_moc_add_oracle;
 #[path = "../test_region_moc_oracle.rs"]
 mod test_region_moc_oracle;
+#[path = "../test_region_moc_text_oracle.rs"]
+mod test_region_moc_text_oracle;
 #[path = "../test_region_nulltran_oracle.rs"]
 mod test_region_nulltran_oracle;
 #[path = "../test_region_object.rs"]

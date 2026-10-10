@@ -28,7 +28,7 @@ pub(crate) use cmpregion::Oper as CmpOper;
 pub use cmpregion::{CmpRegion, CmpRegionBuilder};
 pub use ellipse::{Ellipse, EllipseBuilder, EllipsePars};
 pub use interval::{Interval, IntervalBuilder};
-pub use moc::{MOC_MAX_ORDER, Moc};
+pub use moc::{MOC_MAX_ORDER, Moc, MocData};
 pub use nullregion::{NullRegion, NullRegionBuilder};
 pub use pointlist::{PointList, PointListBuilder};
 pub use polygon::{PixelOper, PixelValue, Polygon, PolygonBuilder};

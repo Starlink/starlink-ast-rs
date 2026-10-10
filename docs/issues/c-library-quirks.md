@@ -1098,6 +1098,20 @@ Only a hand-written description can do this, since Dump never writes an index be
 Fixed on `u/timj/norm-unit` in 0d05fc29, which checks Current as Base is checked, with a `testframeset` case (Errors 41-43).
 The port treats a `Currnt` below 1 as unset, as the fixed C does (`frameset.rs` `from_node`), and `tests/test_frameset_current.rs` covers Current's set state against C.
 
+### RESOLVED (upstream 7beab7b1, 7d06331e): reading malformed MOC text or data overruns, misreads or corrupts the Moc, and an empty Moc is written as JSON `}`
+
+C location: `moc.c` `astAddMocText`, `astGetMocText` and `AddMocData`.
+
+`astAddMocText` initialises its list of cells for each order in a loop that reuses the current order and leaves it at 28, so its check for a string MOC with no order (`order < 0`) never fired, and `"5"` read past the end of the lists.
+A range at the end of a string MOC that ends before it starts (`"3/10-5"`) was not checked there as it is elsewhere, and asked for about 2^64 bytes.
+A string MOC order was narrowed to an int before being checked, so `"4294967301/1"` was read as order 5; digits could overflow an `int64_t`; and NPIX values beyond the 12*4^order cells at their order were accepted.
+`"{}"` was rejected, and the writer gave `}` for an empty Moc with no MaxOrder.
+Each range was counted before room was made for it, so after any parse error the Moc counted a range it did not hold, and the next read of it overran its buffer.
+`AddMocData` decoded a NUNIQ value below 4, which encodes no cell, by shifting 32 or 64 bits, and added a cell for it.
+
+Fixed on `u/timj/norm-unit` in 7beab7b1 and 7d06331e; `testmoc` `checkMocStringErrors`, `checkEmptyJson`, `checkParseErrorLeavesMoc` and `checkBadNuniq`, each failing with its fix reverted.
+The port follows the fixed C; `tests/test_region_moc_text_oracle.rs`.
+
 ### RESOLVED (upstream 28473801): `astAddRegion` reads out of bounds with MaxOrder 0, and a negated Region added with MinOrder above MaxOrder covers the sky several times over
 
 C location: `moc.c` `AddRegion` and `IncorporateCells`.

@@ -297,7 +297,7 @@ because it constrains the registry's slot representation.
 
 Absent classes, for completeness (52,168 code lines of C, 28% of the library by
 code volume, with no Rust counterpart): `Plot` / `Plot3D` + `grf*`, `YamlChan`,
-`XmlChan`, `MocChan` and the parts of `Moc` that add or get MOC strings or data, `StcsChan`, `Table` /
+`XmlChan`, `MocChan`, `StcsChan`, `Table` /
 `FitsTable`. Absent `Mapping`-level algorithms: `astResample`,
 `astRebin`, `astRebinSeq`, `astTranGrid`, `astQuadApprox`. Of these only
 `Table` / `FitsTable` (§3, §5) currently gate active work.
