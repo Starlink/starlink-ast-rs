@@ -1,27 +1,88 @@
 //! Masking data arrays with Regions: C's `astMask<X>`.
 //!
-//! A Region class decides which pixels of a grid a mask sets, through
-//! [`Region::mask_plan`]: region.c `Mask<X>` for most classes, and its own
-//! method for PointList (pointlist.c `Mask<X>`), which sets the pixels its
-//! points fall in. [`mask`] then sets those pixels of a data array of any
-//! element type, as each C `Mask<X>` does for its own type.
+//! A Region class masks a grid through [`Region::mask_data`]: region.c
+//! `Mask<X>` for most classes, which resamples the data through the Region,
+//! and its own method for PointList (pointlist.c `Mask<X>`), which sets the
+//! pixels its points fall in. C has one `Mask<X>` per element type; the
+//! trait method takes the data as a [`MaskData`], one variant per type, so
+//! that it can be called on a `dyn Region`, and [`mask`] wraps a typed array
+//! in it.
 
-use crate::constants::BAD_VALUE;
-use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::BasicFrameBuilder;
-use crate::mappings::Mapping;
 use crate::mappings::helpers::is_bad;
+use crate::mappings::{
+    Interp, Mapping, ResampleFlags, ResampleInput, ResampleOptions, ResampleOutput, resample,
+};
+use crate::pixel::PixelValue;
 use crate::regions::{DynRegion, Region};
 
-/// The pixels a mask sets, in the order of the vectorised array (first axis
-/// varying fastest), and the number C's `astMask<X>` returns.
+/// A data array to mask and the value to set, one variant per element type
+/// C's `astMask<X>` accepts.
 #[doc(hidden)]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct MaskPlan {
-    pub(crate) set: Vec<bool>,
-    pub(crate) count: usize,
+#[derive(Debug)]
+pub enum MaskData<'a> {
+    /// `double` (`astMaskD`).
+    D(&'a mut [f64], f64),
+    /// `float` (`astMaskF`).
+    F(&'a mut [f32], f32),
+    /// `INT_BIG` (`astMaskK`).
+    K(&'a mut [i64], i64),
+    /// `UINT_BIG` (`astMaskUK`).
+    UK(&'a mut [u64], u64),
+    /// `int` (`astMaskI`).
+    I(&'a mut [i32], i32),
+    /// `unsigned int` (`astMaskUI`).
+    UI(&'a mut [u32], u32),
+    /// `short int` (`astMaskS`).
+    S(&'a mut [i16], i16),
+    /// `unsigned short int` (`astMaskUS`).
+    US(&'a mut [u16], u16),
+    /// `signed char` (`astMaskB`).
+    B(&'a mut [i8], i8),
+    /// `unsigned char` (`astMaskUB`).
+    UB(&'a mut [u8], u8),
 }
+
+/// Applies `$f::<T>($data, $val, $($arg),*)` to whichever variant `$md` is.
+macro_rules! dispatch {
+    ($md:expr, $f:ident, $($arg:expr),*) => {
+        match $md {
+            MaskData::D(d, v) => $f($($arg,)* d, v),
+            MaskData::F(d, v) => $f($($arg,)* d, v),
+            MaskData::K(d, v) => $f($($arg,)* d, v),
+            MaskData::UK(d, v) => $f($($arg,)* d, v),
+            MaskData::I(d, v) => $f($($arg,)* d, v),
+            MaskData::UI(d, v) => $f($($arg,)* d, v),
+            MaskData::S(d, v) => $f($($arg,)* d, v),
+            MaskData::US(d, v) => $f($($arg,)* d, v),
+            MaskData::B(d, v) => $f($($arg,)* d, v),
+            MaskData::UB(d, v) => $f($($arg,)* d, v),
+        }
+    };
+}
+
+/// An element type [`mask`] accepts: one of C's `astMask<X>` types.
+pub trait MaskValue: PixelValue {
+    /// `data` and `val` as the [`MaskData`] variant for this type.
+    #[doc(hidden)]
+    fn mask_data(data: &mut [Self], val: Self) -> MaskData<'_>;
+}
+
+macro_rules! mask_value {
+    ($($t:ty => $v:ident),* $(,)?) => {$(
+        impl MaskValue for $t {
+            fn mask_data(data: &mut [Self], val: Self) -> MaskData<'_> {
+                MaskData::$v(data, val)
+            }
+        }
+    )*};
+}
+
+mask_value!(
+    f64 => D, f32 => F, i64 => K, u64 => UK, i32 => I,
+    u32 => UI, i16 => S, u16 => US, i8 => B, u8 => UB,
+);
 
 /// Set to `val` the pixels of `data` that lie inside `region` (`inside`
 /// true) or outside it, as C's `astMask<X>` does, and return the number of
@@ -35,7 +96,7 @@ pub struct MaskPlan {
 /// outputs (or, with no `map`, as the Region), and `map` as many inputs as
 /// the Region (AST__NGDIN); a lower bound above its upper bound is
 /// AST__GBDIN. A data array of the wrong length is AST__DIMIN.
-pub fn mask<T: Copy>(
+pub fn mask<T: MaskValue>(
     region: &dyn Region,
     map: Option<&dyn Mapping>,
     inside: bool,
@@ -54,23 +115,21 @@ pub fn mask<T: Copy>(
             ),
         ));
     }
-    let plan = region.mask_plan(map, inside, lbnd, ubnd)?;
-    if data.len() != plan.set.len() {
+    region.mask_data(map, inside, lbnd, ubnd, T::mask_data(data, val))
+}
+
+/// AST__DIMIN unless `data` has `npix` elements.
+fn check_len<T>(data: &[T], npix: usize) -> AstResult<()> {
+    if data.len() != npix {
         return Err(AstError::new(
             ErrorCode::Dimin,
             format!(
-                "astMask: the data array has {} elements but the grid has {}",
-                data.len(),
-                plan.set.len()
+                "astMask: the data array has {} elements but the grid has {npix}",
+                data.len()
             ),
         ));
     }
-    for (d, &s) in data.iter_mut().zip(&plan.set) {
-        if s {
-            *d = val;
-        }
-    }
-    Ok(plan.count)
+    Ok(())
 }
 
 /// The Region in grid coordinates and the number of pixels in the grid,
@@ -144,24 +203,38 @@ fn grid_region(
     Ok((used, npix))
 }
 
-/// region.c `Mask<X>`, the default of [`Region::mask_plan`].
-///
-/// Every pixel outside the Region's grid-coordinate bounding box (widened by
-/// two pixels) is on the same side of the Region, so those are set together
-/// when the side being masked is the side the box's outside is on. Within
-/// the box, C resamples the data through the Region, negated when the
-/// inside is masked, with nearest-neighbour interpolation and the mask value
-/// as the bad value: a Region maps a position to itself or to bad, so a
-/// pixel is set exactly when the Region maps its centre to bad, which is how
-/// it is found here, and the count includes each such pixel.
-pub(crate) fn region_mask_plan(
+/// region.c `Mask<X>`, the default of [`Region::mask_data`].
+pub(crate) fn region_mask(
     region: &dyn Region,
     map: Option<&dyn Mapping>,
     inside: bool,
     lbnd: &[i64],
     ubnd: &[i64],
-) -> AstResult<MaskPlan> {
+    data: MaskData<'_>,
+) -> AstResult<usize> {
+    dispatch!(data, region_mask_x, region, map, inside, lbnd, ubnd)
+}
+
+/// region.c `Mask<X>` for one element type.
+///
+/// Every pixel outside the Region's grid-coordinate bounding box (widened by
+/// two pixels) is on the same side of the Region, so those are set together
+/// when the side being masked is the side the box's outside is on. Within
+/// the box the data are resampled through the Region, negated when the
+/// inside is masked, with nearest-neighbour interpolation and `val` as the
+/// bad value: a Region maps a position inside it to itself and any other to
+/// bad, so a pixel keeps its value or is set to `val`.
+fn region_mask_x<T: PixelValue>(
+    region: &dyn Region,
+    map: Option<&dyn Mapping>,
+    inside: bool,
+    lbnd: &[i64],
+    ubnd: &[i64],
+    data: &mut [T],
+    val: T,
+) -> AstResult<usize> {
     let (used, npix) = grid_region(region, map, lbnd, ubnd)?;
+    check_len(data, npix)?;
     let ndim = lbnd.len();
 
     // The bounding box in grid coordinates, as pixel bounds two pixels
@@ -182,63 +255,57 @@ pub(crate) fn region_mask_plan(
 
     let fill_outside = inside == used.is_negated();
     if npixg <= 0 {
-        return Ok(MaskPlan {
-            set: vec![fill_outside; npix],
-            count: if fill_outside { npix } else { 0 },
-        });
+        if fill_outside {
+            data.fill(val);
+            return Ok(npix);
+        }
+        return Ok(0);
     }
 
-    let mut set = vec![fill_outside; npix];
-    let mut count = if fill_outside {
-        npix - npixg as usize
-    } else {
-        0
-    };
+    // The Region leaves points inside it unchanged and makes others bad, the
+    // opposite of what masking the inside needs.
     let tester: DynRegion = if inside { used.negated_copy() } else { used };
-
-    // The pixels of the box, a row along the first axis at a time.
-    let row_len = (ubndg[0] - lbndg[0] + 1) as usize;
-    let mut index = lbndg.clone();
-    loop {
-        let rows: Vec<Vec<f64>> = (0..row_len)
-            .map(|px| {
-                let mut p: Vec<f64> = index.iter().map(|&i| i as f64).collect();
-                p[0] = (lbndg[0] + px as i64) as f64;
-                p
-            })
-            .collect();
-        let pts = PointSet::from_rows(rows.iter().map(|r| r.as_slice()));
-        let out = tester.transform(&pts, true)?;
-        // Offset of the row's first pixel in the vectorised array.
-        let mut offset = 0usize;
-        let mut stride = 1usize;
-        for idim in 0..ndim {
-            let i = if idim == 0 { lbndg[0] } else { index[idim] };
-            offset += (i - lbnd[idim]) as usize * stride;
-            stride *= (ubnd[idim] - lbnd[idim] + 1) as usize;
-        }
-        for px in 0..row_len {
-            let bad = out.point(px).contains(&BAD_VALUE);
-            set[offset + px] = bad;
-            if bad {
-                count += 1;
-            }
-        }
-        // Next row.
-        let mut idim = 1;
-        while idim < ndim {
-            index[idim] += 1;
-            if index[idim] <= ubndg[idim] {
-                break;
-            }
-            index[idim] = lbndg[idim];
-            idim += 1;
-        }
-        if idim == ndim {
-            break;
-        }
+    let opts = ResampleOptions {
+        interp: Interp::Nearest,
+        params: &[],
+        flags: ResampleFlags::default(),
+        tol: 0.0,
+        maxpix: 100,
+    };
+    let resample_into = |input: &[T], out: &mut [T]| {
+        resample(
+            tester.as_ref() as &dyn Mapping,
+            &ResampleInput {
+                lbnd,
+                ubnd,
+                data: input,
+                var: None,
+            },
+            &mut ResampleOutput {
+                lbnd,
+                ubnd,
+                region_lbnd: &lbndg,
+                region_ubnd: &ubndg,
+                data: out,
+                var: None,
+            },
+            &opts,
+            val,
+        )
+    };
+    if fill_outside {
+        // Resample into an array already holding `val` everywhere, so that
+        // the pixels outside the box are set too.
+        let mut out = vec![val; npix];
+        let set = resample_into(data, &mut out)?;
+        data.copy_from_slice(&out);
+        Ok(npix - npixg as usize + set)
+    } else {
+        // C resamples the array onto itself; each pixel reads only itself,
+        // so resampling from a copy gives the same result.
+        let input = data.to_vec();
+        resample_into(&input, data)
     }
-    Ok(MaskPlan { set, count })
 }
 
 /// pointlist.c `Mask<X>`: the pixels the PointList's points fall in are
@@ -247,14 +314,29 @@ pub(crate) fn region_mask_plan(
 /// ignored, as C does since upstream ba5a6199 (before which C wrote beyond
 /// the array). The count is the number of points inside the grid, or the
 /// number of pixels less that.
-pub(crate) fn pointlist_mask_plan(
+pub(crate) fn pointlist_mask(
     region: &dyn Region,
     map: Option<&dyn Mapping>,
     inside: bool,
     lbnd: &[i64],
     ubnd: &[i64],
-) -> AstResult<MaskPlan> {
+    data: MaskData<'_>,
+) -> AstResult<usize> {
+    dispatch!(data, pointlist_mask_x, region, map, inside, lbnd, ubnd)
+}
+
+/// pointlist.c `Mask<X>` for one element type.
+fn pointlist_mask_x<T: Copy>(
+    region: &dyn Region,
+    map: Option<&dyn Mapping>,
+    inside: bool,
+    lbnd: &[i64],
+    ubnd: &[i64],
+    data: &mut [T],
+    val: T,
+) -> AstResult<usize> {
     let (used, npix) = grid_region(region, map, lbnd, ubnd)?;
+    check_len(data, npix)?;
     let ndim = lbnd.len();
     let points = used.to_current_frame(used.get_region_points()?)?;
 
@@ -277,19 +359,20 @@ pub(crate) fn pointlist_mask_plan(
     let nvalid = iv.iter().flatten().count();
 
     if inside != used.is_negated() {
-        let mut set = vec![false; npix];
         for &i in iv.iter().flatten() {
-            set[i] = true;
+            data[i] = val;
         }
-        Ok(MaskPlan { set, count: nvalid })
+        Ok(nvalid)
     } else {
-        let mut set = vec![true; npix];
+        let mut keep = vec![false; npix];
         for &i in iv.iter().flatten() {
-            set[i] = false;
+            keep[i] = true;
         }
-        Ok(MaskPlan {
-            set,
-            count: npix - nvalid,
-        })
+        for (d, &k) in data.iter_mut().zip(&keep) {
+            if !k {
+                *d = val;
+            }
+        }
+        Ok(npix - nvalid)
     }
 }

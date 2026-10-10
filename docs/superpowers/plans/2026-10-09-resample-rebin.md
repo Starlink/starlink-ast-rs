@@ -62,10 +62,10 @@ Stages 1 to 4 are done: `mappings::resample` has every scheme of `astResample<X>
 4. **RebinSeq.** Weights carried between calls, `nused`, and the flags
    `AST__REBININIT`, `AST__REBINEND`, `AST__GENVAR`, `AST__VARWGT`,
    `AST__DISVAR`, `AST__NONORM` and `AST__PARWGT`. Ports `testrebinseq.c`.
-5. **Follow-ups.** Decide whether Region `Mask<X>`, which reproduces C's
-   nearest-neighbour `astResample` by its own route
-   (`regions/masking.rs`), should call `resample`; and benchmark RebinSeq
-   against C, as SMURF's map-maker calls it in its inner loop.
+5. **Follow-ups.** Region `Mask<X>` (`regions/masking.rs`) calls
+   `resample` as C does, for every `astMask<X>` type (done 2026-10-10);
+   benchmark RebinSeq against C, as SMURF's map-maker calls it in its inner
+   loop.
 
 Each stage lands with a C probe compared bit for bit, negative controls, and
 its `ast_tester` port, as the Moc stages did.

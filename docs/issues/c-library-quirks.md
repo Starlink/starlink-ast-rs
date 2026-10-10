@@ -1316,7 +1316,7 @@ The PointList `Mask<X>` functions turned each point into an index into the suppl
 A PointList with points at (2, 2) and (10, 10) masked on a 3 by 3 grid wrote element 36 of a 9-element array and returned 2.
 
 Fixed on `u/timj/norm-unit` in ba5a6199: a point whose pixel is outside the array (or bad) is ignored; `testregions` `checkPointListMaskOutside`.
-The port's PointList `mask_plan` is `Mask<X>` as fixed; `tests/test_region_mask_oracle.rs`, whose probe needs the fixed library.
+The port's PointList `mask_data` is `Mask<X>` as fixed; `tests/test_region_mask_oracle.rs`, whose probe needs the fixed library.
 
 ### RESOLVED (upstream bb287a61): `RegSetAttrib` lower-cases the value of a setting made through a Region that is not Adaptive
 

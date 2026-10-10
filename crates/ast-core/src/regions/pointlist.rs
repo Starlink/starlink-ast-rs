@@ -705,14 +705,15 @@ impl Region for PointList {
     }
 
     /// pointlist.c `Mask<X>`: the pixels the points fall in.
-    fn mask_plan(
+    fn mask_data(
         &self,
         map: Option<&dyn Mapping>,
         inside: bool,
         lbnd: &[i64],
         ubnd: &[i64],
-    ) -> AstResult<super::masking::MaskPlan> {
-        super::masking::pointlist_mask_plan(self, map, inside, lbnd, ubnd)
+        data: super::masking::MaskData<'_>,
+    ) -> AstResult<usize> {
+        super::masking::pointlist_mask(self, map, inside, lbnd, ubnd, data)
     }
 
     fn clone_region(&self) -> DynRegion {

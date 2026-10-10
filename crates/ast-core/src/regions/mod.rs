@@ -41,7 +41,7 @@ pub use stc::{
     StcResourceProfile, StcResourceProfileBuilder, StcSearchLocation, StcSearchLocationBuilder,
 };
 
-pub use masking::mask;
+pub use masking::{MaskValue, mask};
 
 #[doc(hidden)]
 pub use data::FrameSetting;
@@ -548,18 +548,18 @@ pub trait Region: Frame + Mapping + AsDynRegion {
     #[doc(hidden)]
     fn region_frameset_mut(&mut self) -> &mut FrameSet;
 
-    /// Which pixels of a grid `astMask<X>` sets for this Region, and the
-    /// number it returns: region.c `Mask<X>` by default, which PointList
-    /// overrides. See [`mask`](crate::regions::mask).
+    /// C's `astMask<X>` for this Region: region.c `Mask<X>` by default,
+    /// which PointList overrides. See [`mask`](crate::regions::mask).
     #[doc(hidden)]
-    fn mask_plan(
+    fn mask_data(
         &self,
         map: Option<&dyn Mapping>,
         inside: bool,
         lbnd: &[i64],
         ubnd: &[i64],
-    ) -> AstResult<masking::MaskPlan> {
-        masking::region_mask_plan(self.as_dyn_region(), map, inside, lbnd, ubnd)
+        data: masking::MaskData<'_>,
+    ) -> AstResult<usize> {
+        masking::region_mask(self.as_dyn_region(), map, inside, lbnd, ubnd, data)
     }
 
     /// Make a change to a Frame attribute without remapping the Region, as
