@@ -38,6 +38,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [Block averaging with variances lets one pixel's bad variance decide for others](#block-averaging-with-variances-lets-one-pixels-bad-variance-decide-for-others)
 - [`astRebin<X>` zeroes only the first output element after an argument error](#astrebinx-zeroes-only-the-first-output-element-after-an-argument-error)
 - [Rebinning `B` and `UB` data relies on out-of-range conversions wrapping](#rebinning-b-and-ub-data-relies-on-out-of-range-conversions-wrapping)
+- [`astRebinSeq<X>` initialises and normalises after an argument error](#astrebinseqx-initialises-and-normalises-after-an-argument-error)
 
 ### [Addressed here, and not going upstream](#addressed-here-and-not-going-upstream)
 
@@ -596,6 +597,16 @@ clang on arm64 and x86-64 converts through a 32-bit integer, so the value wraps,
 The port mirrors the compiled behaviour: `RebinValue::from_c` in `crates/ast-core/src/pixel.rs` converts through `i32` for `B` and `UB`, and saturates for `I` as arm64 does (x86-64 gives `INT_MIN` instead, which no fixture exercises).
 In `crates/ast-core/tests/test_rebin_oracle.rs`, eight `UB` kernel cases fail with a saturating conversion.
 Resolved when upstream accumulates in a wider type or clamps explicitly.
+
+### `astRebinSeq<X>` initialises and normalises after an argument error
+
+`RebinSeq<X>` (`mapping.c`, `MAKE_REBINSEQ`) reports a bad argument and carries on: with `AST__REBININIT` it still zeroes the output, the weights and the count, and with `AST__REBINEND` it still normalises the sums.
+Its checks for a missing weights array or count are made whatever the status, so their AST__BDPAR replaces an earlier error's status.
+When no input pixel has been used, normalisation reports AST__BADIN (only if no error came first) and then reads an uninitialised effective number of pixels for every output pixel; on the supported platforms every output pixel then comes out bad, as it should with nothing added.
+
+The port mirrors the first two in `rebin_seq` (`crates/ast-core/src/mappings/rebin/mod.rs`) and takes the uninitialised value as zero in `normalise`, which gives the same all-bad output.
+`errors_match_c` in `crates/ast-core/tests/test_rebinseq_oracle.rs` records the output, weights and count after each error, and the `nothing_used` cases there pin the all-bad output; both fail if normalisation is skipped.
+Resolved when upstream returns before touching the arrays, or initialises the effective number of pixels.
 
 ## Addressed here, and not going upstream
 

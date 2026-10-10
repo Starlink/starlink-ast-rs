@@ -77,7 +77,10 @@ pub mod rebin;
 pub mod resample;
 mod tran_grid;
 pub use map_box::MapBoxResult;
-pub use rebin::{RebinFlags, RebinInput, RebinOptions, RebinOutput, Spread, rebin};
+pub use rebin::{
+    RebinFlags, RebinInput, RebinOptions, RebinOutput, RebinSeqFlags, RebinSeqOptions, Spread,
+    rebin, rebin_seq,
+};
 pub use resample::{
     Interp, InterpArgs, InterpFn, Kernel1Fn, ResampleFlags, ResampleInput, ResampleOptions,
     ResampleOutput, resample,

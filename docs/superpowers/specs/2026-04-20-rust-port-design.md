@@ -14,7 +14,10 @@
   status. `astRebin<X>` is `mappings::rebin` in the same shape, with the
   enum `Spread` and the input region on `RebinInput`; it is generic over
   `pixel::RebinValue`, implemented only for the types C provides it for
-  (`f64`, `f32`, `i32`, `i8`, `u8`). RebinSeq will follow.
+  (`f64`, `f32`, `i32`, `i8`, `u8`). `astRebinSeq<X>` is
+  `mappings::rebin_seq`, which takes the weights and count of used pixels
+  carried between calls as borrowed `Option`s, as C takes pointers, and an
+  `Option` input for the call that only normalises.
 - **2026-10-09 (rev 12)**: Channels are objects.
   `AnyObject` gains `NativeChannel` (C's `Channel`) and `MocChan`, so a
   Channel can be written to another and read back, as C's Channel `Dump` and

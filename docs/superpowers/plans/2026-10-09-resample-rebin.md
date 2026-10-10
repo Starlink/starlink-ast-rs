@@ -44,8 +44,7 @@ No subclass overrides them; `region.c` `Mask<X>` calls `astResample<X>`.
 
 ## Stages
 
-Stages 1 to 3 are done: `mappings::resample` has every scheme of `astResample<X>`, and `mappings::rebin` ports `astRebin<X>`.
-The spreading functions already carry the state only RebinSeq uses (`conwgt`, `nused`, `AST__GENVAR`, `AST__VARWGT`, the flux-conservation factor), so stage 4 adds its entry point and the final normalisation.
+Stages 1 to 4 are done: `mappings::resample` has every scheme of `astResample<X>`, and `mappings::rebin` ports `astRebin<X>` and `astRebinSeq<X>`.
 
 1. **Resample framework, nearest and linear.** The public `Mapping::resample`
    generic over a pixel-type trait; the validation and errors of

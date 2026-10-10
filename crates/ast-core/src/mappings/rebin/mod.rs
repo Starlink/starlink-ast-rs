@@ -1,6 +1,7 @@
-//! Rebinning a gridded array through a Mapping: C's `astRebin<X>`.
+//! Rebinning a gridded array through a Mapping: C's `astRebin<X>` and
+//! `astRebinSeq<X>`.
 //!
-//! A port of mapping.c `Rebin<X>` and its drivers. Each input pixel's
+//! A port of mapping.c `Rebin<X>`, `RebinSeq<X>` and their drivers. Each input pixel's
 //! centre is taken through the Mapping's forward transformation to a
 //! position in the output grid, and its value spread over the output pixels
 //! around that position. The input region is divided recursively along its
@@ -181,69 +182,8 @@ pub fn rebin<T: RebinValue>(
     badval: T,
 ) -> AstResult<()> {
     let method = format!("astRebin{}", T::CODE);
-    let ndim_in = input.lbnd.len();
-    let ndim_out = output.lbnd.len();
-
-    // Arrays shorter than their grids, and parameters fewer than the scheme
-    // reads, which C cannot check.
-    for (name, a, n) in [
-        ("input upper bounds", input.ubnd, ndim_in),
-        ("input region lower bounds", input.region_lbnd, ndim_in),
-        ("input region upper bounds", input.region_ubnd, ndim_in),
-        ("output upper bounds", output.ubnd, ndim_out),
-    ] {
-        if a.len() != n {
-            return fail(
-                &method,
-                ErrorCode::Dimin,
-                format!("{} {name} supplied for {n} dimensions.", a.len()),
-            );
-        }
-    }
-    // A grid whose bounds are inconsistent is C's error to report.
-    let size = |l: &[i64], u: &[i64]| -> Option<usize> {
-        l.iter().zip(u).try_fold(1_usize, |n, (&l, &u)| {
-            n.checked_mul(usize::try_from(u - l + 1).ok().filter(|&d| d > 0)?)
-        })
-    };
-    let check_len = |what: &str, len: usize, want: Option<usize>| match want {
-        Some(want) if len != want => fail(
-            &method,
-            ErrorCode::Dimin,
-            format!("The {what} array has {len} elements but its grid has {want}."),
-        ),
-        _ => Ok(()),
-    };
-    check_len("input data", input.data.len(), size(input.lbnd, input.ubnd))?;
-    if let Some(v) = input.var {
-        check_len("input variance", v.len(), size(input.lbnd, input.ubnd))?;
-    }
-    check_len(
-        "output data",
-        output.data.len(),
-        size(output.lbnd, output.ubnd),
-    )?;
-    if let Some(v) = &output.var {
-        check_len("output variance", v.len(), size(output.lbnd, output.ubnd))?;
-    }
-    let nparam = opts.spread.builtin().map_or(0, Builtin::nparam);
-    if opts.params.len() < nparam {
-        return fail(
-            &method,
-            ErrorCode::Dimin,
-            format!(
-                "The {:?} scheme needs {nparam} parameter{} but {} {} given.",
-                opts.spread,
-                if nparam == 1 { "" } else { "s" },
-                opts.params.len(),
-                if opts.params.len() == 1 {
-                    "was"
-                } else {
-                    "were"
-                }
-            ),
-        );
-    }
+    check_arrays(Some(input), output, &method)?;
+    check_params(opts.spread, opts.params, 0, &method)?;
 
     // C reports an error and carries on to zero the output, of one pixel
     // if the error came before it counted them.
@@ -283,13 +223,7 @@ pub fn rebin<T: RebinValue>(
     }
 
     let mut work = (opts.wlim > 0.0).then(|| vec![0.0; npix_out]);
-    let (kernel, neighb, params) = match opts.spread.builtin() {
-        Some(b) => {
-            let (f, n, p) = kernels::setup(b, opts.params);
-            (Some(f), n, p)
-        }
-        None => (None, 0, Vec::new()),
-    };
+    let (kernel, neighb, params) = spread_setup(opts.spread, opts.params);
     let mut ctx = Rebinner {
         map: simple.as_ref(),
         input,
@@ -338,26 +272,588 @@ pub fn rebin<T: RebinValue>(
     Ok(())
 }
 
+/// The flags of [`rebin_seq`] (C's `flags`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct RebinSeqFlags {
+    /// Input pixels (and variances) equal to the bad value are bad
+    /// (`AST__USEBAD`).
+    pub use_bad: bool,
+    /// Output variances are formed from the input variances
+    /// (`AST__USEVAR`).
+    pub use_var: bool,
+    /// This is the first call of a sequence: the output arrays, the weights
+    /// and the count of input pixels used are set to zero before the input
+    /// is added (`AST__REBININIT`).
+    pub rebin_init: bool,
+    /// This is the last call of a sequence: the sums are normalised into
+    /// the output values and variances (`AST__REBINEND`).
+    pub rebin_end: bool,
+    /// Output variances are formed from the spread of the input values
+    /// added into each output pixel (`AST__GENVAR`); the weights then need
+    /// twice as many elements as the output.
+    pub gen_var: bool,
+    /// Input pixels are weighted by the reciprocals of their variances
+    /// (`AST__VARWGT`).
+    pub var_wgt: bool,
+    /// Variances generated with `gen_var` are of the spread of the input
+    /// values rather than of their mean (`AST__DISVAR`).
+    pub dis_var: bool,
+    /// The sums are left unnormalised, and the weights and count are not
+    /// needed (`AST__NONORM`).
+    pub no_norm: bool,
+    /// `params[0]` weights every input pixel, and the scheme's parameters
+    /// follow it (`AST__PARWGT`).
+    pub par_wgt: bool,
+    /// Input values are scaled by the ratio of input to output pixel sizes,
+    /// so that total flux is conserved (`AST__CONSERVEFLUX`).
+    pub conserve_flux: bool,
+}
+
+/// How [`rebin_seq`] spreads.
+#[derive(Debug, Clone, Copy)]
+pub struct RebinSeqOptions<'a> {
+    /// The spreading scheme.
+    pub spread: Spread,
+    /// The scheme's parameters (C's `params`), preceded by the weight of
+    /// every input pixel with [`RebinSeqFlags::par_wgt`].
+    pub params: &'a [f64],
+    /// The flags.
+    pub flags: RebinSeqFlags,
+    /// As for [`RebinOptions::tol`].
+    pub tol: f64,
+    /// As for [`RebinOptions::maxpix`].
+    pub maxpix: usize,
+    /// When the sums are normalised, output pixels whose effective number of
+    /// contributing input pixels is below this (at least 1e-10) are set bad
+    /// (C's `wlim`).
+    pub wlim: f64,
+}
+
+/// Add the region of `input` into `output` through the forward
+/// transformation of `map`, as one of a sequence of calls to C's
+/// `astRebinSeq<X>`.
+///
+/// Each call adds weighted input values into `output`, and their weights
+/// into `weights`, as [`rebin`] spreads them, and counts the input pixels it
+/// uses in `nused`; the first call of a sequence sets
+/// [`RebinSeqFlags::rebin_init`] and the last
+/// [`RebinSeqFlags::rebin_end`], which normalises the sums. The last call
+/// may have no input, to normalise only. `weights` has one element per
+/// output pixel, or two with [`RebinSeqFlags::gen_var`]; it and `nused`
+/// may be omitted with [`RebinSeqFlags::no_norm`].
+///
+/// Errors are those of [`rebin`], and AST__BDPAR for incompatible flags,
+/// flags that need variance arrays that are not given, or missing weights
+/// or count. A Mapping too non-linear to conserve flux is AST__CNFLX, and
+/// normalising sums to which no good input pixel contributed is AST__BADIN.
+/// As in C, the output and weights are still set to zero by
+/// [`RebinSeqFlags::rebin_init`], and normalised by
+/// [`RebinSeqFlags::rebin_end`], after an error in the arguments.
+pub fn rebin_seq<T: RebinValue>(
+    map: &dyn Mapping,
+    input: Option<&RebinInput<'_, T>>,
+    output: &mut RebinOutput<'_, T>,
+    mut weights: Option<&mut [f64]>,
+    mut nused: Option<&mut i64>,
+    opts: &RebinSeqOptions<'_>,
+    badval: T,
+) -> AstResult<()> {
+    let method = format!("astRebinSeq{}", T::CODE);
+    let flags = opts.flags;
+    check_arrays(input, output, &method)?;
+    check_params(
+        opts.spread,
+        opts.params,
+        usize::from(flags.par_wgt),
+        &method,
+    )?;
+    if let (Some(w), Some(n)) = (weights.as_deref(), grid_size(output.lbnd, output.ubnd)) {
+        let want = if flags.gen_var { 2 * n } else { n };
+        if w.len() != want {
+            return fail(
+                &method,
+                ErrorCode::Dimin,
+                format!(
+                    "The weights array has {} elements but {want} are needed.",
+                    w.len()
+                ),
+            );
+        }
+    }
+
+    // C counts the output pixels before checking the bounds; a count below
+    // one sets nothing to zero and normalises nothing.
+    let npix_out = output
+        .lbnd
+        .iter()
+        .zip(output.ubnd)
+        .fold(1_i64, |n, (l, u)| n.saturating_mul(u - l + 1))
+        .max(0) as usize;
+
+    // C reports each error and carries on. Most later checks are made only
+    // while no error has been reported; the checks for the weights and the
+    // count are made regardless, and their error replaces any earlier one.
+    let mut status: Option<AstError> = None;
+    let check = |status: &mut Option<AstError>, r: AstResult<()>| {
+        if status.is_none() {
+            *status = r.err();
+        }
+    };
+    check(&mut status, check_ndim_out(map, output.lbnd.len(), &method));
+
+    // The variances C uses: input variances only with use_var or var_wgt,
+    // and output variances only with use_var or gen_var.
+    let mut in_var_used = false;
+    let mut out_var_used = output.var.is_some();
+    if let Some(input) = input {
+        check(&mut status, check_ndim_in(map, input.lbnd.len(), &method));
+        check(
+            &mut status,
+            check_grid(input.lbnd, input.ubnd, "input", &method),
+        );
+        in_var_used = input.var.is_some() && (flags.use_var || flags.var_wgt);
+        out_var_used = out_var_used && (flags.use_var || flags.gen_var);
+        check(&mut status, check_tol(opts.tol, &method));
+        check(
+            &mut status,
+            check_grid(output.lbnd, output.ubnd, "output", &method),
+        );
+        check(&mut status, check_region(input, &method));
+        let bdpar = |msg: &str| {
+            fail(
+                &method,
+                ErrorCode::Bdpar,
+                format!("{msg} (programming error)."),
+            )
+        };
+        if flags.use_var && flags.gen_var {
+            check(
+                &mut status,
+                bdpar(
+                    "Incompatible flags AST__GENVAR and AST__USEVAR have been specified together",
+                ),
+            );
+        }
+        if !in_var_used {
+            if flags.use_var {
+                check(
+                    &mut status,
+                    bdpar(
+                        "The AST__USEVAR flag was specified but no input variance array was \
+                         supplied",
+                    ),
+                );
+            } else if flags.var_wgt {
+                check(
+                    &mut status,
+                    bdpar(
+                        "The AST__VARWGT flag was specified but no input variance array was \
+                         supplied",
+                    ),
+                );
+            }
+        }
+        if !out_var_used {
+            if flags.use_var {
+                check(
+                    &mut status,
+                    bdpar(
+                        "The AST__USEVAR flag was specified but no output variance array was \
+                         supplied",
+                    ),
+                );
+            } else if flags.gen_var {
+                check(
+                    &mut status,
+                    bdpar(
+                        "The AST__GENVAR flag was specified but no output variance array was \
+                         supplied",
+                    ),
+                );
+            }
+        }
+        if flags.no_norm {
+            for (set, name) in [
+                (flags.gen_var, "AST__GENVAR"),
+                (flags.var_wgt, "AST__VARWGT"),
+                (flags.par_wgt, "AST__PARWGT"),
+                (flags.conserve_flux, "AST__CONSERVEFLUX"),
+            ] {
+                if set {
+                    check(
+                        &mut status,
+                        bdpar(&format!(
+                            "Incompatible flags {name} and AST__NONORM have been specified \
+                             together"
+                        )),
+                    );
+                    break;
+                }
+            }
+        } else if weights.is_none() {
+            status = bdpar("No weights array supplied").err();
+        } else if nused.is_none() {
+            status = bdpar("No 'nused' pointer supplied").err();
+        }
+
+        let mut simple: Option<DynMapping> = None;
+        if status.is_none() {
+            let npix: usize = input
+                .region_lbnd
+                .iter()
+                .zip(input.region_ubnd)
+                .map(|(l, u)| (u - l + 1) as usize)
+                .product();
+            // Simplify only when there are enough pixels to make it
+            // worthwhile.
+            match if npix > 1024 {
+                map.simplify()
+            } else {
+                Ok(map.clone_box())
+            } {
+                Ok(m) => simple = Some(m),
+                Err(e) => status = Some(e),
+            }
+        }
+        if let Some(m) = &simple
+            && !m.has_forward()
+        {
+            check(
+                &mut status,
+                fail(
+                    &method,
+                    ErrorCode::Trnnd,
+                    "An forward coordinate transformation is not defined by the Mapping \
+                     supplied."
+                        .to_string(),
+                ),
+            );
+        }
+
+        if flags.rebin_init {
+            output
+                .data
+                .iter_mut()
+                .take(npix_out)
+                .for_each(|v| *v = T::ZERO);
+            if out_var_used && let Some(v) = output.var.as_deref_mut() {
+                v.iter_mut().take(npix_out).for_each(|v| *v = T::ZERO);
+            }
+            if let Some(w) = weights.as_deref_mut() {
+                let n = if flags.gen_var {
+                    2 * npix_out
+                } else {
+                    npix_out
+                };
+                w.iter_mut().take(n).for_each(|w| *w = 0.0);
+            }
+            if let Some(n) = nused.as_deref_mut() {
+                *n = 0;
+            }
+        }
+
+        if let (None, Some(simple)) = (&status, &simple) {
+            // With AST__PARWGT the first parameter weights every pixel.
+            let (conwgt, params) = if flags.par_wgt {
+                (opts.params[0], &opts.params[1..])
+            } else {
+                (1.0, opts.params)
+            };
+            let (kernel, neighb, params) = spread_setup(opts.spread, params);
+            let seq_input = RebinInput {
+                var: if in_var_used { input.var } else { None },
+                ..*input
+            };
+            let mut ctx = Rebinner {
+                map: simple.as_ref(),
+                input: &seq_input,
+                spread: opts.spread,
+                kernel,
+                neighb,
+                params,
+                conwgt,
+                flags: SpreadFlags {
+                    use_bad: flags.use_bad,
+                    use_var: flags.use_var,
+                    gen_var: flags.gen_var,
+                    var_wgt: flags.var_wgt,
+                    conserve_flux: flags.conserve_flux,
+                },
+                tol: opts.tol,
+                maxpix: opts.maxpix,
+                badval,
+                lbnd_out: output.lbnd,
+                ubnd_out: output.ubnd,
+                npix_out,
+                out: &mut *output.data,
+                out_var: if out_var_used {
+                    output.var.as_deref_mut()
+                } else {
+                    None
+                },
+                work: weights.as_deref_mut(),
+                nused: nused.as_deref_mut(),
+            };
+            match ctx.adaptively(input.region_lbnd, input.region_ubnd) {
+                Ok(false) => {}
+                Ok(true) => {
+                    status = fail::<()>(
+                        &method,
+                        ErrorCode::Cnflx,
+                        "Flux conservation was requested but could not be performed because \
+                         the forward transformation of the supplied Mapping is too non-linear."
+                            .to_string(),
+                    )
+                    .err();
+                }
+                Err(e) => status = Some(e),
+            }
+        }
+    }
+
+    if flags.rebin_end
+        && !flags.no_norm
+        && let (Some(weights), Some(nused)) = (weights.as_deref(), nused.as_deref())
+    {
+        let out_var = if out_var_used {
+            output.var.as_deref_mut()
+        } else {
+            None
+        };
+        let in_var_given = input.is_some_and(|_| in_var_used);
+        if !normalise(
+            &flags,
+            opts.wlim,
+            npix_out,
+            &mut *output.data,
+            out_var,
+            weights,
+            *nused,
+            badval,
+        ) && status.is_none()
+        {
+            status = Some(AstError::new(
+                ErrorCode::Badin,
+                format!(
+                    "{method}: The overlap between the {}-d input array and the {}-d output \
+                     array contains no pixels with good data {}values.",
+                    map.nin(),
+                    map.nout(),
+                    if in_var_given { "and variance " } else { "" }
+                ),
+            ));
+        }
+    }
+    match status {
+        Some(e) => Err(e),
+        None => Ok(()),
+    }
+}
+
+/// The final normalisation of `RebinSeq<X>`: each output value divided by
+/// its weight, and its variance formed, or set bad where the effective
+/// number of contributing input pixels is below `wlim`. Without
+/// `gen_var`, that number is the weight over the mean weight per input
+/// pixel, which C estimates from the weights by iterated 3-sigma clipping.
+/// Returns false if no input pixel contributed. C then reads an
+/// uninitialised effective number of pixels; the port takes it as zero,
+/// setting every output pixel bad, which is what C produces.
+#[allow(clippy::too_many_arguments)]
+fn normalise<T: RebinValue>(
+    flags: &RebinSeqFlags,
+    wlim: f64,
+    npix_out: usize,
+    out: &mut [T],
+    mut out_var: Option<&mut [T]>,
+    weights: &[f64],
+    nused: i64,
+    badval: T,
+) -> bool {
+    let wlim = if wlim < 1.0E-10 { 1.0E-10 } else { wlim };
+    let mut mwpip = BAD_VALUE;
+    if !flags.gen_var && nused > 0 && npix_out > 0 {
+        let mut wlo = 0.0;
+        let mut whi = f64::MAX;
+        let mut nwlim: i64 = -1;
+        let mut more = true;
+        while more {
+            let mut sw = 0.0;
+            let mut sw2 = 0.0;
+            let mut nw: i64 = 0;
+            for &w in &weights[..npix_out] {
+                if w > wlo && w <= whi {
+                    sw += w;
+                    sw2 += w * w;
+                    nw += 1;
+                }
+            }
+            if nwlim == -1 {
+                nwlim = nw / 2;
+            }
+            if nw > nwlim {
+                let newval = sw / nw as f64;
+                if mwpip != BAD_VALUE {
+                    more = (newval - mwpip).abs() > 0.05 * mwpip;
+                }
+                mwpip = newval;
+                let mut std = sw2 / nw as f64 - mwpip * mwpip;
+                std = if std > 0.0 { std.sqrt() } else { 0.0 };
+                wlo = mwpip - 3.0 * std;
+                if wlo < 0.0 {
+                    wlo = 0.0;
+                }
+                whi = mwpip + 3.0 * std;
+            } else {
+                more = false;
+            }
+        }
+        mwpip *= (2.0 * nwlim as f64) / nused as f64;
+    }
+    let contributed = flags.gen_var || mwpip != BAD_VALUE;
+
+    for i in 0..npix_out {
+        let wgt = weights[i];
+        let neff = if flags.gen_var {
+            if wgt > 0.0 && weights[i + npix_out] > 0.0 {
+                (wgt * wgt) / weights[i + npix_out]
+            } else {
+                0.0
+            }
+        } else if contributed {
+            wgt / mwpip
+        } else {
+            0.0
+        };
+        if neff < wlim || neff == 0.0 {
+            out[i] = badval;
+            if let Some(v) = out_var.as_deref_mut() {
+                v[i] = badval;
+            }
+        } else {
+            out[i] = T::from_c(out[i].to_f64() / wgt);
+            if let Some(v) = out_var.as_deref_mut() {
+                if flags.use_var {
+                    v[i] = T::from_c(v[i].to_f64() / (wgt * wgt));
+                } else if flags.gen_var && neff > 1.0 {
+                    v[i] = T::from_c(v[i].to_f64() / wgt);
+                    v[i] = v[i].sub_square(out[i]);
+                    if v[i].to_f64() < 0.0 {
+                        v[i] = T::ZERO;
+                    }
+                    let factor = if flags.dis_var {
+                        neff / (neff - 1.0)
+                    } else {
+                        1.0 / (neff - 1.0)
+                    };
+                    v[i] = T::from_c(v[i].to_f64() * factor);
+                } else {
+                    v[i] = badval;
+                }
+            }
+        }
+    }
+    contributed
+}
+
+/// The number of pixels in a grid, or `None` if its bounds are
+/// inconsistent, which is C's error to report.
+fn grid_size(l: &[i64], u: &[i64]) -> Option<usize> {
+    l.iter().zip(u).try_fold(1_usize, |n, (&l, &u)| {
+        n.checked_mul(usize::try_from(u - l + 1).ok().filter(|&d| d > 0)?)
+    })
+}
+
+/// Bounds of different lengths, and arrays of the wrong length for their
+/// grids, which C cannot check.
+fn check_arrays<T>(
+    input: Option<&RebinInput<'_, T>>,
+    output: &RebinOutput<'_, T>,
+    method: &str,
+) -> AstResult<()> {
+    let ndim_out = output.lbnd.len();
+    let mut bounds = vec![("output upper bounds", output.ubnd, ndim_out)];
+    if let Some(input) = input {
+        let ndim_in = input.lbnd.len();
+        bounds.extend([
+            ("input upper bounds", input.ubnd, ndim_in),
+            ("input region lower bounds", input.region_lbnd, ndim_in),
+            ("input region upper bounds", input.region_ubnd, ndim_in),
+        ]);
+    }
+    for (name, a, n) in bounds {
+        if a.len() != n {
+            return fail(
+                method,
+                ErrorCode::Dimin,
+                format!("{} {name} supplied for {n} dimensions.", a.len()),
+            );
+        }
+    }
+    let check_len = |what: &str, len: usize, want: Option<usize>| match want {
+        Some(want) if len != want => fail(
+            method,
+            ErrorCode::Dimin,
+            format!("The {what} array has {len} elements but its grid has {want}."),
+        ),
+        _ => Ok(()),
+    };
+    if let Some(input) = input {
+        let n_in = grid_size(input.lbnd, input.ubnd);
+        check_len("input data", input.data.len(), n_in)?;
+        if let Some(v) = input.var {
+            check_len("input variance", v.len(), n_in)?;
+        }
+    }
+    let n_out = grid_size(output.lbnd, output.ubnd);
+    check_len("output data", output.data.len(), n_out)?;
+    if let Some(v) = &output.var {
+        check_len("output variance", v.len(), n_out)?;
+    }
+    Ok(())
+}
+
+/// Fewer `params` than the scheme reads (after `extra` leading ones),
+/// which C cannot check.
+fn check_params(spread: Spread, params: &[f64], extra: usize, method: &str) -> AstResult<()> {
+    let nparam = spread.builtin().map_or(0, Builtin::nparam) + extra;
+    if params.len() < nparam {
+        return fail(
+            method,
+            ErrorCode::Dimin,
+            format!(
+                "The {spread:?} scheme needs {nparam} parameter{} but {} {} given.",
+                if nparam == 1 { "" } else { "s" },
+                params.len(),
+                if params.len() == 1 { "was" } else { "were" }
+            ),
+        );
+    }
+    Ok(())
+}
+
+/// `RebinSection`'s set-up of a spreading scheme: the kernel, the number of
+/// neighbouring pixels and the kernel's parameters.
+fn spread_setup(spread: Spread, params: &[f64]) -> (Option<KernelFn>, i64, Vec<f64>) {
+    match spread.builtin() {
+        Some(b) => {
+            let (f, n, p) = kernels::setup(b, params);
+            (Some(f), n, p)
+        }
+        None => (None, 0, Vec::new()),
+    }
+}
+
 fn fail<R>(method: &str, code: ErrorCode, msg: String) -> AstResult<R> {
     Err(AstError::new(code, format!("{method}: {msg}")))
 }
 
-/// `Rebin<X>`'s checks of its arguments, in C's order, returning the number
-/// of output pixels, or the first error with the number of output pixels C
-/// had counted by then.
-fn validate<T: RebinValue>(
-    map: &dyn Mapping,
-    input: &RebinInput<'_, T>,
-    output: &RebinOutput<'_, T>,
-    opts: &RebinOptions<'_>,
-    method: &str,
-) -> Result<usize, (AstError, usize)> {
-    let err = |code, msg: String| Err((AstError::new(code, format!("{method}: {msg}")), 1));
-    let ndim_in = input.lbnd.len();
-    let ndim_out = output.lbnd.len();
-    let (nin, nout) = (map.nin(), map.nout());
+/// The checks `Rebin<X>` and `RebinSeq<X>` both make, each reporting as
+/// C does.
+fn check_ndim_in(map: &dyn Mapping, ndim_in: usize, method: &str) -> AstResult<()> {
+    let nin = map.nin();
     if ndim_in != nin || ndim_in < 1 {
-        return err(
+        return fail(
+            method,
             ErrorCode::Ngdin,
             format!(
                 "Bad number of input grid dimensions ({ndim_in}). The Mapping given requires \
@@ -366,8 +862,14 @@ fn validate<T: RebinValue>(
             ),
         );
     }
+    Ok(())
+}
+
+fn check_ndim_out(map: &dyn Mapping, ndim_out: usize, method: &str) -> AstResult<()> {
+    let nout = map.nout();
     if ndim_out != nout || ndim_out < 1 {
-        return err(
+        return fail(
+            method,
             ErrorCode::Ngdin,
             format!(
                 "Bad number of output grid dimensions ({ndim_out}). The Mapping given generates \
@@ -377,44 +879,56 @@ fn validate<T: RebinValue>(
             ),
         );
     }
-    let grid = |lbnd: &[i64], ubnd: &[i64], what: &str, axes: &str| {
-        let mut mpix: i64 = 1;
-        for (idim, (&l, &u)) in lbnd.iter().zip(ubnd).enumerate() {
-            if l > u {
-                return Err((
-                    ErrorCode::Gbdin,
-                    format!(
-                        "Lower bound of {what} grid ({l}) exceeds corresponding upper bound \
-                         ({u}). Error in {axes} dimension {}.",
-                        idim + 1
-                    ),
-                ));
-            }
-            mpix = mpix.checked_mul(u - l + 1).ok_or((
-                ErrorCode::Exspix,
-                format!("Supplied {what} array contains too many pixels."),
-            ))?;
+    Ok(())
+}
+
+/// The bounds of the input or output grid (`what`).
+fn check_grid(lbnd: &[i64], ubnd: &[i64], what: &str, method: &str) -> AstResult<()> {
+    let mut mpix: i64 = 1;
+    for (idim, (&l, &u)) in lbnd.iter().zip(ubnd).enumerate() {
+        if l > u {
+            return fail(
+                method,
+                ErrorCode::Gbdin,
+                format!(
+                    "Lower bound of {what} grid ({l}) exceeds corresponding upper bound ({u}). \
+                     Error in {what} dimension {}.",
+                    idim + 1
+                ),
+            );
         }
-        Ok(mpix)
-    };
-    if let Err((code, msg)) = grid(input.lbnd, input.ubnd, "input", "input") {
-        return err(code, msg);
+        match mpix.checked_mul(u - l + 1) {
+            Some(m) => mpix = m,
+            None => {
+                return fail(
+                    method,
+                    ErrorCode::Exspix,
+                    format!("Supplied {what} array contains too many pixels."),
+                );
+            }
+        }
     }
-    if opts.tol < 0.0 {
-        return err(
+    Ok(())
+}
+
+fn check_tol(tol: f64, method: &str) -> AstResult<()> {
+    if tol < 0.0 {
+        return fail(
+            method,
             ErrorCode::Patin,
             format!(
-                "Invalid positional accuracy tolerance ({} pixel). This value should not be \
-                 less than zero.",
-                opts.tol
+                "Invalid positional accuracy tolerance ({tol} pixel). This value should not be \
+                 less than zero."
             ),
         );
     }
-    if let Err((code, msg)) = grid(output.lbnd, output.ubnd, "output", "output") {
-        return err(code, msg);
-    }
+    Ok(())
+}
+
+/// The input region, which must lie within the input grid.
+fn check_region<T>(input: &RebinInput<'_, T>, method: &str) -> AstResult<()> {
     let mut mpix: i64 = 1;
-    for idim in 0..ndim_in {
+    for idim in 0..input.lbnd.len() {
         let (l, u) = (input.region_lbnd[idim], input.region_ubnd[idim]);
         let detail = if l > u {
             Some(format!(
@@ -436,7 +950,8 @@ fn validate<T: RebinValue>(
             None
         };
         if let Some(detail) = detail {
-            return err(
+            return fail(
+                method,
                 ErrorCode::Gbdin,
                 format!("{detail} Error in input dimension {}.", idim + 1),
             );
@@ -444,13 +959,36 @@ fn validate<T: RebinValue>(
         match mpix.checked_mul(u - l + 1) {
             Some(m) => mpix = m,
             None => {
-                return err(
+                return fail(
+                    method,
                     ErrorCode::Exspix,
                     "Supplied input region contains too many pixels.".to_string(),
                 );
             }
         }
     }
+    Ok(())
+}
+
+/// `Rebin<X>`'s checks of its arguments, in C's order, returning the number
+/// of output pixels, or the first error with the number of output pixels C
+/// had counted by then.
+fn validate<T: RebinValue>(
+    map: &dyn Mapping,
+    input: &RebinInput<'_, T>,
+    output: &RebinOutput<'_, T>,
+    opts: &RebinOptions<'_>,
+    method: &str,
+) -> Result<usize, (AstError, usize)> {
+    let checks = || -> AstResult<()> {
+        check_ndim_in(map, input.lbnd.len(), method)?;
+        check_ndim_out(map, output.lbnd.len(), method)?;
+        check_grid(input.lbnd, input.ubnd, "input", method)?;
+        check_tol(opts.tol, method)?;
+        check_grid(output.lbnd, output.ubnd, "output", method)?;
+        check_region(input, method)
+    };
+    checks().map_err(|e| (e, 1))?;
     Ok(output
         .lbnd
         .iter()

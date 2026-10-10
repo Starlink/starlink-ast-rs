@@ -154,6 +154,8 @@ pub trait RebinValue: PixelValue {
     /// C's `c * c` in this type's arithmetic (after promotion), as a
     /// double.
     fn square(self) -> f64;
+    /// C's `a -= b * b` with both in this type.
+    fn sub_square(self, b: Self) -> Self;
     /// The double `v` assigned to this type, as C's `(Xtype) v` compiles on
     /// the supported platforms: for `B` and `UB` through a 32-bit integer,
     /// so a value out of range wraps, and saturating for `I`, as arm64
@@ -164,7 +166,7 @@ pub trait RebinValue: PixelValue {
 }
 
 macro_rules! rebin_value {
-    ($($t:ty => $int:literal, $add:expr, $sq:expr, $from:expr);* $(;)?) => {$(
+    ($($t:ty => $int:literal, $add:expr, $sq:expr, $subsq:expr, $from:expr);* $(;)?) => {$(
         impl RebinValue for $t {
             fn conv(v: f64) -> f64 {
                 if $int {
@@ -181,6 +183,10 @@ macro_rules! rebin_value {
                 let f: fn($t) -> f64 = $sq;
                 f(self)
             }
+            fn sub_square(self, b: Self) -> Self {
+                let f: fn($t, $t) -> $t = $subsq;
+                f(self, b)
+            }
             fn from_c(v: f64) -> Self {
                 let f: fn(f64) -> $t = $from;
                 f(v)
@@ -190,11 +196,12 @@ macro_rules! rebin_value {
 }
 
 rebin_value!(
-    f64 => false, |a, b| a + b, |c| c * c, |v| v;
-    f32 => false, |a, b| a + b, |c| f64::from(c * c), |v| v as f32;
-    i32 => true, |a, b| a.wrapping_add(b), |c| f64::from(c.wrapping_mul(c)), |v| v as i32;
+    f64 => false, |a, b| a + b, |c| c * c, |a, b| a - b * b, |v| v;
+    f32 => false, |a, b| a + b, |c| f64::from(c * c), |a, b| a - b * b, |v| v as f32;
+    i32 => true, |a, b| a.wrapping_add(b), |c| f64::from(c.wrapping_mul(c)),
+        |a, b| a.wrapping_sub(b.wrapping_mul(b)), |v| v as i32;
     i8 => true, |a, b| a.wrapping_add(b), |c| f64::from(i32::from(c) * i32::from(c)),
-        |v| v as i32 as i8;
+        |a, b| (i32::from(a) - i32::from(b) * i32::from(b)) as i8, |v| v as i32 as i8;
     u8 => true, |a, b| a.wrapping_add(b), |c| f64::from(i32::from(c) * i32::from(c)),
-        |v| v as i32 as u8;
+        |a, b| (i32::from(a) - i32::from(b) * i32::from(b)) as u8, |v| v as i32 as u8;
 );

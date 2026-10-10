@@ -71,6 +71,10 @@ mod test_ratemap;
 mod test_rebin;
 #[path = "../test_rebin_oracle.rs"]
 mod test_rebin_oracle;
+#[path = "../test_rebinseq.rs"]
+mod test_rebinseq;
+#[path = "../test_rebinseq_oracle.rs"]
+mod test_rebinseq_oracle;
 #[path = "../test_remove_regions_oracle.rs"]
 mod test_remove_regions_oracle;
 #[path = "../test_resample.rs"]
