@@ -30,8 +30,12 @@ No subclass overrides them; `region.c` `Mask<X>` calls `astResample<X>`.
   in `float`, the others in `double`. The port uses an associated type, not
   `f64` throughout, or float-type results will differ.
 - Integer outputs are rounded half away from zero by `(Xtype)(val ± 0.5)`.
-  C's cast is undefined out of range; Rust's `as` saturates. Record the
-  difference rather than reproduce undefined behaviour.
+  C's cast is undefined out of range. Resample range-checks before every
+  such cast but flux conservation's, so `PixelValue::from_f64` saturates
+  there. Rebin's spreading functions mirror the conversion clang compiles,
+  which wraps for `B` and `UB` (`RebinValue::from_c`): a kernel's negative
+  lobes then add wrapped contributions to unsigned pixels that sum back to
+  the right total, where saturating would bias it.
 - Negative variances are bad only for signed types (`CHECK_FOR_NEGATIVE_VARIANCE`).
 - C writes each of the Usebad x Usevar x Nobad cases as its own loop so the
   compiler can drop the unused tests. The port keeps one loop per case only if
