@@ -78,7 +78,8 @@ pub(crate) fn decode_wcs_inner(
 
     // Step 2: Try to decode celestial axes.
     let rfval = read_rfval(cards, naxis, s);
-    let celestial = wcs_celestial::build_celestial_with_def_b1950(store, def_b1950, Some(&rfval))?;
+    let celestial =
+        wcs_celestial::build_celestial_with_def_b1950(store, s, def_b1950, Some(&rfval))?;
     // Capture the celestial fiducial position (radians) before the decoder
     // result is consumed below; it is stamped onto the SkyFrame as SkyRef.
     let celestial_ref_pos = celestial.as_ref().and_then(|c| c.ref_pos);
@@ -494,7 +495,8 @@ fn peek_sky(frame: &dyn crate::frames::Frame) -> Option<&crate::frames::SkyFrame
 ///
 /// Mirrors fitschan.c::WcsFromStore + the per-version `WcsSkyFrame`
 /// loop. Also returns any warning messages to surface as ASTWARN cards.
-/// `def_b1950` mirrors the FitsChan `DefB1950` attribute.
+/// `def_b1950` mirrors the FitsChan `DefB1950` attribute, and
+/// `ignore_bad_alt` its `IgnoreBadAlt` attribute.
 ///
 /// Returns any warning messages (e.g. `badcel`) alongside the decoded object;
 /// callers pass the warnings to [`super::FitsChan::read`] for insertion as
@@ -507,6 +509,7 @@ pub(crate) fn decode_wcs_with_alts_inner(
     primary: &FitsStore,
     alts: &[(char, FitsStore)],
     def_b1950: bool,
+    ignore_bad_alt: bool,
     cards: &CardList,
 ) -> AstResult<(AnyObject, Vec<String>)> {
     // Step 1: build the primary FrameSet via the inner decoder.
@@ -521,59 +524,78 @@ pub(crate) fn decode_wcs_with_alts_inner(
     // After the primary is built, it sits at frame index 2.
     let primary_index = 2;
 
-    // Step 2: append one alt frame per (letter, alt_store).
+    // Step 2: append one alt frame per (letter, alt_store). Each is added
+    // to a copy of the FrameSet, kept only if every step succeeds: with
+    // IgnoreBadAlt set, an alternate description that cannot be read is
+    // left out, as C's `AddFrame` clears the error from `WcsMapFrm`.
     for (letter, alt_store) in alts {
-        // As in `decode_wcs_inner`, `DistortMaps` rewrites the CTYPE values, so
-        // this plane's store is copied and the copy carries on downstream.
-        let mut alt_store = alt_store.clone();
-        let pixel_to_iwc = wcs_matrix::build_pixel_to_iwc(&mut alt_store, cards, &mut warnings)?;
-        let alt_store = &alt_store;
-        let rfval = read_rfval(cards, alt_store.naxis, *letter);
-        let celestial =
-            wcs_celestial::build_celestial_with_def_b1950(alt_store, def_b1950, Some(&rfval))?;
-        // Capture the alt plane's celestial fiducial before the decoder is
-        // consumed, so the alt SkyFrame gets the same SkyRef/SkyRefIs=Ignored
-        // stamp as the primary (C applies WcsCelestial's SkyRef-from-fiducial
-        // to every plane, not just the primary).
-        let alt_ref_pos = celestial.as_ref().and_then(|c| c.ref_pos);
-        let alt_ref_pos_forced = celestial.as_ref().is_some_and(|c| c.ref_pos_forced);
-        // Collect warnings from alt planes too.
-        if let Some(ref cel) = celestial {
-            warnings.extend(cel.warnings.iter().cloned());
+        let mut trial = fs.clone();
+        let mut alt_warnings = Vec::new();
+        let added = (|| -> AstResult<()> {
+            let warnings = &mut alt_warnings;
+            // As in `decode_wcs_inner`, `DistortMaps` rewrites the CTYPE values, so
+            // this plane's store is copied and the copy carries on downstream.
+            let mut alt_store = alt_store.clone();
+            let pixel_to_iwc = wcs_matrix::build_pixel_to_iwc(&mut alt_store, cards, warnings)?;
+            let alt_store = &alt_store;
+            let rfval = read_rfval(cards, alt_store.naxis, *letter);
+            let celestial = wcs_celestial::build_celestial_with_def_b1950(
+                alt_store,
+                *letter,
+                def_b1950,
+                Some(&rfval),
+            )?;
+            // Capture the alt plane's celestial fiducial before the decoder is
+            // consumed, so the alt SkyFrame gets the same SkyRef/SkyRefIs=Ignored
+            // stamp as the primary (C applies WcsCelestial's SkyRef-from-fiducial
+            // to every plane, not just the primary).
+            let alt_ref_pos = celestial.as_ref().and_then(|c| c.ref_pos);
+            let alt_ref_pos_forced = celestial.as_ref().is_some_and(|c| c.ref_pos_forced);
+            // Collect warnings from alt planes too.
+            if let Some(ref cel) = celestial {
+                warnings.extend(cel.warnings.iter().cloned());
+            }
+            let spectral = wcs_spectral::build_spectral(alt_store);
+            let mut world_frame = build_world_frame(alt_store, &celestial, &spectral)?;
+            // Simplify the pixel→world Mapping, mirroring C `astSimplify` on each
+            // plane (and the primary path above) — `simplify()` sets the
+            // has_been_simplified flag so the native dump writes `IsSimp = 1`.
+            let composed: DynMapping =
+                build_pixel_to_world(alt_store, pixel_to_iwc, celestial, spectral)?;
+            let full_mapping: DynMapping = composed.simplify()?;
+
+            // Stamp the version letter onto the alt frame so the writer
+            // can recover it.
+            set_frame_ident(world_frame.as_mut(), &letter.to_string())?;
+
+            // Stamp DUT1/DTAI onto the alt world Frame, exactly as for the
+            // primary plane above — C `WcsMapFrm` runs once per plane
+            // (fitschan.c:2641 loops over version characters).
+            set_frame_dut1_dtai(
+                world_frame.as_mut(),
+                alt_store.dut1.map(|v| v * 86_400.0),
+                alt_store.dtai,
+            )?;
+
+            // add_frame moves `current` to the newly-added alt frame, so the
+            // SkyRef/RefRA-RefDec/DSB stamps below target it.
+            trial.add_frame(FrameRef::Base, full_mapping, world_frame)?;
+            set_sky_ref_from_celestial(&mut trial, alt_ref_pos, alt_ref_pos_forced)?;
+
+            // SpecFrame RefRA/RefDec and DSBSpecFrame setup, exactly as for
+            // the primary plane above — C `WcsSpectral`'s `astSetRefPos` /
+            // `DSBSetUp` calls (fitschan.c:39574, 39585-39588) run once per
+            // plane, driven by the per-plane `s` loop at fitschan.c:2641.
+            set_spec_ref_from_celestial(&mut trial, alt_ref_pos)?;
+            dsb_set_up_in_frameset(&mut trial, alt_store)?;
+            Ok(())
+        })();
+        warnings.append(&mut alt_warnings);
+        match added {
+            Ok(()) => fs = trial,
+            Err(_) if ignore_bad_alt => {}
+            Err(e) => return Err(e),
         }
-        let spectral = wcs_spectral::build_spectral(alt_store);
-        let mut world_frame = build_world_frame(alt_store, &celestial, &spectral)?;
-        // Simplify the pixel→world Mapping, mirroring C `astSimplify` on each
-        // plane (and the primary path above) — `simplify()` sets the
-        // has_been_simplified flag so the native dump writes `IsSimp = 1`.
-        let composed: DynMapping =
-            build_pixel_to_world(alt_store, pixel_to_iwc, celestial, spectral)?;
-        let full_mapping: DynMapping = composed.simplify()?;
-
-        // Stamp the version letter onto the alt frame so the writer
-        // can recover it.
-        set_frame_ident(world_frame.as_mut(), &letter.to_string())?;
-
-        // Stamp DUT1/DTAI onto the alt world Frame, exactly as for the
-        // primary plane above — C `WcsMapFrm` runs once per plane
-        // (fitschan.c:2641 loops over version characters).
-        set_frame_dut1_dtai(
-            world_frame.as_mut(),
-            alt_store.dut1.map(|v| v * 86_400.0),
-            alt_store.dtai,
-        )?;
-
-        // add_frame moves `current` to the newly-added alt frame, so the
-        // SkyRef/RefRA-RefDec/DSB stamps below target it.
-        fs.add_frame(FrameRef::Base, full_mapping, world_frame)?;
-        set_sky_ref_from_celestial(&mut fs, alt_ref_pos, alt_ref_pos_forced)?;
-
-        // SpecFrame RefRA/RefDec and DSBSpecFrame setup, exactly as for
-        // the primary plane above — C `WcsSpectral`'s `astSetRefPos` /
-        // `DSBSetUp` calls (fitschan.c:39574, 39585-39588) run once per
-        // plane, driven by the per-plane `s` loop at fitschan.c:2641.
-        set_spec_ref_from_celestial(&mut fs, alt_ref_pos)?;
-        dsb_set_up_in_frameset(&mut fs, alt_store)?;
     }
 
     // Restore current to the primary frame (add_frame moved it).

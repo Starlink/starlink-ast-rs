@@ -2,6 +2,9 @@
 
 ## Revision history
 
+- **2026-10-11 (rev 22)**: Added FitsChan's IgnoreBadAlt attribute
+  (`ignore_bad_alt`, `set_ignore_bad_alt`, `test_ignore_bad_alt`,
+  `clear_ignore_bad_alt`).
 - **2026-10-11 (rev 21)**: Added FitsChan's PolyTan attribute
   (`poly_tan`, `set_poly_tan`, `test_poly_tan`, `clear_poly_tan`).
 - **2026-10-11 (rev 20)**: FitsChan's SipReplace, CarLin, FitsRounding,

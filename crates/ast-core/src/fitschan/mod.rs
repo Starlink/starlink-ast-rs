@@ -117,6 +117,8 @@ pub struct FitsChan {
     def_b1950: Option<bool>,
     /// The PolyTan attribute, `None` when unset.
     poly_tan: Option<i32>,
+    /// The IgnoreBadAlt attribute, `None` when unset.
+    ignore_bad_alt: Option<bool>,
     /// The transformations IntraMaps read here can name.
     intra: IntraRegistry,
     /// The last sequence number given to each keyword base by the NATIVE
@@ -149,6 +151,7 @@ impl FitsChan {
             fits_tol: None,
             def_b1950: None,
             poly_tan: None,
+            ignore_bad_alt: None,
             keyseq: std::collections::HashMap::new(),
             clean: None,
             sip_ok: None,
@@ -178,6 +181,7 @@ impl FitsChan {
             fits_tol: None,
             def_b1950: None,
             poly_tan: None,
+            ignore_bad_alt: None,
             keyseq: std::collections::HashMap::new(),
             clean: None,
             sip_ok: None,
@@ -1085,6 +1089,27 @@ impl FitsChan {
         self.poly_tan = None;
     }
 
+    /// Set the IgnoreBadAlt attribute: whether a FITS-WCS read leaves out an
+    /// alternate axis description that cannot be read, rather than failing.
+    pub fn set_ignore_bad_alt(&mut self, v: bool) {
+        self.ignore_bad_alt = Some(v);
+    }
+
+    /// The IgnoreBadAlt attribute (default false).
+    pub fn ignore_bad_alt(&self) -> bool {
+        self.ignore_bad_alt.unwrap_or(false)
+    }
+
+    /// Whether IgnoreBadAlt has been set.
+    pub fn test_ignore_bad_alt(&self) -> bool {
+        self.ignore_bad_alt.is_some()
+    }
+
+    /// Clear IgnoreBadAlt, restoring its default.
+    pub fn clear_ignore_bad_alt(&mut self) {
+        self.ignore_bad_alt = None;
+    }
+
     /// The attributes the header translations of a read depend on.
     fn trans_attrs(&self) -> spec_trans::TransAttrs {
         spec_trans::TransAttrs {
@@ -1388,6 +1413,7 @@ impl Channel for FitsChan {
                             &primary,
                             &alts,
                             def_b1950,
+                            self.ignore_bad_alt(),
                             &self.cards,
                         )?;
                         Ok((obj, warnings, naxes))
@@ -1424,6 +1450,7 @@ impl Channel for FitsChan {
                             &primary,
                             &alts,
                             def_b1950,
+                            self.ignore_bad_alt(),
                             &self.cards,
                         )?;
                         Ok((obj, warnings, naxes))
@@ -1454,6 +1481,7 @@ impl Channel for FitsChan {
                             &primary,
                             &alts,
                             def_b1950,
+                            self.ignore_bad_alt(),
                             &self.cards,
                         )?;
                         Ok((obj, warnings, naxes))

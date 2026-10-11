@@ -276,21 +276,6 @@ impl FitsStore {
         }
         None
     }
-
-    /// Extract the projection code from a CTYPE value.
-    ///
-    /// For CTYPE like `"RA---TAN"` returns `Some("TAN")`. The projection
-    /// code is the last 3 characters after the last `'-'` in the 5-8
-    /// character projection portion. Returns `None` if no valid projection
-    /// code is found.
-    pub(crate) fn projection_code(&self, axis: usize) -> Option<String> {
-        if axis >= self.naxis {
-            return None;
-        }
-        self.ctype[axis]
-            .as_ref()
-            .and_then(|ct| extract_projection_code(ct))
-    }
 }
 
 /// Check if a CTYPE value represents a celestial longitude axis.
@@ -331,53 +316,6 @@ fn is_spectral_ctype(ctype: &str) -> bool {
         prefix,
         "FREQ" | "ENER" | "WAVN" | "VOPT" | "ZOPT" | "VELO" | "VRAD" | "WAVE" | "AWAV" | "BETA"
     )
-}
-
-/// Extract the 3-character projection code from a CTYPE string.
-///
-/// FITS-WCS convention: CTYPE is `"XXXX-YYY"` where XXXX is a 4-char type
-/// and YYY is a 3-char projection code separated by a dash. For example,
-/// `"RA---TAN"` has projection code `"TAN"`.
-fn extract_projection_code(ctype: &str) -> Option<String> {
-    let ct = ctype.trim();
-    // Must be at least 8 chars for 4-char type + '-' + 3-char projection.
-    if ct.len() < 8 {
-        return None;
-    }
-    // Check for the dash separator at position 4 (or find the last dash
-    // followed by exactly 3 characters).
-    let bytes = ct.as_bytes();
-    // Standard: char 4 (0-based) should be '-', chars 5-7 are the code.
-    if bytes[4] == b'-' {
-        let code = &ct[5..8];
-        // Skip if the code is all dashes (like "RA---" → looking at "---" → not a projection).
-        if code.chars().all(|c| c == '-') {
-            // Look deeper: e.g. "RA---TAN" has dashes at 4,5,6 and code at 5..8 = "--T"
-            // Actually the standard is: first 4 chars are type, char 4 is '-',
-            // then we need to find non-dash chars. Let's use the last-dash approach.
-        } else {
-            // Remove leading dashes from the code.
-            let trimmed = code.trim_start_matches('-');
-            if !trimmed.is_empty() {
-                return Some(trimmed.to_string());
-            }
-        }
-    }
-
-    // Alternative: find the last group of 3 non-dash alphabetic characters
-    // after position 4. For "RA---TAN", this is "TAN" at positions 5..8.
-    // Walk backwards to find a 3-char suffix that is all alphabetic.
-    if ct.len() >= 8 {
-        let suffix = &ct[ct.len() - 3..];
-        if suffix.chars().all(|c| c.is_ascii_alphabetic()) {
-            // Verify there's a dash before it.
-            if ct.as_bytes()[ct.len() - 4] == b'-' {
-                return Some(suffix.to_uppercase());
-            }
-        }
-    }
-
-    None
 }
 
 // ---------------------------------------------------------------------------
@@ -482,49 +420,5 @@ mod tests {
         store.ctype[0] = Some("RA---TAN".to_string());
         store.ctype[1] = Some("DEC--TAN".to_string());
         assert!(store.spectral_axis().is_none());
-    }
-
-    #[test]
-    fn projection_code_extraction() {
-        let mut store = FitsStore::new(2);
-        store.ctype[0] = Some("RA---TAN".to_string());
-        store.ctype[1] = Some("DEC--TAN".to_string());
-        assert_eq!(store.projection_code(0), Some("TAN".to_string()));
-        assert_eq!(store.projection_code(1), Some("TAN".to_string()));
-    }
-
-    #[test]
-    fn projection_code_car() {
-        let mut store = FitsStore::new(2);
-        store.ctype[0] = Some("GLON-CAR".to_string());
-        assert_eq!(store.projection_code(0), Some("CAR".to_string()));
-    }
-
-    #[test]
-    fn projection_code_none() {
-        let mut store = FitsStore::new(2);
-        store.ctype[0] = Some("FREQ".to_string());
-        assert_eq!(store.projection_code(0), None);
-    }
-
-    #[test]
-    fn projection_code_out_of_bounds() {
-        let store = FitsStore::new(2);
-        assert_eq!(store.projection_code(5), None);
-    }
-
-    #[test]
-    fn extract_projection_code_standard() {
-        assert_eq!(extract_projection_code("RA---TAN"), Some("TAN".to_string()));
-        assert_eq!(extract_projection_code("DEC--TAN"), Some("TAN".to_string()));
-        assert_eq!(extract_projection_code("GLON-CAR"), Some("CAR".to_string()));
-        assert_eq!(extract_projection_code("GLAT-CAR"), Some("CAR".to_string()));
-        assert_eq!(extract_projection_code("RA---SIN"), Some("SIN".to_string()));
-    }
-
-    #[test]
-    fn extract_projection_code_short() {
-        assert_eq!(extract_projection_code("FREQ"), None);
-        assert_eq!(extract_projection_code("RA"), None);
     }
 }

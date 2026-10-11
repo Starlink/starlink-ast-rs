@@ -104,6 +104,170 @@ pub(crate) struct CelestialResult {
     pub warnings: Vec<String>,
 }
 
+/// The celestial axes of an axis description, as C's `WcsCelestial`
+/// identifies them.
+struct CelestialAxes {
+    /// The longitude axis (0-based).
+    lon: usize,
+    /// The latitude axis (0-based).
+    lat: usize,
+    /// The projection both axes name.
+    proj: WcsProjection,
+    /// Whether a CTYPE too short to name a projection made the axes linear
+    /// (C's local `carlin` forced on).
+    forced_car_lin: bool,
+}
+
+/// C's `astWcsPrjType` on the last four characters of a CTYPE: with every
+/// blank removed, a `-` and a projection code, matched exactly.
+fn wcs_prj_type(last4: &str) -> Option<WcsProjection> {
+    let code: String = last4.chars().filter(|c| !c.is_ascii_whitespace()).collect();
+    let name = code.strip_prefix('-')?;
+    WcsProjection::from_code(name).filter(|p| p.code() == name)
+}
+
+/// The celestial axes of axis description `s` of `store`, found as C's
+/// `WcsCelestial` finds them (fitschan.c:35990-36153), or `None` if there
+/// are none.
+///
+/// A longitude CTYPE is `RA`, `AZ`, `xLON` or `yzLN`, alone or followed by
+/// `-`, and a latitude CTYPE `DEC`, `EL`, `xLAT` or `yzLT`; the projection
+/// is named by the last four characters of a CTYPE longer than four, and a
+/// shorter one is linear. Two longitude or two latitude axes, an unknown
+/// projection, axes of different systems or projections, and one axis
+/// without the other are AST__BDFTS.
+fn find_celestial_axes(store: &FitsStore, s: char) -> AstResult<Option<CelestialAxes>> {
+    let keyname = |i: usize| {
+        if s == ' ' {
+            format!("CTYPE{}", i + 1)
+        } else {
+            format!("CTYPE{}{s}", i + 1)
+        }
+    };
+    let bdfts = |msg: String| AstError::new(ErrorCode::Bdfts, format!("astRead(FitsChan): {msg}"));
+    // The projection a CTYPE names, and whether it is linear for want of one.
+    let projection = |i: usize, ctype: &str| -> AstResult<(WcsProjection, bool)> {
+        if ctype.len() > 4 {
+            let last4 = ctype.get(ctype.len() - 4..).unwrap_or("");
+            match wcs_prj_type(last4) {
+                Some(p) => Ok((p, false)),
+                None => Err(bdfts(format!(
+                    "FITS keyword '{}' refers to an unknown projection type '{last4}'.",
+                    keyname(i)
+                ))),
+            }
+        } else {
+            Ok((WcsProjection::Car, true))
+        }
+    };
+    let is_axis = |ctype: &str, whole: &[&str], tail1: &str, tail2: &str| -> Option<String> {
+        for w in whole {
+            if ctype == *w || ctype.starts_with(&format!("{w}{}", "-".repeat(4 - w.len()))) {
+                return Some(match *w {
+                    "RA" | "DEC" => "EQU".to_string(),
+                    _ => "AZL".to_string(),
+                });
+            }
+        }
+        let tail_matches = |from: usize, tail: &str| {
+            ctype
+                .get(from..)
+                .is_some_and(|rest| rest == tail || rest.starts_with(&format!("{tail}-")))
+        };
+        if tail_matches(1, tail1) {
+            Some(ctype[..1].to_string())
+        } else if tail_matches(2, tail2) {
+            Some(ctype[..2].to_string())
+        } else {
+            None
+        }
+    };
+
+    // (axis, system, projection) of each axis found.
+    let mut lon: Option<(usize, String, WcsProjection)> = None;
+    let mut lat: Option<(usize, String, WcsProjection)> = None;
+    let mut forced_car_lin = false;
+    for i in 0..store.naxis {
+        let Some(ctype) = store.ctype[i].as_deref() else {
+            continue;
+        };
+        let ctype = ctype.trim_end();
+        if let Some(system) = is_axis(ctype, &["RA", "AZ"], "LON", "LN") {
+            if let Some((j, ..)) = lon {
+                return Err(bdfts(format!(
+                    "FITS keywords '{}' (='{ctype}') and '{}' (='{}') both describe \
+                     celestial longitude axes.",
+                    keyname(i),
+                    keyname(j),
+                    store.ctype[j].as_deref().unwrap_or("").trim_end()
+                )));
+            }
+            let (p, linear) = projection(i, ctype)?;
+            forced_car_lin |= linear;
+            lon = Some((i, system, p));
+        }
+        if let Some(system) = is_axis(ctype, &["DEC", "EL"], "LAT", "LT") {
+            if let Some((j, ..)) = lat {
+                return Err(bdfts(format!(
+                    "FITS keywords '{}' (='{ctype}') and '{}' (='{}') both describe \
+                     celestial latitude axes.",
+                    keyname(i),
+                    keyname(j),
+                    store.ctype[j].as_deref().unwrap_or("").trim_end()
+                )));
+            }
+            let (p, linear) = projection(i, ctype)?;
+            forced_car_lin |= linear;
+            lat = Some((i, system, p));
+        }
+    }
+    let ctype_of = |i: usize| {
+        store.ctype[i]
+            .as_deref()
+            .unwrap_or("")
+            .trim_end()
+            .to_string()
+    };
+    match (lon, lat) {
+        (Some((ilon, lonsys, lonprj)), Some((ilat, latsys, latprj))) => {
+            if latsys != lonsys {
+                return Err(bdfts(format!(
+                    "FITS keywords '{}' and '{}' indicate different celestial coordinate \
+                     systems ('{}' and '{}').",
+                    keyname(ilat),
+                    keyname(ilon),
+                    ctype_of(ilat),
+                    ctype_of(ilon)
+                )));
+            }
+            if lonprj != latprj {
+                return Err(bdfts(format!(
+                    "FITS keywords '{}' and '{}' indicate different projections ('{}' and '{}').",
+                    keyname(ilat),
+                    keyname(ilon),
+                    ctype_of(ilat),
+                    ctype_of(ilon)
+                )));
+            }
+            Ok(Some(CelestialAxes {
+                lon: ilon,
+                lat: ilat,
+                proj: lonprj,
+                forced_car_lin,
+            }))
+        }
+        (None, Some((ilat, ..))) => Err(bdfts(format!(
+            "A latitude axis ('{}') was found without a corresponding longitude axis.",
+            ctype_of(ilat)
+        ))),
+        (Some((ilon, ..)), None) => Err(bdfts(format!(
+            "A longitude axis ('{}') was found without a corresponding latitude axis.",
+            ctype_of(ilon)
+        ))),
+        (None, None) => Ok(None),
+    }
+}
+
 /// If celestial axes are present in the FitsStore, build the IWC-to-sky
 /// mapping and create a SkyFrame.
 ///
@@ -113,10 +277,11 @@ pub(crate) struct CelestialResult {
 /// Returns `None` if no celestial axis pair is found.
 #[cfg(test)]
 pub(crate) fn build_celestial(store: &FitsStore) -> Option<CelestialResult> {
-    build_celestial_with_def_b1950(store, false, None).unwrap()
+    build_celestial_with_def_b1950(store, ' ', false, None).unwrap()
 }
 
-/// Encoding-aware variant. `def_b1950` mirrors the FitsChan
+/// Encoding-aware variant. `s` is the version character of the axis
+/// description (a blank for the primary one). `def_b1950` mirrors the FitsChan
 /// `DefB1950` attribute (fitschan.c:42288): true for FITS-PC /
 /// FITS-IRAF / FITS-AIPS / FITS-AIPS++ / FITS-CLASS / DSS, false
 /// for FITS-WCS. Triggers the NORADEC fallback (`apply_b1950_fallback_if_needed`)
@@ -128,39 +293,20 @@ pub(crate) fn build_celestial(store: &FitsStore) -> Option<CelestialResult> {
 /// because C has none either.
 pub(crate) fn build_celestial_with_def_b1950(
     store: &FitsStore,
+    s: char,
     def_b1950: bool,
     rfval: Option<&[Option<f64>]>,
 ) -> AstResult<Option<CelestialResult>> {
-    // Step 1: Find the celestial axis pair.
-    let Some((lon_axis, lat_axis)) = store.celestial_axes() else {
+    // Step 1: Find the celestial axis pair and its projection, as C's
+    // `WcsCelestial` does, reporting the errors it reports.
+    let Some(CelestialAxes {
+        lon: lon_axis,
+        lat: lat_axis,
+        proj,
+        forced_car_lin,
+    }) = find_celestial_axes(store, s)?
+    else {
         return Ok(None);
-    };
-
-    // Step 2: Get the projection code. C `WcsCelestial` takes it from the
-    // last four characters of CTYPE, and when the CTYPE is too short to
-    // carry one it assumes simple linear axes: `prj = AST__CAR` with the
-    // local `carlin` flag forced on (fitschan.c:35748-35756 for longitude,
-    // :35803-35811 for latitude). C applies the same test to both axes and
-    // reports an error when they disagree, so reading one is enough. C's
-    // middle branch — `AST__WCSBAD` for a short CTYPE in a `-TAB` header —
-    // has no counterpart here because this reader does not decode `-TAB`
-    // axes.
-    let short_ctype = store.ctype[lon_axis]
-        .as_deref()
-        .is_some_and(|ct| ct.trim_end().len() <= 4);
-    let (proj, forced_car_lin) = if short_ctype {
-        (WcsProjection::Car, true)
-    } else {
-        // An unrecognised four-character code is C's `AST__WCSBAD`, which C
-        // turns into an error report (fitschan.c:35758-35764); leave the
-        // header undecoded here.
-        let Some(proj) = store
-            .projection_code(lon_axis)
-            .and_then(|code| WcsProjection::from_code(&code))
-        else {
-            return Ok(None);
-        };
-        (proj, false)
     };
 
     // C keeps one local `carlin`, initialised from the attribute
