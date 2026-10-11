@@ -2,6 +2,19 @@
 
 ## Revision history
 
+- **2026-10-11 (rev 27)**: Added FitsChan's source and sink, as C's
+  `astFitsChan` takes them (`set_source`, `set_sink`), with
+  `read_fits`, `write_fits` and `show_fits`, and the SourceFile and
+  SinkFile attributes (`source_file`, `set_source_file`,
+  `test_source_file`, `clear_source_file`, and the same for
+  `sink_file`). The source is read by the first method that reads it
+  in C, and the cards are written to the sink when the FitsChan is
+  dropped. Because reading the source can fail, `card`, `set_card`,
+  `clear_card`, `test_card`, `card_name`, `card_comm`, `card_type`,
+  `ncard`, `nkey`, `retain_fits`, `purge_wcs`, `del_fits` and
+  `empty_fits` now take `&mut self` where they took `&self` and return
+  `AstResult`. A clone has no source or sink, as a C copy has none, and
+  reads the source first, as `astCopy` does.
 - **2026-10-11 (rev 26)**: Added FitsChan's FitsAxisOrder attribute
   (`fits_axis_order`, `set_fits_axis_order`, `test_fits_axis_order`,
   `clear_fits_axis_order`); FitsChan now implements `Clone`.

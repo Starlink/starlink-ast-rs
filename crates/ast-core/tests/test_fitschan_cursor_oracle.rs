@@ -14,10 +14,65 @@
 #[path = "fitschan_cursor_oracle/cases.rs"]
 mod cases;
 
+use ast_core::channel::{Sink, Source};
 use ast_core::error::AstError;
 use ast_core::frames::FrameRef;
 use ast_core::mappings::ZoomMap;
 use ast_core::{AltAxes, AnyObject, Channel, Encoding, FitsChan};
+use std::sync::{Arc, Mutex};
+
+/// The probe's source function: the cards of `NEW|c1~c2~#~c3`, `#` ending
+/// a batch.
+struct ScriptSource(String);
+
+impl Source for ScriptSource {
+    fn read_line(&mut self) -> Option<String> {
+        if self.0.is_empty() {
+            return None;
+        }
+        if let Some(rest) = self.0.strip_prefix('#') {
+            self.0 = rest.strip_prefix('~').unwrap_or(rest).to_string();
+            return None;
+        }
+        let (card, rest) = self.0.split_once('~').unwrap_or((&self.0, ""));
+        let card = card.to_string();
+        self.0 = rest.to_string();
+        Some(card)
+    }
+}
+
+/// The probe's sink function, printing each card as `|sink card`.
+struct LogSink(Arc<Mutex<String>>);
+
+impl Sink for LogSink {
+    fn write_line(&mut self, line: &str) {
+        self.0.lock().unwrap().push_str(&format!("|sink {line}\n"));
+    }
+}
+
+/// What a case's operations share: the sink's output and the SinkFile.
+#[derive(Default)]
+struct Harness {
+    sink: Arc<Mutex<String>>,
+    sink_name: Option<String>,
+}
+
+/// The path of `name` in the temporary directory, as the probe's `tmp_path`.
+fn tmp_path(name: &str) -> String {
+    let dir = std::env::var("TMPDIR")
+        .ok()
+        .filter(|d| !d.is_empty())
+        .unwrap_or_else(|| "/tmp".to_string());
+    format!("{dir}/{name}")
+}
+
+/// Each line of the temporary file `name` as `|file line`.
+fn cat_file(name: &str) -> String {
+    match std::fs::read_to_string(tmp_path(name)) {
+        Ok(text) => text.lines().map(|l| format!("|file {l}\n")).collect(),
+        Err(_) => "|nofile\n".to_string(),
+    }
+}
 
 /// C's name for an error code, as the probe prints it.
 fn code_name(e: &AstError) -> &'static str {
@@ -27,6 +82,8 @@ fn code_name(e: &AstError) -> &'static str {
         "Fundef" => "Fundef",
         "Bdfmt" => "Bdfmt",
         "Attin" => "Attin",
+        "Rderr" => "Rderr",
+        "Wrerr" => "Wrerr",
         _ => "Other",
     }
 }
@@ -56,16 +113,16 @@ fn c_g17(v: f64) -> String {
 }
 
 fn state(fc: &mut FitsChan, out: &mut String) {
-    let icard = fc.card();
+    let icard = fc.card().unwrap();
     out.push_str(&format!(
         "card={icard} ncard={} nkey={} type={} name={} comm=[{}]\n",
-        fc.ncard(),
-        fc.nkey(),
-        fc.card_type().code(),
-        fc.card_name().unwrap_or_default(),
-        fc.card_comm()
+        fc.ncard().unwrap(),
+        fc.nkey().unwrap(),
+        fc.card_type().unwrap().code(),
+        fc.card_name().unwrap().unwrap_or_default(),
+        fc.card_comm().unwrap()
     ));
-    fc.clear_card();
+    fc.clear_card().unwrap();
     loop {
         match fc.find_fits("%f", true) {
             Ok(Some(card)) => {
@@ -80,7 +137,7 @@ fn state(fc: &mut FitsChan, out: &mut String) {
             }
         }
     }
-    fc.set_card(icard as i64);
+    fc.set_card(icard as i64).unwrap();
 }
 
 fn result<T>(r: Result<T, AstError>, show: impl FnOnce(T) -> String) -> String {
@@ -102,7 +159,7 @@ fn name(arg: &str) -> Option<&str> {
     (arg != "-").then_some(arg)
 }
 
-fn run(fc: &mut FitsChan, op: &str, out: &mut String) {
+fn run(fc: &mut FitsChan, op: &str, out: &mut String, h: &mut Harness) {
     let f: Vec<&str> = op.split('|').collect();
     let arg = |i: usize| f.get(i).copied().unwrap_or("");
     let ow = || arg(1) == "1";
@@ -123,24 +180,24 @@ fn run(fc: &mut FitsChan, op: &str, out: &mut String) {
             result(fc.put_cards(&cards), |_| String::new())
         }
         "SC" => {
-            fc.set_card(arg(1).parse().unwrap());
+            fc.set_card(arg(1).parse().unwrap()).unwrap();
             String::new()
         }
         "CC" => {
-            fc.clear_card();
+            fc.clear_card().unwrap();
             String::new()
         }
-        "TC" => format!("= {}\n", i32::from(fc.test_card())),
+        "TC" => format!("= {}\n", i32::from(fc.test_card().unwrap())),
         "F" => result(fc.find_fits(arg(2), arg(1) == "1"), |v| match v {
             Some(card) => format!("= found [{card}]\n"),
             None => "= nf\n".to_string(),
         }),
         "D" => {
-            fc.del_fits();
+            fc.del_fits().unwrap();
             String::new()
         }
         "E" => {
-            fc.empty_fits();
+            fc.empty_fits().unwrap();
             String::new()
         }
         "GI" => result(fc.get_fits_i(name(arg(1))), |v| found(v, |v| v.to_string())),
@@ -217,11 +274,11 @@ fn run(fc: &mut FitsChan, op: &str, out: &mut String) {
             String::new()
         }
         "PW" => {
-            fc.purge_wcs();
+            fc.purge_wcs().unwrap();
             String::new()
         }
         "RF" => {
-            fc.retain_fits();
+            fc.retain_fits().unwrap();
             String::new()
         }
         "TF" => result(fc.test_fits(name(arg(1))), |v| match v {
@@ -238,6 +295,8 @@ fn run(fc: &mut FitsChan, op: &str, out: &mut String) {
                 "PolyTan" => (fc.poly_tan(), fc.test_poly_tan()),
                 "IgnoreBadAlt" => (i32::from(fc.ignore_bad_alt()), fc.test_ignore_bad_alt()),
                 "Iwc" => (i32::from(fc.iwc()), fc.test_iwc()),
+                "Skip" => (i32::from(fc.config().skip()), fc.config().test_skip()),
+                "Full" => (fc.config().full(), fc.config().test_full()),
                 other => panic!("no int attribute {other}"),
             };
             format!("= {v} {}\n", i32::from(set))
@@ -260,6 +319,9 @@ fn run(fc: &mut FitsChan, op: &str, out: &mut String) {
                 "PolyTan" => fc.set_poly_tan(v),
                 "IgnoreBadAlt" => fc.set_ignore_bad_alt(v != 0),
                 "Iwc" => fc.set_iwc(v != 0),
+                "Skip" => fc.config_mut().set_skip(v != 0),
+                "Full" => fc.config_mut().set_full(v),
+                "Comment" => fc.config_mut().set_comment(v != 0),
                 other => panic!("no int attribute {other}"),
             }
             String::new()
@@ -327,6 +389,7 @@ fn run(fc: &mut FitsChan, op: &str, out: &mut String) {
                 "Warnings" => fc.clear_warning_conditions(),
                 "AltAxes" => fc.clear_alt_axes(),
                 "FitsAxisOrder" => fc.clear_fits_axis_order(),
+                "SinkFile" => fc.clear_sink_file(),
                 other => panic!("no attribute {other}"),
             }
             String::new()
@@ -419,12 +482,32 @@ fn run(fc: &mut FitsChan, op: &str, out: &mut String) {
             };
             format!("= {class}\n")
         }),
+        "WF" => {
+            let frame =
+                AnyObject::BasicFrame(ast_core::frames::BasicFrameBuilder::new(2).build().unwrap());
+            result(fc.write(&frame), |n| format!("= {n}\n"))
+        }
         "W" => {
             let zm = AnyObject::ZoomMap(ZoomMap::new(2, 2.0).unwrap());
             result(fc.write(&zm), |n| format!("= {n}\n"))
         }
+        "RDF" => result(fc.read_fits(), |()| String::new()),
+        "WRF" => result(fc.write_fits(), |()| String::new()),
+        "MKF" => {
+            std::fs::write(tmp_path(arg(1)), op[5 + arg(1).len()..].replace('~', "\n")).unwrap();
+            String::new()
+        }
+        "SRF" => result(fc.set_source_file(&tmp_path(arg(1))), |()| String::new()),
+        "SKF" => {
+            fc.set_sink_file(&tmp_path(arg(1)));
+            h.sink_name = Some(arg(1).to_string());
+            String::new()
+        }
+        "CATF" => cat_file(arg(1)),
+        "CPN" => result(fc.clone().ncard(), |n| format!("= {n}\n")),
         other => panic!("unknown op {other}"),
     };
+    out.push_str(&std::mem::take(&mut *h.sink.lock().unwrap()));
     out.push_str(&res);
     state(fc, out);
 }
@@ -432,6 +515,31 @@ fn run(fc: &mut FitsChan, op: &str, out: &mut String) {
 /// Cases the port does not yet match, with the reason. The companion test
 /// fails once an entry matches, so the list cannot go stale.
 const EXCLUDED: &[(&str, &str)] = &[
+    (
+        "skip_and_full_defaults",
+        "a FitsChan's Skip and Full take the Channel defaults, 0 and 0, where \
+         C's GetSkip and GetFull overrides give 1 and -1",
+    ),
+    (
+        "native_full_0",
+        "the NATIVE writer drops unset values whatever Full is; C writes the \
+         helpful ones as COMMENT cards when Full is not negative",
+    ),
+    (
+        "native_full_1",
+        "the NATIVE writer drops unset values and class boundaries whatever \
+         Full is; C writes them all when Full is positive",
+    ),
+    (
+        "native_skip_0",
+        "the NATIVE reader ignores Skip; C reports cards before the object \
+         as an error when Skip is zero",
+    ),
+    (
+        "native_skip_0_from_begin",
+        "the NATIVE reader ignores Skip; C consumes the cards before the \
+         object when Skip is zero",
+    ),
     (
         "celestial_bare_names",
         "CTYPE values RA and DEC are read, as C reads them, as linear celestial \
@@ -465,10 +573,24 @@ const EXCLUDED: &[(&str, &str)] = &[
 
 /// The transcript the port gives for a case's operations.
 fn transcript(ops: &[&str]) -> String {
+    let mut h = Harness::default();
     let mut fc = FitsChan::new();
+    let mut ops = ops;
+    if let Some(src) = ops[0].strip_prefix("NEW|") {
+        fc.set_source(Box::new(ScriptSource(src.to_string())));
+        fc.set_sink(Box::new(LogSink(h.sink.clone())));
+        ops = &ops[1..];
+    }
     let mut got = String::new();
     for op in ops {
-        run(&mut fc, op, &mut got);
+        run(&mut fc, op, &mut got, &mut h);
+    }
+    got.push_str("> annul\n");
+    drop(fc);
+    got.push_str(&std::mem::take(&mut *h.sink.lock().unwrap()));
+    if let Some(name) = h.sink_name {
+        got.push_str(&cat_file(&name));
+        let _ = std::fs::remove_file(tmp_path(&name));
     }
     got
 }

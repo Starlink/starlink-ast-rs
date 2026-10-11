@@ -19,6 +19,7 @@ pub(crate) mod fits_store;
 pub mod format;
 pub(crate) mod fset_to_store;
 pub(crate) mod guess_encoding;
+pub(crate) mod source_sink;
 pub(crate) mod spec_trans;
 pub(crate) mod warning;
 pub(crate) mod wcs_celestial;
@@ -34,11 +35,12 @@ pub use card::CardType;
 use card::{FitsCard, FitsValue};
 use card_list::CardList;
 use card_value::{Got, Want};
+use source_sink::{NotCopied, SourceCell};
 use warning::{Warning, Warnings};
 
 use std::sync::Arc;
 
-use crate::channel::{Channel, ChannelConfig};
+use crate::channel::{Channel, ChannelConfig, Sink};
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::mappings::intramap::with_registry;
 use crate::mappings::{IntraRegistry, IntraTransform};
@@ -138,10 +140,9 @@ const DEFAULT_FITS_DIGITS: i32 = 17;
 ///               NAXIS   =                    2 / Number of axes\n\
 ///               END";
 /// let mut fc = FitsChan::from_header(header).unwrap();
-/// assert_eq!(fc.ncard(), 3); // SIMPLE, NAXIS, END
+/// assert_eq!(fc.ncard().unwrap(), 3); // SIMPLE, NAXIS, END
 /// assert_eq!(fc.get_fits_i(Some("NAXIS")).unwrap(), Some(2));
 /// ```
-#[derive(Clone)]
 pub struct FitsChan {
     config: ChannelConfig,
     cards: CardList,
@@ -187,6 +188,15 @@ pub struct FitsChan {
     clean: Option<bool>,
     /// The SipOK attribute, when set.
     sip_ok: Option<bool>,
+    /// The source cards are read from on first use, and what a clone has
+    /// read from it.
+    source: SourceCell,
+    /// The sink the cards are written to when dropped.
+    sink: NotCopied<Box<dyn Sink>>,
+    /// The SourceFile attribute, when set.
+    source_file: NotCopied<String>,
+    /// The SinkFile attribute, when set.
+    sink_file: NotCopied<String>,
 }
 
 impl FitsChan {
@@ -218,6 +228,10 @@ impl FitsChan {
             keyseq: std::collections::HashMap::new(),
             clean: None,
             sip_ok: None,
+            source: SourceCell::default(),
+            sink: NotCopied::default(),
+            source_file: NotCopied::default(),
+            sink_file: NotCopied::default(),
         }
     }
 
@@ -252,6 +266,10 @@ impl FitsChan {
             keyseq: std::collections::HashMap::new(),
             clean: None,
             sip_ok: None,
+            source: SourceCell::default(),
+            sink: NotCopied::default(),
+            source_file: NotCopied::default(),
+            sink_file: NotCopied::default(),
         })
     }
 
@@ -262,61 +280,74 @@ impl FitsChan {
     /// The `Card` attribute: the 1-based index of the current card, counting
     /// only cards not consumed by a read; one more than [`ncard`](Self::ncard)
     /// at end-of-file, and 0 when there are no cards.
-    pub fn card(&mut self) -> usize {
-        self.cards.get_card()
+    pub fn card(&mut self) -> AstResult<usize> {
+        self.read_from_source()?;
+        Ok(self.cards.get_card())
     }
 
     /// Set `Card`: rewind, then move forward `icard - 1` cards, stopping at
     /// end-of-file. A value below 1 makes the first card current.
-    pub fn set_card(&mut self, icard: i64) {
+    pub fn set_card(&mut self, icard: i64) -> AstResult<()> {
+        self.read_from_source()?;
         self.cards.set_card(icard);
+        Ok(())
     }
 
     /// Clear `Card`: make the first card current (C's "rewind").
-    pub fn clear_card(&mut self) {
+    pub fn clear_card(&mut self) -> AstResult<()> {
+        self.read_from_source()?;
         self.cards.clear_card();
+        Ok(())
     }
 
     /// Whether `Card` is set, which C defines as the current card not being
     /// the first.
-    pub fn test_card(&mut self) -> bool {
-        self.cards.test_card()
+    pub fn test_card(&mut self) -> AstResult<bool> {
+        self.read_from_source()?;
+        Ok(self.cards.test_card())
     }
 
     /// The `CardName` attribute: the keyword of the current card (eight
     /// spaces for a blank keyword), or `None` at end-of-file.
-    pub fn card_name(&self) -> Option<String> {
-        self.cards.current().map(|c| c.c_name().to_string())
+    pub fn card_name(&mut self) -> AstResult<Option<String>> {
+        self.read_from_source()?;
+        Ok(self.cards.current().map(|c| c.c_name().to_string()))
     }
 
     /// The `CardComm` attribute: the comment of the current card, or the text
     /// of a commentary card; empty when there is none.
-    pub fn card_comm(&self) -> String {
-        self.cards
+    pub fn card_comm(&mut self) -> AstResult<String> {
+        self.read_from_source()?;
+        Ok(self
+            .cards
             .current()
             .and_then(|c| c.c_comment())
             .unwrap_or("")
-            .to_string()
+            .to_string())
     }
 
     /// The `CardType` attribute: the data type of the current card, or
     /// [`CardType::NoType`] at end-of-file.
-    pub fn card_type(&self) -> CardType {
-        self.cards
+    pub fn card_type(&mut self) -> AstResult<CardType> {
+        self.read_from_source()?;
+        Ok(self
+            .cards
             .current()
-            .map_or(CardType::NoType, |c| c.card_type())
+            .map_or(CardType::NoType, |c| c.card_type()))
     }
 
     /// The `Ncard` attribute: the number of cards, not counting those a read
     /// consumed.
-    pub fn ncard(&self) -> usize {
-        self.cards.ncard()
+    pub fn ncard(&mut self) -> AstResult<usize> {
+        self.read_from_source()?;
+        Ok(self.cards.ncard())
     }
 
     /// The `Nkey` attribute: the number of different keywords among the cards
     /// a read has not consumed.
-    pub fn nkey(&self) -> usize {
-        self.cards.nkey()
+    pub fn nkey(&mut self) -> AstResult<usize> {
+        self.read_from_source()?;
+        Ok(self.cards.nkey())
     }
 
     // -----------------------------------------------------------------------
@@ -370,8 +401,10 @@ impl FitsChan {
 
     /// Mark the current card to be kept when a read would otherwise consume
     /// it (C's `astRetainFits`). Does nothing at end-of-file.
-    pub fn retain_fits(&mut self) {
+    pub fn retain_fits(&mut self) -> AstResult<()> {
+        self.read_from_source()?;
         self.cards.protect_current();
+        Ok(())
     }
 
     /// Whether keyword `name`, or the current card when `name` is `None`, is
@@ -379,6 +412,7 @@ impl FitsChan {
     /// value. The card is searched for as by [`get_fits_f`](Self::get_fits_f),
     /// and the current card is left as it was.
     pub fn test_fits(&mut self, name: Option<&str>) -> AstResult<Option<bool>> {
+        self.read_from_source()?;
         let lname = match name {
             Some(name) => Some(self.split_name(name)?.0),
             None => None,
@@ -405,7 +439,8 @@ impl FitsChan {
     /// (C's `astPurgeWCS`): every object is read with Clean set, discarding
     /// it, then each remaining card whose keyword is a WCS keyword is marked
     /// as used, which hides it. The first card is then current.
-    pub fn purge_wcs(&mut self) {
+    pub fn purge_wcs(&mut self) -> AstResult<()> {
+        self.read_from_source()?;
         let old = self.clean;
         self.clean = Some(true);
         self.cards.clear_card();
@@ -415,6 +450,7 @@ impl FitsChan {
         self.cards.consume_wcs_cards();
         self.cards.clear_card();
         self.clean = old;
+        Ok(())
     }
 
     /// Store a FITS header card (C's `astPutFits`).
@@ -424,6 +460,7 @@ impl FitsChan {
     /// current. At end-of-file the card is appended. A blank comment, when
     /// overwriting, keeps the comment of the card replaced.
     pub fn put_fits(&mut self, card: &str, overwrite: bool) -> AstResult<()> {
+        self.read_from_source()?;
         let (parsed, bad_value) = FitsCard::split(card)?;
         self.split_warnings(card, bad_value);
         match parsed.value {
@@ -449,7 +486,7 @@ impl FitsChan {
     /// make the first card current (C's `astPutCards`). Storing stops at the
     /// first card that cannot be read, whose error is returned.
     pub fn put_cards(&mut self, cards: &str) -> AstResult<()> {
-        self.empty_fits();
+        self.empty_fits()?;
         let bytes = cards.as_bytes();
         for chunk in bytes.chunks(80) {
             let card = String::from_utf8_lossy(chunk);
@@ -470,6 +507,7 @@ impl FitsChan {
     /// FitsChan is left at end-of-file. An illegal field type is
     /// AST__BDFMT.
     pub fn find_fits(&mut self, name: &str, inc: bool) -> AstResult<Option<String>> {
+        self.read_from_source()?;
         let lname = name.trim_end_matches(' ');
         let found = if lname == "%f" || lname == "%0f" {
             !self.cards.at_eof()
@@ -492,15 +530,23 @@ impl FitsChan {
 
     /// Delete the current card, making the next card current (C's
     /// `astDelFits`). Does nothing at end-of-file.
-    pub fn del_fits(&mut self) {
+    pub fn del_fits(&mut self) -> AstResult<()> {
+        self.read_from_source()?;
         self.cards.delete_card();
+        Ok(())
     }
 
-    /// Delete every card, and the warnings recorded by reads (C's
-    /// `astEmptyFits`).
-    pub fn empty_fits(&mut self) {
+    /// Delete every card, including those a read consumed, without writing
+    /// them to the sink (C's `astEmptyFits`).
+    pub fn empty_fits(&mut self) -> AstResult<()> {
+        self.read_from_source()?;
+        self.empty_fits_inner();
+        Ok(())
+    }
+
+    /// C's `EmptyFits` once the source has been read.
+    fn empty_fits_inner(&mut self) {
         self.cards = CardList::new();
-        self.warnings.clear();
         self.keyseq.clear();
     }
 
@@ -551,6 +597,7 @@ impl FitsChan {
         want: Want,
         method: &str,
     ) -> AstResult<Option<Got>> {
+        self.read_from_source()?;
         let lname = match name {
             Some(name) => {
                 let (lname, _) = self.split_name(name)?;
@@ -707,6 +754,7 @@ impl FitsChan {
         comment: &str,
         overwrite: bool,
     ) -> AstResult<()> {
+        self.read_from_source()?;
         let (lname, lcom) = self.split_name(name)?;
         let com = if comment.trim().is_empty() {
             lcom
@@ -878,6 +926,7 @@ impl FitsChan {
     /// overwriting a card with the same keyword, the card keeps its type and
     /// value and takes the new comment.
     fn set_fits_com(&mut self, name: &str, comment: &str, overwrite: bool) -> AstResult<()> {
+        self.read_from_source()?;
         let (lname, _) = self.split_name(name)?;
         let com = if comment.trim().is_empty() {
             None
@@ -1614,6 +1663,41 @@ impl FitsChan {
     }
 }
 
+impl Clone for FitsChan {
+    /// C's `astCopy`: read the source, then copy everything but the source
+    /// and sink, which a copy does not inherit.
+    fn clone(&self) -> Self {
+        let copy = Self {
+            config: self.config.clone(),
+            cards: self.cards.clone(),
+            encoding: self.encoding,
+            warnings: self.warnings.clone(),
+            fits_digits: self.fits_digits,
+            fits_rounding: self.fits_rounding,
+            cd_matrix: self.cd_matrix,
+            sip_replace: self.sip_replace,
+            car_lin: self.car_lin,
+            fits_tol: self.fits_tol,
+            def_b1950: self.def_b1950,
+            poly_tan: self.poly_tan,
+            ignore_bad_alt: self.ignore_bad_alt,
+            warning_conditions: self.warning_conditions.clone(),
+            alt_axes: self.alt_axes,
+            iwc: self.iwc,
+            fits_axis_order: self.fits_axis_order.clone(),
+            intra: self.intra.clone(),
+            keyseq: self.keyseq.clone(),
+            clean: self.clean,
+            sip_ok: self.sip_ok,
+            source: self.source.clone(),
+            sink: self.sink.clone(),
+            source_file: self.source_file.clone(),
+            sink_file: self.sink_file.clone(),
+        };
+        self.copy_reading_source(copy)
+    }
+}
+
 impl Default for FitsChan {
     fn default() -> Self {
         Self::new()
@@ -1623,6 +1707,7 @@ impl Default for FitsChan {
 impl Channel for FitsChan {
     fn read(&mut self) -> AstResult<Option<AnyObject>> {
         self.warnings.clear();
+        self.read_from_source()?;
 
         let enc = self.encoding();
         let def_b1950 = self.def_b1950();
@@ -1941,6 +2026,7 @@ impl Channel for FitsChan {
 
     fn write(&mut self, obj: &AnyObject) -> AstResult<usize> {
         self.warnings.clear();
+        self.read_from_source()?;
 
         // Remember the entry card so a failed write can put it back, and
         // start flagging every card this call adds so a failed write can
@@ -2197,8 +2283,8 @@ mod tests {
 
     #[test]
     fn new_fitschan_is_empty() {
-        let fc = FitsChan::new();
-        assert_eq!(fc.ncard(), 0);
+        let mut fc = FitsChan::new();
+        assert_eq!(fc.ncard().unwrap(), 0);
         // No explicit encoding set; auto-detect on an empty chan
         // returns Native per C `astGetEncoding` (fitschan.c:12509).
         assert_eq!(fc.encoding(), Encoding::Native);
@@ -2212,8 +2298,8 @@ mod tests {
                       BITPIX  =                  -32 / Bits per pixel\n\
                       NAXIS   =                    2 / Number of axes\n\
                       END";
-        let fc = FitsChan::from_header(header).unwrap();
-        assert_eq!(fc.ncard(), 4); // END is stored as a commentary card
+        let mut fc = FitsChan::from_header(header).unwrap();
+        assert_eq!(fc.ncard().unwrap(), 4); // END is stored as a commentary card
     }
 
     #[test]
@@ -2223,9 +2309,9 @@ mod tests {
             .unwrap();
         fc.put_fits("CRVAL1  =     266.416666666667 / Reference value", false)
             .unwrap();
-        assert_eq!(fc.ncard(), 2);
+        assert_eq!(fc.ncard().unwrap(), 2);
 
-        fc.clear_card();
+        fc.clear_card().unwrap();
         let found = fc.find_fits("CRVAL1", true).unwrap();
         assert!(found.is_some());
         let card_str = found.unwrap();
@@ -2270,11 +2356,11 @@ mod tests {
     #[test]
     fn ncard_tracks_insertions() {
         let mut fc = FitsChan::new();
-        assert_eq!(fc.ncard(), 0);
+        assert_eq!(fc.ncard().unwrap(), 0);
         fc.set_fits_i("A", 1, "", false).unwrap();
-        assert_eq!(fc.ncard(), 1);
+        assert_eq!(fc.ncard().unwrap(), 1);
         fc.set_fits_i("B", 2, "", false).unwrap();
-        assert_eq!(fc.ncard(), 2);
+        assert_eq!(fc.ncard().unwrap(), 2);
     }
 
     #[test]
@@ -2282,9 +2368,9 @@ mod tests {
         let mut fc = FitsChan::new();
         fc.set_fits_i("NAXIS", 2, "", false).unwrap();
         fc.set_fits_i("NAXIS1", 100, "", false).unwrap();
-        assert_eq!(fc.ncard(), 2);
-        fc.empty_fits();
-        assert_eq!(fc.ncard(), 0);
+        assert_eq!(fc.ncard().unwrap(), 2);
+        fc.empty_fits().unwrap();
+        assert_eq!(fc.ncard().unwrap(), 0);
     }
 
     #[test]
@@ -2292,9 +2378,9 @@ mod tests {
         let mut fc = FitsChan::new();
         fc.set_fits_i("NAXIS", 2, "Original", false).unwrap();
         // Overwriting replaces the current card.
-        fc.clear_card();
+        fc.clear_card().unwrap();
         fc.set_fits_i("NAXIS", 3, "Updated", true).unwrap();
-        assert_eq!(fc.ncard(), 1); // still only one card
+        assert_eq!(fc.ncard().unwrap(), 1); // still only one card
         assert_eq!(fc.get_fits_i(Some("NAXIS")).unwrap(), Some(3));
     }
 
@@ -2320,10 +2406,10 @@ mod tests {
         fc.set_fits_i("A", 1, "", false).unwrap();
         fc.set_fits_i("B", 2, "", false).unwrap();
         fc.set_fits_i("C", 3, "", false).unwrap();
-        fc.clear_card();
+        fc.clear_card().unwrap();
         // Position at first card, delete it.
-        fc.del_fits();
-        assert_eq!(fc.ncard(), 2);
+        fc.del_fits().unwrap();
+        assert_eq!(fc.ncard().unwrap(), 2);
     }
 
     #[test]
@@ -2337,10 +2423,10 @@ mod tests {
         fc.write(&obj).expect("write should succeed");
 
         // Should have stored COMMENT cards.
-        assert!(fc.ncard() > 0);
+        assert!(fc.ncard().unwrap() > 0);
 
         // Read it back.
-        fc.clear_card();
+        fc.clear_card().unwrap();
         let result = fc.read().expect("read should succeed");
         assert!(result.is_some());
         let read_obj = result.unwrap();
@@ -2360,12 +2446,12 @@ mod tests {
     fn set_fits_cm_stores_comment() {
         let mut fc = FitsChan::new();
         fc.set_fits_cm("This is a test", false).unwrap();
-        assert_eq!(fc.ncard(), 1);
+        assert_eq!(fc.ncard().unwrap(), 1);
         // C's astSetFitsCM stores a commentary card with a blank keyword.
-        fc.clear_card();
-        assert_eq!(fc.card_type(), CardType::Comment);
-        assert_eq!(fc.card_name().as_deref(), Some("        "));
-        assert_eq!(fc.card_comm(), "This is a test");
+        fc.clear_card().unwrap();
+        assert_eq!(fc.card_type().unwrap(), CardType::Comment);
+        assert_eq!(fc.card_name().unwrap().as_deref(), Some("        "));
+        assert_eq!(fc.card_comm().unwrap(), "This is a test");
     }
 
     #[test]
@@ -2378,8 +2464,8 @@ mod tests {
             "NAXIS   =                    2 / Number of axes"
         );
         fc.put_cards(&cards).unwrap();
-        assert_eq!(fc.ncard(), 3); // END is stored as a commentary card
-        assert_eq!(fc.card(), 1);
+        assert_eq!(fc.ncard().unwrap(), 3); // END is stored as a commentary card
+        assert_eq!(fc.card().unwrap(), 1);
     }
 
     #[test]
@@ -2390,7 +2476,7 @@ mod tests {
         .unwrap();
         // Advance position.
         fc.find_fits("NAXIS1", true).unwrap();
-        fc.clear_card();
+        fc.clear_card().unwrap();
         // Should be able to find from beginning again.
         let found = fc.find_fits("NAXIS", true).unwrap();
         assert!(found.is_some());

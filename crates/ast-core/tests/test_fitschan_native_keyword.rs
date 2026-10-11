@@ -61,11 +61,15 @@ fn native_read_consumes_its_cards() {
             .unwrap_or_else(|e| panic!("read {name}: {e}"));
         let mut fc =
             FitsChan::from_header(&text).unwrap_or_else(|e| panic!("from_header {name}: {e}"));
-        assert!(fc.ncard() > 0, "{name}: no cards to start with");
+        assert!(fc.ncard().unwrap() > 0, "{name}: no cards to start with");
         let _obj = fc
             .read()
             .unwrap_or_else(|e| panic!("read {name}: {e}"))
             .unwrap_or_else(|| panic!("read {name}: returned None"));
-        assert_eq!(fc.ncard(), 0, "{name}: cards left after a NATIVE read");
+        assert_eq!(
+            fc.ncard().unwrap(),
+            0,
+            "{name}: cards left after a NATIVE read"
+        );
     }
 }

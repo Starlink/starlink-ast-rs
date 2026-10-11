@@ -38,7 +38,21 @@
  *   RCIW|n               astRead, clear the Ident of Frame n, then astWrite
  *   AC|attr  ASC|attr|v  get and test, or set, a string attribute
  *   WN                   the Channel's warnings (astWarnings)
+ *   NEW|c1~c2~#~c3       (first operation only) create the FitsChan with a
+ *                        source function giving c1, c2, then NULL at '#',
+ *                        then c3 and NULL; and a sink function, whose
+ *                        lines are printed as "|sink card"
+ *   RDF  WRF             astReadFits, astWriteFits
+ *   MKF|file|l1~l2       write the lines l1, l2 to a file in the temporary
+ *                        directory
+ *   SRF|file  SKF|file   set SourceFile or SinkFile to a file there
+ *   CATF|file            print the file's lines as "|file line"
+ *   CPN                  astCopy, then the copy's Ncard, then annul it
+ *
+ * After the last operation the FitsChan is annulled, and anything it
+ * writes to the sink or to the SinkFile is printed.
  *   W                    astWrite of a 2-D ZoomMap of factor 2
+ *   WF                   astWrite of a 2-D Frame
  *
  * After each operation it prints the result and the state: Card, Ncard,
  * Nkey, CardType, CardName and CardComm, then every card astFindFits
@@ -62,6 +76,59 @@ static void add( const char *s ) {
    out[ nout ] = 0;
 }
 
+/* The source function's text, '~' between cards and '#' ending a batch. */
+static const char *src_pos;
+static char src_card[ 200 ];
+
+static const char *source( void ) {
+   size_t n;
+   if( !src_pos || !*src_pos ) return NULL;
+   if( *src_pos == '#' ) {
+      src_pos++;
+      if( *src_pos == '~' ) src_pos++;
+      return NULL;
+   }
+   n = strcspn( src_pos, "~" );
+   memcpy( src_card, src_pos, n );
+   src_card[ n ] = 0;
+   src_pos += n;
+   if( *src_pos ) src_pos++;
+   return src_card;
+}
+
+static void sink( const char *card ) {
+   add( "|sink " );
+   add( card );
+   add( "\n" );
+}
+
+/* The path of `name` in the temporary directory. */
+static const char *tmp_path( const char *name ) {
+   static char path[ 1000 ];
+   const char *dir = getenv( "TMPDIR" );
+   snprintf( path, sizeof path, "%s/%s", dir && *dir ? dir : "/tmp", name );
+   return path;
+}
+
+static char sink_name[ 400 ];
+
+/* Print each line of the temporary file `name` as "|file line". */
+static void cat_file( const char *name ) {
+   char line[ 400 ];
+   FILE *fd = fopen( tmp_path( name ), "r" );
+   if( !fd ) {
+      add( "|nofile\n" );
+      return;
+   }
+   while( fgets( line, sizeof line, fd ) ) {
+      line[ strcspn( line, "\n" ) ] = 0;
+      add( "|file " );
+      add( line );
+      add( "\n" );
+   }
+   fclose( fd );
+}
+
 static void dump_sink( const char *line ) {
    add( "|" );
    add( line );
@@ -74,6 +141,8 @@ static const char *code_name( int status ) {
    if( status == AST__FUNDEF ) return "Fundef";
    if( status == AST__BDFMT ) return "Bdfmt";
    if( status == AST__ATTIN ) return "Attin";
+   if( status == AST__RDERR ) return "Rderr";
+   if( status == AST__WRERR ) return "Wrerr";
    return "Other";
 }
 
@@ -300,10 +369,34 @@ static void run( AstFitsChan *fc, const char *op, int *status ) {
       astClear( fc, "CDMatrix" );
    } else if( !strcmp( f0, "QE" ) ) {
       snprintf( buf, sizeof buf, "= %s\n", astGetC( fc, "Encoding" ) );
+   } else if( !strcmp( f0, "RDF" ) ) {
+      astReadFits( fc );
+   } else if( !strcmp( f0, "WRF" ) ) {
+      astWriteFits( fc );
+   } else if( !strcmp( f0, "MKF" ) ) {
+      FILE *fd = fopen( tmp_path( f1 ), "w" );
+      const char *a = op + 5 + strlen( f1 );
+      for( ; *a; a++ ) fputc( *a == '~' ? '\n' : *a, fd );
+      fclose( fd );
+   } else if( !strcmp( f0, "SRF" ) ) {
+      astSetC( fc, "SourceFile", tmp_path( f1 ) );
+   } else if( !strcmp( f0, "SKF" ) ) {
+      astSetC( fc, "SinkFile", tmp_path( f1 ) );
+      strcpy( sink_name, f1 );
+   } else if( !strcmp( f0, "CATF" ) ) {
+      cat_file( f1 );
+   } else if( !strcmp( f0, "CPN" ) ) {
+      AstFitsChan *copy = astCopy( fc );
+      snprintf( buf, sizeof buf, "= %d\n", astGetI( copy, "Ncard" ) );
+      copy = astAnnul( copy );
    } else if( !strcmp( f0, "R" ) ) {
       AstObject *obj = astRead( fc );
       snprintf( buf, sizeof buf, "= %s\n", obj ? astGetC( obj, "Class" ) : "null" );
       if( obj ) obj = astAnnul( obj );
+   } else if( !strcmp( f0, "WF" ) ) {
+      AstFrame *fr = astFrame( 2, " " );
+      snprintf( buf, sizeof buf, "= %d\n", astWrite( fc, fr ) );
+      fr = astAnnul( fr );
    } else if( !strcmp( f0, "W" ) ) {
       AstZoomMap *zm = astZoomMap( 2, 2.0, " " );
       snprintf( buf, sizeof buf, "= %d\n", astWrite( fc, zm ) );
@@ -325,18 +418,38 @@ static void rust_str( const char *s ) {
    for( ; *s; s++ ) {
       if( *s == '"' || *s == '\\' ) putchar( '\\' );
       if( *s == '\n' ) { printf( "\\n" ); continue; }
+      if( *s == '\r' ) { printf( "\\r" ); continue; }
       putchar( *s );
    }
    putchar( '"' );
 }
 
 static void emit( const char *name, const char **ops, int *status ) {
-   AstFitsChan *fc = astFitsChan( NULL, NULL, " " );
-   int i;
+   AstFitsChan *fc;
+   int i = 0;
    nout = 0;
    out[ 0 ] = 0;
-   for( i = 0; ops[ i ]; i++ ) run( fc, ops[ i ], status );
+   sink_name[ 0 ] = 0;
+   if( !strncmp( ops[ 0 ], "NEW|", 4 ) ) {
+      src_pos = ops[ 0 ] + 4;
+      fc = astFitsChan( source, sink, " " );
+      i = 1;
+   } else {
+      fc = astFitsChan( NULL, NULL, " " );
+   }
+   for( ; ops[ i ]; i++ ) run( fc, ops[ i ], status );
+   add( "> annul\n" );
    fc = astAnnul( fc );
+   if( !astOK ) {
+      add( "= err " );
+      add( code_name( astStatus ) );
+      add( "\n" );
+      astClearStatus;
+   }
+   if( sink_name[ 0 ] ) {
+      cat_file( sink_name );
+      remove( tmp_path( sink_name ) );
+   }
    printf( "    (\n        \"%s\",\n        &[\n", name );
    for( i = 0; ops[ i ]; i++ ) {
       printf( "            " );
@@ -742,6 +855,51 @@ int main( void ) {
    CASE( "continue_69_fails", "SCN|0|CN69|aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|", "P|0|AFTER   = 1" );
    CASE( "long_comment", "SS|0|SC|short|cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "SI|0|IC|1|cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
          "P|0|AFTER   = 1" );
+
+   CASE( "source_read_on_first_use",
+         "NEW|A       = 1~B       = 2", "P|0|C       = 3" );
+   CASE( "source_read_fits_batches",
+         "NEW|A       = 1~B       = 2~#~C       = 3~D       = 4~#~E       = 5",
+         "CC", "RDF", "F|1|%f", "RDF", "RDF", "RDF" );
+   CASE( "source_bad_card",
+         "NEW|A       = 1~B       = 'x~C       = 3", "CC", "RDF" );
+   CASE( "write_fits_to_sink",
+         "NEW|A       = 1~B       = 2", "WRF", "P|0|Z       = 9" );
+   CASE( "write_fits_without_sink", "P|0|A       = 1", "WRF" );
+   CASE( "write_fits_attributes",
+         "ASC|Warnings|BadKeyName", "ASC|FitsAxisOrder|<copy>",
+         "P|0|A       = 1", "WRF", "AC|Warnings", "AC|FitsAxisOrder" );
+   CASE( "empty_fits_attributes",
+         "ASC|Warnings|BadKeyName", "ASC|FitsAxisOrder|<copy>",
+         "P|0|A       = 1", "E", "AC|Warnings", "AC|FitsAxisOrder" );
+   CASE( "put_cards_attributes",
+         "ASC|Warnings|BadKeyName", "PC|AAA     = 1", "AC|Warnings" );
+   CASE( "sink_skips_used_cards",
+         "NEW|A       = 1", "W", "CC", "R" );
+   CASE( "sink_skips_purged_cards",
+         "NEW|CRPIX1  = 1~A       = 1", "PW" );
+   CASE( "source_file",
+         "P|0|A       = 1", "CC",
+         "MKF|fcp_src.txt|B       = 2  ~C       = 3\r~~HISTORY hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh~D       = 4",
+         "SRF|fcp_src.txt" );
+   CASE( "source_file_missing", "P|0|A       = 1", "SRF|fcp_none.txt" );
+   CASE( "sink_file", "P|0|A       = 1", "SKF|fcp_sink.txt" );
+   CASE( "sink_file_replaces_sink",
+         "NEW|X       = 1", "SKF|fcp_sink2.txt" );
+   CASE( "sink_file_write_fits",
+         "P|0|A       = 1", "SKF|fcp_sink3.txt", "WRF", "CATF|fcp_sink3.txt",
+         "P|0|B       = 2" );
+   CASE( "sink_file_unopenable",
+         "P|0|A       = 1", "SKF|fcp_nodir/x.txt", "WRF", "AX|SinkFile" );
+   CASE( "copy_has_no_source_or_sink",
+         "NEW|A       = 1~B       = 2", "CPN", "SKF|fcp_sink4.txt", "CPN" );
+   CASE( "skip_and_full_defaults", "AI|Skip", "AI|Full" );
+   CASE( "native_full_minus1", "WF" );
+   CASE( "native_full_0", "ASI|Full|0", "WF", "CC", "R" );
+   CASE( "native_full_1", "ASI|Full|1", "WF" );
+   CASE( "native_no_comments", "ASI|Comment|0", "WF" );
+   CASE( "native_skip_0", "P|0|A       = 1", "W", "CC", "ASI|Skip|0", "R" );
+   CASE( "native_skip_0_from_begin", "W", "CC", "ASI|Skip|0", "R" );
 
    printf( "];\n" );
    return 0;

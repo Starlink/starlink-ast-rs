@@ -60,7 +60,7 @@ fn run(enc: &str, sip_ok: &str) -> String {
     for line in std::fs::read_to_string(path).unwrap().lines() {
         fin.put_fits(line, false).unwrap();
     }
-    fin.clear_card();
+    fin.clear_card().unwrap();
     let obj = fin.read().unwrap().expect("sip.head holds a FrameSet");
 
     let mut out = FitsChan::new();
@@ -73,7 +73,7 @@ fn run(enc: &str, sip_ok: &str) -> String {
     }
     let n = out.write(&obj).map_or(-1, |n| n as i64);
     let mut got = format!("wrote {n}\n");
-    out.clear_card();
+    out.clear_card().unwrap();
     while let Some(card) = out.find_fits("%f", true).unwrap() {
         got.push_str(&card);
         got.push('\n');

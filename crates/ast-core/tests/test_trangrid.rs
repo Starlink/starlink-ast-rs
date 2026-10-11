@@ -41,7 +41,7 @@ fn read_tan(extra: &[&str]) -> ast_core::error::AstResult<Option<AnyObject>> {
     for card in TAN_CARDS.iter().chain(extra) {
         fc.put_fits(card, false).unwrap();
     }
-    fc.clear_card();
+    fc.clear_card().unwrap();
     fc.read()
 }
 

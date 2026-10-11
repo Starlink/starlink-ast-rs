@@ -1319,6 +1319,16 @@ The string-to-complex conversions tested for one value from the reads `"%lf %lf 
 Fixed on `u/timj/norm-unit` in 4d24a55c; `testfitschan` `testcnvtype`.
 The port's `card_value::cnv_type` is `CnvType` as fixed; `tests/test_fitschan_cursor_oracle.rs` (the `conversions` case), whose probe needs the fixed library.
 
+### RESOLVED (upstream 781e328e): emptying or writing the cards clears the Warnings and FitsAxisOrder attributes
+
+C location: `fitschan.c` `EmptyFits`, `Delete` and `WriteFits`.
+
+`EmptyFits` freed the Warnings attribute value, a job only the destructor `Delete` should do, and `WriteFits` emptied the FitsChan by calling `Delete`, which also frees the FitsAxisOrder value.
+So `astEmptyFits` and `astPutCards` reset Warnings to its default, and `astWriteFits` reset Warnings and FitsAxisOrder, although each is documented as deleting only the cards.
+
+Fixed on `u/timj/norm-unit` in 781e328e: `Delete` frees the Warnings value itself, and `WriteFits` writes the cards with `WriteToSink` and removes them with `EmptyFits`; `testfitschan` `testemptykeepsattributes`.
+The port's `empty_fits`, `put_cards` and `write_fits` leave the attributes; `tests/test_fitschan_cursor_oracle.rs` (the `write_fits_attributes`, `empty_fits_attributes` and `put_cards_attributes` cases), whose probe needs the fixed library.
+
 ### RESOLVED (upstream f550fcc6): a padded TIMESYS is not recognised when writing, so the date is written in UTC
 
 C location: `fitschan.c` `SkySys`.

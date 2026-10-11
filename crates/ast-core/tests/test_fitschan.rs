@@ -33,7 +33,11 @@ fn parse_sip_header() {
     let mut fc = FitsChan::from_header(&text).unwrap();
 
     // The SIP header has well over 50 cards (288 lines, many are cards).
-    assert!(fc.ncard() > 50, "expected > 50 cards, got {}", fc.ncard());
+    assert!(
+        fc.ncard().unwrap() > 50,
+        "expected > 50 cards, got {}",
+        fc.ncard().unwrap()
+    );
 
     // Verify known keywords.
     assert_eq!(fc.get_fits_i(Some("NAXIS")).unwrap(), Some(2));
@@ -129,10 +133,10 @@ fn put_fits_find_fits_round_trip() {
     // Put a card using an 80-char format.
     let card = "TESTKEY =                   42 / A test integer keyword                          ";
     fc.put_fits(card, false).unwrap();
-    assert_eq!(fc.ncard(), 1);
+    assert_eq!(fc.ncard().unwrap(), 1);
 
     // Find it back.
-    fc.clear_card();
+    fc.clear_card().unwrap();
     let found = fc.find_fits("TESTKEY", false).unwrap();
     assert!(found.is_some(), "TESTKEY should be found");
 
@@ -199,16 +203,16 @@ fn del_fits_removes_card() {
     fc.set_fits_i("ALPHA", 1, "First", false).unwrap();
     fc.set_fits_i("BETA", 2, "Second", false).unwrap();
     fc.set_fits_i("GAMMA", 3, "Third", false).unwrap();
-    assert_eq!(fc.ncard(), 3);
+    assert_eq!(fc.ncard().unwrap(), 3);
 
     // Find BETA and position on it.
-    fc.clear_card();
+    fc.clear_card().unwrap();
     let found = fc.find_fits("BETA", false).unwrap();
     assert!(found.is_some());
 
     // Delete it.
-    fc.del_fits();
-    assert_eq!(fc.ncard(), 2);
+    fc.del_fits().unwrap();
+    assert_eq!(fc.ncard().unwrap(), 2);
 
     // Verify BETA is gone.
     assert_eq!(fc.get_fits_i(Some("BETA")).unwrap(), None);
@@ -226,10 +230,10 @@ fn del_fits_removes_card() {
 fn empty_fits_clears_header() {
     let text = load_sip_header();
     let mut fc = FitsChan::from_header(&text).unwrap();
-    assert!(fc.ncard() > 0);
+    assert!(fc.ncard().unwrap() > 0);
 
-    fc.empty_fits();
-    assert_eq!(fc.ncard(), 0);
+    fc.empty_fits().unwrap();
+    assert_eq!(fc.ncard().unwrap(), 0);
 
     // All keywords should now return None.
     assert_eq!(fc.get_fits_i(Some("NAXIS")).unwrap(), None);
@@ -251,7 +255,7 @@ fn find_fits_iteration_with_inc() {
     // Iterate through all cards from beginning using find_fits with a
     // common prefix search won't work directly since each keyword differs.
     // Instead, verify sequential find operations work properly.
-    fc.clear_card();
+    fc.clear_card().unwrap();
 
     let card1 = fc.find_fits("KEY1", true).unwrap();
     assert!(card1.is_some());
@@ -278,13 +282,13 @@ fn find_fits_searches_forward_only() {
     fc.set_fits_i("THIRD", 3, "", false).unwrap();
 
     // Advance past SECOND.
-    fc.clear_card();
+    fc.clear_card().unwrap();
     fc.find_fits("SECOND", true).unwrap();
 
     // C's astFindFits searches forward from the current card only, so FIRST
     // is not found and the FitsChan is left at end-of-file.
     assert_eq!(fc.find_fits("FIRST", true).unwrap(), None);
-    assert_eq!(fc.card(), fc.ncard() + 1);
+    assert_eq!(fc.card().unwrap(), fc.ncard().unwrap() + 1);
 }
 
 // ===========================================================================
@@ -302,10 +306,13 @@ fn native_round_trip_zoommap() {
     fc.write(&obj).expect("write should succeed");
 
     // Should have stored COMMENT cards.
-    assert!(fc.ncard() > 0, "FitsChan should have cards after write");
+    assert!(
+        fc.ncard().unwrap() > 0,
+        "FitsChan should have cards after write"
+    );
 
     // Read it back.
-    fc.clear_card();
+    fc.clear_card().unwrap();
     let result = fc.read().expect("read should succeed");
     assert!(result.is_some(), "read should return an object");
 
@@ -339,10 +346,10 @@ fn native_round_trip_skyframe() {
     let mut fc = FitsChan::new();
     fc.set_encoding(Encoding::Native);
     fc.write(&obj).expect("write SkyFrame should succeed");
-    assert!(fc.ncard() > 0);
+    assert!(fc.ncard().unwrap() > 0);
 
     // Read back.
-    fc.clear_card();
+    fc.clear_card().unwrap();
     let result = fc.read().expect("read should succeed");
     assert!(result.is_some(), "read should return an object");
 
@@ -443,13 +450,13 @@ fn fits_digits_default_and_set() {
 fn overwrite_true_replaces_card() {
     let mut fc = FitsChan::new();
     fc.set_fits_i("NAXIS", 2, "Original", false).unwrap();
-    assert_eq!(fc.ncard(), 1);
+    assert_eq!(fc.ncard().unwrap(), 1);
 
     // Overwriting replaces the current card, so make NAXIS current first;
     // at end-of-file the card would be appended instead.
-    fc.clear_card();
+    fc.clear_card().unwrap();
     fc.set_fits_i("NAXIS", 3, "Updated", true).unwrap();
-    assert_eq!(fc.ncard(), 1); // Still only one card.
+    assert_eq!(fc.ncard().unwrap(), 1); // Still only one card.
     assert_eq!(fc.get_fits_i(Some("NAXIS")).unwrap(), Some(3));
 }
 
@@ -459,7 +466,7 @@ fn overwrite_false_appends_duplicate() {
     fc.set_fits_i("NAXIS", 2, "First", false).unwrap();
     fc.set_fits_i("NAXIS", 3, "Second", false).unwrap();
     // Both cards stored (first occurrence wins for get).
-    assert_eq!(fc.ncard(), 2);
+    assert_eq!(fc.ncard().unwrap(), 2);
 }
 
 // ===========================================================================
@@ -484,14 +491,14 @@ fn native_rewind_and_reread() {
     fc.write(&AnyObject::ZoomMap(zm)).unwrap();
 
     // Read the object.
-    fc.clear_card();
+    fc.clear_card().unwrap();
     let obj1 = fc.read().unwrap().expect("first read");
     let m1 = obj1.as_mapping().unwrap();
     assert_eq!(m1.nin(), 2);
 
     // Rewind and read again — the cards are gone, so there is nothing left
     // to read.
-    fc.clear_card();
+    fc.clear_card().unwrap();
     let obj2 = fc.read().unwrap();
     assert!(obj2.is_none(), "second read should find no object");
 }

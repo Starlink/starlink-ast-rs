@@ -96,7 +96,7 @@ fn make_wcs(dims: [usize; 2]) -> FrameSet {
         .unwrap();
     fc.set_fits_f("CDELT2", 10.0 / dims[1] as f64, " ", false)
         .unwrap();
-    fc.clear_card();
+    fc.clear_card().unwrap();
     let Some(AnyObject::FrameSet(wcs)) = fc.read().unwrap() else {
         panic!("expected a FrameSet");
     };

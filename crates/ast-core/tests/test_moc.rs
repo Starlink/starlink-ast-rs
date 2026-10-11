@@ -107,7 +107,7 @@ fn makeimage() -> (Vec<f32>, [usize; 2], FrameSet) {
     fc.set_fits_f("CDELT3", 1.27, " ", true).unwrap();
     fc.set_fits_s("CTYPE3", "VRAD    ", " ", true).unwrap();
     fc.set_fits_s("CUNIT3", "km/s    ", " ", true).unwrap();
-    fc.clear_card();
+    fc.clear_card().unwrap();
     let Some(AnyObject::FrameSet(fs)) = fc.read().unwrap() else {
         panic!("expected a FrameSet");
     };

@@ -73,7 +73,10 @@ fn write_produces_fits_cards() {
     let mut fc = write_to_fitschan(&obj);
 
     // The output should contain some cards.
-    assert!(fc.ncard() > 0, "Written FitsChan should have cards, got 0");
+    assert!(
+        fc.ncard().unwrap() > 0,
+        "Written FitsChan should have cards, got 0"
+    );
 
     // Check that fundamental WCS keywords are present.
     assert!(
@@ -155,7 +158,7 @@ fn round_trip_read_write_read() {
     let mut fc2 = write_to_fitschan(&obj1);
 
     // Step 3: Read the written cards back into a new FrameSet.
-    fc2.clear_card();
+    fc2.clear_card().unwrap();
     let obj2 = fc2
         .read()
         .expect("re-read should not error")
@@ -220,7 +223,7 @@ fn write_spectral_frameset() {
 
     // The output should contain cards.
     assert!(
-        fc.ncard() > 0,
+        fc.ncard().unwrap() > 0,
         "Written FitsChan for spectral should have cards"
     );
 
@@ -249,7 +252,7 @@ fn write_spectral_round_trip() {
     let mut fc2 = write_to_fitschan(&obj1);
 
     // Step 3: Read back.
-    fc2.clear_card();
+    fc2.clear_card().unwrap();
     let obj2 = fc2
         .read()
         .expect("re-read should not error")
@@ -409,7 +412,7 @@ RESTWAV = 4.9998742161440962E-7 / [m] Rest wavelength";
         "grism write should match the C library's cards"
     );
 
-    fc.clear_card();
+    fc.clear_card().unwrap();
     let obj2 = fc
         .read()
         .expect("read-back should not error")
