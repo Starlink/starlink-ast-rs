@@ -131,7 +131,7 @@ fn main() {
                     }
                 }
                 "fitsrounding" => {
-                    if let Ok(d) = val.parse::<usize>() {
+                    if let Ok(d) = val.parse::<i32>() {
                         fc_out.set_fits_rounding(d);
                     }
                 }

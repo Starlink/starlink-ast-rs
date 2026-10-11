@@ -204,6 +204,7 @@ fn run(fc: &mut FitsChan, op: &str, out: &mut String) {
         "ENC" => {
             fc.set_encoding(match arg(1) {
                 "FITS-WCS" => Encoding::FitsWcs,
+                "FITS-PC" => Encoding::FitsPc,
                 "NATIVE" => Encoding::Native,
                 other => panic!("no encoding {other}"),
             });
@@ -224,6 +225,65 @@ fn run(fc: &mut FitsChan, op: &str, out: &mut String) {
         "TF" => result(fc.test_fits(name(arg(1))), |v| match v {
             None => "= nf\n".to_string(),
             Some(has) => format!("= {}\n", i32::from(has)),
+        }),
+        "AI" => {
+            let (v, set) = match arg(1) {
+                "SipReplace" => (i32::from(fc.sip_replace()), fc.test_sip_replace()),
+                "CarLin" => (i32::from(fc.car_lin()), fc.test_car_lin()),
+                "FitsRounding" => (fc.fits_rounding(), fc.test_fits_rounding()),
+                "FitsDigits" => (fc.fits_digits(), fc.test_fits_digits()),
+                "DefB1950" => (i32::from(fc.def_b1950()), fc.test_def_b1950()),
+                other => panic!("no int attribute {other}"),
+            };
+            format!("= {v} {}\n", i32::from(set))
+        }
+        "AD" => {
+            let (v, set) = match arg(1) {
+                "FitsTol" => (fc.fits_tol(), fc.test_fits_tol()),
+                other => panic!("no double attribute {other}"),
+            };
+            format!("= {} {}\n", c_g17(v), i32::from(set))
+        }
+        "ASI" => {
+            let v: i32 = arg(2).parse().unwrap();
+            match arg(1) {
+                "SipReplace" => fc.set_sip_replace(v != 0),
+                "CarLin" => fc.set_car_lin(v != 0),
+                "FitsRounding" => fc.set_fits_rounding(v),
+                "FitsDigits" => fc.set_fits_digits(v),
+                "DefB1950" => fc.set_def_b1950(v != 0),
+                other => panic!("no int attribute {other}"),
+            }
+            String::new()
+        }
+        "ASD" => {
+            match arg(1) {
+                "FitsTol" => fc.set_fits_tol(arg(2).parse().unwrap()),
+                other => panic!("no double attribute {other}"),
+            }
+            String::new()
+        }
+        "AX" => {
+            match arg(1) {
+                "SipReplace" => fc.clear_sip_replace(),
+                "CarLin" => fc.clear_car_lin(),
+                "FitsRounding" => fc.clear_fits_rounding(),
+                "FitsTol" => fc.clear_fits_tol(),
+                "FitsDigits" => fc.clear_fits_digits(),
+                "DefB1950" => fc.clear_def_b1950(),
+                other => panic!("no attribute {other}"),
+            }
+            String::new()
+        }
+        "RW" => result(fc.read(), |obj| match obj {
+            Some(obj) => {
+                let class = match obj {
+                    AnyObject::FrameSet(_) => "FrameSet",
+                    _ => "another class",
+                };
+                result(fc.write(&obj), |n| format!("= {class} {n}\n"))
+            }
+            None => "= null 0\n".to_string(),
         }),
         "FD" => {
             fc.set_fits_digits(arg(1).parse().unwrap());

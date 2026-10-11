@@ -2,6 +2,12 @@
 
 ## Revision history
 
+- **2026-10-11 (rev 20)**: FitsChan's SipReplace, CarLin, FitsRounding,
+  FitsTol and DefB1950 each have get, set, test and clear
+  (`sip_replace`, `def_b1950` and their test and clear methods are new).
+  FitsRounding is an `i32`; FitsRounding and FitsTol store a negative
+  value as 0, as C does. Unless set, DefB1950 is true when the Encoding
+  is not FITS-WCS, and every read takes it from the attribute.
 - **2026-10-11 (rev 19)**: FitsChan's FitsDigits is an `i32`, kept as
   set (`set_fits_digits`, `fits_digits`), with `test_fits_digits` and
   `clear_fits_digits`. `fitschan::format` gives C's `EncodeFloat` as

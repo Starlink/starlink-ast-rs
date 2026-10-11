@@ -27,6 +27,10 @@
  *   TF|name              astTestFits, a name of "-" meaning NULL
  *   QCD                  get and test CDMatrix
  *   FD|n                 set FitsDigits
+ *   AI|attr  AD|attr     get an int or double attribute, and test it
+ *   ASI|attr|v  ASD|attr|v  set an int or double attribute
+ *   AX|attr              clear an attribute
+ *   RW                   astRead, then astWrite of what was read
  *   SCD|0 or 1  XCD      set and clear CDMatrix
  *   R                    astRead
  *   W                    astWrite of a 2-D ZoomMap of factor 2
@@ -212,6 +216,21 @@ static void run( AstFitsChan *fc, const char *op, int *status ) {
       int there;
       int has = astTestFits( fc, strcmp( f1, "-" ) ? f1 : NULL, &there );
       snprintf( buf, sizeof buf, "= %s\n", !there ? "nf" : has ? "1" : "0" );
+   } else if( !strcmp( f0, "AI" ) ) {
+      snprintf( buf, sizeof buf, "= %d %d\n", astGetI( fc, f1 ), astTest( fc, f1 ) );
+   } else if( !strcmp( f0, "AD" ) ) {
+      snprintf( buf, sizeof buf, "= %.17g %d\n", astGetD( fc, f1 ), astTest( fc, f1 ) );
+   } else if( !strcmp( f0, "ASI" ) ) {
+      astSetI( fc, f1, atoi( f2 ) );
+   } else if( !strcmp( f0, "ASD" ) ) {
+      astSetD( fc, f1, atof( f2 ) );
+   } else if( !strcmp( f0, "AX" ) ) {
+      astClear( fc, f1 );
+   } else if( !strcmp( f0, "RW" ) ) {
+      AstObject *obj = astRead( fc );
+      snprintf( buf, sizeof buf, "= %s %d\n", obj ? astGetC( obj, "Class" ) : "null",
+                obj ? astWrite( fc, obj ) : 0 );
+      if( obj ) obj = astAnnul( obj );
    } else if( !strcmp( f0, "FD" ) ) {
       astSetI( fc, "FitsDigits", atoi( f1 ) );
    } else if( !strcmp( f0, "QCD" ) ) {
@@ -475,6 +494,21 @@ int main( void ) {
          "FD|25", "SF|0|V0|123456789.0|", "SF|0|V1|0.3333333333333333|", "SF|0|V2|266.41666666666663|", "SF|0|V3|-0.0005|", "SF|0|V4|1e-300|", "SF|0|V5|-1.5e300|", "SF|0|V6|0.0|", "SF|0|V7|-0.0|", "SF|0|V8|12345678901234567890.0|", "SF|0|V9|-123456789012345678.0|", "SF|0|V10|99999.99999999|", "SF|0|V11|1.0|", "SF|0|V12|-7.0|", "SCF|0|CF|1.5|-0.0005|", "SCF|0|CG|-123456789012345678.0|2.0|" );
    CASE( "fits_digits_minus17",
          "FD|-17", "SF|0|W0|0.3333333333333333|", "SF|0|W1|266.41666666666663|", "SF|0|W2|-1.2345678901234567e-100|", "SF|0|W3|-123456789012345678.0|", "SF|0|W4|-0.00012345678901234567|", "SF|0|W5|1.2345678901234567e300|", "SCF|0|CW|-1.2345678901234567e-100|-0.00012345678901234567|" );
+   CASE( "attribute_accessors",
+         "AI|SipReplace", "ASI|SipReplace|0", "AI|SipReplace", "AX|SipReplace", "AI|SipReplace",
+         "AI|CarLin", "ASI|CarLin|1", "AI|CarLin", "AX|CarLin", "AI|CarLin",
+         "AI|FitsRounding", "ASI|FitsRounding|-3", "AI|FitsRounding", "AX|FitsRounding", "AI|FitsRounding",
+         "AD|FitsTol", "ASD|FitsTol|-1", "AD|FitsTol", "ASD|FitsTol|0.5", "AD|FitsTol", "AX|FitsTol", "AD|FitsTol",
+         "AI|FitsDigits", "ASI|FitsDigits|17", "AI|FitsDigits", "ASI|FitsDigits|-4", "AI|FitsDigits", "AX|FitsDigits", "AI|FitsDigits",
+         "AI|DefB1950", "ENC|FITS-WCS", "AI|DefB1950", "ASI|DefB1950|1", "AI|DefB1950", "AX|DefB1950", "AI|DefB1950" );
+   CASE( "fits_rounding_zero",
+         "ASI|FitsRounding|0", "SF|0|R|1.2999999|", "AX|FitsRounding", "SF|0|S|1.2999999|" );
+   CASE( "def_b1950_default_wcs",
+         "P|0|NAXIS   = 2", "P|0|NAXIS1  = 100", "P|0|NAXIS2  = 200", "P|0|CRPIX1  = 50", "P|0|CRPIX2  = 100", "P|0|CRVAL1  = 10", "P|0|CRVAL2  = 20", "P|0|CTYPE1  = 'RA---TAN'", "P|0|CTYPE2  = 'DEC--TAN'", "P|0|CD1_1   = -0.001", "P|0|CD2_2   = 0.001", "ENC|FITS-WCS", "CC", "RW" );
+   CASE( "def_b1950_set_wcs",
+         "P|0|NAXIS   = 2", "P|0|NAXIS1  = 100", "P|0|NAXIS2  = 200", "P|0|CRPIX1  = 50", "P|0|CRPIX2  = 100", "P|0|CRVAL1  = 10", "P|0|CRVAL2  = 20", "P|0|CTYPE1  = 'RA---TAN'", "P|0|CTYPE2  = 'DEC--TAN'", "P|0|CD1_1   = -0.001", "P|0|CD2_2   = 0.001", "ENC|FITS-WCS", "ASI|DefB1950|1", "CC", "RW" );
+   CASE( "def_b1950_cleared_pc",
+         "P|0|NAXIS   = 2", "P|0|NAXIS1  = 100", "P|0|NAXIS2  = 200", "P|0|CRPIX1  = 50", "P|0|CRPIX2  = 100", "P|0|CRVAL1  = 10", "P|0|CRVAL2  = 20", "P|0|CTYPE1  = 'RA---TAN'", "P|0|CTYPE2  = 'DEC--TAN'", "P|0|CD1_1   = -0.001", "P|0|CD2_2   = 0.001", "ENC|FITS-PC", "ASI|DefB1950|0", "CC", "RW" );
    CASE( "name_checks",
          "P|0|A       = 1", "P|0|A=1     = 5", "P|0|A=B", "P|0|AB CD   = 6",
          "P|0|Z       = 2" );

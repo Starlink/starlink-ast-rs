@@ -293,9 +293,7 @@ fn run_case(case: &TestCase, force_comparison: bool) -> Result<(), String> {
                 fc_out.set_cd_matrix(val == "1" || val.eq_ignore_ascii_case("true"));
             }
             "fitsrounding" => {
-                if let Ok(r) = val.parse::<usize>() {
-                    fc_out.set_fits_rounding(r);
-                }
+                fc_out.set_fits_rounding(val.parse().expect("FitsRounding is an integer"))
             }
             "sipok" => fc_out.set_sip_ok(val == "1" || val.eq_ignore_ascii_case("true")),
             // Read-side, applied in load_input.

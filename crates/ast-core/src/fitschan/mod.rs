@@ -103,23 +103,18 @@ pub struct FitsChan {
     encoding: Option<Encoding>,
     warnings: Vec<String>,
     fits_digits: i32,
-    /// Number of leading significant digits protected from rounding by
-    /// the formatter (mirrors C's `FitsRounding` attribute, default 10).
-    fits_rounding: usize,
+    /// The FitsRounding attribute, `None` when unset.
+    fits_rounding: Option<i32>,
     /// The CDMatrix attribute, `None` when unset.
     cd_matrix: Option<bool>,
-    /// The SipReplace attribute (fitschan.c default 1): when reading a
-    /// SIP header, replace any supplied inverse by an astPolyTran fit
-    /// (falling back to the iterative inverse if the fit fails).
-    sip_replace: bool,
-    /// The CarLin attribute (fitschan.c default 0): when true a `-CAR`
-    /// projection is read as a simple linear pixel-to-sky mapping rather
-    /// than as a spherical Cartesian projection.
-    car_lin: bool,
-    /// The FitsTol attribute (fitschan.c default 0.1): the maximum
-    /// departure from linearity, in pixels, that a Mapping may show and
-    /// still be described by the linear FITS-WCS keywords.
-    fits_tol: f64,
+    /// The SipReplace attribute, `None` when unset.
+    sip_replace: Option<bool>,
+    /// The CarLin attribute, `None` when unset.
+    car_lin: Option<bool>,
+    /// The FitsTol attribute, `None` when unset.
+    fits_tol: Option<f64>,
+    /// The DefB1950 attribute, `None` when unset.
+    def_b1950: Option<bool>,
     /// The transformations IntraMaps read here can name.
     intra: IntraRegistry,
     /// The last sequence number given to each keyword base by the NATIVE
@@ -145,11 +140,12 @@ impl FitsChan {
             warnings: Vec::new(),
             intra: IntraRegistry::new(),
             fits_digits: DEFAULT_FITS_DIGITS,
-            fits_rounding: 10,
+            fits_rounding: None,
             cd_matrix: None,
-            sip_replace: true,
-            car_lin: false,
-            fits_tol: fset_to_store::FITS_TOL_DEFAULT,
+            sip_replace: None,
+            car_lin: None,
+            fits_tol: None,
+            def_b1950: None,
             keyseq: std::collections::HashMap::new(),
             clean: None,
             sip_ok: None,
@@ -172,11 +168,12 @@ impl FitsChan {
             warnings: Vec::new(),
             intra: IntraRegistry::new(),
             fits_digits: DEFAULT_FITS_DIGITS,
-            fits_rounding: 10,
+            fits_rounding: None,
             cd_matrix: None,
-            sip_replace: true,
-            car_lin: false,
-            fits_tol: fset_to_store::FITS_TOL_DEFAULT,
+            sip_replace: None,
+            car_lin: None,
+            fits_tol: None,
+            def_b1950: None,
             keyseq: std::collections::HashMap::new(),
             clean: None,
             sip_ok: None,
@@ -377,7 +374,7 @@ impl FitsChan {
             .cards
             .current()
             .expect("a card was found")
-            .format_with_digits_and_rounding(self.fits_digits, self.fits_rounding)?;
+            .format_with_digits_and_rounding(self.fits_digits, self.fits_rounding() as usize)?;
         if inc {
             self.cards.move_card(1);
         }
@@ -416,7 +413,12 @@ impl FitsChan {
         let has_end = visible.iter().any(|card| card.keyword == "END");
         let mut lines = visible
             .iter()
-            .map(|card| card.format_with_digits_and_rounding(self.fits_digits, self.fits_rounding))
+            .map(|card| {
+                card.format_with_digits_and_rounding(
+                    self.fits_digits,
+                    self.fits_rounding() as usize,
+                )
+            })
             .collect::<AstResult<Vec<String>>>()?;
         if !has_end {
             lines.push(format!("{:<80}", "END"));
@@ -470,7 +472,7 @@ impl FitsChan {
         match card_value::cnv_type(
             current.map(|c| &c.value),
             want,
-            self.fits_rounding,
+            self.fits_rounding() as usize,
             &card_name,
         )
         .map_err(|e| context(e, &lname))?
@@ -868,17 +870,27 @@ impl FitsChan {
         self.fits_digits = DEFAULT_FITS_DIGITS;
     }
 
-    /// Set the FitsRounding attribute (number of leading significant
-    /// digits protected from sequence-rounding by the float formatter).
-    /// Default 10. Setting to 0 protects only the first significant
-    /// digit (matching C's `fitsrounding < 1 → 1` clamp).
-    pub fn set_fits_rounding(&mut self, fitsrnd: usize) {
-        self.fits_rounding = fitsrnd;
+    /// Set the FitsRounding attribute: the number of leading significant
+    /// digits of a floating point value that are never changed when long
+    /// runs of 0s or 9s after them are rounded out. A negative value is
+    /// stored as 0, as C stores it.
+    pub fn set_fits_rounding(&mut self, fitsrnd: i32) {
+        self.fits_rounding = Some(fitsrnd.max(0));
     }
 
-    /// Return the current FitsRounding value.
-    pub fn fits_rounding(&self) -> usize {
-        self.fits_rounding
+    /// The FitsRounding attribute (default 10).
+    pub fn fits_rounding(&self) -> i32 {
+        self.fits_rounding.unwrap_or(10)
+    }
+
+    /// Whether FitsRounding has been set.
+    pub fn test_fits_rounding(&self) -> bool {
+        self.fits_rounding.is_some()
+    }
+
+    /// Clear FitsRounding, restoring its default.
+    pub fn clear_fits_rounding(&mut self) {
+        self.fits_rounding = None;
     }
 
     /// The Clean attribute: whether a read that fails still removes the
@@ -929,7 +941,7 @@ impl FitsChan {
     /// The attributes a write reads while building a FitsStore.
     fn write_attrs(&self) -> fset_to_store::WriteAttrs {
         fset_to_store::WriteAttrs {
-            fits_tol: self.fits_tol,
+            fits_tol: self.fits_tol(),
             sip_ok: self.sip_ok(),
         }
     }
@@ -951,39 +963,97 @@ impl FitsChan {
         self.cd_matrix = None;
     }
 
-    /// Set the SipReplace attribute (mirrors C `SipReplace`, default
-    /// true): controls whether reading a SIP header refits the inverse
-    /// via `PolyMap::poly_tran`.
+    /// Set the SipReplace attribute: whether reading a SIP header replaces
+    /// any inverse it supplies by a polynomial fitted to the forward
+    /// transformation.
     pub fn set_sip_replace(&mut self, v: bool) {
-        self.sip_replace = v;
+        self.sip_replace = Some(v);
     }
 
-    /// Set the CarLin attribute (mirrors C `CarLin`, default false): when
-    /// true, a `-CAR` projection is read as a simple linear pixel-to-sky
-    /// mapping rather than as a spherical Cartesian projection, and the
-    /// MSX-CAR `CRPIX` wrap in `spec_trans` is suppressed.
+    /// The SipReplace attribute (default true).
+    pub fn sip_replace(&self) -> bool {
+        self.sip_replace.unwrap_or(true)
+    }
+
+    /// Whether SipReplace has been set.
+    pub fn test_sip_replace(&self) -> bool {
+        self.sip_replace.is_some()
+    }
+
+    /// Clear SipReplace, restoring its default.
+    pub fn clear_sip_replace(&mut self) {
+        self.sip_replace = None;
+    }
+
+    /// Set the CarLin attribute: whether a `-CAR` projection is read as a
+    /// linear transformation from pixel to sky coordinates rather than as
+    /// a spherical Cartesian projection.
     pub fn set_car_lin(&mut self, v: bool) {
-        self.car_lin = v;
+        self.car_lin = Some(v);
     }
 
-    /// Return whether CarLin is enabled.
+    /// The CarLin attribute (default false).
     pub fn car_lin(&self) -> bool {
-        self.car_lin
+        self.car_lin.unwrap_or(false)
     }
 
-    /// Set the FitsTol attribute (mirrors C `FitsTol`, default 0.1): the
-    /// maximum departure from linearity, in pixels, that a Mapping may
-    /// show and still be described by the linear FITS-WCS keywords
-    /// (CRPIX, CD, PC, CDELT), with or without SIP distortion. A Mapping
-    /// that departs further has no FITS-WCS representation and
-    /// [`Channel::write`] reports that it wrote nothing.
+    /// Whether CarLin has been set.
+    pub fn test_car_lin(&self) -> bool {
+        self.car_lin.is_some()
+    }
+
+    /// Clear CarLin, restoring its default.
+    pub fn clear_car_lin(&mut self) {
+        self.car_lin = None;
+    }
+
+    /// Set the FitsTol attribute: the maximum departure from linearity, in
+    /// pixels, that a Mapping may show and still be described by the
+    /// linear FITS-WCS keywords (CRPIX, CD, PC, CDELT), with or without SIP
+    /// distortion. A Mapping that departs further has no FITS-WCS
+    /// representation and [`Channel::write`] reports that it wrote
+    /// nothing. A negative value is stored as 0, as C stores it.
     pub fn set_fits_tol(&mut self, tol: f64) {
-        self.fits_tol = tol;
+        self.fits_tol = Some(tol.max(0.0));
     }
 
-    /// Return the current FitsTol value.
+    /// The FitsTol attribute (default 0.1).
     pub fn fits_tol(&self) -> f64 {
-        self.fits_tol
+        self.fits_tol.unwrap_or(fset_to_store::FITS_TOL_DEFAULT)
+    }
+
+    /// Whether FitsTol has been set.
+    pub fn test_fits_tol(&self) -> bool {
+        self.fits_tol.is_some()
+    }
+
+    /// Clear FitsTol, restoring its default.
+    pub fn clear_fits_tol(&mut self) {
+        self.fits_tol = None;
+    }
+
+    /// Set the DefB1950 attribute: whether a celestial coordinate system
+    /// read from a header with neither RADESYS nor EQUINOX is FK4 B1950
+    /// rather than ICRS.
+    pub fn set_def_b1950(&mut self, v: bool) {
+        self.def_b1950 = Some(v);
+    }
+
+    /// The DefB1950 attribute. Unless set, it is true when the Encoding is
+    /// not FITS-WCS (C's `GetDefB1950`).
+    pub fn def_b1950(&self) -> bool {
+        self.def_b1950
+            .unwrap_or_else(|| self.encoding() != Encoding::FitsWcs)
+    }
+
+    /// Whether DefB1950 has been set.
+    pub fn test_def_b1950(&self) -> bool {
+        self.def_b1950.is_some()
+    }
+
+    /// Clear DefB1950, restoring its default.
+    pub fn clear_def_b1950(&mut self) {
+        self.def_b1950 = None;
     }
 
     /// The CDMatrix attribute. Unless set, it is true when the FitsChan
@@ -1204,6 +1274,7 @@ impl Channel for FitsChan {
         self.warnings.clear();
 
         let enc = self.encoding();
+        let def_b1950 = self.def_b1950();
         // The encodings other than NATIVE hold one FrameSet, read only when
         // the first card is current; a successful read leaves the FitsChan at
         // end-of-file and any other rewinds it (fitschan.c `Read`).
@@ -1261,7 +1332,7 @@ impl Channel for FitsChan {
                     let trans = spec_trans::spec_trans(
                         &self.cards,
                         Encoding::FitsWcs,
-                        self.car_lin,
+                        self.car_lin(),
                         &mut trans_warnings,
                     );
                     // The cards SpecTrans used, which C marks before WcsFcRead runs.
@@ -1269,17 +1340,17 @@ impl Channel for FitsChan {
                     let decoded = (|| -> AstResult<(AnyObject, Vec<String>, usize)> {
                         let (mut primary, mut alts) =
                             wcs_keywords::extract_wcs_keywords_with_alts(&trans)?;
-                        primary.sip_replace = self.sip_replace;
-                        primary.car_lin = self.car_lin;
+                        primary.sip_replace = self.sip_replace();
+                        primary.car_lin = self.car_lin();
                         for (_, st) in &mut alts {
-                            st.sip_replace = self.sip_replace;
-                            st.car_lin = self.car_lin;
+                            st.sip_replace = self.sip_replace();
+                            st.car_lin = self.car_lin();
                         }
                         let naxes = primary.naxis;
                         let (obj, warnings) = wcs_read::decode_wcs_with_alts_inner(
                             &primary,
                             &alts,
-                            false,
+                            def_b1950,
                             &self.cards,
                         )?;
                         Ok((obj, warnings, naxes))
@@ -1297,7 +1368,7 @@ impl Channel for FitsChan {
                     let trans = spec_trans::spec_trans(
                         &self.cards,
                         Encoding::FitsPc,
-                        self.car_lin,
+                        self.car_lin(),
                         &mut trans_warnings,
                     );
                     // The cards SpecTrans used, which C marks before WcsFcRead runs.
@@ -1305,17 +1376,17 @@ impl Channel for FitsChan {
                     let decoded = (|| -> AstResult<(AnyObject, Vec<String>, usize)> {
                         let (mut primary, mut alts) =
                             wcs_keywords::extract_wcs_keywords_with_alts(&trans)?;
-                        primary.sip_replace = self.sip_replace;
-                        primary.car_lin = self.car_lin;
+                        primary.sip_replace = self.sip_replace();
+                        primary.car_lin = self.car_lin();
                         for (_, st) in &mut alts {
-                            st.sip_replace = self.sip_replace;
-                            st.car_lin = self.car_lin;
+                            st.sip_replace = self.sip_replace();
+                            st.car_lin = self.car_lin();
                         }
                         let naxes = primary.naxis;
                         let (obj, warnings) = wcs_read::decode_wcs_with_alts_inner(
                             &primary,
                             &alts,
-                            true,
+                            def_b1950,
                             &self.cards,
                         )?;
                         Ok((obj, warnings, naxes))
@@ -1327,7 +1398,7 @@ impl Channel for FitsChan {
                     let trans = spec_trans::spec_trans(
                         &self.cards,
                         Encoding::FitsIraf,
-                        self.car_lin,
+                        self.car_lin(),
                         &mut trans_warnings,
                     );
                     // The cards SpecTrans used, which C marks before WcsFcRead runs.
@@ -1335,17 +1406,17 @@ impl Channel for FitsChan {
                     let decoded = (|| -> AstResult<(AnyObject, Vec<String>, usize)> {
                         let (mut primary, mut alts) =
                             wcs_keywords::extract_wcs_keywords_with_alts(&trans)?;
-                        primary.sip_replace = self.sip_replace;
-                        primary.car_lin = self.car_lin;
+                        primary.sip_replace = self.sip_replace();
+                        primary.car_lin = self.car_lin();
                         for (_, st) in &mut alts {
-                            st.sip_replace = self.sip_replace;
-                            st.car_lin = self.car_lin;
+                            st.sip_replace = self.sip_replace();
+                            st.car_lin = self.car_lin();
                         }
                         let naxes = primary.naxis;
                         let (obj, warnings) = wcs_read::decode_wcs_with_alts_inner(
                             &primary,
                             &alts,
-                            true,
+                            def_b1950,
                             &self.cards,
                         )?;
                         Ok((obj, warnings, naxes))
@@ -1354,15 +1425,19 @@ impl Channel for FitsChan {
                 }
                 Encoding::FitsAips | Encoding::FitsAipsPP => {
                     let mut trans_warnings: Vec<String> = Vec::new();
-                    let trans =
-                        spec_trans::spec_trans(&self.cards, enc, self.car_lin, &mut trans_warnings);
+                    let trans = spec_trans::spec_trans(
+                        &self.cards,
+                        enc,
+                        self.car_lin(),
+                        &mut trans_warnings,
+                    );
                     // The cards SpecTrans used, which C marks before WcsFcRead runs.
                     let spec_names = trans.take_consumed_names();
                     let decoded = (|| -> AstResult<(AnyObject, Vec<String>, usize)> {
                         let store = enc_aips::read_from_cards(&trans)?;
                         let naxes = store.naxis;
                         let (obj, warnings) =
-                            wcs_read::decode_wcs_inner(&store, true, &self.cards, ' ')?;
+                            wcs_read::decode_wcs_inner(&store, def_b1950, &self.cards, ' ')?;
                         Ok((obj, warnings, naxes))
                     })();
                     self.finish_foreign_read(decoded, trans_warnings, &trans, spec_names)
@@ -1372,7 +1447,7 @@ impl Channel for FitsChan {
                     let trans = spec_trans::spec_trans(
                         &self.cards,
                         Encoding::FitsClass,
-                        self.car_lin,
+                        self.car_lin(),
                         &mut trans_warnings,
                     );
                     // The cards SpecTrans used, which C marks before WcsFcRead runs.
@@ -1381,7 +1456,7 @@ impl Channel for FitsChan {
                         let store = enc_class::read_from_cards(&trans)?;
                         let naxes = store.naxis;
                         let (obj, warnings) =
-                            wcs_read::decode_wcs_inner(&store, true, &self.cards, ' ')?;
+                            wcs_read::decode_wcs_inner(&store, def_b1950, &self.cards, ' ')?;
                         Ok((obj, warnings, naxes))
                     })();
                     self.finish_foreign_read(decoded, trans_warnings, &trans, spec_names)
@@ -1395,7 +1470,7 @@ impl Channel for FitsChan {
                         let store = enc_dss::read_from_cards(&self.cards)?;
                         let naxes = store.naxis;
                         let (obj, warnings) =
-                            wcs_read::decode_wcs_inner(&store, true, &self.cards, ' ')?;
+                            wcs_read::decode_wcs_inner(&store, def_b1950, &self.cards, ' ')?;
                         Ok((obj, warnings, naxes))
                     })();
                     // The DSS reader records the cards it used on `self.cards`.
