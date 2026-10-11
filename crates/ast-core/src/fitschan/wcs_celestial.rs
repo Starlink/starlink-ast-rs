@@ -14,6 +14,7 @@
 //!     identity on the non-celestial axes)
 //! ```
 
+use super::warning::{Warning, Warnings};
 use std::f64::consts::PI;
 
 use super::fits_store::FitsStore;
@@ -101,7 +102,7 @@ pub(crate) struct CelestialResult {
     /// Warning messages to emit as ASTWARN cards (mirrors C `Warn`, e.g. the
     /// `badcel` condition for an unrecognised celestial system prefix,
     /// fitschan.c:39358).
-    pub warnings: Vec<String>,
+    pub warnings: Warnings,
 }
 
 /// The celestial axes of an axis description, as C's `WcsCelestial`
@@ -325,7 +326,7 @@ pub(crate) fn build_celestial_with_def_b1950(
     // Warning messages to emit as ASTWARN cards, in generation order — C
     // appends them to the FitsChan as each `Warn` call is reached, and the
     // `badpv` ones below come before `badcel`.
-    let mut warnings: Vec<String> = Vec::new();
+    let mut warnings: Warnings = Vec::new();
 
     // Store the supplied PVi_m projection parameters on the WcsMap, warning
     // for any the projection cannot use. Mirrors C `WcsCelestial`
@@ -346,11 +347,14 @@ pub(crate) fn build_celestial_with_def_b1950(
             // `set_pv` enforces the projection's per-axis limit, so its error
             // is the "parameter not used by this projection" signal.
             if wcsmap.set_pv(axis + 1, m, val).is_err() {
-                warnings.push(format!(
-                    "Projection parameter PV{}_{} found, but is not used by {} projections.",
-                    axis + 1,
-                    m,
-                    prj_name
+                warnings.push(Warning::new(
+                    "badpv",
+                    format!(
+                        "Projection parameter PV{}_{} found, but is not used by {} projections.",
+                        axis + 1,
+                        m,
+                        prj_name
+                    ),
                 ));
             }
         }
@@ -492,11 +496,14 @@ pub(crate) fn build_celestial_with_def_b1950(
     if lon_cel_kind == Some(CelKind::Unknown) {
         let lontype = store.ctype[lon_axis].as_deref().unwrap_or("?");
         let lattype = store.ctype[lat_axis].as_deref().unwrap_or("?");
-        warnings.push(format!(
-            "This FITS header contains references to an unknown \
+        warnings.push(Warning::new(
+            "badcel",
+            format!(
+                "This FITS header contains references to an unknown \
              spherical co-ordinate system specified in the values \
              {lontype} and {lattype}. It may not be possible to convert to \
              other standard co-ordinate systems."
+            ),
         ));
     }
 

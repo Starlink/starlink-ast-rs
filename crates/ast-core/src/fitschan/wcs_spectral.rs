@@ -13,6 +13,7 @@
 //! [`nonlin_spec_wcs`] which mirrors C `NonLinSpecWcs` (fitschan.c:23486).
 
 use super::fits_store::FitsStore;
+use super::warning::{Warning, Warnings};
 use crate::error::AstResult;
 use crate::frames::{Frame, FrameRef, SpecFrame, SpecSystem, StdOfRest};
 use crate::mappings::{
@@ -76,7 +77,7 @@ pub(crate) struct SpectralResult {
     /// `badctype` condition: the `-X2P` algorithm code's `P` character
     /// disagrees with the one the axis's own system implies
     /// (fitschan.c:23696-23704).
-    pub warnings: Vec<String>,
+    pub warnings: Warnings,
 }
 
 impl SpectralResult {
@@ -214,7 +215,7 @@ pub(crate) fn build_spectral(store: &FitsStore) -> Option<SpectralResult> {
     // call the algorithm-specific builder (mirrors C `WcsSpectral`
     // dispatch at fitschan.c:39593-39610).
     let crval = store.crval[axis].unwrap_or(0.0);
-    let mut warnings: Vec<String> = Vec::new();
+    let mut warnings: Warnings = Vec::new();
     let mapping: DynMapping = if algcode.is_empty() {
         Box::new(ShiftMap::new(vec![crval]))
     } else if is_nonlin_x2p(&algcode) {
@@ -293,7 +294,7 @@ fn nonlin_spec_wcs(
     algcode: &str,
     specfrm: &SpecFrame,
     crval: f64,
-) -> AstResult<(Option<DynMapping>, Vec<String>)> {
+) -> AstResult<(Option<DynMapping>, Warnings)> {
     // Identify the "X" system from algcode[1] and build a SpecFrame
     // copy describing X. Mirrors C:23579-23600. Copying the supplied
     // SpecFrame ensures rest_freq, std_of_rest, etc. are preserved.
@@ -319,7 +320,7 @@ fn nonlin_spec_wcs(
     // or not the conversion above succeeded — the only guard is that the X
     // system was identified. AST interprets the illegal "P" system correctly,
     // so nothing about the mapping changes.
-    let mut warnings: Vec<String> = Vec::new();
+    let mut warnings: Warnings = Vec::new();
     let s_sys = specfrm.system();
     let pc = match s_sys {
         // C's final `else` raises AST__INTER because it cannot prove the four
@@ -336,10 +337,13 @@ fn nonlin_spec_wcs(
         // characters, and the required "P" character.
         let text = s_sys.as_str();
         let stem = &algcode[..algcode.len().min(3)];
-        warnings.push(format!(
-            "The spectral CTYPE value {text}{algcode} is not legal - using \
+        warnings.push(Warning::new(
+            "badctype",
+            format!(
+                "The spectral CTYPE value {text}{algcode} is not legal - using \
              {text}{stem}{} instead.",
-            pc as char
+                pc as char
+            ),
         ));
     }
 

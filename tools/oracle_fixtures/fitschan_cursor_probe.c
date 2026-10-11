@@ -107,7 +107,7 @@ static const char *field( const char *op, int i, char *buf ) {
 }
 
 static void run( AstFitsChan *fc, const char *op, int *status ) {
-   char f0[ 400 ], f1[ 400 ], f2[ 400 ], f3[ 400 ], f4[ 400 ], buf[ 500 ];
+   char f0[ 400 ], f1[ 400 ], f2[ 400 ], f3[ 400 ], f4[ 400 ], buf[ 4000 ];
    char card[ 81 ];
    field( op, 0, f0 );
    field( op, 1, f1 );
@@ -220,6 +220,26 @@ static void run( AstFitsChan *fc, const char *op, int *status ) {
       snprintf( buf, sizeof buf, "= %d %d\n", astGetI( fc, f1 ), astTest( fc, f1 ) );
    } else if( !strcmp( f0, "AD" ) ) {
       snprintf( buf, sizeof buf, "= %.17g %d\n", astGetD( fc, f1 ), astTest( fc, f1 ) );
+   } else if( !strcmp( f0, "AC" ) ) {
+      snprintf( buf, sizeof buf, "= [%s] %d\n", astGetC( fc, f1 ),
+                strcmp( f1, "AllWarnings" ) ? astTest( fc, f1 ) : 0 );
+   } else if( !strcmp( f0, "ASC" ) ) {
+      astSetC( fc, f1, f2 );
+   } else if( !strcmp( f0, "WN" ) ) {
+      AstKeyMap *km = astWarnings( fc );
+      int i, n = km ? astMapSize( km ) : 0;
+      snprintf( buf, sizeof buf, "= %d\n", n );
+      for( i = 0; i < n; i++ ) {
+         char key[ 20 ];
+         const char *text;
+         sprintf( key, "Warning_%d", i + 1 );
+         if( astMapGet0C( km, key, &text ) ) {
+            strcat( buf, "|" );
+            strncat( buf, text, sizeof buf - strlen( buf ) - 3 );
+            strcat( buf, "\n" );
+         }
+      }
+      if( km ) km = astAnnul( km );
    } else if( !strcmp( f0, "ASI" ) ) {
       astSetI( fc, f1, atoi( f2 ) );
    } else if( !strcmp( f0, "ASD" ) ) {
@@ -529,6 +549,19 @@ int main( void ) {
    CASE( "celestial_lowercase", "P|0|NAXIS   = 2", "P|0|NAXIS1  = 100", "P|0|NAXIS2  = 200", "P|0|CRPIX1  = 50", "P|0|CRPIX2  = 100", "P|0|CRVAL1  = 10", "P|0|CRVAL2  = 20", "P|0|CD1_1   = -0.001", "P|0|CD2_2   = 0.001", "P|0|RADESYS = 'ICRS'", "P|0|CTYPE1  = 'ra---tan'", "P|0|CTYPE2  = 'dec--tan'", "ENC|FITS-WCS", "CC", "RW" );
    CASE( "celestial_bare_names", "P|0|NAXIS   = 2", "P|0|NAXIS1  = 100", "P|0|NAXIS2  = 200", "P|0|CRPIX1  = 50", "P|0|CRPIX2  = 100", "P|0|CRVAL1  = 10", "P|0|CRVAL2  = 20", "P|0|CD1_1   = -0.001", "P|0|CD2_2   = 0.001", "P|0|RADESYS = 'ICRS'", "P|0|CTYPE1  = 'RA'", "P|0|CTYPE2  = 'DEC'", "ENC|FITS-WCS", "CC", "RW" );
    CASE( "celestial_lowercase_projection", "P|0|NAXIS   = 2", "P|0|NAXIS1  = 100", "P|0|NAXIS2  = 200", "P|0|CRPIX1  = 50", "P|0|CRPIX2  = 100", "P|0|CRVAL1  = 10", "P|0|CRVAL2  = 20", "P|0|CD1_1   = -0.001", "P|0|CD2_2   = 0.001", "P|0|RADESYS = 'ICRS'", "P|0|CTYPE1  = 'RA---tan'", "P|0|CTYPE2  = 'DEC--tan'", "ENC|FITS-WCS", "CC", "RW" );
+   CASE( "warnings_accessors", "AC|Warnings", "AC|AllWarnings", "ASC|Warnings| BadVal\tnoCTYPE ", "AC|Warnings", "ASC|Warnings|BadVal bogus", "AC|Warnings", "ASC|Warnings| ", "AC|Warnings", "AX|Warnings", "AC|Warnings" );
+   CASE( "warnings_bad_name_default", "P|0|BAD%NAME= 1", "P|0|GOOD    = 'x", "WN" );
+   CASE( "warnings_bad_name_silenced", "ASC|Warnings|BadKeyValue", "P|0|BAD%NAME= 1", "P|0|GOOD    = 'x", "WN" );
+   CASE( "warnings_bad_value_only", "ASC|Warnings|badkeyvalue", "P|0|BAD%NAME= 1", "P|0|GOOD    = 'x", "WN" );
+   CASE( "warnings_lowercase_names", "P|0|bad%x   some text", "P|0|bad%y   = 1", "P|0|bad%z   = 'x' / c", "WN" );
+   CASE( "warnings_setter_names", "SI|0|bad.a|1|c", "SU|0|bad.b|c", "GF|bad.a", "TF|bad.b", "WN", "CM|0|x", "P|1|comment more", "P|0|comment again" );
+   CASE( "getter_bad_template", "P|0|A       = 1", "P|0|B       = 2", "P|0|C       = 3", "CC", "GF|b%a", "SC|2", "GF|c%a", "SC|4", "GF|x%a", "SC|1", "GF|a%", "SC|1", "GF|b%1", "SC|1", "GF|c%1d" );
+   CASE( "warnings_tab_separated", "ASC|Warnings|BadKeyName\tBadKeyValue", "P|0|BAD%NAME= 1", "WN" );
+   CASE( "warnings_bad_alt", "P|0|NAXIS   = 2", "P|0|NAXIS1  = 100", "P|0|NAXIS2  = 200", "P|0|CRPIX1  = 50", "P|0|CRPIX2  = 100", "P|0|CRVAL1  = 10", "P|0|CRVAL2  = 20", "P|0|CTYPE1  = 'RA---TAN'", "P|0|CTYPE2  = 'DEC--TAN'", "P|0|RADESYS = 'ICRS'", "P|0|CD1_1   = -0.001", "P|0|CD2_2   = 0.001", "P|0|CTYPE1A = 'RA---TAN'", "P|0|CTYPE2A = 'GLAT-TAN'", "P|0|CRVAL1A = 1", "P|0|CRVAL2A = 2", "P|0|CRPIX1A = 1", "P|0|CRPIX2A = 1", "ENC|FITS-WCS", "ASI|IgnoreBadAlt|1", "ASC|Warnings|BadAlt", "CC", "R", "WN" );
+   CASE( "warnings_bad_alt_default", "P|0|NAXIS   = 2", "P|0|NAXIS1  = 100", "P|0|NAXIS2  = 200", "P|0|CRPIX1  = 50", "P|0|CRPIX2  = 100", "P|0|CRVAL1  = 10", "P|0|CRVAL2  = 20", "P|0|CTYPE1  = 'RA---TAN'", "P|0|CTYPE2  = 'DEC--TAN'", "P|0|RADESYS = 'ICRS'", "P|0|CD1_1   = -0.001", "P|0|CD2_2   = 0.001", "P|0|CTYPE1A = 'RA---TAN'", "P|0|CTYPE2A = 'GLAT-TAN'", "P|0|CRVAL1A = 1", "P|0|CRVAL2A = 2", "P|0|CRPIX1A = 1", "P|0|CRPIX2A = 1", "ENC|FITS-WCS", "ASI|IgnoreBadAlt|1", "CC", "R", "WN" );
+   CASE( "warnings_bad_mat_default", "P|0|NAXIS   = 2", "P|0|NAXIS1  = 100", "P|0|NAXIS2  = 200", "P|0|CRPIX1  = 50", "P|0|CRPIX2  = 100", "P|0|CRVAL1  = 10", "P|0|CRVAL2  = 20", "P|0|CTYPE1  = 'RA---TAN'", "P|0|CTYPE2  = 'DEC--TAN'", "P|0|RADESYS = 'ICRS'", "P|0|CD1_1   = 0.0", "P|0|CD2_2   = 0.001", "ENC|FITS-WCS", "CC", "R", "WN" );
+   CASE( "warnings_bad_mat_silenced", "P|0|NAXIS   = 2", "P|0|NAXIS1  = 100", "P|0|NAXIS2  = 200", "P|0|CRPIX1  = 50", "P|0|CRPIX2  = 100", "P|0|CRVAL1  = 10", "P|0|CRVAL2  = 20", "P|0|CTYPE1  = 'RA---TAN'", "P|0|CTYPE2  = 'DEC--TAN'", "P|0|RADESYS = 'ICRS'", "P|0|CD1_1   = 0.0", "P|0|CD2_2   = 0.001", "ENC|FITS-WCS", "ASC|Warnings|BadCel", "CC", "R", "WN" );
+   CASE( "warnings_clean", "P|0|NAXIS   = 2", "P|0|NAXIS1  = 100", "P|0|NAXIS2  = 200", "P|0|CRPIX1  = 50", "P|0|CRPIX2  = 100", "P|0|CRVAL1  = 10", "P|0|CRVAL2  = 20", "P|0|CTYPE1  = 'RA---TAN'", "P|0|CTYPE2  = 'DEC--TAN'", "P|0|RADESYS = 'ICRS'", "P|0|CD1_1   = 0.0", "P|0|CD2_2   = 0.001", "ENC|FITS-WCS", "CL|1", "CC", "R", "WN" );
    CASE( "name_checks",
          "P|0|A       = 1", "P|0|A=1     = 5", "P|0|A=B", "P|0|AB CD   = 6",
          "P|0|Z       = 2" );

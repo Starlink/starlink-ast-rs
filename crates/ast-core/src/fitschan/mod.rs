@@ -19,6 +19,7 @@ pub mod format;
 pub(crate) mod fset_to_store;
 pub(crate) mod guess_encoding;
 pub(crate) mod spec_trans;
+pub(crate) mod warning;
 pub(crate) mod wcs_celestial;
 pub(crate) mod wcs_decompose;
 pub(crate) mod wcs_keywords;
@@ -32,6 +33,7 @@ pub use card::CardType;
 use card::{FitsCard, FitsValue};
 use card_list::CardList;
 use card_value::{Got, Want};
+use warning::{Warning, Warnings};
 
 use std::sync::Arc;
 
@@ -119,6 +121,8 @@ pub struct FitsChan {
     poly_tan: Option<i32>,
     /// The IgnoreBadAlt attribute, `None` when unset.
     ignore_bad_alt: Option<bool>,
+    /// The Warnings attribute, `None` when unset.
+    warning_conditions: Option<String>,
     /// The transformations IntraMaps read here can name.
     intra: IntraRegistry,
     /// The last sequence number given to each keyword base by the NATIVE
@@ -152,6 +156,7 @@ impl FitsChan {
             def_b1950: None,
             poly_tan: None,
             ignore_bad_alt: None,
+            warning_conditions: None,
             keyseq: std::collections::HashMap::new(),
             clean: None,
             sip_ok: None,
@@ -165,13 +170,13 @@ impl FitsChan {
     /// commentary card, just like `HISTORY`, `COMMENT` or a blank keyword.
     /// Unparseable lines are silently ignored.
     pub fn from_header(text: &str) -> AstResult<Self> {
-        let mut cards = CardList::from_header(text)?;
+        let (mut cards, warnings) = CardList::from_header_with_warnings(text)?;
         cards.clear_card();
         Ok(Self {
             config: ChannelConfig::default(),
             cards,
             encoding: None,
-            warnings: Vec::new(),
+            warnings,
             intra: IntraRegistry::new(),
             fits_digits: DEFAULT_FITS_DIGITS,
             fits_rounding: None,
@@ -182,6 +187,7 @@ impl FitsChan {
             def_b1950: None,
             poly_tan: None,
             ignore_bad_alt: None,
+            warning_conditions: None,
             keyseq: std::collections::HashMap::new(),
             clean: None,
             sip_ok: None,
@@ -256,12 +262,49 @@ impl FitsChan {
     // Card manipulation API
     // -----------------------------------------------------------------------
 
-    /// C's `Warn` for a condition the default Warnings attribute names: store
-    /// an `ASTWARN` block in front of the current card, unless Clean is set.
-    fn warn(&mut self, text: &str) {
-        if !self.clean() {
-            self.cards.push_astwarn(text);
+    /// C's `Warn`: unless Clean is set, a warning whose condition the
+    /// Warnings attribute names is added to the Channel's warnings and stored
+    /// as an `ASTWARN` block in front of the current card.
+    fn warn(&mut self, warning: Warning) {
+        if self.clean()
+            || warning.text.is_empty()
+            || !warning::reports(self.warning_conditions(), warning.condition)
+        {
+            return;
         }
+        self.cards.push_astwarn(&warning.text);
+        self.warnings.push(warning.text);
+    }
+
+    /// The warnings C's `Split` gives for `card`, of an illegal keyword name
+    /// and then of a value it cannot type.
+    fn split_warnings(&mut self, card: &str, bad_value: bool) {
+        if let Some(text) = crate::fitschan::card::check_fits_name(card) {
+            self.warn(Warning::new("badkeyname", text));
+        }
+        if bad_value {
+            self.warn(Warning::new(
+                "badkeyvalue",
+                crate::fitschan::card::bad_value_warning(card),
+            ));
+        }
+    }
+
+    /// The keyword and comment C's `Split` finds when it reads a setter's or
+    /// getter's keyword name as a card: the first 8 characters, in their own
+    /// case (`NewCard` upper-cases them when a card is stored), and any text
+    /// after them. As with any card, an illegal name or value is warned of.
+    fn split_name(&mut self, name: &str) -> AstResult<(String, String)> {
+        let (card, bad_value) = FitsCard::split(name)?;
+        self.split_warnings(name, bad_value);
+        let comment = match &card.value {
+            FitsValue::Comment(text) => text.trim().to_string(),
+            _ => card.comment.clone().unwrap_or_default(),
+        };
+        let raw: String = name.chars().take(8).collect();
+        let keyword = raw.trim_end().to_string();
+        debug_assert!(keyword.eq_ignore_ascii_case(&card.keyword));
+        Ok((keyword, comment))
     }
 
     /// Mark the current card to be kept when a read would otherwise consume
@@ -276,7 +319,7 @@ impl FitsChan {
     /// and the current card is left as it was.
     pub fn test_fits(&mut self, name: Option<&str>) -> AstResult<Option<bool>> {
         let lname = match name {
-            Some(name) => Some(split_name(name)?.0),
+            Some(name) => Some(self.split_name(name)?.0),
             None => None,
         };
         let icard = self.cards.get_card();
@@ -321,21 +364,18 @@ impl FitsChan {
     /// overwriting, keeps the comment of the card replaced.
     pub fn put_fits(&mut self, card: &str, overwrite: bool) -> AstResult<()> {
         let (parsed, bad_value) = FitsCard::split(card)?;
-        // C's `Split` warns of an illegal keyword name, then of a value it
-        // cannot type, before the card is stored.
-        if let Some(text) = crate::fitschan::card::check_fits_name(card) {
-            self.warn(&text);
-        }
-        if bad_value {
-            self.warn(&crate::fitschan::card::bad_value_warning(card));
-        }
+        self.split_warnings(card, bad_value);
         match parsed.value {
             // `PutFits` hands a commentary card to `SetFitsCom`.
             FitsValue::Comment(ref text) => {
                 let text = text.trim_end().to_string();
-                self.set_fits_com(&parsed.keyword, &text, overwrite)?;
+                let name: String = card.chars().take(8).collect();
+                self.set_fits_com(&name, &text, overwrite)?;
             }
             _ => {
+                // The `astSetFits<X>` the card is handed to splits its
+                // keyword name again, warning again of an illegal name.
+                self.split_warnings(card, false);
                 let comment = parsed.comment.clone().unwrap_or_default();
                 self.store_card(parsed.keyword, parsed.value, &comment, overwrite);
             }
@@ -452,10 +492,7 @@ impl FitsChan {
     ) -> AstResult<Option<Got>> {
         let lname = match name {
             Some(name) => {
-                let (lname, _) = split_name(name)?;
-                if let Some(text) = crate::fitschan::card::check_fits_name(name) {
-                    self.warn(&text);
-                }
+                let (lname, _) = self.split_name(name)?;
                 Some(lname)
             }
             None => None,
@@ -609,7 +646,7 @@ impl FitsChan {
         comment: &str,
         overwrite: bool,
     ) -> AstResult<()> {
-        let (lname, lcom) = split_name(name)?;
+        let (lname, lcom) = self.split_name(name)?;
         let com = if comment.trim().is_empty() {
             lcom
         } else {
@@ -780,7 +817,7 @@ impl FitsChan {
     /// overwriting a card with the same keyword, the card keeps its type and
     /// value and takes the new comment.
     fn set_fits_com(&mut self, name: &str, comment: &str, overwrite: bool) -> AstResult<()> {
-        let (lname, _) = split_name(name)?;
+        let (lname, _) = self.split_name(name)?;
         let com = if comment.trim().is_empty() {
             None
         } else {
@@ -789,7 +826,7 @@ impl FitsChan {
         let same = self.cards.current().is_some_and(|c| c.keyword == lname);
         let card = if !overwrite || !same {
             FitsCard {
-                keyword: lname,
+                keyword: lname.to_uppercase(),
                 value: FitsValue::Comment(com.unwrap_or_default()),
                 comment: None,
                 used: false,
@@ -1110,6 +1147,44 @@ impl FitsChan {
         self.ignore_bad_alt = None;
     }
 
+    /// Set the Warnings attribute: the conditions, separated by white space
+    /// and in any case, whose warnings a read or write records (C's
+    /// `SetWarnings`). An unknown condition is AST__ATTIN, and leaves the
+    /// attribute as it was.
+    pub fn set_warning_conditions(&mut self, value: &str) -> AstResult<()> {
+        warning::good_warns(value)?;
+        self.warning_conditions = Some(value.to_string());
+        Ok(())
+    }
+
+    /// The Warnings attribute, as set, or by default
+    /// `"BadKeyName BadKeyValue Tnx Zpx BadPV BadCel BadMat BadCTYPE"`.
+    ///
+    /// A warning for a condition it names is stored as `ASTWARN` cards in
+    /// front of the current card and added to the warnings
+    /// [`warning_texts`](Channel::warning_texts) reports.
+    pub fn warning_conditions(&self) -> &str {
+        self.warning_conditions
+            .as_deref()
+            .unwrap_or(warning::DEFAULT_WARNINGS)
+    }
+
+    /// Whether Warnings has been set.
+    pub fn test_warning_conditions(&self) -> bool {
+        self.warning_conditions.is_some()
+    }
+
+    /// Clear Warnings, restoring its default.
+    pub fn clear_warning_conditions(&mut self) {
+        self.warning_conditions = None;
+    }
+
+    /// The read-only AllWarnings attribute: every condition the Warnings
+    /// attribute accepts, in lower case, with a space before and after each.
+    pub fn all_warning_conditions(&self) -> &'static str {
+        warning::all_warnings()
+    }
+
     /// The attributes the header translations of a read depend on.
     fn trans_attrs(&self) -> spec_trans::TransAttrs {
         spec_trans::TransAttrs {
@@ -1224,8 +1299,8 @@ impl FitsChan {
     /// that card, and the extraction's names, are not used.
     fn finish_foreign_read(
         &mut self,
-        decoded: AstResult<(AnyObject, Vec<String>, usize)>,
-        trans_warnings: Vec<String>,
+        decoded: AstResult<(AnyObject, Warnings, usize)>,
+        trans_warnings: Warnings,
         trans: &CardList,
         spec_names: Vec<String>,
     ) -> AstResult<Option<AnyObject>> {
@@ -1281,48 +1356,24 @@ impl FitsChan {
     /// (fitschan.c:11469-11473), which is the order they are stored in.
     fn push_read_warnings(
         &mut self,
-        trans_warnings: Vec<String>,
-        read_warnings: Vec<String>,
+        trans_warnings: Warnings,
+        read_warnings: Warnings,
         naxes: usize,
     ) {
-        // C's `Warn` does nothing when Clean is set.
         if self.clean() {
             return;
         }
-        // Each warning goes two places, as in C: `Warn` (fitschan.c:35052)
-        // calls `astAddWarning`, which appends the text to the parent
-        // Channel's warning list (channel.c:151) for `astWarnings` to report,
-        // and separately inserts the ASTWARN card. Recording only the card
-        // would leave `warning_texts` / `warnings` permanently empty.
         if !trans_warnings.is_empty() {
             self.cards.set_position(self.cards.len());
             for w in trans_warnings {
-                self.cards.push_astwarn(&w);
-                self.warnings.push(w);
+                self.warn(w);
             }
         }
         move_cursor_to_last_naxis(&mut self.cards, naxes);
         for w in read_warnings {
-            self.cards.push_astwarn(&w);
-            self.warnings.push(w);
+            self.warn(w);
         }
     }
-}
-
-/// The keyword and comment C's `Split` finds when it reads a setter's or
-/// getter's keyword name as a card: the first 8 characters, in their own
-/// case (`NewCard` upper-cases them when a card is stored), and any text
-/// after them.
-fn split_name(name: &str) -> AstResult<(String, String)> {
-    let card = FitsCard::parse(name)?;
-    let comment = match &card.value {
-        FitsValue::Comment(text) => text.trim().to_string(),
-        _ => card.comment.clone().unwrap_or_default(),
-    };
-    let raw: String = name.chars().take(8).collect();
-    let keyword = raw.trim_end().to_string();
-    debug_assert!(keyword.eq_ignore_ascii_case(&card.keyword));
-    Ok((keyword, comment))
 }
 
 impl Default for FitsChan {
@@ -1390,7 +1441,7 @@ impl Channel for FitsChan {
                     // C's `Warn` calls inside `SpecTrans` target the source chan
                     // rather than the translation chan, so their text comes back
                     // out to be stored on `self.cards`.
-                    let mut trans_warnings: Vec<String> = Vec::new();
+                    let mut trans_warnings: Warnings = Vec::new();
                     let trans = spec_trans::spec_trans(
                         &self.cards,
                         Encoding::FitsWcs,
@@ -1399,7 +1450,7 @@ impl Channel for FitsChan {
                     );
                     // The cards SpecTrans used, which C marks before WcsFcRead runs.
                     let spec_names = trans.take_consumed_names();
-                    let decoded = (|| -> AstResult<(AnyObject, Vec<String>, usize)> {
+                    let decoded = (|| -> AstResult<(AnyObject, Warnings, usize)> {
                         let (mut primary, mut alts) =
                             wcs_keywords::extract_wcs_keywords_with_alts(&trans)?;
                         primary.sip_replace = self.sip_replace();
@@ -1427,7 +1478,7 @@ impl Channel for FitsChan {
                     // After SpecTrans, alt-axis cards are in the *A..*Z
                     // form, so we route through the multi-plane
                     // FitsWcs decoder to pick up secondary planes.
-                    let mut trans_warnings: Vec<String> = Vec::new();
+                    let mut trans_warnings: Warnings = Vec::new();
                     let trans = spec_trans::spec_trans(
                         &self.cards,
                         Encoding::FitsPc,
@@ -1436,7 +1487,7 @@ impl Channel for FitsChan {
                     );
                     // The cards SpecTrans used, which C marks before WcsFcRead runs.
                     let spec_names = trans.take_consumed_names();
-                    let decoded = (|| -> AstResult<(AnyObject, Vec<String>, usize)> {
+                    let decoded = (|| -> AstResult<(AnyObject, Warnings, usize)> {
                         let (mut primary, mut alts) =
                             wcs_keywords::extract_wcs_keywords_with_alts(&trans)?;
                         primary.sip_replace = self.sip_replace();
@@ -1458,7 +1509,7 @@ impl Channel for FitsChan {
                     self.finish_foreign_read(decoded, trans_warnings, &trans, spec_names)
                 }
                 Encoding::FitsIraf => {
-                    let mut trans_warnings: Vec<String> = Vec::new();
+                    let mut trans_warnings: Warnings = Vec::new();
                     let trans = spec_trans::spec_trans(
                         &self.cards,
                         Encoding::FitsIraf,
@@ -1467,7 +1518,7 @@ impl Channel for FitsChan {
                     );
                     // The cards SpecTrans used, which C marks before WcsFcRead runs.
                     let spec_names = trans.take_consumed_names();
-                    let decoded = (|| -> AstResult<(AnyObject, Vec<String>, usize)> {
+                    let decoded = (|| -> AstResult<(AnyObject, Warnings, usize)> {
                         let (mut primary, mut alts) =
                             wcs_keywords::extract_wcs_keywords_with_alts(&trans)?;
                         primary.sip_replace = self.sip_replace();
@@ -1489,7 +1540,7 @@ impl Channel for FitsChan {
                     self.finish_foreign_read(decoded, trans_warnings, &trans, spec_names)
                 }
                 Encoding::FitsAips | Encoding::FitsAipsPP => {
-                    let mut trans_warnings: Vec<String> = Vec::new();
+                    let mut trans_warnings: Warnings = Vec::new();
                     let trans = spec_trans::spec_trans(
                         &self.cards,
                         enc,
@@ -1498,7 +1549,7 @@ impl Channel for FitsChan {
                     );
                     // The cards SpecTrans used, which C marks before WcsFcRead runs.
                     let spec_names = trans.take_consumed_names();
-                    let decoded = (|| -> AstResult<(AnyObject, Vec<String>, usize)> {
+                    let decoded = (|| -> AstResult<(AnyObject, Warnings, usize)> {
                         let store = enc_aips::read_from_cards(&trans)?;
                         let naxes = store.naxis;
                         let (obj, warnings) =
@@ -1508,7 +1559,7 @@ impl Channel for FitsChan {
                     self.finish_foreign_read(decoded, trans_warnings, &trans, spec_names)
                 }
                 Encoding::FitsClass => {
-                    let mut trans_warnings: Vec<String> = Vec::new();
+                    let mut trans_warnings: Warnings = Vec::new();
                     let trans = spec_trans::spec_trans(
                         &self.cards,
                         Encoding::FitsClass,
@@ -1517,7 +1568,7 @@ impl Channel for FitsChan {
                     );
                     // The cards SpecTrans used, which C marks before WcsFcRead runs.
                     let spec_names = trans.take_consumed_names();
-                    let decoded = (|| -> AstResult<(AnyObject, Vec<String>, usize)> {
+                    let decoded = (|| -> AstResult<(AnyObject, Warnings, usize)> {
                         let store = enc_class::read_from_cards(&trans)?;
                         let naxes = store.naxis;
                         let (obj, warnings) =
@@ -1531,7 +1582,7 @@ impl Channel for FitsChan {
                     // are mostly inapplicable. Keep the existing reader. The
                     // reader records consumed names directly on `self.cards`
                     // (no SpecTrans copy), so promote them in place.
-                    let decoded = (|| -> AstResult<(AnyObject, Vec<String>, usize)> {
+                    let decoded = (|| -> AstResult<(AnyObject, Warnings, usize)> {
                         let store = enc_dss::read_from_cards(&self.cards)?;
                         let naxes = store.naxis;
                         let (obj, warnings) =

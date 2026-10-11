@@ -14,6 +14,7 @@
 //!
 //! This follows the C library's `WcsIntWorld` function (fitschan.c:37555).
 
+use super::warning::{Warning, Warnings};
 use ndarray::Array2;
 
 use super::card_list::CardList;
@@ -39,7 +40,7 @@ use crate::wcslib::WcsProjection;
 pub(crate) fn build_pixel_to_iwc(
     store: &mut FitsStore,
     cards: &CardList,
-    warnings: &mut Vec<String>,
+    warnings: &mut Warnings,
 ) -> AstResult<DynMapping> {
     let naxes = store.naxis;
 
@@ -59,7 +60,7 @@ pub(crate) fn build_pixel_to_iwc(
     // A PC/CD matrix with a wholly zero row or column has no inverse, which
     // makes the whole pixel→IWC chain uninvertible (fitschan.c:37669-37674).
     if !pc_map.has_inverse() {
-        warnings.push(BADMAT_WARNING.to_string());
+        warnings.push(Warning::new("badmat", BADMAT_WARNING));
     }
 
     let mut result: Option<DynMapping> = dist.map1;
@@ -126,7 +127,7 @@ fn distort_maps(
     store: &mut FitsStore,
     cards: &CardList,
     naxes: usize,
-    warnings: &mut Vec<String>,
+    warnings: &mut Warnings,
 ) -> AstResult<DistortionMaps> {
     let mut ret = DistortionMaps::default();
 
@@ -234,7 +235,7 @@ fn zpx_mapping(
     cards: &CardList,
     naxes: usize,
     zpxaxes: [usize; 2],
-    warnings: &mut Vec<String>,
+    warnings: &mut Warnings,
 ) -> AstResult<Option<DynMapping>> {
     let mut coeffs: [Vec<(usize, f64)>; 2] = [Vec::new(), Vec::new()];
     let mut ok = true;
@@ -252,7 +253,7 @@ fn zpx_mapping(
     }
 
     if !ok {
-        warnings.push(ZPX_WARNING.to_string());
+        warnings.push(Warning::new("zpx", ZPX_WARNING));
         return Ok(None);
     }
 

@@ -260,6 +260,26 @@ fn run(fc: &mut FitsChan, op: &str, out: &mut String) {
             }
             String::new()
         }
+        "AC" => {
+            let (v, set) = match arg(1) {
+                "Warnings" => (fc.warning_conditions(), fc.test_warning_conditions()),
+                "AllWarnings" => (fc.all_warning_conditions(), false),
+                other => panic!("no string attribute {other}"),
+            };
+            format!("= [{v}] {}\n", i32::from(set))
+        }
+        "ASC" => match arg(1) {
+            "Warnings" => result(fc.set_warning_conditions(arg(2)), |()| String::new()),
+            other => panic!("no string attribute {other}"),
+        },
+        "WN" => {
+            let texts = fc.warning_texts();
+            let mut out = format!("= {}\n", texts.len());
+            for text in texts {
+                out.push_str(&format!("|{text}\n"));
+            }
+            out
+        }
         "ASD" => {
             match arg(1) {
                 "FitsTol" => fc.set_fits_tol(arg(2).parse().unwrap()),
@@ -277,6 +297,7 @@ fn run(fc: &mut FitsChan, op: &str, out: &mut String) {
                 "DefB1950" => fc.clear_def_b1950(),
                 "PolyTan" => fc.clear_poly_tan(),
                 "IgnoreBadAlt" => fc.clear_ignore_bad_alt(),
+                "Warnings" => fc.clear_warning_conditions(),
                 other => panic!("no attribute {other}"),
             }
             String::new()

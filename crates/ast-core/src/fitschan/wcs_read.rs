@@ -6,6 +6,7 @@
 
 use super::card_list::CardList;
 use super::fits_store::FitsStore;
+use super::warning::{Warning, Warnings};
 use super::wcs_celestial::{self, CelestialResult};
 use super::wcs_keywords::key_for;
 use super::wcs_matrix;
@@ -60,7 +61,7 @@ pub(crate) fn decode_wcs_inner(
     def_b1950: bool,
     cards: &CardList,
     s: char,
-) -> AstResult<(AnyObject, Vec<String>)> {
+) -> AstResult<(AnyObject, Warnings)> {
     let naxis = store.naxis;
 
     // Step 1: Build the pixel → IWC mapping. `DistortMaps`, which C
@@ -72,7 +73,7 @@ pub(crate) fn decode_wcs_inner(
     // (fitschan.c:37760-37870), and `Warn` inserts each block in front of the
     // same current card, so these warnings precede the ones the axis decoders
     // raise below.
-    let mut matrix_warnings: Vec<String> = Vec::new();
+    let mut matrix_warnings: Warnings = Vec::new();
     let pixel_to_iwc = wcs_matrix::build_pixel_to_iwc(&mut store, cards, &mut matrix_warnings)?;
     let store = &store;
 
@@ -89,7 +90,7 @@ pub(crate) fn decode_wcs_inner(
     let celestial_ref_pos_forced = celestial.as_ref().is_some_and(|c| c.ref_pos_forced);
     // Collect warnings from the celestial decoder (e.g. badcel for unknown
     // celestial systems), behind the pixel→IWC ones.
-    let mut warnings: Vec<String> = matrix_warnings;
+    let mut warnings: Warnings = matrix_warnings;
     if let Some(c) = celestial.as_ref() {
         warnings.extend(c.warnings.iter().cloned());
     }
@@ -511,7 +512,7 @@ pub(crate) fn decode_wcs_with_alts_inner(
     def_b1950: bool,
     ignore_bad_alt: bool,
     cards: &CardList,
-) -> AstResult<(AnyObject, Vec<String>)> {
+) -> AstResult<(AnyObject, Warnings)> {
     // Step 1: build the primary FrameSet via the inner decoder.
     let (primary_obj, mut warnings) = decode_wcs_inner(primary, def_b1950, cards, ' ')?;
     let mut fs = match primary_obj {
@@ -593,7 +594,10 @@ pub(crate) fn decode_wcs_with_alts_inner(
         warnings.append(&mut alt_warnings);
         match added {
             Ok(()) => fs = trial,
-            Err(_) if ignore_bad_alt => {}
+            Err(_) if ignore_bad_alt => warnings.push(Warning::new(
+                "badalt",
+                format!("Ignoring unusable FITS-WCS alternate axes label '{letter}'."),
+            )),
             Err(e) => return Err(e),
         }
     }

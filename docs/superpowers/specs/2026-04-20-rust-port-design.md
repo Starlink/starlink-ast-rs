@@ -2,6 +2,12 @@
 
 ## Revision history
 
+- **2026-10-11 (rev 23)**: Added FitsChan's Warnings attribute
+  (`warning_conditions`, `set_warning_conditions`, which returns
+  `AstResult`, `test_warning_conditions`, `clear_warning_conditions`)
+  and the read-only AllWarnings (`all_warning_conditions`). The names
+  depart from the attribute names because `Channel::warnings` is C's
+  `astWarnings`.
 - **2026-10-11 (rev 22)**: Added FitsChan's IgnoreBadAlt attribute
   (`ignore_bad_alt`, `set_ignore_bad_alt`, `test_ignore_bad_alt`,
   `clear_ignore_bad_alt`).

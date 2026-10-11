@@ -19,11 +19,27 @@ fn is_fits(c: u8) -> bool {
     c.is_ascii_alphanumeric() || c == b'-' || c == b'_'
 }
 
+/// A template fault C's `MatchFront` and `MatchChar` report as AST__BDFMT.
+#[derive(Clone, Copy)]
+enum BadTemplate {
+    /// An illegal field type.
+    Type(char),
+    /// A template ending within a field specifier.
+    Incomplete,
+}
+
 thread_local! {
-    /// The first illegal type specifier `match_char` was asked to test
-    /// against during the current match, which C's `MatchChar` reports as
-    /// AST__BDFMT.
-    static BAD_TYPE: std::cell::Cell<Option<char>> = const { std::cell::Cell::new(None) };
+    /// The first template fault met during the current match.
+    static BAD_TEMPLATE: std::cell::Cell<Option<BadTemplate>> =
+        const { std::cell::Cell::new(None) };
+}
+
+fn note_bad_template(bad: BadTemplate) {
+    BAD_TEMPLATE.with(|b| {
+        if b.get().is_none() {
+            b.set(Some(bad));
+        }
+    });
 }
 
 /// Does `test` belong to the character set named by `ty`?
@@ -33,11 +49,7 @@ fn match_char(test: u8, ty: char) -> bool {
         'c' => test.is_ascii_uppercase(),
         'f' => is_fits(test),
         _ => {
-            BAD_TYPE.with(|b| {
-                if b.get().is_none() {
-                    b.set(Some(ty));
-                }
-            });
+            note_bad_template(BadTemplate::Type(ty));
             false
         }
     }
@@ -93,12 +105,17 @@ fn match_front(test: &[u8], temp: &[u8]) -> Option<Front> {
     };
 
     b += 1;
-    let ty = *temp.get(b)? as char;
+    let Some(&ty) = temp.get(b) else {
+        note_bad_template(BadTemplate::Incomplete);
+        return None;
+    };
+    let ty = ty as char;
 
+    // C tests the string's terminating null too, so an illegal type is
+    // found even when the test string has run out.
     for i in 0..ntest {
-        match test.get(i) {
-            Some(&c) if match_char(c, ty) => {}
-            _ => return None,
+        if !match_char(test.get(i).copied().unwrap_or(0), ty) {
+            return None;
         }
     }
 
@@ -198,18 +215,23 @@ pub(crate) fn match_keyword_checked(
     template: &str,
     method: &str,
 ) -> crate::error::AstResult<bool> {
-    BAD_TYPE.with(|b| b.set(None));
+    BAD_TEMPLATE.with(|b| b.set(None));
     let matched = match_keyword(test, template, 0).is_some();
-    if let Some(ty) = BAD_TYPE.with(|b| b.take()) {
-        return Err(crate::error::AstError::new(
-            crate::error::ErrorCode::Bdfmt,
-            format!(
-                "{method}(FitsChan): Illegal field type or width specifier '{ty}' found in \
-                 filter template '{template}'."
-            ),
-        ));
-    }
-    Ok(matched)
+    let message = match BAD_TEMPLATE.with(|b| b.take()) {
+        None => return Ok(matched),
+        Some(BadTemplate::Type(ty)) => format!(
+            "{method}(FitsChan): Illegal field type or width specifier '{ty}' found in \
+             filter template '{template}'."
+        ),
+        Some(BadTemplate::Incomplete) => format!(
+            "{method}(FitsChan): Incomplete field specifier found at end of filter \
+             template '{template}'."
+        ),
+    };
+    Err(crate::error::AstError::new(
+        crate::error::ErrorCode::Bdfmt,
+        message,
+    ))
 }
 
 #[cfg(test)]

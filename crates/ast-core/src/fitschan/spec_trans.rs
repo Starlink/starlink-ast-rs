@@ -19,6 +19,7 @@
 use super::Encoding;
 use super::card_list::CardList;
 use super::fits_match::match_keyword;
+use super::warning::{Warning, Warnings};
 
 /// The FitsChan attributes the translations depend on.
 #[derive(Clone, Copy, Debug)]
@@ -66,7 +67,7 @@ pub(crate) fn spec_trans(
     cards: &CardList,
     encoding: Encoding,
     attrs: TransAttrs,
-    warnings: &mut Vec<String>,
+    warnings: &mut Warnings,
 ) -> CardList {
     let mut trans = cards.clone();
     spec_trans_inplace(&mut trans, encoding, attrs, warnings);
@@ -80,7 +81,7 @@ pub(crate) fn spec_trans_inplace(
     cards: &mut CardList,
     encoding: Encoding,
     attrs: TransAttrs,
-    warnings: &mut Vec<String>,
+    warnings: &mut Warnings,
 ) {
     // C `SpecTrans` never writes to the source chan `this` — every `SetValue`
     // and `DeleteCard` in its body targets the return chan `ret`. Translations
@@ -651,7 +652,7 @@ fn get_used_poly_tan(
     axlon: usize,
     axlat: usize,
     s: char,
-    warnings: &mut Vec<String>,
+    warnings: &mut Warnings,
 ) -> bool {
     // A PolyTan that is set decides on its own.
     if poly_tan >= 0 {
@@ -708,12 +709,12 @@ fn get_used_poly_tan(
         }
 
         if !ok {
-            warnings.push(
+            warnings.push(Warning::new(
+                "badpv",
                 "This FITS header describes a distorted TAN projection, but \
                  all the distortion coefficients (the PVi_m headers) on the \
-                 latitude axis are zero."
-                    .to_owned(),
-            );
+                 latitude axis are zero.",
+            ));
             ret = 0;
             // Delete all PVlat_m (m = 1..=ubnd_lat) to prevent mis-use.
             for m in 1..=ulat {
@@ -734,12 +735,12 @@ fn get_used_poly_tan(
                 m += 1;
             }
             if !ok {
-                warnings.push(
+                warnings.push(Warning::new(
+                    "badpv",
                     "This FITS header describes a distorted TAN projection, but \
                      all the distortion coefficients (the PVi_m headers) on the \
-                     longitude axis are zero."
-                        .to_owned(),
-                );
+                     longitude axis are zero.",
+                ));
                 ret = 0;
                 // Delete all PVlon_m (m = 1..=ubnd_lon) to prevent mis-use.
                 for m in 1..=ulon {
@@ -766,7 +767,7 @@ fn translate_tpv_and_polytan_to_tpn(
     cards: &mut CardList,
     src: &CardList,
     poly_tan: i32,
-    warnings: &mut Vec<String>,
+    warnings: &mut Warnings,
 ) {
     for s in std::iter::once(' ').chain('A'..='Z') {
         let Some((axlon, axlat)) = celestial_axes(cards, s) else {
@@ -871,7 +872,7 @@ fn translate_iraf_zpx(cards: &mut CardList) {
 /// greater than 7, asymmetric axis orders, or full cross-terms) the
 /// partially-translated CTYPE is left in place and a `tnx` warning is
 /// raised, as C does (fitschan.c:31996-32000).
-fn translate_iraf_tnx(cards: &mut CardList, warnings: &mut Vec<String>) {
+fn translate_iraf_tnx(cards: &mut CardList, warnings: &mut Warnings) {
     let Some((axlon, axlat)) = celestial_axes(cards, ' ') else {
         return;
     };
@@ -895,7 +896,7 @@ fn translate_iraf_tnx(cards: &mut CardList, warnings: &mut Vec<String>) {
                 cards.set_float(&format!("PV{axis}_{m}"), value, "TAN projection parameter");
             }
         } else {
-            warnings.push(TNX_WARNING.to_string());
+            warnings.push(Warning::new("tnx", TNX_WARNING));
         }
     }
 }

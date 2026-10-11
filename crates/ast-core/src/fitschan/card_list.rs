@@ -831,10 +831,14 @@ impl CardList {
     /// it current, or end-of-file if there is none.
     pub(crate) fn find_key_card(&mut self, name: &str, method: &str) -> AstResult<bool> {
         while let Some(card) = self.current() {
-            if match_keyword_checked(card.c_name(), name, method)? {
+            let matched = match_keyword_checked(card.c_name(), name, method);
+            if let Ok(true) = matched {
                 return Ok(true);
             }
+            // C's loop moves on from a card whose test failed, and only
+            // then stops for the error.
             self.move_card(1);
+            matched?;
         }
         Ok(false)
     }
@@ -1032,7 +1036,15 @@ impl CardList {
     /// skipped with a warning (not an error), following the C library's
     /// permissive behaviour.
     pub fn from_header(text: &str) -> AstResult<Self> {
+        Ok(Self::from_header_with_warnings(text)?.0)
+    }
+
+    /// [`from_header`](Self::from_header), also returning the text of each
+    /// `ASTWARN` block stored, in order, as C's `Warn` adds it to the
+    /// Channel's warnings.
+    pub(crate) fn from_header_with_warnings(text: &str) -> AstResult<(Self, Vec<String>)> {
         let mut list = Self::new();
+        let mut warnings = Vec::new();
         for line in text.lines() {
             // Skip completely empty lines.
             if line.trim().is_empty() {
@@ -1048,17 +1060,27 @@ impl CardList {
                     // card in the FitsChan. Warnings are enabled by default
                     // (the Warnings attribute includes "BadKeyName", Clean is
                     // off).
-                    if let Some(text) = check_fits_name(line) {
+                    let name_warning = check_fits_name(line);
+                    if let Some(text) = &name_warning {
                         // `push_astwarn` inserts in front of the current card,
                         // as C's `InsCard` does. Here the cards are being
                         // appended, so the cursor belongs at the end of the
                         // list — where C's is while `astPutFits` appends.
                         list.position = list.cards.len();
-                        list.push_astwarn(&text);
+                        list.push_astwarn(text);
+                        warnings.push(text.clone());
                     }
                     if bad_value {
+                        let text = bad_value_warning(line);
                         list.position = list.cards.len();
-                        list.push_astwarn(&bad_value_warning(line));
+                        list.push_astwarn(&text);
+                        warnings.push(text);
+                    }
+                    // The setter `PutFits` hands the card to splits its
+                    // keyword name again and warns again of an illegal name;
+                    // that block matches the first, so adds no cards.
+                    if let Some(text) = name_warning {
+                        warnings.push(text);
                     }
                     list.push(card);
                 }
@@ -1068,7 +1090,7 @@ impl CardList {
                 }
             }
         }
-        Ok(list)
+        Ok((list, warnings))
     }
 }
 

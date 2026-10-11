@@ -317,7 +317,7 @@ impl FitsCard {
     /// a `badkeyvalue` warning.
     pub(crate) fn split(card: &str) -> AstResult<(Self, bool)> {
         // Prepare the 80-character card buffer.
-        let card = prepare_card(card);
+        let (card, nc) = prepare_card(card);
         let bytes = card.as_bytes();
 
         // Extract keyword (columns 1-8, i.e. indices 0..8).
@@ -337,7 +337,7 @@ impl FitsCard {
 
         // Check for CONTINUE card: keyword is CONTINUE, col 9 is space, col 11 is quote.
         let is_continue = keyword == "CONTINUE"
-            && bytes.len() > FITS_NAME_LEN + 2
+            && nc > FITS_NAME_LEN + 3
             && bytes[FITS_NAME_LEN] == b' '
             && bytes[FITS_NAME_LEN + 2] == b'\'';
 
@@ -382,6 +382,9 @@ impl FitsCard {
         if let Some(pos) = first_nonblank {
             let first_char = value_area.as_bytes()[pos];
             if first_char == b'\'' {
+                // The string, and any comment after it, end at character
+                // `nc`, not at the padding.
+                let value_area = &card[value_start..nc.max(value_start + pos + 1)];
                 return parse_string_value(&keyword, value_area, pos, is_continue)
                     .map(|card| (card, false));
             }
@@ -592,17 +595,18 @@ impl FitsCard {
 // ---------------------------------------------------------------------------
 
 /// Prepare the card: strip trailing non-printing chars, pad/truncate to 80.
-fn prepare_card(input: &str) -> String {
-    // Strip trailing non-printing characters.
-    let trimmed = input.trim_end_matches(|c: char| !c.is_ascii_graphic() && c != ' ');
-    // Take at most 80 characters.
-    let truncated: String = trimmed.chars().take(FITS_CARD_LEN).collect();
-    // Pad with spaces to 80 characters.
-    let mut card = truncated;
+/// The card padded with spaces to 80 characters, and C's `nc`, the number of
+/// characters `Split` reads: at most 80, less any non-printing characters
+/// that end them.
+fn prepare_card(input: &str) -> (String, usize) {
+    let truncated: String = input.chars().take(FITS_CARD_LEN).collect();
+    let trimmed = truncated.trim_end_matches(|c: char| !c.is_ascii_graphic() && c != ' ');
+    let nc = trimmed.len();
+    let mut card = trimmed.to_string();
     while card.len() < FITS_CARD_LEN {
         card.push(' ');
     }
-    card
+    (card, nc)
 }
 
 /// Parse a string value (starts with quote) from the value area.
@@ -765,7 +769,7 @@ fn full_form(list: &[&str], test: &str) -> Option<usize> {
 
 /// C's `ChrLen`: the length of `s` without trailing blanks and
 /// non-printing characters.
-fn chr_len(s: &str) -> usize {
+pub(crate) fn chr_len(s: &str) -> usize {
     let b = s.as_bytes();
     b.iter()
         .rposition(|&c| c.is_ascii_graphic())
