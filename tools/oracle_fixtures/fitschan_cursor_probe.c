@@ -25,6 +25,8 @@
  *   CL|0 or 1            set Clean
  *   PW  RF               astPurgeWCS, astRetainFits
  *   TF|name              astTestFits, a name of "-" meaning NULL
+ *   QCD                  get and test CDMatrix
+ *   SCD|0 or 1  XCD      set and clear CDMatrix
  *   R                    astRead
  *   W                    astWrite of a 2-D ZoomMap of factor 2
  *
@@ -209,6 +211,13 @@ static void run( AstFitsChan *fc, const char *op, int *status ) {
       int there;
       int has = astTestFits( fc, strcmp( f1, "-" ) ? f1 : NULL, &there );
       snprintf( buf, sizeof buf, "= %s\n", !there ? "nf" : has ? "1" : "0" );
+   } else if( !strcmp( f0, "QCD" ) ) {
+      snprintf( buf, sizeof buf, "= %d %d\n", astGetI( fc, "CDMatrix" ),
+                astTest( fc, "CDMatrix" ) );
+   } else if( !strcmp( f0, "SCD" ) ) {
+      astSetI( fc, "CDMatrix", atoi( f1 ) );
+   } else if( !strcmp( f0, "XCD" ) ) {
+      astClear( fc, "CDMatrix" );
    } else if( !strcmp( f0, "QE" ) ) {
       snprintf( buf, sizeof buf, "= %s\n", astGetC( fc, "Encoding" ) );
    } else if( !strcmp( f0, "R" ) ) {
@@ -438,6 +447,17 @@ int main( void ) {
          "SC|2", "P|1|BAD2    = 1 2 3 / x", "CL|1", "P|0|BAD3    = xyz" );
    CASE( "put_cards_bad_value",
          "PC|A       = 1~BAD     = abc / bad~C       = 3" );
+   CASE( "cd_matrix_default",
+         "QCD", "P|0|CD1_2   = 1", "QCD", "CC", "D", "QCD",
+         "P|0|CD1_1A  = 1", "QCD", "P|0|CD12_1  = 1", "QCD",
+         "P|0|CD2_2   = 1", "SC|2", "QCD", "SCD|0",
+         "QCD", "XCD", "QCD", "E", "SCD|1", "QCD" );
+   CASE( "cd_matrix_after_read",
+         "P|0|NAXIS   = 2", "P|0|NAXIS1  = 100", "P|0|NAXIS2  = 200",
+         "P|0|CRPIX1  = 50", "P|0|CRPIX2  = 100", "P|0|CRVAL1  = 10",
+         "P|0|CRVAL2  = 20", "P|0|CTYPE1  = 'RA---TAN'",
+         "P|0|CTYPE2  = 'DEC--TAN'", "P|0|CD1_1   = -0.001",
+         "P|0|CD2_2   = 0.001", "QCD", "CC", "R", "QCD" );
    CASE( "name_checks",
          "P|0|A       = 1", "P|0|A=1     = 5", "P|0|A=B", "P|0|AB CD   = 6",
          "P|0|Z       = 2" );

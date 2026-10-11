@@ -2,6 +2,9 @@
 
 ## Revision history
 
+- **2026-10-11 (rev 18)**: Added `FitsChan::test_cd_matrix` and
+  `clear_cd_matrix`; unless set, `cd_matrix` is true when the FitsChan
+  holds a `CDi_j` card a read has not consumed, as C's `GetCDMatrix`.
 - **2026-10-11 (rev 17)**: `FitsChan::to_header` returns
   `AstResult<String>`: a string value too long for its card is
   AST__BDFTS when the card is formatted, as C's `EncodeValue` reports it.

@@ -106,8 +106,8 @@ pub struct FitsChan {
     /// Number of leading significant digits protected from rounding by
     /// the formatter (mirrors C's `FitsRounding` attribute, default 10).
     fits_rounding: usize,
-    /// Whether to use CD matrix notation (default false).
-    cd_matrix: bool,
+    /// The CDMatrix attribute, `None` when unset.
+    cd_matrix: Option<bool>,
     /// The SipReplace attribute (fitschan.c default 1): when reading a
     /// SIP header, replace any supplied inverse by an astPolyTran fit
     /// (falling back to the iterative inverse if the fit fails).
@@ -146,7 +146,7 @@ impl FitsChan {
             intra: IntraRegistry::new(),
             fits_digits: DEFAULT_FITS_DIGITS,
             fits_rounding: 10,
-            cd_matrix: false,
+            cd_matrix: None,
             sip_replace: true,
             car_lin: false,
             fits_tol: fset_to_store::FITS_TOL_DEFAULT,
@@ -173,7 +173,7 @@ impl FitsChan {
             intra: IntraRegistry::new(),
             fits_digits: DEFAULT_FITS_DIGITS,
             fits_rounding: 10,
-            cd_matrix: false,
+            cd_matrix: None,
             sip_replace: true,
             car_lin: false,
             fits_tol: fset_to_store::FITS_TOL_DEFAULT,
@@ -919,12 +919,21 @@ impl FitsChan {
         }
     }
 
-    /// Set whether to use CD matrix notation for FITS-WCS output.
-    ///
-    /// When true, the output uses CDi_j keywords; when false (the default),
-    /// it uses the PCi_j + CDELTi form.
+    /// Set the CDMatrix attribute: whether a FITS-WCS write describes the
+    /// linear transformation with CDi_j keywords rather than PCi_j and
+    /// CDELTi.
     pub fn set_cd_matrix(&mut self, use_cd: bool) {
-        self.cd_matrix = use_cd;
+        self.cd_matrix = Some(use_cd);
+    }
+
+    /// Whether CDMatrix has been set.
+    pub fn test_cd_matrix(&self) -> bool {
+        self.cd_matrix.is_some()
+    }
+
+    /// Clear CDMatrix, restoring its default.
+    pub fn clear_cd_matrix(&mut self) {
+        self.cd_matrix = None;
     }
 
     /// Set the SipReplace attribute (mirrors C `SipReplace`, default
@@ -962,9 +971,12 @@ impl FitsChan {
         self.fits_tol
     }
 
-    /// Return whether CD matrix notation is enabled.
+    /// The CDMatrix attribute. Unless set, it is true when the FitsChan
+    /// holds a `CDi_j` card that a read has not consumed (C's
+    /// `GetCDMatrix`).
     pub fn cd_matrix(&self) -> bool {
         self.cd_matrix
+            .unwrap_or_else(|| self.cards.key_fields("CD%1d_%1d", 0).0 > 0)
     }
 
     /// Expose the internal card list for use in unit tests within this crate.
@@ -1478,9 +1490,10 @@ impl FitsChan {
                 self.cards.mark_all_unused();
 
                 let attrs = self.write_attrs();
+                let cd_matrix = self.cd_matrix();
                 let result = match enc {
                     Encoding::FitsWcs => {
-                        wcs_write::encode_wcs(obj, &mut self.cards, self.cd_matrix, &dims, attrs)
+                        wcs_write::encode_wcs(obj, &mut self.cards, cd_matrix, &dims, attrs)
                     }
                     Encoding::FitsIraf => wcs_write::encode_wcs_per_plane(
                         obj,

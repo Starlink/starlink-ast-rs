@@ -225,6 +225,19 @@ fn run(fc: &mut FitsChan, op: &str, out: &mut String) {
             None => "= nf\n".to_string(),
             Some(has) => format!("= {}\n", i32::from(has)),
         }),
+        "QCD" => format!(
+            "= {} {}\n",
+            i32::from(fc.cd_matrix()),
+            i32::from(fc.test_cd_matrix())
+        ),
+        "SCD" => {
+            fc.set_cd_matrix(arg(1) == "1");
+            String::new()
+        }
+        "XCD" => {
+            fc.clear_cd_matrix();
+            String::new()
+        }
         "QE" => {
             let name = match fc.encoding() {
                 Encoding::Native => "NATIVE",
