@@ -2,7 +2,7 @@
 
 use std::cell::RefCell;
 
-use super::card::{Consumption, FitsCard, FitsValue, check_fits_name};
+use super::card::{Consumption, FitsCard, FitsValue, bad_value_warning, check_fits_name};
 use super::fits_match::{match_keyword, match_keyword_checked};
 use crate::error::AstResult;
 
@@ -1038,8 +1038,8 @@ impl CardList {
             if line.trim().is_empty() {
                 continue;
             }
-            match FitsCard::parse(line) {
-                Ok(card) => {
+            match FitsCard::split(line) {
+                Ok((card, bad_value)) => {
                     // Validate the keyword name (original case, columns 1-8)
                     // and insert ASTWARN cards before the offending card if it
                     // contains an illegal character. Mirrors C `CheckFitsName`
@@ -1055,6 +1055,10 @@ impl CardList {
                         // list — where C's is while `astPutFits` appends.
                         list.position = list.cards.len();
                         list.push_astwarn(&text);
+                    }
+                    if bad_value {
+                        list.position = list.cards.len();
+                        list.push_astwarn(&bad_value_warning(line));
                     }
                     list.push(card);
                 }

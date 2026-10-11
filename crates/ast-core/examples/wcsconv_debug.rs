@@ -151,5 +151,5 @@ fn main() {
     }
     fc_out.write(&obj).unwrap();
     println!("=== {} → {} ===", fixture, target_enc);
-    println!("{}", fc_out.to_header());
+    println!("{}", fc_out.to_header().unwrap());
 }

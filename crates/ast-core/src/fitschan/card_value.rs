@@ -203,7 +203,11 @@ fn skip_space(s: &str) -> &str {
 
 /// C's `sscanf( s, "%X %X ... %n" )` with `n` conversions followed by the
 /// test that every character was used (`nc >= len`).
-fn scan_all<T>(s: &str, n: usize, scan: fn(&str) -> Option<(T, usize)>) -> Option<Vec<T>> {
+pub(super) fn scan_all<T>(
+    s: &str,
+    n: usize,
+    scan: fn(&str) -> Option<(T, usize)>,
+) -> Option<Vec<T>> {
     let mut rest = s;
     let mut out = Vec::with_capacity(n);
     for _ in 0..n {
@@ -215,7 +219,7 @@ fn scan_all<T>(s: &str, n: usize, scan: fn(&str) -> Option<(T, usize)>) -> Optio
 }
 
 /// One `%lf` conversion: leading white space, then C's `strtod`.
-fn scan_double(s: &str) -> Option<(f64, usize)> {
+pub(super) fn scan_double(s: &str) -> Option<(f64, usize)> {
     let lead = s.len() - skip_space(s).len();
     let (v, n) = c_strtod(&s.as_bytes()[lead..])?;
     Some((v, lead + n))
@@ -225,7 +229,7 @@ fn scan_double(s: &str) -> Option<(f64, usize)> {
 /// and decimal digits. Like the C library's `strtoimax`, a value beyond the
 /// 64-bit range saturates; a `%d` caller then narrows it to an `int` as C's
 /// assignment does.
-fn scan_int(s: &str) -> Option<(i64, usize)> {
+pub(super) fn scan_int(s: &str) -> Option<(i64, usize)> {
     let b = s.as_bytes();
     let mut i = s.len() - skip_space(s).len();
     let neg = match b.get(i) {

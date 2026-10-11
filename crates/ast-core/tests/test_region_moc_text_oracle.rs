@@ -244,7 +244,7 @@ fn headers_match_c() {
     for (moc, want) in [(low(), cases::HEADER_LOW), (high(), cases::HEADER_HIGH)] {
         // to_header ends with the END card a FitsChan built from setters
         // lacks; C's card-by-card read does not see one.
-        let header = moc.get_moc_header().unwrap().to_header();
+        let header = moc.get_moc_header().unwrap().to_header().unwrap();
         let got: Vec<&str> = header
             .lines()
             .filter(|card| card.trim_end() != "END")

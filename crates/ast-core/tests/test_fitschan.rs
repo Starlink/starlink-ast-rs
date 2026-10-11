@@ -527,7 +527,7 @@ END
     let _obj = fc.read().unwrap().unwrap();
     fc.set_encoding(Encoding::Native);
     fc.write(&_obj).unwrap();
-    let out = fc.to_header();
+    let out = fc.to_header().unwrap();
     for key in ["PROJP0", "PROJP1", "PROJP2"] {
         assert!(out.contains(key), "{key} should survive the read");
     }

@@ -30,7 +30,7 @@
  *
  * After each operation it prints the result and the state: Card, Ncard,
  * Nkey, CardType, CardName and CardComm, then every card astFindFits
- * returns from the start, as Rust source for
+ * returns from the start, and the error if one stops it, as Rust source for
  * crates/ast-core/tests/fitschan_cursor_oracle/cases.rs:
  *
  *   ./fitschan_cursor_probe > ../../crates/ast-core/tests/fitschan_cursor_oracle/cases.rs
@@ -74,6 +74,12 @@ static void state( AstFitsChan *fc ) {
       add( "|" );
       add( card );
       add( "\n" );
+   }
+   if( !astOK ) {
+      add( "|err " );
+      add( code_name( astStatus ) );
+      add( "\n" );
+      astClearStatus;
    }
    astSetI( fc, "Card", icard );
 }
@@ -414,6 +420,36 @@ int main( void ) {
          "SK|0|KV|5|small", "SK|0|KB|12345678901|", "SCN|0|CN|long text|c",
          "SCF|0|CFV|1.5|-2.5|cf", "SCI|0|CIV|3|-4|ci", "CC", "GK|KV",
          "GCN|CN", "GCF|CFV", "GCI|CIV" );
+
+   CASE( "split_logicals",
+         "P|0|LY      = YES", "P|0|LT      = t", "P|0|LN      = no / x",
+         "P|0|LTR     = TrUe", "P|0|LFA     = fa", "P|0|LF      = F",
+         "P|0|LYY     = YESS", "P|0|LTE     = T E", "CC", "GL|LY", "GS|LN",
+         "GL|LYY" );
+   CASE( "split_numbers",
+         "P|0|PI      = +5", "P|0|DE      = 1.5D3", "P|0|DL      = -2d-1",
+         "P|0|HX      = 0x1.8p3", "P|0|BI      = 123456789012345678901",
+         "P|0|BN      = -123456789012345678901", "P|0|CP      = (1.0, 2.0)",
+         "P|0|CX      = 1 2 3", "P|0|IN      = inf", "P|0|NE      = 1.5e",
+         "P|0|END     = 5", "P|0|lower   = 6 / lc", "CC", "GK|BI", "GK|BN",
+         "GF|HX", "GI|LOWER", "F|0|lower" );
+   CASE( "split_bad_value",
+         "P|0|A       = 1", "P|0|BAD     = abc / bad", "P|0|C       = 3",
+         "SC|2", "P|1|BAD2    = 1 2 3 / x", "CL|1", "P|0|BAD3    = xyz" );
+   CASE( "put_cards_bad_value",
+         "PC|A       = 1~BAD     = abc / bad~C       = 3" );
+   CASE( "name_checks",
+         "P|0|A       = 1", "P|0|A=1     = 5", "P|0|A=B", "P|0|AB CD   = 6",
+         "P|0|Z       = 2" );
+   CASE( "string_68_fits", "SS|0|S68|aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|", "P|0|AFTER   = 1" );
+   CASE( "string_69_fails", "SS|0|S69|aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|", "P|0|AFTER   = 1", "CC",
+         "GS|S69", "F|0|S69", "F|0|AFTER" );
+   CASE( "string_quotes_fit", "SS|0|SQ|aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa''aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|", "P|0|AFTER   = 1" );
+   CASE( "string_quotes_fail", "SS|0|SQ|aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa''aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|", "P|0|AFTER   = 1" );
+   CASE( "string_trailing_blanks", "SS|0|SB|aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa   |", "P|0|AFTER   = 1" );
+   CASE( "continue_69_fails", "SCN|0|CN69|aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|", "P|0|AFTER   = 1" );
+   CASE( "long_comment", "SS|0|SC|short|cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "SI|0|IC|1|cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+         "P|0|AFTER   = 1" );
 
    printf( "];\n" );
    return 0;

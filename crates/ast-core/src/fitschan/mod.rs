@@ -315,11 +315,14 @@ impl FitsChan {
     /// current. At end-of-file the card is appended. A blank comment, when
     /// overwriting, keeps the comment of the card replaced.
     pub fn put_fits(&mut self, card: &str, overwrite: bool) -> AstResult<()> {
-        let parsed = FitsCard::parse(card)?;
-        // Emit ASTWARN cards for an illegal keyword name, mirroring C
-        // `CheckFitsName`/`Warn` inside `astPutFits` (fitschan.c:32259).
+        let (parsed, bad_value) = FitsCard::split(card)?;
+        // C's `Split` warns of an illegal keyword name, then of a value it
+        // cannot type, before the card is stored.
         if let Some(text) = crate::fitschan::card::check_fits_name(card) {
             self.warn(&text);
+        }
+        if bad_value {
+            self.warn(&crate::fitschan::card::bad_value_warning(card));
         }
         match parsed.value {
             // `PutFits` hands a commentary card to `SetFitsCom`.
@@ -374,7 +377,7 @@ impl FitsChan {
             .cards
             .current()
             .expect("a card was found")
-            .format_with_digits_and_rounding(self.fits_digits, self.fits_rounding);
+            .format_with_digits_and_rounding(self.fits_digits, self.fits_rounding)?;
         if inc {
             self.cards.move_card(1);
         }
@@ -403,22 +406,22 @@ impl FitsChan {
     /// position, matching C `WriteToSink`, which never synthesises one on a
     /// read-then-rewrite round trip. A trailing `END` is appended only when
     /// the card list has none at all — e.g. a `FitsChan` built purely from
-    /// typed setters.
-    pub fn to_header(&self) -> String {
+    /// typed setters. A string value too long for its card is AST__BDFTS.
+    pub fn to_header(&self) -> AstResult<String> {
         let visible: Vec<&FitsCard> = self
             .cards
             .iter()
             .filter(|card| !card.is_consumed())
             .collect();
         let has_end = visible.iter().any(|card| card.keyword == "END");
-        let mut lines: Vec<String> = visible
+        let mut lines = visible
             .iter()
             .map(|card| card.format_with_digits_and_rounding(self.fits_digits, self.fits_rounding))
-            .collect();
+            .collect::<AstResult<Vec<String>>>()?;
         if !has_end {
             lines.push(format!("{:<80}", "END"));
         }
-        lines.join("\n")
+        Ok(lines.join("\n"))
     }
 
     // -----------------------------------------------------------------------
@@ -1859,7 +1862,7 @@ mod tests {
     fn read_consumes_wcs_cards_but_keeps_obs_and_structural() {
         let mut fc = FitsChan::from_header(wcs_header_with_mjdobs()).unwrap();
         fc.read().unwrap().expect("reads a FrameSet");
-        let out = fc.to_header();
+        let out = fc.to_header().unwrap();
         // WCS-description cards are consumed → excluded from output.
         for kw in [
             "CTYPE1", "CTYPE2", "CRVAL1", "CRVAL2", "CRPIX1", "CRPIX2", "CDELT1", "CDELT2",
@@ -1884,7 +1887,7 @@ mod tests {
         let obj = fc.read().unwrap().expect("reads a FrameSet");
         fc.set_encoding(Encoding::FitsWcs);
         fc.write(&obj).unwrap();
-        let out = fc.to_header();
+        let out = fc.to_header().unwrap();
         assert!(
             out.contains("CRVAL1"),
             "re-written CRVAL1 should appear in output:\n{out}"
@@ -1902,7 +1905,7 @@ mod tests {
         // would otherwise consume it (foundation for astRetainFits).
         assert!(fc.cards.set_protected("CRVAL1"));
         fc.read().unwrap().expect("reads a FrameSet");
-        let out = fc.to_header();
+        let out = fc.to_header().unwrap();
         assert!(
             out.contains("CRVAL1"),
             "protected CRVAL1 should survive the read:\n{out}"

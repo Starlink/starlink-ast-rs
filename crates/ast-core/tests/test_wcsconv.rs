@@ -372,7 +372,7 @@ fn run_case(case: &TestCase, force_comparison: bool) -> Result<(), String> {
 
         let output = match &text_output {
             Some(s) => s.clone(),
-            None => fc_out.to_header(),
+            None => fc_out.to_header().unwrap(),
         };
 
         // Normalize: trim trailing whitespace per line, skip empty lines,

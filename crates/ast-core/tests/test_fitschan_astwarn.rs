@@ -12,6 +12,7 @@ use ast_core::fitschan::FitsChan;
 /// The string value of every `ASTWARN` card, in order.
 fn astwarn_values(fc: &FitsChan) -> Vec<String> {
     fc.to_header()
+        .unwrap()
         .lines()
         .filter(|l| l.starts_with("ASTWARN"))
         .map(|l| {
@@ -27,6 +28,7 @@ fn astwarn_values(fc: &FitsChan) -> Vec<String> {
 /// The keyword of every card in the chan, in order.
 fn keywords(fc: &FitsChan) -> Vec<String> {
     fc.to_header()
+        .unwrap()
         .lines()
         .filter(|l| !l.trim().is_empty())
         .map(|l| l.chars().take(8).collect::<String>().trim().to_string())

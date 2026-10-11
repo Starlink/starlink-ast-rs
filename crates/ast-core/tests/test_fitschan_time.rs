@@ -86,7 +86,7 @@ fn read_top_frame_native_dump(text: &str) -> String {
     let mut out_fc = FitsChan::new();
     out_fc.set_encoding(Encoding::Native);
     out_fc.write(&obj).expect("native write should succeed");
-    out_fc.to_header()
+    out_fc.to_header().unwrap()
 }
 
 #[test]

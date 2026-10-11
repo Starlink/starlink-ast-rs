@@ -65,10 +65,19 @@ fn state(fc: &mut FitsChan, out: &mut String) {
         fc.card_comm()
     ));
     fc.clear_card();
-    while let Some(card) = fc.find_fits("%f", true).unwrap() {
-        out.push('|');
-        out.push_str(&card);
-        out.push('\n');
+    loop {
+        match fc.find_fits("%f", true) {
+            Ok(Some(card)) => {
+                out.push('|');
+                out.push_str(&card);
+                out.push('\n');
+            }
+            Ok(None) => break,
+            Err(e) => {
+                out.push_str(&format!("|err {}\n", code_name(&e)));
+                break;
+            }
+        }
     }
     fc.set_card(icard as i64);
 }

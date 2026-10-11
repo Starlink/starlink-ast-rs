@@ -4,7 +4,9 @@
 //! all FITS value types: integer, float, string, logical, complex, comment,
 //! undefined, and CONTINUE long strings.
 
+use super::card_value::{scan_all, scan_double, scan_int};
 use crate::error::{AstError, AstResult, ErrorCode};
+use crate::frames::axis_format::is_c_space;
 
 /// Length of a FITS header card in characters.
 pub(super) const FITS_CARD_LEN: usize = 80;
@@ -73,9 +75,13 @@ pub(crate) fn check_fits_name(raw_name: &str) -> Option<String> {
 /// In FITS standard terms this is column 30 (1-based), i.e. index 29.
 const FITS_RL_COL: usize = 29;
 
-/// Minimum ending column (0-based) for quoted string values (column 20 → index 19).
-#[allow(dead_code)]
-const FITS_ST_COL: usize = 19;
+/// The column (1-based) in which a quoted string value ends at the
+/// earliest, C's `FITSSTCOL`.
+const FITS_ST_COL: usize = 20;
+
+/// The column (1-based) in which a comment starts when it fits, C's
+/// `FITSCOMCOL`.
+const FITS_COM_COL: usize = 32;
 
 /// The number of decimal digits in `INT_MAX`, C's `int_dig` in `Split`
 /// (fitschan.c:32866): an integer value with this many digits or more is
@@ -293,8 +299,18 @@ impl FitsCard {
     ///
     /// If the input is shorter than 80 characters it is right-padded with spaces.
     /// If longer, it is truncated to 80 characters. Non-printing trailing
-    /// characters (e.g. newlines) are stripped before padding.
+    /// characters (e.g. newlines) are stripped before padding. A value whose
+    /// type cannot be determined gives a commentary card holding just the
+    /// keyword, as the C library stores it. An `=` within the keyword name
+    /// is AST__BDFTS.
     pub fn parse(card: &str) -> AstResult<Self> {
+        Self::split(card).map(|(card, _)| card)
+    }
+
+    /// C's `Split`: the card [`parse`](Self::parse) gives, and whether its
+    /// value was one whose type could not be determined, which C reports as
+    /// a `badkeyvalue` warning.
+    pub(crate) fn split(card: &str) -> AstResult<(Self, bool)> {
         // Prepare the 80-character card buffer.
         let card = prepare_card(card);
         let bytes = card.as_bytes();
@@ -303,6 +319,16 @@ impl FitsCard {
         let raw_name = &card[..FITS_NAME_LEN];
         let keyword = raw_name.trim_end().to_uppercase();
         let blank_name = keyword.is_empty();
+
+        // C's `CheckFitsName` stops at the first character that is not a
+        // legal keyword character, and only an `=` is an error.
+        if raw_name.trim_end().bytes().find(|&c| !is_fits_name_char(c)) == Some(b'=') {
+            return Err(AstError::new(
+                ErrorCode::Bdfts,
+                "astPutFits(FitsChan): An equals sign ('=') was found before column 9 \
+                 within a FITS keyword name or header card.",
+            ));
+        }
 
         // Check for CONTINUE card: keyword is CONTINUE, col 9 is space, col 11 is quote.
         let is_continue = keyword == "CONTINUE"
@@ -315,7 +341,6 @@ impl FitsCard {
             && (blank_name
                 || keyword == "COMMENT"
                 || keyword == "HISTORY"
-                || keyword == "END"
                 || bytes[FITS_NAME_LEN] != b'=');
 
         if is_commentary {
@@ -325,13 +350,14 @@ impl FitsCard {
                 ""
             };
             let keyword_out = if blank_name { String::new() } else { keyword };
-            return Ok(FitsCard {
+            let card = FitsCard {
                 keyword: keyword_out,
                 value: FitsValue::Comment(text.to_string()),
                 comment: None,
                 used: false,
-                flags: crate::fitschan::card::CardFlags::default(),
-            });
+                flags: CardFlags::default(),
+            };
+            return Ok((card, false));
         }
 
         // Value cards: col 9 is '=' (or CONTINUE card).
@@ -351,126 +377,39 @@ impl FitsCard {
         if let Some(pos) = first_nonblank {
             let first_char = value_area.as_bytes()[pos];
             if first_char == b'\'' {
-                return parse_string_value(&keyword, value_area, pos, is_continue);
+                return parse_string_value(&keyword, value_area, pos, is_continue)
+                    .map(|card| (card, false));
             }
         }
 
-        // For non-string values, find the comment separator '/'.
-        // The '/' marks the end of value and start of comment.
+        // Other values end at the first '/', which starts the comment.
         let (val_str, comment_str) = split_value_comment(value_area);
-
-        // Trim the value string.
-        let val_trimmed = val_str.trim();
-
-        // Determine value type.
-        if val_trimmed.is_empty() {
-            // Undefined value.
-            let comment = trim_comment(comment_str);
-            return Ok(FitsCard {
-                keyword,
-                value: FitsValue::Undef,
-                comment,
-                used: false,
-                flags: crate::fitschan::card::CardFlags::default(),
-            });
-        }
-
-        // Check for logical values: T or F (possibly with leading spaces,
-        // single character). The FITS standard puts T or F at column 30.
-        if val_trimmed == "T" || val_trimmed == "F" {
-            let comment = trim_comment(comment_str);
-            return Ok(FitsCard {
-                keyword,
-                value: FitsValue::Logical(val_trimmed == "T"),
-                comment,
-                used: false,
-                flags: crate::fitschan::card::CardFlags::default(),
-            });
-        }
-
-        // Check for complex values: (real, imag) — parenthesized pair.
-        if val_trimmed.starts_with('(') && val_trimmed.ends_with(')') {
-            if let Some(parsed) = try_parse_complex(val_trimmed) {
-                let comment = trim_comment(comment_str);
-                return Ok(FitsCard {
-                    keyword,
-                    value: parsed,
-                    comment,
-                    used: false,
-                    flags: crate::fitschan::card::CardFlags::default(),
-                });
-            }
-        }
-
-        // Try numeric: no dots/exponents → integer; otherwise float.
-        // Following the C Split() logic closely.
-        let has_decimal_or_exp = val_trimmed
-            .bytes()
-            .any(|b| b == b'.' || b == b'E' || b == b'e' || b == b'D' || b == b'd');
-
-        if !has_decimal_or_exp {
-            // Try two integers separated by whitespace (complex integer).
-            if let Some(cval) = try_parse_complex_int(val_trimmed) {
-                let comment = trim_comment(comment_str);
-                return Ok(FitsCard {
-                    keyword,
-                    value: cval,
-                    comment,
-                    used: false,
-                    flags: crate::fitschan::card::CardFlags::default(),
-                });
-            }
-            // Try single integer (64-bit). C's `Split` keeps it an `int`
-            // only when it fits one and has fewer digits than `INT_MAX`.
-            if let Ok(ival) = val_trimmed.parse::<i64>() {
-                let comment = trim_comment(comment_str);
-                let ndig = val_trimmed.bytes().filter(u8::is_ascii_digit).count();
-                let fits_int = i32::try_from(ival).is_ok() && ndig < INT_DIG;
-                return Ok(FitsCard {
-                    keyword,
-                    value: if fits_int {
-                        FitsValue::Int(ival)
-                    } else {
-                        FitsValue::KInt(ival)
+        let value = match split_value(val_str) {
+            Some(value) => value,
+            // C stores a value it cannot type as a commentary card holding
+            // just the keyword, and reports it as `badkeyvalue`.
+            None => {
+                return Ok((
+                    FitsCard {
+                        keyword,
+                        value: FitsValue::Comment(String::new()),
+                        comment: None,
+                        used: false,
+                        flags: CardFlags::default(),
                     },
-                    comment,
-                    used: false,
-                    flags: crate::fitschan::card::CardFlags::default(),
-                });
+                    true,
+                ));
             }
-        } else {
-            // Try two floats separated by whitespace (complex float).
-            if let Some(cval) = try_parse_complex_float(val_trimmed) {
-                let comment = trim_comment(comment_str);
-                return Ok(FitsCard {
-                    keyword,
-                    value: cval,
-                    comment,
-                    used: false,
-                    flags: crate::fitschan::card::CardFlags::default(),
-                });
-            }
-            // Try single float.
-            if let Some(fval) = try_parse_float(val_trimmed) {
-                let comment = trim_comment(comment_str);
-                return Ok(FitsCard {
-                    keyword,
-                    value: FitsValue::Float(fval),
-                    comment,
-                    used: false,
-                    flags: crate::fitschan::card::CardFlags::default(),
-                });
-            }
-        }
-
-        // If we get here, we could not determine the value type.
-        // The C code issues a warning and treats it as a comment. We return an error.
-        Err(AstError::new(
-            ErrorCode::Bdfts,
-            format!(
-                "Cannot determine data type of FITS keyword value: '{}'",
-                val_trimmed
-            ),
+        };
+        Ok((
+            FitsCard {
+                keyword,
+                value,
+                comment: trim_comment(comment_str),
+                used: false,
+                flags: CardFlags::default(),
+            },
+            false,
         ))
     }
 
@@ -478,7 +417,7 @@ impl FitsCard {
     /// Format this card as an 80-character FITS header string using a
     /// specific number of significant digits for float values, with the
     /// formatter's default sequence-rounding protection (`fitsrnd = 10`).
-    pub fn format_with_digits(&self, digits: usize) -> String {
+    pub fn format_with_digits(&self, digits: usize) -> AstResult<String> {
         self.format_internal(digits, 10)
     }
 
@@ -486,16 +425,22 @@ impl FitsCard {
     /// protection. `fitsrnd` is the number of leading significant digits
     /// the formatter protects from sequence-rounding (mirrors the C
     /// library's `FitsRounding` attribute).
-    pub fn format_with_digits_and_rounding(&self, digits: usize, fitsrnd: usize) -> String {
+    pub fn format_with_digits_and_rounding(
+        &self,
+        digits: usize,
+        fitsrnd: usize,
+    ) -> AstResult<String> {
         self.format_internal(digits, fitsrnd)
     }
 
     /// Format this card as an 80-character FITS header string.
-    pub fn format(&self) -> String {
+    pub fn format(&self) -> AstResult<String> {
         self.format_internal(15, 10)
     }
 
-    fn format_internal(&self, digits: usize, fitsrnd: usize) -> String {
+    /// C's `FormatCard`. A string value that cannot fit in the card is
+    /// AST__BDFTS, as `EncodeValue` reports it.
+    fn format_internal(&self, digits: usize, fitsrnd: usize) -> AstResult<String> {
         let mut buf = String::with_capacity(FITS_CARD_LEN);
 
         // Write keyword, left-justified, padded to 8 chars.
@@ -517,7 +462,7 @@ impl FitsCard {
                 // CONTINUE card: no '=' sign, space then quoted string.
                 buf.push(' '); // col 9
                 buf.push(' '); // col 10
-                format_string_value(&mut buf, s);
+                format_string_value(&mut buf, s, &self.keyword)?;
                 append_comment(&mut buf, self.comment.as_deref());
             }
             FitsValue::Undef => {
@@ -564,7 +509,7 @@ impl FitsCard {
             }
             FitsValue::String(s) => {
                 buf.push_str("= ");
-                format_string_value(&mut buf, s);
+                format_string_value(&mut buf, s, &self.keyword)?;
                 append_comment(&mut buf, self.comment.as_deref());
             }
             FitsValue::ComplexFloat(r, i) => {
@@ -619,7 +564,7 @@ impl FitsCard {
         }
         // Truncate if over 80.
         buf.truncate(FITS_CARD_LEN);
-        buf
+        Ok(buf)
     }
 }
 
@@ -740,71 +685,83 @@ fn trim_comment(comment: Option<&str>) -> Option<String> {
     })
 }
 
-/// Try to parse a float value, handling 'D'/'d' exponents.
-fn try_parse_float(s: &str) -> Option<f64> {
-    // First try direct parse.
-    if let Ok(v) = s.parse::<f64>() {
-        return Some(v);
+/// C's `Split` on the value string of a card that is not a string: the
+/// value, or `None` when its type cannot be determined.
+///
+/// Any case-insensitive abbreviation of YES, NO, TRUE or FALSE is a logical.
+/// A value with no `.`, `E` or `D` (either case) is read as two integers,
+/// then as one, as `sscanf` reads `%d` and `%PRId64`; any other as two
+/// floating point values, then one, as `%lf` reads them, and failing that
+/// the same again with each `D` replaced by `e`. Each reading must use
+/// every character but trailing blanks.
+fn split_value(v: &str) -> Option<FitsValue> {
+    let v0 = v.trim_start_matches(|c: char| is_c_space(c as u8));
+    match full_form(&["YES", "NO", "TRUE", "FALSE"], v0) {
+        Some(0 | 2) => return Some(FitsValue::Logical(true)),
+        Some(1 | 3) => return Some(FitsValue::Logical(false)),
+        _ => {}
     }
-    // Replace D/d with E and retry.
-    let replaced: String = s
-        .chars()
-        .map(|c| if c == 'D' || c == 'd' { 'E' } else { c })
-        .collect();
-    replaced.parse::<f64>().ok()
-}
-
-/// Try to parse two whitespace-separated integers as complex integer.
-fn try_parse_complex_int(s: &str) -> Option<FitsValue> {
-    let parts: Vec<&str> = s.split_whitespace().collect();
-    if parts.len() == 2 {
-        if let (Ok(r), Ok(i)) = (parts[0].parse::<i64>(), parts[1].parse::<i64>()) {
-            return Some(FitsValue::ComplexInt(r, i));
+    if chr_len(v) == 0 {
+        return Some(FitsValue::Undef);
+    }
+    if !v.contains(['.', 'E', 'e', 'D', 'd']) {
+        if let Some(ri) = scan_all(v, 2, scan_int) {
+            // `%d` narrows each part to an `int`.
+            return Some(FitsValue::ComplexInt(
+                i64::from(ri[0] as i32),
+                i64::from(ri[1] as i32),
+            ));
         }
+        let k = scan_all(v, 1, scan_int)?[0];
+        // C keeps an `int` only when the value fits one and has fewer
+        // digits than `INT_MAX`.
+        let ndig = v.bytes().filter(u8::is_ascii_digit).count();
+        return Some(if i32::try_from(k).is_ok() && ndig < INT_DIG {
+            FitsValue::Int(k)
+        } else {
+            FitsValue::KInt(k)
+        });
     }
-    None
-}
-
-/// Try to parse two whitespace-separated floats as complex float.
-fn try_parse_complex_float(s: &str) -> Option<FitsValue> {
-    let parts: Vec<&str> = s.split_whitespace().collect();
-    if parts.len() == 2 {
-        let r = try_parse_float(parts[0]);
-        let i = try_parse_float(parts[1]);
-        if let (Some(rv), Some(iv)) = (r, i) {
-            return Some(FitsValue::ComplexFloat(rv, iv));
+    let floats = |v: &str| {
+        if let Some(ri) = scan_all(v, 2, scan_double) {
+            return Some(FitsValue::ComplexFloat(ri[0], ri[1]));
         }
-    }
-    None
-}
-
-/// Try to parse a parenthesized complex value like `(1.0, 2.0)` or `(1, 2)`.
-fn try_parse_complex(s: &str) -> Option<FitsValue> {
-    // Strip parens.
-    let inner = s.strip_prefix('(')?.strip_suffix(')')?;
-    // Split on comma.
-    let parts: Vec<&str> = inner.splitn(2, ',').collect();
-    if parts.len() != 2 {
-        return None;
-    }
-    let r_str = parts[0].trim();
-    let i_str = parts[1].trim();
-
-    // If either has a decimal point or exponent, treat as float complex.
-    let has_float_marker = |t: &str| {
-        t.bytes()
-            .any(|b| b == b'.' || b == b'E' || b == b'e' || b == b'D' || b == b'd')
+        scan_all(v, 1, scan_double).map(|f| FitsValue::Float(f[0]))
     };
+    floats(v).or_else(|| floats(&v.replace(['d', 'D'], "e")))
+}
 
-    if has_float_marker(r_str) || has_float_marker(i_str) {
-        let r = try_parse_float(r_str)?;
-        let i = try_parse_float(i_str)?;
-        Some(FitsValue::ComplexFloat(r, i))
-    } else {
-        let r = r_str.parse::<i64>().ok()?;
-        let i = i_str.parse::<i64>().ok()?;
-        Some(FitsValue::ComplexInt(r, i))
-    }
+/// C's `FullForm` with abbreviations allowed: the index of the option in
+/// `list` of which `test`, ignoring trailing blanks and case, is an
+/// abbreviation, or `None` if there is no such option or more than one.
+fn full_form(list: &[&str], test: &str) -> Option<usize> {
+    let t = &test.as_bytes()[..chr_len(test)];
+    let mut found = list.iter().enumerate().filter(|(_, option)| {
+        let o = option.as_bytes();
+        t.len() <= o.len() && t.eq_ignore_ascii_case(&o[..t.len()])
+    });
+    let (i, _) = found.next()?;
+    found.next().is_none().then_some(i)
+}
+
+/// C's `ChrLen`: the length of `s` without trailing blanks and
+/// non-printing characters.
+fn chr_len(s: &str) -> usize {
+    let b = s.as_bytes();
+    b.iter()
+        .rposition(|&c| c.is_ascii_graphic())
+        .map_or(0, |i| i + 1)
+}
+
+/// The text of the `badkeyvalue` warning C's `Split` gives for `card`,
+/// which holds at most 80 characters of it.
+pub(crate) fn bad_value_warning(card: &str) -> String {
+    let card = card.split('\0').next().unwrap_or_default();
+    let end = card
+        .char_indices()
+        .nth(FITS_CARD_LEN)
+        .map_or(card.len(), |(i, _)| i);
+    format!("The keyword value is illegal in '{}'", &card[..end])
 }
 
 /// Format a float value for FITS output.
@@ -817,57 +774,63 @@ fn format_float(v: f64, digits: usize, fitsrnd: usize) -> String {
     super::format::format_significant_rounded(v, digits, fitsrnd)
 }
 
-/// Format a string value with FITS quoting rules into the buffer.
-fn format_string_value(buf: &mut String, s: &str) {
+/// C's `EncodeValue` for a string value starting in column 11: the string
+/// in quotes, each quote doubled, padded to end in column 20 at least. The
+/// characters that will not fit in the card are dropped if they are blanks,
+/// and are otherwise AST__BDFTS.
+fn format_string_value(buf: &mut String, s: &str, keyword: &str) -> AstResult<()> {
+    let room = FITS_CARD_LEN - (FITS_NAME_LEN + 3);
     buf.push('\'');
-    let start_len = buf.len();
-    for ch in s.chars() {
+    let mut len = 1;
+    let mut rest = "";
+    for (i, ch) in s.char_indices() {
+        let quote = ch == '\'';
+        if len + ch.len_utf8() + usize::from(quote) > room {
+            rest = &s[i..];
+            break;
+        }
         buf.push(ch);
-        if ch == '\'' {
-            buf.push('\''); // escape quotes by doubling
+        len += ch.len_utf8();
+        if quote {
+            buf.push('\'');
+            len += 1;
         }
     }
-    // Pad string to minimum width (at least 8 chars inside quotes).
-    // FITS standard: quoted string (including quotes) should extend to at least column 20.
-    // From C: FITSSTCOL(=20) - col(=11) = 9, where 9 includes opening quote.
-    // So content (excluding opening quote) must be at least 8 chars.
-    let content_len = buf.len() - start_len;
-    let min_content: usize = 8;
-    if content_len < min_content {
-        for _ in 0..(min_content - content_len) {
-            buf.push(' ');
-        }
+    while len < FITS_ST_COL - (FITS_NAME_LEN + 3) {
+        buf.push(' ');
+        len += 1;
     }
     buf.push('\'');
+    if rest.bytes().any(|c| !is_c_space(c)) {
+        return Err(AstError::new(
+            ErrorCode::Bdfts,
+            format!("Cannot encode string '{s}' into a FITS header card for keyword '{keyword}'."),
+        ));
+    }
+    Ok(())
 }
 
-/// Append a comment to the formatted card buffer.
+/// C's `FormatCard` for the comment after a value: "/ " and the comment,
+/// starting in column 32 if it fits there, otherwise far enough left to end
+/// in column 80 though never closer than one blank after the value, and
+/// truncated at column 80.
 fn append_comment(buf: &mut String, comment: Option<&str>) {
-    if let Some(com) = comment {
-        if com.is_empty() {
-            return;
+    let Some(com) = comment.filter(|c| !c.is_empty()) else {
+        return;
+    };
+    // `comstart` is C's 1-based column, from its own expression.
+    let comstart = (FITS_CARD_LEN + 3)
+        .saturating_sub(chr_len(com))
+        .min(FITS_COM_COL)
+        .max(buf.len() + 2);
+    while buf.len() < comstart - 1 {
+        buf.push(' ');
+    }
+    for ch in "/ ".chars().chain(com.chars()) {
+        if buf.len() >= FITS_CARD_LEN {
+            break;
         }
-        // Standard FITS comment column is 32 (index 31).
-        // Try to place "/ comment" starting at column 32 if possible.
-        let com_text = format!("/ {com}");
-        let desired_start = 31; // 0-based column 32
-        let min_start = buf.len() + 1; // at least one space before /
-
-        let start = if desired_start >= min_start {
-            desired_start
-        } else {
-            min_start
-        };
-
-        // Pad to the start position.
-        while buf.len() < start {
-            buf.push(' ');
-        }
-
-        // Append "/ comment", truncating at card boundary.
-        let remaining = FITS_CARD_LEN.saturating_sub(buf.len());
-        let to_append = com_text.len().min(remaining);
-        buf.push_str(&com_text[..to_append]);
+        buf.push(ch);
     }
 }
 
@@ -1089,7 +1052,7 @@ mod tests {
 
     #[test]
     fn parse_complex_float() {
-        let card = "CMPLXF  = (1.5, 2.5)          / Complex float";
+        let card = "CMPLXF  =                  1.5                 2.5 / Complex float";
         let parsed = FitsCard::parse(card).unwrap();
         assert_eq!(parsed.keyword, "CMPLXF");
         assert_eq!(parsed.value, FitsValue::ComplexFloat(1.5, 2.5));
@@ -1097,10 +1060,19 @@ mod tests {
 
     #[test]
     fn parse_complex_int() {
-        let card = "CMPLXI  = (3, 4)              / Complex int";
+        let card = "CMPLXI  =                    3                    4 / Complex int";
         let parsed = FitsCard::parse(card).unwrap();
         assert_eq!(parsed.keyword, "CMPLXI");
         assert_eq!(parsed.value, FitsValue::ComplexInt(3, 4));
+    }
+
+    #[test]
+    fn parenthesised_complex_is_an_illegal_value() {
+        let (card, bad) = FitsCard::split("CMPLXF  = (1.5, 2.5)          / Complex float").unwrap();
+        assert!(bad);
+        assert_eq!(card.keyword, "CMPLXF");
+        assert_eq!(card.value, FitsValue::Comment(String::new()));
+        assert_eq!(card.comment, None);
     }
 
     #[test]
@@ -1112,7 +1084,7 @@ mod tests {
             used: false,
             flags: crate::fitschan::card::CardFlags::default(),
         };
-        let formatted = card.format();
+        let formatted = card.format().unwrap();
         assert_eq!(formatted.len(), 80);
         assert!(formatted.starts_with("NAXIS   = "));
         assert!(formatted.contains("2"));
@@ -1128,7 +1100,7 @@ mod tests {
             used: false,
             flags: crate::fitschan::card::CardFlags::default(),
         };
-        let formatted = card.format();
+        let formatted = card.format().unwrap();
         assert_eq!(formatted.len(), 80);
         assert!(formatted.contains("'RA---TAN'"));
         assert!(formatted.contains("/ Axis type"));
@@ -1143,7 +1115,7 @@ mod tests {
             used: false,
             flags: crate::fitschan::card::CardFlags::default(),
         };
-        let formatted = card.format();
+        let formatted = card.format().unwrap();
         assert_eq!(formatted.len(), 80);
         // T should be at column 30 (index 29).
         assert_eq!(formatted.as_bytes()[29], b'T');
@@ -1158,7 +1130,7 @@ mod tests {
             used: false,
             flags: crate::fitschan::card::CardFlags::default(),
         };
-        let formatted = card.format();
+        let formatted = card.format().unwrap();
         assert_eq!(formatted.len(), 80);
         assert!(formatted.contains("/ Reference value"));
     }
@@ -1176,7 +1148,7 @@ mod tests {
             used: false,
             flags: crate::fitschan::card::CardFlags::default(),
         };
-        let formatted = card.format_with_digits(17);
+        let formatted = card.format_with_digits(17).unwrap();
         assert_eq!(
             formatted.trim_end(),
             "SCL1_A  = -1.7453292519943296E-4 / Scale factor for axis 1"
@@ -1194,7 +1166,7 @@ mod tests {
             used: false,
             flags: crate::fitschan::card::CardFlags::default(),
         };
-        let formatted = card.format_with_digits(17);
+        let formatted = card.format_with_digits(17).unwrap();
         assert_eq!(formatted.trim_end(), "SFT1_C  =             -7.67E-9");
         assert_eq!(formatted.trim_end().len(), 30);
     }
@@ -1208,7 +1180,7 @@ mod tests {
             used: false,
             flags: crate::fitschan::card::CardFlags::default(),
         };
-        let formatted = card.format();
+        let formatted = card.format().unwrap();
         assert_eq!(formatted.len(), 80);
         assert!(formatted.starts_with("UNDEF   = "));
         assert!(formatted.contains("/ No value"));
@@ -1223,7 +1195,7 @@ mod tests {
             used: false,
             flags: crate::fitschan::card::CardFlags::default(),
         };
-        let formatted = card.format();
+        let formatted = card.format().unwrap();
         assert_eq!(formatted.len(), 80);
         assert!(formatted.starts_with("COMMENT  This is a test"));
     }
@@ -1232,7 +1204,7 @@ mod tests {
     fn roundtrip_integer() {
         let input = "CRPIX1  =                128.0 / Reference pixel";
         let card = FitsCard::parse(input).unwrap();
-        let formatted = card.format();
+        let formatted = card.format().unwrap();
         assert_eq!(formatted.len(), 80);
         let reparsed = FitsCard::parse(&formatted).unwrap();
         assert_eq!(card.keyword, reparsed.keyword);
@@ -1254,7 +1226,7 @@ mod tests {
             used: false,
             flags: crate::fitschan::card::CardFlags::default(),
         };
-        let formatted = card.format();
+        let formatted = card.format().unwrap();
         assert_eq!(formatted.len(), 80);
         let reparsed = FitsCard::parse(&formatted).unwrap();
         assert_eq!(reparsed.value, FitsValue::String("It's OK".into()));
@@ -1269,7 +1241,7 @@ mod tests {
             used: false,
             flags: crate::fitschan::card::CardFlags::default(),
         };
-        let formatted = card.format();
+        let formatted = card.format().unwrap();
         let reparsed = FitsCard::parse(&formatted).unwrap();
         assert_eq!(reparsed.value, FitsValue::Logical(true));
     }
@@ -1283,7 +1255,7 @@ mod tests {
             used: false,
             flags: crate::fitschan::card::CardFlags::default(),
         };
-        let formatted = card.format();
+        let formatted = card.format().unwrap();
         assert_eq!(formatted.len(), 80);
         // The parenthesized format is not used for formatting (only parsing).
         // The formatted output uses two space-separated floats which the parser
@@ -1299,7 +1271,7 @@ mod tests {
             used: false,
             flags: crate::fitschan::card::CardFlags::default(),
         };
-        let formatted = card.format();
+        let formatted = card.format().unwrap();
         assert_eq!(formatted.len(), 80);
         assert!(formatted.starts_with("CONTINUE"));
         assert!(formatted.contains("'long string value"));

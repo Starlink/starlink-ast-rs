@@ -398,6 +398,7 @@ VELOSYS =   29327.576999871173 / [m/s] Topo. apparent velocity of rest frame
 RESTWAV = 4.9998742161440962E-7 / [m] Rest wavelength";
     let written: Vec<String> = fc
         .to_header()
+        .unwrap()
         .lines()
         .map(|l| l.trim_end().to_string())
         .filter(|l| !l.is_empty() && l != "END")
@@ -482,6 +483,7 @@ fn chan_with_dims(tol: Option<f64>) -> FitsChan {
 /// Collect the keywords a FitsChan holds, in card order.
 fn keywords(fc: &FitsChan) -> Vec<String> {
     fc.to_header()
+        .unwrap()
         .lines()
         .map(|line| line[..8.min(line.len())].trim_end().to_string())
         .filter(|kw| !kw.is_empty() && kw != "END")
