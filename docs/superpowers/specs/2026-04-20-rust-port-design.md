@@ -11,9 +11,11 @@
 - **2026-10-11 (rev 18)**: Added `FitsChan::test_cd_matrix` and
   `clear_cd_matrix`; unless set, `cd_matrix` is true when the FitsChan
   holds a `CDi_j` card a read has not consumed, as C's `GetCDMatrix`.
-- **2026-10-11 (rev 17)**: `FitsChan::to_header` returns
-  `AstResult<String>`: a string value too long for its card is
-  AST__BDFTS when the card is formatted, as C's `EncodeValue` reports it.
+- **2026-10-11 (rev 17)**: `FitsChan::to_header` and
+  `FitsCard::format`, `format_with_digits` and
+  `format_with_digits_and_rounding` return `AstResult<String>`: a string
+  value too long for its card is AST__BDFTS when the card is formatted,
+  as C's `EncodeValue` reports it.
 - **2026-10-10 (rev 16)**: Added FitsChan's SipOK attribute (`sip_ok`,
   `set_sip_ok`, `test_sip_ok`, `clear_sip_ok`).
 - **2026-10-10 (rev 15)**: FitsChan hides the cards a read consumed, as
