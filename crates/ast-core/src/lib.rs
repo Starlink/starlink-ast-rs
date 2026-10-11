@@ -19,6 +19,6 @@ pub(crate) mod units;
 pub(crate) mod wcslib;
 pub use channel::source_sink::{FileSink, FileSource, StringSink, StringSource};
 pub use channel::{Channel, ChannelConfig, MocChan, MocFormat, NativeChannel, Sink, Source};
-pub use fitschan::{Encoding, FitsChan};
+pub use fitschan::{AltAxes, Encoding, FitsChan};
 pub use keymap::{AstType, KeyMap, SortBy};
 pub use serial::{AnyObject, from_native_string, from_native_string_with, to_native_string};

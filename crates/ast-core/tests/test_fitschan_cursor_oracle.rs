@@ -15,8 +15,9 @@
 mod cases;
 
 use ast_core::error::AstError;
+use ast_core::frames::FrameRef;
 use ast_core::mappings::ZoomMap;
-use ast_core::{AnyObject, Channel, Encoding, FitsChan};
+use ast_core::{AltAxes, AnyObject, Channel, Encoding, FitsChan};
 
 /// C's name for an error code, as the probe prints it.
 fn code_name(e: &AstError) -> &'static str {
@@ -265,12 +266,29 @@ fn run(fc: &mut FitsChan, op: &str, out: &mut String) {
             let (v, set) = match arg(1) {
                 "Warnings" => (fc.warning_conditions(), fc.test_warning_conditions()),
                 "AllWarnings" => (fc.all_warning_conditions(), false),
+                "AltAxes" => (
+                    match fc.alt_axes() {
+                        AltAxes::All => "ALL",
+                        AltAxes::Ident => "IDENT",
+                        AltAxes::None => "NONE",
+                    },
+                    fc.test_alt_axes(),
+                ),
                 other => panic!("no string attribute {other}"),
             };
             format!("= [{v}] {}\n", i32::from(set))
         }
         "ASC" => match arg(1) {
             "Warnings" => result(fc.set_warning_conditions(arg(2)), |()| String::new()),
+            "AltAxes" => {
+                fc.set_alt_axes(match arg(2).to_ascii_uppercase().as_str() {
+                    "ALL" => AltAxes::All,
+                    "IDENT" => AltAxes::Ident,
+                    "NONE" => AltAxes::None,
+                    other => panic!("no AltAxes {other}"),
+                });
+                String::new()
+            }
             other => panic!("no string attribute {other}"),
         },
         "WN" => {
@@ -299,10 +317,23 @@ fn run(fc: &mut FitsChan, op: &str, out: &mut String) {
                 "PolyTan" => fc.clear_poly_tan(),
                 "IgnoreBadAlt" => fc.clear_ignore_bad_alt(),
                 "Warnings" => fc.clear_warning_conditions(),
+                "AltAxes" => fc.clear_alt_axes(),
                 other => panic!("no attribute {other}"),
             }
             String::new()
         }
+        "RCIW" => result(fc.read(), |obj| match obj {
+            Some(AnyObject::FrameSet(mut fs)) => {
+                fs.frame_mut(FrameRef::Index(arg(1).parse().unwrap()))
+                    .unwrap()
+                    .clear_ident()
+                    .unwrap();
+                let obj = AnyObject::FrameSet(fs);
+                result(fc.write(&obj), |n| format!("= FrameSet {n}\n"))
+            }
+            Some(_) => "= another class 0\n".to_string(),
+            None => "= null 0\n".to_string(),
+        }),
         "RSW" => result(fc.read(), |obj| {
             fc.set_warning_conditions(arg(1)).unwrap();
             match obj {
@@ -394,6 +425,13 @@ const EXCLUDED: &[(&str, &str)] = &[
         "sao_three_ctypes_rw",
         "with NAXIS 2 and CTYPE1 to CTYPE3, C reads three WCS axes, the highest \
          CRPIX index, where the port reads the two NAXIS gives",
+    ),
+    (
+        "alt_axes_alt_offset",
+        "the writer passes no input CRVALs to an alternate description, where \
+         C's ReadCrval takes them from the header (CRVAL1B 0 at CRPIX1B 1), and \
+         it adds an absolute description A for the offset alternate B, which C \
+         does not write",
     ),
     (
         "sao_not_sao_rw",

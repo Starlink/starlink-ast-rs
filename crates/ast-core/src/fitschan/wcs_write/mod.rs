@@ -118,12 +118,8 @@ pub(crate) fn encode_wcs(
     let mut primok = false;
     let mut ret = false;
     for (i, plane) in planes.iter().enumerate() {
-        let (s, frame_name) = if i == 0 {
-            (' ', None)
-        } else {
-            (plane.letter, alt_plane_domain(frameset, plane.letter))
-        };
-        let ok = write_store_to_cards(&plane.store, cards, use_cd, s, frame_name.as_deref())?;
+        let s = if i == 0 { ' ' } else { plane.letter };
+        let ok = write_store_to_cards(&plane.store, cards, use_cd, s)?;
         if ok {
             ret = true;
         }
@@ -218,36 +214,6 @@ fn propagate_last_plane_globals_into_primary(planes: &mut [PlaneStore]) {
     primary.obsgeoz = obsgeoz.or(primary.obsgeoz);
     primary.dtai = dtai.or(primary.dtai);
     primary.dut1 = dut1.or(primary.dut1);
-}
-
-/// Look up the domain string for the alt frame whose Ident-derived
-/// version letter equals `letter`. Returns None for the primary plane,
-/// for an empty domain, or for the per-class default domain (which C
-/// suppresses via `astTestDomain` at fitschan.c:29959-29961).
-///
-/// Used to populate the per-version `WCSNAME{S}` cards.
-fn alt_plane_domain(fs: &FrameSet, letter: char) -> Option<String> {
-    if letter == ' ' {
-        return None;
-    }
-    for (idx, l) in frames_with_version_letters(fs) {
-        if l == letter
-            && let Ok(frame) = fs.frame(FrameRef::Index(idx))
-        {
-            // Suppress the per-class default domain (the SkyFrame's
-            // "SKY", SpecFrame's "SPECTRUM", TimeFrame's "TIME",
-            // BasicFrame's empty default). C's `astTestDomain` returns
-            // false for those.
-            if !frame.test_domain() {
-                return None;
-            }
-            let d = frame.domain();
-            if !d.is_empty() {
-                return Some(d.to_string());
-            }
-        }
-    }
-    None
 }
 
 /// Read the input chan's `CRVAL{i}{s}` cards into a per-axis array.
@@ -449,14 +415,12 @@ fn store_from_frameset_to(
 /// Write FitsStore contents as FITS keyword cards.
 ///
 /// `s` is the FITS version letter: `' '` = primary plane (bare keys),
-/// `'A'`–`'Z'` = alt plane (suffixed keys). `frame_name` drives
-/// WCSNAME{S} emission for alt planes; ignored for the primary plane.
+/// `'A'`–`'Z'` = alt plane (suffixed keys).
 fn write_store_to_cards(
     store: &FitsStore,
     cards: &mut CardList,
     use_cd: bool,
     s: char,
-    frame_name: Option<&str>,
 ) -> AstResult<bool> {
     let naxis = store.naxis;
 
@@ -486,16 +450,11 @@ fn write_store_to_cards(
         cards.set_int(&key, naxis as i64, "Number of WCS axes");
     }
 
-    // WCSNAME{S}: store.wcsname (set by `sky_sys` from the SkyFrame's
-    // Domain) takes precedence over the FrameSet's frame_name. When
-    // either is present, emit on both primary and alt planes. Mirrors
-    // fitschan.c::WcsFromStore lines 37005-37011 — the C library
-    // unconditionally emits WCSNAME (with a 1-axis special case to
-    // suppress when WCSNAME == CTYPE1).
-    let wcsname_to_emit: Option<&str> = store
-        .wcsname
-        .as_deref()
-        .or_else(|| frame_name.filter(|n| !n.is_empty()));
+    // WCSNAME{S}: store.wcsname, the Domain `AddVersion` or `SkySys`
+    // stored. Mirrors fitschan.c::WcsFromStore lines 37005-37011 — the C
+    // library emits WCSNAME with a 1-axis special case to suppress it
+    // when WCSNAME == CTYPE1.
+    let wcsname_to_emit: Option<&str> = store.wcsname.as_deref();
     if let Some(name) = wcsname_to_emit {
         // 1-axis suppression: if naxis == 1 and CTYPE0 equals WCSNAME
         // (case-insensitive), the C library skips the redundant
@@ -1088,75 +1047,6 @@ fn gregorian_to_mjd(
     Some(mjd0 + days)
 }
 
-/// Identify which frames in the FrameSet are eligible for FITS alt-plane
-/// emission, and assign each a version letter ('A'..='Z').
-///
-/// Mirrors the loop at fitschan.c:12172-12230:
-///   - Skip base and current frames (they're emitted as the primary plane).
-///   - Skip frames with domain "IWC" (intermediate world coords; not externalised).
-///   - First pass: if a frame's `ident()` is a single uppercase letter and
-///     not yet used, use it.
-///   - Second pass: assign remaining letters A, B, C, ... in frame-index
-///     order, skipping any already used in the first pass.
-///
-/// Returns a Vec of (1-based frame index, version letter) pairs.
-pub(crate) fn frames_with_version_letters(fs: &FrameSet) -> Vec<(usize, char)> {
-    let nframe = fs.nframe();
-    let base_idx = fs.base_idx() + 1; // 1-based to match C
-    let curr_idx = fs.current_idx() + 1;
-
-    let mut used = [false; 26]; // index 0 = 'A', 25 = 'Z'
-    let mut assignment: Vec<(usize, Option<char>)> = Vec::new();
-
-    // First pass: explicit Ident.
-    for ifrm in 1..=nframe {
-        if ifrm == base_idx || ifrm == curr_idx {
-            continue;
-        }
-        let frame = match fs.frame(FrameRef::Index(ifrm)) {
-            Ok(f) => f,
-            Err(_) => continue,
-        };
-        if frame.domain().eq_ignore_ascii_case("IWC") {
-            continue;
-        }
-        let ident = frame.ident();
-        let letter = if ident.len() == 1 {
-            let c = ident.chars().next().unwrap();
-            if c.is_ascii_uppercase() && !used[(c as u8 - b'A') as usize] {
-                used[(c as u8 - b'A') as usize] = true;
-                Some(c)
-            } else {
-                None
-            }
-        } else {
-            None
-        };
-        assignment.push((ifrm, letter));
-    }
-
-    // Second pass: assign remaining letters in order.
-    let mut next = b'A';
-    for (_, opt_letter) in assignment.iter_mut() {
-        if opt_letter.is_none() {
-            while next <= b'Z' && used[(next - b'A') as usize] {
-                next += 1;
-            }
-            if next > b'Z' {
-                break; // out of letters; remaining frames don't get planes
-            }
-            *opt_letter = Some(next as char);
-            used[(next - b'A') as usize] = true;
-            next += 1;
-        }
-    }
-
-    assignment
-        .into_iter()
-        .filter_map(|(idx, opt)| opt.map(|c| (idx, c)))
-        .collect()
-}
-
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -1193,7 +1083,7 @@ mod tests {
         store.skyrefp[1] = Some(0.5);
 
         let mut cards = CardList::new();
-        write_store_to_cards(&store, &mut cards, false, s, None).expect("write");
+        write_store_to_cards(&store, &mut cards, false, s).expect("write");
         cards
     }
 
@@ -1372,10 +1262,10 @@ mod tests {
     }
 
     #[test]
-    fn frames_with_version_letters_timj() {
+    fn version_letters_timj() {
         use crate::serial::AnyObject;
-        // timj.ast has 4 frames: GRID(base), PIXEL, AXIS, SKY(current).
-        // Expect: PIXEL → A, AXIS → B (both letters, in frame-index order).
+        // timj.ast has 4 frames: GRID (base), PIXEL, AXIS and SKY (current),
+        // so PIXEL and AXIS take A and B, or none with AltAxes IDENT.
         let text = std::fs::read_to_string(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/tests/fixtures/wcsconv/inputs/timj.ast"
@@ -1386,20 +1276,13 @@ mod tests {
             AnyObject::FrameSet(fs) => fs,
             _ => panic!("expected FrameSet"),
         };
-        let assignments = frames_with_version_letters(&fs);
-        assert!(
-            !assignments.is_empty(),
-            "timj should have at least 1 alt plane, got {}",
-            assignments.len()
-        );
-        // First two letters should be A then B (or whichever first two
-        // alphabetically given Ident may override).
-        let letters: Vec<char> = assignments.iter().map(|(_, c)| *c).collect();
-        eprintln!("timj alt assignments: {:?}", assignments);
-        assert!(
-            letters.contains(&'A') || letters.contains(&'B'),
-            "letters: {:?}",
-            letters
-        );
+        use super::plane_stores::version_letters;
+        use crate::fitschan::AltAxes;
+        let (sid, s) = version_letters(&fs, AltAxes::All);
+        assert_eq!(sid, vec![None, None, Some('A'), Some('B'), None]);
+        assert_eq!(s, b'B');
+        let (sid, s) = version_letters(&fs, AltAxes::Ident);
+        assert_eq!(sid, vec![None; 5]);
+        assert_eq!(s, b'A' - 1);
     }
 }

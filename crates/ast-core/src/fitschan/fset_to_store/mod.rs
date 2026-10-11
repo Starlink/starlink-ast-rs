@@ -40,6 +40,7 @@ mod spectral_axes;
 mod world_axes;
 
 use crate::error::AstResult;
+pub(crate) use crate::fitschan::AltAxes;
 use crate::fitschan::Encoding;
 use crate::fitschan::fits_store::FitsStore;
 use crate::fitschan::warning::Warnings;
@@ -73,6 +74,8 @@ pub(crate) struct WriteAttrs {
     /// FitsChan as they are raised; shared by every copy of these
     /// attributes the write makes.
     pub warnings: std::rc::Rc<std::cell::RefCell<Warnings>>,
+    /// AltAxes: which Frames are described by alternate axes.
+    pub alt_axes: AltAxes,
 }
 
 impl Default for WriteAttrs {
@@ -82,6 +85,7 @@ impl Default for WriteAttrs {
             sip_ok: true,
             timesys: None,
             warnings: Default::default(),
+            alt_axes: AltAxes::All,
         }
     }
 }

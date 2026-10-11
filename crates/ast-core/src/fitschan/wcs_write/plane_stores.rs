@@ -10,7 +10,7 @@ use crate::error::AstResult;
 use crate::fitschan::Encoding;
 use crate::fitschan::fits_store::FitsStore;
 use crate::fitschan::fset_to_store::sky_sys::is_sky_off;
-use crate::fitschan::fset_to_store::{WriteAttrs, fset_to_store, fset_to_store_absolute};
+use crate::fitschan::fset_to_store::{AltAxes, WriteAttrs, fset_to_store, fset_to_store_absolute};
 use crate::frames::{FrameRef, FrameSet};
 
 /// One plane in the writer's per-letter loop.
@@ -21,19 +21,109 @@ use crate::frames::{FrameRef, FrameSet};
 /// the plane whose **global** keyword values land in the emitted
 /// header — see [`crate::fitschan::fits_store::FitsStore::mjdobs`]
 /// for the contract.
-#[allow(dead_code)] // wired into encoders in Group 5
 pub(crate) struct PlaneStore {
     pub letter: char,
     pub store: FitsStore,
 }
 
-/// Build per-plane FitsStores for every coordinate-version letter
-/// the FrameSet carries.
+/// C's `astChrMatchN`: whether `a` and `b` match in their first `n`
+/// characters, ignoring case, the end of one string matching white space
+/// in the other.
+fn chr_match_n(a: &str, b: &str, n: usize) -> bool {
+    let (a, b) = (a.as_bytes(), b.as_bytes());
+    let (mut i, mut j) = (0, 0);
+    let mut nc = 0;
+    while (i < a.len() || j < b.len()) && nc < n {
+        nc += 1;
+        let ca = a.get(i).copied();
+        let cb = b.get(j).copied();
+        let ok = match (ca, cb) {
+            (None, Some(c)) | (Some(c), None) => c.is_ascii_whitespace(),
+            (Some(x), Some(y)) => x.eq_ignore_ascii_case(&y),
+            (None, None) => true,
+        };
+        if !ok {
+            return false;
+        }
+        if ca.is_some() {
+            i += 1;
+        }
+        if cb.is_some() {
+            j += 1;
+        }
+    }
+    true
+}
+
+/// The version letters C's `FsetToStore` gives the Frames other than the
+/// base and current Frames (fitschan.c:12305-12370), indexed by Frame
+/// index (1-based, entry 0 unused): `None` for a Frame described by no
+/// alternate axes, which includes every IWC Frame. A Frame whose Ident is
+/// a single upper case letter takes that letter if no earlier Frame has;
+/// unless AltAxes is IDENT, the others take the free letters in order.
 ///
-/// The returned Vec begins with the primary `(letter=' ', store)`
-/// and continues with alt planes in alphabetical order. Mirrors
-/// `fitschan.c::FsetToStore`'s outer loop.
-#[allow(dead_code)] // wired in Group 5
+/// Also returns C's counter `s`: the last letter the second pass handed
+/// out, or the character before `A` when it handed out none, from which
+/// the descriptions of absolute coordinates added for offset SkyFrames
+/// take their letters.
+pub(crate) fn version_letters(fs: &FrameSet, alt_axes: AltAxes) -> (Vec<Option<char>>, u8) {
+    let nfrm = fs.nframe();
+    let ibase = fs.base_idx() + 1;
+    let icurr = fs.current_idx() + 1;
+    let mut sid: Vec<Option<char>> = vec![None; nfrm + 1];
+    let mut iwc = vec![false; nfrm + 1];
+    let mut used = [false; 26];
+    for ifrm in 1..=nfrm {
+        if ifrm == icurr || ifrm == ibase {
+            continue;
+        }
+        let Ok(frame) = fs.frame(FrameRef::Index(ifrm)) else {
+            continue;
+        };
+        if chr_match_n(frame.domain(), "IWC", 3) {
+            iwc[ifrm] = true;
+            continue;
+        }
+        let id = frame.ident();
+        if let [c] = id.as_bytes()
+            && c.is_ascii_uppercase()
+            && !used[(c - b'A') as usize]
+        {
+            used[(c - b'A') as usize] = true;
+            sid[ifrm] = Some(*c as char);
+        }
+    }
+    let mut s = b'A' - 1;
+    if alt_axes != AltAxes::Ident {
+        for ifrm in 1..=nfrm {
+            if ifrm == icurr || ifrm == ibase || iwc[ifrm] || sid[ifrm].is_some() {
+                continue;
+            }
+            // C steps on past every letter already given; past `Z` there
+            // are no letters to give.
+            loop {
+                s += 1;
+                if s > b'Z' || !used[(s - b'A') as usize] {
+                    break;
+                }
+            }
+            if s <= b'Z' {
+                used[(s - b'A') as usize] = true;
+                sid[ifrm] = Some(s as char);
+            }
+        }
+    }
+    (sid, s)
+}
+
+/// Build per-plane FitsStores for every coordinate-version letter
+/// the FrameSet carries, in the order C's `FsetToStore` makes them
+/// (fitschan.c:12290-12395): the primary description from the current
+/// Frame; unless AltAxes is NONE, one of absolute coordinates if the
+/// current Frame is an offset SkyFrame; then for each Frame given a
+/// letter, in Frame order, its description and, for an offset SkyFrame,
+/// one of absolute coordinates. Alternates are made only when the
+/// primary description is. An alternate that cannot be made is left out.
 pub(crate) fn collect_plane_stores(
     fs: &FrameSet,
     dim: &[Option<f64>],
@@ -42,20 +132,11 @@ pub(crate) fn collect_plane_stores(
     attrs: WriteAttrs,
 ) -> AstResult<Vec<PlaneStore>> {
     let mut planes = Vec::new();
-
-    // Does the current Frame describe offset coordinates? Mirrors C
-    // `FsetToStore` (fitschan.c:12155) computing `isoff` for the
-    // primary plane before the primary `AddVersion`.
     let primary_isoff = is_sky_off(fs, fs.current_idx()) != 0;
 
-    // Primary plane (letter ' ').
-    //
     // An alternate axis description only qualifies a primary one, so when
     // the primary cannot be described the whole store is worthless and no
-    // plane is returned: C discards it outright with `if( !astOK ||
-    // !primok ) ret = FreeStore( ret, ... )` (fitschan.c:12358), leaving
-    // `Write` with nothing to encode. The alternates are not even
-    // attempted, matching C's `if( primok && astOK && ... )` at 12262.
+    // plane is returned, as C frees it (fitschan.c:12392).
     let (primary_store, primok) =
         fset_to_store(fs, dim, encoding, ' ', primary_crvals, attrs.clone())?;
     if !primok {
@@ -65,85 +146,40 @@ pub(crate) fn collect_plane_stores(
         letter: ' ',
         store: primary_store,
     });
+    if attrs.alt_axes == AltAxes::None {
+        return Ok(planes);
+    }
 
-    // Alt planes — assigned via the existing
-    // `frames_with_version_letters` helper (Ident-first, then A..Z
-    // in frame-index order).
-    let alt_assignments = super::frames_with_version_letters(fs);
-
-    // Track the highest version letter handed out, so the offset
-    // "extra absolute" planes can claim the next free letter. Mirrors
-    // C's running `s` counter in `FsetToStore` (fitschan.c:12219-12257).
-    let mut next_letter = b'A';
-    let bump_used = |next: &mut u8, used: char| {
-        if used.is_ascii_uppercase() {
-            let v = used as u8;
-            if v >= *next {
-                *next = v + 1;
-            }
+    let (sid, mut s) = version_letters(fs, attrs.alt_axes);
+    let push = |planes: &mut Vec<PlaneStore>, (store, ok): (FitsStore, bool), letter| {
+        if ok {
+            planes.push(PlaneStore { letter, store });
         }
     };
-
-    for (frame_idx_1based, letter) in &alt_assignments {
-        bump_used(&mut next_letter, *letter);
-        // Switch the FrameSet's current to the alt frame, run the
-        // pipeline, then we discard the clone (caller's fs is
-        // unchanged).
-        let mut alt_fs = fs.clone();
-        alt_fs.set_current(FrameRef::Index(*frame_idx_1based))?;
-        // Alt-plane crvals: caller-managed (the writer extracts
-        // CRVAL{i}{letter} from the input chan). For now pass an
-        // empty slice — `fset_to_store` will fall back to the
-        // central-pixel default. A future commit can plumb
-        // alt_crvals through the encode_wcs entry point.
-        let (alt_store, alt_ok) =
-            fset_to_store(&alt_fs, dim, encoding, *letter, &[], attrs.clone())?;
-        if !alt_ok {
+    if primary_isoff {
+        s += 1;
+        if s <= b'Z' {
+            let made = fset_to_store_absolute(fs, dim, encoding, s as char, &[], attrs.clone())?;
+            push(&mut planes, made, s as char);
+        }
+    }
+    for (ifrm, letter) in sid.iter().enumerate() {
+        let Some(letter) = *letter else {
             continue;
-        }
-        planes.push(PlaneStore {
-            letter: *letter,
-            store: alt_store,
-        });
-    }
-
-    // If the primary headers describe offset coordinates, create an
-    // alternate axis description for the corresponding *absolute*
-    // coordinate system, using the next free version letter. Mirrors
-    // C `FsetToStore` (fitschan.c:12230-12235).
-    if primary_isoff && next_letter <= b'Z' {
-        let letter = next_letter as char;
-        next_letter += 1;
-        let (abs_store, abs_ok) =
-            fset_to_store_absolute(fs, dim, encoding, letter, &[], attrs.clone())?;
-        if abs_ok {
-            planes.push(PlaneStore {
-                letter,
-                store: abs_store,
-            });
-        }
-    }
-
-    // For each alt Frame that is itself an offset SkyFrame, append an
-    // extra absolute-coordinate alternate description. Mirrors C
-    // `FsetToStore` (fitschan.c:12251-12256).
-    for (frame_idx_1based, _letter) in &alt_assignments {
-        if is_sky_off(fs, frame_idx_1based - 1) != 0 && next_letter <= b'Z' {
-            let letter = next_letter as char;
-            next_letter += 1;
-            let mut alt_fs = fs.clone();
-            alt_fs.set_current(FrameRef::Index(*frame_idx_1based))?;
-            let (abs_store, abs_ok) =
-                fset_to_store_absolute(&alt_fs, dim, encoding, letter, &[], attrs.clone())?;
-            if abs_ok {
-                planes.push(PlaneStore {
-                    letter,
-                    store: abs_store,
-                });
+        };
+        let mut alt_fs = fs.clone();
+        alt_fs.set_current(FrameRef::Index(ifrm))?;
+        let made = fset_to_store(&alt_fs, dim, encoding, letter, &[], attrs.clone())?;
+        push(&mut planes, made, letter);
+        if is_sky_off(fs, ifrm - 1) != 0 {
+            s += 1;
+            if s <= b'Z' {
+                let made =
+                    fset_to_store_absolute(&alt_fs, dim, encoding, s as char, &[], attrs.clone())?;
+                push(&mut planes, made, s as char);
             }
         }
     }
-
     Ok(planes)
 }
 

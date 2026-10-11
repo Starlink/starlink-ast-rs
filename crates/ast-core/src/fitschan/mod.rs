@@ -45,6 +45,19 @@ use crate::mappings::{IntraRegistry, IntraTransform};
 use crate::serial::node::Node;
 use crate::serial::{self, AnyObject};
 
+/// Which Frames a FITS-WCS write describes with alternate axes: the
+/// FitsChan's AltAxes attribute.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum AltAxes {
+    /// Every Frame other than the base and current Frames (the default).
+    #[default]
+    All,
+    /// Only Frames whose Ident is a single upper case letter.
+    Ident,
+    /// No Frame.
+    None,
+}
+
 /// The encoding format used by a [`FitsChan`] to store AST objects.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Encoding {
@@ -124,6 +137,8 @@ pub struct FitsChan {
     ignore_bad_alt: Option<bool>,
     /// The Warnings attribute, `None` when unset.
     warning_conditions: Option<String>,
+    /// The AltAxes attribute, `None` when unset.
+    alt_axes: Option<AltAxes>,
     /// The transformations IntraMaps read here can name.
     intra: IntraRegistry,
     /// The last sequence number given to each keyword base by the NATIVE
@@ -158,6 +173,7 @@ impl FitsChan {
             poly_tan: None,
             ignore_bad_alt: None,
             warning_conditions: None,
+            alt_axes: None,
             keyseq: std::collections::HashMap::new(),
             clean: None,
             sip_ok: None,
@@ -189,6 +205,7 @@ impl FitsChan {
             poly_tan: None,
             ignore_bad_alt: None,
             warning_conditions: None,
+            alt_axes: None,
             keyseq: std::collections::HashMap::new(),
             clean: None,
             sip_ok: None,
@@ -994,6 +1011,7 @@ impl FitsChan {
                     .to_string()
             }),
             warnings: Default::default(),
+            alt_axes: self.alt_axes(),
         }
     }
 
@@ -1183,6 +1201,27 @@ impl FitsChan {
     /// Clear Warnings, restoring its default.
     pub fn clear_warning_conditions(&mut self) {
         self.warning_conditions = None;
+    }
+
+    /// Set the AltAxes attribute: which Frames a write describes with
+    /// alternate axes.
+    pub fn set_alt_axes(&mut self, v: AltAxes) {
+        self.alt_axes = Some(v);
+    }
+
+    /// The AltAxes attribute (default [`AltAxes::All`]).
+    pub fn alt_axes(&self) -> AltAxes {
+        self.alt_axes.unwrap_or_default()
+    }
+
+    /// Whether AltAxes has been set.
+    pub fn test_alt_axes(&self) -> bool {
+        self.alt_axes.is_some()
+    }
+
+    /// Clear AltAxes, restoring its default.
+    pub fn clear_alt_axes(&mut self) {
+        self.alt_axes = None;
     }
 
     /// The read-only AllWarnings attribute: every condition the Warnings

@@ -2,6 +2,9 @@
 
 ## Revision history
 
+- **2026-10-11 (rev 24)**: Added FitsChan's AltAxes attribute as the
+  `AltAxes` enum (`All`, `Ident`, `None`, exported from the crate root)
+  with `alt_axes`, `set_alt_axes`, `test_alt_axes` and `clear_alt_axes`.
 - **2026-10-11 (rev 23)**: Added FitsChan's Warnings attribute
   (`warning_conditions`, `set_warning_conditions`, which returns
   `AstResult`, `test_warning_conditions`, `clear_warning_conditions`)
