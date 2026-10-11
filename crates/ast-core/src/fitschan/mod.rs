@@ -115,6 +115,8 @@ pub struct FitsChan {
     fits_tol: Option<f64>,
     /// The DefB1950 attribute, `None` when unset.
     def_b1950: Option<bool>,
+    /// The PolyTan attribute, `None` when unset.
+    poly_tan: Option<i32>,
     /// The transformations IntraMaps read here can name.
     intra: IntraRegistry,
     /// The last sequence number given to each keyword base by the NATIVE
@@ -146,6 +148,7 @@ impl FitsChan {
             car_lin: None,
             fits_tol: None,
             def_b1950: None,
+            poly_tan: None,
             keyseq: std::collections::HashMap::new(),
             clean: None,
             sip_ok: None,
@@ -174,6 +177,7 @@ impl FitsChan {
             car_lin: None,
             fits_tol: None,
             def_b1950: None,
+            poly_tan: None,
             keyseq: std::collections::HashMap::new(),
             clean: None,
             sip_ok: None,
@@ -1056,6 +1060,39 @@ impl FitsChan {
         self.def_b1950 = None;
     }
 
+    /// Set the PolyTan attribute: whether a `-TAN` projection with PVi_m
+    /// distortion terms is read as the polynomial (`-TPN`) form of the
+    /// distorted TAN convention. Zero reads it as plain TAN, ignoring the
+    /// PV terms; a positive value as `-TPN`; a negative value decides from
+    /// the cards, using `-TPN` when there are latitude PV terms, or
+    /// longitude PV terms with m above 4, not all zero.
+    pub fn set_poly_tan(&mut self, v: i32) {
+        self.poly_tan = Some(v);
+    }
+
+    /// The PolyTan attribute (default -1).
+    pub fn poly_tan(&self) -> i32 {
+        self.poly_tan.unwrap_or(-1)
+    }
+
+    /// Whether PolyTan has been set.
+    pub fn test_poly_tan(&self) -> bool {
+        self.poly_tan.is_some()
+    }
+
+    /// Clear PolyTan, restoring its default.
+    pub fn clear_poly_tan(&mut self) {
+        self.poly_tan = None;
+    }
+
+    /// The attributes the header translations of a read depend on.
+    fn trans_attrs(&self) -> spec_trans::TransAttrs {
+        spec_trans::TransAttrs {
+            car_lin: self.car_lin(),
+            poly_tan: self.poly_tan(),
+        }
+    }
+
     /// The CDMatrix attribute. Unless set, it is true when the FitsChan
     /// holds a `CDi_j` card that a read has not consumed (C's
     /// `GetCDMatrix`).
@@ -1332,7 +1369,7 @@ impl Channel for FitsChan {
                     let trans = spec_trans::spec_trans(
                         &self.cards,
                         Encoding::FitsWcs,
-                        self.car_lin(),
+                        self.trans_attrs(),
                         &mut trans_warnings,
                     );
                     // The cards SpecTrans used, which C marks before WcsFcRead runs.
@@ -1368,7 +1405,7 @@ impl Channel for FitsChan {
                     let trans = spec_trans::spec_trans(
                         &self.cards,
                         Encoding::FitsPc,
-                        self.car_lin(),
+                        self.trans_attrs(),
                         &mut trans_warnings,
                     );
                     // The cards SpecTrans used, which C marks before WcsFcRead runs.
@@ -1398,7 +1435,7 @@ impl Channel for FitsChan {
                     let trans = spec_trans::spec_trans(
                         &self.cards,
                         Encoding::FitsIraf,
-                        self.car_lin(),
+                        self.trans_attrs(),
                         &mut trans_warnings,
                     );
                     // The cards SpecTrans used, which C marks before WcsFcRead runs.
@@ -1428,7 +1465,7 @@ impl Channel for FitsChan {
                     let trans = spec_trans::spec_trans(
                         &self.cards,
                         enc,
-                        self.car_lin(),
+                        self.trans_attrs(),
                         &mut trans_warnings,
                     );
                     // The cards SpecTrans used, which C marks before WcsFcRead runs.
@@ -1447,7 +1484,7 @@ impl Channel for FitsChan {
                     let trans = spec_trans::spec_trans(
                         &self.cards,
                         Encoding::FitsClass,
-                        self.car_lin(),
+                        self.trans_attrs(),
                         &mut trans_warnings,
                     );
                     // The cards SpecTrans used, which C marks before WcsFcRead runs.

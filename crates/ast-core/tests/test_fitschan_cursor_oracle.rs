@@ -233,6 +233,7 @@ fn run(fc: &mut FitsChan, op: &str, out: &mut String) {
                 "FitsRounding" => (fc.fits_rounding(), fc.test_fits_rounding()),
                 "FitsDigits" => (fc.fits_digits(), fc.test_fits_digits()),
                 "DefB1950" => (i32::from(fc.def_b1950()), fc.test_def_b1950()),
+                "PolyTan" => (fc.poly_tan(), fc.test_poly_tan()),
                 other => panic!("no int attribute {other}"),
             };
             format!("= {v} {}\n", i32::from(set))
@@ -252,6 +253,7 @@ fn run(fc: &mut FitsChan, op: &str, out: &mut String) {
                 "FitsRounding" => fc.set_fits_rounding(v),
                 "FitsDigits" => fc.set_fits_digits(v),
                 "DefB1950" => fc.set_def_b1950(v != 0),
+                "PolyTan" => fc.set_poly_tan(v),
                 other => panic!("no int attribute {other}"),
             }
             String::new()
@@ -271,6 +273,7 @@ fn run(fc: &mut FitsChan, op: &str, out: &mut String) {
                 "FitsTol" => fc.clear_fits_tol(),
                 "FitsDigits" => fc.clear_fits_digits(),
                 "DefB1950" => fc.clear_def_b1950(),
+                "PolyTan" => fc.clear_poly_tan(),
                 other => panic!("no attribute {other}"),
             }
             String::new()

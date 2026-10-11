@@ -693,7 +693,7 @@ END";
         super::super::spec_trans::spec_trans_inplace(
             &mut cards,
             crate::Encoding::FitsWcs,
-            false,
+            crate::fitschan::spec_trans::TransAttrs::default(),
             &mut Vec::new(),
         );
         let store = extract_wcs_keywords(&cards, ' ').unwrap();
@@ -741,7 +741,7 @@ END";
         super::super::spec_trans::spec_trans_inplace(
             &mut cards,
             crate::Encoding::FitsWcs,
-            false,
+            crate::fitschan::spec_trans::TransAttrs::default(),
             &mut Vec::new(),
         );
         let store = extract_wcs_keywords(&cards, ' ').unwrap();

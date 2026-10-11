@@ -20,6 +20,25 @@ use super::Encoding;
 use super::card_list::CardList;
 use super::fits_match::match_keyword;
 
+/// The FitsChan attributes the translations depend on.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct TransAttrs {
+    /// CarLin: a `-CAR` projection is linear, so its CRPIX is not wrapped.
+    pub car_lin: bool,
+    /// PolyTan: whether a `-TAN` projection with PV distortion terms is
+    /// read as `-TPN`; negative to decide from the PV cards present.
+    pub poly_tan: i32,
+}
+
+impl Default for TransAttrs {
+    fn default() -> Self {
+        TransAttrs {
+            car_lin: false,
+            poly_tan: -1,
+        }
+    }
+}
+
 /// Build the temporary "translations" CardList for `cards`, mirroring
 /// C `SpecTrans` (fitschan.c:30828).
 ///
@@ -46,11 +65,11 @@ use super::fits_match::match_keyword;
 pub(crate) fn spec_trans(
     cards: &CardList,
     encoding: Encoding,
-    car_lin: bool,
+    attrs: TransAttrs,
     warnings: &mut Vec<String>,
 ) -> CardList {
     let mut trans = cards.clone();
-    spec_trans_inplace(&mut trans, encoding, car_lin, warnings);
+    spec_trans_inplace(&mut trans, encoding, attrs, warnings);
     trans
 }
 
@@ -60,7 +79,7 @@ pub(crate) fn spec_trans(
 pub(crate) fn spec_trans_inplace(
     cards: &mut CardList,
     encoding: Encoding,
-    car_lin: bool,
+    attrs: TransAttrs,
     warnings: &mut Vec<String>,
 ) {
     // C `SpecTrans` never writes to the source chan `this` — every `SetValue`
@@ -148,7 +167,7 @@ pub(crate) fn spec_trans_inplace(
     // PolyTan attribute non-zero → TPN. Per-version letter, no
     // encoding gate. (PolyTan is an AST attribute, defaulting to
     // false; we mirror by treating it as off.)
-    translate_tpv_and_polytan_to_tpn(cards, &src, warnings);
+    translate_tpv_and_polytan_to_tpn(cards, &src, attrs.poly_tan, warnings);
 
     // Translation 17 (fitschan.c:31444-31538): IRAF ZPX projection.
     // Replace -ZPX with -ZPN-ZPX (ZPN with ZPX distortion code) and
@@ -170,7 +189,7 @@ pub(crate) fn spec_trans_inplace(
     // Suppressed when CarLin is set, because a linear CAR reading has no
     // restricted native longitude range to bring the array into.
     // Per-version letter, no encoding gate.
-    if !car_lin {
+    if !attrs.car_lin {
         translate_msx_car(cards);
     }
 
@@ -628,11 +647,17 @@ fn translate_qv_to_pv(cards: &mut CardList) {
 fn get_used_poly_tan(
     cards: &mut CardList,
     src: &CardList,
+    poly_tan: i32,
     axlon: usize,
     axlat: usize,
     s: char,
     warnings: &mut Vec<String>,
 ) -> bool {
+    // A PolyTan that is set decides on its own.
+    if poly_tan >= 0 {
+        return poly_tan != 0;
+    }
+
     // Build the PVi_m keyword name for axis ax, order m, version s.
     let pv_name = |ax: usize, m: usize| -> String {
         if s == ' ' {
@@ -642,16 +667,18 @@ fn get_used_poly_tan(
         }
     };
 
-    // Mirror C astKeyFields: find the highest m present on each axis.
-    // astKeyFields scans for a template "PVi_%d" and returns lbnd/ubnd
-    // of the integer field. We replicate this by scanning m = 0..=99.
+    // C's `astKeyFields` on "PV<ax>_%d": whether any such card is present,
+    // and the largest m.
     let find_ubnd = |ax: usize| -> Option<usize> {
-        (0usize..=99)
-            .filter(|&m| src.find(&pv_name(ax, m)).is_some())
-            .max()
+        let template = if s == ' ' {
+            format!("PV{ax}_%d")
+        } else {
+            format!("PV{ax}_%d{s}")
+        };
+        let (n, _, hi) = src.key_fields(&template, 1);
+        (n > 0).then(|| hi[0].max(0) as usize)
     };
 
-    // C: auto path — ret starts at 0.
     let mut ret: i32 = 0;
 
     let ubnd_lat = find_ubnd(axlat);
@@ -738,6 +765,7 @@ fn get_used_poly_tan(
 fn translate_tpv_and_polytan_to_tpn(
     cards: &mut CardList,
     src: &CardList,
+    poly_tan: i32,
     warnings: &mut Vec<String>,
 ) {
     for s in std::iter::once(' ').chain('A'..='Z') {
@@ -763,7 +791,7 @@ fn translate_tpv_and_polytan_to_tpn(
                 // cards are present and non-zero (PolyTan = -1 auto-detect,
                 // fitschan.c:13890).
                 projection_suffix(ctype.trim()).is_some_and(|p| p.eq_ignore_ascii_case("TAN"))
-                    && get_used_poly_tan(cards, src, axlon, axlat, s, warnings)
+                    && get_used_poly_tan(cards, src, poly_tan, axlon, axlat, s, warnings)
             };
         if should_rename {
             replace_projection_suffix(cards, &key("CTYPE", axlon), "TPN");
@@ -2155,7 +2183,12 @@ mod tests {
         )
         .unwrap();
         let before = cards.iter().count();
-        spec_trans_inplace(&mut cards, Encoding::FitsWcs, false, &mut Vec::new());
+        spec_trans_inplace(
+            &mut cards,
+            Encoding::FitsWcs,
+            TransAttrs::default(),
+            &mut Vec::new(),
+        );
         let after = cards.iter().count();
         assert_eq!(before, after);
         assert_eq!(cards.get_string("RADESYS"), Some("FK5     ".to_string()));
@@ -2173,7 +2206,12 @@ mod tests {
              END",
         )
         .unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsWcs, false, &mut Vec::new());
+        spec_trans_inplace(
+            &mut cards,
+            Encoding::FitsWcs,
+            TransAttrs::default(),
+            &mut Vec::new(),
+        );
         // Non-zero CDELT untouched; zero CDELTs become 1.0 (the C fallback,
         // since 1.0E-6 * the zero CDELT is still zero).
         assert_eq!(cards.get_float("CDELT1"), Some(1.0e-10));
@@ -2189,7 +2227,12 @@ mod tests {
              END",
         )
         .unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsWcs, false, &mut Vec::new());
+        spec_trans_inplace(
+            &mut cards,
+            Encoding::FitsWcs,
+            TransAttrs::default(),
+            &mut Vec::new(),
+        );
         assert_eq!(cards.get_float("CDELT1A"), Some(1.0));
         assert_eq!(cards.get_float("CDELT2A"), Some(2.5));
     }
@@ -2229,7 +2272,12 @@ mod tests {
     fn translates_radecsys_to_radesys() {
         let mut cards =
             CardList::from_header("RADECSYS= 'FK5     '           / Old-style frame\nEND").unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc, false, &mut Vec::new());
+        spec_trans_inplace(
+            &mut cards,
+            Encoding::FitsPc,
+            TransAttrs::default(),
+            &mut Vec::new(),
+        );
         assert!(cards.find("RADECSYS").is_none());
         assert_eq!(cards.get_string("RADESYS"), Some("FK5     ".to_string()));
     }
@@ -2238,7 +2286,12 @@ mod tests {
     fn keeps_radesys_when_both_present() {
         let mut cards =
             CardList::from_header("RADECSYS= 'FK4     '\nRADESYS = 'FK5     '\nEND").unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc, false, &mut Vec::new());
+        spec_trans_inplace(
+            &mut cards,
+            Encoding::FitsPc,
+            TransAttrs::default(),
+            &mut Vec::new(),
+        );
         assert_eq!(cards.get_string("RADESYS"), Some("FK5     ".to_string()));
     }
 
@@ -2246,7 +2299,12 @@ mod tests {
     fn translates_longpole_to_lonpole() {
         let mut cards =
             CardList::from_header("LONGPOLE=                180.0 / Old name\nEND").unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc, false, &mut Vec::new());
+        spec_trans_inplace(
+            &mut cards,
+            Encoding::FitsPc,
+            TransAttrs::default(),
+            &mut Vec::new(),
+        );
         assert!(cards.find("LONGPOLE").is_none());
         assert_eq!(cards.get_float("LONPOLE"), Some(180.0));
     }
@@ -2261,7 +2319,12 @@ mod tests {
              END",
         )
         .unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsIraf, false, &mut Vec::new());
+        spec_trans_inplace(
+            &mut cards,
+            Encoding::FitsIraf,
+            TransAttrs::default(),
+            &mut Vec::new(),
+        );
         assert!(cards.find("CD001001").is_none());
         assert_eq!(cards.get_float("PC1_1"), Some(-2.0));
         assert_eq!(cards.get_float("PC2_2"), Some(3.0));
@@ -2282,7 +2345,12 @@ mod tests {
              END",
         )
         .unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc, false, &mut Vec::new());
+        spec_trans_inplace(
+            &mut cards,
+            Encoding::FitsPc,
+            TransAttrs::default(),
+            &mut Vec::new(),
+        );
         assert!(cards.find("CD001001").is_some());
         assert!(cards.find("CD002002").is_some());
         assert!(cards.find("PC1_1").is_none());
@@ -2299,7 +2367,12 @@ mod tests {
              END",
         )
         .unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsIraf, false, &mut Vec::new());
+        spec_trans_inplace(
+            &mut cards,
+            Encoding::FitsIraf,
+            TransAttrs::default(),
+            &mut Vec::new(),
+        );
         assert!(cards.find("CD001001").is_none());
         assert!(cards.find("CD002002").is_none());
         assert_eq!(cards.get_float("PC1_1"), Some(1.0));
@@ -2322,7 +2395,12 @@ mod tests {
              END",
         )
         .unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc, false, &mut Vec::new());
+        spec_trans_inplace(
+            &mut cards,
+            Encoding::FitsPc,
+            TransAttrs::default(),
+            &mut Vec::new(),
+        );
         assert!(cards.find("CROTA2").is_none());
         let cos30 = 30.0_f64.to_radians().cos();
         assert!((cards.get_float("PC1_1").unwrap() - cos30).abs() < 1e-10);
@@ -2348,7 +2426,12 @@ mod tests {
              END",
         )
         .unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc, false, &mut Vec::new());
+        spec_trans_inplace(
+            &mut cards,
+            Encoding::FitsPc,
+            TransAttrs::default(),
+            &mut Vec::new(),
+        );
         assert_eq!(cards.get_float("CROTA2"), Some(30.0));
         // PC values were not overwritten.
         assert_eq!(cards.get_float("PC1_1"), Some(1.0));
@@ -2371,7 +2454,12 @@ mod tests {
              END",
         )
         .unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc, false, &mut Vec::new());
+        spec_trans_inplace(
+            &mut cards,
+            Encoding::FitsPc,
+            TransAttrs::default(),
+            &mut Vec::new(),
+        );
         assert_eq!(cards.get_float("CROTA2"), Some(30.0));
         assert!(cards.find("PC1_1").is_none());
         assert!(cards.find("PC1_2").is_none());
@@ -2391,7 +2479,12 @@ mod tests {
              END",
         )
         .unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc, false, &mut Vec::new());
+        spec_trans_inplace(
+            &mut cards,
+            Encoding::FitsPc,
+            TransAttrs::default(),
+            &mut Vec::new(),
+        );
         // C reads PROJP with `GetValue2(ret, this, ...)` (fitschan.c:
         // 31493-31494), which marks the source card used but never
         // deletes it (fitschan.c:18360-18362) — the card list itself
@@ -2419,7 +2512,12 @@ mod tests {
              END",
         )
         .unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc, false, &mut Vec::new());
+        spec_trans_inplace(
+            &mut cards,
+            Encoding::FitsPc,
+            TransAttrs::default(),
+            &mut Vec::new(),
+        );
         // PROJP card untouched, no PV2_0 written from it.
         assert!(cards.find("PROJP0").is_some());
         assert!(cards.find("PV2_0").is_none());
@@ -2438,7 +2536,12 @@ mod tests {
              END",
         )
         .unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc, false, &mut Vec::new());
+        spec_trans_inplace(
+            &mut cards,
+            Encoding::FitsPc,
+            TransAttrs::default(),
+            &mut Vec::new(),
+        );
         // PROJP0 consumed and rewritten as PV2_0.
         assert_eq!(cards.get_float("PV2_0"), Some(0.0));
     }
@@ -2457,7 +2560,12 @@ mod tests {
              END",
         )
         .unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc, false, &mut Vec::new());
+        spec_trans_inplace(
+            &mut cards,
+            Encoding::FitsPc,
+            TransAttrs::default(),
+            &mut Vec::new(),
+        );
         assert!(cards.find("C1YPE1").is_none());
         assert!(cards.find("C1ELT1").is_none());
         assert_eq!(cards.get_string("CTYPE1A"), Some("GLON-TAN".to_string()));
@@ -2477,7 +2585,12 @@ mod tests {
         // FITS-WCS uses *A..*Z directly; Cnxxx is foreign and should
         // be left alone.
         let mut cards = CardList::from_header("C1YPE1  = 'GLON-TAN'\nEND").unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsWcs, false, &mut Vec::new());
+        spec_trans_inplace(
+            &mut cards,
+            Encoding::FitsWcs,
+            TransAttrs::default(),
+            &mut Vec::new(),
+        );
         assert!(cards.find("C1YPE1").is_some());
         assert!(cards.find("CTYPE1A").is_none());
     }
@@ -2493,14 +2606,24 @@ mod tests {
              END",
         )
         .unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc, false, &mut Vec::new());
+        spec_trans_inplace(
+            &mut cards,
+            Encoding::FitsPc,
+            TransAttrs::default(),
+            &mut Vec::new(),
+        );
         assert_eq!(cards.get_float("CDELT1A"), Some(1.0));
     }
 
     #[test]
     fn translates_epoch_to_equinox() {
         let mut cards = CardList::from_header("EPOCH   =               1995.0\nEND").unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc, false, &mut Vec::new());
+        spec_trans_inplace(
+            &mut cards,
+            Encoding::FitsPc,
+            TransAttrs::default(),
+            &mut Vec::new(),
+        );
         assert!(cards.find("EPOCH").is_none());
         assert_eq!(cards.get_float("EQUINOX"), Some(1995.0));
     }
@@ -2508,7 +2631,12 @@ mod tests {
     #[test]
     fn epoch_zero_becomes_b1950_equinox() {
         let mut cards = CardList::from_header("EPOCH   =                  0.0\nEND").unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc, false, &mut Vec::new());
+        spec_trans_inplace(
+            &mut cards,
+            Encoding::FitsPc,
+            TransAttrs::default(),
+            &mut Vec::new(),
+        );
         assert_eq!(cards.get_float("EQUINOX"), Some(1950.0));
     }
 
@@ -2518,7 +2646,12 @@ mod tests {
             "EPOCH   =               1995.0\nEQUINOX =               2000.0\nEND",
         )
         .unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc, false, &mut Vec::new());
+        spec_trans_inplace(
+            &mut cards,
+            Encoding::FitsPc,
+            TransAttrs::default(),
+            &mut Vec::new(),
+        );
         assert!(cards.find("EPOCH").is_none());
         assert_eq!(cards.get_float("EQUINOX"), Some(2000.0));
     }
@@ -2526,14 +2659,24 @@ mod tests {
     #[test]
     fn equinox_zero_becomes_b1950() {
         let mut cards = CardList::from_header("EQUINOX =                  0.0\nEND").unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc, false, &mut Vec::new());
+        spec_trans_inplace(
+            &mut cards,
+            Encoding::FitsPc,
+            TransAttrs::default(),
+            &mut Vec::new(),
+        );
         assert_eq!(cards.get_float("EQUINOX"), Some(1950.0));
     }
 
     #[test]
     fn translates_equinox_b1995_string_to_julian_number() {
         let mut cards = CardList::from_header("EQUINOX = 'B1995.0'\nEND").unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc, false, &mut Vec::new());
+        spec_trans_inplace(
+            &mut cards,
+            Encoding::FitsPc,
+            TransAttrs::default(),
+            &mut Vec::new(),
+        );
         let eq = cards.get_float("EQUINOX").unwrap_or(-1.0);
         // B1995 → MJD ≈ 49718.2 → J ≈ 1994.9988 (Besselian and
         // Julian years drift ~1 day per ~70 years between epochs).
@@ -2546,14 +2689,24 @@ mod tests {
     #[test]
     fn translates_equinox_j2000_string_to_plain_number() {
         let mut cards = CardList::from_header("EQUINOX = 'J2000.0'\nEND").unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc, false, &mut Vec::new());
+        spec_trans_inplace(
+            &mut cards,
+            Encoding::FitsPc,
+            TransAttrs::default(),
+            &mut Vec::new(),
+        );
         assert_eq!(cards.get_float("EQUINOX"), Some(2000.0));
     }
 
     #[test]
     fn translates_date_obs_to_mjd_obs() {
         let mut cards = CardList::from_header("DATE-OBS= '2000-01-15T12:00:00'\nEND").unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc, false, &mut Vec::new());
+        spec_trans_inplace(
+            &mut cards,
+            Encoding::FitsPc,
+            TransAttrs::default(),
+            &mut Vec::new(),
+        );
         let mjd = cards.get_float("MJD-OBS").unwrap();
         assert!((mjd - 51558.5).abs() < 1e-6);
         // DATE-OBS stays in the chan; downstream readers ignore it
@@ -2567,7 +2720,12 @@ mod tests {
             "DATE-OBS= '2000-01-15T12:00:00'\nMJD-OBS =              50000.0\nEND",
         )
         .unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc, false, &mut Vec::new());
+        spec_trans_inplace(
+            &mut cards,
+            Encoding::FitsPc,
+            TransAttrs::default(),
+            &mut Vec::new(),
+        );
         assert_eq!(cards.get_float("MJD-OBS"), Some(50000.0));
     }
 
@@ -2580,7 +2738,12 @@ mod tests {
              END",
         )
         .unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc, false, &mut Vec::new());
+        spec_trans_inplace(
+            &mut cards,
+            Encoding::FitsPc,
+            TransAttrs::default(),
+            &mut Vec::new(),
+        );
         assert_eq!(cards.get_string("CTYPE1"), Some("RA---SIN".to_string()));
         assert_eq!(cards.get_string("CTYPE2"), Some("DEC--SIN".to_string()));
         let cot30 = 1.0 / 30.0_f64.to_radians().tan();
@@ -2596,7 +2759,12 @@ mod tests {
              END",
         )
         .unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc, false, &mut Vec::new());
+        spec_trans_inplace(
+            &mut cards,
+            Encoding::FitsPc,
+            TransAttrs::default(),
+            &mut Vec::new(),
+        );
         assert_eq!(cards.get_string("CTYPE1"), Some("RA---SFL".to_string()));
         assert_eq!(cards.get_string("CTYPE2"), Some("DEC--SFL".to_string()));
     }
@@ -2612,14 +2780,24 @@ mod tests {
              END",
         )
         .unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc, false, &mut Vec::new());
+        spec_trans_inplace(
+            &mut cards,
+            Encoding::FitsPc,
+            TransAttrs::default(),
+            &mut Vec::new(),
+        );
         assert_eq!(cards.get_string("CTYPE2"), Some("DEC--NCP".to_string()));
     }
 
     #[test]
     fn early_paper_iii_wave_frq_becomes_wave_f2w() {
         let mut cards = CardList::from_header("CTYPE3  = 'WAVE-FRQ'\nEND").unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc, false, &mut Vec::new());
+        spec_trans_inplace(
+            &mut cards,
+            Encoding::FitsPc,
+            TransAttrs::default(),
+            &mut Vec::new(),
+        );
         assert_eq!(cards.get_string("CTYPE3"), Some("WAVE-F2W".to_string()));
     }
 
@@ -2627,7 +2805,12 @@ mod tests {
     fn early_paper_iii_velo_vel_redundant_blanks() {
         // VELO with X='V' and P='V' (because VELO maps to V) → blanks.
         let mut cards = CardList::from_header("CTYPE3  = 'VELO-VEL'\nEND").unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc, false, &mut Vec::new());
+        spec_trans_inplace(
+            &mut cards,
+            Encoding::FitsPc,
+            TransAttrs::default(),
+            &mut Vec::new(),
+        );
         // Trailing-blank padding to 8 chars.
         assert_eq!(cards.get_string("CTYPE3"), Some("VELO    ".to_string()));
     }
@@ -2648,7 +2831,12 @@ mod tests {
              END",
         )
         .unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc, false, &mut Vec::new());
+        spec_trans_inplace(
+            &mut cards,
+            Encoding::FitsPc,
+            TransAttrs::default(),
+            &mut Vec::new(),
+        );
         // CTYPE rewrites: SAO writes TPV, then translation 16 rewrites
         // TPV→TPN before this assertion runs.
         assert_eq!(cards.get_string("CTYPE1"), Some("RA---TPN".to_string()));
@@ -2670,7 +2858,12 @@ mod tests {
              END",
         )
         .unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsClass, false, &mut Vec::new());
+        spec_trans_inplace(
+            &mut cards,
+            Encoding::FitsClass,
+            TransAttrs::default(),
+            &mut Vec::new(),
+        );
         assert_eq!(cards.get_string("CTYPE1"), Some("RA---AIT".to_string()));
         assert_eq!(cards.get_string("CTYPE2"), Some("DEC--AIT".to_string()));
     }
@@ -2685,7 +2878,12 @@ mod tests {
              END",
         )
         .unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc, false, &mut Vec::new());
+        spec_trans_inplace(
+            &mut cards,
+            Encoding::FitsPc,
+            TransAttrs::default(),
+            &mut Vec::new(),
+        );
         assert_eq!(cards.get_string("CTYPE1"), Some("RA---TPN".to_string()));
         assert_eq!(cards.get_string("CTYPE2"), Some("DEC--TPN".to_string()));
         assert_eq!(cards.get_float("PV2_1"), Some(0.5));
@@ -2701,7 +2899,12 @@ mod tests {
              END",
         )
         .unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc, false, &mut Vec::new());
+        spec_trans_inplace(
+            &mut cards,
+            Encoding::FitsPc,
+            TransAttrs::default(),
+            &mut Vec::new(),
+        );
         assert_eq!(cards.get_string("CTYPE1"), Some("RA---TPN".to_string()));
         assert_eq!(cards.get_string("CTYPE2"), Some("DEC--TPN".to_string()));
     }
@@ -2715,7 +2918,12 @@ mod tests {
              END",
         )
         .unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc, false, &mut Vec::new());
+        spec_trans_inplace(
+            &mut cards,
+            Encoding::FitsPc,
+            TransAttrs::default(),
+            &mut Vec::new(),
+        );
         assert_eq!(cards.get_string("CTYPE1"), Some("RA---ZPN-ZPX".to_string()));
         assert_eq!(cards.get_float("PV2_1"), Some(1.0));
         assert_eq!(cards.get_float("PV2_2"), Some(-0.4));
@@ -2725,7 +2933,12 @@ mod tests {
     fn translates_tnx_to_tpn() {
         let mut cards =
             CardList::from_header("CTYPE1  = 'RA---TNX'\nCTYPE2  = 'DEC--TNX'\nEND").unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc, false, &mut Vec::new());
+        spec_trans_inplace(
+            &mut cards,
+            Encoding::FitsPc,
+            TransAttrs::default(),
+            &mut Vec::new(),
+        );
         assert_eq!(cards.get_string("CTYPE1"), Some("RA---TPN".to_string()));
         assert_eq!(cards.get_string("CTYPE2"), Some("DEC--TPN".to_string()));
     }
@@ -2743,7 +2956,12 @@ mod tests {
              END",
         )
         .unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc, false, &mut Vec::new());
+        spec_trans_inplace(
+            &mut cards,
+            Encoding::FitsPc,
+            TransAttrs::default(),
+            &mut Vec::new(),
+        );
         // CRPIX should now lie close to the image (within one full
         // wrap cycle of the original).
         let crpix1 = cards.get_float("CRPIX1").unwrap();
@@ -2764,7 +2982,12 @@ mod tests {
         let base = CardList::from_header(&text).unwrap();
 
         let mut wrapped = base.clone();
-        spec_trans_inplace(&mut wrapped, Encoding::FitsWcs, false, &mut Vec::new());
+        spec_trans_inplace(
+            &mut wrapped,
+            Encoding::FitsWcs,
+            TransAttrs::default(),
+            &mut Vec::new(),
+        );
         assert_ne!(
             wrapped.get_float("CRPIX1"),
             Some(211076.0),
@@ -2772,7 +2995,15 @@ mod tests {
         );
 
         let mut kept = base.clone();
-        spec_trans_inplace(&mut kept, Encoding::FitsWcs, true, &mut Vec::new());
+        spec_trans_inplace(
+            &mut kept,
+            Encoding::FitsWcs,
+            TransAttrs {
+                car_lin: true,
+                ..TransAttrs::default()
+            },
+            &mut Vec::new(),
+        );
         assert_eq!(
             kept.get_float("CRPIX1"),
             Some(211076.0),
@@ -2785,7 +3016,12 @@ mod tests {
         let mut cards =
             CardList::from_header("RESTFREQ=                1.42 / Rest frequency in GHz\nEND")
                 .unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc, false, &mut Vec::new());
+        spec_trans_inplace(
+            &mut cards,
+            Encoding::FitsPc,
+            TransAttrs::default(),
+            &mut Vec::new(),
+        );
         assert!(cards.find("RESTFREQ").is_none());
         let restfrq = cards.get_float("RESTFRQ").unwrap();
         assert!((restfrq - 1.42e9).abs() < 1.0);
@@ -2794,7 +3030,12 @@ mod tests {
     #[test]
     fn translates_velo_lsr_to_vrad_plus_specsys() {
         let mut cards = CardList::from_header("CTYPE3  = 'VELO-LSR'\nEND").unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc, false, &mut Vec::new());
+        spec_trans_inplace(
+            &mut cards,
+            Encoding::FitsPc,
+            TransAttrs::default(),
+            &mut Vec::new(),
+        );
         assert_eq!(cards.get_string("CTYPE3"), Some("VRAD    ".to_string()));
         assert_eq!(cards.get_string("SPECSYS"), Some("LSRK".to_string()));
     }
@@ -2802,7 +3043,12 @@ mod tests {
     #[test]
     fn translates_lambda_to_wave() {
         let mut cards = CardList::from_header("CTYPE3  = 'LAMBDA  '\nEND").unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc, false, &mut Vec::new());
+        spec_trans_inplace(
+            &mut cards,
+            Encoding::FitsPc,
+            TransAttrs::default(),
+            &mut Vec::new(),
+        );
         assert_eq!(cards.get_string("CTYPE3"), Some("WAVE".to_string()));
     }
 
@@ -2815,7 +3061,12 @@ mod tests {
              END",
         )
         .unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc, false, &mut Vec::new());
+        spec_trans_inplace(
+            &mut cards,
+            Encoding::FitsPc,
+            TransAttrs::default(),
+            &mut Vec::new(),
+        );
         assert_eq!(cards.get_string("CUNIT1"), Some("Hz".to_string()));
         assert_eq!(cards.get_string("CUNIT2"), Some("m/s".to_string()));
         assert_eq!(cards.get_string("CUNIT3"), Some("km/s".to_string()));
@@ -2827,7 +3078,12 @@ mod tests {
             "WAT1_001= 'foo'\nWAT2_001= 'bar'\nMWCS1   =                   1\nLTM1_1  =                  1.0\nLTV1    =                  0.0\nWSV1_LEN=                   3\nEND",
         )
         .unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc, false, &mut Vec::new());
+        spec_trans_inplace(
+            &mut cards,
+            Encoding::FitsPc,
+            TransAttrs::default(),
+            &mut Vec::new(),
+        );
         assert!(cards.find("WAT1_001").is_none());
         assert!(cards.find("WAT2_001").is_none());
         assert!(cards.find("MWCS1").is_none());
@@ -2850,7 +3106,12 @@ mod tests {
              END",
         )
         .unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsClass, false, &mut Vec::new());
+        spec_trans_inplace(
+            &mut cards,
+            Encoding::FitsClass,
+            TransAttrs::default(),
+            &mut Vec::new(),
+        );
         // Spectral CRVAL was 0; after CLASS shift = RESTFREQ.
         assert_eq!(cards.get_float("CRVAL3"), Some(1.0e9));
         assert_eq!(cards.get_string("SPECSYS"), Some("SOURCE".to_string()));

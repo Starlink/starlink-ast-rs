@@ -826,7 +826,7 @@ END";
         let trans = crate::fitschan::spec_trans::spec_trans(
             &cards,
             crate::fitschan::Encoding::FitsAips,
-            false,
+            crate::fitschan::spec_trans::TransAttrs::default(),
             &mut Vec::new(),
         );
         let store = read_from_cards(&trans).unwrap();
@@ -1248,7 +1248,7 @@ END";
         let trans = crate::fitschan::spec_trans::spec_trans(
             &cards,
             crate::fitschan::Encoding::FitsAips,
-            false,
+            crate::fitschan::spec_trans::TransAttrs::default(),
             &mut Vec::new(),
         );
         let store = read_from_cards(&trans).unwrap();

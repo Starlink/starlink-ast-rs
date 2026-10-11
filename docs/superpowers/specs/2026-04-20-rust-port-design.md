@@ -2,6 +2,8 @@
 
 ## Revision history
 
+- **2026-10-11 (rev 21)**: Added FitsChan's PolyTan attribute
+  (`poly_tan`, `set_poly_tan`, `test_poly_tan`, `clear_poly_tan`).
 - **2026-10-11 (rev 20)**: FitsChan's SipReplace, CarLin, FitsRounding,
   FitsTol and DefB1950 each have get, set, test and clear
   (`sip_replace`, `def_b1950` and their test and clear methods are new).
