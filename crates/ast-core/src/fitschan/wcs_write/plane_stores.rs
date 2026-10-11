@@ -10,7 +10,7 @@ use crate::error::AstResult;
 use crate::fitschan::Encoding;
 use crate::fitschan::fits_store::FitsStore;
 use crate::fitschan::fset_to_store::sky_sys::is_sky_off;
-use crate::fitschan::fset_to_store::{fset_to_store, fset_to_store_absolute};
+use crate::fitschan::fset_to_store::{WriteAttrs, fset_to_store, fset_to_store_absolute};
 use crate::frames::{FrameRef, FrameSet};
 
 /// One plane in the writer's per-letter loop.
@@ -39,7 +39,7 @@ pub(crate) fn collect_plane_stores(
     dim: &[Option<f64>],
     encoding: Encoding,
     primary_crvals: &[Option<f64>],
-    fits_tol: f64,
+    attrs: WriteAttrs,
 ) -> AstResult<Vec<PlaneStore>> {
     let mut planes = Vec::new();
 
@@ -56,7 +56,7 @@ pub(crate) fn collect_plane_stores(
     // !primok ) ret = FreeStore( ret, ... )` (fitschan.c:12358), leaving
     // `Write` with nothing to encode. The alternates are not even
     // attempted, matching C's `if( primok && astOK && ... )` at 12262.
-    let (primary_store, primok) = fset_to_store(fs, dim, encoding, ' ', primary_crvals, fits_tol)?;
+    let (primary_store, primok) = fset_to_store(fs, dim, encoding, ' ', primary_crvals, attrs)?;
     if !primok {
         return Ok(planes);
     }
@@ -95,7 +95,7 @@ pub(crate) fn collect_plane_stores(
         // empty slice — `fset_to_store` will fall back to the
         // central-pixel default. A future commit can plumb
         // alt_crvals through the encode_wcs entry point.
-        let (alt_store, alt_ok) = fset_to_store(&alt_fs, dim, encoding, *letter, &[], fits_tol)?;
+        let (alt_store, alt_ok) = fset_to_store(&alt_fs, dim, encoding, *letter, &[], attrs)?;
         if !alt_ok {
             continue;
         }
@@ -112,7 +112,7 @@ pub(crate) fn collect_plane_stores(
     if primary_isoff && next_letter <= b'Z' {
         let letter = next_letter as char;
         next_letter += 1;
-        let (abs_store, abs_ok) = fset_to_store_absolute(fs, dim, encoding, letter, &[], fits_tol)?;
+        let (abs_store, abs_ok) = fset_to_store_absolute(fs, dim, encoding, letter, &[], attrs)?;
         if abs_ok {
             planes.push(PlaneStore {
                 letter,
@@ -131,7 +131,7 @@ pub(crate) fn collect_plane_stores(
             let mut alt_fs = fs.clone();
             alt_fs.set_current(FrameRef::Index(*frame_idx_1based))?;
             let (abs_store, abs_ok) =
-                fset_to_store_absolute(&alt_fs, dim, encoding, letter, &[], fits_tol)?;
+                fset_to_store_absolute(&alt_fs, dim, encoding, letter, &[], attrs)?;
             if abs_ok {
                 planes.push(PlaneStore {
                     letter,
@@ -147,7 +147,7 @@ pub(crate) fn collect_plane_stores(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fitschan::fset_to_store::FITS_TOL_DEFAULT;
+    use crate::fitschan::fset_to_store::WriteAttrs;
     use crate::frames::BasicFrameBuilder;
     use crate::mappings::UnitMap;
 
@@ -160,7 +160,7 @@ mod tests {
             .unwrap();
         let dim = vec![Some(100.0), Some(100.0)];
         let planes =
-            collect_plane_stores(&fs, &dim, Encoding::FitsWcs, &[], FITS_TOL_DEFAULT).unwrap();
+            collect_plane_stores(&fs, &dim, Encoding::FitsWcs, &[], WriteAttrs::default()).unwrap();
         assert_eq!(planes.len(), 1);
         assert_eq!(planes[0].letter, ' ');
     }
@@ -183,7 +183,7 @@ mod tests {
 
         let dim = vec![Some(100.0), Some(100.0)];
         let planes =
-            collect_plane_stores(&fs, &dim, Encoding::FitsWcs, &[], FITS_TOL_DEFAULT).unwrap();
+            collect_plane_stores(&fs, &dim, Encoding::FitsWcs, &[], WriteAttrs::default()).unwrap();
         assert_eq!(planes.len(), 2);
         assert_eq!(planes[0].letter, ' ');
         assert_eq!(planes[1].letter, 'A');

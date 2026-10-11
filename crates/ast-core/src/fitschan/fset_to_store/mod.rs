@@ -55,6 +55,26 @@ use world_axes::world_axes;
 /// Mirrors C `astGetFitsTol` default at fitschan.c:2898.
 pub(crate) const FITS_TOL_DEFAULT: f64 = 0.1;
 
+/// The FitsChan attributes C's `AddVersion` reads while it builds a
+/// FitsStore.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct WriteAttrs {
+    /// FitsTol: the largest departure from linearity, in pixels, allowed
+    /// in a linear description of the pixel to IWC Mapping.
+    pub fits_tol: f64,
+    /// SipOK: whether distortion may be described by SIP coefficients.
+    pub sip_ok: bool,
+}
+
+impl Default for WriteAttrs {
+    fn default() -> Self {
+        WriteAttrs {
+            fits_tol: FITS_TOL_DEFAULT,
+            sip_ok: true,
+        }
+    }
+}
+
 /// Build a [`FitsStore`] describing the primary plane of the supplied
 /// FrameSet. Mirrors the body of `fitschan.c::AddVersion` (~2674) for
 /// the `s == ' '` (primary) case — `FsetToStore` itself is a thin
@@ -81,9 +101,9 @@ pub(crate) fn fset_to_store(
     encoding: Encoding,
     s: char,
     input_crvals: &[Option<f64>],
-    fits_tol: f64,
+    attrs: WriteAttrs,
 ) -> AstResult<(FitsStore, bool)> {
-    fset_to_store_impl(fs, dim, encoding, s, input_crvals, fits_tol, false)
+    fset_to_store_impl(fs, dim, encoding, s, input_crvals, attrs, false)
 }
 
 /// Variant of [`fset_to_store`] that describes the *absolute*
@@ -103,9 +123,9 @@ pub(crate) fn fset_to_store_absolute(
     encoding: Encoding,
     s: char,
     input_crvals: &[Option<f64>],
-    fits_tol: f64,
+    attrs: WriteAttrs,
 ) -> AstResult<(FitsStore, bool)> {
-    fset_to_store_impl(fs, dim, encoding, s, input_crvals, fits_tol, true)
+    fset_to_store_impl(fs, dim, encoding, s, input_crvals, attrs, true)
 }
 
 fn fset_to_store_impl(
@@ -114,9 +134,10 @@ fn fset_to_store_impl(
     encoding: Encoding,
     s: char,
     input_crvals: &[Option<f64>],
-    fits_tol: f64,
+    attrs: WriteAttrs,
     absolute_offset: bool,
 ) -> AstResult<(FitsStore, bool)> {
+    let fits_tol = attrs.fits_tol;
     // Negative-isoff path of C `AddVersion` (fitschan.c:2787-2820):
     // when the description should be for absolute coordinates but the
     // current Frame is an offset SkyFrame, clear `SkyRefIs` through the
@@ -257,7 +278,8 @@ fn fset_to_store_impl(
 
     // Step 7: extract CRPIX / CD / PC / CDELT (and SIP if enabled)
     // via make_int_world. Mirrors C:2870-2871.
-    let sip_ok = matches!(encoding, Encoding::FitsWcs);
+    // Only FITS-WCS writes SIP coefficients (fitschan.c `AddVersion`).
+    let sip_ok = encoding == Encoding::FitsWcs && attrs.sip_ok;
     let ok = make_int_world(
         pixel_iwc.as_ref(),
         fs.current(),
@@ -1045,8 +1067,15 @@ mod tests {
         .unwrap();
 
         let dim = vec![Some(100.0), Some(100.0)];
-        let (store, ok) =
-            fset_to_store(&fs, &dim, Encoding::FitsWcs, ' ', &[], FITS_TOL_DEFAULT).unwrap();
+        let (store, ok) = fset_to_store(
+            &fs,
+            &dim,
+            Encoding::FitsWcs,
+            ' ',
+            &[],
+            WriteAttrs::default(),
+        )
+        .unwrap();
         assert!(
             ok,
             "a linear pixel\u{2192}IWC Mapping should be describable"
@@ -1080,8 +1109,15 @@ mod tests {
             .unwrap();
 
         let dim = vec![Some(100.0), Some(100.0)];
-        let (store, ok) =
-            fset_to_store(&fs, &dim, Encoding::FitsWcs, ' ', &[], FITS_TOL_DEFAULT).unwrap();
+        let (store, ok) = fset_to_store(
+            &fs,
+            &dim,
+            Encoding::FitsWcs,
+            ' ',
+            &[],
+            WriteAttrs::default(),
+        )
+        .unwrap();
         assert!(
             ok,
             "a linear pixel\u{2192}IWC Mapping should be describable"

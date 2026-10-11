@@ -25,6 +25,8 @@ mod test_fitschan_encodings;
 mod test_fitschan_native_keyword;
 #[path = "../test_fitschan_read.rs"]
 mod test_fitschan_read;
+#[path = "../test_fitschan_sipok_oracle.rs"]
+mod test_fitschan_sipok_oracle;
 #[path = "../test_fitschan_time.rs"]
 mod test_fitschan_time;
 #[path = "../test_fitschan_wcs.rs"]

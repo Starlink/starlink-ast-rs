@@ -1319,6 +1319,17 @@ The string-to-complex conversions tested for one value from the reads `"%lf %lf 
 Fixed on `u/timj/norm-unit` in 4d24a55c; `testfitschan` `testcnvtype`.
 The port's `card_value::cnv_type` is `CnvType` as fixed; `tests/test_fitschan_cursor_oracle.rs` (the `conversions` case), whose probe needs the fixed library.
 
+### RESOLVED (upstream bdc6336c): a SIP FrameSet written with an encoding other than FITS-WCS loses its distortion
+
+C location: `fitschan.c` `AddVersion`.
+
+`AddVersion` passed SipOK to `MakeIntWorld` whatever the encoding, so the distortion was taken out of the pixel to IWC Mapping as SIP coefficients, but only `WcsFromStore` writes those coefficients.
+Written as FITS-PC, a FrameSet read from `wcsconv/inputs/sip.head` was given `RA---TAN-SIP` and `DEC--TAN-SIP` CTYPE values with the CRPIX and CD of the linear part of the SIP description and no coefficients, so the distortion was lost without the FitsTol test that guards a linear approximation; read back, the header was 1.2 arcsec out at the corners.
+FITS-IRAF and FITS-AIPS rejected the `-SIP` CTYPE and wrote nothing.
+
+Fixed on `u/timj/norm-unit` in bdc6336c: SipOK is used only for FITS-WCS, so other encodings take the SipOK=0 path, as the SipOK documentation describes; `testfitschan` `testsipencoding`.
+The port's `fset_to_store` is `AddVersion` as fixed; `tests/test_fitschan_sipok_oracle.rs`, whose probe needs the fixed library.
+
 ### RESOLVED (upstream 2aefc460): deleting one of two cards with the same keyword hides the other from `HasCard`
 
 C location: `fitschan.c` `NewCard`, `DeleteCard` and `HasCard`.

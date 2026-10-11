@@ -301,9 +301,10 @@ fn run_case(case: &TestCase, force_comparison: bool) -> Result<(), String> {
                     fc_out.set_fits_rounding(r);
                 }
             }
-            // sipreplace and carlin are read-side, applied in load_input.
-            // sipok -- not yet supported.
-            _ => {}
+            "sipok" => fc_out.set_sip_ok(val == "1" || val.eq_ignore_ascii_case("true")),
+            // Read-side, applied in load_input.
+            "sipreplace" | "carlin" => {}
+            other => panic!("wcsconv/cases.txt: unknown attribute {other:?}"),
         }
     }
 

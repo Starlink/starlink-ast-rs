@@ -11,10 +11,12 @@ pub(crate) use plane_stores::{PlaneStore, collect_plane_stores};
 
 use super::card_list::{CardList, NewScope};
 use super::fits_store::FitsStore;
+use super::fset_to_store::WriteAttrs;
 use super::wcs_decompose::split_cd;
 use crate::constants::BAD_VALUE;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::{FrameRef, FrameSet, TimeScale};
+use crate::mappings::helpers::ast_equal;
 use crate::pal;
 use crate::serial::AnyObject;
 
@@ -65,7 +67,7 @@ pub(crate) fn encode_wcs(
     cards: &mut CardList,
     use_cd: bool,
     dim: &[Option<f64>],
-    fits_tol: f64,
+    attrs: WriteAttrs,
 ) -> AstResult<bool> {
     let frameset = match obj {
         AnyObject::FrameSet(fs) => fs,
@@ -92,7 +94,7 @@ pub(crate) fn encode_wcs(
         dim,
         crate::fitschan::Encoding::FitsWcs,
         &primary_crvals,
-        fits_tol,
+        attrs,
     )?;
 
     // Last-plane-wins: the alphabetically-last plane's global keyword
@@ -279,7 +281,7 @@ pub(crate) fn encode_wcs_to_store(
     obj: &AnyObject,
     cards: &mut CardList,
     dim: &[Option<f64>],
-    fits_tol: f64,
+    attrs: WriteAttrs,
     writer: impl FnOnce(&FitsStore, &mut CardList) -> AstResult<()>,
 ) -> AstResult<bool> {
     let frameset = match obj {
@@ -293,7 +295,7 @@ pub(crate) fn encode_wcs_to_store(
     };
 
     let input_crvals = extract_input_crvals(cards, ' ', frameset.base().naxes());
-    let (store, ok) = store_from_frameset(frameset, dim, &input_crvals, fits_tol)?;
+    let (store, ok) = store_from_frameset(frameset, dim, &input_crvals, attrs)?;
     // A FrameSet with no describable primary axes yields no store at all in
     // C, so `Write` has nothing to encode and reports failure
     // (fitschan.c:12358, 40716).
@@ -320,7 +322,7 @@ pub(crate) fn encode_wcs_per_plane(
     cards: &mut CardList,
     dim: &[Option<f64>],
     encoding: crate::fitschan::Encoding,
-    fits_tol: f64,
+    attrs: WriteAttrs,
     mut writer: impl FnMut(&FitsStore, &mut CardList, char, bool) -> AstResult<()>,
 ) -> AstResult<bool> {
     let frameset = match obj {
@@ -333,7 +335,7 @@ pub(crate) fn encode_wcs_per_plane(
         }
     };
     let primary_crvals = extract_input_crvals(cards, ' ', frameset.base().naxes());
-    let mut planes = collect_plane_stores(frameset, dim, encoding, &primary_crvals, fits_tol)?;
+    let mut planes = collect_plane_stores(frameset, dim, encoding, &primary_crvals, attrs)?;
 
     // Last-plane-wins for observation-global keywords (MJD-OBS,
     // DATE-OBS, OBSGEO, TIMESYS, DTAI, DUT1). Mirrors C's `SkySys`
@@ -400,9 +402,9 @@ pub(crate) fn store_from_frameset(
     fs: &FrameSet,
     dim: &[Option<f64>],
     input_crvals: &[Option<f64>],
-    fits_tol: f64,
+    attrs: WriteAttrs,
 ) -> AstResult<(FitsStore, bool)> {
-    store_from_frameset_to(fs, fs.current_idx(), dim, input_crvals, fits_tol)
+    store_from_frameset_to(fs, fs.current_idx(), dim, input_crvals, attrs)
 }
 
 /// Decompose a FrameSet into a FitsStore using `target_idx` (0-based) as
@@ -418,7 +420,7 @@ fn store_from_frameset_to(
     target_idx: usize,
     dim: &[Option<f64>],
     input_crvals: &[Option<f64>],
-    fits_tol: f64,
+    attrs: WriteAttrs,
 ) -> AstResult<(FitsStore, bool)> {
     // The new path (fset_to_store) reads the FrameSet's current frame
     // directly; for alt-plane callers (target_idx != current_idx) we
@@ -439,19 +441,12 @@ fn store_from_frameset_to(
             encoding,
             ' ',
             input_crvals,
-            fits_tol,
+            attrs,
         );
     }
     let mut alt_fs = fs.clone();
     alt_fs.set_current(FrameRef::Index(target_idx + 1))?;
-    crate::fitschan::fset_to_store::fset_to_store(
-        &alt_fs,
-        dim,
-        encoding,
-        ' ',
-        input_crvals,
-        fits_tol,
-    )
+    crate::fitschan::fset_to_store::fset_to_store(&alt_fs, dim, encoding, ' ', input_crvals, attrs)
 }
 
 /// Write FitsStore contents as FITS keyword cards.
@@ -818,18 +813,17 @@ fn write_cd_matrix(store: &FitsStore, cards: &mut CardList, s: char) -> AstResul
 /// at least one good coefficient was emitted, with the value being
 /// the maximum `p + q` across emitted cards.
 ///
-/// The forward block uses comments "SIP forward distortion coeff";
-/// the inverse blocks "SIP inverse distortion coeff" — matching the
-/// C library's SIP writer's `SetValue` calls.
+/// The comments are those of C's `WcsFromStore`: "SIP forward distortion
+/// coeff" and "SIP max order" for the forward blocks, "SIP inverse
+/// distortion coeff" and "SIP inverse max order" for the inverse ones.
 fn write_sip_block(order: Option<usize>, coeffs: &[Vec<f64>], prefix: &str, cards: &mut CardList) {
     let Some(_order) = order else { return };
     if coeffs.is_empty() {
         return;
     }
-    let order_comment = "SIP max order";
-    let coeff_comment = match prefix {
-        "AP" | "BP" => "SIP inverse distortion coeff",
-        _ => "SIP forward distortion coeff",
+    let (order_comment, coeff_comment) = match prefix {
+        "AP" | "BP" => ("SIP inverse max order", "SIP inverse distortion coeff"),
+        _ => ("SIP max order", "SIP forward distortion coeff"),
     };
 
     let pmax = coeffs.len().saturating_sub(1);
@@ -886,13 +880,14 @@ fn write_pc_cdelt(store: &FitsStore, cards: &mut CardList, s: char) -> AstResult
         cards.set_float(&key, val, &format!("Pixel size on axis {}", i + 1));
     }
 
-    // PCi_j{S} (only non-default values)
+    // PCi_j{S}, omitting elements equal to the unit matrix's
+    // (fitschan.c `WcsFromStore`).
     for i in 0..naxis {
         for j in 0..naxis {
             let default = if i == j { 1.0 } else { 0.0 };
-            if (pc[[i, j]] - default).abs() > 1e-15 {
+            if !ast_equal(pc[[i, j]], default) {
                 let key = fmt_matrix_key("PC", i + 1, j + 1, s);
-                cards.set_float(&key, pc[[i, j]], "");
+                cards.set_float(&key, pc[[i, j]], "Transformation matrix element");
             }
         }
     }

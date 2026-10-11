@@ -127,6 +127,8 @@ pub struct FitsChan {
     keyseq: std::collections::HashMap<String, usize>,
     /// The Clean attribute, when set.
     clean: Option<bool>,
+    /// The SipOK attribute, when set.
+    sip_ok: Option<bool>,
 }
 
 impl FitsChan {
@@ -150,6 +152,7 @@ impl FitsChan {
             fits_tol: fset_to_store::FITS_TOL_DEFAULT,
             keyseq: std::collections::HashMap::new(),
             clean: None,
+            sip_ok: None,
         }
     }
 
@@ -176,6 +179,7 @@ impl FitsChan {
             fits_tol: fset_to_store::FITS_TOL_DEFAULT,
             keyseq: std::collections::HashMap::new(),
             clean: None,
+            sip_ok: None,
         })
     }
 
@@ -881,6 +885,37 @@ impl FitsChan {
         self.clean = None;
     }
 
+    /// The SipOK attribute: whether a FITS-WCS write may describe
+    /// distortion with SIP coefficients. Without them, or with another
+    /// encoding, the write uses a linear approximation if FitsTol allows.
+    /// The default is true.
+    pub fn sip_ok(&self) -> bool {
+        self.sip_ok.unwrap_or(true)
+    }
+
+    /// Set SipOK.
+    pub fn set_sip_ok(&mut self, sip_ok: bool) {
+        self.sip_ok = Some(sip_ok);
+    }
+
+    /// Whether SipOK is set.
+    pub fn test_sip_ok(&self) -> bool {
+        self.sip_ok.is_some()
+    }
+
+    /// Clear SipOK.
+    pub fn clear_sip_ok(&mut self) {
+        self.sip_ok = None;
+    }
+
+    /// The attributes a write reads while building a FitsStore.
+    fn write_attrs(&self) -> fset_to_store::WriteAttrs {
+        fset_to_store::WriteAttrs {
+            fits_tol: self.fits_tol,
+            sip_ok: self.sip_ok(),
+        }
+    }
+
     /// Set whether to use CD matrix notation for FITS-WCS output.
     ///
     /// When true, the output uses CDi_j keywords; when false (the default),
@@ -1439,20 +1474,17 @@ impl FitsChan {
 
                 self.cards.mark_all_unused();
 
+                let attrs = self.write_attrs();
                 let result = match enc {
-                    Encoding::FitsWcs => wcs_write::encode_wcs(
-                        obj,
-                        &mut self.cards,
-                        self.cd_matrix,
-                        &dims,
-                        self.fits_tol,
-                    ),
+                    Encoding::FitsWcs => {
+                        wcs_write::encode_wcs(obj, &mut self.cards, self.cd_matrix, &dims, attrs)
+                    }
                     Encoding::FitsIraf => wcs_write::encode_wcs_per_plane(
                         obj,
                         &mut self.cards,
                         &dims,
                         Encoding::FitsIraf,
-                        self.fits_tol,
+                        attrs,
                         enc_iraf::write_to_cards,
                     ),
                     Encoding::FitsPc => wcs_write::encode_wcs_per_plane(
@@ -1460,7 +1492,7 @@ impl FitsChan {
                         &mut self.cards,
                         &dims,
                         Encoding::FitsPc,
-                        self.fits_tol,
+                        attrs,
                         enc_pc::write_to_cards,
                     ),
                     Encoding::FitsAips => wcs_write::encode_wcs_per_plane(
@@ -1468,7 +1500,7 @@ impl FitsChan {
                         &mut self.cards,
                         &dims,
                         Encoding::FitsAips,
-                        self.fits_tol,
+                        attrs,
                         enc_aips::write_to_cards,
                     ),
                     Encoding::FitsAipsPP => wcs_write::encode_wcs_per_plane(
@@ -1476,7 +1508,7 @@ impl FitsChan {
                         &mut self.cards,
                         &dims,
                         Encoding::FitsAipsPP,
-                        self.fits_tol,
+                        attrs,
                         enc_aips::write_to_cards_pp,
                     ),
                     Encoding::FitsClass => {
@@ -1485,7 +1517,7 @@ impl FitsChan {
                             &mut self.cards,
                             &dims,
                             Encoding::FitsClass,
-                            self.fits_tol,
+                            attrs,
                             enc_class::write_to_cards,
                         )?;
                         // Then run the SpecFrame velocity computation
@@ -1503,7 +1535,7 @@ impl FitsChan {
                         obj,
                         &mut self.cards,
                         &dims,
-                        self.fits_tol,
+                        attrs,
                         enc_dss::write_to_cards,
                     ),
                     Encoding::Native => unreachable!(),

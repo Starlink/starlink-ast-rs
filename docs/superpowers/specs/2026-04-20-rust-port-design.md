@@ -2,6 +2,8 @@
 
 ## Revision history
 
+- **2026-10-10 (rev 16)**: Added FitsChan's SipOK attribute (`sip_ok`,
+  `set_sip_ok`, `test_sip_ok`, `clear_sip_ok`).
 - **2026-10-10 (rev 15)**: FitsChan hides the cards a read consumed, as
   C does, from the getters, `find_fits`, `ncard`, `nkey` and the guessed
   Encoding. Added `clean` / `set_clean` / `test_clean` / `clear_clean`
