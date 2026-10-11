@@ -1319,6 +1319,17 @@ The string-to-complex conversions tested for one value from the reads `"%lf %lf 
 Fixed on `u/timj/norm-unit` in 4d24a55c; `testfitschan` `testcnvtype`.
 The port's `card_value::cnv_type` is `CnvType` as fixed; `tests/test_fitschan_cursor_oracle.rs` (the `conversions` case), whose probe needs the fixed library.
 
+### RESOLVED (upstream 60893889): a negative value written with one leading blank and no decimal point loses its sign
+
+C location: `fitschan.c` `EncodeFloat`.
+
+`EncodeFloat` adds a decimal point to a formatted value that has none.
+With two or more leading blanks it shifts everything up to the end of the digits two places left; with exactly one it shifted only the digits one place left, overwriting the character before them.
+For a negative value that character is the minus sign: with FitsDigits 18 or more, `-123456789012345678` was written as `123456789012345680.`, a value of the opposite sign.
+
+Fixed on `u/timj/norm-unit` in 60893889: the one-blank branch shifts everything before the end of the digits, as the two-blank branch does; `testfitschan` `testfloatsign`.
+The port's `format::encode_float_in` is `EncodeFloat` as fixed; `tests/test_fitschan_cursor_oracle.rs` (the `fits_digits_18` and `fits_digits_25` cases), whose probe needs the fixed library.
+
 ### RESOLVED (upstream bdc6336c): a SIP FrameSet written with an encoding other than FITS-WCS loses its distortion
 
 C location: `fitschan.c` `AddVersion`.

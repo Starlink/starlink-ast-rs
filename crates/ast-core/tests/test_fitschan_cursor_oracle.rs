@@ -225,6 +225,10 @@ fn run(fc: &mut FitsChan, op: &str, out: &mut String) {
             None => "= nf\n".to_string(),
             Some(has) => format!("= {}\n", i32::from(has)),
         }),
+        "FD" => {
+            fc.set_fits_digits(arg(1).parse().unwrap());
+            String::new()
+        }
         "QCD" => format!(
             "= {} {}\n",
             i32::from(fc.cd_matrix()),

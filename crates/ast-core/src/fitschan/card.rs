@@ -5,8 +5,9 @@
 //! undefined, and CONTINUE long strings.
 
 use super::card_value::{scan_all, scan_double, scan_int};
+use super::format::{VALUE_MAXWIDTH, VALUE_WIDTH, encode_float, encode_float_in};
 use crate::error::{AstError, AstResult, ErrorCode};
-use crate::frames::axis_format::is_c_space;
+use crate::frames::axis_format::{is_c_space, sprintf_double};
 
 /// Length of a FITS header card in characters.
 pub(super) const FITS_CARD_LEN: usize = 80;
@@ -74,6 +75,10 @@ pub(crate) fn check_fits_name(raw_name: &str) -> Option<String> {
 /// Column (0-based) where right-justified numeric values and logical T/F land.
 /// In FITS standard terms this is column 30 (1-based), i.e. index 29.
 const FITS_RL_COL: usize = 29;
+
+/// The width of the imaginary part of a complex value, right-justified to
+/// column 50: C's `FITSIMCOL - FITSRLCOL`.
+const IMAG_WIDTH: usize = 20;
 
 /// The column (1-based) in which a quoted string value ends at the
 /// earliest, C's `FITSSTCOL`.
@@ -417,7 +422,7 @@ impl FitsCard {
     /// Format this card as an 80-character FITS header string using a
     /// specific number of significant digits for float values, with the
     /// formatter's default sequence-rounding protection (`fitsrnd = 10`).
-    pub fn format_with_digits(&self, digits: usize) -> AstResult<String> {
+    pub fn format_with_digits(&self, digits: i32) -> AstResult<String> {
         self.format_internal(digits, 10)
     }
 
@@ -427,7 +432,7 @@ impl FitsCard {
     /// library's `FitsRounding` attribute).
     pub fn format_with_digits_and_rounding(
         &self,
-        digits: usize,
+        digits: i32,
         fitsrnd: usize,
     ) -> AstResult<String> {
         self.format_internal(digits, fitsrnd)
@@ -440,7 +445,7 @@ impl FitsCard {
 
     /// C's `FormatCard`. A string value that cannot fit in the card is
     /// AST__BDFTS, as `EncodeValue` reports it.
-    fn format_internal(&self, digits: usize, fitsrnd: usize) -> AstResult<String> {
+    fn format_internal(&self, digits: i32, fitsrnd: usize) -> AstResult<String> {
         let mut buf = String::with_capacity(FITS_CARD_LEN);
 
         // Write keyword, left-justified, padded to 8 chars.
@@ -486,14 +491,18 @@ impl FitsCard {
             }
             FitsValue::Float(v) => {
                 buf.push_str("= ");
-                let formatted = format_float(*v, digits, fitsrnd);
-                let width = FITS_RL_COL + 1 - (FITS_NAME_LEN + 2); // 20
-                if formatted.len() < width {
-                    for _ in 0..(width - formatted.len()) {
-                        buf.push(' ');
-                    }
-                }
-                buf.push_str(&formatted);
+                let text = encode_float(*v, digits, fitsrnd).ok_or_else(|| {
+                    AstError::new(
+                        ErrorCode::Bdfts,
+                        format!(
+                            "Cannot encode floating point value {} into a FITS header \
+                             card for keyword '{}'.",
+                            sprintf_double("%g", *v),
+                            self.keyword
+                        ),
+                    )
+                })?;
+                buf.push_str(&text);
                 append_comment(&mut buf, self.comment.as_deref());
             }
             FitsValue::Logical(v) => {
@@ -514,24 +523,34 @@ impl FitsCard {
             }
             FitsValue::ComplexFloat(r, i) => {
                 buf.push_str("= ");
-                let r_fmt = format_float(*r, digits, fitsrnd);
-                let i_fmt = format_float(*i, digits, fitsrnd);
-                // Right-justify real to col 30, imaginary to col 50.
-                let r_width = FITS_RL_COL + 1 - (FITS_NAME_LEN + 2); // 20
-                if r_fmt.len() < r_width {
-                    for _ in 0..(r_width - r_fmt.len()) {
-                        buf.push(' ');
-                    }
-                }
-                buf.push_str(&r_fmt);
-                // Imaginary part: right-justify in next 20 chars.
-                let i_width = 20;
-                if i_fmt.len() < i_width {
-                    for _ in 0..(i_width - i_fmt.len()) {
-                        buf.push(' ');
-                    }
-                }
-                buf.push_str(&i_fmt);
+                // The real part is right-justified to column 30 and the
+                // imaginary part to column 50.
+                let cannot = |part: &str| {
+                    AstError::new(
+                        ErrorCode::Bdfts,
+                        format!(
+                            "Cannot encode {part} part of a complex floating point value \
+                             [{},{}] into a FITS header card for keyword '{}'.",
+                            sprintf_double("%g", *r),
+                            sprintf_double("%g", *i),
+                            self.keyword
+                        ),
+                    )
+                };
+                let room = FITS_CARD_LEN - (FITS_NAME_LEN + 3);
+                let real = encode_float_in(*r, digits, VALUE_WIDTH, VALUE_MAXWIDTH, fitsrnd)
+                    .filter(|t| t.len() <= room)
+                    .ok_or_else(|| cannot("real"))?;
+                let imag = encode_float_in(
+                    *i,
+                    digits,
+                    IMAG_WIDTH,
+                    VALUE_MAXWIDTH - 1 - real.len(),
+                    fitsrnd,
+                )
+                .ok_or_else(|| cannot("imaginary"))?;
+                buf.push_str(&real);
+                buf.push_str(&imag);
                 append_comment(&mut buf, self.comment.as_deref());
             }
             FitsValue::ComplexInt(r, i) => {
@@ -762,16 +781,6 @@ pub(crate) fn bad_value_warning(card: &str) -> String {
         .nth(FITS_CARD_LEN)
         .map_or(card.len(), |(i, _)| i);
     format!("The keyword value is illegal in '{}'", &card[..end])
-}
-
-/// Format a float value for FITS output.
-/// Uses a representation that preserves precision while staying compact.
-/// Mimics C's `%G` format: uses fixed notation when the exponent is in [-4, 15],
-/// scientific notation otherwise, and trims trailing zeros. Long
-/// sequences of trailing 9's or 0's beyond the first `fitsrnd`
-/// significant digits are rounded out (C's `RoundFString`).
-fn format_float(v: f64, digits: usize, fitsrnd: usize) -> String {
-    super::format::format_significant_rounded(v, digits, fitsrnd)
 }
 
 /// C's `EncodeValue` for a string value starting in column 11: the string

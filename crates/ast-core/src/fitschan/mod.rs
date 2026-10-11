@@ -70,7 +70,7 @@ pub enum Encoding {
 /// round-trip an IEEE double exactly. Callers that want the FITS-standard
 /// 20-column limit honoured set a smaller value explicitly (the wcsconv
 /// fixtures use `FitsDigits=8` for the FITS encodings).
-const DEFAULT_FITS_DIGITS: usize = 17;
+const DEFAULT_FITS_DIGITS: i32 = 17;
 
 /// A channel that reads and writes AST objects via FITS header cards.
 ///
@@ -102,7 +102,7 @@ pub struct FitsChan {
     /// (fitschan.c:42286).
     encoding: Option<Encoding>,
     warnings: Vec<String>,
-    fits_digits: usize,
+    fits_digits: i32,
     /// Number of leading significant digits protected from rounding by
     /// the formatter (mirrors C's `FitsRounding` attribute, default 10).
     fits_rounding: usize,
@@ -843,14 +843,29 @@ impl FitsChan {
             .unwrap_or_else(|| guess_encoding::guess_encoding(&self.cards))
     }
 
-    /// Set the number of significant digits for floating-point output.
-    pub fn set_fits_digits(&mut self, digits: usize) {
-        self.fits_digits = digits.clamp(1, 17);
+    /// Set the FitsDigits attribute: the number of significant digits a
+    /// floating point value is written with. A negative value `-n` means
+    /// at most `n`, fewer if the value would otherwise be wider than the 20
+    /// columns FITS allows it.
+    pub fn set_fits_digits(&mut self, digits: i32) {
+        self.fits_digits = digits;
     }
 
-    /// Return the current number of significant digits for floating-point output.
-    pub fn fits_digits(&self) -> usize {
+    /// The FitsDigits attribute (default 17).
+    pub fn fits_digits(&self) -> i32 {
         self.fits_digits
+    }
+
+    /// Whether FitsDigits differs from its default. As in C, which tests
+    /// the value rather than whether one was set, a FitsDigits set to 17
+    /// tests as unset.
+    pub fn test_fits_digits(&self) -> bool {
+        self.fits_digits != DEFAULT_FITS_DIGITS
+    }
+
+    /// Clear FitsDigits, restoring its default.
+    pub fn clear_fits_digits(&mut self) {
+        self.fits_digits = DEFAULT_FITS_DIGITS;
     }
 
     /// Set the FitsRounding attribute (number of leading significant
@@ -1756,11 +1771,8 @@ mod tests {
         let mut fc = FitsChan::new();
         fc.set_fits_digits(15);
         assert_eq!(fc.fits_digits(), 15);
-        // Clamped to valid range.
-        fc.set_fits_digits(0);
-        assert_eq!(fc.fits_digits(), 1);
-        fc.set_fits_digits(20);
-        assert_eq!(fc.fits_digits(), 17);
+        fc.set_fits_digits(-3);
+        assert_eq!(fc.fits_digits(), -3);
     }
 
     #[test]

@@ -2,6 +2,12 @@
 
 ## Revision history
 
+- **2026-10-11 (rev 19)**: FitsChan's FitsDigits is an `i32`, kept as
+  set (`set_fits_digits`, `fits_digits`), with `test_fits_digits` and
+  `clear_fits_digits`. `fitschan::format` gives C's `EncodeFloat` as
+  `encode_float`, replacing `format_fits_double`, `format_significant`
+  and `format_significant_rounded`, and `FitsCard::format_with_digits`
+  and `format_with_digits_and_rounding` take an `i32`.
 - **2026-10-11 (rev 18)**: Added `FitsChan::test_cd_matrix` and
   `clear_cd_matrix`; unless set, `cd_matrix` is true when the FitsChan
   holds a `CDi_j` card a read has not consumed, as C's `GetCDMatrix`.

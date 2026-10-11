@@ -126,7 +126,7 @@ fn main() {
             match key.as_str() {
                 "cdmatrix" => fc_out.set_cd_matrix(val == "1" || val.eq_ignore_ascii_case("true")),
                 "fitsdigits" => {
-                    if let Ok(d) = val.parse::<usize>() {
+                    if let Ok(d) = val.parse::<i32>() {
                         fc_out.set_fits_digits(d);
                     }
                 }

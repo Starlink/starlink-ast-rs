@@ -288,11 +288,7 @@ fn run_case(case: &TestCase, force_comparison: bool) -> Result<(), String> {
     // Apply attributes.
     for (key, val) in &case.attrs {
         match key.as_str() {
-            "fitsdigits" => {
-                if let Ok(d) = val.parse::<usize>() {
-                    fc_out.set_fits_digits(d);
-                }
-            }
+            "fitsdigits" => fc_out.set_fits_digits(val.parse().expect("FitsDigits is an integer")),
             "cdmatrix" => {
                 fc_out.set_cd_matrix(val == "1" || val.eq_ignore_ascii_case("true"));
             }

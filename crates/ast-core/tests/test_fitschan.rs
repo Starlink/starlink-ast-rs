@@ -419,11 +419,20 @@ fn fits_digits_default_and_set() {
     fc.set_fits_digits(15);
     assert_eq!(fc.fits_digits(), 15);
 
-    // Clamped to valid range [1, 17].
+    // Any integer is kept, as C keeps it; a negative one is a maximum.
     fc.set_fits_digits(0);
-    assert_eq!(fc.fits_digits(), 1);
-    fc.set_fits_digits(20);
+    assert_eq!(fc.fits_digits(), 0);
+    fc.set_fits_digits(-5);
+    assert_eq!(fc.fits_digits(), -5);
+    fc.set_fits_digits(25);
+    assert_eq!(fc.fits_digits(), 25);
+    assert!(fc.test_fits_digits());
+    fc.clear_fits_digits();
     assert_eq!(fc.fits_digits(), 17);
+    assert!(!fc.test_fits_digits());
+    // C tests the value, not whether one was set.
+    fc.set_fits_digits(17);
+    assert!(!fc.test_fits_digits());
 }
 
 // ===========================================================================
