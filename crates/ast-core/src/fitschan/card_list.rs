@@ -3,7 +3,7 @@
 use std::cell::RefCell;
 
 use super::card::{Consumption, FitsCard, FitsValue, check_fits_name};
-use super::fits_match::match_keyword_checked;
+use super::fits_match::{match_keyword, match_keyword_checked};
 use crate::error::AstResult;
 
 /// An ordered collection of [`FitsCard`]s with position-based iteration.
@@ -55,6 +55,17 @@ impl CardList {
     /// Return true if the list contains no cards.
     pub fn is_empty(&self) -> bool {
         self.cards.is_empty()
+    }
+
+    /// A list of copies of the cards in `range`, leaving out consumed ones.
+    pub(crate) fn sub_list(&self, range: std::ops::RangeInclusive<usize>) -> CardList {
+        let mut list = CardList::new();
+        for card in &self.cards[range] {
+            if !card.is_consumed() {
+                list.cards.push(card.clone());
+            }
+        }
+        list
     }
 
     /// Append a card at the end of the list.
@@ -462,8 +473,15 @@ impl CardList {
     /// (NATIVE-encoding read), consumed cards are physically deleted instead.
     pub(crate) fn fix_used(&mut self, promote: bool, remove: bool) {
         if remove {
+            // A removed current card passes currency to the next card kept,
+            // as C's `DeleteCard` does.
+            let before = self.cards[..self.position.min(self.cards.len())]
+                .iter()
+                .filter(|c| c.flags.consumption != Consumption::Provisional)
+                .count();
             self.cards
                 .retain(|c| c.flags.consumption != Consumption::Provisional);
+            self.position = before;
         } else {
             let target = if promote {
                 Consumption::Used
@@ -724,6 +742,53 @@ impl CardList {
             .map(|c| c.c_name())
             .collect();
         names.len()
+    }
+
+    /// C's `KeyFields`: the number of cards not consumed whose keyword
+    /// matches `template` (see [`match_keyword`]), and the lowest and highest
+    /// value of each of the first `maxfld` integer (`%d`) fields among them.
+    pub(crate) fn key_fields(&self, template: &str, maxfld: usize) -> (usize, Vec<i32>, Vec<i32>) {
+        let mut lo = vec![i32::MAX; maxfld];
+        let mut hi = vec![-i32::MAX; maxfld];
+        let mut n = 0;
+        for card in self.cards.iter().filter(|c| !c.is_consumed()) {
+            if let Some(fields) = match_keyword(card.c_name(), template, maxfld) {
+                n += 1;
+                for (i, f) in fields.into_iter().enumerate() {
+                    lo[i] = lo[i].min(f);
+                    hi[i] = hi[i].max(f);
+                }
+            }
+        }
+        (n, lo, hi)
+    }
+
+    /// The first card not consumed with keyword `keyword`, ignoring case.
+    pub(crate) fn first_visible(&self, keyword: &str) -> Option<&FitsCard> {
+        self.cards
+            .iter()
+            .find(|c| !c.is_consumed() && c.c_name().eq_ignore_ascii_case(keyword))
+    }
+
+    /// C's `RetainFits`: protect the current card from being consumed.
+    pub(crate) fn protect_current(&mut self) {
+        if let Some(card) = self.cards.get_mut(self.position) {
+            card.flags.protected = true;
+        }
+    }
+
+    /// The second part of C's `PurgeWCS`: give every card not consumed
+    /// whose keyword `FindWcs` recognises the flags `USED` alone, so it is
+    /// hidden and no longer protected.
+    pub(crate) fn consume_wcs_cards(&mut self) {
+        for card in &mut self.cards {
+            if !card.is_consumed() && is_findwcs_keyword(&card.keyword) {
+                card.flags = crate::fitschan::card::CardFlags {
+                    consumption: Consumption::Used,
+                    ..Default::default()
+                };
+            }
+        }
     }
 
     /// C's `DeleteCard`: delete the current card, making the next card not

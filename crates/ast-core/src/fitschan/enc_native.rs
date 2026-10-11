@@ -80,29 +80,21 @@ pub(crate) fn classify(keyword: &str) -> KeywordKind {
     }
 }
 
-/// Returns true if the card list contains at least one `BEGAST<xx>` keyword,
-/// indicating keyword-card NATIVE encoding.
-///
-/// Mirrors the C library check at `fitschan.c::GetEncoding` line 12566:
-/// `astKeyFields( this, "BEGAST%2f", 0, NULL, NULL )`.
-pub(crate) fn has_keyword_native(cards: &CardList) -> bool {
-    cards
-        .iter()
-        .any(|card| matches!(classify(&card.keyword), KeywordKind::Begin))
-}
-
 /// Index range of the first complete top-level object in a keyword-card
-/// NATIVE header: from its `BEGAST<xx>` card to the `ENDAST<xx>` card that
-/// closes it, inclusive. `None` when there is no `BEGAST` or the object is
-/// unterminated.
+/// NATIVE header at or after card `start`: from its `BEGAST<xx>` card to the
+/// `ENDAST<xx>` card that closes it, inclusive, skipping cards a read
+/// consumed. `None` when there is no `BEGAST` or the object is unterminated.
 ///
-/// This is the span C `GetNextData` walks with `skip` 0, and therefore the
-/// span it marks as used (fitschan.c:17859). Cards before the `BEGAST` are
-/// walked with `skip` 1 and left unmarked.
-pub(crate) fn native_span(cards: &CardList) -> Option<(usize, usize)> {
+/// This is the span C `GetNextData` walks with `skip` 0 from the current
+/// card, and therefore the span it marks as used (fitschan.c:17859). Cards
+/// before the `BEGAST` are walked with `skip` 1 and left unmarked.
+pub(crate) fn native_span(cards: &CardList, start: usize) -> Option<(usize, usize)> {
     let mut first = None;
     let mut depth = 0usize;
-    for (i, card) in cards.iter().enumerate() {
+    for (i, card) in cards.iter().enumerate().skip(start) {
+        if card.is_consumed() {
+            continue;
+        }
         match classify(&card.keyword) {
             KeywordKind::Begin => {
                 if first.is_none() {
@@ -365,19 +357,20 @@ const STRING_VALUE_WIDTH: usize = 80 - FITS_NAM_LEN - 6;
 
 /// Assigns unique sequence-suffixed FITS keywords, mirroring C `CreateKeyword`
 /// (fitschan.c:8209). Each distinct uppercased base name keeps its own
-/// monotonic sequence counter; the counter is encoded into two `SEQ_CHARS`
-/// characters appended to the (truncated) base.
-#[derive(Default)]
-struct KeywordSequencer {
+/// monotonic sequence counter, which the FitsChan keeps from one write to
+/// the next (C's `keyseq`); the counter is encoded into two `SEQ_CHARS`
+/// characters appended to the (truncated) base, and a keyword some card
+/// already has is passed over.
+struct KeywordSequencer<'a> {
     /// Per-base sequence counter (keyed by the uppercased, truncated base).
-    seq: std::collections::HashMap<String, usize>,
+    seq: &'a mut std::collections::HashMap<String, usize>,
+    /// Whether a card already has a keyword (C's `HasCard`).
+    taken: &'a dyn Fn(&str) -> bool,
+    /// The keywords this write has created so far.
+    created: std::collections::HashSet<String>,
 }
 
-impl KeywordSequencer {
-    fn new() -> Self {
-        Self::default()
-    }
-
+impl KeywordSequencer<'_> {
     /// Create the next unique keyword based on `name`, mirroring
     /// `CreateKeyword`. The base is uppercased and truncated to
     /// `FITSNAMLEN - 2` characters to leave room for the 2-char suffix; the
@@ -395,21 +388,25 @@ impl KeywordSequencer {
 
         // Look up the last sequence number used for this base; C starts a new
         // base at 0 and pre-increments, so the first emitted suffix is seq=1.
+        // Sequence numbers whose keyword a card already has are passed over,
+        // and the last is re-used once the two characters run out.
         let entry = self.seq.entry(base.clone()).or_insert(0);
-        let limit = nseq * nseq - 1;
-        if *entry < limit {
-            *entry += 1;
+        let limit_seq = nseq * nseq - 1;
+        loop {
+            let limit = *entry >= limit_seq;
+            if !limit {
+                *entry += 1;
+            }
+            let seq = *entry;
+            // Encode the sequence number into two SEQ_CHARS characters.
+            let mut keyword = base.clone();
+            keyword.push(seq_chars[seq / nseq]);
+            keyword.push(seq_chars[seq % nseq]);
+            if limit || !((self.taken)(&keyword) || self.created.contains(&keyword)) {
+                self.created.insert(keyword.clone());
+                return keyword;
+            }
         }
-        let seq = *entry;
-
-        // Encode the sequence number into two SEQ_CHARS characters.
-        let hi = seq_chars[seq / nseq];
-        let lo = seq_chars[seq % nseq];
-
-        let mut keyword = base;
-        keyword.push(hi);
-        keyword.push(lo);
-        keyword
     }
 }
 
@@ -477,8 +474,22 @@ pub(crate) fn make_banner(prefix: &str, middle: &str, suffix: &str) -> String {
 /// `with_comments` controls whether per-card comment text is emitted (C
 /// `Comment` attribute, default true). Unset (`# default`) items are dropped,
 /// matching C `Use()` at the default `Full = 0`.
-pub(crate) fn write_keyword_native(cards: &mut Vec<FitsCard>, node: &Node, with_comments: bool) {
-    let mut seq = KeywordSequencer::new();
+///
+/// `keyseq` holds the last sequence number used for each keyword base, kept
+/// by the FitsChan from one write to the next, and `taken` says whether a
+/// card in the FitsChan already has a keyword.
+pub(crate) fn write_keyword_native(
+    cards: &mut Vec<FitsCard>,
+    node: &Node,
+    with_comments: bool,
+    keyseq: &mut std::collections::HashMap<String, usize>,
+    taken: &dyn Fn(&str) -> bool,
+) {
+    let mut seq = KeywordSequencer {
+        seq: keyseq,
+        taken,
+        created: std::collections::HashSet::new(),
+    };
     write_object(cards, node, &mut seq, with_comments);
 }
 
@@ -487,7 +498,7 @@ pub(crate) fn write_keyword_native(cards: &mut Vec<FitsCard>, node: &Node, with_
 fn write_object(
     cards: &mut Vec<FitsCard>,
     node: &Node,
-    seq: &mut KeywordSequencer,
+    seq: &mut KeywordSequencer<'_>,
     with_comments: bool,
 ) {
     // BEGAST keyword, value = class name, comment = the class comment.
@@ -783,7 +794,7 @@ ENDAST_A= 'FrameSet'           / End of object definition
 END
 ";
         let cards = cards_from(header);
-        assert!(has_keyword_native(&cards));
+        assert!(native_span(&cards, 0).is_some());
     }
 
     #[test]
@@ -797,7 +808,7 @@ CRVAL1  =                  0.0 / reference value
 END
 ";
         let cards = cards_from(header);
-        assert!(!has_keyword_native(&cards));
+        assert!(native_span(&cards, 0).is_none());
     }
 
     #[test]
@@ -1049,7 +1060,12 @@ END
 
     #[test]
     fn create_keyword_sequences_per_base() {
-        let mut seq = KeywordSequencer::new();
+        let mut keyseq = std::collections::HashMap::new();
+        let mut seq = KeywordSequencer {
+            seq: &mut keyseq,
+            taken: &|_| false,
+            created: std::collections::HashSet::new(),
+        };
         // First use of each base starts at suffix `_A` (seq = 1).
         assert_eq!(seq.create("BEGAST"), "BEGAST_A");
         assert_eq!(seq.create("BEGAST"), "BEGAST_B");
@@ -1063,7 +1079,12 @@ END
 
     #[test]
     fn create_keyword_wraps_after_first_block() {
-        let mut seq = KeywordSequencer::new();
+        let mut keyseq = std::collections::HashMap::new();
+        let mut seq = KeywordSequencer {
+            seq: &mut keyseq,
+            taken: &|_| false,
+            created: std::collections::HashSet::new(),
+        };
         // 26 second-characters after '_': seq 1..=26 map to _A.._Z, then the
         // high character advances (seq 27 -> "A_").
         let mut last = String::new();
@@ -1108,7 +1129,13 @@ END
         outer.push_object("MapA", inner, Some("First component Mapping".to_string()));
 
         let mut block: Vec<FitsCard> = Vec::new();
-        write_keyword_native(&mut block, &outer, true);
+        write_keyword_native(
+            &mut block,
+            &outer,
+            true,
+            &mut std::collections::HashMap::new(),
+            &|_| false,
+        );
 
         // The first card opens the outer object; the last closes it.
         assert_eq!(block.first().unwrap().keyword, "BEGAST_A");

@@ -200,9 +200,39 @@ fn run(fc: &mut FitsChan, op: &str, out: &mut String) {
             });
             String::new()
         }
+        "CL" => {
+            fc.set_clean(arg(1) == "1");
+            String::new()
+        }
+        "PW" => {
+            fc.purge_wcs();
+            String::new()
+        }
+        "RF" => {
+            fc.retain_fits();
+            String::new()
+        }
+        "TF" => result(fc.test_fits(name(arg(1))), |v| match v {
+            None => "= nf\n".to_string(),
+            Some(has) => format!("= {}\n", i32::from(has)),
+        }),
+        "QE" => {
+            let name = match fc.encoding() {
+                Encoding::Native => "NATIVE",
+                Encoding::FitsWcs => "FITS-WCS",
+                Encoding::FitsPc => "FITS-PC",
+                Encoding::FitsIraf => "FITS-IRAF",
+                Encoding::FitsAips => "FITS-AIPS",
+                Encoding::FitsAipsPP => "FITS-AIPS++",
+                Encoding::FitsClass => "FITS-CLASS",
+                Encoding::Dss => "DSS",
+            };
+            format!("= {name}\n")
+        }
         "R" => result(fc.read(), |obj| {
             let class = match obj {
                 Some(AnyObject::FrameSet(_)) => "FrameSet",
+                Some(AnyObject::ZoomMap(_)) => "ZoomMap",
                 Some(_) => "another class",
                 None => "null",
             };

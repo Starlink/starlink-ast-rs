@@ -1296,8 +1296,8 @@ fn translate_aips_spectral_ctype(cards: &mut CardList) {
                 continue;
             };
             let trimmed = ctype.trim_end();
-            if trimmed.len() == 8 {
-                if let Some((wctype, wspecsys)) = is_aips_spectral(trimmed) {
+            {
+                if let Some((wctype, wspecsys)) = super::guess_encoding::is_aips_spectral(&ctype) {
                     let comment = cards
                         .find(&key)
                         .and_then(|c| c.comment.clone())
@@ -1324,40 +1324,6 @@ fn translate_aips_spectral_ctype(cards: &mut CardList) {
             }
         }
     }
-}
-
-/// Mirrors fitschan.c::IsAIPSSpectral (line 20122-20218). Returns
-/// `Some((wctype, wspecsys))` for an AIPS spectral 8-char CTYPE,
-/// otherwise `None`.
-fn is_aips_spectral(ctype: &str) -> Option<(&'static str, &'static str)> {
-    if ctype.len() != 8 {
-        return None;
-    }
-    let prefix = &ctype[..4];
-    let suffix = &ctype[4..];
-    let wctype = match prefix {
-        "FREQ" => "FREQ    ",
-        "VELO" => "VRAD    ",
-        "FELO" => "VOPT-F2W",
-        "WAVELENG" => "WAVE    ",
-        _ => return None,
-    };
-    let wspecsys = if suffix.starts_with("-LSR") || suffix.starts_with("LSRK") {
-        "LSRK"
-    } else if suffix.starts_with("-LSD") {
-        "LSRD"
-    } else if suffix.starts_with("-HEL") {
-        "BARYCENT"
-    } else if suffix.starts_with("-EAR") || suffix.starts_with("-GEO") {
-        "GEOCENTR"
-    } else if suffix.starts_with("-OBS") || suffix.starts_with("-TOP") {
-        "TOPOCENT"
-    } else {
-        return None;
-    };
-    // C also requires both wctype and wspecsys to be set (already
-    // ensured by the early-returns above).
-    Some((wctype, wspecsys))
 }
 
 /// Translation #22 helper: case-insensitive CUNIT canonicalisation.

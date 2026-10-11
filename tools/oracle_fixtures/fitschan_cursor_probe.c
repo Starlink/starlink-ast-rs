@@ -21,6 +21,10 @@
  *   SU|ow|name|comment   astSetFitsU
  *   CM|ow|comment        astSetFitsCM
  *   ENC|encoding         set Encoding
+ *   QE                   get Encoding (guessed unless set)
+ *   CL|0 or 1            set Clean
+ *   PW  RF               astPurgeWCS, astRetainFits
+ *   TF|name              astTestFits, a name of "-" meaning NULL
  *   R                    astRead
  *   W                    astWrite of a 2-D ZoomMap of factor 2
  *
@@ -189,6 +193,18 @@ static void run( AstFitsChan *fc, const char *op, int *status ) {
       astSetFitsCM( fc, f2, atoi( f1 ) );
    } else if( !strcmp( f0, "ENC" ) ) {
       astSetC( fc, "Encoding", f1 );
+   } else if( !strcmp( f0, "CL" ) ) {
+      astSetI( fc, "Clean", atoi( f1 ) );
+   } else if( !strcmp( f0, "PW" ) ) {
+      astPurgeWCS( fc );
+   } else if( !strcmp( f0, "RF" ) ) {
+      astRetainFits( fc );
+   } else if( !strcmp( f0, "TF" ) ) {
+      int there;
+      int has = astTestFits( fc, strcmp( f1, "-" ) ? f1 : NULL, &there );
+      snprintf( buf, sizeof buf, "= %s\n", !there ? "nf" : has ? "1" : "0" );
+   } else if( !strcmp( f0, "QE" ) ) {
+      snprintf( buf, sizeof buf, "= %s\n", astGetC( fc, "Encoding" ) );
    } else if( !strcmp( f0, "R" ) ) {
       AstObject *obj = astRead( fc );
       snprintf( buf, sizeof buf, "= %s\n", obj ? astGetC( obj, "Class" ) : "null" );
@@ -338,6 +354,59 @@ int main( void ) {
       ops[ n ] = NULL;
       emit( "conversions", ops, &status );
    }
+   CASE( "guess_cd_radecsys_radesys",
+         "P|0|CTYPE1  = 'RA---TAN'", "P|0|CRVAL1  = 1", "P|0|CD1_1   = 1",
+         "P|0|RADECSYS= 'FK5'", "P|0|RADESYS = 'FK5'", "QE" );
+   CASE( "guess_cd_cmval",
+         "P|0|CTYPE1  = 'RA---TAN'", "P|0|CD1_1   = 1", "P|0|C1VAL1  = 1", "QE" );
+   CASE( "guess_axis2_only",
+         "P|0|CTYPE2  = 'DEC--TAN'", "P|0|CRVAL2  = 2", "QE" );
+   CASE( "guess_alternate_only",
+         "P|0|CRVAL1A = 1", "QE" );
+   CASE( "guess_aips_lsrk",
+         "P|0|CTYPE1  = 'VELOLSRK'", "P|0|CRVAL1  = 1", "QE" );
+   CASE( "guess_projp_and_pv",
+         "P|0|CTYPE1  = 'RA---TAN'", "P|0|CRVAL1  = 1", "P|0|PROJP1  = 1",
+         "P|0|PV1_1   = 1", "QE" );
+   CASE( "guess_cmpix_only",
+         "P|0|CTYPE1  = 'RA---TAN'", "P|0|CRVAL1  = 1", "P|0|C2PIX1  = 1", "QE" );
+   CASE( "guess_comment_markers",
+         "P|0|COMMENT AST +++ AST", "P|0|CTYPE1  = 'RA---TAN'", "QE" );
+   CASE( "guess_ctype_crpix_only",
+         "P|0|CTYPE1  = 'RA---TAN'", "P|0|CRPIX1  = 1", "QE" );
+   CASE( "guess_after_read",
+         "P|0|NAXIS   = 2", "P|0|NAXIS1  = 100", "P|0|NAXIS2  = 200",
+         "P|0|CRPIX1  = 50", "P|0|CRPIX2  = 100", "P|0|CRVAL1  = 10",
+         "P|0|CRVAL2  = 20", "P|0|CTYPE1  = 'RA---TAN'",
+         "P|0|CTYPE2  = 'DEC--TAN'", "P|0|CD1_1   = -0.001",
+         "P|0|CD2_2   = 0.001", "CC", "QE", "R", "QE", "GF|CRVAL1", "SC|3",
+         "W" );
+   CASE( "native_two_objects",
+         "ENC|NATIVE", "P|0|A       = 1", "W", "P|0|B       = 2", "W",
+         "P|0|C       = 3", "CC", "R", "R", "R" );
+   CASE( "native_read_from_middle",
+         "ENC|NATIVE", "W", "P|0|B       = 2", "W", "SC|20", "R", "CC", "R",
+         "R" );
+   CASE( "purge_wcs",
+         "P|0|NAXIS   = 2", "P|0|NAXIS1  = 100", "P|0|NAXIS2  = 200", "P|0|CRPIX1  = 50", "P|0|CRPIX2  = 100", "P|0|CRVAL1  = 10", "P|0|CRVAL2  = 20", "P|0|CTYPE1  = 'RA---TAN'", "P|0|CTYPE2  = 'DEC--TAN'", "P|0|CD1_1   = -0.001", "P|0|CD2_2   = 0.001", "P|0|OBJECT  = 'm31'", "P|0|CDELT3  = 2", "P|0|PC3_3   = 1",
+         "SC|3", "PW", "P|0|AFTER   = 1" );
+   CASE( "retain_survives_read",
+         "P|0|NAXIS   = 2", "P|0|NAXIS1  = 100", "P|0|NAXIS2  = 200", "P|0|CRPIX1  = 50", "P|0|CRPIX2  = 100", "P|0|CRVAL1  = 10", "P|0|CRVAL2  = 20", "P|0|CTYPE1  = 'RA---TAN'", "P|0|CTYPE2  = 'DEC--TAN'", "P|0|CD1_1   = -0.001", "P|0|CD2_2   = 0.001", "SC|6", "RF", "CC", "R", "CC", "GF|CRVAL1" );
+   CASE( "failed_read_without_clean",
+         "P|0|NAXIS   = 2", "P|0|CRPIX1  = 50", "P|0|CTYPE1  = 'RA---TAN'",
+         "P|0|CTYPE2  = 'DEC--TAN'", "P|0|CRVAL1  =", "P|0|CRVAL2  = 20",
+         "ENC|FITS-WCS", "CC", "R" );
+   CASE( "failed_read_with_clean",
+         "P|0|NAXIS   = 2", "P|0|CRPIX1  = 50", "P|0|CTYPE1  = 'RA---TAN'",
+         "P|0|CTYPE2  = 'DEC--TAN'", "P|0|CRVAL1  =", "P|0|CRVAL2  = 20",
+         "ENC|FITS-WCS", "CL|1", "CC", "R" );
+   CASE( "clean_suppresses_warnings",
+         "P|0|BAD%NAME= 1", "CL|1", "P|0|BAD%TWO = 2", "CL|0", "P|0|BAD%3   = 3" );
+   CASE( "native_write_after_duplicate_delete",
+         "ENC|NATIVE", "P|0|ZOOM_A  = 1", "P|0|ZOOM_A  = 2", "CC", "D", "SC|2", "W" );
+   CASE( "test_fits",
+         "P|0|A       = 1", "P|0|U       =", "P|0|COMMENT   text", "TF|A", "TF|U",
+         "TF|COMMENT", "TF|NONE", "SC|2", "TF|-", "SC|9", "TF|-" );
    CASE( "current_card_values",
          "P|0|A       = 1", "P|0|B       = 'x'", "SC|1", "GI|-", "GS|-",
          "SC|2", "GS|-", "GI|-", "SC|3", "GI|-" );

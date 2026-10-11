@@ -2,6 +2,13 @@
 
 ## Revision history
 
+- **2026-10-10 (rev 15)**: FitsChan hides the cards a read consumed, as
+  C does, from the getters, `find_fits`, `ncard`, `nkey` and the guessed
+  Encoding. Added `clean` / `set_clean` / `test_clean` / `clear_clean`
+  (the Clean attribute), `purge_wcs` (`astPurgeWCS`), `retain_fits`
+  (`astRetainFits`) and `test_fits` (`astTestFits`, returning
+  `AstResult<Option<bool>>`: `None` for a missing keyword, otherwise
+  whether it has a value).
 - **2026-10-10 (rev 14)**: FitsChan's card functions follow C's current
   card. `put_fits`, the `set_fits_*` setters, `find_fits`, `del_fits`, the
   `get_fits_*` getters and `read` use and move the current card as

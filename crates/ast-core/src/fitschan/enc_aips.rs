@@ -91,7 +91,7 @@ pub(crate) fn read_from_cards(cards: &CardList) -> AstResult<FitsStore> {
         // stripped value, matching C.
         let key = format!("CTYPE{axis_num}");
         if let Some(ctype_raw) = CardList::strip_wcs_store_string(cards.get_string_marked(&key)) {
-            if is_aips_spectral(&ctype_raw) {
+            if is_aips_spectral(&ctype_raw).is_some() {
                 let (standard_ctype, specsys) = translate_aips_spectral_read(&ctype_raw);
                 store.ctype[i] = Some(standard_ctype);
                 // Only set SPECSYS if not already set from a previous axis or keyword

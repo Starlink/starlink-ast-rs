@@ -122,6 +122,11 @@ pub struct FitsChan {
     fits_tol: f64,
     /// The transformations IntraMaps read here can name.
     intra: IntraRegistry,
+    /// The last sequence number given to each keyword base by the NATIVE
+    /// writer (C's `keyseq`), kept until the cards are emptied.
+    keyseq: std::collections::HashMap<String, usize>,
+    /// The Clean attribute, when set.
+    clean: Option<bool>,
 }
 
 impl FitsChan {
@@ -143,6 +148,8 @@ impl FitsChan {
             sip_replace: true,
             car_lin: false,
             fits_tol: fset_to_store::FITS_TOL_DEFAULT,
+            keyseq: std::collections::HashMap::new(),
+            clean: None,
         }
     }
 
@@ -167,6 +174,8 @@ impl FitsChan {
             sip_replace: true,
             car_lin: false,
             fits_tol: fset_to_store::FITS_TOL_DEFAULT,
+            keyseq: std::collections::HashMap::new(),
+            clean: None,
         })
     }
 
@@ -238,6 +247,63 @@ impl FitsChan {
     // Card manipulation API
     // -----------------------------------------------------------------------
 
+    /// C's `Warn` for a condition the default Warnings attribute names: store
+    /// an `ASTWARN` block in front of the current card, unless Clean is set.
+    fn warn(&mut self, text: &str) {
+        if !self.clean() {
+            self.cards.push_astwarn(text);
+        }
+    }
+
+    /// Mark the current card to be kept when a read would otherwise consume
+    /// it (C's `astRetainFits`). Does nothing at end-of-file.
+    pub fn retain_fits(&mut self) {
+        self.cards.protect_current();
+    }
+
+    /// Whether keyword `name`, or the current card when `name` is `None`, is
+    /// present (C's `astTestFits`): `None` if not, otherwise whether it has a
+    /// value. The card is searched for as by [`get_fits_f`](Self::get_fits_f),
+    /// and the current card is left as it was.
+    pub fn test_fits(&mut self, name: Option<&str>) -> AstResult<Option<bool>> {
+        let lname = match name {
+            Some(name) => Some(split_name(name)?.0),
+            None => None,
+        };
+        let icard = self.cards.get_card();
+        let found = match &lname {
+            Some(n) => self.cards.search_card(n, "astTestFits"),
+            None => Ok(true),
+        };
+        let result = found.map(|found| {
+            if !found {
+                return None;
+            }
+            match self.cards.current().map(|c| c.card_type()) {
+                None | Some(CardType::NoType) => None,
+                Some(t) => Some(t != CardType::Undef),
+            }
+        });
+        self.cards.set_card(icard as i64);
+        result
+    }
+
+    /// Delete the WCS a read can find, and every WCS-related card left over
+    /// (C's `astPurgeWCS`): every object is read with Clean set, discarding
+    /// it, then each remaining card whose keyword is a WCS keyword is marked
+    /// as used, which hides it. The first card is then current.
+    pub fn purge_wcs(&mut self) {
+        let old = self.clean;
+        self.clean = Some(true);
+        self.cards.clear_card();
+        while let Ok(Some(_)) = self.read() {
+            self.cards.clear_card();
+        }
+        self.cards.consume_wcs_cards();
+        self.cards.clear_card();
+        self.clean = old;
+    }
+
     /// Store a FITS header card (C's `astPutFits`).
     ///
     /// The card is inserted in front of the current card, or, with
@@ -249,7 +315,7 @@ impl FitsChan {
         // Emit ASTWARN cards for an illegal keyword name, mirroring C
         // `CheckFitsName`/`Warn` inside `astPutFits` (fitschan.c:32259).
         if let Some(text) = crate::fitschan::card::check_fits_name(card) {
-            self.cards.push_astwarn(&text);
+            self.warn(&text);
         }
         match parsed.value {
             // `PutFits` hands a commentary card to `SetFitsCom`.
@@ -322,6 +388,7 @@ impl FitsChan {
     pub fn empty_fits(&mut self) {
         self.cards = CardList::new();
         self.warnings.clear();
+        self.keyseq.clear();
     }
 
     /// Format all stored cards as a FITS header string.
@@ -370,7 +437,7 @@ impl FitsChan {
             Some(name) => {
                 let (lname, _) = split_name(name)?;
                 if let Some(text) = crate::fitschan::card::check_fits_name(name) {
-                    self.cards.push_astwarn(&text);
+                    self.warn(&text);
                 }
                 Some(lname)
             }
@@ -792,6 +859,28 @@ impl FitsChan {
         self.fits_rounding
     }
 
+    /// The Clean attribute: whether a read that fails still removes the
+    /// cards it used, and, as C does, whether warnings are suppressed. The
+    /// default is false.
+    pub fn clean(&self) -> bool {
+        self.clean.unwrap_or(false)
+    }
+
+    /// Set Clean.
+    pub fn set_clean(&mut self, clean: bool) {
+        self.clean = Some(clean);
+    }
+
+    /// Whether Clean is set.
+    pub fn test_clean(&self) -> bool {
+        self.clean.is_some()
+    }
+
+    /// Clear Clean.
+    pub fn clear_clean(&mut self) {
+        self.clean = None;
+    }
+
     /// Set whether to use CD matrix notation for FITS-WCS output.
     ///
     /// When true, the output uses CDi_j keywords; when false (the default),
@@ -850,62 +939,6 @@ impl FitsChan {
     // Native encoding helpers
     // -----------------------------------------------------------------------
 
-    /// Extract AST native text from COMMENT cards.
-    ///
-    /// Scans from the current position looking for the begin/end markers,
-    /// collecting the native text lines in between.
-    fn extract_native_text(&mut self) -> Option<String> {
-        self.cards.rewind();
-
-        // Find the begin marker.
-        let mut found_begin = false;
-        while !self.cards.at_eof() {
-            if let Some(card) = self.cards.find_next("COMMENT") {
-                if let FitsValue::Comment(text) = &card.value {
-                    if text.contains("AST +++") {
-                        found_begin = true;
-                        break;
-                    }
-                }
-            } else {
-                break;
-            }
-        }
-
-        if !found_begin {
-            return None;
-        }
-
-        // Collect lines until end marker.
-        let mut lines = Vec::new();
-        loop {
-            if self.cards.at_eof() {
-                break;
-            }
-            let pos = self.cards.position();
-            if let Some(card) = self.cards.find_next("COMMENT") {
-                if let FitsValue::Comment(text) = &card.value {
-                    if text.contains("AST ---") {
-                        break;
-                    }
-                    // Extract the native text between " AST " prefix and " AST" suffix.
-                    let line = extract_ast_line(text);
-                    lines.push(line);
-                }
-            } else {
-                // Restore position if find_next failed.
-                self.cards.set_position(pos);
-                break;
-            }
-        }
-
-        if lines.is_empty() {
-            None
-        } else {
-            Some(lines.join("\n"))
-        }
-    }
-
     /// Store an object in the keyword-card NATIVE form: a leading banner of
     /// COMMENT cards, the BEGAST/ENDAST/ISA/`<NAME>_xx` data cards, and a
     /// trailing banner. This is the C library's default NATIVE storage
@@ -957,7 +990,9 @@ impl FitsChan {
         }
 
         // Data cards.
-        enc_native::write_keyword_native(&mut block, node, comm);
+        let cards = &self.cards;
+        let taken = |k: &str| cards.iter().any(|c| c.keyword == k);
+        enc_native::write_keyword_native(&mut block, node, comm, &mut self.keyseq, &taken);
 
         // Trailing banner: dotted divider, "End of AST data for <class>
         // object", dashed divider.
@@ -978,27 +1013,61 @@ impl FitsChan {
         self.cards.insert_at_current(block);
     }
 
-    /// Flag the cards a completed FITS-WCS-family read consumed, then promote
-    /// them to `Used` so they are excluded from later output. Mirrors C's
-    /// read-completion `FixUsed(promote)` (fitschan.c:16431) over the two
-    /// sources of consumption:
+    /// The end of a read of an encoding other than NATIVE or DSS, mirroring
+    /// C's `Read` and its `FixUsed`: on success consume the cards the read
+    /// used and store its warnings; on failure consume them only when Clean
+    /// is set.
     ///
-    ///  * [`wcs_mark::mark_wcs_cards`] sweeps every card, as C `WcsFcRead`
-    ///    (fitschan.c:36233) does — so every copy of a repeated WCS keyword is
-    ///    consumed, not merely the first.
-    ///  * names recorded on the SpecTrans-derived `trans` list (by the
-    ///    `*_marked` getters and `record_consumed`) mark *every* matching card,
-    ///    as C `GetValue2` → `MarkAllCards` (fitschan.c:23105) does. The value
-    ///    a translation used is still the first match; the marking is what has
-    ///    to cover them all. Names with no matching card — keywords SpecTrans
-    ///    synthesised — are silently ignored.
-    fn finish_read_consumption(&mut self, trans: &CardList) -> AstResult<()> {
-        wcs_mark::mark_wcs_cards(&mut self.cards)?;
-        for name in trans.take_consumed_names() {
-            self.cards.mark_all_cards(&name);
+    /// The cards used are those SpecTrans used (`spec_names`), every card
+    /// C's `WcsFcRead` sweep marks ([`wcs_mark::mark_wcs_cards`]), which
+    /// covers every copy of a repeated WCS keyword, and the names the
+    /// extraction recorded on `trans`, each marking every matching card as
+    /// C's `MarkAllCards` does. The sweep is also C's extraction, so it fails
+    /// where C's read fails at a card with no value, and then the cards after
+    /// that card, and the extraction's names, are not used.
+    fn finish_foreign_read(
+        &mut self,
+        decoded: AstResult<(AnyObject, Vec<String>, usize)>,
+        trans_warnings: Vec<String>,
+        trans: &CardList,
+        spec_names: Vec<String>,
+    ) -> AstResult<Option<AnyObject>> {
+        let extract_names = trans.take_consumed_names();
+        let clean = self.clean();
+        let mark = |cards: &mut CardList, names: &[String]| {
+            for name in names {
+                cards.mark_all_cards(name);
+            }
+        };
+        let swept = wcs_mark::mark_wcs_cards(&mut self.cards);
+        match (decoded, swept) {
+            (Ok((obj, warnings, naxes)), Ok(())) => {
+                mark(&mut self.cards, &spec_names);
+                mark(&mut self.cards, &extract_names);
+                self.cards.fix_used(true, false);
+                self.push_read_warnings(trans_warnings, warnings, naxes);
+                Ok(Some(obj))
+            }
+            (decoded, swept) => {
+                let sweep_failed = swept.is_err();
+                if clean {
+                    mark(&mut self.cards, &spec_names);
+                    if !sweep_failed {
+                        mark(&mut self.cards, &extract_names);
+                    }
+                    self.cards.fix_used(true, false);
+                } else {
+                    self.cards.fix_used(false, false);
+                }
+                // C's sweep runs before the object is made, so its error is
+                // the one reported.
+                Err(match (swept, decoded) {
+                    (Err(e), _) => e,
+                    (Ok(()), Err(e)) => e,
+                    (Ok(()), Ok(_)) => unreachable!("handled above"),
+                })
+            }
         }
-        self.cards.fix_used(true, false);
-        Ok(())
     }
 
     /// Store the `ASTWARN` blocks a read produced, each against the card
@@ -1019,6 +1088,10 @@ impl FitsChan {
         read_warnings: Vec<String>,
         naxes: usize,
     ) {
+        // C's `Warn` does nothing when Clean is set.
+        if self.clean() {
+            return;
+        }
         // Each warning goes two places, as in C: `Warn` (fitschan.c:35052)
         // calls `astAddWarning`, which appends the text to the parent
         // Channel's warning list (channel.c:151) for `astWarnings` to report,
@@ -1075,35 +1148,33 @@ impl Channel for FitsChan {
         let mut read_encoded = || -> AstResult<Option<AnyObject>> {
             match enc {
                 Encoding::Native => {
-                    // Two storage variants: keyword-card (BEGAST_xx / ENDAST_xx)
-                    // and COMMENT-card (`COMMENT  AST +++  AST` markers).
-                    // The keyword-card variant takes precedence when present.
-                    let text = if enc_native::has_keyword_native(&self.cards) {
-                        enc_native::cards_to_native_text(&self.cards)?
-                    } else {
-                        match self.extract_native_text() {
-                            Some(t) => t,
-                            None => return Ok(None),
-                        }
-                    };
-                    if text.trim().is_empty() {
+                    // C reads the object through the Channel class from the
+                    // current card on (`GetNextData`), passing over cards
+                    // until a `BEGAST` card; with none, it reaches
+                    // end-of-file.
+                    let Some((first, last)) =
+                        enc_native::native_span(&self.cards, self.cards.position())
+                    else {
+                        self.cards.set_position(usize::MAX);
                         return Ok(None);
-                    }
+                    };
+                    let text =
+                        enc_native::cards_to_native_text(&self.cards.sub_list(first..=last))?;
                     let node = serial::native_read::parse_native(&text)?;
                     let obj = with_registry(&self.intra, || serial::any_object_from_node(&node))?;
 
                     // C `Read` calls `FixUsed( this, 0, 1, remove )` with
                     // `remove` set for NATIVE encoding (fitschan.c:25811-25817),
                     // so the cards a successful native read consumed are deleted
-                    // rather than merely flagged.
-                    if let Some((first, last)) = enc_native::native_span(&self.cards) {
-                        for i in first..=last {
-                            self.cards.mark_at(i);
-                        }
-                        self.cards.mark_com_block(first, -1);
-                        self.cards.mark_com_block(last, 1);
-                        self.cards.fix_used(true, true);
+                    // rather than merely flagged; the card after them is
+                    // current.
+                    for i in first..=last {
+                        self.cards.mark_at(i);
                     }
+                    self.cards.mark_com_block(first, -1);
+                    self.cards.mark_com_block(last, 1);
+                    self.cards.set_position(last + 1);
+                    self.cards.fix_used(true, true);
 
                     Ok(Some(obj))
                 }
@@ -1128,20 +1199,27 @@ impl Channel for FitsChan {
                         self.car_lin,
                         &mut trans_warnings,
                     );
-                    let (mut primary, mut alts) =
-                        wcs_keywords::extract_wcs_keywords_with_alts(&trans)?;
-                    primary.sip_replace = self.sip_replace;
-                    primary.car_lin = self.car_lin;
-                    for (_, st) in &mut alts {
-                        st.sip_replace = self.sip_replace;
-                        st.car_lin = self.car_lin;
-                    }
-                    let naxes = primary.naxis;
-                    let (obj, warnings) =
-                        wcs_read::decode_wcs_with_alts_inner(&primary, &alts, false, &self.cards)?;
-                    self.push_read_warnings(trans_warnings, warnings, naxes);
-                    self.finish_read_consumption(&trans)?;
-                    Ok(Some(obj))
+                    // The cards SpecTrans used, which C marks before WcsFcRead runs.
+                    let spec_names = trans.take_consumed_names();
+                    let decoded = (|| -> AstResult<(AnyObject, Vec<String>, usize)> {
+                        let (mut primary, mut alts) =
+                            wcs_keywords::extract_wcs_keywords_with_alts(&trans)?;
+                        primary.sip_replace = self.sip_replace;
+                        primary.car_lin = self.car_lin;
+                        for (_, st) in &mut alts {
+                            st.sip_replace = self.sip_replace;
+                            st.car_lin = self.car_lin;
+                        }
+                        let naxes = primary.naxis;
+                        let (obj, warnings) = wcs_read::decode_wcs_with_alts_inner(
+                            &primary,
+                            &alts,
+                            false,
+                            &self.cards,
+                        )?;
+                        Ok((obj, warnings, naxes))
+                    })();
+                    self.finish_foreign_read(decoded, trans_warnings, &trans, spec_names)
                 }
                 Encoding::FitsPc => {
                     // Run SpecTrans first to normalise non-standard
@@ -1157,20 +1235,27 @@ impl Channel for FitsChan {
                         self.car_lin,
                         &mut trans_warnings,
                     );
-                    let (mut primary, mut alts) =
-                        wcs_keywords::extract_wcs_keywords_with_alts(&trans)?;
-                    primary.sip_replace = self.sip_replace;
-                    primary.car_lin = self.car_lin;
-                    for (_, st) in &mut alts {
-                        st.sip_replace = self.sip_replace;
-                        st.car_lin = self.car_lin;
-                    }
-                    let naxes = primary.naxis;
-                    let (obj, warnings) =
-                        wcs_read::decode_wcs_with_alts_inner(&primary, &alts, true, &self.cards)?;
-                    self.push_read_warnings(trans_warnings, warnings, naxes);
-                    self.finish_read_consumption(&trans)?;
-                    Ok(Some(obj))
+                    // The cards SpecTrans used, which C marks before WcsFcRead runs.
+                    let spec_names = trans.take_consumed_names();
+                    let decoded = (|| -> AstResult<(AnyObject, Vec<String>, usize)> {
+                        let (mut primary, mut alts) =
+                            wcs_keywords::extract_wcs_keywords_with_alts(&trans)?;
+                        primary.sip_replace = self.sip_replace;
+                        primary.car_lin = self.car_lin;
+                        for (_, st) in &mut alts {
+                            st.sip_replace = self.sip_replace;
+                            st.car_lin = self.car_lin;
+                        }
+                        let naxes = primary.naxis;
+                        let (obj, warnings) = wcs_read::decode_wcs_with_alts_inner(
+                            &primary,
+                            &alts,
+                            true,
+                            &self.cards,
+                        )?;
+                        Ok((obj, warnings, naxes))
+                    })();
+                    self.finish_foreign_read(decoded, trans_warnings, &trans, spec_names)
                 }
                 Encoding::FitsIraf => {
                     let mut trans_warnings: Vec<String> = Vec::new();
@@ -1180,32 +1265,42 @@ impl Channel for FitsChan {
                         self.car_lin,
                         &mut trans_warnings,
                     );
-                    let (mut primary, mut alts) =
-                        wcs_keywords::extract_wcs_keywords_with_alts(&trans)?;
-                    primary.sip_replace = self.sip_replace;
-                    primary.car_lin = self.car_lin;
-                    for (_, st) in &mut alts {
-                        st.sip_replace = self.sip_replace;
-                        st.car_lin = self.car_lin;
-                    }
-                    let naxes = primary.naxis;
-                    let (obj, warnings) =
-                        wcs_read::decode_wcs_with_alts_inner(&primary, &alts, true, &self.cards)?;
-                    self.push_read_warnings(trans_warnings, warnings, naxes);
-                    self.finish_read_consumption(&trans)?;
-                    Ok(Some(obj))
+                    // The cards SpecTrans used, which C marks before WcsFcRead runs.
+                    let spec_names = trans.take_consumed_names();
+                    let decoded = (|| -> AstResult<(AnyObject, Vec<String>, usize)> {
+                        let (mut primary, mut alts) =
+                            wcs_keywords::extract_wcs_keywords_with_alts(&trans)?;
+                        primary.sip_replace = self.sip_replace;
+                        primary.car_lin = self.car_lin;
+                        for (_, st) in &mut alts {
+                            st.sip_replace = self.sip_replace;
+                            st.car_lin = self.car_lin;
+                        }
+                        let naxes = primary.naxis;
+                        let (obj, warnings) = wcs_read::decode_wcs_with_alts_inner(
+                            &primary,
+                            &alts,
+                            true,
+                            &self.cards,
+                        )?;
+                        Ok((obj, warnings, naxes))
+                    })();
+                    self.finish_foreign_read(decoded, trans_warnings, &trans, spec_names)
                 }
                 Encoding::FitsAips | Encoding::FitsAipsPP => {
                     let mut trans_warnings: Vec<String> = Vec::new();
                     let trans =
                         spec_trans::spec_trans(&self.cards, enc, self.car_lin, &mut trans_warnings);
-                    let store = enc_aips::read_from_cards(&trans)?;
-                    let naxes = store.naxis;
-                    let (obj, warnings) =
-                        wcs_read::decode_wcs_inner(&store, true, &self.cards, ' ')?;
-                    self.push_read_warnings(trans_warnings, warnings, naxes);
-                    self.finish_read_consumption(&trans)?;
-                    Ok(Some(obj))
+                    // The cards SpecTrans used, which C marks before WcsFcRead runs.
+                    let spec_names = trans.take_consumed_names();
+                    let decoded = (|| -> AstResult<(AnyObject, Vec<String>, usize)> {
+                        let store = enc_aips::read_from_cards(&trans)?;
+                        let naxes = store.naxis;
+                        let (obj, warnings) =
+                            wcs_read::decode_wcs_inner(&store, true, &self.cards, ' ')?;
+                        Ok((obj, warnings, naxes))
+                    })();
+                    self.finish_foreign_read(decoded, trans_warnings, &trans, spec_names)
                 }
                 Encoding::FitsClass => {
                     let mut trans_warnings: Vec<String> = Vec::new();
@@ -1215,29 +1310,51 @@ impl Channel for FitsChan {
                         self.car_lin,
                         &mut trans_warnings,
                     );
-                    let store = enc_class::read_from_cards(&trans)?;
-                    let naxes = store.naxis;
-                    let (obj, warnings) =
-                        wcs_read::decode_wcs_inner(&store, true, &self.cards, ' ')?;
-                    self.push_read_warnings(trans_warnings, warnings, naxes);
-                    self.finish_read_consumption(&trans)?;
-                    Ok(Some(obj))
+                    // The cards SpecTrans used, which C marks before WcsFcRead runs.
+                    let spec_names = trans.take_consumed_names();
+                    let decoded = (|| -> AstResult<(AnyObject, Vec<String>, usize)> {
+                        let store = enc_class::read_from_cards(&trans)?;
+                        let naxes = store.naxis;
+                        let (obj, warnings) =
+                            wcs_read::decode_wcs_inner(&store, true, &self.cards, ' ')?;
+                        Ok((obj, warnings, naxes))
+                    })();
+                    self.finish_foreign_read(decoded, trans_warnings, &trans, spec_names)
                 }
                 Encoding::Dss => {
                     // Dss is a separate format; SpecTrans's translations
                     // are mostly inapplicable. Keep the existing reader. The
                     // reader records consumed names directly on `self.cards`
                     // (no SpecTrans copy), so promote them in place.
-                    let store = enc_dss::read_from_cards(&self.cards)?;
-                    let naxes = store.naxis;
-                    let (obj, warnings) =
-                        wcs_read::decode_wcs_inner(&store, true, &self.cards, ' ')?;
-                    self.push_read_warnings(Vec::new(), warnings, naxes);
-                    for name in self.cards.take_consumed_names() {
-                        self.cards.mark_card(&name);
+                    let decoded = (|| -> AstResult<(AnyObject, Vec<String>, usize)> {
+                        let store = enc_dss::read_from_cards(&self.cards)?;
+                        let naxes = store.naxis;
+                        let (obj, warnings) =
+                            wcs_read::decode_wcs_inner(&store, true, &self.cards, ' ')?;
+                        Ok((obj, warnings, naxes))
+                    })();
+                    // The DSS reader records the cards it used on `self.cards`.
+                    let clean = self.clean();
+                    match decoded {
+                        Ok((obj, warnings, naxes)) => {
+                            self.push_read_warnings(Vec::new(), warnings, naxes);
+                            for name in self.cards.take_consumed_names() {
+                                self.cards.mark_card(&name);
+                            }
+                            self.cards.fix_used(true, false);
+                            Ok(Some(obj))
+                        }
+                        Err(e) => {
+                            let names = self.cards.take_consumed_names();
+                            if clean {
+                                for name in names {
+                                    self.cards.mark_card(&name);
+                                }
+                                self.cards.fix_used(true, false);
+                            }
+                            Err(e)
+                        }
                     }
-                    self.cards.fix_used(true, false);
-                    Ok(Some(obj))
                 }
             }
         };
@@ -1467,27 +1584,6 @@ fn extract_naxis_dims(cards: &CardList) -> Vec<Option<f64>> {
     dims
 }
 
-/// Extract the AST native text line from a COMMENT card's text field.
-///
-/// The C library stores lines as: " AST    <native text>     AST"
-/// where the text is padded/trimmed between the " AST " bookends.
-fn extract_ast_line(comment_text: &str) -> String {
-    // The comment text (after "COMMENT" keyword) looks like:
-    //   " AST    Begin ZoomMap                                       AST"
-    // We want to extract "   Begin ZoomMap" (trimming the leading " AST" and trailing " AST").
-    let text = comment_text.trim_end();
-
-    // Strip trailing " AST" suffix.
-    let without_suffix = text.strip_suffix(" AST").unwrap_or(text);
-
-    // Strip leading " AST" prefix (space + "AST").
-    let without_prefix = without_suffix
-        .strip_prefix(" AST")
-        .unwrap_or(without_suffix);
-
-    without_prefix.to_string()
-}
-
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -1651,13 +1747,6 @@ mod tests {
         let read_obj = result.unwrap();
         let mapping = read_obj.as_mapping().expect("should be a Mapping");
         assert_eq!(mapping.nin(), 2);
-    }
-
-    #[test]
-    fn extract_ast_line_works() {
-        let input = " AST   Begin ZoomMap                                             AST";
-        let line = extract_ast_line(input);
-        assert!(line.contains("Begin ZoomMap"));
     }
 
     #[test]

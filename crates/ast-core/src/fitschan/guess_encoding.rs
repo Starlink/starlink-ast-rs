@@ -1,285 +1,115 @@
-//! Encoding auto-detection for FITS headers.
-//!
-//! Examines keyword signatures in a [`CardList`] to determine which WCS
-//! encoding format the header uses. Detection priority matches the C
-//! library's `GetEncoding` function (fitschan.c line 12466).
+//! Encoding auto-detection for FITS headers: C's `GetEncoding`
+//! (fitschan.c), which looks for keyword signatures among the cards a read
+//! has not consumed.
 
 use super::Encoding;
-use super::card::FitsValue;
 use super::card_list::CardList;
+use super::card_value::{Got, Want, cnv_type};
 
-/// Examine keyword signatures to determine the WCS encoding of a header.
-///
-/// Detection priority (earlier matches take precedence):
-/// 1. Native (AST comment markers)
-/// 2. FITS-CLASS
-/// 3. FITS-AIPS++
-/// 4. FITS-AIPS (spectral)
-/// 5. DSS
-/// 6. FITS-PC (3-digit format)
-/// 7. FITS-IRAF (3-digit CD format)
-/// 8. FITS-IRAF (CDi_j + RADECSYS/PROJPi)
-/// 9. FITS-WCS (CDi_j without old-style)
-/// 10. FITS-PC (RADECSYS/PROJPi without matrix)
-/// 11. FITS-AIPS (CROTAi)
-/// 12. FITS-WCS (any CRVALi)
-/// 13. Native (fallback)
+/// The encoding C's `GetEncoding` chooses when none is set, from the
+/// keywords present (`astKeyFields`, which skips cards a read consumed).
 pub(crate) fn guess_encoding(cards: &CardList) -> Encoding {
-    if has_native_markers(cards) {
-        return Encoding::Native;
-    }
-
-    let has_wcs = has_wcs_indicator(cards);
-
-    if has_wcs && is_class(cards) {
-        return Encoding::FitsClass;
-    }
-
-    let aips_spectral = has_aips_spectral_ctype(cards);
-    let has_cd = has_cd_matrix(cards);
-    let has_projp = has_projp_keyword(cards);
-
-    if has_wcs && aips_spectral && (has_cd || has_projp || has_lonlatpole(cards)) {
-        return Encoding::FitsAipsPP;
-    }
-
-    if has_wcs && aips_spectral {
-        return Encoding::FitsAips;
-    }
-
-    if has_dss(cards) {
-        return Encoding::Dss;
-    }
-
-    if has_wcs && has_pc_3digit(cards) {
-        return Encoding::FitsPc;
-    }
-
-    // FITS-PC alt-axis form: any C{m}{VAL,PIX,YPE,NIT,ELT}{i} card
-    // implies FITS-PC even when none of the other PC-specific
-    // markers are present. SpecTrans translation 6 will rewrite
-    // these into the standard *A..*Z form before reading.
-    if has_wcs && has_cnxxx(cards) {
-        return Encoding::FitsPc;
-    }
-
-    if has_wcs && has_cd_3digit(cards) {
-        return Encoding::FitsIraf;
-    }
-
-    if has_wcs && has_cd && (has_radecsys_old(cards) || has_projp) {
-        return Encoding::FitsIraf;
-    }
-
-    if has_wcs && has_cd {
-        return Encoding::FitsWcs;
-    }
-
-    if has_wcs && (has_radecsys_old(cards) || has_projp) && !has_pc_matrix(cards) {
-        return Encoding::FitsPc;
-    }
-
-    if has_wcs && has_crota(cards) {
-        return Encoding::FitsAips;
-    }
-
-    if has_wcs && has_crval(cards) {
-        return Encoding::FitsWcs;
-    }
-
-    Encoding::Native
-}
-
-/// Return true if a CTYPE value represents an AIPS spectral axis.
-///
-/// The value must be exactly 8 characters with first 4 being one of
-/// `FREQ`/`VELO`/`FELO`, character 5 being `-`, and the last 3 being
-/// a reference frame: `LSR`/`LSD`/`HEL`/`GEO`/`EAR`/`OBS`/`TOP`.
-pub(crate) fn is_aips_spectral(ctype: &str) -> bool {
-    if ctype.len() != 8 {
-        return false;
-    }
-
-    let prefix = &ctype[..4];
-    if prefix != "FREQ" && prefix != "VELO" && prefix != "FELO" {
-        return false;
-    }
-
-    if ctype.as_bytes()[4] != b'-' {
-        return false;
-    }
-
-    let frame = &ctype[5..8];
-    matches!(frame, "LSR" | "LSD" | "HEL" | "GEO" | "EAR" | "OBS" | "TOP")
-}
-
-/// Check for AST native encoding markers in COMMENT cards or BEGAST keyword cards.
-///
-/// Returns `true` when:
-/// - at least one `BEGAST<xx>` keyword card is present (keyword-card native
-///   encoding, mirrors `astKeyFields(this,"BEGAST%2f",…)` in `GetEncoding`), or
-/// - a COMMENT card contains the `"AST +++"` sentinel (comment-card native
-///   encoding).
-fn has_native_markers(cards: &CardList) -> bool {
-    if super::enc_native::has_keyword_native(cards) {
-        return true;
-    }
-    cards.iter().any(|card| {
-        if card.keyword == "COMMENT" {
-            if let FitsValue::Comment(text) = &card.value {
-                return text.contains("AST +++");
-            }
+    let kf = |template: &str| cards.key_fields(template, 0).0 > 0;
+    let haswcs = kf("CTYPE%d%0c") || kf("CRPIX%d%0c") || kf("CRVAL%d%0c");
+    let hascd = kf("CD%1d_%1d%0c");
+    let haspc = kf("PC%1d_%1d%0c");
+    // RADECSYS, PROJPi or CmVALi without their FITS-WCS equivalents.
+    let old_style = || {
+        (kf("RADECSYS") && !kf("RADESYS")) || (kf("PROJP%d") && !kf("PV%d_%d")) || kf("C%1dVAL%d")
+    };
+    if kf("BEGAST%2f") {
+        Encoding::Native
+    } else if haswcs && looks_like_class(cards) {
+        Encoding::FitsClass
+    } else if haswcs && has_aips_spec_axis(cards) {
+        if hascd || kf("PROJP%d") || kf("LONPOLE") || kf("LATPOLE") {
+            Encoding::FitsAipsPP
+        } else {
+            Encoding::FitsAips
         }
-        false
+    } else if kf("PLTRAH") {
+        Encoding::Dss
+    } else if haswcs && kf("PC%3d%3d") {
+        Encoding::FitsPc
+    } else if haswcs && kf("CD%3d%3d") {
+        Encoding::FitsIraf
+    } else if haswcs && hascd {
+        if old_style() {
+            Encoding::FitsIraf
+        } else {
+            Encoding::FitsWcs
+        }
+    } else if haswcs && !haspc && !hascd && old_style() {
+        Encoding::FitsPc
+    } else if haswcs && kf("CROTA%d") {
+        Encoding::FitsAips
+    } else if haswcs && kf("CRVAL%d%0c") {
+        Encoding::FitsWcs
+    } else {
+        Encoding::Native
+    }
+}
+
+/// C's `LooksLikeClass`: a DELTAV keyword and a velocity keyword.
+fn looks_like_class(cards: &CardList) -> bool {
+    let kf = |template: &str| cards.key_fields(template, 0).0 > 0;
+    kf("DELTAV")
+        && (kf("VLSR") || kf("VELO-OBS") || kf("VELO-HEL") || kf("VELO-EAR") || kf("VELO-LSR"))
+}
+
+/// C's `HasAIPSSpecAxis`: whether any of the single-digit CTYPE keywords
+/// holds an AIPS spectral axis type.
+fn has_aips_spec_axis(cards: &CardList) -> bool {
+    let (n, lo, hi) = cards.key_fields("CTYPE%1d", 1);
+    if n == 0 {
+        return false;
+    }
+    (lo[0]..=hi[0]).any(|j| {
+        cards
+            .first_visible(&format!("CTYPE{j}"))
+            .and_then(|card| {
+                cnv_type(Some(&card.value), Want::String, 10, "")
+                    .ok()
+                    .flatten()
+            })
+            .is_some_and(|got| matches!(got, Got::Str(ctype) if is_aips_spectral(&ctype).is_some()))
     })
 }
 
-/// Check for basic WCS presence: CTYPE1, CRPIX1, or CRVAL1.
-fn has_wcs_indicator(cards: &CardList) -> bool {
-    cards.find("CTYPE1").is_some()
-        || cards.find("CRPIX1").is_some()
-        || cards.find("CRVAL1").is_some()
-}
-
-/// Check for FITS-CLASS encoding: DELTAV + velocity keyword.
-fn is_class(cards: &CardList) -> bool {
-    if cards.find("DELTAV").is_none() {
-        return false;
+/// C's `IsAIPSSpectral`: for a CTYPE of 8 characters (ignoring trailing
+/// spaces) of the form `AAAA-BBB` used by AIPS for a spectral axis, the
+/// FITS-WCS CTYPE and SPECSYS it stands for.
+pub(crate) fn is_aips_spectral(ctype: &str) -> Option<(&'static str, &'static str)> {
+    if ctype.trim_end_matches(' ').len() != 8 {
+        return None;
     }
-    cards.find("VLSR").is_some()
-        || cards.find("VELO-LSR").is_some()
-        || cards.find("VELO-OBS").is_some()
-        || cards.find("VELO-HEL").is_some()
-        || cards.find("VELO-EAR").is_some()
-}
-
-/// Check whether any CTYPEi has an AIPS spectral value.
-fn has_aips_spectral_ctype(cards: &CardList) -> bool {
-    for i in 1..=99 {
-        let key = format!("CTYPE{i}");
-        if let Some(val) = cards.get_string(&key) {
-            if is_aips_spectral(&val) {
-                return true;
-            }
-        }
-    }
-    false
-}
-
-/// Check for CDi_j matrix keywords (e.g. CD1_1, CD2_1).
-fn has_cd_matrix(cards: &CardList) -> bool {
-    for i in 1..=9 {
-        for j in 1..=9 {
-            let key = format!("CD{i}_{j}");
-            if cards.find(&key).is_some() {
-                return true;
-            }
-        }
-    }
-    false
-}
-
-/// Check for PROJPi keywords (e.g. PROJP1, PROJP2).
-fn has_projp_keyword(cards: &CardList) -> bool {
-    for i in 0..=99 {
-        let key = format!("PROJP{i}");
-        if cards.find(&key).is_some() {
-            return true;
-        }
-    }
-    false
-}
-
-/// Check for LONPOLE or LATPOLE keywords.
-fn has_lonlatpole(cards: &CardList) -> bool {
-    cards.find("LONPOLE").is_some() || cards.find("LATPOLE").is_some()
-}
-
-/// Check for DSS encoding: PLTRAH keyword.
-fn has_dss(cards: &CardList) -> bool {
-    cards.find("PLTRAH").is_some()
-}
-
-/// Check for 3-digit PC matrix format (PC001001 style).
-///
-/// A keyword matches if it is exactly 8 characters, starts with "PC",
-/// and the remaining 6 characters are all digits.
-fn has_pc_3digit(cards: &CardList) -> bool {
-    cards.iter().any(|card| is_pc_3digit_keyword(&card.keyword))
-}
-
-/// Check whether a keyword is a 3-digit PC keyword (e.g. PC001001).
-fn is_pc_3digit_keyword(keyword: &str) -> bool {
-    keyword.len() == 8
-        && keyword.starts_with("PC")
-        && keyword[2..].bytes().all(|b| b.is_ascii_digit())
-}
-
-/// Check for 3-digit CD matrix format (CD001001 style).
-fn has_cd_3digit(cards: &CardList) -> bool {
-    cards.iter().any(|card| is_cd_3digit_keyword(&card.keyword))
-}
-
-/// Check whether a keyword is a 3-digit CD keyword (e.g. CD001001).
-fn is_cd_3digit_keyword(keyword: &str) -> bool {
-    keyword.len() == 8
-        && keyword.starts_with("CD")
-        && keyword[2..].bytes().all(|b| b.is_ascii_digit())
-}
-
-/// Check for old-style RADECSYS keyword (misspelled, missing the 'A').
-/// Detect any FITS-PC alt-axis keyword of the form
-/// `C{m}{VAL,PIX,YPE,NIT,ELT}{i}`. m, i ∈ 1..=9.
-fn has_cnxxx(cards: &CardList) -> bool {
-    for m in 1..=9 {
-        for i in 1..=9 {
-            for kind in ["VAL", "PIX", "YPE", "NIT", "ELT"] {
-                if cards.find(&format!("C{m}{kind}{i}")).is_some() {
-                    return true;
-                }
-            }
-        }
-    }
-    false
-}
-
-fn has_radecsys_old(cards: &CardList) -> bool {
-    cards.find("RADECSYS").is_some()
-}
-
-/// Check for PCi_j matrix keywords (e.g. PC1_1, PC2_1).
-fn has_pc_matrix(cards: &CardList) -> bool {
-    for i in 1..=9 {
-        for j in 1..=9 {
-            let key = format!("PC{i}_{j}");
-            if cards.find(&key).is_some() {
-                return true;
-            }
-        }
-    }
-    false
-}
-
-/// Check for CROTAi keywords (e.g. CROTA1, CROTA2).
-fn has_crota(cards: &CardList) -> bool {
-    for i in 1..=99 {
-        let key = format!("CROTA{i}");
-        if cards.find(&key).is_some() {
-            return true;
-        }
-    }
-    false
-}
-
-/// Check for any CRVALi keyword.
-fn has_crval(cards: &CardList) -> bool {
-    for i in 1..=99 {
-        let key = format!("CRVAL{i}");
-        if cards.find(&key).is_some() {
-            return true;
-        }
-    }
-    false
+    let b = ctype.as_bytes();
+    let wctype = if b.starts_with(b"FREQ") {
+        "FREQ    "
+    } else if b.starts_with(b"VELO") {
+        "VRAD    "
+    } else if b.starts_with(b"FELO") {
+        "VOPT-F2W"
+    } else if b.starts_with(b"WAVELENG") {
+        "WAVE    "
+    } else {
+        return None;
+    };
+    let rest = &b[4..];
+    let wspecsys = if rest.starts_with(b"-LSR") || rest.starts_with(b"LSRK") {
+        "LSRK"
+    } else if rest.starts_with(b"-LSD") {
+        "LSRD"
+    } else if rest.starts_with(b"-HEL") {
+        "BARYCENT"
+    } else if rest.starts_with(b"-EAR") || rest.starts_with(b"-GEO") {
+        "GEOCENTR"
+    } else if rest.starts_with(b"-OBS") || rest.starts_with(b"-TOP") {
+        "TOPOCENT"
+    } else {
+        return None;
+    };
+    Some((wctype, wspecsys))
 }
 
 #[cfg(test)]
@@ -419,19 +249,19 @@ COMMENT  AST --------------------------------- AST";
 
     #[test]
     fn is_aips_spectral_valid() {
-        assert!(is_aips_spectral("VELO-LSR"));
-        assert!(is_aips_spectral("FREQ-OBS"));
-        assert!(is_aips_spectral("FELO-HEL"));
-        assert!(is_aips_spectral("VELO-TOP"));
-        assert!(is_aips_spectral("FREQ-GEO"));
-        assert!(is_aips_spectral("FELO-EAR"));
-        assert!(is_aips_spectral("VELO-LSD"));
+        assert!(is_aips_spectral("VELO-LSR").is_some());
+        assert!(is_aips_spectral("FREQ-OBS").is_some());
+        assert!(is_aips_spectral("FELO-HEL").is_some());
+        assert!(is_aips_spectral("VELO-TOP").is_some());
+        assert!(is_aips_spectral("FREQ-GEO").is_some());
+        assert!(is_aips_spectral("FELO-EAR").is_some());
+        assert!(is_aips_spectral("VELO-LSD").is_some());
 
-        assert!(!is_aips_spectral("VELO-XYZ"));
-        assert!(!is_aips_spectral("RA---TAN"));
-        assert!(!is_aips_spectral("VELO"));
-        assert!(!is_aips_spectral("VELOCITY"));
-        assert!(!is_aips_spectral("FREQ+LSR"));
+        assert!(is_aips_spectral("VELO-XYZ").is_none());
+        assert!(is_aips_spectral("RA---TAN").is_none());
+        assert!(is_aips_spectral("VELO").is_none());
+        assert!(is_aips_spectral("VELOCITY").is_none());
+        assert!(is_aips_spectral("FREQ+LSR").is_none());
     }
 
     #[test]

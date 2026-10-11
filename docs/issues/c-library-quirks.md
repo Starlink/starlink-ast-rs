@@ -1319,6 +1319,17 @@ The string-to-complex conversions tested for one value from the reads `"%lf %lf 
 Fixed on `u/timj/norm-unit` in 4d24a55c; `testfitschan` `testcnvtype`.
 The port's `card_value::cnv_type` is `CnvType` as fixed; `tests/test_fitschan_cursor_oracle.rs` (the `conversions` case), whose probe needs the fixed library.
 
+### RESOLVED (upstream 2aefc460): deleting one of two cards with the same keyword hides the other from `HasCard`
+
+C location: `fitschan.c` `NewCard`, `DeleteCard` and `HasCard`.
+
+`HasCard` answers whether a keyword is in the FitsChan from a KeyMap of keywords that `NewCard` adds to and `DeleteCard` removes from.
+`DeleteCard` removed the keyword even when another card still held it, so `HasCard` then reported the keyword absent.
+A NATIVE write chooses each keyword's suffix with `CreateKeyword`, which skips names `HasCard` reports present: after deleting one of two `ZOOM_A` cards, writing a ZoomMap gave a second `ZOOM_A` card beside the one left, where a FitsChan that never held the duplicate gives `ZOOM_B`.
+
+Fixed on `u/timj/norm-unit` in 2aefc460: the KeyMap counts the cards holding each keyword and `DeleteCard` removes the keyword with the last of them; `testfitschan` `testdupdelete`.
+The port's native writer asks whether any card holds the keyword, as fixed; `tests/test_fitschan_cursor_oracle.rs` (the `native_write_after_duplicate_delete` case), whose probe needs the fixed library.
+
 ### RESOLVED (upstream ba5a6199): PointList `Mask<X>` writes beyond the array for a point outside the grid
 
 C location: `pointlist.c` `Mask<X>`.
