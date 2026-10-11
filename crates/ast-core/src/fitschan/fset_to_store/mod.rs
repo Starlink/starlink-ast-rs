@@ -42,6 +42,7 @@ mod world_axes;
 use crate::error::AstResult;
 use crate::fitschan::Encoding;
 use crate::fitschan::fits_store::FitsStore;
+use crate::fitschan::warning::Warnings;
 use crate::frames::{Frame, FrameRef, FrameSet};
 use crate::mappings::{CmpMap, Composition, DynMapping};
 
@@ -68,6 +69,10 @@ pub(crate) struct WriteAttrs {
     /// used it, without the blanks that pad it: the timescale `SkySys`
     /// writes the date of observation in.
     pub timesys: Option<String>,
+    /// The warnings the write raises, which C's `Warn` stores in the
+    /// FitsChan as they are raised; shared by every copy of these
+    /// attributes the write makes.
+    pub warnings: std::rc::Rc<std::cell::RefCell<Warnings>>,
 }
 
 impl Default for WriteAttrs {
@@ -76,6 +81,7 @@ impl Default for WriteAttrs {
             fits_tol: FITS_TOL_DEFAULT,
             sip_ok: true,
             timesys: None,
+            warnings: Default::default(),
         }
     }
 }
@@ -251,6 +257,7 @@ fn fset_to_store_impl(
         isoff,
         fits_tol,
         timesys: attrs.timesys.as_deref(),
+        warnings: &attrs.warnings,
     })?;
 
     let spec_seg = spectral_axes(SpectralAxesArgs {

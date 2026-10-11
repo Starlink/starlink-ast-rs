@@ -51,7 +51,9 @@ impl Default for TransAttrs {
 /// We mirror that exactly: clone `cards` into the returned CardList and
 /// apply the in-place translation rewrites there. Callers then read
 /// keyword values from the returned list, which contains both the
-/// originals and the translated overrides.
+/// originals and the translated overrides. The list records the keywords
+/// the translations write ([`CardList::take_written_names`]), which are
+/// those C's `ret` holds.
 ///
 /// `encoding` selects which translations apply: a few are gated to
 /// specific encodings (e.g. `Cnxxx` → `*A` is FITS-PC / FITS-IRAF
@@ -63,13 +65,27 @@ impl Default for TransAttrs {
 /// rather than the translation chan `ret` (e.g. `GetUsedPolyTan`,
 /// fitschan.c:14032, :14073), so the caller pushes these onto the original
 /// card list rather than onto the returned one.
+/// The warnings `SpecTrans` raises, by where C's cursor is when it raises
+/// them. Those raised before the scan for `QV` cards in the primary axis
+/// description (`ClassTrans` and `SAOTrans`) are written in front of the
+/// card the read started at, since C's `Read` does not move the cursor
+/// first; that scan leaves the cursor at end-of-file, where the rest go.
+#[derive(Debug, Default)]
+pub(crate) struct TransWarnings {
+    /// Warnings written in front of the card the read started at.
+    pub entry: Warnings,
+    /// Warnings written at end-of-file.
+    pub end: Warnings,
+}
+
 pub(crate) fn spec_trans(
     cards: &CardList,
     encoding: Encoding,
     attrs: TransAttrs,
-    warnings: &mut Warnings,
+    warnings: &mut TransWarnings,
 ) -> CardList {
     let mut trans = cards.clone();
+    trans.record_writes();
     spec_trans_inplace(&mut trans, encoding, attrs, warnings);
     trans
 }
@@ -81,7 +97,7 @@ pub(crate) fn spec_trans_inplace(
     cards: &mut CardList,
     encoding: Encoding,
     attrs: TransAttrs,
-    warnings: &mut Warnings,
+    warnings: &mut TransWarnings,
 ) {
     // C `SpecTrans` never writes to the source chan `this` — every `SetValue`
     // and `DeleteCard` in its body targets the return chan `ret`. Translations
@@ -151,9 +167,19 @@ pub(crate) fn spec_trans_inplace(
     // "WAVE-F2W" (the modern -X2P form).
     translate_early_paper_iii_spectral(cards);
 
-    // Translation 13 (fitschan.c:31660-31680): SAO COi_j → PV<axlat>_m
-    // distortion + CTYPE TAN→TPN. Per-version letter, no encoding gate.
-    translate_sao_co(cards);
+    // Translation 13 (fitschan.c:32051-32067): SAO COi_j → PVi_m
+    // distortion + CTYPE TAN→TPN, for a primary `-TAN` projection.
+    if let Some((axlon, axlat)) = celestial_axes(cards, ' ')
+        && cards
+            .get_string(&format!("CTYPE{axlon}"))
+            .and_then(|c| c.get(4..).map(str::to_string))
+            .is_some_and(|prj| prj.eq_ignore_ascii_case("-TAN"))
+        && translate_sao_co(cards, &mut warnings.entry)
+    {
+        for ax in [axlon, axlat] {
+            replace_projection_suffix(cards, &format!("CTYPE{ax}"), "TPN");
+        }
+    }
 
     // Translation 14 (fitschan.c:31716-31734): CLASS "ATF" projection
     // → AIT. Per-version letter, no encoding gate.
@@ -168,7 +194,7 @@ pub(crate) fn spec_trans_inplace(
     // PolyTan attribute non-zero → TPN. Per-version letter, no
     // encoding gate. (PolyTan is an AST attribute, defaulting to
     // false; we mirror by treating it as off.)
-    translate_tpv_and_polytan_to_tpn(cards, &src, attrs.poly_tan, warnings);
+    translate_tpv_and_polytan_to_tpn(cards, &src, attrs.poly_tan, &mut warnings.end);
 
     // Translation 17 (fitschan.c:31444-31538): IRAF ZPX projection.
     // Replace -ZPX with -ZPN-ZPX (ZPN with ZPX distortion code) and
@@ -181,7 +207,7 @@ pub(crate) fn spec_trans_inplace(
     // of the WAT strings; if not exactly representable in FITS-WCS
     // an `ASTWARN` warning is issued. Per-version letter, no
     // encoding gate.
-    translate_iraf_tnx(cards, warnings);
+    translate_iraf_tnx(cards, &mut warnings.end);
 
     // Translation 19 (fitschan.c:31541-31571): MSX CAR projection.
     // Some MSX images have CAR projections whose CRPIX puts the
@@ -214,7 +240,7 @@ pub(crate) fn spec_trans_inplace(
     // per-version loop; only fires for primary plane + FITS-CLASS
     // encoding.
     if encoding == Encoding::FitsClass {
-        translate_class(cards);
+        translate_class(cards, &mut warnings.entry);
     }
 
     // Translation 24 (fitschan.c:31686-31710): IRAF mini-WCS
@@ -404,38 +430,33 @@ fn translate_early_paper_iii_spectral(cards: &mut CardList) {
         }
     }
 }
-/// Translation #13 helper: SAO COi_j → PV<axis>_m + CTYPE TAN→TPV.
-///
-/// The SAO platepos.c representation encodes a distorted TAN
-/// projection in 13 polynomial coefficients per axis (CO1_1..CO1_13,
-/// CO2_1..CO2_13). Translate to FITS-WCS paper II PV form and
-/// rewrite the CTYPE projection from `-TAN` to `-TPV`.
-///
-/// Mirrors fitschan.c::SAOTrans (line 26630-26880). Per-version
-/// letter is C's responsibility; the SAO header form is primary
-/// only by convention.
-fn translate_sao_co(cards: &mut CardList) {
-    // Probe for any CO1_1 / CO2_1 — the SAO header form requires
-    // both to be present.
-    if cards.find("CO1_1").is_none() && cards.find("CO2_1").is_none() {
-        return;
-    }
-    // Read the 13 coefficients per axis. Missing values (after
-    // index 3) are treated as 0; missing values at indices 1-3
-    // mark this as "not an SAO header" and abort.
+/// C's `SAOTrans` (fitschan.c:26895): translate the 13 polynomial
+/// coefficients per axis (`CO1_1`..`CO2_13`) by which SAO's platepos.c
+/// describes a distorted TAN projection into `PVi_m` values, and replace the
+/// CD, PC, CDELT and CROTA values, which the polynomial includes, by unit
+/// values. Returns whether the header was such a one, which needs exactly
+/// two CTYPE keywords and the first three coefficients on each axis; one
+/// with every coefficient but the constant zero on an axis is warned of and
+/// not translated. The coefficients read are consumed either way.
+fn translate_sao_co(cards: &mut CardList, warnings: &mut Warnings) -> bool {
     const NC: usize = 13;
+    if cards.key_fields("CTYPE%d", 0).0 != 2 {
+        return false;
+    }
     let mut co = [[0.0_f64; NC]; 2];
     let mut ok = true;
     let mut is_sao = true;
     for (i, row) in co.iter_mut().enumerate() {
-        let mut row_ok = false;
+        if !(ok && is_sao) {
+            break;
+        }
+        ok = false;
         for (m, slot) in row.iter_mut().enumerate() {
-            let key = format!("CO{}_{}", i + 1, m + 1);
-            match cards.get_float(&key) {
+            match cards.get_float_marked(&format!("CO{}_{}", i + 1, m + 1)) {
                 Some(v) => {
                     *slot = v;
                     if v != 0.0 && m > 0 {
-                        row_ok = true;
+                        ok = true;
                     }
                 }
                 None => {
@@ -446,23 +467,21 @@ fn translate_sao_co(cards: &mut CardList) {
                 }
             }
         }
-        if !row_ok {
-            ok = false;
-        }
     }
     if !is_sao {
-        return;
+        return false;
     }
     if !ok {
-        // Mirror C: Warn message; we silently drop the CO cards
-        // (no warning machinery in this port yet).
-        return;
+        warnings.push(Warning::new(
+            "badpv",
+            "This FITS header describes an SAO encoded distorted TAN projection, but all \
+             the distortion coefficients for at least one axis are zero.",
+        ));
+        return false;
     }
 
-    // Build PV<i>_m values per the SAO→TPV mapping at fitschan.c
-    // :26730-26835. Each PV value is a sum of named CO coefficients;
-    // we list them as (output_key, [co_indices_to_sum]) where CO
-    // indices are 1-based to mirror the C source verbatim.
+    // Each PV value is a sum of the coefficients listed, as (axis, index),
+    // 0-based (fitschan.c:27005-27110).
     let pv_axis1: &[(&str, &[(usize, usize)])] = &[
         ("PV1_0", &[(0, 0)]),
         ("PV1_1", &[(0, 1)]),
@@ -492,13 +511,6 @@ fn translate_sao_co(cards: &mut CardList) {
         cards.set_float(key, pv, "Projection parameter");
     }
 
-    // Mark all CO cards consumed.
-    for i in 0..2 {
-        for m in 1..=NC {
-            cards.delete_consumed(&format!("CO{}_{}", i + 1, m));
-        }
-    }
-
     // The SAO polynomial subsumes the CD/PC/CDELT/CROTA scaling, so
     // C marks all of them as used and replaces with identity values
     // (mirrors C:26845-26880).
@@ -510,18 +522,12 @@ fn translate_sao_co(cards: &mut CardList) {
     }
     cards.set_float("PC1_1", 1.0, "PC matrix element");
     cards.set_float("PC2_2", 1.0, "PC matrix element");
+    cards.set_float("PC1_2", 0.0, "PC matrix element");
+    cards.set_float("PC2_1", 0.0, "PC matrix element");
     cards.set_float("CDELT1", 1.0, "Pixel scale");
     cards.set_float("CDELT2", 1.0, "Pixel scale");
 
-    // Convert CTYPE TAN → TPV. Per-version letter not used here
-    // because SAO headers are always primary (no SAO version
-    // letters exist in practice).
-    if let Some((axlon, axlat)) = celestial_axes(cards, ' ') {
-        for ax in [axlon, axlat] {
-            let key = format!("CTYPE{ax}");
-            replace_projection_suffix(cards, &key, "TPV");
-        }
-    }
+    true
 }
 /// Translation #14 helper: CLASS "ATF" projection → AIT.
 ///
@@ -1415,7 +1421,7 @@ fn translate_cunit_case(cards: &mut CardList) {
 ///     axes and step 1 found no spectral CTYPE.
 ///
 /// FitsClass-only; primary plane only.
-fn translate_class(cards: &mut CardList) {
+fn translate_class(cards: &mut CardList, warnings: &mut Warnings) {
     // Axis indices are 0-based here, as in C, and are -1 when the
     // corresponding axis is absent: C's `SpecTrans` sets `axlon = axlat = -1`
     // before each coordinate version (fitschan.c:31110-31111) and calls
@@ -1536,7 +1542,11 @@ fn translate_class(cards: &mut CardList) {
     {
         ("LSRK", v)
     } else {
-        // C emits a "badval" Warn card here (fitschan.c:7143-7147).
+        warnings.push(Warning::new(
+            "badval",
+            "A FITS-CLASS header was identified (DELTAV and VLSR/VELO-xxx present) but no \
+             usable velocity reference keyword was found. Assuming LSRK.",
+        ));
         ("LSRK", 0.0)
     };
 
@@ -1738,8 +1748,9 @@ fn translate_epoch_equinox(cards: &mut CardList) {
         // Else: EQUINOX wins; EPOCH already consumed by delete above.
     }
 
-    // Step 2: String EQUINOX 'B...' or 'J...' → numeric Julian.
-    if let Some(s) = cards.get_string("EQUINOX") {
+    // Step 2: String EQUINOX 'B...' or 'J...' → numeric Julian. C reads
+    // EQUINOX with `GetValue2`, which consumes the source cards.
+    if let Some(s) = cards.get_string_marked("EQUINOX") {
         let s = s.trim();
         let prefix = s.chars().next().map(|c| c.to_ascii_uppercase());
         if matches!(prefix, Some('B') | Some('J')) {
@@ -1754,9 +1765,6 @@ fn translate_epoch_equinox(cards: &mut CardList) {
                     .find("EQUINOX")
                     .and_then(|c| c.comment.clone())
                     .unwrap_or_else(|| "Reference equinox".to_string());
-                // In-place value normalisation of the canonical EQUINOX
-                // keyword — not a translation away, so it is NOT consumed
-                // (the EQUINOX card survives into the output).
                 cards.delete("EQUINOX");
                 cards.set_float("EQUINOX", julian, &comment);
             }
@@ -1764,12 +1772,11 @@ fn translate_epoch_equinox(cards: &mut CardList) {
     }
 
     // Step 3: EQUINOX = 0 → 1950.
-    if let Some(0.0) = cards.get_float("EQUINOX") {
+    if let Some(0.0) = cards.get_float_marked("EQUINOX") {
         let comment = cards
             .find("EQUINOX")
             .and_then(|c| c.comment.clone())
             .unwrap_or_else(|| "Reference equinox".to_string());
-        // In-place value normalisation; EQUINOX is not consumed.
         cards.delete("EQUINOX");
         cards.set_float("EQUINOX", 1950.0, &comment);
     }
@@ -2188,7 +2195,7 @@ mod tests {
             &mut cards,
             Encoding::FitsWcs,
             TransAttrs::default(),
-            &mut Vec::new(),
+            &mut crate::fitschan::spec_trans::TransWarnings::default(),
         );
         let after = cards.iter().count();
         assert_eq!(before, after);
@@ -2211,7 +2218,7 @@ mod tests {
             &mut cards,
             Encoding::FitsWcs,
             TransAttrs::default(),
-            &mut Vec::new(),
+            &mut crate::fitschan::spec_trans::TransWarnings::default(),
         );
         // Non-zero CDELT untouched; zero CDELTs become 1.0 (the C fallback,
         // since 1.0E-6 * the zero CDELT is still zero).
@@ -2232,7 +2239,7 @@ mod tests {
             &mut cards,
             Encoding::FitsWcs,
             TransAttrs::default(),
-            &mut Vec::new(),
+            &mut crate::fitschan::spec_trans::TransWarnings::default(),
         );
         assert_eq!(cards.get_float("CDELT1A"), Some(1.0));
         assert_eq!(cards.get_float("CDELT2A"), Some(2.5));
@@ -2277,7 +2284,7 @@ mod tests {
             &mut cards,
             Encoding::FitsPc,
             TransAttrs::default(),
-            &mut Vec::new(),
+            &mut crate::fitschan::spec_trans::TransWarnings::default(),
         );
         assert!(cards.find("RADECSYS").is_none());
         assert_eq!(cards.get_string("RADESYS"), Some("FK5     ".to_string()));
@@ -2291,7 +2298,7 @@ mod tests {
             &mut cards,
             Encoding::FitsPc,
             TransAttrs::default(),
-            &mut Vec::new(),
+            &mut crate::fitschan::spec_trans::TransWarnings::default(),
         );
         assert_eq!(cards.get_string("RADESYS"), Some("FK5     ".to_string()));
     }
@@ -2304,7 +2311,7 @@ mod tests {
             &mut cards,
             Encoding::FitsPc,
             TransAttrs::default(),
-            &mut Vec::new(),
+            &mut crate::fitschan::spec_trans::TransWarnings::default(),
         );
         assert!(cards.find("LONGPOLE").is_none());
         assert_eq!(cards.get_float("LONPOLE"), Some(180.0));
@@ -2324,7 +2331,7 @@ mod tests {
             &mut cards,
             Encoding::FitsIraf,
             TransAttrs::default(),
-            &mut Vec::new(),
+            &mut crate::fitschan::spec_trans::TransWarnings::default(),
         );
         assert!(cards.find("CD001001").is_none());
         assert_eq!(cards.get_float("PC1_1"), Some(-2.0));
@@ -2350,7 +2357,7 @@ mod tests {
             &mut cards,
             Encoding::FitsPc,
             TransAttrs::default(),
-            &mut Vec::new(),
+            &mut crate::fitschan::spec_trans::TransWarnings::default(),
         );
         assert!(cards.find("CD001001").is_some());
         assert!(cards.find("CD002002").is_some());
@@ -2372,7 +2379,7 @@ mod tests {
             &mut cards,
             Encoding::FitsIraf,
             TransAttrs::default(),
-            &mut Vec::new(),
+            &mut crate::fitschan::spec_trans::TransWarnings::default(),
         );
         assert!(cards.find("CD001001").is_none());
         assert!(cards.find("CD002002").is_none());
@@ -2400,7 +2407,7 @@ mod tests {
             &mut cards,
             Encoding::FitsPc,
             TransAttrs::default(),
-            &mut Vec::new(),
+            &mut crate::fitschan::spec_trans::TransWarnings::default(),
         );
         assert!(cards.find("CROTA2").is_none());
         let cos30 = 30.0_f64.to_radians().cos();
@@ -2431,7 +2438,7 @@ mod tests {
             &mut cards,
             Encoding::FitsPc,
             TransAttrs::default(),
-            &mut Vec::new(),
+            &mut crate::fitschan::spec_trans::TransWarnings::default(),
         );
         assert_eq!(cards.get_float("CROTA2"), Some(30.0));
         // PC values were not overwritten.
@@ -2459,7 +2466,7 @@ mod tests {
             &mut cards,
             Encoding::FitsPc,
             TransAttrs::default(),
-            &mut Vec::new(),
+            &mut crate::fitschan::spec_trans::TransWarnings::default(),
         );
         assert_eq!(cards.get_float("CROTA2"), Some(30.0));
         assert!(cards.find("PC1_1").is_none());
@@ -2484,7 +2491,7 @@ mod tests {
             &mut cards,
             Encoding::FitsPc,
             TransAttrs::default(),
-            &mut Vec::new(),
+            &mut crate::fitschan::spec_trans::TransWarnings::default(),
         );
         // C reads PROJP with `GetValue2(ret, this, ...)` (fitschan.c:
         // 31493-31494), which marks the source card used but never
@@ -2517,7 +2524,7 @@ mod tests {
             &mut cards,
             Encoding::FitsPc,
             TransAttrs::default(),
-            &mut Vec::new(),
+            &mut crate::fitschan::spec_trans::TransWarnings::default(),
         );
         // PROJP card untouched, no PV2_0 written from it.
         assert!(cards.find("PROJP0").is_some());
@@ -2541,7 +2548,7 @@ mod tests {
             &mut cards,
             Encoding::FitsPc,
             TransAttrs::default(),
-            &mut Vec::new(),
+            &mut crate::fitschan::spec_trans::TransWarnings::default(),
         );
         // PROJP0 consumed and rewritten as PV2_0.
         assert_eq!(cards.get_float("PV2_0"), Some(0.0));
@@ -2565,7 +2572,7 @@ mod tests {
             &mut cards,
             Encoding::FitsPc,
             TransAttrs::default(),
-            &mut Vec::new(),
+            &mut crate::fitschan::spec_trans::TransWarnings::default(),
         );
         assert!(cards.find("C1YPE1").is_none());
         assert!(cards.find("C1ELT1").is_none());
@@ -2590,7 +2597,7 @@ mod tests {
             &mut cards,
             Encoding::FitsWcs,
             TransAttrs::default(),
-            &mut Vec::new(),
+            &mut crate::fitschan::spec_trans::TransWarnings::default(),
         );
         assert!(cards.find("C1YPE1").is_some());
         assert!(cards.find("CTYPE1A").is_none());
@@ -2611,7 +2618,7 @@ mod tests {
             &mut cards,
             Encoding::FitsPc,
             TransAttrs::default(),
-            &mut Vec::new(),
+            &mut crate::fitschan::spec_trans::TransWarnings::default(),
         );
         assert_eq!(cards.get_float("CDELT1A"), Some(1.0));
     }
@@ -2623,7 +2630,7 @@ mod tests {
             &mut cards,
             Encoding::FitsPc,
             TransAttrs::default(),
-            &mut Vec::new(),
+            &mut crate::fitschan::spec_trans::TransWarnings::default(),
         );
         assert!(cards.find("EPOCH").is_none());
         assert_eq!(cards.get_float("EQUINOX"), Some(1995.0));
@@ -2636,7 +2643,7 @@ mod tests {
             &mut cards,
             Encoding::FitsPc,
             TransAttrs::default(),
-            &mut Vec::new(),
+            &mut crate::fitschan::spec_trans::TransWarnings::default(),
         );
         assert_eq!(cards.get_float("EQUINOX"), Some(1950.0));
     }
@@ -2651,7 +2658,7 @@ mod tests {
             &mut cards,
             Encoding::FitsPc,
             TransAttrs::default(),
-            &mut Vec::new(),
+            &mut crate::fitschan::spec_trans::TransWarnings::default(),
         );
         assert!(cards.find("EPOCH").is_none());
         assert_eq!(cards.get_float("EQUINOX"), Some(2000.0));
@@ -2664,7 +2671,7 @@ mod tests {
             &mut cards,
             Encoding::FitsPc,
             TransAttrs::default(),
-            &mut Vec::new(),
+            &mut crate::fitschan::spec_trans::TransWarnings::default(),
         );
         assert_eq!(cards.get_float("EQUINOX"), Some(1950.0));
     }
@@ -2676,7 +2683,7 @@ mod tests {
             &mut cards,
             Encoding::FitsPc,
             TransAttrs::default(),
-            &mut Vec::new(),
+            &mut crate::fitschan::spec_trans::TransWarnings::default(),
         );
         let eq = cards.get_float("EQUINOX").unwrap_or(-1.0);
         // B1995 → MJD ≈ 49718.2 → J ≈ 1994.9988 (Besselian and
@@ -2694,7 +2701,7 @@ mod tests {
             &mut cards,
             Encoding::FitsPc,
             TransAttrs::default(),
-            &mut Vec::new(),
+            &mut crate::fitschan::spec_trans::TransWarnings::default(),
         );
         assert_eq!(cards.get_float("EQUINOX"), Some(2000.0));
     }
@@ -2706,7 +2713,7 @@ mod tests {
             &mut cards,
             Encoding::FitsPc,
             TransAttrs::default(),
-            &mut Vec::new(),
+            &mut crate::fitschan::spec_trans::TransWarnings::default(),
         );
         let mjd = cards.get_float("MJD-OBS").unwrap();
         assert!((mjd - 51558.5).abs() < 1e-6);
@@ -2725,7 +2732,7 @@ mod tests {
             &mut cards,
             Encoding::FitsPc,
             TransAttrs::default(),
-            &mut Vec::new(),
+            &mut crate::fitschan::spec_trans::TransWarnings::default(),
         );
         assert_eq!(cards.get_float("MJD-OBS"), Some(50000.0));
     }
@@ -2743,7 +2750,7 @@ mod tests {
             &mut cards,
             Encoding::FitsPc,
             TransAttrs::default(),
-            &mut Vec::new(),
+            &mut crate::fitschan::spec_trans::TransWarnings::default(),
         );
         assert_eq!(cards.get_string("CTYPE1"), Some("RA---SIN".to_string()));
         assert_eq!(cards.get_string("CTYPE2"), Some("DEC--SIN".to_string()));
@@ -2764,7 +2771,7 @@ mod tests {
             &mut cards,
             Encoding::FitsPc,
             TransAttrs::default(),
-            &mut Vec::new(),
+            &mut crate::fitschan::spec_trans::TransWarnings::default(),
         );
         assert_eq!(cards.get_string("CTYPE1"), Some("RA---SFL".to_string()));
         assert_eq!(cards.get_string("CTYPE2"), Some("DEC--SFL".to_string()));
@@ -2785,7 +2792,7 @@ mod tests {
             &mut cards,
             Encoding::FitsPc,
             TransAttrs::default(),
-            &mut Vec::new(),
+            &mut crate::fitschan::spec_trans::TransWarnings::default(),
         );
         assert_eq!(cards.get_string("CTYPE2"), Some("DEC--NCP".to_string()));
     }
@@ -2797,7 +2804,7 @@ mod tests {
             &mut cards,
             Encoding::FitsPc,
             TransAttrs::default(),
-            &mut Vec::new(),
+            &mut crate::fitschan::spec_trans::TransWarnings::default(),
         );
         assert_eq!(cards.get_string("CTYPE3"), Some("WAVE-F2W".to_string()));
     }
@@ -2810,7 +2817,7 @@ mod tests {
             &mut cards,
             Encoding::FitsPc,
             TransAttrs::default(),
-            &mut Vec::new(),
+            &mut crate::fitschan::spec_trans::TransWarnings::default(),
         );
         // Trailing-blank padding to 8 chars.
         assert_eq!(cards.get_string("CTYPE3"), Some("VELO    ".to_string()));
@@ -2836,7 +2843,7 @@ mod tests {
             &mut cards,
             Encoding::FitsPc,
             TransAttrs::default(),
-            &mut Vec::new(),
+            &mut crate::fitschan::spec_trans::TransWarnings::default(),
         );
         // CTYPE rewrites: SAO writes TPV, then translation 16 rewrites
         // TPV→TPN before this assertion runs.
@@ -2863,7 +2870,7 @@ mod tests {
             &mut cards,
             Encoding::FitsClass,
             TransAttrs::default(),
-            &mut Vec::new(),
+            &mut crate::fitschan::spec_trans::TransWarnings::default(),
         );
         assert_eq!(cards.get_string("CTYPE1"), Some("RA---AIT".to_string()));
         assert_eq!(cards.get_string("CTYPE2"), Some("DEC--AIT".to_string()));
@@ -2883,7 +2890,7 @@ mod tests {
             &mut cards,
             Encoding::FitsPc,
             TransAttrs::default(),
-            &mut Vec::new(),
+            &mut crate::fitschan::spec_trans::TransWarnings::default(),
         );
         assert_eq!(cards.get_string("CTYPE1"), Some("RA---TPN".to_string()));
         assert_eq!(cards.get_string("CTYPE2"), Some("DEC--TPN".to_string()));
@@ -2904,7 +2911,7 @@ mod tests {
             &mut cards,
             Encoding::FitsPc,
             TransAttrs::default(),
-            &mut Vec::new(),
+            &mut crate::fitschan::spec_trans::TransWarnings::default(),
         );
         assert_eq!(cards.get_string("CTYPE1"), Some("RA---TPN".to_string()));
         assert_eq!(cards.get_string("CTYPE2"), Some("DEC--TPN".to_string()));
@@ -2923,7 +2930,7 @@ mod tests {
             &mut cards,
             Encoding::FitsPc,
             TransAttrs::default(),
-            &mut Vec::new(),
+            &mut crate::fitschan::spec_trans::TransWarnings::default(),
         );
         assert_eq!(cards.get_string("CTYPE1"), Some("RA---ZPN-ZPX".to_string()));
         assert_eq!(cards.get_float("PV2_1"), Some(1.0));
@@ -2938,7 +2945,7 @@ mod tests {
             &mut cards,
             Encoding::FitsPc,
             TransAttrs::default(),
-            &mut Vec::new(),
+            &mut crate::fitschan::spec_trans::TransWarnings::default(),
         );
         assert_eq!(cards.get_string("CTYPE1"), Some("RA---TPN".to_string()));
         assert_eq!(cards.get_string("CTYPE2"), Some("DEC--TPN".to_string()));
@@ -2961,7 +2968,7 @@ mod tests {
             &mut cards,
             Encoding::FitsPc,
             TransAttrs::default(),
-            &mut Vec::new(),
+            &mut crate::fitschan::spec_trans::TransWarnings::default(),
         );
         // CRPIX should now lie close to the image (within one full
         // wrap cycle of the original).
@@ -2987,7 +2994,7 @@ mod tests {
             &mut wrapped,
             Encoding::FitsWcs,
             TransAttrs::default(),
-            &mut Vec::new(),
+            &mut crate::fitschan::spec_trans::TransWarnings::default(),
         );
         assert_ne!(
             wrapped.get_float("CRPIX1"),
@@ -3003,7 +3010,7 @@ mod tests {
                 car_lin: true,
                 ..TransAttrs::default()
             },
-            &mut Vec::new(),
+            &mut crate::fitschan::spec_trans::TransWarnings::default(),
         );
         assert_eq!(
             kept.get_float("CRPIX1"),
@@ -3021,7 +3028,7 @@ mod tests {
             &mut cards,
             Encoding::FitsPc,
             TransAttrs::default(),
-            &mut Vec::new(),
+            &mut crate::fitschan::spec_trans::TransWarnings::default(),
         );
         assert!(cards.find("RESTFREQ").is_none());
         let restfrq = cards.get_float("RESTFRQ").unwrap();
@@ -3035,7 +3042,7 @@ mod tests {
             &mut cards,
             Encoding::FitsPc,
             TransAttrs::default(),
-            &mut Vec::new(),
+            &mut crate::fitschan::spec_trans::TransWarnings::default(),
         );
         assert_eq!(cards.get_string("CTYPE3"), Some("VRAD    ".to_string()));
         assert_eq!(cards.get_string("SPECSYS"), Some("LSRK".to_string()));
@@ -3048,7 +3055,7 @@ mod tests {
             &mut cards,
             Encoding::FitsPc,
             TransAttrs::default(),
-            &mut Vec::new(),
+            &mut crate::fitschan::spec_trans::TransWarnings::default(),
         );
         assert_eq!(cards.get_string("CTYPE3"), Some("WAVE".to_string()));
     }
@@ -3066,7 +3073,7 @@ mod tests {
             &mut cards,
             Encoding::FitsPc,
             TransAttrs::default(),
-            &mut Vec::new(),
+            &mut crate::fitschan::spec_trans::TransWarnings::default(),
         );
         assert_eq!(cards.get_string("CUNIT1"), Some("Hz".to_string()));
         assert_eq!(cards.get_string("CUNIT2"), Some("m/s".to_string()));
@@ -3083,7 +3090,7 @@ mod tests {
             &mut cards,
             Encoding::FitsPc,
             TransAttrs::default(),
-            &mut Vec::new(),
+            &mut crate::fitschan::spec_trans::TransWarnings::default(),
         );
         assert!(cards.find("WAT1_001").is_none());
         assert!(cards.find("WAT2_001").is_none());
@@ -3111,7 +3118,7 @@ mod tests {
             &mut cards,
             Encoding::FitsClass,
             TransAttrs::default(),
-            &mut Vec::new(),
+            &mut crate::fitschan::spec_trans::TransWarnings::default(),
         );
         // Spectral CRVAL was 0; after CLASS shift = RESTFREQ.
         assert_eq!(cards.get_float("CRVAL3"), Some(1.0e9));

@@ -99,6 +99,8 @@ pub(crate) struct CelestialAxesArgs<'a> {
     pub fits_tol: f64,
     /// The FitsChan's TIMESYS value, as [`super::WriteAttrs::timesys`].
     pub timesys: Option<&'a str>,
+    /// Where the warnings `SkySys` raises go.
+    pub warnings: &'a std::cell::RefCell<crate::fitschan::warning::Warnings>,
 }
 
 /// Detect celestial axes in `args.fs`, populate the celestial
@@ -287,6 +289,7 @@ pub(crate) fn celestial_axes(args: CelestialAxesArgs<'_>) -> AstResult<DynMappin
         args.s,
         args.isoff,
         args.timesys,
+        args.warnings,
     )?;
 
     // Step 7b: SkyPole writes LONPOLE / LATPOLE (and the PV-3/PV-4
@@ -974,6 +977,7 @@ mod tests {
             isoff: 0,
             fits_tol: FITS_TOL_DEFAULT,
             timesys: None,
+            warnings: &Default::default(),
         })
         .unwrap();
 
@@ -1020,6 +1024,7 @@ mod tests {
             isoff: 0,
             fits_tol: FITS_TOL_DEFAULT,
             timesys: None,
+            warnings: &Default::default(),
         })
         .unwrap();
 
@@ -1050,6 +1055,7 @@ mod tests {
             isoff: 0,
             fits_tol: FITS_TOL_DEFAULT,
             timesys: None,
+            warnings: &Default::default(),
         })
         .unwrap();
 

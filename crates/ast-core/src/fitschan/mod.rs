@@ -993,6 +993,7 @@ impl FitsChan {
                 v.trim_end_matches(|c: char| c.is_ascii_whitespace() || c == '\x0b')
                     .to_string()
             }),
+            warnings: Default::default(),
         }
     }
 
@@ -1297,34 +1298,48 @@ impl FitsChan {
     ///
     /// The cards used are those SpecTrans used (`spec_names`), every card
     /// C's `WcsFcRead` sweep marks ([`wcs_mark::mark_wcs_cards`]), which
-    /// covers every copy of a repeated WCS keyword, and the names the
-    /// extraction recorded on `trans`, each marking every matching card as
-    /// C's `MarkAllCards` does. The sweep is also C's extraction, so it fails
-    /// where C's read fails at a card with no value, and then the cards after
-    /// that card, and the extraction's names, are not used.
+    /// covers every copy of a repeated WCS keyword whose value converts, and
+    /// the other names the extraction recorded on `trans`, each marking
+    /// every matching card as C's `MarkAllCards` does. The sweep is also C's
+    /// extraction, so it fails where C's read fails at a card with no value,
+    /// and then the cards after that card, and the extraction's names, are
+    /// not used.
+    #[allow(clippy::too_many_arguments)]
     fn finish_foreign_read(
         &mut self,
         decoded: AstResult<AnyObject>,
-        trans_warnings: Warnings,
+        entry: usize,
+        trans_warnings: spec_trans::TransWarnings,
         read_warnings: Warnings,
         naxes: usize,
         trans: &CardList,
         spec_names: Vec<String>,
     ) -> AstResult<Option<AnyObject>> {
-        let extract_names = trans.take_consumed_names();
+        // A keyword `WcsFcRead` reads is consumed card by card by the sweep,
+        // only where its value converts.
+        let extract_names: Vec<String> = trans
+            .take_consumed_names()
+            .into_iter()
+            .filter(|name| !wcs_mark::is_wcs_keyword(name))
+            .collect();
+        let translated = trans.take_written_names();
         let clean = self.clean();
         let mark = |cards: &mut CardList, names: &[String]| {
             for name in names {
                 cards.mark_all_cards(name);
             }
         };
-        let swept = wcs_mark::mark_wcs_cards(&mut self.cards);
+        // `SpecTrans` warns before `WcsFcRead` sweeps the cards, which warns
+        // in front of each card it cannot convert.
+        self.push_trans_warnings(entry, trans_warnings);
+        let (sweep_warnings, swept) = wcs_mark::mark_wcs_cards(&mut self.cards, &translated);
+        self.push_sweep_warnings(sweep_warnings);
         match (decoded, swept) {
             (Ok(obj), Ok(())) => {
                 mark(&mut self.cards, &spec_names);
                 mark(&mut self.cards, &extract_names);
                 self.cards.fix_used(true, false);
-                self.push_read_warnings(trans_warnings, read_warnings, naxes);
+                self.push_read_warnings(read_warnings, naxes);
                 Ok(Some(obj))
             }
             (decoded, swept) => {
@@ -1343,12 +1358,9 @@ impl FitsChan {
                 // the object is made, so when it fails only the header
                 // translations have warned, and its error is the one
                 // reported.
-                let read_warnings = if sweep_failed {
-                    Vec::new()
-                } else {
-                    read_warnings
-                };
-                self.push_read_warnings(trans_warnings, read_warnings, naxes);
+                if !sweep_failed {
+                    self.push_read_warnings(read_warnings, naxes);
+                }
                 Err(match (swept, decoded) {
                     (Err(e), _) => e,
                     (Ok(()), Err(e)) => e,
@@ -1358,35 +1370,53 @@ impl FitsChan {
         }
     }
 
-    /// Store the `ASTWARN` blocks a read produced, each against the card
-    /// cursor C holds when its `Warn` call is reached.
-    ///
-    /// The two groups land in different places. `SpecTrans` warns while the
-    /// cursor is at end-of-file — its keyword searches walk off the end of the
-    /// list and are not rewound (e.g. the `QV` scan preceding `GetUsedPolyTan`,
-    /// fitschan.c:31849-31898) — and C `InsCard` appends when there is no
-    /// current card (fitschan.c:18796-18807), so those blocks go after the last
-    /// card. `WcsToStore`'s warnings are written against `NAXIS<naxes>`, the
-    /// cursor `move_cursor_to_last_naxis` reproduces, so those go in front of
-    /// it. `SpecTrans` runs to completion before `WcsToStore` starts
-    /// (fitschan.c:11469-11473), which is the order they are stored in.
-    fn push_read_warnings(
-        &mut self,
-        trans_warnings: Warnings,
-        read_warnings: Warnings,
-        naxes: usize,
-    ) {
+    /// Store the `ASTWARN` blocks `SpecTrans` raised, those raised before its
+    /// `QV` scan in front of the card at `entry`, where the read started, and
+    /// the rest after the last card: the scan walks off the end of the list
+    /// and C `InsCard` appends when there is no current card
+    /// (fitschan.c:18796-18807).
+    fn push_trans_warnings(&mut self, entry: usize, warnings: spec_trans::TransWarnings) {
         if self.clean() {
             return;
         }
-        if !trans_warnings.is_empty() {
-            self.cards.set_position(self.cards.len());
-            for w in trans_warnings {
+        if !warnings.entry.is_empty() {
+            self.cards.set_position(entry);
+            for w in warnings.entry {
                 self.warn(w);
             }
         }
+        if !warnings.end.is_empty() {
+            self.cards.set_position(self.cards.len());
+            for w in warnings.end {
+                self.warn(w);
+            }
+        }
+    }
+
+    /// Store the `ASTWARN` blocks `WcsFcRead`'s sweep raised, each in front
+    /// of the card at its index, where C's cursor is when it warns.
+    fn push_sweep_warnings(&mut self, warnings: Vec<(usize, Warning)>) {
+        if self.clean() {
+            return;
+        }
+        let mut added = 0;
+        for (index, w) in warnings {
+            let before = self.cards.len();
+            self.cards.set_position(index + added);
+            self.warn(w);
+            added += self.cards.len() - before;
+        }
+    }
+
+    /// Store the `ASTWARN` blocks the decoding raised, written against
+    /// `NAXIS<naxes>`, the cursor `move_cursor_to_last_naxis` reproduces, so
+    /// they go in front of it.
+    fn push_read_warnings(&mut self, warnings: Warnings, naxes: usize) {
+        if self.clean() {
+            return;
+        }
         move_cursor_to_last_naxis(&mut self.cards, naxes);
-        for w in read_warnings {
+        for w in warnings {
             self.warn(w);
         }
     }
@@ -1457,7 +1487,8 @@ impl Channel for FitsChan {
                     // C's `Warn` calls inside `SpecTrans` target the source chan
                     // rather than the translation chan, so their text comes back
                     // out to be stored on `self.cards`.
-                    let mut trans_warnings: Warnings = Vec::new();
+                    let entry = self.cards.position();
+                    let mut trans_warnings = spec_trans::TransWarnings::default();
                     let trans = spec_trans::spec_trans(
                         &self.cards,
                         Encoding::FitsWcs,
@@ -1489,6 +1520,7 @@ impl Channel for FitsChan {
                     })();
                     self.finish_foreign_read(
                         decoded,
+                        entry,
                         trans_warnings,
                         read_warnings,
                         naxes,
@@ -1503,7 +1535,8 @@ impl Channel for FitsChan {
                     // After SpecTrans, alt-axis cards are in the *A..*Z
                     // form, so we route through the multi-plane
                     // FitsWcs decoder to pick up secondary planes.
-                    let mut trans_warnings: Warnings = Vec::new();
+                    let entry = self.cards.position();
+                    let mut trans_warnings = spec_trans::TransWarnings::default();
                     let trans = spec_trans::spec_trans(
                         &self.cards,
                         Encoding::FitsPc,
@@ -1535,6 +1568,7 @@ impl Channel for FitsChan {
                     })();
                     self.finish_foreign_read(
                         decoded,
+                        entry,
                         trans_warnings,
                         read_warnings,
                         naxes,
@@ -1543,7 +1577,8 @@ impl Channel for FitsChan {
                     )
                 }
                 Encoding::FitsIraf => {
-                    let mut trans_warnings: Warnings = Vec::new();
+                    let entry = self.cards.position();
+                    let mut trans_warnings = spec_trans::TransWarnings::default();
                     let trans = spec_trans::spec_trans(
                         &self.cards,
                         Encoding::FitsIraf,
@@ -1575,6 +1610,7 @@ impl Channel for FitsChan {
                     })();
                     self.finish_foreign_read(
                         decoded,
+                        entry,
                         trans_warnings,
                         read_warnings,
                         naxes,
@@ -1583,7 +1619,8 @@ impl Channel for FitsChan {
                     )
                 }
                 Encoding::FitsAips | Encoding::FitsAipsPP => {
-                    let mut trans_warnings: Warnings = Vec::new();
+                    let entry = self.cards.position();
+                    let mut trans_warnings = spec_trans::TransWarnings::default();
                     let trans = spec_trans::spec_trans(
                         &self.cards,
                         enc,
@@ -1607,6 +1644,7 @@ impl Channel for FitsChan {
                     })();
                     self.finish_foreign_read(
                         decoded,
+                        entry,
                         trans_warnings,
                         read_warnings,
                         naxes,
@@ -1615,7 +1653,8 @@ impl Channel for FitsChan {
                     )
                 }
                 Encoding::FitsClass => {
-                    let mut trans_warnings: Warnings = Vec::new();
+                    let entry = self.cards.position();
+                    let mut trans_warnings = spec_trans::TransWarnings::default();
                     let trans = spec_trans::spec_trans(
                         &self.cards,
                         Encoding::FitsClass,
@@ -1639,6 +1678,7 @@ impl Channel for FitsChan {
                     })();
                     self.finish_foreign_read(
                         decoded,
+                        entry,
                         trans_warnings,
                         read_warnings,
                         naxes,
@@ -1668,7 +1708,7 @@ impl Channel for FitsChan {
                     let clean = self.clean();
                     match decoded {
                         Ok(obj) => {
-                            self.push_read_warnings(Vec::new(), read_warnings, naxes);
+                            self.push_read_warnings(read_warnings, naxes);
                             for name in self.cards.take_consumed_names() {
                                 self.cards.mark_card(&name);
                             }
@@ -1683,7 +1723,7 @@ impl Channel for FitsChan {
                                 }
                                 self.cards.fix_used(true, false);
                             }
-                            self.push_read_warnings(Vec::new(), read_warnings, naxes);
+                            self.push_read_warnings(read_warnings, naxes);
                             Err(e)
                         }
                     }
@@ -1772,6 +1812,24 @@ impl FitsChan {
                 self.cards.mark_all_unused();
 
                 let attrs = self.write_attrs();
+                let write_warnings = attrs.warnings.clone();
+                // C's `Write` reads NAXIS1 to NAXIS<nin> with `astGetFitsF`
+                // before `FsetToStore`, which leaves the cursor on the last
+                // found, or at end-of-file, and there `Warn` stores the
+                // warnings `FsetToStore` raises. The card is found now and
+                // again by keyword and occurrence once the header is written.
+                let warn_card = match obj {
+                    AnyObject::FrameSet(fs) => {
+                        let card0 = self.cards.position();
+                        for i in 1..=crate::mappings::Mapping::nin(fs) {
+                            let _ = self.cards.search_card(&format!("NAXIS{i}"), "astGetFitsF");
+                        }
+                        let at = self.cards.position();
+                        self.cards.set_position(card0);
+                        self.cards.card_occurrence(at)
+                    }
+                    _ => None,
+                };
                 let cd_matrix = self.cd_matrix();
                 let result = match enc {
                     Encoding::FitsWcs => {
@@ -1839,6 +1897,19 @@ impl FitsChan {
                     Encoding::Native => unreachable!(),
                 };
 
+                // C's `Warn` stores each warning as `FsetToStore` raises it,
+                // before any card of the header is written.
+                let warnings = write_warnings.take();
+                if !warnings.is_empty() {
+                    let at = warn_card
+                        .and_then(|(keyword, n)| self.cards.occurrence_index(&keyword, n))
+                        .unwrap_or(self.cards.len());
+                    self.cards.set_position(at);
+                    for w in warnings {
+                        self.warn(w);
+                    }
+                }
+
                 self.cards.sweep_unused_wcs();
                 let ret = usize::from(result?);
                 // A successful write leaves the current card at end-of-file,
@@ -1857,8 +1928,9 @@ impl FitsChan {
 // Private helpers
 // ---------------------------------------------------------------------------
 
-/// Look up `NAXIS1`…`NAXIS<naxes>` on `cards`, leaving the cursor on the last
-/// one found. Mirrors C `DistortMaps`'s opening loop (fitschan.c:8809-8813):
+/// Look up `NAXIS1`…`NAXIS<naxes>` on `cards` as C `DistortMaps`'s opening
+/// loop does (fitschan.c:8809-8813), from the end-of-file cursor `WcsFcRead`'s
+/// card loop leaves:
 ///
 /// ```c
 /// for( i = 0; i < naxes; i++ ){
@@ -1871,14 +1943,16 @@ impl FitsChan {
 /// what this reproduces is the *side effect*. `astGetFitsF` finds its card via
 /// `SearchCard`, which makes it current, and unlike every other read on the
 /// path it does not go through `GetValue`, so it does not reinstate the
-/// original card index. The cursor it leaves behind — `NAXIS<naxes>` — is
-/// where C `Warn` then inserts any `ASTWARN` block.
+/// original card index. The cursor it leaves behind — `NAXIS<naxes>`, or
+/// end-of-file when that card is missing — is where C `Warn` then inserts
+/// any `ASTWARN` block.
 ///
 /// C reads these off the FitsChan itself rather than the `SpecTrans` copy, so
 /// the cursor this moves is the one the warning cards are written against.
 fn move_cursor_to_last_naxis(cards: &mut CardList, naxes: usize) {
+    cards.set_position(cards.len());
     for i in 1..=naxes {
-        let _ = cards.get_float_at_cursor(&format!("NAXIS{i}"));
+        let _ = cards.search_card(&format!("NAXIS{i}"), "astGetFitsF");
     }
 }
 

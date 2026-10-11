@@ -120,9 +120,8 @@ struct DistortionMaps {
 /// not — is stripped from the CTYPE value in `store`, so later steps never
 /// have to allow for one being present.
 ///
-/// The three `distortion` warnings C raises here are omitted: `distortion` is
-/// not one of the conditions enabled by the default `Warnings` value
-/// (fitschan.c:43320), so C suppresses them unless the caller asks for them.
+/// A `-SIP` code beyond the first two axes, more than two `-ZPX` axes, and
+/// any other distortion code each raise a `distortion` warning.
 fn distort_maps(
     store: &mut FitsStore,
     cards: &CardList,
@@ -141,12 +140,25 @@ fn distort_maps(
         ret.map2 = Some(build_sip_mapping(store)?);
     }
 
-    // "-SIP" on any axis beyond the first two is not supported; C warns and
-    // removes the code.
+    // "-SIP" on any axis beyond the first two is not supported; C warns once
+    // and removes the code.
+    let mut warned = false;
     for i in 2..naxes {
         if let Some(ct) = store.ctype.get_mut(i).and_then(|c| c.as_mut()) {
             let trimmed = ct.trim_end();
             if trimmed.len() >= 4 && trimmed.ends_with("-SIP") {
+                if !warned {
+                    warned = true;
+                    warnings.push(Warning::new(
+                        "distortion",
+                        format!(
+                            "The \"-SIP\" distortion code can only be used on axes 1 and 2, \
+                             but was found in keyword CTYPE{} (='{ct}'). The distortion will \
+                             be ignored.",
+                            i + 1
+                        ),
+                    ));
+                }
                 let nc = trimmed.len() - 4;
                 ct.truncate(nc);
             }
@@ -167,14 +179,20 @@ fn distort_maps(
         if is_zpx {
             found_axes.push(i);
             if let Some(ct) = store.ctype[i].as_mut() {
-                ct.truncate(8);
+                truncate_at(ct, 8);
             }
         }
     }
 
     // More than two ZPX axes is meaningless; C warns and falls back to the
     // plain ZPN projection, which the truncated CTYPE values already select.
-    if found_axes.len() == 2 {
+    if found_axes.len() > 2 {
+        warnings.push(Warning::new(
+            "distortion",
+            "More than two axes were found with the \"-ZPX\" projection code. A ZPN \
+             projection will be used instead.",
+        ));
+    } else if found_axes.len() == 2 {
         let zpxaxes = [found_axes[0], found_axes[1]];
         if let Some(m) = zpx_mapping(cards, naxes, zpxaxes, warnings)? {
             ret.map4 = Some(match ret.map4.take() {
@@ -185,19 +203,27 @@ fn distort_maps(
     }
 
     // There are currently no other supported distortion codes. Strip any
-    // remaining one, so later steps see a plain projection code; C warns about
-    // each such header once.
+    // remaining one, so later steps see a plain projection code, warning
+    // once.
+    let mut warned = false;
     for i in 0..naxes {
-        let has_code = store
-            .ctype
-            .get(i)
-            .and_then(|c| c.as_deref())
-            .and_then(split_4_3_3)
-            .is_some();
-        if has_code {
-            if let Some(ct) = store.ctype[i].as_mut() {
-                ct.truncate(8);
+        let Some(ct) = store.ctype.get_mut(i).and_then(|c| c.as_mut()) else {
+            continue;
+        };
+        if let Some((_, _, dist)) = split_4_3_3(ct) {
+            if !warned {
+                warned = true;
+                warnings.push(Warning::new(
+                    "distortion",
+                    format!(
+                        "The header contains CTYPE values (e.g. CTYPE{} = '{ct}') which \
+                         include a distortion code \"-{dist}\". AST currently ignores this \
+                         distortion. The code has been removed from the CTYPE values.",
+                        i + 1
+                    ),
+                ));
             }
+            truncate_at(ct, 8);
         }
     }
 
@@ -205,21 +231,39 @@ fn distort_maps(
 }
 
 /// Split a CTYPE value of the FITS-WCS Paper IV "4-3-3" form into its axis
-/// type, projection code and distortion code.
-///
-/// Mirrors C's `3 == astSscanf( ctype, "%4s-%3s-%3s", type, code, dist )`
-/// (fitschan.c:8886). `%s` stops at whitespace and each conversion is bounded
-/// by its field width, so the pattern matches exactly when the value opens
-/// with twelve non-blank characters carrying `-` in positions 4 and 8.
+/// type, projection code and distortion code: C's
+/// `3 == astSscanf( ctype, "%4s-%3s-%3s", type, code, dist )`
+/// (fitschan.c:8886). Each `%s` skips white space and then reads one to its
+/// width of other characters, and each `-` must follow directly.
 fn split_4_3_3(ctype: &str) -> Option<(&str, &str, &str)> {
-    let b = ctype.as_bytes();
-    if b.len() < 12 || b[4] != b'-' || b[8] != b'-' {
-        return None;
+    // A `%Ns` conversion starting at byte `at`: the field read and the byte
+    // after it.
+    let field = |at: usize, width: usize| -> Option<(&str, usize)> {
+        let b = ctype.as_bytes();
+        let start = at
+            + b[at..]
+                .iter()
+                .take_while(|c| c.is_ascii_whitespace())
+                .count();
+        let len = b[start..]
+            .iter()
+            .take(width)
+            .take_while(|c| !c.is_ascii_whitespace())
+            .count();
+        (len > 0).then(|| (&ctype[start..start + len], start + len))
+    };
+    let dash = |at: usize| (ctype.as_bytes().get(at) == Some(&b'-')).then_some(at + 1);
+    let (axis, at) = field(0, 4)?;
+    let (code, at) = field(dash(at)?, 3)?;
+    let (dist, _) = field(dash(at)?, 3)?;
+    Some((axis, code, dist))
+}
+
+/// C's `ctype[ n ] = 0`: end the value at byte `n`, if it is that long.
+fn truncate_at(ct: &mut String, n: usize) {
+    if ct.len() > n {
+        ct.truncate(n);
     }
-    if b[..12].iter().any(|c| c.is_ascii_whitespace()) {
-        return None;
-    }
-    Some((&ctype[..4], &ctype[5..8], &ctype[9..12]))
 }
 
 /// Port of C `ZPXMapping` (fitschan.c:41528).

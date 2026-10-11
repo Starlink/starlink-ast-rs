@@ -205,6 +205,7 @@ fn run(fc: &mut FitsChan, op: &str, out: &mut String) {
             fc.set_encoding(match arg(1) {
                 "FITS-WCS" => Encoding::FitsWcs,
                 "FITS-PC" => Encoding::FitsPc,
+                "FITS-CLASS" => Encoding::FitsClass,
                 "NATIVE" => Encoding::Native,
                 other => panic!("no encoding {other}"),
             });
@@ -302,6 +303,19 @@ fn run(fc: &mut FitsChan, op: &str, out: &mut String) {
             }
             String::new()
         }
+        "RSW" => result(fc.read(), |obj| {
+            fc.set_warning_conditions(arg(1)).unwrap();
+            match obj {
+                Some(obj) => {
+                    let class = match obj {
+                        AnyObject::FrameSet(_) => "FrameSet",
+                        _ => "another class",
+                    };
+                    result(fc.write(&obj), |n| format!("= {class} {n}\n"))
+                }
+                None => "= null 0\n".to_string(),
+            }
+        }),
         "RW" => result(fc.read(), |obj| match obj {
             Some(obj) => {
                 let class = match obj {
@@ -363,12 +377,31 @@ fn run(fc: &mut FitsChan, op: &str, out: &mut String) {
 
 /// Cases the port does not yet match, with the reason. The companion test
 /// fails once an entry matches, so the list cannot go stale.
-const EXCLUDED: &[(&str, &str)] = &[(
-    "celestial_bare_names",
-    "CTYPE values RA and DEC are read, as C reads them, as linear celestial \
-     axes; C writes them back as RA---CAR and DEC--CAR, the port's FITS-WCS \
-     writer writes nothing",
-)];
+const EXCLUDED: &[(&str, &str)] = &[
+    (
+        "celestial_bare_names",
+        "CTYPE values RA and DEC are read, as C reads them, as linear celestial \
+         axes; C writes them back as RA---CAR and DEC--CAR, the port's FITS-WCS \
+         writer writes nothing",
+    ),
+    (
+        "dist_zpx_three",
+        "C cannot implement the spectral algorithm code -ZPN left on CTYPE3 and \
+         the read fails with AST__BDFTS; the port's spectral reader reads the \
+         axis as linear",
+    ),
+    (
+        "sao_three_ctypes_rw",
+        "with NAXIS 2 and CTYPE1 to CTYPE3, C reads three WCS axes, the highest \
+         CRPIX index, where the port reads the two NAXIS gives",
+    ),
+    (
+        "sao_not_sao_rw",
+        "the writer puts a new card after the last card it overwrote, where \
+         C's SetValue restores the cursor after an overwrite and puts a new \
+         card in front of the card current when the write began",
+    ),
+];
 
 /// The transcript the port gives for a case's operations.
 fn transcript(ops: &[&str]) -> String {

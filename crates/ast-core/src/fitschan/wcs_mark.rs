@@ -5,7 +5,8 @@
 //! card's keyword name against a fixed list of templates. A card whose name
 //! matches, and whose value converts to the type the matching branch asks for,
 //! is passed to `MarkCard` — flagging it consumed so it is excluded from
-//! subsequent output.
+//! subsequent output. A value that does not convert raises a `badval`
+//! warning, unless `SpecTrans` translated the keyword.
 //!
 //! Because the C function is a card *sweep* rather than a keyword *lookup*,
 //! every copy of a repeated keyword is marked. A header holding two HDUs' worth
@@ -18,7 +19,9 @@
 
 use super::card::{Consumption, FitsValue};
 use super::card_list::CardList;
+use super::card_value;
 use super::fits_match::match_keyword;
+use super::warning::Warning;
 use crate::error::{AstError, AstResult, ErrorCode};
 
 /// The FITS value type a template's branch converts its card to.
@@ -140,10 +143,6 @@ const TEMPLATES: &[Template] = &[
     f("BP_%d_%d%1c"),
 ];
 
-/// The C `BAD_STRING` sentinel (fitschan.c:1498), which converts to `AST__BAD`
-/// rather than failing.
-const BAD_STRING: &str = "<bad>";
-
 /// Outcome of the conversion C performs via `CnvValue` before marking.
 enum Convert {
     /// The value converts; the card is marked.
@@ -155,40 +154,33 @@ enum Convert {
     Undefined,
 }
 
-/// Can `value` be converted to `want`? Mirrors C `CnvType` (fitschan.c:7479).
-///
-/// Conversion to a string always succeeds for a card carrying a value. Numeric
-/// conversion succeeds for every numeric and logical type, and for a string
-/// that parses as a whole into a floating-point value (or is the `<bad>`
-/// sentinel). Comment and continuation cards carry no data value and so convert
-/// to neither.
+/// Whether `keyword` is one `WcsFcRead` reads, so that the sweep alone
+/// decides whether each of its cards is consumed.
+pub(crate) fn is_wcs_keyword(keyword: &str) -> bool {
+    TEMPLATES
+        .iter()
+        .any(|t| match_keyword(keyword, t.pattern, 0).is_some())
+}
+
+/// Can `value` be converted to `want`? C's `CnvValue`, which hands the card to
+/// `CnvType` (fitschan.c:7479) unless an undefined value is acceptable.
 fn convert(value: &FitsValue, want: Want, undef: bool) -> Convert {
-    match value {
-        FitsValue::Undef => {
-            if undef {
-                Convert::Ok
-            } else {
-                Convert::Undefined
-            }
-        }
-        FitsValue::Comment(_) | FitsValue::Continue(_) => Convert::No,
-        FitsValue::String(text) => match want {
-            Want::String => Convert::Ok,
-            Want::Float => {
-                let t = text.trim();
-                if t == BAD_STRING || t.parse::<f64>().is_ok() {
-                    Convert::Ok
-                } else {
-                    Convert::No
-                }
-            }
-        },
-        FitsValue::Int(_)
-        | FitsValue::KInt(_)
-        | FitsValue::Float(_)
-        | FitsValue::Logical(_)
-        | FitsValue::ComplexFloat(_, _)
-        | FitsValue::ComplexInt(_, _) => Convert::Ok,
+    if matches!(value, FitsValue::Undef) {
+        return if undef {
+            Convert::Ok
+        } else {
+            Convert::Undefined
+        };
+    }
+    let want = match want {
+        Want::Float => card_value::Want::Float,
+        Want::String => card_value::Want::String,
+    };
+    // The rounding only shapes the text a float converts to.
+    match card_value::cnv_type(Some(value), want, 0, "") {
+        Ok(Some(_)) => Convert::Ok,
+        Ok(None) => Convert::No,
+        Err(_) => Convert::Undefined,
     }
 }
 
@@ -200,8 +192,12 @@ fn convert(value: &FitsValue, want: Want, undef: bool) -> Convert {
 /// cards are visited but left unmarked, as in C `MarkCard`.
 ///
 /// Returns `AST__FUNDEF` when a card that must carry a value has none.
-pub(crate) fn mark_wcs_cards(cards: &mut CardList) -> AstResult<()> {
-    for card in cards.iter_mut() {
+pub(crate) fn mark_wcs_cards(
+    cards: &mut CardList,
+    translated: &[String],
+) -> (Vec<(usize, Warning)>, AstResult<()>) {
+    let mut warnings = Vec::new();
+    for (index, card) in cards.iter_mut().enumerate() {
         if card.flags.consumption == Consumption::Used {
             continue;
         }
@@ -217,19 +213,39 @@ pub(crate) fn mark_wcs_cards(cards: &mut CardList) -> AstResult<()> {
                     card.flags.consumption = Consumption::Provisional;
                 }
             }
-            // C emits a "badval" warning here, which the default Warnings
-            // attribute ("BadKeyName BadKeyValue Tnx Zpx BadPV BadCel BadMat
-            // BadCTYPE", fitschan.c:43321) suppresses.
-            Convert::No => {}
+            // C warns of a value it cannot convert, in front of its card,
+            // unless the translations hold the keyword.
+            Convert::No => {
+                if !translated.contains(&card.keyword) {
+                    warnings.push((
+                        index,
+                        Warning::new(
+                            "badval",
+                            format!(
+                                "The original FITS header contained a value for keyword {} \
+                                 which could not be converted to a {}.",
+                                card.keyword,
+                                match tmpl.want {
+                                    Want::Float => "floating point number",
+                                    Want::String => "character string",
+                                }
+                            ),
+                        ),
+                    ));
+                }
+            }
             Convert::Undefined => {
-                return Err(AstError::new(
-                    ErrorCode::Fundef,
-                    format!("the FITS keyword '{}' has an undefined value", card.keyword),
-                ));
+                return (
+                    warnings,
+                    Err(AstError::new(
+                        ErrorCode::Fundef,
+                        format!("the FITS keyword '{}' has an undefined value", card.keyword),
+                    )),
+                );
             }
         }
     }
-    Ok(())
+    (warnings, Ok(()))
 }
 
 #[cfg(test)]
@@ -241,7 +257,7 @@ mod tests {
     fn consumed(header: &str) -> Vec<(String, bool)> {
         use crate::fitschan::card::Consumption;
         let mut cards = CardList::from_header(header).unwrap();
-        mark_wcs_cards(&mut cards).unwrap();
+        mark_wcs_cards(&mut cards, &[]).1.unwrap();
         cards
             .iter()
             // The structural END card is never a WCS keyword; exclude it so
@@ -345,12 +361,12 @@ mod tests {
     #[test]
     fn an_undefined_velosys_is_accepted() {
         let mut cards = CardList::from_header("VELOSYS =\nEND").unwrap();
-        assert!(mark_wcs_cards(&mut cards).is_ok());
+        assert!(mark_wcs_cards(&mut cards, &[]).1.is_ok());
     }
 
     #[test]
     fn an_undefined_crval_is_an_error() {
         let mut cards = CardList::from_header("CRVAL1  =\nEND").unwrap();
-        assert!(mark_wcs_cards(&mut cards).is_err());
+        assert!(mark_wcs_cards(&mut cards, &[]).1.is_err());
     }
 }

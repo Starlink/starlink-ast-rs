@@ -683,7 +683,7 @@ END";
             &mut cards,
             crate::Encoding::FitsWcs,
             crate::fitschan::spec_trans::TransAttrs::default(),
-            &mut Vec::new(),
+            &mut crate::fitschan::spec_trans::TransWarnings::default(),
         );
         let store = extract_wcs_keywords(&cards, ' ').unwrap();
 
@@ -731,7 +731,7 @@ END";
             &mut cards,
             crate::Encoding::FitsWcs,
             crate::fitschan::spec_trans::TransAttrs::default(),
-            &mut Vec::new(),
+            &mut crate::fitschan::spec_trans::TransWarnings::default(),
         );
         let store = extract_wcs_keywords(&cards, ' ').unwrap();
 

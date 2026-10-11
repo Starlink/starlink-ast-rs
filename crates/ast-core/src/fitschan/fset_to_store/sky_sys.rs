@@ -245,6 +245,7 @@ pub(crate) fn sky_sys(
     s: char,
     isoff: i32,
     timesys: Option<&str>,
+    warnings: &std::cell::RefCell<crate::fitschan::warning::Warnings>,
 ) -> AstResult<bool> {
     // System + classification.
     let sys = skyfrm.system();
@@ -264,12 +265,10 @@ pub(crate) fn sky_sys(
         .transpose()?;
 
     // The date is written in the timescale the FitsChan's TIMESYS names,
-    // which is then written too; UTC needs no TIMESYS. C's `TimeSysToAst`
-    // warns here of a TIMESYS it does not support, but the writer keeps no
-    // warnings.
+    // which is then written too; UTC needs no TIMESYS.
     let ep = match timesys {
         Some(t) if t != "UTC" => {
-            let scale = super::super::epoch::time_sys_to_ast(Some(t), &mut Vec::new());
+            let scale = super::super::epoch::time_sys_to_ast(Some(t), &mut warnings.borrow_mut());
             store.timesys = Some(t.to_string());
             ep_tdb
                 .map(|e| super::super::epoch::tdb_conv(e, scale, true))
@@ -472,7 +471,19 @@ mod tests {
     fn fk5_sky_sys_writes_ctype_radesys_equinox() {
         let sky = SkyFrame::new(SkySystem::Fk5);
         let mut s = store(2);
-        let ok = sky_sys(&sky, 1, WcsProjection::Tan, &mut s, 0, 1, ' ', 0, None).unwrap();
+        let ok = sky_sys(
+            &sky,
+            1,
+            WcsProjection::Tan,
+            &mut s,
+            0,
+            1,
+            ' ',
+            0,
+            None,
+            &Default::default(),
+        )
+        .unwrap();
         assert!(ok);
         assert_eq!(s.ctype[0].as_deref(), Some("RA---TAN"));
         assert_eq!(s.ctype[1].as_deref(), Some("DEC--TAN"));
@@ -488,7 +499,19 @@ mod tests {
     fn fk4_sky_sys_uses_besselian_equinox() {
         let sky = SkyFrame::new(SkySystem::Fk4);
         let mut s = store(2);
-        sky_sys(&sky, 1, WcsProjection::Tan, &mut s, 0, 1, ' ', 0, None).unwrap();
+        sky_sys(
+            &sky,
+            1,
+            WcsProjection::Tan,
+            &mut s,
+            0,
+            1,
+            ' ',
+            0,
+            None,
+            &Default::default(),
+        )
+        .unwrap();
         // FK4 default equinox = B1950.0 → palEpb(MJD 33281.92...) ≈ 1950.0
         let eq = s.equinox.unwrap();
         assert!((eq - 1950.0).abs() < 1e-3, "equinox={eq}");
@@ -499,7 +522,19 @@ mod tests {
     fn icrs_no_equinox() {
         let sky = SkyFrame::new(SkySystem::Icrs);
         let mut s = store(2);
-        sky_sys(&sky, 1, WcsProjection::Tan, &mut s, 0, 1, ' ', 0, None).unwrap();
+        sky_sys(
+            &sky,
+            1,
+            WcsProjection::Tan,
+            &mut s,
+            0,
+            1,
+            ' ',
+            0,
+            None,
+            &Default::default(),
+        )
+        .unwrap();
         // ICRS does not write EQUINOX (it's frame-tied to J2000.0
         // implicitly).
         assert!(s.equinox.is_none());
@@ -512,7 +547,19 @@ mod tests {
     fn galactic_uses_glon_glat_no_equinox_no_radesys() {
         let sky = SkyFrame::new(SkySystem::Galactic);
         let mut s = store(2);
-        sky_sys(&sky, 1, WcsProjection::Sin, &mut s, 0, 1, ' ', 0, None).unwrap();
+        sky_sys(
+            &sky,
+            1,
+            WcsProjection::Sin,
+            &mut s,
+            0,
+            1,
+            ' ',
+            0,
+            None,
+            &Default::default(),
+        )
+        .unwrap();
         assert_eq!(s.ctype[0].as_deref(), Some("GLON-SIN"));
         assert_eq!(s.ctype[1].as_deref(), Some("GLAT-SIN"));
         assert!(s.radesys.is_none());
@@ -523,7 +570,19 @@ mod tests {
     fn ecliptic_uses_elon_elat_julian_equinox() {
         let sky = SkyFrame::new(SkySystem::Ecliptic);
         let mut s = store(2);
-        sky_sys(&sky, 1, WcsProjection::Tan, &mut s, 0, 1, ' ', 0, None).unwrap();
+        sky_sys(
+            &sky,
+            1,
+            WcsProjection::Tan,
+            &mut s,
+            0,
+            1,
+            ' ',
+            0,
+            None,
+            &Default::default(),
+        )
+        .unwrap();
         assert_eq!(s.ctype[0].as_deref(), Some("ELON-TAN"));
         assert_eq!(s.ctype[1].as_deref(), Some("ELAT-TAN"));
         // The default J2000 equinox is written as a Julian epoch.
@@ -534,7 +593,19 @@ mod tests {
     fn supergalactic_slat_slon() {
         let sky = SkyFrame::new(SkySystem::Supergalactic);
         let mut s = store(2);
-        sky_sys(&sky, 1, WcsProjection::Tan, &mut s, 0, 1, ' ', 0, None).unwrap();
+        sky_sys(
+            &sky,
+            1,
+            WcsProjection::Tan,
+            &mut s,
+            0,
+            1,
+            ' ',
+            0,
+            None,
+            &Default::default(),
+        )
+        .unwrap();
         assert_eq!(s.ctype[0].as_deref(), Some("SLON-TAN"));
         assert_eq!(s.ctype[1].as_deref(), Some("SLAT-TAN"));
     }
@@ -543,7 +614,19 @@ mod tests {
     fn azel_writes_az_el_prefixes() {
         let sky = SkyFrame::new(SkySystem::Azel);
         let mut s = store(2);
-        sky_sys(&sky, 1, WcsProjection::Tan, &mut s, 0, 1, ' ', 0, None).unwrap();
+        sky_sys(
+            &sky,
+            1,
+            WcsProjection::Tan,
+            &mut s,
+            0,
+            1,
+            ' ',
+            0,
+            None,
+            &Default::default(),
+        )
+        .unwrap();
         assert_eq!(s.ctype[0].as_deref(), Some("AZ---TAN"));
         assert_eq!(s.ctype[1].as_deref(), Some("EL---TAN"));
     }
@@ -553,7 +636,19 @@ mod tests {
         let mut sky = SkyFrame::new(SkySystem::Fk5);
         sky.set_sky_ref_is(SkyRefIs::Origin);
         let mut s = store(2);
-        sky_sys(&sky, 1, WcsProjection::Tan, &mut s, 0, 1, ' ', 1, None).unwrap();
+        sky_sys(
+            &sky,
+            1,
+            WcsProjection::Tan,
+            &mut s,
+            0,
+            1,
+            ' ',
+            1,
+            None,
+            &Default::default(),
+        )
+        .unwrap();
         assert_eq!(s.ctype[0].as_deref(), Some("OFLN-TAN"));
         assert_eq!(s.ctype[1].as_deref(), Some("OFLT-TAN"));
     }
@@ -565,7 +660,19 @@ mod tests {
         sky.set_sky_ref_is(SkyRefIs::Origin);
         sky.set_sky_ref_lon_lat(0.5, -0.25);
         let mut s = store(2);
-        sky_sys(&sky, 1, WcsProjection::Tan, &mut s, 0, 1, ' ', 1, None).unwrap();
+        sky_sys(
+            &sky,
+            1,
+            WcsProjection::Tan,
+            &mut s,
+            0,
+            1,
+            ' ',
+            1,
+            None,
+            &Default::default(),
+        )
+        .unwrap();
         // Default Fk5 symbols are "RA" / "Dec" (C astGetSymbol,
         // skyframe.c:4231). No leading marker character ⇒ symbols pass
         // through unchanged.
@@ -584,7 +691,19 @@ mod tests {
         sky.set_sky_ref_lon_lat(0.5, -0.25);
         sky.set_sky_ref_p_lon_lat(1.0, 0.5);
         let mut s = store(2);
-        sky_sys(&sky, 1, WcsProjection::Tan, &mut s, 0, 1, ' ', -1, None).unwrap();
+        sky_sys(
+            &sky,
+            1,
+            WcsProjection::Tan,
+            &mut s,
+            0,
+            1,
+            ' ',
+            -1,
+            None,
+            &Default::default(),
+        )
+        .unwrap();
         // isoff = -1 → "POLE".
         assert_eq!(s.skyrefis.as_deref(), Some("POLE"));
         assert_eq!(s.skyref[0], Some(0.5));
@@ -601,7 +720,19 @@ mod tests {
         let mut sky = SkyFrame::new(SkySystem::Fk5);
         sky.set_sky_ref_is(SkyRefIs::Origin);
         let mut s = store(2);
-        sky_sys(&sky, 1, WcsProjection::Tan, &mut s, 0, 1, ' ', -2, None).unwrap();
+        sky_sys(
+            &sky,
+            1,
+            WcsProjection::Tan,
+            &mut s,
+            0,
+            1,
+            ' ',
+            -2,
+            None,
+            &Default::default(),
+        )
+        .unwrap();
         assert_eq!(s.skyrefis.as_deref(), Some("ORIGIN"));
     }
 
@@ -609,7 +740,19 @@ mod tests {
     fn isoff_negative_3_writes_ignored() {
         let sky = SkyFrame::new(SkySystem::Fk5);
         let mut s = store(2);
-        sky_sys(&sky, 1, WcsProjection::Tan, &mut s, 0, 1, ' ', -3, None).unwrap();
+        sky_sys(
+            &sky,
+            1,
+            WcsProjection::Tan,
+            &mut s,
+            0,
+            1,
+            ' ',
+            -3,
+            None,
+            &Default::default(),
+        )
+        .unwrap();
         assert_eq!(s.skyrefis.as_deref(), Some("IGNORED"));
     }
 
@@ -618,7 +761,19 @@ mod tests {
         let mut sky = SkyFrame::new(SkySystem::Fk5);
         sky.set_sky_ref_lon_lat(1.0, 1.0);
         let mut s = store(2);
-        sky_sys(&sky, 1, WcsProjection::Tan, &mut s, 0, 1, ' ', 0, None).unwrap();
+        sky_sys(
+            &sky,
+            1,
+            WcsProjection::Tan,
+            &mut s,
+            0,
+            1,
+            ' ',
+            0,
+            None,
+            &Default::default(),
+        )
+        .unwrap();
         assert!(s.skyrefis.is_none());
         assert!(s.skyref[0].is_none() && s.skyref[1].is_none());
     }
@@ -631,7 +786,19 @@ mod tests {
         sky.set_obs_lat(51.4778_f64.to_radians()); // ~Greenwich
         sky.set_obs_alt(0.0);
         let mut s = store(2);
-        sky_sys(&sky, 1, WcsProjection::Tan, &mut s, 0, 1, ' ', 0, None).unwrap();
+        sky_sys(
+            &sky,
+            1,
+            WcsProjection::Tan,
+            &mut s,
+            0,
+            1,
+            ' ',
+            0,
+            None,
+            &Default::default(),
+        )
+        .unwrap();
         let x = s.obsgeox.expect("OBSGEO-X");
         let y = s.obsgeoy.expect("OBSGEO-Y");
         let z = s.obsgeoz.expect("OBSGEO-Z");
@@ -651,7 +818,19 @@ mod tests {
         sky.set_obs_lon(0.0);
         sky.set_obs_lat(0.0);
         let mut s = store(2);
-        sky_sys(&sky, 1, WcsProjection::Tan, &mut s, 0, 1, 'A', 0, None).unwrap();
+        sky_sys(
+            &sky,
+            1,
+            WcsProjection::Tan,
+            &mut s,
+            0,
+            1,
+            'A',
+            0,
+            None,
+            &Default::default(),
+        )
+        .unwrap();
         assert!(s.obsgeox.is_none());
     }
 
@@ -659,7 +838,19 @@ mod tests {
     fn obsgeo_skipped_when_observer_unset() {
         let sky = SkyFrame::new(SkySystem::Fk5);
         let mut s = store(2);
-        sky_sys(&sky, 1, WcsProjection::Tan, &mut s, 0, 1, ' ', 0, None).unwrap();
+        sky_sys(
+            &sky,
+            1,
+            WcsProjection::Tan,
+            &mut s,
+            0,
+            1,
+            ' ',
+            0,
+            None,
+            &Default::default(),
+        )
+        .unwrap();
         assert!(s.obsgeox.is_none());
     }
 
@@ -668,7 +859,19 @@ mod tests {
         let mut sky = SkyFrame::new(SkySystem::Fk5);
         sky.set_domain("MY-DOMAIN");
         let mut s = store(2);
-        sky_sys(&sky, 1, WcsProjection::Tan, &mut s, 0, 1, ' ', 0, None).unwrap();
+        sky_sys(
+            &sky,
+            1,
+            WcsProjection::Tan,
+            &mut s,
+            0,
+            1,
+            ' ',
+            0,
+            None,
+            &Default::default(),
+        )
+        .unwrap();
         assert_eq!(s.wcsname.as_deref(), Some("MY-DOMAIN"));
     }
 
@@ -676,7 +879,19 @@ mod tests {
     fn wcsname_skipped_for_default_domain() {
         let sky = SkyFrame::new(SkySystem::Fk5);
         let mut s = store(2);
-        sky_sys(&sky, 1, WcsProjection::Tan, &mut s, 0, 1, ' ', 0, None).unwrap();
+        sky_sys(
+            &sky,
+            1,
+            WcsProjection::Tan,
+            &mut s,
+            0,
+            1,
+            ' ',
+            0,
+            None,
+            &Default::default(),
+        )
+        .unwrap();
         assert!(s.wcsname.is_none());
     }
 
@@ -686,7 +901,19 @@ mod tests {
         sky.set_label(1, "MyRA").unwrap();
         sky.set_label(2, "MyDec").unwrap();
         let mut s = store(2);
-        sky_sys(&sky, 1, WcsProjection::Tan, &mut s, 0, 1, ' ', 0, None).unwrap();
+        sky_sys(
+            &sky,
+            1,
+            WcsProjection::Tan,
+            &mut s,
+            0,
+            1,
+            ' ',
+            0,
+            None,
+            &Default::default(),
+        )
+        .unwrap();
         // axlon=0 ⇒ longitude axis storage. With default perm,
         // lon_axis()=1 ⇒ physical 0 ⇒ label "MyRA".
         assert_eq!(s.ctype_com[0].as_deref(), Some("MyRA"));
@@ -699,7 +926,19 @@ mod tests {
     fn axis_label_unset_leaves_ctype_com_default() {
         let sky = SkyFrame::new(SkySystem::Fk5);
         let mut s = store(2);
-        sky_sys(&sky, 1, WcsProjection::Tan, &mut s, 0, 1, ' ', 0, None).unwrap();
+        sky_sys(
+            &sky,
+            1,
+            WcsProjection::Tan,
+            &mut s,
+            0,
+            1,
+            ' ',
+            0,
+            None,
+            &Default::default(),
+        )
+        .unwrap();
         // No explicit Label set ⇒ writer fills the default
         // "Type of co-ordinate on axis n" elsewhere.
         assert!(s.ctype_com[0].is_none());
@@ -715,7 +954,19 @@ mod tests {
         sky.set_symbol(1, "QQLN").unwrap();
         sky.set_symbol(2, "QQLT").unwrap();
         let mut s = store(2);
-        sky_sys(&sky, 1, WcsProjection::Tan, &mut s, 0, 1, ' ', 0, None).unwrap();
+        sky_sys(
+            &sky,
+            1,
+            WcsProjection::Tan,
+            &mut s,
+            0,
+            1,
+            ' ',
+            0,
+            None,
+            &Default::default(),
+        )
+        .unwrap();
         assert_eq!(s.ctype[0].as_deref(), Some("QQLN-TAN"));
         assert_eq!(s.ctype[1].as_deref(), Some("QQLT-TAN"));
     }
@@ -727,7 +978,19 @@ mod tests {
         sky.set_symbol(1, "ZLON").unwrap();
         sky.set_symbol(2, "ZLAT").unwrap();
         let mut s = store(2);
-        sky_sys(&sky, 1, WcsProjection::Tan, &mut s, 0, 1, ' ', 0, None).unwrap();
+        sky_sys(
+            &sky,
+            1,
+            WcsProjection::Tan,
+            &mut s,
+            0,
+            1,
+            ' ',
+            0,
+            None,
+            &Default::default(),
+        )
+        .unwrap();
         assert_eq!(s.ctype[0].as_deref(), Some("ZLON-TAN"));
         assert_eq!(s.ctype[1].as_deref(), Some("ZLAT-TAN"));
     }
@@ -742,7 +1005,19 @@ mod tests {
         let tdb_mjd = 60000.0_f64; // 2023-02-25, well clear of J2000
         sky.set_epoch_mjd(tdb_mjd);
         let mut s = store(2);
-        sky_sys(&sky, 1, WcsProjection::Tan, &mut s, 0, 1, ' ', 0, None).unwrap();
+        sky_sys(
+            &sky,
+            1,
+            WcsProjection::Tan,
+            &mut s,
+            0,
+            1,
+            ' ',
+            0,
+            None,
+            &Default::default(),
+        )
+        .unwrap();
         let utc = s.mjdobs.expect("MJD-OBS should be set");
         let delta_s = (tdb_mjd - utc) * 86_400.0;
         // TDB-UTC ≈ 32.184 + ΔAT ≈ 69.184 s in 2023 (37 leap secs).
@@ -758,7 +1033,19 @@ mod tests {
         sky.set_symbol(1, "WEIRD").unwrap();
         sky.set_symbol(2, "ALSOWEIRD").unwrap();
         let mut s = store(2);
-        sky_sys(&sky, 1, WcsProjection::Tan, &mut s, 0, 1, ' ', 0, None).unwrap();
+        sky_sys(
+            &sky,
+            1,
+            WcsProjection::Tan,
+            &mut s,
+            0,
+            1,
+            ' ',
+            0,
+            None,
+            &Default::default(),
+        )
+        .unwrap();
         assert_eq!(s.ctype[0].as_deref(), Some("UNLN-TAN"));
         assert_eq!(s.ctype[1].as_deref(), Some("UNLT-TAN"));
     }
@@ -767,7 +1054,19 @@ mod tests {
     fn wcstype_zero_uses_tab_suffix() {
         let sky = SkyFrame::new(SkySystem::Fk5);
         let mut s = store(2);
-        sky_sys(&sky, 0, WcsProjection::Tan, &mut s, 0, 1, ' ', 0, None).unwrap();
+        sky_sys(
+            &sky,
+            0,
+            WcsProjection::Tan,
+            &mut s,
+            0,
+            1,
+            ' ',
+            0,
+            None,
+            &Default::default(),
+        )
+        .unwrap();
         assert_eq!(s.ctype[0].as_deref(), Some("RA---TAB"));
         assert_eq!(s.ctype[1].as_deref(), Some("DEC--TAB"));
     }

@@ -20,6 +20,12 @@ pub struct CardList {
     /// record consumption without taking `&mut self`. Mirrors the C
     /// `MarkCard` side effect of `GetValue(..., mark=1, ...)`.
     consumed_names: RefCell<Vec<String>>,
+    /// The keywords [`set_float`](Self::set_float) and
+    /// [`set_string`](Self::set_string) have written since
+    /// [`record_writes`](Self::record_writes), or `None` when not recording.
+    /// `SpecTrans` writes its translations through these, so on its list
+    /// they are the keywords C's separate translations FitsChan holds.
+    written_names: RefCell<Option<Vec<String>>>,
     /// Whether cards added from now on should be stamped as "new" so that
     /// [`fix_new`](CardList::fix_new) can strip them again. Mirrors C's
     /// `mark_new` thread-global (fitschan.c:40625).
@@ -43,6 +49,7 @@ impl CardList {
             cards: Vec::new(),
             position: 0,
             consumed_names: RefCell::new(Vec::new()),
+            written_names: RefCell::new(None),
             mark_new: false,
         }
     }
@@ -103,12 +110,22 @@ impl CardList {
             return;
         }
 
-        let astwarn = |s: &str| FitsCard {
-            keyword: "ASTWARN".to_string(),
-            value: FitsValue::String(s.to_string()),
-            comment: None,
-            used: false,
-            flags: crate::fitschan::card::CardFlags::default(),
+        // During a write, the cards are flagged new like any other the write
+        // adds, so that a failed write removes them.
+        let mark_new = self.mark_new;
+        let astwarn = |s: &str| {
+            let mut flags = crate::fitschan::card::CardFlags::default();
+            if mark_new {
+                flags.new_write = true;
+                flags.new_version = true;
+            }
+            FitsCard {
+                keyword: "ASTWARN".to_string(),
+                value: FitsValue::String(s.to_string()),
+                comment: None,
+                used: false,
+                flags,
+            }
         };
 
         let mut block = Vec::with_capacity(lines.len() + 2);
@@ -227,28 +244,6 @@ impl CardList {
         None
     }
 
-    /// Look `keyword` up from the start of the list and return its
-    /// floating-point value, leaving the found card current.
-    ///
-    /// Mirrors C `astGetFitsF`, which finds its card via `SearchCard` — "if the
-    /// requested card is found, it becomes the current card" (fitschan.c:15358)
-    /// — and, unlike `GetValue`, does *not* reinstate the original card index.
-    /// The cursor it leaves behind is what decides where `Warn` inserts its
-    /// `ASTWARN` block, so callers that must not disturb it use [`get_float`].
-    pub(crate) fn get_float_at_cursor(&mut self, keyword: &str) -> Option<f64> {
-        let idx = self
-            .cards
-            .iter()
-            .position(|c| c.keyword.eq_ignore_ascii_case(keyword))?;
-        let value = match &self.cards[idx].value {
-            FitsValue::Float(v) => *v,
-            FitsValue::Int(v) | FitsValue::KInt(v) => *v as f64,
-            _ => return None,
-        };
-        self.position = idx;
-        Some(value)
-    }
-
     /// Like [`Self::find_next`], but skips cards consumed by a read (mirrors C
     /// `CARDUSED` / `ignore_used` in the public card-search path). Used by the
     /// public `find_fits`; internal callers use [`Self::find_next`] so they still
@@ -273,13 +268,21 @@ impl CardList {
         })
     }
 
-    /// Get the floating-point value of the first card matching keyword.
+    /// Get the floating-point value of the first card matching keyword,
+    /// converted as C's `CnvType` converts it, so that a logical, the real
+    /// part of a complex value and a string holding a number are accepted.
+    /// `None` when there is no such card or its value does not convert.
     pub fn get_float(&self, keyword: &str) -> Option<f64> {
-        self.find(keyword).and_then(|c| match &c.value {
-            FitsValue::Float(v) => Some(*v),
-            FitsValue::Int(v) | FitsValue::KInt(v) => Some(*v as f64),
+        let card = self.find(keyword)?;
+        match super::card_value::cnv_type(
+            Some(&card.value),
+            super::card_value::Want::Float,
+            0,
+            &card.keyword,
+        ) {
+            Ok(Some(super::card_value::Got::Float(v))) => Some(v),
             _ => None,
-        })
+        }
     }
 
     /// Get the string value of the first card matching keyword.
@@ -378,6 +381,23 @@ impl CardList {
             self.record_consumed(keyword);
         }
         found
+    }
+
+    /// Start recording the keywords written by `set_float` and `set_string`.
+    pub(crate) fn record_writes(&self) {
+        *self.written_names.borrow_mut() = Some(Vec::new());
+    }
+
+    /// The keywords written since [`record_writes`](Self::record_writes),
+    /// which stops recording.
+    pub(crate) fn take_written_names(&self) -> Vec<String> {
+        self.written_names.borrow_mut().take().unwrap_or_default()
+    }
+
+    fn note_written(&self, keyword: &str) {
+        if let Some(names) = self.written_names.borrow_mut().as_mut() {
+            names.push(keyword.to_uppercase());
+        }
     }
 
     /// Drain and return the keyword names recorded as consumed this pass.
@@ -564,6 +584,29 @@ impl CardList {
     /// `astSetCard( this, INT_MAX )`.
     pub fn set_position(&mut self, pos: usize) {
         self.position = pos.min(self.cards.len());
+    }
+
+    /// The keyword of the card at `index` and how many cards with that
+    /// keyword precede it, by which [`occurrence_index`](Self::occurrence_index)
+    /// finds it again after cards are added or removed elsewhere; `None` at
+    /// end-of-file.
+    pub(crate) fn card_occurrence(&self, index: usize) -> Option<(String, usize)> {
+        let keyword = self.cards.get(index)?.keyword.clone();
+        let n = self.cards[..index]
+            .iter()
+            .filter(|c| c.keyword == keyword)
+            .count();
+        Some((keyword, n))
+    }
+
+    /// The index of the card with `keyword` preceded by `n` others with it.
+    pub(crate) fn occurrence_index(&self, keyword: &str, n: usize) -> Option<usize> {
+        self.cards
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| c.keyword == keyword)
+            .nth(n)
+            .map(|(i, _)| i)
     }
 
     /// Return the current position.
@@ -887,6 +930,7 @@ impl CardList {
 
     /// Set a float keyword value. Overwrites if keyword exists, appends if not.
     pub(crate) fn set_float(&mut self, keyword: &str, value: f64, comment: &str) {
+        self.note_written(keyword);
         let card = FitsCard {
             keyword: keyword.to_uppercase(),
             value: FitsValue::Float(value),
@@ -903,6 +947,7 @@ impl CardList {
 
     /// Set a string keyword value. Overwrites if keyword exists, appends if not.
     pub(crate) fn set_string(&mut self, keyword: &str, value: &str, comment: &str) {
+        self.note_written(keyword);
         let card = FitsCard {
             keyword: keyword.to_uppercase(),
             value: FitsValue::String(value.to_string()),

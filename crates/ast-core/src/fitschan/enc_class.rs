@@ -643,7 +643,7 @@ mod tests {
             &cards,
             Encoding::FitsClass,
             crate::fitschan::spec_trans::TransAttrs::default(),
-            &mut Vec::new(),
+            &mut crate::fitschan::spec_trans::TransWarnings::default(),
         )
     }
 
@@ -897,7 +897,7 @@ DELTAV  = -0.106265872717E+003
             &cards_out,
             Encoding::FitsClass,
             crate::fitschan::spec_trans::TransAttrs::default(),
-            &mut Vec::new(),
+            &mut crate::fitschan::spec_trans::TransWarnings::default(),
         );
         let store2 = read_from_cards(&cards_out_translated).unwrap();
 

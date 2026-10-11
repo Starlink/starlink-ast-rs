@@ -81,7 +81,11 @@ fn wcs_prj_type(last4: &str) -> Option<WcsProjection> {
 /// shorter one is linear. Two longitude or two latitude axes, an unknown
 /// projection, axes of different systems or projections, and one axis
 /// without the other are AST__BDFTS.
-fn find_celestial_axes(store: &FitsStore, s: char) -> AstResult<Option<CelestialAxes>> {
+fn find_celestial_axes(
+    store: &FitsStore,
+    s: char,
+    warnings: &mut Warnings,
+) -> AstResult<Option<CelestialAxes>> {
     let keyname = |i: usize| {
         if s == ' ' {
             format!("CTYPE{}", i + 1)
@@ -134,6 +138,11 @@ fn find_celestial_axes(store: &FitsStore, s: char) -> AstResult<Option<Celestial
     let mut forced_car_lin = false;
     for i in 0..store.naxis {
         let Some(ctype) = store.ctype[i].as_deref() else {
+            warnings.push(Warning::new(
+                "noctype",
+                "Axis type keywords (CTYPE, etc) were not found for one or more axes in \
+                 the original FITS header. These axes will be assumed to be linear.",
+            ));
             continue;
         };
         let ctype = ctype.trim_end();
@@ -253,7 +262,7 @@ pub(crate) fn build_celestial_with_def_b1950(
         proj,
         sys,
         forced_car_lin,
-    }) = find_celestial_axes(store, s)?
+    }) = find_celestial_axes(store, s, warnings)?
     else {
         return Ok(None);
     };
