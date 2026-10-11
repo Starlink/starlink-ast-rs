@@ -85,16 +85,9 @@ pub(crate) fn encode_wcs(
     // prefers it over the central-pixel fallback so that any
     // half-pixel-bumped CRPIX/CRVAL handling (`NearestPix`) sees
     // the user-supplied reference rather than a synthesised one.
-    let nbase = frameset.base().naxes();
-    let primary_crvals = extract_input_crvals(cards, ' ', nbase);
 
-    let mut planes = collect_plane_stores(
-        frameset,
-        dim,
-        crate::fitschan::Encoding::FitsWcs,
-        &primary_crvals,
-        attrs,
-    )?;
+    let mut planes =
+        collect_plane_stores(frameset, dim, crate::fitschan::Encoding::FitsWcs, attrs)?;
 
     // Last-plane-wins: the alphabetically-last plane's global keyword
     // values (MJD-OBS, OBSGEO-{X,Y,Z}, TIMESYS, DTAI, DUT1, etc.)
@@ -215,27 +208,6 @@ fn propagate_last_plane_globals_into_primary(planes: &mut [PlaneStore]) {
     primary.dtai = dtai.or(primary.dtai);
     primary.dut1 = dut1.or(primary.dut1);
 }
-
-/// Read the input chan's `CRVAL{i}{s}` cards into a per-axis array.
-/// Mirrors fitschan.c::ReadCrval (line 25775+) — the C library extracts
-/// these *before* per-axis processing so that `OtherAxes`/`SpectralAxes`
-/// can adopt them as the WCS→IWC ShiftMap offsets, and `MakeIntWorld`
-/// then back-solves CRPIX to match. Without an input chan (e.g. `.ast`
-/// inputs), all entries are `None` and the writer falls back to
-/// `world(g0)` per axis.
-fn extract_input_crvals(cards: &CardList, s: char, naxis: usize) -> Vec<Option<f64>> {
-    (0..naxis)
-        .map(|i| {
-            let key = if s == ' ' {
-                format!("CRVAL{}", i + 1)
-            } else {
-                format!("CRVAL{}{s}", i + 1)
-            };
-            cards.get_float(&key)
-        })
-        .collect()
-}
-
 /// Encode a FrameSet via FitsStore with a custom card writer.
 ///
 /// Used by alternative encodings that share the FrameSet→FitsStore
@@ -257,8 +229,7 @@ pub(crate) fn encode_wcs_to_store(
         }
     };
 
-    let input_crvals = extract_input_crvals(cards, ' ', frameset.base().naxes());
-    let (store, ok) = store_from_frameset(frameset, dim, &input_crvals, attrs)?;
+    let (store, ok) = store_from_frameset(frameset, dim, attrs)?;
     // A FrameSet with no describable primary axes yields no store at all in
     // C, so `Write` has nothing to encode and reports failure
     // (fitschan.c:12358, 40716).
@@ -297,8 +268,7 @@ pub(crate) fn encode_wcs_per_plane(
             ));
         }
     };
-    let primary_crvals = extract_input_crvals(cards, ' ', frameset.base().naxes());
-    let mut planes = collect_plane_stores(frameset, dim, encoding, &primary_crvals, attrs)?;
+    let mut planes = collect_plane_stores(frameset, dim, encoding, attrs)?;
 
     // Last-plane-wins for observation-global keywords (MJD-OBS,
     // DATE-OBS, OBSGEO, TIMESYS, DTAI, DUT1). Mirrors C's `SkySys`
@@ -357,17 +327,12 @@ pub(crate) fn encode_wcs_per_plane(
 
 /// Decompose a FrameSet into a FitsStore using the current frame as the
 /// WCS target (pixel→current mapping).
-///
-/// `input_crvals` carries per-axis CRVAL{i} values from the input
-/// chan (matching the primary plane); see [`extract_input_crvals`]
-/// for the rationale.
 pub(crate) fn store_from_frameset(
     fs: &FrameSet,
     dim: &[Option<f64>],
-    input_crvals: &[Option<f64>],
     attrs: WriteAttrs,
 ) -> AstResult<(FitsStore, bool)> {
-    store_from_frameset_to(fs, fs.current_idx(), dim, input_crvals, attrs)
+    store_from_frameset_to(fs, fs.current_idx(), dim, attrs)
 }
 
 /// Decompose a FrameSet into a FitsStore using `target_idx` (0-based) as
@@ -382,7 +347,6 @@ fn store_from_frameset_to(
     fs: &FrameSet,
     target_idx: usize,
     dim: &[Option<f64>],
-    input_crvals: &[Option<f64>],
     attrs: WriteAttrs,
 ) -> AstResult<(FitsStore, bool)> {
     // The new path (fset_to_store) reads the FrameSet's current frame
@@ -391,25 +355,13 @@ fn store_from_frameset_to(
     // frame before dispatching. The legacy path used a `target_idx`
     // parameter to thread this through every helper; the new path
     // localises it here.
-    //
-    // `input_crvals` is forwarded to `fset_to_store` so the per-axis
-    // CRVAL choice can prefer the input header's CRVAL over the
-    // central-pixel fallback (mirrors C `ReadCrval` plumbed through
-    // `SpectralAxes` / `CelestialAxes`, fitschan.c:2867+).
     let encoding = crate::fitschan::Encoding::FitsWcs;
     if target_idx == fs.current_idx() {
-        return crate::fitschan::fset_to_store::fset_to_store(
-            fs,
-            dim,
-            encoding,
-            ' ',
-            input_crvals,
-            attrs,
-        );
+        return crate::fitschan::fset_to_store::fset_to_store(fs, dim, encoding, ' ', attrs);
     }
     let mut alt_fs = fs.clone();
     alt_fs.set_current(FrameRef::Index(target_idx + 1))?;
-    crate::fitschan::fset_to_store::fset_to_store(&alt_fs, dim, encoding, ' ', input_crvals, attrs)
+    crate::fitschan::fset_to_store::fset_to_store(&alt_fs, dim, encoding, ' ', attrs)
 }
 
 /// Write FitsStore contents as FITS keyword cards.

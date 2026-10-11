@@ -2,6 +2,9 @@
 
 ## Revision history
 
+- **2026-10-11 (rev 26)**: Added FitsChan's FitsAxisOrder attribute
+  (`fits_axis_order`, `set_fits_axis_order`, `test_fits_axis_order`,
+  `clear_fits_axis_order`); FitsChan now implements `Clone`.
 - **2026-10-11 (rev 25)**: Added FitsChan's Iwc attribute (`iwc`,
   `set_iwc`, `test_iwc`, `clear_iwc`) and `FrameSet::add_frameset`, the
   form of C `astAddFrame` that adds every Frame of another FrameSet.

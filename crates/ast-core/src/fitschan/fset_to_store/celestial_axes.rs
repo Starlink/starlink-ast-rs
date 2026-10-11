@@ -101,6 +101,9 @@ pub(crate) struct CelestialAxesArgs<'a> {
     pub timesys: Option<&'a str>,
     /// Where the warnings `SkySys` raises go.
     pub warnings: &'a std::cell::RefCell<crate::fitschan::warning::Warnings>,
+    /// Whether FitsAxisOrder is `<auto>`, the only case in which the FITS
+    /// axes of a transposed celestial pair are swapped back.
+    pub auto_order: bool,
 }
 
 /// Detect celestial axes in `args.fs`, populate the celestial
@@ -334,12 +337,23 @@ pub(crate) fn celestial_axes(args: CelestialAxesArgs<'_>) -> AstResult<DynMappin
     // pixel axis each IWC axis aligns with. If the celestial pair is
     // swapped relative to the supplied `wperm`, swap the FITS-side
     // bookkeeping. Mirrors C:5318-5378.
-    let pixel_to_iwc: DynMapping = Box::new(CmpMap::new(
-        map.clone_box(),
-        ret.clone_box(),
-        Composition::Series,
-    )?);
-    if let Some(tperm) = world_axes(pixel_to_iwc.as_ref(), args.dim, args.fits_tol)?
+    // Only when the axis order is chosen automatically; and when `WorldAxes`
+    // cannot choose one, C discards the celestial Mapping and returns a
+    // UnitMap (fitschan.c:5442-5447, 5795-5800).
+    let tperm = if args.auto_order {
+        let pixel_to_iwc: DynMapping = Box::new(CmpMap::new(
+            map.clone_box(),
+            ret.clone_box(),
+            Composition::Series,
+        )?);
+        match world_axes(pixel_to_iwc.as_ref(), args.dim, args.fits_tol)? {
+            Some(tperm) => Some(tperm),
+            None => return Ok(Box::new(UnitMap::new(nwcs))),
+        }
+    } else {
+        None
+    };
+    if let Some(tperm) = tperm
         && tperm[ilon] == fits_ilat
         && tperm[ilat] == fits_ilon
     {
@@ -978,6 +992,7 @@ mod tests {
             fits_tol: FITS_TOL_DEFAULT,
             timesys: None,
             warnings: &Default::default(),
+            auto_order: true,
         })
         .unwrap();
 
@@ -1025,6 +1040,7 @@ mod tests {
             fits_tol: FITS_TOL_DEFAULT,
             timesys: None,
             warnings: &Default::default(),
+            auto_order: true,
         })
         .unwrap();
 
@@ -1056,6 +1072,7 @@ mod tests {
             fits_tol: FITS_TOL_DEFAULT,
             timesys: None,
             warnings: &Default::default(),
+            auto_order: true,
         })
         .unwrap();
 

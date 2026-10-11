@@ -26,35 +26,6 @@ pub(crate) struct PlaneStore {
     pub store: FitsStore,
 }
 
-/// C's `astChrMatchN`: whether `a` and `b` match in their first `n`
-/// characters, ignoring case, the end of one string matching white space
-/// in the other.
-fn chr_match_n(a: &str, b: &str, n: usize) -> bool {
-    let (a, b) = (a.as_bytes(), b.as_bytes());
-    let (mut i, mut j) = (0, 0);
-    let mut nc = 0;
-    while (i < a.len() || j < b.len()) && nc < n {
-        nc += 1;
-        let ca = a.get(i).copied();
-        let cb = b.get(j).copied();
-        let ok = match (ca, cb) {
-            (None, Some(c)) | (Some(c), None) => c.is_ascii_whitespace(),
-            (Some(x), Some(y)) => x.eq_ignore_ascii_case(&y),
-            (None, None) => true,
-        };
-        if !ok {
-            return false;
-        }
-        if ca.is_some() {
-            i += 1;
-        }
-        if cb.is_some() {
-            j += 1;
-        }
-    }
-    true
-}
-
 /// The version letters C's `FsetToStore` gives the Frames other than the
 /// base and current Frames (fitschan.c:12305-12370), indexed by Frame
 /// index (1-based, entry 0 unused): `None` for a Frame described by no
@@ -80,7 +51,7 @@ pub(crate) fn version_letters(fs: &FrameSet, alt_axes: AltAxes) -> (Vec<Option<c
         let Ok(frame) = fs.frame(FrameRef::Index(ifrm)) else {
             continue;
         };
-        if chr_match_n(frame.domain(), "IWC", 3) {
+        if crate::fitschan::chr_match_n(frame.domain(), "IWC", 3) {
             iwc[ifrm] = true;
             continue;
         }
@@ -128,7 +99,6 @@ pub(crate) fn collect_plane_stores(
     fs: &FrameSet,
     dim: &[Option<f64>],
     encoding: Encoding,
-    primary_crvals: &[Option<f64>],
     attrs: WriteAttrs,
 ) -> AstResult<Vec<PlaneStore>> {
     let mut planes = Vec::new();
@@ -137,8 +107,7 @@ pub(crate) fn collect_plane_stores(
     // An alternate axis description only qualifies a primary one, so when
     // the primary cannot be described the whole store is worthless and no
     // plane is returned, as C frees it (fitschan.c:12392).
-    let (primary_store, primok) =
-        fset_to_store(fs, dim, encoding, ' ', primary_crvals, attrs.clone())?;
+    let (primary_store, primok) = fset_to_store(fs, dim, encoding, ' ', attrs.clone())?;
     if !primok {
         return Ok(planes);
     }
@@ -159,7 +128,7 @@ pub(crate) fn collect_plane_stores(
     if primary_isoff {
         s += 1;
         if s <= b'Z' {
-            let made = fset_to_store_absolute(fs, dim, encoding, s as char, &[], attrs.clone())?;
+            let made = fset_to_store_absolute(fs, dim, encoding, s as char, attrs.clone())?;
             push(&mut planes, made, s as char);
         }
     }
@@ -169,13 +138,13 @@ pub(crate) fn collect_plane_stores(
         };
         let mut alt_fs = fs.clone();
         alt_fs.set_current(FrameRef::Index(ifrm))?;
-        let made = fset_to_store(&alt_fs, dim, encoding, letter, &[], attrs.clone())?;
+        let made = fset_to_store(&alt_fs, dim, encoding, letter, attrs.clone())?;
         push(&mut planes, made, letter);
         if is_sky_off(fs, ifrm - 1) != 0 {
             s += 1;
             if s <= b'Z' {
                 let made =
-                    fset_to_store_absolute(&alt_fs, dim, encoding, s as char, &[], attrs.clone())?;
+                    fset_to_store_absolute(&alt_fs, dim, encoding, s as char, attrs.clone())?;
                 push(&mut planes, made, s as char);
             }
         }
@@ -199,7 +168,7 @@ mod tests {
             .unwrap();
         let dim = vec![Some(100.0), Some(100.0)];
         let planes =
-            collect_plane_stores(&fs, &dim, Encoding::FitsWcs, &[], WriteAttrs::default()).unwrap();
+            collect_plane_stores(&fs, &dim, Encoding::FitsWcs, WriteAttrs::default()).unwrap();
         assert_eq!(planes.len(), 1);
         assert_eq!(planes[0].letter, ' ');
     }
@@ -222,7 +191,7 @@ mod tests {
 
         let dim = vec![Some(100.0), Some(100.0)];
         let planes =
-            collect_plane_stores(&fs, &dim, Encoding::FitsWcs, &[], WriteAttrs::default()).unwrap();
+            collect_plane_stores(&fs, &dim, Encoding::FitsWcs, WriteAttrs::default()).unwrap();
         assert_eq!(planes.len(), 2);
         assert_eq!(planes[0].letter, ' ');
         assert_eq!(planes[1].letter, 'A');

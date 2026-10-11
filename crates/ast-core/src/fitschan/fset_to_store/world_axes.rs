@@ -199,12 +199,10 @@ pub(crate) fn world_axes(
     while j_next < nin && perm.contains(&(j_next as isize)) {
         j_next += 1;
     }
+    // Once the pixel axes run out, C goes on numbering past them, which is
+    // how a degenerate WCS axis gets a FITS axis of its own.
     for i in 0..nout {
         if perm[i] == -1 {
-            if j_next >= nin {
-                // No more pixel axes to assign. Treat as failure.
-                return Ok(None);
-            }
             perm[i] = j_next as isize;
             j_next += 1;
             while j_next < nin && perm.contains(&(j_next as isize)) {

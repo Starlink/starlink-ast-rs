@@ -45,6 +45,40 @@ use crate::mappings::{IntraRegistry, IntraTransform};
 use crate::serial::node::Node;
 use crate::serial::{self, AnyObject};
 
+/// C's `astChrMatchN`: whether `a` and `b` match in their first `n`
+/// characters, ignoring case, the end of one string matching white space
+/// in the other.
+pub(crate) fn chr_match_n(a: &str, b: &str, n: usize) -> bool {
+    let (a, b) = (a.as_bytes(), b.as_bytes());
+    let (mut i, mut j) = (0, 0);
+    let mut nc = 0;
+    while (i < a.len() || j < b.len()) && nc < n {
+        nc += 1;
+        let ca = a.get(i).copied();
+        let cb = b.get(j).copied();
+        let ok = match (ca, cb) {
+            (None, Some(c)) | (Some(c), None) => c.is_ascii_whitespace(),
+            (Some(x), Some(y)) => x.eq_ignore_ascii_case(&y),
+            (None, None) => true,
+        };
+        if !ok {
+            return false;
+        }
+        if ca.is_some() {
+            i += 1;
+        }
+        if cb.is_some() {
+            j += 1;
+        }
+    }
+    true
+}
+
+/// C's `astChrMatch`: [`chr_match_n`] over the whole of both strings.
+pub(crate) fn chr_match(a: &str, b: &str) -> bool {
+    chr_match_n(a, b, usize::MAX)
+}
+
 /// Which Frames a FITS-WCS write describes with alternate axes: the
 /// FitsChan's AltAxes attribute.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -107,6 +141,7 @@ const DEFAULT_FITS_DIGITS: i32 = 17;
 /// assert_eq!(fc.ncard(), 3); // SIMPLE, NAXIS, END
 /// assert_eq!(fc.get_fits_i(Some("NAXIS")).unwrap(), Some(2));
 /// ```
+#[derive(Clone)]
 pub struct FitsChan {
     config: ChannelConfig,
     cards: CardList,
@@ -141,6 +176,8 @@ pub struct FitsChan {
     alt_axes: Option<AltAxes>,
     /// The Iwc attribute, `None` when unset.
     iwc: Option<bool>,
+    /// The FitsAxisOrder attribute, `None` when unset.
+    fits_axis_order: Option<String>,
     /// The transformations IntraMaps read here can name.
     intra: IntraRegistry,
     /// The last sequence number given to each keyword base by the NATIVE
@@ -177,6 +214,7 @@ impl FitsChan {
             warning_conditions: None,
             alt_axes: None,
             iwc: None,
+            fits_axis_order: None,
             keyseq: std::collections::HashMap::new(),
             clean: None,
             sip_ok: None,
@@ -210,6 +248,7 @@ impl FitsChan {
             warning_conditions: None,
             alt_axes: None,
             iwc: None,
+            fits_axis_order: None,
             keyseq: std::collections::HashMap::new(),
             clean: None,
             sip_ok: None,
@@ -1016,6 +1055,8 @@ impl FitsChan {
             }),
             warnings: Default::default(),
             alt_axes: self.alt_axes(),
+            fits_axis_order: self.fits_axis_order().to_string(),
+            crval_source: Some(std::rc::Rc::new(self.clone())),
         }
     }
 
@@ -1251,10 +1292,95 @@ impl FitsChan {
         self.iwc = None;
     }
 
+    /// Set the FitsAxisOrder attribute: the order of the WCS axes in a
+    /// FITS-WCS header a write makes. `<auto>` (the default) puts each WCS
+    /// axis with the pixel axis it is most nearly parallel to; `<copy>`
+    /// keeps the order of the current Frame's axes; otherwise the value is a
+    /// list of axis Symbols, separated by white space, giving that order. A
+    /// write fails with AST__ATTIN if the list leaves out an axis or names
+    /// one twice; words naming no axis are ignored.
+    pub fn set_fits_axis_order(&mut self, v: &str) {
+        self.fits_axis_order = Some(v.to_string());
+    }
+
+    /// The FitsAxisOrder attribute (default `<auto>`).
+    pub fn fits_axis_order(&self) -> &str {
+        self.fits_axis_order.as_deref().unwrap_or("<auto>")
+    }
+
+    /// Whether FitsAxisOrder has been set.
+    pub fn test_fits_axis_order(&self) -> bool {
+        self.fits_axis_order.is_some()
+    }
+
+    /// Clear FitsAxisOrder, restoring its default.
+    pub fn clear_fits_axis_order(&mut self) {
+        self.fits_axis_order = None;
+    }
+
     /// The read-only AllWarnings attribute: every condition the Warnings
     /// attribute accepts, in lower case, with a space before and after each.
     pub fn all_warning_conditions(&self) -> &'static str {
         warning::all_warnings()
+    }
+
+    /// C's `ReadCrval` (fitschan.c:26025): the reference point that the
+    /// `CRVAL` cards of axis description `s` give, transformed into `wcsfrm`,
+    /// or `None` if there is none. A copy of the FitsChan, with every card
+    /// made available again and the encoding left to be guessed, is read; the
+    /// Frame whose Ident is `s` must have as many axes as there are CRVAL
+    /// cards, and a conversion to `wcsfrm` must exist.
+    pub(crate) fn read_crval(
+        &self,
+        s: char,
+        wcsfrm: &dyn crate::frames::Frame,
+    ) -> Option<Vec<f64>> {
+        use crate::frames::{Frame, FrameRef};
+        let mut fc = self.clone();
+        fc.encoding = None;
+        fc.cards.reset_used();
+        let template = if s == ' ' {
+            "CRVAL%d".to_string()
+        } else {
+            format!("CRVAL%d{s}")
+        };
+        let (n, _, hi) = fc.cards.key_fields(&template, 1);
+        if n == 0 {
+            return None;
+        }
+        let hii = usize::try_from(hi[0]).ok()?;
+        let mut crval = Vec::with_capacity(hii);
+        for iax in 1..=hii {
+            let key = if s == ' ' {
+                format!("CRVAL{iax}")
+            } else {
+                format!("CRVAL{iax}{s}")
+            };
+            crval.push(fc.cards.get_float(&key)?);
+        }
+        fc.cards.clear_card();
+        let Ok(Some(AnyObject::FrameSet(mut fs))) = fc.read() else {
+            return None;
+        };
+        let mut found = false;
+        for ifr in 1..=fs.nframe() {
+            fs.set_current(FrameRef::Index(ifr)).ok()?;
+            let frame = fs.current();
+            if frame.test_ident() && frame.ident() == s.to_string() {
+                found = true;
+                break;
+            }
+        }
+        if !found || fs.current().naxes() != hii {
+            return None;
+        }
+        let domain = wcsfrm.domain().to_string();
+        let tfs = Frame::convert_to(&fs, wcsfrm, &[domain.as_str()]).ok()??;
+        let map = tfs.mapping(FrameRef::Base, FrameRef::Current).ok()?;
+        let out = map
+            .transform(&crate::coords::PointSet::from_rows([crval]), true)
+            .ok()?;
+        Some(out.point(0).to_vec())
     }
 
     /// The attributes the header translations of a read depend on.

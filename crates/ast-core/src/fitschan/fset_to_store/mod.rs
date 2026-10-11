@@ -59,7 +59,7 @@ pub(crate) const FITS_TOL_DEFAULT: f64 = 0.1;
 
 /// The FitsChan attributes C's `AddVersion` reads while it builds a
 /// FitsStore.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone)]
 pub(crate) struct WriteAttrs {
     /// FitsTol: the largest departure from linearity, in pixels, allowed
     /// in a linear description of the pixel to IWC Mapping.
@@ -76,6 +76,12 @@ pub(crate) struct WriteAttrs {
     pub warnings: std::rc::Rc<std::cell::RefCell<Warnings>>,
     /// AltAxes: which Frames are described by alternate axes.
     pub alt_axes: AltAxes,
+    /// FitsAxisOrder: the order of the WCS axes in the header.
+    pub fits_axis_order: String,
+    /// The FitsChan being written to, as it was when the write began, from
+    /// which C's `ReadCrval` takes the reference point already in its
+    /// header; `None` when there is none to consult.
+    pub crval_source: Option<std::rc::Rc<crate::fitschan::FitsChan>>,
 }
 
 impl Default for WriteAttrs {
@@ -86,6 +92,8 @@ impl Default for WriteAttrs {
             timesys: None,
             warnings: Default::default(),
             alt_axes: AltAxes::All,
+            fits_axis_order: "<auto>".to_string(),
+            crval_source: None,
         }
     }
 }
@@ -115,10 +123,9 @@ pub(crate) fn fset_to_store(
     dim: &[Option<f64>],
     encoding: Encoding,
     s: char,
-    input_crvals: &[Option<f64>],
     attrs: WriteAttrs,
 ) -> AstResult<(FitsStore, bool)> {
-    fset_to_store_impl(fs, dim, encoding, s, input_crvals, attrs, false)
+    fset_to_store_impl(fs, dim, encoding, s, attrs, false)
 }
 
 /// Variant of [`fset_to_store`] that describes the *absolute*
@@ -137,10 +144,9 @@ pub(crate) fn fset_to_store_absolute(
     dim: &[Option<f64>],
     encoding: Encoding,
     s: char,
-    input_crvals: &[Option<f64>],
     attrs: WriteAttrs,
 ) -> AstResult<(FitsStore, bool)> {
-    fset_to_store_impl(fs, dim, encoding, s, input_crvals, attrs, true)
+    fset_to_store_impl(fs, dim, encoding, s, attrs, true)
 }
 
 fn fset_to_store_impl(
@@ -148,7 +154,6 @@ fn fset_to_store_impl(
     dim: &[Option<f64>],
     encoding: Encoding,
     s: char,
-    input_crvals: &[Option<f64>],
     attrs: WriteAttrs,
     absolute_offset: bool,
 ) -> AstResult<(FitsStore, bool)> {
@@ -205,31 +210,33 @@ fn fset_to_store_impl(
     }
 
     // Step 2: choose `wperm[i]` — the FITS axis index for each WCS
-    // frame axis. Mirrors C:2792-2802 (FitsAxisOrder + WorldAxes
-    // fallback). FitsAxisOrder isn't yet modelled; the auto path via
-    // WorldAxes is what the C library defaults to.
-    let mut wperm: Vec<usize> = match world_axes(mapping.as_ref(), dim, fits_tol)? {
-        Some(p) => p,
-        None => (0..nwcs).collect(),
+    // frame axis, as FitsAxisOrder gives it, or with `<auto>` as
+    // `WorldAxes` finds it, failing which the version cannot be
+    // described (fitschan.c:2970-2978).
+    let (order, chosen) = fits_axis_order(&attrs.fits_axis_order, nwcs, fs.current())?;
+    let mut wperm: Vec<usize> = if chosen {
+        order
+    } else {
+        match world_axes(mapping.as_ref(), dim, fits_tol)? {
+            Some(p) => p,
+            None => return Ok((store, false)),
+        }
     };
 
     // Step 3: per-axis "this axis has been described" flags.
     let mut axis_done = vec![false; nwcs];
 
-    // Step 4: per-axis chosen CRVAL — initialised from the caller-
-    // supplied `input_crvals` (the input header's CRVAL{i}, mapped
-    // by FITS axis index) and populated by celestial_axes /
-    // spectral_axes for the axes they own; remaining `None` slots
-    // carry through to other_axes which falls back to world(g0).
-    // Mirrors C's `crvals` array (allocated by ReadCrval @ 2812).
-    //
-    // `input_crvals` is FITS-axis-indexed, but the per-axis writers
-    // address `args.crvals[wcs_iax]`. Permute via `wperm`: the
-    // FITS-axis index for WCS axis i is `wperm[i]`.
+    // Step 4: the reference point C's `ReadCrval` finds in the FitsChan
+    // being written to (fitschan.c:2981), in the WCS Frame's axis order;
+    // the per-axis writers adopt it where they can, and the axes it gives no
+    // value for fall back to world(g0).
     let mut crvals: Vec<Option<f64>> = vec![None; nwcs];
-    for i in 0..nwcs {
-        let fits_i = wperm[i];
-        crvals[i] = input_crvals.get(fits_i).copied().flatten();
+    if let Some(chan) = attrs.crval_source.as_deref()
+        && let Some(point) = chan.read_crval(s, fs.current())
+    {
+        for (slot, v) in crvals.iter_mut().zip(point) {
+            *slot = (v != crate::constants::BAD_VALUE).then_some(v);
+        }
     }
 
     // Step 5: build the WCS→IWC mapping segment by segment.
@@ -262,6 +269,7 @@ fn fset_to_store_impl(
         fits_tol,
         timesys: attrs.timesys.as_deref(),
         warnings: &attrs.warnings,
+        auto_order: crate::fitschan::chr_match(&attrs.fits_axis_order, "<auto>"),
     })?;
 
     let spec_seg = spectral_axes(SpectralAxesArgs {
@@ -1048,6 +1056,76 @@ fn round_crpix(store: &mut FitsStore) {
     }
 }
 
+/// C's `FitsAxisOrder` (fitschan.c:11202): the zero-based FITS axis for
+/// each axis of `wcsfrm` that the FitsAxisOrder value `attr` gives, and
+/// whether it gives one (it does unless `attr` is `<auto>`; `<copy>` gives
+/// the axes their own order). Each word of a list is matched, ignoring
+/// case, against the axis Symbols, and the axes are numbered in the order
+/// their Symbols occur; a Symbol named twice, or an axis left out, is
+/// AST__ATTIN.
+fn fits_axis_order(
+    attr: &str,
+    nwcs: usize,
+    wcsfrm: &dyn crate::frames::Frame,
+) -> AstResult<(Vec<usize>, bool)> {
+    let mut perm: Vec<usize> = (0..nwcs).collect();
+    let result = !crate::fitschan::chr_match(attr, "<auto>");
+    if result && !crate::fitschan::chr_match(attr, "<copy>") {
+        // C's KeyMap with KeyCase=0: one entry per Symbol, ignoring case, a
+        // later axis replacing an earlier one with the same Symbol.
+        let mut km: Vec<(String, i64)> = Vec::new();
+        let put = |km: &mut Vec<(String, i64)>, key: &str, v: i64| {
+            let key = key.to_ascii_lowercase();
+            match km.iter_mut().find(|(k, _)| *k == key) {
+                Some(e) => e.1 = v,
+                None => km.push((key, v)),
+            }
+        };
+        let get = |km: &Vec<(String, i64)>, key: &str| {
+            let key = key.to_ascii_lowercase();
+            km.iter().find(|(k, _)| *k == key).map(|e| e.1)
+        };
+        let mut symbols = Vec::with_capacity(nwcs);
+        for i in 0..nwcs {
+            let sym = wcsfrm.symbol(i + 1)?;
+            put(&mut km, &sym, i as i64);
+            symbols.push(sym);
+        }
+        let mut k = 0;
+        for word in attr.split(|c: char| c.is_ascii_whitespace() || c == '\x0b') {
+            if word.is_empty() {
+                continue;
+            }
+            if let Some(j) = get(&km, word) {
+                if j < 0 {
+                    return Err(crate::error::AstError::new(
+                        crate::error::ErrorCode::Attin,
+                        format!(
+                            "astWrite(fitschan): attribute FitsAxisOrder ({attr}) refers to \
+                             axis {word} more than once."
+                        ),
+                    ));
+                }
+                perm[j as usize] = k;
+                k += 1;
+                put(&mut km, word, -1);
+            }
+        }
+        for sym in &symbols {
+            if get(&km, sym).is_some_and(|j| j >= 0) {
+                return Err(crate::error::AstError::new(
+                    crate::error::ErrorCode::Attin,
+                    format!(
+                        "astWrite(fitschan): attribute FitsAxisOrder ({attr}) does not \
+                         specify a position for WCS axis '{sym}'."
+                    ),
+                ));
+            }
+        }
+    }
+    Ok((perm, result))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1084,15 +1162,8 @@ mod tests {
         .unwrap();
 
         let dim = vec![Some(100.0), Some(100.0)];
-        let (store, ok) = fset_to_store(
-            &fs,
-            &dim,
-            Encoding::FitsWcs,
-            ' ',
-            &[],
-            WriteAttrs::default(),
-        )
-        .unwrap();
+        let (store, ok) =
+            fset_to_store(&fs, &dim, Encoding::FitsWcs, ' ', WriteAttrs::default()).unwrap();
         assert!(
             ok,
             "a linear pixel\u{2192}IWC Mapping should be describable"
@@ -1126,15 +1197,8 @@ mod tests {
             .unwrap();
 
         let dim = vec![Some(100.0), Some(100.0)];
-        let (store, ok) = fset_to_store(
-            &fs,
-            &dim,
-            Encoding::FitsWcs,
-            ' ',
-            &[],
-            WriteAttrs::default(),
-        )
-        .unwrap();
+        let (store, ok) =
+            fset_to_store(&fs, &dim, Encoding::FitsWcs, ' ', WriteAttrs::default()).unwrap();
         assert!(
             ok,
             "a linear pixel\u{2192}IWC Mapping should be describable"

@@ -268,6 +268,7 @@ fn run(fc: &mut FitsChan, op: &str, out: &mut String) {
             let (v, set) = match arg(1) {
                 "Warnings" => (fc.warning_conditions(), fc.test_warning_conditions()),
                 "AllWarnings" => (fc.all_warning_conditions(), false),
+                "FitsAxisOrder" => (fc.fits_axis_order(), fc.test_fits_axis_order()),
                 "AltAxes" => (
                     match fc.alt_axes() {
                         AltAxes::All => "ALL",
@@ -282,6 +283,10 @@ fn run(fc: &mut FitsChan, op: &str, out: &mut String) {
         }
         "ASC" => match arg(1) {
             "Warnings" => result(fc.set_warning_conditions(arg(2)), |()| String::new()),
+            "FitsAxisOrder" => {
+                fc.set_fits_axis_order(arg(2));
+                String::new()
+            }
             "AltAxes" => {
                 fc.set_alt_axes(match arg(2).to_ascii_uppercase().as_str() {
                     "ALL" => AltAxes::All,
@@ -321,6 +326,7 @@ fn run(fc: &mut FitsChan, op: &str, out: &mut String) {
                 "Iwc" => fc.clear_iwc(),
                 "Warnings" => fc.clear_warning_conditions(),
                 "AltAxes" => fc.clear_alt_axes(),
+                "FitsAxisOrder" => fc.clear_fits_axis_order(),
                 other => panic!("no attribute {other}"),
             }
             String::new()
@@ -445,9 +451,8 @@ const EXCLUDED: &[(&str, &str)] = &[
     ),
     (
         "alt_axes_alt_offset",
-        "the writer passes no input CRVALs to an alternate description, where \
-         C's ReadCrval takes them from the header (CRVAL1B 0 at CRPIX1B 1), and \
-         it adds an absolute description A for the offset alternate B, which C \
+        "the port writes an absolute description A for the offset alternate B \
+         (still describing offset coordinates, WCSNAMEA SKY_POLE), which C \
          does not write",
     ),
     (

@@ -487,6 +487,14 @@ impl CardList {
         true
     }
 
+    /// Make every card available again, as C's `FixUsed` with `reset` does
+    /// (fitschan.c:16572): no card is consumed or provisionally consumed.
+    pub(crate) fn reset_used(&mut self) {
+        for card in self.cards.iter_mut() {
+            card.flags.consumption = Consumption::Free;
+        }
+    }
+
     /// Resolve provisional consumption after a read completes, mirroring C
     /// `FixUsed` (fitschan.c:16392). On success (`promote`) provisional cards
     /// become `Used`; otherwise they revert to `Free`. When `remove` is set
