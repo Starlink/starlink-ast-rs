@@ -25,7 +25,7 @@ its current Frame by way of a fully-bounded Box.
 
 `Interval::get_def_unc` (`interval.rs:1318-1361 (fn get_def_unc)`) is `GetDefUnc`.
 `Interval::map_merge` (`interval.rs:1919-1922 (fn map_merge)`) delegates to
-`simplify::region_map_merge` (`mappings/simplify.rs:1484-1530 (fn region_map_merge)`),
+`simplify::region_map_merge` (`mappings/simplify.rs:1485-1531 (fn region_map_merge)`),
 which every Region shares. `Interval::region_merge`
 (`interval.rs:1443-1635 (fn region_merge)`) is `MergeInterval`, and
 `Interval::simplified` (`interval.rs:1822-1884 (fn simplified)`) is `Simplify`, with
@@ -58,20 +58,20 @@ lives once.
 | 18 | Check the global error status and bail out | interval.c:1154-1156 (fn MapMerge) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 19 | Get a pointer to the Interval | interval.c:1157-1159 (fn MapMerge) | -- | ceremony | n/a: the Rust function already has `this: &dyn Region` |
 | 20 | Banner: first see whether the Interval reduces on its own, without reference to its neighbours | interval.c:1160-1163 (fn MapMerge) | -- | ceremony | n/a: a section banner, not a step |
-| 21 | Simplify the Interval, assuming a changed pointer means something happened | interval.c:1164-1167 (fn MapMerge) | mappings/simplify.rs:1496 (fn region_map_merge) | architecture | ported |
-| 22 | Annul the Interval pointer in the list, replace it with the new Region, and mark it forward | interval.c:1168-1174 (fn MapMerge) | mappings/simplify.rs:1497 (fn region_map_merge) | architecture | ported |
-| 23 | Return the index of the first modified element | interval.c:1175-1178 (fn MapMerge) | mappings/simplify.rs:1498 (fn region_map_merge) | architecture | ported |
-| 24 | Failing that, merge with the Regions on either side — which is possible in parallel only | interval.c:1179-1183 (fn MapMerge) | mappings/simplify.rs:1503 (fn region_map_merge) | architecture | ported |
+| 21 | Simplify the Interval, assuming a changed pointer means something happened | interval.c:1164-1167 (fn MapMerge) | mappings/simplify.rs:1497 (fn region_map_merge) | architecture | ported |
+| 22 | Annul the Interval pointer in the list, replace it with the new Region, and mark it forward | interval.c:1168-1174 (fn MapMerge) | mappings/simplify.rs:1498 (fn region_map_merge) | architecture | ported |
+| 23 | Return the index of the first modified element | interval.c:1175-1178 (fn MapMerge) | mappings/simplify.rs:1499 (fn region_map_merge) | architecture | ported |
+| 24 | Failing that, merge with the Regions on either side — which is possible in parallel only | interval.c:1179-1183 (fn MapMerge) | mappings/simplify.rs:1504 (fn region_map_merge) | architecture | ported |
 | 25 | Annul the unwanted simplified pointer | interval.c:1184-1185 (fn MapMerge) | -- | ceremony | n/a: owned values are dropped |
-| 26 | Attempt to merge the Interval with its lower neighbour, if that neighbour is a Region | interval.c:1186-1194 (fn MapMerge) | mappings/simplify.rs:1505-1513 (fn region_map_merge) | architecture | ported |
-| 27 | Failing that, attempt the upper neighbour the same way | interval.c:1195-1205 (fn MapMerge) | mappings/simplify.rs:1517-1526 (fn region_map_merge) | architecture | ported |
-| 28 | Act only if one of the two produced a merged Region | interval.c:1206-1208 (fn MapMerge) | mappings/simplify.rs:1510 (fn region_map_merge),1519 (fn region_map_merge) | architecture | ported |
+| 26 | Attempt to merge the Interval with its lower neighbour, if that neighbour is a Region | interval.c:1186-1194 (fn MapMerge) | mappings/simplify.rs:1506-1514 (fn region_map_merge) | architecture | ported |
+| 27 | Failing that, attempt the upper neighbour the same way | interval.c:1195-1205 (fn MapMerge) | mappings/simplify.rs:1518-1527 (fn region_map_merge) | architecture | ported |
+| 28 | Act only if one of the two produced a merged Region | interval.c:1206-1208 (fn MapMerge) | mappings/simplify.rs:1511 (fn region_map_merge),1520 (fn region_map_merge) | architecture | ported |
 | 29 | Annul the first of the two Mappings, replace it with the merged Region, and clear its invert flag | interval.c:1209-1214 (fn MapMerge) | mappings/simplify.rs:591 (fn replace_pair_with) | architecture | ported |
 | 30 | Annul the second and shuffle the rest of the list down to fill the gap | interval.c:1215-1222 (fn MapMerge) | mappings/simplify.rs:592-593 (fn replace_pair_with) | architecture | ported |
 | 31 | Clear the vacated element at the end | interval.c:1223-1226 (fn MapMerge) | -- | ceremony | n/a: the list is a `Vec`, so the removed entry leaves no slot to blank |
-| 32 | Decrement the Mapping count and return the index of the first modified element | interval.c:1227-1232 (fn MapMerge) | mappings/simplify.rs:1512 (fn region_map_merge),1521 (fn region_map_merge) | architecture | ported |
+| 32 | Decrement the Mapping count and return the index of the first modified element | interval.c:1227-1232 (fn MapMerge) | mappings/simplify.rs:1513 (fn region_map_merge),1522 (fn region_map_merge) | architecture | ported |
 | 33 | In series, annul the simplified pointer and do nothing | interval.c:1233-1236 (fn MapMerge) | -- | ceremony | n/a: owned values are dropped, and the series case falls through to `None` |
-| 34 | Return the result | interval.c:1237-1239 (fn MapMerge) | mappings/simplify.rs:1529 (fn region_map_merge) | architecture | ported |
+| 34 | Return the result | interval.c:1237-1239 (fn MapMerge) | mappings/simplify.rs:1530 (fn region_map_merge) | architecture | ported |
 | 35 | `MergeInterval`: initialise the returned pointer and the bounds arrays | interval.c:1326-1330 (fn MergeInterval) | -- | ceremony | n/a: the Rust returns `Option<DynMapping>`, so "no merge" is `None` |
 | 36 | Check the local error status and bail out | interval.c:1331-1333 (fn MergeInterval) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 37 | Both Regions must agree on Closed, and either both or neither must have a defined uncertainty | interval.c:1334-1340 (fn MergeInterval) | interval.rs:1448-1452 (fn region_merge) | architecture | ported |

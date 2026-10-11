@@ -451,18 +451,6 @@ const EXCLUDED: &[(&str, &str)] = &[
          does not write",
     ),
     (
-        "iwc_on_spectral",
-        "simplifying the inverse of the pixel to WCS Mapping followed by the \
-         pixel to IWC Mapping of a celestial and spectral header gives a \
-         Mapping equal to C's but structured differently: the port inverts \
-         the outer CmpMap where C inverts its components, and flags a ShiftMap \
-         as simplified",
-    ),
-    (
-        "iwc_on_spectral_cunit",
-        "as iwc_on_spectral, with CUNIT3 GHz",
-    ),
-    (
         "sao_not_sao_rw",
         "the writer puts a new card after the last card it overwrote, where \
          C's SetValue restores the cursor after an overwrite and puts a new \

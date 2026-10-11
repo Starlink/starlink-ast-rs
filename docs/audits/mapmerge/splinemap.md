@@ -14,7 +14,7 @@ against an adjacent SplineMap used in the opposite direction, replacing both wit
 UnitMaps.
 
 `SplineMap::map_merge` (`splinemap.rs:946-958 (fn map_merge)`) calls `default_map_merge`
-(`mappings/simplify.rs:1362-1457 (fn default_map_merge)`), whose neighbour attempt reaches
+(`mappings/simplify.rs:1363-1458 (fn default_map_merge)`), whose neighbour attempt reaches
 `SplineMap::try_merge` (`splinemap.rs:1018-1066 (fn try_merge)`).
 
 | # | C step | C site | Rust site | extension point | verdict |
@@ -25,8 +25,8 @@ UnitMaps.
 | 4 | The only merge available is with its own inverse, in series | splinemap.c:1773-1778 (fn MapMerge) | splinemap.rs:1025-1027 (fn try_merge) | architecture | ported |
 | 5 | Temporarily set the nominated SplineMap's Invert flag to the required value, saving the original | splinemap.c:1779-1784 (fn MapMerge) | -- | ceremony | n/a: the requested orientation is a separate value in `MergeCtx`, so the object is never mutated to carry it |
 | 6 | Read its input and output counts at that orientation, to size the replacement | splinemap.c:1785-1789 (fn MapMerge) | splinemap.rs:1062 (fn try_merge) | architecture | ported |
-| 7 | Take each neighbour in turn | splinemap.c:1790-1792 (fn MapMerge) | mappings/simplify.rs:1373-1395 (fn default_map_merge) | architecture | ported |
-| 8 | Skip a neighbour that does not exist | splinemap.c:1793-1795 (fn MapMerge) | mappings/simplify.rs:1365-1367 (fn default_map_merge) | architecture | ported |
+| 7 | Take each neighbour in turn | splinemap.c:1790-1792 (fn MapMerge) | mappings/simplify.rs:1374-1396 (fn default_map_merge) | architecture | ported |
+| 8 | Skip a neighbour that does not exist | splinemap.c:1793-1795 (fn MapMerge) | mappings/simplify.rs:1366-1368 (fn default_map_merge) | architecture | ported |
 | 9 | Skip a neighbour that is not a SplineMap | splinemap.c:1796-1798 (fn MapMerge) | splinemap.rs:1030 (fn try_merge) | architecture | ported |
 | 10 | Get a typed pointer to it | splinemap.c:1799-1801 (fn MapMerge) | splinemap.rs:1030 (fn try_merge) | ceremony | ported |
 | 11 | Require the two to be used in opposite directions | splinemap.c:1802-1805 (fn MapMerge) | splinemap.rs:1032-1034 (fn try_merge) | architecture | ported |
@@ -35,7 +35,7 @@ UnitMaps.
 | 14 | Re-instate the neighbour's original Invert flag | splinemap.c:1820-1822 (fn MapMerge) | -- | ceremony | n/a: the neighbour entry is read without being mutated |
 | 15 | Move on if the neighbour differs from the nominated SplineMap | splinemap.c:1823-1826 (fn MapMerge) | splinemap.rs:1041-1060 (fn try_merge) | architecture | ported |
 | 16 | Otherwise replace each of the two with a UnitMap | splinemap.c:1827-1844 (fn MapMerge) | splinemap.rs:1062 (fn try_merge) | architecture | ported |
-| 17 | Leave the neighbour loop | splinemap.c:1845-1848 (fn MapMerge) | mappings/simplify.rs:1419 (fn default_map_merge) | architecture | ported |
+| 17 | Leave the neighbour loop | splinemap.c:1845-1848 (fn MapMerge) | mappings/simplify.rs:1420 (fn default_map_merge) | architecture | ported |
 | 18 | Re-instate the nominated SplineMap's Invert flag if it was not replaced | splinemap.c:1849-1853 (fn MapMerge) | -- | ceremony | n/a: nothing was mutated, so nothing is restored |
 | 19 | Return the result | splinemap.c:1854-1855 (fn MapMerge) | splinemap.rs:957 (fn map_merge) | ceremony | ported |
 | 20 | Setting or clearing InvNiter, InvTol or OutUnit clears the simplified record | splinemap.c:2560-2562 (fn astMAKE_CLEAR1), splinemap.c:2601-2603 (fn astMAKE_CLEAR1), splinemap.c:2647-2649 (fn astMAKE_CLEAR1) | splinemap.rs:284-297 (fn set_inv_niter), splinemap.rs:305-313 (fn set_inv_tol), splinemap.rs:324-367 (fn set_out_unit) | ceremony | ported |
@@ -64,4 +64,4 @@ reduces only against a neighbour. `SplineMap::map_merge` matches that.
 
 A SplineMap reduction added later belongs at the top of `map_merge`, which is
 where C would put one, and where the base `Simplify` driver
-(`mappings/simplify.rs:1254-1296 (fn base_simplify)`) reaches it.
+(`mappings/simplify.rs:1255-1297 (fn base_simplify)`) reaches it.

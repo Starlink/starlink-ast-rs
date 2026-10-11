@@ -15,7 +15,7 @@ each other and both permit the cancellation, replacing the pair with a UnitMap.
 There is no replace-with-simpler step and no lower-neighbour case.
 
 `MathMap::map_merge` (`mathmap/mod.rs:483-494 (fn map_merge)`) calls `default_map_merge`
-(`mappings/simplify.rs:1362-1457 (fn default_map_merge)`), whose neighbour attempt reaches
+(`mappings/simplify.rs:1363-1458 (fn default_map_merge)`), whose neighbour attempt reaches
 `MathMap::try_merge` (`mathmap/mod.rs:514-587 (fn try_merge)`).
 
 The last row is not part of `MapMerge` but of the rule that governs it: an
@@ -28,9 +28,9 @@ simplified record.
 | 2 | Check the global error status and bail out | mathmap.c:4032-4033 (fn MapMerge) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 3 | Initialise the locals to silence uninitialised-variable warnings | mathmap.c:4035-4045 (fn MapMerge) | -- | ceremony | n/a: Rust locals are bound where they are computed, so none can be read before assignment |
 | 4 | MathMaps are only worth simplifying in series | mathmap.c:4047-4048 (fn MapMerge) | mathmap/mod.rs:521-523 (fn try_merge) | architecture | ported |
-| 5 | Take the nominated index and the one after it, and check that a Mapping exists there | mathmap.c:4050-4057 (fn MapMerge) | mappings/simplify.rs:1363-1367 (fn default_map_merge) | architecture | ported |
+| 5 | Take the nominated index and the one after it, and check that a Mapping exists there | mathmap.c:4050-4057 (fn MapMerge) | mappings/simplify.rs:1364-1368 (fn default_map_merge) | architecture | ported |
 | 6 | Check that both Mappings are of class MathMap | mathmap.c:4059-4066 (fn MapMerge) | mathmap/mod.rs:524 (fn try_merge) | architecture | ported |
-| 7 | Obtain pointers to the two MathMaps and their associated invert flags | mathmap.c:4068-4074 (fn MapMerge) | mappings/simplify.rs:1374-1375 (fn default_map_merge) | architecture | ported |
+| 7 | Obtain pointers to the two MathMaps and their associated invert flags | mathmap.c:4068-4074 (fn MapMerge) | mappings/simplify.rs:1375-1376 (fn default_map_merge) | architecture | ported |
 | 8 | Take SimpFI or SimpIF from each according to its invert flag, and require both to permit simplification | mathmap.c:4076-4083 (fn MapMerge) | mathmap/mod.rs:526-540 (fn try_merge) | architecture | ported |
 | 9 | Compare the first MathMap's effective input count with the second's effective output count | mathmap.c:4085-4098 (fn MapMerge) | mathmap/mod.rs:542-547 (fn try_merge) | architecture | ported |
 | 10 | Compare the first's effective number of forward functions with the second's effective number of inverse functions | mathmap.c:4100-4111 (fn MapMerge) | mathmap/mod.rs:560-562 (fn try_merge) | architecture | ported |
@@ -38,10 +38,10 @@ simplified record.
 | 12 | Repeat that comparison for the inverse of the first against the forward of the second | mathmap.c:4128-4143 (fn MapMerge) | mathmap/mod.rs:567-583 (fn try_merge) | architecture | ported |
 | 13 | If the two can be merged, create a UnitMap as the replacement | mathmap.c:4145-4148 (fn MapMerge) | mathmap/mod.rs:585-586 (fn try_merge) | architecture | ported |
 | 14 | Annul the pointers to the two original MathMaps | mathmap.c:4150-4153 (fn MapMerge) | -- | ceremony | n/a: owned values are dropped |
-| 15 | Store the UnitMap in place of the first of the pair, with a cleared invert flag | mathmap.c:4155-4158 (fn MapMerge) | mappings/simplify.rs:1448-1453 (fn default_map_merge) | architecture | ported |
-| 16 | Shuffle the following Mappings and invert flags down to close the gap | mathmap.c:4160-4165 (fn MapMerge) | mappings/simplify.rs:1454 (fn default_map_merge) | architecture | ported |
+| 15 | Store the UnitMap in place of the first of the pair, with a cleared invert flag | mathmap.c:4155-4158 (fn MapMerge) | mappings/simplify.rs:1449-1454 (fn default_map_merge) | architecture | ported |
+| 16 | Shuffle the following Mappings and invert flags down to close the gap | mathmap.c:4160-4165 (fn MapMerge) | mappings/simplify.rs:1455 (fn default_map_merge) | architecture | ported |
 | 17 | Clear the final entry in each array | mathmap.c:4167-4169 (fn MapMerge) | -- | ceremony | n/a: the Rust list is a `Vec`, so removing the second of the pair shortens it; there is no vacated slot to clear |
-| 18 | Decrement the Mapping count and return the index of the first modified element | mathmap.c:4171-4174 (fn MapMerge) | mappings/simplify.rs:1454-1456 (fn default_map_merge) | architecture | ported |
+| 18 | Decrement the Mapping count and return the index of the first modified element | mathmap.c:4171-4174 (fn MapMerge) | mappings/simplify.rs:1455-1457 (fn default_map_merge) | architecture | ported |
 | 19 | Clear the returned value if an error occurred | mathmap.c:4178-4179 (fn MapMerge) | -- | ceremony | n/a: an error is an `Err`, not a value that has to be scrubbed on the way out |
 | 20 | Return the result | mathmap.c:4181-4182 (fn MapMerge) | mathmap/mod.rs:493 (fn map_merge) | ceremony | ported |
 | 21 | Setting or clearing Seed, SimpFI or SimpIF clears the simplified record | mathmap.c:5616-5629 (fn astMAKE_CLEAR1), mathmap.c:5701-5708 (fn astMAKE_CLEAR1), mathmap.c:5776-5783 (fn astMAKE_CLEAR1) | mathmap/mod.rs:187-197 (fn set_simp_fi), mathmap/mod.rs:205-235 (fn set_simp_if), mathmap/mod.rs:244-259 (fn set_seed), mathmap/mod.rs:268-272 (fn clear_seed) | ceremony | ported |
@@ -78,7 +78,7 @@ C never looks at the Mapping *before* the nominated one: `imap1 = where` and
 by the driver instead, which nominates every element of the list in turn, so the
 pair `(where-1, where)` is examined when `where-1` is nominated.
 `default_map_merge` does additionally offer the reversed pair to the second
-Mapping's own `try_merge` (`mappings/simplify.rs:1386-1395 (fn default_map_merge)`), which for two MathMaps asks
+Mapping's own `try_merge` (`mappings/simplify.rs:1387-1396 (fn default_map_merge)`), which for two MathMaps asks
 the same question with the roles swapped; it reaches the same fixed point,
 because the SimpFI / SimpIF pairing in row 8 is what decides the answer either
 way.

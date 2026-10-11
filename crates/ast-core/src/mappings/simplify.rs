@@ -699,16 +699,17 @@ pub(crate) fn cmp_map_merge(
     where_: usize,
     series: bool,
 ) -> Option<usize> {
-    if !cmp.has_been_simplified() {
-        let eff_inv = ctx.entry(where_).1;
-
-        // Simplify the component in its effective applied direction, exactly as
-        // C sets `astSetInvert(map, invert_list[where])` before `astSimplify`.
-        let mut oriented = cmp.clone_box();
-        if eff_inv {
-            oriented.invert();
-        }
-
+    // Simplify the component in its effective applied direction, exactly as
+    // C sets `astSetInvert(map, invert_list[where])` before `astSimplify`
+    // (cmpmap.c:1440-1450). Whether it has already been simplified is a
+    // question about that direction, since C records it per orientation
+    // (mapping.h:416-422) and `astSimplify` tests it after the Invert is set.
+    let eff_inv = ctx.entry(where_).1;
+    let mut oriented = cmp.clone_box();
+    if oriented.is_inverted() != eff_inv {
+        oriented.invert();
+    }
+    if !oriented.has_been_simplified() {
         trace::simplify_enter("cmp-self-simplify-head", oriented.as_ref());
         if let Ok((simplified, changed)) = oriented.simplify_reporting_change() {
             // C's test is `simpler = ( new != map ) || ( new_invert !=
