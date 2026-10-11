@@ -33,6 +33,11 @@
  *   RW                   astRead, then astWrite of what was read
  *   SCD|0 or 1  XCD      set and clear CDMatrix
  *   R                    astRead
+ *   RN                   astRead, then the native dump of what was read
+ *   RSW|warnings         astRead, set Warnings, then astWrite of what was read
+ *   RCIW|n               astRead, clear the Ident of Frame n, then astWrite
+ *   AC|attr  ASC|attr|v  get and test, or set, a string attribute
+ *   WN                   the Channel's warnings (astWarnings)
  *   W                    astWrite of a 2-D ZoomMap of factor 2
  *
  * After each operation it prints the result and the state: Card, Ncard,
@@ -55,6 +60,12 @@ static size_t nout;
 static void add( const char *s ) {
    for( ; *s && nout < sizeof( out ) - 1; s++ ) out[ nout++ ] = *s;
    out[ nout ] = 0;
+}
+
+static void dump_sink( const char *line ) {
+   add( "|" );
+   add( line );
+   add( "\n" );
 }
 
 static const char *code_name( int status ) {
@@ -246,6 +257,17 @@ static void run( AstFitsChan *fc, const char *op, int *status ) {
       astSetD( fc, f1, atof( f2 ) );
    } else if( !strcmp( f0, "AX" ) ) {
       astClear( fc, f1 );
+   } else if( !strcmp( f0, "RN" ) ) {
+      AstObject *obj = astRead( fc );
+      snprintf( buf, sizeof buf, "= %s\n", obj ? astGetC( obj, "Class" ) : "null" );
+      add( buf );
+      buf[ 0 ] = 0;
+      if( obj ) {
+         AstChannel *ch = astChannel( NULL, dump_sink, " " );
+         astWrite( ch, obj );
+         ch = astAnnul( ch );
+         obj = astAnnul( obj );
+      }
    } else if( !strcmp( f0, "RCIW" ) ) {
       AstObject *obj = astRead( fc );
       if( obj ) {
@@ -679,6 +701,16 @@ int main( void ) {
    CASE( "alt_axes_offset", "P|0|NAXIS   = 2", "P|0|NAXIS1  = 100", "P|0|NAXIS2  = 200", "P|0|CRPIX1  = 50", "P|0|CRPIX2  = 100", "P|0|CRVAL1  = 0", "P|0|CRVAL2  = 0", "P|0|CD1_1   = -0.001", "P|0|CD2_2   = 0.001", "P|0|RADESYS = 'ICRS'", "P|0|CTYPE1  = 'OFLN-TAN'", "P|0|CTYPE2  = 'OFLT-TAN'", "P|0|SREF1   = 0.5", "P|0|SREF2   = 0.3", "P|0|SREFIS  = 'ORIGIN'", "P|0|MJD-OBS = 55000.0", "P|0|CTYPE1B = 'GLON-TAN'", "P|0|CTYPE2B = 'GLAT-TAN'", "P|0|CRVAL1B = 1", "P|0|CRVAL2B = 2", "P|0|CRPIX1B = 1", "P|0|CRPIX2B = 1", "P|0|CD1_1B  = -0.001", "P|0|CD2_2B  = 0.001", "ENC|FITS-WCS", "CC", "RW" );
    CASE( "alt_axes_offset_none", "P|0|NAXIS   = 2", "P|0|NAXIS1  = 100", "P|0|NAXIS2  = 200", "P|0|CRPIX1  = 50", "P|0|CRPIX2  = 100", "P|0|CRVAL1  = 0", "P|0|CRVAL2  = 0", "P|0|CD1_1   = -0.001", "P|0|CD2_2   = 0.001", "P|0|RADESYS = 'ICRS'", "P|0|CTYPE1  = 'OFLN-TAN'", "P|0|CTYPE2  = 'OFLT-TAN'", "P|0|SREF1   = 0.5", "P|0|SREF2   = 0.3", "P|0|SREFIS  = 'ORIGIN'", "P|0|MJD-OBS = 55000.0", "P|0|CTYPE1B = 'GLON-TAN'", "P|0|CTYPE2B = 'GLAT-TAN'", "P|0|CRVAL1B = 1", "P|0|CRVAL2B = 2", "P|0|CRPIX1B = 1", "P|0|CRPIX2B = 1", "P|0|CD1_1B  = -0.001", "P|0|CD2_2B  = 0.001", "ENC|FITS-WCS", "ASC|AltAxes|NONE", "CC", "RW" );
    CASE( "alt_axes_alt_offset", "P|0|NAXIS   = 2", "P|0|NAXIS1  = 100", "P|0|NAXIS2  = 200", "P|0|CRPIX1  = 50", "P|0|CRPIX2  = 100", "P|0|CRVAL1  = 10", "P|0|CRVAL2  = 20", "P|0|CD1_1   = -0.001", "P|0|CD2_2   = 0.001", "P|0|RADESYS = 'ICRS'", "P|0|CTYPE1  = 'RA---TAN'", "P|0|CTYPE2  = 'DEC--TAN'", "P|0|MJD-OBS = 55000.0", "P|0|CTYPE1B = 'OFLN-TAN'", "P|0|CTYPE2B = 'OFLT-TAN'", "P|0|CRVAL1B = 0", "P|0|CRVAL2B = 0", "P|0|CRPIX1B = 1", "P|0|CRPIX2B = 1", "P|0|CD1_1B  = -0.001", "P|0|CD2_2B  = 0.001", "P|0|RADESYSB= 'ICRS'", "P|0|SREF1B  = 0.5", "P|0|SREF2B  = 0.3", "P|0|SREFISB = 'POLE'", "P|0|CTYPE1D = 'GLON-TAN'", "P|0|CTYPE2D = 'GLAT-TAN'", "P|0|CRVAL1D = 1", "P|0|CRVAL2D = 2", "P|0|CRPIX1D = 1", "P|0|CRPIX2D = 1", "P|0|CD1_1D  = -0.001", "P|0|CD2_2D  = 0.001", "ENC|FITS-WCS", "CC", "RW" );
+   CASE( "iwc_off", "P|0|NAXIS   = 2", "P|0|NAXIS1  = 100", "P|0|NAXIS2  = 200", "P|0|CRPIX1  = 50", "P|0|CRPIX2  = 100", "P|0|CRVAL1  = 10", "P|0|CRVAL2  = 20", "P|0|CD1_1   = -0.001", "P|0|CD1_2   = 0.0002", "P|0|CD2_2   = 0.001", "P|0|RADESYS = 'ICRS'", "P|0|CTYPE1  = 'RA---TAN'", "P|0|CTYPE2  = 'DEC--TAN'", "P|0|MJD-OBS = 55000.0", "ENC|FITS-WCS", "CC", "RN" );
+   CASE( "iwc_on", "P|0|NAXIS   = 2", "P|0|NAXIS1  = 100", "P|0|NAXIS2  = 200", "P|0|CRPIX1  = 50", "P|0|CRPIX2  = 100", "P|0|CRVAL1  = 10", "P|0|CRVAL2  = 20", "P|0|CD1_1   = -0.001", "P|0|CD1_2   = 0.0002", "P|0|CD2_2   = 0.001", "P|0|RADESYS = 'ICRS'", "P|0|CTYPE1  = 'RA---TAN'", "P|0|CTYPE2  = 'DEC--TAN'", "P|0|MJD-OBS = 55000.0", "ENC|FITS-WCS", "ASI|Iwc|1", "CC", "RN" );
+   CASE( "iwc_on_alt", "P|0|NAXIS   = 2", "P|0|NAXIS1  = 100", "P|0|NAXIS2  = 200", "P|0|CRPIX1  = 50", "P|0|CRPIX2  = 100", "P|0|CRVAL1  = 10", "P|0|CRVAL2  = 20", "P|0|CD1_1   = -0.001", "P|0|CD1_2   = 0.0002", "P|0|CD2_2   = 0.001", "P|0|RADESYS = 'ICRS'", "P|0|CTYPE1  = 'RA---TAN'", "P|0|CTYPE2  = 'DEC--TAN'", "P|0|MJD-OBS = 55000.0", "P|0|CTYPE1A = 'GLON-TAN'", "P|0|CTYPE2A = 'GLAT-TAN'", "P|0|CRVAL1A = 1", "P|0|CRVAL2A = 2", "P|0|CRPIX1A = 1", "P|0|CRPIX2A = 1", "P|0|CD1_1A  = -0.001", "P|0|CD2_2A  = 0.001", "ENC|FITS-WCS", "ASI|Iwc|1", "CC", "RN" );
+   CASE( "iwc_on_linear", "P|0|NAXIS   = 1", "P|0|NAXIS1  = 100", "P|0|CRPIX1  = 50", "P|0|CRVAL1  = 10", "P|0|CDELT1  = 2.0", "P|0|CTYPE1  = 'TIME'", "ENC|FITS-WCS", "ASI|Iwc|1", "CC", "RN" );
+   CASE( "iwc_accessors", "AI|Iwc", "ASI|Iwc|5", "AI|Iwc", "AX|Iwc", "AI|Iwc" );
+   CASE( "iwc_on_rw", "P|0|NAXIS   = 2", "P|0|NAXIS1  = 100", "P|0|NAXIS2  = 200", "P|0|CRPIX1  = 50", "P|0|CRPIX2  = 100", "P|0|CRVAL1  = 10", "P|0|CRVAL2  = 20", "P|0|CD1_1   = -0.001", "P|0|CD1_2   = 0.0002", "P|0|CD2_2   = 0.001", "P|0|RADESYS = 'ICRS'", "P|0|CTYPE1  = 'RA---TAN'", "P|0|CTYPE2  = 'DEC--TAN'", "P|0|MJD-OBS = 55000.0", "P|0|CTYPE1A = 'GLON-TAN'", "P|0|CTYPE2A = 'GLAT-TAN'", "P|0|CRVAL1A = 1", "P|0|CRVAL2A = 2", "P|0|CRPIX1A = 1", "P|0|CRPIX2A = 1", "P|0|CD1_1A  = -0.001", "P|0|CD2_2A  = 0.001", "ENC|FITS-WCS", "ASI|Iwc|1", "CC", "RW" );
+   CASE( "iwc_on_spectral", "P|0|NAXIS   = 3", "P|0|NAXIS1  = 100", "P|0|NAXIS2  = 200", "P|0|NAXIS3  = 10", "P|0|CRPIX1  = 50", "P|0|CRPIX2  = 100", "P|0|CRPIX3  = 1", "P|0|CRVAL1  = 10", "P|0|CRVAL2  = 20", "P|0|CRVAL3  = 1.0E9", "P|0|CDELT1  = -0.001", "P|0|CDELT2  = 0.001", "P|0|CDELT3  = 1.0E6", "P|0|RADESYS = 'ICRS'", "P|0|CTYPE1  = 'RA---TAN'", "P|0|CTYPE2  = 'DEC--TAN'", "P|0|CTYPE3  = 'FREQ'", "P|0|SPECSYS = 'BARYCENT'", "P|0|MJD-OBS = 55000.0", "ENC|FITS-WCS", "ASI|Iwc|1", "CC", "RN" );
+   CASE( "iwc_off_spectral", "P|0|NAXIS   = 3", "P|0|NAXIS1  = 100", "P|0|NAXIS2  = 200", "P|0|NAXIS3  = 10", "P|0|CRPIX1  = 50", "P|0|CRPIX2  = 100", "P|0|CRPIX3  = 1", "P|0|CRVAL1  = 10", "P|0|CRVAL2  = 20", "P|0|CRVAL3  = 1.0E9", "P|0|CDELT1  = -0.001", "P|0|CDELT2  = 0.001", "P|0|CDELT3  = 1.0E6", "P|0|RADESYS = 'ICRS'", "P|0|CTYPE1  = 'RA---TAN'", "P|0|CTYPE2  = 'DEC--TAN'", "P|0|CTYPE3  = 'FREQ'", "P|0|SPECSYS = 'BARYCENT'", "P|0|MJD-OBS = 55000.0", "ENC|FITS-WCS", "CC", "RN" );
+   CASE( "iwc_on_spectral_cunit", "P|0|NAXIS   = 3", "P|0|NAXIS1  = 100", "P|0|NAXIS2  = 200", "P|0|NAXIS3  = 10", "P|0|CRPIX1  = 50", "P|0|CRPIX2  = 100", "P|0|CRPIX3  = 1", "P|0|CRVAL1  = 10", "P|0|CRVAL2  = 20", "P|0|CRVAL3  = 1.0", "P|0|CDELT1  = -0.001", "P|0|CDELT2  = 0.001", "P|0|CDELT3  = 0.001", "P|0|RADESYS = 'ICRS'", "P|0|CTYPE1  = 'RA---TAN'", "P|0|CTYPE2  = 'DEC--TAN'", "P|0|CTYPE3  = 'FREQ'", "P|0|SPECSYS = 'BARYCENT'", "P|0|MJD-OBS = 55000.0", "P|0|CUNIT3  = 'GHz'", "ENC|FITS-WCS", "ASI|Iwc|1", "CC", "RN" );
+   CASE( "iwc_on_cunit", "P|0|NAXIS   = 2", "P|0|NAXIS1  = 100", "P|0|NAXIS2  = 10", "P|0|CRPIX1  = 50", "P|0|CRPIX2  = 1", "P|0|CRVAL1  = 10", "P|0|CRVAL2  = 3", "P|0|CDELT1  = 2.0", "P|0|CDELT2  = 0.5", "P|0|CTYPE1  = 'TIME'", "P|0|CUNIT1  = 's'", "P|0|CTYPE2  = 'DIST'", "P|0|CUNIT2  = 'm'", "ENC|FITS-WCS", "ASI|Iwc|1", "CC", "RN" );
    CASE( "warnings_tab_separated", "ASC|Warnings|BadKeyName\tBadKeyValue", "P|0|BAD%NAME= 1", "WN" );
    CASE( "warnings_bad_alt", "P|0|NAXIS   = 2", "P|0|NAXIS1  = 100", "P|0|NAXIS2  = 200", "P|0|CRPIX1  = 50", "P|0|CRPIX2  = 100", "P|0|CRVAL1  = 10", "P|0|CRVAL2  = 20", "P|0|CTYPE1  = 'RA---TAN'", "P|0|CTYPE2  = 'DEC--TAN'", "P|0|RADESYS = 'ICRS'", "P|0|CD1_1   = -0.001", "P|0|CD2_2   = 0.001", "P|0|CTYPE1A = 'RA---TAN'", "P|0|CTYPE2A = 'GLAT-TAN'", "P|0|CRVAL1A = 1", "P|0|CRVAL2A = 2", "P|0|CRPIX1A = 1", "P|0|CRPIX2A = 1", "ENC|FITS-WCS", "ASI|IgnoreBadAlt|1", "ASC|Warnings|BadAlt", "CC", "R", "WN" );
    CASE( "warnings_bad_alt_default", "P|0|NAXIS   = 2", "P|0|NAXIS1  = 100", "P|0|NAXIS2  = 200", "P|0|CRPIX1  = 50", "P|0|CRPIX2  = 100", "P|0|CRVAL1  = 10", "P|0|CRVAL2  = 20", "P|0|CTYPE1  = 'RA---TAN'", "P|0|CTYPE2  = 'DEC--TAN'", "P|0|RADESYS = 'ICRS'", "P|0|CD1_1   = -0.001", "P|0|CD2_2   = 0.001", "P|0|CTYPE1A = 'RA---TAN'", "P|0|CTYPE2A = 'GLAT-TAN'", "P|0|CRVAL1A = 1", "P|0|CRVAL2A = 2", "P|0|CRPIX1A = 1", "P|0|CRPIX2A = 1", "ENC|FITS-WCS", "ASI|IgnoreBadAlt|1", "CC", "R", "WN" );

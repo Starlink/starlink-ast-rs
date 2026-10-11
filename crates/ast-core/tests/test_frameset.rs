@@ -533,3 +533,49 @@ fn rate_on_frameset() {
     let r = fs.rate(&[1.0, 1.0], 1, 2).unwrap();
     assert!(r.abs() < 1e-6);
 }
+
+/// Adding a FrameSet re-roots its tree at its current Frame, as C's
+/// `astAddFrame` does, reversing the link on the way, which a native dump
+/// records as `Inv<n>`; reading the dump back gives the same transformation.
+#[test]
+fn add_frameset_reverses_links_and_round_trips() {
+    use ast_core::AnyObject;
+    let grid = BasicFrameBuilder::new(1).domain("GRID").build().unwrap();
+    let mut outer = FrameSet::new(Box::new(grid));
+
+    // An inner FrameSet: base A, current B, joined by a shift of 10.
+    let a = BasicFrameBuilder::new(1).domain("A").build().unwrap();
+    let b = BasicFrameBuilder::new(1).domain("B").build().unwrap();
+    let mut inner = FrameSet::new(Box::new(a));
+    inner
+        .add_frame(
+            FrameRef::Base,
+            Box::new(ShiftMap::new(vec![10.0])),
+            Box::new(b),
+        )
+        .unwrap();
+
+    // Join GRID to the inner current Frame B by a zoom of 2.
+    outer
+        .add_frameset(
+            FrameRef::Base,
+            Box::new(ZoomMap::new(1, 2.0).unwrap()),
+            inner,
+        )
+        .unwrap();
+    assert_eq!(outer.nframe(), 3);
+    assert_eq!(outer.current().domain(), "B");
+
+    let native = ast_core::to_native_string(&AnyObject::FrameSet(outer.clone())).unwrap();
+    assert!(native.contains("Inv2 = 1"), "{native}");
+    let AnyObject::FrameSet(back) = ast_core::from_native_string(&native).unwrap() else {
+        panic!("expected a FrameSet");
+    };
+
+    // GRID 3 -> B 6 -> A -4.
+    for fs in [&outer, &back] {
+        let map = fs.mapping(FrameRef::Index(1), FrameRef::Index(2)).unwrap();
+        let out = map.transform(&PointSet::from_rows([[3.0]]), true).unwrap();
+        assert_eq!(out.point(0)[0], -4.0);
+    }
+}

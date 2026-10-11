@@ -43,7 +43,7 @@ fn read_rfval(cards: &CardList, naxis: usize, s: char) -> Vec<Option<f64>> {
 /// - Mapping: pixel → world
 #[cfg(test)]
 pub(crate) fn decode_wcs(store: &FitsStore) -> AstResult<AnyObject> {
-    decode_wcs_inner(store, false, &CardList::new(), ' ', &mut Vec::new())
+    decode_wcs_inner(store, false, false, &CardList::new(), ' ', &mut Vec::new())
 }
 
 /// Inner decoder that also adds to `warnings` each warning raised (e.g. the
@@ -57,6 +57,7 @@ pub(crate) fn decode_wcs(store: &FitsStore) -> AstResult<AnyObject> {
 pub(crate) fn decode_wcs_inner(
     store: &FitsStore,
     def_b1950: bool,
+    iwc: bool,
     cards: &CardList,
     s: char,
     warnings: &mut Warnings,
@@ -73,6 +74,7 @@ pub(crate) fn decode_wcs_inner(
     // same current card, so these warnings precede the ones the axis decoders
     // raise below.
     let pixel_to_iwc = wcs_matrix::build_pixel_to_iwc(&mut store, cards, warnings)?;
+    let iwc_map = iwc.then(|| pixel_to_iwc.clone());
     let store = &store;
 
     // Step 2: Try to decode celestial axes.
@@ -98,6 +100,7 @@ pub(crate) fn decode_wcs_inner(
 
     // Step 4: Build the world frame (before consuming the decoders).
     let mut world_frame = build_world_frame(store, &celestial, &spectral)?;
+    let iwc_map = iwc_map.map(|m| (m, iwc_axis_units(store, &celestial, &spectral)));
 
     // Stamp the alternate-version character onto the world Frame's Ident, as
     // C `WcsMapFrm` does (`id[0] = s; astSetIdent(*frm, id)`,
@@ -136,7 +139,7 @@ pub(crate) fn decode_wcs_inner(
 
     // Step 8: Build the FrameSet.
     let mut frameset = FrameSet::new(pixel_frame);
-    frameset.add_frame(FrameRef::Base, full_mapping, world_frame)?;
+    add_wcs_frame(&mut frameset, store, s, full_mapping, world_frame, iwc_map)?;
 
     // Explicitly fix the GRID (pixel) Frame as the base, mirroring C
     // `astSetBase(ret, pixel)` (fitschan.c:11990). This marks the Base
@@ -171,6 +174,81 @@ pub(crate) fn decode_wcs_inner(
     dsb_set_up_in_frameset(&mut frameset, store)?;
 
     Ok(AnyObject::FrameSet(frameset))
+}
+
+/// Add the WCS Frame of axis description `s` to `fs`, connected to its
+/// base (pixel) Frame by `pixel_to_wcs`, and make it current. With
+/// `pixel_to_iwc` (the FitsChan's Iwc attribute set) a Frame of
+/// intermediate world coordinates, with Domain `IWC` followed by `s`, is
+/// added too, as C's `WcsFrame` and `AddFrame` add it
+/// (fitschan.c:38228-38246, 2777-2785): the two Frames form a FrameSet,
+/// WCS first, joined by the Mapping from WCS through pixel to IWC
+/// coordinates, which is added to `fs` through the pixel to IWC Mapping.
+fn add_wcs_frame(
+    fs: &mut FrameSet,
+    store: &FitsStore,
+    s: char,
+    pixel_to_wcs: DynMapping,
+    world_frame: DynFrame,
+    pixel_to_iwc: Option<(DynMapping, Vec<Option<String>>)>,
+) -> AstResult<()> {
+    let Some((map1, units)) = pixel_to_iwc else {
+        return fs.add_frame(FrameRef::Base, pixel_to_wcs, world_frame);
+    };
+    let wcsaxes = store.wcsaxes.unwrap_or(store.naxis);
+    let domain = if s == ' ' {
+        "IWC".to_string()
+    } else {
+        format!("IWC{s}")
+    };
+    let mut builder = BasicFrameBuilder::new(wcsaxes)
+        .title("FITS Intermediate World Coordinates")
+        .domain(&domain);
+    for (i, unit) in units.into_iter().enumerate() {
+        if let Some(unit) = unit {
+            builder = builder.unit(i + 1, unit);
+        }
+    }
+    let iwc_frame: DynFrame = Box::new(builder.build()?);
+    let mut wcs_to_pixel = pixel_to_wcs;
+    wcs_to_pixel.invert();
+    let joined: DynMapping = Box::new(CmpMap::new(
+        wcs_to_pixel,
+        map1.clone(),
+        Composition::Series,
+    )?);
+    let wcs_to_iwc = joined.simplify()?;
+    let mut pair = FrameSet::new(world_frame);
+    pair.add_frame(FrameRef::Base, wcs_to_iwc, iwc_frame)?;
+    let nframe = fs.nframe();
+    fs.add_frameset(FrameRef::Base, map1, pair)?;
+    // The WCS Frame, the first of the pair, is made current.
+    fs.set_current(FrameRef::Index(nframe + 1))
+}
+
+/// The units C gives the axes of the IWC Frame: degrees for celestial axes
+/// (`WcsCelestial`, fitschan.c:36482), the SpecFrame's unit for a spectral
+/// axis (`WcsSpectral`, :39919), and any CUNIT for the others (`WcsOthers`,
+/// :39248).
+fn iwc_axis_units(
+    store: &FitsStore,
+    celestial: &Option<CelestialResult>,
+    spectral: &Option<SpectralResult>,
+) -> Vec<Option<String>> {
+    (0..store.naxis)
+        .map(|i| {
+            if celestial
+                .as_ref()
+                .is_some_and(|c| c.lon_axis == i || c.lat_axis == i)
+            {
+                Some("deg".to_string())
+            } else if let Some(sp) = spectral.as_ref().filter(|sp| sp.axis == i) {
+                crate::frames::Frame::unit(&sp.frame, 1).ok()
+            } else {
+                store.cunit[i].clone()
+            }
+        })
+        .collect()
 }
 
 /// Run [`crate::frames::DSBSpecFrame::dsb_set_up`] on the DSBSpecFrame (if
@@ -498,11 +576,12 @@ pub(crate) fn decode_wcs_with_alts_inner(
     alts: &[(char, FitsStore)],
     def_b1950: bool,
     ignore_bad_alt: bool,
+    iwc: bool,
     cards: &CardList,
     warnings: &mut Warnings,
 ) -> AstResult<AnyObject> {
     // Step 1: build the primary FrameSet via the inner decoder.
-    let primary_obj = decode_wcs_inner(primary, def_b1950, cards, ' ', warnings)?;
+    let primary_obj = decode_wcs_inner(primary, def_b1950, iwc, cards, ' ', warnings)?;
     let mut fs = match primary_obj {
         AnyObject::FrameSet(f) => f,
         _ => unreachable!("decode_wcs always returns AnyObject::FrameSet"),
@@ -526,6 +605,7 @@ pub(crate) fn decode_wcs_with_alts_inner(
             // this plane's store is copied and the copy carries on downstream.
             let mut alt_store = alt_store.clone();
             let pixel_to_iwc = wcs_matrix::build_pixel_to_iwc(&mut alt_store, cards, warnings)?;
+            let iwc_map = iwc.then(|| pixel_to_iwc.clone());
             let alt_store = &alt_store;
             let rfval = read_rfval(cards, alt_store.naxis, *letter);
             let celestial = wcs_celestial::build_celestial_with_def_b1950(
@@ -543,6 +623,7 @@ pub(crate) fn decode_wcs_with_alts_inner(
             let alt_ref_pos_forced = celestial.as_ref().is_some_and(|c| c.ref_pos_forced);
             let spectral = wcs_spectral::build_spectral(alt_store);
             let mut world_frame = build_world_frame(alt_store, &celestial, &spectral)?;
+            let iwc_map = iwc_map.map(|m| (m, iwc_axis_units(alt_store, &celestial, &spectral)));
             // Simplify the pixel→world Mapping, mirroring C `astSimplify` on each
             // plane (and the primary path above) — `simplify()` sets the
             // has_been_simplified flag so the native dump writes `IsSimp = 1`.
@@ -565,7 +646,14 @@ pub(crate) fn decode_wcs_with_alts_inner(
 
             // add_frame moves `current` to the newly-added alt frame, so the
             // SkyRef/RefRA-RefDec/DSB stamps below target it.
-            trial.add_frame(FrameRef::Base, full_mapping, world_frame)?;
+            add_wcs_frame(
+                &mut trial,
+                alt_store,
+                *letter,
+                full_mapping,
+                world_frame,
+                iwc_map,
+            )?;
             set_sky_ref_from_celestial(&mut trial, alt_ref_pos, alt_ref_pos_forced)?;
 
             // SpecFrame RefRA/RefDec and DSBSpecFrame setup, exactly as for

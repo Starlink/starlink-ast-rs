@@ -237,6 +237,7 @@ fn run(fc: &mut FitsChan, op: &str, out: &mut String) {
                 "DefB1950" => (i32::from(fc.def_b1950()), fc.test_def_b1950()),
                 "PolyTan" => (fc.poly_tan(), fc.test_poly_tan()),
                 "IgnoreBadAlt" => (i32::from(fc.ignore_bad_alt()), fc.test_ignore_bad_alt()),
+                "Iwc" => (i32::from(fc.iwc()), fc.test_iwc()),
                 other => panic!("no int attribute {other}"),
             };
             format!("= {v} {}\n", i32::from(set))
@@ -258,6 +259,7 @@ fn run(fc: &mut FitsChan, op: &str, out: &mut String) {
                 "DefB1950" => fc.set_def_b1950(v != 0),
                 "PolyTan" => fc.set_poly_tan(v),
                 "IgnoreBadAlt" => fc.set_ignore_bad_alt(v != 0),
+                "Iwc" => fc.set_iwc(v != 0),
                 other => panic!("no int attribute {other}"),
             }
             String::new()
@@ -316,12 +318,27 @@ fn run(fc: &mut FitsChan, op: &str, out: &mut String) {
                 "DefB1950" => fc.clear_def_b1950(),
                 "PolyTan" => fc.clear_poly_tan(),
                 "IgnoreBadAlt" => fc.clear_ignore_bad_alt(),
+                "Iwc" => fc.clear_iwc(),
                 "Warnings" => fc.clear_warning_conditions(),
                 "AltAxes" => fc.clear_alt_axes(),
                 other => panic!("no attribute {other}"),
             }
             String::new()
         }
+        "RN" => result(fc.read(), |obj| match obj {
+            Some(obj) => {
+                let class = match obj {
+                    AnyObject::FrameSet(_) => "FrameSet",
+                    _ => "another class",
+                };
+                let mut out = format!("= {class}\n");
+                for line in ast_core::to_native_string(&obj).unwrap().lines() {
+                    out.push_str(&format!("|{line}\n"));
+                }
+                out
+            }
+            None => "= null\n".to_string(),
+        }),
         "RCIW" => result(fc.read(), |obj| match obj {
             Some(AnyObject::FrameSet(mut fs)) => {
                 fs.frame_mut(FrameRef::Index(arg(1).parse().unwrap()))
@@ -432,6 +449,18 @@ const EXCLUDED: &[(&str, &str)] = &[
          C's ReadCrval takes them from the header (CRVAL1B 0 at CRPIX1B 1), and \
          it adds an absolute description A for the offset alternate B, which C \
          does not write",
+    ),
+    (
+        "iwc_on_spectral",
+        "simplifying the inverse of the pixel to WCS Mapping followed by the \
+         pixel to IWC Mapping of a celestial and spectral header gives a \
+         Mapping equal to C's but structured differently: the port inverts \
+         the outer CmpMap where C inverts its components, and flags a ShiftMap \
+         as simplified",
+    ),
+    (
+        "iwc_on_spectral_cunit",
+        "as iwc_on_spectral, with CUNIT3 GHz",
     ),
     (
         "sao_not_sao_rw",

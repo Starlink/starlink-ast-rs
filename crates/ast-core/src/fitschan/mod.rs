@@ -139,6 +139,8 @@ pub struct FitsChan {
     warning_conditions: Option<String>,
     /// The AltAxes attribute, `None` when unset.
     alt_axes: Option<AltAxes>,
+    /// The Iwc attribute, `None` when unset.
+    iwc: Option<bool>,
     /// The transformations IntraMaps read here can name.
     intra: IntraRegistry,
     /// The last sequence number given to each keyword base by the NATIVE
@@ -174,6 +176,7 @@ impl FitsChan {
             ignore_bad_alt: None,
             warning_conditions: None,
             alt_axes: None,
+            iwc: None,
             keyseq: std::collections::HashMap::new(),
             clean: None,
             sip_ok: None,
@@ -206,6 +209,7 @@ impl FitsChan {
             ignore_bad_alt: None,
             warning_conditions: None,
             alt_axes: None,
+            iwc: None,
             keyseq: std::collections::HashMap::new(),
             clean: None,
             sip_ok: None,
@@ -1224,6 +1228,29 @@ impl FitsChan {
         self.alt_axes = None;
     }
 
+    /// Set the Iwc attribute: whether a FrameSet read with a foreign
+    /// encoding includes a Frame of FITS-WCS intermediate world coordinates
+    /// for each axis description, with Domain `IWC`, or `IWCa` for
+    /// alternate axes `a`.
+    pub fn set_iwc(&mut self, v: bool) {
+        self.iwc = Some(v);
+    }
+
+    /// The Iwc attribute (default false).
+    pub fn iwc(&self) -> bool {
+        self.iwc.unwrap_or(false)
+    }
+
+    /// Whether Iwc has been set.
+    pub fn test_iwc(&self) -> bool {
+        self.iwc.is_some()
+    }
+
+    /// Clear Iwc, restoring its default.
+    pub fn clear_iwc(&mut self) {
+        self.iwc = None;
+    }
+
     /// The read-only AllWarnings attribute: every condition the Warnings
     /// attribute accepts, in lower case, with a space before and after each.
     pub fn all_warning_conditions(&self) -> &'static str {
@@ -1553,6 +1580,7 @@ impl Channel for FitsChan {
                             &alts,
                             def_b1950,
                             self.ignore_bad_alt(),
+                            self.iwc(),
                             &self.cards,
                             &mut read_warnings,
                         )
@@ -1601,6 +1629,7 @@ impl Channel for FitsChan {
                             &alts,
                             def_b1950,
                             self.ignore_bad_alt(),
+                            self.iwc(),
                             &self.cards,
                             &mut read_warnings,
                         )
@@ -1643,6 +1672,7 @@ impl Channel for FitsChan {
                             &alts,
                             def_b1950,
                             self.ignore_bad_alt(),
+                            self.iwc(),
                             &self.cards,
                             &mut read_warnings,
                         )
@@ -1676,6 +1706,7 @@ impl Channel for FitsChan {
                         wcs_read::decode_wcs_inner(
                             &store,
                             def_b1950,
+                            self.iwc(),
                             &self.cards,
                             ' ',
                             &mut read_warnings,
@@ -1710,6 +1741,7 @@ impl Channel for FitsChan {
                         wcs_read::decode_wcs_inner(
                             &store,
                             def_b1950,
+                            self.iwc(),
                             &self.cards,
                             ' ',
                             &mut read_warnings,
@@ -1738,6 +1770,7 @@ impl Channel for FitsChan {
                         wcs_read::decode_wcs_inner(
                             &store,
                             def_b1950,
+                            self.iwc(),
                             &self.cards,
                             ' ',
                             &mut read_warnings,

@@ -2,6 +2,9 @@
 
 ## Revision history
 
+- **2026-10-11 (rev 25)**: Added FitsChan's Iwc attribute (`iwc`,
+  `set_iwc`, `test_iwc`, `clear_iwc`) and `FrameSet::add_frameset`, the
+  form of C `astAddFrame` that adds every Frame of another FrameSet.
 - **2026-10-11 (rev 24)**: Added FitsChan's AltAxes attribute as the
   `AltAxes` enum (`All`, `Ident`, `None`, exported from the crate root)
   with `alt_axes`, `set_alt_axes`, `test_alt_axes` and `clear_alt_axes`.

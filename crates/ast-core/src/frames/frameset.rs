@@ -39,6 +39,25 @@ struct Edge {
     to: usize,
     /// Mapping that transforms coordinates from `from` to `to`.
     mapping: DynMapping,
+    /// The Invert attribute of the Mapping object C stores for this link,
+    /// which C's separate per-link flag (`invert[]`, written as `Inv<n>`)
+    /// overrides when the link is used: `mapping` is that object with its
+    /// Invert set to the flag. The two differ only after the link has been
+    /// reversed, as merging a FrameSet does.
+    object_invert: bool,
+}
+
+impl Edge {
+    /// A link whose Mapping object is stored as it is used.
+    fn new(from: usize, to: usize, mapping: DynMapping) -> Self {
+        let object_invert = mapping.is_inverted();
+        Edge {
+            from,
+            to,
+            mapping,
+            object_invert,
+        }
+    }
 }
 
 impl fmt::Debug for Edge {
@@ -131,6 +150,7 @@ impl Clone for FrameSet {
                     from: e.from,
                     to: e.to,
                     mapping: e.mapping.clone(),
+                    object_invert: e.object_invert,
                 })
                 .collect(),
             base_idx: self.base_idx,
@@ -340,12 +360,91 @@ impl FrameSet {
         self.node_map.push(new_node);
         self.frame_variants.push(None);
         self.varfrm.push(0);
-        self.edges.push(Edge {
-            from: anchor_node,
-            to: new_node,
-            mapping: map,
-        });
+        self.edges.push(Edge::new(anchor_node, new_node, map));
         self.current_idx = self.frames.len() - 1;
+        self.current_set = true;
+        Ok(())
+    }
+
+    /// Add every Frame of `other` to the FrameSet, connecting `anchor` to
+    /// the current Frame of `other` via `map`; the current Frame of `other`
+    /// becomes the current Frame. Mirrors the FrameSet branch of C
+    /// `astAddFrame` (frameset.c:1360-1620): the Frames and nodes of `other`
+    /// are appended, its tree is re-rooted at its current Frame by reversing
+    /// each link on the path from that Frame to its first node, and the new
+    /// link is made from `anchor`.
+    pub fn add_frameset(
+        &mut self,
+        anchor: FrameRef,
+        map: DynMapping,
+        other: FrameSet,
+    ) -> AstResult<()> {
+        let anchor_idx = self.resolve(anchor)?;
+        if map.nin() != self.frames[anchor_idx].naxes() || map.nout() != other.current().naxes() {
+            return Err(AstError::new_tracked(
+                ErrorCode::Ncpin,
+                "astAddFrame(FrameSet): the Mapping does not match the Frames it connects",
+            ));
+        }
+        let anchor_node = self.node_map[anchor_idx];
+        let nframe0 = self.frames.len();
+        let node_zero = self.nnode;
+        let current = other.current_idx + nframe0;
+        let FrameSet {
+            frames,
+            edges,
+            frame_variants,
+            varfrm,
+            nnode,
+            node_map,
+            ..
+        } = other;
+        self.frames.extend(frames);
+        self.frame_variants.extend(frame_variants);
+        self.varfrm.extend(
+            varfrm
+                .into_iter()
+                .map(|v| if v > 0 { v + nframe0 } else { 0 }),
+        );
+        self.node_map
+            .extend(node_map.into_iter().map(|n| n + node_zero));
+        let mut new_edges: Vec<Edge> = edges
+            .into_iter()
+            .map(|e| Edge {
+                from: e.from + node_zero,
+                to: e.to + node_zero,
+                mapping: e.mapping,
+                object_invert: e.object_invert,
+            })
+            .collect();
+
+        // Reverse each link on the path from the current Frame's node to the
+        // first node, inverting its Mapping, so the current node is free to
+        // take the new link.
+        let current_node = self.node_map[current];
+        let mut node = current_node;
+        while node != node_zero {
+            let k = new_edges
+                .iter()
+                .position(|e| e.to == node)
+                .expect("every node but the first has a parent link");
+            let mut e = new_edges.remove(k);
+            let parent = e.from;
+            e.mapping.invert();
+            new_edges.push(Edge {
+                from: node,
+                to: parent,
+                mapping: e.mapping,
+                object_invert: e.object_invert,
+            });
+            node = parent;
+        }
+        new_edges.push(Edge::new(anchor_node, current_node, map));
+        self.edges.extend(new_edges);
+        // C keeps each node's link at the node's own index.
+        self.edges.sort_by_key(|e| e.to);
+        self.nnode += nnode;
+        self.current_idx = current;
         self.current_set = true;
         Ok(())
     }
@@ -385,11 +484,7 @@ impl FrameSet {
                 Composition::Parallel,
             )?;
             let mapping = <dyn Mapping>::simplify(&cmp)?;
-            new_edges.push(Edge {
-                from: edge.from,
-                to: edge.to,
-                mapping,
-            });
+            new_edges.push(Edge::new(edge.from, edge.to, mapping));
         }
         self.edges = new_edges;
         Ok(())
@@ -497,11 +592,7 @@ impl FrameSet {
         // edges touched it, so TidyNodes can later prune it.
         let new_node = self.nnode;
         self.nnode += 1;
-        self.edges.push(Edge {
-            from: old_node,
-            to: new_node,
-            mapping: map,
-        });
+        self.edges.push(Edge::new(old_node, new_node, map));
         self.node_map[idx] = new_node;
 
         // Run TidyNodes to remove any node that, after the remap, is
@@ -638,11 +729,7 @@ impl FrameSet {
             let (a, b) = if e1 > e2 { (e1, e2) } else { (e2, e1) };
             self.edges.remove(a);
             self.edges.remove(b);
-            self.edges.push(Edge {
-                from: mid_a,
-                to: mid_b,
-                mapping: simplified,
-            });
+            self.edges.push(Edge::new(mid_a, mid_b, simplified));
 
             // Renumber nodes to close the gap left by the removed
             // node (so `nnode` stays compact and node indices are
@@ -2198,6 +2285,14 @@ impl Serializable for FrameSet {
                 edge.from + 1,
             );
             node.push_int(&key, (edge.from + 1) as i64, Some(comment));
+            // C writes the link's Invert flag only when the inverse is used.
+            if edge.mapping.is_inverted() {
+                node.push_int(
+                    &format!("Inv{}", edge.to + 1),
+                    1,
+                    Some("The inverse mapping is used".to_string()),
+                );
+            }
         }
 
         // Frm{i+1} — each frame as a nested object. C writes a frame's Variants
@@ -2232,7 +2327,15 @@ impl Serializable for FrameSet {
         // Map{node+1} — each edge mapping as a nested object.
         for edge in &self.edges {
             let key = format!("Map{}", edge.to + 1);
-            let map_node = MappingToNode::to_node(edge.mapping.as_ref())?;
+            // The object is written with its own Invert attribute; the link's
+            // flag is the `Inv<n>` above.
+            let map_node = if edge.mapping.is_inverted() == edge.object_invert {
+                MappingToNode::to_node(edge.mapping.as_ref())?
+            } else {
+                let mut object = edge.mapping.clone();
+                object.invert();
+                MappingToNode::to_node(object.as_ref())?
+            };
             let comment = format!(
                 "Mapping between nodes {} and {}",
                 edge.from + 1,
@@ -2328,12 +2431,20 @@ impl Serializable for FrameSet {
             let map_node = node.get_object(&map_key).ok_or_else(|| {
                 AstError::new(ErrorCode::Lderr, format!("FrameSet: missing {map_key}"))
             })?;
-            let mapping = mapping_from_node(map_node)?;
+            let mut mapping = mapping_from_node(map_node)?;
+            // The link uses the object with its Invert attribute set to the
+            // link's flag.
+            let object_invert = mapping.is_inverted();
+            let invert = node.get_int(&format!("Inv{}", inode + 1), 0) != 0;
+            if invert != object_invert {
+                mapping.invert();
+            }
 
             edges.push(Edge {
                 from: parent - 1, // 0-based node index
                 to: inode,        // 0-based node index
                 mapping,
+                object_invert,
             });
         }
 
