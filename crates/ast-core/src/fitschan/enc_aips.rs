@@ -322,7 +322,7 @@ pub(crate) fn write_to_cards(
         // MJD-OBS is left in place untouched. Mirror that exactly:
         // mark the existing card used so the sweep keeps it, but do
         // NOT re-emit. Re-emitting would round-trip the value through
-        // SkyFrame::epoch (TDB) and back via `tdb_mjd_to_utc`, which
+        // SkyFrame::epoch (TDB) and back via `epoch::tdb_conv`, which
         // is asymmetric in the rubber-second era (pre-MJD-41317).
         // See `docs/issues/c-library-quirks.md` for the C-library
         // origin of that asymmetry.

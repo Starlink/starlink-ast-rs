@@ -1319,6 +1319,29 @@ The string-to-complex conversions tested for one value from the reads `"%lf %lf 
 Fixed on `u/timj/norm-unit` in 4d24a55c; `testfitschan` `testcnvtype`.
 The port's `card_value::cnv_type` is `CnvType` as fixed; `tests/test_fitschan_cursor_oracle.rs` (the `conversions` case), whose probe needs the fixed library.
 
+### RESOLVED (upstream f550fcc6): a padded TIMESYS is not recognised when writing, so the date is written in UTC
+
+C location: `fitschan.c` `SkySys`.
+
+`SkySys` writes the date of observation in the timescale the FitsChan's TIMESYS card names.
+It compared the value with "UTC" and passed it to `TimeSysToAst` as the card held it, so a value padded with blanks, as FITS writers usually pad it (`'TAI     '`), named no timescale AST supports.
+MJD-OBS and DATE-OBS were then written in UTC under a TIMESYS naming another timescale, 37 seconds out for TAI and over a minute for TCB, with a `badval` warning; `WcsFcRead` removes the padding when it reads TIMESYS, so only a write was affected.
+
+Fixed on `u/timj/norm-unit` in f550fcc6: the padding is removed first; `testfitschan` `testpaddedtimesys`.
+The wcsconv reference `cname.fits-wcs`, whose header has `TIMESYS = 'TAI     '`, recorded the UTC DATE-OBS and was updated in the same commit.
+The port's `WriteAttrs::timesys` holds the value without its padding; `tests/test_fitschan_cursor_oracle.rs` (the `sky_timesys_tcb_padded_rw` cases), whose probe needs the fixed library.
+
+### RESOLVED (upstream 9e8e10af): the EQUINOX of ecliptic axes is ignored when reading and written as an MJD
+
+C location: `fitschan.c` `WcsSkyFrame` and `SkySys`.
+
+`WcsSkyFrame` tested for ecliptic axes with the system code `"ECL"`, but `WcsCelestial` gives ecliptic axes the code `"E"`, so the test never held: the EQUINOX of an ecliptic header was ignored, leaving the SkyFrame at J2000, and no `noequinox` warning was given for a default equinox.
+`SkySys` stored the Equinox of an ecliptic SkyFrame without converting it from an MJD to an epoch, so EQUINOX was written as 51544.5 for J2000, harmless only while the reader ignored it.
+
+Fixed on `u/timj/norm-unit` in 9e8e10af: both tests use `"E"`, the warning also requiring an equinox (with neither RADESYS nor EQUINOX and DefB1950 false there is none), and `SkySys` writes the Besselian or Julian epoch `WcsSkyFrame` reads it as, an EQUINOX below 1984.0 being Besselian when there is no RADESYS; `testfitschan` `testeclipticequinox`.
+The wcsconv references `multi-wcs.fits-wcs` and `ecliptic-tan.fits-aips` recorded the MJD and were updated in the same commit.
+The port's `wcs_celestial::wcs_sky_frame` and `sky_sys::fits_equinox_year` are the functions as fixed; `tests/test_fitschan_cursor_oracle.rs` (the `sky_ecliptic_*` cases), whose probe needs the fixed library.
+
 ### RESOLVED (upstream 60893889): a negative value written with one leading blank and no decimal point loses its sign
 
 C location: `fitschan.c` `EncodeFloat`.
@@ -2283,7 +2306,7 @@ does re-emit, and would exhibit the drift visibly.
 
 **Rust mirror:** `crates/ast-core/src/mappings/timemap.rs`
 (`ast_dat`) preserves the C divisors verbatim — necessary because
-`fset_to_store::sky_sys` calls `tdb_mjd_to_utc` whose inverse path
+`fset_to_store::sky_sys` calls `epoch::tdb_conv` (C's `TDBConv`) whose inverse path
 hits this code, and downstream tests compare bit-for-bit against
 C-generated golden output. Our `enc_aips`, `enc_iraf`, and
 `enc_aips++` writers mark the input MJD-OBS card used (so the
@@ -2291,8 +2314,8 @@ sweep doesn't drop it) but do not re-emit it, exactly mirroring
 C's intent.
 
 **Evidence:** added probe at MJD 40000 confirmed
-`utc_mjd_to_tdb(40000.0) = 40000.000447495673143` and
-`tdb_mjd_to_utc(0.000447...) = 40000.000001894462912`. Round-trip
+the UTC to TDB conversion of 40000.0 gave 40000.000447495673143, and
+the conversion back gave 40000.000001894462912. Round-trip
 delta = 1.894e-6 day. The same delta appears in C if you wire up a
 direct `TDBConv(TDBConv(40000.0, AST__UTC, 0), AST__UTC, 1)` test.
 

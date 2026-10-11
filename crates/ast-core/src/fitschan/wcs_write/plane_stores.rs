@@ -56,7 +56,8 @@ pub(crate) fn collect_plane_stores(
     // !primok ) ret = FreeStore( ret, ... )` (fitschan.c:12358), leaving
     // `Write` with nothing to encode. The alternates are not even
     // attempted, matching C's `if( primok && astOK && ... )` at 12262.
-    let (primary_store, primok) = fset_to_store(fs, dim, encoding, ' ', primary_crvals, attrs)?;
+    let (primary_store, primok) =
+        fset_to_store(fs, dim, encoding, ' ', primary_crvals, attrs.clone())?;
     if !primok {
         return Ok(planes);
     }
@@ -95,7 +96,8 @@ pub(crate) fn collect_plane_stores(
         // empty slice — `fset_to_store` will fall back to the
         // central-pixel default. A future commit can plumb
         // alt_crvals through the encode_wcs entry point.
-        let (alt_store, alt_ok) = fset_to_store(&alt_fs, dim, encoding, *letter, &[], attrs)?;
+        let (alt_store, alt_ok) =
+            fset_to_store(&alt_fs, dim, encoding, *letter, &[], attrs.clone())?;
         if !alt_ok {
             continue;
         }
@@ -112,7 +114,8 @@ pub(crate) fn collect_plane_stores(
     if primary_isoff && next_letter <= b'Z' {
         let letter = next_letter as char;
         next_letter += 1;
-        let (abs_store, abs_ok) = fset_to_store_absolute(fs, dim, encoding, letter, &[], attrs)?;
+        let (abs_store, abs_ok) =
+            fset_to_store_absolute(fs, dim, encoding, letter, &[], attrs.clone())?;
         if abs_ok {
             planes.push(PlaneStore {
                 letter,
@@ -131,7 +134,7 @@ pub(crate) fn collect_plane_stores(
             let mut alt_fs = fs.clone();
             alt_fs.set_current(FrameRef::Index(*frame_idx_1based))?;
             let (abs_store, abs_ok) =
-                fset_to_store_absolute(&alt_fs, dim, encoding, letter, &[], attrs)?;
+                fset_to_store_absolute(&alt_fs, dim, encoding, letter, &[], attrs.clone())?;
             if abs_ok {
                 planes.push(PlaneStore {
                     letter,

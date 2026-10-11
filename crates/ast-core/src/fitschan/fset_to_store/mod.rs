@@ -57,13 +57,17 @@ pub(crate) const FITS_TOL_DEFAULT: f64 = 0.1;
 
 /// The FitsChan attributes C's `AddVersion` reads while it builds a
 /// FitsStore.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct WriteAttrs {
     /// FitsTol: the largest departure from linearity, in pixels, allowed
     /// in a linear description of the pixel to IWC Mapping.
     pub fits_tol: f64,
     /// SipOK: whether distortion may be described by SIP coefficients.
     pub sip_ok: bool,
+    /// The value of the FitsChan's TIMESYS card, whether or not a read has
+    /// used it, without the blanks that pad it: the timescale `SkySys`
+    /// writes the date of observation in.
+    pub timesys: Option<String>,
 }
 
 impl Default for WriteAttrs {
@@ -71,6 +75,7 @@ impl Default for WriteAttrs {
         WriteAttrs {
             fits_tol: FITS_TOL_DEFAULT,
             sip_ok: true,
+            timesys: None,
         }
     }
 }
@@ -245,6 +250,7 @@ fn fset_to_store_impl(
         axis_done: &mut axis_done,
         isoff,
         fits_tol,
+        timesys: attrs.timesys.as_deref(),
     })?;
 
     let spec_seg = spectral_axes(SpectralAxesArgs {

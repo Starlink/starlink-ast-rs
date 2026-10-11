@@ -341,7 +341,7 @@ have their own section above.
 | `NearestPix` | 6 | ported as `spectral_axes::nearest_pix_value` |
 | `AddVersion` | 7 | ported as `wcs_write::encode_wcs` (which iterates per coord-version letter) |
 | `FindWcs` | 7 | ported as `card_list::is_findwcs_keyword` (the keyword classifier) |
-| `TDBConv` | 7 | ported as `wcs_write::tdb_mjd_to_utc` / `utc_mjd_to_tdb` |
+| `TDBConv` | 7 | ported as `epoch::tdb_conv` |
 | `CLASSFromStore` | 9 | ported as `enc_class::write_to_cards` |
 | `TidyOffsets` | 9 | ported as `wcs_read::tidy_offsets` |
 | `IsSkyOff` | 11 | ported as `sky_sys::is_sky_off` |

@@ -127,26 +127,10 @@ pub(crate) fn build_spectral(store: &FitsStore) -> Option<SpectralResult> {
         frame.set_rest_freq(restfrq);
     }
 
-    // MJD-OBS → SpecFrame Epoch via TDBConv. Mirrors C's
-    // `ChooseEpoch` (fitschan.c:6143-6146) which always returns a TDB
-    // MJD, regardless of TIMESYS. Without this conversion the
-    // SpecFrame's `add_sor_to_helio` / `add_helio_to_sor` chains run
-    // with a UTC epoch and the topocentric Doppler correction is
-    // wrong by ~63 s × Earth-orbit-rate.
-    if let Some(raw_mjd) = store.mjdobs {
-        let tdb_mjd = match store.timesys.as_deref() {
-            Some(s) if s.eq_ignore_ascii_case("TDB") => raw_mjd,
-            Some(s) if s.eq_ignore_ascii_case("TT") => {
-                raw_mjd + crate::fitschan::wcs_write::tdb_minus_tt_seconds(raw_mjd) / 86_400.0
-            }
-            Some(s) if s.eq_ignore_ascii_case("TAI") => {
-                let tt = raw_mjd + 32.184 / 86_400.0;
-                tt + crate::fitschan::wcs_write::tdb_minus_tt_seconds(tt) / 86_400.0
-            }
-            // UTC (default), UT1, or unknown: convert via UTC→TDB.
-            _ => crate::fitschan::wcs_write::utc_mjd_to_tdb(raw_mjd),
-        };
-        frame.set_epoch_mjd(tdb_mjd);
+    // The date of observation, as C's `ChooseEpoch` gives it.
+    let mut epoch_warnings: Warnings = Vec::new();
+    if let Some(mjd) = super::epoch::choose_epoch(store, &mut epoch_warnings).ok()? {
+        frame.set_epoch_mjd(mjd);
     }
 
     // OBSGEO-X/Y/Z → ObsLon/ObsLat/ObsAlt. Mirrors C
@@ -215,13 +199,13 @@ pub(crate) fn build_spectral(store: &FitsStore) -> Option<SpectralResult> {
     // call the algorithm-specific builder (mirrors C `WcsSpectral`
     // dispatch at fitschan.c:39593-39610).
     let crval = store.crval[axis].unwrap_or(0.0);
-    let mut warnings: Warnings = Vec::new();
+    let mut warnings: Warnings = epoch_warnings;
     let mapping: DynMapping = if algcode.is_empty() {
         Box::new(ShiftMap::new(vec![crval]))
     } else if is_nonlin_x2p(&algcode) {
         match nonlin_spec_wcs(&algcode, &frame, crval) {
             Ok((map, warns)) => {
-                warnings = warns;
+                warnings.extend(warns);
                 // Fallback: emit a linear shift if we couldn't build the
                 // non-linear mapping (mirrors C's "unable to implement
                 // algorithm" branch — but C errors out; we degrade to

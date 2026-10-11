@@ -23,61 +23,6 @@ use crate::frames::{Frame, SkyFrame, SkySystem};
 use crate::mappings::{CmpMap, Composition, DynMapping, Mapping, PermMap, UnitMap, WcsMap, WinMap};
 use crate::wcslib::WcsProjection;
 
-/// Apply C `WcsSkyFrame`'s NORADEC + DefB1950 fallback rule to a
-/// SkyFrame whose RADESYS / EQUINOX / MJD-OBS are all unset. Mirrors
-/// the second-pass logic in fitschan.c:39168-39316:
-///
-/// - When the CTYPE is equatorial and DefB1950 is true:
-///   `radesys = FK4`, `equinox = B1950` (fitschan.c:39184-39187).
-///   The SkyFrame's `System` is set to FK4 and `Equinox` to the
-///   B1950 MJD (line 39316, gated by `sys=="EQU"`).
-/// - For *every* system (EQU, ECL, Galactic, …) the SkyFrame's
-///   `Epoch` is set to the equinox MJD when MJD-OBS is unset
-///   (fitschan.c:39222-39231 + 39311) — so a Galactic alt plane
-///   under DefB1950 still gets `Epoch=B1950 MJD`, just with
-///   `System=Galactic` and no Equinox.
-/// - Ecliptic also gets `Equinox=B1950 MJD` (line 39315).
-///
-/// Without these the SkyFrame ends up with `System=ICRS` (or
-/// Galactic) and a Java-default Epoch of J2000, which on a later
-/// `astConvert` ICRS↔FK5 produces large (degree-scale) errors via
-/// the FK4↔FK5 path that picks the wrong frame tie.
-fn apply_b1950_fallback_if_needed(store: &FitsStore, sky_frame: &mut SkyFrame, def_b1950: bool) {
-    if !def_b1950 {
-        return;
-    }
-    if store.radesys.is_some() || store.equinox.is_some() || store.mjdobs.is_some() {
-        return;
-    }
-    let mjd_b1950 = crate::pal::epb2d(1950.0);
-    let sys = sky_frame.system();
-    let is_equ = matches!(
-        sys,
-        crate::frames::SkySystem::Fk5
-            | crate::frames::SkySystem::Fk4
-            | crate::frames::SkySystem::Fk4NoE
-            | crate::frames::SkySystem::Icrs
-            | crate::frames::SkySystem::Gappt
-    );
-    let is_ecl = matches!(
-        sys,
-        crate::frames::SkySystem::Ecliptic | crate::frames::SkySystem::Helioecliptic
-    );
-
-    if is_equ {
-        // C: radesys = FK4 (fitschan.c:39186), system stored as FK4
-        // when astSkyFrame is built (line 39249).
-        sky_frame.set_system(crate::frames::SkySystem::Fk4);
-        sky_frame.set_equinox_mjd(mjd_b1950);
-    } else if is_ecl {
-        sky_frame.set_equinox_mjd(mjd_b1950);
-    }
-    // Epoch is set on every system (fitschan.c:39311) — the
-    // ChooseEpoch fallback gives equinox MJD to all SkyFrames when
-    // MJD-OBS is missing.
-    sky_frame.set_epoch_mjd(mjd_b1950);
-}
-
 /// Result of building the celestial axes from a FitsStore.
 pub(crate) struct CelestialResult {
     /// Mapping from IWC (celestial subset, in degrees) to sky (radians).
@@ -99,10 +44,6 @@ pub(crate) struct CelestialResult {
     /// (fitschan.c:36220-36221), bypassing the `astTestSkyRef` gate that
     /// guards the CRVAL / RFVAL path (fitschan.c:36103).
     pub ref_pos_forced: bool,
-    /// Warning messages to emit as ASTWARN cards (mirrors C `Warn`, e.g. the
-    /// `badcel` condition for an unrecognised celestial system prefix,
-    /// fitschan.c:39358).
-    pub warnings: Warnings,
 }
 
 /// The celestial axes of an axis description, as C's `WcsCelestial`
@@ -114,6 +55,9 @@ struct CelestialAxes {
     lat: usize,
     /// The projection both axes name.
     proj: WcsProjection,
+    /// C's `wcscelestial_type`: "EQU", "AZL", or the one- or two-character
+    /// system code the CTYPE values hold.
+    sys: String,
     /// Whether a CTYPE too short to name a projection made the axes linear
     /// (C's local `carlin` forced on).
     forced_car_lin: bool,
@@ -254,6 +198,7 @@ fn find_celestial_axes(store: &FitsStore, s: char) -> AstResult<Option<Celestial
                 lon: ilon,
                 lat: ilat,
                 proj: lonprj,
+                sys: lonsys,
                 forced_car_lin,
             }))
         }
@@ -278,15 +223,16 @@ fn find_celestial_axes(store: &FitsStore, s: char) -> AstResult<Option<Celestial
 /// Returns `None` if no celestial axis pair is found.
 #[cfg(test)]
 pub(crate) fn build_celestial(store: &FitsStore) -> Option<CelestialResult> {
-    build_celestial_with_def_b1950(store, ' ', false, None).unwrap()
+    build_celestial_with_def_b1950(store, ' ', false, None, &mut Vec::new()).unwrap()
 }
 
 /// Encoding-aware variant. `s` is the version character of the axis
 /// description (a blank for the primary one). `def_b1950` mirrors the FitsChan
 /// `DefB1950` attribute (fitschan.c:42288): true for FITS-PC /
 /// FITS-IRAF / FITS-AIPS / FITS-AIPS++ / FITS-CLASS / DSS, false
-/// for FITS-WCS. Triggers the NORADEC fallback (`apply_b1950_fallback_if_needed`)
-/// when the alt-plane SkyFrame has no RADESYS / EQUINOX / MJD-OBS.
+/// for FITS-WCS, used by `wcs_sky_frame` when there is neither RADESYS nor
+/// EQUINOX. Warnings are added to `warnings` as C's `Warn` adds them, so
+/// those raised before an error are kept.
 ///
 /// `rfval` carries the `RFVAL<i>` values (degrees, 0-based FITS axis) read
 /// straight off the card list, unmarked, the way C's `GetValue` does at the
@@ -297,6 +243,7 @@ pub(crate) fn build_celestial_with_def_b1950(
     s: char,
     def_b1950: bool,
     rfval: Option<&[Option<f64>]>,
+    warnings: &mut Warnings,
 ) -> AstResult<Option<CelestialResult>> {
     // Step 1: Find the celestial axis pair and its projection, as C's
     // `WcsCelestial` does, reporting the errors it reports.
@@ -304,6 +251,7 @@ pub(crate) fn build_celestial_with_def_b1950(
         lon: lon_axis,
         lat: lat_axis,
         proj,
+        sys,
         forced_car_lin,
     }) = find_celestial_axes(store, s)?
     else {
@@ -322,11 +270,6 @@ pub(crate) fn build_celestial_with_def_b1950(
     // `WcsCelestial` (fitschan.c:35458) which builds the celestial
     // contribution as an N-axis mapping at the top level.
     let mut wcsmap = WcsMap::new(store.naxis, proj, lon_axis + 1, lat_axis + 1)?;
-
-    // Warning messages to emit as ASTWARN cards, in generation order — C
-    // appends them to the FitsChan as each `Warn` call is reached, and the
-    // `badpv` ones below come before `badcel`.
-    let mut warnings: Warnings = Vec::new();
 
     // Store the supplied PVi_m projection parameters on the WcsMap, warning
     // for any the projection cannot use. Mirrors C `WcsCelestial`
@@ -382,292 +325,6 @@ pub(crate) fn build_celestial_with_def_b1950(
         }
     }
 
-    // Classify the longitude CTYPE prefix.
-    let lon_ctype_prefix = store.ctype[lon_axis]
-        .as_deref()
-        .map(|c| c.trim().to_ascii_uppercase());
-    let lon_cel_kind = lon_ctype_prefix.as_deref().and_then(classify_ctype_prefix);
-
-    // Detect whether the CTYPE prefix indicates an offset sky frame
-    // (CTYPE = OFLN/OFLT). C `WcsSkyFrame` (fitschan.c:39277) tags
-    // the resulting SkyFrame with Domain = SKY_OFFSETS so TidyOffsets
-    // can identify it.
-    let ctype_is_offset = lon_cel_kind == Some(CelKind::OffsetSky);
-
-    // Step 4: Determine the coordinate system from RADESYS.
-    //
-    // C `WcsSkyFrame` (fitschan.c:39259-39277) treats the `OF` (offset
-    // sky) CTYPE code as an *unknown* spherical system: it builds the
-    // SkyFrame with `System=UNKNOWN`, sets the axis Symbols to
-    // OFLN / OFLT, and tags the Frame with Domain=SKY_OFFSETS. It does
-    // NOT consult RADESYS, and (per the EQU/ECL gate at 39305-39312)
-    // does NOT store EQUINOX. The underlying absolute system is recovered
-    // later via the SkyRef / SkyRefP reference position and the
-    // FrameSet-integrity re-mapping driven by SkyRefIs.
-    let system = if ctype_is_offset {
-        SkySystem::Unknown
-    } else {
-        determine_sky_system(store)
-    };
-
-    // Step 5: Create SkyFrame. When the FITS header places latitude
-    // ahead of longitude in the parent CmpFrame layout (lat_axis <
-    // lon_axis, e.g. CTYPE1='DEC--TAN', CTYPE2='RA---TAN' on
-    // sip-3d-swap), permute the SkyFrame's own axes so external
-    // axis 0 = latitude, axis 1 = longitude. The IWC→world mapping
-    // pipeline (`build_general_iwc_to_world`) already PermMaps the
-    // celestial outputs into FITS axis order (DEC at 0, RA at 1 in
-    // this case), so the SkyFrame's external layout has to agree
-    // with that routing — otherwise the writer's
-    // `celestial_axes()` reports the wrong (lon_axis, lat_axis)
-    // pair and re-emits RA at FITS axis 1 instead of DEC at axis 0.
-    // Mirrors `astSet(skyframe, "AxisPerm=...")` in C.
-    //
-    // C always constructs the SkyFrame with an explicit `"System=..."`
-    // attribute setting string: every branch of `WcsSkyFrame` calls
-    // `astSkyFrame("System=...")` (fitschan.c:39294-39328), including
-    // `System=ICRS` at 39314 and `System=UNKNOWN` at 39328, so
-    // `astTestSystem` is true afterwards for every result.
-    // `SkyFrame::new` alone leaves `system_set = false` for
-    // `SkySystem::Icrs` (the SkyFrame's own unset-attribute default), so
-    // call `set_system` explicitly to mark System as set regardless of
-    // which system was chosen.
-    let mut sky_frame = SkyFrame::new(system);
-    sky_frame.set_system(system);
-    if lat_axis < lon_axis {
-        // perm_axes is 1-based: [2, 1] swaps so that external axis
-        // 1 maps from the original axis 2 (lat) and external axis
-        // 2 maps from axis 1 (lon).
-        let _ = crate::frames::Frame::perm_axes(&mut sky_frame, &[2, 1]);
-    }
-
-    // For an offset (`OF`) or otherwise unknown celestial prefix, set
-    // the axis Symbols from the system code. Mirrors C `WcsSkyFrame`
-    // (fitschan.c:39325-39342): for a 1-char system prefix `x`, symbols
-    // are `xLON`/`xLAT`; for a 2-char prefix `xy`, symbols are
-    // `xyLN`/`xyLT`. The `OF` case uses the same 2-char path and is
-    // handled identically here (Domain=SKY_OFFSETS is set below).
-    if matches!(
-        lon_cel_kind,
-        Some(CelKind::Unknown) | Some(CelKind::OffsetSky)
-    ) {
-        // Extract the raw system prefix from the CTYPE (before the `-`
-        // at position 4). The CTYPE is already upper-cased in
-        // lon_ctype_prefix.
-        let ctype_raw = lon_ctype_prefix.as_deref().unwrap_or("XLON");
-        let bytes = ctype_raw.as_bytes();
-        // 1-char prefix: bytes[1..4] == b"LON", so bytes[0] is the char.
-        // 2-char prefix: bytes[2..4] == b"LN", so bytes[0..2] is the code.
-        let (lon_sym, lat_sym) = if bytes.len() >= 4 && &bytes[1..4] == b"LON" {
-            // 1-char system prefix (fitschan.c:39328-39334).
-            let c = bytes[0] as char;
-            (format!("{c}LON"), format!("{c}LAT"))
-        } else {
-            // 2-char system prefix (fitschan.c:39336-39342).
-            let c0 = bytes[0] as char;
-            let c1 = bytes[1] as char;
-            (format!("{c0}{c1}LN"), format!("{c0}{c1}LT"))
-        };
-        // Axis numbering is 1-based (SkyFrame lon=1, lat=2 after any perm).
-        let (lon_api, lat_api) = if lat_axis < lon_axis { (2, 1) } else { (1, 2) };
-        let _ = sky_frame.set_symbol(lon_api, &lon_sym);
-        let _ = sky_frame.set_symbol(lat_api, &lat_sym);
-    }
-
-    // Step 5b: CNAME → Label. Mirrors C `WcsSkyFrame` (fitschan.c:39378-
-    // 39381): when either CNAME keyword is set, it becomes the axis Label —
-    // `astSetLabel(ret, 0, ...)` for the longitude axis and
-    // `astSetLabel(ret, 1, ...)` for the latitude axis. C addresses the
-    // Label axes with exactly the same indices it uses for the Symbols at
-    // fitschan.c:39332-39339, so the same lon-first/lat-second 1-based
-    // numbering used for the Symbols above applies here.
-    let (lon_api, lat_api) = if lat_axis < lon_axis { (2, 1) } else { (1, 2) };
-    if let Some(cname) = &store.cname[lon_axis] {
-        let _ = sky_frame.set_label(lon_api, cname);
-    }
-    if let Some(cname) = &store.cname[lat_axis] {
-        let _ = sky_frame.set_label(lat_api, cname);
-    }
-
-    // For a genuinely unknown celestial system (not offset sky), emit the
-    // `badcel` warning. Mirrors C `WcsSkyFrame` (fitschan.c:39351-39358):
-    // the warning is guarded by `report` (false for `OF`) and by the
-    // `Warnings` attribute including `badcel` (in the default Warnings value).
-    if lon_cel_kind == Some(CelKind::Unknown) {
-        let lontype = store.ctype[lon_axis].as_deref().unwrap_or("?");
-        let lattype = store.ctype[lat_axis].as_deref().unwrap_or("?");
-        warnings.push(Warning::new(
-            "badcel",
-            format!(
-                "This FITS header contains references to an unknown \
-             spherical co-ordinate system specified in the values \
-             {lontype} and {lattype}. It may not be possible to convert to \
-             other standard co-ordinate systems."
-            ),
-        ));
-    }
-
-    // Store the projection description (mirrors C `WcsSkyFrame`,
-    // fitschan.c:39300: `astSetProjection( ret, astWcsPrjDesc( prj ) )` for
-    // any non-WCSBAD projection). This feeds the SkyFrame Title suffix
-    // "; <desc> projection" and the serialised `Proj` token.
-    if !matches!(proj, WcsProjection::Unknown) {
-        sky_frame.set_projection(proj.description());
-    }
-
-    // C's "EQU" / "ECL" classification — the systems for which the Equinox
-    // attribute is stored at all (fitschan.c:39371-39373). Includes ICRS and
-    // GAPPT, which C classes as "EQU" even though they carry no equinox.
-    let is_equ_or_ecl = matches!(
-        system,
-        SkySystem::Fk4
-            | SkySystem::Fk4NoE
-            | SkySystem::Fk5
-            | SkySystem::Icrs
-            | SkySystem::Gappt
-            | SkySystem::Ecliptic
-            | SkySystem::Helioecliptic
-    );
-
-    // Effective equinox year, mirroring C's defaulting (fitschan.c:39193-
-    // 39256): a supplied EQUINOX is used as-is; otherwise the default comes
-    // from the RADESYS keyword alone — FK4/FK4-NO-E give B1950, FK5 gives
-    // J2000, and ICRS/GAPPT get no equinox at all. C resolves its `radesys`
-    // variable straight from the keyword (fitschan.c:39168-39191), never from
-    // the CTYPE-derived `sys`, so a Galactic axis with `RADESYS='FK5'` still
-    // picks up the J2000 default. The no-RADESYS / no-EQUINOX case is NOT
-    // defaulted here — C leaves equinox = AST__BAD (the NORADEC / DefB1950
-    // path is handled by `apply_b1950_fallback_if_needed`).
-    //
-    // No system guard: C computes `eqmjd` from whatever equinox it has
-    // (fitschan.c:39204-39210) and uses it as the Epoch fallback for every
-    // system (fitschan.c:39215-39216, applied unguarded at :39370).
-    let equinox_year: Option<f64> = if let Some(eq) = store.equinox {
-        Some(eq)
-    } else {
-        match store.radesys.as_deref().map(|r| r.trim().to_uppercase()) {
-            Some(ref r) if r == "FK4" || r == "FK4-NO-E" || r == "FK4_NO_E" => Some(1950.0),
-            Some(ref r) if r == "FK5" => Some(2000.0),
-            // ICRS, GAPPT, an unrecognised value, or no RADESYS at all.
-            _ => None,
-        }
-    };
-
-    // Step 6: set the Equinox attribute. C restricts this to equatorial and
-    // ecliptic systems (fitschan.c:39374) and applies no further system test:
-    // an ICRS or GAPPT header carrying an EQUINOX card gets the attribute set
-    // like any other "EQU" axis. `SkyFrame::Dump` then writes the value because
-    // an explicitly set attribute is dumped whatever its `helpful` flag says
-    // (skyframe.c:12005-12020) — `helpful` only governs whether an *unset*
-    // Equinox appears as a commented default, which is where ICRS and GAPPT
-    // differ from FK4/FK5/Ecliptic.
-    let eq_year: Option<f64> = is_equ_or_ecl.then_some(equinox_year).flatten();
-    if let Some(eq) = eq_year {
-        sky_frame.set_equinox_year(eq);
-    }
-
-    // Step 7: set Epoch. C uses ChooseEpoch (MJD-OBS / DATE-OBS), then
-    // falls back to the equinox MJD when no observation date is present
-    // (fitschan.c:39214-39222), and stores it on every system whose
-    // mjdobs ends up defined (line 39303). For EQU/ECL the eqmjd fallback
-    // makes Epoch defined even without MJD-OBS.
-    if let Some(raw_mjd) = store.mjdobs {
-        let tdb_mjd = match store.timesys.as_deref() {
-            Some(s) if s.eq_ignore_ascii_case("TDB") => raw_mjd,
-            // TT → TDB: add the principal periodic ΔTDB (~1.66 ms).
-            Some(s) if s.eq_ignore_ascii_case("TT") => {
-                raw_mjd + crate::fitschan::wcs_write::tdb_minus_tt_seconds(raw_mjd) / 86_400.0
-            }
-            // TAI → TDB: TT = TAI + 32.184 s, then add ΔTDB.
-            Some(s) if s.eq_ignore_ascii_case("TAI") => {
-                let tt = raw_mjd + 32.184 / 86_400.0;
-                tt + crate::fitschan::wcs_write::tdb_minus_tt_seconds(tt) / 86_400.0
-            }
-            // UTC (default), UT1, or unknown: convert via UTC→TDB.
-            // (Treating UT1 as UTC is the C library's pragmatic
-            // approximation per fitschan.c documentation.)
-            _ => crate::fitschan::wcs_write::utc_mjd_to_tdb(raw_mjd),
-        };
-        sky_frame.set_epoch_mjd(tdb_mjd);
-    } else if let Some(eq) = equinox_year {
-        // mjdobs ← eqmjd fallback (fitschan.c:39215-39216), applied to every
-        // system (fitschan.c:39370). Only the Equinox attribute above is
-        // restricted by system.
-        sky_frame.set_epoch_year(eq);
-    }
-
-    // Step 7b: DTAI / DUT1 (TAI-UTC and UT1-UTC offsets in seconds).
-    if let Some(dtai) = store.dtai {
-        sky_frame.set_dtai(dtai);
-    }
-    if let Some(dut1) = store.dut1 {
-        // C fitschan.c:37888: the SkyFrame Dut1 attribute is in seconds,
-        // while the FITS DUT1 keyword is in days; convert with seconds-per-day.
-        sky_frame.set_dut1(dut1 * 86_400.0);
-    }
-
-    // Step 7d: OBSGEO-X/Y/Z → ObsLon/ObsLat/ObsAlt. Mirrors C
-    // fitschan.c:39318-39331: convert geocentric Cartesian to
-    // geodetic via eraGc2gd.
-    if let (Some(x), Some(y), Some(z)) = (store.obsgeox, store.obsgeoy, store.obsgeoz)
-        && let Some((geolon, geolat, h)) = crate::pal::gc2gd([x, y, z])
-    {
-        sky_frame.set_obs_lon(geolon);
-        sky_frame.set_obs_lat(geolat);
-        sky_frame.set_obs_alt(h);
-    }
-
-    // Step 7c: NORADEC + DefB1950 fallback for alt SkyFrames with
-    // no RADESYS, no EQUINOX, no MJD-OBS — typical of GALACTIC alt-A
-    // planes. This path produces the 33281.923 MJD-OBS the writer's
-    // last-plane-wins rule emits in fits-pc-gal_fits-pc.
-    apply_b1950_fallback_if_needed(store, &mut sky_frame, def_b1950);
-
-    // Step 7d: CTYPE = OFLN/OFLT → Domain = SKY_OFFSETS. Mirrors
-    // C `WcsSkyFrame` (fitschan.c:39277) — tags the Frame so
-    // `tidy_offsets` can identify offset-sky planes later. SREFIS
-    // below may overwrite this domain with SKY_POLE / SKY_ORIGIN.
-    if ctype_is_offset {
-        sky_frame.set_domain("SKY_OFFSETS");
-    }
-
-    // Step 7e: SREF / SREFP — non-standard AST keywords describing
-    // the SkyRef / SkyRefP positions for an offset SkyFrame. Mirrors
-    // C `WcsSkyFrame` (fitschan.c:39331-39340).
-    // C sets each axis on its own, on the SkyFrame before any permutation,
-    // so axis 1 is the longitude.
-    if let Some(v) = store.skyref[lon_axis] {
-        sky_frame.set_sky_ref(1, v)?;
-    }
-    if let Some(v) = store.skyref[lat_axis] {
-        sky_frame.set_sky_ref(2, v)?;
-    }
-    if let Some(v) = store.skyrefp[lon_axis] {
-        sky_frame.set_sky_ref_p(1, v)?;
-    }
-    if let Some(v) = store.skyrefp[lat_axis] {
-        sky_frame.set_sky_ref_p(2, v)?;
-    }
-
-    // Step 7f: SREFIS — non-standard AST keyword recording whether
-    // SkyRef should be interpreted as the offset Pole or Origin.
-    // Mirrors C `WcsSkyFrame` (fitschan.c:39342-39354): the value is
-    // stashed as a Domain marker (`SKY_POLE` or `SKY_ORIGIN`) which
-    // `tidy_offsets` later converts back into the actual SkyRefIs
-    // attribute. Domain markers are required (rather than direct
-    // SkyRefIs) because applying SkyRefIs at this point would re-map
-    // the SkyFrame to offset coordinates *before* the FrameSet has
-    // been assembled — TidyOffsets needs the chance to inspect the
-    // raw FITS-emitted layout.
-    if let Some(ref skyrefis) = store.skyrefis {
-        let upper = skyrefis.trim().to_uppercase();
-        match upper.as_str() {
-            "POLE" => sky_frame.set_domain("SKY_POLE"),
-            "ORIGIN" => sky_frame.set_domain("SKY_ORIGIN"),
-            _ => {}
-        }
-    }
-
     // Step 8: Build the mapping.
     // The IWC values are in degrees; WcsMap works in radians.
     // Pipeline: IWC(deg) → deg2rad → WcsMap(inverse: projected→native) → rotation
@@ -679,10 +336,31 @@ pub(crate) fn build_celestial_with_def_b1950(
         lat_axis,
         rfval,
         car_lin,
+        warnings,
     )?
     else {
         return Ok(None);
     };
+
+    // C's `WcsCelestial` makes the SkyFrame after `WcsNative`, so its
+    // warnings follow those of the Mapping.
+    let mut sky_frame = wcs_sky_frame(
+        store, s, proj, &sys, lon_axis, lat_axis, def_b1950, warnings,
+    )?;
+    // When latitude comes before longitude in the FITS axes, permute the
+    // SkyFrame's axes so its first axis is the latitude, matching the order
+    // in which the Mapping delivers them.
+    if lat_axis < lon_axis {
+        let _ = crate::frames::Frame::perm_axes(&mut sky_frame, &[2, 1]);
+    }
+    if let Some(dtai) = store.dtai {
+        sky_frame.set_dtai(dtai);
+    }
+    if let Some(dut1) = store.dut1 {
+        // C fitschan.c:37888: the SkyFrame Dut1 attribute is in seconds,
+        // while the FITS DUT1 keyword is in days.
+        sky_frame.set_dut1(dut1 * 86_400.0);
+    }
 
     // `mapping` emits cel_lon at FITS slot `lon_axis` and cel_lat at FITS
     // slot `lat_axis`, with identity on every other axis: the PermMap
@@ -700,136 +378,260 @@ pub(crate) fn build_celestial_with_def_b1950(
         lat_axis,
         ref_pos,
         ref_pos_forced,
-        warnings,
     }))
 }
 
-/// Determine the sky coordinate system from RADESYS and EQUINOX.
-fn determine_sky_system(store: &FitsStore) -> SkySystem {
-    // Determine the system primarily from the CTYPE prefix, mirroring
-    // C `WcsCelestial` (fitschan.c:35648-35716) which classifies axes
-    // as `EQU` (RA/DEC), `AZL` (AZ/EL), `G` (GLON/GLAT), `E` (ELON/
-    // ELAT), `S` (SLON/SLAT), `H` (HLON/HLAT — heliocentric ecliptic),
-    // etc. — and only consults RADESYS for the `EQU` branch.
-    let ctype_prefix = store
-        .celestial_axes()
-        .and_then(|(lon, _)| store.ctype[lon].as_deref())
-        .map(|c| c.trim().to_ascii_uppercase());
-
-    let prefix_kind = ctype_prefix.as_deref().and_then(classify_ctype_prefix);
-
-    match prefix_kind {
-        Some(CelKind::Galactic) => return SkySystem::Galactic,
-        Some(CelKind::Ecliptic) => return SkySystem::Ecliptic,
-        Some(CelKind::Helioecliptic) => return SkySystem::Helioecliptic,
-        Some(CelKind::Supergalactic) => return SkySystem::Supergalactic,
-        Some(CelKind::AzEl) => return SkySystem::Azel,
-        // Unrecognised celestial prefix: C WcsSkyFrame (fitschan.c:39325)
-        // uses System=Unknown without consulting RADESYS or EQUINOX.
-        Some(CelKind::Unknown) => return SkySystem::Unknown,
-        // Equatorial (and no CTYPE prefix at all) fall through to the RADESYS /
-        // EQUINOX rules below.
-        Some(CelKind::Equatorial) | None => {}
-        // OffsetSky is intercepted by the `ctype_is_offset` early-out in
-        // `build_celestial_with_def_b1950` before this function is reached,
-        // and produces System=Unknown to match C (fitschan.c:39325).  The arm
-        // is required for match exhaustiveness; it is not reachable at runtime.
-        Some(CelKind::OffsetSky) => return SkySystem::Unknown,
+/// C's `WcsSkyFrame` (fitschan.c:39379): the SkyFrame for the celestial
+/// axes `axlon` and `axlat` (0-based) of version `s`, of the system `sys`
+/// that `WcsCelestial` names and projection `prj`. RADESYS and EQUINOX,
+/// and failing those `def_b1950`, decide an equatorial system and the
+/// equinox; the date of observation, failing that, is the equinox. The
+/// axes are those of the FITS header, longitude first.
+#[allow(clippy::too_many_arguments)]
+fn wcs_sky_frame(
+    store: &FitsStore,
+    s: char,
+    prj: WcsProjection,
+    sys: &str,
+    axlon: usize,
+    axlat: usize,
+    def_b1950: bool,
+    warnings: &mut Warnings,
+) -> AstResult<SkyFrame> {
+    #[derive(Clone, Copy, PartialEq)]
+    enum Radesys {
+        Fk4,
+        Fk4NoE,
+        Fk5,
+        Icrs,
+        Gappt,
+        NoRadec,
     }
 
-    // Equatorial (or no CTYPE prefix at all) → look at RADESYS.
-    if let Some(ref radesys) = store.radesys {
-        let upper = radesys.trim().to_uppercase();
-        match upper.as_str() {
-            "ICRS" => SkySystem::Icrs,
-            "FK5" => SkySystem::Fk5,
-            "FK4" => SkySystem::Fk4,
-            "FK4-NO-E" | "FK4_NO_E" => SkySystem::Fk4NoE,
-            "GAPPT" => SkySystem::Gappt,
-            _ => SkySystem::Icrs,
+    let mut radesys = match store.radesys.as_deref() {
+        None => Radesys::NoRadec,
+        Some(v) if v.starts_with("FK4 ") || v == "FK4" => Radesys::Fk4,
+        Some(v) if v.starts_with("FK4-NO-E") => Radesys::Fk4NoE,
+        Some(v) if v.starts_with("FK5 ") || v == "FK5" => Radesys::Fk5,
+        Some(v) if v.starts_with("ICRS ") || v == "ICRS" => Radesys::Icrs,
+        Some(v) if v.starts_with("GAPPT ") || v == "GAPPT" => Radesys::Gappt,
+        Some(v) => {
+            let key = if s == ' ' {
+                "RADESYS".to_string()
+            } else {
+                format!("RADESYS{s}")
+            };
+            return Err(AstError::new(
+                ErrorCode::Bdfts,
+                format!(
+                    "astRead(FitsChan): FITS keyword '{key}' has the unrecognised value '{v}'."
+                ),
+            ));
         }
-    } else if let Some(eq) = store.equinox {
-        // No RADESYS: default depends on equinox.
-        if eq >= 1984.0 {
-            SkySystem::Fk5
+    };
+
+    // The equinox, and whether it is a Besselian ('B') or Julian epoch.
+    let mut equinox = store.equinox;
+    let mut bj = None;
+    let g8 = |v: f64| crate::frames::axis_format::sprintf_double("%.8g", v);
+    if let Some(eq) = equinox {
+        if matches!(radesys, Radesys::Fk4 | Radesys::Fk4NoE) {
+            bj = Some('B');
+        } else if radesys != Radesys::NoRadec {
+            bj = Some('J');
         } else {
-            SkySystem::Fk4
+            // With no RADESYS, the IAU 1984 rule.
+            (radesys, bj) = if eq < 1984.0 {
+                (Radesys::Fk4, Some('B'))
+            } else {
+                (Radesys::Fk5, Some('J'))
+            };
+            if sys == "EQU" {
+                warnings.push(Warning::new(
+                    "noradesys",
+                    format!(
+                        "The original FITS header did not specify the RA/DEC reference \
+                         frame. A default value of {} was assumed.",
+                        if radesys == Radesys::Fk4 {
+                            "FK4"
+                        } else {
+                            "FK5"
+                        }
+                    ),
+                ));
+            }
         }
     } else {
-        // No RADESYS, no EQUINOX, no CTYPE prefix → ICRS default.
-        SkySystem::Icrs
-    }
-}
-
-#[derive(Copy, Clone, PartialEq, Eq)]
-enum CelKind {
-    Equatorial,
-    Galactic,
-    Ecliptic,
-    Helioecliptic,
-    Supergalactic,
-    AzEl,
-    /// Offset sky-frame indicator (CTYPE prefix `OF`, suffix `LN`/`LT`).
-    /// Mirrors C `sys = "OF"` (fitschan.c:39277). The resulting
-    /// SkyFrame inherits its underlying system from RADESYS (default
-    /// FK5/ICRS via the equatorial fallback) and is tagged with
-    /// Domain = SKY_OFFSETS.
-    OffsetSky,
-    /// Unrecognised single- or two-character celestial-system prefix.
-    /// Mirrors C `WcsSkyFrame` (fitschan.c:39325): any `sys` value that
-    /// is not "EQU", "AZL", "G", "E", "S", "H", or "OF" results in
-    /// `System=Unknown`.
-    Unknown,
-}
-
-/// Classify a CTYPE prefix into the C library's celestial-system code.
-///
-/// Mirrors fitschan.c:35648-35734. Recognised prefixes (first four characters,
-/// before any `-` projection suffix):
-///  - `RA--`, `AZ--`, `EL--` (special 2-char system codes)
-///  - `xLON` / `xLAT` (1-letter system + LON/LAT) — `x` ∈ {`G`, `E`,
-///    `S`, `H`} for Galactic / Ecliptic / Supergalactic / Helioecliptic;
-///    any other `x` maps to `CelKind::Unknown`.
-///  - `xyLN` / `xyLT` (2-letter system + LN/LT) — `OF` maps to
-///    `CelKind::OffsetSky`; any other `xy` maps to `CelKind::Unknown`.
-///
-/// Returns `None` only when the CTYPE does not look celestial at all.
-fn classify_ctype_prefix(ctype: &str) -> Option<CelKind> {
-    let ctype = ctype.trim();
-    if ctype.starts_with("RA--") || ctype == "RA" || ctype.starts_with("DEC-") || ctype == "DEC" {
-        return Some(CelKind::Equatorial);
-    }
-    if ctype.starts_with("AZ--") || ctype == "AZ" || ctype.starts_with("EL--") || ctype == "EL" {
-        return Some(CelKind::AzEl);
-    }
-    // 1-letter prefix: xLON / xLAT (fitschan.c:35718-35726).
-    // The `ctype.len() >= 4` guard below makes the byte slices safe.
-    if ctype.len() >= 4 {
-        let bytes = ctype.as_bytes();
-        if &bytes[1..4] == b"LON" || &bytes[1..4] == b"LAT" {
-            let c = ctype.chars().next().unwrap();
-            return Some(match c {
-                'G' => CelKind::Galactic,
-                'E' => CelKind::Ecliptic,
-                'S' => CelKind::Supergalactic,
-                'H' => CelKind::Helioecliptic,
-                // Any other 1-char prefix is an unrecognised system
-                // (fitschan.c:39325 else-if branch → System=Unknown).
-                _ => CelKind::Unknown,
-            });
+        match radesys {
+            Radesys::Fk4 | Radesys::Fk4NoE => {
+                equinox = Some(1950.0);
+                bj = Some('B');
+            }
+            Radesys::Fk5 => {
+                equinox = Some(2000.0);
+                bj = Some('J');
+            }
+            Radesys::NoRadec => {
+                if def_b1950 {
+                    equinox = Some(1950.0);
+                    bj = Some('B');
+                    radesys = Radesys::Fk4;
+                } else {
+                    radesys = Radesys::Icrs;
+                }
+                if sys == "EQU" {
+                    warnings.push(Warning::new(
+                        "noradesys",
+                        format!(
+                            "The original FITS header did not specify the RA/DEC reference \
+                             frame. A default value of {} was assumed.",
+                            if radesys == Radesys::Fk4 {
+                                "FK4"
+                            } else {
+                                "ICRS"
+                            }
+                        ),
+                    ));
+                }
+            }
+            Radesys::Icrs | Radesys::Gappt => {}
         }
-        // 2-letter prefix: xyLN / xyLT (fitschan.c:35728-35734).
-        if &bytes[2..4] == b"LN" || &bytes[2..4] == b"LT" {
-            return Some(if &bytes[0..2] == b"OF" {
-                // Offset sky-frame (fitschan.c:39277).
-                CelKind::OffsetSky
-            } else {
-                // Unrecognised 2-char prefix (fitschan.c:39325).
-                CelKind::Unknown
-            });
+        if let Some(eq) = equinox
+            && ((sys == "EQU" && !matches!(radesys, Radesys::Icrs | Radesys::Gappt)) || sys == "E")
+        {
+            warnings.push(Warning::new(
+                "noequinox",
+                format!(
+                    "The original FITS header did not specify the reference equinox. A \
+                     default value of {}{} was assumed.",
+                    bj.unwrap_or('J'),
+                    g8(eq)
+                ),
+            ));
         }
     }
-    None
+    let eqmjd = equinox.map(|eq| {
+        if bj == Some('B') {
+            crate::pal::epb2d(eq)
+        } else {
+            crate::pal::epj2d(eq)
+        }
+    });
+
+    // The date of observation, defaulting to the equinox.
+    let mut mjdobs = super::epoch::choose_epoch(store, warnings)?;
+    if mjdobs.is_none()
+        && let (Some(mjd), Some(eq)) = (eqmjd, equinox)
+    {
+        mjdobs = Some(mjd);
+        warnings.push(Warning::new(
+            "nomjd-obs",
+            format!(
+                "The original FITS header did not specify the date of observation. A \
+                 default value of {}{} was assumed.",
+                bj.unwrap_or('J'),
+                g8(eq)
+            ),
+        ));
+    }
+
+    let system = match sys {
+        "E" => SkySystem::Ecliptic,
+        "H" => SkySystem::Helioecliptic,
+        "G" => SkySystem::Galactic,
+        "S" => SkySystem::Supergalactic,
+        "AZL" => SkySystem::Azel,
+        "EQU" => match radesys {
+            Radesys::Fk4 => SkySystem::Fk4,
+            Radesys::Fk4NoE => SkySystem::Fk4NoE,
+            Radesys::Fk5 => SkySystem::Fk5,
+            Radesys::Icrs => SkySystem::Icrs,
+            Radesys::Gappt => SkySystem::Gappt,
+            Radesys::NoRadec => unreachable!("an equatorial system is always chosen"),
+        },
+        _ => SkySystem::Unknown,
+    };
+    let mut ret = SkyFrame::new(system);
+    ret.set_system(system);
+
+    // An unknown system is a general spherical one, with axis symbols made
+    // from its code.
+    if system == SkySystem::Unknown {
+        let mut report = true;
+        if sys.len() == 1 {
+            ret.set_symbol(1, &format!("{sys}LON"))?;
+            ret.set_symbol(2, &format!("{sys}LAT"))?;
+        } else {
+            ret.set_symbol(1, &format!("{sys}LN"))?;
+            ret.set_symbol(2, &format!("{sys}LT"))?;
+            // AST describes offset sky coordinates with the code "OF".
+            if sys == "OF" {
+                ret.set_domain("SKY_OFFSETS");
+                report = false;
+            }
+        }
+        if report
+            && let (Some(lontype), Some(lattype)) =
+                (store.ctype[axlon].as_deref(), store.ctype[axlat].as_deref())
+        {
+            warnings.push(Warning::new(
+                "badcel",
+                format!(
+                    "This FITS header contains references to an unknown spherical \
+                     co-ordinate system specified in the values {lontype} and {lattype}. \
+                     It may not be possible to convert to other standard co-ordinate \
+                     systems."
+                ),
+            ));
+        }
+    }
+
+    if !matches!(prj, WcsProjection::Unknown) {
+        ret.set_projection(prj.description());
+    }
+    if let Some(mjd) = mjdobs {
+        ret.set_epoch_mjd(mjd);
+    }
+    if (sys == "EQU" || sys == "E")
+        && let Some(mjd) = eqmjd
+    {
+        ret.set_equinox_mjd(mjd);
+    }
+    if let Some(cname) = &store.cname[axlon] {
+        ret.set_label(1, cname)?;
+    }
+    if let Some(cname) = &store.cname[axlat] {
+        ret.set_label(2, cname)?;
+    }
+    if let (Some(x), Some(y), Some(z)) = (store.obsgeox, store.obsgeoy, store.obsgeoz)
+        && let Some((geolon, geolat, h)) = crate::pal::gc2gd([x, y, z])
+    {
+        ret.set_obs_lat(geolat);
+        ret.set_obs_lon(geolon);
+        ret.set_obs_alt(h);
+    }
+    if let Some(v) = store.skyref[axlon] {
+        ret.set_sky_ref(1, v)?;
+    }
+    if let Some(v) = store.skyref[axlat] {
+        ret.set_sky_ref(2, v)?;
+    }
+    if let Some(v) = store.skyrefp[axlon] {
+        ret.set_sky_ref_p(1, v)?;
+    }
+    if let Some(v) = store.skyrefp[axlat] {
+        ret.set_sky_ref_p(2, v)?;
+    }
+    // SkyRefIs can only be set once the Frame is in the FrameSet, so the
+    // Frame is marked by its Domain, which `tidy_offsets` clears.
+    if let Some(skyrefis) = store.skyrefis.as_deref() {
+        if skyrefis.eq_ignore_ascii_case("POLE") {
+            ret.set_domain("SKY_POLE");
+        } else if skyrefis.eq_ignore_ascii_case("ORIGIN") {
+            ret.set_domain("SKY_ORIGIN");
+        }
+    }
+    Ok(ret)
 }
 
 /// Build the IWC-to-sky mapping for celestial axes.
@@ -845,7 +647,7 @@ fn classify_ctype_prefix(ctype: &str) -> Option<CelKind> {
 /// This is equivalent to shifting the native longitude by CRVAL_lon and
 /// adjusting the latitude pole, which we implement using a ShiftMap on
 /// the native coordinates for the simple case.
-#[allow(clippy::type_complexity)]
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
 fn build_iwc_to_sky_mapping(
     store: &FitsStore,
     wcsmap: WcsMap,
@@ -854,6 +656,7 @@ fn build_iwc_to_sky_mapping(
     lat_axis: usize,
     rfval: Option<&[Option<f64>]>,
     car_lin: bool,
+    warnings: &mut Warnings,
 ) -> AstResult<Option<(DynMapping, Option<(f64, f64)>, bool)>> {
     let deg2rad = PI / 180.0;
 
@@ -991,6 +794,7 @@ fn build_iwc_to_sky_mapping(
         crval_lat,
         lonpole,
         latpole_rad,
+        Some(warnings),
     )?;
 
     // Celestial reference position (SkyRef) for the SkyFrame. C `WcsCelestial`
@@ -1229,44 +1033,49 @@ fn embed_celestial_in_naxis(
 /// `lonpole` and `latpole` are FITS-supplied values in radians; pass
 /// `None` for "default — let `wcs_nat_pole` pick".
 ///
-/// Mirrors `fitschan.c::WcsNative` (~38188-38302): a pole `WcsNatPole`
-/// cannot place, because LONPOLE cannot hold for the reference point, is
-/// `ErrorCode::Bdfts`.
+/// Mirrors `fitschan.c::WcsNative` (~38540-38610): the fiducial latitude is
+/// limited to +/- PI/2, with a `badlat` warning when it is not already, and
+/// a pole `WcsNatPole` cannot place, because LONPOLE cannot hold for the
+/// reference point, is `ErrorCode::Bdfts`. The writer passes no
+/// `warnings`, as C passes no FitsChan.
 pub(crate) fn build_native_to_celestial_rotation_for_wcsmap(
     wcsmap: &WcsMap,
     crval_lon: f64,
     crval_lat: f64,
     lonpole: Option<f64>,
     latpole: Option<f64>,
+    mut warnings: Option<&mut Warnings>,
 ) -> AstResult<DynMapping> {
     use crate::fitschan::fset_to_store::fiducial::get_fiducial_nsc;
     use crate::fitschan::fset_to_store::sky_pole::wcs_nat_pole;
 
     let (phi0, _theta0) = get_fiducial_nsc(wcsmap);
 
-    // Resolve LONPOLE / LATPOLE defaults via WcsNatPole. The function
-    // takes "no value supplied" sentinels (≥ π absolute or non-finite);
-    // we pass +∞ for None.
-    let mut phip = lonpole.unwrap_or(f64::INFINITY);
-    let latpole_arg = latpole.unwrap_or(f64::INFINITY);
-    let mut alphap = 0.0;
-    let mut deltap = 0.0;
-    let ok = wcs_nat_pole(
-        wcsmap,
-        crval_lon,
-        crval_lat,
-        latpole_arg,
-        &mut phip,
-        &mut alphap,
-        &mut deltap,
-    );
-    if !ok {
+    let unlimited = crate::pal::drange(crval_lat);
+    let delta0 = unlimited.clamp(-PI / 2.0, PI / 2.0);
+    if unlimited != delta0
+        && let Some(w) = warnings.as_deref_mut()
+    {
+        let g15 = |v: f64| crate::frames::axis_format::sprintf_double("%.15g", v);
+        w.push(Warning::new(
+            "badlat",
+            format!(
+                "The original FITS header specified a fiducial point with latitude {}. A \
+                 value of {} is being used instead. ",
+                g15(unlimited.to_degrees()),
+                g15(delta0.to_degrees())
+            ),
+        ));
+    }
+
+    let (phip, pole) = wcs_nat_pole(wcsmap, crval_lon, delta0, latpole, lonpole, warnings);
+    let Some((alphap, deltap)) = pole else {
         return Err(AstError::new(
             ErrorCode::Bdfts,
             "Conversion from FITS WCS native coordinates to celestial coordinates is \
              ill-conditioned.",
         ));
-    }
+    };
 
     build_rotation_from_pole(phi0, phip, alphap, deltap, crval_lon)
 }

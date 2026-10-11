@@ -15,9 +15,8 @@ use super::fset_to_store::WriteAttrs;
 use super::wcs_decompose::split_cd;
 use crate::constants::BAD_VALUE;
 use crate::error::{AstError, AstResult, ErrorCode};
-use crate::frames::{FrameRef, FrameSet, TimeScale};
+use crate::frames::{FrameRef, FrameSet};
 use crate::mappings::helpers::ast_equal;
-use crate::pal;
 use crate::serial::AnyObject;
 
 // ---------------------------------------------------------------------------
@@ -211,14 +210,12 @@ fn propagate_last_plane_globals_into_primary(planes: &mut [PlaneStore]) {
     let obsgeox = last_some(planes, |s| s.obsgeox);
     let obsgeoy = last_some(planes, |s| s.obsgeoy);
     let obsgeoz = last_some(planes, |s| s.obsgeoz);
-    let timesys = last_some(planes, |s| s.timesys.clone());
     let dtai = last_some(planes, |s| s.dtai);
     let dut1 = last_some(planes, |s| s.dut1);
     let primary = &mut planes[0].store;
     primary.obsgeox = obsgeox.or(primary.obsgeox);
     primary.obsgeoy = obsgeoy.or(primary.obsgeoy);
     primary.obsgeoz = obsgeoz.or(primary.obsgeoz);
-    primary.timesys = timesys.or_else(|| primary.timesys.clone());
     primary.dtai = dtai.or(primary.dtai);
     primary.dut1 = dut1.or(primary.dut1);
 }
@@ -589,28 +586,19 @@ fn write_store_to_cards(
     // Mirrors C library WcsFromStore order (fitschan.c:36867+):
     // CD matrix, then MJD-OBS / DATE-OBS, then RADESYS / EQUINOX.
     //
-    // If the input chan supplied MJD-AVG, also preserve it: the C
-    // library carries it through via ignore-used semantics, but our
-    // sweep would drop it. We emit MJD-AVG before MJD-OBS so the
-    // position matches the input (MJD-AVG was originally next to the
-    // other time-related cards, before the encoder-added MJD-OBS).
-    // Likewise for TIMESYS — the C library doesn't re-emit it but it
-    // survives in the input chan.
+    // The date of observation, then its timescale, as C's `WcsFcWrite`
+    // writes them for the primary axis description (fitschan.c:37591-37628).
+    // A write stores no MJD-AVG.
     if s == ' ' {
-        if cards.find("MJD-AVG").is_some()
-            && let Some(mjdobs) = store.mjdobs
-        {
-            cards.set_float("MJD-AVG", mjdobs, "Average MJD of observation");
-        }
-        if let Some(ts) = cards.get_string("TIMESYS") {
-            cards.set_string("TIMESYS", &ts, "Time scale");
-        }
         if let Some(mjdobs) = store.mjdobs {
             cards.set_float("MJD-OBS", mjdobs, "Modified Julian Date of observation");
         }
         // DATE-OBS companion to MJD-OBS. Mirrors fitschan.c:3610-3613.
         if let Some(ref dateobs) = store.dateobs {
             cards.set_string("DATE-OBS", dateobs, "Date of observation");
+        }
+        if let Some(ref timesys) = store.timesys {
+            cards.set_string("TIMESYS", timesys, "Timescale for MJD-OBS/MJD-AVG values");
         }
         // DTAI / DUT1: not emitted by FitsWcs. The C library reads these
         // when present (fitschan.c:36495-36506) but never writes them —
@@ -660,24 +648,20 @@ fn write_store_to_cards(
             "[yr] Epoch of reference equinox",
         );
     }
-    // LONPOLE: only emit when non-default. FITS-WCS Paper II §2.4: the
-    // default φp is 180° for zenithal projections with native fiducial
-    // θ₀ ≥ 0° (TAN/SIN/ZEA/etc.). The C library suppresses the redundant
-    // default value; emitting it would diverge from the canonical output.
-    if let Some(lonpole) = store.lonpole {
-        if lonpole != 180.0 {
-            cards.set_float(
-                &fmt_global_key("LONPOLE", s),
-                lonpole,
-                "Native longitude of celestial pole",
-            );
-        }
-    }
+    // The pole, latitude first, as C's `WcsFcWrite` writes it
+    // (fitschan.c:37700-37711).
     if let Some(latpole) = store.latpole {
         cards.set_float(
             &fmt_global_key("LATPOLE", s),
             latpole,
-            "Native latitude of celestial pole",
+            "[deg] Latitude of native north pole",
+        );
+    }
+    if let Some(lonpole) = store.lonpole {
+        cards.set_float(
+            &fmt_global_key("LONPOLE", s),
+            lonpole,
+            "[deg] Longitude of native north pole",
         );
     }
     // Spectral block. Mirrors fitschan.c::WcsFromStore order
@@ -898,72 +882,6 @@ fn write_pc_cdelt(store: &FitsStore, cards: &mut CardList, s: char) -> AstResult
 // ---------------------------------------------------------------------------
 // Calendar helpers
 // ---------------------------------------------------------------------------
-
-/// Difference TDB − TT in seconds at the geocentre.
-///
-/// SkyFrame.Epoch in the C library is stored on the TDB scale (see
-/// fitschan.c:29718 "The epoch is in TDB"). TDB and TT differ by a
-/// small periodic offset of amplitude ~1.66 ms — comparable to FITS
-/// DATE-OBS millisecond precision, so it cannot be ignored.
-///
-/// Delegates to [`pal::dtdb_geocentre`], which wraps ERFA's full
-/// Fairhead & Bretagnon (1990) series (≤±3 ns absolute, 1950-2050).
-/// AST's `timemap.c::Rcc` is the same algorithm.
-pub(crate) fn tdb_minus_tt_seconds(mjd: f64) -> f64 {
-    pal::dtdb_geocentre(mjd)
-}
-
-/// Convert TDB (Barycentric Dynamical Time) MJD to UTC MJD.
-///
-/// Mirrors `fitschan.c::TDBConv` (lines 33894-33976): build TDB and
-/// UTC `TimeFrame`s and use `astConvert` to compute the mapping
-/// between them — exactly like the C library's `TDBConv` helper.
-pub(crate) fn tdb_mjd_to_utc(tdb_mjd: f64) -> f64 {
-    convert_time_mjd(tdb_mjd, TimeScale::Tdb, TimeScale::Utc)
-}
-
-/// Convert UTC MJD to TDB (Barycentric Dynamical Time) MJD.
-///
-/// Mirrors `fitschan.c::TDBConv` for the UTC→TDB direction.
-pub(crate) fn utc_mjd_to_tdb(utc_mjd: f64) -> f64 {
-    convert_time_mjd(utc_mjd, TimeScale::Utc, TimeScale::Tdb)
-}
-
-/// Generic timescale conversion via the `TimeFrame` `astConvert`
-/// pathway. Both source and destination are MJD; only the timescale
-/// differs. Returns the input unchanged on conversion failure (the
-/// C library reports an error in that case; we fall through to the
-/// raw value, which is the historic Rust behaviour and gives the
-/// nearest sensible fallback for tests).
-fn convert_time_mjd(mjd: f64, from: TimeScale, to: TimeScale) -> f64 {
-    use crate::frames::{Frame, TimeFrame, TimeSystem};
-    // An MJD TimeFrame with no TimeOrigin accepts any timescale.
-    let mut from_tf = TimeFrame::new(TimeSystem::Mjd);
-    from_tf
-        .set_timescale(from)
-        .expect("an MJD TimeFrame accepts any timescale");
-    let mut to_tf = TimeFrame::new(TimeSystem::Mjd);
-    to_tf
-        .set_timescale(to)
-        .expect("an MJD TimeFrame accepts any timescale");
-    let Ok(Some(fs)) = Frame::convert_to(&from_tf, &to_tf, &[]) else {
-        return mjd;
-    };
-    let Ok(mapping) = fs.mapping(
-        crate::frames::FrameRef::Base,
-        crate::frames::FrameRef::Current,
-    ) else {
-        return mjd;
-    };
-    let pts = crate::coords::PointSet::from_rows([[mjd]]);
-    match mapping.transform(&pts, true) {
-        Ok(out) => {
-            let v = out.point(0)[0];
-            if v.is_finite() { v } else { mjd }
-        }
-        Err(_) => mjd,
-    }
-}
 
 /// Decompose an MJD (UTC, Modified Julian Date) into a Gregorian
 /// calendar date + time tuple `(year, month, day, hour, min, sec_frac)`.
@@ -1451,27 +1369,6 @@ mod tests {
         let s = mjd_to_date_str(original);
         let parsed = date_str_to_mjd(&s).unwrap();
         assert!((parsed - original).abs() < 1e-6);
-    }
-
-    #[test]
-    fn utc_tdb_roundtrip() {
-        let utc = 51544.0_f64;
-        let tdb = utc_mjd_to_tdb(utc);
-        let utc_back = tdb_mjd_to_utc(tdb);
-        assert!((utc - utc_back).abs() < 1e-12);
-    }
-
-    #[test]
-    fn tdb_tt_principal_term_amplitude() {
-        // The Fairhead-Bretagnon principal term of TDB-TT has amplitude
-        // ~1.66 ms. Sample one year of MJDs and check the bound holds.
-        let mut max_abs: f64 = 0.0;
-        for d in 0..365 {
-            let mjd = 52000.0 + d as f64;
-            max_abs = max_abs.max(tdb_minus_tt_seconds(mjd).abs());
-        }
-        assert!(max_abs > 0.0015, "amplitude too small: {max_abs}");
-        assert!(max_abs < 0.002, "amplitude too large: {max_abs}");
     }
 
     #[test]

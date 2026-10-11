@@ -210,7 +210,7 @@ pub(crate) fn write_to_cards(
         // semantics. Mark the existing card used (so sweep keeps it)
         // but do NOT re-emit — re-emitting would round-trip the
         // value through SkyFrame::epoch (TDB) and back via
-        // `tdb_mjd_to_utc`, which is asymmetric in the rubber-second
+        // `epoch::tdb_conv`, which is asymmetric in the rubber-second
         // era (pre-MJD-41317). See `docs/issues/c-library-quirks.md`.
         let _ = cards.mark_used("MJD-OBS");
 

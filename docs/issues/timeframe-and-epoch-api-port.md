@@ -37,15 +37,15 @@ that goes UTC → TAI → TT → TDB with proper leap-second / TDB-TT
 handling.
 
 **Status.**
-The wcs_write helpers `tdb_mjd_to_utc` / `utc_mjd_to_tdb` now route
-through a `TimeFrame::convert` call (commit `8df8ca0`).
+C's `TDBConv` is ported as `epoch::tdb_conv`, which converts through
+a `TimeFrame` as C does.
 That gives us the same entry point C uses but the underlying
 TimeMap conversions in
 `crates/ast-core/src/mappings/timemap.rs` may not be bit-exact with
 the C oracle yet.
 
 **To do.**
-Run a parametric comparison of `convert_time_mjd(MJD, UTC, TDB)` and
+Run a parametric comparison of `epoch::tdb_conv(MJD, UTC, false)` and
 the C `TDBConv` for a grid of MJDs (around the leap-second
 boundaries 1972, 2017-01-01, …) and characterise the discrepancy.
 Likely failure modes:

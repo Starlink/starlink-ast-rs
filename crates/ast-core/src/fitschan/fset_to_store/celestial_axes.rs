@@ -97,6 +97,8 @@ pub(crate) struct CelestialAxesArgs<'a> {
     /// Linearity tolerance in pixels, from the FitsChan's `FitsTol`
     /// attribute (C `astGetFitsTol`, fitschan.c:2987).
     pub fits_tol: f64,
+    /// The FitsChan's TIMESYS value, as [`super::WriteAttrs::timesys`].
+    pub timesys: Option<&'a str>,
 }
 
 /// Detect celestial axes in `args.fs`, populate the celestial
@@ -276,7 +278,15 @@ pub(crate) fn celestial_axes(args: CelestialAxesArgs<'_>) -> AstResult<DynMappin
     // Step 7: SkySys writes CTYPE / RADESYS / EQUINOX / MJD-OBS /
     // CUNIT. Mirrors C:5185-5186.
     let _ = sky_sys(
-        skyfrm, 1, projection, args.store, fits_ilon, fits_ilat, args.s, args.isoff,
+        skyfrm,
+        1,
+        projection,
+        args.store,
+        fits_ilon,
+        fits_ilat,
+        args.s,
+        args.isoff,
+        args.timesys,
     )?;
 
     // Step 7b: SkyPole writes LONPOLE / LATPOLE (and the PV-3/PV-4
@@ -730,6 +740,7 @@ fn build_wcs_to_iwc(
             crval_deg[1] * DD2R,
             lonpole_rad,
             latpole_rad,
+            None,
         )?;
 
     // Celestial chain (PPC → WCS):
@@ -962,6 +973,7 @@ mod tests {
             axis_done: &mut axis_done,
             isoff: 0,
             fits_tol: FITS_TOL_DEFAULT,
+            timesys: None,
         })
         .unwrap();
 
@@ -1007,6 +1019,7 @@ mod tests {
             axis_done: &mut axis_done,
             isoff: 0,
             fits_tol: FITS_TOL_DEFAULT,
+            timesys: None,
         })
         .unwrap();
 
@@ -1036,6 +1049,7 @@ mod tests {
             axis_done: &mut axis_done,
             isoff: 0,
             fits_tol: FITS_TOL_DEFAULT,
+            timesys: None,
         })
         .unwrap();
 

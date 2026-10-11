@@ -43,14 +43,12 @@ fn read_rfval(cards: &CardList, naxis: usize, s: char) -> Vec<Option<f64>> {
 /// - Mapping: pixel → world
 #[cfg(test)]
 pub(crate) fn decode_wcs(store: &FitsStore) -> AstResult<AnyObject> {
-    let (obj, _warnings) = decode_wcs_inner(store, false, &CardList::new(), ' ')?;
-    Ok(obj)
+    decode_wcs_inner(store, false, &CardList::new(), ' ', &mut Vec::new())
 }
 
-/// Inner decoder that also returns any warning messages collected during
-/// decoding (e.g. the `badcel` warning for unknown celestial systems,
-/// fitschan.c:39358). Callers that need to surface warnings to the
-/// FitsChan as ASTWARN cards use this variant directly.
+/// Inner decoder that also adds to `warnings` each warning raised (e.g. the
+/// `badcel` warning for unknown celestial systems, fitschan.c:39358), in
+/// the order C's `Warn` stores them, keeping those raised before an error.
 ///
 /// `cards` is the FitsChan's own card list — the same `this` C's
 /// `WcsCelestial` reads `RFVAL<i>` from (fitschan.c:36091-36097) — and `s`
@@ -61,7 +59,8 @@ pub(crate) fn decode_wcs_inner(
     def_b1950: bool,
     cards: &CardList,
     s: char,
-) -> AstResult<(AnyObject, Warnings)> {
+    warnings: &mut Warnings,
+) -> AstResult<AnyObject> {
     let naxis = store.naxis;
 
     // Step 1: Build the pixel → IWC mapping. `DistortMaps`, which C
@@ -73,14 +72,13 @@ pub(crate) fn decode_wcs_inner(
     // (fitschan.c:37760-37870), and `Warn` inserts each block in front of the
     // same current card, so these warnings precede the ones the axis decoders
     // raise below.
-    let mut matrix_warnings: Warnings = Vec::new();
-    let pixel_to_iwc = wcs_matrix::build_pixel_to_iwc(&mut store, cards, &mut matrix_warnings)?;
+    let pixel_to_iwc = wcs_matrix::build_pixel_to_iwc(&mut store, cards, warnings)?;
     let store = &store;
 
     // Step 2: Try to decode celestial axes.
     let rfval = read_rfval(cards, naxis, s);
     let celestial =
-        wcs_celestial::build_celestial_with_def_b1950(store, s, def_b1950, Some(&rfval))?;
+        wcs_celestial::build_celestial_with_def_b1950(store, s, def_b1950, Some(&rfval), warnings)?;
     // Capture the celestial fiducial position (radians) before the decoder
     // result is consumed below; it is stamped onto the SkyFrame as SkyRef.
     let celestial_ref_pos = celestial.as_ref().and_then(|c| c.ref_pos);
@@ -88,19 +86,12 @@ pub(crate) fn decode_wcs_inner(
     // that CRVAL / RFVAL are subject to (fitschan.c:36099-36110 vs
     // 36209-36223).
     let celestial_ref_pos_forced = celestial.as_ref().is_some_and(|c| c.ref_pos_forced);
-    // Collect warnings from the celestial decoder (e.g. badcel for unknown
-    // celestial systems), behind the pixel→IWC ones.
-    let mut warnings: Warnings = matrix_warnings;
-    if let Some(c) = celestial.as_ref() {
-        warnings.extend(c.warnings.iter().cloned());
-    }
 
     // Step 3: Try to decode spectral axis.
     let spectral = wcs_spectral::build_spectral(store);
-    // Warnings in C's generation order: `WcsCelestial` runs before
-    // `WcsSpectral` in `WcsMapFrm` (fitschan.c:37855-37861), and `Warn`
-    // appends each block in front of the same current card, so the celestial
-    // warnings collected above precede the spectral ones.
+    // `WcsCelestial` runs before `WcsSpectral` in `WcsMapFrm`
+    // (fitschan.c:37855-37861), so the spectral warnings follow the
+    // celestial ones.
     if let Some(sp) = spectral.as_ref() {
         warnings.extend(sp.warnings.iter().cloned());
     }
@@ -179,7 +170,7 @@ pub(crate) fn decode_wcs_inner(
     // conversion, which in turn depends on the reference position set above.
     dsb_set_up_in_frameset(&mut frameset, store)?;
 
-    Ok((AnyObject::FrameSet(frameset), warnings))
+    Ok(AnyObject::FrameSet(frameset))
 }
 
 /// Run [`crate::frames::DSBSpecFrame::dsb_set_up`] on the DSBSpecFrame (if
@@ -495,13 +486,9 @@ fn peek_sky(frame: &dyn crate::frames::Frame) -> Option<&crate::frames::SkyFrame
 /// per-plane suffix on round-trip.
 ///
 /// Mirrors fitschan.c::WcsFromStore + the per-version `WcsSkyFrame`
-/// loop. Also returns any warning messages to surface as ASTWARN cards.
-/// `def_b1950` mirrors the FitsChan `DefB1950` attribute, and
-/// `ignore_bad_alt` its `IgnoreBadAlt` attribute.
-///
-/// Returns any warning messages (e.g. `badcel`) alongside the decoded object;
-/// callers pass the warnings to [`super::FitsChan::read`] for insertion as
-/// ASTWARN cards.
+/// loop. Each warning raised is added to `warnings`, for the read to store
+/// as ASTWARN cards. `def_b1950` mirrors the FitsChan `DefB1950`
+/// attribute, and `ignore_bad_alt` its `IgnoreBadAlt` attribute.
 ///
 /// `cards` is the FitsChan's own card list, used to read `RFVAL<i>` /
 /// `RFVAL<i><s>` for the primary plane and each alt plane respectively
@@ -512,9 +499,10 @@ pub(crate) fn decode_wcs_with_alts_inner(
     def_b1950: bool,
     ignore_bad_alt: bool,
     cards: &CardList,
-) -> AstResult<(AnyObject, Warnings)> {
+    warnings: &mut Warnings,
+) -> AstResult<AnyObject> {
     // Step 1: build the primary FrameSet via the inner decoder.
-    let (primary_obj, mut warnings) = decode_wcs_inner(primary, def_b1950, cards, ' ')?;
+    let primary_obj = decode_wcs_inner(primary, def_b1950, cards, ' ', warnings)?;
     let mut fs = match primary_obj {
         AnyObject::FrameSet(f) => f,
         _ => unreachable!("decode_wcs always returns AnyObject::FrameSet"),
@@ -545,6 +533,7 @@ pub(crate) fn decode_wcs_with_alts_inner(
                 *letter,
                 def_b1950,
                 Some(&rfval),
+                warnings,
             )?;
             // Capture the alt plane's celestial fiducial before the decoder is
             // consumed, so the alt SkyFrame gets the same SkyRef/SkyRefIs=Ignored
@@ -552,10 +541,6 @@ pub(crate) fn decode_wcs_with_alts_inner(
             // to every plane, not just the primary).
             let alt_ref_pos = celestial.as_ref().and_then(|c| c.ref_pos);
             let alt_ref_pos_forced = celestial.as_ref().is_some_and(|c| c.ref_pos_forced);
-            // Collect warnings from alt planes too.
-            if let Some(ref cel) = celestial {
-                warnings.extend(cel.warnings.iter().cloned());
-            }
             let spectral = wcs_spectral::build_spectral(alt_store);
             let mut world_frame = build_world_frame(alt_store, &celestial, &spectral)?;
             // Simplify the pixel→world Mapping, mirroring C `astSimplify` on each
@@ -614,7 +599,7 @@ pub(crate) fn decode_wcs_with_alts_inner(
     // when a corresponding absolute SkyFrame exists.
     tidy_offsets(&mut fs)?;
 
-    Ok((AnyObject::FrameSet(fs), warnings))
+    Ok(AnyObject::FrameSet(fs))
 }
 
 /// Apply C `TidyOffsets` (fitschan.c:34368-34540) to a freshly-read

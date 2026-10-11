@@ -33,6 +33,8 @@ use crate::mappings::{Mapping, WcsMap};
 use crate::wcslib::WcsProjection;
 
 use super::fiducial::get_fiducial_nsc;
+use crate::fitschan::warning::{Warning, Warnings};
+use crate::mappings::helpers::ast_equal;
 
 const DR2D: f64 = 180.0 / std::f64::consts::PI;
 const DD2R: f64 = std::f64::consts::PI / 180.0;
@@ -135,21 +137,9 @@ pub(crate) fn sky_pole(
         let alpha0 = store.crval.get(fits_ilon).copied().flatten().unwrap_or(0.0) * DD2R;
         let delta0 = store.crval.get(fits_ilat).copied().flatten().unwrap_or(0.0) * DD2R;
 
-        // Run wcs_nat_pole with sentinel latpole = 999 rad ⇒ "no
-        // value supplied". Mirrors C:29543.
-        let mut phip = phip_in;
-        let mut alphap = 0.0_f64;
-        let mut deltap = 0.0_f64;
-        let success = wcs_nat_pole(
-            wcsmap,
-            alpha0,
-            delta0,
-            999.0,
-            &mut phip,
-            &mut alphap,
-            &mut deltap,
-        );
-        if success {
+        // C passes a LATPOLE of 999.0 and no FitsChan (fitschan.c:29901).
+        let (_, pole) = wcs_nat_pole(wcsmap, alpha0, delta0, Some(999.0), Some(phip_in), None);
+        if let Some((_, deltap)) = pole {
             // If the default LATPOLE matches the actual native lat
             // we found by inverse-transforming, the keyword is
             // implicit and we don't store it. Mirrors C:29547-29553.
@@ -205,80 +195,81 @@ fn equal_angles(a: f64, b: f64) -> bool {
     (a - b).abs() < 1.0e-10
 }
 
-/// Find the celestial coords of the native north pole given the
-/// projection's fiducial-point celestial coords plus the user's
-/// LONPOLE / LATPOLE inputs (or sentinels for "use default").
+/// C's `WcsNatPole` (fitschan.c:38747): the celestial coordinates of the
+/// native north pole, by equations 8 to 10 of FITS-WCS paper II, given
+/// those of the fiducial point (`alpha0`, `delta0`), LATPOLE and LONPOLE
+/// (`phip`), each in radians and `None` when not supplied. Returns the
+/// LONPOLE used, then `(alphap, deltap)` or `None` when the pole cannot be
+/// found.
 ///
-/// Implements equations 8-10 of FITS-WCS paper II
-/// (Calabretta & Greisen). Mirrors `fitschan.c::WcsNatPole`
-/// (~38361). Returns `true` on success. `phip` is updated in place
-/// with the chosen LONPOLE (input-or-default), and `alphap` /
-/// `deltap` are written with the resulting native pole celestial
-/// coords. The `latpole` argument is the user-supplied LATPOLE in
-/// radians, or any value ≥ π (e.g. `999.0`) to signal "no value
-/// supplied — pick the default". Likewise an input `*phip` of
-/// ≥ π (or `f64::INFINITY`) means "no LONPOLE supplied".
+/// A default LONPOLE or LATPOLE raises a `nolonpole` or `nolatpole`
+/// warning in `warnings`; the writer passes none, as C passes no FitsChan.
 pub(crate) fn wcs_nat_pole(
     wcsmap: &WcsMap,
     alpha0: f64,
     delta0: f64,
-    latpole: f64,
-    phip: &mut f64,
-    alphap: &mut f64,
-    deltap: &mut f64,
-) -> bool {
+    latpole: Option<f64>,
+    phip: Option<f64>,
+    mut warnings: Option<&mut Warnings>,
+) -> (f64, Option<(f64, f64)>) {
     let (phi0, theta0) = get_fiducial_nsc(wcsmap);
-    if !phi0.is_finite() || !theta0.is_finite() {
-        return false;
-    }
+    let g8 = |v: f64| crate::frames::axis_format::sprintf_double("%.8g", v);
 
-    // Default LONPOLE if not supplied.
-    if !phip.is_finite() || phip.abs() > 100.0 {
-        *phip = if delta0 >= theta0 { 0.0 } else { DPI };
-    }
+    // A default LONPOLE makes celestial latitude increase with native
+    // latitude at the fiducial point.
+    let phip = match phip {
+        Some(p) => p,
+        None => {
+            let p = if delta0 >= theta0 { 0.0 } else { DPI };
+            if let Some(w) = &mut warnings {
+                w.push(Warning::new(
+                    "nolonpole",
+                    format!(
+                        "The original FITS header did not specify the longitude of the \
+                         native north pole. A default value of {} degrees was assumed.",
+                        g8(p * DR2D)
+                    ),
+                ));
+            }
+            p
+        }
+    };
 
     let sin_theta0 = theta0.sin();
-
-    // Special-case: fiducial at native north pole (theta0 = π/2)
-    // ⇒ celestial pole coincides with fiducial. C:38491-38494.
-    if (sin_theta0 - 1.0).abs() < TOL2 {
-        *alphap = alpha0;
-        *deltap = delta0;
-        return alphap.is_finite() && deltap.is_finite();
+    // A fiducial point at the native north pole is the pole; one at the
+    // native south pole is diametrically opposite it.
+    if ast_equal(sin_theta0, 1.0) {
+        return (phip, Some((alpha0, delta0)));
     }
-    // Special-case: fiducial at native south pole.
-    if (sin_theta0 + 1.0).abs() < TOL2 {
-        *alphap = alpha0 + DPI;
-        *deltap = -delta0;
-        return alphap.is_finite() && deltap.is_finite();
+    if ast_equal(sin_theta0, -1.0) {
+        return (phip, Some((alpha0 + DPI, -delta0)));
     }
 
     let cos_theta0 = theta0.cos();
     let cos_delta0 = delta0.cos();
-    let cos_phip = (*phip - phi0).cos();
+    let cos_phip = (phip - phi0).cos();
     let sin_delta0 = delta0.sin();
-    let sin_phip = (*phip - phi0).sin();
+    let sin_phip = (phip - phi0).sin();
 
+    // The latitude of the pole. Where it is indeterminate LATPOLE gives it
+    // (item 6 para. 2 of the paper), and failing that there is none.
     let t0 = cos_theta0 * cos_phip;
-    let deltap_chosen: Option<f64>;
-
-    if t0.abs() < TOL2 && sin_theta0.abs() < TOL2 {
-        // Indeterminate — fall back to user-supplied LATPOLE.
-        if latpole.is_finite() && latpole.abs() <= 100.0 {
-            deltap_chosen = Some(latpole);
-        } else {
-            return false;
+    let deltap = if t0.abs() < TOL2 && sin_theta0.abs() < TOL2 {
+        match latpole {
+            Some(l) => l,
+            None => return (phip, None),
         }
     } else {
         let t1 = sin_theta0.atan2(t0);
         let mut t2 = cos_theta0 * cos_phip;
-        t2 = t2 * t2 + sin_theta0 * sin_theta0;
+        t2 *= t2;
+        t2 += sin_theta0 * sin_theta0;
         if t2 <= f64::MIN_POSITIVE {
-            return false;
+            return (phip, None);
         }
         let t3 = sin_delta0 / t2.sqrt();
         if t3.abs() > 1.0 + TOL1 {
-            return false;
+            return (phip, None);
         }
         let t4 = if t3 < -1.0 {
             DPI
@@ -289,69 +280,68 @@ pub(crate) fn wcs_nat_pole(
         };
         let deltap_1 = crate::pal::drange(t1 + t4);
         let deltap_2 = crate::pal::drange(t1 - t4);
-
-        // Choose between deltap_1 / deltap_2.
-        let p = if deltap_1.abs() > DPIBY2 + TOL2 {
+        // Of the two solutions within +/- PI/2, use the one closer to
+        // LATPOLE, or with none the northern one.
+        let deltap = if deltap_1.abs() > DPIBY2 + TOL2 {
             deltap_2
         } else if deltap_2.abs() > DPIBY2 + TOL2 {
             deltap_1
-        } else if latpole.is_finite() && latpole.abs() <= 100.0 {
-            // Both in range — pick the one closer to user-supplied
-            // LATPOLE.
-            if (deltap_1 - latpole).abs() < (deltap_2 - latpole).abs() {
+        } else if let Some(l) = latpole {
+            if (deltap_1 - l).abs() < (deltap_2 - l).abs() {
                 deltap_1
             } else {
                 deltap_2
             }
         } else {
-            // No LATPOLE — pick the northern one. Mirrors C:38563-38568.
-            if deltap_1 > deltap_2 {
+            let d = if deltap_1 > deltap_2 {
                 deltap_1
             } else {
                 deltap_2
+            };
+            if let Some(w) = &mut warnings {
+                w.push(Warning::new(
+                    "nolatpole",
+                    format!(
+                        "The original FITS header did not specify the latitude of the \
+                         native north pole. A default value of {} degrees was assumed.",
+                        g8(d * DR2D)
+                    ),
+                ));
             }
+            d
         };
-
-        // Clamp to ±π/2 (mirrors C:38578-38584).
-        let p = if p.abs() > DPIBY2 + TOL2 {
-            return false;
-        } else if p < -DPIBY2 {
+        if deltap.abs() > DPIBY2 + TOL2 {
+            return (phip, None);
+        } else if deltap < -DPIBY2 {
             -DPIBY2
-        } else if p > DPIBY2 {
+        } else if deltap > DPIBY2 {
             DPIBY2
         } else {
-            p
-        };
-        deltap_chosen = Some(p);
-    }
-    let dp = match deltap_chosen {
-        Some(v) => v,
-        None => return false,
+            deltap
+        }
     };
-    *deltap = dp;
 
-    // Find alphap. Mirrors C:38591-38614.
-    if cos_delta0.abs() > TOL2 {
-        let cos_deltap = dp.cos();
-        let sin_deltap = dp.sin();
+    // The longitude of the pole.
+    let alphap = if cos_delta0.abs() > TOL2 {
+        let cos_deltap = deltap.cos();
+        let sin_deltap = deltap.sin();
         if cos_deltap.abs() > TOL2 {
             let t1 = sin_phip * cos_theta0 / cos_delta0;
             let t2 = (sin_theta0 - sin_deltap * sin_delta0) / (cos_delta0 * cos_deltap);
-            *alphap = if t1.abs() > TOL2 || t2.abs() > TOL2 {
+            if t1.abs() > TOL2 || t2.abs() > TOL2 {
                 alpha0 - t1.atan2(t2)
             } else {
                 alpha0
-            };
+            }
         } else if sin_deltap > 0.0 {
-            *alphap = alpha0 + (*phip - phi0) - DPI;
+            alpha0 + (phip - phi0) - DPI
         } else {
-            *alphap = alpha0 - (*phip - phi0);
+            alpha0 - (phip - phi0)
         }
     } else {
-        *alphap = alpha0;
-    }
-
-    deltap.is_finite() && alphap.is_finite()
+        alpha0
+    };
+    (phip, Some((alphap, deltap)))
 }
 
 #[cfg(test)]
@@ -442,26 +432,18 @@ mod tests {
 
     #[test]
     fn wcs_nat_pole_fiducial_at_north_pole() {
-        // For TAN at default fiducial (0, π/2), the celestial pole
-        // coincides with the fiducial. Mirrors C:38491-38494.
+        // For TAN at the default fiducial (0, π/2), the celestial pole
+        // coincides with the fiducial point.
         let wm = WcsMap::new(2, WcsProjection::Tan, 1, 2).unwrap();
-        let mut phip = f64::INFINITY; // sentinel "no LONPOLE"
-        let mut alphap = 0.0;
-        let mut deltap = 0.0;
-        let alpha0 = 1.5;
-        let delta0 = 0.7;
-        let ok = wcs_nat_pole(
-            &wm,
-            alpha0,
-            delta0,
-            999.0,
-            &mut phip,
-            &mut alphap,
-            &mut deltap,
-        );
-        assert!(ok);
-        // theta0 = π/2 ⇒ alphap = alpha0, deltap = delta0.
+        let (alpha0, delta0) = (1.5, 0.7);
+        let mut warnings = Vec::new();
+        let (phip, pole) = wcs_nat_pole(&wm, alpha0, delta0, None, None, Some(&mut warnings));
+        let (alphap, deltap) = pole.unwrap();
         assert!((alphap - alpha0).abs() < 1e-12);
         assert!((deltap - delta0).abs() < 1e-12);
+        // The default LONPOLE is warned of.
+        assert_eq!(phip, DPI);
+        assert_eq!(warnings.len(), 1);
+        assert_eq!(warnings[0].condition, "nolonpole");
     }
 }
