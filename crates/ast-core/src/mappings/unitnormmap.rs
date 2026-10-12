@@ -633,12 +633,15 @@ impl Serializable for UnitNormMap {
         node.class_comment = Some("Compute unit vector and norm relative to a centre".to_string());
         write_mapping_base(&mut node, self);
 
-        // Write centre values (only non-zero values, matching C's conditional write).
+        // Each centre value, set when not zero.
         for (axis, &c) in self.centre.iter().enumerate() {
-            let key = format!("Ctr{}", axis + 1);
-            if c != 0.0 {
-                node.push_double(&key, c, Some(format!("Centre for axis {}", axis + 1)));
-            }
+            node.write_double(
+                &format!("Ctr{}", axis + 1),
+                c != 0.0,
+                false,
+                c,
+                &format!("Centre for axis {}", axis + 1),
+            );
         }
 
         Ok(node)

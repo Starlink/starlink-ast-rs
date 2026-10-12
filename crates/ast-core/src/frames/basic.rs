@@ -614,6 +614,10 @@ pub(crate) fn axis_unformat(text: &str) -> (f64, usize) {
 }
 
 impl Frame for BasicFrame {
+    fn axis_perm(&self) -> Vec<usize> {
+        self.perm.clone()
+    }
+
     fn naxes(&self) -> usize {
         self.naxes
     }
@@ -892,6 +896,18 @@ impl FrameDumpSource for BasicFrame {
     fn attrs(&self) -> &FrameAttrs {
         &self.attrs
     }
+    fn dump_digits(&self) -> i32 {
+        self.digits()
+    }
+    fn dump_obs(&self) -> [f64; 5] {
+        [
+            self.obs_lat(),
+            self.obs_lon(),
+            self.obs_alt(),
+            self.dtai(),
+            self.dut1(),
+        ]
+    }
     fn dump_naxes(&self) -> usize {
         self.naxes
     }
@@ -981,6 +997,7 @@ impl Serializable for BasicFrame {
             &self.attrs.id,
             self.attrs.ident.as_deref(),
             self.attrs.use_defs,
+            crate::frames::Frame::use_defs(self),
         );
 
         write_frame_cards(&mut node, self)?;

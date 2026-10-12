@@ -855,6 +855,15 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
         Ok(())
     }
 
+    /// The axis permutation, `perm[external] = internal`, 0-based: C's
+    /// protected `astGetPerm`, which a FrameSet and a Region forward to
+    /// their current Frame, and which the Frame part of a dump uses to write
+    /// its values in internal axis order (frame.c `Dump`).
+    #[doc(hidden)]
+    fn axis_perm(&self) -> Vec<usize> {
+        (0..self.naxes()).collect()
+    }
+
     /// Test whether this frame is equal to another.
     ///
     /// Uses AST's standard floating-point tolerance for numeric comparisons.
@@ -1854,24 +1863,5 @@ pub(crate) fn cartesian_angle(a: &[f64], b: &[f64], c: &[f64]) -> f64 {
     } else {
         let sp: f64 = (0..naxes).map(|i| ab[i] * cb[i]).sum();
         (sp / (sla * slc).sqrt()).clamp(-1.0, 1.0).acos()
-    }
-}
-
-/// The effective Epoch (TDB MJD) of a frame, C's `astGetEpoch`.
-pub(crate) fn frame_epoch_effective_mjd(f: &dyn Frame) -> f64 {
-    f.epoch_mjd()
-}
-
-/// The effective Epoch of a frame as a decimal year, using the
-/// Besselian calendar below J1984 and the Julian calendar at or above
-/// it — exactly the branch `frame.c::Dump` takes (frame.c:14338-14343).
-/// Returns `(year, is_besselian)` so the caller can pick the matching
-/// comment string.
-pub(crate) fn frame_epoch_effective_year(f: &dyn Frame) -> (f64, bool) {
-    let mjd = frame_epoch_effective_mjd(f);
-    if mjd < crate::pal::epj2d(1984.0) {
-        (crate::pal::epb(mjd), true)
-    } else {
-        (crate::pal::epj(mjd), false)
     }
 }

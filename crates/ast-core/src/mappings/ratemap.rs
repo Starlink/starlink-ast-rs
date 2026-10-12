@@ -591,28 +591,24 @@ impl Serializable for RateMap {
         node.class_comment = Some("Differential Mapping".to_string());
         write_mapping_base(&mut node, self);
 
-        // Input axis (0-based in serialization, only written if non-zero).
-        // ax2 is the input axis index (1-based in Rust → 0-based in serial).
+        // The 0-based input (ax2) and output (ax1) axes, and the
+        // encapsulated Mapping's Invert flag, each set when not zero.
         let iin = (self.ax2 - 1) as i64;
-        if iin != 0 {
-            node.push_int("IIn", iin, Some("Index of Mapping input".to_string()));
-        }
-
-        // Output axis (0-based in serialization, only written if non-zero).
-        // ax1 is the output axis index (1-based in Rust → 0-based in serial).
+        node.write_int("IIn", iin != 0, false, iin, "Index of Mapping input");
         let iout = (self.ax1 - 1) as i64;
-        if iout != 0 {
-            node.push_int("IOut", iout, Some("Index of Mapping output".to_string()));
-        }
-
-        // Encapsulated mapping's invert flag snapshot (only if non-zero).
-        if self.invert_snapshot {
-            node.push_int(
-                "Inv",
-                1,
-                Some("Mapping used in inverse direction".to_string()),
-            );
-        }
+        node.write_int("IOut", iout != 0, false, iout, "Index of Mapping output");
+        let inv = self.invert_snapshot;
+        node.write_int(
+            "Inv",
+            inv,
+            false,
+            i64::from(inv),
+            if inv {
+                "Mapping used in inverse direction"
+            } else {
+                "Mapping used in forward direction"
+            },
+        );
 
         // Encapsulated mapping as a nested object.
         let map_node = self.map.to_node()?;

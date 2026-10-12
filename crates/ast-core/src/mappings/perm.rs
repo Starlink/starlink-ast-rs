@@ -1258,29 +1258,37 @@ impl Serializable for PermMap {
         node.class_comment = Some("Coordinate permutation".to_string());
         write_mapping_base(&mut node, self);
 
-        // PermSplit (permmap.c Dump, "pmsplt"): written whenever it is set,
-        // 0 included. C's unset value is not "helpful", so it is not written.
-        if let Some(v) = self.perm_split {
-            let comment = if v {
+        // PermSplit (permmap.c Dump, "pmsplt"), not helpful when unset.
+        let v = self.perm_split.unwrap_or(false);
+        node.write_int(
+            "pmsplt",
+            self.perm_split.is_some(),
+            false,
+            i64::from(v),
+            if v {
                 "Use alternative astMapSplit implementation"
             } else {
                 "Use normal astMapSplit implementation"
-            };
-            node.push_int("pmsplt", v as i64, Some(comment.to_string()));
-        }
+            },
+        );
 
         // The highest constant number the permutations written below refer
         // to; C writes only the constants up to it (permmap.c Dump).
         let mut nconst = 0;
 
         // Outperm (forward permutation).
-        if self.out_is_copy {
-            node.push_int(
-                "OutCpy",
-                1,
-                Some("Output coordinates = input coordinates".to_string()),
-            );
-        } else {
+        node.write_int(
+            "OutCpy",
+            self.out_is_copy,
+            false,
+            i64::from(self.out_is_copy),
+            if self.out_is_copy {
+                "Output coordinates = input coordinates"
+            } else {
+                "Output coordinates specified individually"
+            },
+        );
+        if !self.out_is_copy {
             for (i, &p) in self.outperm.iter().enumerate() {
                 // C `permmap.c` Dump (2304-2313): a negative entry names a
                 // constant only when the PermMap actually has a constants
@@ -1300,13 +1308,18 @@ impl Serializable for PermMap {
         }
 
         // Inperm (inverse permutation).
-        if self.in_is_copy {
-            node.push_int(
-                "InCpy",
-                1,
-                Some("Input coordinates = output coordinates".to_string()),
-            );
-        } else {
+        node.write_int(
+            "InCpy",
+            self.in_is_copy,
+            false,
+            i64::from(self.in_is_copy),
+            if self.in_is_copy {
+                "Input coordinates = output coordinates"
+            } else {
+                "Input coordinates specified individually"
+            },
+        );
+        if !self.in_is_copy {
             for (i, &p) in self.inperm.iter().enumerate() {
                 // See the outperm branch above (C permmap.c:2304-2313).
                 let comment = if p > 0 {
@@ -1328,9 +1341,7 @@ impl Serializable for PermMap {
         if self.constants.is_empty() {
             nconst = 0;
         }
-        if nconst != 0 {
-            node.push_int("Nconst", nconst, Some("Number of constants".to_string()));
-        }
+        node.write_int("Nconst", nconst != 0, false, nconst, "Number of constants");
         for (i, &c) in self.constants.iter().take(nconst as usize).enumerate() {
             let key = format!("Con{}", i + 1);
             let comment = format!("Constant number {}", i + 1);

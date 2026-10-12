@@ -11,6 +11,9 @@
  * and AltAxes values. It needs mocchan.c as fixed upstream at 228a0310,
  * and fitschan.c as fixed at c16f9b11.
  *
+ * Each case is also dumped with Full set to 1, which writes every unset
+ * value (channel.c Use).
+ *
  * Prints Rust source for crates/ast-core/tests/channel_dump_oracle/cases.rs:
  *
  *   ./channel_dump_probe > ../../crates/ast-core/tests/channel_dump_oracle/cases.rs
@@ -52,11 +55,44 @@ static void str( const char *s ) {
    putchar( '"' );
 }
 
+/* The dumps written with Full set to 1, printed after the others. */
+static char full_dumps[ 200000 ];
+static int full_len;
+
+/* Record the dump of `obj` written with Full set to 1, without the lines
+   holding the state of the C process rather than of the Object: the unset
+   RefCnt and Nobj of the Object part (object.c Dump). */
+static void full_dump( const char *name, AstObject *obj ) {
+   AstChannel *ch = astChannel( NULL, sink, "Full=1" );
+   char key[ 32 ];
+   int i, n = 0;
+   nline = 0;
+   astWrite( ch, obj );
+   full_len += sprintf( full_dumps + full_len, "    (\"%s\", &[", name );
+   for( i = 0; i < nline; i++ ) {
+      if( sscanf( lines[ i ], "# %31[A-Za-z] = ", key ) == 1 &&
+          ( !strcmp( key, "RefCnt" ) || !strcmp( key, "Nobj" ) ) ) continue;
+      full_len += sprintf( full_dumps + full_len, "%s\"", n++ ? ", " : "" );
+      for( const char *c = lines[ i ]; *c; c++ ) {
+         if( *c == '"' || *c == '\\' ) full_dumps[ full_len++ ] = '\\';
+         if( *c == '\t' ) {
+            full_len += sprintf( full_dumps + full_len, "\\t" );
+         } else {
+            full_dumps[ full_len++ ] = *c;
+         }
+      }
+      full_dumps[ full_len++ ] = '"';
+   }
+   full_len += sprintf( full_dumps + full_len, "]),\n" );
+   ch = astAnnul( ch );
+}
+
 /* Dump `obj`, then read it back and dump that: `(case, dump, read-back dump)`. */
 static void dump( const char *name, AstObject *obj ) {
    AstChannel *ch = astChannel( source, sink, " " );
    AstObject *back;
    int i, n;
+   full_dump( name, obj );
    nline = 0;
    astWrite( ch, obj );
    n = nline;
@@ -221,6 +257,8 @@ int main( void ) {
          load( "fitschan_partial_values", t12 );
       }
    }
-   printf( "];\n" );
+   printf( "];\n\n" );
+   printf( "/// `(case, dump written with Full = 1, less the unset RefCnt and Nobj)`.\n" );
+   printf( "pub const FULL_DUMPS: &[(&str, &[&str])] = &[\n%s];\n", full_dumps );
    return 0;
 }

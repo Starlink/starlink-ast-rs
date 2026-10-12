@@ -6,7 +6,7 @@ use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::{DynFrame, Frame, FrameRef};
 use crate::mappings::helpers::{ast_equal, is_bad};
 use crate::mappings::{CmpMap, Composition, DynMapping, ShiftMap, SpecCvtType, SpecMap, UnitMap};
-use crate::serial::{Node, NodeValue, Serializable};
+use crate::serial::{Node, Serializable};
 use crate::units::unit_mapper;
 
 // ---------------------------------------------------------------------------
@@ -2431,6 +2431,7 @@ impl Serializable for SpecFrame {
             &self.attrs.id,
             self.attrs.ident.as_deref(),
             self.attrs.use_defs,
+            crate::frames::Frame::use_defs(self),
         );
 
         // The Frame class's part, read through the SpecFrame's getters
@@ -2448,13 +2449,12 @@ impl Serializable for SpecFrame {
                 perm: vec![0],
                 is_frame: false,
                 own_naxes: 1,
+                mapping: None,
             },
         )?;
 
         // Ax1: the Axis, with the attributes that are set (axis.c Dump).
-        let mut axis_node = Node::new("Axis");
-        axis_node.class_comment = Some("Coordinate axis".to_string());
-        self.axis.write_set_attributes(&mut axis_node);
+        let axis_node = self.axis.to_dump_node();
         node.push_full_capped_object("Ax1", axis_node, Some("Axis number 1".to_string()));
 
         // IsA Frame marker.
@@ -2462,86 +2462,76 @@ impl Serializable for SpecFrame {
 
         // --- SpecFrame-specific attributes (after IsA Frame) ---
 
-        // SoR (StdOfRest): C writes it with helpful=1 (specframe.c Dump),
-        // so a set value is active and an unset one is a commented default
-        // (the default StdOfRest is Heliocentric).
-        if self.sor_set {
-            node.push_string(
-                "SoR",
-                self.std_of_rest.as_str(),
-                Some("Standard of rest".to_string()),
-            );
-        } else {
-            node.push_unset(
-                "SoR",
-                NodeValue::String(self.std_of_rest.as_str().to_string()),
-                Some("Standard of rest".to_string()),
-            );
-        }
-
-        // AlSoR (AlignStdOfRest, only if explicitly set).
-        if let Some(ref asor) = self.align_std_of_rest {
-            node.push_string(
-                "AlSoR",
-                asor.as_str(),
-                Some("Alignment standard of rest".to_string()),
-            );
-        }
-
-        // RefRA (if set).
-        if let Some(ref_ra) = self.ref_ra {
-            node.push_double(
-                "RefRA",
-                ref_ra,
-                Some("Reference RA (rads, FK5 J2000)".to_string()),
-            );
-        }
-
-        // RefDec (if set).
-        if let Some(ref_dec) = self.ref_dec {
-            node.push_double(
-                "RefDec",
-                ref_dec,
-                Some("Reference Dec (rads, FK5 J2000)".to_string()),
-            );
-        }
-
-        // RstFrq (RestFreq, if set).
-        if let Some(rest_freq) = self.rest_freq {
-            node.push_double("RstFrq", rest_freq, Some("Rest frequency (Hz)".to_string()));
-        }
-
-        // SrcVel (SourceVel, if set).
-        if let Some(source_vel) = self.source_vel {
-            node.push_double(
-                "SrcVel",
-                source_vel,
-                Some("Source velocity (m/s)".to_string()),
-            );
-        }
-
-        // SrcVRF (SourceVRF, if set).
-        if let Some(ref svrf) = self.source_vrf {
-            node.push_string(
-                "SrcVRF",
-                svrf.as_str(),
-                Some("Source velocity rest frame".to_string()),
-            );
-        }
-
-        // SrcSys (SourceSys, if set).
-        if let Some(ref ssys) = self.source_sys {
-            node.push_string(
-                "SrcSys",
-                ssys.as_str(),
-                Some("Source velocity spectral system".to_string()),
-            );
-        }
-
-        // AlSpOf (AlignSpecOffset, if true).
-        if self.align_spec_offset {
-            node.push_int("AlSpOf", 1, Some("Align in offset coords".to_string()));
-        }
+        // specframe.c `Dump`: each value active when set, otherwise the
+        // default its getter gives; only SoR is helpful.
+        node.write_string(
+            "SoR",
+            self.sor_set,
+            true,
+            self.std_of_rest.as_str(),
+            "Standard of rest",
+        );
+        node.write_string(
+            "AlSoR",
+            self.align_std_of_rest.is_some(),
+            false,
+            self.align_std_of_rest().as_str(),
+            "Alignment standard of rest",
+        );
+        node.write_double(
+            "RefRA",
+            self.ref_ra.is_some(),
+            false,
+            self.ref_ra(),
+            "Reference RA (rads, FK5 J2000)",
+        );
+        node.write_double(
+            "RefDec",
+            self.ref_dec.is_some(),
+            false,
+            self.ref_dec(),
+            "Reference Dec (rads, FK5 J2000)",
+        );
+        node.write_double(
+            "RstFrq",
+            self.rest_freq.is_some(),
+            false,
+            self.rest_freq(),
+            "Rest frequency (Hz)",
+        );
+        node.write_double(
+            "SrcVel",
+            self.source_vel.is_some(),
+            false,
+            self.source_vel(),
+            "Source velocity (m/s)",
+        );
+        node.write_string(
+            "SrcVRF",
+            self.source_vrf.is_some(),
+            false,
+            self.source_vrf().as_str(),
+            "Source velocity rest frame",
+        );
+        node.write_string(
+            "SrcSys",
+            self.source_sys.is_some(),
+            false,
+            self.source_sys().as_str(),
+            "Source velocity spectral system",
+        );
+        let v = self.align_spec_offset;
+        node.write_int(
+            "AlSpOf",
+            self.align_spec_offset_set,
+            false,
+            i64::from(v),
+            if v {
+                "Align in offset coords"
+            } else {
+                "Align in system coords"
+            },
+        );
 
         // UsedUnits block: one `U<system>` card per system that has a
         // recorded used unit, in C's AstSystemType index order
@@ -2563,11 +2553,16 @@ impl Serializable for SpecFrame {
             }
         }
 
-        // SpOrg (SpecOrigin, if set).
-        if let Some(spec_origin) = self.spec_origin {
-            if !is_bad(spec_origin) {
-                node.push_double("SpOrg", spec_origin, Some("Spec offset".to_string()));
-            }
+        // SpOrg, unless it is bad.
+        let spec_origin = self.spec_origin();
+        if !is_bad(spec_origin) {
+            node.write_double(
+                "SpOrg",
+                self.spec_origin.is_some(),
+                false,
+                spec_origin,
+                "Spec offset",
+            );
         }
 
         Ok(node)

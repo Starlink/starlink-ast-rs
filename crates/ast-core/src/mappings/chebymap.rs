@@ -173,12 +173,8 @@ impl ChebyMap {
 
         // Create the inner PolyMap for term storage and serialisation.
         let mut poly = PolyMap::new(nin, nout, forward, inverse)?;
-        // C's IterInverse default (no inverse coefficients -> iterate)
-        // works for ChebyMap because the C iteration dispatches through
-        // the virtual astTransform; the Rust Newton-Raphson machinery
-        // evaluates power-basis terms directly and would invert the
-        // wrong function here, so keep the iterative inverse disabled
-        // until a basis-aware iteration is ported.
+        // A ChebyMap never uses an iterative inverse: chebymap.c
+        // `GetIterInverse` returns 0 whatever the attribute holds.
         poly.set_iter_inverse(false)?;
 
         Ok(Self {
@@ -809,6 +805,31 @@ impl Serializable for ChebyMap {
             }
         }
 
+        // The PolyMap part's iterative inverse attributes, none of which a
+        // ChebyMap sets. A ChebyMap never uses an iterative inverse
+        // (chebymap.c `GetIterInverse` returns 0).
+        node.write_int(
+            "IterInv",
+            false,
+            false,
+            0,
+            "Do not use an iterative inverse",
+        );
+        node.write_int(
+            "NiterInv",
+            false,
+            false,
+            self.poly.niter_inverse() as i64,
+            "Max number of iterations for iterative inverse",
+        );
+        node.write_double(
+            "TolInv",
+            false,
+            false,
+            self.poly.tol_inverse(),
+            "Target relative error for iterative inverse",
+        );
+
         // --- IsA marker terminating the PolyMap instance-variable block ---
         node.push_isa("PolyMap", Some("Polynomial transformation".to_string()));
 
@@ -937,8 +958,7 @@ impl Serializable for ChebyMap {
         // Build the inner PolyMap directly (avoid re-validation of potentially
         // BAD_VALUE sentinel coefficients).
         let mut poly = PolyMap::new(nin, nout, &forward, inverse.as_deref())?;
-        // See ChebyMap::new — the power-basis NR cannot iterate a
-        // Chebyshev forward, so the C IterInverse default is disabled.
+        // As in `ChebyMap::new`, no iterative inverse.
         poly.set_iter_inverse(false)?;
 
         let mut m = ChebyMap {

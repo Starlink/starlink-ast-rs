@@ -668,7 +668,7 @@ fn write_object(
 
         let (value, set) = match &item.value {
             NodeValue::Unset(inner) => {
-                if full < 0 {
+                if full < 0 || (full == 0 && !item.helpful) {
                     continue;
                 }
                 (inner.as_ref(), false)

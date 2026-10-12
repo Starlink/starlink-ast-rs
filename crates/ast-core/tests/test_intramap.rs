@@ -118,6 +118,27 @@ fn dumps_match_the_c_library() {
     );
 }
 
+/// The same dumps written with Full = 1, which writes every unset value, as
+/// C writes them less its unset `RefCnt` and `Nobj`, counts the port does
+/// not have. C needs intramap.c as fixed upstream at 4fe377c3 to write the
+/// unset IntraFlag.
+#[test]
+fn full_dumps_match_the_c_library() {
+    let full = |map: &IntraMap| {
+        let mut ch = NativeChannel::with_string_sink();
+        ch.config_mut().set_full(1);
+        ch.write(&AnyObject::IntraMap(map.clone())).unwrap();
+        ch.into_string()
+    };
+    let want = |name: &str| cases::FULL_DUMPS.iter().find(|c| c.0 == name).unwrap().1;
+    let mut dbl = IntraMap::new(double(), 1, 1).unwrap();
+    dbl.set_intra_flag("v1");
+    assert_eq!(full(&dbl), want("double_with_flag"));
+    dbl.invert();
+    assert_eq!(full(&dbl), want("double_inverted"));
+    assert_eq!(full(&IntraMap::new(nofwd(), 1, 1).unwrap()), want("nofwd"));
+}
+
 /// The transformation is applied in the direction the Invert flag makes of
 /// the one asked for, with the probe's values.
 #[test]

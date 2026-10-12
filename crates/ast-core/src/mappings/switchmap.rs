@@ -858,13 +858,17 @@ impl crate::serial::Serializable for SwitchMap {
                 fs_node,
                 Some("Forward selector Mapping".to_string()),
             );
-            if self.fsinv {
-                node.push_int(
-                    "FSInv",
-                    1,
-                    Some("Fwd selector used in inverse direction".to_string()),
-                );
-            }
+            node.write_int(
+                "FSInv",
+                self.fsinv,
+                false,
+                i64::from(self.fsinv),
+                if self.fsinv {
+                    "Fwd selector used in inverse direction"
+                } else {
+                    "Fwd selector used in forward direction"
+                },
+            );
         }
 
         if let Some(is) = self.inverse_selector() {
@@ -874,13 +878,17 @@ impl crate::serial::Serializable for SwitchMap {
                 is_node,
                 Some("Inverse selector Mapping".to_string()),
             );
-            if self.isinv {
-                node.push_int(
-                    "ISInv",
-                    1,
-                    Some("Inv selector used in inverse direction".to_string()),
-                );
-            }
+            node.write_int(
+                "ISInv",
+                self.isinv,
+                false,
+                i64::from(self.isinv),
+                if self.isinv {
+                    "Inv selector used in inverse direction"
+                } else {
+                    "Inv selector used in forward direction"
+                },
+            );
         }
 
         for (i, rm) in self.route_maps.iter().enumerate() {
@@ -888,14 +896,18 @@ impl crate::serial::Serializable for SwitchMap {
             let rm_node = MappingToNode::to_node(rm.as_ref())?;
             node.push_object(&key, rm_node, Some("Route Mapping".to_string()));
 
-            if self.route_inv[i] {
-                let inv_key = format!("RInv{}", i + 1);
-                node.push_int(
-                    &inv_key,
-                    1,
-                    Some("Route Mapping used in inverse direction".to_string()),
-                );
-            }
+            let inv = self.route_inv[i];
+            node.write_int(
+                &format!("RInv{}", i + 1),
+                inv,
+                false,
+                i64::from(inv),
+                if inv {
+                    "Route Mapping used in inverse direction"
+                } else {
+                    "Route Mapping used in forward direction"
+                },
+            );
         }
 
         Ok(node)

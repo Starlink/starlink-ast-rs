@@ -53,6 +53,8 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 
 ### [Resolved upstream](#resolved-upstream)
 
+- [RESOLVED (upstream 5ac21af5): adding or selecting a variant leaves an unset Domain of the current Frame set](#resolved-upstream-5ac21af5-adding-or-selecting-a-variant-leaves-an-unset-domain-of-the-current-frame-set)
+- [RESOLVED (upstream 4fe377c3): writing an IntraMap with no IntraFlag with Full set to 1 dereferences a NULL pointer](#resolved-upstream-4fe377c3-writing-an-intramap-with-no-intraflag-with-full-set-to-1-dereferences-a-null-pointer)
 - [RESOLVED (upstream d9e43a6b): SkyAxis normalises a set Unit that describes the axis values, so a picked-out RA axis reports `hh*mm*s`](#resolved-upstream-d9e43a6b-skyaxis-normalises-a-set-unit-that-describes-the-axis-values-so-a-picked-out-ra-axis-reports-hhmms)
 - [RESOLVED (upstream 965b7587): `InvertConstants` leaves a constant numerator uninverted, so `"2/m"` converts as `"0.5/m"`](#resolved-upstream-965b7587-invertconstants-leaves-a-constant-numerator-uninverted-so-2m-converts-as-05m)
 - [RESOLVED (upstream 25bd4924): `astUnitNormaliser` blanks any result that starts with a number](#resolved-upstream-25bd4924-astunitnormaliser-blanks-any-result-that-starts-with-a-number)
@@ -1339,6 +1341,26 @@ A 64 bit integer card value was written with `astWriteInt` and read into an `int
 
 Fixed on `u/timj/norm-unit` in c16f9b11: SipReplace is written and read as `SipRpl`, the card values with `astWriteInt64` into an `int64_t`, and PolyTan and SipOK default to -INT_MAX; `testfitschan` `testdumpload`.
 The port's FitsChan dump (`fitschan/dump.rs`) is `Dump` as fixed; `tests/test_channel_dump_oracle.rs` (the `fitschan*` cases), whose probe needs the fixed library.
+
+### RESOLVED (upstream 4fe377c3): writing an IntraMap with no IntraFlag with Full set to 1 dereferences a NULL pointer
+
+C location: `intramap.c` `Dump`.
+
+`Dump` passes the value of an unset IntraFlag to `astWriteString`, and `astGetIntraFlag` gives a NULL pointer for it.
+A Channel writes an unset value that is not helpful only when Full is positive, so with Full set to 1 `WriteString` dereferenced the NULL pointer and writing such an IntraMap crashed.
+
+Fixed on `u/timj/norm-unit` in 4fe377c3: an unset IntraFlag is written as a blank string; `testchannel`.
+The port's IntraMap writes it so; `full_dumps_match_the_c_library` in `tests/test_intramap.rs`, whose probe needs the fixed library.
+
+### RESOLVED (upstream 5ac21af5): adding or selecting a variant leaves an unset Domain of the current Frame set
+
+C location: `frameset.c` `AddVariant` and `SetVariant`.
+
+To find the Mapping between the current Frame and a variant Frame, both functions set the Domain of the current Frame to the variant's while `astConvert` runs, then put the old value back with `astSetDomain`.
+A Domain that was not set was so left set to its default value, so a CmpFrame given variants, whose Domain is otherwise derived from its component Frames, wrote `Domain = "A-B"` as a set value in a dump.
+
+Fixed on `u/timj/norm-unit` in 5ac21af5: a Domain that was not set is cleared instead; `testframeset` errors 44 and 45.
+The port's `add_variant` and Variant setter never changed the Domain; `tests/test_frameset_variants_oracle.rs` (the `cmpframe` case), whose probe needs the fixed library.
 
 ### RESOLVED (upstream f550fcc6): a padded TIMESYS is not recognised when writing, so the date is written in UTC
 

@@ -4,7 +4,7 @@ use crate::constants::BAD_VALUE;
 use crate::coords::PointSet;
 use crate::error::AstResult;
 use crate::pal;
-use crate::serial::{Node, Serializable, read_mapping_base, write_object_base};
+use crate::serial::{Node, Serializable, read_mapping_base};
 
 use super::cmpmap::{CmpMap, Composition};
 use super::helpers::{ast_equal, is_bad, point_has_bad};
@@ -454,44 +454,26 @@ impl Serializable for SphMap {
     fn to_node(&self) -> AstResult<Node> {
         let mut node = Node::new(self.class_name());
         node.class_comment = Some("Cartesian to Spherical mapping".to_string());
-        write_object_base(&mut node, self);
-        // SphMap always serializes with stored dimensions (Nin=3, Nout=2)
-        // regardless of invert state. The Invert flag is separate.
-        node.push_int("Nin", 3, Some("Number of input coordinates".to_string()));
-        node.push_int("Nout", 2, Some("Number of output coordinates".to_string()));
-        if self.has_been_simplified() {
-            node.push_int("IsSimp", 1, Some("Mapping has been simplified".to_string()));
-        }
-        if self.inverted {
-            node.push_int("Invert", 1, Some("Mapping inverted".to_string()));
-        }
-        node.push_isa(
-            "Mapping",
-            Some("Mapping between coordinate systems".to_string()),
-        );
-        // sphmap.c Dump writes UntRd whenever it is set, 0 included; it is
-        // not "helpful", so an unset value is not written.
-        if let Some(unit_radius) = self.unit_radius {
-            let comment = if unit_radius {
+        crate::serial::write_mapping_base(&mut node, self);
+        let unit_radius = self.unit_radius.unwrap_or(false);
+        node.write_int(
+            "UntRd",
+            self.unit_radius.is_some(),
+            false,
+            i64::from(unit_radius),
+            if unit_radius {
                 "All input vectors have unit length"
             } else {
                 "Input vectors do not all have unit length"
-            };
-            node.push_int("UntRd", unit_radius as i64, Some(comment.to_string()));
-        }
-        if self.polar_long_set {
-            node.push_double(
-                "PlrLg",
-                self.polar_long,
-                Some("Polar longitude (rad.s)".to_string()),
-            );
-        } else {
-            node.push_unset(
-                "PlrLg",
-                crate::serial::NodeValue::Double(self.polar_long),
-                Some("Polar longitude (rad.s)".to_string()),
-            );
-        }
+            },
+        );
+        node.write_double(
+            "PlrLg",
+            self.polar_long_set,
+            true,
+            self.polar_long,
+            "Polar longitude (rad.s)",
+        );
         Ok(node)
     }
 

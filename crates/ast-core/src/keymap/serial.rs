@@ -27,42 +27,44 @@ impl Serializable for KeyMap {
             &self.id,
             self.ident.as_deref(),
             None,
+            true,
         );
 
-        // The five attributes, each omitted entirely when unset.
-        push_int_attr(
-            &mut node,
+        // The five attributes, each active when set and otherwise the
+        // default its getter gives, none of them helpful (keymap.c `Dump`).
+        node.write_int(
             "SzGss",
-            self.size_guess() as i64,
             self.test_size_guess(),
+            false,
+            self.size_guess() as i64,
             "Guess at KeyMap size",
         );
-        push_string_attr(
-            &mut node,
+        node.write_string(
             "SortBy",
-            self.sort_by().as_str(),
             self.test_sort_by(),
+            false,
+            self.sort_by().as_str(),
             "Sorting scheme for keys",
         );
-        push_int_attr(
-            &mut node,
+        node.write_int(
             "KyCas",
-            self.key_case() as i64,
             self.test_key_case(),
+            false,
+            self.key_case() as i64,
             "Are keys case sensitive?",
         );
-        push_int_attr(
-            &mut node,
+        node.write_int(
             "KyErr",
-            self.key_error() as i64,
             self.test_key_error(),
+            false,
+            self.key_error() as i64,
             "Report non-existant keys?",
         );
-        push_int_attr(
-            &mut node,
+        node.write_int(
             "MpLck",
-            self.map_locked() as i64,
             self.test_map_locked(),
+            false,
+            self.map_locked() as i64,
             "Prevent addition of new entries?",
         );
 
@@ -446,27 +448,6 @@ fn load_entry(
     Ok(())
 }
 
-/// Write an integer attribute, omitted entirely when `set` is false.
-///
-/// C passes `helpful = 0` for all five KeyMap attribute cards
-/// (`SzGss`/`KyCas`/`KyErr`/`MpLck`/`SortBy`), so `Use` (`channel.c:4141`)
-/// returns false for an unset one at the default `Full`: the card is
-/// absent, not written as `# Key = Value`. See `write_region_base`
-/// (`crates/ast-core/src/serial/mod.rs`) for the same pattern.
-fn push_int_attr(node: &mut Node, key: &str, value: i64, set: bool, comment: &str) {
-    if set {
-        node.push_int(key, value, Some(comment.to_string()));
-    }
-}
-
-/// Write a string attribute, omitted entirely when `set` is false. See
-/// [`push_int_attr`].
-fn push_string_attr(node: &mut Node, key: &str, value: &str, set: bool, comment: &str) {
-    if set {
-        node.push_string(key, value, Some(comment.to_string()));
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -487,13 +468,16 @@ mod tests {
             Some("Map of key/value pairs")
         );
 
-        let keys: Vec<&str> = node.items.iter().map(|i| i.key.as_str()).collect();
-        // The five attribute cards are all unset here, so `Use` (C's
-        // channel.c:4141, `helpful = 0` for every one of them) omits them
-        // entirely rather than writing a commented-out default -- see
-        // `push_int_attr`/`push_string_attr`. MapSz and MemCnt are
-        // unconditional and come first, then the entries in KeyCmp order.
-        // NAME sorts before SIZE, so the vector entry is entry 1.
+        // The items that are set: the Object and KeyMap attributes are all
+        // unset here, so MapSz and MemCnt, which are always set, come first,
+        // then the entries in KeyCmp order. NAME sorts before SIZE, so the
+        // vector entry is entry 1.
+        let keys: Vec<&str> = node
+            .items
+            .iter()
+            .filter(|i| i.key != "IsA" && !matches!(i.value, NodeValue::Unset(_)))
+            .map(|i| i.key.as_str())
+            .collect();
         assert_eq!(
             keys,
             vec![
@@ -520,19 +504,19 @@ mod tests {
     }
 
     #[test]
-    fn unset_attributes_are_omitted_and_set_ones_are_not() {
-        // C passes helpful=0 for all five, so `Use` (channel.c:4141) omits
-        // an unset one entirely at the default Full -- there is no
-        // commented-out `# Key = Value` line to find, unlike a Region
-        // attribute dumped through astWriteInt/astWriteDouble with a
-        // non-zero default.
+    fn unset_attributes_are_not_helpful_and_set_ones_are_active() {
+        // C passes helpful=0 for all five, so `Use` (channel.c:4141) writes
+        // an unset one only when Full is positive.
         let mut km = KeyMap::new();
         km.put_0i("A", 1, None).unwrap();
 
         let node = km.to_node().unwrap();
         for key in ["SzGss", "SortBy", "KyCas", "KyErr", "MpLck"] {
-            assert!(node.get_raw(key).is_none(), "{key} should be absent");
+            let item = node.items.iter().find(|i| i.key == key).unwrap();
+            assert!(matches!(item.value, NodeValue::Unset(_)), "{key} is set");
+            assert!(!item.helpful, "{key} is helpful");
         }
+        assert!(!render_native(&node).unwrap().contains("SzGss"));
         // MapSz and MemCnt are unconditional.
         assert!(matches!(node.get_raw("MapSz"), Some(NodeValue::Int(_))));
         assert!(matches!(node.get_raw("MemCnt"), Some(NodeValue::Int(_))));
@@ -693,7 +677,7 @@ mod tests {
         assert!(!km.test_key_case());
 
         let node = km.to_node().unwrap();
-        assert!(node.get_raw("KyCas").is_none());
+        assert!(node.get("KyCas").is_none());
         assert!(!KeyMap::from_node(&node).unwrap().test_key_case());
 
         // A card that *is* present still reloads as a set attribute.

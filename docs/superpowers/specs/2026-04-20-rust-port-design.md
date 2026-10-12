@@ -2,6 +2,14 @@
 
 ## Revision history
 
+- **2026-10-12 (rev 32)**: With Full set to 1 a Channel writes every
+  value a class's C `Dump` writes, set or not, as C does; with Full 0 it
+  writes the unset ones C calls helpful, as before. The port has no
+  pointer or object counts, so it never writes C's `RefCnt` and `Nobj`.
+  The `Frame` trait gained `axis_perm`, hidden from the documentation,
+  C's protected `astGetPerm`, which a FrameSet and a Region forward to
+  their current Frame. A FrameSet writes and reads the index of the Frame
+  whose variants another uses as C's `VFr<n>`.
 - **2026-10-11 (rev 31)**: `Channel::read` on a NativeChannel reads one
   Object per call, as C's `astRead` does, leaving the rest of the source
   for the next call, and acts on Skip (data before an Object skipped

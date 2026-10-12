@@ -1900,32 +1900,34 @@ impl Serializable for PolyMap {
             }
         }
 
-        // Iterative inverse attributes. C writes IterInv only when the
-        // attribute is explicitly set (TestIterInverse).
-        if let Some(v) = self.iter_inverse {
-            let comment = if v {
+        // The iterative inverse attributes, active when set and otherwise
+        // the defaults their getters give (polymap.c `Dump`).
+        let v = self.iter_inverse();
+        node.write_int(
+            "IterInv",
+            self.iter_inverse.is_some(),
+            false,
+            i64::from(v),
+            if v {
                 "Use an iterative inverse"
             } else {
                 "Do not use an iterative inverse"
-            };
-            node.push_int("IterInv", v as i64, Some(comment.to_string()));
-        }
-        // polymap.c Dump writes each whenever it is set, its default value
-        // included; neither is "helpful", so an unset one is not written.
-        if let Some(niter) = self.niter_inverse {
-            node.push_int(
-                "NiterInv",
-                niter as i64,
-                Some("Max number of iterations for iterative inverse".to_string()),
-            );
-        }
-        if let Some(tol) = self.tol_inverse {
-            node.push_double(
-                "TolInv",
-                tol,
-                Some("Target relative error for iterative inverse".to_string()),
-            );
-        }
+            },
+        );
+        node.write_int(
+            "NiterInv",
+            self.niter_inverse.is_some(),
+            false,
+            self.niter_inverse() as i64,
+            "Max number of iterations for iterative inverse",
+        );
+        node.write_double(
+            "TolInv",
+            self.tol_inverse.is_some(),
+            false,
+            self.tol_inverse(),
+            "Target relative error for iterative inverse",
+        );
 
         Ok(node)
     }

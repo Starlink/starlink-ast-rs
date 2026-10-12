@@ -11,7 +11,7 @@ use crate::frames::{AxisKind, DynFrame, Frame, FrameRef, LineDef, SkyLineDef};
 use crate::mappings::helpers::is_bad;
 use crate::mappings::{CmpMap, Composition, DynMapping, UnitMap};
 use crate::pal;
-use crate::serial::{Node, NodeValue, Serializable};
+use crate::serial::{Node, Serializable};
 
 /// Radians to degrees and back, as C's `AST__DR2D` and `AST__DD2R`.
 const AST_DR2D: f64 = 57.295_779_513_082_32;
@@ -1257,6 +1257,10 @@ impl SkyFrame {
 }
 
 impl Frame for SkyFrame {
+    fn axis_perm(&self) -> Vec<usize> {
+        self.perm.to_vec()
+    }
+
     frame_attrs_title!();
     frame_attrs_domain!();
     frame_attrs_epoch!();
@@ -3058,6 +3062,7 @@ impl Serializable for SkyFrame {
             &self.attrs.id,
             self.attrs.ident.as_deref(),
             self.attrs.use_defs,
+            crate::frames::Frame::use_defs(self),
         );
 
         // The Frame class's part, read through the SkyFrame's getters
@@ -3075,6 +3080,7 @@ impl Serializable for SkyFrame {
                 perm: self.perm.to_vec(),
                 is_frame: false,
                 own_naxes: 2,
+                mapping: None,
             },
         )?;
 
@@ -3094,152 +3100,109 @@ impl Serializable for SkyFrame {
 
         // --- SkyFrame-specific attributes (after IsA Frame) ---
 
-        // Proj (if set).
-        if let Some(ref proj) = self.projection {
-            node.push_string(
-                "Proj",
-                proj,
-                Some("Description of sky projection".to_string()),
-            );
-        }
+        // skyframe.c `Dump`: each value active when set, otherwise the
+        // default its getter gives.
+        node.write_string(
+            "Proj",
+            self.projection.is_some(),
+            false,
+            self.projection().unwrap_or(""),
+            "Description of sky projection",
+        );
+        let neglon = self.neg_lon();
+        node.write_int(
+            "NegLon",
+            self.neglon_set,
+            false,
+            i64::from(neglon),
+            if neglon {
+                "Display negative longitude values"
+            } else {
+                "Display positive longitude values"
+            },
+        );
+        node.write_double(
+            "SkyTol",
+            self.sky_tol.is_some(),
+            true,
+            self.sky_tol(),
+            "Smallest significant separation [arc-sec]",
+        );
 
-        // NegLon, when set (skyframe.c:12098).
-        if self.neglon_set {
-            node.push_int(
-                "NegLon",
-                i64::from(self.neglon),
-                Some(if self.neglon {
-                    "Display negative longitude values".to_string()
-                } else {
-                    "Display positive longitude values".to_string()
-                }),
-            );
-        }
-
-        // SkyTol: active if explicitly set, otherwise unset with default 0.001.
-        if let Some(sky_tol) = self.sky_tol {
-            node.push_double(
-                "SkyTol",
-                sky_tol,
-                Some("Smallest significant separation [arc-sec]".to_string()),
-            );
-        } else {
-            node.push_unset(
-                "SkyTol",
-                NodeValue::Double(0.001),
-                Some("Smallest significant separation [arc-sec]".to_string()),
-            );
-        }
-
-        // Equinox as decimal epoch (Besselian if < 1984, Julian otherwise).
-        // C library treats Equinox as "helpful" (commented default emitted)
-        // only when the system is FK4, FK4-no-E, FK5 or Ecliptic; for other
-        // systems an unset Equinox is omitted entirely.
+        // The Equinox as a Besselian epoch before 1984 and a Julian one
+        // after, helpful only for the systems that use it.
         let eq_helpful = matches!(
             self.system,
             SkySystem::Fk4 | SkySystem::Fk4NoE | SkySystem::Fk5 | SkySystem::Ecliptic
         );
-        if self.equinox.is_some() || eq_helpful {
-            let eqnox_mjd = self
-                .equinox
-                .unwrap_or_else(|| self.system.default_equinox_mjd());
-            let jep = pal::epj(eqnox_mjd);
-            let bessyr = jep < 1984.0;
-            let epoch_val = if bessyr { pal::epb(eqnox_mjd) } else { jep };
-            let comment = if bessyr {
+        let eqnox_mjd = self.equinox_mjd();
+        let bessyr = eqnox_mjd < pal::epj2d(1984.0);
+        node.write_double(
+            "Eqnox",
+            self.equinox.is_some(),
+            eq_helpful,
+            if bessyr {
+                pal::epb(eqnox_mjd)
+            } else {
+                pal::epj(eqnox_mjd)
+            },
+            if bessyr {
                 "Besselian epoch of mean equinox"
             } else {
                 "Julian epoch of mean equinox"
-            };
-            if self.equinox.is_some() {
-                node.push_double("Eqnox", epoch_val, Some(comment.to_string()));
-            } else {
-                node.push_unset(
-                    "Eqnox",
-                    NodeValue::Double(epoch_val),
-                    Some(comment.to_string()),
-                );
-            }
-        }
+            },
+        );
 
-        // SRefIs (write if explicitly set, even if Ignored).
-        if self.sky_ref_is_set || self.sky_ref_is != SkyRefIs::Ignored {
-            let srefis_str = match self.sky_ref_is {
-                SkyRefIs::Pole => "Pole",
-                SkyRefIs::Origin => "Origin",
-                SkyRefIs::Ignored => "Ignored",
-            };
-            let comment = match self.sky_ref_is {
-                SkyRefIs::Ignored => "Not rotated (ref. pos. is ignored)",
-                SkyRefIs::Origin => "Rotated to put origin at ref. pos.",
-                SkyRefIs::Pole => "Rotated to put pole at ref. pos.",
-            };
-            node.push_string("SRefIs", srefis_str, Some(comment.to_string()));
-        }
+        let (srefis, comment) = match self.sky_ref_is {
+            SkyRefIs::Pole => ("Pole", "Rotated to put pole at ref. pos."),
+            SkyRefIs::Ignored => ("Ignored", "Not rotated (ref. pos. is ignored)"),
+            SkyRefIs::Origin => ("Origin", "Rotated to put origin at ref. pos."),
+        };
+        node.write_string("SRefIs", self.sky_ref_is_set, false, srefis, comment);
 
-        // SRef1, SRef2 (sky_ref longitude/latitude).
-        //
-        // Mirrors C SkyFrame Dump (skyframe.c:12040-12051): each axis is
-        // written when its SkyRef value has been explicitly set
-        // (`TestSkyRef`), regardless of magnitude — so a reference position
-        // of exactly (0, 0) still emits. The comment is
-        // `Ref. pos. <Symbol> <Format>`, taking the value in the SkyFrame's
-        // external axis order (`SRef<axis_p+1>`) with the symbol/format from
-        // the corresponding axis.
-        // Mirrors C `SkyFrame::Dump` (skyframe.c:12149): each SRef is
-        // written, with `helpful = 0`, only when it is set, looping `axis_p`
-        // over the internal axes; `SRef{axis_p+1}` carries the value of
-        // internal axis `axis_p` with the symbol and format of the external
-        // axis `invperm[axis_p]`.
+        // SRef{axis_p+1} and SRefP{axis_p+1} hold the values of internal
+        // axis `axis_p`, with the Symbol and Format of the external axis it
+        // appears as (skyframe.c `Dump`).
         let invperm = [self.lon_pos(), self.lat_pos()]; // invperm[internal] = external (0-based)
         for (axis_p, &ext0) in invperm.iter().enumerate() {
-            if !self.sky_ref_set[axis_p] {
-                continue;
-            }
             let ext_axis = ext0 + 1;
-            let dval = self.sky_ref[axis_p];
+            let dval = self.sky_ref(ext_axis)?;
             let symbol = self.symbol(ext_axis).unwrap_or_default();
             let fmt = self.format(ext_axis, dval).unwrap_or_default();
-            node.push_double(
+            node.write_double(
                 &format!("SRef{}", axis_p + 1),
+                self.sky_ref_set[axis_p],
+                false,
                 dval,
-                Some(format!("Ref. pos. {symbol} {fmt}")),
+                &format!("Ref. pos. {symbol} {fmt}"),
             );
         }
-
-        // SRefP1, SRefP2 (sky_ref_p longitude/latitude). Mirrors C
-        // (skyframe.c:12059-12068): looped over internal axes with `helpful=0`
-        // (so only an explicitly-set value is written), with the comment
-        // `Ref. north <symbol> <fmt>` resolved on the external axis.
-        let invperm = [self.lon_pos(), self.lat_pos()];
         for (axis_p, &ext0) in invperm.iter().enumerate() {
-            if !self.sky_ref_p_set[axis_p] {
-                continue;
-            }
             let ext_axis = ext0 + 1;
-            let dval = self.sky_ref_p[axis_p];
+            let dval = self.sky_ref_p(ext_axis)?;
             let symbol = self.symbol(ext_axis).unwrap_or_default();
             let fmt = self.format(ext_axis, dval).unwrap_or_default();
-            node.push_double(
+            node.write_double(
                 &format!("SRefP{}", axis_p + 1),
+                self.sky_ref_p_set[axis_p],
+                false,
                 dval,
-                Some(format!("Ref. north {symbol} {fmt}")),
+                &format!("Ref. north {symbol} {fmt}"),
             );
         }
 
-        // AlOff (if true).
-        // AlignOffset, when set (skyframe.c:12179).
-        if self.align_offset_set {
-            node.push_int(
-                "AlOff",
-                i64::from(self.align_offset),
-                Some(if self.align_offset {
-                    "Align in offset coords".to_string()
-                } else {
-                    "Align in system coords".to_string()
-                }),
-            );
-        }
+        let aloff = self.align_offset();
+        node.write_int(
+            "AlOff",
+            self.align_offset_set,
+            false,
+            i64::from(aloff),
+            if aloff {
+                "Align in offset coords"
+            } else {
+                "Align in system coords"
+            },
+        );
 
         Ok(node)
     }

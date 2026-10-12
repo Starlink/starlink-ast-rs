@@ -1403,42 +1403,44 @@ impl Serializable for WcsMap {
         }
         node.push_string("Type", self.proj.code(), Some(comment));
 
-        // FITSProj — written with `helpful = 0` (wcsmap.c:5333), so only an
-        // explicitly set value appears. The comment reflects the value.
-        if self.test_fits_proj() {
-            let val = self.fits_proj();
-            let comment = if val {
+        // FITSProj, LonCheck and TPNTan: active when set, otherwise not
+        // helpful (wcsmap.c `Dump`).
+        let val = self.fits_proj();
+        node.write_int(
+            "FitsPrj",
+            self.test_fits_proj(),
+            false,
+            i64::from(val),
+            if val {
                 "Defines the FITS-WCS projection"
             } else {
                 "Does not define the FITS-WCS projection"
-            };
-            node.push_int("FitsPrj", val as i64, Some(comment.to_string()));
-        }
-
-        // LonCheck — written with `helpful = 0` (wcsmap.c:5341), so only an
-        // explicitly set value appears (as an active card); an unset value is
-        // suppressed. The comment reflects the value.
-        if self.test_lon_check() {
-            let val = self.lon_check();
-            let comment = if val {
+            },
+        );
+        let val = self.lon_check();
+        node.write_int(
+            "LonChk",
+            self.test_lon_check(),
+            false,
+            i64::from(val),
+            if val {
                 "Check returned lon values"
             } else {
                 "Do not check returned lon values"
-            };
-            node.push_int("LonChk", val as i64, Some(comment.to_string()));
-        }
-
-        // TPNTan — written with `helpful = 0` (wcsmap.c:5349), so only an
-        // explicitly set value appears. The comment reflects the value.
-        if self.test_tpn_tan() {
-            let val = self.tpn_tan();
-            let comment = if val {
+            },
+        );
+        let val = self.tpn_tan();
+        node.write_int(
+            "TpnTan",
+            self.test_tpn_tan(),
+            false,
+            i64::from(val),
+            if val {
                 "Include TAN projection in TPN mapping"
             } else {
                 "Exclude TAN projection from TPN mapping"
-            };
-            node.push_int("TpnTan", val as i64, Some(comment.to_string()));
-        }
+            },
+        );
 
         // PV parameters. C `WcsMap::Dump` (wcsmap.c:5355) loops over the
         // internal axis index `i` in 0..nin and emits `PV{i+1}_{m}` for each,
@@ -1467,21 +1469,21 @@ impl Serializable for WcsMap {
             }
         }
 
-        // WcsAx1 / WcsAx2 — only written when non-default.
-        if self.lonax != 0 {
-            node.push_int(
-                "WcsAx1",
-                (self.lonax + 1) as i64,
-                Some("Index of celestial longitude axis".to_string()),
-            );
-        }
-        if self.latax != 1 {
-            node.push_int(
-                "WcsAx2",
-                (self.latax + 1) as i64,
-                Some("Index of celestial latitude axis".to_string()),
-            );
-        }
+        // WcsAx1 / WcsAx2, set when not the default axis.
+        node.write_int(
+            "WcsAx1",
+            self.lonax != 0,
+            false,
+            (self.lonax + 1) as i64,
+            "Index of celestial longitude axis",
+        );
+        node.write_int(
+            "WcsAx2",
+            self.latax != 1,
+            false,
+            (self.latax + 1) as i64,
+            "Index of celestial latitude axis",
+        );
 
         Ok(node)
     }

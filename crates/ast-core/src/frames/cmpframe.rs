@@ -297,6 +297,10 @@ fn node_naxes(whole: &Node) -> usize {
 }
 
 impl Frame for CmpFrame {
+    fn axis_perm(&self) -> Vec<usize> {
+        self.perm.clone()
+    }
+
     frame_attrs_title!();
     frame_attrs_digits!();
     frame_attrs_ident!();
@@ -1057,6 +1061,7 @@ impl Serializable for CmpFrame {
             &self.attrs.id,
             self.attrs.ident.as_deref(),
             self.attrs.use_defs,
+            crate::frames::Frame::use_defs(self),
         );
 
         let naxes = self.naxes();
@@ -1080,37 +1085,33 @@ impl Serializable for CmpFrame {
                 perm: self.perm.clone(),
                 is_frame: true,
                 own_naxes: 0,
+                mapping: None,
             },
         )?;
 
         // IsA Frame marker
         node.push_isa("Frame", Some("Coordinate system description".to_string()));
 
-        // Axis permutation array. Mirrors C `CmpFrame::Dump`
-        // (cmpframe.c:10453-10475): write `Axp{ext}` (1-based internal
-        // axis index) for each external axis, but only when the axis is
-        // actually permuted (`set` is true). For the identity case C
-        // passes `helpful = 0` to `astWriteInt`, which suppresses the
-        // commented card at the default `Full` level used throughout
-        // this codebase, so we emit nothing.
+        // Axis permutation array (cmpframe.c `Dump`): `Axp{ext}`, the
+        // 1-based internal axis, set when the axis is permuted.
         for ax in 1..=naxes {
             let internal_1based = self.perm[ax - 1] + 1;
-            if internal_1based != ax {
-                node.push_int(
-                    &format!("Axp{ax}"),
-                    internal_1based as i64,
-                    Some(format!(
-                        "Axis {ax} permuted to use internal axis {internal_1based}"
-                    )),
-                );
-            }
+            let set = internal_1based != ax;
+            node.write_int(
+                &format!("Axp{ax}"),
+                set,
+                false,
+                internal_1based as i64,
+                &if set {
+                    format!("Axis {ax} permuted to use internal axis {internal_1based}")
+                } else {
+                    format!("Axis {ax} not permuted")
+                },
+            );
         }
 
-        // Component frames as nested objects (strip unset attributes for minimal output).
-        let mut node_a = node_a;
-        let mut node_b = node_b;
-        node_a.strip_unset();
-        node_b.strip_unset();
+        // The component Frames, which C writes with Full -1 unless Full is
+        // 1 (cmpframe.c `Dump`).
         node.push_full_capped_object("FrameA", node_a, Some("First component Frame".to_string()));
         node.push_full_capped_object("FrameB", node_b, Some("Second component Frame".to_string()));
 

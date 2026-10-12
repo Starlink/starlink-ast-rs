@@ -203,6 +203,10 @@ impl SpecFluxFrame {
 // ---------------------------------------------------------------------------
 
 impl Frame for SpecFluxFrame {
+    fn axis_perm(&self) -> Vec<usize> {
+        if self.swap { vec![1, 0] } else { vec![0, 1] }
+    }
+
     // A SpecFluxFrame is a CmpFrame in C (specfluxframe.c), so its
     // Frame-class attributes follow CmpFrame's rules.
     frame_attrs_title!();

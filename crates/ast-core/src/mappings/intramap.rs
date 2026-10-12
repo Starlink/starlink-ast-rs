@@ -496,13 +496,13 @@ impl Serializable for IntraMap {
             &self.name,
             Some("Name of transformation function".to_string()),
         );
-        if let Some(flag) = &self.intra_flag {
-            node.push_string(
-                "Iflag",
-                flag,
-                Some("IntraMap identification string".to_string()),
-            );
-        }
+        node.write_string(
+            "Iflag",
+            self.intra_flag.is_some(),
+            false,
+            self.intra_flag.as_deref().unwrap_or(""),
+            "IntraMap identification string",
+        );
         node.push_string(
             "Purp",
             self.transform.purpose(),

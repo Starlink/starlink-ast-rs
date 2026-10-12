@@ -158,7 +158,7 @@ cannot arrive without one.
   `simplified` — plus `mod`, which carries the generic `Region::Simplify` driver.
 - Every module under `crates/ast-core/src/frames/` that overrides `simplified`.
   A Frame class may also implement `Mapping`; `FrameSet` does, and C gives it a
-  `Simplify` body of its own (`frameset.c:10114`).
+  `Simplify` body of its own (`frameset.c:10134`).
 
 `simplified` is in that list because C's per-class `Simplify` vtab slot is an
 extension point on the same footing as `MapMerge`: `astSimplify_`

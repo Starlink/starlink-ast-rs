@@ -621,47 +621,69 @@ impl SkyAxis {
     pub(crate) fn to_node_dump(&self) -> Node {
         let mut node = Node::new("SkyAxis");
         node.class_comment = Some("Celestial coordinate axis".to_string());
-        self.axis.write_set_attributes(&mut node);
-        if !node.items.is_empty() {
-            node.push_isa("Axis", Some("Coordinate axis".to_string()));
-        }
+        // The Axis part, its unset values from the SkyAxis getters. The
+        // Axis class's own Format is never set on a SkyAxis, which keeps
+        // its Format itself.
+        let digits = self.axis.digits.unwrap_or(super::axis::AXIS_DIGITS);
+        let format = self.format_value(digits);
+        self.axis.write_parts(
+            &mut node,
+            &super::axis::AxisValues {
+                label: self.label_value(),
+                symbol: self.symbol_value(),
+                unit: self.unit_value(digits),
+                format: format.clone(),
+                direction: self.direction_value(),
+                top: self.top_value(),
+                bottom: self.bottom_value(),
+            },
+        );
+        node.push_isa("Axis", Some("Coordinate axis".to_string()));
 
-        if let Some(format) = &self.format {
-            node.push_string("Format", format, Some("Format specifier".to_string()));
-        }
-        if let Some(lat) = self.is_latitude {
-            node.push_int(
-                "IsLat",
-                i64::from(lat),
-                Some(if lat {
-                    "Latitude axis (not longitude)".to_string()
-                } else {
-                    "Longitude axis (not latitude)".to_string()
-                }),
-            );
-        }
-        if let Some(cz) = self.centre_zero {
-            node.push_int(
-                "CnZer",
-                i64::from(cz),
-                Some(if cz {
-                    "Display axis values in range -PI -> +PI".to_string()
-                } else {
-                    "Display axis values in range 0 -> 2.PI".to_string()
-                }),
-            );
-        }
-        if let Some(at) = self.as_time {
-            node.push_int(
-                "AsTime",
-                i64::from(at),
-                Some(if at {
-                    "Display values as times (not angles)".to_string()
-                } else {
-                    "Display values as angles (not times)".to_string()
-                }),
-            );
-        }
+        // The SkyAxis part (skyaxis.c `Dump`).
+        node.write_string(
+            "Format",
+            self.format.is_some(),
+            false,
+            &format,
+            "Format specifier",
+        );
+        let lat = self.is_latitude_value();
+        node.write_int(
+            "IsLat",
+            self.is_latitude.is_some(),
+            false,
+            i64::from(lat),
+            if lat {
+                "Latitude axis (not longitude)"
+            } else {
+                "Longitude axis (not latitude)"
+            },
+        );
+        let cz = self.centre_zero_value();
+        node.write_int(
+            "CnZer",
+            self.centre_zero.is_some(),
+            false,
+            i64::from(cz),
+            if cz {
+                "Display axis values in range -PI -> +PI"
+            } else {
+                "Display axis values in range 0 -> 2.PI"
+            },
+        );
+        let at = self.as_time_value();
+        node.write_int(
+            "AsTime",
+            self.as_time.is_some(),
+            false,
+            i64::from(at),
+            if at {
+                "Display values as times (not angles)"
+            } else {
+                "Display values as angles (not times)"
+            },
+        );
         node
     }
 }

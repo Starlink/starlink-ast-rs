@@ -158,7 +158,8 @@ pub(crate) fn render_native(node: &Node) -> AstResult<String> {
 /// Behaviour with non-default options:
 /// - `comment = false`: don't emit `\t# comment_text` — just key=value.
 /// - `full = -1`: skip items whose value is `Unset(...)` (commented defaults).
-/// - `full = 1`: same as 0 for now (include everything).
+/// - `full = 0`: write the `Unset` items C calls helpful.
+/// - `full = 1`: write every `Unset` item, and every `IsA` marker.
 /// - `indent`: controls indentation increment per nesting level.
 pub(crate) fn render_native_with_options(
     node: &Node,
@@ -248,14 +249,21 @@ fn write_object_with_options(
         match &item.value {
             // Unset (commented-out default).
             NodeValue::Unset(inner) => {
-                // full = -1: skip Unset items entirely.
-                if options.full < 0 {
+                // channel.c `Use`: no unset value at full = -1, only the
+                // helpful ones at full = 0.
+                if options.full < 0 || (options.full == 0 && !item.helpful) {
                     continue;
                 }
                 buf.push_str(&unset_prefix);
                 buf.push_str(&item.key);
-                buf.push_str(" = ");
-                write_scalar_value(buf, inner);
+                // An unset Object is its name alone (channel.c
+                // `WriteObject`).
+                if matches!(**inner, NodeValue::Object(_)) {
+                    buf.push_str(" =");
+                } else {
+                    buf.push_str(" = ");
+                    write_scalar_value(buf, inner);
+                }
                 push_comment(buf, options, item.comment.as_deref());
                 buf.push('\n');
                 // A commented value that is actually emitted (full >= 0)
@@ -277,7 +285,17 @@ fn write_object_with_options(
                 buf.push_str(" =");
                 push_comment(buf, options, item.comment.as_deref());
                 buf.push('\n');
-                write_object_with_options(buf, child, base_indent + 2 * indent, options);
+                // A class that caps Full for a nested object writes it with
+                // Full -1 unless Full is 1 (frame.c and cmpframe.c `Dump`).
+                if child.full_capped && options.full <= 0 {
+                    let capped = RenderOptions {
+                        full: -1,
+                        ..options.clone()
+                    };
+                    write_object_with_options(buf, child, base_indent + 2 * indent, &capped);
+                } else {
+                    write_object_with_options(buf, child, base_indent + 2 * indent, options);
+                }
                 items_written = true;
             }
 

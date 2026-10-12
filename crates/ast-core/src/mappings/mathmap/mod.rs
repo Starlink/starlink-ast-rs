@@ -646,85 +646,84 @@ impl Serializable for MathMap {
         node.class_comment = Some("Transformation using mathematical functions".to_string());
         write_mapping_base(&mut node, self);
 
-        // Nfwd (only if different from nout)
+        // mathmap.c `Dump`: Nfwd and Ninv are set when they differ from the
+        // number of outputs and inputs.
         let nfwd = self.fwd_exprs.len();
-        if nfwd != self.nout {
-            node.push_int(
-                "Nfwd",
-                nfwd as i64,
-                Some("Number of forward transformation functions".to_string()),
-            );
-        }
-
-        // Forward expressions
+        node.write_int(
+            "Nfwd",
+            nfwd != self.nout,
+            false,
+            nfwd as i64,
+            "Number of forward transformation functions",
+        );
         for (i, expr) in self.fwd_exprs.iter().enumerate() {
             let key = format!("Fwd{}", i + 1);
             node.push_string(&key, expr, Some(format!("Forward function {}", i + 1)));
         }
-
-        // Ninv (only if different from nin)
         let ninv = self.inv_exprs.len();
-        if ninv != self.nin {
-            node.push_int(
-                "Ninv",
-                ninv as i64,
-                Some("Number of inverse transformation functions".to_string()),
-            );
-        }
-
-        // Inverse expressions
+        node.write_int(
+            "Ninv",
+            ninv != self.nin,
+            false,
+            ninv as i64,
+            "Number of inverse transformation functions",
+        );
         for (i, expr) in self.inv_exprs.iter().enumerate() {
             let key = format!("Inv{}", i + 1);
             node.push_string(&key, expr, Some(format!("Inverse function {}", i + 1)));
         }
+        let v = self.simp_fi.unwrap_or(false);
+        node.write_int(
+            "SimpFI",
+            self.simp_fi.is_some(),
+            false,
+            i64::from(v),
+            if v {
+                "Forward-inverse pairs may simplify"
+            } else {
+                "Forward-inverse pairs do not simplify"
+            },
+        );
+        let v = self.simp_if.unwrap_or(false);
+        node.write_int(
+            "SimpIF",
+            self.simp_if.is_some(),
+            false,
+            i64::from(v),
+            if v {
+                "Inverse-forward pairs may simplify"
+            } else {
+                "Inverse-forward pairs do not simplify"
+            },
+        );
 
-        // SimpFI
-        if let Some(v) = self.simp_fi {
-            node.push_int(
-                "SimpFI",
-                if v { 1 } else { 0 },
-                Some(
-                    if v {
-                        "Forward-inverse pairs may simplify"
-                    } else {
-                        "Forward-inverse pairs do not simplify"
-                    }
-                    .to_string(),
-                ),
-            );
-        }
-
-        // SimpIF
-        if let Some(v) = self.simp_if {
-            node.push_int(
-                "SimpIF",
-                if v { 1 } else { 0 },
-                Some(
-                    if v {
-                        "Inverse-forward pairs may simplify"
-                    } else {
-                        "Inverse-forward pairs do not simplify"
-                    }
-                    .to_string(),
-                ),
-            );
-        }
-
-        // Seed
+        // The seed flag, then the seed: the one set, or the default chosen
+        // when the MathMap was made.
         // Safety: single-threaded access for serialisation
         let rng = unsafe { &*self.rng.get() };
-        if rng.seed_set {
-            node.push_int(
-                "Seeded",
-                1,
-                Some("Explicit random number seed set".to_string()),
-            );
-            node.push_int(
-                "Seed",
-                rng.seed as i64,
-                Some("Random number seed value".to_string()),
-            );
-        }
+        let set = rng.seed_set;
+        node.write_int(
+            "Seeded",
+            set,
+            false,
+            i64::from(set),
+            if set {
+                "Explicit random number seed set"
+            } else {
+                "No random number seed set"
+            },
+        );
+        node.write_int(
+            "Seed",
+            set,
+            false,
+            i64::from(rng.seed),
+            if set {
+                "Random number seed value"
+            } else {
+                "Default random number seed used"
+            },
+        );
 
         Ok(node)
     }

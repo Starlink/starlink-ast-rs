@@ -25,7 +25,7 @@ use ast_core::error::ErrorCode;
 use ast_core::frames::{SkyFrame, SkySystem};
 use ast_core::mappings::Mapping;
 use ast_core::regions::{CircleBuilder, CmpOperator, DynRegion, Moc, Overlap, Region};
-use ast_core::{AnyObject, from_native_string, to_native_string};
+use ast_core::{AnyObject, Channel, NativeChannel, from_native_string, to_native_string};
 
 fn low() -> Moc {
     let mut moc = Moc::new();
@@ -126,6 +126,20 @@ fn mocs_match_c() {
             bounds,
             "{name}: bounds"
         );
+    }
+}
+
+/// Each Moc written with Full = 1, which writes every unset value, as C
+/// writes it less its unset `RefCnt` and `Nobj`, counts the port does not
+/// have.
+#[test]
+fn full_dumps_match_c() {
+    for &(name, want) in cases::FULL_DUMPS {
+        let mut ch = NativeChannel::with_string_sink();
+        ch.config_mut().set_full(1);
+        ch.write(&AnyObject::from_mapping(&built(name) as &dyn Mapping).unwrap())
+            .unwrap();
+        assert_eq!(ch.into_string(), want, "{name}");
     }
 }
 

@@ -215,81 +215,70 @@ pub(crate) fn write_parts(
     c: &ChannelConfig,
     own_class: bool,
 ) {
-    crate::frames::frame_attrs::write_object_part(node, id, ident, None);
-    let before = node.items.len();
-    if c.test_indent() {
-        node.push_int(
-            "Indnt",
-            i64::from(c.indent()),
-            Some("Indentation increment".to_string()),
-        );
-    }
-    if c.test_report_level() {
-        node.push_int(
-            "RpLev",
-            i64::from(c.report_level()),
-            Some("Error reporting level".to_string()),
-        );
-    }
-    if c.test_skip() {
-        node.push_int(
-            "Skip",
-            i64::from(c.skip()),
-            Some(
-                if c.skip() {
-                    "Ignore data between Objects"
-                } else {
-                    "No data allowed between Objects"
-                }
-                .to_string(),
-            ),
-        );
-    }
-    if c.test_strict() {
-        // "insead" is C's spelling, kept so that dumps match.
-        node.push_int(
-            "Strict",
-            i64::from(c.strict()),
-            Some(
-                if c.strict() {
-                    "Report errors insead of warnings"
-                } else {
-                    "Report warnings instead of errors"
-                }
-                .to_string(),
-            ),
-        );
-    }
-    if c.test_full() {
-        let full = c.full();
-        node.push_int(
-            "Full",
-            i64::from(full),
-            Some(
-                match full {
-                    f if f < 0 => "Suppress non-essential output",
-                    0 => "Output standard information",
-                    _ => "Output maximum information",
-                }
-                .to_string(),
-            ),
-        );
-    }
-    if c.test_comment() {
-        node.push_int(
-            "Comm",
-            i64::from(c.comment()),
-            Some(
-                if c.comment() {
-                    "Display comments"
-                } else {
-                    "Omit comments"
-                }
-                .to_string(),
-            ),
-        );
-    }
-    if !own_class && node.items.len() > before {
+    crate::frames::frame_attrs::write_object_part(node, id, ident, None, true);
+    // channel.c `Dump`: each attribute active when set and otherwise the
+    // default the class's getter gives, none of them helpful.
+    node.write_int(
+        "Indnt",
+        c.test_indent(),
+        false,
+        i64::from(c.indent()),
+        "Indentation increment",
+    );
+    node.write_int(
+        "RpLev",
+        c.test_report_level(),
+        false,
+        i64::from(c.report_level()),
+        "Error reporting level",
+    );
+    node.write_int(
+        "Skip",
+        c.test_skip(),
+        false,
+        i64::from(c.skip()),
+        if c.skip() {
+            "Ignore data between Objects"
+        } else {
+            "No data allowed between Objects"
+        },
+    );
+    // "insead" is C's spelling, kept so that dumps match.
+    node.write_int(
+        "Strict",
+        c.test_strict(),
+        false,
+        i64::from(c.strict()),
+        if c.strict() {
+            "Report errors insead of warnings"
+        } else {
+            "Report warnings instead of errors"
+        },
+    );
+    let full = c.full();
+    node.write_int(
+        "Full",
+        c.test_full(),
+        false,
+        i64::from(full),
+        match full {
+            f if f < 0 => "Suppress non-essential output",
+            0 => "Output standard information",
+            _ => "Output maximum information",
+        },
+    );
+    node.write_int(
+        "Comm",
+        c.test_comment(),
+        false,
+        i64::from(c.comment()),
+        if c.comment() {
+            "Display comments"
+        } else {
+            "Omit comments"
+        },
+    );
+    if !own_class {
         node.push_isa("Channel", Some("Basic I/O Channel".to_string()));
     }
 }

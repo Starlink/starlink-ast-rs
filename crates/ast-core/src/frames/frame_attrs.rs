@@ -6,7 +6,7 @@
 //! class, as C's subclasses over-ride the Frame class's Get methods.
 
 use crate::error::{AstError, AstResult, ErrorCode};
-use crate::serial::{Node, NodeValue};
+use crate::serial::Node;
 
 /// Frame-class attributes. Mirrors the instance variables of C's `AstFrame`
 /// (frame.h) other than the axes, the permutation and the System values,
@@ -159,6 +159,24 @@ pub(crate) trait FrameDumpSource {
     fn dump_match_end(&self) -> bool;
     /// ActiveUnit, when C's `astTestActiveUnit` reports it set.
     fn dump_active_unit(&self) -> Option<bool>;
+    /// ObsLat, ObsLon, ObsAlt, Dtai and Dut1, set or default.
+    fn dump_obs(&self) -> [f64; 5];
+    /// The Digits of the Frame as a whole, set or default.
+    fn dump_digits(&self) -> i32;
+    /// The Mapping part: by default a plain Frame's, with no Nin or Nout of
+    /// its own, both transformations defined, and no Mapping flags set
+    /// (mapping.c `Dump`).
+    fn dump_mapping_part(&self) -> crate::serial::MappingPart {
+        let naxes = self.dump_naxes();
+        crate::serial::MappingPart::of_frame(
+            &crate::mappings::MappingFlags::default(),
+            naxes,
+            naxes,
+            false,
+            true,
+            true,
+        )
+    }
 }
 
 /// Write the Frame class's part of a dump, from Title to the permutation, as
@@ -169,28 +187,16 @@ pub(crate) fn write_frame_cards(node: &mut Node, f: &impl FrameDumpSource) -> As
     let naxes = f.dump_naxes();
     let is_frame = f.dump_is_frame();
 
-    // Each card is written active when set; otherwise as a comment when
-    // "helpful", and not at all when not.
+    crate::serial::write_mapping_part(node, &f.dump_mapping_part());
+
     fn string(node: &mut Node, key: &str, set: bool, helpful: bool, v: String, c: String) {
-        if set {
-            node.push_string(key, &v, Some(c));
-        } else if helpful {
-            node.push_unset(key, NodeValue::String(v), Some(c));
-        }
+        node.write_string(key, set, helpful, &v, &c);
     }
     fn int(node: &mut Node, key: &str, set: bool, helpful: bool, v: i64, c: String) {
-        if set {
-            node.push_int(key, v, Some(c));
-        } else if helpful {
-            node.push_unset(key, NodeValue::Int(v), Some(c));
-        }
+        node.write_int(key, set, helpful, v, &c);
     }
     fn double(node: &mut Node, key: &str, set: bool, helpful: bool, v: f64, c: String) {
-        if set {
-            node.push_double(key, v, Some(c));
-        } else if helpful {
-            node.push_unset(key, NodeValue::Double(v), Some(c));
-        }
+        node.write_double(key, set, helpful, v, &c);
     }
 
     string(
@@ -303,7 +309,7 @@ pub(crate) fn write_frame_cards(node: &mut Node, f: &impl FrameDumpSource) -> As
 
     // Per-axis Digits, then the Frame's (shown when any axis has its own),
     // then each Format (shown for an axis with its own Digits).
-    let frame_digits = a.digits.unwrap_or(7);
+    let frame_digits = f.dump_digits();
     let mut any_axis_digits = false;
     for axis in 0..naxes {
         let own = f.dump_axis_digits(axis);
@@ -441,10 +447,15 @@ pub(crate) fn write_frame_cards(node: &mut Node, f: &impl FrameDumpSource) -> As
         ("Dtai", a.dtai, "TAI-UTC in seconds"),
         ("Dut1", a.dut1, "UT1-UTC in seconds"),
     ];
-    for (key, value, comment) in obs {
-        if let Some(v) = value {
-            node.push_double(key, v, Some(comment.to_string()));
-        }
+    for ((key, value, comment), default) in obs.into_iter().zip(f.dump_obs()) {
+        double(
+            node,
+            key,
+            value.is_some(),
+            false,
+            value.unwrap_or(default),
+            comment.into(),
+        );
     }
 
     if let Some(v) = f.dump_active_unit() {
@@ -463,17 +474,23 @@ pub(crate) fn write_frame_cards(node: &mut Node, f: &impl FrameDumpSource) -> As
     }
 
     for (ext, &internal) in f.dump_perm().iter().enumerate().take(own_naxes) {
-        if internal != ext {
-            node.push_int(
-                &format!("Prm{}", ext + 1),
-                (internal + 1) as i64,
-                Some(format!(
+        let set = internal != ext;
+        int(
+            node,
+            &format!("Prm{}", ext + 1),
+            set,
+            false,
+            (internal + 1) as i64,
+            if set {
+                format!(
                     "Axis {} permuted to use internal axis {}",
                     ext + 1,
                     internal + 1
-                )),
-            );
-        }
+                )
+            } else {
+                format!("Axis {} not permuted", ext + 1)
+            },
+        );
     }
     Ok(())
 }
@@ -493,42 +510,48 @@ pub(crate) fn mark_frame_axes_read(frame_part: &Node) {
     }
 }
 
-/// Read the Frame-class attributes from a Frame node. Mirrors the attribute
-/// part of C's `astLoadFrame` (frame.c).
-/// Write the Object part of a dump: ID when set, Ident when given, UseDefs
-/// when set, then the `IsA Object` marker when any was written (object.c
-/// `Dump`, where an unset ID or Ident is blank and so not helpful, and
-/// UseDefs is never written unset).
+/// Write the Object part of a dump as object.c `Dump` does: ID and Ident,
+/// helpful when unset only if not blank; UseDefs, never helpful, unset
+/// giving `use_defs_default`, the value the class's `astGetUseDefs` gives;
+/// and the `IsA Object` marker. C also writes `RefCnt` and `Nobj` here, the
+/// count of pointers to the Object and of Objects of its class in the
+/// process, both unset and not helpful; the port has neither count, so
+/// writes neither.
 pub(crate) fn write_object_part(
     node: &mut Node,
     id: &crate::object_id::ObjectId,
     ident: Option<&str>,
     use_defs: Option<bool>,
+    use_defs_default: bool,
 ) {
-    if let Some(id) = id.as_option() {
-        node.push_string("ID", id, Some("Object identification string".to_string()));
-    }
-    if let Some(ident) = ident {
-        node.push_string(
-            "Ident",
-            ident,
-            Some("Permanent Object identification string".to_string()),
-        );
-    }
-    if let Some(use_defs) = use_defs {
-        node.push_int(
-            "UseDfs",
-            i64::from(use_defs),
-            Some(if use_defs {
-                "Default attribute values can be used".to_string()
-            } else {
-                "Default values cannot be used".to_string()
-            }),
-        );
-    }
-    if id.test() || ident.is_some() || use_defs.is_some() {
-        node.push_isa("Object", Some("AST Object".to_string()));
-    }
+    let id = id.as_option();
+    node.write_string(
+        "ID",
+        id.is_some(),
+        id.is_some_and(|s| !s.is_empty()),
+        id.unwrap_or(""),
+        "Object identification string",
+    );
+    node.write_string(
+        "Ident",
+        ident.is_some(),
+        ident.is_some_and(|s| !s.is_empty()),
+        ident.unwrap_or(""),
+        "Permanent Object identification string",
+    );
+    let value = use_defs.unwrap_or(use_defs_default);
+    node.write_int(
+        "UseDfs",
+        use_defs.is_some(),
+        false,
+        i64::from(value),
+        if value {
+            "Default attribute values can be used"
+        } else {
+            "Default values cannot be used"
+        },
+    );
+    node.push_isa("Object", Some("AST Object".to_string()));
 }
 
 /// Read the System item `key` (`System` or `AlSys`), naming the attribute
@@ -1163,6 +1186,10 @@ macro_rules! region_frame_attrs {
         fn perm_axes(&mut self, perm: &[usize]) -> $crate::error::AstResult<()> {
             self.data.perm_axes(perm)
         }
+        // region.c `GetPerm`: the current Frame's.
+        fn axis_perm(&self) -> Vec<usize> {
+            self.data.frameset.current().axis_perm()
+        }
         // region.c `PickAxes`: a Region of the picked axes where the Region's
         // class can form one, otherwise the picked current-Frame axes.
         fn pick_axes_snapshot(&self, target_axes: &[i32])
@@ -1783,6 +1810,9 @@ pub(crate) struct TraitDump<'a> {
     /// C's `this->naxes`: the axes the Frame class's own structure holds,
     /// none for a CmpFrame.
     pub own_naxes: usize,
+    /// The Mapping part, for a class whose Mapping values differ from a
+    /// plain Frame's.
+    pub mapping: Option<crate::serial::MappingPart>,
 }
 
 impl TraitDump<'_> {
@@ -1799,6 +1829,26 @@ impl TraitDump<'_> {
 impl FrameDumpSource for TraitDump<'_> {
     fn attrs(&self) -> &FrameAttrs {
         self.attrs
+    }
+    fn dump_obs(&self) -> [f64; 5] {
+        let f = self.frame;
+        [f.obs_lat(), f.obs_lon(), f.obs_alt(), f.dtai(), f.dut1()]
+    }
+    fn dump_digits(&self) -> i32 {
+        self.frame.digits()
+    }
+    fn dump_mapping_part(&self) -> crate::serial::MappingPart {
+        self.mapping.clone().unwrap_or_else(|| {
+            let naxes = self.dump_naxes();
+            crate::serial::MappingPart::of_frame(
+                &crate::mappings::MappingFlags::default(),
+                naxes,
+                naxes,
+                false,
+                true,
+                true,
+            )
+        })
     }
     fn dump_naxes(&self) -> usize {
         self.frame.naxes()

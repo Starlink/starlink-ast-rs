@@ -1291,6 +1291,10 @@ macro_rules! frameset_attr {
 }
 
 impl Frame for FrameSet {
+    fn axis_perm(&self) -> Vec<usize> {
+        self.current().axis_perm()
+    }
+
     fn title(&self) -> AstResult<String> {
         self.current().title()
     }
@@ -2156,116 +2160,44 @@ impl Serializable for FrameSet {
             &self.id,
             self.ident.as_deref(),
             self.use_defs,
+            crate::frames::Frame::use_defs(self),
         );
-        crate::serial::write_flags_mapping_part(&mut node, &self.mapping_flags);
-
-        // Write proxy attributes from the current frame as commented (unset).
-        // The C library writes all current-frame attributes as informational
-        // commented lines at the top of the FrameSet dump. Only scalar
-        // attributes (not nested objects) are proxied.
-        let current_node = FrameToNode::to_node(self.current())?;
-        let is_cmpframe = self
-            .current()
+        // The Mapping and Frame parts, read through the FrameSet's getters,
+        // which give the current Frame's values (frame.c Dump on the
+        // FrameSet). The FrameSet's own Frame structure holds no attribute
+        // values and no axes, so everything is unset, and there are no Prm
+        // items or Axis objects.
+        let current = self.current();
+        let current_node = FrameToNode::to_node(current)?;
+        let frame_part = current_node.section("Frame");
+        let system_of = |key: &str| match frame_part.get_any(key) {
+            Some(NodeValue::String(s)) => s.clone(),
+            _ => String::new(),
+        };
+        let is_frame = current
             .as_any()
-            .downcast_ref::<super::CmpFrame>()
+            .downcast_ref::<super::BasicFrame>()
             .is_some();
-        let mut has_system = false;
-        let mut injected_system = false;
-        for item in &current_node.items {
-            // Stop at IsA Frame (not IsA Object).
-            if item.key == "IsA" {
-                if let NodeValue::String(ref class) = item.value {
-                    if class == "Frame" {
-                        break;
-                    }
-                }
-                // Skip IsA Object markers.
-                continue;
-            }
-            // Skip Object-level and class-specific attributes — not proxied.
-            if matches!(item.key.as_str(), "ID" | "Ident" | "UseDfs" | "AlSys") {
-                continue;
-            }
-            // For CmpFrame the effective (commented) Epoch is reconstructed and
-            // injected after Domain below. The CmpFrame's own dump emits an
-            // uncommented Epoch only when its own field is set; that item must
-            // not be replayed here or the commented Epoch would appear twice.
-            if is_cmpframe && item.key == "Epoch" {
-                continue;
-            }
-            // The proxy header shows only the unset values that C's
-            // `Frame::Dump` writes with `helpful = 1`; attributes written
-            // with `helpful = 0` are suppressed by `Use()` at Full=0
-            // (channel.c:4146). ObsLat/ObsLon/ObsAlt/Dtai/Dut1 and the axis
-            // permutation cards `Prm{n}` (frame.c:14640) fall in that group,
-            // so an unset value for any of them must not appear in the
-            // commented FrameSet header.
-            if matches!(
-                item.key.as_str(),
-                "ObsLat" | "ObsLon" | "ObsAlt" | "Dtai" | "Dut1"
-            ) || item.key.starts_with("Prm")
-            {
-                continue;
-            }
-            let inner = match &item.value {
-                NodeValue::Unset(inner) => inner.as_ref(),
-                other => other,
-            };
-            if matches!(inner, NodeValue::Object(_)) {
-                continue;
-            }
-            if item.key == "System" {
-                has_system = true;
-            }
-            // For CmpFrame: inject the commented Epoch after Domain. C's
-            // `Frame::Dump` writes Epoch with `helpful = !isFrame`; for a
-            // FrameSet whose current Frame is a CmpFrame `isFrame = 0`
-            // (frame.c:14271-14273), so the commented effective epoch is
-            // shown. The CmpFrame's *own* dump suppresses it (isFrame = 1
-            // there), so it is absent from `current_node` and must be
-            // reconstructed here from the effective value.
-            if is_cmpframe && item.key == "Domain" {
-                node.push_unset(&item.key, inner.clone(), item.comment.clone());
-                if let Some(cmp) = self.current().as_any().downcast_ref::<super::CmpFrame>() {
-                    let mjd = cmp.epoch_mjd();
-                    let (epoch_year, is_besselian) = if mjd < crate::pal::epj2d(1984.0) {
-                        (crate::pal::epb(mjd), true)
-                    } else {
-                        (crate::pal::epj(mjd), false)
-                    };
-                    let comment = if is_besselian {
-                        "Besselian epoch of observation"
-                    } else {
-                        "Julian epoch of observation"
-                    };
-                    node.push_unset(
-                        "Epoch",
-                        NodeValue::Double(epoch_year),
-                        Some(comment.to_string()),
-                    );
-                }
-                continue;
-            }
-            // For CmpFrame: inject System="Compound" before first Uni entry.
-            if is_cmpframe && !has_system && !injected_system && item.key.starts_with("Uni") {
-                node.push_unset(
-                    "System",
-                    NodeValue::String("Compound".to_string()),
-                    Some("Coordinate system type".to_string()),
-                );
-                injected_system = true;
-            }
-            // ActUnt is written as active (not commented) in the FrameSet proxy.
-            if item.key == "ActUnt" {
-                let val = match inner {
-                    NodeValue::Int(v) => *v,
-                    _ => 0,
-                };
-                node.push_int("ActUnt", val, item.comment.clone());
-            } else {
-                node.push_unset(&item.key, inner.clone(), item.comment.clone());
-            }
-        }
+        super::frame_attrs::write_frame_cards(
+            &mut node,
+            &super::frame_attrs::TraitDump {
+                frame: self,
+                attrs: &super::frame_attrs::FrameAttrs::default(),
+                system: (false, system_of("System")),
+                align_system: (false, system_of("AlSys")),
+                perm: self.axis_perm(),
+                is_frame,
+                own_naxes: 0,
+                mapping: Some(crate::serial::MappingPart::of_frame(
+                    &self.mapping_flags,
+                    Mapping::nin(self),
+                    Mapping::nout(self),
+                    false,
+                    self.has_forward(),
+                    self.has_inverse(),
+                )),
+            },
+        )?;
 
         // IsA Frame marker.
         node.push_isa("Frame", Some("Coordinate system description".to_string()));
@@ -2313,26 +2245,41 @@ impl Serializable for FrameSet {
             );
         }
 
-        // Nnode — only written when nnode != nframe (tree structure).
-        if self.nnode != nframe {
-            node.push_int(
-                "Nnode",
-                self.nnode as i64,
-                Some("Number of nodes in FrameSet".to_string()),
+        // Nnode, set when the tree has nodes no Frame is at.
+        node.write_int(
+            "Nnode",
+            self.nnode != nframe,
+            false,
+            self.nnode as i64,
+            "Number of nodes in FrameSet",
+        );
+
+        // Nod{i}, the node of each Frame, set when not the identity.
+        for (i, &nod) in self.node_map.iter().enumerate() {
+            let val = nod + 1;
+            node.write_int(
+                &format!("Nod{}", i + 1),
+                val != i + 1,
+                false,
+                val as i64,
+                &format!("Frame {} is associated with node {}", i + 1, val),
             );
         }
 
-        // Nod{i} — frame-to-node mapping (only when differs from identity).
-        for (i, &nod) in self.node_map.iter().enumerate() {
-            let val = nod + 1; // 1-based
-            if val != i + 1 {
-                let key = format!("Nod{}", i + 1);
-                let comment = format!("Frame {} is associated with node {}", i + 1, val);
-                node.push_int(&key, val as i64, Some(comment));
-            }
+        // VFr{i}, the 1-based Frame whose variants each Frame uses, set when
+        // it is another Frame's (0 when the Frame holds its own).
+        for (i, &vf) in self.varfrm.iter().enumerate() {
+            node.write_int(
+                &format!("VFr{}", i + 1),
+                vf > 0,
+                false,
+                vf as i64,
+                &format!("Frame {} inherits variants from Frame {vf}", i + 1),
+            );
         }
 
-        // Lnk{node+1} = parent+1 for each edge (1-based node indices).
+        // Lnk{node} = parent for each edge (1-based node indices), and the
+        // link's Inv{node}, set when the inverse Mapping is used.
         for edge in &self.edges {
             let key = format!("Lnk{}", edge.to + 1);
             let comment = format!(
@@ -2341,43 +2288,47 @@ impl Serializable for FrameSet {
                 edge.from + 1,
             );
             node.push_int(&key, (edge.from + 1) as i64, Some(comment));
-            // C writes the link's Invert flag only when the inverse is used.
-            if edge.mapping.is_inverted() {
-                node.push_int(
-                    &format!("Inv{}", edge.to + 1),
-                    1,
-                    Some("The inverse mapping is used".to_string()),
-                );
-            }
+            let inv = edge.mapping.is_inverted();
+            node.write_int(
+                &format!("Inv{}", edge.to + 1),
+                inv,
+                false,
+                i64::from(inv),
+                if inv {
+                    "The inverse mapping is used"
+                } else {
+                    "The forward mapping is used"
+                },
+            );
         }
 
         // Frm{i+1} — each frame as a nested object. C writes a frame's Variants
-        // FrameSet inside its own block as object `Vrnts` (frame.c:14679);
-        // since Rust holds variants FrameSet-side, inject it here.
+        // FrameSet as object `Vrnts`, last in the Frame class's part of its
+        // dump, before the `IsA Frame` marker of a Frame subclass
+        // (frame.c:14679); since Rust holds variants FrameSet-side, inject it
+        // there.
         for (i, frame) in self.frames.iter().enumerate() {
             let key = format!("Frm{}", i + 1);
             let mut frame_node = FrameToNode::to_node(frame.as_ref())?;
             if let Some(vfs) = &self.frame_variants[i] {
                 let vnode = Serializable::to_node(vfs)?;
-                frame_node.push_object("Vrnts", vnode, Some("Variant Frames".to_string()));
+                let end_of_frame_part = frame_node
+                    .items
+                    .iter()
+                    .position(|item| {
+                        item.key == "IsA"
+                            && matches!(&item.value, NodeValue::String(c) if c == "Frame")
+                    })
+                    .unwrap_or(frame_node.items.len());
+                frame_node.insert_object(
+                    end_of_frame_part,
+                    "Vrnts",
+                    vnode,
+                    Some("Variant Frames".to_string()),
+                );
             }
             let comment = format!("Frame number {}", i + 1);
             node.push_object(&key, frame_node, Some(comment));
-        }
-
-        // VarFrm{i+1} — per-frame variant-mirror indices (1-based; 0 = owns).
-        for (i, &vf) in self.varfrm.iter().enumerate() {
-            if vf != 0 {
-                let key = format!("VarFrm{}", i + 1);
-                node.push_int(
-                    &key,
-                    vf as i64,
-                    Some(format!(
-                        "Variants for Frame {} are stored in Frame {vf}",
-                        i + 1
-                    )),
-                );
-            }
         }
 
         // Map{node+1} — each edge mapping as a nested object.
@@ -2473,10 +2424,10 @@ impl Serializable for FrameSet {
             frame_variants.push(vrnts);
         }
 
-        // Read the per-frame variant-mirror indices (VarFrm{i}, default 0).
+        // Read the per-frame variant-mirror indices (VFr{i}, default 0).
         let mut varfrm: Vec<usize> = Vec::with_capacity(nframe);
         for i in 0..nframe {
-            let key = format!("VarFrm{}", i + 1);
+            let key = format!("VFr{}", i + 1);
             varfrm.push(node.get_int(&key, 0) as usize);
         }
 

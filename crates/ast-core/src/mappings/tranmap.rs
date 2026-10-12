@@ -670,21 +670,29 @@ impl Serializable for TranMap {
         node.class_comment = Some("Compound Transformation Mapping".to_string());
         write_mapping_base(&mut node, self);
 
-        // Component invert flags (only if non-zero).
-        if self.inv_a {
-            node.push_int(
-                "InvA",
-                1,
-                Some("First Mapping used in inverse direction".to_string()),
-            );
-        }
-        if self.inv_b {
-            node.push_int(
-                "InvB",
-                1,
-                Some("Second Mapping used in inverse direction".to_string()),
-            );
-        }
+        // The component Invert flags, each set when true.
+        node.write_int(
+            "InvA",
+            self.inv_a,
+            false,
+            i64::from(self.inv_a),
+            if self.inv_a {
+                "First Mapping used in inverse direction"
+            } else {
+                "First Mapping used in forward direction"
+            },
+        );
+        node.write_int(
+            "InvB",
+            self.inv_b,
+            false,
+            i64::from(self.inv_b),
+            if self.inv_b {
+                "Second Mapping used in inverse direction"
+            } else {
+                "Second Mapping used in forward direction"
+            },
+        );
 
         // Component mappings as nested objects.
         let node_a = self.map1.to_node()?;

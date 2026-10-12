@@ -57,124 +57,210 @@ pub(crate) fn write_object_base(node: &mut Node, mapping: &dyn Mapping) {
         id.set(mapping.id());
     }
     let ident = mapping.test_ident().then(|| mapping.ident());
-    crate::frames::frame_attrs::write_object_part(node, &id, ident, None);
+    crate::frames::frame_attrs::write_object_part(node, &id, ident, None, true);
 }
 
-/// Write common Mapping attributes (Ident, Nin, Nout, IsSimp, Invert,
-/// IsA Mapping).
+/// The values mapping.c `Dump` writes for a Mapping.
+#[derive(Clone)]
+pub(crate) struct MappingPart {
+    /// The forward-direction Nin, and whether it is set: C sets it for a
+    /// Mapping, and leaves it zero for a Frame, which takes it from its
+    /// axes.
+    pub nin: (bool, usize),
+    /// The forward-direction Nout, set when it differs from Nin.
+    pub nout: (bool, usize),
+    /// IsSimp.
+    pub simple: bool,
+    /// ReSimp.
+    pub restricted: bool,
+    /// AlSimp.
+    pub allow: bool,
+    /// Invert.
+    pub inverted: bool,
+    /// Fwd: set when the Mapping's own flag says the transformation is not
+    /// defined (only CmpMap computes one), with the forward-direction value.
+    pub fwd: (bool, bool),
+    /// Inv, as Fwd.
+    pub inv: (bool, bool),
+    /// Report, if set.
+    pub report: Option<bool>,
+}
+
+impl MappingPart {
+    /// The Mapping part of a Frame, FrameSet or Region: no Nin or Nout of
+    /// its own, never simplified, with the flags it holds and the given
+    /// definedness.
+    pub(crate) fn of_frame(
+        flags: &crate::mappings::MappingFlags,
+        nin: usize,
+        nout: usize,
+        inverted: bool,
+        fwd: bool,
+        inv: bool,
+    ) -> Self {
+        Self {
+            nin: (false, nin),
+            nout: (false, nout),
+            simple: false,
+            restricted: flags.restricted_simplify,
+            allow: flags.allow_simplify,
+            inverted,
+            fwd: (false, fwd),
+            inv: (false, inv),
+            report: flags.report,
+        }
+    }
+}
+
+/// Write the Object part and then the Mapping part, as mapping.c `Dump`
+/// does.
 pub(crate) fn write_mapping_base(node: &mut Node, mapping: &dyn Mapping) {
     write_object_base(node, mapping);
-    // Write intrinsic (forward-direction) Nin and Nout, matching the C library
-    // which uses `this->nin` / `this->nout` directly (bypassing the Invert
-    // attribute). When inverted, nin()/nout() return swapped values, so we
-    // undo the swap.
-    let (nin, nout) = if mapping.is_inverted() {
+    // C writes the intrinsic (forward-direction) Nin and Nout, the instance
+    // variables Invert does not swap.
+    let inverted = mapping.is_inverted();
+    let (nin, nout) = if inverted {
         (mapping.nout(), mapping.nin())
     } else {
         (mapping.nin(), mapping.nout())
     };
-    node.push_int(
-        "Nin",
-        nin as i64,
-        Some("Number of input coordinates".to_string()),
-    );
-    if nout != nin {
-        node.push_int(
-            "Nout",
-            nout as i64,
-            Some("Number of output coordinates".to_string()),
-        );
-    }
-    if mapping.dump_is_simple() {
-        node.push_int("IsSimp", 1, Some("Mapping has been simplified".to_string()));
-    }
-    // RestrictedSimplify (C `ReSimp`) is a base-Mapping attribute but only
-    // CmpMap ever carries a non-default value. Emitted between IsSimp and
-    // AlSimp to match the C base Dump order (mapping.c:23764).
-    if mapping.restricted_simplify() {
-        node.push_int(
-            "ReSimp",
-            1,
-            Some("Simplify restricted to allowed Mappings".to_string()),
-        );
-    }
-    if mapping.allow_simplify() {
-        node.push_int(
-            "AlSimp",
-            1,
-            Some("Will be used by restricted Simplify".to_string()),
-        );
-    }
-    if mapping.is_inverted() {
-        node.push_int("Invert", 1, Some("Mapping inverted".to_string()));
-    }
-    // C writes Fwd/Inv from the Mapping base-struct fields, which only
-    // CmpMap populates with computed values — dynamic per-class
-    // definedness (PolyMap, MatrixMap, TranMap, ...) is never dumped.
+    // C writes Fwd and Inv as set from the Mapping's own flags, which only
+    // CmpMap computes, and otherwise gives the class's definedness in the
+    // forward direction.
     let (intrinsic_fwd, intrinsic_inv) = mapping.dump_tran_flags();
-    if !intrinsic_fwd {
-        node.push_int(
-            "Fwd",
-            0,
-            Some("Forward transformation not defined".to_string()),
-        );
-    }
-    if !intrinsic_inv {
-        node.push_int(
-            "Inv",
-            0,
-            Some("Inverse transformation not defined".to_string()),
-        );
-    }
-    push_report(node, mapping.report_attr());
+    let (fwd, inv) = if inverted {
+        (mapping.has_inverse(), mapping.has_forward())
+    } else {
+        (mapping.has_forward(), mapping.has_inverse())
+    };
+    write_mapping_part(
+        node,
+        &MappingPart {
+            nin: (true, nin),
+            nout: (nout != nin, nout),
+            simple: mapping.dump_is_simple(),
+            restricted: mapping.restricted_simplify(),
+            allow: mapping.allow_simplify(),
+            inverted,
+            fwd: (!intrinsic_fwd, intrinsic_fwd && fwd),
+            inv: (!intrinsic_inv, intrinsic_inv && inv),
+            report: mapping.report_attr(),
+        },
+    );
+}
+
+/// Write the Mapping part of mapping.c `Dump`: Nin, Nout, IsSimp, ReSimp,
+/// AlSimp, Invert, Fwd, Inv and Report, each active when set and otherwise
+/// not helpful, then the `IsA Mapping` marker.
+pub(crate) fn write_mapping_part(node: &mut Node, part: &MappingPart) {
+    node.write_int(
+        "Nin",
+        part.nin.0,
+        false,
+        part.nin.1 as i64,
+        "Number of input coordinates",
+    );
+    node.write_int(
+        "Nout",
+        part.nout.0,
+        false,
+        part.nout.1 as i64,
+        "Number of output coordinates",
+    );
+    node.write_int(
+        "IsSimp",
+        part.simple,
+        false,
+        i64::from(part.simple),
+        if part.simple {
+            "Mapping has been simplified"
+        } else {
+            "Mapping has not been simplified"
+        },
+    );
+    write_simplify_flags(node, part.restricted, part.allow);
+    node.write_int(
+        "Invert",
+        part.inverted,
+        false,
+        i64::from(part.inverted),
+        if part.inverted {
+            "Mapping inverted"
+        } else {
+            "Mapping not inverted"
+        },
+    );
+    let (set, fwd) = part.fwd;
+    node.write_int(
+        "Fwd",
+        set,
+        false,
+        i64::from(fwd),
+        if fwd {
+            "Forward transformation defined"
+        } else {
+            "Forward transformation not defined"
+        },
+    );
+    let (set, inv) = part.inv;
+    node.write_int(
+        "Inv",
+        set,
+        false,
+        i64::from(inv),
+        if inv {
+            "Inverse transformation defined"
+        } else {
+            "Inverse transformation not defined"
+        },
+    );
+    write_report(node, part.report);
     node.push_isa(
         "Mapping",
         Some("Mapping between coordinate systems".to_string()),
     );
 }
 
-/// Write the `Report` item when it is set, as mapping.c `Dump` does last in
-/// the Mapping part.
-fn push_report(node: &mut Node, report: Option<bool>) {
-    if let Some(report) = report {
-        node.push_int(
-            "Report",
-            i64::from(report),
-            Some(if report {
-                "Report coordinate transformations".to_string()
-            } else {
-                "Don't report coordinate transformations".to_string()
-            }),
-        );
-    }
+/// The `ReSimp` and `AlSimp` items of mapping.c `Dump`, each set when true.
+fn write_simplify_flags(node: &mut Node, restricted: bool, allow: bool) {
+    node.write_int(
+        "ReSimp",
+        restricted,
+        false,
+        i64::from(restricted),
+        if restricted {
+            "Simplify restricted to allowed Mappings"
+        } else {
+            "Simplify uses all Mappings"
+        },
+    );
+    node.write_int(
+        "AlSimp",
+        allow,
+        false,
+        i64::from(allow),
+        if allow {
+            "Will be used by restricted Simplify"
+        } else {
+            "Will not be used by restricted Simplify"
+        },
+    );
 }
 
-/// The Mapping part of a FrameSet or Region dump. It holds only the flags
-/// such a Mapping can have set, `ReSimp`, `AlSimp` and `Report` in
-/// mapping.c `Dump` order, and is written, with its `IsA Mapping` marker,
-/// only when one of them is.
-pub(crate) fn write_flags_mapping_part(node: &mut Node, flags: &crate::mappings::MappingFlags) {
-    if flags.restricted_simplify {
-        node.push_int(
-            "ReSimp",
-            1,
-            Some("Simplify restricted to allowed Mappings".to_string()),
-        );
-    }
-    if flags.allow_simplify {
-        node.push_int(
-            "AlSimp",
-            1,
-            Some("Will be used by restricted Simplify".to_string()),
-        );
-    }
-    push_report(node, flags.report);
-    if flags.restricted_simplify || flags.allow_simplify || flags.report.is_some() {
-        node.push_isa(
-            "Mapping",
-            Some("Mapping between coordinate systems".to_string()),
-        );
-    }
+/// The `Report` item, last in the Mapping part of mapping.c `Dump`.
+fn write_report(node: &mut Node, report: Option<bool>) {
+    let value = report.unwrap_or(false);
+    node.write_int(
+        "Report",
+        report.is_some(),
+        false,
+        i64::from(value),
+        if value {
+            "Report coordinate transformations"
+        } else {
+            "Don't report coordinate transformations"
+        },
+    );
 }
 
 /// The flags in a description's Mapping part: `Report` if set, and the
@@ -619,6 +705,13 @@ fn write_pointset_node(points: &[Vec<f64>]) -> Node {
 
     let mut node = Node::new("PointSet");
     node.class_comment = Some("Container for a set of points".to_string());
+    crate::frames::frame_attrs::write_object_part(
+        &mut node,
+        &crate::object_id::ObjectId::default(),
+        None,
+        None,
+        true,
+    );
     node.push_int(
         "Npoint",
         npoint as i64,
@@ -628,6 +721,19 @@ fn write_pointset_node(points: &[Vec<f64>]) -> Node {
         "Ncoord",
         ncoord as i64,
         Some("Number of coordinates per point".to_string()),
+    );
+    // A PointSet holding no values is empty (pointset.c `Dump`).
+    let empty = npoint == 0;
+    node.write_int(
+        "Empty",
+        empty,
+        false,
+        i64::from(empty),
+        if empty {
+            "PointSet is empty"
+        } else {
+            "PointSet contains data"
+        },
     );
 
     // The C PointSet Dump (pointset.c:2727) omits any axis value equal to
@@ -703,62 +809,69 @@ fn read_pointset_node(node: &Node) -> AstResult<Vec<Vec<f64>>> {
 /// [`write_frame_inheritance_for_region`] before this is called. This
 /// function writes the Region's own instance variables (and the trailing
 /// `IsA Region` marker — see [`write_region_isa_marker`]).
-pub(crate) fn write_region_base(node: &mut Node, data: &RegionData) {
-    // Region attribute emissions mirror `region.c::Dump`. The pattern is:
-    //   `set = (ival != 0); astWriteInt(..., set, helpful=0, ival, ...)`
-    // so a boolean attr with its non-default value emits uncommented and
-    // the default omits entirely (set=0, helpful=0 → `Use` returns false).
-    if data.negated {
-        node.push_int("Negate", 1, Some("Region negated".to_string()));
-    }
-    // FillFactor and MeshSize emit only when explicitly set, mirroring C
-    // `region.c:13063,13071` where `set = Test<Attr>()` gates emission
-    // (helpful = 0), independent of whether the value equals a default.
-    if data.fill_factor_set {
-        node.push_double(
-            "Fill",
-            data.fill_factor,
-            Some("Region fill factor".to_string()),
-        );
-    }
-    if data.mesh_size_set {
-        node.push_int(
-            "MeshSz",
-            data.mesh_size as i64,
-            Some("No. of points used to represent boundary".to_string()),
-        );
-    }
-    // Closed: emit only when explicitly set (mirrors C's
-    // `astWriteInt(..., set=TestClosed(), helpful=0, ...)`). The comment
-    // depends on the value.
-    if data.closed_set {
-        node.push_int(
-            "Closed",
-            if data.closed { 1 } else { 0 },
-            Some(
-                if data.closed {
-                    "Boundary is inside"
-                } else {
-                    "Boundary is outside"
-                }
-                .to_string(),
-            ),
-        );
-    }
-    // Adapt: written as set when it is non-zero or has been set
-    // explicitly (region.c `Dump`), so a default Region writes `Adapt = 1`
-    // and one set to 0 writes `Adapt = 0`.
-    if data.adaptive || data.adaptive_set {
-        node.push_int(
-            "Adapt",
-            i64::from(data.adaptive),
-            Some(if data.adaptive {
-                "Region adapts to coord sys changes".to_string()
-            } else {
-                "Region does not adapt to coord sys changes".to_string()
-            }),
-        );
-    }
+pub(crate) fn write_region_base(
+    node: &mut Node,
+    region: &dyn crate::regions::Region,
+    data: &RegionData,
+) {
+    // region.c `Dump`: each value active when set, otherwise the one the
+    // class's getter gives, none of them helpful. Negate is the Region's
+    // own value when that is set, and is written as set when true; Adapt is
+    // written as set when true or set.
+    let negated = if data.negated_set {
+        data.negated
+    } else {
+        region.is_negated()
+    };
+    node.write_int(
+        "Negate",
+        negated,
+        false,
+        i64::from(negated),
+        if negated {
+            "Region negated"
+        } else {
+            "Region not negated"
+        },
+    );
+    node.write_double(
+        "Fill",
+        data.fill_factor_set,
+        false,
+        region.fill_factor(),
+        "Region fill factor",
+    );
+    node.write_int(
+        "MeshSz",
+        data.mesh_size_set,
+        false,
+        region.mesh_size() as i64,
+        "No. of points used to represent boundary",
+    );
+    let closed = region.is_closed();
+    node.write_int(
+        "Closed",
+        data.closed_set,
+        false,
+        i64::from(closed),
+        if closed {
+            "Boundary is inside"
+        } else {
+            "Boundary is outside"
+        },
+    );
+    let adaptive = region.is_adaptive();
+    node.write_int(
+        "Adapt",
+        adaptive || data.adaptive_set,
+        false,
+        i64::from(adaptive),
+        if adaptive {
+            "Region adapts to coord sys changes"
+        } else {
+            "Region does not adapt to coord sys changes"
+        },
+    );
 
     // Write the FrameSet, mirroring C `region.c:13099-13112`. If the
     // base→current mapping is a UnitMap, the vertices are the same in both
@@ -777,12 +890,13 @@ pub(crate) fn write_region_base(node: &mut Node, data: &RegionData) {
         .map(|m| m.as_any().is::<UnitMap>())
         .unwrap_or(false);
 
-    if is_unit {
+    let regfs_set = if is_unit {
         if data.region_fs {
             let frame_node = FrameToNode::to_node(data.frameset.current())
                 .unwrap_or_else(|_| Node::new("Frame"));
             node.push_object("Frm", frame_node, Some("Coordinate system".to_string()));
         }
+        false
     } else {
         let fs_node =
             Serializable::to_node(&data.frameset).unwrap_or_else(|_| Node::new("FrameSet"));
@@ -791,10 +905,19 @@ pub(crate) fn write_region_base(node: &mut Node, data: &RegionData) {
             fs_node,
             Some("Original & current coordinate systems".to_string()),
         );
-        if !data.region_fs {
-            node.push_int("RegFS", 0, Some("Do not include Frame in dump".to_string()));
-        }
-    }
+        !data.region_fs
+    };
+    node.write_int(
+        "RegFS",
+        regfs_set,
+        false,
+        i64::from(data.region_fs),
+        if data.region_fs {
+            "Include Frame in dump"
+        } else {
+            "Do not include Frame in dump"
+        },
+    );
 
     // Defining points (if any) — else emit RegAxes so the loader knows the
     // axis count without a PointSet to count from. Matches `region.c`
@@ -826,142 +949,35 @@ pub(crate) fn write_region_base(node: &mut Node, data: &RegionData) {
     }
 }
 
-/// Emit the Frame-inheritance commented defaults that the C library's
-/// `frame.c::Dump` writes when called as a parent class of a Region. The
-/// values come from the Region's encapsulated current frame. Order matches
-/// `frame.c` lines 14302-14400: Title, Naxes, Domain, Epoch, Lbl*, System.
-///
-/// All entries are emitted commented (the `helpful=1` path in C, which
-/// gives the human reader the inherited values but omits them on re-read).
+/// Write the Mapping and Frame parts of a Region's dump: frame.c `Dump` run
+/// on the Region, whose getters give the values of its encapsulated
+/// `frame`. The Region's own Frame structure holds no attribute values and
+/// no axes, so every value is unset, and there are no `Prm` items or Axis
+/// objects.
 pub(crate) fn write_frame_inheritance_for_region(
     node: &mut Node,
     frame: &dyn Frame,
+    mapping: MappingPart,
 ) -> AstResult<()> {
-    let frame_node = FrameToNode::to_node(frame).unwrap_or_else(|_| Node::new("Frame"));
-    let naxes = frame.naxes();
-
-    // Title — fall back to the C-style default `"N-d coordinate system"`.
-    let title_value = frame_node
-        .get_any("Title")
-        .cloned()
-        .unwrap_or_else(|| NodeValue::String(format!("{naxes}-d coordinate system")));
-    node.push_unset(
-        "Title",
-        title_value,
-        Some("Title of coordinate system".to_string()),
-    );
-
-    // Naxes — always commented at the Region level.
-    node.push_unset(
-        "Naxes",
-        NodeValue::Int(naxes as i64),
-        Some("Number of coordinate axes".to_string()),
-    );
-
-    // Domain — only emit if the frame has a non-empty domain string.
-    if let Some(NodeValue::String(s)) = frame_node.get_any("Domain") {
-        if !s.is_empty() {
-            node.push_unset(
-                "Domain",
-                NodeValue::String(s.clone()),
-                Some("Coordinate system domain".to_string()),
-            );
-        }
-    }
-
-    // Epoch — always commented at the Region level (`!isFrame = 1`).
-    // C's `frame.c::Dump` uses `astGetEpoch(this)` (the *effective* value,
-    // never the "if set" one), converted to a Besselian year below J1984 or
-    // a Julian year at/above it. Scraping the frame's own serialiser fails
-    // for classes that omit their own Epoch (e.g. CmpFrame), so compute the
-    // effective epoch directly.
-    let (epoch_year, is_besselian) = crate::frames::frame_epoch_effective_year(frame);
-    let epoch_comment = if is_besselian {
-        "Besselian epoch of observation"
-    } else {
-        "Julian epoch of observation"
+    let frame_node = FrameToNode::to_node(frame)?;
+    let frame_part = frame_node.section("Frame");
+    let system_of = |key: &str| match frame_part.get_any(key) {
+        Some(NodeValue::String(s)) => s.clone(),
+        _ => String::new(),
     };
-    node.push_unset(
-        "Epoch",
-        NodeValue::Double(epoch_year),
-        Some(epoch_comment.to_string()),
-    );
-
-    // Per-axis Labels — pull from the Frame's Lbl* keys; fall back to the
-    // standard "Axis N" default if the Frame elided them.
-    for i in 1..=naxes {
-        let key = format!("Lbl{i}");
-        let label_value = frame_node
-            .get_any(&key)
-            .cloned()
-            .unwrap_or_else(|| NodeValue::String(format!("Axis {i}")));
-        node.push_unset(&key, label_value, Some(format!("Label for axis {i}")));
-    }
-
-    // System — bare Frame and CmpFrame don't emit System in their own dump
-    // (`helpful=!isFrame=0` for them), so the value must come from the trait.
-    let system_str = frame.system_string()?.unwrap_or("Cartesian").to_string();
-    node.push_unset(
-        "System",
-        NodeValue::String(system_str),
-        Some("Coordinate system type".to_string()),
-    );
-
-    // Remaining Frame-level attributes (AlSys, Uni*, Dir*, Bot*, Top*,
-    // observer attributes, ActUnt, …). `frame.c::Dump` writes them after
-    // System, all commented at the Region level (`!isFrame = 1`). The
-    // frame's own serialiser already produced these items with the correct
-    // comments and in frame.c order; carry over each scalar item that
-    // precedes the frame's own `IsA Frame` marker, forcing it commented and
-    // skipping the keys emitted explicitly above. Anything after `IsA Frame`
-    // (nested component frames, CmpFrame `Axp*` permutation records) belongs
-    // to the concrete class, not the inherited Frame block, and is dropped.
-    for item in &frame_node.items {
-        // Stop at the frame's own `IsA Frame` marker: everything after it
-        // (nested component frames, CmpFrame `Axp*` permutation records)
-        // belongs to the concrete class, not the inherited Frame block.
-        // Earlier IsA markers (e.g. `IsA Object`, which precedes the Frame
-        // attributes when an Ident is set) are skipped, not treated as the
-        // stopping point.
-        if item.key == "IsA" {
-            if matches!(&item.value, NodeValue::String(s) if s == "Frame") {
-                break;
-            }
-            continue;
-        }
-        let is_handled = matches!(
-            item.key.as_str(),
-            // Emitted explicitly above.
-            "Title" | "Naxes" | "Domain" | "Epoch" | "System"
-            // Object-level attributes: in a Region dump these come from the
-            // Region itself, not the encapsulated frame, so drop the inner
-            // frame's copies.
-            | "Ident" | "ID" | "UseDfs"
-        ) || item.key.starts_with("Lbl")
-            // The axis permutation is the current Frame's; the Region's own
-            // Frame part, which frame.c dumps here, is never permuted, since
-            // region.c `PermAxes` permutes the FrameSet instead.
-            || item.key.starts_with("Prm");
-        if is_handled {
-            continue;
-        }
-        // Only scalar attributes appear in the inherited Frame block.
-        if matches!(item.value, NodeValue::Object(_)) {
-            continue;
-        }
-        let value = match &item.value {
-            NodeValue::Unset(inner) => (**inner).clone(),
-            other => other.clone(),
-        };
-        // frame.c `Dump` writes ActUnt as set whenever the Frame's
-        // ActiveUnit is set, whichever class is dumping (frame.c:14729).
-        if let ("ActUnt", NodeValue::Int(v)) = (item.key.as_str(), &value) {
-            node.push_int(&item.key, *v, item.comment.clone());
-        } else {
-            node.push_unset(&item.key, value, item.comment.clone());
-        }
-    }
-    Ok(())
+    crate::frames::frame_attrs::write_frame_cards(
+        node,
+        &crate::frames::frame_attrs::TraitDump {
+            frame,
+            attrs: &crate::frames::frame_attrs::FrameAttrs::default(),
+            system: (false, system_of("System")),
+            align_system: (false, system_of("AlSys")),
+            perm: frame.axis_perm(),
+            is_frame: false,
+            own_naxes: 0,
+            mapping: Some(mapping),
+        },
+    )
 }
 
 /// Emit the `IsA Region` marker that terminates the Region instance-variable
@@ -1259,6 +1275,7 @@ pub(crate) fn region_from_node(node: &Node) -> AstResult<DynRegion> {
 fn region_to_node_skeleton(
     class: &'static str,
     class_comment: &'static str,
+    region: &dyn crate::regions::Region,
     data: &RegionData,
 ) -> AstResult<Node> {
     let mut node = Node::new(class);
@@ -1271,11 +1288,16 @@ fn region_to_node_skeleton(
         &data.id,
         data.ident.as_deref(),
         data.use_defs,
+        true,
     );
-    write_flags_mapping_part(&mut node, &data.mapping_flags);
-    write_frame_inheritance_for_region(&mut node, data.frameset.current())?;
+    let naxes = data.frameset.current().naxes();
+    write_frame_inheritance_for_region(
+        &mut node,
+        data.frameset.current(),
+        MappingPart::of_frame(&data.mapping_flags, naxes, naxes, false, true, true),
+    )?;
     push_frame_isa_marker(&mut node);
-    write_region_base(&mut node, data);
+    write_region_base(&mut node, region, data);
     push_region_isa_marker(&mut node);
     Ok(node)
 }
@@ -1286,7 +1308,7 @@ impl Serializable for Circle {
     }
 
     fn to_node(&self) -> AstResult<Node> {
-        region_to_node_skeleton("Circle", "Circular or spherical region", &self.data)
+        region_to_node_skeleton("Circle", "Circular or spherical region", self, &self.data)
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
@@ -1302,7 +1324,7 @@ impl Serializable for BoxRegion {
     }
 
     fn to_node(&self) -> AstResult<Node> {
-        region_to_node_skeleton("Box", "Axis intervals", &self.data)
+        region_to_node_skeleton("Box", "Axis intervals", self, &self.data)
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
@@ -1318,7 +1340,7 @@ impl Serializable for Ellipse {
     }
 
     fn to_node(&self) -> AstResult<Node> {
-        region_to_node_skeleton("Ellipse", "Elliptical region", &self.data)
+        region_to_node_skeleton("Ellipse", "Elliptical region", self, &self.data)
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
@@ -1334,16 +1356,16 @@ impl Serializable for Polygon {
     }
 
     fn to_node(&self) -> AstResult<Node> {
-        let mut node = region_to_node_skeleton("Polygon", "Polygonal region", &self.data)?;
-        // Polygon instance variables (polygon.c::Dump, :6692). SimpVertices is
-        // written only when set.
-        if let Some(sv) = self.simp_vertices {
-            node.push_int(
-                "SimpVT",
-                sv as i64,
-                Some("Simplify by transforming vertices?".to_string()),
-            );
-        }
+        let mut node = region_to_node_skeleton("Polygon", "Polygonal region", self, &self.data)?;
+        // Polygon instance variables (polygon.c::Dump, :6692): SimpVertices,
+        // active when set and otherwise its default.
+        node.write_int(
+            "SimpVT",
+            self.simp_vertices.is_some(),
+            false,
+            i64::from(self.simp_vertices()),
+            "Simplify by transforming vertices?",
+        );
         // AST always records the vertex-order convention: a non-zero value
         // indicates the STC system (inside to the left when moving
         // anti-clockwise round the vertices as viewed from the inside of the
@@ -1389,7 +1411,7 @@ impl Serializable for Interval {
     }
 
     fn to_node(&self) -> AstResult<Node> {
-        region_to_node_skeleton("Interval", "Axis intervals", &self.data)
+        region_to_node_skeleton("Interval", "Axis intervals", self, &self.data)
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
@@ -1405,7 +1427,7 @@ impl Serializable for NullRegion {
     }
 
     fn to_node(&self) -> AstResult<Node> {
-        region_to_node_skeleton("NullRegion", "Boundless region", &self.data)
+        region_to_node_skeleton("NullRegion", "Boundless region", self, &self.data)
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
@@ -1421,7 +1443,7 @@ impl Serializable for PointList {
     }
 
     fn to_node(&self) -> AstResult<Node> {
-        region_to_node_skeleton("PointList", "Collection of points", &self.data)
+        region_to_node_skeleton("PointList", "Collection of points", self, &self.data)
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
@@ -1438,7 +1460,7 @@ impl Serializable for CmpRegion {
 
     fn to_node(&self) -> AstResult<Node> {
         let mut node =
-            region_to_node_skeleton("CmpRegion", "Combination of two Regions", &self.data)?;
+            region_to_node_skeleton("CmpRegion", "Combination of two Regions", self, &self.data)?;
 
         // CmpRegion-specific: operator and sub-regions. These follow the
         // `IsA Region` marker — written after the parent class skeleton.
@@ -1545,26 +1567,20 @@ impl<K: crate::regions::StcKind> Serializable for crate::regions::Stc<K> {
 
     /// stc.c `Dump` after region.c's: the encapsulated Region, the number of
     /// AstroCoords elements when there are any, and each element's KeyMap.
-    /// region.c writes Negated from the Stc's own field when that is set,
-    /// and otherwise from its accessor, which reads the encapsulated Region.
     fn to_node(&self) -> AstResult<Node> {
-        let mut data = self.data.clone();
-        if !data.negated_set {
-            data.negated = self.region.is_negated();
-        }
-        let mut node = region_to_node_skeleton(K::CLASS, K::COMMENT, &data)?;
+        let mut node = region_to_node_skeleton(K::CLASS, K::COMMENT, self, &self.data)?;
         node.push_object(
             "Region",
             RegionToNode::to_node(self.region.as_ref())?,
             Some("STC Region".to_string()),
         );
-        if !self.coords.is_empty() {
-            node.push_int(
-                "Ncoord",
-                self.coords.len() as i64,
-                Some("Number of AstroCoords elements".to_string()),
-            );
-        }
+        node.write_int(
+            "Ncoord",
+            !self.coords.is_empty(),
+            false,
+            self.coords.len() as i64,
+            "Number of AstroCoords elements",
+        );
         for (i, coord) in self.coords.iter().enumerate() {
             node.push_object(
                 &format!("Coord{}", i + 1),
@@ -1638,21 +1654,22 @@ impl Serializable for Moc {
     /// each written only when non-zero, and the upper bound only when it
     /// differs from the lower.
     fn to_node(&self) -> AstResult<Node> {
-        let mut node = region_to_node_skeleton("Moc", "IVOA Multi-Order Coverage map", &self.data)?;
-        if let Some(order) = self.max_order {
-            node.push_int(
-                "MaxOrder",
-                i64::from(order),
-                Some("Maximum HEALPix order".to_string()),
-            );
-        }
-        if let Some(order) = self.min_order {
-            node.push_int(
-                "MinOrder",
-                i64::from(order),
-                Some("Minimum HEALPix order".to_string()),
-            );
-        }
+        let mut node =
+            region_to_node_skeleton("Moc", "IVOA Multi-Order Coverage map", self, &self.data)?;
+        node.write_int(
+            "MaxOrder",
+            self.test_max_order(),
+            false,
+            i64::from(self.max_order()),
+            "Maximum HEALPix order",
+        );
+        node.write_int(
+            "MinOrder",
+            self.test_min_order(),
+            false,
+            i64::from(self.min_order()),
+            "Minimum HEALPix order",
+        );
         let nrange = self.range.len() / 2;
         node.push_int(
             "NRange",
@@ -1761,6 +1778,7 @@ impl Serializable for Prism {
         let mut node = region_to_node_skeleton(
             "Prism",
             "Region extrusion into higher dimensions",
+            self,
             &self.data,
         )?;
 

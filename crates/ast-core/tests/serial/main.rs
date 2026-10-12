@@ -15,10 +15,14 @@ mod test_channel_dump_oracle;
 mod test_channel_read_oracle;
 #[path = "../test_deferred_fixtures.rs"]
 mod test_deferred_fixtures;
+#[path = "../test_fixture_full_dump_oracle.rs"]
+mod test_fixture_full_dump_oracle;
 #[path = "../test_fixture_read_warnings_oracle.rs"]
 mod test_fixture_read_warnings_oracle;
 #[path = "../test_frame_load.rs"]
 mod test_frame_load;
+#[path = "../test_frameset_variants_oracle.rs"]
+mod test_frameset_variants_oracle;
 #[path = "../test_keymap.rs"]
 mod test_keymap;
 #[path = "../test_keymap_properties.rs"]

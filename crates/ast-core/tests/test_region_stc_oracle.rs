@@ -12,7 +12,9 @@
 //! Each Stc is built through the public API and compared with C's, and each of
 //! C's dumps is read back and written again as C writes it again: a Region in
 //! an AstroCoords element loaded without a Frame of its own is stored again
-//! with its comment, which changes the KeyMap's dump. The values come from
+//! with its comment, which changes the KeyMap's dump. Each is also written
+//! with Full = 1, which writes every unset value, less C's unset `RefCnt` and
+//! `Nobj`, counts the port does not have. The values come from
 //! `tools/oracle_fixtures/region_stc_probe.c`.
 
 // Generated; formatted by its generator rather than rustfmt. Its values are
@@ -32,7 +34,7 @@ use ast_core::regions::{
     StcCatalogEntryLocationBuilder, StcObsDataLocationBuilder, StcResourceProfile,
     StcResourceProfileBuilder, StcSearchLocationBuilder,
 };
-use ast_core::{AnyObject, from_native_string, to_native_string};
+use ast_core::{AnyObject, Channel, NativeChannel, from_native_string, to_native_string};
 
 fn circle(frame: impl Frame + 'static, centre: [f64; 2], radius: f64) -> DynRegion {
     Box::new(
@@ -161,6 +163,18 @@ fn stc_matches_c() {
             assert_eq!(out.point(i), &p[2..], "{name}: point {i}");
         }
         assert_eq!(stc.is_bounded().unwrap(), bounded, "{name}: bounded");
+    }
+}
+
+#[test]
+fn full_dumps_match_c() {
+    for &(name, want) in cases::FULL_DUMPS {
+        let stc = built(name);
+        let object = AnyObject::from_mapping(stc.as_ref() as &dyn Mapping).unwrap();
+        let mut ch = NativeChannel::with_string_sink();
+        ch.config_mut().set_full(1);
+        ch.write(&object).unwrap();
+        assert_eq!(ch.into_string(), want, "{name}");
     }
 }
 

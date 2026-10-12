@@ -571,6 +571,7 @@ impl<'a> Reader<'a> {
                                 value: parse_scalar_value(&datum.raw),
                                 comment: datum.comment,
                                 read: ReadFlag::default(),
+                                helpful: true,
                             });
                         }
                         None => {

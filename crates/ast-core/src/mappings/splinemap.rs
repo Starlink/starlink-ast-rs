@@ -1175,34 +1175,30 @@ impl Serializable for SplineMap {
             );
         }
 
-        // Optional attributes (written only when set)
-        let inv_niter_set = self.inv_niter.is_some();
-        let inv_niter_val = self.inv_niter() as i64;
-        if inv_niter_set {
-            node.push_int(
-                "NiterInv",
-                inv_niter_val,
-                Some("Max number of iterations for iterative inverse".to_string()),
-            );
-        }
-
-        // splinemap.c Dump writes OutUnit whenever it is set, 0 included.
-        if let Some(out_unit) = self.out_unit {
-            node.push_int(
-                "OutUnit",
-                out_unit as i64,
-                Some("How to handle out-of-bounds points".to_string()),
-            );
-        }
-
-        let inv_tol_set = self.inv_tol.is_some();
-        if inv_tol_set {
-            node.push_double(
-                "TolInv",
-                self.inv_tol(),
-                Some("Target relative error for iterative inverse".to_string()),
-            );
-        }
+        // The iterative inverse and out-of-bounds attributes, active when
+        // set and otherwise the defaults their getters give (splinemap.c
+        // `Dump`).
+        node.write_int(
+            "NiterInv",
+            self.inv_niter.is_some(),
+            false,
+            self.inv_niter() as i64,
+            "Max number of iterations for iterative inverse",
+        );
+        node.write_int(
+            "OutUnit",
+            self.out_unit.is_some(),
+            false,
+            i64::from(self.out_unit()),
+            "How to handle out-of-bounds points",
+        );
+        node.write_double(
+            "TolInv",
+            self.inv_tol.is_some(),
+            false,
+            self.inv_tol(),
+            "Target relative error for iterative inverse",
+        );
 
         Ok(node)
     }

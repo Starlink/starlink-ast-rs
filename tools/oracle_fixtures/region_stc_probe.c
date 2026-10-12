@@ -12,7 +12,8 @@
  * position (the protected astStcSetObs) and without one. Each
  * dump is also read back and written again: astLoadStc gives an AstroCoords
  * Region with no Frame of its own the Stc's base Frame and stores it again
- * with its comment, so that dump can differ from the first.
+ * with its comment, so that dump can differ from the first. Each is also
+ * dumped with Full set to 1, which writes every unset value.
  *
  * Prints Rust source for crates/ast-core/tests/region_stc_oracle/cases.rs:
  *
@@ -85,6 +86,39 @@ static const char *dumped( AstObject *obj ) {
    return dump;
 }
 
+/* Sink for a dump written with Full set to 1, leaving out the lines that
+   hold the state of the C process rather than of the Object: the unset
+   RefCnt and Nobj of the Object part (object.c Dump). */
+static void full_sink( const char *line ) {
+   char key[ 32 ];
+   if( sscanf( line, "# %31[A-Za-z] = ", key ) == 1 &&
+       ( !strcmp( key, "RefCnt" ) || !strcmp( key, "Nobj" ) ) ) return;
+   sink( line );
+}
+
+/* `(name, dump written with Full set to 1)` entries, printed after CASES. */
+static char full_dumps[ 400000 ];
+
+static void full_dump( const char *name, AstObject *obj ) {
+   AstChannel *ch;
+   char *out = full_dumps + strlen( full_dumps );
+   const char *c;
+   dump[ 0 ] = 0;
+   ch = astChannel( NULL, full_sink, "Full=1" );
+   astWrite( ch, obj );
+   ch = astAnnul( ch );
+   out += sprintf( out, "    (\"%s\", \"", name );
+   for( c = dump; *c; c++ ) {
+      if( *c == '\n' ) {
+         out += sprintf( out, "\\n" );
+      } else {
+         if( *c == '"' || *c == '\\' ) *out++ = '\\';
+         *out++ = *c;
+      }
+   }
+   sprintf( out, "\"),\n" );
+}
+
 /* A double as a Rust f64 literal. */
 static void num( double v ) {
    char buf[ 40 ];
@@ -98,6 +132,7 @@ static void emit( const char *name, AstObject *stc, double x[ 2 ], double y[ 2 ]
    double xout[ 2 ], yout[ 2 ];
    int i;
    astTran2( stc, 2, x, y, 1, xout, yout );
+   full_dump( name, stc );
    static char first[ 80000 ];
    printf( "    (\"%s\",\n        ", name );
    strcpy( first, dumped( stc ) );
@@ -189,6 +224,8 @@ int main( void ) {
    astStcSetObs_( astMakePointer( obsdata ), astMakePointer( obs ), &status );
    emit( "obs_data", (AstObject *) obsdata, xin, yin );
    printf( "];\n\n" );
+   printf( "/// `(case, dump written with Full = 1, less the unset RefCnt and Nobj)`.\n" );
+   printf( "pub const FULL_DUMPS: &[(&str, &str)] = &[\n%s];\n\n", full_dumps );
 
    c[ 0 ] = 0.0;
    c[ 1 ] = 0.0;

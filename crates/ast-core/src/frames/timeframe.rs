@@ -1944,6 +1944,7 @@ impl Serializable for TimeFrame {
             &self.attrs.id,
             self.attrs.ident.as_deref(),
             self.attrs.use_defs,
+            crate::frames::Frame::use_defs(self),
         );
 
         // The Frame class's part, read through this class's getters
@@ -1961,11 +1962,10 @@ impl Serializable for TimeFrame {
                 perm: vec![0],
                 is_frame: false,
                 own_naxes: 1,
+                mapping: None,
             },
         )?;
-        let mut axis_node = Node::new("Axis");
-        axis_node.class_comment = Some("Coordinate axis".to_string());
-        self.axis.write_set_attributes(&mut axis_node);
+        let axis_node = self.axis.to_dump_node();
         node.push_full_capped_object("Ax1", axis_node, Some("Axis number 1".to_string()));
 
         // IsA Frame marker.
@@ -1992,30 +1992,29 @@ impl Serializable for TimeFrame {
             );
         }
 
-        // ATmScl (AlignTimeScale, only if explicitly set).
-        if let Some(ref ats) = self.align_timescale {
-            node.push_string(
-                "ATmScl",
-                ats.as_str(),
-                Some("Alignment time scale".to_string()),
-            );
-        }
-
-        // TmOrg (TimeOrigin, if set).
-        if let Some(time_origin) = self.time_origin {
-            if !is_bad(time_origin) {
-                node.push_double("TmOrg", time_origin, Some("Time offset".to_string()));
-            }
-        }
-
-        // LTOff (LTOffset, if set).
-        if let Some(lt_offset) = self.lt_offset {
-            node.push_double(
-                "LTOff",
-                lt_offset,
-                Some("Local Time offset from UTC".to_string()),
-            );
-        }
+        // ATmScl, TmOrg and LTOff: active when set, otherwise the defaults
+        // their getters give (timeframe.c `Dump`).
+        node.write_string(
+            "ATmScl",
+            self.align_timescale.is_some(),
+            false,
+            self.align_timescale().as_str(),
+            "Alignment time scale",
+        );
+        node.write_double(
+            "TmOrg",
+            self.time_origin.is_some_and(|v| !is_bad(v)),
+            false,
+            self.time_origin(),
+            "Time offset",
+        );
+        node.write_double(
+            "LTOff",
+            self.lt_offset.is_some(),
+            false,
+            self.lt_offset(),
+            "Local Time offset from UTC",
+        );
 
         Ok(node)
     }

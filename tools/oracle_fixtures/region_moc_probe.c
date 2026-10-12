@@ -10,7 +10,8 @@
  * MaxOrder twice. It needs moc.c as fixed upstream in 2b631e08 and
  * c95aa801: without them astGetRegionBounds does not return for the empty
  * Moc, the RegPins mask flags the wrong points, an empty Moc's Transform
- * indexes out of bounds, and the mesh depends on the platform's qsort.
+ * indexes out of bounds, and the mesh depends on the platform's qsort. Each
+ * Moc is also dumped with Full set to 1, which writes every unset value.
  *
  * Prints Rust source for crates/ast-core/tests/region_moc_oracle/cases.rs:
  *
@@ -59,6 +60,39 @@ static void str( const char *s ) {
       }
    }
    putchar( '"' );
+}
+
+/* Sink for a dump written with Full set to 1, leaving out the lines that
+   hold the state of the C process rather than of the Object: the unset
+   RefCnt and Nobj of the Object part (object.c Dump). */
+static void full_sink( const char *line ) {
+   char key[ 32 ];
+   if( sscanf( line, "# %31[A-Za-z] = ", key ) == 1 &&
+       ( !strcmp( key, "RefCnt" ) || !strcmp( key, "Nobj" ) ) ) return;
+   sink( line );
+}
+
+/* `(name, dump written with Full set to 1)` entries, printed last. */
+static char full_dumps[ 800000 ];
+
+static void full_dump( const char *name, AstObject *obj ) {
+   AstChannel *ch;
+   char *out = full_dumps + strlen( full_dumps );
+   const char *c;
+   dump[ 0 ] = 0;
+   ch = astChannel( NULL, full_sink, "Full=1" );
+   astWrite( ch, obj );
+   ch = astAnnul( ch );
+   out += sprintf( out, "    (\"%s\", \"", name );
+   for( c = dump; *c; c++ ) {
+      if( *c == '\n' ) {
+         out += sprintf( out, "\\n" );
+      } else {
+         if( *c == '"' || *c == '\\' ) *out++ = '\\';
+         *out++ = *c;
+      }
+   }
+   sprintf( out, "\"),\n" );
 }
 
 static const char *dumped( AstObject *obj ) {
@@ -129,6 +163,7 @@ static void emit( const char *name, AstMoc *moc ) {
    double *mesh;
    AstMoc *neg;
 
+   full_dump( name, (AstObject *) moc );
    printf( "    (\"%s\",\n        ", name );
    strcpy( first, dumped( (AstObject *) moc ) );
    str( first );
@@ -282,5 +317,7 @@ int main( void ) {
    printf( "pub const MAX_ORDER_SET: i32 = %d;\n", status );
    astClearStatus;
 
+   printf( "\n/// `(case, dump written with Full = 1, less the unset RefCnt and Nobj)`.\n" );
+   printf( "pub const FULL_DUMPS: &[(&str, &str)] = &[\n%s];\n", full_dumps );
    return 0;
 }

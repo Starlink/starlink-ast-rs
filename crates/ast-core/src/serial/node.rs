@@ -30,6 +30,10 @@ pub(crate) struct NodeItem {
     /// Whether a loader has read this item, which a Channel reports as
     /// unrecognised if not (see [`ReadFlag`]).
     pub read: ReadFlag,
+    /// For an `Unset` value, whether C calls it helpful: one a Channel
+    /// writes, as a comment, unless its Full is negative. A value that is
+    /// not helpful is written only when Full is positive (channel.c `Use`).
+    pub helpful: bool,
 }
 
 /// Whether a loader has read an item or object of a description read from
@@ -97,6 +101,7 @@ impl Node {
             value: NodeValue::Int(value),
             comment: comment.into(),
             read: ReadFlag::default(),
+            helpful: true,
         });
     }
 
@@ -107,6 +112,7 @@ impl Node {
             value: NodeValue::Double(value),
             comment: comment.into(),
             read: ReadFlag::default(),
+            helpful: true,
         });
     }
 
@@ -117,6 +123,7 @@ impl Node {
             value: NodeValue::String(value.to_string()),
             comment: comment.into(),
             read: ReadFlag::default(),
+            helpful: true,
         });
     }
 
@@ -127,7 +134,28 @@ impl Node {
             value: NodeValue::Object(node),
             comment: comment.into(),
             read: ReadFlag::default(),
+            helpful: true,
         });
+    }
+
+    /// Insert a nested object attribute before the item at `index`.
+    pub fn insert_object(
+        &mut self,
+        index: usize,
+        key: &str,
+        node: Node,
+        comment: impl Into<Option<String>>,
+    ) {
+        self.items.insert(
+            index,
+            NodeItem {
+                key: key.to_string(),
+                value: NodeValue::Object(node),
+                comment: comment.into(),
+                read: ReadFlag::default(),
+                helpful: true,
+            },
+        );
     }
 
     /// Add a nested object that its parent writes with Full set to -1
@@ -149,6 +177,7 @@ impl Node {
             value: NodeValue::String(class.to_string()),
             comment: comment.into(),
             read: ReadFlag::default(),
+            helpful: true,
         });
     }
 
@@ -159,7 +188,62 @@ impl Node {
             value: NodeValue::Unset(Box::new(value)),
             comment: comment.into(),
             read: ReadFlag::default(),
+            helpful: true,
         });
+    }
+
+    /// Add a value as C's `astWriteInt`, `astWriteDouble`, `astWriteString`
+    /// and `astWriteObject` do: active if `set`, otherwise as a comment
+    /// that is written when Full is zero only if `helpful`, and always when
+    /// Full is positive (channel.c `Use`). An unset Object is written as
+    /// its name alone.
+    pub fn write(&mut self, key: &str, set: bool, helpful: bool, value: NodeValue, comment: &str) {
+        let comment = Some(comment.to_string());
+        if set {
+            self.items.push(NodeItem {
+                key: key.to_string(),
+                value,
+                comment,
+                read: ReadFlag::default(),
+                helpful: true,
+            });
+        } else {
+            self.items.push(NodeItem {
+                key: key.to_string(),
+                value: NodeValue::Unset(Box::new(value)),
+                comment,
+                read: ReadFlag::default(),
+                helpful,
+            });
+        }
+    }
+
+    /// [`Node::write`] for an integer.
+    pub fn write_int(&mut self, key: &str, set: bool, helpful: bool, value: i64, comment: &str) {
+        self.write(key, set, helpful, NodeValue::Int(value), comment);
+    }
+
+    /// [`Node::write`] for a double.
+    pub fn write_double(&mut self, key: &str, set: bool, helpful: bool, value: f64, comment: &str) {
+        self.write(key, set, helpful, NodeValue::Double(value), comment);
+    }
+
+    /// [`Node::write`] for a string.
+    pub fn write_string(
+        &mut self,
+        key: &str,
+        set: bool,
+        helpful: bool,
+        value: &str,
+        comment: &str,
+    ) {
+        self.write(
+            key,
+            set,
+            helpful,
+            NodeValue::String(value.to_string()),
+            comment,
+        );
     }
 
     /// Replace the value of the first item matching `key`, or push a new
@@ -177,6 +261,7 @@ impl Node {
             value,
             comment: None,
             read: ReadFlag::default(),
+            helpful: true,
         });
     }
 
@@ -231,23 +316,6 @@ impl Node {
             node.items = items.into_iter().cloned().collect();
         }
         node
-    }
-
-    /// Remove every `Unset` item from this node and from the objects nested
-    /// inside it.
-    ///
-    /// This is C's `Full = -1`, which a class sets on the Channel around a
-    /// nested write and restores afterwards (`cmpframe.c:10485-10500`). A
-    /// Channel attribute is in force for the whole of the nested object's
-    /// dump, however deep it goes, so the removal recurses.
-    pub fn strip_unset(&mut self) {
-        self.items
-            .retain(|item| !matches!(&item.value, NodeValue::Unset(_)));
-        for item in &mut self.items {
-            if let NodeValue::Object(child) = &mut item.value {
-                child.strip_unset();
-            }
-        }
     }
 
     /// Look up the first item with the given key, returning its value

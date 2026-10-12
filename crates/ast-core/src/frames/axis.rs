@@ -8,6 +8,21 @@
 
 use crate::serial::Node;
 
+/// The Digits of an Axis object that has none set (axis.c `GetAxisDigits`).
+pub(crate) const AXIS_DIGITS: i32 = 7;
+
+/// The values an Axis object's `astGetAxis<attribute>` methods give for the
+/// attributes that are not set, which its class decides.
+pub(crate) struct AxisValues {
+    pub label: String,
+    pub symbol: String,
+    pub unit: String,
+    pub format: String,
+    pub direction: bool,
+    pub top: f64,
+    pub bottom: f64,
+}
+
 /// Axis-class attributes of one axis. Mirrors the instance variables of C's
 /// `AstAxis` (axis.h).
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -23,56 +38,103 @@ pub(crate) struct Axis {
 }
 
 impl Axis {
-    /// Write the attributes that are set, as C's `Axis::Dump` (axis.c:2900)
-    /// does when the enclosing Frame dumps its axes with `Full = -1`, the
-    /// setting `Frame::Dump` uses for them (frame.c:14660).
-    pub(crate) fn write_set_attributes(&self, node: &mut Node) {
-        if let Some(label) = &self.label {
-            node.push_string("Label", label, Some("Axis Label".to_string()));
-        }
-        if let Some(symbol) = &self.symbol {
-            node.push_string("Symbol", symbol, Some("Axis symbol".to_string()));
-        }
-        if let Some(unit) = &self.unit {
-            // C appends the unit's full name only when it differs from the
-            // unit string (axis.c, `lab && strcmp( lab, sval )`).
-            let comment = match crate::units::unit_label(unit) {
-                Some(lab) if lab != unit => format!("Axis units ({lab})"),
-                _ => "Axis units".to_string(),
-            };
-            node.push_string("Unit", unit, Some(comment));
-        }
-        if let Some(digits) = self.digits {
-            node.push_int(
-                "Digits",
-                digits as i64,
-                Some("Default formatting precision".to_string()),
-            );
-        }
-        if let Some(format) = &self.format {
-            node.push_string("Format", format, Some("Format specifier".to_string()));
-        }
-        if let Some(dir) = self.direction {
-            node.push_int(
-                "Dirn",
-                i64::from(dir),
-                Some(if dir {
-                    "Plot in conventional direction (hint)".to_string()
-                } else {
-                    "Plot in reverse direction (hint)".to_string()
-                }),
-            );
-        }
-        if let Some(top) = self.top {
-            node.push_double("Top", top, Some("Maximum legal axis value".to_string()));
-        }
-        if let Some(bottom) = self.bottom {
-            node.push_double(
-                "Bottom",
-                bottom,
-                Some("Minimum legal axis value".to_string()),
-            );
-        }
+    /// The Object and Axis parts of the Axis object's dump (object.c and
+    /// axis.c `Dump`), each value active when set and otherwise the one
+    /// `values` gives, as the class's `astGetAxis<attribute>` returns it.
+    /// Label and Symbol are helpful; the rest are not. The Frame that owns
+    /// the axis writes it with Full -1 unless Full is 1, so at Full 0 only
+    /// the set values appear (frame.c `Dump`).
+    pub(crate) fn write_parts(&self, node: &mut Node, values: &AxisValues) {
+        crate::frames::frame_attrs::write_object_part(
+            node,
+            &crate::object_id::ObjectId::default(),
+            None,
+            None,
+            true,
+        );
+        node.write_string(
+            "Label",
+            self.label.is_some(),
+            true,
+            self.label.as_deref().unwrap_or(&values.label),
+            "Axis Label",
+        );
+        node.write_string(
+            "Symbol",
+            self.symbol.is_some(),
+            true,
+            self.symbol.as_deref().unwrap_or(&values.symbol),
+            "Axis symbol",
+        );
+        let unit = self.unit.as_deref().unwrap_or(&values.unit);
+        // C appends the unit's full name only when it differs from the unit
+        // string (axis.c, `lab && strcmp( lab, sval )`).
+        let comment = match crate::units::unit_label(unit) {
+            Some(lab) if lab != unit => format!("Axis units ({lab})"),
+            _ => "Axis units".to_string(),
+        };
+        node.write_string("Unit", self.unit.is_some(), false, unit, &comment);
+        node.write_int(
+            "Digits",
+            self.digits.is_some(),
+            false,
+            i64::from(self.digits.unwrap_or(AXIS_DIGITS)),
+            "Default formatting precision",
+        );
+        node.write_string(
+            "Format",
+            self.format.is_some(),
+            false,
+            self.format.as_deref().unwrap_or(&values.format),
+            "Format specifier",
+        );
+        let dir = self.direction.unwrap_or(values.direction);
+        node.write_int(
+            "Dirn",
+            self.direction.is_some(),
+            false,
+            i64::from(dir),
+            if dir {
+                "Plot in conventional direction (hint)"
+            } else {
+                "Plot in reverse direction (hint)"
+            },
+        );
+        node.write_double(
+            "Top",
+            self.top.is_some(),
+            false,
+            self.top.unwrap_or(values.top),
+            "Maximum legal axis value",
+        );
+        node.write_double(
+            "Bottom",
+            self.bottom.is_some(),
+            false,
+            self.bottom.unwrap_or(values.bottom),
+            "Minimum legal axis value",
+        );
+    }
+
+    /// The dump of a plain Axis object, whose unset values are the Axis
+    /// class's defaults.
+    pub(crate) fn to_dump_node(&self) -> Node {
+        let mut node = Node::new("Axis");
+        node.class_comment = Some("Coordinate axis".to_string());
+        let digits = self.digits.unwrap_or(AXIS_DIGITS);
+        self.write_parts(
+            &mut node,
+            &AxisValues {
+                label: "Coordinate axis".to_string(),
+                symbol: "x".to_string(),
+                unit: String::new(),
+                format: format!("%1.{digits}G"),
+                direction: true,
+                top: f64::MAX,
+                bottom: -f64::MAX,
+            },
+        );
+        node
     }
 
     /// Read the attributes present in an Axis node. Mirrors C's
@@ -275,12 +337,7 @@ impl FrameAxis {
     /// The Axis object's dump: axis.c `Dump`, or skyaxis.c `Dump`.
     pub(crate) fn to_dump_node(&self) -> Node {
         match self {
-            FrameAxis::Plain(a) => {
-                let mut node = Node::new("Axis");
-                node.class_comment = Some("Coordinate axis".to_string());
-                a.write_set_attributes(&mut node);
-                node
-            }
+            FrameAxis::Plain(a) => a.to_dump_node(),
             FrameAxis::Sky(s) => s.to_node_dump(),
         }
     }

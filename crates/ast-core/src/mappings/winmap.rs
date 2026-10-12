@@ -707,21 +707,22 @@ impl Serializable for WinMap {
         node.class_comment = Some("Map one window on to another".to_string());
         write_mapping_base(&mut node, self);
         // C library writes Sft/Scl interleaved per axis: Sft1, Scl1, Sft2, Scl2, ...
+        // each set when not the default.
         for i in 0..self.shifts.len() {
-            if self.shifts[i] != 0.0 {
-                node.push_double(
-                    &format!("Sft{}", i + 1),
-                    self.shifts[i],
-                    Some(format!("Shift for axis {}", i + 1)),
-                );
-            }
-            if self.scales[i] != 1.0 {
-                node.push_double(
-                    &format!("Scl{}", i + 1),
-                    self.scales[i],
-                    Some(format!("Scale factor for axis {}", i + 1)),
-                );
-            }
+            node.write_double(
+                &format!("Sft{}", i + 1),
+                self.shifts[i] != 0.0,
+                false,
+                self.shifts[i],
+                &format!("Shift for axis {}", i + 1),
+            );
+            node.write_double(
+                &format!("Scl{}", i + 1),
+                self.scales[i] != 1.0,
+                false,
+                self.scales[i],
+                &format!("Scale factor for axis {}", i + 1),
+            );
         }
         Ok(node)
     }

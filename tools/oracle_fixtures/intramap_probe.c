@@ -2,7 +2,8 @@
  * (intramap.c): one applying a registered doubling function with an
  * IntraFlag, the same inverted, and one whose function has no forward
  * transformation (AST__NOFWD), which C passes to the base Mapping, so its
- * dump says the forward transformation is not defined.
+ * dump says the forward transformation is not defined. Each dump is also
+ * written with Full set to 1, which writes every unset value.
  *
  * Prints Rust source for crates/ast-core/tests/intramap_oracle/cases.rs:
  *
@@ -13,7 +14,7 @@
 #include <string.h>
 #include "ast.h"
 
-static char dump[ 4000 ];
+static char dump[ 8000 ];
 
 static void sink( const char *line ) {
    strcat( dump, line );
@@ -62,8 +63,42 @@ static void lit( double v ) {
    printf( "%s%s", buf, strpbrk( buf, ".e" ) ? "" : ".0" );
 }
 
+/* Sink for a dump written with Full set to 1, leaving out the lines that
+   hold the state of the C process rather than of the Object: the unset
+   RefCnt and Nobj of the Object part (object.c Dump). */
+static void full_sink( const char *line ) {
+   char key[ 32 ];
+   if( sscanf( line, "# %31[A-Za-z] = ", key ) == 1 &&
+       ( !strcmp( key, "RefCnt" ) || !strcmp( key, "Nobj" ) ) ) return;
+   sink( line );
+}
+
+/* `(name, dump written with Full set to 1)` entries, printed last. */
+static char full_dumps[ 40000 ];
+
+static void full_dump( const char *name, AstObject *obj ) {
+   AstChannel *ch;
+   char *out = full_dumps + strlen( full_dumps );
+   const char *c;
+   dump[ 0 ] = 0;
+   ch = astChannel( NULL, full_sink, "Full=1" );
+   astWrite( ch, obj );
+   ch = astAnnul( ch );
+   out += sprintf( out, "    (\"%s\", \"", name );
+   for( c = dump; *c; c++ ) {
+      if( *c == '\n' ) {
+         out += sprintf( out, "\\n" );
+      } else {
+         if( *c == '"' || *c == '\\' ) *out++ = '\\';
+         *out++ = *c;
+      }
+   }
+   sprintf( out, "\"),\n" );
+}
+
 static void emit_dump( const char *name, AstObject *obj ) {
    AstChannel *ch;
+   full_dump( name, obj );
    dump[ 0 ] = 0;
    ch = astChannel( NULL, sink, " " );
    astWrite( ch, obj );
@@ -110,6 +145,8 @@ int main( void ) {
       lit( inv[ i ] );
       printf( ", " );
    }
-   printf( "];\n" );
+   printf( "];\n\n" );
+   printf( "/// `(case, dump written with Full = 1, less the unset RefCnt and Nobj)`.\n" );
+   printf( "pub const FULL_DUMPS: &[(&str, &str)] = &[\n%s];\n", full_dumps );
    return status;
 }

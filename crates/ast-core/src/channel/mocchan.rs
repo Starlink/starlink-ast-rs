@@ -286,13 +286,13 @@ impl Serializable for MocChan {
         } else {
             node.push_unset("MocEnc", NodeValue::String(name.to_string()), comment);
         }
-        if let Some(len) = self.moc_line_len {
-            node.push_int(
-                "MocLLn",
-                i64::from(len),
-                Some("Moc line length".to_string()),
-            );
-        }
+        node.write_int(
+            "MocLLn",
+            self.moc_line_len.is_some(),
+            false,
+            i64::from(self.moc_line_len()),
+            "Moc line length",
+        );
         Ok(node)
     }
 

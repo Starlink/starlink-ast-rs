@@ -377,14 +377,15 @@ impl Serializable for ShiftMap {
         let mut node = Node::new(self.class_name());
         node.class_comment = Some("Shift each coordinate axis".to_string());
         write_mapping_base(&mut node, self);
+        // Each shift, set when not zero.
         for (i, &s) in self.shift.iter().enumerate() {
-            if s != 0.0 {
-                node.push_double(
-                    &format!("Sft{}", i + 1),
-                    s,
-                    Some(format!("Shift for axis {}", i + 1)),
-                );
-            }
+            node.write_double(
+                &format!("Sft{}", i + 1),
+                s != 0.0,
+                false,
+                s,
+                &format!("Shift for axis {}", i + 1),
+            );
         }
         Ok(node)
     }

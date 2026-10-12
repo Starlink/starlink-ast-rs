@@ -1074,6 +1074,7 @@ impl Serializable for FluxFrame {
             &self.attrs.id,
             self.attrs.ident.as_deref(),
             self.attrs.use_defs,
+            crate::frames::Frame::use_defs(self),
         );
 
         // The Frame class's part, read through this class's getters
@@ -1091,11 +1092,10 @@ impl Serializable for FluxFrame {
                 perm: vec![0],
                 is_frame: false,
                 own_naxes: 1,
+                mapping: None,
             },
         )?;
-        let mut axis_node = Node::new("Axis");
-        axis_node.class_comment = Some("Coordinate axis".to_string());
-        self.axis.write_set_attributes(&mut axis_node);
+        let axis_node = self.axis.to_dump_node();
         node.push_full_capped_object("Ax1", axis_node, Some("Axis number 1".to_string()));
 
         // IsA Frame marker.
@@ -1103,11 +1103,17 @@ impl Serializable for FluxFrame {
 
         // --- FluxFrame-specific attributes (after IsA Frame) ---
 
-        // SpecVal (SpcVl — spectral position at which flux is measured).
-        if let Some(spec_val) = self.spec_val {
-            if !is_bad(spec_val) {
-                node.push_double("SpcVl", spec_val, Some("Spectral position".to_string()));
-            }
+        // SpecVal (SpcVl), the spectral position at which flux is measured,
+        // unless it is bad: active when set, otherwise the default.
+        let spec_val = self.spec_val();
+        if !is_bad(spec_val) {
+            node.write_double(
+                "SpcVl",
+                self.spec_val.is_some(),
+                false,
+                spec_val,
+                "Spectral position",
+            );
         }
 
         // The encapsulated SpecFrame (SpcFr), only when one is attached

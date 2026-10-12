@@ -29,12 +29,11 @@ fn put(node: &mut Node, key: &str, set: bool, value: NodeValue, comment: &str) {
     }
 }
 
-/// Write an integer `value` under `key` when `set`, as C's `astWriteInt`
-/// writes a value that is not helpful.
-fn put_int_if_set(node: &mut Node, key: &str, set: bool, value: i64, comment: &str) {
-    if set {
-        node.push_int(key, value, Some(comment.to_string()));
-    }
+/// Write an integer `value` under `key`: as an item when `set`, otherwise as
+/// a comment holding the default that is written only when Full is positive,
+/// as C's `astWriteInt` writes a value that is not helpful.
+fn put_unhelpful_int(node: &mut Node, key: &str, set: bool, value: i64, comment: &str) {
+    node.write_int(key, set, false, value, comment);
 }
 
 /// An unknown name read for `what`, which C's `FindString` reports.
@@ -193,7 +192,7 @@ impl Serializable for FitsChan {
             "[pixel] Max allowed departure from linearity",
         );
         let poly_tan = fc.poly_tan();
-        put_int_if_set(
+        put_unhelpful_int(
             &mut node,
             "PolyTan",
             fc.test_poly_tan(),
@@ -205,7 +204,7 @@ impl Serializable for FitsChan {
             },
         );
         let sip_ok = fc.sip_ok();
-        put_int_if_set(
+        put_unhelpful_int(
             &mut node,
             "SipOK",
             fc.test_sip_ok(),
@@ -228,7 +227,7 @@ impl Serializable for FitsChan {
                 "Do not include an IWC Frame"
             },
         );
-        put_int_if_set(
+        put_unhelpful_int(
             &mut node,
             "Clean",
             fc.test_clean(),

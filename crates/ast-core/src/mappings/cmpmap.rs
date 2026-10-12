@@ -1103,30 +1103,42 @@ impl Serializable for CmpMap {
         node.class_comment = Some("Compound Mapping".to_string());
         write_mapping_base(&mut node, self);
 
-        // Series is the default (1); only write for parallel (0).
-        if self.kind == Composition::Parallel {
-            node.push_int(
-                "Series",
-                0,
-                Some("Component Mappings applied in parallel".to_string()),
-            );
-        }
-
-        // Component invert flags (only if non-zero).
-        if self.inv_a {
-            node.push_int(
-                "InvA",
-                1,
-                Some("First Mapping used in inverse direction".to_string()),
-            );
-        }
-        if self.inv_b {
-            node.push_int(
-                "InvB",
-                1,
-                Some("Second Mapping used in inverse direction".to_string()),
-            );
-        }
+        // cmpmap.c `Dump`: Series set when parallel, InvA and InvB when
+        // inverted.
+        let series = self.kind == Composition::Series;
+        node.write_int(
+            "Series",
+            !series,
+            false,
+            i64::from(series),
+            if series {
+                "Component Mappings applied in series"
+            } else {
+                "Component Mappings applied in parallel"
+            },
+        );
+        node.write_int(
+            "InvA",
+            self.inv_a,
+            false,
+            i64::from(self.inv_a),
+            if self.inv_a {
+                "First Mapping used in inverse direction"
+            } else {
+                "First Mapping used in forward direction"
+            },
+        );
+        node.write_int(
+            "InvB",
+            self.inv_b,
+            false,
+            i64::from(self.inv_b),
+            if self.inv_b {
+                "Second Mapping used in inverse direction"
+            } else {
+                "Second Mapping used in forward direction"
+            },
+        );
 
         // Component mappings as nested objects.
         let node_a = self.first.to_node()?;

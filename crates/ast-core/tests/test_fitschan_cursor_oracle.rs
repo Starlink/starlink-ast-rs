@@ -541,9 +541,10 @@ fn run(fc: &mut FitsChan, op: &str, out: &mut String, h: &mut Harness) {
 const EXCLUDED: &[(&str, &str)] = &[
     (
         "native_full_1",
-        "with Full positive C writes every unset value, helpful or not, and \
-         the Axes of a Frame in full; the Node a class writes holds only the \
-         unset values C calls helpful, and none for the Axes (CH-4)",
+        "with Full positive C also writes the unset RefCnt and Nobj of each \
+         Object part as comment cards, counts of pointers to the Object and \
+         of Objects of its class, which the port does not have; \
+         native_full_1_matches_c_but_for_process_counts compares the rest",
     ),
     (
         "celestial_bare_names",
@@ -613,6 +614,29 @@ fn excluded_cases_still_differ() {
             "{name} now matches C; remove it from EXCLUDED ({reason})"
         );
     }
+}
+
+/// `native_full_1` with C's `REFCNT` and `NOBJ` comment cards left out, and
+/// the card counts that include them: everything else C writes with Full
+/// positive, every unset value and every `IsA` marker, matches.
+#[test]
+fn native_full_1_matches_c_but_for_process_counts() {
+    let &(_, ops, want) = cases::CASES
+        .iter()
+        .find(|(n, _, _)| *n == "native_full_1")
+        .unwrap();
+    let keep = |line: &&str| {
+        !line.starts_with("card=")
+            && !line.starts_with("|COMMENT REFCNT_")
+            && !line.starts_with("|COMMENT NOBJ_")
+    };
+    // The Frame and its two Axes each have an Object part.
+    let refcnt = want.lines().filter(|l| l.starts_with("|COMMENT REFCNT_"));
+    assert_eq!(refcnt.count(), 3);
+    let want: Vec<&str> = want.lines().filter(keep).collect();
+    let got = transcript(ops);
+    let got: Vec<&str> = got.lines().filter(keep).collect();
+    assert_eq!(got, want);
 }
 
 #[test]

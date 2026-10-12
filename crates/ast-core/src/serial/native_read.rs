@@ -187,6 +187,7 @@ pub(crate) fn try_parse_commented_default(after_hash: &str) -> Option<NodeItem> 
         value: NodeValue::Unset(Box::new(inner_value)),
         comment: comment.map(|s| s.to_string()),
         read: Default::default(),
+        helpful: true,
     })
 }
 
@@ -289,6 +290,7 @@ fn parse_object(
                     value,
                     comment: comment.map(|s| s.to_string()),
                     read: Default::default(),
+                    helpful: true,
                 });
                 pos += 1;
             }
