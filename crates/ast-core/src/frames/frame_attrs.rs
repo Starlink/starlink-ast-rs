@@ -478,6 +478,21 @@ pub(crate) fn write_frame_cards(node: &mut Node, f: &impl FrameDumpSource) -> As
     Ok(())
 }
 
+/// Record as read the per-axis items `astLoadFrame` reads from a Frame part
+/// of a description (frame.c): each axis's `Ax`, its permutation `Prm`, and
+/// the `Lbl`, `Sym`, `Fmt`, `Uni`, `Dir`, `Top`, `Bot` and `Dig` that older
+/// versions wrote in the Frame part, for as many axes as `Naxes` gives.
+pub(crate) fn mark_frame_axes_read(frame_part: &Node) {
+    let naxes = frame_part.get_int("Naxes", 0).max(0);
+    for i in 1..=naxes {
+        for key in [
+            "Ax", "Lbl", "Sym", "Fmt", "Uni", "Dir", "Top", "Bot", "Dig", "Prm",
+        ] {
+            frame_part.mark_read(&format!("{key}{i}"));
+        }
+    }
+}
+
 /// Read the Frame-class attributes from a Frame node. Mirrors the attribute
 /// part of C's `astLoadFrame` (frame.c).
 /// Write the Object part of a dump: ID when set, Ident when given, UseDefs
@@ -542,6 +557,9 @@ pub(crate) fn read_frame_attrs(whole: &Node) -> FrameAttrs {
     // loaders read in C (object.c, frame.c `astLoadFrame`).
     let object = whole.section("Object");
     let node = &whole.section("Frame");
+    // astLoadFrame reads the number of axes, which each class takes from
+    // its own description.
+    node.mark_read("Naxes");
     let bool_of = |key: &str| node.get(key).map(|_| node.get_int(key, 0) != 0);
     let f64_of = |key: &str| node.get(key).map(|_| node.get_double(key, 0.0));
     // astLoadFrame passes each value it reads through the class's setter,

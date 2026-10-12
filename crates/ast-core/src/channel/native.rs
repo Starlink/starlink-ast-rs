@@ -8,7 +8,6 @@ use super::base::ChannelBase;
 use super::source_sink::{FileSink, FileSource};
 use super::{Channel, ChannelConfig, Sink, Source};
 use crate::error::AstResult;
-use crate::mappings::intramap::with_registry;
 use crate::mappings::{IntraRegistry, IntraTransform};
 use crate::serial::{self, AnyObject, Node, Serializable};
 
@@ -134,30 +133,11 @@ impl NativeChannel {
     pub fn clear_id(&mut self) {
         self.base.id.clear();
     }
-
-    /// Internal: collect all lines from the source into a single string.
-    fn collect_source_text(&mut self) -> Option<String> {
-        let mut text = String::new();
-        while let Some(line) = self.base.read_line() {
-            if !text.is_empty() {
-                text.push('\n');
-            }
-            text.push_str(&line);
-        }
-        if text.is_empty() { None } else { Some(text) }
-    }
 }
 
 impl Channel for NativeChannel {
     fn read(&mut self) -> AstResult<Option<AnyObject>> {
-        self.base.warnings.clear();
-        let text = match self.collect_source_text() {
-            Some(t) => t,
-            None => return Ok(None),
-        };
-        let node = serial::native_read::parse_native(&text)?;
-        let obj = with_registry(&self.base.intra, || serial::any_object_from_node(&node))?;
-        Ok(Some(obj))
+        self.base.read_native("Channel")
     }
 
     fn write(&mut self, obj: &AnyObject) -> AstResult<usize> {

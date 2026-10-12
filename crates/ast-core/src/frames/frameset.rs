@@ -2408,6 +2408,15 @@ impl Serializable for FrameSet {
         // C's loaders read them through astReadClassData (channel.c).
         let whole = node;
         let object = &whole.section("Object");
+        // astLoadFrame reads the FrameSet's own Frame part into Frame fields
+        // the FrameSet never uses, its Frame attributes being its current
+        // Frame's.
+        let _ = super::frame_attrs::read_frame_attrs(whole);
+        let frame_part = whole.section("Frame");
+        super::frame_attrs::mark_frame_axes_read(&frame_part);
+        for key in ["System", "AlSys", "Vrnts"] {
+            frame_part.mark_read(key);
+        }
         let node = &whole.section("FrameSet");
         let nframe = node.get_int("Nframe", 0) as usize;
         if nframe == 0 {

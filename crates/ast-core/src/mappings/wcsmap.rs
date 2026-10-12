@@ -1545,18 +1545,15 @@ impl Serializable for WcsMap {
             }
         }
 
-        // Scan items for PV{i}_{m} keys.
-        for item in &node.items {
-            if let Some(rest) = item.key.strip_prefix("PV") {
-                if let Some((axis_str, m_str)) = rest.split_once('_') {
-                    if let (Ok(axis), Ok(m)) = (axis_str.parse::<usize>(), m_str.parse::<usize>()) {
-                        let value = match &item.value {
-                            crate::serial::NodeValue::Double(v) => *v,
-                            crate::serial::NodeValue::Int(v) => *v as f64,
-                            _ => continue,
-                        };
-                        wcs.set_pv(axis, m, value)?;
-                    }
+        // PVi_m for each axis, m running to the largest index the axis
+        // takes, 0 for an axis that is neither longitude nor latitude
+        // (wcsmap.c Load).
+        for i in 1..=Mapping::nin(&wcs) {
+            let mxpar = wcs.pv_max(i).unwrap_or(0);
+            for m in 0..=mxpar {
+                let value = node.get_double(&format!("PV{i}_{m}"), BAD_VALUE);
+                if value != BAD_VALUE {
+                    wcs.set_pv(i, m, value)?;
                 }
             }
         }

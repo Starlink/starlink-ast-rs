@@ -1,6 +1,7 @@
 //! Serialisation: Node tree, Serializable trait, and Native format.
 
 pub(crate) mod native_read;
+pub(crate) mod native_stream;
 pub(crate) mod native_write;
 pub(crate) mod node;
 

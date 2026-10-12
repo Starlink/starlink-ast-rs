@@ -80,7 +80,7 @@ fn parse_begin_line(trimmed: &str) -> AstResult<(String, Option<String>)> {
 /// Returns `(content_before_hash, optional_comment_text_after_hash)`.
 /// The comment text is trimmed of leading/trailing whitespace.
 /// If no unquoted `#` is found the whole line is returned as content.
-fn split_comment(line: &str) -> (&str, Option<&str>) {
+pub(crate) fn split_comment(line: &str) -> (&str, Option<&str>) {
     let mut in_quotes = false;
     for (i, b) in line.bytes().enumerate() {
         if b == b'"' {
@@ -115,7 +115,7 @@ fn find_equals(line: &str) -> Option<usize> {
 /// are un-escaped to a single `"`.  Otherwise the value is tried as an
 /// integer (`i64`), then as a float (`f64`), and finally kept as an
 /// unquoted string.
-fn parse_scalar_value(s: &str) -> NodeValue {
+pub(crate) fn parse_scalar_value(s: &str) -> NodeValue {
     let s = s.trim();
 
     // Quoted string.
@@ -154,7 +154,7 @@ fn parse_scalar_value(s: &str) -> NodeValue {
 /// Try to interpret text after a leading `#` as a commented-out attribute
 /// default (`# Key = Value # comment`).  Returns `None` when the text does
 /// not match the `Key = Value` pattern (i.e. it is a plain comment).
-fn try_parse_commented_default(after_hash: &str) -> Option<NodeItem> {
+pub(crate) fn try_parse_commented_default(after_hash: &str) -> Option<NodeItem> {
     let trimmed = after_hash.trim_start();
 
     // Key: starts with an ASCII letter, then alphanumeric / underscore.
@@ -186,6 +186,7 @@ fn try_parse_commented_default(after_hash: &str) -> Option<NodeItem> {
         key: key.to_string(),
         value: NodeValue::Unset(Box::new(inner_value)),
         comment: comment.map(|s| s.to_string()),
+        read: Default::default(),
     })
 }
 
@@ -287,6 +288,7 @@ fn parse_object(
                     key: key.to_string(),
                     value,
                     comment: comment.map(|s| s.to_string()),
+                    read: Default::default(),
                 });
                 pos += 1;
             }

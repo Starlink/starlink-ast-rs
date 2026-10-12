@@ -27,6 +27,33 @@ pub(crate) struct NodeItem {
     pub value: NodeValue,
     /// Comment text (after `#` on the same line).
     pub comment: Option<String>,
+    /// Whether a loader has read this item, which a Channel reports as
+    /// unrecognised if not (see [`ReadFlag`]).
+    pub read: ReadFlag,
+}
+
+/// Whether a loader has read an item or object of a description read from
+/// a Channel, shared by the copies [`Node::section`] makes. Every flag
+/// compares equal, so it takes no part in comparing descriptions.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct ReadFlag(std::sync::Arc<std::sync::atomic::AtomicBool>);
+
+impl ReadFlag {
+    /// Record a read.
+    pub fn set(&self) {
+        self.0.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Whether a read has been recorded.
+    pub fn get(&self) -> bool {
+        self.0.load(std::sync::atomic::Ordering::Relaxed)
+    }
+}
+
+impl PartialEq for ReadFlag {
+    fn eq(&self, _other: &Self) -> bool {
+        true
+    }
 }
 
 /// A serialised AST object as a tree of named attributes.
@@ -46,6 +73,9 @@ pub(crate) struct Node {
     /// (cmpframe.c `Dump`). Full applies to the whole of the object's dump,
     /// however deep it goes.
     pub full_capped: bool,
+    /// Whether a loader has looked anything up in this object, shared by
+    /// the copies [`Node::section`] makes.
+    pub accessed: ReadFlag,
 }
 
 impl Node {
@@ -56,6 +86,7 @@ impl Node {
             class_comment: None,
             items: Vec::new(),
             full_capped: false,
+            accessed: ReadFlag::default(),
         }
     }
 
@@ -65,6 +96,7 @@ impl Node {
             key: key.to_string(),
             value: NodeValue::Int(value),
             comment: comment.into(),
+            read: ReadFlag::default(),
         });
     }
 
@@ -74,6 +106,7 @@ impl Node {
             key: key.to_string(),
             value: NodeValue::Double(value),
             comment: comment.into(),
+            read: ReadFlag::default(),
         });
     }
 
@@ -83,6 +116,7 @@ impl Node {
             key: key.to_string(),
             value: NodeValue::String(value.to_string()),
             comment: comment.into(),
+            read: ReadFlag::default(),
         });
     }
 
@@ -92,6 +126,7 @@ impl Node {
             key: key.to_string(),
             value: NodeValue::Object(node),
             comment: comment.into(),
+            read: ReadFlag::default(),
         });
     }
 
@@ -113,6 +148,7 @@ impl Node {
             key: "IsA".to_string(),
             value: NodeValue::String(class.to_string()),
             comment: comment.into(),
+            read: ReadFlag::default(),
         });
     }
 
@@ -122,6 +158,7 @@ impl Node {
             key: key.to_string(),
             value: NodeValue::Unset(Box::new(value)),
             comment: comment.into(),
+            read: ReadFlag::default(),
         });
     }
 
@@ -139,6 +176,7 @@ impl Node {
             key: key.to_string(),
             value,
             comment: None,
+            read: ReadFlag::default(),
         });
     }
 
@@ -152,11 +190,13 @@ impl Node {
     /// to find attributes whose canonical names in native text have mid-word
     /// uppercase letters (e.g. `MapA`, `InvB`, `SimpFI`).
     pub fn get(&self, key: &str) -> Option<&NodeValue> {
+        self.accessed.set();
         for item in &self.items {
             if item.key.eq_ignore_ascii_case(key) {
                 if let NodeValue::Unset(_) = &item.value {
                     return None;
                 }
+                item.read.set();
                 return Some(&item.value);
             }
         }
@@ -186,6 +226,7 @@ impl Node {
         chunks.push((self.class.as_str(), current));
         let mut node = Node::new(self.class.clone());
         node.class_comment.clone_from(&self.class_comment);
+        node.accessed = self.accessed.clone();
         if let Some((_, items)) = chunks.into_iter().find(|(name, _)| *name == class) {
             node.items = items.into_iter().cloned().collect();
         }
@@ -214,8 +255,10 @@ impl Node {
     ///
     /// Key comparison is **case-insensitive** (ASCII); see [`Node::get`].
     pub fn get_any(&self, key: &str) -> Option<&NodeValue> {
+        self.accessed.set();
         for item in &self.items {
             if item.key.eq_ignore_ascii_case(key) {
+                item.read.set();
                 if let NodeValue::Unset(inner) = &item.value {
                     return Some(inner.as_ref());
                 }
@@ -294,6 +337,18 @@ impl Node {
             Some(NodeValue::Int(v)) => Some(*v),
             Some(NodeValue::Double(v)) => Some(*v as i64),
             _ => None,
+        }
+    }
+
+    /// Record that the loader has read the items called `key`, which C's
+    /// loader reads but whose values the port takes from elsewhere, so that
+    /// a Channel does not report them as unrecognised.
+    pub fn mark_read(&self, key: &str) {
+        self.accessed.set();
+        for item in &self.items {
+            if item.key.eq_ignore_ascii_case(key) {
+                item.read.set();
+            }
         }
     }
 

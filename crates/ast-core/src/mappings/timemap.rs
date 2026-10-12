@@ -1607,42 +1607,38 @@ impl Serializable for TimeMap {
 
         for i in 0..ntime {
             let idx = i + 1;
-            let code_str = node.get_string(&format!("Time{idx}"), "");
+            let Some(code_str) = node.get_string_if_set(&format!("Time{idx}")) else {
+                return Err(AstError::new(
+                    ErrorCode::Badin,
+                    "astRead(Channel): A time coordinate conversion type is missing from \
+                     the input TimeMap data.",
+                ));
+            };
             let cvt_type = TimeCvtType::from_code(&code_str).ok_or_else(|| {
                 AstError::new(
-                    ErrorCode::Timin,
-                    format!("unknown TimeMap conversion type: '{code_str}'"),
+                    ErrorCode::Badin,
+                    format!(
+                        "astRead(Channel): Invalid time conversion type \"{code_str}\" in \
+                         TimeMap data."
+                    ),
                 )
             })?;
 
-            let nargs = cvt_type.nargs();
-            // Read user-supplied arguments from the external format.
-            // For most types the first nargs external slots correspond directly
-            // to internal slots 0..nargs. For TT<->TDB the external layout
-            // re-orders args for backward compatibility (dtai moved to end).
-            let mut user_args = vec![BAD_VALUE; nargs];
-            match cvt_type {
-                TimeCvtType::TtToTdb | TimeCvtType::TdbToTt => {
-                    // External: [a]=mjd_off, [b]=obslon, [c]=obslat, [d]=obsalt,
-                    //           [e]=u(derived), [f]=v(derived), [g]=dtai
-                    // Internal user: [0]=mjd_off, [1]=obslon, [2]=obslat, [3]=obsalt, [4]=dtai
-                    user_args[0] = node.get_double(&format!("Time{idx}a"), BAD_VALUE);
-                    user_args[1] = node.get_double(&format!("Time{idx}b"), BAD_VALUE);
-                    user_args[2] = node.get_double(&format!("Time{idx}c"), BAD_VALUE);
-                    user_args[3] = node.get_double(&format!("Time{idx}d"), BAD_VALUE);
-                    // dtai is at external position 'g' (index 6)
-                    user_args[4] = node.get_double(&format!("Time{idx}g"), BAD_VALUE);
-                }
-                _ => {
-                    for (j, arg) in user_args.iter_mut().enumerate() {
-                        let letter = arg_letter(j);
-                        *arg = node.get_double(&format!("Time{idx}{letter}"), BAD_VALUE);
-                    }
-                }
+            // Every argument, derived ones included, as written and without
+            // recomputing them (timemap.c Load). For TT<->TDB the written
+            // order puts DTAI last: written argument j is internal argument
+            // order[j].
+            let order: Option<&[usize]> = match cvt_type {
+                TimeCvtType::TtToTdb | TimeCvtType::TdbToTt => Some(&[0, 1, 2, 3, 5, 6, 4]),
+                _ => None,
+            };
+            let mut args = vec![BAD_VALUE; cvt_type.szargs()];
+            for ext_j in 0..args.len() {
+                let int_j = order.map_or(ext_j, |o| o[ext_j]);
+                args[int_j] =
+                    node.get_double(&format!("Time{idx}{}", arg_letter(ext_j)), BAD_VALUE);
             }
-
-            // Use `add` which recomputes derived values from user args.
-            tm.add_conversion(cvt_type, &user_args);
+            tm.conversions.push(TimeConversion { cvt_type, args });
         }
 
         if base.inverted {

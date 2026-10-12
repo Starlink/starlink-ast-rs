@@ -11,8 +11,12 @@ mod common;
 mod test_channel;
 #[path = "../test_channel_dump_oracle.rs"]
 mod test_channel_dump_oracle;
+#[path = "../test_channel_read_oracle.rs"]
+mod test_channel_read_oracle;
 #[path = "../test_deferred_fixtures.rs"]
 mod test_deferred_fixtures;
+#[path = "../test_fixture_read_warnings_oracle.rs"]
+mod test_fixture_read_warnings_oracle;
 #[path = "../test_frame_load.rs"]
 mod test_frame_load;
 #[path = "../test_keymap.rs"]

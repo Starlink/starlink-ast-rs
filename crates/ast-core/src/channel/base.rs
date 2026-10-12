@@ -11,15 +11,26 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use super::source_sink::{StringSink, StringSource};
 use super::{ChannelConfig, Sink, Source};
 use crate::error::AstResult;
+use crate::error::ErrorCode;
 use crate::mappings::IntraRegistry;
+use crate::mappings::intramap::with_registry;
 use crate::object_id::ObjectId;
 use crate::serial::Node;
+use crate::serial::native_stream::Reader;
+use crate::serial::{AnyObject, any_object_from_node};
 
 /// A sink that is either a [`StringSink`], whose text can be taken back,
 /// or any other.
 enum SinkKind {
     String(StringSink),
     Boxed(Box<dyn Sink>),
+}
+
+/// A Channel's source, with the lines a read handed back, which the next
+/// read takes first.
+struct LineSource {
+    source: Box<dyn Source>,
+    returned: std::collections::VecDeque<String>,
 }
 
 /// Lock `m`, recovering the value from a panic in another holder, which
@@ -37,7 +48,7 @@ pub(crate) struct ChannelBase {
     pub(crate) ident: Option<String>,
     /// The Object-class ID attribute, which a clone does not inherit.
     pub(crate) id: crate::object_id::ObjectId,
-    source: Option<Arc<Mutex<Box<dyn Source>>>>,
+    source: Option<Arc<Mutex<LineSource>>>,
     sink: Option<Arc<Mutex<SinkKind>>>,
     pub(crate) warnings: Vec<String>,
     pub(crate) intra: IntraRegistry,
@@ -74,7 +85,10 @@ impl ChannelBase {
     }
 
     pub(crate) fn set_source(&mut self, source: Box<dyn Source>) {
-        self.source = Some(Arc::new(Mutex::new(source)));
+        self.source = Some(Arc::new(Mutex::new(LineSource {
+            source,
+            returned: std::collections::VecDeque::new(),
+        })));
     }
 
     pub(crate) fn set_sink(&mut self, sink: Box<dyn Sink>) {
@@ -84,7 +98,67 @@ impl ChannelBase {
     /// The next line from the source, or `None` at its end or if there is
     /// none.
     pub(crate) fn read_line(&self) -> Option<String> {
-        lock(self.source.as_ref()?).read_line()
+        let mut source = lock(self.source.as_ref()?);
+        match source.returned.pop_front() {
+            Some(line) => Some(line),
+            None => source.source.read_line(),
+        }
+    }
+
+    /// Hand `lines` back to the source, to be read again, in order, before
+    /// anything else it gives.
+    pub(crate) fn return_lines(&self, lines: &[String]) {
+        if let Some(source) = &self.source {
+            let mut source = lock(source);
+            for line in lines.iter().rev() {
+                source.returned.push_front(line.clone());
+            }
+        }
+    }
+
+    /// C's `astRead` of a Channel: the next Object in the source, `None` at
+    /// its end. `class` is the Channel's class, for messages. The lines of
+    /// one Object are read (see [`crate::serial::native_stream`]), and the
+    /// rest left for the next read; the warnings for items no loader reads
+    /// are kept in [`warnings`](Self::warnings), or with Strict set the
+    /// first is an error.
+    pub(crate) fn read_native(&mut self, class: &str) -> AstResult<Option<AnyObject>> {
+        self.warnings.clear();
+        let skip = self.config.skip();
+        let strict = self.config.strict();
+        let report_level = self.config.report_level();
+        let this = &*self;
+        let mut next_line = || this.read_line();
+        let mut reader = Reader::new(&mut next_line, class, strict, report_level);
+        let mut returned = Vec::new();
+        let result = with_registry(&this.intra, || -> AstResult<Option<AnyObject>> {
+            let Some(object) = reader.read(true, skip)? else {
+                return Ok(None);
+            };
+            let loaded = any_object_from_node(&object.node)?;
+            // C loads every nested Object it reads, so one no loader read
+            // is loaded here for its reports. A class the port cannot load
+            // on its own, such as an Axis or a PointSet, is left.
+            let mut load = |node: &Node| match any_object_from_node(node) {
+                Err(e) if e.code() == ErrorCode::Lderr => Ok(()),
+                other => other.map(|_| ()),
+            };
+            match reader.report_object(&object, &mut load) {
+                Ok(()) => Ok(Some(loaded)),
+                Err((e, lines)) => {
+                    returned = reader.lines[lines..].to_vec();
+                    Err(e.with_context(format!(
+                        "Error while reading a {} from a {class}.",
+                        object.node.class
+                    )))
+                }
+            }
+        });
+        let warnings = std::mem::take(&mut reader.warnings);
+        drop(reader);
+        self.return_lines(&returned);
+        self.warnings = warnings;
+        result
     }
 
     /// Pass `line` to the sink, if there is one.

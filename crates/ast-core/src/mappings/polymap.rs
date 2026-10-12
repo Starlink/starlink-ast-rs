@@ -1939,100 +1939,8 @@ impl Serializable for PolyMap {
         let nin = base.nin;
         let nout = base.nout;
 
-        // --- Forward transformation ---
-        let mut forward = Vec::new();
-
-        // Check if forward terms exist by looking for MPF1.
-        let has_forward = node.get("MPF1").is_some();
-        if has_forward {
-            // Read max powers (we don't need them for reconstruction,
-            // but they confirm the format).
-            // Read number of coefficients per output.
-            let mut ncoeff_f = Vec::with_capacity(nout);
-            for i in 0..nout {
-                let nc = node.get_int(&format!("NCF{}", i + 1), 0) as usize;
-                ncoeff_f.push(nc);
-            }
-
-            // Read coefficient values (sequentially indexed).
-            let total_coeffs: usize = ncoeff_f.iter().sum();
-            let mut coeffs = Vec::with_capacity(total_coeffs);
-            for iv in 1..=total_coeffs {
-                coeffs.push(node.get_double(&format!("CF{iv}"), BAD_VALUE));
-            }
-
-            // Read powers (sequentially indexed: for each output, for each
-            // term, for each input axis).
-            let total_powers: usize = total_coeffs * nin;
-            let mut powers = Vec::with_capacity(total_powers);
-            for iv in 1..=total_powers {
-                powers.push(node.get_double(&format!("PF{iv}"), 0.0) as usize);
-            }
-
-            // Reconstruct PolyTerm list.
-            let mut coeff_idx = 0;
-            let mut power_idx = 0;
-            for (out_ax, &nc) in ncoeff_f.iter().enumerate() {
-                for _ in 0..nc {
-                    let coeff = coeffs[coeff_idx];
-                    coeff_idx += 1;
-                    let term_powers: Vec<usize> = powers[power_idx..power_idx + nin].to_vec();
-                    power_idx += nin;
-                    // A coefficient missing from the dump is bad, as C reads it
-                    // (polymap.c:7388), and makes its output bad.
-                    forward.push(PolyTerm {
-                        coeff,
-                        powers: term_powers,
-                        out_axis: out_ax + 1,
-                    });
-                }
-            }
-        }
-
-        // --- Inverse transformation ---
-        let mut inverse_terms = Vec::new();
-        let has_inverse = node.get("MPI1").is_some();
-        if has_inverse {
-            let mut ncoeff_i = Vec::with_capacity(nin);
-            for i in 0..nin {
-                let nc = node.get_int(&format!("NCI{}", i + 1), 0) as usize;
-                ncoeff_i.push(nc);
-            }
-
-            let total_coeffs: usize = ncoeff_i.iter().sum();
-            let mut coeffs = Vec::with_capacity(total_coeffs);
-            for iv in 1..=total_coeffs {
-                coeffs.push(node.get_double(&format!("CI{iv}"), BAD_VALUE));
-            }
-
-            let total_powers: usize = total_coeffs * nout;
-            let mut powers = Vec::with_capacity(total_powers);
-            for iv in 1..=total_powers {
-                powers.push(node.get_double(&format!("PI{iv}"), 0.0) as usize);
-            }
-
-            let mut coeff_idx = 0;
-            let mut power_idx = 0;
-            for (out_ax, &nc) in ncoeff_i.iter().enumerate() {
-                for _ in 0..nc {
-                    let coeff = coeffs[coeff_idx];
-                    coeff_idx += 1;
-                    let term_powers: Vec<usize> = powers[power_idx..power_idx + nout].to_vec();
-                    power_idx += nout;
-                    inverse_terms.push(PolyTerm {
-                        coeff,
-                        powers: term_powers,
-                        out_axis: out_ax + 1,
-                    });
-                }
-            }
-        }
-
-        let inverse = if has_inverse {
-            Some(inverse_terms)
-        } else {
-            None
-        };
+        let forward = read_poly_terms(node, 'F', nin, nout).unwrap_or_default();
+        let inverse = read_poly_terms(node, 'I', nout, nin);
 
         // Read iterative inverse attributes. An absent IterInv leaves
         // the attribute unset so the C default (no inverse coefficients
@@ -2111,4 +2019,65 @@ impl Serializable for PolyMap {
         }
         Ok(m)
     }
+}
+
+/// One direction's polynomial terms from a PolyMap's part of a dump, as
+/// polymap.c `astLoadPolyMap` reads them: `None` when the direction is not
+/// defined, which is when the maximum power of any of its `nvar` input
+/// variables (`MPF<i>` or `MPI<i>`) or the term count of any of its `nout`
+/// outputs (`NCF<i>` or `NCI<i>`) is missing. Each coefficient is
+/// `CF<n>`, numbered through all the terms, or, if that is bad, the older
+/// `CF<i>_<j>`; each power is `PF<n>`, or, if that is 0, `PF<i>_<j>_<k>`.
+/// `dir` is `'F'` or `'I'`.
+pub(crate) fn read_poly_terms(
+    node: &Node,
+    dir: char,
+    nvar: usize,
+    nout: usize,
+) -> Option<Vec<PolyTerm>> {
+    // The maximum powers, which the port does not keep, are read only to
+    // find whether the direction is defined.
+    for i in 1..=nvar {
+        node.get_int_any_if_set(&format!("MP{dir}{i}"))?;
+    }
+    let mut ncoeff = Vec::with_capacity(nout);
+    for i in 1..=nout {
+        ncoeff.push(node.get_int_any_if_set(&format!("NC{dir}{i}"))?.max(0) as usize);
+    }
+    let mut coeffs = Vec::new();
+    let mut iv = 0;
+    for (i, &nc) in ncoeff.iter().enumerate() {
+        for j in 1..=nc {
+            iv += 1;
+            let mut coeff = node.get_double(&format!("C{dir}{iv}"), BAD_VALUE);
+            if coeff == BAD_VALUE {
+                coeff = node.get_double(&format!("C{dir}{}_{j}", i + 1), BAD_VALUE);
+            }
+            coeffs.push(coeff);
+        }
+    }
+    let mut terms = Vec::with_capacity(coeffs.len());
+    let mut coeffs = coeffs.into_iter();
+    let mut iv = 0;
+    for (i, &nc) in ncoeff.iter().enumerate() {
+        for j in 1..=nc {
+            let mut powers = Vec::with_capacity(nvar);
+            for k in 1..=nvar {
+                iv += 1;
+                let mut power = node.get_int(&format!("P{dir}{iv}"), 0);
+                if power == 0 {
+                    power = node.get_int(&format!("P{dir}{}_{j}_{k}", i + 1), 0);
+                }
+                powers.push(power.max(0) as usize);
+            }
+            // A coefficient missing from the dump is bad, as C reads it
+            // (polymap.c:7388), and makes its output bad.
+            terms.push(PolyTerm {
+                coeff: coeffs.next().unwrap_or(BAD_VALUE),
+                powers,
+                out_axis: i + 1,
+            });
+        }
+    }
+    Some(terms)
 }

@@ -2,6 +2,12 @@
 
 ## Revision history
 
+- **2026-10-11 (rev 31)**: `Channel::read` on a NativeChannel reads one
+  Object per call, as C's `astRead` does, leaving the rest of the source
+  for the next call, and acts on Skip (data before an Object skipped
+  rather than an error), Strict and ReportLevel. Items no loader reads
+  are reported through `warning_texts`, or as an error with Strict set.
+  `from_native_string` therefore rejects text before the `Begin` line.
 - **2026-10-11 (rev 30)**: Added the Object-class ID attribute to every
   class: `id`, `set_id`, `test_id` and `clear_id` are required methods
   of the `Mapping` and `Frame` traits (`set_id` and `clear_id` return

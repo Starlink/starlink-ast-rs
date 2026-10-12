@@ -929,92 +929,10 @@ impl Serializable for ChebyMap {
             (None, None, None, None)
         };
 
-        // --- Read PolyMap coefficient structure ---
-        let mut forward = Vec::new();
-        let has_fwd_terms = poly.get("MPF1").is_some();
-        if has_fwd_terms {
-            let mut ncoeff_f = Vec::with_capacity(nout);
-            for i in 0..nout {
-                let nc = poly.get_int(&format!("NCF{}", i + 1), 0) as usize;
-                ncoeff_f.push(nc);
-            }
-
-            let total_coeffs: usize = ncoeff_f.iter().sum();
-            let mut coeffs = Vec::with_capacity(total_coeffs);
-            for iv in 1..=total_coeffs {
-                coeffs.push(poly.get_double(&format!("CF{iv}"), BAD_VALUE));
-            }
-
-            let total_powers: usize = total_coeffs * nin;
-            let mut powers = Vec::with_capacity(total_powers);
-            for iv in 1..=total_powers {
-                powers.push(poly.get_double(&format!("PF{iv}"), 0.0) as usize);
-            }
-
-            let mut coeff_idx = 0;
-            let mut power_idx = 0;
-            for (out_ax, &nc) in ncoeff_f.iter().enumerate() {
-                for _ in 0..nc {
-                    let coeff = coeffs[coeff_idx];
-                    coeff_idx += 1;
-                    let term_powers: Vec<usize> = powers[power_idx..power_idx + nin].to_vec();
-                    power_idx += nin;
-                    // A coefficient missing from the dump is bad, as C reads it,
-                    // and makes its output bad.
-                    forward.push(PolyTerm {
-                        coeff,
-                        powers: term_powers,
-                        out_axis: out_ax + 1,
-                    });
-                }
-            }
-        }
-
-        let mut inverse_terms = Vec::new();
-        let has_inv_terms = poly.get("MPI1").is_some();
-        if has_inv_terms {
-            let mut ncoeff_i = Vec::with_capacity(nin);
-            for i in 0..nin {
-                let nc = poly.get_int(&format!("NCI{}", i + 1), 0) as usize;
-                ncoeff_i.push(nc);
-            }
-
-            let total_coeffs: usize = ncoeff_i.iter().sum();
-            let mut coeffs = Vec::with_capacity(total_coeffs);
-            for iv in 1..=total_coeffs {
-                coeffs.push(poly.get_double(&format!("CI{iv}"), BAD_VALUE));
-            }
-
-            let total_powers: usize = total_coeffs * nout;
-            let mut powers = Vec::with_capacity(total_powers);
-            for iv in 1..=total_powers {
-                powers.push(poly.get_double(&format!("PI{iv}"), 0.0) as usize);
-            }
-
-            let mut coeff_idx = 0;
-            let mut power_idx = 0;
-            for (out_ax, &nc) in ncoeff_i.iter().enumerate() {
-                for _ in 0..nc {
-                    let coeff = coeffs[coeff_idx];
-                    coeff_idx += 1;
-                    let term_powers: Vec<usize> = powers[power_idx..power_idx + nout].to_vec();
-                    power_idx += nout;
-                    if coeff != 0.0 {
-                        inverse_terms.push(PolyTerm {
-                            coeff,
-                            powers: term_powers,
-                            out_axis: out_ax + 1,
-                        });
-                    }
-                }
-            }
-        }
-
-        let inverse = if has_inv_terms {
-            Some(inverse_terms)
-        } else {
-            None
-        };
+        // The PolyMap part's coefficients.
+        let forward =
+            crate::mappings::polymap::read_poly_terms(poly, 'F', nin, nout).unwrap_or_default();
+        let inverse = crate::mappings::polymap::read_poly_terms(poly, 'I', nout, nin);
 
         // Build the inner PolyMap directly (avoid re-validation of potentially
         // BAD_VALUE sentinel coefficients).

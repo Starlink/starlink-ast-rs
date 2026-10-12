@@ -125,6 +125,7 @@ impl Serializable for KeyMap {
         // MapSz is C's bucket-count history and has no HashMap counterpart,
         // so it is read and discarded. The written value is recomputed from
         // the contents at dump time.
+        node.mark_read("MapSz");
 
         // Presize from the number of Key%d cards present. C has no presize
         // step at all -- this is purely a Rust-side allocation optimisation
