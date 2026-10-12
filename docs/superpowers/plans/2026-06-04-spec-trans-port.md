@@ -12,7 +12,7 @@
 
 ## Background
 
-C `SpecTrans` (fitschan.c:30839-32556) runs once at the start of every FITS read and performs 24 distinct keyword translations. The current Rust port has a scattered subset of these in per-encoder `read_from_cards` functions — for example, `enc_pc.rs` checks RADECSYS-then-RADESYS inline, `enc_iraf.rs` has its own CTYPE translator, `enc_aips.rs` has its own translation table. This duplication has three problems:
+C `SpecTrans` (fitschan.c:30888-32605) runs once at the start of every FITS read and performs 24 distinct keyword translations. The current Rust port has a scattered subset of these in per-encoder `read_from_cards` functions — for example, `enc_pc.rs` checks RADECSYS-then-RADESYS inline, `enc_iraf.rs` has its own CTYPE translator, `enc_aips.rs` has its own translation table. This duplication has three problems:
 
 1. **Each encoder reimplements a subset.** Translations applied for one encoding (e.g. RESTFREQ→RESTFRQ in enc_pc) are missed for others.
 2. **Alt-axis support is structurally blocked** because `Cnxxx` cards must be rewritten to `*A..*Z` form *before* `detect_alt_letters` runs. With the rewrites scattered downstream of detection, FITS-PC alt planes are silently dropped.
@@ -22,7 +22,7 @@ The port consolidates the translations into one module that mirrors the C source
 
 ## Spec Coverage Mapping
 
-The 24 SpecTrans translations from `fitschan.c:30854-30962`:
+The 24 SpecTrans translations from `fitschan.c:30903-31011`:
 
 | # | C section | Translation | Task |
 |---|-----------|-------------|------|
@@ -225,7 +225,7 @@ Expected: FAIL with "no function `rename_keyword`".
 /// Move a keyword's value and comment from `from` to `to`, deleting
 /// the original. If `to` is already present, drop the source value
 /// (matches C SpecTrans, which only translates when the destination
-/// is absent — see e.g. fitschan.c:31060 for the EPOCH→EQUINOX gate).
+/// is absent — see e.g. fitschan.c:31109 for the EPOCH→EQUINOX gate).
 ///
 /// Both string and float-valued cards are handled. Returns true if a
 /// rename occurred.
@@ -318,7 +318,7 @@ In `spec_trans`:
 ```rust
 pub(crate) fn spec_trans(cards: &mut CardList, encoding: Encoding) {
     let _ = encoding;
-    // Translation 1 (fitschan.c:31125-31131): RADECSYS → RADESYS.
+    // Translation 1 (fitschan.c:31174-31180): RADECSYS → RADESYS.
     rename_keyword(cards, "RADECSYS", "RADESYS");
 }
 ```
@@ -368,7 +368,7 @@ Expected: FAIL.
 Append to `spec_trans` body:
 
 ```rust
-    // Translation 2 (fitschan.c:31136-31142): LONGPOLE → LONPOLE.
+    // Translation 2 (fitschan.c:31185-31191): LONGPOLE → LONPOLE.
     rename_keyword(cards, "LONGPOLE", "LONPOLE");
 ```
 
@@ -391,7 +391,7 @@ git commit -m "fitschan/spec_trans: translation #2 LONGPOLE -> LONPOLE"
 **Files:**
 - Modify: `crates/ast-core/src/fitschan/spec_trans.rs`
 
-C source: fitschan.c:31148-31206. The 6-digit `CDjjjiii` form has `j` and `i` as zero-padded 3-digit fields. We rewrite to `CDj_i` (the standard form). Per-axis-version: only happens for primary plane (no version letter).
+C source: fitschan.c:31197-31255. The 6-digit `CDjjjiii` form has `j` and `i` as zero-padded 3-digit fields. We rewrite to `CDj_i` (the standard form). Per-axis-version: only happens for primary plane (no version letter).
 
 - [ ] **Step 1: Write the failing test**
 
@@ -434,7 +434,7 @@ Expected: FAIL.
 - [ ] **Step 3: Implement**
 
 ```rust
-    // Translation 3 (fitschan.c:31148-31206): CDjjjiii → CDj_i.
+    // Translation 3 (fitschan.c:31197-31255): CDjjjiii → CDj_i.
     // Iterate the 9×9 grid that fits in 6-digit indexed names.
     for j in 1..=9 {
         for i in 1..=9 {
@@ -464,7 +464,7 @@ git commit -m "fitschan/spec_trans: translation #3 CDjjjiii -> CDj_i"
 **Files:**
 - Modify: `crates/ast-core/src/fitschan/spec_trans.rs`
 
-C source: fitschan.c:31208-31371. CROTA encodes celestial-axis rotation as a single angle. The rewrite produces a 2×2 PC matrix using cos/sin of CROTA on the celestial axes, leaving non-celestial axes as identity, plus the original CDELT values intact.
+C source: fitschan.c:31242-31420. CROTA encodes celestial-axis rotation as a single angle. The rewrite produces a 2×2 PC matrix using cos/sin of CROTA on the celestial axes, leaving non-celestial axes as identity, plus the original CDELT values intact.
 
 This translation requires identifying which axes are celestial (lon/lat) — use the standard CTYPE prefixes (`RA---`, `DEC--`, `xLON`, `xLAT`, `xxLN`, `xxLT`, `AZ--`, `EL--`).
 
@@ -550,7 +550,7 @@ fn celestial_axes(cards: &CardList, s: char) -> Option<(usize, usize)> {
 }
 
 fn translate_crota(cards: &mut CardList) {
-    // C: fitschan.c:31208-31371. Walk per-version-letter.
+    // C: fitschan.c:31242-31420. Walk per-version-letter.
     for s in std::iter::once(' ').chain('A'..='Z') {
         let crota_key = |j: usize| {
             if s == ' ' { format!("CROTA{j}") } else { format!("CROTA{j}{s}") }
@@ -576,7 +576,7 @@ fn translate_crota(cards: &mut CardList) {
         let pc_key = |i: usize, j: usize| {
             if s == ' ' { format!("PC{i}_{j}") } else { format!("PC{i}_{j}{s}") }
         };
-        // Mirrors fitschan.c:31257-31291.
+        // Mirrors fitschan.c:31306-31340.
         cards.set_float(&pc_key(axlon, axlon), cos, "PC matrix element");
         cards.set_float(&pc_key(axlat, axlat), cos, "PC matrix element");
         cards.set_float(&pc_key(axlon, axlat), -sin * cdelt_lat / cdelt_lon, "PC matrix element");
@@ -614,7 +614,7 @@ git commit -m "fitschan/spec_trans: translation #4 CROTA -> PC matrix"
 **Files:**
 - Modify: `crates/ast-core/src/fitschan/spec_trans.rs`
 
-C source: fitschan.c:31373-31436. `PROJPi` (i = 0..9) was an early-paper-II projection-parameter syntax. The standard form is `PV<axlat>_i` — i.e. on the latitude axis.
+C source: fitschan.c:31422-31485. `PROJPi` (i = 0..9) was an early-paper-II projection-parameter syntax. The standard form is `PV<axlat>_i` — i.e. on the latitude axis.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -647,7 +647,7 @@ Expected: FAIL.
 
 ```rust
 fn translate_projp(cards: &mut CardList) {
-    // C: fitschan.c:31373-31436. PROJPi → PV<axlat>_i (primary version
+    // C: fitschan.c:31422-31485. PROJPi → PV<axlat>_i (primary version
     // only; alt versions used CROTAj-style historical syntax that
     // never had PROJP equivalents).
     let Some((_, axlat)) = celestial_axes(cards, ' ') else { return };
@@ -680,7 +680,7 @@ git commit -m "fitschan/spec_trans: translation #5 PROJP -> PV"
 **Files:**
 - Modify: `crates/ast-core/src/fitschan/spec_trans.rs`
 
-C source: fitschan.c:31451-31611. The FITS-PC alternate-axis convention uses the 8-character forms `CmYPEi`, `CmVALi`, `CmPIXi`, `CmNITi`, `CmELTi` where `m` is a digit 1..=9 indicating alt-A..alt-I. We rewrite these to `CTYPE{i}{S}` etc. with `S = 'A' + (m-1)`.
+C source: fitschan.c:31500-31660. The FITS-PC alternate-axis convention uses the 8-character forms `CmYPEi`, `CmVALi`, `CmPIXi`, `CmNITi`, `CmELTi` where `m` is a digit 1..=9 indicating alt-A..alt-I. We rewrite these to `CTYPE{i}{S}` etc. with `S = 'A' + (m-1)`.
 
 Gated to FITS-PC and FITS-IRAF encodings — other encodings ignore these keywords.
 
@@ -734,7 +734,7 @@ Expected: FAIL.
 
 ```rust
 fn translate_cnxxx(cards: &mut CardList) {
-    // C: fitschan.c:31451-31611. Map (m, axis_i) → (CXX, axis_i, alt_letter).
+    // C: fitschan.c:31500-31660. Map (m, axis_i) → (CXX, axis_i, alt_letter).
     // m=1 → 'A', m=2 → 'B', ...
     for m in 1..=9 {
         let alt = (b'A' + (m - 1) as u8) as char;
@@ -782,7 +782,7 @@ git commit -m "fitschan/spec_trans: translation #6 Cnxxx alt-axis form"
 **Files:**
 - Modify: `crates/ast-core/src/fitschan/spec_trans.rs`
 
-C source: fitschan.c:31613-31661. Some old FITS files store `EQUINOX = 'B1995.0'` (a string with a B/J prefix) instead of the numeric form. The B-prefix → Besselian (convert via `palEpb2d`/`palEpj` round-trip to Julian); the J-prefix → strip to a plain Julian number.
+C source: fitschan.c:31662-31710. Some old FITS files store `EQUINOX = 'B1995.0'` (a string with a B/J prefix) instead of the numeric form. The B-prefix → Besselian (convert via `palEpb2d`/`palEpj` round-trip to Julian); the J-prefix → strip to a plain Julian number.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -822,7 +822,7 @@ Expected: FAIL.
 
 ```rust
 fn translate_equinox_string(cards: &mut CardList) {
-    // C: fitschan.c:31613-31661.
+    // C: fitschan.c:31662-31710.
     let Some(s) = cards.get_string("EQUINOX") else { return };
     let s = s.trim();
     let (bj, num_str) = match s.chars().next() {
@@ -867,7 +867,7 @@ git commit -m "fitschan/spec_trans: translation #7 EQUINOX 'BYYYY' string"
 **Files:**
 - Modify: `crates/ast-core/src/fitschan/spec_trans.rs`
 
-C source: fitschan.c:31663-31731. EPOCH (an old AIPS-style attribute) is renamed to EQUINOX *only when EQUINOX is absent*. Per C: also handle the case where the value is exactly 0.0 — that's an old AIPS convention meaning "B1950".
+C source: fitschan.c:31712-31780. EPOCH (an old AIPS-style attribute) is renamed to EQUINOX *only when EQUINOX is absent*. Per C: also handle the case where the value is exactly 0.0 — that's an old AIPS convention meaning "B1950".
 
 - [ ] **Step 1: Write the failing test**
 
@@ -928,7 +928,7 @@ Expected: FAIL.
 
 ```rust
 fn translate_epoch(cards: &mut CardList) {
-    // C: fitschan.c:31663-31731.
+    // C: fitschan.c:31712-31780.
     // EPOCH → EQUINOX when EQUINOX absent.
     if cards.find("EQUINOX").is_none() {
         if let Some(v) = cards.get_float("EPOCH") {
@@ -973,7 +973,7 @@ git commit -m "fitschan/spec_trans: translations #8 + #10 EPOCH/EQUINOX zero"
 **Files:**
 - Modify: `crates/ast-core/src/fitschan/spec_trans.rs`
 
-C source: fitschan.c:31736-31786. DATE-OBS is parsed (we already have `date_str_to_mjd` in `wcs_write/mod.rs`) and stored as MJD-OBS, but only when MJD-OBS is absent.
+C source: fitschan.c:31785-31835. DATE-OBS is parsed (we already have `date_str_to_mjd` in `wcs_write/mod.rs`) and stored as MJD-OBS, but only when MJD-OBS is absent.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1016,7 +1016,7 @@ Expected: FAIL.
 
 ```rust
 fn translate_date_obs(cards: &mut CardList) {
-    // C: fitschan.c:31736-31786.
+    // C: fitschan.c:31785-31835.
     if cards.find("MJD-OBS").is_some() { return }
     let Some(date) = cards.get_string("DATE-OBS") else { return };
     let Some(mjd) = crate::fitschan::wcs_write::date_str_to_mjd(&date) else { return };
@@ -1045,7 +1045,7 @@ git commit -m "fitschan/spec_trans: translation #9 DATE-OBS -> MJD-OBS"
 **Files:**
 - Modify: `crates/ast-core/src/fitschan/spec_trans.rs`
 
-C source: fitschan.c:31791-31911. CTYPE values ending `-NCP` are equivalent to SIN with a specific PV2_2 (`cot(δ_ref)`). CTYPE values ending `-GLS` are equivalent to SFL.
+C source: fitschan.c:31840-31960. CTYPE values ending `-NCP` are equivalent to SIN with a specific PV2_2 (`cot(δ_ref)`). CTYPE values ending `-GLS` are equivalent to SFL.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1091,7 +1091,7 @@ Expected: FAIL.
 
 ```rust
 fn translate_ncp_gls(cards: &mut CardList) {
-    // C: fitschan.c:31791-31911. Per-version-letter walk.
+    // C: fitschan.c:31840-31960. Per-version-letter walk.
     for s in std::iter::once(' ').chain('A'..='Z') {
         let Some((axlon, axlat)) = celestial_axes(cards, s) else { continue };
         let key = |prefix: &str, n: usize| {
@@ -1151,19 +1151,19 @@ git commit -m "fitschan/spec_trans: translation #11 AIPS NCP/GLS"
 
 Each follows the same pattern as Task 12: a TDD cycle (test → fail → implement → pass → commit). The translations in remaining tasks are:
 
-- **Task 13:** IRAF ZPX (fitschan.c:31916-32041). Read WAT2_NNN keywords, parse projection params, emit PV<axlat>_*. Convert `xxx-ZPX` → `xxx-ZPN`.
-- **Task 14:** IRAF TNX (fitschan.c:32046-32206). Same pattern as ZPX but for TNX → TPN. Includes WAT-string parsing for WCS coefficients.
-- **Task 15:** IRAF mini-WCS strip (fitschan.c:32211-32231). Remove `WAT*`, `MWCS*`, mini-WCS `CD*[A-Z]`, `CRVAL*[A-Z]` keys.
-- **Task 16:** QV → PV (fitschan.c:32236-32271). Rename pattern `QVi_m` → `PVi_m`.
-- **Task 17:** RESTFREQ → RESTFRQ (fitschan.c:32276-32286). Single rename.
-- **Task 18:** Early paper-III spectral CTYPE (fitschan.c:31024-31101). `xxx-WAV/-FRQ/-VEL` → `xxx-X2P` form (the inverse of what `wcs_spectral.rs::nonlin_spec_wcs` already handles on the read side).
-- **Task 19:** AIPS spectral CTYPE (fitschan.c:32291-32401). Read pattern `[VRAD|FREQ|VOPT|FELO|VELO]-XXX` (XXX ∈ {LSR, LSD, HEL, GEO, OBS}), translate to modern form (FREQ/VRAD/VOPT-F2W) + emit SPECSYS.
-- **Task 20:** OBSRA / OBSDEC (fitschan.c:32411-32501). When the header lacks celestial axes but has `OBSRA`/`OBSDEC`, synthesise a CmYPE/CmVAL/CmPIX/CmELT pair on a free coordinate version to attach the celestial info.
-- **Task 21:** CUNIT case-insensitive normalisation (fitschan.c:32506-32521). "M/S" → "m/s", "Angstrom" → "Angstrom" (canonical case), etc.
-- **Task 22:** FITS-CLASS specific rewrites (fitschan.c:32526-32556). Remove RESTFREQ, swap CRVAL3/RESTFRQ when needed.
-- **Task 23:** SAO COi_j → TPN (fitschan.c:31933-31991). When CTYPE is `xxx-TAN` *and* `COi_j` keys are present, convert to `xxx-TPN` with `PVi_m` from the polynomial coefficients.
-- **Task 24:** LAMBDA → WAVE (fitschan.c:31996-32003). Single CTYPE rename when CTYPE = "LAMBDA".
-- **Task 25:** TAN/TPV with PolyTan or SCAMP-TPV (fitschan.c:32011-32111). Convert `xxx-TPV` to `xxx-TPN`; convert `xxx-TAN` (PolyTan) to `xxx-TPN`.
+- **Task 13:** IRAF ZPX (fitschan.c:31965-32090). Read WAT2_NNN keywords, parse projection params, emit PV<axlat>_*. Convert `xxx-ZPX` → `xxx-ZPN`.
+- **Task 14:** IRAF TNX (fitschan.c:32095-32255). Same pattern as ZPX but for TNX → TPN. Includes WAT-string parsing for WCS coefficients.
+- **Task 15:** IRAF mini-WCS strip (fitschan.c:32260-32280). Remove `WAT*`, `MWCS*`, mini-WCS `CD*[A-Z]`, `CRVAL*[A-Z]` keys.
+- **Task 16:** QV → PV (fitschan.c:32285-32320). Rename pattern `QVi_m` → `PVi_m`.
+- **Task 17:** RESTFREQ → RESTFRQ (fitschan.c:32325-32335). Single rename.
+- **Task 18:** Early paper-III spectral CTYPE (fitschan.c:31073-31150). `xxx-WAV/-FRQ/-VEL` → `xxx-X2P` form (the inverse of what `wcs_spectral.rs::nonlin_spec_wcs` already handles on the read side).
+- **Task 19:** AIPS spectral CTYPE (fitschan.c:32340-32450). Read pattern `[VRAD|FREQ|VOPT|FELO|VELO]-XXX` (XXX ∈ {LSR, LSD, HEL, GEO, OBS}), translate to modern form (FREQ/VRAD/VOPT-F2W) + emit SPECSYS.
+- **Task 20:** OBSRA / OBSDEC (fitschan.c:32460-32550). When the header lacks celestial axes but has `OBSRA`/`OBSDEC`, synthesise a CmYPE/CmVAL/CmPIX/CmELT pair on a free coordinate version to attach the celestial info.
+- **Task 21:** CUNIT case-insensitive normalisation (fitschan.c:32555-32570). "M/S" → "m/s", "Angstrom" → "Angstrom" (canonical case), etc.
+- **Task 22:** FITS-CLASS specific rewrites (fitschan.c:32575-32605). Remove RESTFREQ, swap CRVAL3/RESTFRQ when needed.
+- **Task 23:** SAO COi_j → TPN (fitschan.c:31982-32040). When CTYPE is `xxx-TAN` *and* `COi_j` keys are present, convert to `xxx-TPN` with `PVi_m` from the polynomial coefficients.
+- **Task 24:** LAMBDA → WAVE (fitschan.c:32045-32052). Single CTYPE rename when CTYPE = "LAMBDA".
+- **Task 25:** TAN/TPV with PolyTan or SCAMP-TPV (fitschan.c:32060-32160). Convert `xxx-TPV` to `xxx-TPN`; convert `xxx-TAN` (PolyTan) to `xxx-TPN`.
 
 **For each of tasks 13-25, follow the Task 12 template exactly:**
 1. Write a failing test using a synthetic CardList that exhibits the input keyword pattern

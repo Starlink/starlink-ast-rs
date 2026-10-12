@@ -130,7 +130,7 @@ pub(crate) fn read_from_cards(cards: &CardList) -> AstResult<FitsStore> {
 }
 
 /// Write the axis descriptions `planes` (primary first) with FITS-PC: C's
-/// `PCFromStore` (fitschan.c:24704). FITS-PC holds at most ten
+/// `PCFromStore` (fitschan.c:24753). FITS-PC holds at most ten
 /// descriptions, the primary and `A` to `I`; an alternate one is written
 /// as `C<n>ELT<i>`, `C<n>PIX<i>`, `C<n>VAL<i>`, `C<n>YPE<i>` and
 /// `C<n>NIT<i>`, `<n>` being 1 for `A`, and must share the primary

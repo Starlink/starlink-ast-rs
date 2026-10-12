@@ -123,7 +123,7 @@ pub(crate) fn read_from_cards(cards: &CardList) -> AstResult<FitsStore> {
 }
 
 /// Whether `store` can be written with FITS-IRAF: the checks C's
-/// `IRAFFromStore` (fitschan.c:19041-19151) makes before writing, and the
+/// `IRAFFromStore` (fitschan.c:19075-19185) makes before writing, and the
 /// CRPIX, CRVAL and CTYPE values it needs while writing. Celestial axes
 /// need a projection other than TPN with no parameters, or a SIN one
 /// equivalent to SIN or NCP; RA, galactic or ecliptic longitude; and no
@@ -273,21 +273,18 @@ pub(crate) fn write_to_cards(
     }
 
     if is_last {
-        // MJD-OBS — IRAFFromStore (fitschan.c:19114-19138) does not
-        // emit MJD-OBS itself; only DATE-OBS. The input MJD-OBS card
-        // is left at its original position by C's `ignore_used`
-        // semantics. Mark the existing card used (so sweep keeps it)
-        // but do NOT re-emit — re-emitting would round-trip the
-        // value through SkyFrame::epoch (TDB) and back via
-        // `epoch::tdb_conv`, which is asymmetric in the rubber-second
-        // era (pre-MJD-41317). See `docs/issues/c-library-quirks.md`.
-        let _ = cards.mark_used("MJD-OBS");
-
         // DATE-OBS — IRAF emits only DATE-OBS, not MJD-OBS (mirrors C
-        // IRAFFromStore at fitschan.c:19114-19138). The pre-formatted
+        // IRAFFromStore at fitschan.c:19148-19172). The pre-formatted
         // string in store.dateobs was derived from MJD-OBS upstream.
         if let Some(ref dateobs) = store.dateobs {
             cards.set_string("DATE-OBS", dateobs, "Date of observation");
+        }
+        // A read leaves any MJD-OBS card in the header, since other
+        // software may use it; update it so that it agrees with DATE-OBS.
+        if cards.find("MJD-OBS").is_some()
+            && let Some(mjdobs) = store.mjdobs
+        {
+            cards.set_float("MJD-OBS", mjdobs, "Modified Julian Date of observation");
         }
     }
 

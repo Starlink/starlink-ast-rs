@@ -221,7 +221,7 @@ The rewrite had three parts (all now applied):
 
 ### 1. `wcs_read.rs` — compose pixel→world in C's exact left-associated order
 
-C `WcsMapFrm` (fitschan.c:37779-37821) builds
+C `WcsMapFrm` (fitschan.c:37828-37870) builds
 `map8 = (((map1_pixel→IWC ; map2_celestial) ; map3_spectral) ; map4_others)`
 — a **left-associated** series chain, class order, with `map4` (WcsOthers)
 always composed (a bare `UnitMap(naxis)` when every axis is claimed).
@@ -255,7 +255,7 @@ unaffected — they are a single `CmpMap` either way.
 
 `embed_1axis_in_naxis` wrapped the 1D spectral map in
 `PermMap ; (inner || UnitMap) ; PermMap`, adding identity PermMaps. C
-`WcsSpectral` (fitschan.c:39672-39687) instead composes one 1D map per axis
+`WcsSpectral` (fitschan.c:39721-39736) instead composes one 1D map per axis
 **in parallel**, in FITS order (`ret = astCmpMap(ret, map1, 0, …)`), with no
 PermMap (only the *Frame* is permuted). Rewrite:
 ```rust

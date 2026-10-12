@@ -1,6 +1,7 @@
 //! What each FITS encoding writes for a set of headers, against C's: each
 //! header is read into a FrameSet, which is written back to the same
-//! FitsChan with each encoding in turn. Each encoding's writer (fitschan.c
+//! FitsChan with each encoding in turn, some cases first setting the
+//! FrameSet's Epoch. Each encoding's writer (fitschan.c
 //! `WcsFromStore`, `PCFromStore`, `IRAFFromStore`, `AIPSFromStore`,
 //! `AIPSPPFromStore`, `CLASSFromStore`, `DSSFromStore`) writes nothing for a
 //! description it cannot hold, and the write then leaves every card the
@@ -18,6 +19,7 @@
 #[path = "fitschan_encodings_oracle/cases.rs"]
 mod cases;
 
+use ast_core::frames::Frame;
 use ast_core::{AnyObject, Channel, Encoding, FitsChan, NativeChannel};
 
 fn encoding(name: &str) -> Encoding {
@@ -35,13 +37,19 @@ fn encoding(name: &str) -> Encoding {
 
 /// The header written with `enc`: the value the write returns, Ncard, the
 /// cards not used, and the name of every card.
-fn written(header: &[&str], enc: &str) -> (i32, i32, Vec<String>, Vec<String>) {
+fn written(header: &[&str], epoch: &str, enc: &str) -> (i32, i32, Vec<String>, Vec<String>) {
     let mut fc = FitsChan::new();
     for card in header {
         fc.put_fits(card, false).unwrap();
     }
     fc.clear_card().unwrap();
-    let fs = fc.read().unwrap();
+    let mut fs = fc.read().unwrap();
+    if !epoch.is_empty()
+        && let Some(AnyObject::FrameSet(fs)) = fs.as_mut()
+    {
+        let mjd: f64 = epoch.strip_prefix("MJD ").unwrap().parse().unwrap();
+        fs.set_epoch_mjd(mjd).unwrap();
+    }
     fc.set_encoding(encoding(enc));
     let ret = match &fs {
         Some(fs) => fc.write(fs).map_or(0, |n| n as i32),
@@ -69,9 +77,10 @@ const EXCLUDED: &[(&str, &str, &str)] = &[
     ("class_cube", "FITS-WCS", NO_VELOSYS),
     ("class_lonpole_180", "FITS-WCS", NO_VELOSYS),
     ("class_lonpole_90", "FITS-WCS", NO_VELOSYS),
+    ("class_new_epoch", "FITS-WCS", NO_VELOSYS),
 ];
 
-/// C's `SpectralAxes` (fitschan.c:31208) always stores VELOSYS, the
+/// C's `SpectralAxes` (fitschan.c:31242) always stores VELOSYS, the
 /// topocentric velocity of the standard of rest; the port's
 /// `spectral_axes` does not.
 const NO_VELOSYS: &str = "port's spectral_axes writes no VELOSYS";
@@ -83,9 +92,9 @@ fn excluded(name: &str, enc: &str) -> bool {
 /// Every write of every case, `(header, encoding, differs, report)`.
 fn compare_all() -> Vec<(&'static str, &'static str, bool, String)> {
     let mut out = Vec::new();
-    for &(name, header, encodings) in cases::CASES {
+    for &(name, header, epoch, encodings) in cases::CASES {
         for &(enc, ret, ncard, cards, names) in encodings {
-            let got = written(header, enc);
+            let got = written(header, epoch, enc);
             let want = (
                 ret,
                 ncard,

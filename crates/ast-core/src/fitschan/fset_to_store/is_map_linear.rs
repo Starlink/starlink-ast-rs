@@ -13,7 +13,7 @@ use crate::error::AstResult;
 use crate::mappings::{DynMapping, Mapping};
 
 /// Number of test points used for the inverse-transform fit.
-/// Mirrors `NP` at `fitschan.c:19211`.
+/// Mirrors `NP` at `fitschan.c:19245`.
 const NP: usize = 20;
 
 /// Return `true` if the specified output axis of `smap` is a linear

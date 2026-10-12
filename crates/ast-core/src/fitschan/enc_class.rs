@@ -71,10 +71,10 @@ pub(crate) fn read_from_cards(cards: &CardList) -> AstResult<FitsStore> {
         // CTYPE. CLASS-specific projection rewrites (blank → -GLS, -ATF →
         // -AIT) are applied by SpecTrans before this reader runs, mirroring
         // C: the CLASS read path is SpecTrans → WcsToStore
-        // (fitschan.c:11470-11484), with every CLASS-specific rewrite living
-        // in ClassTrans (fitschan.c:7001). There is no CLASS-specific
+        // (fitschan.c:11504-11518), with every CLASS-specific rewrite living
+        // in ClassTrans (fitschan.c:7035). There is no CLASS-specific
         // ToStore. C's WcsFcRead applies an unconditional trailing-space
-        // strip (fitschan.c:36917, see `CardList::strip_wcs_store_string`)
+        // strip (fitschan.c:36966, see `CardList::strip_wcs_store_string`)
         // before storing any recognised string keyword.
         let key = format!("CTYPE{axis_num}");
         store.ctype[i] = CardList::strip_wcs_store_string(cards.get_string_marked(&key));
@@ -91,7 +91,7 @@ pub(crate) fn read_from_cards(cards: &CardList) -> AstResult<FitsStore> {
     store.restfrq = restfreq;
 
     // CRVAL adjustment, SPECSYS, SSYSSRC, and ZSOURCE are all
-    // injected by `spec_trans::translate_class` (fitschan.c:6966-7140)
+    // injected by `spec_trans::translate_class` (fitschan.c:6993-7174)
     // before this reader runs. We just pass through the cards as
     // standard FITS-WCS at this point. SPECSYS/SSYSSRC/etc. are
     // picked up by the generic FITS-WCS keyword reader downstream.
@@ -101,7 +101,7 @@ pub(crate) fn read_from_cards(cards: &CardList) -> AstResult<FitsStore> {
 
     // IMAGFREQ — the image-sideband frequency (Hz). When present, the
     // spectral axis is read as a DSBSpecFrame rather than a plain
-    // SpecFrame (C `WcsSpectral`, fitschan.c:39509-39514). The CLASS
+    // SpecFrame (C `WcsSpectral`, fitschan.c:39558-39563). The CLASS
     // translator (`spec_trans::translate_class`) leaves IMAGFREQ in the
     // card list as a standard keyword, so it is read directly here.
     store.imagfreq = cards.get_float_marked("IMAGFREQ");
@@ -109,7 +109,7 @@ pub(crate) fn read_from_cards(cards: &CardList) -> AstResult<FitsStore> {
     // OBSGEO-X/Y/Z — observatory geocentric position (metres). These feed
     // the SpecFrame's ObsLon/ObsLat/ObsAlt, which the topocentric Doppler
     // correction (and hence DSBSetUp's IF) depends on. Mirrors C
-    // `WcsSpectral` (fitschan.c:39543-39556), which reads OBSGEO from the
+    // `WcsSpectral` (fitschan.c:39592-39605), which reads OBSGEO from the
     // FitsStore regardless of encoding.
     store.obsgeox = cards.get_float("OBSGEO-X");
     store.obsgeoy = cards.get_float("OBSGEO-Y");
@@ -137,7 +137,7 @@ pub(crate) fn read_from_cards(cards: &CardList) -> AstResult<FitsStore> {
 }
 
 /// Whether `store` can be written with FITS-CLASS: the checks C's
-/// `CLASSFromStore` (fitschan.c:6559-6831) makes before writing, and the
+/// `CLASSFromStore` (fitschan.c:6586-6858) makes before writing, and the
 /// CRPIX, CRVAL and CTYPE values it needs while writing. The spectral and
 /// celestial axes must be the first three; the projection TAN, ARC, STG,
 /// AIT or SFL (AIT and SFL at the origin), or SIN with no parameters; the
@@ -267,7 +267,7 @@ pub(crate) fn write_to_cards(
     let naxis = store.naxis;
 
     // FITS-CLASS does not emit a plain NAXIS keyword. C
-    // CLASSFromStore (fitschan.c:6719-6734) only sets NAXIS when
+    // CLASSFromStore (fitschan.c:6746-6761) only sets NAXIS when
     // the spatial axes are degenerate (store->naxis == 1) and the
     // existing keyword needs to be force-3 with NAXIS2/NAXIS3 = 1.
     // Otherwise NAXIS is left to whatever the caller already had in
@@ -348,6 +348,14 @@ pub(crate) fn write_to_cards(
     if is_last && let Some(ref dateobs) = store.dateobs {
         cards.set_string("DATE-OBS", dateobs, "Date of observation");
     }
+    // A read leaves any MJD-OBS card in the header, since other
+    // software may use it; update it so that it agrees with DATE-OBS.
+    if is_last
+        && cards.find("MJD-OBS").is_some()
+        && let Some(mjdobs) = store.mjdobs
+    {
+        cards.set_float("MJD-OBS", mjdobs, "Modified Julian Date of observation");
+    }
 
     // RESTFREQ (C:6824) — only on last plane.
     if is_last && let Some(rf) = restfreq {
@@ -412,7 +420,7 @@ fn translate_class_projection_write(ctype: &str) -> String {
         .replace("ait", "ATF")
 }
 
-/// FITS-CLASS velocity emission. Mirrors fitschan.c:6854-6909.
+/// FITS-CLASS velocity emission. Mirrors fitschan.c:6881-6936.
 ///
 /// Computes VELO-LSR / VLSR / DELTAV from the FrameSet's SpecFrame
 /// component using the find_frame + convert pipeline. Run after the
@@ -423,7 +431,7 @@ pub(crate) fn write_velocities_from_frameset(fs: &FrameSet, cards: &mut CardList
     use crate::coords::PointSet;
 
     // C `CLASSFromStore` receives the ORIGINAL input FrameSet (the
-    // `(AstFrameSet*) object` passed to FitsFromStore at fitschan.c:40428),
+    // `(AstFrameSet*) object` passed to FitsFromStore at fitschan.c:40477),
     // NOT the post-MakeFitsFrameSet FrameSet. The modifications applied by
     // MakeFitsFrameSet (RefRA/RefDec format/parse roundtrip, AddEncodingFrame)
     // operate on a *copy* and feed only into the FitsStore extraction.
@@ -468,7 +476,7 @@ pub(crate) fn write_velocities_from_frameset(fs: &FrameSet, cards: &mut CardList
     // Pull the spectral CRVAL and CDELT from the cards. The
     // spectral FITS axis is whichever CTYPEi is FREQ-/WAVE-/etc;
     // C uses the `axspec` index returned by FindLonLatSpecAxes
-    // (fitschan.c:3225) and reads `crval[axspec]` and
+    // (fitschan.c:3238) and reads `crval[axspec]` and
     // `cdelt[axspec]`. We scan the CTYPE cards to find the same
     // 1-based index. Mirrors C:6881-6882.
     //
@@ -534,7 +542,7 @@ pub(crate) fn write_velocities_from_frameset(fs: &FrameSet, cards: &mut CardList
     Ok(())
 }
 
-/// FITS-CLASS AZIMUTH / ELEVATIO emission. Mirrors fitschan.c:6912-6955.
+/// FITS-CLASS AZIMUTH / ELEVATIO emission. Mirrors fitschan.c:6939-6982.
 ///
 /// Takes the spatial reference point's (RA, Dec) in radians, converts
 /// it to (Az, El) in radians, normalises, and emits AZIMUTH / ELEVATIO
@@ -550,10 +558,10 @@ pub(crate) fn write_velocities_from_frameset(fs: &FrameSet, cards: &mut CardList
 ///
 /// The (lon, lat) values fed into the chain are the CRVAL of the
 /// longitude / latitude FITS axes (located via [`find_lon_lat_axes`]),
-/// matching C's `crval[axlon]` / `crval[axlat]` (fitschan.c:6933).
+/// matching C's `crval[axlon]` / `crval[axlat]` (fitschan.c:6960).
 /// Find the 1-based longitude / latitude FITS axis indices by scanning the
 /// CTYPE cards. Mirrors the celestial-axis identification in C
-/// `FindLonLatSpecAxes` (fitschan.c:3228): the longitude axis CTYPE begins
+/// `FindLonLatSpecAxes` (fitschan.c:3241): the longitude axis CTYPE begins
 /// with `RA--` or `xLON` (the `x` being the system code, e.g. `G` for
 /// galactic, `E` for ecliptic), and the latitude axis CTYPE begins with
 /// `DEC-` or `xLAT`. Returns `(None, None)` when either is absent.
@@ -588,9 +596,9 @@ pub(crate) fn write_azel_from_frameset(fs: &FrameSet, cards: &mut CardList) -> A
     use crate::mappings::{CmpMap, Composition};
 
     // Spatial reference point in degrees: C uses `crval[axlon]` /
-    // `crval[axlat]` (fitschan.c:6933-6934), where `axlon` / `axlat` are
+    // `crval[axlat]` (fitschan.c:6960-6961), where `axlon` / `axlat` are
     // the longitude / latitude FITS axis indices found by
-    // `FindLonLatSpecAxes` (fitschan.c:3228). Locate the same axes by
+    // `FindLonLatSpecAxes` (fitschan.c:3241). Locate the same axes by
     // scanning the CTYPE cards for the standard celestial-axis prefixes
     // (RA--/DEC-, and the generic `xLON`/`xLAT` forms for galactic,
     // ecliptic, etc). The spatial axes are not necessarily axes 2 and 3.
@@ -816,7 +824,7 @@ DELTAV  = -0.106265872717E+003
     fn read_class_ssyssrc_from_velo_lsr() {
         // CLASS data is always in SOURCE rest frame. VELO-LSR
         // present → ssyssrc="LSRK". Mirrors C `ClassTrans`
-        // (fitschan.c:7068-7124).
+        // (fitschan.c:7102-7158).
         let cards = translated(CLASS_HEADER);
         let store = read_from_cards(&cards).unwrap();
 

@@ -426,7 +426,6 @@ fn read_card(part: &Node, n: usize, ty: CardType) -> FitsCard {
             comment
         },
         value,
-        used: false,
         flags: CardFlags::from_c_bits(flags),
     }
 }

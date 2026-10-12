@@ -1,5 +1,5 @@
 //! The conditions C's `Warn` reports, and the Warnings attribute that selects
-//! them (fitschan.c:35313, 43585).
+//! them (fitschan.c:35362, 43585).
 //!
 //! Every warning a read or write raises carries the lower-case name of its
 //! condition. It is stored, as `ASTWARN` cards and in the Channel's warning

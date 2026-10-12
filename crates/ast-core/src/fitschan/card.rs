@@ -23,7 +23,7 @@ fn is_fits_name_char(c: u8) -> bool {
 
 /// Validate a raw FITS keyword name (columns 1-8 of the card, original case),
 /// returning the warning text C would emit if the name contains an illegal
-/// character. Mirrors C `CheckFitsName` (fitschan.c:5863) for the cases that
+/// character. Mirrors C `CheckFitsName` (fitschan.c:5890) for the cases that
 /// produce a `Warn(this, "badkeyname", ...)` rather than an error.
 ///
 /// Returns `None` for a legal name, a blank (all-whitespace) name (the
@@ -64,7 +64,7 @@ pub(crate) fn check_fits_name(raw_name: &str) -> Option<String> {
                     c as char
                 ));
             }
-            // C's chain has no arm for a space (fitschan.c:5996-6019): it
+            // C's chain has no arm for a space (fitschan.c:6023-6046): it
             // breaks out of the loop without warning.
             return None;
         }
@@ -89,7 +89,7 @@ const FITS_ST_COL: usize = 20;
 pub(super) const FITS_COM_COL: usize = 32;
 
 /// The number of decimal digits in `INT_MAX`, C's `int_dig` in `Split`
-/// (fitschan.c:32877): an integer value with this many digits or more is
+/// (fitschan.c:32926): an integer value with this many digits or more is
 /// held as a 64-bit integer.
 const INT_DIG: usize = 10;
 
@@ -121,7 +121,7 @@ pub enum FitsValue {
 }
 
 /// Break warning text into ~60-character lines on word boundaries, mirroring
-/// the wrapping in C `Warn` (fitschan.c:35011-35105). Each returned line is the
+/// the wrapping in C `Warn` (fitschan.c:35060-35154). Each returned line is the
 /// value of one `ASTWARN` card. Caller frames these with leading and trailing
 /// blank `ASTWARN` cards.
 pub(crate) fn wrap_warning_text(text: &str) -> Vec<String> {
@@ -148,7 +148,7 @@ pub(crate) fn wrap_warning_text(text: &str) -> Vec<String> {
 }
 
 /// Consumption state of a card during a read, mirroring the C library's
-/// `USED` / `PROVISIONALLY_USED` card flags (fitschan.c:1496-1507).
+/// `USED` / `PROVISIONALLY_USED` card flags (fitschan.c:1509-1520).
 ///
 /// A card consumed in building the object returned by `astRead` is treated as
 /// if it no longer exists — it is not re-read, not found by public searches,
@@ -167,7 +167,7 @@ pub(crate) enum Consumption {
 }
 
 /// Per-card read-tracking flags, mirroring the C library's card flag bitmask
-/// (fitschan.c:1496-1522). A FitsChan's dump holds them as that bitmask
+/// (fitschan.c:1509-1535). A FitsChan's dump holds them as that bitmask
 /// ([`c_bits`](Self::c_bits)).
 ///
 /// `consumption` and `protected` are orthogonal: a `Used` card may also be
@@ -180,18 +180,18 @@ pub(crate) struct CardFlags {
     /// Set via `astRetainFits`; exempts the card from consumption marking.
     pub protected: bool,
     /// Set on a card added during the current write pass, mirroring C's
-    /// `NEW1` flag (fitschan.c:1594). Cleared, or used to delete the
+    /// `NEW1` flag (fitschan.c:1607). Cleared, or used to delete the
     /// card, once the whole write is known to have succeeded or failed.
     pub new_write: bool,
     /// Set on a card added during the current per-version pass, mirroring
-    /// C's `NEW2` flag (fitschan.c:1595). Cleared, or used to delete the
+    /// C's `NEW2` flag (fitschan.c:1608). Cleared, or used to delete the
     /// card, at the end of each axis-description version.
     pub new_version: bool,
 }
 
 impl CardFlags {
     /// The flags as C's bitmask: `USED` 1, `PROVISIONALLY_USED` 2, `NEW1` 4,
-    /// `NEW2` 8 and `PROTECTED` 16 (fitschan.c:1624-1650).
+    /// `NEW2` 8 and `PROTECTED` 16 (fitschan.c:1637-1663).
     pub(crate) fn c_bits(self) -> i64 {
         let consumption = match self.consumption {
             Consumption::Free => 0,
@@ -318,11 +318,6 @@ pub struct FitsCard {
     pub value: FitsValue,
     /// Comment string (text after / separator).
     pub comment: Option<String>,
-    /// Write-path marker: set when the encoder touches this card during a
-    /// write pass (reset by `mark_all_unused`, swept by `sweep_unused_wcs`).
-    /// Distinct from [`CardFlags`] read-consumption tracking.
-    #[allow(dead_code)]
-    pub(crate) used: bool,
     /// Read-consumption / protection flags (see [`CardFlags`]).
     pub(crate) flags: CardFlags,
 }
@@ -432,7 +427,6 @@ impl FitsCard {
                 keyword: keyword_out,
                 value: FitsValue::Comment(text.to_string()),
                 comment: None,
-                used: false,
                 flags: CardFlags::default(),
             };
             return Ok((card, false));
@@ -475,7 +469,6 @@ impl FitsCard {
                         keyword,
                         value: FitsValue::Comment(String::new()),
                         comment: None,
-                        used: false,
                         flags: CardFlags::default(),
                     },
                     true,
@@ -487,7 +480,6 @@ impl FitsCard {
                 keyword,
                 value,
                 comment: trim_comment(comment_str),
-                used: false,
                 flags: CardFlags::default(),
             },
             false,
@@ -740,7 +732,6 @@ fn parse_string_value(
         keyword: keyword.to_string(),
         value,
         comment,
-        used: false,
         flags: crate::fitschan::card::CardFlags::default(),
     })
 }
@@ -1019,7 +1010,7 @@ mod tests {
     #[test]
     fn parse_string_value_keeps_padding_on_long_values() {
         // C strips trailing spaces only when the value is 8 characters or
-        // fewer (fitschan.c:15354-15363). An 18-character padded value
+        // fewer (fitschan.c:15388-15397). An 18-character padded value
         // keeps its padding.
         let card = FitsCard::parse(
             "RA      = '07:21:44.00       ' / RA of observation (hr)                        ",
@@ -1167,7 +1158,6 @@ mod tests {
             keyword: "NAXIS".to_string(),
             value: FitsValue::Int(2),
             comment: Some("Number of axes".to_string()),
-            used: false,
             flags: crate::fitschan::card::CardFlags::default(),
         };
         let formatted = card.format().unwrap();
@@ -1183,7 +1173,6 @@ mod tests {
             keyword: "CTYPE1".to_string(),
             value: FitsValue::String("RA---TAN".into()),
             comment: Some("Axis type".to_string()),
-            used: false,
             flags: crate::fitschan::card::CardFlags::default(),
         };
         let formatted = card.format().unwrap();
@@ -1198,7 +1187,6 @@ mod tests {
             keyword: "SIMPLE".to_string(),
             value: FitsValue::Logical(true),
             comment: Some("Fits standard".to_string()),
-            used: false,
             flags: crate::fitschan::card::CardFlags::default(),
         };
         let formatted = card.format().unwrap();
@@ -1213,7 +1201,6 @@ mod tests {
             keyword: "CRVAL1".to_string(),
             value: FitsValue::Float(266.416666666667),
             comment: Some("Reference value".to_string()),
-            used: false,
             flags: crate::fitschan::card::CardFlags::default(),
         };
         let formatted = card.format().unwrap();
@@ -1222,7 +1209,7 @@ mod tests {
     }
 
     /// A value too wide for the 20-column field has no padding to absorb the
-    /// exponent-zero strip, so C closes the gap (fitschan.c:9896-9904) and the
+    /// exponent-zero strip, so C closes the gap (fitschan.c:9930-9938) and the
     /// value still starts in column 11 like every other value in the header.
     /// Reference card taken from `tidy-pole.native`.
     #[test]
@@ -1231,7 +1218,6 @@ mod tests {
             keyword: "SCL1_A".to_string(),
             value: FitsValue::Float(-1.7453292519943296E-4),
             comment: Some("Scale factor for axis 1".to_string()),
-            used: false,
             flags: crate::fitschan::card::CardFlags::default(),
         };
         let formatted = card.format_with_digits(17).unwrap();
@@ -1249,7 +1235,6 @@ mod tests {
             keyword: "SFT1_C".to_string(),
             value: FitsValue::Float(-7.67E-9),
             comment: None,
-            used: false,
             flags: crate::fitschan::card::CardFlags::default(),
         };
         let formatted = card.format_with_digits(17).unwrap();
@@ -1263,7 +1248,6 @@ mod tests {
             keyword: "UNDEF".to_string(),
             value: FitsValue::Undef,
             comment: Some("No value".to_string()),
-            used: false,
             flags: crate::fitschan::card::CardFlags::default(),
         };
         let formatted = card.format().unwrap();
@@ -1278,7 +1262,6 @@ mod tests {
             keyword: "COMMENT".to_string(),
             value: FitsValue::Comment(" This is a test".to_string()),
             comment: None,
-            used: false,
             flags: crate::fitschan::card::CardFlags::default(),
         };
         let formatted = card.format().unwrap();
@@ -1309,7 +1292,6 @@ mod tests {
             keyword: "TEST".to_string(),
             value: FitsValue::String("It's OK".into()),
             comment: Some("Quoted".to_string()),
-            used: false,
             flags: crate::fitschan::card::CardFlags::default(),
         };
         let formatted = card.format().unwrap();
@@ -1324,7 +1306,6 @@ mod tests {
             keyword: "SIMPLE".to_string(),
             value: FitsValue::Logical(true),
             comment: Some("Standard".to_string()),
-            used: false,
             flags: crate::fitschan::card::CardFlags::default(),
         };
         let formatted = card.format().unwrap();
@@ -1338,7 +1319,6 @@ mod tests {
             keyword: "CMPLX".to_string(),
             value: FitsValue::ComplexFloat(1.5, -2.5),
             comment: None,
-            used: false,
             flags: crate::fitschan::card::CardFlags::default(),
         };
         let formatted = card.format().unwrap();
@@ -1354,7 +1334,6 @@ mod tests {
             keyword: "CONTINUE".to_string(),
             value: FitsValue::Continue("long string value".into()),
             comment: Some("continuation".to_string()),
-            used: false,
             flags: crate::fitschan::card::CardFlags::default(),
         };
         let formatted = card.format().unwrap();
@@ -1403,12 +1382,6 @@ mod tests {
     }
 
     #[test]
-    fn used_field_defaults_false() {
-        let card = FitsCard::parse("SIMPLE  =                    T / Standard").unwrap();
-        assert!(!card.used);
-    }
-
-    #[test]
     fn check_fits_name_legal() {
         assert_eq!(check_fits_name("CRVAL1  "), None);
         assert_eq!(check_fits_name("MJD-OBS "), None);
@@ -1422,7 +1395,7 @@ mod tests {
 
     #[test]
     fn check_fits_name_space_is_not_reported() {
-        // C CheckFitsName (fitschan.c:5996-6019) branches on `== '='`,
+        // C CheckFitsName (fitschan.c:6023-6046) branches on `== '='`,
         // `< ' '` and `> ' '`. A space matches none of them, so no warning
         // is issued for a name field that contains one.
         assert_eq!(check_fits_name("FITS hea"), None);

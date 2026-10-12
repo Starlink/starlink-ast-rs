@@ -12,7 +12,7 @@
 //! The four optional `mapd` stages are the FITS-WCS Paper IV distortion
 //! corrections `DistortMaps` extracts from the CTYPE distortion codes.
 //!
-//! This follows the C library's `WcsIntWorld` function (fitschan.c:37566).
+//! This follows the C library's `WcsIntWorld` function (fitschan.c:37615).
 
 use super::warning::{Warning, Warnings};
 use ndarray::Array2;
@@ -28,7 +28,7 @@ use crate::wcslib::WcsProjection;
 
 /// Build the pixel-to-Intermediate World Coordinate (IWC) mapping.
 ///
-/// Port of C `WcsIntWorld` (fitschan.c:37566). The chain is
+/// Port of C `WcsIntWorld` (fitschan.c:37615). The chain is
 /// `[mapd1] → WcsShift → [mapd2] → WcsPCMatrix → [mapd3] → WcsCDeltMatrix
 /// → [mapd4]`, where the `mapd` stages come from [`distort_maps`].
 ///
@@ -58,7 +58,7 @@ pub(crate) fn build_pixel_to_iwc(
     let (pc_map, cdelt_map) = build_rotation_and_scale(store)?;
 
     // A PC/CD matrix with a wholly zero row or column has no inverse, which
-    // makes the whole pixel→IWC chain uninvertible (fitschan.c:37680-37685).
+    // makes the whole pixel→IWC chain uninvertible (fitschan.c:37729-37734).
     if !pc_map.has_inverse() {
         warnings.push(Warning::new("badmat", BADMAT_WARNING));
     }
@@ -81,8 +81,8 @@ pub(crate) fn build_pixel_to_iwc(
     Ok(result.expect("pixel→IWC chain always contains the CRPIX shift"))
 }
 
-/// The `badmat` warning text (fitschan.c:37681-37684). `badmat` is one of the
-/// conditions enabled by the default `Warnings` value (fitschan.c:43331), so
+/// The `badmat` warning text (fitschan.c:37730-37733). `badmat` is one of the
+/// conditions enabled by the default `Warnings` value (fitschan.c:43380), so
 /// it is always emitted.
 const BADMAT_WARNING: &str = "The pixel rotation matrix in the original FITS header (specified by CD or PC keywords) \
      could not be inverted. This may be because the matrix contains rows or columns which \
@@ -100,7 +100,7 @@ fn append(acc: Option<DynMapping>, next: DynMapping) -> AstResult<DynMapping> {
 
 /// The four distortion corrections a FITS-WCS Paper IV distortion code
 /// contributes to the pixel→IWC chain, in the positions C `WcsIntWorld`
-/// splices them into (fitschan.c:37635-37708).
+/// splices them into (fitschan.c:37684-37757).
 #[derive(Default)]
 struct DistortionMaps {
     /// Applied to raw pixel coordinates, before the CRPIX translation.
@@ -113,7 +113,7 @@ struct DistortionMaps {
     map4: Option<DynMapping>,
 }
 
-/// Port of C `DistortMaps` (fitschan.c:8718).
+/// Port of C `DistortMaps` (fitschan.c:8752).
 ///
 /// Inspects the CTYPE values for a Paper IV distortion code and returns the
 /// Mappings that implement it. Every distortion code found — recognised or
@@ -233,7 +233,7 @@ fn distort_maps(
 /// Split a CTYPE value of the FITS-WCS Paper IV "4-3-3" form into its axis
 /// type, projection code and distortion code: C's
 /// `3 == astSscanf( ctype, "%4s-%3s-%3s", type, code, dist )`
-/// (fitschan.c:8897). Each `%s` skips white space and then reads one to its
+/// (fitschan.c:8931). Each `%s` skips white space and then reads one to its
 /// width of other characters, and each `-` must follow directly.
 fn split_4_3_3(ctype: &str) -> Option<(&str, &str, &str)> {
     // A `%Ns` conversion starting at byte `at`: the field read and the byte
@@ -266,7 +266,7 @@ fn truncate_at(ct: &mut String, n: usize) {
     }
 }
 
-/// Port of C `ZPXMapping` (fitschan.c:41539).
+/// Port of C `ZPXMapping` (fitschan.c:41588).
 ///
 /// Builds the Mapping implementing the `lngcor` / `latcor` corrections the
 /// IRAF `WAT` keywords describe for the two `-ZPX` axes (`zpxaxes`, 0-based).
@@ -302,7 +302,7 @@ fn zpx_mapping(
     }
 
     // With no correction surface on either axis there is no distortion to
-    // apply (fitschan.c:41662).
+    // apply (fitschan.c:41711).
     if coeffs[0].is_empty() && coeffs[1].is_empty() {
         return Ok(Some(Box::new(UnitMap::new(naxes))));
     }
@@ -323,8 +323,8 @@ fn zpx_mapping(
     Ok(Some(Box::new(wcs)))
 }
 
-/// The `zpx` warning text (fitschan.c:41665-41668). `zpx` is one of the
-/// conditions enabled by the default `Warnings` value (fitschan.c:43331), so
+/// The `zpx` warning text (fitschan.c:41714-41717). `zpx` is one of the
+/// conditions enabled by the default `Warnings` value (fitschan.c:43380), so
 /// it is always emitted.
 const ZPX_WARNING: &str = "This FITS header includes, or was derived from, a ZPX projection which requires \
      unsupported IRAF-specific corrections. The WCS information may therefore be incorrect.";
@@ -412,7 +412,7 @@ fn build_cdelt_matrix(store: &FitsStore) -> AstResult<DynMapping> {
 /// Axes beyond the first two pass through unchanged, added in parallel with a
 /// UnitMap as C `AddUnitMaps` does.
 ///
-/// Port of C `SIPMapping` (fitschan.c:29187). When neither direction has any
+/// Port of C `SIPMapping` (fitschan.c:29236). When neither direction has any
 /// coefficient in the store the whole distortion is a UnitMap over every axis,
 /// which is the answer for a header that names `-SIP` in its CTYPE values but
 /// supplies no `A_i_j` / `B_i_j` cards.
@@ -437,7 +437,7 @@ fn build_sip_mapping(store: &FitsStore) -> AstResult<DynMapping> {
 
     // Create the 2-in, 2-out PolyMap for the SIP axes.
     let mut polymap = PolyMap::new(2, 2, &forward_terms, inv)?;
-    // Mirrors fitschan.c:29357-29394: under SipReplace (default true)
+    // Mirrors fitschan.c:29406-29443: under SipReplace (default true)
     // the inverse transformations supplied within SIP headers are often
     // inaccurate, so replace the missing transformation — or any
     // existing inverse — by fitting a polynomial to samples of the
@@ -481,7 +481,7 @@ fn build_sip_mapping(store: &FitsStore) -> AstResult<DynMapping> {
 
 /// Largest first index stored in a SIP coefficient table.
 ///
-/// Port of C `GetMaxI` (fitschan.c:13407): the largest intermediate-axis index
+/// Port of C `GetMaxI` (fitschan.c:13441): the largest intermediate-axis index
 /// for which the table holds a row, or -1 when the table is empty. C skips
 /// trailing NULL row pointers; the Rust equivalent is a trailing empty row.
 fn sip_max_i(table: &[Vec<f64>]) -> i32 {
@@ -496,7 +496,7 @@ fn sip_max_i(table: &[Vec<f64>]) -> i32 {
 
 /// Largest second index stored in a SIP coefficient table.
 ///
-/// Port of C `GetMaxJM` (fitschan.c:13194): the maximum over all rows of the
+/// Port of C `GetMaxJM` (fitschan.c:13228): the maximum over all rows of the
 /// largest index holding a value other than `AST__BAD`, or -1 when the table
 /// holds no values at all.
 fn sip_max_jm(table: &[Vec<f64>]) -> i32 {
@@ -514,7 +514,7 @@ fn sip_max_jm(table: &[Vec<f64>]) -> i32 {
 /// Coefficient descriptions for one half of the SIP distortion.
 ///
 /// Port of the two coefficient-gathering loops of C `SIPMapping`
-/// (fitschan.c:29274-29401), which differ only in which pair of `FitsStore`
+/// (fitschan.c:29323-29450), which differ only in which pair of `FitsStore`
 /// items they read and in whether the axis index is called `iout` or `iin`.
 /// `tables` holds the table for each of the two axes in order.
 ///
