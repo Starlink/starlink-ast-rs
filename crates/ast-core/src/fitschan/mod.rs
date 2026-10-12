@@ -1691,6 +1691,39 @@ impl FitsChan {
         Ok(())
     }
 
+    /// Read the FrameSet a foreign encoding other than DSS describes, as C
+    /// reads all of them (fitschan.c `FitsToStore`): extract every axis
+    /// description from `trans`, the header with `SpecTrans`'s translations,
+    /// and make a FrameSet from them. `cursors` receives, for each axis
+    /// description read, the index in `warnings` of its first warning and its
+    /// number of WCS axes (see [`Self::push_read_warnings`]).
+    fn decode_wcs_stores(
+        &self,
+        trans: &CardList,
+        def_b1950: bool,
+        cursors: &mut Vec<(usize, usize)>,
+        warnings: &mut Warnings,
+    ) -> AstResult<Option<AnyObject>> {
+        let mut stores = wcs_keywords::extract_wcs_keywords_with_alts(trans)?;
+        for st in stores
+            .primary
+            .iter_mut()
+            .chain(stores.alts.iter_mut().map(|(_, st)| st))
+        {
+            st.sip_replace = self.sip_replace();
+            st.car_lin = self.car_lin();
+        }
+        wcs_read::decode_wcs_with_alts_inner(
+            &stores,
+            def_b1950,
+            self.ignore_bad_alt(),
+            self.iwc(),
+            &self.cards,
+            warnings,
+            cursors,
+        )
+    }
+
     /// The end of a read of an encoding other than NATIVE or DSS, mirroring
     /// C's `Read` and its `FixUsed`: on success consume the cards the read
     /// used and store its warnings; on failure consume them only when Clean
@@ -1707,11 +1740,11 @@ impl FitsChan {
     #[allow(clippy::too_many_arguments)]
     fn finish_foreign_read(
         &mut self,
-        decoded: AstResult<AnyObject>,
+        decoded: AstResult<Option<AnyObject>>,
         entry: usize,
         trans_warnings: spec_trans::TransWarnings,
         read_warnings: Warnings,
-        naxes: usize,
+        cursors: Vec<(usize, usize)>,
         trans: &CardList,
         spec_names: Vec<String>,
     ) -> AstResult<Option<AnyObject>> {
@@ -1735,11 +1768,11 @@ impl FitsChan {
         let (sweep_warnings, swept) = wcs_mark::mark_wcs_cards(&mut self.cards, &translated);
         self.push_sweep_warnings(sweep_warnings);
         match (decoded, swept) {
-            (Ok(obj), Ok(())) => {
+            (Ok(Some(obj)), Ok(())) => {
                 mark(&mut self.cards, &spec_names);
                 mark(&mut self.cards, &extract_names);
                 self.cards.fix_used(true, false);
-                self.push_read_warnings(read_warnings, naxes);
+                self.push_read_warnings(read_warnings, &cursors);
                 Ok(Some(obj))
             }
             (decoded, swept) => {
@@ -1759,13 +1792,16 @@ impl FitsChan {
                 // translations have warned, and its error is the one
                 // reported.
                 if !sweep_failed {
-                    self.push_read_warnings(read_warnings, naxes);
+                    self.push_read_warnings(read_warnings, &cursors);
                 }
-                Err(match (swept, decoded) {
-                    (Err(e), _) => e,
-                    (Ok(()), Err(e)) => e,
-                    (Ok(()), Ok(_)) => unreachable!("handled above"),
-                })
+                // With no pixel axes C's `MakeFitsFrameSet` gives nothing,
+                // which `Read` treats as a failure without an error.
+                match (swept, decoded) {
+                    (Err(e), _) => Err(e),
+                    (Ok(()), Err(e)) => Err(e),
+                    (Ok(()), Ok(None)) => Ok(None),
+                    (Ok(()), Ok(Some(_))) => unreachable!("handled above"),
+                }
             }
         }
     }
@@ -1808,15 +1844,27 @@ impl FitsChan {
         }
     }
 
-    /// Store the `ASTWARN` blocks the decoding raised, written against
-    /// `NAXIS<naxes>`, the cursor `move_cursor_to_last_naxis` reproduces, so
-    /// they go in front of it.
-    fn push_read_warnings(&mut self, warnings: Warnings, naxes: usize) {
+    /// Store the `ASTWARN` blocks the decoding raised. C's `DistortMaps`
+    /// reads NAXIS1 to NAXIS<n> as each axis description is read, `n` its
+    /// number of WCS axes, and the warnings that description raises go in
+    /// front of the cursor that leaves, which `move_cursor_to_last_naxis`
+    /// reproduces. `cursors` holds, for each description, the index of its
+    /// first warning and its `n`.
+    fn push_read_warnings(&mut self, warnings: Warnings, cursors: &[(usize, usize)]) {
         if self.clean() {
             return;
         }
-        move_cursor_to_last_naxis(&mut self.cards, naxes);
-        for w in warnings {
+        let mut naxes = None;
+        for (index, w) in warnings.into_iter().enumerate() {
+            let n = cursors
+                .iter()
+                .rev()
+                .find(|(start, _)| *start <= index)
+                .map_or(0, |&(_, n)| n);
+            if naxes != Some(n) {
+                move_cursor_to_last_naxis(&mut self.cards, n);
+                naxes = Some(n);
+            }
             self.warn(w);
         }
     }
@@ -1985,33 +2033,15 @@ impl Channel for FitsChan {
                     // The cards SpecTrans used, which C marks before WcsFcRead runs.
                     let spec_names = trans.take_consumed_names();
                     let mut read_warnings: Warnings = Vec::new();
-                    let mut naxes = 0;
-                    let decoded = (|| -> AstResult<AnyObject> {
-                        let (mut primary, mut alts) =
-                            wcs_keywords::extract_wcs_keywords_with_alts(&trans)?;
-                        primary.sip_replace = self.sip_replace();
-                        primary.car_lin = self.car_lin();
-                        for (_, st) in &mut alts {
-                            st.sip_replace = self.sip_replace();
-                            st.car_lin = self.car_lin();
-                        }
-                        naxes = primary.naxis;
-                        wcs_read::decode_wcs_with_alts_inner(
-                            &primary,
-                            &alts,
-                            def_b1950,
-                            self.ignore_bad_alt(),
-                            self.iwc(),
-                            &self.cards,
-                            &mut read_warnings,
-                        )
-                    })();
+                    let mut cursors = Vec::new();
+                    let decoded =
+                        self.decode_wcs_stores(&trans, def_b1950, &mut cursors, &mut read_warnings);
                     self.finish_foreign_read(
                         decoded,
                         entry,
                         trans_warnings,
                         read_warnings,
-                        naxes,
+                        cursors,
                         &trans,
                         spec_names,
                     )
@@ -2034,33 +2064,15 @@ impl Channel for FitsChan {
                     // The cards SpecTrans used, which C marks before WcsFcRead runs.
                     let spec_names = trans.take_consumed_names();
                     let mut read_warnings: Warnings = Vec::new();
-                    let mut naxes = 0;
-                    let decoded = (|| -> AstResult<AnyObject> {
-                        let (mut primary, mut alts) =
-                            wcs_keywords::extract_wcs_keywords_with_alts(&trans)?;
-                        primary.sip_replace = self.sip_replace();
-                        primary.car_lin = self.car_lin();
-                        for (_, st) in &mut alts {
-                            st.sip_replace = self.sip_replace();
-                            st.car_lin = self.car_lin();
-                        }
-                        naxes = primary.naxis;
-                        wcs_read::decode_wcs_with_alts_inner(
-                            &primary,
-                            &alts,
-                            def_b1950,
-                            self.ignore_bad_alt(),
-                            self.iwc(),
-                            &self.cards,
-                            &mut read_warnings,
-                        )
-                    })();
+                    let mut cursors = Vec::new();
+                    let decoded =
+                        self.decode_wcs_stores(&trans, def_b1950, &mut cursors, &mut read_warnings);
                     self.finish_foreign_read(
                         decoded,
                         entry,
                         trans_warnings,
                         read_warnings,
-                        naxes,
+                        cursors,
                         &trans,
                         spec_names,
                     )
@@ -2077,33 +2089,15 @@ impl Channel for FitsChan {
                     // The cards SpecTrans used, which C marks before WcsFcRead runs.
                     let spec_names = trans.take_consumed_names();
                     let mut read_warnings: Warnings = Vec::new();
-                    let mut naxes = 0;
-                    let decoded = (|| -> AstResult<AnyObject> {
-                        let (mut primary, mut alts) =
-                            wcs_keywords::extract_wcs_keywords_with_alts(&trans)?;
-                        primary.sip_replace = self.sip_replace();
-                        primary.car_lin = self.car_lin();
-                        for (_, st) in &mut alts {
-                            st.sip_replace = self.sip_replace();
-                            st.car_lin = self.car_lin();
-                        }
-                        naxes = primary.naxis;
-                        wcs_read::decode_wcs_with_alts_inner(
-                            &primary,
-                            &alts,
-                            def_b1950,
-                            self.ignore_bad_alt(),
-                            self.iwc(),
-                            &self.cards,
-                            &mut read_warnings,
-                        )
-                    })();
+                    let mut cursors = Vec::new();
+                    let decoded =
+                        self.decode_wcs_stores(&trans, def_b1950, &mut cursors, &mut read_warnings);
                     self.finish_foreign_read(
                         decoded,
                         entry,
                         trans_warnings,
                         read_warnings,
-                        naxes,
+                        cursors,
                         &trans,
                         spec_names,
                     )
@@ -2120,25 +2114,15 @@ impl Channel for FitsChan {
                     // The cards SpecTrans used, which C marks before WcsFcRead runs.
                     let spec_names = trans.take_consumed_names();
                     let mut read_warnings: Warnings = Vec::new();
-                    let mut naxes = 0;
-                    let decoded = (|| -> AstResult<AnyObject> {
-                        let store = enc_aips::read_from_cards(&trans)?;
-                        naxes = store.naxis;
-                        wcs_read::decode_wcs_inner(
-                            &store,
-                            def_b1950,
-                            self.iwc(),
-                            &self.cards,
-                            ' ',
-                            &mut read_warnings,
-                        )
-                    })();
+                    let mut cursors = Vec::new();
+                    let decoded =
+                        self.decode_wcs_stores(&trans, def_b1950, &mut cursors, &mut read_warnings);
                     self.finish_foreign_read(
                         decoded,
                         entry,
                         trans_warnings,
                         read_warnings,
-                        naxes,
+                        cursors,
                         &trans,
                         spec_names,
                     )
@@ -2155,25 +2139,15 @@ impl Channel for FitsChan {
                     // The cards SpecTrans used, which C marks before WcsFcRead runs.
                     let spec_names = trans.take_consumed_names();
                     let mut read_warnings: Warnings = Vec::new();
-                    let mut naxes = 0;
-                    let decoded = (|| -> AstResult<AnyObject> {
-                        let store = enc_class::read_from_cards(&trans)?;
-                        naxes = store.naxis;
-                        wcs_read::decode_wcs_inner(
-                            &store,
-                            def_b1950,
-                            self.iwc(),
-                            &self.cards,
-                            ' ',
-                            &mut read_warnings,
-                        )
-                    })();
+                    let mut cursors = Vec::new();
+                    let decoded =
+                        self.decode_wcs_stores(&trans, def_b1950, &mut cursors, &mut read_warnings);
                     self.finish_foreign_read(
                         decoded,
                         entry,
                         trans_warnings,
                         read_warnings,
-                        naxes,
+                        cursors,
                         &trans,
                         spec_names,
                     )
@@ -2190,6 +2164,7 @@ impl Channel for FitsChan {
                         naxes = store.naxis;
                         wcs_read::decode_wcs_inner(
                             &store,
+                            store.naxis,
                             def_b1950,
                             self.iwc(),
                             &self.cards,
@@ -2201,7 +2176,7 @@ impl Channel for FitsChan {
                     let clean = self.clean();
                     match decoded {
                         Ok(obj) => {
-                            self.push_read_warnings(read_warnings, naxes);
+                            self.push_read_warnings(read_warnings, &[(0, naxes)]);
                             for name in self.cards.take_consumed_names() {
                                 self.cards.mark_card(&name);
                             }
@@ -2216,7 +2191,7 @@ impl Channel for FitsChan {
                                 }
                                 self.cards.fix_used(true, false);
                             }
-                            self.push_read_warnings(read_warnings, naxes);
+                            self.push_read_warnings(read_warnings, &[(0, naxes)]);
                             Err(e)
                         }
                     }

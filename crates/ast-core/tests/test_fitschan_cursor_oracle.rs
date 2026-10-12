@@ -553,11 +553,6 @@ const EXCLUDED: &[(&str, &str)] = &[
          axis as linear",
     ),
     (
-        "sao_three_ctypes_rw",
-        "with NAXIS 2 and CTYPE1 to CTYPE3, C reads three WCS axes, the highest \
-         CRPIX index, where the port reads the two NAXIS gives",
-    ),
-    (
         "alt_axes_alt_offset",
         "the port writes an absolute description A for the offset alternate B \
          (still describing offset coordinates, WCSNAMEA SKY_POLE), which C \

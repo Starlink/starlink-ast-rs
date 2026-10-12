@@ -8,12 +8,12 @@ use super::card_list::CardList;
 use super::fits_store::FitsStore;
 use super::warning::{Warning, Warnings};
 use super::wcs_celestial::{self, CelestialResult};
-use super::wcs_keywords::key_for;
+use super::wcs_keywords::{WcsStores, key_for};
 use super::wcs_matrix;
 use super::wcs_spectral::{self, SpectralResult};
 use crate::error::AstResult;
 use crate::frames::{BasicFrameBuilder, CmpFrame, DynFrame, FrameRef, FrameSet};
-use crate::mappings::{CmpMap, Composition, DynMapping, ShiftMap, UnitMap};
+use crate::mappings::{CmpMap, Composition, DynMapping, PermMap, ShiftMap, UnitMap};
 use crate::serial::AnyObject;
 
 /// Read `RFVAL<i>` (primary plane) or `RFVAL<i><s>` (alt plane `s`) off
@@ -43,7 +43,15 @@ fn read_rfval(cards: &CardList, naxis: usize, s: char) -> Vec<Option<f64>> {
 /// - Mapping: pixel → world
 #[cfg(test)]
 pub(crate) fn decode_wcs(store: &FitsStore) -> AstResult<AnyObject> {
-    decode_wcs_inner(store, false, false, &CardList::new(), ' ', &mut Vec::new())
+    decode_wcs_inner(
+        store,
+        store.naxis,
+        false,
+        false,
+        &CardList::new(),
+        ' ',
+        &mut Vec::new(),
+    )
 }
 
 /// Inner decoder that also adds to `warnings` each warning raised (e.g. the
@@ -53,9 +61,10 @@ pub(crate) fn decode_wcs(store: &FitsStore) -> AstResult<AnyObject> {
 /// `cards` is the FitsChan's own card list — the same `this` C's
 /// `WcsCelestial` reads `RFVAL<i>` from (fitschan.c:36160-36166) — and `s`
 /// is this plane's version character (`' '` for the primary plane, `'A'`..
-/// `'Z'` for an alt plane).
+/// `'Z'` for an alt plane). The pixel Frame has `npix` axes.
 pub(crate) fn decode_wcs_inner(
     store: &FitsStore,
+    npix: usize,
     def_b1950: bool,
     iwc: bool,
     cards: &CardList,
@@ -127,19 +136,17 @@ pub(crate) fn decode_wcs_inner(
     let composed: DynMapping = build_pixel_to_world(store, pixel_to_iwc, celestial, spectral)?;
     let full_mapping: DynMapping = composed.simplify()?;
 
-    // Step 7: Build the pixel frame. C labels each pixel axis
-    // "Pixel axis <n>" (fitschan.c:11987-11990).
-    let mut pixel_builder = BasicFrameBuilder::new(naxis)
-        .domain("GRID")
-        .title("Pixel Coordinates");
-    for i in 0..naxis {
-        pixel_builder = pixel_builder.label(i + 1, format!("Pixel axis {}", i + 1));
-    }
-    let pixel_frame: DynFrame = Box::new(pixel_builder.build()?);
-
     // Step 8: Build the FrameSet.
-    let mut frameset = FrameSet::new(pixel_frame);
-    add_wcs_frame(&mut frameset, store, s, full_mapping, world_frame, iwc_map)?;
+    let mut frameset = FrameSet::new(pixel_frame(npix)?);
+    add_wcs_frame(
+        &mut frameset,
+        npix,
+        store,
+        s,
+        full_mapping,
+        world_frame,
+        iwc_map,
+    )?;
 
     // Explicitly fix the GRID (pixel) Frame as the base, mirroring C
     // `astSetBase(ret, pixel)` (fitschan.c:12042). This marks the Base
@@ -176,8 +183,45 @@ pub(crate) fn decode_wcs_inner(
     Ok(AnyObject::FrameSet(frameset))
 }
 
+/// The pixel Frame of a FITS-WCS read, with `npix` axes. C labels each
+/// pixel axis "Pixel axis <n>" (fitschan.c:12141-12145).
+fn pixel_frame(npix: usize) -> AstResult<DynFrame> {
+    let mut builder = BasicFrameBuilder::new(npix)
+        .domain("GRID")
+        .title("Pixel Coordinates");
+    for i in 0..npix {
+        builder = builder.label(i + 1, format!("Pixel axis {}", i + 1));
+    }
+    Ok(Box::new(builder.build()?))
+}
+
+/// Join a Mapping whose inputs are an axis description's WCS axes to the
+/// `npix` pixel axes, as C's `AddFrame` does (fitschan.c:2797-2824): a
+/// PermMap passes the axes they share, gives extra WCS axes the value 0,
+/// the default CRPIX, and drops extra pixel axes.
+fn join_pixel_axes(npix: usize, map: DynMapping) -> AstResult<DynMapping> {
+    let nwcs = map.nin();
+    if nwcs == npix {
+        return Ok(map);
+    }
+    // The PermMap's axis indices are 1-based; -1 is the first constant.
+    let inperm: Vec<i64> = (0..npix)
+        .map(|i| if i < nwcs { i as i64 + 1 } else { -1 })
+        .collect();
+    let outperm: Vec<i64> = (0..nwcs)
+        .map(|i| if i < npix { i as i64 + 1 } else { -1 })
+        .collect();
+    let pmap = PermMap::new(&inperm, &outperm, &[0.0])?;
+    Ok(Box::new(CmpMap::new(
+        Box::new(pmap),
+        map,
+        Composition::Series,
+    )?))
+}
+
 /// Add the WCS Frame of axis description `s` to `fs`, connected to its
-/// base (pixel) Frame by `pixel_to_wcs`, and make it current. With
+/// base (pixel) Frame, which has `npix` axes, by `pixel_to_wcs`, and make it
+/// current. With
 /// `pixel_to_iwc` (the FitsChan's Iwc attribute set) a Frame of
 /// intermediate world coordinates, with Domain `IWC` followed by `s`, is
 /// added too, as C's `WcsFrame` and `AddFrame` add it
@@ -186,6 +230,7 @@ pub(crate) fn decode_wcs_inner(
 /// coordinates, which is added to `fs` through the pixel to IWC Mapping.
 fn add_wcs_frame(
     fs: &mut FrameSet,
+    npix: usize,
     store: &FitsStore,
     s: char,
     pixel_to_wcs: DynMapping,
@@ -193,7 +238,11 @@ fn add_wcs_frame(
     pixel_to_iwc: Option<(DynMapping, Vec<Option<String>>)>,
 ) -> AstResult<()> {
     let Some((map1, units)) = pixel_to_iwc else {
-        return fs.add_frame(FrameRef::Base, pixel_to_wcs, world_frame);
+        return fs.add_frame(
+            FrameRef::Base,
+            join_pixel_axes(npix, pixel_to_wcs)?,
+            world_frame,
+        );
     };
     let wcsaxes = store.wcsaxes.unwrap_or(store.naxis);
     let domain = if s == ' ' {
@@ -221,7 +270,7 @@ fn add_wcs_frame(
     let mut pair = FrameSet::new(world_frame);
     pair.add_frame(FrameRef::Base, wcs_to_iwc, iwc_frame)?;
     let nframe = fs.nframe();
-    fs.add_frameset(FrameRef::Base, map1, pair)?;
+    fs.add_frameset(FrameRef::Base, join_pixel_axes(npix, map1)?, pair)?;
     // The WCS Frame, the first of the pair, is made current.
     fs.set_current(FrameRef::Index(nframe + 1))
 }
@@ -571,32 +620,54 @@ fn peek_sky(frame: &dyn crate::frames::Frame) -> Option<&crate::frames::SkyFrame
 /// `cards` is the FitsChan's own card list, used to read `RFVAL<i>` /
 /// `RFVAL<i><s>` for the primary plane and each alt plane respectively
 /// (fitschan.c:36160-36166).
+///
+/// With no pixel axes, C's `MakeFitsFrameSet` makes nothing
+/// (fitschan.c:12136), and neither does this. Without a primary axis
+/// description the FrameSet starts with the pixel Frame alone, which stays
+/// current.
+///
+/// For each axis description read, `cursors` receives the index in
+/// `warnings` of the first warning it raises and its number of WCS axes,
+/// which decide where C writes those warnings.
 pub(crate) fn decode_wcs_with_alts_inner(
-    primary: &FitsStore,
-    alts: &[(char, FitsStore)],
+    stores: &WcsStores,
     def_b1950: bool,
     ignore_bad_alt: bool,
     iwc: bool,
     cards: &CardList,
     warnings: &mut Warnings,
-) -> AstResult<AnyObject> {
-    // Step 1: build the primary FrameSet via the inner decoder.
-    let primary_obj = decode_wcs_inner(primary, def_b1950, iwc, cards, ' ', warnings)?;
-    let mut fs = match primary_obj {
-        AnyObject::FrameSet(f) => f,
-        _ => unreachable!("decode_wcs always returns AnyObject::FrameSet"),
-    };
+    cursors: &mut Vec<(usize, usize)>,
+) -> AstResult<Option<AnyObject>> {
+    let npix = stores.npix;
+    if npix == 0 {
+        return Ok(None);
+    }
+    let alts = &stores.alts;
 
-    // Remember the primary current frame index so we can restore it
-    // after add_frame moves current to each newly-appended alt.
-    // After the primary is built, it sits at frame index 2.
-    let primary_index = 2;
+    // Step 1: build the primary FrameSet via the inner decoder. The Frame
+    // current once it is added, the primary WCS Frame or else the pixel
+    // Frame, is made current again once the alternates are added.
+    let (mut fs, primary_index) = match &stores.primary {
+        Some(primary) => {
+            cursors.push((warnings.len(), primary.naxis));
+            match decode_wcs_inner(primary, npix, def_b1950, iwc, cards, ' ', warnings)? {
+                AnyObject::FrameSet(f) => (f, 2),
+                _ => unreachable!("decode_wcs always returns AnyObject::FrameSet"),
+            }
+        }
+        None => {
+            let mut fs = FrameSet::new(pixel_frame(npix)?);
+            fs.set_base(FrameRef::Index(1))?;
+            (fs, 1)
+        }
+    };
 
     // Step 2: append one alt frame per (letter, alt_store). Each is added
     // to a copy of the FrameSet, kept only if every step succeeds: with
     // IgnoreBadAlt set, an alternate description that cannot be read is
     // left out, as C's `AddFrame` clears the error from `WcsMapFrm`.
     for (letter, alt_store) in alts {
+        cursors.push((warnings.len(), alt_store.naxis));
         let mut trial = fs.clone();
         let mut alt_warnings = Vec::new();
         let added = (|| -> AstResult<()> {
@@ -648,6 +719,7 @@ pub(crate) fn decode_wcs_with_alts_inner(
             // SkyRef/RefRA-RefDec/DSB stamps below target it.
             add_wcs_frame(
                 &mut trial,
+                npix,
                 alt_store,
                 *letter,
                 full_mapping,
@@ -687,7 +759,7 @@ pub(crate) fn decode_wcs_with_alts_inner(
     // when a corresponding absolute SkyFrame exists.
     tidy_offsets(&mut fs)?;
 
-    Ok(AnyObject::FrameSet(fs))
+    Ok(Some(AnyObject::FrameSet(fs)))
 }
 
 /// Apply C `TidyOffsets` (fitschan.c:34437-34609) to a freshly-read

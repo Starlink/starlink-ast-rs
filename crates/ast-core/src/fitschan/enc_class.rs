@@ -11,130 +11,14 @@
 //! - SPECSYS is typically "SOURCE" (source rest frame)
 //!
 //! This module provides:
-//! - [`read_from_cards`]: extract CLASS keywords from a CardList into a FitsStore
 //! - [`write_to_cards`]: write a FitsStore as CLASS keywords into a CardList
 
 use super::card_list::CardList;
 use super::fits_store::FitsStore;
-use crate::error::{AstError, AstResult, ErrorCode};
+use crate::error::AstResult;
 use crate::frames::{
     Frame, FrameRef, FrameSet, SkyFrame, SkySystem, SpecFrame, SpecSystem, StdOfRest,
 };
-
-/// Read CLASS-style WCS keywords from a [`CardList`] into a [`FitsStore`].
-///
-/// Key behaviours:
-/// - Older projection codes GLS and ATF are translated to SFL and AIT
-/// - The spectral CRVAL is converted from offset to absolute frequency:
-///   `store.crval[spec] = header_CRVAL + RESTFREQ`
-/// - SPECSYS is derived from the velocity keyword present in the header
-/// - RADESYS/RADECSYS and EQUINOX are read directly
-pub(crate) fn read_from_cards(cards: &CardList) -> AstResult<FitsStore> {
-    // Determine the number of axes. CLASS headers normally carry NAXIS,
-    // but some real-world headers (e.g. ACSIS spectra written by JCMT)
-    // omit it. Fall back to scanning indexed CTYPE/CRVAL/CRPIX/CDELT
-    // keywords like the C library does in `WcsFcRead`'s NAXIS-absent
-    // branch.
-    let naxis = cards
-        .get_int("NAXIS")
-        .map(|v| v as usize)
-        .or_else(|| super::wcs_keywords::infer_axis_count_from_indexed_keywords(cards))
-        .ok_or_else(|| {
-            AstError::new(
-                ErrorCode::Bdfts,
-                "CLASS header has no NAXIS keyword and no axis-indexed keywords (CTYPEn, CRVALn, ...) to infer axis count from",
-            )
-        })?;
-
-    if naxis == 0 {
-        return Err(AstError::new(ErrorCode::Bdfts, "NAXIS is zero"));
-    }
-
-    let mut store = FitsStore::new(naxis);
-
-    // Extract per-axis keywords.
-    for i in 0..naxis {
-        let axis_num = i + 1; // FITS is 1-based
-
-        // CRPIX
-        let key = format!("CRPIX{axis_num}");
-        store.crpix[i] = cards.get_float_marked(&key);
-
-        // CRVAL
-        let key = format!("CRVAL{axis_num}");
-        store.crval[i] = cards.get_float_marked(&key);
-
-        // CDELT
-        let key = format!("CDELT{axis_num}");
-        store.cdelt[i] = cards.get_float_marked(&key);
-
-        // CTYPE. CLASS-specific projection rewrites (blank → -GLS, -ATF →
-        // -AIT) are applied by SpecTrans before this reader runs, mirroring
-        // C: the CLASS read path is SpecTrans → WcsToStore
-        // (fitschan.c:11511-11525), with every CLASS-specific rewrite living
-        // in ClassTrans (fitschan.c:7042). There is no CLASS-specific
-        // ToStore. C's WcsFcRead applies an unconditional trailing-space
-        // strip (fitschan.c:36975, see `CardList::strip_wcs_store_string`)
-        // before storing any recognised string keyword.
-        let key = format!("CTYPE{axis_num}");
-        store.ctype[i] = CardList::strip_wcs_store_string(cards.get_string_marked(&key));
-
-        // CUNIT
-        let key = format!("CUNIT{axis_num}");
-        store.cunit[i] = CardList::strip_wcs_store_string(cards.get_string_marked(&key));
-    }
-
-    // Read RESTFREQ (or RESTFRQ) — required for offset correction.
-    let restfreq = cards
-        .get_float_marked("RESTFREQ")
-        .or_else(|| cards.get_float_marked("RESTFRQ"));
-    store.restfrq = restfreq;
-
-    // CRVAL adjustment, SPECSYS, SSYSSRC, and ZSOURCE are all
-    // injected by `spec_trans::translate_class` (fitschan.c:7000-7181)
-    // before this reader runs. We just pass through the cards as
-    // standard FITS-WCS at this point. SPECSYS/SSYSSRC/etc. are
-    // picked up by the generic FITS-WCS keyword reader downstream.
-    store.specsys = CardList::strip_wcs_store_string(cards.get_string_marked("SPECSYS"));
-    store.ssyssrc = CardList::strip_wcs_store_string(cards.get_string_marked("SSYSSRC"));
-    store.zsource = cards.get_float_marked("ZSOURCE");
-
-    // IMAGFREQ — the image-sideband frequency (Hz). When present, the
-    // spectral axis is read as a DSBSpecFrame rather than a plain
-    // SpecFrame (C `WcsSpectral`, fitschan.c:39567-39572). The CLASS
-    // translator (`spec_trans::translate_class`) leaves IMAGFREQ in the
-    // card list as a standard keyword, so it is read directly here.
-    store.imagfreq = cards.get_float_marked("IMAGFREQ");
-
-    // OBSGEO-X/Y/Z — observatory geocentric position (metres). These feed
-    // the SpecFrame's ObsLon/ObsLat/ObsAlt, which the topocentric Doppler
-    // correction (and hence DSBSetUp's IF) depends on. Mirrors C
-    // `WcsSpectral` (fitschan.c:39601-39614), which reads OBSGEO from the
-    // FitsStore regardless of encoding.
-    store.obsgeox = cards.get_float("OBSGEO-X");
-    store.obsgeoy = cards.get_float("OBSGEO-Y");
-    store.obsgeoz = cards.get_float("OBSGEO-Z");
-
-    // RADESYS / RADECSYS
-    store.radesys = CardList::strip_wcs_store_string(
-        cards
-            .get_string_marked("RADESYS")
-            .or_else(|| cards.get_string_marked("RADECSYS")),
-    );
-
-    // EQUINOX
-    store.equinox = cards.get_float_marked("EQUINOX");
-
-    // Epoch of observation: TIMESYS + MJD-AVG / MJD-OBS / DATE-OBS /
-    // DATE-AVG priority chain.
-    super::wcs_keywords::read_epoch_into_store(cards, &mut store);
-
-    // LONPOLE, LATPOLE
-    store.lonpole = cards.get_float_marked("LONPOLE");
-    store.latpole = cards.get_float_marked("LATPOLE");
-
-    Ok(store)
-}
 
 /// Whether `store` can be written with FITS-CLASS: the checks C's
 /// `CLASSFromStore` (fitschan.c:6593-6865) makes before writing, and the
@@ -700,11 +584,20 @@ mod tests {
     use crate::fitschan::Encoding;
     use crate::fitschan::spec_trans::spec_trans;
 
+    /// The store C's `WcsToStore` makes of a translated header.
+    fn read_from_cards(cards: &CardList) -> AstResult<FitsStore> {
+        Ok(
+            super::super::wcs_keywords::extract_wcs_keywords_with_alts(cards)?
+                .primary
+                .expect("a primary axis description"),
+        )
+    }
+
     /// Apply CLASS-encoding `spec_trans` translations to a header
     /// before reading. Tests that exercise CLASS-specific keyword
     /// translations (CRVAL→CRVAL+RESTFREQ shift, SSYSSRC/ZSOURCE
     /// synthesis, GLS→SFL CTYPE rewrites) must go through this
-    /// pipeline because [`read_from_cards`] expects already-
+    /// pipeline because `read_from_cards` expects already-
     /// translated cards (mirrors C's runtime: `astRead` calls
     /// `SpecTrans` before the per-axis store extraction). Direct
     /// callers of `read_from_cards` on un-translated CLASS headers

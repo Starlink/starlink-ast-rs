@@ -37,30 +37,6 @@ pub(crate) fn key_for_2(prefix: &str, i: usize, j: usize, s: char) -> String {
     }
 }
 
-/// Discover the set of alt-plane version letters present in a
-/// FITS-WCS card list.
-///
-/// Returns letters in alphabetical order. A letter is included iff
-/// at least one of `CTYPE{i}{S}`, `CRVAL{i}{S}`, `CRPIX{i}{S}`,
-/// `CDELT{i}{S}` is present for some axis `i ∈ 1..=9`.
-///
-/// Mirrors C `WcsFromStore`'s per-version axis-key scan.
-pub(crate) fn detect_alt_letters(cards: &CardList) -> Vec<char> {
-    let mut found = Vec::new();
-    for c in 'A'..='Z' {
-        let any = (1..=9).any(|i| {
-            cards.find(&format!("CTYPE{i}{c}")).is_some()
-                || cards.find(&format!("CRVAL{i}{c}")).is_some()
-                || cards.find(&format!("CRPIX{i}{c}")).is_some()
-                || cards.find(&format!("CDELT{i}{c}")).is_some()
-        });
-        if any {
-            found.push(c);
-        }
-    }
-    found
-}
-
 /// Look up a value from `cards` at the version-suffixed key.
 ///
 /// Mirrors `fitschan.c::GetItem` (line 13008): no primary-fallback —
@@ -81,30 +57,6 @@ where
     F: Fn(&CardList, &str) -> Option<T>,
 {
     f(cards, &key_for(prefix, axis, s))
-}
-
-/// Infer the number of WCS axes from the highest-indexed FITS keyword
-/// found in the header.
-///
-/// Scans `NAXIS{n}`, `CTYPE{n}`, `CRVAL{n}`, `CRPIX{n}`, `CDELT{n}` for
-/// `n` in 1..=9 and returns the maximum index seen, or `None` if none
-/// are present. Mirrors the C library's last-resort axis-count guess in
-/// `fitschan.c::AstroSysCelOrder` and related call sites: when no
-/// explicit count is available, the presence of axis-indexed keywords
-/// up to `n` implies at least `n` axes exist.
-pub(crate) fn infer_axis_count_from_indexed_keywords(cards: &CardList) -> Option<usize> {
-    let prefixes = ["NAXIS", "CTYPE", "CRVAL", "CRPIX", "CDELT"];
-    let mut max_n = 0;
-    for n in 1..=9 {
-        for prefix in &prefixes {
-            let key = format!("{prefix}{n}");
-            if cards.find(&key).is_some() {
-                max_n = n;
-                break;
-            }
-        }
-    }
-    if max_n == 0 { None } else { Some(max_n) }
 }
 
 /// Read the FITS TIMESYS and the MJD-AVG / MJD-OBS / DATE-OBS priority
@@ -141,17 +93,16 @@ pub(crate) fn read_epoch_into_store(cards: &CardList, store: &mut FitsStore) {
 /// Extract FITS-WCS keywords from a [`CardList`] into a [`FitsStore`].
 ///
 /// The returned store contains all WCS keyword values found in the header.
-/// Missing keywords are represented as `None`. The function determines
-/// the number of WCS axes from `WCSAXES` if present, otherwise from `NAXIS`.
-///
-/// If neither `WCSAXES` nor `NAXIS` is found, returns an error.
+/// Missing keywords are represented as `None`. The store has the axis
+/// description's `WCSAXES` axes, or `npix`, the number of pixel axes, as C
+/// takes the number of WCS axes (fitschan.c:10866-10870).
 ///
 /// `s` is the coordinate-version letter:
 /// - `' '` (primary) reads bare keys (`CRVAL1`, etc.).
 /// - `'A'..='Z'` (alt plane) reads suffixed keys (`CRVAL1A`); per-axis
 ///   keys absent at the alt suffix fall back to the primary key (mirrors
 ///   C `GetItem`'s primary-fallback rule).
-pub(crate) fn extract_wcs_keywords(cards: &CardList, s: char) -> AstResult<FitsStore> {
+pub(crate) fn extract_wcs_keywords(cards: &CardList, s: char, npix: usize) -> AstResult<FitsStore> {
     // Determine the number of axes.
     // C reads WCSAXES as a double and rounds (fitschan.c:37116, fixed
     // upstream at e447556a): a value stored as a FITS float marginally below
@@ -159,23 +110,9 @@ pub(crate) fn extract_wcs_keywords(cards: &CardList, s: char) -> AstResult<FitsS
     let wcsaxes = cards
         .get_float(&key_for("WCSAXES", None, s))
         .map(|v| v.round() as usize);
-    let naxis_val = cards.get_int("NAXIS").map(|v| v as usize);
-
-    let naxis = match (wcsaxes, naxis_val) {
-        (Some(w), _) => w,
-        (None, Some(n)) => n,
-        (None, None) => {
-            infer_axis_count_from_indexed_keywords(cards).ok_or_else(|| {
-                AstError::new(
-                    ErrorCode::Bdfts,
-                    "cannot determine number of WCS axes: neither WCSAXES, NAXIS, NAXISn, CTYPEn, CRVALn, CRPIXn, nor CDELTn found",
-                )
-            })?
-        }
-    };
-
+    let naxis = wcsaxes.unwrap_or(npix);
     if naxis == 0 {
-        return Err(AstError::new(ErrorCode::Bdfts, "NAXIS/WCSAXES is zero"));
+        return Err(AstError::new(ErrorCode::Bdfts, "WCSAXES is zero"));
     }
 
     let mut store = FitsStore::new(naxis);
@@ -324,28 +261,37 @@ pub(crate) fn extract_wcs_keywords(cards: &CardList, s: char) -> AstResult<FitsS
     Ok(store)
 }
 
-/// Extract primary + every detected alt-plane FitsStore from a
-/// CardList.
-///
-/// Wired into `FitsChan::read` for FITS-WCS in Task 3.3.
-///
-/// The returned alt list is in alphabetical letter order. Each alt
-/// FitsStore was extracted with `extract_wcs_keywords(cards, s)`,
-/// which falls back to the primary keyword when the alt-suffixed
-/// version is absent — see [`extract_wcs_keywords`] for the
-/// fallback rule. Mirrors fitschan.c::WcsFromStore's per-version
-/// loop.
-pub(crate) fn extract_wcs_keywords_with_alts(
-    cards: &CardList,
-) -> AstResult<(FitsStore, Vec<(char, FitsStore)>)> {
-    let primary = extract_wcs_keywords(cards, ' ')?;
-    let alt_letters = detect_alt_letters(cards);
-    let mut alts = Vec::with_capacity(alt_letters.len());
-    for s in alt_letters {
-        let store = extract_wcs_keywords(cards, s)?;
-        alts.push((s, store));
+/// The axis descriptions of a FITS-WCS header: the number of pixel axes,
+/// the primary description if C's `MakeFitsFrameSet` adds a Frame for it,
+/// and the alternate ones it adds, in order (see
+/// [`super::wcs_mark::wcs_versions`]).
+pub(crate) struct WcsStores {
+    /// The number of pixel axes.
+    pub npix: usize,
+    /// The primary axis description.
+    pub primary: Option<FitsStore>,
+    /// The alternate axis descriptions, with their letters.
+    pub alts: Vec<(char, FitsStore)>,
+}
+
+/// Extract every axis description of a FITS-WCS header.
+pub(crate) fn extract_wcs_keywords_with_alts(cards: &CardList) -> AstResult<WcsStores> {
+    let versions = super::wcs_mark::wcs_versions(cards);
+    let npix = versions.npix;
+    let primary = if versions.primary {
+        Some(extract_wcs_keywords(cards, ' ', npix)?)
+    } else {
+        None
+    };
+    let mut alts = Vec::with_capacity(versions.alternates.len());
+    for s in versions.alternates {
+        alts.push((s, extract_wcs_keywords(cards, s, npix)?));
     }
-    Ok((primary, alts))
+    Ok(WcsStores {
+        npix,
+        primary,
+        alts,
+    })
 }
 
 /// Test whether a SIN projection in `store` should be re-emitted as
@@ -572,31 +518,47 @@ END";
         );
 
         // WCS-store path: unconditional strip removes the padding.
-        let store = extract_wcs_keywords(&cards, ' ').unwrap();
+        let store = extract_wcs_keywords(&cards, ' ', 2).unwrap();
         assert_eq!(store.specsys, Some("BARYCENTRIC".to_string()));
     }
 
     #[test]
-    fn detect_alt_letters_empty_when_only_primary() {
+    fn versions_follow_crpix_and_crval() {
+        use super::super::wcs_mark::{WcsVersions, wcs_versions};
+        // The pixel axes come from the highest CRPIX index, NAXIS aside; an
+        // alternate description is read up to the highest letter with a
+        // CRVAL, so `B`, with only a CRPIX, is not.
+        let header = "\
+NAXIS   =                    2
+CRPIX1  =                  1.0
+CRPIX3  =                  1.0
+CRVAL1  =                  1.0
+CTYPE1A = 'GLON-TAN'
+CRVAL2A =                  1.0
+CRPIX1B =                100.0
+END";
+        assert_eq!(
+            wcs_versions(&cards_from(header)),
+            WcsVersions {
+                npix: 3,
+                primary: true,
+                alternates: vec!['A'],
+            }
+        );
+        // Without a CRPIX there are no pixel axes and nothing is read.
         let header = "\
 NAXIS   =                    2
 CTYPE1  = 'RA---TAN'
-CTYPE2  = 'DEC--TAN'
+CRVAL1  =                  1.0
 END";
-        let cards = cards_from(header);
-        assert!(detect_alt_letters(&cards).is_empty());
-    }
-
-    #[test]
-    fn detect_alt_letters_finds_a_and_b() {
-        let header = "\
-NAXIS   =                    2
-CTYPE1A = 'GLON-TAN'
-CRPIX1B =                100.0
-END";
-        let cards = cards_from(header);
-        let letters = detect_alt_letters(&cards);
-        assert_eq!(letters, vec!['A', 'B']);
+        assert_eq!(
+            wcs_versions(&cards_from(header)),
+            WcsVersions {
+                npix: 0,
+                primary: false,
+                alternates: vec![],
+            }
+        );
     }
 
     #[test]
@@ -617,9 +579,11 @@ CDELT1  =                -0.01
 CDELT2  =                 0.01
 CTYPE1A = 'GLON-TAN'
 CTYPE2A = 'GLAT-TAN'
+CRVAL2A =                  1.0
 END";
         let cards = cards_from(header);
-        let (primary, alts) = extract_wcs_keywords_with_alts(&cards).unwrap();
+        let stores = extract_wcs_keywords_with_alts(&cards).unwrap();
+        let (primary, alts) = (stores.primary.unwrap(), stores.alts);
         assert_eq!(primary.ctype[0].as_deref(), Some("RA---TAN"));
         assert_eq!(alts.len(), 1);
         let (letter, alt) = &alts[0];
@@ -645,7 +609,7 @@ CTYPE1  = 'RA---TAN'           / Axis type
 CTYPE2  = 'DEC--TAN'           / Axis type
 END";
         let cards = cards_from(header);
-        let store = extract_wcs_keywords(&cards, ' ').unwrap();
+        let store = extract_wcs_keywords(&cards, ' ', 2).unwrap();
 
         assert_eq!(store.naxis, 2);
         assert_eq!(store.crpix[0], Some(128.0));
@@ -685,7 +649,7 @@ END";
             crate::fitschan::spec_trans::TransAttrs::default(),
             &mut crate::fitschan::spec_trans::TransWarnings::default(),
         );
-        let store = extract_wcs_keywords(&cards, ' ').unwrap();
+        let store = extract_wcs_keywords(&cards, ' ', 2).unwrap();
 
         assert!(store.has_pc_matrix());
         // Row 2's CDELT is negative because its diagonal element is.
@@ -705,7 +669,7 @@ END";
     }
 
     #[test]
-    fn wcsaxes_overrides_naxis() {
+    fn wcsaxes_sets_the_number_of_wcs_axes() {
         let header = "\
 NAXIS   =                    4 / Physical axes
 WCSAXES =                    2 / WCS axes
@@ -713,7 +677,7 @@ CRPIX1  =                  1.0
 CRPIX2  =                  1.0
 END";
         let cards = cards_from(header);
-        let store = extract_wcs_keywords(&cards, ' ').unwrap();
+        let store = extract_wcs_keywords(&cards, ' ', 4).unwrap();
         assert_eq!(store.naxis, 2);
         assert_eq!(store.wcsaxes, Some(2));
     }
@@ -733,7 +697,7 @@ END";
             crate::fitschan::spec_trans::TransAttrs::default(),
             &mut crate::fitschan::spec_trans::TransWarnings::default(),
         );
-        let store = extract_wcs_keywords(&cards, ' ').unwrap();
+        let store = extract_wcs_keywords(&cards, ' ', 2).unwrap();
 
         // Verify basic keywords.
         assert_eq!(store.naxis, 2);
@@ -775,42 +739,6 @@ END";
     }
 
     #[test]
-    fn no_naxis_returns_error() {
-        let header = "SIMPLE  =                    T / Standard\nEND";
-        let cards = cards_from(header);
-        let result = extract_wcs_keywords(&cards, ' ');
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn axis_count_inferred_from_ctype_when_naxis_missing() {
-        let header = "\
-CTYPE1  = 'GLON-CAR'
-CRVAL1  = 1.85e2
-CDELT1  = -1.25e-1
-CRPIX1  = 200.0
-CTYPE2  = 'GLAT-CAR'
-CRVAL2  = -3.5e1
-CDELT2  = 1.25e-1
-CRPIX2  = 200.0
-END
-";
-        let cards = cards_from(header);
-        assert_eq!(infer_axis_count_from_indexed_keywords(&cards), Some(2));
-    }
-
-    #[test]
-    fn axis_count_returns_none_when_no_indexed_keywords() {
-        let header = "\
-SIMPLE  =                    T
-EXTEND  =                    T
-END
-";
-        let cards = cards_from(header);
-        assert_eq!(infer_axis_count_from_indexed_keywords(&cards), None);
-    }
-
-    #[test]
     fn pv_parameters() {
         let header = "\
 NAXIS   =                    2
@@ -820,7 +748,7 @@ PV2_1   =                  0.0
 PV2_2   =                  0.0
 END";
         let cards = cards_from(header);
-        let store = extract_wcs_keywords(&cards, ' ').unwrap();
+        let store = extract_wcs_keywords(&cards, ' ', 2).unwrap();
         assert_eq!(store.pv[1][1], Some(0.0));
         assert_eq!(store.pv[1][2], Some(0.0));
         assert_eq!(store.pv[0][0], None);

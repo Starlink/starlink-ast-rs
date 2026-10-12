@@ -184,6 +184,98 @@ fn convert(value: &FitsValue, want: Want, undef: bool) -> Convert {
     }
 }
 
+/// The axis descriptions a FITS-WCS read builds Frames for, and its number
+/// of pixel axes.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct WcsVersions {
+    /// The number of pixel axes: one more than the highest CRPIX index of
+    /// the primary axis description or any alternate one up to the highest
+    /// with a CRVAL, as C's `FitsToStore` takes it (fitschan.c:11651-11656).
+    pub npix: usize,
+    /// Whether the primary axis description has a CRPIX, without which
+    /// `MakeFitsFrameSet` adds no Frame for it (fitschan.c:12163).
+    pub primary: bool,
+    /// The alternate axis descriptions `MakeFitsFrameSet` adds Frames for
+    /// (fitschan.c:12177-12194): each letter up to the highest with a CRVAL
+    /// that has a CRVAL, CRPIX or CTYPE for an axis below `npix`.
+    pub alternates: Vec<char>,
+}
+
+/// Find the axis descriptions and pixel axes a read of `cards` gives, from
+/// the CRVAL, CRPIX and CTYPE values C's `WcsFcRead` stores: a card counts
+/// if the sweep would store it, its value converting to the type its
+/// template asks for, and cards already consumed are skipped.
+pub(crate) fn wcs_versions(cards: &CardList) -> WcsVersions {
+    const VERSIONS: usize = 27;
+    // For each version (0 the primary, 1 `A`, ...), the highest CRPIX index
+    // stored, and the (1-based) axes with a CRVAL or CTYPE.
+    let mut crpix_max = [0usize; VERSIONS];
+    let mut crval_axes: Vec<Vec<usize>> = vec![Vec::new(); VERSIONS];
+    let mut crpix_axes: Vec<Vec<usize>> = vec![Vec::new(); VERSIONS];
+    let mut ctype_axes: Vec<Vec<usize>> = vec![Vec::new(); VERSIONS];
+    for card in cards.iter() {
+        if card.flags.consumption == Consumption::Used {
+            continue;
+        }
+        let Some(tmpl) = TEMPLATES
+            .iter()
+            .find(|t| match_keyword(&card.keyword, t.pattern, 0).is_some())
+        else {
+            continue;
+        };
+        let item = match tmpl.pattern {
+            "CRVAL%d" | "CRVAL%d%1c" => &mut crval_axes,
+            "CRPIX%d" | "CRPIX%d%1c" => &mut crpix_axes,
+            "CTYPE%d" | "CTYPE%d%1c" => &mut ctype_axes,
+            _ => continue,
+        };
+        if !matches!(convert(&card.value, tmpl.want, tmpl.undef), Convert::Ok) {
+            continue;
+        }
+        let Some(&[axis]) = match_keyword(&card.keyword, tmpl.pattern, 1).as_deref() else {
+            continue;
+        };
+        let Ok(axis) = usize::try_from(axis) else {
+            continue;
+        };
+        if axis == 0 {
+            continue;
+        }
+        let si = if tmpl.pattern.ends_with("%1c") {
+            match card.keyword.chars().last() {
+                Some(c @ 'A'..='Z') => c as usize - 'A' as usize + 1,
+                Some(c @ 'a'..='z') => c as usize - 'a' as usize + 1,
+                _ => continue,
+            }
+        } else {
+            0
+        };
+        item[si].push(axis);
+        if tmpl.pattern.starts_with("CRPIX") {
+            crpix_max[si] = crpix_max[si].max(axis);
+        }
+    }
+    // `GetMaxS`: the highest version with a CRVAL, or the primary.
+    let smax = (1..VERSIONS)
+        .rev()
+        .find(|&si| !crval_axes[si].is_empty())
+        .unwrap_or(0);
+    let npix = (0..=smax).map(|si| crpix_max[si]).max().unwrap_or(0);
+    let alternates = (1..=smax)
+        .filter(|&si| {
+            [&crval_axes[si], &crpix_axes[si], &ctype_axes[si]]
+                .iter()
+                .any(|axes| axes.iter().any(|&a| a <= npix))
+        })
+        .map(|si| (b'A' + (si - 1) as u8) as char)
+        .collect();
+    WcsVersions {
+        npix,
+        primary: crpix_max[0] > 0,
+        alternates,
+    }
+}
+
 /// Flag every card whose keyword names a FITS-WCS item as provisionally
 /// consumed, so a successful read excludes it from output.
 ///

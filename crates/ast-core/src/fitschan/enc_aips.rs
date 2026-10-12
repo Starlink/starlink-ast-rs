@@ -8,7 +8,6 @@
 //! LONPOLE/LATPOLE, and uses EQUINOX instead of EPOCH.
 //!
 //! This module provides:
-//! - [`read_from_cards`]: extract AIPS/AIPS++ keywords from a CardList into a FitsStore
 //! - [`write_to_cards`]: write a FitsStore as plain AIPS keywords into a CardList
 //! - [`write_to_cards_pp`]: write a FitsStore as AIPS++ keywords into a CardList
 
@@ -16,183 +15,7 @@ use ndarray::Array2;
 
 use super::card_list::CardList;
 use super::fits_store::FitsStore;
-use super::guess_encoding::is_aips_spectral;
-use crate::error::{AstError, AstResult, ErrorCode};
-
-/// Read AIPS/AIPS++ style WCS keywords from a [`CardList`] into a [`FitsStore`].
-///
-/// This handles both plain AIPS (with CROTA/EPOCH) and AIPS++ (with CDi_j/EQUINOX)
-/// headers. The distinguishing feature is the AIPS spectral CTYPE convention.
-///
-/// Key behaviours:
-/// - AIPS spectral CTYPEs (e.g. "VELO-LSR") are translated to standard form
-///   (e.g. "VRAD") and the SPECSYS is extracted from the suffix
-/// - CROTA2 (or CROTA1 fallback) is converted to a PC rotation matrix
-/// - EPOCH is used to set equinox, applying the IAU 1984 rule for RADESYS
-/// - CDi_j matrix is also read (for AIPS++ headers)
-pub(crate) fn read_from_cards(cards: &CardList) -> AstResult<FitsStore> {
-    // Determine the number of axes from WCSAXES or NAXIS.
-    // Rounded, not truncated — see the note in `wcs_keywords.rs`.
-    let wcsaxes = cards.get_float("WCSAXES").map(|v| v.round() as usize);
-    let naxis_val = cards.get_int("NAXIS").map(|v| v as usize);
-
-    let naxis = match (wcsaxes, naxis_val) {
-        (Some(w), _) => w,
-        (None, Some(n)) => n,
-        (None, None) => {
-            // Fallback: infer from highest-numbered NAXISn keyword.
-            let mut max_n = 0;
-            for i in 1..=9 {
-                let key = format!("NAXIS{i}");
-                if cards.find(&key).is_some() {
-                    max_n = i;
-                }
-            }
-            if max_n == 0 {
-                return Err(AstError::new(
-                    ErrorCode::Bdfts,
-                    "cannot determine number of WCS axes: neither WCSAXES nor NAXIS found",
-                ));
-            }
-            max_n
-        }
-    };
-
-    if naxis == 0 {
-        return Err(AstError::new(ErrorCode::Bdfts, "NAXIS/WCSAXES is zero"));
-    }
-
-    let mut store = FitsStore::new(naxis);
-    store.wcsaxes = wcsaxes;
-
-    // Extract per-axis keywords. These WCS-description keywords are consumed
-    // by the read (mark=1, via the `*_marked` getters) so they are excluded
-    // from any subsequent output, mirroring C WcsFcRead.
-    for i in 0..naxis {
-        let axis_num = i + 1; // FITS is 1-based
-
-        // CRPIX
-        let key = format!("CRPIX{axis_num}");
-        store.crpix[i] = cards.get_float_marked(&key);
-
-        // CRVAL
-        let key = format!("CRVAL{axis_num}");
-        store.crval[i] = cards.get_float_marked(&key);
-
-        // CDELT
-        let key = format!("CDELT{axis_num}");
-        store.cdelt[i] = cards.get_float_marked(&key);
-
-        // CTYPE — translate AIPS spectral types and extract SPECSYS.
-        // C's WcsFcRead applies an unconditional trailing-space strip
-        // (fitschan.c:36975, see `CardList::strip_wcs_store_string`)
-        // before storing any recognised string keyword; apply it here
-        // before the AIPS-specific branching so both branches see the
-        // stripped value, matching C.
-        let key = format!("CTYPE{axis_num}");
-        if let Some(ctype_raw) = CardList::strip_wcs_store_string(cards.get_string_marked(&key)) {
-            if is_aips_spectral(&ctype_raw).is_some() {
-                let (standard_ctype, specsys) = translate_aips_spectral_read(&ctype_raw);
-                store.ctype[i] = Some(standard_ctype);
-                // Only set SPECSYS if not already set from a previous axis or keyword
-                if store.specsys.is_none() {
-                    store.specsys = Some(specsys);
-                }
-            } else {
-                store.ctype[i] = Some(ctype_raw);
-            }
-        }
-
-        // CUNIT
-        let key = format!("CUNIT{axis_num}");
-        store.cunit[i] = CardList::strip_wcs_store_string(cards.get_string_marked(&key));
-
-        // CDi_j matrix (for AIPS++ headers)
-        for j in 0..naxis {
-            let col_num = j + 1;
-            let key = format!("CD{axis_num}_{col_num}");
-            store.cd[i][j] = cards.get_float_marked(&key);
-        }
-
-        // PCi_j matrix. CROTA rotation is normalised into PC keywords by
-        // SpecTrans (`translate_crota`, mirroring C's WcsFcRead which runs
-        // SpecTrans on every encoding before WcsToStore), so — like C — the
-        // reader never interprets CROTA itself; it consumes the PC cards
-        // SpecTrans produced on the celestial axes. Try the 3-digit format
-        // (`PC003002`) first, then underscore (`PC3_2`).
-        for j in 0..naxis {
-            let col_num = j + 1;
-            let key_3digit = format!("PC{axis_num:03}{col_num:03}");
-            let key_underscore = format!("PC{axis_num}_{col_num}");
-            store.pc[i][j] = cards
-                .get_float_marked(&key_3digit)
-                .or_else(|| cards.get_float_marked(&key_underscore));
-        }
-    }
-
-    // EPOCH → equinox + RADESYS via IAU 1984 rule
-    let epoch = cards.get_float_marked("EPOCH");
-    let equinox_direct = cards.get_float_marked("EQUINOX");
-
-    // Prefer EQUINOX if present (AIPS++ style), otherwise use EPOCH
-    if let Some(eq) = equinox_direct {
-        store.equinox = Some(eq);
-    } else if let Some(ep) = epoch {
-        // EPOCH=0 is treated as 1950.0 (common AIPS convention)
-        let eq = if ep == 0.0 { 1950.0 } else { ep };
-        store.equinox = Some(eq);
-    }
-
-    // RADESYS/RADECSYS if present (overrides IAU rule)
-    store.radesys = CardList::strip_wcs_store_string(
-        cards
-            .get_string_marked("RADESYS")
-            .or_else(|| cards.get_string_marked("RADECSYS")),
-    );
-
-    // If RADESYS not explicitly set, apply IAU 1984 rule based on equinox
-    if store.radesys.is_none() {
-        if let Some(eq) = store.equinox {
-            store.radesys = Some(if eq < 1984.0 {
-                "FK4".to_string()
-            } else {
-                "FK5".to_string()
-            });
-        }
-    }
-
-    // LONPOLE, LATPOLE (AIPS++ may have these)
-    store.lonpole = cards.get_float_marked("LONPOLE");
-    store.latpole = cards.get_float_marked("LATPOLE");
-
-    // Spectral keywords (explicit SPECSYS overrides the one derived from CTYPE)
-    if let Some(specsys) = CardList::strip_wcs_store_string(cards.get_string_marked("SPECSYS")) {
-        store.specsys = Some(specsys);
-    }
-    store.restfrq = cards
-        .get_float_marked("RESTFRQ")
-        .or_else(|| cards.get_float_marked("RESTFREQ"));
-    store.restwav = cards.get_float_marked("RESTWAV");
-
-    // Epoch of observation (mark=0): TIMESYS + MJD-AVG / MJD-OBS / DATE-OBS /
-    // DATE-AVG priority chain. Not consumed — survives into output.
-    super::wcs_keywords::read_epoch_into_store(cards, &mut store);
-
-    // PV parameters (AIPS++: PVi_m, also legacy PROJP{m} on the latitude
-    // axis — fitschan.c writes PROJP{m} for AIPS++, see line 4148-4155).
-    for i in 0..naxis {
-        let axis_num = i + 1;
-        for m in 0..store.pv[i].len() {
-            let key = format!("PV{axis_num}_{m}");
-            store.pv[i][m] = cards.get_float_marked(&key);
-        }
-    }
-
-    // NCP → SIN normalisation (legacy AIPS alias).
-    super::wcs_keywords::normalise_ncp_to_sin(&mut store);
-
-    Ok(store)
-}
+use crate::error::AstResult;
 
 /// Whether `store` can be written with FITS-AIPS (`pp` false) or
 /// FITS-AIPS++ (`pp` true): the checks C's `AIPSFromStore`
@@ -951,32 +774,6 @@ pub(crate) fn write_to_cards_pp(
 // Private helpers
 // ---------------------------------------------------------------------------
 
-/// Translate an AIPS spectral CTYPE to standard form, returning (standard_ctype, specsys).
-///
-/// For example: "VELO-LSR" -> ("VRAD", "LSRK")
-fn translate_aips_spectral_read(ctype: &str) -> (String, String) {
-    let prefix = &ctype[..4];
-    let frame = &ctype[5..8];
-
-    let standard_ctype = match prefix {
-        "VELO" => "VRAD",
-        "FREQ" => "FREQ",
-        "FELO" => "VOPT",
-        _ => "VRAD", // fallback
-    };
-
-    let specsys = match frame {
-        "LSR" => "LSRK",
-        "LSD" => "LSRD",
-        "HEL" => "BARYCENT",
-        "GEO" => "GEOCENTR",
-        "OBS" | "TOP" | "EAR" => "TOPOCENT",
-        _ => "LSRK", // fallback
-    };
-
-    (standard_ctype.to_string(), specsys.to_string())
-}
-
 /// Translate a standard spectral CTYPE back to AIPS format using the given SPECSYS.
 ///
 /// For example: ("VRAD", Some("LSRK")) -> "VELO-LSR"
@@ -1020,6 +817,22 @@ fn translate_aips_spectral_write(ctype: &str, specsys: Option<&str>) -> String {
 mod tests {
     use super::*;
 
+    /// The store C's read makes of an AIPS header: `SpecTrans`, then
+    /// `WcsToStore`.
+    fn read_from_cards(cards: &CardList) -> AstResult<FitsStore> {
+        let trans = crate::fitschan::spec_trans::spec_trans(
+            cards,
+            crate::fitschan::Encoding::FitsAips,
+            crate::fitschan::spec_trans::TransAttrs::default(),
+            &mut crate::fitschan::spec_trans::TransWarnings::default(),
+        );
+        Ok(
+            super::super::wcs_keywords::extract_wcs_keywords_with_alts(&trans)?
+                .primary
+                .expect("a primary axis description"),
+        )
+    }
+
     #[test]
     fn read_aips_crota() {
         let header = "\
@@ -1040,13 +853,7 @@ END";
         // deletes the CROTA cards. `read_from_cards` then consumes the PC
         // cards — it never interprets CROTA itself.
         let cards = CardList::from_header(header).unwrap();
-        let trans = crate::fitschan::spec_trans::spec_trans(
-            &cards,
-            crate::fitschan::Encoding::FitsAips,
-            crate::fitschan::spec_trans::TransAttrs::default(),
-            &mut crate::fitschan::spec_trans::TransWarnings::default(),
-        );
-        let store = read_from_cards(&trans).unwrap();
+        let store = read_from_cards(&cards).unwrap();
 
         assert_eq!(store.naxis, 2);
 
@@ -1074,48 +881,98 @@ END";
         assert!((pc11 - cos30).abs() < 1e-10, "PC[1][1] = cos(30)");
     }
 
-    #[test]
-    fn read_aips_epoch_fk5() {
-        let header = "\
-NAXIS   =                    2 / Number of axes
-CRPIX1  =              512.0   / Reference pixel
-CRPIX2  =              512.0   / Reference pixel
-CRVAL1  =          180.000000  / Reference value
-CRVAL2  =          -45.000000  / Reference value
-CDELT1  =        -0.0002778    / Pixel scale
-CDELT2  =         0.0002778    / Pixel scale
-CTYPE1  = 'RA---TAN'           / Axis type
-CTYPE2  = 'DEC--TAN'           / Axis type
-EPOCH   =             2000.0   / Epoch
-END";
-        let cards = CardList::from_header(header).unwrap();
-        let store = read_from_cards(&cards).unwrap();
-
-        // EPOCH=2000 >= 1984 -> FK5
-        assert_eq!(store.equinox, Some(2000.0));
-        assert_eq!(store.radesys, Some("FK5".to_string()));
+    /// The FrameSet a read of `header` with encoding `enc` gives.
+    fn read_frameset(
+        header: &str,
+        enc: crate::fitschan::Encoding,
+    ) -> AstResult<crate::frames::FrameSet> {
+        use crate::channel::Channel;
+        let mut fc = crate::fitschan::FitsChan::new();
+        fc.set_encoding(enc);
+        for line in header.lines().filter(|l| *l != "END") {
+            fc.put_fits(line, false)?;
+        }
+        fc.clear_card()?;
+        match fc.read()? {
+            Some(crate::AnyObject::FrameSet(fs)) => Ok(fs),
+            _ => panic!("the read gave no FrameSet"),
+        }
     }
 
-    #[test]
-    fn read_aips_epoch_fk4() {
-        let header = "\
-NAXIS   =                    2 / Number of axes
-CRPIX1  =              512.0   / Reference pixel
-CRPIX2  =              512.0   / Reference pixel
-CRVAL1  =          180.000000  / Reference value
-CRVAL2  =          -45.000000  / Reference value
-CDELT1  =        -0.0002778    / Pixel scale
-CDELT2  =         0.0002778    / Pixel scale
-CTYPE1  = 'RA---TAN'           / Axis type
-CTYPE2  = 'DEC--TAN'           / Axis type
-EPOCH   =             1950.0   / Epoch
-END";
-        let cards = CardList::from_header(header).unwrap();
-        let store = read_from_cards(&cards).unwrap();
+    /// The celestial system and equinox (Julian or Besselian year) of `fs`.
+    fn sky_system(fs: &crate::frames::FrameSet) -> (crate::frames::SkySystem, f64) {
+        let (frame, _) = fs.current().primary_frame(0);
+        let sky = frame
+            .as_any()
+            .downcast_ref::<crate::frames::SkyFrame>()
+            .expect("a SkyFrame");
+        (sky.system(), sky.equinox_year())
+    }
 
-        // EPOCH=1950 < 1984 -> FK4
-        assert_eq!(store.equinox, Some(1950.0));
-        assert_eq!(store.radesys, Some("FK4".to_string()));
+    /// Headers with an AIPS EPOCH: C's `SpecTrans` takes EPOCH as the
+    /// equinox, 0 meaning 1950, and the celestial system is FK4 before 1984
+    /// and FK5 after. C gives FK5 (J2000), FK4 (B1950) and FK4 (B1950).
+    #[test]
+    fn read_aips_epoch() {
+        use crate::frames::SkySystem;
+        for (epoch, system, equinox) in [
+            ("2000.0", SkySystem::Fk5, 2000.0),
+            ("1950.0", SkySystem::Fk4, 1950.0),
+            ("0.0", SkySystem::Fk4, 1950.0),
+        ] {
+            let header = format!(
+                "NAXIS   =                    2
+CRPIX1  =              512.0
+CRPIX2  =              512.0
+CRVAL1  =          180.000000
+CRVAL2  =          -45.000000
+CDELT1  =        -0.0002778
+CDELT2  =         0.0002778
+CTYPE1  = 'RA---TAN'
+CTYPE2  = 'DEC--TAN'
+EPOCH   = {epoch:>18}"
+            );
+            let fs = read_frameset(&header, crate::fitschan::Encoding::FitsAips).unwrap();
+            assert_eq!(sky_system(&fs), (system, equinox), "EPOCH {epoch}");
+        }
+    }
+
+    /// FELO-GEO is optical velocity in the geocentric frame, as C reads it.
+    #[test]
+    fn read_aips_spectral_felo_geo() {
+        let header = "\
+NAXIS   =                    1
+CRPIX1  =                1.0
+CRVAL1  =            5000.0
+CDELT1  =              500.0
+CTYPE1  = 'FELO-GEO'";
+        let fs = read_frameset(header, crate::fitschan::Encoding::FitsAips).unwrap();
+        let (frame, _) = fs.current().primary_frame(0);
+        let spec = frame
+            .as_any()
+            .downcast_ref::<crate::frames::SpecFrame>()
+            .expect("a SpecFrame");
+        assert_eq!(spec.system(), crate::frames::SpecSystem::Voptical);
+        assert_eq!(spec.std_of_rest(), crate::frames::StdOfRest::Geocentric);
+    }
+
+    /// A latitude axis without a longitude axis cannot be read; C reports an
+    /// error for this header too.
+    #[test]
+    fn read_aipspp_latitude_without_longitude_fails() {
+        let header = "\
+NAXIS   =                    2
+CRPIX1  =              256.0
+CRPIX2  =              256.0
+CRVAL1  =          180.000000
+CRVAL2  =          -30.000000
+CTYPE1  = 'VELO-LSR'
+CTYPE2  = 'DEC--TAN'
+CD1_1   =           1000.0
+CD2_2   =            0.001
+EQUINOX =             2000.0
+LONPOLE =              180.0";
+        assert!(read_frameset(header, crate::fitschan::Encoding::FitsAipsPP).is_err());
     }
 
     #[test]
@@ -1150,45 +1007,6 @@ END";
         // FREQ-HEL -> FREQ + BARYCENT
         assert_eq!(store.ctype[0], Some("FREQ".to_string()));
         assert_eq!(store.specsys, Some("BARYCENT".to_string()));
-    }
-
-    #[test]
-    fn read_aips_spectral_felo_geo() {
-        let header = "\
-NAXIS   =                    1 / Number of axes
-CRPIX1  =                1.0   / Reference pixel
-CRVAL1  =            5000.0    / Reference value
-CDELT1  =              500.0   / Channel width
-CTYPE1  = 'FELO-GEO'           / Axis type
-END";
-        let cards = CardList::from_header(header).unwrap();
-        let store = read_from_cards(&cards).unwrap();
-
-        // FELO-GEO -> VOPT + GEOCENTR
-        assert_eq!(store.ctype[0], Some("VOPT".to_string()));
-        assert_eq!(store.specsys, Some("GEOCENTR".to_string()));
-    }
-
-    #[test]
-    fn read_aips_epoch_zero_treated_as_1950() {
-        let header = "\
-NAXIS   =                    2 / Number of axes
-CRPIX1  =              512.0   / Reference pixel
-CRPIX2  =              512.0   / Reference pixel
-CRVAL1  =          180.000000  / Reference value
-CRVAL2  =          -45.000000  / Reference value
-CDELT1  =        -0.0002778    / Pixel scale
-CDELT2  =         0.0002778    / Pixel scale
-CTYPE1  = 'RA---TAN'           / Axis type
-CTYPE2  = 'DEC--TAN'           / Axis type
-EPOCH   =                0.0   / Epoch
-END";
-        let cards = CardList::from_header(header).unwrap();
-        let store = read_from_cards(&cards).unwrap();
-
-        // EPOCH=0 treated as 1950 -> FK4
-        assert_eq!(store.equinox, Some(1950.0));
-        assert_eq!(store.radesys, Some("FK4".to_string()));
     }
 
     #[test]
@@ -1465,13 +1283,7 @@ END";
         // the longitude axis, so CROTA1 (on the longitude axis) is used when
         // CROTA2 is absent.
         let cards = CardList::from_header(header).unwrap();
-        let trans = crate::fitschan::spec_trans::spec_trans(
-            &cards,
-            crate::fitschan::Encoding::FitsAips,
-            crate::fitschan::spec_trans::TransAttrs::default(),
-            &mut crate::fitschan::spec_trans::TransWarnings::default(),
-        );
-        let store = read_from_cards(&trans).unwrap();
+        let store = read_from_cards(&cards).unwrap();
 
         // CROTA1=45 fallback when CROTA2 is absent
         let cos45 = 45.0_f64.to_radians().cos();
@@ -1487,35 +1299,5 @@ END";
         assert!((pc01 - (-sin45 * lambda)).abs() < 1e-10);
         assert!((pc10 - sin45 / lambda).abs() < 1e-10);
         assert!((pc11 - cos45).abs() < 1e-10);
-    }
-
-    #[test]
-    fn read_aipspp_cd_with_equinox() {
-        let header = "\
-NAXIS   =                    2 / Number of axes
-CRPIX1  =              256.0   / Reference pixel
-CRPIX2  =              256.0   / Reference pixel
-CRVAL1  =          180.000000  / Reference value
-CRVAL2  =          -30.000000  / Reference value
-CTYPE1  = 'VELO-LSR'           / Axis type (AIPS spectral)
-CTYPE2  = 'DEC--TAN'           / Axis type
-CD1_1   =           1000.0     / CD matrix
-CD2_2   =            0.001     / CD matrix
-EQUINOX =             2000.0   / Equinox
-LONPOLE =              180.0   / Native longitude of pole
-END";
-        let cards = CardList::from_header(header).unwrap();
-        let store = read_from_cards(&cards).unwrap();
-
-        // Should read CD matrix
-        assert_eq!(store.cd[0][0], Some(1000.0));
-        assert_eq!(store.cd[1][1], Some(0.001));
-        // Should use EQUINOX directly
-        assert_eq!(store.equinox, Some(2000.0));
-        // Should read LONPOLE
-        assert_eq!(store.lonpole, Some(180.0));
-        // Should translate spectral CTYPE
-        assert_eq!(store.ctype[0], Some("VRAD".to_string()));
-        assert_eq!(store.specsys, Some("LSRK".to_string()));
     }
 }

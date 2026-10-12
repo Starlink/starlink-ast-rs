@@ -15,6 +15,8 @@ mod test_alt_wcs_round_trip;
 mod test_fitschan;
 #[path = "../test_fitschan_astwarn.rs"]
 mod test_fitschan_astwarn;
+#[path = "../test_fitschan_axis_count_oracle.rs"]
+mod test_fitschan_axis_count_oracle;
 #[path = "../test_fitschan_class.rs"]
 mod test_fitschan_class;
 #[path = "../test_fitschan_cursor_oracle.rs"]

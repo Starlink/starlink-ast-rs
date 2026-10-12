@@ -12,9 +12,6 @@
 //!   `Mapping::transform`, rather than through `astTranN` into fixed arrays.
 //! - The unit MatrixMap is built from an identity matrix, as there is no
 //!   public constructor for C's unit form; the transformation is the same.
-//! - The FITS-WCS FrameSet is read with an `NAXIS` card added. The port's
-//!   FITS-AIPS reader needs it, where C counts the axes from the CRPIX cards.
-//!   `tan_header_without_naxis_is_not_read` fails when that changes.
 
 use ast_core::coords::PointSet;
 use ast_core::mappings::{
@@ -36,9 +33,9 @@ const TAN_CARDS: [&str; 9] = [
     "CDELT2  = 0.001",
 ];
 
-fn read_tan(extra: &[&str]) -> ast_core::error::AstResult<Option<AnyObject>> {
+fn read_tan() -> ast_core::error::AstResult<Option<AnyObject>> {
     let mut fc = FitsChan::new();
-    for card in TAN_CARDS.iter().chain(extra) {
+    for card in TAN_CARDS {
         fc.put_fits(card, false).unwrap();
     }
     fc.clear_card().unwrap();
@@ -168,17 +165,10 @@ fn nonlinear_mathmap_1d() {
 
 #[test]
 fn fits_wcs_pixel_to_sky() {
-    let Some(AnyObject::FrameSet(fs)) = read_tan(&["NAXIS   = 2"]).unwrap() else {
+    let Some(AnyObject::FrameSet(fs)) = read_tan().unwrap() else {
         panic!("expected a FrameSet");
     };
     testmap(&fs, 8, 0.0001);
-}
-
-#[test]
-fn tan_header_without_naxis_is_not_read() {
-    // C reads these cards, counting the axes from CRPIX (fitschan.c
-    // FitsToStore). When the port does too, drop the NAXIS card above.
-    assert!(read_tan(&[]).is_err());
 }
 
 #[test]
