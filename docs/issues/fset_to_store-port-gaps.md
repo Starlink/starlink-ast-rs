@@ -240,13 +240,11 @@ builds the `S → grism_param → w` IWC mapping and emits the
 `-GRI` / `-GRA` CTYPE plus the corresponding PV parameters
 (G / m / alpha / NR / NRP / eps / theta). Mirrors C:30480-30599.
 
-### `VELOSYS` calculation
+### `VELOSYS` calculation — DONE
 
-C:30774-30796 — topocentric apparent velocity of the SPECSYS
-rest frame. Needs the celestial source position from
-`celestial_axes` (Group 7 wiring), plus the existing
-`wcs_write::populate_velosys` math. The integration step lives
-in Group 7.
+`spectral_axes` makes C's SourceVRF and SourceVel changes
+(fitschan.c:31225-31247) on a copy of the SpecFrame and stores the
+resulting SourceVel, for every description and in the source frame too.
 
 ### SpecFrame unit-conversion chain rewriting — DONE
 

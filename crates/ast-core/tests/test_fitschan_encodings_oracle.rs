@@ -73,17 +73,7 @@ fn written(header: &[&str], epoch: &str, enc: &str) -> (i32, i32, Vec<String>, V
 }
 
 /// `(header, encoding, reason)` for each write that does not yet match C.
-const EXCLUDED: &[(&str, &str, &str)] = &[
-    ("class_cube", "FITS-WCS", NO_VELOSYS),
-    ("class_lonpole_180", "FITS-WCS", NO_VELOSYS),
-    ("class_lonpole_90", "FITS-WCS", NO_VELOSYS),
-    ("class_new_epoch", "FITS-WCS", NO_VELOSYS),
-];
-
-/// C's `SpectralAxes` (fitschan.c:31242) always stores VELOSYS, the
-/// topocentric velocity of the standard of rest; the port's
-/// `spectral_axes` does not.
-const NO_VELOSYS: &str = "port's spectral_axes writes no VELOSYS";
+const EXCLUDED: &[(&str, &str, &str)] = &[];
 
 fn excluded(name: &str, enc: &str) -> bool {
     EXCLUDED.iter().any(|&(n, e, _)| n == name && e == enc)

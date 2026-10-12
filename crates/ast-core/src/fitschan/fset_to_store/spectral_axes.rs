@@ -14,10 +14,6 @@
 //! [`docs/issues/fset_to_store-port-gaps.md`](../../../../../docs/issues/fset_to_store-port-gaps.md):
 //!
 //! - **`-TAB` algorithm**. Blocked on FitsTable infrastructure.
-//! - **`VELOSYS` calculation** — needs the celestial source position
-//!   from `celestial_axes`. Group 7 wiring will deliver it; the
-//!   existing `wcs_write::populate_velosys` math will be moved here
-//!   when the celestial→spectral sequencing lands.
 //! - **SpecFrame unit-conversion rewriting** when the spectral
 //!   system requires a unit change to be FITS-compliant
 //!   (C:30276-30311). Currently the user-set CUNIT is preserved
@@ -339,17 +335,19 @@ pub(crate) fn spectral_axes(args: SpectralAxesArgs<'_>) -> AstResult<DynMapping>
         args.store.ssyssrc = Some(specsys_string(specfrm.source_vrf()));
     }
 
-    // VELOSYS: topocentric apparent velocity of the SpecFrame's
-    // standard of rest. Mirrors C:30774-30796. C achieves this by
-    // temporarily overwriting SourceVRF/SourceVel and re-reading
-    // SourceVel; we compute the equivalent value directly from the
-    // SpecFrame's existing attributes via `velosys()`. Only emitted
-    // on the primary coord version.
-    if args.s == ' '
-        && let Some(v) = specfrm.velosys()?
-    {
-        args.store.velosys = Some(v);
+    // VELOSYS, the topocentric velocity of the standard of rest, as C
+    // finds it on its copy of the FrameSet (fitschan.c:31225-31247): a
+    // source at rest in the standard of rest, unless that is the source
+    // frame, re-expressed in the topocentric frame. In the source frame
+    // this is the source velocity, or 0 when SourceVel is not set.
+    let mut vfrm = specfrm.clone();
+    if vfrm.std_of_rest() != StdOfRest::Source {
+        vfrm.set_source_vrf(vfrm.std_of_rest())?;
+        vfrm.set_source_vel(0.0);
     }
+    vfrm.set_source_vrf(StdOfRest::Topocentric)?;
+    let velosys = vfrm.source_vel();
+    args.store.velosys = (!is_bad(velosys)).then_some(velosys);
 
     // Mark done and return.
     args.axis_done[spec_iax] = true;

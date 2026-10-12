@@ -255,6 +255,25 @@ int main( void ) {
          "MJD-OBS = 52413.59", NULL };
       emit_epoch( "class_new_epoch", h, "MJD 55000" );
    }
+   {
+      const char *h[] = { "NAXIS   = 3", "NAXIS1  = 10", "NAXIS2  = 10", "NAXIS3  = 20",
+         "CRPIX1  = 5", "CRPIX2  = 5", "CRPIX3  = 10", "CRVAL1  = 10", "CRVAL2  = 20",
+         "CRVAL3  = 1.4E9", "CDELT1  = -0.001", "CDELT2  = 0.001", "CDELT3  = 1.0E6",
+         "CTYPE1  = 'RA---TAN'", "CTYPE2  = 'DEC--TAN'", "CTYPE3  = 'FREQ'",
+         "CUNIT3  = 'Hz'", "SPECSYS = 'SOURCE'", "SSYSSRC = 'LSRK'", "ZSOURCE = 8.0E-5",
+         "RESTFRQ = 1.420405752E9", "RADESYS = 'FK5'", "EQUINOX = 2000.0",
+         "MJD-OBS = 52413.59", NULL };
+      emit( "source_zsource", h );
+   }
+   {
+      const char *h[] = { "NAXIS   = 3", "NAXIS1  = 10", "NAXIS2  = 10", "NAXIS3  = 20",
+         "CRPIX1  = 5", "CRPIX2  = 5", "CRPIX3  = 10", "CRVAL1  = 10", "CRVAL2  = 20",
+         "CRVAL3  = 1.4E9", "CDELT1  = -0.001", "CDELT2  = 0.001", "CDELT3  = 1.0E6",
+         "CTYPE1  = 'RA---TAN'", "CTYPE2  = 'DEC--TAN'", "CTYPE3  = 'FREQ'",
+         "CUNIT3  = 'Hz'", "SPECSYS = 'TOPOCENT'", "RESTFRQ = 1.420405752E9",
+         "RADESYS = 'FK5'", "EQUINOX = 2000.0", "MJD-OBS = 52413.59", NULL };
+      emit( "topocent", h );
+   }
    printf( "];\n" );
    return 0;
 }
