@@ -125,6 +125,8 @@ pub struct WcsMap {
     /// Whether this mapping has already been simplified (C `IsSimple`).
     simplified: SimplifiedRecord,
     ident: Option<String>,
+    /// The Object-class ID attribute, which a clone does not inherit.
+    id: crate::object_id::ObjectId,
     /// The flags C keeps on the base Mapping class (mapping.c).
     mapping_flags: crate::mappings::MappingFlags,
     /// Protected `LonCheck` attribute (wcsmap.c:4787). Controls whether the
@@ -209,6 +211,7 @@ impl WcsMap {
                     inverted: false,
                     simplified: SimplifiedRecord::default(),
                     ident: None,
+                    id: Default::default(),
                     mapping_flags: crate::mappings::MappingFlags::default(),
                     lon_check: None,
                     fits_proj: None,
@@ -236,6 +239,7 @@ impl WcsMap {
             inverted: false,
             simplified: SimplifiedRecord::default(),
             ident: None,
+            id: Default::default(),
             mapping_flags: crate::mappings::MappingFlags::default(),
             lon_check: None,
             fits_proj: None,
@@ -780,6 +784,7 @@ impl WcsMap {
             // C builds a fresh WcsMap for this rebuild (wcsmap.c:4667), and a
             // fresh Object has no Ident.
             ident: None,
+            id: Default::default(),
             mapping_flags: crate::mappings::MappingFlags::default(),
             lon_check: self.lon_check,
             fits_proj: self.fits_proj,
@@ -833,6 +838,7 @@ impl Clone for WcsMap {
             inverted: self.inverted,
             simplified: self.simplified,
             ident: self.ident.clone(),
+            id: Default::default(),
             mapping_flags: self.mapping_flags.clone(),
             lon_check: self.lon_check,
             fits_proj: self.fits_proj,
@@ -1301,6 +1307,19 @@ impl Mapping for WcsMap {
 
     fn test_ident(&self) -> bool {
         self.ident.is_some()
+    }
+
+    fn id(&self) -> &str {
+        self.id.get()
+    }
+    fn set_id(&mut self, id: &str) {
+        self.id.set(id);
+    }
+    fn clear_id(&mut self) {
+        self.id.clear();
+    }
+    fn test_id(&self) -> bool {
+        self.id.test()
     }
 
     fn has_been_simplified(&self) -> bool {

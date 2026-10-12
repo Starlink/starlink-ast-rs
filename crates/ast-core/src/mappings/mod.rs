@@ -894,6 +894,22 @@ pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
         false
     }
 
+    /// The `ID` attribute — a string identifying this object, empty when
+    /// unset. C keeps it on Object (`object.c:5175`). Unlike Ident, a clone
+    /// does not inherit it, as C's `astCopy` does not copy it; the `Frame`
+    /// side of the port carries the same four accessors
+    /// ([`crate::frames::Frame::id`]).
+    fn id(&self) -> &str;
+
+    /// Set `ID`. Mirrors C `astSetID`.
+    fn set_id(&mut self, id: &str);
+
+    /// Clear `ID`. Mirrors C `astClearID`.
+    fn clear_id(&mut self);
+
+    /// Whether `ID` has been set. Mirrors C `astTestID`.
+    fn test_id(&self) -> bool;
+
     /// C `astDoNotSimplify` (`mapping.c:1107`): whether this mapping must be
     /// left intact. Consulted by both of C's generic drivers — the
     /// `astSimplify_` gate (`mapping.c:24764`) and `astMapList`'s refusal to

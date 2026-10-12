@@ -63,6 +63,8 @@ pub struct LutMap {
     /// Whether this mapping has already been simplified (C `IsSimple`).
     simplified: SimplifiedRecord,
     ident: Option<String>,
+    /// The Object-class ID attribute, which a clone does not inherit.
+    id: crate::object_id::ObjectId,
     /// The flags C keeps on the base Mapping class (mapping.c).
     mapping_flags: crate::mappings::MappingFlags,
     /// Whether the inverse transform is defined.
@@ -105,6 +107,7 @@ impl LutMap {
             inverted: false,
             simplified: SimplifiedRecord::default(),
             ident: None,
+            id: Default::default(),
             mapping_flags: crate::mappings::MappingFlags::default(),
             tran_inverse: monotonic != 0,
             lut_epsilon: f64::EPSILON,
@@ -718,6 +721,19 @@ impl Mapping for LutMap {
         self.ident.is_some()
     }
 
+    fn id(&self) -> &str {
+        self.id.get()
+    }
+    fn set_id(&mut self, id: &str) {
+        self.id.set(id);
+    }
+    fn clear_id(&mut self) {
+        self.id.clear();
+    }
+    fn test_id(&self) -> bool {
+        self.id.test()
+    }
+
     fn has_been_simplified(&self) -> bool {
         self.simplified.get(self.inverted)
     }
@@ -846,6 +862,7 @@ impl Serializable for LutMap {
             inverted: false,
             simplified: SimplifiedRecord::for_orientation(base.inverted, base.has_been_simplified),
             ident: None,
+            id: Default::default(),
             mapping_flags: crate::mappings::MappingFlags::default(),
             tran_inverse: base.has_inverse,
         };

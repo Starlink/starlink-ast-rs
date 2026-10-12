@@ -3055,6 +3055,7 @@ impl Serializable for SkyFrame {
         // Ident: written if explicitly set.
         super::frame_attrs::write_object_part(
             &mut node,
+            &self.attrs.id,
             self.attrs.ident.as_deref(),
             self.attrs.use_defs,
         );

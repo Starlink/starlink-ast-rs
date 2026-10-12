@@ -22,7 +22,12 @@ impl Serializable for KeyMap {
 
         // The Object part, which holds the Ident when it is set (object.c
         // Dump).
-        crate::frames::frame_attrs::write_object_part(&mut node, self.ident.as_deref(), None);
+        crate::frames::frame_attrs::write_object_part(
+            &mut node,
+            &self.id,
+            self.ident.as_deref(),
+            None,
+        );
 
         // The five attributes, each omitted entirely when unset.
         push_int_attr(
@@ -88,7 +93,9 @@ impl Serializable for KeyMap {
         let node = &whole.section("KeyMap");
         let mut km = KeyMap::new();
         // Ident, from the Object part (object.c astLoadObject).
-        if let Some(ident) = whole.section("Object").get_string_if_set("Ident") {
+        let object = whole.section("Object");
+        km.id = crate::object_id::ObjectId::from_object_part(&object);
+        if let Some(ident) = object.get_string_if_set("Ident") {
             km.set_ident(&ident);
         }
 

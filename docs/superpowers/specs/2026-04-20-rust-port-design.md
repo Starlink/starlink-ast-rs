@@ -2,6 +2,13 @@
 
 ## Revision history
 
+- **2026-10-11 (rev 30)**: Added the Object-class ID attribute to every
+  class: `id`, `set_id`, `test_id` and `clear_id` are required methods
+  of the `Mapping` and `Frame` traits (`set_id` and `clear_id` return
+  `AstResult` on `Frame`, as the Ident setters do), and inherent methods
+  on KeyMap, NativeChannel, MocChan and FitsChan. `Clone` does not copy
+  ID, as C's `astCopy` does not; a move keeps it. The port does not
+  follow C's internal choices of copy or shared reference for ID.
 - **2026-10-11 (rev 29)**: `AnyObject` gained a `FitsChan` variant, so a
   FitsChan can be written to and read from a Channel and held by a
   KeyMap. FitsChan gained the Object-class `Ident` attribute and the

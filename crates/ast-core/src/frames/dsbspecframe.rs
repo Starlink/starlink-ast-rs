@@ -805,6 +805,19 @@ impl Frame for DSBSpecFrame {
     fn test_ident(&self) -> bool {
         Frame::test_ident(&self.spec)
     }
+
+    fn id(&self) -> &str {
+        Frame::id(&self.spec)
+    }
+    fn set_id(&mut self, id: &str) -> AstResult<()> {
+        Frame::set_id(&mut self.spec, id)
+    }
+    fn clear_id(&mut self) -> AstResult<()> {
+        Frame::clear_id(&mut self.spec)
+    }
+    fn test_id(&self) -> bool {
+        Frame::test_id(&self.spec)
+    }
     fn stored_use_defs(&self) -> Option<bool> {
         self.spec.stored_use_defs()
     }

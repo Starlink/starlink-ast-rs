@@ -243,6 +243,8 @@ pub struct FitsChan {
     sip_ok: Option<bool>,
     /// The Object-class Ident attribute, when set.
     ident: Option<String>,
+    /// The Object-class ID attribute, which a clone does not inherit.
+    id: crate::object_id::ObjectId,
     /// The TabOK attribute, when set.
     tab_ok: Option<i32>,
     /// The ForceTab attribute, when set.
@@ -288,6 +290,7 @@ impl FitsChan {
             clean: None,
             sip_ok: None,
             ident: None,
+            id: Default::default(),
             tab_ok: None,
             force_tab: None,
             source: SourceCell::default(),
@@ -329,6 +332,7 @@ impl FitsChan {
             clean: None,
             sip_ok: None,
             ident: None,
+            id: Default::default(),
             tab_ok: None,
             force_tab: None,
             source: SourceCell::default(),
@@ -1497,6 +1501,27 @@ impl FitsChan {
         self.ident = None;
     }
 
+    /// The Object-class `ID` attribute, blank unless set. Unlike `Ident`, a
+    /// clone does not inherit it, as C's `astCopy` does not copy it.
+    pub fn id(&self) -> &str {
+        self.id.get()
+    }
+
+    /// Set `ID`.
+    pub fn set_id(&mut self, id: &str) {
+        self.id.set(id);
+    }
+
+    /// Whether `ID` is set.
+    pub fn test_id(&self) -> bool {
+        self.id.test()
+    }
+
+    /// Clear `ID`.
+    pub fn clear_id(&mut self) {
+        self.id.clear();
+    }
+
     /// The read-only AllWarnings attribute: every condition the Warnings
     /// attribute accepts, in lower case, with a space before and after each.
     pub fn all_warning_conditions(&self) -> &'static str {
@@ -1828,6 +1853,7 @@ impl Clone for FitsChan {
             clean: self.clean,
             sip_ok: self.sip_ok,
             ident: self.ident.clone(),
+            id: Default::default(),
             tab_ok: self.tab_ok,
             force_tab: self.force_tab,
             source: self.source.clone(),

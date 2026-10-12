@@ -2428,6 +2428,7 @@ impl Serializable for SpecFrame {
         // `IDENT`/`IsA Object` block in the reference native dumps).
         super::frame_attrs::write_object_part(
             &mut node,
+            &self.attrs.id,
             self.attrs.ident.as_deref(),
             self.attrs.use_defs,
         );

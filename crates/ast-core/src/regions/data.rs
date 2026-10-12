@@ -41,6 +41,8 @@ pub(crate) struct RegionData {
     /// The Region's own Object-class Ident, which C does not forward to the
     /// encapsulated Frame (object.c).
     pub(crate) ident: Option<String>,
+    /// The Object-class ID attribute, which a clone does not inherit.
+    pub(crate) id: crate::object_id::ObjectId,
     /// The flags C keeps on the base Mapping class (mapping.c).
     pub(crate) mapping_flags: crate::mappings::MappingFlags,
 
@@ -143,6 +145,7 @@ impl Clone for RegionData {
         RegionData {
             frameset: self.frameset.clone(),
             ident: self.ident.clone(),
+            id: Default::default(),
             mapping_flags: self.mapping_flags.clone(),
             use_defs: self.use_defs,
             points: self.points.clone(),
@@ -206,6 +209,7 @@ impl RegionData {
         RegionData {
             frameset: fs,
             ident: None,
+            id: Default::default(),
             mapping_flags: crate::mappings::MappingFlags::default(),
             use_defs: None,
             points,

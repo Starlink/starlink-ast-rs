@@ -29,6 +29,8 @@ pub struct WinMap {
     inverted: bool,
     simplified: SimplifiedRecord,
     ident: Option<String>,
+    /// The Object-class ID attribute, which a clone does not inherit.
+    id: crate::object_id::ObjectId,
     /// The flags C keeps on the base Mapping class (mapping.c).
     mapping_flags: crate::mappings::MappingFlags,
 }
@@ -73,6 +75,7 @@ impl WinMap {
             inverted: false,
             simplified: SimplifiedRecord::default(),
             ident: None,
+            id: Default::default(),
             mapping_flags: crate::mappings::MappingFlags::default(),
         })
     }
@@ -133,6 +136,7 @@ impl WinMap {
             inverted: false,
             simplified: SimplifiedRecord::default(),
             ident: None,
+            id: Default::default(),
             mapping_flags: crate::mappings::MappingFlags::default(),
         })
     }
@@ -465,6 +469,19 @@ impl Mapping for WinMap {
         self.ident.is_some()
     }
 
+    fn id(&self) -> &str {
+        self.id.get()
+    }
+    fn set_id(&mut self, id: &str) {
+        self.id.set(id);
+    }
+    fn clear_id(&mut self) {
+        self.id.clear();
+    }
+    fn test_id(&self) -> bool {
+        self.id.test()
+    }
+
     fn has_been_simplified(&self) -> bool {
         self.simplified.get(self.inverted)
     }
@@ -727,6 +744,7 @@ impl Serializable for WinMap {
             inverted: false,
             simplified: SimplifiedRecord::for_orientation(base.inverted, base.has_been_simplified),
             ident: None,
+            id: Default::default(),
             mapping_flags: crate::mappings::MappingFlags::default(),
         };
         if base.inverted {

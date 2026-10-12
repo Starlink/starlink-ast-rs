@@ -1941,6 +1941,7 @@ impl Serializable for TimeFrame {
         // The Object class's part: Ident, when set (object.c Dump).
         super::frame_attrs::write_object_part(
             &mut node,
+            &self.attrs.id,
             self.attrs.ident.as_deref(),
             self.attrs.use_defs,
         );

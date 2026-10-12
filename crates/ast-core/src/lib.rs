@@ -12,6 +12,7 @@ pub mod pixel;
 pub mod frames;
 pub mod keymap;
 pub mod mappings;
+pub(crate) mod object_id;
 pub(crate) mod pal;
 pub mod regions;
 pub(crate) mod serial;

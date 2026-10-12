@@ -46,18 +46,17 @@ pub(crate) trait Serializable {
 
 /// Write the Object-level attributes that precede the Mapping block. C dumps
 /// the class chain from the top down, so Object's attributes and its `IsA`
-/// marker come before Nin (`object.c:1697`). `Ident` is written active when it
-/// is set, even blank, and the `IsA Object` marker only when something was
-/// written, matching C's `astWriteString` / `astWriteIsA` rules.
+/// marker come before Nin (`object.c:1697`). `ID` and `Ident` are written
+/// active when set, even blank, and the `IsA Object` marker only when
+/// something was written, matching C's `astWriteString` / `astWriteIsA`
+/// rules.
 pub(crate) fn write_object_base(node: &mut Node, mapping: &dyn Mapping) {
-    if mapping.test_ident() {
-        node.push_string(
-            "Ident",
-            mapping.ident(),
-            Some("Permanent Object identification string".to_string()),
-        );
-        node.push_isa("Object", Some("AST Object".to_string()));
+    let mut id = crate::object_id::ObjectId::default();
+    if mapping.test_id() {
+        id.set(mapping.id());
     }
+    let ident = mapping.test_ident().then(|| mapping.ident());
+    crate::frames::frame_attrs::write_object_part(node, &id, ident, None);
 }
 
 /// Write common Mapping attributes (Ident, Nin, Nout, IsSimp, Invert,
@@ -258,6 +257,9 @@ fn apply_mapping_object_items(result: &mut dyn Mapping, node: &Node) {
         result.mapping_flags_mut().invert_zero = true;
     }
     let object = node.section("Object");
+    if let Some(id) = object.get_string_if_set("ID") {
+        result.set_id(&id);
+    }
     if let Some(ident) = object.get_string_if_set("Ident") {
         result.set_ident(&ident);
     }
@@ -1119,6 +1121,7 @@ pub(crate) fn read_region_base(whole: &Node) -> AstResult<RegionData> {
     let mut data = RegionData {
         frameset,
         ident: object.get_string_if_set("Ident"),
+        id: crate::object_id::ObjectId::from_object_part(object),
         mapping_flags: read_mapping_flags(whole),
         use_defs: object
             .get("UseDfs")
@@ -1262,7 +1265,12 @@ fn region_to_node_skeleton(
     // The Region's own Object part, Ident and any UseDefs stored on the
     // Region itself, comes first (object.c Dump); a UseDefs set through
     // the Region is the encapsulated Frame's and is written with it.
-    crate::frames::frame_attrs::write_object_part(&mut node, data.ident.as_deref(), data.use_defs);
+    crate::frames::frame_attrs::write_object_part(
+        &mut node,
+        &data.id,
+        data.ident.as_deref(),
+        data.use_defs,
+    );
     write_flags_mapping_part(&mut node, &data.mapping_flags);
     write_frame_inheritance_for_region(&mut node, data.frameset.current())?;
     push_frame_isa_marker(&mut node);

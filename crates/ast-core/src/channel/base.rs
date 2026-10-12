@@ -12,6 +12,7 @@ use super::source_sink::{StringSink, StringSource};
 use super::{ChannelConfig, Sink, Source};
 use crate::error::AstResult;
 use crate::mappings::IntraRegistry;
+use crate::object_id::ObjectId;
 use crate::serial::Node;
 
 /// A sink that is either a [`StringSink`], whose text can be taken back,
@@ -34,6 +35,8 @@ fn lock<T: ?Sized>(m: &Mutex<T>) -> MutexGuard<'_, T> {
 pub(crate) struct ChannelBase {
     pub(crate) config: ChannelConfig,
     pub(crate) ident: Option<String>,
+    /// The Object-class ID attribute, which a clone does not inherit.
+    pub(crate) id: crate::object_id::ObjectId,
     source: Option<Arc<Mutex<Box<dyn Source>>>>,
     sink: Option<Arc<Mutex<SinkKind>>>,
     pub(crate) warnings: Vec<String>,
@@ -110,14 +113,20 @@ impl ChannelBase {
     /// then the Channel attributes that are set, in the order of channel.c
     /// `Dump`, each with its marker only if something came before it.
     pub(crate) fn write_parts(&self, node: &mut Node, own_class: bool) {
-        write_parts(node, self.ident.as_deref(), &self.config, own_class);
+        write_parts(
+            node,
+            &self.id,
+            self.ident.as_deref(),
+            &self.config,
+            own_class,
+        );
     }
 
     /// Read the Object and Channel parts of a dump, applying each Channel
     /// attribute through its setter as channel.c `astLoadChannel` does.
     pub(crate) fn read_parts(node: &Node) -> AstResult<Self> {
         let mut base = Self::default();
-        base.ident = read_parts(node, &mut base.config);
+        (base.id, base.ident) = read_parts(node, &mut base.config);
         Ok(base)
     }
 }
@@ -127,11 +136,12 @@ impl ChannelBase {
 /// a plain Channel, whose part needs no `IsA` marker.
 pub(crate) fn write_parts(
     node: &mut Node,
+    id: &ObjectId,
     ident: Option<&str>,
     c: &ChannelConfig,
     own_class: bool,
 ) {
-    crate::frames::frame_attrs::write_object_part(node, ident, None);
+    crate::frames::frame_attrs::write_object_part(node, id, ident, None);
     let before = node.items.len();
     if c.test_indent() {
         node.push_int(
@@ -212,9 +222,11 @@ pub(crate) fn write_parts(
 
 /// Read the Object and Channel parts of the dump of a Channel of any class
 /// into `c`, applying each Channel attribute through its setter as channel.c
-/// `astLoadChannel` does, and give the `Ident` it holds.
-pub(crate) fn read_parts(node: &Node, c: &mut ChannelConfig) -> Option<String> {
-    let ident = node.section("Object").get_string_if_set("Ident");
+/// `astLoadChannel` does, and give the `ID` and `Ident` it holds.
+pub(crate) fn read_parts(node: &Node, c: &mut ChannelConfig) -> (ObjectId, Option<String>) {
+    let object = node.section("Object");
+    let id = ObjectId::from_object_part(&object);
+    let ident = object.get_string_if_set("Ident");
     let part = node.section("Channel");
     if let Some(v) = part.get_int_any_if_set("Indnt") {
         c.set_indent(v as i32);
@@ -234,5 +246,5 @@ pub(crate) fn read_parts(node: &Node, c: &mut ChannelConfig) -> Option<String> {
     if let Some(v) = part.get_int_any_if_set("Comm") {
         c.set_comment(v != 0);
     }
-    ident
+    (id, ident)
 }

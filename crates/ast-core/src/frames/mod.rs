@@ -588,6 +588,16 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// Whether Ident is set. Mirrors `astTestIdent` (`object.c:5229`).
     fn test_ident(&self) -> bool;
 
+    /// The Object-class ID attribute, blank unless set. Unlike Ident, a
+    /// clone does not inherit it, as C's `astCopy` does not copy it.
+    fn id(&self) -> &str;
+    /// Set ID. Mirrors `astSetID`.
+    fn set_id(&mut self, id: &str) -> AstResult<()>;
+    /// Clear ID. Mirrors `astClearID`.
+    fn clear_id(&mut self) -> AstResult<()>;
+    /// Whether ID is set. Mirrors `astTestID`.
+    fn test_id(&self) -> bool;
+
     /// The Object-class UseDefs attribute as stored on this object, `None`
     /// when unset. C keeps it on every Object, but only Frame classes read
     /// it, so the port keeps it on Frames.

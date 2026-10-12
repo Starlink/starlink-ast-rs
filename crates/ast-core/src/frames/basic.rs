@@ -978,6 +978,7 @@ impl Serializable for BasicFrame {
         // Dump), followed by the IsA Object marker when it was written.
         super::frame_attrs::write_object_part(
             &mut node,
+            &self.attrs.id,
             self.attrs.ident.as_deref(),
             self.attrs.use_defs,
         );

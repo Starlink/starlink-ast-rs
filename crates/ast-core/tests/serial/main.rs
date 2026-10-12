@@ -25,6 +25,8 @@ mod test_keymap_serial;
 mod test_mapping_load;
 #[path = "../test_native_roundtrip_all.rs"]
 mod test_native_roundtrip_all;
+#[path = "../test_object_id_oracle.rs"]
+mod test_object_id_oracle;
 #[path = "../test_report.rs"]
 mod test_report;
 #[path = "../test_section_load.rs"]

@@ -133,6 +133,8 @@ pub struct FrameSet {
     /// and a FrameSet reads its own rather than its current Frame's
     /// (`frameset.c:2759`, `:4841`, `:10830` all pass `this`).
     ident: Option<String>,
+    /// The Object-class ID attribute, which a clone does not inherit.
+    id: crate::object_id::ObjectId,
     /// The flags C keeps on the base Mapping class (mapping.c).
     mapping_flags: crate::mappings::MappingFlags,
     /// The FrameSet's own `UseDefs`, `None` when unset.
@@ -162,6 +164,7 @@ impl Clone for FrameSet {
             nnode: self.nnode,
             node_map: self.node_map.clone(),
             ident: self.ident.clone(),
+            id: Default::default(),
             mapping_flags: self.mapping_flags.clone(),
             use_defs: self.use_defs,
         }
@@ -234,6 +237,7 @@ impl FrameSet {
             nnode: 1,
             node_map: vec![0],
             ident: None,
+            id: Default::default(),
             mapping_flags: crate::mappings::MappingFlags::default(),
             use_defs: None,
         }
@@ -1359,6 +1363,21 @@ impl Frame for FrameSet {
     fn test_ident(&self) -> bool {
         self.ident.is_some()
     }
+
+    fn id(&self) -> &str {
+        self.id.get()
+    }
+    fn set_id(&mut self, id: &str) -> AstResult<()> {
+        self.id.set(id);
+        Ok(())
+    }
+    fn clear_id(&mut self) -> AstResult<()> {
+        self.id.clear();
+        Ok(())
+    }
+    fn test_id(&self) -> bool {
+        self.id.test()
+    }
     // UseDefs, as C's attribute access gives it: setting, clearing and
     // testing it act on the current Frame, as for every Frame attribute,
     // and an unset value comes from the current Frame (frameset.c
@@ -1904,6 +1923,38 @@ impl Mapping for FrameSet {
         &self.mapping_flags
     }
 
+    fn ident(&self) -> &str {
+        self.ident.as_deref().unwrap_or("")
+    }
+
+    fn set_ident(&mut self, ident: &str) {
+        self.ident = Some(ident.to_string());
+    }
+
+    fn clear_ident(&mut self) {
+        self.ident = None;
+    }
+
+    fn test_ident(&self) -> bool {
+        self.ident.is_some()
+    }
+
+    fn id(&self) -> &str {
+        self.id.get()
+    }
+
+    fn set_id(&mut self, id: &str) {
+        self.id.set(id);
+    }
+
+    fn clear_id(&mut self) {
+        self.id.clear();
+    }
+
+    fn test_id(&self) -> bool {
+        self.id.test()
+    }
+
     fn mapping_flags_mut(&mut self) -> &mut crate::mappings::MappingFlags {
         &mut self.mapping_flags
     }
@@ -2100,7 +2151,12 @@ impl Serializable for FrameSet {
         // and writes the `IsA Object` marker only when something preceded it.
         // The value is the FrameSet's own, not the current Frame's
         // (`frameset.c:4841`).
-        super::frame_attrs::write_object_part(&mut node, self.ident.as_deref(), self.use_defs);
+        super::frame_attrs::write_object_part(
+            &mut node,
+            &self.id,
+            self.ident.as_deref(),
+            self.use_defs,
+        );
         crate::serial::write_flags_mapping_part(&mut node, &self.mapping_flags);
 
         // Write proxy attributes from the current frame as commented (unset).
@@ -2127,7 +2183,7 @@ impl Serializable for FrameSet {
                 continue;
             }
             // Skip Object-level and class-specific attributes — not proxied.
-            if matches!(item.key.as_str(), "Ident" | "UseDfs" | "AlSys") {
+            if matches!(item.key.as_str(), "ID" | "Ident" | "UseDfs" | "AlSys") {
                 continue;
             }
             // For CmpFrame the effective (commented) Epoch is reconstructed and
@@ -2460,6 +2516,7 @@ impl Serializable for FrameSet {
             nnode,
             node_map,
             ident,
+            id: crate::object_id::ObjectId::from_object_part(object),
             mapping_flags: crate::serial::read_mapping_flags(whole),
             use_defs: object
                 .get("UseDfs")

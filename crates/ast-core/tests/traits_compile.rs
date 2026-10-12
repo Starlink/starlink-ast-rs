@@ -62,6 +62,18 @@ impl Mapping for DummyRegion {
     fn mapping_flags(&self) -> &ast_core::mappings::MappingFlags {
         &self.flags
     }
+    fn id(&self) -> &str {
+        Frame::id(&self.frame)
+    }
+    fn set_id(&mut self, id: &str) {
+        Frame::set_id(&mut self.frame, id).unwrap();
+    }
+    fn clear_id(&mut self) {
+        Frame::clear_id(&mut self.frame).unwrap();
+    }
+    fn test_id(&self) -> bool {
+        Frame::test_id(&self.frame)
+    }
     fn mapping_flags_mut(&mut self) -> &mut ast_core::mappings::MappingFlags {
         &mut self.flags
     }
@@ -160,6 +172,18 @@ impl Frame for DummyRegion {
     }
     fn test_ident(&self) -> bool {
         Frame::test_ident(&self.frame)
+    }
+    fn id(&self) -> &str {
+        Frame::id(&self.frame)
+    }
+    fn set_id(&mut self, id: &str) -> AstResult<()> {
+        Frame::set_id(&mut self.frame, id)
+    }
+    fn clear_id(&mut self) -> AstResult<()> {
+        Frame::clear_id(&mut self.frame)
+    }
+    fn test_id(&self) -> bool {
+        Frame::test_id(&self.frame)
     }
     fn stored_use_defs(&self) -> Option<bool> {
         self.frame.stored_use_defs()

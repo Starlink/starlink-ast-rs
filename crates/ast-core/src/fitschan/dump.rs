@@ -67,7 +67,7 @@ impl Serializable for FitsChan {
         let mut fc = self.clone();
         let mut node = Node::new("FitsChan");
         node.class_comment = Some("I/O channels to FITS files".to_string());
-        base::write_parts(&mut node, fc.ident.as_deref(), &fc.config, false);
+        base::write_parts(&mut node, &self.id, fc.ident.as_deref(), &fc.config, false);
 
         let icard = fc.cards.get_card();
         node.push_int(
@@ -254,7 +254,7 @@ impl Serializable for FitsChan {
     /// stores as read; then the cards, up to the first with no type.
     fn from_node(node: &Node) -> AstResult<Self> {
         let mut fc = FitsChan::new();
-        fc.ident = base::read_parts(node, &mut fc.config);
+        (fc.id, fc.ident) = base::read_parts(node, &mut fc.config);
         let part = node.section("FitsChan");
 
         if let Some(name) = part.get_string_if_set("Encod")

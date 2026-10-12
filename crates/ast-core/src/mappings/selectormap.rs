@@ -32,6 +32,8 @@ pub struct SelectorMap {
     inverted: bool,
     simplified: SimplifiedRecord,
     ident: Option<String>,
+    /// The Object-class ID attribute, which a clone does not inherit.
+    id: crate::object_id::ObjectId,
     /// The flags C keeps on the base Mapping class (mapping.c).
     mapping_flags: crate::mappings::MappingFlags,
 }
@@ -87,6 +89,7 @@ impl SelectorMapBuilder {
             inverted: false,
             simplified: SimplifiedRecord::default(),
             ident: None,
+            id: Default::default(),
             mapping_flags: crate::mappings::MappingFlags::default(),
         }
     }
@@ -162,6 +165,7 @@ impl SelectorMap {
             inverted: self.inverted,
             simplified: SimplifiedRecord::default(),
             ident: None,
+            id: Default::default(),
             mapping_flags: crate::mappings::MappingFlags::default(),
         }))
     }
@@ -186,6 +190,7 @@ impl Clone for SelectorMap {
             inverted: self.inverted,
             simplified: self.simplified,
             ident: self.ident.clone(),
+            id: Default::default(),
             mapping_flags: self.mapping_flags.clone(),
         }
     }
@@ -255,6 +260,19 @@ impl Mapping for SelectorMap {
 
     fn test_ident(&self) -> bool {
         self.ident.is_some()
+    }
+
+    fn id(&self) -> &str {
+        self.id.get()
+    }
+    fn set_id(&mut self, id: &str) {
+        self.id.set(id);
+    }
+    fn clear_id(&mut self) {
+        self.id.clear();
+    }
+    fn test_id(&self) -> bool {
+        self.id.test()
     }
 
     fn has_been_simplified(&self) -> bool {

@@ -1054,6 +1054,7 @@ impl Serializable for CmpFrame {
         // --- Object-level attributes (before IsA Object) ---
         super::frame_attrs::write_object_part(
             &mut node,
+            &self.attrs.id,
             self.attrs.ident.as_deref(),
             self.attrs.use_defs,
         );
@@ -1156,7 +1157,7 @@ impl Serializable for CmpFrame {
             cmp.perm_axes(&axp)?;
         }
 
-        // The Frame part's own values: ActUnt, Digits, Domain, Title,
+        // The Frame part's own values: ActUnt, Digits, Domain, Title, ID,
         // Ident, UseDefs and the matching attributes, which the CmpFrame
         // does not forward to its components.
         let attrs = super::frame_attrs::read_frame_attrs(whole);
@@ -1165,6 +1166,7 @@ impl Serializable for CmpFrame {
         cmp.attrs.domain = attrs.domain;
         cmp.attrs.title = attrs.title;
         cmp.attrs.ident = attrs.ident;
+        cmp.attrs.id = attrs.id;
         cmp.attrs.use_defs = attrs.use_defs;
         cmp.attrs.min_axes = attrs.min_axes;
         cmp.attrs.max_axes = attrs.max_axes;

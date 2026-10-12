@@ -114,6 +114,27 @@ impl NativeChannel {
         self.base.ident = None;
     }
 
+    /// The Object-class `ID` attribute, blank unless set. Unlike `Ident`, a
+    /// clone does not inherit it, as C's `astCopy` does not copy it.
+    pub fn id(&self) -> &str {
+        self.base.id.get()
+    }
+
+    /// Set `ID`.
+    pub fn set_id(&mut self, id: &str) {
+        self.base.id.set(id);
+    }
+
+    /// Whether `ID` is set.
+    pub fn test_id(&self) -> bool {
+        self.base.id.test()
+    }
+
+    /// Clear `ID`.
+    pub fn clear_id(&mut self) {
+        self.base.id.clear();
+    }
+
     /// Internal: collect all lines from the source into a single string.
     fn collect_source_text(&mut self) -> Option<String> {
         let mut text = String::new();

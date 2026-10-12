@@ -36,6 +36,8 @@ pub(crate) struct FrameAttrs {
     pub active_unit: Option<bool>,
     /// The Object-class Ident attribute.
     pub ident: Option<String>,
+    /// The Object-class ID attribute, which a clone does not inherit.
+    pub id: crate::object_id::ObjectId,
     /// The Object-class UseDefs attribute.
     pub use_defs: Option<bool>,
     /// C's frame flags (frame.h `flags`, `astGetFrameFlags`): transient
@@ -478,10 +480,19 @@ pub(crate) fn write_frame_cards(node: &mut Node, f: &impl FrameDumpSource) -> As
 
 /// Read the Frame-class attributes from a Frame node. Mirrors the attribute
 /// part of C's `astLoadFrame` (frame.c).
-/// Write the Object part of a dump: Ident when given, UseDefs when set,
-/// then the `IsA Object` marker when either was written (object.c `Dump`,
-/// where UseDefs is never written unset).
-pub(crate) fn write_object_part(node: &mut Node, ident: Option<&str>, use_defs: Option<bool>) {
+/// Write the Object part of a dump: ID when set, Ident when given, UseDefs
+/// when set, then the `IsA Object` marker when any was written (object.c
+/// `Dump`, where an unset ID or Ident is blank and so not helpful, and
+/// UseDefs is never written unset).
+pub(crate) fn write_object_part(
+    node: &mut Node,
+    id: &crate::object_id::ObjectId,
+    ident: Option<&str>,
+    use_defs: Option<bool>,
+) {
+    if let Some(id) = id.as_option() {
+        node.push_string("ID", id, Some("Object identification string".to_string()));
+    }
     if let Some(ident) = ident {
         node.push_string(
             "Ident",
@@ -500,7 +511,7 @@ pub(crate) fn write_object_part(node: &mut Node, ident: Option<&str>, use_defs: 
             }),
         );
     }
-    if ident.is_some() || use_defs.is_some() {
+    if id.test() || ident.is_some() || use_defs.is_some() {
         node.push_isa("Object", Some("AST Object".to_string()));
     }
 }
@@ -568,6 +579,7 @@ pub(crate) fn read_frame_attrs(whole: &Node) -> FrameAttrs {
         preserve_axes: bool_of("Presrv"),
         active_unit: bool_of("ActUnt"),
         ident: object.get_string_if_set("Ident"),
+        id: crate::object_id::ObjectId::from_object_part(&object),
         use_defs: object
             .get("UseDfs")
             .map(|_| object.get_int("UseDfs", 1) != 0),
@@ -752,6 +764,21 @@ macro_rules! frame_attrs_ident {
         }
         fn test_ident(&self) -> bool {
             self.attrs.ident.is_some()
+        }
+
+        fn id(&self) -> &str {
+            self.attrs.id.get()
+        }
+        fn set_id(&mut self, id: &str) -> $crate::error::AstResult<()> {
+            self.attrs.id.set(id);
+            Ok(())
+        }
+        fn clear_id(&mut self) -> $crate::error::AstResult<()> {
+            self.attrs.id.clear();
+            Ok(())
+        }
+        fn test_id(&self) -> bool {
+            self.attrs.id.test()
         }
         fn stored_use_defs(&self) -> Option<bool> {
             self.attrs.use_defs
@@ -1182,6 +1209,21 @@ macro_rules! region_frame_attrs {
         fn test_ident(&self) -> bool {
             self.data.ident.is_some()
         }
+
+        fn id(&self) -> &str {
+            self.data.id.get()
+        }
+        fn set_id(&mut self, id: &str) -> $crate::error::AstResult<()> {
+            self.data.id.set(id);
+            Ok(())
+        }
+        fn clear_id(&mut self) -> $crate::error::AstResult<()> {
+            self.data.id.clear();
+            Ok(())
+        }
+        fn test_id(&self) -> bool {
+            self.data.id.test()
+        }
         // UseDefs, as C's attribute access gives it: setting, clearing and
         // testing it act on the encapsulated Frame, and an unset value comes
         // from it (region.c `GetUseDefs`). A value stored on the Region
@@ -1223,6 +1265,19 @@ macro_rules! region_mapping_ident {
         }
         fn test_ident(&self) -> bool {
             self.data.ident.is_some()
+        }
+
+        fn id(&self) -> &str {
+            self.data.id.get()
+        }
+        fn set_id(&mut self, id: &str) {
+            self.data.id.set(id);
+        }
+        fn clear_id(&mut self) {
+            self.data.id.clear();
+        }
+        fn test_id(&self) -> bool {
+            self.data.id.test()
         }
     };
 }

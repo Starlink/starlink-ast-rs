@@ -14,7 +14,7 @@ SphMap against the SphMap that follows it in the opposite direction; and rewrite
 a `SphMap(inverted), diagonal, SphMap(forward)` sandwich into
 `WinMap, SphMap, SphMap`, adjusting `PolarLong`.
 
-`SphMap::map_merge` (`sphmap.rs:326-333 (fn map_merge)`) delegates to
+`SphMap::map_merge` (`sphmap.rs:329-336 (fn map_merge)`) delegates to
 `simplify::sph_map_merge` (`mappings/simplify.rs:3140-3159 (fn sph_map_merge)`); the sandwich body is
 `try_sphmap_diagonal_pattern_at` (`mappings/simplify.rs:3053-3128 (fn try_sphmap_diagonal_pattern_at)`).
 
@@ -23,12 +23,12 @@ a `SphMap(inverted), diagonal, SphMap(forward)` sandwich into
 | 2 | Initialise the returned result to -1 | sphmap.c:732-733 (fn MapMerge) | -- | ceremony | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index |
 | 3 | Check the global error status and bail out | sphmap.c:735-736 (fn MapMerge) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 3 | Further initialisation | sphmap.c:738-741 (fn MapMerge) | -- | ceremony | n/a: the sentinels C clears here are C's own — a null replacement Mapping, a "simplified" flag and an axis count — and the Rust code has no state to clear before the search begins |
-| 4 | Handle series only, and only the nominated SphMap with the Mapping that follows it | sphmap.c:743-747 (fn MapMerge) | sphmap.rs:342-344 (fn try_merge) | architecture | ported |
+| 4 | Handle series only, and only the nominated SphMap with the Mapping that follows it | sphmap.c:743-747 (fn MapMerge) | sphmap.rs:345-347 (fn try_merge) | architecture | ported |
 | 5 | Take the indices of the two potential SphMaps | sphmap.c:748-751 (fn MapMerge) | mappings/simplify.rs:1363-1437 (fn default_map_merge) | architecture | ported |
-| 6 | Require the second Mapping to be a SphMap | sphmap.c:752-756 (fn MapMerge) | sphmap.rs:349 (fn try_merge) | architecture | ported |
-| 7 | An inverted SphMap followed by a forward one simplifies | sphmap.c:757-764 (fn MapMerge) | sphmap.rs:372-379 (fn try_merge) | architecture | ported |
-| 8 | A forward SphMap followed by an inverted one simplifies only under the extra condition C names | sphmap.c:765-774 (fn MapMerge) | sphmap.rs:380-389 (fn try_merge) | architecture | ported |
-| 9 | Create a UnitMap to replace the pair | sphmap.c:775-779 (fn MapMerge) | sphmap.rs:390 (fn try_merge) | architecture | ported |
+| 6 | Require the second Mapping to be a SphMap | sphmap.c:752-756 (fn MapMerge) | sphmap.rs:352 (fn try_merge) | architecture | ported |
+| 7 | An inverted SphMap followed by a forward one simplifies | sphmap.c:757-764 (fn MapMerge) | sphmap.rs:375-382 (fn try_merge) | architecture | ported |
+| 8 | A forward SphMap followed by an inverted one simplifies only under the extra condition C names | sphmap.c:765-774 (fn MapMerge) | sphmap.rs:383-392 (fn try_merge) | architecture | ported |
+| 9 | Create a UnitMap to replace the pair | sphmap.c:775-779 (fn MapMerge) | sphmap.rs:393 (fn try_merge) | architecture | ported |
 | 10 | Annul the two SphMap pointers | sphmap.c:780-784 (fn MapMerge) | -- | ceremony | n/a: owned values are dropped |
 | 11 | Insert the replacement and initialise its invert flag | sphmap.c:785-789 (fn MapMerge) | mappings/simplify.rs:1363-1437 (fn default_map_merge) | architecture | ported |
 | 12 | Close the gap, clear the vacated slots, and return the first modified index | sphmap.c:790-808 (fn MapMerge) | mappings/simplify.rs:1363-1437 (fn default_map_merge) | architecture | ported |
@@ -49,7 +49,7 @@ a `SphMap(inverted), diagonal, SphMap(forward)` sandwich into
 | 27 | Free resources | sphmap.c:958-962 (fn MapMerge) | -- | ceremony | n/a: owned values are dropped |
 | 28 | Clear the returned result if an error occurred | sphmap.c:963-965 (fn MapMerge) | -- | ceremony | n/a: an error is a `Result::Err`, not a value to be cleared alongside one |
 | 29 | Return the result | sphmap.c:966-967 (fn MapMerge) | mappings/simplify.rs:3158 (fn sph_map_merge) | architecture | ported |
-| 30 | Setting or clearing PolarLong or UnitRadius clears the simplified record | sphmap.c:1394-1396 (fn astMAKE_CLEAR1), sphmap.c:1436-1438 (fn astMAKE_CLEAR1) | sphmap.rs:74-81 (fn set_unit_radius), sphmap.rs:119-124 (fn set_polar_long) | ceremony | ported |
+| 30 | Setting or clearing PolarLong or UnitRadius clears the simplified record | sphmap.c:1394-1396 (fn astMAKE_CLEAR1), sphmap.c:1436-1438 (fn astMAKE_CLEAR1) | sphmap.rs:77-84 (fn set_unit_radius), sphmap.rs:122-127 (fn set_polar_long) | ceremony | ported |
 
 ## Row 15 — the Invert flag is deliberately ignored
 
