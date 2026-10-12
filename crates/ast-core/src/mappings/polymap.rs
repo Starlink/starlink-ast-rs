@@ -1216,60 +1216,6 @@ fn compute_jacobian_terms_from(forward: &[PolyTerm], nin: usize) -> Vec<Vec<Poly
 }
 
 // ---------------------------------------------------------------------------
-// General NxN linear solve (Gaussian elimination, partial pivoting)
-// ---------------------------------------------------------------------------
-
-/// Solve `A * x = b` in-place using Gaussian elimination with partial
-/// pivoting. `mat` is row-major `n x n`, `rhs` has length `n`.
-/// On success the solution is written into `rhs` and returns `true`.
-/// Returns `false` if the matrix is singular.
-pub(crate) fn solve_linear_system(mat: &mut [f64], rhs: &mut [f64], n: usize) -> bool {
-    // Forward elimination.
-    for col in 0..n {
-        // Partial pivoting: find the row with the largest absolute value
-        // in the current column.
-        let mut max_val = mat[col * n + col].abs();
-        let mut max_row = col;
-        for row in (col + 1)..n {
-            let v = mat[row * n + col].abs();
-            if v > max_val {
-                max_val = v;
-                max_row = row;
-            }
-        }
-        if max_val < 1e-30 {
-            return false; // Singular.
-        }
-        // Swap rows if needed.
-        if max_row != col {
-            for k in 0..n {
-                mat.swap(col * n + k, max_row * n + k);
-            }
-            rhs.swap(col, max_row);
-        }
-        // Eliminate below.
-        let pivot = mat[col * n + col];
-        for row in (col + 1)..n {
-            let factor = mat[row * n + col] / pivot;
-            for k in (col + 1)..n {
-                mat[row * n + k] -= factor * mat[col * n + k];
-            }
-            mat[row * n + col] = 0.0;
-            rhs[row] -= factor * rhs[col];
-        }
-    }
-    // Back substitution.
-    for col in (0..n).rev() {
-        let mut sum = rhs[col];
-        for k in (col + 1)..n {
-            sum -= mat[col * n + k] * rhs[k];
-        }
-        rhs[col] = sum / mat[col * n + col];
-    }
-    true
-}
-
-// ---------------------------------------------------------------------------
 // Levenberg-Marquardt iterative inverse (legacy, kept for reference)
 // ---------------------------------------------------------------------------
 

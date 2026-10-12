@@ -37,7 +37,6 @@ use crate::fitschan::wcs_decompose::{find_basis_vectors, fit_line_cd, split_cd};
 use crate::frames::{BasicFrame, Frame, SkyFrame};
 use crate::mappings::Mapping;
 use crate::mappings::helpers::ast_equal;
-use crate::mappings::polymap::solve_linear_system;
 
 use super::invertable::make_invertable;
 use super::orth::orth_vector_set;
@@ -248,7 +247,7 @@ pub(crate) fn make_int_world(
             // But our fullmat is `[[row, col]]` = `[[output, input]]` =
             // C `fullmat[input][output]`. So `fullmat[j][i]` (C) =
             // `fullmat[[i, j]]` (Rust). Below we set
-            // mat[i*n + j] = fullmat[[i, j]]. solve_linear_system uses
+            // mat[i*n + j] = fullmat[[i, j]]. palDmat uses
             // row-major mat[row * n + col]; row=i, col=j. So we are
             // populating it as A[i][j] = fullmat[[i, j]] which gives
             // the same matrix we want to invert.
@@ -256,9 +255,9 @@ pub(crate) fn make_int_world(
         }
     }
     let mut y = basis.w0.clone();
-    if !solve_linear_system(&mut mat, &mut y, nout) {
-        return Ok(false);
-    }
+    // C ignores palDmat's singularity flag, a degenerate matrix leaving
+    // `y` as far as the solve got.
+    let _ = crate::pal::dmat(nout, &mut mat, &mut y);
 
     // Step 10: walk every output axis. For axes within nin, CRPIX
     // comes from g0 - y; for "missing" axes (j >= nin), CRPIX = 1 - y.

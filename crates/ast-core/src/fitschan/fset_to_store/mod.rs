@@ -378,7 +378,6 @@ fn fset_to_store_impl(
 pub(crate) fn make_fits_frameset(fs: &FrameSet, encoding: Encoding) -> AstResult<FrameSet> {
     use crate::fitschan::fset_to_store::celestial_axes;
     use crate::frames::{SkySystem, SpecFrame};
-    use crate::mappings::WcsMap;
 
     // C `MakeFitsFrameSet` (fitschan.c:21234-21305) first walks every
     // WCS axis and, for any axis that is neither a SpecFrame nor an
@@ -517,7 +516,8 @@ pub(crate) fn make_fits_frameset(fs: &FrameSet, encoding: Encoding) -> AstResult
     };
 
     let mapping = owned.mapping(FrameRef::Base, FrameRef::Current)?;
-    let Some((_map1, map2, map3)) = celestial_axes::split_map2(mapping.as_ref()) else {
+    let Some((_map1, wcsmap, map3)) = celestial_axes::split_map(mapping.as_ref(), ilon, ilat)?
+    else {
         // No WcsMap found — celestial axes have no reference point;
         // C falls through and returns the FrameSet as-is. Restore
         // the SkyFrame's original system/equinox first so we don't
@@ -526,12 +526,7 @@ pub(crate) fn make_fits_frameset(fs: &FrameSet, encoding: Encoding) -> AstResult
         return Ok(owned);
     };
 
-    let Some(wcsmap) = map2.as_any().downcast_ref::<WcsMap>() else {
-        owned.with_integrity(restore_sky)?;
-        return Ok(owned);
-    };
-
-    let fid = fiducial::get_fiducial_wcs(wcsmap, map3.as_ref(), ilon, ilat)?;
+    let fid = fiducial::get_fiducial_wcs(&wcsmap, map3.as_ref(), ilon, ilat)?;
     let Some((reflon, reflat)) = fid else {
         owned.with_integrity(restore_sky)?;
         return Ok(owned);

@@ -547,12 +547,6 @@ const EXCLUDED: &[(&str, &str)] = &[
          native_full_1_matches_c_but_for_process_counts compares the rest",
     ),
     (
-        "celestial_bare_names",
-        "CTYPE values RA and DEC are read, as C reads them, as linear celestial \
-         axes; C writes them back as RA---CAR and DEC--CAR, the port's FITS-WCS \
-         writer writes nothing",
-    ),
-    (
         "dist_zpx_three",
         "C cannot implement the spectral algorithm code -ZPN left on CTYPE3 and \
          the read fails with AST__BDFTS; the port's spectral reader reads the \

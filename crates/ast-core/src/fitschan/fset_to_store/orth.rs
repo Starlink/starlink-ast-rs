@@ -10,8 +10,6 @@
 #![allow(dead_code)]
 #![allow(clippy::needless_range_loop)]
 
-use crate::mappings::polymap::solve_linear_system;
-
 /// Find a unit `n`-vector orthogonal to every vector in `in_vectors`,
 /// where `m = in_vectors.len()` and each row has length `n`.
 ///
@@ -78,8 +76,9 @@ pub(crate) fn orth_vector(in_vectors: &[Vec<f64>], n: usize) -> Option<Vec<f64>>
         rhs[j] = -in_vectors[j][colperm[m]];
     }
 
-    // Step 4: palDmat-style solve — mat · x = rhs, in-place into rhs.
-    if !solve_linear_system(&mut mat, &mut rhs, m) {
+    // Step 4: palDmat solves mat · x = rhs in place into rhs; a singular
+    // matrix gives no vector.
+    if !crate::pal::dmat(m, &mut mat, &mut rhs) {
         return None;
     }
 

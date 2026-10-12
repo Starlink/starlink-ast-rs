@@ -39,6 +39,8 @@
 
 use std::f64::consts::PI;
 
+use crate::constants::BAD_VALUE;
+use crate::coords::PointSet;
 use crate::error::AstResult;
 use crate::fitschan::fits_store::FitsStore;
 use crate::frames::{Frame, FrameRef, FrameSet, SkyFrame};
@@ -154,45 +156,16 @@ pub(crate) fn celestial_axes(args: CelestialAxesArgs<'_>) -> AstResult<DynMappin
     let map_unsimp = args.fs.mapping(FrameRef::Base, FrameRef::Current)?;
     let map = map_unsimp.simplify()?;
 
-    // Step 3: split the chain around its first WcsMap. Mirrors
-    // C:5109-5111 (`SplitMap`). For the WcsMap-less case we fall
-    // through to a deferred path (TAB or non-celestial fallback) and
-    // return identity over the celestial axes.
-    let (_pre, wm_lifted, post) = match split_around_wcsmap(map.as_ref()) {
-        Some(parts) => parts,
-        None => {
-            // No WcsMap → `-TAB` path is not yet ported. Mirrors the
-            // structure of fitschan.c:5396 (TAB branch) which we skip;
-            // the caller (Group 7) will see a UnitMap return value
-            // and rely on `make_int_world` to flag the residual
-            // non-linearity downstream.
-            return Ok(Box::new(UnitMap::new(nwcs)));
-        }
+    // Step 3: split the chain into the Mappings before, at and after its
+    // projection, C's `SplitMap` (C:5250). With none, the `-TAB`
+    // algorithm C tries next is not ported, and the celestial axes are
+    // left to the caller.
+    let Some((_pre, wcsmap_full, post)) = split_map(map.as_ref(), ilon, ilat)? else {
+        return Ok(Box::new(UnitMap::new(nwcs)));
     };
-
-    // Use the *lifted* WcsMap returned by SplitMap2 so the
-    // longitude / latitude axis indices report the full-pipeline
-    // positions (mirrors C `astGetWcsAxis(map2, …)` after the lift
-    // at C:33092-33106). Falling back to `find_wcsmap` would yield
-    // the un-lifted 2-axis WcsMap embedded inside a parallel
-    // composition, whose internal axes are 0,1 regardless of where
-    // the celestial pair sits in the FrameSet.
-    //
-    // `wcsmap_full` carries the full-pipeline axis indices and is
-    // what we hand to PV-aware reads (`get_pv`, `lonax`, `latax`).
-    // `wcsmap` (a 2-axis copy with internal axes 0,1) is what
-    // `build_wcs_to_iwc` uses to build the celestial rotation —
-    // that helper already embeds the 2-axis chain into the
-    // larger pipeline via PermMaps, so passing the lifted WcsMap
-    // would double-count the embedding.
-    let wcsmap_full = match wm_lifted.as_any().downcast_ref::<WcsMap>() {
-        Some(w) => w.clone(),
-        None => return Ok(Box::new(UnitMap::new(nwcs))),
-    };
-    let wcsmap = match find_wcsmap(map.as_ref()) {
-        Some(w) => w,
-        None => return Ok(Box::new(UnitMap::new(nwcs))),
-    };
+    // The WcsMap's axes are those of the whole pixel->WCS Mapping, as
+    // `astGetWcsAxis(map2, ...)` gives them.
+    let wcsmap = &wcsmap_full;
     let axlon_0 = wcsmap_full.lonax_0based();
     let axlat_0 = wcsmap_full.latax_0based();
     let axlon_1 = wcsmap_full.lonax();
@@ -379,41 +352,113 @@ fn zero_angle(v: f64) -> bool {
     v.abs() < 1.0e-9
 }
 
-/// Walk the mapping for the first `WcsMap` and return a reference to
-/// it. Helper duplicated from `wcs_write::find_wcsmap` so this module
-/// can stay self-contained.
-fn find_wcsmap(mapping: &dyn Mapping) -> Option<&WcsMap> {
-    if let Some(wm) = mapping.as_any().downcast_ref::<WcsMap>() {
-        return Some(wm);
+/// Decompose the pixel->WCS Mapping `map` into `(map1, map2, map3)` in
+/// series, `map2` an inverted WcsMap with FITSProj set: C's `SplitMap`
+/// (fitschan.c:32973). The WcsMap `split_map2` finds is used when it is
+/// inverted and neither `map1` nor `map3` holds another. Otherwise a
+/// linear `map` is given a CAR projection, with a ShiftMap moving the
+/// origin of the longitude axis of intermediate world coordinates to a
+/// sensible value; and a `map` whose celestial outputs `ilon` and `ilat`
+/// are constant is given the WcsMap of a TAN header with those values at
+/// its reference point.
+pub(crate) fn split_map(
+    map: &dyn Mapping,
+    ilon: usize,
+    ilat: usize,
+) -> AstResult<Option<(DynMapping, WcsMap, DynMapping)>> {
+    if let Some((map1, map2, map3)) = split_map2(map)
+        && map2.is_inverted()
+        && split_map2(map1.as_ref()).is_none()
+        && split_map2(map3.as_ref()).is_none()
+        && let Some(wm) = map2.as_any().downcast_ref::<WcsMap>()
+    {
+        return Ok(Some((map1, wm.clone(), map3)));
     }
-    if let Some(cmp) = mapping.as_any().downcast_ref::<CmpMap>() {
-        if let Some(wm) = find_wcsmap(cmp.first()) {
-            return Some(wm);
-        }
-        if let Some(wm) = find_wcsmap(cmp.second()) {
-            return Some(wm);
-        }
-    }
-    None
-}
 
-/// Split the mapping around its first usable WcsMap, returning
-/// `(pre, post)` chains of `nwcs`-axis Mappings where the WcsMap
-/// itself is excluded from both. Returns `None` if no WcsMap is
-/// present.
-///
-/// Mirrors C `SplitMap2` (fitschan.c:32850-33140): the search
-/// algorithm allows for an arbitrary combination of series and
-/// parallel CmpMaps. When a WcsMap is found inside a parallel
-/// branch, the corresponding pre/post slices are padded with
-/// UnitMaps on the other branches' axes, and the WcsMap itself
-/// is lifted to the full axis count with its lon/lat axes shifted
-/// by the WcsMap branch's offset (mirrors C:33092-33106). The
-/// lifted WcsMap is returned alongside `(pre, post)` so callers
-/// reading `axlon`/`axlat` see the full-pipeline axis indices.
-fn split_around_wcsmap(mapping: &dyn Mapping) -> Option<(DynMapping, DynMapping, DynMapping)> {
-    let (pre, wm, post) = split_map2(mapping)?;
-    Some((pre, wm, post))
+    let nwcs = map.nout();
+    let npix = map.nin();
+
+    // A linear Mapping: a CAR projection. The longitude IWC axis is
+    // shifted so that the pixel origin falls at its origin; the latitude
+    // axis cannot be, since pre-FITS-WCS readers could not handle the
+    // rotation from native to celestial coordinates that would need.
+    if map.is_linear() {
+        let origin = map.transform(&PointSet::from_rows([vec![0.0; npix]]), true)?;
+        let mut iwc_origin = origin.point(0).to_vec();
+        for (i, v) in iwc_origin.iter_mut().enumerate() {
+            *v = if i == ilon { -*v } else { 0.0 };
+        }
+        let mapa = ShiftMap::new(iwc_origin);
+        let map1: DynMapping = Box::new(CmpMap::new(
+            map.clone_box(),
+            Box::new(mapa.clone()),
+            Composition::Series,
+        )?);
+        let mut map2 = WcsMap::new(nwcs, WcsProjection::Car, ilon + 1, ilat + 1)?;
+        map2.invert();
+        let mut map3 = mapa;
+        map3.invert();
+        return Ok(Some((map1, map2, Box::new(map3))));
+    }
+
+    // Celestial outputs the Mapping gives constant values: two
+    // arbitrary pixel positions map to the same, good, longitude and
+    // latitude.
+    let pixels = PointSet::from_rows([vec![1.0; npix], vec![1000.0; npix]]);
+    let wcs = map.transform(&pixels, true)?;
+    let (p0, p1) = (wcs.point(0), wcs.point(1));
+    if p0[ilon] != p1[ilon]
+        || p0[ilon] == BAD_VALUE
+        || p0[ilat] != p1[ilat]
+        || p0[ilat] == BAD_VALUE
+    {
+        return Ok(None);
+    }
+
+    // The Mappings of a FITS-WCS header with those values at its
+    // reference point; the keywords that do not affect them are given
+    // arbitrary values. C formats CRVAL with `%.*g` and AST__DBL_DIG,
+    // 17.
+    let mut fc = crate::fitschan::FitsChan::new();
+    for i in 0..nwcs {
+        fc.put_fits(&format!("CRPIX{}  = 0", i + 1), false)?;
+        fc.put_fits(&format!("CDELT{}  = 0.0003", i + 1), false)?;
+        let ctype = if i == ilon {
+            "'RA---TAN'"
+        } else if i == ilat {
+            "'DEC--TAN'"
+        } else {
+            "'DUMMY'"
+        };
+        fc.put_fits(&format!("CTYPE{}  = {ctype}", i + 1), false)?;
+        let crval = if i == ilon || i == ilat {
+            crate::serial::native_write::format_double_g_signed(DR2D * p0[i], 17)
+        } else {
+            "0.0".to_string()
+        };
+        fc.put_fits(&format!("CRVAL{}  = {crval}", i + 1), false)?;
+    }
+    fc.clear_card()?;
+    let Some(crate::serial::AnyObject::FrameSet(tfs)) = crate::channel::Channel::read(&mut fc)?
+    else {
+        return Ok(None);
+    };
+    let tmap2 = tfs.mapping(FrameRef::Base, FrameRef::Current)?;
+    let Some((_, map2, map3)) = split_map(tmap2.as_ref(), 0, 1)? else {
+        return Ok(None);
+    };
+
+    // A ShiftMap subtracting the constant longitude and latitude, so that
+    // `map1` gives zero on the celestial axes.
+    let mut w1 = vec![0.0; nwcs];
+    w1[ilon] = -p0[ilon];
+    w1[ilat] = -p0[ilat];
+    let map1: DynMapping = Box::new(CmpMap::new(
+        map.clone_box(),
+        Box::new(ShiftMap::new(w1)),
+        Composition::Series,
+    )?);
+    Ok(Some((map1, map2, map3)))
 }
 
 /// Decompose `mapping` into `(pre, wcs, post)` such that a series
@@ -660,7 +705,6 @@ fn compute_fiducial_ppc(wcsmap: &WcsMap) -> AstResult<Option<(f64, f64)>> {
     if !phi.is_finite() || !theta.is_finite() {
         return Ok(None);
     }
-    use crate::coords::PointSet;
     let naxin = wcsmap.nin();
     if naxin == 0 {
         return Ok(None);

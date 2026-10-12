@@ -28,7 +28,7 @@
 use crate::coords::PointSet;
 use crate::error::AstResult;
 use crate::fitschan::fits_store::FitsStore;
-use crate::frames::{CmpFrame, Frame, FrameRef, FrameSet};
+use crate::frames::{Frame, FrameRef, FrameSet};
 use crate::mappings::helpers::is_bad;
 use crate::mappings::{CmpMap, Composition, DynMapping, ShiftMap, UnitMap};
 
@@ -154,12 +154,9 @@ pub(crate) fn other_axes(args: OtherAxesArgs<'_>) -> AstResult<DynMapping> {
             Some(prev) => Box::new(CmpMap::new(prev, axmap, Composition::Series)?),
         });
 
-        // Set CTYPE / CTYPE comment / CUNIT / CNAME for this axis.
-        // Mirrors C:24358-24390 — the per-axis attribute lookup uses
-        // the WCS frame, with CmpFrame transparently routing to the
-        // right sub-frame.
-        let (sub_frame, sub_axis) = resolve_subframe(wcsfrm, iax);
-        populate_axis_keywords(sub_frame, sub_axis, iax + 1, fits_i, args.store);
+        // Set CTYPE / CTYPE comment / CUNIT / CNAME for this axis from
+        // the WCS Frame's getters (fitschan.c `OtherAxes`).
+        axis_keywords(wcsfrm, iax + 1, fits_i, args.store);
 
         // Append "-LOG" to CTYPE when the log path fired. Mirrors
         // C:24369-24373 (SetAlgCode "-LOG"). The C source also handles
@@ -228,128 +225,28 @@ fn add_unit_maps(map: DynMapping, iax: usize, nax: usize) -> AstResult<DynMappin
     Ok(ret)
 }
 
-/// Resolve a WCS-frame axis index to the (sub-frame, 1-based axis)
-/// pair that holds its label/symbol/unit. For a `CmpFrame`, recurses
-/// into the appropriate child; for any other frame, returns it
-/// unchanged with `iax + 1`. Mirrors how C's `astGetSymbol(wcsfrm, iax)`
-/// dispatches through CmpFrame's class methods.
-fn resolve_subframe(frame: &dyn Frame, iax: usize) -> (&dyn Frame, usize) {
-    if let Some(cmp) = frame.as_any().downcast_ref::<CmpFrame>() {
-        // Route the external axis through the CmpFrame's axis
-        // permutation to its internal axis before splitting on the
-        // first child's axis count. Mirrors C `astGetSymbol(cmpfrm, ext)`,
-        // whose MAKE_GET macro permutes external→internal via
-        // `this->perm[ext]` (cmpframe.c:8290+).
-        let internal = cmp.perm()[iax];
-        let n1 = cmp.naxes1();
-        if internal < n1 {
-            resolve_subframe(cmp.frame1(), internal)
-        } else {
-            resolve_subframe(cmp.frame2(), internal - n1)
-        }
-    } else {
-        (frame, iax + 1)
-    }
-}
-
-/// Populate `CTYPE` / `CTYPE` comment / `CUNIT` / `CNAME` for one
-/// axis. Mirrors `fitschan.c::OtherAxes` lines 24359-24390 — symbol
-/// becomes CTYPE (with `AXIS{n}` fallback), label becomes the comment
-/// when explicitly set and distinct from symbol, unit becomes CUNIT
-/// when set.
-///
-/// `axis` is the 1-based axis index *within `frame`* (after
-/// resolve_subframe routing through any enclosing CmpFrame). C
-/// passes this as the WCS-frame axis to `astGetSymbol`, where the
-/// `MAKE_GET` macro permutes external→internal before calling
-/// `GetDefaultSymbol(internal_axis)`.
-///
-/// `wcs_axis_1based` is the un-permuted FrameSet WCS-axis loop
-/// counter (1-based). C's CTYPE comment uses `iax+1` (this index),
-/// not the FITS axis index, when no per-axis label is explicitly set
-/// (fitschan.c:24383). Pass-through unchanged from the caller.
-fn populate_axis_keywords(
-    frame: &dyn Frame,
-    axis: usize,
-    wcs_axis_1based: usize,
-    fits_i: usize,
-    store: &mut FitsStore,
-) {
-    use crate::frames::BasicFrame;
-
-    let basic = match frame.as_any().downcast_ref::<BasicFrame>() {
-        Some(b) => b,
-        None => {
-            // Non-BasicFrame axes that reach OtherAxes (e.g. an offset
-            // SkyFrame, whose Domain != "SKY" makes the writer's
-            // `IsASkyFrame` test false so it is not claimed by
-            // `CelestialAxes`). Mirror C `OtherAxes` (fitschan.c:24359-
-            // 24388) using the generic Frame accessors `astGetSymbol` /
-            // `astGetLabel` / `astTestLabel` / `astGetUnit` /
-            // `astTestUnit`.
-            let symbol = frame.symbol(axis).unwrap_or_default();
-            let ctype = if !symbol.is_empty() {
-                symbol.clone()
-            } else {
-                format!("AXIS{axis}")
-            };
-            store.ctype[fits_i] = Some(ctype);
-
-            let label = frame.label(axis).unwrap_or_default();
-            if frame.test_label(axis).unwrap_or(false) && !label.is_empty() && label != symbol {
-                store.ctype_com[fits_i] = Some(label.clone());
-                if store.cname[fits_i].is_none() {
-                    store.cname[fits_i] = Some(label);
-                }
-            } else {
-                store.ctype_com[fits_i] =
-                    Some(format!("Type of co-ordinate on axis {wcs_axis_1based}"));
-            }
-
-            if frame.test_unit(axis).unwrap_or(false) {
-                let u = frame.unit(axis).unwrap_or_default();
-                if !u.is_empty() && store.cunit[fits_i].is_none() {
-                    store.cunit[fits_i] = Some(u);
-                }
-            }
-            return;
-        }
-    };
-
-    // Mirrors C `astGetSymbol`, whose default when the Symbol is unset is
-    // the Domain (or "x") and the axis number (frame.c `GetDefaultSymbol`).
-    let symbol_owned: String = basic.symbol(axis).unwrap_or_default();
-    let label = basic.label(axis).unwrap_or_default();
-    let label_set = basic.test_label(axis).ok().unwrap_or(false);
-
-    let ctype = if !symbol_owned.is_empty() {
-        symbol_owned.clone()
-    } else {
+/// Store CTYPE, its comment, CNAME and CUNIT for WCS axis `axis`
+/// (1-based) of `wcsfrm`, as fitschan.c `OtherAxes` does: the Symbol is
+/// the CTYPE, or `AXIS<n>` when it is blank; a Label that is set, not
+/// blank and not the Symbol is the comment and CNAME, the comment being
+/// `Type of co-ordinate on axis <n>` otherwise; and a Unit that is set is
+/// the CUNIT.
+fn axis_keywords(wcsfrm: &dyn Frame, axis: usize, fits_i: usize, store: &mut FitsStore) {
+    let symbol = wcsfrm.symbol(axis).unwrap_or_default();
+    let label = wcsfrm.label(axis).unwrap_or_default();
+    store.ctype[fits_i] = Some(if symbol.is_empty() {
         format!("AXIS{axis}")
-    };
-    store.ctype[fits_i] = Some(ctype);
-
-    if label_set && !label.is_empty() && label != symbol_owned {
-        store.ctype_com[fits_i] = Some(label.clone());
-        if store.cname[fits_i].is_none() {
-            store.cname[fits_i] = Some(label);
-        }
     } else {
-        // C `OtherAxes` (fitschan.c:24382-24385) writes the default
-        // CTYPE comment using the WCS-frame loop index (`iax+1`),
-        // *not* the FITS axis index. The two differ whenever
-        // `wperm` permutes the WCS axes — and the comment must
-        // mirror C verbatim because alt-plane fixtures encode this
-        // detail.
-        store.ctype_com[fits_i] = Some(format!("Type of co-ordinate on axis {wcs_axis_1based}"));
+        symbol.clone()
+    });
+    if !label.is_empty() && wcsfrm.test_label(axis).unwrap_or(false) && symbol != label {
+        store.ctype_com[fits_i] = Some(label.clone());
+        store.cname[fits_i] = Some(label);
+    } else {
+        store.ctype_com[fits_i] = Some(format!("Type of co-ordinate on axis {axis}"));
     }
-
-    if basic.test_unit(axis).ok().unwrap_or(false)
-        && let Ok(u) = basic.unit(axis)
-        && !u.is_empty()
-        && store.cunit[fits_i].is_none()
-    {
-        store.cunit[fits_i] = Some(u.to_string());
+    if wcsfrm.test_unit(axis).unwrap_or(false) {
+        store.cunit[fits_i] = Some(wcsfrm.unit(axis).unwrap_or_default());
     }
 }
 

@@ -230,8 +230,10 @@ pub(crate) fn dvn(v: &[f64; 3]) -> ([f64; 3], f64) {
 /// in place by its inverse and `y` by the solution of `a·x = y` (for the
 /// original `a`). Returns `false` when the matrix is singular
 /// (`palDmat`'s `jf != 0`, i.e. a pivot magnitude below its internal
-/// `SFA = 1e-20`); in that case the contents of `a` and `y` are
-/// unspecified. `a.len()` must equal `n*n` and `y.len()` must equal `n`.
+/// `SFA = 1e-20`); in that case `a` and `y` hold what `palDmat` leaves
+/// in them, the rows it could pivot on having been reduced, which C's
+/// fitschan.c `MakeIntWorld` uses regardless. `a.len()` must equal `n*n`
+/// and `y.len()` must equal `n`.
 pub(crate) fn dmat(n: usize, a: &mut [f64], y: &mut [f64]) -> bool {
     dmat_det(n, a, y).0
 }
