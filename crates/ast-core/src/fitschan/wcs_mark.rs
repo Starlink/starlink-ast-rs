@@ -1,6 +1,6 @@
 //! Read-consumption marking for FITS-WCS-family headers.
 //!
-//! Port of the card-marking side effect of C `WcsFcRead` (fitschan.c:36293).
+//! Port of the card-marking side effect of C `WcsFcRead` (fitschan.c:36302).
 //! `WcsFcRead` walks **every** card in the FitsChan and pattern-matches the
 //! card's keyword name against a fixed list of templates. A card whose name
 //! matches, and whose value converts to the type the matching branch asks for,
@@ -67,7 +67,7 @@ const fn f_undef(pattern: &'static str) -> Template {
 }
 
 /// Every template whose branch in C `WcsFcRead` leaves `mark` at its initial
-/// value of 1, listed in source order (fitschan.c:36395-36952).
+/// value of 1, listed in source order (fitschan.c:36404-36961).
 ///
 /// The branches that clear `mark` are deliberately absent: `DUT1`, `MJD-OBS`,
 /// `MJD-AVG`, `OBSGEO-X`, `OBSGEO-Y`, `OBSGEO-Z`, `TIMESYS`, and `DTAI` supply
@@ -150,7 +150,7 @@ enum Convert {
     /// The value does not convert; C leaves the card unmarked.
     No,
     /// The card has no value and the branch does not permit that, which C
-    /// reports as `AST__FUNDEF` (fitschan.c:7640-7646).
+    /// reports as `AST__FUNDEF` (fitschan.c:7647-7653).
     Undefined,
 }
 
@@ -163,7 +163,7 @@ pub(crate) fn is_wcs_keyword(keyword: &str) -> bool {
 }
 
 /// Can `value` be converted to `want`? C's `CnvValue`, which hands the card to
-/// `CnvType` (fitschan.c:7524) unless an undefined value is acceptable.
+/// `CnvType` (fitschan.c:7531) unless an undefined value is acceptable.
 fn convert(value: &FitsValue, want: Want, undef: bool) -> Convert {
     if matches!(value, FitsValue::Undef) {
         return if undef {

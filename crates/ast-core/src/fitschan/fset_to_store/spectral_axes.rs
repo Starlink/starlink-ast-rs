@@ -102,7 +102,7 @@ pub(crate) fn spectral_axes(args: SpectralAxesArgs<'_>) -> AstResult<DynMapping>
     // Step 2: hold the caller's CRVAL override (if any). The
     // bound-based fallback is computed AFTER unit-absorption (below)
     // so that the bounds are taken on the same map that the
-    // algorithm cascade sees. Mirrors fitschan.c:30361-30389.
+    // algorithm cascade sees. Mirrors fitschan.c:30370-30398.
     let crval_input = args.crvals.get(spec_iax).copied().flatten();
     let mut crval: f64 = match crval_input {
         Some(v) if !is_bad(v) => v,
@@ -174,7 +174,7 @@ pub(crate) fn spectral_axes(args: SpectralAxesArgs<'_>) -> AstResult<DynMapping>
     }
 
     // Step 2c: derive default CRVAL from the spectral-axis bounds of
-    // the post-absorption map. Mirrors fitschan.c:30335 + 30308 +
+    // the post-absorption map. Mirrors fitschan.c:30344 + 30308 +
     // 30323-30329: bounds via astMapBox; if no caller override and
     // dim is known, use mid-bound; else use lower bound.
     let bounds = map.map_box(&lbnd_p, &ubnd_p, true, spec_iax + 1)?;
@@ -336,7 +336,7 @@ pub(crate) fn spectral_axes(args: SpectralAxesArgs<'_>) -> AstResult<DynMapping>
     }
 
     // VELOSYS, the topocentric velocity of the standard of rest, as C
-    // finds it on its copy of the FrameSet (fitschan.c:31225-31247): a
+    // finds it on its copy of the FrameSet (fitschan.c:31234-31256): a
     // source at rest in the standard of rest, unless that is the source
     // frame, re-expressed in the topocentric frame. In the source frame
     // this is the source velocity, or 0 when SourceVel is not set.
@@ -1208,7 +1208,7 @@ mod tests {
 
         // Pixel→WCS is identity. Spec-axis bounds via astMapBox are
         // [1, 200]; midpoint = 100.5; NearestPix snaps to integer
-        // pixel coordinate 101. Mirrors fitschan.c:30385 (mid value
+        // pixel coordinate 101. Mirrors fitschan.c:30394 (mid value
         // when dim is known) + :30333 (NearestPix snap).
         assert_eq!(store.crval[1], Some(101.0));
     }

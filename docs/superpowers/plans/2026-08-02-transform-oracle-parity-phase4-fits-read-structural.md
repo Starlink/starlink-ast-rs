@@ -44,14 +44,14 @@ The 12 root causes, each confirmed empirically against C (probe test reverted, `
 |---|---|---|---|
 | A1 | gls, ait-highlatpole | LONPOLE forced to 180° before `wcs_nat_pole`, defeating the projection-aware default for θ0=0 projections | `wcs_celestial.rs:563,664-671` |
 | A2 | unknown-cel, unknown-cel2 | CTYPE recognition whitelist lacks generic `xLON`/`xLAT`/`xyLN`/`xyLT`; System=Unknown classification missing | `fits_store.rs:273-298`; `wcs_celestial.rs` system classification |
-| A3 | class-noproj | no CAR-linear branch for a celestial CTYPE with no projection code (`RA--`/`DEC-`, ≤4 chars) | `wcs_celestial.rs:120-122`; port `fitschan.c:35808-35816,35896-35939` |
-| B1 | car4 | `CarLin` FitsChan attribute unimplemented; CAR path builds domain-restricted `WcsMap[CAR]` that returns BAD | new `carlin` on `FitsChan`; `wcs_celestial.rs:130`; port `fitschan.c:35960-35965` |
-| B2 | freq-log | `-LOG` falls through to linear `ShiftMap`; `LogWcs` MathMap unported | `wcs_spectral.rs:208-213`; port `fitschan.c:20726-20808` |
-| B3 | grism | `-GRI`/`-GRA` falls through to linear `ShiftMap`; `GrismSpecWcs` unported | `wcs_spectral.rs:208-213`; port `fitschan.c:14255-14417` |
+| A3 | class-noproj | no CAR-linear branch for a celestial CTYPE with no projection code (`RA--`/`DEC-`, ≤4 chars) | `wcs_celestial.rs:120-122`; port `fitschan.c:35817-35825,35896-35939` |
+| B1 | car4 | `CarLin` FitsChan attribute unimplemented; CAR path builds domain-restricted `WcsMap[CAR]` that returns BAD | new `carlin` on `FitsChan`; `wcs_celestial.rs:130`; port `fitschan.c:35969-35974` |
+| B2 | freq-log | `-LOG` falls through to linear `ShiftMap`; `LogWcs` MathMap unported | `wcs_spectral.rs:208-213`; port `fitschan.c:20735-20817` |
+| B3 | grism | `-GRI`/`-GRA` falls through to linear `ShiftMap`; `GrismSpecWcs` unported | `wcs_spectral.rs:208-213`; port `fitschan.c:14264-14426` |
 | C1 | serpens | DUT1 stored raw; C multiplies by seconds-per-day (86400) | `wcs_celestial.rs:321` |
 | C2 | tidy-offsets, tidy-pole, skyref-alt (+ axref, degen-wcsaxes, rfval, scp, sip-alt, zpx) | SREFIS/SREF/SREFP reads ignore the alt-plane version letter `s` | `wcs_keywords.rs:266-270` |
-| C3 | tan-polytan | PolyTan auto-detect (TAN→TPN when nonzero PV distortion present) unported | `spec_trans.rs:640-661`; port `GetUsedPolyTan` `fitschan.c:13935-14118` |
-| C4 | skyref (+ skyref-alt matrix, fits-pc-alt, fits-pc-unit, gappt) | `SkyRefIs` set directly on the Frame, bypassing the FrameSet-integrity remap C gets from `astSetC(fset,...)` | `wcs_read.rs:563-607`; C `fitschan.c:34595` |
+| C3 | tan-polytan | PolyTan auto-detect (TAN→TPN when nonzero PV distortion present) unported | `spec_trans.rs:640-661`; port `GetUsedPolyTan` `fitschan.c:13944-14127` |
+| C4 | skyref (+ skyref-alt matrix, fits-pc-alt, fits-pc-unit, gappt) | `SkyRefIs` set directly on the Frame, bypassing the FrameSet-integrity remap C gets from `astSetC(fset,...)` | `wcs_read.rs:563-607`; C `fitschan.c:34604` |
 | C5 | freq-wav, wave-f2w | `astRate` finite-difference result drifts ~1e-9 from C, propagating into the ShiftMap scale | `mappings/rate.rs` vs `mapping.c` Rate/FindGradient |
 | C6 | crota-3d | near-singular MatrixMap keeps a defined inverse; C leaves it undefined so `INV=0` propagates | `wcs_matrix.rs`; port `matrixmap.c` `InvertMatrix` singularity handling |
 
@@ -282,8 +282,8 @@ Co-Authored-By: SLAC AI"
 ### Task 2: C1 — DUT1 stored in seconds (× SPD), not raw days
 
 C reads DUT1 and multiplies by seconds-per-day before setting the SkyFrame attribute.
-Reference: `fitschan.c:37948` — `if( dut1 != AST__BAD ) astSetDut1( *frm, dut1*SPD );` (JACH store DUT1 in days; the SkyFrame attribute is in seconds). `SPD = 86400.0`.
-The write path already divides by SPD symmetrically (`fitschan.c:2988` `astGetDut1(wcsfrm)/SPD`), so the round-trip is consistent only if the read multiplies.
+Reference: `fitschan.c:37957` — `if( dut1 != AST__BAD ) astSetDut1( *frm, dut1*SPD );` (JACH store DUT1 in days; the SkyFrame attribute is in seconds). `SPD = 86400.0`.
+The write path already divides by SPD symmetrically (`fitschan.c:2995` `astGetDut1(wcsfrm)/SPD`), so the round-trip is consistent only if the read multiplies.
 
 **Fixture cleared:** serpens (fwd+inv). **NATIVE_READ_EXCLUDED:** `serpens_native`.
 
@@ -338,13 +338,13 @@ In `wcs_celestial.rs:320-322`:
 
 ```rust
     if let Some(dut1) = store.dut1 {
-        // C fitschan.c:37948: the SkyFrame Dut1 attribute is in seconds,
+        // C fitschan.c:37957: the SkyFrame Dut1 attribute is in seconds,
         // while the FITS DUT1 keyword is in days; convert with SPD.
         sky_frame.set_dut1(dut1 * crate::pal::SPD);
     }
 ```
 
-Confirm the SPD constant's location (`grep -rn "const SPD\|SPD:" crates/ast-core/src`); if `pal::SPD` is not exposed, inline `86_400.0` with a comment citing `fitschan.c:37948`.
+Confirm the SPD constant's location (`grep -rn "const SPD\|SPD:" crates/ast-core/src`); if `pal::SPD` is not exposed, inline `86_400.0` with a comment citing `fitschan.c:37957`.
 
 - [ ] **Step 4: Run the test to verify it passes**
 
@@ -578,7 +578,7 @@ Co-Authored-By: SLAC AI"
 
 ### Task 5: A2 — generic celestial CTYPE recognition (xLON/xLAT/xyLN/xyLT) + System=Unknown
 
-C `GetSkyAxes` (`fitschan.c:10760-10776`) recognises a celestial axis when `strlen(ctype) > 4 && ctype[4] == '-'`, then classifies:
+C `GetSkyAxes` (`fitschan.c:10767-10783`) recognises a celestial axis when `strlen(ctype) > 4 && ctype[4] == '-'`, then classifies:
 - longitude: `RA--`, `AZ--`, `ctype+1 == "LON"` (i.e. `xLON`), or `ctype+2 == "LN"` (i.e. `xyLN`);
 - latitude: `DEC-`, `EL--`, `ctype+1 == "LAT"` (i.e. `xLAT`), or `ctype+2 == "LT"` (i.e. `xyLT`).
 
@@ -625,12 +625,12 @@ Expected: FAIL — the axis is not recognised as celestial, so no SkyFrame is bu
 
 - [ ] **Step 3: Apply the recognition fix**
 
-Rewrite `is_longitude_ctype`/`is_latitude_ctype` to mirror `fitschan.c:10760-10776` exactly — require a `-` at index 4 and match the generic families. Keep the specific prefixes as they are subsumed by the generic test, but preserve the AZ--/EL--/OFLN/OFLT handling:
+Rewrite `is_longitude_ctype`/`is_latitude_ctype` to mirror `fitschan.c:10767-10783` exactly — require a `-` at index 4 and match the generic families. Keep the specific prefixes as they are subsumed by the generic test, but preserve the AZ--/EL--/OFLN/OFLT handling:
 
 ```rust
 /// Check if a CTYPE value represents a celestial longitude axis.
 ///
-/// Mirrors C `GetSkyAxes` (fitschan.c:10760-10770): a celestial axis has a
+/// Mirrors C `GetSkyAxes` (fitschan.c:10767-10777): a celestial axis has a
 /// `-` as its fifth character; a longitude axis is `RA--`, `AZ--`, `xLON`
 /// (chars 1..4 == "LON"), or `xyLN` (chars 2..4 == "LN").
 fn is_longitude_ctype(ctype: &str) -> bool {
@@ -647,7 +647,7 @@ fn is_longitude_ctype(ctype: &str) -> bool {
 
 /// Check if a CTYPE value represents a celestial latitude axis.
 ///
-/// Mirrors C `GetSkyAxes` (fitschan.c:10772-10776): latitude is `DEC-`,
+/// Mirrors C `GetSkyAxes` (fitschan.c:10779-10783): latitude is `DEC-`,
 /// `EL--`, `xLAT` (chars 1..4 == "LAT"), or `xyLT` (chars 2..4 == "LT").
 fn is_latitude_ctype(ctype: &str) -> bool {
     let ct = ctype.trim();
@@ -703,7 +703,7 @@ Co-Authored-By: SLAC AI"
 
 ### Task 6: B2 — LogWcs (`-LOG` spectral algorithm) MathMap
 
-C `LogWcs` (`fitschan.c:20726-20808`) builds a 1×1 `MathMap` for a `-LOG` spectral axis: `S = Sr·exp(w/Sr)` forward, `w = Sr·log(S/Sr)` inverse, where `Sr = CRVAL` (a default of 0 yields a NULL mapping — C returns NULL, the caller then leaves the axis linear).
+C `LogWcs` (`fitschan.c:20735-20817`) builds a 1×1 `MathMap` for a `-LOG` spectral axis: `S = Sr·exp(w/Sr)` forward, `w = Sr·log(S/Sr)` inverse, where `Sr = CRVAL` (a default of 0 yields a NULL mapping — C returns NULL, the caller then leaves the axis linear).
 The Rust spectral reader falls through the `else` arm at `wcs_spectral.rs:208-213` and emits a linear `ShiftMap`, so `freq-log` transforms linearly where C is logarithmic.
 
 **Fixture cleared:** freq-log (inv). **NATIVE_READ_EXCLUDED:** `freq-log_native`.
@@ -746,12 +746,12 @@ Expected: FAIL — the linear ShiftMap gives the wrong inverse.
 
 - [ ] **Step 3: Add `log_wcs` and dispatch**
 
-Add the reader, mirroring `LogWcs` (`fitschan.c:20773-20805`) — the MathMap has `simpfi=1,simpif=1` in C; construct the equivalent forward/inverse expression strings with full `f64` precision:
+Add the reader, mirroring `LogWcs` (`fitschan.c:20782-20814`) — the MathMap has `simpfi=1,simpif=1` in C; construct the equivalent forward/inverse expression strings with full `f64` precision:
 
 ```rust
 /// Build the IWC→S mapping for a FITS-WCS paper III `-LOG` spectral axis.
 ///
-/// Mirrors C `LogWcs` (fitschan.c:20726-20808): S = Sr*exp(w/Sr) forward,
+/// Mirrors C `LogWcs` (fitschan.c:20735-20817): S = Sr*exp(w/Sr) forward,
 /// w = Sr*log(S/Sr) inverse, where Sr is the CRVAL of the axis. A zero Sr
 /// has no logarithmic form, so C returns NULL and the axis stays linear.
 fn log_wcs(crval: f64) -> Option<DynMapping> {
@@ -816,7 +816,7 @@ Co-Authored-By: SLAC AI"
 
 ### Task 7: B3 — GrismSpecWcs (`-GRI`/`-GRA` spectral algorithm)
 
-C `GrismSpecWcs` (`fitschan.c:14255-14417`) builds a CmpMap around a `GrismMap` for a `-GRI` (vacuum wavelength) or `-GRA` (air wavelength) axis:
+C `GrismSpecWcs` (`fitschan.c:14264-14426`) builds a CmpMap around a `GrismMap` for a `-GRI` (vacuum wavelength) or `-GRA` (air wavelength) axis:
 1. Copy the SpecFrame, set System to `WAVELEN` (`-GRI`) or `AIRWAVE` (`-GRA`) and Unit `"m"`; `astConvert` to get `smap` (S → wavelength).
 2. `crv = CRVAL` (default 0); `astTran1(smap, crv) → wcrv` (reference wavelength in m).
 3. Build a `GrismMap` and set G/M/Alpha/NR/NRP/Eps/Theta from `PVi_0..6` (degrees→radians for Alpha/Eps/Theta via `AST__DD2R`, defaults `G=0, M=0, Alpha=0, NR=1, NRP=0, Eps=0, Theta=0`), and `WaveR = wcrv`.
@@ -865,12 +865,12 @@ Expected: FAIL — the linear ShiftMap gives the wrong transform.
 
 - [ ] **Step 3: Add `grism_spec_wcs` and dispatch**
 
-Port `fitschan.c:14335-14413` faithfully. Read each `PVi_m` from the store; convert the reference CRVAL through `smap`; set every GrismMap parameter with the documented default and degrees→radians conversion; compose exactly as C does. Build the GrismMap via `GrismMap::new` with all eight parameters (the constructor is the Rust equivalent of `astGrismMap` + the seven `astSetGrism*` calls), then invert it:
+Port `fitschan.c:14344-14422` faithfully. Read each `PVi_m` from the store; convert the reference CRVAL through `smap`; set every GrismMap parameter with the documented default and degrees→radians conversion; compose exactly as C does. Build the GrismMap via `GrismMap::new` with all eight parameters (the constructor is the Rust equivalent of `astGrismMap` + the seven `astSetGrism*` calls), then invert it:
 
 ```rust
 /// Build the IWC→S mapping for a FITS-WCS paper III `-GRI`/`-GRA` grism axis.
 ///
-/// Mirrors C `GrismSpecWcs` (fitschan.c:14255-14417). `-GRI` disperses in
+/// Mirrors C `GrismSpecWcs` (fitschan.c:14264-14426). `-GRI` disperses in
 /// vacuum wavelength, `-GRA` in air wavelength. The returned mapping is
 /// `w -> S`, built from a GrismMap whose parameters come from PVi_0..6.
 fn grism_spec_wcs(
@@ -981,8 +981,8 @@ Co-Authored-By: SLAC AI"
 
 ### Task 8: C3 — PolyTan auto-detect (TAN → TPN when PVi_m distortion present)
 
-The PolyTan FitsChan attribute defaults to `-1` in C (`fitschan.c:42746`), meaning "auto-detect".
-`GetUsedPolyTan` (`fitschan.c:13935-14118`) resolves the auto case: search the FitsChan for `PVi_m` cards; if any are found on the latitude axis, or any on the longitude axis with `m > 4`, use the distorted-TAN convention (return 1) — which drives the `TAN → TPN` CTYPE rewrite.
+The PolyTan FitsChan attribute defaults to `-1` in C (`fitschan.c:42755`), meaning "auto-detect".
+`GetUsedPolyTan` (`fitschan.c:13944-14127`) resolves the auto case: search the FitsChan for `PVi_m` cards; if any are found on the latitude axis, or any on the longitude axis with `m > 4`, use the distorted-TAN convention (return 1) — which drives the `TAN → TPN` CTYPE rewrite.
 It then guards: if all distortion `PVi_m` (m ≥ 1) on the deciding axis are zero, it warns and returns 0 (standard TAN), deleting the PV cards.
 The Rust `translate_tpv_and_polytan_to_tpn` (`spec_trans.rs:640-661`) handles only the `-TPV` rename and deliberately omits the PolyTan branch (comment at 659-660), so `tan-polytan` stays TAN where C promotes it to TPN.
 
@@ -1027,11 +1027,11 @@ Expected: FAIL — the plain-TAN projection ignores the PV distortion.
 
 - [ ] **Step 3: Port `GetUsedPolyTan` and fire the rename**
 
-Add the auto-detect helper mirroring `fitschan.c:13979-14118` (PolyTan default `-1` = auto; positive values are an explicit AST attribute we do not expose, so the auto path is the whole behaviour here). Then call it from `translate_tpv_and_polytan_to_tpn` for the TAN case:
+Add the auto-detect helper mirroring `fitschan.c:13988-14127` (PolyTan default `-1` = auto; positive values are an explicit AST attribute we do not expose, so the auto path is the whole behaviour here). Then call it from `translate_tpv_and_polytan_to_tpn` for the TAN case:
 
 ```rust
 /// Resolve the auto (`PolyTan = -1`) decision from the PV cards, mirroring
-/// C `GetUsedPolyTan` (fitschan.c:13979-14118). Returns true when the
+/// C `GetUsedPolyTan` (fitschan.c:13988-14127). Returns true when the
 /// distorted-TAN (TPN) convention applies: a PVi_m on the latitude axis, or
 /// a PVi_m with m > 4 on the longitude axis. Returns false when all
 /// distortion coefficients (m >= 1) on the deciding axis are zero.
@@ -1059,7 +1059,7 @@ fn get_used_poly_tan(cards: &CardList, axlon: usize, axlat: usize, s: char) -> b
 
     // Non-zero-coefficient guard on the deciding axis (latitude first, then
     // longitude), skipping the constant PVi_0. Missing PVi_m defaults to
-    // 1.0 for m == 1, else 0.0 (fitschan.c:14066).
+    // 1.0 for m == 1, else 0.0 (fitschan.c:14075).
     let axis_has_nonzero = |ax: usize, ubnd: usize| -> bool {
         (1..=ubnd).any(|m| {
             let pval = cards
@@ -1102,7 +1102,7 @@ Expected: PASS.
 - [ ] **Step 5: Shrink both exclusion lists and verify the gates**
 
 Remove the two `tan-polytan.head` rows from `HEAD_ORACLE_EXCLUDED` and the `tan-polytan_native` row from `NATIVE_READ_EXCLUDED`.
-If `tan-polytan_native` still differs, the zero-coefficient PV-delete branch (fitschan.c:14082-14094) matters for the written cards — port it and re-run.
+If `tan-polytan_native` still differs, the zero-coefficient PV-delete branch (fitschan.c:14091-14103) matters for the written cards — port it and re-run.
 
 ```bash
 cargo test -p ast-core --test test_transform_oracle head_sections_match_oracle
@@ -1125,8 +1125,8 @@ Co-Authored-By: SLAC AI"
 
 ### Task 9: A3 — CAR-linear branch for a celestial CTYPE with no projection code
 
-C `WcsCelestial` (`fitschan.c:35808-35816`) treats a celestial axis whose CTYPE is ≤ 4 chars (no `-PRJ` suffix) as `AST__CAR` with `carlin = 1` — a plain-linear CAR.
-The build then (`fitschan.c:35967-35999`) uses a `WcsMap` with `AST__WCSBAD` (no projection) wrapped in a `WinMap` that adds CRVAL per axis, so pixel→celestial is linear.
+C `WcsCelestial` (`fitschan.c:35817-35825`) treats a celestial axis whose CTYPE is ≤ 4 chars (no `-PRJ` suffix) as `AST__CAR` with `carlin = 1` — a plain-linear CAR.
+The build then (`fitschan.c:35976-36008`) uses a `WcsMap` with `AST__WCSBAD` (no projection) wrapped in a `WinMap` that adds CRVAL per axis, so pixel→celestial is linear.
 Rust bails at `wcs_celestial.rs:121` (`store.projection_code(lon_axis)?` returns `None` for `RA--`/`DEC-`), so `class-noproj` decodes to a non-celestial `Frame` and its transform is wrong.
 
 This task ports the `carlin`-implied path for the *no-projection-code* case (the explicit `CarLin` attribute for a CAR *with* a code is B1/Task 10).
@@ -1171,11 +1171,11 @@ Expected: FAIL — `projection_code` returns None so no celestial frame is built
 
 - [ ] **Step 3: Detect the no-proj-code case and take the CAR-linear branch**
 
-At `wcs_celestial.rs:120-122`, when `celestial_axes()` succeeds but the CTYPE has no projection code, C sets `prj = AST__CAR, carlin = 1` (`fitschan.c:35813-35815`). Replace the unconditional `?` bail with the C branch:
+At `wcs_celestial.rs:120-122`, when `celestial_axes()` succeeds but the CTYPE has no projection code, C sets `prj = AST__CAR, carlin = 1` (`fitschan.c:35822-35824`). Replace the unconditional `?` bail with the C branch:
 
 ```rust
     // Step 2: Get the projection code. A celestial CTYPE with no `-PRJ`
-    // suffix (<= 4 chars) is a linear CAR (fitschan.c:35808-35816:
+    // suffix (<= 4 chars) is a linear CAR (fitschan.c:35817-35825:
     // `prj = AST__CAR; carlin = 1`).
     let (proj, carlin) = match store.projection_code(lon_axis) {
         Some(code) => (WcsProjection::from_code(&code)?, false),
@@ -1183,12 +1183,12 @@ At `wcs_celestial.rs:120-122`, when `celestial_axes()` succeeds but the CTYPE ha
     };
 ```
 
-Then, where the pixel→IWC→celestial pipeline is assembled, branch on `carlin` to build the linear form (`fitschan.c:35967-35999`): a `WcsMap` with `WcsProjection::Unknown` (AST__WCSBAD, no projection) plus a `WinMap` adding `CRVAL·DD2R` to the celestial axes. Extract this into a helper so Task 10 reuses it:
+Then, where the pixel→IWC→celestial pipeline is assembled, branch on `carlin` to build the linear form (`fitschan.c:35976-36008`): a `WcsMap` with `WcsProjection::Unknown` (AST__WCSBAD, no projection) plus a `WinMap` adding `CRVAL·DD2R` to the celestial axes. Extract this into a helper so Task 10 reuses it:
 
 ```rust
 /// Build the CAR-linear celestial mapping (pixel-linear CAR): a
 /// no-projection WcsMap plus a WinMap adding CRVAL (radians on the celestial
-/// axes) per axis. Mirrors C WcsCelestial's carlin path (fitschan.c:35967-
+/// axes) per axis. Mirrors C WcsCelestial's carlin path (fitschan.c:35976-
 /// 35939): `map2 = WcsMap(AST__WCSBAD)`, `map3 = WinMap(ina=0,inb=1 ->
 /// outa=CRVAL,outb=1+CRVAL)`.
 fn build_car_linear_mapping(
@@ -1221,7 +1221,7 @@ fn build_car_linear_mapping(
 }
 ```
 
-Confirm the exact CmpMap/WinMap ordering against C (`map1` degrees→radians zoom, `map2` WcsMap, `map3` WinMap composed in series — read `fitschan.c:35880-36020` in full before finalizing the compose order; the snippet above is the CAR-linear core, but the surrounding degrees-to-radians `map1` and the `SkyFrame` assembly must match the recognised-projection path in `build_celestial_with_def_b1950`). The `is_cel` scaffolding is illustrative — mirror C's actual per-axis loop (all axes get ina=0,inb=1,outa=0,outb=1; only the celestial axes get CRVAL added).
+Confirm the exact CmpMap/WinMap ordering against C (`map1` degrees→radians zoom, `map2` WcsMap, `map3` WinMap composed in series — read `fitschan.c:35889-36029` in full before finalizing the compose order; the snippet above is the CAR-linear core, but the surrounding degrees-to-radians `map1` and the `SkyFrame` assembly must match the recognised-projection path in `build_celestial_with_def_b1950`). The `is_cel` scaffolding is illustrative — mirror C's actual per-axis loop (all axes get ina=0,inb=1,outa=0,outb=1; only the celestial axes get CRVAL added).
 
 - [ ] **Step 4: Run the test to verify it passes**
 
@@ -1258,8 +1258,8 @@ Co-Authored-By: SLAC AI"
 ### Task 10: B1 — `CarLin` FitsChan attribute (explicit CAR-linear for a CAR *with* a projection code)
 
 car4 has CTYPE `GLON-CAR` (a real `-CAR` projection code), so it does not take the no-proj-code path of Task 9.
-Instead it relies on the `CarLin` FitsChan attribute: C `WcsCelestial` reads `carlin = astGetCarLin(this)` (`fitschan.c:35743`) and, when set, treats even a coded `-CAR` as the linear branch (`fitschan.c:35968` `if( ( latprj == AST__CAR && carlin ) || latprj == AST__WCSBAD )`).
-The `CarLin` attribute defaults to `-1` → `0` (`fitschan.c:42646-42649`): unset means "off" (a coded CAR uses the full spherical CAR projection).
+Instead it relies on the `CarLin` FitsChan attribute: C `WcsCelestial` reads `carlin = astGetCarLin(this)` (`fitschan.c:35752`) and, when set, treats even a coded `-CAR` as the linear branch (`fitschan.c:35977` `if( ( latprj == AST__CAR && carlin ) || latprj == AST__WCSBAD )`).
+The `CarLin` attribute defaults to `-1` → `0` (`fitschan.c:42655-42658`): unset means "off" (a coded CAR uses the full spherical CAR projection).
 The wcsconv manifest supplies `carlin=1` for car4 (`wcsconv_tests.txt:35`), so its byte-exact native output — and its transform-oracle golden — were generated with `CarLin=1`.
 
 **Investigation gate (do this first, before any code):** the transform-oracle harness loads `.head` fixtures with a bare `FitsChan::from_header(text)?.read()` and applies no attributes (`test_transform_oracle.rs:196-205`). If car4's oracle golden reflects `CarLin=1`, the harness must apply `CarLin=1` for car4 before `read()`, or the fixture can never match regardless of the port. Confirm with a C-oracle probe: read car4.head through the repo `libast.so` both with and without `astSetCarLin(fc, 1)` and compare against the recorded golden (`headers.oracle:628-680`). Record which one the golden matches. This decides whether Task 10 also touches the harness.
@@ -1324,14 +1324,14 @@ Expected: FAIL — outputs are the full spherical CAR projection, not linear.
 
 ```rust
 /// Set the CarLin attribute: treat a coded `-CAR` projection as a linear
-/// mapping (C FitsChan CarLin, fitschan.c:35968). Default unset = off.
+/// mapping (C FitsChan CarLin, fitschan.c:35977). Default unset = off.
 pub fn set_carlin(&mut self, on: bool) { self.carlin = Some(on); }
 fn get_carlin(&self) -> bool { self.carlin.unwrap_or(false) }  // C -1 -> 0
 ```
 
 `wcs_read.rs`: extend `decode_wcs_with_def_b1950` to also accept `carlin: bool` (or read it from `self` at the call site) and pass into `build_celestial_with_def_b1950`.
 
-`wcs_celestial.rs`: at the projection dispatch, take the CAR-linear branch when `latprj == WcsProjection::Car && carlin` (mirror `fitschan.c:35968` — the `|| latprj == WCSBAD` half is already Task 9's no-code path):
+`wcs_celestial.rs`: at the projection dispatch, take the CAR-linear branch when `latprj == WcsProjection::Car && carlin` (mirror `fitschan.c:35977` — the `|| latprj == WCSBAD` half is already Task 9's no-code path):
 
 ```rust
 if (matches!(proj, WcsProjection::Car) && carlin) || matches!(proj, WcsProjection::Unknown) {
@@ -1378,7 +1378,7 @@ Co-Authored-By: SLAC AI"
 
 skyref's native diff is bucketed `M0: matrix/offset` (`test_wcsconv.rs`) — the pixel→sky Mapping the reader produces differs from C in the matrix/offset that maps to the *offset* sky system. The transform-oracle symptom is a forward/inverse numeric drift in the offset-coordinate region.
 
-**⚠️ This task reverses a documented decision.** `wcs_read.rs:593-607` currently sets `SkyRefIs` *directly on the Frame* (`apply_skyrefis(f, skyrefis)` via `frame_mut`), with a comment explaining that applying it *through* the FrameSet would re-fuse the Mapping and "lose the offset description". C `TidyOffsets` (`fitschan.c:34524-34528`) does the opposite: it sets `SkyRefIs` through the FrameSet so the FrameSet integrity machinery re-maps the SkyFrame to offset coordinates. The current Rust comment asserts the header's SkyFrame *already* carries the offset Mapping — if that assertion is wrong (or wrong for skyref specifically), the direct-set is the bug and the M0 mismatch is its symptom.
+**⚠️ This task reverses a documented decision.** `wcs_read.rs:593-607` currently sets `SkyRefIs` *directly on the Frame* (`apply_skyrefis(f, skyrefis)` via `frame_mut`), with a comment explaining that applying it *through* the FrameSet would re-fuse the Mapping and "lose the offset description". C `TidyOffsets` (`fitschan.c:34533-34537`) does the opposite: it sets `SkyRefIs` through the FrameSet so the FrameSet integrity machinery re-maps the SkyFrame to offset coordinates. The current Rust comment asserts the header's SkyFrame *already* carries the offset Mapping — if that assertion is wrong (or wrong for skyref specifically), the direct-set is the bug and the M0 mismatch is its symptom.
 
 **Investigation gate (mandatory, before any code):** per [[feedback_c_logic_beats_existing_rust]] and [[feedback_no_corner_cuts_on_c]], do not trust the existing Rust comment. C-oracle probe required:
 
@@ -1473,7 +1473,7 @@ This is the residual serpens transform-oracle failure that the C1 DUT1 fix (Task
 
 **Root cause (verified by source trace):** `wcs_celestial.rs:398-405` handles the `naxis == 2 && lat_axis < lon_axis` case by wrapping the *entire* `inner` pipeline (zoom → WcsMap → rotation) in an outer PermMap sandwich `PermMap[2,1] ; inner ; PermMap[2,1]`. But `build_iwc_to_sky_mapping` (`wcs_celestial.rs:551-696`) builds the zoom MatrixMap (573-576), the WcsMap lon/lat slots, the rotation (`build_native_to_celestial_rotation_for_wcsmap`, 667-673), and `ref_pos` (685-688) all assuming (lon at slot 0, lat at slot 1). Under the swap, `inner` emits (lat, lon), so the outer sandwich is a patch over a pipeline whose internal wiring never accounted for the swap — the WcsMap and rotation see the axes misordered.
 
-C does not use an outer sandwich. In `WcsNative` (`reference/starlink-ast/src/fitschan.c:38133-38155`) the PermMap sandwich sits *immediately around the rotation only* (`SphMap ; MatrixMap ; SphMap`): longitude is routed to slot 0 and latitude to slot 1 *inside* the rotation, then restored. The WcsMap is built on physical axes `axlon+1`/`axlat+1` (`fitschan.c:~35965`) and `WcsNative` is invoked with the physical lon/lat indices, so the projection math always sees (lon, lat) regardless of FITS axis order.
+C does not use an outer sandwich. In `WcsNative` (`reference/starlink-ast/src/fitschan.c:38142-38164`) the PermMap sandwich sits *immediately around the rotation only* (`SphMap ; MatrixMap ; SphMap`): longitude is routed to slot 0 and latitude to slot 1 *inside* the rotation, then restored. The WcsMap is built on physical axes `axlon+1`/`axlat+1` (`fitschan.c:~35965`) and `WcsNative` is invoked with the physical lon/lat indices, so the projection math always sees (lon, lat) regardless of FITS axis order.
 
 **Faithful fix:** mirror C — route the swap *inside* the rotation embedding (the `build_native_to_celestial_rotation` / celestial-embed region), and build the WcsMap and rotation on the physical lon/lat axis indices, so they always receive (lon, lat) in the correct order. Remove the outer whole-pipeline PermMap sandwich at 398-405. Do not paper over it with an extra permutation or a tolerance ([[feedback_no_corner_cuts_on_c]], [[feedback_c_logic_beats_existing_rust]]).
 

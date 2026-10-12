@@ -422,7 +422,7 @@ impl DSBSpecFrame {
     /// Configure this DSBSpecFrame's IF / DSBCentre / SideBand from a FITS
     /// header's image frequency and spectral CRVAL.
     ///
-    /// Mirrors C `DSBSetUp` (fitschan.c:8975-9109). `imagfreq` is the
+    /// Mirrors C `DSBSetUp` (fitschan.c:8982-9116). `imagfreq` is the
     /// `IMAGFREQ` keyword value (Hz, measured in the source rest frame);
     /// `crval` is the spectral CRVAL value expressed in this frame's current
     /// spectral System and Unit (the CTYPE system).
@@ -465,7 +465,7 @@ impl DSBSpecFrame {
         )?;
 
         // Step 2 (C:9020-9025). Transform [RestFreq, imagfreq].
-        // fitschan.c:9154 reads RestFreq, set or default.
+        // fitschan.c:9161 reads RestFreq, set or default.
         let rest_freq = self.spec.rest_freq();
         // A 1-input/1-output mapping applied to two points (rest, image),
         // mirroring C `astTran1(fs, 2, in, 1, out)`. The single coordinate

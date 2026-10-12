@@ -68,9 +68,9 @@ CDELT2  =                 0.01
 ";
 
 /// A CLASS header with a blank projection code gets `-GLS` from `ClassTrans`
-/// (fitschan.c:7142-7163), and that `-GLS` survives: the `-GLS` → `-SFL`
-/// rewrite at fitschan.c:31861 is gated on the projection code captured at the
-/// *top* of the SpecTrans loop (fitschan.c:31182-31205), which for a blank
+/// (fitschan.c:7149-7170), and that `-GLS` survives: the `-GLS` → `-SFL`
+/// rewrite at fitschan.c:31870 is gated on the projection code captured at the
+/// *top* of the SpecTrans loop (fitschan.c:31191-31214), which for a blank
 /// CTYPE is blank, not `-GLS`. So the frame reports the GLS description
 /// "sinusoidal", not the SFL description "Sanson-Flamsteed". The two are the
 /// same projection math (wcsmap.c:698, :712 share `astSFLfwd`/`astSFLrev`) and
@@ -89,7 +89,7 @@ fn blank_class_projection_keeps_the_gls_description() {
     assert_eq!(sky.projection(), Some("sinusoidal"));
 }
 
-/// The companion: an *explicit* `-GLS` does hit the fitschan.c:31861 rewrite,
+/// The companion: an *explicit* `-GLS` does hit the fitschan.c:31870 rewrite,
 /// becomes `-SFL`, and reports the SFL description. This is the other side of
 /// the same guard, and what `inputs/gls.head` covers in the wcsconv corpus.
 #[test]

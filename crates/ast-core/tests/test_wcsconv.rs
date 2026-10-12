@@ -234,7 +234,7 @@ fn load_input(case: &TestCase) -> Result<(AnyObject, Option<FitsChan>), String> 
         // encoding, applies attrs from the test, and reads. The
         // FitsChan auto-detects the encoding from the cards on read
         // when no explicit encoding has been set — same semantics as
-        // C `astGetEncoding` (fitschan.c:12511).
+        // C `astGetEncoding` (fitschan.c:12518).
         let fc = FitsChan::from_header(&text).map_err(|e| format!("from_header: {e}"))?;
         let mut fc = fc;
         // C wcsconverter applies the attribute string *before* astRead

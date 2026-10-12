@@ -34,15 +34,15 @@ pub(crate) struct CelestialResult {
     /// 0-based latitude axis index in the full IWC space.
     pub lat_axis: usize,
     /// Celestial reference position (lon, lat) in radians: the raw CRVAL pair
-    /// converted to radians, mirroring C `WcsCelestial` (fitschan.c:36072-
+    /// converted to radians, mirroring C `WcsCelestial` (fitschan.c:36081-
     /// 36015). Used to stamp the SkyFrame's SkyRef on read. `None` when either
     /// CRVAL is absent. Overridden by `RFVAL<i>` and then by `AXREF<i>`
-    /// (fitschan.c:36151-36157, 36214-36221).
+    /// (fitschan.c:36160-36166, 36214-36221).
     pub ref_pos: Option<(f64, f64)>,
     /// True when `ref_pos` came from `AXREF<i>` rather than from CRVAL or
     /// `RFVAL<i>`. C sets SkyRef unconditionally in the AXREF case
-    /// (fitschan.c:36280-36281), bypassing the `astTestSkyRef` gate that
-    /// guards the CRVAL / RFVAL path (fitschan.c:36163).
+    /// (fitschan.c:36289-36290), bypassing the `astTestSkyRef` gate that
+    /// guards the CRVAL / RFVAL path (fitschan.c:36172).
     pub ref_pos_forced: bool,
 }
 
@@ -72,7 +72,7 @@ pub(crate) fn wcs_prj_type(last4: &str) -> Option<WcsProjection> {
 }
 
 /// The celestial axes of axis description `s` of `store`, found as C's
-/// `WcsCelestial` finds them (fitschan.c:36050-36213), or `None` if there
+/// `WcsCelestial` finds them (fitschan.c:36059-36222), or `None` if there
 /// are none.
 ///
 /// A longitude CTYPE is `RA`, `AZ`, `xLON` or `yzLN`, alone or followed by
@@ -237,7 +237,7 @@ pub(crate) fn build_celestial(store: &FitsStore) -> Option<CelestialResult> {
 
 /// Encoding-aware variant. `s` is the version character of the axis
 /// description (a blank for the primary one). `def_b1950` mirrors the FitsChan
-/// `DefB1950` attribute (fitschan.c:42348): true for FITS-PC /
+/// `DefB1950` attribute (fitschan.c:42357): true for FITS-PC /
 /// FITS-IRAF / FITS-AIPS / FITS-AIPS++ / FITS-CLASS / DSS, false
 /// for FITS-WCS, used by `wcs_sky_frame` when there is neither RADESYS nor
 /// EQUINOX. Warnings are added to `warnings` as C's `Warn` adds them, so
@@ -245,7 +245,7 @@ pub(crate) fn build_celestial(store: &FitsStore) -> Option<CelestialResult> {
 ///
 /// `rfval` carries the `RFVAL<i>` values (degrees, 0-based FITS axis) read
 /// straight off the card list, unmarked, the way C's `GetValue` does at the
-/// point of use (fitschan.c:36151-36157) — `FitsStore` has no member for it
+/// point of use (fitschan.c:36160-36166) — `FitsStore` has no member for it
 /// because C has none either.
 pub(crate) fn build_celestial_with_def_b1950(
     store: &FitsStore,
@@ -268,7 +268,7 @@ pub(crate) fn build_celestial_with_def_b1950(
     };
 
     // C keeps one local `carlin`, initialised from the attribute
-    // (fitschan.c:35743) and forced on for a projectionless CTYPE. It never
+    // (fitschan.c:35752) and forced on for a projectionless CTYPE. It never
     // writes the attribute back, so reading a header leaves `CarLin` alone.
     let car_lin = store.car_lin || forced_car_lin;
 
@@ -276,13 +276,13 @@ pub(crate) fn build_celestial_with_def_b1950(
     // Full-rank N-axis WcsMap: `ncoord` is the full pipeline rank,
     // and the lon/lat axes point at the FITS positions (1-based).
     // Non-celestial axes pass through unchanged. Mirrors C
-    // `WcsCelestial` (fitschan.c:35518) which builds the celestial
+    // `WcsCelestial` (fitschan.c:35527) which builds the celestial
     // contribution as an N-axis mapping at the top level.
     let mut wcsmap = WcsMap::new(store.naxis, proj, lon_axis + 1, lat_axis + 1)?;
 
     // Store the supplied PVi_m projection parameters on the WcsMap, warning
     // for any the projection cannot use. Mirrors C `WcsCelestial`
-    // (fitschan.c:36025-36061): one ascending pass over m up to the highest
+    // (fitschan.c:36034-36070): one ascending pass over m up to the highest
     // index present on any axis, checking the latitude axis before the
     // longitude axis at each index, which is the order the ASTWARN cards
     // appear in.
@@ -313,7 +313,7 @@ pub(crate) fn build_celestial_with_def_b1950(
     }
 
     // Propagate LONPOLE/LATPOLE into PVi_3 / PVi_4 on the longitude
-    // axis, mirroring fitschan.c:38259-38277. C: when LONPOLE/LATPOLE
+    // axis, mirroring fitschan.c:38268-38286. C: when LONPOLE/LATPOLE
     // are stored as the dedicated keywords (not as PV3/PV4), copy
     // them across so the FrameSet→Store round trip recovers them.
     // WcsMap PV parameters are stored in FITS-WCS units (degrees) — C's
@@ -366,7 +366,7 @@ pub(crate) fn build_celestial_with_def_b1950(
         sky_frame.set_dtai(dtai);
     }
     if let Some(dut1) = store.dut1 {
-        // C fitschan.c:37948: the SkyFrame Dut1 attribute is in seconds,
+        // C fitschan.c:37957: the SkyFrame Dut1 attribute is in seconds,
         // while the FITS DUT1 keyword is in days.
         sky_frame.set_dut1(dut1 * 86_400.0);
     }
@@ -375,7 +375,7 @@ pub(crate) fn build_celestial_with_def_b1950(
     // slot `lat_axis`, with identity on every other axis: the PermMap
     // sandwich inside `embed_celestial_in_naxis` routes the celestial pair
     // into the rotation's slots (0, 1) and restores them to their FITS
-    // positions, matching C `WcsNative` (fitschan.c:38451-38474). For the
+    // positions, matching C `WcsNative` (fitschan.c:38460-38483). For the
     // swapped-axis case (`lat_axis < lon_axis`) that leaves (cel_lat,
     // cel_lon) at slots (0, 1), matching the SkyFrame's permuted external
     // layout. `build_general_iwc_to_world` composes the per-class mappings
@@ -390,7 +390,7 @@ pub(crate) fn build_celestial_with_def_b1950(
     }))
 }
 
-/// C's `WcsSkyFrame` (fitschan.c:39439): the SkyFrame for the celestial
+/// C's `WcsSkyFrame` (fitschan.c:39448): the SkyFrame for the celestial
 /// axes `axlon` and `axlat` (0-based) of version `s`, of the system `sys`
 /// that `WcsCelestial` names and projection `prj`. RADESYS and EQUINOX,
 /// and failing those `def_b1950`, decide an equatorial system and the
@@ -687,7 +687,7 @@ fn build_iwc_to_sky_mapping(
     // Step 1: Degrees to radians on the celestial axes only; identity
     // elsewhere. Diagonal MatrixMap, recognised by MatrixMap::form()
     // as MatrixForm::Diagonal — O(N) per point. Mirrors C
-    // fitschan.c:35880-35888.
+    // fitschan.c:35889-35897.
     use ndarray::Array2;
     let mut zoom_mat: Array2<f64> = Array2::eye(naxis);
     zoom_mat[[lon_axis, lon_axis]] = deg2rad;
@@ -696,7 +696,7 @@ fn build_iwc_to_sky_mapping(
 
     // A `-CAR` projection read under CarLin is a plain linear mapping of IWC
     // to celestial coordinates, so the native-spherical rotation is skipped
-    // entirely (fitschan.c:35960-36013). C still applies the RFVAL / AXREF
+    // entirely (fitschan.c:35969-36022). C still applies the RFVAL / AXREF
     // reference-position overrides afterwards, in common with the spherical
     // path, so hand off to the shared tail rather than returning the seed.
     if car_lin && matches!(proj, WcsProjection::Car) {
@@ -807,7 +807,7 @@ fn build_iwc_to_sky_mapping(
     )?;
 
     // Celestial reference position (SkyRef) for the SkyFrame. C `WcsCelestial`
-    // starts from the raw CRVAL values converted to radians (fitschan.c:36072-
+    // starts from the raw CRVAL values converted to radians (fitschan.c:36081-
     // 36015), NOT from the fiducial point transformed through the rotation.
     // The two are mathematically equivalent except that the rotation's atan2
     // wraps longitude into (−π,π] (so a CAR frame with CRVAL=185° would
@@ -844,7 +844,7 @@ fn apply_ref_overrides(
     let mut ref_pos = seed;
     let mut ref_pos_forced = false;
 
-    // RFVAL<i> overrides CRVAL (fitschan.c:36151-36157). C's comment there
+    // RFVAL<i> overrides CRVAL (fitschan.c:36160-36166). C's comment there
     // describes them as the pre-translation CRVAL values, which are what a
     // SpecFrame reference position needs. The override changes the reference
     // position only — it does not force SkyRef to be set, so the
@@ -856,7 +856,7 @@ fn apply_ref_overrides(
         ref_pos = Some((lon * deg2rad, lat * deg2rad));
     }
 
-    // AXREF<i> overrides both (fitschan.c:36269-36283) and, unlike RFVAL,
+    // AXREF<i> overrides both (fitschan.c:36278-36292) and, unlike RFVAL,
     // sets SkyRef unconditionally — outside the `astTestSkyRef` gate.
     // `astWrite` emits these for `-TAB` axes that have no inverse transform.
     if let (Some(lon), Some(lat)) = (store.axref[lon_axis], store.axref[lat_axis]) {
@@ -869,7 +869,7 @@ fn apply_ref_overrides(
 
 /// Build the IWC-to-celestial mapping for a `-CAR` projection read under
 /// CarLin, mirroring C `WcsCelestial`'s linear branch
-/// (fitschan.c:35968-36013).
+/// (fitschan.c:35977-36022).
 ///
 /// The pipeline is `zoom` (deg→rad on the celestial axes) followed by a
 /// projectionless `WcsMap` — which `WcsMap::simplified` collapses to a
@@ -900,7 +900,7 @@ fn build_linear_car_mapping(
     // The WinMap that adds CRVAL. C builds it from the corner pair
     // `(ina, inb) = (0, 1)` to `(outa, outb) = (reflon, 1 + reflon)`, i.e.
     // unit scale and a per-axis shift, with `AST__BAD` on a celestial axis
-    // whose CRVAL is absent (fitschan.c:35975-36010).
+    // whose CRVAL is absent (fitschan.c:35984-36019).
     let ina = vec![0.0; naxis];
     let inb = vec![1.0; naxis];
     let mut outa = ina.clone();
@@ -941,7 +941,7 @@ fn build_linear_car_mapping(
 /// them to their FITS positions on output. The non-celestial axes pass
 /// through unchanged.
 ///
-/// Mirrors C `WcsNative` (fitschan.c:38438-38474):
+/// Mirrors C `WcsNative` (fitschan.c:38447-38483):
 ///  - When there are non-celestial axes (`nax_rem = naxis - 2 > 0`), a
 ///    `UnitMap(nax_rem)` runs in parallel with the rotation (stages 4/5).
 ///  - When the celestial axes are not already at slots `(0, 1)`
@@ -958,7 +958,7 @@ fn embed_celestial_in_naxis(
     debug_assert_eq!(inner.nout(), 2);
 
     // Stages 4/5: place a UnitMap in parallel for the non-celestial axes,
-    // but only when there are any (fitschan.c:38440 `if( nax_rem > 0 )`).
+    // but only when there are any (fitschan.c:38449 `if( nax_rem > 0 )`).
     let core: DynMapping = if naxis > 2 {
         let unit_rest = UnitMap::new(naxis - 2);
         Box::new(CmpMap::new(inner, Box::new(unit_rest), Composition::Parallel).ok()?)
@@ -967,7 +967,7 @@ fn embed_celestial_in_naxis(
     };
 
     // Stages 1/3: only rearrange when the celestial axes are not already at
-    // slots (0, 1) (fitschan.c:38451 `if( axlon != 0 || axlat != 1 )`).
+    // slots (0, 1) (fitschan.c:38460 `if( axlon != 0 || axlat != 1 )`).
     if lon_axis_0based == 0 && lat_axis_0based == 1 {
         return Some(core);
     }
@@ -1103,7 +1103,7 @@ fn build_rotation_from_pole(
     use crate::mappings::{MatrixMap, SphMap};
     use ndarray::Array2;
 
-    // Build the rotation exactly as C does (fitschan.c:38308-38341): start
+    // Build the rotation exactly as C does (fitschan.c:38317-38350): start
     // from the 3×3 identity and apply three axis-angle rotations in turn —
     // about Z by -phip, about Y by (deltap - pi/2), then about Z by
     // (pi + alphap) — via `astMtrRot`. After each rotation C runs
@@ -1124,7 +1124,7 @@ fn build_rotation_from_pole(
 
     // sph_to_cart: spherical (lon, lat) → cartesian (x, y, z).
     // C creates this with `astSphMap("UnitRadius=1", ...)` at
-    // fitschan.c:38299 — the unit-radius flag is what enables the
+    // fitschan.c:38308 — the unit-radius flag is what enables the
     // simplifier to collapse a forward+inverse SphMap pair via
     // SphMap::try_merge (sphmap.c:748-761). Without it, our
     // simplifier sees `unit_radius=false` on the forward SphMap and
@@ -1165,7 +1165,7 @@ fn build_rotation_from_pole(
 
     // cart_to_sph: cartesian (x, y, z) → spherical (lon, lat).
     // C creates this with `astSphMap("UnitRadius=1", ...)` at
-    // fitschan.c:38353 — same reason as above.
+    // fitschan.c:38362 — same reason as above.
     // C sets PolarLong = alpha0 on this SphMap (line 38299).
     let mut cart_to_sph = SphMap::new();
     cart_to_sph.set_unit_radius(true);
@@ -1373,7 +1373,7 @@ mod tests {
     fn equatorial_no_radesys_no_equinox_defaults_to_icrs() {
         // RA/DEC primary with no RADESYS/EQUINOX. For FITS-WCS
         // encoding (DefB1950=false), C just sets radesys=ICRS and
-        // leaves equinox at AST__BAD (fitschan.c:39232-39240,
+        // leaves equinox at AST__BAD (fitschan.c:39241-39249,
         // 42288). The SkyFrame should come out as ICRS with the
         // system's default equinox (J2000) and no explicit epoch.
         let mut store = FitsStore::new(2);
@@ -1474,7 +1474,7 @@ mod tests {
     }
 
     /// `AXREF<i>` overrides the CRVAL-derived sky reference position and
-    /// forces it to be set (C `WcsCelestial`, fitschan.c:36269-36283).
+    /// forces it to be set (C `WcsCelestial`, fitschan.c:36278-36292).
     #[test]
     fn axref_overrides_crval_reference_position() {
         let mut store = FitsStore::new(2);

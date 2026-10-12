@@ -28,12 +28,12 @@ pub struct CardList {
     written_names: RefCell<Option<Vec<String>>>,
     /// Whether cards added from now on should be stamped as "new" so that
     /// [`fix_new`](CardList::fix_new) can strip them again. Mirrors C's
-    /// `mark_new` thread-global (fitschan.c:40685).
+    /// `mark_new` thread-global (fitschan.c:40694).
     mark_new: bool,
 }
 
 /// Which of C's two "new card" flags a [`fix_new`](CardList::fix_new) call
-/// acts on (fitschan.c:1607-1608).
+/// acts on (fitschan.c:1614-1615).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum NewScope {
     /// C's `NEW1`: cards added anywhere in the current `astWrite` call.
@@ -91,19 +91,19 @@ impl CardList {
     }
 
     /// Insert a block of `ASTWARN` comment cards holding `text` in front of the
-    /// current card, mirroring the card sequence C `Warn` (fitschan.c:35115)
+    /// current card, mirroring the card sequence C `Warn` (fitschan.c:35124)
     /// writes: a leading blank `ASTWARN`, one card per wrapped ~60-character
     /// line of the text, then a trailing blank `ASTWARN`. Each card is stored
     /// as a string-valued `ASTWARN` keyword so the header writer renders
     /// `ASTWARN = '...'`.
     ///
     /// C writes every card with `astSetFitsS( ..., overwrite = 0 )`, which
-    /// `InsCard` (fitschan.c:15971) inserts before the current card and leaves
+    /// `InsCard` (fitschan.c:15980) inserts before the current card and leaves
     /// that card current — so the position advances past the block and
     /// consecutive warnings chain in front of the same card.
     ///
     /// The block is *not* added if an identical block of adjacent `ASTWARN`
-    /// cards already exists (fitschan.c:35120-35178).
+    /// cards already exists (fitschan.c:35129-35187).
     pub(crate) fn push_astwarn(&mut self, text: &str) {
         let lines = super::card::wrap_warning_text(text);
         if lines.is_empty() || self.astwarn_block_exists(&lines) {
@@ -142,11 +142,11 @@ impl CardList {
     }
 
     /// True when the list already holds `lines` as a run of adjacent `ASTWARN`
-    /// cards. Mirrors C `Warn`'s dedup probe (fitschan.c:35120-35178): search
+    /// cards. Mirrors C `Warn`'s dedup probe (fitschan.c:35129-35187): search
     /// the whole list for the first line, then require each later line on the
     /// next card. A partial match is not a match. Leaves the current position
     /// unchanged, as C does by reinstating the saved card index
-    /// (fitschan.c:35180).
+    /// (fitschan.c:35189).
     fn astwarn_block_exists(&self, lines: &[String]) -> bool {
         let is_astwarn_holding = |card: &FitsCard, want: &str| {
             card.keyword.eq_ignore_ascii_case("ASTWARN")
@@ -180,7 +180,7 @@ impl CardList {
     /// stored, so a run of stores appends in call order. That is C's contract
     /// for `astPutFits`/`astSetFits<X>`: "In either case, the Card attribute is
     /// then incremented by one so that it subsequently identifies the card
-    /// following the one stored" (fitschan.c:25561).
+    /// following the one stored" (fitschan.c:25570).
     pub fn put(&mut self, card: FitsCard, overwrite: bool) {
         if overwrite {
             // Search for existing card with same keyword.
@@ -316,7 +316,7 @@ impl CardList {
     /// Apply the unconditional trailing-space strip that C's FITS-WCS
     /// ingestion path (`WcsFcRead`) applies to every recognised string
     /// keyword immediately before storing it into the `FitsStore`
-    /// (fitschan.c:36966):
+    /// (fitschan.c:36975):
     ///
     /// ```c
     /// if( CnvValue( fc, AST__STRING, undef, &cval, method, status ) ) {
@@ -332,7 +332,7 @@ impl CardList {
     /// `WcsFcRead` does not. This applies regardless of the keyword's
     /// `mark` flag — `mark` only gates whether the source card is later
     /// flagged consumed, not whether the stored value gets stripped
-    /// (e.g. TIMESYS is `mark=0` at fitschan.c:36876-36883 but still
+    /// (e.g. TIMESYS is `mark=0` at fitschan.c:36885-36892 but still
     /// goes through this same strip).
     ///
     /// Callers apply this at WCS-store call sites only
@@ -341,7 +341,7 @@ impl CardList {
     /// purposes, such as `SpecTrans`'s own CTYPE condition checks
     /// (which mirror C's `GetValue2`, which does no stripping at all).
     pub(crate) fn strip_wcs_store_string(value: Option<String>) -> Option<String> {
-        // Mirrors C `ChrLen` (fitschan.c:6332-6391), which scans back
+        // Mirrors C `ChrLen` (fitschan.c:6339-6398), which scans back
         // from the end and stops at the first character that is both
         // printable and not whitespace (`isprint(c) && !isspace(c)`) —
         // equivalent to the first ASCII graphic character (space is
@@ -385,7 +385,7 @@ impl CardList {
     }
 
     /// Mark the first non-`Used`, non-protected card matching `keyword` as
-    /// `Provisional`, mirroring C `MarkCard` (fitschan.c:23047). A no-op when
+    /// `Provisional`, mirroring C `MarkCard` (fitschan.c:23056). A no-op when
     /// no matching card exists — so SpecTrans-synthesised keywords (which have
     /// no card in this list) are silently ignored, while genuine originals are
     /// marked.
@@ -400,7 +400,7 @@ impl CardList {
     }
 
     /// Mark *every* non-`Used`, non-protected card matching `keyword` as
-    /// `Provisional`, mirroring C `MarkAllCards` (fitschan.c:23165).
+    /// `Provisional`, mirroring C `MarkAllCards` (fitschan.c:23174).
     ///
     /// This is the consumption rule for the `GetValue2` path that `SpecTrans`
     /// and `ClassTrans` read through. The value a translation uses is still
@@ -419,7 +419,7 @@ impl CardList {
     }
 
     /// Mark the card at `index` as provisionally consumed, mirroring C
-    /// `MarkCard` (fitschan.c:23072): a card carrying the `PROTECTED` flag is
+    /// `MarkCard` (fitschan.c:23081): a card carrying the `PROTECTED` flag is
     /// exempt, and a card already `Used` is left alone.
     pub(crate) fn mark_at(&mut self, index: usize) {
         if let Some(card) = self.cards.get_mut(index)
@@ -431,7 +431,7 @@ impl CardList {
     }
 
     /// Validate and mark the AST banner comment block adjacent to the card at
-    /// `index`, mirroring C `ComBlock` (fitschan.c:7923). `incr` is `-1` to
+    /// `index`, mirroring C `ComBlock` (fitschan.c:7930). `incr` is `-1` to
     /// scan backwards from the card before `index` (delimiter character `+`)
     /// and `1` to scan forwards from the card after it (delimiter `-`).
     ///
@@ -467,7 +467,7 @@ impl CardList {
     }
 
     /// Make every card available again, as C's `FixUsed` with `reset` does
-    /// (fitschan.c:16617): no card is consumed or provisionally consumed.
+    /// (fitschan.c:16626): no card is consumed or provisionally consumed.
     pub(crate) fn reset_used(&mut self) {
         for card in self.cards.iter_mut() {
             card.flags.consumption = Consumption::Free;
@@ -475,7 +475,7 @@ impl CardList {
     }
 
     /// Resolve provisional consumption after a read completes, mirroring C
-    /// `FixUsed` (fitschan.c:16437). On success (`promote`) provisional cards
+    /// `FixUsed` (fitschan.c:16446). On success (`promote`) provisional cards
     /// become `Used`; otherwise they revert to `Free`. When `remove` is set
     /// (NATIVE-encoding read), consumed cards are physically deleted instead.
     pub(crate) fn fix_used(&mut self, promote: bool, remove: bool) {
@@ -602,7 +602,7 @@ impl CardList {
     }
 
     /// Begin marking every subsequently added card as "new", mirroring C's
-    /// `mark_new = 1` at the head of `Write` (fitschan.c:40685). While set,
+    /// `mark_new = 1` at the head of `Write` (fitschan.c:40694). While set,
     /// [`put_or_append`] stamps both the `NEW1` and `NEW2` equivalents onto
     /// each card it inserts, so [`fix_new`] can later strip them.
     pub(crate) fn begin_marking_new(&mut self) {
@@ -610,13 +610,13 @@ impl CardList {
     }
 
     /// Stop marking added cards as "new", mirroring C's `mark_new = 0` at
-    /// the tail of `Write` (fitschan.c:40814).
+    /// the tail of `Write` (fitschan.c:40823).
     pub(crate) fn end_marking_new(&mut self) {
         self.mark_new = false;
     }
 
     /// Resolve the cards flagged "new" by the current write pass, mirroring
-    /// C `FixNew` (fitschan.c:16421).
+    /// C `FixNew` (fitschan.c:16430).
     ///
     /// When `remove` is set the flagged cards are deleted outright, which is
     /// how C discards the partial description a failed version emitted;
@@ -971,7 +971,8 @@ impl CardList {
             .unwrap_or(self.cards.len());
     }
 
-    /// Overwrite existing card or append at end (preserves write order).
+    /// Store a card as C's `SetValue` does: overwrite a card with the same
+    /// keyword, or else insert the card in front of the current card.
     ///
     /// When overwriting, the existing comment is preserved only if the
     /// data value is unchanged. This matches the C library's SetFits: when
@@ -982,32 +983,25 @@ impl CardList {
             card.flags.new_write = true;
             card.flags.new_version = true;
         }
-        let kw_upper = card.keyword.to_uppercase();
-        if let Some(idx) = self
-            .cards
-            .iter()
-            .position(|c| c.keyword.eq_ignore_ascii_case(&kw_upper))
-        {
+        // C's `SearchCard` (fitschan.c:27430) tries the card after the
+        // current one, then the first card with the keyword, used or not.
+        let matches = |c: &FitsCard| c.keyword.eq_ignore_ascii_case(&card.keyword);
+        let found = match self.cards.get(self.position + 1) {
+            Some(c) if matches(c) => Some(self.position + 1),
+            _ => self.cards.iter().position(matches),
+        };
+        if let Some(idx) = found {
             if self.cards[idx].comment.is_some()
                 && values_similar(&self.cards[idx].value, &card.value)
             {
                 card.comment = self.cards[idx].comment.clone();
             }
+            // `SetValue` (fitschan.c:28468) leaves the current card as it
+            // was, so later new cards still go in front of it.
             self.cards[idx] = card;
-            // Track the highest position we've touched so future new
-            // cards can be inserted just past it.
-            if idx >= self.position {
-                self.position = idx + 1;
-            }
         } else {
-            // For a brand-new keyword, insert at `position`: the spot
-            // just after the last touched card. Mirrors the effect of
-            // C's SetValue inserting at the current-card pointer
-            // (fitschan.c:28189) — freshly-synthesised keywords
-            // (MJD-OBS, DATE-OBS, WCSAXES) end up clustered with the
-            // WCS region they belong to rather than appended at the
-            // end of the header. When `position` outruns `cards.len()`
-            // (e.g. new-card-only writes), this falls back to push().
+            // A new keyword goes in front of the current card, which
+            // stays current.
             let pos = self.position.min(self.cards.len());
             self.cards.insert(pos, card);
             self.position = pos + 1;
@@ -1051,7 +1045,7 @@ impl CardList {
                     // and insert ASTWARN cards before the offending card if it
                     // contains an illegal character. Mirrors C `CheckFitsName`
                     // /`Warn`, which run inside `astPutFits`/`SplitCard`
-                    // (fitschan.c:32319) so the warning cards precede the bad
+                    // (fitschan.c:32328) so the warning cards precede the bad
                     // card in the FitsChan. Warnings are enabled by default
                     // (the Warnings attribute includes "BadKeyName", Clean is
                     // off).
@@ -1100,7 +1094,7 @@ impl Default for CardList {
 // ---------------------------------------------------------------------------
 
 /// Cursor-anchor predicate mirroring C's `FindWcs` match list
-/// (fitschan.c:10855-10911). Used only by [`CardList::position_write_cursor`]
+/// (fitschan.c:10862-10918). Used only by [`CardList::position_write_cursor`]
 /// to position the new-card insertion cursor: C inserts freshly
 /// synthesised WCS cards in front of "the card just past the last
 /// FindWcs-recognised keyword in the input". RESTFREQ, the AIPS
@@ -1263,7 +1257,7 @@ fn values_similar(a: &FitsValue, b: &FitsValue) -> bool {
 /// Mirrors C's `EQUAL` macro (object.h ~244, fitschan.c ~1389):
 ///   `fabs(a - b) <= 1.0E5 * max((|a| + |b|) * DBL_EPSILON, DBL_MIN)`
 ///
-/// This is what C's `SetFits` (fitschan.c:15693) compares against
+/// This is what C's `SetFits` (fitschan.c:15702) compares against
 /// when deciding whether to preserve an existing card's comment on
 /// overwrite. The 1e5 multiplier on machine epsilon gives roughly
 /// `1.1e-11 * (|a| + |b|)` of absolute tolerance, generous enough
@@ -1463,7 +1457,7 @@ mod tests {
     }
 
     // -----------------------------------------------------------------
-    // push_astwarn (C `Warn`, fitschan.c:35050-35227)
+    // push_astwarn (C `Warn`, fitschan.c:35059-35236)
     // -----------------------------------------------------------------
 
     fn int_card(keyword: &str, value: i64) -> FitsCard {
@@ -1532,7 +1526,7 @@ mod tests {
 
     /// C dedups on the whole block: the first line is searched for anywhere in
     /// the list, then every later line must be on the *next* card
-    /// (fitschan.c:35148-35178). An identical block is not repeated.
+    /// (fitschan.c:35157-35187). An identical block is not repeated.
     #[test]
     fn push_astwarn_skips_an_identical_existing_block() {
         let text = "The FITS keyword name ('sys.') contains an illegal character ('.').";
@@ -1575,7 +1569,7 @@ mod tests {
     }
 
     /// The dedup probe rewinds to search but must leave the position where it
-    /// found it, mirroring `astSetCard( this, icard )` at fitschan.c:35180.
+    /// found it, mirroring `astSetCard( this, icard )` at fitschan.c:35189.
     #[test]
     fn push_astwarn_dedup_probe_does_not_move_the_position() {
         let text = "a repeated warning";

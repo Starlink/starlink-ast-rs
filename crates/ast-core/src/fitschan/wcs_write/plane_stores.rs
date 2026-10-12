@@ -27,7 +27,7 @@ pub(crate) struct PlaneStore {
 }
 
 /// The version letters C's `FsetToStore` gives the Frames other than the
-/// base and current Frames (fitschan.c:12350-12415), indexed by Frame
+/// base and current Frames (fitschan.c:12357-12422), indexed by Frame
 /// index (1-based, entry 0 unused): `None` for a Frame described by no
 /// alternate axes, which includes every IWC Frame. A Frame whose Ident is
 /// a single upper case letter takes that letter if no earlier Frame has;
@@ -89,7 +89,7 @@ pub(crate) fn version_letters(fs: &FrameSet, alt_axes: AltAxes) -> (Vec<Option<c
 
 /// Build per-plane FitsStores for every coordinate-version letter
 /// the FrameSet carries, in the order C's `FsetToStore` makes them
-/// (fitschan.c:12335-12440): the primary description from the current
+/// (fitschan.c:12342-12447): the primary description from the current
 /// Frame; unless AltAxes is NONE, one of absolute coordinates if the
 /// current Frame is an offset SkyFrame; then for each Frame given a
 /// letter, in Frame order, its description and, for an offset SkyFrame,
@@ -106,7 +106,7 @@ pub(crate) fn collect_plane_stores(
 
     // An alternate axis description only qualifies a primary one, so when
     // the primary cannot be described the whole store is worthless and no
-    // plane is returned, as C frees it (fitschan.c:12437).
+    // plane is returned, as C frees it (fitschan.c:12444).
     let (primary_store, primok) = fset_to_store(fs, dim, encoding, ' ', attrs.clone())?;
     if !primok {
         return Ok(planes);

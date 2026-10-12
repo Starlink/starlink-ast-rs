@@ -321,7 +321,7 @@ Gates, all in `test_fitschan_wcs_write.rs` alongside item E's:
   approximation, with no `A_ORDER`.
 - An alternate-only description writes nothing and reports failure.
   C's own suite has no case for this; the gate is the `if( !primok ) break;`
-  `c384289f` added at `fitschan.c:37872`.
+  `c384289f` added at `fitschan.c:37881`.
   The FrameSet is `lsst2` with a UnitMap alternate onto a 2-axis Frame, so the
   alternate is describable on its own and the tight-tolerance case tests the
   primary gate rather than the alternate.

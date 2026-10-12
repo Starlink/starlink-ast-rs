@@ -563,12 +563,6 @@ const EXCLUDED: &[(&str, &str)] = &[
          (still describing offset coordinates, WCSNAMEA SKY_POLE), which C \
          does not write",
     ),
-    (
-        "sao_not_sao_rw",
-        "the writer puts a new card after the last card it overwrote, where \
-         C's SetValue restores the cursor after an overwrite and puts a new \
-         card in front of the card current when the write began",
-    ),
 ];
 
 /// The transcript the port gives for a case's operations.

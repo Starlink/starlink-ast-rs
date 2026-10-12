@@ -171,7 +171,7 @@ impl Encoding {
 /// Default number of significant figures for FITS floating-point output.
 ///
 /// Matches C `AST__DBL_DIG` (the default of the `FitsDigits` attribute,
-/// fitschan.c:43006), which is 17 when AST is built in C11 mode — enough to
+/// fitschan.c:43015), which is 17 when AST is built in C11 mode — enough to
 /// round-trip an IEEE double exactly. Callers that want the FITS-standard
 /// 20-column limit honoured set a smaller value explicitly (the wcsconv
 /// fixtures use `FitsDigits=8` for the FITS encodings).
@@ -202,9 +202,9 @@ pub struct FitsChan {
     /// Explicit `Encoding` set by the user via [`FitsChan::set_encoding`].
     /// `None` means "not set" — [`FitsChan::encoding`] auto-detects from
     /// the cards on demand. Mirrors C's `astTestEncoding` /
-    /// `astGetEncoding` (fitschan.c:12511). The `DefB1950` default also
+    /// `astGetEncoding` (fitschan.c:12518). The `DefB1950` default also
     /// keys off whether the encoding has been explicitly set
-    /// (fitschan.c:42346).
+    /// (fitschan.c:42355).
     encoding: Option<Encoding>,
     warnings: Vec<String>,
     fits_digits: i32,
@@ -1059,7 +1059,7 @@ impl FitsChan {
     /// [`FitsChan::set_encoding`], that value is returned. Otherwise the
     /// encoding is auto-detected from the header cards on each call —
     /// no internal state is mutated. Mirrors C `astGetEncoding`
-    /// (fitschan.c:12511) which lazily evaluates the encoding from the
+    /// (fitschan.c:12518) which lazily evaluates the encoding from the
     /// cards when no explicit value has been set via `astSetEncoding`.
     pub fn encoding(&self) -> Encoding {
         self.encoding
@@ -1526,7 +1526,7 @@ impl FitsChan {
         warning::all_warnings()
     }
 
-    /// C's `ReadCrval` (fitschan.c:26085): the reference point that the
+    /// C's `ReadCrval` (fitschan.c:26094): the reference point that the
     /// `CRVAL` cards of axis description `s` give, transformed into `wcsfrm`,
     /// or `None` if there is none. A copy of the FitsChan, with every card
     /// made available again and the encoding left to be guessed, is read; the
@@ -1774,7 +1774,7 @@ impl FitsChan {
     /// `QV` scan in front of the card at `entry`, where the read started, and
     /// the rest after the last card: the scan walks off the end of the list
     /// and C `InsCard` appends when there is no current card
-    /// (fitschan.c:18841-18852).
+    /// (fitschan.c:18850-18861).
     fn push_trans_warnings(&mut self, entry: usize, warnings: spec_trans::TransWarnings) {
         if self.clean() {
             return;
@@ -1946,7 +1946,7 @@ impl Channel for FitsChan {
                     let obj = with_registry(&self.intra, || serial::any_object_from_node(&node))?;
 
                     // C `Read` calls `FixUsed( this, 0, 1, remove )` with
-                    // `remove` set for NATIVE encoding (fitschan.c:25871-25877),
+                    // `remove` set for NATIVE encoding (fitschan.c:25880-25886),
                     // so the cards a successful native read consumed are deleted
                     // rather than merely flagged; the card after them is
                     // current.
@@ -1968,7 +1968,7 @@ impl Channel for FitsChan {
                     // case, IRAF mini-WCS strip, etc.). Returns a
                     // separate "trans" CardList so the original
                     // self.cards layout is preserved for write-time
-                    // round-trip — mirrors fitschan.c:11475-11483 which
+                    // round-trip — mirrors fitschan.c:11482-11490 which
                     // creates a temporary FitsChan `ret` and deletes it
                     // after WcsToStore.
                     // C's `Warn` calls inside `SpecTrans` target the source chan
@@ -2240,14 +2240,14 @@ impl Channel for FitsChan {
 
         // Remember the entry card so a failed write can put it back, and
         // start flagging every card this call adds so a failed write can
-        // remove them again. Mirrors C `Write` (fitschan.c:40681-40685).
+        // remove them again. Mirrors C `Write` (fitschan.c:40690-40694).
         let card0 = self.cards.position();
         self.cards.begin_marking_new();
         let result = self.write_inner(obj);
 
         // A write that failed, for either reason, leaves the header exactly
         // as it was found: the cards it had added are removed and the entry
-        // card restored. Mirrors fitschan.c:40805-40821.
+        // card restored. Mirrors fitschan.c:40814-40830.
         let wrote = matches!(result, Ok(n) if n > 0);
         self.cards.fix_new(card_list::NewScope::Write, !wrote);
         self.cards.fix_new(card_list::NewScope::Version, !wrote);
@@ -2284,7 +2284,7 @@ impl FitsChan {
                 let node = serial::any_object_to_node(obj)?;
                 self.store_keyword_native(obj, &node)?;
                 // The native encoding can represent every AST class.
-                // Mirrors fitschan.c:40749.
+                // Mirrors fitschan.c:40758.
                 Ok(1)
             }
             _ => {
@@ -2361,7 +2361,7 @@ impl FitsChan {
                         )?;
                         // Then run the SpecFrame velocity computation
                         // that needs the FrameSet directly. Mirrors
-                        // fitschan.c:6881-6936.
+                        // fitschan.c:6888-6943.
                         if ok {
                             if let AnyObject::FrameSet(fs) = obj {
                                 enc_class::write_velocities_from_frameset(fs, &mut self.cards)?;
@@ -2396,7 +2396,7 @@ impl FitsChan {
                 let ret = usize::from(result?);
                 // A successful write leaves the current card at end-of-file,
                 // so a subsequent write appends after this object. Mirrors
-                // fitschan.c:40792.
+                // fitschan.c:40801.
                 if ret > 0 {
                     self.cards.set_position(usize::MAX);
                 }
@@ -2411,7 +2411,7 @@ impl FitsChan {
 // ---------------------------------------------------------------------------
 
 /// Look up `NAXIS1`…`NAXIS<naxes>` on `cards` as C `DistortMaps`'s opening
-/// loop does (fitschan.c:8854-8858), from the end-of-file cursor `WcsFcRead`'s
+/// loop does (fitschan.c:8861-8865), from the end-of-file cursor `WcsFcRead`'s
 /// card loop leaves:
 ///
 /// ```c
@@ -2484,7 +2484,7 @@ mod tests {
         let mut fc = FitsChan::new();
         assert_eq!(fc.ncard().unwrap(), 0);
         // No explicit encoding set; auto-detect on an empty chan
-        // returns Native per C `astGetEncoding` (fitschan.c:12554).
+        // returns Native per C `astGetEncoding` (fitschan.c:12561).
         assert_eq!(fc.encoding(), Encoding::Native);
         assert!(!fc.test_encoding());
         assert_eq!(fc.fits_digits(), DEFAULT_FITS_DIGITS);
