@@ -1,6 +1,8 @@
 /* frameset_variants_probe -- capture the dumps of FrameSets whose current
  * Frame has variants (astAddVariant), for a current Frame of each kind:
- * a Frame, a SkyFrame, a SpecFrame and a CmpFrame. frame.c Dump writes the
+ * a Frame, a SkyFrame, a SpecFrame and a CmpFrame, and a Frame with Digits
+ * set, whose value the FrameSet's own Frame part shows, unset, through its
+ * astGetDigits (frameset.c GetDigits). frame.c Dump writes the
  * variants FrameSet as "Vrnts", last in the Frame class's part, so for a
  * subclass of Frame it comes before the "IsA Frame" marker. For each, the
  * dump, the dump of what is read back from it, and the dump written with
@@ -105,6 +107,7 @@ int main( void ) {
    emit( "specframe", (AstFrame *) astSpecFrame( "Domain=SPEC" ) );
    emit( "cmpframe", (AstFrame *) astCmpFrame( astFrame( 1, "Domain=A" ),
                                               astFrame( 1, "Domain=B" ), " " ) );
+   emit( "frame_digits", astFrame( 2, "Domain=CUR,Digits=4" ) );
    printf( "];\n" );
    return status;
 }

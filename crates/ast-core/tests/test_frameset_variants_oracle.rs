@@ -1,6 +1,7 @@
 //! The dumps of FrameSets whose current Frame has variants, against C's, for
 //! a current Frame of each kind: a Frame, a SkyFrame, a SpecFrame and a
-//! CmpFrame. frame.c `Dump` writes the variants FrameSet as `Vrnts`, last in
+//! CmpFrame, and a Frame with Digits set, whose value the FrameSet's own
+//! Frame part shows, unset, through its getter. frame.c `Dump` writes the variants FrameSet as `Vrnts`, last in
 //! the Frame class's part, so for a subclass of Frame it comes before the
 //! `IsA Frame` marker, where `astLoadFrame` reads it back. Each dump is read
 //! back and dumped again, and written with Full = 1, less C's unset `RefCnt`
@@ -48,6 +49,11 @@ fn current(name: &str) -> DynFrame {
             Box::new(f)
         }
         "cmpframe" => Box::new(CmpFrame::new(basic(1, "A"), basic(1, "B"))),
+        "frame_digits" => {
+            let mut f = BasicFrameBuilder::new(2).domain("CUR").build().unwrap();
+            f.set_digits(4);
+            Box::new(f)
+        }
         other => panic!("no case {other}"),
     }
 }
