@@ -25,7 +25,7 @@ use crate::error::{AstError, AstResult, ErrorCode};
 
 /// Read DSS plate-solution keywords from a [`CardList`] into a [`FitsStore`].
 ///
-/// Ports C `DSSToStore` (fitschan.c:9364). The result is a 2-D `RA---TPN` /
+/// Ports C `DSSToStore` (fitschan.c:9375). The result is a 2-D `RA---TPN` /
 /// `DEC--TPN` store with the AMDX/AMDY polynomial encoded as PV parameters,
 /// FK5 / equinox 2000 / LONPOLE 180.
 ///
@@ -77,7 +77,7 @@ pub(crate) fn read_from_cards(cards: &CardList) -> AstResult<FitsStore> {
     let mut store = FitsStore::new(2);
 
     // Map the AMD coefficients to PV parameters (pv = amd / 3600). Each axis
-    // uses the same index pattern (fitschan.c:9497-9588).
+    // uses the same index pattern (fitschan.c:9508-9599).
     set_pv_from_amd(&mut store, 0, &amdx);
     set_pv_from_amd(&mut store, 1, &amdy);
 
@@ -129,7 +129,7 @@ fn req(cards: &CardList, key: &str) -> AstResult<f64> {
 
 /// Map one axis's AMD coefficients into the store's PV parameters.
 ///
-/// Mirrors the per-axis block in C `DSSToStore` (fitschan.c:9497-9542 for X,
+/// Mirrors the per-axis block in C `DSSToStore` (fitschan.c:9508-9553 for X,
 /// 9543-9588 for Y — identical index pattern). `pv = amd / 3600`, each term
 /// set only when its source coefficient(s) are present.
 fn set_pv_from_amd(store: &mut FitsStore, axis: usize, amd: &[Option<f64>; 20]) {
@@ -174,20 +174,13 @@ fn set_pv_from_amd(store: &mut FitsStore, axis: usize, amd: &[Option<f64>; 20]) 
 
 /// Write a [`FitsStore`] as DSS plate-solution keywords into a [`CardList`].
 ///
-/// Ports C `DSSFromStore` (fitschan.c:9066). The store must describe a 2-D
+/// Ports C `DSSFromStore` (fitschan.c:9077). The store must describe a 2-D
 /// FK5 `RA---TAN`/`DEC--TAN` or `RA---TPN`/`DEC--TPN` frame with no rotation;
-/// otherwise an error is returned (C returns 0 = "this encoding does not
-/// apply"). The PV parameters are converted back to the AMDX/AMDY polynomial.
-pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResult<()> {
-    let not_dss =
-        |msg: &str| -> AstError { AstError::new(ErrorCode::Bdfts, format!("DSS encoding: {msg}")) };
-
-    // DSS is always 2-D.
-    if store.naxis != 2 {
-        return Err(not_dss(&format!(
-            "requires exactly 2 axes, got {}",
-            store.naxis
-        )));
+/// otherwise nothing is written and `false` is returned, as C returns 0. The PV parameters are converted back to the AMDX/AMDY polynomial.
+pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResult<bool> {
+    // DSS is always 2-D: the last CRPIX is the second.
+    if store.max_crpix_axis() != Some(1) {
+        return Ok(false);
     }
 
     // CTYPE: both TAN or both TPN.
@@ -195,42 +188,46 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
     let ct1 = store.ctype[1].as_deref().unwrap_or("");
     let gottpn = ct0 == "RA---TPN";
     if ct0 != "RA---TAN" && !gottpn {
-        return Err(not_dss("first axis is not RA---TAN or RA---TPN"));
+        return Ok(false);
     }
     if gottpn {
         if ct1 != "DEC--TPN" {
-            return Err(not_dss("second axis is not DEC--TPN"));
+            return Ok(false);
         }
     } else if ct1 != "DEC--TAN" {
-        return Err(not_dss("second axis is not DEC--TAN"));
+        return Ok(false);
     }
 
     // LONPOLE undefined or 180.
     if let Some(v) = store.lonpole {
         if v != 180.0 {
-            return Err(not_dss("LONPOLE is not 180"));
+            return Ok(false);
         }
     }
     // RADESYS must be FK5.
     if store.radesys.as_deref() != Some("FK5") {
-        return Err(not_dss("RADESYS is not FK5"));
+        return Ok(false);
     }
     // EQUINOX undefined or 2000.
     if let Some(v) = store.equinox {
         if v != 2000.0 {
-            return Err(not_dss("EQUINOX is not 2000"));
+            return Ok(false);
         }
     }
 
     // Pixel sizes from CDELT * PC. Both CDELTs must be defined and non-zero.
-    let cdelt0 = store.cdelt[0].ok_or_else(|| not_dss("CDELT1 undefined"))?;
+    let Some(cdelt0) = store.cdelt[0] else {
+        return Ok(false);
+    };
     let pc00 = store.pc[0][0].unwrap_or(1.0);
-    let cdelt1 = store.cdelt[1].ok_or_else(|| not_dss("CDELT2 undefined"))?;
+    let Some(cdelt1) = store.cdelt[1] else {
+        return Ok(false);
+    };
     let pc11 = store.pc[1][1].unwrap_or(1.0);
     let mut xpixelsz = cdelt0 * pc00;
     let mut ypixelsz = cdelt1 * pc11;
     if xpixelsz == 0.0 || ypixelsz == 0.0 {
-        return Err(not_dss("pixel size is zero"));
+        return Ok(false);
     }
     xpixelsz *= -1000.0;
     ypixelsz *= 1000.0;
@@ -238,12 +235,12 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
     // No rotation: off-diagonal PC must be unset or zero.
     if let Some(v) = store.pc[0][1] {
         if v != 0.0 {
-            return Err(not_dss("PC has off-diagonal (rotation) terms"));
+            return Ok(false);
         }
     }
     if let Some(v) = store.pc[1][0] {
         if v != 0.0 {
-            return Err(not_dss("PC has off-diagonal (rotation) terms"));
+            return Ok(false);
         }
     }
 
@@ -270,30 +267,30 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
 
     // No PV term beyond index 21 may be set.
     if max_pv_index(store) > 21 {
-        return Err(not_dss("projection has unsupported PV parameters"));
+        return Ok(false);
     }
 
     // Specific parameters must take their required zero values.
     if pvx[3] != 0.0 || pvy[3] != 0.0 {
-        return Err(not_dss("PV*_3 must be zero"));
+        return Ok(false);
     }
     for m in 11..17 {
         if pvx[m] != 0.0 || pvy[m] != 0.0 {
-            return Err(not_dss("PV*_11..16 must be zero"));
+            return Ok(false);
         }
     }
     if pvx[18] != 0.0 || pvy[18] != 0.0 {
-        return Err(not_dss("PV*_18 must be zero"));
+        return Ok(false);
     }
     if pvx[20] != 0.0 || pvy[20] != 0.0 {
-        return Err(not_dss("PV*_20 must be zero"));
+        return Ok(false);
     }
     // Related-parameter constraints.
     if !ast_equal(2.0 * pvx[17], pvx[19]) || !ast_equal(pvx[17], pvx[21]) {
-        return Err(not_dss("PVX_17/19/21 are not consistent"));
+        return Ok(false);
     }
     if !ast_equal(2.0 * pvy[17], pvy[19]) || !ast_equal(pvy[17], pvy[21]) {
-        return Err(not_dss("PVY_17/19/21 are not consistent"));
+        return Ok(false);
     }
 
     // Convert PV back to AMD coefficients (amd = 3600 * pv). AMDX/Y7 and
@@ -309,13 +306,20 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
     // Arbitrary corner pixel of 1; derive the matching plate-centre offset.
     let cnpix1 = 1.0;
     let cnpix2 = 1.0;
-    let crpix0 = store.crpix[0].ok_or_else(|| not_dss("CRPIX1 undefined"))?;
-    let crpix1 = store.crpix[1].ok_or_else(|| not_dss("CRPIX2 undefined"))?;
+    let Some(crpix0) = store.crpix[0] else {
+        return Ok(false);
+    };
+    let Some(crpix1) = store.crpix[1] else {
+        return Ok(false);
+    };
     let ppo3 = xpixelsz * (crpix0 + cnpix1 - 0.5);
     let ppo6 = ypixelsz * (crpix1 + cnpix2 - 0.5);
 
     // Decompose CRVAL1 (RA degrees) into hours/min/sec, wrapped to 0..24.
-    let mut ra_hours = store.crval[0].ok_or_else(|| not_dss("CRVAL1 undefined"))? / 15.0;
+    let Some(crval0) = store.crval[0] else {
+        return Ok(false);
+    };
+    let mut ra_hours = crval0 / 15.0;
     while ra_hours < 0.0 {
         ra_hours += 24.0;
     }
@@ -329,7 +333,9 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
 
     // Decompose CRVAL2 (DEC degrees) into deg/min/sec + sign, wrapped to
     // -180..180.
-    let mut dec = store.crval[1].ok_or_else(|| not_dss("CRVAL2 undefined"))?;
+    let Some(mut dec) = store.crval[1] else {
+        return Ok(false);
+    };
     while dec < -180.0 {
         dec += 360.0;
     }
@@ -375,12 +381,12 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
         comm = "";
     }
 
-    Ok(())
+    Ok(true)
 }
 
 /// Inverse of [`set_pv_from_amd`]: fill the AMD coefficients from one axis's
 /// PV parameters (`amd = 3600 * pv`). Mirrors C `DSSFromStore`
-/// (fitschan.c:9242-9263). Indices 6 (AMD7) and 11 (AMD12) stay zero.
+/// (fitschan.c:9253-9274). Indices 6 (AMD7) and 11 (AMD12) stay zero.
 fn amd_from_pv(amd: &mut [f64; 20], pv: &[f64; 22]) {
     amd[0] = 3600.0 * pv[1];
     amd[1] = 3600.0 * pv[2];
@@ -515,7 +521,7 @@ END";
 
     #[test]
     fn read_dss_pv_from_amd() {
-        // AMDX1 -> PVX_1, AMDX3 -> PVX_0, all /3600 (fitschan.c:9501/9497).
+        // AMDX1 -> PVX_1, AMDX3 -> PVX_0, all /3600 (fitschan.c:9512/9497).
         let cards = dss_test_cards();
         let store = read_from_cards(&cards).unwrap();
 
@@ -626,15 +632,16 @@ END";
         let mut store = tpn_store();
         store.pc[0][1] = Some(0.1);
         let mut cards = CardList::new();
-        assert!(write_to_cards(&store, &mut cards).is_err());
+        assert!(!write_to_cards(&store, &mut cards).unwrap());
+        assert_eq!(cards.len(), 0);
     }
 
     #[test]
     fn write_dss_requires_2d() {
-        let store = FitsStore::new(3);
+        let mut store = tpn_store();
+        store.crpix.push(Some(1.0));
         let mut cards = CardList::new();
-        let err = write_to_cards(&store, &mut cards).unwrap_err();
-        assert!(err.message().contains("2 axes"));
+        assert!(!write_to_cards(&store, &mut cards).unwrap());
     }
 
     #[test]
@@ -643,7 +650,7 @@ END";
         let mut store = tpn_store();
         store.radesys = Some("GALACTIC".to_string());
         let mut cards = CardList::new();
-        assert!(write_to_cards(&store, &mut cards).is_err());
+        assert!(!write_to_cards(&store, &mut cards).unwrap());
     }
 
     #[test]

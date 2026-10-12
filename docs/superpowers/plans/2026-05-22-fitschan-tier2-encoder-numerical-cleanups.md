@@ -6,7 +6,7 @@
 
 **Architecture:** Mirror three C-library cleanups exactly, all applied in `wcs_write::store_from_frameset` after the `cd_decomp`/CRVAL/CRPIX values are populated and before encoder dispatch:
 
-1. **PC near-zero zeroing** — mirrors `SplitMat` in `fitschan.c:33141-33245`. After CD → (CDELT, PC) factorisation, set any PC element below 1e-7 to 0; recompute CD as CDELT × PC so all encoders (CD-direct AIPS++ and PC-style FITS-WCS) see the cleaned values.
+1. **PC near-zero zeroing** — mirrors `SplitMat` in `fitschan.c:33152-33256`. After CD → (CDELT, PC) factorisation, set any PC element below 1e-7 to 0; recompute CD as CDELT × PC so all encoders (CD-direct AIPS++ and PC-style FITS-WCS) see the cleaned values.
 2. **CRVAL near-zero zeroing** — mirrors `WcsFromStore` line 2939-2958. For each axis, compute the row-magnitude of the CD matrix as a CDELT-equivalent. If `|crval| < sqrt(DBL_EPSILON · cdelt²)`, set CRVAL to 0.0.
 3. **CRPIX micro-pixel rounding** — mirrors `WcsFromStore` line 2961-2968. Round each CRPIX value to the nearest 1e-6 (millionth of a pixel).
 
@@ -80,8 +80,8 @@ Append to `crates/ast-core/tests/test_fitschan_wcs.rs`:
 mod cleanup_tests {
     //! Encoder-level numerical cleanup tests. These exercise the
     //! `clean_store_residue` logic in isolation, mirroring the C library's
-    //! WcsFromStore CRVAL/CRPIX cleanups (fitschan.c:2939-2968) and
-    //! SplitMat PC snap (fitschan.c:33238).
+    //! WcsFromStore CRVAL/CRPIX cleanups (fitschan.c:2950-2979) and
+    //! SplitMat PC snap (fitschan.c:33249).
     //!
     //! These tests are intentionally written against the public wcsconv
     //! end-to-end behaviour where possible — they don't test the helper
@@ -222,7 +222,7 @@ git add crates/ast-core/src/fitschan/wcs_decompose.rs
 git commit -m "$(cat <<'EOF'
 feat(fitschan): add clean_cd_residue helper mirroring SplitMat 1e-7 snap
 
-C library's SplitMat (fitschan.c:33141-33245) factors CD into CDELT+PC
+C library's SplitMat (fitschan.c:33152-33256) factors CD into CDELT+PC
 and zeroes PC elements below 1e-7 to remove rounding-error residue.
 This helper applies the same logic: split, snap PC < 1e-7 to 0, then
 re-multiply to produce a cleaned CD matrix.
@@ -391,7 +391,7 @@ fn round_crpix_to_micropixel(crpix: &[f64]) -> Vec<f64> {
 }
 ```
 
-Note: `(x * 1.0e6 + 0.5).floor()` is the C library's idiom for "round to nearest"; this matches `fitschan.c:2966` exactly. For negative numbers in C with negative-zero-aware rounding, this maps correctly. Verify the test `round_crpix_negative_values` passes — if not, the rounding rule may need to be `(x * 1e6).round() * 1e-6` instead. Match what the C library's output produces.
+Note: `(x * 1.0e6 + 0.5).floor()` is the C library's idiom for "round to nearest"; this matches `fitschan.c:2977` exactly. For negative numbers in C with negative-zero-aware rounding, this maps correctly. Verify the test `round_crpix_negative_values` passes — if not, the rounding rule may need to be `(x * 1e6).round() * 1e-6` instead. Match what the C library's output produces.
 
 - [ ] **Step 3: Run the unit tests**
 
@@ -565,11 +565,11 @@ Adds clean_store_residue() that mirrors three threshold-based cleanups
 the C library applies in WcsFromStore/SplitMat:
 
   1. PC element snap (1e-7) on the CD matrix via SplitMat-style
-     factorisation (fitschan.c:33238).
+     factorisation (fitschan.c:33249).
   2. CRVAL near-zero snap with scale-aware threshold
-     sqrt(DBL_EPSILON * cdelt^2) (fitschan.c:2955).
+     sqrt(DBL_EPSILON * cdelt^2) (fitschan.c:2966).
   3. CRPIX micro-pixel rounding floor(x*1e6 + 0.5)*1e-6
-     (fitschan.c:2966).
+     (fitschan.c:2977).
 
 Closes ~7 wcsconv category-F failures (gappt, ukirt-dtai,
 galactic-tan_fits-iraf, sin-plain_fits-iraf, fk4-aips_fits-iraf,

@@ -21,6 +21,8 @@ mod test_fitschan_class;
 mod test_fitschan_cursor_oracle;
 #[path = "../test_fitschan_encodings.rs"]
 mod test_fitschan_encodings;
+#[path = "../test_fitschan_encodings_oracle.rs"]
+mod test_fitschan_encodings_oracle;
 #[path = "../test_fitschan_native_keyword.rs"]
 mod test_fitschan_native_keyword;
 #[path = "../test_fitschan_read.rs"]

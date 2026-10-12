@@ -13,7 +13,7 @@ use crate::error::AstResult;
 use crate::mappings::{DynMapping, Mapping};
 
 /// Number of test points used for the inverse-transform fit.
-/// Mirrors `NP` at `fitschan.c:19200`.
+/// Mirrors `NP` at `fitschan.c:19211`.
 const NP: usize = 20;
 
 /// Return `true` if the specified output axis of `smap` is a linear
@@ -170,13 +170,17 @@ pub(crate) fn is_map_linear(
     };
 
     // Step 4: per-input-axis linear fit + residual check.
-    // Mirrors C:19367-19449.
+    // Mirrors C:19367-19449. The fit is made to values offset by the first
+    // value of each, since the sums formed from values far from zero
+    // compared to their range lose the fit to rounding.
     let s: Vec<f64> = (0..NP)
         .map(|j| pts_test_out.point(j)[working_coord_out])
         .collect();
+    let soff = s[0];
 
     for i in 0..nin {
         let mut p: Vec<f64> = (0..NP).map(|j| pts_test_in.point(j)[i]).collect();
+        let poff = p[0];
 
         // Compute sums + bounds (no BAD handling — mapping outputs
         // were validated finite above).
@@ -195,17 +199,18 @@ pub(crate) fn is_map_linear(
                 had_bad = true;
                 break;
             }
-            sp += pv;
-            ss += sv;
-            sps += pv * sv;
-            ss2 += sv * sv;
-            sn += 1.0;
             if pv < in_lbnd {
                 in_lbnd = pv;
             }
             if pv > in_ubnd {
                 in_ubnd = pv;
             }
+            let (pv, sv) = (pv - poff, sv - soff);
+            sp += pv;
+            ss += sv;
+            sps += pv * sv;
+            ss2 += sv * sv;
+            sn += 1.0;
         }
         if had_bad {
             return Ok(false);
@@ -224,7 +229,7 @@ pub(crate) fn is_map_linear(
         let m = (sp * ss - sps * sn) / d;
         let c = (sps * ss - sp * ss2) / d;
         for j in 0..NP {
-            p[j] -= m * s[j] + c;
+            p[j] -= poff + m * (s[j] - soff) + c;
         }
 
         // Second fit on the residuals (sometimes the first fit leaves
@@ -233,12 +238,12 @@ pub(crate) fn is_map_linear(
         sps = 0.0;
         for j in 0..NP {
             sp += p[j];
-            sps += p[j] * s[j];
+            sps += p[j] * (s[j] - soff);
         }
         let m2 = (sp * ss - sps * sn) / d;
         let c2 = (sps * ss - sp * ss2) / d;
         for j in 0..NP {
-            p[j] -= m2 * s[j] + c2;
+            p[j] -= m2 * (s[j] - soff) + c2;
         }
 
         // Tolerance: 1e-7 of the input-axis range. Mirrors C:19437.
@@ -257,6 +262,16 @@ pub(crate) fn is_map_linear(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A ZoomMap over a narrow range far from zero: the Hz to GHz unit
+    /// Mapping of 20 channels of 39062.5 Hz at 1.1e11 Hz.
+    #[test]
+    fn linear_far_from_zero() {
+        let m = ZoomMap::new(1, 1.0e-9).unwrap();
+        let lo = 1.102e11 - 9.0 * 39062.5;
+        let hi = 1.102e11 + 10.0 * 39062.5;
+        assert!(is_map_linear(&m, &[lo], &[hi], 0).unwrap());
+    }
     use crate::mappings::{ShiftMap, UnitMap, WcsMap, WcsProjection, WinMap, ZoomMap};
 
     #[test]

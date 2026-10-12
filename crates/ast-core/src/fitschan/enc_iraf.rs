@@ -122,6 +122,72 @@ pub(crate) fn read_from_cards(cards: &CardList) -> AstResult<FitsStore> {
     Ok(store)
 }
 
+/// Whether `store` can be written with FITS-IRAF: the checks C's
+/// `IRAFFromStore` (fitschan.c:19041-19151) makes before writing, and the
+/// CRPIX, CRVAL and CTYPE values it needs while writing. Celestial axes
+/// need a projection other than TPN with no parameters, or a SIN one
+/// equivalent to SIN or NCP; RA, galactic or ecliptic longitude; and no
+/// LONPOLE or LATPOLE. There must be a CRPIX for each axis and no other.
+fn iraf_store_ok(store: &FitsStore) -> bool {
+    use super::wcs_celestial::wcs_prj_type;
+    use crate::wcslib::WcsProjection as P;
+
+    let mut ok = true;
+    let (axlon, axlat, _) = store.lon_lat_spec_axes();
+    if let (Some(axlon), Some(axlat)) = (axlon, axlat) {
+        let (Some(lontype), Some(lattype)) =
+            (store.ctype[axlon].as_deref(), store.ctype[axlat].as_deref())
+        else {
+            return false;
+        };
+        ok = match lattype.get(4..).and_then(wcs_prj_type) {
+            None | Some(P::Tpn) => false,
+            Some(P::Sin) => {
+                let pv = |m: usize| {
+                    store
+                        .pv
+                        .get(axlat)
+                        .and_then(|a| a.get(m))
+                        .copied()
+                        .flatten()
+                        .unwrap_or(0.0)
+                };
+                let (p1, p2) = (pv(1), pv(2));
+                match store.crval[axlat] {
+                    Some(val) => {
+                        p1 == 0.0
+                            && (p2 == 0.0
+                                || (p2.abs() >= 1.0e14 && val == 0.0)
+                                || (p2 * val.to_radians().tan() - 1.0).abs() < 0.01)
+                    }
+                    None => false,
+                }
+            }
+            Some(_) => store.max_pv_m().is_none(),
+        };
+        if !(lontype.starts_with("RA--")
+            || lontype.starts_with("GLON")
+            || lontype.starts_with("ELON"))
+        {
+            ok = false;
+        }
+        if store.latpole.is_some() || store.lonpole.is_some() {
+            ok = false;
+        }
+    }
+    let naxis = store.max_crpix_axis().map_or(0, |m| m + 1);
+    if naxis != store.naxis || !ok {
+        return false;
+    }
+    (0..naxis).all(|i| store.crpix[i].is_some())
+        && (0..naxis).all(|i| store.crval[i].is_some())
+        && (0..naxis).all(|i| {
+            store.ctype[i]
+                .as_deref()
+                .is_some_and(|c| !(c.len() > 4 && c.get(4..) == Some("-TAB")))
+        })
+}
+
 /// Write a [`FitsStore`] as IRAF-style WCS keywords into a [`CardList`].
 ///
 /// The IRAF encoding writes:
@@ -138,8 +204,11 @@ pub(crate) fn write_to_cards(
     cards: &mut CardList,
     s: char,
     is_last: bool,
-) -> AstResult<()> {
+) -> AstResult<bool> {
     use super::wcs_keywords::key_for;
+    if !iraf_store_ok(store) {
+        return Ok(false);
+    }
     let naxis = store.naxis;
 
     // CRPIXi
@@ -204,7 +273,7 @@ pub(crate) fn write_to_cards(
     }
 
     if is_last {
-        // MJD-OBS — IRAFFromStore (fitschan.c:19103-19127) does not
+        // MJD-OBS — IRAFFromStore (fitschan.c:19114-19138) does not
         // emit MJD-OBS itself; only DATE-OBS. The input MJD-OBS card
         // is left at its original position by C's `ignore_used`
         // semantics. Mark the existing card used (so sweep keeps it)
@@ -215,14 +284,14 @@ pub(crate) fn write_to_cards(
         let _ = cards.mark_used("MJD-OBS");
 
         // DATE-OBS — IRAF emits only DATE-OBS, not MJD-OBS (mirrors C
-        // IRAFFromStore at fitschan.c:19103-19127). The pre-formatted
+        // IRAFFromStore at fitschan.c:19114-19138). The pre-formatted
         // string in store.dateobs was derived from MJD-OBS upstream.
         if let Some(ref dateobs) = store.dateobs {
             cards.set_string("DATE-OBS", dateobs, "Date of observation");
         }
     }
 
-    Ok(())
+    Ok(true)
 }
 
 // ---------------------------------------------------------------------------

@@ -10,7 +10,7 @@
 //! axis is linearly sampled in some other system X (frequency, wavelength,
 //! air wavelength, or relativistic velocity), so the IWC→S mapping is
 //! `IWC → X (via WinMap or ZoomMap) → S (via SpecMap)`. See
-//! [`nonlin_spec_wcs`] which mirrors C `NonLinSpecWcs` (fitschan.c:23486).
+//! [`nonlin_spec_wcs`] which mirrors C `NonLinSpecWcs` (fitschan.c:23497).
 
 use super::fits_store::FitsStore;
 use super::warning::{Warning, Warnings};
@@ -25,7 +25,7 @@ const DD2R: f64 = std::f64::consts::PI / 180.0;
 
 /// Embed a 1-axis mapping into an N-axis mapping with `UnitMap`s on
 /// the other axes. Identity-fast for `naxis == 1`. Mirrors C
-/// `WcsSpectral` (fitschan.c:39661-39676), which composes one 1D map
+/// `WcsSpectral` (fitschan.c:39672-39687), which composes one 1D map
 /// per axis in parallel in FITS order (`ret = astCmpMap(ret, map1, 0,
 /// …)`) — the non-spectral axes carry a `UnitMap(1)` each and only the
 /// *Frame* is permuted, so no PermMap sandwich is needed here.
@@ -68,7 +68,7 @@ pub(crate) struct SpectralResult {
     pub axis: usize,
     /// Whether the world frame for this axis should be a `DSBSpecFrame`
     /// rather than a plain `SpecFrame`. Mirrors C `WcsSpectral`
-    /// (fitschan.c:39498-39503), which builds a DSBSpecFrame when the
+    /// (fitschan.c:39509-39514), which builds a DSBSpecFrame when the
     /// FitsStore carries an `IMAGFREQ` value. The DSB-specific attributes
     /// (IF / DSBCentre / SideBand) are filled in by `dsb_set_up` after the
     /// reference position has been propagated from the celestial axes.
@@ -76,7 +76,7 @@ pub(crate) struct SpectralResult {
     /// Warning messages to emit as ASTWARN cards. Mirrors C `Warn`'s
     /// `badctype` condition: the `-X2P` algorithm code's `P` character
     /// disagrees with the one the axis's own system implies
-    /// (fitschan.c:23696-23704).
+    /// (fitschan.c:23707-23715).
     pub warnings: Warnings,
 }
 
@@ -134,7 +134,7 @@ pub(crate) fn build_spectral(store: &FitsStore) -> Option<SpectralResult> {
     }
 
     // OBSGEO-X/Y/Z → ObsLon/ObsLat/ObsAlt. Mirrors C
-    // fitschan.c:39534-39550.
+    // fitschan.c:39545-39561.
     if let (Some(x), Some(y), Some(z)) = (store.obsgeox, store.obsgeoy, store.obsgeoz)
         && let Some((geolon, geolat, h)) = crate::pal::gc2gd([x, y, z])
     {
@@ -145,7 +145,7 @@ pub(crate) fn build_spectral(store: &FitsStore) -> Option<SpectralResult> {
 
     // Source velocity rest frame (SSYSSRC → SourceVRF) and source
     // velocity (ZSOURCE redshift → SourceVel). Mirrors C `WcsSpectral`
-    // (fitschan.c:39547-39559). The source velocity defines the
+    // (fitschan.c:39558-39570). The source velocity defines the
     // Source standard of rest, which DSBSetUp's source-rest →
     // topocentric conversion depends on; without it the topocentric
     // image/rest frequencies (and hence the derived IF) are wrong.
@@ -168,7 +168,7 @@ pub(crate) fn build_spectral(store: &FitsStore) -> Option<SpectralResult> {
     // unit; the SpecMap that connects two SpecFrames handles the SI
     // conversion when systems differ. Mirrors specframe.c::SetUnit.
     //
-    // C `WcsSpectral` (fitschan.c:39509-39517) always calls
+    // C `WcsSpectral` (fitschan.c:39520-39528) always calls
     // `astSetUnit(specfrm, 0, cunit)`, falling back to the FITS-WCS
     // Paper III default unit (the value `IsSpectral` returns — "Hz" for
     // FREQ, "m" for WAVE, "m/s" for VRAD/VOPT/VELO, etc) when no
@@ -187,7 +187,7 @@ pub(crate) fn build_spectral(store: &FitsStore) -> Option<SpectralResult> {
         frame.set_unit(1, &cunit).ok()?;
     }
 
-    // CNAME → axis Label. Mirrors C `WcsSpectral` (fitschan.c:39636-
+    // CNAME → axis Label. Mirrors C `WcsSpectral` (fitschan.c:39647-
     // 39638): when the CNAME keyword is set for the spectral axis, it
     // becomes the SpecFrame's (sole) axis Label.
     if let Some(cname) = &store.cname[axis] {
@@ -197,7 +197,7 @@ pub(crate) fn build_spectral(store: &FitsStore) -> Option<SpectralResult> {
     // Step 4: Build the IWC→S mapping. For a linear axis (no algcode)
     // this is just `IWC + CRVAL`. For an `-X2P` non-linear axis we
     // call the algorithm-specific builder (mirrors C `WcsSpectral`
-    // dispatch at fitschan.c:39593-39610).
+    // dispatch at fitschan.c:39604-39621).
     let crval = store.crval[axis].unwrap_or(0.0);
     let mut warnings: Warnings = epoch_warnings;
     let mapping: DynMapping = if algcode.is_empty() {
@@ -235,7 +235,7 @@ pub(crate) fn build_spectral(store: &FitsStore) -> Option<SpectralResult> {
         Err(_) => return None,
     };
 
-    // C `WcsSpectral` (fitschan.c:39498-39503) builds a DSBSpecFrame
+    // C `WcsSpectral` (fitschan.c:39509-39514) builds a DSBSpecFrame
     // instead of a plain SpecFrame when the FitsStore carries an IMAGFREQ
     // value. The DSB-specific attributes are computed by `dsb_set_up`
     // after the celestial reference position has been propagated.
@@ -253,7 +253,7 @@ pub(crate) fn build_spectral(store: &FitsStore) -> Option<SpectralResult> {
 /// Whether the algorithm code is the FITS-WCS paper III "-X2P" non-linear
 /// form (e.g. `-F2W`, `-V2F`).
 ///
-/// Mirrors C's check at fitschan.c:39603 — the code starts with `'-'` and
+/// Mirrors C's check at fitschan.c:39614 — the code starts with `'-'` and
 /// has `'2'` at position 2.
 fn is_nonlin_x2p(algcode: &str) -> bool {
     let bytes = algcode.as_bytes();
@@ -377,7 +377,7 @@ fn nonlin_spec_wcs(
 
 /// Build the IWC→S mapping for a FITS-WCS paper III `-GRI` or `-GRA` grism axis.
 ///
-/// Mirrors C `GrismSpecWcs` (fitschan.c:14210-14372). `-GRI` disperses in
+/// Mirrors C `GrismSpecWcs` (fitschan.c:14221-14383). `-GRI` disperses in
 /// vacuum wavelength, `-GRA` in air wavelength. The returned mapping is
 /// `w → S`, built from a GrismMap whose parameters come from PVi_0..6.
 ///
@@ -431,7 +431,7 @@ fn grism_spec_wcs(
     let g = pv(0).unwrap_or(0.0);
     // Round to nearest, not toward zero: a grism interference order is
     // commonly negative, and `(v + 0.5) as i32` turns -1 into 0
-    // (fitschan.c:14326, fixed upstream at 1199880a).
+    // (fitschan.c:14337, fixed upstream at 1199880a).
     let m_order = pv(1).map(|v| v.round() as i32).unwrap_or(0);
     let alpha = pv(2).map(|v| v * DD2R).unwrap_or(0.0);
     let nr = pv(3).unwrap_or(1.0);
@@ -484,7 +484,7 @@ fn grism_spec_wcs(
 
 /// Build the IWC→S mapping for a FITS-WCS paper III `-LOG` spectral axis.
 ///
-/// Mirrors C `LogWcs` (fitschan.c:20666-20748): S = Sr*exp(w/Sr) forward,
+/// Mirrors C `LogWcs` (fitschan.c:20677-20759): S = Sr*exp(w/Sr) forward,
 /// w = Sr*log(S/Sr) inverse, where Sr is the axis CRVAL. A zero Sr has no
 /// logarithmic form, so C returns NULL and the axis stays linear.
 fn log_wcs(crval: f64) -> Option<DynMapping> {
@@ -499,7 +499,7 @@ fn log_wcs(crval: f64) -> Option<DynMapping> {
     let sr = crate::serial::native_write::format_double_g(crval, 17);
     let forexp = format!("s={sr}*exp(w/{sr})");
     let invexp = format!("w={sr}*log(s/{sr})");
-    // C LogWcs sets SIMPFI=1 and SIMPIF=1 (fitschan.c:20741-20742), mirrored
+    // C LogWcs sets SIMPFI=1 and SIMPIF=1 (fitschan.c:20752-20753), mirrored
     // here so the serialised native output is byte-identical. These flags only
     // affect the simplifier, not the transform itself.
     let mut map = crate::mappings::MathMap::new(1, 1, &[&forexp], &[&invexp]).ok()?;
@@ -513,7 +513,7 @@ fn log_wcs(crval: f64) -> Option<DynMapping> {
 /// The first four characters give the spectral system code (FREQ, WAVE,
 /// VOPT, …); any remaining characters form the algorithm code (e.g.
 /// `-F2W`, `-LOG`, empty for a linear axis). Mirrors C `IsSpectral`
-/// (fitschan.c:20308-20437).
+/// (fitschan.c:20319-20448).
 fn parse_spectral_ctype(store: &FitsStore, axis: usize) -> Option<(SpecSystem, String)> {
     let ctype = store.ctype[axis].as_ref()?;
     if ctype.len() < 4 {

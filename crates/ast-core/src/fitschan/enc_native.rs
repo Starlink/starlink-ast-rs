@@ -86,7 +86,7 @@ pub(crate) fn classify(keyword: &str) -> KeywordKind {
 /// consumed. `None` when there is no `BEGAST` or the object is unterminated.
 ///
 /// This is the span C `GetNextData` walks with `skip` 0 from the current
-/// card, and therefore the span it marks as used (fitschan.c:17859). Cards
+/// card, and therefore the span it marks as used (fitschan.c:17870). Cards
 /// before the `BEGAST` are walked with `skip` 1 and left unmarked.
 pub(crate) fn native_span(cards: &CardList, start: usize) -> Option<(usize, usize)> {
     let mut first = None;
@@ -118,7 +118,7 @@ pub(crate) fn native_span(cards: &CardList, start: usize) -> Option<(usize, usiz
 }
 
 /// C's `GetNextData` with `skip` 0 from card `start`, looking for the
-/// `BEGAST` card of a top-level object (fitschan.c:17811, called so by
+/// `BEGAST` card of a top-level object (fitschan.c:17822, called so by
 /// channel.c `ReadObject` when Skip is zero): commentary cards are passed
 /// over. `Ok` holds the index of the `BEGAST` card, or `None` at
 /// end-of-file; `Err` the index of the first other card a read has not
@@ -179,7 +179,7 @@ pub(crate) fn format_value(value: &FitsValue) -> Option<FormattedValue> {
             if trimmed.is_empty() {
                 Some(FormattedValue::ObjectMarker)
             } else {
-                // Reverse the FITS-level pre-quoting (fitschan.c:18010) before
+                // Reverse the FITS-level pre-quoting (fitschan.c:18021) before
                 // applying the channel-text quoting. Embedded double-quotes
                 // are escaped by doubling (`""`), matching the convention
                 // un-escaped by `parse_native::parse_scalar_value`. Backslash
@@ -295,7 +295,7 @@ fn expect_class_name(value: &FitsValue, keyword: &str) -> AstResult<String> {
 
 /// Reverse `pre_quote`: strip one outer pair of double quotes when the first
 /// and last characters are both `"`. Mirrors C `UnPreQuote`
-/// (fitschan.c:34680-34751). Interior double quotes are untouched — the ends
+/// (fitschan.c:34691-34762). Interior double quotes are untouched — the ends
 /// of the string are known from the FITS quoting, so only the first and last
 /// characters are significant.
 fn un_pre_quote(value: &str) -> &str {
@@ -311,7 +311,7 @@ fn un_pre_quote(value: &str) -> &str {
 /// is a string ending in `&`. Returns the formatted value plus the number
 /// of additional CONTINUE cards consumed.
 ///
-/// Mirrors the C library logic at `fitschan.c:17979-18024`.
+/// Mirrors the C library logic at `fitschan.c:17990-18035`.
 fn format_value_with_continues(
     value: &FitsValue,
     rest: &[&FitsCard],
@@ -326,9 +326,9 @@ fn format_value_with_continues(
     if !trimmed.ends_with('&') {
         return Ok((format_value(value), 0));
     }
-    // C stores the first card of a continued value raw (fitschan.c:18011) and
+    // C stores the first card of a continued value raw (fitschan.c:18022) and
     // overwrites its trailing ampersand with the next segment; only the
-    // CONTINUE segments are un-quoted (fitschan.c:18032).
+    // CONTINUE segments are un-quoted (fitschan.c:18043).
     let mut joined = trimmed.strip_suffix('&').unwrap_or(trimmed).to_string();
     let mut consumed = 0usize;
     for next in rest {
@@ -349,7 +349,7 @@ fn format_value_with_continues(
         };
         let seg_trimmed = seg.trim_end();
         // The ampersand test comes first, on the raw value, before
-        // un-quoting — exactly C's ordering at fitschan.c:18029-18032.
+        // un-quoting — exactly C's ordering at fitschan.c:18040-18043.
         let next_continues = seg_trimmed.ends_with('&');
         let seg_text = seg_trimmed.strip_suffix('&').unwrap_or(seg_trimmed);
         joined.push_str(un_pre_quote(seg_text));
@@ -396,7 +396,7 @@ const FITS_NAM_LEN: usize = 8;
 const STRING_VALUE_WIDTH: usize = 80 - FITS_NAM_LEN - 6;
 
 /// Assigns unique sequence-suffixed FITS keywords, mirroring C `CreateKeyword`
-/// (fitschan.c:8209). Each distinct uppercased base name keeps its own
+/// (fitschan.c:8220). Each distinct uppercased base name keeps its own
 /// monotonic sequence counter, which the FitsChan keeps from one write to
 /// the next (C's `keyseq`); the counter is encoded into two `SEQ_CHARS`
 /// characters appended to the (truncated) base, and a keyword some card
@@ -451,7 +451,7 @@ impl KeywordSequencer<'_> {
 }
 
 /// Build a centred banner comment string, mirroring C `MakeBanner`
-/// (fitschan.c:20776). The text is the concatenation of `prefix`, `middle`,
+/// (fitschan.c:20787). The text is the concatenation of `prefix`, `middle`,
 /// and `suffix`, centred in the 72-column comment field (`FITSCARDLEN -
 /// FITSNAMLEN`) and flanked by the `AST` token at each end.
 pub(crate) fn make_banner(prefix: &str, middle: &str, suffix: &str) -> String {
@@ -746,7 +746,7 @@ fn write_object(
 }
 
 /// Write a string attribute, splitting into CONTINUE cards when the value is
-/// too long to fit one card, as C's `WriteString` does (fitschan.c:41253).
+/// too long to fit one card, as C's `WriteString` does (fitschan.c:41264).
 /// An empty value writes no card. The first card reserves room for the
 /// comment whether or not comments are written, and, when the value is not
 /// `set`, for the keyword the COMMENT card it becomes will hold.
@@ -825,7 +825,7 @@ fn chr_len(s: &str) -> usize {
 
 /// Pre-quote a value with surrounding double quotes when it has trailing
 /// white space or double quotes at either end, truncating it to what a FITS
-/// card can hold. Mirrors C `PreQuote` (fitschan.c:24989-25111).
+/// card can hold. Mirrors C `PreQuote` (fitschan.c:25000-25122).
 ///
 /// Embedded single quotes are not doubled here — the card formatter doubles
 /// them when rendering the card — but they are *counted* against the length
@@ -1104,7 +1104,7 @@ END
 
     #[test]
     fn un_pre_quote_strips_one_outer_pair() {
-        // C UnPreQuote (fitschan.c:34733-34745).
+        // C UnPreQuote (fitschan.c:34744-34756).
         assert_eq!(un_pre_quote("\",1)     \""), ",1)     ");
         assert_eq!(un_pre_quote("plain"), "plain");
         // Interior double quotes are left alone.
@@ -1323,7 +1323,7 @@ END
     #[test]
     fn pre_quote_empty_value_is_two_double_quotes() {
         // C PreQuote initialises dquotes = 2 and the loop never runs
-        // (fitschan.c:25056-25064), so a zero-length value is emitted as "".
+        // (fitschan.c:25067-25075), so a zero-length value is emitted as "".
         assert_eq!(pre_quote(""), "\"\"");
     }
 
@@ -1331,7 +1331,7 @@ END
     fn pre_quote_truncates_at_the_fits_value_limit() {
         // The accommodation test is
         //   nc + 1 + dq + sq > AST__FITSCHAN_FITSCARDLEN - FITSNAMLEN - 4
-        // (fitschan.c:25089), i.e. > 68 for the standard 80/8 card layout.
+        // (fitschan.c:25100), i.e. > 68 for the standard 80/8 card layout.
         let long = "x".repeat(80);
         assert_eq!(pre_quote(&long), "x".repeat(68));
         // Each single quote will be doubled by the card formatter, so it

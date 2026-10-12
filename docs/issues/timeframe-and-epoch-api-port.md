@@ -81,7 +81,7 @@ Risks:
   same way but it's not enforced or documented at the type level.
 - Unclear whether the stored Equinox is in UTC.
   C's `WriteSkyFrame` says "It is assumed the Equinox is in UTC"
-  (fitschan.c:29717).
+  (fitschan.c:29728).
   We don't have that contract written down.
 
 **To do.**

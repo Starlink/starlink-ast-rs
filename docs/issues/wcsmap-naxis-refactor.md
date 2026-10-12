@@ -6,11 +6,11 @@
 
 ## Background
 
-The C library's `WcsCelestial` (`fitschan.c:35458`) and `WcsNative`
-(`fitschan.c:37978`) build the celestial axes' contribution to the
+The C library's `WcsCelestial` (`fitschan.c:35469`) and `WcsNative`
+(`fitschan.c:37989`) build the celestial axes' contribution to the
 pixel→WCS mapping as an **N-axis mapping** that operates only on the
 two celestial axes and passes the remaining axes through unchanged.
-The mapping pipeline `WcsMapFrm` (`fitschan.c:37632`) composes the
+The mapping pipeline `WcsMapFrm` (`fitschan.c:37643`) composes the
 N-axis results from `WcsCelestial` / `WcsSpectral` / `WcsOthers` in
 **series**, and finally calls `astSimplify` on the composition.
 
@@ -100,13 +100,13 @@ a 2-axis rotation.  Replace with:
 
 - **Zoom**: a diagonal `MatrixMap` of size N×N with `DD2R` on the
   celestial axes only and `1.0` elsewhere — mirrors C
-  `fitschan.c:35820-35828`.
+  `fitschan.c:35831-35839`.
 - **Rotation**: keep the inner 2-axis rotation
   (`SphMap_inv ; MatrixMap_3x3 ; SphMap_fwd`) as it is — it's
   intrinsically a 2-axis operation.  Embed it in N-axis form via
   `PermMap` + parallel `CmpMap` (with `UnitMap_(N-2)` on the other
   axes) + inverse `PermMap`.  Mirrors C
-  `fitschan.c:38304-38347` (the `nax_rem > 0` branch and the
+  `fitschan.c:38315-38358` (the `nax_rem > 0` branch and the
   surrounding PermMap sandwich at `38325-38346`).
 
 ### Step 3: Spectral mirror

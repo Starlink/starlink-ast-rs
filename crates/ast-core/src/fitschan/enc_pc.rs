@@ -13,11 +13,8 @@
 //! - [`read_from_cards`]: extract FITS-PC keywords from a CardList into a FitsStore
 //! - [`write_to_cards`]: write a FitsStore as FITS-PC keywords into a CardList
 
-use ndarray::Array2;
-
 use super::card_list::CardList;
 use super::fits_store::FitsStore;
-use super::wcs_decompose::split_cd;
 use crate::error::{AstError, AstResult, ErrorCode};
 
 /// Read FITS-PC style WCS keywords from a [`CardList`] into a [`FitsStore`].
@@ -132,188 +129,269 @@ pub(crate) fn read_from_cards(cards: &CardList) -> AstResult<FitsStore> {
     Ok(store)
 }
 
-/// Write a [`FitsStore`] as FITS-PC style WCS keywords into a [`CardList`].
-///
-/// The FITS-PC encoding writes:
-/// - `CRPIX`, `CRVAL`, `CDELT` per axis
-/// - PC matrix in 3-digit format (`PC001001`)
-/// - `RADECSYS` (the historical misspelling, not `RADESYS`)
-/// - SFL projection is translated back to GLS; AIT to ATF
-///
-/// `s` is the coordinate-version letter (`' '` primary, `'A'..='Z'`
-/// alt). Per-axis cards are emitted with the suffix appended.
-/// `is_last` indicates whether this is the alphabetically-last
-/// plane: only that plane emits the observation-global keywords
-/// (MJD-OBS, OBSGEO-{X,Y,Z}, TIMESYS, DATE-OBS) — last-plane-wins
-/// per the C overwrite contract at fitschan.c:29805.
-pub(crate) fn write_to_cards(
-    store: &FitsStore,
-    cards: &mut CardList,
-    s: char,
-    is_last: bool,
-) -> AstResult<()> {
-    use super::wcs_keywords::key_for;
-    let naxis = store.naxis;
+/// Write the axis descriptions `planes` (primary first) with FITS-PC: C's
+/// `PCFromStore` (fitschan.c:24704). FITS-PC holds at most ten
+/// descriptions, the primary and `A` to `I`; an alternate one is written
+/// as `C<n>ELT<i>`, `C<n>PIX<i>`, `C<n>VAL<i>`, `C<n>YPE<i>` and
+/// `C<n>NIT<i>`, `<n>` being 1 for `A`, and must share the primary
+/// description's PC matrix, RADECSYS, EQUINOX, LATPOLE, LONGPOLE, MJD-OBS
+/// and projection parameters. A description that cannot be written leaves
+/// no cards; an alternate one needs the primary one, and the write fails
+/// when that cannot be written. Returns whether anything was written.
+pub(crate) fn write_pc(planes: &[&FitsStore], letters: &[char], cards: &mut CardList) -> bool {
+    use super::card_list::NewScope;
+    use super::fits_store::equal_ang;
+    use super::wcs_celestial::wcs_prj_type;
+    use crate::constants::BAD_VALUE;
+    use crate::mappings::helpers::ast_equal;
+    use crate::wcslib::WcsProjection as P;
 
-    // Derive CDELT and PC. If the store has PC + CDELT directly, use them.
-    // Otherwise factor a CD matrix via split_cd.
-    let (cdelt_vals, pc_vals) = if store.has_pc_matrix() || store.cdelt.iter().any(|v| v.is_some())
-    {
-        let cdelt: Vec<f64> = (0..naxis).map(|i| store.cdelt[i].unwrap_or(1.0)).collect();
-        let mut pc = Array2::zeros((naxis, naxis));
-        for i in 0..naxis {
-            for j in 0..naxis {
-                pc[[i, j]] = store.pc[i][j].unwrap_or(if i == j { 1.0 } else { 0.0 });
-            }
-        }
-        (cdelt, pc)
-    } else if store.has_cd_matrix() {
-        let mut cd = Array2::zeros((naxis, naxis));
-        for i in 0..naxis {
-            for j in 0..naxis {
-                cd[[i, j]] = store.cd[i][j].unwrap_or(0.0);
-            }
-        }
-        split_cd(&cd)
-    } else {
-        let cdelt = vec![1.0; naxis];
-        let pc = Array2::eye(naxis);
-        (cdelt, pc)
-    };
-
-    // PC matrix in 3-digit format. Identity values (1.0 on diagonal,
-    // 0.0 off-diagonal) are skipped — mirrors fitschan.c:24586-24598.
-    // Card emission order matches PCFromStore (line 24553+): PC, CDELT,
-    // CRPIX, CRVAL, CTYPE, CUNIT, RADECSYS, EQUINOX, MJD-OBS, DATE-OBS.
-    for i in 0..naxis {
-        for j in 0..naxis {
-            let val = pc_vals[[i, j]];
-            let default = if i == j { 1.0 } else { 0.0 };
-            if (val - default).abs() > 1e-15 {
-                let key = if s == ' ' {
-                    format!("PC{:03}{:03}", i + 1, j + 1)
-                } else {
-                    format!("PC{:03}{:03}{s}", i + 1, j + 1)
-                };
-                // FITS-PC PC cards carry no comment (fitschan.c:24595).
-                cards.set_float(&key, val, "");
-            }
-        }
+    if letters.iter().any(|&s| s > 'I') {
+        return false;
     }
+    let mut ret = false;
+    let mut primpc: Vec<f64> = Vec::new();
+    let mut primsys: Option<String> = None;
+    let (mut primeq, mut primlt, mut primln, mut primdt) =
+        (BAD_VALUE, BAD_VALUE, BAD_VALUE, BAD_VALUE);
+    let mut primpv = [BAD_VALUE; 10];
+    // C bounds every description's search for projection parameters by
+    // the primary description's highest parameter index.
+    let primmaxm = planes.first().and_then(|p| p.max_pv_m());
 
-    // CDELTi.
-    for (i, &cdelt_val) in cdelt_vals.iter().enumerate() {
-        let key = key_for("CDELT", Some(i + 1), s);
-        cards.set_float(&key, cdelt_val, &format!("Pixel scale on axis {}", i + 1));
-    }
-
-    // CRPIXi.
-    for i in 0..naxis {
-        if let Some(val) = store.crpix[i] {
-            let key = key_for("CRPIX", Some(i + 1), s);
-            cards.set_float(&key, val, &format!("Reference pixel on axis {}", i + 1));
-        }
-    }
-
-    // CRVALi.
-    for i in 0..naxis {
-        if let Some(val) = store.crval[i] {
-            let key = key_for("CRVAL", Some(i + 1), s);
-            cards.set_float(&key, val, &format!("Value at ref. pixel on axis {}", i + 1));
-        }
-    }
-
-    // CTYPEi — translate SFL→GLS, AIT→ATF.
-    for i in 0..naxis {
-        if let Some(ref val) = store.ctype[i] {
-            let pc_ctype = translate_pc_ctype_write(val);
-            let key = key_for("CTYPE", Some(i + 1), s);
-            let comment = store.ctype_com[i]
-                .clone()
-                .unwrap_or_else(|| format!("Type of co-ordinate on axis {}", i + 1));
-            cards.set_string(&key, &pc_ctype, &comment);
-        }
-    }
-
-    // CUNITi.
-    for i in 0..naxis {
-        if let Some(ref val) = store.cunit[i] {
-            let key = key_for("CUNIT", Some(i + 1), s);
-            cards.set_string(&key, val, &format!("Units for axis {}", i + 1));
-        }
-    }
-
-    // RADECSYS (the PC misspelling). Per-version-letter.
-    if let Some(ref radesys) = store.radesys {
-        let key = if s == ' ' {
-            "RADECSYS".to_string()
+    for (&store, &s) in planes.iter().zip(letters) {
+        let primary = s == ' ';
+        let is = if primary {
+            0
         } else {
-            format!("RADECSY{s}") // 8-char limit: RADECSYS + s would overflow
+            s as u32 - 'A' as u32 + 1
         };
-        cards.set_string(&key, radesys, "Reference frame for RA/DEC values");
-    }
+        let key = |base: &str, alt: &str, i: usize| {
+            if primary {
+                format!("{base}{i}")
+            } else {
+                format!("C{is}{alt}{i}")
+            }
+        };
+        let ok = (|| {
+            let naxis = match store.wcsaxes {
+                Some(n) => {
+                    let key = if primary {
+                        "WCSAXES".to_string()
+                    } else {
+                        format!("WCSAXES{s}")
+                    };
+                    cards.set_int(&key, n as i64, "Number of WCS axes");
+                    n
+                }
+                None => store.max_crpix_axis().map_or(0, |m| m + 1),
+            };
 
-    // EQUINOX. Per-version-letter.
-    if let Some(equinox) = store.equinox {
-        let key = key_for("EQUINOX", None, s);
-        cards.set_float(&key, equinox, "Epoch of reference equinox");
-    }
+            // One PC matrix, the primary description's, for all.
+            let matrix: Vec<f64> = (0..naxis * naxis)
+                .map(|k| {
+                    let (i, j) = (k / naxis, k % naxis);
+                    store
+                        .pc
+                        .get(i)
+                        .and_then(|row| row.get(j))
+                        .copied()
+                        .flatten()
+                        .unwrap_or(if i == j { 1.0 } else { 0.0 })
+                })
+                .collect();
+            if primary {
+                for (k, &val) in matrix.iter().enumerate() {
+                    let (i, j) = (k / naxis, k % naxis);
+                    if !ast_equal(val, if i == j { 1.0 } else { 0.0 }) {
+                        cards.set_float(&format!("PC{:03}{:03}", i + 1, j + 1), val, "");
+                    }
+                }
+                primpc = matrix;
+            } else if !primpc.is_empty()
+                && !matrix.iter().zip(&primpc).all(|(a, b)| ast_equal(*a, *b))
+            {
+                return false;
+            }
 
-    // LATPOLE — fitschan.c:24782-24786. Mirrors C: written by primary
-    // axis only (s == ' ').
-    if s == ' '
-        && let Some(latpole) = store.latpole
-    {
-        cards.set_float("LATPOLE", latpole, "Latitude of native north pole");
-    }
-
-    // LONGPOLE — fitschan.c:24796-24800. Note C uses keyword "LONGPOLE"
-    // (not "LONPOLE") for FITS-PC encoding.
-    if s == ' '
-        && let Some(lonpole) = store.lonpole
-    {
-        cards.set_float("LONGPOLE", lonpole, "Longitude of native north pole");
-    }
-
-    // Observation-global cards: only emitted on the last plane.
-    if is_last {
-        if let Some(mjdobs) = store.mjdobs {
-            cards.set_float("MJD-OBS", mjdobs, "Modified Julian Date of observation");
-        }
-        if let Some(ref dateobs) = store.dateobs {
-            cards.set_string("DATE-OBS", dateobs, "Date of observation");
-        }
-    }
-
-    // Old-style PROJPm projection parameters — only on the latitude
-    // axis, only for the primary axis description, and only when the
-    // projection isn't TAN. Mirrors fitschan.c:24862-24887.
-    //
-    // PC encoding ignores PVs on the longitude axis. PVs on any axis
-    // other than the celestial latitude/longitude pair, or PVs at
-    // m >= 10 on the latitude axis, would cause C to fall back to
-    // FITS-WCS encoding (the PCFromStore returns 0). We don't model
-    // that fallback here yet — projects with such PV layouts are
-    // already known not to round-trip via FITS-PC.
-    if s == ' '
-        && let Some((_axlon, axlat)) = store.celestial_axes()
-    {
-        // Determine projection from CTYPE on the latitude axis.
-        let prj_is_tan = store
-            .ctype
-            .get(axlat)
-            .and_then(|c| c.as_deref())
-            .is_some_and(|ct| ct.len() >= 8 && ct[5..8].eq_ignore_ascii_case("TAN"));
-        if !prj_is_tan && axlat < store.pv.len() {
-            for m in 0..store.pv[axlat].len().min(10) {
-                if let Some(val) = store.pv[axlat][m] {
-                    let key = format!("PROJP{m}");
-                    cards.set_float(&key, val, "Projection parameter");
+            for i in 0..naxis {
+                let Some(val) = store.cdelt.get(i).copied().flatten() else {
+                    return false;
+                };
+                cards.set_float(
+                    &key("CDELT", "ELT", i + 1),
+                    val,
+                    &format!("Pixel scale on axis {}", i + 1),
+                );
+            }
+            for j in 0..naxis {
+                let Some(val) = store.crpix.get(j).copied().flatten() else {
+                    return false;
+                };
+                cards.set_float(
+                    &key("CRPIX", "PIX", j + 1),
+                    val,
+                    &format!("Reference pixel on axis {}", j + 1),
+                );
+            }
+            for i in 0..naxis {
+                let Some(val) = store.crval.get(i).copied().flatten() else {
+                    return false;
+                };
+                cards.set_float(
+                    &key("CRVAL", "VAL", i + 1),
+                    val,
+                    &format!("Value at ref. pixel on axis {}", i + 1),
+                );
+            }
+            for i in 0..naxis {
+                let Some(cval) = store.ctype.get(i).and_then(|c| c.as_deref()) else {
+                    return false;
+                };
+                let nc = cval.len();
+                if nc > 4 && cval.get(4..) == Some("-TAB") {
+                    return false;
+                }
+                let comment = store.ctype_com[i]
+                    .clone()
+                    .unwrap_or_else(|| format!("Type of co-ordinate on axis {}", i + 1));
+                // No `xxLT` or `xxLN` celestial axes, and no `-TAB`.
+                if cval.get(2..5) == Some("LT-")
+                    || cval.get(2..5) == Some("LN-")
+                    || (nc > 4 && cval.get(4..).is_some_and(|t| t.starts_with("-TAB")))
+                {
+                    return false;
+                }
+                let prj = if nc > 4 {
+                    cval.get(4..).and_then(wcs_prj_type)
+                } else {
+                    None
+                };
+                // SFL is written with the older code GLS, and TPN not at
+                // all.
+                let cval = match prj {
+                    Some(P::Sfl) => format!("{}-GLS", &cval[..4]),
+                    Some(P::Tpn) => return false,
+                    _ => cval.to_string(),
+                };
+                cards.set_string(&key("CTYPE", "YPE", i + 1), &cval, &comment);
+            }
+            for i in 0..naxis {
+                if let Some(cval) = store.cunit.get(i).and_then(|c| c.as_deref()) {
+                    cards.set_string(
+                        &key("CUNIT", "NIT", i + 1),
+                        cval,
+                        &format!("Units for axis {}", i + 1),
+                    );
                 }
             }
+            if let Some(sys) = store.radesys.as_deref() {
+                if primary {
+                    primsys = Some(sys.to_string());
+                    cards.set_string("RADECSYS", sys, "Reference frame for RA/DEC values");
+                } else if primsys.as_deref() != Some(sys) {
+                    return false;
+                }
+            }
+            let val = store.equinox.unwrap_or(BAD_VALUE);
+            if primary {
+                primeq = val;
+                if val != BAD_VALUE {
+                    cards.set_float("EQUINOX", val, "Epoch of reference equinox");
+                }
+            } else if !ast_equal(val, primeq) {
+                return false;
+            }
+            let val = store.latpole.unwrap_or(BAD_VALUE);
+            if primary {
+                primlt = val;
+                if val != BAD_VALUE {
+                    cards.set_float("LATPOLE", val, "Latitude of native north pole");
+                }
+            } else if !equal_ang(val, primlt) {
+                return false;
+            }
+            let val = store.lonpole.unwrap_or(BAD_VALUE);
+            if primary {
+                primln = val;
+                if val != BAD_VALUE {
+                    cards.set_float("LONGPOLE", val, "Longitude of native north pole");
+                }
+            } else if !equal_ang(val, primln) {
+                return false;
+            }
+            // MJD-OBS is kept for the primary description only; an
+            // alternate one has none, and shares the primary one's.
+            let val = if primary {
+                store.mjdobs.unwrap_or(BAD_VALUE)
+            } else {
+                BAD_VALUE
+            };
+            if primary {
+                primdt = val;
+                if val != BAD_VALUE {
+                    cards.set_float("MJD-OBS", val, "Modified Julian Date of observation");
+                    cards.set_string(
+                        "DATE-OBS",
+                        &super::wcs_write::mjd_to_date_str(val),
+                        "Date of observation",
+                    );
+                }
+            } else if val != BAD_VALUE && !ast_equal(val, primdt) {
+                return false;
+            }
+
+            // Projection parameters, only on the latitude axis, only the
+            // first 10, and none for TAN.
+            let (axlon, axlat, _) = store.lon_lat_spec_axes();
+            if let (Some(axlon), Some(axlat), Some(maxm)) = (axlon, axlat, primmaxm) {
+                let prj = store.ctype[axlat]
+                    .as_deref()
+                    .and_then(|c| c.get(4..))
+                    .and_then(wcs_prj_type);
+                for i in 0..naxis {
+                    if i == axlon {
+                        continue;
+                    }
+                    // `m` runs beyond the ten parameters `primpv` holds.
+                    #[allow(clippy::needless_range_loop)]
+                    for m in 0..=maxm {
+                        let val = store
+                            .pv
+                            .get(i)
+                            .and_then(|a| a.get(m))
+                            .copied()
+                            .flatten()
+                            .unwrap_or(BAD_VALUE);
+                        if primary {
+                            if val != BAD_VALUE {
+                                if i != axlat || prj == Some(P::Tan) || m >= 10 {
+                                    return false;
+                                }
+                                cards.set_float(&format!("PROJP{m}"), val, "Projection parameter");
+                            }
+                            if i == axlat && m < 10 {
+                                primpv[m] = val;
+                            }
+                        } else if ((i != axlat || m >= 10) && val != BAD_VALUE)
+                            || (i == axlat && m < 10 && !ast_equal(val, primpv[m]))
+                        {
+                            return false;
+                        }
+                    }
+                }
+            }
+            true
+        })();
+        if ok {
+            ret = true;
+        }
+        cards.fix_new(NewScope::Version, !ok);
+        if primary && !ok {
+            break;
         }
     }
-    Ok(())
+    ret
 }
 
 // ---------------------------------------------------------------------------
@@ -332,22 +410,6 @@ fn translate_pc_ctype_read(ctype: &str) -> String {
         }
         if suffix.eq_ignore_ascii_case("ATF") {
             return format!("{}-AIT", &ctype[..4]);
-        }
-    }
-    ctype.to_string()
-}
-
-/// Translate standard projections back to FITS-PC legacy codes on write:
-/// - SFL → GLS
-/// - AIT → ATF
-fn translate_pc_ctype_write(ctype: &str) -> String {
-    if ctype.len() >= 8 {
-        let suffix = &ctype[5..8];
-        if suffix.eq_ignore_ascii_case("SFL") {
-            return format!("{}-GLS", &ctype[..4]);
-        }
-        if suffix.eq_ignore_ascii_case("AIT") {
-            return format!("{}-ATF", &ctype[..4]);
         }
     }
     ctype.to_string()
@@ -470,7 +532,7 @@ END";
         store.equinox = Some(2000.0);
 
         let mut cards = CardList::new();
-        write_to_cards(&store, &mut cards, ' ', true).unwrap();
+        assert!(write_pc(&[&store], &[' '], &mut cards));
 
         // Should have PC keywords in 3-digit format
         assert!(cards.get_float("PC001001").is_some());
@@ -490,8 +552,10 @@ END";
     }
 
     #[test]
-    fn write_pc_from_cd() {
-        // Store has only CD matrix (no PC/CDELT) — should factor via split_cd.
+    fn write_pc_needs_cdelt() {
+        // FITS-PC writes CDELT for every axis, so a store without them
+        // writes nothing, and the cards written before the defect was
+        // found are removed again.
         let mut store = FitsStore::new(2);
         store.crpix[0] = Some(256.0);
         store.crpix[1] = Some(256.0);
@@ -499,28 +563,12 @@ END";
         store.crval[1] = Some(60.0);
         store.ctype[0] = Some("RA---TAN".to_string());
         store.ctype[1] = Some("DEC--TAN".to_string());
-        // Diagonal CD matrix (no rotation)
-        store.cd[0][0] = Some(-0.001);
-        store.cd[1][1] = Some(0.001);
+        store.pc[0][1] = Some(0.5);
 
         let mut cards = CardList::new();
-        write_to_cards(&store, &mut cards, ' ', true).unwrap();
-
-        // Should have CDELTi (factored from CD)
-        let cdelt1 = cards.get_float("CDELT1").unwrap();
-        let cdelt2 = cards.get_float("CDELT2").unwrap();
-        assert!((cdelt1 - (-0.001)).abs() < 1e-12);
-        assert!((cdelt2 - 0.001).abs() < 1e-12);
-
-        // For a pure diagonal CD, the PC matrix is identity, so no PC keywords
-        // should be written (identity is the default).
-        assert!(cards.get_float("PC001001").is_none());
-        assert!(cards.get_float("PC001002").is_none());
-        assert!(cards.get_float("PC002001").is_none());
-        assert!(cards.get_float("PC002002").is_none());
-
-        // Should NOT have CD keywords in output
-        assert!(cards.get_float("CD1_1").is_none());
+        cards.begin_marking_new();
+        assert!(!write_pc(&[&store], &[' '], &mut cards));
+        assert_eq!(cards.len(), 0);
     }
 
     #[test]
@@ -536,7 +584,7 @@ END";
         store.cdelt[1] = Some(0.01);
 
         let mut cards = CardList::new();
-        write_to_cards(&store, &mut cards, ' ', true).unwrap();
+        assert!(write_pc(&[&store], &[' '], &mut cards));
 
         // SFL should be translated to GLS on PC write
         assert_eq!(cards.get_string("CTYPE1"), Some("GLON-GLS".to_string()));
@@ -583,7 +631,7 @@ END";
         store.pc[1][1] = Some(1.0);
 
         let mut cards = CardList::new();
-        write_to_cards(&store, &mut cards, ' ', true).unwrap();
+        assert!(write_pc(&[&store], &[' '], &mut cards));
 
         // Identity PC values should not be written
         assert!(cards.get_float("PC001001").is_none());

@@ -85,7 +85,7 @@ pub(crate) fn read_from_cards(cards: &CardList) -> AstResult<FitsStore> {
 
         // CTYPE — translate AIPS spectral types and extract SPECSYS.
         // C's WcsFcRead applies an unconditional trailing-space strip
-        // (fitschan.c:36906, see `CardList::strip_wcs_store_string`)
+        // (fitschan.c:36917, see `CardList::strip_wcs_store_string`)
         // before storing any recognised string keyword; apply it here
         // before the AIPS-specific branching so both branches see the
         // stripped value, matching C.
@@ -194,6 +194,226 @@ pub(crate) fn read_from_cards(cards: &CardList) -> AstResult<FitsStore> {
     Ok(store)
 }
 
+/// Whether `store` can be written with FITS-AIPS (`pp` false) or
+/// FITS-AIPS++ (`pp` true): the checks C's `AIPSFromStore`
+/// (fitschan.c:3366-3651) and `AIPSPPFromStore` (fitschan.c:3913-4151)
+/// make before writing, and the CRPIX, CRVAL and CTYPE values they need
+/// while writing.
+fn aips_store_ok(store: &FitsStore, pp: bool) -> bool {
+    use super::fits_store::names_start_of;
+    use super::wcs_celestial::wcs_prj_type;
+    use crate::wcslib::WcsProjection as P;
+
+    let mut ok = true;
+    let naxis = store.max_crpix_axis().map_or(0, |m| m + 1);
+    let (axlon, axlat, axspec) = store.lon_lat_spec_axes();
+    if let (Some(axlon), Some(axlat)) = (axlon, axlat) {
+        let latval = store.crval.get(axlat).copied().flatten();
+        let lonval = store.crval.get(axlon).copied().flatten();
+        if !pp && (latval.is_none() || lonval.is_none()) {
+            ok = false;
+        }
+        let lontype = store.ctype[axlon].as_deref();
+        let lattype = store.ctype[axlat].as_deref();
+        if lontype.is_none() {
+            ok = false;
+        }
+        let prj = match lattype {
+            None => {
+                ok = false;
+                None
+            }
+            Some(c) => c.get(4..).and_then(wcs_prj_type),
+        };
+        if pp {
+            if matches!(prj, None | Some(P::Tpn)) {
+                ok = false;
+            }
+            // Only the latitude axis may have projection parameters, and
+            // only the first 10.
+            if let Some(maxm) = store.max_pv_m() {
+                'axes: for i in 0..naxis {
+                    if !ok {
+                        break;
+                    }
+                    if i == axlon {
+                        continue;
+                    }
+                    for m in 0..=maxm {
+                        let set = store.pv.get(i).and_then(|a| a.get(m)).copied().flatten();
+                        if set.is_some() && (i != axlat || m >= 10) {
+                            ok = false;
+                            break 'axes;
+                        }
+                    }
+                }
+            }
+        } else {
+            match prj {
+                None => ok = false,
+                Some(P::Sin) => {
+                    // SIN, with parameters both zero or making it NCP.
+                    let pv = |m: usize| {
+                        store
+                            .pv
+                            .get(axlat)
+                            .and_then(|a| a.get(m))
+                            .copied()
+                            .flatten()
+                            .unwrap_or(0.0)
+                    };
+                    let (p1, p2) = (pv(1), pv(2));
+                    let latval = latval.unwrap_or(crate::constants::BAD_VALUE);
+                    ok = p1 == 0.0
+                        && (p2 == 0.0
+                            || (p2.abs() >= 1.0e14 && latval == 0.0)
+                            || (p2 * latval.to_radians().tan() - 1.0).abs() < 0.01);
+                }
+                Some(p) => {
+                    if store.max_pv_m().is_some()
+                        || p == P::Tpn
+                        || (matches!(p, P::Mer | P::Ait | P::Sfl)
+                            && (latval != Some(0.0) || lonval != Some(0.0)))
+                    {
+                        ok = false;
+                    }
+                }
+            }
+        }
+        // Only RA, galactic and ecliptic longitude.
+        if ok
+            && !lontype.is_some_and(|t| {
+                t.starts_with("RA--") || t.starts_with("GLON") || t.starts_with("ELON")
+            })
+        {
+            ok = false;
+        }
+        if !pp && (store.latpole.is_some() || store.lonpole.is_some()) {
+            ok = false;
+        }
+    }
+    if let Some(axspec) = axspec
+        && (pp || ok)
+    {
+        match store.ctype[axspec].as_deref() {
+            Some(c)
+                if names_start_of(c, "FREQ")
+                    || names_start_of(c, "VRAD")
+                    || names_start_of(c, "VOPT-F2W") => {}
+            _ => ok = false,
+        }
+        match store.specsys.as_deref() {
+            None => ok = false,
+            Some(c) if pp || ok => {
+                if !["LSRK", "LSRD", "BARYCENT", "GEOCENTR"]
+                    .iter()
+                    .any(|t| names_start_of(c, t))
+                {
+                    ok = false;
+                }
+            }
+            Some(_) => {}
+        }
+        match store.cunit[axspec].as_deref() {
+            None => ok = false,
+            Some(c) if ok => {
+                if !["Hz", "kHz", "MHz", "GHz", "m/s", "km/s"].contains(&c) {
+                    ok = false;
+                }
+            }
+            Some(_) => {}
+        }
+    }
+    // No WCSAXES in these encodings.
+    if naxis != store.naxis {
+        ok = false;
+    }
+
+    // Rotation only in the celestial plane, or that of the first two
+    // non-spectral axes when there are no celestial axes.
+    let (axrot1, axrot2) = if axlat.is_none() && axlon.is_none() {
+        match axspec {
+            Some(axspec) if naxis > 2 => {
+                let axrot2 = if axspec == 0 { 1 } else { 0 };
+                let mut axrot1 = axrot2 + 1;
+                if axrot1 == axspec {
+                    axrot1 += 1;
+                }
+                (Some(axrot1), Some(axrot2))
+            }
+            _ if naxis > 1 => (Some(1), Some(0)),
+            _ => (None, None),
+        }
+    } else {
+        (axlon, axlat)
+    };
+    let mut cdelt = vec![0.0; naxis];
+    let (mut cdlat_lon, mut cdlon_lat) = (0.0, 0.0);
+    'rows: for (i, cdelt_i) in cdelt.iter_mut().enumerate() {
+        if !ok {
+            break;
+        }
+        for j in 0..naxis {
+            let val = store.cd_element(i, j);
+            if i == j {
+                *cdelt_i = val;
+            } else if Some(i) == axrot2 && Some(j) == axrot1 {
+                cdlat_lon = val;
+            } else if Some(i) == axrot1 && Some(j) == axrot2 {
+                cdlon_lat = val;
+            } else if val != 0.0 {
+                ok = false;
+                break 'rows;
+            }
+        }
+    }
+    // FITS-AIPS can only describe a rotation both estimates of CROTA
+    // agree on; FITS-AIPS++ writes a CD matrix instead.
+    if !pp
+        && ok
+        && let (Some(axrot1), Some(axrot2)) = (axrot1, axrot2)
+    {
+        let rho_a = if cdlat_lon > 0.0 {
+            cdlat_lon.atan2(cdelt[axrot1])
+        } else if cdlat_lon == 0.0 {
+            0.0
+        } else {
+            (-cdlat_lon).atan2(-cdelt[axrot1])
+        };
+        let rho_b = if cdlon_lat > 0.0 {
+            cdlon_lat.atan2(-cdelt[axrot2])
+        } else if cdlon_lat == 0.0 {
+            0.0
+        } else {
+            (-cdlon_lat).atan2(cdelt[axrot2])
+        };
+        if crate::pal::drange(rho_a - rho_b).abs() >= 1.0e-2 {
+            ok = false;
+        }
+    }
+
+    // RADESYS other than ICRS, with an equinox the IAU 1984 rule allows.
+    if let Some(sys) = store.radesys.as_deref() {
+        match (sys, store.equinox) {
+            ("FK4", Some(e)) if e >= 1984.0 => ok = false,
+            ("FK5", Some(e)) if e < 1984.0 => ok = false,
+            ("FK4" | "FK5", _) => {}
+            _ => ok = false,
+        }
+    }
+
+    // The values written for every axis.
+    ok && (0..naxis).all(|j| store.crpix[j].is_some())
+        && (0..naxis).all(|i| store.crval[i].is_some())
+        && (0..naxis)
+            .filter(|&i| Some(i) != axlat && Some(i) != axlon && Some(i) != axspec)
+            .all(|i| {
+                store.ctype[i]
+                    .as_deref()
+                    .is_some_and(|c| c.len() < 5 || c.get(4..) != Some("-TAB"))
+            })
+}
+
 /// Write a [`FitsStore`] as plain AIPS-style WCS keywords into a [`CardList`].
 ///
 /// The plain AIPS encoding writes:
@@ -211,7 +431,10 @@ pub(crate) fn write_to_cards(
     cards: &mut CardList,
     s: char,
     is_last: bool,
-) -> AstResult<()> {
+) -> AstResult<bool> {
+    if !aips_store_ok(store, false) {
+        return Ok(false);
+    }
     use super::wcs_keywords::key_for;
     let naxis = store.naxis;
 
@@ -224,7 +447,7 @@ pub(crate) fn write_to_cards(
     }
 
     // Determine the spectral axis and its unit-canonicalisation factor.
-    // Mirrors fitschan.c:3350-3376 (factor & canonical unit) +
+    // Mirrors fitschan.c:3361-3387 (factor & canonical unit) +
     // :3526 (CRVAL *= specfactor) + :3560 (CDELT *= specfactor) +
     // :3570 (CUNIT replaced with canonical "HZ"/"m/s").
     let axspec = store.spectral_axis();
@@ -247,7 +470,7 @@ pub(crate) fn write_to_cards(
 
     // CTYPEi — convert standard types back to AIPS spectral format using SPECSYS.
     // Also fold SIN-with-NCP-PV back to the legacy `-NCP` projection
-    // suffix (mirrors fitschan.c:3270-3293).
+    // suffix (mirrors fitschan.c:3281-3304).
     let ncp_axes = super::wcs_keywords::sin_should_emit_as_ncp(store);
     // SFL → GLS rename when CRVAL = (0, 0). FITS-AIPS encodes
     // Sanson-Flamsteed at the celestial origin using the legacy GLS
@@ -284,7 +507,7 @@ pub(crate) fn write_to_cards(
 
     // Plain AIPS does not store a matrix; it uses CDELT and a single
     // CROTAk. Build a CD matrix from the store, derive CROTA via the
-    // C library's two-rho-average (fitschan.c:3415-3467), and start
+    // C library's two-rho-average (fitschan.c:3426-3478), and start
     // CDELT from CD's diagonal — for a rotated celestial frame
     //   CD[i][i] = cdelt_orig · cos(CROTA),
     // so dividing by cos(CROTA) recovers the original CDELT.
@@ -317,7 +540,7 @@ pub(crate) fn write_to_cards(
     }
 
     if is_last {
-        // MJD-OBS — `AIPSFromStore` (fitschan.c:3590-3614) reads
+        // MJD-OBS — `AIPSFromStore` (fitschan.c:3601-3625) reads
         // store->mjdobs but only emits DATE-OBS; the input header's
         // MJD-OBS is left in place untouched. Mirror that exactly:
         // mark the existing card used so the sweep keeps it, but do
@@ -330,7 +553,7 @@ pub(crate) fn write_to_cards(
     }
 
     // CROTAk — paired with the latitude axis for celestial frames or with
-    // axis 1 for purely linear frames (mirrors fitschan.c:3578-3584).
+    // axis 1 for purely linear frames (mirrors fitschan.c:3589-3595).
     if let Some(crota) = crota_deg
         && naxis >= 2
     {
@@ -351,19 +574,19 @@ pub(crate) fn write_to_cards(
 
     if is_last {
         // DATE-OBS computed from MJD-OBS (mirrors AIPSFromStore at
-        // fitschan.c:3590-3614). The pre-formatted string in store.dateobs
+        // fitschan.c:3601-3625). The pre-formatted string in store.dateobs
         // was derived from MJD-OBS upstream.
         if let Some(ref dateobs) = store.dateobs {
             cards.set_string("DATE-OBS", dateobs, "Date of observation");
         }
 
-        // RESTFREQ (AIPS uses RESTFREQ, not RESTFRQ). Mirrors fitschan.c:3622.
+        // RESTFREQ (AIPS uses RESTFREQ, not RESTFRQ). Mirrors fitschan.c:3633.
         if let Some(restfrq) = store.restfrq {
             cards.set_float("RESTFREQ", restfrq, "[Hz] Rest frequency");
         }
     }
 
-    Ok(())
+    Ok(true)
 }
 
 /// Build a CD matrix from the store, defaulting absent off-diagonals
@@ -398,7 +621,7 @@ fn build_cd_matrix(store: &FitsStore) -> Array2<f64> {
 }
 
 /// Initial CDELT for the AIPS encoder: the diagonal of the CD matrix.
-/// Mirrors fitschan.c:3422 `cdelt[i] = val` (overwrites with `pc[i][i] *
+/// Mirrors fitschan.c:3433 `cdelt[i] = val` (overwrites with `pc[i][i] *
 /// store->cdelt[i]`, which equals CD[i][i]).
 fn build_cdelt_diag(store: &FitsStore) -> Vec<f64> {
     let cd = build_cd_matrix(store);
@@ -406,7 +629,7 @@ fn build_cdelt_diag(store: &FitsStore) -> Vec<f64> {
 }
 
 /// Choose the rotation-axis pair `(axrot1, axrot2)` for the AIPS
-/// CROTA decomposition. Mirrors fitschan.c:3397-3412:
+/// CROTA decomposition. Mirrors fitschan.c:3408-3423:
 /// - Celestial pair present: axrot1=lon, axrot2=lat.
 /// - No celestial pair, naxis>2 with a spectral axis: skip the spec
 ///   axis and pick the first two remaining axes.
@@ -437,14 +660,14 @@ fn aips_rotation_axes(store: &FitsStore) -> Option<(usize, usize)> {
 
 /// Compute CROTA in degrees from the CD matrix and adjust the CDELT
 /// values so that the implicit rotation cancels out. Mirrors the C
-/// library `AIPSFromStore` block at fitschan.c:3415-3467.
+/// library `AIPSFromStore` block at fitschan.c:3426-3478.
 ///
 /// CROTA is the average of two estimates — rho_a from `CD[axrot2,
 /// axrot1]` and rho_b from `CD[axrot1, axrot2]` — after which
 /// `CDELT[axrot1]` and `CDELT[axrot2]` are divided by cos(CROTA) (or
 /// recomputed from sin(CROTA) when |sin| > |cos|). For non-celestial
 /// frames the rotation pair is the first two non-spectral axes
-/// (fitschan.c:3397-3412), so a rotated PIXEL grid encodes as
+/// (fitschan.c:3408-3423), so a rotated PIXEL grid encodes as
 /// CDELT + CROTA1 just like a celestial frame.
 ///
 /// Returns `None` when:
@@ -468,7 +691,7 @@ fn compute_crota_and_adjust_cdelt(
 
     // Validate that all off-diagonal CD entries outside the chosen
     // (axrot1, axrot2) pair are zero — anything else is not encodable
-    // as a single CROTA. Mirrors fitschan.c:3424-3429.
+    // as a single CROTA. Mirrors fitschan.c:3435-3440.
     for i in 0..naxis {
         for j in 0..naxis {
             if i == j {
@@ -522,7 +745,7 @@ fn compute_crota_and_adjust_cdelt(
 /// returns 1. Matches the C library convention: CROTA is paired with the
 /// Canonical AIPS spectral unit + scale factor.
 ///
-/// Mirrors fitschan.c:3350-3376 / 3854-3880. The AIPS encoder normalises
+/// Mirrors fitschan.c:3361-3387 / 3854-3880. The AIPS encoder normalises
 /// the spectral axis CUNIT to either "HZ" or "m/s", scaling CRVAL and
 /// CDELT by the matching factor. Returns `None` if the unit is not one
 /// of the recognised AIPS spectral units (which makes the encoding
@@ -541,7 +764,7 @@ fn aips_spectral_unit(unit: &str) -> Option<(&'static str, f64)> {
 
 /// 1-based axis index `k` for CROTAk emission.
 ///
-/// Mirrors fitschan.c:3577-3584: when a rotation pair exists,
+/// Mirrors fitschan.c:3588-3595: when a rotation pair exists,
 /// CROTA is paired with `axrot2 + 1` — the latitude axis for
 /// celestial frames, axis 1 for pure-linear N-D frames (axrot2=0),
 /// or the first non-spectral axis when a spectral axis is present.
@@ -567,7 +790,10 @@ pub(crate) fn write_to_cards_pp(
     cards: &mut CardList,
     s: char,
     is_last: bool,
-) -> AstResult<()> {
+) -> AstResult<bool> {
+    if !aips_store_ok(store, true) {
+        return Ok(false);
+    }
     use super::wcs_keywords::{key_for, key_for_2};
     let naxis = store.naxis;
 
@@ -613,7 +839,7 @@ pub(crate) fn write_to_cards_pp(
     // Compute CROTA via the two-rho-average. If consistent (Some), the
     // adjusted CDELT absorbs the cosine factor and we emit CDELT + CROTA.
     // Otherwise (None: rotation isn't expressible as a single CROTA),
-    // fall back to the CDi_j matrix. Mirrors fitschan.c:3950-3971,
+    // fall back to the CDi_j matrix. Mirrors fitschan.c:3961-3982,
     // 4081-4106.
     let mut cdelt_vals = build_cdelt_diag(store);
     let cd = build_cd_matrix(store);
@@ -644,7 +870,7 @@ pub(crate) fn write_to_cards_pp(
     }
 
     if is_last {
-        // MJD-OBS — `AIPSPPFromStore` (fitschan.c:4122) only emits
+        // MJD-OBS — `AIPSPPFromStore` (fitschan.c:4133) only emits
         // DATE-OBS; the input MJD-OBS is left at its original
         // position. Mark the existing card used so the sweep keeps
         // it; do not re-emit (would re-round-trip through TDB and
@@ -656,7 +882,7 @@ pub(crate) fn write_to_cards_pp(
     // CD matrix or CROTA.
     match crota_deg {
         None => {
-            // Rotation inconsistent — emit CDi_j (mirrors fitschan.c:4082-4095).
+            // Rotation inconsistent — emit CDi_j (mirrors fitschan.c:4093-4106).
             for i in 0..naxis {
                 for j in 0..naxis {
                     let val = cd[[i, j]];
@@ -679,13 +905,13 @@ pub(crate) fn write_to_cards_pp(
         _ => {}
     }
 
-    // EPOCH (NOT EQUINOX — AIPS++ uses EPOCH per fitschan.c:4109).
+    // EPOCH (NOT EQUINOX — AIPS++ uses EPOCH per fitschan.c:4120).
     if let Some(equinox) = store.equinox {
         let key = key_for("EPOCH", None, s);
         cards.set_float(&key, equinox, "Epoch of reference equinox");
     }
 
-    // LATPOLE / LONPOLE if set (mirrors fitschan.c:4112-4120). LONPOLE
+    // LATPOLE / LONPOLE if set (mirrors fitschan.c:4123-4131). LONPOLE
     // default 180° for zenithal projections is suppressed.
     if let Some(latpole) = store.latpole {
         let key = key_for("LATPOLE", None, s);
@@ -699,14 +925,14 @@ pub(crate) fn write_to_cards_pp(
     }
 
     if is_last {
-        // DATE-OBS — AIPS++ emits only DATE-OBS, not MJD-OBS (fitschan.c:4122).
+        // DATE-OBS — AIPS++ emits only DATE-OBS, not MJD-OBS (fitschan.c:4133).
         if let Some(ref dateobs) = store.dateobs {
             cards.set_string("DATE-OBS", dateobs, "Date of observation");
         }
     }
 
     // Projection parameters: PROJP{m} for celestial latitude axis only
-    // (fitschan.c:4148-4155).
+    // (fitschan.c:4159-4166).
     if let Some((_, lat_axis)) = store.celestial_axes() {
         for (m, pv_val) in store.pv[lat_axis].iter().enumerate() {
             if let Some(val) = pv_val {
@@ -727,7 +953,7 @@ pub(crate) fn write_to_cards_pp(
         }
     }
 
-    Ok(())
+    Ok(true)
 }
 
 // ---------------------------------------------------------------------------
@@ -1060,10 +1286,11 @@ END";
         store.crval[0] = Some(10000.0);
         store.cdelt[0] = Some(1000.0);
         store.ctype[0] = Some("VRAD".to_string());
+        store.cunit[0] = Some("m/s".to_string());
         store.specsys = Some("LSRK".to_string());
 
         let mut cards = CardList::new();
-        write_to_cards(&store, &mut cards, ' ', true).unwrap();
+        assert!(write_to_cards(&store, &mut cards, ' ', true).unwrap());
 
         // VRAD + LSRK -> VELO-LSR
         assert_eq!(cards.get_string("CTYPE1"), Some("VELO-LSR".to_string()));
@@ -1076,10 +1303,11 @@ END";
         store.crval[0] = Some(1.4e9);
         store.cdelt[0] = Some(1.0e6);
         store.ctype[0] = Some("FREQ".to_string());
+        store.cunit[0] = Some("Hz".to_string());
         store.specsys = Some("BARYCENT".to_string());
 
         let mut cards = CardList::new();
-        write_to_cards(&store, &mut cards, ' ', true).unwrap();
+        assert!(write_to_cards(&store, &mut cards, ' ', true).unwrap());
 
         // FREQ + BARYCENT -> FREQ-HEL
         assert_eq!(cards.get_string("CTYPE1"), Some("FREQ-HEL".to_string()));
@@ -1112,7 +1340,7 @@ END";
         // EPOCH (AIPS++ uses EPOCH, not EQUINOX).
         assert_eq!(cards.get_float("EPOCH"), Some(2000.0));
         assert!(cards.get_float("EQUINOX").is_none());
-        // No RADESYS field for AIPS++ (mirrors fitschan.c:3633+).
+        // No RADESYS field for AIPS++ (mirrors fitschan.c:3644+).
         assert!(cards.get_string("RADESYS").is_none());
     }
 
@@ -1120,7 +1348,7 @@ END";
     fn write_aipspp_emits_crota_when_rotation_consistent() {
         // PC rotation that is expressible as a single CROTA — the
         // two-rho-average lands on a real angle and AIPSPPFromStore
-        // emits CDELT + CROTA, no CDi_j (mirrors fitschan.c:4097-4106).
+        // emits CDELT + CROTA, no CDi_j (mirrors fitschan.c:4108-4117).
         let mut store = FitsStore::new(2);
         store.crpix[0] = Some(100.0);
         store.crpix[1] = Some(100.0);
@@ -1210,17 +1438,18 @@ END";
         store.ctype[0] = Some("RA---TAN".to_string());
         store.ctype[1] = Some("DEC--TAN".to_string());
         store.ctype[2] = Some("VRAD".to_string());
+        store.cunit[2] = Some("m/s".to_string());
         store.cd[0][0] = Some(-0.001);
         store.cd[1][1] = Some(0.001);
         store.cd[2][2] = Some(1000.0);
         store.specsys = Some("LSRK".to_string());
 
         let mut cards = CardList::new();
-        write_to_cards_pp(&store, &mut cards, ' ', true).unwrap();
+        assert!(write_to_cards_pp(&store, &mut cards, ' ', true).unwrap());
 
         // Spectral axis should be written in AIPS format. AIPSPPFromStore
         // bakes the SPECSYS into the CTYPE (e.g. "VELO-LSR") and doesn't
-        // emit a separate SPECSYS card (mirrors fitschan.c:4148-4164).
+        // emit a separate SPECSYS card (mirrors fitschan.c:4159-4175).
         assert_eq!(cards.get_string("CTYPE3"), Some("VELO-LSR".to_string()));
         assert!(cards.get_string("SPECSYS").is_none());
     }

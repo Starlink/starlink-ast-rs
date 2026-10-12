@@ -12,7 +12,7 @@
 
 ## Background — encoding format
 
-The C library defines (`fitschan.c::CreateKeyword`, `fitschan.c:8209`, and `fitschan.c::FindAst`, `fitschan.c:17820`) a 2-character suffix alphabet:
+The C library defines (`fitschan.c::CreateKeyword`, `fitschan.c:8220`, and `fitschan.c::FindAst`, `fitschan.c:17831`) a 2-character suffix alphabet:
 
 ```c
 #define SEQ_CHARS "_ABCDEFGHIJKLMNOPQRSTUVWXYZ"   // 27 characters
@@ -774,7 +774,7 @@ CONTINUE  '",1)     "'
 
 Joined value: `Data grid indices; first pixel at (1",1)     `.
 
-The C library logic is at `fitschan.c:17979-18024`. The convention: drop the trailing `&` from each continued segment and concatenate, then unquote.
+The C library logic is at `fitschan.c:17990-18035`. The convention: drop the trailing `&` from each continued segment and concatenate, then unquote.
 
 - [ ] **Step 1: Write the failing test**
 

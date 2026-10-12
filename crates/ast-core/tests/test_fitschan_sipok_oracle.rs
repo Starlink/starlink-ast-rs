@@ -17,24 +17,7 @@ use ast_core::{Channel, Encoding, FitsChan};
 
 /// Encodings whose write the port does not yet match, with the reason. The
 /// companion test fails once an entry matches, so the list cannot go stale.
-const EXCLUDED: &[(&str, &str)] = &[
-    (
-        "FITS-AIPS",
-        "C's AIPSFromStore rejects a PC matrix with shear; the port writes CDELT and drops the rotation",
-    ),
-    (
-        "FITS-AIPS++",
-        "C's AIPSPPFromStore rejects a PC matrix with shear; the port writes it",
-    ),
-    (
-        "FITS-CLASS",
-        "C's CLASSFromStore rejects a PC matrix with shear; the port writes CDELT and drops the rotation",
-    ),
-    (
-        "DSS",
-        "C's DSSFromStore returns 0; the port's write raises an error",
-    ),
-];
+const EXCLUDED: &[(&str, &str)] = &[];
 
 fn encoding(name: &str) -> Encoding {
     match name {
