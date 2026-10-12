@@ -167,8 +167,8 @@ pub(crate) enum Consumption {
 }
 
 /// Per-card read-tracking flags, mirroring the C library's card flag bitmask
-/// (fitschan.c:1485-1511). The values are internal only — never serialised and
-/// never crossing the CFFI boundary — so they need not match C's integers.
+/// (fitschan.c:1485-1511). A FitsChan's dump holds them as that bitmask
+/// ([`c_bits`](Self::c_bits)).
 ///
 /// `consumption` and `protected` are orthogonal: a `Used` card may also be
 /// `protected`. A protected card is exempt from being marked consumed (the
@@ -187,6 +187,39 @@ pub(crate) struct CardFlags {
     /// C's `NEW2` flag (fitschan.c:1584). Cleared, or used to delete the
     /// card, at the end of each axis-description version.
     pub new_version: bool,
+}
+
+impl CardFlags {
+    /// The flags as C's bitmask: `USED` 1, `PROVISIONALLY_USED` 2, `NEW1` 4,
+    /// `NEW2` 8 and `PROTECTED` 16 (fitschan.c:1613-1639).
+    pub(crate) fn c_bits(self) -> i64 {
+        let consumption = match self.consumption {
+            Consumption::Free => 0,
+            Consumption::Used => 1,
+            Consumption::Provisional => 2,
+        };
+        consumption
+            | if self.new_write { 4 } else { 0 }
+            | if self.new_version { 8 } else { 0 }
+            | if self.protected { 16 } else { 0 }
+    }
+
+    /// The flags C's bitmask `bits` holds. A card both used and
+    /// provisionally used is used.
+    pub(crate) fn from_c_bits(bits: i64) -> Self {
+        Self {
+            consumption: if bits & 1 != 0 {
+                Consumption::Used
+            } else if bits & 2 != 0 {
+                Consumption::Provisional
+            } else {
+                Consumption::Free
+            },
+            new_write: bits & 4 != 0,
+            new_version: bits & 8 != 0,
+            protected: bits & 16 != 0,
+        }
+    }
 }
 
 /// The data type of a FITS card, as C's `CardType` gives it (the `AST__*`
@@ -234,7 +267,47 @@ impl CardType {
             CardType::KInt => 9,
         }
     }
+
+    /// The name a FitsChan's dump gives the type (fitschan.c `type_names`),
+    /// or `None` for [`CardType::NoType`].
+    pub(crate) fn dump_name(self) -> Option<&'static str> {
+        TYPE_NAMES.get(usize::try_from(self.code()).ok()?).copied()
+    }
+
+    /// The type a dump names, ignoring case, as C's `FindString` matches it.
+    pub(crate) fn from_dump_name(name: &str) -> Option<Self> {
+        let code = TYPE_NAMES
+            .iter()
+            .position(|n| n.eq_ignore_ascii_case(name))?;
+        Some(match code {
+            0 => CardType::Comment,
+            1 => CardType::Int,
+            2 => CardType::Float,
+            3 => CardType::String,
+            4 => CardType::ComplexF,
+            5 => CardType::ComplexI,
+            6 => CardType::Logical,
+            7 => CardType::Continue,
+            8 => CardType::Undef,
+            _ => CardType::KInt,
+        })
+    }
 }
+
+/// The names of the card types, indexed by C's type code (fitschan.c
+/// `type_names`).
+const TYPE_NAMES: [&str; 10] = [
+    "comment",
+    "integer",
+    "floating point",
+    "string",
+    "complex floating point",
+    "complex integer",
+    "logical",
+    "continuation string",
+    "undef",
+    "64 bit integer",
+];
 
 /// A single FITS header card (keyword + value + comment).
 #[derive(Debug, Clone)]
@@ -282,14 +355,12 @@ impl FitsCard {
     }
 
     /// The comment as C's `CardComm` gives it: for a commentary card the
-    /// text from column 9 without trailing blanks, otherwise the comment
-    /// after the value. `None` when there is none.
+    /// text from column 9, leading and trailing blanks included, as C's
+    /// `NewCard` keeps them; otherwise the comment after the value. `None`
+    /// when there is none.
     pub(crate) fn c_comment(&self) -> Option<&str> {
         match &self.value {
-            FitsValue::Comment(text) => {
-                let t = text.trim_end();
-                (!t.is_empty()).then_some(t)
-            }
+            FitsValue::Comment(text) => (!text.trim().is_empty()).then_some(text.as_str()),
             _ => self.comment.as_deref().filter(|c| !c.is_empty()),
         }
     }
@@ -349,8 +420,10 @@ impl FitsCard {
                 || bytes[FITS_NAME_LEN] != b'=');
 
         if is_commentary {
-            let text = if card.len() > FITS_NAME_LEN {
-                &card[FITS_NAME_LEN..]
+            // C copies the characters supplied after column 8, not the
+            // padding.
+            let text = if nc > FITS_NAME_LEN {
+                &card[FITS_NAME_LEN..nc]
             } else {
                 ""
             };

@@ -2,6 +2,14 @@
 
 ## Revision history
 
+- **2026-10-11 (rev 29)**: `AnyObject` gained a `FitsChan` variant, so a
+  FitsChan can be written to and read from a Channel and held by a
+  KeyMap. FitsChan gained the Object-class `Ident` attribute and the
+  TabOK and ForceTab attributes (`tab_ok`, `set_tab_ok`, `test_tab_ok`,
+  `clear_tab_ok`, and the same for `force_tab`), which are held and
+  dumped but change no read or write until `-TAB` is ported.
+  `Encoding` and `AltAxes` gained `name` and `from_name`, giving C's
+  names.
 - **2026-10-11 (rev 28)**: A FitsChan's `ChannelConfig` gives the
   defaults of C's FitsChan, `skip()` true and `full()` -1, where other
   Channels give false and 0.

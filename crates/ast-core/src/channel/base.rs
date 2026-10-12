@@ -110,113 +110,129 @@ impl ChannelBase {
     /// then the Channel attributes that are set, in the order of channel.c
     /// `Dump`, each with its marker only if something came before it.
     pub(crate) fn write_parts(&self, node: &mut Node, own_class: bool) {
-        crate::frames::frame_attrs::write_object_part(node, self.ident.as_deref(), None);
-        let c = &self.config;
-        let before = node.items.len();
-        if c.test_indent() {
-            node.push_int(
-                "Indnt",
-                i64::from(c.indent()),
-                Some("Indentation increment".to_string()),
-            );
-        }
-        if c.test_report_level() {
-            node.push_int(
-                "RpLev",
-                i64::from(c.report_level()),
-                Some("Error reporting level".to_string()),
-            );
-        }
-        if c.test_skip() {
-            node.push_int(
-                "Skip",
-                i64::from(c.skip()),
-                Some(
-                    if c.skip() {
-                        "Ignore data between Objects"
-                    } else {
-                        "No data allowed between Objects"
-                    }
-                    .to_string(),
-                ),
-            );
-        }
-        if c.test_strict() {
-            // "insead" is C's spelling, kept so that dumps match.
-            node.push_int(
-                "Strict",
-                i64::from(c.strict()),
-                Some(
-                    if c.strict() {
-                        "Report errors insead of warnings"
-                    } else {
-                        "Report warnings instead of errors"
-                    }
-                    .to_string(),
-                ),
-            );
-        }
-        if c.test_full() {
-            let full = c.full();
-            node.push_int(
-                "Full",
-                i64::from(full),
-                Some(
-                    match full {
-                        f if f < 0 => "Suppress non-essential output",
-                        0 => "Output standard information",
-                        _ => "Output maximum information",
-                    }
-                    .to_string(),
-                ),
-            );
-        }
-        if c.test_comment() {
-            node.push_int(
-                "Comm",
-                i64::from(c.comment()),
-                Some(
-                    if c.comment() {
-                        "Display comments"
-                    } else {
-                        "Omit comments"
-                    }
-                    .to_string(),
-                ),
-            );
-        }
-        if !own_class && node.items.len() > before {
-            node.push_isa("Channel", Some("Basic I/O Channel".to_string()));
-        }
+        write_parts(node, self.ident.as_deref(), &self.config, own_class);
     }
 
     /// Read the Object and Channel parts of a dump, applying each Channel
     /// attribute through its setter as channel.c `astLoadChannel` does.
     pub(crate) fn read_parts(node: &Node) -> AstResult<Self> {
         let mut base = Self::default();
-        if let Some(ident) = node.section("Object").get_string_if_set("Ident") {
-            base.ident = Some(ident);
-        }
-        let part = node.section("Channel");
-        let c = &mut base.config;
-        if let Some(v) = part.get_int_any_if_set("Indnt") {
-            c.set_indent(v as i32);
-        }
-        if let Some(v) = part.get_int_any_if_set("RpLev") {
-            c.set_report_level(v as i32);
-        }
-        if let Some(v) = part.get_int_any_if_set("Skip") {
-            c.set_skip(v != 0);
-        }
-        if let Some(v) = part.get_int_any_if_set("Strict") {
-            c.set_strict(v != 0);
-        }
-        if let Some(v) = part.get_int_any_if_set("Full") {
-            c.set_full(v as i32);
-        }
-        if let Some(v) = part.get_int_any_if_set("Comm") {
-            c.set_comment(v != 0);
-        }
+        base.ident = read_parts(node, &mut base.config);
         Ok(base)
     }
+}
+
+/// Write the Object and Channel parts of the dump of a Channel of any class
+/// (see [`ChannelBase::write_parts`]). `own_class` is whether the object is
+/// a plain Channel, whose part needs no `IsA` marker.
+pub(crate) fn write_parts(
+    node: &mut Node,
+    ident: Option<&str>,
+    c: &ChannelConfig,
+    own_class: bool,
+) {
+    crate::frames::frame_attrs::write_object_part(node, ident, None);
+    let before = node.items.len();
+    if c.test_indent() {
+        node.push_int(
+            "Indnt",
+            i64::from(c.indent()),
+            Some("Indentation increment".to_string()),
+        );
+    }
+    if c.test_report_level() {
+        node.push_int(
+            "RpLev",
+            i64::from(c.report_level()),
+            Some("Error reporting level".to_string()),
+        );
+    }
+    if c.test_skip() {
+        node.push_int(
+            "Skip",
+            i64::from(c.skip()),
+            Some(
+                if c.skip() {
+                    "Ignore data between Objects"
+                } else {
+                    "No data allowed between Objects"
+                }
+                .to_string(),
+            ),
+        );
+    }
+    if c.test_strict() {
+        // "insead" is C's spelling, kept so that dumps match.
+        node.push_int(
+            "Strict",
+            i64::from(c.strict()),
+            Some(
+                if c.strict() {
+                    "Report errors insead of warnings"
+                } else {
+                    "Report warnings instead of errors"
+                }
+                .to_string(),
+            ),
+        );
+    }
+    if c.test_full() {
+        let full = c.full();
+        node.push_int(
+            "Full",
+            i64::from(full),
+            Some(
+                match full {
+                    f if f < 0 => "Suppress non-essential output",
+                    0 => "Output standard information",
+                    _ => "Output maximum information",
+                }
+                .to_string(),
+            ),
+        );
+    }
+    if c.test_comment() {
+        node.push_int(
+            "Comm",
+            i64::from(c.comment()),
+            Some(
+                if c.comment() {
+                    "Display comments"
+                } else {
+                    "Omit comments"
+                }
+                .to_string(),
+            ),
+        );
+    }
+    if !own_class && node.items.len() > before {
+        node.push_isa("Channel", Some("Basic I/O Channel".to_string()));
+    }
+}
+
+/// Read the Object and Channel parts of the dump of a Channel of any class
+/// into `c`, applying each Channel attribute through its setter as channel.c
+/// `astLoadChannel` does, and give the `Ident` it holds.
+pub(crate) fn read_parts(node: &Node, c: &mut ChannelConfig) -> Option<String> {
+    let ident = node.section("Object").get_string_if_set("Ident");
+    let part = node.section("Channel");
+    if let Some(v) = part.get_int_any_if_set("Indnt") {
+        c.set_indent(v as i32);
+    }
+    if let Some(v) = part.get_int_any_if_set("RpLev") {
+        c.set_report_level(v as i32);
+    }
+    if let Some(v) = part.get_int_any_if_set("Skip") {
+        c.set_skip(v != 0);
+    }
+    if let Some(v) = part.get_int_any_if_set("Strict") {
+        c.set_strict(v != 0);
+    }
+    if let Some(v) = part.get_int_any_if_set("Full") {
+        c.set_full(v as i32);
+    }
+    if let Some(v) = part.get_int_any_if_set("Comm") {
+        c.set_comment(v != 0);
+    }
+    ident
 }

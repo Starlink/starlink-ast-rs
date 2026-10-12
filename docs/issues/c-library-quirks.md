@@ -1329,6 +1329,17 @@ So `astEmptyFits` and `astPutCards` reset Warnings to its default, and `astWrite
 Fixed on `u/timj/norm-unit` in 781e328e: `Delete` frees the Warnings value itself, and `WriteFits` writes the cards with `WriteToSink` and removes them with `EmptyFits`; `testfitschan` `testemptykeepsattributes`.
 The port's `empty_fits`, `put_cards` and `write_fits` leave the attributes; `tests/test_fitschan_cursor_oracle.rs` (the `write_fits_attributes`, `empty_fits_attributes` and `put_cards_attributes` cases), whose probe needs the fixed library.
 
+### RESOLVED (upstream c16f9b11): a FitsChan's dump cannot be read back with SipReplace set, and loses 64 bit integer values and the unset state of PolyTan and SipOK
+
+C location: `fitschan.c` `Dump` and `astLoadFitsChan`.
+
+`Dump` wrote the SipReplace attribute under the name `SipReplace`, ten characters, where a Channel reads names of at most eight (channel.c `MAX_NAME`), so reading back a dump with SipReplace set failed with "Cannot interpret the input data".
+A 64 bit integer card value was written with `astWriteInt` and read into an `int`, so a value outside the range of an `int` was truncated.
+`astLoadFitsChan` read PolyTan and SipOK with a default of -1 where their unset value is -INT_MAX, so an unset value was read back set to -1.
+
+Fixed on `u/timj/norm-unit` in c16f9b11: SipReplace is written and read as `SipRpl`, the card values with `astWriteInt64` into an `int64_t`, and PolyTan and SipOK default to -INT_MAX; `testfitschan` `testdumpload`.
+The port's FitsChan dump (`fitschan/dump.rs`) is `Dump` as fixed; `tests/test_channel_dump_oracle.rs` (the `fitschan*` cases), whose probe needs the fixed library.
+
 ### RESOLVED (upstream f550fcc6): a padded TIMESYS is not recognised when writing, so the date is written in UTC
 
 C location: `fitschan.c` `SkySys`.

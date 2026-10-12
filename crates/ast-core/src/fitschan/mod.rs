@@ -7,6 +7,7 @@
 pub mod card;
 pub mod card_list;
 mod card_value;
+pub(crate) mod dump;
 pub(crate) mod enc_aips;
 pub(crate) mod enc_class;
 pub(crate) mod enc_dss;
@@ -94,6 +95,24 @@ pub enum AltAxes {
     None,
 }
 
+impl AltAxes {
+    /// The value's name (fitschan.c `xaltax`): `ALL`, `IDENT` or `NONE`.
+    pub fn name(self) -> &'static str {
+        match self {
+            AltAxes::All => "ALL",
+            AltAxes::Ident => "IDENT",
+            AltAxes::None => "NONE",
+        }
+    }
+
+    /// The value `name` names, ignoring case.
+    pub fn from_name(name: &str) -> Option<Self> {
+        [AltAxes::All, AltAxes::Ident, AltAxes::None]
+            .into_iter()
+            .find(|a| a.name().eq_ignore_ascii_case(name))
+    }
+}
+
 /// The encoding format used by a [`FitsChan`] to store AST objects.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Encoding {
@@ -113,6 +132,40 @@ pub enum Encoding {
     FitsClass,
     /// DSS (Digitized Sky Survey) plate solution encoding.
     Dss,
+}
+
+impl Encoding {
+    /// The encoding's name (fitschan.c `xencod`): `NATIVE`, `FITS-PC`,
+    /// `DSS`, `FITS-WCS`, `FITS-IRAF`, `FITS-AIPS`, `FITS-AIPS++` or
+    /// `FITS-CLASS`.
+    pub fn name(self) -> &'static str {
+        match self {
+            Encoding::Native => "NATIVE",
+            Encoding::FitsPc => "FITS-PC",
+            Encoding::Dss => "DSS",
+            Encoding::FitsWcs => "FITS-WCS",
+            Encoding::FitsIraf => "FITS-IRAF",
+            Encoding::FitsAips => "FITS-AIPS",
+            Encoding::FitsAipsPP => "FITS-AIPS++",
+            Encoding::FitsClass => "FITS-CLASS",
+        }
+    }
+
+    /// The encoding `name` names, ignoring case.
+    pub fn from_name(name: &str) -> Option<Self> {
+        [
+            Encoding::Native,
+            Encoding::FitsPc,
+            Encoding::Dss,
+            Encoding::FitsWcs,
+            Encoding::FitsIraf,
+            Encoding::FitsAips,
+            Encoding::FitsAipsPP,
+            Encoding::FitsClass,
+        ]
+        .into_iter()
+        .find(|e| e.name().eq_ignore_ascii_case(name))
+    }
 }
 
 /// Default number of significant figures for FITS floating-point output.
@@ -188,6 +241,12 @@ pub struct FitsChan {
     clean: Option<bool>,
     /// The SipOK attribute, when set.
     sip_ok: Option<bool>,
+    /// The Object-class Ident attribute, when set.
+    ident: Option<String>,
+    /// The TabOK attribute, when set.
+    tab_ok: Option<i32>,
+    /// The ForceTab attribute, when set.
+    force_tab: Option<i32>,
     /// The source cards are read from on first use, and what a clone has
     /// read from it.
     source: SourceCell,
@@ -228,6 +287,9 @@ impl FitsChan {
             keyseq: std::collections::HashMap::new(),
             clean: None,
             sip_ok: None,
+            ident: None,
+            tab_ok: None,
+            force_tab: None,
             source: SourceCell::default(),
             sink: NotCopied::default(),
             source_file: NotCopied::default(),
@@ -266,6 +328,9 @@ impl FitsChan {
             keyseq: std::collections::HashMap::new(),
             clean: None,
             sip_ok: None,
+            ident: None,
+            tab_ok: None,
+            force_tab: None,
             source: SourceCell::default(),
             sink: NotCopied::default(),
             source_file: NotCopied::default(),
@@ -466,9 +531,8 @@ impl FitsChan {
         match parsed.value {
             // `PutFits` hands a commentary card to `SetFitsCom`.
             FitsValue::Comment(ref text) => {
-                let text = text.trim_end().to_string();
                 let name: String = card.chars().take(8).collect();
-                self.set_fits_com(&name, &text, overwrite)?;
+                self.set_fits_com(&name, text, overwrite)?;
             }
             _ => {
                 // The `astSetFits<X>` the card is handed to splits its
@@ -1367,6 +1431,72 @@ impl FitsChan {
         self.fits_axis_order = None;
     }
 
+    /// Set the TabOK attribute: a positive value allows the `-TAB`
+    /// algorithm and is the EXTVER of the binary table a write makes for
+    /// it. The `-TAB` algorithm is not yet ported, so the value is held,
+    /// copied and dumped but changes no read or write.
+    pub fn set_tab_ok(&mut self, v: i32) {
+        self.tab_ok = Some(v);
+    }
+
+    /// The TabOK attribute (default 0).
+    pub fn tab_ok(&self) -> i32 {
+        self.tab_ok.unwrap_or(0)
+    }
+
+    /// Whether TabOK has been set.
+    pub fn test_tab_ok(&self) -> bool {
+        self.tab_ok.is_some()
+    }
+
+    /// Clear TabOK, restoring its default.
+    pub fn clear_tab_ok(&mut self) {
+        self.tab_ok = None;
+    }
+
+    /// Set the ForceTab attribute: whether a write uses the `-TAB`
+    /// algorithm whenever TabOK allows it. As for
+    /// [`set_tab_ok`](Self::set_tab_ok), the value changes no read or
+    /// write yet.
+    pub fn set_force_tab(&mut self, v: i32) {
+        self.force_tab = Some(v);
+    }
+
+    /// The ForceTab attribute (default 0).
+    pub fn force_tab(&self) -> i32 {
+        self.force_tab.unwrap_or(0)
+    }
+
+    /// Whether ForceTab has been set.
+    pub fn test_force_tab(&self) -> bool {
+        self.force_tab.is_some()
+    }
+
+    /// Clear ForceTab, restoring its default.
+    pub fn clear_force_tab(&mut self) {
+        self.force_tab = None;
+    }
+
+    /// The Object-class `Ident` attribute, blank unless set.
+    pub fn ident(&self) -> &str {
+        self.ident.as_deref().unwrap_or("")
+    }
+
+    /// Set `Ident`.
+    pub fn set_ident(&mut self, ident: &str) {
+        self.ident = Some(ident.to_string());
+    }
+
+    /// Whether `Ident` is set.
+    pub fn test_ident(&self) -> bool {
+        self.ident.is_some()
+    }
+
+    /// Clear `Ident`.
+    pub fn clear_ident(&mut self) {
+        self.ident = None;
+    }
+
     /// The read-only AllWarnings attribute: every condition the Warnings
     /// attribute accepts, in lower case, with a space before and after each.
     pub fn all_warning_conditions(&self) -> &'static str {
@@ -1697,6 +1827,9 @@ impl Clone for FitsChan {
             keyseq: self.keyseq.clone(),
             clean: self.clean,
             sip_ok: self.sip_ok,
+            ident: self.ident.clone(),
+            tab_ok: self.tab_ok,
+            force_tab: self.force_tab,
             source: self.source.clone(),
             sink: self.sink.clone(),
             source_file: self.source_file.clone(),
@@ -1709,6 +1842,20 @@ impl Clone for FitsChan {
 impl Default for FitsChan {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl std::fmt::Debug for FitsChan {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FitsChan")
+            .field("config", &self.config)
+            .field("ident", &self.ident)
+            .field("cards", &self.cards)
+            .field("encoding", &self.encoding)
+            .field("sink", &self.sink.0.is_some())
+            .field("source_file", &self.source_file.0)
+            .field("sink_file", &self.sink_file.0)
+            .finish_non_exhaustive()
     }
 }
 

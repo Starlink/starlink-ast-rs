@@ -1,11 +1,15 @@
-/* channel_dump_probe -- capture the native dumps of Channels and MocChans
- * (channel.c and mocchan.c Dump): with every attribute unset, with each set
- * (Comment, Full, Indent, ReportLevel, Skip and Strict, and MocFormat and
- * MocLineLen), and with values the setters change (Full=5, Comment=7,
- * MocLineLen=-3). Also the dump of each after it is read back, and the
- * dump and status of objects read from hand-written dumps holding values
- * the setters change, a lower-case MocEnc and an unknown one. It needs
- * mocchan.c as fixed upstream at 228a0310.
+/* channel_dump_probe -- capture the native dumps of Channels, MocChans and
+ * FitsChans (channel.c, mocchan.c and fitschan.c Dump): with every
+ * attribute unset, with each set (Comment, Full, Indent, ReportLevel, Skip
+ * and Strict, MocFormat and MocLineLen, and each FitsChan attribute), and
+ * with values the setters change (Full=5, Comment=7, MocLineLen=-3).
+ * FitsChans holding a card of each type, cards used by a read, a
+ * retained card, and cards still to be read from a source. Also the dump of each after it is read back, and the dump
+ * and status of objects read from hand-written dumps holding values the
+ * setters change, a lower-case MocEnc and an unknown one, missing FitsChan
+ * card items, a legacy deletion flag, and unknown card types, encodings
+ * and AltAxes values. It needs mocchan.c as fixed upstream at 228a0310,
+ * and fitschan.c as fixed at c16f9b11.
  *
  * Prints Rust source for crates/ast-core/tests/channel_dump_oracle/cases.rs:
  *
@@ -15,7 +19,7 @@
 #include <string.h>
 #include "ast.h"
 
-static char lines[ 200 ][ 200 ];
+static char lines[ 600 ][ 200 ];
 static int nline, iline;
 
 static void sink( const char *line ) {
@@ -25,6 +29,14 @@ static void sink( const char *line ) {
 
 static const char *source( void ) {
    return iline < nline ? lines[ iline++ ] : NULL;
+}
+
+static const char *fits_cards[] = { "A       =                    1",
+                                    "B       = 'two'", NULL };
+static int ifits;
+
+static const char *fits_source( void ) {
+   return fits_cards[ ifits ] ? fits_cards[ ifits++ ] : NULL;
 }
 
 static void str( const char *s ) {
@@ -111,6 +123,59 @@ int main( void ) {
          "MocFormat=JSON,MocLineLen=-3,Indent=2,Strict=1" ) );
    dump( "mocchan_ident", (AstObject *) astMocChan( NULL, NULL,
          "Ident=hello" ) );
+   {
+      AstFitsChan *fc;
+      AstObject *obj;
+      double cf[ 2 ] = { 1.5, -2.25 };
+      int ci[ 2 ] = { 3, 4 };
+      dump( "fitschan", (AstObject *) astFitsChan( NULL, NULL, " " ) );
+      fc = astFitsChan( NULL, NULL, " " );
+      astPutFits( fc, "INTKEY  =                   42 / an integer", 0 );
+      astPutFits( fc, "FLTKEY  =                  1.5 / a float", 0 );
+      astPutFits( fc, "STRKEY  = 'hello   '           / a string", 0 );
+      astPutFits( fc, "LOGKEY  =                    T", 0 );
+      astSetFitsCF( fc, "CPXF", cf, "complex float", 0 );
+      astSetFitsCI( fc, "CPXI", ci, NULL, 0 );
+      astPutFits( fc, "BIGINT  =         123456789012 / 64-bit", 0 );
+      astPutFits( fc, "UNDEFKEY=                      / no value", 0 );
+      astPutFits( fc, "COMMENT a comment card", 0 );
+      astPutFits( fc, "HISTORY   history text   ", 0 );
+      astPutFits( fc, "        blank keyword", 0 );
+      astPutFits( fc, "LONGSTR = 'abc&'", 0 );
+      astPutFits( fc, "CONTINUE  'def'", 0 );
+      astSetI( fc, "Card", 3 );
+      dump( "fitschan_cards", (AstObject *) fc );
+      dump( "fitschan_attrs", (AstObject *) astFitsChan( NULL, NULL,
+            "Encoding=FITS-WCS,FitsDigits=10,FitsRounding=5,AltAxes=IDENT,"
+            "DefB1950=0,IgnoreBadAlt=1,CDMatrix=1,CarLin=1,SipReplace=0,"
+            "FitsTol=0.5,PolyTan=1,SipOK=0,Iwc=1,Clean=1,Warnings=BadKeyName,"
+            "FitsAxisOrder=<copy>,Ident=fc,Skip=0,Full=0" ) );
+      dump( "fitschan_attrs_default", (AstObject *) astFitsChan( NULL, NULL,
+            "Encoding=NATIVE,FitsDigits=17,AltAxes=ALL,DefB1950=1,"
+            "IgnoreBadAlt=0,CDMatrix=0,CarLin=0,SipReplace=1,FitsTol=0.1,"
+            "PolyTan=-1,SipOK=1,Iwc=0,Clean=0,Warnings=,Skip=1,Full=-1" ) );
+      fc = astFitsChan( NULL, NULL, " " );
+      astPutFits( fc, "NAXIS   =                    2", 0 );
+      astPutFits( fc, "CTYPE1  = 'RA---TAN'", 0 );
+      astPutFits( fc, "CTYPE2  = 'DEC--TAN'", 0 );
+      astPutFits( fc, "CRVAL1  =                 10.0", 0 );
+      astPutFits( fc, "CRVAL2  =                 20.0", 0 );
+      astPutFits( fc, "CRPIX1  =                 50.0", 0 );
+      astPutFits( fc, "CRPIX2  =                 60.0", 0 );
+      astPutFits( fc, "CDELT1  =               -0.001", 0 );
+      astPutFits( fc, "CDELT2  =                0.001", 0 );
+      astPutFits( fc, "OTHER   =                    1", 0 );
+      astClear( fc, "Card" );
+      astFindFits( fc, "CRVAL2", NULL, 0 );
+      astRetainFits( fc );
+      astClear( fc, "Card" );
+      dump( "fitschan_guessed_encoding", (AstObject *) fc );
+      obj = astRead( fc );
+      if( obj ) obj = astAnnul( obj );
+      dump( "fitschan_used", (AstObject *) fc );
+      ifits = 0;
+      dump( "fitschan_source", (AstObject *) astFitsChan( fits_source, NULL, " " ) );
+   }
    printf( "];\n\n" );
 
    printf( "/// `(case, dump read, dump of the object read, status)`.\n" );
@@ -127,6 +192,34 @@ int main( void ) {
       load( "mocchan_values", t2 );
       load( "mocchan_bad_enc", t3 );
       load( "mocchan_unknown_enc", t4 );
+      {
+         const char *t5[] = { " Begin FitsChan", "    Ty1 = \"integer\"", "    Nm1 = \"A\"",
+                              "    Dt1 = 3", "    Ty2 = \"Logical\"", "    Dt2 = 1",
+                              "    Ty4 = \"string\"", "    Nm4 = \"D\"", "    Card = 9",
+                              " End FitsChan", NULL };
+         const char *t6[] = { " Begin FitsChan", "    Ty1 = \"floating point\"", "    Nm1 = \"X\"",
+                              "    Dl1 = 1", "    Cm1 = \"legacy flag\"", "    Card = 1",
+                              " End FitsChan", NULL };
+         const char *t7[] = { " Begin FitsChan", "    Ty1 = \"bogus\"", " End FitsChan", NULL };
+         const char *t8[] = { " Begin FitsChan", "    Encod = \"fits-wcs\"", " End FitsChan", NULL };
+         const char *t9[] = { " Begin FitsChan", "    Encod = \"XML\"", " End FitsChan", NULL };
+         const char *t10[] = { " Begin FitsChan", "    AltAx = \"some\"", " End FitsChan", NULL };
+         const char *t11[] = { " Begin FitsChan", "    TabOK = 3", "    FrcTab = 1",
+                               "    FitsDg = -4", "    FitsTol = -2", "    Clean = 5",
+                               "    Warn = \"\"", "    FAxOrd = \"\"", " End FitsChan", NULL };
+         const char *t12[] = { " Begin FitsChan", "    Ty1 = \"complex integer\"", "    Nm1 = \"C\"",
+                               "    Dr1 = 5", "    Ty2 = \"64 bit integer\"", "    Nm2 = \"K\"",
+                               "    Dt2 = 9876543210", "    Ty3 = \"undef\"", "    Nm3 = \"U\"",
+                               "    Dt3 = 4", "    Fl3 = 17", " End FitsChan", NULL };
+         load( "fitschan_values", t5 );
+         load( "fitschan_legacy_flag", t6 );
+         load( "fitschan_bad_type", t7 );
+         load( "fitschan_lower_encoding", t8 );
+         load( "fitschan_bad_encoding", t9 );
+         load( "fitschan_bad_altaxes", t10 );
+         load( "fitschan_attr_values", t11 );
+         load( "fitschan_partial_values", t12 );
+      }
    }
    printf( "];\n" );
    return 0;

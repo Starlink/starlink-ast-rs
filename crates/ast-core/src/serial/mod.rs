@@ -1948,6 +1948,10 @@ pub enum AnyObject {
     /// A [`crate::channel::MocChan`]. Implements neither [`Mapping`] nor
     /// [`Frame`]; its source and sink are shared as a `NativeChannel`'s are.
     MocChan(Box<crate::channel::MocChan>),
+    /// A [`crate::fitschan::FitsChan`]. Implements neither [`Mapping`] nor
+    /// [`Frame`]. A clone has no source or sink, as C's `astCopy` gives
+    /// none, and nor has one read from a dump.
+    FitsChan(Box<crate::fitschan::FitsChan>),
 }
 
 impl AnyObject {
@@ -2153,7 +2157,8 @@ impl AnyObject {
             | AnyObject::CmpFrame(_)
             | AnyObject::KeyMap(_)
             | AnyObject::NativeChannel(_)
-            | AnyObject::MocChan(_) => None,
+            | AnyObject::MocChan(_)
+            | AnyObject::FitsChan(_) => None,
         }
     }
 
@@ -2215,7 +2220,8 @@ impl AnyObject {
             | AnyObject::SwitchMap(_)
             | AnyObject::KeyMap(_)
             | AnyObject::NativeChannel(_)
-            | AnyObject::MocChan(_) => None,
+            | AnyObject::MocChan(_)
+            | AnyObject::FitsChan(_) => None,
         }
     }
 
@@ -2277,7 +2283,8 @@ impl AnyObject {
             | AnyObject::CmpFrame(_)
             | AnyObject::KeyMap(_)
             | AnyObject::NativeChannel(_)
-            | AnyObject::MocChan(_) => None,
+            | AnyObject::MocChan(_)
+            | AnyObject::FitsChan(_) => None,
         }
     }
 
@@ -2339,7 +2346,8 @@ impl AnyObject {
             | AnyObject::SwitchMap(_)
             | AnyObject::KeyMap(_)
             | AnyObject::NativeChannel(_)
-            | AnyObject::MocChan(_) => None,
+            | AnyObject::MocChan(_)
+            | AnyObject::FitsChan(_) => None,
         }
     }
 
@@ -2488,6 +2496,9 @@ pub(crate) fn any_object_from_node(node: &Node) -> AstResult<AnyObject> {
         "MocChan" => Ok(AnyObject::MocChan(Box::new(
             crate::channel::MocChan::from_node(node)?,
         ))),
+        "FitsChan" => Ok(AnyObject::FitsChan(Box::new(
+            crate::fitschan::FitsChan::from_node(node)?,
+        ))),
         other => Err(AstError::new(
             ErrorCode::Lderr,
             format!("unknown AST class: {other}"),
@@ -2557,6 +2568,7 @@ pub(crate) fn any_object_to_node(obj: &AnyObject) -> AstResult<Node> {
         AnyObject::KeyMap(m) => Serializable::to_node(m.as_ref()),
         AnyObject::NativeChannel(c) => Serializable::to_node(c.as_ref()),
         AnyObject::MocChan(c) => Serializable::to_node(c.as_ref()),
+        AnyObject::FitsChan(c) => Serializable::to_node(c.as_ref()),
     }
 }
 
