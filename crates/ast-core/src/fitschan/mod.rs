@@ -1701,7 +1701,7 @@ impl FitsChan {
         &self,
         trans: &CardList,
         def_b1950: bool,
-        cursors: &mut Vec<(usize, usize)>,
+        cursors: &mut wcs_read::ReadCursors,
         warnings: &mut Warnings,
     ) -> AstResult<Option<AnyObject>> {
         let mut stores = wcs_keywords::extract_wcs_keywords_with_alts(trans)?;
@@ -1744,7 +1744,7 @@ impl FitsChan {
         entry: usize,
         trans_warnings: spec_trans::TransWarnings,
         read_warnings: Warnings,
-        cursors: Vec<(usize, usize)>,
+        cursors: wcs_read::ReadCursors,
         trans: &CardList,
         spec_names: Vec<String>,
     ) -> AstResult<Option<AnyObject>> {
@@ -1844,26 +1844,29 @@ impl FitsChan {
         }
     }
 
-    /// Store the `ASTWARN` blocks the decoding raised. C's `DistortMaps`
-    /// reads NAXIS1 to NAXIS<n> as each axis description is read, `n` its
-    /// number of WCS axes, and the warnings that description raises go in
-    /// front of the cursor that leaves, which `move_cursor_to_last_naxis`
-    /// reproduces. `cursors` holds, for each description, the index of its
-    /// first warning and its `n`.
-    fn push_read_warnings(&mut self, warnings: Warnings, cursors: &[(usize, usize)]) {
+    /// Store the `ASTWARN` blocks the decoding raised, each in front of the
+    /// card current in C when it was raised (see [`wcs_read::ReadCursors`]).
+    /// C's `DistortMaps` reads NAXIS1 to NAXIS<n> as each axis description is
+    /// read, `n` its number of WCS axes, leaving the cursor
+    /// `move_cursor_to_last_naxis` reproduces; reading IRAF WAT cards leaves
+    /// it at end-of-file.
+    fn push_read_warnings(&mut self, warnings: Warnings, cursors: &[(usize, Option<usize>)]) {
         if self.clean() {
             return;
         }
-        let mut naxes = None;
+        let mut current = None;
         for (index, w) in warnings.into_iter().enumerate() {
-            let n = cursors
+            let cursor = cursors
                 .iter()
                 .rev()
                 .find(|(start, _)| *start <= index)
-                .map_or(0, |&(_, n)| n);
-            if naxes != Some(n) {
-                move_cursor_to_last_naxis(&mut self.cards, n);
-                naxes = Some(n);
+                .map_or(Some(0), |&(_, c)| c);
+            if current != Some(cursor) {
+                match cursor {
+                    Some(n) => move_cursor_to_last_naxis(&mut self.cards, n),
+                    None => self.cards.set_position(self.cards.len()),
+                }
+                current = Some(cursor);
             }
             self.warn(w);
         }
@@ -2158,10 +2161,10 @@ impl Channel for FitsChan {
                     // reader records consumed names directly on `self.cards`
                     // (no SpecTrans copy), so promote them in place.
                     let mut read_warnings: Warnings = Vec::new();
-                    let mut naxes = 0;
+                    let mut cursors = Vec::new();
                     let decoded = (|| -> AstResult<AnyObject> {
                         let store = enc_dss::read_from_cards(&self.cards)?;
-                        naxes = store.naxis;
+                        cursors.push((0, Some(store.naxis)));
                         wcs_read::decode_wcs_inner(
                             &store,
                             store.naxis,
@@ -2170,13 +2173,14 @@ impl Channel for FitsChan {
                             &self.cards,
                             ' ',
                             &mut read_warnings,
+                            &mut cursors,
                         )
                     })();
                     // The DSS reader records the cards it used on `self.cards`.
                     let clean = self.clean();
                     match decoded {
                         Ok(obj) => {
-                            self.push_read_warnings(read_warnings, &[(0, naxes)]);
+                            self.push_read_warnings(read_warnings, &cursors);
                             for name in self.cards.take_consumed_names() {
                                 self.cards.mark_card(&name);
                             }
@@ -2191,7 +2195,7 @@ impl Channel for FitsChan {
                                 }
                                 self.cards.fix_used(true, false);
                             }
-                            self.push_read_warnings(read_warnings, &[(0, naxes)]);
+                            self.push_read_warnings(read_warnings, &cursors);
                             Err(e)
                         }
                     }

@@ -547,12 +547,6 @@ const EXCLUDED: &[(&str, &str)] = &[
          native_full_1_matches_c_but_for_process_counts compares the rest",
     ),
     (
-        "dist_zpx_three",
-        "C cannot implement the spectral algorithm code -ZPN left on CTYPE3 and \
-         the read fails with AST__BDFTS; the port's spectral reader reads the \
-         axis as linear",
-    ),
-    (
         "alt_axes_alt_offset",
         "the port writes an absolute description A for the offset alternate B \
          (still describing offset coordinates, WCSNAMEA SKY_POLE), which C \

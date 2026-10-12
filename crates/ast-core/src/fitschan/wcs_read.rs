@@ -51,8 +51,16 @@ pub(crate) fn decode_wcs(store: &FitsStore) -> AstResult<AnyObject> {
         &CardList::new(),
         ' ',
         &mut Vec::new(),
+        &mut Vec::new(),
     )
 }
+
+/// Where C's current card is as an axis description is read, which decides
+/// where the `ASTWARN` blocks it raises are written: for each change, the
+/// index in the warnings of the first warning raised after it, and
+/// `Some(n)` for the card `DistortMaps` leaves current after reading NAXIS1
+/// to NAXIS<n>, or `None` for end-of-file.
+pub(crate) type ReadCursors = Vec<(usize, Option<usize>)>;
 
 /// Inner decoder that also adds to `warnings` each warning raised (e.g. the
 /// `badcel` warning for unknown celestial systems, fitschan.c:39427), in
@@ -61,7 +69,9 @@ pub(crate) fn decode_wcs(store: &FitsStore) -> AstResult<AnyObject> {
 /// `cards` is the FitsChan's own card list — the same `this` C's
 /// `WcsCelestial` reads `RFVAL<i>` from (fitschan.c:36160-36166) — and `s`
 /// is this plane's version character (`' '` for the primary plane, `'A'`..
-/// `'Z'` for an alt plane). The pixel Frame has `npix` axes.
+/// `'Z'` for an alt plane). The pixel Frame has `npix` axes. Moves of C's
+/// current card that decide where the warnings go are added to `cursors`.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn decode_wcs_inner(
     store: &FitsStore,
     npix: usize,
@@ -70,6 +80,7 @@ pub(crate) fn decode_wcs_inner(
     cards: &CardList,
     s: char,
     warnings: &mut Warnings,
+    cursors: &mut ReadCursors,
 ) -> AstResult<AnyObject> {
     let naxis = store.naxis;
 
@@ -82,7 +93,7 @@ pub(crate) fn decode_wcs_inner(
     // (fitschan.c:37829-37939), and `Warn` inserts each block in front of the
     // same current card, so these warnings precede the ones the axis decoders
     // raise below.
-    let pixel_to_iwc = wcs_matrix::build_pixel_to_iwc(&mut store, cards, warnings)?;
+    let pixel_to_iwc = wcs_matrix::build_pixel_to_iwc(&mut store, cards, warnings, cursors)?;
     let iwc_map = iwc.then(|| pixel_to_iwc.clone());
     let store = &store;
 
@@ -99,7 +110,7 @@ pub(crate) fn decode_wcs_inner(
     let celestial_ref_pos_forced = celestial.as_ref().is_some_and(|c| c.ref_pos_forced);
 
     // Step 3: Try to decode spectral axis.
-    let spectral = wcs_spectral::build_spectral(store);
+    let spectral = wcs_spectral::build_spectral(store, s)?;
     // `WcsCelestial` runs before `WcsSpectral` in `WcsMapFrm`
     // (fitschan.c:37924-37930), so the spectral warnings follow the
     // celestial ones.
@@ -636,7 +647,7 @@ pub(crate) fn decode_wcs_with_alts_inner(
     iwc: bool,
     cards: &CardList,
     warnings: &mut Warnings,
-    cursors: &mut Vec<(usize, usize)>,
+    cursors: &mut ReadCursors,
 ) -> AstResult<Option<AnyObject>> {
     let npix = stores.npix;
     if npix == 0 {
@@ -649,8 +660,8 @@ pub(crate) fn decode_wcs_with_alts_inner(
     // Frame, is made current again once the alternates are added.
     let (mut fs, primary_index) = match &stores.primary {
         Some(primary) => {
-            cursors.push((warnings.len(), primary.naxis));
-            match decode_wcs_inner(primary, npix, def_b1950, iwc, cards, ' ', warnings)? {
+            cursors.push((warnings.len(), Some(primary.naxis)));
+            match decode_wcs_inner(primary, npix, def_b1950, iwc, cards, ' ', warnings, cursors)? {
                 AnyObject::FrameSet(f) => (f, 2),
                 _ => unreachable!("decode_wcs always returns AnyObject::FrameSet"),
             }
@@ -667,15 +678,17 @@ pub(crate) fn decode_wcs_with_alts_inner(
     // IgnoreBadAlt set, an alternate description that cannot be read is
     // left out, as C's `AddFrame` clears the error from `WcsMapFrm`.
     for (letter, alt_store) in alts {
-        cursors.push((warnings.len(), alt_store.naxis));
+        cursors.push((warnings.len(), Some(alt_store.naxis)));
         let mut trial = fs.clone();
         let mut alt_warnings = Vec::new();
+        let mut alt_cursors = Vec::new();
         let added = (|| -> AstResult<()> {
             let warnings = &mut alt_warnings;
             // As in `decode_wcs_inner`, `DistortMaps` rewrites the CTYPE values, so
             // this plane's store is copied and the copy carries on downstream.
             let mut alt_store = alt_store.clone();
-            let pixel_to_iwc = wcs_matrix::build_pixel_to_iwc(&mut alt_store, cards, warnings)?;
+            let pixel_to_iwc =
+                wcs_matrix::build_pixel_to_iwc(&mut alt_store, cards, warnings, &mut alt_cursors)?;
             let iwc_map = iwc.then(|| pixel_to_iwc.clone());
             let alt_store = &alt_store;
             let rfval = read_rfval(cards, alt_store.naxis, *letter);
@@ -692,7 +705,7 @@ pub(crate) fn decode_wcs_with_alts_inner(
             // to every plane, not just the primary).
             let alt_ref_pos = celestial.as_ref().and_then(|c| c.ref_pos);
             let alt_ref_pos_forced = celestial.as_ref().is_some_and(|c| c.ref_pos_forced);
-            let spectral = wcs_spectral::build_spectral(alt_store);
+            let spectral = wcs_spectral::build_spectral(alt_store, *letter)?;
             let mut world_frame = build_world_frame(alt_store, &celestial, &spectral)?;
             let iwc_map = iwc_map.map(|m| (m, iwc_axis_units(alt_store, &celestial, &spectral)));
             // Simplify the pixel→world Mapping, mirroring C `astSimplify` on each
@@ -736,6 +749,8 @@ pub(crate) fn decode_wcs_with_alts_inner(
             dsb_set_up_in_frameset(&mut trial, alt_store)?;
             Ok(())
         })();
+        let base = warnings.len();
+        cursors.extend(alt_cursors.into_iter().map(|(i, c)| (base + i, c)));
         warnings.append(&mut alt_warnings);
         match added {
             Ok(()) => fs = trial,

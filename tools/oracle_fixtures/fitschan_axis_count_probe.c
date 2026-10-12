@@ -187,6 +187,26 @@ int main( void ) {
          NULL };
       emit( "warn_then_alt", h );
    }
+   {
+      const char *h[] = { "NAXIS   = 1", "CTYPE1  = 'FREQ-LOG'", "CRVAL1  = 0.0",
+         "CRPIX1  = 1", "CDELT1  = 1.0E6", NULL };
+      emit( "spec_log_crval0", h );
+   }
+   {
+      const char *h[] = { "NAXIS   = 1", "CTYPE1  = 'FREQ-XYZ'", "CRVAL1  = 1.0E9",
+         "CRPIX1  = 1", "CDELT1  = 1.0E6", NULL };
+      emit( "spec_unknown_code", h );
+   }
+   {
+      const char *h[] = { "NAXIS   = 1", "CTYPE1  = 'FREQ-Q2F'", "CRVAL1  = 1.0E9",
+         "CRPIX1  = 1", "CDELT1  = 1.0E6", NULL };
+      emit( "spec_x2p_unknown_x", h );
+   }
+   {
+      const char *h[] = { "NAXIS   = 1", "CTYPE1  = 'FREQ-LOG'", "CRVAL1  = 1.0E9",
+         "CRPIX1  = 1", "CDELT1  = 1.0E6", NULL };
+      emit( "spec_log", h );
+   }
    printf( "];\n" );
    return 0;
 }

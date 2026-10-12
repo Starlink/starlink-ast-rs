@@ -14,7 +14,7 @@
 
 use super::fits_store::FitsStore;
 use super::warning::{Warning, Warnings};
-use crate::error::AstResult;
+use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::{Frame, FrameRef, SpecFrame, SpecSystem, StdOfRest};
 use crate::mappings::{
     CmpMap, Composition, DynMapping, GrismMap, Mapping, ShiftMap, UnitMap, ZoomMap,
@@ -98,13 +98,20 @@ impl SpectralResult {
 /// If a spectral axis is present in the FitsStore, build the IWC-to-spectral
 /// mapping and create a SpecFrame.
 ///
-/// Returns `None` if no spectral axis is found.
-pub(crate) fn build_spectral(store: &FitsStore) -> Option<SpectralResult> {
+/// Returns `None` if no spectral axis is found, and AST__BDFTS for an
+/// algorithm code that cannot be implemented, as C's `WcsSpectral` reports
+/// it (fitschan.c:40096-40104). `s` is the axis description's version
+/// character.
+pub(crate) fn build_spectral(store: &FitsStore, s: char) -> AstResult<Option<SpectralResult>> {
     // Step 1: Find the spectral axis.
-    let axis = store.spectral_axis()?;
+    let Some(axis) = store.spectral_axis() else {
+        return Ok(None);
+    };
 
     // Step 2: Determine the spectral system + algorithm code from CTYPE.
-    let (system, algcode) = parse_spectral_ctype(store, axis)?;
+    let Some((system, algcode)) = parse_spectral_ctype(store, axis) else {
+        return Ok(None);
+    };
 
     // Step 3: Build the SpecFrame (so we can pass it to the algorithm
     // dispatch, which may need its rest frequency and unit).
@@ -129,7 +136,7 @@ pub(crate) fn build_spectral(store: &FitsStore) -> Option<SpectralResult> {
 
     // The date of observation, as C's `ChooseEpoch` gives it.
     let mut epoch_warnings: Warnings = Vec::new();
-    if let Some(mjd) = super::epoch::choose_epoch(store, &mut epoch_warnings).ok()? {
+    if let Some(mjd) = super::epoch::choose_epoch(store, &mut epoch_warnings)? {
         frame.set_epoch_mjd(mjd);
     }
 
@@ -152,7 +159,7 @@ pub(crate) fn build_spectral(store: &FitsStore) -> Option<SpectralResult> {
     if let Some(ref ssyssrc) = store.ssyssrc
         && let Some(sor) = StdOfRest::parse(ssyssrc)
     {
-        frame.set_source_vrf(sor).ok()?;
+        frame.set_source_vrf(sor)?;
     }
     if let Some(zsource) = store.zsource {
         // Convert redshift to velocity (relativistic Doppler), mirroring
@@ -184,56 +191,47 @@ pub(crate) fn build_spectral(store: &FitsStore) -> Option<SpectralResult> {
         .map(|s| s.to_string())
         .unwrap_or_else(|| system.specmap_units().to_string());
     if !cunit.is_empty() {
-        frame.set_unit(1, &cunit).ok()?;
+        frame.set_unit(1, &cunit)?;
     }
 
     // CNAME → axis Label. Mirrors C `WcsSpectral` (fitschan.c:39705-
     // 39638): when the CNAME keyword is set for the spectral axis, it
     // becomes the SpecFrame's (sole) axis Label.
     if let Some(cname) = &store.cname[axis] {
-        frame.set_label(1, cname).ok()?;
+        frame.set_label(1, cname)?;
     }
 
-    // Step 4: Build the IWC→S mapping. For a linear axis (no algcode)
-    // this is just `IWC + CRVAL`. For an `-X2P` non-linear axis we
-    // call the algorithm-specific builder (mirrors C `WcsSpectral`
-    // dispatch at fitschan.c:39662-39679).
+    // Step 4: Build the IWC→S mapping, branching on the algorithm code as
+    // C `WcsSpectral` does (fitschan.c:40074-40104). A code that is not
+    // recognised, or whose parameters cannot be used, is an error.
     let crval = store.crval[axis].unwrap_or(0.0);
     let mut warnings: Warnings = epoch_warnings;
-    let mapping: DynMapping = if algcode.is_empty() {
-        Box::new(ShiftMap::new(vec![crval]))
-    } else if is_nonlin_x2p(&algcode) {
-        match nonlin_spec_wcs(&algcode, &frame, crval) {
-            Ok((map, warns)) => {
-                warnings.extend(warns);
-                // Fallback: emit a linear shift if we couldn't build the
-                // non-linear mapping (mirrors C's "unable to implement
-                // algorithm" branch — but C errors out; we degrade to
-                // linear so the FrameSet still loads).
-                map.unwrap_or_else(|| Box::new(ShiftMap::new(vec![crval])))
-            }
-            Err(_) => Box::new(ShiftMap::new(vec![crval])),
-        }
+    let mapping: Option<DynMapping> = if algcode.is_empty() {
+        Some(Box::new(ShiftMap::new(vec![crval])))
     } else if algcode == "-LOG" {
-        match log_wcs(crval) {
-            Some(m) => m,
-            None => Box::new(ShiftMap::new(vec![crval])),
-        }
+        log_wcs(crval)
+    } else if is_nonlin_x2p(&algcode) {
+        let (map, warns) = nonlin_spec_wcs(&algcode, &frame, crval)?;
+        warnings.extend(warns);
+        map
     } else if algcode == "-GRI" || algcode == "-GRA" {
-        match grism_spec_wcs(&algcode, store, axis, &frame) {
-            Ok(Some(m)) => m,
-            _ => Box::new(ShiftMap::new(vec![crval])),
-        }
+        grism_spec_wcs(&algcode, store, axis, &frame)?
     } else {
-        // Unrecognised algorithm; fall back to linear so the FrameSet still loads.
-        Box::new(ShiftMap::new(vec![crval]))
+        None
+    };
+    let Some(mapping) = mapping else {
+        let key = super::wcs_keywords::key_for("CTYPE", Some(axis + 1), s);
+        return Err(AstError::new(
+            ErrorCode::Bdfts,
+            format!(
+                "astRead(FitsChan): Cannot implement spectral algorithm code '{algcode}' \
+                 specified in FITS keyword '{key}'."
+            ),
+        ));
     };
 
     let naxis = store.naxis;
-    let mapping = match embed_1axis_in_naxis(mapping, naxis, axis) {
-        Ok(m) => m,
-        Err(_) => return None,
-    };
+    let mapping = embed_1axis_in_naxis(mapping, naxis, axis)?;
 
     // C `WcsSpectral` (fitschan.c:39567-39572) builds a DSBSpecFrame
     // instead of a plain SpecFrame when the FitsStore carries an IMAGFREQ
@@ -241,23 +239,23 @@ pub(crate) fn build_spectral(store: &FitsStore) -> Option<SpectralResult> {
     // after the celestial reference position has been propagated.
     let is_dsb = store.imagfreq.is_some();
 
-    Some(SpectralResult {
+    Ok(Some(SpectralResult {
         mapping,
         frame,
         axis,
         is_dsb,
         warnings,
-    })
+    }))
 }
 
 /// Whether the algorithm code is the FITS-WCS paper III "-X2P" non-linear
 /// form (e.g. `-F2W`, `-V2F`).
 ///
-/// Mirrors C's check at fitschan.c:39672 — the code starts with `'-'` and
+/// Mirrors C's check at fitschan.c:40084 — the code starts with `'-'` and
 /// has `'2'` at position 2.
 fn is_nonlin_x2p(algcode: &str) -> bool {
     let bytes = algcode.as_bytes();
-    bytes.len() >= 4 && bytes[0] == b'-' && bytes[2] == b'2'
+    bytes.len() >= 3 && bytes[0] == b'-' && bytes[2] == b'2'
 }
 
 /// Build the IWC→S mapping for a FITS-WCS paper III non-linear `-X2P`
@@ -546,7 +544,7 @@ mod tests {
         store.ctype[2] = Some("FREQ".to_string());
         store.crval[2] = Some(1.4e9); // 1.4 GHz
 
-        let result = build_spectral(&store);
+        let result = build_spectral(&store, ' ').unwrap();
         assert!(result.is_some());
         let spec = result.unwrap();
         assert_eq!(spec.axis, 2);
@@ -561,7 +559,7 @@ mod tests {
         store.ctype[0] = Some("WAVE".to_string());
         store.crval[0] = Some(5.0e-7); // 500nm in metres
 
-        let result = build_spectral(&store).unwrap();
+        let result = build_spectral(&store, ' ').unwrap().unwrap();
         assert_eq!(result.frame.system(), SpecSystem::Wavelen);
     }
 
@@ -571,7 +569,7 @@ mod tests {
         store.ctype[0] = Some("VRAD".to_string());
         store.crval[0] = Some(0.0);
 
-        let result = build_spectral(&store).unwrap();
+        let result = build_spectral(&store, ' ').unwrap().unwrap();
         assert_eq!(result.frame.system(), SpecSystem::Vradio);
     }
 
@@ -582,7 +580,7 @@ mod tests {
         store.crval[0] = Some(1.0e9);
         store.specsys = Some("LSRK".to_string());
 
-        let result = build_spectral(&store).unwrap();
+        let result = build_spectral(&store, ' ').unwrap().unwrap();
         assert_eq!(result.frame.std_of_rest(), StdOfRest::Lsrk);
     }
 
@@ -593,7 +591,7 @@ mod tests {
         store.crval[0] = Some(0.0);
         store.restfrq = Some(1.420405751786e9);
 
-        let result = build_spectral(&store).unwrap();
+        let result = build_spectral(&store, ' ').unwrap().unwrap();
         assert!((result.frame.rest_freq() - 1.420405751786e9).abs() < 1.0);
     }
 
@@ -603,7 +601,7 @@ mod tests {
         store.ctype[0] = Some("RA---TAN".to_string());
         store.ctype[1] = Some("DEC--TAN".to_string());
 
-        let result = build_spectral(&store);
+        let result = build_spectral(&store, ' ').unwrap();
         assert!(result.is_none());
     }
 
@@ -615,7 +613,7 @@ mod tests {
         store.ctype[0] = Some("FREQ".to_string());
         store.crval[0] = Some(1.4e9);
 
-        let result = build_spectral(&store).unwrap();
+        let result = build_spectral(&store, ' ').unwrap().unwrap();
         // IWC = 0 should map to CRVAL.
         let pts = PointSet::from_columns(&[&[0.0]]).unwrap();
         let out = result.mapping.transform(&pts, true).unwrap();
@@ -638,7 +636,9 @@ mod tests {
         store.ctype[2] = Some("FREQ".to_string());
         store.crval[2] = Some(1.4e9);
 
-        let spec = build_spectral(&store).expect("spectral axis recognised");
+        let spec = build_spectral(&store, ' ')
+            .unwrap()
+            .expect("spectral axis recognised");
         assert_eq!(spec.axis, 2);
         assert_eq!(spec.mapping.nin(), 3);
         assert_eq!(spec.mapping.nout(), 3);

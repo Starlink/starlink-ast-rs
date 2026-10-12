@@ -36,16 +36,18 @@ use crate::wcslib::WcsProjection;
 /// CTYPE values so that later steps — `WcsCelestial` in particular — see a
 /// plain FITS-WCS projection code. `cards` is the FitsChan's own card list,
 /// which is where the IRAF `WAT` keywords live. Any warning text is appended
-/// to `warnings`.
+/// to `warnings`, and any move of C's current card that decides where later
+/// warnings go to `cursors` (see [`super::wcs_read::ReadCursors`]).
 pub(crate) fn build_pixel_to_iwc(
     store: &mut FitsStore,
     cards: &CardList,
     warnings: &mut Warnings,
+    cursors: &mut super::wcs_read::ReadCursors,
 ) -> AstResult<DynMapping> {
     let naxes = store.naxis;
 
     // Distortion corrections for each stage of the chain.
-    let dist = distort_maps(store, cards, naxes, warnings)?;
+    let dist = distort_maps(store, cards, naxes, warnings, cursors)?;
 
     // Step 1: CRPIX shift.
     // The C WcsShift creates a WinMap mapping pixel → (pixel - CRPIX).
@@ -127,6 +129,7 @@ fn distort_maps(
     cards: &CardList,
     naxes: usize,
     warnings: &mut Warnings,
+    cursors: &mut super::wcs_read::ReadCursors,
 ) -> AstResult<DistortionMaps> {
     let mut ret = DistortionMaps::default();
 
@@ -194,7 +197,7 @@ fn distort_maps(
         ));
     } else if found_axes.len() == 2 {
         let zpxaxes = [found_axes[0], found_axes[1]];
-        if let Some(m) = zpx_mapping(cards, naxes, zpxaxes, warnings)? {
+        if let Some(m) = zpx_mapping(cards, naxes, zpxaxes, warnings, cursors)? {
             ret.map4 = Some(match ret.map4.take() {
                 Some(prev) => Box::new(CmpMap::new(prev, m, Composition::Series)?),
                 None => m,
@@ -280,9 +283,15 @@ fn zpx_mapping(
     naxes: usize,
     zpxaxes: [usize; 2],
     warnings: &mut Warnings,
+    cursors: &mut super::wcs_read::ReadCursors,
 ) -> AstResult<Option<DynMapping>> {
     let mut coeffs: [Vec<(usize, f64)>; 2] = [Vec::new(), Vec::new()];
     let mut ok = true;
+
+    // C's `ConcatWAT` (fitschan.c:8194) searches for each WAT card from
+    // the start and ends on a search that fails, which leaves the FitsChan at
+    // end-of-file, where the warnings raised from here on go.
+    cursors.push((warnings.len(), None));
 
     for i in 0..2 {
         // Concatenate all the IRAF "WAT" keywords for this axis, then read the
@@ -655,7 +664,13 @@ mod tests {
     #[test]
     fn cdelt_only_produces_diagonal() {
         let mut store = simple_cdelt_store();
-        let mapping = build_pixel_to_iwc(&mut store, &CardList::new(), &mut Vec::new()).unwrap();
+        let mapping = build_pixel_to_iwc(
+            &mut store,
+            &CardList::new(),
+            &mut Vec::new(),
+            &mut Vec::new(),
+        )
+        .unwrap();
 
         // Reference pixel (128, 128) should map to IWC (0, 0).
         let pts = point2d(128.0, 128.0);
@@ -668,7 +683,13 @@ mod tests {
     #[test]
     fn cdelt_offset_pixel() {
         let mut store = simple_cdelt_store();
-        let mapping = build_pixel_to_iwc(&mut store, &CardList::new(), &mut Vec::new()).unwrap();
+        let mapping = build_pixel_to_iwc(
+            &mut store,
+            &CardList::new(),
+            &mut Vec::new(),
+            &mut Vec::new(),
+        )
+        .unwrap();
 
         // Pixel (129, 129): offset (1, 1) from CRPIX, scaled by CDELT.
         // Expected IWC: (1 * -0.001, 1 * 0.001) = (-0.001, 0.001).
@@ -682,7 +703,13 @@ mod tests {
     #[test]
     fn cd_matrix_reference_to_zero() {
         let mut store = cd_matrix_store();
-        let mapping = build_pixel_to_iwc(&mut store, &CardList::new(), &mut Vec::new()).unwrap();
+        let mapping = build_pixel_to_iwc(
+            &mut store,
+            &CardList::new(),
+            &mut Vec::new(),
+            &mut Vec::new(),
+        )
+        .unwrap();
 
         // Reference pixel should map to IWC (0, 0).
         let pts = point2d(128.0, 128.0);
@@ -695,7 +722,13 @@ mod tests {
     #[test]
     fn cd_matrix_offset_pixel() {
         let mut store = cd_matrix_store();
-        let mapping = build_pixel_to_iwc(&mut store, &CardList::new(), &mut Vec::new()).unwrap();
+        let mapping = build_pixel_to_iwc(
+            &mut store,
+            &CardList::new(),
+            &mut Vec::new(),
+            &mut Vec::new(),
+        )
+        .unwrap();
 
         // Pixel (129, 128): offset (1, 0), so IWC = CD * (1, 0) = (CD[0][0], CD[1][0]).
         let pts = point2d(129.0, 128.0);
@@ -708,7 +741,13 @@ mod tests {
     #[test]
     fn nin_nout_correct() {
         let mut store = simple_cdelt_store();
-        let mapping = build_pixel_to_iwc(&mut store, &CardList::new(), &mut Vec::new()).unwrap();
+        let mapping = build_pixel_to_iwc(
+            &mut store,
+            &CardList::new(),
+            &mut Vec::new(),
+            &mut Vec::new(),
+        )
+        .unwrap();
         assert_eq!(mapping.nin(), 2);
         assert_eq!(mapping.nout(), 2);
     }
@@ -728,7 +767,13 @@ mod tests {
         store.pc[1][0] = Some(sin45);
         store.pc[1][1] = Some(cos45);
 
-        let mapping = build_pixel_to_iwc(&mut store, &CardList::new(), &mut Vec::new()).unwrap();
+        let mapping = build_pixel_to_iwc(
+            &mut store,
+            &CardList::new(),
+            &mut Vec::new(),
+            &mut Vec::new(),
+        )
+        .unwrap();
 
         // Pixel (2, 1): offset (1, 0) from CRPIX.
         // After PC rotation: (cos45, sin45) ≈ (0.707, 0.707).
@@ -744,7 +789,13 @@ mod tests {
     fn identity_with_defaults() {
         // No CRPIX, no CDELT, no PC, no CD: should be identity.
         let mut store = FitsStore::new(2);
-        let mapping = build_pixel_to_iwc(&mut store, &CardList::new(), &mut Vec::new()).unwrap();
+        let mapping = build_pixel_to_iwc(
+            &mut store,
+            &CardList::new(),
+            &mut Vec::new(),
+            &mut Vec::new(),
+        )
+        .unwrap();
 
         let pts = point2d(5.0, 7.0);
         let out = mapping.transform(&pts, true).unwrap();
@@ -767,7 +818,13 @@ mod tests {
         store.sip_a[2][0] = 1e-5; // A_2_0
         store.sip_b = vec![vec![BAD_VALUE, 0.0]]; // B_0_1 = 0
 
-        let mapping = build_pixel_to_iwc(&mut store, &CardList::new(), &mut Vec::new()).unwrap();
+        let mapping = build_pixel_to_iwc(
+            &mut store,
+            &CardList::new(),
+            &mut Vec::new(),
+            &mut Vec::new(),
+        )
+        .unwrap();
 
         // At pixel (100, 0) with CRPIX = 0:
         // offset = (100, 0)
