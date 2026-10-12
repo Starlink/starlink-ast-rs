@@ -207,7 +207,7 @@ impl FitsChan {
     /// Mirrors C `astFitsChan(...)` followed by `astTestEncoding == 0`.
     pub fn new() -> Self {
         Self {
-            config: ChannelConfig::default(),
+            config: ChannelConfig::fitschan(),
             cards: CardList::new(),
             encoding: None,
             warnings: Vec::new(),
@@ -245,7 +245,7 @@ impl FitsChan {
         let (mut cards, warnings) = CardList::from_header_with_warnings(text)?;
         cards.clear_card();
         Ok(Self {
-            config: ChannelConfig::default(),
+            config: ChannelConfig::fitschan(),
             cards,
             encoding: None,
             warnings,
@@ -1466,7 +1466,7 @@ impl FitsChan {
     /// The block is prepended to the existing cards, mirroring C `astWrite`
     /// which rewinds the card pointer before writing so the AST description
     /// precedes the retained original header cards.
-    fn store_keyword_native(&mut self, obj: &AnyObject, node: &Node) {
+    fn store_keyword_native(&mut self, obj: &AnyObject, node: &Node) -> AstResult<()> {
         let comm = self.config.comment();
         let class = node.class.as_str();
         let is_frameset = matches!(obj, AnyObject::FrameSet(_));
@@ -1511,7 +1511,14 @@ impl FitsChan {
         // Data cards.
         let cards = &self.cards;
         let taken = |k: &str| cards.iter().any(|c| c.keyword == k);
-        enc_native::write_keyword_native(&mut block, node, comm, &mut self.keyseq, &taken);
+        let (digits, rounding) = (self.fits_digits, self.fits_rounding() as usize);
+        let format = |c: &FitsCard| c.format_with_digits_and_rounding(digits, rounding);
+        let options = enc_native::NativeWriteOptions {
+            with_comments: comm,
+            full: self.config.full(),
+            format: &format,
+        };
+        enc_native::write_keyword_native(&mut block, node, &options, &mut self.keyseq, &taken)?;
 
         // Trailing banner: dotted divider, "End of AST data for <class>
         // object", dashed divider.
@@ -1530,6 +1537,7 @@ impl FitsChan {
         }
 
         self.cards.insert_at_current(block);
+        Ok(())
     }
 
     /// The end of a read of an encoding other than NATIVE or DSS, mirroring
@@ -1723,13 +1731,46 @@ impl Channel for FitsChan {
                     // C reads the object through the Channel class from the
                     // current card on (`GetNextData`), passing over cards
                     // until a `BEGAST` card; with none, it reaches
-                    // end-of-file.
-                    let Some((first, last)) =
-                        enc_native::native_span(&self.cards, self.cards.position())
-                    else {
+                    // end-of-file. With Skip zero, each card passed is
+                    // marked as used, and any but a commentary card is an
+                    // error, after which the card following it is current.
+                    // C's `Read` then removes the marked cards with Clean
+                    // set, and otherwise makes them available again.
+                    let start = self.cards.position();
+                    let skip = self.config.skip();
+                    let clean = self.clean();
+                    let mark_from_start = |cards: &mut CardList, end: usize| {
+                        for i in start..end {
+                            cards.mark_at(i);
+                        }
+                    };
+                    if !skip {
+                        match enc_native::unskipped_begin(&self.cards, start) {
+                            Ok(_) => {}
+                            Err((i, e)) => {
+                                self.cards.set_position(i + 1);
+                                if clean {
+                                    mark_from_start(&mut self.cards, i + 1);
+                                    self.cards.fix_used(true, true);
+                                }
+                                return Err(e);
+                            }
+                        }
+                    }
+                    let Some((first, last)) = enc_native::native_span(&self.cards, start) else {
+                        if !skip && clean {
+                            let end = self.cards.len();
+                            mark_from_start(&mut self.cards, end);
+                        }
                         self.cards.set_position(usize::MAX);
+                        if !skip && clean {
+                            self.cards.fix_used(true, true);
+                        }
                         return Ok(None);
                     };
+                    if !skip {
+                        mark_from_start(&mut self.cards, first);
+                    }
                     let text =
                         enc_native::cards_to_native_text(&self.cards.sub_list(first..=last))?;
                     let node = serial::native_read::parse_native(&text)?;
@@ -2072,7 +2113,7 @@ impl FitsChan {
         match enc {
             Encoding::Native => {
                 let node = serial::any_object_to_node(obj)?;
-                self.store_keyword_native(obj, &node);
+                self.store_keyword_native(obj, &node)?;
                 // The native encoding can represent every AST class.
                 // Mirrors fitschan.c:40689.
                 Ok(1)

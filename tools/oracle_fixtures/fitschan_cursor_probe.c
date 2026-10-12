@@ -53,6 +53,10 @@
  * writes to the sink or to the SinkFile is printed.
  *   W                    astWrite of a 2-D ZoomMap of factor 2
  *   WF                   astWrite of a 2-D Frame
+ *   WFT|title            astWrite of a 2-D Frame with that Title
+ *   WC                   astWrite of a series CmpMap of 2-D ZoomMaps of
+ *                        factor 2 and 3
+ *   WCF                  astWrite of a CmpFrame of two 1-D Frames
  *
  * After each operation it prints the result and the state: Card, Ncard,
  * Nkey, CardType, CardName and CardComm, then every card astFindFits
@@ -397,6 +401,27 @@ static void run( AstFitsChan *fc, const char *op, int *status ) {
       AstFrame *fr = astFrame( 2, " " );
       snprintf( buf, sizeof buf, "= %d\n", astWrite( fc, fr ) );
       fr = astAnnul( fr );
+   } else if( !strcmp( f0, "WFT" ) ) {
+      AstFrame *fr = astFrame( 2, " " );
+      astSetC( fr, "Title", f1 );
+      snprintf( buf, sizeof buf, "= %d\n", astWrite( fc, fr ) );
+      fr = astAnnul( fr );
+   } else if( !strcmp( f0, "WC" ) ) {
+      AstZoomMap *z1 = astZoomMap( 2, 2.0, " " );
+      AstZoomMap *z2 = astZoomMap( 2, 3.0, " " );
+      AstCmpMap *cm = astCmpMap( z1, z2, 1, " " );
+      snprintf( buf, sizeof buf, "= %d\n", astWrite( fc, cm ) );
+      cm = astAnnul( cm );
+      z1 = astAnnul( z1 );
+      z2 = astAnnul( z2 );
+   } else if( !strcmp( f0, "WCF" ) ) {
+      AstFrame *f1 = astFrame( 1, " " );
+      AstFrame *f2 = astFrame( 1, " " );
+      AstCmpFrame *cf = astCmpFrame( f1, f2, " " );
+      snprintf( buf, sizeof buf, "= %d\n", astWrite( fc, cf ) );
+      cf = astAnnul( cf );
+      f1 = astAnnul( f1 );
+      f2 = astAnnul( f2 );
    } else if( !strcmp( f0, "W" ) ) {
       AstZoomMap *zm = astZoomMap( 2, 2.0, " " );
       snprintf( buf, sizeof buf, "= %d\n", astWrite( fc, zm ) );
@@ -900,6 +925,15 @@ int main( void ) {
    CASE( "native_no_comments", "ASI|Comment|0", "WF" );
    CASE( "native_skip_0", "P|0|A       = 1", "W", "CC", "ASI|Skip|0", "R" );
    CASE( "native_skip_0_from_begin", "W", "CC", "ASI|Skip|0", "R" );
+   CASE( "native_skip_0_data_item", "P|0|NAXIS1  = 2", "W", "CC", "ASI|Skip|0", "R" );
+   CASE( "native_skip_0_clean", "P|0|A       = 1", "W", "CC", "ASI|Skip|0", "CL|1", "R" );
+   CASE( "native_skip_0_clean_eof", "CM|0|hello", "SU|0|U|", "CC", "ASI|Skip|0", "CL|1", "R" );
+   CASE( "native_skip_0_clean_comments", "CM|0|hello", "CC", "ASI|Skip|0", "CL|1", "R" );
+   CASE( "native_full_0_nested", "ASI|Full|0", "WC", "CC", "R" );
+   CASE( "native_full_0_cmpframe", "ASI|Full|0", "WCF" );
+   CASE( "native_full_minus1_nested", "WC" );
+   CASE( "native_long_title", "WFT|tttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttt", "CC", "R" );
+   CASE( "native_long_title_no_comments", "ASI|Comment|0", "WFT|tttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttt", "CC", "R" );
 
    printf( "];\n" );
    return 0;

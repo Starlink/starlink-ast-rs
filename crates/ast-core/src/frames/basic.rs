@@ -988,7 +988,7 @@ impl Serializable for BasicFrame {
         // (frame.c:14660 dumps them with Full = -1).
         for (i, axis) in self.axes.iter().enumerate() {
             let axis_node = axis.to_dump_node();
-            node.push_object(
+            node.push_full_capped_object(
                 &format!("Ax{}", i + 1),
                 axis_node,
                 Some(format!("Axis number {}", i + 1)),

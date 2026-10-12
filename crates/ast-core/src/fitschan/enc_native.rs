@@ -7,7 +7,7 @@
 //! Mirrors C library `fitschan.c::GetNextData` (line 17703) and
 //! `fitschan.c::CreateKeyword` (line 8244).
 
-use super::card::{FITS_CARD_LEN, FITS_NAME_LEN};
+use super::card::{FITS_CARD_LEN, FITS_COM_COL, FITS_NAME_LEN};
 use super::card_list::CardList;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::fitschan::card::{FitsCard, FitsValue};
@@ -115,6 +115,46 @@ pub(crate) fn native_span(cards: &CardList, start: usize) -> Option<(usize, usiz
         }
     }
     None
+}
+
+/// C's `GetNextData` with `skip` 0 from card `start`, looking for the
+/// `BEGAST` card of a top-level object (fitschan.c:17811, called so by
+/// channel.c `ReadObject` when Skip is zero): commentary cards are passed
+/// over. `Ok` holds the index of the `BEGAST` card, or `None` at
+/// end-of-file; `Err` the index of the first other card a read has not
+/// consumed, and the AST__BADIN C reports for it.
+pub(crate) fn unskipped_begin(
+    cards: &CardList,
+    start: usize,
+) -> Result<Option<usize>, (usize, AstError)> {
+    for (i, card) in cards.iter().enumerate().skip(start) {
+        if card.is_consumed() {
+            continue;
+        }
+        let keyword = card.keyword.as_str();
+        let item = matches!(
+            card.value,
+            FitsValue::String(_) | FitsValue::Int(_) | FitsValue::KInt(_) | FitsValue::Float(_)
+        );
+        let message = match &card.value {
+            FitsValue::Comment(_) => continue,
+            FitsValue::String(_) if classify(keyword) == KeywordKind::Begin => return Ok(Some(i)),
+            _ if item && is_data_keyword(keyword) => {
+                "astRead(FitsChan): Missing \"Begin\" when expecting an Object.".to_string()
+            }
+            _ => format!(
+                "astRead(FitsChan): Cannot interpret the input data given by FITS keyword \"{keyword}\"."
+            ),
+        };
+        return Err((i, AstError::new(ErrorCode::Badin, message)));
+    }
+    Ok(None)
+}
+
+/// Whether `keyword` has more than two characters and ends in two sequence
+/// characters, C's test for a data item in `GetNextData`.
+fn is_data_keyword(keyword: &str) -> bool {
+    keyword.len() > 2 && keyword.chars().rev().take(2).all(is_seq_char)
 }
 
 /// Result of formatting a card value for native-text emission.
@@ -467,13 +507,32 @@ pub(crate) fn make_banner(prefix: &str, middle: &str, suffix: &str) -> String {
     out.into_iter().collect()
 }
 
+/// How C's FitsChan writes the items of an object: its `Comment` and
+/// `Full` attributes, the formatting of a card that `MakeIntoComment` turns
+/// into a COMMENT card, and the indentation of the comments marking nested
+/// objects (C's `current_indent`).
+pub(crate) struct NativeWriteOptions<'a> {
+    /// The `Comment` attribute.
+    pub with_comments: bool,
+    /// The `Full` attribute.
+    pub full: i32,
+    /// C's `FormatCard`, with the FitsChan's FitsDigits and FitsRounding.
+    pub format: &'a dyn Fn(&FitsCard) -> AstResult<String>,
+}
+
+/// C's `INDENT_INC`: the indentation added for each level of nesting.
+const INDENT_INC: usize = 3;
+
 /// Render a [`Node`] tree as keyword-card NATIVE cards, appending them to
-/// `cards`. The cards reproduce the C library's default NATIVE storage form;
-/// the leading/trailing comment banners are added by the caller.
+/// `cards`, as C's FitsChan `WriteBegin`, `WriteIsA`, `WriteEnd`,
+/// `WriteObject` and the value writers store them. The leading and
+/// trailing comment banners are added by the caller.
 ///
-/// `with_comments` controls whether per-card comment text is emitted (C
-/// `Comment` attribute, default true). Unset (`# default`) items are dropped,
-/// matching C `Use()` at the default `Full = 0`.
+/// An unset value is written, as a COMMENT card holding the text of the
+/// card, only when Full is not negative (C's `Use`: the Node holds only the
+/// unset values C calls helpful). When Full is not negative, nested objects
+/// are marked by indented comments, and when it is positive every IsA item
+/// is written.
 ///
 /// `keyseq` holds the last sequence number used for each keyword base, kept
 /// by the FitsChan from one write to the next, and `taken` says whether a
@@ -481,27 +540,99 @@ pub(crate) fn make_banner(prefix: &str, middle: &str, suffix: &str) -> String {
 pub(crate) fn write_keyword_native(
     cards: &mut Vec<FitsCard>,
     node: &Node,
-    with_comments: bool,
+    options: &NativeWriteOptions<'_>,
     keyseq: &mut std::collections::HashMap<String, usize>,
     taken: &dyn Fn(&str) -> bool,
-) {
+) -> AstResult<()> {
     let mut seq = KeywordSequencer {
         seq: keyseq,
         taken,
         created: std::collections::HashSet::new(),
     };
-    write_object(cards, node, &mut seq, with_comments);
+    let mut indent = 0;
+    write_object(
+        cards,
+        node,
+        &mut seq,
+        options,
+        options.full,
+        false,
+        &mut indent,
+    )
 }
 
-/// Emit one object as a BEGAST … ENDAST block (recursing for nested objects).
-/// Returns nothing; cards are pushed onto `cards`.
+/// C's `MakeIndentedComment`: `indent` copies of `token`, then `comment`
+/// and `data` from column 32 of a card with a blank keyword.
+fn make_indented_comment(indent: usize, token: char, comment: &str, data: &str) -> String {
+    let mxlen = FITS_CARD_LEN - FITS_NAME_LEN;
+    let mut out: Vec<char> = std::iter::repeat_n(token, indent.min(mxlen)).collect();
+    while out.len() < FITS_COM_COL - FITS_NAME_LEN - 1 {
+        out.push(' ');
+    }
+    for c in "/ ".chars().chain(comment.chars()).chain(data.chars()) {
+        if out.len() >= mxlen {
+            break;
+        }
+        out.push(c);
+    }
+    out.into_iter().collect()
+}
+
+/// A commentary card with a blank keyword (C's `astSetFitsCom` with a
+/// blank name).
+fn blank_comment_card(text: String) -> FitsCard {
+    FitsCard {
+        keyword: " ".repeat(FITS_NAME_LEN),
+        value: FitsValue::Comment(text),
+        comment: None,
+        used: false,
+        flags: crate::fitschan::card::CardFlags::default(),
+    }
+}
+
+/// C's `MakeIntoComment`: replace the card at `index` by a COMMENT card
+/// holding its text.
+fn make_into_comment(
+    cards: &mut [FitsCard],
+    index: usize,
+    options: &NativeWriteOptions<'_>,
+) -> AstResult<()> {
+    let card = &mut cards[index];
+    let text = (options.format)(card)?;
+    *card = FitsCard {
+        keyword: "COMMENT".to_string(),
+        value: FitsValue::Comment(text),
+        comment: None,
+        used: false,
+        flags: crate::fitschan::card::CardFlags::default(),
+    };
+    Ok(())
+}
+
+/// Emit one object as a BEGAST … ENDAST block, recursing for nested
+/// objects. `full` is the Full attribute in force for this object, and
+/// `nested` is false for the top-level object (C's `write_nest`).
 fn write_object(
     cards: &mut Vec<FitsCard>,
     node: &Node,
     seq: &mut KeywordSequencer<'_>,
-    with_comments: bool,
-) {
-    // BEGAST keyword, value = class name, comment = the class comment.
+    options: &NativeWriteOptions<'_>,
+    full: i32,
+    nested: bool,
+    indent: &mut usize,
+) -> AstResult<()> {
+    let with_comments = options.with_comments;
+
+    // C's `WriteBegin`.
+    *indent += INDENT_INC;
+    if nested && full >= 0 {
+        cards.push(blank_comment_card(make_indented_comment(
+            *indent,
+            '+',
+            "Beginning of ",
+            &node.class,
+        )));
+    }
     let begast = seq.create("BEGAST");
     push_string_card(
         cards,
@@ -511,77 +642,85 @@ fn write_object(
         with_comments,
     );
 
-    // `items_written` gates ISA emission, mirroring C WriteIsA: an ISA marker
-    // is written only if at least one item has been written since the last
-    // Begin/IsA (at the default Full = 0).
+    // C's `items_written`: an IsA item is written only if an item has been
+    // written since the last Begin or IsA, or Full is positive.
     let mut items_written = 0usize;
 
     for item in &node.items {
-        // IsA marker.
         if item.key == "IsA" {
-            if items_written == 0 {
-                // C suppresses the ISA item when nothing has been written
-                // since the previous Begin/IsA.
-                continue;
-            }
-            if let NodeValue::String(ref class) = item.value {
-                let isa = seq.create("ISA");
-                push_string_card(cards, &isa, class, item.comment.as_deref(), with_comments);
+            if items_written > 0 || full > 0 {
+                if let NodeValue::String(ref class) = item.value {
+                    let isa = seq.create("ISA");
+                    push_string_card(cards, &isa, class, item.comment.as_deref(), with_comments);
+                }
+                if full >= 0 {
+                    cards.push(blank_comment_card(make_indented_comment(
+                        *indent,
+                        '.',
+                        "Class boundary",
+                        "",
+                    )));
+                }
             }
             items_written = 0;
             continue;
         }
 
-        match &item.value {
-            // Unset (commented default): dropped at the default Full = 0,
-            // matching C Use() (helpful && full > -1 is false for full = 0
-            // unless the value is helpful; the wcsconv fixtures show none).
-            NodeValue::Unset(_) => continue,
-
-            // Nested object: emit a blank-string marker keyword, then recurse.
+        let (value, set) = match &item.value {
+            NodeValue::Unset(inner) => {
+                if full < 0 {
+                    continue;
+                }
+                (inner.as_ref(), false)
+            }
+            value => (value, true),
+        };
+        let key = seq.create(&item.key);
+        let comment = item.comment.as_deref();
+        // The card an unset value turns into a comment: the first, before
+        // any CONTINUE cards or nested object are written.
+        let first_card = cards.len();
+        match value {
+            // C's `WriteObject`: a blank string, then the object's
+            // description if it is set.
             NodeValue::Object(child) => {
-                let key = seq.create(&item.key);
-                push_string_card(cards, &key, "", item.comment.as_deref(), with_comments);
-                write_object(cards, child, seq, with_comments);
-                items_written += 1;
+                push_string_card(cards, &key, "", comment, with_comments);
+                if !set {
+                    make_into_comment(cards, first_card, options)?;
+                } else {
+                    let child_full = if child.full_capped && full <= 0 {
+                        -1
+                    } else {
+                        full
+                    };
+                    write_object(cards, child, seq, options, child_full, true, indent)?;
+                }
             }
-
-            // Integer scalar.
             NodeValue::Int(v) => {
-                let key = seq.create(&item.key);
-                push_card(
-                    cards,
-                    key,
-                    FitsValue::Int(*v),
-                    item.comment.as_deref(),
-                    with_comments,
-                );
-                items_written += 1;
+                push_card(cards, key, FitsValue::Int(*v), comment, with_comments);
+                if !set {
+                    make_into_comment(cards, first_card, options)?;
+                }
             }
-
-            // Double scalar.
             NodeValue::Double(v) => {
-                let key = seq.create(&item.key);
-                push_card(
-                    cards,
-                    key,
-                    FitsValue::Float(*v),
-                    item.comment.as_deref(),
-                    with_comments,
-                );
-                items_written += 1;
+                push_card(cards, key, FitsValue::Float(*v), comment, with_comments);
+                if !set {
+                    make_into_comment(cards, first_card, options)?;
+                }
             }
-
-            // String scalar, with CONTINUE splitting for long values.
             NodeValue::String(s) => {
-                let key = seq.create(&item.key);
-                write_string_value(cards, &key, s, item.comment.as_deref(), with_comments);
-                items_written += 1;
+                write_string_value(cards, &key, s, comment, with_comments, set);
+                // An empty string writes no card.
+                if !set && cards.len() > first_card {
+                    make_into_comment(cards, first_card, options)?;
+                }
             }
+            NodeValue::Unset(_) => unreachable!("an unset value holds a value"),
         }
+        items_written += 1;
     }
 
-    // ENDAST keyword.
+    // C's `WriteEnd`.
     let endast = seq.create("ENDAST");
     push_string_card(
         cards,
@@ -594,31 +733,47 @@ fn write_object(
         },
         with_comments,
     );
+    if nested && full >= 0 {
+        cards.push(blank_comment_card(make_indented_comment(
+            *indent,
+            '-',
+            "End of ",
+            &node.class,
+        )));
+    }
+    *indent -= INDENT_INC;
+    Ok(())
 }
 
 /// Write a string attribute, splitting into CONTINUE cards when the value is
-/// too long to fit one card. Mirrors C `WriteString` (fitschan.c:41253).
+/// too long to fit one card, as C's `WriteString` does (fitschan.c:41253).
+/// An empty value writes no card. The first card reserves room for the
+/// comment whether or not comments are written, and, when the value is not
+/// `set`, for the keyword the COMMENT card it becomes will hold.
 fn write_string_value(
     cards: &mut Vec<FitsCard>,
     keyword: &str,
     value: &str,
     comment: Option<&str>,
     with_comments: bool,
+    set: bool,
 ) {
-    // Fast path: short strings need no splitting.
     let chars: Vec<char> = value.chars().collect();
     let mut start = 0usize;
     let mut first = true;
 
-    while start < chars.len() || first {
+    while start < chars.len() {
         // Available columns for this sub-string. The first card reserves room
         // for the comment (length + " / "); single quotes cost two columns.
         let mut nc: isize = STRING_VALUE_WIDTH as isize;
-        if first && with_comments {
-            if let Some(c) = comment {
-                if !c.is_empty() {
-                    nc -= chr_len(c) as isize + 3;
-                }
+        if first {
+            if let Some(c) = comment
+                && !c.is_empty()
+            {
+                nc -= chr_len(c) as isize + 3;
+            }
+            if !set {
+                nc -= FITS_NAME_LEN as isize + 5;
             }
         }
 
@@ -660,10 +815,6 @@ fn write_string_value(
             });
         }
         first = false;
-
-        if start >= chars.len() {
-            break;
-        }
     }
 }
 
@@ -1129,13 +1280,20 @@ END
         outer.push_object("MapA", inner, Some("First component Mapping".to_string()));
 
         let mut block: Vec<FitsCard> = Vec::new();
+        let format = |c: &FitsCard| c.format();
+        let options = NativeWriteOptions {
+            with_comments: true,
+            full: -1,
+            format: &format,
+        };
         write_keyword_native(
             &mut block,
             &outer,
-            true,
+            &options,
             &mut std::collections::HashMap::new(),
             &|_| false,
-        );
+        )
+        .unwrap();
 
         // The first card opens the outer object; the last closes it.
         assert_eq!(block.first().unwrap().keyword, "BEGAST_A");
@@ -1206,7 +1364,7 @@ END
     fn write_string_value_splits_long_strings() {
         let mut block: Vec<FitsCard> = Vec::new();
         let long = "Pixel coordinates; first pixel at (-128.5,-127.5) plus padding";
-        write_string_value(&mut block, "TITLE_A", long, Some("Title"), true);
+        write_string_value(&mut block, "TITLE_A", long, Some("Title"), true, true);
 
         assert!(block.len() >= 2, "long value should split: {block:?}");
         // First card carries the keyword and ends with an ampersand.
@@ -1217,5 +1375,14 @@ END
         }
         // Subsequent cards are CONTINUE.
         assert_eq!(block[1].keyword, "CONTINUE");
+    }
+
+    /// C's `WriteString` loops while characters remain, so an empty value
+    /// writes no card.
+    #[test]
+    fn write_string_value_writes_nothing_for_an_empty_value() {
+        let mut block: Vec<FitsCard> = Vec::new();
+        write_string_value(&mut block, "TITLE_A", "", Some("Title"), true, true);
+        assert!(block.is_empty(), "{block:?}");
     }
 }

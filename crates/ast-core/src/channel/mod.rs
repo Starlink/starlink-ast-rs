@@ -33,9 +33,25 @@ pub struct ChannelConfig {
     strict: Option<bool>,
     indent: Option<i32>,
     report_level: Option<i32>,
+    /// The class's default `Skip`: true for a FitsChan (fitschan.c
+    /// `GetSkip`), false otherwise.
+    default_skip: bool,
+    /// The class's default `Full`: -1 for a FitsChan (fitschan.c
+    /// `GetFull`), 0 otherwise.
+    default_full: i32,
 }
 
 impl ChannelConfig {
+    /// The attributes of a FitsChan, whose `Skip` defaults to true and
+    /// `Full` to -1.
+    pub(crate) fn fitschan() -> Self {
+        Self {
+            default_skip: true,
+            default_full: -1,
+            ..Self::default()
+        }
+    }
+
     /// `Comment`: whether output includes comments. The default is true.
     pub fn comment(&self) -> bool {
         self.comment.unwrap_or(true)
@@ -57,9 +73,9 @@ impl ChannelConfig {
     }
 
     /// `Full`: -1 for minimal output, 0 for normal and 1 for verbose. The
-    /// default is 0.
+    /// default is 0, or -1 for a FitsChan.
     pub fn full(&self) -> i32 {
-        self.full.unwrap_or(0)
+        self.full.unwrap_or(self.default_full)
     }
 
     /// Set `Full`; any positive value is stored as 1 and any negative one as
@@ -79,9 +95,9 @@ impl ChannelConfig {
     }
 
     /// `Skip`: whether data between objects is ignored. The default is
-    /// false.
+    /// false, or true for a FitsChan.
     pub fn skip(&self) -> bool {
-        self.skip.unwrap_or(false)
+        self.skip.unwrap_or(self.default_skip)
     }
 
     /// Set `Skip`.

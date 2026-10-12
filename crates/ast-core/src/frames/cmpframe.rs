@@ -1110,8 +1110,8 @@ impl Serializable for CmpFrame {
         let mut node_b = node_b;
         node_a.strip_unset();
         node_b.strip_unset();
-        node.push_object("FrameA", node_a, Some("First component Frame".to_string()));
-        node.push_object("FrameB", node_b, Some("Second component Frame".to_string()));
+        node.push_full_capped_object("FrameA", node_a, Some("First component Frame".to_string()));
+        node.push_full_capped_object("FrameB", node_b, Some("Second component Frame".to_string()));
 
         Ok(node)
     }

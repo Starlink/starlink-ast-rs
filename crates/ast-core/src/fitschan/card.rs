@@ -86,7 +86,7 @@ const FITS_ST_COL: usize = 20;
 
 /// The column (1-based) in which a comment starts when it fits, C's
 /// `FITSCOMCOL`.
-const FITS_COM_COL: usize = 32;
+pub(super) const FITS_COM_COL: usize = 32;
 
 /// The number of decimal digits in `INT_MAX`, C's `int_dig` in `Split`
 /// (fitschan.c:32866): an integer value with this many digits or more is

@@ -40,6 +40,12 @@ pub(crate) struct Node {
     /// defaults. IsA markers use key `"IsA"` and value
     /// `NodeValue::String(class_name)`.
     pub items: Vec<NodeItem>,
+    /// Whether the class writing this object as part of its own sets the
+    /// Channel's Full to -1 around it unless Full is 1, as C's Frame does
+    /// for its Axes (frame.c `Dump`) and CmpFrame for its two Frames
+    /// (cmpframe.c `Dump`). Full applies to the whole of the object's dump,
+    /// however deep it goes.
+    pub full_capped: bool,
 }
 
 impl Node {
@@ -49,6 +55,7 @@ impl Node {
             class: class.into(),
             class_comment: None,
             items: Vec::new(),
+            full_capped: false,
         }
     }
 
@@ -86,6 +93,18 @@ impl Node {
             value: NodeValue::Object(node),
             comment: comment.into(),
         });
+    }
+
+    /// Add a nested object that its parent writes with Full set to -1
+    /// unless it is 1 (see [`Node::full_capped`]).
+    pub fn push_full_capped_object(
+        &mut self,
+        key: &str,
+        mut node: Node,
+        comment: impl Into<Option<String>>,
+    ) {
+        node.full_capped = true;
+        self.push_object(key, node, comment);
     }
 
     /// Add an IsA marker.

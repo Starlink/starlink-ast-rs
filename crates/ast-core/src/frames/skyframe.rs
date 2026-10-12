@@ -3085,7 +3085,7 @@ impl Serializable for SkyFrame {
             let axis_node = axis.to_dump_node();
             let key = format!("Ax{}", i + 1);
             let comment = format!("Axis number {}", i + 1);
-            node.push_object(&key, axis_node, Some(comment));
+            node.push_full_capped_object(&key, axis_node, Some(comment));
         }
 
         // IsA Frame marker.

@@ -1095,7 +1095,7 @@ impl Serializable for FluxFrame {
         let mut axis_node = Node::new("Axis");
         axis_node.class_comment = Some("Coordinate axis".to_string());
         self.axis.write_set_attributes(&mut axis_node);
-        node.push_object("Ax1", axis_node, Some("Axis number 1".to_string()));
+        node.push_full_capped_object("Ax1", axis_node, Some("Axis number 1".to_string()));
 
         // IsA Frame marker.
         node.push_isa("Frame", Some("Coordinate system description".to_string()));

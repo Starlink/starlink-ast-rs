@@ -2,6 +2,9 @@
 
 ## Revision history
 
+- **2026-10-11 (rev 28)**: A FitsChan's `ChannelConfig` gives the
+  defaults of C's FitsChan, `skip()` true and `full()` -1, where other
+  Channels give false and 0.
 - **2026-10-11 (rev 27)**: Added FitsChan's source and sink, as C's
   `astFitsChan` takes them (`set_source`, `set_sink`), with
   `read_fits`, `write_fits` and `show_fits`, and the SourceFile and

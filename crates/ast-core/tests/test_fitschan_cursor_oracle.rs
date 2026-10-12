@@ -477,6 +477,8 @@ fn run(fc: &mut FitsChan, op: &str, out: &mut String, h: &mut Harness) {
             let class = match obj {
                 Some(AnyObject::FrameSet(_)) => "FrameSet",
                 Some(AnyObject::ZoomMap(_)) => "ZoomMap",
+                Some(AnyObject::BasicFrame(_)) => "Frame",
+                Some(AnyObject::CmpMap(_)) => "CmpMap",
                 Some(_) => "another class",
                 None => "null",
             };
@@ -486,6 +488,28 @@ fn run(fc: &mut FitsChan, op: &str, out: &mut String, h: &mut Harness) {
             let frame =
                 AnyObject::BasicFrame(ast_core::frames::BasicFrameBuilder::new(2).build().unwrap());
             result(fc.write(&frame), |n| format!("= {n}\n"))
+        }
+        "WFT" => {
+            let mut frame = ast_core::frames::BasicFrameBuilder::new(2).build().unwrap();
+            frame.set_title(arg(1));
+            result(fc.write(&AnyObject::BasicFrame(frame)), |n| {
+                format!("= {n}\n")
+            })
+        }
+        "WC" => {
+            use ast_core::mappings::{CmpMap, Composition};
+            let cm = CmpMap::new(
+                Box::new(ZoomMap::new(2, 2.0).unwrap()),
+                Box::new(ZoomMap::new(2, 3.0).unwrap()),
+                Composition::Series,
+            )
+            .unwrap();
+            result(fc.write(&AnyObject::CmpMap(cm)), |n| format!("= {n}\n"))
+        }
+        "WCF" => {
+            let one = || Box::new(ast_core::frames::BasicFrameBuilder::new(1).build().unwrap());
+            let cf = ast_core::frames::CmpFrame::new(one(), one());
+            result(fc.write(&AnyObject::CmpFrame(cf)), |n| format!("= {n}\n"))
         }
         "W" => {
             let zm = AnyObject::ZoomMap(ZoomMap::new(2, 2.0).unwrap());
@@ -516,29 +540,10 @@ fn run(fc: &mut FitsChan, op: &str, out: &mut String, h: &mut Harness) {
 /// fails once an entry matches, so the list cannot go stale.
 const EXCLUDED: &[(&str, &str)] = &[
     (
-        "skip_and_full_defaults",
-        "a FitsChan's Skip and Full take the Channel defaults, 0 and 0, where \
-         C's GetSkip and GetFull overrides give 1 and -1",
-    ),
-    (
-        "native_full_0",
-        "the NATIVE writer drops unset values whatever Full is; C writes the \
-         helpful ones as COMMENT cards when Full is not negative",
-    ),
-    (
         "native_full_1",
-        "the NATIVE writer drops unset values and class boundaries whatever \
-         Full is; C writes them all when Full is positive",
-    ),
-    (
-        "native_skip_0",
-        "the NATIVE reader ignores Skip; C reports cards before the object \
-         as an error when Skip is zero",
-    ),
-    (
-        "native_skip_0_from_begin",
-        "the NATIVE reader ignores Skip; C consumes the cards before the \
-         object when Skip is zero",
+        "with Full positive C writes every unset value, helpful or not, and \
+         the Axes of a Frame in full; the Node a class writes holds only the \
+         unset values C calls helpful, and none for the Axes (CH-4)",
     ),
     (
         "celestial_bare_names",
