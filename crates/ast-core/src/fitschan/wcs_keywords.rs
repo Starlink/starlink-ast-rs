@@ -173,6 +173,11 @@ pub(crate) fn extract_wcs_keywords(cards: &CardList, s: char, npix: usize) -> As
         for m in 0..store.pv[i].len() {
             store.pv[i][m] = cards.get_float_marked(&key_for_2("PV", axis_num, m, s));
         }
+        for m in 0..store.ps[i].len() {
+            store.ps[i][m] = CardList::strip_wcs_store_string(
+                cards.get_string_marked(&key_for_2("PS", axis_num, m, s)),
+            );
+        }
     }
 
     // Scalar WCS keywords (mark=1). String-typed fields get the

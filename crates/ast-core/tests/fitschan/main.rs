@@ -43,6 +43,8 @@ mod test_fitschan_sipok_oracle;
 mod test_fitschan_spec_unit_oracle;
 #[path = "../test_fitschan_splitmap_oracle.rs"]
 mod test_fitschan_splitmap_oracle;
+#[path = "../test_fitschan_tab_read_oracle.rs"]
+mod test_fitschan_tab_read_oracle;
 #[path = "../test_fitschan_tables_oracle.rs"]
 mod test_fitschan_tables_oracle;
 #[path = "../test_fitschan_time.rs"]

@@ -1068,11 +1068,14 @@ does not use it.
 **Rust behaviour (not mirrored):** owned values give every tree its own
 sub-Mappings, so a discarded probe cannot write on the live tree, and the port
 records only the stamps that surviving simplifications leave.
-`rigby`, `cap_specmap_02` and `cap_cmpmap_nested_tag` each carry one such card;
+`rigby`, `cap_specmap_02`, `cap_cmpmap_nested_tag` and `fitschan_tab_spectral` each carry one such card;
 `cap_cmpmap_01` and `cap_cmpmap_04` carry one each on top of the `InvA`/`InvB`
 aliasing already recorded above.
 Their `IsSimp` counts are pinned as named exclusions in
 `test_simplify_regression.rs`, so the deficit stays visible and cannot grow.
+
+`fitschan_tab_spectral` was traced in C: before the first series-in-parallel probe the CmpMap of the celestial rotation's MatrixMap and SphMap carries no stamp, the probe's `astSimplify` stamps it and leaves the probe unchanged, and the stamp survives into the result.
+The same Mapping, read from a header with a `-TAB` spectral axis, is the `mixed` case of `tests/test_fitschan_tab_read_oracle.rs`, which licenses the card the same way.
 
 To be raised upstream.
 

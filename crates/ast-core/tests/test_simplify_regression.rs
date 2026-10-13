@@ -107,6 +107,10 @@ const ABANDONED_PROBE_STAMP_LICENSED: &[(&str, &str)] = &[
         "cap_cmpmap_04",
         "on the CmpMap holding the differentiated SpecMap",
     ),
+    (
+        "fitschan_tab_spectral",
+        "on the CmpMap of the MatrixMap and SphMap of the celestial rotation",
+    ),
 ];
 
 /// Cases where one node's dump carries `Invert` in C and `IsSimp` in the port,
@@ -897,6 +901,9 @@ fn simplify_regression() {
         "rigby (8 vs C's 9)",
         "cap_specmap_02 (7 vs C's 8)",
         // Shrunk from `cap_specmap_02`, and carries the same signature.
+        // A FitsChan read of a `-TAB` spectral axis beside celestial axes;
+        // the stamp is made by a series-in-parallel probe C discards.
+        "fitschan_tab_spectral (5 vs C's 6)",
     ];
     issimp_disagreements.sort();
     let mut expected: Vec<String> = ISSIMP_DISAGREEMENTS.iter().map(|s| s.to_string()).collect();

@@ -43,6 +43,10 @@ pub(crate) struct FitsStore {
     pub cname: Vec<Option<String>>,
     /// Projection parameters per axis, shape [axis][param] (PVi_m).
     pub pv: Vec<Vec<Option<f64>>>,
+    /// String parameters per axis, shape [axis][param] (PSi_m): for a
+    /// `-TAB` axis, the extension name, coordinate array column and index
+    /// vector column of its look-up table.
+    pub ps: Vec<Vec<Option<String>>>,
     /// Reference frame for celestial coordinates (RADESYS).
     pub radesys: Option<String>,
     /// Equinox of celestial coordinate system (EQUINOX).
@@ -169,6 +173,7 @@ impl FitsStore {
             cunit: vec![None; naxis],
             cname: vec![None; naxis],
             pv: vec![vec![None; MAX_PV_PARAMS]; naxis],
+            ps: vec![vec![None; MAX_PV_PARAMS]; naxis],
             radesys: None,
             equinox: None,
             lonpole: None,

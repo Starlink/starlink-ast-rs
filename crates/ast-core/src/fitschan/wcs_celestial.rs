@@ -18,6 +18,7 @@ use super::warning::{Warning, Warnings};
 use std::f64::consts::PI;
 
 use super::fits_store::FitsStore;
+use super::wcs_tab::TabLookup;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::{Frame, SkyFrame, SkySystem};
 use crate::mappings::{CmpMap, Composition, DynMapping, Mapping, PermMap, UnitMap, WcsMap, WinMap};
@@ -78,12 +79,15 @@ pub(crate) fn wcs_prj_type(last4: &str) -> Option<WcsProjection> {
 /// A longitude CTYPE is `RA`, `AZ`, `xLON` or `yzLN`, alone or followed by
 /// `-`, and a latitude CTYPE `DEC`, `EL`, `xLAT` or `yzLT`; the projection
 /// is named by the last four characters of a CTYPE longer than four, and a
-/// shorter one is linear. Two longitude or two latitude axes, an unknown
-/// projection, axes of different systems or projections, and one axis
-/// without the other are AST__BDFTS.
+/// shorter one is linear, or, when any axis uses `-TAB` (`has_tab`), has no
+/// projection (C's `AST__WCSBAD`, here [`WcsProjection::Unknown`]). Two
+/// longitude or two latitude axes, an unknown projection, axes of different
+/// systems or projections, and one axis without the other are AST__BDFTS,
+/// except that a single axis with no projection is no celestial axis.
 fn find_celestial_axes(
     store: &FitsStore,
     s: char,
+    has_tab: bool,
     warnings: &mut Warnings,
 ) -> AstResult<Option<CelestialAxes>> {
     let keyname = |i: usize| {
@@ -105,6 +109,8 @@ fn find_celestial_axes(
                     keyname(i)
                 ))),
             }
+        } else if has_tab {
+            Ok((WcsProjection::Unknown, false))
         } else {
             Ok((WcsProjection::Car, true))
         }
@@ -211,6 +217,8 @@ fn find_celestial_axes(
                 forced_car_lin,
             }))
         }
+        (None, Some((_, _, WcsProjection::Unknown)))
+        | (Some((_, _, WcsProjection::Unknown)), None) => Ok(None),
         (None, Some((ilat, ..))) => Err(bdfts(format!(
             "A latitude axis ('{}') was found without a corresponding longitude axis.",
             ctype_of(ilat)
@@ -232,7 +240,7 @@ fn find_celestial_axes(
 /// Returns `None` if no celestial axis pair is found.
 #[cfg(test)]
 pub(crate) fn build_celestial(store: &FitsStore) -> Option<CelestialResult> {
-    build_celestial_with_def_b1950(store, ' ', false, None, &mut Vec::new()).unwrap()
+    build_celestial_with_def_b1950(store, ' ', false, None, None, &mut Vec::new()).unwrap()
 }
 
 /// Encoding-aware variant. `s` is the version character of the axis
@@ -252,6 +260,7 @@ pub(crate) fn build_celestial_with_def_b1950(
     s: char,
     def_b1950: bool,
     rfval: Option<&[Option<f64>]>,
+    tab: Option<&mut TabLookup>,
     warnings: &mut Warnings,
 ) -> AstResult<Option<CelestialResult>> {
     // Step 1: Find the celestial axis pair and its projection, as C's
@@ -262,7 +271,7 @@ pub(crate) fn build_celestial_with_def_b1950(
         proj,
         sys,
         forced_car_lin,
-    }) = find_celestial_axes(store, s, warnings)?
+    }) = find_celestial_axes(store, s, tab.is_some(), warnings)?
     else {
         return Ok(None);
     };
@@ -272,6 +281,116 @@ pub(crate) fn build_celestial_with_def_b1950(
     // writes the attribute back, so reading a header leaves `CarLin` alone.
     let car_lin = store.car_lin || forced_car_lin;
 
+    // Axes with no projection, as `-TAB` axes are, map linearly onto
+    // celestial coordinates in whatever units their CRVAL values have
+    // (fitschan.c `WcsCelestial`, `prj == AST__WCSBAD`).
+    let built = if matches!(proj, WcsProjection::Unknown) {
+        let (mapping, seed) = build_unprojected_mapping(store, lon_axis, lat_axis)?;
+        let (ref_pos, ref_pos_forced) =
+            apply_ref_overrides(store, rfval, lon_axis, lat_axis, seed, tab)?;
+        Some((mapping, ref_pos, ref_pos_forced))
+    } else {
+        build_projected_mapping(
+            store, proj, lon_axis, lat_axis, rfval, car_lin, tab, warnings,
+        )?
+    };
+    let Some((mapping, ref_pos, ref_pos_forced)) = built else {
+        return Ok(None);
+    };
+
+    // C's `WcsCelestial` makes the SkyFrame after `WcsNative`, so its
+    // warnings follow those of the Mapping.
+    let mut sky_frame = wcs_sky_frame(
+        store, s, proj, &sys, lon_axis, lat_axis, def_b1950, warnings,
+    )?;
+    // When latitude comes before longitude in the FITS axes, permute the
+    // SkyFrame's axes so its first axis is the latitude, matching the order
+    // in which the Mapping delivers them.
+    if lat_axis < lon_axis {
+        let _ = crate::frames::Frame::perm_axes(&mut sky_frame, &[2, 1]);
+    }
+    if let Some(dtai) = store.dtai {
+        sky_frame.set_dtai(dtai);
+    }
+    if let Some(dut1) = store.dut1 {
+        // C fitschan.c:38004: the SkyFrame Dut1 attribute is in seconds,
+        // while the FITS DUT1 keyword is in days.
+        sky_frame.set_dut1(dut1 * 86_400.0);
+    }
+
+    // `mapping` emits cel_lon at FITS slot `lon_axis` and cel_lat at FITS
+    // slot `lat_axis`, with identity on every other axis: the PermMap
+    // sandwich inside `embed_celestial_in_naxis` routes the celestial pair
+    // into the rotation's slots (0, 1) and restores them to their FITS
+    // positions, matching C `WcsNative` (fitschan.c:38507-38530). For the
+    // swapped-axis case (`lat_axis < lon_axis`) that leaves (cel_lat,
+    // cel_lon) at slots (0, 1), matching the SkyFrame's permuted external
+    // layout. `build_general_iwc_to_world` composes the per-class mappings
+    // in series — no axis-permute step is needed at the composer.
+    Ok(Some(CelestialResult {
+        mapping,
+        frame: sky_frame,
+        lon_axis,
+        lat_axis,
+        ref_pos,
+        ref_pos_forced,
+    }))
+}
+
+/// The Mapping from the IWC of unprojected celestial axes to celestial
+/// coordinates, C's `WcsCelestial` branch for `prj == AST__WCSBAD`: unit
+/// Mappings, then a WinMap that adds the CRVAL values, kept in their own
+/// units. Also the reference position, the CRVAL pair when both are given.
+fn build_unprojected_mapping(
+    store: &FitsStore,
+    lon_axis: usize,
+    lat_axis: usize,
+) -> AstResult<(DynMapping, Option<(f64, f64)>)> {
+    let naxis = store.naxis;
+    let ina = vec![0.0; naxis];
+    let inb = vec![1.0; naxis];
+    let mut outa = ina.clone();
+    let mut outb = inb.clone();
+    for axis in [lon_axis, lat_axis] {
+        match store.crval[axis] {
+            Some(val) => {
+                outa[axis] += val;
+                outb[axis] += val;
+            }
+            None => {
+                outa[axis] = crate::constants::BAD_VALUE;
+                outb[axis] = crate::constants::BAD_VALUE;
+            }
+        }
+    }
+    let winmap = WinMap::from_corners(&ina, &inb, &outa, &outb)?;
+    let step1 = CmpMap::new(
+        Box::new(UnitMap::new(naxis)),
+        Box::new(UnitMap::new(naxis)),
+        Composition::Series,
+    )?;
+    let full = CmpMap::new(Box::new(step1), Box::new(winmap), Composition::Series)?;
+    let seed = match (store.crval[lon_axis], store.crval[lat_axis]) {
+        (Some(lon), Some(lat)) => Some((lon, lat)),
+        _ => None,
+    };
+    Ok((Box::new(full), seed))
+}
+
+/// The Mapping from the IWC of projected celestial axes to celestial
+/// coordinates, through a WcsMap holding the PVi_m parameters, with the
+/// reference position and whether it must be set.
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
+fn build_projected_mapping(
+    store: &FitsStore,
+    proj: WcsProjection,
+    lon_axis: usize,
+    lat_axis: usize,
+    rfval: Option<&[Option<f64>]>,
+    car_lin: bool,
+    tab: Option<&mut TabLookup>,
+    warnings: &mut Warnings,
+) -> AstResult<Option<(DynMapping, Option<(f64, f64)>, bool)>> {
     // Step 3: Create WcsMap.
     // Full-rank N-axis WcsMap: `ncoord` is the full pipeline rank,
     // and the lon/lat axes point at the FITS positions (1-based).
@@ -345,49 +464,13 @@ pub(crate) fn build_celestial_with_def_b1950(
         lat_axis,
         rfval,
         car_lin,
+        tab,
         warnings,
     )?
     else {
         return Ok(None);
     };
-
-    // C's `WcsCelestial` makes the SkyFrame after `WcsNative`, so its
-    // warnings follow those of the Mapping.
-    let mut sky_frame = wcs_sky_frame(
-        store, s, proj, &sys, lon_axis, lat_axis, def_b1950, warnings,
-    )?;
-    // When latitude comes before longitude in the FITS axes, permute the
-    // SkyFrame's axes so its first axis is the latitude, matching the order
-    // in which the Mapping delivers them.
-    if lat_axis < lon_axis {
-        let _ = crate::frames::Frame::perm_axes(&mut sky_frame, &[2, 1]);
-    }
-    if let Some(dtai) = store.dtai {
-        sky_frame.set_dtai(dtai);
-    }
-    if let Some(dut1) = store.dut1 {
-        // C fitschan.c:38004: the SkyFrame Dut1 attribute is in seconds,
-        // while the FITS DUT1 keyword is in days.
-        sky_frame.set_dut1(dut1 * 86_400.0);
-    }
-
-    // `mapping` emits cel_lon at FITS slot `lon_axis` and cel_lat at FITS
-    // slot `lat_axis`, with identity on every other axis: the PermMap
-    // sandwich inside `embed_celestial_in_naxis` routes the celestial pair
-    // into the rotation's slots (0, 1) and restores them to their FITS
-    // positions, matching C `WcsNative` (fitschan.c:38507-38530). For the
-    // swapped-axis case (`lat_axis < lon_axis`) that leaves (cel_lat,
-    // cel_lon) at slots (0, 1), matching the SkyFrame's permuted external
-    // layout. `build_general_iwc_to_world` composes the per-class mappings
-    // in series — no axis-permute step is needed at the composer.
-    Ok(Some(CelestialResult {
-        mapping,
-        frame: sky_frame,
-        lon_axis,
-        lat_axis,
-        ref_pos,
-        ref_pos_forced,
-    }))
+    Ok(Some((mapping, ref_pos, ref_pos_forced)))
 }
 
 /// C's `WcsSkyFrame` (fitschan.c:39495): the SkyFrame for the celestial
@@ -665,6 +748,7 @@ fn build_iwc_to_sky_mapping(
     lat_axis: usize,
     rfval: Option<&[Option<f64>]>,
     car_lin: bool,
+    tab: Option<&mut TabLookup>,
     warnings: &mut Warnings,
 ) -> AstResult<Option<(DynMapping, Option<(f64, f64)>, bool)>> {
     let deg2rad = PI / 180.0;
@@ -704,7 +788,8 @@ fn build_iwc_to_sky_mapping(
         else {
             return Ok(None);
         };
-        let (ref_pos, ref_pos_forced) = apply_ref_overrides(store, rfval, lon_axis, lat_axis, seed);
+        let (ref_pos, ref_pos_forced) =
+            apply_ref_overrides(store, rfval, lon_axis, lat_axis, seed, tab)?;
         return Ok(Some((full, ref_pos, ref_pos_forced)));
     }
 
@@ -818,7 +903,8 @@ fn build_iwc_to_sky_mapping(
         (Some(_), Some(_)) => Some((crval_lon, crval_lat)),
         _ => None,
     };
-    let (ref_pos, ref_pos_forced) = apply_ref_overrides(store, rfval, lon_axis, lat_axis, seed);
+    let (ref_pos, ref_pos_forced) =
+        apply_ref_overrides(store, rfval, lon_axis, lat_axis, seed, tab)?;
 
     let Some(rotation_naxis) = embed_celestial_in_naxis(rotation, naxis, lon_axis, lat_axis) else {
         return Ok(None);
@@ -831,15 +917,18 @@ fn build_iwc_to_sky_mapping(
 }
 
 /// Apply the `RFVAL<i>` and `AXREF<i>` overrides to a celestial reference
-/// position seeded from CRVAL. Returns the final position and whether SkyRef
-/// must be set even when the SkyFrame already carries one.
+/// position seeded from CRVAL, and between them, when both celestial axes
+/// use `-TAB`, the look-up of `tab`, whose celestial outputs are first made
+/// radians. Returns the final position and whether SkyRef must be set even
+/// when the SkyFrame already carries one.
 fn apply_ref_overrides(
     store: &FitsStore,
     rfval: Option<&[Option<f64>]>,
     lon_axis: usize,
     lat_axis: usize,
     seed: Option<(f64, f64)>,
-) -> (Option<(f64, f64)>, bool) {
+    tab: Option<&mut TabLookup>,
+) -> AstResult<(Option<(f64, f64)>, bool)> {
     let deg2rad = PI / 180.0;
     let mut ref_pos = seed;
     let mut ref_pos_forced = false;
@@ -856,6 +945,33 @@ fn apply_ref_overrides(
         ref_pos = Some((lon * deg2rad, lat * deg2rad));
     }
 
+    // The look-up of a pair of `-TAB` celestial axes makes degrees, which
+    // the SkyFrame needs in radians, and the reference position is looked
+    // up too and then set whatever SkyRef the SkyFrame has
+    // (fitschan.c `WcsCelestial`).
+    if let Some(tab) = tab
+        && tab.axes[lon_axis]
+        && tab.axes[lat_axis]
+    {
+        let naxis = store.naxis;
+        let mut zoom: ndarray::Array2<f64> = ndarray::Array2::eye(naxis);
+        zoom[[lon_axis, lon_axis]] = deg2rad;
+        zoom[[lat_axis, lat_axis]] = deg2rad;
+        let zoom = crate::mappings::MatrixMap::new(zoom)?;
+        let map = std::mem::replace(&mut tab.map, Box::new(UnitMap::new(naxis)));
+        tab.map = Box::new(CmpMap::new(map, Box::new(zoom), Composition::Series)?);
+        if let Some((lon, lat)) = ref_pos {
+            let mut ina = vec![0.0; naxis];
+            ina[lat_axis] = lat;
+            ina[lon_axis] = lon;
+            let pts = crate::coords::PointSet::from_rows([ina]);
+            let out = tab.map.transform(&pts, true)?;
+            let out = out.point(0);
+            ref_pos = Some((out[lon_axis], out[lat_axis]));
+            ref_pos_forced = true;
+        }
+    }
+
     // AXREF<i> overrides both (fitschan.c:36325-36339) and, unlike RFVAL,
     // sets SkyRef unconditionally — outside the `astTestSkyRef` gate.
     // `astWrite` emits these for `-TAB` axes that have no inverse transform.
@@ -864,7 +980,7 @@ fn apply_ref_overrides(
         ref_pos_forced = true;
     }
 
-    (ref_pos, ref_pos_forced)
+    Ok((ref_pos, ref_pos_forced))
 }
 
 /// Build the IWC-to-celestial mapping for a `-CAR` projection read under

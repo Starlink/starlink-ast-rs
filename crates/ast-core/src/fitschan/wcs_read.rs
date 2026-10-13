@@ -11,6 +11,7 @@ use super::wcs_celestial::{self, CelestialResult};
 use super::wcs_keywords::{WcsStores, key_for};
 use super::wcs_matrix;
 use super::wcs_spectral::{self, SpectralResult};
+use super::wcs_tab::{self, TabLookup, TabReader};
 use crate::error::AstResult;
 use crate::frames::{BasicFrameBuilder, CmpFrame, DynFrame, FrameRef, FrameSet};
 use crate::mappings::{CmpMap, Composition, DynMapping, PermMap, ShiftMap, UnitMap};
@@ -50,6 +51,7 @@ pub(crate) fn decode_wcs(store: &FitsStore) -> AstResult<AnyObject> {
         false,
         &CardList::new(),
         ' ',
+        None,
         &mut Vec::new(),
         &mut Vec::new(),
     )
@@ -71,6 +73,8 @@ pub(crate) type ReadCursors = Vec<(usize, Option<usize>)>;
 /// is this plane's version character (`' '` for the primary plane, `'A'`..
 /// `'Z'` for an alt plane). The pixel Frame has `npix` axes. Moves of C's
 /// current card that decide where the warnings go are added to `cursors`.
+/// `tabs` gives the FitsChan's tables for any `-TAB` axes, and is `None`
+/// for an encoding that has none.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn decode_wcs_inner(
     store: &FitsStore,
@@ -79,6 +83,7 @@ pub(crate) fn decode_wcs_inner(
     iwc: bool,
     cards: &CardList,
     s: char,
+    tabs: Option<&mut TabReader<'_>>,
     warnings: &mut Warnings,
     cursors: &mut ReadCursors,
 ) -> AstResult<AnyObject> {
@@ -89,6 +94,12 @@ pub(crate) fn decode_wcs_inner(
     // store's CTYPE values, and every later step reads the truncated form —
     // so work on a local copy and pass that on rather than the caller's store.
     let mut store = store.clone();
+    // C's `WcsFrame` first makes the look-up Mapping of any `-TAB` axes,
+    // which removes the `-TAB` from their CTYPE values.
+    let mut tab = match tabs {
+        Some(tabs) => wcs_tab::tab_mapping(&mut store, s, tabs)?,
+        None => None,
+    };
     // C `WcsMapFrm` calls `WcsIntWorld` before `WcsCelestial` and `WcsSpectral`
     // (fitschan.c:37876-37986), and `Warn` inserts each block in front of the
     // same current card, so these warnings precede the ones the axis decoders
@@ -99,8 +110,14 @@ pub(crate) fn decode_wcs_inner(
 
     // Step 2: Try to decode celestial axes.
     let rfval = read_rfval(cards, naxis, s);
-    let celestial =
-        wcs_celestial::build_celestial_with_def_b1950(store, s, def_b1950, Some(&rfval), warnings)?;
+    let celestial = wcs_celestial::build_celestial_with_def_b1950(
+        store,
+        s,
+        def_b1950,
+        Some(&rfval),
+        tab.as_mut(),
+        warnings,
+    )?;
     // Capture the celestial fiducial position (radians) before the decoder
     // result is consumed below; it is stamped onto the SkyFrame as SkyRef.
     let celestial_ref_pos = celestial.as_ref().and_then(|c| c.ref_pos);
@@ -120,7 +137,12 @@ pub(crate) fn decode_wcs_inner(
 
     // Step 4: Build the world frame (before consuming the decoders).
     let mut world_frame = build_world_frame(store, &celestial, &spectral)?;
-    let iwc_map = iwc_map.map(|m| (m, iwc_axis_units(store, &celestial, &spectral)));
+    let iwc_map = iwc_map.map(|m| {
+        (
+            m,
+            iwc_axis_units(store, &celestial, &spectral, tab.as_ref()),
+        )
+    });
 
     // Stamp the alternate-version character onto the world Frame's Ident, as
     // C `WcsMapFrm` does (`id[0] = s; astSetIdent(*frm, id)`,
@@ -144,7 +166,8 @@ pub(crate) fn decode_wcs_inner(
     // of it) is in reduced form. The returned Mapping carries
     // `has_been_simplified` (→ `IsSimp = 1` in the native dump), mirroring C
     // `astSimplify` which sets the IsSimple flag on its result.
-    let composed: DynMapping = build_pixel_to_world(store, pixel_to_iwc, celestial, spectral)?;
+    let composed: DynMapping =
+        build_pixel_to_world(store, pixel_to_iwc, celestial, spectral, tab.map(|t| t.map))?;
     let full_mapping: DynMapping = composed.simplify()?;
 
     // Step 8: Build the FrameSet.
@@ -270,13 +293,15 @@ fn add_wcs_frame(
         }
     }
     let iwc_frame: DynFrame = Box::new(builder.build()?);
+    // C inverts `ret`, makes the CmpMap, which records the inversion as
+    // `InvA`, and inverts `ret` back, so the CmpMap holds `ret` in its own
+    // orientation (fitschan.c `WcsFrame`).
+    let orig = pixel_to_wcs.is_inverted();
     let mut wcs_to_pixel = pixel_to_wcs;
     wcs_to_pixel.invert();
-    let joined: DynMapping = Box::new(CmpMap::new(
-        wcs_to_pixel,
-        map1.clone(),
-        Composition::Series,
-    )?);
+    let mut joined = CmpMap::new(wcs_to_pixel, map1.clone(), Composition::Series)?;
+    joined.set_first_orientation(orig);
+    let joined: DynMapping = Box::new(joined);
     let wcs_to_iwc = joined.simplify()?;
     let mut pair = FrameSet::new(world_frame);
     pair.add_frame(FrameRef::Base, wcs_to_iwc, iwc_frame)?;
@@ -294,6 +319,7 @@ fn iwc_axis_units(
     store: &FitsStore,
     celestial: &Option<CelestialResult>,
     spectral: &Option<SpectralResult>,
+    tab: Option<&TabLookup>,
 ) -> Vec<Option<String>> {
     (0..store.naxis)
         .map(|i| {
@@ -301,7 +327,13 @@ fn iwc_axis_units(
                 .as_ref()
                 .is_some_and(|c| c.lon_axis == i || c.lat_axis == i)
             {
-                Some("deg".to_string())
+                // The IWC of a celestial `-TAB` axis are in unknown units
+                // (fitschan.c `WcsCelestial`).
+                if tab.is_some_and(|t| t.axes[i]) {
+                    None
+                } else {
+                    Some("deg".to_string())
+                }
             } else if let Some(sp) = spectral.as_ref().filter(|sp| sp.axis == i) {
                 crate::frames::Frame::unit(&sp.frame, 1).ok()
             } else {
@@ -640,12 +672,14 @@ fn peek_sky(frame: &dyn crate::frames::Frame) -> Option<&crate::frames::SkyFrame
 /// For each axis description read, `cursors` receives the index in
 /// `warnings` of the first warning it raises and its number of WCS axes,
 /// which decide where C writes those warnings.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn decode_wcs_with_alts_inner(
     stores: &WcsStores,
     def_b1950: bool,
     ignore_bad_alt: bool,
     iwc: bool,
     cards: &CardList,
+    tabs: &mut TabReader<'_>,
     warnings: &mut Warnings,
     cursors: &mut ReadCursors,
 ) -> AstResult<Option<AnyObject>> {
@@ -661,7 +695,17 @@ pub(crate) fn decode_wcs_with_alts_inner(
     let (mut fs, primary_index) = match &stores.primary {
         Some(primary) => {
             cursors.push((warnings.len(), Some(primary.naxis)));
-            match decode_wcs_inner(primary, npix, def_b1950, iwc, cards, ' ', warnings, cursors)? {
+            match decode_wcs_inner(
+                primary,
+                npix,
+                def_b1950,
+                iwc,
+                cards,
+                ' ',
+                Some(&mut *tabs),
+                warnings,
+                cursors,
+            )? {
                 AnyObject::FrameSet(f) => (f, 2),
                 _ => unreachable!("decode_wcs always returns AnyObject::FrameSet"),
             }
@@ -687,6 +731,7 @@ pub(crate) fn decode_wcs_with_alts_inner(
             // As in `decode_wcs_inner`, `DistortMaps` rewrites the CTYPE values, so
             // this plane's store is copied and the copy carries on downstream.
             let mut alt_store = alt_store.clone();
+            let mut tab = wcs_tab::tab_mapping(&mut alt_store, *letter, tabs)?;
             let pixel_to_iwc =
                 wcs_matrix::build_pixel_to_iwc(&mut alt_store, cards, warnings, &mut alt_cursors)?;
             let iwc_map = iwc.then(|| pixel_to_iwc.clone());
@@ -697,6 +742,7 @@ pub(crate) fn decode_wcs_with_alts_inner(
                 *letter,
                 def_b1950,
                 Some(&rfval),
+                tab.as_mut(),
                 warnings,
             )?;
             // Capture the alt plane's celestial fiducial before the decoder is
@@ -707,12 +753,22 @@ pub(crate) fn decode_wcs_with_alts_inner(
             let alt_ref_pos_forced = celestial.as_ref().is_some_and(|c| c.ref_pos_forced);
             let spectral = wcs_spectral::build_spectral(alt_store, *letter)?;
             let mut world_frame = build_world_frame(alt_store, &celestial, &spectral)?;
-            let iwc_map = iwc_map.map(|m| (m, iwc_axis_units(alt_store, &celestial, &spectral)));
+            let iwc_map = iwc_map.map(|m| {
+                (
+                    m,
+                    iwc_axis_units(alt_store, &celestial, &spectral, tab.as_ref()),
+                )
+            });
             // Simplify the pixel→world Mapping, mirroring C `astSimplify` on each
             // plane (and the primary path above) — `simplify()` sets the
             // has_been_simplified flag so the native dump writes `IsSimp = 1`.
-            let composed: DynMapping =
-                build_pixel_to_world(alt_store, pixel_to_iwc, celestial, spectral)?;
+            let composed: DynMapping = build_pixel_to_world(
+                alt_store,
+                pixel_to_iwc,
+                celestial,
+                spectral,
+                tab.map(|t| t.map),
+            )?;
             let full_mapping: DynMapping = composed.simplify()?;
 
             // Stamp the version letter onto the alt frame so the writer
@@ -1011,6 +1067,7 @@ fn build_pixel_to_world(
     pixel_to_iwc: DynMapping,
     celestial: Option<CelestialResult>,
     spectral: Option<SpectralResult>,
+    tabmap: Option<DynMapping>,
 ) -> AstResult<DynMapping> {
     let naxis = store.naxis;
 
@@ -1047,6 +1104,10 @@ fn build_pixel_to_world(
     } else {
         // C still composes map4 even when every axis is claimed.
         parts.push(Box::new(UnitMap::new(naxis)));
+    }
+    // The look-ups of any `-TAB` axes come last (C's `map8`).
+    if let Some(tabmap) = tabmap {
+        parts.push(tabmap);
     }
 
     let mut result: DynMapping = parts.remove(0);
@@ -1235,7 +1296,7 @@ fn morph_in_sub_frame(
 ) -> AstResult<DynFrame> {
     use crate::frames::Frame;
 
-    // Other axes (FITS order), 0-based, as i32 for pick_axes_snapshot.
+    // Other axes (FITS order), 0-based.
     let others: Vec<i32> = (0..naxis)
         .filter(|i| !new_axes.contains(i))
         .map(|i| i as i32)
@@ -1249,7 +1310,10 @@ fn morph_in_sub_frame(
         return Ok(new_frame);
     }
 
-    let ofrm = frame.pick_axes_snapshot(&others)?;
+    // C's `astPickAxes`, whose SubFrame overlays the source Frame's
+    // attributes, ActiveUnit among them, onto the Frame it makes.
+    let pick: Vec<usize> = others.iter().map(|&i| i as usize + 1).collect();
+    let (ofrm, _) = crate::frames::pick_axes(frame.as_ref(), &pick)?;
     let mut cmp = CmpFrame::new(ofrm, new_frame);
 
     // Build the external→internal permutation (1-based for `perm_axes`).

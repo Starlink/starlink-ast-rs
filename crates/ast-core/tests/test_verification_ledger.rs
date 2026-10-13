@@ -33,6 +33,32 @@ fn fixtures() -> PathBuf {
 /// Fields: source file, const name, expected entry count, reason.
 const LEDGER: &[(&str, &str, usize, &str)] = &[
     (
+        "test_fitschan_tab_read_oracle.rs",
+        "TAB_READ_EXCLUDED",
+        1,
+        "shared_table, two spectral axes in one axis description: the reader \
+         makes a SpecFrame for the first only, where C makes one for each. A \
+         reader gap unrelated to -TAB, recorded in PLAN.md section 5, with a \
+         companion test that fails when the case starts matching",
+    ),
+    (
+        "test_fitschan_tab_read_oracle.rs",
+        "PROBE_STAMP_LICENSED",
+        1,
+        "mixed: one IsSimp card C stamps during a merge probe it discards, the \
+         same Mapping as fitschan_tab_spectral in the simplify corpus; removed \
+         from C's transcript at its line, which must hold that card",
+    ),
+    (
+        "test_fitschan_tab_read_oracle.rs",
+        "ULP_LICENSED",
+        1,
+        "celestial_iwc: one WinMap shift 1 ULP from C's, which the port's \
+         simplifier folds in another order; the same Mapping is \
+         fitschan_tab_celestial_iwc in the simplify corpus, which passes \
+         within that harness's 4 ULP token bound",
+    ),
+    (
         "test_wcsconv.rs",
         "ISSIMP_PLACEMENT_LICENSED",
         3,
@@ -52,7 +78,7 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
     (
         "test_simplify_regression.rs",
         "ABANDONED_PROBE_STAMP_LICENSED",
-        4,
+        5,
         "one reference-only IsSimp card per fixture, which C stamped on a \
          sub-Mapping inside a merge probe it then abandoned. The probe's \
          CmpMaps are assembled by cloning, so the object it marked is one the \
@@ -142,7 +168,7 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
     (
         "test_simplify_regression.rs",
         "ISSIMP_DISAGREEMENTS",
-        2,
+        3,
         "fixtures whose `IsSimp` card count differs from C's. Each differs by \
          one card C wrote inside a merge probe it then abandoned, which \
          survives on a sub-Mapping the probe shares with the live tree \

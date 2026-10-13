@@ -30,6 +30,7 @@ pub(crate) mod wcs_mark;
 pub(crate) mod wcs_matrix;
 pub(crate) mod wcs_read;
 pub(crate) mod wcs_spectral;
+pub(crate) mod wcs_tab;
 pub(crate) mod wcs_write;
 
 pub use card::CardType;
@@ -38,6 +39,7 @@ use card_list::CardList;
 use card_value::{Got, Want};
 use source_sink::{NotCopied, SourceCell};
 use warning::{Warning, Warnings};
+pub use wcs_tab::TableSource;
 
 use std::sync::Arc;
 
@@ -292,6 +294,9 @@ pub struct FitsChan {
     source_file: NotCopied<String>,
     /// The SinkFile attribute, when set.
     sink_file: NotCopied<String>,
+    /// The source of the tables a `-TAB` header refers to, which a copy
+    /// does not inherit (C's `tabsource`).
+    table_source: NotCopied<Box<dyn TableSource>>,
 }
 
 impl FitsChan {
@@ -332,6 +337,7 @@ impl FitsChan {
             sink: NotCopied::default(),
             source_file: NotCopied::default(),
             sink_file: NotCopied::default(),
+            table_source: NotCopied::default(),
         }
     }
 
@@ -375,6 +381,7 @@ impl FitsChan {
             sink: NotCopied::default(),
             source_file: NotCopied::default(),
             sink_file: NotCopied::default(),
+            table_source: NotCopied::default(),
         })
     }
 
@@ -687,6 +694,21 @@ impl FitsChan {
             }
         }
         Ok(())
+    }
+
+    /// Register `source` to supply the tables a `-TAB` header refers to,
+    /// as they are needed when the header is read, replacing any source
+    /// registered before (C's `astTableSource`). A table it supplies is
+    /// stored under the extension name asked for, replacing any stored
+    /// there, and is used in preference to it. A copy of the FitsChan has no
+    /// source.
+    pub fn set_table_source(&mut self, source: impl TableSource + 'static) {
+        self.table_source.0 = Some(Box::new(source));
+    }
+
+    /// Remove any table source (C's `astTableSource` with a NULL function).
+    pub fn clear_table_source(&mut self) {
+        self.table_source.0 = None;
     }
 
     /// A copy of the stored tables, keyed by extension name, or `None` when
@@ -1796,7 +1818,7 @@ impl FitsChan {
     /// description read, the index in `warnings` of its first warning and its
     /// number of WCS axes (see [`Self::push_read_warnings`]).
     fn decode_wcs_stores(
-        &self,
+        &mut self,
         trans: &CardList,
         def_b1950: bool,
         cursors: &mut wcs_read::ReadCursors,
@@ -1811,12 +1833,19 @@ impl FitsChan {
             st.sip_replace = self.sip_replace();
             st.car_lin = self.car_lin();
         }
+        let (ignore_bad_alt, iwc) = (self.ignore_bad_alt(), self.iwc());
+        let mut tabs = wcs_tab::TabReader {
+            tab_ok: self.tab_ok(),
+            tables: &mut self.tables,
+            source: self.table_source.0.as_mut(),
+        };
         wcs_read::decode_wcs_with_alts_inner(
             &stores,
             def_b1950,
-            self.ignore_bad_alt(),
-            self.iwc(),
+            ignore_bad_alt,
+            iwc,
             &self.cards,
+            &mut tabs,
             warnings,
             cursors,
         )
@@ -2006,6 +2035,7 @@ impl Clone for FitsChan {
             sink: self.sink.clone(),
             source_file: self.source_file.clone(),
             sink_file: self.sink_file.clone(),
+            table_source: self.table_source.clone(),
         };
         self.copy_reading_source(copy)
     }
@@ -2271,6 +2301,7 @@ impl Channel for FitsChan {
                             self.iwc(),
                             &self.cards,
                             ' ',
+                            None,
                             &mut read_warnings,
                             &mut cursors,
                         )
