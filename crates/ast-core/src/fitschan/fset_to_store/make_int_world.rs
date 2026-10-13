@@ -426,18 +426,6 @@ pub(crate) fn make_int_world(
     // FP residue.
     let (cdelt, pc) = split_cd(&cdmat);
 
-    // Re-fold the cleaned PC × CDELT back into the CD matrix that goes
-    // into `store.cd` for downstream encoders that prefer the CD-matrix
-    // path. Without this, `store.cd` retains the noisy pre-split entries
-    // and emits e.g. `CD1_2 = 1.0e-20`. C's WcsFromStore reconstructs CD
-    // from PC × CDELT for the same reason (fitschan.c:36992-37012).
-    let mut clean_cdmat = ndarray::Array2::<f64>::zeros((nout, nout));
-    for i in 0..nout {
-        for j in 0..nout {
-            clean_cdmat[[i, j]] = pc[[i, j]] * cdelt[i];
-        }
-    }
-
     for i in 0..nout {
         for j in 0..nout {
             let val = pc[[i, j]];
@@ -457,15 +445,6 @@ pub(crate) fn make_int_world(
             }
         }
         store.cdelt[i] = Some(cdelt[i]);
-    }
-
-    // Also expose the final CD matrix in store.cd (a downstream
-    // convenience; the C code does not store CD directly here, but our
-    // pipeline keeps it for the writer's CD/PC choice).
-    for i in 0..nout {
-        for j in 0..nout {
-            store.cd[i][j] = Some(clean_cdmat[[i, j]]);
-        }
     }
 
     Ok(true)

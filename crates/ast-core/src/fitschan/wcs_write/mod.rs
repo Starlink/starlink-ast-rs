@@ -12,7 +12,6 @@ pub(crate) use plane_stores::collect_plane_stores;
 use super::card_list::{CardList, NewScope};
 use super::fits_store::FitsStore;
 use super::fset_to_store::WriteAttrs;
-use super::wcs_decompose::split_cd;
 use crate::constants::BAD_VALUE;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::{FrameRef, FrameSet};
@@ -431,9 +430,9 @@ fn write_store_to_cards(
     // Emitted before CUNIT to match the C library's WcsFromStore order
     // (fitschan.c:36979+: CRPIX, CRVAL, CTYPE, CNAME, CD, CDELT, PC, CUNIT).
     if use_cd {
-        write_cd_matrix(store, cards, s)?;
-    } else {
-        write_pc_cdelt(store, cards, s)?;
+        write_cd_matrix(store, cards, s);
+    } else if !write_pc_cdelt(store, cards, s) {
+        return Ok(false);
     }
 
     // CUNITi{S}
@@ -632,20 +631,20 @@ fn write_store_to_cards(
     Ok(true)
 }
 
-/// Write CD matrix keywords.
-fn write_cd_matrix(store: &FitsStore, cards: &mut CardList, s: char) -> AstResult<()> {
+/// Write CD matrix keywords: each row of the PC matrix multiplied by its
+/// CDELT value, with an element that is zero left out (fitschan.c
+/// `WcsFromStore`).
+fn write_cd_matrix(store: &FitsStore, cards: &mut CardList, s: char) {
     let naxis = store.naxis;
     for i in 0..naxis {
         for j in 0..naxis {
-            if let Some(val) = store.cd[i][j] {
-                if val != 0.0 || i == j {
-                    let key = fmt_matrix_key("CD", i + 1, j + 1, s);
-                    cards.set_float(&key, val, "Transformation matrix element");
-                }
+            let val = store.cd_element(i, j);
+            if val != 0.0 {
+                let key = fmt_matrix_key("CD", i + 1, j + 1, s);
+                cards.set_float(&key, val, "Transformation matrix element");
             }
         }
     }
-    Ok(())
 }
 
 /// Emit one SIP coefficient block (A_*, B_*, AP_*, BP_*).
@@ -709,37 +708,31 @@ fn write_sip_block(order: Option<usize>, coeffs: &[Vec<f64>], prefix: &str, card
     }
 }
 
-/// Write PC matrix + CDELT keywords.
-fn write_pc_cdelt(store: &FitsStore, cards: &mut CardList, s: char) -> AstResult<()> {
+/// Write CDELT and PC matrix keywords, leaving out PC elements equal to the
+/// unit matrix's (fitschan.c `WcsFromStore`). Returns `false`, and the
+/// description is not written, if an axis has no CDELT value.
+fn write_pc_cdelt(store: &FitsStore, cards: &mut CardList, s: char) -> bool {
     let naxis = store.naxis;
-
-    let mut cd_array = ndarray::Array2::zeros((naxis, naxis));
     for i in 0..naxis {
-        for j in 0..naxis {
-            cd_array[[i, j]] = store.cd[i][j].unwrap_or(if i == j { 1.0 } else { 0.0 });
-        }
-    }
-    let (cdelt, pc) = split_cd(&cd_array);
-
-    // CDELTi{S}
-    for (i, &val) in cdelt.iter().enumerate() {
+        let Some(val) = store.cdelt[i] else {
+            return false;
+        };
         let key = fmt_axis_key("CDELT", i + 1, s);
         cards.set_float(&key, val, &format!("Pixel size on axis {}", i + 1));
     }
-
-    // PCi_j{S}, omitting elements equal to the unit matrix's
-    // (fitschan.c `WcsFromStore`).
     for i in 0..naxis {
         for j in 0..naxis {
+            let Some(val) = store.pc[i][j] else {
+                continue;
+            };
             let default = if i == j { 1.0 } else { 0.0 };
-            if !ast_equal(pc[[i, j]], default) {
+            if !ast_equal(val, default) {
                 let key = fmt_matrix_key("PC", i + 1, j + 1, s);
-                cards.set_float(&key, pc[[i, j]], "Transformation matrix element");
+                cards.set_float(&key, val, "Transformation matrix element");
             }
         }
     }
-
-    Ok(())
+    true
 }
 
 // ---------------------------------------------------------------------------
@@ -971,6 +964,8 @@ mod tests {
         store.crval[1] = Some(0.0);
         store.ctype[0] = Some("RA---TAN".to_string());
         store.ctype[1] = Some("DEC--TAN".to_string());
+        store.cdelt[0] = Some(-0.001);
+        store.cdelt[1] = Some(0.001);
 
         // AST-extension fields under test.
         store.wcsname = Some("MYDOMAIN".to_string());

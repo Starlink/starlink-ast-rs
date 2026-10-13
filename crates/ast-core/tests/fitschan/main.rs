@@ -23,6 +23,8 @@ mod test_fitschan_astwarn;
 mod test_fitschan_axis_count_oracle;
 #[path = "../test_fitschan_class.rs"]
 mod test_fitschan_class;
+#[path = "../test_fitschan_coupled_oracle.rs"]
+mod test_fitschan_coupled_oracle;
 #[path = "../test_fitschan_cursor_oracle.rs"]
 mod test_fitschan_cursor_oracle;
 #[path = "../test_fitschan_encodings.rs"]

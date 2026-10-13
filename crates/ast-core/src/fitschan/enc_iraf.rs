@@ -323,35 +323,18 @@ fn translate_iraf_ctype_write(ctype: &str) -> String {
     ctype.to_string()
 }
 
-/// Write the CD matrix from the store. If the store has CD values directly,
-/// use them. Otherwise compute CD[i][j] = PC[i][j] × CDELT[i].
+/// Write the CD matrix: each row of the PC matrix multiplied by its CDELT
+/// value, with an element that is zero left out (fitschan.c
+/// `IRAFFromStore`).
 fn write_iraf_cd_matrix(store: &FitsStore, cards: &mut CardList, s: char) {
     use super::wcs_keywords::key_for_2;
     let naxis = store.naxis;
-
-    if store.has_cd_matrix() {
-        // Write CD values directly from the store.
-        for i in 0..naxis {
-            for j in 0..naxis {
-                if let Some(val) = store.cd[i][j] {
-                    if val != 0.0 || i == j {
-                        let key = key_for_2("CD", i + 1, j + 1, s);
-                        cards.set_float(&key, val, "Transformation matrix element");
-                    }
-                }
-            }
-        }
-    } else {
-        // Compute CD from PC × CDELT.
-        for i in 0..naxis {
-            let cdelt_i = store.cdelt[i].unwrap_or(1.0);
-            for j in 0..naxis {
-                let pc_ij = store.pc[i][j].unwrap_or(if i == j { 1.0 } else { 0.0 });
-                let cd_val = pc_ij * cdelt_i;
-                if cd_val != 0.0 || i == j {
-                    let key = key_for_2("CD", i + 1, j + 1, s);
-                    cards.set_float(&key, cd_val, "Transformation matrix element");
-                }
+    for i in 0..naxis {
+        for j in 0..naxis {
+            let cd_val = store.cd_element(i, j);
+            if cd_val != 0.0 {
+                let key = key_for_2("CD", i + 1, j + 1, s);
+                cards.set_float(&key, cd_val, "Transformation matrix element");
             }
         }
     }
@@ -445,8 +428,8 @@ END";
         store.crval[1] = Some(-30.0);
         store.ctype[0] = Some("RA---TAN".to_string());
         store.ctype[1] = Some("DEC--TAN".to_string());
-        store.cd[0][0] = Some(-0.0005);
-        store.cd[1][1] = Some(0.0005);
+        store.cdelt[0] = Some(-0.0005);
+        store.cdelt[1] = Some(0.0005);
         store.radesys = Some("FK5".to_string());
         store.equinox = Some(2000.0);
 
@@ -513,8 +496,8 @@ END";
         store.crval[1] = Some(0.0);
         store.ctype[0] = Some("GLON-SFL".to_string());
         store.ctype[1] = Some("GLAT-SFL".to_string());
-        store.cd[0][0] = Some(-0.01);
-        store.cd[1][1] = Some(0.01);
+        store.cdelt[0] = Some(-0.01);
+        store.cdelt[1] = Some(0.01);
 
         let mut cards = CardList::new();
         write_to_cards(&store, &mut cards, ' ', true).unwrap();

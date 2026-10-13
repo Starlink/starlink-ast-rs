@@ -206,11 +206,6 @@ impl FitsStore {
         }
     }
 
-    /// Returns `true` if any CD matrix element has been set.
-    pub(crate) fn has_cd_matrix(&self) -> bool {
-        self.cd.iter().any(|row| row.iter().any(|v| v.is_some()))
-    }
-
     /// Returns `true` if any PC matrix element has been set.
     #[cfg(test)]
     pub(crate) fn has_pc_matrix(&self) -> bool {
@@ -447,14 +442,6 @@ mod tests {
         assert_eq!(store.naxis, 4);
         assert_eq!(store.pc.len(), 4);
         assert_eq!(store.pc[0].len(), 4);
-    }
-
-    #[test]
-    fn has_cd_matrix_detection() {
-        let mut store = FitsStore::new(2);
-        assert!(!store.has_cd_matrix());
-        store.cd[0][0] = Some(1.0);
-        assert!(store.has_cd_matrix());
     }
 
     #[test]

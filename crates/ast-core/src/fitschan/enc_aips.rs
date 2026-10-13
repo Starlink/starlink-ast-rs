@@ -406,35 +406,10 @@ pub(crate) fn write_to_cards(
     Ok(true)
 }
 
-/// Build a CD matrix from the store, defaulting absent off-diagonals
-/// to 0 and absent diagonals to 1. Falls back to CDELT × PC when no CD
-/// values are present.
+/// The CD matrix as `AIPSFromStore` (fitschan.c) forms it from CDELT and PC.
 fn build_cd_matrix(store: &FitsStore) -> Array2<f64> {
     let naxis = store.naxis;
-    if store.has_cd_matrix() {
-        let mut cd = Array2::zeros((naxis, naxis));
-        for i in 0..naxis {
-            for j in 0..naxis {
-                cd[[i, j]] = store.cd[i][j].unwrap_or(if i == j { 1.0 } else { 0.0 });
-            }
-        }
-        cd
-    } else {
-        let cdelt: Vec<f64> = (0..naxis).map(|i| store.cdelt[i].unwrap_or(1.0)).collect();
-        let mut pc = Array2::zeros((naxis, naxis));
-        for i in 0..naxis {
-            for j in 0..naxis {
-                pc[[i, j]] = store.pc[i][j].unwrap_or(if i == j { 1.0 } else { 0.0 });
-            }
-        }
-        let mut cd = Array2::zeros((naxis, naxis));
-        for i in 0..naxis {
-            for j in 0..naxis {
-                cd[[i, j]] = cdelt[i] * pc[[i, j]];
-            }
-        }
-        cd
-    }
+    Array2::from_shape_fn((naxis, naxis), |(i, j)| store.cd_element(i, j))
 }
 
 /// Initial CDELT for the AIPS encoder: the diagonal of the CD matrix.
@@ -1133,8 +1108,8 @@ END";
         store.crval[1] = Some(-30.0);
         store.ctype[0] = Some("RA---TAN".to_string());
         store.ctype[1] = Some("DEC--TAN".to_string());
-        store.cd[0][0] = Some(-0.0005);
-        store.cd[1][1] = Some(0.0005);
+        store.cdelt[0] = Some(-0.0005);
+        store.cdelt[1] = Some(0.0005);
         store.equinox = Some(2000.0);
         store.radesys = Some("FK5".to_string());
 
@@ -1200,8 +1175,8 @@ END";
         store.crval[1] = Some(-30.0);
         store.ctype[0] = Some("RA---TAN".to_string());
         store.ctype[1] = Some("DEC--TAN".to_string());
-        store.cd[0][0] = Some(-0.001);
-        store.cd[1][1] = Some(0.001);
+        store.cdelt[0] = Some(-0.001);
+        store.cdelt[1] = Some(0.001);
         // 180° is the FITS-WCS default for zenithal projections; suppress it.
         store.lonpole = Some(180.0);
         store.latpole = Some(-30.0);
@@ -1225,8 +1200,8 @@ END";
         store.crval[1] = Some(-30.0);
         store.ctype[0] = Some("RA---TAN".to_string());
         store.ctype[1] = Some("DEC--TAN".to_string());
-        store.cd[0][0] = Some(-0.001);
-        store.cd[1][1] = Some(0.001);
+        store.cdelt[0] = Some(-0.001);
+        store.cdelt[1] = Some(0.001);
         store.lonpole = Some(45.0);
 
         let mut cards = CardList::new();
@@ -1248,9 +1223,9 @@ END";
         store.ctype[1] = Some("DEC--TAN".to_string());
         store.ctype[2] = Some("VRAD".to_string());
         store.cunit[2] = Some("m/s".to_string());
-        store.cd[0][0] = Some(-0.001);
-        store.cd[1][1] = Some(0.001);
-        store.cd[2][2] = Some(1000.0);
+        store.cdelt[0] = Some(-0.001);
+        store.cdelt[1] = Some(0.001);
+        store.cdelt[2] = Some(1000.0);
         store.specsys = Some("LSRK".to_string());
 
         let mut cards = CardList::new();

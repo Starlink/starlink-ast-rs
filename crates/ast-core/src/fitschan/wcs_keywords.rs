@@ -620,7 +620,7 @@ END";
         assert!((store.cdelt[1].unwrap() - 0.001).abs() < 1e-10);
         assert_eq!(store.ctype[0], Some("RA---TAN".to_string()));
         assert_eq!(store.ctype[1], Some("DEC--TAN".to_string()));
-        assert!(!store.has_cd_matrix());
+        assert!(store.cd.iter().flatten().all(Option::is_none));
         assert!(!store.has_pc_matrix());
         assert!(!store.has_sip());
     }
