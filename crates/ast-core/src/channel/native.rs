@@ -157,7 +157,7 @@ impl Channel for NativeChannel {
         }
         // The native encoding can represent every AST class, so a write that
         // did not error wrote the object. Mirrors C `Write`'s `ret = 1;` on
-        // the NATIVE_ENCODING branch (fitschan.c:40793).
+        // the NATIVE_ENCODING branch (fitschan.c:40802).
         Ok(1)
     }
 

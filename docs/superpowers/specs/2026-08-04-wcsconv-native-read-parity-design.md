@@ -100,7 +100,7 @@ The fix is the same either way: the native read path must mark the cards it
 consumes so the consumption finisher deletes them, as the FITS arms already do.
 
 C marks each card as it is consumed.
-`GetNextData` (fitschan.c:17776) calls `MarkCard` (fitschan.c:23100), which
+`GetNextData` (fitschan.c:17782) calls `MarkCard` (fitschan.c:23106), which
 sets `PROVISIONALLY_USED` on the current card, guarded by the `PROTECTED`
 flag:
 
@@ -136,7 +136,7 @@ The defect is on the parse side, not the write side.
 `format_string_value` already pads short values to 8 columns, matching C
 `EncodeValue`.
 C strips trailing spaces from a string keyword value only when the value is 8
-characters or fewer (fitschan.c:15416-15425 and the `MAKE_FGET` macro at
+characters or fewer (fitschan.c:15422-15431 and the `MAKE_FGET` macro at
 ~15408); we strip unconditionally.
 `tnx.head`'s `RA` value is 18 characters, so C preserves its padding.
 
@@ -205,11 +205,11 @@ cause 8 lands.
 
 We append ASTWARN cards at the end; C inserts them in front of the current
 card.
-`Warn` (fitschan.c:35116) states it: the text is "stored in the FitsChan as
+`Warn` (fitschan.c:35125) states it: the text is "stored in the FitsChan as
 a series of ASTWARN cards, in front of the current card".
 The implementation saves the card index, rewinds, checks whether an
 identical adjacent ASTWARN block already exists, writes the cards, and
-restores the index (fitschan.c:35159-35267).
+restores the index (fitschan.c:35168-35276).
 
 Both failure shapes in this group are the same bug seen from either side:
 some cases show `NAXIS1` where `ASTWARN` is expected, others the reverse.
@@ -247,7 +247,7 @@ have.
 
 `car1/2/4` expect `BEGAST_H='WinMap'` where we emit `'CmpMap'`.
 `car4` is an MSX header (`TELESCOP='MSX'`), and C's `SpecTrans` has an
-MSX-CAR CRPIX translation (fitschan.c:32113, guarded by `!astGetCarLin`,
+MSX-CAR CRPIX translation (fitschan.c:32122, guarded by `!astGetCarLin`,
 default 0) that brings a huge out-of-domain CRPIX into the valid CAR range
 via `palDrange` and builds a bare WinMap.
 We skip it and build `CmpMap(WinMap, WcsMap[CAR,Invert=1])`, whose CAR
@@ -296,7 +296,7 @@ class and from a different source card, so kept separate until measured.
 
 `car6.head` line 1 is the bare text `FITS headers in CHIPASS_Equ.fits:`, whose
 8-column name field is `FITS hea`.
-C `CheckFitsName` (fitschan.c:6049-6072) branches on the first non-`isFits`
+C `CheckFitsName` (fitschan.c:6055-6078) branches on the first non-`isFits`
 character three ways — `== '='` errors, `< ' '` warns "illegal non-printing
 character", `> ' '` warns "illegal character" — then `break`s.
 A space matches none of the three, so C issues no warning.
@@ -311,7 +311,7 @@ Our output tail is `NAXIS1`, `NAXIS2`, `END`; C's is `NAXIS1`, `NAXIS2`,
 `PROJP0`, `PROJP1`, `PROJP2`.
 `translate_projp` deletes the PROJP cards in its `!use_projp` branch, which C
 does not do, and omits C's `encoding == FITSPC_ENCODING || encoding ==
-FITSIRAF_ENCODING` gate on the `PV<axlat>_<i>` write (fitschan.c:31552-31605).
+FITSIRAF_ENCODING` gate on the `PV<axlat>_<i>` write (fitschan.c:31561-31614).
 
 ### Unexercised imported fixtures
 

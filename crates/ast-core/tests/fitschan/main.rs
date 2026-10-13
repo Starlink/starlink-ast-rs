@@ -13,6 +13,8 @@ mod test_alt_wcs_read;
 mod test_alt_wcs_round_trip;
 #[path = "../test_fitschan.rs"]
 mod test_fitschan;
+#[path = "../test_fitschan_alt_epoch_oracle.rs"]
+mod test_fitschan_alt_epoch_oracle;
 #[path = "../test_fitschan_alt_naxes_oracle.rs"]
 mod test_fitschan_alt_naxes_oracle;
 #[path = "../test_fitschan_astwarn.rs"]

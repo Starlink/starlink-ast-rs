@@ -224,7 +224,7 @@ pub(crate) fn sip_int_world(
     if scaling {
         // Replace map_lower with a pure ShiftMap; absorb the scaling
         // into a re-built PolyMap via scale_poly_inputs. Mirrors
-        // fitschan.c:28886-28903.
+        // fitschan.c:28892-28909.
         if m00 == 0.0 || m11 == 0.0 {
             return Ok(None);
         }
@@ -240,7 +240,7 @@ pub(crate) fn sip_int_world(
     }
 
     // Step 6: AnalysePoly factors leading shift / canonical SIP /
-    // trailing matrix from the PolyMap. Mirrors fitschan.c:28913.
+    // trailing matrix from the PolyMap. Mirrors fitschan.c:28919.
     if let Some(decomp) = analyse_poly(&polymap)? {
         // map_lower ∘ map1 (shift)
         let map1: DynMapping = Box::new(decomp.map1);
@@ -259,7 +259,7 @@ pub(crate) fn sip_int_world(
 
     // Step 7: check that map_upper is linear and introduces no shift of
     // origin, retaining the fit for the CD matrix. Mirrors
-    // fitschan.c:29151-29236.
+    // fitschan.c:29157-29242.
     //
     // map_upper is not reached directly from grid coordinates — map_lower
     // and the PolyMap come first — so the box over which it must be linear
@@ -334,13 +334,13 @@ pub(crate) fn sip_int_world(
     }
 
     // Step 8: handle non-celestial trailing axes. Mirrors
-    // fitschan.c:28940-28965. When the supplied mapping has more than
+    // fitschan.c:28946-28971. When the supplied mapping has more than
     // the two celestial outputs, split out a sub-mapping that produces
     // the remaining (non-celestial) outputs so it can be put in
     // parallel with the (cleaned) celestial 2-in/2-out chain when the
     // result mapping is rebuilt.
     //
-    // Note: per the C bug at fitschan.c:28761-28762 (`nout = astGetNin(map)`)
+    // Note: per the C bug at fitschan.c:28767-28768 (`nout = astGetNin(map)`)
     // the local `nout` here equals `nin`; we mirror the bug.
     let mut inax2: Option<Vec<usize>> = None;
     let mut tmap2: Option<DynMapping> = None;
@@ -371,7 +371,7 @@ pub(crate) fn sip_int_world(
     }
 
     // Step 9: CRPIX = pixel coords of IWC origin via the simplified
-    // chain (smap, before stripping). Mirrors fitschan.c:29268-29273.
+    // chain (smap, before stripping). Mirrors fitschan.c:29274-29279.
     let zero_in = PointSet::from_rows([[0.0_f64, 0.0]]);
     let crpix_pts = smap.transform(&zero_in, false)?;
     let crpix_arr = [crpix_pts.point(0)[0], crpix_pts.point(0)[1]];
@@ -379,7 +379,7 @@ pub(crate) fn sip_int_world(
     // The inverse transformation may be undefined at the IWC origin, in
     // which case there is no reference pixel and so the SIP conventions
     // cannot describe the celestial axes. Mirrors
-    // fitschan.c:29275-29279.
+    // fitschan.c:29281-29285.
     if crpix_arr[0] == BAD_VALUE || crpix_arr[1] == BAD_VALUE {
         return Ok(None);
     }
@@ -393,7 +393,7 @@ pub(crate) fn sip_int_world(
     ];
 
     // Step 10: emit SIP A/B/AP/BP from the canonical PolyMap. Mirrors
-    // fitschan.c:28981-29048.
+    // fitschan.c:28987-29054.
     emit_sip_coeffs(&polymap, &in_axes, store);
 
     // Step 11: append `-SIP` to celestial CTYPE. Mirrors C:28966-28983.
@@ -410,12 +410,12 @@ pub(crate) fn sip_int_world(
     }
 
     // Output PermMap (forward: from sub-mapping's output order back
-    // to original). Mirrors fitschan.c:29110-29138.
+    // to original). Mirrors fitschan.c:29116-29144.
     let inax2_slice: &[usize] = inax2.as_deref().unwrap_or(&[]);
     let pm_out = build_perm_outputs(nout, lonax, latax, inax2_slice)?;
     result = Box::new(CmpMap::new(result, Box::new(pm_out), Composition::Series)?);
 
-    // Input PermMap. Mirrors fitschan.c:29140-29168.
+    // Input PermMap. Mirrors fitschan.c:29146-29174.
     let pm_in = build_perm_inputs(nin, &in_axes, inax2_slice)?;
     result = Box::new(CmpMap::new(Box::new(pm_in), result, Composition::Series)?);
 
@@ -458,7 +458,7 @@ fn append_sip_suffix(slot: &mut Option<String>) {
 /// Iterate the polymap's forward (and explicit-inverse, if any) terms
 /// and write SIP A/B/AP/BP coefficients into the FitsStore.
 ///
-/// The branch on `inaxes[0] < inaxes[1]` mirrors fitschan.c:28995-29021:
+/// The branch on `inaxes[0] < inaxes[1]` mirrors fitschan.c:29001-29027:
 /// when the celestial axes were swapped during `astMapSplit` the
 /// per-output and per-input role of (i, jm) flips.
 fn emit_sip_coeffs(polymap: &PolyMap, inaxes: &[usize; 2], store: &mut FitsStore) {
@@ -548,7 +548,7 @@ fn emit_one_direction(
     *b_table = vec![vec![BAD_VALUE; b_jsize]; b_size];
 
     // Overwrite with real values, subtracting 1.0 from the linear
-    // identity terms (per fitschan.c:29046: SIP is an additive
+    // identity terms (per fitschan.c:29052: SIP is an additive
     // correction, so the explicit `1*x_i` linear term gets dropped).
     for t in terms {
         let to_a = if lon_first {
@@ -610,7 +610,7 @@ fn compute_fits_order(table: &[Vec<f64>]) -> Option<usize> {
 }
 
 /// Build the output-side PermMap for the stripped Mapping. Mirrors
-/// fitschan.c:29112-29132. The PermMap permutes the sub-mapping's
+/// fitschan.c:29118-29138. The PermMap permutes the sub-mapping's
 /// outputs back into the original `nout`-sized output order.
 ///
 /// `lonax` / `latax` are the original 0-based output indices of the
@@ -643,7 +643,7 @@ fn build_perm_outputs(
     PermMap::new(&inperm, &outperm, &[])
 }
 
-/// Build the input-side PermMap. Mirrors fitschan.c:29140-29166.
+/// Build the input-side PermMap. Mirrors fitschan.c:29146-29172.
 ///
 /// `inaxes` are the 0-based input indices of the original mapping
 /// that produce the celestial outputs. `inax2` lists the 0-based

@@ -99,7 +99,7 @@ fn frame_contains_offset_sky(frame: &dyn Frame) -> bool {
 
 /// SkySys-side encoding of the celestial system, mirroring the C
 /// `isys` enumeration (`RADEC`, `ECLIP`, etc.) used to drive the
-/// CTYPE prefix selection table at `fitschan.c:29906-29964`.
+/// CTYPE prefix selection table at `fitschan.c:29912-29970`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CelestialKind {
     /// RA/Dec — FK4, FK4-NO-E, FK5, ICRS, GAPPT (plus J2000 in our
@@ -139,7 +139,7 @@ fn classify_system(sys: SkySystem) -> (CelestialKind, Option<&'static str>) {
 }
 
 /// Build the 4-character CTYPE prefix pair for a celestial system.
-/// Mirrors `fitschan.c:29906-29964` exactly (including the unknown-
+/// Mirrors `fitschan.c:29912-29970` exactly (including the unknown-
 /// system fallback rule that inspects the SkyFrame axis symbols).
 ///
 /// `axes_one_based`: pass the (longitude, latitude) axis indices in
@@ -279,7 +279,7 @@ pub(crate) fn sky_sys(
 
     // Default-date check: when ep_utc == eq, the FITS spec says
     // MJD-OBS / DATE-OBS default to the equinox epoch — so we don't
-    // emit them. C: fitschan.c:29845 (defdate = astEQUAL(ep_utc, eq)).
+    // emit them. C: fitschan.c:29851 (defdate = astEQUAL(ep_utc, eq)).
     //
     // Mirrors astEQUAL(a, b): treat as equal when
     //   |a - b| <= max(1e5 * (|a|+|b|) * DBL_EPSILON, 1e-12)
@@ -306,35 +306,18 @@ pub(crate) fn sky_sys(
     if let Some(y) = eq_year {
         store.equinox = Some(y);
     }
-    if !defdate {
-        // C SkySys (fitschan.c:29895): SetItem stores the value into
-        // primary MJD-OBS *unconditionally* on the !defdate branch —
-        // including AST__BAD when ep_utc is bad (e.g. a Galactic
-        // alt plane with no Equinox). Record the SkySys-ran flag so
-        // a subsequent plane that runs SkySys with `ep_utc = None`
-        // can suppress the primary's MJD-OBS (last-plane-wins).
-        store.mjdobs_skysys_ran = true;
+    // The date of observation, unless it takes its default value, and only
+    // for the primary axis description: FITS has a single MJD-OBS, which an
+    // alternate description must not change (fitschan.c:30293).
+    if !defdate && s == ' ' {
         if let Some(e) = ep {
             store.mjdobs = Some(e);
             // Human-readable DATE-OBS — C derives this from the same
-            // MJD value at write time (fitschan.c:3644-3658). The
+            // MJD value at write time (fitschan.c:3650-3664). The
             // cutoff at MJD 51179 (1999-01-01) is encoded in
             // mjd_to_date_str.
             store.dateobs = Some(crate::fitschan::wcs_write::mjd_to_date_str(e));
-        } else {
-            store.mjdobs = None;
-            store.dateobs = None;
         }
-    }
-
-    // Observation-global TAI/UT1 offsets — read from the SkyFrame and
-    // copy into the store. Last-plane-wins per the global-card
-    // contract (see FitsStore::mjdobs doc).
-    if Frame::test_dtai(skyfrm) {
-        store.dtai = Some(Frame::dtai(skyfrm));
-    }
-    if Frame::test_dut1(skyfrm) {
-        store.dut1 = Some(Frame::dut1(skyfrm));
     }
 
     // CTYPE construction. Skip the projection suffix path when
@@ -372,7 +355,7 @@ pub(crate) fn sky_sys(
             let skyref_text = format!("{:.6},{:.6}", sky_ref[lonax_in_sky], sky_ref[latax_in_sky]);
             // In an offset system the SkyFrame symbol carries a leading "D"
             // (delta) prefix — DRA, DDec, etc. C builds the CTYPE comment from
-            // `text + 1` (fitschan.c:29988), i.e. it drops that first
+            // `text + 1` (fitschan.c:29994), i.e. it drops that first
             // character. Mirror that directly.
             let trim_lead = |s: &str| match s.chars().next() {
                 Some(c) => s[c.len_utf8()..].to_string(),

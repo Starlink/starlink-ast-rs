@@ -41,7 +41,7 @@ impl Default for TransAttrs {
 }
 
 /// Build the temporary "translations" CardList for `cards`, mirroring
-/// C `SpecTrans` (fitschan.c:30931).
+/// C `SpecTrans` (fitschan.c:30940).
 ///
 /// C creates a separate FitsChan `ret` and writes standard equivalents
 /// of any non-standard keywords found in the input `this` into `ret`.
@@ -63,7 +63,7 @@ impl Default for TransAttrs {
 /// `warnings` collects the text of any `ASTWARN` block a translation raises.
 /// C's `Warn` calls inside `SpecTrans` all target the *source* chan `this`
 /// rather than the translation chan `ret` (e.g. `GetUsedPolyTan`,
-/// fitschan.c:14105, :14073), so the caller pushes these onto the original
+/// fitschan.c:14111, :14073), so the caller pushes these onto the original
 /// card list rather than onto the returned one.
 /// The warnings `SpecTrans` raises, by where C's cursor is when it raises
 /// them. Those raised before the scan for `QV` cards in the primary axis
@@ -106,19 +106,19 @@ pub(crate) fn spec_trans_inplace(
     // `GetValue2( ret, this, … )`) needs this snapshot to read.
     let src = cards.clone();
 
-    // Translation 1 (fitschan.c:31240-31247): RADECSYS → RADESYS.
+    // Translation 1 (fitschan.c:31249-31256): RADECSYS → RADESYS.
     // FITS-PC and FITS-IRAF only.
     if matches!(encoding, Encoding::FitsPc | Encoding::FitsIraf) {
         rename_keyword(cards, "RADECSYS", "RADESYS");
     }
 
-    // Translation 2 (fitschan.c:31251-31257): LONGPOLE → LONPOLE.
+    // Translation 2 (fitschan.c:31260-31266): LONGPOLE → LONPOLE.
     // FITS-PC and FITS-IRAF only.
     if matches!(encoding, Encoding::FitsPc | Encoding::FitsIraf) {
         rename_keyword(cards, "LONGPOLE", "LONPOLE");
     }
 
-    // Zero CDELT (fitschan.c:31261-31296): replace any zero CDELT with a
+    // Zero CDELT (fitschan.c:31270-31305): replace any zero CDELT with a
     // non-zero value so the pixel→IWC matrix stays invertible (a zero on the
     // diagonal makes the Mapping non-simplifiable and unusable by a Plot).
     // Zero CDELTs typically mark "redundant" degenerate axes (e.g. a single
@@ -126,7 +126,7 @@ pub(crate) fn spec_trans_inplace(
     // encoding gate. C sits this inside the per-version loop at 31038.
     translate_zero_cdelt(cards);
 
-    // Translations 3-4 (fitschan.c:31366-31548): the whole family of
+    // Translations 3-4 (fitschan.c:31375-31557): the whole family of
     // PC-producing conversions — CDjjjiii, CDj_i, PCjjjiii and CROTAi —
     // under C's single `gotpcij` gate. Run once per coordinate version;
     // no encoding gate (the CDjjjiii branch alone is FITS-IRAF only).
@@ -134,40 +134,40 @@ pub(crate) fn spec_trans_inplace(
         translate_pc_family(cards, s, encoding);
     }
 
-    // Translation 5 (fitschan.c:31552-31605): PROJPi → PV<axlat>_i.
+    // Translation 5 (fitschan.c:31561-31614): PROJPi → PV<axlat>_i.
     // Primary plane only. C guards the disagreement heuristic on
-    // `axlat != -1` (fitschan.c:31557) but not on encoding — the PV
+    // `axlat != -1` (fitschan.c:31566) but not on encoding — the PV
     // write itself is what's gated to FITS-PC / FITS-IRAF
-    // (fitschan.c:31598-31599), so run this unconditionally and let
+    // (fitschan.c:31607-31608), so run this unconditionally and let
     // the function apply that gate internally.
     translate_projp(cards, encoding);
 
-    // Translation 6 (fitschan.c:31540-31681): C{m}{VAL/PIX/YPE/NIT/ELT}{i}
+    // Translation 6 (fitschan.c:31549-31690): C{m}{VAL/PIX/YPE/NIT/ELT}{i}
     // → CRVAL{i}{S} / CRPIX{i}{S} / CTYPE{i}{S} / CUNIT{i}{S} /
     // CDELT{i}{S} where S = 'A' + (m-1). FITS-PC / FITS-IRAF only.
     if matches!(encoding, Encoding::FitsPc | Encoding::FitsIraf) {
         translate_cnxxx(cards);
     }
 
-    // Translations 7, 8, 10 (fitschan.c:31683-31736): EPOCH /
+    // Translations 7, 8, 10 (fitschan.c:31692-31745): EPOCH /
     // EQUINOX normalisation. Primary plane only; no encoding gate.
     translate_epoch_equinox(cards);
 
-    // Translation 9 (fitschan.c:31737-31758): DATE-OBS → MJD-OBS
+    // Translation 9 (fitschan.c:31746-31767): DATE-OBS → MJD-OBS
     // when MJD-OBS is absent. Primary plane only; no encoding gate.
     translate_date_obs(cards);
 
-    // Translation 11 (fitschan.c:31785-31878): AIPS NCP/GLS
+    // Translation 11 (fitschan.c:31794-31887): AIPS NCP/GLS
     // projections. Per-version letter; no encoding gate.
     translate_ncp_gls(cards);
 
-    // Translation 12 (fitschan.c:31185-31235): early paper-III
+    // Translation 12 (fitschan.c:31194-31244): early paper-III
     // spectral CTYPE algorithm codes. Per-version letter, no
     // encoding gate. CTYPE values like "WAVE-FRQ" become
     // "WAVE-F2W" (the modern -X2P form).
     translate_early_paper_iii_spectral(cards);
 
-    // Translation 13 (fitschan.c:32154-32170): SAO COi_j → PVi_m
+    // Translation 13 (fitschan.c:32163-32179): SAO COi_j → PVi_m
     // distortion + CTYPE TAN→TPN, for a primary `-TAN` projection.
     if let Some((axlon, axlat)) = celestial_axes(cards, ' ')
         && cards
@@ -181,35 +181,35 @@ pub(crate) fn spec_trans_inplace(
         }
     }
 
-    // Translation 14 (fitschan.c:31819-31837): CLASS "ATF" projection
+    // Translation 14 (fitschan.c:31828-31846): CLASS "ATF" projection
     // → AIT. Per-version letter, no encoding gate.
     translate_atf_to_ait(cards);
 
-    // Translation 15 (fitschan.c:31877-31523): QV<i>_<m> → PV<i>_<m>.
+    // Translation 15 (fitschan.c:31886-31532): QV<i>_<m> → PV<i>_<m>.
     // If any QV is found and the projection is TAN, rename TAN to
     // TPN as well. Per-version letter, no encoding gate.
     translate_qv_to_pv(cards);
 
-    // Translation 16 (fitschan.c:31528-31550): TPV → TPN; TAN with
+    // Translation 16 (fitschan.c:31537-31559): TPV → TPN; TAN with
     // PolyTan attribute non-zero → TPN. Per-version letter, no
     // encoding gate. (PolyTan is an AST attribute, defaulting to
     // false; we mirror by treating it as off.)
     translate_tpv_and_polytan_to_tpn(cards, &src, attrs.poly_tan, &mut warnings.end);
 
-    // Translation 17 (fitschan.c:31547-31641): IRAF ZPX projection.
+    // Translation 17 (fitschan.c:31556-31650): IRAF ZPX projection.
     // Replace -ZPX with -ZPN-ZPX (ZPN with ZPX distortion code) and
     // parse PROJP coefficients out of the WAT strings on the
     // celestial axes. Per-version letter, no encoding gate.
     translate_iraf_zpx(cards);
 
-    // Translation 18 (fitschan.c:31591-31673): IRAF TNX projection.
+    // Translation 18 (fitschan.c:31600-31682): IRAF TNX projection.
     // Replace -TNX with -TPN and parse polynomial coefficients out
     // of the WAT strings; if not exactly representable in FITS-WCS
     // an `ASTWARN` warning is issued. Per-version letter, no
     // encoding gate.
     translate_iraf_tnx(cards, &mut warnings.end);
 
-    // Translation 19 (fitschan.c:31644-31674): MSX CAR projection.
+    // Translation 19 (fitschan.c:31653-31683): MSX CAR projection.
     // Some MSX images have CAR projections whose CRPIX puts the
     // valid native longitude range entirely outside the image; C
     // shifts CRPIX1 by ±360°/CDELT1 to bring it back in range.
@@ -220,22 +220,22 @@ pub(crate) fn spec_trans_inplace(
         translate_msx_car(cards);
     }
 
-    // Translation 20 (fitschan.c:31676-31717): RESTFREQ → RESTFRQ
+    // Translation 20 (fitschan.c:31685-31726): RESTFREQ → RESTFRQ
     // with MHz/GHz unit detection from the comment. Per-version
     // letter, no encoding gate.
     translate_restfreq(cards);
 
-    // Translation 21 (fitschan.c:31719-31750): AIPS spectral CTYPE
+    // Translation 21 (fitschan.c:31728-31759): AIPS spectral CTYPE
     // (e.g. VELO-LSR → VRAD with SPECSYS=LSRK) and
     // LAMBDA → WAVE. Per-version letter, no encoding gate.
     translate_aips_spectral_ctype(cards);
 
-    // Translation 22 (fitschan.c:31752-31784): CUNIT case-insensitive
+    // Translation 22 (fitschan.c:31761-31793): CUNIT case-insensitive
     // canonicalisation: "Hz", "Angstrom", "km/s", "m/s" → canonical
     // case. Per-version letter, no encoding gate.
     translate_cunit_case(cards);
 
-    // Translation 23 (fitschan.c:31359-31431): CLASS-specific
+    // Translation 23 (fitschan.c:31368-31440): CLASS-specific
     // rewrites. Mirrors the `ClassTrans` helper called inside the
     // per-version loop; only fires for primary plane + FITS-CLASS
     // encoding.
@@ -243,14 +243,14 @@ pub(crate) fn spec_trans_inplace(
         translate_class(cards, &mut warnings.entry);
     }
 
-    // Translation 24 (fitschan.c:31789-31813): IRAF mini-WCS
+    // Translation 24 (fitschan.c:31798-31822): IRAF mini-WCS
     // keyword strip (WAT*, MWCS*, WSV*, LTM*, LTV*). Outside the
     // per-version loop in C; runs once. No encoding gate.
     translate_iraf_mini_wcs_strip(cards);
 }
 
 /// Zero-CDELT helper: replace any zero `CDELT{i}{S}` with a non-zero value.
-/// Mirrors fitschan.c:31261-31296, run once per coordinate version.
+/// Mirrors fitschan.c:31270-31305, run once per coordinate version.
 ///
 /// A zero on the CDELT diagonal would make the pixel→IWC matrix singular, so
 /// the resulting Mapping could not be simplified or used by a Plot. Zero
@@ -297,7 +297,7 @@ fn translate_zero_cdelt(cards: &mut CardList) {
 
 /// Test whether a CTYPE prefix denotes a celestial axis (longitude
 /// or latitude) per the FITS-WCS conventions C `SpecTrans` walks
-/// (fitschan.c:31143-31163). Returns `Some((true, _))` for
+/// (fitschan.c:31152-31172). Returns `Some((true, _))` for
 /// longitude axes, `Some((false, _))` for latitude, or `None`.
 fn classify_celestial(ctype: &str) -> Option<bool> {
     let nc = ctype.len();
@@ -328,7 +328,7 @@ fn classify_celestial(ctype: &str) -> Option<bool> {
 /// Locate the (longitude, latitude) celestial axis pair (1-based)
 /// within version letter `s`. Returns `None` when one or both are
 /// absent. Mirrors the celestial-axis identification at the top of
-/// C `SpecTrans`'s per-version loop (fitschan.c:31143-31163).
+/// C `SpecTrans`'s per-version loop (fitschan.c:31152-31172).
 fn celestial_axes(cards: &CardList, s: char) -> Option<(usize, usize)> {
     let mut axlon = None;
     let mut axlat = None;
@@ -370,7 +370,7 @@ fn celestial_axes(cards: &CardList, s: char) -> Option<(usize, usize)> {
 /// the algorithm code with blanks (or `----` for 12-char CTYPE) to
 /// avoid the redundant code.
 ///
-/// Mirrors fitschan.c:31185-31235. Per-version letter, no encoding gate.
+/// Mirrors fitschan.c:31194-31244. Per-version letter, no encoding gate.
 fn translate_early_paper_iii_spectral(cards: &mut CardList) {
     for s in std::iter::once(' ').chain('A'..='Z') {
         for j in 1..=9 {
@@ -430,7 +430,7 @@ fn translate_early_paper_iii_spectral(cards: &mut CardList) {
         }
     }
 }
-/// C's `SAOTrans` (fitschan.c:26983): translate the 13 polynomial
+/// C's `SAOTrans` (fitschan.c:26989): translate the 13 polynomial
 /// coefficients per axis (`CO1_1`..`CO2_13`) by which SAO's platepos.c
 /// describes a distorted TAN projection into `PVi_m` values, and replace the
 /// CD, PC, CDELT and CROTA values, which the polynomial includes, by unit
@@ -481,7 +481,7 @@ fn translate_sao_co(cards: &mut CardList, warnings: &mut Warnings) -> bool {
     }
 
     // Each PV value is a sum of the coefficients listed, as (axis, index),
-    // 0-based (fitschan.c:27093-27198).
+    // 0-based (fitschan.c:27099-27204).
     let pv_axis1: &[(&str, &[(usize, usize)])] = &[
         ("PV1_0", &[(0, 0)]),
         ("PV1_1", &[(0, 1)]),
@@ -531,7 +531,7 @@ fn translate_sao_co(cards: &mut CardList, warnings: &mut Warnings) -> bool {
 }
 /// Translation #14 helper: CLASS "ATF" projection → AIT.
 ///
-/// Mirrors fitschan.c:31819-31837. Per-version letter; no encoding gate.
+/// Mirrors fitschan.c:31828-31846. Per-version letter; no encoding gate.
 fn translate_atf_to_ait(cards: &mut CardList) {
     for s in std::iter::once(' ').chain('A'..='Z') {
         let Some((axlon, axlat)) = celestial_axes(cards, s) else {
@@ -556,7 +556,7 @@ fn translate_atf_to_ait(cards: &mut CardList) {
 
 /// Translation #15 helper: QV<i>_<m> → PV<i>_<m>. If any QV card is
 /// found while the projection is `-TAN`, the projection is also
-/// rewritten to `-TPN` (mirrors fitschan.c:31877-31523).
+/// rewritten to `-TPN` (mirrors fitschan.c:31886-31532).
 ///
 /// Per-version letter; no encoding gate.
 fn translate_qv_to_pv(cards: &mut CardList) {
@@ -628,14 +628,14 @@ fn translate_qv_to_pv(cards: &mut CardList) {
 }
 
 /// Resolve the auto (`PolyTan = -1`) decision from the PV cards, mirroring
-/// C `GetUsedPolyTan` (fitschan.c:13963-14146).
+/// C `GetUsedPolyTan` (fitschan.c:13969-14152).
 ///
 /// Returns `true` when the distorted-TAN (TPN) convention applies: a PVi_m
 /// present on the latitude axis, or a PVi_m with `m > 4` on the longitude
 /// axis.  Returns `false` when no qualifying PV cards are found, or when all
 /// distortion coefficients (`m >= 1`) on the deciding axis are zero — in that
 /// case the zero-valued PV cards are deleted to prevent later mis-use
-/// (fitschan.c:14110-14122, 14058-14073).
+/// (fitschan.c:14116-14128, 14058-14073).
 ///
 /// The `PolyTan` AST attribute (positive/zero explicit values) is not exposed
 /// in this port, so only the auto (`ret < 0` → `ret = 0`, then promote)
@@ -645,10 +645,10 @@ fn translate_qv_to_pv(cards: &mut CardList) {
 /// cards.
 ///
 /// Every PV read here comes from `src`, the untranslated header: C's
-/// `astKeyFields` and `GetValue` calls (fitschan.c:14052, :14020) take `this`,
+/// `astKeyFields` and `GetValue` calls (fitschan.c:14058, :14020) take `this`,
 /// not the `GetValue2( ret, this, … )` pair the surrounding translations use,
 /// so a PV card an earlier translation synthesised (e.g. `PROJPm` →
-/// `PV<axlat>_m`, fitschan.c:31598) is invisible to the decision. The
+/// `PV<axlat>_m`, fitschan.c:31607) is invisible to the decision. The
 /// deletions still target `cards`, matching C's `DeleteCard( this, … )` in a
 /// port where the translations rewrite the header in place.
 fn get_used_poly_tan(
@@ -700,7 +700,7 @@ fn get_used_poly_tan(
 
     // C: if ret > 0, guard that at least one m>=1 coefficient is non-zero.
     if ret > 0 {
-        // Latitude axis first (fitschan.c:14077-14122).
+        // Latitude axis first (fitschan.c:14083-14128).
         let mut ok = false;
         let ulat = ubnd_lat.unwrap_or(0);
         let mut m = 1usize;
@@ -727,7 +727,7 @@ fn get_used_poly_tan(
                 cards.delete(&pv_name(axlat, m));
             }
         } else {
-            // Latitude OK; now check longitude (fitschan.c:14124-14146).
+            // Latitude OK; now check longitude (fitschan.c:14130-14152).
             ok = false;
             let ulon = ubnd_lon.unwrap_or(0);
             let mut m = 1usize;
@@ -761,7 +761,7 @@ fn get_used_poly_tan(
 
 /// Translation #16 helper: TPV → TPN, and TAN+PolyTan → TPN.
 ///
-/// Mirrors fitschan.c:31528-31550. For the `-TPV` rename, the CTYPE suffix
+/// Mirrors fitschan.c:31537-31559. For the `-TPV` rename, the CTYPE suffix
 /// is changed directly. For the TAN case, the C default `PolyTan = -1`
 /// (auto-detect) is resolved by `get_used_poly_tan`: if PVi_m distortion
 /// cards are present on the latitude axis (or on the longitude axis with
@@ -796,7 +796,7 @@ fn translate_tpv_and_polytan_to_tpn(
             } else {
                 // Standard TAN: promote to TPN only when PVi_m distortion
                 // cards are present and non-zero (PolyTan = -1 auto-detect,
-                // fitschan.c:13963).
+                // fitschan.c:13969).
                 projection_suffix(ctype.trim()).is_some_and(|p| p.eq_ignore_ascii_case("TAN"))
                     && get_used_poly_tan(cards, src, poly_tan, axlon, axlat, s, warnings)
             };
@@ -813,7 +813,7 @@ fn translate_tpv_and_polytan_to_tpn(
 /// `WAT1_*` and `WAT2_*` strings on each axis for `projp{n}=value`
 /// terms; each one becomes `PV<axlat>_n`.
 ///
-/// Mirrors fitschan.c:31547-31641. Primary plane only; no encoding
+/// Mirrors fitschan.c:31556-31650. Primary plane only; no encoding
 /// gate.
 fn translate_iraf_zpx(cards: &mut CardList) {
     let Some((axlon, axlat)) = celestial_axes(cards, ' ') else {
@@ -872,12 +872,12 @@ fn translate_iraf_zpx(cards: &mut CardList) {
 ///
 /// Replace `-TNX` with `-TPN` on both celestial CTYPEs and parse
 /// the polynomial coefficients from the `WAT1_*` and `WAT2_*`
-/// strings into `PV<axis>_m` cards (mirrors fitschan.c:31591-31641).
+/// strings into `PV<axis>_m` cards (mirrors fitschan.c:31600-31650).
 ///
 /// When the polynomial cannot be represented as a TPN (i.e. order
 /// greater than 7, asymmetric axis orders, or full cross-terms) the
 /// partially-translated CTYPE is left in place and a `tnx` warning is
-/// raised, as C does (fitschan.c:32099-32103).
+/// raised, as C does (fitschan.c:32108-32112).
 fn translate_iraf_tnx(cards: &mut CardList, warnings: &mut Warnings) {
     let Some((axlon, axlat)) = celestial_axes(cards, ' ') else {
         return;
@@ -893,7 +893,7 @@ fn translate_iraf_tnx(cards: &mut CardList, warnings: &mut Warnings) {
         replace_projection_suffix(cards, &key, "TPN");
     }
     // Parse the polynomial coefficients out of the WAT strings.
-    // Mirrors fitschan.c:32074-32109.
+    // Mirrors fitschan.c:32083-32118.
     for (i, axis) in [(0_usize, axlon), (1_usize, axlat)].iter().copied() {
         let watmem = concat_wat(cards, axis);
         let (pvs, ok) = wat_coeffs(&watmem, i);
@@ -907,8 +907,8 @@ fn translate_iraf_tnx(cards: &mut CardList, warnings: &mut Warnings) {
     }
 }
 
-/// The `tnx` warning text (fitschan.c:32100-32103). `tnx` is one of the
-/// conditions enabled by the default `Warnings` value (fitschan.c:43423), so
+/// The `tnx` warning text (fitschan.c:32109-32112). `tnx` is one of the
+/// conditions enabled by the default `Warnings` value (fitschan.c:43432), so
 /// it is always emitted.
 const TNX_WARNING: &str = "This FITS header includes, or was derived from, a TNX projection which \
      requires unsupported IRAF-specific corrections. The WCS information may \
@@ -927,7 +927,7 @@ const TNX_WARNING: &str = "This FITS header includes, or was derived from, a TNX
 /// whereas `ok == false` means a surface was found but uses features AST
 /// cannot express as a TPN projection.
 pub(crate) fn wat_coeffs(watstr: &str, iaxis: usize) -> (Vec<(usize, f64)>, bool) {
-    // C looks for the regex `cor *= *"(.*)"` (fitschan.c:35368). When it does
+    // C looks for the regex `cor *= *"(.*)"` (fitschan.c:35377). When it does
     // not match, `WATCoeffs` returns zero coefficients with `*ok` left set.
     let Some(body) = correction_surface(watstr) else {
         return (Vec::new(), true);
@@ -935,7 +935,7 @@ pub(crate) fn wat_coeffs(watstr: &str, iaxis: usize) -> (Vec<(usize, f64)>, bool
 
     // Split into whitespace-delimited words and convert each to a double.
     // C reports AST__BDFTS and abandons the read when `astChr2Double` fails
-    // (fitschan.c:35389-35394); this reader has no error channel at the point
+    // (fitschan.c:35398-35403); this reader has no error channel at the point
     // of use, so an unreadable word is reported as "not representable".
     let words: Vec<&str> = body.split_ascii_whitespace().collect();
     let mut parsed: Vec<f64> = Vec::with_capacity(words.len());
@@ -970,7 +970,7 @@ pub(crate) fn wat_coeffs(watstr: &str, iaxis: usize) -> (Vec<(usize, f64)>, bool
         match iword {
             // Surface type. Only type 2 (legendre) is rejected outright; C
             // recognises type 1 as chebyshev and treats everything else as
-            // the simple-polynomial form (fitschan.c:35399-35404).
+            // the simple-polynomial form (fitschan.c:35408-35413).
             0 => {
                 if dval == 1.0 {
                     cheb = true;
@@ -1069,7 +1069,7 @@ pub(crate) fn wat_coeffs(watstr: &str, iaxis: usize) -> (Vec<(usize, f64)>, bool
 
 /// Extract the body of the `cor = "..."` assignment in an IRAF WAT string,
 /// mirroring C's `astChrSplitRE( watstr, "cor *= *\"(.*)\"", ... )`
-/// (fitschan.c:35368). `.*` is greedy, so the body runs to the *last* quote
+/// (fitschan.c:35377). `.*` is greedy, so the body runs to the *last* quote
 /// in the string. Returns `None` when there is no correction surface.
 fn correction_surface(watstr: &str) -> Option<&str> {
     let cor = watstr.find("cor")?;
@@ -1194,7 +1194,7 @@ fn shpc1(xmin: f64, xmax: f64, d: &[f64], w: &mut [f64]) {
 }
 
 /// Concatenate all `WAT{axis}_{nnn}` strings for the given 1-based
-/// axis. Mirrors C `ConcatWAT` (fitschan.c:8070-8161) — IRAF emits
+/// axis. Mirrors C `ConcatWAT` (fitschan.c:8076-8167) — IRAF emits
 /// the WAT keys with 3-digit zero-padded indices.
 pub(crate) fn concat_wat(cards: &CardList, axis: usize) -> String {
     let mut out = String::new();
@@ -1211,7 +1211,7 @@ pub(crate) fn concat_wat(cards: &CardList, axis: usize) -> String {
 ///
 /// CAR images that span more than 360° in pixel space need their
 /// CRPIX shifted so the image's mid-pixel longitude lies in
-/// [-180°, 180°]. Mirrors fitschan.c:32047-32075. Primary plane only;
+/// [-180°, 180°]. Mirrors fitschan.c:32056-32084. Primary plane only;
 /// no encoding gate. The caller applies C's `!astGetCarLin( this )` gate.
 fn translate_msx_car(cards: &mut CardList) {
     let Some((axlon, _axlat)) = celestial_axes(cards, ' ') else {
@@ -1224,7 +1224,7 @@ fn translate_msx_car(cards: &mut CardList) {
         return;
     }
     // C `SpecTrans` converts a CD matrix to PC + CDELT (CDELT = row-vector
-    // length, fitschan.c:31434) before this block, so its longitude scale
+    // length, fitschan.c:31443) before this block, so its longitude scale
     // comes from CDELT even for a CDi_j-only header. The Rust store keeps the
     // CD matrix directly, so derive the effective longitude CDELT the same way
     // when the CDELT keyword is absent.
@@ -1255,7 +1255,7 @@ fn translate_msx_car(cards: &mut CardList) {
 }
 
 /// Effective CDELT for a matrix row derived from CD keywords, matching C's
-/// CD→PC/CDELT conversion (fitschan.c:31420-31434): the length of the row
+/// CD→PC/CDELT conversion (fitschan.c:31429-31443): the length of the row
 /// vector, signed by the diagonal element. Returns `None` when the header
 /// carries no `CD{row}_{i}` keywords, so the caller falls through as it would
 /// for a header with neither CDELT nor CD.
@@ -1277,7 +1277,7 @@ fn cd_row_cdelt(cards: &CardList, row: usize) -> Option<f64> {
 }
 
 /// Translation #20 helper: RESTFREQ → RESTFRQ with MHz/GHz unit
-/// detection from the comment string. Mirrors fitschan.c:32078-32111.
+/// detection from the comment string. Mirrors fitschan.c:32087-32120.
 /// Per-version letter; no encoding gate.
 fn translate_restfreq(cards: &mut CardList) {
     for s in std::iter::once(' ').chain('A'..='Z') {
@@ -1317,8 +1317,8 @@ fn translate_restfreq(cards: &mut CardList) {
 /// equivalents (`VELO-LSR` → `VRAD` + SPECSYS=LSRK etc.) plus
 /// `LAMBDA` → `WAVE`.
 ///
-/// Mirrors fitschan.c:32124-32149 + the `IsAIPSSpectral` helper at
-/// fitschan.c:20210-20306. Per-version letter; no encoding gate.
+/// Mirrors fitschan.c:32133-32158 + the `IsAIPSSpectral` helper at
+/// fitschan.c:20216-20312. Per-version letter; no encoding gate.
 fn translate_aips_spectral_ctype(cards: &mut CardList) {
     for s in std::iter::once(' ').chain('A'..='Z') {
         for j in 1..=9 {
@@ -1364,7 +1364,7 @@ fn translate_aips_spectral_ctype(cards: &mut CardList) {
 /// Translation #22 helper: case-insensitive CUNIT canonicalisation.
 ///
 /// Maps "Hz" / "ANGSTROM" / "Km/S" etc. variants to the canonical
-/// case. Mirrors fitschan.c:32152-32184. Per-version letter; no
+/// case. Mirrors fitschan.c:32161-32193. Per-version letter; no
 /// encoding gate.
 fn translate_cunit_case(cards: &mut CardList) {
     for s in std::iter::once(' ').chain('A'..='Z') {
@@ -1424,8 +1424,8 @@ fn translate_cunit_case(cards: &mut CardList) {
 fn translate_class(cards: &mut CardList, warnings: &mut Warnings) {
     // Axis indices are 0-based here, as in C, and are -1 when the
     // corresponding axis is absent: C's `SpecTrans` sets `axlon = axlat = -1`
-    // before each coordinate version (fitschan.c:31213-31214) and calls
-    // `ClassTrans` unconditionally for the primary plane (fitschan.c:31829),
+    // before each coordinate version (fitschan.c:31222-31223) and calls
+    // `ClassTrans` unconditionally for the primary plane (fitschan.c:31838),
     // so a header with no celestial axes still runs this translation. The
     // `+ 1` at each keyword lookup mirrors C's `FormatKey( "CTYPE",
     // axlon + 1, ... )`, which yields an unmatchable `CTYPE0` for an absent
@@ -1435,7 +1435,7 @@ fn translate_class(cards: &mut CardList, warnings: &mut Warnings) {
         None => (-1, -1),
     };
     // Spectral axis = the one that is neither lon nor lat. Mirrors
-    // fitschan.c:7131-7137; the final `else` is a catch-all, reached both for
+    // fitschan.c:7137-7143; the final `else` is a catch-all, reached both for
     // the {0,2} celestial pair and for a header with no celestial axes at all.
     let axspec: i32 = if axlat + axlon == 1 {
         2
@@ -1447,7 +1447,7 @@ fn translate_class(cards: &mut CardList, warnings: &mut Warnings) {
 
     // Get RESTFREQ. Try the standard then the AIPS-spelling. Every read in this
     // function goes through C's `GetValue2`, which marks the source card as used
-    // (fitschan.c:18433-18435), so the `_marked` getters are the faithful
+    // (fitschan.c:18439-18441), so the `_marked` getters are the faithful
     // analogue: the cards these reads consume are excluded from the output.
     let restfreq = cards
         .get_float_marked("RESTFRQ")
@@ -1460,11 +1460,11 @@ fn translate_class(cards: &mut CardList, warnings: &mut Warnings) {
 
     // Reference-channel frequency, used below to derive the source velocity.
     //
-    // C declares `crval` without an initialiser (fitschan.c:7109) and assigns
+    // C declares `crval` without an initialiser (fitschan.c:7115) and assigns
     // it only inside the spectral-CTYPE branch below. When that branch does not
     // run — no `CTYPE<axspec+1>` card, as for a 1-axis CLASS header whose only
     // axis lands outside `axspec` — C reads the uninitialised stack slot at
-    // fitschan.c:7225. That is undefined behaviour in C, confirmed under
+    // fitschan.c:7231. That is undefined behaviour in C, confirmed under
     // valgrind ("uninitialised value ... created by a stack allocation in
     // ClassTrans", flowing into SetValue for ZSOURCE). In the reference build
     // the slot reads as zero, which is the value the committed `class-spec` and
@@ -1474,8 +1474,8 @@ fn translate_class(cards: &mut CardList, warnings: &mut Warnings) {
 
     // Spectral CTYPE check + CRVAL shift: CLASS stores the spectral CRVAL as an
     // offset from the rest frequency. C increments `crval` in place
-    // (fitschan.c:7157) and reuses that incremented value for the
-    // reference-channel radio velocity `v0` (fitschan.c:7225).
+    // (fitschan.c:7163) and reuses that incremented value for the
+    // reference-channel radio velocity `v0` (fitschan.c:7231).
     if let Some(ctype_spec) = cards.get_string_marked(&format!("CTYPE{}", axspec + 1)) {
         if ctype_spec.trim().eq_ignore_ascii_case("FREQ") {
             let key = format!("CRVAL{}", axspec + 1);
@@ -1492,12 +1492,12 @@ fn translate_class(cards: &mut CardList, warnings: &mut Warnings) {
 
         // SPECSYS = SOURCE. CLASS frequency axes describe source-frame
         // frequencies. C sets this inside the same CTYPE branch
-        // (fitschan.c:7164-7166), so a header without that CTYPE keeps
+        // (fitschan.c:7170-7172), so a header without that CTYPE keeps
         // whatever SPECSYS it already carried.
         cards.set_string("SPECSYS", "SOURCE", "Standard of rest");
     }
 
-    // Mirrors C ClassTrans (fitschan.c:7224-7246): a celestial CTYPE whose
+    // Mirrors C ClassTrans (fitschan.c:7230-7252): a celestial CTYPE whose
     // projection code is blank, such as 'RA--    ', defaults to "-GLS",
     // which SpecTrans translation #11 later remaps to "-SFL". C tests for
     // four spaces after the first four characters of the value as stored,
@@ -1521,7 +1521,7 @@ fn translate_class(cards: &mut CardList, warnings: &mut Warnings) {
 
     // Look for velocity-reference keywords. The standard of rest is determined
     // by which keyword name matched, so the variants are tried in C's order
-    // (fitschan.c:7192-7218) and each `or_else` mirrors C's short-circuiting
+    // (fitschan.c:7198-7224) and each `or_else` mirrors C's short-circuiting
     // `||`: the second variant is only read when the first is absent, so only
     // the keyword actually used is consumed.
     let (ssyssrc, vref) = if let Some(v) = cards.get_float_marked("VELO-HEL") {
@@ -1552,7 +1552,7 @@ fn translate_class(cards: &mut CardList, warnings: &mut Warnings) {
 
     // Radio velocity at the reference channel, in the source rest frame:
     //   v0 = c * (restfreq - crval) / restfreq
-    // Mirrors fitschan.c:7225.
+    // Mirrors fitschan.c:7231.
     const C_LIGHT_M_S: f64 = 299_792_458.0;
     let v0 = C_LIGHT_M_S * (restfreq - crval) / restfreq;
     let vsource = vref - v0;
@@ -1569,7 +1569,7 @@ fn translate_class(cards: &mut CardList, warnings: &mut Warnings) {
 /// equivalents of the AST native serialisation; carrying them
 /// through the read pipeline causes encoding ambiguity.
 ///
-/// Mirrors fitschan.c:32187-32213. No encoding gate; runs once.
+/// Mirrors fitschan.c:32196-32222. No encoding gate; runs once.
 fn translate_iraf_mini_wcs_strip(cards: &mut CardList) {
     let mut to_remove: Vec<String> = Vec::new();
     for c in cards.iter() {
@@ -1605,7 +1605,7 @@ fn translate_iraf_mini_wcs_strip(cards: &mut CardList) {
 /// for non-origin CRVAL but it's permanently disabled (`if( 0 &&
 /// shifted )`); we mirror the disabled state.
 ///
-/// Mirrors fitschan.c:31785-31878. Per-version letter; no encoding gate.
+/// Mirrors fitschan.c:31794-31887. Per-version letter; no encoding gate.
 fn translate_ncp_gls(cards: &mut CardList) {
     for s in std::iter::once(' ').chain('A'..='Z') {
         let Some((axlon, axlat)) = celestial_axes(cards, s) else {
@@ -1695,7 +1695,7 @@ fn replace_projection_suffix(cards: &mut CardList, key: &str, new_prj: &str) {
     cards.set_string(key, &new_ctype, &comment);
 }
 
-/// Translation #9 helper: DATE-OBS → MJD-OBS (fitschan.c:31927-31949).
+/// Translation #9 helper: DATE-OBS → MJD-OBS (fitschan.c:31936-31958).
 ///
 /// DATE-OBS is read unconditionally, and only then is MJD-OBS consulted: a
 /// header carrying both keeps its MJD-OBS, but its DATE-OBS is consumed either
@@ -1720,7 +1720,7 @@ fn translate_date_obs(cards: &mut CardList) {
     cards.set_float("MJD-OBS", mjd, "Date of observation");
 }
 
-/// Translations 7, 8, 10 (fitschan.c:31683-31736). Three steps that
+/// Translations 7, 8, 10 (fitschan.c:31692-31745). Three steps that
 /// run in sequence on the primary plane:
 ///
 ///  1. EPOCH (float) → EQUINOX (float) when EQUINOX is absent. A
@@ -1785,15 +1785,15 @@ fn translate_epoch_equinox(cards: &mut CardList) {
 /// Translation #6 helper: rewrite the FITS-PC alt-axis form
 /// `C{m}{VAL,PIX,YPE,NIT,ELT}{i}` to the standard
 /// `{CRVAL,CRPIX,CTYPE,CUNIT,CDELT}{i}{S}` form (S = 'A' + m-1).
-/// Mirrors fitschan.c:31540-31681.
+/// Mirrors fitschan.c:31549-31690.
 ///
 /// The CmELTi → CDELTi{S} branch additionally backfills zero
 /// CDELT values from the corresponding CRVAL (× 0.01), or 1.0 when
 /// CRVAL is also zero — to match C's "redundant axis" workaround
-/// (fitschan.c:31646-31651).
+/// (fitschan.c:31655-31660).
 ///
 /// The CmELTi branch in C also propagates a per-version PC matrix
-/// from any 6-digit `PC{jjj}{iii}` cards present (fitschan.c:31659-
+/// from any 6-digit `PC{jjj}{iii}` cards present (fitschan.c:31668-
 /// 31573). That branch only ever fires under FITS-IRAF (which is
 /// the only encoding that emits `PC{jjj}{iii}` form on write); we
 /// port it as-is so the round-trip is exact.
@@ -1864,7 +1864,7 @@ fn translate_cnxxx(cards: &mut CardList) {
 }
 
 /// Translation #5 helper: PROJPi → PV<axlat>_i. Mirrors
-/// fitschan.c:31489-31605. Primary plane only.
+/// fitschan.c:31498-31614. Primary plane only.
 fn translate_projp(cards: &mut CardList, encoding: Encoding) {
     // Need celestial axes (specifically the latitude axis) to know
     // where to write PV cards.
@@ -1882,7 +1882,7 @@ fn translate_projp(cards: &mut CardList, encoding: Encoding) {
         return;
     }
     // Decide whether to use PROJP. Default: yes. C's
-    // disagreement-detection at fitschan.c:31493-31522: if any PV
+    // disagreement-detection at fitschan.c:31502-31531: if any PV
     // values exist anywhere in the chan, default to using them — but
     // re-enable PROJP when PV{axlon}_{0..2} indicate the user's PV
     // set is incomplete.
@@ -1904,7 +1904,7 @@ fn translate_projp(cards: &mut CardList, encoding: Encoding) {
         }
     }
     if !use_projp {
-        // C's PROJP block (fitschan.c:31552-31605) is only entered at
+        // C's PROJP block (fitschan.c:31561-31614) is only entered at
         // all when `use_projp` is true; when it's false the PROJP
         // cards are simply left alone.
         return;
@@ -1912,10 +1912,10 @@ fn translate_projp(cards: &mut CardList, encoding: Encoding) {
     for i in projp_indices {
         let from = format!("PROJP{i}");
         // C reads PROJP with `GetValue2(ret, this, ...)`
-        // (fitschan.c:31596-31597), which marks the card as used
+        // (fitschan.c:31605-31606), which marks the card as used
         // only when the value comes from `this` (the source
         // FitsChan) — see the GetValue2 contract at
-        // fitschan.c:18433-18435. `ret` never holds a PROJP value at
+        // fitschan.c:18439-18441. `ret` never holds a PROJP value at
         // this point, so every hit here is a `this` hit and gets
         // marked, but the card itself is never deleted.
         let Some(value) = cards.get_float_marked(&from) else {
@@ -1926,7 +1926,7 @@ fn translate_projp(cards: &mut CardList, encoding: Encoding) {
             .and_then(|c| c.comment.clone())
             .unwrap_or_default();
         // C writes the PV equivalent only for the two encodings that
-        // read PROJP in the first place (fitschan.c:31598-31599).
+        // read PROJP in the first place (fitschan.c:31607-31608).
         if matches!(encoding, Encoding::FitsPc | Encoding::FitsIraf) {
             cards.set_float(&format!("PV{axlat}_{i}"), value, &comment);
         }
@@ -1936,7 +1936,7 @@ fn translate_projp(cards: &mut CardList, encoding: Encoding) {
 /// Count the cards whose keyword matches `template`, and return the highest
 /// value taken by each of the template's integer (`%d`) fields.
 ///
-/// Port of C `astKeyFields` (fitschan.c:14450). The whole card list is
+/// Port of C `astKeyFields` (fitschan.c:14456). The whole card list is
 /// searched irrespective of the current-card position; `ubnd[i]` is the maximum
 /// value seen for the i'th `%d` field, or `-1` when nothing matched. C also
 /// returns lower bounds, which no `SpecTrans` caller reads.
@@ -1975,7 +1975,7 @@ fn suffix(s: char) -> String {
 
 /// The family of translations that produce `PCi_j` keywords, run once per
 /// coordinate version. Mirrors the whole `if( !gotpcij )` block at
-/// fitschan.c:31366-31548.
+/// fitschan.c:31375-31557.
 ///
 /// A single gate covers all four sources, in C's precedence order: the legacy
 /// 6-digit `CDjjjiii` matrix, `CDj_i`, the 6-digit `PCjjjiii` matrix, and
@@ -1989,7 +1989,7 @@ fn translate_pc_family(cards: &mut CardList, s: char, encoding: Encoding) {
     }
     let mut gotpcij = false;
 
-    // CDjjjiii (fitschan.c:31403-31439). Primary plane only, and FITS-IRAF
+    // CDjjjiii (fitschan.c:31412-31448). Primary plane only, and FITS-IRAF
     // only: that is the sole encoding which translates the legacy matrix into
     // PCj_i, so under any other encoding the scan is skipped entirely and the
     // cards stay unread — and therefore still reach the output.
@@ -2014,7 +2014,7 @@ fn translate_pc_family(cards: &mut CardList, s: char, encoding: Encoding) {
         }
     }
 
-    // CDj_i (fitschan.c:31406-31453). Each row is normalised to a unit vector,
+    // CDj_i (fitschan.c:31415-31462). Each row is normalised to a unit vector,
     // its length becoming that row's CDELT so the pixel scale stays meaningful.
     if !gotpcij {
         let (nmatch, ubnd) = key_fields(cards, &versioned("CD%d_%d", s), 2);
@@ -2054,7 +2054,7 @@ fn translate_pc_family(cards: &mut CardList, s: char, encoding: Encoding) {
         }
     }
 
-    // PCjjjiii and CROTAi (fitschan.c:31456-31547). Both need CDELT keywords:
+    // PCjjjiii and CROTAi (fitschan.c:31465-31556). Both need CDELT keywords:
     // the 6-digit rename because the matrix alone carries no scale, and the
     // CROTA derivation because it works from the CDELT ratio.
     if gotpcij {
@@ -2344,7 +2344,7 @@ mod tests {
     #[test]
     fn cdjjjiii_survives_an_encoding_that_does_not_translate_it() {
         // Only FITS-IRAF turns CDjjjiii into a PC matrix, and the scan sits
-        // inside that encoding test (fitschan.c:31410), so under any other
+        // inside that encoding test (fitschan.c:31419), so under any other
         // encoding the cards are neither read nor consumed and stay available
         // to the output rather than having their rotation silently dropped.
         let mut cards = CardList::from_header(
@@ -2495,7 +2495,7 @@ mod tests {
         );
         // C reads PROJP with `GetValue2(ret, this, ...)` (fitschan.c:
         // 31493-31494), which marks the source card used but never
-        // deletes it (fitschan.c:18433-18435) — the card list itself
+        // deletes it (fitschan.c:18439-18441) — the card list itself
         // is untouched here; only the read pipeline's later
         // `fix_used(promote, remove)` pass (for a NATIVE-encoding
         // read) would actually strip it from output.
@@ -2509,7 +2509,7 @@ mod tests {
     #[test]
     fn projp_skipped_when_consistent_pv_set_present() {
         // PV0+PV1+PV2 all set on lon → C trusts PV, PROJP left alone
-        // (fitschan.c:31552-31605 is never entered for this plane).
+        // (fitschan.c:31561-31614 is never entered for this plane).
         let mut cards = CardList::from_header(
             "CTYPE1  = 'RA---ZPN'\n\
              CTYPE2  = 'DEC--ZPN'\n\
@@ -2978,7 +2978,7 @@ mod tests {
 
     #[test]
     fn carlin_suppresses_the_msx_car_wrap() {
-        // C fitschan.c:32115 gates the whole block on
+        // C fitschan.c:32124 gates the whole block on
         // `!astGetCarLin( this )`. car4.head is the fixture that needs it:
         // CRPIX1 = 211076 with CD1_1 = -0.0016666667 gives an unwrapped
         // shift of 6.1399520760316237 rad, which is what C emits.

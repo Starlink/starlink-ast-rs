@@ -26,9 +26,9 @@ EQUINOX =               2000.0
 ";
 
 /// C computes `eqmjd` from EQUINOX with no system guard
-/// (fitschan.c:39307-39313) and applies it as the Epoch fallback
-/// unconditionally (fitschan.c:39473). Only the *Equinox* attribute is
-/// restricted to equatorial and ecliptic systems (fitschan.c:39474-39476).
+/// (fitschan.c:39316-39322) and applies it as the Epoch fallback
+/// unconditionally (fitschan.c:39482). Only the *Equinox* attribute is
+/// restricted to equatorial and ecliptic systems (fitschan.c:39483-39485).
 /// A Galactic header with EQUINOX but no MJD-OBS/DATE-OBS therefore gets
 /// an Epoch but no Equinox.
 #[test]
@@ -98,7 +98,7 @@ fn read_sky_frame(header: &str) -> SkyFrame {
 /// CNAME<i> supplies the axis Label on a celestial frame, exactly as it
 /// already does on a plain linear frame. C reads the store at the FITS
 /// longitude/latitude axis and writes the SkyFrame's physical axes 0 and 1
-/// (fitschan.c:39481-39484).
+/// (fitschan.c:39490-39493).
 #[test]
 fn cname_supplies_skyframe_axis_labels() {
     let sky = read_sky_frame(&equatorial_header(
@@ -125,7 +125,7 @@ fn absent_cname_leaves_skyframe_labels_at_their_defaults() {
 
 /// C `WcsSkyFrame` builds every SkyFrame from an explicit attribute string —
 /// `astSkyFrame("System=ICRS")` for an ICRS header, exactly as it uses
-/// `astSkyFrame("System=FK5")` for an FK5 one (fitschan.c:39395-39424). So
+/// `astSkyFrame("System=FK5")` for an FK5 one (fitschan.c:39404-39433). So
 /// `astTestSystem` is true on a SkyFrame read from FITS whatever the system,
 /// and the Dump writes an active card. ICRS is the only value for which
 /// `SkyFrame::new` leaves the flag clear, so it is the only value that
@@ -181,7 +181,7 @@ CDELT1  =                  0.1
 
 /// C `WcsOthers` gives the leftover plain Frame a Domain built from the CTYPE
 /// values of the axes it could not classify, joined with "-"
-/// (fitschan.c:38990-39048). A single unrecognized spectral-looking code
+/// (fitschan.c:38999-39057). A single unrecognized spectral-looking code
 /// therefore yields that code verbatim as the Domain.
 #[test]
 fn unclassified_axis_domain_comes_from_ctype() {
@@ -194,7 +194,7 @@ fn unclassified_axis_domain_comes_from_ctype() {
 }
 
 /// An absent CTYPE is replaced by the `AXIS<n>` default before the Domain is
-/// built (fitschan.c:38969-38973), so the Domain is that default rather than
+/// built (fitschan.c:38978-38982), so the Domain is that default rather than
 /// nothing. Confirmed against the C library.
 #[test]
 fn absent_ctype_falls_back_to_the_axis_number() {
@@ -205,7 +205,7 @@ fn absent_ctype_falls_back_to_the_axis_number() {
 
 /// A *blank* CTYPE is the case that reaches `astClearDomain`: the value is
 /// present, so the `AXIS<n>` default does not apply, but `astChrLen` is zero
-/// so nothing is appended and `newdom` stays NULL (fitschan.c:38991-39047).
+/// so nothing is appended and `newdom` stays NULL (fitschan.c:39000-39056).
 /// The `AST_FITSCHAN` sentinel must never escape into the read object.
 #[test]
 fn blank_ctype_leaves_domain_unset_and_never_leaks_the_sentinel() {
@@ -216,7 +216,7 @@ fn blank_ctype_leaves_domain_unset_and_never_leaks_the_sentinel() {
 }
 
 /// Two unclassified axes join with "-", in axis order. C builds `newdom` by
-/// prefixing each value after the first with "-" (fitschan.c:38993-39000).
+/// prefixing each value after the first with "-" (fitschan.c:39002-39009).
 #[test]
 fn two_unclassified_axes_join_their_ctypes_with_a_dash() {
     let header = "\
@@ -237,7 +237,7 @@ CDELT2  =                  0.2
 }
 
 /// C strips a trailing "-LOG" from each CTYPE before appending it
-/// (fitschan.c:38978-38988); the stripped value is also the axis Symbol.
+/// (fitschan.c:38987-38997); the stripped value is also the axis Symbol.
 #[test]
 fn log_suffix_is_stripped_from_the_domain_and_symbol() {
     let obj = FitsChan::from_header(&one_axis_header("CTYPE1  = 'ZZZZ-LOG'\n"))

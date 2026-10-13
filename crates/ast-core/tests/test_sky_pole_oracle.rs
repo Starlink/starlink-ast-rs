@@ -76,7 +76,7 @@ fn sky_pole_matches_the_c_library() {
 
 /// The cases C refuses are those with an explicit LONPOLE that cannot hold
 /// for the reference point, which C's `WcsNative` reports as an
-/// ill-conditioned native-to-celestial conversion (fitschan.c:38656).
+/// ill-conditioned native-to-celestial conversion (fitschan.c:38665).
 #[test]
 fn refused_cases_are_ill_conditioned() {
     let refused: Vec<_> = cases::CASES.iter().filter(|c| !c.5).collect();

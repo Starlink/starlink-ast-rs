@@ -35,7 +35,7 @@ the order it does things.
    card the encoder didn't re-write.
 
 2. **CRPIX is solved, not extracted.** The C library's
-   `MakeIntWorld` (`fitschan.c:21777`) picks an arbitrary root
+   `MakeIntWorld` (`fitschan.c:21783`) picks an arbitrary root
    grid position `g₀ = (1, 1, …)`, evaluates pixel→IWC there
    to get `w₀`, evaluates the Jacobian to get `CD`, then
    solves `w₀ = CD · (g₀ − CRPIX)` for CRPIX via `palDmat`.
@@ -46,7 +46,7 @@ the order it does things.
    with a UnitMap (which it does for native AST inputs).
 
 3. **CRVAL is fiducial-evaluated, not Jacobian-evaluated.**
-   `GetFiducialWCS` (`fitschan.c:12896`) transforms the
+   `GetFiducialWCS` (`fitschan.c:12902`) transforms the
    WcsMap's exact native fiducial point (e.g. `(0, π/2)` for
    zenithal projections, derived from the WcsMap's
    `nat_lon`/`nat_lat`) through the **post-WcsMap** sub-chain
@@ -57,7 +57,7 @@ the order it does things.
    non-celestial axes still use the Jacobian-derived CRVAL.
 
 4. **Celestial CD wants pixel→IWC, not pixel→world.**
-   `CelestialAxes` (`fitschan.c:5270`) builds the WCS→IWC
+   `CelestialAxes` (`fitschan.c:5276`) builds the WCS→IWC
    mapping as the inverse of
    `(WcsMap_inverted ∘ WcsNative ∘ deg2rad ∘ ShiftMap(ppcfid))`,
    composes pixel→world with WCS→IWC to get pixel→IWC, and
@@ -135,7 +135,7 @@ the failures the cluster currently dominates.
 frame and `WCSAXESB`/`WCSNAMEB` for the AXIS frame, plus
 their per-frame CRPIX/CRVAL/CTYPE/CD. The C library walks all
 non-base/non-current frames in the FrameSet (`FsetToStore`
-loop at `fitschan.c:12240–12259`) and assigns version letters
+loop at `fitschan.c:12246–12259`) and assigns version letters
 A–Z, calling `AddVersion` for each. We currently only emit
 the primary plane.
 
@@ -212,7 +212,7 @@ specific inputs.
 CTYPE for SIP is `RA---TAN-SIP` etc. Our encoder doesn't
 recognise the PolyMap that follows the WcsMap as a SIP
 distortion, so we emit `RA---TAN`. The C library's
-`SIPIntWorld` (`fitschan.c:31103-ish`) detects and serializes
+`SIPIntWorld` (`fitschan.c:31112-ish`) detects and serializes
 SIP coefficients as `A_p_q`, `B_p_q`, `AP_p_q`, `BP_p_q`
 keywords. Big chunk of work; defer.
 

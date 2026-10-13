@@ -98,7 +98,7 @@ pub struct FrameSet {
     /// `base != -INT_MAX`, frameset.c:12554). Controls whether `Base` is
     /// serialised as an active value or a commented-out default: a FrameSet
     /// assembled from a FITS header has Base explicitly set (C `astSetBase`,
-    /// fitschan.c:12061), whereas one built by `astAddFrame` leaves it
+    /// fitschan.c:12067), whereas one built by `astAddFrame` leaves it
     /// defaulted. When `false`, `base_idx` still holds the effective base
     /// (frame 0), it is simply written as the implicit default.
     base_set: bool,

@@ -18,16 +18,16 @@ use crate::serial::AnyObject;
 
 /// Read `RFVAL<i>` (primary plane) or `RFVAL<i><s>` (alt plane `s`) off
 /// `cards`, unmarked, mirroring C `GetValue(this, FormatKey("RFVAL", axis,
-/// -1, s, ...), ..., mark = 0, ...)` (fitschan.c:36194-36200).
+/// -1, s, ...), ..., mark = 0, ...)` (fitschan.c:36203-36209).
 ///
 /// `RFVAL` has no `WcsFcRead` branch and no `FitsStore` member: C reads it
 /// fresh off the FitsChan at the point of use in `WcsCelestial`, via `this`
-/// — the FitsChan passed to `FsetFromStore` (fitschan.c:25871) — rather than
+/// — the FitsChan passed to `FsetFromStore` (fitschan.c:25877) — rather than
 /// through the extraction pipeline that populates the rest of the store
 /// (see [`super::fits_store::FitsStore::axref`] for the contrasting `AXREF`
 /// case, which does go through that pipeline). `RFVAL` is read but never
 /// written anywhere in `fitschan.c`; its only three appearances are the
-/// comment and the two `GetValue` calls at fitschan.c:36191-36200, so its
+/// comment and the two `GetValue` calls at fitschan.c:36200-36209, so its
 /// value is always whatever the caller supplied on the header.
 fn read_rfval(cards: &CardList, naxis: usize, s: char) -> Vec<Option<f64>> {
     (0..naxis)
@@ -63,11 +63,11 @@ pub(crate) fn decode_wcs(store: &FitsStore) -> AstResult<AnyObject> {
 pub(crate) type ReadCursors = Vec<(usize, Option<usize>)>;
 
 /// Inner decoder that also adds to `warnings` each warning raised (e.g. the
-/// `badcel` warning for unknown celestial systems, fitschan.c:39461), in
+/// `badcel` warning for unknown celestial systems, fitschan.c:39470), in
 /// the order C's `Warn` stores them, keeping those raised before an error.
 ///
 /// `cards` is the FitsChan's own card list — the same `this` C's
-/// `WcsCelestial` reads `RFVAL<i>` from (fitschan.c:36194-36200) — and `s`
+/// `WcsCelestial` reads `RFVAL<i>` from (fitschan.c:36203-36209) — and `s`
 /// is this plane's version character (`' '` for the primary plane, `'A'`..
 /// `'Z'` for an alt plane). The pixel Frame has `npix` axes. Moves of C's
 /// current card that decide where the warnings go are added to `cursors`.
@@ -90,7 +90,7 @@ pub(crate) fn decode_wcs_inner(
     // so work on a local copy and pass that on rather than the caller's store.
     let mut store = store.clone();
     // C `WcsMapFrm` calls `WcsIntWorld` before `WcsCelestial` and `WcsSpectral`
-    // (fitschan.c:37863-37973), and `Warn` inserts each block in front of the
+    // (fitschan.c:37872-37982), and `Warn` inserts each block in front of the
     // same current card, so these warnings precede the ones the axis decoders
     // raise below.
     let pixel_to_iwc = wcs_matrix::build_pixel_to_iwc(&mut store, cards, warnings, cursors)?;
@@ -105,14 +105,14 @@ pub(crate) fn decode_wcs_inner(
     // result is consumed below; it is stamped onto the SkyFrame as SkyRef.
     let celestial_ref_pos = celestial.as_ref().and_then(|c| c.ref_pos);
     // AXREF forces SkyRef unconditionally, bypassing the astTestSkyRef gate
-    // that CRVAL / RFVAL are subject to (fitschan.c:36202-36213 vs
+    // that CRVAL / RFVAL are subject to (fitschan.c:36211-36222 vs
     // 36209-36223).
     let celestial_ref_pos_forced = celestial.as_ref().is_some_and(|c| c.ref_pos_forced);
 
     // Step 3: Try to decode spectral axis.
     let spectral = wcs_spectral::build_spectral(store, s)?;
     // `WcsCelestial` runs before `WcsSpectral` in `WcsMapFrm`
-    // (fitschan.c:37958-37964), so the spectral warnings follow the
+    // (fitschan.c:37967-37973), so the spectral warnings follow the
     // celestial ones.
     if let Some(sp) = spectral.as_ref() {
         warnings.extend(sp.warnings.iter().cloned());
@@ -124,13 +124,13 @@ pub(crate) fn decode_wcs_inner(
 
     // Stamp the alternate-version character onto the world Frame's Ident, as
     // C `WcsMapFrm` does (`id[0] = s; astSetIdent(*frm, id)`,
-    // fitschan.c:37859). For the primary axis description `s` is a space, so
+    // fitschan.c:37868). For the primary axis description `s` is a space, so
     // the Frame carries `Ident = " "` — an explicitly-set blank identifier
     // that the native dump renders (with the inherited `IsA Object` block).
     set_frame_ident(world_frame.as_mut(), " ")?;
 
     // Stamp DUT1/DTAI onto the world Frame, as C `WcsMapFrm` does
-    // immediately after the `astSetIdent` call above (fitschan.c:37986-37995).
+    // immediately after the `astSetIdent` call above (fitschan.c:37995-38004).
     set_frame_dut1_dtai(
         world_frame.as_mut(),
         store.dut1.map(|v| v * 86_400.0),
@@ -138,7 +138,7 @@ pub(crate) fn decode_wcs_inner(
     )?;
 
     // Step 5: Build the full pixel → world mapping (consumes the decoder
-    // results). C `WcsMapFrm` (fitschan.c:37871-37913) returns
+    // results). C `WcsMapFrm` (fitschan.c:37880-37922) returns
     // `astSimplify(map8)` — the pixel→WCS Mapping is simplified before it is
     // added to the FrameSet, so the stored edge (and any later native dump
     // of it) is in reduced form. The returned Mapping carries
@@ -160,14 +160,14 @@ pub(crate) fn decode_wcs_inner(
     )?;
 
     // Explicitly fix the GRID (pixel) Frame as the base, mirroring C
-    // `astSetBase(ret, pixel)` (fitschan.c:12061). This marks the Base
+    // `astSetBase(ret, pixel)` (fitschan.c:12067). This marks the Base
     // attribute as set, so a subsequent native dump writes `Base` as an
     // active value rather than a commented-out default.
     frameset.set_base(FrameRef::Index(1))?;
 
     // Step 8b: stamp the celestial reference position onto the SkyFrame as
     // SkyRef + SkyRefIs=Ignored. Mirrors C `WcsCelestial`
-    // (fitschan.c:36201-36213), which, when the SkyFrame's SkyRef has not
+    // (fitschan.c:36210-36222), which, when the SkyFrame's SkyRef has not
     // already been set, stores (reflon, reflat) and sets SkyRefIs=Ignored so
     // the SkyFrame still represents absolute celestial coordinates. Because
     // SkyRefIs=Ignored leaves the coordinate semantics unchanged, this adds
@@ -177,7 +177,7 @@ pub(crate) fn decode_wcs_inner(
 
     // Step 9: SpecFrame RefRA/RefDec from celestial fiducial. Mirrors
     // C `astSetRefPos(specfrm, reffrm, reflon, reflat)` at
-    // fitschan.c:39638. C calls this on the standalone SpecFrame
+    // fitschan.c:39647. C calls this on the standalone SpecFrame
     // BEFORE the FrameSet wraps it, so no FrameSet-integrity remap
     // fires. We achieve the same semantics by using `frame_mut` to
     // bypass our `with_integrity` machinery, since by this point the
@@ -185,7 +185,7 @@ pub(crate) fn decode_wcs_inner(
     set_spec_ref_from_celestial(&mut frameset, celestial_ref_pos)?;
 
     // Step 10: DSBSpecFrame setup. Mirrors C `WcsSpectral`
-    // (fitschan.c:39688-39691), which calls `DSBSetUp` immediately after
+    // (fitschan.c:39697-39700), which calls `DSBSetUp` immediately after
     // `astSetRefPos` when the spectral frame is a DSBSpecFrame. The IF /
     // DSBCentre / SideBand attributes depend on the topocentric frequency
     // conversion, which in turn depends on the reference position set above.
@@ -195,7 +195,7 @@ pub(crate) fn decode_wcs_inner(
 }
 
 /// The pixel Frame of a FITS-WCS read, with `npix` axes. C labels each
-/// pixel axis "Pixel axis <n>" (fitschan.c:12160-12164).
+/// pixel axis "Pixel axis <n>" (fitschan.c:12166-12170).
 fn pixel_frame(npix: usize) -> AstResult<DynFrame> {
     let mut builder = BasicFrameBuilder::new(npix)
         .domain("GRID")
@@ -207,7 +207,7 @@ fn pixel_frame(npix: usize) -> AstResult<DynFrame> {
 }
 
 /// Join a Mapping whose inputs are an axis description's WCS axes to the
-/// `npix` pixel axes, as C's `AddFrame` does (fitschan.c:2812-2839): a
+/// `npix` pixel axes, as C's `AddFrame` does (fitschan.c:2818-2845): a
 /// PermMap passes the axes they share, gives extra WCS axes the value 0,
 /// the default CRPIX, and drops extra pixel axes.
 fn join_pixel_axes(npix: usize, map: DynMapping) -> AstResult<DynMapping> {
@@ -236,7 +236,7 @@ fn join_pixel_axes(npix: usize, map: DynMapping) -> AstResult<DynMapping> {
 /// `pixel_to_iwc` (the FitsChan's Iwc attribute set) a Frame of
 /// intermediate world coordinates, with Domain `IWC` followed by `s`, is
 /// added too, as C's `WcsFrame` and `AddFrame` add it
-/// (fitschan.c:38331-38349, 2777-2785): the two Frames form a FrameSet,
+/// (fitschan.c:38340-38358, 2777-2785): the two Frames form a FrameSet,
 /// WCS first, joined by the Mapping from WCS through pixel to IWC
 /// coordinates, which is added to `fs` through the pixel to IWC Mapping.
 fn add_wcs_frame(
@@ -287,7 +287,7 @@ fn add_wcs_frame(
 }
 
 /// The units C gives the axes of the IWC Frame: degrees for celestial axes
-/// (`WcsCelestial`, fitschan.c:36585), the SpecFrame's unit for a spectral
+/// (`WcsCelestial`, fitschan.c:36594), the SpecFrame's unit for a spectral
 /// axis (`WcsSpectral`, :39919), and any CUNIT for the others (`WcsOthers`,
 /// :39248).
 fn iwc_axis_units(
@@ -315,8 +315,8 @@ fn iwc_axis_units(
 /// any) inside the FrameSet's current world frame.
 ///
 /// Mirrors C `WcsSpectral`'s `if( astIsADSBSpecFrame(specfrm) ) DSBSetUp(...)`
-/// (fitschan.c:39688-39691). The `obscentre` argument C passes as `crval` is
-/// `store->axref[i]` falling back to `store->crval[i]` (fitschan.c:39678-39684).
+/// (fitschan.c:39697-39700). The `obscentre` argument C passes as `crval` is
+/// `store->axref[i]` falling back to `store->crval[i]` (fitschan.c:39687-39693).
 fn dsb_set_up_in_frameset(fs: &mut FrameSet, store: &FitsStore) -> AstResult<()> {
     let Some(imagfreq) = store.imagfreq else {
         return Ok(());
@@ -392,7 +392,7 @@ fn set_spec_ref_from_celestial(fs: &mut FrameSet, ref_pos: Option<(f64, f64)>) -
 
     // The reference position is the raw CRVAL pair (radians) in the SkyFrame's
     // native system, as returned by `WcsCelestial` and passed straight into
-    // `astSetRefPos(specfrm, reffrm, reflon, reflat)` (fitschan.c:37883/39507).
+    // `astSetRefPos(specfrm, reffrm, reflon, reflat)` (fitschan.c:37892/39507).
     // C uses the same reflon/reflat for the SkyFrame's SkyRef and the
     // SpecFrame's RefRA/RefDec — so use the celestial decoder's value rather
     // than re-deriving it through the pixel→world Mapping (which loses ULPs).
@@ -403,7 +403,7 @@ fn set_spec_ref_from_celestial(fs: &mut FrameSet, ref_pos: Option<(f64, f64)>) -
     // Step 2: clone the SkyFrame so we can hand it to `set_ref_pos`
     // as the reference frame. Mirrors C's
     // `astSetRefPos(specfrm, reffrm, reflon, reflat)` at
-    // fitschan.c:39638, where `reffrm` is a clone of the SkyFrame
+    // fitschan.c:39647, where `reffrm` is a clone of the SkyFrame
     // built by WcsCelestial. `set_ref_pos` performs the
     // SkyFrame→FK5/J2000 conversion internally.
     let sky_clone = peek_sky(fs.current())
@@ -424,15 +424,15 @@ fn set_spec_ref_from_celestial(fs: &mut FrameSet, ref_pos: Option<(f64, f64)>) -
 
 /// Stamp the celestial reference position onto the SkyFrame in the current
 /// world frame as `SkyRef` + `SkyRefIs=Ignored`, mirroring C `WcsCelestial`
-/// (fitschan.c:36201-36213, 36209-36223).
+/// (fitschan.c:36210-36222, 36209-36223).
 ///
 /// The reference position is the celestial reference longitude / latitude the
 /// decoder resolved — CRVAL by default, overridden by `RFVAL<i>` and then by
 /// `AXREF<i>`. When `forced` is `false` (the CRVAL / RFVAL case) C only sets
 /// it when the SkyFrame's SkyRef has not already been set (`astTestSkyRef`,
-/// fitschan.c:36206), and skips offset SkyFrames; we honour the same gate.
+/// fitschan.c:36215), and skips offset SkyFrames; we honour the same gate.
 /// When `forced` is `true` (the AXREF case) C calls `astSetSkyRef`
-/// unconditionally (fitschan.c:36323-36324), outside that gate. Setting
+/// unconditionally (fitschan.c:36332-36333), outside that gate. Setting
 /// `SkyRefIs=Ignored` leaves absolute-coordinate semantics unchanged, so this
 /// is applied via `frame_mut` without triggering a FrameSet-integrity remap.
 fn set_sky_ref_from_celestial(
@@ -441,7 +441,7 @@ fn set_sky_ref_from_celestial(
     forced: bool,
 ) -> AstResult<()> {
     // The reference position (radians) as resolved by the celestial decoder,
-    // mirroring C `WcsCelestial` (fitschan.c:36115-36118 for the CRVAL case).
+    // mirroring C `WcsCelestial` (fitschan.c:36124-36127 for the CRVAL case).
     // Nothing to stamp if it could not be determined.
     let Some((reflon, reflat)) = ref_pos else {
         return Ok(());
@@ -453,8 +453,8 @@ fn set_sky_ref_from_celestial(
     }
 
     // C stores the CRVAL / RFVAL reference position only when SkyRef is not
-    // already set (fitschan.c:36458), and the AXREF one unconditionally
-    // (fitschan.c:36573). An offset SkyFrame gets it too: TidyOffsets later
+    // already set (fitschan.c:36467), and the AXREF one unconditionally
+    // (fitschan.c:36582). An offset SkyFrame gets it too: TidyOffsets later
     // sets its SkyRefIs, and the stored position is its origin or pole.
     if !forced {
         if let Some(sky) = peek_sky(fs.current()) {
@@ -564,7 +564,7 @@ fn locate_spec_sky(frame: &dyn crate::frames::Frame) -> Option<()> {
     // Walk *external* axes via `primary_frame`, which resolves any CmpFrame
     // axis permutation. `paxis` is the SkyFrame's *internal physical* axis
     // index (0 = longitude, 1 = latitude). Mirrors C's primary-frame walk in
-    // WcsSpectral (fitschan.c:39723+).
+    // WcsSpectral (fitschan.c:39732+).
     let mut spec_axis: Option<usize> = None;
     let mut lon: Option<usize> = None;
     let mut lat: Option<usize> = None;
@@ -630,10 +630,10 @@ fn peek_sky(frame: &dyn crate::frames::Frame) -> Option<&crate::frames::SkyFrame
 ///
 /// `cards` is the FitsChan's own card list, used to read `RFVAL<i>` /
 /// `RFVAL<i><s>` for the primary plane and each alt plane respectively
-/// (fitschan.c:36194-36200).
+/// (fitschan.c:36203-36209).
 ///
 /// With no pixel axes, C's `MakeFitsFrameSet` makes nothing
-/// (fitschan.c:12155), and neither does this. Without a primary axis
+/// (fitschan.c:12161), and neither does this. Without a primary axis
 /// description the FrameSet starts with the pixel Frame alone, which stays
 /// current.
 ///
@@ -721,7 +721,7 @@ pub(crate) fn decode_wcs_with_alts_inner(
 
             // Stamp DUT1/DTAI onto the alt world Frame, exactly as for the
             // primary plane above — C `WcsMapFrm` runs once per plane
-            // (fitschan.c:2687 loops over version characters).
+            // (fitschan.c:2693 loops over version characters).
             set_frame_dut1_dtai(
                 world_frame.as_mut(),
                 alt_store.dut1.map(|v| v * 86_400.0),
@@ -743,8 +743,8 @@ pub(crate) fn decode_wcs_with_alts_inner(
 
             // SpecFrame RefRA/RefDec and DSBSpecFrame setup, exactly as for
             // the primary plane above — C `WcsSpectral`'s `astSetRefPos` /
-            // `DSBSetUp` calls (fitschan.c:39677, 39585-39588) run once per
-            // plane, driven by the per-plane `s` loop at fitschan.c:2687.
+            // `DSBSetUp` calls (fitschan.c:39686, 39585-39588) run once per
+            // plane, driven by the per-plane `s` loop at fitschan.c:2693.
             set_spec_ref_from_celestial(&mut trial, alt_ref_pos)?;
             dsb_set_up_in_frameset(&mut trial, alt_store)?;
             Ok(())
@@ -768,7 +768,7 @@ pub(crate) fn decode_wcs_with_alts_inner(
     }
 
     // Tidy up offset SkyFrames. Mirrors C `TidyOffsets`
-    // (fitschan.c:34471-34643): converts the SKY_POLE / SKY_ORIGIN
+    // (fitschan.c:34480-34652): converts the SKY_POLE / SKY_ORIGIN
     // domain markers stamped by `WcsSkyFrame` into actual SkyRefIs
     // attribute values, and removes redundant SKY_OFFSETS Frames
     // when a corresponding absolute SkyFrame exists.
@@ -777,7 +777,7 @@ pub(crate) fn decode_wcs_with_alts_inner(
     Ok(Some(AnyObject::FrameSet(fs)))
 }
 
-/// Apply C `TidyOffsets` (fitschan.c:34471-34643) to a freshly-read
+/// Apply C `TidyOffsets` (fitschan.c:34480-34652) to a freshly-read
 /// FrameSet. Two passes:
 ///
 /// 1. For every Frame containing a SkyFrame whose Domain is
@@ -839,11 +839,11 @@ fn tidy_offsets(fs: &mut FrameSet) -> AstResult<()> {
 
     fn apply_skyrefis(frame: &mut dyn crate::frames::Frame, skyrefis: SkyRefIs) {
         if let Some(sky) = frame.as_any_mut().downcast_mut::<SkyFrame>() {
-            // C `TidyOffsets` (fitschan.c:34567-34571) sets only the
+            // C `TidyOffsets` (fitschan.c:34576-34580) sets only the
             // SkyRefIs attribute here; it does NOT alter the Domain. The
             // SKY_POLE / SKY_ORIGIN marker Domain is retained on the
             // Frame and is only cleared later, in the `hasabs && hasoff`
-            // removal pass (`astClearDomain`, fitschan.c:34596) — which
+            // removal pass (`astClearDomain`, fitschan.c:34605) — which
             // does not run when the offset Frame is the only sky
             // description present. Keeping SKY_ORIGIN / SKY_POLE here is
             // load-bearing: the writer's `IsASkyFrame` macro
@@ -872,7 +872,7 @@ fn tidy_offsets(fs: &mut FrameSet) -> AstResult<()> {
         };
         markers.push(marker);
         if let Some(skyrefis) = marker {
-            // C `TidyOffsets` (fitschan.c:34567-34571) sets SkyRefIs
+            // C `TidyOffsets` (fitschan.c:34576-34580) sets SkyRefIs
             // *through the FrameSet*: it makes frame `ifrm` current, sets
             // SkyRefIs, then restores the original current frame. Setting
             // the attribute through the FrameSet lets the integrity
@@ -903,7 +903,7 @@ fn tidy_offsets(fs: &mut FrameSet) -> AstResult<()> {
     // Mirrors C:34541-34580.
     if has_abs && has_off {
         // C walks downwards so an `astRemoveFrame` never disturbs an index it
-        // has yet to visit (fitschan.c:34647).
+        // has yet to visit (fitschan.c:34656).
         let mut icurr_is_offset = icurr_1 <= kinds.len() && kinds[icurr_1 - 1] == FrameKind::Offset;
         for ifrm in (1..=nfrm).rev() {
             match kinds[ifrm - 1] {
@@ -912,7 +912,7 @@ fn tidy_offsets(fs: &mut FrameSet) -> AstResult<()> {
                 }
                 FrameKind::Absolute => {
                     // Only the marker Domains reach the clearing arm in C
-                    // (fitschan.c:34661-34662): a Frame whose SkyFrame Domain
+                    // (fitschan.c:34670-34671): a Frame whose SkyFrame Domain
                     // was already "SKY" is left entirely alone.
                     if markers[ifrm - 1].is_none() {
                         continue;
@@ -928,7 +928,7 @@ fn tidy_offsets(fs: &mut FrameSet) -> AstResult<()> {
 
                     // If the Frame that was current is being deleted for being
                     // an offset Frame, hand current to the first absolute Frame
-                    // reached instead (fitschan.c:34667-34670).
+                    // reached instead (fitschan.c:34676-34679).
                     if icurr_is_offset {
                         fs.set_current(FrameRef::Index(ifrm))?;
                         icurr_is_offset = false;
@@ -958,7 +958,7 @@ fn tidy_offsets(fs: &mut FrameSet) -> AstResult<()> {
 
 /// Clear the Domain of the SkyFrame reached by `astPrimaryFrame` — the nested
 /// SkyFrame within a compound Frame, or the Frame itself when it is one.
-/// Mirrors C's `astClearDomain( pfrm )` (fitschan.c:34662), where `pfrm` is the
+/// Mirrors C's `astClearDomain( pfrm )` (fitschan.c:34671), where `pfrm` is the
 /// primary Frame of the axis being examined rather than the Frame itself.
 fn clear_sky_domain(frame: &mut dyn crate::frames::Frame) {
     use crate::frames::{CmpFrame, SkyFrame};
@@ -974,14 +974,14 @@ fn clear_sky_domain(frame: &mut dyn crate::frames::Frame) {
 
 /// Helper: stamp `ident` onto a boxed Frame. `Ident` is an Object-level
 /// attribute in C (`object.c:5225`), so C's `astSetIdent( *frm, id )`
-/// (fitschan.c:37859) applies whatever class the world Frame turned out to
+/// (fitschan.c:37868) applies whatever class the world Frame turned out to
 /// be; the trait method carries the same property here.
 fn set_frame_ident(frame: &mut dyn crate::frames::Frame, ident: &str) -> AstResult<()> {
     frame.set_ident(ident)
 }
 
 /// Helper: stamp DUT1/DTAI onto a boxed Frame, mirroring C `WcsMapFrm`'s
-/// calls to `astSetDut1` / `astSetDtai` on `*frm` (fitschan.c:37986-37995).
+/// calls to `astSetDut1` / `astSetDtai` on `*frm` (fitschan.c:37995-38004).
 /// Both are Frame-class attributes (`frame.h:622`), so every Frame class
 /// takes them. `dut1` is in seconds (the FITS `DUT1` keyword is in days; the
 /// caller converts by `SPD` before calling this).
@@ -1001,7 +1001,7 @@ fn set_frame_dut1_dtai(
 
 /// Build the full pixel → world mapping (consumes the decoder results).
 ///
-/// Mirrors C `WcsMapFrm` (fitschan.c:37871-37913), which builds
+/// Mirrors C `WcsMapFrm` (fitschan.c:37880-37922), which builds
 /// `map8 = (((map1_pixel→IWC ; map2_celestial) ; map3_spectral) ; map4_others)`
 /// — a left-associated series chain in class order, with `map4` (WcsOthers)
 /// always composed (a bare `UnitMap(naxis)` when every axis is claimed).
@@ -1086,7 +1086,7 @@ fn build_world_frame(
         return Ok(spec.world_frame());
     }
     // The axes no class stage claimed — the ones whose CTYPEs make up the
-    // leftover Frame's Domain (C's sentinel-tagged axes, fitschan.c:38964).
+    // leftover Frame's Domain (C's sentinel-tagged axes, fitschan.c:38973).
     let unclaimed: Vec<usize> = (0..naxis).filter(|&i| !claimed[i]).collect();
 
     if celestial.is_none() && spectral.is_none() {
@@ -1106,13 +1106,13 @@ fn build_world_frame(
     // (others, Sky, Spec) and the `AXP{n}` permutation that C emits.
 
     // Base frame: a BasicFrame over all axes, each carrying its CTYPE
-    // symbol / label / unit (the WcsOthers step, fitschan.c:38725 — it
+    // symbol / label / unit (the WcsOthers step, fitschan.c:38734 — it
     // only affects the linear axes, since the celestial/spectral axes are
     // replaced by their own frames below).
     let mut frame: DynFrame =
         seed_linear_frame(store, &(0..naxis).collect::<Vec<_>>(), &unclaimed)?;
 
-    // --- Celestial stage (WcsCelestial, fitschan.c:36146-36189) ---
+    // --- Celestial stage (WcsCelestial, fitschan.c:36155-36198) ---
     if let Some(cel) = celestial.as_ref() {
         // `cel.frame` already carries an internal axis permutation that
         // makes its *external* axis order agree with ascending FITS axis
@@ -1126,7 +1126,7 @@ fn build_world_frame(
         frame = morph_in_sub_frame(frame, Box::new(cel.frame.clone()), &sky_axes, naxis)?;
     }
 
-    // --- Spectral stage (WcsSpectral, fitschan.c:39723-39761) ---
+    // --- Spectral stage (WcsSpectral, fitschan.c:39732-39770) ---
     if let Some(spec) = spectral.as_ref() {
         frame = morph_in_sub_frame(frame, spec.world_frame(), &[spec.axis], naxis)?;
     }
@@ -1136,7 +1136,7 @@ fn build_world_frame(
 
 /// The CTYPE value C `WcsOthers` works from for one axis: the keyword value
 /// with any trailing `-LOG` removed, defaulting to `AXIS<n>` when the header
-/// carries no CTYPE for the axis (fitschan.c:38969-38988). C uses this same
+/// carries no CTYPE for the axis (fitschan.c:38978-38997). C uses this same
 /// `buf2` string for the axis Symbol, for the Label fallback, and as the
 /// contribution to the Frame's Domain.
 fn others_axis_ctype(store: &FitsStore, axis: usize) -> String {
@@ -1151,13 +1151,13 @@ fn others_axis_ctype(store: &FitsStore, axis: usize) -> String {
 
 /// Build the Domain for the Frame holding the axes no class stage claimed.
 ///
-/// C `WcsOthers` (fitschan.c:38990-39048) joins those axes' CTYPE values with
+/// C `WcsOthers` (fitschan.c:38999-39057) joins those axes' CTYPE values with
 /// `-` separators — each already `-LOG`-stripped — and sets the result as the
 /// Domain of the primary Frame containing them, or clears the Domain when no
 /// axis contributed a non-blank value.
 ///
 /// C identifies the axes by seeding the whole physical Frame with a sentinel
-/// `Domain=AST_FITSCHAN` (fitschan.c:37926) and then testing which axes still
+/// `Domain=AST_FITSCHAN` (fitschan.c:37935) and then testing which axes still
 /// carry it once the class stages have replaced the rest. Here the caller
 /// already holds the leftover axis list, so there is nothing for a sentinel to
 /// determine.
@@ -1185,7 +1185,7 @@ fn ctype_domain(store: &FitsStore, axes: &[usize]) -> Option<String> {
 /// Build a BasicFrame over the given FITS axes (0-based), carrying each
 /// axis's CTYPE symbol, label (CNAME or CTYPE), and unit. Mirrors the
 /// per-axis attribute setup C performs (WcsOthers `astSetSymbol`/`astSetLabel`,
-/// fitschan.c:39003-39015).
+/// fitschan.c:39012-39024).
 ///
 /// `domain_axes` lists the axes whose CTYPEs make up the Frame's Domain — the
 /// unclassified axes only, which is the subset C's sentinel walk arrives at.
