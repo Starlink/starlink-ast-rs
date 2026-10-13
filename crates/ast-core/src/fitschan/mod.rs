@@ -1292,6 +1292,9 @@ impl FitsChan {
             alt_axes: self.alt_axes(),
             fits_axis_order: self.fits_axis_order().to_string(),
             crval_source: Some(std::rc::Rc::new(self.clone())),
+            tab_ok: self.tab_ok(),
+            force_tab: self.force_tab() != 0,
+            tables: Default::default(),
         }
     }
 
@@ -1555,8 +1558,7 @@ impl FitsChan {
 
     /// Set the TabOK attribute: a positive value allows the `-TAB`
     /// algorithm and is the EXTVER of the binary table a write makes for
-    /// it. The `-TAB` algorithm is not yet ported, so the value is held,
-    /// copied and dumped but changes no read or write.
+    /// it.
     pub fn set_tab_ok(&mut self, v: i32) {
         self.tab_ok = Some(v);
     }
@@ -1577,9 +1579,8 @@ impl FitsChan {
     }
 
     /// Set the ForceTab attribute: whether a write uses the `-TAB`
-    /// algorithm whenever TabOK allows it. As for
-    /// [`set_tab_ok`](Self::set_tab_ok), the value changes no read or
-    /// write yet.
+    /// algorithm whenever TabOK allows it, in preference to any other
+    /// algorithm that could describe an axis.
     pub fn set_force_tab(&mut self, v: i32) {
         self.force_tab = Some(v);
     }
@@ -2416,6 +2417,7 @@ impl FitsChan {
 
                 let attrs = self.write_attrs();
                 let write_warnings = attrs.warnings.clone();
+                let write_tables = attrs.tables.clone();
                 // C's `Write` reads NAXIS1 to NAXIS<nin> with `astGetFitsF`
                 // before `FsetToStore`, which leaves the cursor on the last
                 // found, or at end-of-file, and there `Warn` stores the
@@ -2507,6 +2509,18 @@ impl FitsChan {
                 }
 
                 let ret = usize::from(result?);
+                // The table any `-TAB` axes were described with is moved to
+                // the FitsChan, where `get_tables` finds it, whether or not
+                // the header could be written (fitschan.c `FitsFromStore`).
+                if let Some(table) = write_tables.borrow_mut().take() {
+                    self.tables
+                        .get_or_insert_with(crate::keymap::KeyMap::new)
+                        .put_0a(
+                            fset_to_store::map_tab::TABEXTNAME,
+                            AnyObject::FitsTable(Box::new(table)),
+                            None,
+                        )?;
+                }
                 // A successful write leaves the current card at end-of-file,
                 // so a subsequent write appends after this object. Mirrors
                 // fitschan.c:40858.

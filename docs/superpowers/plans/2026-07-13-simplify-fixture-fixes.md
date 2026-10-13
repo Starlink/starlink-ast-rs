@@ -265,10 +265,10 @@ Expected: winmap_01, unitmap_01, unitnormmap_winmap_inv_refused, unitnormmap_fwd
 
 ## Task M2: LutMap constant-table guard + PermMap bad-vs-constant encoding
 
-**Root cause (a):** C refuses to convert a constant LutMap to a WinMap — guard `if(b1 != b2)` at lutmap.c:1150 (first ≠ last LUT value). Rust (lutmap.rs:558-589) computes slope 0 and emits `WinMap(scale=0)`. **(b):** PermMap unpaired output — C encodes as *bad* (0), Rust as a *constant* ref (-1) (perm.rs merge path).
+**Root cause (a):** C refuses to convert a constant LutMap to a WinMap — guard `if(b1 != b2)` at lutmap.c:1150 (first ≠ last LUT value). Rust (lutmap.rs:563-594) computes slope 0 and emits `WinMap(scale=0)`. **(b):** PermMap unpaired output — C encodes as *bad* (0), Rust as a *constant* ref (-1) (perm.rs merge path).
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/lutmap.rs:558-589`
+- Modify: `crates/ast-core/src/mappings/lutmap.rs:563-594`
 - Modify: `crates/ast-core/src/mappings/perm.rs` (merge/simplify path)
 
 - [ ] **Step 1: LutMap — add the `lut[0] != lut[n-1]` guard** before the WinMap conversion (mirror lutmap.c:1150). Oracle: neg_lut_constant reference == unchanged LutMap.

@@ -907,7 +907,7 @@ inside a list therefore kept its inversion where C replaces it, and was not
 collapsed when its two components are inverses.
 
 §10.16 moved the whole body into `TranMap::map_merge`
-(`mappings/tranmap.rs:256-333`), where C keeps it, with C's three exclusive cases
+(`mappings/tranmap.rs:262-339`), where C keeps it, with C's three exclusive cases
 selected on `ctx.entry(where_).1` — `flatten` resets every leaf to forward and
 carries the inversion in the merge list, so the requested orientation is the
 merge entry's flag rather than the object's own. Case 3 stores the surviving
@@ -1739,7 +1739,7 @@ divergences in a class whose checklist had reported every row ported.
   called it now drive the branch through `simplify`.
 
 `table_is_linear` (`lutmap.rs:167-201`) and `map_merge`
-(`lutmap.rs:687-744`) are now C's two branches in C's order, with C's return
+(`lutmap.rs:692-749`) are now C's two branches in C's order, with C's return
 value.
 
 ---

@@ -85,7 +85,13 @@ pub(crate) fn encode_wcs(
     // half-pixel-bumped CRPIX/CRVAL handling (`NearestPix`) sees
     // the user-supplied reference rather than a synthesised one.
 
+    let tables = attrs.tables.clone();
     let planes = collect_plane_stores(frameset, dim, crate::fitschan::Encoding::FitsWcs, attrs)?;
+    // With no primary description C makes no store, and so hands the
+    // FitsChan no table.
+    if planes.is_empty() {
+        tables.borrow_mut().take();
+    }
 
     // Emit the primary plane followed by each alt plane (per-axis cards
     // only — their global emissions are gated by `s == ' '`).
@@ -189,7 +195,13 @@ pub(crate) fn encode_pc(
             "FITS-PC encoding requires a FrameSet object",
         ));
     };
+    let tables = attrs.tables.clone();
     let mut planes = collect_plane_stores(frameset, dim, crate::fitschan::Encoding::FitsPc, attrs)?;
+    // With no primary description C makes no store, and so hands the
+    // FitsChan no table.
+    if planes.is_empty() {
+        tables.borrow_mut().take();
+    }
     if planes.is_empty() {
         return Ok(false);
     }
@@ -229,7 +241,13 @@ pub(crate) fn encode_wcs_per_plane(
             ));
         }
     };
+    let tables = attrs.tables.clone();
     let planes = collect_plane_stores(frameset, dim, encoding, attrs)?;
+    // With no primary description C makes no store, and so hands the
+    // FitsChan no table.
+    if planes.is_empty() {
+        tables.borrow_mut().take();
+    }
 
     // Restrict to the primary plane for encodings that the C library
     // documents as primary-axis-only. Mirrors the per-encoder header
@@ -444,6 +462,16 @@ fn write_store_to_cards(
         }
     }
 
+    // AXREFi{S}: the reference position of a `-TAB` axis whose look-up
+    // has no inverse, an AST extension (fitschan.c `WcsFromStore`).
+    for i in 0..naxis {
+        if let Some(val) = store.axref[i] {
+            let key = fmt_axis_key("AXREF", i + 1, s);
+            let comment = format!("Reference WCS value on axis {}", i + 1);
+            cards.set_float(&key, val, &comment);
+        }
+    }
+
     // Plane-shared cards: only emit on primary plane.
     // Mirrors C library WcsFromStore order (fitschan.c:36993+):
     // CD matrix, then MJD-OBS / DATE-OBS, then RADESYS / EQUINOX.
@@ -480,7 +508,26 @@ fn write_store_to_cards(
         // the "QV" prefix; all other axes use "PV" (fitschan.c:37200,
         // 37278 `parprefix`).
         let prefix = if qv { "QV" } else { "PV" };
+        // A -TAB axis keeps its interpolation method, an AST extension, as
+        // QVi_4, and only when it is not the default of zero, so as not to
+        // clash with a standard PVi_4 (fitschan.c `WcsFromStore`).
+        let tab_axis = store.ctype[i].as_deref().is_some_and(|c| {
+            c.len() >= 8
+                && c.as_bytes()[4..8] == *b"-TAB"
+                && super::wcs_celestial::wcs_prj_type(&c[c.len() - 4..]).is_none()
+        });
         for (m, val) in store.pv[i].iter().enumerate() {
+            if m == 4 && tab_axis {
+                if let Some(v) = val.filter(|&v| v != 0.0) {
+                    let key = if s == ' ' {
+                        format!("QV{}_{m}", i + 1)
+                    } else {
+                        format!("QV{}_{m}{s}", i + 1)
+                    };
+                    cards.set_float(&key, v, "Use nearest neighbour interpolation");
+                }
+                continue;
+            }
             if let Some(v) = val {
                 let key = if s == ' ' {
                     format!("{prefix}{}_{m}", i + 1)
@@ -488,6 +535,21 @@ fn write_store_to_cards(
                     format!("{prefix}{}_{m}{s}", i + 1)
                 };
                 cards.set_float(&key, *v, "Projection parameter");
+            }
+        }
+    }
+
+    // PS{i}_{m} string projection parameters, which name the look-up
+    // table of a `-TAB` axis (fitschan.c `WcsFromStore`).
+    for (i, params) in store.ps.iter().enumerate().take(naxis) {
+        for (m, val) in params.iter().enumerate() {
+            if let Some(v) = val {
+                let key = if s == ' ' {
+                    format!("PS{}_{m}", i + 1)
+                } else {
+                    format!("PS{}_{m}{s}", i + 1)
+                };
+                cards.set_string(&key, v, "Projection parameter");
             }
         }
     }

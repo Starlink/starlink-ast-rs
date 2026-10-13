@@ -24,15 +24,14 @@ What remains is the **attribute surface**, not the read-path algorithms:
   `IgnoreBadAlt`, `AltAxes`, `Warnings`. `Card` is the substantive one: 540
   internal references to card position and no `set_card` / `get_card`, so a
   client cannot drive the cursor.
-- **Blocked on FitsTable** — `TabOK`, `ForceTab`.
 - **About thirteen public functions** — `astPurgeWCS`,
   `astSetCard` / `astGetCard`, `astTestFits`, `astShowFits`, and the typed card
   accessors `astSetFitsCF` / `CI` / `CN` / `T` / `K`. `astRetainFits` has its
   foundations in the consumed-card work but is not ported.
 
-`-TAB` is three unported things rather than a branch to enable: `Table`,
-`FitsTable`, and the algorithm (`AdaptLut`, `PutTable`, `IsMapTab1D` / `2D`).
-`PLAN.md` §3 is where that blocker is recorded.
+`-TAB` is ported, read and write: `Table`, `FitsTable`, the FitsChan table
+store, and the algorithm (`AdaptLut`, `IsMapTab1D` / `2D`, `TabOK`,
+`ForceTab`), recorded in the `PLAN.md` §3 Table / FitsTable row.
 
 This document catalogues C `fitschan.c` logic that is not yet ported
 to the Rust `crates/ast-core/src/fitschan/` tree.
@@ -171,16 +170,12 @@ Two-line fix.
 
 ### `AXREF{i}` keyword (for `-TAB` axes)
 
-**File:** none (gap).
+**Status:** DONE 2026-10-13.
 **C reference:** `WcsFcRead` (fitschan.c ~36400) `AXREF%d` branch.
 
-`AXREF{i}` carries the pixel reference position for `-TAB`
-algorithm axes.
-Rust does not read it.
-Same blocker family as the `-TAB` algorithm (which depends on
-`FitsTable` infrastructure, see `fset_to_store-port-gaps.md`).
-
-**Action:** ports as part of the `-TAB` work.
+`AXREF{i}` carries the reference position of a `-TAB` axis.
+It is read in `wcs_keywords.rs` and written after `CUNIT{i}` in
+`wcs_write/mod.rs`, as C writes it.
 
 ---
 
@@ -249,13 +244,13 @@ Rust currently models 5.
 | `Clean` | yes | no | controls whether read consumes input cards |
 | `FitsAxisOrder` | yes | no | only "<auto>" mode reachable; documented in fset_to_store gap doc |
 | `FitsTol` | yes | no | linearity tolerance for FITS-WCS extraction; default 0.1 used |
-| `ForceTab` | yes | no | force `-TAB` algorithm; blocked on FitsTable port |
+| `ForceTab` | yes | yes | force `-TAB` algorithm; `set_force_tab` |
 | `IgnoreBadAlt` | yes | no | controls behaviour on bad alt-plane |
 | `Iwc` | yes | no | controls whether the IWC frame is added to the FrameSet |
 | `PolyTan` | yes | no | enables `-PV` polynomial TAN (silently ignored — fixture `tan-polytan_native` passes via astequal) |
 | `SipOK` | yes | **partial** | the harness reads `SipOK=1` from the manifest but ignores it; SIP path is on by default and SipOK off is unsupported |
 | `SipReplace` | yes | **partial** | same — silent-ignore; default behaviour assumes `sipreplace=1` |
-| `TabOK` | yes | no | controls `-TAB` enablement; FitsTable blocker |
+| `TabOK` | yes | yes | controls `-TAB` enablement and the table EXTVER; `set_tab_ok` |
 | `Warnings` | yes | **partial** | warnings vec exists; no public attribute |
 | `AltAxes` | yes | no | controls alt-plane axis ordering |
 
@@ -313,14 +308,14 @@ have their own section above.
 
 | C function | Rust mentions | Status |
 |---|---|---|
-| `AdaptLut` | 0 | `-TAB` blocker (FitsTable infrastructure) |
+| `AdaptLut` | 1 | ported as `map_tab::adapt_lut` |
 | `DistortMaps` | 0 | `-SIP` ported; `-ZPX` not (see [§-ZPX](#-zpx-distortion-mapping)) |
 | `DSBSetUp` | 0 | gap (see [§DSBSpecFrame](#dsbspecframe-setup-from-fits-class)) |
 | `DSSFromStore` | 0 | partial (see [§DSS](#dss--non-linear-plate-solution)) |
 | `DSSToStore` | 0 | partial (see [§DSS](#dss--non-linear-plate-solution)) |
 | `HasAIPSSpecAxis` | 0 | ported by behaviour (`guess_encoding::has_aips_spectral_ctype`); just no name match |
 | `LooksLikeClass` | 0 | ported by behaviour (`guess_encoding::looks_like_class`); just no name match |
-| `PutTable` / `PutTables` | 0 | `-TAB` blocker |
+| `PutTable` / `PutTables` | 1 | ported as `put_table` / `put_tables` |
 | `DateObs` | 1 | ported (`mjd_to_date_str` and the inverse in `wcs_keywords.rs::read_epoch_into_store`) — just a different name |
 | `WATCoeffs` | 1 | ported as `wat_coeffs` in `spec_trans.rs` |
 | `WcsFcRead` | 1 | ported as `wcs_keywords::extract_wcs_keywords`; verified keyword set covers TELESCOP/JCMT/UKIRT (gap noted in [§DTAI](#telescop-gated-dtai-keyword)) and AXREF (gap noted in [§AXREF](#axrefi-keyword-for--tab-axes)) but otherwise comparable scope |
@@ -377,8 +372,7 @@ If a future session picks up these gaps, suggested order
    astequal-only).
 6. **SAOTrans** — adds support for SAO-encoded headers.
 7. **`-TAB` family** (AdaptLut, IsMapTab1D/2D, AXREF, ForceTab,
-   TabOK, PutTable/PutTables) — blocked on FitsTable port; do
-   together once that's available.
+   TabOK, PutTable/PutTables) — DONE 2026-10-13.
 8. **Public-API gaps** (`astPurgeWCS`, `astRetainFits`,
    `astSetCard`, etc.) — only when downstream Rust client code
    needs them.

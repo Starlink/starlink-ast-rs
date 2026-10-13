@@ -83,7 +83,7 @@ cancellation check in `try_merge()`.
 entries with the same value), C returns BAD (undetermined). Rust
 returns the midpoint of the bracketing indices.
 
-**Rust location:** `lutmap.rs:264` (when `dv == 0.0`)
+**Rust location:** `lutmap.rs:269` (when `dv == 0.0`)
 **C reference:** `lutmap.c:1669-1679`
 
 **Fix:** Return `BAD_VALUE` when `dv == 0.0` in the inverse path.

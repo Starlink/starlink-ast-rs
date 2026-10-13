@@ -55,6 +55,8 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 
 ### [Resolved upstream](#resolved-upstream)
 
+- [RESOLVED (upstream 9efa99f3): `OtherAxes` keeps the axis value as CRVAL for a `-TAB` axis](#resolved-upstream-9efa99f3-otheraxes-keeps-the-axis-value-as-crval-for-a--tab-axis)
+- [RESOLVED (upstream 9e6e4415): `IsMapTab2D` fails with AST__MPIND when only one celestial axis is tabular](#resolved-upstream-9e6e4415-ismaptab2d-fails-with-ast__mpind-when-only-one-celestial-axis-is-tabular)
 - [RESOLVED (upstream a4cded15): `astRemoveTables` with a blank key removes every other table](#resolved-upstream-a4cded15-astremovetables-with-a-blank-key-removes-every-other-table)
 - [RESOLVED (upstream ca8d3a82): A FitsTable created from a header misreads, or crashes on, several column definitions](#resolved-upstream-ca8d3a82-a-fitstable-created-from-a-header-misreads-or-crashes-on-several-column-definitions)
 - [RESOLVED (upstream 369c0e91): `astColumnNullK` misses null values and returns a used value as the default](#resolved-upstream-369c0e91-astcolumnnullk-misses-null-values-and-returns-a-used-value-as-the-default)
@@ -1377,6 +1379,29 @@ A 64 bit integer card value was written with `astWriteInt` and read into an `int
 
 Fixed on `u/timj/norm-unit` in c16f9b11: SipReplace is written and read as `SipRpl`, the card values with `astWriteInt64` into an `int64_t`, and PolyTan and SipOK default to -INT_MAX; `testfitschan` `testdumpload`.
 The port's FitsChan dump (`fitschan/dump.rs`) is `Dump` as fixed; `tests/test_channel_dump_oracle.rs` (the `fitschan*` cases), whose probe needs the fixed library.
+
+### RESOLVED (upstream 9efa99f3): `OtherAxes` keeps the axis value as CRVAL for a `-TAB` axis
+
+C location: `fitschan.c` `OtherAxes`.
+
+The intermediate world coordinates of a `-TAB` axis are the grid coordinates of its look-up, so its CRVAL must be zero.
+`OtherAxes` stored the CRVAL it found before choosing the algorithm and, for a `-TAB` axis, set only its local copy to zero.
+The header kept the axis value as CRVAL, which shifted the grid coordinates a reader looks the table up with.
+`SpectralAxes` already stored the zero.
+
+Fixed on `u/timj/norm-unit` in 9efa99f3: `OtherAxes` stores the zero; `testfitschan.c` `testtabotheraxis` (errors 1084 to 1086), which reads the header back and compares the table nodes.
+The port follows the fix in `fset_to_store/other_axes.rs`; `tests/test_fitschan_tab_write_oracle.rs`, whose probe needs the fixed library.
+
+### RESOLVED (upstream 9e6e4415): `IsMapTab2D` fails with AST__MPIND when only one celestial axis is tabular
+
+C location: `fitschan.c` `IsMapTab2D`.
+
+When only one of a pair of celestial axes can be described by a look-up table, `IsMapTab2D` removes that axis's columns again.
+It tested the pointer to the index column number rather than the number, tested the first axis's index column for the second axis, and removed the main column before looking up the index column's name.
+With no index column this asked for column -1, so `astWrite` failed with AST__MPIND rather than finding no `-TAB` description.
+
+Fixed on `u/timj/norm-unit` in 9e6e4415: the index column is tested by number for the right axis and removed first; `testfitschan.c` `testtabonecelestial` (errors 1082, 1083).
+The port follows the fix in `fset_to_store/map_tab.rs` (`is_map_tab_2d`).
 
 ### RESOLVED (upstream a4cded15): `astRemoveTables` with a blank key removes every other table
 

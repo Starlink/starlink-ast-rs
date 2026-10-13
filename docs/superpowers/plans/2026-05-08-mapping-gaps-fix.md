@@ -530,7 +530,7 @@ and wcsmap.c:1515-1547."
 ## Task 7: LutMap flat-section inverse returns BAD
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/lutmap.rs:264`
+- Modify: `crates/ast-core/src/mappings/lutmap.rs:269`
 - Test: `crates/ast-core/tests/test_lutmap.rs`
 
 - [ ] **Step 1: Write test for flat-section inverse**

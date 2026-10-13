@@ -1152,7 +1152,9 @@ fn build_world_frame(
 
     if celestial.is_none() && spectral.is_none() {
         // All-linear: a single BasicFrame carrying the per-axis CTYPE info.
-        return seed_linear_frame(store, &(0..naxis).collect::<Vec<_>>(), &unclaimed);
+        let mut frame = seed_linear_frame(store, &(0..naxis).collect::<Vec<_>>(), &unclaimed)?;
+        apply_wcsname(store, frame.as_mut())?;
+        return Ok(frame);
     }
 
     // Mixed case: replicate C `WcsMapFrm`'s in-place frame morph
@@ -1192,7 +1194,21 @@ fn build_world_frame(
         frame = morph_in_sub_frame(frame, spec.world_frame(), &[spec.axis], naxis)?;
     }
 
+    // WcsOthers, which runs only when some axes are left to it.
+    if !unclaimed.is_empty() {
+        apply_wcsname(store, frame.as_mut())?;
+    }
     Ok(frame)
+}
+
+/// C's `WcsOthers` ending: a WCSNAME keyword names the whole Frame, as its
+/// Domain and in its Title.
+fn apply_wcsname(store: &FitsStore, frame: &mut dyn crate::frames::Frame) -> AstResult<()> {
+    if let Some(name) = store.wcsname.as_deref() {
+        frame.set_domain(name)?;
+        frame.set_title(&format!("{name} coordinates"))?;
+    }
+    Ok(())
 }
 
 /// The CTYPE value C `WcsOthers` works from for one axis: the keyword value

@@ -167,7 +167,7 @@ COUPLED to this: they sit inside a TranMap inverse subtree that C keeps inverted
 (C's `tranmap.c` MapMerge, lines 826-861, sets each component to its snapshot
 `invert1`/`invert2`, astSimplify's at that orientation, and builds
 `astTranMap(smap_f, smap_i)` keeping the result orientation). Our
-`TranMap::simplified` (`crates/ast-core/src/mappings/tranmap.rs:258`) instead
+`TranMap::simplified` (`crates/ast-core/src/mappings/tranmap.rs:264`) instead
 calls `self.map1.simplified()`/`self.map2.simplified()` on the RAW stored maps
 (ignoring `inv_a`/`inv_b`), which normalizes the inverted branch to forward.
 

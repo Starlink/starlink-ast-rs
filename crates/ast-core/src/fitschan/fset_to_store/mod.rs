@@ -31,6 +31,7 @@ mod invertable;
 mod is_map_linear;
 mod log_axis;
 mod make_int_world;
+pub(crate) mod map_tab;
 mod orth;
 mod other_axes;
 mod sip_int_world;
@@ -82,6 +83,16 @@ pub(crate) struct WriteAttrs {
     /// which C's `ReadCrval` takes the reference point already in its
     /// header; `None` when there is none to consult.
     pub crval_source: Option<std::rc::Rc<crate::fitschan::FitsChan>>,
+    /// TabOK: when positive, axes may be described by the `-TAB`
+    /// algorithm, and it is the table's EXTVER.
+    pub tab_ok: i32,
+    /// ForceTab: whether `-TAB` is used even where another algorithm would
+    /// do.
+    pub force_tab: bool,
+    /// The look-up table the `-TAB` axes of every axis description share,
+    /// stored as the extension `WCS-TAB` (C's `store->tables`); shared by
+    /// every copy of these attributes the write makes.
+    pub tables: std::rc::Rc<std::cell::RefCell<Option<crate::fitstable::FitsTable>>>,
 }
 
 impl Default for WriteAttrs {
@@ -94,6 +105,9 @@ impl Default for WriteAttrs {
             alt_axes: AltAxes::All,
             fits_axis_order: "<auto>".to_string(),
             crval_source: None,
+            tab_ok: 0,
+            force_tab: false,
+            tables: Default::default(),
         }
     }
 }
@@ -202,10 +216,9 @@ fn fset_to_store_impl(
     let naxis = fs.base().naxes().max(nwcs);
     let mut store = FitsStore::new(naxis);
 
-    // Reject inputs whose inverse is undefined (mirrors C:2782 — the
-    // -TAB fallback path in C is not yet ported, so for now we mirror
-    // the non-TAB return).
-    if !mapping.has_inverse() {
+    // A Mapping with no inverse can be described only by the `-TAB`
+    // algorithm (fitschan.c `AddVersion`).
+    if !mapping.has_inverse() && attrs.tab_ok <= 0 {
         return Ok((store, false));
     }
 
@@ -217,7 +230,7 @@ fn fset_to_store_impl(
     let mut wperm: Vec<usize> = if chosen {
         order
     } else {
-        match world_axes(mapping.as_ref(), dim, fits_tol)? {
+        match world_axes(mapping.as_ref(), dim, fits_tol, attrs.tab_ok)? {
             Some(p) => p,
             None => return Ok((store, false)),
         }
@@ -258,7 +271,13 @@ fn fset_to_store_impl(
     // `'SKY_ORIGIN'` instead of the standard equatorial CTYPEs.
     let isoff = sky_sys::is_sky_off(fs, fs.current_idx());
 
+    let tab = map_tab::TabWrite {
+        tab_ok: attrs.tab_ok,
+        force_tab: attrs.force_tab,
+        tables: &attrs.tables,
+    };
     let cel_seg = celestial_axes(CelestialAxesArgs {
+        tab,
         fs,
         dim,
         wperm: &mut wperm,
@@ -274,6 +293,7 @@ fn fset_to_store_impl(
 
     let mut unit_remap = None;
     let spec_seg = spectral_axes(SpectralAxesArgs {
+        tab,
         fs,
         dim,
         wperm: &mut wperm,
@@ -285,6 +305,7 @@ fn fset_to_store_impl(
     })?;
 
     let other_seg = other_axes(OtherAxesArgs {
+        tab,
         fs,
         dim,
         wperm: &mut wperm,

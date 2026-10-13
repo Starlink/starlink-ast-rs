@@ -5,23 +5,10 @@
 //! RADESYS / EQUINOX / MJD-OBS) in the supplied [`FitsStore`], and
 //! returns the WCS→IWC mapping segment for those axes.
 //!
-//! ## TODO: branches not yet ported
-//!
-//! Several C branches are not yet covered. They MUST be ported (lack
-//! of wcsconv fixture coverage is not an excuse — see
-//! [`feedback_test_coverage_is_separate_from_porting`] in user
-//! memory). Tracked in
-//! [`docs/issues/fset_to_store-port-gaps.md`](../../../../../docs/issues/fset_to_store-port-gaps.md):
-//!
-//! - **`-TAB` algorithm fallback** (C:5396-5580). When no WcsMap is
-//!   present in the pixel→WCS chain, C falls through to `IsMapTab2D`.
-//!   The Rust port returns UnitMap, which is silently wrong for
-//!   `-TAB`-describable celestial fixtures. Blocked on `FitsTable`
-//!   infrastructure.
-//! - **`SkyPole` / LONPOLE+LATPOLE storage** (C:5189). C writes
-//!   `lonpole`/`latpole` keywords from the WcsMap's PV(lonax, 3/4)
-//!   and the SkyFrame's `SkyRef`. Headers that depend on non-default
-//!   LONPOLE/LATPOLE won't round-trip without these.
+//! When the pixel to WCS chain holds no WcsMap, or `ForceTab` is set, the
+//! pair is described with the `-TAB` algorithm through
+//! `map_tab::is_map_tab_2d`, as C does
+//! (C:5396-5580).
 //!
 //! Note on `FitsAxisOrder`: the C function gates the auto axis-swap
 //! on `astChrMatch(astGetFitsAxisOrder(this), "<auto>")` (C:5318).
@@ -50,6 +37,7 @@ use crate::mappings::{
 use crate::wcslib::WcsProjection;
 
 use super::fiducial::{get_fiducial_nsc, get_fiducial_wcs};
+use super::map_tab::{TABEXTNAME, fits_order_perm, is_map_tab_2d, set_extver, with_table};
 use super::sky_pole::sky_pole;
 use super::sky_sys::sky_sys;
 use super::world_axes::world_axes;
@@ -79,6 +67,8 @@ const DR2D: f64 = 180.0 / PI;
 /// Arguments to [`celestial_axes`]. Mirrors the C signature but
 /// uses Rust-idiomatic option types.
 pub(crate) struct CelestialAxesArgs<'a> {
+    /// TabOK, ForceTab and the table for the `-TAB` algorithm.
+    pub tab: super::map_tab::TabWrite<'a>,
     /// FrameSet whose base is FITS pixel coords and whose current
     /// is FITS WCS coords.
     pub fs: &'a FrameSet,
@@ -108,6 +98,145 @@ pub(crate) struct CelestialAxesArgs<'a> {
     pub auto_order: bool,
 }
 
+/// The celestial axes `ilon` and `ilat` of the WCS Frame, at FITS axes
+/// `fits_ilon` and `fits_ilat`, described by look-up tables: C's
+/// `CelestialAxes` when the pixel to WCS Mapping `map` has no projection,
+/// or ForceTab is set, and TabOK is positive. The tables hold degrees.
+/// IWC are the grid coordinates of the look-ups less CRVAL, which is the
+/// grid position of the SkyFrame's SkyRef when the look-up can be
+/// inverted, and 1 otherwise, with SkyRef kept as AXREF. Returns the WCS
+/// to IWC Mapping, or a UnitMap when the axes cannot be described.
+#[allow(clippy::too_many_arguments)]
+fn celestial_tab(
+    args: &mut CelestialAxesArgs<'_>,
+    map: &dyn Mapping,
+    skyfrm: &SkyFrame,
+    ilon: usize,
+    ilat: usize,
+    fits_ilon: usize,
+    fits_ilat: usize,
+) -> AstResult<DynMapping> {
+    let fs = args.fs;
+    let wcsfrm = fs.current();
+    let nwcs = wcsfrm.naxes();
+    let tab = args.tab;
+    if tab.tab_ok <= 0 {
+        return Ok(Box::new(UnitMap::new(nwcs)));
+    }
+    let dim = args.dim;
+    let ret = with_table(tab, |table| {
+        let Some(axes) = is_map_tab_2d(
+            map,
+            DR2D,
+            Some("deg"),
+            wcsfrm,
+            dim,
+            ilon,
+            ilat,
+            fits_ilon,
+            fits_ilat,
+            table,
+        )?
+        else {
+            return Ok(None);
+        };
+        let table = table.as_mut().expect("is_map_tab_2d made the table");
+
+        // CTYPE, CNAME, EQUINOX, MJD-OBS and RADESYS, for -TAB axes.
+        sky_sys(
+            skyfrm,
+            0,
+            WcsProjection::Unknown,
+            args.store,
+            fits_ilon,
+            fits_ilat,
+            args.s,
+            args.isoff,
+            args.timesys,
+            args.warnings,
+        )?;
+
+        // CRVAL: the psi values of SkyRef where the look-up from WCS to
+        // psi can be made, else 1 with SkyRef kept in degrees as AXREF.
+        let mut crval = [1.0, 1.0];
+        if skyfrm.test_sky_ref(1)? && skyfrm.test_sky_ref(2)? {
+            let skyfid = [
+                skyfrm.sky_ref(skyfrm.lon_axis())?,
+                skyfrm.sky_ref(skyfrm.lat_axis())?,
+            ];
+            if axes.map.has_forward() {
+                let out = axes.map.transform(&PointSet::from_rows([skyfid]), true)?;
+                crval = [out.point(0)[0], out.point(0)[1]];
+            } else {
+                args.store.axref[fits_ilon] = Some(DR2D * skyfid[0]);
+                args.store.axref[fits_ilat] = Some(DR2D * skyfid[1]);
+            }
+        }
+
+        // WCS to psi, then psi to IWC by subtracting CRVAL.
+        let shift = crate::mappings::ShiftMap::new(vec![-crval[0], -crval[1]]);
+        let tmap0: DynMapping =
+            Box::new(CmpMap::new(axes.map, Box::new(shift), Composition::Series)?);
+        args.store.crval[fits_ilon] = Some(crval[0]);
+        args.store.crval[fits_ilat] = Some(crval[1]);
+
+        let store = &mut *args.store;
+        store.ps[fits_ilon][0] = Some(TABEXTNAME.to_string());
+        store.ps[fits_ilat][0] = Some(TABEXTNAME.to_string());
+        store.pv[fits_ilon][1] = Some(f64::from(tab.tab_ok));
+        store.pv[fits_ilat][1] = Some(f64::from(tab.tab_ok));
+        set_extver(table, tab.tab_ok)?;
+        store.ps[fits_ilon][1] = Some(table.as_table().column_name(axes.first.icolmain)?);
+        store.ps[fits_ilat][1] = Some(table.as_table().column_name(axes.second.icolmain)?);
+        if let Some(icol) = axes.first.icolindex {
+            store.ps[fits_ilon][2] = Some(table.as_table().column_name(icol)?);
+        }
+        if let Some(icol) = axes.second.icolindex {
+            store.ps[fits_ilat][2] = Some(table.as_table().column_name(icol)?);
+        }
+        // Each axis is the first dimension of its own coordinate array.
+        store.pv[fits_ilon][3] = Some(1.0);
+        store.pv[fits_ilat][3] = Some(1.0);
+        store.pv[fits_ilon][4] = Some(f64::from(axes.first.interp));
+        store.pv[fits_ilat][4] = Some(f64::from(axes.second.interp));
+
+        // The look-ups beside a UnitMap for the other axes, with their
+        // inputs and outputs permuted from WCS Frame order, then a PermMap
+        // into FITS axis order.
+        let tmap2: DynMapping = if nwcs > 2 {
+            Box::new(CmpMap::new(
+                tmap0,
+                Box::new(UnitMap::new(nwcs - 2)),
+                Composition::Parallel,
+            )?)
+        } else {
+            tmap0
+        };
+        let mut outperm = vec![ilon, ilat];
+        outperm.extend((0..nwcs).filter(|&j| j != ilon && j != ilat));
+        let mut inperm = vec![0usize; nwcs];
+        for (i, &o) in outperm.iter().enumerate() {
+            inperm[o] = i;
+        }
+        let one_based = |v: &[usize]| v.iter().map(|&x| x as i64 + 1).collect::<Vec<_>>();
+        let pm = PermMap::new(&one_based(&inperm), &one_based(&outperm), &[])?;
+        let mut pm_inv = pm.clone();
+        pm_inv.invert();
+        let tmap3 = CmpMap::new(Box::new(pm), tmap2, Composition::Series)?;
+        let tmap2 = CmpMap::new(Box::new(tmap3), Box::new(pm_inv), Composition::Series)?;
+        let ret = CmpMap::new(
+            Box::new(tmap2),
+            Box::new(fits_order_perm(args.wperm)?),
+            Composition::Series,
+        )?;
+        Ok(Some(ret))
+    })?;
+    match ret {
+        Some(ret) => (Box::new(ret) as DynMapping).simplify(),
+        None => Ok(Box::new(UnitMap::new(nwcs))),
+    }
+}
+
 /// Detect celestial axes in `args.fs`, populate the celestial
 /// FITS-keyword set in `args.store`, and return the WCS→IWC mapping
 /// segment for those axes (`UnitMap` if the FrameSet has no celestial
@@ -115,7 +244,7 @@ pub(crate) struct CelestialAxesArgs<'a> {
 ///
 /// Mirrors `fitschan.c::CelestialAxes` (~4890). See the module head
 /// for deferred branches.
-pub(crate) fn celestial_axes(args: CelestialAxesArgs<'_>) -> AstResult<DynMapping> {
+pub(crate) fn celestial_axes(mut args: CelestialAxesArgs<'_>) -> AstResult<DynMapping> {
     let wcsfrm = args.fs.current();
     let nwcs = wcsfrm.naxes();
 
@@ -157,11 +286,25 @@ pub(crate) fn celestial_axes(args: CelestialAxesArgs<'_>) -> AstResult<DynMappin
     let map = map_unsimp.simplify()?;
 
     // Step 3: split the chain into the Mappings before, at and after its
-    // projection, C's `SplitMap` (C:5250). With none, the `-TAB`
-    // algorithm C tries next is not ported, and the celestial axes are
-    // left to the caller.
-    let Some((_pre, wcsmap_full, post)) = split_map(map.as_ref(), ilon, ilat)? else {
-        return Ok(Box::new(UnitMap::new(nwcs)));
+    // projection, C's `SplitMap` (C:5250). With none, or with ForceTab
+    // set, C tries the `-TAB` algorithm instead.
+    let split = if args.tab.force_tab {
+        None
+    } else {
+        split_map(map.as_ref(), ilon, ilat)?
+    };
+    let Some((_pre, wcsmap_full, post)) = split else {
+        let fits_ilon = args.wperm[ilon];
+        let fits_ilat = args.wperm[ilat];
+        return celestial_tab(
+            &mut args,
+            map.as_ref(),
+            skyfrm,
+            ilon,
+            ilat,
+            fits_ilon,
+            fits_ilat,
+        );
     };
     // The WcsMap's axes are those of the whole pixel->WCS Mapping, as
     // `astGetWcsAxis(map2, ...)` gives them.
@@ -319,7 +462,12 @@ pub(crate) fn celestial_axes(args: CelestialAxesArgs<'_>) -> AstResult<DynMappin
             ret.clone_box(),
             Composition::Series,
         )?);
-        match world_axes(pixel_to_iwc.as_ref(), args.dim, args.fits_tol)? {
+        match world_axes(
+            pixel_to_iwc.as_ref(),
+            args.dim,
+            args.fits_tol,
+            args.tab.tab_ok,
+        )? {
             Some(tperm) => Some(tperm),
             None => return Ok(Box::new(UnitMap::new(nwcs))),
         }
@@ -1026,6 +1174,7 @@ mod tests {
         let mut axis_done = vec![false; 2];
 
         let result = celestial_axes(CelestialAxesArgs {
+            tab: super::super::map_tab::no_tab(),
             fs: &fs,
             dim: &dim,
             wperm: &mut wperm,
@@ -1074,6 +1223,7 @@ mod tests {
         let mut axis_done = vec![false; 2];
 
         let _ = celestial_axes(CelestialAxesArgs {
+            tab: super::super::map_tab::no_tab(),
             fs: &fs,
             dim: &dim,
             wperm: &mut wperm,
@@ -1106,6 +1256,7 @@ mod tests {
         let mut axis_done = vec![false; 2];
 
         let result = celestial_axes(CelestialAxesArgs {
+            tab: super::super::map_tab::no_tab(),
             fs: &fs,
             dim: &dim,
             wperm: &mut wperm,

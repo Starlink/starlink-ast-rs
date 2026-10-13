@@ -53,6 +53,12 @@ pub struct TranMap {
 }
 
 impl TranMap {
+    /// Mutable access to the two component Mappings, `map1` (forward) and
+    /// `map2` (inverse), as C's `astDecompose` hands them out.
+    pub(crate) fn components_mut(&mut self) -> (&mut DynMapping, &mut DynMapping) {
+        (&mut self.map1, &mut self.map2)
+    }
+
     /// Create a new `TranMap`.
     ///
     /// - `map1` defines the forward transformation.

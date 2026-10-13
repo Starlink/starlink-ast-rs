@@ -213,6 +213,11 @@ impl LutMap {
         self.lut.len()
     }
 
+    /// The lookup table values (C's `astGetLutMapInfo`).
+    pub(crate) fn lut(&self) -> &[f64] {
+        &self.lut
+    }
+
     /// Whether the lookup table is linear, as C's `GetLinear`
     /// (`lutmap.c:578-627`) decides it.
     ///

@@ -154,10 +154,10 @@ C's base `Transform` (mapping.c:22333-22380), which every class's `Transform` ca
 
 | ID | Rating | C | Rust | Finding | Exposed by |
 |---|---|---|---|---|---|
-| TR-1 | MED | tranmap.c:2090-2101 (`AST__INTRD`) | mappings/tranmap.rs:63-93 | `TranMap::new` accepts a `map1` with no forward transform or a `map2` with no inverse. C rejects both, and so always has `TranForward = TranInverse = 1`. | `TranMap::new(selector_map, x)` where the first argument lacks a forward transform. |
-| TR-2 | LOW | tranmap.c:1191-1230 (delegates to component `astRate`) | mappings/tranmap.rs:421-423 | `rate` differentiates the whole TranMap numerically instead of calling the chosen component's `rate`, so it loses analytic rates and BAD semantics. | `TranMap(WinMap, WinMap⁻¹).rate`: C gives exactly `b`, Rust a numeric estimate. |
+| TR-1 | MED | tranmap.c:2090-2101 (`AST__INTRD`) | mappings/tranmap.rs:69-99 | `TranMap::new` accepts a `map1` with no forward transform or a `map2` with no inverse. C rejects both, and so always has `TranForward = TranInverse = 1`. | `TranMap::new(selector_map, x)` where the first argument lacks a forward transform. |
+| TR-2 | LOW | tranmap.c:1191-1230 (delegates to component `astRate`) | mappings/tranmap.rs:427-429 | `rate` differentiates the whole TranMap numerically instead of calling the chosen component's `rate`, so it loses analytic rates and BAD semantics. | `TranMap(WinMap, WinMap⁻¹).rate`: C gives exactly `b`, Rust a numeric estimate. |
 | TR-3 | MED | tranmap.c:1280 (RemoveRegions override) | regions/mod.rs:1457-1505 (no TranMap arm) | Regions inside a TranMap are not removed. | `remove_regions(TranMap(Circle, Circle))`: C returns UnitMap components, Rust returns the clone. |
-| TR-4 | LOW | tranmap.c:184-260 (restores `invert1`/`invert2` before comparing) | mappings/tranmap.rs:425-447 | `equal` uses the children's stored orientation, not the `inv_a`/`inv_b` snapshot. This matters only for a loaded dump where InvA differs from MapA's Invert. | A dump with `InvA=1` and MapA not inverted. |
+| TR-4 | LOW | tranmap.c:184-260 (restores `invert1`/`invert2` before comparing) | mappings/tranmap.rs:431-453 | `equal` uses the children's stored orientation, not the `inv_a`/`inv_b` snapshot. This matters only for a loaded dump where InvA differs from MapA's Invert. | A dump with `InvA=1` and MapA not inverted. |
 
 ### RateMap
 
@@ -238,12 +238,12 @@ C's base `Transform` (mapping.c:22333-22380), which every class's `Transform` ca
 
 | ID | Rating | C | Rust | Finding | Exposed by |
 |---|---|---|---|---|---|
-| LM-1 | HIGH, probed | lutmap.c:1620-1630, 1655-1688 (bisects the compressed `luti` table; BAD if both bracketing entries adjoin a bad entry) | mappings/lutmap.rs:386-405, 552-571 | The inverse never terminates on tables with BAD entries. When the midpoint is BAD, `find_non_bad_near` returns `low` itself, so `low` never advances. | `LutMap::new(&[1.0, BAD, 3.0], 1.0, 1.0)`, inverse of 2.0: C BAD; Rust was still running when killed after 10 s. |
-| LM-2 | HIGH, probed | lutmap.c:1693-1709 (NEAR inverse returns `start + inc*index` of the nearest entry) | mappings/lutmap.rs:383-489 (`interp` never consulted) | The inverse transform ignores `LutInterp::Nearest` and always interpolates linearly. | `lut=[1,2,4]`, start 1, inc 1, Nearest, inverse of 2.4: C 2.0, Rust 2.2. |
+| LM-1 | HIGH, probed | lutmap.c:1620-1630, 1655-1688 (bisects the compressed `luti` table; BAD if both bracketing entries adjoin a bad entry) | mappings/lutmap.rs:391-410, 552-571 | The inverse never terminates on tables with BAD entries. When the midpoint is BAD, `find_non_bad_near` returns `low` itself, so `low` never advances. | `LutMap::new(&[1.0, BAD, 3.0], 1.0, 1.0)`, inverse of 2.0: C BAD; Rust was still running when killed after 10 s. |
+| LM-2 | HIGH, probed | lutmap.c:1693-1709 (NEAR inverse returns `start + inc*index` of the nearest entry) | mappings/lutmap.rs:388-494 (`interp` never consulted) | The inverse transform ignores `LutInterp::Nearest` and always interpolates linearly. | `lut=[1,2,4]`, start 1, inc 1, Nearest, inverse of 2.4: C 2.0, Rust 2.2. |
 | LM-3 | MED | lutmap.c:2375-2384 (AST__LUTIN for nlut<2, AST__LUTII for inc==0) | mappings/lutmap.rs:76-89 | A 1-element table is accepted. Both errors use `Badin` instead of LUTIN/LUTII. | `LutMap::new(&[5.0], 0.0, 1.0)`: C LUTIN, Rust Ok. |
-| LM-4 | LOW | lutmap.c:1579-1587 (`ix >= nlut-1` takes the extrapolation branch and needs `lut[n-2]` good) | mappings/lutmap.rs:334-336 | Input exactly on the last node returns `lut[n-1]` even when `lut[n-2]` is BAD. | `[1,BAD,3]`, start 1, x=3: C BAD, Rust 3. |
-| LM-5 | LOW | lutmap.c:1594 | mappings/lutmap.rs:344-345 | The forward interpolation is written `v_lo+f*(v_hi-v_lo)` rather than C's `lut[i]*(1-f)+lut[i+1]*f`, which gives ULP-level differences. | A bit-exact comparison against the C oracle. |
-| LM-6 | LOW | lutmap.c:1553 (`floor(x+0.5)`) | mappings/lutmap.rs:371 (`round`, half away from zero) | The Nearest forward differs at exactly −0.5 increments below `start`. | Input `start-0.5*inc`: C `lut[0]`, Rust BAD. |
+| LM-4 | LOW | lutmap.c:1579-1587 (`ix >= nlut-1` takes the extrapolation branch and needs `lut[n-2]` good) | mappings/lutmap.rs:339-341 | Input exactly on the last node returns `lut[n-1]` even when `lut[n-2]` is BAD. | `[1,BAD,3]`, start 1, x=3: C BAD, Rust 3. |
+| LM-5 | LOW | lutmap.c:1594 | mappings/lutmap.rs:349-350 | The forward interpolation is written `v_lo+f*(v_hi-v_lo)` rather than C's `lut[i]*(1-f)+lut[i+1]*f`, which gives ULP-level differences. | A bit-exact comparison against the C oracle. |
+| LM-6 | LOW | lutmap.c:1553 (`floor(x+0.5)`) | mappings/lutmap.rs:376 (`round`, half away from zero) | The Nearest forward differs at exactly −0.5 increments below `start`. | Input `start-0.5*inc`: C `lut[0]`, Rust BAD. |
 | LM-7 | LOW | lutmap.c:1793-1848 | mappings/lutmap.rs:107-185 | `LutInterp` and `LutEpsilon` have no test or clear. `set_lut_epsilon(BAD_VALUE)` stands in for clear. | `astTest(lm,"LutInterp")`. |
 
 ### PolyMap

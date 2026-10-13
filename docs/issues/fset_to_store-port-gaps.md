@@ -3,10 +3,10 @@
 **Status: MOSTLY DONE.** SIPIntWorld, VELOSYS, and all Group 3/5 branches are
 ported. Re-checked against the tree at the AST 9.5.0 pin (2026-09-25).
 
-The `-TAB` branches (`IsMapTab1D` / `IsMapTab2D`) remain, blocked on the
-un-ported FitsTable infrastructure — which is three unported things, not one
-branch: `Table`, `FitsTable`, and the algorithm. `PLAN.md` §3 records that
-blocker; this document and `fitschan-c-port-gaps.md` both defer to it.
+The `-TAB` branches (`IsMapTab1D` / `IsMapTab2D`, `AdaptLut`, ForceTab, and
+the forward-only branch of `WorldAxes`) are ported in
+`fset_to_store/map_tab.rs` (2026-10-13), recorded in the `PLAN.md` §3 Table /
+FitsTable row.
 
 Two parameters this pipeline threads were plumbed but unreachable, and both
 became reachable in the 9.5.0 sync, so the body's account of them is stale:
@@ -56,15 +56,11 @@ Ported in
 into `other_axes` as the second branch (after `is_map_linear`).
 Appends `-LOG` to the CTYPE on success.
 
-### `IsMapTab1D` (-TAB algorithm)
+### `IsMapTab1D` (-TAB algorithm) — DONE
 
-C: `IsMapTab1D(...)` at line 24266. 1D tabular look-up tables.
-Requires `FitsTable` infrastructure (`store->tables`, `astSetFitsI`
-on table headers, `astColumnName`, `astMapPut0A`). Most of that
-infrastructure does not yet exist on the Rust side.
-
-**Action:** scoped as a future group — needs `FitsTable` /
-`AstFitsTable` Rust port first.
+C: `IsMapTab1D(...)` at line 24266. Ported as `map_tab::is_map_tab_1d`
+and wired into `other_axes` after the linear and `-LOG` algorithms,
+which ForceTab skips.
 
 ---
 
@@ -143,16 +139,11 @@ formatter chain matures, route through it.
 `crates/ast-core/src/fitschan/fset_to_store/celestial_axes.rs`
 mirrors `fitschan.c::CelestialAxes` (~4890).
 
-### `-TAB` algorithm fallback (C:5396–5580)
+### `-TAB` algorithm fallback (C:5396–5580) — DONE
 
-When the pixel→WCS chain has no WcsMap, C falls through to
-`IsMapTab2D` for a 2-D `-TAB` description. The Rust port returns a
-UnitMap and lets `make_int_world` flag the residual non-linearity.
-That's silently wrong for WcsMap-less celestial fixtures — they
-should be describable via `-TAB`, not rejected.
-
-**Action:** port `IsMapTab2D` (depends on `FitsTable`
-infrastructure — same blocker as `IsMapTab1D`).
+When the pixel→WCS chain has no WcsMap, or ForceTab is set, the pair
+is described through `map_tab::is_map_tab_2d`, as C does, in
+`celestial_axes::celestial_tab`.
 
 ### `SkyPole` — LONPOLE / LATPOLE storage — DONE
 
@@ -176,8 +167,8 @@ the only mode reachable today is the C-default `"<auto>"`. When
 the writer grows a `FitsAxisOrder` knob, gate the swap on it.
 
 The C TAB-only `WorldAxes` branch (forward-only mappings via
-`astMapSplit`) is not ported — celestial WCS→IWC is always
-bidirectional.
+`astMapSplit`) is ported as `world_axes_forward`, used when TabOK is
+positive.
 
 ---
 

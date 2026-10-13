@@ -7,9 +7,9 @@
 //! FITS layout should match by swapping `wperm` / CRVAL / CTYPE / etc.
 //! at the lon and lat slots).
 //!
-//! Only the bidirectional branch is ported. The C TAB-only fallback
-//! (forward-only mappings using `astMapSplit`) is not yet needed —
-//! the celestial WCS→IWC mapping is always bidirectional.
+//! A Mapping with only a forward transformation, which can be written only
+//! with the `-TAB` algorithm, is analysed by splitting off each input in
+//! turn, when TabOK is positive.
 
 #![allow(clippy::needless_range_loop)] // mirrors C
 #![allow(dead_code)] // wired in by celestial_axes; tests reach in directly
@@ -35,8 +35,74 @@ fn ast_equal(a: f64, b: f64) -> bool {
 /// [`find_basis_vectors`]. The default writer setting is `0.1` (10 %
 /// of a pixel), matching the C `FitsTol` attribute default.
 ///
-/// Mirrors `fitschan.c::WorldAxes` (~39755).
+/// Mirrors `fitschan.c::WorldAxes` (~39755). `tab_ok` is the FitsChan's
+/// TabOK attribute, which lets a Mapping with only a forward transformation
+/// be analysed.
 pub(crate) fn world_axes(
+    map: &dyn Mapping,
+    dim: &[Option<f64>],
+    fitstol: f64,
+    tab_ok: i32,
+) -> AstResult<Option<Vec<usize>>> {
+    if map.has_forward() && map.has_inverse() {
+        world_axes_bidirectional(map, dim, fitstol)
+    } else if map.has_forward() && tab_ok > 0 {
+        world_axes_forward(map)
+    } else {
+        Ok(None)
+    }
+}
+
+/// C's `WorldAxes` for a Mapping with only a forward transformation: each
+/// output takes the input that alone feeds it, found by splitting off each
+/// input in turn, and an input that feeds several outputs keeps one, the
+/// output of the same index if it is one of them, the others taking unused
+/// inputs.
+fn world_axes_forward(map: &dyn Mapping) -> AstResult<Option<Vec<usize>>> {
+    let (nin, nout) = (map.nin(), map.nout());
+    let mut perm: Vec<Option<usize>> = vec![None; nout];
+    let mut ok = true;
+    for j in 0..nin {
+        if let Some((outs, smap)) = map.map_split_zero_based(&[j])? {
+            for &o in &outs[..smap.nout()] {
+                if perm[o].is_none() {
+                    perm[o] = Some(j);
+                } else {
+                    ok = false;
+                }
+            }
+        }
+    }
+    if !ok || perm.iter().any(Option::is_none) {
+        return Ok(None);
+    }
+    let mut perm: Vec<usize> = perm.into_iter().map(|p| p.expect("checked")).collect();
+
+    for j in 0..nin {
+        let nused = perm.iter().filter(|&&p| p == j).count();
+        if nused <= 1 {
+            continue;
+        }
+        let retain = if perm.get(j) == Some(&j) {
+            j
+        } else {
+            perm.iter().position(|&p| p == j).expect("used")
+        };
+        for i in 0..nout {
+            if perm[i] != j || i == retain {
+                continue;
+            }
+            match (0..nin).find(|j2| !perm.contains(j2)) {
+                Some(j2) => perm[i] = j2,
+                None => return Ok(None),
+            }
+        }
+    }
+    Ok(Some(perm))
+}
+
+/// C's `WorldAxes` for a Mapping defined in both directions.
+fn world_axes_bidirectional(
     map: &dyn Mapping,
     dim: &[Option<f64>],
     fitstol: f64,
@@ -223,7 +289,7 @@ mod tests {
     fn unitmap_2d_returns_identity_perm() {
         let m = UnitMap::new(2);
         let dim = vec![Some(100.0), Some(100.0)];
-        let perm = world_axes(&m, &dim, 0.1).unwrap().unwrap();
+        let perm = world_axes(&m, &dim, 0.1, 0).unwrap().unwrap();
         assert_eq!(perm, vec![0, 1]);
     }
 
@@ -234,7 +300,7 @@ mod tests {
         // output axis 1 with pixel axis 0.
         let perm_map = PermMap::new(&[2, 1], &[2, 1], &[]).unwrap();
         let dim = vec![Some(100.0), Some(100.0)];
-        let perm = world_axes(&perm_map, &dim, 0.1).unwrap().unwrap();
+        let perm = world_axes(&perm_map, &dim, 0.1, 0).unwrap().unwrap();
         assert_eq!(perm, vec![1, 0]);
     }
 
@@ -242,7 +308,7 @@ mod tests {
     fn shiftmap_keeps_identity() {
         let s = ShiftMap::new(vec![10.0, 20.0]);
         let dim = vec![Some(50.0), Some(50.0)];
-        let perm = world_axes(&s, &dim, 0.1).unwrap().unwrap();
+        let perm = world_axes(&s, &dim, 0.1, 0).unwrap().unwrap();
         assert_eq!(perm, vec![0, 1]);
     }
 
@@ -252,7 +318,7 @@ mod tests {
         let mat = ndarray::arr2(&[[0.0, 1.0], [1.0, 0.0]]);
         let mm = MatrixMap::new(mat).unwrap();
         let dim = vec![Some(100.0), Some(100.0)];
-        let perm = world_axes(&mm, &dim, 0.1).unwrap().unwrap();
+        let perm = world_axes(&mm, &dim, 0.1, 0).unwrap().unwrap();
         assert_eq!(perm, vec![1, 0]);
     }
 
@@ -262,7 +328,7 @@ mod tests {
         // output 1 ↔ pixel 2, output 2 ↔ pixel 0.
         let pm = PermMap::new(&[3, 1, 2], &[2, 3, 1], &[]).unwrap();
         let dim = vec![Some(100.0); 3];
-        let perm = world_axes(&pm, &dim, 0.1).unwrap().unwrap();
+        let perm = world_axes(&pm, &dim, 0.1, 0).unwrap().unwrap();
         assert_eq!(perm, vec![1, 2, 0]);
     }
 
@@ -275,7 +341,7 @@ mod tests {
         let swap = MatrixMap::new(mat).unwrap();
         let chain = CmpMap::new(Box::new(shift), Box::new(swap), Composition::Series).unwrap();
         let dim = vec![Some(100.0), Some(100.0)];
-        let perm = world_axes(&chain, &dim, 0.1).unwrap().unwrap();
+        let perm = world_axes(&chain, &dim, 0.1, 0).unwrap().unwrap();
         assert_eq!(perm, vec![1, 0]);
     }
 }

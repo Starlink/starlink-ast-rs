@@ -6,16 +6,7 @@
 //! `axis_done`, and returns the WCS→IWC mapping segment for that
 //! axis.
 //!
-//! ## TODO: branches not yet ported
-//!
-//! Lack of wcsconv fixture coverage is not an excuse for
-//! under-porting — see [`feedback_test_coverage_is_separate_from_porting`]
-//! in user memory. Tracked in
-//! [`docs/issues/fset_to_store-port-gaps.md`](../../../../../docs/issues/fset_to_store-port-gaps.md):
-//!
-//! - **`-TAB` algorithm**. Blocked on FitsTable infrastructure.
-//!
-//! What IS now covered: a spectral Unit not linearly related to the
+//! Covered: a spectral Unit not linearly related to the
 //! default Unit is cleared, as C clears it through the FrameSet, the
 //! linear path with `IsMapLinear` gate,
 //! `-X2P` non-linear algorithm cascade (mirrors C:30359-30454)
@@ -23,7 +14,8 @@
 //! `-GRA` grism algorithm via `try_grism_cascade` + the
 //! standalone `extract_grism_map` helper, RESTFRQ vs RESTWAV
 //! choice, OBSGEO emission, axis-Label → CTYPE-comment/CNAME,
-//! source-velocity → ZSOURCE/SSYSSRC.
+//! source-velocity → ZSOURCE/SSYSSRC, and the `-TAB` algorithm when no
+//! other fits or `ForceTab` is set.
 
 // Wired in by `fset_to_store::fset_to_store` (Group 7); until then
 // only reachable from cfg(test).
@@ -42,6 +34,7 @@ use crate::mappings::helpers::is_bad;
 
 use super::is_map_linear::is_map_linear;
 use super::log_axis::log_axis;
+use super::map_tab::{is_map_tab_1d, store_tab_axis, with_table};
 
 /// Speed of light in vacuum (m/s). Mirrors C `AST__C`.
 const SPEED_OF_LIGHT: f64 = 299_792_458.0;
@@ -50,6 +43,8 @@ const SPEED_OF_LIGHT: f64 = 299_792_458.0;
 /// [`super::celestial_axes::CelestialAxesArgs`] minus the `isoff`
 /// flag (spectral axes have no offset variant in FITS-WCS).
 pub(crate) struct SpectralAxesArgs<'a> {
+    /// TabOK, ForceTab and the table for the `-TAB` algorithm.
+    pub tab: super::map_tab::TabWrite<'a>,
     pub fs: &'a FrameSet,
     pub dim: &'a [Option<f64>],
     pub wperm: &'a mut [usize],
@@ -194,17 +189,18 @@ pub(crate) fn spectral_axes(args: SpectralAxesArgs<'_>) -> AstResult<DynMapping>
     // line 30333 (`crval = NearestPix(map, crval, iax, status)`).
     crval = nearest_pix_value(map.as_ref(), crval, spec_iax)?;
 
-    // Step 3: write keywords. Mirrors fitschan.c populate paths
-    // (we cover the canonical-form subset that wcs_write::populate_spectral
-    // also covers).
-    args.store.crval[fits_i] = Some(crval);
-
-    let (axmap, ctype): (DynMapping, String) =
+    // Step 3: choose the algorithm. Mirrors fitschan.c SpectralAxes: linear,
+    // non-linear -X2P, -LOG and grism, all skipped when ForceTab is set,
+    // then, when TabOK is positive, -TAB. When none applies the axis is not
+    // described here, and is left to `other_axes`.
+    let force_tab = args.tab.force_tab;
+    let mut chosen: Option<(DynMapping, String)> = None;
+    if !force_tab {
         if is_map_linear(map.as_ref(), &lbnd_p, &ubnd_p, spec_iax)? {
             // Linear path: ShiftMap(-crval).
             let shift = ShiftMap::new(vec![-crval]);
             let mapping = embed_axis(Box::new(shift), spec_iax, nwcs)?;
-            (mapping, orig_system_str.to_string())
+            chosen = Some((mapping, orig_system_str.to_string()));
         } else if let Some((axmap, ctype)) = try_x2p_cascade(
             specfrm,
             map.as_ref(),
@@ -218,11 +214,10 @@ pub(crate) fn spectral_axes(args: SpectralAxesArgs<'_>) -> AstResult<DynMapping>
             // Non-linear -X2P algorithm: try each of FREQ/WAVE/AWAV/
             // VELO as the linearly-related "X" system. Mirrors
             // C:30359-30454.
-            (axmap, ctype)
+            chosen = Some((axmap, ctype));
         } else if let Some(lm) = log_axis(map.as_ref(), spec_iax, nwcs, &lbnd_p, &ubnd_p, crval)? {
             // -LOG algorithm. Mirrors C:30467-30477.
-            let ctype = format!("{orig_system_str}-LOG");
-            (lm, ctype)
+            chosen = Some((lm, format!("{orig_system_str}-LOG")));
         } else if let Some((axmap, ctype, grism_pv, new_crval)) = try_grism_cascade(
             specfrm,
             map.as_ref(),
@@ -242,19 +237,48 @@ pub(crate) fn spectral_axes(args: SpectralAxesArgs<'_>) -> AstResult<DynMapping>
                 }
             }
             crval = new_crval;
-            args.store.crval[fits_i] = Some(crval);
-            (axmap, ctype)
-        } else {
-            // Fallback: build the same ShiftMap as the linear path
-            // (without an algorithm-suffix CTYPE). make_int_world
-            // will reject the resulting non-linear pixel→IWC.
-            // -TAB is not yet ported.
-            let shift = ShiftMap::new(vec![-crval]);
-            let mapping = embed_axis(Box::new(shift), spec_iax, nwcs)?;
-            (mapping, orig_system_str.to_string())
-        };
+            chosen = Some((axmap, ctype));
+        }
+    }
+    if chosen.is_none() && args.tab.tab_ok > 0 {
+        // -TAB, whose IWC are grid coordinates: the CRVAL found above, the
+        // observation centre, is kept as AXREF and CRVAL is zero.
+        let (store, wperm, tab) = (&mut *args.store, &*args.wperm, args.tab);
+        let tabbed = with_table(tab, |table| {
+            let Some(axis) = is_map_tab_1d(
+                map.as_ref(),
+                1.0,
+                Some(&lin_unit),
+                wcsfrm,
+                args.dim,
+                spec_iax,
+                fits_i,
+                table,
+            )?
+            else {
+                return Ok(None);
+            };
+            store.axref[fits_i] = Some(crval);
+            let table = table.as_mut().expect("is_map_tab_1d made the table");
+            store_tab_axis(
+                tab.tab_ok, axis, table, store, spec_iax, fits_i, nwcs, wperm,
+            )
+            .map(Some)
+        })?;
+        if let Some(axmap) = tabbed {
+            crval = 0.0;
+            chosen = Some((axmap, format!("{:.4}-TAB", orig_system_str)));
+        }
+    }
+    let Some((axmap, ctype)) = chosen else {
+        if unit_cleared {
+            *args.unit_remap = Some(embed_axis(tmap1, spec_iax, nwcs)?);
+        }
+        return Ok(Box::new(UnitMap::new(nwcs)));
+    };
 
     args.store.ctype[fits_i] = Some(ctype);
+    args.store.crval[fits_i] = Some(crval);
 
     // CUNIT: the linear spectral Unit (fitschan.c:31231).
     args.store.cunit[fits_i] = Some(lin_unit);
@@ -866,6 +890,7 @@ mod tests {
         let mut axis_done = vec![false; 2];
 
         let result = spectral_axes(SpectralAxesArgs {
+            tab: super::super::map_tab::no_tab(),
             fs: &fs,
             dim: &dim,
             wperm: &mut wperm,
@@ -979,6 +1004,7 @@ mod tests {
         let mut axis_done = vec![false; 2];
 
         spectral_axes(SpectralAxesArgs {
+            tab: super::super::map_tab::no_tab(),
             fs: &fs,
             dim: &dim,
             wperm: &mut wperm,
@@ -1010,6 +1036,7 @@ mod tests {
         let mut axis_done = vec![false; 2];
 
         let result = spectral_axes(SpectralAxesArgs {
+            tab: super::super::map_tab::no_tab(),
             fs: &fs,
             dim: &dim,
             wperm: &mut wperm,
@@ -1062,6 +1089,7 @@ mod tests {
         let mut axis_done = vec![false; 2];
 
         spectral_axes(SpectralAxesArgs {
+            tab: super::super::map_tab::no_tab(),
             fs: &fs,
             dim: &dim,
             wperm: &mut wperm,
@@ -1101,6 +1129,7 @@ mod tests {
         let mut axis_done = vec![false; 2];
 
         spectral_axes(SpectralAxesArgs {
+            tab: super::super::map_tab::no_tab(),
             fs: &fs,
             dim: &dim,
             wperm: &mut wperm,
@@ -1137,6 +1166,7 @@ mod tests {
         let mut axis_done = vec![false; 2];
 
         spectral_axes(SpectralAxesArgs {
+            tab: super::super::map_tab::no_tab(),
             fs: &fs,
             dim: &dim,
             wperm: &mut wperm,
@@ -1171,6 +1201,7 @@ mod tests {
         let mut axis_done = vec![false; 2];
 
         spectral_axes(SpectralAxesArgs {
+            tab: super::super::map_tab::no_tab(),
             fs: &fs,
             dim: &dim,
             wperm: &mut wperm,
@@ -1199,6 +1230,7 @@ mod tests {
         let mut axis_done = vec![false; 2];
 
         let _ = spectral_axes(SpectralAxesArgs {
+            tab: super::super::map_tab::no_tab(),
             fs: &fs,
             dim: &dim,
             wperm: &mut wperm,
@@ -1244,6 +1276,7 @@ mod tests {
         let mut axis_done = vec![false; 2];
 
         spectral_axes(SpectralAxesArgs {
+            tab: super::super::map_tab::no_tab(),
             fs: &fs,
             dim: &dim,
             wperm: &mut wperm,
@@ -1272,6 +1305,7 @@ mod tests {
         let mut axis_done = vec![false; 2];
 
         spectral_axes(SpectralAxesArgs {
+            tab: super::super::map_tab::no_tab(),
             fs: &fs,
             dim: &dim,
             wperm: &mut wperm,

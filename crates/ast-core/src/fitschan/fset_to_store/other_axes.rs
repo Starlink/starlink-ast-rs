@@ -6,15 +6,8 @@
 //! mapping that subtracts the chosen CRVAL on each axis (identity on
 //! the already-handled ones).
 //!
-//! ## TODO: branches not yet ported
-//!
-//! - **`IsMapTab1D`** (-TAB algorithm) — 1-D tabular look-up tables.
-//!   Blocked on `FitsTable` infrastructure not yet ported. Tracked
-//!   in [`docs/issues/fset_to_store-port-gaps.md`](../../../../../docs/issues/fset_to_store-port-gaps.md).
-//!
-//! `IsMapLinear` and `LogAxis` are now both wired into the
-//! algorithm cascade below — see the in-line comment at the
-//! per-axis decision.
+//! Each axis is described, in order of preference, as linear, as `-LOG`,
+//! or, when TabOK is positive, as `-TAB`; ForceTab skips the first two.
 
 // Wired up by `fset_to_store` in Group 7; until then nothing in this
 // module is reachable from outside the cfg(test) block, and rustc's
@@ -34,12 +27,15 @@ use crate::mappings::{CmpMap, Composition, DynMapping, ShiftMap, UnitMap};
 
 use super::is_map_linear::is_map_linear;
 use super::log_axis::log_axis;
+use super::map_tab::{is_map_tab_1d, store_tab_axis, with_table};
 
 /// Arguments threaded through the axis-classifier sequence
 /// (`celestial_axes` → `spectral_axes` → `other_axes`). Each builder
 /// updates `store` / `crvals` / `axis_done` in place; the returned
 /// mapping is the WCS→IWC contribution from that builder alone.
 pub(crate) struct OtherAxesArgs<'a> {
+    /// TabOK, ForceTab and the table for the `-TAB` algorithm.
+    pub tab: super::map_tab::TabWrite<'a>,
     /// FrameSet whose base frame is FITS pixel coords and whose
     /// current frame is FITS WCS coords.
     pub fs: &'a FrameSet,
@@ -63,7 +59,7 @@ pub(crate) struct OtherAxesArgs<'a> {
 /// Returns the `wcs→iwc` mapping for unclaimed (non-celestial,
 /// non-spectral) axes. Stores CTYPE / CTYPE-comment / CUNIT / CNAME /
 /// CRVAL into `args.store`. Mirrors `fitschan.c::OtherAxes`.
-pub(crate) fn other_axes(args: OtherAxesArgs<'_>) -> AstResult<DynMapping> {
+pub(crate) fn other_axes(mut args: OtherAxesArgs<'_>) -> AstResult<DynMapping> {
     let wcsfrm = args.fs.current();
     let nwcs = wcsfrm.naxes();
 
@@ -126,24 +122,59 @@ pub(crate) fn other_axes(args: OtherAxesArgs<'_>) -> AstResult<DynMapping> {
         // priority cascade at fitschan.c:24347-24455:
         //   1. IsMapLinear → ShiftMap(-crval).
         //   2. else LogAxis → -LOG mapping.
-        //   3. else -TAB (NOT YET PORTED — needs FitsTable).
+        //   3. else, with TabOK positive, -TAB.
         //   4. else fallback: pretend-linear ShiftMap (will produce
         //      a non-linear pixel→IWC that MakeIntWorld rejects).
+        // ForceTab skips the first two.
+        let force_tab = args.tab.force_tab;
         let mut log_axis_used = false;
-        let axmap: DynMapping = if is_map_linear(map.as_ref(), &lbnd_p, &ubnd_p, iax)? {
+        let mut tab_axis_used = false;
+        let tab_map = |args: &mut OtherAxesArgs<'_>| -> AstResult<Option<DynMapping>> {
+            if args.tab.tab_ok <= 0 {
+                return Ok(None);
+            }
+            let (store, wperm, tab) = (&mut *args.store, &*args.wperm, args.tab);
+            with_table(tab, |table| {
+                let Some(axis) = is_map_tab_1d(
+                    map.as_ref(),
+                    1.0,
+                    None,
+                    wcsfrm,
+                    args.dim,
+                    iax,
+                    fits_i,
+                    table,
+                )?
+                else {
+                    return Ok(None);
+                };
+                let table = table.as_mut().expect("is_map_tab_1d made the table");
+                store_tab_axis(tab.tab_ok, axis, table, store, iax, fits_i, nwcs, wperm).map(Some)
+            })
+        };
+        let axmap: DynMapping = if !force_tab && is_map_linear(map.as_ref(), &lbnd_p, &ubnd_p, iax)?
+        {
             // Linear path. Mirrors C:24240-24245.
             let shift = ShiftMap::new(vec![-crval]);
             add_unit_maps(Box::new(shift), iax, nwcs)?
-        } else if let Some(lm) = log_axis(map.as_ref(), iax, nwcs, &lbnd_p, &ubnd_p, crval)? {
+        } else if let Some(lm) = (!force_tab)
+            .then(|| log_axis(map.as_ref(), iax, nwcs, &lbnd_p, &ubnd_p, crval))
+            .transpose()?
+            .flatten()
+        {
             // -LOG algorithm path. Mirrors C:24252-24255.
             log_axis_used = true;
             lm
+        } else if let Some(m) = tab_map(&mut args)? {
+            // -TAB algorithm, whose IWC are grid coordinates, so CRVAL is
+            // zero (fixed upstream in 9efa99f3).
+            tab_axis_used = true;
+            args.store.crval[fits_i] = Some(0.0);
+            m
         } else {
             // Fallback: build the same ShiftMap as the linear case;
             // make_int_world will reject the resulting non-linear
             // pixel→IWC. Mirrors C:24341-24347.
-            // -TAB algorithm not yet ported — see
-            // fset_to_store-port-gaps.md.
             let shift = ShiftMap::new(vec![-crval]);
             add_unit_maps(Box::new(shift), iax, nwcs)?
         };
@@ -158,11 +189,14 @@ pub(crate) fn other_axes(args: OtherAxesArgs<'_>) -> AstResult<DynMapping> {
         // the WCS Frame's getters (fitschan.c `OtherAxes`).
         axis_keywords(wcsfrm, iax + 1, fits_i, args.store);
 
-        // Append "-LOG" to CTYPE when the log path fired. Mirrors
-        // C:24369-24373 (SetAlgCode "-LOG"). The C source also handles
-        // "-TAB" here; that branch lands when the -TAB port goes in.
-        if log_axis_used && let Some(ref ctype) = args.store.ctype[fits_i] {
-            args.store.ctype[fits_i] = Some(set_alg_code(ctype, "-LOG"));
+        // Append "-LOG" or "-TAB" to CTYPE for those algorithms. Mirrors
+        // C:24369-24373 (SetAlgCode).
+        if let Some(ref ctype) = args.store.ctype[fits_i] {
+            if log_axis_used {
+                args.store.ctype[fits_i] = Some(set_alg_code(ctype, "-LOG"));
+            } else if tab_axis_used {
+                args.store.ctype[fits_i] = Some(set_alg_code(ctype, "-TAB"));
+            }
         }
 
         args.axis_done[iax] = true;
@@ -205,7 +239,7 @@ fn set_alg_code(ctype: &str, code: &str) -> String {
 /// Build a Mapping with `nax` inputs/outputs in which `map`'s axes
 /// occupy positions `iax..iax+map.nin()`, padded by UnitMaps on either
 /// side. Mirrors `fitschan.c::AddUnitMaps` (~2983).
-fn add_unit_maps(map: DynMapping, iax: usize, nax: usize) -> AstResult<DynMapping> {
+pub(super) fn add_unit_maps(map: DynMapping, iax: usize, nax: usize) -> AstResult<DynMapping> {
     let nmap = map.nin();
     let mut ret = map;
     if iax > 0 {
@@ -288,6 +322,7 @@ mod tests {
         let mut axis_done = vec![false; 2];
 
         let mapping = other_axes(OtherAxesArgs {
+            tab: super::super::map_tab::no_tab(),
             fs: &fs,
             dim: &dim,
             wperm: &mut wperm,
@@ -334,6 +369,7 @@ mod tests {
         let mut axis_done = vec![true, true];
 
         let mapping = other_axes(OtherAxesArgs {
+            tab: super::super::map_tab::no_tab(),
             fs: &fs,
             dim: &dim,
             wperm: &mut wperm,
@@ -361,6 +397,7 @@ mod tests {
         let mut axis_done = vec![false; 2];
 
         let _ = other_axes(OtherAxesArgs {
+            tab: super::super::map_tab::no_tab(),
             fs: &fs,
             dim: &dim,
             wperm: &mut wperm,
@@ -387,6 +424,7 @@ mod tests {
         let mut axis_done = vec![true, false];
 
         let mapping = other_axes(OtherAxesArgs {
+            tab: super::super::map_tab::no_tab(),
             fs: &fs,
             dim: &dim,
             wperm: &mut wperm,
@@ -420,6 +458,7 @@ mod tests {
         let mut axis_done = vec![false; 2];
 
         let _ = other_axes(OtherAxesArgs {
+            tab: super::super::map_tab::no_tab(),
             fs: &fs,
             dim: &dim,
             wperm: &mut wperm,
@@ -450,6 +489,7 @@ mod tests {
         let mut axis_done = vec![false];
 
         let _ = other_axes(OtherAxesArgs {
+            tab: super::super::map_tab::no_tab(),
             fs: &fs,
             dim: &dim,
             wperm: &mut wperm,

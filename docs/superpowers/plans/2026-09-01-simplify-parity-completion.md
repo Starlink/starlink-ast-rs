@@ -2131,7 +2131,7 @@ and are cluster 5's, at Task 23; `IntraMap::IntraFlag` is excluded with the
 class.
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/lutmap.rs:890-921` (`from_node`)
+- Modify: `crates/ast-core/src/mappings/lutmap.rs:895-926` (`from_node`)
 - Modify: `crates/ast-core/src/mappings/polymap.rs:2022-2043` (`from_node`)
 - Modify: `crates/ast-core/src/mappings/splinemap.rs:1083-1104` (`from_node`)
 - Modify: `crates/ast-core/src/mappings/sphmap.rs:425-451` (`from_node`)

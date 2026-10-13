@@ -192,6 +192,12 @@ impl FitsTable {
         Ok(new)
     }
 
+    /// The FitsTable's own header, which a FITS-WCS write adds EXTVER to as
+    /// C's `astWrite` does.
+    pub(crate) fn header_mut(&mut self) -> &mut FitsChan {
+        &mut self.header
+    }
+
     /// The Table holding the column data and parameters, for the Table and
     /// KeyMap methods that only read it.
     pub fn as_table(&self) -> &Table {
