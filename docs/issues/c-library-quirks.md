@@ -764,12 +764,11 @@ there is none.
 
 #### The same family, for cross-reference
 
-- **`IsSimp` from a discarded merge probe** (entry below) was a genuine leak and
-  is fixed upstream at `cd84cf02`: both probes now record and restore the
-  simplified-state flags of every shared sub-Mapping when discarded. Four
-  fixtures each lose one card (`rigby`, `cap_specmap_02`, and the `wave-f2w` and
-  `vopt-f2w` native dumps, the latter two via the parallel-in-series probe during
-  a FITS read, which that entry did not mention).
+- **`IsSimp` from a discarded merge probe** (entry below) is C's intended
+  behaviour. `654d43b7` made both probes restore the simplified-state flags of
+  every shared sub-Mapping when discarded, and `2beada8f` reverted it: a probe
+  does simplify the Mapping it stamps, so the flag records a true fact that
+  stays true once the probe's wrappers are annulled.
 - **`cap_cmpmap_01` and `cap_cmpmap_04`** are *not* fixed by that change and
   cannot be by restoration: their extra `IsSimp` card is stamped by a *successful*
   probe on a shared object that is also reachable elsewhere in the tree. Running
@@ -1077,7 +1076,8 @@ Their `IsSimp` counts are pinned as named exclusions in
 `fitschan_tab_spectral` was traced in C: before the first series-in-parallel probe the CmpMap of the celestial rotation's MatrixMap and SphMap carries no stamp, the probe's `astSimplify` stamps it and leaves the probe unchanged, and the stamp survives into the result.
 The same Mapping, read from a header with a `-TAB` spectral axis, is the `mixed` case of `tests/test_fitschan_tab_read_oracle.rs`, which licenses the card the same way.
 
-To be raised upstream.
+Not a C defect: upstream removed these stamps in `654d43b7` and reverted that in `2beada8f`, because a probe does simplify the Mapping it stamps and the flag stays true after the probe is discarded.
+The difference is the port's ownership model, so it stays licensed here.
 
 ---
 
