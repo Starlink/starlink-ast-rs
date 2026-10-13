@@ -1209,11 +1209,16 @@ impl KeyMap {
         // C re-calls astMapPut1<X> with `mapentry->comment`
         // (keymap.c:8286 onward). Promoting in place and leaving the
         // comment untouched has the same effect without re-running
-        // insert_entry's key-trim/MapLocked/member-count machinery on an
-        // already-present key.
+        // insert_entry's key-trim/MapLocked machinery on an already-present
+        // key. That re-put counts as a value put (AddTableEntry's `member`
+        // bump), but the key is not new, so `keymember` is untouched. An
+        // element of an existing vector is changed in place, which counts
+        // as nothing.
         let entry = self.entries.get_mut(&nkey).expect("checked above");
         if entry.value.nel() == 0 {
             promote_scalar_to_vector(&mut entry.value);
+            self.member_count += 1;
+            entry.member = self.member_count;
         }
 
         let want = entry.value.ast_type();
@@ -1233,11 +1238,6 @@ impl KeyMap {
         let n = entry.value.len();
         let target = if elem >= n { n } else { elem };
         set_element(&mut entry.value, target, value_converted);
-
-        // The put counts as a value put (AddTableEntry's `member` bump),
-        // but the key itself is not new, so `keymember` is untouched.
-        self.member_count += 1;
-        self.entries.get_mut(&nkey).expect("checked above").member = self.member_count;
         Ok(())
     }
 
@@ -1655,6 +1655,26 @@ impl KeyMap {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// keymap.c `MapPutElem<X>` changes an element of an existing vector in
+    /// place, which does not count as a put; a scalar is first re-put as a
+    /// vector through `astMapPut1<X>`, which counts once.
+    #[test]
+    fn put_elem_counts_only_a_promotion() {
+        let mut km = KeyMap::new();
+        km.put_1i("V", &[1, 2], None).unwrap();
+        let before = km.member_count;
+        km.put_elem_i("V", 0, 5).unwrap();
+        km.put_elem_i("V", 2, 6).unwrap();
+        assert_eq!(km.member_count, before);
+
+        km.put_0i("S", 1, None).unwrap();
+        let before = km.member_count;
+        km.put_elem_i("S", 0, 5).unwrap();
+        assert_eq!(km.member_count, before + 1);
+        km.put_elem_i("S", 1, 6).unwrap();
+        assert_eq!(km.member_count, before + 1);
+    }
 
     #[test]
     fn attribute_defaults_match_the_c_get_macros() {

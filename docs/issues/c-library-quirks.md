@@ -20,6 +20,8 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 ### [Open questions for upstream](#open-questions-for-upstream)
 
 - [`astLoadXphMap` leaks the projection-type string it reads](#astloadxphmap-leaks-the-projection-type-string-it-reads)
+- [Table's `Equal` compares only class names, and discards its column comparison](#tables-equal-compares-only-class-names-and-discards-its-column-comparison)
+- [Table's read-only column attributes are not recognised in `astSet`, `astClear` or `astTest`](#tables-read-only-column-attributes-are-not-recognised-in-astset-astclear-or-asttest)
 - [Two simplify references were captured with `Comment` and `Indent` off](#two-simplify-references-were-captured-with-comment-and-indent-off)
 - [`IsSimp` placement in a FITS-WCS read records the order the reader simplified in](#issimp-placement-in-a-fits-wcs-read-records-the-order-the-reader-simplified-in)
 - [`azel.native` regenerated after the C `DateObs` fractional-seconds fix](#azelnative-regenerated-after-the-c-dateobs-fractional-seconds-fix)
@@ -53,6 +55,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 
 ### [Resolved upstream](#resolved-upstream)
 
+- [RESOLVED (upstream f32573b1): `PurgeRows` fails on a Table holding a parameter value](#resolved-upstream-f32573b1-purgerows-fails-on-a-table-holding-a-parameter-value)
 - [RESOLVED (upstream c9f9aa63): SkySys lets an alternate axis description replace MJD-OBS](#resolved-upstream-c9f9aa63-skysys-lets-an-alternate-axis-description-replace-mjd-obs)
 - [RESOLVED (upstream 7f4ba71d): AddVersion writes a spectral axis whose Unit it cleared with CDELT in the old Unit](#resolved-upstream-7f4ba71d-addversion-writes-a-spectral-axis-whose-unit-it-cleared-with-cdelt-in-the-old-unit)
 - [RESOLVED (upstream e09bc221): SpectralAxes chooses its default reference value from the size of the first pixel axis](#resolved-upstream-e09bc221-spectralaxes-chooses-its-default-reference-value-from-the-size-of-the-first-pixel-axis)
@@ -138,6 +141,24 @@ Question for upstream: should an empty grid be an error, and if so a deliberate 
 
 These are unresolved upstream.
 Some the port mirrors to keep fixtures round-tripping, some it diverges from deliberately; each entry says which, and what would show the question had been answered.
+
+### Table's `Equal` compares only class names, and discards its column comparison
+
+C location: `table.c` `Equal`.
+
+Table's `Equal` calls its parent's, then compares the column definitions and assigns the result, then compares the parameter definitions and assigns that result over it, so the columns are never compared.
+None of the comparisons looks at content either: KeyMap has no `Equal` of its own, so each is Object's, which compares class names and structure sizes.
+Probed: `astEqual` gives 1 for two Tables whose cells, columns or parameters differ.
+The port has no KeyMap or Table equality, so there is nothing to mirror; an `astEqual` in `ast-capi` would need to decide.
+
+### Table's read-only column attributes are not recognised in `astSet`, `astClear` or `astTest`
+
+C location: `table.c` `SetAttrib`, `ClearAttrib`, `TestAttrib`.
+
+Each matches the column attributes with a pattern such as `"columntype(%*s)%n"`, whose `%*s` reads up to white space and so takes the closing parenthesis, leaving the literal `)` nothing to match.
+`astSet( t, "ColumnType(Fred)=2" )` and `astClear( t, "ColumnUnit(Fred)" )` are therefore AST__BADAT (unknown attribute) rather than AST__NOWRT (read-only), and `astTest( t, "ColumnLength(Fred)" )` is an error rather than 0.
+`Nrow`, `Ncolumn` and `Nparameter` are recognised.
+The port's Table has no string attribute access; this is for `ast-capi`.
 
 ### `astLoadXphMap` leaks the projection-type string it reads
 
@@ -1349,6 +1370,16 @@ A 64 bit integer card value was written with `astWriteInt` and read into an `int
 
 Fixed on `u/timj/norm-unit` in c16f9b11: SipReplace is written and read as `SipRpl`, the card values with `astWriteInt64` into an `int64_t`, and PolyTan and SipOK default to -INT_MAX; `testfitschan` `testdumpload`.
 The port's FitsChan dump (`fitschan/dump.rs`) is `Dump` as fixed; `tests/test_channel_dump_oracle.rs` (the `fitschan*` cases), whose probe needs the fixed library.
+
+### RESOLVED (upstream f32573b1): `PurgeRows` fails on a Table holding a parameter value
+
+C location: `table.c` `PurgeRows`.
+
+`PurgeRows` counts the values in each row by reading the row index from every key in the Table, and reported an internal programming error (AST__INTER) for the key of a global parameter value, which has no row index.
+A Table with a parameter value set could not be purged.
+
+Fixed on `u/timj/norm-unit` in f32573b1: parameter keys are skipped; `testtable.c` checks a purge with a parameter value set (`purge-13`, `purge-14`).
+The port follows the fix; `purge_with_parameter` in `tests/test_table_oracle.rs`, whose probe needs the fixed library.
 
 ### RESOLVED (upstream c9f9aa63): SkySys lets an alternate axis description replace MJD-OBS
 

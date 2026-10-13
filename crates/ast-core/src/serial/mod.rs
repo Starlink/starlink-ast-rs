@@ -1968,6 +1968,9 @@ pub enum AnyObject {
     /// [`as_frame`](AnyObject::as_frame), [`into_mapping`](AnyObject::into_mapping)
     /// and [`into_frame`](AnyObject::into_frame) all give `None` for it.
     KeyMap(Box<crate::keymap::KeyMap>),
+    /// A [`crate::table::Table`], a two-dimensional table of values held as
+    /// a KeyMap. Implements neither [`Mapping`] nor [`Frame`].
+    Table(Box<crate::table::Table>),
     /// A [`crate::channel::NativeChannel`], C's `Channel`. Implements neither
     /// [`Mapping`] nor [`Frame`]. It shares its source and sink with the
     /// channel it was cloned from; one read from a dump has neither.
@@ -2183,6 +2186,7 @@ impl AnyObject {
             | AnyObject::SpecFluxFrame(_)
             | AnyObject::CmpFrame(_)
             | AnyObject::KeyMap(_)
+            | AnyObject::Table(_)
             | AnyObject::NativeChannel(_)
             | AnyObject::MocChan(_)
             | AnyObject::FitsChan(_) => None,
@@ -2246,6 +2250,7 @@ impl AnyObject {
             | AnyObject::SelectorMap(_)
             | AnyObject::SwitchMap(_)
             | AnyObject::KeyMap(_)
+            | AnyObject::Table(_)
             | AnyObject::NativeChannel(_)
             | AnyObject::MocChan(_)
             | AnyObject::FitsChan(_) => None,
@@ -2309,6 +2314,7 @@ impl AnyObject {
             | AnyObject::SpecFluxFrame(_)
             | AnyObject::CmpFrame(_)
             | AnyObject::KeyMap(_)
+            | AnyObject::Table(_)
             | AnyObject::NativeChannel(_)
             | AnyObject::MocChan(_)
             | AnyObject::FitsChan(_) => None,
@@ -2372,6 +2378,7 @@ impl AnyObject {
             | AnyObject::SelectorMap(_)
             | AnyObject::SwitchMap(_)
             | AnyObject::KeyMap(_)
+            | AnyObject::Table(_)
             | AnyObject::NativeChannel(_)
             | AnyObject::MocChan(_)
             | AnyObject::FitsChan(_) => None,
@@ -2517,6 +2524,9 @@ pub(crate) fn any_object_from_node(node: &Node) -> AstResult<AnyObject> {
         "KeyMap" => Ok(AnyObject::KeyMap(Box::new(
             crate::keymap::KeyMap::from_node(node)?,
         ))),
+        "Table" => Ok(AnyObject::Table(Box::new(crate::table::Table::from_node(
+            node,
+        )?))),
         "Channel" => Ok(AnyObject::NativeChannel(Box::new(
             crate::channel::NativeChannel::from_node(node)?,
         ))),
@@ -2593,6 +2603,7 @@ pub(crate) fn any_object_to_node(obj: &AnyObject) -> AstResult<Node> {
         AnyObject::StcCatalogEntryLocation(r) => Serializable::to_node(r),
         AnyObject::StcObsDataLocation(r) => Serializable::to_node(r),
         AnyObject::KeyMap(m) => Serializable::to_node(m.as_ref()),
+        AnyObject::Table(t) => Serializable::to_node(t.as_ref()),
         AnyObject::NativeChannel(c) => Serializable::to_node(c.as_ref()),
         AnyObject::MocChan(c) => Serializable::to_node(c.as_ref()),
         AnyObject::FitsChan(c) => Serializable::to_node(c.as_ref()),

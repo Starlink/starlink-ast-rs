@@ -16,6 +16,7 @@ pub(crate) mod object_id;
 pub(crate) mod pal;
 pub mod regions;
 pub(crate) mod serial;
+pub mod table;
 pub(crate) mod units;
 pub(crate) mod wcslib;
 pub use channel::source_sink::{FileSink, FileSource, StringSink, StringSource};
@@ -23,3 +24,4 @@ pub use channel::{Channel, ChannelConfig, MocChan, MocFormat, NativeChannel, Sin
 pub use fitschan::{AltAxes, Encoding, FitsChan};
 pub use keymap::{AstType, KeyMap, SortBy};
 pub use serial::{AnyObject, from_native_string, from_native_string_with, to_native_string};
+pub use table::Table;

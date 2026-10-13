@@ -81,7 +81,7 @@ Closed (marked historical in-doc, removed as active work): `mapping-gaps-audit.m
 | Area | Doc | Status |
 |---|---|---|
 | KeyMap port | `docs/superpowers/specs/2026-08-06-keymap-port-design.md` | DONE — `crates/ast-core/src/keymap/`; entries in a `HashMap` with `MapSz` reconstructed at dump time; `testkeymap.c` green; C-ABI shim deferred with the rest of `ast-capi` |
-| Table / FitsTable | — | UNPORTED — gates the `-TAB` branches in the two section-5 rows; `KeyMap` is shaped to be embedded by both |
+| Table / FitsTable | `crates/ast-core/src/table/` | Table DONE 2026-10-12 — the KeyMap is embedded; the KeyMap methods C overrides are Table methods, the rest are reached through `as_keymap` or forwarded; `tests/test_table_oracle.rs` compares 24 scripts with C, dumps byte for byte; `testtable.c` green. FitsTable UNPORTED — it and the FitsChan table API still gate the `-TAB` branches in the two section-5 rows |
 
 ## 4. Simplifier
 
@@ -414,6 +414,7 @@ pin.
 | testspecframe.c | crates/ast-core/tests/test_specframe.rs | ported 2026-05-06 |
 | testtime.c | crates/ast-core/tests/test_timeframe.rs | ported 2026-05-06 |
 | testkeymap.c | crates/ast-core/tests/test_keymap.rs | ported 2026-08-08; the nine functions added upstream at `f6762005` ported 2026-08-20 |
+| testtable.c | crates/ast-core/tests/test_table.rs | ported 2026-10-12 with Table, including the purge with a parameter value added upstream at `f32573b1`. C stores a Table in its own cell to check `AST__KYCIR`, which a Rust value cannot do |
 | testmapping.c | crates/ast-core/tests/test_mapping.rs | partially ported 2026-08-20 — the four `IsSimple` functions added upstream at `f6762005`. `testselfsimplifyafterset` is unconstructible here (ZoomMap's `Zoom` and PcdMap's `Disco` have no `&mut self` setter). The file's original PolyMap / LinearApprox body, converted from `testmapping.f`, is covered by `test_polymap.rs` and `test_polytran.rs` |
 | testfitschan.c | crates/ast-core/tests/test_fitschan*.rs | partially ported — `testgrismorder`, added upstream at `f6762005`, is in `test_fitschan_wcs_write.rs` (2026-08-20); the `905`-`912` SIP-validation cases, added upstream at `c384289f` and `121d12d2`, are in the same file (2026-09-24); the rest is spread across the seven `test_fitschan_*` files. **`testtabspectrum` (`testfitschan.c:256`, called at `:1444`, added upstream at `39def937`) is not ported**: it writes a non-linear spectral axis as `-TAB`, which needs the `Table` / `FitsTable` / algorithm trio in the §3 row. It is the case that first exposed the `astEQUALS` overflow upstream; that fix is landed and gated by the other `39def937` cases, so what this row owes is the end-to-end `-TAB` path, not the arithmetic |
 | testimmutable.c | (deferred) | tests `AST__IMMUT`, which guards a change made to a Mapping whose reference count exceeds one. Owned values, deep `Clone` and single-owner `Box` make that condition unconstructible in `ast-core`; the guard belongs to `ast-capi`, which restores sharing at the handle boundary and is unstarted (§7) |

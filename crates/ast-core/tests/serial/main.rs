@@ -41,3 +41,8 @@ mod test_report;
 mod test_section_load;
 #[path = "../test_serialisation.rs"]
 mod test_serialisation;
+
+#[path = "../test_table.rs"]
+mod test_table;
+#[path = "../test_table_oracle.rs"]
+mod test_table_oracle;
