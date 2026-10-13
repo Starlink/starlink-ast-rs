@@ -68,14 +68,14 @@ pub(crate) fn other_axes(args: OtherAxesArgs<'_>) -> AstResult<DynMapping> {
     let nwcs = wcsfrm.naxes();
 
     // Count remaining axes; if all are claimed, the contribution is
-    // identity. Mirrors fitschan.c:24259-24266.
+    // identity. Mirrors fitschan.c:24264-24271.
     let nother = args.axis_done.iter().filter(|&&done| !done).count();
     if nother == 0 {
         return Ok(Box::new(UnitMap::new(nwcs)));
     }
 
     // pixel→wcs mapping and central-pixel WCS coordinates.
-    // Mirrors fitschan.c:24272-24298.
+    // Mirrors fitschan.c:24277-24303.
     let map = args.fs.mapping(FrameRef::Base, FrameRef::Current)?;
     let npix = map.nin();
 
@@ -97,7 +97,7 @@ pub(crate) fn other_axes(args: OtherAxesArgs<'_>) -> AstResult<DynMapping> {
     let centre_wcs: Vec<f64> = centre_out.point(0)[..nwcs].to_vec();
 
     // Walk the WCS axes, building a per-axis WCS→IWC ShiftMap and
-    // composing the running result. Mirrors fitschan.c:24302-24492.
+    // composing the running result. Mirrors fitschan.c:24307-24497.
     let mut ret: Option<DynMapping> = None;
     for iax in 0..nwcs {
         if args.axis_done[iax] {
@@ -108,7 +108,7 @@ pub(crate) fn other_axes(args: OtherAxesArgs<'_>) -> AstResult<DynMapping> {
 
         // Choose CRVAL: caller's override (if non-BAD) wins, else the
         // central-pixel WCS value. If both are BAD, abort the loop —
-        // C: fitschan.c:24311-24317 (`break`).
+        // C: fitschan.c:24316-24322 (`break`).
         let chosen_crval = match args.crvals.get(iax).copied().flatten() {
             Some(v) if !is_bad(v) => Some(v),
             _ => {
@@ -123,7 +123,7 @@ pub(crate) fn other_axes(args: OtherAxesArgs<'_>) -> AstResult<DynMapping> {
         args.store.crval[fits_i] = Some(crval);
 
         // Decide which algorithm fits this axis. Mirrors the
-        // priority cascade at fitschan.c:24333-24441:
+        // priority cascade at fitschan.c:24338-24446:
         //   1. IsMapLinear → ShiftMap(-crval).
         //   2. else LogAxis → -LOG mapping.
         //   3. else -TAB (NOT YET PORTED — needs FitsTable).

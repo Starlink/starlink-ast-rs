@@ -1,6 +1,6 @@
 //! Read-consumption marking for FITS-WCS-family headers.
 //!
-//! Port of the card-marking side effect of C `WcsFcRead` (fitschan.c:36345).
+//! Port of the card-marking side effect of C `WcsFcRead` (fitschan.c:36349).
 //! `WcsFcRead` walks **every** card in the FitsChan and pattern-matches the
 //! card's keyword name against a fixed list of templates. A card whose name
 //! matches, and whose value converts to the type the matching branch asks for,
@@ -67,7 +67,7 @@ const fn f_undef(pattern: &'static str) -> Template {
 }
 
 /// Every template whose branch in C `WcsFcRead` leaves `mark` at its initial
-/// value of 1, listed in source order (fitschan.c:36447-37004).
+/// value of 1, listed in source order (fitschan.c:36451-37008).
 ///
 /// The branches that clear `mark` are deliberately absent: `DUT1`, `MJD-OBS`,
 /// `MJD-AVG`, `OBSGEO-X`, `OBSGEO-Y`, `OBSGEO-Z`, `TIMESYS`, and `DTAI` supply
@@ -150,7 +150,7 @@ enum Convert {
     /// The value does not convert; C leaves the card unmarked.
     No,
     /// The card has no value and the branch does not permit that, which C
-    /// reports as `AST__FUNDEF` (fitschan.c:7672-7678).
+    /// reports as `AST__FUNDEF` (fitschan.c:7677-7683).
     Undefined,
 }
 
@@ -163,7 +163,7 @@ pub(crate) fn is_wcs_keyword(keyword: &str) -> bool {
 }
 
 /// Can `value` be converted to `want`? C's `CnvValue`, which hands the card to
-/// `CnvType` (fitschan.c:7556) unless an undefined value is acceptable.
+/// `CnvType` (fitschan.c:7561) unless an undefined value is acceptable.
 fn convert(value: &FitsValue, want: Want, undef: bool) -> Convert {
     if matches!(value, FitsValue::Undef) {
         return if undef {
@@ -190,13 +190,13 @@ fn convert(value: &FitsValue, want: Want, undef: bool) -> Convert {
 pub(crate) struct WcsVersions {
     /// The number of pixel axes: one more than the highest CRPIX index of
     /// the primary axis description or any alternate one up to the highest
-    /// with a CRVAL, as C's `FitsToStore` takes it (fitschan.c:11676-11681).
+    /// with a CRVAL, as C's `FitsToStore` takes it (fitschan.c:11681-11686).
     pub npix: usize,
     /// Whether the primary axis description has a CRPIX, without which
-    /// `MakeFitsFrameSet` adds no Frame for it (fitschan.c:12188).
+    /// `MakeFitsFrameSet` adds no Frame for it (fitschan.c:12193).
     pub primary: bool,
     /// The alternate axis descriptions `MakeFitsFrameSet` adds Frames for
-    /// (fitschan.c:12202-12219): each letter up to the highest with a CRVAL
+    /// (fitschan.c:12207-12224): each letter up to the highest with a CRVAL
     /// that has a CRVAL, CRPIX or CTYPE for an axis below `npix`.
     pub alternates: Vec<char>,
 }

@@ -1,6 +1,6 @@
 //! Keyword-name template matching.
 //!
-//! Port of C `Match` / `MatchFront` / `MatchChar` (fitschan.c:22644, 22826,
+//! Port of C `Match` / `MatchFront` / `MatchChar` (fitschan.c:22649, 22826,
 //! 22771). A template is a keyword name in which `%` introduces a field
 //! specifier of the form `%<width><type>`:
 //!

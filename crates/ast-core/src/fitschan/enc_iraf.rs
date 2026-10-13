@@ -123,7 +123,7 @@ pub(crate) fn read_from_cards(cards: &CardList) -> AstResult<FitsStore> {
 }
 
 /// Whether `store` can be written with FITS-IRAF: the checks C's
-/// `IRAFFromStore` (fitschan.c:19109-19219) makes before writing, and the
+/// `IRAFFromStore` (fitschan.c:19114-19224) makes before writing, and the
 /// CRPIX, CRVAL and CTYPE values it needs while writing. Celestial axes
 /// need a projection other than TPN with no parameters, or a SIN one
 /// equivalent to SIN or NCP; RA, galactic or ecliptic longitude; and no
@@ -273,7 +273,7 @@ pub(crate) fn write_to_cards(
 
     if is_last {
         // DATE-OBS — IRAF emits only DATE-OBS, not MJD-OBS (mirrors C
-        // IRAFFromStore at fitschan.c:19182-19206). The pre-formatted
+        // IRAFFromStore at fitschan.c:19187-19211). The pre-formatted
         // string in store.dateobs was derived from MJD-OBS upstream.
         if let Some(ref dateobs) = store.dateobs {
             cards.set_string("DATE-OBS", dateobs, "Date of observation");

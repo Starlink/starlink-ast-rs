@@ -540,7 +540,7 @@ Test file rewritten to the new semantics. Existing
 contiguous-output-range API had no production callers; safely
 retired.
 
-Mirrors fitschan.c:28781 / 28866 callsites that the upcoming
+Mirrors fitschan.c:28785 / 28866 callsites that the upcoming
 SIPIntWorld port needs.
 
 Generated with AI
@@ -2252,7 +2252,7 @@ Roughly:
     }
 
     // CRPIX = g0 - y.  For inputs without a corresponding pixel axis
-    // (when nout > nin), CRPIX = 1.0 per fitschan.c:22188.
+    // (when nout > nin), CRPIX = 1.0 per fitschan.c:22193.
     let mut crpix = vec![1.0_f64; nout];
     for j in 0..nin {
         crpix[j] = basis.g0[j] - y[j];
@@ -2421,7 +2421,7 @@ Trivial port (~30 LoC). Uses `SkyFrame::sky_ref_is`.
 
 - [ ] **Step 5: Implement SkySys**
 
-Translate the long C function. Match every CTYPE prefix, every conditional on `system`, every offset-coord branch. Critical: the CTYPE prefix selection table at `fitschan.c:29912-29970` must be reproduced exactly.
+Translate the long C function. Match every CTYPE prefix, every conditional on `system`, every offset-coord branch. Critical: the CTYPE prefix selection table at `fitschan.c:29916-29974` must be reproduced exactly.
 
 - [ ] **Step 6: Tests + commit**
 
@@ -2429,7 +2429,7 @@ Translate the long C function. Match every CTYPE prefix, every conditional on `s
 git commit -am "fitschan/wcs_keywords: port IsSkyOff + SkySys
 
 Stores celestial-axis CTYPE/CUNIT/CRVAL/RADESYS/EQUINOX/MJD-OBS
-in the FitsStore. Mirrors fitschan.c:29693 + IsSkyOff @ 20222.
+in the FitsStore. Mirrors fitschan.c:29697 + IsSkyOff @ 20222.
 
 Generated with AI
 
@@ -2689,7 +2689,7 @@ In Task 4.4 the SIP branch was left as a placeholder. Now flesh it out.
 Insert near the top of `make_int_world` (after simplify, before `find_basis_vectors`):
 
 ```rust
-    // SIP detection (mirrors fitschan.c:21976-21989).
+    // SIP detection (mirrors fitschan.c:21981-21994).
     let sip_result = if sip_ok {
         // Find lonax/latax inside wcs_frame; need them to feed sip_int_world.
         if let Some((lonax, latax)) = celestial_lon_lat(wcs_frame) {
@@ -2714,9 +2714,9 @@ Insert near the top of `make_int_world` (after simplify, before `find_basis_vect
     };
 ```
 
-After `fit_line_cd` returns, override the celestial CD columns with `sip_result.cd`. Mirrors fitschan.c:22093-22098.
+After `fit_line_cd` returns, override the celestial CD columns with `sip_result.cd`. Mirrors fitschan.c:22098-22103.
 
-After the CRPIX solve, override `crpix[sip_result.in_axes[0]]` and `crpix[sip_result.in_axes[1]]` with `sip_result.crpix`. Mirrors fitschan.c:22190-22196.
+After the CRPIX solve, override `crpix[sip_result.in_axes[0]]` and `crpix[sip_result.in_axes[1]]` with `sip_result.crpix`. Mirrors fitschan.c:22195-22201.
 
 - [ ] **Step 2: Add a `celestial_lon_lat` helper**
 
@@ -2748,7 +2748,7 @@ fitschan/wcs_keywords: wire SIP branch into make_int_world
 
 Detect a SIP PolyMap in the chain, route through sip_int_world to
 extract CRPIX/CD structurally, override the FitLine result for the
-celestial axes. Mirrors fitschan.c:21976-21989 + 21999-22004 +
+celestial axes. Mirrors fitschan.c:21981-21994 + 21999-22004 +
 22096-22102.
 
 Generated with AI
@@ -2850,7 +2850,7 @@ pub(crate) fn fset_to_store(
     )?;
 
     // Step 6: post-processing (WCSNAME, snap small CRVAL residue).
-    // Mirrors fitschan.c:2974-3008.
+    // Mirrors fitschan.c:2979-3013.
 
     Ok(store)
 }
