@@ -103,7 +103,7 @@ pub(crate) fn spectral_axes(args: SpectralAxesArgs<'_>) -> AstResult<DynMapping>
     // Step 2: hold the caller's CRVAL override (if any). The
     // bound-based fallback is computed AFTER unit-absorption (below)
     // so that the bounds are taken on the same map that the
-    // algorithm cascade sees. Mirrors fitschan.c:30402-30430.
+    // algorithm cascade sees. Mirrors fitschan.c:30408-30436.
     let crval_input = args.crvals.get(spec_iax).copied().flatten();
     let mut crval: f64 = match crval_input {
         Some(v) if !is_bad(v) => v,
@@ -132,7 +132,7 @@ pub(crate) fn spectral_axes(args: SpectralAxesArgs<'_>) -> AstResult<DynMapping>
         .collect();
 
     // The pixel axis that feeds the spectral axis, if only one does, found
-    // by splitting the inverted pixel->WCS Mapping (fitschan.c:30766-30777).
+    // by splitting the inverted pixel->WCS Mapping (fitschan.c:30772-30783).
     let pax = {
         let mut inv = map.clone_box();
         inv.invert();
@@ -150,7 +150,7 @@ pub(crate) fn spectral_axes(args: SpectralAxesArgs<'_>) -> AstResult<DynMapping>
     // Mapping from the SpecFrame's Unit to its default Unit, and if that is
     // not linear over the spectral range clears the Unit through the
     // FrameSet, which re-maps the SpecFrame, and converts any supplied CRVAL
-    // (fitschan.c:30800-30817). Re-mapping composes the pixel->WCS Mapping
+    // (fitschan.c:30806-30823). Re-mapping composes the pixel->WCS Mapping
     // with that conversion. Without a conversion C does not describe the
     // axis.
     let mut cleared = specfrm.clone();
@@ -175,7 +175,7 @@ pub(crate) fn spectral_axes(args: SpectralAxesArgs<'_>) -> AstResult<DynMapping>
 
     // The default CRVAL: the middle of the spectral range if the size of
     // the spectral pixel axis is known, otherwise its first pixel
-    // (fitschan.c:30827-30834).
+    // (fitschan.c:30833-30840).
     if is_bad(crval) {
         let dim_known = pax.is_some_and(|p| args.dim.get(p).copied().flatten().is_some());
         if dim_known && !is_bad(lbnd_s) && !is_bad(ubnd_s) {
@@ -256,7 +256,7 @@ pub(crate) fn spectral_axes(args: SpectralAxesArgs<'_>) -> AstResult<DynMapping>
 
     args.store.ctype[fits_i] = Some(ctype);
 
-    // CUNIT: the linear spectral Unit (fitschan.c:31221).
+    // CUNIT: the linear spectral Unit (fitschan.c:31227).
     args.store.cunit[fits_i] = Some(lin_unit);
 
     // CTYPE-comment / CNAME from explicit Label override. Mirrors
@@ -324,7 +324,7 @@ pub(crate) fn spectral_axes(args: SpectralAxesArgs<'_>) -> AstResult<DynMapping>
     }
 
     // VELOSYS, the topocentric velocity of the standard of rest, as C
-    // finds it on its copy of the FrameSet (fitschan.c:31281-31303): a
+    // finds it on its copy of the FrameSet (fitschan.c:31287-31309): a
     // source at rest in the standard of rest, unless that is the source
     // frame, re-expressed in the topocentric frame. In the source frame
     // this is the source velocity, or 0 when SourceVel is not set.
@@ -342,7 +342,7 @@ pub(crate) fn spectral_axes(args: SpectralAxesArgs<'_>) -> AstResult<DynMapping>
 
     // C re-maps the FrameSet's WCS Frame when it clears the Unit, and
     // AddVersion then takes the pixel->WCS Mapping from it
-    // (fitschan.c:3096-3101). The FrameSet here is the caller's, so the
+    // (fitschan.c:3102-3107). The FrameSet here is the caller's, so the
     // conversion from the original Unit is handed back for the caller to
     // apply.
     if unit_cleared {
@@ -1212,7 +1212,7 @@ mod tests {
 
         // Pixel→WCS is identity. Spec-axis bounds via astMapBox are
         // [1, 200]; midpoint = 100.5; NearestPix snaps to integer
-        // pixel coordinate 101. Mirrors fitschan.c:30426 (mid value
+        // pixel coordinate 101. Mirrors fitschan.c:30432 (mid value
         // when dim is known) + :30333 (NearestPix snap).
         assert_eq!(store.crval[1], Some(101.0));
     }

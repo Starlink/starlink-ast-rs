@@ -69,7 +69,7 @@ where
 ///   3. DATE-OBS (parsed via date_str_to_mjd), which C's `SpecTrans`
 ///      translates to MJD-OBS when there is none
 pub(crate) fn read_epoch_into_store(cards: &CardList, store: &mut FitsStore) {
-    // TIMESYS is mark=0 in C (fitschan.c:36932-36939, never consumed) but
+    // TIMESYS is mark=0 in C (fitschan.c:36938-36945, never consumed) but
     // still passes through WcsFcRead's unconditional string strip before
     // being stored — mark only gates card consumption, not the strip. See
     // `CardList::strip_wcs_store_string` for the C citation.
@@ -95,7 +95,7 @@ pub(crate) fn read_epoch_into_store(cards: &CardList, store: &mut FitsStore) {
 /// The returned store contains all WCS keyword values found in the header.
 /// Missing keywords are represented as `None`. The store has the axis
 /// description's `WCSAXES` axes, or `npix`, the number of pixel axes, as C
-/// takes the number of WCS axes (fitschan.c:10896-10900).
+/// takes the number of WCS axes (fitschan.c:10902-10906).
 ///
 /// `s` is the coordinate-version letter:
 /// - `' '` (primary) reads bare keys (`CRVAL1`, etc.).
@@ -104,7 +104,7 @@ pub(crate) fn read_epoch_into_store(cards: &CardList, store: &mut FitsStore) {
 ///   C `GetItem`'s primary-fallback rule).
 pub(crate) fn extract_wcs_keywords(cards: &CardList, s: char, npix: usize) -> AstResult<FitsStore> {
     // Determine the number of axes.
-    // C reads WCSAXES as a double and rounds (fitschan.c:37163, fixed
+    // C reads WCSAXES as a double and rounds (fitschan.c:37169, fixed
     // upstream at e447556a): a value stored as a FITS float marginally below
     // an integer must not truncate to the integer below.
     let wcsaxes = cards
@@ -181,7 +181,7 @@ pub(crate) fn extract_wcs_keywords(cards: &CardList, s: char, npix: usize) -> As
     }
 
     // Scalar WCS keywords (mark=1). String-typed fields get the
-    // unconditional WcsFcRead strip (fitschan.c:37022) via
+    // unconditional WcsFcRead strip (fitschan.c:37028) via
     // `strip_wcs_store_string` — see that function's doc comment.
     store.radesys = CardList::strip_wcs_store_string(lookup_with_fallback(
         cards,
@@ -208,10 +208,10 @@ pub(crate) fn extract_wcs_keywords(cards: &CardList, s: char, npix: usize) -> As
     store.restfrq = lookup_with_fallback(cards, "RESTFRQ", None, s, |c, k| c.get_float_marked(k));
     store.restwav = lookup_with_fallback(cards, "RESTWAV", None, s, |c, k| c.get_float_marked(k));
     // Observation-global TAI/UT1 offsets — mark=0 (C WcsFcRead: DUT1
-    // fitschan.c:36678-36679, DTAI fitschan.c:36687-36689). The DTAI *card*
+    // fitschan.c:36684-36685, DTAI fitschan.c:36693-36695). The DTAI *card*
     // is never consumed either way (C never sets mark=1 for it), but C only
     // stores the value into the FitsStore — and hence only sets the Dtai
-    // attribute on the resulting Frame (fitschan.c:38006-38008) — when a
+    // attribute on the resulting Frame (fitschan.c:38012-38014) — when a
     // TELESCOP card is present and names JCMT or UKIRT, since other
     // telescopes may use DTAI for unrelated purposes. TELESCOP itself is
     // read unmarked (mark=0 in the C `GetValue` call) and always as the
@@ -228,7 +228,7 @@ pub(crate) fn extract_wcs_keywords(cards: &CardList, s: char, npix: usize) -> As
     store.dut1 = cards.get_float(&key_for("DUT1", None, s));
 
     // AST-extension keywords. Mirrors WcsFromStore writes at
-    // fitschan.c:37121-37488. WCSNAME, OBSGEO-{X,Y,Z}, SSYSSRC,
+    // fitschan.c:37127-37494. WCSNAME, OBSGEO-{X,Y,Z}, SSYSSRC,
     // ZSOURCE, IMAGFREQ, SREFIS / SREF{i} / SREFP{i}.
     store.wcsname = CardList::strip_wcs_store_string(lookup_with_fallback(
         cards,
@@ -300,7 +300,7 @@ pub(crate) fn extract_wcs_keywords_with_alts(cards: &CardList) -> AstResult<WcsS
 }
 
 /// Test whether a SIN projection in `store` should be re-emitted as
-/// the legacy `-NCP` form. Mirrors fitschan.c:3331-3354. The rewrite
+/// the legacy `-NCP` form. Mirrors fitschan.c:3337-3360. The rewrite
 /// applies when:
 /// - PV{lat,1} is 0 (or unset),
 /// - PV{lat,2} matches `cot(δ_ref)` to within 0.01 (the historical
@@ -374,7 +374,7 @@ pub(crate) fn normalise_ncp_to_sin(store: &mut FitsStore) {
 /// Read the SIP coefficient cards for one keyword prefix into a table.
 ///
 /// Mirrors the `A_%d_%d` / `A_%d_%d%1c` branches of C `WcsFcRead`
-/// (fitschan.c:36943-37008) and their B / AP / BP counterparts: a matching
+/// (fitschan.c:36949-37014) and their B / AP / BP counterparts: a matching
 /// card is stored at `[i][jm]`, the two `%d` fields, in the slot belonging to
 /// the coordinate version named by the trailing letter (the primary version
 /// when the template has none). Slots with no card hold [`BAD_VALUE`], which
@@ -399,7 +399,7 @@ fn read_sip_coeffs(cards: &CardList, prefix: &str, s: char) -> Vec<Vec<f64>> {
             continue;
         }
         // C converts the card to AST__FLOAT via CnvValue and skips the card
-        // when the conversion fails (fitschan.c:37016-37029).
+        // when the conversion fails (fitschan.c:37022-37035).
         let value = match &card.value {
             FitsValue::Float(v) => *v,
             FitsValue::Int(v) | FitsValue::KInt(v) => *v as f64,
@@ -425,12 +425,12 @@ fn read_sip_coeffs(cards: &CardList, prefix: &str, s: char) -> Vec<Vec<f64>> {
 
 /// Check for SIP distortion and extract coefficients.
 ///
-/// Mirrors the `-SIP` branch of C `DistortMaps` (fitschan.c:8900-8933): the
+/// Mirrors the `-SIP` branch of C `DistortMaps` (fitschan.c:8906-8939): the
 /// distortion is present only when *both* of the first two CTYPE values end
 /// with `-SIP`, and the suffix is stripped from each so later steps see a plain
 /// projection code. The `A_ORDER` / `B_ORDER` / `AP_ORDER` / `BP_ORDER` cards
 /// are deliberately not read: `SIPMapping` derives the powers it needs from the
-/// coefficient cards themselves (`GetMaxI` / `GetMaxJM`, fitschan.c:29482-29503),
+/// coefficient cards themselves (`GetMaxI` / `GetMaxJM`, fitschan.c:29488-29509),
 /// and the ORDER keywords appear on the write side only. Leaving them unread
 /// also leaves them unconsumed, so they survive into a re-written header.
 fn extract_sip(cards: &CardList, store: &mut FitsStore, s: char) {
@@ -494,7 +494,7 @@ mod tests {
 
     #[test]
     fn wcs_store_string_strip_is_unconditional_unlike_generic_accessor() {
-        // C keeps two distinct string-trimming rules (fitschan.c:37022):
+        // C keeps two distinct string-trimming rules (fitschan.c:37028):
         // the generic accessor (`astGetFitsS`/MAKE_FGET, fitschan.c
         // ~15407-15420) strips trailing spaces only when the value is
         // <= 8 characters, but WcsFcRead's FitsStore-store path strips
