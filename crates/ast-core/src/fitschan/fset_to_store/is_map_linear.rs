@@ -1,4 +1,4 @@
-//! Port of `fitschan.c::IsMapLinear` (~19136).
+//! Port of `fitschan.c::IsMapLinear` (fitschan.c:19363).
 //!
 //! Tests whether a specified output of a mapping is a linear function
 //! of the inputs. Used by `other_axes` (and the deferred `LogAxis` /
@@ -8,132 +8,72 @@
 #![allow(dead_code)]
 #![allow(clippy::needless_range_loop)] // mirrors C index loops line-for-line
 
+use crate::constants::BAD_VALUE;
 use crate::coords::PointSet;
 use crate::error::AstResult;
-use crate::mappings::{DynMapping, Mapping};
+use crate::mappings::Mapping;
+use crate::mappings::helpers::ast_equal;
 
 /// Number of test points used for the inverse-transform fit.
-/// Mirrors `NP` at `fitschan.c:19254`.
+/// Mirrors `NP` at `fitschan.c:19427`.
 const NP: usize = 20;
 
 /// Return `true` if the specified output axis of `smap` is a linear
 /// function of the mapping inputs over the input box `[lbnd_in,
-/// ubnd_in]`. Returns `false` otherwise (including when the mapping
-/// has no defined inverse, when the bounding box can't be sampled,
-/// or when the linear-fit residuals exceed `1e-7 *
-/// (in_ubnd - in_lbnd)` per input axis).
+/// ubnd_in]`, as C's `IsMapLinear` (fitschan.c:19363) decides it:
+/// `astMapBox` gives the range of the output and an input position at
+/// which it is lowest; `NP` points spread along the output, the other
+/// outputs held at their values there, are transformed back to the inputs;
+/// and a straight line fitted to each input that varies must reproduce it
+/// to within 1e-7 of its range. The output is first split off the Mapping
+/// when a single input feeds it.
 ///
 /// `coord_out` is 0-based.
-///
-/// Mirrors `fitschan.c::IsMapLinear` (~19136).
-///
-/// Implementation notes:
-/// - Uses `Mapping::map_split` on the inverted mapping to isolate the
-///   single output, falling back to the full mapping when the split
-///   doesn't apply. Mirrors the C `astInvert; astMapSplit; astInvert`
-///   dance at lines 19246-19277.
-/// - Replaces `astMapBox` (which we don't have ported) with a simple
-///   corner-sampling estimator: transform every corner of the input
-///   box, take min/max of the chosen output. For the typical use case
-///   (single-axis sub-mappings) the corner extrema match the output
-///   range exactly. For unusual cases the estimator under-bounds
-///   the range, which is conservative — the linearity check sees a
-///   smaller sample-grid and might fail on a curve that would have
-///   been ruled linear under the true range; we accept that as the
-///   safe direction.
 pub(crate) fn is_map_linear(
     smap: &dyn Mapping,
     lbnd_in: &[f64],
     ubnd_in: &[f64],
     coord_out: usize,
 ) -> AstResult<bool> {
-    let nin_orig = smap.nin();
-    let nout_orig = smap.nout();
-    if lbnd_in.len() != nin_orig || ubnd_in.len() != nin_orig {
-        return Ok(false);
-    }
-    if coord_out >= nout_orig {
-        return Ok(false);
-    }
-
-    // Try to split off the requested output axis. Mirrors C:19246-19277.
-    let (working_map, working_lbnd, working_ubnd, working_coord_out) = {
+    // Split off the requested output, inverting the Mapping so that any
+    // outputs whose inverse is undefined do not stop the split. If a single
+    // input feeds the output, use the one-input Mapping and that input's
+    // bounds.
+    let (map, lbnd_in, ubnd_in, coord_out) = {
         let mut inv = smap.clone_box();
         inv.invert();
         match inv.map_split_zero_based(&[coord_out])? {
-            Some((kept_in_axes, mut single)) if single.nout() == 1 => {
-                // Splitted: now `single` goes (1 input from coord_out)
-                // → (kept_in_axes' worth of outputs, length 1 because
-                // we asked for 1). Invert back so it goes input →
-                // output again. The lone output corresponds to the
-                // first kept input; restrict the box bounds accordingly.
+            Some((ins, mut single)) if single.nout() == 1 => {
                 single.invert();
-                let kept_idx = kept_in_axes[0];
-                let lbnd = vec![lbnd_in[kept_idx]];
-                let ubnd = vec![ubnd_in[kept_idx]];
-                (single, lbnd, ubnd, 0_usize)
+                let k = ins[0];
+                (single, vec![lbnd_in[k]], vec![ubnd_in[k]], 0_usize)
             }
-            _ => {
-                // Fall back to the full mapping.
-                (
-                    smap.clone_box(),
-                    lbnd_in.to_vec(),
-                    ubnd_in.to_vec(),
-                    coord_out,
-                )
-            }
+            _ => (
+                smap.clone_box(),
+                lbnd_in.to_vec(),
+                ubnd_in.to_vec(),
+                coord_out,
+            ),
         }
     };
 
-    if !working_map.has_forward() || !working_map.has_inverse() {
+    // The Mapping must be defined in both directions.
+    if !map.has_forward() || !map.has_inverse() {
         return Ok(false);
     }
+    let nin = map.nin();
+    let nout = map.nout();
 
-    let nin = working_map.nin();
-    let nout = working_map.nout();
-
-    // Step 1: corner-sample the input box to find the output range
-    // for `working_coord_out`. Also record the input position at the
-    // minimum-output corner — used as the seed for the test points.
-    let nverts = 1usize << nin;
-    let mut corner_inputs: Vec<Vec<f64>> = Vec::with_capacity(nverts);
-    for k in 0..nverts {
-        let mut row = Vec::with_capacity(nin);
-        for i in 0..nin {
-            row.push(if (k >> i) & 1 == 0 {
-                working_lbnd[i]
-            } else {
-                working_ubnd[i]
-            });
-        }
-        corner_inputs.push(row);
-    }
-    let pts_corner_in = PointSet::from_rows(corner_inputs.clone());
-    let pts_corner_out = match working_map.transform(&pts_corner_in, true) {
-        Ok(p) => p,
-        Err(_) => return Ok(false),
+    // The bounds of the output, and an input position at which it is
+    // lowest. A box that cannot be found makes the Mapping non-linear; equal
+    // bounds are widened.
+    let Ok(bx) = map.map_box(&lbnd_in, &ubnd_in, true, coord_out + 1) else {
+        return Ok(false);
     };
-
-    let mut lbnd_out = f64::INFINITY;
-    let mut ubnd_out = f64::NEG_INFINITY;
-    let mut min_idx = 0_usize;
-    for k in 0..nverts {
-        let v = pts_corner_out.point(k)[working_coord_out];
-        if !v.is_finite() {
-            return Ok(false);
-        }
-        if v < lbnd_out {
-            lbnd_out = v;
-            min_idx = k;
-        }
-        if v > ubnd_out {
-            ubnd_out = v;
-        }
-    }
-    // Mirrors C:19314-19323 — handle the bounds-equal degenerate.
-    if (ubnd_out - lbnd_out).abs() < 1e-12 {
+    let (mut lbnd_out, mut ubnd_out) = (bx.lbnd_out, bx.ubnd_out);
+    if ast_equal(lbnd_out, ubnd_out) {
         let m = 0.5 * (lbnd_out + ubnd_out);
-        if m.abs() > 1e-15 {
+        if m.abs() > 1.0e-15 {
             lbnd_out = 0.9 * m;
             ubnd_out = 1.1 * m;
         } else {
@@ -142,120 +82,96 @@ pub(crate) fn is_map_linear(
         }
     }
 
-    // Step 2: build NP output positions evenly spaced along
-    // working_coord_out, with the other output coords held at the
-    // values produced by the min-corner. Mirrors C:19343-19356.
-    let xl = corner_inputs[min_idx].clone();
-    let pts_seed_in = PointSet::from_rows([xl.clone()]);
-    let pts_seed_out = match working_map.transform(&pts_seed_in, true) {
-        Ok(p) => p,
-        Err(_) => return Ok(false),
-    };
-    let seed_out: Vec<f64> = (0..nout).map(|i| pts_seed_out.point(0)[i]).collect();
+    // The outputs at that input position.
+    let p0 = map.transform(&PointSet::from_rows([bx.xl.clone()]), true)?;
+    let p0: Vec<f64> = (0..nout).map(|i| p0.point(0)[i]).collect();
 
-    let delta = (ubnd_out - lbnd_out) / ((NP - 1) as f64);
-    let mut out_rows: Vec<Vec<f64>> = Vec::with_capacity(NP);
-    for j in 0..NP {
-        let mut row = seed_out.clone();
-        row[working_coord_out] = lbnd_out + (j as f64) * delta;
-        out_rows.push(row);
-    }
-    let pts_test_out = PointSet::from_rows(out_rows);
-
-    // Step 3: inverse-transform to get the corresponding input
-    // positions. C:19360.
-    let pts_test_in = match working_map.transform(&pts_test_out, false) {
-        Ok(p) => p,
-        Err(_) => return Ok(false),
-    };
-
-    // Step 4: per-input-axis linear fit + residual check.
-    // Mirrors C:19367-19449. The fit is made to values offset by the first
-    // value of each, since the sums formed from values far from zero
-    // compared to their range lose the fit to rounding.
-    let s: Vec<f64> = (0..NP)
-        .map(|j| pts_test_out.point(j)[working_coord_out])
+    // `NP` positions evenly spread along the output, the other outputs held
+    // at their values above, transformed back to the inputs.
+    let delta = (ubnd_out - lbnd_out) / (NP - 1) as f64;
+    let rows: Vec<Vec<f64>> = (0..NP)
+        .map(|j| {
+            let mut row = p0.clone();
+            row[coord_out] = lbnd_out + j as f64 * delta;
+            row
+        })
         .collect();
-    let soff = s[0];
+    let out = PointSet::from_rows(rows);
+    let inp = map.transform(&out, false)?;
 
+    // Fit a straight line to each input coordinate as a function of the
+    // output. The fit is made to values offset by the first value of each,
+    // since the sums formed from values far from zero compared to their
+    // range lose the fit to rounding.
+    let s: Vec<f64> = (0..NP).map(|j| out.point(j)[coord_out]).collect();
+    let soff = s[0];
     for i in 0..nin {
-        let mut p: Vec<f64> = (0..NP).map(|j| pts_test_in.point(j)[i]).collect();
+        let mut p: Vec<f64> = (0..NP).map(|j| inp.point(j)[i]).collect();
         let poff = p[0];
 
-        // Compute sums + bounds (no BAD handling — mapping outputs
-        // were validated finite above).
-        let mut sp = 0.0_f64;
-        let mut ss = 0.0_f64;
-        let mut sps = 0.0_f64;
-        let mut ss2 = 0.0_f64;
-        let mut sn = 0.0_f64;
-        let mut in_lbnd = f64::INFINITY;
-        let mut in_ubnd = f64::NEG_INFINITY;
-        let mut had_bad = false;
+        // The sums, and the smallest and largest input value. C starts
+        // the largest at DBL_MIN, the smallest positive double, rather than
+        // -DBL_MAX, so for inputs that are all negative it stays DBL_MIN.
+        let (mut sp, mut ss, mut sps, mut sn, mut ss2) = (0.0, 0.0, 0.0, 0.0, 0.0);
+        let mut in_lbnd = f64::MAX;
+        let mut in_ubnd = f64::MIN_POSITIVE;
         for j in 0..NP {
-            let pv = p[j];
-            let sv = s[j];
-            if !pv.is_finite() || !sv.is_finite() {
-                had_bad = true;
+            let (pv, sv) = (p[j], s[j]);
+            if pv != BAD_VALUE && sv != BAD_VALUE {
+                if pv < in_lbnd {
+                    in_lbnd = pv;
+                }
+                if pv > in_ubnd {
+                    in_ubnd = pv;
+                }
+                let (pv, sv) = (pv - poff, sv - soff);
+                sp += pv;
+                ss += sv;
+                sps += pv * sv;
+                sn += 1.0;
+                ss2 += sv * sv;
+            } else {
+                sn = 0.0;
                 break;
             }
-            if pv < in_lbnd {
-                in_lbnd = pv;
-            }
-            if pv > in_ubnd {
-                in_ubnd = pv;
-            }
-            let (pv, sv) = (pv - poff, sv - soff);
-            sp += pv;
-            ss += sv;
-            sps += pv * sv;
-            ss2 += sv * sv;
-            sn += 1.0;
-        }
-        if had_bad {
-            return Ok(false);
         }
 
-        // Skip input axes independent of the output axis.
-        if (in_lbnd - in_ubnd).abs() < 1e-12 {
+        // Inputs that do not vary with the output are ignored.
+        if ast_equal(in_lbnd, in_ubnd) {
             continue;
         }
-
-        // First fit: input = m*output + c.
         let d = ss * ss - sn * ss2;
-        if sn <= 0.0 || d == 0.0 {
+        if !(sn > 0.0 && d != 0.0) {
             return Ok(false);
         }
+
+        // First fit, "input = m*output + c", and its residuals.
         let m = (sp * ss - sps * sn) / d;
         let c = (sps * ss - sp * ss2) / d;
         for j in 0..NP {
             p[j] -= poff + m * (s[j] - soff) + c;
         }
 
-        // Second fit on the residuals (sometimes the first fit leaves
-        // a residual gradient — mirrors C:19410-19426).
+        // A second fit to the residuals, since the first sometimes leaves
+        // them with a gradient, and their residuals.
         sp = 0.0;
         sps = 0.0;
         for j in 0..NP {
             sp += p[j];
             sps += p[j] * (s[j] - soff);
         }
-        let m2 = (sp * ss - sps * sn) / d;
-        let c2 = (sps * ss - sp * ss2) / d;
+        let m = (sp * ss - sps * sn) / d;
+        let c = (sps * ss - sp * ss2) / d;
         for j in 0..NP {
-            p[j] -= m2 * (s[j] - soff) + c2;
+            p[j] -= m * (s[j] - soff) + c;
         }
 
-        // Tolerance: 1e-7 of the input-axis range. Mirrors C:19437.
+        // Every residual must be within 1e-7 of the range of the input.
         let tol = 1.0e-7 * (in_ubnd - in_lbnd);
-        for j in 0..NP {
-            if p[j].abs() > tol {
-                return Ok(false);
-            }
+        if p.iter().any(|r| r.abs() > tol) {
+            return Ok(false);
         }
     }
-
-    let _ = (nout_orig, working_map as DynMapping);
     Ok(true)
 }
 
@@ -309,13 +225,6 @@ mod tests {
         // TAN over [-1, 1] rad is highly non-linear.
         let wm = WcsMap::new(2, WcsProjection::Tan, 1, 2).unwrap();
         let r = is_map_linear(&wm, &[-1.0, -1.0], &[1.0, 1.0], 0).unwrap();
-        assert!(!r);
-    }
-
-    #[test]
-    fn wrong_dim_returns_false() {
-        let m = UnitMap::new(2);
-        let r = is_map_linear(&m, &[0.0], &[1.0, 2.0], 0).unwrap();
         assert!(!r);
     }
 

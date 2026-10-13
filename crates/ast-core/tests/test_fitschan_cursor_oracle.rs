@@ -538,21 +538,13 @@ fn run(fc: &mut FitsChan, op: &str, out: &mut String, h: &mut Harness) {
 
 /// Cases the port does not yet match, with the reason. The companion test
 /// fails once an entry matches, so the list cannot go stale.
-const EXCLUDED: &[(&str, &str)] = &[
-    (
-        "native_full_1",
-        "with Full positive C also writes the unset RefCnt and Nobj of each \
+const EXCLUDED: &[(&str, &str)] = &[(
+    "native_full_1",
+    "with Full positive C also writes the unset RefCnt and Nobj of each \
          Object part as comment cards, counts of pointers to the Object and \
          of Objects of its class, which the port does not have; \
          native_full_1_matches_c_but_for_process_counts compares the rest",
-    ),
-    (
-        "alt_axes_alt_offset",
-        "the port writes an absolute description A for the offset alternate B \
-         (still describing offset coordinates, WCSNAMEA SKY_POLE), which C \
-         does not write",
-    ),
-];
+)];
 
 /// The transcript the port gives for a case's operations.
 fn transcript(ops: &[&str]) -> String {
