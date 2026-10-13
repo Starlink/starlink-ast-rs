@@ -314,4 +314,26 @@ pub const CASES: &[Case] = &[
             ("", 0, &[]),
         ],
     ),
+    (
+        "string_for_double",
+        " ",
+        &["Begin ZoomMap", "Nin = 1", "IsA Mapping", "Zoom = \"x\"", "End ZoomMap", "Begin UnitMap", "Nin = 1", "End UnitMap"],
+        &[
+            ("", 233933202, &[]),
+            ("UnitMap", 0, &["The value \"nin = 1\" was not recognised as valid input."]),
+            ("", 0, &[]),
+            ("", 0, &[]),
+        ],
+    ),
+    (
+        "string_for_int",
+        " ",
+        &["Begin ZoomMap", "Nin = \"two\"", "IsA Mapping", "Zoom = 2", "End ZoomMap", "Begin UnitMap", "Nin = 1", "End UnitMap"],
+        &[
+            ("", 233933202, &[]),
+            ("", 233933202, &[]),
+            ("", 233933202, &[]),
+            ("UnitMap", 0, &["The value \"nin = 1\" was not recognised as valid input."]),
+        ],
+    ),
 ];

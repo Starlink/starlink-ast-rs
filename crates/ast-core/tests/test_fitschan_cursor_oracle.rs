@@ -322,6 +322,7 @@ fn run(fc: &mut FitsChan, op: &str, out: &mut String, h: &mut Harness) {
                 "Skip" => fc.config_mut().set_skip(v != 0),
                 "Full" => fc.config_mut().set_full(v),
                 "Comment" => fc.config_mut().set_comment(v != 0),
+                "Strict" => fc.config_mut().set_strict(v != 0),
                 other => panic!("no int attribute {other}"),
             }
             String::new()
@@ -538,13 +539,26 @@ fn run(fc: &mut FitsChan, op: &str, out: &mut String, h: &mut Harness) {
 
 /// Cases the port does not yet match, with the reason. The companion test
 /// fails once an entry matches, so the list cannot go stale.
-const EXCLUDED: &[(&str, &str)] = &[(
-    "native_full_1",
-    "with Full positive C also writes the unset RefCnt and Nobj of each \
+const EXCLUDED: &[(&str, &str)] = &[
+    (
+        "native_full_1",
+        "with Full positive C also writes the unset RefCnt and Nobj of each \
          Object part as comment cards, counts of pointers to the Object and \
          of Objects of its class, which the port does not have; \
          native_full_1_matches_c_but_for_process_counts compares the rest",
-)];
+    ),
+    ("native_unknown_item", NATIVE_WHOLE),
+    ("native_unknown_item_strict", NATIVE_WHOLE),
+    ("native_bad_value", NATIVE_WHOLE),
+    ("native_bad_value_clean", NATIVE_WHOLE),
+];
+
+/// The FitsChan's NATIVE read parses the whole description before loading
+/// it, rather than reading it as C's Channel does, class part by class part:
+/// it reports no item that no loader reads, ignores Strict, takes a string
+/// where a number is expected without error, and so cannot know how far C's
+/// reader got when Clean removes the cards read before a failure (FA-6).
+const NATIVE_WHOLE: &str = "FitsChan NATIVE read parses the whole description at once";
 
 /// The transcript the port gives for a case's operations.
 fn transcript(ops: &[&str]) -> String {

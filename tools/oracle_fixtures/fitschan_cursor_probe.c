@@ -929,6 +929,18 @@ int main( void ) {
    CASE( "native_skip_0_clean", "P|0|A       = 1", "W", "CC", "ASI|Skip|0", "CL|1", "R" );
    CASE( "native_skip_0_clean_eof", "CM|0|hello", "SU|0|U|", "CC", "ASI|Skip|0", "CL|1", "R" );
    CASE( "native_skip_0_clean_comments", "CM|0|hello", "CC", "ASI|Skip|0", "CL|1", "R" );
+   CASE( "native_unknown_item", "P|0|BEGAST_A= 'ZoomMap '", "P|0|NIN_A   = 1", "P|0|ISA_A   = 'Mapping '",
+         "P|0|FOO_A   = 3", "P|0|ZOOM_A  = 2", "P|0|ENDAST_A= 'ZoomMap '", "P|0|MARK    = 1",
+         "ENC|NATIVE", "CC", "R", "WN" );
+   CASE( "native_unknown_item_strict", "P|0|BEGAST_A= 'ZoomMap '", "P|0|NIN_A   = 1", "P|0|ISA_A   = 'Mapping '",
+         "P|0|FOO_A   = 3", "P|0|ZOOM_A  = 2", "P|0|ENDAST_A= 'ZoomMap '", "P|0|MARK    = 1",
+         "ENC|NATIVE", "ASI|Strict|1", "CC", "R", "WN" );
+   CASE( "native_bad_value", "P|0|BEGAST_A= 'ZoomMap '", "P|0|NIN_A   = 1", "P|0|ISA_A   = 'Mapping '",
+         "P|0|ZOOM_A  = 'x'", "P|0|ENDAST_A= 'ZoomMap '", "P|0|MARK    = 1",
+         "ENC|NATIVE", "CC", "R" );
+   CASE( "native_bad_value_clean", "P|0|BEGAST_A= 'ZoomMap '", "P|0|NIN_A   = 1", "P|0|ISA_A   = 'Mapping '",
+         "P|0|ZOOM_A  = 'x'", "P|0|ENDAST_A= 'ZoomMap '", "P|0|MARK    = 1",
+         "ENC|NATIVE", "CL|1", "CC", "R" );
    CASE( "native_full_0_nested", "ASI|Full|0", "WC", "CC", "R" );
    CASE( "native_full_0_cmpframe", "ASI|Full|0", "WCF" );
    CASE( "native_full_minus1_nested", "WC" );

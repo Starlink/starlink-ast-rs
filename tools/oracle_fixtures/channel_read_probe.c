@@ -201,6 +201,16 @@ int main( void ) {
                           "End SkyFrame", NULL };
       read( "skyframe_legacy_axis_items_strict", "Strict=1", t );
    }
+   {
+      const char *t[] = { "Begin ZoomMap", "Nin = 1", "IsA Mapping", "Zoom = \"x\"",
+                          "End ZoomMap", "Begin UnitMap", "Nin = 1", "End UnitMap", NULL };
+      read( "string_for_double", " ", t );
+   }
+   {
+      const char *t[] = { "Begin ZoomMap", "Nin = \"two\"", "IsA Mapping", "Zoom = 2",
+                          "End ZoomMap", "Begin UnitMap", "Nin = 1", "End UnitMap", NULL };
+      read( "string_for_int", " ", t );
+   }
    printf( "];\n" );
    return 0;
 }
