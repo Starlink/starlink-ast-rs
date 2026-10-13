@@ -150,6 +150,12 @@ pub(crate) fn extract_wcs_keywords(cards: &CardList, s: char, npix: usize) -> As
             s,
             |c, k| c.get_string_marked(k),
         ));
+        // The comment of the CTYPE card, which may become the axis Label
+        // (fitschan.c:36851, 36860).
+        store.ctype_com[i] = cards
+            .find(&key_for("CTYPE", Some(axis_num), s))
+            .and_then(|c| c.c_comment())
+            .map(str::to_string);
         store.cunit[i] = CardList::strip_wcs_store_string(lookup_with_fallback(
             cards,
             "CUNIT",

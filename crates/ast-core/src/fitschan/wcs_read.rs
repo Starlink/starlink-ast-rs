@@ -1259,8 +1259,43 @@ fn ctype_domain(store: &FitsStore, axes: &[usize]) -> Option<String> {
     }
 }
 
+/// Whether C `WcsOthers` labels the axes no class stage claimed (`others`,
+/// ascending) with the comments of their CTYPE cards (fitschan.c:39260-39319):
+/// only when there is more than one such axis, each has a non-blank comment,
+/// and no comment repeats an earlier one.
+///
+/// C keeps the comments in an array indexed by axis but compares each with
+/// the entries at the indices of the earlier *other* axes counted from zero,
+/// which are the same axes only when the other axes come first. The
+/// comparison here is C's.
+fn use_ctype_comments(store: &FitsStore, others: &[usize]) -> bool {
+    let naxes = store.ctype_com.len();
+    let mut comms: Vec<Option<&str>> = vec![None; naxes];
+    let mut usecom = true;
+    let mut nother = 0;
+    for i in 0..naxes {
+        if !others.contains(&i) {
+            continue;
+        }
+        nother += 1;
+        match store.ctype_com[i].as_deref() {
+            Some(com) if !com.trim_end().is_empty() => {
+                if comms[..nother - 1].contains(&Some(com)) {
+                    usecom = false;
+                }
+            }
+            _ => usecom = false,
+        }
+        if usecom {
+            comms[i] = store.ctype_com[i].as_deref();
+        }
+    }
+    usecom && nother > 1
+}
+
 /// Build a BasicFrame over the given FITS axes (0-based), carrying each
-/// axis's CTYPE symbol, label (CNAME or CTYPE), and unit. Mirrors the
+/// axis's CTYPE symbol, label (CNAME, else the CTYPE comment as
+/// [`use_ctype_comments`] decides, else CTYPE), and unit. Mirrors the
 /// per-axis attribute setup C performs (WcsOthers `astSetSymbol`/`astSetLabel`,
 /// fitschan.c:39026-39038).
 ///
@@ -1273,12 +1308,16 @@ fn seed_linear_frame(
     axes: &[usize],
     domain_axes: &[usize],
 ) -> AstResult<DynFrame> {
+    let usecom = use_ctype_comments(store, domain_axes);
     let mut builder = BasicFrameBuilder::new(axes.len());
     for (k, &axis) in axes.iter().enumerate() {
         let idx_1based = k + 1;
         let ctype = others_axis_ctype(store, axis);
         builder = builder.symbol(idx_1based, ctype.clone());
-        if let Some(label) = &store.cname[axis] {
+        let comment = store.ctype_com[axis]
+            .as_ref()
+            .filter(|_| usecom && domain_axes.contains(&axis));
+        if let Some(label) = store.cname[axis].as_ref().or(comment) {
             builder = builder.label(idx_1based, label.clone());
         } else {
             builder = builder.label(idx_1based, ctype);

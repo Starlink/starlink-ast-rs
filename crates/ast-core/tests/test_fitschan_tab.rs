@@ -10,10 +10,6 @@
 //!   attributes.
 //! - C's `astCopy` of the FitsChan is `Clone`, and the table source is a
 //!   closure rather than a callback reading globals.
-//! - The `sparse.ast` section is in `SPARSE_EXCLUDED` rather than run with
-//!   the rest: the FrameSet written from it reads back differently from C's
-//!   (the `sparse` case of `TAB_WRITE_EXCLUDED` in
-//!   `test_fitschan_tab_write_oracle.rs`).
 //!
 //! The C error numbers are kept in the assertion messages.
 
@@ -24,17 +20,6 @@ use ast_core::frames::{
 };
 use ast_core::mappings::{CmpMap, Composition, LutMap, Mapping, MathMap, ShiftMap};
 use ast_core::{AnyObject, Channel, Encoding, FitsChan, FitsTable, KeyMap, from_native_string};
-
-/// Sections of `checktab` that do not yet behave as in C, each with the
-/// reason. `excluded_sections_still_fail` fails when one starts to pass.
-const SPARSE_EXCLUDED: &[(&str, &str)] = &[(
-    "sparse",
-    "the header written for sparse.ast is read back and converts to the \
-     original through SKY-DSBSPECTRUM (1038 to 1041), but transforms pixels \
-     to bad values (1042): its declination look-up reads back as a WinMap of \
-     bad values where C's is a nearest-neighbour LutMap (the sparse case of \
-     TAB_WRITE_EXCLUDED, PLAN.md section 5)",
-)];
 
 /// A FitsChan with the given attributes and `NAXIS` cards.
 fn fitschan(encoding: Encoding, tab_ok: i32, naxis: &[usize]) -> FitsChan {
@@ -201,7 +186,8 @@ fn tab_spectrum() {
     assert_eq!(cell.as_deref(), Some(&lut[..]), "12441, 12442");
 }
 
-/// `checktab`, all but its `sparse.ast` section: a MathMap axis written
+/// `checktab`, all but its `sparse.ast` section, which is
+/// [`check_tab_sparse`]: a MathMap axis written
 /// with an index column, a LutMap axis without one, the FrameSets read back
 /// from them with the tables in the FitsChan and from a table source, the
 /// errors a read without the tables raises, a non-celestial axis, and an
@@ -386,6 +372,7 @@ fn check_tab() {
 /// `checktab`'s `sparse.ast` section: a FrameSet with -TAB celestial and
 /// DSB spectral axes is written and read back, and the two must convert
 /// through their `SKY-DSBSPECTRUM` Frames and transform alike.
+#[test]
 fn check_tab_sparse() {
     let text = std::fs::read_to_string(concat!(
         env!("CARGO_MANIFEST_DIR"),
@@ -423,20 +410,6 @@ fn check_tab_sparse() {
         for (a, b) in y.point(0).iter().zip(y2.point(0)) {
             assert!((a - b).abs() <= 1.0e-8, "1042: {a} != {b}");
         }
-    }
-}
-
-#[test]
-fn excluded_sections_still_fail() {
-    for (name, reason) in SPARSE_EXCLUDED {
-        let section = match *name {
-            "sparse" => check_tab_sparse,
-            _ => panic!("no section {name}"),
-        };
-        assert!(
-            std::panic::catch_unwind(section).is_err(),
-            "{name} now passes ({reason}); remove its exclusion"
-        );
     }
 }
 

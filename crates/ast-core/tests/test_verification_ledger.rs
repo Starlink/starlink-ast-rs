@@ -33,24 +33,14 @@ fn fixtures() -> PathBuf {
 /// Fields: source file, const name, expected entry count, reason.
 const LEDGER: &[(&str, &str, usize, &str)] = &[
     (
-        "test_fitschan_tab.rs",
-        "SPARSE_EXCLUDED",
-        1,
-        "sparse: checktab's sparse.ast section, which writes, reads back and \
-         converts as C does but transforms pixels to bad values, because the \
-         declination look-up reads back as a WinMap of bad values (the sparse \
-         case of TAB_WRITE_EXCLUDED); a companion test fails when the section \
-         passes",
-    ),
-    (
         "test_fitschan_tab_write_oracle.rs",
         "TAB_WRITE_EXCLUDED",
         1,
-        "sparse: its -TAB description is written as C's is, but the DSB \
-         spectral axis's CRVAL3 and CDELT3 differ in their last digits, the \
-         declination look-up reads back as a WinMap of bad values, and the \
-         alternate axes read back with other labels; recorded in PLAN.md \
-         section 5, with a companion test that fails when the case matches",
+        "sparse: written as C writes it but for the last digits of values \
+         computed for linear axes (CRVAL3 and CDELT3 of the DSB spectral axis, \
+         CDELT1 and CDELT2 of the alternate descriptions), which also show in \
+         what is read back; recorded in PLAN.md section 5, with a companion \
+         test that fails when the case matches",
     ),
     (
         "test_fitschan_tab_read_oracle.rs",

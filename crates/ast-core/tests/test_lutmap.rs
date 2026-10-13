@@ -699,3 +699,30 @@ fn lutmap_treats_inf_as_bad() {
     let out_neg = lm.transform(&pts_neg, true).unwrap();
     assert_eq!(out_neg.point(0)[0], BAD_VALUE);
 }
+
+/// Infinite and NaN entries are stored as bad values, as C's `astInitLutMap`
+/// stores them, so a table holding one is not linear and simplifying it
+/// leaves a LutMap; a linear table of the same length simplifies to a
+/// UnitMap. The classes are those the C library gives for the same four
+/// tables.
+#[test]
+fn lutmap_non_finite_entries_not_linear() {
+    let tables: [(&str, [f64; 5], bool); 4] = [
+        (
+            "interior -inf",
+            [1.0, 2.0, 3.0, f64::NEG_INFINITY, f64::NEG_INFINITY],
+            true,
+        ),
+        ("last -inf", [1.0, 2.0, 3.0, 4.0, f64::NEG_INFINITY], true),
+        ("interior nan", [1.0, 2.0, f64::NAN, 4.0, 5.0], true),
+        ("linear", [1.0, 2.0, 3.0, 4.0, 5.0], false),
+    ];
+    for (label, lut, stays_lut) in tables {
+        let s = <dyn Mapping>::simplify(&LutMap::new(&lut, 1.0, 1.0).unwrap()).unwrap();
+        if stays_lut {
+            assert!(s.as_any().is::<LutMap>(), "{label}: not a LutMap");
+        } else {
+            assert!(s.as_any().is::<UnitMap>(), "{label}: not a UnitMap");
+        }
+    }
+}

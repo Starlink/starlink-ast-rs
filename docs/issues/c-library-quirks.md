@@ -33,6 +33,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [A SkyFrame's own SkyAxes are not latitude axes, so `astAxOffset` wraps its latitude into 0 to 2pi](#a-skyframes-own-skyaxes-are-not-latitude-axes-so-astaxoffset-wraps-its-latitude-into-0-to-2pi)
 - [A TimeFrame's default Epoch discards the UT1 value it computes from the TimeOrigin](#a-timeframes-default-epoch-discards-the-ut1-value-it-computes-from-the-timeorigin)
 - [`RegBaseGrid` fails when no grid point lies in the Region](#regbasegrid-fails-when-no-grid-point-lies-in-the-region)
+- [`WcsOthers` misses a repeated CTYPE comment when the celestial axes come first](#wcsothers-misses-a-repeated-ctype-comment-when-the-celestial-axes-come-first)
 - [SkyFrame LAST depends on which LAST values the process computed earlier](#skyframe-last-depends-on-which-last-values-the-process-computed-earlier)
 - [A WcsMap reports unusable parameters only on its first transformation](#a-wcsmap-reports-unusable-parameters-only-on-its-first-transformation)
 - [`IsZenithal` tests the wrong SZP parameter](#iszenithal-tests-the-wrong-szp-parameter)
@@ -133,6 +134,18 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 ---
 
 ## Open questions for upstream
+
+### `WcsOthers` misses a repeated CTYPE comment when the celestial axes come first
+
+C location: `fitschan.c` `WcsOthers`, the loop that decides `usecom`.
+
+The axes no other function claims are labelled with the comments of their CTYPE cards unless two of those comments are the same.
+The comments are kept in an array indexed by axis, but each is compared with the entries at indices 0 to `nother - 2`, the positions of the earlier such axes counted from zero.
+Those are the same axes only when the unclaimed axes come first.
+With RA and DEC on axes 1 and 2 and two linear axes whose CTYPE comments are both `Offset`, the second comment is compared with the entry for axis 1, which is empty, so both linear axes are labelled `Offset`; with the linear axes around the celestial pair the repeat is found and they are labelled from their CTYPE values.
+The port mirrors the comparison (`wcs_read::use_ctype_comments`); `repeated_after_sky` and `repeated_around_sky` in `tests/test_fitschan_labels_oracle.rs`.
+
+Question for upstream: should the comparison be with the comments of the earlier unclaimed axes, wherever they are?
 
 ### `RegBaseGrid` fails when no grid point lies in the Region
 

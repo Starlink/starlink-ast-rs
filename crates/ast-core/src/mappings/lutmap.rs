@@ -78,7 +78,8 @@ impl LutMap {
     /// at the first entry, and `inc` is the spacing between entries.
     ///
     /// A table of fewer than two values is an `AST__LUTIN` error, and a zero
-    /// `inc` an `AST__LUTII` error, as in C's `astInitLutMap`.
+    /// `inc` an `AST__LUTII` error, as in C's `astInitLutMap`. An infinite or
+    /// NaN entry is stored as [`BAD_VALUE`], as C stores it.
     pub fn new(lut: &[f64], start: f64, inc: f64) -> AstResult<Self> {
         if lut.len() < 2 {
             return Err(AstError::new(
@@ -96,9 +97,14 @@ impl LutMap {
                 "LutMap: the input value increment between lookup table elements is zero",
             ));
         }
-        let (monotonic, inverse_table) = get_monotonic(lut);
+        // A non-finite entry is stored as BAD_VALUE (lutmap.c:2428-2432).
+        let lut: Vec<f64> = lut
+            .iter()
+            .map(|&v| if v.is_finite() { v } else { BAD_VALUE })
+            .collect();
+        let (monotonic, inverse_table) = get_monotonic(&lut);
         Ok(Self {
-            lut: lut.to_vec(),
+            lut,
             start,
             inc,
             interp: Some(LutInterp::Linear),
