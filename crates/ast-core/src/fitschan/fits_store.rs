@@ -35,7 +35,7 @@ pub(crate) struct FitsStore {
     pub ctype: Vec<Option<String>>,
     /// Axis-specific CTYPE comment per axis. When `None`, the writer
     /// falls back to `"Type of co-ordinate on axis {n}"`. Mirrors C's
-    /// `store->ctype_com` populated by `OtherAxes` (fitschan.c:24485).
+    /// `store->ctype_com` populated by `OtherAxes` (fitschan.c:24488).
     pub ctype_com: Vec<Option<String>>,
     /// Axis units per axis (CUNITi).
     pub cunit: Vec<Option<String>>,
@@ -61,14 +61,14 @@ pub(crate) struct FitsStore {
     ///
     /// FITS standard default is UTC when the keyword is absent. Stored
     /// as the raw uppercase string (`"UTC"`, `"TAI"`, `"TT"`, `"TDB"`,
-    /// etc.). Mirrors fitschan.c:29836 / 6144.
+    /// etc.). Mirrors fitschan.c:29840 / 6144.
     pub timesys: Option<String>,
     /// Formatted observation date string (DATE-OBS).
     ///
     /// Pre-formatted by `populate_celestial` from the (UTC-converted)
     /// MJD-OBS using the C library's format convention: ISO-8601
     /// `YYYY-MM-DDTHH:MM:SS.SSS` for MJD ≥ 51179 (1999-01-01), legacy
-    /// `DD/MM/YY` for earlier dates. Mirrors fitschan.c:3661-3675.
+    /// `DD/MM/YY` for earlier dates. Mirrors fitschan.c:3664-3678.
     pub dateobs: Option<String>,
     /// Spectral reference frame (SPECSYS).
     pub specsys: Option<String>,
@@ -84,7 +84,7 @@ pub(crate) struct FitsStore {
     /// Set by the read path when both of the first two CTYPE values carried a
     /// `-SIP` distortion code. C has no equivalent field — `DistortMaps` tests
     /// the CTYPE values and calls `SIPMapping` in the same breath, before
-    /// truncating them (fitschan.c:8913-8936) — so this records the answer for
+    /// truncating them (fitschan.c:8916-8939) — so this records the answer for
     /// the later `distort_maps` step, which sees only the stripped values.
     pub sip: bool,
     /// SIP forward polynomial order for axis 1 (A_ORDER). Write path only; the
@@ -118,14 +118,14 @@ pub(crate) struct FitsStore {
     /// `AXREF<i>` values in degrees, indexed by 0-based FITS axis. A
     /// non-standard keyword AST uses to communicate the reference position on
     /// axes described by `-TAB` that have no inverse transformation; C writes
-    /// it from `store->axref` in `WcsFromStore` (fitschan.c:37360-37372). On
+    /// it from `store->axref` in `WcsFromStore` (fitschan.c:37364-37376). On
     /// read it overrides the CRVAL-derived sky reference position and forces
-    /// SkyRef to be set (fitschan.c:36331-36345).
+    /// SkyRef to be set (fitschan.c:36335-36349).
     pub axref: Vec<Option<f64>>,
-    // -- WCSNAME (fitschan.c:30064) --
+    // -- WCSNAME (fitschan.c:30068) --
     /// `WCSNAMEa` from the SkyFrame's `Domain` attribute.
     pub wcsname: Option<String>,
-    // -- OBSGEO-X/Y/Z (fitschan.c:30069-30079) --
+    // -- OBSGEO-X/Y/Z (fitschan.c:30073-30083) --
     /// Geocentric observer position X (metres).
     pub obsgeox: Option<f64>,
     /// Geocentric observer position Y (metres).
@@ -220,7 +220,7 @@ impl FitsStore {
     /// Returns `true` if the header declared `-SIP` distortion on both of the
     /// first two axes. Note this is independent of whether any coefficient
     /// cards were present: C `DistortMaps` calls `SIPMapping` on the strength
-    /// of the CTYPE codes alone (fitschan.c:8925), and `SIPMapping` answers
+    /// of the CTYPE codes alone (fitschan.c:8928), and `SIPMapping` answers
     /// with a UnitMap when the store holds no coefficients.
     pub(crate) fn has_sip(&self) -> bool {
         self.sip
@@ -283,7 +283,7 @@ impl FitsStore {
 
     /// The longitude, latitude and spectral axes among the first WCSAXES
     /// (or NAXIS) CTYPE values: C's `FindLonLatSpecAxes`
-    /// (fitschan.c:10816). A spectral axis is one `IsSpectral` or
+    /// (fitschan.c:10819). A spectral axis is one `IsSpectral` or
     /// `IsAIPSSpectral` recognises; a celestial axis has `-` as its fifth
     /// character, and is a longitude axis for `RA--`, `AZ--`, `xLON` and
     /// `xyLN`, and a latitude axis for `DEC-`, `EL--`, `xLAT` and `xyLT`.
@@ -334,7 +334,7 @@ impl FitsStore {
     }
 }
 
-/// C's `EQUALANG` (fitschan.c:1590): two angles equal, both bad, or within
+/// C's `EQUALANG` (fitschan.c:1593): two angles equal, both bad, or within
 /// the larger of 1.0E5 times their summed magnitudes times the machine
 /// precision and 1.0E-9.
 pub(crate) fn equal_ang(a: f64, b: f64) -> bool {
@@ -352,7 +352,7 @@ pub(crate) fn names_start_of(cval: &str, target: &str) -> bool {
     n <= target.len() && cval.as_bytes()[..n] == target.as_bytes()[..n]
 }
 
-/// C's `IsSpectral` (fitschan.c:20570): the default unit of the spectral
+/// C's `IsSpectral` (fitschan.c:20573): the default unit of the spectral
 /// system a CTYPE names in its first four characters (trailing spaces
 /// ignored), when any algorithm code after them (at most four
 /// characters, trailing spaces ignored) is blank or starts with `-`.
@@ -377,7 +377,7 @@ pub(crate) fn is_spectral(ctype: &str) -> Option<&'static str> {
 
 /// Check if a CTYPE value represents a celestial longitude axis.
 ///
-/// Mirrors C `GetSkyAxes` (fitschan.c:10803-10813): a celestial axis has a
+/// Mirrors C `GetSkyAxes` (fitschan.c:10806-10816): a celestial axis has a
 /// `-` as its fifth character; a longitude axis is `RA--`, `AZ--`, `xLON`
 /// (chars 1..4 == "LON"), or `xyLN` (chars 2..4 == "LN").
 fn is_longitude_ctype(ctype: &str) -> bool {
@@ -391,7 +391,7 @@ fn is_longitude_ctype(ctype: &str) -> bool {
 
 /// Check if a CTYPE value represents a celestial latitude axis.
 ///
-/// Mirrors C `GetSkyAxes` (fitschan.c:10815-10819): latitude is `DEC-`,
+/// Mirrors C `GetSkyAxes` (fitschan.c:10818-10822): latitude is `DEC-`,
 /// `EL--`, `xLAT` (chars 1..4 == "LAT"), or `xyLT` (chars 2..4 == "LT").
 fn is_latitude_ctype(ctype: &str) -> bool {
     let ct = ctype.trim();

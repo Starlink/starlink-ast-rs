@@ -179,7 +179,7 @@
   `fn write(&mut self, obj: &AnyObject) -> AstResult<usize>`, restoring the
   count rev 6 had removed.
   C's `astWrite` returns a count, not a status (`channel.c`, and for FitsChan
-  `fitschan.c:40663`): 0 with `astOK` still true is the documented answer when
+  `fitschan.c:40671`): 0 with `astOK` still true is the documented answer when
   the encoding cannot describe the object, and callers act on it.
   `FitsChan` is where this is load-bearing — the FITS-WCS encoder's
   per-version loop counts the descriptions that succeeded, and upstream

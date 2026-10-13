@@ -113,7 +113,7 @@ Four assignments differ from the spec's grouping, because the measurement disagr
 **`car6` → U12, its own cause.**
 Its first diff is an ASTWARN block we emit that C does not emit at all, so it is neither a doubled-card-count diff (cause 1) nor an insertion-position diff (cause 7).
 `car6.head` line 1 is the bare text `FITS headers in CHIPASS_Equ.fits:`, whose 8-column name field is `FITS hea` — a name containing a space.
-C `CheckFitsName` (fitschan.c:6066-6089) loops over the name, and on the first non-`isFits` character branches three ways: `== '='` reports an error, `< ' '` warns "illegal non-printing character", `> ' '` warns "illegal character".
+C `CheckFitsName` (fitschan.c:6072-6095) loops over the name, and on the first non-`isFits` character branches three ways: `== '='` reports an error, `< ' '` warns "illegal non-printing character", `> ' '` warns "illegal character".
 A space is none of the three, so C falls off the `if`/`else if` chain, `break`s, and issues **no warning**.
 `check_fits_name` (`crates/ast-core/src/fitschan/card.rs:57-61`) has no `> ' '` guard on its final arm, so a space reaches the "illegal character" message and we emit a four-card ASTWARN block C never wrote.
 Verified during planning: adding the guard makes `car6_native` byte-exact with no other change.
@@ -121,7 +121,7 @@ Verified during planning: adding the guard makes `car6_native` byte-exact with n
 **`projp_pv` → U13, its own cause.**
 It is not a card-doubling case.
 Our output tail is `NAXIS1`, `NAXIS2`, `END`; the reference tail is `NAXIS1`, `NAXIS2`, `PROJP0`, `PROJP1`, `PROJP2` — we delete three PROJP cards C retains.
-`translate_projp` (`crates/ast-core/src/fitschan/spec_trans.rs:1717-1776`) diverges from C (fitschan.c:31571-31624) twice: its `!use_projp` branch calls `delete_consumed` on each PROJP card (C never deletes them), and its translate branch omits C's `encoding == FITSPC_ENCODING || encoding == FITSIRAF_ENCODING` gate on the `PV<axlat>_<i>` write.
+`translate_projp` (`crates/ast-core/src/fitschan/spec_trans.rs:1717-1776`) diverges from C (fitschan.c:31579-31632) twice: its `!use_projp` branch calls `delete_consumed` on each PROJP card (C never deletes them), and its translate branch omits C's `encoding == FITSPC_ENCODING || encoding == FITSIRAF_ENCODING` gate on the `PV<axlat>_<i>` write.
 
 U1 therefore targets exactly two cases, `specflux` and `timeplot` — the only two showing the exact-doubling signature (55 vs 27, 67 vs 33).
 U7's eight cases are unchanged from the spec.
@@ -134,7 +134,7 @@ U4 evaluates whether `cd_cross` is the same licensed difference; if it is not, i
 **The spec's cause-3 paragraph names the wrong mechanism.**
 It says C pads short string values to 8 columns and we do not.
 `format_string_value` (`crates/ast-core/src/fitschan/card.rs:703-724`) already pads to 8, matching C `EncodeValue`.
-The actual defect is on the *parse* side: `card.rs:562-563` calls `trim_end()` on every string value, where C (fitschan.c:15433-15442, plus the `MAKE_FGET` macro at ~15408) strips trailing spaces only when the value is 8 characters or fewer.
+The actual defect is on the *parse* side: `card.rs:562-563` calls `trim_end()` on every string value, where C (fitschan.c:15439-15448, plus the `MAKE_FGET` macro at ~15408) strips trailing spaces only when the value is 8 characters or fewer.
 `tnx.head`'s `RA` value is 18 characters, so C preserves its padding and we destroy it.
 U3 fixes the parse side.
 
@@ -207,7 +207,7 @@ The defect is on the parse side, not the write side.
 `format_string_value` already pads short values to 8 columns, matching C
 `EncodeValue`.
 C strips trailing spaces from a string keyword value only when the value is 8
-characters or fewer (fitschan.c:15433-15442 and the `MAKE_FGET` macro at
+characters or fewer (fitschan.c:15439-15448 and the `MAKE_FGET` macro at
 ~15408); we strip unconditionally.
 `tnx.head`'s `RA` value is 18 characters, so C preserves its padding.
 ```
@@ -225,7 +225,7 @@ Add, after cause 11:
 
 `car6.head` line 1 is the bare text `FITS headers in CHIPASS_Equ.fits:`, whose
 8-column name field is `FITS hea`.
-C `CheckFitsName` (fitschan.c:6066-6089) branches on the first non-`isFits`
+C `CheckFitsName` (fitschan.c:6072-6095) branches on the first non-`isFits`
 character three ways — `== '='` errors, `< ' '` warns "illegal non-printing
 character", `> ' '` warns "illegal character" — then `break`s.
 A space matches none of the three, so C issues no warning.
@@ -240,7 +240,7 @@ Our output tail is `NAXIS1`, `NAXIS2`, `END`; C's is `NAXIS1`, `NAXIS2`,
 `PROJP0`, `PROJP1`, `PROJP2`.
 `translate_projp` deletes the PROJP cards in its `!use_projp` branch, which C
 does not do, and omits C's `encoding == FITSPC_ENCODING || encoding ==
-FITSIRAF_ENCODING` gate on the `PV<axlat>_<i>` write (fitschan.c:31571-31624).
+FITSIRAF_ENCODING` gate on the `PV<axlat>_<i>` write (fitschan.c:31579-31632).
 ```
 
 - [ ] **Step 3: Correct cause 1's measured `ncard` figures**
@@ -540,7 +540,7 @@ Add to the `mod tests` block in `crates/ast-core/src/fitschan/card.rs`, immediat
 ```rust
 #[test]
 fn check_fits_name_space_is_not_reported() {
-    // C CheckFitsName (fitschan.c:6066-6089) branches on `== '='`,
+    // C CheckFitsName (fitschan.c:6072-6095) branches on `== '='`,
     // `< ' '` and `> ' '`. A space matches none of them, so no warning
     // is issued for a name field that contains one.
     assert_eq!(check_fits_name("FITS hea"), None);
@@ -569,7 +569,7 @@ In `check_fits_name`, replace the final `return Some(format!(...))` arm with a g
                     c as char
                 ));
             }
-            // C's chain has no arm for a space (fitschan.c:6066-6089): it
+            // C's chain has no arm for a space (fitschan.c:6072-6095): it
             // breaks out of the loop without warning.
             return None;
 ```
@@ -638,7 +638,7 @@ Add to the `mod tests` block in `crates/ast-core/src/fitschan/card.rs`:
 #[test]
 fn parse_string_value_keeps_padding_on_long_values() {
     // C strips trailing spaces only when the value is 8 characters or
-    // fewer (fitschan.c:15433-15442). An 18-character padded value keeps
+    // fewer (fitschan.c:15439-15448). An 18-character padded value keeps
     // its padding.
     let card = FitsCard::parse(
         "RA      = '07:21:44.00       ' / RA of observation (hr)                        ",
@@ -688,7 +688,7 @@ with:
     // The FITS standard pads string values shorter than 8 characters with
     // trailing spaces, so those spaces carry no information and are
     // stripped. Longer values may have significant trailing spaces, which
-    // are preserved (C fitschan.c:15433-15442 and the MAKE_FGET macro).
+    // are preserved (C fitschan.c:15439-15448 and the MAKE_FGET macro).
     let result = if result.len() <= 8 {
         result.trim_end().to_string()
     } else {
@@ -758,11 +758,11 @@ git -c core.hooksPath=/dev/null commit -m "fitschan: keep trailing spaces on str
 
 - [ ] **Step 1: Read C's PROJP block before writing anything**
 
-Read `reference/starlink-ast/src/fitschan.c:31571-31624`.
+Read `reference/starlink-ast/src/fitschan.c:31579-31632`.
 Confirm for yourself, in the source, that:
 - the `SetValue(ret, "PV<axlat>_<i>", ...)` write is inside an `encoding == FITSPC_ENCODING || encoding == FITSIRAF_ENCODING` test;
 - there is no `DeleteCard` on any PROJP keyword anywhere in the block;
-- the PROJP value is fetched with `GetValue2(ret, this, ...)`, whose contract (fitschan.c:18450-18452) marks the card used only when the hit came from the *second* chan.
+- the PROJP value is fetched with `GetValue2(ret, this, ...)`, whose contract (fitschan.c:18456-18458) marks the card used only when the hit came from the *second* chan.
 
 Write down the line numbers you verified; the commit message cites them.
 
@@ -771,7 +771,7 @@ Write down the line numbers you verified; the commit message cites them.
 ```rust
 #[test]
 fn translate_projp_retains_source_cards() {
-    // C fitschan.c:31571-31624 reads PROJP with GetValue2 and never
+    // C fitschan.c:31579-31632 reads PROJP with GetValue2 and never
     // deletes it, so the cards survive into the output header.
     let header = "\
 SIMPLE  =                    T / Fits standard
@@ -817,7 +817,7 @@ In `translate_projp`, delete the `!use_projp` branch's deletion loop so the bran
 ```rust
     if !use_projp {
         // C reads PROJP with GetValue2 and never deletes it
-        // (fitschan.c:31571-31624), so the cards stay in the header.
+        // (fitschan.c:31579-31632), so the cards stay in the header.
         return;
     }
     for i in projp_indices {
@@ -830,7 +830,7 @@ In `translate_projp`, delete the `!use_projp` branch's deletion loop so the bran
             .and_then(|c| c.comment.clone())
             .unwrap_or_default();
         // C writes the PV equivalent only for the two encodings that use
-        // it (fitschan.c:31571-31624).
+        // it (fitschan.c:31579-31632).
         if matches!(encoding, Encoding::FitsPc | Encoding::FitsIraf) {
             cards.set_float(&format!("PV{axlat}_{i}"), value, &comment);
         }
@@ -906,16 +906,16 @@ timeplot: cards before read=33 after read=33
 ```
 
 C consumes them.
-`FindAst` (fitschan.c:17949) calls `MarkCard` on every card it walks when
+`FindAst` (fitschan.c:17955) calls `MarkCard` on every card it walks when
 `skip` is 0, marks the `BEGAST` card explicitly (:17903), and calls
 `ComBlock( this, -1, ... )` after `BEGAST` (:17908) and
 `ComBlock( this, 1, ... )` after `ENDAST` (:17962) to consume the AST banner
 COMMENT blocks.
 `Read` then calls `FixUsed( this, 0, 1, remove, ... )` with `remove = 1` for
-NATIVE encoding (fitschan.c:25916-25922), which physically deletes them.
+NATIVE encoding (fitschan.c:25924-25930), which physically deletes them.
 
 `skip` is 1 only for the top-level search for a `BEGAST`
-(`GetSkip` returns 1 for a FitsChan, fitschan.c:18266; `channel.c:2581` passes
+(`GetSkip` returns 1 for a FitsChan, fitschan.c:18272; `channel.c:2581` passes
 it), so cards *before* the first `BEGAST` are walked without being marked.
 Everything from `BEGAST` through the matching `ENDAST` is read with `skip = 0`
 (`channel.c:2815` passes 0) and therefore marked.
@@ -943,8 +943,8 @@ Add to `crates/ast-core/tests/test_fitschan_native_keyword.rs`:
 ```rust
 /// A successful NATIVE read consumes the cards it read, as C `Read` does by
 /// calling `FixUsed` with `remove` set for NATIVE encoding
-/// (fitschan.c:25916-25922). The AST banner COMMENT blocks go with them
-/// (C `ComBlock`, fitschan.c:7966).
+/// (fitschan.c:25924-25930). The AST banner COMMENT blocks go with them
+/// (C `ComBlock`, fitschan.c:7972).
 #[test]
 fn native_read_consumes_its_cards() {
     for name in ["specflux.head", "timeplot.head", "polco.head"] {
@@ -978,7 +978,7 @@ In `crates/ast-core/src/fitschan/card_list.rs`, next to `mark_card`:
 
 ```rust
     /// Mark the card at `index` as provisionally consumed, mirroring C
-    /// `MarkCard` (fitschan.c:23117): a card carrying the `PROTECTED` flag is
+    /// `MarkCard` (fitschan.c:23123): a card carrying the `PROTECTED` flag is
     /// exempt, and a card already `Used` is left alone.
     pub(crate) fn mark_at(&mut self, index: usize) {
         if let Some(card) = self.cards.get_mut(index) {
@@ -989,7 +989,7 @@ In `crates/ast-core/src/fitschan/card_list.rs`, next to `mark_card`:
     }
 
     /// Validate and mark the AST banner comment block adjacent to the card at
-    /// `index`, mirroring C `ComBlock` (fitschan.c:7966). `incr` is `-1` to
+    /// `index`, mirroring C `ComBlock` (fitschan.c:7972). `incr` is `-1` to
     /// scan backwards from the card before `index` (delimiter character `+`)
     /// and `1` to scan forwards from the card after it (delimiter `-`).
     ///
@@ -1028,7 +1028,7 @@ In `crates/ast-core/src/fitschan/card_list.rs`, next to `mark_card`:
 
 Collapse the two `del` bindings into one when transcribing — the delimiter is
 `'-'` for `incr == 1` and `'+'` otherwise, matching
-`del = ( incr == 1 ) ? '-' : '+';` (fitschan.c:8051).
+`del = ( incr == 1 ) ? '-' : '+';` (fitschan.c:8057).
 
 - [ ] **Step 4: Add `native_span` to the decoder**
 
@@ -1041,7 +1041,7 @@ In `crates/ast-core/src/fitschan/enc_native.rs`, next to `has_keyword_native`:
 /// unterminated.
 ///
 /// This is the span C `FindAst` walks with `skip` 0, and therefore the span
-/// it marks as used (fitschan.c:17949). Cards before the `BEGAST` are walked
+/// it marks as used (fitschan.c:17955). Cards before the `BEGAST` are walked
 /// with `skip` 1 and left unmarked.
 pub(crate) fn native_span(cards: &CardList) -> Option<(usize, usize)> {
     let mut first = None;
@@ -1077,7 +1077,7 @@ In `crates/ast-core/src/fitschan/mod.rs`, in the `Encoding::Native` arm, after
 
 ```rust
                 // C `Read` calls `FixUsed( this, 0, 1, remove )` with
-                // `remove` set for NATIVE encoding (fitschan.c:25916-25922),
+                // `remove` set for NATIVE encoding (fitschan.c:25924-25930),
                 // so the cards a successful native read consumed are deleted
                 // rather than merely flagged.
                 if let Some((first, last)) = enc_native::native_span(&self.cards) {
@@ -1135,7 +1135,7 @@ Expected: 192 passed / 0 failed on wcsconv; every other suite unchanged.
 `native_rewind_and_reread` (`test_fitschan.rs:443`) is the one to watch: if it
 fails, the question is whether C can re-read a native object from the same
 chan at all after `FixUsed` deleted the cards. Read `Read`'s terminal branch
-(fitschan.c:25865-25925) and match it; do not weaken the removal to make the
+(fitschan.c:25873-25933) and match it; do not weaken the removal to make the
 test pass.
 
 - [ ] **Step 9: Commit**
@@ -1173,18 +1173,18 @@ exp: CONTINUE  '",1)     "'
 
 The input card is `CONTINUE  '",1)     "'` (`inputs/polco.head:13`).
 Its FITS string value is `",1)     "` — a *pre-quoted* value: C `PreQuote`
-(fitschan.c:25093) wrapped `,1)     ` in double quotes because its last
+(fitschan.c:25101) wrapped `,1)     ` in double quotes because its last
 character is a space, which FITS treats as insignificant.
 
 C reverses that on read.
-`FindAst` calls `UnPreQuote` on each CONTINUE segment (fitschan.c:18122),
+`FindAst` calls `UnPreQuote` on each CONTINUE segment (fitschan.c:18128),
 recovering `,1)     ` with its trailing spaces intact, so the joined title is
 `Data grid indices; first pixel at (1,1)     `.
 Our decoder never un-quotes: it splices the literal `",1)     "` into the
 value, and the double quotes then survive into the rebuilt object and get
 re-quoted on the way out.
 
-C `UnPreQuote` (fitschan.c:34802-34873) strips exactly one outer pair of `"`
+C `UnPreQuote` (fitschan.c:34810-34881) strips exactly one outer pair of `"`
 when the first and last characters are both `"` and the string is at least
 two characters long.
 It does not touch interior double quotes, and PreQuote's own comment explains
@@ -1239,7 +1239,7 @@ Add to `mod tests` in `crates/ast-core/src/fitschan/enc_native.rs`:
 ```rust
     #[test]
     fn un_pre_quote_strips_one_outer_pair() {
-        // C UnPreQuote (fitschan.c:34855-34867).
+        // C UnPreQuote (fitschan.c:34863-34875).
         assert_eq!(un_pre_quote("\",1)     \""), ",1)     ");
         assert_eq!(un_pre_quote("plain"), "plain");
         // Interior double quotes are left alone.
@@ -1284,7 +1284,7 @@ Next to `pre_quote` in `enc_native.rs`:
 ```rust
 /// Reverse `pre_quote`: strip one outer pair of double quotes when the first
 /// and last characters are both `"`. Mirrors C `UnPreQuote`
-/// (fitschan.c:34802). Interior double quotes are untouched — the ends of the
+/// (fitschan.c:34810). Interior double quotes are untouched — the ends of the
 /// string are known from the FITS quoting, so only the first and last
 /// characters are significant.
 fn un_pre_quote(value: &str) -> &str {
@@ -1322,7 +1322,7 @@ In `format_value_with_continues`, the first card stays raw and each CONTINUE
 segment is un-quoted. Replace the `&`-stripping and the push:
 
 ```rust
-    // C stores the first card of a continued value raw (fitschan.c:18101) and
+    // C stores the first card of a continued value raw (fitschan.c:18107) and
     // overwrites its trailing ampersand with the next segment; only the
     // CONTINUE segments are un-quoted.
     let mut joined = trimmed.strip_suffix('&').unwrap_or(trimmed).to_string();
@@ -1390,7 +1390,7 @@ git -c core.hooksPath=/dev/null commit -m "fitschan: UnPreQuote native card valu
 
 The read side is what `polco` needs, and sub-fix A is complete on its own.
 But `pre_quote` (`enc_native.rs:614-632`) is the inverse of the function just
-ported, and it diverges from C `PreQuote` (fitschan.c:25083-25204) in three
+ported, and it diverges from C `PreQuote` (fitschan.c:25091-25212) in three
 ways.
 One of them is an explicit heuristic, with a comment saying so:
 
@@ -1438,7 +1438,7 @@ Add to `mod tests` in `enc_native.rs`:
     #[test]
     fn pre_quote_empty_value_is_two_double_quotes() {
         // C PreQuote initialises dquotes = 2 and the loop never runs
-        // (fitschan.c:25161-25169), so a zero-length value is emitted as "".
+        // (fitschan.c:25169-25177), so a zero-length value is emitted as "".
         assert_eq!(pre_quote(""), "\"\"");
     }
 
@@ -1446,7 +1446,7 @@ Add to `mod tests` in `enc_native.rs`:
     fn pre_quote_truncates_at_the_fits_value_limit() {
         // The accommodation test is
         //   nc + 1 + dq + sq > AST__FITSCHAN_FITSCARDLEN - FITSNAMLEN - 4
-        // (fitschan.c:25194), i.e. > 68 for the standard 80/8 card layout.
+        // (fitschan.c:25202), i.e. > 68 for the standard 80/8 card layout.
         let long = "x".repeat(80);
         assert_eq!(pre_quote(&long), "x".repeat(68));
         // Each single quote will be doubled by the card formatter, so it
@@ -1506,7 +1506,7 @@ constant is how they drift apart.
 ```rust
 /// Pre-quote a value with surrounding double quotes when it has trailing white
 /// space or double quotes at either end, truncating it to what a FITS card can
-/// hold. Mirrors C `PreQuote` (fitschan.c:25094).
+/// hold. Mirrors C `PreQuote` (fitschan.c:25102).
 ///
 /// Embedded single quotes are not doubled here — the card formatter doubles
 /// them when rendering the card — but they are *counted* against the length
@@ -1554,7 +1554,7 @@ Two details that are easy to get wrong, both visible in the C:
 
 - `sq` is incremented *before* the accommodation test, so the character that
   pushes the total over the limit is rejected with its own cost counted
-  (fitschan.c:25171-25196).
+  (fitschan.c:25179-25204).
 - `nc = i + 1` and `dquotes = dq` are both inside the loop and both after the
   `break`, so a truncated tail influences neither.
 
@@ -1622,7 +1622,7 @@ The measured licensed difference is exactly the set of `ISSIMP<xx>` and
 `INVERT<xx>` cards: drop those lines from both sides and all four cases are
 equal under the comparator the harness already uses.
 
-The sequence suffixes survive because C `CreateKeyword` (fitschan.c:8417-8472)
+The sequence suffixes survive because C `CreateKeyword` (fitschan.c:8423-8478)
 allocates sequence numbers *per base keyword name* from `this->keyseq`, so
 removing every `ISSIMP`/`INVERT` card removes the whole of the affected
 numbering and leaves every other keyword's `_A`/`_B`/`_C` run untouched.
@@ -1834,10 +1834,10 @@ The matching latitude card is `SREF2_A = 0.53232542185827048` (30.5°, from `RFV
 
 C's precedence in `WcsCelestial` runs in four steps:
 
-1. `*reflon`/`*reflat` initialised from CRVAL (fitschan.c:36134-36137).
-2. **RFVAL override** (fitschan.c:36213-36219) — replaces `*reflon`/`*reflat` and nothing else.
-3. The `astTestSkyRef` gate (fitschan.c:36220-36228) — stores `SkyRef` + `SkyRefIs=Ignored` only if the SkyFrame has no set reference position already.
-4. **AXREF override** (fitschan.c:36331-36345) — replaces `*reflon`/`*reflat` **and calls `astSetSkyRef` + `SkyRefIs=Ignored` unconditionally**, outside any gate.
+1. `*reflon`/`*reflat` initialised from CRVAL (fitschan.c:36142-36145).
+2. **RFVAL override** (fitschan.c:36221-36227) — replaces `*reflon`/`*reflat` and nothing else.
+3. The `astTestSkyRef` gate (fitschan.c:36228-36236) — stores `SkyRef` + `SkyRefIs=Ignored` only if the SkyFrame has no set reference position already.
+4. **AXREF override** (fitschan.c:36339-36353) — replaces `*reflon`/`*reflat` **and calls `astSetSkyRef` + `SkyRefIs=Ignored` unconditionally**, outside any gate.
 
 That asymmetry is the whole design and must be preserved: RFVAL is subject to the gate, AXREF bypasses it.
 C's comments explain why — RFVAL is written by `SpecTrans` to preserve pre-translation values for a SpecFrame reference position, while AXREF is written by `astWrite` for `-TAB` axes with no inverse transformation.
@@ -1846,7 +1846,7 @@ Both keywords are read with `GetValue( ..., report = 0, mark = 0, ... )`, so a m
 `AXREF%d` / `AXREF%d%1c` are already in `wcs_mark.rs`'s `TEMPLATES` (lines 131-132), so AXREF is already marked as WCS-description when `WcsFcRead` reads it; RFVAL is *not* in `TEMPLATES` and must not be added — C has no `WcsFcRead` branch for it at all (its only three appearances in `fitschan.c` are the read at 36091-36093 and the comment above them).
 
 Only `axref` gets a `FitsStore` field.
-C has `double ***axref` as a real `FitsStore` member (fitschan.c:1722) with `Match` branches at :36766/:36774 and a writer at :37244; RFVAL is read straight off the FitsChan and has no store member.
+C has `double ***axref` as a real `FitsStore` member (fitschan.c:1728) with `Match` branches at :36766/:36774 and a writer at :37244; RFVAL is read straight off the FitsChan and has no store member.
 Mirror that split rather than flattening both into the store.
 
 **Files:**
@@ -1865,8 +1865,8 @@ Mirror that split rather than flattening both into the store.
 // fits_store.rs — new field on FitsStore
 /// `AXREF<i>` values in degrees, indexed by 0-based FITS axis. Written by
 /// C `astWrite` for `-TAB` axes with no inverse transformation
-/// (fitschan.c:1722); on read they override the CRVAL-derived sky
-/// reference position and force SkyRef to be set (fitschan.c:36331-36345).
+/// (fitschan.c:1728); on read they override the CRVAL-derived sky
+/// reference position and force SkyRef to be set (fitschan.c:36339-36353).
 pub axref: Vec<Option<f64>>,
 ```
 
@@ -1874,8 +1874,8 @@ pub axref: Vec<Option<f64>>,
 // wcs_celestial.rs — CelestialResult gains one field
 /// True when `ref_pos` came from `AXREF<i>` rather than from CRVAL or
 /// `RFVAL<i>`. C sets SkyRef unconditionally in the AXREF case
-/// (fitschan.c:36331-36345), bypassing the `astTestSkyRef` gate that
-/// guards the CRVAL / RFVAL path (fitschan.c:36220-36228).
+/// (fitschan.c:36339-36353), bypassing the `astTestSkyRef` gate that
+/// guards the CRVAL / RFVAL path (fitschan.c:36228-36236).
 pub ref_pos_forced: bool,
 ```
 
@@ -1896,7 +1896,7 @@ The existing tests there build a `FitsStore` by hand and call `build_celestial`;
 
 ```rust
     /// `AXREF<i>` overrides the CRVAL-derived sky reference position and
-    /// forces it to be set (C `WcsCelestial`, fitschan.c:36331-36345).
+    /// forces it to be set (C `WcsCelestial`, fitschan.c:36339-36353).
     #[test]
     fn axref_overrides_crval_reference_position() {
         let mut store = FitsStore::new(2);
@@ -1954,8 +1954,8 @@ In `crates/ast-core/src/fitschan/fits_store.rs`, after the `skyrefp` declaration
 ```rust
     /// `AXREF<i>` values in degrees, indexed by 0-based FITS axis. Written by
     /// C `astWrite` for `-TAB` axes with no inverse transformation
-    /// (fitschan.c:1722); on read they override the CRVAL-derived sky
-    /// reference position and force SkyRef to be set (fitschan.c:36331-36345).
+    /// (fitschan.c:1728); on read they override the CRVAL-derived sky
+    /// reference position and force SkyRef to be set (fitschan.c:36339-36353).
     pub axref: Vec<Option<f64>>,
 ```
 
@@ -1974,7 +1974,7 @@ In `crates/ast-core/src/fitschan/wcs_keywords.rs`, extend the existing SREF loop
 ```
 
 `get_float_marked` is right: `AXREF%d` / `AXREF%d%1c` are already in `wcs_mark.rs`'s `TEMPLATES` (lines 131-132), so C's `WcsFcRead` reads them with `mark` left at 1.
-The later `GetValue` at fitschan.c:36331 passes `mark = 0`, but by then the card is already marked, so the effective behavior is "marked".
+The later `GetValue` at fitschan.c:36339 passes `mark = 0`, but by then the card is already marked, so the effective behavior is "marked".
 
 Do **not** add an `RFVAL` line here and do **not** add `RFVAL` to `wcs_mark.rs`: C has no `WcsFcRead` branch for it.
 
@@ -1985,8 +1985,8 @@ Add the field to `CelestialResult` (after `ref_pos`, line 93):
 ```rust
     /// True when `ref_pos` came from `AXREF<i>` rather than from CRVAL or
     /// `RFVAL<i>`. C sets SkyRef unconditionally in the AXREF case
-    /// (fitschan.c:36331-36345), bypassing the `astTestSkyRef` gate that
-    /// guards the CRVAL / RFVAL path (fitschan.c:36220-36228).
+    /// (fitschan.c:36339-36353), bypassing the `astTestSkyRef` gate that
+    /// guards the CRVAL / RFVAL path (fitschan.c:36228-36236).
     pub ref_pos_forced: bool,
 ```
 
@@ -1995,7 +1995,7 @@ Note `store` carries no `rfval` field by design — read it off the card list th
 
 ```rust
     // Celestial reference position (SkyRef) for the SkyFrame. C `WcsCelestial`
-    // starts from the raw CRVAL values converted to radians (fitschan.c:36134-
+    // starts from the raw CRVAL values converted to radians (fitschan.c:36142-
     // 36015), NOT from the fiducial point transformed through the rotation. The
     // two are mathematically equivalent except that the rotation's atan2 wraps
     // longitude into (−π,π] (so a CAR frame with CRVAL=185° would become −175°)
@@ -2006,7 +2006,7 @@ Note `store` carries no `rfval` field by design — read it off the card list th
     };
     let mut ref_pos_forced = false;
 
-    // RFVAL<i> overrides CRVAL (fitschan.c:36213-36219). `SpecTrans` writes
+    // RFVAL<i> overrides CRVAL (fitschan.c:36221-36227). `SpecTrans` writes
     // these to preserve the pre-translation CRVAL values, which are what a
     // SpecFrame reference position needs. The override changes the reference
     // position only — it does not force SkyRef to be set, so the
@@ -2018,7 +2018,7 @@ Note `store` carries no `rfval` field by design — read it off the card list th
         ref_pos = Some((lon * deg2rad, lat * deg2rad));
     }
 
-    // AXREF<i> overrides both (fitschan.c:36331-36345) and, unlike RFVAL,
+    // AXREF<i> overrides both (fitschan.c:36339-36353) and, unlike RFVAL,
     // sets SkyRef unconditionally — outside the `astTestSkyRef` gate.
     // `astWrite` emits these for `-TAB` axes that have no inverse transform.
     if let (Some(lon), Some(lat)) = (store.axref[lon_axis], store.axref[lat_axis]) {
@@ -2048,8 +2048,8 @@ and guard the existing early-return block:
 
 ```rust
     // C applies the `astTestSkyRef` gate to the CRVAL / RFVAL reference
-    // position (fitschan.c:36220-36228) but not to the AXREF one, which is
-    // stored unconditionally (fitschan.c:36331-36345).
+    // position (fitschan.c:36228-36236) but not to the AXREF one, which is
+    // stored unconditionally (fitschan.c:36339-36353).
     if !forced {
         let cur = fs.current();
         if let Some(sky) = peek_sky(cur) {
@@ -2135,19 +2135,19 @@ azel            L30  got EPOCH_A = 2017.5519807675657   exp EPOCH_A = 2017.55198
 The expected output carries `DTAI` **twice**: `DTAI_A = 37.0 / TAI-UTC in seconds` on the outer CmpFrame, and `DTAI_B = 37.0` on the inner SkyFrame.
 We emit only the inner one, so our `AXP1_A` lands where the reference has `DTAI_A`.
 
-C `WcsMapFrm` applies both time offsets to the **top-level world Frame** `*frm`, immediately after `astSetIdent( *frm, id )` (fitschan.c:38003):
+C `WcsMapFrm` applies both time offsets to the **top-level world Frame** `*frm`, immediately after `astSetIdent( *frm, id )` (fitschan.c:38011):
 
 ```c
    if( dut1 != AST__BAD ) astSetDut1( *frm, dut1*SPD );
    if( dtai != AST__BAD ) astSetDtai( *frm, dtai );
 ```
 
-(fitschan.c:38006-38014.)
+(fitschan.c:38014-38022.)
 The port sets them only on the inner SkyFrame (`wcs_celestial.rs:362-368`), which is why `DTAI_B` is present and `DTAI_A` is not.
 Both are correct — C sets them in both places, from two different call sites.
 
 There is a second, independent divergence in the same area.
-`wcs_keywords.rs:247` reads `DTAI` unconditionally, where C gates the *read* on `TELESCOP` (fitschan.c:36693-36705): only when `GetValue( fc, "TELESCOP", ... )` succeeds **and** the value starts with `JCMT` (4 chars) or `UKIRT` (5 chars).
+`wcs_keywords.rs:247` reads `DTAI` unconditionally, where C gates the *read* on `TELESCOP` (fitschan.c:36701-36713): only when `GetValue( fc, "TELESCOP", ... )` succeeds **and** the value starts with `JCMT` (4 chars) or `UKIRT` (5 chars).
 `mark` is 0 either way, so a `DTAI` card is never consumed and the gate changes only whether the value reaches the store.
 The comment above line 247 argues the gate does not matter because the card survives into output regardless; that is true of the *card* but not of the *Frame attribute* — an ungated read stamps `Dtai` onto Frames for headers where C would leave it unset, which changes the dump.
 Fix both; `multi-wcs-spec` exercises the gate's true branch, and the regression suites cover the false branch.
@@ -2165,7 +2165,7 @@ Fix both; `multi-wcs-spec` exercises the gate's true branch, and the regression 
 ```rust
 // wcs_read.rs
 /// Apply the observation-global time offsets to `frame`, mirroring C
-/// `WcsMapFrm` (fitschan.c:38006-38014). `Dut1` is stored in seconds by
+/// `WcsMapFrm` (fitschan.c:38014-38022). `Dut1` is stored in seconds by
 /// FITS and in days by AST, hence the SPD scaling; `Dtai` is in seconds
 /// in both.
 fn set_frame_time_offsets(frame: &mut dyn Frame, dut1: Option<f64>, dtai: Option<f64>);
@@ -2189,8 +2189,8 @@ Create `crates/ast-core/tests/test_fitschan_time.rs`:
 //! `TELESCOP` gate on `DTAI`.
 //!
 //! C `WcsFcRead` reads `DTAI` only for JCMT and UKIRT headers
-//! (fitschan.c:36693-36705), and `WcsMapFrm` stamps both offsets onto the
-//! top-level world Frame (fitschan.c:38006-38014) in addition to whatever
+//! (fitschan.c:36701-36713), and `WcsMapFrm` stamps both offsets onto the
+//! top-level world Frame (fitschan.c:38014-38022) in addition to whatever
 //! the celestial decoder does to the SkyFrame.
 
 use ast_core::fitschan::{FitsChan, Encoding};
@@ -2239,7 +2239,7 @@ fn dtai_is_ignored_for_other_telescopes() {
     assert_eq!(
         fs.current().dtai(),
         None,
-        "C reads DTAI only for JCMT / UKIRT (fitschan.c:36693-36705)"
+        "C reads DTAI only for JCMT / UKIRT (fitschan.c:36701-36713)"
     );
 }
 
@@ -2270,7 +2270,7 @@ Replace `crates/ast-core/src/fitschan/wcs_keywords.rs:243-248` with:
 ```rust
     // Observation-global TAI/UT1 offsets — mark=0 (C WcsFcRead: DUT1 line
     // 36497, DTAI 36506). Never consumed. C reads DTAI only when TELESCOP
-    // names JCMT or UKIRT (fitschan.c:36693-36705); for any other telescope,
+    // names JCMT or UKIRT (fitschan.c:36701-36713); for any other telescope,
     // or with no TELESCOP card, the value is left out of the store entirely
     // so no Frame gets a set Dtai.
     store.dtai = match cards.get_string("TELESCOP") {
@@ -2291,7 +2291,7 @@ Add the helper to `crates/ast-core/src/fitschan/wcs_read.rs`, next to `set_frame
 
 ```rust
 /// Apply the observation-global time offsets to `frame`, mirroring C
-/// `WcsMapFrm` (fitschan.c:38006-38014). `Dut1` is stored in seconds by FITS
+/// `WcsMapFrm` (fitschan.c:38014-38022). `Dut1` is stored in seconds by FITS
 /// and in days by AST, hence the SPD scaling; `Dtai` is in seconds in both.
 fn set_frame_time_offsets(frame: &mut dyn Frame, dut1: Option<f64>, dtai: Option<f64>) {
     if let Some(dut1) = dut1 {
@@ -2306,7 +2306,7 @@ fn set_frame_time_offsets(frame: &mut dyn Frame, dut1: Option<f64>, dtai: Option
 `set_frame_ident` (line 663) downcasts over the concrete frame classes because `Ident` is not on the `Frame` trait.
 If `set_dut1` / `set_dtai` are likewise not on the trait, mirror `set_frame_ident`'s dispatch shape exactly — including its `CmpFrame` recursion — rather than inventing a second pattern; check `crates/ast-core/src/frames/mod.rs` for which of the two applies before writing the body.
 
-Call it immediately after the existing `set_frame_ident(world_frame.as_mut(), " ")` in `decode_wcs_inner`, matching C's ordering (`astSetIdent` at fitschan.c:38003, the offsets at :37884-37892):
+Call it immediately after the existing `set_frame_ident(world_frame.as_mut(), " ")` in `decode_wcs_inner`, matching C's ordering (`astSetIdent` at fitschan.c:38011, the offsets at :37884-37892):
 
 ```rust
     set_frame_time_offsets(world_frame.as_mut(), store.dut1, store.dtai);
@@ -2496,7 +2496,7 @@ These are two independent sub-fixes in opposite directions — do them as two co
 
 `set_frame_ident` (`wcs_read.rs:663-690`) dispatches over `BasicFrame`, `SkyFrame`, `SpecFrame`, `TimeFrame`, `CmpFrame` and `FluxFrame`.
 `DSBSpecFrame` is absent, so a header whose spectral axis is dual-sideband silently keeps its default (unset) `Ident` and the card is never dumped.
-`class-spec-hel.head` and the `class-spec` input both produce a DSBSpecFrame; C's `astSetIdent( *frm, id )` (fitschan.c:37878) is class-agnostic and sets it regardless.
+`class-spec-hel.head` and the `class-spec` input both produce a DSBSpecFrame; C's `astSetIdent( *frm, id )` (fitschan.c:37886) is class-agnostic and sets it regardless.
 
 Verify the premise before writing the fix — if these two fixtures produce a plain `SpecFrame` and the missing `IDENT_A` has another cause, re-measure and re-diagnose rather than adding a speculative arm:
 
@@ -2522,9 +2522,9 @@ Create `crates/ast-core/tests/test_fitschan_ident.rs`:
 ```rust
 //! `Ident` set-ness on Frames built by a FITS read.
 //!
-//! C `WcsMapFrm` calls `astSetIdent( *frm, id )` (fitschan.c:37878) on the
+//! C `WcsMapFrm` calls `astSetIdent( *frm, id )` (fitschan.c:37886) on the
 //! world Frame whatever its class, and `TidyOffsets` clears `Ident` and
-//! `Domain` on the Frames it retains (fitschan.c:34614-34615, :34560).
+//! `Domain` on the Frames it retains (fitschan.c:34622-34623, :34560).
 
 use std::path::Path;
 
@@ -2542,7 +2542,7 @@ fn dsb_spectral_world_frame_gets_ident() {
     assert!(
         dump.lines().any(|l| l.starts_with("IDENT_A")),
         "C sets Ident on the world Frame regardless of class \
-         (fitschan.c:37878); dump was:\n{dump}"
+         (fitschan.c:37886); dump was:\n{dump}"
     );
 }
 ```
@@ -2608,7 +2608,7 @@ git -c core.hooksPath=/dev/null commit -m "fitschan: set Ident on every world-Fr
 #### Sub-fix B — `TidyOffsets` must clear `Ident` and `Domain`
 
 `tidy_offsets` pass 2 (`wcs_read.rs:625-658`) removes redundant offset Frames in reverse index order when both an absolute and an offset Frame are present, then re-resolves the current index.
-C does one more thing: it clears `Ident` and `Domain` on the Frame it keeps (fitschan.c:34614-34615, with the `astClearIdent` call site at :34560).
+C does one more thing: it clears `Ident` and `Domain` on the Frame it keeps (fitschan.c:34622-34623, with the `astClearIdent` call site at :34560).
 We leave both set, so we emit `IDENT_A = '" "'` (`tidy-offsets`) and `IDENT_A = 'A'` (`tidy-pole`) where C has already moved on to `NAXES_B`.
 
 Read the C block before writing the fix — in particular *which* Frame gets cleared and under what condition, since pass 2 has more than one exit:
@@ -2629,7 +2629,7 @@ sed -n '34480,34500p;34550,34570p' reference/starlink-ast/src/fitschan.c
 ```rust
 // wcs_read.rs — the clearing counterpart to set_frame_ident
 /// Clear `Ident` and `Domain` on `frame`, mirroring the pass C
-/// `TidyOffsets` makes over the Frames it retains (fitschan.c:34614-34615).
+/// `TidyOffsets` makes over the Frames it retains (fitschan.c:34622-34623).
 fn clear_frame_ident_and_domain(frame: &mut dyn Frame);
 ```
 
@@ -2644,7 +2644,7 @@ fn tidy_offsets_clears_ident_on_the_retained_frame() {
     assert!(
         !dump.lines().any(|l| l.starts_with("IDENT_A")),
         "C TidyOffsets clears Ident on the Frames it keeps \
-         (fitschan.c:34614-34615); dump was:\n{dump}"
+         (fitschan.c:34622-34623); dump was:\n{dump}"
     );
 }
 ```
@@ -2670,7 +2670,7 @@ Add the helper next to `set_frame_ident` in `crates/ast-core/src/fitschan/wcs_re
 
 ```rust
 /// Clear `Ident` and `Domain` on `frame`, mirroring the pass C `TidyOffsets`
-/// makes over the Frames it retains (fitschan.c:34614-34615).
+/// makes over the Frames it retains (fitschan.c:34622-34623).
 fn clear_frame_ident_and_domain(frame: &mut dyn Frame) {
     // ... same class dispatch as set_frame_ident, calling clear_ident() and
     // clear_domain() on each concrete type
@@ -2869,18 +2869,18 @@ Only the position is wrong: we append, C inserts.
 
 **The C mechanism, and where the position comes from.**
 
-`Warn` (fitschan.c:35112-35289) states it in its own description: the text is "stored in the FitsChan as a series of ASTWARN cards, **in front of the current card**".
+`Warn` (fitschan.c:35120-35297) states it in its own description: the text is "stored in the FitsChan as a series of ASTWARN cards, **in front of the current card**".
 Every card is written with `astSetFitsS( this, "ASTWARN", buff, NULL, 0 )` — `overwrite = 0`.
-That reaches `InsCard` via `MAKE_FSET` (fitschan.c:16016-16071), and `InsCard`'s own doc spells out the semantics of `overwrite = 0`: "the new card is inserted in front of the current card and the current card is left unchanged".
+That reaches `InsCard` via `MAKE_FSET` (fitschan.c:16022-16077), and `InsCard`'s own doc spells out the semantics of `overwrite = 0`: "the new card is inserted in front of the current card and the current card is left unchanged".
 
 So the block lands wherever the current card happens to be when the warning fires, and the question that decides this task is *which card that is*.
 Two C functions differ, and the difference is the whole answer:
 
-- `GetValue` (fitschan.c:18338-18390) ends with `astSetCard( this, icard )` — "Reinstate the original current card index." Every marked WCS-keyword read goes through `GetValue`, so none of them move the pointer.
-- `astGetFits<X>` does **not** restore it. `MAKE_FGET` (fitschan.c:15448-15532) calls `SearchCard` (fitschan.c:27250-27326), whose doc says it "makes it the current card", and the `MAKE_FGET` notes say "If the requested card is found, it becomes the current card, otherwise the current card is left pointing at the 'end-of-file'."
+- `GetValue` (fitschan.c:18344-18396) ends with `astSetCard( this, icard )` — "Reinstate the original current card index." Every marked WCS-keyword read goes through `GetValue`, so none of them move the pointer.
+- `astGetFits<X>` does **not** restore it. `MAKE_FGET` (fitschan.c:15454-15538) calls `SearchCard` (fitschan.c:27258-27334), whose doc says it "makes it the current card", and the `MAKE_FGET` notes say "If the requested card is found, it becomes the current card, otherwise the current card is left pointing at the 'end-of-file'."
 
 There is exactly one `astGetFits<X>` call on the read path, and it is a loop.
-`DistortMaps` (fitschan.c:8795), called from `WcsIntWorld` (fitschan.c:37677) at `:37627`, opens with:
+`DistortMaps` (fitschan.c:8801), called from `WcsIntWorld` (fitschan.c:37685) at `:37627`, opens with:
 
 ```c
       for( i = 0; i < naxes; i++ ){
@@ -2930,8 +2930,8 @@ So the eight cases split by what they need:
 | Cases | Needs |
 |---|---|
 | `unknown-cel`, `unknown-cel2` | position only — text already correct |
-| `projp`, `projp-nopv0`, `projp-pv0only` | position + the `badpv` text (fitschan.c:36087-36123) |
-| `awav-a2f`, `freq-f2w`, `wave-w2f` | position + the `badctype` text (fitschan.c:23801-23809) |
+| `projp`, `projp-nopv0`, `projp-pv0only` | position + the `badpv` text (fitschan.c:36095-36131) |
+| `awav-a2f`, `freq-f2w`, `wave-w2f` | position + the `badctype` text (fitschan.c:23807-23815) |
 
 **Four sub-fixes, four commits.**
 
@@ -2950,10 +2950,10 @@ The position is a property of the card cursor that C's read path leaves behind, 
 
 #### Sub-fix A: `push_astwarn` inserts at the position, with C's dedup probe
 
-C's dedup (fitschan.c:35182-35240) is not "is this line anywhere in the chan".
+C's dedup (fitschan.c:35190-35248) is not "is this line anywhere in the chan".
 It is: rewind; for the **first** wrapped line, search the whole chan for an `ASTWARN` card holding it; for **each subsequent** line, require that the *next* card is an `ASTWARN` holding it.
 A partial match breaks out with `exists = 0`.
-The rewind is undone with `astSetCard( this, icard )` before any writing happens (fitschan.c:35242), so the probe never leaves the cursor moved.
+The rewind is undone with `astSetCard( this, icard )` before any writing happens (fitschan.c:35250), so the probe never leaves the cursor moved.
 
 Our current dedup checks only the first line and calls it a match, which is looser than C.
 `projp` is the case that shows why C needs the adjacency requirement: two blocks whose *first* lines differ but whose *second* lines are both `'projections.'`.
@@ -3000,7 +3000,7 @@ mod tests {
     }
 
     /// C `Warn` writes each card with `astSetFitsS( ..., overwrite = 0 )`,
-    /// which `InsCard` (fitschan.c:16016-16180) inserts in front of the
+    /// which `InsCard` (fitschan.c:16022-16186) inserts in front of the
     /// current card, leaving that card current. So the block lands before the
     /// card at the current position, and the position follows its card down.
     #[test]
@@ -3043,7 +3043,7 @@ mod tests {
 
     /// C dedups on the whole block: the first line is searched for anywhere in
     /// the chan, then every later line must be on the *next* card
-    /// (fitschan.c:35210-35240). An identical block is not repeated.
+    /// (fitschan.c:35218-35248). An identical block is not repeated.
     #[test]
     fn push_astwarn_skips_an_identical_existing_block() {
         let text = "The FITS keyword name ('sys.') contains an illegal character ('.').";
@@ -3090,7 +3090,7 @@ mod tests {
     }
 
     /// The dedup probe rewinds to search but must leave the position where it
-    /// found it, mirroring the `astSetCard( this, icard )` at fitschan.c:35242.
+    /// found it, mirroring the `astSetCard( this, icard )` at fitschan.c:35250.
     #[test]
     fn push_astwarn_dedup_probe_does_not_move_the_position() {
         let text = "a repeated warning";
@@ -3127,7 +3127,7 @@ Replace the body at `crates/ast-core/src/fitschan/card_list.rs:60-96` with:
 
 ```rust
     /// Insert a block of `ASTWARN` comment cards holding `text` in front of the
-    /// current card, mirroring C `Warn` (fitschan.c:35112-35289): a leading
+    /// current card, mirroring C `Warn` (fitschan.c:35120-35297): a leading
     /// blank `ASTWARN`, one card per wrapped ~60-character line, then a
     /// trailing blank `ASTWARN`. Each card is written with C's
     /// `astSetFitsS( ..., overwrite = 0 )`, which `InsCard` inserts before the
@@ -3137,7 +3137,7 @@ Replace the body at `crates/ast-core/src/fitschan/card_list.rs:60-96` with:
     /// The block is not added if an identical block of adjacent `ASTWARN`
     /// cards already exists: the first line is searched for anywhere in the
     /// list, and every later line must sit on the immediately following card
-    /// (fitschan.c:35210-35240).
+    /// (fitschan.c:35218-35248).
     pub(crate) fn push_astwarn(&mut self, text: &str) {
         let lines = super::card::wrap_warning_text(text);
         if lines.is_empty() || self.astwarn_block_exists(&lines) {
@@ -3167,10 +3167,10 @@ Replace the body at `crates/ast-core/src/fitschan/card_list.rs:60-96` with:
     }
 
     /// True when the list already holds `lines` as a run of adjacent `ASTWARN`
-    /// cards. Mirrors C `Warn`'s dedup probe (fitschan.c:35182-35240): search
+    /// cards. Mirrors C `Warn`'s dedup probe (fitschan.c:35190-35248): search
     /// the whole list for the first line, then require each later line on the
     /// next card. Leaves the current position unchanged, as C does by
-    /// reinstating the saved card index (fitschan.c:35242).
+    /// reinstating the saved card index (fitschan.c:35250).
     fn astwarn_block_exists(&self, lines: &[String]) -> bool {
         let is_astwarn_holding = |card: &FitsCard, want: &str| {
             card.keyword.eq_ignore_ascii_case("ASTWARN")
@@ -3290,7 +3290,7 @@ position has to be carried across.
 /// start of the list) and return its floating-point value, leaving the found
 /// card current. Mirrors C `astGetFitsF`, which finds via `SearchCard` and —
 /// unlike `GetValue` — does not reinstate the original card index
-/// (fitschan.c:15448-15532). Callers that must not disturb the cursor use
+/// (fitschan.c:15454-15538). Callers that must not disturb the cursor use
 /// [`get_float`].
 pub(crate) fn get_float_at_cursor(&mut self, keyword: &str) -> Option<f64>;
 ```
@@ -3316,9 +3316,9 @@ Create `crates/ast-core/tests/test_fitschan_astwarn.rs`:
 ```rust
 //! ASTWARN card placement on the FITS read path.
 //!
-//! C `Warn` (fitschan.c:35112) inserts its cards in front of the current
+//! C `Warn` (fitschan.c:35120) inserts its cards in front of the current
 //! card, and the current card during a read is the last `NAXIS<i>` keyword
-//! `DistortMaps` looked up (fitschan.c:8897-8901) — the only read on that
+//! `DistortMaps` looked up (fitschan.c:8903-8907) — the only read on that
 //! path that goes through `astGetFits<X>` rather than `GetValue`, and so the
 //! only one that leaves the card cursor moved.
 
@@ -3412,9 +3412,9 @@ In `crates/ast-core/src/fitschan/card_list.rs`, next to `find_next` (`:152`):
     /// card left current.
     ///
     /// Mirrors C `astGetFitsF`, which finds the card via `SearchCard`
-    /// (fitschan.c:27250) and — unlike `GetValue` (fitschan.c:18338), which
+    /// (fitschan.c:27258) and — unlike `GetValue` (fitschan.c:18344), which
     /// reinstates the entry index — leaves it as the current card
-    /// (fitschan.c:15448-15532). When no card is found the position is set to
+    /// (fitschan.c:15454-15538). When no card is found the position is set to
     /// end-of-list, as C leaves it "pointing at the end-of-file".
     /// Callers that must not disturb the cursor use [`get_float`].
     pub(crate) fn get_float_at_cursor(&mut self, keyword: &str) -> Option<f64> {
@@ -3456,7 +3456,7 @@ that is a separate function) from `cards: &CardList` to
 ```rust
         // NAXISn is structural (not a WCS keyword) and never consumed, but C
         // reads it with `astGetFitsF` inside `DistortMaps`
-        // (fitschan.c:8897-8901) rather than through `GetValue`, so the found
+        // (fitschan.c:8903-8907) rather than through `GetValue`, so the found
         // card is left current. That cursor is where `Warn` inserts its
         // ASTWARN cards.
         store.dims[i] = cards.get_float_at_cursor(&format!("NAXIS{axis_num}"));
@@ -3594,7 +3594,7 @@ git -c core.hooksPath=/dev/null commit -m "fitschan: NAXISn read leaves the card
 
 **Cases:** `projp`, `projp-nopv0`, `projp-pv0only`.
 
-C `WcsCelestial` (fitschan.c:36122-36123, in the `else` branch that builds a
+C `WcsCelestial` (fitschan.c:36130-36131, in the `else` branch that builds a
 `WcsMap`) walks every supplied `PVi_m` and warns for each one whose `m` exceeds
 what the projection accepts on that axis:
 
@@ -3987,7 +3987,7 @@ Replace `crates/ast-core/src/fitschan/wcs_celestial.rs:136-151` with:
 ```rust
     // Store the supplied PVi_m projection parameters on the WcsMap, warning
     // for any the projection cannot use. Mirrors C `WcsCelestial`
-    // (fitschan.c:36087-36123): one ascending pass over m up to the highest
+    // (fitschan.c:36095-36131): one ascending pass over m up to the highest
     // index present on any axis, checking the latitude axis before the
     // longitude axis at each index, because that is the order the ASTWARN
     // cards appear in.
@@ -4116,7 +4116,7 @@ git -c core.hooksPath=/dev/null commit -m "wcsmap: enforce the projection's per-
 
 **Cases:** `awav-a2f`, `freq-f2w`, `wave-w2f`.
 
-C `NonLinSpecWcs` (fitschan.c:23781-23809) checks the `-X2P` algorithm code's
+C `NonLinSpecWcs` (fitschan.c:23787-23815) checks the `-X2P` algorithm code's
 `P` character against the one the SpecFrame's own system implies, and warns
 when they disagree:
 
@@ -4210,7 +4210,7 @@ pub(crate) struct SpectralResult {
     /// Warning messages to emit as ASTWARN cards. Mirrors C `Warn`'s
     /// `badctype` condition: the `-X2P` algorithm code's `P` character
     /// disagrees with the one the axis's own system implies
-    /// (fitschan.c:23801-23809).
+    /// (fitschan.c:23807-23815).
     pub warnings: Vec<String>,
 }
 
@@ -4297,7 +4297,7 @@ before the final `Ok(Some(...))`:
 ```rust
     // Warn when the algorithm code's "P" character disagrees with the one the
     // axis's own system implies. Mirrors C `NonLinSpecWcs`
-    // (fitschan.c:23781-23809): AST interprets the illegal code correctly, so
+    // (fitschan.c:23787-23815): AST interprets the illegal code correctly, so
     // this is a warning and the mapping is unaffected.
     let mut warnings = Vec::new();
     let s_sys = specfrm.system();
@@ -4361,7 +4361,7 @@ Replace `crates/ast-core/src/fitschan/wcs_read.rs:48-51` with:
 
 ```rust
     // Warnings in C's generation order: `WcsCelestial` runs before
-    // `WcsSpectral` in `WcsMapFrm` (fitschan.c:37977-37983), and `Warn`
+    // `WcsSpectral` in `WcsMapFrm` (fitschan.c:37985-37991), and `Warn`
     // appends each block in front of the same current card, so celestial
     // warnings precede spectral ones.
     let mut warnings: Vec<String> = celestial
@@ -4533,7 +4533,7 @@ have `EQUINOX = 2000.0`.
 and why `origin` (ICRS, `test_epoch=true`) and `cname` (ICRS,
 `test_epoch=true test_equinox=true`) do not.
 
-**C, fitschan.c:39326-39354.** `eqmjd` is computed from `equinox` with no
+**C, fitschan.c:39334-39362.** `eqmjd` is computed from `equinox` with no
 system guard whatsoever:
 
 ```c
@@ -4557,14 +4557,14 @@ system guard whatsoever:
    }
 ```
 
-and `mjdobs` is then applied with no guard either (fitschan.c:39490-39492):
+and `mjdobs` is then applied with no guard either (fitschan.c:39498-39500):
 
 ```c
 /* Store the epoch of the observation in the SkyFrame. */
       if( mjdobs != AST__BAD ) astSetEpoch( ret, mjdobs );
 ```
 
-Only the *Equinox* attribute is system-guarded (fitschan.c:39493-39495):
+Only the *Equinox* attribute is system-guarded (fitschan.c:39501-39503):
 
 ```c
 /* For equatorial and ecliptic systems, store the epoch of the reference
@@ -4592,7 +4592,7 @@ value is then reused as the Epoch fallback, which over-restricts it:
 
 ```rust
     } else if let Some(eq) = eq_year {
-        // mjdobs ← eqmjd fallback (fitschan.c:39337-39338): only the
+        // mjdobs ← eqmjd fallback (fitschan.c:39345-39346): only the
         // equinox-bearing systems have an eqmjd to fall back to.
         sky_frame.set_epoch_year(eq);
     }
@@ -4666,9 +4666,9 @@ Then the test itself:
 
 ```rust
 /// C computes `eqmjd` from EQUINOX with no system guard
-/// (fitschan.c:39326-39332) and applies it as the Epoch fallback
-/// unconditionally (fitschan.c:39492). Only the *Equinox* attribute is
-/// restricted to equatorial and ecliptic systems (fitschan.c:39493-39495).
+/// (fitschan.c:39334-39340) and applies it as the Epoch fallback
+/// unconditionally (fitschan.c:39500). Only the *Equinox* attribute is
+/// restricted to equatorial and ecliptic systems (fitschan.c:39501-39503).
 /// A Galactic header with EQUINOX but no MJD-OBS/DATE-OBS therefore gets
 /// an Epoch but no Equinox.
 #[test]
@@ -4732,9 +4732,9 @@ become system-independent; only the *use* for Equinox stays guarded:
 
 ```rust
     // C's equinox value, with the RADESYS-driven default applied
-    // (fitschan.c:39314-39324). No system guard: C computes `eqmjd` from
-    // whatever equinox it has (fitschan.c:39326-39332) and uses it as the
-    // Epoch fallback for every system (fitschan.c:39337-39338, :39370).
+    // (fitschan.c:39322-39332). No system guard: C computes `eqmjd` from
+    // whatever equinox it has (fitschan.c:39334-39340) and uses it as the
+    // Epoch fallback for every system (fitschan.c:39345-39346, :39370).
     let equinox_year: Option<f64> = if let Some(eq) = store.equinox {
         Some(eq)
     } else if store.radesys.is_some() {
@@ -4747,7 +4747,7 @@ become system-independent; only the *use* for Equinox stays guarded:
     };
 
     // The Equinox *attribute* is stored only for equatorial and ecliptic
-    // systems (fitschan.c:39493-39495).
+    // systems (fitschan.c:39501-39503).
     let eq_year: Option<f64> = is_equ_or_ecl.then_some(equinox_year).flatten();
 ```
 
@@ -4756,7 +4756,7 @@ Then change the Epoch fallback arm to read the unguarded value:
 
 ```rust
     } else if let Some(eq) = equinox_year {
-        // Epoch falls back to eqmjd for every system (fitschan.c:39337-39338,
+        // Epoch falls back to eqmjd for every system (fitschan.c:39345-39346,
         // applied unguarded at :39370).
         sky_frame.set_epoch_year(eq);
     }
@@ -4849,7 +4849,7 @@ blocks (`LABEL_C = 'Right Ascension'`, `LABEL_D = 'Declination'`); our
 output closes the first `SkyAxis` at `ENDAST_D` having set no Label, which
 is the recorded first diff at line 34.
 
-**C, fitschan.c:39497-39502.** The Labels are applied straight from the
+**C, fitschan.c:39505-39510.** The Labels are applied straight from the
 store, indexed by the *FITS* axis numbers, onto the SkyFrame's *physical*
 axes 0 (longitude) and 1 (latitude):
 
@@ -4925,7 +4925,7 @@ Add to `crates/ast-core/tests/test_fitschan_read.rs`:
 /// CNAME<i> supplies the axis Label on a celestial frame, exactly as it
 /// already does on a plain linear frame. C reads the store at the FITS
 /// longitude/latitude axis and writes the SkyFrame's physical axes 0 and 1
-/// (fitschan.c:39497-39502). An absent CNAME leaves the system-derived
+/// (fitschan.c:39505-39510). An absent CNAME leaves the system-derived
 /// default in place — unlike the plain-Frame path, there is no CTYPE
 /// fallback.
 #[test]
@@ -5025,7 +5025,7 @@ before the `is_equ_or_ecl` binding:
 
 ```rust
     // If either CNAME keyword is set, use it as the axis Label
-    // (fitschan.c:39497-39502). C reads the store at the FITS longitude and
+    // (fitschan.c:39505-39510). C reads the store at the FITS longitude and
     // latitude axes but writes the SkyFrame's physical lon/lat axes, so the
     // two index spaces are deliberately different. Unlike the plain-Frame
     // path there is no CTYPE fallback: an absent CNAME leaves the
@@ -5125,27 +5125,27 @@ CTYPE3  = 'DEC-    '           / Dec with blank projection (CLASS style)
 **C's chain, and why `prj` stays GLS.** Three things happen in a fixed
 order inside `SpecTrans`:
 
-1. **fitschan.c:31244-31267** — at the *top* of the per-version loop,
+1. **fitschan.c:31252-31275** — at the *top* of the per-version loop,
    `prj` is captured from the CTYPE cards as they stand on entry:
    `strncpy( prj, cval + 4, 4 )`. For a blank-projection CTYPE that
    captures blanks.
-2. **fitschan.c:31848** — `ClassTrans` runs, and at fitschan.c:7185-7206
+2. **fitschan.c:31856** — `ClassTrans` runs, and at fitschan.c:7191-7212
    rewrites the blank code to `-GLS` in the *card list*:
 
    ```c
    /* If no projection code is supplied for the longitude and latitude axes,
       use "-GLS". This will be translated to "-SFL" by SpecTrans. */
    ```
-3. **fitschan.c:31923** — the `-GLS` → `-SFL` rewrite, again in the card
+3. **fitschan.c:31931** — the `-GLS` → `-SFL` rewrite, again in the card
    list, gated on `!Ustrcmp( prj, "-GLS", status )`.
 
 Step 3's guard tests the `prj` *captured at step 1*, which for
 `class-noproj` is blanks, not `-GLS`. **So for a blank-projection CLASS
 header, C's step-3 rewrite never fires.** The cards keep `-GLS`, and when
 `WcsCelestial` later re-derives the projection from the CTYPE
-(fitschan.c:35925, `prj = astWcsPrjType( ctype + ctlen - 4 )`) it gets
+(fitschan.c:35933, `prj = astWcsPrjType( ctype + ctlen - 4 )`) it gets
 `AST__GLS`. That is the value `astSetProjection( ret, astWcsPrjDesc( prj ) )`
-reads at fitschan.c:39487, hence `'sinusoidal'`.
+reads at fitschan.c:39495, hence `'sinusoidal'`.
 
 Contrast `inputs/gls.head`, which supplies `-GLS` explicitly
 (`CTYPE1 = 'GLON-GLS'`): there step 1 captures `-GLS`, step 3 *does* fire,
@@ -5180,9 +5180,9 @@ passes and must keep passing.
    ```
 
    **C has no such translation.** C's CLASS read path is
-   `SpecTrans` → `WcsToStore` (fitschan.c:11547-11561) — the same
+   `SpecTrans` → `WcsToStore` (fitschan.c:11553-11567) — the same
    `WcsToStore` every non-DSS encoding uses. There is no CLASS-specific
-   ToStore; `CLASSFromStore` (fitschan.c:11409) is the *write* path only.
+   ToStore; `CLASSFromStore` (fitschan.c:11415) is the *write* path only.
    Every CLASS-specific read rewrite lives in `ClassTrans`, which is called
    from inside `SpecTrans`. So `translate_class_projection_read` is a
    Rust-only invention that duplicates — and here overrides — what
@@ -5262,9 +5262,9 @@ then:
 
 ```rust
 /// A CLASS header with a blank projection code gets `-GLS` from
-/// `ClassTrans` (fitschan.c:7185-7206), and that `-GLS` survives: the
-/// `-GLS` → `-SFL` rewrite at fitschan.c:31923 is gated on the projection
-/// code captured at the *top* of the SpecTrans loop (fitschan.c:31244-31267),
+/// `ClassTrans` (fitschan.c:7191-7212), and that `-GLS` survives: the
+/// `-GLS` → `-SFL` rewrite at fitschan.c:31931 is gated on the projection
+/// code captured at the *top* of the SpecTrans loop (fitschan.c:31252-31275),
 /// which for a blank CTYPE is blank, not `-GLS`. So the frame reports the
 /// GLS description "sinusoidal", not the SFL description
 /// "Sanson-Flamsteed". The two are the same projection math
@@ -5306,7 +5306,7 @@ fn blank_class_projection_keeps_the_gls_description() {
     assert_eq!(sky.projection(), Some("sinusoidal"));
 }
 
-/// The companion: an *explicit* `-GLS` does hit the fitschan.c:31923
+/// The companion: an *explicit* `-GLS` does hit the fitschan.c:31931
 /// rewrite, becomes `-SFL`, and reports the SFL description. This is the
 /// other side of the same guard and is what `inputs/gls.head` covers in
 /// the wcsconv corpus.
@@ -5394,8 +5394,8 @@ to:
         // CTYPE. CLASS-specific projection rewrites (blank → -GLS,
         // -ATF → -AIT) are applied by SpecTrans before this reader runs,
         // mirroring C: the CLASS read path is SpecTrans → WcsToStore
-        // (fitschan.c:11547-11561), with every CLASS-specific rewrite
-        // living in ClassTrans (fitschan.c:7078). There is no
+        // (fitschan.c:11553-11567), with every CLASS-specific rewrite
+        // living in ClassTrans (fitschan.c:7084). There is no
         // CLASS-specific ToStore.
         let key = format!("CTYPE{axis_num}");
         store.ctype[i] = cards.get_string_marked(&key);
@@ -5415,7 +5415,7 @@ Expected: both PASS. If `explicit_gls_projection_becomes_sfl` now fails,
 `translate_ncp_gls` was relying on the deleted translation and divergence 1
 does need work — go back to step 1's finding and fix
 `translate_ncp_gls` to use an entry-time `prj` capture, mirroring C's
-fitschan.c:31244-31267.
+fitschan.c:31252-31275.
 
 - [ ] **Step 6: Re-measure `class-noproj`, and check the two projection fixtures**
 
@@ -5479,7 +5479,7 @@ default (`#  System = "ICRS"`, which the harness's blank-line/normalize
 pass does not turn into a card) instead of as a live `SYSTEM_x` card.
 
 **Do not read this as "ICRS is special in C".** It is special only in
-*Rust*. C `WcsSkyFrame` (fitschan.c:39414-39443) constructs every SkyFrame
+*Rust*. C `WcsSkyFrame` (fitschan.c:39422-39451) constructs every SkyFrame
 from an explicit attribute string — there is no "leave it defaulted"
 branch anywhere in the function:
 
@@ -5586,7 +5586,7 @@ value is unchanged, which is the whole point.
   equinox_mjd)` before the FK5/J2000 fiducial round-trip and restores only
   what was set. With the flag now true for an ICRS read-path frame, the
   restore path becomes a `set_system(Icrs)` instead of leaving it unset —
-  which is what C does (C's `MakeFitsFrameSet`, fitschan.c:21551-21564,
+  which is what C does (C's `MakeFitsFrameSet`, fitschan.c:21557-21570,
   restores via `astSetC` guarded by `astTest`, and on a C read-path frame
   `astTestSystem` is likewise true).
 - `sky_sys.rs:246` reads the *value* via `classify_system(sys)`, not the
@@ -5632,7 +5632,7 @@ Add to `crates/ast-core/tests/test_fitschan_read.rs`:
 ```rust
 /// C `WcsSkyFrame` builds every SkyFrame from an explicit attribute
 /// string — `astSkyFrame("System=ICRS")` for an ICRS header, exactly as it
-/// uses `astSkyFrame("System=FK5")` for an FK5 one (fitschan.c:39414-
+/// uses `astSkyFrame("System=FK5")` for an FK5 one (fitschan.c:39422-
 /// 39321). So `astTestSystem` is true on a SkyFrame read from FITS
 /// whatever the system, and the Dump writes an active card. ICRS is the
 /// only value for which Rust's `SkyFrame::new` leaves the flag clear, so
@@ -5749,7 +5749,7 @@ with:
     // C `WcsSkyFrame` builds the SkyFrame from an attribute string that
     // always names a System — `astSkyFrame("System=ICRS")` no less than
     // `astSkyFrame("System=FK5")`, and `astSkyFrame("System=UNKNOWN")`
-    // for an unrecognized prefix (fitschan.c:39414-39443). So
+    // for an unrecognized prefix (fitschan.c:39422-39451). So
     // `astTestSystem` is true on every SkyFrame the FITS reader produces.
     // `SkyFrame::new` leaves the attribute unset when the value happens
     // to be the ICRS default (that behaviour is `unset_system`'s
@@ -5797,7 +5797,7 @@ cargo test -p ast-core --test test_wcsconv -- \
 Expected: every non-native row for those five names passes as before. If a
 `fits-wcs` row breaks, the save/restore at `fset_to_store/mod.rs:408-419`
 is now restoring a System it previously left alone — compare against C
-`MakeFitsFrameSet` (fitschan.c:21551-21564), which restores under
+`MakeFitsFrameSet` (fitschan.c:21557-21570), which restores under
 `astTest`, and fix the Rust site to match rather than reverting step 4.
 
 - [ ] **Step 8: Remove the now-passing exclusion entries**
@@ -5873,7 +5873,7 @@ produces the leading `-`. Fix the child and the parent follows.
 **C.** Three sites, in execution order.
 
 `WcsMapFrm` seeds the physical Frame with a sentinel Domain before any of
-the four class stages run (fitschan.c:37939-37952):
+the four class stages run (fitschan.c:37947-37960):
 
 ```c
    *frm = astFrame( wcsaxes, "Domain=AST_FITSCHAN", status );
@@ -5887,7 +5887,7 @@ the four class stages run (fitschan.c:37939-37952):
 `WcsCelestial`, `WcsSpectral` and the rest overwrite the Domain of the axes
 they claim (by building typed sub-Frames), so after they run, the axes still
 carrying `AST_FITSCHAN` are exactly the unclassified ones. `WcsOthers`
-(fitschan.c:38969-39069) walks them, builds `newdom` by joining the CTYPE
+(fitschan.c:38977-39077) walks them, builds `newdom` by joining the CTYPE
 values with `-`, and sets or clears the Domain:
 
 ```c
@@ -5919,7 +5919,7 @@ values with `-`, and sets or clears the Domain:
 ```
 
 And `WcsMapFrm` clears any sentinel that survived all four stages
-(fitschan.c:37985-37987), so the sentinel never escapes into the returned
+(fitschan.c:37993-37995), so the sentinel never escapes into the returned
 object:
 
 ```c
@@ -6027,7 +6027,7 @@ Add to `crates/ast-core/tests/test_fitschan_read.rs`:
 ```rust
 /// C `WcsOthers` gives the leftover plain Frame a Domain built from the
 /// CTYPE values of the axes it could not classify, joined with "-"
-/// (fitschan.c:38969-39069). A single unrecognized spectral-looking code
+/// (fitschan.c:38977-39077). A single unrecognized spectral-looking code
 /// therefore yields that code verbatim as the Domain.
 #[test]
 fn unclassified_axis_domain_comes_from_ctype() {
@@ -6055,7 +6055,7 @@ CDELT1  =                  0.1
 }
 
 /// With no CTYPE at all there is nothing to build a Domain from, so C
-/// takes the `astClearDomain` branch (fitschan.c:39067) and the Frame is
+/// takes the `astClearDomain` branch (fitschan.c:39075) and the Frame is
 /// left with its default. The sentinel Domain must never escape.
 #[test]
 fn no_ctype_leaves_domain_unset_and_never_leaks_the_sentinel() {
@@ -6079,7 +6079,7 @@ CDELT1  =                  0.1
 }
 
 /// Two unclassified axes join with "-", in axis order. C builds `newdom`
-/// by appending "-" before each value after the first (fitschan.c:39052).
+/// by appending "-" before each value after the first (fitschan.c:39060).
 #[test]
 fn two_unclassified_axes_join_their_ctypes_with_a_dash() {
     let header = "\
@@ -6107,7 +6107,7 @@ CDELT2  =                  0.2
 }
 
 /// C strips a trailing "-LOG" from each CTYPE before appending it
-/// (fitschan.c:39039-39047). No wcsconv fixture reaches this branch — the
+/// (fitschan.c:39047-39055). No wcsconv fixture reaches this branch — the
 /// corpus's only -LOG CTYPE is FREQ-LOG, and FREQ is recognized spectral,
 /// so that axis never becomes an "other" axis. Covered here directly.
 #[test]
@@ -6153,13 +6153,13 @@ In `crates/ast-core/src/fitschan/wcs_read.rs`, above `seed_linear_frame`:
 ```rust
 /// Build the Domain for the Frame holding the axes no class stage claimed.
 ///
-/// C `WcsOthers` (fitschan.c:38969-39069) joins those axes' CTYPE values
+/// C `WcsOthers` (fitschan.c:38977-39077) joins those axes' CTYPE values
 /// with `-` separators, stripping a trailing `-LOG` from each, and sets the
 /// result as the Frame's Domain — or clears the Domain when no CTYPE is
 /// available.
 ///
 /// C identifies the axes by seeding the whole physical Frame with a
-/// sentinel `Domain=AST_FITSCHAN` (fitschan.c:37945) and then testing which
+/// sentinel `Domain=AST_FITSCHAN` (fitschan.c:37953) and then testing which
 /// axes still carry it after the class stages have overwritten the rest.
 /// Here the caller already holds the leftover axis list, so the sentinel
 /// has nothing left to determine.
@@ -6226,7 +6226,7 @@ The write path copies a set current-Frame Domain into `store.wcsname`
 (`fset_to_store/mod.rs:266-281`), so the five all-`PIXEL`-CTYPE fixtures now
 carry a Domain they did not before. Those fixtures' only rows are
 `fits-aips` and `fits-aips++`, and neither encoder emits WCSNAME — in C
-(`AIPSFromStore` fitschan.c:3169-3733 and `AIPSPPFromStore` :3666-4300
+(`AIPSFromStore` fitschan.c:3175-3739 and `AIPSPPFromStore` :3666-4300
 contain no WCSNAME code) or in Rust (`enc_aips.rs` has its own
 `write_to_cards` at :201 and `write_to_cards_pp` at :557, neither of which
 mentions it). Verify rather than trust:
@@ -6412,7 +6412,7 @@ and `ISSIMP_A = 1` because `wcs_read.rs:75` composes with `simplify()`
 come from the real CAR projection even though the *mapping* is built as if
 the projection were unknown.
 
-**C, fitschan.c:36005-36020 — `map1` is unaffected.**
+**C, fitschan.c:36013-36028 — `map1` is unaffected.**
 
 ```c
    if( latprj != AST__WCSBAD ) {
@@ -6430,7 +6430,7 @@ the projection were unknown.
 For a CAR header `latprj == AST__CAR`, which is not `AST__WCSBAD`, so `map1`
 stays the deg→rad diagonal `MatrixMap` in both branches of what follows.
 
-**C, fitschan.c:36030-36075 — the branch we do not have.**
+**C, fitschan.c:36038-36083 — the branch we do not have.**
 
 ```c
    map3 = NULL;
@@ -6467,12 +6467,12 @@ And `map2` is a `WcsMap` whose projection type is `AST__WCSBAD`, not a
 `UnitMap` — the difference matters for the FrameSet→FitsStore write path,
 which reads the projection back off the WcsMap.
 
-The `else` branch (fitschan.c:36124-36169) is what we currently always take:
+The `else` branch (fitschan.c:36132-36177) is what we currently always take:
 `astInvert( map2 )`, then
 `map3 = WcsNative( this, store, s, (AstWcsMap *) map2, -1, -1, ... )`, then a
 conditional IWC→PPC fiducial `ShiftMap`.
 
-**C, fitschan.c:36187-36200 — the composition tail is shared.**
+**C, fitschan.c:36195-36208 — the composition tail is shared.**
 
 ```c
       map4 = (AstMapping *) astCmpMap( map1, map2, 1, "", status );
@@ -6494,7 +6494,7 @@ change:
     }
 ```
 
-**C, fitschan.c:32134 — the third place `carlin` is read.**
+**C, fitschan.c:32142 — the third place `carlin` is read.**
 
 ```c
       if( s == ' ' && !Ustrcmp( prj, "-CAR", status ) && !astGetCarLin( this ) ) {
@@ -6525,7 +6525,7 @@ SCL2_A  =  2.9088821448348579E-5 / Scale factor for axis 2
 ```
 
 **C's `CarLin` is tri-state internally; ours is a `bool`.**
-fitschan.c:42708-42711:
+fitschan.c:42716-42719:
 
 ```c
 astMAKE_CLEAR(FitsChan,CarLin,carlin,-1)
@@ -6543,7 +6543,7 @@ consumers are `astGetCarLin` at `:32012` and `:35683`.
 So a plain `bool` defaulting to `false` is a complete port, exactly as
 `sip_replace` is.
 
-**C, fitschan.c:35877 and :35810 — two places C forces `carlin = 1`.**
+**C, fitschan.c:35885 and :35810 — two places C forces `carlin = 1`.**
 When a CTYPE has no 4-character projection code, C sets `carlin = 1` for
 that axis block regardless of the attribute.
 Port both alongside the attribute; they interact with Task 12 sub-fix C
@@ -6654,7 +6654,7 @@ the top of the test body rather than the file header, matching
 ```rust
 #[test]
 fn carlin_car_header_yields_a_single_winmap() {
-    // With CarLin set, C `WcsCelestial` (fitschan.c:36030-36075) builds
+    // With CarLin set, C `WcsCelestial` (fitschan.c:36038-36083) builds
     // WcsMap(AST__WCSBAD) + a CRVAL-shift WinMap instead of calling
     // WcsNative. The unknown-projection WcsMap collapses to a UnitMap on
     // simplify, so the whole pixel-to-sky chain reduces to one WinMap with
@@ -6719,7 +6719,7 @@ fn carlin_car_header_yields_a_single_winmap() {
 fn carlin_off_car_header_keeps_the_spherical_projection() {
     // The two-sided guard: without CarLin the same header must still build
     // the spherical CAR pipeline (a CmpMap), not the linear one. C takes the
-    // `else` branch at fitschan.c:36124 and calls WcsNative.
+    // `else` branch at fitschan.c:36132 and calls WcsNative.
     let text = std::fs::read_to_string(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/tests/fixtures/wcsconv/inputs/car1.head",
@@ -6743,7 +6743,7 @@ fn carlin_off_car_header_keeps_the_spherical_projection() {
 
 #[test]
 fn carlin_keeps_the_cartesian_projection_description() {
-    // C passes the real `prj` (AST__CAR) to WcsSkyFrame (fitschan.c:36199),
+    // C passes the real `prj` (AST__CAR) to WcsSkyFrame (fitschan.c:36207),
     // not the AST__WCSBAD substitute given to astWcsMap, so the SkyFrame's
     // Projection is still "Cartesian".
     use ast_core::frames::SkyFrame;
@@ -6854,7 +6854,7 @@ pub(crate) fn spec_trans_inplace(cards: &mut CardList, encoding: Encoding, car_l
 At the translation-19 call site (`:147`):
 
 ```rust
-    // Translation 19 (fitschan.c:32132-32162): MSX CAR projection.
+    // Translation 19 (fitschan.c:32140-32170): MSX CAR projection.
     // Some MSX images have CAR projections whose CRPIX puts the
     // valid native longitude range entirely outside the image; C
     // shifts CRPIX1 by +/-360 degrees / CDELT1 to bring it back in
@@ -6873,7 +6873,7 @@ Rewrite the helper's doc comment (`:1057-1065`) so it describes the code:
 ///
 /// CAR images that span more than 360 degrees in pixel space need their
 /// CRPIX shifted so the image's mid-pixel longitude lies in
-/// [-180, 180]. Mirrors fitschan.c:32132-32162. Primary plane only; no
+/// [-180, 180]. Mirrors fitschan.c:32140-32170. Primary plane only; no
 /// encoding gate. The caller applies C's `!astGetCarLin( this )` gate.
 ```
 
@@ -6891,7 +6891,7 @@ its existing assertions with `false` threaded through:
 ```rust
     #[test]
     fn carlin_suppresses_the_msx_car_wrap() {
-        // C fitschan.c:32134 gates the whole block on
+        // C fitschan.c:32142 gates the whole block on
         // `!astGetCarLin( this )`. car4.head is the fixture that needs it:
         // CRPIX1 = 211076 with CD1_1 = -0.0016666667 gives an unwrapped
         // shift of 6.1399520760316237 rad, which is what C emits.
@@ -6954,7 +6954,7 @@ Immediately after `zoom` is built (`:616-620`), and before the `wcsmap_fwd`
 clone at `:634`, insert:
 
 ```rust
-    // C `WcsCelestial` (fitschan.c:36030-36075): a CAR projection read with
+    // C `WcsCelestial` (fitschan.c:36038-36083): a CAR projection read with
     // CarLin set, and an unrecognised projection, are both mapped linearly.
     // The WcsMap is constructed with an unknown projection type (C's
     // AST__WCSBAD), which `WcsMap::simplified` collapses to a UnitMap
@@ -6980,7 +6980,7 @@ clone at `:634`, insert:
         let mut outb: Vec<f64> = vec![1.0; naxis];
 
         // C only shifts an axis whose CRVAL is present; a missing CRVAL
-        // makes the whole axis BAD (fitschan.c:36060, :35948).
+        // makes the whole axis BAD (fitschan.c:36068, :35948).
         match store.crval[lon_axis] {
             Some(v) => {
                 outa[lon_axis] += v * deg2rad;
@@ -7048,14 +7048,14 @@ Update the call site at `:424-428`:
 ```
 
 Leave `set_projection` (`:272-278`) exactly as it is: `proj` there is the real
-CAR projection, which is what C hands `WcsSkyFrame` (fitschan.c:36199), so
+CAR projection, which is what C hands `WcsSkyFrame` (fitschan.c:36207), so
 `PROJ_A = 'Cartesian'` keeps being emitted.
 
 - [ ] **Step 8: Port C's two forced-`carlin` sites**
 
 C forces the local `carlin` on for an axis whose CTYPE is too short to carry
 a 4-character projection code. The two sites are identical, one inside the
-longitude block (fitschan.c:35870-35878) and one inside the latitude block
+longitude block (fitschan.c:35878-35886) and one inside the latitude block
 (`:35803-35811`):
 
 ```c
@@ -7251,7 +7251,7 @@ line 144.
 The harness normalizes only a *trailing* `END`, so that mid-stream one stays in
 the comparison and the position difference is load-bearing.
 
-**C, fitschan.c:14120-14129 and :14071-14080.**
+**C, fitschan.c:14126-14135 and :14071-14080.**
 `GetUsedPolyTan` checks each axis for a non-zero PV coefficient with `m >= 1`,
 latitude first:
 
@@ -7330,7 +7330,7 @@ Append to `crates/ast-core/tests/test_fitschan_astwarn.rs`:
 ```rust
 #[test]
 fn all_zero_longitude_pv_warns_and_demotes_to_plain_tan() {
-    // C GetUsedPolyTan (fitschan.c:14161-14170): the latitude axis has a
+    // C GetUsedPolyTan (fitschan.c:14167-14176): the latitude axis has a
     // non-zero coefficient (PV2_1 = 1.0) so it passes, but the longitude
     // axis is all zero, which raises `badpv`, demotes the header to a plain
     // TAN projection and deletes the longitude PVs.
@@ -7359,7 +7359,7 @@ fn all_zero_longitude_pv_warns_and_demotes_to_plain_tan() {
 fn all_zero_latitude_pv_warns_about_the_latitude_axis() {
     // The other side of the same branch: zero every latitude coefficient and
     // C reports the latitude axis instead, without ever reaching the
-    // longitude check (fitschan.c:14120-14129).
+    // longitude check (fitschan.c:14126-14135).
     let text = std::fs::read_to_string(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/tests/fixtures/wcsconv/inputs/tan-zeropv.head",
@@ -7451,7 +7451,7 @@ literal eats the leading whitespace of the next line, so each continuation
 begins with the space that follows the previous word.
 
 **Where the warning must land.** C settles this: `GetUsedPolyTan` takes both
-chans (`AstFitsChan *this, AstFitsChan *out`, fitschan.c:13980) but *never
+chans (`AstFitsChan *this, AstFitsChan *out`, fitschan.c:13986) but *never
 touches `out`* — `awk 'NR>=13890 && NR<=14110 && /\bout\b/'` over fitschan.c
 returns nothing — and both `Warn` calls (`:14032`, `:14073`) pass `this`, the
 original chan, not `out`. The PV deletions at `:14040-14050` also target
@@ -7657,7 +7657,7 @@ Do not go looking for a numerical error.
 This is the load-bearing finding, and it is why the fix must be narrow.
 
 C's `SpecTrans` converts a CD matrix into PC + CDELT by row norm
-(fitschan.c:31432-31473): `cdelt[j] = sqrt(sum_i CD[j][i]^2) * sign(CD[j][j])`,
+(fitschan.c:31440-31481): `cdelt[j] = sqrt(sum_i CD[j][i]^2) * sign(CD[j][j])`,
 then `PC[j][i] = CD[j][i] / cdelt[j]`.
 Applying that to the three off-diagonal-CD fixtures in the corpus:
 
@@ -7735,7 +7735,7 @@ So `WinMat` is *not* the origin of C's `SCL = d2r` WinMap; that WinMap comes
 from a direct merge, which is consistent with the `WinDiagMat` reading above.
 
 **Where the deg2rad matrix comes from.**
-`WcsCelestial` builds it at fitschan.c:36002-36018 as a *diagonal* MatrixMap
+`WcsCelestial` builds it at fitschan.c:36010-36026 as a *diagonal* MatrixMap
 with `AST__DD2R` on the two celestial axes and `1.0` elsewhere.
 For a 2-axis celestial-only header both diagonal entries are equal, so this
 one narrows to a `ZoomMap` and is directly mergeable.

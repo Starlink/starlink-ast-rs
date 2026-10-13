@@ -1,8 +1,8 @@
 //! FitsChan DTAI/DUT1 (time-offset attribute) integration tests.
 //!
-//! Covers the `WcsMapFrm` DUT1/DTAI stamping (fitschan.c:38005-38014) onto
+//! Covers the `WcsMapFrm` DUT1/DTAI stamping (fitschan.c:38009-38018) onto
 //! the top-level world Frame, and the TELESCOP gate on reading DTAI at all
-//! (fitschan.c:36693-36705): DTAI is only honoured when a TELESCOP card is
+//! (fitschan.c:36697-36709): DTAI is only honoured when a TELESCOP card is
 //! present and names JCMT or UKIRT.
 //!
 //! The header mixes a spectral (FREQ) axis with the celestial (RA/Dec) pair
@@ -153,7 +153,7 @@ fn dtai_ignored_when_telescop_absent() {
 fn dut1_set_on_world_frame_regardless_of_telescop() {
     // DUT1 has no TELESCOP gate in C: it is set on the world Frame
     // unconditionally when present, converted from FITS days to AST
-    // seconds (fitschan.c:38005-38010, SPD = 86400.0).
+    // seconds (fitschan.c:38009-38014, SPD = 86400.0).
     let text = header_with_telescop(None, None);
     let frame = read_top_frame(&text);
     assert!(

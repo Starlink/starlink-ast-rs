@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Convert input MJD-OBS / DATE-OBS from UTC (the FITS default) to TT before storing in `SkyFrame.epoch`, so the round-trip through `populate_celestial`'s TT→UTC conversion preserves the input value. Also read DATE-OBS as a fallback when MJD-OBS is absent. Mirrors C `ChooseEpoch` (`fitschan.c:6147-6230`).
+**Goal:** Convert input MJD-OBS / DATE-OBS from UTC (the FITS default) to TT before storing in `SkyFrame.epoch`, so the round-trip through `populate_celestial`'s TT→UTC conversion preserves the input value. Also read DATE-OBS as a fallback when MJD-OBS is absent. Mirrors C `ChooseEpoch` (`fitschan.c:6153-6236`).
 
 **Architecture:** Three layers, all on the read side:
 
@@ -95,7 +95,7 @@ Estimate: **+3 to +4** wcsconv passes. The 2ms timj drift may or may not resolve
     ///
     /// FITS standard default is UTC when the keyword is absent. Stored
     /// as the raw uppercase string (`"UTC"`, `"TAI"`, `"TT"`, `"TDB"`,
-    /// etc.). Mirrors fitschan.c:29836 / 6144.
+    /// etc.). Mirrors fitschan.c:29844 / 6144.
     pub timesys: Option<String>,
     /// Formatted observation date string (DATE-OBS).
     pub dateobs: Option<String>,
@@ -114,7 +114,7 @@ feat(fitschan): add timesys field to FitsStore
 
 Tracks the FITS TIMESYS keyword (or its UTC default) so the reader
 can correctly convert MJD-OBS / DATE-OBS to TT for SkyFrame.epoch.
-Mirrors the C library's ChooseEpoch logic at fitschan.c:6225.
+Mirrors the C library's ChooseEpoch logic at fitschan.c:6231.
 
 Generated with AI
 
@@ -137,7 +137,7 @@ EOF
     store.timesys = cards.get_string("TIMESYS");
 
     // Epoch of observation. Try in priority order (mirrors C
-    // ChooseEpoch at fitschan.c:6147-6230):
+    // ChooseEpoch at fitschan.c:6153-6236):
     //   1. MJD-AVG (mid-exposure time)
     //   2. MJD-OBS (start of exposure)
     //   3. DATE-OBS (parsed via date_str_to_mjd)
@@ -211,7 +211,7 @@ Place near `mjd_to_date_str`. Must handle both formats the writer emits:
 /// - ISO-8601 `YYYY-MM-DD` (date-only; assumes 00:00:00)
 /// - Legacy `DD/MM/YY` (assumes 00:00:00; 2-digit year mapped to
 ///   1900–1999 if YY > 31, else 2000–2031 — matches C library
-///   convention at fitschan.c:8440)
+///   convention at fitschan.c:8446)
 ///
 /// Returns `None` if the string doesn't parse.
 ///
@@ -265,7 +265,7 @@ fn parse_legacy_date(s: &str) -> Option<(i32, u32, u32)> {
     if !(0..=99).contains(&yy) {
         return None;
     }
-    // C library convention (fitschan.c:8440-ish): YY < 50 → 2000+YY,
+    // C library convention (fitschan.c:8446-ish): YY < 50 → 2000+YY,
     // else 1900+YY. (Some C variants use 32 as the cutoff; verify
     // against the actual reference output if a test fails.)
     let year = if yy < 50 { 2000 + yy } else { 1900 + yy };
@@ -364,7 +364,7 @@ Add to `wcs_write.rs::tests`:
 cargo test -p ast-core --lib fitschan::wcs_write -- --nocapture
 ```
 
-7 new tests pass. (If `date_str_to_mjd_legacy` fails with the cutoff, adjust the cutoff in `parse_legacy_date` — the C library's exact convention may use 32 instead of 50. Verify against fitschan.c:8440 and the wcsconv expected files like `fk4-aips.fits-iraf` which has `DATE-OBS= '24/05/68'` for a 1968 date.)
+7 new tests pass. (If `date_str_to_mjd_legacy` fails with the cutoff, adjust the cutoff in `parse_legacy_date` — the C library's exact convention may use 32 instead of 50. Verify against fitschan.c:8446 and the wcsconv expected files like `fk4-aips.fits-iraf` which has `DATE-OBS= '24/05/68'` for a 1968 date.)
 
 ### Step 5: Build for the wcs_keywords change from Task 2
 
@@ -397,7 +397,7 @@ Mirrors fitschan.c::ChooseEpoch (line 6066-6149) priority:
 Adds:
 - utc_mjd_to_tt as the inverse of tt_mjd_to_utc (both pub(crate))
 - date_str_to_mjd parser accepting ISO-8601 (modern) and DD/MM/YY
-  (legacy) formats, mirroring DateObs at fitschan.c:8440
+  (legacy) formats, mirroring DateObs at fitschan.c:8446
 
 The store.mjdobs value still carries the raw input timescale; the
 UTC→TT conversion happens later in wcs_celestial::build_celestial_frame.

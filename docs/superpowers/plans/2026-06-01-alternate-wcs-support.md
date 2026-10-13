@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** End-to-end FITS-WCS alternate-plane support: reader builds a 2+nalt-frame FrameSet from `*A..*Z` axis-indexed keywords; writer loops version letters and emits per-axis cards with the appropriate suffix; global keywords (MJD-OBS, OBSGEO-{X,Y,Z}, TIMESYS, DTAI, DUT1) follow the C library's last-plane-wins rule. Mirrors `FsetToStore`/`AddVersion` (fitschan.c:12257-12347, 2674) and `WcsFromStore`/`WcsSkyFrame` (fitschan.c:36122+, 39008+).
+**Goal:** End-to-end FITS-WCS alternate-plane support: reader builds a 2+nalt-frame FrameSet from `*A..*Z` axis-indexed keywords; writer loops version letters and emits per-axis cards with the appropriate suffix; global keywords (MJD-OBS, OBSGEO-{X,Y,Z}, TIMESYS, DTAI, DUT1) follow the C library's last-plane-wins rule. Mirrors `FsetToStore`/`AddVersion` (fitschan.c:12263-12353, 2674) and `WcsFromStore`/`WcsSkyFrame` (fitschan.c:36130+, 39008+).
 
 **Architecture:** Six commit groups landing the read side first, then writer plumbing, then per-encoder retrofits, then DTAI/DUT1 storage + wcsconv validation. The native-format round-trip is the per-group integration check; the wcsconv harness is the final gate. Each group leaves the build green; some groups may leave a small number of formerly-passing fixtures temporarily red until a downstream group lands the matching encoder change.
 
@@ -81,15 +81,15 @@ crates/ast-core/src/fitschan/wcs_write.rs
 
 | Topic | Location | Notes |
 |-------|----------|-------|
-| `FsetToStore` outer per-version loop | fitschan.c:12257-12347 | drives per-plane `AddVersion` |
-| `AddVersion` per-letter dispatch | fitschan.c:2737 | invokes per-axis `MakeIntWorld` etc. |
-| `WcsFromStore` reader top | fitschan.c:36022+ | per-version-letter scan for axis keys |
-| `WcsSkyFrame` per-version SkyFrame build | fitschan.c:39130-39442 | NORADEC / DefB1950 fallback |
-| `SkySys` MJD-OBS overwrite (forces `s=' '`) | fitschan.c:29909 | the global last-wins source |
-| NORADEC + DefB1950 default | fitschan.c:39294-39302 | yields B1950 Epoch on Galactic alt |
-| nomjd-obs fallback to eqmjd | fitschan.c:39336-39344 | sets SkyFrame Epoch from EQUINOX |
+| `FsetToStore` outer per-version loop | fitschan.c:12263-12353 | drives per-plane `AddVersion` |
+| `AddVersion` per-letter dispatch | fitschan.c:2743 | invokes per-axis `MakeIntWorld` etc. |
+| `WcsFromStore` reader top | fitschan.c:36030+ | per-version-letter scan for axis keys |
+| `WcsSkyFrame` per-version SkyFrame build | fitschan.c:39138-39450 | NORADEC / DefB1950 fallback |
+| `SkySys` MJD-OBS overwrite (forces `s=' '`) | fitschan.c:29917 | the global last-wins source |
+| NORADEC + DefB1950 default | fitschan.c:39302-39310 | yields B1950 Epoch on Galactic alt |
+| nomjd-obs fallback to eqmjd | fitschan.c:39344-39352 | sets SkyFrame Epoch from EQUINOX |
 | `GetItem` primary-fallback semantics | fitschan.c, search `GetItem` | look near `FitsStore *store` accesses |
-| `astChrMatch(astGetFitsAxisOrder(this), "<auto>")` | fitschan.c:5399 | gates the auto axis-swap |
+| `astChrMatch(astGetFitsAxisOrder(this), "<auto>")` | fitschan.c:5405 | gates the auto axis-swap |
 
 When in doubt about a specific keyword's per-version behaviour, search `fitschan.c` for `SetItem( &(store->`*name*`,` and look at the `s` parameter in the call.
 
@@ -752,7 +752,7 @@ Near the top of `wcs_celestial.rs` (after the existing `use` block), add:
 /// Apply C `WcsSkyFrame`'s NORADEC + DefB1950 fallback rule to an
 /// alt-plane SkyFrame whose RADESYS is unset and EQUINOX is unset.
 ///
-/// Mirrors fitschan.c:39294-39302. AST's `DefB1950` attribute
+/// Mirrors fitschan.c:39302-39310. AST's `DefB1950` attribute
 /// defaults to true, so an EQUINOX-less, RADESYS-less alt SkyFrame
 /// is interpreted as B1950 (FK4) and gets Equinox = palEpb2d(1950)
 /// ≈ MJD 33281.92345.
@@ -826,7 +826,7 @@ git add crates/ast-core/src/fitschan/wcs_celestial.rs
 git commit -m "$(cat <<'EOF'
 fitschan/wcs_celestial: apply WcsSkyFrame NORADEC+DefB1950 fallback
 
-Mirrors fitschan.c:39294-39302 (NORADEC default eq=B1950) and
+Mirrors fitschan.c:39302-39310 (NORADEC default eq=B1950) and
 39214-39222 (nomjd-obs → epoch=eqmjd). When an alt-plane SkyFrame
 arrives with no RADESYS, no EQUINOX, no MJD-OBS — typical for the
 GALACTIC alt-A in fits-pc-gal — Equinox and Epoch default to B1950
@@ -1699,7 +1699,7 @@ pub(crate) fn encode_wcs(
 
     // Global cards: emit once, taking values from the alphabetically-
     // last plane. This mirrors C's SetItem(..., ' ', ...) overwrite at
-    // fitschan.c:29909 — see FitsStore::mjdobs doc-comment.
+    // fitschan.c:29917 — see FitsStore::mjdobs doc-comment.
     if let Some(last) = planes.last() {
         write_store_global_cards(&last.store, cards)?;
     }
@@ -1734,7 +1734,7 @@ fn write_store_per_axis_cards(
 ///
 /// Called once after every plane has been processed; the source
 /// store is the alphabetically-last plane — last-plane-wins matches
-/// fitschan.c:29909 where SkySys does
+/// fitschan.c:29917 where SkySys does
 /// `SetItem(&store->mjdobs, 0, 0, ' ', ep, status)` regardless of
 /// the current `s`.
 fn write_store_global_cards(
@@ -1807,7 +1807,7 @@ fitschan/wcs_write: encode_wcs uses collect_plane_stores; global last-wins
 Per-axis cards emit per-plane with the version-letter suffix.
 Global cards (MJD-OBS, OBSGEO-{X,Y,Z}, TIMESYS) emit once from the
 alphabetically-last plane — mirroring C's SetItem(..., ' ', ...)
-overwrite pattern at fitschan.c:29909.
+overwrite pattern at fitschan.c:29917.
 
 write_store_to_cards split into write_store_per_axis_cards and
 write_store_global_cards.
@@ -2282,7 +2282,7 @@ end: Group 5 (per-encoder retrofit + global last-wins) complete
 Every FITS-* encoder now emits per-plane axis cards with the version-
 letter suffix. Global cards (MJD-OBS, OBSGEO-{X,Y,Z}, TIMESYS,
 DATE-OBS, etc.) emit once from the alphabetically-last plane,
-matching C's SetItem(..., ' ', ...) overwrite at fitschan.c:29909.
+matching C's SetItem(..., ' ', ...) overwrite at fitschan.c:29917.
 
 Generated with AI
 
@@ -2333,7 +2333,7 @@ Add a doc-comment block on `mjdobs` (and the other globals) explaining the alt-p
     /// the writer's last-plane-wins rule (alphabetical order)
     /// chooses which plane's value lands in the emitted MJD-OBS
     /// card. Mirrors C's `SetItem(&store->mjdobs, 0, 0, ' ', ...)`
-    /// at fitschan.c:29909 which forces s=' ' regardless of which
+    /// at fitschan.c:29917 which forces s=' ' regardless of which
     /// coordinate-version SkySys is processing.
     pub mjdobs: Option<f64>,
 ```

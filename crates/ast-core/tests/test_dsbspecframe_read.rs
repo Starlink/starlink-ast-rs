@@ -2,9 +2,9 @@
 //!
 //! When a FITS header carries an `IMAGFREQ` keyword, the spectral axis is
 //! decoded as a dual-sideband [`DSBSpecFrame`] rather than a plain
-//! [`SpecFrame`], and `DSBSetUp` (a port of C `fitschan.c:9018`) computes its
+//! [`SpecFrame`], and `DSBSetUp` (a port of C `fitschan.c:9021`) computes its
 //! IF / DSBCentre / SideBand attributes. Mirrors C `WcsSpectral`
-//! (fitschan.c:39607-39712).
+//! (fitschan.c:39611-39716).
 //!
 //! The expected IF / DSBCentre / SideBand values below were dumped from the C
 //! oracle (libast.so) reading the same fixture: a probe built against the

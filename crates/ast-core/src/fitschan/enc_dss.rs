@@ -25,7 +25,7 @@ use crate::error::{AstError, AstResult, ErrorCode};
 
 /// Read DSS plate-solution keywords from a [`CardList`] into a [`FitsStore`].
 ///
-/// Ports C `DSSToStore` (fitschan.c:9452). The result is a 2-D `RA---TPN` /
+/// Ports C `DSSToStore` (fitschan.c:9455). The result is a 2-D `RA---TPN` /
 /// `DEC--TPN` store with the AMDX/AMDY polynomial encoded as PV parameters,
 /// FK5 / equinox 2000 / LONPOLE 180.
 ///
@@ -77,7 +77,7 @@ pub(crate) fn read_from_cards(cards: &CardList) -> AstResult<FitsStore> {
     let mut store = FitsStore::new(2);
 
     // Map the AMD coefficients to PV parameters (pv = amd / 3600). Each axis
-    // uses the same index pattern (fitschan.c:9585-9676).
+    // uses the same index pattern (fitschan.c:9588-9679).
     set_pv_from_amd(&mut store, 0, &amdx);
     set_pv_from_amd(&mut store, 1, &amdy);
 
@@ -129,7 +129,7 @@ fn req(cards: &CardList, key: &str) -> AstResult<f64> {
 
 /// Map one axis's AMD coefficients into the store's PV parameters.
 ///
-/// Mirrors the per-axis block in C `DSSToStore` (fitschan.c:9585-9630 for X,
+/// Mirrors the per-axis block in C `DSSToStore` (fitschan.c:9588-9633 for X,
 /// 9543-9588 for Y — identical index pattern). `pv = amd / 3600`, each term
 /// set only when its source coefficient(s) are present.
 fn set_pv_from_amd(store: &mut FitsStore, axis: usize, amd: &[Option<f64>; 20]) {
@@ -174,7 +174,7 @@ fn set_pv_from_amd(store: &mut FitsStore, axis: usize, amd: &[Option<f64>; 20]) 
 
 /// Write a [`FitsStore`] as DSS plate-solution keywords into a [`CardList`].
 ///
-/// Ports C `DSSFromStore` (fitschan.c:9154). The store must describe a 2-D
+/// Ports C `DSSFromStore` (fitschan.c:9157). The store must describe a 2-D
 /// FK5 `RA---TAN`/`DEC--TAN` or `RA---TPN`/`DEC--TPN` frame with no rotation;
 /// otherwise nothing is written and `false` is returned, as C returns 0. The PV parameters are converted back to the AMDX/AMDY polynomial.
 pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResult<bool> {
@@ -386,7 +386,7 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
 
 /// Inverse of [`set_pv_from_amd`]: fill the AMD coefficients from one axis's
 /// PV parameters (`amd = 3600 * pv`). Mirrors C `DSSFromStore`
-/// (fitschan.c:9330-9351). Indices 6 (AMD7) and 11 (AMD12) stay zero.
+/// (fitschan.c:9333-9354). Indices 6 (AMD7) and 11 (AMD12) stay zero.
 fn amd_from_pv(amd: &mut [f64; 20], pv: &[f64; 22]) {
     amd[0] = 3600.0 * pv[1];
     amd[1] = 3600.0 * pv[2];
@@ -521,7 +521,7 @@ END";
 
     #[test]
     fn read_dss_pv_from_amd() {
-        // AMDX1 -> PVX_1, AMDX3 -> PVX_0, all /3600 (fitschan.c:9589/9497).
+        // AMDX1 -> PVX_1, AMDX3 -> PVX_0, all /3600 (fitschan.c:9592/9497).
         let cards = dss_test_cards();
         let store = read_from_cards(&cards).unwrap();
 
