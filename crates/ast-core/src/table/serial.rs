@@ -51,6 +51,7 @@ impl Serializable for Table {
             columns: RefCell::new(columns),
             parameters,
             nrow,
+            class: "Table",
         })
     }
 }

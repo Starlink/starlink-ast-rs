@@ -59,6 +59,10 @@ pub struct Table {
     parameters: KeyMap,
     /// The number of rows.
     nrow: usize,
+    /// The class named in error messages, which C takes from the object
+    /// (`astGetClass`): "Table", or the class of a Table embedded in a
+    /// subclass.
+    class: &'static str,
 }
 
 impl Default for Table {
@@ -93,13 +97,11 @@ fn type_string(ty: AstType) -> &'static str {
     }
 }
 
-/// The used length of `s`: its length less trailing spaces, as `astChrLen`.
-fn chr_len(s: &str) -> usize {
-    s.trim_end_matches(' ').len()
-}
+use crate::keymap::table::chr_len;
 
-/// The key of the cell in row `irow` of column `column`.
-fn cell_key(column: &str, irow: usize) -> String {
+/// The key of the cell in row `irow` of column `column` (table.c and
+/// fitstable.c `MakeKey`).
+pub(crate) fn cell_key(column: &str, irow: usize) -> String {
     format!("{}({irow})", &column[..chr_len(column)])
 }
 
@@ -148,7 +150,13 @@ impl Table {
             columns: RefCell::new(definitions()),
             parameters: definitions(),
             nrow: 0,
+            class: "Table",
         }
+    }
+
+    /// Name `class` in error messages, for a Table embedded in a subclass.
+    pub(crate) fn set_class(&mut self, class: &'static str) {
+        self.class = class;
     }
 
     /// The KeyMap holding the cells and parameter values, for the KeyMap
@@ -174,18 +182,19 @@ impl Table {
         dims: &[usize],
         unit: &str,
     ) -> AstResult<()> {
+        let class = self.class;
         let namlen = chr_len(name);
         if namlen == 0 {
             return Err(AstError::new(
                 ErrorCode::Badkey,
-                "astAddColumn(Table): Illegal blank column name supplied.",
+                format!("astAddColumn({class}): Illegal blank column name supplied."),
             ));
         }
         if namlen > MXCOLNAMLEN {
             return Err(AstError::new(
                 ErrorCode::Badkey,
                 format!(
-                    "astAddColumn(Table): Column name '{name}' is too long (must be \
+                    "astAddColumn({class}): Column name '{name}' is too long (must be \
                      no more than {MXCOLNAMLEN} characters)."
                 ),
             ));
@@ -193,14 +202,14 @@ impl Table {
         if ty == AstType::BadType {
             return Err(AstError::new(
                 ErrorCode::Naxin,
-                format!("astAddColumn(Table): Bad data type supplied for new column {name}."),
+                format!("astAddColumn({class}): Bad data type supplied for new column {name}."),
             ));
         }
         if let Some(idim) = dims.iter().position(|&d| d < 1) {
             return Err(AstError::new(
                 ErrorCode::Dimin,
                 format!(
-                    "astAddColumn(Table): Length of axis {} ({}) for new column {name} \
+                    "astAddColumn({class}): Length of axis {} ({}) for new column {name} \
                      is invalid.",
                     idim + 1,
                     dims[idim]
@@ -215,7 +224,7 @@ impl Table {
                 return Err(AstError::new(
                     ErrorCode::Oldcol,
                     format!(
-                        "astAddColumn(Table): A column called {name} already exists in \
+                        "astAddColumn({class}): A column called {name} already exists in \
                          the table with a different data type ({}).",
                         AstType::from_code(i64::from(oldtype)).map_or("bad type", type_string)
                     ),
@@ -226,7 +235,7 @@ impl Table {
                 return Err(AstError::new(
                     ErrorCode::Oldcol,
                     format!(
-                        "astAddColumn(Table): A column called {name} already exists in \
+                        "astAddColumn({class}): A column called {name} already exists in \
                          the table with a different unit string ('{oldunit}')."
                     ),
                 ));
@@ -236,7 +245,7 @@ impl Table {
                 return Err(AstError::new(
                     ErrorCode::Oldcol,
                     format!(
-                        "astAddColumn(Table): A column called {name} already exists in \
+                        "astAddColumn({class}): A column called {name} already exists in \
                          the table with a different number of axes ({oldndim})."
                     ),
                 ));
@@ -247,7 +256,7 @@ impl Table {
                     return Err(AstError::new(
                         ErrorCode::Oldcol,
                         format!(
-                            "astAddColumn(Table): A column called {name} already exists \
+                            "astAddColumn({class}): A column called {name} already exists \
                              in the table with a different shape."
                         ),
                     ));
@@ -270,10 +279,11 @@ impl Table {
     /// Remove a column and every value in it. Removing a column that does
     /// not exist does nothing. Mirrors `astRemoveColumn`.
     pub fn remove_column(&mut self, name: &str) -> AstResult<()> {
+        let class = self.class;
         if chr_len(name) == 0 {
             return Err(AstError::new(
                 ErrorCode::Badkey,
-                "astRemoveColumn(Table): Illegal blank column name supplied.",
+                format!("astRemoveColumn({class}): Illegal blank column name supplied."),
             ));
         }
         let mut cols = self.columns.borrow_mut();
@@ -294,12 +304,13 @@ impl Table {
     /// The name of column `index` (one-based, in the order the columns were
     /// added), in upper case. Mirrors `astColumnName`.
     pub fn column_name(&self, index: usize) -> AstResult<String> {
+        let class = self.class;
         let cols = self.columns.borrow();
         if index < 1 || index > cols.map_size() {
             return Err(AstError::new(
                 ErrorCode::Mpind,
                 format!(
-                    "astColumnName(Table): Cannot find column {index} (zero-based) of \
+                    "astColumnName({class}): Cannot find column {index} (zero-based) of \
                      the Table - invalid index."
                 ),
             ));
@@ -329,13 +340,29 @@ impl Table {
         method: &str,
         f: impl FnOnce(&mut KeyMap) -> AstResult<T>,
     ) -> AstResult<T> {
+        let class = self.class;
         let mut cols = self.columns.borrow_mut();
         match cols.object_mut(column) {
             Some(AnyObject::KeyMap(col)) => f(col),
             _ => Err(AstError::new(
                 ErrorCode::Badcol,
-                format!("{method}(Table): No column named '{column}' exists in the table."),
+                format!("{method}({class}): No column named '{column}' exists in the table."),
             )),
+        }
+    }
+
+    /// Apply `f` to the definition of `column`, the Table's own KeyMap as
+    /// C's `astColumnProps` gives it, or return `None` when there is no
+    /// such column.
+    pub(crate) fn with_column_def<T>(
+        &self,
+        column: &str,
+        f: impl FnOnce(&mut KeyMap) -> AstResult<T>,
+    ) -> AstResult<Option<T>> {
+        let mut cols = self.columns.borrow_mut();
+        match cols.object_mut(column) {
+            Some(AnyObject::KeyMap(col)) => f(col).map(Some),
+            _ => Ok(None),
         }
     }
 
@@ -396,10 +423,13 @@ impl Table {
     /// The length of the longest string a value in `column` is formatted
     /// as. Mirrors the `ColumnLenC` attribute.
     pub fn column_len_c(&self, column: &str) -> AstResult<usize> {
+        let class = self.class;
         if !self.columns.borrow().map_has_key(column)? {
             return Err(AstError::new(
                 ErrorCode::Badcol,
-                format!("astGetColumnLenC(Table): No column named '{column}' exists in the table."),
+                format!(
+                    "astGetColumnLenC({class}): No column named '{column}' exists in the table."
+                ),
             ));
         }
         let mut result = 0;
@@ -416,18 +446,19 @@ impl Table {
     /// Add a global parameter. Adding one that exists does nothing.
     /// Mirrors `astAddParameter`.
     pub fn add_parameter(&mut self, name: &str) -> AstResult<()> {
+        let class = self.class;
         let namlen = chr_len(name);
         if namlen == 0 {
             return Err(AstError::new(
                 ErrorCode::Badkey,
-                "astAddParameter(Table): Illegal blank parameter name supplied.",
+                format!("astAddParameter({class}): Illegal blank parameter name supplied."),
             ));
         }
         if namlen > MXCOLNAMLEN {
             return Err(AstError::new(
                 ErrorCode::Badkey,
                 format!(
-                    "astAddParameter(Table): Parameter name '{name}' is too long (must \
+                    "astAddParameter({class}): Parameter name '{name}' is too long (must \
                      be no more than {MXCOLNAMLEN} characters)."
                 ),
             ));
@@ -442,10 +473,11 @@ impl Table {
     /// Remove a global parameter and its value. Removing a parameter that
     /// does not exist does nothing. Mirrors `astRemoveParameter`.
     pub fn remove_parameter(&mut self, name: &str) -> AstResult<()> {
+        let class = self.class;
         if chr_len(name) == 0 {
             return Err(AstError::new(
                 ErrorCode::Badkey,
-                "astRemoveParameter(Table): Illegal blank parameter name supplied.",
+                format!("astRemoveParameter({class}): Illegal blank parameter name supplied."),
             ));
         }
         if self.parameters.map_has_key(name)? {
@@ -464,11 +496,12 @@ impl Table {
     /// The name of parameter `index` (one-based, in the order the
     /// parameters were added), in upper case. Mirrors `astParameterName`.
     pub fn parameter_name(&self, index: usize) -> AstResult<String> {
+        let class = self.class;
         if index < 1 || index > self.parameters.map_size() {
             return Err(AstError::new(
                 ErrorCode::Mpind,
                 format!(
-                    "astParameterName(Table): Cannot find parameter {index} (zero-based) \
+                    "astParameterName({class}): Cannot find parameter {index} (zero-based) \
                      of the Table - invalid index."
                 ),
             ));
@@ -524,6 +557,7 @@ impl Table {
     /// Remove every empty row, moving the rows below up. Mirrors
     /// `astPurgeRows`.
     pub fn purge_rows(&mut self) -> AstResult<()> {
+        let class = self.class;
         let nrow = self.nrow;
 
         // The number of values stored in each row.
@@ -546,7 +580,7 @@ impl Table {
                     return Err(AstError::new(
                         ErrorCode::Inter,
                         format!(
-                            "astPurgeRows(Table): Illegal key '{key}' found in a Table \
+                            "astPurgeRows({class}): Illegal key '{key}' found in a Table \
                              (internal programming error)."
                         ),
                     ));
@@ -594,11 +628,14 @@ impl Table {
         report: bool,
         method: &str,
     ) -> AstResult<Option<(String, usize)>> {
+        let class = self.class;
         let bad = |what: String| -> AstResult<Option<(String, usize)>> {
             if report {
                 Err(AstError::new(
                     ErrorCode::Badkey,
-                    format!("{method}(Table): Failed to store a value for cell \"{key}\": {what}"),
+                    format!(
+                        "{method}({class}): Failed to store a value for cell \"{key}\": {what}"
+                    ),
                 ))
             } else {
                 Ok(None)
@@ -626,6 +663,7 @@ impl Table {
     /// it is in, or `None` for a parameter. Mirrors the checks of table.c
     /// `MapPut0<X>`.
     fn check_put0(&self, key: &str, ty: AstType, method: &str) -> AstResult<Option<usize>> {
+        let class = self.class;
         if self.has_parameter(key)? {
             return Ok(None);
         }
@@ -637,7 +675,7 @@ impl Table {
             return Err(AstError::new(
                 ErrorCode::Badtyp,
                 format!(
-                    "{method}(Table): Failed to store a {} value for cell \"{key}\": \
+                    "{method}({class}): Failed to store a {} value for cell \"{key}\": \
                      column {col} holds {} values.",
                     type_string(ty),
                     type_string(coltype)
@@ -648,7 +686,7 @@ impl Table {
             return Err(AstError::new(
                 ErrorCode::Badtyp,
                 format!(
-                    "{method}(Table): Failed to store a scalar value for cell \"{key}\": \
+                    "{method}({class}): Failed to store a scalar value for cell \"{key}\": \
                      column {col} holds vector  values."
                 ),
             ));
@@ -666,6 +704,7 @@ impl Table {
         size: usize,
         method: &str,
     ) -> AstResult<Option<usize>> {
+        let class = self.class;
         if self.has_parameter(key)? {
             return Ok(None);
         }
@@ -677,7 +716,7 @@ impl Table {
             return Err(AstError::new(
                 ErrorCode::Badtyp,
                 format!(
-                    "{method}(Table): Failed to store {} values for cell \"{key}\": \
+                    "{method}({class}): Failed to store {} values for cell \"{key}\": \
                      column {col} holds {} values.",
                     type_string(ty),
                     type_string(coltype)
@@ -689,7 +728,7 @@ impl Table {
             return Err(AstError::new(
                 ErrorCode::Badtyp,
                 format!(
-                    "{method}(Table): Failed to store a vector value for cell \"{key}\": \
+                    "{method}({class}): Failed to store a vector value for cell \"{key}\": \
                      column {col} needs {len} values per cell but {size} were supplied."
                 ),
             ));
@@ -707,6 +746,7 @@ impl Table {
         elem: usize,
         method: &str,
     ) -> AstResult<Option<usize>> {
+        let class = self.class;
         if self.has_parameter(key)? {
             return Ok(None);
         }
@@ -718,7 +758,7 @@ impl Table {
             return Err(AstError::new(
                 ErrorCode::Badtyp,
                 format!(
-                    "{method}(Table): Failed to store a {} value in cell \"{key}\": \
+                    "{method}({class}): Failed to store a {} value in cell \"{key}\": \
                      column {col} holds {} values.",
                     type_string(ty),
                     type_string(coltype)
@@ -730,7 +770,7 @@ impl Table {
             return Err(AstError::new(
                 ErrorCode::Badtyp,
                 format!(
-                    "{method}(Table): Failed to store a value for element {elem} \
+                    "{method}({class}): Failed to store a value for element {elem} \
                      (zero-based) of cell \"{key}\": column {col} has only {len} values \
                      per cell."
                 ),

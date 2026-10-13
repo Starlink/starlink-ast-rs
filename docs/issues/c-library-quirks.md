@@ -55,6 +55,8 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 
 ### [Resolved upstream](#resolved-upstream)
 
+- [RESOLVED (upstream ca8d3a82): A FitsTable created from a header misreads, or crashes on, several column definitions](#resolved-upstream-ca8d3a82-a-fitstable-created-from-a-header-misreads-or-crashes-on-several-column-definitions)
+- [RESOLVED (upstream 369c0e91): `astColumnNullK` misses null values and returns a used value as the default](#resolved-upstream-369c0e91-astcolumnnullk-misses-null-values-and-returns-a-used-value-as-the-default)
 - [RESOLVED (upstream f32573b1): `PurgeRows` fails on a Table holding a parameter value](#resolved-upstream-f32573b1-purgerows-fails-on-a-table-holding-a-parameter-value)
 - [RESOLVED (upstream c9f9aa63): SkySys lets an alternate axis description replace MJD-OBS](#resolved-upstream-c9f9aa63-skysys-lets-an-alternate-axis-description-replace-mjd-obs)
 - [RESOLVED (upstream 7f4ba71d): AddVersion writes a spectral axis whose Unit it cleared with CDELT in the old Unit](#resolved-upstream-7f4ba71d-addversion-writes-a-spectral-axis-whose-unit-it-cleared-with-cdelt-in-the-old-unit)
@@ -149,7 +151,8 @@ C location: `table.c` `Equal`.
 Table's `Equal` calls its parent's, then compares the column definitions and assigns the result, then compares the parameter definitions and assigns that result over it, so the columns are never compared.
 None of the comparisons looks at content either: KeyMap has no `Equal` of its own, so each is Object's, which compares class names and structure sizes.
 Probed: `astEqual` gives 1 for two Tables whose cells, columns or parameters differ.
-The port has no KeyMap or Table equality, so there is nothing to mirror; an `astEqual` in `ast-capi` would need to decide.
+FitsTable's `Equal` adds a comparison of the two headers, but FitsChan has no `Equal` either, so two FitsTables are always equal too.
+The port has no KeyMap, Table or FitsTable equality, so there is nothing to mirror; an `astEqual` in `ast-capi` would need to decide.
 
 ### Table's read-only column attributes are not recognised in `astSet`, `astClear` or `astTest`
 
@@ -1370,6 +1373,37 @@ A 64 bit integer card value was written with `astWriteInt` and read into an `int
 
 Fixed on `u/timj/norm-unit` in c16f9b11: SipReplace is written and read as `SipRpl`, the card values with `astWriteInt64` into an `int64_t`, and PolyTan and SipOK default to -INT_MAX; `testfitschan` `testdumpload`.
 The port's FitsChan dump (`fitschan/dump.rs`) is `Dump` as fixed; `tests/test_channel_dump_oracle.rs` (the `fitschan*` cases), whose probe needs the fixed library.
+
+### RESOLVED (upstream ca8d3a82): A FitsTable created from a header misreads, or crashes on, several column definitions
+
+C location: `fitstable.c` `GenerateColumns`.
+
+`GenerateColumns` adds a column for each column a FITS binary table header defines.
+Probed against the sanitizer build:
+
+- after reporting a missing `TFORMn` keyword it went on to read the string it had not been given, and crashed;
+- an empty `TFORMn` value left the repeat count undefined (`sscanf` returns EOF, which the test for zero missed);
+- a string column with no `TDIMn` keyword (`'10A'`) was made a column of ten strings rather than of one ten-character string, and its dimensions array was then freed one element before its start ("Invalid pointer or corrupted memory");
+- a `TDIMn` value without parentheses (`'2,3'`) was read past the end of the dimensions array;
+- the second scaling check read `TSCALn` again instead of `TZEROn`, so a header with `TSCAL1 = 1.0` was rejected and one with `TZERO1 = 5.0` accepted.
+
+Fixed on `u/timj/norm-unit` in ca8d3a82; `testfitstable.c` errors 36 to 42.
+The port follows the fix; `header_columns` and `header_errors` in `tests/test_fitstable_oracle.rs`, whose probe needs the fixed library.
+
+### RESOLVED (upstream 369c0e91): `astColumnNullK` misses null values and returns a used value as the default
+
+C location: `fitstable.c` `ColumnNullK`.
+
+`astColumnNullK` reports whether an integer column holds its null value, and chooses a default null value that the column does not hold.
+Probed:
+
+- the check for the null value looked at only the first `ndim` elements of each cell, so it never found one in a column of scalars;
+- the count of values read from a cell was stored in the cell length, which a missing cell sets to zero, so every cell after an empty one was skipped and the default could be a value in use;
+- when every value allowed by the column type was in use, the search reset its flags as it gave up and returned a value in use, instead of the documented error (or zero when the column has no empty cells).
+
+Fixed on `u/timj/norm-unit` in 369c0e91; `testfitstable.c` errors 31 to 35.
+`astGetTableHeader` and `astGetColumnData` use the null value, so the fix changes the `TNULLn` cards written and the values given for empty cells.
+The port follows the fix; `column_null`, `column_null_arrays` and `column_null_exhausted` in `tests/test_fitstable_oracle.rs`, whose probe needs the fixed library.
 
 ### RESOLVED (upstream f32573b1): `PurgeRows` fails on a Table holding a parameter value
 

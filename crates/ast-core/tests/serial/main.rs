@@ -15,6 +15,10 @@ mod test_channel_dump_oracle;
 mod test_channel_read_oracle;
 #[path = "../test_deferred_fixtures.rs"]
 mod test_deferred_fixtures;
+#[path = "../test_fitstable.rs"]
+mod test_fitstable;
+#[path = "../test_fitstable_oracle.rs"]
+mod test_fitstable_oracle;
 #[path = "../test_fixture_full_dump_oracle.rs"]
 mod test_fixture_full_dump_oracle;
 #[path = "../test_fixture_read_warnings_oracle.rs"]
@@ -41,7 +45,6 @@ mod test_report;
 mod test_section_load;
 #[path = "../test_serialisation.rs"]
 mod test_serialisation;
-
 #[path = "../test_table.rs"]
 mod test_table;
 #[path = "../test_table_oracle.rs"]
