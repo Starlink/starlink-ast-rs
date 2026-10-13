@@ -13,7 +13,7 @@ The C oracle (`libast`) does not have this problem because it *constructs* the I
 
 ## Goal
 
-Replace the value-extraction half of `store_from_frameset_to` with a port of C's `FsetToStore` (fitschan.c:12058) and its callees, so every wcsconv test that today fails on a numeric-value mismatch passes bytewise.
+Replace the value-extraction half of `store_from_frameset_to` with a port of C's `FsetToStore` (fitschan.c:12077) and its callees, so every wcsconv test that today fails on a numeric-value mismatch passes bytewise.
 
 Tests whose failures are purely structural (encoding selection, card ordering, missing degenerate-axis support) or formatting-only are explicitly out of scope and stay red.
 

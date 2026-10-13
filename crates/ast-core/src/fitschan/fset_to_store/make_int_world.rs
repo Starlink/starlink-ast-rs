@@ -20,9 +20,9 @@
 //!   - returns the celestial CRPIX and CD values directly.
 //!
 //! The CD values overwrite the `partmat` columns for the two
-//! celestial input axes (mirrors fitschan.c:22068-22073) and the
+//! celestial input axes (mirrors fitschan.c:22087-22092) and the
 //! CRPIX values overwrite the per-axis solve result for the same
-//! two axes (mirrors fitschan.c:22165-22171).
+//! two axes (mirrors fitschan.c:22184-22190).
 
 // Wired in by `fset_to_store::fset_to_store` in Group 7; until then
 // the function is reachable only from cfg(test).
@@ -158,7 +158,7 @@ pub(crate) fn make_int_world(
     // the four CD entries for the celestial pair with the values it
     // returned, since the linear-fit values from fit_line_cd above
     // describe the *stripped* mapping (without the SIP polynomial
-    // distortion), not the original. Mirrors fitschan.c:22068-22073.
+    // distortion), not the original. Mirrors fitschan.c:22087-22092.
     //
     // partmat layout: partmat[input_axis][output_axis], so we set the
     // (sipax[0], lonax), (sipax[1], lonax), (sipax[0], latax),
@@ -277,7 +277,7 @@ pub(crate) fn make_int_world(
         let mut crp = if j < nin {
             let mut crp = basis.g0[j] - y[j];
             // SIP overrides for the two celestial input axes —
-            // mirrors fitschan.c:22165-22171.
+            // mirrors fitschan.c:22184-22190.
             if havesip {
                 if j == sipax[0] {
                     crp = crpix_sip[0];
@@ -422,7 +422,7 @@ pub(crate) fn make_int_world(
 
     // Step 13: split CD into CDELT + PC and store. Mirrors C:22270-22284.
     // split_cd applies C SplitMat's 1e-7 PC-element snap internally
-    // (fitschan.c:33303), so the post-split PC is already clean of
+    // (fitschan.c:33337), so the post-split PC is already clean of
     // FP residue.
     let (cdelt, pc) = split_cd(&cdmat);
 
@@ -430,7 +430,7 @@ pub(crate) fn make_int_world(
     // into `store.cd` for downstream encoders that prefer the CD-matrix
     // path. Without this, `store.cd` retains the noisy pre-split entries
     // and emits e.g. `CD1_2 = 1.0e-20`. C's WcsFromStore reconstructs CD
-    // from PC × CDELT for the same reason (fitschan.c:36949-36969).
+    // from PC × CDELT for the same reason (fitschan.c:36983-37003).
     let mut clean_cdmat = ndarray::Array2::<f64>::zeros((nout, nout));
     for i in 0..nout {
         for j in 0..nout {

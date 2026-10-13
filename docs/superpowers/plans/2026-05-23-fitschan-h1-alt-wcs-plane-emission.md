@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Emit FITS-WCS alternate axis-description planes (`WCSAXESA`, `CRPIX1A`, `CTYPE1A`, `CD1_1A`, etc.) for every non-base/non-current frame in the FrameSet. Mirrors C library `FsetToStore` (fitschan.c:12221-12311) + `AddVersion` (fitschan.c:2705).
+**Goal:** Emit FITS-WCS alternate axis-description planes (`WCSAXESA`, `CRPIX1A`, `CTYPE1A`, `CD1_1A`, etc.) for every non-base/non-current frame in the FrameSet. Mirrors C library `FsetToStore` (fitschan.c:12240-12330) + `AddVersion` (fitschan.c:2720).
 
 **Architecture:** Extend `wcs_write::store_from_frameset` to compute one `FitsStore` per non-base/non-current frame in addition to the primary. Each alt store carries a version letter (`A`-`Z`). The shared write path (`write_store_to_cards`) and the per-encoder write paths get an `s: char` parameter that suffixes axis-indexed keywords. After the primary plane is emitted, loop the alt planes and emit each.
 
@@ -17,7 +17,7 @@ The C library encodes "is this an alt plane" by storing per-version data in 27-e
 - **Modify:** `crates/ast-core/src/frames/mod.rs` — add `domain()` and `ident()` default methods to `Frame` trait (return `""` by default).
 - **Modify:** `crates/ast-core/src/frames/basic.rs` — override `domain()` and `ident()` to expose the existing fields.
 - **Modify:** `crates/ast-core/src/frames/skyframe.rs`, `specframe.rs`, `cmpframe.rs`, etc. — same overrides where the field exists. Default `""` is fine for frames that don't carry the attribute.
-- **Modify:** `crates/ast-core/src/fitschan/wcs_write.rs` — split `encode_wcs` so it produces (primary store, Vec<(char, FitsStore)>) and writes both. Add helper `frames_with_version_letters(fs) -> Vec<(usize, char)>` mirroring fitschan.c:12224-12282 logic.
+- **Modify:** `crates/ast-core/src/fitschan/wcs_write.rs` — split `encode_wcs` so it produces (primary store, Vec<(char, FitsStore)>) and writes both. Add helper `frames_with_version_letters(fs) -> Vec<(usize, char)>` mirroring fitschan.c:12243-12301 logic.
 - **Modify:** `crates/ast-core/src/fitschan/wcs_write.rs::write_store_to_cards` — add a `s: char` parameter that suffixes axis-indexed keywords. `' '` means primary (no suffix); `'A'`-`'Z'` is alt.
 - **Modify:** Per-encoder write paths (`enc_iraf.rs`, `enc_pc.rs`, `enc_aips.rs`, `enc_class.rs`) — same `s: char` parameter. Or accept that alt planes only apply to FITS-WCS encoding (the C library does the same — `AddVersion` is only called from `FitsFromStore`, not from `IRAFFromStore` etc.). **Decision: only FITS-WCS emits alt planes** (Task 5 confirms this from the C source).
 - **Add:** A new pub(crate) struct `AltPlane { letter: char, frame_name: String, store: FitsStore }` in `wcs_write.rs`.
@@ -26,7 +26,7 @@ The C library encodes "is this an alt plane" by storing per-version data in 27-e
 
 ## Background — C library reference
 
-### FsetToStore loop (fitschan.c:12221-12311)
+### FsetToStore loop (fitschan.c:12240-12330)
 
 After the primary plane is built (current Frame as WCS), a second loop walks all other frames:
 
@@ -37,7 +37,7 @@ After the primary plane is built (current Frame as WCS), a second loop walks all
 // Step 3: For each (frame, letter) pair, call AddVersion(this, fset, ibase, ifrm, store, dim, letter, ...)
 ```
 
-### AddVersion (fitschan.c:2705)
+### AddVersion (fitschan.c:2720)
 
 This re-runs the entire `MakeIntWorld` extraction for the (base → ifrm) mapping. The store's per-version arrays get populated for that letter. The encoder write path then emits the per-version cards using `FormatKey(name, i, j, s, status)` which appends the version letter to axis-indexed keywords.
 
@@ -166,7 +166,7 @@ EOF
 **Files:**
 - Modify: `crates/ast-core/src/fitschan/wcs_write.rs`
 
-Mirrors the loop in fitschan.c:12224-12282. Returns a list of `(frame_idx, version_letter)` pairs for non-base/non-current frames.
+Mirrors the loop in fitschan.c:12243-12301. Returns a list of `(frame_idx, version_letter)` pairs for non-base/non-current frames.
 
 - [ ] **Step 1: Write a unit test first (TDD)**
 
@@ -204,7 +204,7 @@ In `wcs_write.rs`:
 /// Identify which frames in the FrameSet are eligible for FITS alt-plane
 /// emission, and assign each a version letter ('A'..='Z').
 ///
-/// Mirrors the loop at fitschan.c:12224-12282:
+/// Mirrors the loop at fitschan.c:12243-12301:
 ///   - Skip base and current frames (they're emitted as the primary plane).
 ///   - Skip frames with domain "IWC" (intermediate world coords; not externalised).
 ///   - First pass: if a frame's `ident()` is a single uppercase letter and

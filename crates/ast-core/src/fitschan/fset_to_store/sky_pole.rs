@@ -20,7 +20,7 @@
 //! `PCO`, `TSC`, `CSC`, `QSC`) we invert the post-WcsMap chain
 //! (`map3`) on the celestial north pole to get its native
 //! coordinates, then call [`wcs_nat_pole`] to pick the default
-//! LATPOLE. Mirrors the C path at fitschan.c:29583-29643.
+//! LATPOLE. Mirrors the C path at fitschan.c:29602-29662.
 
 #![allow(dead_code)]
 #![allow(clippy::too_many_arguments)] // sky_pole mirrors the C 8-arg signature
@@ -137,7 +137,7 @@ pub(crate) fn sky_pole(
         let alpha0 = store.crval.get(fits_ilon).copied().flatten().unwrap_or(0.0) * DD2R;
         let delta0 = store.crval.get(fits_ilat).copied().flatten().unwrap_or(0.0) * DD2R;
 
-        // C passes a LATPOLE of 999.0 and no FitsChan (fitschan.c:29970).
+        // C passes a LATPOLE of 999.0 and no FitsChan (fitschan.c:29989).
         let (_, pole) = wcs_nat_pole(wcsmap, alpha0, delta0, Some(999.0), Some(phip_in), None);
         if let Some((_, deltap)) = pole {
             // If the default LATPOLE matches the actual native lat
@@ -194,7 +194,7 @@ fn equal_angles(a: f64, b: f64) -> bool {
     crate::fitschan::fits_store::equal_ang(a, b)
 }
 
-/// C's `WcsNatPole` (fitschan.c:38816): the celestial coordinates of the
+/// C's `WcsNatPole` (fitschan.c:38850): the celestial coordinates of the
 /// native north pole, by equations 8 to 10 of FITS-WCS paper II, given
 /// those of the fiducial point (`alpha0`, `delta0`), LATPOLE and LONPOLE
 /// (`phip`), each in radians and `None` when not supplied. Returns the

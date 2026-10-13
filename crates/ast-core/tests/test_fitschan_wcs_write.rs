@@ -571,7 +571,7 @@ fn the_as_fits_wcs_wrapping_of_a_splinemap_frameset_also_writes_nothing() {
 /// the primary gate rather than on the alternates being undescribable.
 ///
 /// C's own test suite has no case for this; the gate is C's `if( !primok )
-/// break;` at `fitschan.c:37881`, added by `c384289f` together with the
+/// break;` at `fitschan.c:37915`, added by `c384289f` together with the
 /// `primok` flag that feeds it.
 #[test]
 fn alternate_descriptions_are_withheld_when_the_primary_cannot_be_written() {

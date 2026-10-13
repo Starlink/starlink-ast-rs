@@ -58,7 +58,7 @@ fn fmt_global_key(name: &str, s: char) -> String {
 /// `dim` is the per-axis NAXIS{i} dimension array (in WCS axis order)
 /// extracted from the input header. `None` entries indicate unknown
 /// dimensions; the encoder uses `(1, …, 1)` as the FindBasisVectors
-/// fallback in that case (mirrors fitschan.c:10578).
+/// fallback in that case (mirrors fitschan.c:10597).
 ///
 /// This is the top-level encoder entry point.
 pub(crate) fn encode_wcs(
@@ -93,7 +93,7 @@ pub(crate) fn encode_wcs(
     // values (MJD-OBS, OBSGEO-{X,Y,Z}, TIMESYS, DTAI, DUT1, etc.)
     // overwrite the primary's. Mirrors C's
     // `SetItem(&store->mjdobs, 0, 0, ' ', ...)` pattern at
-    // fitschan.c:29874 — see FitsStore::mjdobs doc comment.
+    // fitschan.c:29893 — see FitsStore::mjdobs doc comment.
     propagate_last_plane_globals_into_primary(&mut planes);
 
     // Emit the primary plane (which now carries the last-plane
@@ -104,10 +104,10 @@ pub(crate) fn encode_wcs(
     // all: the cards a failed version emitted before the defect was
     // found are removed again, as C does with `FixNew( this, NEW2, !ok,
     // ... )` at the tail of every pass of its version loop
-    // (fitschan.c:37867). An alternate description is only meaningful
+    // (fitschan.c:37901). An alternate description is only meaningful
     // alongside a primary one, so a failed primary abandons the whole
     // header rather than leaving alternates behind — C's `if( !primok )
-    // break;` at fitschan.c:37881.
+    // break;` at fitschan.c:37915.
     let mut primok = false;
     let mut ret = false;
     for (i, plane) in planes.iter().enumerate() {
@@ -167,7 +167,7 @@ fn propagate_last_plane_globals_into_primary(planes: &mut [PlaneStore]) {
     }
 
     // MJD-OBS / DATE-OBS follow last-plane-ran-SkySys-wins semantics
-    // (C fitschan.c:29876): SkySys calls SetItem(mjdobs, ' ', ep)
+    // (C fitschan.c:29895): SkySys calls SetItem(mjdobs, ' ', ep)
     // unconditionally on the !defdate branch — including with
     // AST__BAD when the plane has no Equinox. Find the last plane
     // whose `sky_sys` actually executed; whatever it computed
@@ -232,7 +232,7 @@ pub(crate) fn encode_wcs_to_store(
     let (store, ok) = store_from_frameset(frameset, dim, attrs)?;
     // A FrameSet with no describable primary axes yields no store at all in
     // C, so `Write` has nothing to encode and reports failure
-    // (fitschan.c:12410, 40716).
+    // (fitschan.c:12429, 40716).
     if !ok {
         return Ok(false);
     }
@@ -310,7 +310,7 @@ pub(crate) fn encode_wcs_per_plane(
     // documents as primary-axis-only. Mirrors the per-encoder header
     // notes:
     //   - FITS-IRAF: "Only primary axis descriptions are written
-    //     out." (fitschan.c:18918)
+    //     out." (fitschan.c:18937)
     //   - FITS-PC:   "Only primary axis descriptions are written
     //     out." (fitschan.c:5xxx — same restriction)
     //   - FITS-AIPS / FITS-AIPS++: same.
@@ -327,8 +327,8 @@ pub(crate) fn encode_wcs_per_plane(
 
     // `collect_plane_stores` returns no plane at all when the primary axes
     // could not be described, which is C discarding the whole FitsStore
-    // (fitschan.c:12410). `Write` then has nothing to encode and reports
-    // failure (fitschan.c:40785).
+    // (fitschan.c:12429). `Write` then has nothing to encode and reports
+    // failure (fitschan.c:40819).
     if primary_only {
         let Some(primary) = planes.first() else {
             return Ok(false);
@@ -405,15 +405,15 @@ fn write_store_to_cards(
     // A version must have a complete axis description: without CRPIX1 and
     // CRVAL1 there is nothing for the other keywords to qualify, so the
     // whole version is abandoned. C tests this before emitting anything
-    // (fitschan.c:37365-37374) and applies it to the primary as well as
+    // (fitschan.c:37399-37408) and applies it to the primary as well as
     // the alternates.
     if naxis == 0 || store.crpix[0].is_none() || store.crval[0].is_none() {
         return Ok(false);
     }
 
-    // WCSAXES{S} — mirrors fitschan.c:37056-37069. Emit when:
+    // WCSAXES{S} — mirrors fitschan.c:37090-37103. Emit when:
     //   1. the store explicitly carries a WCSAXES value (the
-    //      MakeIntWorld degenerate-axis case at fitschan.c:22332), OR
+    //      MakeIntWorld degenerate-axis case at fitschan.c:22351), OR
     //   2. the input chan's NAXIS differs from `naxis` — including
     //      "no NAXIS at all" (e.g. `.ast` inputs whose chan starts
     //      empty, where the C library treats naxis as -1 and emits).
@@ -453,7 +453,7 @@ fn write_store_to_cards(
     }
 
     // CRPIXi{S}. Every axis must have one; C abandons the version
-    // otherwise (fitschan.c:37410-37421).
+    // otherwise (fitschan.c:37444-37455).
     for i in 0..naxis {
         let Some(val) = store.crpix[i] else {
             return Ok(false);
@@ -464,7 +464,7 @@ fn write_store_to_cards(
     }
 
     // CRVALi{S}. Likewise required on every axis
-    // (fitschan.c:37423-37435).
+    // (fitschan.c:37457-37469).
     for i in 0..naxis {
         let Some(val) = store.crval[i] else {
             return Ok(false);
@@ -479,10 +479,10 @@ fn write_store_to_cards(
     // its projection parameters with the "QV" prefix instead of "PV".
     // AST does the inverse conversion on read; non-AST software ignores
     // the QV terms and reads a plain TAN projection. Mirrors
-    // `WcsFromStore` (fitschan.c:37135-37146).
+    // `WcsFromStore` (fitschan.c:37169-37180).
     //
     // A CTYPE is required on every axis; C abandons the version otherwise
-    // (fitschan.c:37440-37446).
+    // (fitschan.c:37474-37480).
     let mut axis_par_qv = vec![false; naxis];
     for (i, qv) in axis_par_qv.iter_mut().enumerate() {
         let Some(ref val) = store.ctype[i] else {
@@ -503,7 +503,7 @@ fn write_store_to_cards(
 
     // CD matrix or PC+CDELT.
     // Emitted before CUNIT to match the C library's WcsFromStore order
-    // (fitschan.c:36936+: CRPIX, CRVAL, CTYPE, CNAME, CD, CDELT, PC, CUNIT).
+    // (fitschan.c:36970+: CRPIX, CRVAL, CTYPE, CNAME, CD, CDELT, PC, CUNIT).
     if use_cd {
         write_cd_matrix(store, cards, s)?;
     } else {
@@ -520,17 +520,17 @@ fn write_store_to_cards(
     }
 
     // Plane-shared cards: only emit on primary plane.
-    // Mirrors C library WcsFromStore order (fitschan.c:36936+):
+    // Mirrors C library WcsFromStore order (fitschan.c:36970+):
     // CD matrix, then MJD-OBS / DATE-OBS, then RADESYS / EQUINOX.
     //
     // The date of observation, then its timescale, as C's `WcsFcWrite`
-    // writes them for the primary axis description (fitschan.c:37660-37697).
+    // writes them for the primary axis description (fitschan.c:37694-37731).
     // A write stores no MJD-AVG.
     if s == ' ' {
         if let Some(mjdobs) = store.mjdobs {
             cards.set_float("MJD-OBS", mjdobs, "Modified Julian Date of observation");
         }
-        // DATE-OBS companion to MJD-OBS. Mirrors fitschan.c:3641-3644.
+        // DATE-OBS companion to MJD-OBS. Mirrors fitschan.c:3660-3663.
         if let Some(ref dateobs) = store.dateobs {
             cards.set_string("DATE-OBS", dateobs, "Date of observation");
         }
@@ -538,7 +538,7 @@ fn write_store_to_cards(
             cards.set_string("TIMESYS", timesys, "Timescale for MJD-OBS/MJD-AVG values");
         }
         // DTAI / DUT1: not emitted by FitsWcs. The C library reads these
-        // when present (fitschan.c:36564-36575) but never writes them —
+        // when present (fitschan.c:36598-36609) but never writes them —
         // see fitschan.c:773-778 which explicitly notes "DUT1 is not
         // written out as yet when writing a FrameSet to a foreign FITS
         // header". The store carries them on the read path so that
@@ -547,12 +547,12 @@ fn write_store_to_cards(
     }
 
     // PV{i}_{m} numerical projection parameters. Mirrors WcsFromStore
-    // (fitschan.c:37326-37353) — emitted between TIMESYS/PV (if any)
+    // (fitschan.c:37360-37387) — emitted between TIMESYS/PV (if any)
     // and RADESYS/EQUINOX. The store's `pv` is keyed by 0-based axis
     // index, m index; FITS uses 1-based axis numbering.
     for (i, &qv) in axis_par_qv.iter().enumerate() {
         // TPN axes (rewritten to "TAN" above) emit their parameters with
-        // the "QV" prefix; all other axes use "PV" (fitschan.c:37143,
+        // the "QV" prefix; all other axes use "PV" (fitschan.c:37177,
         // 37278 `parprefix`).
         let prefix = if qv { "QV" } else { "PV" };
         for (m, val) in store.pv[i].iter().enumerate() {
@@ -570,7 +570,7 @@ fn write_store_to_cards(
     // Ancillary keywords. Emit BEFORE the SIP block so any new
     // cards (VELOSYS, MJD-OBS, ...) land between the per-axis WCS
     // section and the SIP coefficients, matching C's WcsFromStore
-    // ordering (fitschan.c:37269-37417).
+    // ordering (fitschan.c:37303-37451).
     if let Some(ref radesys) = store.radesys {
         cards.set_string(
             &fmt_global_key("RADESYS", s),
@@ -586,7 +586,7 @@ fn write_store_to_cards(
         );
     }
     // The pole, latitude first, as C's `WcsFcWrite` writes it
-    // (fitschan.c:37769-37780).
+    // (fitschan.c:37803-37814).
     if let Some(latpole) = store.latpole {
         cards.set_float(
             &fmt_global_key("LATPOLE", s),
@@ -701,7 +701,7 @@ fn write_store_to_cards(
     // SIP distortion coefficients are emitted by the caller after
     // the per-plane axis loop (so alt-plane axis cards land between
     // the primary axis block and the SIP coefficient block, matching
-    // C `WcsFromStore`'s tail emission at fitschan.c:37447-37482).
+    // C `WcsFromStore`'s tail emission at fitschan.c:37481-37516).
 
     Ok(true)
 }
@@ -724,8 +724,8 @@ fn write_cd_matrix(store: &FitsStore, cards: &mut CardList, s: char) -> AstResul
 
 /// Emit one SIP coefficient block (A_*, B_*, AP_*, BP_*).
 ///
-/// Mirrors `SIPIntWorld`'s store loops (fitschan.c:29008-29055) and
-/// the C writer at fitschan.c:37447-37482. The store table is
+/// Mirrors `SIPIntWorld`'s store loops (fitschan.c:29027-29074) and
+/// the C writer at fitschan.c:37481-37516. The store table is
 /// initialised with `AST__BAD` for every (i, jm) pair `≤ (imax,
 /// jmmax)`, then real coefficients overwrite some slots. The C
 /// `WcsFromStore` writer iterates `p ∈ [0, pmax]` × `q ∈ [0, qmax]`
@@ -868,7 +868,7 @@ pub(crate) fn mjd_to_gregorian(mjd: f64) -> (i32, u32, u32, u32, u32, f64) {
 
 /// Format an MJD (UTC) as a FITS DATE-OBS string.
 ///
-/// Mirrors fitschan.c:3625-3639. Cutoff is MJD 51179 (1999-01-01);
+/// Mirrors fitschan.c:3644-3658. Cutoff is MJD 51179 (1999-01-01);
 /// modern dates use ISO-8601 `YYYY-MM-DDTHH:MM:SS.SSS`, legacy dates
 /// use `DD/MM/YY`.
 #[allow(dead_code)] // wired into the writer's DATE-OBS path in Group 6
@@ -969,7 +969,7 @@ fn parse_legacy_date(s: &str) -> Option<(i32, u32, u32)> {
 }
 
 /// Convert (Gregorian Y/M/D + H/M/S) to MJD, following the arithmetic of
-/// `fitschan.c::DateObs` (fitschan.c:8564-8591) exactly.
+/// `fitschan.c::DateObs` (fitschan.c:8583-8610) exactly.
 ///
 /// `frac_digits` is the run of digits after the decimal point in the seconds
 /// field, as written; its length is significant because it supplies the power

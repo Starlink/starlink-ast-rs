@@ -1,8 +1,8 @@
 //! ASTWARN card placement on the FITS read path.
 //!
-//! C `Warn` (fitschan.c:35059) inserts its cards in front of the current
+//! C `Warn` (fitschan.c:35093) inserts its cards in front of the current
 //! card, and the current card during a read is the last `NAXIS<i>` keyword
-//! `DistortMaps` looked up (fitschan.c:8861-8865) — the only read on that
+//! `DistortMaps` looked up (fitschan.c:8880-8884) — the only read on that
 //! path that goes through `astGetFits<X>` rather than `GetValue`, and so the
 //! only one that leaves the card cursor moved.
 
@@ -179,7 +179,7 @@ fn tan_zeropv_header() -> String {
 
 #[test]
 fn all_zero_longitude_pv_warns_and_demotes_to_plain_tan() {
-    // C `GetUsedPolyTan` (fitschan.c:14125-14134): the latitude axis has a
+    // C `GetUsedPolyTan` (fitschan.c:14144-14153): the latitude axis has a
     // non-zero coefficient (PV2_1 = 1.0) so it passes, and the longitude check
     // in the `else` branch then finds every coefficient zero, which raises
     // `badpv`, keeps the standard TAN convention and deletes the longitude PVs.
@@ -201,7 +201,7 @@ fn all_zero_longitude_pv_warns_and_demotes_to_plain_tan() {
 fn all_zero_latitude_pv_warns_about_the_latitude_axis() {
     // The other side of the same branch: zero every latitude coefficient and C
     // reports the latitude axis instead, never reaching the longitude check
-    // (fitschan.c:14084-14093). The header is edited in memory — the fixture on
+    // (fitschan.c:14103-14112). The header is edited in memory — the fixture on
     // disk is C-generated ground truth.
     let text = tan_zeropv_header()
         .replace(

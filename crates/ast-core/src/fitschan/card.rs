@@ -23,7 +23,7 @@ fn is_fits_name_char(c: u8) -> bool {
 
 /// Validate a raw FITS keyword name (columns 1-8 of the card, original case),
 /// returning the warning text C would emit if the name contains an illegal
-/// character. Mirrors C `CheckFitsName` (fitschan.c:5897) for the cases that
+/// character. Mirrors C `CheckFitsName` (fitschan.c:5916) for the cases that
 /// produce a `Warn(this, "badkeyname", ...)` rather than an error.
 ///
 /// Returns `None` for a legal name, a blank (all-whitespace) name (the
@@ -64,7 +64,7 @@ pub(crate) fn check_fits_name(raw_name: &str) -> Option<String> {
                     c as char
                 ));
             }
-            // C's chain has no arm for a space (fitschan.c:6030-6053): it
+            // C's chain has no arm for a space (fitschan.c:6049-6072): it
             // breaks out of the loop without warning.
             return None;
         }
@@ -89,7 +89,7 @@ const FITS_ST_COL: usize = 20;
 pub(super) const FITS_COM_COL: usize = 32;
 
 /// The number of decimal digits in `INT_MAX`, C's `int_dig` in `Split`
-/// (fitschan.c:32935): an integer value with this many digits or more is
+/// (fitschan.c:32969): an integer value with this many digits or more is
 /// held as a 64-bit integer.
 const INT_DIG: usize = 10;
 
@@ -121,7 +121,7 @@ pub enum FitsValue {
 }
 
 /// Break warning text into ~60-character lines on word boundaries, mirroring
-/// the wrapping in C `Warn` (fitschan.c:35069-35163). Each returned line is the
+/// the wrapping in C `Warn` (fitschan.c:35103-35197). Each returned line is the
 /// value of one `ASTWARN` card. Caller frames these with leading and trailing
 /// blank `ASTWARN` cards.
 pub(crate) fn wrap_warning_text(text: &str) -> Vec<String> {
@@ -148,7 +148,7 @@ pub(crate) fn wrap_warning_text(text: &str) -> Vec<String> {
 }
 
 /// Consumption state of a card during a read, mirroring the C library's
-/// `USED` / `PROVISIONALLY_USED` card flags (fitschan.c:1516-1527).
+/// `USED` / `PROVISIONALLY_USED` card flags (fitschan.c:1531-1542).
 ///
 /// A card consumed in building the object returned by `astRead` is treated as
 /// if it no longer exists — it is not re-read, not found by public searches,
@@ -167,7 +167,7 @@ pub(crate) enum Consumption {
 }
 
 /// Per-card read-tracking flags, mirroring the C library's card flag bitmask
-/// (fitschan.c:1516-1542). A FitsChan's dump holds them as that bitmask
+/// (fitschan.c:1531-1557). A FitsChan's dump holds them as that bitmask
 /// ([`c_bits`](Self::c_bits)).
 ///
 /// `consumption` and `protected` are orthogonal: a `Used` card may also be
@@ -180,18 +180,18 @@ pub(crate) struct CardFlags {
     /// Set via `astRetainFits`; exempts the card from consumption marking.
     pub protected: bool,
     /// Set on a card added during the current write pass, mirroring C's
-    /// `NEW1` flag (fitschan.c:1614). Cleared, or used to delete the
+    /// `NEW1` flag (fitschan.c:1629). Cleared, or used to delete the
     /// card, once the whole write is known to have succeeded or failed.
     pub new_write: bool,
     /// Set on a card added during the current per-version pass, mirroring
-    /// C's `NEW2` flag (fitschan.c:1615). Cleared, or used to delete the
+    /// C's `NEW2` flag (fitschan.c:1630). Cleared, or used to delete the
     /// card, at the end of each axis-description version.
     pub new_version: bool,
 }
 
 impl CardFlags {
     /// The flags as C's bitmask: `USED` 1, `PROVISIONALLY_USED` 2, `NEW1` 4,
-    /// `NEW2` 8 and `PROTECTED` 16 (fitschan.c:1644-1670).
+    /// `NEW2` 8 and `PROTECTED` 16 (fitschan.c:1659-1685).
     pub(crate) fn c_bits(self) -> i64 {
         let consumption = match self.consumption {
             Consumption::Free => 0,
@@ -1010,7 +1010,7 @@ mod tests {
     #[test]
     fn parse_string_value_keeps_padding_on_long_values() {
         // C strips trailing spaces only when the value is 8 characters or
-        // fewer (fitschan.c:15397-15406). An 18-character padded value
+        // fewer (fitschan.c:15416-15425). An 18-character padded value
         // keeps its padding.
         let card = FitsCard::parse(
             "RA      = '07:21:44.00       ' / RA of observation (hr)                        ",
@@ -1209,7 +1209,7 @@ mod tests {
     }
 
     /// A value too wide for the 20-column field has no padding to absorb the
-    /// exponent-zero strip, so C closes the gap (fitschan.c:9937-9945) and the
+    /// exponent-zero strip, so C closes the gap (fitschan.c:9956-9964) and the
     /// value still starts in column 11 like every other value in the header.
     /// Reference card taken from `tidy-pole.native`.
     #[test]
@@ -1395,7 +1395,7 @@ mod tests {
 
     #[test]
     fn check_fits_name_space_is_not_reported() {
-        // C CheckFitsName (fitschan.c:6030-6053) branches on `== '='`,
+        // C CheckFitsName (fitschan.c:6049-6072) branches on `== '='`,
         // `< ' '` and `> ' '`. A space matches none of them, so no warning
         // is issued for a name field that contains one.
         assert_eq!(check_fits_name("FITS hea"), None);

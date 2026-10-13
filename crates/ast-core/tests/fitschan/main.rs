@@ -35,6 +35,8 @@ mod test_fitschan_native_keyword;
 mod test_fitschan_read;
 #[path = "../test_fitschan_sipok_oracle.rs"]
 mod test_fitschan_sipok_oracle;
+#[path = "../test_fitschan_spec_unit_oracle.rs"]
+mod test_fitschan_spec_unit_oracle;
 #[path = "../test_fitschan_splitmap_oracle.rs"]
 mod test_fitschan_splitmap_oracle;
 #[path = "../test_fitschan_time.rs"]

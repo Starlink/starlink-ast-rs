@@ -70,7 +70,7 @@ fn is_a_sky_frame(frame: &dyn Frame) -> bool {
 
 /// `MXPAR` from wcslib's PV-parameter table — mirrors the C
 /// `WCSLIB_MXPAR` constant used in the PV-loop bound at
-/// fitschan.c:5195. Our Rust `WcsMap::get_pv` exposes the same range.
+/// fitschan.c:5214. Our Rust `WcsMap::get_pv` exposes the same range.
 const WCSLIB_MXPAR: usize = 100;
 
 const DD2R: f64 = PI / 180.0;
@@ -97,7 +97,7 @@ pub(crate) struct CelestialAxesArgs<'a> {
     /// [`fset_to_store::sky_sys::sky_sys`](super::sky_sys::sky_sys).
     pub isoff: i32,
     /// Linearity tolerance in pixels, from the FitsChan's `FitsTol`
-    /// attribute (C `astGetFitsTol`, fitschan.c:3018).
+    /// attribute (C `astGetFitsTol`, fitschan.c:3033).
     pub fits_tol: f64,
     /// The FitsChan's TIMESYS value, as [`super::WriteAttrs::timesys`].
     pub timesys: Option<&'a str>,
@@ -312,7 +312,7 @@ pub(crate) fn celestial_axes(args: CelestialAxesArgs<'_>) -> AstResult<DynMappin
     // bookkeeping. Mirrors C:5318-5378.
     // Only when the axis order is chosen automatically; and when `WorldAxes`
     // cannot choose one, C discards the celestial Mapping and returns a
-    // UnitMap (fitschan.c:5487-5492, 5795-5800).
+    // UnitMap (fitschan.c:5506-5511, 5795-5800).
     let tperm = if args.auto_order {
         let pixel_to_iwc: DynMapping = Box::new(CmpMap::new(
             map.clone_box(),
@@ -354,7 +354,7 @@ fn zero_angle(v: f64) -> bool {
 
 /// Decompose the pixel->WCS Mapping `map` into `(map1, map2, map3)` in
 /// series, `map2` an inverted WcsMap with FITSProj set: C's `SplitMap`
-/// (fitschan.c:33042). The WcsMap `split_map2` finds is used when it is
+/// (fitschan.c:33076). The WcsMap `split_map2` finds is used when it is
 /// inverted and neither `map1` nor `map3` holds another. Otherwise a
 /// linear `map` is given a CAR projection, with a ShiftMap moving the
 /// origin of the longitude axis of intermediate world coordinates to a
@@ -482,7 +482,7 @@ pub(crate) fn split_map2(mapping: &dyn Mapping) -> Option<(DynMapping, DynMappin
     }
     if let Some(wm) = mapping.as_any().downcast_ref::<WcsMap>() {
         // Only a WcsMap with FITSProj set defines the header's FITS-WCS
-        // projection (fitschan.c:33255). A WcsMap acting purely as a
+        // projection (fitschan.c:33289). A WcsMap acting purely as a
         // distortion correction — the polynomial TPN produced for a `-ZPX`
         // header, say — has it cleared and must be treated as an ordinary
         // component of the surrounding chain.
@@ -771,18 +771,18 @@ fn build_wcs_to_iwc(
     // Native-spherical → WCS rotation. Build via the WcsMap-aware
     // path so non-zenithal projections (SFL, CAR, MER, ...) get the
     // correct celestial-pole solution from `WcsNatPole`. Mirrors C's
-    // WcsNative which calls WcsNatPole (fitschan.c:38244-38300) and
+    // WcsNative which calls WcsNatPole (fitschan.c:38278-38334) and
     // then assembles the three rotations.
     //
     // Use the *source* WcsMap (with its PV parameters intact) so that
     // the simplifier can collapse the PPC→native→celestial→native→PPC
     // round-trip exactly when this chain is composed against the
     // pixel→WCS mapping. C does the same via `astClone(map2)` at
-    // fitschan.c:5249.
-    // C celestial_axes (fitschan.c:5234-5271) calls SkyPole to populate
+    // fitschan.c:5268.
+    // C celestial_axes (fitschan.c:5253-5290) calls SkyPole to populate
     // store->lonpole / store->latpole, then makes a copy of the WcsMap
     // with PV3/PV4 cleared, then passes that copy to WcsNative. With
-    // PV3/PV4 cleared, WcsNative (fitschan.c:38274-38285) falls through
+    // PV3/PV4 cleared, WcsNative (fitschan.c:38308-38319) falls through
     // to read LONPOLE/LATPOLE from store->lonpole / store->latpole.
     //
     // The Rust `build_native_to_celestial_rotation_for_wcsmap` accepts
@@ -808,7 +808,7 @@ fn build_wcs_to_iwc(
     //   map2b (full N-axis WcsMap, inverted: PPC → native spherical)
     //   ∘ WcsNative (native spherical → WCS).
     //
-    // Mirrors C `CelestialAxes` (fitschan.c:5244-5271). C uses the
+    // Mirrors C `CelestialAxes` (fitschan.c:5263-5290). C uses the
     // *full* N-axis lifted WcsMap (`map2b`, a copy of `map2` with PV3/4
     // cleared for non-TPN) here, NOT a freshly-built 2-axis WcsMap.
     // This is load-bearing: the resulting WCS→IWC chain contains the
@@ -824,7 +824,7 @@ fn build_wcs_to_iwc(
     // longitude axis's PVi_3 / PVi_4 (LONPOLE / LATPOLE encoded as
     // projection parameters) for non-TPN projections so that WcsNative
     // reads those pole angles from the FitsStore instead
-    // (fitschan.c:5244-5248). We do not clear them here: the
+    // (fitschan.c:5263-5267). We do not clear them here: the
     // native→celestial rotation built above already receives the
     // store's LONPOLE / LATPOLE as explicit arguments, so the pole is
     // already correct; and keeping `map2b`'s PVs byte-identical to the
@@ -833,21 +833,21 @@ fn build_wcs_to_iwc(
     // WcsMaps unequal and block the merge).
     //
     // `map2b` is used in the same orientation as C's `astCopy(map2)`
-    // (fitschan.c:5244-5275): C composes `astCmpMap(map2b, WcsNative)`
+    // (fitschan.c:5263-5294): C composes `astCmpMap(map2b, WcsNative)`
     // without inverting map2b. The whole IWC→WCS chain is inverted at
     // the end to yield WCS→IWC, which flips map2b into the opposite
     // direction from the (inverted) pixel→WCS WcsMap, so the two cancel.
     let map2b = src_wcsmap.clone();
 
     // Embed the 2-axis native→celestial rotation into the N-axis frame.
-    // Mirrors C `WcsNative` (fitschan.c:38403-38446): add a UnitMap in
+    // Mirrors C `WcsNative` (fitschan.c:38437-38480): add a UnitMap in
     // parallel for the (naxis-2) non-celestial axes, then sandwich
     // between a PermMap and its inverse so the celestial pair sits at
     // (axlon, axlat). The rotation built above always has lon/lat at
     // its leading axes 0/1.
     let wcs_native: DynMapping = embed_native_rotation(wcs_native_rot, nwcs, axlon, axlat)?;
 
-    // tmap3 = map2b ∘ WcsNative (PPC → WCS). Mirrors fitschan.c:5275.
+    // tmap3 = map2b ∘ WcsNative (PPC → WCS). Mirrors fitschan.c:5294.
     let cel_nd: DynMapping = Box::new(CmpMap::new(
         Box::new(map2b),
         wcs_native,
@@ -864,11 +864,11 @@ fn build_wcs_to_iwc(
     // but the surrounding `shift`/`scale` operate on (ilon, ilat).
     // When they differ, sandwich `cel_nd` between a PermMap (mapping
     // ilon→axlon, ilat→axlat) and its inverse so its celestial input /
-    // output axes line up with (ilon, ilat). Mirrors fitschan.c:5291-5341
+    // output axes line up with (ilon, ilat). Mirrors fitschan.c:5310-5360
     // (`if( nwcsmap != nwcs || ilon != axlon || ilat != axlat )`).
     let cel_nd: DynMapping = if ilon != axlon || ilat != axlat {
         // inperm[i] = WcsMap-side axis fed from WCS-Frame axis i
-        // (C inperm, fitschan.c:5302-5314; 0-based, PermMap entries
+        // (C inperm, fitschan.c:5321-5333; 0-based, PermMap entries
         // are 1-based so we add 1 below).
         let mut inperm = vec![-1_i64; nwcs];
         inperm[ilon] = axlon as i64;
@@ -884,7 +884,7 @@ fn build_wcs_to_iwc(
             }
         }
         // outperm[j] = WCS-Frame axis fed from WcsMap-side output j
-        // (C outperm, fitschan.c:5317-5324).
+        // (C outperm, fitschan.c:5336-5343).
         let mut outperm = vec![-1_i64; nwcs];
         outperm[axlon] = ilon as i64;
         outperm[axlat] = ilat as i64;
@@ -930,7 +930,7 @@ fn build_wcs_to_iwc(
 /// axis 1) into an `naxis`-wide Mapping whose celestial pair sits at
 /// `(axlon, axlat)` (0-based) and which passes the remaining axes
 /// through unchanged. Mirrors the axis-embedding tail of C `WcsNative`
-/// (fitschan.c:38403-38446): a UnitMap in parallel for the `naxis-2`
+/// (fitschan.c:38437-38480): a UnitMap in parallel for the `naxis-2`
 /// non-celestial axes (stage 5), then a PermMap / inverse-PermMap
 /// sandwich (stages 1 and 3) so the rotation's leading lon/lat axes
 /// land at `(axlon, axlat)`.
