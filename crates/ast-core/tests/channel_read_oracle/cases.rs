@@ -281,4 +281,37 @@ pub const CASES: &[Case] = &[
             ("", 0, &[]),
         ],
     ),
+    (
+        "frame_legacy_axis_items",
+        " ",
+        &["Begin Frame", "Naxes = 2", "Lbl1 = \"Alpha\"", "Sym2 = \"b\"", "Fmt1 = \"%5.2f\"", "Uni2 = \"m\"", "Dir1 = 0", "Top1 = 10", "Bot1 = -10", "Dig2 = 4", "End Frame"],
+        &[
+            ("Frame", 0, &[]),
+            ("", 0, &[]),
+            ("", 0, &[]),
+            ("", 0, &[]),
+        ],
+    ),
+    (
+        "frame_legacy_axis_items_strict",
+        "Strict=1",
+        &["Begin Frame", "Naxes = 2", "Lbl1 = \"Alpha\"", "Sym2 = \"b\"", "Fmt1 = \"%5.2f\"", "Uni2 = \"m\"", "Dir1 = 0", "Top1 = 10", "Bot1 = -10", "Dig2 = 4", "End Frame"],
+        &[
+            ("Frame", 0, &[]),
+            ("", 0, &[]),
+            ("", 0, &[]),
+            ("", 0, &[]),
+        ],
+    ),
+    (
+        "skyframe_legacy_axis_items_strict",
+        "Strict=1",
+        &["Begin SkyFrame", "IsA Object", "Naxes = 2", "Lbl1 = \"Lon\"", "Dig2 = 4", "Ax1 =", "Begin SkyAxis", "End SkyAxis", "Ax2 =", "Begin SkyAxis", "End SkyAxis", "IsA Frame", "System = \"FK5\"", "End SkyFrame"],
+        &[
+            ("SkyFrame", 0, &[]),
+            ("", 0, &[]),
+            ("", 0, &[]),
+            ("", 0, &[]),
+        ],
+    ),
 ];

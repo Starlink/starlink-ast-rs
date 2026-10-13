@@ -187,6 +187,20 @@ int main( void ) {
                           "Zoom = 2", "End ZoomMap", NULL };
       read( "begin_value", " ", t );
    }
+   {
+      const char *t[] = { "Begin Frame", "Naxes = 2", "Lbl1 = \"Alpha\"", "Sym2 = \"b\"",
+                          "Fmt1 = \"%5.2f\"", "Uni2 = \"m\"", "Dir1 = 0", "Top1 = 10",
+                          "Bot1 = -10", "Dig2 = 4", "End Frame", NULL };
+      read( "frame_legacy_axis_items", " ", t );
+      read( "frame_legacy_axis_items_strict", "Strict=1", t );
+   }
+   {
+      const char *t[] = { "Begin SkyFrame", "IsA Object", "Naxes = 2", "Lbl1 = \"Lon\"",
+                          "Dig2 = 4", "Ax1 =", "Begin SkyAxis", "End SkyAxis", "Ax2 =",
+                          "Begin SkyAxis", "End SkyAxis", "IsA Frame", "System = \"FK5\"",
+                          "End SkyFrame", NULL };
+      read( "skyframe_legacy_axis_items_strict", "Strict=1", t );
+   }
    printf( "];\n" );
    return 0;
 }
