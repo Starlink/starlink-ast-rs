@@ -77,6 +77,35 @@ pub(crate) fn chr_match_n(a: &str, b: &str, n: usize) -> bool {
     true
 }
 
+/// C's `astChrSplitC`: the words of `s` separated by `delim`, in which a
+/// backslash before `delim` makes it part of the word in place of the
+/// backslash.
+fn chr_split_c(s: &str, delim: char) -> Vec<String> {
+    let mut words = Vec::new();
+    let mut word = String::new();
+    let mut escaped = false;
+    for c in s.chars() {
+        if c == delim {
+            if escaped {
+                word.pop();
+                word.push(delim);
+                escaped = false;
+            } else {
+                words.push(std::mem::take(&mut word));
+            }
+        } else {
+            word.push(c);
+            if escaped {
+                escaped = false;
+            } else if c == '\\' {
+                escaped = true;
+            }
+        }
+    }
+    words.push(word);
+    words
+}
+
 /// C's `astChrMatch`: [`chr_match_n`] over the whole of both strings.
 pub(crate) fn chr_match(a: &str, b: &str) -> bool {
     chr_match_n(a, b, usize::MAX)
@@ -237,6 +266,11 @@ pub struct FitsChan {
     /// The last sequence number given to each keyword base by the NATIVE
     /// writer (C's `keyseq`), kept until the cards are emptied.
     keyseq: std::collections::HashMap<String, usize>,
+    /// The FitsTables stored for the `-TAB` algorithm, keyed by extension
+    /// name (C's `tables`). `None` until a table is first stored, as C
+    /// creates the KeyMap then; a dump holds the KeyMap whenever it
+    /// exists, even when empty.
+    tables: Option<crate::keymap::KeyMap>,
     /// The Clean attribute, when set.
     clean: Option<bool>,
     /// The SipOK attribute, when set.
@@ -287,6 +321,7 @@ impl FitsChan {
             iwc: None,
             fits_axis_order: None,
             keyseq: std::collections::HashMap::new(),
+            tables: None,
             clean: None,
             sip_ok: None,
             ident: None,
@@ -329,6 +364,7 @@ impl FitsChan {
             iwc: None,
             fits_axis_order: None,
             keyseq: std::collections::HashMap::new(),
+            tables: None,
             clean: None,
             sip_ok: None,
             ident: None,
@@ -605,7 +641,7 @@ impl FitsChan {
     }
 
     /// Delete every card, including those a read consumed, without writing
-    /// them to the sink (C's `astEmptyFits`).
+    /// them to the sink, and every stored table (C's `astEmptyFits`).
     pub fn empty_fits(&mut self) -> AstResult<()> {
         self.read_from_source()?;
         self.empty_fits_inner();
@@ -616,6 +652,68 @@ impl FitsChan {
     fn empty_fits_inner(&mut self) {
         self.cards = CardList::new();
         self.keyseq.clear();
+        self.tables = None;
+    }
+
+    // -----------------------------------------------------------------------
+    // FitsTables
+    // -----------------------------------------------------------------------
+
+    /// Store a copy of `table` under the extension name `extnam`, replacing
+    /// any table stored under that name (C's `astPutTable`). The tables
+    /// provide the look-up tables a FITS-WCS header using the `-TAB`
+    /// algorithm refers to.
+    pub fn put_table(
+        &mut self,
+        table: &crate::fitstable::FitsTable,
+        extnam: &str,
+    ) -> AstResult<()> {
+        self.tables
+            .get_or_insert_with(crate::keymap::KeyMap::new)
+            .put_0a(extnam, AnyObject::FitsTable(Box::new(table.clone())), None)
+    }
+
+    /// Store a copy of each FitsTable in `tables` under its key, as
+    /// [`put_table`](Self::put_table) does (C's `astPutTables`). Entries
+    /// that are not a single FitsTable are ignored.
+    pub fn put_tables(&mut self, tables: &crate::keymap::KeyMap) -> AstResult<()> {
+        for ientry in 0..tables.map_size() {
+            let key = tables.map_key(ientry)?;
+            if tables.map_type(&key)? == crate::keymap::AstType::Object
+                && tables.map_length(&key) == 1
+                && let Some(Some(AnyObject::FitsTable(table))) = tables.get_0a(&key)?
+            {
+                self.put_table(&table, &key)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// A copy of the stored tables, keyed by extension name, or `None` when
+    /// there are none (C's `astGetTables`).
+    pub fn get_tables(&self) -> Option<crate::keymap::KeyMap> {
+        self.tables.as_ref().filter(|t| t.map_size() > 0).cloned()
+    }
+
+    /// Remove the tables named in `key`, a single name or a ','-separated
+    /// list in which `\,` stands for a comma in a name; a blank `key`
+    /// removes every table. Names are used as given, spaces included, and a
+    /// name with no table is ignored (C's `astRemoveTables`).
+    pub fn remove_tables(&mut self, key: &str) -> AstResult<()> {
+        let Some(tables) = self.tables.as_mut() else {
+            return Ok(());
+        };
+        if crate::keymap::table::chr_len(key) == 0 {
+            while tables.map_size() > 0 {
+                let first = tables.map_key(0)?;
+                tables.map_remove(&first)?;
+            }
+        } else {
+            for word in chr_split_c(key, ',') {
+                tables.map_remove(&word)?;
+            }
+        }
+        Ok(())
     }
 
     /// Format all stored cards as a FITS header string.
@@ -1897,6 +1995,7 @@ impl Clone for FitsChan {
             fits_axis_order: self.fits_axis_order.clone(),
             intra: self.intra.clone(),
             keyseq: self.keyseq.clone(),
+            tables: self.tables.clone(),
             clean: self.clean,
             sip_ok: self.sip_ok,
             ident: self.ident.clone(),

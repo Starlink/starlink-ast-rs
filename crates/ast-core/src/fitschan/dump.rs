@@ -1,17 +1,16 @@
 //! A FitsChan's dump and loader (fitschan.c `Dump` and `astLoadFitsChan`):
 //! its attributes, then every card, used ones included, with its name, type,
-//! flags, value and comment.
-//!
-//! C also dumps the FitsTables a FitsChan holds for the `-TAB` algorithm,
-//! which is not yet ported, so a dump here never holds them and a `Tables`
-//! item read from one is ignored.
+//! flags, value and comment, then the KeyMap of FitsTables the `-TAB`
+//! algorithm uses, if the FitsChan has one.
 
 use super::card::{CardFlags, CardType, FitsCard, FitsValue};
 use super::{AltAxes, Encoding, FitsChan};
 use crate::channel::base;
 use crate::constants::BAD_VALUE;
 use crate::error::{AstError, AstResult, ErrorCode};
-use crate::serial::{Node, NodeValue, Serializable};
+use crate::serial::{
+    AnyObject, Node, NodeValue, Serializable, any_object_from_node, any_object_to_node,
+};
 
 /// Write `value` under `key`: as an item when `set`, otherwise as a comment
 /// holding the default, as C's `astWrite<X>` writes a helpful unset value.
@@ -245,12 +244,20 @@ impl Serializable for FitsChan {
         for (i, card) in fc.cards.iter().enumerate() {
             write_card(&mut node, i + 1, card);
         }
+        if let Some(tables) = &fc.tables {
+            node.push_object(
+                "Tables",
+                any_object_to_node(&AnyObject::KeyMap(Box::new(tables.clone())))?,
+                Some("A KeyMap holding associated binary tables".to_string()),
+            );
+        }
         Ok(node)
     }
 
     /// fitschan.c `astLoadFitsChan`: no source or sink; the attributes
     /// through their setters, apart from FitsAxisOrder and Warnings, which C
-    /// stores as read; then the cards, up to the first with no type.
+    /// stores as read; then the cards, up to the first with no type; then
+    /// any tables.
     fn from_node(node: &Node) -> AstResult<Self> {
         let mut fc = FitsChan::new();
         (fc.id, fc.ident) = base::read_parts(node, &mut fc.config);
@@ -323,6 +330,18 @@ impl Serializable for FitsChan {
             fc.cards.push(read_card(&part, n, ty));
         }
         fc.cards.set_card(part.get_int("Card", 0));
+        if let Some(object) = part.get_object("Tables") {
+            match any_object_from_node(object)? {
+                AnyObject::KeyMap(tables) => fc.tables = Some(*tables),
+                _ => {
+                    return Err(AstError::new(
+                        ErrorCode::Badin,
+                        "astLoadFitsChan(FitsChan): The Tables item of a FitsChan is not a \
+                         KeyMap.",
+                    ));
+                }
+            }
+        }
         Ok(fc)
     }
 }

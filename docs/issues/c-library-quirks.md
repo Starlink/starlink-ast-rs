@@ -55,6 +55,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 
 ### [Resolved upstream](#resolved-upstream)
 
+- [RESOLVED (upstream a4cded15): `astRemoveTables` with a blank key removes every other table](#resolved-upstream-a4cded15-astremovetables-with-a-blank-key-removes-every-other-table)
 - [RESOLVED (upstream ca8d3a82): A FitsTable created from a header misreads, or crashes on, several column definitions](#resolved-upstream-ca8d3a82-a-fitstable-created-from-a-header-misreads-or-crashes-on-several-column-definitions)
 - [RESOLVED (upstream 369c0e91): `astColumnNullK` misses null values and returns a used value as the default](#resolved-upstream-369c0e91-astcolumnnullk-misses-null-values-and-returns-a-used-value-as-the-default)
 - [RESOLVED (upstream f32573b1): `PurgeRows` fails on a Table holding a parameter value](#resolved-upstream-f32573b1-purgerows-fails-on-a-table-holding-a-parameter-value)
@@ -1373,6 +1374,17 @@ A 64 bit integer card value was written with `astWriteInt` and read into an `int
 
 Fixed on `u/timj/norm-unit` in c16f9b11: SipReplace is written and read as `SipRpl`, the card values with `astWriteInt64` into an `int64_t`, and PolyTan and SipOK default to -INT_MAX; `testfitschan` `testdumpload`.
 The port's FitsChan dump (`fitschan/dump.rs`) is `Dump` as fixed; `tests/test_channel_dump_oracle.rs` (the `fitschan*` cases), whose probe needs the fixed library.
+
+### RESOLVED (upstream a4cded15): `astRemoveTables` with a blank key removes every other table
+
+C location: `fitschan.c` `RemoveTables`.
+
+A blank key removes every table the FitsChan holds.
+C removed the table at index 0, 1, 2, ... of the KeyMap in turn while the KeyMap shrank, so it removed every other table and then reported AST__MPIND for an index past the end.
+Probed: of five tables, two were left.
+
+Fixed on `u/timj/norm-unit` in a4cded15: the first table is removed until none is left; `testfitschan.c` `testremovealltables` (errors 1080, 1081).
+The port follows the fix; `remove_all` in `tests/test_fitschan_tables_oracle.rs`, whose probe needs the fixed library.
 
 ### RESOLVED (upstream ca8d3a82): A FitsTable created from a header misreads, or crashes on, several column definitions
 
