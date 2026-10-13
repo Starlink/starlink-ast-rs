@@ -1401,7 +1401,7 @@ pub(crate) fn encode_class(
 
 - [ ] **Step 2: Implement `class_from_store` in enc_class.rs**
 
-Port `CLASSFromStore` line-for-line from fitschan.c:6411-7040. The structure is documented in the C source already:
+Port `CLASSFromStore` line-for-line from fitschan.c:6408-7037. The structure is documented in the C source already:
 
 ```rust
 pub(crate) fn class_from_store(
@@ -1413,17 +1413,17 @@ pub(crate) fn class_from_store(
     // 1. Identify celestial + spectral axes (FindLonLatSpecAxes).
     // 2. Validate: spectral & celestial axes must be at indices 0,1,2;
     //    no PV parameters; SPECSYS=SOURCE; CUNIT spectral = Hz/kHz/MHz/GHz.
-    //    See fitschan.c:6527-6787.
+    //    See fitschan.c:6524-6784.
     //
     // 3. Emit NAXIS, NAXIS1, NAXIS2, NAXIS3 (handle the
-    //    degenerate-spatial-axis case at fitschan.c:6792-6810).
+    //    degenerate-spatial-axis case at fitschan.c:6789-6807).
     //
     // 4. Emit CRPIX, CRVAL (with the spectral CRVAL adjusted by
-    //    `val *= specfactor; val -= rf;` per fitschan.c:6837-6840),
+    //    `val *= specfactor; val -= rf;` per fitschan.c:6834-6837),
     //    CTYPE, CDELT.
     //
     // 5. Emit EQUINOX, DATE-OBS (via the format-by-MJD-vs-1999 dance
-    //    at fitschan.c:6884-6908), RESTFREQ, IMAGFREQ.
+    //    at fitschan.c:6881-6905), RESTFREQ, IMAGFREQ.
     //
     // 6. Ensure OBJECT and LINE cards exist (HasCard test).
     //
@@ -1438,7 +1438,7 @@ pub(crate) fn class_from_store(
     //    - aval[0] = crval[axspec]*specfactor; aval[1] = aval[0] + cdelt[axspec]*specfactor
     //    - fsconv1.transform(aval) -> velocities
     //    - emit VELO-LSR, VLSR (= aval[0]), DELTAV (= aval[1] - aval[0]).
-    //    See fitschan.c:6930-6985.
+    //    See fitschan.c:6927-6982.
     //
     // 8. Compute AZIMUTH, ELEVATIO via SkyFrame Az/El conversion:
     //    - radecfrm = SkyFrame{ Permute=0, MinAxes=3, MaxAxes=3 }
@@ -1450,7 +1450,7 @@ pub(crate) fn class_from_store(
     //    - map3.transform(radec) -> azel
     //    - normalise via azelfrm.norm
     //    - emit AZIMUTH (azel[0]*DR2D), ELEVATIO (azel[1]*DR2D).
-    //    See fitschan.c:6988-7031.
+    //    See fitschan.c:6985-7028.
 }
 ```
 
@@ -1479,7 +1479,7 @@ git add crates/ast-core/src/fitschan/enc_class.rs crates/ast-core/src/fitschan/w
 git commit -m "fitschan: port CLASSFromStore using astFindFrame infrastructure
 
 Replaces the placeholder enc_class write path with a line-for-line
-port of fitschan.c:6411-7040. Uses the new Frame::find_frame_template
+port of fitschan.c:6408-7037. Uses the new Frame::find_frame_template
 to extract SpecFrame/SkyFrame from the cube's CmpFrame for velocity
 and Az/El emission.
 

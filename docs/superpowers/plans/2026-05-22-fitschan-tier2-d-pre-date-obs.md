@@ -10,7 +10,7 @@
 2. **Epoch time-system handling** — `populate_celestial` currently stores `sky.epoch_mjd()` (TT scale) directly into `store.mjdobs`. The C library stores UTC. Convert TT → UTC via `pal::dat` (leap seconds) and the constant TT-TAI offset.
 3. **DATE-OBS card emission** — when `store.mjdobs` is populated, also populate `store.dateobs` with the formatted string. Emit the card from each encoder's write path after MJD-OBS.
 
-The C library convention for the format is at fitschan.c:3667-3681: cutoff at MJD 51179 (1999-01-01). Below that, use legacy `DD/MM/YY`. At or above, use ISO-8601 `YYYY-MM-DDTHH:MM:SS.SSS`.
+The C library convention for the format is at fitschan.c:3664-3678: cutoff at MJD 51179 (1999-01-01). Below that, use legacy `DD/MM/YY`. At or above, use ISO-8601 `YYYY-MM-DDTHH:MM:SS.SSS`.
 
 **Tech Stack:** Rust 2024, existing `pal::dat` binding, existing `FitsStore`, existing encoder write paths.
 
@@ -28,7 +28,7 @@ The C library convention for the format is at fitschan.c:3667-3681: cutoff at MJ
 
 ## Background — C library reference
 
-The C library at `reference/starlink-ast/src/fitschan.c:3663-3687`:
+The C library at `reference/starlink-ast/src/fitschan.c:3660-3684`:
 
 ```c
 val = GetItem( &(store->mjdobs), 0, 0, ' ', NULL, method, class, status );
@@ -56,7 +56,7 @@ if( val != AST__BAD ) {
 ```
 
 Notes:
-- The MJD value used is `store->mjdobs` directly. The C library has already converted from TDB to UTC at `fitschan.c:29835-29856` before populating `store->mjdobs`. So the value in `store->mjdobs` is **UTC**.
+- The MJD value used is `store->mjdobs` directly. The C library has already converted from TDB to UTC at `fitschan.c:29831-29852` before populating `store->mjdobs`. So the value in `store->mjdobs` is **UTC**.
 - Cutoff is `mjd99 = palCaldj(99, 1, 1)` = MJD 51179 = 1999-01-01 00:00:00 UTC.
 - Modern format is `YYYY-MM-DDTHH:MM:SS.SSS` (3 decimal places of seconds, no trailing 'Z').
 - Legacy format is `DD/MM/YY` (zero-padded, day-first; `YY` is `YYYY % 100` after century stripping).
@@ -122,7 +122,7 @@ Find the `FitsStore` struct (around line 12). Locate the `mjdobs: Option<f64>` f
     /// Pre-formatted by `populate_celestial` from the (UTC-converted)
     /// MJD-OBS using the C library's format convention: ISO-8601
     /// `YYYY-MM-DDTHH:MM:SS.SSS` for MJD ≥ 51179 (1999-01-01), legacy
-    /// `DD/MM/YY` for earlier dates. Mirrors fitschan.c:3667-3681.
+    /// `DD/MM/YY` for earlier dates. Mirrors fitschan.c:3664-3678.
     pub dateobs: Option<String>,
 ```
 
@@ -286,7 +286,7 @@ fn mjd_to_gregorian(mjd: f64) -> (i32, u32, u32, u32, u32, f64) {
 
 /// Format an MJD (UTC) as a FITS DATE-OBS string.
 ///
-/// Mirrors fitschan.c:3667-3681. Cutoff is MJD 51179 (1999-01-01);
+/// Mirrors fitschan.c:3664-3678. Cutoff is MJD 51179 (1999-01-01);
 /// modern dates use ISO-8601 `YYYY-MM-DDTHH:MM:SS.SSS`, legacy dates
 /// use `DD/MM/YY`.
 fn mjd_to_date_str(mjd: f64) -> String {
@@ -347,7 +347,7 @@ mjd_to_gregorian decomposes a UTC MJD into (year, month, day, hour,
 min, sec_frac) via Meeus's algorithm. mjd_to_date_str formats it as
 DATE-OBS using the C library's cutoff at MJD 51179 (1999-01-01):
 ISO-8601 YYYY-MM-DDTHH:MM:SS.SSS for modern dates, legacy DD/MM/YY
-for earlier dates. Mirrors fitschan.c:3667-3681.
+for earlier dates. Mirrors fitschan.c:3664-3678.
 
 Pure Rust, no PAL FFI — Meeus's algorithm is well-known and avoids
 the FFI roundtrip cost.
@@ -400,7 +400,7 @@ Above `populate_celestial` (or near `mjd_to_date_str`), add:
 /// second boundary is at most 0.5 s and doesn't matter for MJD-OBS
 /// at our 3-decimal-second formatting precision.
 ///
-/// Mirrors fitschan.c:29835-29856 (TDBConv with output scale UTC).
+/// Mirrors fitschan.c:29831-29852 (TDBConv with output scale UTC).
 /// TDB ≈ TT to 1.7 ms — well below our formatting precision — so
 /// treating epoch_mjd as TT is correct here.
 fn tt_mjd_to_utc(tt_mjd: f64) -> f64 {
@@ -428,7 +428,7 @@ with:
 ```rust
     // MJD-OBS from epoch (skip if default J2000.0). The SkyFrame epoch
     // is in TT scale; FITS MJD-OBS is UTC. The C library does the same
-    // conversion at fitschan.c:29835-29856 via TDBConv. Also populate
+    // conversion at fitschan.c:29831-29852 via TDBConv. Also populate
     // the formatted DATE-OBS string here; an encoder later emits both.
     let epoch_tt = sky.epoch_mjd();
     if (epoch_tt - 51544.5).abs() > 0.001 {
@@ -475,7 +475,7 @@ fix(fitschan): convert epoch from TT to UTC for MJD-OBS
 The SkyFrame epoch is in TT (Terrestrial Time) per AST convention,
 but FITS MJD-OBS is UTC. populate_celestial now converts via
 UTC = TT - (dat + 32.184)/86400 where dat is pal::dat (TAI-UTC).
-Mirrors fitschan.c:29835-29856 (TDBConv to UTC).
+Mirrors fitschan.c:29831-29852 (TDBConv to UTC).
 
 Also populates store.dateobs with the formatted ISO-8601 (or legacy
 DD/MM/YY) string ready for encoder emission. The encoder write
@@ -557,7 +557,7 @@ git commit -m "$(cat <<'EOF'
 feat(fitschan): emit DATE-OBS in FITS-WCS / IRAF / PC encoders
 
 write_store_to_cards now emits DATE-OBS immediately after MJD-OBS
-when store.dateobs is populated. Mirrors fitschan.c:3683-3686.
+when store.dateobs is populated. Mirrors fitschan.c:3680-3683.
 
 Closes wcsconv tests where DATE-OBS was the only remaining blocker
 in FITS-WCS / IRAF / PC encodings.
@@ -600,7 +600,7 @@ In `write_to_cards`, find the MJD-OBS or EPOCH emission and append the DATE-OBS 
     }
 ```
 
-(The exact placement and surrounding context will vary; use the C library's order at fitschan.c:3683 as a guide — DATE-OBS comes right after MJD-OBS.)
+(The exact placement and surrounding context will vary; use the C library's order at fitschan.c:3680 as a guide — DATE-OBS comes right after MJD-OBS.)
 
 - [ ] **Step 3: Emit DATE-OBS in AIPS++**
 
@@ -638,7 +638,7 @@ feat(fitschan): emit DATE-OBS in AIPS / AIPS++ encoders
 
 Both write_to_cards (plain AIPS) and write_to_cards_pp (AIPS++)
 emit DATE-OBS immediately after MJD-OBS when store.dateobs is set.
-Mirrors fitschan.c:3683-3686 in the FITS-AIPS write paths.
+Mirrors fitschan.c:3680-3683 in the FITS-AIPS write paths.
 
 Generated with AI
 

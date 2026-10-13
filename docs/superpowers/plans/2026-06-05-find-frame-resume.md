@@ -33,15 +33,15 @@ Tasks 8 (CmpFrame), 9 (FluxFrame), 9b (SpecFluxFrame), 9c (TimeFrame), 10 (Frame
 | 9c | TimeFrame::Match + SubFrame + Overlay | `0dba1b5` | timeframe.c |
 | 9b | SpecFluxFrame::Match + SubFrame + Overlay | `db2ab1a` | specfluxframe.c:1216 / 1428 |
 | (extra) | primary_frame_walk + Sky/Spec/Flux/Time CmpFrame walking | `b94e6f6` | astPrimaryFrame |
-| 11a | AddEncodingFrame for FITS-CLASS | `a735559` | fitschan.c:2504 |
-| 11b | CLASS spectral CRVAL conversion via SpecFrame find_frame | `a9b1053` | fitschan.c:6930-6985 |
-| 11c | CLASS AZ/EL emission via SkyFrame find_frame | `dbf0fa6` | fitschan.c:6988-7031 |
+| 11a | AddEncodingFrame for FITS-CLASS | `a735559` | fitschan.c:2501 |
+| 11b | CLASS spectral CRVAL conversion via SpecFrame find_frame | `a9b1053` | fitschan.c:6927-6982 |
+| 11c | CLASS AZ/EL emission via SkyFrame find_frame | `dbf0fa6` | fitschan.c:6985-7028 |
 | 12  | SkyFrame LAST via TimeFrame TDB→LAST | `848731e` | skyframe.c:1218 (CalcLAST) |
 | 12b | Diurnal aberration in AzEl SLA chain | `600c39f` | skyframe.c:3735 (GetDiurab) + 6181/6292 |
 | 12c | Mirror C float-cast in SpecMap LSRK helpers | `3d93d28` | specmap.c:1764, 1768, 1980, 2030, 2080 |
-| 12d | Walk primary frames in AddEncodingFrame; CLASS spatial-CRVAL adjust; SSYSOBS/OBSGEO preservation | `5be33c4` | fitschan.c:2509-2517, 6465-6496, 10571 |
+| 12d | Walk primary frames in AddEncodingFrame; CLASS spatial-CRVAL adjust; SSYSOBS/OBSGEO preservation | `5be33c4` | fitschan.c:2506-2514, 6465-6496, 10571 |
 | 12e | FrToVl operator grouping + RefRA/Dec normalisation + CLASS write-helper preconditioning | `8891171` | specmap.c:3143; SOFA eraAnp/eraAnpm |
-| 12f | CLASS AzEl radec template System left unset (was forced FK5) | `3e78716` | fitschan.c:6995 |
+| 12f | CLASS AzEl radec template System left unset (was forced FK5) | `3e78716` | fitschan.c:6992 |
 
 Each commit is a focused, self-contained port. Tests added per class.
 
@@ -183,7 +183,7 @@ The test will fail many assertions until Tasks 8 and 10 land — mark `#[ignore]
 
 **Files:** `crates/ast-core/src/fitschan/wcs_write/mod.rs` (add `encode_class` entry), `crates/ast-core/src/fitschan/enc_class.rs` (port `CLASSFromStore`), `crates/ast-core/src/fitschan/mod.rs` (switch FitsClass dispatch).
 
-**C source:** `reference/starlink-ast/src/fitschan.c:6411-7394` (~975 lines; full `CLASSFromStore`). Three sub-tasks per the original plan: spatial-axis adjust, spectral CRVAL conversion via SpecFrame, AZIMUTH/ELEVATIO via SkyFrame Az/El.
+**C source:** `reference/starlink-ast/src/fitschan.c:6408-7391` (~975 lines; full `CLASSFromStore`). Three sub-tasks per the original plan: spatial-axis adjust, spectral CRVAL conversion via SpecFrame, AZIMUTH/ELEVATIO via SkyFrame Az/El.
 
 This is what unblocks the 10 CLASS-bucket fixtures in the wcsconv suite.
 

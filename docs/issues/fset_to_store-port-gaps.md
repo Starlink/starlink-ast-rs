@@ -243,7 +243,7 @@ builds the `S → grism_param → w` IWC mapping and emits the
 ### `VELOSYS` calculation — DONE
 
 `spectral_axes` makes C's SourceVRF and SourceVel changes
-(fitschan.c:31295-31317) on a copy of the SpecFrame and stores the
+(fitschan.c:31291-31313) on a copy of the SpecFrame and stores the
 resulting SourceVel, for every description and in the source frame too.
 
 ### SpecFrame unit-conversion chain rewriting — DONE
