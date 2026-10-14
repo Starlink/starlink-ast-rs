@@ -34,7 +34,7 @@ A C check counts as covered when a Rust test, or an oracle case replaying C, exe
 | `testmapping.c` | ported, apart from a no-op `Invert` set, which a toggling `invert()` cannot express |
 | `testregions.c` | 18 of 30 functions covered, 11 partial, 1 missing; two functions never run in C |
 | `testregionmasking.c` | ported (`test_region_masking.rs`) |
-| `testfitschanerrors.c` | 22 of 41 cases covered, 3 partial, 11 missing, 5 with no Rust equivalent |
+| `testfitschanerrors.c` | ported (`test_fitschan_errors.rs`); one case exposes a duplicate-keyword gap in the reader |
 | `testswitchmap.c` | ported; exposed and fixed a SwitchMap cancellation gap |
 | `testchebymap.c` | partial; its PolyTran half needs `ChebyMap::poly_tran`, which is not ported |
 | `testpolymap.c` | mostly covered |
@@ -73,24 +73,6 @@ A C check counts as covered when a Rust test, or an oracle case replaying C, exe
 - `checkRemoveRegions` (`:2958-3015`): tests 4-9, `astConvert` to a Region giving a clipping FrameSet that `remove_regions` then unclips.
 - `checkBoxTransformAfterBounds` (`:3174-3192`): the bounds of a zero-width Box stay at 5, and are taken before the transform.
 - `checkBox` (`:801-1505`): never run in C (see above); generic analogues exist, but none of its sky, MapRegion, mask or mesh-count checks.
-
-### `testfitschanerrors.c`
-
-Missing:
-
-- `tnx-unsupported` (`:196`) and `zpx-unsupported` (`:217`): the "unsupported IRAF" warnings from WAT cards.
-- `aips-reject-ait-nonorigin` (`:240`), `aips-reject-wave` (`:263`), `aips++-reject-wave` (`:284`): FITS-AIPS or FITS-AIPS++ writes nothing where FITS-WCS writes.
-- `error-cdelt-zero` (`:373`): CDELT1=0 on RA---TAN still reads.
-- `error-mixed-celestial` (`:417`), `error-duplicate-lat` (`:460`), `error-unknown-lat-projection` (`:496`), `error-unknown-spectral-algorithm` (`:539`): each gives AST__BDFTS.
-- `tab-missing-axis` (`:879-929`): a 3-D COORDS column with only PV1_3 gives AST__BADTAB.
-
-Partial:
-
-- `error-duplicate-lon` (`:403`): the Rust case pairs RA with GLON, C pairs RA with RA.
-- `badkeyname-nonprint` (`:489`): the non-printing-character branch.
-- `aips-reject-pixel-shear` (`:353`): a non-celestial CD shear, which takes a different path from the celestial one tested.
-
-No Rust equivalent: bad Encoding and AltAxes strings (AST__BADAT), and setting or clearing the read-only Ncard and AllWarnings (AST__NOWRT).
 
 ### `testchebymap.c`
 

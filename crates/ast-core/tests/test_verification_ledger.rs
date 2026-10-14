@@ -49,6 +49,22 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
          diagnosed -TAB write difference has a home",
     ),
     (
+        "test_fitschan_errors.rs",
+        "FITSCHAN_ERRORS_EXCLUDED",
+        3,
+        "testfitschanerrors.c cases whose check is C's string attribute \
+         interface: an unknown Encoding or AltAxes name, and setting the \
+         read-only Ncard; typed accessors cannot express them",
+    ),
+    (
+        "test_fitschan_errors.rs",
+        "FITSCHAN_ERRORS_GAP_EXCLUDED",
+        1,
+        "error-bad-radesys: C's WcsFcRead fills the FitsStore card by card, so \
+         the last of duplicate keywords wins; the port's keyword lookups take \
+         the first. port_gap_cases_still_differ fails when it closes",
+    ),
+    (
         "test_fitschan_tab_read_oracle.rs",
         "TAB_READ_EXCLUDED",
         0,
