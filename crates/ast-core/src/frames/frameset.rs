@@ -762,11 +762,19 @@ impl FrameSet {
     ///
     /// Uses BFS to find the shortest path from `from` to `to` in the
     /// undirected frame graph, then composes the edge mappings along that
-    /// path.
+    /// path. As C's `Span` does (frameset.c:10263), a Frame on the path that
+    /// is not equivalent to a UnitMap (`is_unit_frame`), such as a Region, is
+    /// included as a Mapping at its node, the two end Frames among them, so
+    /// the result clips to any Region it passes through. For two equal
+    /// Frames the result is that Frame's Mapping, a UnitMap unless it is
+    /// such a Frame (frameset.c:5436-5450).
     pub fn mapping(&self, from: FrameRef, to: FrameRef) -> AstResult<DynMapping> {
         let from_idx = self.resolve(from)?;
         let to_idx = self.resolve(to)?;
         if from_idx == to_idx {
+            if let Some(map) = self.frame_mapping(self.node_map[from_idx]) {
+                return Ok(map);
+            }
             let naxes = self.frames[from_idx].naxes();
             return Ok(Box::new(UnitMap::new(naxes)));
         }
@@ -774,6 +782,20 @@ impl FrameSet {
         let to_node = self.node_map[to_idx];
         let path = self.find_path(from_node, to_node)?;
         self.compose_path(&path)
+    }
+
+    /// The Mapping the Frame at `node` contributes to a path through it, if
+    /// it is not equivalent to a UnitMap (frameset.c `Span`). Only a Region
+    /// is such a Frame here, and a Region is its own Mapping.
+    fn frame_mapping(&self, node: usize) -> Option<DynMapping> {
+        let idx = self.node_map.iter().position(|&n| n == node)?;
+        let frame = self.frames[idx].as_ref();
+        if frame.is_unit_frame() {
+            return None;
+        }
+        let region = crate::regions::any_as_region(frame.as_any())
+            .expect("a Frame that is not a unit Frame is a Region");
+        Some(region.clone_box())
     }
 
     // ------------------------------------------------------------------ //
@@ -1202,9 +1224,19 @@ impl FrameSet {
     fn compose_path(&self, path: &[usize]) -> AstResult<DynMapping> {
         debug_assert!(path.len() >= 2);
 
-        let mut result = self.edge_mapping(path[0], path[1])?;
-        for pair in path.windows(2).skip(1) {
-            let next = self.edge_mapping(pair[0], pair[1])?;
+        // C's `Span` lists, for each node, its Frame's Mapping (when the Frame
+        // is not a unit Frame) and then the edge to the next node, ending
+        // with the last node's Frame; `GetMapping` joins them in series in
+        // that order.
+        let mut steps: Vec<DynMapping> = Vec::new();
+        for pair in path.windows(2) {
+            steps.extend(self.frame_mapping(pair[0]));
+            steps.push(self.edge_mapping(pair[0], pair[1])?);
+        }
+        steps.extend(self.frame_mapping(path[path.len() - 1]));
+        let mut steps = steps.into_iter();
+        let mut result = steps.next().expect("a path has at least one edge");
+        for next in steps {
             result = Box::new(CmpMap::new(result, next, Composition::Series)?);
         }
         Ok(result)
@@ -1857,8 +1889,10 @@ pub(crate) fn frameset_convert_x(
                     None => from.snapshot(),
                 };
 
-                // Per-pair alignment between the two selected member frames.
-                let Some(cvt) = crate::frames::find_frame::convert_frames(
+                // Per-pair alignment between the two selected member frames,
+                // through C's virtual `astConvert`, so a Region member takes
+                // part as its Frame (frameset.c:3410).
+                let Some(cvt) = crate::frames::find_frame::convert_frames_or_regions(
                     from_member.as_ref(),
                     to_member.as_ref(),
                     domain,

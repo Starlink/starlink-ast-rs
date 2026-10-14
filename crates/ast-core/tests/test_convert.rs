@@ -207,3 +207,35 @@ fn convert_constant_numerator_units() {
         );
     }
 }
+
+/// Converting between two Regions gives a Mapping between their Frames that
+/// does not clip, as region.c's `Convert` and `ConvertX` replace each Region
+/// by its Frame: the centre of a Galactic Circle well outside an ICRS Circle
+/// still converts. The value is what the C library gives for the same pair.
+#[test]
+fn convert_between_regions_does_not_clip() {
+    use ast_core::regions::CircleBuilder;
+    let par = CircleBuilder::new(SkyFrame::new(SkySystem::Icrs), vec![1.0, 0.5])
+        .unwrap()
+        .radius(0.01)
+        .build()
+        .unwrap();
+    let err = CircleBuilder::new(SkyFrame::new(SkySystem::Galactic), vec![2.0, -0.3])
+        .unwrap()
+        .radius(0.0001)
+        .build()
+        .unwrap();
+    let fs = err
+        .convert_to(&par, &[])
+        .unwrap()
+        .expect("the Circles convert");
+    let map = fs.mapping(FrameRef::Base, FrameRef::Current).unwrap();
+    let out = map
+        .transform(&ast_core::coords::PointSet::from_rows([[2.0, -0.3]]), true)
+        .unwrap();
+    let p = out.point(0);
+    assert!(
+        (p[0] - 0.0273624).abs() < 1e-6 && (p[1] - 0.784531).abs() < 1e-6,
+        "{p:?}"
+    );
+}

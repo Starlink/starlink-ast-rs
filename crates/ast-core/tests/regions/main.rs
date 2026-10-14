@@ -98,3 +98,5 @@ mod test_region_showmesh_oracle;
 mod test_region_stc_oracle;
 #[path = "../test_regions.rs"]
 mod test_regions;
+#[path = "../test_regions_c.rs"]
+mod test_regions_c;

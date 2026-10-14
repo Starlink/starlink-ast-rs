@@ -109,6 +109,29 @@ pub(crate) fn integrity_mapping(
     }
 }
 
+/// C's `astConvert` between two Frames, neither a FrameSet: region.c
+/// overrides `Convert` and `ConvertX`, so when either Frame is a Region both
+/// are replaced by their own current Frames (a Region by the current Frame of
+/// its FrameSet) before the generic driver runs (region.c:2470-2570). The
+/// conversion is then between Frames, and its Mapping does not clip.
+pub(crate) fn convert_frames_or_regions(
+    from: &dyn Frame,
+    to: &dyn Frame,
+    domainlist: &str,
+) -> AstResult<Option<FrameSet>> {
+    let region_frame =
+        |f: &dyn Frame| crate::regions::any_as_region(f.as_any()).map(|r| r.get_region_frame());
+    let (from_frame, to_frame) = (region_frame(from), region_frame(to));
+    if from_frame.is_none() && to_frame.is_none() {
+        return convert_frames(from, to, domainlist);
+    }
+    convert_frames(
+        from_frame.as_deref().unwrap_or(from),
+        to_frame.as_deref().unwrap_or(to),
+        domainlist,
+    )
+}
+
 /// Port of C `astConvertX` (frame.c:3028): negotiate a common
 /// coordinate system between `from` and `to`, returning a 2-frame
 /// FrameSet (base = `from`, current = `to`) whose Mapping converts

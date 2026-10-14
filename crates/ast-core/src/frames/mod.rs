@@ -458,8 +458,9 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
             return frameset::frameset_convert_x(to_fs, self.as_dyn_frame(), &domainlist);
         }
         // The Frame itself, not a copy, takes part, as in C: a SkyFrame
-        // keeps the LAST it computes for the conversion.
-        find_frame::convert_frames(self.as_dyn_frame(), to, &domainlist)
+        // keeps the LAST it computes for the conversion. A Region `to` is
+        // replaced by its Frame, as region.c's `ConvertX` replaces it.
+        find_frame::convert_frames_or_regions(self.as_dyn_frame(), to, &domainlist)
     }
 
     /// C `astSimplify` applied to a Frame — the Mapping `Simplify` slot every
