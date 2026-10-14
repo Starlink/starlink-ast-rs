@@ -1191,3 +1191,159 @@ fn region_gaps_still_differ() {
         );
     }
 }
+
+/// `checkPolygon`: an open sky Polygon, then closed, then negated and open,
+/// against the same five points; whether it needs a FrameSet before and
+/// after a change of system and after simplification; and a Polygon round
+/// the pole (containing it), its bounds and disc, and a Prism made from it.
+#[test]
+fn check_polygon() {
+    use ast_core::AnyObject;
+    use ast_core::frames::{Frame, SpecFrame};
+    use ast_core::regions::{CircleBuilder, IntervalBuilder, Polygon, PrismBuilder};
+    use std::f64::consts::PI;
+
+    let unc = || {
+        CircleBuilder::new(SkyFrame::unset_system(), vec![0.0, 0.5 * PI])
+            .unwrap()
+            .radius(0.01)
+            .build()
+            .unwrap()
+    };
+    let polygon = |v: &[[f64; 2]]| -> Polygon {
+        PolygonBuilder::new(
+            SkyFrame::unset_system(),
+            v.iter().map(|p| p.to_vec()).collect(),
+        )
+        .unwrap()
+        .uncertainty(Box::new(unc()))
+        .build()
+        .unwrap()
+    };
+    let tran = |m: &dyn Mapping, pts: &[[f64; 2]]| -> Vec<[f64; 2]> {
+        let out = m
+            .transform(&PointSet::from_rows(pts.to_vec()), true)
+            .unwrap();
+        (0..pts.len())
+            .map(|i| [out.point(i)[0], out.point(i)[1]])
+            .collect()
+    };
+    let expect =
+        |label: &str, out: &[[f64; 2]], pts: &[[f64; 2]], inside: [bool; 5], first: u32| {
+            for i in 0..5 {
+                let want = if inside[i] { pts[i] } else { [BAD_VALUE; 2] };
+                assert_eq!(out[i], want, "{label}: Poly {}", first + i as u32);
+            }
+        };
+
+    let mut pol1 = polygon(&[
+        [0.0, 0.0],
+        [1.0, 0.5 * PI],
+        [0.5 * PI, 0.25 * PI],
+        [0.25 * PI, 0.0],
+        [0.25 * PI, 0.25 * PI],
+    ]);
+    pol1.set_closed(false);
+    check_dump(&pol1, &AnyObject::Polygon(pol1.clone()), "checkdump pol1");
+    let p = [
+        [0.0, 0.0],
+        [1.0, 0.5 * PI + 0.1],
+        [0.5 * PI - 0.1, 0.25 * PI],
+        [0.0, 0.1],
+        [0.25 * PI, 0.25 * PI + 0.1],
+    ];
+    expect(
+        "open",
+        &tran(&pol1, &p),
+        &p,
+        [false, false, true, false, true],
+        1,
+    );
+    pol1.set_closed(true);
+    expect(
+        "closed",
+        &tran(&pol1, &p),
+        &p,
+        [true, false, true, true, true],
+        6,
+    );
+    pol1.set_negated(true);
+    expect(
+        "negated",
+        &tran(&pol1, &p),
+        &p,
+        [true, true, false, true, false],
+        11,
+    );
+    pol1.set_closed(false);
+    expect(
+        "negated open",
+        &tran(&pol1, &p),
+        &p,
+        [false, true, false, false, false],
+        16,
+    );
+
+    assert!(
+        !has_frameset(&AnyObject::Polygon(pol1.clone())),
+        "pol1 has FrameSet"
+    );
+    pol1.with_integrity(|f| {
+        f.as_any_mut()
+            .downcast_mut::<SkyFrame>()
+            .unwrap()
+            .set_system(SkySystem::Fk5);
+        Ok(())
+    })
+    .unwrap();
+    check_dump(&pol1, &AnyObject::Polygon(pol1.clone()), "checkdump pol2");
+    assert!(
+        has_frameset(&AnyObject::Polygon(pol1.clone())),
+        "pol1 does not have FrameSet"
+    );
+    pol1.set_mesh_size(30);
+    let pol2 = (&pol1 as &dyn Mapping).simplify().unwrap();
+    assert!(
+        !has_frameset(&AnyObject::from_mapping(pol2.as_ref()).unwrap()),
+        "pol2 has FrameSet"
+    );
+
+    // Round the pole, which the Polygon contains.
+    let pol1 = polygon(&[
+        [1.5 * PI, 0.4 * PI],
+        [PI, 0.4 * PI],
+        [0.5 * PI, 0.4 * PI],
+        [0.0, 0.4 * PI],
+    ]);
+    assert_eq!(
+        tran(&pol1, &[[0.0, 0.5 * PI]])[0],
+        [0.0, 0.5 * PI],
+        "Poly 21-22"
+    );
+    let near = |a: f64, b: f64, t: f64| (a - b).abs() <= t;
+    let bounds_ok = |lb: &[f64], ub: &[f64], first: u32| {
+        assert!(lb[0].abs() <= 1e-10, "Poly {first}: {lb:?}");
+        assert!(near(lb[1], 1.25663708, 1e-6), "Poly {}: {lb:?}", first + 1);
+        assert!(near(ub[0], 6.28318531, 1e-6), "Poly {}: {ub:?}", first + 2);
+        assert!(near(ub[1], 1.57079633, 1e-6), "Poly {}: {ub:?}", first + 3);
+    };
+    let (lb, ub) = pol1.get_region_bounds().unwrap();
+    bounds_ok(&lb, &ub, 23);
+    let (centre, radius) = pol1.get_region_disc().unwrap();
+    assert!(near(centre[1], 0.5 * PI, 1e-6), "Poly 26A: {centre:?}");
+    assert!(near(radius, 0.1 * PI, 1e-6), "Poly 26B: {radius}");
+
+    let mut f2 = SpecFrame::unset_system();
+    f2.set_unit(1, "Angstrom").unwrap();
+    let r2 = IntervalBuilder::new(f2, vec![5000.0], vec![6000.0])
+        .unwrap()
+        .build()
+        .unwrap();
+    let r3 = PrismBuilder::new(pol1, r2).unwrap().build().unwrap();
+    let r4 = (&r3 as &dyn Mapping).simplify().unwrap();
+    let r4 = AnyObject::from_mapping(r4.as_ref()).unwrap();
+    let (lb, ub) = r4.as_region().unwrap().get_region_bounds().unwrap();
+    bounds_ok(&lb, &ub, 27);
+    assert!(near(lb[2], 5000.0, 1e-10), "Poly 31: {lb:?}");
+    assert!(near(ub[2], 6000.0, 1e-6), "Poly 32: {ub:?}");
+}
