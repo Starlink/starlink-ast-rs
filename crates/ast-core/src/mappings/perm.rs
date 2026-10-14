@@ -902,7 +902,7 @@ impl Mapping for PermMap {
             }
 
             // Result = A * P (MatrixMap applied after PermMap).
-            let product = a.dot(&perm_mat);
+            let product = super::matrix::mtr_product(&a, &perm_mat);
             if super::matrix::is_identity_matrix_pub(&product) {
                 return Some(Box::new(UnitMap::new(product.nrows())));
             }

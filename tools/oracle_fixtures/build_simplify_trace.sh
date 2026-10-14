@@ -116,7 +116,10 @@ cp "$(dirname "$0")/gen_simp.c" "$DEST/gen_simp.c"
 
 YAML=$(ls -d /opt/homebrew/opt/libyaml/lib /usr/local/opt/libyaml/lib 2>/dev/null | head -1)
 GRF="-last_err -last_grf_2.0 -last_grf_3.2 -last_grf_5.6 -last_grf3d"
-cc "$DEST/gen_simp.c" -o "$DEST/gen_simp" -I "$DEST/build" -L "$DEST/build" \
+# gen_simp registers the corpus's IntraMap functions through the upstream
+# helper, as the Makefile's gen_simp rule links it.
+cc "$DEST/gen_simp.c" "$DEST/ast_tester/transform_oracle_util.c" -o "$DEST/gen_simp" \
+   -I "$DEST/build" -I "$DEST/ast_tester" -L "$DEST/build" \
    ${YAML:+-L "$YAML"} -Wl,-rpath,"$DEST/build" ${YAML:+-Wl,-rpath,"$YAML"} \
    -last $GRF -lyaml -lm
 echo "built $DEST/gen_simp against the tracing libast"

@@ -334,24 +334,7 @@ impl MatrixMap {
                     }
                 }
             }
-            MatrixForm::Full => {
-                for row in 0..nrow_a {
-                    for col in 0..ncol_this {
-                        let mut sum = 0.0;
-                        let mut bad = false;
-                        for i in 0..ncol_a {
-                            let av = a_matrix[[row, i]];
-                            let tv = this_matrix[[i, col]];
-                            if is_bad(av) || is_bad(tv) {
-                                bad = true;
-                                break;
-                            }
-                            sum += av * tv;
-                        }
-                        product[[row, col]] = if bad { BAD_VALUE } else { sum };
-                    }
-                }
-            }
+            MatrixForm::Full => product = mtr_product(&a_matrix, &this_matrix),
         }
 
         MatrixMap::new(product)
@@ -807,7 +790,17 @@ impl Mapping for MatrixMap {
                 return None;
             }
 
-            let product = b.dot(&a);
+            // C's MatMat: `astMtrMult` of the two in the direction each is
+            // applied, self first.
+            let mut first = self.clone();
+            if self_inv {
+                first.invert();
+            }
+            let mut second = other_mat.clone();
+            if other_inv {
+                second.invert();
+            }
+            let product = first.mtr_mult(&second).ok()?.forward_matrix().clone();
 
             return if is_identity_matrix(&product) {
                 Some(Box::new(UnitMap::new(product.nrows())))
@@ -891,7 +884,7 @@ impl Mapping for MatrixMap {
             }
 
             // Result = P * A (PermMap applied after MatrixMap).
-            let product = perm_mat.dot(&a);
+            let product = mtr_product(&perm_mat, &a);
             if is_identity_matrix(&product) {
                 return Some(Box::new(UnitMap::new(product.nrows())));
             }
@@ -1494,6 +1487,33 @@ fn compress_matrix(m: &mut Array2<f64>, form: &mut MatrixForm) -> bool {
             new_inv
         }
     }
+}
+
+/// The product `a · this` of two full matrices, formed as C's `MtrMult`
+/// forms it for a full `a` (matrixmap.c `MtrMult`): each element a sum
+/// accumulated from zero in column order, and bad wherever a term has a bad
+/// factor. The summation order is what keeps the last digits C's, so a
+/// product C forms through `astMtrMult` is formed here rather than by a
+/// library matrix product.
+pub(crate) fn mtr_product(a: &Array2<f64>, this: &Array2<f64>) -> Array2<f64> {
+    let mut product = Array2::<f64>::zeros((a.nrows(), this.ncols()));
+    for row in 0..a.nrows() {
+        for col in 0..this.ncols() {
+            let mut sum = 0.0;
+            let mut bad = false;
+            for i in 0..a.ncols() {
+                let av = a[[row, i]];
+                let tv = this[[i, col]];
+                if is_bad(av) || is_bad(tv) {
+                    bad = true;
+                    break;
+                }
+                sum += av * tv;
+            }
+            product[[row, col]] = if bad { BAD_VALUE } else { sum };
+        }
+    }
+    product
 }
 
 /// Run [`compress_matrix`] over a full-form matrix held outside a `MatrixMap`,

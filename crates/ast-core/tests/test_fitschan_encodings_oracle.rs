@@ -110,22 +110,7 @@ fn excluded(name: &str, enc: &str) -> bool {
 /// their values set aside: every card name, the card order, every comment
 /// and every other value are still compared byte for byte.
 /// `licensed_values_still_differ` fails when one starts to match.
-const VALUES_LICENSED: &[(&str, &str, &[&str], &str)] = &[
-    (
-        "tan_offset_origin",
-        "FITS-WCS",
-        &["CRVAL1", "CRVAL2", "PC1_2"],
-        "the offset SkyFrame's rotation, made by FrameSet integrity when SkyRefIs is set, \
-         differs from C's in its last digits (PLAN.md section 5)",
-    ),
-    (
-        "tan_offset_pole",
-        "FITS-WCS",
-        &["CRVAL2", "PC1_1", "PC1_2", "PC2_1", "PC2_2"],
-        "the offset SkyFrame's rotation, made by FrameSet integrity when SkyRefIs is set, \
-         differs from C's in its last digits (PLAN.md section 5)",
-    ),
-];
+const VALUES_LICENSED: &[(&str, &str, &[&str], &str)] = &[];
 
 /// `cards` with the value of each card whose keyword is in `keywords`
 /// replaced by a marker, keeping its keyword and comment.

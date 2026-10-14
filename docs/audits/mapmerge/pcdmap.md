@@ -153,7 +153,7 @@ C's `astGetClass( smc0 ) == astGetClass( mc[0] )` compares — C interns class
 names, so that is a pointer comparison of identities, not a string compare.
 
 This is the same rule `MatrixMap` and `WinMap` apply in their own swap halves
-(`matrix_merge.rs:906-941 (fn try_speculative_swap)`, `winmap_merge.rs:756-797 (fn try_speculative_swap)`), and
+(`matrix_merge.rs:909-944 (fn try_speculative_swap)`, `winmap_merge.rs:756-797 (fn try_speculative_swap)`), and
 PcdMap now shares their shape rather than declining the case.
 
 ## Row 27 and row 34 — the swap arithmetic forms the factor the list applies

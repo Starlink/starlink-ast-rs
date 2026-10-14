@@ -207,21 +207,24 @@ fn merge_matrix_pair(
         (map2.as_any().downcast_ref::<MatrixMap>()?, inv2, map1, inv1)
     };
 
-    // MatMat (matrixmap.c:2525): result forward = B·A, where A is applied
-    // first. mtr order follows the list order (map1 first, map2 second).
-    if let Some(other_mm) = other.as_any().downcast_ref::<MatrixMap>() {
-        let a = eff_matrix(map1.as_any().downcast_ref::<MatrixMap>()?, inv1)?;
-        let b = eff_matrix(map2.as_any().downcast_ref::<MatrixMap>()?, inv2)?;
-        let _ = other_mm;
-        if b.ncols() != a.nrows() {
+    // MatMat (matrixmap.c MatMat): `astMtrMult` of the two MatrixMaps, each
+    // in the direction it is applied, map1 first. `mtr_mult` forms the
+    // product as C's `MtrMult` does, element by element in C's order, which
+    // is what keeps the last digits C's.
+    if other.as_any().is::<MatrixMap>() {
+        let mut first = map1.as_any().downcast_ref::<MatrixMap>()?.clone();
+        if inv1 {
+            first.invert();
+        }
+        let mut second = map2.as_any().downcast_ref::<MatrixMap>()?.clone();
+        if inv2 {
+            second.invert();
+        }
+        if second.nin() != first.nout() {
             return None;
         }
-        let product = b.dot(&a);
-        // C `astMtrMult` builds the product as a FULL matrix and hands it to
-        // `astInitMatrixMap` (matrixmap.c:3760), which compresses it — zeroing
-        // the near-zero off-diagonal residue. `MatrixMap::new` does the same,
-        // so the product needs no separate compression pass here.
-        return mat_or_unit(product);
+        let product = first.mtr_mult(&second).ok()?;
+        return mat_or_unit(product.forward_matrix().clone());
     }
 
     // MatZoom (matrixmap.c MatZoom): the product of the MatrixMap, in the
@@ -364,12 +367,12 @@ fn mat_perm(
         if p.ncols() != m.nrows() {
             return None;
         }
-        p.dot(&m)
+        super::matrix::mtr_product(&p, &m)
     } else {
         if m.ncols() != p.nrows() {
             return None;
         }
-        m.dot(&p)
+        super::matrix::mtr_product(&m, &p)
     };
     mat_or_unit(product)
 }
