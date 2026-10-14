@@ -32,7 +32,7 @@ A C check counts as covered when a Rust test, or an oracle case replaying C, exe
 | `testunitnormmap.c` | mostly covered |
 | `testzoommap.c` | ported, apart from the `AST__IMMUT` checks, which belong to `ast-capi` |
 | `testmapping.c` | ported, apart from a no-op `Invert` set, which a toggling `invert()` cannot express |
-| `testregions.c` | 18 of 30 functions covered, 11 partial, 1 missing; two functions never run in C |
+| `testregions.c` | 29 of 30 functions covered; `checkBox`, the largest, remains, and `checkEllipse` Errors 15-17 are a recorded gap |
 | `testregionmasking.c` | ported (`test_region_masking.rs`) |
 | `testfitschanerrors.c` | ported (`test_fitschan_errors.rs`); one case exposes a duplicate-keyword gap in the reader |
 | `testswitchmap.c` | ported; exposed and fixed a SwitchMap cancellation gap |
@@ -61,18 +61,8 @@ A C check counts as covered when a Rust test, or an oracle case replaying C, exe
 
 ### `testregions.c`
 
-- `checkPolygonMaskLargeLobe` (`:3210-3302`), missing: an ICRS Polygon wound so its interior is the large lobe, masked over a 21×21 grid, sets all 441 pixels.
-- `checkInterval` (`:168-666`): InternalUnit on a SkyFrame + SpecFrame(Angstrom) CmpFrame; 3-D CmpFrame Intervals with BAD, reversed and one-sided limits, closed and negated; overlap codes 1-10 for half-unbounded Intervals; MapRegion through PermMaps with constants giving an Interval or NullRegion.
-- `checkPolygon` (`:667-800`): a sky Polygon closed, open and negated; whether a FrameSet is held before and after System=FK5 and after simplify; a polar Polygon's bounds, disc, and a Prism with an Interval keeping them after simplify.
-- `checkCircle` (`:2049-2345`): disc AA5-7, mesh counts 200 and 201 and mesh distances, Galactic simplify with and without a FrameSet, overlaps 10-16 on C's circles, pole bounds 16a-d, a different-Domain overlap, and a 4-D CmpFrame self-overlap.
-- `checkEllipse` (`:2346-2603`): an Ellipse in a permuted FK4 + wavelength CmpFrame, FITS TAN pole bounds, membership on both axes, overlaps 5-14, a MatrixMap round trip, and RA-wrap overlaps 20-22.
-- `checkPrism` (`:2869-2957`): an FK5 Box × SpecFrame Interval simplifying to a Box, overlap with a negated copy, Closed=0 overlaps, half-open wavelength Intervals in Galactic and frequency, and pole Box bounds.
-- `checkCmpRegion` (`:2682-2834`): an FK5 Box with a Galactic Circle under AND and OR, its disc, overlap through `astConvert` and MapRegion, and A OR ¬A and A AND ¬A simplifying to a negated and a plain NullRegion.
-- `checkNullRegion` (`:2604-2681`): FK4 to ICRS simplify without a FrameSet; `astMask8D` on a negated NullRegion (no change) and a plain one (25 pixels set BAD).
-- `checkPointList` (`:1940-2048`): a SpecFrame PointList overlapping itself (5) and its negation (6); MapRegion through y=x² and simplify; `astMaskI` through a WinMap.
-- `checkRemoveRegions` (`:2958-3015`): tests 4-9, `astConvert` to a Region giving a clipping FrameSet that `remove_regions` then unclips.
-- `checkBoxTransformAfterBounds` (`:3174-3192`): the bounds of a zero-width Box stay at 5, and are taken before the transform.
-- `checkBox` (`:801-1505`): never run in C (see above); generic analogues exist, but none of its sky, MapRegion, mask or mesh-count checks.
+- `checkBox` (`:801-1505`): not yet ported; it runs in C only since `f111c05c`. Generic analogues exist in `test_regions.rs` and `test_box_region.rs`, but not its sky, MapRegion, mask or mesh-count checks.
+- `checkEllipse` Errors 15-17: a recorded gap, `REGIONS_C_GAP_EXCLUDED` in `test_regions_c.rs`.
 
 ### `testchebymap.c`
 

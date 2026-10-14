@@ -329,6 +329,18 @@ impl Frame for CmpFrame {
         }
     }
 
+    /// frame.c `GetInternalUnit` takes the InternalUnit of the Axis, and a
+    /// CmpFrame's Axis is its component's (cmpframe.c `GetAxis`), so the
+    /// component holding the axis answers: a SkyFrame axis is in radians
+    /// whatever its Unit.
+    fn internal_unit(&self, axis: usize) -> String {
+        match self.component_axis(axis) {
+            Some((1, a)) => self.frame1.internal_unit(a),
+            Some((_, a)) => self.frame2.internal_unit(a),
+            None => self.unit(axis).unwrap_or_default(),
+        }
+    }
+
     fn apply_axis_overlay(&mut self, axis: usize, source: &super::overlay::AxisOverlaySource) {
         match self.component_axis(axis) {
             Some((1, a)) => self.frame1.apply_axis_overlay(a, source),

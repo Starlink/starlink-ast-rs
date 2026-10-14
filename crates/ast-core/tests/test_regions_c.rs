@@ -1347,3 +1347,235 @@ fn check_polygon() {
     assert!(near(lb[2], 5000.0, 1e-10), "Poly 31: {lb:?}");
     assert!(near(ub[2], 6000.0, 1e-6), "Poly 32: {ub:?}");
 }
+
+/// `checkInterval`: InternalUnit of a SkyFrame, a SpecFrame and their
+/// CmpFrame; 3-D Intervals with BAD limits (one-sided, reversed so that they
+/// exclude a range, and with a single finite axis), each closed, negated and
+/// open; overlaps of half-unbounded Intervals; and mapping Intervals through
+/// PermMaps that add or drop axes, giving Intervals or NullRegions. The
+/// inside/outside patterns are C's checks, transcribed by test block.
+#[test]
+fn check_interval() {
+    use ast_core::AnyObject;
+    use ast_core::frames::{CmpFrame, Frame, SpecFrame};
+    use ast_core::mappings::PermMap;
+    use ast_core::regions::{Interval, IntervalBuilder, NullRegion};
+
+    let frm1 = SkyFrame::unset_system();
+    let mut frm2 = SpecFrame::unset_system();
+    frm2.set_unit(1, "Angstrom").unwrap();
+    let frm3 = CmpFrame::new(Box::new(frm1.clone()), Box::new(frm2.clone()));
+    assert_eq!(frm1.internal_unit(1), "rad", "InternalUnit 1");
+    assert_eq!(frm1.internal_unit(2), "rad", "InternalUnit 2");
+    assert_eq!(frm2.internal_unit(1), "Angstrom", "InternalUnit 3");
+    assert_eq!(frm3.internal_unit(1), "rad", "InternalUnit 4");
+    assert_eq!(frm3.internal_unit(2), "rad", "InternalUnit 5");
+    assert_eq!(frm3.internal_unit(3), "Angstrom", "InternalUnit 6");
+
+    const B: f64 = BAD_VALUE;
+    let interval = |f: &CmpFrame, lb: &[f64], ub: &[f64]| -> Interval {
+        IntervalBuilder::new(f.clone(), lb.to_vec(), ub.to_vec())
+            .unwrap()
+            .build()
+            .unwrap()
+    };
+    let tran = |m: &dyn Mapping, pts: &[Vec<f64>]| -> Vec<Vec<f64>> {
+        let out = m
+            .transform(&PointSet::from_rows(pts.to_vec()), true)
+            .unwrap();
+        (0..pts.len()).map(|i| out.point(i).to_vec()).collect()
+    };
+    let expect = |m: &dyn Mapping, pts: &[Vec<f64>], inside: &[u8], label: &str| {
+        let out = tran(m, pts);
+        for (i, &keep) in inside.iter().enumerate() {
+            if keep == 1 {
+                assert_eq!(out[i], pts[i], "{label}: point {} kept", i + 1);
+            } else {
+                assert!(
+                    out[i].iter().all(|&v| v == BAD_VALUE),
+                    "{label}: point {} BAD",
+                    i + 1
+                );
+            }
+        }
+    };
+    // Closed, negated, open and negated-open, in C's order for each Interval.
+    let four_states = |reg: &mut Interval,
+                       pts: &[Vec<f64>],
+                       patterns: [[u8; 5]; 4],
+                       label: &str,
+                       start_negated: bool| {
+        let states = [(true, false), (true, true), (false, false), (false, true)];
+        for (k, &(closed, negated)) in states.iter().enumerate() {
+            reg.set_closed(closed);
+            reg.set_negated(negated != start_negated);
+            expect(reg, pts, &patterns[k], &format!("{label} {}", 1 + 5 * k));
+        }
+    };
+    let p1: Vec<Vec<f64>> = vec![
+        vec![0.0, 0.0, 5000.0],
+        vec![2.0, -1.0, 6000.0],
+        vec![-2.0, 1.0, 5999.0],
+        vec![2.0, -2.0, 6010.0],
+        vec![1.0, -1.0, 4910.0],
+    ];
+    let pats = [
+        [1, 1, 1, 0, 0],
+        [1, 1, 0, 1, 1],
+        [0, 0, 1, 0, 0],
+        [0, 0, 0, 1, 1],
+    ];
+
+    let mut int1 = interval(&frm3, &[B, B, 5000.0], &[B, B, 6000.0]);
+    check_dump(&int1, &AnyObject::Interval(int1.clone()), "checkdump int1");
+    expect(&int1, &p1, &pats[0], "Interval 1");
+    assert!(int1.point_in_region(&p1[0]).unwrap(), "Interval 5d");
+    assert!(!int1.point_in_region(&p1[4]).unwrap(), "Interval 5e");
+    four_states(&mut int1, &p1, pats, "Interval", false);
+
+    // Reversed limits: the Interval excludes 5000-6000, so it is negated
+    // first to give the same patterns.
+    let mut int2 = interval(&frm3, &[B, B, 6000.0], &[B, B, 5000.0]);
+    check_dump(&int2, &AnyObject::Interval(int2.clone()), "checkdump int2");
+    four_states(&mut int2, &p1, pats, "Interval B", true);
+
+    let p3: Vec<Vec<f64>> = vec![
+        vec![0.0, 0.0, 5000.0],
+        vec![0.5, -1.0, 6000.0],
+        vec![-2.0, 0.4, 5999.0],
+        vec![2.0, -2.0, 6010.0],
+        vec![0.0, -3.0, 4910.0],
+    ];
+    let mut int3 = interval(&frm3, &[B, B, 5000.0], &[0.5, B, B]);
+    check_dump(&int3, &AnyObject::Interval(int3.clone()), "checkdump int3");
+    four_states(&mut int3, &p3, pats, "Interval C", false);
+
+    // Overlaps of half-unbounded Intervals.
+    int3.set_closed(true);
+    int3.set_negated(false);
+    let mut int4 = interval(&frm3, &[B, 0.0, B], &[B, -1.0, 6000.0]);
+    let seq = |a: &mut Interval, b: &mut Interval, steps: &[(char, i32)], first: u32| {
+        for (k, &(which, want)) in steps.iter().enumerate() {
+            match which {
+                'a' => a.negate(),
+                'b' => b.negate(),
+                _ => {}
+            }
+            assert_eq!(overlap(a, b), want, "Interval overlap {}", first + k as u32);
+        }
+    };
+    seq(
+        &mut int3,
+        &mut int4,
+        &[('-', 4), ('a', 4), ('b', 4), ('a', 4)],
+        1,
+    );
+    let mut int4 = interval(&frm3, &[0.6, 0.0, B], &[B, -1.0, 6000.0]);
+    seq(
+        &mut int3,
+        &mut int4,
+        &[('-', 1), ('a', 3), ('b', 4), ('a', 2)],
+        5,
+    );
+    let mut int4 = int3.clone();
+    seq(&mut int3, &mut int4, &[('-', 5), ('b', 6)], 9);
+
+    // Through PermMaps that add an axis.
+    let mut fa = frame2();
+    Frame::set_domain(&mut fa, "A").unwrap();
+    let unc = BoxRegionBuilder::new(fa.clone(), vec![0.0, 0.0], vec![0.01, 0.01])
+        .unwrap()
+        .build()
+        .unwrap();
+    let mut int1 = IntervalBuilder::new(fa, vec![-2.0, 0.5], vec![0.0, B])
+        .unwrap()
+        .uncertainty(Box::new(unc))
+        .build()
+        .unwrap();
+    let mut fb = BasicFrameBuilder::new(3).build().unwrap();
+    Frame::set_domain(&mut fb, "B").unwrap();
+    let mapped = |reg: &dyn Region,
+                  pm: &PermMap,
+                  f: &dyn Frame,
+                  first: u32|
+     -> ast_core::regions::DynRegion {
+        let r = reg.map_region(pm, f).unwrap();
+        assert!(r.as_any().is::<Interval>(), "Int: perm check {first}");
+        assert!(
+            !has_frameset(&AnyObject::from_mapping(r.as_ref()).unwrap()),
+            "Int: perm check {}",
+            first + 1
+        );
+        assert_eq!(r.naxes(), f.naxes(), "Int: perm check {}", first + 2);
+        r
+    };
+    let pm0 = PermMap::new(&[3, 1], &[2, -1, 1], &[0.0; 6]).unwrap();
+    let reg = mapped(&int1, &pm0, &fb, 1);
+    let pts = vec![
+        vec![0.0, 0.0, -0.5],
+        vec![20.0, 0.0, -0.5],
+        vec![20.0, -10.0, 0.5],
+        vec![20.0, 0.0, -2.0],
+    ];
+    expect(reg.as_ref(), &pts, &[0, 1, 0, 1], "Int: pc 1-12");
+    let pm15 = PermMap::new(&[3, 1], &[2, -1, 1], &[1.5; 6]).unwrap();
+    let reg = mapped(&int1, &pm15, &fb, 4);
+    let pts = vec![
+        vec![20.0, 0.0, -0.5],
+        vec![20.0, 1.5, -0.5],
+        vec![20.0, 1.6, -0.5],
+        vec![0.5, 1.5, 0.0],
+    ];
+    expect(reg.as_ref(), &pts, &[0, 1, 0, 1], "Int: pc 13-24");
+    int1.negate();
+    int1.set_closed(false);
+    let reg = mapped(&int1, &pm15, &fb, 7);
+    expect(reg.as_ref(), &pts, &[1, 0, 1, 0], "Int: pc 25-36");
+
+    // Through PermMaps that drop an axis.
+    let mut fa3 = BasicFrameBuilder::new(3).build().unwrap();
+    Frame::set_domain(&mut fa3, "A").unwrap();
+    let unc = BoxRegionBuilder::new(fa3.clone(), vec![0.0; 3], vec![0.01; 3])
+        .unwrap()
+        .build()
+        .unwrap();
+    let mut int1 = IntervalBuilder::new(fa3, vec![0.5, -1.0, -2.0], vec![B, B, 0.0])
+        .unwrap()
+        .uncertainty(Box::new(unc))
+        .build()
+        .unwrap();
+    let mut fb2 = frame2();
+    Frame::set_domain(&mut fb2, "B").unwrap();
+    let pm = PermMap::new(&[1, -1, 2], &[1, 3], &[1.0; 6]).unwrap();
+    let reg = mapped(&int1, &pm, &fb2, 10);
+    let pts: Vec<Vec<f64>> = [
+        [0.4, -1.0],
+        [1.0, 0.1],
+        [1.0, -2.1],
+        [0.5, -1.0],
+        [10.0, -0.1],
+        [0.55, -2.0],
+    ]
+    .iter()
+    .map(|p| p.to_vec())
+    .collect();
+    expect(reg.as_ref(), &pts, &[0, 0, 0, 1, 1, 1], "Int: pc 37-48");
+    let pm = PermMap::new(&[1, -1, 2], &[1, 3], &[-2.0; 6]).unwrap();
+    for (negate, first) in [(false, 13), (true, 17)] {
+        if negate {
+            int1.negate();
+        }
+        let r = int1.map_region(&pm, &fb2).unwrap();
+        let nr = r
+            .as_any()
+            .downcast_ref::<NullRegion>()
+            .unwrap_or_else(|| panic!("Int: perm check {first}"));
+        assert!(
+            !has_frameset(&AnyObject::NullRegion(nr.clone())),
+            "Int: perm check {}",
+            first + 1
+        );
+        assert_eq!(nr.naxes(), 2, "Int: perm check {}", first + 2);
+        assert_eq!(nr.is_negated(), negate, "Int: perm check {}", first + 3);
+    }
+}
