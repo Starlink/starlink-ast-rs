@@ -25,7 +25,7 @@ A C check counts as covered when a Rust test, or an oracle case replaying C, exe
 | `testchannel.c` | partial |
 | `testcmpmap.c` | partial |
 | `testlutmap.c` | ported |
-| `testnormmap.c` | partial |
+| `testnormmap.c` | ported |
 | `testrate.c` | ported (`test_rate.rs`) |
 | `testratemap.c` | ported (`test_ratemap.rs`) |
 | `testresimp.c` | partial |
@@ -64,13 +64,6 @@ A C check counts as covered when a Rust test, or an oracle case replaying C, exe
 
 - Err 1-6 (`:45-63`): `map_split` of inputs [3,6,4] of a CmpMap nesting UnitMap, ZoomMap and a diagonal MatrixMap gives Nin=3, Nout=3 and outputs [3,4,6].
 - Err 7-13 (`:66-92`): `splittest1.ast` split on [1] gives no Mapping, and on [1,4,2] a 3-in 3-out Mapping whose transform of (1,8,2) equals outputs 1, 2 and 4 of the full Mapping at (1,2,4,8).
-
-### `testnormmap.c`
-
-- Err 1-4 (`:27-38`): a NormMap on a 3-axis CmpFrame(SpecFrame, SkyFrame) permuted [3,1,2].
-- Err 5 (`:41-44`): that NormMap followed by its inverse simplifies to a UnitMap.
-- Err 6-8 (`:46-53`): (2.0, 3e4, 1.0) transforms to (π−2, 3e4, 1+π) to 1e-6, a latitude past the pole normalized across the permuted CmpFrame.
-- Err 9 (`:56-60`): four copies in nested series CmpMaps simplify to one NormMap.
 
 ### `testobject.c`
 

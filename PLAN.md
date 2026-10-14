@@ -444,7 +444,7 @@ pin.
 | testchannel.c | crates/ast-core/tests/test_channel.rs | partially ported; gaps in [`docs/issues/c-test-coverage-audit.md`](docs/issues/c-test-coverage-audit.md) |
 | testcmpmap.c | crates/ast-core/tests/test_map_split*.rs | partially ported; gaps in [`docs/issues/c-test-coverage-audit.md`](docs/issues/c-test-coverage-audit.md) |
 | testlutmap.c | crates/ast-core/tests/test_lutmap*.rs | ported; Errors 3-12 added 2026-10-14 as `flat_start_and_bad_value_tables` |
-| testnormmap.c | crates/ast-core/tests/test_normmap.rs | partially ported; gaps in [`docs/issues/c-test-coverage-audit.md`](docs/issues/c-test-coverage-audit.md) |
+| testnormmap.c | crates/ast-core/tests/test_normmap.rs | ported; Errors 1-9 added 2026-10-14 as `normmap_on_a_permuted_cmpframe` |
 | testrate.c | crates/ast-core/tests/test_rate.rs | ported 2026-10-14, one test per C block |
 | testratemap.c | crates/ast-core/tests/test_ratemap.rs | ported 2026-10-14 (`rate_maps_of_a_compound_mapping`) |
 | testresimp.c | crates/ast-core/tests/test_allow_simplify.rs, test_simplify_regression.rs | partially ported; gaps in [`docs/issues/c-test-coverage-audit.md`](docs/issues/c-test-coverage-audit.md) |

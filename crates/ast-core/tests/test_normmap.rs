@@ -7,7 +7,9 @@ use std::f64::consts::PI;
 
 use ast_core::constants::BAD_VALUE;
 use ast_core::coords::PointSet;
-use ast_core::frames::{BasicFrameBuilder, SkyFrame, SkySystem};
+use ast_core::frames::{
+    BasicFrameBuilder, CmpFrame, Frame, SkyFrame, SkySystem, SpecFrame, SpecSystem,
+};
 use ast_core::mappings::{CmpMap, Composition, Mapping, NormMap, UnitMap};
 use ast_core::{AnyObject, from_native_string, to_native_string};
 
@@ -259,5 +261,70 @@ fn normmap_multiple_points() {
         (result.point(3)[0] - (2.0 * PI - 0.1)).abs() < 1e-10,
         "got {}",
         result.point(3)[0]
+    );
+}
+
+// ---------------------------------------------------------------------------
+// testnormmap.c: a NormMap on a permuted CmpFrame
+// ---------------------------------------------------------------------------
+
+/// The NormMap testnormmap.c builds: on a CmpFrame of a SpecFrame and a
+/// SkyFrame (C's defaults, wavelength and ICRS), with its axes permuted to
+/// the order 3, 1, 2: sky latitude, wavelength, sky longitude.
+fn permuted_cmpframe_normmap() -> NormMap {
+    let mut f = CmpFrame::new(
+        Box::new(SpecFrame::new(SpecSystem::Wavelen)),
+        Box::new(SkyFrame::new(SkySystem::Icrs)),
+    );
+    f.perm_axes(&[3, 1, 2]).unwrap();
+    NormMap::new(Box::new(f))
+}
+
+/// testnormmap.c Errors 1-9: dimensions, both directions defined,
+/// cancellation against the inverse, normalisation of a latitude past the
+/// pole across the permuted axes, and four copies in series reducing to one.
+#[test]
+fn normmap_on_a_permuted_cmpframe() {
+    let m = permuted_cmpframe_normmap();
+    assert_eq!(m.nin(), 3, "Error 1");
+    assert_eq!(m.nout(), 3, "Error 2");
+    assert!(m.has_forward(), "Error 3");
+    assert!(m.has_inverse(), "Error 4");
+
+    let mut m2 = m.clone();
+    m2.invert();
+    let cmp: ast_core::mappings::DynMapping =
+        Box::new(CmpMap::new(Box::new(m.clone()), Box::new(m2), Composition::Series).unwrap());
+    assert!(
+        cmp.simplify().unwrap().as_ref().as_any().is::<UnitMap>(),
+        "Error 5"
+    );
+
+    // Axis 1 is the sky latitude, 2 the wavelength and 3 the longitude: a
+    // latitude of 2 rad is past the pole, so it folds to pi - 2 and the
+    // longitude moves round by pi.
+    let out = m
+        .transform(&PointSet::from_rows([[2.0, 3.0e4, 1.0]]), true)
+        .unwrap();
+    let bt = out.point(0);
+    assert!((bt[0] - 1.14159265).abs() <= 1.0e-6, "Error 6: {}", bt[0]);
+    assert_eq!(bt[1], 3.0e4, "Error 7");
+    assert!((bt[2] - 4.14159265).abs() <= 1.0e-6, "Error 8: {}", bt[2]);
+
+    let pair = || -> ast_core::mappings::DynMapping {
+        Box::new(
+            CmpMap::new(
+                Box::new(m.clone()),
+                Box::new(m.clone()),
+                Composition::Series,
+            )
+            .unwrap(),
+        )
+    };
+    let four: ast_core::mappings::DynMapping =
+        Box::new(CmpMap::new(pair(), pair(), Composition::Series).unwrap());
+    assert!(
+        four.simplify().unwrap().as_ref().as_any().is::<NormMap>(),
+        "Error 9"
     );
 }
