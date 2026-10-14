@@ -517,3 +517,207 @@ fn check_prism() {
     assert!(near(lb[2], 5000.0, 1e-10), "Prism 20: {lb:?}");
     assert!(near(ub[2], 6000.0, 1e-6), "Prism 21: {ub:?}");
 }
+
+/// `checkCmpRegion`: an FK5 Box combined with a Galactic Circle under AND
+/// and OR, with each negated in turn; the OR's bounding disc; converting
+/// and mapping one CmpRegion onto its negation (overlap 6); A OR ¬A and
+/// A AND ¬A simplifying to a negated and a plain NullRegion; and a Box with
+/// two Circles cut out of it. C negates Regions after composing them and the
+/// later CmpRegions see the change through shared pointers; each CmpRegion
+/// here is built from its components in the state C's have at that point.
+#[test]
+fn check_cmp_region() {
+    use ast_core::AnyObject;
+    use ast_core::frames::{Frame, FrameRef};
+    use ast_core::regions::{
+        BoxRegion, Circle, CircleBuilder, CmpOperator, CmpRegion, CmpRegionBuilder, NullRegion,
+    };
+
+    let cmp = |a: &dyn Region, b: &dyn Region, op: CmpOperator| -> CmpRegion {
+        CmpRegionBuilder::from_dyn(a.clone_region(), b.clone_region(), op)
+            .unwrap()
+            .build()
+            .unwrap()
+    };
+    let tran2 = |m: &dyn Mapping, xs: &[f64; 4], ys: &[f64; 4]| -> Vec<[f64; 2]> {
+        let rows: Vec<[f64; 2]> = (0..4).map(|i| [xs[i], ys[i]]).collect();
+        let out = m.transform(&PointSet::from_rows(rows), true).unwrap();
+        (0..4).map(|i| [out.point(i)[0], out.point(i)[1]]).collect()
+    };
+    // `inside[i]` says whether C expects point i to pass unchanged.
+    let expect =
+        |label: &str, out: &[[f64; 2]], xs: &[f64; 4], ys: &[f64; 4], inside: [bool; 4]| {
+            for i in 0..4 {
+                let want = if inside[i] {
+                    [xs[i], ys[i]]
+                } else {
+                    [BAD_VALUE, BAD_VALUE]
+                };
+                assert_eq!(out[i], want, "CmpRegion: {label} Error {}", i + 1);
+            }
+        };
+
+    let mut r1: BoxRegion = BoxRegionBuilder::new(
+        SkyFrame::new(SkySystem::Fk5),
+        vec![0.0, 0.0],
+        vec![1.0e-4, 1.0e-4],
+    )
+    .unwrap()
+    .build()
+    .unwrap();
+    let mut r2: Circle = CircleBuilder::new(
+        SkyFrame::new(SkySystem::Galactic),
+        vec![1.68166715892457, -1.050436507472],
+    )
+    .unwrap()
+    .edge_point(vec![1.68140254777194, -1.05048840003467])
+    .build()
+    .unwrap();
+    assert_eq!(overlap(&r1, &r2), 4, "CmpRegion: Error 0");
+    let cr = cmp(&r1, &r2, CmpOperator::And).clone();
+    assert_eq!(overlap(&cr, &cr), 5, "CmpRegion: Error 1");
+
+    let xin = [0.5e-4, 1.5e-4, -0.5e-4, 1.1e-4];
+    let yin = [0.5e-4, 1.5e-4, -0.5e-4, -1.1e-4];
+    expect(
+        "AND",
+        &tran2(&cr, &xin, &yin),
+        &xin,
+        &yin,
+        [true, false, false, false],
+    );
+    let cr = cmp(&r1, &r2, CmpOperator::Or);
+    expect(
+        "OR",
+        &tran2(&cr, &xin, &yin),
+        &xin,
+        &yin,
+        [true, true, true, false],
+    );
+    // C's 1e-7 tolerance, relaxed from the Fortran original's for its build.
+    let (centre, radius) = cr.get_region_disc().unwrap();
+    assert!(
+        (centre[0] - 5.3625e-5).abs() <= 1.0e-7,
+        "CmpRegion: Disc error 1: {centre:?}"
+    );
+    assert!(
+        (centre[1] - 5.1030e-5).abs() <= 1.0e-7,
+        "CmpRegion: Disc error 2: {centre:?}"
+    );
+    assert!(
+        (radius - 2.1543e-4).abs() <= 1.0e-7,
+        "CmpRegion: Disc error 3: {radius}"
+    );
+
+    r2.negate();
+    let cr = cmp(&r1, &r2, CmpOperator::And);
+    expect(
+        "ANDb",
+        &tran2(&cr, &xin, &yin),
+        &xin,
+        &yin,
+        [false, false, true, false],
+    );
+    r1.negate();
+    let cr = cmp(&r1, &r2, CmpOperator::And);
+    expect(
+        "ANDc",
+        &tran2(&cr, &xin, &yin),
+        &xin,
+        &yin,
+        [false, false, false, true],
+    );
+    let mut cr = cmp(&r1, &r2, CmpOperator::And);
+    cr.negate();
+    expect(
+        "ANDd",
+        &tran2(&cr, &xin, &yin),
+        &xin,
+        &yin,
+        [true, true, true, false],
+    );
+
+    let cr2 = cmp(&r2, &r1, CmpOperator::And);
+    let fs = cr
+        .convert_to(&cr2, &[])
+        .unwrap()
+        .expect("CmpRegion: Error 5");
+    let map = fs.mapping(FrameRef::Base, FrameRef::Current).unwrap();
+    let frm = fs.current().snapshot();
+    let cr3 = cr.map_region(map.as_ref(), frm.as_ref()).unwrap();
+    assert_eq!(overlap(cr3.as_ref(), &cr2), 6, "CmpRegion: Error 6");
+    check_dump(
+        &cr,
+        &AnyObject::CmpRegion(cr.clone()),
+        "checkdump CmpRegion: cr",
+    );
+
+    let mut cr2 = cr.clone();
+    cr2.negate();
+    let simp = |a: &CmpRegion, b: &CmpRegion, op| -> ast_core::mappings::DynMapping {
+        let c = cmp(a, b, op);
+        (&c as &dyn Mapping).simplify().unwrap()
+    };
+    let cr3 = simp(&cr2, &cr, CmpOperator::Or);
+    let nr = cr3
+        .as_ref()
+        .as_any()
+        .downcast_ref::<NullRegion>()
+        .expect("CmpRegion: Error 7");
+    assert!(nr.is_negated(), "CmpRegion: Error 8");
+    let cr3 = simp(&cr2, &cr, CmpOperator::And);
+    let nr = cr3
+        .as_ref()
+        .as_any()
+        .downcast_ref::<NullRegion>()
+        .expect("CmpRegion: Error 9");
+    assert!(!nr.is_negated(), "CmpRegion: Error 10");
+
+    let f1 = frame2();
+    let r1 = BoxRegionBuilder::new(f1.clone(), vec![0.0, 0.0], vec![1.0, 1.0])
+        .unwrap()
+        .build()
+        .unwrap();
+    let circ = |c: f64| {
+        CircleBuilder::new(f1.clone(), vec![c, 0.0])
+            .unwrap()
+            .edge_point(vec![0.0, 0.0])
+            .build()
+            .unwrap()
+    };
+    let mut cr = cmp(&circ(-1.0), &circ(1.0), CmpOperator::Or);
+    check_dump(
+        &cr,
+        &AnyObject::CmpRegion(cr.clone()),
+        "checkdump CmpRegion: cr",
+    );
+    cr.negate();
+    let cr2 = cmp(&cr, &r1, CmpOperator::And);
+    check_dump(
+        &cr2,
+        &AnyObject::CmpRegion(cr2.clone()),
+        "checkdump CmpRegion: cr2",
+    );
+    let cr2 = (&cr2 as &dyn Mapping).simplify().unwrap();
+    let xin = [0.0, 0.2, 0.5, -0.5];
+    let yin = [0.5, 1.5, 0.5, 0.5];
+    expect(
+        "Errors 11-18",
+        &tran2(cr2.as_ref(), &xin, &yin),
+        &xin,
+        &yin,
+        [true, false, false, false],
+    );
+    let any = AnyObject::from_mapping(cr2.as_ref()).unwrap();
+    let mut neg = any.as_region().unwrap().clone_region();
+    neg.negate();
+    let neg: &dyn Mapping = neg.as_ref();
+    let neg = neg.simplify().unwrap();
+    expect(
+        "Errors 19-26",
+        &tran2(neg.as_ref(), &xin, &yin),
+        &xin,
+        &yin,
+        [false, true, true, true],
+    );
+}
