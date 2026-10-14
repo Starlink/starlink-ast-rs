@@ -50,8 +50,8 @@ A C check counts as covered when a Rust test, or an oracle case replaying C, exe
 - **`testunitnormmap.c` Error 6b was a missing test, not a behavior gap.**
   Transforming the centre gives BAD unit components and a zero norm, and C requires the inverse to give the centre back (`testunitnormmap.c:186-187`); the port's zero-norm branch takes precedence as C's does.
   `test_unitnormmap.rs::not_linear_and_round_trips_including_the_centre` now pins it with Errors 5 and 6.
-- **`testselfsimplifyafterset` is constructible.**
-  `test_mapping.rs` and the tracker say it is not, but `ZoomMap::set_zoom` and `PcdMap::set_disc` now exist.
+- **`testselfsimplifyafterset` was recorded as unconstructible after its setters existed.**
+  It is now `test_mapping.rs::a_simplified_mapping_set_to_unit_simplifies_again`.
 
 ## Gaps by program
 
@@ -114,7 +114,6 @@ A C check counts as covered when a Rust test, or an oracle case replaying C, exe
 - Err 2-3 (`:599-610`): with coefficient 12 BAD, the fit succeeds with elements 1, 4 and 5 BAD.
 - Err 4 (`:612-615`): adding a 3y² term makes `linear_approx` refuse.
 - Err 8 (`:655-659`): PermMap equality with a referenced constant (5.0 in both) and a differing unreferenced one (7 against 9).
-- `testselfsimplifyafterset` (`:516-561`): a simplified ZoomMap set to Zoom 1.0 re-simplifies to a UnitMap, and a simplified PcdMap set to Disco 0 likewise.
 - `testwcsmapequal` (`:494-514`): `test_equal_oracle.rs` compares one direction; C also checks the reverse for cases 1 and 3.
 
 ### `testregions.c`

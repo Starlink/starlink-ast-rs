@@ -12,15 +12,14 @@
 //!   leaves the record alone. This API has no set-to-a-value form — `invert()`
 //!   toggles — so the no-op is expressed as inverting and inverting back, which
 //!   is the case the C fix exists to protect.
-//! * `testselfsimplifyafterset` is not ported. It sets `ZoomMap`'s `Zoom` and
-//!   `PcdMap`'s `Disco` after simplifying, and neither class has a `&mut self`
-//!   setter here: their attributes are fixed at construction, so the stale
-//!   record it guards against cannot be constructed. `PolyMap` can, and
-//!   `mutating_an_attribute_discards_the_record` covers it.
+//! * `testselfsimplifyafterset` sets the attribute on the simplified result,
+//!   which is a fresh owned Mapping here rather than a shared pointer.
 //! * The rest of `testmapping.c` (PolyMap / LinearApprox, converted from
 //!   `testmapping.f`) is covered by `test_polymap.rs` and `test_polytran.rs`.
 
-use ast_core::mappings::{CmpMap, Composition, DynMapping, Mapping, PolyMap, PolyTerm, ZoomMap};
+use ast_core::mappings::{
+    CmpMap, Composition, DynMapping, Mapping, PcdMap, PolyMap, PolyTerm, UnitMap, ZoomMap,
+};
 use ast_core::{AnyObject, to_native_string};
 
 /// `x -> x^2`, `y -> y^2`: non-linear, so it stops the tree collapsing.
@@ -343,5 +342,56 @@ fn comparing_protected_cmp_maps_leaves_a_shared_component_alone() {
         map1.is_inverted(),
         before,
         "comparing the CmpMaps changed the component's Invert"
+    );
+}
+
+/// `testselfsimplifyafterset`: a simplified Mapping whose attribute is then set
+/// to a value that makes it a unit transformation simplifies again, to a
+/// UnitMap, because the setter discarded the simplified record.
+#[test]
+fn a_simplified_mapping_set_to_unit_simplifies_again() {
+    // Two ZoomMaps in series simplify to one simplified ZoomMap.
+    let input: DynMapping = Box::new(
+        CmpMap::new(
+            Box::new(ZoomMap::new(2, 2.0).unwrap()),
+            Box::new(ZoomMap::new(2, 3.0).unwrap()),
+            Composition::Series,
+        )
+        .unwrap(),
+    );
+    let mut zoom = input.simplify().unwrap();
+    zoom.as_mut()
+        .as_any_mut()
+        .downcast_mut::<ZoomMap>()
+        .expect("two ZoomMaps simplify to a ZoomMap")
+        .set_zoom(1.0)
+        .unwrap();
+    let resimp = zoom.simplify().unwrap();
+    assert!(
+        resimp.as_ref().as_any().is::<UnitMap>(),
+        "Error selfsimp-1: a simplified ZoomMap set to a unit Zoom did not \
+         simplify to a UnitMap"
+    );
+
+    // A PcdMap in series with a UnitMap simplifies back to the PcdMap.
+    let input: DynMapping = Box::new(
+        CmpMap::new(
+            Box::new(PcdMap::new(0.01, [0.0, 0.0])),
+            Box::new(UnitMap::new(2)),
+            Composition::Series,
+        )
+        .unwrap(),
+    );
+    let mut pcd = input.simplify().unwrap();
+    pcd.as_mut()
+        .as_any_mut()
+        .downcast_mut::<PcdMap>()
+        .expect("a PcdMap and a UnitMap simplify to the PcdMap")
+        .set_disc(0.0);
+    let resimp = pcd.simplify().unwrap();
+    assert!(
+        resimp.as_ref().as_any().is::<UnitMap>(),
+        "Error selfsimp-2: a simplified PcdMap set to a zero Disco did not \
+         simplify to a UnitMap"
     );
 }
