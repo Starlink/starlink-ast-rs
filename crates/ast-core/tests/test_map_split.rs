@@ -1229,3 +1229,59 @@ fn frameset_splits_its_base_to_current_mapping() {
     assert_eq!(outs, vec![2]);
     assert_eq!(sub.tran1(&[6.0], true).unwrap(), vec![1.0]);
 }
+
+// ---------------------------------------------------------------------------
+// testcmpmap.c: the public 1-based map_split on nested and loaded CmpMaps
+// ---------------------------------------------------------------------------
+
+/// testcmpmap.c Errors 1-6: inputs 3, 6 and 4 of a parallel CmpMap of a
+/// UnitMap, a 2-axis ZoomMap and a 3-axis diagonal MatrixMap split off a
+/// 3-in 3-out Mapping feeding outputs 3, 4 and 6, in ascending order.
+#[test]
+fn testcmpmap_split_of_nested_parallel_cmpmap() {
+    use ast_core::mappings::{CmpMap, Composition, MatrixMap};
+    let inner = CmpMap::new(
+        Box::new(UnitMap::new(1)),
+        Box::new(ZoomMap::new(2, 2.0).unwrap()),
+        Composition::Parallel,
+    )
+    .unwrap();
+    let m4 = CmpMap::new(
+        Box::new(inner),
+        Box::new(MatrixMap::diagonal(3, 3, &[-1.0, 1.0, 2.0]).unwrap()),
+        Composition::Parallel,
+    )
+    .unwrap();
+    let (outs, m5) = m4.map_split(&[3, 6, 4]).unwrap().expect("Error 1");
+    assert_eq!(m5.nin(), 3, "Error 2");
+    assert_eq!(m5.nout(), 3, "Error 3");
+    assert_eq!(outs, vec![3, 4, 6], "Errors 4-6");
+}
+
+/// testcmpmap.c Errors 7-13, on `splittest1.ast`: input 1 alone cannot be
+/// split off; inputs 1, 4 and 2 can, and the split Mapping transforms
+/// (1, 8, 2) to outputs 1, 2 and 4 of the full Mapping at (1, 2, 4, 8).
+#[test]
+fn testcmpmap_split_of_splittest1() {
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/programs/testcmpmap/splittest1.ast"
+    );
+    let text = std::fs::read_to_string(path).unwrap();
+    let m1 = ast_core::from_native_string(&text)
+        .unwrap()
+        .into_mapping()
+        .expect("splittest1.ast holds a Mapping");
+
+    assert!(m1.map_split(&[1]).unwrap().is_none(), "Error 7");
+
+    let (_, m2) = m1.map_split(&[1, 4, 2]).unwrap().expect("Error 8");
+    assert_eq!(m2.nin(), 3, "Error 9");
+    assert_eq!(m2.nout(), 3, "Error 10");
+
+    let y = fwd_point(m1.as_ref(), &[1.0, 2.0, 4.0, 8.0]);
+    let y2 = fwd_point(m2.as_ref(), &[1.0, 8.0, 2.0]);
+    assert_eq!(y2[0], y[0], "Error 11");
+    assert_eq!(y2[1], y[1], "Error 12");
+    assert_eq!(y2[2], y[3], "Error 13");
+}

@@ -23,7 +23,7 @@ A C check counts as covered when a Rust test, or an oracle case replaying C, exe
 | `testpointset.c` | covered, apart from the options-string constructor and the `ID` attribute, which a plain-data PointSet does not have |
 | `testobject.c` | partial; the rest is the handle registry and creation-site tracking |
 | `testchannel.c` | partial |
-| `testcmpmap.c` | partial |
+| `testcmpmap.c` | ported |
 | `testlutmap.c` | ported |
 | `testnormmap.c` | ported |
 | `testrate.c` | ported (`test_rate.rs`) |
@@ -59,11 +59,6 @@ A C check counts as covered when a Rust test, or an oracle case replaying C, exe
 
 - Err 1-6 (`:54-93`): a default SkyFrame written through `SinkFile`, read back, and compared with `astEqual`, twice; `test_channel.rs::round_trip_skyframe_via_file` checks only `naxes` and System.
 - Err 0/-1 (`astTuneC("hrdel")`) and Err 7 (one Channel with both `SinkFile` and `SourceFile`) have no Rust equivalent.
-
-### `testcmpmap.c`
-
-- Err 1-6 (`:45-63`): `map_split` of inputs [3,6,4] of a CmpMap nesting UnitMap, ZoomMap and a diagonal MatrixMap gives Nin=3, Nout=3 and outputs [3,4,6].
-- Err 7-13 (`:66-92`): `splittest1.ast` split on [1] gives no Mapping, and on [1,4,2] a 3-in 3-out Mapping whose transform of (1,8,2) equals outputs 1, 2 and 4 of the full Mapping at (1,2,4,8).
 
 ### `testobject.c`
 
