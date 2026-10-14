@@ -261,15 +261,16 @@ fn no_checklist_is_orphaned() {
 ///   is one module the per-class checklists cite rather than a class of its own;
 /// - `deferred: <class>` for a class this port has not started, counted in
 ///   `test_deferred_fixtures.rs::DEFERRED_CLASSES`;
-/// - `undecided: <repo-relative path>` for a seam whose port depends on an open
-///   design question, where the path states the question, names the fixture
-///   that demonstrates it, and is counted in the verification ledger.
+/// - `declined: <repo-relative path>` for a seam this port deliberately does not
+///   have, where the path states the question, records the decision, names the
+///   fixture that demonstrates what C accepts, and is counted in the
+///   verification ledger.
 const C_SIMPLIFY_SEAMS: &[(&str, &str)] = &[
     ("box.c", "region_box_region"),
     ("circle.c", "region_circle"),
     (
         "cmpframe.c",
-        "undecided: docs/issues/frame-in-a-mapping-slot.md",
+        "declined: docs/issues/frame-in-a-mapping-slot.md",
     ),
     ("cmpmap.c", "cmpmap"),
     ("cmpregion.c", "region_cmpregion"),
@@ -340,15 +341,19 @@ fn every_c_simplify_seam_is_covered() {
             if !repo_root().join(path.trim()).is_file() {
                 bad.push(format!("{file}: driver {path:?} does not exist"));
             }
-        } else if let Some(doc) = coverage.strip_prefix("undecided: ") {
+        } else if let Some(doc) = coverage.strip_prefix("declined: ") {
             let path = repo_root().join(doc.trim());
             match std::fs::read_to_string(&path) {
                 Err(e) => bad.push(format!("{file}: {doc} unreadable: {e}")),
                 Ok(text) => {
-                    // The document has to carry the question and the artifact,
-                    // or "undecided" is an excuse rather than a record.
+                    // The document has to carry the question, the decision and
+                    // the artifact, or "declined" is an excuse rather than a
+                    // record.
                     if !text.contains("## The question") {
                         bad.push(format!("{file}: {doc} states no question"));
+                    }
+                    if !text.contains("## Decision") {
+                        bad.push(format!("{file}: {doc} records no decision"));
                     }
                     if !text.contains("frame_in_map_slot.ast") {
                         bad.push(format!(
@@ -382,7 +387,7 @@ fn every_c_simplify_seam_is_covered() {
         bad.is_empty(),
         "every C class with a MapMerge or Simplify vtab entry needs a \
          checklist, a driver module, a DEFERRED_CLASSES row, or an issue \
-         document stating what is undecided:\n  {}",
+         document recording why the seam is declined:\n  {}",
         bad.join("\n  ")
     );
 }

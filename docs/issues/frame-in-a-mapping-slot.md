@@ -8,6 +8,18 @@ Mapping in order to support Region, or is there a real use case for it?
 The Rust port refuses one construct C accepts, and the answer decides whether
 that is a bug to fix or a faithful narrowing to record.
 
+## Decision
+
+Decided by the maintainers on 2026-10-13: a Frame does not act as a Mapping in
+this port, and the refusal stays.
+Nobody could name a real-world use for a bare Frame in a Mapping slot, so C's
+acceptance is taken to be a side effect of Frame being a Mapping in C, which
+exists to support Region.
+Region remains the only Frame that is also a Mapping, and `CmpFrame` gets no
+`Mapping` implementation, so `CmpFrame::Simplify` (`cmpframe.c:8963`) has no
+counterpart.
+The fixture below stays as the record of what C accepts and this port refuses.
+
 ## What is settled, and is not being asked
 
 A Region is a Frame *and* a Mapping in this port
@@ -65,8 +77,8 @@ dumped it without error.
 from the same probe, written by the same library run.
 Reproduce both with `tools/oracle_fixtures/frame_in_map_slot_probe.c`.
 
-`crates/ast-core/tests/test_frame_in_map_slot.rs` pins the current refusal and
-keeps it narrow.
+`crates/ast-core/tests/test_frame_in_map_slot.rs` pins the refusal and keeps
+it narrow.
 Its first test reads the FrameSet's `Map<n>` slots structurally, requires one to
 hold a Frame class, and requires the read to fail naming that class, so the
 test cannot pass because the fixture stopped containing the construct.
@@ -92,10 +104,9 @@ inside the existing design; the port design spec needs no amendment.
 
 **If there is none:** the exclusion stays, and this document records the answer
 as its reason.
+This is the answer taken; see the decision above.
 
-## Evidence available today
+## Evidence
 
 No fixture in the simplify corpus puts a bare Frame in a Mapping slot, and the
-Region case — the one with obvious meaning — already works.
-That is the whole of the evidence for the second reading, which is why the
-question goes to the team rather than being answered here.
+Region case, the one with obvious meaning, already works.

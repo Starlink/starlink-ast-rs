@@ -5,13 +5,14 @@
 //! This port makes Region the only Frame that is also a Mapping, so a `Map<n>`
 //! slot holding `Begin Frame` or `Begin CmpFrame` is refused.
 //!
-//! The fixture here is a dump C wrote, and the first test pins the refusal so
-//! that the day the decision changes, this test is what changes with it. The
+//! The maintainers decided on 2026-10-13 that a Frame does not act as a Mapping
+//! in this port. The fixture here is a dump C wrote, and the first test pins
+//! the refusal, so a change to that decision has to change this test. The
 //! remaining tests are the controls: the two Region nestings that are settled
 //! must keep working, so a future fix cannot be a blanket "accept any Frame",
 //! nor the refusal be widened to catch them.
 //!
-//! The question this exists to put to the maintainers is in
+//! The question and the decision are in
 //! `docs/issues/frame-in-a-mapping-slot.md`.
 
 use std::path::{Path, PathBuf};
@@ -22,16 +23,15 @@ use ast_core::error::AstResult;
 
 /// The one dump the reader refuses, with the reason it is refused.
 ///
-/// Not a gap in the port's own terms and not a licensed relaxation of a
-/// comparison: a construct whose support is an open design question. The reason
-/// string is what a reader gets instead of a silent failure, and the count is
-/// in the verification ledger so it cannot grow unnoticed.
-const FRAME_IN_MAP_SLOT_UNDECIDED: &[(&str, &str)] = &[(
+/// Not a gap in the port and not a licensed relaxation of a comparison: a
+/// construct C accepts that this port declines by decision. The reason string
+/// is what a reader gets instead of a silent failure, and the count is in the
+/// verification ledger so it cannot grow unnoticed.
+const FRAME_IN_MAP_SLOT_DECLINED: &[(&str, &str)] = &[(
     "serialisation/frame_in_map_slot.ast",
     "a bare Frame in a Map<n> slot. C accepts it because every Frame is a \
-     Mapping there; this port makes Region the only Frame that is a Mapping. \
-     Whether C's acceptance is a side effect of supporting Region or answers a \
-     real use case is a question for the maintainers — \
+     Mapping there; this port makes Region the only Frame that is a Mapping, \
+     decided because no real-world use was found — \
      docs/issues/frame-in-a-mapping-slot.md",
 )];
 
@@ -113,7 +113,7 @@ fn frame_class_in_a_map_slot(text: &str) -> Option<String> {
 
 #[test]
 fn frame_in_a_map_slot_is_rejected() {
-    for (name, reason) in FRAME_IN_MAP_SLOT_UNDECIDED {
+    for (name, reason) in FRAME_IN_MAP_SLOT_DECLINED {
         let path = fixtures().join(name);
         let text = std::fs::read_to_string(&path)
             .unwrap_or_else(|e| panic!("{} unreadable: {e}", path.display()));
@@ -128,7 +128,7 @@ fn frame_in_a_map_slot_is_rejected() {
 
         let err = read_native(&text).expect_err(&format!(
             "{name} was read; the decision recorded in \
-             FRAME_IN_MAP_SLOT_UNDECIDED has changed, so update that entry and \
+             FRAME_IN_MAP_SLOT_DECLINED has been reversed, so update that entry and \
              this test rather than deleting them. Reason on record: {reason}"
         ));
         let message = err.to_string();

@@ -202,11 +202,12 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
     ),
     (
         "test_frame_in_map_slot.rs",
-        "FRAME_IN_MAP_SLOT_UNDECIDED",
+        "FRAME_IN_MAP_SLOT_DECLINED",
         1,
         "one C-written dump the reader refuses: a bare Frame in a Map<n> slot. \
-         Whether to support it is an open design question, stated with its \
-         artifact in docs/issues/frame-in-a-mapping-slot.md",
+         Declined by decision (2026-10-13): a Frame does not act as a Mapping \
+         in this port. Question, decision and artifact in \
+         docs/issues/frame-in-a-mapping-slot.md",
     ),
     (
         "test_deferred_fixtures.rs",
@@ -464,7 +465,7 @@ fn no_relaxation_hides_outside_the_ledger() {
         "_UNGATED",
         "_DISAGREEMENTS",
         "_DRIFT",
-        "_UNDECIDED",
+        "_DECLINED",
     ];
     let mut unlisted = Vec::new();
     for entry in std::fs::read_dir(tests_dir()).expect("tests dir readable") {

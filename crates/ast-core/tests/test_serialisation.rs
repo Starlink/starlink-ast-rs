@@ -1185,12 +1185,12 @@ const ROUND_TRIP_EXCLUDED: &[(&str, &str)] = &[
     // A FrameSet holding a CmpFrame where a Mapping belongs. C accepts it
     // because astLoadFrameSet reads that slot with astRead and a Frame is a
     // Mapping; the port's Mapping loader dispatches on the class name and has
-    // no Frame case. Closing it needs the Mapping loader to accept any
-    // Frame-kind class, which is the read-path half of `Frame`-in-`Mapping`-slot
-    // support. `tools/oracle_fixtures/frame_in_map_slot_probe.c` is the oracle.
+    // no Frame case, by decision: a Frame does not act as a Mapping in this
+    // port (docs/issues/frame-in-a-mapping-slot.md).
+    // `tools/oracle_fixtures/frame_in_map_slot_probe.c` is the oracle.
     (
         "frame_in_map_slot.ast",
-        "a Frame in a Mapping slot; the Mapping loader has no Frame case",
+        "a Frame in a Mapping slot, declined by decision",
     ),
 ];
 

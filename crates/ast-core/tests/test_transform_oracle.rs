@@ -1749,8 +1749,8 @@ fn is_simplify_section(relpath: &str) -> bool {
 /// `frame_in_map_slot.ast` is not an unported class but a deliberate refusal: C
 /// accepts a Frame in any Mapping slot because `Frame::Transform` goes through
 /// `astUnitMap(astGetNaxes(this))`, and this port makes Region the only Frame that
-/// is also a Mapping. `test_frame_in_map_slot.rs` pins that, and whether it is
-/// right is the open question in `docs/issues/frame-in-a-mapping-slot.md`.
+/// is also a Mapping. `test_frame_in_map_slot.rs` pins that, and the decision
+/// to keep it is in `docs/issues/frame-in-a-mapping-slot.md`.
 const DEFERRED_LOAD: &[(&str, &str)] = &[(
     "serialisation/frame_in_map_slot.ast",
     "CmpFrame in a Map<n> slot, refused",

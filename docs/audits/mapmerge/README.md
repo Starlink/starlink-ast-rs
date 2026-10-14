@@ -119,9 +119,9 @@ deliberate change to the test rather than a new table cell;
 `driver: <path>`, which describe how a whole C seam is covered rather than what
 a step's port does, and are the vocabulary of `C_SIMPLIFY_SEAMS` in
 `test_mapmerge_audit.rs`.
-A seam whose port waits on an open design question is recorded there as
-`undecided: <issue path>`, which requires the document to state the question and
-name the fixture that demonstrates it.
+A seam this port declines by decision is recorded there as
+`declined: <issue path>`, which requires the document to state the question,
+record the decision, and name the fixture that demonstrates what C accepts.
 
 ## `Uncited C steps:`
 

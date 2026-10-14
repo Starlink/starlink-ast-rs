@@ -172,7 +172,7 @@ list as empty, so a ledger row for one would have passed at any size.
 | transform oracle | 2261 sections | 1 | `DEFERRED_LOAD` — a fixture the reader cannot build, `serialisation/frame_in_map_slot.ast`, a Frame in a Mapping slot (§9.6), so the oracle's sections for it cannot be checked. Not a tolerance. `deferred_fixtures_still_fail_to_load` fails when one starts loading, so a class landing cannot leave its coverage unclaimed |
 | simplify regression | 481 | 0 | `C_DEFECT_EXCLUDED` — empty. It held `cheby_linear_lone_reduce`, whose reference recorded a C defect rather than C's intent: PolyMap's linear `MapMerge` reduction read a ChebyMap's `coeff_f` / `power_f` without the scale and offset that map its input onto [-1,1], so `astSimplify` returned a `ZoomMap` of 2 where the ChebyMap computes `0.4x-2`, and reproducing the reference would have meant porting the defect. Upstream fixed it in `abe5baae`, the port ported the fix (§10.2), and the row is compared byte for byte like any other. `c_defect_rows_still_diverge` is what reported the fix: it fails when an excluded row starts matching, so the row could not stay excluded unnoticed. The table survives empty so a newly diagnosed C-side artefact has a home |
 | simplify regression | 481 | 1 | `astequal` compare mode — upstream's own manifest column: one row, `cap_timemap_02`, whose uncertainty coordinates move by about 7e-12 relative under FMA contraction, so its dump is compared within `astEQUAL` rather than byte for byte. The comparator honours the column so the two harnesses cannot diverge on what a row asks for |
-| round-trip, serialisation + programs (`test_serialisation.rs`) | 33 | 1 | `ROUND_TRIP_EXCLUDED` — one port gap, named with what closes it: `serialisation/frame_in_map_slot.ast`, a Frame where a Mapping belongs, which the Mapping loader has no case for (§9.6). `programs/testfitschan/sparse.ast` left the list on 2026-09-30, once SkyAxis Format specifiers were parsed (phase 3 of the Frame attribute plan) and CmpFrame wrote the Frame part of its dump through its own getters. `round_trip_exclusions_still_fail` fails when an entry starts passing. This sweep replaced three skip modes: a missing fixture directory returned early with a notice, a fixture that would not load was passed over on a substring match against the error text, and the failure list itself was filtered by substring, so every Frame, FrameSet, `lsst`, `degen` and `splittest` fixture could fail silently |
+| round-trip, serialisation + programs (`test_serialisation.rs`) | 33 | 1 | `ROUND_TRIP_EXCLUDED` — one refusal by decision: `serialisation/frame_in_map_slot.ast`, a Frame where a Mapping belongs, which the Mapping loader declines (§9.6). `programs/testfitschan/sparse.ast` left the list on 2026-09-30, once SkyAxis Format specifiers were parsed (phase 3 of the Frame attribute plan) and CmpFrame wrote the Frame part of its dump through its own getters. `round_trip_exclusions_still_fail` fails when an entry starts passing. This sweep replaced three skip modes: a missing fixture directory returned early with a notice, a fixture that would not load was passed over on a substring match against the error text, and the failure list itself was filtered by substring, so every Frame, FrameSet, `lsst`, `degen` and `splittest` fixture could fail silently |
 | sky conversion oracle (`test_sky_convert.rs`) | 1584 | 3 | `SINCOS_MERGE_LICENSED` — three AZEL cases allowed a measured 1-5 units in the last place: Apple clang merges the `sin`/`cos` pairs of slamap.c `De2h` into `__sincos_stret`, which an unoptimised Rust build does not. A release build matches C exactly, and the companion test asserts that in both build modes |
 | map split (`test_map_split_oracle.rs`) | 66 | 2 | `ISSIMP_COMPONENT_EXCLUDED` — `ratemap_full_permuted` and `tranmap_full_permuted`: a full permuted selection splits off the simplified CmpMap of a PermMap and the Mapping, and C dumps it with one `IsSimp = 1` card more, on a component (the RateMap's ZoomMap, one of the TranMap's ZoomMaps). Compared with `IsSimp` lines set aside, every other line byte for byte. The signature matches `ISSIMP_DISAGREEMENTS`; why C stamps the component here is not established. `issimp_component_exclusions_still_differ` fails when an entry starts matching |
 | `-TAB` read (`test_fitschan_tab_read_oracle.rs`) | 26 | 0 | `TAB_READ_EXCLUDED` — empty: `shared_table`, two spectral axes in one axis description, matches C since the reader makes a SpecFrame for each, as C's `WcsSpectral` does. `excluded_cases_still_differ` fails when an entry matches |
@@ -181,7 +181,7 @@ list as empty, so a ledger row for one would have passed at any size.
 | `-TAB` write (`test_fitschan_tab_write_oracle.rs`) | 12 | 0 | `TAB_WRITE_EXCLUDED` — empty: `sparse`, its one entry, matches C since the fixes recorded in the §5 `sparse.ast` row. The table survives so a newly diagnosed difference has a home, and `excluded_cases_still_differ` fails when an entry matches |
 | FITS encodings (`test_fitschan_encodings_oracle.rs`) | 2 | 0 | `VALUES_LICENSED` — empty: `tan_offset_origin` and `tan_offset_pole` match C since MatrixMap products are formed in C's order (the §5 row). The table survives so a newly diagnosed difference has a home, and `licensed_values_still_differ` fails when an entry matches |
 | hand-written Frame descriptions (`test_frame_load.rs`) | 17 | 0 | `FRAME_LOAD_EXCLUDED` — empty: a SkyFrame with no `Ax` objects now holds the plain Axis objects C gives it. `excluded_descriptions_still_differ` fails if an entry is added that matches |
-| Frame in a Mapping slot (`test_frame_in_map_slot.rs`) | 1 | 1 | `FRAME_IN_MAP_SLOT_UNDECIDED` — one C-written dump the reader refuses, a bare Frame in a `Map<n>` slot. Whether to support the construct is an open design question, stated with its artifact in `docs/issues/frame-in-a-mapping-slot.md` (§9.6). The exclusion carries the reason string, and two companion tests keep the refusal narrow: the settled Region-in-`CmpMap` and Region-in-`CmpFrame` nestings must keep reading |
+| Frame in a Mapping slot (`test_frame_in_map_slot.rs`) | 1 | 1 | `FRAME_IN_MAP_SLOT_DECLINED` — one C-written dump the reader refuses, a bare Frame in a `Map<n>` slot, declined by decision on 2026-10-13; question, decision and artifact in `docs/issues/frame-in-a-mapping-slot.md` (§9.6). The exclusion carries the reason string, and two companion tests keep the refusal narrow: the settled Region-in-`CmpMap` and Region-in-`CmpFrame` nestings must keep reading |
 
 What the upstream `IsSimp` fix did and did not do, since the two get conflated:
 `e40e71b4` made **C's** placement deterministic — a property of the Mapping tree
@@ -500,17 +500,17 @@ The two oracle trees are now byte-identical, which is what
 fixtures, and holds the same 1631 simplify sections, 353 frameset sections and
 277 header sections this tree does.
 
-### 9.6 A bare Frame where a Mapping is expected — OPEN, awaiting a maintainer decision
+### 9.6 A bare Frame where a Mapping is expected — DECIDED 2026-10-13, not supported
 
 C accepts a Frame in any Mapping slot, because `Frame::Transform`
 (`frame.c:11739`) transforms through a UnitMap (`frame.c:11806`).
 This port makes Region the only Frame that is also a Mapping, so a `Map<n>` slot
 holding `Begin Frame` or `Begin CmpFrame` is refused.
 
-The narrow question — whether C's acceptance is a side effect of having made
-Frame a Mapping in order to support Region, or answers a real use case — is
-written up with its C citations, the cost of each answer, and the evidence
-available in
+The maintainers decided that a Frame does not act as a Mapping in this port:
+nobody could name a real-world use, so C's acceptance is taken as a side effect
+of making Frame a Mapping to support Region.
+The question, its C citations, the cost of each answer and the decision are in
 [`docs/issues/frame-in-a-mapping-slot.md`](docs/issues/frame-in-a-mapping-slot.md).
 
 The artifact is `crates/ast-core/tests/fixtures/frame_in_map_slot.ast`, a dump
@@ -522,9 +522,9 @@ Region-in-`CmpFrame` dump the same probe wrote must keep reading, so the gap
 cannot be closed by refusing Frames in Mapping slots wholesale.
 
 `C_SIMPLIFY_SEAMS` records `cmpframe.c` as
-`undecided: docs/issues/frame-in-a-mapping-slot.md`, and requires that document
-to state the question and name the fixture; `FRAME_IN_MAP_SLOT_UNDECIDED` counts
-the one fixture in §6.
+`declined: docs/issues/frame-in-a-mapping-slot.md`, and requires that document
+to state the question, record the decision and name the fixture;
+`FRAME_IN_MAP_SLOT_DECLINED` counts the one fixture in §6.
 
 `CmpFrame::Simplify` (`cmpframe.c:8963-9050`, installed at `:4745`) is the seam
 the decision governs. It calls `astSimplify` on each component Frame and, if
