@@ -485,7 +485,7 @@ fn grism_spec_wcs(
 /// Mirrors C `LogWcs` (fitschan.c:20774-20856): S = Sr*exp(w/Sr) forward,
 /// w = Sr*log(S/Sr) inverse, where Sr is the axis CRVAL. A zero Sr has no
 /// logarithmic form, so C returns NULL and the axis stays linear.
-fn log_wcs(crval: f64) -> Option<DynMapping> {
+pub(super) fn log_wcs(crval: f64) -> Option<DynMapping> {
     // crval is already resolved (upstream `unwrap_or(0.0)` substitutes the
     // C AST__BAD default), so test == 0.0 directly, matching C after its
     // `if( crv == AST__BAD ) crv = 0.0;`.

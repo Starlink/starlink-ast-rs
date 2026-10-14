@@ -1057,11 +1057,20 @@ fn set_frame_dut1_dtai(
 
 /// Build the full pixel → world mapping (consumes the decoder results).
 ///
-/// Mirrors C `WcsMapFrm` (fitschan.c:37894-37936), which builds
-/// `map8 = (((map1_pixel→IWC ; map2_celestial) ; map3_spectral) ; map4_others)`
-/// — a left-associated series chain in class order, with `map4` (WcsOthers)
-/// always composed (a bare `UnitMap(naxis)` when every axis is claimed).
-/// `astSimplify` then flattens and merges the chain.
+/// Mirrors C `WcsMapFrm` (fitschan.c:38338-38345), which builds
+/// `map8 = ((((map1 ; map2) ; map3) ; map4) ; tabmap)` from the stages in
+/// their C shapes, since `astSimplify` can reach a different last digit from
+/// a differently shaped chain:
+///
+/// - `map1`, pixel to IWC (`WcsIntWorld`);
+/// - `map2`, the celestial stage, or `UnitMap(naxis)` when there are no
+///   celestial axes (`WcsCelestial`);
+/// - `map3`, one Mapping per axis in parallel, the spectral one where there is
+///   a spectral axis and `UnitMap(1)` elsewhere (`WcsSpectral`);
+/// - `map4`, `UnitMap(naxis)` when every axis is claimed, and otherwise one
+///   Mapping per axis in parallel: [`others_axis_map`] for an unclaimed axis
+///   and `UnitMap(1)` for a claimed one (`WcsOthers`);
+/// - the look-ups of any `-TAB` axes.
 fn build_pixel_to_world(
     store: &FitsStore,
     pixel_to_iwc: DynMapping,
@@ -1081,40 +1090,66 @@ fn build_pixel_to_world(
         claimed[spec.axis] = true;
     }
 
-    // Compose factors in C's class order: pixel→IWC, celestial, spectral,
-    // others. Each per-class mapping is full N-axis with identity on the
-    // axes it doesn't own, so series composition is correct.
-    let mut parts: Vec<DynMapping> = vec![pixel_to_iwc];
-    if let Some(cel) = celestial {
-        parts.push(cel.mapping);
-    }
-    if let Some(spec) = spectral {
-        parts.push(spec.mapping);
-    }
-    if claimed.contains(&false) {
-        // WcsOthers: one shift covering every unclaimed axis (zeros on the
-        // claimed axes, CRVAL on the rest).
-        let mut shifts = vec![0.0; naxis];
-        for (i, &c) in claimed.iter().enumerate() {
-            if !c {
-                shifts[i] = store.crval[i].unwrap_or(0.0);
+    let map2: DynMapping = match celestial {
+        Some(cel) => cel.mapping,
+        None => Box::new(UnitMap::new(naxis)),
+    };
+    let map3: DynMapping = match spectral {
+        Some(spec) => spec.mapping,
+        None => parallel_per_axis((0..naxis).map(|_| Ok(Box::new(UnitMap::new(1)) as DynMapping)))?,
+    };
+    let map4: DynMapping = if claimed.contains(&false) {
+        parallel_per_axis((0..naxis).map(|i| {
+            if claimed[i] {
+                Ok(Box::new(UnitMap::new(1)) as DynMapping)
+            } else {
+                others_axis_map(store, i)
             }
-        }
-        parts.push(Box::new(ShiftMap::new(shifts)));
+        }))?
     } else {
-        // C still composes map4 even when every axis is claimed.
-        parts.push(Box::new(UnitMap::new(naxis)));
-    }
-    // The look-ups of any `-TAB` axes come last (C's `map8`).
-    if let Some(tabmap) = tabmap {
-        parts.push(tabmap);
-    }
+        Box::new(UnitMap::new(naxis))
+    };
 
-    let mut result: DynMapping = parts.remove(0);
-    for part in parts {
+    let mut result: DynMapping = pixel_to_iwc;
+    for part in [Some(map2), Some(map3), Some(map4), tabmap]
+        .into_iter()
+        .flatten()
+    {
         result = Box::new(CmpMap::new(result, part, Composition::Series)?);
     }
     Ok(result)
+}
+
+/// The per-axis Mappings `parts`, joined in parallel from the left, as C's
+/// per-axis loops in `WcsSpectral` and `WcsOthers` join them.
+fn parallel_per_axis(parts: impl Iterator<Item = AstResult<DynMapping>>) -> AstResult<DynMapping> {
+    let mut result: Option<DynMapping> = None;
+    for part in parts {
+        let part = part?;
+        result = Some(match result {
+            None => part,
+            Some(acc) => Box::new(CmpMap::new(acc, part, Composition::Parallel)?),
+        });
+    }
+    Ok(result.expect("a FITS-WCS description has at least one axis"))
+}
+
+/// The IWC to WCS Mapping C's `WcsOthers` makes for an axis no other stage
+/// claims (fitschan.c:39352-39361): `LogWcs` for a CTYPE ending in `-LOG`,
+/// and otherwise `LinearWcs`, a ShiftMap adding CRVAL, or a UnitMap when
+/// CRVAL is zero. A `-LOG` axis with a zero CRVAL has no logarithmic form and
+/// is given a UnitMap, as `WcsSpectral` gives a spectral one.
+fn others_axis_map(store: &FitsStore, axis: usize) -> AstResult<DynMapping> {
+    let crval = store.crval[axis].unwrap_or(0.0);
+    let ctype = store.ctype[axis].as_deref().unwrap_or("");
+    if ctype.len() > 3 && ctype.ends_with("-LOG") {
+        return Ok(wcs_spectral::log_wcs(crval).unwrap_or_else(|| Box::new(UnitMap::new(1))));
+    }
+    Ok(if crval != 0.0 {
+        Box::new(ShiftMap::new(vec![crval]))
+    } else {
+        Box::new(UnitMap::new(1))
+    })
 }
 
 /// Build the world coordinate frame based on what decoders found.
@@ -1260,7 +1295,7 @@ fn ctype_domain(store: &FitsStore, axes: &[usize]) -> Option<String> {
 }
 
 /// Whether C `WcsOthers` labels the axes no class stage claimed (`others`,
-/// ascending) with the comments of their CTYPE cards (fitschan.c:39260-39319):
+/// ascending) with the comments of their CTYPE cards (fitschan.c:39255-39321):
 /// only when there is more than one such axis, each has a non-blank comment,
 /// and no comment repeats an earlier one.
 ///

@@ -139,6 +139,65 @@ impl MatrixMap {
         })
     }
 
+    /// Create a diagonal `MatrixMap` with `nin` inputs and `nout` outputs
+    /// from its `min(nin, nout)` diagonal elements, as C's `astMatrixMap`
+    /// does when given the diagonal form (matrixmap.c:6015-6076).
+    ///
+    /// An infinite or NaN element is stored as [`BAD_VALUE`], and the inverse
+    /// holds the reciprocal of each element, or [`BAD_VALUE`] for a zero or
+    /// bad one. The result is a unit `MatrixMap` when every element is equal
+    /// to 1.0 within `astEQUAL` (matrixmap.c:676), a tolerance
+    /// [`MatrixMap::new`] does not apply to a full matrix, so a matrix of
+    /// diagonal values that differ from 1.0 in the last place is a unit
+    /// MatrixMap here and a diagonal one there.
+    pub fn diagonal(nin: usize, nout: usize, diag: &[f64]) -> AstResult<Self> {
+        let ndiag = nin.min(nout);
+        if ndiag == 0 || diag.len() != ndiag {
+            return Err(AstError::new(
+                ErrorCode::Mtrmt,
+                format!(
+                    "a diagonal MatrixMap with {nin} inputs and {nout} outputs needs {ndiag} \
+                     diagonal elements, not {}",
+                    diag.len()
+                ),
+            ));
+        }
+        let mut matrix = Array2::zeros((nout, nin));
+        let mut nuse = 0;
+        for (i, &v) in diag.iter().enumerate() {
+            matrix[[i, i]] = if v.is_finite() { v } else { BAD_VALUE };
+            if !is_bad(matrix[[i, i]]) {
+                nuse += 1;
+            }
+        }
+        if nuse == 0 {
+            return Err(AstError::new(
+                ErrorCode::Mtrmt,
+                "supplied matrix contains only bad values",
+            ));
+        }
+        let mut form = MatrixForm::Diagonal;
+        compress_matrix(&mut matrix, &mut form);
+        let inverse = match form {
+            MatrixForm::Unit => {
+                matrix = rect_eye(nout, nin);
+                rect_eye(nin, nout)
+            }
+            _ => diagonal_inverse(&matrix),
+        };
+        Ok(Self {
+            matrix,
+            inverse: Some(inverse),
+            inverted: false,
+            simplified: SimplifiedRecord::default(),
+            ident: None,
+            id: Default::default(),
+            mapping_flags: crate::mappings::MappingFlags::default(),
+            form,
+            inv_form: form,
+        })
+    }
+
     /// Construct a MatrixMap from an explicit forward matrix and inverse.
     ///
     /// Used when the caller has already computed a numerically clean inverse

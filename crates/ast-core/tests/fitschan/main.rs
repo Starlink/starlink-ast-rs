@@ -39,6 +39,8 @@ mod test_fitschan_linear_oracle;
 mod test_fitschan_native_keyword;
 #[path = "../test_fitschan_read.rs"]
 mod test_fitschan_read;
+#[path = "../test_fitschan_read_chain_oracle.rs"]
+mod test_fitschan_read_chain_oracle;
 #[path = "../test_fitschan_sipok_oracle.rs"]
 mod test_fitschan_sipok_oracle;
 #[path = "../test_fitschan_spec_unit_oracle.rs"]

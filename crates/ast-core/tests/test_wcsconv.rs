@@ -126,7 +126,6 @@ const ISSIMP_PLACEMENT_LICENSED: &[(&str, usize, usize)] = &[
     // needs the instrumented oracle in
     // tools/oracle_fixtures/build_issimp_instrumented.sh. The counts are
     // measured against the pinned C, so the residue cannot grow unnoticed.
-    ("axes-swap_native", 3, 4),
     ("vopt-f2w_native", 4, 5),
     ("wave-f2w_native", 4, 5),
 ];

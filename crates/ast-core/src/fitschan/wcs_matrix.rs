@@ -395,14 +395,10 @@ fn build_pc_matrix(store: &FitsStore) -> AstResult<DynMapping> {
 /// Missing CDELT values default to 1.0.
 /// This mirrors the C `WcsCDeltMatrix` function.
 fn build_cdelt_matrix(store: &FitsStore) -> AstResult<DynMapping> {
-    let naxis = store.naxis;
-    let mut mat = Array2::zeros((naxis, naxis));
-
-    for i in 0..naxis {
-        mat[[i, i]] = store.cdelt[i].unwrap_or(1.0);
-    }
-
-    let mm = MatrixMap::new(mat)?;
+    let diag: Vec<f64> = (0..store.naxis)
+        .map(|i| store.cdelt[i].unwrap_or(1.0))
+        .collect();
+    let mm = MatrixMap::diagonal(store.naxis, store.naxis, &diag)?;
     Ok(Box::new(mm))
 }
 

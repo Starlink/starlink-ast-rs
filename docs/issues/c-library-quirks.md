@@ -56,6 +56,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 
 ### [Resolved upstream](#resolved-upstream)
 
+- [RESOLVED (upstream f6c0d187): `astRead` crashes on a non-spectral `-LOG` axis with a zero CRVAL](#resolved-upstream-f6c0d187-astread-crashes-on-a-non-spectral--log-axis-with-a-zero-crval)
 - [RESOLVED (upstream 9efa99f3): `OtherAxes` keeps the axis value as CRVAL for a `-TAB` axis](#resolved-upstream-9efa99f3-otheraxes-keeps-the-axis-value-as-crval-for-a--tab-axis)
 - [RESOLVED (upstream 9e6e4415): `IsMapTab2D` fails with AST__MPIND when only one celestial axis is tabular](#resolved-upstream-9e6e4415-ismaptab2d-fails-with-ast__mpind-when-only-one-celestial-axis-is-tabular)
 - [RESOLVED (upstream a4cded15): `astRemoveTables` with a blank key removes every other table](#resolved-upstream-a4cded15-astremovetables-with-a-blank-key-removes-every-other-table)
@@ -1392,6 +1393,17 @@ A 64 bit integer card value was written with `astWriteInt` and read into an `int
 
 Fixed on `u/timj/norm-unit` in c16f9b11: SipReplace is written and read as `SipRpl`, the card values with `astWriteInt64` into an `int64_t`, and PolyTan and SipOK default to -INT_MAX; `testfitschan` `testdumpload`.
 The port's FitsChan dump (`fitschan/dump.rs`) is `Dump` as fixed; `tests/test_channel_dump_oracle.rs` (the `fitschan*` cases), whose probe needs the fixed library.
+
+### RESOLVED (upstream f6c0d187): `astRead` crashes on a non-spectral `-LOG` axis with a zero CRVAL
+
+C location: `fitschan.c` `WcsOthers`.
+
+`WcsOthers` gives an unclaimed axis whose CTYPE ends in `-LOG` the Mapping `LogWcs` makes, and `LogWcs` returns NULL when CRVAL is zero, since the axis then has no logarithmic form.
+The NULL pointer was passed to `astCmpMap`, which dereferenced it.
+`WcsSpectral` already gives a spectral axis a UnitMap in the same case.
+
+Fixed on `u/timj/norm-unit` in f6c0d187: a UnitMap is used; `testfitschan.c` `testotherlogaxis` (errors 1087, 1088).
+The port gives the UnitMap in `wcs_read::others_axis_map`; `other_log_crval_zero` in `tests/test_fitschan_read_chain_oracle.rs`, whose probe needs the fixed library.
 
 ### RESOLVED (upstream 9efa99f3): `OtherAxes` keeps the axis value as CRVAL for a `-TAB` axis
 

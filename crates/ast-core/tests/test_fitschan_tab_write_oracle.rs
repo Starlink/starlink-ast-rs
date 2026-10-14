@@ -22,11 +22,9 @@ use ast_core::{AnyObject, Channel, Encoding, FitsChan, from_native_string, to_na
 /// `excluded_cases_still_differ` fails when one starts to match.
 const TAB_WRITE_EXCLUDED: &[(&str, &str)] = &[(
     "sparse",
-    "the header written differs from C's only in the last digits of values \
-     computed for linear axes: CRVAL3 and CDELT3 of the DSB spectral axis, and \
-     CDELT1 and CDELT2 of the alternate axis descriptions, which print alike \
-     but read back as shifts and scales a few units in the last place from \
-     C's (PLAN.md section 5)",
+    "CRVAL3 and CDELT3 of the DSB spectral axis differ from C's in the last \
+     place or two, and what is read back carries the difference (PLAN.md \
+     section 5)",
 )];
 
 /// Each card of `fc` from the first, prefixed by "|".

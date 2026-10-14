@@ -36,9 +36,8 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
         "test_fitschan_tab_write_oracle.rs",
         "TAB_WRITE_EXCLUDED",
         1,
-        "sparse: written as C writes it but for the last digits of values \
-         computed for linear axes (CRVAL3 and CDELT3 of the DSB spectral axis, \
-         CDELT1 and CDELT2 of the alternate descriptions), which also show in \
+        "sparse: written as C writes it but for CRVAL3 and CDELT3 of the DSB \
+         spectral axis, which differ in the last place or two and carry into \
          what is read back; recorded in PLAN.md section 5, with a companion \
          test that fails when the case matches",
     ),
@@ -71,7 +70,7 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
     (
         "test_wcsconv.rs",
         "ISSIMP_PLACEMENT_LICENSED",
-        3,
+        2,
         "C's reader reduces Mappings as it assembles them, so its cards record \
          the order that reader worked in; this port simplifies once, at the \
          end. The Mapping is the same and only which sub-Mappings were \
