@@ -78,8 +78,8 @@ defends against (the H10/H11 concern). But combined with the C-side reading it
 is hard to see what the branch buys, and it should be either deleted or given
 the fixture that justifies it.
 
-`canonicalize_inverted_cmpmaps` and `normalize_unitmap_children` are untested
-here and remain out of scope. This is the
+`canonicalize_inverted_cmpmaps` and `normalize_unitmap_children` were untested
+here; both have since been deleted (PLAN.md §10.15, §10.22). This is the
 `IsSimp` situation exactly (see H3 in `docs/porting-hazards.md`): one field
 serving both a semantic role and a serialisation role. `IsSimp` was split into
 `is_simple_serial` and `has_been_simplified`; Invert has not been split.

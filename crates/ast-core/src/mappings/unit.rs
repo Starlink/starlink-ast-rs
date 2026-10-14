@@ -128,38 +128,64 @@ impl Mapping for UnitMap {
         where_: usize,
         series: bool,
     ) -> Option<usize> {
-        // Faithful port of C unitmap.c::MapMerge (unitmap.c:357), series case
-        // only. In series with any other Mapping (nmap > 1) a UnitMap is
-        // simply eliminated (unitmap.c:519): the following elements shuffle
-        // down and the index of the first modified element is `where_`.
-        //
-        // Removing the UnitMap *in-loop* (rather than in a post-loop strip) is
-        // what advances the nominate cursor exactly as C does — after this
-        // returns `where_`, the map that shuffled into `where_` is nominated
-        // next, which is how C reaches e.g. `MatrixMap::MapMerge` (MatWin2)
-        // for a Win-Unit-Matrix run instead of the WinMap's own merge.
-        //
-        // The parallel case (adjacent-UnitMap coalescing and Invert clearing)
-        // and the lone-UnitMap Invert clearing are left to the existing
-        // post-loop handling, which the current fixtures already match.
+        // C unitmap.c::MapMerge (unitmap.c:357).
         if ctx.len() == 1 {
             // A lone UnitMap: clear a set Invert flag, reporting the change
             // (unitmap.c:508). Matches C returning `result = 0` when the
             // single-map Invert flag was set.
-            let entry = ctx.entry(0);
-            if entry.1 || entry.2 {
-                ctx.set_pair_single(0, (Box::new(UnitMap::new(self.ncoord)), false, false));
-                return Some(0);
+            let (map, eff, orig) = ctx.entry(0);
+            if !*eff {
+                return None;
             }
-            return None;
+            let entry = (map.clone(), false, *orig);
+            ctx.set_pair_single(0, entry);
+            return Some(0);
         }
 
+        // In series with any other Mapping a UnitMap is simply eliminated
+        // (unitmap.c:516-538): the following elements shuffle down and the index
+        // of the first modified element is `where_`. Removing it in the loop
+        // is what advances the nominate cursor as C does: the map that
+        // shuffled into `where_` is nominated next, which is how C reaches
+        // e.g. `MatrixMap::MapMerge` (MatWin2) for a Win-Unit-Matrix run.
         if series {
             ctx.remove_at(where_);
             return Some(where_);
         }
 
-        super::simplify::default_map_merge(ctx, where_, series)
+        // In parallel, the UnitMap merges with the run of UnitMaps on either
+        // side of it (unitmap.c:539-571). C tests the class name, so a
+        // subclass would not join the run.
+        let is_unit = |i: usize| ctx.entry(i).0.as_ref().as_any().is::<UnitMap>();
+        let (mut i1, mut i2) = (where_, where_);
+        let mut nin = ctx.entry(where_).0.nin();
+        while i1 > 0 && is_unit(i1 - 1) {
+            i1 -= 1;
+            nin += ctx.entry(i1).0.nin();
+        }
+        while i2 + 1 < ctx.len() && is_unit(i2 + 1) {
+            i2 += 1;
+            nin += ctx.entry(i2).0.nin();
+        }
+
+        if i1 == i2 {
+            // Nothing to merge with: clear the nominated UnitMap's Invert
+            // flag (unitmap.c:572-587). Only the flag the list applies it
+            // with changes; the UnitMap keeps its own Invert attribute, which
+            // is why C's result dumps `Invert = 1` on the UnitMap and no
+            // `InvA`/`InvB` on the CmpMap.
+            let (map, eff, orig) = ctx.entry(where_);
+            if !*eff {
+                return None;
+            }
+            let entry = (map.clone(), false, *orig);
+            ctx.set_pair_single(where_, entry);
+            return Some(where_);
+        }
+
+        // Replace the run with one UnitMap applied forward (unitmap.c:588-624).
+        ctx.replace_range_with(i1, i2, Box::new(UnitMap::new(nin)));
+        Some(i1)
     }
 
     fn map_split_zero_based(
@@ -181,23 +207,6 @@ impl Mapping for UnitMap {
             in_axes.to_vec(),
             Box::new(UnitMap::new(in_axes.len())),
         )))
-    }
-
-    fn try_merge(
-        &self,
-        other: &dyn Mapping,
-        series: bool,
-        _self_inv: bool,
-        _other_inv: bool,
-    ) -> Option<DynMapping> {
-        if !series {
-            // Parallel: merge adjacent UnitMaps into one with combined ncoord.
-            let other_unit = other.as_any().downcast_ref::<UnitMap>()?;
-            Some(Box::new(UnitMap::new(self.ncoord + other_unit.ncoord)))
-        } else {
-            // Series: UnitMap removal handled by post-loop cleanup in merge_loop.
-            None
-        }
     }
 
     fn ident(&self) -> &str {

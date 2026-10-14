@@ -6,9 +6,8 @@ still resolves to the analysis it was written against.
 `PLAN.md` carries a one-sentence resolution per entry and links here; nothing in
 this file is outstanding work.
 
-Two entries are not here because part of each is still open, and both stay in
-`PLAN.md` in full: §10.2's linear ChebyMap replacement and §10.22's
-`normalize_unitmap_children`. §10.22's closed half is recorded below.
+One entry is not here because part of it is still open, and it stays in
+`PLAN.md` in full: §10.2's linear ChebyMap replacement.
 
 ---
 
@@ -761,6 +760,16 @@ One residual difference is not observable in any fixture: C reports the clearing
 as a change and so restarts its nominate loop, where the port reports `None`. If
 that ever matters it will show as a resume-point difference, not as a wrong
 Mapping.
+
+**Correction, 2026-10-13: the retraction was wrong.** The rebuild did not reach
+C's dump; `normalize_unitmap_children` (§10.22) did. With that rewrite disabled,
+`unit_parallel_invert_clear` and `unit_parallel_invert_pcd` both fail, the
+parent keeping its `InvB`. The fixtures passed, but not through the code this
+entry credited, and the residual difference above was the gap itself.
+`UnitMap::map_merge` now ports the whole parallel branch (`unitmap.c:539-624`):
+it brackets the run of adjacent UnitMaps, replaces it in one step, and with no
+neighbour clears the entry's applied direction while keeping the UnitMap's own
+`Invert`, reporting the change as C does.
 
 ---
 
@@ -1864,9 +1873,36 @@ that would pin them cannot be built against this pin.
 
 ---
 
-### 10.22 `narrow_unit_scale_winmap_children` — FIXED
+### 10.22 The public entry performed two tree rewrites C's `astSimplify_` does not — FIXED
 
-The public simplify entry performed a second tree rewrite that converted an
+`mapping.c:24755-24808` adds no algorithm: an `IsSimple` short-circuit, the
+`Simplify` call, the stamp, and the two flag clears of §10.20. The port's public
+simplify entry also rewrote the result tree. Both rewrites are gone.
+
+#### `normalize_unitmap_children`
+
+It dropped `InvA` / `InvB` on a parallel CmpMap whose corresponding child was a
+UnitMap, and was measured load-bearing (§10.15): without it four `equal()`
+results and two dumps differed from C. Its job had a C owner all along.
+`UnitMap::map_merge` ported only the lone and series branches of
+`unitmap.c` `MapMerge`; the parallel branch (`unitmap.c:539-624`) was left to
+`UnitMap::try_merge` for the run and to nothing for the flag, and the rewrite
+reproduced the flag clearing after the fact, at the public entry and in one
+no-change exit of `cmp_simplify`. §10.6 had credited the generic rebuild with
+that clearing; it was the rewrite.
+
+The parallel branch is now ported in `UnitMap::map_merge`, and the rewrite, both
+call sites and `UnitMap::try_merge` are deleted: the corpus, all `wcsconv` byte
+comparisons and the rest of the suite pass without them. Three negative controls
+fire: not clearing the flag, clearing the UnitMap's own `Invert` with it, and
+not merging the run. The lone branch was made faithful in the same change (it
+tested the UnitMap's own `Invert` as well as the list's flag, and replaced the
+Mapping); no fixture distinguishes the two, because a lone top-level UnitMap
+always has both flags equal.
+
+#### `narrow_unit_scale_winmap_children`
+
+The public simplify entry also performed a tree rewrite that converted an
 all-unit-scale WinMap child to a ShiftMap at the outermost call, standing in for
 C's final `winmap.c:1819` step. It was measured dead at pin `07fbe2dc` and
 deleted along with `PublicSimplifyGuard` and the method itself: 0 failing

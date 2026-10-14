@@ -217,44 +217,6 @@ impl CmpMap {
 
     /// **`C-ARTIFACT`** (dump-only; measured, and load-bearing).
     ///
-    /// Removing this call costs four `equal()` failures — `cap_cmpmap_01`,
-    /// `cap_cmpmap_04`, `cap_wcsmap_01` and `parcomp_inverted_nested_reemitted` —
-    /// and two further serialisation failures. It is the only surviving
-    /// mechanism that produces C's canonical `InvA`/`InvB` shape: three others
-    /// that also pushed an inversion into a component's structure were measured
-    /// redundant, individually and together, and deleted. See PLAN.md §10.15.
-    ///
-    /// Recursively clear redundant `InvA` / `InvB` flags on a parallel
-    /// CmpMap whose corresponding child is a `UnitMap`. The C reference
-    /// produces this canonical form: since `UnitMap` is its own inverse,
-    /// the parent's external invert flag is observationally irrelevant
-    /// and is dropped from the recorded snapshot, leaving the child's
-    /// intrinsic `Invert` state untouched. Series CmpMaps are unaffected
-    /// because the `simplify` merge loop already removes UnitMap entries
-    /// from a series chain.
-    pub(crate) fn normalize_unitmap_children(&mut self) {
-        // Recurse into children first.
-        if let Some(child_a) = self.first.as_any_mut().downcast_mut::<CmpMap>() {
-            child_a.normalize_unitmap_children();
-        }
-        if let Some(child_b) = self.second.as_any_mut().downcast_mut::<CmpMap>() {
-            child_b.normalize_unitmap_children();
-        }
-
-        if self.kind != Composition::Parallel {
-            return;
-        }
-
-        if self.inv_a && self.first.as_any().is::<super::unit::UnitMap>() {
-            self.inv_a = false;
-        }
-        if self.inv_b && self.second.as_any().is::<super::unit::UnitMap>() {
-            self.inv_b = false;
-        }
-    }
-
-    /// **`C-ARTIFACT`** (dump-only; measured, and load-bearing).
-    ///
     /// Disabling the flip in this and its sibling costs 12 further simplify
     /// serialisation failures and **5 `wcsconv` byte comparisons** —
     /// `grism`, `skyref`, `skyref-alt`, `tidy-offsets` and `tidy-pole`, all

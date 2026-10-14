@@ -563,8 +563,6 @@ more and the `gap:` verdict form has been withdrawn; `no_row_is_left_at_gap` and
 
 Closed entries keep their numbers, and each one's write-up is in
 [`docs/issues/closed-plan-findings.md`](docs/issues/closed-plan-findings.md).
-One carries an open remainder and stays here in full: §10.22's
-`normalize_unitmap_children`.
 
 What is left open anywhere in this section:
 
@@ -578,7 +576,7 @@ What is left open anywhere in this section:
 | 10.2 | ChebyMap reached neither half of the `MapMerge` it inherits from PolyMap | FIXED — both halves run; upstream's `abe5baae` fixed the linear reduction's lost normalisation and the port ported it, retiring its one `C_DEFECT_EXCLUDED` row |
 | 10.3 | Three divergences in the port's handling of C's parallel-in-series branch | FIXED — rows 22, 23 and 26 of `cmpmap.md` are `ported`, and two fixtures came byte-exact with the change |
 | 10.4 | The CmpMap/PermMap swap was hung off the PermMap, where C hangs it off the CmpMap | FIXED — it runs when the CmpMap is nominated, as the last block of its `map_merge` |
-| 10.6 | A parallel UnitMap's Invert flag looked unported | RETRACTED — C clears the list's applied direction, not the object's attribute, which the port does elsewhere |
+| 10.6 | A parallel UnitMap's Invert flag looked unported | FIXED 2026-10-13 — the retraction was wrong: the dump came from §10.22's tree rewrite, not the rebuild; `UnitMap::map_merge` now clears the flag as C does |
 | 10.7 | PcdMap's zero-distortion reduction was unreachable from the nominate loop | FIXED — same shape as §10.1, moved into `pcd_map_merge` ahead of the neighbour tests |
 | 10.8 | LutMap's linearity test used a hardcoded tolerance with no analogue in C | FIXED — scaled by `LutEpsilon` and taken as the larger of C's two estimates |
 | 10.9 | TimeMap dropped one no-effect change-of-system step where C drops three | FIXED — the derived third argument is tested for `MJDTOMJD`, `MJDTOJD` and `JDTOMJD` alike |
@@ -594,6 +592,7 @@ What is left open anywhere in this section:
 | 10.19 | A recursion-depth cap of ten and a structural hash standing in for `astEqual`, neither with a counterpart in C | CLOSED — both removed, and what C does instead is gated |
 | 10.20 | The restricted-simplify path dropped three of C's steps | FIXED — all three ported, each with a fixture pair that fails without it |
 | 10.21 | `astDoNotSimplify` and the Mapping-level `Ident` it reads were unported | FIXED — all three generic-driver call sites honour it |
+| 10.22 | The public entry performed two tree rewrites C's `astSimplify_` does not | FIXED — `narrow_unit_scale_winmap_children` was dead and deleted; `normalize_unitmap_children` stood in for C's unported parallel branch of `UnitMap::MapMerge`, which is now ported, and is deleted |
 | 10.23 | The uncertainty simplification asked `Mapping::equal` where C asks pointer identity | FIXED — any reduction counts, including one that rewrites only the structure |
 | 10.24 | A merged Region's combined uncertainty went straight to the parallel CmpMap `Prism::Simplify` starts from | FIXED — the Prism's tail contributes, so the uncertainty is built as C builds it |
 | 10.25 | A bounded Interval was reclassified to a Box without simplifying it | FIXED — C's `Cache` builds the base-Frame Box and the result is simplified |
@@ -603,21 +602,3 @@ What is left open anywhere in this section:
 | 10.29 | PolyMap's merge half, and a third `astDoNotSimplify` site in the shared dispatcher | FIXED — three divergences closed |
 | 10.30 | ChebyMap's cancellation test was hand-rolled and never looked at the inverse terms | FIXED — it goes through the inherited equality, bounding boxes and both coefficient sets |
 | 10.31 | WcsMap's swap driver was two attempts where C runs a search | FIXED — C's bidirectional PermMap walk, nearer-target choice and speculative swap are ported |
-
-### 10.22 The public entry performs one tree rewrite C's `astSimplify_` does not
-
-`mapping.c:24755-24808` adds no algorithm: an `IsSimple` short-circuit, the
-`Simplify` call, the stamp, and the two flag clears of §10.20.
-`<dyn Mapping>::simplify` (`simplify_entry.rs:36-82`) also rewrites the result
-tree once before returning it.
-
-`normalize_unitmap_children` (`cmpmap.rs:223`, called at `simplify_entry.rs:70`)
-drops redundant `InvA`/`InvB` flags on a parallel CmpMap whose corresponding
-child is a UnitMap. It is load-bearing and measured: §10.15 records four
-`equal()` failures and two serialisation failures without it, and it is one of
-the two layers that reproduce C's inversion push-down. The section stays open for
-it.
-
-A second rewrite, `narrow_unit_scale_winmap_children`, was measured dead and
-deleted; the account is in
-[`docs/issues/closed-plan-findings.md`](docs/issues/closed-plan-findings.md).

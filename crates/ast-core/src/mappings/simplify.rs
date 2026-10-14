@@ -3302,12 +3302,9 @@ fn reconstruct_inner(list: Vec<(DynMapping, bool, bool)>, series: bool) -> AstRe
 
     // Apply the effective inversion to a component about to be composed.
     //
-    // A plain flag toggle. `CmpMap::normalize_unitmap_children`, run once on the
-    // fully simplified top-level result, is what produces C's canonical
-    // `InvA`/`InvB` shape; three further layers that also pushed an inversion
-    // into a component's structure were measured redundant against the whole
-    // corpus, including `parcomp_inverted_reemitted` and its nested sibling,
-    // which exist to demand that shape. See PLAN.md §10.15.
+    // A plain flag toggle. C's canonical `InvA`/`InvB` shape for a UnitMap
+    // component comes from `UnitMap::map_merge` clearing its list flag in
+    // parallel (unitmap.c:575-584), as in C.
     let apply_effective = |m: &mut DynMapping| {
         m.invert();
     };
@@ -3543,9 +3540,6 @@ pub(crate) fn simplify_mapping_reporting_change(
     let adopt_reduced_leaf = reduction != OpaqueLeafReduction::None;
     if !changed && !simpler && !adopt_reduced_leaf && list.len() > 1 {
         let mut cloned = mapping.clone_box();
-        if let Some(cmp_mut) = cloned.as_any_mut().downcast_mut::<CmpMap>() {
-            cmp_mut.normalize_unitmap_children();
-        }
         // Every `IsSimple` now on a list entry is one C raised on the *live*
         // component: `SeparateMappings` (cmpmap.c:3326) leaves each non-duplicate
         // entry aliasing the real child, and both stampers — the nominate loop's

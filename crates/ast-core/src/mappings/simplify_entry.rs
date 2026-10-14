@@ -16,7 +16,7 @@
 //! (`record_simplified`); there is exactly one `ViaSimplify(())` in the file and
 //! the guarantee is that nothing outside it can write a second one.
 
-use super::{AstResult, CmpMap, DynMapping, Mapping, simplify};
+use super::{AstResult, DynMapping, Mapping, simplify};
 
 /// Proof that a per-class reduction was reached through
 /// `<dyn Mapping>::simplify`, and therefore through the `IsSimple` gate.
@@ -85,19 +85,6 @@ impl dyn Mapping {
 fn record_simplified(this: &dyn Mapping, result: &mut DynMapping) {
     let restricted = this.restricted_simplify();
 
-    // `as_any` cannot be called on the `Box<dyn Mapping>` directly: it would
-    // resolve via auto-deref but the resulting `&dyn Any` points at the Box, not
-    // the inner mapping. Going through `as_mut` first gives a `&mut dyn
-    // Mapping`, on which `as_any_mut` returns the inner type-erased reference
-    // that `downcast_mut` can match.
-    let rm: &mut dyn Mapping = result.as_mut();
-    if let Some(cm) = rm.as_any_mut().downcast_mut::<CmpMap>() {
-        // Drop redundant InvA/InvB flags on a parallel CmpMap whose
-        // corresponding child is a UnitMap: since UnitMap is its own inverse the
-        // external flag is observationally irrelevant, and the C reference emits
-        // it cleared.
-        cm.normalize_unitmap_children();
-    }
     if restricted {
         // Clear the restricted flag on the result; do not set IsSimple.
         result.set_restricted_simplify(false);
