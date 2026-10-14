@@ -5,18 +5,11 @@ The checks inline in `main()` are mostly covered by the FitsChan oracle tests, a
 This file lists the ones that are not, by the C error codes, as found on 2026-10-13.
 Each entry says what C checks; porting one means adding that check to a Rust test, through an oracle case where the value is not obvious from the C source.
 
-## Not covered
+## Covered since 2026-10-14
 
-- **7777-7778**: `astGetFitsK(fc, NULL)` at Card=2 returns 45 (C 1998-2002); no test calls `get_fits_k(None)`.
-- **12-13**: with SipOK=0, `wcsconv/inputs/sip.head` is read into a Clean=1 FitsChan and a FITS-WCS write back into it returns 0 or less (C 2264-2272).
-- **14-19**: `fixtures/programs/testfitschan/alt.header` is read by no Rust test.
-  C checks that the read fails with AST__BDFTS when IgnoreBadAlt=0 (C 2286-2296), gives 4 Frames when IgnoreBadAlt=1 (C 2312), and with Warnings=BadAlt leaves one warning (C 2323-2325).
-- **115-117, 133-135**: Test and Clear of ForceTab and TabOK (C 2340-2380).
-- **313**: `show_fits` is never called (C 2521-2524).
-- **630-633**: an FK5 header with DATE-OBS and OBSGEO, its System set to AZEL, writes `AZ---TAN` as FITS-WCS and reads back (C 3178-3189).
-- **650-655, 660-665**: FITS-WCS writes from a SpecFrame giving `WAVN-W2F` (C 2897), `AWAV-F2A` (2924), `BETA` from VELO (2950), `VELO-F2V` (2977), `FREQ-A2F` (3005) and `FREQ-V2F` (3033).
-- **804-805**: `set_fits_f` of AST__BAD read back with `get_fits_s` gives `<bad>` (C 3801-3806).
-- **836**: FK5 remapped to Supergalactic writes `SLON` as FITS-WCS (C 4016, 4061-4068).
+The checks listed here as not covered on 2026-10-13 are in `test_fitschan_c_inline.rs`: 7777-7778, 12-13, 14-19, 115-117 and 133-135, 313, 630-633, 650-655 and 660-665, 804-805, and 836.
+Porting 662-663 exposed a writer gap, now fixed: the FITS-WCS writer tested an unsimplified pixel-to-X Mapping when choosing a `-X2P` algorithm, so an axis linear in AWAV and written as FREQ was refused where C writes `FREQ-A2F`.
+C sets the trial System on the FrameSet, whose `RemapFrame` and `TidyNodes` simplify the joined Mapping (`frameset.c:11214`).
 
 ## Partly covered
 

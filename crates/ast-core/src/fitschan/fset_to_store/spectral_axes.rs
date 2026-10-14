@@ -436,12 +436,18 @@ fn try_x2p_cascade(
         // S→X for the linearity probe and the IWC chain.
         let mut s2x = x2s.clone_box();
         s2x.invert();
+        // C sets the trial System on the FrameSet being written, whose
+        // integrity step remaps the current Frame (frameset.c `RemapFrame`)
+        // and so joins the pixel-to-S Mapping and the S-to-X conversion into
+        // one simplified Mapping (`TidyNodes`, frameset.c:11214). The
+        // linearity test sees that simplified Mapping, in which a conversion
+        // that undoes the pixel axis's own System cancels.
         let s2x_padded = embed_axis(s2x.clone_box(), spec_iax, nwcs)?;
-        let pixel_to_x: DynMapping = Box::new(CmpMap::new(
+        let pixel_to_x = <dyn crate::mappings::Mapping>::simplify(&CmpMap::new(
             pixel_to_s_map.clone_box(),
             s2x_padded,
             Composition::Series,
-        )?);
+        )?)?;
 
         if !is_map_linear(pixel_to_x.as_ref(), lbnd_p, ubnd_p, spec_iax)? {
             continue;
