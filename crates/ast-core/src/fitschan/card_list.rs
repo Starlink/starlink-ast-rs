@@ -201,11 +201,12 @@ impl CardList {
         self.position = pos + 1;
     }
 
-    /// Find the first card matching the given keyword (case-insensitive).
+    /// Find the first card matching the given keyword (case-insensitive),
+    /// passing over cards a read has consumed, as C's `MoveCard` does.
     pub fn find(&self, keyword: &str) -> Option<&FitsCard> {
         self.cards
             .iter()
-            .find(|c| c.keyword.eq_ignore_ascii_case(keyword))
+            .find(|c| !c.is_consumed() && c.keyword.eq_ignore_ascii_case(keyword))
     }
 
     /// Search forward from the current position for a card matching keyword.

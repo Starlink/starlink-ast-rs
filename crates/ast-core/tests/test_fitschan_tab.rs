@@ -4,10 +4,6 @@
 //!
 //! Divergences from the C ancestor:
 //!
-//! - `checktab` empties the FitsChan of WCS cards with `astPurgeWCS` before
-//!   writing its second FrameSet; `astPurgeWCS` is not ported, so that
-//!   write goes to a new FitsChan holding the same `NAXIS` cards and
-//!   attributes.
 //! - C's `astCopy` of the FitsChan is `Clone`, and the table source is a
 //!   closure rather than a callback reading globals.
 //!
@@ -245,7 +241,9 @@ fn check_tab() {
     fs.remap_frame(FrameRef::Base, Box::new(ShiftMap::new(vec![50.0])))
         .unwrap();
 
-    let mut fc = fitschan(Encoding::FitsWcs, 1, &[100]);
+    // Remove the table and the header from the first write.
+    fc.remove_tables("WCS-TAB").unwrap();
+    fc.purge_wcs().unwrap();
     assert_eq!(
         fc.write(&AnyObject::FrameSet(fs.clone())).unwrap(),
         1,
