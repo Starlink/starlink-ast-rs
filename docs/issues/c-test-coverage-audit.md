@@ -29,7 +29,7 @@ A C check counts as covered when a Rust test, or an oracle case replaying C, exe
 | `testrate.c` | ported (`test_rate.rs`) |
 | `testratemap.c` | ported (`test_ratemap.rs`) |
 | `testresimp.c` | ported |
-| `testunitnormmap.c` | mostly covered |
+| `testunitnormmap.c` | ported |
 | `testzoommap.c` | ported, apart from the `AST__IMMUT` checks, which belong to `ast-capi` |
 | `testmapping.c` | ported, apart from a no-op `Invert` set, which a toggling `invert()` cannot express |
 | `testregions.c` | all 30 functions covered; `checkEllipse` Errors 15-17 are a recorded gap |
@@ -55,10 +55,6 @@ A C check counts as covered when a Rust test, or an oracle case replaying C, exe
   It is now `test_mapping.rs::a_simplified_mapping_set_to_unit_simplifies_again`.
 
 ## Gaps by program
-
-### `testunitnormmap.c`
-
-- `testsimplify` (`:89-155`): seven combinations with centres (2,-1,0) and (-1,6,4) and a shift of (3,7,-9) give ShiftMap, UnitNormMap, UnitNormMap, CmpMap, UnitNormMap, UnitNormMap and CmpMap; only the fifth is an exact fixture (`cap_unitnormmap_01`).
 
 ### `testregions.c`
 

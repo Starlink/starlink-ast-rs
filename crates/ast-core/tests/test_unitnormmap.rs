@@ -528,3 +528,77 @@ fn not_linear_and_round_trips_including_the_centre() {
         assert!(round_trips(&map, &centre[..nin]), "Error 6b, nin={nin}");
     }
 }
+
+/// `testunitnormmap.c` `testsimplify`: seven series pairs of UnitNormMaps,
+/// a ShiftMap and unit-scale WinMaps, each simplified to C's class with the
+/// same inputs, outputs and transformed values (to 1e-14 relative, C's
+/// `differ`).
+#[test]
+fn c_testsimplify() {
+    let differ = |a: f64, b: f64| (a - b).abs() > (0.5 * (a + b)).abs().max(1.0) * 1.0e-14;
+    let centre1 = [2.0, -1.0, 0.0];
+    let centre2 = [-1.0, 6.0, 4.0];
+    let shift = [3.0, 7.0, -9.0];
+    let unm1 = UnitNormMap::new(centre1).unwrap();
+    let mut unm1inv = unm1.clone();
+    unm1inv.invert();
+    let unm2 = UnitNormMap::new(centre2).unwrap();
+    let mut unm2inv = unm2.clone();
+    unm2inv.invert();
+    let shiftmap = ShiftMap::new(shift.to_vec());
+    let winmap = |scale: f64| {
+        let b: Vec<f64> = shift.iter().map(|s| scale + s).collect();
+        WinMap::from_corners(&[0.0; 3], &shift, &[1.0; 3], &b).unwrap()
+    };
+    let (winmap1, winmap2) = (winmap(1.0), winmap(2.0));
+
+    let cases: [(Box<dyn Mapping>, Box<dyn Mapping>, &str); 7] = [
+        (Box::new(unm1.clone()), Box::new(unm2inv), "ShiftMap"),
+        (Box::new(shiftmap.clone()), Box::new(unm2), "UnitNormMap"),
+        (
+            Box::new(winmap1.clone()),
+            Box::new(unm1.clone()),
+            "UnitNormMap",
+        ),
+        (Box::new(winmap2.clone()), Box::new(unm1), "CmpMap"),
+        (Box::new(unm1inv.clone()), Box::new(shiftmap), "UnitNormMap"),
+        (Box::new(unm1inv.clone()), Box::new(winmap1), "UnitNormMap"),
+        (Box::new(unm1inv), Box::new(winmap2), "CmpMap"),
+    ];
+    // C's test points, coordinate by coordinate.
+    let coords = [
+        [1.0, 3.0, -5.0],
+        [2.0, 3.0, 99.0],
+        [-6.0, -5.0, -7.0],
+        [30.0, 21.0, 37.0],
+    ];
+    for (i, (m1, m2, cls)) in cases.into_iter().enumerate() {
+        let cmp = CmpMap::new(m1, m2, Composition::Series).unwrap();
+        let simp = (&cmp as &dyn Mapping).simplify().unwrap();
+        let dump =
+            ast_core::to_native_string(&ast_core::AnyObject::from_mapping(simp.as_ref()).unwrap())
+                .unwrap();
+        let got = dump
+            .lines()
+            .find_map(|l| l.trim().strip_prefix("Begin "))
+            .and_then(|l| l.split_whitespace().next())
+            .unwrap();
+        assert_eq!(got, cls, "case {i}: Simplify error 1");
+        assert_eq!(simp.nin(), cmp.nin(), "case {i}: Simplify error 2");
+        assert_eq!(simp.nout(), cmp.nout(), "case {i}: Simplify error 3");
+        let cols: Vec<&[f64]> = coords[..cmp.nin()].iter().map(|c| &c[..]).collect();
+        let pts = PointSet::from_columns(&cols).unwrap();
+        let a = cmp.transform(&pts, true).unwrap();
+        let b = simp.transform(&pts, true).unwrap();
+        for k in 0..3 {
+            for j in 0..cmp.nout() {
+                assert!(
+                    !differ(a.point(k)[j], b.point(k)[j]),
+                    "case {i}: Simplify error 4: {:?} vs {:?}",
+                    a.point(k),
+                    b.point(k)
+                );
+            }
+        }
+    }
+}
