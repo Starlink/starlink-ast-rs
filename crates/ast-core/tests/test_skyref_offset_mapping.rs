@@ -2,7 +2,7 @@
 //!
 //! Ported goal: `skyref.head` describes an offset SkyFrame (SREF sets the
 //! offset origin, SREFIS selects ORIGIN). C `TidyOffsets`
-//! (reference/starlink-ast `src/fitschan.c:34590-34594`) applies `SkyRefIs`
+//! (reference/starlink-ast `src/fitschan.c:34593-34597`) applies `SkyRefIs`
 //! *through the FrameSet*, so the FrameSet integrity machinery re-maps the
 //! SkyFrame to offset coordinates and the resulting pixel->sky Mapping carries
 //! the offset-rotation (the direction-cosine MatrixMap seen in the C dump).

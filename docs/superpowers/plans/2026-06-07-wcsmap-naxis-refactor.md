@@ -4,7 +4,7 @@
 
 **Goal:** Bring the Rust read-side mapping construction in `fitschan/wcs_*` into line with C `WcsMapFrm`'s shape — each axis-class contribution returns an N-axis mapping, then `build_iwc_to_world` composes them in series — so `astSimplify` can collapse the integrity-injected SlaMap chain that currently leaves `wcsconv_cases::sip_3d_swap_fits_wcs` failing with a 19-mapping pre-simplify chain that reduces to 9 instead of 3.
 
-**Architecture:** Today, each decoder returns its mapping at the smallest natural rank (celestial = 2-axis, spectral = 1-axis), and `build_general_iwc_to_world` glues them together with `Composition::Parallel` plus an output-`PermMap`. After the refactor, each decoder produces an `N`-axis mapping by embedding the small mapping inside a `PermMap`-sandwich-around-`Parallel`-`CmpMap` (the C-equivalent shape — see `fitschan.c:38430-38473`), and `build_iwc_to_world` composes them with `Composition::Series`. The output-permutation step disappears.
+**Architecture:** Today, each decoder returns its mapping at the smallest natural rank (celestial = 2-axis, spectral = 1-axis), and `build_general_iwc_to_world` glues them together with `Composition::Parallel` plus an output-`PermMap`. After the refactor, each decoder produces an `N`-axis mapping by embedding the small mapping inside a `PermMap`-sandwich-around-`Parallel`-`CmpMap` (the C-equivalent shape — see `fitschan.c:38433-38476`), and `build_iwc_to_world` composes them with `Composition::Series`. The output-permutation step disappears.
 
 **Tech Stack:** Rust 2024 edition, ast-core crate. Existing types: `WcsMap`, `MatrixMap`, `ZoomMap`, `UnitMap`, `PermMap`, `CmpMap`, `Composition::{Series, Parallel}`, `DynMapping`. Test surface: `cargo test -p ast-core --lib`, `cargo test -p ast-core --test test_wcsconv`, `cargo test --workspace`.
 
@@ -381,7 +381,7 @@ git commit -m "fitschan/wcs_celestial: build N-axis WcsMap with FITS-axis lon/la
 **Files:**
 - Modify: `crates/ast-core/src/fitschan/wcs_celestial.rs`
 
-**Why:** Spec Step 2 — instead of `ZoomMap(2, deg2rad)`, build a `MatrixMap` whose diagonal has `deg2rad` on `lon_axis` and `lat_axis` and `1.0` elsewhere. This mirrors C `fitschan.c:35946-35954`. `MatrixMap` recognises this as `MatrixForm::Diagonal` (see `mappings/matrix.rs:33-34, 143`), so it's still O(N) per point.
+**Why:** Spec Step 2 — instead of `ZoomMap(2, deg2rad)`, build a `MatrixMap` whose diagonal has `deg2rad` on `lon_axis` and `lat_axis` and `1.0` elsewhere. This mirrors C `fitschan.c:35949-35957`. `MatrixMap` recognises this as `MatrixForm::Diagonal` (see `mappings/matrix.rs:33-34, 143`), so it's still O(N) per point.
 
 - [ ] **Step 1: Write failing test for the N-axis Zoom (round-trip identity on pass-through axes)**
 
@@ -449,7 +449,7 @@ Replace with:
     // Step 1: Degrees to radians on the celestial axes only; identity
     // elsewhere. Diagonal MatrixMap, recognised by MatrixMap::form()
     // as MatrixForm::Diagonal — O(N) per point. Mirrors C
-    // fitschan.c:35946-35954.
+    // fitschan.c:35949-35957.
     use ndarray::Array2;
     let mut zoom_mat: Array2<f64> = Array2::eye(naxis);
     zoom_mat[[lon_axis, lon_axis]] = deg2rad;
@@ -468,7 +468,7 @@ Replace the entire composition tail (everything from the `Phase A invariant` com
 ```rust
     // The rotation is intrinsically 2-axis. Embed it in N-axis form
     // via PermMap + parallel CmpMap (with UnitMap_(N-2) on the other
-    // axes) + inverse PermMap. Mirrors C fitschan.c:38430-38473
+    // axes) + inverse PermMap. Mirrors C fitschan.c:38433-38476
     // (the nax_rem > 0 branch and the surrounding PermMap sandwich
     // at 38325-38346).
     use crate::mappings::UnitMap;
@@ -625,7 +625,7 @@ In `crates/ast-core/src/fitschan/wcs_spectral.rs`, just below the imports, add a
 ```rust
 /// Embed a 1-axis mapping into an N-axis mapping with `UnitMap`s on
 /// the other axes. Identity-fast for `naxis == 1`. Mirrors C
-/// `fitschan.c:38430-38473` — PermMap + parallel CmpMap + inverse
+/// `fitschan.c:38433-38476` — PermMap + parallel CmpMap + inverse
 /// PermMap sandwich, but specialised to a single non-passthrough
 /// axis.
 fn embed_1axis_in_naxis(
@@ -843,7 +843,7 @@ Replace the entire body — **but keep the function signature and the early `par
     // N-axis with identity on the axes it doesn't own, so series
     // composition is correct and produces a flat top-level chain
     // that astSimplify can flatten and merge across. Mirrors C
-    // `WcsMapFrm` (fitschan.c:37758) which calls astSimplify on the
+    // `WcsMapFrm` (fitschan.c:37761) which calls astSimplify on the
     // series composition of N-axis WcsCelestial / WcsSpectral /
     // WcsOthers contributions.
     let mut result: DynMapping = parts.remove(0);
@@ -961,7 +961,7 @@ Expected: stays at `182 passed; 10 failed` (or better — the spec notes the `cl
 
 If a writer-side helper has a problem under the new shape, the failure mode tells you what to do:
 
-- **Existing Rust diverges from C `SplitMap2` (fitschan.c:32976-33266) and the divergence shows up under N-axis input.** Re-port the affected helper from the C source. The Rust shape has no authority — it was a 2-axis-WcsMap-shaped attempt that didn't need to handle this case. (Authority rule above; memory: [[c-logic-beats-existing-rust]].)
+- **Existing Rust diverges from C `SplitMap2` (fitschan.c:32979-33269) and the divergence shows up under N-axis input.** Re-port the affected helper from the C source. The Rust shape has no authority — it was a 2-axis-WcsMap-shaped attempt that didn't need to handle this case. (Authority rule above; memory: [[c-logic-beats-existing-rust]].)
 - **Hard-coded 2-axis assumption surfaces (e.g. `wm.lonax()` returning literal `1` because the old WcsMap was always built 2-axis).** Re-read the corresponding C source for that helper, mirror its handling line-for-line, and update Rust callers to match.
 
 In either case: do NOT add a "if naxis == 2 use old path else use new path" branch to preserve the existing Rust shape. The old Rust shape is being retired by this refactor; cleaning it up now is part of the work, not future debt.
@@ -988,7 +988,7 @@ Expected: all crates green; wcsconv at `182 passed; 10 failed`; lib at baseline.
 
 ## Phase D — Idiomatic Rust cleanup (spec Step 7)
 
-**Goal:** Once the refactor is green and the headline test is flipped, factor out the inline N-axis embedding code into a private helper *only if it doesn't drift from C*. The C library builds the embedding inline at each call site (fitschan.c:38430-38473 for `WcsNative`, similar pattern for `WcsSpectral`); the Rust shape should mirror that. So Phase D is conservative: keep the spectral helper from B2 because it deduplicates a real bit of inline code, but **only** extract a celestial helper if doing so doesn't push Rust further from the C shape.
+**Goal:** Once the refactor is green and the headline test is flipped, factor out the inline N-axis embedding code into a private helper *only if it doesn't drift from C*. The C library builds the embedding inline at each call site (fitschan.c:38433-38476 for `WcsNative`, similar pattern for `WcsSpectral`); the Rust shape should mirror that. So Phase D is conservative: keep the spectral helper from B2 because it deduplicates a real bit of inline code, but **only** extract a celestial helper if doing so doesn't push Rust further from the C shape.
 
 Authority rule reminder: if at any point during Phase D the cleanup makes the Rust diverge more from C than it already does, abandon the cleanup and keep the inline form. We're not chasing DRY at the cost of fidelity.
 
@@ -1008,7 +1008,7 @@ Authority rule reminder: if at any point during Phase D the cleanup makes the Ru
 ///
 /// Internally, the embedding is implemented as
 /// `PermMap_to_2d ; (inner || UnitMap_(N-2)) ; PermMap_back` —
-/// mirrors C `fitschan.c:38430-38473` (the nax_rem > 0 branch and
+/// mirrors C `fitschan.c:38433-38476` (the nax_rem > 0 branch and
 /// the surrounding PermMap sandwich at 38325-38346).
 fn embed_celestial_in_naxis(
     inner: DynMapping,

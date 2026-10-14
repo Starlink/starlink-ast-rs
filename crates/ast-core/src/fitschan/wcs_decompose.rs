@@ -12,7 +12,7 @@ use crate::mappings::Mapping;
 use crate::mappings::helpers::is_bad;
 
 // ---------------------------------------------------------------------------
-// FindBasisVectors / FitLine port (fitschan.c:10390-15168)
+// FindBasisVectors / FitLine port (fitschan.c:10393-15171)
 // ---------------------------------------------------------------------------
 
 /// Result of [`find_basis_vectors`]: the chosen root pixel, the IWC
@@ -35,7 +35,7 @@ pub(crate) struct BasisVectors {
 
 /// Probe the mapping at a candidate pixel `g0` and check that the
 /// transformed root and unit-step neighbours are all finite. Mirrors
-/// `MakeBasisVectors` (fitschan.c:10390-10513). Returns `Some((w0,
+/// `MakeBasisVectors` (fitschan.c:10393-10516). Returns `Some((w0,
 /// step_iwc))` where `step_iwc[i]` is the IWC vector at `g0 + e_i`,
 /// or `None` if any output is non-finite.
 fn make_basis_vectors(
@@ -78,7 +78,7 @@ fn make_basis_vectors(
 
 /// Pick a root pixel `g0` for which the mapping produces all-finite
 /// IWC coordinates at `g0` and at each unit-step neighbour. Mirrors
-/// `FindBasisVectors` (fitschan.c:10515-10660): try grid centre
+/// `FindBasisVectors` (fitschan.c:10518-10663): try grid centre
 /// `0.5*(1+dim)` first, then `(1, 1, …)`, then progressively further
 /// out along the diagonal and individual axes. Returns the chosen
 /// `g0` plus the tolerance derived from the local IWC step sizes.
@@ -150,7 +150,7 @@ pub(crate) fn find_basis_vectors(
     let (w0, step) = probe?;
 
     // Tolerance per output axis: max over input axes of the IWC
-    // step magnitude × `fitstol`. fitschan.c:22061-22073.
+    // step magnitude × `fitstol`. fitschan.c:22064-22076.
     let mut tol = vec![0.0_f64; nout];
     for j in 0..nout {
         let mut t = 0.0_f64;
@@ -173,7 +173,7 @@ pub(crate) fn find_basis_vectors(
     Some(BasisVectors { g0, w0, tol })
 }
 
-/// RMS-residual gate. Mirrors `FitOK` (fitschan.c:11063).
+/// RMS-residual gate. Mirrors `FitOK` (fitschan.c:11066).
 fn fit_ok(actual: &[f64], estimated: &[f64], tol: f64) -> bool {
     let mut s1 = 0.0_f64;
     let mut s2 = 0.0_f64;
@@ -195,7 +195,7 @@ fn fit_ok(actual: &[f64], estimated: &[f64], tol: f64) -> bool {
 /// `mapping`. Returns the per-pixel slope as a vector of `nout`
 /// elements (the column of the CD matrix), or `None` if the fit
 /// is not linear (RMS residual exceeds the supplied tolerance per
-/// output axis). Mirrors `FitLine` (fitschan.c:14928-15168).
+/// output axis). Mirrors `FitLine` (fitschan.c:14931-15171).
 pub(crate) fn fit_line(
     mapping: &dyn Mapping,
     axis: usize,
@@ -301,7 +301,7 @@ pub(crate) fn fit_line(
 /// each column from the supplied `mapping`. Returns `None` if any
 /// `FitLine` call fails (i.e. the mapping is not linear within
 /// tolerance on some axis). Mirrors the per-axis `FitLine` loop in
-/// `MakeIntWorld` (fitschan.c:22086-22103).
+/// `MakeIntWorld` (fitschan.c:22089-22106).
 pub(crate) fn fit_line_cd(
     mapping: &dyn Mapping,
     nin: usize,
@@ -329,7 +329,7 @@ pub(crate) fn fit_line_cd(
 /// snapped to 0 to suppress floating-point residue from upstream linear
 /// extraction.
 ///
-/// Mirrors C `SplitMat` (fitschan.c:33269-33372).
+/// Mirrors C `SplitMat` (fitschan.c:33272-33375).
 pub(crate) fn split_cd(cd: &Array2<f64>) -> (Vec<f64>, Array2<f64>) {
     const SPLITMAT_THRESHOLD: f64 = 1.0e-7;
 

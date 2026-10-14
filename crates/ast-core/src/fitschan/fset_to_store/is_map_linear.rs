@@ -1,4 +1,4 @@
-//! Port of `fitschan.c::IsMapLinear` (fitschan.c:19402).
+//! Port of `fitschan.c::IsMapLinear` (fitschan.c:19405).
 //!
 //! Tests whether a specified output of a mapping is a linear function
 //! of the inputs. Used by `other_axes` (and the deferred `LogAxis` /
@@ -15,12 +15,12 @@ use crate::mappings::Mapping;
 use crate::mappings::helpers::ast_equal;
 
 /// Number of test points used for the inverse-transform fit.
-/// Mirrors `NP` at `fitschan.c:19466`.
+/// Mirrors `NP` at `fitschan.c:19469`.
 const NP: usize = 20;
 
 /// Return `true` if the specified output axis of `smap` is a linear
 /// function of the mapping inputs over the input box `[lbnd_in,
-/// ubnd_in]`, as C's `IsMapLinear` (fitschan.c:19402) decides it:
+/// ubnd_in]`, as C's `IsMapLinear` (fitschan.c:19405) decides it:
 /// `astMapBox` gives the range of the output and an input position at
 /// which it is lowest; `NP` points spread along the output, the other
 /// outputs held at their values there, are transformed back to the inputs;

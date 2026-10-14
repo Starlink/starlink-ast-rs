@@ -23,7 +23,7 @@ Our Rust port currently:
    The non-FITS-WCS encoders (FITS-PC, FITS-IRAF, FITS-AIPS,
    FITS-CLASS) emit only the primary plane.
 3. **Global keyword overwrite semantics.** C's
-   `SetItem(&store->mjdobs, 0, 0, ' ', ep, status)` (fitschan.c:29913)
+   `SetItem(&store->mjdobs, 0, 0, ' ', ep, status)` (fitschan.c:29916)
    forces an `s=' '` slot regardless of which version letter SkySys
    is processing — so when the reader has built (FK5 primary +
    GALACTIC alt-A), the alt-A SkySys call overwrites the primary's
@@ -156,7 +156,7 @@ each `(letter, store)`:
 For an alt plane that resolves to a SkyFrame with no RADESYS, no
 EQUINOX, and `DefB1950=true` (the AST default), the SkyFrame's
 Equinox attribute is set to `palEpb2d(1950)` and Epoch to the same
-value (mirroring `WcsSkyFrame` at fitschan.c:39298-39306,
+value (mirroring `WcsSkyFrame` at fitschan.c:39301-39309,
 39214-39222). This is what produces the 33281.923 MJD-OBS in the
 fits-pc-gal fixture: the GALACTIC alt's `WcsSkyFrame` runs the
 NORADEC + DefB1950 fallback and stamps Epoch = B1950 on the
@@ -247,11 +247,11 @@ plane (alphabetical order) wins, matching C's hardcoded
 
 | Field | FITS card | C source |
 |-------|-----------|----------|
-| `mjdobs` | MJD-OBS | fitschan.c:29913 |
+| `mjdobs` | MJD-OBS | fitschan.c:29916 |
 | `obsgeox` | OBSGEO-X | C `SkySys` body, near OBSGEO writes |
 | `obsgeoy` | OBSGEO-Y | C `SkySys` body, near OBSGEO writes |
 | `obsgeoz` | OBSGEO-Z | C `SkySys` body, near OBSGEO writes |
-| `timesys` | TIMESYS | fitschan.c:29829 |
+| `timesys` | TIMESYS | fitschan.c:29832 |
 | `dtai` | DTAI | C `SkySys` body |
 | `dut1` | DUT1 | C `SkySys` body |
 
@@ -283,7 +283,7 @@ records the contract:
 /// Global per-FrameSet field. When alt-WCS planes are present, the
 /// writer's last-plane-wins rule (alphabetical order) chooses which
 /// plane's value lands in the emitted MJD-OBS card. Mirrors C's
-/// `SetItem(&store->mjdobs, 0, 0, ' ', ...)` at fitschan.c:29913
+/// `SetItem(&store->mjdobs, 0, 0, ' ', ...)` at fitschan.c:29916
 /// which forces s=' ' regardless of which coordinate-version
 /// SkySys is processing.
 pub mjdobs: Option<f64>,
@@ -409,14 +409,14 @@ red until group 4 lands the writer side.
 
 | Topic | C source |
 |-------|----------|
-| `FsetToStore` outer per-version loop | fitschan.c:12260-12350 |
-| `AddVersion` per-letter dispatch | fitschan.c:12332 |
-| `WcsFromStore` reader | fitschan.c:36126+ |
-| `WcsSkyFrame` per-version SkyFrame build | fitschan.c:39134-39446 |
-| `SkySys` MJD-OBS overwrite (forces `s=' '`) | fitschan.c:29913 |
-| NORADEC + DefB1950 default | fitschan.c:39298-39306 |
-| nomjd-obs fallback to eqmjd | fitschan.c:39340-39348 |
-| `GetItem` primary-fallback semantics | fitschan.c:11691+ |
+| `FsetToStore` outer per-version loop | fitschan.c:12263-12353 |
+| `AddVersion` per-letter dispatch | fitschan.c:12335 |
+| `WcsFromStore` reader | fitschan.c:36129+ |
+| `WcsSkyFrame` per-version SkyFrame build | fitschan.c:39137-39453 |
+| `SkySys` MJD-OBS overwrite (forces `s=' '`) | fitschan.c:29916 |
+| NORADEC + DefB1950 default | fitschan.c:39301-39309 |
+| nomjd-obs fallback to eqmjd | fitschan.c:39343-39351 |
+| `GetItem` primary-fallback semantics | fitschan.c:11694+ |
 
 ## Risks
 

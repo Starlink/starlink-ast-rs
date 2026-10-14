@@ -20,9 +20,9 @@
 //!   - returns the celestial CRPIX and CD values directly.
 //!
 //! The CD values overwrite the `partmat` columns for the two
-//! celestial input axes (mirrors fitschan.c:22107-22112) and the
+//! celestial input axes (mirrors fitschan.c:22110-22115) and the
 //! CRPIX values overwrite the per-axis solve result for the same
-//! two axes (mirrors fitschan.c:22204-22210).
+//! two axes (mirrors fitschan.c:22207-22213).
 
 // Wired in by `fset_to_store::fset_to_store` in Group 7; until then
 // the function is reachable only from cfg(test).
@@ -158,7 +158,7 @@ pub(crate) fn make_int_world(
     // the four CD entries for the celestial pair with the values it
     // returned, since the linear-fit values from fit_line_cd above
     // describe the *stripped* mapping (without the SIP polynomial
-    // distortion), not the original. Mirrors fitschan.c:22107-22112.
+    // distortion), not the original. Mirrors fitschan.c:22110-22115.
     //
     // partmat layout: partmat[input_axis][output_axis], so we set the
     // (sipax[0], lonax), (sipax[1], lonax), (sipax[0], latax),
@@ -277,7 +277,7 @@ pub(crate) fn make_int_world(
         let mut crp = if j < nin {
             let mut crp = basis.g0[j] - y[j];
             // SIP overrides for the two celestial input axes —
-            // mirrors fitschan.c:22204-22210.
+            // mirrors fitschan.c:22207-22213.
             if havesip {
                 if j == sipax[0] {
                     crp = crpix_sip[0];
@@ -422,7 +422,7 @@ pub(crate) fn make_int_world(
 
     // Step 13: split CD into CDELT + PC and store. Mirrors C:22270-22284.
     // split_cd applies C SplitMat's 1e-7 PC-element snap internally
-    // (fitschan.c:33360), so the post-split PC is already clean of
+    // (fitschan.c:33363), so the post-split PC is already clean of
     // FP residue.
     let (cdelt, pc) = split_cd(&cdmat);
 

@@ -1994,7 +1994,7 @@ The Rust port was deliberately never mirrored, so its shape is now the correct
 one and no code changed; the affected `.native` fixtures lost their vestigial
 `INVERT_` cards when the corpus was regenerated at the `f6762005` pin.
 
-**C location:** `fitschan.c:38517-38538` (`WcsNative`, stages 1 and 3).
+**C location:** `fitschan.c:38520-38541` (`WcsNative`, stages 1 and 3).
 When the celestial axes are not already at slots 0 and 1, C builds
 **one** `AstPermMap` and uses it twice:
 
@@ -2051,7 +2051,7 @@ removed from `fset_to_store/mod.rs`; the RefRA/RefDec are now set at full
 precision. Goldens regenerated (longslit, sip-3d, sip-3d-swap, wave-f2w).
 The historical discussion below is retained for context.
 
-**C location:** `fitschan.c:21591-21592` — inside `WcsValues`'
+**C location:** `fitschan.c:21594-21595` — inside `WcsValues`'
 spectral-axis setup:
 
 ```c
@@ -2190,7 +2190,7 @@ the intended `scales[iin]` math, so no code change was needed. The
 historical discussion below is retained for context.
 
 
-**C location:** `fitschan.c:27092-27136` — inside `ScalePolyInputs`,
+**C location:** `fitschan.c:27095-27139` — inside `ScalePolyInputs`,
 after the forward-coefficient scaling loop:
 
 ```c
@@ -2252,7 +2252,7 @@ already carried the correct value. The historical discussion below is
 retained for context.
 
 
-**C location:** `fitschan.c:8486-8561` — `DateObs()`'s `astSscanf`
+**C location:** `fitschan.c:8489-8564` — `DateObs()`'s `astSscanf`
 patterns for the modern ISO-8601 form, e.g. line 8453:
 
 ```c
@@ -2356,7 +2356,7 @@ The Rust port already read `map.nout()` correctly, so no code change was
 needed. The historical discussion below is retained for context.
 
 
-**C location:** `fitschan.c:28781-28782` — inside `SIPIntWorld`,
+**C location:** `fitschan.c:28784-28785` — inside `SIPIntWorld`,
 just after declaring `nin` and `nout`:
 
 ```c
@@ -2461,7 +2461,7 @@ was dropped). The Rust port never mirrored the double-multiply, so no code
 change was needed. The historical discussion below is retained for context.
 
 
-**C location:** `fitschan.c:6871` and `fitschan.c:6966` — inside
+**C location:** `fitschan.c:6874` and `fitschan.c:6969` — inside
 `CLASSFromStore`'s spectral CDELT handling and VELO-LSR computation:
 
 ```c
@@ -2487,7 +2487,7 @@ mapping. For `CUNIT='kHz'` this would scale DELTAV by 1000×.
 
 **Why we don't currently observe this in the wild:** `CLASSFromStore`
 is invoked after `MakeFitsFrameSet`, which runs `AddEncodingFrame`
-(fitschan.c:2528). That helper *forces* the SpecFrame's Unit to "Hz"
+(fitschan.c:2531). That helper *forces* the SpecFrame's Unit to "Hz"
 before the encoder runs:
 
 ```c
@@ -2572,10 +2572,10 @@ which is closer to right but still off by a units factor).
 
 **Why it matters for the Rust port:** the `fk4_aips_*` wcsconv
 fixtures use `MJD-OBS = 40000.0` (1968). C's `AIPSFromStore`
-(fitschan.c:3660-3684) and `IRAFFromStore` (fitschan.c:19196-19220)
+(fitschan.c:3663-3687) and `IRAFFromStore` (fitschan.c:19199-19223)
 sidestep the bug by **not** re-emitting MJD-OBS — they read it from
 the FitsStore but only emit DATE-OBS — leaving the input header's
-MJD-OBS card untouched. C's `PCFromStore` (fitschan.c:24919-24923)
+MJD-OBS card untouched. C's `PCFromStore` (fitschan.c:24922-24926)
 does re-emit, and would exhibit the drift visibly.
 
 **Rust mirror:** `crates/ast-core/src/mappings/timemap.rs`
@@ -2867,7 +2867,7 @@ if the upstream AST developers confirm the C behaviour is intentional. Tests
 ### RESOLVED (upstream 6301311f): duplicate-keyword consumption is inconsistent between `WcsFcRead` and `SpecTrans`
 
 **Status:** Fixed upstream at commit 6301311f. `GetValue2` now calls a new
-`MarkAllCards` (fitschan.c:23213) so the `SpecTrans` path consumes every copy
+`MarkAllCards` (fitschan.c:23216) so the `SpecTrans` path consumes every copy
 of a repeated keyword, and the MJD-OBS presence test is made through an
 unmarking read so that card's survival no longer depends on whether DATE-OBS
 sits alongside it. The port mirrored both halves of the old behaviour, so both
@@ -2881,14 +2881,14 @@ without which the newly-surviving MJD-OBS was dropped again on the way out.
 they are excluded from any subsequent write — via two paths that treat repeated
 keywords differently.
 
-`WcsFcRead` (`fitschan.c:36359`) is a card *sweep*: it calls `astClearCard` and
+`WcsFcRead` (`fitschan.c:36362`) is a card *sweep*: it calls `astClearCard` and
 walks every card in the FitsChan, pattern-matching each card's keyword name
 against a fixed template list and calling `MarkCard` on each match. Every copy
 of a repeated keyword is therefore consumed.
 
-`SpecTrans` (`fitschan.c:31006`) reads through `GetValue2`, which delegates to
+`SpecTrans` (`fitschan.c:31009`) reads through `GetValue2`, which delegates to
 `GetValue` → `SearchCard` → `FindKeyCard` — a *first-match* forward search
-(`fitschan.c:18278`). It marks exactly one card however many copies exist. The
+(`fitschan.c:18281`). It marks exactly one card however many copies exist. The
 keywords `SpecTrans` alone handles — `CDi_j`, `RADECSYS`, `CROTAi`, `PROJPi`,
 `EPOCH`, `LONGPOLE`, `DATE-OBS` — have no `WcsFcRead` branch, so they are only
 ever marked once.
@@ -2905,7 +2905,7 @@ HDU retains only `CD1_1`…`CD2_2`, `RADECSYS` and `DATE-OBS`.
 
 A related asymmetry: `WcsFcRead`'s `MJD-OBS` branch sets `mark = 0`
 deliberately, so an MJD-OBS card survives a read. But when `DATE-OBS` is also
-present, `SpecTrans`'s translation-9 block (`fitschan.c:31829`) reaches MJD-OBS
+present, `SpecTrans`'s translation-9 block (`fitschan.c:31832`) reaches MJD-OBS
 through `GetValue2` with `mark = 1`, consuming it after all. Whether MJD-OBS
 survives thus depends on whether an unrelated keyword sits alongside it.
 
@@ -2927,7 +2927,7 @@ gated on `Encoding::FitsIraf`. The unit test that pinned the mirror is now
 `cdjjjiii_translated_and_consumed_under_fits_iraf` as its positive control.
 
 **C behaviour (before the fix):** `SpecTrans`'s translation of the legacy 6-digit `CDjjjiii` matrix
-(`fitschan.c:31400-31426`) reads each card with `GetValue2` unconditionally,
+(`fitschan.c:31403-31429`) reads each card with `GetValue2` unconditionally,
 but stores the result — as `PCj_i` plus `CDELTj = 1.0` — only when
 `encoding == FITSIRAF_ENCODING`.
 Because reading a card marks it used, a header carrying `CDjjjiii` loses those
@@ -2953,10 +2953,10 @@ absorb it, and the gap is closed otherwise. The port mirrored the bug and no
 longer does — post-fix C is "remove the redundant zero, then right-justify",
 which is what `strip_exponent_leading_zero` now implements.
 
-`EncodeFloat` (`fitschan.c:9845`) formatted every floating value into a
+`EncodeFloat` (`fitschan.c:9848`) formatted every floating value into a
 right-justified 20-column field with `%*.*E`/`%*.*G`
-(`fitschan.c:9938-9941`), so exponents always arrive with C's mandatory two
-digits. It then removes a redundant leading zero (`fitschan.c:9949-9963`):
+(`fitschan.c:9941-9944`), so exponents always arrive with C's mandatory two
+digits. It then removes a redundant leading zero (`fitschan.c:9952-9966`):
 
 ```c
 if( ( w = strstr( buf, "E-0" ) ) ) {

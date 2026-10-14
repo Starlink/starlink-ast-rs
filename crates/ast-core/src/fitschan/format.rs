@@ -291,7 +291,7 @@ pub(crate) fn round_fstring(text: &str, fitsrnd: usize) -> String {
 
     // Strip trailing zeros after a decimal point (keep one), but only
     // when there was a decimal point in the input. Mirrors C's
-    // post-rounding cleanup at fitschan.c:26658-26670.
+    // post-rounding cleanup at fitschan.c:26661-26673.
     if let Some(dot_idx) = dot {
         let mut end = n;
         while end > dot_idx + 1 {

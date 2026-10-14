@@ -58,7 +58,7 @@ port + entry deletion.
 ### DSS — non-linear plate solution
 
 **File:** `crates/ast-core/src/fitschan/enc_dss.rs`
-**C reference:** `DSSToStore` (fitschan.c:9157+) and `DSSFromStore`.
+**C reference:** `DSSToStore` (fitschan.c:9160+) and `DSSFromStore`.
 
 Rust `read_from_cards` only reads `AMDX1`/`AMDY1` (linear plate scale)
 and ignores the 20-element AMDX2..AMDX20 / AMDY2..AMDY20 polynomial
@@ -81,7 +81,7 @@ covers the polynomial path).
 ### `-ZPX` distortion mapping
 
 **File:** none (gap).
-**C reference:** `DistortMaps` (fitschan.c:8759+) `-ZPX` branch
+**C reference:** `DistortMaps` (fitschan.c:8762+) `-ZPX` branch
 (lines 8836-8884) plus `ZPXMapping` and `WATCoeffs` helpers.
 
 Rust spec_trans translates `-ZPX` CTYPE to `-ZPN-ZPX` and decodes
@@ -105,7 +105,7 @@ post-WcsMap chain.
 ### SAO encoding translator
 
 **File:** none (gap).
-**C reference:** `SAOTrans` (fitschan.c:26738+).
+**C reference:** `SAOTrans` (fitschan.c:26741+).
 
 C `SAOTrans` translates SAO-encoded headers (SAO Image WCS — uses
 `CO1_NN` / `CO2_NN` polynomial coefficient keywords) into
@@ -122,7 +122,7 @@ Add a SAO test fixture
 ### DSBSpecFrame setup from FITS-CLASS
 
 **File:** `crates/ast-core/src/fitschan/wcs_spectral.rs`
-**C reference:** `DSBSetUp` (fitschan.c:9021+) called from
+**C reference:** `DSBSetUp` (fitschan.c:9024+) called from
 `WcsSpectral`.
 
 Rust `build_spectral` always constructs a plain `SpecFrame`, even
@@ -150,7 +150,7 @@ SpecFrame construction.
 ### TELESCOP-gated `DTAI` keyword
 
 **File:** `crates/ast-core/src/fitschan/wcs_keywords.rs:231`
-**C reference:** `WcsFcRead` (fitschan.c:36292+) DTAI branch.
+**C reference:** `WcsFcRead` (fitschan.c:36295+) DTAI branch.
 
 C only reads `DTAI` when `TELESCOP` matches `JCMT*` or `UKIRT*`,
 because other telescopes may use the keyword for unrelated
@@ -208,7 +208,7 @@ Wire it into the call sites where the comments say "we silently leave".
 ### Axis count of a foreign-encoding header
 
 **File:** `crates/ast-core/src/fitschan/enc_aips.rs` (and `enc_pc.rs`, `enc_iraf.rs`).
-**C reference:** `FitsToStore` (fitschan.c:11608-11631).
+**C reference:** `FitsToStore` (fitschan.c:11611-11634).
 
 C reads every foreign encoding other than DSS through `SpecTrans` and `WcsToStore`, then counts the axes as the highest index of any primary or alternate CRPIX keyword.
 The port's FITS-AIPS, PC and IRAF readers count them from `WCSAXES`, `NAXIS` or the highest `NAXISn`, and refuse a header with none of those.
@@ -405,12 +405,12 @@ needs the fixture named as the thing that would expose it.
   in the C source and should become `ast_equal`.
 - **`write_pc_cdelt` cannot fail where C's CDELT branch can.**
   C's `PCFromStore` CDELT loop sets `ok = 0; goto next` on a bad value
-  (`fitschan.c:24942-24947`), abandoning the whole version; the port's function
+  (`fitschan.c:24945-24950`), abandoning the whole version; the port's function
   returns `AstResult<()>` but has no such path — a bad CDELT becomes a written
   card. **What would expose it**: a store with `AST__BAD` in `cdelt`.
 - **C's `PCFromStore` loops version letters where the port marks FitsPc
   primary-only.** C runs `for( s = ' '; s <= sup; s++ )`
-  (`fitschan.c:24851`) and checks each secondary version's PC matrix against the
+  (`fitschan.c:24854`) and checks each secondary version's PC matrix against the
   primary with `astEQUAL` (`:24815`), rejecting the version when they differ,
   because the encoding shares one PC matrix across versions. The port has no
   equivalent check. **What would expose it**: a FITS-PC-encoded FrameSet with two

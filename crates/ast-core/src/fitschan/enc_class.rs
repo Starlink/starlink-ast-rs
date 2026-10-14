@@ -21,7 +21,7 @@ use crate::frames::{
 };
 
 /// Whether `store` can be written with FITS-CLASS: the checks C's
-/// `CLASSFromStore` (fitschan.c:6632-6904) makes before writing, and the
+/// `CLASSFromStore` (fitschan.c:6635-6907) makes before writing, and the
 /// CRPIX, CRVAL and CTYPE values it needs while writing. The spectral and
 /// celestial axes must be the first three; the projection TAN, ARC, STG,
 /// AIT or SFL (AIT and SFL at the origin), or SIN with no parameters; the
@@ -151,7 +151,7 @@ pub(crate) fn write_to_cards(
     let naxis = store.naxis;
 
     // FITS-CLASS does not emit a plain NAXIS keyword. C
-    // CLASSFromStore (fitschan.c:6792-6807) only sets NAXIS when
+    // CLASSFromStore (fitschan.c:6795-6810) only sets NAXIS when
     // the spatial axes are degenerate (store->naxis == 1) and the
     // existing keyword needs to be force-3 with NAXIS2/NAXIS3 = 1.
     // Otherwise NAXIS is left to whatever the caller already had in
@@ -304,7 +304,7 @@ fn translate_class_projection_write(ctype: &str) -> String {
         .replace("ait", "ATF")
 }
 
-/// FITS-CLASS velocity emission. Mirrors fitschan.c:6927-6982.
+/// FITS-CLASS velocity emission. Mirrors fitschan.c:6930-6985.
 ///
 /// Computes VELO-LSR / VLSR / DELTAV from the FrameSet's SpecFrame
 /// component using the find_frame + convert pipeline. Run after the
@@ -315,7 +315,7 @@ pub(crate) fn write_velocities_from_frameset(fs: &FrameSet, cards: &mut CardList
     use crate::coords::PointSet;
 
     // C `CLASSFromStore` receives the ORIGINAL input FrameSet (the
-    // `(AstFrameSet*) object` passed to FitsFromStore at fitschan.c:40543),
+    // `(AstFrameSet*) object` passed to FitsFromStore at fitschan.c:40550),
     // NOT the post-MakeFitsFrameSet FrameSet. The modifications applied by
     // MakeFitsFrameSet (RefRA/RefDec format/parse roundtrip, AddEncodingFrame)
     // operate on a *copy* and feed only into the FitsStore extraction.
@@ -360,7 +360,7 @@ pub(crate) fn write_velocities_from_frameset(fs: &FrameSet, cards: &mut CardList
     // Pull the spectral CRVAL and CDELT from the cards. The
     // spectral FITS axis is whichever CTYPEi is FREQ-/WAVE-/etc;
     // C uses the `axspec` index returned by FindLonLatSpecAxes
-    // (fitschan.c:3284) and reads `crval[axspec]` and
+    // (fitschan.c:3287) and reads `crval[axspec]` and
     // `cdelt[axspec]`. We scan the CTYPE cards to find the same
     // 1-based index. Mirrors C:6881-6882.
     //
@@ -426,7 +426,7 @@ pub(crate) fn write_velocities_from_frameset(fs: &FrameSet, cards: &mut CardList
     Ok(())
 }
 
-/// FITS-CLASS AZIMUTH / ELEVATIO emission. Mirrors fitschan.c:6985-7028.
+/// FITS-CLASS AZIMUTH / ELEVATIO emission. Mirrors fitschan.c:6988-7031.
 ///
 /// Takes the spatial reference point's (RA, Dec) in radians, converts
 /// it to (Az, El) in radians, normalises, and emits AZIMUTH / ELEVATIO
@@ -442,10 +442,10 @@ pub(crate) fn write_velocities_from_frameset(fs: &FrameSet, cards: &mut CardList
 ///
 /// The (lon, lat) values fed into the chain are the CRVAL of the
 /// longitude / latitude FITS axes (located via [`find_lon_lat_axes`]),
-/// matching C's `crval[axlon]` / `crval[axlat]` (fitschan.c:7006).
+/// matching C's `crval[axlon]` / `crval[axlat]` (fitschan.c:7009).
 /// Find the 1-based longitude / latitude FITS axis indices by scanning the
 /// CTYPE cards. Mirrors the celestial-axis identification in C
-/// `FindLonLatSpecAxes` (fitschan.c:3287): the longitude axis CTYPE begins
+/// `FindLonLatSpecAxes` (fitschan.c:3290): the longitude axis CTYPE begins
 /// with `RA--` or `xLON` (the `x` being the system code, e.g. `G` for
 /// galactic, `E` for ecliptic), and the latitude axis CTYPE begins with
 /// `DEC-` or `xLAT`. Returns `(None, None)` when either is absent.
@@ -480,9 +480,9 @@ pub(crate) fn write_azel_from_frameset(fs: &FrameSet, cards: &mut CardList) -> A
     use crate::mappings::{CmpMap, Composition};
 
     // Spatial reference point in degrees: C uses `crval[axlon]` /
-    // `crval[axlat]` (fitschan.c:7006-7007), where `axlon` / `axlat` are
+    // `crval[axlat]` (fitschan.c:7009-7010), where `axlon` / `axlat` are
     // the longitude / latitude FITS axis indices found by
-    // `FindLonLatSpecAxes` (fitschan.c:3287). Locate the same axes by
+    // `FindLonLatSpecAxes` (fitschan.c:3290). Locate the same axes by
     // scanning the CTYPE cards for the standard celestial-axis prefixes
     // (RA--/DEC-, and the generic `xLON`/`xLAT` forms for galactic,
     // ecliptic, etc). The spatial axes are not necessarily axes 2 and 3.
@@ -717,7 +717,7 @@ DELTAV  = -0.106265872717E+003
     fn read_class_ssyssrc_from_velo_lsr() {
         // CLASS data is always in SOURCE rest frame. VELO-LSR
         // present → ssyssrc="LSRK". Mirrors C `ClassTrans`
-        // (fitschan.c:7148-7204).
+        // (fitschan.c:7151-7207).
         let cards = translated(CLASS_HEADER);
         let store = read_from_cards(&cards).unwrap();
 

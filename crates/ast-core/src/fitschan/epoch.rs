@@ -1,5 +1,5 @@
 //! The date of observation a foreign read gives its Frames: C's
-//! `ChooseEpoch`, `TimeSysToAst` and `TDBConv` (fitschan.c:6269, 34887,
+//! `ChooseEpoch`, `TimeSysToAst` and `TDBConv` (fitschan.c:6272, 34887,
 //! 33894).
 
 use super::fits_store::FitsStore;

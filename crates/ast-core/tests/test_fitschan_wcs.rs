@@ -299,7 +299,7 @@ fn jan_class_no_naxis_keyword() {
 fn sip_read_default_refits_inverse_via_polytran() {
     // With SipReplace at its default (true), reading a SIP header
     // replaces the inverse by an astPolyTran fit over three times the
-    // image area (fitschan.c:29454-29491). The fit on this header
+    // image area (fitschan.c:29457-29494). The fit on this header
     // achieves ~6.5e-3 pixel accuracy (verified bit-compatible with
     // the reference C library's cminpack fit), so pixel→sky→pixel
     // round trips inside the image must land within 0.02 pixels.
@@ -361,7 +361,7 @@ fn sip_read_sipreplace_off_keeps_supplied_inverse() {
 #[test]
 fn serpens_dut1_is_seconds() {
     // serpens.head contains `DUT1 = -1.145603703E-6` in days.
-    // C fitschan.c:38014 multiplies by SPD (86400) before calling
+    // C fitschan.c:38017 multiplies by SPD (86400) before calling
     // astSetDut1, so the SkyFrame stores seconds. Verify Rust matches.
     let text = std::fs::read_to_string(concat!(
         env!("CARGO_MANIFEST_DIR"),
@@ -390,7 +390,7 @@ fn serpens_dut1_is_seconds() {
 /// serpens.head has swapped celestial axes: CTYPE1='DEC--TAN' (latitude on
 /// FITS axis 1), CTYPE2='RA---TAN' (longitude on FITS axis 2). The pixel→sky
 /// forward transform must route the axes into the native→celestial rotation
-/// as C `WcsNative` does (fitschan.c:38199), so the projection math always
+/// as C `WcsNative` does (fitschan.c:38202), so the projection math always
 /// sees (lon, lat) in the correct order while the FITS axis order is
 /// preserved on the outputs. Golden values are the repo libast oracle's
 /// result for pixel (150, 120).
@@ -683,7 +683,7 @@ fn unknown_cel2_builds_unknown_skyframe() {
 // ===========================================================================
 
 /// FITS-CLASS headers carry bare celestial CTYPEs with no projection code
-/// (`RA--`, `DEC-`). C `ClassTrans` (fitschan.c:7188-7209) appends `-GLS` to
+/// (`RA--`, `DEC-`). C `ClassTrans` (fitschan.c:7191-7212) appends `-GLS` to
 /// any celestial CTYPE whose projection-suffix bytes are all blank, then
 /// SpecTrans translation #11 rewrites `-GLS` to `-SFL`. The decoded projection
 /// is therefore sinusoidal (SFL), not linear (CAR).
@@ -864,7 +864,7 @@ fn tan_polytan_promotes_to_tpn() {
 //
 // car4 is a coded `GLON-CAR`/`GLAT-CAR` header carrying a CD matrix and no
 // CDELT. C `SpecTrans` converts CD→PC/CDELT (CDELT = row-vector length,
-// fitschan.c:31457) *before* the MSX-CAR block (fitschan.c:32135), so the MSX
+// fitschan.c:31460) *before* the MSX-CAR block (fitschan.c:32138), so the MSX
 // block sees an effective CDELT and rewrites CRPIX via `palDrange` to bring
 // the image's native longitude back into the CAR domain [-180,180]. Without
 // that CRPIX wrap the reference longitude is ~351.79°, which the CAR reverse
@@ -1037,7 +1037,7 @@ fn read_car1(car_lin: bool) -> ast_core::frames::FrameSet {
 
 #[test]
 fn carlin_car_header_yields_a_single_winmap() {
-    // With CarLin set, C `WcsCelestial` (fitschan.c:36034-36079) builds
+    // With CarLin set, C `WcsCelestial` (fitschan.c:36037-36082) builds
     // WcsMap(AST__WCSBAD) + a CRVAL-shift WinMap instead of calling
     // WcsNative. The unknown-projection WcsMap collapses to a UnitMap on
     // simplify, so the whole pixel-to-sky chain reduces to one WinMap with
@@ -1089,7 +1089,7 @@ fn carlin_car_header_yields_a_single_winmap() {
 fn carlin_off_car_header_keeps_the_spherical_projection() {
     // The two-sided guard: without CarLin the same header must still build
     // the spherical CAR pipeline (a CmpMap), not the linear one. C takes the
-    // `else` branch at fitschan.c:36128 and calls WcsNative.
+    // `else` branch at fitschan.c:36131 and calls WcsNative.
     let fs = read_car1(false);
     let map = fs
         .mapping(FrameRef::Base, FrameRef::Current)
@@ -1104,7 +1104,7 @@ fn carlin_off_car_header_keeps_the_spherical_projection() {
 
 #[test]
 fn carlin_keeps_the_cartesian_projection_description() {
-    // C passes the real `prj` (AST__CAR) to WcsSkyFrame (fitschan.c:36203),
+    // C passes the real `prj` (AST__CAR) to WcsSkyFrame (fitschan.c:36206),
     // not the AST__WCSBAD substitute given to astWcsMap, so the SkyFrame's
     // Projection is still "Cartesian".
     let fs = read_car1(true);

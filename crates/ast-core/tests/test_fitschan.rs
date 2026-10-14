@@ -375,7 +375,7 @@ fn native_round_trip_skyframe() {
 
 #[test]
 fn encoding_default_for_empty_chan_is_native() {
-    // Mirrors C `astGetEncoding` (fitschan.c:12600): when none of the
+    // Mirrors C `astGetEncoding` (fitschan.c:12603): when none of the
     // recognised WCS keywords are present, Native encoding is assumed.
     let fc = FitsChan::new();
     assert_eq!(fc.encoding(), Encoding::Native);
@@ -404,7 +404,7 @@ fn encoding_set_and_get() {
 #[test]
 fn encoding_from_header_auto_detects() {
     // SIP header has CDi_j but no RADECSYS / PROJP / CmVAL, so
-    // C's `astGetEncoding` (fitschan.c:12593) skips case 6 (FITS-IRAF
+    // C's `astGetEncoding` (fitschan.c:12596) skips case 6 (FITS-IRAF
     // requires CDi_j AND one of RADECSYS/PROJP/CmVAL) and falls
     // through to case 9 (CRVALi → FITS-WCS). Mirrors C's lazy
     // auto-detection when no explicit encoding has been set.
@@ -420,7 +420,7 @@ fn encoding_from_header_auto_detects() {
 #[test]
 fn fits_digits_default_and_set() {
     let mut fc = FitsChan::new();
-    // Default is AST__DBL_DIG (17), matching C fitschan.c:43072.
+    // Default is AST__DBL_DIG (17), matching C fitschan.c:43079.
     assert_eq!(fc.fits_digits(), 17);
 
     fc.set_fits_digits(15);
@@ -477,7 +477,7 @@ fn overwrite_false_appends_duplicate() {
 fn native_rewind_and_reread() {
     // A native read consumes the cards it read: C `Read` calls
     // `FixUsed( this, 0, 1, remove )` with `remove` set for NATIVE encoding
-    // (fitschan.c:25920-25926), which physically deletes them rather than
+    // (fitschan.c:25923-25929), which physically deletes them rather than
     // merely marking them used. So a rewind after the read has nothing left
     // to find a `BEGAST` in, and the second read returns `None`. Verified
     // against the reference library with a standalone oracle probe: the
@@ -509,8 +509,8 @@ fn native_rewind_and_reread() {
 
 #[test]
 fn translate_projp_retains_source_cards() {
-    // C's PROJP block (fitschan.c:31575-31628) is only entered when
-    // the PROJP-vs-PV disagreement heuristic (fitschan.c:31580-31614)
+    // C's PROJP block (fitschan.c:31578-31631) is only entered when
+    // the PROJP-vs-PV disagreement heuristic (fitschan.c:31583-31617)
     // decides PROJP should be trusted over a conflicting PV set; when
     // it decides PV wins instead, PROJP is left completely alone —
     // never read, never marked, never deleted — so it survives into
