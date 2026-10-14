@@ -26,8 +26,8 @@ A C check counts as covered when a Rust test, or an oracle case replaying C, exe
 | `testcmpmap.c` | partial |
 | `testlutmap.c` | partial |
 | `testnormmap.c` | partial |
-| `testrate.c` | partial |
-| `testratemap.c` | mostly missing |
+| `testrate.c` | ported (`test_rate.rs`) |
+| `testratemap.c` | ported (`test_ratemap.rs`) |
 | `testresimp.c` | partial |
 | `testunitnormmap.c` | mostly covered |
 | `testzoommap.c` | partial; the shared-Mapping and `AST__IMMUT` checks are `ast-capi` concerns |
@@ -81,18 +81,6 @@ A C check counts as covered when a Rust test, or an oracle case replaying C, exe
 ### `testobject.c`
 
 - `TestCheckToString` (`:20-57`): the FrameSet from `astConvert(Frame[Domain=SKY], SkyFrame)` written to a string, read back, written again identically, and equal to the original.
-
-### `testrate.c`
-
-- Err 5, 6, 602, 603 (`:43-49`): the rate of a unit MatrixMap and its inverse is 1 on the diagonal and 0 off it.
-- Err 15-18 (`:68-76`): the rate of the inverse of [[1.2,1.6],[-1.6,2.2]] is 0.423076923, 0.230769231, -0.307692308 and 0.307692308.
-- Err 34-44 (`:102-114`): the rate of an asymmetric PermMap (inperm [1,2], outperm [2,1]), forward and inverted.
-- Err 46-54 (`:116-137`): the rate of a TranMap of a WinMap and that full MatrixMap, forward and inverted.
-- Err 55-70 (`:139-179`): the rate at (1,2,3,4) of a CmpMap of ShiftMap, MatrixMap [[1,2],[-2,3]], PermMap [3,4,1,2] and an inverted ZoomMap(4, 0.25); forward (1,3)=0.25, (1,4)=0.5, (3,1)=0.25, inverted (1,3)=4, (3,1)=12/7, (3,2)=-8/7, all others 0.
-
-### `testratemap.c`
-
-- Err 1, 4-18 (`:30-124`): RateMaps of the `testrate.c` Err 55-70 CmpMap, with the same expected values.
 
 ### `testresimp.c`
 

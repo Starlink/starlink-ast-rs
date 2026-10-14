@@ -445,8 +445,8 @@ pin.
 | testcmpmap.c | crates/ast-core/tests/test_map_split*.rs | partially ported; gaps in [`docs/issues/c-test-coverage-audit.md`](docs/issues/c-test-coverage-audit.md) |
 | testlutmap.c | crates/ast-core/tests/test_lutmap*.rs | partially ported; gaps in [`docs/issues/c-test-coverage-audit.md`](docs/issues/c-test-coverage-audit.md) |
 | testnormmap.c | crates/ast-core/tests/test_normmap.rs | partially ported; gaps in [`docs/issues/c-test-coverage-audit.md`](docs/issues/c-test-coverage-audit.md) |
-| testrate.c | crates/ast-core/tests/test_*map.rs, test_rate_oracle.rs | partially ported; gaps in [`docs/issues/c-test-coverage-audit.md`](docs/issues/c-test-coverage-audit.md) |
-| testratemap.c | crates/ast-core/tests/test_ratemap.rs | mostly not ported; gaps in [`docs/issues/c-test-coverage-audit.md`](docs/issues/c-test-coverage-audit.md) |
+| testrate.c | crates/ast-core/tests/test_rate.rs | ported 2026-10-14, one test per C block |
+| testratemap.c | crates/ast-core/tests/test_ratemap.rs | ported 2026-10-14 (`rate_maps_of_a_compound_mapping`) |
 | testresimp.c | crates/ast-core/tests/test_allow_simplify.rs, test_simplify_regression.rs | partially ported; gaps in [`docs/issues/c-test-coverage-audit.md`](docs/issues/c-test-coverage-audit.md) |
 | testunitnormmap.c | crates/ast-core/tests/test_unitnormmap.rs | mostly ported; gaps in [`docs/issues/c-test-coverage-audit.md`](docs/issues/c-test-coverage-audit.md) |
 | testzoommap.c | crates/ast-core/tests/test_zoommap.rs, test_attr_test_clear_oracle.rs | partially ported; the shared-Mapping `AST__IMMUT` checks belong to `ast-capi`. Gaps in [`docs/issues/c-test-coverage-audit.md`](docs/issues/c-test-coverage-audit.md) |

@@ -550,3 +550,37 @@ fn test_ratemap_neg_parallel() {
         "Should not simplify parallel RateMaps to UnitMap"
     );
 }
+
+/// `testratemap.c`: a RateMap of each Jacobian element of the compound
+/// Mapping `testrate.c` uses, forward and inverted, transforming (1,2,3,4) to
+/// the rate itself. Only the forward direction of a RateMap exists.
+#[test]
+fn rate_maps_of_a_compound_mapping() {
+    use crate::test_rate::{COMPOUND_FORWARD, COMPOUND_INVERSE, compound_map};
+    let at = ast_core::coords::PointSet::from_rows([[1.0, 2.0, 3.0, 4.0]]);
+    let mut m: DynMapping = Box::new(compound_map());
+    for (table, first_err) in [(COMPOUND_FORWARD, 1), (COMPOUND_INVERSE, 11)] {
+        for (k, &(ax1, ax2, want, exact)) in table.iter().enumerate() {
+            let rm = RateMap::new(m.clone(), ax1, ax2).unwrap();
+            if k == 0 && first_err == 1 {
+                assert!(rm.has_forward(), "Error 2");
+                assert!(!rm.has_inverse(), "Error 3");
+            }
+            let r = rm.transform(&at, true).unwrap().point(0)[0];
+            let err = if first_err == 1 && k > 0 {
+                3 + k
+            } else {
+                first_err + k
+            };
+            if exact {
+                assert_eq!(r, want, "Error {err}: RateMap({ax1},{ax2})");
+            } else {
+                assert!(
+                    (r - want).abs() <= 1.0e-6,
+                    "Error {err}: RateMap({ax1},{ax2}) = {r}, want {want}"
+                );
+            }
+        }
+        m.invert();
+    }
+}

@@ -63,6 +63,8 @@ mod test_polymap;
 mod test_polymap_simd;
 #[path = "../test_polytran.rs"]
 mod test_polytran;
+#[path = "../test_rate.rs"]
+mod test_rate;
 #[path = "../test_rate_oracle.rs"]
 mod test_rate_oracle;
 #[path = "../test_ratemap.rs"]
