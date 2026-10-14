@@ -178,8 +178,17 @@ fn fset_to_store_impl(
     // FrameSet so the SkyFrame is re-mapped to absolute coordinates
     // before the store is built. The clear goes through FrameSet
     // integrity, which re-fuses the pixel→WCS Mapping.
+    // C records the SkyRefIs value it clears as a negative `isoff`: -1
+    // for POLE, -2 for ORIGIN and -3 otherwise, which SkySys stores as
+    // SREFIS.
+    let mut absolute_isoff = 0;
     let cleared_fs;
     let fs = if absolute_offset {
+        absolute_isoff = match offset_sky_ref_is(fs.current()) {
+            Some(crate::frames::SkyRefIs::Pole) => -1,
+            Some(crate::frames::SkyRefIs::Origin) => -2,
+            _ => -3,
+        };
         let mut owned = fs.clone();
         owned.with_integrity(|cur| {
             clear_offset_sky_ref_is(cur);
@@ -269,7 +278,11 @@ fn fset_to_store_impl(
     // before the primary AddVersion. When set, SkySys writes
     // `OFLN`/`OFLT` CTYPEs and `WCSNAME = 'SKY_POLE'` /
     // `'SKY_ORIGIN'` instead of the standard equatorial CTYPEs.
-    let isoff = sky_sys::is_sky_off(fs, fs.current_idx());
+    let isoff = if absolute_offset {
+        absolute_isoff
+    } else {
+        sky_sys::is_sky_off(fs, fs.current_idx())
+    };
 
     let tab = map_tab::TabWrite {
         tab_ok: attrs.tab_ok,
@@ -846,15 +859,27 @@ fn add_encoding_frame_class(fs: &mut FrameSet) -> AstResult<()> {
 /// through FrameSet integrity so the SkyFrame is re-mapped to absolute
 /// coordinates.
 fn clear_offset_sky_ref_is(frame: &mut dyn crate::frames::Frame) {
-    use crate::frames::{CmpFrame, SkyFrame, SkyRefIs};
+    use crate::frames::{CmpFrame, SkyFrame};
     if let Some(sky) = frame.as_any_mut().downcast_mut::<SkyFrame>() {
-        sky.set_sky_ref_is(SkyRefIs::Ignored);
+        sky.clear_sky_ref_is();
         return;
     }
     if let Some(cmp) = frame.as_any_mut().downcast_mut::<CmpFrame>() {
         clear_offset_sky_ref_is(cmp.frame1_mut());
         clear_offset_sky_ref_is(cmp.frame2_mut());
     }
+}
+
+/// The SkyRefIs value of the first SkyFrame in `frame`, searching a
+/// CmpFrame's components in order, as C's `astGetC( fs, "SkyRefIs" )`
+/// reaches it.
+fn offset_sky_ref_is(frame: &dyn crate::frames::Frame) -> Option<crate::frames::SkyRefIs> {
+    use crate::frames::{CmpFrame, SkyFrame};
+    if let Some(sky) = frame.as_any().downcast_ref::<SkyFrame>() {
+        return Some(sky.sky_ref_is());
+    }
+    let cmp = frame.as_any().downcast_ref::<CmpFrame>()?;
+    offset_sky_ref_is(cmp.frame1()).or_else(|| offset_sky_ref_is(cmp.frame2()))
 }
 
 fn peek_spec(frame: &dyn crate::frames::Frame) -> Option<&crate::frames::SpecFrame> {

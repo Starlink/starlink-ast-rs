@@ -5,7 +5,9 @@
  * AIPSFromStore, AIPSPPFromStore, CLASSFromStore, DSSFromStore) first
  * checks that the FitsStore suits it, and writes nothing if not.
  *
- * A case may set the FrameSet's Epoch between the read and the write.
+ * A case may set the FrameSet's Epoch between the read and the write, or,
+ * given "SKYREF <lon> <lat> <SkyRefIs>", its SkyRef and SkyRefIs, one
+ * attribute at a time as astSet sets them.
  *
  * For each header and encoding: the value astWrite returns, Ncard, the
  * cards that are not used (astFindFits), and the name of every card,
@@ -57,7 +59,16 @@ static void emit_epoch( const char *name, const char **header, const char *epoch
       for( i = 0; header[ i ]; i++ ) astPutFits( fc, header[ i ], 0 );
       astClear( fc, "Card" );
       fs = astRead( fc );
-      if( fs && epoch ) astSetC( fs, "Epoch", epoch );
+      if( fs && epoch && !strncmp( epoch, "SKYREF ", 7 ) ) {
+         double lon, lat;
+         char is[ 20 ];
+         sscanf( epoch + 7, "%lf %lf %19s", &lon, &lat, is );
+         astSetD( fs, "SkyRef(1)", lon );
+         astSetD( fs, "SkyRef(2)", lat );
+         astSetC( fs, "SkyRefIs", is );
+      } else if( fs && epoch ) {
+         astSetC( fs, "Epoch", epoch );
+      }
       astSet( fc, "Encoding=%s", encodings[ ienc ] );
       ret = fs ? astWrite( fc, fs ) : -1;
       astClearStatus;
@@ -236,6 +247,14 @@ int main( void ) {
          "RADESYS = 'FK5'", "EQUINOX = 2000.0", "DATE-OBS= '2002-05-19T14:09:36.000'",
          "MJD-OBS = 52413.59", NULL };
       emit_epoch( "tan_new_epoch", h, "MJD 55000" );
+   }
+   {
+      const char *h[] = { "NAXIS   = 2", "NAXIS1  = 10", "NAXIS2  = 10", "CRPIX1  = 5",
+         "CRPIX2  = 5", "CRVAL1  = 10", "CRVAL2  = 20", "CDELT1  = -0.001",
+         "CDELT2  = 0.001", "CTYPE1  = 'RA---TAN'", "CTYPE2  = 'DEC--TAN'",
+         "RADESYS = 'FK5'", "EQUINOX = 2000.0", "MJD-OBS = 55000.0", NULL };
+      emit_epoch( "tan_offset_origin", h, "SKYREF 0.17 0.35 Origin" );
+      emit_epoch( "tan_offset_pole", h, "SKYREF 0.17 0.35 Pole" );
    }
    {
       const char *h[] = { "NAXIS   = 2", "NAXIS1  = 10", "NAXIS2  = 10", "CRPIX1  = 5",

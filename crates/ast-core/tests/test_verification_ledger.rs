@@ -33,6 +33,17 @@ fn fixtures() -> PathBuf {
 /// Fields: source file, const name, expected entry count, reason.
 const LEDGER: &[(&str, &str, usize, &str)] = &[
     (
+        "test_fitschan_encodings_oracle.rs",
+        "VALUES_LICENSED",
+        2,
+        "tan_offset_origin and tan_offset_pole written as FITS-WCS: the values \
+         of the named CRVAL and PC cards are set aside, every card name, the \
+         order, every comment and every other value compared byte for byte; the \
+         offset SkyFrame's rotation from FrameSet integrity differs from C's in \
+         its last digits, recorded in PLAN.md section 5, with a companion test \
+         that fails when the cards match",
+    ),
+    (
         "test_fitschan_tab_write_oracle.rs",
         "TAB_WRITE_EXCLUDED",
         0,

@@ -19,7 +19,7 @@
 #[path = "fitschan_encodings_oracle/cases.rs"]
 mod cases;
 
-use ast_core::frames::Frame;
+use ast_core::frames::{Frame, SkyFrame, SkyRefIs};
 use ast_core::{AnyObject, Channel, Encoding, FitsChan, NativeChannel};
 
 fn encoding(name: &str) -> Encoding {
@@ -35,6 +35,11 @@ fn encoding(name: &str) -> Encoding {
     }
 }
 
+/// The SkyFrame that is the current Frame of a FrameSet.
+fn sky(f: &mut dyn Frame) -> &mut SkyFrame {
+    f.as_any_mut().downcast_mut::<SkyFrame>().unwrap()
+}
+
 /// The header written with `enc`: the value the write returns, Ncard, the
 /// cards not used, and the name of every card.
 fn written(header: &[&str], epoch: &str, enc: &str) -> (i32, i32, Vec<String>, Vec<String>) {
@@ -47,8 +52,29 @@ fn written(header: &[&str], epoch: &str, enc: &str) -> (i32, i32, Vec<String>, V
     if !epoch.is_empty()
         && let Some(AnyObject::FrameSet(fs)) = fs.as_mut()
     {
-        let mjd: f64 = epoch.strip_prefix("MJD ").unwrap().parse().unwrap();
-        fs.set_epoch_mjd(mjd).unwrap();
+        if let Some(skyref) = epoch.strip_prefix("SKYREF ") {
+            // SkyRef(1), SkyRef(2) and SkyRefIs, each set through the
+            // FrameSet as C's astSet sets them, one at a time.
+            let words: Vec<&str> = skyref.split_whitespace().collect();
+            let lon: f64 = words[0].parse().unwrap();
+            let lat: f64 = words[1].parse().unwrap();
+            let is = match words[2] {
+                "Origin" => SkyRefIs::Origin,
+                "Pole" => SkyRefIs::Pole,
+                other => panic!("SkyRefIs {other} is not handled"),
+            };
+
+            fs.with_integrity(|f| sky(f).set_sky_ref(1, lon)).unwrap();
+            fs.with_integrity(|f| sky(f).set_sky_ref(2, lat)).unwrap();
+            fs.with_integrity(|f| {
+                sky(f).set_sky_ref_is(is);
+                Ok(())
+            })
+            .unwrap();
+        } else {
+            let mjd: f64 = epoch.strip_prefix("MJD ").unwrap().parse().unwrap();
+            fs.set_epoch_mjd(mjd).unwrap();
+        }
     }
     fc.set_encoding(encoding(enc));
     let ret = match &fs {
@@ -79,6 +105,45 @@ fn excluded(name: &str, enc: &str) -> bool {
     EXCLUDED.iter().any(|&(n, e, _)| n == name && e == enc)
 }
 
+/// `(header, encoding, keywords, reason)` for each write whose cards match
+/// C's but for the values of the named keywords, which are compared with
+/// their values set aside: every card name, the card order, every comment
+/// and every other value are still compared byte for byte.
+/// `licensed_values_still_differ` fails when one starts to match.
+const VALUES_LICENSED: &[(&str, &str, &[&str], &str)] = &[
+    (
+        "tan_offset_origin",
+        "FITS-WCS",
+        &["CRVAL1", "CRVAL2", "PC1_2"],
+        "the offset SkyFrame's rotation, made by FrameSet integrity when SkyRefIs is set, \
+         differs from C's in its last digits (PLAN.md section 5)",
+    ),
+    (
+        "tan_offset_pole",
+        "FITS-WCS",
+        &["CRVAL2", "PC1_1", "PC1_2", "PC2_1", "PC2_2"],
+        "the offset SkyFrame's rotation, made by FrameSet integrity when SkyRefIs is set, \
+         differs from C's in its last digits (PLAN.md section 5)",
+    ),
+];
+
+/// `cards` with the value of each card whose keyword is in `keywords`
+/// replaced by a marker, keeping its keyword and comment.
+fn without_values(cards: &[String], keywords: &[&str]) -> Vec<String> {
+    cards
+        .iter()
+        .map(|card| {
+            let key = card[..8].trim_end();
+            if keywords.contains(&key) {
+                let comment = card.find(" / ").map_or("", |i| &card[i..]);
+                format!("{:<8}= <licensed>{comment}", key)
+            } else {
+                card.clone()
+            }
+        })
+        .collect()
+}
+
 /// Every write of every case, `(header, encoding, differs, report)`.
 fn compare_all() -> Vec<(&'static str, &'static str, bool, String)> {
     let mut out = Vec::new();
@@ -92,7 +157,17 @@ fn compare_all() -> Vec<(&'static str, &'static str, bool, String)> {
                 names.iter().map(|c| c.to_string()).collect::<Vec<_>>(),
             );
             let report = format!("{name} {enc}:\n--- rust\n{got:#?}\n--- C\n{want:#?}");
-            out.push((name, enc, got != want, report));
+            let differs = match VALUES_LICENSED
+                .iter()
+                .find(|&&(n, e, _, _)| n == name && e == enc)
+            {
+                Some(&(_, _, keys, _)) => {
+                    (got.0, got.1, without_values(&got.2, keys), &got.3)
+                        != (want.0, want.1, without_values(&want.2, keys), &want.3)
+                }
+                None => got != want,
+            };
+            out.push((name, enc, differs, report));
         }
     }
     out
@@ -119,6 +194,26 @@ fn excluded_writes_still_differ() {
         assert!(
             *differs,
             "{name} {enc} now matches C, delete its exclusion ({reason})"
+        );
+    }
+}
+
+#[test]
+fn licensed_values_still_differ() {
+    for &(name, enc, _, reason) in VALUES_LICENSED {
+        let &(_, header, epoch, encodings) = cases::CASES
+            .iter()
+            .find(|(n, ..)| *n == name)
+            .expect("a licensed case is in the corpus");
+        let &(_, _, _, cards, _) = encodings
+            .iter()
+            .find(|(e, ..)| *e == enc)
+            .expect("a licensed encoding is in the case");
+        let got = written(header, epoch, enc);
+        let want: Vec<String> = cards.iter().map(|c| c.to_string()).collect();
+        assert_ne!(
+            got.2, want,
+            "{name} {enc} now matches C ({reason}); remove its licence"
         );
     }
 }

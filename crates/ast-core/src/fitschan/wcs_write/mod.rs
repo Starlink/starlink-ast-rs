@@ -472,6 +472,31 @@ fn write_store_to_cards(
         }
     }
 
+    // SREFIS / SREF{i} / SREFP{i}: the SkyRefIs, SkyRef and SkyRefP of an
+    // offset SkyFrame described in absolute coordinates, AST extensions
+    // written straight after AXREF, as C's `WcsFcWrite` writes them.
+    if let Some(ref skyrefis) = store.skyrefis {
+        cards.set_string(
+            &fmt_global_key("SREFIS", s),
+            skyrefis,
+            "Is SkyRef used as pole or origin?",
+        );
+    }
+    for i in 0..naxis {
+        if let Some(v) = store.skyref[i] {
+            let key = fmt_axis_key("SREF", i + 1, s);
+            let comment = format!("Sky reference position on axis {}", i + 1);
+            cards.set_float(&key, v, &comment);
+        }
+    }
+    for i in 0..naxis {
+        if let Some(v) = store.skyrefp[i] {
+            let key = fmt_axis_key("SREFP", i + 1, s);
+            let comment = format!("Sky primary meridian position on axis {}", i + 1);
+            cards.set_float(&key, v, &comment);
+        }
+    }
+
     // Plane-shared cards: only emit on primary plane.
     // Mirrors C library WcsFromStore order (fitschan.c:36996+):
     // CD matrix, then MJD-OBS / DATE-OBS, then RADESYS / EQUINOX.
@@ -656,32 +681,6 @@ fn write_store_to_cards(
         }
         if let Some(z) = store.obsgeoz {
             cards.set_float("OBSGEO-Z", z, "[m] Observatory geocentric Z");
-        }
-    }
-
-    // SREFIS / SREF{i} / SREFP{i} — AST-extension SkyFrame
-    // offset-coords metadata. Note the AST keyword names (8-char
-    // budget: SREFIS / SREF / SREFP) — not SKYREFIS / SKYREF /
-    // SKYREFP. Mirrors C:37185-37216.
-    if let Some(ref skyrefis) = store.skyrefis {
-        cards.set_string(
-            &fmt_global_key("SREFIS", s),
-            skyrefis,
-            "Is SkyRef used as pole or origin?",
-        );
-    }
-    for i in 0..naxis {
-        if let Some(v) = store.skyref[i] {
-            let key = fmt_axis_key("SREF", i + 1, s);
-            let comment = format!("Sky reference position on axis {}", i + 1);
-            cards.set_float(&key, v, &comment);
-        }
-    }
-    for i in 0..naxis {
-        if let Some(v) = store.skyrefp[i] {
-            let key = fmt_axis_key("SREFP", i + 1, s);
-            let comment = format!("Sky primary meridian position on axis {}", i + 1);
-            cards.set_float(&key, v, &comment);
         }
     }
 

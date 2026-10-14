@@ -335,43 +335,41 @@ pub(crate) fn sky_sys(
     store.ctype[axlon] = Some(format!("{lon_pre}{prj_name}"));
     store.ctype[axlat] = Some(format!("{lat_pre}{prj_name}"));
 
-    // Offset-coordinate AST-extension fields (C:29890-29936).
+    // Offset-coordinate AST-extension fields (fitschan.c SkySys).
     if isoff != 0 {
         let lonax_in_sky = skyfrm.lon_pos();
         let latax_in_sky = skyfrm.lat_pos();
-        let sky_ref = skyfrm.sky_ref_lon_lat();
-        let sky_ref_p = skyfrm.sky_ref_p_lon_lat();
         if isoff > 0 {
-            // CTYPE comment: "<symbol-without-leading-letter> offset
-            // from <SkyRef>". Mirrors C:29893-29909. The C source
-            // formats SkyRef via astGetC which we approximate by
-            // using a fixed "lon,lat" radian render — the exact
-            // formatting differs from C but we capture the
-            // structural behaviour. Future work: route through
-            // SkyFrame::format() so the rendering matches the
-            // SkyFrame's display convention.
-            let sym_lon = skyfrm.symbol(lon_ax_1b).unwrap_or_default();
-            let sym_lat = skyfrm.symbol(lat_ax_1b).unwrap_or_default();
-            let skyref_text = format!("{:.6},{:.6}", sky_ref[lonax_in_sky], sky_ref[latax_in_sky]);
-            // In an offset system the SkyFrame symbol carries a leading "D"
-            // (delta) prefix — DRA, DDec, etc. C builds the CTYPE comment from
-            // `text + 1` (fitschan.c:30011), i.e. it drops that first
-            // character. Mirror that directly.
+            // For offset coordinates, the CTYPE comments say what the axes
+            // are offsets from: each axis Symbol without its leading
+            // character (the "D" of an offset Symbol), and the SkyRef
+            // attribute as C's `astGetC( skyfrm, "SkyRef" )` gives it, each
+            // value formatted for its axis and joined by ", ".
+            let skyref_text = format!(
+                "{}, {}",
+                skyfrm.format(1, skyfrm.sky_ref(1)?)?,
+                skyfrm.format(2, skyfrm.sky_ref(2)?)?
+            );
             let trim_lead = |s: &str| match s.chars().next() {
                 Some(c) => s[c.len_utf8()..].to_string(),
                 None => String::new(),
             };
-            if !sym_lon.is_empty() {
-                let com = format!("{} offset from {}", trim_lead(&sym_lon), skyref_text);
-                store.ctype_com[axlon] = Some(com);
-            }
-            if !sym_lat.is_empty() {
-                let com = format!("{} offset from {}", trim_lead(&sym_lat), skyref_text);
-                store.ctype_com[axlat] = Some(com);
-            }
+            let sym_lon = skyfrm.symbol(lonax_in_sky + 1).unwrap_or_default();
+            let sym_lat = skyfrm.symbol(latax_in_sky + 1).unwrap_or_default();
+            store.ctype_com[axlon] = Some(format!(
+                "{} offset from {}",
+                trim_lead(&sym_lon),
+                skyref_text
+            ));
+            store.ctype_com[axlat] = Some(format!(
+                "{} offset from {}",
+                trim_lead(&sym_lat),
+                skyref_text
+            ));
         } else {
-            // C:29911-29935 — describing absolute coords with offset
-            // metadata. Write skyrefis / skyref / skyrefp.
+            // For absolute coordinates, the SkyFrame attributes go in
+            // AST-specific keywords: SkyRefIs as given by `isoff`, and
+            // SkyRef and SkyRefP when they are set.
             let skyrefis = if isoff < -2 {
                 "IGNORED"
             } else if isoff < -1 {
@@ -380,13 +378,14 @@ pub(crate) fn sky_sys(
                 "POLE"
             };
             store.skyrefis = Some(skyrefis.to_string());
-            // Per-axis storage in FITS axis order. Mirrors
-            // C:29928-29935 which writes to (fits_ilon, fits_ilat)
-            // slots — we have axlon/axlat which are those slots.
-            store.skyref[axlon] = Some(sky_ref[lonax_in_sky]);
-            store.skyref[axlat] = Some(sky_ref[latax_in_sky]);
-            store.skyrefp[axlon] = Some(sky_ref_p[lonax_in_sky]);
-            store.skyrefp[axlat] = Some(sky_ref_p[latax_in_sky]);
+            if skyfrm.test_sky_ref(1)? {
+                store.skyref[axlon] = Some(skyfrm.sky_ref(lonax_in_sky + 1)?);
+                store.skyref[axlat] = Some(skyfrm.sky_ref(latax_in_sky + 1)?);
+            }
+            if skyfrm.test_sky_ref_p(1)? {
+                store.skyrefp[axlon] = Some(skyfrm.sky_ref_p(lonax_in_sky + 1)?);
+                store.skyrefp[axlat] = Some(skyfrm.sky_ref_p(latax_in_sky + 1)?);
+            }
         }
     }
 
