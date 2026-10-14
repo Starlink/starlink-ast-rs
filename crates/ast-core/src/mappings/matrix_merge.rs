@@ -224,34 +224,28 @@ fn merge_matrix_pair(
         return mat_or_unit(product);
     }
 
-    // MatZoom (matrixmap.c:3988, astMtrZoom): zoom commutes (z·I), so the
-    // result is the MatrixMap scaled by the effective zoom factor. C's
-    // astMtrZoom copies the MatrixMap *preserving its Invert flag* and scales
-    // the current forward matrix by zoom / the current inverse by 1/zoom, so
-    // an inverted MatrixMap stays inverted (with its stored values scaled)
-    // rather than collapsing to a fresh forward matrix. This matches C's
-    // serialised orientation and avoids recomputing an inverse (which would
-    // perturb the last ULP).
+    // MatZoom (matrixmap.c MatZoom): the product of the MatrixMap, in the
+    // direction it is applied, and a diagonal MatrixMap holding the zoom
+    // factor, which is a unit MatrixMap when the factor equals 1 within
+    // astEQUAL. A ZoomMap nominated beside a MatrixMap merges instead through
+    // `MatrixMap::mtr_zoom` (C's astMtrZoom, from zoommap.c MapMerge).
     if let Some(zm) = other.as_any().downcast_ref::<ZoomMap>() {
         let zfac = if other_inv {
             1.0 / zm.zoom()
         } else {
             zm.zoom()
         };
-        // Zoom axis count must match the shared dimension.
-        let n = if mm_inv { mm.nin() } else { mm.nout() };
-        if zm.nin() != n {
+        let mut applied = mm.clone();
+        if mm_inv {
+            applied.invert();
+        }
+        let nrow = applied.nout();
+        if zm.nin() != nrow {
             return None;
         }
-        let scaled = mm.mtr_zoom(zfac, mm_inv);
-        // Collapse to a UnitMap only when the whole mapping is the identity
-        // (effective-forward identity and not inverted, i.e. inverse also
-        // identity). An inverted result must be preserved so its orientation
-        // survives to serialisation.
-        if !scaled.is_inverted() && super::matrix::is_identity_matrix_pub(scaled.forward_matrix()) {
-            return Some(Box::new(UnitMap::new(scaled.forward_matrix().nrows())));
-        }
-        return Some(Box::new(scaled) as DynMapping);
+        let zmm = MatrixMap::diagonal(nrow, nrow, &vec![zfac; nrow]).ok()?;
+        let product = applied.mtr_mult(&zmm).ok()?;
+        return mat_or_unit(product.forward_matrix().clone());
     }
 
     // MatPerm (matrixmap.c:2608): merge with an invertible PermMap.
@@ -1011,11 +1005,10 @@ fn replace_with_simpler(
             }
         }
         if off_diag_zero {
-            let mut diag = Array2::<f64>::zeros((n, n));
-            for i in 0..n {
-                diag[[i, i]] = fwd[[i, i]];
-            }
-            return MatrixMap::new(diag).ok().map(|m| Box::new(m) as DynMapping);
+            let diag: Vec<f64> = (0..n).map(|i| fwd[[i, i]]).collect();
+            return MatrixMap::diagonal(n, n, &diag)
+                .ok()
+                .map(|m| Box::new(m) as DynMapping);
         }
     }
 

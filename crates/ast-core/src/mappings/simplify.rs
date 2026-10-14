@@ -990,11 +990,8 @@ pub(crate) fn zoom_map_merge(
     } else if single {
         Box::new(ZoomMap::new(nin, minzoom).ok()?)
     } else {
-        let mut diag = ndarray::Array2::<f64>::zeros((nin, nin));
-        for (i, &z) in zooms.iter().enumerate() {
-            diag[[i, i]] = z;
-        }
-        Box::new(MatrixMap::new(diag).ok()?)
+        // A diagonal MatrixMap, as C's zoommap.c MapMerge makes it.
+        Box::new(MatrixMap::diagonal(nin, nin, &zooms).ok()?)
     };
     ctx.replace_range_with(imap1, imap2, new);
     Some(imap1)

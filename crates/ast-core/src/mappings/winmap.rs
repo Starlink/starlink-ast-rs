@@ -683,11 +683,7 @@ pub(crate) fn finalize_linear(new_shifts: Vec<f64>, new_scales: Vec<f64>) -> Opt
             }
         }
         // Non-uniform scales → diagonal MatrixMap.
-        let mut diag = ndarray::Array2::<f64>::zeros((n, n));
-        for i in 0..n {
-            diag[[i, i]] = new_scales[i];
-        }
-        if let Ok(mm) = MatrixMap::new(diag) {
+        if let Ok(mm) = MatrixMap::diagonal(n, n, &new_scales) {
             return Some(Box::new(mm));
         }
     }

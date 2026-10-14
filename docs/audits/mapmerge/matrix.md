@@ -15,7 +15,7 @@ something simpler; merge it directly with a neighbour; swap it toward the neares
 Mapping it could merge with; and, failing that, swap speculatively with either
 neighbour if the swap itself simplifies something.
 
-`MatrixMap::map_merge` (`matrix.rs:916-923 (fn map_merge)`) delegates to
+`MatrixMap::map_merge` (`matrix.rs:944-951 (fn map_merge)`) delegates to
 `matrix_merge::matrix_map_merge` (`matrix_merge.rs:42-108 (fn matrix_map_merge)`), so Rust sites are
 in `matrix_merge.rs` unless stated.
 
@@ -26,26 +26,26 @@ in `matrix_merge.rs` unless stated.
 | 3 | Get the Invert attribute for the nominated Mapping | matrixmap.c:1841-1843 (fn MapMerge) | matrix_merge.rs:48 (fn matrix_map_merge) | architecture | ported |
 | 4 | Get the input and output axis counts, swapped when the list's invert flag differs from the object's own | matrixmap.c:1844-1856 (fn MapMerge) | matrix_merge.rs:50-57 (fn matrix_map_merge) | architecture | ported |
 | 5 | See if the MatrixMap can be replaced by something simpler, without reference to its neighbours | matrixmap.c:1857-1862 (fn MapMerge) | matrix_merge.rs:59-63 (fn matrix_map_merge) | architecture | ported |
-| 6 | A square unit matrix becomes a UnitMap | matrixmap.c:1863-1867 (fn MapMerge) | matrix_merge.rs:972-975 (fn replace_with_simpler) | architecture | ported |
-| 7 | A square diagonal matrix with equal diagonal terms becomes a ZoomMap | matrixmap.c:1868-1895 (fn MapMerge) | matrix_merge.rs:977-995 (fn replace_with_simpler) | architecture | ported |
-| 8 | A full matrix whose off-diagonal elements are all zero becomes a diagonal MatrixMap | matrixmap.c:1896-1918 (fn MapMerge) | matrix_merge.rs:998-1019 (fn replace_with_simpler) | architecture | ported |
+| 6 | A square unit matrix becomes a UnitMap | matrixmap.c:1863-1867 (fn MapMerge) | matrix_merge.rs:966-969 (fn replace_with_simpler) | architecture | ported |
+| 7 | A square diagonal matrix with equal diagonal terms becomes a ZoomMap | matrixmap.c:1868-1895 (fn MapMerge) | matrix_merge.rs:971-989 (fn replace_with_simpler) | architecture | ported |
+| 8 | A full matrix whose off-diagonal elements are all zero becomes a diagonal MatrixMap | matrixmap.c:1896-1918 (fn MapMerge) | matrix_merge.rs:992-1012 (fn replace_with_simpler) | architecture | ported |
 | 9 | On a replacement, store the new Mapping in the list and report a change | matrixmap.c:1919-1929 (fn MapMerge) | matrix_merge.rs:60-62 (fn matrix_map_merge) | architecture | ported |
 | 10 | Otherwise, in series, store the neighbouring Mappings' classes | matrixmap.c:1930-1942 (fn MapMerge) | matrix_merge.rs:65-74 (fn matrix_map_merge) | architecture | ported |
 | 11 | Look for a neighbour the MatrixMap can merge with directly, reducing the list by one | matrixmap.c:1943-1966 (fn MapMerge) | matrix_merge.rs:75-78 (fn matrix_map_merge) | architecture | ported |
-| 12 | Accept a PermMap neighbour only when its forward and inverse mappings are consistent | matrixmap.c:1967-1972 (fn MapMerge) | matrix_merge.rs:387-412 (fn perm_ok) | architecture | ported |
+| 12 | Accept a PermMap neighbour only when its forward and inverse mappings are consistent | matrixmap.c:1967-1972 (fn MapMerge) | matrix_merge.rs:381-406 (fn perm_ok) | architecture | ported |
 | 13 | A diagonal MatrixMap may also merge with a WinMap | matrixmap.c:1973-1987 (fn MapMerge) | matrix_merge.rs:125-149 (fn is_mergeable) | architecture | ported |
-| 14 | Create the merged Mapping | matrixmap.c:1988-2040 (fn MapMerge) | matrix_merge.rs:196-314 (fn merge_matrix_pair) | architecture | ported |
+| 14 | Create the merged Mapping | matrixmap.c:1988-2040 (fn MapMerge) | matrix_merge.rs:196-308 (fn merge_matrix_pair) | architecture | ported |
 | 15 | Replace the first of the pair with the merged Mapping, annul the second, close the gap and return the first index | matrixmap.c:2041-2065 (fn MapMerge) | matrix_merge.rs:150-195 (fn try_direct_merge) | architecture | ported |
 | 16 | If no direct merge, consider swapping the MatrixMap with a neighbour to move it toward one it can merge with | matrixmap.c:2066-2076 (fn MapMerge) | matrix_merge.rs:80-83 (fn matrix_map_merge) | architecture | ported |
-| 17 | Set a flag for each direction saying whether swapping would simplify either Mapping | matrixmap.c:2077-2088 (fn MapMerge) | matrix_merge.rs:646-655 (fn try_swap_strategy) | architecture | ported |
-| 18 | Walk forward from the MatrixMap counting steps to the nearest Mapping it could merge with | matrixmap.c:2089-2121 (fn MapMerge) | matrix_merge.rs:657-673 (fn try_swap_strategy) | architecture | ported |
-| 19 | Do the same walking backward | matrixmap.c:2122-2155 (fn MapMerge) | matrix_merge.rs:675-689 (fn try_swap_strategy) | architecture | ported |
-| 20 | Choose the neighbour to swap with so the MatrixMap moves toward the nearer target | matrixmap.c:2156-2170 (fn MapMerge) | matrix_merge.rs:691-698 (fn try_swap_strategy) | architecture | ported |
-| 21 | If a target exists, swap the pair and then merge them | matrixmap.c:2171-2207 (fn MapMerge) | matrix_merge.rs:705-714 (fn try_swap_strategy), matrix_merge.rs:751-773 (fn swap_pair) | architecture | ported |
-| 22 | With no target, swap with each neighbour in turn on the chance the swap itself simplifies something | matrixmap.c:2208-2249 (fn MapMerge) | matrix_merge.rs:912-930 (fn try_speculative_swap) | architecture | ported |
-| 23 | Take copies of the Mapping and Invert arrays so the supplied values are not disturbed | matrixmap.c:2236-2242 (fn MapMerge) | matrix_merge.rs:951-955 (fn clone_pair) | architecture | ported |
-| 24 | If neither swapped Mapping simplifies further, discard the swap | matrixmap.c:2250-2260 (fn MapMerge) | matrix_merge.rs:934-947 (fn try_speculative_swap) | architecture | ported |
-| 25 | Otherwise store the swapped pair and report the first index | matrixmap.c:2261-2288 (fn MapMerge) | matrix_merge.rs:942-945 (fn try_speculative_swap) | architecture | ported |
+| 17 | Set a flag for each direction saying whether swapping would simplify either Mapping | matrixmap.c:2077-2088 (fn MapMerge) | matrix_merge.rs:640-649 (fn try_swap_strategy) | architecture | ported |
+| 18 | Walk forward from the MatrixMap counting steps to the nearest Mapping it could merge with | matrixmap.c:2089-2121 (fn MapMerge) | matrix_merge.rs:651-667 (fn try_swap_strategy) | architecture | ported |
+| 19 | Do the same walking backward | matrixmap.c:2122-2155 (fn MapMerge) | matrix_merge.rs:669-683 (fn try_swap_strategy) | architecture | ported |
+| 20 | Choose the neighbour to swap with so the MatrixMap moves toward the nearer target | matrixmap.c:2156-2170 (fn MapMerge) | matrix_merge.rs:685-692 (fn try_swap_strategy) | architecture | ported |
+| 21 | If a target exists, swap the pair and then merge them | matrixmap.c:2171-2207 (fn MapMerge) | matrix_merge.rs:699-708 (fn try_swap_strategy), matrix_merge.rs:745-767 (fn swap_pair) | architecture | ported |
+| 22 | With no target, swap with each neighbour in turn on the chance the swap itself simplifies something | matrixmap.c:2208-2249 (fn MapMerge) | matrix_merge.rs:906-924 (fn try_speculative_swap) | architecture | ported |
+| 23 | Take copies of the Mapping and Invert arrays so the supplied values are not disturbed | matrixmap.c:2236-2242 (fn MapMerge) | matrix_merge.rs:945-949 (fn clone_pair) | architecture | ported |
+| 24 | If neither swapped Mapping simplifies further, discard the swap | matrixmap.c:2250-2260 (fn MapMerge) | matrix_merge.rs:928-941 (fn try_speculative_swap) | architecture | ported |
+| 25 | Otherwise store the swapped pair and report the first index | matrixmap.c:2261-2288 (fn MapMerge) | matrix_merge.rs:936-939 (fn try_speculative_swap) | architecture | ported |
 | 26 | Return the result | matrixmap.c:2289-2290 (fn MapMerge) | matrix_merge.rs:107 (fn matrix_map_merge) | ceremony | ported |
 
 ## Rows 6 to 8 — the only reduction a lone MatrixMap has
@@ -53,7 +53,7 @@ in `matrix_merge.rs` unless stated.
 C gives MatrixMap no `Simplify` vtab slot, so a MatrixMap nominated on its own
 reaches the same body as one in a run, and these three replacements are every
 reduction it can undergo. They live in `replace_with_simpler`
-(`matrix_merge.rs:960-1023 (fn replace_with_simpler)`), reached as step 1 of `matrix_map_merge`.
+(`matrix_merge.rs:954-1016 (fn replace_with_simpler)`), reached as step 1 of `matrix_map_merge`.
 
 The applied direction is the list's, `(*invert_list)[where]`. C reads it only to
 pick the zoom factor — the structural tests (uniformity, off-diagonal-zero) run
@@ -89,4 +89,4 @@ accept, so the generic pairwise path cannot merge a class C's MatrixMap declines
 On the forward walk C's merge targets are MatrixMap, ZoomMap, an invertable
 PermMap and UnitMap. A WinMap is a swappable class but not a target, so the walk
 passes over it rather than stopping. `is_seek_target` and `is_swappable_class`
-(`matrix_merge.rs:413-417 (fn is_swappable_class),722-738 (fn is_seek_target)`) keep the two lists distinct for that reason.
+(`matrix_merge.rs:407-411 (fn is_swappable_class),716-732 (fn is_seek_target)`) keep the two lists distinct for that reason.

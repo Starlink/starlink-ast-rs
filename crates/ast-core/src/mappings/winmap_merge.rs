@@ -26,8 +26,6 @@
 //! swap helpers and the orchestration that the global helpers only
 //! approximated.
 
-use ndarray::Array2;
-
 use crate::coords::PointSet;
 use crate::mappings::helpers::ast_equal;
 
@@ -207,20 +205,16 @@ pub(crate) fn win_mat(
     let (a, b) = extract_linear_params(win.0.as_ref(), win.1)?;
     let nin = a.len();
 
-    // Diagonal MatrixMap m1 holding the WinMap scale factors.
-    let mut m1 = Array2::<f64>::zeros((nin, nin));
-    for i in 0..nin {
-        m1[[i, i]] = b[i];
-    }
-    let m1_map = MatrixMap::new(m1).ok()?;
+    // Diagonal MatrixMap m1 holding the WinMap scale factors, as C makes it
+    // (a unit MatrixMap when every scale equals 1 within astEQUAL).
+    let m1_map = MatrixMap::diagonal(nin, nin, &b).ok()?;
 
-    // Effective supplied matrix.
-    let mm_mat = if mat_inv {
-        mm.inverse_matrix()?.clone()
-    } else {
-        mm.forward_matrix().clone()
-    };
-    let mm_map = MatrixMap::new(mm_mat).ok()?;
+    // The supplied MatrixMap in the direction it is applied, keeping its
+    // storage form, as C uses it.
+    let mut mm_map = mm.clone();
+    if mat_inv {
+        mm_map.invert();
+    }
 
     // Shift terms as a single point (one row of `nin` coordinates).
     let pset1 = PointSet::from_rows([a.as_slice()]);
@@ -384,11 +378,7 @@ pub(crate) fn win_map_merge(
     let (eff_shifts, eff_scales) = extract_linear_params(ctx.entry(where_).0.as_ref(), win_inv)?;
     let all_shifts_zero = win.shifts().iter().all(|&a| ast_equal(a, 0.0));
     if all_shifts_zero {
-        let mut diag = Array2::<f64>::zeros((nin, nin));
-        for i in 0..nin {
-            diag[[i, i]] = eff_scales[i];
-        }
-        if let Ok(mm) = MatrixMap::new(diag) {
+        if let Ok(mm) = MatrixMap::diagonal(nin, nin, &eff_scales) {
             ctx.set_pair_single(where_, (Box::new(mm), false, false));
             return Some(where_);
         }

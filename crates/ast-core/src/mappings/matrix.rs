@@ -305,24 +305,52 @@ impl MatrixMap {
         }
 
         // Product = a_matrix (nrow_a × ncol_a) · this_matrix (nrow_this ×
-        // ncol_this), with ncol_a == nrow_this. Result is nrow_a × ncol_this.
-        // Dot products short-circuit to BAD when either operand is BAD,
-        // mirroring matrixmap.c:3726-3736.
+        // ncol_this), with ncol_a == nrow_this. Result is nrow_a × ncol_this,
+        // formed as C forms it for each storage form of `a`
+        // (matrixmap.c:3670-3754): a unit `a` copies the first rows of
+        // `this`, a diagonal one scales them, and a full one forms dot
+        // products. Rows beyond those of `this` are zero, and a bad value
+        // gives a bad element.
+        let minrow = nrow_a.min(nrow_this);
         let mut product = Array2::<f64>::zeros((nrow_a, ncol_this));
-        for row in 0..nrow_a {
-            for col in 0..ncol_this {
-                let mut sum = 0.0;
-                let mut bad = false;
-                for i in 0..ncol_a {
-                    let av = a_matrix[[row, i]];
-                    let tv = this_matrix[[i, col]];
-                    if is_bad(av) || is_bad(tv) {
-                        bad = true;
-                        break;
+        match a.form {
+            MatrixForm::Unit => {
+                for row in 0..minrow {
+                    for col in 0..ncol_this {
+                        product[[row, col]] = this_matrix[[row, col]];
                     }
-                    sum += av * tv;
                 }
-                product[[row, col]] = if bad { BAD_VALUE } else { sum };
+            }
+            MatrixForm::Diagonal => {
+                for row in 0..minrow {
+                    let factor = a_matrix[[row, row]];
+                    for col in 0..ncol_this {
+                        let tv = this_matrix[[row, col]];
+                        product[[row, col]] = if is_bad(factor) || is_bad(tv) {
+                            BAD_VALUE
+                        } else {
+                            tv * factor
+                        };
+                    }
+                }
+            }
+            MatrixForm::Full => {
+                for row in 0..nrow_a {
+                    for col in 0..ncol_this {
+                        let mut sum = 0.0;
+                        let mut bad = false;
+                        for i in 0..ncol_a {
+                            let av = a_matrix[[row, i]];
+                            let tv = this_matrix[[i, col]];
+                            if is_bad(av) || is_bad(tv) {
+                                bad = true;
+                                break;
+                            }
+                            sum += av * tv;
+                        }
+                        product[[row, col]] = if bad { BAD_VALUE } else { sum };
+                    }
+                }
             }
         }
 
@@ -333,7 +361,7 @@ impl MatrixMap {
     /// effective direction `inv` (the direction the MatrixMap is used in
     /// within a merge). Faithful port of C `matrixmap.c::MtrZoom` (3988):
     /// copy the MatrixMap *preserving its orientation*, scale the current
-    /// forward matrix by `zoom` and the current inverse by `1/zoom`. Keeping
+    /// forward matrix by `zoom` and divide the current inverse by it. Keeping
     /// the orientation (rather than collapsing to a fresh forward matrix)
     /// matches C's serialised form and avoids recomputing an inverse.
     ///
@@ -348,7 +376,7 @@ impl MatrixMap {
         };
         // Scale forward by zoom, inverse by 1/zoom.
         let new_fwd = cur_fwd.map(|m| &m * zoom);
-        let new_inv = cur_inv.map(|m| &m * (1.0 / zoom));
+        let new_inv = cur_inv.map(|m| &m / zoom);
 
         // Re-assemble into stored (f_matrix, i_matrix) honouring orientation:
         // when `inv`, the effective forward is the stored inverse.
@@ -793,14 +821,14 @@ impl Mapping for MatrixMap {
         // MatrixMap + ZoomMap → MatrixMap (scaled).
         // ZoomMap commutes with MatrixMap: f*(M*x) = M*(f*x) = (f*M)*x.
         //
-        // Scale through [`MatrixMap::mtr_zoom`], which keeps an inverted
-        // MatrixMap inverted with its stored values scaled, rather than
-        // materialising the inverse into a fresh forward matrix. C does the
-        // same, so the serialised orientation matches — and it avoids
-        // recomputing an inverse, which would perturb the last ULP. This is the
-        // generic-merge twin of the nominate-loop path in
-        // `matrix_merge::try_direct_merge`; the two produced different
-        // orientations until they were made to share this helper.
+        // This is the merge a nominated ZoomMap makes with a neighbouring
+        // MatrixMap (zoommap.c MapMerge), so it scales through
+        // [`MatrixMap::mtr_zoom`], C's astMtrZoom, which keeps an inverted
+        // MatrixMap inverted with its stored values scaled rather than
+        // recomputing an inverse. A nominated MatrixMap merges with a
+        // ZoomMap through C's MatZoom instead
+        // (`matrix_merge::merge_matrix_pair`), a product with a diagonal
+        // MatrixMap whose inverse is computed afresh.
         if let Some(zm) = other.as_any().downcast_ref::<ZoomMap>() {
             let f = if other_inv {
                 1.0 / zm.zoom()

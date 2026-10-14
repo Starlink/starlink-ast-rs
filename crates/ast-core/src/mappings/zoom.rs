@@ -268,16 +268,11 @@ impl Mapping for ZoomMap {
                 // Same factor → wider ZoomMap.
                 return ZoomMap::new(n, f1).ok().map(|z| Box::new(z) as DynMapping);
             }
-            // Different factors → diagonal MatrixMap.
-            use ndarray::Array2;
-            let mut diag = Array2::<f64>::zeros((n, n));
-            for i in 0..n1 {
-                diag[[i, i]] = f1;
-            }
-            for i in 0..n2 {
-                diag[[n1 + i, n1 + i]] = f2;
-            }
-            return MatrixMap::new(diag)
+            // Different factors → diagonal MatrixMap, as C's zoommap.c
+            // MapMerge makes it.
+            let mut diag = vec![f1; n1];
+            diag.extend(std::iter::repeat_n(f2, n2));
+            return MatrixMap::diagonal(n, n, &diag)
                 .ok()
                 .map(|mm| Box::new(mm) as DynMapping);
         }
