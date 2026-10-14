@@ -1495,6 +1495,16 @@ fn compress_matrix(m: &mut Array2<f64>, form: &mut MatrixForm) -> bool {
 /// factor. The summation order is what keeps the last digits C's, so a
 /// product C forms through `astMtrMult` is formed here rather than by a
 /// library matrix product.
+///
+/// This is a choice of C compatibility over speed, not a requirement of the
+/// mathematics. A library product such as ndarray's `dot`, which may block
+/// or vectorise the sum, gives the same values to within rounding and could
+/// be faster for large matrices. Switching to one would move merged
+/// MatrixMaps by a few units in the last place, which the simplify corpus,
+/// the FITS-WCS write oracles and anything else compared with C would
+/// report, so it needs a deliberate decision to give up byte parity there,
+/// backed by a benchmark. The matrices merged here are usually 2×2 or 3×3,
+/// where a plain loop is unlikely to lose.
 pub(crate) fn mtr_product(a: &Array2<f64>, this: &Array2<f64>) -> Array2<f64> {
     let mut product = Array2::<f64>::zeros((a.nrows(), this.ncols()));
     for row in 0..a.nrows() {
