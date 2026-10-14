@@ -24,13 +24,13 @@ A C check counts as covered when a Rust test, or an oracle case replaying C, exe
 | `testobject.c` | partial; the rest is the handle registry and creation-site tracking |
 | `testchannel.c` | partial |
 | `testcmpmap.c` | partial |
-| `testlutmap.c` | partial |
+| `testlutmap.c` | ported |
 | `testnormmap.c` | partial |
 | `testrate.c` | ported (`test_rate.rs`) |
 | `testratemap.c` | ported (`test_ratemap.rs`) |
 | `testresimp.c` | partial |
 | `testunitnormmap.c` | mostly covered |
-| `testzoommap.c` | partial; the shared-Mapping and `AST__IMMUT` checks are `ast-capi` concerns |
+| `testzoommap.c` | ported, apart from the `AST__IMMUT` checks, which belong to `ast-capi` |
 | `testmapping.c` | partial |
 | `testregions.c` | 18 of 30 functions covered, 11 partial, 1 missing; two functions never run in C |
 | `testregionmasking.c` | ported (`test_region_masking.rs`) |
@@ -65,12 +65,6 @@ A C check counts as covered when a Rust test, or an oracle case replaying C, exe
 - Err 1-6 (`:45-63`): `map_split` of inputs [3,6,4] of a CmpMap nesting UnitMap, ZoomMap and a diagonal MatrixMap gives Nin=3, Nout=3 and outputs [3,4,6].
 - Err 7-13 (`:66-92`): `splittest1.ast` split on [1] gives no Mapping, and on [1,4,2] a 3-in 3-out Mapping whose transform of (1,8,2) equals outputs 1, 2 and 4 of the full Mapping at (1,2,4,8).
 
-### `testlutmap.c`
-
-- Err 3-6 (`:54-66`): table [0,0,1,…,8], start -1, increment 1; forward at -2, -1 and -0.5 gives 0, the inverse of 0 is BAD, and 0.5, 3, 8 and 8.5 round-trip.
-- Err 7-12 (`:68-84`): the same table with element 4 BAD; forward at 3 is BAD, the inverse of 3 is BAD, and 0.5, 8 and 8.5 round-trip.
-  The oracle case `increasing_bad_runs_linear` gives BAD for every inverse value before the last bad run, which looks inconsistent with C's Err 12; record this table from C before porting.
-
 ### `testnormmap.c`
 
 - Err 1-4 (`:27-38`): a NormMap on a 3-axis CmpFrame(SpecFrame, SkyFrame) permuted [3,1,2].
@@ -90,11 +84,6 @@ A C check counts as covered when a Rust test, or an oracle case replaying C, exe
 ### `testunitnormmap.c`
 
 - `testsimplify` (`:89-155`): seven combinations with centres (2,-1,0) and (-1,6,4) and a shift of (3,7,-9) give ShiftMap, UnitNormMap, UnitNormMap, CmpMap, UnitNormMap, UnitNormMap and CmpMap; only the fifth is an exact fixture (`cap_unitnormmap_01`).
-
-### `testzoommap.c`
-
-- Err 1-2 (`:28-33`): `ZoomMap(1, -1.0)` tests Zoom as set and reads back -1.0.
-- Err 5-6 (`:42-47`): after setting Zoom to 2.5 it tests as set and reads 2.5.
 
 ### `testmapping.c`
 

@@ -1,6 +1,6 @@
 use ast_core::constants::BAD_VALUE;
 use ast_core::coords::PointSet;
-use ast_core::mappings::{Mapping, MatrixMap, ZoomMap};
+use ast_core::mappings::{CmpMap, Composition, Mapping, MatrixMap, UnitMap, ZoomMap};
 
 #[test]
 fn zoom_map_dimensions() {
@@ -127,4 +127,33 @@ fn zoom_parallel_merge_same_factor() {
     let m = merged.unwrap();
     assert!(m.as_any().is::<ZoomMap>());
     assert_eq!(m.nin(), 3);
+}
+
+/// `testzoommap.c` Errors 1-8: Zoom is set by construction, reverts to 1.0
+/// when cleared, and reads back a new value; composing a copy into a CmpMap
+/// leaves the original as it was. C's Errors 9 and 11 (`AST__IMMUT` on a
+/// ZoomMap shared with a CmpMap) belong to `ast-capi`, since a composed
+/// Mapping here is a copy rather than a shared pointer.
+#[test]
+fn zoom_attribute_set_clear_and_get() {
+    let mut zm = ZoomMap::new(1, -1.0).unwrap();
+    assert!(zm.test_zoom(), "Error 1");
+    assert_eq!(zm.zoom(), -1.0, "Error 2");
+
+    zm.clear_zoom();
+    assert!(!zm.test_zoom(), "Error 3");
+    assert_eq!(zm.zoom(), 1.0, "Error 4");
+
+    zm.set_zoom(2.5).unwrap();
+    assert!(zm.test_zoom(), "Error 5");
+    assert_eq!(zm.zoom(), 2.5, "Error 6");
+
+    let _cmp = CmpMap::new(
+        Box::new(zm.clone()),
+        Box::new(UnitMap::new(1)),
+        Composition::Series,
+    )
+    .unwrap();
+    assert!(zm.test_zoom(), "Error 7");
+    assert_eq!(zm.zoom(), 2.5, "Error 8");
 }

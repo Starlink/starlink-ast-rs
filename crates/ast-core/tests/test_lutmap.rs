@@ -726,3 +726,46 @@ fn lutmap_non_finite_entries_not_linear() {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// testlutmap.c Errors 3-12: a flat start, then a bad table value
+// ---------------------------------------------------------------------------
+
+/// Transform the seven values of `x` through `lm` in one call.
+fn tran1(lm: &LutMap, x: &[f64; 7], forward: bool) -> [f64; 7] {
+    let out = lm
+        .transform(&PointSet::from_rows(x.map(|v| [v])), forward)
+        .unwrap();
+    std::array::from_fn(|i| out.point(i)[0])
+}
+
+/// testlutmap.c Errors 3-12. The table starts with two equal values, so
+/// anything at or below the start maps to that value and its inverse is
+/// bad, while values beyond the flat run round-trip; a bad table value
+/// makes its node and the value it would have held bad in both directions.
+#[test]
+fn flat_start_and_bad_value_tables() {
+    let mut lut = [0.0, 0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0];
+    let x = [-2.0, -1.0, -0.5, 0.5, 3.0, 8.0, 8.5];
+
+    let lm = LutMap::new(&lut, -1.0, 1.0).unwrap();
+    let y = tran1(&lm, &x, true);
+    assert_eq!(&y[..3], &[0.0; 3], "Error 3");
+    assert_eq!(&y[3..], &x[3..], "Error 4");
+    let back = tran1(&lm, &y, false);
+    assert_eq!(&back[..3], &[BAD_VALUE; 3], "Error 5");
+    assert_eq!(&back[3..], &y[3..], "Error 6");
+
+    lut[4] = BAD_VALUE;
+    let lm = LutMap::new(&lut, -1.0, 1.0).unwrap();
+    let mut y = tran1(&lm, &x, true);
+    assert_eq!(&y[..3], &[0.0; 3], "Error 7");
+    assert_eq!(y[4], BAD_VALUE, "Error 8");
+    y[4] = x[4];
+    assert_eq!(&y[3..], &x[3..], "Error 9");
+    let mut back = tran1(&lm, &y, false);
+    assert_eq!(&back[..3], &[BAD_VALUE; 3], "Error 10");
+    assert_eq!(back[4], BAD_VALUE, "Error 11");
+    back[4] = y[4];
+    assert_eq!(&back[3..], &y[3..], "Error 12");
+}

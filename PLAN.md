@@ -443,13 +443,13 @@ pin.
 | testobject.c | — | partially ported; the rest is the handle registry. Gap in [`docs/issues/c-test-coverage-audit.md`](docs/issues/c-test-coverage-audit.md) |
 | testchannel.c | crates/ast-core/tests/test_channel.rs | partially ported; gaps in [`docs/issues/c-test-coverage-audit.md`](docs/issues/c-test-coverage-audit.md) |
 | testcmpmap.c | crates/ast-core/tests/test_map_split*.rs | partially ported; gaps in [`docs/issues/c-test-coverage-audit.md`](docs/issues/c-test-coverage-audit.md) |
-| testlutmap.c | crates/ast-core/tests/test_lutmap*.rs | partially ported; gaps in [`docs/issues/c-test-coverage-audit.md`](docs/issues/c-test-coverage-audit.md) |
+| testlutmap.c | crates/ast-core/tests/test_lutmap*.rs | ported; Errors 3-12 added 2026-10-14 as `flat_start_and_bad_value_tables` |
 | testnormmap.c | crates/ast-core/tests/test_normmap.rs | partially ported; gaps in [`docs/issues/c-test-coverage-audit.md`](docs/issues/c-test-coverage-audit.md) |
 | testrate.c | crates/ast-core/tests/test_rate.rs | ported 2026-10-14, one test per C block |
 | testratemap.c | crates/ast-core/tests/test_ratemap.rs | ported 2026-10-14 (`rate_maps_of_a_compound_mapping`) |
 | testresimp.c | crates/ast-core/tests/test_allow_simplify.rs, test_simplify_regression.rs | partially ported; gaps in [`docs/issues/c-test-coverage-audit.md`](docs/issues/c-test-coverage-audit.md) |
 | testunitnormmap.c | crates/ast-core/tests/test_unitnormmap.rs | mostly ported; gaps in [`docs/issues/c-test-coverage-audit.md`](docs/issues/c-test-coverage-audit.md) |
-| testzoommap.c | crates/ast-core/tests/test_zoommap.rs, test_attr_test_clear_oracle.rs | partially ported; the shared-Mapping `AST__IMMUT` checks belong to `ast-capi`. Gaps in [`docs/issues/c-test-coverage-audit.md`](docs/issues/c-test-coverage-audit.md) |
+| testzoommap.c | crates/ast-core/tests/test_zoommap.rs | Errors 1-8 ported 2026-10-14 as `zoom_attribute_set_clear_and_get`; Errors 9 and 11, `AST__IMMUT` on a ZoomMap shared with a CmpMap, belong to `ast-capi` |
 | testregions.c | crates/ast-core/tests/test_regions.rs and the Region test files | 18 of 30 functions ported, 11 partially, 1 not; `checkBox` and `checkConvex` never ran in C until `f111c05c` on `u/timj/norm-unit`, which fixed their `status` guards and three Fortran-conversion slips they then exposed. Gaps in [`docs/issues/c-test-coverage-audit.md`](docs/issues/c-test-coverage-audit.md) |
 | testregionmasking.c | crates/ast-core/tests/test_region_masking.rs | ported 2026-10-14, pinning the pixel counts the C library reports as well as its assertions |
 | testfitschanerrors.c | crates/ast-core/tests/test_fitschan_*oracle.rs | 22 of 41 cases ported, 3 partially, 11 not, 5 with no Rust equivalent; gaps in [`docs/issues/c-test-coverage-audit.md`](docs/issues/c-test-coverage-audit.md) |
