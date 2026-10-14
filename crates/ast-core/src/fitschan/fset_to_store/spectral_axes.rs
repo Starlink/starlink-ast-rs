@@ -818,16 +818,6 @@ fn nearest_pix_value(map: &dyn Mapping, val: f64, axis: usize) -> AstResult<f64>
             v
         };
     }
-    if std::env::var("DBG_NP").is_ok() {
-        let raw: Vec<f64> = (0..nin).map(|i| pset_pix.point(0)[i]).collect();
-        eprintln!("DBG_NP axis={tmap_axis} val={val:.12e} pix_raw={raw:?}");
-        // Forward at integer pixel 50 on the spec axis (others 128).
-        let mut fwd = vec![128.0_f64; nin];
-        fwd[tmap_axis] = 50.0;
-        if let Ok(o) = tmap.transform(&PointSet::from_rows([fwd]), true) {
-            eprintln!("DBG_NP fwd(pix spec=50) -> {:.12e}", o.point(0)[tmap_axis]);
-        }
-    }
     let pts_pix = PointSet::from_rows([pix_row]);
 
     // Forward-transform back and read `tmap_axis` (C:23262-23270).
