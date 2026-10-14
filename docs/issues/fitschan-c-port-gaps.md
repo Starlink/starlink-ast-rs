@@ -55,6 +55,23 @@ port + entry deletion.
 
 ## Reader gaps
 
+### Duplicate keywords: the FitsStore is filled keyword by keyword — OPEN
+
+Found 2026-10-14 porting `testfitschanerrors.c`; the case `error-bad-radesys` exposes it.
+
+C's `WcsToStore` (`fitschan.c:40234`) calls `WcsFcRead` twice, first on the header and then on the translations `SpecTrans` made.
+`WcsFcRead` walks every card in order and stores each recognised keyword with `SetItem`, which overwrites, so when two cards share a keyword the later one is what the FitsStore holds, and both are marked read.
+A translation overrides the header for the same reason.
+
+The port fills its `FitsStore` keyword by keyword (`wcs_keywords.rs`, `extract_wcs_keywords_with_alts`), asking the card list for each keyword it wants through `get_*_marked`, which return the first matching card.
+So with two cards for one keyword the port reads the first and C the last.
+A C probe against the pinned library confirms it: `RADESYS = 'FK4'` then `RADESYS = 'FK5'` reads as FK5 in C and FK4 here, and `'FK5'` then `'BADVAL'` fails with AST__BDFTS in C and reads as FK5 here.
+
+The faithful port is C's card-driven loop: walk the cards once, store each recognised keyword as it is met, then do the same over the translations.
+Making the lookups return the last match instead would reproduce this case, but not C's shape, and whether it reproduces the header-then-translations precedence depends on how the port's `trans` list orders the two, which has not been checked.
+What exposes it: `FITSCHAN_ERRORS_GAP_EXCLUDED` in `tests/test_fitschan_errors.rs`, whose `port_gap_cases_still_differ` fails when the gap closes.
+The wcsconv corpus has no header with a repeated WCS keyword, which is why 194 byte comparisons pass with the gap open.
+
 ### DSS — non-linear plate solution
 
 **File:** `crates/ast-core/src/fitschan/enc_dss.rs`
