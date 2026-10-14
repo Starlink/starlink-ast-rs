@@ -721,3 +721,225 @@ fn check_cmp_region() {
         [false, true, true, true],
     );
 }
+
+/// `checkCircle`: Circles in the SkyFrame of a TAN header (bounds, disc,
+/// boundary and interior meshes, membership near the edge, a change of
+/// system and its FrameSet, overlaps, pole bounds), in a Frame of another
+/// Domain (overlap 0), in a 4-axis CmpFrame, and 3-D spheres.
+#[test]
+fn check_circle() {
+    use ast_core::AnyObject;
+    use ast_core::channel::Channel;
+    use ast_core::fitschan::FitsChan;
+    use ast_core::frames::{CmpFrame, Frame};
+    use ast_core::regions::{BoxRegion, Circle, CircleBuilder};
+
+    let header = "CTYPE1  = 'RA---TAN'\nCTYPE2  = 'DEC--TAN'\nCRPIX1  = 100\nCRPIX2  = 100\n\
+                  CRVAL1  = 70.0\nCRVAL2  = 80.0\nCDELT1  = 0.6\nCDELT2  = 0.6\n";
+    let Some(AnyObject::FrameSet(fs)) = FitsChan::from_header(header).unwrap().read().unwrap()
+    else {
+        panic!("the header did not read as a FrameSet");
+    };
+    let frm1 = fs
+        .current()
+        .as_any()
+        .downcast_ref::<SkyFrame>()
+        .unwrap()
+        .clone();
+    let near = |a: f64, b: f64, t: f64| (a - b).abs() <= t;
+    let radius_circle = |f: &dyn Frame, c: &[f64], r: f64, unc: Option<&BoxRegion>| -> Circle {
+        let mut b = CircleBuilder::from_dyn(f.snapshot(), c.to_vec())
+            .unwrap()
+            .radius(r);
+        if let Some(u) = unc {
+            b = b.uncertainty(Box::new(u.clone()));
+        }
+        b.build().unwrap()
+    };
+    let edge_circle = |f: &dyn Frame, c: &[f64], e: &[f64], unc: Option<&BoxRegion>| -> Circle {
+        let mut b = CircleBuilder::from_dyn(f.snapshot(), c.to_vec())
+            .unwrap()
+            .edge_point(e.to_vec());
+        if let Some(u) = unc {
+            b = b.uncertainty(Box::new(u.clone()));
+        }
+        b.build().unwrap()
+    };
+    let tran = |m: &dyn Mapping, pts: Vec<Vec<f64>>| -> Vec<Vec<f64>> {
+        let n = pts.len();
+        let out = m.transform(&PointSet::from_rows(pts), true).unwrap();
+        (0..n).map(|i| out.point(i).to_vec()).collect()
+    };
+    // Points just inside and just outside along the direction to `toward`.
+    let probe = |f: &dyn Frame, c: &[f64], toward: &[f64], rad: f64| -> Vec<Vec<f64>> {
+        vec![
+            f.offset(c, toward, rad * 0.999).unwrap(),
+            f.offset(c, toward, rad * 1.001).unwrap(),
+        ]
+    };
+    let check_probe = |m: &dyn Mapping, pts: Vec<Vec<f64>>, label: &str| {
+        let out = tran(m, pts.clone());
+        assert_eq!(out[0], pts[0], "Circle: {label} inside");
+        assert!(
+            out[1].iter().all(|&v| v == BAD_VALUE),
+            "Circle: {label} outside"
+        );
+    };
+
+    let cir1 = radius_circle(&frm1, &[0.0, 1.0], 0.01, None);
+    let (lb, ub) = cir1.get_region_bounds().unwrap();
+    assert!(near(lb[0], -0.01850666061475259, 1e-6), "Circle: Error AA1");
+    assert!(near(lb[1], 0.9900000002235173, 1e-6), "Circle: Error AA2");
+    assert!(near(ub[0], 0.01850666061475276, 1e-6), "Circle: Error AA3");
+    assert!(near(ub[1], 1.009994987166073, 1e-6), "Circle: Error AA4");
+    let (centre, radius) = cir1.get_region_disc().unwrap();
+    assert!(
+        near(centre[0], 0.0, 1e-6) && near(centre[1], 1.0, 1e-6),
+        "Circle: Error AA5-6"
+    );
+    assert!(near(radius, 0.01, 1e-6), "Circle: Error AA7");
+
+    let p1 = [0.0, 1.57];
+    let cir1 = radius_circle(&frm1, &p1, 0.01, None);
+    let (lb, ub) = cir1.get_region_bounds().unwrap();
+    assert!(near(lb[0], 0.0, 1e-6), "Circle: Error AA5");
+    assert!(near(lb[1], 1.560000052675599, 1e-6), "Circle: Error AA6");
+    assert!(near(ub[0], 6.283185307179586, 1e-6), "Circle: Error AA7");
+    assert!(near(ub[1], 1.5707963267948966, 1e-6), "Circle: Error AA8");
+    let mesh = cir1.region_mesh().unwrap();
+    assert_eq!(mesh.npoint(), 200, "Circle: Error mesh 1");
+    for i in 0..mesh.npoint() {
+        let d = frm1.distance(&p1, mesh.point(i)).unwrap();
+        assert!(near(d, 0.01, 1e-6), "Circle: Error mesh 2: {d}");
+    }
+    let grid = cir1.region_grid().unwrap();
+    assert_eq!(grid.npoint(), 201, "Circle: Error mesh 3");
+    for i in 0..grid.npoint() {
+        assert!(
+            frm1.distance(&p1, grid.point(i)).unwrap() <= 0.01,
+            "Circle: Error mesh 4"
+        );
+    }
+
+    let p1 = [1.2217305, 1.3962634];
+    let mut cir1 = edge_circle(&frm1, &p1, &[0.8, 0.8], None);
+    check_dump(&cir1, &AnyObject::Circle(cir1.clone()), "checkdump cir1");
+    let rad = Frame::distance(&cir1, &p1, &[0.8, 0.8]).unwrap();
+    check_probe(&cir1, probe(&frm1, &p1, &[0.8, 0.8], rad), "Errors 1-4");
+    let out = tran(&cir1, vec![vec![0.0, 1.5707963]]);
+    assert_eq!(out[0], [0.0, 1.5707963], "Circle: Error 1b-2b");
+    check_probe(&cir1, probe(&frm1, &p1, &[0.0, 0.0], rad), "Errors 5-8");
+    cir1.with_integrity(|f| {
+        f.as_any_mut()
+            .downcast_mut::<SkyFrame>()
+            .unwrap()
+            .set_system(SkySystem::Galactic);
+        Ok(())
+    })
+    .unwrap();
+    let simp = (&cir1 as &dyn Mapping).simplify().unwrap();
+    assert!(
+        has_frameset(&AnyObject::from_mapping(simp.as_ref()).unwrap()),
+        "Circle: error 9"
+    );
+
+    let unc = BoxRegionBuilder::new(frm1.clone(), vec![0.0, 0.0], vec![1.0e-6, 1.0e-6])
+        .unwrap()
+        .build()
+        .unwrap();
+    let e = [1.2218, 1.3963];
+    let cir1 = edge_circle(&frm1, &p1, &e, Some(&unc));
+    let rad = Frame::distance(&cir1, &p1, &e).unwrap();
+    check_probe(&cir1, probe(&frm1, &p1, &e, rad), "Errors 1b-4b");
+    check_probe(&cir1, probe(&frm1, &p1, &[0.0, 0.0], rad), "Errors 5b-8b");
+    let mut cir2 = cir1.clone();
+    cir2.with_integrity(|f| {
+        f.as_any_mut()
+            .downcast_mut::<SkyFrame>()
+            .unwrap()
+            .set_system(SkySystem::Galactic);
+        Ok(())
+    })
+    .unwrap();
+    check_dump(&cir2, &AnyObject::Circle(cir2.clone()), "checkdump cir2");
+    let cir2 = (&cir2 as &dyn Mapping).simplify().unwrap();
+    let cir2 = AnyObject::from_mapping(cir2.as_ref()).unwrap();
+    assert!(!has_frameset(&cir2), "Circle: error 9b");
+    let cir2 = cir2.as_region().unwrap();
+    assert_eq!(overlap(&cir1, cir2), 5, "Circle: Error 10");
+    assert_eq!(overlap(cir2, &cir1), 5, "Circle: Error 11");
+
+    let cir2 = edge_circle(&frm1, &[1.2217305, 1.3964], &e, Some(&unc));
+    assert_eq!(overlap(&cir1, &cir2), 4, "Circle: Error 12");
+    assert_eq!(overlap(&cir2, &cir1), 4, "Circle: Error 13");
+    let cir2 = edge_circle(&frm1, &p1, &[1.221731, 1.396268], Some(&unc));
+    assert_eq!(overlap(&cir1, &cir2), 3, "Circle: Error 14");
+    assert_eq!(overlap(&cir2, &cir1), 2, "Circle: Error 15");
+    let cir2 = edge_circle(&frm1, &[0.8, 1.0], &[0.88, 1.05], Some(&unc));
+    assert_eq!(overlap(&cir1, &cir2), 1, "Circle: Error 16");
+    let cir2 = radius_circle(&frm1, &[0.8, 1.5707963], 0.1, Some(&unc));
+    let (lb, ub) = cir2.get_region_bounds().unwrap();
+    assert_eq!(lb[0], 0.0, "Circle: Error 16a");
+    assert!(near(lb[1], 1.47079625, 1e-6), "Circle: Error 16b");
+    assert!(near(ub[0], 6.28318531, 1e-6), "Circle: Error 16c");
+    assert!(near(ub[1], 1.57079633, 1e-6), "Circle: Error 16d");
+
+    let mut aa = frame2();
+    Frame::set_domain(&mut aa, "aa").unwrap();
+    let unc_aa = BoxRegionBuilder::new(aa.clone(), vec![0.0, 0.0], vec![1.0e-6, 1.0e-6])
+        .unwrap()
+        .build()
+        .unwrap();
+    let cir2 = edge_circle(&aa, &p1, &e, Some(&unc_aa));
+    assert_eq!(overlap(&cir1, &cir2), 0, "Circle: Error 17");
+    assert_eq!(overlap(&cir2, &cir1), 0, "Circle: Error 18");
+    let f3 = CmpFrame::new(Box::new(SkyFrame::new(SkySystem::Icrs)), Box::new(frame2()));
+    let cir2 = edge_circle(&f3, &[1.0, 1.0, 3.0, 3.0], &[1.01, 1.02, 3.01, 3.01], None);
+    assert_eq!(overlap(&cir2, &cir2), 5, "Circle: Error 18b");
+
+    // 3-D spheres.
+    let f = BasicFrameBuilder::new(3).build().unwrap();
+    let unc = BoxRegionBuilder::new(f.clone(), vec![0.0; 3], vec![1.0e-6, 2.0e-6, 2.0e-6])
+        .unwrap()
+        .build()
+        .unwrap();
+    let c = [1.0, 2.0, 3.0];
+    let cir1 = edge_circle(&f, &c, &[0.0, -1.0, -2.0], Some(&unc));
+    check_dump(&cir1, &AnyObject::Circle(cir1.clone()), "checkdump sph1");
+    let rad = Frame::distance(&cir1, &c, &[0.0, -1.0, -2.0]).unwrap();
+    check_probe(
+        &cir1,
+        probe(&f, &c, &[0.0, -1.0, -2.0], rad),
+        "Sphere: Errors 1-4z",
+    );
+    check_probe(
+        &cir1,
+        probe(&f, &c, &[0.0, 0.0, 0.0], rad),
+        "Sphere: Errors 5-8z",
+    );
+    assert_eq!(overlap(&cir1, &cir1), 5, "Sphere: Error 10");
+    let cir2 = edge_circle(&f, &c, &[0.5, 0.0, -1.0], Some(&unc));
+    check_dump(&cir2, &AnyObject::Circle(cir2.clone()), "checkdump sph2");
+    assert_eq!(overlap(&cir2, &cir1), 2, "Sphere: Error 11");
+    assert_eq!(overlap(&cir1, &cir2), 3, "Sphere: Error 12");
+    let cir2 = edge_circle(&f, &[1.0, 0.0, 3.0], &[0.0, -1.0, -2.0], Some(&unc));
+    assert_eq!(overlap(&cir1, &cir2), 4, "Sphere: Error 13");
+    let cir2 = edge_circle(&f, &[1.0, 102.0, 3.0], &[0.0, 99.0, -2.0], Some(&unc));
+    assert_eq!(overlap(&cir1, &cir2), 1, "Sphere: Error 14");
+    let mut cir1 = edge_circle(&f, &[0.0; 3], &[0.0, 0.0, 1.0], Some(&unc));
+    let cir2 = edge_circle(
+        &f,
+        &[2.0000001, 0.0, 0.0],
+        &[2.000001, 1.0, 0.0],
+        Some(&unc),
+    );
+    assert_eq!(overlap(&cir1, &cir2), 4, "Sphere: Error 15");
+    let mut cir2 = edge_circle(&f, &[2.000001, 0.0, 0.0], &[2.000001, 1.0, 0.0], Some(&unc));
+    assert_eq!(overlap(&cir1, &cir2), 4, "Sphere: Error 16");
+    cir1.set_closed(false);
+    cir2.set_closed(false);
+    assert_eq!(overlap(&cir1, &cir2), 1, "Sphere: Error 17");
+    cir1.clear_closed();
+    let cir2 = edge_circle(&f, &[2.000004, 0.0, 0.0], &[2.000004, 1.0, 0.0], Some(&unc));
+    assert_eq!(overlap(&cir1, &cir2), 1, "Sphere: Error 18");
+}
