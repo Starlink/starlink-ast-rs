@@ -406,7 +406,7 @@ fn is_latitude_ctype(ctype: &str) -> bool {
 ///
 /// Recognised patterns: "FREQ", "ENER", "WAVN", "VOPT", "ZOPT",
 /// "VELO", "VRAD", "WAVE", "AWAV", "BETA".
-fn is_spectral_ctype(ctype: &str) -> bool {
+pub(crate) fn is_spectral_ctype(ctype: &str) -> bool {
     let ct = ctype.trim().to_uppercase();
     let prefix = if ct.len() >= 4 { &ct[..4] } else { &ct };
     matches!(

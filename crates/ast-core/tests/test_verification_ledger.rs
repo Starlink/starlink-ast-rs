@@ -51,11 +51,10 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
     (
         "test_fitschan_tab_read_oracle.rs",
         "TAB_READ_EXCLUDED",
-        1,
-        "shared_table, two spectral axes in one axis description: the reader \
-         makes a SpecFrame for the first only, where C makes one for each. A \
-         reader gap unrelated to -TAB, recorded in PLAN.md section 5, with a \
-         companion test that fails when the case starts matching",
+        0,
+        "empty: shared_table, its one entry, matches C since the reader makes \
+         a SpecFrame for each spectral axis of a description, as C's \
+         WcsSpectral does; kept so a newly diagnosed read difference has a home",
     ),
     (
         "test_fitschan_tab_read_oracle.rs",

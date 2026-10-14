@@ -25,11 +25,7 @@ use ast_core::{AnyObject, AstType, Channel, FitsChan, FitsTable, to_native_strin
 
 /// Cases that differ from C for a reason unrelated to `-TAB`, each with the
 /// reason. `excluded_cases_still_differ` fails when one starts to match.
-const TAB_READ_EXCLUDED: &[(&str, &str)] = &[(
-    "shared_table",
-    "the reader makes a SpecFrame for the first spectral axis only, where C's \
-     WcsSpectral makes one for each (PLAN.md section 5)",
-)];
+const TAB_READ_EXCLUDED: &[(&str, &str)] = &[];
 
 /// Cases whose C dump has one `IsSimp = 1` card more than the port's, at the
 /// given line of the transcript, and why. The card records a merge probe C's

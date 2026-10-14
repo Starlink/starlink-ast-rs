@@ -126,12 +126,13 @@ pub(crate) fn decode_wcs_inner(
     // 36209-36223).
     let celestial_ref_pos_forced = celestial.as_ref().is_some_and(|c| c.ref_pos_forced);
 
-    // Step 3: Try to decode spectral axis.
-    let spectral = wcs_spectral::build_spectral(store, s)?;
+    // Step 3: Decode the spectral axes, each SpecFrame given the celestial
+    // reference position as C's `WcsSpectral` gives it.
+    let spectral = wcs_spectral::build_spectral(store, s, spectral_ref_pos(&celestial))?;
     // `WcsCelestial` runs before `WcsSpectral` in `WcsMapFrm`
     // (fitschan.c:37984-37990), so the spectral warnings follow the
     // celestial ones.
-    if let Some(sp) = spectral.as_ref() {
+    for sp in &spectral {
         warnings.extend(sp.warnings.iter().cloned());
     }
 
@@ -197,22 +198,6 @@ pub(crate) fn decode_wcs_inner(
     // no remapping — we set it via `frame_mut` to bypass FrameSet integrity,
     // matching C which sets it on the Frame before the FrameSet wraps it.
     set_sky_ref_from_celestial(&mut frameset, celestial_ref_pos, celestial_ref_pos_forced)?;
-
-    // Step 9: SpecFrame RefRA/RefDec from celestial fiducial. Mirrors
-    // C `astSetRefPos(specfrm, reffrm, reflon, reflat)` at
-    // fitschan.c:39668. C calls this on the standalone SpecFrame
-    // BEFORE the FrameSet wraps it, so no FrameSet-integrity remap
-    // fires. We achieve the same semantics by using `frame_mut` to
-    // bypass our `with_integrity` machinery, since by this point the
-    // SpecFrame already lives inside the FrameSet.
-    set_spec_ref_from_celestial(&mut frameset, celestial_ref_pos)?;
-
-    // Step 10: DSBSpecFrame setup. Mirrors C `WcsSpectral`
-    // (fitschan.c:39718-39721), which calls `DSBSetUp` immediately after
-    // `astSetRefPos` when the spectral frame is a DSBSpecFrame. The IF /
-    // DSBCentre / SideBand attributes depend on the topocentric frequency
-    // conversion, which in turn depends on the reference position set above.
-    dsb_set_up_in_frameset(&mut frameset, store)?;
 
     Ok(AnyObject::FrameSet(frameset))
 }
@@ -318,7 +303,7 @@ fn add_wcs_frame(
 fn iwc_axis_units(
     store: &FitsStore,
     celestial: &Option<CelestialResult>,
-    spectral: &Option<SpectralResult>,
+    spectral: &[SpectralResult],
     tab: Option<&TabLookup>,
 ) -> Vec<Option<String>> {
     (0..store.naxis)
@@ -334,124 +319,13 @@ fn iwc_axis_units(
                 } else {
                     Some("deg".to_string())
                 }
-            } else if let Some(sp) = spectral.as_ref().filter(|sp| sp.axis == i) {
+            } else if let Some(sp) = spectral.iter().find(|sp| sp.axis == i) {
                 crate::frames::Frame::unit(&sp.frame, 1).ok()
             } else {
                 store.cunit[i].clone()
             }
         })
         .collect()
-}
-
-/// Run [`crate::frames::DSBSpecFrame::dsb_set_up`] on the DSBSpecFrame (if
-/// any) inside the FrameSet's current world frame.
-///
-/// Mirrors C `WcsSpectral`'s `if( astIsADSBSpecFrame(specfrm) ) DSBSetUp(...)`
-/// (fitschan.c:39718-39721). The `obscentre` argument C passes as `crval` is
-/// `store->axref[i]` falling back to `store->crval[i]` (fitschan.c:39708-39714).
-fn dsb_set_up_in_frameset(fs: &mut FrameSet, store: &FitsStore) -> AstResult<()> {
-    let Some(imagfreq) = store.imagfreq else {
-        return Ok(());
-    };
-
-    // obscentre: the spectral CRVAL value (no AXREF support yet — AXREF is
-    // only written for -TAB axes with no inverse, which this reader does
-    // not produce).
-    let Some(spec_axis) = store.spectral_axis() else {
-        return Ok(());
-    };
-    let crval = store.crval[spec_axis].unwrap_or(0.0);
-
-    let cur = fs.frame_mut(FrameRef::Current)?;
-    dsb_set_up_in_frame(cur, imagfreq, crval)
-}
-
-/// Locate the `DSBSpecFrame` within `frame` (recursing through any
-/// `CmpFrame`) and run its `dsb_set_up`.
-fn dsb_set_up_in_frame(
-    frame: &mut dyn crate::frames::Frame,
-    imagfreq: f64,
-    crval: f64,
-) -> AstResult<()> {
-    use crate::frames::{CmpFrame, DSBSpecFrame};
-    if let Some(dsb) = frame.as_any_mut().downcast_mut::<DSBSpecFrame>() {
-        return dsb.dsb_set_up(imagfreq, crval);
-    }
-    if let Some(cmp) = frame.as_any_mut().downcast_mut::<CmpFrame>() {
-        let in_first = cmp.frame1().as_any().is::<DSBSpecFrame>() || contains_dsb(cmp.frame1());
-        if in_first {
-            return dsb_set_up_in_frame(cmp.frame1_mut(), imagfreq, crval);
-        }
-        return dsb_set_up_in_frame(cmp.frame2_mut(), imagfreq, crval);
-    }
-    Ok(())
-}
-
-/// Whether `frame` contains a `DSBSpecFrame` (directly or nested).
-fn contains_dsb(frame: &dyn crate::frames::Frame) -> bool {
-    use crate::frames::{CmpFrame, DSBSpecFrame};
-    if frame.as_any().is::<DSBSpecFrame>() {
-        return true;
-    }
-    if let Some(c) = frame.as_any().downcast_ref::<CmpFrame>() {
-        return contains_dsb(c.frame1()) || contains_dsb(c.frame2());
-    }
-    false
-}
-
-/// Propagate the celestial reference position to a SpecFrame's
-/// `RefRA`/`RefDec` attributes (FK5 J2000 radians). No-op if the
-/// world frame doesn't contain a SpecFrame and a SkyFrame, or if the
-/// SpecFrame already has both attributes set.
-fn set_spec_ref_from_celestial(fs: &mut FrameSet, ref_pos: Option<(f64, f64)>) -> AstResult<()> {
-    // Locate spec/sky child indices and frame-axis indices within the
-    // current world frame. If either is absent, nothing to do.
-    if locate_spec_sky(fs.current()).is_none() {
-        return Ok(());
-    };
-
-    // If RefRA/RefDec already set on the SpecFrame, skip (mirrors C's
-    // `astTestRefRA`/`astTestRefDec` gate).
-    {
-        let cur = fs.current();
-        if let Some(spec) = peek_spec(cur)
-            && spec.test_ref_ra()
-            && spec.test_ref_dec()
-        {
-            return Ok(());
-        }
-    }
-
-    // The reference position is the raw CRVAL pair (radians) in the SkyFrame's
-    // native system, as returned by `WcsCelestial` and passed straight into
-    // `astSetRefPos(specfrm, reffrm, reflon, reflat)` (fitschan.c:37909/39507).
-    // C uses the same reflon/reflat for the SkyFrame's SkyRef and the
-    // SpecFrame's RefRA/RefDec — so use the celestial decoder's value rather
-    // than re-deriving it through the pixel→world Mapping (which loses ULPs).
-    let Some((reflon, reflat)) = ref_pos else {
-        return Ok(());
-    };
-
-    // Step 2: clone the SkyFrame so we can hand it to `set_ref_pos`
-    // as the reference frame. Mirrors C's
-    // `astSetRefPos(specfrm, reffrm, reflon, reflat)` at
-    // fitschan.c:39668, where `reffrm` is a clone of the SkyFrame
-    // built by WcsCelestial. `set_ref_pos` performs the
-    // SkyFrame→FK5/J2000 conversion internally.
-    let sky_clone = peek_sky(fs.current())
-        .expect("locate_spec_sky guarantees a SkyFrame")
-        .clone();
-
-    // Step 3: call `set_ref_pos` on the SpecFrame via `frame_mut`.
-    // C calls `astSetRefPos` directly on the standalone specfrm
-    // before the FrameSet wraps it; we apply the same direct-set
-    // semantics post-construction via `frame_mut`. `set_ref_pos`
-    // converts (reflon, reflat) from sky_clone's system to FK5/J2000
-    // and stores the result in RefRA/RefDec.
-    let cur = fs.frame_mut(FrameRef::Current)?;
-    set_spec_ref_pos(cur, &sky_clone, reflon, reflat)?;
-
-    Ok(())
 }
 
 /// Stamp the celestial reference position onto the SkyFrame in the current
@@ -555,82 +429,6 @@ fn locate_sky_axes(frame: &dyn crate::frames::Frame) -> Option<(usize, usize)> {
         }
     }
     Some((lon?, lat?))
-}
-
-/// Apply `set_ref_pos` to the spectral frame (plain `SpecFrame` or
-/// `DSBSpecFrame`) found within `frame`, recursing through any `CmpFrame`.
-fn set_spec_ref_pos(
-    frame: &mut dyn crate::frames::Frame,
-    sky: &crate::frames::SkyFrame,
-    reflon: f64,
-    reflat: f64,
-) -> AstResult<()> {
-    use crate::frames::{CmpFrame, DSBSpecFrame, SpecFrame};
-    if let Some(spec) = frame.as_any_mut().downcast_mut::<SpecFrame>() {
-        spec.set_ref_pos(Some(sky), reflon, reflat)?;
-        return Ok(());
-    }
-    if let Some(dsb) = frame.as_any_mut().downcast_mut::<DSBSpecFrame>() {
-        dsb.set_ref_pos(Some(sky), reflon, reflat)?;
-        return Ok(());
-    }
-    if let Some(cmp) = frame.as_any_mut().downcast_mut::<CmpFrame>() {
-        let in_first = peek_spec(cmp.frame1()).is_some();
-        if in_first {
-            return set_spec_ref_pos(cmp.frame1_mut(), sky, reflon, reflat);
-        }
-        return set_spec_ref_pos(cmp.frame2_mut(), sky, reflon, reflat);
-    }
-    Ok(())
-}
-
-/// Confirm the world frame is a `CmpFrame` containing both a spectral frame
-/// (`SpecFrame`/`DSBSpecFrame`) and a `SkyFrame` (longitude + latitude axes).
-/// Returns `Some(())` when present — the reference position itself comes from
-/// the celestial decoder's raw CRVAL, so no axis indices are needed here.
-fn locate_spec_sky(frame: &dyn crate::frames::Frame) -> Option<()> {
-    use crate::frames::{CmpFrame, DSBSpecFrame, SkyFrame, SpecFrame};
-    // Require a CmpFrame (a single spec/sky frame has no companion).
-    frame.as_any().downcast_ref::<CmpFrame>()?;
-
-    // Walk *external* axes via `primary_frame`, which resolves any CmpFrame
-    // axis permutation. `paxis` is the SkyFrame's *internal physical* axis
-    // index (0 = longitude, 1 = latitude). Mirrors C's primary-frame walk in
-    // WcsSpectral (fitschan.c:39753+).
-    let mut spec_axis: Option<usize> = None;
-    let mut lon: Option<usize> = None;
-    let mut lat: Option<usize> = None;
-    for iax in 0..frame.naxes() {
-        let (pf, paxis) = frame.primary_frame(iax);
-        if pf.as_any().is::<SpecFrame>() || pf.as_any().is::<DSBSpecFrame>() {
-            spec_axis.get_or_insert(iax);
-        } else if pf.as_any().is::<SkyFrame>() {
-            if paxis == 0 {
-                lon.get_or_insert(iax);
-            } else if paxis == 1 {
-                lat.get_or_insert(iax);
-            }
-        }
-    }
-
-    spec_axis?;
-    lon?;
-    lat?;
-    Some(())
-}
-
-fn peek_spec(frame: &dyn crate::frames::Frame) -> Option<&crate::frames::SpecFrame> {
-    use crate::frames::{CmpFrame, DSBSpecFrame, SpecFrame};
-    if let Some(s) = frame.as_any().downcast_ref::<SpecFrame>() {
-        return Some(s);
-    }
-    if let Some(d) = frame.as_any().downcast_ref::<DSBSpecFrame>() {
-        return Some(d.spec());
-    }
-    if let Some(c) = frame.as_any().downcast_ref::<CmpFrame>() {
-        return peek_spec(c.frame1()).or_else(|| peek_spec(c.frame2()));
-    }
-    None
 }
 
 fn peek_sky(frame: &dyn crate::frames::Frame) -> Option<&crate::frames::SkyFrame> {
@@ -751,7 +549,8 @@ pub(crate) fn decode_wcs_with_alts_inner(
             // to every plane, not just the primary).
             let alt_ref_pos = celestial.as_ref().and_then(|c| c.ref_pos);
             let alt_ref_pos_forced = celestial.as_ref().is_some_and(|c| c.ref_pos_forced);
-            let spectral = wcs_spectral::build_spectral(alt_store, *letter)?;
+            let spectral =
+                wcs_spectral::build_spectral(alt_store, *letter, spectral_ref_pos(&celestial))?;
             let mut world_frame = build_world_frame(alt_store, &celestial, &spectral)?;
             let iwc_map = iwc_map.map(|m| {
                 (
@@ -797,12 +596,6 @@ pub(crate) fn decode_wcs_with_alts_inner(
             )?;
             set_sky_ref_from_celestial(&mut trial, alt_ref_pos, alt_ref_pos_forced)?;
 
-            // SpecFrame RefRA/RefDec and DSBSpecFrame setup, exactly as for
-            // the primary plane above — C `WcsSpectral`'s `astSetRefPos` /
-            // `DSBSetUp` calls (fitschan.c:39707, 39585-39588) run once per
-            // plane, driven by the per-plane `s` loop at fitschan.c:2710.
-            set_spec_ref_from_celestial(&mut trial, alt_ref_pos)?;
-            dsb_set_up_in_frameset(&mut trial, alt_store)?;
             Ok(())
         })();
         let base = warnings.len();
@@ -1075,7 +868,7 @@ fn build_pixel_to_world(
     store: &FitsStore,
     pixel_to_iwc: DynMapping,
     celestial: Option<CelestialResult>,
-    spectral: Option<SpectralResult>,
+    spectral: Vec<SpectralResult>,
     tabmap: Option<DynMapping>,
 ) -> AstResult<DynMapping> {
     let naxis = store.naxis;
@@ -1086,7 +879,7 @@ fn build_pixel_to_world(
         claimed[cel.lon_axis] = true;
         claimed[cel.lat_axis] = true;
     }
-    if let Some(ref spec) = spectral {
+    for spec in &spectral {
         claimed[spec.axis] = true;
     }
 
@@ -1094,10 +887,15 @@ fn build_pixel_to_world(
         Some(cel) => cel.mapping,
         None => Box::new(UnitMap::new(naxis)),
     };
-    let map3: DynMapping = match spectral {
-        Some(spec) => spec.mapping,
-        None => parallel_per_axis((0..naxis).map(|_| Ok(Box::new(UnitMap::new(1)) as DynMapping)))?,
-    };
+    let mut spectral_maps: Vec<Option<DynMapping>> = (0..naxis).map(|_| None).collect();
+    for spec in spectral {
+        spectral_maps[spec.axis] = Some(spec.mapping);
+    }
+    let map3: DynMapping = parallel_per_axis(
+        spectral_maps
+            .into_iter()
+            .map(|m| Ok(m.unwrap_or_else(|| Box::new(UnitMap::new(1)) as DynMapping))),
+    )?;
     let map4: DynMapping = if claimed.contains(&false) {
         parallel_per_axis((0..naxis).map(|i| {
             if claimed[i] {
@@ -1152,11 +950,20 @@ fn others_axis_map(store: &FitsStore, axis: usize) -> AstResult<DynMapping> {
     })
 }
 
+/// The celestial reference position for `WcsSpectral`'s `astSetRefPos`:
+/// the SkyFrame `WcsCelestial` made and its reference longitude and
+/// latitude, when there are celestial axes with a reference position.
+fn spectral_ref_pos(celestial: &Option<CelestialResult>) -> Option<wcs_spectral::RefPos<'_>> {
+    let cel = celestial.as_ref()?;
+    let (lon, lat) = cel.ref_pos?;
+    Some((&cel.frame, lon, lat))
+}
+
 /// Build the world coordinate frame based on what decoders found.
 fn build_world_frame(
     store: &FitsStore,
     celestial: &Option<CelestialResult>,
-    spectral: &Option<SpectralResult>,
+    spectral: &[SpectralResult],
 ) -> AstResult<DynFrame> {
     let naxis = store.naxis;
 
@@ -1166,26 +973,28 @@ fn build_world_frame(
         claimed[cel.lon_axis] = true;
         claimed[cel.lat_axis] = true;
     }
-    if let Some(spec) = spectral {
+    for spec in spectral {
         claimed[spec.axis] = true;
     }
 
     let n_unclaimed = claimed.iter().filter(|&&c| !c).count();
 
     // Simple cases: a single class spanning all axes returns its bare frame.
-    if celestial.is_some() && spectral.is_none() && n_unclaimed == 0 {
+    if celestial.is_some() && spectral.is_empty() && n_unclaimed == 0 {
         let cel = celestial.as_ref().unwrap();
         return Ok(Box::new(cel.frame.clone()));
     }
-    if spectral.is_some() && celestial.is_none() && n_unclaimed == 0 {
-        let spec = spectral.as_ref().unwrap();
+    if let [spec] = spectral
+        && celestial.is_none()
+        && n_unclaimed == 0
+    {
         return Ok(spec.world_frame());
     }
     // The axes no class stage claimed — the ones whose CTYPEs make up the
     // leftover Frame's Domain (C's sentinel-tagged axes, fitschan.c:38990).
     let unclaimed: Vec<usize> = (0..naxis).filter(|&i| !claimed[i]).collect();
 
-    if celestial.is_none() && spectral.is_none() {
+    if celestial.is_none() && spectral.is_empty() {
         // All-linear: a single BasicFrame carrying the per-axis CTYPE info.
         let mut frame = seed_linear_frame(store, &(0..naxis).collect::<Vec<_>>(), &unclaimed)?;
         apply_wcsname(store, frame.as_mut())?;
@@ -1224,8 +1033,9 @@ fn build_world_frame(
         frame = morph_in_sub_frame(frame, Box::new(cel.frame.clone()), &sky_axes, naxis)?;
     }
 
-    // --- Spectral stage (WcsSpectral, fitschan.c:39753-39791) ---
-    if let Some(spec) = spectral.as_ref() {
+    // --- Spectral stage (WcsSpectral, fitschan.c:39753-39791), one axis at
+    // a time in axis order ---
+    for spec in spectral {
         frame = morph_in_sub_frame(frame, spec.world_frame(), &[spec.axis], naxis)?;
     }
 

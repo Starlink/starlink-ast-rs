@@ -16,63 +16,23 @@ use super::fits_store::FitsStore;
 use super::warning::{Warning, Warnings};
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::{Frame, FrameRef, SpecFrame, SpecSystem, StdOfRest};
-use crate::mappings::{
-    CmpMap, Composition, DynMapping, GrismMap, Mapping, ShiftMap, UnitMap, ZoomMap,
-};
+use crate::mappings::{CmpMap, Composition, DynMapping, GrismMap, Mapping, ShiftMap, ZoomMap};
 
 /// Degrees to radians. Mirrors C's `AST__DD2R` (ast_par.h).
 const DD2R: f64 = std::f64::consts::PI / 180.0;
 
-/// Embed a 1-axis mapping into an N-axis mapping with `UnitMap`s on
-/// the other axes. Identity-fast for `naxis == 1`. Mirrors C
-/// `WcsSpectral` (fitschan.c:39794-39809), which composes one 1D map
-/// per axis in parallel in FITS order (`ret = astCmpMap(ret, map1, 0,
-/// …)`) — the non-spectral axes carry a `UnitMap(1)` each and only the
-/// *Frame* is permuted, so no PermMap sandwich is needed here.
-fn embed_1axis_in_naxis(
-    inner: DynMapping,
-    naxis: usize,
-    axis_0based: usize,
-) -> AstResult<DynMapping> {
-    debug_assert_eq!(inner.nin(), 1);
-    debug_assert_eq!(inner.nout(), 1);
-    debug_assert!(axis_0based < naxis);
-
-    if naxis == 1 {
-        return Ok(inner);
-    }
-
-    let mut inner = Some(inner);
-    let mut result: Option<DynMapping> = None;
-    for k in 0..naxis {
-        let part: DynMapping = if k == axis_0based {
-            inner.take().unwrap()
-        } else {
-            Box::new(UnitMap::new(1))
-        };
-        result = Some(match result {
-            None => part,
-            Some(acc) => Box::new(CmpMap::new(acc, part, Composition::Parallel)?),
-        });
-    }
-    Ok(result.unwrap())
-}
-
 /// Result of building the spectral axis from a FitsStore.
 pub(crate) struct SpectralResult {
-    /// Mapping from IWC (spectral subset, 1D) to spectral coordinate.
+    /// Mapping from the axis's IWC value to its spectral coordinate.
     pub mapping: DynMapping,
     /// The SpecFrame describing the output spectral coordinate.
     pub frame: SpecFrame,
     /// 0-based axis index in the full IWC space.
     pub axis: usize,
-    /// Whether the world frame for this axis should be a `DSBSpecFrame`
-    /// rather than a plain `SpecFrame`. Mirrors C `WcsSpectral`
-    /// (fitschan.c:39631-39636), which builds a DSBSpecFrame when the
-    /// FitsStore carries an `IMAGFREQ` value. The DSB-specific attributes
-    /// (IF / DSBCentre / SideBand) are filled in by `dsb_set_up` after the
-    /// reference position has been propagated from the celestial axes.
-    pub is_dsb: bool,
+    /// The `DSBSpecFrame`, set up by `DSBSetUp`, that is this axis's world
+    /// Frame when the FitsStore carries an `IMAGFREQ` value (fitschan.c
+    /// `WcsSpectral`); otherwise the world Frame is [`Self::frame`].
+    pub dsb: Option<crate::frames::DSBSpecFrame>,
     /// Warning messages to emit as ASTWARN cards. Mirrors C `Warn`'s
     /// `badctype` condition: the `-X2P` algorithm code's `P` character
     /// disagrees with the one the axis's own system implies
@@ -81,34 +41,54 @@ pub(crate) struct SpectralResult {
 }
 
 impl SpectralResult {
-    /// Build the world Frame for this spectral axis: a `DSBSpecFrame`
-    /// wrapping [`Self::frame`] when [`Self::is_dsb`] is set, otherwise a
-    /// plain clone of [`Self::frame`].
+    /// A copy of this axis's world Frame.
     pub fn world_frame(&self) -> crate::frames::DynFrame {
-        if self.is_dsb {
-            Box::new(crate::frames::DSBSpecFrame::from_spec_frame(
-                self.frame.clone(),
-            ))
-        } else {
-            Box::new(self.frame.clone())
+        match &self.dsb {
+            Some(dsb) => Box::new(dsb.clone()),
+            None => Box::new(self.frame.clone()),
         }
     }
 }
 
-/// If a spectral axis is present in the FitsStore, build the IWC-to-spectral
-/// mapping and create a SpecFrame.
-///
-/// Returns `None` if no spectral axis is found, and AST__BDFTS for an
-/// algorithm code that cannot be implemented, as C's `WcsSpectral` reports
-/// it (fitschan.c:40160-40168). `s` is the axis description's version
-/// character.
-pub(crate) fn build_spectral(store: &FitsStore, s: char) -> AstResult<Option<SpectralResult>> {
-    // Step 1: Find the spectral axis.
-    let Some(axis) = store.spectral_axis() else {
-        return Ok(None);
-    };
+/// The celestial reference position C's `WcsSpectral` gives each
+/// SpecFrame with `astSetRefPos`: the SkyFrame `WcsCelestial` made, and the
+/// reference longitude and latitude in it, in radians.
+pub(crate) type RefPos<'a> = (&'a crate::frames::SkyFrame, f64, f64);
 
-    // Step 2: Determine the spectral system + algorithm code from CTYPE.
+/// Build the IWC-to-spectral Mapping and the Frame of every spectral axis,
+/// in axis order, as C's `WcsSpectral` does in its loop over the axes
+/// (fitschan.c `WcsSpectral`). An axis whose CTYPE is not a spectral system
+/// is passed over.
+///
+/// An algorithm code that cannot be implemented is AST__BDFTS, as C reports
+/// it, and ends the loop. `s` is the axis description's version character,
+/// and `reference` the celestial reference position, when there are
+/// celestial axes.
+pub(crate) fn build_spectral(
+    store: &FitsStore,
+    s: char,
+    reference: Option<RefPos<'_>>,
+) -> AstResult<Vec<SpectralResult>> {
+    let mut result = Vec::new();
+    for axis in 0..store.naxis {
+        let spectral = store.ctype[axis]
+            .as_deref()
+            .is_some_and(super::fits_store::is_spectral_ctype);
+        if spectral && let Some(r) = build_spectral_axis(store, s, axis, reference)? {
+            result.push(r);
+        }
+    }
+    Ok(result)
+}
+
+/// One pass of C's `WcsSpectral` loop, for the spectral axis `axis`.
+fn build_spectral_axis(
+    store: &FitsStore,
+    s: char,
+    axis: usize,
+    reference: Option<RefPos<'_>>,
+) -> AstResult<Option<SpectralResult>> {
+    // Determine the spectral system + algorithm code from CTYPE.
     let Some((system, algcode)) = parse_spectral_ctype(store, axis) else {
         return Ok(None);
     };
@@ -116,6 +96,11 @@ pub(crate) fn build_spectral(store: &FitsStore, s: char) -> AstResult<Option<Spe
     // Step 3: Build the SpecFrame (so we can pass it to the algorithm
     // dispatch, which may need its rest frequency and unit).
     let mut frame = SpecFrame::new(system);
+
+    // The reference position, if there are celestial axes.
+    if let Some((sky, reflon, reflat)) = reference {
+        frame.set_ref_pos(Some(sky), reflon, reflat)?;
+    }
 
     if let Some(ref specsys) = store.specsys {
         if let Some(sor) = StdOfRest::parse(specsys) {
@@ -230,20 +215,24 @@ pub(crate) fn build_spectral(store: &FitsStore, s: char) -> AstResult<Option<Spe
         ));
     };
 
-    let naxis = store.naxis;
-    let mapping = embed_1axis_in_naxis(mapping, naxis, axis)?;
-
-    // C `WcsSpectral` (fitschan.c:39631-39636) builds a DSBSpecFrame
-    // instead of a plain SpecFrame when the FitsStore carries an IMAGFREQ
-    // value. The DSB-specific attributes are computed by `dsb_set_up`
-    // after the celestial reference position has been propagated.
-    let is_dsb = store.imagfreq.is_some();
+    // C builds a DSBSpecFrame instead of a plain SpecFrame when the
+    // FitsStore carries an IMAGFREQ value, and sets it up with `DSBSetUp`,
+    // using AXREF for the observation centre in preference to CRVAL.
+    let dsb = match store.imagfreq {
+        Some(imagfreq) => {
+            let mut dsb = crate::frames::DSBSpecFrame::from_spec_frame(frame.clone());
+            let obscentre = store.axref[axis].or(store.crval[axis]).unwrap_or(0.0);
+            dsb.dsb_set_up(imagfreq, obscentre)?;
+            Some(dsb)
+        }
+        None => None,
+    };
 
     Ok(Some(SpectralResult {
         mapping,
         frame,
         axis,
-        is_dsb,
+        dsb,
         warnings,
     }))
 }
@@ -536,6 +525,12 @@ mod tests {
     use super::*;
     use crate::fitschan::fits_store::FitsStore;
 
+    /// The first spectral axis `build_spectral` finds, with no celestial
+    /// reference position.
+    fn first(store: &FitsStore) -> Option<SpectralResult> {
+        build_spectral(store, ' ', None).unwrap().into_iter().next()
+    }
+
     #[test]
     fn detects_freq_axis() {
         let mut store = FitsStore::new(3);
@@ -544,13 +539,13 @@ mod tests {
         store.ctype[2] = Some("FREQ".to_string());
         store.crval[2] = Some(1.4e9); // 1.4 GHz
 
-        let result = build_spectral(&store, ' ').unwrap();
+        let result = first(&store);
         assert!(result.is_some());
         let spec = result.unwrap();
         assert_eq!(spec.axis, 2);
         assert_eq!(spec.frame.system(), SpecSystem::Freq);
-        assert_eq!(spec.mapping.nin(), 3);
-        assert_eq!(spec.mapping.nout(), 3);
+        assert_eq!(spec.mapping.nin(), 1);
+        assert_eq!(spec.mapping.nout(), 1);
     }
 
     #[test]
@@ -559,7 +554,7 @@ mod tests {
         store.ctype[0] = Some("WAVE".to_string());
         store.crval[0] = Some(5.0e-7); // 500nm in metres
 
-        let result = build_spectral(&store, ' ').unwrap().unwrap();
+        let result = first(&store).unwrap();
         assert_eq!(result.frame.system(), SpecSystem::Wavelen);
     }
 
@@ -569,7 +564,7 @@ mod tests {
         store.ctype[0] = Some("VRAD".to_string());
         store.crval[0] = Some(0.0);
 
-        let result = build_spectral(&store, ' ').unwrap().unwrap();
+        let result = first(&store).unwrap();
         assert_eq!(result.frame.system(), SpecSystem::Vradio);
     }
 
@@ -580,7 +575,7 @@ mod tests {
         store.crval[0] = Some(1.0e9);
         store.specsys = Some("LSRK".to_string());
 
-        let result = build_spectral(&store, ' ').unwrap().unwrap();
+        let result = first(&store).unwrap();
         assert_eq!(result.frame.std_of_rest(), StdOfRest::Lsrk);
     }
 
@@ -591,7 +586,7 @@ mod tests {
         store.crval[0] = Some(0.0);
         store.restfrq = Some(1.420405751786e9);
 
-        let result = build_spectral(&store, ' ').unwrap().unwrap();
+        let result = first(&store).unwrap();
         assert!((result.frame.rest_freq() - 1.420405751786e9).abs() < 1.0);
     }
 
@@ -601,7 +596,7 @@ mod tests {
         store.ctype[0] = Some("RA---TAN".to_string());
         store.ctype[1] = Some("DEC--TAN".to_string());
 
-        let result = build_spectral(&store, ' ').unwrap();
+        let result = first(&store);
         assert!(result.is_none());
     }
 
@@ -613,7 +608,7 @@ mod tests {
         store.ctype[0] = Some("FREQ".to_string());
         store.crval[0] = Some(1.4e9);
 
-        let result = build_spectral(&store, ' ').unwrap().unwrap();
+        let result = first(&store).unwrap();
         // IWC = 0 should map to CRVAL.
         let pts = PointSet::from_columns(&[&[0.0]]).unwrap();
         let out = result.mapping.transform(&pts, true).unwrap();
@@ -626,30 +621,26 @@ mod tests {
     }
 
     #[test]
-    fn naxis_spectral_passthrough_other_axes() {
-        use crate::coords::PointSet;
-
-        // 3-axis: celestial pair at 0, 1; spectral at 2.
+    fn every_spectral_axis_in_axis_order() {
+        // Two spectral axes, as C's `WcsSpectral` loop finds them: one
+        // result each, in axis order, each with a 1-D Mapping.
         let mut store = FitsStore::new(3);
-        store.ctype[0] = Some("RA---TAN".to_string());
-        store.ctype[1] = Some("DEC--TAN".to_string());
+        store.ctype[0] = Some("WAVE".to_string());
+        store.ctype[1] = Some("RA---TAN".to_string());
         store.ctype[2] = Some("FREQ".to_string());
+        store.crval[0] = Some(1.0e-6);
         store.crval[2] = Some(1.4e9);
 
-        let spec = build_spectral(&store, ' ')
-            .unwrap()
-            .expect("spectral axis recognised");
-        assert_eq!(spec.axis, 2);
-        assert_eq!(spec.mapping.nin(), 3);
-        assert_eq!(spec.mapping.nout(), 3);
-
-        // Pass IWC (a, b, 0) — axes 0, 1 must come out unchanged;
-        // axis 2 picks up CRVAL.
-        let pts = PointSet::from_columns(&[&[42.0], &[7.0], &[0.0]]).unwrap();
-        let out = spec.mapping.transform(&pts, true).unwrap();
-        let p = out.point(0);
-        assert!((p[0] - 42.0).abs() < 1e-12, "axis 0 was {}", p[0]);
-        assert!((p[1] - 7.0).abs() < 1e-12, "axis 1 was {}", p[1]);
-        assert!((p[2] - 1.4e9).abs() < 1.0);
+        let all = build_spectral(&store, ' ', None).unwrap();
+        assert_eq!(all.len(), 2);
+        assert_eq!(
+            (all[0].axis, all[0].frame.system()),
+            (0, SpecSystem::Wavelen)
+        );
+        assert_eq!((all[1].axis, all[1].frame.system()), (2, SpecSystem::Freq));
+        assert!(
+            all.iter()
+                .all(|r| r.mapping.nin() == 1 && r.mapping.nout() == 1)
+        );
     }
 }

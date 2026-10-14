@@ -7,7 +7,7 @@
 use ast_core::AnyObject;
 use ast_core::channel::Channel;
 use ast_core::fitschan::FitsChan;
-use ast_core::frames::{BasicFrame, Frame, SkyFrame, SkySystem};
+use ast_core::frames::{BasicFrame, DSBSpecFrame, Frame, SkyFrame, SkySystem};
 
 /// A 2-axis Galactic header carrying EQUINOX and no observation date.
 const GALACTIC_EQUINOX_ONLY: &str = "\
@@ -266,4 +266,45 @@ fn unset_system_still_leaves_system_unset() {
     let sky = SkyFrame::unset_system();
     assert_eq!(sky.system(), SkySystem::Icrs);
     assert!(!sky.test_system());
+}
+
+/// A topocentric FREQ axis with IMAGFREQ, which makes a DSBSpecFrame.
+const DSB_FREQ: &str = "\
+NAXIS   =                    1
+NAXIS1  =                   10
+CTYPE1  = 'FREQ'
+CUNIT1  = 'Hz'
+CRPIX1  =                    1
+CRVAL1  =              2.30E11
+CDELT1  =               1.0E6
+SPECSYS = 'TOPOCENT'
+IMAGFREQ=              2.40E11
+";
+
+/// The DSBCentre of the DSBSpecFrame read from `header`, in Hz.
+fn dsb_centre_of(header: &str) -> f64 {
+    let obj = FitsChan::from_header(header)
+        .expect("header parses")
+        .read()
+        .expect("read succeeds")
+        .expect("header should produce an object");
+    let AnyObject::FrameSet(fs) = obj else {
+        panic!("read should produce a FrameSet");
+    };
+    fs.current()
+        .as_any()
+        .downcast_ref::<DSBSpecFrame>()
+        .expect("current frame should be a DSBSpecFrame")
+        .dsb_centre_cur()
+        .unwrap()
+}
+
+/// C's `WcsSpectral` takes the observation centre from AXREF when the header
+/// has one, and from CRVAL otherwise (fitschan.c:40121-40130). The values are
+/// those the C library reports for the same two headers.
+#[test]
+fn dsb_centre_prefers_axref_over_crval() {
+    assert_eq!(dsb_centre_of(DSB_FREQ), 2.30e11);
+    let with_axref = format!("{DSB_FREQ}AXREF1  =              2.32E11\n");
+    assert_eq!(dsb_centre_of(&with_axref), 2.32e11);
 }
