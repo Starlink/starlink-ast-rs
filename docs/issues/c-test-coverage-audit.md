@@ -31,7 +31,7 @@ A C check counts as covered when a Rust test, or an oracle case replaying C, exe
 | `testresimp.c` | ported |
 | `testunitnormmap.c` | mostly covered |
 | `testzoommap.c` | ported, apart from the `AST__IMMUT` checks, which belong to `ast-capi` |
-| `testmapping.c` | partial |
+| `testmapping.c` | ported, apart from a no-op `Invert` set, which a toggling `invert()` cannot express |
 | `testregions.c` | 18 of 30 functions covered, 11 partial, 1 missing; two functions never run in C |
 | `testregionmasking.c` | ported (`test_region_masking.rs`) |
 | `testfitschanerrors.c` | 22 of 41 cases covered, 3 partial, 11 missing, 5 with no Rust equivalent |
@@ -58,14 +58,6 @@ A C check counts as covered when a Rust test, or an oracle case replaying C, exe
 ### `testunitnormmap.c`
 
 - `testsimplify` (`:89-155`): seven combinations with centres (2,-1,0) and (-1,6,4) and a shift of (3,7,-9) give ShiftMap, UnitNormMap, UnitNormMap, CmpMap, UnitNormMap, UnitNormMap and CmpMap; only the fifth is an exact fixture (`cap_unitnormmap_01`).
-
-### `testmapping.c`
-
-- Err 0-1 (`:583-597`): `linear_approx` of the PolyMap out1 = 1+2x, out2 = 1+3y over [-1,1]² with tolerance 0.001 gives [1, 1, 2, 0, 0, 3].
-- Err 2-3 (`:599-610`): with coefficient 12 BAD, the fit succeeds with elements 1, 4 and 5 BAD.
-- Err 4 (`:612-615`): adding a 3y² term makes `linear_approx` refuse.
-- Err 8 (`:655-659`): PermMap equality with a referenced constant (5.0 in both) and a differing unreferenced one (7 against 9).
-- `testwcsmapequal` (`:494-514`): `test_equal_oracle.rs` compares one direction; C also checks the reverse for cases 1 and 3.
 
 ### `testregions.c`
 

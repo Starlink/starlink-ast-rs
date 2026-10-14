@@ -395,3 +395,64 @@ fn a_simplified_mapping_set_to_unit_simplifies_again() {
          simplify to a UnitMap"
     );
 }
+
+/// testmapping.c Errors 0-4: `linear_approx` of the PolyMap out1 = 1 + 2x,
+/// out2 = 1 + 3y over [-1,1]² is exact; with out2's y coefficient bad, out2's
+/// row of the fit is bad and out1's is unaffected; and adding a 3y² term
+/// makes the fit fail. C's comment puts that term on out2, but its
+/// coefficient row (3.0, 1, 0, 2) puts it on out1, which is what C tests.
+#[test]
+fn linear_approx_of_a_polymap() {
+    use ast_core::constants::BAD_VALUE;
+    let term = |coeff: f64, out_axis: usize, px: usize, py: usize| PolyTerm {
+        coeff,
+        powers: vec![px, py],
+        out_axis,
+    };
+    let terms = |c3: f64| {
+        vec![
+            term(1.0, 1, 0, 0),
+            term(2.0, 1, 1, 0),
+            term(1.0, 2, 0, 0),
+            term(c3, 2, 0, 1),
+        ]
+    };
+    let (lbnd, ubnd) = ([-1.0, -1.0], [1.0, 1.0]);
+
+    let pm = PolyMap::new(2, 2, &terms(3.0), None).unwrap();
+    let fit = pm
+        .linear_approx(&lbnd, &ubnd, 0.001)
+        .unwrap()
+        .expect("Error 1");
+    assert_eq!(fit.shift, [1.0, 1.0], "Error 0");
+    assert_eq!(fit.matrix, [2.0, 0.0, 0.0, 3.0], "Error 0");
+
+    let pm = PolyMap::new(2, 2, &terms(BAD_VALUE), None).unwrap();
+    let fit = pm
+        .linear_approx(&lbnd, &ubnd, 0.001)
+        .unwrap()
+        .expect("Error 3");
+    assert_eq!(fit.shift, [1.0, BAD_VALUE], "Error 2");
+    assert_eq!(fit.matrix, [2.0, 0.0, BAD_VALUE, BAD_VALUE], "Error 2");
+
+    let mut quadratic = terms(BAD_VALUE);
+    quadratic.push(term(3.0, 1, 0, 2));
+    let pm = PolyMap::new(2, 2, &quadratic, None).unwrap();
+    assert!(
+        pm.linear_approx(&lbnd, &ubnd, 0.001).unwrap().is_none(),
+        "Error 4"
+    );
+}
+
+/// testmapping.c Errors 5-8: PermMap equality compares the values of the
+/// constants an axis is fed from, not their indices, and ignores constants
+/// no axis references.
+#[test]
+fn perm_map_equality_compares_referenced_constant_values() {
+    use ast_core::mappings::PermMap;
+    let pm = |perm: i64, con: &[f64]| PermMap::new(&[perm], &[perm], con).unwrap();
+    assert!(!pm(-1, &[5.0]).equal(&pm(-1, &[7.0])), "Error 5");
+    assert!(pm(-1, &[5.0]).equal(&pm(-1, &[5.0])), "Error 6");
+    assert!(pm(-1, &[5.0]).equal(&pm(-2, &[9.0, 5.0])), "Error 7");
+    assert!(pm(-1, &[5.0, 7.0]).equal(&pm(-1, &[5.0, 9.0])), "Error 8");
+}

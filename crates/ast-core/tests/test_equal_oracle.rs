@@ -139,3 +139,14 @@ fn equality_matches_the_c_library() {
         .collect();
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
+
+/// testmapping.c `testwcsmapequal` asserts cases 1 and 3 in both directions,
+/// so the reverse comparison must give the answer C gives forwards.
+#[test]
+fn wcsmap_equality_is_symmetric_where_c_checks_it() {
+    for name in ["wcsmap_pv_vs_none", "wcsmap_pv_vs_pv_with_one_cleared"] {
+        let want = cases::CASES.iter().find(|c| c.0 == name).unwrap().1;
+        let (a, b) = pair(name);
+        assert_eq!(b.equal(a.as_ref()), want, "{name}, reversed");
+    }
+}
