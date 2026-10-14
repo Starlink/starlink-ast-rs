@@ -526,3 +526,55 @@ fn warnings_initially_empty() {
     // channel issued no warnings (channel.c:1698 guards on `this->nwarn`).
     assert!(ch.warnings().is_none());
 }
+
+// ===========================================================================
+// testchannel.c Errors 1-6 and testobject.c TestCheckToString
+// ===========================================================================
+
+/// testchannel.c Errors 1-6: a default SkyFrame written to a file and read
+/// back is equal to the original, for two files in turn. C's Error 7 (a
+/// read while `SinkFile` is still set) has no counterpart: a Channel here is
+/// built to write or to read.
+#[test]
+fn default_skyframe_file_round_trip_is_equal() {
+    let sf = SkyFrame::new(SkySystem::Icrs);
+    let obj = AnyObject::SkyFrame(sf.clone());
+    for (n, name) in ["ast_testchannel_fred.txt", "ast_testchannel_fred2.txt"]
+        .into_iter()
+        .enumerate()
+    {
+        let path = std::env::temp_dir().join(name);
+        let mut ch = NativeChannel::to_file(&path).unwrap();
+        ch.write(&obj).unwrap();
+        drop(ch);
+        let restored = NativeChannel::from_file(&path).unwrap().read().unwrap();
+        let _ = std::fs::remove_file(&path);
+        let restored = restored.unwrap_or_else(|| panic!("Error {}", 2 + 3 * n));
+        let frame = restored
+            .as_frame()
+            .expect("a SkyFrame reads back as a Frame");
+        assert!(frame.equal(&sf), "Error {}", 3 + 3 * n);
+    }
+}
+
+/// testobject.c `TestCheckToString`: the FrameSet `convert_to` makes from a
+/// SKY-domain Frame to a SkyFrame writes to a string, reads back, writes
+/// the same string again, and is equal to the original.
+#[test]
+fn converted_frameset_string_round_trip() {
+    use ast_core::frames::Frame;
+    let sf = SkyFrame::new(SkySystem::Icrs);
+    let mut bf = BasicFrameBuilder::new(2).build().unwrap();
+    bf.set_domain("SKY");
+    let fs = bf.convert_to(&sf, &[]).unwrap().expect("astConvert failed");
+    let pickle1 = to_native_string(&AnyObject::FrameSet(fs.clone())).unwrap();
+    let AnyObject::FrameSet(fs2) = from_native_string(&pickle1).unwrap() else {
+        panic!("the string did not read back as a FrameSet");
+    };
+    let pickle2 = to_native_string(&AnyObject::FrameSet(fs2.clone())).unwrap();
+    assert_eq!(pickle1, pickle2, "round-tripped strings differ");
+    assert!(
+        Frame::equal(&fs2, &fs),
+        "reloaded Object is not equal to the original"
+    );
+}

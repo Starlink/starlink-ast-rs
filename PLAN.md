@@ -440,8 +440,8 @@ pin.
 | testunitnorm.c | crates/ast-core/tests/test_frame.rs | ported (`norm_unit_matches_the_c_library`) |
 | testerror.c | — | no Rust equivalent: the `astSetPutErr` reporter, and a ShiftMap with -1 axes cannot be built |
 | testpointset.c | crates/ast-core/tests/pointset.rs | ported, apart from the options-string constructor and `ID`, which a plain-data PointSet does not have |
-| testobject.c | — | partially ported; the rest is the handle registry. Gap in [`docs/issues/c-test-coverage-audit.md`](docs/issues/c-test-coverage-audit.md) |
-| testchannel.c | crates/ast-core/tests/test_channel.rs | partially ported; gaps in [`docs/issues/c-test-coverage-audit.md`](docs/issues/c-test-coverage-audit.md) |
+| testobject.c | crates/ast-core/tests/test_channel.rs | `TestCheckToString` ported 2026-10-14 as `converted_frameset_string_round_trip`; the rest tests the handle registry and creation-site tracking, which belong to `ast-capi` |
+| testchannel.c | crates/ast-core/tests/test_channel.rs | ported; Errors 1-6 added 2026-10-14 as `default_skyframe_file_round_trip_is_equal`. Error 7 (a read while `SinkFile` is set) and the `astTuneC` checks have no Rust equivalent |
 | testcmpmap.c | crates/ast-core/tests/test_map_split*.rs | ported; Errors 1-13 added 2026-10-14 as `testcmpmap_split_*` |
 | testlutmap.c | crates/ast-core/tests/test_lutmap*.rs | ported; Errors 3-12 added 2026-10-14 as `flat_start_and_bad_value_tables` |
 | testnormmap.c | crates/ast-core/tests/test_normmap.rs | ported; Errors 1-9 added 2026-10-14 as `normmap_on_a_permuted_cmpframe` |

@@ -21,8 +21,8 @@ A C check counts as covered when a Rust test, or an oracle case replaying C, exe
 | `testunitnorm.c` | covered (`test_frame.rs::norm_unit_matches_the_c_library`) |
 | `testerror.c` | no Rust equivalent: the `astSetPutErr` reporter and a ShiftMap with -1 axes, which cannot be built |
 | `testpointset.c` | covered, apart from the options-string constructor and the `ID` attribute, which a plain-data PointSet does not have |
-| `testobject.c` | partial; the rest is the handle registry and creation-site tracking |
-| `testchannel.c` | partial |
+| `testobject.c` | ported, apart from the handle registry and creation-site tracking |
+| `testchannel.c` | ported, apart from two checks with no Rust equivalent |
 | `testcmpmap.c` | ported |
 | `testlutmap.c` | ported |
 | `testnormmap.c` | ported |
@@ -54,15 +54,6 @@ A C check counts as covered when a Rust test, or an oracle case replaying C, exe
   It is now `test_mapping.rs::a_simplified_mapping_set_to_unit_simplifies_again`.
 
 ## Gaps by program
-
-### `testchannel.c`
-
-- Err 1-6 (`:54-93`): a default SkyFrame written through `SinkFile`, read back, and compared with `astEqual`, twice; `test_channel.rs::round_trip_skyframe_via_file` checks only `naxes` and System.
-- Err 0/-1 (`astTuneC("hrdel")`) and Err 7 (one Channel with both `SinkFile` and `SourceFile`) have no Rust equivalent.
-
-### `testobject.c`
-
-- `TestCheckToString` (`:20-57`): the FrameSet from `astConvert(Frame[Domain=SKY], SkyFrame)` written to a string, read back, written again identically, and equal to the original.
 
 ### `testresimp.c`
 
