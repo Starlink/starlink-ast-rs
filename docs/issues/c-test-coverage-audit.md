@@ -33,7 +33,7 @@ A C check counts as covered when a Rust test, or an oracle case replaying C, exe
 | `testzoommap.c` | partial; the shared-Mapping and `AST__IMMUT` checks are `ast-capi` concerns |
 | `testmapping.c` | partial |
 | `testregions.c` | 18 of 30 functions covered, 11 partial, 1 missing; two functions never run in C |
-| `testregionmasking.c` | missing |
+| `testregionmasking.c` | ported (`test_region_masking.rs`) |
 | `testfitschanerrors.c` | 22 of 41 cases covered, 3 partial, 11 missing, 5 with no Rust equivalent |
 | `testswitchmap.c` | partial |
 | `testchebymap.c` | partial; its PolyTran half needs `ChebyMap::poly_tran`, which is not ported |
@@ -118,10 +118,6 @@ A C check counts as covered when a Rust test, or an oracle case replaying C, exe
 - `checkRemoveRegions` (`:2958-3015`): tests 4-9, `astConvert` to a Region giving a clipping FrameSet that `remove_regions` then unclips.
 - `checkBoxTransformAfterBounds` (`:3174-3192`): the bounds of a zero-width Box stay at 5, and are taken before the transform.
 - `checkBox` (`:801-1505`): never run in C (see above); generic analogues exist, but none of its sky, MapRegion, mask or mesh-count checks.
-
-### `testregionmasking.c`
-
-- `checkCurvature` (`:323-486`): an ICRS Polygon masked through CAR and TAN FrameSets against a per-pixel ground truth; on CAR the mask matches with `SimpVertices=0` and differs with the default, and on TAN both match.
 
 ### `testfitschanerrors.c`
 
