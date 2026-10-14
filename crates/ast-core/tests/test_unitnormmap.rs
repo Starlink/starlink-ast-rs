@@ -5,7 +5,7 @@
 
 use ast_core::constants::BAD_VALUE;
 use ast_core::coords::PointSet;
-use ast_core::mappings::{Mapping, ShiftMap, UnitNormMap, WinMap};
+use ast_core::mappings::{CmpMap, Composition, Mapping, ShiftMap, UnitNormMap, WinMap};
 
 fn is_bad(v: f64) -> bool {
     v == BAD_VALUE
@@ -490,4 +490,41 @@ fn large_values_no_overflow() {
     // Norm should be big*sqrt(2)
     let expected_norm = big * 2.0_f64.sqrt();
     assert!((p[2] - expected_norm).abs() / expected_norm < 1e-10);
+}
+
+// ---------------------------------------------------------------------------
+// testunitnormmap.c main loop: IsLinear and checkroundtrip
+// ---------------------------------------------------------------------------
+
+/// C's `checkroundtrip` (testunitnormmap.c:66-87): `pos` survives the
+/// forward then inverse transform, and the series CmpMap of the Mapping and
+/// its inverse.
+fn round_trips(map: &UnitNormMap, pos: &[f64]) -> bool {
+    let pts = PointSet::from_rows([pos.to_vec()]);
+    let out = map.transform(&pts, true).unwrap();
+    let back = map.transform(&out, false).unwrap();
+    let mut inv = map.clone();
+    inv.invert();
+    let cmp = CmpMap::new(Box::new(map.clone()), Box::new(inv), Composition::Series).unwrap();
+    let through = cmp.transform(&pts, true).unwrap();
+    let close = |a: f64, b: f64| (a - b).abs() <= 1e-10 * a.abs().max(b.abs()).max(1.0);
+    pos.iter()
+        .enumerate()
+        .all(|(i, &p)| close(back.point(0)[i], p) && close(through.point(0)[i], p))
+}
+
+/// Errors 5, 6 and 6b of testunitnormmap.c for one to three axes. At the
+/// centre the forward transform gives BAD unit components and a zero norm,
+/// and the inverse gives the centre back because a zero norm takes precedence
+/// over BAD components (unitnormmap.c inverse branch).
+#[test]
+fn not_linear_and_round_trips_including_the_centre() {
+    let centre = [-1.0, 1.0, 2.0];
+    let frompos = [-22.0, 3.0, 0.5];
+    for nin in 1..=3 {
+        let map = UnitNormMap::new(centre[..nin].to_vec()).unwrap();
+        assert!(!map.is_linear(), "Error 5, nin={nin}");
+        assert!(round_trips(&map, &frompos[..nin]), "Error 6, nin={nin}");
+        assert!(round_trips(&map, &centre[..nin]), "Error 6b, nin={nin}");
+    }
 }

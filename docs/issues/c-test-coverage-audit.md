@@ -29,7 +29,7 @@ A C check counts as covered when a Rust test, or an oracle case replaying C, exe
 | `testrate.c` | partial |
 | `testratemap.c` | mostly missing |
 | `testresimp.c` | partial |
-| `testunitnormmap.c` | mostly covered; one possible behavior gap |
+| `testunitnormmap.c` | mostly covered |
 | `testzoommap.c` | partial; the shared-Mapping and `AST__IMMUT` checks are `ast-capi` concerns |
 | `testmapping.c` | partial |
 | `testregions.c` | 18 of 30 functions covered, 11 partial, 1 missing; two functions never run in C |
@@ -41,14 +41,15 @@ A C check counts as covered when a Rust test, or an oracle case replaying C, exe
 
 ## Findings that are more than a missing test
 
-- **Two `testregions.c` functions never run in C.**
-  `checkBox` (`testregions.c:842`) and `checkConvex` (`:3050`) open with `if( status != 0 ) return;`, testing the pointer rather than `*status`, so both return at once; `:1484` and `:1494` have the same slip.
-  None of `checkBox`'s checks has ever executed, so its expected values are unverified against the C library.
+- **Two `testregions.c` functions never ran in C; fixed upstream-side in `f111c05c` on `u/timj/norm-unit`.**
+  `checkBox` and `checkConvex` tested the pointer `status` rather than `*status`, so both returned at once.
+  Once they ran, `checkBox` failed on three slips in its conversion from `testregions.f`, not on the library: single-precision literals made double, `AST__BAD` used for a float mask where Fortran used `VAL__BADR`, and the Fortran arrays indexed transposed.
+  With those fixed the C test passes, so `checkBox`'s values are now verified against the library.
 - **ChebyMap's PolyTran is not ported.**
   `chebymap.c` overrides `PolyTran` (installed at `chebymap.c:1039`), fitting in Chebyshev form over the Mapping's own bounding box; the port has `PolyMap::poly_tran` only.
-- **`testunitnormmap.c` Error 6b may be a behavior gap.**
-  Transforming the centre itself gives BAD unit components and a zero norm, and C requires the inverse to give the centre back (`testunitnormmap.c:186-187`).
-  The Rust tests check zero norm and BAD components separately, and `inverse_bad_component` makes a BAD component give a BAD output, so the combination is unpinned.
+- **`testunitnormmap.c` Error 6b was a missing test, not a behavior gap.**
+  Transforming the centre gives BAD unit components and a zero norm, and C requires the inverse to give the centre back (`testunitnormmap.c:186-187`); the port's zero-norm branch takes precedence as C's does.
+  `test_unitnormmap.rs::not_linear_and_round_trips_including_the_centre` now pins it with Errors 5 and 6.
 - **`testselfsimplifyafterset` is constructible.**
   `test_mapping.rs` and the tracker say it is not, but `ZoomMap::set_zoom` and `PcdMap::set_disc` now exist.
 
@@ -100,8 +101,6 @@ A C check counts as covered when a Rust test, or an oracle case replaying C, exe
 
 ### `testunitnormmap.c`
 
-- Err 5 (`:176`): `IsLinear` is false.
-- Err 6b (`:186-187`): see above.
 - `testsimplify` (`:89-155`): seven combinations with centres (2,-1,0) and (-1,6,4) and a shift of (3,7,-9) give ShiftMap, UnitNormMap, UnitNormMap, CmpMap, UnitNormMap, UnitNormMap and CmpMap; only the fifth is an exact fixture (`cap_unitnormmap_01`).
 
 ### `testzoommap.c`
