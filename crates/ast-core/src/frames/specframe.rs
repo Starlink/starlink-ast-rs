@@ -922,7 +922,7 @@ impl SpecFrame {
         self.spec_origin.is_some()
     }
 
-    /// Return the epoch as MJD.
+    /// Return the epoch as a TDB Modified Julian Date.
     ///
     /// Defaults to J2000.0 (MJD 51544.5) if not set.
     pub fn epoch_mjd(&self) -> f64 {
@@ -940,7 +940,7 @@ impl SpecFrame {
         }
     }
 
-    /// Set the epoch as MJD.
+    /// Set the epoch as a TDB Modified Julian Date.
     pub fn set_epoch_mjd(&mut self, mjd: f64) {
         // A bad Epoch is no Epoch (frame.c `TestEpoch` is `!= AST__BAD`).
         self.attrs.epoch = (mjd != crate::constants::BAD_VALUE).then_some(mjd);

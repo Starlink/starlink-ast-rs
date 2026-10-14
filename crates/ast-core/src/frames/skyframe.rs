@@ -493,9 +493,16 @@ impl SkyFrame {
         self.align_system = None;
     }
 
-    /// Return the equinox as MJD.
+    /// Return the equinox as a Modified Julian Date.
     ///
     /// If not explicitly set, returns the default for the current system.
+    ///
+    /// The Equinox dates the mean equinox of a time-dependent coordinate
+    /// system, and C attaches no timescale to it. Where one matters, C takes
+    /// it as UTC: its FITS-WCS writer compares it with the Epoch converted
+    /// from TDB to UTC to decide whether MJD-OBS and DATE-OBS can be left to
+    /// default to it (fitschan.c `SkySys`), and the port's writer does the
+    /// same.
     pub fn equinox_mjd(&self) -> f64 {
         self.equinox
             .unwrap_or_else(|| self.system.default_equinox_mjd())
@@ -512,14 +519,15 @@ impl SkyFrame {
         }
     }
 
-    /// Set the equinox as MJD.
+    /// Set the equinox as a Modified Julian Date, with no timescale of its
+    /// own (see [`equinox_mjd`](Self::equinox_mjd)).
     pub fn set_equinox_mjd(&mut self, mjd: f64) {
         // A helio-ecliptic SkyFrame has no Equinox of its own, so setting
         // one clears it (skyframe.c:11436).
         self.equinox = (self.system != SkySystem::Helioecliptic).then_some(mjd);
     }
 
-    /// Return the epoch as MJD.
+    /// Return the epoch as a TDB Modified Julian Date.
     ///
     /// If not explicitly set, the default depends on the System (C
     /// `GetEpoch` SkyFrame override, skyframe.c:3210-3225): B1950.0 for
@@ -580,7 +588,7 @@ impl SkyFrame {
         self.equinox = None;
     }
 
-    /// Set the epoch as MJD.
+    /// Set the epoch as a TDB Modified Julian Date.
     pub fn set_epoch_mjd(&mut self, mjd: f64) {
         // A bad Epoch is no Epoch (frame.c `TestEpoch` is `!= AST__BAD`).
         self.attrs.epoch = (mjd != crate::constants::BAD_VALUE).then_some(mjd);

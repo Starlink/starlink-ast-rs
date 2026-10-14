@@ -337,7 +337,7 @@ impl DSBSpecFrame {
         self.spec.set_rest_freq(hz);
     }
 
-    /// Set the epoch as MJD.
+    /// Set the epoch as a TDB Modified Julian Date.
     pub fn set_epoch_mjd(&mut self, mjd: f64) {
         self.spec.set_epoch_mjd(mjd);
     }
@@ -347,7 +347,7 @@ impl DSBSpecFrame {
         self.spec.set_epoch_year(year);
     }
 
-    /// Return the epoch as MJD.
+    /// Return the epoch as a TDB Modified Julian Date.
     pub fn epoch_mjd(&self) -> f64 {
         self.spec.epoch_mjd()
     }

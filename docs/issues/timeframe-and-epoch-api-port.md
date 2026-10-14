@@ -4,14 +4,17 @@ Two related concerns surfaced during the wcsconv work that need
 follow-up.
 Captured here so they survive across sessions.
 
-> **Status update.** Issue A is **RESOLVED**: the DATE-OBS drift was a C
+> **Status: RESOLVED (2026-10-13).** Issue A: the DATE-OBS drift was a C
 > `DateObs` `sscanf` bug (leading-zero drop), not a Rust defect; the Rust parse
 > is correct, the ΔTDB Fairhead-Bretagnon term was added (`985ce1b`), the
-> fixture was corrected (`349d18d`), and wcsconv passes 192/192. Issue B is
-> mostly resolved — Epoch is now documented as TDB MJD on the Frame trait
-> (`frames/mod.rs:1231`). Two minor residual doc/API-hygiene items remain: the
-> "Equinox is in UTC" contract note, and the public-vs-private decision on the
-> `set_epoch_year`/`set_equinox_year` setters.
+> fixture was corrected (`349d18d`), and wcsconv passes. Issue B: Epoch is
+> documented as a TDB MJD on the Frame trait and on every Frame class's
+> accessors; the Equinox is documented on `SkyFrame::equinox_mjd` as an MJD
+> with no timescale of its own, taken as UTC where one matters, as C's
+> FITS-WCS writer takes it (fitschan.c `SkySys`); and the `*_year` setters
+> stay public, being the typed form of setting Epoch or Equinox to a bare
+> year through C's string path (`astReadDateTime`: Besselian before 1984,
+> Julian from then on), which their documentation says.
 
 ## Issue A — DATE-OBS TDB↔UTC round-trip drift
 

@@ -755,7 +755,7 @@ impl TimeFrame {
         self.attrs.epoch.is_some()
     }
 
-    /// Set the epoch as MJD.
+    /// Set the epoch as a TDB Modified Julian Date.
     pub fn set_epoch_mjd(&mut self, mjd: f64) {
         // A bad Epoch is no Epoch (frame.c `TestEpoch` is `!= AST__BAD`).
         self.attrs.epoch = (mjd != crate::constants::BAD_VALUE).then_some(mjd);
