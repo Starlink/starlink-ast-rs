@@ -722,6 +722,9 @@ fn check_cmp_region() {
     );
 }
 
+// The expected values are C's own literals, some of which approximate pi/2
+// and 2*pi to the digits C wrote.
+#[allow(clippy::approx_constant)]
 /// `checkCircle`: Circles in the SkyFrame of a TAN header (bounds, disc,
 /// boundary and interior meshes, membership near the edge, a change of
 /// system and its FrameSet, overlaps, pole bounds), in a Frame of another
