@@ -447,7 +447,7 @@ pin.
 | testnormmap.c | crates/ast-core/tests/test_normmap.rs | ported; Errors 1-9 added 2026-10-14 as `normmap_on_a_permuted_cmpframe` |
 | testrate.c | crates/ast-core/tests/test_rate.rs | ported 2026-10-14, one test per C block |
 | testratemap.c | crates/ast-core/tests/test_ratemap.rs | ported 2026-10-14 (`rate_maps_of_a_compound_mapping`) |
-| testresimp.c | crates/ast-core/tests/test_allow_simplify.rs, test_simplify_regression.rs | partially ported; gaps in [`docs/issues/c-test-coverage-audit.md`](docs/issues/c-test-coverage-audit.md) |
+| testresimp.c | crates/ast-core/tests/test_allow_simplify.rs, test_simplify_regression.rs | ported; Errors 4-10 added 2026-10-14 as `testresimp_*`, the restricted result compared with the dump the C library writes |
 | testunitnormmap.c | crates/ast-core/tests/test_unitnormmap.rs | mostly ported; gaps in [`docs/issues/c-test-coverage-audit.md`](docs/issues/c-test-coverage-audit.md) |
 | testzoommap.c | crates/ast-core/tests/test_zoommap.rs | Errors 1-8 ported 2026-10-14 as `zoom_attribute_set_clear_and_get`; Errors 9 and 11, `AST__IMMUT` on a ZoomMap shared with a CmpMap, belong to `ast-capi` |
 | testregions.c | crates/ast-core/tests/test_regions.rs and the Region test files | 18 of 30 functions ported, 11 partially, 1 not; `checkBox` and `checkConvex` never ran in C until `f111c05c` on `u/timj/norm-unit`, which fixed their `status` guards and three Fortran-conversion slips they then exposed. Gaps in [`docs/issues/c-test-coverage-audit.md`](docs/issues/c-test-coverage-audit.md) |

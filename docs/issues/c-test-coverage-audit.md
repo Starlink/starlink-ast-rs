@@ -28,7 +28,7 @@ A C check counts as covered when a Rust test, or an oracle case replaying C, exe
 | `testnormmap.c` | ported |
 | `testrate.c` | ported (`test_rate.rs`) |
 | `testratemap.c` | ported (`test_ratemap.rs`) |
-| `testresimp.c` | partial |
+| `testresimp.c` | ported |
 | `testunitnormmap.c` | mostly covered |
 | `testzoommap.c` | ported, apart from the `AST__IMMUT` checks, which belong to `ast-capi` |
 | `testmapping.c` | partial |
@@ -54,11 +54,6 @@ A C check counts as covered when a Rust test, or an oracle case replaying C, exe
   It is now `test_mapping.rs::a_simplified_mapping_set_to_unit_simplifies_again`.
 
 ## Gaps by program
-
-### `testresimp.c`
-
-- Err 4-8 (`:52-76`): a CmpMap whose ZoomMap has `AllowSimplify`, followed by its inverse, simplifies to a UnitMap unrestricted, and under a restricted simplify to a ShiftMap followed by an inverted ShiftMap.
-- Err 9-10 (`:81-95`): an unrestricted simplify of Shift(1), Zoom(2), Shift(-2) gives a ZoomMap of 2.0; only the restricted variant is in the corpus (`cap_zoommap_01`).
 
 ### `testunitnormmap.c`
 

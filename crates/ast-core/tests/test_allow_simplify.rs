@@ -36,3 +36,87 @@ fn restricted_simplification_follows_the_c_library() {
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
+
+// ---------------------------------------------------------------------------
+// testresimp.c Errors 4-10
+// ---------------------------------------------------------------------------
+
+/// testresimp.c Errors 4-8. A ShiftMap then a ZoomMap with AllowSimplify,
+/// followed by its own inverse, simplifies to a UnitMap; under a restricted
+/// simplify only the ZoomMaps may be nominated, so they cancel and leave a
+/// ShiftMap followed by an inverted ShiftMap. C sets AllowSimplify on the
+/// ZoomMap after composing it, through its shared pointer; here it is set
+/// before. The expected dump is what the C library writes for the same
+/// sequence.
+#[test]
+fn testresimp_restricted_cancellation_keeps_the_shiftmaps() {
+    use ast_core::mappings::{CmpMap, Composition, DynMapping, ShiftMap, UnitMap, ZoomMap};
+    let mut zm1 = ZoomMap::new(1, 2.0).unwrap();
+    zm1.set_allow_simplify(true);
+    let cm1 = CmpMap::new(
+        Box::new(ShiftMap::new(vec![1.0])),
+        Box::new(zm1),
+        Composition::Series,
+    )
+    .unwrap();
+    let mut m1 = cm1.clone();
+    m1.invert();
+    let mut cm2: DynMapping =
+        Box::new(CmpMap::new(Box::new(cm1), Box::new(m1), Composition::Series).unwrap());
+    assert!(
+        cm2.simplify().unwrap().as_ref().as_any().is::<UnitMap>(),
+        "Error 4"
+    );
+
+    cm2.set_restricted_simplify(true);
+    let m2 = cm2.simplify().unwrap();
+    assert!(!m2.as_ref().as_any().is::<UnitMap>(), "Error 5");
+    let expected = " Begin CmpMap \t# Compound Mapping
+    Nin = 1 \t# Number of input coordinates
+ IsA Mapping \t# Mapping between coordinate systems
+    InvB = 1 \t# Second Mapping used in inverse direction
+    MapA = \t# First component Mapping
+       Begin ShiftMap \t# Shift each coordinate axis
+          Nin = 1 \t# Number of input coordinates
+       IsA Mapping \t# Mapping between coordinate systems
+          Sft1 = 1 \t# Shift for axis 1
+       End ShiftMap
+    MapB = \t# Second component Mapping
+       Begin ShiftMap \t# Shift each coordinate axis
+          Nin = 1 \t# Number of input coordinates
+       IsA Mapping \t# Mapping between coordinate systems
+          Sft1 = 1 \t# Shift for axis 1
+       End ShiftMap
+ End CmpMap
+";
+    let got = to_native_string(&AnyObject::from_mapping(m2.as_ref()).unwrap()).unwrap();
+    assert_eq!(got, expected, "Errors 6-8");
+}
+
+/// testresimp.c Errors 9-10: an unrestricted simplify of Shift(1), Zoom(2),
+/// Shift(-2) merges to a single ZoomMap of 2.
+#[test]
+fn testresimp_unrestricted_shift_zoom_shift_is_a_zoommap() {
+    use ast_core::mappings::{CmpMap, Composition, DynMapping, ShiftMap, ZoomMap};
+    let cm1 = CmpMap::new(
+        Box::new(ShiftMap::new(vec![1.0])),
+        Box::new(ZoomMap::new(1, 2.0).unwrap()),
+        Composition::Series,
+    )
+    .unwrap();
+    let cm2: DynMapping = Box::new(
+        CmpMap::new(
+            Box::new(cm1),
+            Box::new(ShiftMap::new(vec![-2.0])),
+            Composition::Series,
+        )
+        .unwrap(),
+    );
+    let m2 = cm2.simplify().unwrap();
+    let zoom = m2
+        .as_ref()
+        .as_any()
+        .downcast_ref::<ZoomMap>()
+        .expect("Error 9");
+    assert_eq!(zoom.zoom(), 2.0, "Error 10");
+}
