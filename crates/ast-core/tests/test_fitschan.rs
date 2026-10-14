@@ -548,3 +548,96 @@ END
         assert!(out.contains(key), "{key} should survive the read");
     }
 }
+
+// ===========================================================================
+// FitsRounding formatting (testfitschan.c test_fitsrounding)
+// ===========================================================================
+
+/// One step of `test_fitsrounding`: an optional card to put, the
+/// FitsRounding to set (`None` clears it) and the card text C expects.
+type RoundingStep = (Option<&'static str>, Option<i32>, &'static str);
+
+/// The steps of `test_fitsrounding` in C's order. Each step builds on the
+/// FitsChan state the previous one left, as the C test does.
+const ROUNDING_STEPS: &[RoundingStep] = &[
+    (
+        Some("DUMMY   =  1.0000010001"),
+        None,
+        "DUMMY   =         1.0000010001",
+    ),
+    (
+        Some("DUMMY   =  1.00000100001"),
+        None,
+        "DUMMY   =             1.000001",
+    ),
+    (
+        Some("DUMMY   =  1.0000019991"),
+        None,
+        "DUMMY   =         1.0000019991",
+    ),
+    (
+        Some("DUMMY   =  1.00000199991"),
+        None,
+        "DUMMY   =             1.000002",
+    ),
+    (
+        Some("DUMMY   =  -1.0000010000001"),
+        None,
+        "DUMMY   =            -1.000001",
+    ),
+    (None, Some(5), "DUMMY   =                 -1.0"),
+    (
+        Some("DUMMY   =  1.9999969999993E-02"),
+        None,
+        "DUMMY   =           0.01999997",
+    ),
+    (None, Some(5), "DUMMY   =                 0.02"),
+    (
+        Some("DUMMY   =  1.9999969999993E-08"),
+        Some(10),
+        "DUMMY   =          1.999997E-8",
+    ),
+    (None, Some(5), "DUMMY   =               2.0E-8"),
+    (
+        Some("DUMMY   =  9.999999E-6"),
+        Some(5),
+        "DUMMY   =              10.0E-6",
+    ),
+    (
+        Some("DUMMY   =  -9.999999"),
+        Some(5),
+        "DUMMY   =                -10.0",
+    ),
+    (None, None, "DUMMY   =            -9.999999"),
+    (None, Some(6), "DUMMY   =                -10.0"),
+    (None, Some(7), "DUMMY   =            -9.999999"),
+    (
+        Some("DUMMY   =  -0.0019999912"),
+        Some(6),
+        "DUMMY   =        -0.0019999912",
+    ),
+    (None, Some(5), "DUMMY   =               -0.002"),
+];
+
+#[test]
+fn fits_rounding_formats_found_cards() {
+    let mut fc = FitsChan::new();
+    assert_eq!(fc.fits_rounding(), 10);
+    for (i, &(card, rounding, expected)) in ROUNDING_STEPS.iter().enumerate() {
+        match rounding {
+            Some(r) => fc.set_fits_rounding(r),
+            None => fc.clear_fits_rounding(),
+        }
+        if let Some(card) = card {
+            fc.put_fits(card, false).unwrap();
+        }
+        fc.clear_card().unwrap();
+        let found = fc
+            .find_fits("DUMMY", false)
+            .unwrap()
+            .unwrap_or_else(|| panic!("step {}: DUMMY not found", i + 1));
+        assert_eq!(found.trim_end(), expected, "step {}", i + 1);
+    }
+    fc.clear_fits_rounding();
+    assert_eq!(fc.fits_rounding(), 10);
+}
