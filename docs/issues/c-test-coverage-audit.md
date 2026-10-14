@@ -37,7 +37,7 @@ A C check counts as covered when a Rust test, or an oracle case replaying C, exe
 | `testfitschanerrors.c` | ported (`test_fitschan_errors.rs`); one case exposes a duplicate-keyword gap in the reader |
 | `testswitchmap.c` | ported; exposed and fixed a SwitchMap cancellation gap |
 | `testchebymap.c` | ported, apart from Error 4 (IterInverse, not exposed on ChebyMap) |
-| `testpolymap.c` | mostly covered |
+| `testpolymap.c` | ported; Errors 3002-3003 are a recorded gap |
 
 ## Findings that are more than a missing test
 
@@ -66,5 +66,4 @@ A C check counts as covered when a Rust test, or an oracle case replaying C, exe
 
 ### `testpolymap.c`
 
-- PolyTran round trips 1-7 (`:77-171`) and the IterInverse round trips on the fitted maps, with C's maps and ranges.
-- Err 8007-8015: IterInverse and TranForward after `astInvert`.
+- Errors 3002-3003: a recorded gap, `POLYMAP_C_GAP` in `test_polymap.rs`; C splits a CmpMap a merge creates (`cmpmap.c:1677-1734`) and the port does not.

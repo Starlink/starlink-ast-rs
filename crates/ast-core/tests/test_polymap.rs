@@ -1047,56 +1047,61 @@ fn polymap_affine_diagonal_decomposes_to_winmap() {
     );
 }
 
+/// The general affine PolyMap out1 = 10 + 2x + 3y, out2 = 20 + 4x + 5y.
+fn general_affine() -> PolyMap {
+    PolyMap::new(
+        2,
+        2,
+        &[
+            term(10.0, &[0, 0], 1),
+            term(2.0, &[1, 0], 1),
+            term(3.0, &[0, 1], 1),
+            term(20.0, &[0, 0], 2),
+            term(4.0, &[1, 0], 2),
+            term(5.0, &[0, 1], 2),
+        ],
+        None,
+    )
+    .unwrap()
+}
+
+/// [`general_affine`] followed by a ZoomMap of 2.
+fn general_affine_then_zoom() -> ast_core::mappings::CmpMap {
+    use ast_core::mappings::{CmpMap, Composition, ZoomMap};
+    CmpMap::new(
+        Box::new(general_affine()),
+        Box::new(ZoomMap::new(2, 2.0).unwrap()),
+        Composition::Series,
+    )
+    .unwrap()
+}
+
+/// The classes in a Mapping's dump, in order.
+fn dump_classes(m: &dyn Mapping) -> Vec<String> {
+    ast_core::to_native_string(&AnyObject::from_mapping(m).unwrap())
+        .unwrap()
+        .lines()
+        .filter_map(|l| l.trim().strip_prefix("Begin "))
+        .map(|l| l.split_whitespace().next().unwrap().to_string())
+        .collect()
+}
+
+/// A general affine PolyMap, alone and followed by a ZoomMap, simplifies to
+/// Mappings that transform as it does. Which Mappings those are is the gap
+/// in [`POLYMAP_C_GAP`].
 #[test]
-fn polymap_affine_general_decomposes_to_cmpmap() {
-    use ast_core::mappings::CmpMap;
-
-    // General affine (non-diagonal): out1 = 10 + 2*x + 3*y, out2 = 20 + 4*x + 5*y
-    let terms = vec![
-        PolyTerm {
-            coeff: 10.0,
-            powers: vec![0, 0],
-            out_axis: 1,
-        },
-        PolyTerm {
-            coeff: 2.0,
-            powers: vec![1, 0],
-            out_axis: 1,
-        },
-        PolyTerm {
-            coeff: 3.0,
-            powers: vec![0, 1],
-            out_axis: 1,
-        },
-        PolyTerm {
-            coeff: 20.0,
-            powers: vec![0, 0],
-            out_axis: 2,
-        },
-        PolyTerm {
-            coeff: 4.0,
-            powers: vec![1, 0],
-            out_axis: 2,
-        },
-        PolyTerm {
-            coeff: 5.0,
-            powers: vec![0, 1],
-            out_axis: 2,
-        },
-    ];
-    let pm = PolyMap::new(2, 2, &terms, None).unwrap();
-    let s = <dyn Mapping>::simplify(&pm).unwrap();
-    assert!(
-        s.as_any().is::<CmpMap>(),
-        "Expected CmpMap for general affine, got {:?}",
-        s
-    );
-
+fn polymap_affine_general_simplifies_to_an_equivalent_mapping() {
     let pts = PointSet::from_rows(vec![vec![1.0, 2.0]]);
-    let expected = pm.transform(&pts, true).unwrap();
-    let actual = s.transform(&pts, true).unwrap();
-    assert!((actual.point(0)[0] - expected.point(0)[0]).abs() < 1e-10);
-    assert!((actual.point(0)[1] - expected.point(0)[1]).abs() < 1e-10);
+    for m in [
+        Box::new(general_affine()) as ast_core::mappings::DynMapping,
+        Box::new(general_affine_then_zoom()),
+    ] {
+        let s = m.simplify().unwrap();
+        let expected = m.transform(&pts, true).unwrap();
+        let actual = s.transform(&pts, true).unwrap();
+        assert!((actual.point(0)[0] - expected.point(0)[0]).abs() < 1e-10);
+        assert!((actual.point(0)[1] - expected.point(0)[1]).abs() < 1e-10);
+    }
 }
 
 #[test]
@@ -1500,4 +1505,206 @@ fn coeffs_are_relative_to_invert_and_grouped_by_output() {
     pm.invert();
     assert_eq!(pm.coeffs(true), grouped);
     assert_eq!(pm.coeffs(false), fwd);
+}
+
+// ---------------------------------------------------------------------------
+// testpolymap.c, in its order: coefficients, PolyTran fits of the inverse
+// with their round trips (explicit, then iterative), simplification, and the
+// IterInverse attribute. Assertion messages carry C's error numbers. Errors
+// 8019-8028 are the tests above.
+// ---------------------------------------------------------------------------
+
+/// Terms from a C coefficient array: each coefficient is followed by its
+/// output axis and its `nin` powers.
+fn c_terms(nin: usize, cofs: &[f64]) -> Vec<PolyTerm> {
+    cofs.chunks(nin + 2)
+        .map(|c| {
+            term(
+                c[0],
+                &c[2..].iter().map(|&p| p as usize).collect::<Vec<_>>(),
+                c[1] as usize,
+            )
+        })
+        .collect()
+}
+
+const C_COEFF: [f64; 16] = [
+    1.0, 1.0, 0.0, 0.0, 2.0, 1.0, 1.0, 0.0, 1.0, 2.0, 0.0, 0.0, 3.0, 2.0, 0.0, 1.0,
+];
+const C_COEFFB: [f64; 24] = [
+    1.0, 1.0, 0.0, 0.0, 0.5, 1.0, 0.0, 0.0, 2.0, 1.0, 1.0, 0.0, 1.0, 2.0, 0.0, 0.0, 3.0, 2.0, 0.0,
+    1.0, -0.5, 2.0, 0.0, 1.0,
+];
+const C_COEFF2: [f64; 24] = [
+    1.0, 1.0, 0.0, 0.0, 2.0, 1.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0, 1.0, 2.0, 0.0, 0.0, 1.0, 2.0, 1.0,
+    0.0, 2.0, 2.0, 0.0, 1.0,
+];
+const C_COEFF3: [f64; 24] = [
+    -0.1, 1.0, 0.0, 0.0, 0.99, 1.0, 1.0, 0.0, 1.0e-4, 1.0, 1.0, 1.0, -0.1, 2.0, 0.0, 0.0, 0.99,
+    2.0, 0.0, 1.0, 1.0e-4, 2.0, 1.0, 1.0,
+];
+const C_ACC: f64 = 1.0e-7;
+const C_MAXACC: f64 = 1.0e-3;
+
+fn c_polymap(nin: usize, cofs: &[f64]) -> PolyMap {
+    PolyMap::new(nin, nin, &c_terms(nin, cofs), None).unwrap()
+}
+
+fn rows(m: &dyn Mapping, pts: &[Vec<f64>], forward: bool) -> Vec<Vec<f64>> {
+    let out = m
+        .transform(&PointSet::from_rows(pts.to_vec()), forward)
+        .unwrap();
+    (0..pts.len()).map(|i| out.point(i).to_vec()).collect()
+}
+
+/// C's PolyTran check: fit the inverse over [-1000, 1000] on each axis,
+/// transform three points forward and back through the fit, then back
+/// again through the iterative inverse, each within 1000 times the
+/// accuracy. `errs` are C's error numbers for the two round trips.
+fn c_poly_tran_round_trips(pm: &PolyMap, errs: (u32, u32)) {
+    let errlim = 1000.0 * C_ACC;
+    let n = pm.nin();
+    let mut pm2 = pm
+        .poly_tran(
+            false,
+            C_ACC,
+            C_MAXACC,
+            10,
+            &vec![-1000.0; n],
+            &vec![1000.0; n],
+        )
+        .unwrap()
+        .unwrap_or_else(|| panic!("Error {}: no fit", errs.0));
+    let xin: Vec<Vec<f64>> = [1.0, 100.0, -50.0].iter().map(|&v| vec![v; n]).collect();
+    let xout = rows(&pm2, &xin, true);
+    let check = |back: Vec<Vec<f64>>, err: u32| {
+        for (b, x) in back.iter().zip(&xin) {
+            for (bv, xv) in b.iter().zip(x) {
+                assert!((bv - xv).abs() <= errlim, "Error {err}: {b:?} vs {x:?}");
+            }
+        }
+    };
+    check(rows(&pm2, &xout, false), errs.0);
+    pm2.set_iter_inverse(true).unwrap();
+    check(rows(&pm2, &xout, false), errs.1);
+}
+
+#[test]
+fn c_coefficients() {
+    let pm = c_polymap(2, &C_COEFF);
+    assert_eq!(pm.coeffs(true).len(), 4, "Error -1");
+    assert_eq!(pm.coeffs(false).len(), 0, "Error -2");
+    assert_eq!(pm.coeffs(true), c_terms(2, &C_COEFF), "Error -3, -4");
+}
+
+#[test]
+fn c_poly_tran_2d_linear() {
+    c_poly_tran_round_trips(&c_polymap(2, &C_COEFF), (1, 1001));
+}
+
+#[test]
+fn c_poly_tran_1d() {
+    c_poly_tran_round_trips(&c_polymap(1, &[1.0, 1.0, 0.0, 2.0, 1.0, 1.0]), (3, 3001));
+}
+
+#[test]
+fn c_poly_tran_2d_nonlinear() {
+    c_poly_tran_round_trips(&c_polymap(2, &C_COEFF2), (4, 4001));
+}
+
+#[test]
+fn c_poly_tran_2d_near_unit() {
+    c_poly_tran_round_trips(&c_polymap(2, &C_COEFF3), (6, 6001));
+}
+
+/// Linear PolyMaps simplify to WinMaps, with or without terms that add up;
+/// a non-linear one stays an equal PolyMap.
+#[test]
+fn c_simplify() {
+    use ast_core::mappings::WinMap;
+
+    for (cofs, want, errs) in [
+        (&C_COEFF[..], [3.0, 7.0], (1003, 1004)),
+        (&C_COEFFB[..], [3.5, 6.0], (1005, 1006)),
+    ] {
+        let pm = c_polymap(2, cofs);
+        let simp = (&pm as &dyn Mapping).simplify().unwrap();
+        assert!(simp.as_ref().as_any().is::<WinMap>(), "Error {}", errs.0);
+        assert_eq!(
+            rows(simp.as_ref(), &[vec![1.0, 2.0]], true)[0],
+            want,
+            "Error {}",
+            errs.1
+        );
+    }
+}
+
+/// PolyMap simplifications the port does not yet match, each with the gap it
+/// exposes; [`polymap_c_gaps_still_differ`] fails when one closes.
+///
+/// Both have one cause. C's PolyMap MapMerge rebuilds a linear PolyMap as a
+/// MatrixMap and ShiftMap CmpMap, and on its next nomination cmpmap.c MapMerge
+/// splits an unsimplified CmpMap of the list's composition into its components
+/// (cmpmap.c:1677-1734). Alone, that makes the list two Mappings, so mapping.c
+/// Simplify returns the original (mapping.c:16871-16891); in a longer list the
+/// components can merge with their neighbours. The port splits CmpMaps only
+/// when it builds the list. Porting the split alone changes the IsSimp tags of
+/// cap_cmpmap_02 and the nesting of rigby in the simplify corpus, so it waits
+/// on the merge-order and IsSimp work (PLAN.md section 6).
+const POLYMAP_C_GAP: &[(&str, &str)] = &[
+    (
+        "testpolymap.c Errors 3002-3003",
+        "a lone linear PolyMap with a non-diagonal matrix: C keeps the PolyMap, \
+         the port gives the MatrixMap and ShiftMap CmpMap",
+    ),
+    (
+        "general affine PolyMap then ZoomMap",
+        "C gives a MatrixMap and a WinMap scaling by 2 and shifting by (20, 40); \
+         the port keeps the MatrixMap and ShiftMap CmpMap, then the ZoomMap",
+    ),
+];
+
+#[test]
+fn polymap_c_gaps_still_differ() {
+    let lone = c_polymap(2, &C_COEFF2);
+    let simp = (&lone as &dyn Mapping).simplify().unwrap();
+    let beside = general_affine_then_zoom();
+    let beside_simp = (&beside as &dyn Mapping).simplify().unwrap();
+    let still_differs = [
+        !simp.as_ref().as_any().is::<PolyMap>(),
+        dump_classes(beside_simp.as_ref()) != ["CmpMap", "MatrixMap", "WinMap"],
+    ];
+    for ((name, reason), differs) in POLYMAP_C_GAP.iter().zip(still_differs) {
+        assert!(
+            differs,
+            "{name} now matches C; remove it from POLYMAP_C_GAP. Reason on record: {reason}"
+        );
+    }
+}
+
+/// TranForward, IterInverse and TranInverse as IterInverse is set and the
+/// PolyMap inverted, and for a forward-only PolyMap with two inputs and one
+/// output, which cannot have an iterative inverse.
+#[test]
+fn c_iter_inverse_attributes() {
+    let mut pm = c_polymap(2, &C_COEFF3);
+    let state = |pm: &PolyMap| (pm.has_forward(), pm.iter_inverse(), pm.has_inverse());
+    assert_eq!(state(&pm), (true, true, true), "Error 8001-8003");
+    pm.set_iter_inverse(false).unwrap();
+    assert_eq!(state(&pm), (true, false, false), "Error 8004-8006");
+    pm.invert();
+    assert_eq!(state(&pm), (false, false, true), "Error 8007-8009");
+    pm.set_iter_inverse(true).unwrap();
+    assert_eq!(state(&pm), (true, true, true), "Error 8010-8012");
+    pm.invert();
+    assert_eq!(state(&pm), (true, true, true), "Error 8013-8015");
+
+    let pm2 = PolyMap::new(
+        2,
+        1,
+        &c_terms(2, &[2.0, 1.0, 2.0, 0.0, 3.0, 1.0, 0.0, 1.0]),
+        None,
+    )
+    .unwrap();
+    assert_eq!(state(&pm2), (true, false, false), "Error 8016-8018");
 }
