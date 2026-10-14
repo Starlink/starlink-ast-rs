@@ -289,3 +289,23 @@ fn integrity_matches_the_c_library() {
         failures.join("\n")
     );
 }
+
+/// A change to the current Frame that leaves the conversion from its old
+/// state a UnitMap does not remap the Frame, as `RestoreIntegrity` does not,
+/// so the FrameSet's Mappings are left as they are rather than re-simplified.
+/// `sparse.ast` holds a Mapping that simplifies further than it stands.
+#[test]
+fn unit_change_leaves_mappings_alone() {
+    let text = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/programs/testfitschan/sparse.ast"
+    ))
+    .unwrap();
+    let ast_core::AnyObject::FrameSet(mut fs) = ast_core::from_native_string(&text).unwrap() else {
+        panic!("sparse.ast is not a FrameSet");
+    };
+    let before = ast_core::to_native_string(&ast_core::AnyObject::FrameSet(fs.clone())).unwrap();
+    fs.with_integrity(|_| Ok(())).unwrap();
+    let after = ast_core::to_native_string(&ast_core::AnyObject::FrameSet(fs)).unwrap();
+    assert_eq!(before, after);
+}

@@ -20,12 +20,7 @@ use ast_core::{AnyObject, Channel, Encoding, FitsChan, from_native_string, to_na
 
 /// Cases that differ from C, each with the reason.
 /// `excluded_cases_still_differ` fails when one starts to match.
-const TAB_WRITE_EXCLUDED: &[(&str, &str)] = &[(
-    "sparse",
-    "CRVAL3 and CDELT3 of the DSB spectral axis differ from C's in the last \
-     place or two, and what is read back carries the difference (PLAN.md \
-     section 5)",
-)];
+const TAB_WRITE_EXCLUDED: &[(&str, &str)] = &[];
 
 /// Each card of `fc` from the first, prefixed by "|".
 fn cards(fc: &mut FitsChan) -> String {

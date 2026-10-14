@@ -35,11 +35,10 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
     (
         "test_fitschan_tab_write_oracle.rs",
         "TAB_WRITE_EXCLUDED",
-        1,
-        "sparse: written as C writes it but for CRVAL3 and CDELT3 of the DSB \
-         spectral axis, which differ in the last place or two and carry into \
-         what is read back; recorded in PLAN.md section 5, with a companion \
-         test that fails when the case matches",
+        0,
+        "empty: sparse, the last case, matches C since FrameSet integrity \
+         stopped remapping the current Frame with a UnitMap; kept so a newly \
+         diagnosed -TAB write difference has a home",
     ),
     (
         "test_fitschan_tab_read_oracle.rs",

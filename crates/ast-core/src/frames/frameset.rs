@@ -5,9 +5,7 @@ use std::fmt;
 
 use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
-use crate::mappings::{
-    AsAny, CmpMap, Composition, DynMapping, Mapping, PermMap, UnitMap, ViaSimplify,
-};
+use crate::mappings::{CmpMap, Composition, DynMapping, Mapping, PermMap, UnitMap, ViaSimplify};
 use crate::serial::{
     FrameToNode, MappingToNode, Node, NodeValue, Serializable, frame_from_node, mapping_from_node,
 };
@@ -801,7 +799,9 @@ impl FrameSet {
         f(self.frames[self.current_idx].as_mut())?;
         let delta = self.frames[self.current_idx].map_from(snap.as_ref())?;
         let delta = delta.simplify()?;
-        if delta.as_any().is::<UnitMap>() {
+        // C remaps only when the Mapping is not a UnitMap (frameset.c
+        // RestoreIntegrity). The boxed Mapping is tested, not the box.
+        if delta.as_ref().as_any().is::<UnitMap>() {
             return Ok(());
         }
         self.remap_frame(FrameRef::Current, delta)?;
