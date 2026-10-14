@@ -316,3 +316,204 @@ fn check_null_region() {
         "Above value should be BAD"
     );
 }
+
+/// `checkPointList`: a PointList of two spectral positions with a Box
+/// uncertainty overlaps itself (5) and its negation (6), contains only its
+/// points, maps through y=x² to a Region holding 1.21 but not 1.5, and masks
+/// two pixels through a WinMap.
+#[test]
+fn check_point_list() {
+    use ast_core::AnyObject;
+    use ast_core::frames::{SpecFrame, SpecSystem};
+    use ast_core::mappings::MathMap;
+    use ast_core::regions::{BoxRegion, PointListBuilder};
+
+    let frm = SpecFrame::new(SpecSystem::Wavelen);
+    let unc: BoxRegion = BoxRegionBuilder::new(frm.clone(), vec![0.0], vec![1.0e-5])
+        .unwrap()
+        .build()
+        .unwrap();
+    let reg = PointListBuilder::new(frm, vec![vec![1.0], vec![1.1]])
+        .unwrap()
+        .uncertainty(Box::new(unc))
+        .build()
+        .unwrap();
+    check_dump(&reg, &AnyObject::PointList(reg.clone()), "checkdump reg");
+    assert_eq!(
+        overlap(&reg, &reg),
+        5,
+        "PointList: self is not identical with self"
+    );
+    let mut reg2 = reg.clone();
+    reg2.negate();
+    check_dump(&reg2, &AnyObject::PointList(reg2.clone()), "checkdump reg2");
+    assert_eq!(
+        overlap(&reg, &reg2),
+        6,
+        "PointList: overlap with self-exclusion"
+    );
+
+    let tran1 = |m: &dyn Mapping, xs: &[f64]| -> Vec<f64> {
+        let rows: Vec<[f64; 1]> = xs.iter().map(|&x| [x]).collect();
+        let out = m.transform(&PointSet::from_rows(rows), true).unwrap();
+        (0..xs.len()).map(|i| out.point(i)[0]).collect()
+    };
+    assert_eq!(
+        tran1(&reg, &[1.0, 1.05, 1.1]),
+        [1.0, BAD_VALUE, 1.1],
+        "PointList: Errors 1-3"
+    );
+    assert_eq!(
+        tran1(&reg2, &[1.0, 1.05, 1.1]),
+        [BAD_VALUE, 1.05, BAD_VALUE],
+        "PointList: Errors 4-6"
+    );
+
+    let mm = MathMap::new(1, 1, &["y=x**2"], &["x=y**0.5"]).unwrap();
+    let reg3 = reg
+        .map_region(&mm, &BasicFrameBuilder::new(1).build().unwrap())
+        .unwrap();
+    let reg3: &dyn Mapping = reg3.as_ref();
+    let reg4 = reg3.simplify().unwrap();
+    let any = AnyObject::from_mapping(reg4.as_ref()).unwrap();
+    check_dump(any.as_region().unwrap(), &any, "checkdump reg4");
+    assert_eq!(
+        tran1(reg4.as_ref(), &[1.21, 1.5]),
+        [1.21, BAD_VALUE],
+        "PointList: Errors 7-8"
+    );
+
+    let map = WinMap::from_corners(&[1.01], &[1.11], &[2.0], &[7.0]).unwrap();
+    let (lbnd, ubnd) = ([-1_i64], [15_i64]);
+    let mut mdata = vec![0_i32; 17];
+    let nbad = mask(&reg, Some(&map), true, &lbnd, &ubnd, &mut mdata, 2).unwrap();
+    assert_eq!(nbad, 2, "nbad");
+    let at = |p: i64| mdata[(p - lbnd[0]) as usize];
+    for (p, want) in [(1, 0), (2, 2), (3, 0), (6, 0), (7, 2), (8, 0)] {
+        assert_eq!(at(p), want, "mdata({p})");
+    }
+}
+
+/// `checkPrism`: an FK5 Box extruded through a wavelength Interval. It
+/// simplifies to a Box with no FrameSet; its overlaps with other Prisms, a
+/// negated copy, open Prisms and half-unbounded Intervals in other systems;
+/// and the bounds of a Prism over the south pole.
+#[test]
+fn check_prism() {
+    use ast_core::AnyObject;
+    use ast_core::frames::{CmpFrame, Frame, SpecFrame, SpecSystem};
+    use ast_core::regions::{BoxRegion, IntervalBuilder, Prism, PrismBuilder};
+
+    let fk5 = || SkyFrame::new(SkySystem::Fk5);
+    let angstrom = |system: Option<SpecSystem>| {
+        let mut f = match system {
+            Some(s) => SpecFrame::new(s),
+            None => SpecFrame::unset_system(),
+        };
+        f.set_unit(1, "Angstrom").unwrap();
+        f
+    };
+    let sky_box = |c: [f64; 2], corner: [f64; 2]| -> BoxRegion {
+        BoxRegionBuilder::new(fk5(), c.to_vec(), corner.to_vec())
+            .unwrap()
+            .build()
+            .unwrap()
+    };
+    let interval = |f: &SpecFrame, lo: f64, hi: f64| {
+        IntervalBuilder::new(f.clone(), vec![lo], vec![hi])
+            .unwrap()
+            .build()
+            .unwrap()
+    };
+    let prism = |a: &BoxRegion, b: ast_core::regions::Interval| -> Prism {
+        PrismBuilder::new(a.clone(), b).unwrap().build().unwrap()
+    };
+    let as_mapping =
+        |p: &Prism| -> ast_core::mappings::DynMapping { (p as &dyn Mapping).simplify().unwrap() };
+    let set_component_system =
+        |p: &mut Prism, first: bool, sky: Option<SkySystem>, spec: Option<SpecSystem>| {
+            p.with_integrity(|f| {
+                let cmp = f
+                    .as_any_mut()
+                    .downcast_mut::<CmpFrame>()
+                    .expect("a CmpFrame");
+                if first {
+                    cmp.frame1_mut()
+                        .as_any_mut()
+                        .downcast_mut::<SkyFrame>()
+                        .unwrap()
+                        .set_system(sky.unwrap());
+                } else {
+                    cmp.frame2_mut()
+                        .as_any_mut()
+                        .downcast_mut::<SpecFrame>()
+                        .unwrap()
+                        .set_system(spec.unwrap())?;
+                }
+                Ok(())
+            })
+            .unwrap();
+        };
+
+    let f2 = angstrom(None);
+    let r1 = sky_box([0.0, 0.0], [1.0e-4, 1.0e-4]);
+    let r3 = prism(&r1, interval(&f2, 5000.0, 6000.0));
+    check_dump(&r3, &AnyObject::Prism(r3.clone()), "checkdump Prism 1");
+    assert_eq!(overlap(&r3, &r3), 5, "Prism 1");
+    let r4 = as_mapping(&r3);
+    assert!(r4.as_ref().as_any().is::<BoxRegion>(), "Prism 1b");
+    let r4any = AnyObject::from_mapping(r4.as_ref()).unwrap();
+    assert!(!has_frameset(&r4any), "Prism 1c");
+    assert_eq!(overlap(&r3, r4any.as_region().unwrap()), 5, "Prism 1d");
+
+    let r4 = prism(&r1, interval(&f2, 5500.0, 5800.0));
+    assert_eq!(overlap(&r3, &r4), 3, "Prism 2");
+    assert_eq!(overlap(&r4, &r3), 2, "Prism 3");
+    let r4 = prism(&r1, interval(&f2, 5500.0, 6500.0));
+    assert_eq!(overlap(&r3, &r4), 4, "Prism 4");
+    assert_eq!(overlap(&r4, &r3), 4, "Prism 5");
+    let r4 = prism(&r1, interval(&f2, 6500.0, 7500.0));
+    assert_eq!(overlap(&r3, &r4), 1, "Prism 6");
+    assert_eq!(overlap(&r4, &r3), 1, "Prism 7");
+    let mut r4 = r3.clone();
+    r4.negate();
+    assert_eq!(overlap(&r4, &r3), 6, "Prism 8");
+
+    let r1b = sky_box([2.0e-4, 2.0e-4], [1.1e-4, 1.0e-4]);
+    let r4 = prism(&r1b, interval(&f2, 5000.0, 6000.0));
+    assert_eq!(overlap(&r3, &r4), 1, "Prism 9");
+    let r1c = sky_box([2.0e-4, 2.0e-4], [1.0e-4, 1.0e-4]);
+    let mut r4 = prism(&r1c, interval(&f2, 5000.0, 6000.0));
+    assert_eq!(overlap(&r3, &r4), 4, "Prism 10");
+    let mut r3o = r3.clone();
+    r3o.set_closed(false);
+    r4.set_closed(false);
+    assert_eq!(overlap(&r3o, &r4), 1, "Prism 11");
+
+    let f2 = angstrom(Some(SpecSystem::Wavelen));
+    let r1 = sky_box([0.0, 0.0], [1.0e-4, 1.0e-4]);
+    let mut r3 = prism(&r1, interval(&f2, 5000.0, BAD_VALUE));
+    let r4 = prism(&r1, interval(&f2, 6000.0, BAD_VALUE));
+    set_component_system(&mut r3, true, Some(SkySystem::Galactic), None);
+    assert_eq!(overlap(&r3, &r4), 3, "Prism 12");
+    let r4 = prism(&r1, interval(&f2, BAD_VALUE, 6000.0));
+    assert_eq!(overlap(&r3, &r4), 4, "Prism 13");
+    let mut r4 = prism(&r1, interval(&f2, BAD_VALUE, 5000.0));
+    set_component_system(&mut r4, false, None, Some(SpecSystem::Freq));
+    assert_eq!(overlap(&r3, &r4), 4, "Prism 14");
+    r4.set_closed(false);
+    assert_eq!(overlap(&r3, &r4), 1, "Prism 15");
+
+    let r1 = sky_box([0.0, -1.57], [0.8, -1.5]);
+    let r3 = prism(&r1, interval(&angstrom(None), 5000.0, 6000.0));
+    let r4 = as_mapping(&r3);
+    let r4any = AnyObject::from_mapping(r4.as_ref()).unwrap();
+    let (lb, ub) = r4any.as_region().unwrap().get_region_bounds().unwrap();
+    let near = |a: f64, b: f64, t: f64| (a - b).abs() <= t;
+    assert!(near(lb[0], -0.8, 1e-6), "Prism 16: {lb:?}");
+    assert!(near(lb[1], -1.64, 1e-6), "Prism 17: {lb:?}");
+    assert!(near(ub[0], 0.8, 1e-6), "Prism 18: {ub:?}");
+    assert!(near(ub[1], -1.5, 1e-6), "Prism 19: {ub:?}");
+    assert!(near(lb[2], 5000.0, 1e-10), "Prism 20: {lb:?}");
+    assert!(near(ub[2], 6000.0, 1e-6), "Prism 21: {ub:?}");
+}
