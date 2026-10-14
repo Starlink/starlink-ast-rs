@@ -1579,3 +1579,710 @@ fn check_interval() {
         assert_eq!(nr.is_negated(), negate, "Int: perm check {}", first + 3);
     }
 }
+
+/// The header `checkBox` reads its first sky Frame from: a TAN projection
+/// with a blank card where C leaves one.
+const CHECK_BOX_CARDS: [&str; 9] = [
+    "CTYPE1  = 'RA---TAN'",
+    "CTYPE2  = 'DEC--TAN'",
+    "CRPIX1  = 100",
+    "CRPIX2  = 100",
+    "CRVAL1  = 71.619724",
+    "CRVAL2  = 42.971835",
+    "  ",
+    "CDELT1  = 0.6",
+    "CDELT2  = 0.6",
+];
+
+fn read_fits_frameset(cards: &[&str]) -> ast_core::frames::FrameSet {
+    use ast_core::AnyObject;
+    use ast_core::channel::Channel;
+    use ast_core::fitschan::FitsChan;
+
+    let mut fc = FitsChan::new();
+    for card in cards {
+        fc.put_fits(card, false).unwrap();
+    }
+    fc.clear_card().unwrap();
+    let Some(AnyObject::FrameSet(fs)) = fc.read().unwrap() else {
+        panic!("the header does not read as a FrameSet");
+    };
+    fs
+}
+
+/// Change the sky system of a Box on a SkyFrame, as C's `astSetC(box,
+/// "System", ...)` does.
+fn set_box_sky_system(b: &mut ast_core::regions::BoxRegion, sys: Option<SkySystem>) {
+    b.with_integrity(|f| {
+        let sf = f.as_any_mut().downcast_mut::<SkyFrame>().unwrap();
+        match sys {
+            Some(s) => sf.set_system(s),
+            None => sf.clear_system(),
+        }
+        Ok(())
+    })
+    .unwrap();
+}
+
+/// Transform points and check each against C's expectation: kept unchanged
+/// (`1`), BAD on every axis (`0`), or not BAD on any axis (`2`).
+fn expect_points(m: &dyn Mapping, pts: &[Vec<f64>], forward: bool, want: &[u8], label: &str) {
+    let out = m
+        .transform(&PointSet::from_rows(pts.to_vec()), forward)
+        .unwrap();
+    for (i, &w) in want.iter().enumerate() {
+        let got = out.point(i);
+        match w {
+            1 => assert_eq!(got, &pts[i][..], "{label}: point {} kept", i + 1),
+            0 => assert!(
+                got.iter().all(|&v| v == BAD_VALUE),
+                "{label}: point {} BAD, got {got:?}",
+                i + 1
+            ),
+            _ => assert!(
+                got.iter().all(|&v| v != BAD_VALUE),
+                "{label}: point {} not BAD, got {got:?}",
+                i + 1
+            ),
+        }
+    }
+}
+
+/// `checkBox`, first part: a Box on the sky Frame of a FITS header, its
+/// transforms through changes of sky system and axis order, with Adaptive
+/// off, and its formatting; membership of nine points closed, negated and
+/// open; the Box added to the FrameSet as a Frame, clipping its Mappings; and
+/// the Box as one component of a permuted CmpFrame.
+///
+/// Divergences from C:
+///
+/// * C sets `Negated` on the FrameSet and checks the Box it added is not
+///   changed. The FrameSet owns its copy here, so that cannot happen.
+/// * C transforms the CmpFrame itself. A Frame is not a Mapping here
+///   (PLAN.md §9.6), so the test builds the Mapping C's CmpFrame `Transform`
+///   uses: its components in parallel, between PermMaps for its axis order.
+#[test]
+fn check_box_sky() {
+    use ast_core::AnyObject;
+    use ast_core::frames::{CmpFrame, Frame, FrameRef, SpecFrame, SpecSystem};
+    use ast_core::mappings::{CmpMap, Composition, PermMap, UnitMap};
+    use ast_core::regions::BoxRegion;
+
+    let mut fs = read_fits_frameset(&CHECK_BOX_CARDS);
+    let mut frm1 = fs
+        .current()
+        .as_any()
+        .downcast_ref::<SkyFrame>()
+        .unwrap()
+        .clone();
+    frm1.set_axis_digits(1, 12).unwrap();
+    let mut box1 = BoxRegionBuilder::new(frm1.clone(), vec![1.25, 0.75], vec![1.5, 0.5])
+        .unwrap()
+        .build()
+        .unwrap();
+    check_dump(&box1, &AnyObject::BoxRegion(box1.clone()), "checkdump box1");
+    assert_eq!(
+        Frame::system_string(&box1).unwrap(),
+        Some("ICRS"),
+        "box1 system is not ICRS"
+    );
+    set_box_sky_system(&mut box1, Some(SkySystem::Galactic));
+    box1.perm_axes(&[2, 1]).unwrap();
+    let mut box3 = box1.clone();
+
+    // C's inputs, rounded to single precision as C's casts do, in (b, l)
+    // order.
+    let f = |v: f64| v as f32 as f64;
+    let pts: Vec<Vec<f64>> = vec![
+        vec![f(-0.0269096590283195), f(2.82175432250852)],
+        vec![f(0.2467384819891), f(2.70798275154741)],
+    ];
+    let check_gal = |m: &dyn Mapping, xtol: f64, ytol: f64, e3: &str, e4: &str| {
+        let out = m
+            .transform(&PointSet::from_rows(pts.clone()), true)
+            .unwrap();
+        assert!((out.point(0)[1] - 2.82175422).abs() <= ytol, "error 1");
+        assert!((out.point(0)[0] + 0.0269096587).abs() <= xtol, "error 2");
+        assert_eq!(out.point(1)[1], BAD_VALUE, "error {e3}");
+        assert_eq!(out.point(1)[0], BAD_VALUE, "error {e4}");
+    };
+    check_gal(&box1, 1.0e-7, 1.0e-6, "3", "4");
+    assert!(box3.is_adaptive(), "error 4a");
+    box3.set_adaptive(false);
+    set_box_sky_system(&mut box3, Some(SkySystem::Icrs));
+    check_gal(&box3, 1.0e-8, 1.0e-8, "4b", "4c");
+    set_box_sky_system(&mut box3, None);
+    check_gal(&box3, 1.0e-8, 1.0e-8, "4d", "4e");
+    let _box2 = (&box1 as &dyn Mapping).simplify().unwrap();
+    set_box_sky_system(&mut box1, Some(SkySystem::Icrs));
+    box1.perm_axes(&[2, 1]).unwrap();
+
+    let t1 = frm1.format(1, 0.25).unwrap();
+    let t2 = Frame::format(&box1, 1, 0.25).unwrap();
+    assert_eq!(t1, t2, "ast_format is different for frm1 and box1");
+    let (v2, _) = Frame::unformat(&box1, 1, &t2).unwrap();
+    assert!((v2 - 0.25).abs() <= 1.0e-10, "ast_unformat failed for box1");
+    assert_eq!(
+        Frame::system_string(&box1).unwrap(),
+        Some("ICRS"),
+        "Box1(b) system is not ICRS"
+    );
+    let sky = box1.get_region_frame();
+    let sky = sky.as_any().downcast_ref::<SkyFrame>().unwrap();
+    assert_eq!(sky.equinox_year(), 2000.0, "Box1 equinox is not 2000.0");
+    assert!(box1.is_closed(), "Box1 closed is not 1");
+
+    let p: Vec<Vec<f64>> = [
+        [1.25, 0.75],
+        [1.0, 1.0],
+        [1.0, 0.5],
+        [1.5, 0.5],
+        [1.5, 1.0],
+        [1.0, 1.2],
+        [0.8, 0.5],
+        [1.5, 0.45],
+        [1.501, 1.0],
+    ]
+    .iter()
+    .map(|p| p.to_vec())
+    .collect();
+    let inside = [1, 1, 1, 1, 1, 0, 0, 0, 0];
+    expect_points(&box1, &p, true, &inside, "error A");
+    expect_points(&box1, &p, false, &inside, "error B");
+    box1.negate();
+    expect_points(&box1, &p, true, &[0, 1, 1, 1, 1, 1, 1, 1, 1], "error C");
+    box1.set_closed(false);
+    box1.negate();
+    expect_points(&box1, &p, true, &[1, 0, 0, 0, 0, 0, 0, 0, 0], "error D");
+    box1.set_negated(true);
+    expect_points(&box1, &p, true, &[0, 0, 0, 0, 0, 1, 1, 1, 1], "error E");
+    box1.clear_negated();
+    box1.clear_closed();
+
+    fs.add_frame(
+        FrameRef::Current,
+        Box::new(UnitMap::new(2)),
+        Box::new(box1.clone()),
+    )
+    .unwrap();
+    let map1 = fs.mapping(FrameRef::Current, FrameRef::Current).unwrap();
+    assert!(
+        map1.as_ref().as_any().is::<BoxRegion>(),
+        "map1 is not a Region"
+    );
+    let map1 = fs.mapping(FrameRef::Base, FrameRef::Current).unwrap();
+    let pix = map1
+        .transform(&PointSet::from_rows(p.clone()), false)
+        .unwrap();
+    let pix: Vec<Vec<f64>> = (0..9).map(|i| pix.point(i).to_vec()).collect();
+    expect_points(
+        map1.as_ref(),
+        &p,
+        false,
+        &[2, 2, 2, 2, 2, 0, 0, 0, 0],
+        "error F",
+    );
+    let back = map1
+        .transform(&PointSet::from_rows(pix.clone()), true)
+        .unwrap();
+    assert!((back.point(0)[0] - 1.25).abs() <= 1.0e-7, "error G1");
+    assert!((back.point(0)[1] - 0.75).abs() <= 1.0e-7, "error G2");
+    for i in 5..9 {
+        assert!(
+            back.point(i).iter().all(|&v| v == BAD_VALUE),
+            "error G{}",
+            2 * i + 1
+        );
+    }
+
+    let mut frm2 = SpecFrame::unset_system();
+    frm2.set_unit(1, "Angstrom").unwrap();
+    let box2 = BoxRegionBuilder::new(frm2, vec![1000.0], vec![1100.0])
+        .unwrap()
+        .build()
+        .unwrap();
+    let mut frm3 = CmpFrame::new(Box::new(box1), Box::new(box2));
+    frm3.perm_axes(&[2, 3, 1]).unwrap();
+    // External axis 1 is the Box on the sky and external axis 2 the Box on
+    // the spectrum, so these are C's "System(1)" and "System(2)".
+    fn comp_box(f: &mut dyn Frame) -> &mut BoxRegion {
+        f.as_any_mut().downcast_mut::<BoxRegion>().unwrap()
+    }
+    set_box_sky_system(comp_box(frm3.frame1_mut()), Some(SkySystem::Galactic));
+    comp_box(frm3.frame2_mut())
+        .with_integrity(|f| {
+            f.as_any_mut()
+                .downcast_mut::<SpecFrame>()
+                .unwrap()
+                .set_system(SpecSystem::Freq)
+        })
+        .unwrap();
+
+    // cmpframe.c Transform: the components in parallel, preceded by the
+    // PermMap from external to internal axes and followed by its inverse.
+    let inperm: Vec<i64> = frm3.perm().iter().map(|&i| i as i64 + 1).collect();
+    let mut outperm = vec![0; 3];
+    for (ext, &int) in frm3.perm().iter().enumerate() {
+        outperm[int] = ext as i64 + 1;
+    }
+    let pmap = PermMap::new(&inperm, &outperm, &[]).unwrap();
+    let comps = CmpMap::new(
+        Box::new(
+            frm3.frame1()
+                .as_any()
+                .downcast_ref::<BoxRegion>()
+                .unwrap()
+                .clone(),
+        ),
+        Box::new(
+            frm3.frame2()
+                .as_any()
+                .downcast_ref::<BoxRegion>()
+                .unwrap()
+                .clone(),
+        ),
+        Composition::Parallel,
+    )
+    .unwrap();
+    let mut pinv = pmap.clone();
+    pinv.invert();
+    let map = CmpMap::new(
+        Box::new(CmpMap::new(Box::new(pmap), Box::new(comps), Composition::Series).unwrap()),
+        Box::new(pinv),
+        Composition::Series,
+    )
+    .unwrap();
+    let (b1, l1) = (-0.0269096590283195, 2.82175432250852);
+    let (b2, l2) = (0.2467384819891, 2.70798275154741);
+    let input = PointSet::from_rows([
+        [b1, 2997924.58, l1],
+        [b2, 2997924.58, l2],
+        [b1, 4000000.0, l1],
+        [b2, 4000000.0, l2],
+    ]);
+    let out = map.transform(&input, true).unwrap();
+    let o = |i: usize, ax: usize| out.point(i)[ax];
+    assert!((o(0, 0) + 0.0269096587).abs() <= 1.0e-8, "error H1");
+    assert!((o(0, 1) - 2997924.5).abs() <= 1.0e-1, "error H2");
+    assert!((o(0, 2) - 2.82175422).abs() <= 1.0e-6, "error H3");
+    assert_eq!(o(1, 0), BAD_VALUE, "error H4");
+    assert!((o(1, 1) - 2997924.5).abs() <= 1.0e-1, "error H5");
+    assert_eq!(o(1, 2), BAD_VALUE, "error H6");
+    assert!((o(2, 0) + 0.0269096587).abs() <= 1.0e-8, "error H7");
+    assert_eq!(o(2, 1), BAD_VALUE, "error H8");
+    assert!((o(2, 2) - 2.82175422).abs() <= 1.0e-6, "error H9");
+    assert_eq!(o(3, 0), BAD_VALUE, "error H10");
+    assert_eq!(o(3, 1), BAD_VALUE, "error H11");
+    assert_eq!(o(3, 2), BAD_VALUE, "error H12");
+    assert!(
+        frm3.frame1()
+            .as_any()
+            .downcast_ref::<BoxRegion>()
+            .unwrap()
+            .is_closed(),
+        "compound frame region is not closed"
+    );
+}
+
+fn domain_frame(naxes: usize, domain: &str) -> ast_core::frames::BasicFrame {
+    use ast_core::frames::Frame;
+    let mut f = BasicFrameBuilder::new(naxes).build().unwrap();
+    Frame::set_domain(&mut f, domain).unwrap();
+    f
+}
+
+fn any_region(r: &dyn Region) -> ast_core::AnyObject {
+    ast_core::AnyObject::from_mapping(r).unwrap()
+}
+
+/// `checkBox`, MapRegion part: a Box mapped by a diagonal and a sheared
+/// MatrixMap, a 1-D Box by a ZoomMap, and a sky Box by the conversion to an
+/// offset sky Frame, each into the new Frame with no FrameSet; the offset Box
+/// clips as the original did, across zero longitude.
+#[test]
+fn check_box_map_region() {
+    use ast_core::frames::{Frame, SkyRefIs};
+    use ast_core::mappings::{MatrixMap, ZoomMap};
+    use ndarray::array;
+
+    let box1 = BoxRegionBuilder::new(
+        domain_frame(3, "A"),
+        vec![100.0, 200.0, 300.0],
+        vec![0.0, 400.0, 250.0],
+    )
+    .unwrap()
+    .build()
+    .unwrap();
+    let frm2 = domain_frame(3, "B");
+    for (matrix, first) in [
+        (array![[2.0, 0.0, 0.0], [0.0, 4.0, 0.0], [0.0, 0.0, 6.0]], 1),
+        (array![[2.0, 0.1, 0.0], [0.0, 4.0, 0.0], [0.0, 0.0, 6.0]], 3),
+    ] {
+        let map2 = MatrixMap::new(matrix).unwrap();
+        let box2 = box1.map_region(&map2, &frm2).unwrap();
+        assert_eq!(
+            box2.domain(),
+            "B",
+            "ast_mapregion{first}: Box2 domain is not B"
+        );
+        assert!(
+            !has_frameset(&any_region(box2.as_ref())),
+            "ast_mapregion{}: Box2 has FrameSet",
+            first + 1
+        );
+        if first == 3 {
+            check_dump(box2.as_ref(), &any_region(box2.as_ref()), "checkdump box2");
+        }
+    }
+
+    let box1 = BoxRegionBuilder::new(domain_frame(1, "A"), vec![100.0], vec![0.0])
+        .unwrap()
+        .build()
+        .unwrap();
+    let box2 = box1
+        .map_region(&ZoomMap::new(1, 2.0).unwrap(), &domain_frame(1, "B"))
+        .unwrap();
+    assert_eq!(box2.domain(), "B", "ast_mapregion5: Box2 domain is not B");
+    assert!(
+        !has_frameset(&any_region(box2.as_ref())),
+        "ast_mapregion6: Box2 has FrameSet (B)"
+    );
+
+    let frm1 = SkyFrame::unset_system();
+    let box1 = BoxRegionBuilder::new(frm1.clone(), vec![0.0, 0.0], vec![0.001, 0.001])
+        .unwrap()
+        .build()
+        .unwrap();
+    let mut frm2 = frm1.clone();
+    frm2.set_sky_ref(1, 0.0005).unwrap();
+    frm2.set_sky_ref_is(SkyRefIs::Origin);
+    let fs = frm1.convert_to(&frm2, &[""]).unwrap().unwrap();
+    let mut box2 = box1.map_region(&fs, &frm2).unwrap();
+    assert!(
+        !has_frameset(&any_region(box2.as_ref())),
+        "ast_mapregion7: Box2 has FrameSet (C)"
+    );
+    let p: Vec<Vec<f64>> = [
+        [0.00049, 0.0009],
+        [0.00051, 0.0009],
+        [-0.0016, 0.0],
+        [-0.0014, 0.0],
+        [6.2815853, 0.0],
+        [6.2817853, 0.0],
+    ]
+    .iter()
+    .map(|p| p.to_vec())
+    .collect();
+    let out = box2
+        .transform(&PointSet::from_rows(p.clone()), true)
+        .unwrap();
+    for (i, first) in [(0, 1), (3, 9), (5, 11)] {
+        for (ax, &want) in p[i].iter().enumerate() {
+            assert!(
+                (out.point(i)[ax] - want).abs() <= 1.0e-10,
+                "error I{}",
+                first + ax
+            );
+        }
+    }
+    for (i, first) in [(1, 3), (4, 5), (2, 7)] {
+        for ax in 0..2 {
+            assert_eq!(out.point(i)[ax], BAD_VALUE, "error I{}", first + ax);
+        }
+    }
+
+    let box2 = box2
+        .as_any_mut()
+        .downcast_mut::<ast_core::regions::BoxRegion>()
+        .unwrap();
+    box2.with_integrity(|f| {
+        f.as_any_mut()
+            .downcast_mut::<SkyFrame>()
+            .unwrap()
+            .set_sky_ref_is(SkyRefIs::Pole);
+        Ok(())
+    })
+    .unwrap();
+    let box2 = (&*box2 as &dyn Mapping).simplify().unwrap();
+    assert!(
+        !has_frameset(&ast_core::AnyObject::from_mapping(box2.as_ref()).unwrap()),
+        "ast_mapregion8: Box2 has FrameSet (B)"
+    );
+}
+
+/// `checkBox`, Overlap part: Boxes in different Domains cannot be compared;
+/// each Box is the same as itself, open or closed; and Boxes that enclose,
+/// miss and cross each other.
+#[test]
+fn check_box_overlap() {
+    use ast_core::frames::Frame;
+
+    let make = |f: &ast_core::frames::BasicFrame, p1: [f64; 3], p2: [f64; 3]| {
+        BoxRegionBuilder::new(f.clone(), p1.to_vec(), p2.to_vec())
+            .unwrap()
+            .build()
+            .unwrap()
+    };
+    let (p1, p2) = ([100.0, 200.0, 300.0], [0.0, 400.0, 250.0]);
+    let frm1 = domain_frame(3, "A");
+    let mut box1 = make(&frm1, p1, p2);
+    box1.set_closed(true);
+    let mut frm2 = domain_frame(3, "B");
+    let mut box2 = make(&frm2, p1, p2);
+    box2.set_closed(false);
+    assert_eq!(
+        overlap(&box1, &box2),
+        0,
+        "ast_overlap A: result should be zero"
+    );
+    assert_eq!(
+        overlap(&box1, &box1),
+        5,
+        "ast_overlap B: result should be 5"
+    );
+    assert_eq!(
+        overlap(&box2, &box2),
+        5,
+        "ast_overlap C: result should be 5"
+    );
+
+    Frame::set_domain(&mut frm2, "A").unwrap();
+    for (q1, q2, ab, ba, la, lb) in [
+        (
+            [100.0, 200.0, 300.0],
+            [-100.0, 600.0, 400.0],
+            2,
+            3,
+            "D",
+            "E",
+        ),
+        ([300.0, 200.0, 300.0], [201.0, 400.0, 250.0], 1, 1, "F", "G"),
+        ([150.0, 200.0, 300.0], [50.0, 400.0, 250.0], 4, 4, "H", "I"),
+    ] {
+        let box2 = make(&frm2, q1, q2);
+        assert_eq!(
+            overlap(&box1, &box2),
+            ab,
+            "ast_overlap {la}: result should be {ab}"
+        );
+        assert_eq!(
+            overlap(&box2, &box1),
+            ba,
+            "ast_overlap {lb}: result should be {ba}"
+        );
+    }
+}
+
+/// `checkBox`, pixel mask part: masking outside a Box on a 5x5 grid, and
+/// outside a negated Box on the sky through a FITS FrameSet, inverted so
+/// that it maps the sky onto the pixel grid.
+#[test]
+fn check_box_mask() {
+    use ast_core::mappings::Mapping as _;
+
+    // VAL__BADR, the Fortran test's bad value for a REAL array.
+    const VAL_BADR: f32 = f32::MIN;
+
+    let box1 = BoxRegionBuilder::new(domain_frame(2, "A"), vec![1.0, 1.0], vec![3.1, 4.1])
+        .unwrap()
+        .build()
+        .unwrap();
+    let mut rin = vec![1.0_f32; 25];
+    let res = mask(&box1, None, false, &[1, 1], &[5, 5], &mut rin, VAL_BADR).unwrap();
+    assert_eq!(res, 13, "res should be 13");
+    for i in 1..=5 {
+        for j in 1..=5 {
+            let v = rin[(i - 1) * 5 + (j - 1)];
+            if j <= 3 && i <= 4 {
+                assert_eq!(v, 1.0, "rin({j},{i}) should be 1.0");
+            } else {
+                assert_eq!(v, VAL_BADR, "rin({j},{i}) should be VAL__BADR");
+            }
+        }
+    }
+
+    let mut cards = CHECK_BOX_CARDS;
+    cards[2] = "CRPIX1  = 20";
+    cards[3] = "CRPIX2  = 20";
+    cards[4] = "CRVAL1  = 0.0";
+    cards[5] = "CRVAL2  = 0.0";
+    cards[6] = "   ";
+    cards[7] = "CDELT1  = 1.6";
+    cards[8] = "CDELT2  = 1.6";
+    let mut fs = read_fits_frameset(&cards);
+    let mut box1 = BoxRegionBuilder::new(
+        fs.clone(),
+        vec![0.13089969, 0.17453293],
+        vec![-0.13089971, -0.17453293],
+    )
+    .unwrap()
+    .build()
+    .unwrap();
+    let mut image = vec![1.0_f32; 50 * 50];
+    box1.negate();
+    fs.invert();
+    let res = mask(
+        &box1,
+        Some(&fs),
+        false,
+        &[1, 1],
+        &[50, 50],
+        &mut image,
+        VAL_BADR,
+    )
+    .unwrap();
+    assert_eq!(res, 522, "res should be 522");
+    let at = |x: usize, y: usize| image[(y - 1) * 50 + (x - 1)];
+    assert_eq!(at(34, 42), VAL_BADR, "image(34,42) should be VAL__BADR");
+    assert_eq!(at(33, 42), 1.0, "image(33,42) should be 1.0");
+    assert_eq!(at(16, 14), VAL_BADR, "image(16,14) should be VAL__BADR");
+    assert_eq!(at(15, 13), 1.0, "image(15,13) should be 1.0");
+}
+
+/// `checkBox`, axis-count part: a Box mapped by PermMaps that add an axis
+/// (a constant inside or outside it) or drop one, giving a Box with no
+/// FrameSet, or a NullRegion when the dropped axis's constant is outside.
+#[test]
+fn check_box_perm() {
+    use ast_core::frames::Frame;
+    use ast_core::mappings::PermMap;
+    use ast_core::regions::{BoxRegion, CircleBuilder, NullRegion};
+
+    let frm1 = domain_frame(2, "A");
+    let unc = CircleBuilder::new(frm1.clone(), vec![0.0, 0.0])
+        .unwrap()
+        .radius(0.01)
+        .build()
+        .unwrap();
+    let box1 = BoxRegionBuilder::new(frm1, vec![-1.0, 1.0], vec![-2.0, 1.5])
+        .unwrap()
+        .uncertainty(Box::new(unc))
+        .build()
+        .unwrap();
+    let mapped = |reg: &dyn Region, pm: &PermMap, f: &dyn Frame, first: u32, null: bool| {
+        let r = reg.map_region(pm, f).unwrap();
+        if null {
+            assert!(r.as_any().is::<NullRegion>(), "Box: perm check {first}");
+        } else {
+            assert!(r.as_any().is::<BoxRegion>(), "Box: perm check {first}");
+        }
+        assert!(
+            !has_frameset(&any_region(r.as_ref())),
+            "Box: perm check {}",
+            first + 1
+        );
+        assert_eq!(r.naxes(), f.naxes(), "Box: perm check {}", first + 2);
+        r
+    };
+    let rows = |pts: &[&[f64]]| -> Vec<Vec<f64>> { pts.iter().map(|p| p.to_vec()).collect() };
+
+    let frm2 = domain_frame(3, "B");
+    let pm = PermMap::new(&[3, 1], &[2, -1, 1], &[0.0; 6]).unwrap();
+    let reg = mapped(&box1, &pm, &frm2, 1, false);
+    let pts = rows(&[
+        &[0.0, 0.0, 0.0],
+        &[0.7, 0.0, -0.5],
+        &[2.0, 0.0, -1.0],
+        &[1.5, 0.0, 0.0],
+    ]);
+    expect_points(reg.as_ref(), &pts, true, &[0, 1, 0, 1], "box: pc 1-12");
+
+    let pm = PermMap::new(&[3, 1], &[2, -1, 1], &[1.0; 6]).unwrap();
+    let reg = mapped(&box1, &pm, &frm2, 4, false);
+    let pts = rows(&[
+        &[0.0, 0.0, 0.0],
+        &[0.7, 1.0, -0.5],
+        &[0.7, 1.1, -0.5],
+        &[0.7, 0.9, -0.5],
+    ]);
+    expect_points(reg.as_ref(), &pts, true, &[0, 1, 0, 0], "box: pc 11-19");
+
+    let frm2 = domain_frame(1, "B");
+    let x = rows(&[&[-2.5], &[-1.9], &[0.0], &[0.5]]);
+    let pm = PermMap::new(&[1, -1], &[1], &[1.4; 6]).unwrap();
+    let reg = mapped(&box1, &pm, &frm2, 7, false);
+    expect_points(reg.as_ref(), &x, true, &[0, 1, 1, 0], "box: pc 20-23");
+    let pm = PermMap::new(&[1, -1], &[1], &[1.6; 6]).unwrap();
+    let reg = mapped(&box1, &pm, &frm2, 10, true);
+    expect_points(reg.as_ref(), &x, true, &[0, 0, 0, 0], "box: pc 24-27");
+
+    let box1 =
+        BoxRegionBuilder::from_bounds(domain_frame(3, "A"), &[0.5, -1.0, -2.0], &[30.0, 5.0, 0.0])
+            .unwrap()
+            .build()
+            .unwrap();
+    let pm = PermMap::new(&[1, -1, 2], &[1, 3], &[1.0; 6]).unwrap();
+    let reg = mapped(&box1, &pm, &domain_frame(2, "B"), 13, false);
+    let pts = rows(&[
+        &[0.4, -1.0],
+        &[1.0, 0.1],
+        &[1.0, -2.1],
+        &[0.5, -1.0],
+        &[10.0, -0.1],
+        &[0.55, -2.0],
+    ]);
+    expect_points(
+        reg.as_ref(),
+        &pts,
+        true,
+        &[0, 0, 0, 1, 1, 1],
+        "Box: pc 37-48",
+    );
+}
+
+/// `checkBox`, mesh part: the grid and boundary mesh of a Box in the pixel
+/// Frame of a rotated TAN header, their point counts and positions, and the
+/// Box mapped onto the sky becoming a Polygon with no FrameSet.
+#[test]
+fn check_box_mesh() {
+    use ast_core::frames::FrameRef;
+    use ast_core::regions::Polygon;
+
+    let cards = [
+        "CTYPE1  = 'RA---TAN'",
+        "CTYPE2  = 'DEC--TAN'",
+        "CRPIX1  = 20",
+        "CRPIX2  = 20",
+        "CRVAL1  = 0.0",
+        "CRVAL2  = 0.0",
+        "CROTA1  = 30.0",
+        "CDELT1  = -0.00001",
+        "CDELT2  = 0.00001",
+    ];
+    let fs = read_fits_frameset(&cards);
+    let bfrm = fs
+        .base()
+        .as_any()
+        .downcast_ref::<ast_core::frames::BasicFrame>()
+        .unwrap()
+        .clone();
+    let box1 = BoxRegionBuilder::new(bfrm, vec![100.0, 150.0], vec![150.0, 170.0])
+        .unwrap()
+        .build()
+        .unwrap();
+
+    let grid = box1.region_grid().unwrap();
+    assert_eq!(grid.npoint(), 176, "Box: Error mesh 3");
+    for i in 0..grid.npoint() {
+        let p = grid.point(i);
+        assert!((p[0] - 100.0).abs() <= 50.0, "Box: Error mesh 1: {p:?}");
+        assert!((p[1] - 150.0).abs() <= 20.0, "Box: Error mesh 2: {p:?}");
+    }
+    let mesh = box1.region_mesh().unwrap();
+    assert_eq!(mesh.npoint(), 198, "Box: Error mesh 4");
+    for i in 0..mesh.npoint() {
+        let p = mesh.point(i);
+        assert!(
+            p[0] == 50.0 || p[0] == 150.0 || p[1] == 130.0 || p[1] == 170.0,
+            "Box: Error mesh 5: {p:?}"
+        );
+    }
+
+    let map = fs.mapping(FrameRef::Base, FrameRef::Current).unwrap();
+    let reg1 = box1.map_region(map.as_ref(), fs.current()).unwrap();
+    assert!(
+        !has_frameset(&any_region(reg1.as_ref())),
+        "Box: poly simp 1"
+    );
+    assert!(reg1.as_any().is::<Polygon>(), "Box: poly simp 2");
+}

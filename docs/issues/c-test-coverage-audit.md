@@ -32,7 +32,7 @@ A C check counts as covered when a Rust test, or an oracle case replaying C, exe
 | `testunitnormmap.c` | mostly covered |
 | `testzoommap.c` | ported, apart from the `AST__IMMUT` checks, which belong to `ast-capi` |
 | `testmapping.c` | ported, apart from a no-op `Invert` set, which a toggling `invert()` cannot express |
-| `testregions.c` | 29 of 30 functions covered; `checkBox`, the largest, remains, and `checkEllipse` Errors 15-17 are a recorded gap |
+| `testregions.c` | all 30 functions covered; `checkEllipse` Errors 15-17 are a recorded gap |
 | `testregionmasking.c` | ported (`test_region_masking.rs`) |
 | `testfitschanerrors.c` | ported (`test_fitschan_errors.rs`); one case exposes a duplicate-keyword gap in the reader |
 | `testswitchmap.c` | ported; exposed and fixed a SwitchMap cancellation gap |
@@ -45,6 +45,7 @@ A C check counts as covered when a Rust test, or an oracle case replaying C, exe
   `checkBox` and `checkConvex` tested the pointer `status` rather than `*status`, so both returned at once.
   Once they ran, `checkBox` failed on three slips in its conversion from `testregions.f`, not on the library: single-precision literals made double, `AST__BAD` used for a float mask where Fortran used `VAL__BADR`, and the Fortran arrays indexed transposed.
   With those fixed the C test passes, so `checkBox`'s values are now verified against the library.
+  The port (`test_regions_c.rs::check_box_*`) matched them with no library change.
 - **ChebyMap's PolyTran is not ported.**
   `chebymap.c` overrides `PolyTran` (installed at `chebymap.c:1039`), fitting in Chebyshev form over the Mapping's own bounding box; the port has `PolyMap::poly_tran` only.
 - **`testunitnormmap.c` Error 6b was a missing test, not a behavior gap.**
@@ -61,7 +62,6 @@ A C check counts as covered when a Rust test, or an oracle case replaying C, exe
 
 ### `testregions.c`
 
-- `checkBox` (`:801-1505`): not yet ported; it runs in C only since `f111c05c`. Generic analogues exist in `test_regions.rs` and `test_box_region.rs`, but not its sky, MapRegion, mask or mesh-count checks.
 - `checkEllipse` Errors 15-17: a recorded gap, `REGIONS_C_GAP_EXCLUDED` in `test_regions_c.rs`.
 
 ### `testchebymap.c`
