@@ -1,0 +1,173 @@
+# C test coverage audit
+
+An audit, on 2026-10-14, of every test program in `reference/starlink-ast/ast_tester/` against the Rust tests in `crates/ast-core/tests/`.
+A C check counts as covered when a Rust test, or an oracle case replaying C, exercises the same behavior; where the values differ, the entry says so.
+`testfitschan.c` was audited separately and its gaps are in [`testfitschan-coverage.md`](testfitschan-coverage.md).
+
+## Out of scope
+
+- **Plot not ported:** `testgrid.c`, `testplot3d.c`, `testplotter.c`.
+- **Channel classes not ported:** `testyamlchan.c` (YamlChan), `testxmlchan.c` (XmlChan), `teststcschan.c` (StcsChan), and `teststc.c`, whose seven functions each read STC XML through `astXmlChan` although the Stc classes themselves are ported.
+- **C threading:** `testthreads.c`.
+- **C tooling, not tests of the library:** `ast_astequal.c`, `ast_test.c`, `check_transform_oracle.c`, `compare_dumps.c`, `draw3d-subs.c`, `gen_*.c`, `normalize_fixture.c`, `plplotutil.c`, `simplify.c`, `test_bbox_values.c`, `test_oracle_util.c`, `transform_oracle_util.c`, `wcsconverter.c`.
+  The ctests these drive (`wcsconv_*`, `simplify_*`, `roundtrip_*`, `keymap_mapsz`, `transform_oracle_*`) have Rust harnesses.
+
+## Summary
+
+| C program | Verdict |
+|---|---|
+| `testaxis.c` | covered (`test_frame.rs::unit_is_simplified`) |
+| `testslamap.c` | covered (`test_slamap.rs`) |
+| `testunitnorm.c` | covered (`test_frame.rs::norm_unit_matches_the_c_library`) |
+| `testerror.c` | no Rust equivalent: the `astSetPutErr` reporter and a ShiftMap with -1 axes, which cannot be built |
+| `testpointset.c` | covered, apart from the options-string constructor and the `ID` attribute, which a plain-data PointSet does not have |
+| `testobject.c` | partial; the rest is the handle registry and creation-site tracking |
+| `testchannel.c` | partial |
+| `testcmpmap.c` | partial |
+| `testlutmap.c` | partial |
+| `testnormmap.c` | partial |
+| `testrate.c` | partial |
+| `testratemap.c` | mostly missing |
+| `testresimp.c` | partial |
+| `testunitnormmap.c` | mostly covered; one possible behavior gap |
+| `testzoommap.c` | partial; the shared-Mapping and `AST__IMMUT` checks are `ast-capi` concerns |
+| `testmapping.c` | partial |
+| `testregions.c` | 18 of 30 functions covered, 11 partial, 1 missing; two functions never run in C |
+| `testregionmasking.c` | missing |
+| `testfitschanerrors.c` | 22 of 41 cases covered, 3 partial, 11 missing, 5 with no Rust equivalent |
+| `testswitchmap.c` | partial |
+| `testchebymap.c` | partial; its PolyTran half needs `ChebyMap::poly_tran`, which is not ported |
+| `testpolymap.c` | mostly covered |
+
+## Findings that are more than a missing test
+
+- **Two `testregions.c` functions never run in C.**
+  `checkBox` (`testregions.c:842`) and `checkConvex` (`:3050`) open with `if( status != 0 ) return;`, testing the pointer rather than `*status`, so both return at once; `:1484` and `:1494` have the same slip.
+  None of `checkBox`'s checks has ever executed, so its expected values are unverified against the C library.
+- **ChebyMap's PolyTran is not ported.**
+  `chebymap.c` overrides `PolyTran` (installed at `chebymap.c:1039`), fitting in Chebyshev form over the Mapping's own bounding box; the port has `PolyMap::poly_tran` only.
+- **`testunitnormmap.c` Error 6b may be a behavior gap.**
+  Transforming the centre itself gives BAD unit components and a zero norm, and C requires the inverse to give the centre back (`testunitnormmap.c:186-187`).
+  The Rust tests check zero norm and BAD components separately, and `inverse_bad_component` makes a BAD component give a BAD output, so the combination is unpinned.
+- **`testselfsimplifyafterset` is constructible.**
+  `test_mapping.rs` and the tracker say it is not, but `ZoomMap::set_zoom` and `PcdMap::set_disc` now exist.
+
+## Gaps by program
+
+### `testchannel.c`
+
+- Err 1-6 (`:54-93`): a default SkyFrame written through `SinkFile`, read back, and compared with `astEqual`, twice; `test_channel.rs::round_trip_skyframe_via_file` checks only `naxes` and System.
+- Err 0/-1 (`astTuneC("hrdel")`) and Err 7 (one Channel with both `SinkFile` and `SourceFile`) have no Rust equivalent.
+
+### `testcmpmap.c`
+
+- Err 1-6 (`:45-63`): `map_split` of inputs [3,6,4] of a CmpMap nesting UnitMap, ZoomMap and a diagonal MatrixMap gives Nin=3, Nout=3 and outputs [3,4,6].
+- Err 7-13 (`:66-92`): `splittest1.ast` split on [1] gives no Mapping, and on [1,4,2] a 3-in 3-out Mapping whose transform of (1,8,2) equals outputs 1, 2 and 4 of the full Mapping at (1,2,4,8).
+
+### `testlutmap.c`
+
+- Err 3-6 (`:54-66`): table [0,0,1,…,8], start -1, increment 1; forward at -2, -1 and -0.5 gives 0, the inverse of 0 is BAD, and 0.5, 3, 8 and 8.5 round-trip.
+- Err 7-12 (`:68-84`): the same table with element 4 BAD; forward at 3 is BAD, the inverse of 3 is BAD, and 0.5, 8 and 8.5 round-trip.
+  The oracle case `increasing_bad_runs_linear` gives BAD for every inverse value before the last bad run, which looks inconsistent with C's Err 12; record this table from C before porting.
+
+### `testnormmap.c`
+
+- Err 1-4 (`:27-38`): a NormMap on a 3-axis CmpFrame(SpecFrame, SkyFrame) permuted [3,1,2].
+- Err 5 (`:41-44`): that NormMap followed by its inverse simplifies to a UnitMap.
+- Err 6-8 (`:46-53`): (2.0, 3e4, 1.0) transforms to (π−2, 3e4, 1+π) to 1e-6, a latitude past the pole normalized across the permuted CmpFrame.
+- Err 9 (`:56-60`): four copies in nested series CmpMaps simplify to one NormMap.
+
+### `testobject.c`
+
+- `TestCheckToString` (`:20-57`): the FrameSet from `astConvert(Frame[Domain=SKY], SkyFrame)` written to a string, read back, written again identically, and equal to the original.
+
+### `testrate.c`
+
+- Err 5, 6, 602, 603 (`:43-49`): the rate of a unit MatrixMap and its inverse is 1 on the diagonal and 0 off it.
+- Err 15-18 (`:68-76`): the rate of the inverse of [[1.2,1.6],[-1.6,2.2]] is 0.423076923, 0.230769231, -0.307692308 and 0.307692308.
+- Err 34-44 (`:102-114`): the rate of an asymmetric PermMap (inperm [1,2], outperm [2,1]), forward and inverted.
+- Err 46-54 (`:116-137`): the rate of a TranMap of a WinMap and that full MatrixMap, forward and inverted.
+- Err 55-70 (`:139-179`): the rate at (1,2,3,4) of a CmpMap of ShiftMap, MatrixMap [[1,2],[-2,3]], PermMap [3,4,1,2] and an inverted ZoomMap(4, 0.25); forward (1,3)=0.25, (1,4)=0.5, (3,1)=0.25, inverted (1,3)=4, (3,1)=12/7, (3,2)=-8/7, all others 0.
+
+### `testratemap.c`
+
+- Err 1, 4-18 (`:30-124`): RateMaps of the `testrate.c` Err 55-70 CmpMap, with the same expected values.
+
+### `testresimp.c`
+
+- Err 4-8 (`:52-76`): a CmpMap whose ZoomMap has `AllowSimplify`, followed by its inverse, simplifies to a UnitMap unrestricted, and under a restricted simplify to a ShiftMap followed by an inverted ShiftMap.
+- Err 9-10 (`:81-95`): an unrestricted simplify of Shift(1), Zoom(2), Shift(-2) gives a ZoomMap of 2.0; only the restricted variant is in the corpus (`cap_zoommap_01`).
+
+### `testunitnormmap.c`
+
+- Err 5 (`:176`): `IsLinear` is false.
+- Err 6b (`:186-187`): see above.
+- `testsimplify` (`:89-155`): seven combinations with centres (2,-1,0) and (-1,6,4) and a shift of (3,7,-9) give ShiftMap, UnitNormMap, UnitNormMap, CmpMap, UnitNormMap, UnitNormMap and CmpMap; only the fifth is an exact fixture (`cap_unitnormmap_01`).
+
+### `testzoommap.c`
+
+- Err 1-2 (`:28-33`): `ZoomMap(1, -1.0)` tests Zoom as set and reads back -1.0.
+- Err 5-6 (`:42-47`): after setting Zoom to 2.5 it tests as set and reads 2.5.
+
+### `testmapping.c`
+
+- Err 0-1 (`:583-597`): `linear_approx` of the PolyMap out1 = 1+2x, out2 = 1+3y over [-1,1]² with tolerance 0.001 gives [1, 1, 2, 0, 0, 3].
+- Err 2-3 (`:599-610`): with coefficient 12 BAD, the fit succeeds with elements 1, 4 and 5 BAD.
+- Err 4 (`:612-615`): adding a 3y² term makes `linear_approx` refuse.
+- Err 8 (`:655-659`): PermMap equality with a referenced constant (5.0 in both) and a differing unreferenced one (7 against 9).
+- `testselfsimplifyafterset` (`:516-561`): a simplified ZoomMap set to Zoom 1.0 re-simplifies to a UnitMap, and a simplified PcdMap set to Disco 0 likewise.
+- `testwcsmapequal` (`:494-514`): `test_equal_oracle.rs` compares one direction; C also checks the reverse for cases 1 and 3.
+
+### `testregions.c`
+
+- `checkPolygonMaskLargeLobe` (`:3210-3302`), missing: an ICRS Polygon wound so its interior is the large lobe, masked over a 21×21 grid, sets all 441 pixels.
+- `checkInterval` (`:168-666`): InternalUnit on a SkyFrame + SpecFrame(Angstrom) CmpFrame; 3-D CmpFrame Intervals with BAD, reversed and one-sided limits, closed and negated; overlap codes 1-10 for half-unbounded Intervals; MapRegion through PermMaps with constants giving an Interval or NullRegion.
+- `checkPolygon` (`:667-800`): a sky Polygon closed, open and negated; whether a FrameSet is held before and after System=FK5 and after simplify; a polar Polygon's bounds, disc, and a Prism with an Interval keeping them after simplify.
+- `checkCircle` (`:2049-2345`): disc AA5-7, mesh counts 200 and 201 and mesh distances, Galactic simplify with and without a FrameSet, overlaps 10-16 on C's circles, pole bounds 16a-d, a different-Domain overlap, and a 4-D CmpFrame self-overlap.
+- `checkEllipse` (`:2346-2603`): an Ellipse in a permuted FK4 + wavelength CmpFrame, FITS TAN pole bounds, membership on both axes, overlaps 5-14, a MatrixMap round trip, and RA-wrap overlaps 20-22.
+- `checkPrism` (`:2869-2957`): an FK5 Box × SpecFrame Interval simplifying to a Box, overlap with a negated copy, Closed=0 overlaps, half-open wavelength Intervals in Galactic and frequency, and pole Box bounds.
+- `checkCmpRegion` (`:2682-2834`): an FK5 Box with a Galactic Circle under AND and OR, its disc, overlap through `astConvert` and MapRegion, and A OR ¬A and A AND ¬A simplifying to a negated and a plain NullRegion.
+- `checkNullRegion` (`:2604-2681`): FK4 to ICRS simplify without a FrameSet; `astMask8D` on a negated NullRegion (no change) and a plain one (25 pixels set BAD).
+- `checkPointList` (`:1940-2048`): a SpecFrame PointList overlapping itself (5) and its negation (6); MapRegion through y=x² and simplify; `astMaskI` through a WinMap.
+- `checkRemoveRegions` (`:2958-3015`): tests 4-9, `astConvert` to a Region giving a clipping FrameSet that `remove_regions` then unclips.
+- `checkBoxTransformAfterBounds` (`:3174-3192`): the bounds of a zero-width Box stay at 5, and are taken before the transform.
+- `checkBox` (`:801-1505`): never run in C (see above); generic analogues exist, but none of its sky, MapRegion, mask or mesh-count checks.
+
+### `testregionmasking.c`
+
+- `checkCurvature` (`:323-486`): an ICRS Polygon masked through CAR and TAN FrameSets against a per-pixel ground truth; on CAR the mask matches with `SimpVertices=0` and differs with the default, and on TAN both match.
+
+### `testfitschanerrors.c`
+
+Missing:
+
+- `tnx-unsupported` (`:196`) and `zpx-unsupported` (`:217`): the "unsupported IRAF" warnings from WAT cards.
+- `aips-reject-ait-nonorigin` (`:240`), `aips-reject-wave` (`:263`), `aips++-reject-wave` (`:284`): FITS-AIPS or FITS-AIPS++ writes nothing where FITS-WCS writes.
+- `error-cdelt-zero` (`:373`): CDELT1=0 on RA---TAN still reads.
+- `error-mixed-celestial` (`:417`), `error-duplicate-lat` (`:460`), `error-unknown-lat-projection` (`:496`), `error-unknown-spectral-algorithm` (`:539`): each gives AST__BDFTS.
+- `tab-missing-axis` (`:879-929`): a 3-D COORDS column with only PV1_3 gives AST__BADTAB.
+
+Partial:
+
+- `error-duplicate-lon` (`:403`): the Rust case pairs RA with GLON, C pairs RA with RA.
+- `badkeyname-nonprint` (`:489`): the non-printing-character branch.
+- `aips-reject-pixel-shear` (`:353`): a non-celestial CD shear, which takes a different path from the celestial one tested.
+
+No Rust equivalent: bad Encoding and AltAxes strings (AST__BADAT), and setting or clearing the read-only Ncard and AllWarnings (AST__NOWRT).
+
+### `testswitchmap.c`
+
+- Inverse transforms through MathMap `qif` inverse selectors: section 1 Err 9-24, section 2 Err 109-123, section 3 Err 140-147.
+- Section 2 forward, Err 101-108, with a MathMap `qif` forward selector.
+- Section 3 rates, Err 151-154.
+- Partial: section 1 forward 1-8 and section 3 forward 132-139 on C's routes, rates 28-31 and 128-131, and the no-change simplify of "ast_equal 1-3".
+
+### `testchebymap.c`
+
+- Needing `ChebyMap::poly_tran`: Err 5-8, 102-109, 11-20, 29-36 and 501-506.
+- Partial: the exact sum 1.5·T0 − T2 + 2·T3 + 1.3·T4 (Err 0-3), C's coefficient sets evaluated (Err 10, 101), and the inverse domain through MapBox for a forward-only map (Err 21-28).
+
+### `testpolymap.c`
+
+- PolyTran round trips 1-7 (`:77-171`) and the IterInverse round trips on the fitted maps, with C's maps and ranges.
+- Err 8007-8015: IterInverse and TranForward after `astInvert`.
