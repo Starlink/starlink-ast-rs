@@ -49,6 +49,15 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
          diagnosed -TAB write difference has a home",
     ),
     (
+        "test_regions_c.rs",
+        "REGIONS_C_GAP_EXCLUDED",
+        1,
+        "checkEllipse Errors 15-17: an Ellipse mapped through a full MatrixMap \
+         and back. C keeps an unrotated Box uncertainty; the port carries the \
+         rotation and fails mapping back. region_gaps_still_differ fails when \
+         it closes",
+    ),
+    (
         "test_fitschan_errors.rs",
         "FITSCHAN_ERRORS_EXCLUDED",
         3,

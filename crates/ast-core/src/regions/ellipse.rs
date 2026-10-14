@@ -232,9 +232,16 @@ pub struct Ellipse {
 pub struct EllipseBuilder {
     frame: DynFrame,
     centre: Vec<f64>,
-    semi_axes: [f64; 2],
-    angle: f64,
+    shape: EllipseShape,
     uncertainty: Option<DynRegion>,
+}
+
+/// How an [`EllipseBuilder`] was given the Ellipse: `astEllipse`'s two forms.
+enum EllipseShape {
+    /// Form 1: the semi-axis lengths and the orientation.
+    Axes { semi_axes: [f64; 2], angle: f64 },
+    /// Form 0: the end of the primary axis and another boundary point.
+    Points { point1: Vec<f64>, point2: Vec<f64> },
 }
 
 impl EllipseBuilder {
@@ -280,8 +287,53 @@ impl EllipseBuilder {
         Ok(EllipseBuilder {
             frame,
             centre,
-            semi_axes,
-            angle,
+            shape: EllipseShape::Axes { semi_axes, angle },
+            uncertainty: None,
+        })
+    }
+
+    /// Create a builder for an Ellipse given by three points, as
+    /// `astEllipse` takes them with `form = 0`: the centre, the end of the
+    /// primary axis (`point1`) and any other point on the boundary
+    /// (`point2`). They are stored as given, and three points that do not
+    /// determine an ellipse are an error when the Ellipse is first used, as
+    /// in C.
+    pub fn from_points(
+        frame: impl Frame + 'static,
+        centre: Vec<f64>,
+        point1: Vec<f64>,
+        point2: Vec<f64>,
+    ) -> AstResult<Self> {
+        Self::from_dyn_points(Box::new(frame), centre, point1, point2)
+    }
+
+    /// [`EllipseBuilder::from_points`] from a boxed (dynamic) frame.
+    pub fn from_dyn_points(
+        frame: DynFrame,
+        centre: Vec<f64>,
+        point1: Vec<f64>,
+        point2: Vec<f64>,
+    ) -> AstResult<Self> {
+        check_naxes(frame.as_ref())?;
+        for (p, what) in [
+            (&centre, "centre"),
+            (&point1, "point 1"),
+            (&point2, "point 2"),
+        ] {
+            if p.len() != 2 {
+                return Err(AstError::new(
+                    ErrorCode::Naxin,
+                    format!(
+                        "Ellipse {what} has {} coordinates but frame has 2 axes",
+                        p.len()
+                    ),
+                ));
+            }
+        }
+        Ok(EllipseBuilder {
+            frame,
+            centre,
+            shape: EllipseShape::Points { point1, point2 },
             uncertainty: None,
         })
     }
@@ -297,7 +349,14 @@ impl EllipseBuilder {
     /// secondary axis `b` from it a quarter turn further, each placed with
     /// the Frame's `offset2`, so on the sky they are along great circles.
     pub fn build(self) -> AstResult<Ellipse> {
-        let mut region = Ellipse::from_axes(self.frame, self.centre, self.semi_axes, self.angle)?;
+        let mut region = match self.shape {
+            EllipseShape::Axes { semi_axes, angle } => {
+                Ellipse::from_axes(self.frame, self.centre, semi_axes, angle)?
+            }
+            EllipseShape::Points { point1, point2 } => {
+                Ellipse::from_defining_points(self.frame, self.centre, point1, point2, None)?
+            }
+        };
 
         // astSetUnc, as C's constructor calls it (region.c:13372).
         if let Some(unc) = self.uncertainty {

@@ -6,6 +6,10 @@
 //! `docs/issues/c-test-coverage-audit.md`. Each test here follows its C
 //! function's sequence, with the C error text in its assertion messages.
 
+// The expected values are C's own literals, some of which approximate pi/2
+// and 2*pi to the digits C wrote.
+#![allow(clippy::approx_constant)]
+
 use ast_core::constants::BAD_VALUE;
 use ast_core::coords::PointSet;
 use ast_core::frames::{BasicFrameBuilder, SkyFrame, SkySystem};
@@ -722,9 +726,6 @@ fn check_cmp_region() {
     );
 }
 
-// The expected values are C's own literals, some of which approximate pi/2
-// and 2*pi to the digits C wrote.
-#[allow(clippy::approx_constant)]
 /// `checkCircle`: Circles in the SkyFrame of a TAN header (bounds, disc,
 /// boundary and interior meshes, membership near the edge, a change of
 /// system and its FrameSet, overlaps, pole bounds), in a Frame of another
@@ -945,4 +946,248 @@ fn check_circle() {
     cir1.clear_closed();
     let cir2 = edge_circle(&f, &[2.000004, 0.0, 0.0], &[2.000004, 1.0, 0.0], Some(&unc));
     assert_eq!(overlap(&cir1, &cir2), 1, "Sphere: Error 18");
+}
+
+/// `checkEllipse`: an Ellipse in a permuted FK4 longitude + wavelength
+/// CmpFrame; Ellipses in the SkyFrame of a TAN header at the pole (bounds,
+/// membership either side of both axes, a change of system, overlaps with
+/// copies shifted in pixel coordinates); mapping through a MatrixMap and
+/// back; a circular Ellipse simplifying to a Circle; and overlaps across
+/// RA = 0. C's form 0 (three defining points) is `EllipseBuilder::from_points`.
+#[test]
+fn check_ellipse() {
+    use ast_core::AnyObject;
+    use ast_core::channel::Channel;
+    use ast_core::fitschan::FitsChan;
+    use ast_core::frames::{CmpFrame, Frame, FrameRef, SpecFrame, SpecSystem, pick_axes};
+    use ast_core::regions::{BoxRegion, Circle, CircleBuilder, Ellipse, EllipseBuilder};
+
+    let near = |a: f64, b: f64, t: f64| (a - b).abs() <= t;
+    let form0 = |f: &dyn Frame,
+                 c: [f64; 2],
+                 p: [f64; 2],
+                 q: [f64; 2],
+                 unc: Option<&BoxRegion>|
+     -> Ellipse {
+        let mut b =
+            EllipseBuilder::from_dyn_points(f.snapshot(), c.to_vec(), p.to_vec(), q.to_vec())
+                .unwrap();
+        if let Some(u) = unc {
+            b = b.uncertainty(Box::new(u.clone()));
+        }
+        b.build().unwrap()
+    };
+    let form1 = |f: &dyn Frame, c: [f64; 2], axes: [f64; 2], angle: f64| -> Ellipse {
+        EllipseBuilder::from_dyn(f.snapshot(), c.to_vec(), axes, angle)
+            .unwrap()
+            .build()
+            .unwrap()
+    };
+    let tran2 = |m: &dyn Mapping, pts: &[[f64; 2]], forward: bool| -> Vec<[f64; 2]> {
+        let out = m
+            .transform(&PointSet::from_rows(pts.to_vec()), forward)
+            .unwrap();
+        (0..pts.len())
+            .map(|i| [out.point(i)[0], out.point(i)[1]])
+            .collect()
+    };
+    fn unc_box<F: Frame + Clone + 'static>(f: &F) -> BoxRegion {
+        BoxRegionBuilder::from_bounds(f.clone(), &[-1.0e-7, -1.0e-7], &[1.0e-7, 1.0e-7])
+            .unwrap()
+            .build()
+            .unwrap()
+    }
+    let as2 = |v: Vec<f64>| [v[0], v[1]];
+
+    // An Ellipse in a permuted CmpFrame of an FK4 longitude and a wavelength.
+    let (picked, _) = pick_axes(&SkyFrame::new(SkySystem::Fk4), &[1]).unwrap();
+    let mut spec = SpecFrame::new(SpecSystem::Wavelen);
+    spec.set_unit(1, "um").unwrap();
+    let mut f3 = CmpFrame::new(picked, Box::new(spec));
+    f3.perm_axes(&[2, 1]).unwrap();
+    let ell1 = form0(&f3, [0.0, 0.0], [0.001, 0.001], [-0.001, 0.001], None);
+    let pts = [
+        [0.0, 0.00141421],
+        [0.0, 0.00141422],
+        [-0.000999, 0.0009999],
+        [-0.001001, 0.001001],
+    ];
+    let out = tran2(&ell1, &pts, true);
+    assert_eq!(out[0], pts[0], "Ellipse: Cmp 1-2");
+    assert_eq!(out[1], [BAD_VALUE; 2], "Ellipse: Cmp 3-4");
+    assert_eq!(out[2], pts[2], "Ellipse: Cmp 5-6");
+    assert_eq!(out[3], [BAD_VALUE; 2], "Ellipse: Cmp 7-8");
+    check_dump(
+        &ell1,
+        &AnyObject::Ellipse(ell1.clone()),
+        "checkdump ell1 cmp",
+    );
+    let ell2 = (&ell1 as &dyn Mapping).simplify().unwrap();
+    let ell2 = AnyObject::from_mapping(ell2.as_ref()).unwrap();
+    check_dump(ell2.as_region().unwrap(), &ell2, "checkdump ell2 cmp");
+    assert_eq!(
+        overlap(&ell1, ell2.as_region().unwrap()),
+        5,
+        "ellipse: Error 5 cmp"
+    );
+
+    // Ellipses in the SkyFrame of a TAN header at the pole.
+    let header = "NAXIS1  = 300\nNAXIS2  = 300\nCTYPE1  = 'RA---TAN'\nCTYPE2  = 'DEC--TAN'\n\
+                  CRPIX1  = 100\nCRPIX2  = 100\nCRVAL1  = 0.0\nCRVAL2  = 90.0\nCDELT1  = 0.6\nCDELT2  = 0.6\n";
+    let Some(AnyObject::FrameSet(fs)) = FitsChan::from_header(header).unwrap().read().unwrap()
+    else {
+        panic!("the header did not read as a FrameSet");
+    };
+    let sky_frame = fs
+        .current()
+        .as_any()
+        .downcast_ref::<SkyFrame>()
+        .unwrap()
+        .clone();
+    let sky = fs.current().snapshot();
+    let (p1, p2, p3) = (
+        [1.2217305, 1.570796],
+        [0.9, 1.470796],
+        [2.9217305, 1.370796],
+    );
+    let ell1 = form0(sky.as_ref(), p1, p2, p3, None);
+    check_dump(&ell1, &AnyObject::Ellipse(ell1.clone()), "checkdump ell1");
+    let (lb, ub) = ell1.get_region_bounds().unwrap();
+    assert!(lb[0].abs() <= 1e-10, "Error b1: {lb:?}");
+    assert!(near(lb[1], 1.19059777, 1e-6), "Error b2: {lb:?}");
+    assert!(near(ub[0], 6.28318531, 1e-6), "Error b3: {ub:?}");
+    assert!(near(ub[1], 1.57079633, 1e-6), "Error b4: {ub:?}");
+    for (toward, label) in [(p2, "Errors 1-4"), (p3, "Errors 1c-4c")] {
+        let rad = Frame::distance(&ell1, &p1, &toward).unwrap();
+        for (sign, suffix) in [(1.0, ""), (-1.0, " (opposite)")] {
+            let inside = as2(sky.offset(&p1, &toward, sign * rad * 0.999).unwrap());
+            let outside = as2(sky.offset(&p1, &toward, sign * rad * 1.001).unwrap());
+            let out = tran2(&ell1, &[inside, outside], true);
+            assert_eq!(out[0], inside, "Ellipse: {label}{suffix} inside");
+            assert_eq!(out[1], [BAD_VALUE; 2], "Ellipse: {label}{suffix} outside");
+        }
+    }
+    let mut ell2 = ell1.clone();
+    assert_eq!(overlap(&ell1, &ell2), 5, "ellipse: Error 5");
+    assert_eq!(overlap(&ell2, &ell1), 5, "ellipse: Error 6");
+    ell2.with_integrity(|f| {
+        f.as_any_mut()
+            .downcast_mut::<SkyFrame>()
+            .unwrap()
+            .set_system(SkySystem::Galactic);
+        Ok(())
+    })
+    .unwrap();
+    assert_eq!(overlap(&ell1, &ell2), 5, "ellipse: Error 7");
+    assert_eq!(overlap(&ell2, &ell1), 5, "ellipse: Error 8");
+
+    // Copies shifted in pixel coordinates by 1.95 and 2.05 times the
+    // primary semi-axis.
+    let q = tran2(&fs, &[p1, p2, p3], false);
+    let grid = fs.frame(FrameRef::Base).unwrap().snapshot();
+    let rad = grid.distance(&q[0], &q[1]).unwrap();
+    // C measures the 2.05 shift with `frm1` already reassigned to the current
+    // (sky) Frame, so that offset is taken in the SkyFrame.
+    for (factor, offset_frame, want, err) in
+        [(1.95, grid.as_ref(), 4, 9), (2.05, sky.as_ref(), 1, 11)]
+    {
+        let q1b = as2(offset_frame.offset(&q[0], &q[1], rad * factor).unwrap());
+        let d = [q1b[0] - q[0][0], q1b[1] - q[0][1]];
+        let shifted = [
+            q1b,
+            [q[1][0] + d[0], q[1][1] + d[1]],
+            [q[2][0] + d[0], q[2][1] + d[1]],
+        ];
+        let pb = tran2(&fs, &shifted, true);
+        let unc = unc_box(&sky_frame);
+        let ell2 = form0(sky.as_ref(), pb[0], pb[1], pb[2], Some(&unc));
+        assert_eq!(overlap(&ell2, &ell1), want, "ellipse: Error {err}");
+        assert_eq!(overlap(&ell1, &ell2), want, "ellipse: Error {}", err + 1);
+    }
+    let unc = unc_box(&sky_frame);
+    let p2b = [p2[0], 0.9 * p2[1] + 0.1 * p1[1]];
+    let p3b = [p3[0], 0.9 * p3[1] + 0.1 * p1[1]];
+    let ell2 = form0(sky.as_ref(), p1, p2b, p3b, Some(&unc));
+    assert_eq!(overlap(&ell2, &ell1), 2, "ellipse: Error 13");
+    assert_eq!(overlap(&ell1, &ell2), 3, "ellipse: Error 14");
+
+    // Through a MatrixMap and back (Errors 15-17): REGIONS_C_GAP_EXCLUDED.
+    let f = frame2();
+    let unc = unc_box(&f);
+
+    // A circular Ellipse simplifies to a Circle.
+    let ell1 = form0(&f, [0.0, 0.0], [1.0, 0.0], [0.0, 1.0], Some(&unc));
+    let reg = (&ell1 as &dyn Mapping).simplify().unwrap();
+    assert!(reg.as_ref().as_any().is::<Circle>(), "ellipse: Error 18");
+    let cir = CircleBuilder::new(f.clone(), vec![0.0, 0.0])
+        .unwrap()
+        .edge_point(vec![1.0, 0.0])
+        .build()
+        .unwrap();
+    let reg = AnyObject::from_mapping(reg.as_ref()).unwrap();
+    assert_eq!(
+        overlap(reg.as_region().unwrap(), &cir),
+        5,
+        "Ellipse: Error 19"
+    );
+
+    // Across RA = 0.
+    let sf = SkyFrame::new(SkySystem::Icrs);
+    let ell1 = form1(&sf, [0.0, 0.0], [0.01, 0.01], 0.0);
+    let ell2 = form1(&sf, [-0.015, 0.0], [0.01, 0.01], 0.0);
+    assert_eq!(overlap(&ell1, &ell2), 4, "Ellipse: Error 20");
+    let ell2 = form1(&sf, [6.2681853, 0.0], [0.01, 0.01], 0.0);
+    assert_eq!(overlap(&ell1, &ell2), 4, "Ellipse: Error 21");
+    let ell1 = form1(&sf, [-0.015, 0.0], [0.01, 0.01], 0.0);
+    assert_eq!(overlap(&ell1, &ell2), 5, "Ellipse: Error 22");
+}
+
+/// Checks of `testregions.c` the port does not match yet, each with what is
+/// known of the gap. `region_gaps_still_differ` fails when one closes.
+const REGIONS_C_GAP_EXCLUDED: &[(&str, &str)] = &[(
+    "checkEllipse Errors 15-17",
+    "an Ellipse with a Box uncertainty mapped through a full MatrixMap and \
+     back. C's mapped Ellipse carries an unrotated Box uncertainty (astGetUnc \
+     gives bounds of +/-1e-7) and maps back to an equal Ellipse; the port's \
+     carries the Box with the rotation in its FrameSet, and mapping back fails \
+     when the uncertainty simplifies to a Polygon, which has no centre to \
+     re-centre for the stability check. C's Ellipse Simplify makes the new \
+     Ellipse with astEllipse, whose SetUnc maps the uncertainty into the new \
+     base Frame; the port's best_ellipse stores it directly \
+     (Ellipse::from_defining_points). Not yet traced to the end",
+)];
+
+/// The `checkEllipse` MatrixMap round trip, which differs from C: see
+/// [`REGIONS_C_GAP_EXCLUDED`].
+fn ellipse_matrixmap_round_trip() -> ast_core::error::AstResult<i32> {
+    use ast_core::mappings::MatrixMap;
+    use ast_core::regions::EllipseBuilder;
+    use ndarray::array;
+    let f = frame2();
+    let unc = BoxRegionBuilder::from_bounds(f.clone(), &[-1.0e-7, -1.0e-7], &[1.0e-7, 1.0e-7])?
+        .build()?;
+    let ell1 =
+        EllipseBuilder::from_points(f.clone(), vec![0.0, 0.0], vec![1.0, 0.0], vec![0.0, 0.5])?
+            .uncertainty(Box::new(unc))
+            .build()?;
+    let mut mm = MatrixMap::new(array![[1.73, 0.5003], [-1.0006, 0.866]])?;
+    let ell2 = ell1.map_region(&mm, &f)?;
+    mm.invert();
+    let ell3 = ell2.map_region(&mm, &f)?;
+    Ok(overlap(&ell1, ell3.as_ref()))
+}
+
+#[test]
+fn region_gaps_still_differ() {
+    for (name, reason) in REGIONS_C_GAP_EXCLUDED {
+        let matches_c = match *name {
+            "checkEllipse Errors 15-17" => matches!(ellipse_matrixmap_round_trip(), Ok(5)),
+            _ => panic!("no check for {name}"),
+        };
+        assert!(
+            !matches_c,
+            "{name} now matches C; port the check and remove it from \
+             REGIONS_C_GAP_EXCLUDED. Reason on record: {reason}"
+        );
+    }
 }
