@@ -16,7 +16,7 @@ inverted SwitchMap is normalised to a forward one and nothing else happens on
 that pass, and only a forward one has its encapsulated Mappings simplified.
 
 `SwitchMap::map_merge` (`switchmap.rs:734-778 (fn map_merge)`) holds both parts in C's order:
-`default_map_merge` for the neighbour cancellation, then the either/or, whose
+`merge_with_neighbour` (`switchmap.rs:922-948 (fn merge_with_neighbour)`) for the neighbour cancellation, then the either/or, whose
 second arm calls `SwitchMap::reduced_children` (`switchmap.rs:369-410 (fn reduced_children)`).
 
 | # | C step | C site | Rust site | extension point | verdict |
@@ -25,13 +25,13 @@ second arm calls `SwitchMap::reduced_children` (`switchmap.rs:369-410 (fn reduce
 | 2 | Check the inherited status and bail out | switchmap.c:958-959 (fn MapMerge) | -- | architecture | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 3 | Get a typed pointer to this SwitchMap and the route Mapping count | switchmap.c:961-964 (fn MapMerge) | -- | ceremony | n/a: the Rust method already has `&self` |
 | 4 | Temporarily restore every encapsulated Mapping's Invert flag to its construction value | switchmap.c:965-991 (fn MapMerge) | switchmap.rs:27-50 (fn simplify_child_with_invert), switchmap.rs:380-389 (fn reduced_children) | architecture | ported |
-| 5 | Merge with a neighbouring SwitchMap, in series only | switchmap.c:992-996 (fn MapMerge) | switchmap.rs:745-747 (fn map_merge) | architecture | ported |
-| 6 | Check the higher neighbour first, noting the lower index of the pair | switchmap.c:997-1003 (fn MapMerge) | mappings/simplify.rs:1371-1380 (fn default_map_merge) | architecture | ported |
-| 7 | Failing that, check the lower neighbour the same way | switchmap.c:1004-1014 (fn MapMerge) | mappings/simplify.rs:1384-1393 (fn default_map_merge) | architecture | ported |
-| 8 | Cancel the pair only if the two SwitchMaps are equal with opposite invert flags | switchmap.c:1015-1023 (fn MapMerge) | switchmap.rs:791-832 (fn try_merge) | architecture | ported |
-| 9 | Replace the first of the pair with a UnitMap and set its invert flag | switchmap.c:1024-1031 (fn MapMerge) | switchmap.rs:834 (fn try_merge) | architecture | ported |
-| 10 | Annul the second and shuffle the rest down, clearing the vacated slot | switchmap.c:1032-1043 (fn MapMerge) | mappings/simplify.rs:1446-1452 (fn default_map_merge) | architecture | ported |
-| 11 | Decrement the Mapping count and return the index of the first modified element | switchmap.c:1044-1051 (fn MapMerge) | mappings/simplify.rs:1452-1454 (fn default_map_merge) | architecture | ported |
+| 5 | Merge with a neighbouring SwitchMap, in series only | switchmap.c:992-996 (fn MapMerge) | switchmap.rs:745 (fn map_merge) | architecture | ported |
+| 6 | Check the higher neighbour first, noting the lower index of the pair | switchmap.c:997-1003 (fn MapMerge) | switchmap.rs:923-925 (fn merge_with_neighbour) | architecture | ported |
+| 7 | Failing that, check the lower neighbour the same way | switchmap.c:1004-1014 (fn MapMerge) | switchmap.rs:926-930 (fn merge_with_neighbour) | architecture | ported |
+| 8 | Cancel the pair only if the SwitchMap equals the inverted neighbour, each with its own Invert attribute | switchmap.c:1015-1023 (fn MapMerge) | switchmap.rs:931-944 (fn merge_with_neighbour) | architecture | ported |
+| 9 | Replace the first of the pair with a UnitMap and set its invert flag | switchmap.c:1024-1031 (fn MapMerge) | switchmap.rs:945-946 (fn merge_with_neighbour) | architecture | ported |
+| 10 | Annul the second and shuffle the rest down, clearing the vacated slot | switchmap.c:1032-1043 (fn MapMerge) | switchmap.rs:946 (fn merge_with_neighbour) | architecture | ported |
+| 11 | Decrement the Mapping count and return the index of the first modified element | switchmap.c:1044-1051 (fn MapMerge) | switchmap.rs:947 (fn merge_with_neighbour) | architecture | ported |
 | 12 | Attempt to simplify the SwitchMap on its own, only if no change was made above | switchmap.c:1052-1056 (fn MapMerge) | switchmap.rs:745-747 (fn map_merge) | architecture | ported |
 | 13 | If the SwitchMap is inverted, replace it with an equal forward one by swapping the selectors and inverting the route Mappings, and stop there | switchmap.c:1057-1076 (fn MapMerge) | switchmap.rs:758-766 (fn map_merge), switchmap.rs:259-279 (fn normalize_inverted) | architecture | ported |
 | 14 | Otherwise try to simplify each encapsulated Mapping, noting whether anything changed | switchmap.c:1077-1091 (fn MapMerge) | switchmap.rs:369-390 (fn reduced_children) | architecture | ported |

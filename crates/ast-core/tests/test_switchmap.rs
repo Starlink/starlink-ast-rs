@@ -214,3 +214,256 @@ fn switchmap_serialization_roundtrip() {
         assert_eq!(out1.point(i)[0], out2.point(i)[0]);
     }
 }
+
+// ---------------------------------------------------------------------------
+// testswitchmap.c, one test per section
+// ---------------------------------------------------------------------------
+
+mod testswitchmap_c {
+    //! The three sections of `reference/starlink-ast/ast_tester/testswitchmap.c`.
+    //! C builds each SwitchMap, inverts it and transforms in the inverse
+    //! direction to exercise the forward transformation; the same sequence
+    //! is used here. C's later `astInvert` of a selector Mapping has no effect
+    //! on the SwitchMap, which records the selector's orientation when it is
+    //! built, so it has no counterpart.
+
+    use ast_core::channel::Channel;
+    use ast_core::constants::BAD_VALUE;
+    use ast_core::coords::PointSet;
+    use ast_core::fitschan::FitsChan;
+    use ast_core::frames::{BasicFrame, FrameRef};
+    use ast_core::mappings::{
+        CmpMap, Composition, DynMapping, Mapping, MathMap, PermMap, SelectorMapBuilder, SwitchMap,
+        UnitMap, WinMap,
+    };
+    use ast_core::regions::{BoxRegionBuilder, DynRegion};
+    use ast_core::{AnyObject, from_native_string, to_native_string};
+
+    fn win(x1: f64, x2: f64, l1: f64, l2: f64) -> WinMap {
+        WinMap::from_corners(&[x1], &[x2], &[l1], &[l2]).unwrap()
+    }
+
+    fn tran(m: &dyn Mapping, rows: &[Vec<f64>], forward: bool) -> Vec<Vec<f64>> {
+        let out = m
+            .transform(&PointSet::from_rows(rows.to_vec()), forward)
+            .unwrap();
+        (0..rows.len()).map(|i| out.point(i).to_vec()).collect()
+    }
+
+    fn close(got: f64, want: f64, tol: f64, err: u32) {
+        assert!(got != BAD_VALUE, "Error {err}: BAD");
+        assert!((got - want).abs() <= tol, "Error {err}: {got}, want {want}");
+    }
+
+    /// The checks C makes of every section after its transforms: simplifying
+    /// the SwitchMap reports no change, an inverted one simplifies to a
+    /// non-inverted one, it cancels against its inverse on either side, and
+    /// it survives a dump.
+    fn simplification_and_dump(swm: &SwitchMap, errs: [u32; 3], label: &str) {
+        // C compares the result with the SwitchMap itself: with nothing to
+        // simplify, astSimplify returns the same pointer.
+        let (_, changed) = (swm as &dyn Mapping).simplify_reporting_change().unwrap();
+        assert!(!changed, "{label}");
+        let plain = to_native_string(&AnyObject::from_mapping(swm).unwrap()).unwrap();
+
+        let mut inv = swm.clone();
+        inv.invert();
+        assert!(
+            !(&inv as &dyn Mapping).simplify().unwrap().is_inverted(),
+            "Error {}",
+            errs[0]
+        );
+
+        for (k, (a, b)) in [(inv.clone(), swm.clone()), (swm.clone(), inv.clone())]
+            .into_iter()
+            .enumerate()
+        {
+            let cm: DynMapping =
+                Box::new(CmpMap::new(Box::new(a), Box::new(b), Composition::Series).unwrap());
+            let s = cm.simplify().unwrap();
+            assert!(s.as_ref().as_any().is::<UnitMap>(), "Error {}", errs[1 + k]);
+        }
+
+        let back = from_native_string(&plain).unwrap();
+        let again = to_native_string(&back).unwrap();
+        assert_eq!(again, plain, "{label}: dump round trip");
+    }
+
+    /// Section 1: two overlapping spectra in the rows of a 2-row grid, a
+    /// PermMap forward selector reading the row number and a MathMap inverse
+    /// selector choosing a row by wavelength.
+    #[test]
+    fn section_1_two_rows() {
+        let row = |l1: f64, l2: f64, con: f64| -> DynMapping {
+            let pm = PermMap::new(&[1, -1], &[1], &[con]).unwrap();
+            Box::new(
+                CmpMap::new(
+                    Box::new(pm),
+                    Box::new(win(1.0, 101.0, l1, l2)),
+                    Composition::Series,
+                )
+                .unwrap(),
+            )
+        };
+        let fs_map = PermMap::new(&[0, 1], &[2], &[0.0]).unwrap();
+        let is_map = MathMap::new(1, 1, &["y"], &["x=qif(y>1800,2,1)"]).unwrap();
+        let mut swm = SwitchMap::new(
+            Some(Box::new(fs_map)),
+            Some(Box::new(is_map)),
+            vec![row(1000.0, 2000.0, 1.0), row(1600.0, 2700.0, 2.0)],
+        )
+        .unwrap();
+        swm.invert();
+
+        let input = [
+            vec![1.0, 1.0],
+            vec![101.0, 2.0],
+            vec![1.0, 2.0],
+            vec![101.0, 1.0],
+        ];
+        let out = tran(&swm, &input, false);
+        for (i, want) in [1000.0, 2700.0, 1600.0, 2000.0].into_iter().enumerate() {
+            close(out[i][0], want, 1.0e-5, 5 + i as u32);
+        }
+        let back = tran(&swm, &out, true);
+        let want = [(1.0, 1.0), (101.0, 2.0), (61.0, 1.0), (37.3636364, 2.0)];
+        for (i, &(x, y)) in want.iter().enumerate() {
+            close(back[i][0], x, 1.0e-5, 17 + 2 * i as u32);
+            close(back[i][1], y, 1.0e-5, 18 + 2 * i as u32);
+        }
+
+        swm.invert();
+        simplification_and_dump(&swm, [25, 26, 27], "ast_equal 1");
+
+        close(swm.rate(&[20.0, 1.0], 1, 1).unwrap(), 10.0, 1.0e-6, 28);
+        close(swm.rate(&[20.0, 2.0], 1, 1).unwrap(), 11.0, 1.0e-6, 29);
+        swm.invert();
+        close(swm.rate(&[1700.0], 1, 1).unwrap(), 0.1, 1.0e-6, 30);
+        close(swm.rate(&[1900.0], 1, 1).unwrap(), 1.0 / 11.0, 1.0e-6, 31);
+    }
+
+    /// Section 2: the two halves of a 1-D grid, with one MathMap as both
+    /// selectors: its forward picks a half by pixel and its inverse a half
+    /// by wavelength.
+    #[test]
+    fn section_2_two_halves() {
+        let sm = MathMap::new(1, 1, &["y=qif(x>101.5,2,1)"], &["x=qif(y>1800,2,1)"]).unwrap();
+        let mut swm = SwitchMap::new(
+            Some(Box::new(sm.clone())),
+            Some(Box::new(sm)),
+            vec![
+                Box::new(win(1.0, 101.0, 1000.0, 2000.0)),
+                Box::new(win(102.0, 202.0, 1600.0, 2700.0)),
+            ],
+        )
+        .unwrap();
+        swm.invert();
+
+        let input: Vec<Vec<f64>> = [1.0, 202.0, 102.0, 101.0].map(|v| vec![v]).to_vec();
+        let out = tran(&swm, &input, false);
+        for (i, want) in [1000.0, 2700.0, 1600.0, 2000.0].into_iter().enumerate() {
+            close(out[i][0], want, 1.0e-5, 105 + i as u32);
+        }
+        let back = tran(&swm, &out, true);
+        for (i, want) in [1.0, 202.0, 61.0, 138.3636364].into_iter().enumerate() {
+            close(back[i][0], want, 1.0e-5, 117 + 2 * i as u32);
+        }
+
+        swm.invert();
+        simplification_and_dump(&swm, [125, 126, 127], "ast_equal 2");
+
+        close(swm.rate(&[20.0], 1, 1).unwrap(), 10.0, 1.0e-6, 128);
+        close(swm.rate(&[120.0], 1, 1).unwrap(), 11.0, 1.0e-6, 129);
+        swm.invert();
+        close(swm.rate(&[1700.0], 1, 1).unwrap(), 0.1, 1.0e-6, 130);
+        close(swm.rate(&[1900.0], 1, 1).unwrap(), 1.0 / 11.0, 1.0e-6, 131);
+    }
+
+    /// The pixel-to-sky Mapping of a TAN header with reference pixel
+    /// `crpix1`.
+    fn tan_map(crpix1: f64) -> (DynMapping, BasicFrame) {
+        let header = format!(
+            "CRPIX1  = {crpix1}\nCRPIX2  = 45\nCRVAL1  = 45\nCRVAL2  = 89.9\n\
+             CDELT1  = -0.01\nCDELT2  = 0.01\nCTYPE1  = 'RA---TAN'\nCTYPE2  = 'DEC--TAN'\n"
+        );
+        let mut fc = FitsChan::from_header(&header).unwrap();
+        let Some(AnyObject::FrameSet(fs)) = fc.read().unwrap() else {
+            panic!("the header did not read as a FrameSet");
+        };
+        let grid = fs
+            .base()
+            .as_any()
+            .downcast_ref::<BasicFrame>()
+            .expect("the base Frame is a basic Frame")
+            .clone();
+        (fs.mapping(FrameRef::Base, FrameRef::Current).unwrap(), grid)
+    }
+
+    /// Section 3: two images of the same sky side by side in one grid, a
+    /// SelectorMap of two Boxes as the forward selector and a PermMap that
+    /// always picks the first route as the inverse selector.
+    #[test]
+    fn section_3_two_images() {
+        let (rm0, _) = tan_map(45.0);
+        let (rm1, grid) = tan_map(135.0);
+        let boxr = |lo: [f64; 2], hi: [f64; 2]| -> DynRegion {
+            Box::new(
+                BoxRegionBuilder::from_bounds(grid.clone(), &lo, &hi)
+                    .unwrap()
+                    .build()
+                    .unwrap(),
+            )
+        };
+        let selmap = SelectorMapBuilder::new(vec![
+            boxr([10.0, 10.0], [80.0, 80.0]),
+            boxr([100.0, 10.0], [170.0, 80.0]),
+        ])
+        .unwrap()
+        .build();
+        let is_perm = PermMap::new(&[-1], &[0, 0], &[1.0]).unwrap();
+        let mut swm = SwitchMap::new(
+            Some(Box::new(selmap)),
+            Some(Box::new(is_perm)),
+            vec![rm0.clone(), rm1],
+        )
+        .unwrap();
+        swm.invert();
+
+        let input = [
+            vec![5.0, 5.0],
+            vec![50.0, 50.0],
+            vec![90.0, 50.0],
+            vec![140.0, 50.0],
+        ];
+        let out = tran(&swm, &input, false);
+        let rmout = tran(rm0.as_ref(), &input, true);
+        assert_eq!(out[0], [BAD_VALUE, BAD_VALUE], "Errors 132-133");
+        assert_eq!(out[1], rmout[1], "Errors 134-135");
+        assert_eq!(out[2], [BAD_VALUE, BAD_VALUE], "Errors 136-137");
+        for k in 0..2 {
+            let tol = 1.0e-6 * rmout[1][k].abs();
+            assert!((out[3][k] - rmout[1][k]).abs() <= tol, "Error {}", 138 + k);
+        }
+
+        let back = tran(&swm, &out, true);
+        assert_eq!(back[0], [BAD_VALUE, BAD_VALUE], "Errors 140-141");
+        close(back[1][0], 50.0, 1.0e-6, 142);
+        close(back[1][1], 50.0, 1.0e-6, 143);
+        assert_eq!(back[2], [BAD_VALUE, BAD_VALUE], "Errors 144-145");
+        close(back[3][0], 50.0, 1.0e-6, 146);
+        close(back[3][1], 50.0, 1.0e-6, 147);
+
+        swm.invert();
+        simplification_and_dump(&swm, [148, 149, 150], "ast_equal 3");
+
+        for (k, (ax1, ax2)) in [(1, 1), (2, 2), (1, 2), (2, 1)].into_iter().enumerate() {
+            let r1 = swm.rate(&[140.0, 50.0], ax1, ax2).unwrap();
+            let r2 = rm0.rate(&[50.0, 50.0], ax1, ax2).unwrap();
+            assert!(
+                (r1 - r2).abs() <= (1.0e-6 * r2).abs(),
+                "Error {}: {r1} vs {r2}",
+                151 + k
+            );
+        }
+    }
+}

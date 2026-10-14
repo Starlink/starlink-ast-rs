@@ -35,7 +35,7 @@ A C check counts as covered when a Rust test, or an oracle case replaying C, exe
 | `testregions.c` | 18 of 30 functions covered, 11 partial, 1 missing; two functions never run in C |
 | `testregionmasking.c` | ported (`test_region_masking.rs`) |
 | `testfitschanerrors.c` | 22 of 41 cases covered, 3 partial, 11 missing, 5 with no Rust equivalent |
-| `testswitchmap.c` | partial |
+| `testswitchmap.c` | ported; exposed and fixed a SwitchMap cancellation gap |
 | `testchebymap.c` | partial; its PolyTran half needs `ChebyMap::poly_tran`, which is not ported |
 | `testpolymap.c` | mostly covered |
 
@@ -91,13 +91,6 @@ Partial:
 - `aips-reject-pixel-shear` (`:353`): a non-celestial CD shear, which takes a different path from the celestial one tested.
 
 No Rust equivalent: bad Encoding and AltAxes strings (AST__BADAT), and setting or clearing the read-only Ncard and AllWarnings (AST__NOWRT).
-
-### `testswitchmap.c`
-
-- Inverse transforms through MathMap `qif` inverse selectors: section 1 Err 9-24, section 2 Err 109-123, section 3 Err 140-147.
-- Section 2 forward, Err 101-108, with a MathMap `qif` forward selector.
-- Section 3 rates, Err 151-154.
-- Partial: section 1 forward 1-8 and section 3 forward 132-139 on C's routes, rates 28-31 and 128-131, and the no-change simplify of "ast_equal 1-3".
 
 ### `testchebymap.c`
 

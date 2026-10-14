@@ -742,7 +742,7 @@ impl Mapping for SwitchMap {
         // made no change (:1052-1056). The order matters: an effectively
         // inverted SwitchMap normalised first would no longer carry the opposite
         // invert flag its partner cancels against.
-        if let Some(modified) = super::simplify::default_map_merge(ctx, where_, series) {
+        if series && let Some(modified) = merge_with_neighbour(ctx, where_) {
             return Some(modified);
         }
 
@@ -775,63 +775,6 @@ impl Mapping for SwitchMap {
             return Some(where_);
         }
         None
-    }
-
-    fn try_merge(
-        &self,
-        other: &dyn Mapping,
-        series: bool,
-        self_inv: bool,
-        other_inv: bool,
-    ) -> Option<DynMapping> {
-        if !series {
-            return None;
-        }
-
-        let other_sw = other.as_any().downcast_ref::<SwitchMap>()?;
-
-        if self_inv == other_inv {
-            return None;
-        }
-
-        if self.route_maps.len() != other_sw.route_maps.len() {
-            return None;
-        }
-        let (self_fs, self_is) = if self_inv {
-            (&self.ismap, &self.fsmap)
-        } else {
-            (&self.fsmap, &self.ismap)
-        };
-        let (other_fs, other_is) = if other_inv {
-            (&other_sw.ismap, &other_sw.fsmap)
-        } else {
-            (&other_sw.fsmap, &other_sw.ismap)
-        };
-        match (self_fs, other_fs) {
-            (Some(a), Some(b)) => {
-                if !a.equal(b.as_ref()) {
-                    return None;
-                }
-            }
-            (None, None) => {}
-            _ => return None,
-        }
-        match (self_is, other_is) {
-            (Some(a), Some(b)) => {
-                if !a.equal(b.as_ref()) {
-                    return None;
-                }
-            }
-            (None, None) => {}
-            _ => return None,
-        }
-        for (a, b) in self.route_maps.iter().zip(other_sw.route_maps.iter()) {
-            if !a.equal(b.as_ref()) {
-                return None;
-            }
-        }
-
-        Some(Box::new(UnitMap::new(self.intrinsic_nin)))
     }
 
     fn clone_box(&self) -> DynMapping {
@@ -965,4 +908,41 @@ impl crate::serial::Serializable for SwitchMap {
         sw.set_has_been_simplified(base.has_been_simplified);
         Ok(sw)
     }
+}
+
+/// The neighbour half of C's SwitchMap `MapMerge` (switchmap.c:992-1051): the
+/// SwitchMap above the nominated one, or failing that the one below, is
+/// inverted and compared with the nominated SwitchMap by `astEqual`; if they
+/// are equal the pair is replaced by a UnitMap.
+///
+/// `astEqual` sees the two objects as they are, with their own Invert
+/// attributes, which C leaves untouched until the list is rebuilt
+/// (cmpmap.c:3881); in a [`MergeCtx`](super::simplify::MergeCtx) entry that is
+/// the stored orientation, not the direction the list applies it in.
+fn merge_with_neighbour(ctx: &mut super::simplify::MergeCtx, where_: usize) -> Option<usize> {
+    let is_switch = |i: usize| ctx.entry(i).0.as_ref().as_any().is::<SwitchMap>();
+    let (neb, ilo) = if where_ + 1 < ctx.len() && is_switch(where_ + 1) {
+        (where_ + 1, where_)
+    } else if where_ > 0 && is_switch(where_ - 1) {
+        (where_ - 1, where_ - 1)
+    } else {
+        return None;
+    };
+    let as_object = |i: usize| {
+        let (map, _, orig) = ctx.entry(i);
+        let mut map = map.clone();
+        if *orig {
+            map.invert();
+        }
+        map
+    };
+    let this = as_object(where_);
+    let mut swneb = as_object(neb);
+    swneb.invert();
+    if !this.equal(swneb.as_ref()) {
+        return None;
+    }
+    let nin = as_object(ilo).nin();
+    ctx.replace_range_with(ilo, ilo + 1, Box::new(UnitMap::new(nin)));
+    Some(where_)
 }
