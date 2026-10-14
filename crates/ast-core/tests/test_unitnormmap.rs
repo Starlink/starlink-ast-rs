@@ -552,7 +552,8 @@ fn c_testsimplify() {
     };
     let (winmap1, winmap2) = (winmap(1.0), winmap(2.0));
 
-    let cases: [(Box<dyn Mapping>, Box<dyn Mapping>, &str); 7] = [
+    type Case = (Box<dyn Mapping>, Box<dyn Mapping>, &'static str);
+    let cases: [Case; 7] = [
         (Box::new(unm1.clone()), Box::new(unm2inv), "ShiftMap"),
         (Box::new(shiftmap.clone()), Box::new(unm2), "UnitNormMap"),
         (
