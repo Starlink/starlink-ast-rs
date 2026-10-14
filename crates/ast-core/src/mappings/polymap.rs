@@ -446,75 +446,45 @@ impl PolyMap {
         lbnd: &[f64],
         ubnd: &[f64],
     ) -> AstResult<Option<PolyMap>> {
-        use crate::mappings::Mapping;
-
-        // Dimensional checks (polymap.c:5132-5143).
-        let ndim = self.nin();
-        if self.nout() != ndim {
-            return Err(AstError::new(
-                ErrorCode::Badni,
-                format!(
-                    "astPolyTran(PolyMap): supplied PolyMap has different number of inputs \
-                     ({ndim}) and outputs ({})",
-                    self.nout()
-                ),
-            ));
-        }
-        if ndim > 2 {
-            return Err(AstError::new(
-                ErrorCode::Badni,
-                format!(
-                    "astPolyTran(PolyMap): supplied PolyMap has too many inputs and outputs \
-                     ({ndim}) - must be 1 or 2"
-                ),
-            ));
-        }
-
-        // The transformation to be sampled must have explicit
-        // coefficients (polymap.c:5145-5158): C tests ncoeff_f/ncoeff_i
-        // directly, so an iterative inverse does not qualify.
-        if forward == self.inverted {
-            if self.forward.is_empty() {
-                return Err(AstError::new(
-                    ErrorCode::Nodef,
-                    "astPolyTran(PolyMap): supplied PolyMap has no forward transformation",
-                ));
-            }
-        } else if self.inverse.as_ref().is_none_or(|v| v.is_empty()) {
-            return Err(AstError::new(
-                ErrorCode::Nodef,
-                "astPolyTran(PolyMap): supplied PolyMap has no inverse transformation",
-            ));
-        }
-
+        // C copies the PolyMap and replaces a transformation of the copy.
+        // The copy's simplified record no longer applies once that is done
+        // (C `astClearIsSimple( result )`, polymap.c:5030).
+        let mut result = self.clone();
+        result.simplified = SimplifiedRecord::default();
         let Some(new_terms) = crate::mappings::helpers::poly_tran::replace_transformation(
-            self, forward, acc, maxacc, maxorder, lbnd, ubnd,
+            &mut result,
+            forward,
+            acc,
+            maxacc,
+            maxorder,
+            lbnd,
+            ubnd,
         )?
         else {
             return Ok(None);
         };
+        result.store_terms(forward != self.inverted, &new_terms);
 
-        // Store the fitted terms in the original-orientation slot for
-        // the replaced transformation (polymap.c StoreArrays swaps when
-        // the PolyMap is inverted).
-        let replace_original_forward = forward != self.inverted;
-        let mut pm = if replace_original_forward {
-            PolyMap::new(self.nin, self.nout, &new_terms, self.inverse.as_deref())?
+        // The new fit is used in preference to any iterative inverse.
+        result.clear_iter_inverse();
+        Ok(Some(result))
+    }
+
+    /// polymap.c `StoreArrays`: replace the coefficients of the original
+    /// forward (`forward`) or inverse transformation.
+    pub(crate) fn store_terms(&mut self, forward: bool, terms: &[PolyTerm]) {
+        let terms = nonzero(terms);
+        if forward {
+            self.forward_by_output = compute_terms_by_output(&terms, self.nout);
+            self.forward_max_pows = compute_max_powers(&terms, self.nin);
+            self.forward = terms;
         } else {
-            PolyMap::new(self.nin, self.nout, &self.forward, Some(&new_terms))?
-        };
-
-        // Carry over attributes as astCopy would, except IterInverse,
-        // which C clears so the new fit takes priority. The simplified record
-        // is not carried over either: one of the transformations has been
-        // replaced, so whatever was true of the original is not true of this
-        // (C `astClearIsSimple( result )`, polymap.c:5352).
-        pm.niter_inverse = self.niter_inverse;
-        pm.tol_inverse = self.tol_inverse;
-        if self.inverted {
-            pm.invert();
+            self.inverse_by_output = Some(compute_terms_by_output(&terms, self.nin));
+            self.inverse_max_pows = compute_max_powers(&terms, self.nout);
+            self.inverse = Some(terms);
         }
-        Ok(Some(pm))
+        self.jacobian_terms =
+            (self.nin == self.nout && self.iter_inverse()).then(|| self.compute_jacobian_terms());
     }
 
     /// Gather forward terms per output axis for the 2D SIMD prototype.
@@ -954,6 +924,55 @@ impl PolyMap {
 // Polynomial evaluation (power-table approach)
 // ---------------------------------------------------------------------------
 
+/// The class-specific parts of `astPolyTran`, which polymap.c's fitting
+/// driver (`ReplaceTransformation`, `FitPoly1D`, `FitPoly2D`) calls through
+/// the vtab: `FitPoly1DInit` and `FitPoly2DInit` (polymap.c:1262, :1608),
+/// which ChebyMap overrides (chebymap.c:523, :668), and the coefficient
+/// counts and `StoreArrays` the driver reads and writes.
+pub(crate) trait PolyFit: Mapping {
+    /// C's `FitPoly1DInit`: the values each coefficient of a 1-D fit of
+    /// `order` terms multiplies at each sample of `table[0]`, as
+    /// `nsamp * order` values, sample by sample. `scales` holds the RMS that
+    /// restores each table column, and a class that applies the input scaling
+    /// itself resets `scales[0]` to 1. `forward` is the transformation being
+    /// replaced.
+    fn fit_poly_1d_init(
+        &mut self,
+        forward: bool,
+        table: &[Vec<f64>],
+        order: usize,
+        scales: &mut [f64],
+    ) -> AstResult<Vec<f64>>;
+
+    /// C's `FitPoly2DInit`: as [`fit_poly_1d_init`](PolyFit::fit_poly_1d_init)
+    /// for the two inputs `table[0]` and `table[1]`, giving the values for
+    /// each.
+    fn fit_poly_2d_init(
+        &mut self,
+        forward: bool,
+        table: &[Vec<f64>],
+        order: usize,
+        scales: &mut [f64],
+    ) -> AstResult<(Vec<f64>, Vec<f64>)>;
+
+    /// Whether the original forward (`forward`) or inverse transformation has
+    /// coefficients: C's `ncoeff_f` or `ncoeff_i` being non-zero.
+    fn has_coeffs(&self, forward: bool) -> bool;
+}
+
+/// polymap.c `FitPoly1DInit`: the powers of each sample.
+pub(crate) fn power_basis(x: &[f64], order: usize) -> Vec<f64> {
+    let mut xp = Vec::with_capacity(x.len() * order);
+    for &x1 in x {
+        let mut tv = 1.0;
+        for _ in 0..order {
+            xp.push(tv);
+            tv *= x1;
+        }
+    }
+    xp
+}
+
 /// The values a polynomial term multiplies its coefficient by: C's
 /// `PolyPowers`, the method PolyMap's `Transform` calls once per point
 /// (polymap.c:4725) and ChebyMap overrides to give Chebyshev polynomials in
@@ -1067,6 +1086,36 @@ pub(crate) fn monomial_powers(work: &mut [Vec<f64>], max_pows: &[usize], input: 
         }
     }
     all_good
+}
+
+impl PolyFit for PolyMap {
+    fn fit_poly_1d_init(
+        &mut self,
+        _forward: bool,
+        table: &[Vec<f64>],
+        order: usize,
+        _scales: &mut [f64],
+    ) -> AstResult<Vec<f64>> {
+        Ok(power_basis(&table[0], order))
+    }
+
+    fn fit_poly_2d_init(
+        &mut self,
+        _forward: bool,
+        table: &[Vec<f64>],
+        order: usize,
+        _scales: &mut [f64],
+    ) -> AstResult<(Vec<f64>, Vec<f64>)> {
+        Ok((power_basis(&table[0], order), power_basis(&table[1], order)))
+    }
+
+    fn has_coeffs(&self, forward: bool) -> bool {
+        if forward {
+            !self.forward.is_empty()
+        } else {
+            self.inverse.as_ref().is_some_and(|v| !v.is_empty())
+        }
+    }
 }
 
 impl PolyPowers for PolyMap {

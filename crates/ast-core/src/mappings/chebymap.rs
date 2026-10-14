@@ -19,7 +19,7 @@ use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
 
 use super::cmpmap::{CmpMap, Composition};
 use super::helpers::ast_equal;
-use super::polymap::{PolyMap, PolyPowers, PolyTerm, monomial_powers, poly_transform};
+use super::polymap::{PolyFit, PolyMap, PolyPowers, PolyTerm, monomial_powers, poly_transform};
 use super::rate::numeric_rate;
 use super::unit::UnitMap;
 use super::{DynMapping, Mapping};
@@ -79,7 +79,10 @@ impl ChebyMap {
     /// transformation. Points outside this box produce [`BAD_VALUE`].
     ///
     /// `lbnd_i` and `ubnd_i`, if provided, define the input domain for
-    /// the inverse transformation.
+    /// the inverse transformation. As in C (chebymap.c `astInitChebyMap`),
+    /// they are used only when inverse coefficients are supplied; otherwise
+    /// the inverse domain is found from the forward one (see
+    /// [`domain`](ChebyMap::domain)).
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         nin: usize,
@@ -134,9 +137,11 @@ impl ChebyMap {
             offset_f[i] = -(ubnd_f[i] + lbnd_f[i]) / (ubnd_f[i] - lbnd_f[i]);
         }
 
-        // Validate and compute inverse bounds if provided.
+        // Validate and compute inverse bounds, if there are inverse
+        // coefficients for them to bound.
+        let has_inverse = inverse.is_some_and(|t| !t.is_empty());
         let (lbnd_i_v, ubnd_i_v, scale_i_v, offset_i_v) =
-            if let (Some(li), Some(ui)) = (lbnd_i, ubnd_i) {
+            if let (true, Some(li), Some(ui)) = (has_inverse, lbnd_i, ubnd_i) {
                 if li.len() != nout {
                     return Err(AstError::new(
                         ErrorCode::Badin,
@@ -274,6 +279,108 @@ impl ChebyMap {
         forward != self.inverted
     }
 
+    /// Fit a replacement forward or inverse transformation by least
+    /// squares, returning a new ChebyMap that uses the fit, or `None` if no
+    /// fit achieves `maxacc`.
+    ///
+    /// As [`PolyMap::poly_tran`], with the fit made in Chebyshev form over
+    /// the box spanned by the sampled values, which becomes the new
+    /// transformation's bounding box (chebymap.c `PolyTran`,
+    /// `FitPoly1DInit` and `FitPoly2DInit`). `lbnd` and `ubnd` are in the
+    /// input space of the transformation that is sampled; either may be
+    /// `None` to use that transformation's own bounding box, which is an
+    /// `AST__NOBOX` error when it has none.
+    pub fn poly_tran(
+        &self,
+        forward: bool,
+        acc: f64,
+        maxacc: f64,
+        maxorder: usize,
+        lbnd: Option<&[f64]>,
+        ubnd: Option<&[f64]>,
+    ) -> AstResult<Option<ChebyMap>> {
+        let (word, scale, offset, nax) = if forward != self.inverted {
+            (
+                "inverse",
+                self.scale_i.as_deref(),
+                self.offset_i.as_deref(),
+                self.nout(),
+            )
+        } else {
+            (
+                "forward",
+                Some(&self.scale_f[..]),
+                Some(&self.offset_f[..]),
+                self.nin(),
+            )
+        };
+
+        // The supplied bounds, or the transformation's box, which spans
+        // [-1, +1] once scaled.
+        let bound = |given: Option<&[f64]>, which: &str, edge: f64| -> AstResult<Vec<f64>> {
+            if let Some(b) = given {
+                return Ok(b.iter().take(nax.min(2)).copied().collect());
+            }
+            match (scale, offset) {
+                (Some(scale), Some(offset)) => Ok((0..nax.min(2))
+                    .map(|i| (edge - offset[i]) / scale[i])
+                    .collect()),
+                _ => Err(AstError::new(
+                    ErrorCode::Nobox,
+                    format!(
+                        "astPolyTran(ChebyMap): The {word} transformation is not a Chebyshev \
+                         polynomial and therefore requires a user-supplied bounding box. But \
+                         no {which} bounds were supplied."
+                    ),
+                )),
+            }
+        };
+        let this_lbnd = bound(lbnd, "lower", -1.0)?;
+        let this_ubnd = bound(ubnd, "upper", 1.0)?;
+
+        // As PolyMap's: replace a transformation of a copy.
+        let mut result = self.clone();
+        result.simplified = SimplifiedRecord::default();
+        let Some(new_terms) = crate::mappings::helpers::poly_tran::replace_transformation(
+            &mut result,
+            forward,
+            acc,
+            maxacc,
+            maxorder,
+            &this_lbnd,
+            &this_ubnd,
+        )?
+        else {
+            return Ok(None);
+        };
+        result
+            .poly
+            .store_terms(forward != self.inverted, &new_terms);
+        Ok(Some(result))
+    }
+
+    /// Store the scaling of a new fit into [-1, +1] for the transformation
+    /// `forward` replaces, as chebymap.c `FitPoly1DInit` and
+    /// `FitPoly2DInit` do, with the bounds it implies.
+    fn set_fit_box(&mut self, forward: bool, scale: Vec<f64>, offset: Vec<f64>) {
+        let (lbnd, ubnd): (Vec<f64>, Vec<f64>) = scale
+            .iter()
+            .zip(&offset)
+            .map(|(&s, &o)| ((-1.0 - o) / s, (1.0 - o) / s))
+            .unzip();
+        if forward != self.inverted {
+            self.lbnd_f = lbnd;
+            self.ubnd_f = ubnd;
+            self.scale_f = scale;
+            self.offset_f = offset;
+        } else {
+            self.lbnd_i = Some(lbnd);
+            self.ubnd_i = Some(ubnd);
+            self.scale_i = Some(scale);
+            self.offset_i = Some(offset);
+        }
+    }
+
     /// Compose in series with another mapping.
     pub fn then(self, next: DynMapping) -> AstResult<CmpMap> {
         CmpMap::new(Box::new(self), next, Composition::Series)
@@ -288,6 +395,105 @@ impl ChebyMap {
 // ---------------------------------------------------------------------------
 // Chebyshev evaluation helpers
 // ---------------------------------------------------------------------------
+
+/// The smallest and largest of `values`, found as chebymap.c's
+/// `FitPoly1DInit` and `FitPoly2DInit` find them.
+fn sample_range(values: &[f64]) -> (f64, f64) {
+    let (mut min, mut max) = (values[0], values[0]);
+    for &v in &values[1..] {
+        if v > max {
+            max = v;
+        } else if v < min {
+            min = v;
+        }
+    }
+    (min, max)
+}
+
+/// The Chebyshev polynomials T0 to T(order-1) of each value, scaled into
+/// [-1, +1] as `x * scl * scale + off`, sample by sample.
+fn chebyshev_basis(values: &[f64], scl: f64, scale: f64, off: f64, order: usize) -> Vec<f64> {
+    let mut xp = Vec::with_capacity(values.len() * order);
+    for &v in values {
+        let x = v * scl * scale + off;
+        let base = xp.len();
+        xp.push(1.0);
+        xp.push(x);
+        for w in 2..order {
+            let t = 2.0 * x * xp[base + w - 1] - xp[base + w - 2];
+            xp.push(t);
+        }
+    }
+    xp
+}
+
+impl PolyFit for ChebyMap {
+    /// chebymap.c `FitPoly1DInit`: the fit is in Chebyshev form over the
+    /// range of the sampled values, which becomes the replaced
+    /// transformation's bounding box. The ChebyMap applies that scaling
+    /// itself, so `scales[0]` is reset to 1.
+    fn fit_poly_1d_init(
+        &mut self,
+        forward: bool,
+        table: &[Vec<f64>],
+        order: usize,
+        scales: &mut [f64],
+    ) -> AstResult<Vec<f64>> {
+        let (minx, maxx) = sample_range(&table[0]);
+        let pmax = maxx * scales[0];
+        let pmin = minx * scales[0];
+        if pmax == pmin {
+            return Err(AstError::new(
+                ErrorCode::Badbx,
+                "astPolyTran(ChebyMap): New bounding box has zero width on axis 1.",
+            ));
+        }
+        let scl = 2.0 / (pmax - pmin);
+        let off = -(pmax + pmin) / (pmax - pmin);
+        self.set_fit_box(forward, vec![scl], vec![off]);
+        let xp1 = chebyshev_basis(&table[0], scl, scales[0], off, order);
+        scales[0] = 1.0;
+        Ok(xp1)
+    }
+
+    /// chebymap.c `FitPoly2DInit`: as
+    /// [`fit_poly_1d_init`](PolyFit::fit_poly_1d_init) for each input.
+    fn fit_poly_2d_init(
+        &mut self,
+        forward: bool,
+        table: &[Vec<f64>],
+        order: usize,
+        scales: &mut [f64],
+    ) -> AstResult<(Vec<f64>, Vec<f64>)> {
+        let (minx, maxx) = sample_range(&table[0]);
+        let (miny, maxy) = sample_range(&table[1]);
+        let pxmax = maxx * scales[0];
+        let pxmin = minx * scales[0];
+        let pymax = maxy * scales[1];
+        let pymin = miny * scales[1];
+        if pxmax == pxmin || pymax == pymin {
+            return Err(AstError::new(
+                ErrorCode::Badbx,
+                "astPolyTran(ChebyMap): New bounding box has zero width on or both axes.",
+            ));
+        }
+        let scl = [2.0 / (pxmax - pxmin), 2.0 / (pymax - pymin)];
+        let off = [
+            -(pxmax + pxmin) / (pxmax - pxmin),
+            -(pymax + pymin) / (pymax - pymin),
+        ];
+        self.set_fit_box(forward, scl.to_vec(), off.to_vec());
+        let xp1 = chebyshev_basis(&table[0], scl[0], scales[0], off[0], order);
+        let xp2 = chebyshev_basis(&table[1], scl[1], scales[1], off[1], order);
+        scales[0] = 1.0;
+        scales[1] = 1.0;
+        Ok((xp1, xp2))
+    }
+
+    fn has_coeffs(&self, forward: bool) -> bool {
+        self.poly.has_coeffs(forward)
+    }
+}
 
 impl PolyPowers for ChebyMap {
     /// The Chebyshev polynomials of the first kind of each input, scaled

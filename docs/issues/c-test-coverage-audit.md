@@ -36,7 +36,7 @@ A C check counts as covered when a Rust test, or an oracle case replaying C, exe
 | `testregionmasking.c` | ported (`test_region_masking.rs`) |
 | `testfitschanerrors.c` | ported (`test_fitschan_errors.rs`); one case exposes a duplicate-keyword gap in the reader |
 | `testswitchmap.c` | ported; exposed and fixed a SwitchMap cancellation gap |
-| `testchebymap.c` | partial; its PolyTran half needs `ChebyMap::poly_tran`, which is not ported |
+| `testchebymap.c` | ported, apart from Error 4 (IterInverse, not exposed on ChebyMap) |
 | `testpolymap.c` | mostly covered |
 
 ## Findings that are more than a missing test
@@ -46,8 +46,8 @@ A C check counts as covered when a Rust test, or an oracle case replaying C, exe
   Once they ran, `checkBox` failed on three slips in its conversion from `testregions.f`, not on the library: single-precision literals made double, `AST__BAD` used for a float mask where Fortran used `VAL__BADR`, and the Fortran arrays indexed transposed.
   With those fixed the C test passes, so `checkBox`'s values are now verified against the library.
   The port (`test_regions_c.rs::check_box_*`) matched them with no library change.
-- **ChebyMap's PolyTran is not ported.**
-  `chebymap.c` overrides `PolyTran` (installed at `chebymap.c:1039`), fitting in Chebyshev form over the Mapping's own bounding box; the port has `PolyMap::poly_tran` only.
+- **ChebyMap's PolyTran was not ported, and a ChebyMap kept an inverse box C drops.**
+  `ChebyMap::poly_tran` now ports `chebymap.c` `PolyTran` through C's `FitPoly1DInit` / `FitPoly2DInit` seams, and a box is kept only for a transformation with coefficients, as `chebymap.c:2124-2158` does, which Errors 25-28 exposed (CH-4 and CH-7 in `docs/audits/mapping-c-parity.md`).
 - **`testunitnormmap.c` Error 6b was a missing test, not a behavior gap.**
   Transforming the centre gives BAD unit components and a zero norm, and C requires the inverse to give the centre back (`testunitnormmap.c:186-187`); the port's zero-norm branch takes precedence as C's does.
   `test_unitnormmap.rs::not_linear_and_round_trips_including_the_centre` now pins it with Errors 5 and 6.
@@ -63,11 +63,6 @@ A C check counts as covered when a Rust test, or an oracle case replaying C, exe
 ### `testregions.c`
 
 - `checkEllipse` Errors 15-17: a recorded gap, `REGIONS_C_GAP_EXCLUDED` in `test_regions_c.rs`.
-
-### `testchebymap.c`
-
-- Needing `ChebyMap::poly_tran`: Err 5-8, 102-109, 11-20, 29-36 and 501-506.
-- Partial: the exact sum 1.5·T0 − T2 + 2·T3 + 1.3·T4 (Err 0-3), C's coefficient sets evaluated (Err 10, 101), and the inverse domain through MapBox for a forward-only map (Err 21-28).
 
 ### `testpolymap.c`
 

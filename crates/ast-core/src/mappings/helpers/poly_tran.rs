@@ -22,17 +22,21 @@ use nalgebra::{DMatrix, DVector, Dyn, OMatrix, OVector, VecStorage};
 
 use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
+use crate::mappings::polymap::PolyFit;
 use crate::mappings::{Mapping, PolyTerm};
+use crate::serial::Serializable;
 
-/// Fit a replacement transformation for `map`.
+/// Fit a replacement transformation for `map` (polymap.c
+/// `ReplaceTransformation`).
 ///
 /// `forward` selects which (effective-orientation) transformation to
-/// replace. Returns the fitted terms in the map's effective
-/// orientation: the term `powers` index the replaced transformation's
-/// inputs. Returns `Ok(None)` if no fit achieves `maxacc` (mirrors
-/// C's NULL return without error).
-pub(crate) fn replace_transformation(
-    map: &dyn Mapping,
+/// replace. `map` is the copy that will receive the fit: its class's
+/// [`PolyFit`] initialisation may update it for each order tried. Returns
+/// the fitted terms in the map's effective orientation: the term `powers`
+/// index the replaced transformation's inputs. Returns `Ok(None)` if no fit
+/// achieves `maxacc` (mirrors C's NULL return without error).
+pub(crate) fn replace_transformation<M: PolyFit + Serializable + ?Sized>(
+    map: &mut M,
     forward: bool,
     acc: f64,
     maxacc: f64,
@@ -41,6 +45,42 @@ pub(crate) fn replace_transformation(
     ubnd: &[f64],
 ) -> AstResult<Option<Vec<PolyTerm>>> {
     let ndim = map.nin();
+    let class = map.class_name();
+
+    // The Mapping can be used (polymap.c:5132-5158). C tests the coefficient
+    // counts directly, so an iterative inverse does not count.
+    if map.nout() != ndim {
+        return Err(AstError::new(
+            ErrorCode::Badni,
+            format!(
+                "astPolyTran({class}): supplied {class} has different number of inputs \
+                 ({ndim}) and outputs ({})",
+                map.nout()
+            ),
+        ));
+    }
+    if ndim > 2 {
+        return Err(AstError::new(
+            ErrorCode::Badni,
+            format!(
+                "astPolyTran({class}): supplied {class} has too many inputs and outputs \
+                 ({ndim}) - must be 1 or 2"
+            ),
+        ));
+    }
+    if forward != map.is_inverted() {
+        if !map.has_coeffs(false) {
+            return Err(AstError::new(
+                ErrorCode::Nodef,
+                format!("astPolyTran({class}): supplied {class} has no inverse transformation"),
+            ));
+        }
+    } else if !map.has_coeffs(true) {
+        return Err(AstError::new(
+            ErrorCode::Nodef,
+            format!("astPolyTran({class}): supplied {class} has no forward transformation"),
+        ));
+    }
 
     // Bound checks (polymap.c:5160-5172). Dimensional checks are the
     // caller's job since they need PolyMap-specific state.
@@ -76,11 +116,13 @@ pub(crate) fn replace_transformation(
     for order in 2..=maxorder {
         let npoint = 2 * order;
         let fit = if ndim == 2 {
-            let (table, scales) = sample_poly_2d(map, !forward, lbnd, ubnd, npoint)?;
-            fit_poly_2d(order, acc, &table, &scales)
+            let (table, mut scales) = sample_poly_2d(map, !forward, lbnd, ubnd, npoint)?;
+            let (xp1, xp2) = map.fit_poly_2d_init(forward, &table, order, &mut scales)?;
+            fit_poly_2d(order, acc, &table, &scales, &xp1, &xp2)
         } else {
-            let (table, scales) = sample_poly_1d(map, !forward, lbnd[0], ubnd[0], npoint)?;
-            fit_poly_1d(order, acc, &table, &scales)
+            let (table, mut scales) = sample_poly_1d(map, !forward, lbnd[0], ubnd[0], npoint)?;
+            let xp1 = map.fit_poly_1d_init(forward, &table, order, &mut scales)?;
+            fit_poly_1d(order, acc, &table, &scales, &xp1)
         };
 
         // Accept when the target accuracy is met, or the max-order fit
@@ -101,8 +143,8 @@ pub(crate) fn replace_transformation(
 /// Returns `(table, scales)` where `table[0]` holds the transformed
 /// values and `table[1]` the grid positions, each normalised to unit
 /// RMS, and `scales[i]` is the RMS that restores column `i`.
-fn sample_poly_1d(
-    map: &dyn Mapping,
+fn sample_poly_1d<M: Mapping + ?Sized>(
+    map: &M,
     forward: bool,
     lbnd: f64,
     ubnd: f64,
@@ -133,8 +175,8 @@ fn sample_poly_1d(
 ///
 /// Returns `(table, scales)` where `table[0..2]` hold the transformed
 /// values and `table[2..4]` the grid positions.
-fn sample_poly_2d(
-    map: &dyn Mapping,
+fn sample_poly_2d<M: Mapping + ?Sized>(
+    map: &M,
     forward: bool,
     lbnd: &[f64],
     ubnd: &[f64],
@@ -282,20 +324,12 @@ fn fit_poly_1d(
     acc: f64,
     table: &[Vec<f64>],
     scales: &[f64],
+    xp1: &[f64],
 ) -> Option<(Vec<PolyTerm>, f64)> {
     let nsamp = table[0].len();
 
-    // Basis: powers 0..order of the (normalised) transformed values.
-    let basis: Vec<Vec<f64>> = table[0]
-        .iter()
-        .map(|&x| {
-            let mut row = vec![1.0; order];
-            for w in 1..order {
-                row[w] = row[w - 1] * x;
-            }
-            row
-        })
-        .collect();
+    // Basis: the values from the class's FitPoly1DInit, one row per sample.
+    let basis: Vec<Vec<f64>> = xp1.chunks(order).map(|row| row.to_vec()).collect();
 
     // Initial guess: unit transformation in normalised coordinates.
     let mut p0 = DVector::zeros(order);
@@ -350,6 +384,8 @@ fn fit_poly_2d(
     acc: f64,
     table: &[Vec<f64>],
     scales: &[f64],
+    xp1: &[f64],
+    xp2: &[f64],
 ) -> Option<(Vec<PolyTerm>, f64)> {
     let nsamp = table[0].len();
     let ncof = order * (order + 1) / 2;
@@ -362,16 +398,12 @@ fn fit_poly_2d(
         }
     }
 
-    // Basis: products x1^w1 * x2^w2 of the normalised transformed values.
+    // Basis: products of the values from the class's FitPoly2DInit for
+    // each input.
     let basis: Vec<Vec<f64>> = (0..nsamp)
         .map(|k| {
-            let (x1, x2) = (table[0][k], table[1][k]);
-            let mut p1 = vec![1.0; order];
-            let mut p2 = vec![1.0; order];
-            for w in 1..order {
-                p1[w] = p1[w - 1] * x1;
-                p2[w] = p2[w - 1] * x2;
-            }
+            let p1 = &xp1[k * order..(k + 1) * order];
+            let p2 = &xp2[k * order..(k + 1) * order];
             pairs.iter().map(|&(w1, w2)| p1[w1] * p2[w2]).collect()
         })
         .collect();

@@ -1255,3 +1255,275 @@ fn a_linear_chebymap_accumulates_each_outputs_constant_contributions() {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// testchebymap.c, in its order: evaluation of C's coefficient sets, PolyTran
+// fits of the inverse with their coefficients and bounding boxes, and the
+// domains of the fitted maps. Assertion messages carry C's error numbers.
+// ---------------------------------------------------------------------------
+
+/// Terms from a C coefficient array: each coefficient is followed by its
+/// output axis and its `nin` powers.
+fn c_terms(nin: usize, cofs: &[f64]) -> Vec<PolyTerm> {
+    cofs.chunks(nin + 2)
+        .map(|c| PolyTerm {
+            coeff: c[0],
+            out_axis: c[1] as usize,
+            powers: c[2..].iter().map(|&p| p as usize).collect(),
+        })
+        .collect()
+}
+
+/// C's `astPolyCoeffs` array for a list of terms.
+fn c_cofs(terms: &[PolyTerm]) -> Vec<f64> {
+    terms
+        .iter()
+        .flat_map(|t| {
+            [t.coeff, t.out_axis as f64]
+                .into_iter()
+                .chain(t.powers.iter().map(|&p| p as f64))
+        })
+        .collect()
+}
+
+/// A forward-only ChebyMap whose inverse has the same bounding box, as
+/// `testchebymap.c` builds them.
+fn c_chebymap(nin: usize, cofs: &[f64], lbnd: &[f64], ubnd: &[f64]) -> ChebyMap {
+    ChebyMap::new(
+        nin,
+        nin,
+        &c_terms(nin, cofs),
+        None,
+        lbnd,
+        ubnd,
+        Some(lbnd),
+        Some(ubnd),
+    )
+    .unwrap()
+}
+
+const C_COEFFS_1: [f64; 12] = [1.5, 1.0, 0.0, -1.0, 1.0, 2.0, 2.0, 1.0, 3.0, 1.3, 1.0, 4.0];
+const C_COEFFS_2: [f64; 6] = [1.0, 1.0, 0.0, -2.0, 1.0, 1.0];
+const C_COEFFS_3: [f64; 20] = [
+    1.0, 1.0, 0.0, 0.0, -2.0, 1.0, 1.0, 2.0, 1.0, 1.0, 0.0, 1.0, 1.5, 2.0, 0.0, 0.0, -2.5, 2.0,
+    1.0, 2.0,
+];
+const C_COEFFS_4: [f64; 16] = [
+    1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0, 1.0, 2.0, 1.0, 0.0, -1.0, 2.0, 0.0, 1.0,
+];
+
+fn tran1(m: &dyn Mapping, x: &[f64], forward: bool) -> Vec<f64> {
+    let out = m
+        .transform(&PointSet::from_columns(&[x]).unwrap(), forward)
+        .unwrap();
+    (0..x.len()).map(|i| out.point(i)[0]).collect()
+}
+
+fn tran2(m: &dyn Mapping, x: &[f64], y: &[f64], forward: bool) -> (Vec<f64>, Vec<f64>) {
+    let out = m
+        .transform(&PointSet::from_columns(&[x, y]).unwrap(), forward)
+        .unwrap();
+    (0..x.len())
+        .map(|i| (out.point(i)[0], out.point(i)[1]))
+        .unzip()
+}
+
+#[test]
+fn c_1d_evaluation() {
+    let xin = [-1.0, -0.5, 0.0, 0.5, 1.0];
+    let (l, u) = ([-1.0], [1.0]);
+    let eval = |n: usize| tran1(&c_chebymap(1, &C_COEFFS_1[..3 * n], &l, &u), &xin, true);
+
+    assert!(eval(1).iter().all(|&v| v == 1.5), "Error 0");
+    for (x, v) in xin.iter().zip(eval(2)) {
+        assert_eq!(v, 2.5 - 2.0 * x * x, "Error 1");
+    }
+    for (x, v) in xin.iter().zip(eval(3)) {
+        assert_eq!(v, 2.5 - 6.0 * x - 2.0 * x * x + 8.0 * x * x * x, "Error 2");
+    }
+    for (&x, v) in xin.iter().zip(eval(4)) {
+        let mut w = [1.0, x, 0.0, 0.0, 0.0];
+        for j in 2..5 {
+            w[j] = 2.0 * x * w[j - 1] - w[j - 2];
+        }
+        assert_eq!(
+            v,
+            1.5 * w[0] - 1.0 * w[2] + 2.0 * w[3] + 1.3 * w[4],
+            "Error 3"
+        );
+    }
+}
+
+/// Fitting the inverse of 1 - 2x over [-1, 1]: the inverse box is the
+/// range of the forward values, [-1, 3], over which the inverse is -T1.
+#[test]
+fn c_1d_poly_tran() {
+    let (l, u) = ([-1.0], [1.0]);
+    let cm = c_chebymap(1, &C_COEFFS_2, &l, &u);
+    let cm2 = cm
+        .poly_tran(false, 0.01, 0.01, 5, Some(&l), Some(&u))
+        .unwrap()
+        .expect("Error 5");
+    let xin = [-1.0, -0.5, 0.0, 0.5, 1.0];
+    let xout = tran1(&cm2, &xin, true);
+    let xrec = tran1(&cm2, &xout, false);
+    for (r, x) in xrec.iter().zip(&xin) {
+        assert!((r - x).abs() <= 1.0e-3 * x.abs(), "Error 6: {r} vs {x}");
+    }
+
+    let (dl, du) = cm2.domain(false);
+    assert_eq!(dl[0], -1.0, "Error 501");
+    assert_eq!(du[0], 3.0, "Error 502");
+    let cofs = c_cofs(cm2.inverse_terms().unwrap());
+    assert_eq!(cofs.len() / 3, 1, "Error 503");
+    assert!((cofs[0] + 1.0).abs() <= 1.0e-10, "Error 504");
+    assert!((cofs[1] - 1.0).abs() <= 1.0e-10, "Error 505");
+    assert!((cofs[2] - 1.0).abs() <= 1.0e-10, "Error 506");
+}
+
+/// Fitting the inverse of a quartic over part of a wider domain; the
+/// fitted map dumps and reads back equal.
+#[test]
+fn c_1d_poly_tran_wide() {
+    let (l, u) = ([-100.0], [100.0]);
+    let cm = c_chebymap(1, &C_COEFFS_1, &l, &u);
+    let cm2 = cm
+        .poly_tran(false, 0.01, 0.01, 10, Some(&[-5.0]), Some(&[50.0]))
+        .unwrap()
+        .expect("Error 7");
+    let xin = [0.0, 10.0, 20.0, 30.0, 40.0];
+    let xrec = tran1(&cm2, &tran1(&cm2, &xin, true), false);
+    for (r, x) in xrec.iter().zip(&xin) {
+        assert!((r - x).abs() <= 0.01, "Error 8: {r} vs {x}");
+    }
+
+    let cm3 = cm2.clone();
+    assert!(cm2.equal(&cm3), "Error 9");
+    let back =
+        from_native_string(&to_native_string(&AnyObject::ChebyMap(cm2.clone())).unwrap()).unwrap();
+    let AnyObject::ChebyMap(back) = back else {
+        panic!("Error -2: not a ChebyMap");
+    };
+    assert!(back.equal(&cm2), "Error -3");
+}
+
+/// fx = T1(x') + T1(y'), fy = T1(x') - T1(y') over [-1, 1]: it cancels
+/// with its inverse, and the fitted inverse recovers C's coefficients over
+/// the box [-2, 2] the forward values span.
+#[test]
+fn c_2d_poly_tran_unit_domain() {
+    let (l, u) = ([-1.0, -1.0], [1.0, 1.0]);
+    let cm = c_chebymap(2, &C_COEFFS_4, &l, &u);
+    let mut cm2 = cm.clone();
+    cm2.invert();
+    let cmp = ast_core::mappings::CmpMap::new(
+        Box::new(cm.clone()),
+        Box::new(cm2),
+        ast_core::mappings::Composition::Series,
+    )
+    .unwrap();
+    let simp = (&cmp as &dyn Mapping).simplify().unwrap();
+    assert!(simp.as_ref().as_any().is::<UnitMap>(), "Error 1000");
+
+    let xin = [0.5, 0.0, -0.5, 0.0];
+    let yin = [0.0, 0.5, 0.0, -0.5];
+    let (xout, yout) = tran2(&cm, &xin, &yin, true);
+    for i in 0..4 {
+        let (xv, yv) = (xin[i] + yin[i], xin[i] - yin[i]);
+        assert!(
+            (xout[i] - xv).abs() <= 1.0e-6 * xv.abs() && (yout[i] - yv).abs() <= 1.0e-6 * yv.abs(),
+            "Error 101"
+        );
+    }
+
+    let cm2 = cm
+        .poly_tran(false, 0.01, 0.01, 10, Some(&l), Some(&u))
+        .unwrap()
+        .expect("Error 102");
+    let (xrec, yrec) = tran2(&cm2, &xout, &yout, false);
+    for i in 0..4 {
+        assert!(
+            (xrec[i] - xin[i]).abs() <= 0.01 && (yrec[i] - yin[i]).abs() <= 0.01,
+            "Error 103"
+        );
+    }
+    let cofs = c_cofs(cm2.inverse_terms().unwrap());
+    assert_eq!(cofs.len() / 4, 4, "Error 104: {cofs:?}");
+    for (c, want) in cofs.iter().zip(&C_COEFFS_4) {
+        assert!((c - want).abs() <= 0.01, "Error 105: {cofs:?}");
+    }
+    let (dl, du) = cm2.domain(false);
+    assert_eq!(dl, [-2.0, -2.0], "Error 106-107");
+    assert_eq!(du, [2.0, 2.0], "Error 108-109");
+}
+
+/// A 2-D ChebyMap over [0, 10]: its values, a fit of its inverse over
+/// [4, 6], the coefficients of both transformations of the fit, and the
+/// domains of the original and the fit.
+#[test]
+// Errors 18 and 19 compare with C's literals, written to more digits than an
+// f64 holds.
+#[allow(clippy::excessive_precision)]
+fn c_2d_poly_tran_nonunit_domain() {
+    let (l, u) = ([0.0, 0.0], [10.0, 10.0]);
+    let cm = c_chebymap(2, &C_COEFFS_3, &l, &u);
+    let xin = [0.0, 2.0, 6.0, 10.0];
+    let yin = [2.0, 5.0, 8.0, 0.0];
+    let (xout, yout) = tran2(&cm, &xin, &yin, true);
+    for i in 0..4 {
+        let xi = 2.0 * (xin[i] - l[0]) / (u[0] - l[0]) - 1.0;
+        let yi = 2.0 * (yin[i] - l[1]) / (u[1] - l[1]) - 1.0;
+        let xv = 1.0 - 2.0 * xi * (2.0 * yi * yi - 1.0) + yi;
+        let yv = 1.5 - 2.5 * xi * (2.0 * yi * yi - 1.0);
+        assert!(
+            (xout[i] - xv).abs() <= 1.0e-6 * xv.abs() && (yout[i] - yv).abs() <= 1.0e-6 * yv.abs(),
+            "Error 10"
+        );
+    }
+
+    let cm2 = cm
+        .poly_tran(false, 0.01, 0.01, 10, Some(&[4.0, 4.0]), Some(&[6.0, 6.0]))
+        .unwrap()
+        .expect("Error 11");
+    let xin = [4.0, 4.5, 5.0, 5.5];
+    let yin = [6.0, 5.5, 5.0, 4.5];
+    let (xout, yout) = tran2(&cm2, &xin, &yin, true);
+    let (xrec, yrec) = tran2(&cm2, &xout, &yout, false);
+    for i in 0..4 {
+        assert!(
+            (xrec[i] - xin[i]).abs() <= 0.01 && (yrec[i] - yin[i]).abs() <= 0.01,
+            "Error 12"
+        );
+    }
+
+    let fwd = c_cofs(cm2.forward_terms());
+    assert_eq!(fwd.len() / 4, 5, "Error 13-14");
+    assert_eq!(fwd, C_COEFFS_3, "Error 15");
+    let inv = c_cofs(cm2.inverse_terms().unwrap());
+    assert_eq!(inv.len() / 4, 9, "Error 16-17: {inv:?}");
+    assert!(
+        (inv[0] - 5.0000000000000018).abs() <= 1.0e-6,
+        "Error 18: {inv:?}"
+    );
+    assert!(
+        (inv[12] - 0.35096188953505458).abs() <= 1.0e-6,
+        "Error 19: {inv:?}"
+    );
+    assert_eq!(inv[14], 2.0, "Error 20: {inv:?}");
+
+    let (dl, du) = cm.domain(true);
+    assert_eq!((dl, du), (l.to_vec(), u.to_vec()), "Error 21-24");
+    let (dl, du) = cm.domain(false);
+    assert_eq!((dl, du), (vec![-2.0, -1.0], vec![4.0, 4.0]), "Error 25-28");
+    let (dl, du) = cm2.domain(true);
+    assert_eq!((dl, du), (l.to_vec(), u.to_vec()), "Error 29-32");
+    let (dl, du) = cm2.domain(false);
+    for (got, want, err) in [
+        (dl[0], 0.432, 33),
+        (dl[1], 1.000816, 34),
+        (du[0], 1.568, 35),
+        (du[1], 1.9991836, 36),
+    ] {
+        assert!((got - want).abs() <= 1.0e-6, "Error {err}: {got}");
+    }
+}
