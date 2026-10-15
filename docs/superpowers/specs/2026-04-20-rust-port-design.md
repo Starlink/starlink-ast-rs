@@ -2,6 +2,12 @@
 
 ## Revision history
 
+- **2026-10-15 (rev 33)**: The tier-5 crate is renamed `ast-oracle-bench`
+  → `ast-bench`, a plain binary rather than criterion benches, in which
+  the reference C library is an optional engine loaded at runtime
+  (`c-oracle`). Its regression gate compares a build with a base commit
+  on the same machine rather than failing CI on a Rust/C ratio; see
+  `2026-10-15-transform-benchmarking-design.md`.
 - **2026-10-12 (rev 32)**: With Full set to 1 a Channel writes every
   value a class's C `Dump` writes, set or not, as C does; with Full 0 it
   writes the unset ones C calls helpful, as before. The port has no
@@ -485,7 +491,7 @@ starlink-astrs/                # new fresh repo, Rust-only history
 │   ├── ast-plugins/           # optional Grf / Grf3d backends (PLplot, SVG, logging)
 │   ├── ast-ffi-tests/         # builds ast-capi, runs C ast_tester programs
 │   ├── ast-oracle-tests/      # links ast-core + reference libast.a
-│   └── ast-oracle-bench/      # criterion benches: Rust vs C on matched workloads
+│   └── ast-bench/             # transform benches: Rust, optionally vs C
 ├── vendor/                    # copied in-tree, owned by THIS repo
 │   ├── pal/                   #   small astrometry routines (was AST's pal/)
 │   ├── erfa/                  #   ERFA snapshot (was AST's erfa/)
@@ -1458,9 +1464,10 @@ Five tiers, each answering a distinct question.
    for integer/classification outputs; bounded ULP tolerance for
    floating-point; property-based for random pipelines. Skipped (with
    a notice) when the submodule is not initialised.
-5. **Oracle benchmarks** (`ast-oracle-bench`) — `criterion` benches of
-   matched workloads on 10k / 100k / 1M point clouds. Rust/C ratio
-   reported; >10% slower fails CI.
+5. **Benchmarks** (`ast-bench`) — transform timings on 1 / 10 / 100 /
+   100k / 1M points from the transform oracles, Rust always and C
+   optionally. Rust/C ratios are recorded per platform; the regression
+   gate compares a build with its base commit on the same machine.
 
 **New benchmark case added for rev 2**: per-time-slice attribute
 mutation hot path. `SkyFrame::set_epoch` and `SkyFrame::set_sky_ref_is`

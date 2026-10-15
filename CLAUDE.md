@@ -26,7 +26,7 @@ starlink-astrs/
 │   ├── ast-plugins/           # Grf / Grf3d backends (PLplot, SVG, logging)
 │   ├── ast-ffi-tests/         # builds ast-capi, runs C ast_tester programs
 │   ├── ast-oracle-tests/      # links ast-core + reference libast.a
-│   └── ast-oracle-bench/      # criterion: Rust vs C performance
+│   └── ast-bench/             # transform benchmarks: Rust, optionally vs C
 ├── vendor/                    # C source we own and build into ast-core
 │   ├── pal/                   # AST's pal fork (build with cc)
 │   ├── erfa/                  # AST's erfa fork (build with cc)
@@ -70,7 +70,7 @@ cargo test -p ast-core --test meta test_simplify_regression::  # tier 2: native-
 git submodule update --init reference/starlink-ast
 cargo test -p ast-ffi-tests                  # tier 3: C tests vs Rust libast
 cargo test -p ast-oracle-tests               # tier 4: bit/ULP comparison
-cargo bench -p ast-oracle-bench              # tier 5: Rust-vs-C performance
+cargo run --release -p ast-bench -- help     # tier 5: transform benchmarks
 ```
 
 Useful flags during development:
@@ -134,15 +134,9 @@ If you find yourself adding a `Mutex`, `RwLock`, allocation, or
 non-trivial work into any `SkyFrame::set_*` method, stop and
 reconsider — you're regressing the hot path.
 
-**There is currently no automated performance gate.**
-`ast-oracle-bench` is a placeholder and CI runs no benchmark, so a
-hot-path regression will not be caught for you. Until it is wired up,
-re-run `cargo run --release --example bench_per_class -p ast-core`
-against the C oracle by hand when you touch a transform path, and
-compare with `docs/issues/mapping-perf-vs-c-oracle.md` (snapshot
-2026-05-19). Note that snapshot already records several cheap mappings
-5–42× slower than C at bulk N; the SCUBA-2 / LSST path (PolyMap,
-MatrixMap) is not among them.
+**The performance gate is `ast-bench`.**
+`cargo run --release -p ast-bench -- compare --set bench --base main` times the current tree against `main` on the same machine and fails on a slowdown; `crates/ast-bench/README.md` has the details.
+CI does not run it yet, so run it by hand when you touch a transform path.
 
 ## Bulk-transform optimisation (per-mapping evaluation)
 
@@ -162,7 +156,7 @@ runs branchless and the only added cost is two memory-bandwidth-bound
 passes.
 
 **Whether it's worth doing depends on the mapping**, and must be
-evaluated per class via `ast-oracle-bench`. The setup costs (input
+evaluated per class via `ast-bench`. The setup costs (input
 clone + two NaN passes + kernel call overhead) only amortise when
 both:
 

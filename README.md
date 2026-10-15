@@ -73,7 +73,7 @@ starlink-astrs/
 │   ├── ast-plugins/       # Grf / Grf3d backends
 │   ├── ast-ffi-tests/     # tier 3: C tests vs Rust libast
 │   ├── ast-oracle-tests/  # tier 4: bit/ULP comparison
-│   └── ast-oracle-bench/  # tier 5: Rust vs C performance
+│   └── ast-bench/         # tier 5: transform benchmarks
 ├── vendor/                # vendored C sources (pal, erfa, wcslib)
 ├── reference/             # git submodule (optional, for tier 3+4)
 └── docs/                  # design specs and implementation plans
