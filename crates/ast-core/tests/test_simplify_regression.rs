@@ -113,6 +113,32 @@ const ABANDONED_PROBE_STAMP_LICENSED: &[(&str, &str)] = &[
     ),
 ];
 
+/// Cases where the C reference carries an `Invert = 1` card the port does not,
+/// because C restored a shared component's own `Invert` after using it.
+///
+/// `CombineMaps` sets each component's `Invert` to the direction the new
+/// CmpMap applies it in, builds the CmpMap, and then restores the component's
+/// original `Invert` (`cmpmap.c:625-662`). The component is shared by pointer,
+/// so whether the restored value is the one the result dumps depends on which
+/// objects the surrounding simplification kept and which it copied. The port
+/// holds components by value and records the direction in the enclosing
+/// CmpMap's `InvA`/`InvB` alone; the two dumps describe the same Mapping.
+///
+/// Each entry consumes one reference-only `Invert = 1` line, at a position
+/// where the port's line is the reference's next line, and must be spent.
+///
+/// Fields: name, which node carries it.
+const SHARED_INVERT_HISTORY_LICENSED: &[(&str, &str)] = &[
+    (
+        "cap_cmpmap_02",
+        "the first MathMap of the inverted parallel pair under MapB",
+    ),
+    (
+        "cap_cmpmap_02",
+        "the second MathMap of the inverted parallel pair under MapB",
+    ),
+];
+
 /// Cases where one node's dump carries `Invert` in C and `IsSimp` in the port,
 /// because C recorded a shared child's inversion on the enclosing CmpMap.
 ///
@@ -345,6 +371,11 @@ fn drop_aliasing_lines(name: &str, got: &str, want: &str) -> (String, String, Ve
             budget.push(("IsSimp = 1", None, reason, false));
         }
     }
+    for (fixture, reason) in SHARED_INVERT_HISTORY_LICENSED {
+        if *fixture == name {
+            budget.push(("Invert = 1", None, reason, false));
+        }
+    }
     for (fixture, reason) in INVAB_ALIASING_LICENSED {
         if *fixture == name {
             budget.push(("Invert = 1", Some("IsSimp = 1"), reason, false));
@@ -415,8 +446,12 @@ fn drop_aliasing_lines(name: &str, got: &str, want: &str) -> (String, String, Ve
                  port `{p}` on {reason}, and found no such pair"
             ),
             None => format!(
-                "{name}: ABANDONED_PROBE_STAMP_LICENSED covers one reference-only \
-                 `{r}` {reason}, and found none"
+                "{name}: {} covers one reference-only `{r}` {reason}, and found none",
+                if *r == "Invert = 1" {
+                    "SHARED_INVERT_HISTORY_LICENSED"
+                } else {
+                    "ABANDONED_PROBE_STAMP_LICENSED"
+                }
             ),
         })
         .collect();

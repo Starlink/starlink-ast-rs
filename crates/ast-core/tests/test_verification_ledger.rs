@@ -139,6 +139,17 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
          pair at one position, so neither can go missing elsewhere unnoticed",
     ),
     (
+        "test_simplify_regression.rs",
+        "SHARED_INVERT_HISTORY_LICENSED",
+        2,
+        "two MathMaps in cap_cmpmap_02 whose dump carries `Invert = 1` in C \
+         and none in the port. C's CombineMaps sets a shared component's \
+         Invert while it builds a CmpMap and restores it after, so which \
+         value the result dumps depends on which objects the simplification \
+         kept; the port records the direction in InvA/InvB alone. Each card \
+         is consumed at one position and must be spent",
+    ),
+    (
         "test_serialisation.rs",
         "FRAMESET_FIXTURE_EXCLUDED",
         0,

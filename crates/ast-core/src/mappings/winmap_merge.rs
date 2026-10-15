@@ -477,7 +477,7 @@ fn try_direct_merge(
 /// self-simplify runs the "Series CmpMaps in parallel" merge, cmpmap.c).
 fn try_distribute_into_parallel(ctx: &mut MergeCtx, where_: usize, win_inv: bool) -> Option<usize> {
     use super::cmpmap::{CmpMap, Composition};
-    use super::simplify::{recombine_distributed_branches, reconstruct};
+    use super::simplify::reconstruct;
 
     let n = ctx.len();
 
@@ -610,17 +610,10 @@ fn try_distribute_into_parallel(ctx: &mut MergeCtx, where_: usize, win_inv: bool
         return None;
     }
 
-    // C commits `astCmpMap(simp1, simp2, 0)` — the parallel-of-series form —
-    // and relies on the CmpMap MapMerge self-simplify to run the "Series
-    // CmpMaps in parallel" re-combination when that new CmpMap is next
-    // nominated. Perform that re-combination here on the two simplified
-    // branches and commit the resulting series form when it is simpler; else
-    // fall back to the parallel form (as C would leave it in those cases).
-    if let Some(recombined) = recombine_distributed_branches(&branches) {
-        ctx.replace_range_with(i1, i2, recombined);
-        return Some(i1);
-    }
-
+    // C commits `astCmpMap(simp1, simp2, 0)`, the parallel-of-series form
+    // (winmap.c:1386). Its recombination into series form happens when that
+    // CmpMap is next nominated, through CmpMap's own merge, so the order of
+    // later merges, and which Mappings an oscillation freezes, follow C's.
     let new_par = reconstruct(branches, false).ok()?;
     ctx.replace_range_with(i1, i2, new_par);
     Some(i1)

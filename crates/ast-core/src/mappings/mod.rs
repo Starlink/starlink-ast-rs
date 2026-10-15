@@ -231,6 +231,11 @@ pub struct MappingFlags {
     /// Whether Invert is set to 0, which C tells from an unset Invert
     /// (mapping.c `TestInvert`); a set 1 is `is_inverted`.
     pub(crate) invert_zero: bool,
+    /// C's `Frozen` flag (`astSetFrozen`): set on a Mapping whose merges a
+    /// simplification found to be oscillating, so that it is not nominated
+    /// again. It stays with the Mapping, as C's stays with the object, until
+    /// a simplification clears it on the Mappings it starts with.
+    pub(crate) frozen: bool,
 }
 
 impl Clone for MappingFlags {
@@ -241,6 +246,7 @@ impl Clone for MappingFlags {
             restricted_simplify: self.restricted_simplify,
             merge_tag: 0,
             invert_zero: self.invert_zero,
+            frozen: self.frozen,
         }
     }
 }

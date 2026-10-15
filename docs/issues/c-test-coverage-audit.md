@@ -37,7 +37,7 @@ A C check counts as covered when a Rust test, or an oracle case replaying C, exe
 | `testfitschanerrors.c` | ported (`test_fitschan_errors.rs`); one case exposes a duplicate-keyword gap in the reader |
 | `testswitchmap.c` | ported; exposed and fixed a SwitchMap cancellation gap |
 | `testchebymap.c` | ported, apart from Error 4 (IterInverse, not exposed on ChebyMap) |
-| `testpolymap.c` | ported; Errors 3002-3003 are a recorded gap |
+| `testpolymap.c` | ported |
 
 ## Findings that are more than a missing test
 
@@ -59,7 +59,3 @@ A C check counts as covered when a Rust test, or an oracle case replaying C, exe
 ### `testregions.c`
 
 - `checkEllipse` Errors 15-17: a recorded gap, `REGIONS_C_GAP_EXCLUDED` in `test_regions_c.rs`.
-
-### `testpolymap.c`
-
-- Errors 3002-3003: a recorded gap, `POLYMAP_C_GAP` in `test_polymap.rs`; C splits a CmpMap a merge creates (`cmpmap.c:1677-1734`) and the port does not.

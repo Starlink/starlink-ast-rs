@@ -1087,8 +1087,7 @@ fn dump_classes(m: &dyn Mapping) -> Vec<String> {
 }
 
 /// A general affine PolyMap, alone and followed by a ZoomMap, simplifies to
-/// Mappings that transform as it does. Which Mappings those are is the gap
-/// in [`POLYMAP_C_GAP`].
+/// Mappings that transform as it does.
 #[test]
 fn polymap_affine_general_simplifies_to_an_equivalent_mapping() {
     let pts = PointSet::from_rows(vec![vec![1.0, 2.0]]);
@@ -1637,49 +1636,31 @@ fn c_simplify() {
             errs.1
         );
     }
+
+    // A linear PolyMap whose matrix is not diagonal becomes a MatrixMap and a
+    // ShiftMap, which C's lone-Mapping simplify cannot return as one Mapping,
+    // so it stays the PolyMap (mapping.c:16871-16891).
+    let pm = c_polymap(2, &C_COEFF2);
+    let simp = (&pm as &dyn Mapping).simplify().unwrap();
+    assert!(simp.as_ref().as_any().is::<PolyMap>(), "Error 3002");
+    assert!(simp.equal(&pm), "Error 3003");
 }
 
-/// PolyMap simplifications the port does not yet match, each with the gap it
-/// exposes; [`polymap_c_gaps_still_differ`] fails when one closes.
-///
-/// Both have one cause. C's PolyMap MapMerge rebuilds a linear PolyMap as a
-/// MatrixMap and ShiftMap CmpMap, and on its next nomination cmpmap.c MapMerge
-/// splits an unsimplified CmpMap of the list's composition into its components
-/// (cmpmap.c:1677-1734). Alone, that makes the list two Mappings, so mapping.c
-/// Simplify returns the original (mapping.c:16871-16891); in a longer list the
-/// components can merge with their neighbours. The port splits CmpMaps only
-/// when it builds the list. Porting the split alone changes the IsSimp tags of
-/// cap_cmpmap_02 and the nesting of rigby in the simplify corpus, so it waits
-/// on the merge-order and IsSimp work (PLAN.md section 6).
-const POLYMAP_C_GAP: &[(&str, &str)] = &[
-    (
-        "testpolymap.c Errors 3002-3003",
-        "a lone linear PolyMap with a non-diagonal matrix: C keeps the PolyMap, \
-         the port gives the MatrixMap and ShiftMap CmpMap",
-    ),
-    (
-        "general affine PolyMap then ZoomMap",
-        "C gives a MatrixMap and a WinMap scaling by 2 and shifting by (20, 40); \
-         the port keeps the MatrixMap and ShiftMap CmpMap, then the ZoomMap",
-    ),
-];
-
+/// A general affine PolyMap followed by a ZoomMap: the PolyMap becomes a
+/// MatrixMap and a ShiftMap, split into the list when next nominated
+/// (cmpmap.c:1677-1734), so the ShiftMap merges with the ZoomMap into C's
+/// MatrixMap followed by a WinMap that scales by 2 and shifts by (20, 40).
 #[test]
-fn polymap_c_gaps_still_differ() {
-    let lone = c_polymap(2, &C_COEFF2);
-    let simp = (&lone as &dyn Mapping).simplify().unwrap();
-    let beside = general_affine_then_zoom();
-    let beside_simp = (&beside as &dyn Mapping).simplify().unwrap();
-    let still_differs = [
-        !simp.as_ref().as_any().is::<PolyMap>(),
-        dump_classes(beside_simp.as_ref()) != ["CmpMap", "MatrixMap", "WinMap"],
-    ];
-    for ((name, reason), differs) in POLYMAP_C_GAP.iter().zip(still_differs) {
-        assert!(
-            differs,
-            "{name} now matches C; remove it from POLYMAP_C_GAP. Reason on record: {reason}"
-        );
-    }
+fn polymap_affine_general_merges_with_a_neighbour() {
+    let s = (&general_affine_then_zoom() as &dyn Mapping)
+        .simplify()
+        .unwrap();
+    assert_eq!(dump_classes(s.as_ref()), ["CmpMap", "MatrixMap", "WinMap"]);
+    let text = ast_core::to_native_string(&AnyObject::from_mapping(s.as_ref()).unwrap()).unwrap();
+    assert!(
+        text.contains("Sft1 = 20") && text.contains("Sft2 = 40"),
+        "{text}"
+    );
 }
 
 /// TranForward, IterInverse and TranInverse as IterInverse is set and the

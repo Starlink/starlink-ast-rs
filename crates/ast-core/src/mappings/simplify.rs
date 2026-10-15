@@ -260,6 +260,12 @@ pub(crate) fn flatten(
     // scale into an adjacent MatrixMap, and what makes "replace with simpler"
     // the *last* step of a class's merge rather than the first thing that
     // happens to it.
+    Ok(vec![leaf_entry(mapping, inv)])
+}
+
+/// One list entry for `mapping` applied in direction `inv`, unreduced: the
+/// leaf case of [`flatten`].
+fn leaf_entry(mapping: &dyn Mapping, inv: bool) -> (DynMapping, bool, bool) {
     let mut cloned = mapping.clone_box();
     // `AllowSimplify` (C `AlSimp`) and the `IsSimp` dump tag used to be copied
     // across by hand here, because `simplified()` returned a fresh object
@@ -278,7 +284,7 @@ pub(crate) fn flatten(
         cloned.invert();
     }
 
-    Ok(vec![(cloned, effective_inv, orig_inv)])
+    (cloned, effective_inv, orig_inv)
 }
 
 /// Decompose the two children of a same-kind `CmpMap`, each at its effective
@@ -452,11 +458,10 @@ fn opaque_leaf_reduction(mapping: &dyn Mapping, inv: bool, series: bool) -> Opaq
 /// Mirrors the C `Simplify` engine's mutable arguments to `astMapMerge`
 /// (`cmpmap.c:3572`): the `map_list` of components, the parallel
 /// `invert_list` of effective-direction flags, and the per-mapping
-/// `Frozen` flag (`astSetFrozen`/`astFrozen`, `cmpmap.c:3530-3624`). In C
-/// the frozen flag lives on the mapping object; here it is a per-entry
-/// bool held alongside the list, kept index-parallel with `list` so that
-/// inserting, removing, or reordering components keeps the flag attached
-/// to the right entry.
+/// `Frozen` flag (`astSetFrozen`/`astFrozen`, `cmpmap.c:3530-3624`). As in
+/// C, the frozen flag lives on the Mapping (`MappingFlags::frozen`), so a
+/// Mapping frozen by an inner simplification is still frozen when it is
+/// returned into an outer list.
 ///
 /// Each entry of `list` is `(mapping, effective_inv, orig_inv)` exactly as
 /// produced by [`flatten`]: `effective_inv` is the direction the component
@@ -470,8 +475,6 @@ fn opaque_leaf_reduction(mapping: &dyn Mapping, inv: bool, series: bool) -> Opaq
 pub struct MergeCtx {
     /// The component working list (C `map_list` + `invert_list`).
     pub(crate) list: Vec<(DynMapping, bool, bool)>,
-    /// Per-entry frozen flag, index-parallel with `list` (C `astFrozen`).
-    frozen: Vec<bool>,
     /// Whether the enclosing CmpMap has `RestrictedSimplify` set. When
     /// true, only components whose `AllowSimplify` flag is set may be
     /// nominated (C `cmpmap.c:3518-3564`).
@@ -479,15 +482,21 @@ pub struct MergeCtx {
 }
 
 impl MergeCtx {
-    /// Wrap a flattened component list, all entries initially unfrozen
-    /// (C clears `Frozen` on every component before the loop,
-    /// `cmpmap.c:3530-3533`).
+    /// Wrap a component list. Its Mappings keep any `Frozen` flag they
+    /// carry; a simplification clears them with
+    /// [`clear_frozen`](Self::clear_frozen).
     pub(crate) fn new(list: Vec<(DynMapping, bool, bool)>) -> Self {
-        let frozen = vec![false; list.len()];
         Self {
             list,
-            frozen,
             restricted: false,
+        }
+    }
+
+    /// Unfreeze every Mapping in the list, as C's `Simplify` does before
+    /// its merge loop (`cmpmap.c:3741-3743`, mapping.c `astClearFrozen`).
+    pub(crate) fn clear_frozen(&mut self) {
+        for (m, _, _) in &mut self.list {
+            m.mapping_flags_mut().frozen = false;
         }
     }
 
@@ -518,27 +527,17 @@ impl MergeCtx {
 
     /// Whether the component at `index` is frozen (C `astFrozen`).
     pub(crate) fn is_frozen(&self, index: usize) -> bool {
-        self.frozen.get(index).copied().unwrap_or(false)
+        self.list
+            .get(index)
+            .is_some_and(|(m, _, _)| m.mapping_flags().frozen)
     }
 
     /// Freeze the component at `index` (C `astSetFrozen`), preventing it
     /// from being nominated again. Used by the oscillation break.
     pub(crate) fn freeze(&mut self, index: usize) {
-        if let Some(f) = self.frozen.get_mut(index) {
-            *f = true;
+        if let Some((m, _, _)) = self.list.get_mut(index) {
+            m.mapping_flags_mut().frozen = true;
         }
-    }
-
-    /// Re-establish `frozen.len() == list.len()` after a mutation that
-    /// changed the working list outside the precise per-entry bookkeeping
-    /// (e.g. a global swap helper that operates directly on `list`). New
-    /// entries are unfrozen; surplus flags are dropped. This is a
-    /// length-only resync: the frozen *contents* only ever differ from
-    /// all-false once the oscillation break has fired (`pattern_check`),
-    /// which the global helpers being retired in later phases never
-    /// trigger on the fixture corpus.
-    fn resync_frozen(&mut self) {
-        self.frozen.resize(self.list.len(), false);
     }
 
     /// Borrow a `(mapping, effective_inv, orig_inv)` entry.
@@ -589,7 +588,6 @@ impl MergeCtx {
         }
         self.list[i1] = (merged, eff_inv != orig_inv, orig_inv);
         self.list.remove(i1 + 1);
-        self.frozen.remove(i1 + 1);
     }
 
     /// Remove the single entry at `index`, shuffling the tail down. Faithful
@@ -598,7 +596,6 @@ impl MergeCtx {
     /// elements shift down to fill the gap.
     pub(crate) fn remove_at(&mut self, index: usize) {
         self.list.remove(index);
-        self.frozen.remove(index);
     }
 
     /// Replace the two adjacent entries at `i1`/`i1+1` with the supplied
@@ -626,7 +623,6 @@ impl MergeCtx {
         self.list[imap1] = (merged, false, false);
         for idx in (imap1 + 1..=imap2).rev() {
             self.list.remove(idx);
-            self.frozen.remove(idx);
         }
     }
 
@@ -653,7 +649,6 @@ impl MergeCtx {
         let modified = dispatch_map_merge(nominee.as_ref(), &mut sub, sub_index, series);
         trace::map_merge_result(nominee.as_ref(), modified);
         self.list.extend(sub.list);
-        self.resync_frozen();
         modified
     }
 }
@@ -759,6 +754,35 @@ pub(crate) fn cmp_map_merge(
         ctx.set_component_simple_tag(where_);
     }
 
+    // The CmpMap did not simplify on its own. If it combines its components
+    // as the list does, replace it with them (`cmpmap.c:1677-1734`). A list
+    // built by `flatten` holds no such CmpMap, but a merge can make one, such
+    // as the MatrixMap and ShiftMap a linear PolyMap becomes, and C splits it
+    // on its next nomination. C inserts the two components themselves, so
+    // they are not decomposed further here.
+    let (entry, eff_inv, _) = ctx.entry(where_);
+    if let Some(entry_cmp) = entry.as_any().downcast_ref::<CmpMap>()
+        && (entry_cmp.composition() == Composition::Series) == series
+    {
+        let cmp_inv = *eff_inv != entry_cmp.is_inverted();
+        let first = (
+            entry_cmp.first(),
+            cmp_inv != (entry_cmp.inv_a() != entry_cmp.first().is_inverted()),
+        );
+        let second = (
+            entry_cmp.second(),
+            cmp_inv != (entry_cmp.inv_b() != entry_cmp.second().is_inverted()),
+        );
+        let order = if cmp_inv && series {
+            [second, first]
+        } else {
+            [first, second]
+        };
+        let pieces = order.map(|(m, inv)| leaf_entry(m, inv)).to_vec();
+        ctx.list.splice(where_..=where_, pieces);
+        return Some(where_);
+    }
+
     // Merge adjacent CmpMaps (C `cmpmap.c::MapMerge` 1528-1813).
     // ========================================================
     // The self-simplify head above did not fire (C `!simpler`); look for a
@@ -808,7 +832,6 @@ pub(crate) fn cmp_map_merge(
         && ctx.entry(where_ - 1).0.as_any().is::<PermMap>()
         && try_swap_permmap_parallel_at(&mut ctx.list, where_ - 1)
     {
-        ctx.resync_frozen();
         return Some(where_ - 1);
     }
 
@@ -1030,7 +1053,6 @@ pub(crate) fn perm_map_merge(
     // so the replacement enters the list forward with both flags cleared
     // (C `(*invert_list)[imap1] = 0`, permmap.c:1420).
     ctx.set_pair_single(where_, (canon, false, false));
-    ctx.resync_frozen();
     Some(where_)
 }
 
@@ -1156,7 +1178,6 @@ pub(crate) fn wcs_map_merge(
         // With a target, swap unconditionally (C wcsmap.c:3274-3281).
         if let Some(i1) = target {
             if wcs_perm_at(&mut ctx.list, i1) {
-                ctx.resync_frozen();
                 return Some(i1);
             }
 
@@ -1183,7 +1204,6 @@ pub(crate) fn wcs_map_merge(
                 let mut entries = copy.into_iter();
                 ctx.list[i1] = entries.next().unwrap();
                 ctx.list[i1 + 1] = entries.next().unwrap();
-                ctx.resync_frozen();
                 return Some(i1);
             }
         }
@@ -1261,6 +1281,7 @@ pub(crate) fn base_simplify(this: &dyn Mapping) -> AstResult<(DynMapping, bool)>
     // Invert as the effective direction, which is what `flatten` produces for a
     // leaf given no externally imposed inversion.
     let mut ctx = MergeCtx::new(flatten(this, false, true)?);
+    ctx.clear_frozen();
     let mut simpler = false;
 
     // C loops while the nominated element is unfrozen. Only the oscillation
@@ -1430,7 +1451,6 @@ pub(crate) fn default_map_merge(ctx: &mut MergeCtx, where_: usize, series: bool)
                 for (idx, item) in expanded.into_iter().enumerate() {
                     list.insert(i + idx, item);
                 }
-                ctx.resync_frozen();
                 return Some(i);
             }
         }
@@ -1449,7 +1469,6 @@ pub(crate) fn default_map_merge(ctx: &mut MergeCtx, where_: usize, series: bool)
     }
     list[i] = (m, orig_inv, orig_inv);
     list.remove(i + 1);
-    ctx.resync_frozen();
     Some(i)
 }
 
@@ -1694,6 +1713,7 @@ fn merge_loop_restricted(
     restricted: bool,
 ) -> bool {
     let mut ctx = MergeCtx::new(std::mem::take(list));
+    ctx.clear_frozen();
     ctx.set_restricted(restricted);
 
     // `modified`/`nmap` history for `pattern_check`, persisting across the
@@ -2742,12 +2762,10 @@ pub(crate) fn grism_map_merge(
     if series {
         // Lower neighbour first (C MapMerge 1212-1217): pair (where-1, where).
         if where_ > 0 && grism_zoom_merge_at(&mut ctx.list, where_ - 1) {
-            ctx.resync_frozen();
             return Some(where_ - 1);
         }
         // Upper neighbour (C MapMerge 1221-1226): pair (where, where+1).
         if where_ + 1 < ctx.len() && grism_zoom_merge_at(&mut ctx.list, where_) {
-            ctx.resync_frozen();
             return Some(where_);
         }
     }
@@ -3147,7 +3165,6 @@ pub(crate) fn sph_map_merge(
     // Diagonal-sandwich rewrite (C branch 2). Only reachable when the direct
     // merge failed, matching C's `!simpler` guard.
     if series && try_sphmap_diagonal_pattern_at(&mut ctx.list, where_) {
-        ctx.resync_frozen();
         return Some(where_);
     }
 
@@ -3753,7 +3770,7 @@ mod tests {
     // ------------------------------------------------------------ //
 
     #[test]
-    fn merge_ctx_tracks_frozen_per_entry() {
+    fn merge_ctx_freezes_the_mapping_itself() {
         let list = vec![
             (dyn_map(ZoomMap::new(1, 2.0).unwrap()), false, false),
             (dyn_map(ZoomMap::new(1, 3.0).unwrap()), false, false),
