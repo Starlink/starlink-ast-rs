@@ -522,6 +522,12 @@ pub struct SpecMap {
     id: crate::object_id::ObjectId,
     /// The flags C keeps on the base Mapping class (mapping.c).
     mapping_flags: crate::mappings::MappingFlags,
+    /// The frequency-correction factor of each rest-frame step, worked out on
+    /// first use and kept, as C keeps it in the step's spare argument slot
+    /// (specmap.c `FrameChange`, "If the frequency correction factor has not
+    /// been found, find it now"). `BAD_VALUE` until then; a clone keeps it,
+    /// as C's Copy copies the slot.
+    fcorr: std::cell::RefCell<Vec<f64>>,
 }
 
 impl SpecMap {
@@ -535,6 +541,7 @@ impl SpecMap {
             ident: None,
             id: Default::default(),
             mapping_flags: crate::mappings::MappingFlags::default(),
+            fcorr: Default::default(),
         }
     }
 
@@ -651,6 +658,24 @@ impl SpecMap {
             outp[1] = ra;
             outp[2] = dec;
         }
+    }
+
+    /// The frequency-correction factor of rest-frame step `ci`: the value in
+    /// its spare argument slot if one is stored there, otherwise the one
+    /// worked out on first use and kept in `fcorr` (specmap.c `FrameChange`).
+    fn frame_factor(&self, ci: usize, cvt: &SpecConversion) -> f64 {
+        let stored = cvt.args[cvt.args.len() - 1];
+        if stored != BAD_VALUE {
+            return stored;
+        }
+        let mut cache = self.fcorr.borrow_mut();
+        if cache.len() != self.conversions.len() {
+            *cache = vec![BAD_VALUE; self.conversions.len()];
+        }
+        if cache[ci] == BAD_VALUE {
+            cache[ci] = compute_frame_correction(cvt, frame_change_sign(cvt.cvt_type));
+        }
+        cache[ci]
     }
 
     /// Compose in series with another mapping.
@@ -1138,19 +1163,9 @@ fn frame_change_sign(cvt_type: SpecCvtType) -> f64 {
     }
 }
 
-/// Apply a frame-change conversion step.
-///
-/// The frequency correction factor is cached in the last element of args.
-fn apply_frame_change(cvt: &mut SpecConversion, val: f64, forward: bool) -> f64 {
-    let sign = frame_change_sign(cvt.cvt_type);
-    let fcorr_idx = cvt.args.len() - 1;
-
-    // Compute and cache the correction factor if not yet done
-    if cvt.args[fcorr_idx] == BAD_VALUE {
-        cvt.args[fcorr_idx] = compute_frame_correction(cvt, sign);
-    }
-
-    let fcorr = cvt.args[fcorr_idx];
+/// Apply a frame-change conversion step whose frequency-correction factor
+/// is `fcorr` (`SpecMap::frame_factor`).
+fn apply_frame_change(fcorr: f64, val: f64, forward: bool) -> f64 {
     if fcorr == BAD_VALUE || fcorr == 0.0 {
         return BAD_VALUE;
     }
@@ -1337,6 +1352,7 @@ pub(crate) fn spec_map_merge(
             ident: None,
             id: Default::default(),
             mapping_flags: crate::mappings::MappingFlags::default(),
+            fcorr: Default::default(),
         })
     };
     ctx.replace_range_with(imap1, imap2, new);
@@ -1410,10 +1426,6 @@ impl Mapping for SpecMap {
             return Ok(());
         }
 
-        // We need mutable access to args for caching frame correction factors.
-        // Clone the conversions for this purpose (matches C behaviour of caching on first use).
-        let mut conversions = self.conversions.clone();
-
         for i in 0..pts.npoint() {
             let inp = pts.point(i);
             let outp = out.point_mut(i);
@@ -1427,24 +1439,24 @@ impl Mapping for SpecMap {
 
             if fwd {
                 // Forward: iterate conversions in order
-                for cvt in &mut conversions {
+                for (ci, cvt) in self.conversions.iter().enumerate() {
                     if is_bad(val) {
                         break;
                     }
                     if cvt.cvt_type.is_frame_change() {
-                        val = apply_frame_change(cvt, val, true);
+                        val = apply_frame_change(self.frame_factor(ci, cvt), val, true);
                     } else {
                         val = system_change_forward(cvt, val);
                     }
                 }
             } else {
                 // Inverse: iterate conversions in REVERSE order
-                for cvt in conversions.iter_mut().rev() {
+                for (ci, cvt) in self.conversions.iter().enumerate().rev() {
                     if is_bad(val) {
                         break;
                     }
                     if cvt.cvt_type.is_frame_change() {
-                        val = apply_frame_change(cvt, val, false);
+                        val = apply_frame_change(self.frame_factor(ci, cvt), val, false);
                     } else {
                         val = system_change_inverse(cvt, val);
                     }
@@ -1544,6 +1556,7 @@ impl Mapping for SpecMap {
                 ident: None,
                 id: Default::default(),
                 mapping_flags: crate::mappings::MappingFlags::default(),
+                fcorr: Default::default(),
             }))
         }
     }
