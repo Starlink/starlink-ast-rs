@@ -445,53 +445,25 @@ impl RegionGeometry for CmpRegion {
         &mut self.data
     }
 
+    /// cmpregion.c `Transform`: every base-Frame point goes through both
+    /// component Regions, all points at once, and the two results are
+    /// combined per point. A Region makes every coordinate of a point it
+    /// excludes bad, so a point is in a component where its output has no
+    /// bad coordinate.
     fn reg_base_inside(&self, pts: &PointSet) -> AstResult<Vec<bool>> {
         let npoint = pts.npoint();
-        let naxes = self.data.frameset.base().naxes();
-
-        // Test each point against both sub-regions using point_in_region.
-        // The sub-regions handle their own negation and frame conversion internally.
-        // Points arrive in the CmpRegion's base frame, which is the same as
-        // the current frame of the sub-regions (since we use region1's frame).
-        let mut result = vec![false; npoint];
-
-        match self.operator {
-            Oper::And => {
-                // AND (intersection): point must be inside both regions.
-                // Short-circuit: test region1 first, then only test region2
-                // for points that passed region1.
-                for (r, point) in result.iter_mut().zip((0..npoint).map(|i| pts.point(i))) {
-                    if point_has_bad(&point[..naxes]) {
-                        continue;
-                    }
-                    let in1 = self.region1.point_in_region(&point[..naxes])?;
-                    if !in1 {
-                        continue;
-                    }
-                    let in2 = self.region2.point_in_region(&point[..naxes])?;
-                    *r = in2;
+        let out1 = self.region1.transform(pts, true)?;
+        let out2 = self.region2.transform(pts, true)?;
+        Ok((0..npoint)
+            .map(|i| {
+                let in1 = !point_has_bad(out1.point(i));
+                let in2 = !point_has_bad(out2.point(i));
+                match self.operator {
+                    Oper::And => in1 && in2,
+                    Oper::Or => in1 || in2,
                 }
-            }
-            Oper::Or => {
-                // OR (union): point must be inside at least one region.
-                // Short-circuit: test region1 first, only test region2
-                // for points that failed region1.
-                for (r, point) in result.iter_mut().zip((0..npoint).map(|i| pts.point(i))) {
-                    if point_has_bad(&point[..naxes]) {
-                        continue;
-                    }
-                    let in1 = self.region1.point_in_region(&point[..naxes])?;
-                    if in1 {
-                        *r = true;
-                        continue;
-                    }
-                    let in2 = self.region2.point_in_region(&point[..naxes])?;
-                    *r = in2;
-                }
-            }
-        }
-
-        Ok(result)
+            })
+            .collect())
     }
 
     fn reg_base_box(&self) -> AstResult<(Vec<f64>, Vec<f64>)> {
