@@ -4,6 +4,11 @@
 //! libm, PAL, ERFA and wcslib as C, counted at the boundary of AST's own code
 //! on both sides.
 //!
+//! Each engine transforms the section once before counting and the second,
+//! counted call is compared: both libraries fill caches on first use (C's
+//! Box `Cache`, a Region's default uncertainty, MathMap's constants, the
+//! `palMappa` cache), and the steady-state cost per call is what matters.
+//!
 //! Needs the counting C engine: `tools/perf/build_c_engine.sh count`.
 
 use std::collections::BTreeMap;
@@ -62,6 +67,10 @@ fn survey() -> (Vec<(String, Diff)>, Vec<String>) {
                 .collect();
             let pts = PointSet::from_rows(rows);
             let mut out = PointSet::zeros(n, s.nout);
+            if let Err(e) = map.transform_into(&pts, s.forward, &mut out) {
+                errors.push(format!("{k}: rust transform: {e}"));
+                continue;
+            }
             ast_core::call_counts::reset();
             if let Err(e) = map.transform_into(&pts, s.forward, &mut out) {
                 errors.push(format!("{k}: rust transform: {e}"));
@@ -77,6 +86,10 @@ fn survey() -> (Vec<(String, Diff)>, Vec<String>) {
                 }
             };
             let mut cout = vec![0.0; s.nout * n];
+            if let Err(e) = cm.tran(s.forward, n, s.nin, &s.inputs.concat(), s.nout, &mut cout) {
+                errors.push(format!("{k}: c transform: {e}"));
+                continue;
+            }
             c.counts_reset().unwrap();
             if let Err(e) = cm.tran(s.forward, n, s.nin, &s.inputs.concat(), s.nout, &mut cout) {
                 errors.push(format!("{k}: c transform: {e}"));
