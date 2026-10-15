@@ -1475,17 +1475,19 @@ git commit -m "ast-bench: full sweep, committed ratio snapshots, advisory ratio 
 ### Task 14: Housekeeping
 
 **Files:**
-- Delete: `crates/ast-core/examples/bench_per_class.rs`, `crates/ast-core/tests/bench_per_class_c.c`, `crates/ast-core/examples/bench_polymap_simd.rs`
+- Delete: `crates/ast-core/examples/bench_per_class.rs`, `crates/ast-core/tests/bench_per_class_c.c`
+- Keep: `crates/ast-core/examples/bench_polymap_simd.rs` and the `simd-eval` feature, for the later SIMD investigation
 - Modify: `.github/workflows/ci.yml` (the `test` job also runs `cargo test -p ast-bench`, which needs no submodule and no C), `docs/issues/mapping-perf-vs-c-oracle.md` (top: a pointer to `docs/perf/macos-aarch64.tsv` and `ast-bench`), `PLAN.md` (the per-class performance row and the tier-5 row), `CLAUDE.md` ("Bulk-transform optimisation": prototype comparisons now use `ast-bench run --engine both`)
 
 - [ ] **Step 1: Confirm coverage before deleting**
 
 Every variant name in `bench_per_class.rs:73-231` has a fixture in Task 9's table except `dssmap_typical` (documented).
-`bench_polymap_simd.rs` exercises the `simd-eval` feature, which this design excludes; record in `PLAN.md` that SIMD comparisons are deferred and that the example is recoverable from git history at the commit before this one.
+`bench_polymap_simd.rs` stays: SIMD is excluded from the parity comparison, not abandoned.
+Add a `PLAN.md` row: SIMD comparison deferred until the C side's SIMD work (https://github.com/Starlink/ast/pull/51) lands, then compared with `ast-bench run --engine both` against a C engine built from that branch.
 
 - [ ] **Step 2: Delete, update, verify**
 
-Run: `cargo test -p ast-bench && cargo build -p ast-core --examples && cargo clippy --workspace --tests --examples -- -D warnings && rg -n 'bench_per_class|bench_polymap_simd' --glob '!target' --glob '!docs/superpowers/*' .`
+Run: `cargo test -p ast-bench && cargo build -p ast-core --examples && cargo clippy --workspace --tests --examples -- -D warnings && rg -n 'bench_per_class' --glob '!target' --glob '!docs/superpowers/*' .`
 Expected: clean; the `rg` finds only historical mentions in `docs/issues/` (leave those; they describe past snapshots).
 
 - [ ] **Step 3: Commit**

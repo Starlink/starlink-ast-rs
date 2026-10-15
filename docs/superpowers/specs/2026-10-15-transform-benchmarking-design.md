@@ -189,7 +189,7 @@ A case it flags joins a curated set with its reason.
 
 ## Housekeeping in the same change range
 
-- Delete `examples/bench_per_class.rs`, `tests/bench_per_class_c.c` and `examples/bench_polymap_simd.rs` once the `bench` set covers their classes.
+- Delete `examples/bench_per_class.rs` and `tests/bench_per_class_c.c` once the `bench` set covers their classes; keep `examples/bench_polymap_simd.rs` for the SIMD follow-up.
 - Point `docs/issues/mapping-perf-vs-c-oracle.md` at the first snapshot.
 - Update CLAUDE.md's "Hot-path constraint" paragraph, which says no performance gate exists, and the "Bulk-transform optimisation" section, which names `ast-oracle-bench`.
 - Update the `PLAN.md` rows for per-class performance and tier 5.
@@ -207,6 +207,7 @@ A case it flags joins a curated set with its reason.
 - Optimisations, each its own change: the prototype's faster PolyMap (`../starlink-astrs-proto`), the `PointSet` row-major layout hypothesis in `PLAN.md`, moving BAD checks out of inner loops by substituting NaN internally.
 - Counting trig called directly in non-vendored code at a finer grain (per call site, via `tracing`), if Phase 0 shows a mismatch the per-function totals cannot place.
 - Modern wcslib's vectorised projection routines, compared with the 20-year-old vendored copy.
+- SIMD on both sides, once the C library's SIMD work (https://github.com/Starlink/ast/pull/51) lands: build a C engine from it and compare with `ast-bench run --engine both`; `examples/bench_polymap_simd.rs` and `ast-core`'s `simd-eval` feature are kept for this.
 - A `linux-x86_64` snapshot.
 - `compare --base` as a pull-request CI job, once Rust has reached parity; running both builds in one job makes it usable on noisy shared runners.
 - Backporting `compare --base` to the C library, so C gets the same regression gate.
