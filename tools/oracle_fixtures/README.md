@@ -256,10 +256,9 @@ one of them alone had regressed the corpus.
 installs) gives everything above; `ast::simplify=trace` adds the higher-volume
 decomposition lines, matching C's `MAPLIST`.
 
-A merge that hands off to another class's `MapMerge` must emit `MAPMERGE` and
-`MAPMERGE-RESULT` itself where C goes through the `astMapMerge` dispatcher, as
-`ShiftMap`'s delegation to `WinMap` does; otherwise the two streams drift apart
-at that point for no engine reason.
+The port emits `MAPMERGE` and `MAPMERGE-RESULT` in `dispatch_map_merge`, its counterpart of C's `astMapMerge` dispatcher.
+A merge that hands off to another class's `MapMerge` must go through `dispatch_map_merge` wherever C goes through `astMapMerge`, as `ShiftMap`'s delegation to `WinMap` does (shiftmap.c:706).
+Calling the class's merge directly skips the dispatcher's `DoNotSimplify` check and both events, so the two streams drift apart at that point.
 
 Both sides are permanent. Add an event to both rather than a temporary print:
 re-adding instrumentation each time a question of this shape came up is what let

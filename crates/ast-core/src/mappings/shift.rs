@@ -223,9 +223,9 @@ impl Mapping for ShiftMap {
         let old_len = ctx.len();
         ctx.set_pair_single(where_, (Box::new(win.clone()), false, false));
 
-        super::simplify::trace::map_merge(&win, false, where_, series, ctx.len());
-        let result = super::winmap_merge::win_map_merge(&win, ctx, where_, series);
-        super::simplify::trace::map_merge_result(&win, result, ctx.len());
+        // C hands the WinMap to `astMapMerge` (shiftmap.c:706), the dispatcher
+        // every nomination goes through.
+        let result = super::simplify::dispatch_map_merge(&win, ctx, where_, series);
 
         // Revert if: the WinMap merge made no change (None), or it produced
         // an equivalent lone ShiftMap at `where_` with the list length
