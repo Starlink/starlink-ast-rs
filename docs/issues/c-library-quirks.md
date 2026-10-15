@@ -19,6 +19,10 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 
 ### [Open questions for upstream](#open-questions-for-upstream)
 
+- [A PointList's `Transform` moves its shared uncertainty Region twice per list point](#a-pointlists-transform-moves-its-shared-uncertainty-region-twice-per-list-point)
+- [SelectorMap's `Transform` negates and re-closes each selector Region in place](#selectormaps-transform-negates-and-re-closes-each-selector-region-in-place)
+- [`CompressMatrix` recomputes `sqrt( DBL_EPSILON )` for every row and column](#compressmatrix-recomputes-sqrt-dbl_epsilon--for-every-row-and-column)
+- [A Region's default uncertainty is not reset when the Region moves](#a-regions-default-uncertainty-is-not-reset-when-the-region-moves)
 - [`astLoadXphMap` leaks the projection-type string it reads](#astloadxphmap-leaks-the-projection-type-string-it-reads)
 - [Table's `Equal` compares only class names, and discards its column comparison](#tables-equal-compares-only-class-names-and-discards-its-column-comparison)
 - [Table's read-only column attributes are not recognised in `astSet`, `astClear` or `astTest`](#tables-read-only-column-attributes-are-not-recognised-in-astset-astclear-or-asttest)
@@ -135,6 +139,56 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 ---
 
 ## Open questions for upstream
+
+### A PointList's `Transform` moves its shared uncertainty Region twice per list point
+
+C location: `pointlist.c` `Transform` (the loop over the list points and the `astRegCentre( unc, cen_orig, ... )` after it), with `box.c` `RegCentre` and `Cache`.
+
+`astGetUncFrm` hands back the Region's own uncertainty, so `Transform` re-centres that shared object on each list point in turn and, at the end, moves it back to where it was.
+Each move marks the uncertainty Box stale, and its next use runs `Cache` again, which recomputes the geodesic half-lengths (`GeoLengths`) that `Transform` never reads.
+So a transform costs, per list point, two moves and up to three `Cache` evaluations of an uncertainty that is the same shape throughout.
+
+Consequence: a performance cost only; the result is the same.
+Phase 0 of the benchmarking design (`crates/ast-oracle-tests/tests/call_count_parity.rs`) sees it as C making twice the `sqrt`, `palDsep`, `palDcs2c` and similar calls the port makes for every PointList, and licenses it there.
+
+The port negates a copy of the uncertainty once and moves the copy (`PointList::reg_base_inside`); there is nothing to move back, and the copy's limits are measured where they are used.
+A C speed-up: take a copy of the uncertainty, or skip the restore when the Region is about to be discarded, and keep `geolen` out of `Cache` until something asks for it.
+
+### SelectorMap's `Transform` negates and re-closes each selector Region in place
+
+C location: `selectormap.c` `Transform`, the loop over `map->reg`.
+
+To test which points fall in each selector Region, C negates the Region and inverts its `Closed` attribute, transforms the points, and then puts both back.
+The Region is the SelectorMap's own, so these changes reset its cache, and the next transform rebuilds it (for a Box, `Cache` and its `GeoLengths`).
+
+Consequence: a performance cost on every call; the result is the same.
+The call-count parity test licenses the extra `sqrt` calls it causes for every SelectorMap section.
+
+The port transforms a negated copy whose cache persists between calls.
+A C speed-up: keep a negated copy of each selector Region alongside the original.
+
+### `CompressMatrix` recomputes `sqrt( DBL_EPSILON )` for every row and column
+
+C location: `matrixmap.c` `CompressMatrix`, the `colmax[ j ] *= sqrt( DBL_EPSILON )` and `rowmax[ k ] *= sqrt( DBL_EPSILON )` loops.
+
+The scale factor is a constant, but it is computed once per column and once per row of every MatrixMap compressed.
+That includes the MatrixMap a PolyMap builds for its iterative inverse's first guess (`LinearGuess`), which a FrameSet transform rebuilds on every call because it copies the PolyMap.
+
+Consequence: negligible on its own, but it shows up in the call-count parity test for every FrameSet with an iteratively inverted PolyMap (the LSST and SIP headers), which licenses it.
+The port computes the factor once per compression (`compress_matrix`).
+A C speed-up: compute it once, or make it a static.
+
+### A Region's default uncertainty is not reset when the Region moves
+
+C location: `region.c` `GetUncFrm` (`if( !this->defunc ) this->defunc = astGetDefUnc( this )`), `ClearUnc` and `ResetCache`.
+
+C builds the default uncertainty Region (`defunc`) on first use and keeps it until the uncertainty is cleared or the Region is simplified; `astResetCache`, which a change of the Region's points calls, leaves it alone.
+The default uncertainty is sized from the Region's bounding box, so after the Region is moved or reshaped C goes on using an uncertainty sized for the old shape.
+
+Consequence: a Region moved a long way (for example re-centred far from the origin) keeps a default uncertainty scaled to its old position, which changes membership tests at the boundary at the 1e-6 level.
+
+The port caches the default uncertainty too (`RegionData::def_unc`), but clears it with the rest of the Region's cache whenever its geometry changes, so it always describes the current shape; `default_uncertainty_follows_a_moved_box` in `tests/test_box_region.rs` pins that.
+This is a deliberate divergence, recorded here in case upstream prefers the reset.
 
 ### `WcsOthers` misses a repeated CTYPE comment when the celestial axes come first
 
