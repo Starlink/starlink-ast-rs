@@ -483,8 +483,16 @@ impl SplineMap {
         inbv: usize,
         work: &mut [f64],
     ) -> f64 {
-        if k < 1 || n < k || ideriv >= k {
+        if k < 1 || n < k {
             return BAD_VALUE;
+        }
+
+        // A spline of order k is a piecewise polynomial of degree k-1, so a
+        // derivative of order k or higher is zero within each piece; the
+        // iterative inverse asks for it when taking the Jacobian of an
+        // order-1 spline (splinemap.c `Dbvalu`).
+        if ideriv >= k {
+            return 0.0;
         }
 
         if x < t[k - 1] {
@@ -1287,5 +1295,21 @@ impl Serializable for SplineMap {
             m.set_out_unit(out_unit);
         }
         Ok(m)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A derivative of the spline's order or higher is zero, not bad
+    /// (splinemap.c `Dbvalu`): an order-1 spline is constant on each piece.
+    #[test]
+    fn dbvalu_high_order_derivative_is_zero() {
+        let t = [0.0, 1.0];
+        let a = [1.5];
+        let mut work = [0.0; 3];
+        assert_eq!(SplineMap::dbvalu(&t, &a, 1, 1, 0, 0.5, 0, &mut work), 1.5);
+        assert_eq!(SplineMap::dbvalu(&t, &a, 1, 1, 1, 0.5, 0, &mut work), 0.0);
     }
 }
