@@ -132,7 +132,9 @@ The existing single-Mapping fixtures were chosen to exercise the simplifier, and
 - They are not added to `ast_tester` now; that is a later, separate C pull request.
   They cannot live under `crates/ast-core/tests/fixtures/`, because `tools/fixtures/check_mirror.sh` requires that tree to equal `ast_tester/fixtures` exactly.
 - `tools/perf/gen_bench_fixtures.c`, built against the submodule's libast, writes the fixtures, so they are C's own dumps.
-  The existing `gen_transform_oracle` is run with `crates/ast-bench/fixtures/` as its root to write `crates/ast-bench/fixtures/bench.oracle`, so C chooses the points and records the outputs.
+  The same program writes `crates/ast-bench/fixtures/bench.oracle` in `gen_transform_oracle`'s format, using its helpers from `transform_oracle_util.c` (`oracle_sample_points`, `oracle_format_double`), so C chooses the points and records the outputs.
+  It cannot simply run `gen_transform_oracle`, which samples every Native dump over [-1000, 1000]: a TimeMap needs MJDs, a LutMap its table range, a WcsMap small angles.
+  Each fixture therefore carries its own sampling domain, taken from the variant table in `bench_per_class.rs`.
 - A test in `ast-bench`, `bench_fixtures_match_oracle`, asserts every section of `bench.oracle` against the Rust transforms with the same tolerances as `test_transform_oracle.rs`, and checks it examined every section.
   When the fixtures move upstream this test is deleted and the main gate covers them.
 - Classes with no realistic transform (for example a Region used as a Mapping) are listed in the README with the reason.
