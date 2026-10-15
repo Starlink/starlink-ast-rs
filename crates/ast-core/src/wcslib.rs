@@ -10,7 +10,7 @@
 
 use std::ffi::c_int;
 
-use crate::call_counts::counted;
+use std::f64::consts::FRAC_PI_2;
 
 use crate::constants::BAD_VALUE;
 use crate::error::{AstError, AstResult, ErrorCode};
@@ -392,7 +392,7 @@ const PRJ_PARAM_SLOTS: usize = WCSLIB_MXPAR + 1;
 ///
 /// The `p` and `p2` pointers point into owned `Box<[f64; PRJ_PARAM_SLOTS]>`
 /// storage managed by [`PrjParams`].  The `fwd` and `rev` function
-/// pointers are set by `astPRJset`.
+/// pointers come from C's `PrjInfo` table (see `WcsProjection::prj_fns`).
 #[repr(C)]
 struct AstPrjPrm {
     code: [u8; 4],
@@ -404,13 +404,131 @@ struct AstPrjPrm {
     p2: *mut f64,
     w: [f64; 20],
     n: c_int,
-    fwd: Option<unsafe extern "C" fn(f64, f64, *mut AstPrjPrm, *mut f64, *mut f64) -> c_int>,
-    rev: Option<unsafe extern "C" fn(f64, f64, *mut AstPrjPrm, *mut f64, *mut f64) -> c_int>,
+    fwd: Option<PrjFn>,
+    rev: Option<PrjFn>,
 }
 
+/// A wcslib projection function: forward or reverse, as listed in C's
+/// `PrjInfo` table (wcsmap.c:703-737).
+type PrjFn = unsafe extern "C" fn(f64, f64, *mut AstPrjPrm, *mut f64, *mut f64) -> c_int;
+
 unsafe extern "C" {
-    fn astPRJset(code: *const u8, prm: *mut AstPrjPrm) -> c_int;
-    fn astTPNset(prm: *mut AstPrjPrm) -> c_int;
+    fn astAZPfwd(phi: f64, theta: f64, prj: *mut AstPrjPrm, x: *mut f64, y: *mut f64) -> c_int;
+    fn astAZPrev(x: f64, y: f64, prj: *mut AstPrjPrm, phi: *mut f64, theta: *mut f64) -> c_int;
+    fn astSZPfwd(phi: f64, theta: f64, prj: *mut AstPrjPrm, x: *mut f64, y: *mut f64) -> c_int;
+    fn astSZPrev(x: f64, y: f64, prj: *mut AstPrjPrm, phi: *mut f64, theta: *mut f64) -> c_int;
+    fn astTANfwd(phi: f64, theta: f64, prj: *mut AstPrjPrm, x: *mut f64, y: *mut f64) -> c_int;
+    fn astTANrev(x: f64, y: f64, prj: *mut AstPrjPrm, phi: *mut f64, theta: *mut f64) -> c_int;
+    fn astSTGfwd(phi: f64, theta: f64, prj: *mut AstPrjPrm, x: *mut f64, y: *mut f64) -> c_int;
+    fn astSTGrev(x: f64, y: f64, prj: *mut AstPrjPrm, phi: *mut f64, theta: *mut f64) -> c_int;
+    fn astSINfwd(phi: f64, theta: f64, prj: *mut AstPrjPrm, x: *mut f64, y: *mut f64) -> c_int;
+    fn astSINrev(x: f64, y: f64, prj: *mut AstPrjPrm, phi: *mut f64, theta: *mut f64) -> c_int;
+    fn astARCfwd(phi: f64, theta: f64, prj: *mut AstPrjPrm, x: *mut f64, y: *mut f64) -> c_int;
+    fn astARCrev(x: f64, y: f64, prj: *mut AstPrjPrm, phi: *mut f64, theta: *mut f64) -> c_int;
+    fn astZPNfwd(phi: f64, theta: f64, prj: *mut AstPrjPrm, x: *mut f64, y: *mut f64) -> c_int;
+    fn astZPNrev(x: f64, y: f64, prj: *mut AstPrjPrm, phi: *mut f64, theta: *mut f64) -> c_int;
+    fn astZEAfwd(phi: f64, theta: f64, prj: *mut AstPrjPrm, x: *mut f64, y: *mut f64) -> c_int;
+    fn astZEArev(x: f64, y: f64, prj: *mut AstPrjPrm, phi: *mut f64, theta: *mut f64) -> c_int;
+    fn astAIRfwd(phi: f64, theta: f64, prj: *mut AstPrjPrm, x: *mut f64, y: *mut f64) -> c_int;
+    fn astAIRrev(x: f64, y: f64, prj: *mut AstPrjPrm, phi: *mut f64, theta: *mut f64) -> c_int;
+    fn astCYPfwd(phi: f64, theta: f64, prj: *mut AstPrjPrm, x: *mut f64, y: *mut f64) -> c_int;
+    fn astCYPrev(x: f64, y: f64, prj: *mut AstPrjPrm, phi: *mut f64, theta: *mut f64) -> c_int;
+    fn astCEAfwd(phi: f64, theta: f64, prj: *mut AstPrjPrm, x: *mut f64, y: *mut f64) -> c_int;
+    fn astCEArev(x: f64, y: f64, prj: *mut AstPrjPrm, phi: *mut f64, theta: *mut f64) -> c_int;
+    fn astCARfwd(phi: f64, theta: f64, prj: *mut AstPrjPrm, x: *mut f64, y: *mut f64) -> c_int;
+    fn astCARrev(x: f64, y: f64, prj: *mut AstPrjPrm, phi: *mut f64, theta: *mut f64) -> c_int;
+    fn astMERfwd(phi: f64, theta: f64, prj: *mut AstPrjPrm, x: *mut f64, y: *mut f64) -> c_int;
+    fn astMERrev(x: f64, y: f64, prj: *mut AstPrjPrm, phi: *mut f64, theta: *mut f64) -> c_int;
+    fn astSFLfwd(phi: f64, theta: f64, prj: *mut AstPrjPrm, x: *mut f64, y: *mut f64) -> c_int;
+    fn astSFLrev(x: f64, y: f64, prj: *mut AstPrjPrm, phi: *mut f64, theta: *mut f64) -> c_int;
+    fn astPARfwd(phi: f64, theta: f64, prj: *mut AstPrjPrm, x: *mut f64, y: *mut f64) -> c_int;
+    fn astPARrev(x: f64, y: f64, prj: *mut AstPrjPrm, phi: *mut f64, theta: *mut f64) -> c_int;
+    fn astMOLfwd(phi: f64, theta: f64, prj: *mut AstPrjPrm, x: *mut f64, y: *mut f64) -> c_int;
+    fn astMOLrev(x: f64, y: f64, prj: *mut AstPrjPrm, phi: *mut f64, theta: *mut f64) -> c_int;
+    fn astAITfwd(phi: f64, theta: f64, prj: *mut AstPrjPrm, x: *mut f64, y: *mut f64) -> c_int;
+    fn astAITrev(x: f64, y: f64, prj: *mut AstPrjPrm, phi: *mut f64, theta: *mut f64) -> c_int;
+    fn astCOPfwd(phi: f64, theta: f64, prj: *mut AstPrjPrm, x: *mut f64, y: *mut f64) -> c_int;
+    fn astCOPrev(x: f64, y: f64, prj: *mut AstPrjPrm, phi: *mut f64, theta: *mut f64) -> c_int;
+    fn astCOEfwd(phi: f64, theta: f64, prj: *mut AstPrjPrm, x: *mut f64, y: *mut f64) -> c_int;
+    fn astCOErev(x: f64, y: f64, prj: *mut AstPrjPrm, phi: *mut f64, theta: *mut f64) -> c_int;
+    fn astCODfwd(phi: f64, theta: f64, prj: *mut AstPrjPrm, x: *mut f64, y: *mut f64) -> c_int;
+    fn astCODrev(x: f64, y: f64, prj: *mut AstPrjPrm, phi: *mut f64, theta: *mut f64) -> c_int;
+    fn astCOOfwd(phi: f64, theta: f64, prj: *mut AstPrjPrm, x: *mut f64, y: *mut f64) -> c_int;
+    fn astCOOrev(x: f64, y: f64, prj: *mut AstPrjPrm, phi: *mut f64, theta: *mut f64) -> c_int;
+    fn astBONfwd(phi: f64, theta: f64, prj: *mut AstPrjPrm, x: *mut f64, y: *mut f64) -> c_int;
+    fn astBONrev(x: f64, y: f64, prj: *mut AstPrjPrm, phi: *mut f64, theta: *mut f64) -> c_int;
+    fn astPCOfwd(phi: f64, theta: f64, prj: *mut AstPrjPrm, x: *mut f64, y: *mut f64) -> c_int;
+    fn astPCOrev(x: f64, y: f64, prj: *mut AstPrjPrm, phi: *mut f64, theta: *mut f64) -> c_int;
+    fn astTSCfwd(phi: f64, theta: f64, prj: *mut AstPrjPrm, x: *mut f64, y: *mut f64) -> c_int;
+    fn astTSCrev(x: f64, y: f64, prj: *mut AstPrjPrm, phi: *mut f64, theta: *mut f64) -> c_int;
+    fn astCSCfwd(phi: f64, theta: f64, prj: *mut AstPrjPrm, x: *mut f64, y: *mut f64) -> c_int;
+    fn astCSCrev(x: f64, y: f64, prj: *mut AstPrjPrm, phi: *mut f64, theta: *mut f64) -> c_int;
+    fn astQSCfwd(phi: f64, theta: f64, prj: *mut AstPrjPrm, x: *mut f64, y: *mut f64) -> c_int;
+    fn astQSCrev(x: f64, y: f64, prj: *mut AstPrjPrm, phi: *mut f64, theta: *mut f64) -> c_int;
+    fn astHPXfwd(phi: f64, theta: f64, prj: *mut AstPrjPrm, x: *mut f64, y: *mut f64) -> c_int;
+    fn astHPXrev(x: f64, y: f64, prj: *mut AstPrjPrm, phi: *mut f64, theta: *mut f64) -> c_int;
+    fn astXPHfwd(phi: f64, theta: f64, prj: *mut AstPrjPrm, x: *mut f64, y: *mut f64) -> c_int;
+    fn astXPHrev(x: f64, y: f64, prj: *mut AstPrjPrm, phi: *mut f64, theta: *mut f64) -> c_int;
+    fn astTPNfwd(phi: f64, theta: f64, prj: *mut AstPrjPrm, x: *mut f64, y: *mut f64) -> c_int;
+    fn astTPNrev(x: f64, y: f64, prj: *mut AstPrjPrm, phi: *mut f64, theta: *mut f64) -> c_int;
+}
+
+impl WcsProjection {
+    /// The `WcsFwd` and `WcsRev` columns of C's `PrjInfo` table
+    /// (wcsmap.c:703-737): the wcslib functions that evaluate this
+    /// projection. Each sets itself up on first use from the parameters in
+    /// the `AstPrjPrm` it is handed, so nothing calls a set-up routine in
+    /// advance. `None` for NCP, which C handles as SIN, and for the unknown
+    /// projection.
+    fn prj_fns(self) -> Option<(PrjFn, PrjFn)> {
+        Some(match self {
+            WcsProjection::Azp => (astAZPfwd, astAZPrev),
+            WcsProjection::Szp => (astSZPfwd, astSZPrev),
+            WcsProjection::Tan => (astTANfwd, astTANrev),
+            WcsProjection::Stg => (astSTGfwd, astSTGrev),
+            WcsProjection::Sin => (astSINfwd, astSINrev),
+            WcsProjection::Arc => (astARCfwd, astARCrev),
+            WcsProjection::Zpn => (astZPNfwd, astZPNrev),
+            WcsProjection::Zea => (astZEAfwd, astZEArev),
+            WcsProjection::Air => (astAIRfwd, astAIRrev),
+            WcsProjection::Cyp => (astCYPfwd, astCYPrev),
+            WcsProjection::Cea => (astCEAfwd, astCEArev),
+            WcsProjection::Car => (astCARfwd, astCARrev),
+            WcsProjection::Mer => (astMERfwd, astMERrev),
+            WcsProjection::Sfl => (astSFLfwd, astSFLrev),
+            WcsProjection::Par => (astPARfwd, astPARrev),
+            WcsProjection::Mol => (astMOLfwd, astMOLrev),
+            WcsProjection::Ait => (astAITfwd, astAITrev),
+            WcsProjection::Cop => (astCOPfwd, astCOPrev),
+            WcsProjection::Coe => (astCOEfwd, astCOErev),
+            WcsProjection::Cod => (astCODfwd, astCODrev),
+            WcsProjection::Coo => (astCOOfwd, astCOOrev),
+            WcsProjection::Bon => (astBONfwd, astBONrev),
+            WcsProjection::Pco => (astPCOfwd, astPCOrev),
+            WcsProjection::Tsc => (astTSCfwd, astTSCrev),
+            WcsProjection::Csc => (astCSCfwd, astCSCrev),
+            WcsProjection::Qsc => (astQSCfwd, astQSCrev),
+            WcsProjection::Hpx => (astHPXfwd, astHPXrev),
+            WcsProjection::Xph => (astXPHfwd, astXPHrev),
+            WcsProjection::Tpn => (astTPNfwd, astTPNrev),
+            WcsProjection::Gls => (astSFLfwd, astSFLrev),
+            WcsProjection::Ncp | WcsProjection::Unknown => return None,
+        })
+    }
+
+    /// The `theta0` column of C's `PrjInfo` table (wcsmap.c:703-737): the
+    /// native latitude of the fiducial point in radians, which C's
+    /// `GetNatLat` returns. `BAD_VALUE` for the conics, whose fiducial
+    /// latitude is a projection parameter.
+    pub(crate) fn table_theta0(self) -> f64 {
+        use WcsProjection::*;
+        match self {
+            Azp | Szp | Tan | Stg | Sin | Arc | Zpn | Zea | Air | Xph | Tpn => FRAC_PI_2,
+            Cop | Coe | Cod | Coo => BAD_VALUE,
+            Cyp | Cea | Car | Mer | Sfl | Par | Mol | Ait | Bon | Pco | Tsc | Csc | Qsc | Ncp
+            | Gls | Hpx | Unknown => 0.0,
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -445,14 +563,15 @@ impl PrjParams {
     /// Create a new projection parameter set for the given projection type.
     ///
     /// The C struct is zeroed, the parameter storage is allocated and
-    /// pointed to, and `astPRJset` is called to initialise the projection.
+    /// pointed to, and the projection's functions are installed from C's
+    /// `PrjInfo` table.
     ///
-    /// NCP and GLS are deprecated projections that are not directly
-    /// supported by wcslib's `astPRJset`.  They must be mapped to SIN
+    /// NCP and GLS are deprecated projections with no wcslib functions of
+    /// their own.  They must be mapped to SIN
     /// and SFL (with appropriate parameters) at the `WcsMap` level before
     /// calling this constructor.
     pub(crate) fn new(proj: WcsProjection) -> AstResult<Self> {
-        // NCP and GLS are not recognised by astPRJset — they must be
+        // NCP and GLS have no wcslib functions of their own — they must be
         // converted to SIN/SFL with parameters at a higher level.
         if matches!(
             proj,
@@ -490,15 +609,18 @@ impl PrjParams {
             rev: None,
         };
 
-        // Run the wcslib setup routine.  For the polynomial projections
-        // (ZPN/ZPX/TPN) this cannot complete while the parameter arrays are
-        // still all-zero: `astZPNset` returns early before installing the
-        // `astPRJfwd`/`astPRJrev` pointers.  That is not a construction
-        // failure — the C library defers the same setup until the
-        // parameters are present (it runs `astZPNset` lazily inside
-        // `astZPNfwd`).  Rerun the setup from [`init_prj_prm`](Self::init_prj_prm)
-        // once parameters have been supplied so the pointers get installed.
-        Self::run_setup(&mut inner, proj)?;
+        // Install the projection's functions from C's table. As in C, nothing
+        // is set up in advance: `flag` is clear, so the first call runs the
+        // projection's own set-up from the parameters then present, and a
+        // set-up failure is that call's status.
+        let (fwd, rev) = proj.prj_fns().ok_or_else(|| {
+            AstError::new(
+                ErrorCode::Wcsty,
+                format!("Projection {} has no wcslib functions", proj.code()),
+            )
+        })?;
+        inner.fwd = Some(fwd);
+        inner.rev = Some(rev);
 
         Ok(Self {
             inner,
@@ -508,45 +630,9 @@ impl PrjParams {
         })
     }
 
-    /// Run the wcslib projection setup routine for `proj`, installing the
-    /// forward/reverse function pointers into `inner`.
-    ///
-    /// `astPRJset` returns non-zero only for an unrecognised projection
-    /// code, which is a genuine error.  The per-projection setup routines
-    /// (e.g. `astZPNset`) may decline to install pointers when the
-    /// parameters are not yet valid; that is expected during construction
-    /// and is not reported as an error here.
-    fn run_setup(inner: &mut AstPrjPrm, proj: WcsProjection) -> AstResult<()> {
-        // Force wcslib to recompute intermediate values on the next call.
-        inner.flag = 0;
-        // TPN is not handled by astPRJset (it's defined in tpn.c with
-        // its own astTPNset entry point).
-        let status = if matches!(proj, WcsProjection::Tpn) {
-            counted!(astTPNset(inner))
-        } else {
-            counted!(astPRJset(inner.code.as_ptr(), inner))
-        };
-        // C never sets the projection up in advance: InitPrjPrm leaves the
-        // flag clear (wcsmap.c), so the first projection call runs the set-up
-        // and returns its failure as status 1, which C reports as unusable
-        // parameters. The set-up above only installs the function pointers.
-        inner.flag = 0;
-        if status != 0 {
-            return Err(AstError::new(
-                ErrorCode::Wcsty,
-                format!(
-                    "wcslib projection setup failed for '{}' (status {})",
-                    proj.code(),
-                    status
-                ),
-            ));
-        }
-        Ok(())
-    }
-
     /// Initialise the projection parameter arrays from the values supplied
     /// on the owning `WcsMap`, assigning defaults for any parameter that was
-    /// not supplied, and (re)install the forward/reverse function pointers.
+    /// not supplied.
     ///
     /// Port of C `InitPrjPrm` (wcsmap.c:2219). `params` is indexed by
     /// projection role: `params[0]` holds the latitude-axis parameters
@@ -670,11 +756,6 @@ impl PrjParams {
                 *slot = 0.0;
             }
         }
-
-        // Install the forward/reverse pointers for the now-complete
-        // parameters. The only failure mode is an unrecognised projection
-        // code, which cannot occur after a successful `new`.
-        let _ = Self::run_setup(&mut self.inner, proj);
     }
 
     /// Read a projection parameter.
@@ -713,7 +794,7 @@ impl PrjParams {
         let mut y = 0.0;
 
         crate::call_counts::hit("wcs_fwd");
-        // SAFETY: the function pointer was set by astPRJset and operates
+        // SAFETY: the function pointer comes from C's PrjInfo table and operates
         // on the AstPrjPrm struct.  We pass valid mutable pointers.
         let status = unsafe { fwd(phi, theta, &mut self.inner, &mut x, &mut y) };
 
@@ -752,7 +833,7 @@ impl PrjParams {
         let mut theta = 0.0;
 
         crate::call_counts::hit("wcs_rev");
-        // SAFETY: the function pointer was set by astPRJset and operates
+        // SAFETY: the function pointer comes from C's PrjInfo table and operates
         // on the AstPrjPrm struct.  We pass valid mutable pointers.
         let status = unsafe { rev(x, y, &mut self.inner, &mut phi, &mut theta) };
 
@@ -788,7 +869,7 @@ impl PrjParams {
         let mut x = 0.0;
         let mut y = 0.0;
         crate::call_counts::hit("wcs_fwd");
-        // SAFETY: the function pointer was set by astPRJset and operates
+        // SAFETY: the function pointer comes from C's PrjInfo table and operates
         // on the AstPrjPrm struct. We pass valid mutable pointers.
         let status = unsafe { fwd(phi, theta, &mut self.inner, &mut x, &mut y) };
         (status, x, y)
@@ -808,21 +889,10 @@ impl PrjParams {
         let mut phi = 0.0;
         let mut theta = 0.0;
         crate::call_counts::hit("wcs_rev");
-        // SAFETY: the function pointer was set by astPRJset and operates
+        // SAFETY: the function pointer comes from C's PrjInfo table and operates
         // on the AstPrjPrm struct. We pass valid mutable pointers.
         let status = unsafe { rev(x, y, &mut self.inner, &mut phi, &mut theta) };
         (status, phi, theta)
-    }
-
-    /// Return the reference point (phi0, theta0) in degrees.
-    pub(crate) fn reference_point(&self) -> (f64, f64) {
-        (self.inner.phi0, self.inner.theta0)
-    }
-
-    /// Return the radius of the generating sphere, r0.
-    #[allow(dead_code)] // Used by SkyFrame (Step 7b)
-    pub(crate) fn r0(&self) -> f64 {
-        self.inner.r0
     }
 }
 
@@ -1061,13 +1131,13 @@ mod tests {
 
     #[test]
     fn zpn_callable_only_after_parameter_set() {
-        // ZPN's setup routine declines to install the forward/reverse
-        // pointers while its coefficients are all zero, so a freshly
-        // constructed ZPN has no usable transform.
+        // ZPN's set-up, which its forward function runs on first use, fails
+        // while its coefficients are all zero, so a freshly constructed ZPN
+        // has no usable transform.
         let mut prj = PrjParams::new(WcsProjection::Zpn).unwrap();
         assert!(prj.forward(0.0, 80.0).is_err());
         // Supplying the linear coefficient makes the polynomial well-defined;
-        // init_prj_prm re-runs setup and installs the pointers.
+        // init_prj_prm clears the flag so the next call sets up again.
         prj.init_prj_prm(&[vec![None, Some(1.0)], Vec::new()], true);
         assert!(prj.forward(0.0, 80.0).is_ok());
     }
@@ -1170,10 +1240,9 @@ mod tests {
 
 #[cfg(test)]
 mod count_tests {
-    /// Every call into wcslib in this file is counted: the setup entry points
-    /// under their symbol names, the projection function pointers as
-    /// `wcs_fwd` and `wcs_rev` (C reaches them through pointers too,
-    /// wcsmap.c:2855,2883).
+    /// Every call into wcslib in this file is counted: the projection
+    /// functions, reached through pointers as in C (wcsmap.c:2855,2883), as
+    /// `wcs_fwd` and `wcs_rev`.
     #[test]
     fn every_ffi_call_is_counted() {
         let src = include_str!("wcslib.rs");
@@ -1191,11 +1260,6 @@ mod count_tests {
                 ("unsafe { rev(", "hit(\"wcs_rev\")"),
             ] {
                 if t.contains(pat) && !lines[..i].iter().rev().take(4).any(|l| l.contains(key)) {
-                    uncounted.push(*line);
-                }
-            }
-            for name in ["astPRJset(", "astTPNset("] {
-                if t.contains(name) && !t.contains("counted!(") && !t.contains("matches(") {
                     uncounted.push(*line);
                 }
             }

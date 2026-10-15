@@ -638,38 +638,18 @@ impl WcsMap {
         self.latax + 1
     }
 
-    /// Native longitude of the fiducial point (radians).
-    ///
-    /// For zenithal projections (TAN, SIN, STG, ARC, etc.) this is 0.
-    /// The underlying wcslib struct stores this in degrees; this method
-    /// converts to radians (the AST convention).
+    /// Native longitude of the fiducial point (radians): C's `GetNatLon`,
+    /// which is 0 for every projection (wcsmap.c).
     pub fn nat_lon(&self) -> f64 {
-        // An Unknown (AST__WCSBAD) projection has no real reference point;
-        // C `GetNatLon` is a fixed 0 for every projection type (wcsmap.c),
-        // so return 0 explicitly rather than relying on the inert CAR
-        // placeholder's reference point.
-        if self.proj == WcsProjection::Unknown {
-            return 0.0;
-        }
-        let (phi0, _theta0) = self.prj.borrow().reference_point();
-        phi0.to_radians()
+        0.0
     }
 
-    /// Native latitude of the fiducial point (radians).
+    /// Native latitude of the fiducial point (radians): C's `GetNatLat`,
+    /// the `theta0` column of the `PrjInfo` table (wcsmap.c:703-737).
     ///
     /// For zenithal projections (TAN, SIN, STG, ARC, etc.) this is pi/2.
     /// For cylindrical projections (CAR, MER, CEA, etc.) this is 0.
-    /// The underlying wcslib struct stores this in degrees; this method
-    /// converts to radians (the AST convention).
     pub fn nat_lat(&self) -> f64 {
-        // An Unknown (AST__WCSBAD) projection has no real reference point; C
-        // `GetNatLat` reads `FindPrjData(AST__WCSBAD)->theta0`, which is 0
-        // (wcsmap.c:716). Return 0 explicitly rather than relying on the inert
-        // CAR placeholder (whose reference point is also 0, but only by
-        // coincidence).
-        if self.proj == WcsProjection::Unknown {
-            return 0.0;
-        }
         // The conics have no fixed native latitude (C's table holds
         // AST__BAD, wcsmap.c:721-724): it is projection parameter 1 on the
         // latitude axis, through `astGetPV`, so bad when that is unset.
@@ -684,8 +664,7 @@ impl WcsMap {
                 pv * DD2R
             };
         }
-        let (_phi0, theta0) = self.prj.borrow().reference_point();
-        theta0.to_radians()
+        self.proj.table_theta0()
     }
 
     fn effective_forward(&self, forward: bool) -> bool {
