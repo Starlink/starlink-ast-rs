@@ -41,3 +41,16 @@ pub use imp::{reset, snapshot};
 #[cfg(not(feature = "call-counts"))]
 #[inline(always)]
 pub(crate) fn hit(_name: &'static str) {}
+
+/// Call a PAL, ERFA or wcslib function, counting it under its symbol name for the
+/// `call-counts` feature.
+macro_rules! counted_call {
+    ($f:ident ( $($arg:expr),* $(,)? )) => {{
+        crate::call_counts::hit(stringify!($f));
+        // SAFETY: the arguments are the ones the calling wrapper documents
+        // for this C function: valid pointers to buffers of the sizes it
+        // writes, and plain values otherwise.
+        unsafe { $f($($arg),*) }
+    }};
+}
+pub(crate) use counted_call as counted;

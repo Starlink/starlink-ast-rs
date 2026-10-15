@@ -125,28 +125,30 @@ unsafe extern "C" {
     fn astPalDtf2d(ihour: i32, imin: i32, sec: f64, days: *mut f64, j: *mut i32);
 }
 
+use crate::call_counts::counted;
+
 // ---------------------------------------------------------------------------
 // Group 1: Epoch conversions
 // ---------------------------------------------------------------------------
 
 /// Convert Modified Julian Date to Julian epoch.
 pub(crate) fn epj(date: f64) -> f64 {
-    unsafe { astPalEpj(date) }
+    counted!(astPalEpj(date))
 }
 
 /// Convert Julian epoch to Modified Julian Date.
 pub(crate) fn epj2d(epj: f64) -> f64 {
-    unsafe { astPalEpj2d(epj) }
+    counted!(astPalEpj2d(epj))
 }
 
 /// Convert Modified Julian Date to Besselian epoch.
 pub(crate) fn epb(date: f64) -> f64 {
-    unsafe { astPalEpb(date) }
+    counted!(astPalEpb(date))
 }
 
 /// Convert Besselian epoch to Modified Julian Date.
 pub(crate) fn epb2d(epb: f64) -> f64 {
-    unsafe { astPalEpb2d(epb) }
+    counted!(astPalEpb2d(epb))
 }
 
 // ---------------------------------------------------------------------------
@@ -156,7 +158,7 @@ pub(crate) fn epb2d(epb: f64) -> f64 {
 /// Spherical coordinates (longitude, latitude) to direction-cosine 3-vector.
 pub(crate) fn dcs2c(a: f64, b: f64) -> [f64; 3] {
     let mut v = [0.0; 3];
-    unsafe { astPalDcs2c(a, b, v.as_mut_ptr()) };
+    counted!(astPalDcs2c(a, b, v.as_mut_ptr()));
     v
 }
 
@@ -174,7 +176,7 @@ pub(crate) fn dcc2s(v: &[f64; 3]) -> (f64, f64) {
     let canon = [v[0] + 0.0, v[1] + 0.0, v[2] + 0.0];
     let mut a = 0.0;
     let mut b = 0.0;
-    unsafe { astPalDcc2s(canon.as_ptr(), &mut a, &mut b) };
+    counted!(astPalDcc2s(canon.as_ptr(), &mut a, &mut b));
     (a, b)
 }
 
@@ -185,41 +187,41 @@ pub(crate) fn dcc2s(v: &[f64; 3]) -> (f64, f64) {
 /// Multiply a 3x3 matrix by a 3-vector (forward transformation).
 pub(crate) fn dmxv(dm: &[[f64; 3]; 3], va: &[f64; 3]) -> [f64; 3] {
     let mut vb = [0.0; 3];
-    unsafe { astPalDmxv(dm.as_ptr(), va.as_ptr(), vb.as_mut_ptr()) };
+    counted!(astPalDmxv(dm.as_ptr(), va.as_ptr(), vb.as_mut_ptr()));
     vb
 }
 
 /// Multiply the inverse of a 3x3 matrix by a 3-vector (backward / transpose).
 pub(crate) fn dimxv(dm: &[[f64; 3]; 3], va: &[f64; 3]) -> [f64; 3] {
     let mut vb = [0.0; 3];
-    unsafe { astPalDimxv(dm.as_ptr(), va.as_ptr(), vb.as_mut_ptr()) };
+    counted!(astPalDimxv(dm.as_ptr(), va.as_ptr(), vb.as_mut_ptr()));
     vb
 }
 
 /// Multiply two 3x3 matrices: `c = a * b`.
 pub(crate) fn dmxm(a: &[[f64; 3]; 3], b: &[[f64; 3]; 3]) -> [[f64; 3]; 3] {
     let mut c = [[0.0; 3]; 3];
-    unsafe { astPalDmxm(a.as_ptr(), b.as_ptr(), c.as_mut_ptr()) };
+    counted!(astPalDmxm(a.as_ptr(), b.as_ptr(), c.as_mut_ptr()));
     c
 }
 
 /// Cross product of two 3-vectors.
 pub(crate) fn dvxv(va: &[f64; 3], vb: &[f64; 3]) -> [f64; 3] {
     let mut vc = [0.0; 3];
-    unsafe { astPalDvxv(va.as_ptr(), vb.as_ptr(), vc.as_mut_ptr()) };
+    counted!(astPalDvxv(va.as_ptr(), vb.as_ptr(), vc.as_mut_ptr()));
     vc
 }
 
 /// Dot product of two 3-vectors.
 pub(crate) fn dvdv(va: &[f64; 3], vb: &[f64; 3]) -> f64 {
-    unsafe { astPalDvdv(va.as_ptr(), vb.as_ptr()) }
+    counted!(astPalDvdv(va.as_ptr(), vb.as_ptr()))
 }
 
 /// Normalize a 3-vector, returning (unit_vector, modulus).
 pub(crate) fn dvn(v: &[f64; 3]) -> ([f64; 3], f64) {
     let mut uv = [0.0; 3];
     let mut vm = 0.0;
-    unsafe { astPalDvn(v.as_ptr(), uv.as_mut_ptr(), &mut vm) };
+    counted!(astPalDvn(v.as_ptr(), uv.as_mut_ptr(), &mut vm));
     (uv, vm)
 }
 
@@ -247,16 +249,14 @@ pub(crate) fn dmat_det(n: usize, a: &mut [f64], y: &mut [f64]) -> (bool, f64) {
     let mut jf = 0_i32;
     // Pivot bookkeeping scratch used internally by palDmat.
     let mut iw = vec![0_i32; n];
-    unsafe {
-        astPalDmat(
-            n as i32,
-            a.as_mut_ptr(),
-            y.as_mut_ptr(),
-            &mut d,
-            &mut jf,
-            iw.as_mut_ptr(),
-        );
-    }
+    counted!(astPalDmat(
+        n as i32,
+        a.as_mut_ptr(),
+        y.as_mut_ptr(),
+        &mut d,
+        &mut jf,
+        iw.as_mut_ptr(),
+    ));
     (jf == 0, d)
 }
 
@@ -268,7 +268,7 @@ pub(crate) fn dmat_det(n: usize, a: &mut [f64], y: &mut [f64]) -> (bool, f64) {
 pub(crate) fn galeq(dl: f64, db: f64) -> (f64, f64) {
     let mut dr = 0.0;
     let mut dd = 0.0;
-    unsafe { astPalGaleq(dl, db, &mut dr, &mut dd) };
+    counted!(astPalGaleq(dl, db, &mut dr, &mut dd));
     (dr, dd)
 }
 
@@ -276,7 +276,7 @@ pub(crate) fn galeq(dl: f64, db: f64) -> (f64, f64) {
 pub(crate) fn eqgal(dr: f64, dd: f64) -> (f64, f64) {
     let mut dl = 0.0;
     let mut db = 0.0;
-    unsafe { astPalEqgal(dr, dd, &mut dl, &mut db) };
+    counted!(astPalEqgal(dr, dd, &mut dl, &mut db));
     (dl, db)
 }
 
@@ -284,7 +284,7 @@ pub(crate) fn eqgal(dr: f64, dd: f64) -> (f64, f64) {
 pub(crate) fn galsup(dl: f64, db: f64) -> (f64, f64) {
     let mut dsl = 0.0;
     let mut dsb = 0.0;
-    unsafe { astPalGalsup(dl, db, &mut dsl, &mut dsb) };
+    counted!(astPalGalsup(dl, db, &mut dsl, &mut dsb));
     (dsl, dsb)
 }
 
@@ -292,7 +292,7 @@ pub(crate) fn galsup(dl: f64, db: f64) -> (f64, f64) {
 pub(crate) fn supgal(dsl: f64, dsb: f64) -> (f64, f64) {
     let mut dl = 0.0;
     let mut db = 0.0;
-    unsafe { astPalSupgal(dsl, dsb, &mut dl, &mut db) };
+    counted!(astPalSupgal(dsl, dsb, &mut dl, &mut db));
     (dl, db)
 }
 
@@ -300,7 +300,7 @@ pub(crate) fn supgal(dsl: f64, dsb: f64) -> (f64, f64) {
 pub(crate) fn fk45z(r1950: f64, d1950: f64, bepoch: f64) -> (f64, f64) {
     let mut r2000 = 0.0;
     let mut d2000 = 0.0;
-    unsafe { astPalFk45z(r1950, d1950, bepoch, &mut r2000, &mut d2000) };
+    counted!(astPalFk45z(r1950, d1950, bepoch, &mut r2000, &mut d2000));
     (r2000, d2000)
 }
 
@@ -312,17 +312,15 @@ pub(crate) fn fk54z(r2000: f64, d2000: f64, bepoch: f64) -> (f64, f64, f64, f64)
     let mut d1950 = 0.0;
     let mut dr1950 = 0.0;
     let mut dd1950 = 0.0;
-    unsafe {
-        astPalFk54z(
-            r2000,
-            d2000,
-            bepoch,
-            &mut r1950,
-            &mut d1950,
-            &mut dr1950,
-            &mut dd1950,
-        )
-    };
+    counted!(astPalFk54z(
+        r2000,
+        d2000,
+        bepoch,
+        &mut r1950,
+        &mut d1950,
+        &mut dr1950,
+        &mut dd1950,
+    ));
     (r1950, d1950, dr1950, dd1950)
 }
 
@@ -330,7 +328,7 @@ pub(crate) fn fk54z(r2000: f64, d2000: f64, bepoch: f64) -> (f64, f64, f64, f64)
 pub(crate) fn fk5hz(r5: f64, d5: f64, epoch: f64) -> (f64, f64) {
     let mut rh = 0.0;
     let mut dh = 0.0;
-    unsafe { astPalFk5hz(r5, d5, epoch, &mut rh, &mut dh) };
+    counted!(astPalFk5hz(r5, d5, epoch, &mut rh, &mut dh));
     (rh, dh)
 }
 
@@ -342,7 +340,9 @@ pub(crate) fn hfk5z(rh: f64, dh: f64, epoch: f64) -> (f64, f64, f64, f64) {
     let mut d5 = 0.0;
     let mut dr5 = 0.0;
     let mut dd5 = 0.0;
-    unsafe { astPalHfk5z(rh, dh, epoch, &mut r5, &mut d5, &mut dr5, &mut dd5) };
+    counted!(astPalHfk5z(
+        rh, dh, epoch, &mut r5, &mut d5, &mut dr5, &mut dd5
+    ));
     (r5, d5, dr5, dd5)
 }
 
@@ -353,21 +353,21 @@ pub(crate) fn hfk5z(rh: f64, dh: f64, epoch: f64) -> (f64, f64, f64, f64) {
 /// Julian (FK5) precession matrix from epoch `ep0` to `ep1` (Julian epochs).
 pub(crate) fn prec(ep0: f64, ep1: f64) -> [[f64; 3]; 3] {
     let mut m = [[0.0; 3]; 3];
-    unsafe { astPalPrec(ep0, ep1, m.as_mut_ptr()) };
+    counted!(astPalPrec(ep0, ep1, m.as_mut_ptr()));
     m
 }
 
 /// Besselian (FK4) precession matrix from epoch `bep0` to `bep1`.
 pub(crate) fn prebn(bep0: f64, bep1: f64) -> [[f64; 3]; 3] {
     let mut m = [[0.0; 3]; 3];
-    unsafe { astPalPrebn(bep0, bep1, m.as_mut_ptr()) };
+    counted!(astPalPrebn(bep0, bep1, m.as_mut_ptr()));
     m
 }
 
 /// Equatorial to ecliptic rotation matrix for a given TDB date (MJD).
 pub(crate) fn ecmat(date: f64) -> [[f64; 3]; 3] {
     let mut m = [[0.0; 3]; 3];
-    unsafe { astPalEcmat(date, m.as_mut_ptr()) };
+    counted!(astPalEcmat(date, m.as_mut_ptr()));
     m
 }
 
@@ -389,15 +389,13 @@ pub(crate) fn deuler(order: &str, phi: f64, theta: f64, psi: f64) -> [[f64; 3]; 
     // buf[len..] is already zero-filled (null terminator)
 
     let mut m = [[0.0; 3]; 3];
-    unsafe {
-        astPalDeuler(
-            buf.as_ptr().cast::<c_char>(),
-            phi,
-            theta,
-            psi,
-            m.as_mut_ptr(),
-        )
-    };
+    counted!(astPalDeuler(
+        buf.as_ptr().cast::<c_char>(),
+        phi,
+        theta,
+        psi,
+        m.as_mut_ptr(),
+    ));
     m
 }
 
@@ -411,7 +409,7 @@ pub(crate) fn deuler(order: &str, phi: f64, theta: f64, psi: f64) -> [[f64; 3]; 
 pub(crate) fn addet(rm: f64, dm: f64, eq: f64) -> (f64, f64) {
     let mut rc = 0.0;
     let mut dc = 0.0;
-    unsafe { astPalAddet(rm, dm, eq, &mut rc, &mut dc) };
+    counted!(astPalAddet(rm, dm, eq, &mut rc, &mut dc));
     (rc, dc)
 }
 
@@ -421,7 +419,7 @@ pub(crate) fn addet(rm: f64, dm: f64, eq: f64) -> (f64, f64) {
 pub(crate) fn subet(rc: f64, dc: f64, eq: f64) -> (f64, f64) {
     let mut rm = 0.0;
     let mut dm = 0.0;
-    unsafe { astPalSubet(rc, dc, eq, &mut rm, &mut dm) };
+    counted!(astPalSubet(rc, dc, eq, &mut rm, &mut dm));
     (rm, dm)
 }
 
@@ -431,7 +429,7 @@ pub(crate) fn subet(rc: f64, dc: f64, eq: f64) -> (f64, f64) {
 /// [`ampqk`] and [`mapqkz`].
 pub(crate) fn mappa(eq: f64, date: f64) -> [f64; 21] {
     let mut amprms = [0.0; 21];
-    unsafe { astPalMappa(eq, date, amprms.as_mut_ptr()) };
+    counted!(astPalMappa(eq, date, amprms.as_mut_ptr()));
     amprms
 }
 
@@ -441,7 +439,7 @@ pub(crate) fn mappa(eq: f64, date: f64) -> [f64; 21] {
 pub(crate) fn ampqk(ra: f64, da: f64, amprms: &[f64; 21]) -> (f64, f64) {
     let mut rm = 0.0;
     let mut dm = 0.0;
-    unsafe { astPalAmpqk(ra, da, amprms.as_ptr(), &mut rm, &mut dm) };
+    counted!(astPalAmpqk(ra, da, amprms.as_ptr(), &mut rm, &mut dm));
     (rm, dm)
 }
 
@@ -451,7 +449,7 @@ pub(crate) fn ampqk(ra: f64, da: f64, amprms: &[f64; 21]) -> (f64, f64) {
 pub(crate) fn mapqkz(rm: f64, dm: f64, amprms: &[f64; 21]) -> (f64, f64) {
     let mut ra = 0.0;
     let mut da = 0.0;
-    unsafe { astPalMapqkz(rm, dm, amprms.as_ptr(), &mut ra, &mut da) };
+    counted!(astPalMapqkz(rm, dm, amprms.as_ptr(), &mut ra, &mut da));
     (ra, da)
 }
 
@@ -461,22 +459,22 @@ pub(crate) fn mapqkz(rm: f64, dm: f64, amprms: &[f64; 21]) -> (f64, f64) {
 
 /// Normalize an angle to the range [-pi, pi].
 pub(crate) fn drange(angle: f64) -> f64 {
-    unsafe { astPalDrange(angle) }
+    counted!(astPalDrange(angle))
 }
 
 /// Normalize an angle to the range [0, 2*pi].
 pub(crate) fn dranrm(angle: f64) -> f64 {
-    unsafe { astPalDranrm(angle) }
+    counted!(astPalDranrm(angle))
 }
 
 /// Angular separation between two points on a sphere (radians).
 pub(crate) fn dsep(al: f64, ap: f64, bl: f64, bp: f64) -> f64 {
-    unsafe { astPalDsep(al, ap, bl, bp) }
+    counted!(astPalDsep(al, ap, bl, bp))
 }
 
 /// Bearing (position angle) of point B as seen from point A (radians).
 pub(crate) fn dbear(a1: f64, b1: f64, a2: f64, b2: f64) -> f64 {
-    unsafe { astPalDbear(a1, b1, a2, b2) }
+    counted!(astPalDbear(a1, b1, a2, b2))
 }
 
 // ---------------------------------------------------------------------------
@@ -495,16 +493,14 @@ pub(crate) fn evp(date: f64, deqx: f64) -> ([f64; 3], [f64; 3], [f64; 3], [f64; 
     let mut dpb = [0.0; 3];
     let mut dvh = [0.0; 3];
     let mut dph = [0.0; 3];
-    unsafe {
-        astPalEvp(
-            date,
-            deqx,
-            dvb.as_mut_ptr(),
-            dpb.as_mut_ptr(),
-            dvh.as_mut_ptr(),
-            dph.as_mut_ptr(),
-        )
-    };
+    counted!(astPalEvp(
+        date,
+        deqx,
+        dvb.as_mut_ptr(),
+        dpb.as_mut_ptr(),
+        dvh.as_mut_ptr(),
+        dph.as_mut_ptr(),
+    ));
     (dvb, dpb, dvh, dph)
 }
 
@@ -518,7 +514,7 @@ pub(crate) fn evp(date: f64, deqx: f64) -> ([f64; 3], [f64; 3], [f64; 3], [f64; 
 pub(crate) fn geoc(p: f64, h: f64) -> (f64, f64) {
     let mut r = 0.0;
     let mut z = 0.0;
-    unsafe { astPalGeoc(p, h, &mut r, &mut z) };
+    counted!(astPalGeoc(p, h, &mut r, &mut z));
     (r, z)
 }
 
@@ -532,7 +528,7 @@ pub(crate) fn geoc(p: f64, h: f64) -> (f64, f64) {
 pub(crate) fn de2h(ha: f64, dec: f64, phi: f64) -> (f64, f64) {
     let mut az = 0.0;
     let mut el = 0.0;
-    unsafe { astPalDe2h(ha, dec, phi, &mut az, &mut el) };
+    counted!(astPalDe2h(ha, dec, phi, &mut az, &mut el));
     (az, el)
 }
 
@@ -542,7 +538,7 @@ pub(crate) fn de2h(ha: f64, dec: f64, phi: f64) -> (f64, f64) {
 pub(crate) fn dh2e(az: f64, el: f64, phi: f64) -> (f64, f64) {
     let mut ha = 0.0;
     let mut dec = 0.0;
-    unsafe { astPalDh2e(az, el, phi, &mut ha, &mut dec) };
+    counted!(astPalDh2e(az, el, phi, &mut ha, &mut dec));
     (ha, dec)
 }
 
@@ -556,7 +552,7 @@ pub(crate) fn dh2e(az: f64, el: f64, phi: f64) -> (f64, f64) {
 /// magnitude is the rotation angle in radians.
 pub(crate) fn dav2m(axvec: &[f64; 3]) -> [[f64; 3]; 3] {
     let mut m = [[0.0; 3]; 3];
-    unsafe { astPalDav2m(axvec.as_ptr(), m.as_mut_ptr()) };
+    counted!(astPalDav2m(axvec.as_ptr(), m.as_mut_ptr()));
     m
 }
 
@@ -566,17 +562,17 @@ pub(crate) fn dav2m(axvec: &[f64; 3]) -> [[f64; 3]; 3] {
 
 /// TAI-UTC leap seconds for a given UTC date (MJD).
 pub(crate) fn dat(mjd: f64) -> f64 {
-    unsafe { astPalDat(mjd) }
+    counted!(astPalDat(mjd))
 }
 
 /// Greenwich Mean Sidereal Time (radians) for a given UT1 date (MJD).
 pub(crate) fn gmst(ut1: f64) -> f64 {
-    unsafe { astPalGmst(ut1) }
+    counted!(astPalGmst(ut1))
 }
 
 /// Equation of the equinoxes (radians) for a given TDB date (MJD).
 pub(crate) fn eqeqx(date: f64) -> f64 {
-    unsafe { astPalEqeqx(date) }
+    counted!(astPalEqeqx(date))
 }
 
 /// Convert an MJD between the TDB timescale and one of TAI / TT /
@@ -674,7 +670,7 @@ pub(crate) fn dtdb_geocentre(tdb_mjd: f64) -> f64 {
     let date1 = 2_400_000.5_f64;
     let date2 = tdb_mjd;
     let ut_frac = tdb_mjd - tdb_mjd.floor();
-    unsafe { astEraDtdb(date1, date2, ut_frac, 0.0, 0.0, 0.0) }
+    counted!(astEraDtdb(date1, date2, ut_frac, 0.0, 0.0, 0.0))
 }
 
 // ---------------------------------------------------------------------------
@@ -693,7 +689,7 @@ pub(crate) fn dtdb_geocentre(tdb_mjd: f64) -> f64 {
 /// routine signalled an error (e.g. latitude out of range).
 pub(crate) fn gd2gc(lon: f64, lat: f64, height: f64) -> Option<[f64; 3]> {
     let mut xyz = [0.0_f64; 3];
-    let status = unsafe { astEraGd2gc(1, lon, lat, height, xyz.as_mut_ptr()) };
+    let status = counted!(astEraGd2gc(1, lon, lat, height, xyz.as_mut_ptr()));
     if status == 0 { Some(xyz) } else { None }
 }
 
@@ -706,7 +702,13 @@ pub(crate) fn gc2gd(xyz: [f64; 3]) -> Option<(f64, f64, f64)> {
     let mut elong = 0.0_f64;
     let mut phi = 0.0_f64;
     let mut height = 0.0_f64;
-    let status = unsafe { astEraGc2gd(1, xyz.as_ptr(), &mut elong, &mut phi, &mut height) };
+    let status = counted!(astEraGc2gd(
+        1,
+        xyz.as_ptr(),
+        &mut elong,
+        &mut phi,
+        &mut height
+    ));
     if status == 0 {
         Some((elong, phi, height))
     } else {
@@ -723,7 +725,7 @@ pub(crate) fn gc2gd(xyz: [f64; 3]) -> Option<(f64, f64, f64)> {
 /// Returns a 6-element array: [x, y, z, xdot, ydot, zdot] in AU and AU/s.
 pub(crate) fn pvobs(lat: f64, alt: f64, lst: f64) -> [f64; 6] {
     let mut pv = [0.0; 6];
-    unsafe { astPalPvobs(lat, alt, lst, pv.as_mut_ptr()) };
+    counted!(astPalPvobs(lat, alt, lst, pv.as_mut_ptr()));
     pv
 }
 
@@ -732,7 +734,7 @@ pub(crate) fn pvobs(lat: f64, alt: f64, lst: f64) -> [f64; 6] {
 /// - `ra`: J2000 right ascension (radians)
 /// - `dec`: J2000 declination (radians)
 pub(crate) fn rvgalc(ra: f64, dec: f64) -> f64 {
-    unsafe { astPalRvgalc(ra, dec) }
+    counted!(astPalRvgalc(ra, dec))
 }
 
 /// Velocity component of the Local Group motion toward the source (km/s).
@@ -740,7 +742,7 @@ pub(crate) fn rvgalc(ra: f64, dec: f64) -> f64 {
 /// - `ra`: J2000 right ascension (radians)
 /// - `dec`: J2000 declination (radians)
 pub(crate) fn rvlg(ra: f64, dec: f64) -> f64 {
-    unsafe { astPalRvlg(ra, dec) }
+    counted!(astPalRvlg(ra, dec))
 }
 
 /// Velocity component of the dynamical LSR toward the source (km/s).
@@ -748,7 +750,7 @@ pub(crate) fn rvlg(ra: f64, dec: f64) -> f64 {
 /// - `ra`: J2000 right ascension (radians)
 /// - `dec`: J2000 declination (radians)
 pub(crate) fn rvlsrd(ra: f64, dec: f64) -> f64 {
-    unsafe { astPalRvlsrd(ra, dec) }
+    counted!(astPalRvlsrd(ra, dec))
 }
 
 /// Velocity component of the kinematic LSR toward the source (km/s).
@@ -756,7 +758,7 @@ pub(crate) fn rvlsrd(ra: f64, dec: f64) -> f64 {
 /// - `ra`: J2000 right ascension (radians)
 /// - `dec`: J2000 declination (radians)
 pub(crate) fn rvlsrk(ra: f64, dec: f64) -> f64 {
-    unsafe { astPalRvlsrk(ra, dec) }
+    counted!(astPalRvlsrk(ra, dec))
 }
 
 // ---------------------------------------------------------------------------
@@ -774,7 +776,7 @@ pub(crate) fn djcl(djm: f64) -> (i32, i32, i32, f64, i32) {
     let mut id = 0;
     let mut fd = 0.0;
     let mut j = 0;
-    unsafe { astPalDjcl(djm, &mut iy, &mut im, &mut id, &mut fd, &mut j) };
+    counted!(astPalDjcl(djm, &mut iy, &mut im, &mut id, &mut fd, &mut j));
     (iy, im, id, fd, j)
 }
 
@@ -785,7 +787,7 @@ pub(crate) fn djcl(djm: f64) -> (i32, i32, i32, f64, i32) {
 pub(crate) fn cldj(iy: i32, im: i32, id: i32) -> (f64, i32) {
     let mut djm = 0.0;
     let mut j = 0;
-    unsafe { astPalCldj(iy, im, id, &mut djm, &mut j) };
+    counted!(astPalCldj(iy, im, id, &mut djm, &mut j));
     (djm, j)
 }
 
@@ -798,7 +800,7 @@ pub(crate) fn cldj(iy: i32, im: i32, id: i32) -> (f64, i32) {
 pub(crate) fn dd2tf(ndp: i32, days: f64) -> (char, [i32; 4]) {
     let mut sign: c_char = 0;
     let mut ihmsf = [0i32; 4];
-    unsafe { astPalDd2tf(ndp, days, &mut sign, ihmsf.as_mut_ptr()) };
+    counted!(astPalDd2tf(ndp, days, &mut sign, ihmsf.as_mut_ptr()));
     let sign = if sign == b'-' as c_char { '-' } else { '+' };
     (sign, ihmsf)
 }
@@ -810,7 +812,7 @@ pub(crate) fn dd2tf(ndp: i32, days: f64) -> (char, [i32; 4]) {
 pub(crate) fn dtf2d(ihour: i32, imin: i32, sec: f64) -> (f64, i32) {
     let mut days = 0.0;
     let mut j = 0;
-    unsafe { astPalDtf2d(ihour, imin, sec, &mut days, &mut j) };
+    counted!(astPalDtf2d(ihour, imin, sec, &mut days, &mut j));
     (days, j)
 }
 
@@ -1289,5 +1291,41 @@ mod tests {
         m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1])
             - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0])
             + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0])
+    }
+}
+
+#[cfg(test)]
+mod count_tests {
+    /// Every FFI call in this file goes through `counted!`, so the
+    /// `call-counts` feature sees every call into PAL and ERFA.
+    #[test]
+    fn every_ffi_call_is_counted() {
+        let src = include_str!("pal.rs");
+        let body = &src[src.find("\n}\n").expect("end of the extern block")..];
+        let mut uncounted = Vec::new();
+        for prefix in ["astPal", "astEra"] {
+            for (i, _) in body.match_indices(prefix) {
+                let name_end = body[i..]
+                    .find(|c: char| !c.is_ascii_alphanumeric())
+                    .map_or(body.len(), |e| i + e);
+                let is_call = body[name_end..].starts_with('(');
+                let counted = body[..i].trim_end().ends_with("counted!(");
+                if is_call && !counted {
+                    uncounted.push(&body[i..name_end]);
+                }
+            }
+        }
+        assert!(
+            uncounted.is_empty(),
+            "uncounted PAL/ERFA calls: {uncounted:?}"
+        );
+    }
+
+    #[cfg(feature = "call-counts")]
+    #[test]
+    fn eqgal_counts_by_symbol() {
+        crate::call_counts::reset();
+        let _ = super::eqgal(1.0, 0.5);
+        assert_eq!(crate::call_counts::snapshot().get("astPalEqgal"), Some(&1));
     }
 }

@@ -10,6 +10,8 @@
 
 use std::ffi::c_int;
 
+use crate::call_counts::counted;
+
 use crate::constants::BAD_VALUE;
 use crate::error::{AstError, AstResult, ErrorCode};
 
@@ -520,9 +522,9 @@ impl PrjParams {
         // TPN is not handled by astPRJset (it's defined in tpn.c with
         // its own astTPNset entry point).
         let status = if matches!(proj, WcsProjection::Tpn) {
-            unsafe { astTPNset(inner) }
+            counted!(astTPNset(inner))
         } else {
-            unsafe { astPRJset(inner.code.as_ptr(), inner) }
+            counted!(astPRJset(inner.code.as_ptr(), inner))
         };
         // C never sets the projection up in advance: InitPrjPrm leaves the
         // flag clear (wcsmap.c), so the first projection call runs the set-up
@@ -710,6 +712,7 @@ impl PrjParams {
         let mut x = 0.0;
         let mut y = 0.0;
 
+        crate::call_counts::hit("wcs_fwd");
         // SAFETY: the function pointer was set by astPRJset and operates
         // on the AstPrjPrm struct.  We pass valid mutable pointers.
         let status = unsafe { fwd(phi, theta, &mut self.inner, &mut x, &mut y) };
@@ -748,6 +751,7 @@ impl PrjParams {
         let mut phi = 0.0;
         let mut theta = 0.0;
 
+        crate::call_counts::hit("wcs_rev");
         // SAFETY: the function pointer was set by astPRJset and operates
         // on the AstPrjPrm struct.  We pass valid mutable pointers.
         let status = unsafe { rev(x, y, &mut self.inner, &mut phi, &mut theta) };
@@ -783,6 +787,7 @@ impl PrjParams {
         };
         let mut x = 0.0;
         let mut y = 0.0;
+        crate::call_counts::hit("wcs_fwd");
         // SAFETY: the function pointer was set by astPRJset and operates
         // on the AstPrjPrm struct. We pass valid mutable pointers.
         let status = unsafe { fwd(phi, theta, &mut self.inner, &mut x, &mut y) };
@@ -802,6 +807,7 @@ impl PrjParams {
         };
         let mut phi = 0.0;
         let mut theta = 0.0;
+        crate::call_counts::hit("wcs_rev");
         // SAFETY: the function pointer was set by astPRJset and operates
         // on the AstPrjPrm struct. We pass valid mutable pointers.
         let status = unsafe { rev(x, y, &mut self.inner, &mut phi, &mut theta) };
@@ -1159,5 +1165,53 @@ mod tests {
         let (phi, theta) = prj.reverse(x, y).unwrap();
         assert!((phi - 35.0).abs() < 1e-10, "phi = {phi}");
         assert!((theta - 50.0).abs() < 1e-10, "theta = {theta}");
+    }
+}
+
+#[cfg(test)]
+mod count_tests {
+    /// Every call into wcslib in this file is counted: the setup entry points
+    /// under their symbol names, the projection function pointers as
+    /// `wcs_fwd` and `wcs_rev` (C reaches them through pointers too,
+    /// wcsmap.c:2855,2883).
+    #[test]
+    fn every_ffi_call_is_counted() {
+        let src = include_str!("wcslib.rs");
+        let start = src.find("\n}\n").expect("end of the extern block");
+        let end = src.find("mod count_tests").expect("this module");
+        let lines: Vec<&str> = src[start..end].lines().collect();
+        let mut uncounted = Vec::new();
+        for (i, line) in lines.iter().enumerate() {
+            let t = line.trim_start();
+            if t.starts_with("//") || t.contains("fn ast") {
+                continue;
+            }
+            for (pat, key) in [
+                ("unsafe { fwd(", "hit(\"wcs_fwd\")"),
+                ("unsafe { rev(", "hit(\"wcs_rev\")"),
+            ] {
+                if t.contains(pat) && !lines[..i].iter().rev().take(4).any(|l| l.contains(key)) {
+                    uncounted.push(*line);
+                }
+            }
+            for name in ["astPRJset(", "astTPNset("] {
+                if t.contains(name) && !t.contains("counted!(") && !t.contains("matches(") {
+                    uncounted.push(*line);
+                }
+            }
+        }
+        assert!(
+            uncounted.is_empty(),
+            "uncounted wcslib calls: {uncounted:#?}"
+        );
+    }
+
+    #[cfg(feature = "call-counts")]
+    #[test]
+    fn tan_forward_counts_one_evaluation() {
+        let mut prj = super::PrjParams::new(super::WcsProjection::Tan).unwrap();
+        crate::call_counts::reset();
+        let _ = prj.forward_raw(10.0, 80.0);
+        assert_eq!(crate::call_counts::snapshot().get("wcs_fwd"), Some(&1));
     }
 }
