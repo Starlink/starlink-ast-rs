@@ -649,3 +649,30 @@ fn inverse_transform_masks_as_forward_does() {
         assert_eq!(y, [0.5, BAD_VALUE], "forward={forward}");
     }
 }
+
+/// A Box of zero width on an axis is widened by its default uncertainty,
+/// which scales with the axis value (region.c `GetDefUnc`). The default
+/// uncertainty is kept once built, so moving the Box must rebuild it: after
+/// recentring at 1000 a point 2e-4 off the centre lies inside, as the
+/// uncertainty there is about 5e-4 wide, where at 5 it was 2.5e-6.
+#[test]
+fn default_uncertainty_follows_a_moved_box() {
+    let frame = BasicFrameBuilder::new(2).build().unwrap();
+    let mut b = BoxRegionBuilder::from_bounds(frame, &[0.0, 5.0], &[10.0, 5.0])
+        .unwrap()
+        .build()
+        .unwrap();
+    let near = PointSet::from_rows([[5.0, 5.0 + 2.0e-6]]);
+    assert_eq!(
+        b.transform(&near, true).unwrap().point(0),
+        &[5.0, 5.0 + 2.0e-6]
+    );
+
+    b.reg_centre_set(&[5.0, 1000.0], ast_core::frames::FrameRef::Base)
+        .unwrap();
+    let moved = PointSet::from_rows([[5.0, 1000.0 + 2.0e-4]]);
+    assert_eq!(
+        b.transform(&moved, true).unwrap().point(0),
+        &[5.0, 1000.0 + 2.0e-4]
+    );
+}

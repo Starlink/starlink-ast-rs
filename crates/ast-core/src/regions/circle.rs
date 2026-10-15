@@ -545,6 +545,10 @@ impl RegionGeometry for Circle {
 // ============================================================================
 
 impl Region for Circle {
+    fn def_unc_cache(&self) -> Option<&std::cell::RefCell<Option<DynRegion>>> {
+        Some(&self.data.def_unc)
+    }
+
     fn point_in_region(&self, point: &[f64]) -> AstResult<bool> {
         // Check for BAD coordinates in the input.
         if point_has_bad(point) {

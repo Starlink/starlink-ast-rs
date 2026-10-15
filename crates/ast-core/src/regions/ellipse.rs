@@ -513,8 +513,14 @@ impl Ellipse {
     }
 
     /// ellipse.c `Cache`: [`Ellipse::calc_pars`], or `AST__BADIN` when the
-    /// defining points do not determine an ellipse.
+    /// defining points do not determine an ellipse. Kept until the Ellipse
+    /// changes, as C keeps it under `stale`.
     fn cache(&self) -> AstResult<(f64, f64, f64)> {
+        if let Some(super::data::ClassCache::Ellipse { a, b, angle }) =
+            *self.data.class_cache.borrow()
+        {
+            return Ok((a, b, angle));
+        }
         let (a, b, angle) = self.calc_pars()?;
         if a <= 0.0 || is_bad(a) || b <= 0.0 || is_bad(b) {
             return Err(AstError::new(
@@ -522,6 +528,8 @@ impl Ellipse {
                 "astInitEllipse(Ellipse): The supplied points do not determine an ellipse.",
             ));
         }
+        *self.data.class_cache.borrow_mut() =
+            Some(super::data::ClassCache::Ellipse { a, b, angle });
         Ok((a, b, angle))
     }
 
@@ -570,6 +578,8 @@ impl RegionGeometry for Ellipse {
     }
 
     fn region_data_mut(&mut self) -> &mut RegionData {
+        // Whatever the caller changes may change what `cache` derives.
+        self.data.invalidate_cache();
         &mut self.data
     }
 
@@ -720,6 +730,10 @@ impl RegionGeometry for Ellipse {
 // ============================================================================
 
 impl Region for Ellipse {
+    fn def_unc_cache(&self) -> Option<&std::cell::RefCell<Option<DynRegion>>> {
+        Some(&self.data.def_unc)
+    }
+
     fn point_in_region(&self, point: &[f64]) -> AstResult<bool> {
         if point_has_bad(point) {
             return Ok(false);
@@ -952,6 +966,7 @@ impl Region for Ellipse {
     }
 
     fn region_frameset_mut(&mut self) -> &mut FrameSet {
+        self.data.invalidate_cache();
         &mut self.data.frameset
     }
 

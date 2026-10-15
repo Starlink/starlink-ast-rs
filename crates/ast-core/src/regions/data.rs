@@ -142,6 +142,12 @@ pub(crate) struct RegionData {
     /// Values the class derives from the Region and keeps until it changes,
     /// as C keeps them in the class structure under a `stale` flag.
     pub(crate) class_cache: RefCell<Option<ClassCache>>,
+
+    /// C's `defunc`: the default uncertainty Region, built on first use by
+    /// `get_unc_frm` (region.c:4006). Unlike C, which keeps it until the
+    /// uncertainty is cleared, it is also dropped whenever the Region's
+    /// geometry changes, so it never describes an old shape.
+    pub(crate) def_unc: RefCell<Option<DynRegion>>,
 }
 
 /// The values a Region class caches between calls (lazily computed, cleared
@@ -159,9 +165,15 @@ pub(crate) enum ClassCache {
         /// and Closed, which the base-Frame tests hand their work to.
         base_box: Option<Box<super::BoxRegion>>,
     },
+    /// box.c `Cache`: the limits on each base-Frame axis, the centre plus or
+    /// minus the extent.
+    Box { lbnd: Vec<f64>, ubnd: Vec<f64> },
     /// circle.c `Cache`: the radius, measured from the centre to the
     /// circumference point in the base Frame.
     Circle { radius: f64 },
+    /// ellipse.c `Cache`: the semi-major and semi-minor axis lengths and the
+    /// angle of the major axis.
+    Ellipse { a: f64, b: f64, angle: f64 },
     /// polygon.c `Cache`: each edge's line description, a point inside the
     /// Polygon, and whether the vertices run anti-clockwise.
     Polygon {
@@ -196,6 +208,7 @@ impl Clone for RegionData {
             region_fs_set: self.region_fs_set,
             cached_base_mesh: RefCell::new(self.cached_base_mesh.borrow().clone()),
             class_cache: RefCell::new(self.class_cache.borrow().clone()),
+            def_unc: RefCell::new(self.def_unc.borrow().clone()),
         }
     }
 }
@@ -261,6 +274,7 @@ impl RegionData {
             region_fs_set: false,
             cached_base_mesh: RefCell::new(None),
             class_cache: RefCell::new(None),
+            def_unc: RefCell::new(None),
         }
     }
 
@@ -348,11 +362,12 @@ impl RegionData {
         self.fill_factor_set = false;
     }
 
-    /// Invalidate the cached mesh and class values (call after geometry
-    /// changes).
+    /// Invalidate the cached mesh, class values and default uncertainty
+    /// (call after geometry changes).
     pub(crate) fn invalidate_cache(&self) {
         *self.cached_base_mesh.borrow_mut() = None;
         *self.class_cache.borrow_mut() = None;
+        *self.def_unc.borrow_mut() = None;
     }
 
     /// The boundary-strictness that

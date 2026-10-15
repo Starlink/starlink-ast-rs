@@ -415,6 +415,10 @@ impl RegionGeometry for Prism {
 // ============================================================================
 
 impl Region for Prism {
+    fn def_unc_cache(&self) -> Option<&std::cell::RefCell<Option<DynRegion>>> {
+        Some(&self.data.def_unc)
+    }
+
     fn point_in_region(&self, point: &[f64]) -> AstResult<bool> {
         // Check for BAD coordinates.
         if point_has_bad(point) {

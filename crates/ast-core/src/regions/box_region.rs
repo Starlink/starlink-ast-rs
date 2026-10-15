@@ -572,8 +572,13 @@ impl BoxRegion {
     /// The Box's limits in its base Frame, as box.c `Cache` computes them:
     /// on each axis the centre plus or minus the extent, which is the base
     /// Frame's axis distance from the centre to the corner, so a sky axis
-    /// takes the short way round.
+    /// takes the short way round. Kept until the Box changes, as C keeps it
+    /// under `stale`.
     fn bounds(&self) -> AstResult<(Vec<f64>, Vec<f64>)> {
+        if let Some(super::data::ClassCache::Box { lbnd, ubnd }) = &*self.data.class_cache.borrow()
+        {
+            return Ok((lbnd.clone(), ubnd.clone()));
+        }
         let centre = &self.data.points[0];
         let corner = &self.data.points[1];
         let frame = self.data.frameset.base();
@@ -584,6 +589,10 @@ impl BoxRegion {
             lbnd.push(c - extent);
             ubnd.push(c + extent);
         }
+        *self.data.class_cache.borrow_mut() = Some(super::data::ClassCache::Box {
+            lbnd: lbnd.clone(),
+            ubnd: ubnd.clone(),
+        });
         Ok((lbnd, ubnd))
     }
 
@@ -848,6 +857,8 @@ impl RegionGeometry for BoxRegion {
     }
 
     fn region_data_mut(&mut self) -> &mut RegionData {
+        // Whatever the caller changes may change the cached limits.
+        self.data.invalidate_cache();
         &mut self.data
     }
 
@@ -1067,6 +1078,10 @@ impl RegionGeometry for BoxRegion {
 // ============================================================================
 
 impl Region for BoxRegion {
+    fn def_unc_cache(&self) -> Option<&std::cell::RefCell<Option<DynRegion>>> {
+        Some(&self.data.def_unc)
+    }
+
     fn point_in_region(&self, point: &[f64]) -> AstResult<bool> {
         // Check for BAD coordinates in the input.
         if point_has_bad(point) {
@@ -1340,6 +1355,7 @@ impl Region for BoxRegion {
     }
 
     fn region_frameset_mut(&mut self) -> &mut FrameSet {
+        self.data.invalidate_cache();
         &mut self.data.frameset
     }
 

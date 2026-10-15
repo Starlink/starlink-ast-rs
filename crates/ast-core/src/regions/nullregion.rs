@@ -146,6 +146,10 @@ impl RegionGeometry for NullRegion {
 // ============================================================================
 
 impl Region for NullRegion {
+    fn def_unc_cache(&self) -> Option<&std::cell::RefCell<Option<DynRegion>>> {
+        Some(&self.data.def_unc)
+    }
+
     fn point_in_region(&self, point: &[f64]) -> AstResult<bool> {
         // A point is inside when `transform` leaves it good: an un-negated
         // NullRegion contains nothing, and a negated one passes every point

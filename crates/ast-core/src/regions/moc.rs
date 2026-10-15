@@ -2838,6 +2838,10 @@ impl RegionGeometry for Moc {
 // ============================================================================
 
 impl Region for Moc {
+    fn def_unc_cache(&self) -> Option<&std::cell::RefCell<Option<DynRegion>>> {
+        Some(&self.data.def_unc)
+    }
+
     fn point_in_region(&self, point: &[f64]) -> AstResult<bool> {
         let pts = PointSet::from_rows(std::iter::once(point));
         let out = Mapping::transform(self, &pts, true)?;

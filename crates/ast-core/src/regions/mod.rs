@@ -847,6 +847,13 @@ pub trait Region: Frame + Mapping + AsDynRegion {
         self.default_bounding_box_unc()
     }
 
+    /// Where this Region keeps its default uncertainty once built (C's
+    /// `defunc`), if it keeps one.
+    #[doc(hidden)]
+    fn def_unc_cache(&self) -> Option<&std::cell::RefCell<Option<DynRegion>>> {
+        None
+    }
+
     /// Return the uncertainty Region for this Region in the requested Frame.
     ///
     /// Mirrors C `astGetUncFrm` (region.c:3912): the explicit uncertainty if
@@ -855,9 +862,22 @@ pub trait Region: Frame + Mapping + AsDynRegion {
     /// base Frame) is returned directly; for [`FrameRef::Current`] it is
     /// mapped through the base→current Mapping unless that is a `UnitMap`.
     fn get_unc_frm(&self, ifrm: FrameRef) -> AstResult<DynRegion> {
-        let unc = match self.get_uncertainty() {
-            Some(u) => u,
-            None => self.get_def_unc()?,
+        let unc = match (self.get_uncertainty(), self.def_unc_cache()) {
+            (Some(u), _) => u,
+            // Built once and kept, as C keeps `defunc` (region.c:4006).
+            (None, Some(slot)) => {
+                if slot.borrow().is_none() {
+                    let unc = self.get_def_unc()?;
+                    // C's callers share the one cached Region, so what it
+                    // caches about itself persists; here each caller gets a
+                    // copy, so its bounds are worked out once now and every
+                    // copy carries them.
+                    unc.get_region_bounds()?;
+                    *slot.borrow_mut() = Some(unc);
+                }
+                slot.borrow().clone().expect("built above")
+            }
+            (None, None) => self.get_def_unc()?,
         };
         match ifrm {
             FrameRef::Base => Ok(unc),
