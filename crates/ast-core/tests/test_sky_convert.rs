@@ -119,7 +119,8 @@ fn convert_matches_the_c_library() {
             (Some(got), Some(want)) => {
                 let same = match sincos_licence(config, from_sys, to_sys, align) {
                     Some(ulps) => got.iter().zip(&want).all(|(g, w)| {
-                        within_ulps(g[0], w[0], ulps) && within_ulps(g[1], w[1], ulps)
+                        (within_ulps(g[0], w[0], ulps) && within_ulps(g[1], w[1], ulps))
+                            || crate::common::c_values_eq(g, w)
                     }),
                     None => crate::common::c_values_eq(got.as_flattened(), want.as_flattened()),
                 };

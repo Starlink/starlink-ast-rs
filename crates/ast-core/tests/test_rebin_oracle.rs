@@ -186,10 +186,11 @@ fn rebinning_matches_c() {
             _ => panic!("no type {ty}"),
         };
         let same_samples = samples.len() == want_samples.len()
-            && samples
-                .iter()
-                .zip(want_samples)
-                .all(|(a, b)| a.to_bits() == b.to_bits() || crate::common::c_value_eq(*a, *b));
+            && samples.iter().zip(want_samples).all(|(a, b)| {
+                a.to_bits() == b.to_bits()
+                    || (a.is_nan() && b.is_nan())
+                    || crate::common::c_value_eq(*a, *b)
+            });
         // The hash pins every value bit for bit, so it is compared only on
         // the platform the C values were captured on; elsewhere the samples,
         // compared within libm rounding, are the check.

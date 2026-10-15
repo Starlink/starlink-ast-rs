@@ -33,6 +33,15 @@ fn fixtures() -> PathBuf {
 /// Fields: source file, const name, expected entry count, reason.
 const LEDGER: &[(&str, &str, usize, &str)] = &[
     (
+        "test_region_stc_oracle.rs",
+        "ERROR_ELLIPSE_LICENSED",
+        3,
+        "off the macOS capture platform only: the sky AstroCoords Error \
+         Ellipse, an ill-conditioned fit to an almost circular shape, whose \
+         defining points move with last-bit libm differences; the rest of each \
+         dump is still compared",
+    ),
+    (
         "test_fitschan_encodings_oracle.rs",
         "VALUES_LICENSED",
         0,

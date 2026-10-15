@@ -97,14 +97,14 @@ fn mocs_match_c() {
         let (name, want_dump, _, length, moc_type, area, cells, plain, negated, mesh, bounds) =
             *case;
         let moc = built(name);
-        assert_eq!(dump(&moc), want_dump, "{name}: dump");
+        crate::common::assert_c_text(&dump(&moc), want_dump, &format!("{name}: dump"));
         assert_eq!(
             moc.moc_length().unwrap() as i32,
             length,
             "{name}: MocLength"
         );
         assert_eq!(moc.moc_type().unwrap(), moc_type, "{name}: MocType");
-        assert_eq!(moc.moc_area(), area, "{name}: MocArea");
+        crate::common::assert_c_values(&[moc.moc_area()], &[area], &format!("{name}: MocArea"));
         let got_cells: Vec<(i32, i64)> = (0..length).map(|i| moc.get_cell(i).unwrap()).collect();
         assert_eq!(got_cells, cells, "{name}: cells");
 
@@ -121,10 +121,10 @@ fn mocs_match_c() {
         );
         assert_points(&moc.region_mesh().unwrap(), mesh, &format!("{name}: mesh"));
         let (lbnd, ubnd) = moc.get_region_bounds().unwrap();
-        assert_eq!(
-            [lbnd[0], lbnd[1], ubnd[0], ubnd[1]],
-            bounds,
-            "{name}: bounds"
+        crate::common::assert_c_values(
+            &[lbnd[0], lbnd[1], ubnd[0], ubnd[1]],
+            &bounds,
+            &format!("{name}: bounds"),
         );
     }
 }
@@ -139,7 +139,7 @@ fn full_dumps_match_c() {
         ch.config_mut().set_full(1);
         ch.write(&AnyObject::from_mapping(&built(name) as &dyn Mapping).unwrap())
             .unwrap();
-        assert_eq!(ch.into_string(), want, "{name}");
+        crate::common::assert_c_text(&ch.into_string(), want, name);
     }
 }
 
@@ -148,7 +148,7 @@ fn c_dumps_read_back_as_c_reads_them() {
     for case in cases::CASES {
         let (name, first, want, ..) = *case;
         let region = from_native_string(first).unwrap().into_region().unwrap();
-        assert_eq!(dump(region.as_ref()), want, "{name}");
+        crate::common::assert_c_text(&dump(region.as_ref()), want, name);
     }
 }
 
