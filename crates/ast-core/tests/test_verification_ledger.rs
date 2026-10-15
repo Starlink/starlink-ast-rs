@@ -361,11 +361,13 @@ fn manifest_relaxations() -> Vec<(&'static str, usize, &'static str)> {
         (
             "simplify manifest: astequal compare mode",
             simp_astequal,
-            "upstream's own column: one row, cap_timemap_02, whose uncertainty \
-             coordinates move by about 7e-12 relative under FMA contraction, so \
-             its dump is compared within astEQUAL rather than byte for byte. \
-             The comparator honours the column so the two harnesses cannot \
-             diverge on what a row asks for",
+            "upstream's own column: two rows. cap_timemap_02, whose uncertainty \
+             coordinates move by about 7e-12 relative under FMA contraction, and \
+             offset_skyref_integrity, whose MatrixMap is MtrMult's product of two \
+             rotations with off-diagonal elements that nearly cancel, so a fused \
+             dot product moves them by some 50 ULP. Each dump is compared within \
+             astEQUAL rather than byte for byte. The comparator honours the \
+             column so the two harnesses cannot diverge on what a row asks for",
         ),
         (
             "wcsconv manifest: astequal compare mode",
@@ -466,7 +468,7 @@ fn every_relaxation_is_the_size_the_ledger_says() {
         let want = match what {
             "simplify manifest: skip_string_compare" => 156,
             "simplify manifest: negative fixtures stripping IsSimp" => 158,
-            "simplify manifest: astequal compare mode" => 1,
+            "simplify manifest: astequal compare mode" => 2,
             "wcsconv manifest: astequal compare mode" => 12,
             other => panic!("unledgered manifest relaxation: {other}"),
         };
