@@ -9,6 +9,28 @@ use crate::constants::BAD_VALUE;
 use super::opcode::{CompiledExpr, Opcode};
 use super::rng::MathMapRng;
 
+/// The library-computed constants C's `EvaluateFunction` keeps in statics
+/// after its first invocation (mathmap.c:1885-1919): ln 2, and a value that
+/// can be squared without overflow. (C's pi, from `acos( -1.0 )`, is the
+/// same double as `std::f64::consts::PI`, so it needs no computing here.)
+#[derive(Clone, Copy)]
+struct Constants {
+    log2: f64,
+    safe_sq: f64,
+    rsafe_sq: f64,
+}
+
+static CONSTANTS: std::sync::LazyLock<Constants> = std::sync::LazyLock::new(|| {
+    let safe_sq = 0.9 * crate::math::sqrt(f64::MAX);
+    Constants {
+        log2: crate::math::ln(2.0),
+        safe_sq,
+        rsafe_sq: 1.0 / safe_sq,
+    }
+});
+
+const PI: f64 = std::f64::consts::PI;
+
 /// Evaluate a compiled expression for `npoint` points.
 ///
 /// `inputs` is indexed as `inputs[coord][point]`.
@@ -45,11 +67,13 @@ pub(crate) fn evaluate(
         }
     }
 
-    let d2r = std::f64::consts::PI / 180.0;
-    let r2d = 180.0 / std::f64::consts::PI;
-    let log2 = crate::math::ln(2.0_f64);
-    let safe_sq = 0.9 * crate::math::sqrt(f64::MAX);
-    let rsafe_sq = 1.0 / safe_sq;
+    let d2r = PI / 180.0;
+    let r2d = 180.0 / PI;
+    let Constants {
+        log2,
+        safe_sq,
+        rsafe_sq,
+    } = *CONSTANTS;
 
     let mut tos: i32 = -1;
     let mut icon: usize = 0;
@@ -177,7 +201,7 @@ pub(crate) fn evaluate(
             Opcode::LdPi => {
                 tos += 1;
                 let slot = tos as usize;
-                let val = std::f64::consts::PI;
+                let val = PI;
                 for point in 0..npoint {
                     stack[slot][point] = val;
                 }
