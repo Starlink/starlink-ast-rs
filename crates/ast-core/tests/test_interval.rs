@@ -768,3 +768,31 @@ fn mesh_of_an_unbounded_interval_names_the_class() {
          created to cover it."
     );
 }
+
+/// An Interval caches what it derives from its limits (the equivalent Box) as
+/// C does; changing the Interval after a transform must not leave a stale
+/// cache behind.
+#[test]
+fn interval_transform_follows_changes_after_first_use() {
+    let frame = BasicFrameBuilder::new(2).build().unwrap();
+    let mut interval = IntervalBuilder::new(frame, vec![0.0, 0.0], vec![1.0, 1.0])
+        .unwrap()
+        .build()
+        .unwrap();
+    let pts = PointSet::from_rows([[0.5, 0.5], [2.0, 2.0]]);
+    let before = interval.transform(&pts, true).unwrap();
+    assert_eq!(before.point(0), &[0.5, 0.5]);
+    assert_eq!(before.point(1), &[BAD_VALUE, BAD_VALUE]);
+
+    interval.set_negated(true);
+    let after = interval.transform(&pts, true).unwrap();
+    assert_eq!(after.point(0), &[BAD_VALUE, BAD_VALUE]);
+    assert_eq!(after.point(1), &[2.0, 2.0]);
+
+    interval.set_closed(false);
+    interval.set_negated(false);
+    let open = interval
+        .transform(&PointSet::from_rows([[0.0, 0.5]]), true)
+        .unwrap();
+    assert_eq!(open.point(0), &[BAD_VALUE, BAD_VALUE]);
+}

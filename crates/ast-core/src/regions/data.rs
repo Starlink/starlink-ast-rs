@@ -138,6 +138,27 @@ pub(crate) struct RegionData {
 
     /// Cached base-frame boundary mesh (lazily computed).
     pub(crate) cached_base_mesh: RefCell<Option<Vec<Vec<f64>>>>,
+
+    /// Values the class derives from the Region and keeps until it changes,
+    /// as C keeps them in the class structure under a `stale` flag.
+    pub(crate) class_cache: RefCell<Option<ClassCache>>,
+}
+
+/// The values a Region class caches between calls (lazily computed, cleared
+/// by [`RegionData::invalidate_cache`]). C copies these with the Region, so
+/// a clone does too.
+#[derive(Debug, Clone)]
+pub(crate) enum ClassCache {
+    /// interval.c `Cache`: the limits on each axis, and the equivalent Box,
+    /// if the Interval has one.
+    Interval {
+        lbnd: Vec<f64>,
+        ubnd: Vec<f64>,
+        equivalent: Option<DynRegion>,
+        /// The equivalent Box in the base Frame, with the Interval's Negated
+        /// and Closed, which the base-Frame tests hand their work to.
+        base_box: Option<Box<super::BoxRegion>>,
+    },
 }
 
 impl Clone for RegionData {
@@ -164,6 +185,7 @@ impl Clone for RegionData {
             region_fs: self.region_fs,
             region_fs_set: self.region_fs_set,
             cached_base_mesh: RefCell::new(self.cached_base_mesh.borrow().clone()),
+            class_cache: RefCell::new(self.class_cache.borrow().clone()),
         }
     }
 }
@@ -228,6 +250,7 @@ impl RegionData {
             region_fs: true,
             region_fs_set: false,
             cached_base_mesh: RefCell::new(None),
+            class_cache: RefCell::new(None),
         }
     }
 
@@ -315,10 +338,11 @@ impl RegionData {
         self.fill_factor_set = false;
     }
 
-    /// Invalidate the cached mesh (call after geometry changes).
-    #[allow(dead_code)]
+    /// Invalidate the cached mesh and class values (call after geometry
+    /// changes).
     pub(crate) fn invalidate_cache(&self) {
         *self.cached_base_mesh.borrow_mut() = None;
+        *self.class_cache.borrow_mut() = None;
     }
 
     /// The boundary-strictness that

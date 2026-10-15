@@ -161,13 +161,24 @@ impl Interval {
     /// Negated and Closed: what interval.c `Transform`, `RegBaseMesh` and
     /// `BndBaseMesh` hand their work to (`this->box`, whose base Frame is the
     /// Interval's). `None` when the Interval is not equivalent to a Box.
-    fn equivalent_base_box(&self) -> AstResult<Option<super::BoxRegion>> {
-        let (lbnd, ubnd, equivalent) = self.cache()?;
-        if equivalent.is_none() {
-            return Ok(None);
+    fn with_equivalent_base_box<T>(
+        &self,
+        f: impl FnOnce(&super::BoxRegion) -> AstResult<T>,
+    ) -> AstResult<Option<T>> {
+        self.cache()?;
+        let cache = self.data.class_cache.borrow();
+        match &*cache {
+            Some(super::data::ClassCache::Interval {
+                base_box: Some(bbox),
+                ..
+            }) => f(bbox).map(Some),
+            _ => Ok(None),
         }
+    }
+
+    fn build_base_box(&self, lbnd: &[f64], ubnd: &[f64]) -> AstResult<super::BoxRegion> {
         let bfrm = self.data.frameset.base().snapshot();
-        let mut bbox = super::BoxRegion::from_bounds_frame(bfrm, &lbnd, &ubnd)?;
+        let mut bbox = super::BoxRegion::from_bounds_frame(bfrm, lbnd, ubnd)?;
         if self.data.uncertainty.is_some() {
             bbox.set_uncertainty(self.get_unc_frm(FrameRef::Base)?)?;
         }
@@ -175,16 +186,15 @@ impl Interval {
             bbox.negate();
         }
         bbox.set_closed(self.data.closed);
-        Ok(Some(bbox))
+        Ok(bbox)
     }
 
     /// Resolve the axis limits into finite values and, when the Interval is
     /// equivalent to a Box, build that Box.
     ///
-    /// Faithful port of C `Cache` (interval.c:379-517), which caches both
-    /// results on the Interval; the port recomputes them per call, so the
-    /// return value carries what C leaves in `this->lbnd`, `this->ubnd` and
-    /// `this->box`.
+    /// Faithful port of C `Cache` (interval.c:379-517): the return value
+    /// carries what C leaves in `this->lbnd`, `this->ubnd` and `this->box`,
+    /// and `cache` keeps it until the Interval changes.
     ///
     /// A missing limit resolves to `∓DBL_MAX`. The Interval is a Box iff every
     /// resolved limit is finite and every axis shares the first axis's
@@ -486,7 +496,33 @@ impl Interval {
         Ok(if result == 0 { None } else { Some(result) })
     }
 
+    /// interval.c `Cache`, kept until the Interval changes as C keeps it
+    /// under its `stale` flag.
     fn cache(&self) -> AstResult<(Vec<f64>, Vec<f64>, Option<DynRegion>)> {
+        if let Some(super::data::ClassCache::Interval {
+            lbnd,
+            ubnd,
+            equivalent,
+            ..
+        }) = &*self.data.class_cache.borrow()
+        {
+            return Ok((lbnd.clone(), ubnd.clone(), equivalent.clone()));
+        }
+        let (lbnd, ubnd, equivalent) = self.compute_cache()?;
+        let base_box = match equivalent {
+            Some(_) => Some(Box::new(self.build_base_box(&lbnd, &ubnd)?)),
+            None => None,
+        };
+        *self.data.class_cache.borrow_mut() = Some(super::data::ClassCache::Interval {
+            lbnd: lbnd.clone(),
+            ubnd: ubnd.clone(),
+            equivalent: equivalent.clone(),
+            base_box,
+        });
+        Ok((lbnd, ubnd, equivalent))
+    }
+
+    fn compute_cache(&self) -> AstResult<(Vec<f64>, Vec<f64>, Option<DynRegion>)> {
         let raw_l = &self.data.points[0];
         let raw_u = &self.data.points[1];
         let nc = raw_l.len();
@@ -833,6 +869,8 @@ impl RegionGeometry for Interval {
     }
 
     fn region_data_mut(&mut self) -> &mut RegionData {
+        // Whatever the caller changes may change what `cache` derives.
+        self.data.invalidate_cache();
         &mut self.data
     }
 
@@ -842,8 +880,8 @@ impl RegionGeometry for Interval {
     /// C does for a closed un-negated Interval and an open negated one (the
     /// two for which the effective Closed here is true).
     fn reg_base_inside(&self, pts: &PointSet) -> AstResult<Vec<bool>> {
-        if let Some(bbox) = self.equivalent_base_box()? {
-            return bbox.reg_base_inside(pts);
+        if let Some(inside) = self.with_equivalent_base_box(|bbox| bbox.reg_base_inside(pts))? {
+            return Ok(inside);
         }
         let npoint = pts.npoint();
         let naxes = self.data.points[0].len();
@@ -895,8 +933,8 @@ impl RegionGeometry for Interval {
     /// error for an Interval that is not equivalent to a Box, which has no
     /// finite boundary.
     fn reg_base_mesh(&self) -> AstResult<Vec<Vec<f64>>> {
-        match self.equivalent_base_box()? {
-            Some(bbox) => bbox.reg_base_mesh(),
+        match self.with_equivalent_base_box(|bbox| bbox.reg_base_mesh())? {
+            Some(mesh) => Ok(mesh),
             None => Err(AstError::new(
                 ErrorCode::Inter,
                 "astRegBaseMesh(Interval): The Interval given is unbounded and therefore \
@@ -1159,6 +1197,7 @@ impl Region for Interval {
     fn set_negated_raw(&mut self, negated: bool, set: bool) {
         self.data.negated = negated;
         self.data.negated_set = set;
+        self.data.invalidate_cache();
     }
 
     fn is_closed(&self) -> bool {
@@ -1168,6 +1207,7 @@ impl Region for Interval {
     fn set_closed(&mut self, closed: bool) {
         self.data.closed = closed;
         self.data.closed_set = true;
+        self.data.invalidate_cache();
     }
 
     fn test_closed(&self) -> bool {
@@ -1177,6 +1217,7 @@ impl Region for Interval {
     fn set_closed_raw(&mut self, closed: bool, set: bool) {
         self.data.closed = closed;
         self.data.closed_set = set;
+        self.data.invalidate_cache();
     }
 
     fn fill_factor(&self) -> f64 {
@@ -1290,6 +1331,7 @@ impl Region for Interval {
     }
 
     fn region_frameset_mut(&mut self) -> &mut FrameSet {
+        self.data.invalidate_cache();
         &mut self.data.frameset
     }
 

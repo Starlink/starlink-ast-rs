@@ -1162,6 +1162,7 @@ pub(crate) fn read_region_base(whole: &Node) -> AstResult<RegionData> {
         // with a FrameSet, and to 0 with neither (region.c:13589-13620).
         region_fs_set: true,
         cached_base_mesh: RefCell::new(None),
+        class_cache: RefCell::new(None),
     };
 
     // If this region has a real frame but its uncertainty region was
