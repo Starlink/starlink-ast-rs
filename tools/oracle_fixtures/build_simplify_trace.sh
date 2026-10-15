@@ -6,10 +6,11 @@
 #   ./tools/oracle_fixtures/build_simplify_trace.sh /tmp/ast-trace
 #   AST_TRACE=1 /tmp/ast-trace/gen_simp in.map out.simp 2> trace.txt
 #
-# Three dispatchers in mapping.c cover every class, so no per-class patching is
-# needed: astSimplify_ (whether the IsSimple bit short-circuited it),
-# astMapMerge_ (which class was nominated, at which index, in which mode) and
-# astMapList_ (what was decomposed).
+# Three dispatchers in mapping.c cover every class: astSimplify_ (whether the
+# IsSimple bit short-circuited it), astMapMerge_ (which class was nominated, at
+# which index, in which mode) and astMapList_ (what was decomposed). cmpmap.c's
+# merge loop and MapMerge head add the whole list at each nomination, skips,
+# freezes, and whether a nominated CmpMap simplified or split.
 #
 # The submodule is never modified: everything happens in the copy.
 set -e
@@ -30,8 +31,9 @@ t = c.read_text()
 
 helper = r'''/* ---- INSTRUMENTATION (not upstream): trace the simplify machinery ------ */
 static int ast__trace_depth = 0;
-static int ast__trace_on( void ){ return getenv( "AST_TRACE" ) != NULL; }
-static void ast__trace( const char *fmt, ... ){
+const char *ast__TraceClass( AstMapping *, int * );
+int ast__trace_on( void ){ return getenv( "AST_TRACE" ) != NULL; }
+void ast__trace( const char *fmt, ... ){
    va_list args;
    int i;
    if( !ast__trace_on() ) return;
@@ -53,8 +55,8 @@ i = t.index(anchor)
 j = t.index("{", i)
 body = t.index("\n", j) + 1
 t = (t[:body]
-     + '   ast__trace( "MAPLIST %s series=%d invert=%d nmap_in=%d",\n'
-       '               astGetClass( this ), series, invert, *nmap );\n'
+     + '   ast__trace( "MAPLIST class=%s series=%d invert=%d nmap_in=%d",\n'
+       '               ast__TraceClass( this, status ), series, invert, *nmap );\n'
      + t[body:])
 
 # astMapMerge_: log the nomination, with the class actually nominated.
@@ -63,18 +65,18 @@ i = t.index(a2)
 j = t.index("int result = -1;", i)
 end = t.index("\n", j) + 1
 t = (t[:end]
-     + '   const char *ast__cls = astGetClass( this );\n'
-       '   ast__trace( "MAPMERGE %s where=%d series=%d nmap=%d issimp=%d inv=%d",\n'
+     + '   const char *ast__cls = ast__TraceClass( this, status );\n'
+       '   ast__trace( "MAPMERGE class=%s where_=%d series=%d nmap=%d issimp=%d inv=%d",\n'
        '               ast__cls, where, series, *nmap,\n'
        '               astGetIsSimple( this ), astGetInvert( this ) );\n'
      + t[end:])
 
-# astMapMerge_: also log what the nomination returned, so a productive
-# nomination can be told from one that declined.
+# astMapMerge_: also log what the nomination returned and the list length after
+# it, so a productive nomination can be told from one that declined.
 i = t.index(a2)
 j = t.index("   return result;", i)
 t = (t[:j]
-     + '   ast__trace( "MAPMERGE-RESULT %s result=%d", ast__cls, result );\n'
+     + '   ast__trace( "MAPMERGE-RESULT class=%s result=%d nmap=%d", ast__cls, result, *nmap );\n'
      + t[j:])
 
 # astSimplify_: log entry, and say whether the IsSimple bit short-circuited it.
@@ -83,12 +85,12 @@ i = t.index(a3)
 guard = "   if( !astGetIsSimple( this ) && !astDoNotSimplify( this ) ) {"
 j = t.index(guard, i)
 t = (t[:j]
-     + '   ast__trace( "SIMPLIFY-ENTER %s issimp=%d dns=%d inv=%d nin=%d nout=%d",\n'
-       '               astGetClass( this ), astGetIsSimple( this ),\n'
+     + '   ast__trace( "SIMPLIFY-ENTER class=%s issimp=%d dns=%d inv=%d nin=%d nout=%d",\n'
+       '               ast__TraceClass( this, status ), astGetIsSimple( this ),\n'
        '               astDoNotSimplify( this ), astGetInvert( this ),\n'
        '               astGetNin( this ), astGetNout( this ) );\n'
        '   if( astGetIsSimple( this ) || astDoNotSimplify( this ) ) {\n'
-       '      ast__trace( "SIMPLIFY-WALLED %s", astGetClass( this ) );\n'
+       '      ast__trace( "SIMPLIFY-WALLED class=%s", ast__TraceClass( this, status ) );\n'
        '   }\n'
        '   ast__trace_depth++;\n'
      + t[j:])
@@ -98,6 +100,83 @@ t = t[:ret] + '   ast__trace_depth--;\n' + t[ret:]
 
 if "#include <stdarg.h>" not in t:
     t = t.replace('#include "mapping.h"', '#include <stdarg.h>\n#include "mapping.h"', 1)
+c.write_text(t)
+# cmpmap.c: the merge loop in Simplify and the head of MapMerge. Events carry
+# depth=, the number of nominations enclosing this one, which the port counts
+# the same way.
+c = dest/"src/cmpmap.c"
+t = c.read_text()
+
+def put(anchor, text, after=True):
+    global t
+    assert t.count(anchor) == 1, anchor
+    i = t.index(anchor)
+    if after:
+        i += len(anchor)
+    t = t[:i] + text + t[i:]
+
+helper = r"""/* ---- INSTRUMENTATION (not upstream): trace the merge loop ------------- */
+int ast__trace_on( void );
+void ast__trace( const char *fmt, ... );
+static int ast__merge_depth = 0;
+
+/* The class as astGetClass gives it, naming a CmpMap's composition too. */
+const char *ast__TraceClass( AstMapping *map, int *status ){
+   if( astIsACmpMap( map ) ) {
+      return ( (AstCmpMap *) map )->series ? "CmpMap[series]" : "CmpMap[parallel]";
+   }
+   return astGetClass( map );
+}
+
+/* The list as [ Class(eff[,s]/oN) ... ]: the direction each entry is applied
+   in, ",s" if it is tagged IsSimple, and its own Invert. */
+static void ast__trace_list( int nominated, int series, int nmap,
+                             AstMapping **ml, int *il, int *status ){
+   char buf[ 8192 ];
+   size_t n;
+   int i;
+   if( !ast__trace_on() ) return;
+   n = (size_t) snprintf( buf, sizeof( buf ), "[" );
+   for( i = 0; i < nmap && n < sizeof( buf ); i++ ) {
+      n += (size_t) snprintf( buf + n, sizeof( buf ) - n, " %s(%d%s/o%d)",
+                              ast__TraceClass( ml[ i ], status ), il[ i ],
+                              astGetIsSimple( ml[ i ] ) ? ",s" : "",
+                              astGetInvert( ml[ i ] ) );
+   }
+   if( n < sizeof( buf ) ) snprintf( buf + n, sizeof( buf ) - n, " ]" );
+   ast__trace( "MERGE-LIST depth=%d nominated=%d series=%d nmap=%d list=%s",
+               ast__merge_depth, nominated, series, nmap, buf );
+}
+/* ----------------------------------------------------------------------- */
+
+"""
+put("static int MapMerge( AstMapping *this, int where, int series, int *nmap,", helper, after=False)
+if "#include <stdio.h>" not in t:
+    put('#include "error.h"', "#include <stdio.h>\n", after=False)
+
+put("      simpler = ( new != map ) || ( new_invert != ( *invert_list )[ where ] );\n",
+    '      ast__trace( "CMPMAP-HEAD depth=%d where_=%d simpler=%d new=%s",\n'
+    '                  ast__merge_depth, where, simpler, ast__TraceClass( new, status ) );\n')
+put("               (*nmap)++;\n",
+    '               ast__trace( "CMPMAP-SPLIT depth=%d where_=%d", ast__merge_depth, where );\n')
+put("             ( restricted && !astAllowSimplify(map_list[ nominated ]) ) ) {\n",
+    '            ast__trace( "NOMINATE-SKIP depth=%d nominated=%d frozen=%d",\n'
+    '                        ast__merge_depth, nominated, astFrozen( map_list[ nominated ] ) );\n')
+old = """         map = astClone( map_list[ nominated ] );
+         modified = astMapMerge( map, nominated, this->series,
+                                 &nmap, &map_list, &invert_list );
+"""
+assert t.count(old) == 1
+t = t.replace(old, """         map = astClone( map_list[ nominated ] );
+         ast__trace_list( nominated, this->series, nmap, map_list, invert_list, status );
+         ast__merge_depth++;
+         modified = astMapMerge( map, nominated, this->series,
+                                 &nmap, &map_list, &invert_list );
+         ast__merge_depth--;
+""")
+put("               astSetFrozen(map_list[ modified ]);\n",
+    '               ast__trace( "FREEZE depth=%d modified=%d class=%s", ast__merge_depth,\n'
+    '                           modified, ast__TraceClass( map_list[ modified ], status ) );\n')
 c.write_text(t)
 print("instrumented", dest)
 PY

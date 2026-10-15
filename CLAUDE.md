@@ -77,7 +77,8 @@ Useful flags during development:
 
 ```shell
 cargo test -p ast-core --features tracing    # emit AstError and simplify
-                                             # events as tracing events
+                                             # events as tracing events; see
+                                             # "Debugging the simplifier"
 cargo +nightly miri test -p ast-core         # ub check on hot paths
 ```
 
@@ -263,6 +264,21 @@ cheap to check and each has been ignored here at measurable cost
 
 Corollary: at the *second* one-off unit / epoch / time-scale conversion
 added at a call site, stop and port C's conversion function instead (H8).
+
+### Debugging the simplifier: trace both sides, never add prints
+
+The simplifier already has permanent instrumentation on both sides; use it before reading code or adding `eprintln!`.
+The port emits `tracing` events on the target `ast::simplify` under the `tracing` feature (`simplify::trace` in `crates/ast-core/src/mappings/simplify.rs`), and `tools/oracle_fixtures/build_simplify_trace.sh` builds a C library that emits the same events with the same fields.
+They cover every nomination, its result, the whole merge list at each step with each entry's direction, stored `Invert` and `IsSimple` tag, skips, freezes, and the CmpMap head's simplify and split.
+
+```shell
+./tools/oracle_fixtures/build_simplify_trace.sh <scratch>/ast-trace
+AST_TRACE=1 <scratch>/ast-trace/gen_simp in.map /dev/null 2> c.txt
+cargo run -q -p ast-core --features tracing --example simp_one -- in.map 2> port.txt >/dev/null
+```
+
+`tools/oracle_fixtures/README.md` ("Diffing the port against C") has the two-line filter that makes the streams diff line for line; the first differing `MERGE-LIST` is usually the answer.
+If a question needs an event that does not exist, add it to both sides permanently rather than as a temporary print.
 
 ## Adding a new Mapping / Frame / Region
 

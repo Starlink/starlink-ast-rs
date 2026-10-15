@@ -18,13 +18,13 @@ The swap predicate is `CanSwap` (`wcsmap.c:941-1164 (fn CanSwap)`), enumerated a
 rows 37 to 58, and it admits only a PermMap.
 
 `WcsMap::map_merge` (`wcsmap.rs:1245-1252 (fn map_merge)`) delegates to
-`simplify::wcs_map_merge` (`mappings/simplify.rs:1073-1214 (fn wcs_map_merge)`), so Rust
+`simplify::wcs_map_merge` (`mappings/simplify.rs:1212-1353 (fn wcs_map_merge)`), so Rust
 sites below are in `mappings/simplify.rs` unless stated. The driver calls three
 helpers, one per C function it needs: `can_swap_wcsmap_past_permmap`
-(`mappings/simplify.rs:1866-1926 (fn can_swap_wcsmap_past_permmap)`) is `CanSwap`,
-`can_merge_wcsmaps` (`mappings/simplify.rs:1830-1845 (fn can_merge_wcsmaps)`) is
+(`mappings/simplify.rs:2017-2077 (fn can_swap_wcsmap_past_permmap)`) is `CanSwap`,
+`can_merge_wcsmaps` (`mappings/simplify.rs:1981-1996 (fn can_merge_wcsmaps)`) is
 `CanMerge` (`wcsmap.c:831-939 (fn CanMerge)`) applied to a list entry, and
-`wcs_perm_at` (`mappings/simplify.rs:1933-1987 (fn wcs_perm_at)`) is `WcsPerm`
+`wcs_perm_at` (`mappings/simplify.rs:2084-2138 (fn wcs_perm_at)`) is `WcsPerm`
 (`wcsmap.c:4516-4751 (fn WcsPerm)`).
 
 | # | C step | C site | Rust site | extension point | verdict |
@@ -32,61 +32,61 @@ helpers, one per C function it needs: `can_swap_wcsmap_past_permmap`
 | 1 | Initialise the returned result to -1 | wcsmap.c:3123-3124 (fn MapMerge) | -- | ceremony | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index |
 | 2 | Check the global error status and bail out | wcsmap.c:3126-3127 (fn MapMerge) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 3 | Initialise the pair indices to avoid "used of uninitialised variable" messages from dumb compilers | wcsmap.c:3129-3132 (fn MapMerge) | -- | ceremony | n/a: the Rust indices are computed where they are used |
-| 4 | Get the number of axes for the WcsMap | wcsmap.c:3134-3136 (fn MapMerge) | mappings/simplify.rs:1086 (fn wcs_map_merge) | architecture | ported |
-| 5 | See whether the WcsMap can be replaced by a simpler Mapping, without reference to the neighbouring Mappings | wcsmap.c:3137-3139 (fn MapMerge) | mappings/simplify.rs:1085-1088 (fn wcs_map_merge) | architecture | ported |
-| 6 | A WcsMap with map type `AST__WCSBAD` is equivalent to a UnitMap | wcsmap.c:3140-3143 (fn MapMerge) | mappings/simplify.rs:1085 (fn wcs_map_merge) | architecture | ported |
-| 7 | Annul the WcsMap pointer and replace it with a UnitMap used in the forward sense | wcsmap.c:3144-3150 (fn MapMerge) | mappings/simplify.rs:1086 (fn wcs_map_merge) | architecture | ported |
-| 8 | Return the index of the first modified element | wcsmap.c:3151-3153 (fn MapMerge) | mappings/simplify.rs:1087 (fn wcs_map_merge) | architecture | ported |
-| 9 | Otherwise try the neighbours, which for a WcsMap can only be done in series | wcsmap.c:3154-3158 (fn MapMerge) | mappings/simplify.rs:1090 (fn wcs_map_merge) | architecture | ported |
-| 10 | Store the classes of the neighbouring Mappings | wcsmap.c:3160-3163 (fn MapMerge) | mappings/simplify.rs:1103-1105 (fn wcs_map_merge) | architecture | ported |
-| 11 | A WcsMap can only combine with its own inverse; note that no mergeable neighbour has been found yet | wcsmap.c:3164-3168 (fn MapMerge) | mappings/simplify.rs:1095-1099 (fn wcs_map_merge) | architecture | ported |
-| 12 | Check the lower neighbour first | wcsmap.c:3169-3176 (fn MapMerge) | mappings/simplify.rs:1096 (fn wcs_map_merge),1097-1104 (fn wcs_map_merge) | architecture | ported |
-| 13 | If the lower neighbour did not merge, check the upper neighbour the same way | wcsmap.c:3177-3185 (fn MapMerge) | mappings/simplify.rs:1097 (fn wcs_map_merge),1096 (fn wcs_map_merge) | architecture | ported |
+| 4 | Get the number of axes for the WcsMap | wcsmap.c:3134-3136 (fn MapMerge) | mappings/simplify.rs:1225 (fn wcs_map_merge) | architecture | ported |
+| 5 | See whether the WcsMap can be replaced by a simpler Mapping, without reference to the neighbouring Mappings | wcsmap.c:3137-3139 (fn MapMerge) | mappings/simplify.rs:1224-1227 (fn wcs_map_merge) | architecture | ported |
+| 6 | A WcsMap with map type `AST__WCSBAD` is equivalent to a UnitMap | wcsmap.c:3140-3143 (fn MapMerge) | mappings/simplify.rs:1224 (fn wcs_map_merge) | architecture | ported |
+| 7 | Annul the WcsMap pointer and replace it with a UnitMap used in the forward sense | wcsmap.c:3144-3150 (fn MapMerge) | mappings/simplify.rs:1225 (fn wcs_map_merge) | architecture | ported |
+| 8 | Return the index of the first modified element | wcsmap.c:3151-3153 (fn MapMerge) | mappings/simplify.rs:1226 (fn wcs_map_merge) | architecture | ported |
+| 9 | Otherwise try the neighbours, which for a WcsMap can only be done in series | wcsmap.c:3154-3158 (fn MapMerge) | mappings/simplify.rs:1229 (fn wcs_map_merge) | architecture | ported |
+| 10 | Store the classes of the neighbouring Mappings | wcsmap.c:3160-3163 (fn MapMerge) | mappings/simplify.rs:1242-1244 (fn wcs_map_merge) | architecture | ported |
+| 11 | A WcsMap can only combine with its own inverse; note that no mergeable neighbour has been found yet | wcsmap.c:3164-3168 (fn MapMerge) | mappings/simplify.rs:1234-1238 (fn wcs_map_merge) | architecture | ported |
+| 12 | Check the lower neighbour first | wcsmap.c:3169-3176 (fn MapMerge) | mappings/simplify.rs:1235 (fn wcs_map_merge),1236-1243 (fn wcs_map_merge) | architecture | ported |
+| 13 | If the lower neighbour did not merge, check the upper neighbour the same way | wcsmap.c:3177-3185 (fn MapMerge) | mappings/simplify.rs:1236 (fn wcs_map_merge),1235 (fn wcs_map_merge) | architecture | ported |
 | 14 | A neighbour that passed the checks is this WcsMap's inverse, so the pair can be replaced by a single UnitMap | wcsmap.c:3186-3190 (fn MapMerge) | wcsmap.rs:1254-1280 (fn try_merge) | architecture | ported |
 | 15 | Annul the two WcsMaps | wcsmap.c:3191-3194 (fn MapMerge) | -- | ceremony | n/a: owned values are dropped |
 | 16 | Create the UnitMap and store it in place of the first WcsMap, with a cleared Invert flag | wcsmap.c:3195-3199 (fn MapMerge) | wcsmap.rs:1276 (fn try_merge) | architecture | ported |
-| 17 | Shuffle the remaining Mappings down to fill the hole left by the second WcsMap | wcsmap.c:3200-3206 (fn MapMerge) | mappings/simplify.rs:1109 (fn wcs_map_merge) | architecture | ported |
+| 17 | Shuffle the remaining Mappings down to fill the hole left by the second WcsMap | wcsmap.c:3200-3206 (fn MapMerge) | mappings/simplify.rs:1248 (fn wcs_map_merge) | architecture | ported |
 | 18 | Clear the vacated element at the end | wcsmap.c:3207-3210 (fn MapMerge) | -- | ceremony | n/a: the list is a `Vec`, so removing the second entry leaves no slot to clear |
-| 19 | Decrement the Mapping count and return the index of the first modified element | wcsmap.c:3211-3215 (fn MapMerge) | mappings/simplify.rs:1109-1110 (fn wcs_map_merge) | architecture | ported |
-| 20 | If neither neighbour merged directly, consider whether swapping the WcsMap with a neighbour would bring it next to a Mapping it can merge with | wcsmap.c:3216-3225 (fn MapMerge) | mappings/simplify.rs:1114-1117 (fn wcs_map_merge) | architecture | ported |
-| 21 | Set a flag if the WcsMap could swap with its higher neighbour, and a second flag if the swap would simplify either Mapping | wcsmap.c:3226-3240 (fn MapMerge) | mappings/simplify.rs:1121-1127 (fn wcs_map_merge) | architecture | ported |
-| 22 | Step through the Mappings which follow the WcsMap, looking for one it could merge with directly | wcsmap.c:3241-3250 (fn MapMerge) | mappings/simplify.rs:1132-1134 (fn wcs_map_merge) | architecture | ported |
-| 23 | On finding one, note the number of steps between the two Mappings and leave the loop | wcsmap.c:3251-3258 (fn MapMerge) | mappings/simplify.rs:1135-1138 (fn wcs_map_merge) | architecture | ported |
-| 24 | Leave the loop with no step count when a Mapping is reached that the WcsMap could not swap past, since WcsMaps swap only with some PermMaps | wcsmap.c:3259-3270 (fn MapMerge) | mappings/simplify.rs:1139-1141 (fn wcs_map_merge) | architecture | ported |
-| 25 | Do the same working from the WcsMap towards the start of the list | wcsmap.c:3271-3303 (fn MapMerge) | mappings/simplify.rs:1147-1166 (fn wcs_map_merge) | architecture | ported |
-| 26 | Choose which neighbour to swap with so the WcsMap moves towards the nearest Mapping it can merge with | wcsmap.c:3304-3318 (fn MapMerge) | mappings/simplify.rs:1171-1177 (fn wcs_map_merge) | architecture | ported |
-| 27 | With a target Mapping in the list, replace the pair with the swapped Mappings | wcsmap.c:3319-3324 (fn MapMerge) | mappings/simplify.rs:1180-1181 (fn wcs_map_merge) | architecture | ported |
-| 28 | Store the index of the first modified Mapping | wcsmap.c:3325-3327 (fn MapMerge) | mappings/simplify.rs:1182 (fn wcs_map_merge) | architecture | ported |
-| 29 | With no Mapping available for merging, a swap may still be advantageous because the swapped Mappings may be simpler | wcsmap.c:3328-3332 (fn MapMerge) | mappings/simplify.rs:1189 (fn wcs_map_merge) | architecture | ported |
-| 30 | Choose a neighbour to swap with, the lower one when both are suitable | wcsmap.c:3333-3344 (fn MapMerge) | mappings/simplify.rs:1190 (fn wcs_map_merge) | architecture | ported |
-| 31 | Take copies of the Mapping and Invert flag arrays so the supplied values are not changed | wcsmap.c:3345-3351 (fn MapMerge) | mappings/simplify.rs:1191-1198 (fn wcs_map_merge) | architecture | ported |
-| 32 | Swap the copied Mappings | wcsmap.c:3352-3354 (fn MapMerge) | mappings/simplify.rs:1199 (fn wcs_map_merge) | architecture | ported |
-| 33 | If neither swapped Mapping simplifies further, there is no point in swapping, so annul the copies | wcsmap.c:3355-3365 (fn MapMerge) | mappings/simplify.rs:1200-1203 (fn wcs_map_merge) | architecture | ported |
-| 34 | If one or both could be simplified, return the swapped Mappings and store the index of the first modified Mapping | wcsmap.c:3366-3382 (fn MapMerge) | mappings/simplify.rs:1205-1208 (fn wcs_map_merge) | architecture | ported |
+| 19 | Decrement the Mapping count and return the index of the first modified element | wcsmap.c:3211-3215 (fn MapMerge) | mappings/simplify.rs:1248-1249 (fn wcs_map_merge) | architecture | ported |
+| 20 | If neither neighbour merged directly, consider whether swapping the WcsMap with a neighbour would bring it next to a Mapping it can merge with | wcsmap.c:3216-3225 (fn MapMerge) | mappings/simplify.rs:1253-1256 (fn wcs_map_merge) | architecture | ported |
+| 21 | Set a flag if the WcsMap could swap with its higher neighbour, and a second flag if the swap would simplify either Mapping | wcsmap.c:3226-3240 (fn MapMerge) | mappings/simplify.rs:1260-1266 (fn wcs_map_merge) | architecture | ported |
+| 22 | Step through the Mappings which follow the WcsMap, looking for one it could merge with directly | wcsmap.c:3241-3250 (fn MapMerge) | mappings/simplify.rs:1271-1273 (fn wcs_map_merge) | architecture | ported |
+| 23 | On finding one, note the number of steps between the two Mappings and leave the loop | wcsmap.c:3251-3258 (fn MapMerge) | mappings/simplify.rs:1274-1277 (fn wcs_map_merge) | architecture | ported |
+| 24 | Leave the loop with no step count when a Mapping is reached that the WcsMap could not swap past, since WcsMaps swap only with some PermMaps | wcsmap.c:3259-3270 (fn MapMerge) | mappings/simplify.rs:1278-1280 (fn wcs_map_merge) | architecture | ported |
+| 25 | Do the same working from the WcsMap towards the start of the list | wcsmap.c:3271-3303 (fn MapMerge) | mappings/simplify.rs:1286-1305 (fn wcs_map_merge) | architecture | ported |
+| 26 | Choose which neighbour to swap with so the WcsMap moves towards the nearest Mapping it can merge with | wcsmap.c:3304-3318 (fn MapMerge) | mappings/simplify.rs:1310-1316 (fn wcs_map_merge) | architecture | ported |
+| 27 | With a target Mapping in the list, replace the pair with the swapped Mappings | wcsmap.c:3319-3324 (fn MapMerge) | mappings/simplify.rs:1319-1320 (fn wcs_map_merge) | architecture | ported |
+| 28 | Store the index of the first modified Mapping | wcsmap.c:3325-3327 (fn MapMerge) | mappings/simplify.rs:1321 (fn wcs_map_merge) | architecture | ported |
+| 29 | With no Mapping available for merging, a swap may still be advantageous because the swapped Mappings may be simpler | wcsmap.c:3328-3332 (fn MapMerge) | mappings/simplify.rs:1328 (fn wcs_map_merge) | architecture | ported |
+| 30 | Choose a neighbour to swap with, the lower one when both are suitable | wcsmap.c:3333-3344 (fn MapMerge) | mappings/simplify.rs:1329 (fn wcs_map_merge) | architecture | ported |
+| 31 | Take copies of the Mapping and Invert flag arrays so the supplied values are not changed | wcsmap.c:3345-3351 (fn MapMerge) | mappings/simplify.rs:1330-1337 (fn wcs_map_merge) | architecture | ported |
+| 32 | Swap the copied Mappings | wcsmap.c:3352-3354 (fn MapMerge) | mappings/simplify.rs:1338 (fn wcs_map_merge) | architecture | ported |
+| 33 | If neither swapped Mapping simplifies further, there is no point in swapping, so annul the copies | wcsmap.c:3355-3365 (fn MapMerge) | mappings/simplify.rs:1339-1342 (fn wcs_map_merge) | architecture | ported |
+| 34 | If one or both could be simplified, return the swapped Mappings and store the index of the first modified Mapping | wcsmap.c:3366-3382 (fn MapMerge) | mappings/simplify.rs:1344-1347 (fn wcs_map_merge) | architecture | ported |
 | 35 | Annul the simplified Mappings | wcsmap.c:3383-3390 (fn MapMerge) | -- | ceremony | n/a: owned values are dropped |
-| 36 | Return the result | wcsmap.c:3391-3392 (fn MapMerge) | mappings/simplify.rs:1213 (fn wcs_map_merge) | ceremony | ported |
+| 36 | Return the result | wcsmap.c:3391-3392 (fn MapMerge) | mappings/simplify.rs:1352 (fn wcs_map_merge) | ceremony | ported |
 | 37 | `CanSwap` initialises the returned flag, the simpler flag and the swapped WcsMap | wcsmap.c:1019-1023 (fn CanSwap) | -- | ceremony | n/a: the helper returns `Option<(bool, Option<WcsMap>)>`, so "cannot swap" is `None` rather than a cleared flag |
 | 38 | Check the global error status and bail out | wcsmap.c:1024-1026 (fn CanSwap) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
-| 39 | Temporarily set both Mappings' Invert attributes to the supplied values | wcsmap.c:1027-1034 (fn CanSwap) | mappings/simplify.rs:1878 (fn can_swap_wcsmap_past_permmap) | architecture | ported |
-| 40 | Get the classes of the two Mappings | wcsmap.c:1035-1039 (fn CanSwap) | mappings/simplify.rs:1870-1871 (fn can_swap_wcsmap_past_permmap) | architecture | ported |
-| 41 | Get a pointer to the non-WcsMap Mapping, noting which of the pair the WcsMap is | wcsmap.c:1040-1052 (fn CanSwap) | mappings/simplify.rs:1875-1877 (fn can_swap_wcsmap_past_permmap) | architecture | ported |
-| 42 | The Mappings can be swapped only if the other one is a PermMap, and then only on two conditions | wcsmap.c:1053-1060 (fn CanSwap) | mappings/simplify.rs:1870-1874 (fn can_swap_wcsmap_past_permmap) | architecture | ported |
-| 43 | Get the PermMap's input and output coordinate counts | wcsmap.c:1061-1064 (fn CanSwap) | mappings/simplify.rs:1879-1880 (fn can_swap_wcsmap_past_permmap) | architecture | ported |
-| 44 | Get the PermMap's axis permutation arrays and constants array | wcsmap.c:1065-1069 (fn CanSwap) | mappings/simplify.rs:1851-1857 (fn effective_perms), via mappings/simplify.rs:1878 (fn can_swap_wcsmap_past_permmap) | architecture | ported |
+| 39 | Temporarily set both Mappings' Invert attributes to the supplied values | wcsmap.c:1027-1034 (fn CanSwap) | mappings/simplify.rs:2029 (fn can_swap_wcsmap_past_permmap) | architecture | ported |
+| 40 | Get the classes of the two Mappings | wcsmap.c:1035-1039 (fn CanSwap) | mappings/simplify.rs:2021-2022 (fn can_swap_wcsmap_past_permmap) | architecture | ported |
+| 41 | Get a pointer to the non-WcsMap Mapping, noting which of the pair the WcsMap is | wcsmap.c:1040-1052 (fn CanSwap) | mappings/simplify.rs:2026-2028 (fn can_swap_wcsmap_past_permmap) | architecture | ported |
+| 42 | The Mappings can be swapped only if the other one is a PermMap, and then only on two conditions | wcsmap.c:1053-1060 (fn CanSwap) | mappings/simplify.rs:2021-2025 (fn can_swap_wcsmap_past_permmap) | architecture | ported |
+| 43 | Get the PermMap's input and output coordinate counts | wcsmap.c:1061-1064 (fn CanSwap) | mappings/simplify.rs:2030-2031 (fn can_swap_wcsmap_past_permmap) | architecture | ported |
+| 44 | Get the PermMap's axis permutation arrays and constants array | wcsmap.c:1065-1069 (fn CanSwap) | mappings/simplify.rs:2002-2008 (fn effective_perms), via mappings/simplify.rs:2029 (fn can_swap_wcsmap_past_permmap) | architecture | ported |
 | 45 | Indicate we can swap with the PermMap | wcsmap.c:1070-1072 (fn CanSwap) | -- | ceremony | n/a: the helper returns `Some` only where C's flag would still be set, so there is no optimistic flag to clear on the way out |
-| 46 | Check each output axis, rejecting the swap if a link between axes is not bi-directional | wcsmap.c:1073-1083 (fn CanSwap) | mappings/simplify.rs:1885-1889 (fn can_swap_wcsmap_past_permmap) | architecture | ported |
-| 47 | Check each input axis the same way | wcsmap.c:1084-1094 (fn CanSwap) | mappings/simplify.rs:1890-1894 (fn can_swap_wcsmap_past_permmap) | architecture | ported |
-| 48 | Check that the longitude and latitude axes both have bi-directional links, or are both unassigned | wcsmap.c:1095-1098 (fn CanSwap) | mappings/simplify.rs:1896-1916 (fn can_swap_wcsmap_past_permmap) | architecture | ported |
-| 49 | Get the indices of the longitude and latitude axes in the WcsMap | wcsmap.c:1099-1102 (fn CanSwap) | mappings/simplify.rs:1899-1900 (fn can_swap_wcsmap_past_permmap) | architecture | ported |
-| 50 | With the WcsMap applied first, read the two links through the PermMap's `inperm` | wcsmap.c:1103-1111 (fn CanSwap) | mappings/simplify.rs:1901-1905 (fn can_swap_wcsmap_past_permmap) | architecture | ported |
-| 51 | With the WcsMap applied second, read them through `outperm` against the input count instead | wcsmap.c:1112-1122 (fn CanSwap) | mappings/simplify.rs:1901-1913 (fn can_swap_wcsmap_past_permmap) | architecture | ported |
-| 52 | Where the swap is allowed, report whether the swapped Mappings are intrinsically simpler, which is when the PermMap loses axes in the direction it is applied | wcsmap.c:1123-1132 (fn CanSwap) | mappings/simplify.rs:1920-1924 (fn can_swap_wcsmap_past_permmap) | architecture | ported |
+| 46 | Check each output axis, rejecting the swap if a link between axes is not bi-directional | wcsmap.c:1073-1083 (fn CanSwap) | mappings/simplify.rs:2036-2040 (fn can_swap_wcsmap_past_permmap) | architecture | ported |
+| 47 | Check each input axis the same way | wcsmap.c:1084-1094 (fn CanSwap) | mappings/simplify.rs:2041-2045 (fn can_swap_wcsmap_past_permmap) | architecture | ported |
+| 48 | Check that the longitude and latitude axes both have bi-directional links, or are both unassigned | wcsmap.c:1095-1098 (fn CanSwap) | mappings/simplify.rs:2047-2067 (fn can_swap_wcsmap_past_permmap) | architecture | ported |
+| 49 | Get the indices of the longitude and latitude axes in the WcsMap | wcsmap.c:1099-1102 (fn CanSwap) | mappings/simplify.rs:2050-2051 (fn can_swap_wcsmap_past_permmap) | architecture | ported |
+| 50 | With the WcsMap applied first, read the two links through the PermMap's `inperm` | wcsmap.c:1103-1111 (fn CanSwap) | mappings/simplify.rs:2052-2056 (fn can_swap_wcsmap_past_permmap) | architecture | ported |
+| 51 | With the WcsMap applied second, read them through `outperm` against the input count instead | wcsmap.c:1112-1122 (fn CanSwap) | mappings/simplify.rs:2052-2064 (fn can_swap_wcsmap_past_permmap) | architecture | ported |
+| 52 | Where the swap is allowed, report whether the swapped Mappings are intrinsically simpler, which is when the PermMap loses axes in the direction it is applied | wcsmap.c:1123-1132 (fn CanSwap) | mappings/simplify.rs:2071-2075 (fn can_swap_wcsmap_past_permmap) | architecture | ported |
 | 53 | Free the axis permutation and constants arrays | wcsmap.c:1133-1140 (fn CanSwap) | -- | ceremony | n/a: the arrays are borrowed from the PermMap rather than copied out of it |
 | 54 | Re-instate the original settings of the Invert attributes | wcsmap.c:1141-1145 (fn CanSwap) | -- | ceremony | n/a: the list entries are read, never mutated, so there is nothing to put back |
-| 55 | Where the Mappings can swap, get the equivalent swapped Mappings | wcsmap.c:1146-1153 (fn CanSwap) | wcsmap.rs:765-793 (fn with_permuted_axes), via mappings/simplify.rs:1915 (fn can_swap_wcsmap_past_permmap) | architecture | ported |
-| 56 | Return a pointer to the swapped WcsMap | wcsmap.c:1154-1156 (fn CanSwap) | mappings/simplify.rs:1910-1916 (fn can_swap_wcsmap_past_permmap) | architecture | ported |
+| 55 | Where the Mappings can swap, get the equivalent swapped Mappings | wcsmap.c:1146-1153 (fn CanSwap) | wcsmap.rs:765-793 (fn with_permuted_axes), via mappings/simplify.rs:2066 (fn can_swap_wcsmap_past_permmap) | architecture | ported |
+| 56 | Return a pointer to the swapped WcsMap | wcsmap.c:1154-1156 (fn CanSwap) | mappings/simplify.rs:2061-2067 (fn can_swap_wcsmap_past_permmap) | architecture | ported |
 | 57 | Free the swapped copies | wcsmap.c:1157-1161 (fn CanSwap) | -- | ceremony | n/a: owned values are dropped |
-| 58 | Return the answer | wcsmap.c:1162-1163 (fn CanSwap) | mappings/simplify.rs:1925 (fn can_swap_wcsmap_past_permmap) | architecture | ported |
+| 58 | Return the answer | wcsmap.c:1162-1163 (fn CanSwap) | mappings/simplify.rs:2076 (fn can_swap_wcsmap_past_permmap) | architecture | ported |
 
 ## Rows 42 and 55 — one predicate, one swap, both C's
 
@@ -127,7 +127,7 @@ would need to reach the rest.
 
 C checks the lower pair `(where-1, where)` before the upper pair
 `(where, where+1)`, and the port keeps that order through the candidate list at
-`mappings/simplify.rs:1095-1099 (fn wcs_map_merge)`. Doing the lower check here rather than
+`mappings/simplify.rs:1234-1238 (fn wcs_map_merge)`. Doing the lower check here rather than
 waiting for the lower WcsMap's own nomination matters beyond saving a pass: the
 returned index cascades the nominate loop back through the cancelled pair, which
 determines the association order of the linear folds that follow.
@@ -135,7 +135,7 @@ determines the association order of the linear folds that follow.
 ## Row 6 — the reduction is the head of the merge
 
 The `AST__WCSBAD` replacement is C's opening move, before any neighbour is
-considered, and `mappings/simplify.rs:1085-1088 (fn wcs_map_merge)` puts it in the same
+considered, and `mappings/simplify.rs:1224-1227 (fn wcs_map_merge)` puts it in the same
 position. `wcsmap.c` has no `Simplify` vtab slot, so the base `Simplify` reaches
 this `MapMerge` by nominating the WcsMap in a list of one
 (`mapping.c:16871-16883 (fn Simplify)`). C makes the replacement the `if` of an if/else

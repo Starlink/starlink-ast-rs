@@ -173,60 +173,94 @@ protocol in `CLAUDE.md`.
 ## `build_simplify_trace.sh` — watch C simplify
 
 When a question is "does C reach this node, and in what state?", reasoning about
-the call graph has been wrong more often than right. Three dispatchers in
-`mapping.c` cover every class, so one instrumented build answers it for any
-Mapping:
+the call graph has been wrong more often than right.
+One instrumented build answers it for any Mapping:
 
 ```shell
-./tools/oracle_fixtures/build_simplify_trace.sh /tmp/ast-trace
-AST_TRACE=1 /tmp/ast-trace/gen_simp in.map out.simp 2> trace.txt
+./tools/oracle_fixtures/build_simplify_trace.sh <scratch>/ast-trace
+AST_TRACE=1 <scratch>/ast-trace/gen_simp in.map out.simp 2> trace.txt
 ```
 
-- `SIMPLIFY-ENTER <class> issimp= dns= inv= nin= nout=` — every `astSimplify_`,
+Three dispatchers in `mapping.c` cover every class:
+
+- `SIMPLIFY-ENTER class= issimp= dns= inv= nin= nout=` — every `astSimplify_`,
   with the state it was entered in. A following `SIMPLIFY-WALLED` means the
   `IsSimple` bit short-circuited it.
-- `MAPMERGE <class> where= series= nmap= issimp= inv=` — every nomination, so
-  which class was offered to `MapMerge`, at which index and in which mode.
-- `MAPLIST <class> series= invert= nmap_in=` — every decomposition.
+- `MAPMERGE class= where_= series= nmap= issimp= inv=` — every nomination: which
+  class was offered to `MapMerge`, at which index and in which mode.
+- `MAPMERGE-RESULT class= result= nmap=` — what the nomination returned (`-1`
+  for nothing) and the list length after it.
+- `MAPLIST class= series= invert= nmap_in=` — every decomposition.
 
-Output is indented by simplify depth, so a subtree's whole route reads as a
-block. This settled PLAN.md §10.14 after three wrong diagnoses from reading
-dumps: the trace showed C nominating the node everyone assumed it skipped, and
-entering it at a different orientation, which was the real difference.
+The `cmpmap.c` merge loop and `MapMerge` head add the list itself:
+
+- `MERGE-LIST depth= nominated= series= nmap= list=[ Class(eff[,s]/oN) ... ]` —
+  the whole list as each element is nominated: each entry's class, the direction
+  it is applied in, `,s` if it carries `IsSimple`, and its own `Invert`.
+- `NOMINATE-SKIP depth= nominated= frozen=` — an element passed over, frozen or
+  (with `frozen=0`) excluded by a restricted simplify.
+- `FREEZE depth= modified= class=` — the oscillation check froze an element.
+- `CMPMAP-HEAD depth= where_= simpler= new=` — a nominated CmpMap simplified on
+  its own, and whether that changed it.
+- `CMPMAP-SPLIT depth= where_=` — a nominated CmpMap was replaced in the list by
+  its two components.
+
+`depth` counts the nominations enclosing this one, so an inner merge loop run by
+simplifying a nominated CmpMap reads as one level deeper. A CmpMap's class is
+written `CmpMap[series]` or `CmpMap[parallel]`.
+Output is also indented by simplify depth, so a subtree's whole route reads as a
+block.
+This settled PLAN.md §10.14 after three wrong diagnoses from reading dumps: the
+trace showed C nominating the node everyone assumed it skipped, and entering it
+at a different orientation, which was the real difference.
 
 The submodule is never modified — the script copies the tracked files out and
 patches the copy.
 
 ## Diffing the port against C
 
-`build_simplify_trace.sh` instruments the C library. The port emits the same
-three events as `tracing` events under its `tracing` feature, from
-`simplify::trace` in `crates/ast-core/src/mappings/simplify.rs`, on the target
-`ast::simplify`. The field names match the C trace's, so one `awk` recipe reads
-both.
+The port emits the same events as `tracing` events under its `tracing` feature,
+from `simplify::trace` in `crates/ast-core/src/mappings/simplify.rs`, on the
+target `ast::simplify`, with the same names and fields in the same order.
+The `simp_one` example installs a subscriber that prints them, so once each
+side's prefix is stripped the merge events diff line for line:
 
 ```shell
-AST_TRACE=1 /tmp/ast-trace/gen_simp in.map /dev/null 2> c.txt
-cargo run -q --features tracing --example simp_one -- in.map 2> port.txt >/dev/null
+AST_TRACE=1 <scratch>/ast-trace/gen_simp in.map /dev/null 2> c.txt
+cargo run -q -p ast-core --features tracing --example simp_one -- in.map 2> port.txt >/dev/null
 
-grep MAPMERGE c.txt    | awk '{print $2, $3, $4, $5}'          > c_mm.txt
-grep MAPMERGE port.txt | sed 's/.*class="\([^"]*\)".*where_=\([0-9]*\) series=\([0-9]*\) nmap=\([0-9]*\).*/\1 where=\2 series=\3 nmap=\4/' > p_mm.txt
-diff c_mm.txt p_mm.txt
+EV='MERGE-LIST|MAPMERGE|CMPMAP-|NOMINATE-SKIP|FREEZE'
+grep -E "$EV" c.txt    | sed -E 's/^ +//'                 > c_ev.txt
+grep -E "$EV" port.txt | sed -E 's/^ *(DEBUG|TRACE) +//'  > p_ev.txt
+diff c_ev.txt p_ev.txt
 ```
 
-`MAPMERGE-RESULT` says what each nomination returned, so a productive one can be
-told from one that declined. Counting those two on each side is what identified
-PLAN.md §10.3: C's nominations succeed 23 times in 96, the port's 15 in 149, and
-the whole difference is WinMap.
+The first differing `MERGE-LIST` is usually the answer: a divergence in list
+order, orientation or tags shows there before it shows in any result.
+The stored orientation (`/oN` and `MAPMERGE inv=`) differs wherever C's
+shared-pointer `Invert` history does, which the simplify corpus licenses per
+case in `SHARED_INVERT_HISTORY_LICENSED`; strip it with
+`sed -E 's#/o[01]\)#)#g; s/ inv=[01]$//'` to compare the rest.
+`SIMPLIFY-ENTER` is not part of the diff: the port's carries a `site` field
+naming the call site rather than C's `dns`, so a divergence names the function to
+look at.
+
+`MAPMERGE-RESULT` tells a productive nomination from one that declined. Counting
+those on each side is what identified PLAN.md §10.3: C's nominations succeed 23
+times in 96, the port's 15 in 149, and the whole difference is WinMap.
+The `MERGE-LIST` diff is what found the cmpmap.c:1677-1734 split, the per-object
+`Frozen` flag and the WinMap distribution shortcut together, after porting any
+one of them alone had regressed the corpus.
 
 `RUST_LOG` selects the level: `ast::simplify=debug` (the default the example
-installs) gives nominations and per-class reductions; `ast::simplify=trace` adds
-the higher-volume decomposition lines, matching C's `MAPLIST`.
-`SIMPLIFY-ENTER` carries a `site` field naming the call site, so a divergence
-names the function to look at.
+installs) gives everything above; `ast::simplify=trace` adds the higher-volume
+decomposition lines, matching C's `MAPLIST`.
 
-This is how PLAN.md §10.3 was narrowed from "CmpMap under-tags" to "the port
-makes 149 nominations where C makes 96".
+A merge that hands off to another class's `MapMerge` must emit `MAPMERGE` and
+`MAPMERGE-RESULT` itself where C goes through the `astMapMerge` dispatcher, as
+`ShiftMap`'s delegation to `WinMap` does; otherwise the two streams drift apart
+at that point for no engine reason.
 
-Both sides are permanent. Re-adding instrumentation each time a question of this
-shape came up is what let three wrong diagnoses of §10.14 stand.
+Both sides are permanent. Add an event to both rather than a temporary print:
+re-adding instrumentation each time a question of this shape came up is what let
+three wrong diagnoses of §10.14 stand.

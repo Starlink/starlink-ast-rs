@@ -77,60 +77,101 @@ impl Drop for SimplifyGuard {
 /// library so the two routes through a Mapping can be diffed line for line.
 ///
 /// Everything here compiles to nothing without the `tracing` feature, following
-/// [`crate::AstError`]'s pattern. The field names match the C trace's, so the
-/// same `awk` recipe reads both — see `tools/oracle_fixtures/README.md`.
+/// [`crate::AstError`]'s pattern. Event names, field names and field order
+/// match the C trace's, so the two streams diff line for line once each side's
+/// prefix is stripped — see `tools/oracle_fixtures/README.md`. An event added
+/// here needs its C counterpart in that script, and the reverse.
 ///
 /// These sit in the decomposition and merge machinery, not in any `transform`
 /// path, so the hot-path constraint in `CLAUDE.md` is unaffected.
 pub(crate) mod trace {
-    use super::Mapping;
+    use super::{DynMapping, Mapping};
 
-    /// Class name for a trace line. `Serializable::class_name` is private to
-    /// the serial module, so the classes the traces mention are matched here and
-    /// anything else prints as `?`.
     #[cfg(feature = "tracing")]
-    fn class_of(m: &dyn Mapping) -> &'static str {
-        use crate::mappings::{
-            CmpMap, Composition, GrismMap, IntraMap, LutMap, MatrixMap, NormMap, PcdMap, PermMap,
-            RateMap, ShiftMap, SlaMap, SpecMap, SphMap, SwitchMap, TimeMap, TranMap, UnitMap,
-            UnitNormMap, WcsMap, WinMap, XphMap, ZoomMap,
-        };
+    thread_local! {
+        /// How many nominations enclose the current one. A nomination can
+        /// simplify a CmpMap, which runs a merge loop of its own, so this is the
+        /// nesting of merge loops. C keeps the same count in `cmpmap.c`.
+        static DEPTH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    }
+
+    #[cfg(feature = "tracing")]
+    fn depth() -> usize {
+        DEPTH.with(std::cell::Cell::get)
+    }
+
+    /// Holds the nomination depth one level deeper until dropped.
+    pub(crate) struct Nomination;
+
+    /// Enter a nomination: events inside it report one more level of `depth`.
+    #[inline]
+    pub(crate) fn enter_nomination() -> Nomination {
+        #[cfg(feature = "tracing")]
+        DEPTH.with(|d| d.set(d.get() + 1));
+        Nomination
+    }
+
+    impl Drop for Nomination {
+        #[inline]
+        fn drop(&mut self) {
+            #[cfg(feature = "tracing")]
+            DEPTH.with(|d| d.set(d.get() - 1));
+        }
+    }
+
+    /// Class name for a trace line, as `astGetClass` gives it, except that a
+    /// CmpMap also names its composition. Serialising is costly, but only
+    /// runs when the event is enabled.
+    #[cfg(feature = "tracing")]
+    fn class_of(m: &dyn Mapping) -> String {
+        use crate::mappings::{CmpMap, Composition};
         if let Some(c) = m.as_any().downcast_ref::<CmpMap>() {
             return if c.composition() == Composition::Series {
-                "CmpMap[series]"
+                "CmpMap[series]".into()
             } else {
-                "CmpMap[parallel]"
+                "CmpMap[parallel]".into()
             };
         }
-        macro_rules! name {
-            ($($cls:ident),+ $(,)?) => {
-                $( if m.as_any().is::<$cls>() { return stringify!($cls); } )+
+        crate::AnyObject::from_mapping(m)
+            .and_then(|obj| crate::serial::any_object_to_node(&obj).ok())
+            .map_or_else(|| "?".into(), |node| node.class)
+    }
+
+    /// A merge list as `[ Class(eff[,s]/oN) ... ]`: each entry's class, the
+    /// direction it is applied in, `,s` if it carries `IsSimp` at its stored
+    /// orientation, and that stored orientation (C's `astGetInvert`).
+    #[cfg(feature = "tracing")]
+    fn list_of(list: &[(DynMapping, bool, bool)]) -> String {
+        use std::fmt::Write;
+        let mut s = String::from("[");
+        for (m, eff, orig) in list {
+            let simp = if at_stored(m.as_ref(), *orig).has_been_simplified() {
+                ",s"
+            } else {
+                ""
             };
+            let _ = write!(
+                s,
+                " {}({}{simp}/o{})",
+                class_of(m.as_ref()),
+                u8::from(*eff),
+                u8::from(*orig)
+            );
         }
-        name!(
-            UnitMap,
-            ZoomMap,
-            WinMap,
-            ShiftMap,
-            MatrixMap,
-            PermMap,
-            PcdMap,
-            LutMap,
-            SpecMap,
-            SlaMap,
-            TimeMap,
-            SphMap,
-            WcsMap,
-            GrismMap,
-            NormMap,
-            UnitNormMap,
-            RateMap,
-            TranMap,
-            SwitchMap,
-            XphMap,
-            IntraMap,
-        );
-        "?"
+        s.push_str(" ]");
+        s
+    }
+
+    /// A list entry at its stored orientation, which is the orientation C's
+    /// list holds the object in and so the one its `astGetInvert` and
+    /// `astGetIsSimple` report.
+    #[cfg(feature = "tracing")]
+    fn at_stored(m: &dyn Mapping, stored_inv: bool) -> DynMapping {
+        let mut stored = m.clone_box();
+        if stored.is_inverted() != stored_inv {
+            stored.invert();
+        }
+        stored
     }
 
     /// A per-class reduction is about to run. C's `SIMPLIFY-ENTER`.
@@ -140,7 +181,7 @@ pub(crate) mod trace {
         #[cfg(feature = "tracing")]
         tracing::debug!(
             target: "ast::simplify",
-            class = class_of(m),
+            class = %class_of(m),
             issimp = u8::from(m.has_been_simplified()),
             inv = u8::from(m.is_inverted()),
             nin = m.nin(),
@@ -150,47 +191,133 @@ pub(crate) mod trace {
         );
     }
 
-    /// A class is being nominated. C's `MAPMERGE`.
+    /// A class is being nominated. C's `MAPMERGE`. `stored_inv` is the
+    /// entry's stored orientation, which `issimp` and `inv` report.
     #[inline]
     #[cfg_attr(not(feature = "tracing"), allow(unused_variables))]
-    pub(crate) fn map_merge(m: &dyn Mapping, where_: usize, series: bool, len: usize) {
+    pub(crate) fn map_merge(
+        m: &dyn Mapping,
+        stored_inv: bool,
+        where_: usize,
+        series: bool,
+        len: usize,
+    ) {
         #[cfg(feature = "tracing")]
         tracing::debug!(
             target: "ast::simplify",
-            class = class_of(m),
+            class = %class_of(m),
             where_,
             series = u8::from(series),
             nmap = len,
-            issimp = u8::from(m.has_been_simplified()),
-            inv = u8::from(m.is_inverted()),
+            issimp = u8::from(at_stored(m, stored_inv).has_been_simplified()),
+            inv = u8::from(stored_inv),
             "MAPMERGE",
         );
     }
 
-    /// What a nomination returned: the index it modified, or nothing. C's
-    /// `MAPMERGE-RESULT`. Distinguishes a productive nomination from one that
-    /// declined, which is the difference between churn and progress.
+    /// What a nomination returned: the index it modified, or nothing, and the
+    /// list length after it. C's `MAPMERGE-RESULT`. Distinguishes a productive
+    /// nomination from one that declined, which is the difference between
+    /// churn and progress.
     #[inline]
     #[cfg_attr(not(feature = "tracing"), allow(unused_variables))]
-    pub(crate) fn map_merge_result(m: &dyn Mapping, result: Option<usize>) {
+    pub(crate) fn map_merge_result(m: &dyn Mapping, result: Option<usize>, len: usize) {
         #[cfg(feature = "tracing")]
         tracing::debug!(
             target: "ast::simplify",
-            class = class_of(m),
+            class = %class_of(m),
             result = result.map_or(-1i64, |i| i as i64),
+            nmap = len,
             "MAPMERGE-RESULT",
         );
     }
 
+    /// The whole merge list as an element is nominated from it. C's
+    /// `MERGE-LIST`, from the `cmpmap.c` `Simplify` loop. A divergence in list
+    /// order or orientation shows here before it shows in any nomination.
+    #[inline]
+    #[cfg_attr(not(feature = "tracing"), allow(unused_variables))]
+    pub(crate) fn merge_list(nominated: usize, series: bool, list: &[(DynMapping, bool, bool)]) {
+        #[cfg(feature = "tracing")]
+        tracing::debug!(
+            target: "ast::simplify",
+            depth = depth(),
+            nominated,
+            series = u8::from(series),
+            nmap = list.len(),
+            list = %list_of(list),
+            "MERGE-LIST",
+        );
+    }
+
+    /// A frozen element was passed over. C's `NOMINATE-SKIP`. Restricted
+    /// simplification also skips elements; `frozen=0` marks those.
+    #[inline]
+    #[cfg_attr(not(feature = "tracing"), allow(unused_variables))]
+    pub(crate) fn nominate_skip(nominated: usize, frozen: bool) {
+        #[cfg(feature = "tracing")]
+        tracing::debug!(
+            target: "ast::simplify",
+            depth = depth(),
+            nominated,
+            frozen = u8::from(frozen),
+            "NOMINATE-SKIP",
+        );
+    }
+
+    /// The oscillation check froze an element. C's `FREEZE`.
+    #[inline]
+    #[cfg_attr(not(feature = "tracing"), allow(unused_variables))]
+    pub(crate) fn freeze(modified: usize, m: &dyn Mapping) {
+        #[cfg(feature = "tracing")]
+        tracing::debug!(
+            target: "ast::simplify",
+            depth = depth(),
+            modified,
+            class = %class_of(m),
+            "FREEZE",
+        );
+    }
+
+    /// A nominated CmpMap was simplified on its own: whether that changed it
+    /// and what it became. C's `CMPMAP-HEAD`.
+    #[inline]
+    #[cfg_attr(not(feature = "tracing"), allow(unused_variables))]
+    pub(crate) fn cmpmap_head(where_: usize, simpler: bool, new: &dyn Mapping) {
+        #[cfg(feature = "tracing")]
+        tracing::debug!(
+            target: "ast::simplify",
+            depth = depth(),
+            where_,
+            simpler = u8::from(simpler),
+            new = %class_of(new),
+            "CMPMAP-HEAD",
+        );
+    }
+
+    /// A nominated CmpMap was replaced in the list by its two components.
+    /// C's `CMPMAP-SPLIT`.
+    #[inline]
+    #[cfg_attr(not(feature = "tracing"), allow(unused_variables))]
+    pub(crate) fn cmpmap_split(where_: usize) {
+        #[cfg(feature = "tracing")]
+        tracing::debug!(
+            target: "ast::simplify",
+            depth = depth(),
+            where_,
+            "CMPMAP-SPLIT",
+        );
+    }
+
     /// A decomposition is being requested. C's `MAPLIST`, the highest-volume of
-    /// the three, so it sits a level lower.
+    /// the events, so it sits a level lower.
     #[inline]
     #[cfg_attr(not(feature = "tracing"), allow(unused_variables))]
     pub(crate) fn map_list(m: &dyn Mapping, series: bool, inv: bool) {
         #[cfg(feature = "tracing")]
         tracing::trace!(
             target: "ast::simplify",
-            class = class_of(m),
+            class = %class_of(m),
             series = u8::from(series),
             invert = u8::from(inv),
             "MAPLIST",
@@ -645,9 +772,15 @@ impl MergeCtx {
         let suffix: Vec<_> = self.list.split_off(start);
         let mut sub = MergeCtx::new(suffix);
         let nominee = sub.list[sub_index].0.clone_box();
-        trace::map_merge(nominee.as_ref(), sub_index, series, sub.len());
+        trace::map_merge(
+            nominee.as_ref(),
+            sub.list[sub_index].2,
+            sub_index,
+            series,
+            sub.len(),
+        );
         let modified = dispatch_map_merge(nominee.as_ref(), &mut sub, sub_index, series);
-        trace::map_merge_result(nominee.as_ref(), modified);
+        trace::map_merge_result(nominee.as_ref(), modified, sub.len());
         self.list.extend(sub.list);
         modified
     }
@@ -707,6 +840,7 @@ pub(crate) fn cmp_map_merge(
     if !oriented.has_been_simplified() {
         trace::simplify_enter("cmp-self-simplify-head", oriented.as_ref());
         if let Ok((simplified, changed)) = oriented.simplify_reporting_change() {
+            trace::cmpmap_head(where_, changed, simplified.as_ref());
             // C's test is `simpler = ( new != map ) || ( new_invert !=
             // invert_list[where] )` (cmpmap.c:1456) — pointer identity, not
             // structure, and `changed` is that identity answer reported by the
@@ -752,6 +886,10 @@ pub(crate) fn cmp_map_merge(
         }
 
         ctx.set_component_simple_tag(where_);
+    } else {
+        // C's `astSimplify` hands a tagged Mapping straight back, so its head
+        // still runs and finds nothing simpler.
+        trace::cmpmap_head(where_, false, oriented.as_ref());
     }
 
     // The CmpMap did not simplify on its own. If it combines its components
@@ -780,6 +918,7 @@ pub(crate) fn cmp_map_merge(
         };
         let pieces = order.map(|(m, inv)| leaf_entry(m, inv)).to_vec();
         ctx.list.splice(where_..=where_, pieces);
+        trace::cmpmap_split(where_);
         return Some(where_);
     }
 
@@ -1289,9 +1428,9 @@ pub(crate) fn base_simplify(this: &dyn Mapping) -> AstResult<(DynMapping, bool)>
     // what ends the loop.
     while !ctx.is_frozen(0) {
         let nominee = ctx.entry(0).0.clone_box();
-        trace::map_merge(nominee.as_ref(), 0, true, ctx.len());
+        trace::map_merge(nominee.as_ref(), ctx.entry(0).2, 0, true, ctx.len());
         let modified = dispatch_map_merge(nominee.as_ref(), &mut ctx, 0, true);
-        trace::map_merge_result(nominee.as_ref(), modified);
+        trace::map_merge_result(nominee.as_ref(), modified, ctx.len());
 
         if ctx.len() > 1 || modified.is_none() {
             break;
@@ -1638,6 +1777,7 @@ fn run_nominate_loop(
             // Under a restricted simplify, components without AllowSimplify
             // are also skipped (C cmpmap.c:3563).
             if ctx.is_frozen(nominated) || !ctx.may_nominate(nominated) {
+                trace::nominate_skip(nominated, ctx.is_frozen(nominated));
                 nominated += 1;
                 continue;
             }
@@ -1645,9 +1785,19 @@ fn run_nominate_loop(
             // Clone the nominated mapping and attempt to merge it with its
             // neighbours (C clones map_list[nominated] before astMapMerge).
             let nominee = ctx.list[nominated].0.clone_box();
-            trace::map_merge(nominee.as_ref(), nominated, series, ctx.len());
-            let modified = dispatch_map_merge(nominee.as_ref(), ctx, nominated, series);
-            trace::map_merge_result(nominee.as_ref(), modified);
+            trace::merge_list(nominated, series, &ctx.list);
+            trace::map_merge(
+                nominee.as_ref(),
+                ctx.list[nominated].2,
+                nominated,
+                series,
+                ctx.len(),
+            );
+            let modified = {
+                let _nomination = trace::enter_nomination();
+                dispatch_map_merge(nominee.as_ref(), ctx, nominated, series)
+            };
+            trace::map_merge_result(nominee.as_ref(), modified, ctx.len());
 
             // Move on to nominate the next mapping (C `nominated++`).
             nominated += 1;
@@ -1676,6 +1826,7 @@ fn run_nominate_loop(
                 // Repeating pattern: freeze the modified mapping so it stops
                 // contributing to the argument (C astSetFrozen).
                 ctx.freeze(modified);
+                trace::freeze(modified, ctx.entry(modified).0.as_ref());
             } else {
                 improved = true;
                 any = true;
