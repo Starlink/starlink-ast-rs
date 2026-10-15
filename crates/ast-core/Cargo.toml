@@ -47,6 +47,10 @@ tracing = ["dep:tracing"]
 call-counts = []
 
 [[example]]
+name = "count_one"
+required-features = ["call-counts"]
+
+[[example]]
 name = "bench_polymap_simd"
 required-features = ["simd-eval"]
 
