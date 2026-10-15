@@ -5,3 +5,4 @@
 //! brought to parity with C; regression checking needs only Rust.
 pub mod load;
 pub mod oracle;
+pub mod points;
