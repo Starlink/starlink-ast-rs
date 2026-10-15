@@ -1,15 +1,13 @@
-//! Test tier 4: live bit/ULP comparison against the C library
-//! — **not yet implemented**.
+//! Test tier 4: live comparison against the C library.
 //!
-//! When built, this crate links `ast-core` and the reference `libast.a`
-//! into one binary and drives matched inputs through both: bit-exact for
-//! integer and classification outputs, bounded ULP for floating point,
-//! property-based for random pipelines.
+//! The C library is loaded at runtime through `ast_bench::c_engine`, built by
+//! `tools/perf/build_c_engine.sh`. Today the tier holds one test,
+//! `tests/call_count_parity.rs`: for every transform-oracle section the port
+//! must make the same calls into libm, PAL, ERFA and wcslib as C.
 //!
-//! This is the gap that matters most in the current verification posture:
-//! **no test in this repository executes C code and compares the result
-//! live.** All C comparison today is against frozen corpora committed under
-//! `crates/ast-core/tests/fixtures/`, and a recording cannot notice when the
-//! thing it recorded changes. See `PLAN.md` §7.
+//! The rest of the design (bit-exact and bounded-ULP comparison of live
+//! outputs, property-based pipelines) is not implemented; until it is, output
+//! comparison against C is against the frozen corpora under
+//! `crates/ast-core/tests/fixtures/`. See `PLAN.md` §7.
 
 #![allow(missing_docs)]

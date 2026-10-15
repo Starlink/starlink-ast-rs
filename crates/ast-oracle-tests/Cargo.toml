@@ -10,4 +10,5 @@ description = "Oracle correctness tests: Rust ast-core vs reference C libast"
 workspace = true
 
 [dependencies]
-ast-core = { path = "../ast-core" }
+ast-core = { path = "../ast-core", features = ["call-counts"] }
+ast-bench = { path = "../ast-bench", features = ["c-oracle"] }

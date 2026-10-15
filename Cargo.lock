@@ -57,6 +57,7 @@ dependencies = [
 name = "ast-oracle-tests"
 version = "0.1.0"
 dependencies = [
+ "ast-bench",
  "ast-core",
 ]
 
