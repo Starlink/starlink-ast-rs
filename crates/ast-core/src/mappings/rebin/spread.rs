@@ -275,7 +275,7 @@ pub(super) fn linear<T: RebinValue>(a: &Args<'_, T>, acc: &mut Accum<'_, T>) {
                     // whose product forms each pixel's weight.
                     let mut wgt = a.conwgt;
                     if k.varwgt {
-                        wgt *= 1.0 / var_at(a, off_in).to_f64().sqrt();
+                        wgt *= 1.0 / crate::math::sqrt(var_at(a, off_in).to_f64());
                     }
                     frac_lo_x *= wgt;
                     frac_hi_x *= wgt;
@@ -327,7 +327,7 @@ pub(super) fn linear<T: RebinValue>(a: &Args<'_, T>, acc: &mut Accum<'_, T>) {
             // product forms each pixel's weight.
             let mut wgt = a.conwgt;
             if k.varwgt {
-                wgt *= var_at(a, off_in).to_f64().powf(-1.0 / ndim as f64);
+                wgt *= crate::math::powf(var_at(a, off_in).to_f64(), -1.0 / ndim as f64);
             }
             for idim in 0..ndim {
                 frac_lo[idim] *= wgt;

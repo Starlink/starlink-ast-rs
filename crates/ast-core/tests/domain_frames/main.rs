@@ -4,6 +4,10 @@
 //! test program so that a change to ast-core relinks a few programs rather than
 //! one per file.
 
+// Test code computes expected values directly; the counted `math` wrappers
+// are for the library (`crates/ast-core/clippy.toml`).
+#![allow(clippy::disallowed_methods)]
+
 #[path = "../test_dsb_topo.rs"]
 mod test_dsb_topo;
 #[path = "../test_dsbspecframe.rs"]

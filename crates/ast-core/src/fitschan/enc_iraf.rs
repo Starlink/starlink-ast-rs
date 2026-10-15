@@ -158,7 +158,7 @@ fn iraf_store_ok(store: &FitsStore) -> bool {
                         p1 == 0.0
                             && (p2 == 0.0
                                 || (p2.abs() >= 1.0e14 && val == 0.0)
-                                || (p2 * val.to_radians().tan() - 1.0).abs() < 0.01)
+                                || (p2 * crate::math::tan(val.to_radians()) - 1.0).abs() < 0.01)
                     }
                     None => false,
                 }

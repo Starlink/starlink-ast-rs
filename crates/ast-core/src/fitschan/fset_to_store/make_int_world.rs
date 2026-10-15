@@ -579,8 +579,8 @@ mod tests {
         // cdelt=(0.5, 0.5). split_cd should recover θ in PC and 0.5 in
         // CDELT.
         let theta = 30.0_f64.to_radians();
-        let s = theta.sin();
-        let c = theta.cos();
+        let s = crate::math::sin(theta);
+        let c = crate::math::cos(theta);
         let cdelt = 0.5_f64;
         let m = Array2::from_shape_vec((2, 2), vec![cdelt * c, -cdelt * s, cdelt * s, cdelt * c])
             .unwrap();

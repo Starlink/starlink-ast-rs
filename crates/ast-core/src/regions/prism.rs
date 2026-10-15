@@ -349,13 +349,13 @@ impl RegionGeometry for Prism {
         let msz1 = if nax1 == 1 {
             2
         } else {
-            (0.5 * mszp).sqrt() as i32
+            crate::math::sqrt(0.5 * mszp) as i32
         };
         let gsz2 = (0.5 * mszp / msz1 as f64) as i32;
         let msz2 = if nax2 == 1 {
             2
         } else {
-            (0.5 * mszp).sqrt() as i32
+            crate::math::sqrt(0.5 * mszp) as i32
         };
         let gsz1 = (0.5 * mszp / msz2 as f64) as i32;
         // The sizes are set on copies, which C does by setting them on the

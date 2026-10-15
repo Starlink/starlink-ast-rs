@@ -312,7 +312,7 @@ impl Interval {
             // Joint uncertainty width on this axis (interval.c:1954-1960).
             let err_this = ubndu_this[ic] - lbndu_this[ic];
             let err_that = ubndu_that[ic] - lbndu_that[ic];
-            let err = (err_that * err_that + err_this * err_this).sqrt();
+            let err = crate::math::sqrt(err_that * err_that + err_this * err_this);
 
             let mut lb_this = self.data.points[0][ic];
             let mut ub_this = self.data.points[1][ic];

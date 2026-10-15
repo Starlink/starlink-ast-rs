@@ -232,7 +232,7 @@ impl Mapping for UnitNormMap {
                     let scaled = (v - c) / max_relin;
                     scaled_sum += scaled * scaled;
                 }
-                let norm = max_relin * scaled_sum.sqrt();
+                let norm = max_relin * crate::math::sqrt(scaled_sum);
 
                 // Output unit vector and norm.
                 for (coord, (&v, &c)) in inp[..ncoord].iter().zip(self.centre.iter()).enumerate() {

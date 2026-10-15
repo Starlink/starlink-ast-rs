@@ -198,22 +198,34 @@ pub(crate) fn fix_constants(node: &mut Box<UnitNode>, unity: bool) {
     let new_con: Option<f64> = match op {
         Oper::Log => {
             let v = node.arg[0].con;
-            if v > 0.0 { Some(v.log10()) } else { None }
+            if v > 0.0 {
+                Some(crate::math::log10(v))
+            } else {
+                None
+            }
         }
         Oper::Ln => {
             let v = node.arg[0].con;
-            if v > 0.0 { Some(v.ln()) } else { None }
+            if v > 0.0 {
+                Some(crate::math::ln(v))
+            } else {
+                None
+            }
         }
-        Oper::Exp => Some(node.arg[0].con.exp()),
+        Oper::Exp => Some(crate::math::exp(node.arg[0].con)),
         Oper::Sqrt => {
             let v = node.arg[0].con;
-            if v >= 0.0 { Some(v.sqrt()) } else { None }
+            if v >= 0.0 {
+                Some(crate::math::sqrt(v))
+            } else {
+                None
+            }
         }
         Oper::Pow => {
             let base = node.arg[0].con;
             let exponent = node.arg[1].con;
             if base >= 0.0 || (exponent.trunc() == exponent) {
-                Some(base.powf(exponent))
+                Some(crate::math::powf(base, exponent))
             } else {
                 None
             }
@@ -346,7 +358,11 @@ pub(crate) fn simplify_tree(node: &mut Box<UnitNode>, std: bool) -> bool {
         Oper::Log if std => {
             let mut ln = UnitNode::new(Oper::Ln);
             ln.arg[0] = node.arg[0].clone();
-            let div = UnitNode::binary(Oper::Div, Box::new(ln), UnitNode::ldcon(10.0_f64.ln()));
+            let div = UnitNode::binary(
+                Oper::Div,
+                Box::new(ln),
+                UnitNode::ldcon(crate::math::ln(10.0_f64)),
+            );
             newnode = Some(div);
         }
 
@@ -539,7 +555,7 @@ fn find_factors_inner(
             }
             // Exponentiate the coefficient.
             if *coeff >= 0.0 || (con as i64 as f64 == con) {
-                *coeff = coeff.powf(con);
+                *coeff = crate::math::powf(*coeff, con);
             }
             // (C reports AST__BADUN otherwise; we just leave coeff as-is.)
         }
@@ -577,7 +593,7 @@ fn find_factors_inner(
                 *p *= 0.5;
             }
             if *coeff >= 0.0 {
-                *coeff = coeff.sqrt();
+                *coeff = crate::math::sqrt(*coeff);
             }
         }
 

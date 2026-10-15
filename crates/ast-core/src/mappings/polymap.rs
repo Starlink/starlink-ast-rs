@@ -1325,9 +1325,9 @@ impl<'a> LeastSquaresProblem<f64, Dyn, Dyn> for PolyInverseProblem<'a> {
                 let mut deriv = term.coeff * (term.powers[j] as f64);
                 for (k, (&xk, &pk)) in x.iter().zip(term.powers.iter()).enumerate() {
                     if k == j {
-                        deriv *= xk.powi(pk as i32 - 1);
+                        deriv *= crate::math::powi(xk, pk as i32 - 1);
                     } else {
-                        deriv *= xk.powi(pk as i32);
+                        deriv *= crate::math::powi(xk, pk as i32);
                     }
                 }
                 jac[(out_idx, j)] += deriv;
@@ -1368,16 +1368,16 @@ fn lm_inverse(
         .minimize(problem);
 
     // Check convergence: if the residual norm is small enough, return.
-    if report.termination.was_successful() || report.objective_function.sqrt() < tol {
+    if report.termination.was_successful() || crate::math::sqrt(report.objective_function) < tol {
         let solution: Vec<f64> = result.params.iter().copied().collect();
         // Final check: compute residual norm.
         let fwd = eval_poly(terms, nin, nout, &solution);
         let residual_sq: f64 = fwd
             .iter()
             .zip(target.iter())
-            .map(|(f, t)| (f - t).powi(2))
+            .map(|(f, t)| crate::math::powi(f - t, 2))
             .sum();
-        if residual_sq.sqrt() < tol {
+        if crate::math::sqrt(residual_sq) < tol {
             return solution;
         }
     }

@@ -780,9 +780,9 @@ pub(crate) fn topo_vel(
 fn user_vel(ra: f64, dec: f64, veluser: f64, refra: f64, refdec: f64) -> f64 {
     // Express user velocity as J2000 x,y,z vector
     let vuser = [
-        veluser * refra.cos() * refdec.cos(),
-        veluser * refra.sin() * refdec.cos(),
-        veluser * refdec.sin(),
+        veluser * crate::math::cos(refra) * crate::math::cos(refdec),
+        veluser * crate::math::sin(refra) * crate::math::cos(refdec),
+        veluser * crate::math::sin(refdec),
     ];
     // Direction to observed source
     let vb = pal::dcs2c(ra, dec);
@@ -835,7 +835,7 @@ fn system_change_forward(cvt: &SpecConversion, val: f64) -> f64 {
             if d != 0.0 {
                 let ratio = (C_LIGHT - val) / d;
                 if ratio >= 0.0 {
-                    let result = cvt.args[0] * ratio.sqrt();
+                    let result = cvt.args[0] * crate::math::sqrt(ratio);
                     if result.is_finite() {
                         result
                     } else {
@@ -938,7 +938,7 @@ fn system_change_forward(cvt: &SpecConversion, val: f64) -> f64 {
             if denom != 0.0 {
                 let ratio = (C_LIGHT - val) / denom;
                 if ratio >= 0.0 {
-                    let result = C_LIGHT * (1.0 - ratio.sqrt());
+                    let result = C_LIGHT * (1.0 - crate::math::sqrt(ratio));
                     if result.is_finite() {
                         result
                     } else {
@@ -970,7 +970,7 @@ fn system_change_forward(cvt: &SpecConversion, val: f64) -> f64 {
             if denom != 0.0 {
                 let ratio = (C_LIGHT + val) / denom;
                 if ratio >= 0.0 {
-                    let result = C_LIGHT * (ratio.sqrt() - 1.0);
+                    let result = C_LIGHT * (crate::math::sqrt(ratio) - 1.0);
                     if result.is_finite() {
                         result
                     } else {
@@ -1002,7 +1002,7 @@ fn system_change_forward(cvt: &SpecConversion, val: f64) -> f64 {
             if denom != 0.0 {
                 let ratio = (C_LIGHT + val) / denom;
                 if ratio >= 0.0 {
-                    let result = ratio.sqrt() - 1.0;
+                    let result = crate::math::sqrt(ratio) - 1.0;
                     if result.is_finite() {
                         result
                     } else {
@@ -1091,7 +1091,7 @@ fn compute_frame_correction(cvt: &SpecConversion, sign: f64) -> f64 {
 
     // Compute correction factor: f_out = f_in * sqrt((c - s)/(c + s))
     if s < C_LIGHT && s > -C_LIGHT {
-        ((C_LIGHT - s) / (C_LIGHT + s)).sqrt()
+        crate::math::sqrt((C_LIGHT - s) / (C_LIGHT + s))
     } else {
         BAD_VALUE
     }
@@ -1115,7 +1115,7 @@ fn frame_change_at(cvt: &SpecConversion, val: f64, ra: f64, dec: f64, forward: b
     };
     let s = sign * v;
     if s < C_LIGHT && s > -C_LIGHT {
-        val * ((C_LIGHT - s) / (C_LIGHT + s)).sqrt()
+        val * crate::math::sqrt((C_LIGHT - s) / (C_LIGHT + s))
     } else {
         BAD_VALUE
     }

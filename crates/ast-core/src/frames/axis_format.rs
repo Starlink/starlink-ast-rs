@@ -151,9 +151,9 @@ pub(crate) fn format_value(fmt: &str, digits: i32, value: f64) -> AstResult<Stri
         }
         let magnitude = |v: f64| if p.integ { f64::from(c_int(v)) } else { v };
         if value > 0.0 {
-            x = magnitude(value).log10();
+            x = crate::math::log10(magnitude(value));
         } else {
-            x = magnitude(-value).log10();
+            x = crate::math::log10(magnitude(-value));
             buf = vec![b'-'];
         }
         buf.extend_from_slice(LOG_TXT.as_bytes());

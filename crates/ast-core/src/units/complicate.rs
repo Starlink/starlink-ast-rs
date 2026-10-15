@@ -47,7 +47,7 @@ pub(crate) fn complicate_tree(node: &mut Box<UnitNode>) -> bool {
         // POW.
         if a0.con != BAD_VALUE && a1.opcode == Oper::Ln {
             let con0 = a0.con;
-            let fk = 10.0 * con0 * 10.0_f64.ln();
+            let fk = 10.0 * con0 * crate::math::ln(10.0_f64);
             let k = fk.round() as i64;
             let (head_op, eff_con) = if ast_equal(fk, k as f64) {
                 (Oper::Log, k as f64 / 10.0)

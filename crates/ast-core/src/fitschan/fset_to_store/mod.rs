@@ -972,7 +972,7 @@ fn snap_small_crval(store: &mut FitsStore, wperm: &[usize], nwcs: usize) {
         }
         let cdelt = store.cdelt.get(fits_i).copied().flatten().unwrap_or(1.0);
         let cdelt2 = row_norm2 * cdelt * cdelt;
-        if crval.abs() < (f64::EPSILON * cdelt2).sqrt() {
+        if crval.abs() < crate::math::sqrt(f64::EPSILON * cdelt2) {
             store.crval[fits_i] = Some(0.0);
         }
     }

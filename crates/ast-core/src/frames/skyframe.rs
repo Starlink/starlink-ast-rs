@@ -737,7 +737,7 @@ impl SkyFrame {
         } else {
             BAD_VALUE
         };
-        if phys == 1 && ref_lat.cos().abs() > 1.0e-10 {
+        if phys == 1 && crate::math::cos(ref_lat).abs() > 1.0e-10 {
             std::f64::consts::FRAC_PI_2
         } else {
             0.0
@@ -1617,8 +1617,8 @@ impl Frame for SkyFrame {
             if vmod > 0.0 {
                 // Their intersection, already a unit vector.
                 let v4 = pal::dvxv(&n1, &n2);
-                d1 = pal::dvdv(&v4, &v5).atan2(pal::dvdv(&v4, &v1));
-                d2 = pal::dvdv(&v3, &n1).atan2(pal::dvdv(&v3, &v4)).abs();
+                d1 = crate::math::atan2(pal::dvdv(&v4, &v5), pal::dvdv(&v4, &v1));
+                d2 = crate::math::atan2(pal::dvdv(&v3, &n1), pal::dvdv(&v3, &v4)).abs();
                 let (lon, lat) = pal::dcc2s(&v4);
                 let p4 = [pal::dranrm(lon), lat];
                 point4 = vec![p4[perm[0]], p4[perm[1]]];
@@ -1731,9 +1731,9 @@ impl Frame for SkyFrame {
                 let v4 = pal::dvxv(&n1, &n2);
 
                 // Parallel distance (signed, -PI..PI).
-                d1v[ip] = pal::dvdv(&v4, &v5).atan2(pal::dvdv(&v4, &v1));
+                d1v[ip] = crate::math::atan2(pal::dvdv(&v4, &v5), pal::dvdv(&v4, &v1));
                 // Perpendicular distance (signed by axis order).
-                d2v[ip] = sign * pal::dvdv(&v3, &n1).atan2(pal::dvdv(&v3, &v4));
+                d2v[ip] = sign * crate::math::atan2(pal::dvdv(&v3, &n1), pal::dvdv(&v3, &v4));
             }
         }
 
@@ -1787,8 +1787,8 @@ impl Frame for SkyFrame {
         // multiple of pi (rotating v1 by cos(offset)); otherwise the
         // result is bad (skyframe.c:7709-7727).
         if axis_len == 0.0 {
-            if dist.sin() == 0.0 {
-                let scale = dist.cos();
+            if crate::math::sin(dist) == 0.0 {
+                let scale = crate::math::cos(dist);
                 let v3 = [v1[0] * scale, v1[1] * scale, v1[2] * scale];
                 // C constrains the longitude to 0..2*pi, which palDcc2s does
                 // not do itself (skyframe.c:7718-7720).
@@ -1904,15 +1904,15 @@ impl Frame for SkyFrame {
             hilon += turn;
         }
         let dlon = hilon - lolon;
-        let box_area = (dlon * (hilat.sin() - lolat.sin())).abs();
-        let mut lat_size = (box_area / size as f64).sqrt();
+        let box_area = (dlon * (crate::math::sin(hilat) - crate::math::sin(lolat))).abs();
+        let mut lat_size = crate::math::sqrt(box_area / size as f64);
         // C's `(int)( 0.5 + ... )`.
         let npar = ((0.5 + (hilat - lolat) / lat_size) as i32).max(2);
         lat_size = (hilat - lolat) / npar as f64;
         let mut totlen = 0.0;
         let mut lat = lolat + 0.5 * lat_size;
         for _ in 0..npar {
-            totlen += dlon * lat.cos();
+            totlen += dlon * crate::math::cos(lat);
             lat += lat_size;
         }
         let lon_size = totlen / size as f64;
@@ -1921,7 +1921,7 @@ impl Frame for SkyFrame {
         let mut ip = 0i32;
         lat = lolat + 0.5 * lat_size;
         for _ in 0..npar {
-            let cl = lat.cos();
+            let cl = crate::math::cos(lat);
             let mut inclon = if cl != 0.0 { lon_size / cl } else { 0.0 };
             let mut nmer = (dlon / inclon) as i32;
             if ip + nmer >= ipmax {
@@ -2073,25 +2073,25 @@ impl Frame for SkyFrame {
         }
 
         // Compute the bearing of the great circle at the required point.
-        let sina1 = p2[0].sin();
-        let cosa1 = p2[0].cos();
-        let sinb1 = p2[1].sin();
-        let cosb1 = p2[1].cos();
+        let sina1 = crate::math::sin(p2[0]);
+        let cosa1 = crate::math::cos(p2[0]);
+        let sinb1 = crate::math::sin(p2[1]);
+        let cosb1 = crate::math::cos(p2[1]);
 
         // Q1: point in the meridian of p2, 90 deg further north.
         let q1 = [-sinb1 * cosa1, -sinb1 * sina1, cosb1];
         // Q2: point on the equator, 90 deg west of p2.
         let q2 = [-sina1, cosa1, 0.0];
         // Q3: point 90 deg away from p2 along the great circle.
-        let cosoff = offset.cos();
-        let sinoff = offset.sin();
+        let cosoff = crate::math::cos(offset);
+        let sinoff = crate::math::sin(offset);
         let q3 = [
             -sinoff * r0[0] + cosoff * r3[0],
             -sinoff * r0[1] + cosoff * r3[1],
             -sinoff * r0[2] + cosoff * r3[2],
         ];
 
-        let pa_end = pal::dvdv(&q3, &q2).atan2(pal::dvdv(&q3, &q1));
+        let pa_end = crate::math::atan2(pal::dvdv(&q3, &q2), pal::dvdv(&q3, &q1));
         let result = if perm[0] == 0 { pa_end } else { piby2 - pa_end };
         let result = pal::dranrm(result);
 
@@ -2214,13 +2214,13 @@ impl Frame for SkyFrame {
         let dot = pal::dvdv(&sv, &ev);
         let ls = sv[0] * sv[0] + sv[1] * sv[1] + sv[2] * sv[2];
         let le = ev[0] * ev[0] + ev[1] * ev[1] + ev[2] * ev[2];
-        let coslength = dot / (ls * le).sqrt();
+        let coslength = dot / crate::math::sqrt(ls * le);
         let length = if coslength < -1.0 {
             std::f64::consts::PI
         } else if coslength > 1.0 {
             0.0
         } else {
-            coslength.acos()
+            crate::math::acos(coslength)
         };
 
         // Pole of the great circle, oriented so it lies to the left of the
@@ -2265,16 +2265,16 @@ impl Frame for SkyFrame {
         })?;
 
         // Move a distance `par` along the great circle from the start.
-        let c = par.cos();
-        let s = par.sin();
+        let c = crate::math::cos(par);
+        let s = crate::math::sin(par);
         let nx = c * sl.start[0] + s * sl.dir[0];
         let ny = c * sl.start[1] + s * sl.dir[1];
         let nz = c * sl.start[2] + s * sl.dir[2];
 
         // Move a distance `prp` at right angles, towards the pole.
         let v = if prp != 0.0 {
-            let c2 = prp.cos();
-            let s2 = prp.sin();
+            let c2 = crate::math::cos(prp);
+            let s2 = crate::math::sin(prp);
             [
                 c2 * nx + s2 * sl.q[0],
                 c2 * ny + s2 * sl.q[1],
@@ -2667,7 +2667,7 @@ fn sky_line_includes(
 ) -> (bool, f64) {
     // Unsigned distance of the point from the start, 0 - 180 degs.
     let t1 = pal::dvdv(&sl.start, point);
-    let mut t2 = t1.acos();
+    let mut t2 = crate::math::acos(t1);
 
     // If the point is more than 90 degrees from the quarter point it is in the
     // reverse half of the great circle; convert to the forward distance.
@@ -3346,12 +3346,12 @@ impl Serializable for SkyFrame {
 /// (measured from north to east). The XY plane is the equator, Z is north,
 /// X towards longitude 0, Y towards longitude 90 degrees.
 fn shcal(a0: f64, b0: f64, angle: f64) -> ([f64; 3], [f64; 3]) {
-    let sina0 = a0.sin();
-    let cosa0 = a0.cos();
-    let sinb0 = b0.sin();
-    let cosb0 = b0.cos();
-    let sinpa = angle.sin();
-    let cospa = angle.cos();
+    let sina0 = crate::math::sin(a0);
+    let cosa0 = crate::math::cos(a0);
+    let sinb0 = crate::math::sin(b0);
+    let cosb0 = crate::math::cos(b0);
+    let sinpa = crate::math::sin(angle);
+    let cospa = crate::math::cos(angle);
 
     // R0: the given point.
     let r0 = [cosb0 * cosa0, cosb0 * sina0, sinb0];
@@ -3377,8 +3377,8 @@ fn shcal(a0: f64, b0: f64, angle: f64) -> ([f64; 3], [f64; 3]) {
 /// `[lon, lat]` in radians; a point at a pole is assigned the reference
 /// longitude `a0`.
 fn shapp(dist: f64, r0: &[f64; 3], r3: &[f64; 3], a0: f64) -> [f64; 2] {
-    let sindst = dist.sin();
-    let cosdst = dist.cos();
+    let sindst = crate::math::sin(dist);
+    let cosdst = crate::math::cos(dist);
 
     // R4: the required position, a linear sum of R0 and R3.
     let r4 = [
@@ -3388,13 +3388,13 @@ fn shapp(dist: f64, r0: &[f64; 3], r3: &[f64; 3], a0: f64) -> [f64; 2] {
     ];
 
     let lon = if r4[0] != 0.0 || r4[1] != 0.0 {
-        r4[1].atan2(r4[0])
+        crate::math::atan2(r4[1], r4[0])
     } else {
         a0
     };
 
     let z = r4[2].clamp(-1.0, 1.0);
-    let lat = z.asin();
+    let lat = crate::math::asin(z);
 
     [lon, lat]
 }

@@ -91,7 +91,7 @@ fn res_to_order(res: f64) -> i32 {
     if res <= 0.0 {
         return 0;
     }
-    (0.5 + (211076.29 / res).ln() / 0.6931472) as i32
+    (0.5 + crate::math::ln(211076.29 / res) / 0.6931472) as i32
 }
 
 /// The 1-based grid indices, in an HPX12 projection at `order`, of the cell
@@ -1080,7 +1080,7 @@ impl Mesh<'_> {
                 self.corners.push(MeshCorner {
                     ra,
                     dec,
-                    cosdec: dec.cos(),
+                    cosdec: crate::math::cos(dec),
                     cells: vec![c],
                     ..Default::default()
                 });
@@ -1153,7 +1153,7 @@ impl Mesh<'_> {
             if !corner.interior {
                 if corner.cells.len() == 3 {
                     let dectol = tol;
-                    let ratol = dectol / THETAX.cos();
+                    let ratol = dectol / crate::math::cos(THETAX);
                     let ra = corner.ra;
                     if ((ra.abs() < ratol)
                         || (ra - DPIBY2).abs() < ratol
@@ -2348,7 +2348,7 @@ impl Moc {
             self.max_order()
         } else {
             let pixarea = get_pixel_area(&picked, dims)?;
-            let res = (0.25 * pixarea).sqrt();
+            let res = crate::math::sqrt(0.25 * pixarea);
             let mut order = res_to_order(res);
             let res = order_to_res(order);
             if res * res > 0.25 * pixarea {
@@ -3084,9 +3084,9 @@ impl Region for Moc {
         let mut imesh = 0;
         for &ipin in &index {
             let (dec_pin, ra_pin) = decra(ipin);
-            let cosdec = dec_pin.cos();
+            let cosdec = crate::math::cos(dec_pin);
             let (ra_low, ra_high) = if cosdec > 0.0 {
-                let dra = drad / dec_pin.cos();
+                let dra = drad / crate::math::cos(dec_pin);
                 (ra_pin - dra, ra_pin + dra)
             } else {
                 (-f64::MAX, f64::MAX)

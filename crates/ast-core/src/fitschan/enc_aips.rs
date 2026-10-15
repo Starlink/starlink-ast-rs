@@ -90,7 +90,7 @@ fn aips_store_ok(store: &FitsStore, pp: bool) -> bool {
                     ok = p1 == 0.0
                         && (p2 == 0.0
                             || (p2.abs() >= 1.0e14 && latval == 0.0)
-                            || (p2 * latval.to_radians().tan() - 1.0).abs() < 0.01);
+                            || (p2 * crate::math::tan(latval.to_radians()) - 1.0).abs() < 0.01);
                 }
                 Some(p) => {
                     if store.max_pv_m().is_some()
@@ -197,18 +197,18 @@ fn aips_store_ok(store: &FitsStore, pp: bool) -> bool {
         && let (Some(axrot1), Some(axrot2)) = (axrot1, axrot2)
     {
         let rho_a = if cdlat_lon > 0.0 {
-            cdlat_lon.atan2(cdelt[axrot1])
+            crate::math::atan2(cdlat_lon, cdelt[axrot1])
         } else if cdlat_lon == 0.0 {
             0.0
         } else {
-            (-cdlat_lon).atan2(-cdelt[axrot1])
+            crate::math::atan2(-cdlat_lon, -cdelt[axrot1])
         };
         let rho_b = if cdlon_lat > 0.0 {
-            cdlon_lat.atan2(-cdelt[axrot2])
+            crate::math::atan2(cdlon_lat, -cdelt[axrot2])
         } else if cdlon_lat == 0.0 {
             0.0
         } else {
-            (-cdlon_lat).atan2(cdelt[axrot2])
+            crate::math::atan2(-cdlon_lat, cdelt[axrot2])
         };
         if crate::pal::drange(rho_a - rho_b).abs() >= 1.0e-2 {
             ok = false;
@@ -500,26 +500,26 @@ fn compute_crota_and_adjust_cdelt(
     let cdlon_lat = cd[[axrot1, axrot2]];
 
     let rho_a = if cdlat_lon > 0.0 {
-        cdlat_lon.atan2(cdelt[axrot1])
+        crate::math::atan2(cdlat_lon, cdelt[axrot1])
     } else if cdlat_lon == 0.0 {
         0.0
     } else {
-        (-cdlat_lon).atan2(-cdelt[axrot1])
+        crate::math::atan2(-cdlat_lon, -cdelt[axrot1])
     };
     let rho_b = if cdlon_lat > 0.0 {
-        cdlon_lat.atan2(-cdelt[axrot2])
+        crate::math::atan2(cdlon_lat, -cdelt[axrot2])
     } else if cdlon_lat == 0.0 {
         0.0
     } else {
-        (-cdlon_lat).atan2(cdelt[axrot2])
+        crate::math::atan2(-cdlon_lat, cdelt[axrot2])
     };
 
     if crate::pal::drange(rho_a - rho_b).abs() >= 1.0e-2 {
         return None;
     }
     let crota = 0.5 * (crate::pal::dranrm(rho_a) + crate::pal::dranrm(rho_b));
-    let coscro = crota.cos();
-    let sincro = crota.sin();
+    let coscro = crate::math::cos(crota);
+    let sincro = crate::math::sin(crota);
     if coscro.abs() > sincro.abs() {
         cdelt[axrot2] /= coscro;
         cdelt[axrot1] /= coscro;
@@ -835,8 +835,8 @@ END";
         // CROTA2=30 degrees, with CDELT1=-CDELT2 (|lambda|=1), yields a PC
         // matrix carrying cos(30)/sin(30). SpecTrans stores off-diagonals as
         // PC2_1 = sin/lambda and PC1_2 = -sin*lambda with lambda=CDELT2/CDELT1.
-        let cos30 = 30.0_f64.to_radians().cos();
-        let sin30 = 30.0_f64.to_radians().sin();
+        let cos30 = crate::math::cos(30.0_f64.to_radians());
+        let sin30 = crate::math::sin(30.0_f64.to_radians());
         let lambda = 0.0002778 / -0.0002778; // CDELT2 / CDELT1 = -1
 
         let pc00 = store.pc[0][0].unwrap();
@@ -1022,10 +1022,10 @@ END";
         store.ctype[0] = Some("RA---TAN".to_string());
         store.ctype[1] = Some("DEC--TAN".to_string());
         let angle = 30.0_f64.to_radians();
-        store.pc[0][0] = Some(angle.cos());
-        store.pc[0][1] = Some(-angle.sin());
-        store.pc[1][0] = Some(angle.sin());
-        store.pc[1][1] = Some(angle.cos());
+        store.pc[0][0] = Some(crate::math::cos(angle));
+        store.pc[0][1] = Some(-crate::math::sin(angle));
+        store.pc[1][0] = Some(crate::math::sin(angle));
+        store.pc[1][1] = Some(crate::math::cos(angle));
         store.equinox = Some(2000.0);
 
         let mut cards = CardList::new();
@@ -1141,10 +1141,10 @@ END";
         store.ctype[0] = Some("RA---TAN".to_string());
         store.ctype[1] = Some("DEC--TAN".to_string());
         let angle = 30.0_f64.to_radians();
-        store.pc[0][0] = Some(angle.cos());
-        store.pc[0][1] = Some(-angle.sin());
-        store.pc[1][0] = Some(angle.sin());
-        store.pc[1][1] = Some(angle.cos());
+        store.pc[0][0] = Some(crate::math::cos(angle));
+        store.pc[0][1] = Some(-crate::math::sin(angle));
+        store.pc[1][0] = Some(crate::math::sin(angle));
+        store.pc[1][1] = Some(crate::math::cos(angle));
         // Both CDELTs positive so the two-rho average lands on +30°
         // rather than the equivalent (CROTA=150°, CDELTs flipped) form.
         store.cdelt[0] = Some(0.001);
@@ -1261,8 +1261,8 @@ END";
         let store = read_from_cards(&cards).unwrap();
 
         // CROTA1=45 fallback when CROTA2 is absent
-        let cos45 = 45.0_f64.to_radians().cos();
-        let sin45 = 45.0_f64.to_radians().sin();
+        let cos45 = crate::math::cos(45.0_f64.to_radians());
+        let sin45 = crate::math::sin(45.0_f64.to_radians());
         let lambda = 0.0002778 / -0.0002778; // CDELT2 / CDELT1 = -1
 
         let pc00 = store.pc[0][0].unwrap();

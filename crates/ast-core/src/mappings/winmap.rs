@@ -642,7 +642,7 @@ fn compose_linear_terms(
         new_shifts[i] = c2[i] * s1[i] + s2[i];
 
         if snap {
-            let amean = (s1[i] * s2[i]).abs().sqrt();
+            let amean = crate::math::sqrt((s1[i] * s2[i]).abs());
             if new_shifts[i].abs() < amean * 1e-15 {
                 new_shifts[i] = 0.0;
             }

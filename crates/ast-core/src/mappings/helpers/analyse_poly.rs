@@ -59,9 +59,9 @@ fn merge_shift_2d(forward: &[PolyTerm], shift: [f64; 2]) -> Vec<PolyTerm> {
         let p0 = term.powers[0];
         let p1 = term.powers[1];
         for i in 0..=p0 {
-            let bx = binomial(p0, i) * shift[0].powi((p0 - i) as i32);
+            let bx = binomial(p0, i) * crate::math::powi(shift[0], (p0 - i) as i32);
             for j in 0..=p1 {
-                let by = binomial(p1, j) * shift[1].powi((p1 - j) as i32);
+                let by = binomial(p1, j) * crate::math::powi(shift[1], (p1 - j) as i32);
                 let contrib = term.coeff * bx * by;
                 if contrib == 0.0 {
                     continue;

@@ -776,7 +776,7 @@ fn best_box(frm: &dyn Frame, mesh: &PointSet, unc: &dyn Region) -> AstResult<Opt
             if var < eps * eps {
                 var = eps;
             } else {
-                var = 3.0 * var.sqrt();
+                var = 3.0 * crate::math::sqrt(var);
             }
             liml = var;
         } else {
@@ -798,7 +798,7 @@ fn best_box(frm: &dyn Frame, mesh: &PointSet, unc: &dyn Region) -> AstResult<Opt
             if var < eps * eps {
                 var = eps;
             } else {
-                var = 3.0 * var.sqrt();
+                var = 3.0 * crate::math::sqrt(var);
             }
             limu = var;
         } else {
@@ -996,7 +996,9 @@ impl RegionGeometry for BoxRegion {
         // N-D: a grid on each face, the upper then the lower face of each
         // axis in turn (box.c `MakeGrid`).
         let np_axis =
-            (1 + (np as f64 / (2 * naxes) as f64).powf(1.0 / (naxes - 1) as f64) as usize).max(2);
+            (1 + crate::math::powf(np as f64 / (2 * naxes) as f64, 1.0 / (naxes - 1) as f64)
+                as usize)
+                .max(2);
         let step: Vec<f64> = (0..naxes)
             .map(|i| (ubnd[i] - lbnd[i]) / (np_axis - 1) as f64)
             .collect();

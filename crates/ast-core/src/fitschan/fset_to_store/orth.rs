@@ -97,7 +97,7 @@ pub(crate) fn orth_vector(in_vectors: &[Vec<f64>], n: usize) -> Option<Vec<f64>>
     ret[colperm[m]] = 1.0;
     // The remaining colperm[m+1..n] entries stay at 0.0 (already initialised).
 
-    let inv_norm = 1.0 / squared_len.sqrt();
+    let inv_norm = 1.0 / crate::math::sqrt(squared_len);
     for v in &mut ret {
         *v *= inv_norm;
         // Mirror C's "+0.0 instead of -0.0" cleanup.
@@ -280,7 +280,7 @@ mod tests {
         let v = orth_vector(&inputs, 3).expect("expected a result");
         let dot: f64 = v.iter().zip(&inputs[0]).map(|(a, b)| a * b).sum();
         assert!(dot.abs() < 1e-12, "dot product {}", dot);
-        let len: f64 = v.iter().map(|x| x * x).sum::<f64>().sqrt();
+        let len: f64 = crate::math::sqrt(v.iter().map(|x| x * x).sum::<f64>());
         assert!((len - 1.0).abs() < 1e-12, "not unit: len={}", len);
     }
 }

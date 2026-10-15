@@ -169,7 +169,7 @@ pub(crate) fn quad_approx<M: Mapping + ?Sized>(
         });
     }
     let rms = if rms > 0.0 {
-        (rms / ntot as f64).sqrt()
+        crate::math::sqrt(rms / ntot as f64)
     } else {
         0.0
     };

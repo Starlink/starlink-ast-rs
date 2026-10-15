@@ -234,7 +234,7 @@ pub(crate) fn wcs_nat_pole(
         }
     };
 
-    let sin_theta0 = theta0.sin();
+    let sin_theta0 = crate::math::sin(theta0);
     // A fiducial point at the native north pole is the pole; one at the
     // native south pole is diametrically opposite it.
     if ast_equal(sin_theta0, 1.0) {
@@ -244,11 +244,11 @@ pub(crate) fn wcs_nat_pole(
         return (phip, Some((alpha0 + DPI, -delta0)));
     }
 
-    let cos_theta0 = theta0.cos();
-    let cos_delta0 = delta0.cos();
-    let cos_phip = (phip - phi0).cos();
-    let sin_delta0 = delta0.sin();
-    let sin_phip = (phip - phi0).sin();
+    let cos_theta0 = crate::math::cos(theta0);
+    let cos_delta0 = crate::math::cos(delta0);
+    let cos_phip = crate::math::cos(phip - phi0);
+    let sin_delta0 = crate::math::sin(delta0);
+    let sin_phip = crate::math::sin(phip - phi0);
 
     // The latitude of the pole. Where it is indeterminate LATPOLE gives it
     // (item 6 para. 2 of the paper), and failing that there is none.
@@ -259,14 +259,14 @@ pub(crate) fn wcs_nat_pole(
             None => return (phip, None),
         }
     } else {
-        let t1 = sin_theta0.atan2(t0);
+        let t1 = crate::math::atan2(sin_theta0, t0);
         let mut t2 = cos_theta0 * cos_phip;
         t2 *= t2;
         t2 += sin_theta0 * sin_theta0;
         if t2 <= f64::MIN_POSITIVE {
             return (phip, None);
         }
-        let t3 = sin_delta0 / t2.sqrt();
+        let t3 = sin_delta0 / crate::math::sqrt(t2);
         if t3.abs() > 1.0 + TOL1 {
             return (phip, None);
         }
@@ -275,7 +275,7 @@ pub(crate) fn wcs_nat_pole(
         } else if t3 > 1.0 {
             0.0
         } else {
-            t3.acos()
+            crate::math::acos(t3)
         };
         let deltap_1 = crate::pal::drange(t1 + t4);
         let deltap_2 = crate::pal::drange(t1 - t4);
@@ -322,13 +322,13 @@ pub(crate) fn wcs_nat_pole(
 
     // The longitude of the pole.
     let alphap = if cos_delta0.abs() > TOL2 {
-        let cos_deltap = deltap.cos();
-        let sin_deltap = deltap.sin();
+        let cos_deltap = crate::math::cos(deltap);
+        let sin_deltap = crate::math::sin(deltap);
         if cos_deltap.abs() > TOL2 {
             let t1 = sin_phip * cos_theta0 / cos_delta0;
             let t2 = (sin_theta0 - sin_deltap * sin_delta0) / (cos_delta0 * cos_deltap);
             if t1.abs() > TOL2 || t2.abs() > TOL2 {
-                alpha0 - t1.atan2(t2)
+                alpha0 - crate::math::atan2(t1, t2)
             } else {
                 alpha0
             }

@@ -710,8 +710,12 @@ fn solar_pole(mjd: f64) -> [f64; 3] {
 
     // The inclination of the solar axis to the ecliptic axis is 7.25 degrees.
     let inc = 7.25 * D2R;
-    let t1 = inc.sin();
-    [t1 * sproj.cos(), t1 * sproj.sin(), inc.cos()]
+    let t1 = crate::math::sin(inc);
+    [
+        t1 * crate::math::cos(sproj),
+        t1 * crate::math::sin(sproj),
+        crate::math::cos(inc),
+    ]
 }
 
 /// Compute the rotation matrix from GSEC (Geocentric Solar Ecliptic) to HAEC.
@@ -903,12 +907,12 @@ fn stp_convert(
 /// Apply the AST De2h conversion: apparent (ha, dec) to topocentric (az, el)
 /// including diurnal aberration correction.
 fn de2h_with_aberration(ha: f64, dec: f64, phi: f64, diurab: f64) -> (f64, f64) {
-    let sh = ha.sin();
-    let ch = ha.cos();
-    let sd = dec.sin();
-    let cd = dec.cos();
-    let sp = phi.sin();
-    let cp = phi.cos();
+    let sh = crate::math::sin(ha);
+    let ch = crate::math::cos(ha);
+    let sd = crate::math::sin(dec);
+    let cd = crate::math::cos(dec);
+    let sp = crate::math::sin(phi);
+    let cp = crate::math::cos(phi);
 
     // Components of Cartesian (-ha, dec) vector.
     let xhd = ch * cd;
@@ -927,24 +931,28 @@ fn de2h_with_aberration(ha: f64, dec: f64, phi: f64, diurab: f64) -> (f64, f64) 
     let z = xhdt * cp + zhdt * sp;
 
     // Convert to spherical (az, el).
-    let r = (x * x + y * y).sqrt();
-    let mut a = if r == 0.0 { 0.0 } else { y.atan2(x) };
+    let r = crate::math::sqrt(x * x + y * y);
+    let mut a = if r == 0.0 {
+        0.0
+    } else {
+        crate::math::atan2(y, x)
+    };
     while a < 0.0 {
         a += 2.0 * std::f64::consts::PI;
     }
 
-    (a, z.atan2(r))
+    (a, crate::math::atan2(z, r))
 }
 
 /// Apply the AST Dh2e conversion: topocentric (az, el) to apparent (ha, dec)
 /// including diurnal aberration correction.
 fn dh2e_with_aberration(az: f64, el: f64, phi: f64, diurab: f64) -> (f64, f64) {
-    let sa = az.sin();
-    let ca = az.cos();
-    let se = el.sin();
-    let ce = el.cos();
-    let sp = phi.sin();
-    let cp = phi.cos();
+    let sa = crate::math::sin(az);
+    let ca = crate::math::cos(az);
+    let se = crate::math::sin(el);
+    let ce = crate::math::cos(el);
+    let sp = crate::math::sin(phi);
+    let cp = crate::math::cos(phi);
 
     // Cartesian (az, el) to Cartesian (ha, dec) — note, +ha not -ha.
     let xmhda = -ca * ce * sp + se * cp;
@@ -958,9 +966,13 @@ fn dh2e_with_aberration(az: f64, el: f64, phi: f64, diurab: f64) -> (f64, f64) {
     let z = f * zmhda;
 
     // Cartesian (ha, dec) to spherical (ha, dec).
-    let r = (x * x + y * y).sqrt();
-    let ha = if r == 0.0 { 0.0 } else { y.atan2(x) };
-    let dec = z.atan2(r);
+    let r = crate::math::sqrt(x * x + y * y);
+    let ha = if r == 0.0 {
+        0.0
+    } else {
+        crate::math::atan2(y, x)
+    };
+    let dec = crate::math::atan2(z, r);
 
     (ha, dec)
 }

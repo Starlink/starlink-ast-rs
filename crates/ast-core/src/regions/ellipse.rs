@@ -190,7 +190,7 @@ pub(crate) fn best_ellipse(
         if px != BAD_VALUE && py != BAD_VALUE {
             let den = mx * mx - px * px;
             if den > 0.0 {
-                smn += (mx * py * py).abs() / den.sqrt();
+                smn += (mx * py * py).abs() / crate::math::sqrt(den);
                 sw += py.abs();
             }
         }
@@ -468,7 +468,7 @@ impl Ellipse {
             let (_, x, y) = frm.resolve(&centre, &p1, &p2)?;
             b = a * a - x * x;
             if b > 0.0 {
-                b = a * y / b.sqrt();
+                b = a * y / crate::math::sqrt(b);
             }
             let up = [centre[0], centre[1] + (0.1 * a).abs()];
             angle = frm.angle(&up, &centre, &p1)?;
@@ -504,7 +504,7 @@ impl Ellipse {
             let (_, x, y) = frm.resolve(centre, point1, point2)?;
             b = a * a - x * x;
             if b > 0.0 {
-                b = a * y / b.sqrt();
+                b = a * y / crate::math::sqrt(b);
             }
             let up = [centre[0], centre[1] + (0.1 * a).abs()];
             angle = frm.angle(&up, centre, point1)?;
@@ -685,8 +685,8 @@ impl RegionGeometry for Ellipse {
         // distance dy at right angles to it (ellipse.c:1115).
         let mut phi = 0.0_f64;
         for _ in 0..np {
-            let dx = a * phi.cos();
-            let dy = b * phi.sin();
+            let dx = a * crate::math::cos(phi);
+            let dy = b * crate::math::sin(phi);
             let (p, dir) = frm.offset2(centre, angle, dx)?;
             let (p2, _) = frm.offset2(&p, dir + DPIBY2, dy)?;
             mesh.push(vec![p2[0], p2[1]]);

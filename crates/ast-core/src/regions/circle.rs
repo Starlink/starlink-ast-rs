@@ -66,7 +66,7 @@ pub(crate) fn best_circle(
         return Ok(None);
     }
 
-    let rad = ((nc as f64) * s2r / (n as f64)).sqrt();
+    let rad = crate::math::sqrt((nc as f64) * s2r / (n as f64));
     let frm = unc.get_region_frame();
     let circle = CircleBuilder::from_dyn(frm, centre.to_vec())?
         .radius(rad)

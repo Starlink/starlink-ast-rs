@@ -42,7 +42,7 @@ pub fn scale_poly_inputs(polymap: &PolyMap, scales: &[f64]) -> AstResult<Option<
         .map(|t| {
             let mut coeff = t.coeff;
             for (j, &p) in t.powers.iter().enumerate() {
-                coeff *= scales[j].powi(p as i32);
+                coeff *= crate::math::powi(scales[j], p as i32);
             }
             PolyTerm {
                 coeff,

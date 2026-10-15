@@ -239,7 +239,7 @@ fn parse_hex_float(s: &str) -> Option<f64> {
     // `powi` saturates to +/-inf or 0.0 for exponents this extreme,
     // matching `strtod`'s overflow/underflow behaviour.
     let exp_i32 = exp.clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32;
-    let result = value * 2.0f64.powi(exp_i32);
+    let result = value * crate::math::powi(2.0f64, exp_i32);
     Some(if neg { -result } else { result })
 }
 

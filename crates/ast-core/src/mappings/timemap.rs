@@ -833,56 +833,56 @@ fn rcc(tdb: f64, ut1: f64, wl: f64, u: f64, v: f64) -> f64 {
     let elj = ((34.35151874 + 109306899.89453 * w) % 360.0).to_radians();
     let els = ((50.07744430 + 44046398.47038 * w) % 360.0).to_radians();
 
-    let wt = 0.00029e-10 * u * (tsol + elsun - els).sin()
-        + 0.00100e-10 * u * (tsol - 2.0 * emsun).sin()
-        + 0.00133e-10 * u * (tsol - d).sin()
-        + 0.00133e-10 * u * (tsol + elsun - elj).sin()
-        - 0.00229e-10 * u * (tsol + 2.0 * elsun + emsun).sin()
-        - 0.0220e-10 * v * (elsun + emsun).cos()
-        + 0.05312e-10 * u * (tsol - emsun).sin()
-        - 0.13677e-10 * u * (tsol + 2.0 * elsun).sin()
-        - 1.3184e-10 * v * elsun.cos()
-        + 3.17679e-10 * u * tsol.sin();
+    let wt = 0.00029e-10 * u * crate::math::sin(tsol + elsun - els)
+        + 0.00100e-10 * u * crate::math::sin(tsol - 2.0 * emsun)
+        + 0.00133e-10 * u * crate::math::sin(tsol - d)
+        + 0.00133e-10 * u * crate::math::sin(tsol + elsun - elj)
+        - 0.00229e-10 * u * crate::math::sin(tsol + 2.0 * elsun + emsun)
+        - 0.0220e-10 * v * crate::math::cos(elsun + emsun)
+        + 0.05312e-10 * u * crate::math::sin(tsol - emsun)
+        - 0.13677e-10 * u * crate::math::sin(tsol + 2.0 * elsun)
+        - 1.3184e-10 * v * crate::math::cos(elsun)
+        + 3.17679e-10 * u * crate::math::sin(tsol);
 
     // ---- Fairhead model ----
     // t**0
     let mut w0 = 0.0;
     for i in (0..=473).rev() {
-        w0 += FAIRHD[i][0] * (FAIRHD[i][1] * t + FAIRHD[i][2]).sin();
+        w0 += FAIRHD[i][0] * crate::math::sin(FAIRHD[i][1] * t + FAIRHD[i][2]);
     }
 
     // t**1
     let mut w1 = 0.0;
     for i in (474..=678).rev() {
-        w1 += FAIRHD[i][0] * (FAIRHD[i][1] * t + FAIRHD[i][2]).sin();
+        w1 += FAIRHD[i][0] * crate::math::sin(FAIRHD[i][1] * t + FAIRHD[i][2]);
     }
 
     // t**2
     let mut w2 = 0.0;
     for i in (679..=763).rev() {
-        w2 += FAIRHD[i][0] * (FAIRHD[i][1] * t + FAIRHD[i][2]).sin();
+        w2 += FAIRHD[i][0] * crate::math::sin(FAIRHD[i][1] * t + FAIRHD[i][2]);
     }
 
     // t**3
     let mut w3 = 0.0;
     for i in (764..=783).rev() {
-        w3 += FAIRHD[i][0] * (FAIRHD[i][1] * t + FAIRHD[i][2]).sin();
+        w3 += FAIRHD[i][0] * crate::math::sin(FAIRHD[i][1] * t + FAIRHD[i][2]);
     }
 
     // t**4
     let mut w4 = 0.0;
     for i in (784..=786).rev() {
-        w4 += FAIRHD[i][0] * (FAIRHD[i][1] * t + FAIRHD[i][2]).sin();
+        w4 += FAIRHD[i][0] * crate::math::sin(FAIRHD[i][1] * t + FAIRHD[i][2]);
     }
 
     // Multiply by powers of T and combine.
     let wf = t * (t * (t * (t * w4 + w3) + w2) + w1) + w0;
 
     // Adjustments to use JPL planetary masses instead of IAU.
-    let wj = 0.00065e-6 * (6069.776754 * t + 4.021194).sin()
-        + 0.00033e-6 * (213.299095 * t + 5.543132).sin()
-        + (-0.00196e-6 * (6208.294251 * t + 5.696701).sin())
-        + (-0.00173e-6 * (74.781599 * t + 2.435900).sin())
+    let wj = 0.00065e-6 * crate::math::sin(6069.776754 * t + 4.021194)
+        + 0.00033e-6 * crate::math::sin(213.299095 * t + 5.543132)
+        + (-0.00196e-6 * crate::math::sin(6208.294251 * t + 5.696701))
+        + (-0.00173e-6 * crate::math::sin(74.781599 * t + 2.435900))
         + 0.03638e-6 * t * t;
 
     // Final result: TDB-TT in seconds.

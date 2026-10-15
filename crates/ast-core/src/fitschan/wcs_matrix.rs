@@ -622,7 +622,7 @@ mod tests {
             // Row length, signed by the diagonal element.
             let rowsum2: f64 = row.iter().map(|v| v * v).sum();
             let diag = if row[j] >= 0.0 { 1.0 } else { -1.0 };
-            let cdeltj = rowsum2.sqrt() * diag;
+            let cdeltj = crate::math::sqrt(rowsum2) * diag;
             store.cdelt[j] = Some(cdeltj);
             for (i, &cd) in row.iter().enumerate() {
                 store.pc[j][i] = Some(cd / cdeltj);

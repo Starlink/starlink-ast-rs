@@ -317,7 +317,7 @@ pub(crate) fn linear_approx_default<M: Mapping + ?Sized>(
 
         // Tolerance is reduced in proportion to the number of bad outputs.
         let allowed = tol * (ndim_out - bad_output) as f64 / ndim_out as f64;
-        if err.sqrt() > allowed {
+        if crate::math::sqrt(err) > allowed {
             linear_ok = false;
             break;
         }

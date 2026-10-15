@@ -202,7 +202,7 @@ fn world_axes_bidirectional(
                 }
             }
             if sj != 0.0 {
-                tn[i * nin + j] = Some(s.sqrt() / sj);
+                tn[i * nin + j] = Some(crate::math::sqrt(s) / sj);
                 wt[i * nin + j] = sj;
             }
         }

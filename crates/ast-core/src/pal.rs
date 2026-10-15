@@ -1139,13 +1139,13 @@ mod tests {
     fn test_evp_returns_nonzero() {
         let (dvb, dpb, dvh, dph) = evp(51544.5, 2000.0);
         // Just check the vectors are non-trivially populated.
-        let mag_dpb: f64 = dpb.iter().map(|x| x * x).sum::<f64>().sqrt();
-        let mag_dph: f64 = dph.iter().map(|x| x * x).sum::<f64>().sqrt();
+        let mag_dpb: f64 = crate::math::sqrt(dpb.iter().map(|x| x * x).sum::<f64>());
+        let mag_dph: f64 = crate::math::sqrt(dph.iter().map(|x| x * x).sum::<f64>());
         assert!(mag_dpb > 0.9, "barycentric position magnitude too small");
         assert!(mag_dph > 0.9, "heliocentric position magnitude too small");
         // Velocities should also be non-zero.
-        let mag_dvb: f64 = dvb.iter().map(|x| x * x).sum::<f64>().sqrt();
-        let mag_dvh: f64 = dvh.iter().map(|x| x * x).sum::<f64>().sqrt();
+        let mag_dvb: f64 = crate::math::sqrt(dvb.iter().map(|x| x * x).sum::<f64>());
+        let mag_dvh: f64 = crate::math::sqrt(dvh.iter().map(|x| x * x).sum::<f64>());
         assert!(mag_dvb > 0.0);
         assert!(mag_dvh > 0.0);
     }

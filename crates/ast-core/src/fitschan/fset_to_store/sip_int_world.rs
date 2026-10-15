@@ -315,7 +315,11 @@ pub(crate) fn sip_int_world(
         pt[0] != BAD_VALUE && pt[1] != BAD_VALUE
     }) {
         let p0 = stepped.point(0);
-        let dist = |p: &[f64]| ((p[0] - p0[0]).powi(2) + (p[1] - p0[1]).powi(2)).sqrt();
+        let dist = |p: &[f64]| {
+            crate::math::sqrt(
+                crate::math::powi(p[0] - p0[0], 2) + crate::math::powi(p[1] - p0[1], 2),
+            )
+        };
         dist(stepped.point(1)).max(dist(stepped.point(2)))
     } else {
         0.0

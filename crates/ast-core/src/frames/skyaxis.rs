@@ -499,7 +499,7 @@ pub(crate) fn dhms_format(fmt: &str, digs: i32, value: f64) -> String {
     // Truncate the final field to "ndp" places, then round up if the value
     // is at least the one whose textual form ends in 5 at the next place,
     // compared in radians so that a formatted value reads back unchanged.
-    let shift = 10f64.powi(ndp as i32);
+    let shift = crate::math::powi(10f64, ndp as i32);
     let mut ifract = (fract * shift).floor();
     let mut test = (0.5 + ifract) / shift;
     if f.sec {

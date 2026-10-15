@@ -488,7 +488,7 @@ impl Frame for CmpFrame {
         if is_bad(d1) || is_bad(d2) {
             return Ok(BAD_VALUE);
         }
-        Ok((d1 * d1 + d2 * d2).sqrt())
+        Ok(crate::math::sqrt(d1 * d1 + d2 * d2))
     }
 
     fn angle(&self, a: &[f64], b: &[f64], c: &[f64]) -> AstResult<f64> {
@@ -567,7 +567,7 @@ impl Frame for CmpFrame {
         if is_bad(d1a) || is_bad(d1b) {
             return Ok(bad);
         }
-        let d = (da * da + db * db).sqrt();
+        let d = crate::math::sqrt(da * da + db * db);
         if d == 0.0 {
             return Ok(bad);
         }
@@ -602,7 +602,7 @@ impl Frame for CmpFrame {
         if is_bad(b1) || is_bad(b2) || (b1 == 0.0 && b2 == 0.0) {
             return crate::coords::PointSet::from_columns(&[&d1v, &d2v]);
         }
-        let b = (b1 * b1 + b2 * b2).sqrt();
+        let b = crate::math::sqrt(b1 * b1 + b2 * b2);
 
         // The input in internal order, split between the components.
         let rows: Vec<Vec<f64>> = (0..npoint)
@@ -661,7 +661,7 @@ impl Frame for CmpFrame {
         if is_bad(d1) || is_bad(d2) {
             return Ok(vec![BAD_VALUE; n]);
         }
-        let total = (d1 * d1 + d2 * d2).sqrt();
+        let total = crate::math::sqrt(d1 * d1 + d2 * d2);
         let (off1, off2) = if total == 0.0 {
             if dist != 0.0 {
                 return Ok(vec![BAD_VALUE; n]);
@@ -749,7 +749,7 @@ impl Frame for CmpFrame {
                 ubnd2[iaxis - nax1] = ubnd[axis];
             }
         }
-        let size1 = (size as f64).powf(nax1 as f64 / naxes as f64).round() as i32;
+        let size1 = crate::math::powf(size as f64, nax1 as f64 / naxes as f64).round() as i32;
         let size2 = (size as f64 / size1 as f64).round() as i32;
         let ps1 = self.frame1.frame_grid(size1, &lbnd1, &ubnd1)?;
         let ps2 = self.frame2.frame_grid(size2, &lbnd2, &ubnd2)?;

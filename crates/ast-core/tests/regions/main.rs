@@ -4,6 +4,10 @@
 //! test program so that a change to ast-core relinks a few programs rather than
 //! one per file.
 
+// Test code computes expected values directly; the counted `math` wrappers
+// are for the library (`crates/ast-core/clippy.toml`).
+#![allow(clippy::disallowed_methods)]
+
 #[path = "../test_box_axin.rs"]
 mod test_box_axin;
 #[path = "../test_box_region.rs"]

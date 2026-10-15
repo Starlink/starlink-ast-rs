@@ -174,7 +174,7 @@ mod tests {
         //   S = sr * exp(slope * 10) = 2 * exp(1) ≈ 5.4366
         // Forward through the WCS→IWC mapping (built by log_axis):
         //   w = sr * log(S/sr) = sr * slope * p = 2 * 0.1 * 10 = 2.0
-        let s_val = sr * (slope * 10.0_f64).exp();
+        let s_val = sr * crate::math::exp(slope * 10.0_f64);
         let pts = PointSet::from_rows([[3.0_f64, s_val]]);
         let out = mapping.transform(&pts, true).unwrap();
         let p = out.point(0);

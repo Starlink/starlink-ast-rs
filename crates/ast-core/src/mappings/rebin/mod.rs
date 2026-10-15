@@ -697,7 +697,11 @@ fn normalise<T: RebinValue>(
                 }
                 mwpip = newval;
                 let mut std = sw2 / nw as f64 - mwpip * mwpip;
-                std = if std > 0.0 { std.sqrt() } else { 0.0 };
+                std = if std > 0.0 {
+                    crate::math::sqrt(std)
+                } else {
+                    0.0
+                };
                 wlo = mwpip - 3.0 * std;
                 if wlo < 0.0 {
                     wlo = 0.0;

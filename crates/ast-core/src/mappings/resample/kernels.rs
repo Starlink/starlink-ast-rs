@@ -62,10 +62,10 @@ pub(crate) fn setup(kernel: Builtin, params: &[f64]) -> (KernelFn, i64, Vec<f64>
     // The Gaussian kernels: out to 1% of the peak by default.
     let gaussian = || {
         let fwhm = max_d(0.1, params[1]);
-        let k = 4.0 * 2.0_f64.ln() / (fwhm * fwhm);
+        let k = 4.0 * crate::math::ln(2.0_f64) / (fwhm * fwhm);
         let mut n = nearest_int(params[0]);
         if n <= 0 {
-            n = (-(0.01_f64.ln()) / k).sqrt().ceil() as i32;
+            n = crate::math::sqrt(-(crate::math::ln(0.01_f64)) / k).ceil() as i32;
         }
         (n, vec![k])
     };
@@ -91,7 +91,7 @@ pub(crate) fn setup(kernel: Builtin, params: &[f64]) -> (KernelFn, i64, Vec<f64>
 pub(crate) fn sinc(offset: f64, _params: &[f64]) -> f64 {
     let offset = offset * PI;
     if offset != 0.0 {
-        offset.sin() / offset
+        crate::math::sin(offset) / offset
     } else {
         1.0
     }
@@ -104,10 +104,10 @@ pub(crate) fn sinc_cos(offset: f64, params: &[f64]) -> f64 {
     let offset_k = offset * params[0];
     if offset_k < FRAC_PI_2 {
         (if offset != 0.0 {
-            offset.sin() / offset
+            crate::math::sin(offset) / offset
         } else {
             1.0
-        }) * offset_k.cos()
+        }) * crate::math::cos(offset_k)
     } else {
         0.0
     }
@@ -118,10 +118,10 @@ pub(crate) fn sinc_cos(offset: f64, params: &[f64]) -> f64 {
 pub(crate) fn sinc_gauss(offset: f64, params: &[f64]) -> f64 {
     let offset_pi = PI * offset;
     (if offset_pi != 0.0 {
-        offset_pi.sin() / offset_pi
+        crate::math::sin(offset_pi) / offset_pi
     } else {
         1.0
-    }) * (-params[0] * offset * offset).exp()
+    }) * crate::math::exp(-params[0] * offset * offset)
 }
 
 /// mapping.c `SincSinc`: `sinc(pi * offset) * sinc(k * pi * offset)`, out
@@ -131,11 +131,11 @@ pub(crate) fn sinc_sinc(offset: f64, params: &[f64]) -> f64 {
     let offset_k = offset * params[0];
     if offset_k < FRAC_PI_2 {
         (if offset != 0.0 {
-            offset.sin() / offset
+            crate::math::sin(offset) / offset
         } else {
             1.0
         }) * (if offset_k != 0.0 {
-            offset_k.sin() / offset_k
+            crate::math::sin(offset_k) / offset_k
         } else {
             1.0
         })
@@ -168,7 +168,7 @@ pub(crate) fn somb_cos(offset: f64, params: &[f64]) -> f64 {
             j1_bessel(offset) / offset
         } else {
             1.0
-        }) * offset_k.cos()
+        }) * crate::math::cos(offset_k)
     } else {
         0.0
     }
@@ -176,7 +176,7 @@ pub(crate) fn somb_cos(offset: f64, params: &[f64]) -> f64 {
 
 /// mapping.c `Gauss`: `exp(-k * offset * offset)`, with `k` in `params[0]`.
 pub(crate) fn gauss(offset: f64, params: &[f64]) -> f64 {
-    (-params[0] * offset * offset).exp()
+    crate::math::exp(-params[0] * offset * offset)
 }
 
 /// mapping.c `J1Bessel`: the Bessel function of the first kind of order
@@ -220,9 +220,9 @@ fn j1_bessel(x: f64) -> f64 {
         let z = 8.0 / ax;
         let y = z * z;
         let xx = ax - 2.356194491;
-        (0.636619772 / ax).sqrt()
-            * (xx.cos() * (P1 + y * (P2 + y * (P3 + y * (P4 + y * P5))))
-                - z * xx.sin() * (Q1 + y * (Q2 + y * (Q3 + y * (Q4 + y * Q5)))))
+        crate::math::sqrt(0.636619772 / ax)
+            * (crate::math::cos(xx) * (P1 + y * (P2 + y * (P3 + y * (P4 + y * P5))))
+                - z * crate::math::sin(xx) * (Q1 + y * (Q2 + y * (Q3 + y * (Q4 + y * Q5)))))
             * s
     }
 }

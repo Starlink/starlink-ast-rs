@@ -1305,8 +1305,8 @@ fn build_rotation_from_pole(
 ///   exactly as C's `a/b/c/d/e/f/g` locals,
 /// - the product is accumulated column-by-column like C's `SMtrMult(post=1)`.
 fn mtr_rot(mat: &mut [[f64; 3]; 3], theta: f64, axis: [f64; 3]) {
-    let costh = theta.cos();
-    let sinth = theta.sin();
+    let costh = crate::math::cos(theta);
+    let sinth = crate::math::sin(theta);
 
     // C: `if ( costh == 1.0 ) return new;` — identity rotation, no change.
     if costh == 1.0 {
@@ -1314,7 +1314,7 @@ fn mtr_rot(mat: &mut [[f64; 3]; 3], theta: f64, axis: [f64; 3]) {
     }
 
     let axlen2 = axis[0] * axis[0] + axis[1] * axis[1] + axis[2] * axis[2];
-    let axlen = axlen2.sqrt();
+    let axlen = crate::math::sqrt(axlen2);
 
     let as_ = sinth / axlen;
     let a = (1.0 - costh) / axlen2;

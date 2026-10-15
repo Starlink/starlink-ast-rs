@@ -96,7 +96,7 @@ pub(crate) fn dim_anal(node: &UnitNode) -> Option<([f64; NQUANT], f64)> {
             if s < 0.0 {
                 return None;
             }
-            s.sqrt()
+            crate::math::sqrt(s)
         }
 
         Oper::Pow => {
@@ -113,7 +113,7 @@ pub(crate) fn dim_anal(node: &UnitNode) -> Option<([f64; NQUANT], f64)> {
                 *x *= exponent;
             }
             powers = p;
-            s.powf(exponent)
+            crate::math::powf(s, exponent)
         }
 
         Oper::Div => {

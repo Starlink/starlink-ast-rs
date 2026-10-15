@@ -41,6 +41,11 @@ simd-eval = ["dep:wide"]
 # calls for it as an opt-in debugging aid.
 tracing = ["dep:tracing"]
 
+# Count calls into libm, PAL, ERFA and wcslib, keyed by C function name, for
+# checking that the port makes the same calls as C (`ast_core::call_counts`).
+# Never enable in a timed build.
+call-counts = []
+
 [[example]]
 name = "bench_polymap_simd"
 required-features = ["simd-eval"]

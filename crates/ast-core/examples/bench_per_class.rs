@@ -41,6 +41,9 @@
 //! - Threshold below which timings are noisy: < 64 points. Included only
 //!   to expose per-call overhead.
 
+// Examples are outside the library, so the counted `math` wrappers do not apply.
+#![allow(clippy::disallowed_methods)]
+
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};

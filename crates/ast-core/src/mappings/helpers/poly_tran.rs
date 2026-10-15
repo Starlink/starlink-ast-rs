@@ -220,7 +220,7 @@ fn normalise_columns(table: &mut [Vec<f64>]) -> Vec<f64> {
         .iter_mut()
         .map(|col| {
             let n = col.len() as f64;
-            let rms = (col.iter().map(|v| v * v).sum::<f64>() / n).sqrt();
+            let rms = crate::math::sqrt(col.iter().map(|v| v * v).sum::<f64>() / n);
             for v in col.iter_mut() {
                 *v /= rms;
             }
@@ -343,7 +343,7 @@ fn fit_poly_1d(
 
     // Achieved accuracy: scaled RMS of the normalised residuals.
     let tv: f64 = residuals.iter().map(|r| r * r).sum();
-    let racc = scales[1] * (tv / nsamp as f64).sqrt();
+    let racc = scales[1] * crate::math::sqrt(tv / nsamp as f64);
 
     // Zero insignificant coefficients and convert the survivors to
     // unscaled units (polymap.c:1140-1176).
@@ -425,7 +425,7 @@ fn fit_poly_2d(
     // Achieved accuracy (polymap.c:1452-1455).
     let tv: f64 = residuals.iter().map(|r| r * r).sum();
     let facc = 1.0 / (scales[2] * scales[2]) + 1.0 / (scales[3] * scales[3]);
-    let racc = (tv / (2.0 * nsamp as f64 * facc)).sqrt();
+    let racc = crate::math::sqrt(tv / (2.0 * nsamp as f64 * facc));
 
     // Zero insignificant coefficients and unscale the survivors: each
     // coefficient is multiplied by f1 / (scales[0]^w1 * scales[1]^w2)
@@ -441,7 +441,9 @@ fn fit_poly_2d(
             if maxterm * f1 < acc {
                 *c = 0.0;
             } else {
-                *c *= f1 / (scales[0].powi(w1 as i32) * scales[1].powi(w2 as i32));
+                *c *= f1
+                    / (crate::math::powi(scales[0], w1 as i32)
+                        * crate::math::powi(scales[1], w2 as i32));
             }
         }
     }

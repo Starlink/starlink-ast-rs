@@ -716,7 +716,7 @@ impl Segment {
             let (ax, ay) = (x[i1], y[i1]);
             let bax = x[i2] - ax;
             let bay = y[i2] - ay;
-            let ba = (bax * bax + bay * bay).sqrt();
+            let ba = crate::math::sqrt(bax * bax + bay * bay);
             self.error = -1.0;
             let mut test = |i: usize, imax: usize| {
                 let cax = x[i] - ax;

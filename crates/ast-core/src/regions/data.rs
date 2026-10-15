@@ -454,7 +454,7 @@ pub(crate) trait RegionGeometry {
 /// set, so each value's accuracy is C's default, 1000 times the larger of
 /// its magnitude times DBL_EPSILON and the square root of DBL_MIN.
 fn points_equal(a: &[Vec<f64>], b: &[Vec<f64>]) -> bool {
-    let small = f64::MIN_POSITIVE.sqrt();
+    let small = crate::math::sqrt(f64::MIN_POSITIVE);
     let accuracy = |v: f64| (v.abs() * f64::EPSILON).max(small) * 1.0e3;
     a.len() == b.len()
         && a.iter().zip(b).all(|(p, q)| {
@@ -465,7 +465,7 @@ fn points_equal(a: &[Vec<f64>], b: &[Vec<f64>]) -> bool {
                         (true, true) => true,
                         (false, false) => {
                             let (ax, ay) = (accuracy(x), accuracy(y));
-                            (x - y).abs() <= (ax * ax + ay * ay).sqrt()
+                            (x - y).abs() <= crate::math::sqrt(ax * ax + ay * ay)
                         }
                         _ => false,
                     })

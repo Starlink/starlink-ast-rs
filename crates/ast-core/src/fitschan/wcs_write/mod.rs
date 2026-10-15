@@ -993,7 +993,7 @@ fn gregorian_to_mjd(
         // already overflowed there; u64 covers every width C handles.
         let fsc: u64 = frac_digits.parse().ok()?;
         if fsc > 0 {
-            secs = fsc as f64 / 10.0_f64.powi(frac_digits.len() as i32);
+            secs = fsc as f64 / crate::math::powi(10.0_f64, frac_digits.len() as i32);
         }
     }
     secs += f64::from(sec);

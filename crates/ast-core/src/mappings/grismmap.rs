@@ -460,8 +460,8 @@ impl GrismMap {
         let eps = self.grism_eps;
         let theta = self.grism_theta;
 
-        let coseps = eps.cos();
-        let sinalpha = alpha.sin();
+        let coseps = crate::math::cos(eps);
+        let sinalpha = crate::math::sin(alpha);
 
         self.k1 = sinalpha * (nr - nrp * wave_r);
 
@@ -472,7 +472,7 @@ impl GrismMap {
             if !(-1.0..=1.0).contains(&sinbeta_r) {
                 self.k3 = BAD_VALUE;
             } else {
-                self.k3 = sinbeta_r.asin() + theta;
+                self.k3 = crate::math::asin(sinbeta_r) + theta;
             }
         } else {
             self.k2 = BAD_VALUE;
@@ -603,7 +603,8 @@ impl Mapping for GrismMap {
             }
             for i in 0..pts.npoint() {
                 let value_in = pts.point(i)[0];
-                out.point_mut(i)[0] = (self.k1 + (value_in.atan() + self.k3).sin()) / self.k2;
+                out.point_mut(i)[0] =
+                    (self.k1 + crate::math::sin(crate::math::atan(value_in) + self.k3)) / self.k2;
             }
         } else {
             for i in 0..pts.npoint() {
@@ -612,7 +613,7 @@ impl Mapping for GrismMap {
                 out.point_mut(i)[0] = if !(-1.0..=1.0).contains(&sinbeta) {
                     f64::NAN
                 } else {
-                    (sinbeta.asin() - self.k3).tan()
+                    crate::math::tan(crate::math::asin(sinbeta) - self.k3)
                 };
             }
         }
@@ -638,7 +639,9 @@ impl Mapping for GrismMap {
                 if is_bad(value_in) || self.k2 == 0.0 {
                     out.point_mut(i)[0] = BAD_VALUE;
                 } else {
-                    out.point_mut(i)[0] = (self.k1 + (value_in.atan() + self.k3).sin()) / self.k2;
+                    out.point_mut(i)[0] = (self.k1
+                        + crate::math::sin(crate::math::atan(value_in) + self.k3))
+                        / self.k2;
                 }
             }
         } else {
@@ -652,7 +655,8 @@ impl Mapping for GrismMap {
                     if !(-1.0..=1.0).contains(&sinbeta) {
                         out.point_mut(i)[0] = BAD_VALUE;
                     } else {
-                        out.point_mut(i)[0] = (sinbeta.asin() - self.k3).tan();
+                        out.point_mut(i)[0] =
+                            crate::math::tan(crate::math::asin(sinbeta) - self.k3);
                     }
                 }
             }

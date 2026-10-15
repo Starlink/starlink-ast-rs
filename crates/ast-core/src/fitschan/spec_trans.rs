@@ -1273,7 +1273,7 @@ fn cd_row_cdelt(cards: &CardList, row: usize) -> Option<f64> {
             }
         }
     }
-    found.then(|| rowsum2.sqrt() * diag)
+    found.then(|| crate::math::sqrt(rowsum2) * diag)
 }
 
 /// Translation #20 helper: RESTFREQ → RESTFRQ with MHz/GHz unit
@@ -1637,11 +1637,11 @@ fn translate_ncp_gls(cards: &mut CardList) {
             let Some(crval_lat_deg) = cards.get_float(&key("CRVAL", axlat)) else {
                 continue;
             };
-            let sinval = crval_lat_deg.to_radians().sin();
+            let sinval = crate::math::sin(crval_lat_deg.to_radians());
             if sinval == 0.0 {
                 continue;
             }
-            let cot = crval_lat_deg.to_radians().cos() / sinval;
+            let cot = crate::math::cos(crval_lat_deg.to_radians()) / sinval;
             // Replace -NCP with -SIN on both CTYPEs.
             replace_projection_suffix(cards, &key("CTYPE", axlon), "SIN");
             replace_projection_suffix(cards, &key("CTYPE", axlat), "SIN");
@@ -2033,7 +2033,7 @@ fn translate_pc_family(cards: &mut CardList, s: char, encoding: Encoding) {
                         }
                     }
                 }
-                let cdelti = rowsum2.sqrt() * diag;
+                let cdelti = crate::math::sqrt(rowsum2) * diag;
                 cards.set_float(&versioned(&format!("CDELT{j}"), s), cdelti, "Pixel scale");
                 for i in 1..=naxis {
                     // Every CD element defaults to zero, diagonal included.
@@ -2111,8 +2111,8 @@ fn translate_pc_family(cards: &mut CardList, s: char, encoding: Encoding) {
     ) else {
         return;
     };
-    let cosrota = crota.to_radians().cos();
-    let sinrota = crota.to_radians().sin();
+    let cosrota = crate::math::cos(crota.to_radians());
+    let sinrota = crate::math::sin(crota.to_radians());
     let lambda = cdeltj / cdelti;
     // Diagonal: cos(crota) on the celestial axes, 1.0 elsewhere.
     for i in 1..=naxis {
@@ -2410,7 +2410,7 @@ mod tests {
             &mut crate::fitschan::spec_trans::TransWarnings::default(),
         );
         assert!(cards.find("CROTA2").is_none());
-        let cos30 = 30.0_f64.to_radians().cos();
+        let cos30 = crate::math::cos(30.0_f64.to_radians());
         assert!((cards.get_float("PC1_1").unwrap() - cos30).abs() < 1e-10);
         assert!((cards.get_float("PC2_2").unwrap() - cos30).abs() < 1e-10);
         // CDELT preserved.
@@ -2754,7 +2754,7 @@ mod tests {
         );
         assert_eq!(cards.get_string("CTYPE1"), Some("RA---SIN".to_string()));
         assert_eq!(cards.get_string("CTYPE2"), Some("DEC--SIN".to_string()));
-        let cot30 = 1.0 / 30.0_f64.to_radians().tan();
+        let cot30 = 1.0 / crate::math::tan(30.0_f64.to_radians());
         assert!((cards.get_float("PV2_2").unwrap() - cot30).abs() < 1e-10);
         assert_eq!(cards.get_float("PV2_1"), Some(0.0));
     }

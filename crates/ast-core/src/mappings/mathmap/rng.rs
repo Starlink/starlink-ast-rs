@@ -129,9 +129,9 @@ impl MathMapRng {
             if rsq >= 1.0 || rsq == 0.0 {
                 continue;
             }
-            let s = -2.0 * rsq.ln();
+            let s = -2.0 * crate::math::ln(rsq);
             if f64::MAX * rsq >= s {
-                let s = (s / rsq).sqrt();
+                let s = crate::math::sqrt(s / rsq);
                 self.gauss_saved = Some(y * s);
                 return x * s;
             }
@@ -153,7 +153,7 @@ impl MathMapRng {
 
         if mean <= SMALL {
             // Direct method
-            let thresh = (-mean).exp();
+            let thresh = crate::math::exp(-mean);
             let mut product = 1.0;
             let mut result = -1.0;
             loop {
@@ -165,22 +165,23 @@ impl MathMapRng {
             }
             result
         } else {
-            let huge = (1.0e3_f64 / f64::EPSILON).powi(2);
+            let huge = crate::math::powi(1.0e3_f64 / f64::EPSILON, 2);
             if mean > huge {
                 return mean;
             }
 
             // Rejection method
             let pi = std::f64::consts::PI;
-            let sqrt_point9 = 0.9_f64.sqrt();
-            let ranmax = ((f64::MAX - 0.9).sqrt() / 0.9_f64.sqrt()) * (1.0 - 4.0 * f64::EPSILON);
-            let log_mean = mean.ln();
-            let root_2mean = (2.0 * mean).sqrt();
+            let sqrt_point9 = crate::math::sqrt(0.9_f64);
+            let ranmax = (crate::math::sqrt(f64::MAX - 0.9) / crate::math::sqrt(0.9_f64))
+                * (1.0 - 4.0 * f64::EPSILON);
+            let log_mean = crate::math::ln(mean);
+            let root_2mean = crate::math::sqrt(2.0 * mean);
             let beta = mean * log_mean - log_gamma(mean + 1.0);
 
             loop {
                 let ran = loop {
-                    let r = (pi * self.rand()).tan();
+                    let r = crate::math::tan(pi * self.rand());
                     if r <= ranmax && !r.is_infinite() {
                         break r;
                     }
@@ -194,7 +195,7 @@ impl MathMapRng {
 
                 let ran_scaled = ran * sqrt_point9;
                 let pfract = (0.9 + ran_scaled * ran_scaled)
-                    * (result * log_mean - log_gamma(result + 1.0) - beta).exp();
+                    * crate::math::exp(result * log_mean - log_gamma(result + 1.0) - beta);
 
                 if self.rand() <= pfract {
                     return result;
@@ -292,13 +293,13 @@ fn log_gamma(x: f64) -> f64 {
 
     let mut y = x;
     let tmp = x + 5.5;
-    let tmp = tmp - (x + 0.5) * tmp.ln();
+    let tmp = tmp - (x + 0.5) * crate::math::ln(tmp);
     let mut ser = 1.000_000_000_190_015;
     for &c in &COF {
         y += 1.0;
         ser += c / y;
     }
-    -tmp + (2.506_628_274_631_000_5 * ser / x).ln()
+    -tmp + crate::math::ln(2.506_628_274_631_000_5 * ser / x)
 }
 
 /// frexp equivalent — decompose into fraction and exponent

@@ -608,7 +608,7 @@ fn global_bounds(
 
     // Volume oversize factor: volume ratio of 2 -> per-axis ratio of
     // 2^(1/ncoord).
-    let oversize = 2.0_f64.powf(1.0 / ncoord as f64);
+    let oversize = crate::math::powf(2.0_f64, 1.0 / ncoord as f64);
 
     for coord in 0..ncoord {
         sample_width[coord] = (mapdata.ubnd[coord] - mapdata.lbnd[coord]) * oversize;
@@ -635,7 +635,7 @@ fn global_bounds(
                     let active_width = active_hi[coord] - active_lo[coord];
 
                     if active_width * oversize < sample_width[coord] {
-                        sample_width[coord] /= oversize.powf(0.25);
+                        sample_width[coord] /= crate::math::powf(oversize, 0.25);
                     } else if active_width * oversize > sample_width[coord] {
                         sample_width[coord] = active_width * oversize;
                     }
@@ -850,14 +850,14 @@ fn global_bounds(
     // Polish the global minimum and maximum at machine precision.
     if *lbnd != BAD_VALUE {
         mapdata.negate = true;
-        *lbnd = local_maximum(mapdata, 0.0, f64::EPSILON.sqrt(), xl)?;
+        *lbnd = local_maximum(mapdata, 0.0, crate::math::sqrt(f64::EPSILON), xl)?;
         if *lbnd != BAD_VALUE {
             *lbnd = -*lbnd;
         }
     }
     if *ubnd != BAD_VALUE {
         mapdata.negate = false;
-        *ubnd = local_maximum(mapdata, 0.0, f64::EPSILON.sqrt(), xu)?;
+        *ubnd = local_maximum(mapdata, 0.0, crate::math::sqrt(f64::EPSILON), xu)?;
     }
 
     if *lbnd == BAD_VALUE || *ubnd == BAD_VALUE {

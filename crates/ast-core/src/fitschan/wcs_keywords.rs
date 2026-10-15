@@ -337,7 +337,7 @@ pub(crate) fn sin_should_emit_as_ncp(store: &FitsStore) -> bool {
     if p2.abs() >= 1.0e14 && crval_lat_deg == 0.0 {
         return true;
     }
-    (p2 * crval_lat_deg.to_radians().tan() - 1.0).abs() < 0.01
+    (p2 * crate::math::tan(crval_lat_deg.to_radians()) - 1.0).abs() < 0.01
 }
 
 /// Translate any `*-NCP` celestial CTYPE pair to `*-SIN` and synthesise
@@ -360,11 +360,11 @@ pub(crate) fn normalise_ncp_to_sin(store: &mut FitsStore) {
     let Some(crval_lat_deg) = store.crval[lat_axis] else {
         return;
     };
-    let sinval = crval_lat_deg.to_radians().sin();
+    let sinval = crate::math::sin(crval_lat_deg.to_radians());
     if sinval == 0.0 {
         return;
     }
-    let cot = crval_lat_deg.to_radians().cos() / sinval;
+    let cot = crate::math::cos(crval_lat_deg.to_radians()) / sinval;
     if let Some(ct) = &mut store.ctype[lon_axis] {
         ct.replace_range(4.., "-SIN");
     }

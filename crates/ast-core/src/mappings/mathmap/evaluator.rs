@@ -47,8 +47,8 @@ pub(crate) fn evaluate(
 
     let d2r = std::f64::consts::PI / 180.0;
     let r2d = 180.0 / std::f64::consts::PI;
-    let log2 = 2.0_f64.ln();
-    let safe_sq = 0.9 * f64::MAX.sqrt();
+    let log2 = crate::math::ln(2.0_f64);
+    let safe_sq = 0.9 * crate::math::sqrt(f64::MAX);
     let rsafe_sq = 1.0 / safe_sq;
 
     let mut tos: i32 = -1;
@@ -198,7 +198,11 @@ pub(crate) fn evaluate(
                 for point in 0..npoint {
                     let x = stack[slot][point];
                     if x != BAD_VALUE {
-                        stack[slot][point] = if x.abs() <= 1.0 { x.acos() } else { BAD_VALUE };
+                        stack[slot][point] = if x.abs() <= 1.0 {
+                            crate::math::acos(x)
+                        } else {
+                            BAD_VALUE
+                        };
                     }
                 }
             }
@@ -208,7 +212,7 @@ pub(crate) fn evaluate(
                     let x = stack[slot][point];
                     if x != BAD_VALUE {
                         stack[slot][point] = if x.abs() <= 1.0 {
-                            x.acos() * r2d
+                            crate::math::acos(x) * r2d
                         } else {
                             BAD_VALUE
                         };
@@ -223,9 +227,9 @@ pub(crate) fn evaluate(
                         stack[slot][point] = if x < 1.0 {
                             BAD_VALUE
                         } else if x > safe_sq {
-                            x.ln() + log2
+                            crate::math::ln(x) + log2
                         } else {
-                            (x + (x * x - 1.0).sqrt()).ln()
+                            crate::math::ln(x + crate::math::sqrt(x * x - 1.0))
                         };
                     }
                 }
@@ -238,7 +242,7 @@ pub(crate) fn evaluate(
                         stack[slot][point] = if x.abs() <= 1.0 {
                             BAD_VALUE
                         } else {
-                            0.5 * ((x + 1.0) / (x - 1.0)).ln()
+                            0.5 * crate::math::ln((x + 1.0) / (x - 1.0))
                         };
                     }
                 }
@@ -254,10 +258,10 @@ pub(crate) fn evaluate(
                             let sign = if x >= 0.0 { 1.0 } else { -1.0 };
                             let ax = x.abs();
                             stack[slot][point] = if ax < rsafe_sq {
-                                sign * (log2 - ax.ln())
+                                sign * (log2 - crate::math::ln(ax))
                             } else {
                                 let r = 1.0 / ax;
-                                sign * (r + (r * r + 1.0).sqrt()).ln()
+                                sign * crate::math::ln(r + crate::math::sqrt(r * r + 1.0))
                             };
                         }
                     }
@@ -271,10 +275,10 @@ pub(crate) fn evaluate(
                         stack[slot][point] = if x <= 0.0 || x > 1.0 {
                             BAD_VALUE
                         } else if x < rsafe_sq {
-                            log2 - x.ln()
+                            log2 - crate::math::ln(x)
                         } else {
                             let r = 1.0 / x;
-                            (r + (r * r - 1.0).sqrt()).ln()
+                            crate::math::ln(r + crate::math::sqrt(r * r - 1.0))
                         };
                     }
                 }
@@ -284,7 +288,11 @@ pub(crate) fn evaluate(
                 for point in 0..npoint {
                     let x = stack[slot][point];
                     if x != BAD_VALUE {
-                        stack[slot][point] = if x.abs() <= 1.0 { x.asin() } else { BAD_VALUE };
+                        stack[slot][point] = if x.abs() <= 1.0 {
+                            crate::math::asin(x)
+                        } else {
+                            BAD_VALUE
+                        };
                     }
                 }
             }
@@ -294,7 +302,7 @@ pub(crate) fn evaluate(
                     let x = stack[slot][point];
                     if x != BAD_VALUE {
                         stack[slot][point] = if x.abs() <= 1.0 {
-                            x.asin() * r2d
+                            crate::math::asin(x) * r2d
                         } else {
                             BAD_VALUE
                         };
@@ -309,9 +317,9 @@ pub(crate) fn evaluate(
                         let sign = if x >= 0.0 { 1.0 } else { -1.0 };
                         let ax = x.abs();
                         stack[slot][point] = if ax > safe_sq {
-                            sign * (ax.ln() + log2)
+                            sign * (crate::math::ln(ax) + log2)
                         } else {
-                            sign * (ax + (ax * ax + 1.0).sqrt()).ln()
+                            sign * crate::math::ln(ax + crate::math::sqrt(ax * ax + 1.0))
                         };
                     }
                 }
@@ -321,7 +329,7 @@ pub(crate) fn evaluate(
                 for point in 0..npoint {
                     let x = stack[slot][point];
                     if x != BAD_VALUE {
-                        stack[slot][point] = x.atan();
+                        stack[slot][point] = crate::math::atan(x);
                     }
                 }
             }
@@ -330,7 +338,7 @@ pub(crate) fn evaluate(
                 for point in 0..npoint {
                     let x = stack[slot][point];
                     if x != BAD_VALUE {
-                        stack[slot][point] = x.atan() * r2d;
+                        stack[slot][point] = crate::math::atan(x) * r2d;
                     }
                 }
             }
@@ -342,7 +350,7 @@ pub(crate) fn evaluate(
                         stack[slot][point] = if x.abs() >= 1.0 {
                             BAD_VALUE
                         } else {
-                            0.5 * ((1.0 + x) / (1.0 - x)).ln()
+                            0.5 * crate::math::ln((1.0 + x) / (1.0 - x))
                         };
                     }
                 }
@@ -361,7 +369,7 @@ pub(crate) fn evaluate(
                 for point in 0..npoint {
                     let x = stack[slot][point];
                     if x != BAD_VALUE {
-                        stack[slot][point] = x.cos();
+                        stack[slot][point] = crate::math::cos(x);
                     }
                 }
             }
@@ -370,7 +378,7 @@ pub(crate) fn evaluate(
                 for point in 0..npoint {
                     let x = stack[slot][point];
                     if x != BAD_VALUE {
-                        stack[slot][point] = (x * d2r).cos();
+                        stack[slot][point] = crate::math::cos(x * d2r);
                     }
                 }
             }
@@ -379,7 +387,7 @@ pub(crate) fn evaluate(
                 for point in 0..npoint {
                     let x = stack[slot][point];
                     if x != BAD_VALUE {
-                        let r = x.cosh();
+                        let r = crate::math::cosh(x);
                         stack[slot][point] = if r.is_infinite() { BAD_VALUE } else { r };
                     }
                 }
@@ -389,7 +397,7 @@ pub(crate) fn evaluate(
                 for point in 0..npoint {
                     let x = stack[slot][point];
                     if x != BAD_VALUE {
-                        let t = x.tanh();
+                        let t = crate::math::tanh(x);
                         stack[slot][point] = safe_div(1.0, t);
                     }
                 }
@@ -399,7 +407,7 @@ pub(crate) fn evaluate(
                 for point in 0..npoint {
                     let x = stack[slot][point];
                     if x != BAD_VALUE {
-                        let s = x.sinh();
+                        let s = crate::math::sinh(x);
                         stack[slot][point] = if s.is_infinite() {
                             0.0
                         } else {
@@ -413,7 +421,7 @@ pub(crate) fn evaluate(
                 for point in 0..npoint {
                     let x = stack[slot][point];
                     if x != BAD_VALUE {
-                        let r = x.exp();
+                        let r = crate::math::exp(x);
                         stack[slot][point] = if r.is_infinite() { BAD_VALUE } else { r };
                     }
                 }
@@ -449,7 +457,11 @@ pub(crate) fn evaluate(
                 for point in 0..npoint {
                     let x = stack[slot][point];
                     if x != BAD_VALUE {
-                        stack[slot][point] = if x > 0.0 { x.ln() } else { BAD_VALUE };
+                        stack[slot][point] = if x > 0.0 {
+                            crate::math::ln(x)
+                        } else {
+                            BAD_VALUE
+                        };
                     }
                 }
             }
@@ -458,7 +470,11 @@ pub(crate) fn evaluate(
                 for point in 0..npoint {
                     let x = stack[slot][point];
                     if x != BAD_VALUE {
-                        stack[slot][point] = if x > 0.0 { x.log10() } else { BAD_VALUE };
+                        stack[slot][point] = if x > 0.0 {
+                            crate::math::log10(x)
+                        } else {
+                            BAD_VALUE
+                        };
                     }
                 }
             }
@@ -489,7 +505,7 @@ pub(crate) fn evaluate(
                 for point in 0..npoint {
                     let x = stack[slot][point];
                     if x != BAD_VALUE {
-                        let c = x.cosh();
+                        let c = crate::math::cosh(x);
                         stack[slot][point] = if c.is_infinite() { 0.0 } else { 1.0 / c };
                     }
                 }
@@ -499,7 +515,7 @@ pub(crate) fn evaluate(
                 for point in 0..npoint {
                     let x = stack[slot][point];
                     if x != BAD_VALUE {
-                        stack[slot][point] = x.sin();
+                        stack[slot][point] = crate::math::sin(x);
                     }
                 }
             }
@@ -508,7 +524,11 @@ pub(crate) fn evaluate(
                 for point in 0..npoint {
                     let x = stack[slot][point];
                     if x != BAD_VALUE {
-                        stack[slot][point] = if x == 0.0 { 1.0 } else { x.sin() / x };
+                        stack[slot][point] = if x == 0.0 {
+                            1.0
+                        } else {
+                            crate::math::sin(x) / x
+                        };
                     }
                 }
             }
@@ -517,7 +537,7 @@ pub(crate) fn evaluate(
                 for point in 0..npoint {
                     let x = stack[slot][point];
                     if x != BAD_VALUE {
-                        stack[slot][point] = (x * d2r).sin();
+                        stack[slot][point] = crate::math::sin(x * d2r);
                     }
                 }
             }
@@ -526,7 +546,7 @@ pub(crate) fn evaluate(
                 for point in 0..npoint {
                     let x = stack[slot][point];
                     if x != BAD_VALUE {
-                        let r = x.sinh();
+                        let r = crate::math::sinh(x);
                         stack[slot][point] = if r.is_infinite() { BAD_VALUE } else { r };
                     }
                 }
@@ -545,7 +565,11 @@ pub(crate) fn evaluate(
                 for point in 0..npoint {
                     let x = stack[slot][point];
                     if x != BAD_VALUE {
-                        stack[slot][point] = if x >= 0.0 { x.sqrt() } else { BAD_VALUE };
+                        stack[slot][point] = if x >= 0.0 {
+                            crate::math::sqrt(x)
+                        } else {
+                            BAD_VALUE
+                        };
                     }
                 }
             }
@@ -554,7 +578,7 @@ pub(crate) fn evaluate(
                 for point in 0..npoint {
                     let x = stack[slot][point];
                     if x != BAD_VALUE {
-                        let r = x.tan();
+                        let r = crate::math::tan(x);
                         stack[slot][point] = if r.is_infinite() { BAD_VALUE } else { r };
                     }
                 }
@@ -564,7 +588,7 @@ pub(crate) fn evaluate(
                 for point in 0..npoint {
                     let x = stack[slot][point];
                     if x != BAD_VALUE {
-                        stack[slot][point] = (x * d2r).tan();
+                        stack[slot][point] = crate::math::tan(x * d2r);
                     }
                 }
             }
@@ -573,7 +597,7 @@ pub(crate) fn evaluate(
                 for point in 0..npoint {
                     let x = stack[slot][point];
                     if x != BAD_VALUE {
-                        stack[slot][point] = x.tanh();
+                        stack[slot][point] = crate::math::tanh(x);
                     }
                 }
             }
@@ -674,7 +698,7 @@ pub(crate) fn evaluate(
                     if x1 != BAD_VALUE {
                         let x2 = stack[slot2][point];
                         if x2 != BAD_VALUE {
-                            let r = x1.powf(x2);
+                            let r = crate::math::powf(x1, x2);
                             stack[slot1][point] = if r.is_infinite() || r.is_nan() {
                                 BAD_VALUE
                             } else {
@@ -820,10 +844,12 @@ pub(crate) fn evaluate(
             }),
 
             // Two-argument functions
-            Opcode::Atan2 => binary_op_bad(&mut stack, &mut tos, npoint, |x1, x2| x1.atan2(x2)),
-            Opcode::Atan2d => {
-                binary_op_bad(&mut stack, &mut tos, npoint, |x1, x2| x1.atan2(x2) * r2d)
-            }
+            Opcode::Atan2 => binary_op_bad(&mut stack, &mut tos, npoint, |x1, x2| {
+                crate::math::atan2(x1, x2)
+            }),
+            Opcode::Atan2d => binary_op_bad(&mut stack, &mut tos, npoint, |x1, x2| {
+                crate::math::atan2(x1, x2) * r2d
+            }),
             Opcode::Dim => binary_op_bad(&mut stack, &mut tos, npoint, |x1, x2| {
                 if x1 > x2 { x1 - x2 } else { 0.0 }
             }),
@@ -1088,5 +1114,5 @@ fn frexp(x: f64) -> (f64, i32) {
 }
 
 fn ldexp(frac: f64, exp: i32) -> f64 {
-    frac * (2.0_f64).powi(exp)
+    frac * crate::math::powi(2.0_f64, exp)
 }

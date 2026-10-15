@@ -395,8 +395,8 @@ impl MatrixMap {
     /// Errors with [`ErrorCode::Mtrax`] for a null/zero-length 3-D axis and
     /// [`ErrorCode::Mtr23`] for any row count other than 2 or 3.
     pub fn mtr_rot(&self, theta: f64, axis: &[f64]) -> AstResult<MatrixMap> {
-        let costh = theta.cos();
-        let sinth = theta.sin();
+        let costh = crate::math::cos(theta);
+        let sinth = crate::math::sin(theta);
 
         // No change for a full-turn rotation (matrixmap.c:3845).
         if costh == 1.0 {
@@ -447,7 +447,7 @@ impl MatrixMap {
                     "astMtrRot: null or zero-length axis vector supplied",
                 ));
             }
-            let axlen = axlen2.sqrt();
+            let axlen = crate::math::sqrt(axlen2);
 
             // Common terms (matrixmap.c:3910-3917).
             let as_ = sinth / axlen;
@@ -1433,7 +1433,7 @@ fn compress_matrix(m: &mut Array2<f64>, form: &mut MatrixForm) -> bool {
             // Largest magnitude in each row and column, scaled by
             // sqrt(DBL_EPSILON) to become the lower limit for a significant
             // value (matrixmap.c:691-724). BAD elements never participate.
-            let tol = f64::EPSILON.sqrt();
+            let tol = crate::math::sqrt(f64::EPSILON);
             let mut rowmax = vec![0.0_f64; nrow];
             let mut colmax = vec![0.0_f64; ncol];
             for i in 0..nrow {

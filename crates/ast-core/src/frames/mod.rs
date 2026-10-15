@@ -1040,8 +1040,8 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
             return Ok((vec![BAD_VALUE, BAD_VALUE], BAD_VALUE));
         }
         let p2 = vec![
-            point1[0] + angle.sin() * offset,
-            point1[1] + angle.cos() * offset,
+            point1[0] + crate::math::sin(angle) * offset,
+            point1[1] + crate::math::cos(angle) * offset,
         ];
         Ok((p2, angle))
     }
@@ -1375,7 +1375,7 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
                 bv += c * c;
             }
             if bv > 0.0 {
-                let bv = bv.sqrt();
+                let bv = crate::math::sqrt(bv);
                 d1 = dp / bv;
                 for i in 0..naxes {
                     point4[i] = point1[i] + (d1 / bv) * (point2[i] - point1[i]);
@@ -1385,7 +1385,7 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
                     let c = point3[i] - point4[i];
                     s += c * c;
                 }
-                d2 = s.sqrt();
+                d2 = crate::math::sqrt(s);
             }
         }
         Ok((point4, d1, d2))
@@ -1433,7 +1433,7 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
             bv += basisv[i] * basisv[i];
         }
         if ok && bv > 0.0 {
-            let bv = bv.sqrt();
+            let bv = crate::math::sqrt(bv);
             for p in 0..npoint {
                 let row = input.point(p);
                 let mut dp = 0.0;
@@ -1457,13 +1457,13 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
                         let d = row[i] - (point1[i] + c * bi);
                         s += d * d;
                     }
-                    s.sqrt()
+                    crate::math::sqrt(s)
                 } else {
                     let x1 = c * basisv[0];
                     let y1 = c * basisv[1];
                     let x2 = row[0] - (point1[0] + x1);
                     let y2 = row[1] - (point1[1] + y1);
-                    let mut m = (x2 * x2 + y2 * y2).sqrt();
+                    let mut m = crate::math::sqrt(x2 * x2 + y2 * y2);
                     if x1 * y2 - x2 * y1 < 0.0 {
                         m = -m;
                     }
@@ -1665,9 +1665,9 @@ pub(crate) fn frame_grid_default(
     }
     // C assigns the nominal tick count and each axis's count to `int`,
     // truncating.
-    let ntick0 = ((size as f64).powf(1.0 / naxes as f64) as i32).max(2);
+    let ntick0 = (crate::math::powf(size as f64, 1.0 / naxes as f64) as i32).max(2);
     for iax in 0..naxes {
-        gmean[iax] = gmean[iax].abs().powf(1.0 / nsame[iax] as f64);
+        gmean[iax] = crate::math::powf(gmean[iax].abs(), 1.0 / nsame[iax] as f64);
     }
     let ntick: Vec<i32> = (0..naxes)
         .map(|iax| ((ntick0 as f64 * (ubnd[iax] - lbnd[iax]) / gmean[iax]) as i32).max(2))
@@ -1809,7 +1809,7 @@ pub(crate) fn cartesian_distance(a: &[f64], b: &[f64]) -> f64 {
         let delta = p1 - p2;
         dist += delta * delta;
     }
-    dist.sqrt()
+    crate::math::sqrt(dist)
 }
 
 /// The point `dist` along the straight line from `from` towards `to`, the
@@ -1858,11 +1858,11 @@ pub(crate) fn cartesian_angle(a: &[f64], b: &[f64], c: &[f64]) -> f64 {
         return BAD_VALUE;
     }
     if naxes == 2 {
-        let anga = ab[0].atan2(ab[1]);
-        let angc = cb[0].atan2(cb[1]);
+        let anga = crate::math::atan2(ab[0], ab[1]);
+        let angc = crate::math::atan2(cb[0], cb[1]);
         crate::pal::drange(angc - anga)
     } else {
         let sp: f64 = (0..naxes).map(|i| ab[i] * cb[i]).sum();
-        (sp / (sla * slc).sqrt()).clamp(-1.0, 1.0).acos()
+        crate::math::acos((sp / crate::math::sqrt(sla * slc)).clamp(-1.0, 1.0))
     }
 }

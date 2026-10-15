@@ -165,7 +165,7 @@ pub(crate) fn find_basis_vectors(
             t = w0[j].abs() * f64::EPSILON * 1.0e5;
         }
         if t == 0.0 {
-            t = f64::MIN_POSITIVE.sqrt();
+            t = crate::math::sqrt(f64::MIN_POSITIVE);
         }
         tol[j] = t;
     }
@@ -188,7 +188,7 @@ fn fit_ok(actual: &[f64], estimated: &[f64], tol: f64) -> bool {
     if s2 == 0.0 {
         return false;
     }
-    (s1 / s2).sqrt() <= tol
+    crate::math::sqrt(s1 / s2) <= tol
 }
 
 /// Least-squares straight-line fit along input axis `axis` of
@@ -347,7 +347,7 @@ pub(crate) fn split_cd(cd: &Array2<f64>) -> (Vec<f64>, Array2<f64>) {
         for j in 0..naxis {
             mag_sq += cd[[i, j]] * cd[[i, j]];
         }
-        let mut cdlt = mag_sq.sqrt();
+        let mut cdlt = crate::math::sqrt(mag_sq);
         if dineg {
             cdlt = -cdlt;
         }
@@ -395,8 +395,10 @@ mod tests {
         let (cdelt, pc) = split_cd(&cd);
         assert!((cdelt[0].abs() - s).abs() < 1e-12);
         assert!((cdelt[1].abs() - s).abs() < 1e-12);
-        let row0_mag = (pc[[0, 0]].powi(2) + pc[[0, 1]].powi(2)).sqrt();
-        let row1_mag = (pc[[1, 0]].powi(2) + pc[[1, 1]].powi(2)).sqrt();
+        let row0_mag =
+            crate::math::sqrt(crate::math::powi(pc[[0, 0]], 2) + crate::math::powi(pc[[0, 1]], 2));
+        let row1_mag =
+            crate::math::sqrt(crate::math::powi(pc[[1, 0]], 2) + crate::math::powi(pc[[1, 1]], 2));
         assert!((row0_mag - 1.0).abs() < 1e-12);
         assert!((row1_mag - 1.0).abs() < 1e-12);
     }

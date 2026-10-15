@@ -785,7 +785,7 @@ mod tests {
         let y = s.obsgeoy.expect("OBSGEO-Y");
         let z = s.obsgeoz.expect("OBSGEO-Z");
         // |X| should be ≈ Earth radius * cos(lat) for lon=0.
-        let r = (x * x + y * y + z * z).sqrt();
+        let r = crate::math::sqrt(x * x + y * y + z * z);
         assert!(
             (r - 6_371_000.0).abs() < 50_000.0,
             "OBSGEO magnitude {r} should be Earth-radius-ish"

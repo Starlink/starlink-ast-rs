@@ -247,16 +247,17 @@ impl DssMap {
         let etar = eta / CONS2R;
 
         // Convert to RA and Dec
-        let ctan = self.plate_dec.tan();
-        let ccos = self.plate_dec.cos();
-        let raoff = (xir / ccos).atan2(1.0 - etar * ctan);
+        let ctan = crate::math::tan(self.plate_dec);
+        let ccos = crate::math::cos(self.plate_dec);
+        let raoff = crate::math::atan2(xir / ccos, 1.0 - etar * ctan);
         let mut ra = raoff + self.plate_ra;
         if ra < 0.0 {
             ra += TWOPI;
         }
         *xpos = ra / COND2R;
 
-        let dec = (raoff.cos() / ((1.0 - (etar * ctan)) / (etar + ctan))).atan();
+        let dec =
+            crate::math::atan(crate::math::cos(raoff) / ((1.0 - (etar * ctan)) / (etar + ctan)));
         *ypos = dec / COND2R;
 
         Ok(())
@@ -276,12 +277,12 @@ impl DssMap {
         let yr = ypos * COND2R;
 
         // Convert to standard coordinates on a plate
-        let sypos = yr.sin();
-        let cypos = yr.cos();
-        let syplate = self.plate_dec.sin();
-        let cyplate = self.plate_dec.cos();
-        let sxdiff = (xr - self.plate_ra).sin();
-        let cxdiff = (xr - self.plate_ra).cos();
+        let sypos = crate::math::sin(yr);
+        let cypos = crate::math::cos(yr);
+        let syplate = crate::math::sin(self.plate_dec);
+        let cyplate = crate::math::cos(self.plate_dec);
+        let sxdiff = crate::math::sin(xr - self.plate_ra);
+        let cxdiff = crate::math::cos(xr - self.plate_ra);
         let div = (sypos * syplate) + (cypos * cyplate * cxdiff);
         let xi = cypos * sxdiff * CONS2R / div;
         let eta = ((sypos * cyplate) - (cypos * syplate * cxdiff)) * CONS2R / div;

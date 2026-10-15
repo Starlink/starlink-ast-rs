@@ -320,7 +320,7 @@ impl Frame for SpecFluxFrame {
         // Euclidean distance in the 2-D compound space.
         let d0 = a[0] - b[0];
         let d1 = a[1] - b[1];
-        Ok((d0 * d0 + d1 * d1).sqrt())
+        Ok(crate::math::sqrt(d0 * d0 + d1 * d1))
     }
 
     fn angle(&self, a: &[f64], b: &[f64], c: &[f64]) -> AstResult<f64> {
@@ -332,14 +332,14 @@ impl Frame for SpecFluxFrame {
         let bc0 = c[0] - b[0];
         let bc1 = c[1] - b[1];
         let dot = ba0 * bc0 + ba1 * bc1;
-        let mag_ba = (ba0 * ba0 + ba1 * ba1).sqrt();
-        let mag_bc = (bc0 * bc0 + bc1 * bc1).sqrt();
+        let mag_ba = crate::math::sqrt(ba0 * ba0 + ba1 * ba1);
+        let mag_bc = crate::math::sqrt(bc0 * bc0 + bc1 * bc1);
         let denom = mag_ba * mag_bc;
         if denom == 0.0 {
             return Ok(0.0);
         }
         let cos_angle = (dot / denom).clamp(-1.0, 1.0);
-        Ok(cos_angle.acos())
+        Ok(crate::math::acos(cos_angle))
     }
 
     fn offset(&self, from: &[f64], to: &[f64], dist: f64) -> AstResult<Vec<f64>> {
@@ -352,7 +352,7 @@ impl Frame for SpecFluxFrame {
         }
         let d1 = super::cartesian_distance(&from[..1], &to[..1]);
         let d2 = super::cartesian_distance(&from[1..2], &to[1..2]);
-        let total = (d1 * d1 + d2 * d2).sqrt();
+        let total = crate::math::sqrt(d1 * d1 + d2 * d2);
         let (off1, off2) = if total == 0.0 {
             if dist != 0.0 {
                 return Ok(vec![BAD_VALUE; 2]);

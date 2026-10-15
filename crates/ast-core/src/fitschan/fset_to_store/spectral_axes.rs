@@ -342,7 +342,8 @@ pub(crate) fn spectral_axes(args: SpectralAxesArgs<'_>) -> AstResult<DynMapping>
     {
         // Convert m/s velocity to dimensionless redshift via the
         // relativistic Doppler formula (matches C:30764-30765).
-        let zsource = ((SPEED_OF_LIGHT + vsource) / (SPEED_OF_LIGHT - vsource)).sqrt() - 1.0;
+        let zsource =
+            crate::math::sqrt((SPEED_OF_LIGHT + vsource) / (SPEED_OF_LIGHT - vsource)) - 1.0;
         args.store.zsource = Some(zsource);
         args.store.ssyssrc = Some(specsys_string(specfrm.source_vrf()));
     }
@@ -1137,10 +1138,11 @@ mod tests {
         })
         .unwrap();
 
-        let r = (store.obsgeox.unwrap().powi(2)
-            + store.obsgeoy.unwrap().powi(2)
-            + store.obsgeoz.unwrap().powi(2))
-        .sqrt();
+        let r = crate::math::sqrt(
+            crate::math::powi(store.obsgeox.unwrap(), 2)
+                + crate::math::powi(store.obsgeoy.unwrap(), 2)
+                + crate::math::powi(store.obsgeoz.unwrap(), 2),
+        );
         assert!((r - 6_371_000.0).abs() < 50_000.0);
     }
 
@@ -1211,7 +1213,7 @@ mod tests {
 
         let z = store.zsource.expect("ZSOURCE");
         // Relativistic Doppler: z = sqrt((c+v)/(c-v)) - 1.
-        let expected = ((SPEED_OF_LIGHT + 1.0e6) / (SPEED_OF_LIGHT - 1.0e6)).sqrt() - 1.0;
+        let expected = crate::math::sqrt((SPEED_OF_LIGHT + 1.0e6) / (SPEED_OF_LIGHT - 1.0e6)) - 1.0;
         assert!((z - expected).abs() < 1e-9);
         assert!(store.ssyssrc.is_some());
     }
