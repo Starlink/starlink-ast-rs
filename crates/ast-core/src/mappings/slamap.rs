@@ -371,6 +371,10 @@ pub struct SlaMap {
     id: crate::object_id::ObjectId,
     /// The flags C keeps on the base Mapping class (mapping.c).
     mapping_flags: crate::mappings::MappingFlags,
+    /// C's `cvtextra`: the `palMappa` parameters of each MAP or AMP step,
+    /// worked out on first use and kept with the SlaMap (slamap.c:3805-3825).
+    /// A clone keeps them, as C's Copy copies `cvtextra`.
+    extra: std::cell::RefCell<Vec<Option<[f64; 21]>>>,
 }
 
 impl SlaMap {
@@ -383,7 +387,22 @@ impl SlaMap {
             ident: None,
             id: Default::default(),
             mapping_flags: crate::mappings::MappingFlags::default(),
+            extra: Default::default(),
         }
+    }
+
+    /// The constants for applying conversion `ci` in the given direction,
+    /// with a MAP or AMP step's parameters taken from `extra` once known.
+    fn step_consts(&self, ci: usize, cvt: &SlaConversion, fwd: bool) -> StepConsts {
+        let mut extra = self.extra.borrow_mut();
+        if extra.len() != self.conversions.len() {
+            *extra = vec![None; self.conversions.len()];
+        }
+        let step = StepConsts::new(cvt, fwd, extra[ci]);
+        if extra[ci].is_none() {
+            extra[ci] = step.amprms;
+        }
+        step
     }
 
     /// Append a conversion step to the chain, as C's `astSlaAdd` does.
@@ -997,8 +1016,9 @@ struct StepConsts {
 }
 
 impl StepConsts {
-    /// The constants for applying `cvt` in the given direction.
-    fn new(cvt: &SlaConversion, fwd: bool) -> Self {
+    /// The constants for applying `cvt` in the given direction; `extra` is
+    /// a MAP or AMP step's stored `palMappa` parameters, if already known.
+    fn new(cvt: &SlaConversion, fwd: bool, extra: Option<[f64; 21]>) -> Self {
         let a = &cvt.args;
         let matrix = match cvt.cvt_type {
             // The inverse precesses with the epochs swapped.
@@ -1032,14 +1052,14 @@ impl StepConsts {
             }
             _ => None,
         };
-        let amprms = match cvt.cvt_type {
+        let amprms = extra.or_else(|| match cvt.cvt_type {
             // MAP args are (EQ, DATE): palMappa(eq=args[0], ep=args[1]).
             SlaCvtType::Map => Some(mappa_cached(a[0], a[1])),
             // AMP args are (DATE, EQ): palMappa(eq=args[1], ep=args[0])
             // (slamap.c:3815). MAP and AMP order their args oppositely.
             SlaCvtType::Amp => Some(mappa_cached(a[1], a[0])),
             _ => None,
-        };
+        });
         StepConsts { matrix, amprms }
     }
 
@@ -1279,7 +1299,7 @@ impl Mapping for SlaMap {
                 continue;
             }
 
-            let step = StepConsts::new(cvt, fwd);
+            let step = self.step_consts(ci, cvt, fwd);
 
             // TRAN_ARRAY (slamap.c:3652): per point, either axis bad -> both
             // bad, else apply the conversion.
