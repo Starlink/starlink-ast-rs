@@ -1,0 +1,8 @@
+ Begin MathMap 	# Transformation using mathematical functions
+    Nin = 2 	# Number of input coordinates
+ IsA Mapping 	# Mapping between coordinate systems
+    Fwd1 = "u=x+y" 	# Forward function 1
+    Fwd2 = "v=x-y" 	# Forward function 2
+    Inv1 = "x=0.5*(u+v)" 	# Inverse function 1
+    Inv2 = "y=0.5*(u-v)" 	# Inverse function 2
+ End MathMap

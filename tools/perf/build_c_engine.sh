@@ -59,6 +59,15 @@ cc $CFLAGS_PINNED $SHARED -fPIC -o "$DEST/$LIB" \
    "$HERE/crates/ast-bench/c/bench_engine.c" "$DEST/src/ast_tester/transform_oracle_util.c" \
    $EXTRA $ARCHIVES ${YAML:+-L "$YAML"} -lyaml -lm
 
+if [ "$VARIANT" = bench ]; then
+   # The program that writes ast-bench's fixtures and their oracle.
+   # shellcheck disable=SC2086
+   cc $CFLAGS_PINNED -o "$DEST/gen_bench_fixtures" \
+      -I "$B" -I "$DEST/src" -I "$DEST/src/ast_tester" \
+      "$HERE/tools/perf/gen_bench_fixtures.c" "$DEST/src/ast_tester/transform_oracle_util.c" \
+      $ARCHIVES ${YAML:+-L "$YAML"} -lyaml -lm
+fi
+
 { echo "variant=$VARIANT"; echo "cc=$(cc --version | head -1)"; echo "cflags=$CFLAGS_PINNED";
   echo "submodule=$(git -C "$SRC" rev-parse HEAD)"; } > "$DEST/build-info.txt"
 echo "built $DEST/$LIB"

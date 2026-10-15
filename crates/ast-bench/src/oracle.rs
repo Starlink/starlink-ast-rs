@@ -9,6 +9,13 @@ use ast_core::constants::BAD_VALUE;
 /// The fixture tree mirrored from `ast_tester/fixtures`.
 pub const CORE_FIXTURES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../ast-core/tests/fixtures");
 
+/// The fixtures written for benchmarking, one plain Mapping per class
+/// (`tools/perf/gen_bench_fixtures.c`).
+pub const BENCH_FIXTURES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/fixtures");
+
+/// The oracle of [`BENCH_FIXTURES`], in that directory.
+pub const BENCH_ORACLE: &str = "bench.oracle";
+
 /// The three transform oracles under `CORE_FIXTURES/oracle/`.
 pub const CORE_ORACLES: [&str; 3] = [
     "simplify_fixtures.oracle",
