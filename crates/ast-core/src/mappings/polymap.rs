@@ -59,6 +59,11 @@ pub struct PolyMap {
     /// Pre-computed Jacobian polynomial terms (one set of terms per input axis).
     /// Only populated when `iter_inverse` is true and `nin == nout`.
     jacobian_terms: Option<Vec<Vec<PolyTerm>>>,
+    /// C's `lintrunc`: the linear truncation [`PolyMap::linear_guess`]
+    /// builds for the iterative inverse's first guess, kept once built
+    /// (polymap.c `LinearGuess`) and cleared when the coefficients change.
+    /// A clone keeps it, as C's Copy copies it.
+    lintrunc: std::cell::RefCell<Option<DynMapping>>,
     // -- Pre-computed evaluation indices for power-table evaluation --
     /// Indices into `forward` grouped by output axis (0-based).
     /// `forward_by_output[i]` contains indices of terms contributing to output axis `i+1`.
@@ -212,6 +217,7 @@ impl PolyMap {
             id: Default::default(),
             mapping_flags: crate::mappings::MappingFlags::default(),
             jacobian_terms: None,
+            lintrunc: Default::default(),
             forward_by_output,
             forward_max_pows,
             inverse_by_output,
@@ -485,6 +491,8 @@ impl PolyMap {
         }
         self.jacobian_terms =
             (self.nin == self.nout && self.iter_inverse()).then(|| self.compute_jacobian_terms());
+        // The linear truncation is no longer reliable (polymap.c:4110).
+        *self.lintrunc.borrow_mut() = None;
     }
 
     /// Gather forward terms per output axis for the 2D SIMD prototype.
@@ -657,7 +665,14 @@ impl PolyMap {
             .map(|terms| PolyMap::new(ncoord, ncoord, terms, None))
             .collect::<AstResult<_>>()?;
 
-        self.linear_guess()?.transform_into(target, false, result)?;
+        if self.lintrunc.borrow().is_none() {
+            *self.lintrunc.borrow_mut() = Some(self.linear_guess()?);
+        }
+        self.lintrunc
+            .borrow()
+            .as_ref()
+            .expect("built above")
+            .transform_into(target, false, result)?;
         super::substitute_nan_to_bad_in_place(result);
 
         let maxiter = self.niter_inverse();
@@ -1991,6 +2006,7 @@ impl Serializable for PolyMap {
             id: Default::default(),
             mapping_flags: crate::mappings::MappingFlags::default(),
             jacobian_terms,
+            lintrunc: Default::default(),
             forward_by_output,
             forward_max_pows,
             inverse_by_output,
