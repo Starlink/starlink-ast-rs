@@ -55,7 +55,7 @@ const ULP_LICENSED: &[(&str, usize, u64, &str)] = &[(
 /// Whether the port's transcript `out` matches C's `want` for case `name`.
 fn matches(name: &str, out: &str, want: &str) -> bool {
     let Some(&(_, line, ulps, _)) = ULP_LICENSED.iter().find(|(n, ..)| *n == name) else {
-        return out == want;
+        return crate::common::c_text_eq(out, want);
     };
     assert_ne!(
         out, want,
@@ -67,7 +67,7 @@ fn matches(name: &str, out: &str, want: &str) -> bool {
             if i + 1 == line {
                 crate::common::line_tokens_equivalent(a, b, ulps)
             } else {
-                a == b
+                crate::common::c_text_eq(a, b)
             }
         })
 }

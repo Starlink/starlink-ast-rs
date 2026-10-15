@@ -23,6 +23,8 @@ mod pointset;
 mod test_area_membership;
 #[path = "../test_audit_citations.rs"]
 mod test_audit_citations;
+#[path = "../test_c_compare.rs"]
+mod test_c_compare;
 #[path = "../test_constructor_checks.rs"]
 mod test_constructor_checks;
 #[path = "../test_mapmerge_audit.rs"]

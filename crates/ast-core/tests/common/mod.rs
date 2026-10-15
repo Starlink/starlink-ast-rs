@@ -164,6 +164,110 @@ pub fn ulp_close(a: f64, b: f64, max_ulps: u64) -> bool {
     a.to_bits().abs_diff(b.to_bits()) <= max_ulps
 }
 
+/// Whether the C values the oracle tests compare against were captured on this
+/// platform. They come from the reference library built on macOS, where the
+/// port, calling the same libm, matches them bit for bit. Setting
+/// `AST_ORACLE_TOLERANT` makes macOS compare as other platforms do, to check
+/// the tolerant comparisons locally.
+pub fn on_capture_platform() -> bool {
+    cfg!(target_os = "macos") && std::env::var_os("AST_ORACLE_TOLERANT").is_none()
+}
+
+/// Relative tolerance for a C value on any other platform, where libm rounds
+/// some last bits differently. The largest difference the Linux CI run of
+/// 2026-10-15 showed across 24 oracle tests was 3.6e-14 relative; 1e-13 keeps
+/// a margin while staying far below any algorithmic difference.
+pub const LIBM_RTOL: f64 = 1.0e-13;
+
+/// Absolute floor for [`LIBM_RTOL`], for values near zero that are the small
+/// difference of O(1) quantities: the same CI run's largest was 3.8e-15.
+pub const LIBM_ATOL: f64 = 1.0e-14;
+
+/// Whether `got` matches the C value `want`: exactly on the platform the C
+/// values were captured on, and to within libm rounding
+/// ([`LIBM_RTOL`], [`LIBM_ATOL`]) elsewhere. A bad value matches only a bad
+/// value, and NaN matches nothing, as with `==`.
+pub fn c_value_eq(got: f64, want: f64) -> bool {
+    if got == want {
+        return true;
+    }
+    !on_capture_platform() && within_libm_rounding(got, want)
+}
+
+/// The comparison [`c_value_eq`] makes off the capture platform: within
+/// [`LIBM_RTOL`] and [`LIBM_ATOL`], with a bad value or NaN matching nothing.
+pub fn within_libm_rounding(got: f64, want: f64) -> bool {
+    let bad = ast_core::constants::BAD_VALUE;
+    if !got.is_finite() || !want.is_finite() || got == bad || want == bad {
+        return got == want;
+    }
+    (got - want).abs() <= LIBM_ATOL + LIBM_RTOL * want.abs()
+}
+
+/// [`c_value_eq`] element by element, with equal lengths.
+pub fn c_values_eq(got: &[f64], want: &[f64]) -> bool {
+    got.len() == want.len() && got.iter().zip(want).all(|(g, w)| c_value_eq(*g, *w))
+}
+
+/// Assert [`c_values_eq`], reporting both sides and `what` on failure.
+#[track_caller]
+pub fn assert_c_values(got: &[f64], want: &[f64], what: &str) {
+    assert!(
+        c_values_eq(got, want),
+        "{what}: got {got:?}, C gives {want:?}"
+    );
+}
+
+/// Assert [`c_text_eq`], reporting both texts and `what` on failure.
+#[track_caller]
+pub fn assert_c_text(got: &str, want: &str, what: &str) {
+    assert!(
+        c_text_eq(got, want),
+        "{what}:\n--- got\n{got}\n--- C\n{want}"
+    );
+}
+
+/// Whether the text `got` (a dump or report) matches the C text `want`:
+/// exactly on the capture platform, and elsewhere line by line with every
+/// whitespace-separated numeric token compared by [`c_value_eq`] and every
+/// other token exactly.
+pub fn c_text_eq(got: &str, want: &str) -> bool {
+    if got == want {
+        return true;
+    }
+    if on_capture_platform() {
+        return false;
+    }
+    let mut g = got.lines();
+    let mut w = want.lines();
+    loop {
+        match (g.next(), w.next()) {
+            (None, None) => return true,
+            (Some(gl), Some(wl)) if gl == wl => continue,
+            (Some(gl), Some(wl)) => {
+                let mut gt = gl.split_whitespace();
+                let mut wt = wl.split_whitespace();
+                loop {
+                    match (gt.next(), wt.next()) {
+                        (None, None) => break,
+                        (Some(a), Some(b)) if a == b => continue,
+                        (Some(a), Some(b)) => {
+                            let num =
+                                |t: &str| t.trim_matches(|c| c == ',' || c == '"').parse::<f64>();
+                            match (num(a), num(b)) {
+                                (Ok(x), Ok(y)) if c_value_eq(x, y) => continue,
+                                _ => return false,
+                            }
+                        }
+                        _ => return false,
+                    }
+                }
+            }
+            _ => return false,
+        }
+    }
+}
+
 /// True for a KeyMap `MapSz` card line.
 ///
 /// `MapSz` records the size C's chained hash table had grown to when the

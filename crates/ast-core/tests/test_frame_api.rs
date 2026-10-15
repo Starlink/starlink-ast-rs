@@ -29,7 +29,7 @@ fn ref_pos_follows_the_c_library() {
     ];
     for ((name, (lon, lat)), &(want_name, want)) in got.iter().zip(cases::REF_POS) {
         assert_eq!(*name, want_name);
-        assert_eq!([*lon, *lat], want, "{name}");
+        crate::common::assert_c_values(&[*lon, *lat], &want, name);
     }
 }
 

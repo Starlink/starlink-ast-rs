@@ -80,7 +80,7 @@ fn mesh_uses_component_current_frames() {
         .flat_map(|i| mesh.point(i).to_vec())
         .collect();
     assert_eq!(got.len(), cases::SKY_AND_MESH.len(), "number of values");
-    assert_eq!(got, cases::SKY_AND_MESH);
+    crate::common::assert_c_values(&got, cases::SKY_AND_MESH, "mesh");
 }
 
 #[test]

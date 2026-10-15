@@ -121,7 +121,7 @@ fn convert_matches_the_c_library() {
                     Some(ulps) => got.iter().zip(&want).all(|(g, w)| {
                         within_ulps(g[0], w[0], ulps) && within_ulps(g[1], w[1], ulps)
                     }),
-                    None => got == want,
+                    None => crate::common::c_values_eq(got.as_flattened(), want.as_flattened()),
                 };
                 if !same {
                     failures.push(format!("{label}: got {got:?}, C gives {want:?}"));

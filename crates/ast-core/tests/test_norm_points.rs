@@ -89,6 +89,8 @@ fn a_circle_mesh_is_normalised_as_c_does() {
         .build()
         .unwrap();
     let mesh = rows(&circle.region_mesh().unwrap());
-    let want: Vec<Vec<f64>> = cases::CIRCLE_MESH.iter().map(|p| p.to_vec()).collect();
-    assert_eq!(mesh, want);
+    assert_eq!(mesh.len(), cases::CIRCLE_MESH.len(), "number of points");
+    for (i, (got, want)) in mesh.iter().zip(cases::CIRCLE_MESH).enumerate() {
+        crate::common::assert_c_values(got, want, &format!("point {i}"));
+    }
 }

@@ -266,7 +266,8 @@ fn compare(name: &str, expected: Result<&[&[f64]], &str>) -> Result<(), String> 
             let out = map.transform(&pts, true).unwrap();
             let got: Vec<Vec<f64>> = (0..input.len()).map(|i| out.point(i).to_vec()).collect();
             let want: Vec<Vec<f64>> = want.iter().map(|p| p.to_vec()).collect();
-            if got == want {
+            if got.len() == want.len() && crate::common::c_values_eq(&got.concat(), &want.concat())
+            {
                 Ok(())
             } else {
                 Err(format!("{name}: got {got:?}, C gives {want:?}"))

@@ -63,7 +63,11 @@ fn conversions_match_the_c_library() {
                 Ok(Some([x[0], y[0]]))
             }
         };
-        if got != want {
+        let same = match (&got, &want) {
+            (Ok(Some(g)), Ok(Some(w))) => crate::common::c_values_eq(g, w),
+            _ => got == want,
+        };
+        if !same {
             failures.push(format!(
                 "[{target}] -> [{template}]: got {got:?}, C gives {want:?}"
             ));

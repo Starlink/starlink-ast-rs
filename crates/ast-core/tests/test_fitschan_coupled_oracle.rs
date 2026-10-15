@@ -58,7 +58,7 @@ fn coupled_axes_match_c() {
         let map = MathMap::new(2, 2, &fwd, &inv).unwrap();
         let got = boxes(&map, nx, ny);
         let same = got.iter().zip(&mapbox).all(|(g, w)| match (g, w) {
-            (Some(g), Some(w)) => g.iter().zip(w).all(|(a, b)| a.to_bits() == b.to_bits()),
+            (Some(g), Some(w)) => crate::common::c_values_eq(g, w),
             (None, None) => true,
             _ => false,
         });
@@ -69,7 +69,7 @@ fn coupled_axes_match_c() {
         }
         let got = written(map, nx, ny);
         let want = (ret, cards.iter().map(|c| c.to_string()).collect::<Vec<_>>());
-        if got != want {
+        if got.0 != want.0 || !crate::common::c_text_eq(&got.1.join("\n"), &want.1.join("\n")) {
             failed.push(format!("{name}:\n--- rust\n{got:#?}\n--- C\n{want:#?}"));
         }
     }

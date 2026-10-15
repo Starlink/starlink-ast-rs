@@ -8,6 +8,9 @@
 // are for the library (`crates/ast-core/clippy.toml`).
 #![allow(clippy::disallowed_methods)]
 
+#[path = "../common/mod.rs"]
+mod common;
+
 #[path = "../test_box_axin.rs"]
 mod test_box_axin;
 #[path = "../test_box_region.rs"]

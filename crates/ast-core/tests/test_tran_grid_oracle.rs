@@ -124,12 +124,13 @@ fn grids_match_c() {
             .step_by(97)
             .flat_map(|i| out.point(i).to_vec())
             .collect();
-        assert_eq!(
-            got.iter().map(|v| v.to_bits()).collect::<Vec<_>>(),
-            sample.iter().map(|v| v.to_bits()).collect::<Vec<_>>(),
-            "{name}: sampled positions\n got {got:?}\nwant {sample:?}"
-        );
-        assert_eq!(hash(&out), want_hash, "{name}: every position");
+        crate::common::assert_c_values(&got, sample, &format!("{name}: sampled positions"));
+        // The hash pins every value bit for bit, so it is compared only on
+        // the platform the C values were captured on; elsewhere the samples,
+        // compared within libm rounding, are the check.
+        if crate::common::on_capture_platform() {
+            assert_eq!(hash(&out), want_hash, "{name}: every position");
+        }
     }
 }
 

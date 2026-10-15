@@ -150,7 +150,10 @@ fn compare_all() -> Vec<(&'static str, &'static str, bool, String)> {
                     (got.0, got.1, without_values(&got.2, keys), &got.3)
                         != (want.0, want.1, without_values(&want.2, keys), &want.3)
                 }
-                None => got != want,
+                None => {
+                    (got.0, got.1, &got.3) != (want.0, want.1, &want.3)
+                        || !crate::common::c_text_eq(&got.2.join("\n"), &want.2.join("\n"))
+                }
             };
             out.push((name, enc, differs, report));
         }

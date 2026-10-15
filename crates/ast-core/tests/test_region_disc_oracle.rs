@@ -102,7 +102,9 @@ fn region(name: &str) -> DynRegion {
 
 fn matches(name: &str, want: Result<[f64; 3], &str>) -> bool {
     match (region(name).get_region_disc(), want) {
-        (Ok((centre, radius)), Ok(want)) => [centre[0], centre[1], radius] == want,
+        (Ok((centre, radius)), Ok(want)) => {
+            crate::common::c_values_eq(&[centre[0], centre[1], radius], &want)
+        }
         (Err(e), Err(code)) => format!("{:?}", e.code()) == code,
         _ => false,
     }

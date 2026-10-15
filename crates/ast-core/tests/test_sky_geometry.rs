@@ -26,7 +26,10 @@ fn resolve_matches_the_c_library() {
     let mut failures = Vec::new();
     for &(permuted, p1, p2, p3, p4, d1, d2) in cases::RESOLVE_CASES {
         let (g4, g1, g2) = sky(permuted).resolve(&p1, &p2, &p3).unwrap();
-        if g4 != p4 || g1 != d1 || g2 != d2 {
+        if !crate::common::c_values_eq(
+            &[&g4[..], &[g1, g2]].concat(),
+            &[&p4[..], &[d1, d2]].concat(),
+        ) {
             failures.push(format!(
                 "permuted {permuted} {p1:?} {p2:?} {p3:?}: got {g4:?} {g1} {g2}, C gives {p4:?} {d1} {d2}"
             ));
@@ -75,7 +78,10 @@ fn cmp_frame_resolve_matches_the_c_library() {
     let mut failures = Vec::new();
     for &(kind, permuted, p1, p2, p3, p4, d1, d2) in cases::CMP_RESOLVE_CASES {
         let (g4, g1, g2) = cmp(kind, permuted).resolve(&p1, &p2, &p3).unwrap();
-        if g4 != p4 || g1 != d1 || g2 != d2 {
+        if !crate::common::c_values_eq(
+            &[&g4[..], &[g1, g2]].concat(),
+            &[&p4[..], &[d1, d2]].concat(),
+        ) {
             failures.push(format!(
                 "kind {kind} permuted {permuted} {p1:?} {p2:?} {p3:?}: got {g4:?} {g1} {g2}, C gives {p4:?} {d1} {d2}"
             ));
@@ -95,7 +101,7 @@ fn cmp_frame_resolve_points_matches_the_c_library() {
             .unwrap();
         for i in 0..3 {
             let (g1, g2) = (out.point(i)[0], out.point(i)[1]);
-            if g1 != d1s[i] || g2 != d2s[i] {
+            if !crate::common::c_values_eq(&[g1, g2], &[d1s[i], d2s[i]]) {
                 failures.push(format!(
                     "kind {kind} permuted {permuted} point {i}: got {g1} {g2}, C gives {} {}",
                     d1s[i], d2s[i]

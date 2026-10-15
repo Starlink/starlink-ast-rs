@@ -32,7 +32,12 @@ fn rows(ps: &PointSet) -> Vec<Vec<f64>> {
 fn check(name: &str, got: PointSet, want: &[&[f64]], failures: &mut Vec<String>) {
     let want: Vec<Vec<f64>> = want.iter().map(|r| r.to_vec()).collect();
     let got = rows(&got);
-    if got != want {
+    let same = got.len() == want.len()
+        && got
+            .iter()
+            .zip(&want)
+            .all(|(g, w)| crate::common::c_values_eq(g, w));
+    if !same {
         failures.push(format!(
             "{name}: got {} points {got:?}\nC gives {} points {want:?}",
             got.len(),

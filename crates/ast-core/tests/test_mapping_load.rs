@@ -45,11 +45,7 @@ fn loads_match_the_c_library() {
         let got: Vec<f64> = (0..out.npoint())
             .flat_map(|i| out.point(i).to_vec())
             .collect();
-        if got
-            .iter()
-            .map(|v| v.to_bits())
-            .ne(want.iter().map(|v| v.to_bits()))
-        {
+        if !crate::common::c_values_eq(&got, want) {
             failures.push(format!("{name} forward: {got:?}, C gives {want:?}"));
         }
     }

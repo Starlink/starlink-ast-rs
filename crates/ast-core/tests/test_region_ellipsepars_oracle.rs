@@ -71,6 +71,6 @@ fn ellipse_pars_match_the_c_library() {
             p.p2[0],
             p.p2[1],
         ];
-        assert_eq!(got, want, "{name}");
+        crate::common::assert_c_values(&got, &want, name);
     }
 }

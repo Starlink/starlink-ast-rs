@@ -33,6 +33,6 @@ fn meshes_match_the_c_library() {
             .flat_map(|i| mesh.point(i).to_vec())
             .collect();
         assert_eq!(got.len(), want.len(), "{name}: number of values");
-        assert_eq!(got, want, "{name}");
+        crate::common::assert_c_values(&got, want, name);
     }
 }

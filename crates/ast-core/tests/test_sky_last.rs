@@ -86,7 +86,7 @@ fn cached_last_follows_the_c_library() {
     let failures: Vec<String> = got
         .iter()
         .zip(cases::STEPS)
-        .filter(|(g, w)| g.1 != w.1)
+        .filter(|(g, w)| !crate::common::c_values_eq(g.1.as_flattened(), w.1.as_flattened()))
         .map(|(g, w)| format!("{}: got {:?}, C gives {:?}", g.0, g.1, w.1))
         .collect();
     assert!(failures.is_empty(), "{}", failures.join("\n"));

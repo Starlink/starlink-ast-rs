@@ -40,10 +40,10 @@ fn check(cvt: Option<FrameSet>, case: cases::Case, what: &str) {
     for (forward, want) in [(true, fwd), (false, inv)] {
         let got = cvt.transform(&pts, forward).unwrap();
         for (i, w) in want.iter().enumerate() {
-            assert_eq!(
+            crate::common::assert_c_values(
                 got.point(i),
                 w.as_slice(),
-                "{what}: forward={forward} point {i}"
+                &format!("{what}: forward={forward} point {i}"),
             );
         }
     }

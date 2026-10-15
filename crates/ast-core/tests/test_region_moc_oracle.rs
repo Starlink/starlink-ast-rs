@@ -87,7 +87,7 @@ fn grid() -> PointSet {
 fn assert_points(got: &PointSet, want: &[[f64; 2]], what: &str) {
     assert_eq!(got.npoint(), want.len(), "{what}: count");
     for (i, w) in want.iter().enumerate() {
-        assert_eq!(got.point(i), w.as_slice(), "{what}: point {i}");
+        crate::common::assert_c_values(got.point(i), w.as_slice(), &format!("{what}: point {i}"));
     }
 }
 

@@ -189,8 +189,12 @@ fn rebinning_matches_c() {
             && samples
                 .iter()
                 .zip(want_samples)
-                .all(|(a, b)| a.to_bits() == b.to_bits());
-        if status != want_status || hash != want_hash || !same_samples {
+                .all(|(a, b)| a.to_bits() == b.to_bits() || crate::common::c_value_eq(*a, *b));
+        // The hash pins every value bit for bit, so it is compared only on
+        // the platform the C values were captured on; elsewhere the samples,
+        // compared within libm rounding, are the check.
+        let hash_differs = crate::common::on_capture_platform() && hash != want_hash;
+        if status != want_status || hash_differs || !same_samples {
             failures.push(format!(
                 "{name} {ty}: status {status} want {want_status}; hash {}; samples\n  got  \
                  {samples:?}\n  want {want_samples:?}",

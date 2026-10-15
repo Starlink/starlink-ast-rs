@@ -155,12 +155,12 @@ fn dump(region: &dyn Region) -> String {
 fn stc_matches_c() {
     for &(name, want, _, points, bounded) in cases::CASES {
         let stc = built(name);
-        assert_eq!(dump(stc.as_ref()), want, "{name}: dump");
+        crate::common::assert_c_text(&dump(stc.as_ref()), want, &format!("{name}: dump"));
 
         let input = PointSet::from_rows(points.iter().map(|p| &p[..2]));
         let out = stc.transform(&input, true).unwrap();
         for (i, p) in points.iter().enumerate() {
-            assert_eq!(out.point(i), &p[2..], "{name}: point {i}");
+            crate::common::assert_c_values(out.point(i), &p[2..], &format!("{name}: point {i}"));
         }
         assert_eq!(stc.is_bounded().unwrap(), bounded, "{name}: bounded");
     }
@@ -174,7 +174,7 @@ fn full_dumps_match_c() {
         let mut ch = NativeChannel::with_string_sink();
         ch.config_mut().set_full(1);
         ch.write(&object).unwrap();
-        assert_eq!(ch.into_string(), want, "{name}");
+        crate::common::assert_c_text(&ch.into_string(), want, name);
     }
 }
 
@@ -216,7 +216,7 @@ fn astro_coords_match_c() {
     assert_eq!(stc.get_stc_n_coord() as i32, cases::SKY_NCOORD);
     let coord = stc.get_stc_coord(1).unwrap();
     let got = to_native_string(&AnyObject::KeyMap(Box::new(coord))).unwrap();
-    assert_eq!(got, cases::SKY_COORD);
+    crate::common::assert_c_text(&got, cases::SKY_COORD, "sky coord");
     assert_eq!(stc.region_class(), "Circle");
 
     let err = stc.get_stc_coord(2).unwrap_err();

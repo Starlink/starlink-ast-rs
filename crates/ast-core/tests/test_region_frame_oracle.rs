@@ -26,20 +26,21 @@ fn circle() -> Circle {
 fn offset2_and_resolve_are_spherical() {
     let c = circle();
     let (point, angle) = c.offset2(&cases::CENTRE, 1.0, 0.5).unwrap();
-    assert_eq!([point[0], point[1], angle], cases::OFFSET2);
+    crate::common::assert_c_values(&[point[0], point[1], angle], &cases::OFFSET2, "offset2");
     let (point, d1, d2) = c.resolve(&cases::CENTRE, &[1.5, 1.2], &[1.2, 1.3]).unwrap();
-    assert_eq!([point[0], point[1], d1, d2], cases::RESOLVE);
+    crate::common::assert_c_values(&[point[0], point[1], d1, d2], &cases::RESOLVE, "resolve");
 }
 
 #[test]
 fn axis_distance_and_offset_wrap_longitude() {
     let c = circle();
-    assert_eq!(
-        [
+    crate::common::assert_c_values(
+        &[
             c.ax_distance(1, 0.1, 6.2).unwrap(),
-            c.ax_offset(1, 6.2, 0.2).unwrap()
+            c.ax_offset(1, 6.2, 0.2).unwrap(),
         ],
-        cases::AX_DISTANCE_OFFSET
+        &cases::AX_DISTANCE_OFFSET,
+        "ax_distance, ax_offset",
     );
 }
 
