@@ -6,7 +6,10 @@
 //!
 //! To find where a counted call comes from, set `AST_COUNT_BACKTRACE` to its
 //! name (for example `pow` or `astPalDsep`): the first such call on each
-//! thread after a `reset` prints a backtrace to stderr.
+//! thread after a `reset` prints a backtrace to stderr. Set
+//! `AST_COUNT_TRACE_ALL` to a name instead to print, for every such call after
+//! a `reset`, one line naming the `ast_core` functions on the stack, which
+//! `sort | uniq -c` turns into a count per call path.
 
 #[cfg(feature = "call-counts")]
 mod imp {
@@ -25,8 +28,30 @@ mod imp {
     static TRACE: std::sync::LazyLock<Option<String>> =
         std::sync::LazyLock::new(|| std::env::var("AST_COUNT_BACKTRACE").ok());
 
+    /// The name `AST_COUNT_TRACE_ALL` asks to trace at every call, read once.
+    static TRACE_ALL: std::sync::LazyLock<Option<String>> =
+        std::sync::LazyLock::new(|| std::env::var("AST_COUNT_TRACE_ALL").ok());
+
+    /// The `ast_core` functions on the current stack, innermost first,
+    /// leaving out this module and `math`.
+    fn call_path() -> String {
+        let bt = std::backtrace::Backtrace::force_capture().to_string();
+        bt.lines()
+            .filter_map(|l| {
+                let l = l.trim();
+                let f = l.split_once(": ")?.1;
+                (f.contains("ast_core::") && !f.contains("call_counts") && !f.contains("::math::"))
+                    .then(|| f.replace("ast_core::", ""))
+            })
+            .collect::<Vec<_>>()
+            .join(" < ")
+    }
+
     pub(crate) fn hit(name: &'static str) {
         COUNTS.with(|c| *c.borrow_mut().entry(name).or_default() += 1);
+        if TRACE_ALL.as_deref() == Some(name) && !TRACED.with(|t| t.get()) {
+            eprintln!("{name}: {}", call_path());
+        }
         if TRACE.as_deref() == Some(name) && !TRACED.with(|t| t.replace(true)) {
             eprintln!(
                 "first call to {name}:\n{}",
