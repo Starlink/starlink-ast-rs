@@ -296,12 +296,17 @@ impl Circle {
 // ============================================================================
 
 impl Circle {
-    /// Compute the radius of this Circle by measuring the geodesic distance
-    /// between the centre (points[0]) and the edge point (points[1]) in the
-    /// base frame.
+    /// The radius of this Circle: the geodesic distance between the centre
+    /// (points[0]) and the edge point (points[1]) in the base frame. Measured
+    /// once and kept until the Circle changes, as circle.c `Cache` keeps it.
     fn radius(&self) -> AstResult<f64> {
+        if let Some(super::data::ClassCache::Circle { radius }) = *self.data.class_cache.borrow() {
+            return Ok(radius);
+        }
         let base_frame = self.data.frameset.base();
-        base_frame.distance(&self.data.points[0], &self.data.points[1])
+        let radius = base_frame.distance(&self.data.points[0], &self.data.points[1])?;
+        *self.data.class_cache.borrow_mut() = Some(super::data::ClassCache::Circle { radius });
+        Ok(radius)
     }
 
     /// Build the base-Frame boundary mesh and, alongside it, the bounding box
@@ -443,6 +448,8 @@ impl RegionGeometry for Circle {
     }
 
     fn region_data_mut(&mut self) -> &mut RegionData {
+        // Whatever the caller changes may change the cached radius.
+        self.data.invalidate_cache();
         &mut self.data
     }
 
@@ -787,6 +794,7 @@ impl Region for Circle {
     }
 
     fn region_frameset_mut(&mut self) -> &mut FrameSet {
+        self.data.invalidate_cache();
         &mut self.data.frameset
     }
 

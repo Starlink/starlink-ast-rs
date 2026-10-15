@@ -159,6 +159,16 @@ pub(crate) enum ClassCache {
         /// and Closed, which the base-Frame tests hand their work to.
         base_box: Option<Box<super::BoxRegion>>,
     },
+    /// circle.c `Cache`: the radius, measured from the centre to the
+    /// circumference point in the base Frame.
+    Circle { radius: f64 },
+    /// polygon.c `Cache`: each edge's line description, a point inside the
+    /// Polygon, and whether the vertices run anti-clockwise.
+    Polygon {
+        edges: Vec<crate::frames::LineDef>,
+        inside: [f64; 2],
+        acw: bool,
+    },
 }
 
 impl Clone for RegionData {

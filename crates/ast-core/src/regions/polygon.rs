@@ -1367,6 +1367,22 @@ impl Polygon {
     /// retained point lies outside (the probes ran off to the infinite exterior
     /// of a polygonal hole). Returns `(edges, inside_point, acw)`.
     fn cache(&self) -> AstResult<(Vec<LineDef>, [f64; 2], bool)> {
+        // Kept until the Polygon changes, as C keeps it under `stale`.
+        if let Some(super::data::ClassCache::Polygon { edges, inside, acw }) =
+            &*self.data.class_cache.borrow()
+        {
+            return Ok((edges.clone(), *inside, *acw));
+        }
+        let (edges, inside, acw) = self.compute_cache()?;
+        *self.data.class_cache.borrow_mut() = Some(super::data::ClassCache::Polygon {
+            edges: edges.clone(),
+            inside,
+            acw,
+        });
+        Ok((edges, inside, acw))
+    }
+
+    fn compute_cache(&self) -> AstResult<(Vec<LineDef>, [f64; 2], bool)> {
         let bfrm = self.data.frameset.base();
         let ptr = &self.data.points;
         let nv = ptr.len();
@@ -1500,6 +1516,8 @@ impl RegionGeometry for Polygon {
     }
 
     fn region_data_mut(&mut self) -> &mut RegionData {
+        // Whatever the caller changes may change what `cache` derives.
+        self.data.invalidate_cache();
         &mut self.data
     }
 
@@ -1893,6 +1911,7 @@ impl Region for Polygon {
     }
 
     fn region_frameset_mut(&mut self) -> &mut FrameSet {
+        self.data.invalidate_cache();
         &mut self.data.frameset
     }
 
