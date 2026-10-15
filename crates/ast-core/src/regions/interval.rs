@@ -976,6 +976,10 @@ impl Region for Interval {
         Some(&self.data.def_unc)
     }
 
+    fn explicit_unc(&self) -> Option<&DynRegion> {
+        self.data.uncertainty.as_ref()
+    }
+
     fn point_in_region(&self, point: &[f64]) -> AstResult<bool> {
         // Check for BAD coordinates in the input.
         if point_has_bad(point) {

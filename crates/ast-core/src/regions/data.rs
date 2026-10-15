@@ -362,6 +362,22 @@ impl RegionData {
         self.fill_factor_set = false;
     }
 
+    /// The base-Frame boundary mesh: built by `build` on first use and kept
+    /// until the Region changes, as the classes whose `RegBaseMesh` keeps it
+    /// in `basemesh` do (box.c, circle.c, ellipse.c, pointlist.c, prism.c,
+    /// cmpregion.c).
+    pub(crate) fn cached_mesh(
+        &self,
+        build: impl FnOnce() -> AstResult<Vec<Vec<f64>>>,
+    ) -> AstResult<Vec<Vec<f64>>> {
+        if let Some(mesh) = self.cached_base_mesh.borrow().as_ref() {
+            return Ok(mesh.clone());
+        }
+        let mesh = build()?;
+        *self.cached_base_mesh.borrow_mut() = Some(mesh.clone());
+        Ok(mesh)
+    }
+
     /// Invalidate the cached mesh, class values and default uncertainty
     /// (call after geometry changes).
     pub(crate) fn invalidate_cache(&self) {

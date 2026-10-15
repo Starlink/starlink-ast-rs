@@ -150,6 +150,10 @@ impl Region for NullRegion {
         Some(&self.data.def_unc)
     }
 
+    fn explicit_unc(&self) -> Option<&DynRegion> {
+        self.data.uncertainty.as_ref()
+    }
+
     fn point_in_region(&self, point: &[f64]) -> AstResult<bool> {
         // A point is inside when `transform` leaves it good: an un-negated
         // NullRegion contains nothing, and a negated one passes every point

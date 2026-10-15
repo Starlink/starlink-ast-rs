@@ -2842,6 +2842,10 @@ impl Region for Moc {
         Some(&self.data.def_unc)
     }
 
+    fn explicit_unc(&self) -> Option<&DynRegion> {
+        self.data.uncertainty.as_ref()
+    }
+
     fn point_in_region(&self, point: &[f64]) -> AstResult<bool> {
         let pts = PointSet::from_rows(std::iter::once(point));
         let out = Mapping::transform(self, &pts, true)?;

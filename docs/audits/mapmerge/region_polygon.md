@@ -17,27 +17,27 @@ re-fitted — the vertices go where the Mapping sends them — so the checks C m
 before adopting the result are the only thing standing between a transformed
 polygon and a wrong one.
 
-`Polygon::simplified` (`polygon.rs:2140-2239 (fn simplified)`) is the port of it.
+`Polygon::simplified` (`polygon.rs:2144-2243 (fn simplified)`) is the port of it.
 
 | # | C step | C site | Rust site | extension point | verdict |
 |---|---|---|---|---|---|
 | 1 | Initialise the result and check the global error status | polygon.c:5357-5361 (fn Simplify) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 2 | Obtain a pointer to the supplied Region structure | polygon.c:5363-5364 (fn Simplify) | -- | ceremony | n/a: the Rust method already has `&self` |
-| 3 | Invoke the parent Region Simplify, which simplifies the encapsulated FrameSet and the uncertainty | polygon.c:5366-5368 (fn Simplify) | polygon.rs:2140-2153 (fn simplified) | architecture | ported |
-| 4 | Note that simplification took place if the parent returned a different pointer | polygon.c:5370-5373 (fn Simplify) | polygon.rs:2154 (fn simplified) | architecture | ported |
-| 5 | Re-express the vertices only when the base-to-current Mapping is not a UnitMap and has two outputs | polygon.c:5375-5383 (fn Simplify) | polygon.rs:2172-2181 (fn simplified) | architecture | ported |
-| 6 | Get the Frame the Polygon represents | polygon.c:5385-5386 (fn Simplify) | polygon.rs:2179 (fn simplified) | architecture | ported |
-| 7 | Get the uncertainty Region in that Frame | polygon.c:5388-5389 (fn Simplify) | polygon.rs:2183 (fn simplified) | architecture | ported |
-| 8 | Transform the vertices into that Frame | polygon.c:5391-5393 (fn Simplify) | polygon.rs:2188-2193 (fn simplified) | architecture | ported |
-| 9 | Get the number of vertices | polygon.c:5395-5396 (fn Simplify) | polygon.rs:2195 (fn simplified) | architecture | ported |
-| 10 | Re-organise the vertex axis values into the order the Polygon constructor wants | polygon.c:5398-5411 (fn Simplify) | polygon.rs:2195-2205 (fn simplified) | ceremony | n/a: the Rust constructor takes a slice per vertex, so there is no axis-major buffer to build |
-| 11 | Clear `ok` if any transformed vertex value is `AST__BAD` | polygon.c:5402-5411 (fn Simplify) | polygon.rs:2196-2205 (fn simplified) | architecture | ported |
-| 12 | Build the new Polygon from the transformed vertices, only if `ok` | polygon.c:5413-5415 (fn Simplify) | polygon.rs:2212-2217 (fn simplified) | architecture | ported |
-| 13 | When `SimpVertices` is zero, mesh the original Polygon and require every mesh point to lie on the new Polygon's boundary, annulling the new Polygon otherwise | polygon.c:5417-5434 (fn Simplify) | polygon.rs:2225-2232 (fn simplified) | architecture | ported |
-| 14 | If a new Polygon survives, use it in place of the original and record a simplification | polygon.c:5436-5442 (fn Simplify) | polygon.rs:2234-2238 (fn simplified) | architecture | ported |
+| 3 | Invoke the parent Region Simplify, which simplifies the encapsulated FrameSet and the uncertainty | polygon.c:5366-5368 (fn Simplify) | polygon.rs:2144-2157 (fn simplified) | architecture | ported |
+| 4 | Note that simplification took place if the parent returned a different pointer | polygon.c:5370-5373 (fn Simplify) | polygon.rs:2158 (fn simplified) | architecture | ported |
+| 5 | Re-express the vertices only when the base-to-current Mapping is not a UnitMap and has two outputs | polygon.c:5375-5383 (fn Simplify) | polygon.rs:2176-2185 (fn simplified) | architecture | ported |
+| 6 | Get the Frame the Polygon represents | polygon.c:5385-5386 (fn Simplify) | polygon.rs:2183 (fn simplified) | architecture | ported |
+| 7 | Get the uncertainty Region in that Frame | polygon.c:5388-5389 (fn Simplify) | polygon.rs:2187 (fn simplified) | architecture | ported |
+| 8 | Transform the vertices into that Frame | polygon.c:5391-5393 (fn Simplify) | polygon.rs:2192-2197 (fn simplified) | architecture | ported |
+| 9 | Get the number of vertices | polygon.c:5395-5396 (fn Simplify) | polygon.rs:2199 (fn simplified) | architecture | ported |
+| 10 | Re-organise the vertex axis values into the order the Polygon constructor wants | polygon.c:5398-5411 (fn Simplify) | polygon.rs:2199-2209 (fn simplified) | ceremony | n/a: the Rust constructor takes a slice per vertex, so there is no axis-major buffer to build |
+| 11 | Clear `ok` if any transformed vertex value is `AST__BAD` | polygon.c:5402-5411 (fn Simplify) | polygon.rs:2200-2209 (fn simplified) | architecture | ported |
+| 12 | Build the new Polygon from the transformed vertices, only if `ok` | polygon.c:5413-5415 (fn Simplify) | polygon.rs:2216-2221 (fn simplified) | architecture | ported |
+| 13 | When `SimpVertices` is zero, mesh the original Polygon and require every mesh point to lie on the new Polygon's boundary, annulling the new Polygon otherwise | polygon.c:5417-5434 (fn Simplify) | polygon.rs:2229-2236 (fn simplified) | architecture | ported |
+| 14 | If a new Polygon survives, use it in place of the original and record a simplification | polygon.c:5436-5442 (fn Simplify) | polygon.rs:2238-2242 (fn simplified) | architecture | ported |
 | 15 | Free the Frame, the uncertainty, the transformed points, the vertex buffer and the Mapping | polygon.c:5446-5452 (fn Simplify) | -- | ceremony | n/a: owned values are dropped |
-| 16 | On simplification, overlay the supplied Region's attributes onto the result and return it | polygon.c:5454-5460 (fn Simplify) | polygon.rs:2236-2238 (fn simplified) | architecture | ported |
-| 17 | Otherwise return the supplied Region unchanged | polygon.c:5462-5465 (fn Simplify) | polygon.rs:2159-2166 (fn simplified) | architecture | ported |
+| 16 | On simplification, overlay the supplied Region's attributes onto the result and return it | polygon.c:5454-5460 (fn Simplify) | polygon.rs:2240-2242 (fn simplified) | architecture | ported |
+| 17 | Otherwise return the supplied Region unchanged | polygon.c:5462-5465 (fn Simplify) | polygon.rs:2163-2170 (fn simplified) | architecture | ported |
 | 18 | Annul the returned pointer if an error occurred, then return | polygon.c:5467-5472 (fn Simplify) | -- | ceremony | n/a: an error is a `Result::Err`, not a value to be cleared alongside one |
 
 ## Rows 7, 11, 12 and 13 — the guards C makes before adopting the result
@@ -79,7 +79,7 @@ sentinel), so row 13's check is skipped unless a fixture clears it.
 
 ## Row 12 — the winding order is restored, as the C constructor does
 
-`polygon.rs:2217 (fn simplified)` calls `ensure_inside` after building the new Polygon.
+`polygon.rs:2221 (fn simplified)` calls `ensure_inside` after building the new Polygon.
 That is not an addition: C's own constructor calls `EnsureInside` at
 `polygon.c:7165 (fn astInitPolygon_)`, inside `astInitPolygon_`, so every `astPolygon( … )` — including
 the one at `polygon.c:5415 (fn Simplify)` — already normalises the vertex order so the

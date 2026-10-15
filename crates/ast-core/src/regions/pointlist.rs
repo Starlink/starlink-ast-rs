@@ -255,9 +255,11 @@ impl RegionGeometry for PointList {
     }
 
     fn reg_base_mesh(&self) -> AstResult<Vec<Vec<f64>>> {
-        // For a PointList, the "mesh" (boundary) is just the defining
-        // points themselves — they ARE the region boundary.
-        Ok(self.data.points.clone())
+        self.data.cached_mesh(|| {
+            // For a PointList, the "mesh" (boundary) is just the defining
+            // points themselves — they ARE the region boundary.
+            Ok(self.data.points.clone())
+        })
     }
 
     /// PointList inherits region.c `GetBounded`: bounded unless negated, or
@@ -289,6 +291,10 @@ impl RegionGeometry for PointList {
 impl Region for PointList {
     fn def_unc_cache(&self) -> Option<&std::cell::RefCell<Option<DynRegion>>> {
         Some(&self.data.def_unc)
+    }
+
+    fn explicit_unc(&self) -> Option<&DynRegion> {
+        self.data.uncertainty.as_ref()
     }
 
     fn point_in_region(&self, point: &[f64]) -> AstResult<bool> {

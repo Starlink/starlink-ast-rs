@@ -516,7 +516,7 @@ impl RegionGeometry for Circle {
     }
 
     fn reg_base_mesh(&self) -> AstResult<Vec<Vec<f64>>> {
-        Ok(self.base_mesh_bounds()?.mesh)
+        self.data.cached_mesh(|| Ok(self.base_mesh_bounds()?.mesh))
     }
 
     fn is_bounded_inner(&self) -> AstResult<bool> {
@@ -547,6 +547,10 @@ impl RegionGeometry for Circle {
 impl Region for Circle {
     fn def_unc_cache(&self) -> Option<&std::cell::RefCell<Option<DynRegion>>> {
         Some(&self.data.def_unc)
+    }
+
+    fn explicit_unc(&self) -> Option<&DynRegion> {
+        self.data.uncertainty.as_ref()
     }
 
     fn point_in_region(&self, point: &[f64]) -> AstResult<bool> {

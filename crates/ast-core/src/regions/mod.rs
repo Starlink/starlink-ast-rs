@@ -847,6 +847,13 @@ pub trait Region: Frame + Mapping + AsDynRegion {
         self.default_bounding_box_unc()
     }
 
+    /// The uncertainty Region this Region holds, if it holds one, by
+    /// reference.
+    #[doc(hidden)]
+    fn explicit_unc(&self) -> Option<&DynRegion> {
+        None
+    }
+
     /// Where this Region keeps its default uncertainty once built (C's
     /// `defunc`), if it keeps one.
     #[doc(hidden)]
@@ -862,7 +869,17 @@ pub trait Region: Frame + Mapping + AsDynRegion {
     /// base Frame) is returned directly; for [`FrameRef::Current`] it is
     /// mapped through the base→current Mapping unless that is a `UnitMap`.
     fn get_unc_frm(&self, ifrm: FrameRef) -> AstResult<DynRegion> {
-        let unc = match (self.get_uncertainty(), self.def_unc_cache()) {
+        let explicit = match self.explicit_unc() {
+            // Work out the stored Region's bounds on the stored Region itself,
+            // once, so the copy handed out carries them (C's callers share
+            // the one Region and its cache).
+            Some(u) => {
+                u.get_region_bounds()?;
+                Some(u.clone())
+            }
+            None => self.get_uncertainty(),
+        };
+        let unc = match (explicit, self.def_unc_cache()) {
             (Some(u), _) => u,
             // Built once and kept, as C keeps `defunc` (region.c:4006).
             (None, Some(slot)) => {

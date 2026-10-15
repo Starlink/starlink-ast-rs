@@ -911,142 +911,144 @@ impl RegionGeometry for BoxRegion {
     /// N-D Box has a grid of points on each of its faces, the upper face of
     /// each axis first.
     fn reg_base_mesh(&self) -> AstResult<Vec<Vec<f64>>> {
-        /// Points for measuring an edge.
-        const NP_EDGE: usize = 50;
+        self.data.cached_mesh(|| {
+            /// Points for measuring an edge.
+            const NP_EDGE: usize = 50;
 
-        let naxes = self.data.points[0].len();
-        let (lbnd, ubnd) = self.bounds()?;
-        let mut np = self.data.effective_mesh_size();
-        let frm = self.data.frameset.base();
+            let naxes = self.data.points[0].len();
+            let (lbnd, ubnd) = self.bounds()?;
+            let mut np = self.data.effective_mesh_size();
+            let frm = self.data.frameset.base();
 
-        if (0..naxes).all(|i| ubnd[i] <= lbnd[i]) {
-            return Ok(vec![
-                (0..naxes).map(|i| 0.5 * (lbnd[i] + ubnd[i])).collect(),
-            ]);
-        }
-        if naxes == 1 {
-            return Ok(vec![vec![lbnd[0]], vec![ubnd[0]]]);
-        }
+            if (0..naxes).all(|i| ubnd[i] <= lbnd[i]) {
+                return Ok(vec![
+                    (0..naxes).map(|i| 0.5 * (lbnd[i] + ubnd[i])).collect(),
+                ]);
+            }
+            if naxes == 1 {
+                return Ok(vec![vec![lbnd[0]], vec![ubnd[0]]]);
+            }
 
-        if naxes == 2 {
-            let c = [
-                [lbnd[0], lbnd[1]],
-                [lbnd[0], ubnd[1]],
-                [ubnd[0], ubnd[1]],
-                [ubnd[0], lbnd[1]],
-                [lbnd[0], lbnd[1]],
-            ];
-            let (pfrm0, _) = frm.primary_frame(0);
-            let (pfrm1, _) = frm.primary_frame(1);
-            let simple =
-                |f: &dyn Frame| f.as_any().is::<crate::frames::BasicFrame>() || f.naxes() == 1;
-            let flat = simple(pfrm0) && simple(pfrm1);
-            let same_primary = std::ptr::eq(
-                pfrm0 as *const dyn Frame as *const u8,
-                pfrm1 as *const dyn Frame as *const u8,
-            );
-            let metric = frm.unit(1)? == frm.unit(2)? || same_primary;
+            if naxes == 2 {
+                let c = [
+                    [lbnd[0], lbnd[1]],
+                    [lbnd[0], ubnd[1]],
+                    [ubnd[0], ubnd[1]],
+                    [ubnd[0], lbnd[1]],
+                    [lbnd[0], lbnd[1]],
+                ];
+                let (pfrm0, _) = frm.primary_frame(0);
+                let (pfrm1, _) = frm.primary_frame(1);
+                let simple =
+                    |f: &dyn Frame| f.as_any().is::<crate::frames::BasicFrame>() || f.naxes() == 1;
+                let flat = simple(pfrm0) && simple(pfrm1);
+                let same_primary = std::ptr::eq(
+                    pfrm0 as *const dyn Frame as *const u8,
+                    pfrm1 as *const dyn Frame as *const u8,
+                );
+                let metric = frm.unit(1)? == frm.unit(2)? || same_primary;
 
-            let mut np_edge = [0usize; 4];
-            if metric {
-                let mut edge_len = [0.0f64; 4];
-                let mut total_len = 0.0;
-                for iedge in 0..4 {
-                    let dx = (c[iedge + 1][0] - c[iedge][0]) / (NP_EDGE - 1) as f64;
-                    let dy = (c[iedge + 1][1] - c[iedge][1]) / (NP_EDGE - 1) as f64;
-                    let mut p0 = c[iedge];
-                    let mut len = 0.0;
-                    for _ in 1..NP_EDGE {
-                        let p1 = p0;
-                        p0 = [p1[0] + dx, p1[1] + dy];
-                        len += if flat {
-                            (dx + dy).abs()
-                        } else {
-                            frm.distance(&p0, &p1)?
-                        };
-                    }
-                    edge_len[iedge] = len;
-                    total_len += len;
-                }
-                if total_len > 0.0 {
-                    let ppd = np as f64 / total_len;
-                    np = 0;
+                let mut np_edge = [0usize; 4];
+                if metric {
+                    let mut edge_len = [0.0f64; 4];
+                    let mut total_len = 0.0;
                     for iedge in 0..4 {
-                        np_edge[iedge] = ((edge_len[iedge] * ppd) as usize).max(1);
-                        np += np_edge[iedge];
+                        let dx = (c[iedge + 1][0] - c[iedge][0]) / (NP_EDGE - 1) as f64;
+                        let dy = (c[iedge + 1][1] - c[iedge][1]) / (NP_EDGE - 1) as f64;
+                        let mut p0 = c[iedge];
+                        let mut len = 0.0;
+                        for _ in 1..NP_EDGE {
+                            let p1 = p0;
+                            p0 = [p1[0] + dx, p1[1] + dy];
+                            len += if flat {
+                                (dx + dy).abs()
+                            } else {
+                                frm.distance(&p0, &p1)?
+                            };
+                        }
+                        edge_len[iedge] = len;
+                        total_len += len;
+                    }
+                    if total_len > 0.0 {
+                        let ppd = np as f64 / total_len;
+                        np = 0;
+                        for iedge in 0..4 {
+                            np_edge[iedge] = ((edge_len[iedge] * ppd) as usize).max(1);
+                            np += np_edge[iedge];
+                        }
+                    } else {
+                        return Err(AstError::new(
+                            ErrorCode::Inter,
+                            "astRegBaseMesh(Box): Distance around box perimeter is zero \
+                         (internal AST programming error).",
+                        ));
                     }
                 } else {
-                    return Err(AstError::new(
-                        ErrorCode::Inter,
-                        "astRegBaseMesh(Box): Distance around box perimeter is zero \
-                         (internal AST programming error).",
-                    ));
+                    let np0 = (0.25 * np as f64) as usize;
+                    np_edge = [np0; 4];
+                    np = 4 * np0;
                 }
-            } else {
-                let np0 = (0.25 * np as f64) as usize;
-                np_edge = [np0; 4];
-                np = 4 * np0;
-            }
 
-            let mut mesh = Vec::with_capacity(np);
-            for iedge in 0..4 {
-                let n = np_edge[iedge] as f64;
-                let dx = (c[iedge + 1][0] - c[iedge][0]) / n;
-                let dy = (c[iedge + 1][1] - c[iedge][1]) / n;
-                let (mut lax, mut lay) = (c[iedge][0], c[iedge][1]);
-                mesh.push(vec![lax, lay]);
-                for _ in 1..np_edge[iedge] {
-                    lax += dx;
-                    lay += dy;
+                let mut mesh = Vec::with_capacity(np);
+                for iedge in 0..4 {
+                    let n = np_edge[iedge] as f64;
+                    let dx = (c[iedge + 1][0] - c[iedge][0]) / n;
+                    let dy = (c[iedge + 1][1] - c[iedge][1]) / n;
+                    let (mut lax, mut lay) = (c[iedge][0], c[iedge][1]);
                     mesh.push(vec![lax, lay]);
+                    for _ in 1..np_edge[iedge] {
+                        lax += dx;
+                        lay += dy;
+                        mesh.push(vec![lax, lay]);
+                    }
                 }
+                return Ok(mesh);
             }
-            return Ok(mesh);
-        }
 
-        // N-D: a grid on each face, the upper then the lower face of each
-        // axis in turn (box.c `MakeGrid`).
-        let np_axis =
-            (1 + crate::math::powf(np as f64 / (2 * naxes) as f64, 1.0 / (naxes - 1) as f64)
-                as usize)
-                .max(2);
-        let step: Vec<f64> = (0..naxes)
-            .map(|i| (ubnd[i] - lbnd[i]) / (np_axis - 1) as f64)
-            .collect();
-        let mut mesh = Vec::new();
-        for iaxis in 0..naxes {
-            for axval in [ubnd[iaxis], lbnd[iaxis]] {
-                let mut pi = vec![0usize; naxes];
-                loop {
-                    mesh.push(
-                        (0..naxes)
-                            .map(|i| {
-                                if i == iaxis {
-                                    axval
-                                } else {
-                                    lbnd[i] + pi[i] as f64 * step[i]
-                                }
-                            })
-                            .collect(),
-                    );
-                    let mut i = 0;
-                    while i < naxes {
-                        let maxi = if i == iaxis { 0 } else { np_axis - 1 };
-                        pi[i] += 1;
-                        if pi[i] > maxi {
-                            pi[i] = 0;
-                            i += 1;
-                        } else {
+            // N-D: a grid on each face, the upper then the lower face of each
+            // axis in turn (box.c `MakeGrid`).
+            let np_axis =
+                (1 + crate::math::powf(np as f64 / (2 * naxes) as f64, 1.0 / (naxes - 1) as f64)
+                    as usize)
+                    .max(2);
+            let step: Vec<f64> = (0..naxes)
+                .map(|i| (ubnd[i] - lbnd[i]) / (np_axis - 1) as f64)
+                .collect();
+            let mut mesh = Vec::new();
+            for iaxis in 0..naxes {
+                for axval in [ubnd[iaxis], lbnd[iaxis]] {
+                    let mut pi = vec![0usize; naxes];
+                    loop {
+                        mesh.push(
+                            (0..naxes)
+                                .map(|i| {
+                                    if i == iaxis {
+                                        axval
+                                    } else {
+                                        lbnd[i] + pi[i] as f64 * step[i]
+                                    }
+                                })
+                                .collect(),
+                        );
+                        let mut i = 0;
+                        while i < naxes {
+                            let maxi = if i == iaxis { 0 } else { np_axis - 1 };
+                            pi[i] += 1;
+                            if pi[i] > maxi {
+                                pi[i] = 0;
+                                i += 1;
+                            } else {
+                                break;
+                            }
+                        }
+                        if i == naxes {
                             break;
                         }
                     }
-                    if i == naxes {
-                        break;
-                    }
                 }
             }
-        }
-        Ok(mesh)
+            Ok(mesh)
+        })
     }
 
     fn is_bounded_inner(&self) -> AstResult<bool> {
@@ -1080,6 +1082,10 @@ impl RegionGeometry for BoxRegion {
 impl Region for BoxRegion {
     fn def_unc_cache(&self) -> Option<&std::cell::RefCell<Option<DynRegion>>> {
         Some(&self.data.def_unc)
+    }
+
+    fn explicit_unc(&self) -> Option<&DynRegion> {
+        self.data.uncertainty.as_ref()
     }
 
     fn point_in_region(&self, point: &[f64]) -> AstResult<bool> {

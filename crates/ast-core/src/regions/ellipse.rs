@@ -678,32 +678,34 @@ impl RegionGeometry for Ellipse {
     }
 
     fn reg_base_mesh(&self) -> AstResult<Vec<Vec<f64>>> {
-        let centre = &self.data.points[0];
-        let frm = self.data.frameset.base();
-        let np = self.data.effective_mesh_size();
+        self.data.cached_mesh(|| {
+            let centre = &self.data.points[0];
+            let frm = self.data.frameset.base();
+            let np = self.data.effective_mesh_size();
 
-        // Ellipse parameters in the geodesic convention used by the mesh
-        // (CalcPars, ellipse.c:697): the angle is measured from the positive
-        // direction of axis 2 to the primary ellipse axis.
-        let (a, b, angle) = self.cache()?;
+            // Ellipse parameters in the geodesic convention used by the mesh
+            // (CalcPars, ellipse.c:697): the angle is measured from the positive
+            // direction of axis 2 to the primary ellipse axis.
+            let (a, b, angle) = self.cache()?;
 
-        let delta = 2.0 * PI / np as f64;
-        let mut mesh = Vec::with_capacity(np);
+            let delta = 2.0 * PI / np as f64;
+            let mut mesh = Vec::with_capacity(np);
 
-        // The parametric angle phi runs from axis 2 toward axis 1. For each
-        // point, move a geodesic distance dx along the primary axis, then a
-        // distance dy at right angles to it (ellipse.c:1115).
-        let mut phi = 0.0_f64;
-        for _ in 0..np {
-            let dx = a * crate::math::cos(phi);
-            let dy = b * crate::math::sin(phi);
-            let (p, dir) = frm.offset2(centre, angle, dx)?;
-            let (p2, _) = frm.offset2(&p, dir + DPIBY2, dy)?;
-            mesh.push(vec![p2[0], p2[1]]);
-            phi += delta;
-        }
+            // The parametric angle phi runs from axis 2 toward axis 1. For each
+            // point, move a geodesic distance dx along the primary axis, then a
+            // distance dy at right angles to it (ellipse.c:1115).
+            let mut phi = 0.0_f64;
+            for _ in 0..np {
+                let dx = a * crate::math::cos(phi);
+                let dy = b * crate::math::sin(phi);
+                let (p, dir) = frm.offset2(centre, angle, dx)?;
+                let (p2, _) = frm.offset2(&p, dir + DPIBY2, dy)?;
+                mesh.push(vec![p2[0], p2[1]]);
+                phi += delta;
+            }
 
-        Ok(mesh)
+            Ok(mesh)
+        })
     }
 
     fn is_bounded_inner(&self) -> AstResult<bool> {
@@ -732,6 +734,10 @@ impl RegionGeometry for Ellipse {
 impl Region for Ellipse {
     fn def_unc_cache(&self) -> Option<&std::cell::RefCell<Option<DynRegion>>> {
         Some(&self.data.def_unc)
+    }
+
+    fn explicit_unc(&self) -> Option<&DynRegion> {
+        self.data.uncertainty.as_ref()
     }
 
     fn point_in_region(&self, point: &[f64]) -> AstResult<bool> {

@@ -279,35 +279,23 @@ impl RegionGeometry for Prism {
         &mut self.data
     }
 
+    /// prism.c `Transform`: the base-Frame points go through the two
+    /// component Regions in parallel (a parallel CmpMap of them in C), all
+    /// points at once, and a point is inside where neither component made
+    /// any of its coordinates bad.
     fn reg_base_inside(&self, pts: &PointSet) -> AstResult<Vec<bool>> {
         let npoint = pts.npoint();
         let naxes1 = self.naxes1();
-        let naxes2 = self.naxes2();
-        let naxes_total = naxes1 + naxes2;
+        let naxes_total = naxes1 + self.naxes2();
 
-        let mut result = vec![false; npoint];
+        let part1 = PointSet::from_rows((0..npoint).map(|i| &pts.point(i)[..naxes1]));
+        let part2 = PointSet::from_rows((0..npoint).map(|i| &pts.point(i)[naxes1..naxes_total]));
+        let out1 = self.region1.transform(&part1, true)?;
+        let out2 = self.region2.transform(&part2, true)?;
 
-        for (r, point) in result.iter_mut().zip((0..npoint).map(|i| pts.point(i))) {
-            // Skip if any coordinate is BAD.
-            if point_has_bad(&point[..naxes_total]) {
-                continue;
-            }
-
-            // Split the point: first naxes1 coords for region1,
-            // remaining naxes2 coords for region2.
-            let part1 = &point[..naxes1];
-            let part2 = &point[naxes1..naxes_total];
-
-            // Test against both sub-regions.
-            let in1 = self.region1.point_in_region(part1)?;
-            if !in1 {
-                continue;
-            }
-            let in2 = self.region2.point_in_region(part2)?;
-            *r = in2;
-        }
-
-        Ok(result)
+        Ok((0..npoint)
+            .map(|i| !point_has_bad(out1.point(i)) && !point_has_bad(out2.point(i)))
+            .collect())
     }
 
     fn reg_base_box(&self) -> AstResult<(Vec<f64>, Vec<f64>)> {
@@ -331,62 +319,65 @@ impl RegionGeometry for Prism {
     /// at sizes that split the Prism's MeshSize between the two, set on the
     /// component for the purpose; a 1-D component's mesh has 2 points.
     fn reg_base_mesh(&self) -> AstResult<Vec<Vec<f64>>> {
-        // A component has a mesh if it is bounded when negated or not.
-        let has_mesh = |r: &DynRegion| -> AstResult<bool> {
-            Ok(r.is_bounded()? || r.negated_copy().is_bounded()?)
-        };
-        if !has_mesh(&self.region1)? || !has_mesh(&self.region2)? {
-            return Err(AstError::new(
-                ErrorCode::Inter,
-                "astRegBaseMesh(Prism): No mesh can be produced for the Prism bacause \
+        self.data.cached_mesh(|| {
+            // A component has a mesh if it is bounded when negated or not.
+            let has_mesh = |r: &DynRegion| -> AstResult<bool> {
+                Ok(r.is_bounded()? || r.negated_copy().is_bounded()?)
+            };
+            if !has_mesh(&self.region1)? || !has_mesh(&self.region2)? {
+                return Err(AstError::new(
+                    ErrorCode::Inter,
+                    "astRegBaseMesh(Prism): No mesh can be produced for the Prism bacause \
                  one of its component Regions is unbounded.",
-            ));
-        }
-        // C's sizes are `int`s assigned from doubles, so each truncates.
-        let mszp = self.data.effective_mesh_size() as f64;
-        let nax1 = self.region1.naxes();
-        let nax2 = self.region2.naxes();
-        let msz1 = if nax1 == 1 {
-            2
-        } else {
-            crate::math::sqrt(0.5 * mszp) as i32
-        };
-        let gsz2 = (0.5 * mszp / msz1 as f64) as i32;
-        let msz2 = if nax2 == 1 {
-            2
-        } else {
-            crate::math::sqrt(0.5 * mszp) as i32
-        };
-        let gsz1 = (0.5 * mszp / msz2 as f64) as i32;
-        // The sizes are set on copies, which C does by setting them on the
-        // components and putting their own MeshSize back afterwards.
-        let sized = |r: &DynRegion, size: i32| {
-            let mut copy = r.clone_region();
-            copy.set_mesh_size(size.max(0) as usize);
-            copy
-        };
-        let mesh2 = sized(&self.region2, msz2).reg_mesh()?;
-        let grid2 = sized(&self.region2, gsz2).reg_grid()?;
-        let mesh1 = sized(&self.region1, msz1).reg_mesh()?;
-        let grid1 = sized(&self.region1, gsz1).reg_grid()?;
+                ));
+            }
+            // C's sizes are `int`s assigned from doubles, so each truncates.
+            let mszp = self.data.effective_mesh_size() as f64;
+            let nax1 = self.region1.naxes();
+            let nax2 = self.region2.naxes();
+            let msz1 = if nax1 == 1 {
+                2
+            } else {
+                crate::math::sqrt(0.5 * mszp) as i32
+            };
+            let gsz2 = (0.5 * mszp / msz1 as f64) as i32;
+            let msz2 = if nax2 == 1 {
+                2
+            } else {
+                crate::math::sqrt(0.5 * mszp) as i32
+            };
+            let gsz1 = (0.5 * mszp / msz2 as f64) as i32;
+            // The sizes are set on copies, which C does by setting them on the
+            // components and putting their own MeshSize back afterwards.
+            let sized = |r: &DynRegion, size: i32| {
+                let mut copy = r.clone_region();
+                copy.set_mesh_size(size.max(0) as usize);
+                copy
+            };
+            let mesh2 = sized(&self.region2, msz2).reg_mesh()?;
+            let grid2 = sized(&self.region2, gsz2).reg_grid()?;
+            let mesh1 = sized(&self.region1, msz1).reg_mesh()?;
+            let grid1 = sized(&self.region1, gsz1).reg_grid()?;
 
-        let mut result =
-            Vec::with_capacity(grid1.npoint() * mesh2.npoint() + mesh1.npoint() * grid2.npoint());
-        for i in 0..mesh2.npoint() {
-            for j in 0..grid1.npoint() {
-                let mut point = grid1.point(j).to_vec();
-                point.extend_from_slice(mesh2.point(i));
-                result.push(point);
+            let mut result = Vec::with_capacity(
+                grid1.npoint() * mesh2.npoint() + mesh1.npoint() * grid2.npoint(),
+            );
+            for i in 0..mesh2.npoint() {
+                for j in 0..grid1.npoint() {
+                    let mut point = grid1.point(j).to_vec();
+                    point.extend_from_slice(mesh2.point(i));
+                    result.push(point);
+                }
             }
-        }
-        for i in 0..mesh1.npoint() {
-            for j in 0..grid2.npoint() {
-                let mut point = mesh1.point(i).to_vec();
-                point.extend_from_slice(grid2.point(j));
-                result.push(point);
+            for i in 0..mesh1.npoint() {
+                for j in 0..grid2.npoint() {
+                    let mut point = mesh1.point(i).to_vec();
+                    point.extend_from_slice(grid2.point(j));
+                    result.push(point);
+                }
             }
-        }
-        Ok(result)
+            Ok(result)
+        })
     }
 
     /// prism.c `GetBounded`: bounded only if both components are, with the
@@ -417,6 +408,10 @@ impl RegionGeometry for Prism {
 impl Region for Prism {
     fn def_unc_cache(&self) -> Option<&std::cell::RefCell<Option<DynRegion>>> {
         Some(&self.data.def_unc)
+    }
+
+    fn explicit_unc(&self) -> Option<&DynRegion> {
+        self.data.uncertainty.as_ref()
     }
 
     fn point_in_region(&self, point: &[f64]) -> AstResult<bool> {

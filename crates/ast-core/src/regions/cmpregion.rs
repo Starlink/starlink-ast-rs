@@ -660,63 +660,65 @@ impl RegionGeometry for CmpRegion {
     /// mesh if it is bounded either way round; with neither, or with only one
     /// under OR, there is no mesh (AST__INTER).
     fn reg_base_mesh(&self) -> AstResult<Vec<Vec<f64>>> {
-        let reg1 = self.region1.as_ref();
-        let reg2 = self.region2.as_ref();
-        let has_mesh = |r: &dyn Region| -> AstResult<bool> {
-            Ok(r.is_bounded()? || r.negated_copy().is_bounded()?)
-        };
-        let (has1, has2) = (has_mesh(reg1)?, has_mesh(reg2)?);
-        if !has1 && !has2 {
-            return Err(AstError::new(
-                ErrorCode::Inter,
-                "astRegBaseMesh(CmpRegion): No mesh can be produced for the CmpRegion \
+        self.data.cached_mesh(|| {
+            let reg1 = self.region1.as_ref();
+            let reg2 = self.region2.as_ref();
+            let has_mesh = |r: &dyn Region| -> AstResult<bool> {
+                Ok(r.is_bounded()? || r.negated_copy().is_bounded()?)
+            };
+            let (has1, has2) = (has_mesh(reg1)?, has_mesh(reg2)?);
+            if !has1 && !has2 {
+                return Err(AstError::new(
+                    ErrorCode::Inter,
+                    "astRegBaseMesh(CmpRegion): No mesh can be produced for the CmpRegion \
                  bacause neither of its component Regions has a mesh (internal AST \
                  programming error).",
-            ));
-        }
-        if (!has1 || !has2) && self.operator == Oper::Or {
-            return Err(AstError::new(
-                ErrorCode::Inter,
-                "astRegBaseMesh(CmpRegion): No mesh can be produced for the CmpRegion \
+                ));
+            }
+            if (!has1 || !has2) && self.operator == Oper::Or {
+                return Err(AstError::new(
+                    ErrorCode::Inter,
+                    "astRegBaseMesh(CmpRegion): No mesh can be produced for the CmpRegion \
                  bacause one its component Regions has no mesh and the union of the \
                  Regions is required (internal AST programming error).",
-            ));
-        }
+                ));
+            }
 
-        // region.c `BndMesh`: the base-Frame boundary mesh within a box,
-        // taken into the current Frame.
-        let bnd_mesh = |r: &dyn Region, other: &dyn Region| -> AstResult<PointSet> {
-            let (lbnd, ubnd) = other.get_region_bounds()?;
-            r.to_current_frame(r.bnd_base_mesh(&lbnd, &ubnd)?)
-        };
-        let (mesh1, mesh2) = if has1 {
-            let mesh1 = reg1.reg_mesh()?;
-            let mesh2 = if has2 {
-                reg2.reg_mesh()?
-            } else {
-                bnd_mesh(reg2, reg1)?
+            // region.c `BndMesh`: the base-Frame boundary mesh within a box,
+            // taken into the current Frame.
+            let bnd_mesh = |r: &dyn Region, other: &dyn Region| -> AstResult<PointSet> {
+                let (lbnd, ubnd) = other.get_region_bounds()?;
+                r.to_current_frame(r.bnd_base_mesh(&lbnd, &ubnd)?)
             };
-            (mesh1, mesh2)
-        } else {
-            let mesh2 = reg2.reg_mesh()?;
-            (bnd_mesh(reg1, reg2)?, mesh2)
-        };
+            let (mesh1, mesh2) = if has1 {
+                let mesh1 = reg1.reg_mesh()?;
+                let mesh2 = if has2 {
+                    reg2.reg_mesh()?
+                } else {
+                    bnd_mesh(reg2, reg1)?
+                };
+                (mesh1, mesh2)
+            } else {
+                let mesh2 = reg2.reg_mesh()?;
+                (bnd_mesh(reg1, reg2)?, mesh2)
+            };
 
-        // The points of each mesh inside the other component (AND), or
-        // outside it (OR), the components negated to find those.
-        let (filter1, filter2): (DynRegion, DynRegion) = match self.operator {
-            Oper::And => (reg1.clone_region(), reg2.clone_region()),
-            Oper::Or => (reg1.negated_copy(), reg2.negated_copy()),
-        };
-        let mesh1b = filter2.transform(&mesh1, true)?;
-        let mesh2b = filter1.transform(&mesh2, true)?;
+            // The points of each mesh inside the other component (AND), or
+            // outside it (OR), the components negated to find those.
+            let (filter1, filter2): (DynRegion, DynRegion) = match self.operator {
+                Oper::And => (reg1.clone_region(), reg2.clone_region()),
+                Oper::Or => (reg1.negated_copy(), reg2.negated_copy()),
+            };
+            let mesh1b = filter2.transform(&mesh1, true)?;
+            let mesh2b = filter1.transform(&mesh2, true)?;
 
-        Ok([mesh1b, mesh2b]
-            .iter()
-            .flat_map(|m| (0..m.npoint()).map(move |i| m.point(i)))
-            .filter(|p| !p.iter().any(|&v| is_bad(v)))
-            .map(|p| p.to_vec())
-            .collect())
+            Ok([mesh1b, mesh2b]
+                .iter()
+                .flat_map(|m| (0..m.npoint()).map(move |i| m.point(i)))
+                .filter(|p| !p.iter().any(|&v| is_bad(v)))
+                .map(|p| p.to_vec())
+                .collect())
+        })
     }
 
     fn is_bounded_inner(&self) -> AstResult<bool> {
@@ -738,6 +740,10 @@ impl RegionGeometry for CmpRegion {
 impl Region for CmpRegion {
     fn def_unc_cache(&self) -> Option<&std::cell::RefCell<Option<DynRegion>>> {
         Some(&self.data.def_unc)
+    }
+
+    fn explicit_unc(&self) -> Option<&DynRegion> {
+        self.data.uncertainty.as_ref()
     }
 
     fn point_in_region(&self, point: &[f64]) -> AstResult<bool> {
