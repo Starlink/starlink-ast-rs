@@ -12,4 +12,7 @@ Absolute times belong to that machine; the Rust/C ratios travel better, but libm
 
 The pre-Phase-0 run uses that commit's `ast-core` with the current `ast-bench` harness, built in a git worktree, since the harness did not exist yet; it uses no `ast-core` API newer than that commit.
 
+Both runs alternated pre, post, pre, post on a quiet machine, and each row is the run with the lower median; the same build agreed with itself across the two rounds to within about 5% (5th to 95th percentile).
+The post-Phase-0 record shows one regression the fixes introduced, SpecMap's forward transform at large N (2.9 to 4.2 ns per point), which the next record addresses.
+
 To add a record, run `ast-bench run --set bench --engine both --format tsv` and prepend the header lines.
