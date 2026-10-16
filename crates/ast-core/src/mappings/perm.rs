@@ -304,28 +304,27 @@ impl PermMap {
     /// (used for BAD-value checks).
     fn apply_perm(perm: &[i64], constants: &[f64], pts: &Points<'_>, out: &mut PointsMut<'_>) {
         let ncoord_in = pts.ncoord();
-        for i in 0..pts.npoint() {
-            let inp = pts.point(i);
-            let mut outp = out.point_mut(i);
-            for (k, &p) in perm.iter().enumerate() {
-                // Mirrors C permmap.c:1976-1997: a positive entry copies the
-                // input axis only when in range; a negative entry reads the
-                // constants pool when in range; everything else is BAD. C's
-                // NULL-constants path uses AST__BAD for any negative entry, so
-                // an out-of-range constant index resolves to BAD here too.
-                outp[k] = if p > 0 {
-                    let src = (p as usize) - 1;
-                    if src < ncoord_in && !is_bad(inp[src]) {
-                        inp[src]
-                    } else {
-                        BAD_VALUE
-                    }
-                } else if p < 0 {
-                    let cidx = (-p as usize) - 1;
-                    constants.get(cidx).copied().unwrap_or(BAD_VALUE)
-                } else {
-                    BAD_VALUE
-                };
+        let n = pts.npoint();
+        for (k, &p) in perm.iter().enumerate() {
+            let o = &mut out.axis_mut(k)[..n];
+            // Mirrors C permmap.c:1976-1997: a positive entry copies the
+            // input axis only when in range; a negative entry reads the
+            // constants pool when in range; everything else is BAD. C's
+            // NULL-constants path uses AST__BAD for any negative entry, so
+            // an out-of-range constant index resolves to BAD here too.
+            if p > 0 && ((p as usize) - 1) < ncoord_in {
+                for (o, &v) in o.iter_mut().zip(pts.axis((p as usize) - 1)) {
+                    *o = if is_bad(v) { BAD_VALUE } else { v };
+                }
+            } else if p < 0 {
+                o.fill(
+                    constants
+                        .get((-p as usize) - 1)
+                        .copied()
+                        .unwrap_or(BAD_VALUE),
+                );
+            } else {
+                o.fill(BAD_VALUE);
             }
         }
     }
@@ -554,27 +553,27 @@ impl Mapping for PermMap {
         } else {
             self.inperm.as_slice()
         };
-        // Convert any BAD_VALUE constants to NaN once at the start so the
-        // per-point copy path is branchless on constant content.
+        // Convert any BAD_VALUE constants to NaN once at the start.
         let constants_nan: Vec<f64> = self
             .constants
             .iter()
             .map(|&c| if is_bad(c) { f64::NAN } else { c })
             .collect();
         let ncoord_in = pts.ncoord();
-        for i in 0..pts.npoint() {
-            let inp = pts.point(i);
-            let mut outp = out.point_mut(i);
-            for (k, &p) in perm.iter().enumerate() {
-                outp[k] = if p > 0 {
-                    let src = (p as usize) - 1;
-                    if src < ncoord_in { inp[src] } else { f64::NAN }
-                } else if p < 0 {
-                    let cidx = (-p as usize) - 1;
-                    constants_nan.get(cidx).copied().unwrap_or(f64::NAN)
-                } else {
-                    f64::NAN
-                };
+        let n = pts.npoint();
+        for (k, &p) in perm.iter().enumerate() {
+            let o = &mut out.axis_mut(k)[..n];
+            if p > 0 && ((p as usize) - 1) < ncoord_in {
+                o.copy_from_slice(pts.axis((p as usize) - 1));
+            } else if p < 0 {
+                o.fill(
+                    constants_nan
+                        .get((-p as usize) - 1)
+                        .copied()
+                        .unwrap_or(f64::NAN),
+                );
+            } else {
+                o.fill(f64::NAN);
             }
         }
         Ok(())
