@@ -79,6 +79,14 @@ fn fingerprint(engines: Engines) -> Fingerprint {
 /// machine's saved baseline; the slowdowns are the errors.
 fn compare(args: &[String]) -> Result<Vec<String>, String> {
     let set = opt(args, "--set").ok_or("compare needs --set")?;
+    if let Some(git_ref) = opt(args, "--base") {
+        let file = Path::new(ast_bench::cases::SETS).join(format!("{set}.txt"));
+        let slower = ast_bench::base::compare_with_base(git_ref, &file)?;
+        if slower.is_empty() {
+            println!("no timing of {set} is more than the threshold slower than at {git_ref}");
+        }
+        return Ok(slower.into_iter().map(|s| format!("slower: {s}")).collect());
+    }
     let fp = fingerprint(engines(args)?);
     let base = load_baseline(set, &fp)?;
     let (rows, mut errors) = run(args)?;
