@@ -19,10 +19,10 @@ use super::perm::PermMap;
 use super::unit::UnitMap;
 use super::winmap::WinMap;
 
-/// Points per pass of the full-matrix kernel: the sums and bad flags of one
-/// block live on the stack. The size only tiles the loop; it cannot change
-/// any result.
-const BLOCK: usize = 256;
+/// Points per pass of the full-matrix kernel: one bit of a `u64` flags each
+/// point that is bad. The size only tiles the loop; it cannot change any
+/// result.
+const BLOCK: usize = 64;
 use super::zoom::ZoomMap;
 use super::{DynMapping, Mapping};
 use crate::mappings::SimplifiedRecord;
@@ -565,33 +565,39 @@ impl MatrixMap {
             MatrixForm::Full => {
                 for row in 0..m.nrows() {
                     // A BAD element makes its whole row BAD.
-                    if m.row(row).iter().any(|&c| is_bad(c)) {
+                    if (0..m.ncols()).any(|col| is_bad(m[[row, col]])) {
                         out.axis_mut(row)[..n].fill(BAD_VALUE);
                         continue;
                     }
                     let mut start = 0;
                     while start < n {
                         let end = (start + BLOCK).min(n);
-                        let mut sum = [0.0_f64; BLOCK];
-                        let mut bad = [false; BLOCK];
-                        // Each point's sum runs over the input axes in
-                        // order, as C's does.
+                        // The output axis holds the sums; each point's sum
+                        // runs over the input axes in order, as C's does.
+                        let sum = &mut out.axis_mut(row)[start..end];
+                        sum.fill(0.0);
+                        let mut bad: u64 = 0;
                         for col in 0..m.ncols() {
                             let coeff = m[[row, col]];
-                            for (k, &v) in pts.axis(col)[start..end].iter().enumerate() {
+                            let x = &pts.axis(col)[start..end];
+                            for (k, (s, &v)) in sum.iter_mut().zip(x).enumerate() {
                                 if is_bad(v) {
                                     // A BAD input only matters through a
                                     // non-zero coefficient.
                                     if coeff != 0.0 {
-                                        bad[k] = true;
+                                        bad |= 1 << k;
                                     }
                                 } else {
-                                    sum[k] += coeff * v;
+                                    *s += coeff * v;
                                 }
                             }
                         }
-                        for (k, o) in out.axis_mut(row)[start..end].iter_mut().enumerate() {
-                            *o = if bad[k] { BAD_VALUE } else { sum[k] };
+                        if bad != 0 {
+                            for (k, s) in sum.iter_mut().enumerate() {
+                                if bad & (1 << k) != 0 {
+                                    *s = BAD_VALUE;
+                                }
+                            }
                         }
                         start = end;
                     }
@@ -752,25 +758,22 @@ impl Mapping for MatrixMap {
                 for row in 0..m.nrows() {
                     // A bad element makes its row bad (matrixmap.c
                     // Transform).
-                    if m.row(row).iter().any(|&c| c == BAD_VALUE) {
+                    if (0..m.ncols()).any(|col| m[[row, col]] == BAD_VALUE) {
                         out.axis_mut(row)[..n].fill(f64::NAN);
                         continue;
                     }
-                    let mut start = 0;
-                    while start < n {
-                        let end = (start + BLOCK).min(n);
-                        let mut sum = [0.0_f64; BLOCK];
-                        for col in 0..m.ncols() {
-                            let coeff = m[[row, col]];
-                            if coeff == 0.0 {
-                                continue;
-                            }
-                            for (k, &v) in pts.axis(col)[start..end].iter().enumerate() {
-                                sum[k] += coeff * v;
-                            }
+                    // The output axis holds the sums, each over the input
+                    // axes in order.
+                    let sum = &mut out.axis_mut(row)[..n];
+                    sum.fill(0.0);
+                    for col in 0..m.ncols() {
+                        let coeff = m[[row, col]];
+                        if coeff == 0.0 {
+                            continue;
                         }
-                        out.axis_mut(row)[start..end].copy_from_slice(&sum[..end - start]);
-                        start = end;
+                        for (s, &v) in sum.iter_mut().zip(pts.axis(col)) {
+                            *s += coeff * v;
+                        }
                     }
                 }
             }
