@@ -111,15 +111,13 @@ impl ast_core::mappings::IntraTransform for TestIntraTran {
         _forward: bool,
         out: &mut ast_core::coords::PointSet,
     ) -> ast_core::error::AstResult<()> {
-        let ncoord_in = input.ncoord();
         for ip in 0..input.npoint() {
-            let row = input.point(ip).to_vec();
+            let row = input.point(ip);
             for (ic, v) in out.point_mut(ip).iter_mut().enumerate() {
-                *v = if ic < ncoord_in {
-                    row[ic]
-                } else {
-                    ast_core::constants::BAD_VALUE
-                };
+                *v = row
+                    .get(ic)
+                    .copied()
+                    .unwrap_or(ast_core::constants::BAD_VALUE);
             }
         }
         Ok(())
