@@ -10,6 +10,8 @@ use ast_bench::fingerprint::Fingerprint;
 use ast_bench::points::NPOINTS;
 use ast_bench::report::{Row, table, tsv};
 use ast_bench::run::{Engines, check_not_counting, run_set};
+use ast_bench::snapshot::{latest_record, ratio_warnings, today, worst_ratios, write_record};
+use ast_bench::sweep::{SWEEP_NPOINTS, all_cases};
 
 const USAGE: &str = "usage: ast-bench <command> [options]
 commands:
@@ -130,11 +132,69 @@ fn compare(args: &[String]) -> Result<Vec<String>, String> {
     if suspects.is_empty() {
         println!("no timing of {set} is more than the threshold slower than its baseline");
     }
+    if engines == Engines::Both {
+        warn_ratios(set, &rows);
+    }
     for s in &suspects {
         let was = slow_rows(&base, std::slice::from_ref(s))[0].0;
         errors.push(format!("slower: {}", describe(was, s)));
     }
     Ok(errors)
+}
+
+/// Print, as warnings only, each Rust/C ratio that is worse than in the
+/// newest record of `set` for this platform.
+fn warn_ratios(set: &str, rows: &[Row]) {
+    if let Some((path, record)) = latest_record(set) {
+        for w in ratio_warnings(&record, rows) {
+            eprintln!("warning: ratio worse than {}: {w}", path.display());
+        }
+    }
+}
+
+/// `snapshot`: time the set on both engines and write a dated record.
+fn snapshot(args: &[String]) -> Result<Vec<String>, String> {
+    let set = opt(args, "--set").ok_or("snapshot needs --set")?;
+    check_not_counting()?;
+    let mut rows = Vec::new();
+    let mut errors = Vec::new();
+    for r in run_set(&load_set(set)?, Engines::Both, &NPOINTS) {
+        match r {
+            Ok(row) => rows.push(row),
+            Err(e) => errors.push(e),
+        }
+    }
+    let path = write_record(set, &fingerprint(Engines::Both), &rows)?;
+    println!("wrote {}", path.display());
+    Ok(errors)
+}
+
+/// `sweep`: time every oracle section on both engines; write the rows and
+/// print the worst ratios and the sections that could not be timed.
+fn sweep() -> Result<Vec<String>, String> {
+    check_not_counting()?;
+    let mut rows = Vec::new();
+    let mut untimed = Vec::new();
+    for r in run_set(&all_cases()?, Engines::Both, &SWEEP_NPOINTS) {
+        match r {
+            Ok(row) => rows.push(row),
+            Err(e) => untimed.push(e),
+        }
+    }
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/perf");
+    std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    let file = dir.join(format!("sweep-{}.tsv", today()));
+    std::fs::write(&file, tsv(&rows)).map_err(|e| format!("{}: {e}", file.display()))?;
+    println!("wrote {}", file.display());
+    println!("worst Rust/C ratios:");
+    for (ratio, r) in worst_ratios(&rows, 20) {
+        println!("{ratio:8.2}  {} {} N={}", r.case, r.dir, r.n);
+    }
+    println!("{} sections could not be timed:", untimed.len());
+    for u in &untimed {
+        println!("  {u}");
+    }
+    Ok(Vec::new())
 }
 
 fn main() -> ExitCode {
@@ -157,6 +217,8 @@ fn main() -> ExitCode {
             Ok(errors)
         }),
         Some("compare") => compare(&args[1..]),
+        Some("snapshot") => snapshot(&args[1..]),
+        Some("sweep") => sweep(),
         Some(other) => Err(format!("unknown command {other:?}\n{USAGE}")),
     };
     match result {

@@ -14,4 +14,6 @@ pub mod oracle;
 pub mod points;
 pub mod report;
 pub mod run;
+pub mod snapshot;
+pub mod sweep;
 pub mod timing;

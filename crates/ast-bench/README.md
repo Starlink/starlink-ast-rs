@@ -41,3 +41,17 @@ The worktree is kept for the next comparison; `git worktree remove target/perf/b
 A report names what got slower, not why.
 Changing one Mapping's code can move another's hot loop in the binary: making ZoomMap slower on purpose also made PolyMap's forward transform 20% slower in the same build, although PolyMap does not use ZoomMap.
 That slowdown is real for that binary, so `compare` is right to report it, but read a report that lists unrelated classes with this in mind.
+
+## Records and the full sweep
+
+    ast-bench snapshot --set bench        # needs --features c-oracle
+
+times the set on both engines and writes `docs/perf/<date>-<os>-<arch>-<set>.tsv` with a header naming the commit, machine, compilers and C build.
+The records are kept so that each round of optimisation can be shown against the ones before it; `docs/perf/README.md` lists them.
+`compare --set S --engine both` also prints a warning for each Rust/C ratio more than the slowdown threshold worse than in the newest record of `S` for this platform.
+The warning never sets the exit status, since the ratio moves with the machine as well as the code.
+
+    ast-bench sweep                       # needs --features c-oracle
+
+times every section of the three core transform oracles and the bench oracle at 100 and 100 000 points on both engines, writes the rows to `target/perf/sweep-<date>.tsv`, and prints the 20 worst Rust/C ratios and the sections that could not be timed, with the reason for each.
+It is meant to be run overnight.
