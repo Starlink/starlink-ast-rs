@@ -17,6 +17,8 @@ mod bench_lsst;
 mod error_codes;
 #[path = "../error_model.rs"]
 mod error_model;
+#[path = "../points.rs"]
+mod points;
 #[path = "../pointset.rs"]
 mod pointset;
 #[path = "../test_area_membership.rs"]

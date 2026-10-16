@@ -41,6 +41,7 @@ dependencies = [
  "levenberg-marquardt",
  "nalgebra",
  "ndarray",
+ "smallvec",
  "tracing",
  "tracing-subscriber",
  "wide",
