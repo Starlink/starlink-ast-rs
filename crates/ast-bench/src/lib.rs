@@ -5,6 +5,10 @@
 //! brought to parity with C; regression checking needs only Rust.
 #[cfg(feature = "c-oracle")]
 pub mod c_engine;
+pub mod cases;
 pub mod load;
 pub mod oracle;
 pub mod points;
+pub mod report;
+pub mod run;
+pub mod timing;
