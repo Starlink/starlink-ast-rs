@@ -100,8 +100,8 @@ fn round_trip_lutmap() {
 
 #[test]
 fn round_trip_polymap_with_iter_inverse() {
-    // Match the shape used by bench_per_class: cover iter_inverse +
-    // niter + tol attributes that aren't on the default path.
+    // Cover the iter_inverse, niter and tol attributes, which are not on
+    // the default path.
     let mut terms = Vec::new();
     for (px, py, coeff, out) in [
         (1, 0, 1.0, 1),

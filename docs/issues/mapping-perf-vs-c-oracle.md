@@ -1,5 +1,8 @@
 # Mapping per-class performance vs. C oracle
 
+> **Superseded for current numbers.** This is a 2026-05-19 snapshot from a hand-run bench that has since been retired.
+> Current Rust/C timings are recorded with `ast-bench` (`crates/ast-bench/README.md`) in `docs/perf/`, listed in `docs/perf/README.md`.
+
 **Date:** 2026-05-19 (updated for MathMap after `ff00e3a` and
 ChebyMap after `53e052d` — full 24/24 coverage)
 **Host:** Apple M4 Max, macOS 25.5

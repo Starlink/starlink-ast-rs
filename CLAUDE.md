@@ -171,8 +171,9 @@ both:
 
 When adding a new `Mapping` whose math is polynomial in the inputs:
 prototype both paths behind a temporary `bench-internals` cargo
-feature, run a parametric criterion bench across the realistic shape
-× npoint grid, and only commit the GEMM/BLAS path if it wins on the
+feature, time both with `ast-bench run --set-file <set> --engine both`
+over fixtures of the realistic shapes (`crates/ast-bench/README.md`),
+and only commit the GEMM/BLAS path if it wins on the
 shapes that actually occur for that class. For mappings whose
 typical shape stays at ≤3 inputs/outputs, the scalar loop is
 generally the right answer — `MatrixMap` was evaluated and rejected
