@@ -158,6 +158,20 @@ mod tests {
     use crate::cases::load_set;
 
     #[test]
+    fn every_named_set_times_at_one_point() {
+        for entry in std::fs::read_dir(crate::cases::SETS).unwrap() {
+            let path = entry.unwrap().path();
+            let name = path.file_stem().unwrap().to_string_lossy().into_owned();
+            let cases = load_set(&name).unwrap();
+            let errors: Vec<String> = run_set(&cases, Engines::Rust, &[1])
+                .into_iter()
+                .filter_map(Result::err)
+                .collect();
+            assert!(errors.is_empty(), "set {name}: {errors:?}");
+        }
+    }
+
+    #[test]
     fn a_failing_case_is_reported_not_fatal() {
         let mut cases = load_set("bench").unwrap();
         cases.truncate(1);

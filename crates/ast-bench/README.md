@@ -9,6 +9,13 @@ The C engine is therefore optional (the `c-oracle` feature); everything else bui
 
 The design is `docs/superpowers/specs/2026-10-15-transform-benchmarking-design.md`.
 
+## Sets
+
+A set is a file in `sets/` naming oracle sections, one per line with the reason it is there.
+`bench` holds one plain Mapping of each class.
+`framesets` holds real-world FrameSets that must stay at parity with C (LSST, TNX, SIP, DSS, TAN) and the worst ratios the first full sweep found (spectral headers, parallel CmpMaps, IntraMaps).
+Every case in a set must have a row that is good on both engines, since the small point counts time only such rows; a test checks this.
+
 ## Fairness rules
 
 - Both engines at `-O3` (Rust: the release profile).
