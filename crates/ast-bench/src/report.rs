@@ -72,31 +72,37 @@ pub fn parse_tsv(text: &str) -> Result<Vec<Row>, String> {
 }
 
 /// The rows as a table, one line per case, direction and point count, with
-/// the median ns per point of each engine and, when both ran, Rust / C.
+/// the median ns per point of each engine (`rust-cols` in the `cols` column)
+/// and, when Rust and C both ran, Rust / C.
 pub fn table(rows: &[Row]) -> String {
-    // (case, direction, n) -> (Rust median, C median)
     type Key = (String, String, usize);
-    let mut by: BTreeMap<Key, (Option<f64>, Option<f64>)> = BTreeMap::new();
+    // The Rust, Rust-from-columns and C medians.
+    type Medians = (Option<f64>, Option<f64>, Option<f64>);
+    let mut by: BTreeMap<Key, Medians> = BTreeMap::new();
     for r in rows {
         let e = by.entry((r.case.clone(), r.dir.clone(), r.n)).or_default();
+        let v = Some(r.stats.median_ns_per_point);
         match r.engine.as_str() {
-            "rust" => e.0 = Some(r.stats.median_ns_per_point),
-            _ => e.1 = Some(r.stats.median_ns_per_point),
+            "rust" => e.0 = v,
+            "rust-cols" => e.1 = v,
+            "c" => e.2 = v,
+            other => unreachable!("unknown engine {other}"),
         }
     }
     let mut out = format!(
-        "{:<32} {:<8} {:>8} {:>12} {:>12} {:>8}\n",
-        "case", "dir", "n", "rust ns/pt", "c ns/pt", "rust/c"
+        "{:<32} {:<8} {:>8} {:>12} {:>12} {:>12} {:>8}\n",
+        "case", "dir", "n", "rust ns/pt", "cols ns/pt", "c ns/pt", "rust/c"
     );
     let cell = |v: Option<f64>| v.map_or(String::from("-"), |v| format!("{v:.2}"));
-    for ((case, dir, n), (rust, c)) in by {
+    for ((case, dir, n), (rust, cols, c)) in by {
         let ratio = match (rust, c) {
             (Some(r), Some(c)) if c > 0.0 => format!("{:.2}", r / c),
             _ => String::from("-"),
         };
         out += &format!(
-            "{case:<32} {dir:<8} {n:>8} {:>12} {:>12} {ratio:>8}\n",
+            "{case:<32} {dir:<8} {n:>8} {:>12} {:>12} {:>12} {ratio:>8}\n",
             cell(rust),
+            cell(cols),
             cell(c)
         );
     }
@@ -138,5 +144,24 @@ mod tests {
         };
         let t = table(&[row("rust", 30.0), row("c", 20.0)]);
         assert!(t.contains("1.50"), "{t}");
+    }
+
+    #[test]
+    fn table_shows_the_c_shaped_timing_in_its_own_column() {
+        let row = |engine: &str, ns: f64| Row {
+            case: "a.map".into(),
+            dir: "forward".into(),
+            n: 10,
+            engine: engine.into(),
+            stats: crate::timing::Stats {
+                median_ns_per_point: ns,
+                min_ns_per_point: ns,
+                samples: 7,
+            },
+        };
+        let t = table(&[row("rust", 1.0), row("rust-cols", 4.0), row("c", 2.0)]);
+        assert!(t.contains("cols ns/pt"), "{t}");
+        let line = t.lines().nth(1).unwrap();
+        assert!(line.contains("4.00") && line.contains("2.00"), "{t}");
     }
 }

@@ -9,6 +9,9 @@ The C engine is therefore optional (the `c-oracle` feature); everything else bui
 
 The design is `docs/superpowers/specs/2026-10-15-transform-benchmarking-design.md`.
 
+Whenever the Rust engine runs, it also times `rust-cols`: the same transform called the way a C caller of `astTranN` calls it, with one input array per axis and one output array per axis, and any conversion the port needs inside the timing.
+`rust-cols` against `c` is what a C program would see on switching libraries; tables show it in the `cols ns/pt` column.
+
 ## Sets
 
 A set is a file in `sets/` naming oracle sections, one per line with the reason it is there.
@@ -44,6 +47,7 @@ To compare with another commit instead of a saved baseline:
 
 This builds `ast-bench` at that commit in a git worktree under `target/perf/base/<sha>`, times the set with that build and the current one in three alternating rounds, and compares the combined timings, so both builds see the same machine state.
 The base must contain `ast-bench`.
+A base older than the `rust-cols` timing has no `rust-cols` rows, which `compare --base` reports as unmatched, so choose a base that has them.
 Either build failing a case, or timing a case the other does not, is an error.
 The worktree is kept for the next comparison; `git worktree remove target/perf/base/<sha>` removes it.
 

@@ -110,8 +110,23 @@ pub fn run_set(cases: &[Case], engines: Engines, npoints: &[usize]) -> Vec<Resul
                 map.transform_into(&pts, s.forward, &mut rust_out)
                     .map_err(|e| format!("{} {dir} N={n}: {e}", s.relpath))
             };
-            #[cfg(feature = "c-oracle")]
             let columns = rows_to_columns(s, &rows);
+            // A caller holding one array per axis, as C's astTranN takes
+            // them: any conversion the port needs is inside the timing.
+            let mut cols_out = vec![0.0; s.nout * n];
+            let mut time_cols = || -> Result<(), String> {
+                let fail = |e: ast_core::error::AstError| format!("{} {dir} N={n}: {e}", s.relpath);
+                let axes: Vec<&[f64]> = columns.chunks_exact(n).collect();
+                let pts = PointSet::from_columns(&axes).map_err(fail)?;
+                let mut o = PointSet::zeros(n, s.nout);
+                map.transform_into(&pts, s.forward, &mut o).map_err(fail)?;
+                for (j, dst) in cols_out.chunks_exact_mut(n).enumerate() {
+                    for (d, v) in dst.iter_mut().zip(o.axis_iter(j)) {
+                        *d = v;
+                    }
+                }
+                Ok(())
+            };
             #[cfg(feature = "c-oracle")]
             let mut c_out = vec![0.0; s.nout * n];
             #[cfg(feature = "c-oracle")]
@@ -122,14 +137,18 @@ pub fn run_set(cases: &[Case], engines: Engines, npoints: &[usize]) -> Vec<Resul
                     .tran(s.forward, n, s.nin, &columns, s.nout, &mut c_out)
                     .map_err(|e| format!("{} {dir} N={n}: {e}", s.relpath))
             };
-            #[cfg(not(feature = "c-oracle"))]
-            let _ = rows_to_columns;
             let (mut ops, names): (Vec<Op<'_>>, Vec<&str>) = match engines {
-                Engines::Rust => (vec![&mut time_rust], vec!["rust"]),
+                Engines::Rust => (
+                    vec![&mut time_rust, &mut time_cols],
+                    vec!["rust", "rust-cols"],
+                ),
                 #[cfg(feature = "c-oracle")]
                 Engines::C => (vec![&mut time_c], vec!["c"]),
                 #[cfg(feature = "c-oracle")]
-                Engines::Both => (vec![&mut time_rust, &mut time_c], vec!["rust", "c"]),
+                Engines::Both => (
+                    vec![&mut time_rust, &mut time_cols, &mut time_c],
+                    vec!["rust", "rust-cols", "c"],
+                ),
                 #[cfg(not(feature = "c-oracle"))]
                 _ => unreachable!("refused above"),
             };
@@ -156,6 +175,21 @@ pub fn run_set(cases: &[Case], engines: Engines, npoints: &[usize]) -> Vec<Resul
 mod tests {
     use super::*;
     use crate::cases::load_set;
+
+    #[test]
+    fn the_rust_engine_also_times_a_c_shaped_caller() {
+        let cases = load_set("bench").unwrap();
+        let zoom: Vec<_> = cases
+            .into_iter()
+            .filter(|c| c.section.relpath == "zoommap_2d.map" && c.section.forward)
+            .collect();
+        let rows: Vec<_> = run_set(&zoom, Engines::Rust, &[10])
+            .into_iter()
+            .map(Result::unwrap)
+            .collect();
+        let engines: Vec<&str> = rows.iter().map(|r| r.engine.as_str()).collect();
+        assert_eq!(engines, ["rust", "rust-cols"]);
+    }
 
     #[test]
     fn every_named_set_times_at_one_point() {
