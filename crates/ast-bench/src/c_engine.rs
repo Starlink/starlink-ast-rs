@@ -46,6 +46,46 @@ impl Variant {
     }
 }
 
+/// Refuse a C engine whose `build-info.txt` names another variant, or a
+/// submodule commit other than `pin`, the one checked out now.
+pub fn check_build_info(info: &str, v: Variant, pin: &str) -> Result<(), String> {
+    let field = |k: &str| {
+        info.lines()
+            .find_map(|l| l.strip_prefix(k).and_then(|r| r.strip_prefix('=')))
+            .unwrap_or("")
+    };
+    let rebuild = format!("rebuild it with: tools/perf/build_c_engine.sh {}", v.name());
+    if field("variant") != v.name() {
+        return Err(format!(
+            "the C engine was built as variant {:?}, not {:?}; {rebuild}",
+            field("variant"),
+            v.name()
+        ));
+    }
+    if field("submodule") != pin {
+        return Err(format!(
+            "the C engine was built from reference/starlink-ast at {}, but {pin} is checked out; {rebuild}",
+            field("submodule")
+        ));
+    }
+    Ok(())
+}
+
+/// The commit of `reference/starlink-ast` checked out now.
+fn submodule_pin() -> Result<String, String> {
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../reference/starlink-ast");
+    let out = std::process::Command::new("git")
+        .arg("-C")
+        .arg(&dir)
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .map_err(|e| format!("git: {e}"))?;
+    if !out.status.success() {
+        return Err(format!("cannot read the commit of {}", dir.display()));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+}
+
 type LoadFn = unsafe extern "C" fn(*const c_char, *const c_char, *mut c_char, c_int) -> *mut c_void;
 type DimFn = unsafe extern "C" fn(*mut c_void) -> c_int;
 type TranFn =
@@ -100,6 +140,21 @@ impl CEngine {
             let dump = *lib
                 .get::<DumpFn>(b"abe_counts_dump")
                 .map_err(|e| fail(&e))?;
+            let info_path = path.with_file_name("build-info.txt");
+            let info = std::fs::read_to_string(&info_path)
+                .map_err(|e| fail(&format!("{}: {e}", info_path.display())))?;
+            check_build_info(&info, v, &submodule_pin()?)?;
+            // The bench build's counting entry points refuse; the count
+            // build's accept. Checked on the library itself, so a mislabelled
+            // build-info cannot time counting code.
+            let counts = reset() == 0;
+            if counts != (v == Variant::Count) {
+                return Err(fail(&format!(
+                    "the library {} count calls, so it is not the {} build",
+                    if counts { "does" } else { "does not" },
+                    v.name()
+                )));
+            }
             Ok(CEngine {
                 path: path.to_path_buf(),
                 load,
@@ -282,5 +337,30 @@ mod tests {
     fn bench_build_has_no_counts() {
         let eng = CEngine::open(Variant::Bench).unwrap();
         assert!(eng.counts_reset().unwrap_err().contains("count"));
+    }
+
+    #[test]
+    fn build_info_must_match_variant_and_pin() {
+        let info = "variant=bench\ncc=x\nsubmodule=abc\n";
+        assert!(check_build_info(info, Variant::Bench, "abc").is_ok());
+        let e = check_build_info(info, Variant::Count, "abc").unwrap_err();
+        assert!(
+            e.contains("count") && e.contains("build_c_engine.sh"),
+            "{e}"
+        );
+        let e = check_build_info(info, Variant::Bench, "def").unwrap_err();
+        assert!(
+            e.contains("abc") && e.contains("def") && e.contains("build_c_engine.sh"),
+            "{e}"
+        );
+    }
+
+    #[test]
+    fn the_counting_build_is_refused_for_timing() {
+        let e = match CEngine::open_path(&Variant::Count.default_path(), Variant::Bench) {
+            Ok(_) => panic!("the counting build loaded as the bench build"),
+            Err(e) => e,
+        };
+        assert!(e.contains("bench"), "{e}");
     }
 }

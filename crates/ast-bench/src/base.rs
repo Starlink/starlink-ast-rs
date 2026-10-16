@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use crate::compare::slowdowns;
+use crate::compare::{slowdowns, unmatched_rows};
 use crate::report::{Row, parse_tsv};
 use crate::timing::Stats;
 
@@ -116,6 +116,14 @@ fn time(bin: &Path, set_file: &Path) -> Result<Vec<Row>, String> {
         .arg(set_file)
         .output()
         .map_err(|e| format!("{}: {e}", bin.display()))?;
+    if !out.status.success() {
+        return Err(format!(
+            "{} failed ({}): {}",
+            bin.display(),
+            out.status,
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
     parse_tsv(&String::from_utf8_lossy(&out.stdout))
 }
 
@@ -131,7 +139,15 @@ pub fn compare_with_base(git_ref: &str, set_file: &Path) -> Result<Vec<String>, 
         base.push(time(&base_bin, set_file)?);
         cur.push(time(&cur_bin, set_file)?);
     }
-    Ok(slowdowns(&combine_rounds(&base), &combine_rounds(&cur)))
+    let (base, cur) = (combine_rounds(&base), combine_rounds(&cur));
+    let unmatched = unmatched_rows(&base, &cur);
+    if !unmatched.is_empty() {
+        return Err(format!(
+            "cannot compare every timing:\n  {}",
+            unmatched.join("\n  ")
+        ));
+    }
+    Ok(slowdowns(&base, &cur))
 }
 
 #[cfg(test)]
@@ -164,5 +180,11 @@ mod tests {
         assert_eq!(c.len(), 1);
         assert_eq!(c[0].stats.median_ns_per_point, 110.0);
         assert_eq!(c[0].stats.min_ns_per_point, 80.0);
+    }
+
+    #[test]
+    fn a_failing_child_is_an_error() {
+        let e = time(Path::new("/usr/bin/false"), Path::new("unused.txt")).unwrap_err();
+        assert!(e.contains("false"), "{e}");
     }
 }

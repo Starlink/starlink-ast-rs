@@ -33,9 +33,32 @@ pub fn today() -> String {
         .unwrap_or_else(|| "undated".into())
 }
 
+/// Refuse a record that is empty or has a timing on only one engine: it
+/// would hide the newer records' ratios from the warning.
+pub fn check_record(rows: &[Row]) -> Result<(), String> {
+    if rows.is_empty() {
+        return Err("no timings to record".into());
+    }
+    let key = |r: &Row| (r.case.clone(), r.dir.clone(), r.n);
+    let rust: std::collections::BTreeSet<_> = rows
+        .iter()
+        .filter(|r| r.engine == "rust")
+        .map(key)
+        .collect();
+    let c: std::collections::BTreeSet<_> =
+        rows.iter().filter(|r| r.engine == "c").map(key).collect();
+    if let Some((case, dir, n)) = rust.symmetric_difference(&c).next() {
+        return Err(format!(
+            "{case} {dir} N={n} was timed on one engine only; a record needs both"
+        ));
+    }
+    Ok(())
+}
+
 /// Write the record of `set` with a header naming the commit, date, machine,
 /// compilers and C build.
 pub fn write_record(set: &str, fp: &Fingerprint, rows: &[Row]) -> Result<PathBuf, String> {
+    check_record(rows)?;
     let commit = std::process::Command::new("git")
         .args(["rev-parse", "--short=8", "HEAD"])
         .current_dir(env!("CARGO_MANIFEST_DIR"))
@@ -188,5 +211,12 @@ mod tests {
             n.contains(std::env::consts::OS) && n.contains(std::env::consts::ARCH),
             "{n}"
         );
+    }
+
+    #[test]
+    fn a_record_needs_both_engines_for_every_timing() {
+        assert!(check_record(&[]).is_err());
+        assert!(check_record(&[row("rust", 1.0)]).is_err());
+        assert!(check_record(&[row("rust", 1.0), row("c", 1.0)]).is_ok());
     }
 }

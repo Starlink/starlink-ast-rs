@@ -5,7 +5,10 @@ use std::process::ExitCode;
 
 use ast_bench::cases::Case;
 use ast_bench::cases::{load_set, load_set_file};
-use ast_bench::compare::{CONFIRM_RUNS, describe, load_baseline, save_baseline, slow_rows};
+use ast_bench::compare::{
+    CONFIRM_RUNS, confirm_slowdowns, describe, load_baseline, save_baseline, slow_rows,
+    unmatched_rows,
+};
 use ast_bench::fingerprint::Fingerprint;
 use ast_bench::points::NPOINTS;
 use ast_bench::report::{Row, table, tsv};
@@ -94,42 +97,28 @@ fn compare(args: &[String]) -> Result<Vec<String>, String> {
     let (rows, mut errors) = run(args)?;
     let all = cases(args)?;
     let engines = engines(args)?;
+    errors.extend(unmatched_rows(&base, &rows));
     // Time each suspect again; keep it only while every re-timing is slow.
-    let mut suspects: Vec<Row> = slow_rows(&base, &rows)
+    let suspects: Vec<Row> = slow_rows(&base, &rows)
         .into_iter()
         .map(|(_, r)| r.clone())
         .collect();
-    for _ in 0..CONFIRM_RUNS {
-        if suspects.is_empty() {
-            break;
-        }
-        let mut again = Vec::new();
-        for s in &suspects {
-            let these: Vec<Case> = all
-                .iter()
-                .filter(|c| {
-                    c.section.relpath == s.case
-                        && (if c.section.forward {
-                            "forward"
-                        } else {
-                            "inverse"
-                        }) == s.dir
-                })
-                .cloned()
-                .collect();
-            again.extend(
-                run_set(&these, engines, &[s.n])
-                    .into_iter()
-                    .flatten()
-                    .filter(|r| r.engine == s.engine),
-            );
-        }
-        suspects = slow_rows(&base, &again)
-            .into_iter()
-            .map(|(_, r)| r.clone())
+    let suspects = confirm_slowdowns(&base, suspects, CONFIRM_RUNS, |s| {
+        let these: Vec<Case> = all
+            .iter()
+            .filter(|c| {
+                c.section.relpath == s.case
+                    && (if c.section.forward {
+                        "forward"
+                    } else {
+                        "inverse"
+                    }) == s.dir
+            })
+            .cloned()
             .collect();
-    }
-    if suspects.is_empty() {
+        run_set(&these, engines, &[s.n]).into_iter().collect()
+    })?;
+    if suspects.is_empty() && errors.is_empty() {
         println!("no timing of {set} is more than the threshold slower than its baseline");
     }
     if engines == Engines::Both {
@@ -163,6 +152,12 @@ fn snapshot(args: &[String]) -> Result<Vec<String>, String> {
             Ok(row) => rows.push(row),
             Err(e) => errors.push(e),
         }
+    }
+    if !errors.is_empty() {
+        return Err(format!(
+            "not writing a record of {set}: some timings failed\n  {}",
+            errors.join("\n  ")
+        ));
     }
     let path = write_record(set, &fingerprint(Engines::Both), &rows)?;
     println!("wrote {}", path.display());

@@ -34,7 +34,8 @@ The bias applies equally to every engine and every build, so comparisons stay fa
     ast-bench run --set bench --save      # this machine's baseline
     ast-bench compare --set bench         # after a change
 
-Baselines live under `target/perf/baselines/`, one directory per fingerprint (CPU, OS, rustc, C build, profile); `compare` refuses a baseline from another fingerprint and says which field differs.
+Baselines live under `target/perf/baselines/`, one TSV per set beside the fingerprint (CPU, OS, rustc, C build, profile) of the run that saved it; `compare` refuses a baseline from another fingerprint and says which field differs.
+A timing in the baseline or the new run but not both is an error, as is a re-timing that fails.
 A timing counts as slower when its fastest sample is more than 10% slower than the baseline's (`SLOWDOWN_THRESHOLD`); a suspect is timed twice more and reported only if every re-timing is slow too, which clears the noise that sub-nanosecond, memory-bound timings show between runs.
 
 To compare with another commit instead of a saved baseline:
@@ -43,6 +44,7 @@ To compare with another commit instead of a saved baseline:
 
 This builds `ast-bench` at that commit in a git worktree under `target/perf/base/<sha>`, times the set with that build and the current one in three alternating rounds, and compares the combined timings, so both builds see the same machine state.
 The base must contain `ast-bench`.
+Either build failing a case, or timing a case the other does not, is an error.
 The worktree is kept for the next comparison; `git worktree remove target/perf/base/<sha>` removes it.
 
 A report names what got slower, not why.
