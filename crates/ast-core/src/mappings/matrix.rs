@@ -18,6 +18,11 @@ use super::helpers::{ast_equal, is_bad};
 use super::perm::PermMap;
 use super::unit::UnitMap;
 use super::winmap::WinMap;
+
+/// Points per pass of the full-matrix kernel: the sums and bad flags of one
+/// block live on the stack. The size only tiles the loop; it cannot change
+/// any result.
+const BLOCK: usize = 256;
 use super::zoom::ZoomMap;
 use super::{DynMapping, Mapping};
 use crate::mappings::SimplifiedRecord;
@@ -527,6 +532,7 @@ impl MatrixMap {
     /// zeros into any surplus output axes (matrixmap.c:5228-5283); the loop
     /// below does the same.
     fn apply_matrix(m: &Array2<f64>, form: MatrixForm, pts: &Points<'_>, out: &mut PointsMut<'_>) {
+        let n = pts.npoint();
         // Math-wise Unit is just a special-case diagonal.
         let form = if matches!(form, MatrixForm::Unit) {
             MatrixForm::Diagonal
@@ -537,50 +543,57 @@ impl MatrixMap {
             MatrixForm::Unit => unreachable!(),
             MatrixForm::Diagonal => {
                 let nax = m.nrows().min(m.ncols());
-                let nout = m.nrows();
-                for i in 0..pts.npoint() {
-                    let inp = pts.point(i);
-                    let mut outp = out.point_mut(i);
-                    for j in 0..nax {
-                        // A BAD diagonal element makes the whole output axis
-                        // BAD; otherwise BAD input gives BAD output. C tests
-                        // the diagonal once per axis, outside the point loop
-                        // (matrixmap.c:5253); the loops are nested the other
-                        // way here because a PointSet is row-major over points.
-                        let diag = m[[j, j]];
-                        outp[j] = if is_bad(diag) || is_bad(inp[j]) {
-                            BAD_VALUE
-                        } else {
-                            diag * inp[j]
-                        };
+                for j in 0..nax {
+                    // A BAD diagonal element makes the whole output axis
+                    // BAD; otherwise BAD input gives BAD output. C tests the
+                    // diagonal once per axis, outside the point loop
+                    // (matrixmap.c:5253).
+                    let diag = m[[j, j]];
+                    let o = &mut out.axis_mut(j)[..n];
+                    if is_bad(diag) {
+                        o.fill(BAD_VALUE);
+                        continue;
                     }
-                    for o in outp.iter_mut().take(nout).skip(nax) {
-                        *o = 0.0;
+                    for (o, &v) in o.iter_mut().zip(pts.axis(j)) {
+                        *o = if is_bad(v) { BAD_VALUE } else { diag * v };
                     }
+                }
+                for j in nax..m.nrows() {
+                    out.axis_mut(j)[..n].fill(0.0);
                 }
             }
             MatrixForm::Full => {
-                let nout = m.nrows();
-                let nin = m.ncols();
-                for i in 0..pts.npoint() {
-                    let inp = pts.point(i);
-                    let mut outp = out.point_mut(i);
-                    for row in 0..nout {
-                        let mut sum = 0.0;
-                        let mut bad = false;
-                        for col in 0..nin {
+                for row in 0..m.nrows() {
+                    // A BAD element makes its whole row BAD.
+                    if m.row(row).iter().any(|&c| is_bad(c)) {
+                        out.axis_mut(row)[..n].fill(BAD_VALUE);
+                        continue;
+                    }
+                    let mut start = 0;
+                    while start < n {
+                        let end = (start + BLOCK).min(n);
+                        let mut sum = [0.0_f64; BLOCK];
+                        let mut bad = [false; BLOCK];
+                        // Each point's sum runs over the input axes in
+                        // order, as C's does.
+                        for col in 0..m.ncols() {
                             let coeff = m[[row, col]];
-                            if is_bad(coeff) || (is_bad(inp[col]) && coeff != 0.0) {
-                                bad = true;
-                                break;
-                            }
-                            // Reaching here with a BAD input means the
-                            // coefficient is zero, so the sum is unchanged.
-                            if !is_bad(inp[col]) {
-                                sum += coeff * inp[col];
+                            for (k, &v) in pts.axis(col)[start..end].iter().enumerate() {
+                                if is_bad(v) {
+                                    // A BAD input only matters through a
+                                    // non-zero coefficient.
+                                    if coeff != 0.0 {
+                                        bad[k] = true;
+                                    }
+                                } else {
+                                    sum[k] += coeff * v;
+                                }
                             }
                         }
-                        outp[row] = if bad { BAD_VALUE } else { sum };
+                        for (k, o) in out.axis_mut(row)[start..end].iter_mut().enumerate() {
+                            *o = if bad[k] { BAD_VALUE } else { sum[k] };
+                        }
+                        start = end;
                     }
                 }
             }
@@ -713,50 +726,51 @@ impl Mapping for MatrixMap {
         } else {
             form
         };
+        let n = pts.npoint();
         match form {
             MatrixForm::Unit => unreachable!(),
             MatrixForm::Diagonal => {
                 let nax = m.nrows().min(m.ncols());
-                let nout = m.nrows();
-                for i in 0..pts.npoint() {
-                    let inp = pts.point(i);
-                    let mut outp = out.point_mut(i);
-                    // A bad input stays bad even with a zero element, and a bad
-                    // element makes its axis bad (matrixmap.c Transform).
-                    for j in 0..nax {
-                        let diag = m[[j, j]];
-                        outp[j] = if diag == BAD_VALUE {
-                            f64::NAN
-                        } else {
-                            diag * inp[j]
-                        };
+                // A bad input stays bad even with a zero element, and a bad
+                // element makes its axis bad (matrixmap.c Transform).
+                for j in 0..nax {
+                    let diag = m[[j, j]];
+                    let o = &mut out.axis_mut(j)[..n];
+                    if diag == BAD_VALUE {
+                        o.fill(f64::NAN);
+                        continue;
                     }
-                    for o in outp.iter_mut().take(nout).skip(nax) {
-                        *o = 0.0;
+                    for (o, &v) in o.iter_mut().zip(pts.axis(j)) {
+                        *o = diag * v;
                     }
+                }
+                for j in nax..m.nrows() {
+                    out.axis_mut(j)[..n].fill(0.0);
                 }
             }
             MatrixForm::Full => {
-                let nout = m.nrows();
-                let nin = m.ncols();
-                for i in 0..pts.npoint() {
-                    let inp = pts.point(i);
-                    let mut outp = out.point_mut(i);
-                    for row in 0..nout {
-                        let mut sum = 0.0;
-                        for col in 0..nin {
+                for row in 0..m.nrows() {
+                    // A bad element makes its row bad (matrixmap.c
+                    // Transform).
+                    if m.row(row).iter().any(|&c| c == BAD_VALUE) {
+                        out.axis_mut(row)[..n].fill(f64::NAN);
+                        continue;
+                    }
+                    let mut start = 0;
+                    while start < n {
+                        let end = (start + BLOCK).min(n);
+                        let mut sum = [0.0_f64; BLOCK];
+                        for col in 0..m.ncols() {
                             let coeff = m[[row, col]];
-                            // A bad element makes its row bad (matrixmap.c
-                            // Transform).
-                            if coeff == BAD_VALUE {
-                                sum = f64::NAN;
-                                break;
+                            if coeff == 0.0 {
+                                continue;
                             }
-                            if coeff != 0.0 {
-                                sum += coeff * inp[col];
+                            for (k, &v) in pts.axis(col)[start..end].iter().enumerate() {
+                                sum[k] += coeff * v;
                             }
                         }
-                        outp[row] = sum;
+                        out.axis_mut(row)[start..end].copy_from_slice(&sum[..end - start]);
+                        start = end;
                     }
                 }
             }

@@ -81,3 +81,51 @@ fn permmap_kernel() {
     assert!(b[..5].iter().all(|&v| v == 5.0), "{b:?}");
     assert_eq!(b[5], 7.0);
 }
+
+use ast_core::mappings::MatrixMap;
+
+#[test]
+fn diagonal_matrixmap_kernel() {
+    let m = MatrixMap::diagonal(2, 2, &[2.0, -1.0]).unwrap();
+    let [a, b] = run(&m, true);
+    assert_bad_then(&a, 4.0);
+    assert_bad_then(&b, -2.0);
+}
+
+#[test]
+fn full_matrixmap_kernel_ignores_a_bad_input_with_a_zero_coefficient() {
+    // Output 1 = 1*x + 0*y ; output 2 = 3*x + 2*y.
+    let m = MatrixMap::new(ndarray::array![[1.0, 0.0], [3.0, 2.0]]).unwrap();
+    let x = [1.0, 2.0, BAD_VALUE];
+    let y = [BAD_VALUE, 1.0, 1.0];
+    let mut out = [vec![0.0; 3], vec![0.0; 3]];
+    let [a, b] = &mut out;
+    m.transform_into(
+        Points::new([&x[..], &y[..]]).unwrap(),
+        true,
+        PointsMut::new([&mut a[..], &mut b[..]]).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(out[0], [1.0, 2.0, BAD_VALUE]);
+    assert_eq!(out[1], [BAD_VALUE, 8.0, BAD_VALUE]);
+}
+
+#[test]
+fn full_matrixmap_kernel_crosses_its_block_boundary() {
+    let m = MatrixMap::new(ndarray::array![[1.0, 2.0], [3.0, 4.0]]).unwrap();
+    let n = 1000;
+    let x: Vec<f64> = (0..n).map(f64::from).collect();
+    let y: Vec<f64> = (0..n).map(|i| f64::from(i) * 0.5).collect();
+    let mut out = [vec![0.0; x.len()], vec![0.0; x.len()]];
+    let [a, b] = &mut out;
+    m.transform_into(
+        Points::new([&x[..], &y[..]]).unwrap(),
+        true,
+        PointsMut::new([&mut a[..], &mut b[..]]).unwrap(),
+    )
+    .unwrap();
+    for i in 0..x.len() {
+        assert_eq!(out[0][i], 0.0 + 1.0 * x[i] + 2.0 * y[i]);
+        assert_eq!(out[1][i], 0.0 + 3.0 * x[i] + 4.0 * y[i]);
+    }
+}
