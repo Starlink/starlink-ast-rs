@@ -101,7 +101,8 @@ The shim detects overlap between the input and output ranges and copies the inpu
 
 Converting a kernel to an axis loop changes the order in which points are visited, never the arithmetic applied to one point.
 
-- Sums across axes, as in MatrixMap and WinMap, keep C's summation order, through `matrix::mtr_product` rather than ndarray's `dot`.
+- Sums across axes, as in MatrixMap's `apply_matrix`, accumulate over the input axes in the same order as the C kernel, with no ndarray `dot` or BLAS call standing in for them.
+  Each output axis becomes an array of accumulators updated one input axis at a time, which keeps every point's sum in C's order.
 - No fused multiply-add contraction is introduced.
 - Vectorizing an elementwise loop does not change any element's result.
 
