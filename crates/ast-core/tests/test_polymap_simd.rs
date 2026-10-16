@@ -45,7 +45,7 @@ fn simd_matches_scalar_bulk() {
     let scalar = map.transform(&pts, true).expect("scalar forward");
     let mut simd_out = PointSet::zeros(pts.npoint(), 2);
     let path = map
-        .forward_simd_2d_into(&pts, &mut simd_out)
+        .forward_simd_2d_into(&pts.as_points(), &mut simd_out.as_points_mut())
         .expect("simd forward");
     assert_eq!(path, SimdPath::Took, "SIMD path didn't run above threshold");
 
@@ -73,7 +73,9 @@ fn simd_falls_back_below_threshold() {
     // 32 points is below SIMD_MIN_POINTS (=128) — should fall back.
     let pts = make_points(32);
     let mut out = PointSet::zeros(pts.npoint(), 2);
-    let path = map.forward_simd_2d_into(&pts, &mut out).unwrap();
+    let path = map
+        .forward_simd_2d_into(&pts.as_points(), &mut out.as_points_mut())
+        .unwrap();
     assert_eq!(path, SimdPath::Fell);
 }
 
@@ -90,7 +92,7 @@ fn simd_inverse_matches_scalar_bulk() {
     let scalar = map.transform(&sky_pts, false).expect("scalar inverse");
     let mut simd_out = PointSet::zeros(sky_pts.npoint(), 2);
     let path = map
-        .inverse_simd_2d_into(&sky_pts, &mut simd_out)
+        .inverse_simd_2d_into(&sky_pts.as_points(), &mut simd_out.as_points_mut())
         .expect("simd inverse");
     assert_eq!(path, SimdPath::Took);
 
@@ -118,7 +120,9 @@ fn simd_inverse_falls_back_below_threshold() {
     let map = load_lsst_polymap();
     let pts = make_points(32);
     let mut out = PointSet::zeros(pts.npoint(), 2);
-    let path = map.inverse_simd_2d_into(&pts, &mut out).unwrap();
+    let path = map
+        .inverse_simd_2d_into(&pts.as_points(), &mut out.as_points_mut())
+        .unwrap();
     assert_eq!(path, SimdPath::Fell);
 }
 
@@ -138,7 +142,9 @@ fn simd_inverse_propagates_bad_value() {
 
     let scalar = map.transform(&target, false).expect("scalar inverse");
     let mut simd_out = PointSet::zeros(target.npoint(), 2);
-    let path = map.inverse_simd_2d_into(&target, &mut simd_out).unwrap();
+    let path = map
+        .inverse_simd_2d_into(&target.as_points(), &mut simd_out.as_points_mut())
+        .unwrap();
     assert_eq!(path, SimdPath::Took);
 
     // BAD targets → BAD output, both axes, both paths.
@@ -188,7 +194,9 @@ fn simd_propagates_bad_value() {
     let pts = PointSet::from_rows(rows);
 
     let mut out = PointSet::zeros(pts.npoint(), 2);
-    let path = map.forward_simd_2d_into(&pts, &mut out).unwrap();
+    let path = map
+        .forward_simd_2d_into(&pts.as_points(), &mut out.as_points_mut())
+        .unwrap();
     assert_eq!(path, SimdPath::Took);
 
     // BAD inputs should produce BAD outputs on both axes.

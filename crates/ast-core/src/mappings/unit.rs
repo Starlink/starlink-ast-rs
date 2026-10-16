@@ -1,7 +1,7 @@
 //! The identity mapping.
 
 use crate::constants::BAD_VALUE;
-use crate::coords::PointSet;
+use crate::coords::{Points, PointsMut};
 use crate::error::AstResult;
 use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
 
@@ -73,26 +73,19 @@ impl Mapping for UnitMap {
         self.inverted = !self.inverted;
     }
 
-    fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
-        crate::mappings::validate_transform(self, pts, forward, None)?;
-        let mut out = PointSet::zeros(pts.npoint(), pts.ncoord());
-        self.transform_into(pts, forward, &mut out)?;
-        Ok(out)
-    }
-
     /// A copy of the input, with a NaN, which is a bad value, made
     /// `BAD_VALUE`.
-    fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()> {
-        crate::mappings::validate_transform(self, pts, forward, Some(out))?;
-        out.view_mut().assign(&pts.view());
-        let mut view = out.view_mut();
-        for v in view
-            .as_slice_mut()
-            .expect("PointSet is C-contiguous")
-            .iter_mut()
-        {
-            if v.is_nan() {
-                *v = BAD_VALUE;
+    fn transform_into(
+        &self,
+        pts: Points<'_>,
+        forward: bool,
+        mut out: PointsMut<'_>,
+    ) -> AstResult<()> {
+        crate::mappings::validate_transform(self, &pts, forward, Some(&out))?;
+        let n = pts.npoint();
+        for j in 0..pts.ncoord() {
+            for (o, &v) in out.axis_mut(j)[..n].iter_mut().zip(pts.axis(j)) {
+                *o = if v.is_nan() { BAD_VALUE } else { v };
             }
         }
         Ok(())
@@ -101,12 +94,15 @@ impl Mapping for UnitMap {
     /// The NaN protocol carries bad values as NaN, so this is a plain copy.
     fn transform_into_nan(
         &self,
-        pts: &PointSet,
+        pts: Points<'_>,
         forward: bool,
-        out: &mut PointSet,
+        mut out: PointsMut<'_>,
     ) -> AstResult<()> {
-        crate::mappings::validate_transform(self, pts, forward, Some(out))?;
-        out.view_mut().assign(&pts.view());
+        crate::mappings::validate_transform(self, &pts, forward, Some(&out))?;
+        let n = pts.npoint();
+        for j in 0..pts.ncoord() {
+            out.axis_mut(j)[..n].copy_from_slice(pts.axis(j));
+        }
         Ok(())
     }
 

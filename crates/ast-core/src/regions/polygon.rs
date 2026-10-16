@@ -9,7 +9,7 @@
 //!
 //! The polygon is restricted to 2-dimensional frames (naxes must be 2).
 
-use crate::coords::PointSet;
+use crate::coords::{PointSet, Points, PointsMut};
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::{AxisKind, DynFrame, Frame, FrameRef, FrameSet, simplify_frame_via_mapping};
 use crate::mappings::helpers::{is_bad, point_has_bad};
@@ -2131,9 +2131,14 @@ impl Mapping for Polygon {
         super::data::region_transform(self, pts)
     }
 
-    fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()> {
-        crate::mappings::validate_transform(self, pts, forward, Some(out))?;
-        let result = self.transform(pts, forward)?;
+    fn transform_into(
+        &self,
+        pts: Points<'_>,
+        forward: bool,
+        mut out: PointsMut<'_>,
+    ) -> AstResult<()> {
+        crate::mappings::validate_transform(self, &pts, forward, Some(&out))?;
+        let result = self.transform(&PointSet::from_points(&pts), forward)?;
         let npoint = result.npoint();
         let ncoord = result.ncoord();
         for i in 0..npoint {

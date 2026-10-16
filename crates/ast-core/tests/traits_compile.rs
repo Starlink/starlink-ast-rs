@@ -1,6 +1,6 @@
 //! Compilation test: verifies trait signatures are coherent and Region: Frame + Mapping works.
 
-use ast_core::coords::PointSet;
+use ast_core::coords::{PointSet, Points, PointsMut};
 use ast_core::error::{AstError, AstResult, ErrorCode};
 use ast_core::frames::{BasicFrame, BasicFrameBuilder, DynFrame, Frame};
 use ast_core::mappings::{DynMapping, Mapping, ViaSimplify};
@@ -92,9 +92,9 @@ impl Mapping for DummyRegion {
     }
     fn transform_into(
         &self,
-        _pts: &PointSet,
+        _pts: Points<'_>,
         _forward: bool,
-        _out: &mut PointSet,
+        _out: PointsMut<'_>,
     ) -> AstResult<()> {
         Err(AstError::new(ErrorCode::Nodef, "not implemented"))
     }

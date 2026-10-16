@@ -4,6 +4,8 @@ mod pointlist;
 mod points;
 mod pointset;
 
+pub(crate) use points::PointShape;
+
 pub use pointlist::PointList;
 pub use points::{INLINE_AXES, PointBuf, PointMut, Points, PointsMut};
 pub use pointset::PointSet;

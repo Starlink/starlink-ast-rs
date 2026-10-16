@@ -56,13 +56,13 @@ fn too_small_an_output_is_nopts_or_nocts() {
         let pts = PointSet::from_rows([[1.0, 2.0], [3.0, 4.0]]);
         let mut few_points = PointSet::zeros(1, 2);
         assert_eq!(
-            code(map.transform_into(&pts, true, &mut few_points)),
+            code(map.transform_into(pts.as_points(), true, few_points.as_points_mut())),
             ErrorCode::Nopts,
             "{map:?}"
         );
         let mut few_coords = PointSet::zeros(2, 1);
         assert_eq!(
-            code(map.transform_into(&pts, true, &mut few_coords)),
+            code(map.transform_into(pts.as_points(), true, few_coords.as_points_mut())),
             ErrorCode::Nocts,
             "{map:?}"
         );

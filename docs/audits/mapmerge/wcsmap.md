@@ -17,7 +17,7 @@ failing that, swap speculatively because the swapped pair may itself be simpler.
 The swap predicate is `CanSwap` (`wcsmap.c:941-1164 (fn CanSwap)`), enumerated as
 rows 37 to 58, and it admits only a PermMap.
 
-`WcsMap::map_merge` (`wcsmap.rs:1224-1231 (fn map_merge)`) delegates to
+`WcsMap::map_merge` (`wcsmap.rs:1222-1229 (fn map_merge)`) delegates to
 `simplify::wcs_map_merge` (`mappings/simplify.rs:1101-1242 (fn wcs_map_merge)`), so Rust
 sites below are in `mappings/simplify.rs` unless stated. The driver calls three
 helpers, one per C function it needs: `can_swap_wcsmap_past_permmap`
@@ -42,9 +42,9 @@ helpers, one per C function it needs: `can_swap_wcsmap_past_permmap`
 | 11 | A WcsMap can only combine with its own inverse; note that no mergeable neighbour has been found yet | wcsmap.c:3164-3168 (fn MapMerge) | mappings/simplify.rs:1123-1127 (fn wcs_map_merge) | architecture | ported |
 | 12 | Check the lower neighbour first | wcsmap.c:3169-3176 (fn MapMerge) | mappings/simplify.rs:1124 (fn wcs_map_merge),1125-1132 (fn wcs_map_merge) | architecture | ported |
 | 13 | If the lower neighbour did not merge, check the upper neighbour the same way | wcsmap.c:3177-3185 (fn MapMerge) | mappings/simplify.rs:1125 (fn wcs_map_merge),1124 (fn wcs_map_merge) | architecture | ported |
-| 14 | A neighbour that passed the checks is this WcsMap's inverse, so the pair can be replaced by a single UnitMap | wcsmap.c:3186-3190 (fn MapMerge) | wcsmap.rs:1233-1259 (fn try_merge) | architecture | ported |
+| 14 | A neighbour that passed the checks is this WcsMap's inverse, so the pair can be replaced by a single UnitMap | wcsmap.c:3186-3190 (fn MapMerge) | wcsmap.rs:1231-1257 (fn try_merge) | architecture | ported |
 | 15 | Annul the two WcsMaps | wcsmap.c:3191-3194 (fn MapMerge) | -- | ceremony | n/a: owned values are dropped |
-| 16 | Create the UnitMap and store it in place of the first WcsMap, with a cleared Invert flag | wcsmap.c:3195-3199 (fn MapMerge) | wcsmap.rs:1255 (fn try_merge) | architecture | ported |
+| 16 | Create the UnitMap and store it in place of the first WcsMap, with a cleared Invert flag | wcsmap.c:3195-3199 (fn MapMerge) | wcsmap.rs:1253 (fn try_merge) | architecture | ported |
 | 17 | Shuffle the remaining Mappings down to fill the hole left by the second WcsMap | wcsmap.c:3200-3206 (fn MapMerge) | mappings/simplify.rs:1137 (fn wcs_map_merge) | architecture | ported |
 | 18 | Clear the vacated element at the end | wcsmap.c:3207-3210 (fn MapMerge) | -- | ceremony | n/a: the list is a `Vec`, so removing the second entry leaves no slot to clear |
 | 19 | Decrement the Mapping count and return the index of the first modified element | wcsmap.c:3211-3215 (fn MapMerge) | mappings/simplify.rs:1137-1138 (fn wcs_map_merge) | architecture | ported |

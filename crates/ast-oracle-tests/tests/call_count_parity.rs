@@ -302,12 +302,12 @@ fn run_survey() -> Survey {
                 .collect();
             let pts = PointSet::from_rows(rows);
             let mut out = PointSet::zeros(n, s.nout);
-            if let Err(e) = map.transform_into(&pts, s.forward, &mut out) {
+            if let Err(e) = map.transform_into(pts.as_points(), s.forward, out.as_points_mut()) {
                 errors.push(format!("{k}: rust transform: {e}"));
                 continue;
             }
             ast_core::call_counts::reset();
-            if let Err(e) = map.transform_into(&pts, s.forward, &mut out) {
+            if let Err(e) = map.transform_into(pts.as_points(), s.forward, out.as_points_mut()) {
                 errors.push(format!("{k}: rust transform: {e}"));
                 continue;
             }

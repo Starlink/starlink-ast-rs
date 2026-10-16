@@ -4,7 +4,7 @@
 
 use std::time::Duration;
 
-use ast_core::coords::PointSet;
+use ast_core::coords::{PointSet, Points, PointsMut};
 
 use crate::cases::Case;
 use crate::load::{Loaded, load_fixture};
@@ -107,7 +107,7 @@ pub fn run_set(cases: &[Case], engines: Engines, npoints: &[usize]) -> Vec<Resul
             let pts = rows_to_pointset(s, &rows);
             let mut rust_out = PointSet::zeros(n, s.nout);
             let mut time_rust = || -> Result<(), String> {
-                map.transform_into(&pts, s.forward, &mut rust_out)
+                map.transform_into(pts.as_points(), s.forward, rust_out.as_points_mut())
                     .map_err(|e| format!("{} {dir} N={n}: {e}", s.relpath))
             };
             let columns = rows_to_columns(s, &rows);
@@ -116,16 +116,9 @@ pub fn run_set(cases: &[Case], engines: Engines, npoints: &[usize]) -> Vec<Resul
             let mut cols_out = vec![0.0; s.nout * n];
             let mut time_cols = || -> Result<(), String> {
                 let fail = |e: ast_core::error::AstError| format!("{} {dir} N={n}: {e}", s.relpath);
-                let axes: Vec<&[f64]> = columns.chunks_exact(n).collect();
-                let pts = PointSet::from_columns(&axes).map_err(fail)?;
-                let mut o = PointSet::zeros(n, s.nout);
-                map.transform_into(&pts, s.forward, &mut o).map_err(fail)?;
-                for (j, dst) in cols_out.chunks_exact_mut(n).enumerate() {
-                    for (d, v) in dst.iter_mut().zip(o.axis_iter(j)) {
-                        *d = v;
-                    }
-                }
-                Ok(())
+                let input = Points::new(columns.chunks_exact(n)).map_err(fail)?;
+                let out = PointsMut::new(cols_out.chunks_exact_mut(n)).map_err(fail)?;
+                map.transform_into(input, s.forward, out).map_err(fail)
             };
             #[cfg(feature = "c-oracle")]
             let mut c_out = vec![0.0; s.nout * n];

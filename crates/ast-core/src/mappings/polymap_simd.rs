@@ -2,13 +2,13 @@
 //!
 //! Process `LANES` points per iteration using [`wide::f64x4`]. The pipeline is:
 //!
-//! 1. A copy of the input `PointSet`'s two axes, combined with a `BAD_VALUE →
+//! 1. A copy of the input's two axes, combined with a `BAD_VALUE →
 //!    f64::NAN` substitution so the kernel can run branchlessly. NaN propagates
 //!    through arithmetic at no extra cost.
 //! 2. SIMD kernel evaluates the polynomial 4 points at a time, walking the
 //!    same `forward_compact` term layout as the scalar path. Inner loop is
 //!    pure FMA (`coeff * x^p0 * y^p1` accumulated into the output lane).
-//! 3. A copy back into the output `PointSet`'s axes, combined with `NaN → BAD_VALUE`
+//! 3. A copy back into the output's axes, combined with `NaN → BAD_VALUE`
 //!    substitution.
 //!
 //! The two copy passes are O(N) memory-bandwidth-bound; the kernel is
@@ -27,7 +27,7 @@
 use wide::{CmpLt, f64x4};
 
 use crate::constants::BAD_VALUE;
-use crate::coords::PointSet;
+use crate::coords::{Points, PointsMut};
 use crate::error::{AstError, AstResult, ErrorCode};
 
 use super::Mapping;
@@ -84,8 +84,8 @@ impl PolyMap {
     /// uses this to attribute timings correctly.
     pub fn forward_simd_2d_into(
         &self,
-        input: &PointSet,
-        output: &mut PointSet,
+        input: &Points<'_>,
+        output: &mut PointsMut<'_>,
     ) -> AstResult<SimdPath> {
         let npoint = input.npoint();
         if self.nin() != 2 || self.nout() != 2 {
@@ -119,14 +119,11 @@ impl PolyMap {
         let mut xout = vec![0.0_f64; npoint];
         let mut yout = vec![0.0_f64; npoint];
 
-        // Pass 1: copy the axes with BAD → NaN substitution. The PointSet
-        // buffer holds the x axis and then the y axis: [x0, x1, ..., y0, y1, ...].
-        let view = input.view();
-        let flat: &[f64] = view.to_slice().expect("PointSet is C-contiguous");
-        debug_assert_eq!(flat.len(), npoint * 2);
+        // Pass 1: copy the axes with BAD → NaN substitution.
+        let (fx, fy) = (input.axis(0), input.axis(1));
         for ip in 0..npoint {
-            let x = flat[ip];
-            let y = flat[npoint + ip];
+            let x = fx[ip];
+            let y = fy[ip];
             xin[ip] = if x == BAD_VALUE { f64::NAN } else { x };
             yin[ip] = if y == BAD_VALUE { f64::NAN } else { y };
         }
@@ -142,13 +139,11 @@ impl PolyMap {
         );
 
         // Pass 3: copy back with NaN → BAD substitution.
-        let mut out_view = output.view_mut();
-        let out_flat: &mut [f64] = out_view.as_slice_mut().expect("PointSet is C-contiguous");
         for ip in 0..npoint {
             let x = xout[ip];
             let y = yout[ip];
-            out_flat[ip] = if x.is_nan() { BAD_VALUE } else { x };
-            out_flat[npoint + ip] = if y.is_nan() { BAD_VALUE } else { y };
+            output.axis_mut(0)[ip] = if x.is_nan() { BAD_VALUE } else { x };
+            output.axis_mut(1)[ip] = if y.is_nan() { BAD_VALUE } else { y };
         }
 
         Ok(SimdPath::Took)
@@ -172,8 +167,8 @@ impl PolyMap {
     /// final exit, once per pipeline run.
     pub fn forward_simd_2d_into_nan(
         &self,
-        input: &PointSet,
-        output: &mut PointSet,
+        input: &Points<'_>,
+        output: &mut PointsMut<'_>,
     ) -> AstResult<SimdPath> {
         let npoint = input.npoint();
         if self.nin() != 2 || self.nout() != 2 {
@@ -207,11 +202,10 @@ impl PolyMap {
 
         // Input: copy through, lifting any BAD that slipped past the
         // boundary into NaN. Cheap and defensive.
-        let view = input.view();
-        let flat: &[f64] = view.to_slice().expect("PointSet is C-contiguous");
+        let (fx, fy) = (input.axis(0), input.axis(1));
         for ip in 0..npoint {
-            let x = flat[ip];
-            let y = flat[npoint + ip];
+            let x = fx[ip];
+            let y = fy[ip];
             xin[ip] = if x == BAD_VALUE { f64::NAN } else { x };
             yin[ip] = if y == BAD_VALUE { f64::NAN } else { y };
         }
@@ -223,10 +217,8 @@ impl PolyMap {
 
         // Output: straight copy — leave NaN as NaN so downstream
         // protocol-aware stages keep the canonical sentinel.
-        let mut out_view = output.view_mut();
-        let out_flat: &mut [f64] = out_view.as_slice_mut().expect("PointSet is C-contiguous");
-        out_flat[..npoint].copy_from_slice(&xout);
-        out_flat[npoint..2 * npoint].copy_from_slice(&yout);
+        output.axis_mut(0)[..npoint].copy_from_slice(&xout);
+        output.axis_mut(1)[..npoint].copy_from_slice(&yout);
 
         Ok(SimdPath::Took)
     }
@@ -356,8 +348,8 @@ impl PolyMap {
     /// uses this to attribute timings correctly.
     pub fn inverse_simd_2d_into(
         &self,
-        target: &PointSet,
-        result: &mut PointSet,
+        target: &Points<'_>,
+        result: &mut PointsMut<'_>,
     ) -> AstResult<SimdPath> {
         let npoint = target.npoint();
         if self.nin() != 2 || self.nout() != 2 {
@@ -391,11 +383,10 @@ impl PolyMap {
         let mut xr = vec![0.0_f64; npoint];
         let mut yr = vec![0.0_f64; npoint];
 
-        let view = target.view();
-        let flat: &[f64] = view.to_slice().expect("PointSet is C-contiguous");
+        let (fx, fy) = (target.axis(0), target.axis(1));
         for ip in 0..npoint {
-            let x = flat[ip];
-            let y = flat[npoint + ip];
+            let x = fx[ip];
+            let y = fy[ip];
             xt[ip] = if x == BAD_VALUE { f64::NAN } else { x };
             yt[ip] = if y == BAD_VALUE { f64::NAN } else { y };
         }
@@ -431,13 +422,11 @@ impl PolyMap {
         );
 
         // Pass 4: copy back into the result with NaN → BAD substitution.
-        let mut out_view = result.view_mut();
-        let out_flat: &mut [f64] = out_view.as_slice_mut().expect("PointSet is C-contiguous");
         for ip in 0..npoint {
             let x = xr[ip];
             let y = yr[ip];
-            out_flat[ip] = if x.is_nan() { BAD_VALUE } else { x };
-            out_flat[npoint + ip] = if y.is_nan() { BAD_VALUE } else { y };
+            result.axis_mut(0)[ip] = if x.is_nan() { BAD_VALUE } else { x };
+            result.axis_mut(1)[ip] = if y.is_nan() { BAD_VALUE } else { y };
         }
 
         Ok(SimdPath::Took)
@@ -452,8 +441,8 @@ impl PolyMap {
     /// sentinel rather than the finite `BAD_VALUE = -1.8e308`.
     pub fn inverse_simd_2d_into_nan(
         &self,
-        target: &PointSet,
-        result: &mut PointSet,
+        target: &Points<'_>,
+        result: &mut PointsMut<'_>,
     ) -> AstResult<SimdPath> {
         let npoint = target.npoint();
         if self.nin() != 2 || self.nout() != 2 {
@@ -487,11 +476,10 @@ impl PolyMap {
 
         // Defensive BAD → NaN lift on input; no-op when the caller is
         // already inside the protocol (canonical NaN already).
-        let view = target.view();
-        let flat: &[f64] = view.to_slice().expect("PointSet is C-contiguous");
+        let (fx, fy) = (target.axis(0), target.axis(1));
         for ip in 0..npoint {
-            let x = flat[ip];
-            let y = flat[npoint + ip];
+            let x = fx[ip];
+            let y = fy[ip];
             xt[ip] = if x == BAD_VALUE { f64::NAN } else { x };
             yt[ip] = if y == BAD_VALUE { f64::NAN } else { y };
         }
@@ -520,10 +508,8 @@ impl PolyMap {
         );
 
         // Output: straight copy; leave NaN as NaN.
-        let mut out_view = result.view_mut();
-        let out_flat: &mut [f64] = out_view.as_slice_mut().expect("PointSet is C-contiguous");
-        out_flat[..npoint].copy_from_slice(&xr);
-        out_flat[npoint..2 * npoint].copy_from_slice(&yr);
+        result.axis_mut(0)[..npoint].copy_from_slice(&xr);
+        result.axis_mut(1)[..npoint].copy_from_slice(&yr);
 
         Ok(SimdPath::Took)
     }

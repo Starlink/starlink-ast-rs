@@ -3,7 +3,7 @@
 use std::collections::VecDeque;
 use std::fmt;
 
-use crate::coords::PointSet;
+use crate::coords::{PointSet, Points, PointsMut};
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::mappings::{CmpMap, Composition, DynMapping, Mapping, PermMap, UnitMap, ViaSimplify};
 use crate::serial::{
@@ -2066,8 +2066,8 @@ impl Mapping for FrameSet {
         map.transform(pts, true)
     }
 
-    fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()> {
-        crate::mappings::validate_transform(self, pts, forward, Some(out))?;
+    fn transform_into(&self, pts: Points<'_>, forward: bool, out: PointsMut<'_>) -> AstResult<()> {
+        crate::mappings::validate_transform(self, &pts, forward, Some(&out))?;
         let map = if forward {
             self.mapping(FrameRef::Base, FrameRef::Current)?
         } else {

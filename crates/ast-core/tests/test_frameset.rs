@@ -515,7 +515,8 @@ fn transform_into_preallocated() {
 
     let pts = PointSet::from_rows([[10.0, 20.0]]);
     let mut out = PointSet::from_rows([[0.0, 0.0]]);
-    fs.transform_into(&pts, true, &mut out).unwrap();
+    fs.transform_into(pts.as_points(), true, out.as_points_mut())
+        .unwrap();
     assert_eq!(out.point(0), &[11.0, 22.0]);
 }
 

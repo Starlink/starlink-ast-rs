@@ -79,9 +79,11 @@ fn main() {
     let map = obj.as_mapping().expect("a Mapping");
     let pts = ast_core::coords::PointSet::from_rows(rows);
     let mut out = ast_core::coords::PointSet::zeros(pts.npoint(), nout);
-    map.transform_into(&pts, forward, &mut out).unwrap();
+    map.transform_into(pts.as_points(), forward, out.as_points_mut())
+        .unwrap();
     ast_core::call_counts::reset();
-    map.transform_into(&pts, forward, &mut out).unwrap();
+    map.transform_into(pts.as_points(), forward, out.as_points_mut())
+        .unwrap();
     for (k, v) in ast_core::call_counts::snapshot() {
         println!("{k}\t{v}");
     }

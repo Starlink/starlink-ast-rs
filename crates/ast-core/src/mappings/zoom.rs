@@ -1,7 +1,7 @@
 //! Uniform scaling mapping.
 
 use crate::constants::BAD_VALUE;
-use crate::coords::PointSet;
+use crate::coords::{Points, PointsMut};
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::serial::{Node, NodeValue, Serializable, read_mapping_base, write_mapping_base};
 
@@ -140,15 +140,13 @@ impl Mapping for ZoomMap {
         self.inverted = !self.inverted;
     }
 
-    fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
-        crate::mappings::validate_transform(self, pts, forward, None)?;
-        let mut out = PointSet::zeros(pts.npoint(), self.ncoord);
-        self.transform_into(pts, forward, &mut out)?;
-        Ok(out)
-    }
-
-    fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()> {
-        crate::mappings::validate_transform(self, pts, forward, Some(out))?;
+    fn transform_into(
+        &self,
+        pts: Points<'_>,
+        forward: bool,
+        mut out: PointsMut<'_>,
+    ) -> AstResult<()> {
+        crate::mappings::validate_transform(self, &pts, forward, Some(&out))?;
         let fwd = self.effective_forward(forward);
         let scale = if fwd { self.zoom() } else { 1.0 / self.zoom() };
         for i in 0..pts.npoint() {
@@ -169,9 +167,9 @@ impl Mapping for ZoomMap {
     /// kernel, so behaviour is unchanged on those inputs.
     fn transform_into_nan(
         &self,
-        pts: &PointSet,
+        pts: Points<'_>,
         forward: bool,
-        out: &mut PointSet,
+        mut out: PointsMut<'_>,
     ) -> AstResult<()> {
         let fwd = self.effective_forward(forward);
         let scale = if fwd { self.zoom() } else { 1.0 / self.zoom() };

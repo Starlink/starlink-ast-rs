@@ -13,7 +13,7 @@ mod token;
 use std::cell::UnsafeCell;
 
 use crate::constants::BAD_VALUE;
-use crate::coords::PointSet;
+use crate::coords::{PointSet, Points, PointsMut};
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
 
@@ -332,7 +332,7 @@ impl Mapping for MathMap {
             self.nin
         };
         let mut out = PointSet::zeros(pts.npoint(), ncoord_out);
-        self.transform_into(pts, forward, &mut out)?;
+        self.transform_into(pts.as_points(), forward, out.as_points_mut())?;
         Ok(out)
     }
 
@@ -347,23 +347,28 @@ impl Mapping for MathMap {
     /// evaluator.
     fn transform_into_nan(
         &self,
-        pts: &PointSet,
+        pts: Points<'_>,
         forward: bool,
-        out: &mut PointSet,
+        mut out: PointsMut<'_>,
     ) -> AstResult<()> {
-        self.transform_into(pts, forward, out)?;
-        let mut view = out.view_mut();
-        let flat = view.as_slice_mut().expect("PointSet is C-contiguous");
-        for v in flat.iter_mut() {
-            if *v == BAD_VALUE {
-                *v = f64::NAN;
+        self.transform_into(pts, forward, out.reborrow())?;
+        for j in 0..out.ncoord() {
+            for v in out.axis_mut(j) {
+                if *v == BAD_VALUE {
+                    *v = f64::NAN;
+                }
             }
         }
         Ok(())
     }
 
-    fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()> {
-        crate::mappings::validate_transform(self, pts, forward, Some(out))?;
+    fn transform_into(
+        &self,
+        pts: Points<'_>,
+        forward: bool,
+        mut out: PointsMut<'_>,
+    ) -> AstResult<()> {
+        crate::mappings::validate_transform(self, &pts, forward, Some(&out))?;
         let effective_forward = forward != self.inverted;
         let npoint = pts.npoint();
         let ncoord_in = if effective_forward {

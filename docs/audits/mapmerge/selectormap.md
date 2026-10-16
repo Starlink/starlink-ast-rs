@@ -16,7 +16,7 @@ equal SelectorMap used the other way.
 Note the order — unlike SwitchMap, C does the self-simplification *first* here and
 only then looks at the neighbour.
 
-`SelectorMap::map_merge` (`selectormap.rs:354-364 (fn map_merge)`) computes the
+`SelectorMap::map_merge` (`selectormap.rs:359-369 (fn map_merge)`) computes the
 self-simplification itself, in `SelectorMap::reduced_children`
 (`selectormap.rs:122-170 (fn reduced_children)`), and `self_reduce_map_merge` falls through to
 `default_map_merge` only when that made no change, so the two are in C's order.
@@ -26,19 +26,19 @@ self-simplification itself, in `SelectorMap::reduced_children`
 | 1 | Initialise the returned result to -1 | selectormap.c:688-689 (fn MapMerge) | -- | ceremony | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index |
 | 2 | Check the inherited status and bail out | selectormap.c:691-692 (fn MapMerge) | -- | architecture | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 3 | Get a typed pointer to this SelectorMap and its Region count | selectormap.c:694-697 (fn MapMerge) | -- | ceremony | n/a: the Rust method already has `&self` |
-| 4 | Attempt to simplify the SelectorMap on its own | selectormap.c:698-700 (fn MapMerge) | selectormap.rs:363 (fn map_merge) | architecture | ported |
+| 4 | Attempt to simplify the SelectorMap on its own | selectormap.c:698-700 (fn MapMerge) | selectormap.rs:368 (fn map_merge) | architecture | ported |
 | 5 | Simplify each encapsulated Region, noting whether anything changed | selectormap.c:701-710 (fn MapMerge) | selectormap.rs:123-156 (fn reduced_children) | architecture | ported |
 | 6 | If anything simplified, build a new SelectorMap from the results | selectormap.c:711-720 (fn MapMerge) | selectormap.rs:158-170 (fn reduced_children) | architecture | ported |
 | 7 | Release resources | selectormap.c:721-727 (fn MapMerge) | -- | ceremony | n/a: owned values are dropped |
-| 8 | Otherwise merge with a neighbouring SelectorMap, in series only | selectormap.c:728-733 (fn MapMerge) | selectormap.rs:366-396 (fn try_merge) | architecture | ported |
+| 8 | Otherwise merge with a neighbouring SelectorMap, in series only | selectormap.c:728-733 (fn MapMerge) | selectormap.rs:371-401 (fn try_merge) | architecture | ported |
 | 9 | Check the higher neighbour first, noting the lower index of the pair | selectormap.c:734-740 (fn MapMerge) | mappings/simplify.rs:1436-1445 (fn default_map_merge) | architecture | ported |
 | 10 | Failing that, check the lower neighbour the same way | selectormap.c:741-751 (fn MapMerge) | mappings/simplify.rs:1449-1458 (fn default_map_merge) | architecture | ported |
-| 11 | Cancel the pair only if the two SelectorMaps are equal with opposite invert flags | selectormap.c:752-760 (fn MapMerge) | selectormap.rs:377-393 (fn try_merge) | architecture | ported |
-| 12 | Replace the first of the pair with a UnitMap and set its invert flag | selectormap.c:761-768 (fn MapMerge) | selectormap.rs:395 (fn try_merge) | architecture | ported |
+| 11 | Cancel the pair only if the two SelectorMaps are equal with opposite invert flags | selectormap.c:752-760 (fn MapMerge) | selectormap.rs:382-398 (fn try_merge) | architecture | ported |
+| 12 | Replace the first of the pair with a UnitMap and set its invert flag | selectormap.c:761-768 (fn MapMerge) | selectormap.rs:400 (fn try_merge) | architecture | ported |
 | 13 | Annul the second and shuffle the rest down, clearing the vacated slot | selectormap.c:769-780 (fn MapMerge) | mappings/simplify.rs:1514-1515 (fn default_map_merge) | architecture | ported |
 | 14 | Decrement the Mapping count and return the index of the first modified element | selectormap.c:781-788 (fn MapMerge) | mappings/simplify.rs:1515-1516 (fn default_map_merge) | architecture | ported |
 | 15 | Clear the result value if an error occurred | selectormap.c:789-791 (fn MapMerge) | -- | ceremony | n/a: an error is a `Result::Err`, not a value to be cleared alongside one |
-| 16 | Return the result | selectormap.c:792-793 (fn MapMerge) | selectormap.rs:363 (fn map_merge) | ceremony | ported |
+| 16 | Return the result | selectormap.c:792-793 (fn MapMerge) | selectormap.rs:368 (fn map_merge) | ceremony | ported |
 
 ## Rows 4 and 8 — the order is the opposite of SwitchMap's
 

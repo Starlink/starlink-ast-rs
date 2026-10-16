@@ -662,9 +662,11 @@ fn global_bounds(
                 }
             }
 
-            mapdata
-                .mapping
-                .transform_into(&pts_in, mapdata.forward, &mut pts_out)?;
+            mapdata.mapping.transform_into(
+                pts_in.as_points(),
+                mapdata.forward,
+                pts_out.as_points_mut(),
+            )?;
             batch = 0;
         }};
     }

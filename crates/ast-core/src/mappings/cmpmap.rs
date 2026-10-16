@@ -35,7 +35,7 @@
 
 use std::fmt;
 
-use crate::coords::PointSet;
+use crate::coords::{PointSet, Points, PointsMut};
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::serial::{
     MappingToNode, Node, Serializable, mapping_from_node, read_mapping_base, write_mapping_base,
@@ -540,178 +540,104 @@ impl CmpMap {
         if fwd { [one, two] } else { [two, one] }
     }
 
-    /// The points `start..end` of `pts`, as a PointSet of their own.
-    fn batch_of(pts: &PointSet, start: usize, end: usize) -> PointSet {
-        PointSet::from_ndarray(pts.view().slice(ndarray::s![.., start..end]).to_owned())
-    }
-
     /// A series applies one component and then the other, holding the
     /// intermediate result in between. A component may itself be a series
     /// holding its own, so cmpmap.c `Transform` takes the points
-    /// [`SERIES_BATCH`] at a time to bound the memory nested series need.
-    fn series_transform(&self, pts: &PointSet, fwd: bool) -> AstResult<PointSet> {
-        let [(m1, d1), (m2, d2)] = self.series_stages(fwd);
-        let npoint = pts.npoint();
-        if npoint <= SERIES_BATCH {
-            let mid = m1.transform(pts, d1)?;
-            return m2.transform(&mid, d2);
-        }
-        let nout = if d2 { m2.nout() } else { m2.nin() };
-        let mut out = PointSet::zeros(npoint, nout);
-        self.series_transform_batches(pts, fwd, &mut out)?;
-        Ok(out)
-    }
-
+    /// [`SERIES_BATCH`] at a time to bound the memory nested series need. The
+    /// batches are views of `pts` and `out`, and one intermediate buffer is
+    /// reused for every batch. Zero points still run both stages once, so
+    /// their checks apply.
     fn series_transform_into(
         &self,
-        pts: &PointSet,
+        pts: Points<'_>,
         fwd: bool,
-        out: &mut PointSet,
+        out: PointsMut<'_>,
     ) -> AstResult<()> {
-        let [(m1, d1), (m2, d2)] = self.series_stages(fwd);
-        if pts.npoint() <= SERIES_BATCH {
-            let mid = m1.transform(pts, d1)?;
-            return m2.transform_into(&mid, d2, out);
-        }
-        self.series_transform_batches(pts, fwd, out)
+        self.series_batches(pts, fwd, out, false)
     }
 
-    /// [`Self::series_transform_into`] [`SERIES_BATCH`] points at a time.
-    fn series_transform_batches(
-        &self,
-        pts: &PointSet,
-        fwd: bool,
-        out: &mut PointSet,
-    ) -> AstResult<()> {
-        let [(m1, d1), (m2, d2)] = self.series_stages(fwd);
-        let npoint = pts.npoint();
-        for start in (0..npoint).step_by(SERIES_BATCH) {
-            let end = (start + SERIES_BATCH).min(npoint);
-            let mid = m1.transform(&Self::batch_of(pts, start, end), d1)?;
-            let res = m2.transform(&mid, d2)?;
-            out.view_mut()
-                .slice_mut(ndarray::s![.., start..end])
-                .assign(&res.view());
-        }
-        Ok(())
-    }
-
-    /// Same shape as `series_transform_into` but threads through each child
-    /// via `transform_into_nan`, preserving the NaN-as-bad protocol across
-    /// the chain. Each stage's `transform_into_nan` is its own opt-in: if a
-    /// child hasn't overridden it, the trait default falls through to
-    /// `transform_into`, which re-checks BAD locally — correct but skipping
-    /// the boundary-amortization win for that one stage. The points go
-    /// [`SERIES_BATCH`] at a time, as in [`Self::series_transform`].
+    /// [`Self::series_transform_into`] through each child's
+    /// `transform_into_nan`, preserving the NaN-as-bad protocol across the
+    /// chain.
     fn series_transform_into_nan(
         &self,
-        pts: &PointSet,
+        pts: Points<'_>,
         fwd: bool,
-        out: &mut PointSet,
+        out: PointsMut<'_>,
+    ) -> AstResult<()> {
+        self.series_batches(pts, fwd, out, true)
+    }
+
+    fn series_batches(
+        &self,
+        pts: Points<'_>,
+        fwd: bool,
+        mut out: PointsMut<'_>,
+        nan: bool,
     ) -> AstResult<()> {
         let [(m1, d1), (m2, d2)] = self.series_stages(fwd);
-        let mid_n = if d1 { m1.nout() } else { m1.nin() };
         let npoint = pts.npoint();
-        if npoint <= SERIES_BATCH {
-            let mut mid = PointSet::zeros(npoint, mid_n);
-            m1.transform_into_nan(pts, d1, &mut mid)?;
-            return m2.transform_into_nan(&mid, d2, out);
-        }
-        let nout = out.ncoord();
-        for start in (0..npoint).step_by(SERIES_BATCH) {
+        let nmid = if d1 { m1.nout() } else { m1.nin() };
+        let mut mid = PointSet::zeros(npoint.min(SERIES_BATCH), nmid);
+        let mut mid = mid.as_points_mut();
+        let mut start = 0;
+        loop {
             let end = (start + SERIES_BATCH).min(npoint);
-            let mut mid = PointSet::zeros(end - start, mid_n);
-            m1.transform_into_nan(&Self::batch_of(pts, start, end), d1, &mut mid)?;
-            let mut res = PointSet::zeros(end - start, nout);
-            m2.transform_into_nan(&mid, d2, &mut res)?;
-            out.view_mut()
-                .slice_mut(ndarray::s![.., start..end])
-                .assign(&res.view());
+            let mut batch = mid.points_mut(0..end - start);
+            if nan {
+                m1.transform_into_nan(pts.points(start..end), d1, batch.reborrow())?;
+                m2.transform_into_nan(batch.as_points(), d2, out.points_mut(start..end))?;
+            } else {
+                m1.transform_into(pts.points(start..end), d1, batch.reborrow())?;
+                m2.transform_into(batch.as_points(), d2, out.points_mut(start..end))?;
+            }
+            start = end;
+            if start >= npoint {
+                return Ok(());
+            }
         }
-        Ok(())
     }
 
     // ------------------------------------------------------------------ //
     // Parallel helpers                                                     //
     // ------------------------------------------------------------------ //
 
-    fn parallel_transform(&self, pts: &PointSet, fwd: bool) -> AstResult<PointSet> {
-        let fwd1 = self.first_dir(fwd);
-        let fwd2 = self.second_dir(fwd);
-
-        let npoint = pts.npoint();
-        let split = self.effective_first_nin(fwd);
-
-        let pts_a = PointSet::from_ndarray(pts.view().slice(ndarray::s![..split, ..]).to_owned());
-        let pts_b = PointSet::from_ndarray(pts.view().slice(ndarray::s![split.., ..]).to_owned());
-
-        let out_a = self.first.transform(&pts_a, fwd1)?;
-        let out_b = self.second.transform(&pts_b, fwd2)?;
-
-        let ncols_a = out_a.ncoord();
-        let ncols_b = out_b.ncoord();
-        let mut combined = PointSet::zeros(npoint, ncols_a + ncols_b);
-        {
-            let mut view = combined.view_mut();
-            view.slice_mut(ndarray::s![..ncols_a, ..])
-                .assign(&out_a.view());
-            view.slice_mut(ndarray::s![ncols_a.., ..])
-                .assign(&out_b.view());
-        }
-        Ok(combined)
-    }
-
-    /// Parallel composition under the NaN-as-bad protocol. The two children
-    /// see disjoint axis slices of the input; we route each slice through
-    /// the child's `transform_into_nan` so the protocol is preserved across
-    /// the parallel branch.
-    fn parallel_transform_into_nan(
-        &self,
-        pts: &PointSet,
-        fwd: bool,
-        out: &mut PointSet,
-    ) -> AstResult<()> {
-        let fwd1 = self.first_dir(fwd);
-        let fwd2 = self.second_dir(fwd);
-
-        let npoint = pts.npoint();
-        let split = self.effective_first_nin(fwd);
-
-        let pts_a = PointSet::from_ndarray(pts.view().slice(ndarray::s![..split, ..]).to_owned());
-        let pts_b = PointSet::from_ndarray(pts.view().slice(ndarray::s![split.., ..]).to_owned());
-
-        let nout_a = if fwd1 {
-            self.first.nout()
-        } else {
-            self.first.nin()
-        };
-        let nout_b = if fwd2 {
-            self.second.nout()
-        } else {
-            self.second.nin()
-        };
-        let mut out_a = PointSet::zeros(npoint, nout_a);
-        let mut out_b = PointSet::zeros(npoint, nout_b);
-        self.first.transform_into_nan(&pts_a, fwd1, &mut out_a)?;
-        self.second.transform_into_nan(&pts_b, fwd2, &mut out_b)?;
-
-        let mut view = out.view_mut();
-        view.slice_mut(ndarray::s![..nout_a, ..])
-            .assign(&out_a.view());
-        view.slice_mut(ndarray::s![nout_a.., ..])
-            .assign(&out_b.view());
-        Ok(())
-    }
-
+    /// A parallel CmpMap gives each component its own axes of `pts` and of
+    /// `out`, without copying.
     fn parallel_transform_into(
         &self,
-        pts: &PointSet,
+        pts: Points<'_>,
         fwd: bool,
-        out: &mut PointSet,
+        out: PointsMut<'_>,
     ) -> AstResult<()> {
-        let result = self.parallel_transform(pts, fwd)?;
-        out.view_mut().assign(&result.view());
-        Ok(())
+        let split_in = self.effective_first_nin(fwd);
+        let (out_a, out_b) = out.split_axes_at(self.effective_first_nout(fwd));
+        self.first
+            .transform_into(pts.axes(0..split_in), self.first_dir(fwd), out_a)?;
+        self.second.transform_into(
+            pts.axes(split_in..pts.ncoord()),
+            self.second_dir(fwd),
+            out_b,
+        )
+    }
+
+    /// [`Self::parallel_transform_into`] through each child's
+    /// `transform_into_nan`, preserving the NaN-as-bad protocol.
+    fn parallel_transform_into_nan(
+        &self,
+        pts: Points<'_>,
+        fwd: bool,
+        out: PointsMut<'_>,
+    ) -> AstResult<()> {
+        let split_in = self.effective_first_nin(fwd);
+        let (out_a, out_b) = out.split_axes_at(self.effective_first_nout(fwd));
+        self.first
+            .transform_into_nan(pts.axes(0..split_in), self.first_dir(fwd), out_a)?;
+        self.second.transform_into_nan(
+            pts.axes(split_in..pts.ncoord()),
+            self.second_dir(fwd),
+            out_b,
+        )
     }
 }
 
@@ -840,17 +766,8 @@ impl Mapping for CmpMap {
         self.inverted = !self.inverted;
     }
 
-    fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
-        crate::mappings::validate_transform(self, pts, forward, None)?;
-        let fwd = self.effective_forward(forward);
-        match self.kind {
-            Composition::Series => self.series_transform(pts, fwd),
-            Composition::Parallel => self.parallel_transform(pts, fwd),
-        }
-    }
-
-    fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()> {
-        crate::mappings::validate_transform(self, pts, forward, Some(out))?;
+    fn transform_into(&self, pts: Points<'_>, forward: bool, out: PointsMut<'_>) -> AstResult<()> {
+        crate::mappings::validate_transform(self, &pts, forward, Some(&out))?;
         let fwd = self.effective_forward(forward);
         match self.kind {
             Composition::Series => self.series_transform_into(pts, fwd, out),
@@ -863,9 +780,9 @@ impl Mapping for CmpMap {
     /// per-stage BAD scan).
     fn transform_into_nan(
         &self,
-        pts: &PointSet,
+        pts: Points<'_>,
         forward: bool,
-        out: &mut PointSet,
+        out: PointsMut<'_>,
     ) -> AstResult<()> {
         let fwd = self.effective_forward(forward);
         match self.kind {

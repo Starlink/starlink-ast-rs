@@ -16,7 +16,7 @@
 use std::fmt;
 
 use crate::constants::BAD_VALUE;
-use crate::coords::PointSet;
+use crate::coords::{Points, PointsMut};
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::{BasicFrame, DynFrame, Frame};
 use crate::serial::{
@@ -138,15 +138,13 @@ impl Mapping for NormMap {
         self.inverted = !self.inverted;
     }
 
-    fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
-        crate::mappings::validate_transform(self, pts, forward, None)?;
-        let mut out = PointSet::zeros(pts.npoint(), self.naxes());
-        self.transform_into(pts, forward, &mut out)?;
-        Ok(out)
-    }
-
-    fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()> {
-        crate::mappings::validate_transform(self, pts, forward, Some(out))?;
+    fn transform_into(
+        &self,
+        pts: Points<'_>,
+        forward: bool,
+        mut out: PointsMut<'_>,
+    ) -> AstResult<()> {
+        crate::mappings::validate_transform(self, &pts, forward, Some(&out))?;
         let _ = forward;
         let naxes = self.naxes();
 
@@ -174,9 +172,9 @@ impl Mapping for NormMap {
     /// `Frame::norm` treats a NaN coordinate as it treats a bad one.
     fn transform_into_nan(
         &self,
-        pts: &PointSet,
+        pts: Points<'_>,
         forward: bool,
-        out: &mut PointSet,
+        mut out: PointsMut<'_>,
     ) -> AstResult<()> {
         let _ = forward;
         let naxes = self.naxes();

@@ -142,7 +142,6 @@ impl Drop for PointMut<'_> {
 }
 
 /// The shape of a set of points, for checking it against a Mapping.
-#[allow(dead_code)]
 pub(crate) trait PointShape {
     fn npoint(&self) -> usize;
     fn ncoord(&self) -> usize;

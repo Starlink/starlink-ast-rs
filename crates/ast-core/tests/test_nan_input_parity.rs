@@ -40,7 +40,7 @@ fn scalar_and_simd_handle_nan_inputs_identically_forward() {
     let scalar = map.transform(&pts, true).expect("scalar forward");
     let mut simd_out = PointSet::zeros(pts.npoint(), 2);
     let path = map
-        .forward_simd_2d_into(&pts, &mut simd_out)
+        .forward_simd_2d_into(&pts.as_points(), &mut simd_out.as_points_mut())
         .expect("simd forward");
     assert_eq!(path, SimdPath::Took);
 
@@ -76,7 +76,7 @@ fn scalar_and_simd_handle_nan_inputs_identically_inverse() {
     let scalar = map.transform(&target, false).expect("scalar inverse");
     let mut simd_out = PointSet::zeros(target.npoint(), 2);
     let path = map
-        .inverse_simd_2d_into(&target, &mut simd_out)
+        .inverse_simd_2d_into(&target.as_points(), &mut simd_out.as_points_mut())
         .expect("simd inverse");
     assert_eq!(path, SimdPath::Took);
 

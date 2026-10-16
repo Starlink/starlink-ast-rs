@@ -3,7 +3,7 @@
 use std::cell::RefCell;
 
 use crate::constants::BAD_VALUE;
-use crate::coords::PointSet;
+use crate::coords::{Points, PointsMut};
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::pal;
 use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
@@ -851,13 +851,6 @@ impl Mapping for WcsMap {
         self.inverted = !self.inverted;
     }
 
-    fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
-        crate::mappings::validate_transform(self, pts, forward, None)?;
-        let mut out = PointSet::zeros(pts.npoint(), self.ncoord);
-        self.transform_into(pts, forward, &mut out)?;
-        Ok(out)
-    }
-
     /// NaN-as-bad fast path. Same logic as `transform_into`, but the
     /// is_bad branch and projection-`Err` branch emit `f64::NAN` instead
     /// of `BAD_VALUE` so downstream NaN-aware stages receive the protocol-
@@ -872,9 +865,9 @@ impl Mapping for WcsMap {
     /// projection math on the well-tested finite-input path.
     fn transform_into_nan(
         &self,
-        pts: &PointSet,
+        pts: Points<'_>,
         forward: bool,
-        out: &mut PointSet,
+        mut out: PointsMut<'_>,
     ) -> AstResult<()> {
         self.check_transformable()?;
         if self.proj == WcsProjection::Unknown {
@@ -991,8 +984,13 @@ impl Mapping for WcsMap {
         Ok(())
     }
 
-    fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()> {
-        crate::mappings::validate_transform(self, pts, forward, Some(out))?;
+    fn transform_into(
+        &self,
+        pts: Points<'_>,
+        forward: bool,
+        mut out: PointsMut<'_>,
+    ) -> AstResult<()> {
+        crate::mappings::validate_transform(self, &pts, forward, Some(&out))?;
         self.check_transformable()?;
         // Unknown/blank projection acts as identity — pass through all coords.
         if self.proj == WcsProjection::Unknown {

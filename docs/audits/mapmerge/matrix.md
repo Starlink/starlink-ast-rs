@@ -15,7 +15,7 @@ something simpler; merge it directly with a neighbour; swap it toward the neares
 Mapping it could merge with; and, failing that, swap speculatively with either
 neighbour if the swap itself simplifies something.
 
-`MatrixMap::map_merge` (`matrix.rs:937-944 (fn map_merge)`) delegates to
+`MatrixMap::map_merge` (`matrix.rs:942-949 (fn map_merge)`) delegates to
 `matrix_merge::matrix_map_merge` (`matrix_merge.rs:42-108 (fn matrix_map_merge)`), so Rust sites are
 in `matrix_merge.rs` unless stated.
 

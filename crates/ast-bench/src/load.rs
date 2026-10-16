@@ -107,9 +107,9 @@ impl ast_core::mappings::IntraTransform for TestIntraTran {
     fn transform(
         &self,
         _map: &ast_core::mappings::IntraMap,
-        input: &ast_core::coords::PointSet,
+        input: &ast_core::coords::Points<'_>,
         _forward: bool,
-        out: &mut ast_core::coords::PointSet,
+        out: &mut ast_core::coords::PointsMut<'_>,
     ) -> ast_core::error::AstResult<()> {
         for ip in 0..input.npoint() {
             let row = input.point(ip);

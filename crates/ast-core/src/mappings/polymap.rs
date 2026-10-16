@@ -4,7 +4,7 @@ use levenberg_marquardt::{LeastSquaresProblem, LevenbergMarquardt};
 use nalgebra::{DMatrix, DVector, Dyn, OMatrix, OVector, VecStorage};
 
 use crate::constants::BAD_VALUE;
-use crate::coords::PointSet;
+use crate::coords::{PointSet, Points, PointsMut};
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
 
@@ -672,7 +672,7 @@ impl PolyMap {
             .borrow()
             .as_ref()
             .expect("built above")
-            .transform_into(target, false, result)?;
+            .transform_into(target.as_points(), false, result.as_points_mut())?;
         super::substitute_nan_to_bad_in_place(result);
 
         let maxiter = self.niter_inverse();
@@ -692,7 +692,14 @@ impl PolyMap {
         let mut iter = 0;
         while iter < maxiter && nconv < npoint {
             iter += 1;
-            poly_transform(self, true, &tables, result, &mut work, BAD_VALUE);
+            poly_transform(
+                self,
+                true,
+                &tables,
+                &result.as_points(),
+                &mut work.as_points_mut(),
+                BAD_VALUE,
+            );
             super::substitute_nan_to_bad_in_place(&mut work);
             for ip in 0..npoint {
                 let t = target.point(ip);
@@ -706,7 +713,7 @@ impl PolyMap {
                 }
             }
             for (map, ps) in jacob.iter().zip(ps_jac.iter_mut()) {
-                map.transform_into(result, true, ps)?;
+                map.transform_into(result.as_points(), true, ps.as_points_mut())?;
                 super::substitute_nan_to_bad_in_place(ps);
             }
             for (ip, flag) in flags.iter_mut().enumerate() {
@@ -1026,8 +1033,8 @@ pub(crate) fn poly_transform<P: PolyPowers + ?Sized>(
     basis: &P,
     forward: bool,
     tables: &TermTables<'_>,
-    pts: &PointSet,
-    out: &mut PointSet,
+    pts: &Points<'_>,
+    out: &mut PointsMut<'_>,
     bad: f64,
 ) {
     // C allocates at least two values per axis, since ChebyMap stores the
@@ -1437,12 +1444,17 @@ impl Mapping for PolyMap {
             self.nin
         };
         let mut out = PointSet::zeros(pts.npoint(), n_out);
-        self.transform_into(pts, forward, &mut out)?;
+        self.transform_into(pts.as_points(), forward, out.as_points_mut())?;
         Ok(out)
     }
 
-    fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()> {
-        crate::mappings::validate_transform(self, pts, forward, Some(out))?;
+    fn transform_into(
+        &self,
+        pts: Points<'_>,
+        forward: bool,
+        mut out: PointsMut<'_>,
+    ) -> AstResult<()> {
+        crate::mappings::validate_transform(self, &pts, forward, Some(&out))?;
         let fwd = self.effective_forward(forward);
 
         if fwd {
@@ -1455,13 +1467,13 @@ impl Mapping for PolyMap {
             #[cfg(feature = "simd-eval")]
             {
                 use super::polymap_simd::SimdPath;
-                if self.forward_simd_2d_into(pts, out)? == SimdPath::Took {
+                if self.forward_simd_2d_into(&pts, &mut out)? == SimdPath::Took {
                     return Ok(());
                 }
             }
 
             if let Some(tables) = self.term_tables(true) {
-                poly_transform(self, true, &tables, pts, out, BAD_VALUE);
+                poly_transform(self, true, &tables, &pts, &mut out, BAD_VALUE);
             }
         } else {
             // Inverse transform. The iterative inverse takes priority over
@@ -1478,15 +1490,18 @@ impl Mapping for PolyMap {
                 #[cfg(feature = "simd-eval")]
                 {
                     use super::polymap_simd::SimdPath;
-                    if self.inverse_simd_2d_into(pts, out)? == SimdPath::Took {
+                    if self.inverse_simd_2d_into(&pts, &mut out)? == SimdPath::Took {
                         return Ok(());
                     }
                 }
-                self.newton_raphson_inverse(pts, out)?;
+                let target = PointSet::from_points(&pts);
+                let mut result = PointSet::zeros(target.npoint(), self.nin);
+                self.newton_raphson_inverse(&target, &mut result)?;
+                out.copy_from(&result.as_points());
             } else if let Some(tables) = self.term_tables(false) {
                 // Explicit inverse terms: the inverse maps from nout-space
                 // to nin-space.
-                poly_transform(self, false, &tables, pts, out, BAD_VALUE);
+                poly_transform(self, false, &tables, &pts, &mut out, BAD_VALUE);
             } else {
                 // No inverse available: fill with BAD.
                 for i in 0..pts.npoint() {
@@ -1513,9 +1528,9 @@ impl Mapping for PolyMap {
     ///    NaN after it.
     fn transform_into_nan(
         &self,
-        pts: &PointSet,
+        pts: Points<'_>,
         forward: bool,
-        out: &mut PointSet,
+        mut out: PointsMut<'_>,
     ) -> AstResult<()> {
         let fwd = self.effective_forward(forward);
 
@@ -1526,12 +1541,12 @@ impl Mapping for PolyMap {
             #[cfg(feature = "simd-eval")]
             {
                 use super::polymap_simd::SimdPath;
-                if self.forward_simd_2d_into_nan(pts, out)? == SimdPath::Took {
+                if self.forward_simd_2d_into_nan(&pts, &mut out)? == SimdPath::Took {
                     return Ok(());
                 }
             }
             if let Some(tables) = self.term_tables(true) {
-                poly_transform(self, true, &tables, pts, out, f64::NAN);
+                poly_transform(self, true, &tables, &pts, &mut out, f64::NAN);
             }
         } else if self.iter_inverse() {
             // The iterative inverse takes priority over any supplied inverse
@@ -1540,14 +1555,14 @@ impl Mapping for PolyMap {
             #[cfg(feature = "simd-eval")]
             {
                 use super::polymap_simd::SimdPath;
-                if self.inverse_simd_2d_into_nan(pts, out)? == SimdPath::Took {
+                if self.inverse_simd_2d_into_nan(&pts, &mut out)? == SimdPath::Took {
                     return Ok(());
                 }
             }
             // Fallback: the scalar iterative inverse works in C's bad values,
             // so NaN inputs become BAD_VALUE on the way in and bad outputs
             // NaN on the way out.
-            let mut bad_in = pts.clone();
+            let mut bad_in = PointSet::from_points(&pts);
             {
                 let mut view = bad_in.view_mut();
                 for v in view.as_slice_mut().expect("PointSet is C-contiguous") {
@@ -1556,15 +1571,18 @@ impl Mapping for PolyMap {
                     }
                 }
             }
-            self.newton_raphson_inverse(&bad_in, out)?;
-            let mut view = out.view_mut();
-            for v in view.as_slice_mut().expect("PointSet is C-contiguous") {
-                if *v == BAD_VALUE {
-                    *v = f64::NAN;
+            let mut result = PointSet::zeros(bad_in.npoint(), self.nin);
+            self.newton_raphson_inverse(&bad_in, &mut result)?;
+            out.copy_from(&result.as_points());
+            for j in 0..out.ncoord() {
+                for v in out.axis_mut(j) {
+                    if *v == BAD_VALUE {
+                        *v = f64::NAN;
+                    }
                 }
             }
         } else if let Some(tables) = self.term_tables(false) {
-            poly_transform(self, false, &tables, pts, out, f64::NAN);
+            poly_transform(self, false, &tables, &pts, &mut out, f64::NAN);
         } else {
             // No inverse available: emit NaN (was BAD).
             for i in 0..pts.npoint() {

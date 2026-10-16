@@ -89,7 +89,7 @@ pub use resample::{
 use std::any::Any;
 use std::fmt;
 
-use crate::coords::PointSet;
+use crate::coords::{PointSet, PointShape, Points, PointsMut};
 use crate::error::{AstError, AstResult, ErrorCode};
 
 /// An owned, dynamically-dispatched Mapping.
@@ -307,13 +307,22 @@ pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
     ///
     /// If `forward` is true, applies the forward transformation; otherwise
     /// applies the inverse.
-    fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet>;
+    fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
+        validate_transform(self, pts, forward, None)?;
+        let nout = if forward { self.nout() } else { self.nin() };
+        let mut out = PointSet::zeros(pts.npoint(), nout);
+        self.transform_into(pts.as_points(), forward, out.as_points_mut())?;
+        Ok(out)
+    }
 
-    /// Transform points into a pre-allocated output buffer.
+    /// Transform points into a caller's buffer.
     ///
-    /// `out` must have shape `(pts.npoint(), self.nout())` for forward or
-    /// `(pts.npoint(), self.nin())` for inverse transforms.
-    fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()>;
+    /// `out` must have at least the Mapping's output axis count for the
+    /// direction and at least `pts.npoint()` points; only the first
+    /// `pts.npoint()` points of each output axis are written. Both views may
+    /// borrow a caller's own per-axis arrays, so a caller holding one array
+    /// per axis, as C's `astTranN` callers do, pays no copy.
+    fn transform_into(&self, pts: Points<'_>, forward: bool, out: PointsMut<'_>) -> AstResult<()>;
 
     /// Transform a set of 1-dimensional coordinates.
     ///
@@ -324,14 +333,20 @@ pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
     /// The returned vector has the same length as `xin`.
     fn tran1(&self, xin: &[f64], forward: bool) -> AstResult<Vec<f64>> {
         validate_tran(self, forward, xin.len(), 1, "tran1")?;
-        let pts = PointSet::from_columns(&[xin])?;
-        let out = self.transform(&pts, forward)?;
+        let mut xout = vec![0.0; xin.len()];
+        self.transform_into(
+            Points::new([xin])?,
+            forward,
+            PointsMut::new([&mut xout[..]])?,
+        )?;
         // C reports from its array wrappers, not from astTransform
         // (mapping.c `Tran1`).
         if self.report() {
+            let pts = PointSet::from_columns(&[xin])?;
+            let out = PointSet::from_columns(&[&xout])?;
             self.report_points(forward, &pts, &out);
         }
-        Ok(out.axis_iter(0).collect())
+        Ok(xout)
     }
 
     /// Transform a set of 2-dimensional coordinates.
@@ -353,12 +368,19 @@ pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
             ));
         }
         validate_tran(self, forward, xin.len(), 2, "tran2")?;
-        let pts = PointSet::from_columns(&[xin, yin])?;
-        let out = self.transform(&pts, forward)?;
+        let mut xout = vec![0.0; xin.len()];
+        let mut yout = vec![0.0; xin.len()];
+        self.transform_into(
+            Points::new([xin, yin])?,
+            forward,
+            PointsMut::new([&mut xout[..], &mut yout[..]])?,
+        )?;
         if self.report() {
+            let pts = PointSet::from_columns(&[xin, yin])?;
+            let out = PointSet::from_columns(&[&xout, &yout])?;
             self.report_points(forward, &pts, &out);
         }
-        Ok((out.axis_iter(0).collect(), out.axis_iter(1).collect()))
+        Ok((xout, yout))
     }
 
     /// Transform points using the "NaN-as-bad" internal protocol.
@@ -387,9 +409,9 @@ pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
     /// of seven NaN-aware stages avoids seven separate per-point BAD scans.
     fn transform_into_nan(
         &self,
-        pts: &PointSet,
+        pts: Points<'_>,
         forward: bool,
-        out: &mut PointSet,
+        out: PointsMut<'_>,
     ) -> AstResult<()> {
         // Default: behave exactly like the existing path. Safe because
         // `is_bad` already includes `!is_finite()`, so a NaN input handed to
@@ -962,7 +984,7 @@ impl dyn Mapping {
 
         let nout = if forward { self.nout() } else { self.nin() };
         let mut out = PointSet::zeros(pts.npoint(), nout);
-        self.transform_into_nan(&pts_nan, forward, &mut out)?;
+        self.transform_into_nan(pts_nan.as_points(), forward, out.as_points_mut())?;
 
         // Boundary substitution: NaN → BAD_VALUE (in place on the output).
         substitute_nan_to_bad_in_place(&mut out);
@@ -1074,9 +1096,9 @@ pub(crate) fn validate_rate<M: Mapping + ?Sized>(
 /// (`AST__NOCTS`).
 pub(crate) fn validate_transform<M: Mapping + ?Sized>(
     map: &M,
-    pts: &PointSet,
+    pts: &impl PointShape,
     forward: bool,
-    out: Option<&PointSet>,
+    out: Option<&dyn PointShape>,
 ) -> AstResult<()> {
     require_direction(map, forward, "astTransform")?;
     let (nin, nout) = if forward {

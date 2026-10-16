@@ -17,35 +17,35 @@ the current Frame, and does the same for each Region in the AstroCoords
 elements. `GetDefUnc` (`stc.c:941-966 (fn GetDefUnc)`) prefers the encapsulated
 Region's own uncertainty.
 
-`Stc::simplified` (`stc.rs:1073-1143 (fn simplified)`) and `Stc::get_def_unc`
+`Stc::simplified` (`stc.rs:1078-1148 (fn simplified)`) and `Stc::get_def_unc`
 (`stc.rs:861-867 (fn get_def_unc)`) are the two.
 
 | # | C step | C site | Rust site | extension point | verdict |
 |---|---|---|---|---|---|
 | 1 | `Simplify`: check the global error status | stc.c:2653-2654 (fn Simplify) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
-| 2 | Invoke the parent Region `Simplify`, which simplifies the FrameSet and the uncertainty | stc.c:2656-2658 (fn Simplify) | stc.rs:1074-1083 (fn simplified) | architecture | ported |
-| 3 | If the Stc is negated, move the negation onto the encapsulated Region | stc.c:2660-2662 (fn Simplify) | stc.rs:1092 (fn simplified) | architecture | ported |
-| 4 | Copy the supplied Stc first if the parent returned it unchanged | stc.c:2664-2670 (fn Simplify) | stc.rs:1085-1090 (fn simplified),1093 (fn simplified) | architecture | ported |
-| 5 | Negate both the Stc and its encapsulated Region | stc.c:2672-2677 (fn Simplify) | stc.rs:1094-1095 (fn simplified) | architecture | ported |
-| 6 | Get the base->current Mapping and the current Frame | stc.c:2679-2682 (fn Simplify) | stc.rs:1098-1103 (fn simplified) | architecture | ported |
-| 7 | Where that Mapping is not a UnitMap, map the encapsulated Region into the current Frame and simplify it | stc.c:2684-2692 (fn Simplify) | stc.rs:1110-1112 (fn simplified),1116 (fn simplified) | architecture | ported |
-| 8 | Otherwise simplify the encapsulated Region as it is | stc.c:2694-2699 (fn Simplify) | stc.rs:1108-1109 (fn simplified) | architecture | ported |
-| 9 | If the encapsulated Region changed, store it in the returned Stc | stc.c:2701-2703 (fn Simplify) | stc.rs:1117 (fn simplified) | architecture | ported |
-| 10 | Copy the supplied Stc first if that has not been done | stc.c:2705-2711 (fn Simplify) | stc.rs:1118 (fn simplified) | architecture | ported |
-| 11 | Store the new Region, annulling the old | stc.c:2713-2717 (fn Simplify) | stc.rs:1119 (fn simplified) | architecture | ported |
-| 12 | The Region now describes the current Frame, so give the Stc a FrameSet of that Frame alone | stc.c:2719-2725 (fn Simplify) | stc.rs:1120-1122 (fn simplified) | architecture | ported |
+| 2 | Invoke the parent Region `Simplify`, which simplifies the FrameSet and the uncertainty | stc.c:2656-2658 (fn Simplify) | stc.rs:1079-1088 (fn simplified) | architecture | ported |
+| 3 | If the Stc is negated, move the negation onto the encapsulated Region | stc.c:2660-2662 (fn Simplify) | stc.rs:1097 (fn simplified) | architecture | ported |
+| 4 | Copy the supplied Stc first if the parent returned it unchanged | stc.c:2664-2670 (fn Simplify) | stc.rs:1090-1095 (fn simplified),1098 (fn simplified) | architecture | ported |
+| 5 | Negate both the Stc and its encapsulated Region | stc.c:2672-2677 (fn Simplify) | stc.rs:1099-1100 (fn simplified) | architecture | ported |
+| 6 | Get the base->current Mapping and the current Frame | stc.c:2679-2682 (fn Simplify) | stc.rs:1103-1108 (fn simplified) | architecture | ported |
+| 7 | Where that Mapping is not a UnitMap, map the encapsulated Region into the current Frame and simplify it | stc.c:2684-2692 (fn Simplify) | stc.rs:1115-1117 (fn simplified),1121 (fn simplified) | architecture | ported |
+| 8 | Otherwise simplify the encapsulated Region as it is | stc.c:2694-2699 (fn Simplify) | stc.rs:1113-1114 (fn simplified) | architecture | ported |
+| 9 | If the encapsulated Region changed, store it in the returned Stc | stc.c:2701-2703 (fn Simplify) | stc.rs:1122 (fn simplified) | architecture | ported |
+| 10 | Copy the supplied Stc first if that has not been done | stc.c:2705-2711 (fn Simplify) | stc.rs:1123 (fn simplified) | architecture | ported |
+| 11 | Store the new Region, annulling the old | stc.c:2713-2717 (fn Simplify) | stc.rs:1124 (fn simplified) | architecture | ported |
+| 12 | The Region now describes the current Frame, so give the Stc a FrameSet of that Frame alone | stc.c:2719-2725 (fn Simplify) | stc.rs:1125-1127 (fn simplified) | architecture | ported |
 | 13 | Free the simplified Region pointer | stc.c:2727-2728 (fn Simplify) | -- | ceremony | n/a: owned values are dropped |
-| 14 | Loop round the AstroCoords elements | stc.c:2730-2733 (fn Simplify) | stc.rs:1125 (fn simplified) | architecture | ported |
+| 14 | Loop round the AstroCoords elements | stc.c:2730-2733 (fn Simplify) | stc.rs:1130 (fn simplified) | architecture | ported |
 | 15 | Get a pointer to the element's KeyMap | stc.c:2735-2737 (fn Simplify) | -- | ceremony | n/a: the loop indexes the Stc's KeyMaps where they are stored |
-| 16 | Loop round the keys that may hold a Region | stc.c:2739-2741 (fn Simplify) | stc.rs:1126 (fn simplified) | architecture | ported |
-| 17 | Get the Region the KeyMap holds for the key, if any | stc.c:2743-2745 (fn Simplify) | stc.rs:1127-1129 (fn simplified) | architecture | ported |
-| 18 | Map the Region into the new base Frame unless the Mapping is a UnitMap | stc.c:2747-2762 (fn Simplify) | stc.rs:1130 (fn simplified),1110-1112 (fn simplified) | architecture | ported |
-| 19 | Simplify the Region | stc.c:2764-2765 (fn Simplify) | stc.rs:1130 (fn simplified),1109 (fn simplified) | architecture | ported |
-| 20 | If it changed, copy the supplied Stc first if needed, and store it back with its comment | stc.c:2767-2782 (fn Simplify) | stc.rs:1131-1134 (fn simplified) | architecture | ported |
+| 16 | Loop round the keys that may hold a Region | stc.c:2739-2741 (fn Simplify) | stc.rs:1131 (fn simplified) | architecture | ported |
+| 17 | Get the Region the KeyMap holds for the key, if any | stc.c:2743-2745 (fn Simplify) | stc.rs:1132-1134 (fn simplified) | architecture | ported |
+| 18 | Map the Region into the new base Frame unless the Mapping is a UnitMap | stc.c:2747-2762 (fn Simplify) | stc.rs:1135 (fn simplified),1115-1117 (fn simplified) | architecture | ported |
+| 19 | Simplify the Region | stc.c:2764-2765 (fn Simplify) | stc.rs:1135 (fn simplified),1114 (fn simplified) | architecture | ported |
+| 20 | If it changed, copy the supplied Stc first if needed, and store it back with its comment | stc.c:2767-2782 (fn Simplify) | stc.rs:1136-1139 (fn simplified) | architecture | ported |
 | 21 | Free the Region pointers, and close the loops | stc.c:2784-2792 (fn Simplify) | -- | ceremony | n/a: owned values are dropped |
 | 22 | Free the Mapping and Frame | stc.c:2794-2796 (fn Simplify) | -- | ceremony | n/a: owned values are dropped |
 | 23 | Annul the result if an error occurred | stc.c:2798-2799 (fn Simplify) | -- | ceremony | n/a: an error is a `Result::Err`, not a value to be cleared alongside one |
-| 24 | Return the result | stc.c:2801-2802 (fn Simplify) | stc.rs:1138-1142 (fn simplified) | architecture | ported |
+| 24 | Return the result | stc.c:2801-2802 (fn Simplify) | stc.rs:1143-1147 (fn simplified) | architecture | ported |
 | 25 | `GetDefUnc`: initialise | stc.c:941-942 (fn GetDefUnc) | -- | ceremony | n/a: the Rust returns `AstResult<DynRegion>`, so there is no sentinel to initialise |
 | 26 | Check the global error status | stc.c:944-945 (fn GetDefUnc) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 27 | Get a pointer to the Stc | stc.c:947-948 (fn GetDefUnc) | -- | ceremony | n/a: the Rust method already has `&self` |
@@ -60,14 +60,14 @@ An Stc's Negated is read from and set on its encapsulated Region, so after
 `astNegate( stc )` and `astNegate( stc->region )` the Region is negated once
 more and the Stc's own field is cleared to false: the Stc stays negated, through
 its Region. The port's `negate` sets both, as stc.c `SetNegated` does
-(`stc.rs:1094-1095 (fn simplified)`), and the net state is the same.
+(`stc.rs:1099-1100 (fn simplified)`), and the net state is the same.
 
 ## Rows 4, 10 and 20 — the copy
 
 C copies the supplied Stc the first time it is about to change it, unless the
 parent `Simplify` already returned a new one. `astCopy` clears `RegionFS` on the
 copy and on each Region it holds, so the port clears it there too, once
-(`stc.rs:1085-1090 (fn simplified)`), and returns the copy, with `true` for
+(`stc.rs:1090-1095 (fn simplified)`), and returns the copy, with `true` for
 "simplified", exactly when C returns a pointer other than the one supplied.
 
 ## Rows 7, 8, 18 and 19 — "changed"
@@ -75,4 +75,4 @@ copy and on each Region it holds, so the port clears it there too, once
 C tests whether `astSimplify` gave back a different pointer. Where the Mapping is
 not a UnitMap the Region simplified is a new, mapped one, so the test always
 passes; where it is a UnitMap the port asks `simplify_reporting_change`
-(`stc.rs:1108-1113 (fn simplified)`).
+(`stc.rs:1113-1118 (fn simplified)`).

@@ -12,7 +12,7 @@
 
 use std::fmt;
 
-use crate::coords::PointSet;
+use crate::coords::{PointSet, Points, PointsMut};
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::serial::{
     MappingToNode, Node, Serializable, mapping_from_node, read_mapping_base, write_mapping_base,
@@ -283,8 +283,8 @@ impl Mapping for TranMap {
         }
     }
 
-    fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()> {
-        crate::mappings::validate_transform(self, pts, forward, Some(out))?;
+    fn transform_into(&self, pts: Points<'_>, forward: bool, out: PointsMut<'_>) -> AstResult<()> {
+        crate::mappings::validate_transform(self, &pts, forward, Some(&out))?;
         let effective_fwd = forward != self.inverted;
 
         if effective_fwd {
@@ -303,9 +303,9 @@ impl Mapping for TranMap {
     /// per-stage win for that child.
     fn transform_into_nan(
         &self,
-        pts: &PointSet,
+        pts: Points<'_>,
         forward: bool,
-        out: &mut PointSet,
+        out: PointsMut<'_>,
     ) -> AstResult<()> {
         let effective_fwd = forward != self.inverted;
 

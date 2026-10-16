@@ -9,7 +9,7 @@
 use ndarray::Array2;
 
 use crate::constants::BAD_VALUE;
-use crate::coords::PointSet;
+use crate::coords::{PointSet, Points, PointsMut};
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
 
@@ -526,7 +526,7 @@ impl MatrixMap {
     /// only `nax = min(nin, nout)` scale factors for those forms and writes
     /// zeros into any surplus output axes (matrixmap.c:5228-5283); the loop
     /// below does the same.
-    fn apply_matrix(m: &Array2<f64>, form: MatrixForm, pts: &PointSet, out: &mut PointSet) {
+    fn apply_matrix(m: &Array2<f64>, form: MatrixForm, pts: &Points<'_>, out: &mut PointsMut<'_>) {
         // Math-wise Unit is just a special-case diagonal.
         let form = if matches!(form, MatrixForm::Unit) {
             MatrixForm::Diagonal
@@ -653,12 +653,17 @@ impl Mapping for MatrixMap {
             }
         };
         let mut out = PointSet::zeros(pts.npoint(), nout_coords);
-        Self::apply_matrix(m, form, pts, &mut out);
+        Self::apply_matrix(m, form, &pts.as_points(), &mut out.as_points_mut());
         Ok(out)
     }
 
-    fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()> {
-        crate::mappings::validate_transform(self, pts, forward, Some(out))?;
+    fn transform_into(
+        &self,
+        pts: Points<'_>,
+        forward: bool,
+        mut out: PointsMut<'_>,
+    ) -> AstResult<()> {
+        crate::mappings::validate_transform(self, &pts, forward, Some(&out))?;
         let fwd = self.effective_forward(forward);
         let (m, form) = if fwd {
             (&self.matrix, self.form)
@@ -673,7 +678,7 @@ impl Mapping for MatrixMap {
                 }
             }
         };
-        Self::apply_matrix(m, form, pts, out);
+        Self::apply_matrix(m, form, &pts, &mut out);
         Ok(())
     }
 
@@ -685,9 +690,9 @@ impl Mapping for MatrixMap {
     /// `coeff * NaN = NaN` and the row accumulator becomes NaN naturally.
     fn transform_into_nan(
         &self,
-        pts: &PointSet,
+        pts: Points<'_>,
         forward: bool,
-        out: &mut PointSet,
+        mut out: PointsMut<'_>,
     ) -> AstResult<()> {
         let fwd = self.effective_forward(forward);
         let (m, form) = if fwd {

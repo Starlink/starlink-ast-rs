@@ -18,7 +18,7 @@
 use std::fmt;
 
 use crate::constants::BAD_VALUE;
-use crate::coords::PointSet;
+use crate::coords::{PointSet, Points, PointsMut};
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::serial::{
     MappingToNode, Node, Serializable, mapping_from_node, read_mapping_base, write_mapping_base,
@@ -288,9 +288,14 @@ impl Mapping for RateMap {
         PointSet::from_columns(&[&results])
     }
 
-    fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()> {
-        crate::mappings::validate_transform(self, pts, forward, Some(out))?;
-        let result = self.transform(pts, forward)?;
+    fn transform_into(
+        &self,
+        pts: Points<'_>,
+        forward: bool,
+        mut out: PointsMut<'_>,
+    ) -> AstResult<()> {
+        crate::mappings::validate_transform(self, &pts, forward, Some(&out))?;
+        let result = self.transform(&PointSet::from_points(&pts), forward)?;
         let npoint = result.npoint();
         let nout = result.ncoord();
         for i in 0..npoint {
@@ -309,16 +314,16 @@ impl Mapping for RateMap {
     /// failure branch). Safest minimal change is delegate-and-post-process.
     fn transform_into_nan(
         &self,
-        pts: &PointSet,
+        pts: Points<'_>,
         forward: bool,
-        out: &mut PointSet,
+        mut out: PointsMut<'_>,
     ) -> AstResult<()> {
-        self.transform_into(pts, forward, out)?;
-        let mut view = out.view_mut();
-        let flat = view.as_slice_mut().expect("PointSet is C-contiguous");
-        for v in flat.iter_mut() {
-            if *v == BAD_VALUE {
-                *v = f64::NAN;
+        self.transform_into(pts, forward, out.reborrow())?;
+        for j in 0..out.ncoord() {
+            for v in out.axis_mut(j) {
+                if *v == BAD_VALUE {
+                    *v = f64::NAN;
+                }
             }
         }
         Ok(())

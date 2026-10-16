@@ -114,3 +114,48 @@ fn point_bufs_compare_with_slices_arrays_and_vectors() {
     assert_eq!(b, vec![1.0, 2.0]);
     assert_eq!(b[1], 2.0);
 }
+
+use ast_core::coords::PointSet;
+use ast_core::mappings::{Mapping, ZoomMap};
+
+#[test]
+fn a_transform_can_write_into_a_callers_trann_buffers() {
+    let zoom = ZoomMap::new(2, 2.0).unwrap();
+    let input = [1.0, 2.0, 3.0, 0.0, 10.0, 20.0, 30.0];
+    let mut output = [-1.0; 8];
+    zoom.transform_into(
+        Points::from_strided(&input, 2, 3, 4).unwrap(),
+        true,
+        PointsMut::from_strided(&mut output, 2, 3, 5).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(output, [2.0, 4.0, 6.0, -1.0, -1.0, 20.0, 40.0, 60.0]);
+}
+
+#[test]
+fn tran2_matches_transform() {
+    let zoom = ZoomMap::new(2, 1.5).unwrap();
+    let (x, y) = (vec![1.0, -2.0, 3.5], vec![4.0, 0.25, -6.0]);
+    let (xo, yo) = zoom.tran2(&x, &y, true).unwrap();
+    let out = zoom
+        .transform(&PointSet::from_columns(&[&x, &y]).unwrap(), true)
+        .unwrap();
+    assert_eq!(xo, out.axis(0));
+    assert_eq!(yo, out.axis(1));
+}
+
+#[test]
+fn a_transform_of_no_points_still_checks_the_axes() {
+    let zoom = ZoomMap::new(2, 2.0).unwrap();
+    let (x, y, z): ([f64; 0], [f64; 0], [f64; 0]) = ([], [], []);
+    let mut out: [[f64; 0]; 2] = [[], []];
+    let [a, b] = &mut out;
+    let e = zoom
+        .transform_into(
+            Points::new([&x[..], &y[..], &z[..]]).unwrap(),
+            true,
+            PointsMut::new([&mut a[..], &mut b[..]]).unwrap(),
+        )
+        .unwrap_err();
+    assert_eq!(e.code(), ErrorCode::Ncpin);
+}

@@ -29,7 +29,7 @@ use std::cell::RefCell;
 use std::fmt;
 use std::sync::Arc;
 
-use crate::coords::PointSet;
+use crate::coords::{Points, PointsMut};
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
 
@@ -82,14 +82,15 @@ pub trait IntraTransform: Send + Sync {
 
     /// Transform the points in `input` with the forward (`forward`) or
     /// inverse transformation into `out`, which has the IntraMap's number of
-    /// coordinates in that direction. `map` is the IntraMap applying it, so
+    /// coordinates in that direction. Both hold one slice per axis, as C's
+    /// transformation functions receive them. `map` is the IntraMap applying it, so
     /// its [`IntraMap::intra_flag`] can select a variant.
     fn transform(
         &self,
         map: &IntraMap,
-        input: &PointSet,
+        input: &Points<'_>,
         forward: bool,
-        out: &mut PointSet,
+        out: &mut PointsMut<'_>,
     ) -> AstResult<()>;
 }
 
@@ -321,21 +322,18 @@ impl Mapping for IntraMap {
         self.inverted = !self.inverted;
     }
 
-    fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
-        crate::mappings::validate_transform(self, pts, forward, None)?;
-        let ncoord = if forward { self.nout() } else { self.nin() };
-        let mut out = PointSet::zeros(pts.npoint(), ncoord);
-        self.transform_into(pts, forward, &mut out)?;
-        Ok(out)
-    }
-
     /// intramap.c `Transform`: the transformation applied in the direction
     /// the Invert flag makes of `forward`, an error from it reported as one
     /// signalled by the named function.
-    fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()> {
-        crate::mappings::validate_transform(self, pts, forward, Some(out))?;
+    fn transform_into(
+        &self,
+        pts: Points<'_>,
+        forward: bool,
+        mut out: PointsMut<'_>,
+    ) -> AstResult<()> {
+        crate::mappings::validate_transform(self, &pts, forward, Some(&out))?;
         self.transform
-            .transform(self, pts, forward != self.inverted, out)
+            .transform(self, &pts, forward != self.inverted, &mut out)
             .map_err(|e| {
                 AstError::new(
                     e.code(),

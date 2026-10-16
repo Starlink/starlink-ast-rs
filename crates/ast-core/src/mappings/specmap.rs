@@ -1,7 +1,7 @@
 //! Mapping that chains spectral coordinate system conversions.
 
 use crate::constants::BAD_VALUE;
-use crate::coords::PointSet;
+use crate::coords::{Points, PointsMut};
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::pal;
 use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
@@ -628,7 +628,7 @@ impl SpecMap {
     /// Transform the points of a 3-dimensional SpecMap: each rest-frame
     /// conversion uses the point's own RA and Dec, and the RA and Dec are
     /// copied to the output (specmap.c `Transform` with `map3d` set).
-    fn transform_3d(&self, pts: &PointSet, forward: bool, out: &mut PointSet) {
+    fn transform_3d(&self, pts: &Points<'_>, forward: bool, out: &mut PointsMut<'_>) {
         for i in 0..pts.npoint() {
             let inp = pts.point(i);
             let (ra, dec) = (inp[1], inp[2]);
@@ -1388,13 +1388,6 @@ impl Mapping for SpecMap {
         self.inverted = !self.inverted;
     }
 
-    fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
-        crate::mappings::validate_transform(self, pts, forward, None)?;
-        let mut out = PointSet::zeros(pts.npoint(), self.nin);
-        self.transform_into(pts, forward, &mut out)?;
-        Ok(out)
-    }
-
     /// NaN-as-bad fast path. Same approach as TimeMap: SpecMap conversion
     /// steps have per-step `BAD_VALUE` emit conditions (singular Doppler
     /// shift, light-time domain failures, etc.). Delegate-and-post-process
@@ -1403,26 +1396,31 @@ impl Mapping for SpecMap {
     /// N comparisons.
     fn transform_into_nan(
         &self,
-        pts: &PointSet,
+        pts: Points<'_>,
         forward: bool,
-        out: &mut PointSet,
+        mut out: PointsMut<'_>,
     ) -> AstResult<()> {
-        self.transform_into(pts, forward, out)?;
-        let mut view = out.view_mut();
-        let flat = view.as_slice_mut().expect("PointSet is C-contiguous");
-        for v in flat.iter_mut() {
-            if *v == BAD_VALUE {
-                *v = f64::NAN;
+        self.transform_into(pts, forward, out.reborrow())?;
+        for j in 0..out.ncoord() {
+            for v in out.axis_mut(j) {
+                if *v == BAD_VALUE {
+                    *v = f64::NAN;
+                }
             }
         }
         Ok(())
     }
 
-    fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()> {
-        crate::mappings::validate_transform(self, pts, forward, Some(out))?;
+    fn transform_into(
+        &self,
+        pts: Points<'_>,
+        forward: bool,
+        mut out: PointsMut<'_>,
+    ) -> AstResult<()> {
+        crate::mappings::validate_transform(self, &pts, forward, Some(&out))?;
         let fwd = self.effective_forward(forward);
         if self.nin == 3 {
-            self.transform_3d(pts, fwd, out);
+            self.transform_3d(&pts, fwd, &mut out);
             return Ok(());
         }
 

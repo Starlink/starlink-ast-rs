@@ -49,12 +49,16 @@ fn time_scalar(map: &PolyMap, pts: &PointSet, iters: usize) -> f64 {
 fn time_simd(map: &PolyMap, pts: &PointSet, iters: usize) -> (f64, bool) {
     let mut out = PointSet::zeros(pts.npoint(), 2);
     // Warm up + confirm SIMD path actually took.
-    let path = map.forward_simd_2d_into(pts, &mut out).unwrap();
+    let path = map
+        .forward_simd_2d_into(&pts.as_points(), &mut out.as_points_mut())
+        .unwrap();
     let took = path == SimdPath::Took;
     let start = Instant::now();
     let mut acc = 0.0;
     for _ in 0..iters {
-        let _ = map.forward_simd_2d_into(pts, &mut out).unwrap();
+        let _ = map
+            .forward_simd_2d_into(&pts.as_points(), &mut out.as_points_mut())
+            .unwrap();
         acc += out.point(0)[0];
     }
     let elapsed = start.elapsed().as_secs_f64();
@@ -77,12 +81,16 @@ fn time_scalar_inverse(map: &PolyMap, pts: &PointSet, iters: usize) -> f64 {
 
 fn time_simd_inverse(map: &PolyMap, pts: &PointSet, iters: usize) -> (f64, bool) {
     let mut out = PointSet::zeros(pts.npoint(), 2);
-    let path = map.inverse_simd_2d_into(pts, &mut out).unwrap();
+    let path = map
+        .inverse_simd_2d_into(&pts.as_points(), &mut out.as_points_mut())
+        .unwrap();
     let took = path == SimdPath::Took;
     let start = Instant::now();
     let mut acc = 0.0;
     for _ in 0..iters {
-        let _ = map.inverse_simd_2d_into(pts, &mut out).unwrap();
+        let _ = map
+            .inverse_simd_2d_into(&pts.as_points(), &mut out.as_points_mut())
+            .unwrap();
         acc += out.point(0)[0];
     }
     let elapsed = start.elapsed().as_secs_f64();

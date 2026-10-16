@@ -11,7 +11,7 @@
 //! distortion coefficient.
 
 use crate::constants::BAD_VALUE;
-use crate::coords::PointSet;
+use crate::coords::{Points, PointsMut};
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::serial::{Node, NodeValue, Serializable, read_mapping_base, write_mapping_base};
 
@@ -278,21 +278,14 @@ impl Mapping for PcdMap {
         self.inverted = !self.inverted;
     }
 
-    fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
-        crate::mappings::validate_transform(self, pts, forward, None)?;
-        let mut out = PointSet::zeros(pts.npoint(), 2);
-        self.transform_into(pts, forward, &mut out)?;
-        Ok(out)
-    }
-
     /// NaN-as-bad fast path. Pure arithmetic (polynomial in dx,dy for
     /// forward; rational function for inverse); NaN propagates through
     /// both branches without per-point gating.
     fn transform_into_nan(
         &self,
-        pts: &PointSet,
+        pts: Points<'_>,
         forward: bool,
-        out: &mut PointSet,
+        mut out: PointsMut<'_>,
     ) -> AstResult<()> {
         let fwd = self.effective_forward(forward);
         let disco = self.effective_disc();
@@ -326,8 +319,13 @@ impl Mapping for PcdMap {
         Ok(())
     }
 
-    fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()> {
-        crate::mappings::validate_transform(self, pts, forward, Some(out))?;
+    fn transform_into(
+        &self,
+        pts: Points<'_>,
+        forward: bool,
+        mut out: PointsMut<'_>,
+    ) -> AstResult<()> {
+        crate::mappings::validate_transform(self, &pts, forward, Some(&out))?;
         let fwd = self.effective_forward(forward);
         let disco = self.effective_disc();
         let cen0 = self.effective_pcdcen()[0];

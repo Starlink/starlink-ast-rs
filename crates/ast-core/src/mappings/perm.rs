@@ -8,7 +8,7 @@
 //! - Zero: the output gets `BAD_VALUE`.
 
 use crate::constants::BAD_VALUE;
-use crate::coords::PointSet;
+use crate::coords::{PointSet, Points, PointsMut};
 use crate::error::AstResult;
 use crate::serial::{Node, NodeValue, Serializable, read_mapping_base, write_mapping_base};
 
@@ -302,7 +302,7 @@ impl PermMap {
     /// `perm` encodes the selection (1-based / negative / zero convention).
     /// `nin_for_perm` is the number of input coordinates expected by `perm`
     /// (used for BAD-value checks).
-    fn apply_perm(perm: &[i64], constants: &[f64], pts: &PointSet, out: &mut PointSet) {
+    fn apply_perm(perm: &[i64], constants: &[f64], pts: &Points<'_>, out: &mut PointsMut<'_>) {
         let ncoord_in = pts.ncoord();
         for i in 0..pts.npoint() {
             let inp = pts.point(i);
@@ -503,19 +503,29 @@ impl Mapping for PermMap {
             (self.inperm.as_slice(), self.inperm.len())
         };
         let mut out = PointSet::zeros(pts.npoint(), nout);
-        Self::apply_perm(perm, &self.constants, pts, &mut out);
+        Self::apply_perm(
+            perm,
+            &self.constants,
+            &pts.as_points(),
+            &mut out.as_points_mut(),
+        );
         Ok(out)
     }
 
-    fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()> {
-        crate::mappings::validate_transform(self, pts, forward, Some(out))?;
+    fn transform_into(
+        &self,
+        pts: Points<'_>,
+        forward: bool,
+        mut out: PointsMut<'_>,
+    ) -> AstResult<()> {
+        crate::mappings::validate_transform(self, &pts, forward, Some(&out))?;
         let fwd = self.effective_forward(forward);
         let perm = if fwd {
             self.outperm.as_slice()
         } else {
             self.inperm.as_slice()
         };
-        Self::apply_perm(perm, &self.constants, pts, out);
+        Self::apply_perm(perm, &self.constants, &pts, &mut out);
         Ok(())
     }
 
@@ -534,9 +544,9 @@ impl Mapping for PermMap {
     /// `BAD_VALUE` at the output of the pipeline.
     fn transform_into_nan(
         &self,
-        pts: &PointSet,
+        pts: Points<'_>,
         forward: bool,
-        out: &mut PointSet,
+        mut out: PointsMut<'_>,
     ) -> AstResult<()> {
         let fwd = self.effective_forward(forward);
         let perm = if fwd {

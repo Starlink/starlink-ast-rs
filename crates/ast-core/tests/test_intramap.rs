@@ -16,7 +16,7 @@ use std::sync::Arc;
 
 use ast_core::channel::{Channel, NativeChannel};
 use ast_core::constants::BAD_VALUE;
-use ast_core::coords::PointSet;
+use ast_core::coords::{Points, PointsMut};
 use ast_core::error::{AstError, AstResult, ErrorCode};
 use ast_core::mappings::{
     CmpMap, Composition, IntraFlags, IntraMap, IntraRegistry, IntraTransform, Mapping, ZoomMap,
@@ -56,9 +56,9 @@ impl IntraTransform for Double {
     fn transform(
         &self,
         _map: &IntraMap,
-        input: &PointSet,
+        input: &Points<'_>,
         forward: bool,
-        out: &mut PointSet,
+        out: &mut PointsMut<'_>,
     ) -> AstResult<()> {
         for ip in 0..input.npoint() {
             let x = input.point(ip)[0];
@@ -319,9 +319,9 @@ fn transformation_errors_name_the_function() {
         fn transform(
             &self,
             _: &IntraMap,
-            _: &PointSet,
+            _: &Points<'_>,
             _: bool,
-            _: &mut PointSet,
+            _: &mut PointsMut<'_>,
         ) -> AstResult<()> {
             Err(AstError::new(ErrorCode::Inter, "it failed"))
         }

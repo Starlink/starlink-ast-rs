@@ -3,7 +3,7 @@
 use std::fmt;
 
 use crate::constants::BAD_VALUE;
-use crate::coords::PointSet;
+use crate::coords::{PointSet, Points, PointsMut};
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::mappings::helpers::is_bad;
 
@@ -659,10 +659,15 @@ impl Mapping for SwitchMap {
         Ok(out)
     }
 
-    fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()> {
-        crate::mappings::validate_transform(self, pts, forward, Some(out))?;
-        let result = self.transform(pts, forward)?;
-        out.view_mut().assign(&result.view());
+    fn transform_into(
+        &self,
+        pts: Points<'_>,
+        forward: bool,
+        mut out: PointsMut<'_>,
+    ) -> AstResult<()> {
+        crate::mappings::validate_transform(self, &pts, forward, Some(&out))?;
+        let result = self.transform(&PointSet::from_points(&pts), forward)?;
+        out.copy_from(&result.as_points());
         Ok(())
     }
 

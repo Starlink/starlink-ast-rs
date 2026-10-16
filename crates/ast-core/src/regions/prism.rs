@@ -15,7 +15,7 @@
 //! limits of the cylinder along its length.
 
 use crate::constants::BAD_VALUE;
-use crate::coords::PointSet;
+use crate::coords::{PointSet, Points, PointsMut};
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::{
     AxisKind, CmpFrame, DynFrame, Frame, FrameRef, FrameSet, simplify_frame_via_mapping,
@@ -1148,9 +1148,14 @@ impl Mapping for Prism {
         super::data::region_transform(self, pts)
     }
 
-    fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()> {
-        crate::mappings::validate_transform(self, pts, forward, Some(out))?;
-        let result = self.transform(pts, forward)?;
+    fn transform_into(
+        &self,
+        pts: Points<'_>,
+        forward: bool,
+        mut out: PointsMut<'_>,
+    ) -> AstResult<()> {
+        crate::mappings::validate_transform(self, &pts, forward, Some(&out))?;
+        let result = self.transform(&PointSet::from_points(&pts), forward)?;
         let npoint = result.npoint();
         let ncoord = result.ncoord();
         for i in 0..npoint {

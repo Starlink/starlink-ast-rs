@@ -1,7 +1,7 @@
 //! 1-D lookup table mapping.
 
 use crate::constants::BAD_VALUE;
-use crate::coords::PointSet;
+use crate::coords::{Points, PointsMut};
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::serial::{Node, NodeValue, Serializable, read_mapping_base, write_mapping_base};
 
@@ -557,13 +557,6 @@ impl Mapping for LutMap {
         self.inverted = !self.inverted;
     }
 
-    fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
-        crate::mappings::validate_transform(self, pts, forward, None)?;
-        let mut out = PointSet::zeros(pts.npoint(), 1);
-        self.transform_into(pts, forward, &mut out)?;
-        Ok(out)
-    }
-
     /// NaN-as-bad fast path. LutMap's lookup logic has many internal
     /// `BAD_VALUE` emit sites (binary search, BAD-skip logic, extrapolation
     /// boundary handling, etc.) and a `floor(x + 0.5) as i64` cast in the
@@ -576,23 +569,28 @@ impl Mapping for LutMap {
     /// that's just N comparisons).
     fn transform_into_nan(
         &self,
-        pts: &PointSet,
+        pts: Points<'_>,
         forward: bool,
-        out: &mut PointSet,
+        mut out: PointsMut<'_>,
     ) -> AstResult<()> {
-        self.transform_into(pts, forward, out)?;
-        let mut view = out.view_mut();
-        let flat = view.as_slice_mut().expect("PointSet is C-contiguous");
-        for v in flat.iter_mut() {
-            if *v == BAD_VALUE {
-                *v = f64::NAN;
+        self.transform_into(pts, forward, out.reborrow())?;
+        for j in 0..out.ncoord() {
+            for v in out.axis_mut(j) {
+                if *v == BAD_VALUE {
+                    *v = f64::NAN;
+                }
             }
         }
         Ok(())
     }
 
-    fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()> {
-        crate::mappings::validate_transform(self, pts, forward, Some(out))?;
+    fn transform_into(
+        &self,
+        pts: Points<'_>,
+        forward: bool,
+        mut out: PointsMut<'_>,
+    ) -> AstResult<()> {
+        crate::mappings::validate_transform(self, &pts, forward, Some(&out))?;
         let fwd = self.effective_forward(forward);
         for i in 0..pts.npoint() {
             let x = pts.point(i)[0];

@@ -24,7 +24,7 @@
 //! square grids included, with no error.
 
 use crate::constants::BAD_VALUE;
-use crate::coords::PointSet;
+use crate::coords::{PointSet, Points, PointsMut};
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
 
@@ -673,7 +673,7 @@ impl SplineMap {
     /// Transforms output positions (u, v) back to input positions (x, y)
     /// using Newton-Raphson iteration.
     #[allow(clippy::needless_range_loop)]
-    fn iter_inverse(&self, pts: &PointSet, out: &mut PointSet) {
+    fn iter_inverse(&self, pts: &Points<'_>, out: &mut PointsMut<'_>) {
         let npoint = pts.npoint();
         let maxiter = self.inv_niter();
         let maxerr = self.inv_tol() * self.inv_tol(); // squared tolerance
@@ -898,13 +898,6 @@ impl Mapping for SplineMap {
         self.inverted = !self.inverted;
     }
 
-    fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
-        crate::mappings::validate_transform(self, pts, forward, None)?;
-        let mut out = PointSet::zeros(pts.npoint(), 2);
-        self.transform_into(pts, forward, &mut out)?;
-        Ok(out)
-    }
-
     /// NaN-as-bad fast path. B-spline evaluation has knot-domain BAD
     /// emit sites in the inner `forward_point`/`inverse_point` routines
     /// (out-of-range coordinate, no monotonic interval, singular
@@ -914,23 +907,28 @@ impl Mapping for SplineMap {
     /// canonical sentinel.
     fn transform_into_nan(
         &self,
-        pts: &PointSet,
+        pts: Points<'_>,
         forward: bool,
-        out: &mut PointSet,
+        mut out: PointsMut<'_>,
     ) -> AstResult<()> {
-        self.transform_into(pts, forward, out)?;
-        let mut view = out.view_mut();
-        let flat = view.as_slice_mut().expect("PointSet is C-contiguous");
-        for v in flat.iter_mut() {
-            if *v == BAD_VALUE {
-                *v = f64::NAN;
+        self.transform_into(pts, forward, out.reborrow())?;
+        for j in 0..out.ncoord() {
+            for v in out.axis_mut(j) {
+                if *v == BAD_VALUE {
+                    *v = f64::NAN;
+                }
             }
         }
         Ok(())
     }
 
-    fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()> {
-        crate::mappings::validate_transform(self, pts, forward, Some(out))?;
+    fn transform_into(
+        &self,
+        pts: Points<'_>,
+        forward: bool,
+        mut out: PointsMut<'_>,
+    ) -> AstResult<()> {
+        crate::mappings::validate_transform(self, &pts, forward, Some(&out))?;
         let fwd = self.effective_forward(forward);
 
         if fwd {
@@ -949,7 +947,7 @@ impl Mapping for SplineMap {
             }
         } else {
             // Inverse: iterative Newton-Raphson
-            self.iter_inverse(pts, out);
+            self.iter_inverse(&pts, &mut out);
         }
         Ok(())
     }

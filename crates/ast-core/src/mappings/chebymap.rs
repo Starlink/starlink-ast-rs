@@ -13,7 +13,7 @@
 //! the input normalisation folded in.
 
 use crate::constants::BAD_VALUE;
-use crate::coords::PointSet;
+use crate::coords::{Points, PointsMut};
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
 
@@ -573,35 +573,31 @@ impl Mapping for ChebyMap {
         self.poly.invert();
     }
 
-    fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
-        crate::mappings::validate_transform(self, pts, forward, None)?;
-        let eff_fwd = self.effective_forward(forward);
-        let n_out = if eff_fwd { self.nout() } else { self.nin() };
-        let mut out = PointSet::zeros(pts.npoint(), n_out);
-        self.transform_into(pts, forward, &mut out)?;
-        Ok(out)
-    }
-
     fn transform_into_nan(
         &self,
-        pts: &PointSet,
+        pts: Points<'_>,
         forward: bool,
-        out: &mut PointSet,
+        mut out: PointsMut<'_>,
     ) -> AstResult<()> {
         let fwd = self.effective_forward(forward);
         if let Some(tables) = self.poly.term_tables(fwd) {
-            poly_transform(self, fwd, &tables, pts, out, f64::NAN);
+            poly_transform(self, fwd, &tables, &pts, &mut out, f64::NAN);
         }
         Ok(())
     }
 
-    fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()> {
-        crate::mappings::validate_transform(self, pts, forward, Some(out))?;
+    fn transform_into(
+        &self,
+        pts: Points<'_>,
+        forward: bool,
+        mut out: PointsMut<'_>,
+    ) -> AstResult<()> {
+        crate::mappings::validate_transform(self, &pts, forward, Some(&out))?;
         // ChebyMap inherits PolyMap's Transform and overrides only the
         // powers (chebymap.c).
         let fwd = self.effective_forward(forward);
         if let Some(tables) = self.poly.term_tables(fwd) {
-            poly_transform(self, fwd, &tables, pts, out, BAD_VALUE);
+            poly_transform(self, fwd, &tables, &pts, &mut out, BAD_VALUE);
         }
         Ok(())
     }

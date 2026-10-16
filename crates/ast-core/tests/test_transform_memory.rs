@@ -116,7 +116,10 @@ fn nested_series_transform_into_holds_no_full_size_intermediates() {
     let pts = points();
     let map = chain(true);
     let mut out = PointSet::zeros(NPOINT, 2);
-    let ((), peak) = peak_during(|| map.transform_into(&pts, true, &mut out).unwrap());
+    let ((), peak) = peak_during(|| {
+        map.transform_into(pts.as_points(), true, out.as_points_mut())
+            .unwrap()
+    });
     assert_eq!(out.point(1)[0], 256.0);
     assert!(peak < BATCHES, "peak {peak} bytes");
 }
@@ -137,7 +140,10 @@ fn nested_series_transform_into_nan_holds_no_full_size_intermediates() {
     let pts = points();
     let map = chain(true);
     let mut out = PointSet::zeros(NPOINT, 2);
-    let ((), peak) = peak_during(|| map.transform_into_nan(&pts, true, &mut out).unwrap());
+    let ((), peak) = peak_during(|| {
+        map.transform_into_nan(pts.as_points(), true, out.as_points_mut())
+            .unwrap()
+    });
     assert_eq!(out.point(1)[0], 256.0);
     assert!(peak < BATCHES, "peak {peak} bytes");
 }
