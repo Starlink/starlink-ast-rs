@@ -15,7 +15,7 @@ C's body runs `zoommap.c:729-1167 (fn MapMerge)` in three parts: condense a run 
 and UnitMaps in series; the same in parallel; and, when neither condensed
 anything, absorb the ZoomMap into an adjacent MatrixMap, WinMap or ShiftMap.
 
-The Rust `ZoomMap::map_merge` (`zoom.rs:186-193 (fn map_merge)`) delegates to
+The Rust `ZoomMap::map_merge` (`zoom.rs:184-191 (fn map_merge)`) delegates to
 `simplify::zoom_map_merge` (`mappings/simplify.rs:894-1050 (fn zoom_map_merge)`), so Rust sites below are in
 `mappings/simplify.rs` unless stated.
 
@@ -44,12 +44,12 @@ must discard the simplified record.
 | 17 | Replace the condensed run with the new Mapping, close the gap, and return the first modified index | zoommap.c:953-985 (fn MapMerge) | mappings/simplify.rs:1048-1049 (fn zoom_map_merge) | architecture | ported |
 | 18 | If nothing condensed, and the ZoomMap is not first, try merging it with the previous Mapping | zoommap.c:992-1002 (fn MapMerge) | mappings/simplify.rs:964-972 (fn zoom_map_merge) | architecture | ported |
 | 19 | Absorb into a previous MatrixMap by scaling its elements | zoommap.c:1003-1018 (fn MapMerge) | matrix.rs:830-847 (fn try_merge) | architecture | ported |
-| 20 | Absorb into a previous WinMap by scaling its coefficients | zoommap.c:1019-1035 (fn MapMerge) | zoom.rs:302-316 (fn try_merge) | architecture | ported |
-| 21 | Absorb into a previous ShiftMap, producing a WinMap | zoommap.c:1036-1064 (fn MapMerge) | zoom.rs:302-316 (fn try_merge) | architecture | ported |
+| 20 | Absorb into a previous WinMap by scaling its coefficients | zoommap.c:1019-1035 (fn MapMerge) | zoom.rs:300-314 (fn try_merge) | architecture | ported |
+| 21 | Absorb into a previous ShiftMap, producing a WinMap | zoommap.c:1036-1064 (fn MapMerge) | zoom.rs:300-314 (fn try_merge) | architecture | ported |
 | 22 | If the previous Mapping absorbed nothing, and the ZoomMap is not last, consider the next Mapping | zoommap.c:1066-1071 (fn MapMerge) | mappings/simplify.rs:972 (fn zoom_map_merge) | architecture | ported |
 | 23 | Absorb into a following MatrixMap by scaling its elements | zoommap.c:1072-1085 (fn MapMerge) | matrix.rs:830-847 (fn try_merge) | architecture | ported |
-| 24 | Absorb into a following WinMap by scaling its coefficients | zoommap.c:1086-1101 (fn MapMerge) | zoom.rs:302-316 (fn try_merge) | architecture | ported |
-| 25 | Absorb into a following ShiftMap, producing a WinMap | zoommap.c:1102-1128 (fn MapMerge) | zoom.rs:302-316 (fn try_merge) | architecture | ported |
+| 24 | Absorb into a following WinMap by scaling its coefficients | zoommap.c:1086-1101 (fn MapMerge) | zoom.rs:300-314 (fn try_merge) | architecture | ported |
+| 25 | Absorb into a following ShiftMap, producing a WinMap | zoommap.c:1102-1128 (fn MapMerge) | zoom.rs:300-314 (fn try_merge) | architecture | ported |
 | 26 | If anything absorbed, annul the neighbour and the ZoomMap, and store the new Mapping over the neighbour with its Invert flag | zoommap.c:1130-1143 (fn MapMerge) | mappings/simplify.rs:1510-1515 (fn default_map_merge) | architecture | ported |
 | 27 | Shuffle the later Mappings down, clear the vacated element, decrement the count and return the lower of the two indices | zoommap.c:1145-1159 (fn MapMerge) | mappings/simplify.rs:1515-1516 (fn default_map_merge) | architecture | ported |
 | 28 | Clear the returned result if an error occurred | zoommap.c:1163-1164 (fn MapMerge) | -- | ceremony | n/a: an error is a `Result::Err`, not a value to be cleared alongside one |

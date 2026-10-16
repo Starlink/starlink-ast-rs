@@ -149,10 +149,9 @@ impl Mapping for ZoomMap {
         crate::mappings::validate_transform(self, &pts, forward, Some(&out))?;
         let fwd = self.effective_forward(forward);
         let scale = if fwd { self.zoom() } else { 1.0 / self.zoom() };
-        for i in 0..pts.npoint() {
-            let inp = pts.point(i);
-            let mut outp = out.point_mut(i);
-            for (o, &v) in outp.iter_mut().zip(inp.iter()) {
+        let n = pts.npoint();
+        for j in 0..pts.ncoord() {
+            for (o, &v) in out.axis_mut(j)[..n].iter_mut().zip(pts.axis(j)) {
                 *o = if is_bad(v) { BAD_VALUE } else { v * scale };
             }
         }
@@ -173,10 +172,9 @@ impl Mapping for ZoomMap {
     ) -> AstResult<()> {
         let fwd = self.effective_forward(forward);
         let scale = if fwd { self.zoom() } else { 1.0 / self.zoom() };
-        for i in 0..pts.npoint() {
-            let inp = pts.point(i);
-            let mut outp = out.point_mut(i);
-            for (o, &v) in outp.iter_mut().zip(inp.iter()) {
+        let n = pts.npoint();
+        for j in 0..pts.ncoord() {
+            for (o, &v) in out.axis_mut(j)[..n].iter_mut().zip(pts.axis(j)) {
                 *o = v * scale;
             }
         }

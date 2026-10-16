@@ -13,6 +13,8 @@ mod common;
 
 #[path = "../test_allow_simplify.rs"]
 mod test_allow_simplify;
+#[path = "../test_bulk_kernels.rs"]
+mod test_bulk_kernels;
 #[path = "../test_chebymap.rs"]
 mod test_chebymap;
 #[path = "../test_cmpmap.rs"]
