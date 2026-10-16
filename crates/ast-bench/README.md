@@ -51,6 +51,15 @@ A report names what got slower, not why.
 Changing one Mapping's code can move another's hot loop in the binary: making ZoomMap slower on purpose also made PolyMap's forward transform 20% slower in the same build, although PolyMap does not use ZoomMap.
 That slowdown is real for that binary, so `compare` is right to report it, but read a report that lists unrelated classes with this in mind.
 
+## Checking that results did not change
+
+    ast-bench bits [--base <git-ref>]
+
+prints a hash of the output bits of every transform in the sweep corpus, through `transform` and through the NaN protocol, at 10 000 points per case.
+With `--base`, it builds `ast-bench` at that commit, runs the same command there, and fails on any case whose hashes differ, including a case that fails to load or transform on one side only.
+Use it for changes that must not alter any result, such as a change of data layout.
+The hashes depend on the platform's libm, so they are only ever compared on one machine, never committed.
+
 ## Records and the full sweep
 
     ast-bench snapshot --set bench        # needs --features c-oracle

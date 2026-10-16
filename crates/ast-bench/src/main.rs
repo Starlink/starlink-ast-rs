@@ -22,6 +22,7 @@ commands:
   compare --set <name> [--engine rust|c|both] [--base <git-ref>]
   sweep
   snapshot --set <name>
+  bits [--base <git-ref>]
 ";
 
 /// The value following `flag` in `args`, if present.
@@ -192,6 +193,30 @@ fn sweep() -> Result<Vec<String>, String> {
     Ok(Vec::new())
 }
 
+/// `bits`: print the output-bit hashes of every corpus transform, or with
+/// `--base`, list every case whose hashes differ from that commit's.
+fn bits(args: &[String]) -> Result<Vec<String>, String> {
+    check_not_counting()?;
+    let cur = ast_bench::bits::all_bits()?;
+    match opt(args, "--base") {
+        None => {
+            print!("{cur}");
+            Ok(Vec::new())
+        }
+        Some(git_ref) => {
+            let base = ast_bench::base::bits_at(git_ref)?;
+            let diff = ast_bench::bits::diff_bits(&base, &cur)?;
+            if diff.is_empty() {
+                println!("every transform's output bits match {git_ref}");
+            }
+            Ok(diff
+                .into_iter()
+                .map(|d| format!("bits differ: {d}"))
+                .collect())
+        }
+    }
+}
+
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let result = match args.first().map(String::as_str) {
@@ -214,6 +239,7 @@ fn main() -> ExitCode {
         Some("compare") => compare(&args[1..]),
         Some("snapshot") => snapshot(&args[1..]),
         Some("sweep") => sweep(),
+        Some("bits") => bits(&args[1..]),
         Some(other) => Err(format!("unknown command {other:?}\n{USAGE}")),
     };
     match result {

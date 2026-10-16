@@ -60,7 +60,7 @@ fn git(args: &[&str], dir: &Path) -> Result<String, String> {
 /// Build `ast-bench` at `git_ref` in a git worktree under
 /// `target/perf/base/`, reusing it if it is already there, and return the
 /// binary.
-fn build_base(repo: &Path, git_ref: &str) -> Result<PathBuf, String> {
+pub(crate) fn build_base(repo: &Path, git_ref: &str) -> Result<PathBuf, String> {
     let sha = git(
         &["rev-parse", "--verify", &format!("{git_ref}^{{commit}}")],
         repo,
@@ -107,6 +107,25 @@ fn build_base(repo: &Path, git_ref: &str) -> Result<PathBuf, String> {
     bin.exists()
         .then_some(bin)
         .ok_or_else(|| format!("no ast-bench binary under {}", target.display()))
+}
+
+/// The output of `ast-bench bits` from the build at `git_ref`.
+pub fn bits_at(git_ref: &str) -> Result<String, String> {
+    let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let bin = build_base(&repo, git_ref)?;
+    let out = Command::new(&bin)
+        .arg("bits")
+        .output()
+        .map_err(|e| format!("{}: {e}", bin.display()))?;
+    if !out.status.success() {
+        return Err(format!(
+            "{} bits failed ({}): {}",
+            bin.display(),
+            out.status,
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
 /// Run `bin` on the set file and read its TSV.

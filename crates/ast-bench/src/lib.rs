@@ -4,6 +4,7 @@
 //! second engine behind the `c-oracle` feature, used while Rust is being
 //! brought to parity with C; regression checking needs only Rust.
 pub mod base;
+pub mod bits;
 #[cfg(feature = "c-oracle")]
 pub mod c_engine;
 pub mod cases;
