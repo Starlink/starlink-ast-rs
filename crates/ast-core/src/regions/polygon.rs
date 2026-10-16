@@ -1796,6 +1796,7 @@ impl Region for Polygon {
     fn set_negated_raw(&mut self, negated: bool, set: bool) {
         self.data.negated = negated;
         self.data.negated_set = set;
+        self.data.invalidate_cache();
     }
 
     fn is_closed(&self) -> bool {
@@ -1805,6 +1806,7 @@ impl Region for Polygon {
     fn set_closed(&mut self, closed: bool) {
         self.data.closed = closed;
         self.data.closed_set = true;
+        self.data.invalidate_cache();
     }
 
     fn test_closed(&self) -> bool {
@@ -1814,6 +1816,7 @@ impl Region for Polygon {
     fn set_closed_raw(&mut self, closed: bool, set: bool) {
         self.data.closed = closed;
         self.data.closed_set = set;
+        self.data.invalidate_cache();
     }
 
     fn fill_factor(&self) -> f64 {

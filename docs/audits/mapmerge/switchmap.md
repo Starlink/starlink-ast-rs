@@ -32,7 +32,7 @@ second arm calls `SwitchMap::reduced_children` (`switchmap.rs:369-410 (fn reduce
 | 9 | Replace the first of the pair with a UnitMap and set its invert flag | switchmap.c:1024-1031 (fn MapMerge) | switchmap.rs:945-946 (fn merge_with_neighbour) | architecture | ported |
 | 10 | Annul the second and shuffle the rest down, clearing the vacated slot | switchmap.c:1032-1043 (fn MapMerge) | switchmap.rs:946 (fn merge_with_neighbour) | architecture | ported |
 | 11 | Decrement the Mapping count and return the index of the first modified element | switchmap.c:1044-1051 (fn MapMerge) | switchmap.rs:947 (fn merge_with_neighbour) | architecture | ported |
-| 12 | Attempt to simplify the SwitchMap on its own, only if no change was made above | switchmap.c:1052-1056 (fn MapMerge) | switchmap.rs:745-747 (fn map_merge) | architecture | ported |
+| 12 | Attempt to simplify the SwitchMap on its own, only if no change was made above | switchmap.c:1052-1056 (fn MapMerge) | switchmap.rs:745-746 (fn map_merge) | architecture | ported |
 | 13 | If the SwitchMap is inverted, replace it with an equal forward one by swapping the selectors and inverting the route Mappings, and stop there | switchmap.c:1057-1076 (fn MapMerge) | switchmap.rs:758-766 (fn map_merge), switchmap.rs:259-279 (fn normalize_inverted) | architecture | ported |
 | 14 | Otherwise try to simplify each encapsulated Mapping, noting whether anything changed | switchmap.c:1077-1091 (fn MapMerge) | switchmap.rs:369-390 (fn reduced_children) | architecture | ported |
 | 15 | If anything simplified, build a new SwitchMap from the simplified Mappings | switchmap.c:1092-1100 (fn MapMerge) | switchmap.rs:392-409 (fn reduced_children) | architecture | ported |

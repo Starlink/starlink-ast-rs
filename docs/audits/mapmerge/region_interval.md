@@ -149,7 +149,7 @@ lives once.
 | 109 | Ensure the two bounds on each axis are not equal | interval.c:3346-3354 (fn Simplify) | interval.rs:709-714 (fn simplify_remapped) | architecture | ported |
 | 110 | Create a Box on the base Frame from the box found above, carrying the Interval's base-Frame uncertainty where it has one | interval.c:3355-3360 (fn Simplify) | interval.rs:720-738 (fn simplify_remapped) | architecture | ported |
 | 111 | Modify that Box so it has the same current Frame as this Interval | interval.c:3361-3364 (fn Simplify) | interval.rs:739-740 (fn simplify_remapped) | architecture | ported |
-| 112 | Try simplifying the Box | interval.c:3365-3367 (fn Simplify) | interval.rs:704 (fn simplify_remapped) | architecture | ported |
+| 112 | Try simplifying the Box | interval.c:3365-3367 (fn Simplify) | interval.rs:740 (fn simplify_remapped) | architecture | ported |
 | 113 | Proceed only if the Box was simplified | interval.c:3368-3370 (fn Simplify) | interval.rs:748-750 (fn simplify_remapped) | architecture | ported |
 | 114 | Return the simplified Box where it is a NullRegion | interval.c:3371-3376 (fn Simplify) | interval.rs:751-753 (fn simplify_remapped) | architecture | ported |
 | 115 | Otherwise act where it is a Box or an Interval | interval.c:3377-3379 (fn Simplify) | interval.rs:754-759 (fn simplify_remapped) | architecture | ported |

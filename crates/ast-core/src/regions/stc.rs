@@ -647,6 +647,7 @@ impl<K: StcKind> Region for Stc<K> {
     fn set_negated_raw(&mut self, negated: bool, set: bool) {
         self.data.negated = negated;
         self.data.negated_set = set;
+        self.data.invalidate_cache();
     }
 
     /// stc.c `SetNegated`: set on the Stc and the encapsulated Region.
@@ -680,6 +681,7 @@ impl<K: StcKind> Region for Stc<K> {
     fn set_closed_raw(&mut self, closed: bool, set: bool) {
         self.data.closed = closed;
         self.data.closed_set = set;
+        self.data.invalidate_cache();
     }
 
     fn clear_closed(&mut self) {

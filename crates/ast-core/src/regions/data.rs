@@ -305,10 +305,11 @@ impl RegionData {
     }
 
     /// C `astNegate`: `astSetNegated( this, !astGetNegated( this ) )`, which
-    /// leaves Negated set.
+    /// leaves Negated set and, like every `SetNegated`, resets the cache.
     pub(crate) fn negate(&mut self) {
         self.negated = !self.negated;
         self.negated_set = true;
+        self.invalidate_cache();
     }
 
     /// The effective MeshSize: the explicitly-set value if any, otherwise

@@ -756,3 +756,40 @@ fn accessor_methods() {
     assert_eq!(cmp.nin(), 2);
     assert_eq!(cmp.nout(), 2);
 }
+
+/// cmpregion.c `SetClosed` resets the cache, and `RegBaseMesh` keeps only
+/// the component mesh points inside the other component, so the mesh of an
+/// AND whose components share part of an edge depends on Closed.
+#[test]
+fn and_mesh_follows_closed_after_first_use() {
+    let build = |closed: bool| {
+        let frame = BasicFrameBuilder::new(2).build().unwrap();
+        let a = BoxRegionBuilder::new(frame.clone(), vec![0.0, 0.0], vec![1.0, 1.0])
+            .unwrap()
+            .build()
+            .unwrap();
+        let b = BoxRegionBuilder::new(frame, vec![1.0, 0.0], vec![2.0, 1.0])
+            .unwrap()
+            .build()
+            .unwrap();
+        let mut cmp = CmpRegionBuilder::new(a, b, CmpOperator::And)
+            .unwrap()
+            .build()
+            .unwrap();
+        cmp.set_closed(closed);
+        cmp
+    };
+    let fresh_open = build(false).get_region_mesh().unwrap();
+    let mut warmed = build(true);
+    let closed_mesh = warmed.get_region_mesh().unwrap();
+    assert_ne!(
+        closed_mesh.npoint(),
+        fresh_open.npoint(),
+        "the fixture must make Closed matter"
+    );
+    warmed.set_closed(false);
+    assert_eq!(
+        warmed.get_region_mesh().unwrap().npoint(),
+        fresh_open.npoint()
+    );
+}

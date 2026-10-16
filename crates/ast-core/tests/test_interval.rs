@@ -796,3 +796,43 @@ fn interval_transform_follows_changes_after_first_use() {
         .unwrap();
     assert_eq!(open.point(0), &[BAD_VALUE, BAD_VALUE]);
 }
+
+/// C's `Negate` goes through `astSetNegated`, which resets the cache
+/// (region.c `SetNegated`), so a negation after first use must be seen by
+/// transform and simplify, on the region and on a negated copy.
+#[test]
+fn interval_negate_after_first_use() {
+    let frame = BasicFrameBuilder::new(2).build().unwrap();
+    let mut interval = IntervalBuilder::new(frame, vec![0.0, 0.0], vec![1.0, 1.0])
+        .unwrap()
+        .build()
+        .unwrap();
+    let pts = PointSet::from_rows([[0.5, 0.5], [2.0, 2.0], [1.0, 0.5]]);
+    interval.transform(&pts, true).unwrap();
+    let copy = interval.negated_copy();
+    interval.negate();
+
+    for (what, region) in [
+        ("negate", <dyn Mapping>::simplify(&interval).unwrap()),
+        (
+            "negated_copy",
+            <dyn Mapping>::simplify(copy.as_ref()).unwrap(),
+        ),
+    ] {
+        let out = region.transform(&pts, true).unwrap();
+        assert_eq!(
+            out.point(0),
+            &[BAD_VALUE, BAD_VALUE],
+            "{what}: inside point"
+        );
+        assert_eq!(out.point(1), &[2.0, 2.0], "{what}: outside point");
+    }
+    let out = interval.transform(&pts, true).unwrap();
+    assert_eq!(out.point(0), &[BAD_VALUE, BAD_VALUE]);
+    assert_eq!(out.point(1), &[2.0, 2.0]);
+    assert_eq!(
+        out.point(2),
+        &[1.0, 0.5],
+        "a closed boundary point stays in the negation"
+    );
+}

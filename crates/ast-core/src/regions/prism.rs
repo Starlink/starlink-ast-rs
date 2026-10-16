@@ -563,6 +563,7 @@ impl Region for Prism {
     fn set_negated_raw(&mut self, negated: bool, set: bool) {
         self.data.negated = negated;
         self.data.negated_set = set;
+        self.data.invalidate_cache();
     }
 
     fn is_closed(&self) -> bool {
@@ -573,6 +574,7 @@ impl Region for Prism {
     fn set_closed(&mut self, closed: bool) {
         self.data.closed = closed;
         self.data.closed_set = true;
+        self.data.invalidate_cache();
         self.region1.set_closed(closed);
         self.region2.set_closed(closed);
     }
@@ -581,6 +583,7 @@ impl Region for Prism {
     fn clear_closed(&mut self) {
         self.data.closed = true;
         self.data.closed_set = false;
+        self.data.invalidate_cache();
         self.region1.clear_closed();
         self.region2.clear_closed();
     }
@@ -592,6 +595,7 @@ impl Region for Prism {
     fn set_closed_raw(&mut self, closed: bool, set: bool) {
         self.data.closed = closed;
         self.data.closed_set = set;
+        self.data.invalidate_cache();
     }
 
     /// prism.c `GetFillFactor`: the value set, or by default the product of the components'.
