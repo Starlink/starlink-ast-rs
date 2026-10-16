@@ -97,16 +97,17 @@ impl Mapping for ShiftMap {
         crate::mappings::validate_transform(self, &pts, forward, Some(&out))?;
         let fwd = self.effective_forward(forward);
         let sign = if fwd { 1.0 } else { -1.0 };
-        for i in 0..pts.npoint() {
-            let inp = pts.point(i);
-            let mut outp = out.point_mut(i);
-            for (j, (o, &v)) in outp.iter_mut().zip(inp.iter()).enumerate() {
-                // A bad shift makes its axis bad (shiftmap.c Transform).
-                *o = if is_bad(v) || self.shift[j] == BAD_VALUE {
-                    BAD_VALUE
-                } else {
-                    v + sign * self.shift[j]
-                };
+        let n = pts.npoint();
+        for (j, &shift) in self.shift.iter().enumerate().take(pts.ncoord()) {
+            let o = &mut out.axis_mut(j)[..n];
+            // A bad shift makes its axis bad (shiftmap.c Transform).
+            if shift == BAD_VALUE {
+                o.fill(BAD_VALUE);
+                continue;
+            }
+            let d = sign * shift;
+            for (o, &v) in o.iter_mut().zip(pts.axis(j)) {
+                *o = if is_bad(v) { BAD_VALUE } else { v + d };
             }
         }
         Ok(())
@@ -122,15 +123,16 @@ impl Mapping for ShiftMap {
     ) -> AstResult<()> {
         let fwd = self.effective_forward(forward);
         let sign = if fwd { 1.0 } else { -1.0 };
-        for i in 0..pts.npoint() {
-            let inp = pts.point(i);
-            let mut outp = out.point_mut(i);
-            for (j, (o, &v)) in outp.iter_mut().zip(inp.iter()).enumerate() {
-                *o = if self.shift[j] == BAD_VALUE {
-                    f64::NAN
-                } else {
-                    v + sign * self.shift[j]
-                };
+        let n = pts.npoint();
+        for (j, &shift) in self.shift.iter().enumerate().take(pts.ncoord()) {
+            let o = &mut out.axis_mut(j)[..n];
+            if shift == BAD_VALUE {
+                o.fill(f64::NAN);
+                continue;
+            }
+            let d = sign * shift;
+            for (o, &v) in o.iter_mut().zip(pts.axis(j)) {
+                *o = v + d;
             }
         }
         Ok(())
