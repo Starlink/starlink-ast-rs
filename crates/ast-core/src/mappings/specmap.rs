@@ -1426,49 +1426,43 @@ impl Mapping for SpecMap {
             return Ok(());
         }
 
-        for i in 0..pts.npoint() {
-            let inp = pts.point(i);
-            let outp = out.point_mut(i);
-
-            let mut val = inp[0];
-
-            if is_bad(val) {
-                outp[0] = BAD_VALUE;
-                continue;
-            }
-
-            if fwd {
-                // Forward: iterate conversions in order
-                for (ci, cvt) in self.conversions.iter().enumerate() {
-                    if is_bad(val) {
-                        break;
-                    }
-                    if cvt.cvt_type.is_frame_change() {
-                        val = apply_frame_change(self.frame_factor(ci, cvt), val, true);
-                    } else {
-                        val = system_change_forward(cvt, val);
+        // As C's Transform: each conversion in turn over every point
+        // (specmap.c:135), a bad value staying bad and a non-finite result
+        // becoming bad at the end.
+        let npoint = pts.npoint();
+        for i in 0..npoint {
+            out.point_mut(i)[0] = pts.point(i)[0];
+        }
+        let nconv = self.conversions.len();
+        for k in 0..nconv {
+            let ci = if fwd { k } else { nconv - 1 - k };
+            let cvt = &self.conversions[ci];
+            if cvt.cvt_type.is_frame_change() {
+                let fcorr = self.frame_factor(ci, cvt);
+                for i in 0..npoint {
+                    let v = &mut out.point_mut(i)[0];
+                    if !is_bad(*v) {
+                        *v = apply_frame_change(fcorr, *v, fwd);
                     }
                 }
             } else {
-                // Inverse: iterate conversions in REVERSE order
-                for (ci, cvt) in self.conversions.iter().enumerate().rev() {
-                    if is_bad(val) {
-                        break;
-                    }
-                    if cvt.cvt_type.is_frame_change() {
-                        val = apply_frame_change(self.frame_factor(ci, cvt), val, false);
-                    } else {
-                        val = system_change_inverse(cvt, val);
+                for i in 0..npoint {
+                    let v = &mut out.point_mut(i)[0];
+                    if !is_bad(*v) {
+                        *v = if fwd {
+                            system_change_forward(cvt, *v)
+                        } else {
+                            system_change_inverse(cvt, *v)
+                        };
                     }
                 }
             }
-
-            // Check for NaN/Inf
-            if !val.is_finite() {
-                val = BAD_VALUE;
+        }
+        for i in 0..npoint {
+            let v = &mut out.point_mut(i)[0];
+            if !v.is_finite() {
+                *v = BAD_VALUE;
             }
-
-            outp[0] = val;
         }
 
         Ok(())
