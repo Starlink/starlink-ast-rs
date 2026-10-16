@@ -6,6 +6,8 @@
 #[cfg(feature = "c-oracle")]
 pub mod c_engine;
 pub mod cases;
+pub mod compare;
+pub mod fingerprint;
 pub mod load;
 pub mod oracle;
 pub mod points;

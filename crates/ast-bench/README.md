@@ -21,3 +21,15 @@ The design is `docs/superpowers/specs/2026-10-15-transform-benchmarking-design.m
 Runs of 100 000 and 1 000 000 points repeat the 24 oracle rows in order.
 Real data is less regular, so branch prediction does better here than it would in an application.
 The bias applies equally to every engine and every build, so comparisons stay fair; absolute times are slightly optimistic.
+
+## Checking for slowdowns
+
+    ast-bench run --set bench --save      # this machine's baseline
+    ast-bench compare --set bench         # after a change
+
+Baselines live under `target/perf/baselines/`, one directory per fingerprint (CPU, OS, rustc, C build, profile); `compare` refuses a baseline from another fingerprint and says which field differs.
+A timing counts as slower when its fastest sample is more than 10% slower than the baseline's (`SLOWDOWN_THRESHOLD`); a suspect is timed twice more and reported only if every re-timing is slow too, which clears the noise that sub-nanosecond, memory-bound timings show between runs.
+
+A report names what got slower, not why.
+Changing one Mapping's code can move another's hot loop in the binary: making ZoomMap slower on purpose also made PolyMap's forward transform 20% slower in the same build, although PolyMap does not use ZoomMap.
+That slowdown is real for that binary, so `compare` is right to report it, but read a report that lists unrelated classes with this in mind.
