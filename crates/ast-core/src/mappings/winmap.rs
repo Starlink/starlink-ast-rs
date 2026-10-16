@@ -214,33 +214,36 @@ impl Mapping for WinMap {
     ) -> AstResult<()> {
         crate::mappings::validate_transform(self, &pts, forward, Some(&out))?;
         let fwd = self.effective_forward(forward);
-        for i in 0..pts.npoint() {
-            let inp = pts.point(i);
-            let mut outp = out.point_mut(i);
+        let n = pts.npoint();
+        let axes = self.shifts.iter().zip(&self.scales).take(pts.ncoord());
+        for (j, (&shift, &scale)) in axes.enumerate() {
+            let o = &mut out.axis_mut(j)[..n];
+            let x = pts.axis(j);
             if fwd {
                 // forward: output = shift + scale * input
-                for (j, (o, &v)) in outp.iter_mut().zip(inp.iter()).enumerate() {
-                    let shift = self.shifts[j];
-                    let scale = self.scales[j];
-                    if is_bad(v) || is_bad(shift) || is_bad(scale) {
-                        *o = BAD_VALUE;
+                if is_bad(shift) || is_bad(scale) {
+                    o.fill(BAD_VALUE);
+                    continue;
+                }
+                for (o, &v) in o.iter_mut().zip(x) {
+                    *o = if is_bad(v) {
+                        BAD_VALUE
                     } else {
-                        *o = shift + scale * v;
-                    }
+                        shift + scale * v
+                    };
                 }
             } else {
                 // inverse: output = -shift/scale + input/scale, with the
                 // coefficients inverted first as winmap.c `Transform` does,
                 // so the rounding matches C's.
-                for (j, (o, &v)) in outp.iter_mut().zip(inp.iter()).enumerate() {
-                    let shift = self.shifts[j];
-                    let scale = self.scales[j];
-                    if is_bad(v) || is_bad(shift) || is_bad(scale) || scale == 0.0 {
-                        *o = BAD_VALUE;
-                    } else {
-                        let bb = 1.0 / scale;
-                        *o = -shift * bb + bb * v;
-                    }
+                if is_bad(shift) || is_bad(scale) || scale == 0.0 {
+                    o.fill(BAD_VALUE);
+                    continue;
+                }
+                let bb = 1.0 / scale;
+                let a = -shift * bb;
+                for (o, &v) in o.iter_mut().zip(x) {
+                    *o = if is_bad(v) { BAD_VALUE } else { a + bb * v };
                 }
             }
         }
@@ -264,38 +267,26 @@ impl Mapping for WinMap {
         mut out: PointsMut<'_>,
     ) -> AstResult<()> {
         let fwd = self.effective_forward(forward);
-        let n = self.shifts.len();
-
-        // Per-channel "is this channel statically broken?" mask. Computed
-        // once; used to splat NaN into output lanes that map from a broken
-        // channel (e.g. BAD shift, zero scale on inverse).
-        let bad_channel: Vec<bool> = self
-            .shifts
-            .iter()
-            .zip(self.scales.iter())
-            .map(|(&shift, &scale)| is_bad(shift) || is_bad(scale) || (!fwd && scale == 0.0))
-            .collect();
-        debug_assert_eq!(bad_channel.len(), n);
-
-        for i in 0..pts.npoint() {
-            let inp = pts.point(i);
-            let mut outp = out.point_mut(i);
+        let n = pts.npoint();
+        let axes = self.shifts.iter().zip(&self.scales).take(pts.ncoord());
+        for (j, (&shift, &scale)) in axes.enumerate() {
+            let o = &mut out.axis_mut(j)[..n];
+            let x = pts.axis(j);
+            // A channel with a bad shift or scale, or a zero scale on the
+            // inverse, is NaN throughout.
+            if is_bad(shift) || is_bad(scale) || (!fwd && scale == 0.0) {
+                o.fill(f64::NAN);
+                continue;
+            }
             if fwd {
-                for (j, (o, &v)) in outp.iter_mut().zip(inp.iter()).enumerate() {
-                    *o = if bad_channel[j] {
-                        f64::NAN
-                    } else {
-                        self.shifts[j] + self.scales[j] * v
-                    };
+                for (o, &v) in o.iter_mut().zip(x) {
+                    *o = shift + scale * v;
                 }
             } else {
-                for (j, (o, &v)) in outp.iter_mut().zip(inp.iter()).enumerate() {
-                    *o = if bad_channel[j] {
-                        f64::NAN
-                    } else {
-                        let bb = 1.0 / self.scales[j];
-                        -self.shifts[j] * bb + bb * v
-                    };
+                let bb = 1.0 / scale;
+                let a = -shift * bb;
+                for (o, &v) in o.iter_mut().zip(x) {
+                    *o = a + bb * v;
                 }
             }
         }

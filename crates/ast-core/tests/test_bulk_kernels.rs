@@ -57,3 +57,27 @@ fn unitmap_kernel() {
     );
     assert_eq!(a[5], 7.0);
 }
+
+use ast_core::mappings::{PermMap, WinMap};
+
+#[test]
+fn winmap_kernel() {
+    // Axis 1 is scaled by 2; axis 2 is shifted by 1.
+    let m = WinMap::new(&[0.0, 1.0], &[2.0, 1.0]).unwrap();
+    let [a, b] = run(&m, true);
+    assert_bad_then(&a, 4.0);
+    assert_bad_then(&b, 3.0);
+    let [a, b] = run(&m, false);
+    assert_bad_then(&a, 1.0);
+    assert_bad_then(&b, 1.0);
+}
+
+#[test]
+fn permmap_kernel() {
+    // Output 1 is input 2, output 2 is the constant 5.
+    let m = PermMap::new(&[2, 1], &[2, -1], &[5.0]).unwrap();
+    let [a, b] = run(&m, true);
+    assert_bad_then(&a, 2.0);
+    assert!(b[..5].iter().all(|&v| v == 5.0), "{b:?}");
+    assert_eq!(b[5], 7.0);
+}
