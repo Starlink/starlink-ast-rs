@@ -108,7 +108,7 @@ fn mapping(name: &str) -> DynMapping {
 fn hash(out: &PointSet) -> u64 {
     let mut h: u64 = 14695981039346656037;
     for i in 0..out.npoint() {
-        for &v in out.point(i) {
+        for v in out.point(i) {
             h = (h ^ v.to_bits()).wrapping_mul(1099511628211);
         }
     }

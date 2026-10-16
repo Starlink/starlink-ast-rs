@@ -219,7 +219,7 @@ impl Mapping for WinMap {
         let fwd = self.effective_forward(forward);
         for i in 0..pts.npoint() {
             let inp = pts.point(i);
-            let outp = out.point_mut(i);
+            let mut outp = out.point_mut(i);
             if fwd {
                 // forward: output = shift + scale * input
                 for (j, (o, &v)) in outp.iter_mut().zip(inp.iter()).enumerate() {
@@ -282,7 +282,7 @@ impl Mapping for WinMap {
 
         for i in 0..pts.npoint() {
             let inp = pts.point(i);
-            let outp = out.point_mut(i);
+            let mut outp = out.point_mut(i);
             if fwd {
                 for (j, (o, &v)) in outp.iter_mut().zip(inp.iter()).enumerate() {
                     *o = if bad_channel[j] {

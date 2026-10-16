@@ -491,7 +491,7 @@ impl Mapping for DssMap {
             // Forward: pixel (x,y) -> (RA, Dec) in radians
             for i in 0..pts.npoint() {
                 let inp = pts.point(i);
-                let outp = out.point_mut(i);
+                let mut outp = out.point_mut(i);
                 if is_bad(inp[0]) || is_bad(inp[1]) {
                     outp[0] = BAD_VALUE;
                     outp[1] = BAD_VALUE;
@@ -512,7 +512,7 @@ impl Mapping for DssMap {
             // Inverse: (RA, Dec) in radians -> pixel (x,y)
             for i in 0..pts.npoint() {
                 let inp = pts.point(i);
-                let outp = out.point_mut(i);
+                let mut outp = out.point_mut(i);
                 if is_bad(inp[0]) || is_bad(inp[1]) {
                     outp[0] = BAD_VALUE;
                     outp[1] = BAD_VALUE;

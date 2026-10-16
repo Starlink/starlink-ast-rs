@@ -1863,8 +1863,8 @@ impl Mapping for Interval {
         let ncoord = result.ncoord();
         for i in 0..npoint {
             let src = result.point(i);
-            let dst = out.point_mut(i);
-            dst[..ncoord].copy_from_slice(src);
+            let mut dst = out.point_mut(i);
+            dst[..ncoord].copy_from_slice(&src);
         }
         Ok(())
     }

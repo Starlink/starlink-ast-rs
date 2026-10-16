@@ -2624,7 +2624,7 @@ fn system_change_circle_membership() {
 
     // The centre (in Galactic coords) should be inside the circle.
     assert!(
-        circle.point_in_region(gal_centre).unwrap(),
+        circle.point_in_region(&gal_centre).unwrap(),
         "Centre (converted to Galactic) should be inside the system-changed circle"
     );
 
@@ -2766,7 +2766,7 @@ fn system_change_box_membership() {
 
     // The centre (in Galactic coords) should be inside the box.
     assert!(
-        bx.point_in_region(gal_centre).unwrap(),
+        bx.point_in_region(&gal_centre).unwrap(),
         "Centre (converted to Galactic) should be inside the system-changed box"
     );
 
@@ -2878,7 +2878,7 @@ fn system_change_circle_serialization_roundtrip() {
 
     // The restored region should still accept Galactic coordinates.
     assert!(
-        restored.point_in_region(gal_centre).unwrap(),
+        restored.point_in_region(&gal_centre).unwrap(),
         "Restored circle should recognize centre (in Galactic) as inside"
     );
 

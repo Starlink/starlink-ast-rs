@@ -653,7 +653,7 @@ impl SpecMap {
             if !val.is_finite() {
                 val = BAD_VALUE;
             }
-            let outp = out.point_mut(i);
+            let mut outp = out.point_mut(i);
             outp[0] = val;
             outp[1] = ra;
             outp[2] = dec;

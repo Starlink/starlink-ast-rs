@@ -134,8 +134,8 @@ fn world_axes_bidirectional(
     // dw[i] = None means "bad — skip this axis". Mirrors C's AST__BAD.
     let mut dw: Vec<Option<f64>> = vec![None; nout];
     for i in 0..nout {
-        let a = view2[[0, i]];
-        let b = view2[[1, i]];
+        let a = view2[[i, 0]];
+        let b = view2[[i, 1]];
         if a.is_finite() && b.is_finite() {
             w0[i] = a;
             let mut delta = 0.1 * (b - a).abs();
@@ -151,7 +151,7 @@ fn world_axes_bidirectional(
     let pset1_back = map.transform(&pset2, false)?;
     let view1_back = pset1_back.view();
     for j in 0..nin {
-        let v = view1_back[[0, j]];
+        let v = view1_back[[j, 0]];
         if v.is_finite() {
             g0[j] = v;
         }
@@ -179,7 +179,7 @@ fn world_axes_bidirectional(
         let mut pix = vec![0.0_f64; nin];
         let mut all_finite = true;
         for j2 in 0..nin {
-            let v = view1_probe[[0, j2]];
+            let v = view1_probe[[j2, 0]];
             if !v.is_finite() {
                 all_finite = false;
                 break;

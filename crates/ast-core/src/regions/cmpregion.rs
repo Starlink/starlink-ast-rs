@@ -456,8 +456,8 @@ impl RegionGeometry for CmpRegion {
         let out2 = self.region2.transform(pts, true)?;
         Ok((0..npoint)
             .map(|i| {
-                let in1 = !point_has_bad(out1.point(i));
-                let in2 = !point_has_bad(out2.point(i));
+                let in1 = !point_has_bad(&out1.point(i));
+                let in2 = !point_has_bad(&out2.point(i));
                 match self.operator {
                     Oper::And => in1 && in2,
                     Oper::Or => in1 || in2,
@@ -1335,8 +1335,8 @@ impl Mapping for CmpRegion {
         let ncoord = result.ncoord();
         for i in 0..npoint {
             let src = result.point(i);
-            let dst = out.point_mut(i);
-            dst[..ncoord].copy_from_slice(src);
+            let mut dst = out.point_mut(i);
+            dst[..ncoord].copy_from_slice(&src);
         }
         Ok(())
     }

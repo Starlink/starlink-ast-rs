@@ -466,7 +466,7 @@ impl RegionGeometry for Circle {
 
         let mut result = vec![false; npoint];
         for (r, point) in result.iter_mut().zip((0..npoint).map(|i| pts.point(i))) {
-            if point_has_bad(point) {
+            if point_has_bad(&point) {
                 continue;
             }
             // Match the argument order used by `radius()`
@@ -476,7 +476,7 @@ impl RegionGeometry for Circle {
             // 1-ULP level depending on argument order. Mixing orders here
             // and in `radius()` would mis-classify the constructor-supplied
             // edge point as "outside" a closed circle on those platforms.
-            let dist = base_frame.distance(centre, point)?;
+            let dist = base_frame.distance(centre, &point)?;
             if is_bad(dist) {
                 continue;
             }
@@ -1070,8 +1070,8 @@ impl Mapping for Circle {
         let ncoord = result.ncoord();
         for i in 0..npoint {
             let src = result.point(i);
-            let dst = out.point_mut(i);
-            dst[..ncoord].copy_from_slice(src);
+            let mut dst = out.point_mut(i);
+            dst[..ncoord].copy_from_slice(&src);
         }
         Ok(())
     }

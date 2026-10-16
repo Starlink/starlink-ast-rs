@@ -879,7 +879,7 @@ impl Mapping for WcsMap {
         self.check_transformable()?;
         if self.proj == WcsProjection::Unknown {
             for i in 0..pts.npoint() {
-                out.point_mut(i).copy_from_slice(pts.point(i));
+                out.point_mut(i).copy_from_slice(&pts.point(i));
             }
             return Ok(());
         }
@@ -906,8 +906,8 @@ impl Mapping for WcsMap {
 
         for i in 0..pts.npoint() {
             let inp = pts.point(i);
-            let outp = out.point_mut(i);
-            outp.copy_from_slice(inp);
+            let mut outp = out.point_mut(i);
+            outp.copy_from_slice(&inp);
 
             let v1 = inp[self.lonax];
             let v2 = inp[self.latax];
@@ -997,7 +997,7 @@ impl Mapping for WcsMap {
         // Unknown/blank projection acts as identity — pass through all coords.
         if self.proj == WcsProjection::Unknown {
             for i in 0..pts.npoint() {
-                out.point_mut(i).copy_from_slice(pts.point(i));
+                out.point_mut(i).copy_from_slice(&pts.point(i));
             }
             return Ok(());
         }
@@ -1025,10 +1025,10 @@ impl Mapping for WcsMap {
 
         for i in 0..pts.npoint() {
             let inp = pts.point(i);
-            let outp = out.point_mut(i);
+            let mut outp = out.point_mut(i);
 
             // Copy all axes through first.
-            outp.copy_from_slice(inp);
+            outp.copy_from_slice(&inp);
 
             let v1 = inp[self.lonax];
             let v2 = inp[self.latax];

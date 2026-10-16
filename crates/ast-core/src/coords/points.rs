@@ -39,6 +39,28 @@ impl DerefMut for PointBuf {
     }
 }
 
+impl AsRef<[f64]> for PointBuf {
+    fn as_ref(&self) -> &[f64] {
+        &self.0
+    }
+}
+
+impl IntoIterator for PointBuf {
+    type Item = f64;
+    type IntoIter = smallvec::IntoIter<[f64; INLINE_AXES]>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
+impl<'a> IntoIterator for &'a PointBuf {
+    type Item = &'a f64;
+    type IntoIter = std::slice::Iter<'a, f64>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
+    }
+}
+
 impl FromIterator<f64> for PointBuf {
     fn from_iter<I: IntoIterator<Item = f64>>(iter: I) -> Self {
         Self(iter.into_iter().collect())
@@ -78,6 +100,44 @@ impl<const N: usize> PartialEq<&[f64; N]> for PointBuf {
 impl PartialEq<Vec<f64>> for PointBuf {
     fn eq(&self, other: &Vec<f64>) -> bool {
         self[..] == other[..]
+    }
+}
+
+/// Something one point of which can be overwritten.
+pub(crate) trait WritePoint {
+    fn write_point(&mut self, i: usize, coords: &[f64]);
+}
+
+/// Writable access to one point: a copy of its coordinates, written back to
+/// the point when this guard is dropped, on every exit path.
+pub struct PointMut<'a> {
+    buf: PointBuf,
+    i: usize,
+    dst: &'a mut dyn WritePoint,
+}
+
+impl<'a> PointMut<'a> {
+    pub(crate) fn new(buf: PointBuf, i: usize, dst: &'a mut dyn WritePoint) -> Self {
+        Self { buf, i, dst }
+    }
+}
+
+impl Deref for PointMut<'_> {
+    type Target = [f64];
+    fn deref(&self) -> &[f64] {
+        &self.buf
+    }
+}
+
+impl DerefMut for PointMut<'_> {
+    fn deref_mut(&mut self) -> &mut [f64] {
+        &mut self.buf
+    }
+}
+
+impl Drop for PointMut<'_> {
+    fn drop(&mut self) {
+        self.dst.write_point(self.i, &self.buf);
     }
 }
 
@@ -167,7 +227,6 @@ impl<'a> Points<'a> {
     }
 
     /// A view whose axes the caller knows are all `npoint` long.
-    #[allow(dead_code)]
     pub(crate) fn from_parts(axes: SmallVec<[&'a [f64]; INLINE_AXES]>, npoint: usize) -> Self {
         debug_assert!(axes.iter().all(|a| a.len() == npoint));
         Self { axes, npoint }
@@ -255,7 +314,6 @@ impl<'a> PointsMut<'a> {
     }
 
     /// A view whose axes the caller knows are all `npoint` long.
-    #[allow(dead_code)]
     pub(crate) fn from_parts(axes: SmallVec<[&'a mut [f64]; INLINE_AXES]>, npoint: usize) -> Self {
         debug_assert!(axes.iter().all(|a| a.len() == npoint));
         Self { axes, npoint }
@@ -296,6 +354,12 @@ impl<'a> PointsMut<'a> {
         for (a, &v) in self.axes.iter_mut().zip(coords) {
             a[i] = v;
         }
+    }
+
+    /// Writable access to point `i`, written back when the guard drops.
+    pub fn point_mut(&mut self, i: usize) -> PointMut<'_> {
+        let buf = self.point(i);
+        PointMut::new(buf, i, self)
     }
 
     /// Copy `src` into the first `src.npoint()` points of each axis.
@@ -362,5 +426,11 @@ impl PointShape for PointsMut<'_> {
     }
     fn ncoord(&self) -> usize {
         self.axes.len()
+    }
+}
+
+impl WritePoint for PointsMut<'_> {
+    fn write_point(&mut self, i: usize, coords: &[f64]) {
+        self.set_point(i, coords);
     }
 }

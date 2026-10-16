@@ -177,7 +177,7 @@ impl Mapping for UnitNormMap {
         for &c in &self.centre {
             if is_bad(c) {
                 for i in 0..pts.npoint() {
-                    let outp = out.point_mut(i);
+                    let mut outp = out.point_mut(i);
                     for o in outp.iter_mut() {
                         *o = BAD_VALUE;
                     }
@@ -191,7 +191,7 @@ impl Mapping for UnitNormMap {
             let ncoord_out = ncoord + 1;
             for i in 0..pts.npoint() {
                 let inp = pts.point(i);
-                let outp = out.point_mut(i);
+                let mut outp = out.point_mut(i);
 
                 // Check for any bad input — if so, all outputs are bad.
                 let mut any_bad = false;
@@ -244,7 +244,7 @@ impl Mapping for UnitNormMap {
             // Inverse: unit vector + norm → vector
             for i in 0..pts.npoint() {
                 let inp = pts.point(i);
-                let outp = out.point_mut(i);
+                let mut outp = out.point_mut(i);
 
                 // The last input coordinate is the norm.
                 let norm = inp[ncoord];

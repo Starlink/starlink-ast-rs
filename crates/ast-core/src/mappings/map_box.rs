@@ -440,7 +440,7 @@ fn special_bounds(
     while !done {
         // Set this corner's coordinates.
         {
-            let row = pts_in.point_mut(point);
+            let mut row = pts_in.point_mut(point);
             for coord in 0..ncoord {
                 row[coord] = if limit[coord] != 0 {
                     mapdata.ubnd[coord]
@@ -471,7 +471,7 @@ fn special_bounds(
     // Centre of each face: 2 * ncoord points.
     for face in 0..(2 * ncoord) {
         {
-            let row = pts_in.point_mut(point);
+            let mut row = pts_in.point_mut(point);
             for coord in 0..ncoord {
                 row[coord] = 0.5 * (mapdata.lbnd[coord] + mapdata.ubnd[coord]);
             }
@@ -487,7 +487,7 @@ fn special_bounds(
     // Centroid.
     let icen = point;
     {
-        let row = pts_in.point_mut(point);
+        let mut row = pts_in.point_mut(point);
         for coord in 0..ncoord {
             row[coord] = 0.5 * (mapdata.lbnd[coord] + mapdata.ubnd[coord]);
         }
@@ -505,14 +505,14 @@ fn special_bounds(
         for coord in 0..ncoord {
             tmp[coord] = 0.999 * corner[coord] + 0.001 * centroid[coord];
         }
-        let row = pts_in.point_mut(point);
+        let mut row = pts_in.point_mut(point);
         row[..ncoord].copy_from_slice(&tmp[..ncoord]);
         point += 1;
     }
 
     // Origin, if in bounds.
     if origin {
-        let row = pts_in.point_mut(point);
+        let mut row = pts_in.point_mut(point);
         for coord in 0..ncoord {
             row[coord] = 0.0;
         }
@@ -655,7 +655,7 @@ fn global_bounds(
             }
 
             for b in 0..NBATCH {
-                let row = pts_in.point_mut(b);
+                let mut row = pts_in.point_mut(b);
                 for coord in 0..ncoord {
                     let r = random(&mut seed);
                     row[coord] = sample_lo[coord] * r + sample_hi[coord] * (1.0 - r);

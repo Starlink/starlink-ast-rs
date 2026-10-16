@@ -60,9 +60,9 @@ pub(crate) fn report_lines(
                 .join(", ")
         };
         text.push('(');
-        text.push_str(&side(inp.point(p), &fmt_in));
+        text.push_str(&side(&inp.point(p), &fmt_in));
         text.push_str(") --> (");
-        text.push_str(&side(out.point(p), &fmt_out));
+        text.push_str(&side(&out.point(p), &fmt_out));
         text.push_str(")\n");
     }
     text

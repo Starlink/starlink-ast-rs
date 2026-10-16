@@ -306,7 +306,7 @@ impl PermMap {
         let ncoord_in = pts.ncoord();
         for i in 0..pts.npoint() {
             let inp = pts.point(i);
-            let outp = out.point_mut(i);
+            let mut outp = out.point_mut(i);
             for (k, &p) in perm.iter().enumerate() {
                 // Mirrors C permmap.c:1976-1997: a positive entry copies the
                 // input axis only when in range; a negative entry reads the
@@ -554,7 +554,7 @@ impl Mapping for PermMap {
         let ncoord_in = pts.ncoord();
         for i in 0..pts.npoint() {
             let inp = pts.point(i);
-            let outp = out.point_mut(i);
+            let mut outp = out.point_mut(i);
             for (k, &p) in perm.iter().enumerate() {
                 outp[k] = if p > 0 {
                     let src = (p as usize) - 1;

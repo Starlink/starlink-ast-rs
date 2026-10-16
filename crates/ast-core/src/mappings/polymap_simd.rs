@@ -2,19 +2,19 @@
 //!
 //! Process `LANES` points per iteration using [`wide::f64x4`]. The pipeline is:
 //!
-//! 1. AOS→SoA transpose of the input `PointSet`, combined with a `BAD_VALUE →
+//! 1. A copy of the input `PointSet`'s two axes, combined with a `BAD_VALUE →
 //!    f64::NAN` substitution so the kernel can run branchlessly. NaN propagates
 //!    through arithmetic at no extra cost.
 //! 2. SIMD kernel evaluates the polynomial 4 points at a time, walking the
 //!    same `forward_compact` term layout as the scalar path. Inner loop is
 //!    pure FMA (`coeff * x^p0 * y^p1` accumulated into the output lane).
-//! 3. SoA→AOS transpose of the output, combined with `NaN → BAD_VALUE`
+//! 3. A copy back into the output `PointSet`'s axes, combined with `NaN → BAD_VALUE`
 //!    substitution.
 //!
-//! The two transpose passes are O(N) memory-bandwidth-bound; the kernel is
+//! The two copy passes are O(N) memory-bandwidth-bound; the kernel is
 //! O(N · t) where `t` is the term count. The threshold [`SIMD_MIN_POINTS`]
 //! controls when SIMD beats scalar for a given PolyMap shape — below that
-//! the setup cost (transpose passes + heap power-table) dominates. Tune via
+//! the setup cost (copy passes + heap power-table) dominates. Tune via
 //! `cargo run --example bench_polymap_simd --release --features simd-eval`.
 //!
 //! **Specialization**: this prototype implements `nin = nout = 2` only,
@@ -57,7 +57,7 @@ pub fn find_polymap(m: &dyn Mapping) -> Option<&PolyMap> {
 const LANES: usize = 4;
 
 /// Minimum point count for SIMD path to be worth taking. Below this, the
-/// SoA transpose + heap power-table setup dominates the kernel time.
+/// The copy passes + heap power-table setup dominates the kernel time.
 ///
 /// Picked from a single-host bench-run on Apple M-series; tune for other
 /// hardware. The scalar path is only ~98 ns/pt on this workload, so the
@@ -119,15 +119,14 @@ impl PolyMap {
         let mut xout = vec![0.0_f64; npoint];
         let mut yout = vec![0.0_f64; npoint];
 
-        // Pass 1: AOS → SoA with BAD → NaN substitution.
-        // The PointSet underlying buffer is contiguous in row-major order:
-        // [x0, y0, x1, y1, ...]. Walk it in pairs.
+        // Pass 1: copy the axes with BAD → NaN substitution. The PointSet
+        // buffer holds the x axis and then the y axis: [x0, x1, ..., y0, y1, ...].
         let view = input.view();
         let flat: &[f64] = view.to_slice().expect("PointSet is C-contiguous");
         debug_assert_eq!(flat.len(), npoint * 2);
         for ip in 0..npoint {
-            let x = flat[ip * 2];
-            let y = flat[ip * 2 + 1];
+            let x = flat[ip];
+            let y = flat[npoint + ip];
             xin[ip] = if x == BAD_VALUE { f64::NAN } else { x };
             yin[ip] = if y == BAD_VALUE { f64::NAN } else { y };
         }
@@ -142,14 +141,14 @@ impl PolyMap {
             &out0_refs, &out1_refs, max_pows, &xin, &yin, &mut xout, &mut yout,
         );
 
-        // Pass 3: SoA → AOS with NaN → BAD substitution.
+        // Pass 3: copy back with NaN → BAD substitution.
         let mut out_view = output.view_mut();
         let out_flat: &mut [f64] = out_view.as_slice_mut().expect("PointSet is C-contiguous");
         for ip in 0..npoint {
             let x = xout[ip];
             let y = yout[ip];
-            out_flat[ip * 2] = if x.is_nan() { BAD_VALUE } else { x };
-            out_flat[ip * 2 + 1] = if y.is_nan() { BAD_VALUE } else { y };
+            out_flat[ip] = if x.is_nan() { BAD_VALUE } else { x };
+            out_flat[npoint + ip] = if y.is_nan() { BAD_VALUE } else { y };
         }
 
         Ok(SimdPath::Took)
@@ -211,8 +210,8 @@ impl PolyMap {
         let view = input.view();
         let flat: &[f64] = view.to_slice().expect("PointSet is C-contiguous");
         for ip in 0..npoint {
-            let x = flat[ip * 2];
-            let y = flat[ip * 2 + 1];
+            let x = flat[ip];
+            let y = flat[npoint + ip];
             xin[ip] = if x == BAD_VALUE { f64::NAN } else { x };
             yin[ip] = if y == BAD_VALUE { f64::NAN } else { y };
         }
@@ -226,10 +225,8 @@ impl PolyMap {
         // protocol-aware stages keep the canonical sentinel.
         let mut out_view = output.view_mut();
         let out_flat: &mut [f64] = out_view.as_slice_mut().expect("PointSet is C-contiguous");
-        for ip in 0..npoint {
-            out_flat[ip * 2] = xout[ip];
-            out_flat[ip * 2 + 1] = yout[ip];
-        }
+        out_flat[..npoint].copy_from_slice(&xout);
+        out_flat[npoint..2 * npoint].copy_from_slice(&yout);
 
         Ok(SimdPath::Took)
     }
@@ -387,7 +384,7 @@ impl PolyMap {
             return Ok(SimdPath::Fell);
         }
 
-        // Pass 1: AOS → SoA target with BAD → NaN substitution. SoA result
+        // Pass 1: copy the target axes with BAD → NaN substitution. SoA result
         // buffers start empty; the linear-guess step fills them.
         let mut xt = vec![0.0_f64; npoint];
         let mut yt = vec![0.0_f64; npoint];
@@ -397,8 +394,8 @@ impl PolyMap {
         let view = target.view();
         let flat: &[f64] = view.to_slice().expect("PointSet is C-contiguous");
         for ip in 0..npoint {
-            let x = flat[ip * 2];
-            let y = flat[ip * 2 + 1];
+            let x = flat[ip];
+            let y = flat[npoint + ip];
             xt[ip] = if x == BAD_VALUE { f64::NAN } else { x };
             yt[ip] = if y == BAD_VALUE { f64::NAN } else { y };
         }
@@ -433,14 +430,14 @@ impl PolyMap {
             &mut yr,
         );
 
-        // Pass 4: SoA → AOS result with NaN → BAD substitution.
+        // Pass 4: copy back into the result with NaN → BAD substitution.
         let mut out_view = result.view_mut();
         let out_flat: &mut [f64] = out_view.as_slice_mut().expect("PointSet is C-contiguous");
         for ip in 0..npoint {
             let x = xr[ip];
             let y = yr[ip];
-            out_flat[ip * 2] = if x.is_nan() { BAD_VALUE } else { x };
-            out_flat[ip * 2 + 1] = if y.is_nan() { BAD_VALUE } else { y };
+            out_flat[ip] = if x.is_nan() { BAD_VALUE } else { x };
+            out_flat[npoint + ip] = if y.is_nan() { BAD_VALUE } else { y };
         }
 
         Ok(SimdPath::Took)
@@ -493,8 +490,8 @@ impl PolyMap {
         let view = target.view();
         let flat: &[f64] = view.to_slice().expect("PointSet is C-contiguous");
         for ip in 0..npoint {
-            let x = flat[ip * 2];
-            let y = flat[ip * 2 + 1];
+            let x = flat[ip];
+            let y = flat[npoint + ip];
             xt[ip] = if x == BAD_VALUE { f64::NAN } else { x };
             yt[ip] = if y == BAD_VALUE { f64::NAN } else { y };
         }
@@ -525,10 +522,8 @@ impl PolyMap {
         // Output: straight copy; leave NaN as NaN.
         let mut out_view = result.view_mut();
         let out_flat: &mut [f64] = out_view.as_slice_mut().expect("PointSet is C-contiguous");
-        for ip in 0..npoint {
-            out_flat[ip * 2] = xr[ip];
-            out_flat[ip * 2 + 1] = yr[ip];
-        }
+        out_flat[..npoint].copy_from_slice(&xr);
+        out_flat[npoint..2 * npoint].copy_from_slice(&yr);
 
         Ok(SimdPath::Took)
     }

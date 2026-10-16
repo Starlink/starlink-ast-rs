@@ -64,7 +64,7 @@ pub(crate) fn quad_approx<M: Mapping + ?Sized>(
         let mut x = lbnd[0];
         let y = lbnd[1] + iy as f64 * dy;
         for _ in 0..nx {
-            let p = pset1.point_mut(i);
+            let mut p = pset1.point_mut(i);
             p[0] = x;
             p[1] = y;
             x += dx;

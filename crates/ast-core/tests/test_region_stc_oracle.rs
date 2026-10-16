@@ -207,7 +207,7 @@ fn stc_matches_c() {
         let input = PointSet::from_rows(points.iter().map(|p| &p[..2]));
         let out = stc.transform(&input, true).unwrap();
         for (i, p) in points.iter().enumerate() {
-            crate::common::assert_c_values(out.point(i), &p[2..], &format!("{name}: point {i}"));
+            crate::common::assert_c_values(&out.point(i), &p[2..], &format!("{name}: point {i}"));
         }
         assert_eq!(stc.is_bounded().unwrap(), bounded, "{name}: bounded");
     }

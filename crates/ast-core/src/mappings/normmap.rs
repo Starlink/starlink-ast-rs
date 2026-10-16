@@ -152,7 +152,7 @@ impl Mapping for NormMap {
 
         for ipoint in 0..pts.npoint() {
             let inp = pts.point(ipoint);
-            let outp = out.point_mut(ipoint);
+            let mut outp = out.point_mut(ipoint);
 
             // C normalises every point, bad values included, and leaves each
             // Frame's Norm to decide what a bad value means (normmap.c
@@ -182,7 +182,7 @@ impl Mapping for NormMap {
         let naxes = self.naxes();
         for ipoint in 0..pts.npoint() {
             let inp = pts.point(ipoint);
-            let outp = out.point_mut(ipoint);
+            let mut outp = out.point_mut(ipoint);
             outp[..naxes].copy_from_slice(&inp[..naxes]);
             self.frame.norm(&mut outp[..naxes])?;
         }

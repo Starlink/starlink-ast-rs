@@ -216,7 +216,7 @@ impl Mapping for SphMap {
             let polarlong = self.polar_long;
             for i in 0..pts.npoint() {
                 let inp = pts.point(i);
-                let outp = out.point_mut(i);
+                let mut outp = out.point_mut(i);
                 let x = inp[0];
                 let y = inp[1];
                 let z = inp[2];
@@ -244,7 +244,7 @@ impl Mapping for SphMap {
         } else {
             for i in 0..pts.npoint() {
                 let inp = pts.point(i);
-                let outp = out.point_mut(i);
+                let mut outp = out.point_mut(i);
                 let v = pal::dcs2c(inp[0], inp[1]);
                 outp[0] = v[0];
                 outp[1] = v[1];
@@ -263,8 +263,8 @@ impl Mapping for SphMap {
             let polarlong = self.polar_long;
             for i in 0..pts.npoint() {
                 let inp = pts.point(i);
-                let outp = out.point_mut(i);
-                if point_has_bad(inp) {
+                let mut outp = out.point_mut(i);
+                if point_has_bad(&inp) {
                     outp.fill(BAD_VALUE);
                 } else {
                     let x = inp[0];
@@ -305,8 +305,8 @@ impl Mapping for SphMap {
             // Inverse: Spherical (lon, lat) -> Cartesian (x, y, z)
             for i in 0..pts.npoint() {
                 let inp = pts.point(i);
-                let outp = out.point_mut(i);
-                if point_has_bad(inp) {
+                let mut outp = out.point_mut(i);
+                if point_has_bad(&inp) {
                     outp.fill(BAD_VALUE);
                 } else {
                     let lon = inp[0];

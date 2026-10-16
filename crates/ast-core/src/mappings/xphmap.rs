@@ -327,7 +327,7 @@ impl Mapping for XphMap {
         for ip in 0..pts.npoint() {
             let p = pts.point(ip);
             let (x, y) = self.transform_point(forward, p[0], p[1]);
-            let o = out.point_mut(ip);
+            let mut o = out.point_mut(ip);
             o[0] = x;
             o[1] = y;
         }

@@ -44,10 +44,35 @@ fn from_columns_empty() {
 }
 
 #[test]
-fn point_mut_modifies_in_place() {
+fn set_point_modifies_in_place() {
     let mut ps = PointSet::zeros(2, 3);
-    ps.point_mut(0)[1] = 42.0;
+    ps.set_point(0, &[0.0, 42.0, 0.0]);
     assert_eq!(ps.point(0), &[0.0, 42.0, 0.0]);
+}
+
+#[test]
+fn each_axis_is_one_contiguous_slice() {
+    let ps = PointSet::from_rows([[1.0, 10.0], [2.0, 20.0], [3.0, 30.0]]);
+    assert_eq!(ps.axis(0), &[1.0, 2.0, 3.0]);
+    assert_eq!(ps.axis(1), &[10.0, 20.0, 30.0]);
+    assert_eq!(ps.view().shape(), &[2, 3]);
+}
+
+#[test]
+fn a_point_set_and_its_views_agree() {
+    let mut ps = PointSet::from_rows([[1.0, 10.0], [2.0, 20.0]]);
+    assert_eq!(ps.as_points().point(1), &[2.0, 20.0]);
+    ps.as_points_mut().axis_mut(1)[0] = 5.0;
+    assert_eq!(ps.point(0), &[1.0, 5.0]);
+    let copy = PointSet::from_points(&ps.as_points());
+    assert_eq!(copy.point(0), &[1.0, 5.0]);
+}
+
+#[test]
+fn a_point_set_of_no_points_has_empty_axes() {
+    let mut ps = PointSet::zeros(0, 2);
+    assert_eq!(ps.as_points().ncoord(), 2);
+    assert_eq!(ps.as_points_mut().npoint(), 0);
 }
 
 #[test]
@@ -64,10 +89,10 @@ fn view_and_into_ndarray() {
     let ps = PointSet::from_rows([[1.0, 2.0]]);
     let view = ps.view();
     assert_eq!(view[[0, 0]], 1.0);
-    assert_eq!(view[[0, 1]], 2.0);
+    assert_eq!(view[[1, 0]], 2.0);
 
     let arr = ps.into_ndarray();
-    assert_eq!(arr.shape(), &[1, 2]);
+    assert_eq!(arr.shape(), &[2, 1]);
 }
 
 #[test]

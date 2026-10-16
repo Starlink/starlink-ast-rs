@@ -288,13 +288,13 @@ impl RegionGeometry for Prism {
         let naxes1 = self.naxes1();
         let naxes_total = naxes1 + self.naxes2();
 
-        let part1 = PointSet::from_rows((0..npoint).map(|i| &pts.point(i)[..naxes1]));
-        let part2 = PointSet::from_rows((0..npoint).map(|i| &pts.point(i)[naxes1..naxes_total]));
+        let part1 = PointSet::from_points(&pts.as_points().axes(0..naxes1));
+        let part2 = PointSet::from_points(&pts.as_points().axes(naxes1..naxes_total));
         let out1 = self.region1.transform(&part1, true)?;
         let out2 = self.region2.transform(&part2, true)?;
 
         Ok((0..npoint)
-            .map(|i| !point_has_bad(out1.point(i)) && !point_has_bad(out2.point(i)))
+            .map(|i| !point_has_bad(&out1.point(i)) && !point_has_bad(&out2.point(i)))
             .collect())
     }
 
@@ -365,14 +365,14 @@ impl RegionGeometry for Prism {
             for i in 0..mesh2.npoint() {
                 for j in 0..grid1.npoint() {
                     let mut point = grid1.point(j).to_vec();
-                    point.extend_from_slice(mesh2.point(i));
+                    point.extend_from_slice(&mesh2.point(i));
                     result.push(point);
                 }
             }
             for i in 0..mesh1.npoint() {
                 for j in 0..grid2.npoint() {
                     let mut point = mesh1.point(i).to_vec();
-                    point.extend_from_slice(grid2.point(j));
+                    point.extend_from_slice(&grid2.point(j));
                     result.push(point);
                 }
             }
@@ -494,8 +494,8 @@ impl Region for Prism {
         // Sub-PointSet holding just the axes for each component (astSetSubPoints
         // prism.c:2742/2761): the first nax1 coords for reg1, the next nax2 for
         // reg2.
-        let ps1 = PointSet::from_rows((0..np).map(|ip| &pts.point(ip)[..nax1]));
-        let ps2 = PointSet::from_rows((0..np).map(|ip| &pts.point(ip)[nax1..nax1 + nax2]));
+        let ps1 = PointSet::from_points(&pts.as_points().axes(0..nax1));
+        let ps2 = PointSet::from_points(&pts.as_points().axes(nax1..nax1 + nax2));
 
         // Boundary mask of each component. astRegPins expects base-Frame
         // points, so map the sub-points current->base first, and take each
@@ -1155,8 +1155,8 @@ impl Mapping for Prism {
         let ncoord = result.ncoord();
         for i in 0..npoint {
             let src = result.point(i);
-            let dst = out.point_mut(i);
-            dst[..ncoord].copy_from_slice(src);
+            let mut dst = out.point_mut(i);
+            dst[..ncoord].copy_from_slice(&src);
         }
         Ok(())
     }

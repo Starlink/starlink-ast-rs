@@ -282,7 +282,7 @@ impl Mapping for RateMap {
             self.map.as_ref()
         };
         let results = (0..pts.npoint())
-            .map(|ipoint| emap.rate(pts.point(ipoint), self.ax1, self.ax2))
+            .map(|ipoint| emap.rate(&pts.point(ipoint), self.ax1, self.ax2))
             .collect::<AstResult<Vec<f64>>>()?;
 
         PointSet::from_columns(&[&results])
@@ -295,7 +295,7 @@ impl Mapping for RateMap {
         let nout = result.ncoord();
         for i in 0..npoint {
             let src = result.point(i);
-            let dst = out.point_mut(i);
+            let mut dst = out.point_mut(i);
             dst[..nout].copy_from_slice(&src[..nout]);
         }
         Ok(())

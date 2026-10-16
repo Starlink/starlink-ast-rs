@@ -791,10 +791,10 @@ pub(crate) fn region_transform<R: RegionGeometry>(
     for (i, &effective_inside) in inside.iter().enumerate() {
         if effective_inside {
             let src = pts.point(i);
-            let dst = out.point_mut(i);
-            dst.copy_from_slice(src);
+            let mut dst = out.point_mut(i);
+            dst.copy_from_slice(&src);
         } else {
-            let dst = out.point_mut(i);
+            let mut dst = out.point_mut(i);
             dst.fill(BAD_VALUE);
         }
     }
@@ -848,7 +848,7 @@ where
         let ipr = kept.len() as i32;
         result = PointSet::zeros(kept.len(), lbnd.len());
         for (k, &i) in kept.iter().enumerate() {
-            result.point_mut(k).copy_from_slice(ps1.point(i));
+            result.point_mut(k).copy_from_slice(&ps1.point(i));
         }
         if ((ipr - meshsize) as f64).abs() / (meshsize as f64) < 0.05 {
             break;

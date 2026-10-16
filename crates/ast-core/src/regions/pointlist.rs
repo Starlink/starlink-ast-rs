@@ -209,10 +209,10 @@ impl RegionGeometry for PointList {
                 if *r {
                     continue;
                 }
-                if point_has_bad(pts.point(i)) {
+                if point_has_bad(&pts.point(i)) {
                     continue;
                 }
-                if point_has_bad(masked.point(i)) {
+                if point_has_bad(&masked.point(i)) {
                     *r = true;
                 }
             }
@@ -908,8 +908,8 @@ impl Mapping for PointList {
         let ncoord = result.ncoord();
         for i in 0..npoint {
             let src = result.point(i);
-            let dst = out.point_mut(i);
-            dst[..ncoord].copy_from_slice(src);
+            let mut dst = out.point_mut(i);
+            dst[..ncoord].copy_from_slice(&src);
         }
         Ok(())
     }

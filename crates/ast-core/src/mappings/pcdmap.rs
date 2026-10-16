@@ -302,7 +302,7 @@ impl Mapping for PcdMap {
         if fwd {
             for i in 0..pts.npoint() {
                 let inp = pts.point(i);
-                let outp = out.point_mut(i);
+                let mut outp = out.point_mut(i);
                 let dx = inp[0] - cen0;
                 let dy = inp[1] - cen1;
                 let f = 1.0 + disco * (dx * dx + dy * dy);
@@ -312,7 +312,7 @@ impl Mapping for PcdMap {
         } else {
             for i in 0..pts.npoint() {
                 let inp = pts.point(i);
-                let outp = out.point_mut(i);
+                let mut outp = out.point_mut(i);
                 let dxp = inp[0] - cen0;
                 let dyp = inp[1] - cen1;
                 let cr2 = disco * (dxp * dxp + dyp * dyp);
@@ -337,7 +337,7 @@ impl Mapping for PcdMap {
             // Forward: apply distortion
             for i in 0..pts.npoint() {
                 let inp = pts.point(i);
-                let outp = out.point_mut(i);
+                let mut outp = out.point_mut(i);
                 if is_bad(inp[0]) || is_bad(inp[1]) {
                     outp[0] = BAD_VALUE;
                     outp[1] = BAD_VALUE;
@@ -353,7 +353,7 @@ impl Mapping for PcdMap {
             // Inverse: remove distortion (SLA_UNPCD approximation)
             for i in 0..pts.npoint() {
                 let inp = pts.point(i);
-                let outp = out.point_mut(i);
+                let mut outp = out.point_mut(i);
                 if is_bad(inp[0]) || is_bad(inp[1]) {
                     outp[0] = BAD_VALUE;
                     outp[1] = BAD_VALUE;

@@ -813,14 +813,14 @@ fn check_circle() {
     let mesh = cir1.region_mesh().unwrap();
     assert_eq!(mesh.npoint(), 200, "Circle: Error mesh 1");
     for i in 0..mesh.npoint() {
-        let d = frm1.distance(&p1, mesh.point(i)).unwrap();
+        let d = frm1.distance(&p1, &mesh.point(i)).unwrap();
         assert!(near(d, 0.01, 1e-6), "Circle: Error mesh 2: {d}");
     }
     let grid = cir1.region_grid().unwrap();
     assert_eq!(grid.npoint(), 201, "Circle: Error mesh 3");
     for i in 0..grid.npoint() {
         assert!(
-            frm1.distance(&p1, grid.point(i)).unwrap() <= 0.01,
+            frm1.distance(&p1, &grid.point(i)).unwrap() <= 0.01,
             "Circle: Error mesh 4"
         );
     }

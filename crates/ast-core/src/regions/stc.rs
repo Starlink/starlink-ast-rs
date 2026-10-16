@@ -1060,7 +1060,7 @@ impl<K: StcKind> Mapping for Stc<K> {
         let result = self.transform(pts, forward)?;
         let ncoord = result.ncoord();
         for i in 0..result.npoint() {
-            out.point_mut(i)[..ncoord].copy_from_slice(result.point(i));
+            out.point_mut(i)[..ncoord].copy_from_slice(&result.point(i));
         }
         Ok(())
     }

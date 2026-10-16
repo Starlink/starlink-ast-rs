@@ -1292,7 +1292,7 @@ impl Mapping for SlaMap {
             let nargs = cvt.cvt_type.nargs();
             if cvt.args.iter().take(nargs).any(|&a| is_bad(a)) {
                 for i in 0..npoint {
-                    let p = out.point_mut(i);
+                    let mut p = out.point_mut(i);
                     p[0] = BAD_VALUE;
                     p[1] = BAD_VALUE;
                 }
@@ -1315,7 +1315,7 @@ impl Mapping for SlaMap {
                 } else {
                     apply_step_inverse(cvt.cvt_type, &cvt.args, alpha, delta, &step)
                 };
-                let p = out.point_mut(i);
+                let mut p = out.point_mut(i);
                 p[0] = a;
                 p[1] = d;
             }

@@ -542,7 +542,7 @@ impl CmpMap {
 
     /// The points `start..end` of `pts`, as a PointSet of their own.
     fn batch_of(pts: &PointSet, start: usize, end: usize) -> PointSet {
-        PointSet::from_ndarray(pts.view().slice(ndarray::s![start..end, ..]).to_owned())
+        PointSet::from_ndarray(pts.view().slice(ndarray::s![.., start..end]).to_owned())
     }
 
     /// A series applies one component and then the other, holding the
@@ -590,7 +590,7 @@ impl CmpMap {
             let mid = m1.transform(&Self::batch_of(pts, start, end), d1)?;
             let res = m2.transform(&mid, d2)?;
             out.view_mut()
-                .slice_mut(ndarray::s![start..end, ..])
+                .slice_mut(ndarray::s![.., start..end])
                 .assign(&res.view());
         }
         Ok(())
@@ -625,7 +625,7 @@ impl CmpMap {
             let mut res = PointSet::zeros(end - start, nout);
             m2.transform_into_nan(&mid, d2, &mut res)?;
             out.view_mut()
-                .slice_mut(ndarray::s![start..end, ..])
+                .slice_mut(ndarray::s![.., start..end])
                 .assign(&res.view());
         }
         Ok(())
@@ -642,8 +642,8 @@ impl CmpMap {
         let npoint = pts.npoint();
         let split = self.effective_first_nin(fwd);
 
-        let pts_a = PointSet::from_ndarray(pts.view().slice(ndarray::s![.., ..split]).to_owned());
-        let pts_b = PointSet::from_ndarray(pts.view().slice(ndarray::s![.., split..]).to_owned());
+        let pts_a = PointSet::from_ndarray(pts.view().slice(ndarray::s![..split, ..]).to_owned());
+        let pts_b = PointSet::from_ndarray(pts.view().slice(ndarray::s![split.., ..]).to_owned());
 
         let out_a = self.first.transform(&pts_a, fwd1)?;
         let out_b = self.second.transform(&pts_b, fwd2)?;
@@ -653,9 +653,9 @@ impl CmpMap {
         let mut combined = PointSet::zeros(npoint, ncols_a + ncols_b);
         {
             let mut view = combined.view_mut();
-            view.slice_mut(ndarray::s![.., ..ncols_a])
+            view.slice_mut(ndarray::s![..ncols_a, ..])
                 .assign(&out_a.view());
-            view.slice_mut(ndarray::s![.., ncols_a..])
+            view.slice_mut(ndarray::s![ncols_a.., ..])
                 .assign(&out_b.view());
         }
         Ok(combined)
@@ -677,8 +677,8 @@ impl CmpMap {
         let npoint = pts.npoint();
         let split = self.effective_first_nin(fwd);
 
-        let pts_a = PointSet::from_ndarray(pts.view().slice(ndarray::s![.., ..split]).to_owned());
-        let pts_b = PointSet::from_ndarray(pts.view().slice(ndarray::s![.., split..]).to_owned());
+        let pts_a = PointSet::from_ndarray(pts.view().slice(ndarray::s![..split, ..]).to_owned());
+        let pts_b = PointSet::from_ndarray(pts.view().slice(ndarray::s![split.., ..]).to_owned());
 
         let nout_a = if fwd1 {
             self.first.nout()
@@ -696,9 +696,9 @@ impl CmpMap {
         self.second.transform_into_nan(&pts_b, fwd2, &mut out_b)?;
 
         let mut view = out.view_mut();
-        view.slice_mut(ndarray::s![.., ..nout_a])
+        view.slice_mut(ndarray::s![..nout_a, ..])
             .assign(&out_a.view());
-        view.slice_mut(ndarray::s![.., nout_a..])
+        view.slice_mut(ndarray::s![nout_a.., ..])
             .assign(&out_b.view());
         Ok(())
     }

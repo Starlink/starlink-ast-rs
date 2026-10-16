@@ -1046,7 +1046,7 @@ impl Mesh<'_> {
                 .into_iter()
                 .enumerate()
             {
-                let p = grid.point_mut(4 * icell + k);
+                let mut p = grid.point_mut(4 * icell + k);
                 p[0] = ix + dx;
                 p[1] = iy + dy;
             }
@@ -2096,8 +2096,8 @@ fn get_pixel_area(wcs: &FrameSet, dims: [usize; 2]) -> AstResult<f64> {
             .map(|p| p.as_slice()),
     );
     let sky = wcs.transform(&pts, true)?;
-    let d1 = Frame::distance(wcs, sky.point(0), sky.point(1))?;
-    let d2 = Frame::distance(wcs, sky.point(0), sky.point(2))?;
+    let d1 = Frame::distance(wcs, &sky.point(0), &sky.point(1))?;
+    let d2 = Frame::distance(wcs, &sky.point(0), &sky.point(2))?;
     if is_bad(d1) || is_bad(d2) {
         return Ok(BAD_VALUE);
     }
@@ -3301,7 +3301,7 @@ impl Mapping for Moc {
         let result = self.transform(pts, forward)?;
         let ncoord = result.ncoord();
         for i in 0..result.npoint() {
-            out.point_mut(i)[..ncoord].copy_from_slice(result.point(i));
+            out.point_mut(i)[..ncoord].copy_from_slice(&result.point(i));
         }
         Ok(())
     }

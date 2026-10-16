@@ -153,7 +153,7 @@ impl Mapping for ZoomMap {
         let scale = if fwd { self.zoom() } else { 1.0 / self.zoom() };
         for i in 0..pts.npoint() {
             let inp = pts.point(i);
-            let outp = out.point_mut(i);
+            let mut outp = out.point_mut(i);
             for (o, &v) in outp.iter_mut().zip(inp.iter()) {
                 *o = if is_bad(v) { BAD_VALUE } else { v * scale };
             }
@@ -177,7 +177,7 @@ impl Mapping for ZoomMap {
         let scale = if fwd { self.zoom() } else { 1.0 / self.zoom() };
         for i in 0..pts.npoint() {
             let inp = pts.point(i);
-            let outp = out.point_mut(i);
+            let mut outp = out.point_mut(i);
             for (o, &v) in outp.iter_mut().zip(inp.iter()) {
                 *o = v * scale;
             }

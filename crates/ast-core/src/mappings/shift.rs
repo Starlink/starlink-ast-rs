@@ -101,7 +101,7 @@ impl Mapping for ShiftMap {
         let sign = if fwd { 1.0 } else { -1.0 };
         for i in 0..pts.npoint() {
             let inp = pts.point(i);
-            let outp = out.point_mut(i);
+            let mut outp = out.point_mut(i);
             for (j, (o, &v)) in outp.iter_mut().zip(inp.iter()).enumerate() {
                 // A bad shift makes its axis bad (shiftmap.c Transform).
                 *o = if is_bad(v) || self.shift[j] == BAD_VALUE {
@@ -126,7 +126,7 @@ impl Mapping for ShiftMap {
         let sign = if fwd { 1.0 } else { -1.0 };
         for i in 0..pts.npoint() {
             let inp = pts.point(i);
-            let outp = out.point_mut(i);
+            let mut outp = out.point_mut(i);
             for (j, (o, &v)) in outp.iter_mut().zip(inp.iter()).enumerate() {
                 *o = if self.shift[j] == BAD_VALUE {
                     f64::NAN

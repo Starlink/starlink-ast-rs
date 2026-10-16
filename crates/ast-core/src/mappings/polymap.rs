@@ -696,7 +696,7 @@ impl PolyMap {
             super::substitute_nan_to_bad_in_place(&mut work);
             for ip in 0..npoint {
                 let t = target.point(ip);
-                let w = work.point_mut(ip);
+                let mut w = work.point_mut(ip);
                 for ic in 0..ncoord {
                     w[ic] = if t[ic] != BAD_VALUE && w[ic] != BAD_VALUE {
                         t[ic] - w[ic]
@@ -719,7 +719,7 @@ impl PolyMap {
                     }
                     vec[irow] = work.point(ip)[irow];
                 }
-                let x = result.point_mut(ip);
+                let mut x = result.point_mut(ip);
                 if !crate::pal::dmat(ncoord, &mut mat, &mut vec) {
                     x.fill(BAD_VALUE);
                     *flag = true;
@@ -1039,8 +1039,8 @@ pub(crate) fn poly_transform<P: PolyPowers + ?Sized>(
         .collect();
     let bad_coeff = tables.terms.iter().any(|t| t.coeff == BAD_VALUE);
     for i in 0..pts.npoint() {
-        let all_good = basis.poly_powers(&mut work, tables.max_pows, pts.point(i), forward);
-        let outp = out.point_mut(i);
+        let all_good = basis.poly_powers(&mut work, tables.max_pows, &pts.point(i), forward);
+        let mut outp = out.point_mut(i);
         if all_good && !bad_coeff {
             // No term can be bad, so this is the loop below without its checks.
             for (out_idx, term_indices) in tables.by_output.iter().enumerate() {
@@ -1238,9 +1238,9 @@ fn eval_poly_into(
             continue;
         }
         let inp = input.point(ip);
-        fill_power_table(inp, &max_pows, &mut power_table);
+        fill_power_table(&inp, &max_pows, &mut power_table);
 
-        let outp = output.point_mut(ip);
+        let mut outp = output.point_mut(ip);
         for (out_idx, term_indices) in terms_by_output.iter().enumerate() {
             let mut sum = 0.0;
             for &idx in term_indices {

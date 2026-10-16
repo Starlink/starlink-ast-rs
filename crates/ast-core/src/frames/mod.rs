@@ -1710,7 +1710,7 @@ pub(crate) fn norm_each_point(frame: &dyn Frame, points: &PointSet) -> AstResult
     }
     let mut out = points.clone();
     for i in 0..out.npoint() {
-        frame.norm(out.point_mut(i))?;
+        frame.norm(&mut out.point_mut(i))?;
     }
     Ok(out)
 }

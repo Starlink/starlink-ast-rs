@@ -386,7 +386,7 @@ impl Mapping for MathMap {
         if exprs.is_empty() {
             // Undefined transformation: fill with BAD
             for i in 0..npoint {
-                let row = out.point_mut(i);
+                let mut row = out.point_mut(i);
                 for val in row.iter_mut().take(ncoord_out) {
                     *val = BAD_VALUE;
                 }
@@ -468,15 +468,8 @@ impl Mapping for MathMap {
         }
 
         // Copy outputs to the PointSet
-        for (i, mut row) in out
-            .view_mut()
-            .rows_mut()
-            .into_iter()
-            .enumerate()
-            .take(npoint)
-        {
-            for (coord, val) in row.iter_mut().enumerate().take(ncoord_out) {
-                let v = outputs[coord][i];
+        for (coord, values) in outputs.iter().enumerate().take(ncoord_out) {
+            for (val, &v) in out.axis_mut(coord).iter_mut().zip(values).take(npoint) {
                 *val = if v.is_nan() { BAD_VALUE } else { v };
             }
         }

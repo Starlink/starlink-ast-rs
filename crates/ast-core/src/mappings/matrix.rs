@@ -540,7 +540,7 @@ impl MatrixMap {
                 let nout = m.nrows();
                 for i in 0..pts.npoint() {
                     let inp = pts.point(i);
-                    let outp = out.point_mut(i);
+                    let mut outp = out.point_mut(i);
                     for j in 0..nax {
                         // A BAD diagonal element makes the whole output axis
                         // BAD; otherwise BAD input gives BAD output. C tests
@@ -564,7 +564,7 @@ impl MatrixMap {
                 let nin = m.ncols();
                 for i in 0..pts.npoint() {
                     let inp = pts.point(i);
-                    let outp = out.point_mut(i);
+                    let mut outp = out.point_mut(i);
                     for row in 0..nout {
                         let mut sum = 0.0;
                         let mut bad = false;
@@ -715,7 +715,7 @@ impl Mapping for MatrixMap {
                 let nout = m.nrows();
                 for i in 0..pts.npoint() {
                     let inp = pts.point(i);
-                    let outp = out.point_mut(i);
+                    let mut outp = out.point_mut(i);
                     // A bad input stays bad even with a zero element, and a bad
                     // element makes its axis bad (matrixmap.c Transform).
                     for j in 0..nax {
@@ -736,7 +736,7 @@ impl Mapping for MatrixMap {
                 let nin = m.ncols();
                 for i in 0..pts.npoint() {
                     let inp = pts.point(i);
-                    let outp = out.point_mut(i);
+                    let mut outp = out.point_mut(i);
                     for row in 0..nout {
                         let mut sum = 0.0;
                         for col in 0..nin {

@@ -791,7 +791,7 @@ impl<T: PixelValue> Resampler<'_, '_, T> {
                 let mut point = 0;
                 if ndim_out == 1 && ndim_in == 1 {
                     for ix in lbnd[0]..=ubnd[0] {
-                        v[[point, 0]] = ix as f64;
+                        v[[0, point]] = ix as f64;
                         offset[point] = ix - lbnd_out[0];
                         point += 1;
                     }
@@ -799,8 +799,8 @@ impl<T: PixelValue> Resampler<'_, '_, T> {
                     for iy in lbnd[1]..=ubnd[1] {
                         let off1 = stride[1] * (iy - lbnd_out[1]) - lbnd_out[0];
                         for ix in lbnd[0]..=ubnd[0] {
-                            v[[point, 0]] = ix as f64;
-                            v[[point, 1]] = iy as f64;
+                            v[[0, point]] = ix as f64;
+                            v[[1, point]] = iy as f64;
                             offset[point] = off1 + ix;
                             point += 1;
                         }
@@ -814,7 +814,7 @@ impl<T: PixelValue> Resampler<'_, '_, T> {
                     let mut coord_out = 0;
                     loop {
                         for c in 0..ndim_out {
-                            v[[point, c]] = dim[c] as f64;
+                            v[[c, point]] = dim[c] as f64;
                         }
                         offset[point] = off;
                         point += 1;
@@ -829,7 +829,7 @@ impl<T: PixelValue> Resampler<'_, '_, T> {
             let v = pset_in.view();
             for (coord_in, column) in coords.iter_mut().enumerate() {
                 for (point, c) in column.iter_mut().enumerate() {
-                    *c = v[[point, coord_in]];
+                    *c = v[[coord_in, point]];
                 }
             }
         }

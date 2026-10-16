@@ -700,7 +700,7 @@ impl SplineMap {
             let inp = pts.point(ipoint);
             let u = inp[0];
             let v = inp[1];
-            let outp = out.point_mut(ipoint);
+            let mut outp = out.point_mut(ipoint);
 
             if is_bad(u) || is_bad(v) {
                 outp[0] = BAD_VALUE;
@@ -747,7 +747,7 @@ impl SplineMap {
             // Clamp every guess to the knot domain, converged ones included,
             // as C does at the start of each iteration.
             for ipoint in 0..npoint {
-                let outp = out.point_mut(ipoint);
+                let mut outp = out.point_mut(ipoint);
                 if !is_bad(outp[0]) {
                     outp[0] = outp[0].clamp(xlo, xhi);
                 }
@@ -759,7 +759,7 @@ impl SplineMap {
             // Forward-transform the current input guesses
             for ipoint in 0..npoint {
                 let guess = out.point(ipoint);
-                let wp = work_pts.point_mut(ipoint);
+                let mut wp = work_pts.point_mut(ipoint);
                 if is_bad(guess[0]) || is_bad(guess[1]) {
                     wp[0] = BAD_VALUE;
                     wp[1] = BAD_VALUE;
@@ -773,7 +773,7 @@ impl SplineMap {
             // Compute D_out = target - forward(guess)
             for ipoint in 0..npoint {
                 let target = pts.point(ipoint);
-                let wp = work_pts.point_mut(ipoint);
+                let mut wp = work_pts.point_mut(ipoint);
                 if !is_bad(target[0]) && !is_bad(wp[0]) {
                     wp[0] = target[0] - wp[0];
                 } else {
@@ -823,7 +823,7 @@ impl SplineMap {
                     || is_bad(j11)
                 {
                     // Singular or bad — mark as converged with BAD
-                    let outp = out.point_mut(ipoint);
+                    let mut outp = out.point_mut(ipoint);
                     outp[0] = BAD_VALUE;
                     outp[1] = BAD_VALUE;
                     flags[ipoint] = true;
@@ -836,7 +836,7 @@ impl SplineMap {
                 let mut mat = [j00, j01, j10, j11];
                 let mut vec = [vec0, vec1];
                 if !crate::pal::dmat(2, &mut mat, &mut vec) {
-                    let outp = out.point_mut(ipoint);
+                    let mut outp = out.point_mut(ipoint);
                     outp[0] = BAD_VALUE;
                     outp[1] = BAD_VALUE;
                     flags[ipoint] = true;
@@ -846,7 +846,7 @@ impl SplineMap {
                 let [dx, dy] = vec;
 
                 // Update guess
-                let outp = out.point_mut(ipoint);
+                let mut outp = out.point_mut(ipoint);
                 outp[0] += dx;
                 outp[1] += dy;
 
@@ -864,7 +864,7 @@ impl SplineMap {
         if nconv < npoint {
             for ipoint in 0..npoint {
                 if !flags[ipoint] {
-                    let outp = out.point_mut(ipoint);
+                    let mut outp = out.point_mut(ipoint);
                     outp[0] = BAD_VALUE;
                     outp[1] = BAD_VALUE;
                 }
@@ -937,7 +937,7 @@ impl Mapping for SplineMap {
             // Forward: evaluate B-splines
             for i in 0..pts.npoint() {
                 let inp = pts.point(i);
-                let outp = out.point_mut(i);
+                let mut outp = out.point_mut(i);
                 if is_bad(inp[0]) || is_bad(inp[1]) {
                     outp[0] = BAD_VALUE;
                     outp[1] = BAD_VALUE;

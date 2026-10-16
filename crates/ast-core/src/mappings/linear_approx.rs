@@ -104,7 +104,7 @@ pub(crate) fn linear_approx_default<M: Mapping + ?Sized>(
     let nfaces = 2 * ndim_in;
     let mut pts_in_f = PointSet::zeros(nfaces, ndim_in);
     for face in 0..nfaces {
-        let row = pts_in_f.point_mut(face);
+        let mut row = pts_in_f.point_mut(face);
         for coord_in in 0..ndim_in {
             row[coord_in] = 0.5 * (lbnd[coord_in] + ubnd[coord_in]);
         }
@@ -208,7 +208,7 @@ pub(crate) fn linear_approx_default<M: Mapping + ?Sized>(
     } else {
         // Centre point, slightly offset from exact centre.
         {
-            let row = pts_in_t.point_mut(0);
+            let mut row = pts_in_t.point_mut(0);
             for coord_in in 0..ndim_in {
                 row[coord_in] = 0.49 * lbnd[coord_in] + 0.51 * ubnd[coord_in];
             }
@@ -222,7 +222,7 @@ pub(crate) fn linear_approx_default<M: Mapping + ?Sized>(
             // pts_in_t.point_mut(point) for the new row.
             let centre0_axis_value = pts_in_t.point(0)[face / 2];
             {
-                let row = pts_in_t.point_mut(point);
+                let mut row = pts_in_t.point_mut(point);
                 for coord_in in 0..ndim_in {
                     row[coord_in] = 0.48 * lbnd[coord_in] + 0.52 * ubnd[coord_in];
                 }

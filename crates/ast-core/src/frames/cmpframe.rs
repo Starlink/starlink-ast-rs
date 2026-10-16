@@ -757,8 +757,8 @@ impl Frame for CmpFrame {
         for ip1 in 0..ps1.npoint() {
             for ip2 in 0..ps2.npoint() {
                 let mut internal = Vec::with_capacity(naxes);
-                internal.extend_from_slice(ps1.point(ip1));
-                internal.extend_from_slice(ps2.point(ip2));
+                internal.extend_from_slice(&ps1.point(ip1));
+                internal.extend_from_slice(&ps2.point(ip2));
                 let external: Vec<f64> = (0..naxes).map(|axis| internal[self.perm[axis]]).collect();
                 rows.push(external);
             }
@@ -802,7 +802,7 @@ impl Frame for CmpFrame {
         let out2 = self.frame2.norm_points(&part2, contig)?;
         let mut out = points.clone();
         for p in 0..npoint {
-            let row = out.point_mut(p);
+            let mut row = out.point_mut(p);
             for (i, v) in row.iter_mut().enumerate() {
                 let k = self.perm[i];
                 *v = if k < n1 {

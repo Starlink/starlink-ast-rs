@@ -5,7 +5,5 @@ mod points;
 mod pointset;
 
 pub use pointlist::PointList;
-#[allow(unused_imports)]
-pub(crate) use points::PointShape;
-pub use points::{INLINE_AXES, PointBuf, Points, PointsMut};
+pub use points::{INLINE_AXES, PointBuf, PointMut, Points, PointsMut};
 pub use pointset::PointSet;

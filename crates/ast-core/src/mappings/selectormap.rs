@@ -293,7 +293,7 @@ impl Mapping for SelectorMap {
             // Inverse not defined — return all BAD.
             let mut out = PointSet::zeros(npoint, ncoord);
             for i in 0..npoint {
-                let row = out.point_mut(i);
+                let mut row = out.point_mut(i);
                 for v in row.iter_mut() {
                     *v = BAD_VALUE;
                 }

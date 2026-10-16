@@ -57,7 +57,7 @@ fn make_basis_vectors(
 
     let mut w0 = vec![0.0_f64; nout];
     for j in 0..nout {
-        let v = view[[0, j]];
+        let v = view[[j, 0]];
         if is_bad(v) {
             return None;
         }
@@ -66,7 +66,7 @@ fn make_basis_vectors(
     let mut step = vec![vec![0.0_f64; nout]; nin];
     for i in 0..nin {
         for j in 0..nout {
-            let v = view[[i + 1, j]];
+            let v = view[[j, i + 1]];
             if is_bad(v) {
                 return None;
             }
@@ -249,7 +249,7 @@ pub(crate) fn fit_line(
         let mut wmax = f64::MIN;
         let mut wmin = f64::MAX;
         for (idx, k) in (-NPO2..=NPO2).enumerate() {
-            let v = view[[idx, j]];
+            let v = view[[j, idx]];
             if is_bad(v) {
                 continue;
             }
@@ -284,7 +284,7 @@ pub(crate) fn fit_line(
         for (idx, k) in (-NPO2..=NPO2).enumerate() {
             estimated[idx] = (k as f64) * col[j] + offset[j];
         }
-        let actual: Vec<f64> = (0..NP_USIZE).map(|idx| view[[idx, j]]).collect();
+        let actual: Vec<f64> = (0..NP_USIZE).map(|idx| view[[j, idx]]).collect();
         if !fit_ok(&actual, &estimated, tol[j]) {
             return None;
         }

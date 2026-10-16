@@ -1812,9 +1812,9 @@ pub fn region_disc(region: &dyn Region) -> AstResult<(Vec<f64>, f64)> {
         if point3.iter().any(|&v| is_bad(v)) {
             continue;
         }
-        let (point4, dx, mut dy) = region.resolve(&point1, &point2, point3)?;
+        let (point4, dx, mut dy) = region.resolve(&point1, &point2, &point3)?;
         // `resolve` gives |dy|; its sign is that of the angle at point4.
-        if region.angle(&point1, &point4, point3)? < 0.0 {
+        if region.angle(&point1, &point4, &point3)? < 0.0 {
             dy = -dy;
         }
         dxmax = dxmax.max(dx);
@@ -1835,7 +1835,7 @@ pub fn region_disc(region: &dyn Region) -> AstResult<(Vec<f64>, f64)> {
 
     let mut radius = 0.0f64;
     for ipoint in 0..npoint {
-        let d = region.distance(&centre, mesh.point(ipoint))?;
+        let d = region.distance(&centre, &mesh.point(ipoint))?;
         if !is_bad(d) {
             radius = radius.max(d);
         }
