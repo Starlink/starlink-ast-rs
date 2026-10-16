@@ -50,7 +50,8 @@ A separate Python package over the Rust library is planned; it is out of scope h
 
 - Storage stays an ndarray `Array2<f64>`, with its shape flipped to `(ncoord, npoint)` in standard (C) order, so axis `j` is the contiguous row `j`.
 - New: `axis(j) -> &[f64]`, `axis_mut(j) -> &mut [f64]`, `as_points() -> Points<'_>`, `as_points_mut() -> PointsMut<'_>`, and `set_point(i, &[f64])`.
-- `point(i)` returns an owned copy of the point's coordinates, held inline (no allocation) for up to the inline capacity below.
+- `point(i)` returns a `PointBuf`, an owned copy of the point's coordinates held inline (no allocation) up to the inline capacity below.
+  `PointBuf` dereferences to `[f64]` and compares equal to slices, arrays and vectors of `f64`.
   Most existing reads, such as `out.point(0)[1]` and `assert_eq!(out.point(0), &[..])`, compile unchanged.
 - `point_mut(i)` is removed; its callers move to axis loops or `set_point`.
 - `from_columns` becomes a plain copy of each column; `from_rows` stays, and transposes.
@@ -65,11 +66,13 @@ A separate Python package over the Rust library is planned; it is out of scope h
 - The list of axis slices is a `smallvec::SmallVec`, held inline up to a fixed capacity and on the heap beyond it.
   Only the list of pointers spills, never the data, and results are identical either way.
   C pays the same cost on every call: `TranN` mallocs its `in_ptr` and `out_ptr` arrays each time.
-- The inline capacity is chosen from the axis counts that occur in the oracle corpus and confirmed with `ast-bench` at N=1.
-  Four is the starting point; eight costs about 128 bytes of stack per view.
+- The inline capacity is 8.
+  The oracle corpora (`simplify_fixtures`, `headers`, `framesets`, `bench`) use at most 5 axes, so every corpus case stays inline; a view costs about 128 bytes of stack.
 - Constructors check that every axis has the same length and fail with C's codes: `Ncoin` for no axes, `Ncpin` for a mismatched axis length.
 - Views support taking points `start..end` of every axis, and taking a sub-range of axes.
   Both are zero-copy.
+- Views have `point(i) -> PointBuf`, and `PointsMut` has `set_point(i, &[f64])`.
+  These are permanent API for code that is not a bulk kernel (Regions, FrameSet, the per-point fallbacks of classes not yet rewritten) and for tests.
 - `smallvec` is a new dependency of `ast-core`.
 
 ### The `Mapping` trait
@@ -121,7 +124,7 @@ Record it in the `bench` and `framesets` sets so later stages show and protect t
 ### Stage 2 — flip the layout and change the signature, behavior unchanged
 
 Change `PointSet` storage, add the views, change the trait, and convert every Mapping and every other `point_mut` caller (121 sites; `point` has 455 source and about 1,330 test reads).
-Each Mapping keeps its current per-point logic through a temporary helper that gathers one point from the input view into a small buffer and scatters a result into the output view.
+Each Mapping keeps its current per-point logic, reading each point with the view's `point(i)` and writing it with `set_point(i, ..)`.
 The 51 `view()` and `view_mut()` uses, mostly matrix arithmetic, are each checked for the flipped orientation, not only recompiled.
 
 This stage cannot be split by class, because the trait signature changes everywhere at once.
@@ -132,9 +135,12 @@ Speed is recorded but not expected to change much.
 ### Stage 3 — axis-loop kernels, one class per commit
 
 Rewrite each Mapping's kernel as loops down whole axes.
-Order: ZoomMap, ShiftMap, WinMap, UnitMap, PermMap, MatrixMap, then CmpMap's axis splitting and batching, then the rest by their place in the first full sweep (`docs/perf/2026-10-16-macos-aarch64-sweep.tsv`).
+This change rewrites ZoomMap, ShiftMap, WinMap, UnitMap, PermMap, MatrixMap, and CmpMap's axis splitting and batching.
 Each commit passes `ast-bench compare --set bench --base <previous>` and states its gain in the message.
-The temporary helper from stage 2 is deleted with its last user.
+
+The other classes slower than 1.4 times C at N=100 000 in `docs/perf/2026-10-16-macos-aarch64-bench.tsv` are SpecMap, MathMap, SplineMap and LutMap.
+They are a follow-up plan, ordered by the sweep re-recorded in stage 4, since stage 2 changes their numbers.
+Classes within 1.3 times of C keep per-point code, because their arithmetic, not the loop, dominates.
 
 The rule in `CLAUDE.md`'s bulk-transform section still applies to anything beyond the loop shape: a BLAS or GEMM path is committed only when `ast-bench` shows it winning on the shapes that occur.
 
