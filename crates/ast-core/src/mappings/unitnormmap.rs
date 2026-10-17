@@ -228,10 +228,10 @@ impl Mapping for UnitNormMap {
                     }
                 }
                 for (m, &s) in norms.iter_mut().zip(sums.iter()) {
-                    // A zero largest |v - c| leaves the norm 0.
-                    let norm = *m * crate::math::sqrt(s);
+                    // A zero largest |v - c| leaves the norm 0. As in C,
+                    // only a good, non-zero point takes a square root.
                     if *m != BAD_VALUE && *m != 0.0 {
-                        *m = norm;
+                        *m *= crate::math::sqrt(s);
                     }
                 }
 
