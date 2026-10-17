@@ -24,6 +24,20 @@ impl PointBuf {
     pub fn zeros(ncoord: usize) -> Self {
         Self(SmallVec::from_elem(0.0, ncoord))
     }
+
+    /// The point whose coordinate `j` is `get(j)`, for `j` in `0..ncoord`.
+    #[inline]
+    pub(crate) fn gather(ncoord: usize, mut get: impl FnMut(usize) -> f64) -> Self {
+        if ncoord <= INLINE_AXES {
+            let mut buf = [0.0; INLINE_AXES];
+            for (j, v) in buf.iter_mut().enumerate().take(ncoord) {
+                *v = get(j);
+            }
+            Self(SmallVec::from_buf_and_len(buf, ncoord))
+        } else {
+            Self((0..ncoord).map(get).collect())
+        }
+    }
 }
 
 impl Deref for PointBuf {
@@ -103,39 +117,45 @@ impl PartialEq<Vec<f64>> for PointBuf {
     }
 }
 
-/// Something one point of which can be overwritten.
-pub(crate) trait WritePoint {
+/// A set of points one of which can be overwritten: a
+/// [`PointSet`](super::PointSet) or a [`PointsMut`] view.
+pub trait WritePoint {
+    /// Set point `i`; `coords` has one value per axis.
     fn write_point(&mut self, i: usize, coords: &[f64]);
 }
 
-/// Writable access to one point: a copy of its coordinates, written back to
-/// the point when this guard is dropped, on every exit path.
-pub struct PointMut<'a> {
+/// Writable access to one point of `W`: a copy of its coordinates, written
+/// back to the point when this guard is dropped, on every exit path.
+pub struct PointMut<'a, W: WritePoint + ?Sized> {
     buf: PointBuf,
     i: usize,
-    dst: &'a mut dyn WritePoint,
+    dst: &'a mut W,
 }
 
-impl<'a> PointMut<'a> {
-    pub(crate) fn new(buf: PointBuf, i: usize, dst: &'a mut dyn WritePoint) -> Self {
+impl<'a, W: WritePoint + ?Sized> PointMut<'a, W> {
+    #[inline]
+    pub(crate) fn new(buf: PointBuf, i: usize, dst: &'a mut W) -> Self {
         Self { buf, i, dst }
     }
 }
 
-impl Deref for PointMut<'_> {
+impl<W: WritePoint + ?Sized> Deref for PointMut<'_, W> {
     type Target = [f64];
+    #[inline]
     fn deref(&self) -> &[f64] {
         &self.buf
     }
 }
 
-impl DerefMut for PointMut<'_> {
+impl<W: WritePoint + ?Sized> DerefMut for PointMut<'_, W> {
+    #[inline]
     fn deref_mut(&mut self) -> &mut [f64] {
         &mut self.buf
     }
 }
 
-impl Drop for PointMut<'_> {
+impl<W: WritePoint + ?Sized> Drop for PointMut<'_, W> {
+    #[inline]
     fn drop(&mut self) {
         self.dst.write_point(self.i, &self.buf);
     }
@@ -242,13 +262,15 @@ impl<'a> Points<'a> {
     }
 
     /// Axis `j` (0-based).
+    #[inline]
     pub fn axis(&self, j: usize) -> &'a [f64] {
         self.axes[j]
     }
 
     /// A copy of point `i`.
+    #[inline]
     pub fn point(&self, i: usize) -> PointBuf {
-        self.axes.iter().map(|a| a[i]).collect()
+        PointBuf::gather(self.axes.len(), |j| self.axes[j][i])
     }
 
     /// Points `range` of every axis.
@@ -329,21 +351,25 @@ impl<'a> PointsMut<'a> {
     }
 
     /// Axis `j` (0-based).
+    #[inline]
     pub fn axis(&self, j: usize) -> &[f64] {
         self.axes[j]
     }
 
     /// Axis `j` (0-based), writable.
+    #[inline]
     pub fn axis_mut(&mut self, j: usize) -> &mut [f64] {
         self.axes[j]
     }
 
     /// A copy of point `i`.
+    #[inline]
     pub fn point(&self, i: usize) -> PointBuf {
-        self.axes.iter().map(|a| a[i]).collect()
+        PointBuf::gather(self.axes.len(), |j| self.axes[j][i])
     }
 
     /// Set point `i`; `coords` must have one value per axis.
+    #[inline]
     pub fn set_point(&mut self, i: usize, coords: &[f64]) {
         assert_eq!(
             coords.len(),
@@ -356,7 +382,8 @@ impl<'a> PointsMut<'a> {
     }
 
     /// Writable access to point `i`, written back when the guard drops.
-    pub fn point_mut(&mut self, i: usize) -> PointMut<'_> {
+    #[inline]
+    pub fn point_mut(&mut self, i: usize) -> PointMut<'_, Self> {
         let buf = self.point(i);
         PointMut::new(buf, i, self)
     }
@@ -429,6 +456,7 @@ impl PointShape for PointsMut<'_> {
 }
 
 impl WritePoint for PointsMut<'_> {
+    #[inline]
     fn write_point(&mut self, i: usize, coords: &[f64]) {
         self.set_point(i, coords);
     }

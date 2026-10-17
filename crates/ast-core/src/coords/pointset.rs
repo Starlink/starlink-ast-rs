@@ -140,21 +140,29 @@ impl PointSet {
     /// A copy of point `i`.
     ///
     /// Panics if `i >= npoint()`.
+    #[inline]
     pub fn point(&self, i: usize) -> PointBuf {
-        self.data.column(i).iter().copied().collect()
+        let npoint = self.npoint();
+        assert!(i < npoint, "point {i} of a PointSet of {npoint}");
+        let data = self.data.as_slice().expect("standard layout");
+        PointBuf::gather(self.ncoord(), |j| data[j * npoint + i])
     }
 
     /// Set point `i`; `coords` must have one value per axis.
     ///
     /// Panics if `i >= npoint()`.
+    #[inline]
     pub fn set_point(&mut self, i: usize, coords: &[f64]) {
         assert_eq!(
             coords.len(),
             self.ncoord(),
             "set_point needs one value per axis"
         );
-        for (d, &v) in self.data.column_mut(i).iter_mut().zip(coords) {
-            *d = v;
+        let npoint = self.npoint();
+        assert!(i < npoint, "point {i} of a PointSet of {npoint}");
+        let data = self.data.as_slice_mut().expect("standard layout");
+        for (j, &v) in coords.iter().enumerate() {
+            data[j * npoint + i] = v;
         }
     }
 
@@ -162,17 +170,20 @@ impl PointSet {
     /// back when the returned guard is dropped.
     ///
     /// Panics if `i >= npoint()`.
-    pub fn point_mut(&mut self, i: usize) -> PointMut<'_> {
+    #[inline]
+    pub fn point_mut(&mut self, i: usize) -> PointMut<'_, Self> {
         let buf = self.point(i);
         PointMut::new(buf, i, self)
     }
 
     /// Axis `j` (0-based; PointSet is frame-unaware and uses raw array indices).
+    #[inline]
     pub fn axis(&self, j: usize) -> &[f64] {
         self.data.row(j).to_slice().expect("standard layout")
     }
 
     /// Axis `j` (0-based), writable.
+    #[inline]
     pub fn axis_mut(&mut self, j: usize) -> &mut [f64] {
         self.data.row_mut(j).into_slice().expect("standard layout")
     }
@@ -221,6 +232,7 @@ impl PointShape for PointSet {
 }
 
 impl WritePoint for PointSet {
+    #[inline]
     fn write_point(&mut self, i: usize, coords: &[f64]) {
         self.set_point(i, coords);
     }
