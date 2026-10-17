@@ -597,13 +597,15 @@ impl RegionGeometry for Ellipse {
             .base()
             .resolve_points(centre, point1, pts)?;
         let (c1, c2) = (1.0 / (a * a), 1.0 / (b * b));
-        Ok((0..res.npoint())
-            .map(|i| {
-                let p = res.point(i);
-                if is_bad(p[0]) || is_bad(p[1]) {
+        Ok(res
+            .axis(0)
+            .iter()
+            .zip(res.axis(1))
+            .map(|(&p0, &p1)| {
+                if is_bad(p0) || is_bad(p1) {
                     return false;
                 }
-                let d = c1 * p[0] * p[0] + c2 * p[1] * p[1];
+                let d = c1 * p0 * p0 + c2 * p1 * p1;
                 if closed { d <= 1.0 } else { d < 1.0 }
             })
             .collect())

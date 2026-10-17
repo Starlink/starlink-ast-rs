@@ -675,17 +675,6 @@ impl Mapping for NullRegion {
     /// points unchanged, which a negated NullRegion keeps, as it contains
     /// every point; an un-negated one contains none, so every value is BAD.
     /// Neither looks at the FrameSet.
-    fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
-        crate::mappings::validate_transform(self, pts, forward, None)?;
-        let mut out = pts.clone();
-        if !self.data.negated {
-            for j in 0..out.ncoord() {
-                out.axis_mut(j).fill(BAD_VALUE);
-            }
-        }
-        Ok(out)
-    }
-
     fn transform_into(
         &self,
         pts: Points<'_>,
@@ -693,8 +682,16 @@ impl Mapping for NullRegion {
         mut out: PointsMut<'_>,
     ) -> AstResult<()> {
         crate::mappings::validate_transform_into(self, &pts, forward, Some(&out))?;
-        let result = self.transform(&PointSet::from_points(&pts), forward)?;
-        out.copy_from(&result.as_points());
+        // A NullRegion contains no points, so every point is outside it, and
+        // a negated one contains every point.
+        if self.data.negated {
+            out.copy_from(&pts);
+        } else {
+            let n = pts.npoint();
+            for axis in out.axes_mut() {
+                axis[..n].fill(BAD_VALUE);
+            }
+        }
         Ok(())
     }
 

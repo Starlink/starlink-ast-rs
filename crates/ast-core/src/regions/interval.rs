@@ -899,17 +899,16 @@ impl RegionGeometry for Interval {
             }
         }
 
+        let axes: Vec<&[f64]> = (0..naxes).map(|ax| &pts.axis(ax)[..npoint]).collect();
         let mut result = vec![false; npoint];
         for (idx, inside) in result.iter_mut().enumerate() {
-            let point = pts.point(idx);
-
             // BAD input coordinates mean the point is outside.
-            if point_has_bad(&point[..naxes]) {
+            if axes.iter().any(|axis| is_bad(axis[idx])) {
                 continue;
             }
 
             *inside = (0..naxes).all(|ax| {
-                let (p, lb, ub) = (point[ax], lbnd[ax], ubnd[ax]);
+                let (p, lb, ub) = (axes[ax][idx], lbnd[ax], ubnd[ax]);
                 match (closed, lb <= ub) {
                     (true, true) => lb <= p && p <= ub,
                     (true, false) => p <= ub || lb <= p,

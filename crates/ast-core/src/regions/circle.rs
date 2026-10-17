@@ -465,7 +465,12 @@ impl RegionGeometry for Circle {
         }
 
         let mut result = vec![false; npoint];
-        for (r, point) in result.iter_mut().zip((0..npoint).map(|i| pts.point(i))) {
+        let axes: Vec<&[f64]> = (0..pts.ncoord()).map(|j| &pts.axis(j)[..npoint]).collect();
+        let mut point = vec![0.0; axes.len()];
+        for (i, r) in result.iter_mut().enumerate() {
+            for (v, axis) in point.iter_mut().zip(&axes) {
+                *v = axis[i];
+            }
             if point_has_bad(&point) {
                 continue;
             }

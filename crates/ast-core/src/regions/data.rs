@@ -481,15 +481,18 @@ pub(crate) trait RegionGeometry {
     /// whose `Transform` decides differently overrides this.
     fn reg_base_mask(&self, base_pts: &PointSet) -> AstResult<Vec<bool>> {
         let negated = self.region_data().negated;
-        let inside = self.reg_base_inside(base_pts)?;
-        Ok(inside
-            .iter()
-            .enumerate()
-            .map(|(i, &is_in)| {
-                let has_bad = base_pts.point(i).iter().any(|&v| is_bad(v));
-                !has_bad && (is_in != negated)
-            })
-            .collect())
+        let mut mask = self.reg_base_inside(base_pts)?;
+        for m in mask.iter_mut() {
+            *m = *m != negated;
+        }
+        for j in 0..base_pts.ncoord() {
+            for (m, &v) in mask.iter_mut().zip(base_pts.axis(j)) {
+                if is_bad(v) {
+                    *m = false;
+                }
+            }
+        }
+        Ok(mask)
     }
 
     /// Return the bounding box of the un-negated region in the base frame.
