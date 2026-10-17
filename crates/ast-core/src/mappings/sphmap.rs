@@ -205,41 +205,41 @@ impl Mapping for SphMap {
         let fwd = self.effective_forward(forward);
         if fwd {
             let polarlong = self.polar_long;
+            let pin = pts.axis_slices();
+            let pout = out.axes_mut();
             for i in 0..pts.npoint() {
-                let inp = pts.point(i);
-                let mut outp = out.point_mut(i);
-                let x = inp[0];
-                let y = inp[1];
-                let z = inp[2];
+                let x = pin[0][i];
+                let y = pin[1][i];
+                let z = pin[2][i];
                 let mxerr = (1000.0 * z).abs() * f64::EPSILON;
                 if x.abs() < mxerr && y.abs() < mxerr {
                     // Pole branch: only entered when x,y,z are all finite
                     // (NaN comparisons against mxerr are false).
                     if z < 0.0 {
-                        outp[0] = polarlong;
-                        outp[1] = -std::f64::consts::FRAC_PI_2;
+                        pout[0][i] = polarlong;
+                        pout[1][i] = -std::f64::consts::FRAC_PI_2;
                     } else if z > 0.0 {
-                        outp[0] = polarlong;
-                        outp[1] = std::f64::consts::FRAC_PI_2;
+                        pout[0][i] = polarlong;
+                        pout[1][i] = std::f64::consts::FRAC_PI_2;
                     } else {
-                        outp[0] = f64::NAN;
-                        outp[1] = f64::NAN;
+                        pout[0][i] = f64::NAN;
+                        pout[1][i] = f64::NAN;
                     }
                 } else {
                     let v = [x, y, z];
                     let (lon, lat) = pal::dcc2s(&v);
-                    outp[0] = lon;
-                    outp[1] = lat;
+                    pout[0][i] = lon;
+                    pout[1][i] = lat;
                 }
             }
         } else {
+            let pin = pts.axis_slices();
+            let pout = out.axes_mut();
             for i in 0..pts.npoint() {
-                let inp = pts.point(i);
-                let mut outp = out.point_mut(i);
-                let v = pal::dcs2c(inp[0], inp[1]);
-                outp[0] = v[0];
-                outp[1] = v[1];
-                outp[2] = v[2];
+                let v = pal::dcs2c(pin[0][i], pin[1][i]);
+                pout[0][i] = v[0];
+                pout[1][i] = v[1];
+                pout[2][i] = v[2];
             }
         }
         Ok(())

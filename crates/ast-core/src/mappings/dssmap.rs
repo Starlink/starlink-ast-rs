@@ -487,45 +487,48 @@ impl Mapping for DssMap {
 
         if fwd {
             // Forward: pixel (x,y) -> (RA, Dec) in radians
+            let pin = pts.axis_slices();
+            let pout = out.axes_mut();
             for i in 0..pts.npoint() {
-                let inp = pts.point(i);
-                let mut outp = out.point_mut(i);
-                if is_bad(inp[0]) || is_bad(inp[1]) {
-                    outp[0] = BAD_VALUE;
-                    outp[1] = BAD_VALUE;
+                if is_bad(pin[0][i]) || is_bad(pin[1][i]) {
+                    pout[0][i] = BAD_VALUE;
+                    pout[1][i] = BAD_VALUE;
                 } else {
                     let mut xpos = 0.0;
                     let mut ypos = 0.0;
-                    if self.platepos(inp[0], inp[1], &mut xpos, &mut ypos).is_ok() {
+                    if self
+                        .platepos(pin[0][i], pin[1][i], &mut xpos, &mut ypos)
+                        .is_ok()
+                    {
                         // platepos returns degrees; convert to radians
-                        outp[0] = xpos * DD2R;
-                        outp[1] = ypos * DD2R;
+                        pout[0][i] = xpos * DD2R;
+                        pout[1][i] = ypos * DD2R;
                     } else {
-                        outp[0] = BAD_VALUE;
-                        outp[1] = BAD_VALUE;
+                        pout[0][i] = BAD_VALUE;
+                        pout[1][i] = BAD_VALUE;
                     }
                 }
             }
         } else {
             // Inverse: (RA, Dec) in radians -> pixel (x,y)
+            let pin = pts.axis_slices();
+            let pout = out.axes_mut();
             for i in 0..pts.npoint() {
-                let inp = pts.point(i);
-                let mut outp = out.point_mut(i);
-                if is_bad(inp[0]) || is_bad(inp[1]) {
-                    outp[0] = BAD_VALUE;
-                    outp[1] = BAD_VALUE;
+                if is_bad(pin[0][i]) || is_bad(pin[1][i]) {
+                    pout[0][i] = BAD_VALUE;
+                    pout[1][i] = BAD_VALUE;
                 } else {
                     // Convert from radians to degrees for platepix
-                    let ra_deg = inp[0] * DR2D;
-                    let dec_deg = inp[1] * DR2D;
+                    let ra_deg = pin[0][i] * DR2D;
+                    let dec_deg = pin[1][i] * DR2D;
                     let mut xpix = 0.0;
                     let mut ypix = 0.0;
                     if self.platepix(ra_deg, dec_deg, &mut xpix, &mut ypix).is_ok() {
-                        outp[0] = xpix;
-                        outp[1] = ypix;
+                        pout[0][i] = xpix;
+                        pout[1][i] = ypix;
                     } else {
-                        outp[0] = BAD_VALUE;
-                        outp[1] = BAD_VALUE;
+                        pout[0][i] = BAD_VALUE;
+                        pout[1][i] = BAD_VALUE;
                     }
                 }
             }

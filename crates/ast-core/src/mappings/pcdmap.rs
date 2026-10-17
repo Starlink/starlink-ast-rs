@@ -293,27 +293,27 @@ impl Mapping for PcdMap {
         let cen1 = self.effective_pcdcen()[1];
 
         if fwd {
+            let pin = pts.axis_slices();
+            let pout = out.axes_mut();
             for i in 0..pts.npoint() {
-                let inp = pts.point(i);
-                let mut outp = out.point_mut(i);
-                let dx = inp[0] - cen0;
-                let dy = inp[1] - cen1;
+                let dx = pin[0][i] - cen0;
+                let dy = pin[1][i] - cen1;
                 let f = 1.0 + disco * (dx * dx + dy * dy);
-                outp[0] = dx * f + cen0;
-                outp[1] = dy * f + cen1;
+                pout[0][i] = dx * f + cen0;
+                pout[1][i] = dy * f + cen1;
             }
         } else {
+            let pin = pts.axis_slices();
+            let pout = out.axes_mut();
             for i in 0..pts.npoint() {
-                let inp = pts.point(i);
-                let mut outp = out.point_mut(i);
-                let dxp = inp[0] - cen0;
-                let dyp = inp[1] - cen1;
+                let dxp = pin[0][i] - cen0;
+                let dyp = pin[1][i] - cen1;
                 let cr2 = disco * (dxp * dxp + dyp * dyp);
                 let a = (2.0 * cr2 + 1.0) / (3.0 * cr2 + 1.0);
                 let cr2a2 = cr2 * a * a;
                 let f = (2.0 * cr2a2 * a + 1.0) / (3.0 * cr2a2 + 1.0);
-                outp[0] = dxp * f + cen0;
-                outp[1] = dyp * f + cen1;
+                pout[0][i] = dxp * f + cen0;
+                pout[1][i] = dyp * f + cen1;
             }
         }
         Ok(())
@@ -333,37 +333,37 @@ impl Mapping for PcdMap {
 
         if fwd {
             // Forward: apply distortion
+            let pin = pts.axis_slices();
+            let pout = out.axes_mut();
             for i in 0..pts.npoint() {
-                let inp = pts.point(i);
-                let mut outp = out.point_mut(i);
-                if is_bad(inp[0]) || is_bad(inp[1]) {
-                    outp[0] = BAD_VALUE;
-                    outp[1] = BAD_VALUE;
+                if is_bad(pin[0][i]) || is_bad(pin[1][i]) {
+                    pout[0][i] = BAD_VALUE;
+                    pout[1][i] = BAD_VALUE;
                 } else {
-                    let dx = inp[0] - cen0;
-                    let dy = inp[1] - cen1;
+                    let dx = pin[0][i] - cen0;
+                    let dy = pin[1][i] - cen1;
                     let f = 1.0 + disco * (dx * dx + dy * dy);
-                    outp[0] = dx * f + cen0;
-                    outp[1] = dy * f + cen1;
+                    pout[0][i] = dx * f + cen0;
+                    pout[1][i] = dy * f + cen1;
                 }
             }
         } else {
             // Inverse: remove distortion (SLA_UNPCD approximation)
+            let pin = pts.axis_slices();
+            let pout = out.axes_mut();
             for i in 0..pts.npoint() {
-                let inp = pts.point(i);
-                let mut outp = out.point_mut(i);
-                if is_bad(inp[0]) || is_bad(inp[1]) {
-                    outp[0] = BAD_VALUE;
-                    outp[1] = BAD_VALUE;
+                if is_bad(pin[0][i]) || is_bad(pin[1][i]) {
+                    pout[0][i] = BAD_VALUE;
+                    pout[1][i] = BAD_VALUE;
                 } else {
-                    let dxp = inp[0] - cen0;
-                    let dyp = inp[1] - cen1;
+                    let dxp = pin[0][i] - cen0;
+                    let dyp = pin[1][i] - cen1;
                     let cr2 = disco * (dxp * dxp + dyp * dyp);
                     let a = (2.0 * cr2 + 1.0) / (3.0 * cr2 + 1.0);
                     let cr2a2 = cr2 * a * a;
                     let f = (2.0 * cr2a2 * a + 1.0) / (3.0 * cr2a2 + 1.0);
-                    outp[0] = dxp * f + cen0;
-                    outp[1] = dyp * f + cen1;
+                    pout[0][i] = dxp * f + cen0;
+                    pout[1][i] = dyp * f + cen1;
                 }
             }
         }

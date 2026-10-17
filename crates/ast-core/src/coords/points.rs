@@ -273,6 +273,13 @@ impl<'a> Points<'a> {
         PointBuf::gather(self.axes.len(), |j| self.axes[j][i])
     }
 
+    /// Every axis, so a kernel can index `axis_slices()[j][i]` without
+    /// copying a point.
+    #[inline]
+    pub fn axis_slices(&self) -> &[&'a [f64]] {
+        &self.axes
+    }
+
     /// Points `range` of every axis.
     pub fn points(&self, range: Range<usize>) -> Points<'a> {
         let npoint = range.len();
@@ -379,6 +386,12 @@ impl<'a> PointsMut<'a> {
         for (a, &v) in self.axes.iter_mut().zip(coords) {
             a[i] = v;
         }
+    }
+
+    /// Every axis, writable, so a kernel can hold several at once.
+    #[inline]
+    pub fn axes_mut(&mut self) -> &mut [&'a mut [f64]] {
+        &mut self.axes
     }
 
     /// Writable access to point `i`, written back when the guard drops.

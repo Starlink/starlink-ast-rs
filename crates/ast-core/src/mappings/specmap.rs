@@ -629,16 +629,17 @@ impl SpecMap {
     /// conversion uses the point's own RA and Dec, and the RA and Dec are
     /// copied to the output (specmap.c `Transform` with `map3d` set).
     fn transform_3d(&self, pts: &Points<'_>, forward: bool, out: &mut PointsMut<'_>) {
-        for i in 0..pts.npoint() {
-            let inp = pts.point(i);
-            let (ra, dec) = (inp[1], inp[2]);
-            let mut val = inp[0];
-            let steps: Box<dyn Iterator<Item = &SpecConversion>> = if forward {
-                Box::new(self.conversions.iter())
-            } else {
-                Box::new(self.conversions.iter().rev())
-            };
-            for cvt in steps {
+        let n = pts.npoint();
+        let (spec, ras, decs) = (pts.axis(0), pts.axis(1), pts.axis(2));
+        let [o_spec, o_ra, o_dec, ..] = out.axes_mut() else {
+            unreachable!("a 3-D SpecMap has three outputs")
+        };
+        let nconv = self.conversions.len();
+        for i in 0..n {
+            let (ra, dec) = (ras[i], decs[i]);
+            let mut val = spec[i];
+            for k in 0..nconv {
+                let cvt = &self.conversions[if forward { k } else { nconv - 1 - k }];
                 if is_bad(val) {
                     break;
                 }
@@ -653,10 +654,9 @@ impl SpecMap {
             if !val.is_finite() {
                 val = BAD_VALUE;
             }
-            let mut outp = out.point_mut(i);
-            outp[0] = val;
-            outp[1] = ra;
-            outp[2] = dec;
+            o_spec[i] = val;
+            o_ra[i] = ra;
+            o_dec[i] = dec;
         }
     }
 
@@ -1428,24 +1428,21 @@ impl Mapping for SpecMap {
         // (specmap.c:135), a bad value staying bad and a non-finite result
         // becoming bad at the end.
         let npoint = pts.npoint();
-        for i in 0..npoint {
-            out.point_mut(i)[0] = pts.point(i)[0];
-        }
+        let o = &mut out.axis_mut(0)[..npoint];
+        o.copy_from_slice(pts.axis(0));
         let nconv = self.conversions.len();
         for k in 0..nconv {
             let ci = if fwd { k } else { nconv - 1 - k };
             let cvt = &self.conversions[ci];
             if cvt.cvt_type.is_frame_change() {
                 let fcorr = self.frame_factor(ci, cvt);
-                for i in 0..npoint {
-                    let v = &mut out.point_mut(i)[0];
+                for v in o.iter_mut() {
                     if !is_bad(*v) {
                         *v = apply_frame_change(fcorr, *v, fwd);
                     }
                 }
             } else {
-                for i in 0..npoint {
-                    let v = &mut out.point_mut(i)[0];
+                for v in o.iter_mut() {
                     if !is_bad(*v) {
                         *v = if fwd {
                             system_change_forward(cvt, *v)
@@ -1456,8 +1453,7 @@ impl Mapping for SpecMap {
                 }
             }
         }
-        for i in 0..npoint {
-            let v = &mut out.point_mut(i)[0];
+        for v in o.iter_mut() {
             if !v.is_finite() {
                 *v = BAD_VALUE;
             }
