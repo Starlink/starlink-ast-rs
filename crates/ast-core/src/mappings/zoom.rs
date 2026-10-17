@@ -146,7 +146,7 @@ impl Mapping for ZoomMap {
         forward: bool,
         mut out: PointsMut<'_>,
     ) -> AstResult<()> {
-        crate::mappings::validate_transform(self, &pts, forward, Some(&out))?;
+        crate::mappings::validate_transform_into(self, &pts, forward, Some(&out))?;
         let fwd = self.effective_forward(forward);
         let scale = if fwd { self.zoom() } else { 1.0 / self.zoom() };
         let n = pts.npoint();

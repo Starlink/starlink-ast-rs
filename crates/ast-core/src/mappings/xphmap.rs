@@ -320,7 +320,7 @@ impl Mapping for XphMap {
         forward: bool,
         mut out: PointsMut<'_>,
     ) -> AstResult<()> {
-        crate::mappings::validate_transform(self, &pts, forward, Some(&out))?;
+        crate::mappings::validate_transform_into(self, &pts, forward, Some(&out))?;
         let forward = forward != self.inverted;
         let (xs, ys) = (pts.axis(0), pts.axis(1));
         let [ox, oy, ..] = out.axes_mut() else {

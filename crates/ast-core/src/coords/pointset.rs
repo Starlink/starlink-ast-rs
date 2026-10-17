@@ -2,23 +2,31 @@
 
 use ndarray::{Array2, ArrayView2, ArrayViewMut2};
 
-use super::points::{PointBuf, PointMut, PointShape, Points, PointsMut, WritePoint};
+use super::points::{
+    AxisList, INLINE_AXES, PointBuf, PointMut, PointShape, Points, PointsMut, WritePoint,
+};
 use crate::error::{AstError, AstResult, ErrorCode};
 
 /// Frame-unaware coordinate block.
 ///
-/// One contiguous array per axis, as C's PointSet stores them: the data is
-/// an `(ncoord, npoint)` array in standard layout, so axis `j` is row `j`.
+/// One contiguous array per axis, as C's PointSet stores them: axis `j` is
+/// `data[j * npoint..(j + 1) * npoint]`, which [`PointSet::view`] presents as
+/// an `(ncoord, npoint)` array.
 #[derive(Debug, Clone)]
 pub struct PointSet {
-    data: Array2<f64>,
+    data: Vec<f64>,
+    ncoord: usize,
+    npoint: usize,
 }
 
 impl PointSet {
     /// Create a PointSet filled with zeros.
+    #[inline]
     pub fn zeros(npoint: usize, ncoord: usize) -> Self {
         Self {
-            data: Array2::zeros((ncoord, npoint)),
+            data: vec![0.0; ncoord * npoint],
+            ncoord,
+            npoint,
         }
     }
 
@@ -64,15 +72,17 @@ impl PointSet {
             flat.extend_from_slice(row);
             npoint += 1;
         }
-        let by_point = Array2::from_shape_vec((npoint, ncoord), flat).unwrap();
-        Self {
-            data: by_point.reversed_axes().as_standard_layout().into_owned(),
+        let mut out = Self::zeros(npoint, ncoord);
+        for (i, row) in flat.chunks_exact(ncoord.max(1)).enumerate().take(npoint) {
+            out.set_point(i, &row[..ncoord]);
         }
+        out
     }
 
     /// Create from column slices (one slice per coordinate axis).
     ///
     /// All columns must have the same length.
+    #[inline]
     pub fn from_columns(cols: &[&[f64]]) -> AstResult<Self> {
         if cols.is_empty() {
             return Err(AstError::new(
@@ -89,16 +99,19 @@ impl PointSet {
                 ));
             }
         }
-        let mut data = Array2::zeros((cols.len(), npoint));
-        for (mut row, col) in data.rows_mut().into_iter().zip(cols) {
-            row.as_slice_mut()
-                .expect("standard layout")
-                .copy_from_slice(col);
+        let mut data = Vec::with_capacity(cols.len() * npoint);
+        for col in cols {
+            data.extend_from_slice(col);
         }
-        Ok(Self { data })
+        Ok(Self {
+            data,
+            ncoord: cols.len(),
+            npoint,
+        })
     }
 
     /// A copy of the points of a view.
+    #[inline]
     pub fn from_points(p: &Points<'_>) -> Self {
         let mut out = Self::zeros(p.npoint(), p.ncoord());
         out.as_points_mut().copy_from(p);
@@ -107,34 +120,44 @@ impl PointSet {
 
     /// Create from an `(ncoord, npoint)` array.
     pub fn from_ndarray(a: Array2<f64>) -> Self {
+        let (ncoord, npoint) = a.dim();
         Self {
-            data: a.as_standard_layout().into_owned(),
+            data: a.iter().copied().collect(),
+            ncoord,
+            npoint,
         }
     }
 
     /// Number of points.
+    #[inline]
     pub fn npoint(&self) -> usize {
-        self.data.ncols()
+        self.npoint
     }
 
     /// Number of coordinates per point.
+    #[inline]
     pub fn ncoord(&self) -> usize {
-        self.data.nrows()
+        self.ncoord
     }
 
     /// The `(ncoord, npoint)` array.
+    #[inline]
     pub fn view(&self) -> ArrayView2<'_, f64> {
-        self.data.view()
+        ArrayView2::from_shape((self.ncoord, self.npoint), &self.data)
+            .expect("data holds ncoord * npoint values")
     }
 
     /// The `(ncoord, npoint)` array, writable.
+    #[inline]
     pub fn view_mut(&mut self) -> ArrayViewMut2<'_, f64> {
-        self.data.view_mut()
+        ArrayViewMut2::from_shape((self.ncoord, self.npoint), &mut self.data)
+            .expect("data holds ncoord * npoint values")
     }
 
     /// Consume and return the `(ncoord, npoint)` array.
     pub fn into_ndarray(self) -> Array2<f64> {
-        self.data
+        Array2::from_shape_vec((self.ncoord, self.npoint), self.data)
+            .expect("data holds ncoord * npoint values")
     }
 
     /// A copy of point `i`.
@@ -142,10 +165,9 @@ impl PointSet {
     /// Panics if `i >= npoint()`.
     #[inline]
     pub fn point(&self, i: usize) -> PointBuf {
-        let npoint = self.npoint();
+        let npoint = self.npoint;
         assert!(i < npoint, "point {i} of a PointSet of {npoint}");
-        let data = self.data.as_slice().expect("standard layout");
-        PointBuf::gather(self.ncoord(), |j| data[j * npoint + i])
+        PointBuf::gather(self.ncoord, |j| self.data[j * npoint + i])
     }
 
     /// Set point `i`; `coords` must have one value per axis.
@@ -158,11 +180,10 @@ impl PointSet {
             self.ncoord(),
             "set_point needs one value per axis"
         );
-        let npoint = self.npoint();
+        let npoint = self.npoint;
         assert!(i < npoint, "point {i} of a PointSet of {npoint}");
-        let data = self.data.as_slice_mut().expect("standard layout");
         for (j, &v) in coords.iter().enumerate() {
-            data[j * npoint + i] = v;
+            self.data[j * npoint + i] = v;
         }
     }
 
@@ -179,55 +200,84 @@ impl PointSet {
     /// Axis `j` (0-based; PointSet is frame-unaware and uses raw array indices).
     #[inline]
     pub fn axis(&self, j: usize) -> &[f64] {
-        self.data.row(j).to_slice().expect("standard layout")
+        assert!(j < self.ncoord, "axis {j} of a PointSet of {}", self.ncoord);
+        &self.data[j * self.npoint..(j + 1) * self.npoint]
     }
 
     /// Axis `j` (0-based), writable.
     #[inline]
     pub fn axis_mut(&mut self, j: usize) -> &mut [f64] {
-        self.data.row_mut(j).into_slice().expect("standard layout")
+        assert!(j < self.ncoord, "axis {j} of a PointSet of {}", self.ncoord);
+        &mut self.data[j * self.npoint..(j + 1) * self.npoint]
     }
 
     /// Iterate over values in a single coordinate axis.
     ///
     /// `j` is 0-based. Panics if `j >= ncoord()`.
+    #[inline]
     pub fn axis_iter(&self, j: usize) -> impl Iterator<Item = f64> + '_ {
         self.axis(j).iter().copied()
     }
 
     /// A view of every axis.
+    #[inline]
     pub fn as_points(&self) -> Points<'_> {
-        let npoint = self.npoint();
-        Points::from_parts(
-            self.data
-                .rows()
-                .into_iter()
-                .map(|r| r.to_slice().expect("standard layout"))
-                .collect(),
-            npoint,
-        )
+        let n = self.npoint;
+        let axes = if self.ncoord <= INLINE_AXES {
+            let mut buf: [&[f64]; INLINE_AXES] = [&[]; INLINE_AXES];
+            for (j, slot) in buf.iter_mut().enumerate().take(self.ncoord) {
+                *slot = &self.data[j * n..(j + 1) * n];
+            }
+            AxisList::Inline(buf, self.ncoord)
+        } else {
+            AxisList::Heap(
+                (0..self.ncoord)
+                    .map(|j| &self.data[j * n..(j + 1) * n])
+                    .collect(),
+            )
+        };
+        Points::from_parts(axes, n)
     }
 
     /// A writable view of every axis.
+    #[inline]
     pub fn as_points_mut(&mut self) -> PointsMut<'_> {
-        let npoint = self.npoint();
-        PointsMut::from_parts(
-            self.data
-                .rows_mut()
-                .into_iter()
-                .map(|r| r.into_slice().expect("standard layout"))
-                .collect(),
-            npoint,
-        )
+        let n = self.npoint;
+        let ncoord = self.ncoord;
+        let mut chunks = self.data.chunks_exact_mut(n.max(1));
+        let axes = if ncoord <= INLINE_AXES {
+            let mut buf: [&mut [f64]; INLINE_AXES] = Default::default();
+            for slot in buf.iter_mut().take(ncoord) {
+                *slot = if n == 0 {
+                    &mut []
+                } else {
+                    chunks.next().expect("one chunk per axis")
+                };
+            }
+            AxisList::Inline(buf, ncoord)
+        } else {
+            AxisList::Heap(
+                (0..ncoord)
+                    .map(|_| {
+                        if n == 0 {
+                            &mut [][..]
+                        } else {
+                            chunks.next().expect("one chunk per axis")
+                        }
+                    })
+                    .collect(),
+            )
+        };
+        PointsMut::from_parts(axes, n)
     }
 }
 
 impl PointShape for PointSet {
     fn npoint(&self) -> usize {
-        self.data.ncols()
+        self.npoint
     }
     fn ncoord(&self) -> usize {
-        self.data.nrows()
+        self.ncoord
     }
 }
 

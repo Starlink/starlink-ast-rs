@@ -15,12 +15,83 @@ use crate::error::{AstError, AstResult, ErrorCode};
 /// corpora use at most 5 axes.
 pub const INLINE_AXES: usize = 8;
 
+/// The axes of a view: up to [`INLINE_AXES`] held inline, more on the heap.
+#[derive(Clone, Debug)]
+pub(crate) enum AxisList<T> {
+    Inline([T; INLINE_AXES], usize),
+    Heap(Vec<T>),
+}
+
+impl<T: Default> AxisList<T> {
+    #[inline]
+    pub(crate) fn new() -> Self {
+        Self::Inline(Default::default(), 0)
+    }
+
+    #[inline]
+    pub(crate) fn push(&mut self, v: T) {
+        match self {
+            Self::Inline(buf, len) if *len < INLINE_AXES => {
+                buf[*len] = v;
+                *len += 1;
+            }
+            Self::Inline(buf, len) => {
+                let mut heap: Vec<T> = buf[..*len].iter_mut().map(std::mem::take).collect();
+                heap.push(v);
+                *self = Self::Heap(heap);
+            }
+            Self::Heap(heap) => heap.push(v),
+        }
+    }
+
+    /// The axes as a vector, leaving this list empty.
+    fn take_all(&mut self) -> Vec<T> {
+        match std::mem::replace(self, Self::new()) {
+            Self::Inline(mut buf, len) => buf[..len].iter_mut().map(std::mem::take).collect(),
+            Self::Heap(heap) => heap,
+        }
+    }
+}
+
+impl<T: Default> FromIterator<T> for AxisList<T> {
+    #[inline]
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+        let mut list = Self::new();
+        for v in iter {
+            list.push(v);
+        }
+        list
+    }
+}
+
+impl<T> Deref for AxisList<T> {
+    type Target = [T];
+    #[inline]
+    fn deref(&self) -> &[T] {
+        match self {
+            Self::Inline(buf, len) => &buf[..*len],
+            Self::Heap(heap) => heap,
+        }
+    }
+}
+
+impl<T> DerefMut for AxisList<T> {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut [T] {
+        match self {
+            Self::Inline(buf, len) => &mut buf[..*len],
+            Self::Heap(heap) => heap,
+        }
+    }
+}
+
 /// One point's coordinates, copied out of a PointSet or a view.
 #[derive(Clone, Debug, Default)]
 pub struct PointBuf(SmallVec<[f64; INLINE_AXES]>);
 
 impl PointBuf {
     /// A point of `ncoord` zeros.
+    #[inline]
     pub fn zeros(ncoord: usize) -> Self {
         Self(SmallVec::from_elem(0.0, ncoord))
     }
@@ -42,18 +113,21 @@ impl PointBuf {
 
 impl Deref for PointBuf {
     type Target = [f64];
+    #[inline]
     fn deref(&self) -> &[f64] {
         &self.0
     }
 }
 
 impl DerefMut for PointBuf {
+    #[inline]
     fn deref_mut(&mut self) -> &mut [f64] {
         &mut self.0
     }
 }
 
 impl AsRef<[f64]> for PointBuf {
+    #[inline]
     fn as_ref(&self) -> &[f64] {
         &self.0
     }
@@ -62,6 +136,7 @@ impl AsRef<[f64]> for PointBuf {
 impl IntoIterator for PointBuf {
     type Item = f64;
     type IntoIter = smallvec::IntoIter<[f64; INLINE_AXES]>;
+    #[inline]
     fn into_iter(self) -> Self::IntoIter {
         self.0.into_iter()
     }
@@ -70,48 +145,56 @@ impl IntoIterator for PointBuf {
 impl<'a> IntoIterator for &'a PointBuf {
     type Item = &'a f64;
     type IntoIter = std::slice::Iter<'a, f64>;
+    #[inline]
     fn into_iter(self) -> Self::IntoIter {
         self.0.iter()
     }
 }
 
 impl FromIterator<f64> for PointBuf {
+    #[inline]
     fn from_iter<I: IntoIterator<Item = f64>>(iter: I) -> Self {
         Self(iter.into_iter().collect())
     }
 }
 
 impl PartialEq for PointBuf {
+    #[inline]
     fn eq(&self, other: &Self) -> bool {
         self[..] == other[..]
     }
 }
 
 impl PartialEq<[f64]> for PointBuf {
+    #[inline]
     fn eq(&self, other: &[f64]) -> bool {
         self[..] == *other
     }
 }
 
 impl PartialEq<&[f64]> for PointBuf {
+    #[inline]
     fn eq(&self, other: &&[f64]) -> bool {
         self[..] == **other
     }
 }
 
 impl<const N: usize> PartialEq<[f64; N]> for PointBuf {
+    #[inline]
     fn eq(&self, other: &[f64; N]) -> bool {
         self[..] == other[..]
     }
 }
 
 impl<const N: usize> PartialEq<&[f64; N]> for PointBuf {
+    #[inline]
     fn eq(&self, other: &&[f64; N]) -> bool {
         self[..] == other[..]
     }
 }
 
 impl PartialEq<Vec<f64>> for PointBuf {
+    #[inline]
     fn eq(&self, other: &Vec<f64>) -> bool {
         self[..] == other[..]
     }
@@ -217,14 +300,15 @@ fn check_stride(len: usize, ncoord: usize, npoint: usize, stride: usize) -> AstR
 /// A read-only view of `npoint` points, one slice per axis.
 #[derive(Clone, Debug)]
 pub struct Points<'a> {
-    axes: SmallVec<[&'a [f64]; INLINE_AXES]>,
+    axes: AxisList<&'a [f64]>,
     npoint: usize,
 }
 
 impl<'a> Points<'a> {
     /// A view of one slice per axis; every slice must have the same length.
+    #[inline]
     pub fn new(axes: impl IntoIterator<Item = &'a [f64]>) -> AstResult<Self> {
-        let axes: SmallVec<[&'a [f64]; INLINE_AXES]> = axes.into_iter().collect();
+        let axes: AxisList<&'a [f64]> = axes.into_iter().collect();
         let npoint = common_length(axes.iter().map(|a| a.len()))?;
         Ok(Self { axes, npoint })
     }
@@ -232,6 +316,7 @@ impl<'a> Points<'a> {
     /// A view of `ncoord` axes of `npoint` points held one after another in
     /// `data`, axis `j` starting at `j * stride`: C's `astTranN` layout,
     /// whose `indim` is `stride`.
+    #[inline]
     pub fn from_strided(
         data: &'a [f64],
         ncoord: usize,
@@ -246,17 +331,20 @@ impl<'a> Points<'a> {
     }
 
     /// A view whose axes the caller knows are all `npoint` long.
-    pub(crate) fn from_parts(axes: SmallVec<[&'a [f64]; INLINE_AXES]>, npoint: usize) -> Self {
+    #[inline]
+    pub(crate) fn from_parts(axes: AxisList<&'a [f64]>, npoint: usize) -> Self {
         debug_assert!(axes.iter().all(|a| a.len() == npoint));
         Self { axes, npoint }
     }
 
     /// Number of points.
+    #[inline]
     pub fn npoint(&self) -> usize {
         self.npoint
     }
 
     /// Number of axes.
+    #[inline]
     pub fn ncoord(&self) -> usize {
         self.axes.len()
     }
@@ -281,6 +369,7 @@ impl<'a> Points<'a> {
     }
 
     /// Points `range` of every axis.
+    #[inline]
     pub fn points(&self, range: Range<usize>) -> Points<'a> {
         let npoint = range.len();
         Points {
@@ -290,6 +379,7 @@ impl<'a> Points<'a> {
     }
 
     /// Axes `range` (0-based).
+    #[inline]
     pub fn axes(&self, range: Range<usize>) -> Points<'a> {
         Points {
             axes: self.axes[range].iter().copied().collect(),
@@ -299,9 +389,11 @@ impl<'a> Points<'a> {
 }
 
 impl PointShape for Points<'_> {
+    #[inline]
     fn npoint(&self) -> usize {
         self.npoint
     }
+    #[inline]
     fn ncoord(&self) -> usize {
         self.axes.len()
     }
@@ -310,19 +402,21 @@ impl PointShape for Points<'_> {
 /// A writable view of `npoint` points, one slice per axis.
 #[derive(Debug)]
 pub struct PointsMut<'a> {
-    axes: SmallVec<[&'a mut [f64]; INLINE_AXES]>,
+    axes: AxisList<&'a mut [f64]>,
     npoint: usize,
 }
 
 impl<'a> PointsMut<'a> {
     /// A view of one slice per axis; every slice must have the same length.
+    #[inline]
     pub fn new(axes: impl IntoIterator<Item = &'a mut [f64]>) -> AstResult<Self> {
-        let axes: SmallVec<[&'a mut [f64]; INLINE_AXES]> = axes.into_iter().collect();
+        let axes: AxisList<&'a mut [f64]> = axes.into_iter().collect();
         let npoint = common_length(axes.iter().map(|a| a.len()))?;
         Ok(Self { axes, npoint })
     }
 
     /// The writable form of [`Points::from_strided`].
+    #[inline]
     pub fn from_strided(
         data: &'a mut [f64],
         ncoord: usize,
@@ -330,7 +424,7 @@ impl<'a> PointsMut<'a> {
         stride: usize,
     ) -> AstResult<Self> {
         let need = check_stride(data.len(), ncoord, npoint, stride)?;
-        let mut axes = SmallVec::new();
+        let mut axes = AxisList::new();
         let mut rest = &mut data[..need];
         for j in 0..ncoord {
             let take = if j + 1 < ncoord { stride } else { npoint };
@@ -342,17 +436,20 @@ impl<'a> PointsMut<'a> {
     }
 
     /// A view whose axes the caller knows are all `npoint` long.
-    pub(crate) fn from_parts(axes: SmallVec<[&'a mut [f64]; INLINE_AXES]>, npoint: usize) -> Self {
+    #[inline]
+    pub(crate) fn from_parts(axes: AxisList<&'a mut [f64]>, npoint: usize) -> Self {
         debug_assert!(axes.iter().all(|a| a.len() == npoint));
         Self { axes, npoint }
     }
 
     /// Number of points.
+    #[inline]
     pub fn npoint(&self) -> usize {
         self.npoint
     }
 
     /// Number of axes.
+    #[inline]
     pub fn ncoord(&self) -> usize {
         self.axes.len()
     }
@@ -415,6 +512,7 @@ impl<'a> PointsMut<'a> {
     }
 
     /// Copy `src` into the first `src.npoint()` points of each axis.
+    #[inline]
     pub fn copy_from(&mut self, src: &Points<'_>) {
         assert_eq!(
             src.ncoord(),
@@ -428,6 +526,7 @@ impl<'a> PointsMut<'a> {
     }
 
     /// A read-only view of the same points.
+    #[inline]
     pub fn as_points(&self) -> Points<'_> {
         Points {
             axes: self.axes.iter().map(|a| &**a).collect(),
@@ -436,6 +535,7 @@ impl<'a> PointsMut<'a> {
     }
 
     /// A shorter-lived writable view of the same points.
+    #[inline]
     pub fn reborrow(&mut self) -> PointsMut<'_> {
         PointsMut {
             axes: self.axes.iter_mut().map(|a| &mut **a).collect(),
@@ -444,6 +544,7 @@ impl<'a> PointsMut<'a> {
     }
 
     /// Points `range` of every axis.
+    #[inline]
     pub fn points_mut(&mut self, range: Range<usize>) -> PointsMut<'_> {
         let npoint = range.len();
         PointsMut {
@@ -457,11 +558,13 @@ impl<'a> PointsMut<'a> {
     }
 
     /// The first `k` axes and the rest, as two views.
+    #[inline]
     pub fn split_axes_at(self, k: usize) -> (PointsMut<'a>, PointsMut<'a>) {
         let npoint = self.npoint;
-        let mut axes = self.axes.into_iter();
-        let left: SmallVec<_> = axes.by_ref().take(k).collect();
-        let right: SmallVec<_> = axes.collect();
+        let mut this = self;
+        let mut axes = this.axes.take_all().into_iter();
+        let left: AxisList<_> = axes.by_ref().take(k).collect();
+        let right: AxisList<_> = axes.collect();
         (
             PointsMut { axes: left, npoint },
             PointsMut {
@@ -473,9 +576,11 @@ impl<'a> PointsMut<'a> {
 }
 
 impl PointShape for PointsMut<'_> {
+    #[inline]
     fn npoint(&self) -> usize {
         self.npoint
     }
+    #[inline]
     fn ncoord(&self) -> usize {
         self.axes.len()
     }

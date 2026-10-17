@@ -94,7 +94,7 @@ impl Mapping for ShiftMap {
         forward: bool,
         mut out: PointsMut<'_>,
     ) -> AstResult<()> {
-        crate::mappings::validate_transform(self, &pts, forward, Some(&out))?;
+        crate::mappings::validate_transform_into(self, &pts, forward, Some(&out))?;
         let fwd = self.effective_forward(forward);
         let sign = if fwd { 1.0 } else { -1.0 };
         let n = pts.npoint();

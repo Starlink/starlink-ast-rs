@@ -325,7 +325,7 @@ impl Mapping for PcdMap {
         forward: bool,
         mut out: PointsMut<'_>,
     ) -> AstResult<()> {
-        crate::mappings::validate_transform(self, &pts, forward, Some(&out))?;
+        crate::mappings::validate_transform_into(self, &pts, forward, Some(&out))?;
         let fwd = self.effective_forward(forward);
         let disco = self.effective_disc();
         let cen0 = self.effective_pcdcen()[0];

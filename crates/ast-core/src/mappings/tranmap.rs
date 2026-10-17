@@ -284,7 +284,7 @@ impl Mapping for TranMap {
     }
 
     fn transform_into(&self, pts: Points<'_>, forward: bool, out: PointsMut<'_>) -> AstResult<()> {
-        crate::mappings::validate_transform(self, &pts, forward, Some(&out))?;
+        crate::mappings::validate_transform_into(self, &pts, forward, Some(&out))?;
         let effective_fwd = forward != self.inverted;
 
         if effective_fwd {

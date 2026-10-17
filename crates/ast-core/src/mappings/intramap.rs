@@ -331,7 +331,7 @@ impl Mapping for IntraMap {
         forward: bool,
         mut out: PointsMut<'_>,
     ) -> AstResult<()> {
-        crate::mappings::validate_transform(self, &pts, forward, Some(&out))?;
+        crate::mappings::validate_transform_into(self, &pts, forward, Some(&out))?;
         self.transform
             .transform(self, &pts, forward != self.inverted, &mut out)
             .map_err(|e| {

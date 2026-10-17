@@ -3302,7 +3302,7 @@ impl Mapping for Moc {
         forward: bool,
         mut out: PointsMut<'_>,
     ) -> AstResult<()> {
-        crate::mappings::validate_transform(self, &pts, forward, Some(&out))?;
+        crate::mappings::validate_transform_into(self, &pts, forward, Some(&out))?;
         let result = self.transform(&PointSet::from_points(&pts), forward)?;
         let ncoord = result.ncoord();
         for i in 0..result.npoint() {

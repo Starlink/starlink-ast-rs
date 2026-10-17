@@ -212,7 +212,7 @@ impl Mapping for WinMap {
         forward: bool,
         mut out: PointsMut<'_>,
     ) -> AstResult<()> {
-        crate::mappings::validate_transform(self, &pts, forward, Some(&out))?;
+        crate::mappings::validate_transform_into(self, &pts, forward, Some(&out))?;
         let fwd = self.effective_forward(forward);
         let n = pts.npoint();
         let axes = self.shifts.iter().zip(&self.scales).take(pts.ncoord());

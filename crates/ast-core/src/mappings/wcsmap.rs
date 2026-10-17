@@ -989,7 +989,7 @@ impl Mapping for WcsMap {
         forward: bool,
         mut out: PointsMut<'_>,
     ) -> AstResult<()> {
-        crate::mappings::validate_transform(self, &pts, forward, Some(&out))?;
+        crate::mappings::validate_transform_into(self, &pts, forward, Some(&out))?;
         self.check_transformable()?;
         // Unknown/blank projection acts as identity — pass through all coords.
         if self.proj == WcsProjection::Unknown {

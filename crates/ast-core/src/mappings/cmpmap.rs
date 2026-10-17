@@ -767,7 +767,7 @@ impl Mapping for CmpMap {
     }
 
     fn transform_into(&self, pts: Points<'_>, forward: bool, out: PointsMut<'_>) -> AstResult<()> {
-        crate::mappings::validate_transform(self, &pts, forward, Some(&out))?;
+        crate::mappings::validate_transform_into(self, &pts, forward, Some(&out))?;
         let fwd = self.effective_forward(forward);
         match self.kind {
             Composition::Series => self.series_transform_into(pts, fwd, out),

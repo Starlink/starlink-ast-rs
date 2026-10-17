@@ -592,7 +592,7 @@ impl Mapping for ChebyMap {
         forward: bool,
         mut out: PointsMut<'_>,
     ) -> AstResult<()> {
-        crate::mappings::validate_transform(self, &pts, forward, Some(&out))?;
+        crate::mappings::validate_transform_into(self, &pts, forward, Some(&out))?;
         // ChebyMap inherits PolyMap's Transform and overrides only the
         // powers (chebymap.c).
         let fwd = self.effective_forward(forward);

@@ -144,7 +144,7 @@ impl Mapping for NormMap {
         forward: bool,
         mut out: PointsMut<'_>,
     ) -> AstResult<()> {
-        crate::mappings::validate_transform(self, &pts, forward, Some(&out))?;
+        crate::mappings::validate_transform_into(self, &pts, forward, Some(&out))?;
         let _ = forward;
         let naxes = self.naxes();
 

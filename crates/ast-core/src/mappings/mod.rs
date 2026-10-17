@@ -1100,6 +1100,21 @@ pub(crate) fn validate_transform<M: Mapping + ?Sized>(
     forward: bool,
     out: Option<&dyn PointShape>,
 ) -> AstResult<()> {
+    match out {
+        Some(out) => validate_transform_into(map, pts, forward, Some(out)),
+        None => validate_transform_into(map, pts, forward, None::<&PointSet>),
+    }
+}
+
+/// [`validate_transform`] with the output's type known, so its checks
+/// inline into each class's `transform_into`.
+#[inline]
+pub(crate) fn validate_transform_into<M: Mapping + ?Sized, O: PointShape + ?Sized>(
+    map: &M,
+    pts: &impl PointShape,
+    forward: bool,
+    out: Option<&O>,
+) -> AstResult<()> {
     require_direction(map, forward, "astTransform")?;
     let (nin, nout) = if forward {
         (map.nin(), map.nout())

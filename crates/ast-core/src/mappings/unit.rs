@@ -81,7 +81,7 @@ impl Mapping for UnitMap {
         forward: bool,
         mut out: PointsMut<'_>,
     ) -> AstResult<()> {
-        crate::mappings::validate_transform(self, &pts, forward, Some(&out))?;
+        crate::mappings::validate_transform_into(self, &pts, forward, Some(&out))?;
         let n = pts.npoint();
         for j in 0..pts.ncoord() {
             for (o, &v) in out.axis_mut(j)[..n].iter_mut().zip(pts.axis(j)) {
@@ -98,7 +98,7 @@ impl Mapping for UnitMap {
         forward: bool,
         mut out: PointsMut<'_>,
     ) -> AstResult<()> {
-        crate::mappings::validate_transform(self, &pts, forward, Some(&out))?;
+        crate::mappings::validate_transform_into(self, &pts, forward, Some(&out))?;
         let n = pts.npoint();
         for j in 0..pts.ncoord() {
             out.axis_mut(j)[..n].copy_from_slice(pts.axis(j));

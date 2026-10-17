@@ -368,7 +368,7 @@ impl Mapping for MathMap {
         forward: bool,
         mut out: PointsMut<'_>,
     ) -> AstResult<()> {
-        crate::mappings::validate_transform(self, &pts, forward, Some(&out))?;
+        crate::mappings::validate_transform_into(self, &pts, forward, Some(&out))?;
         let effective_forward = forward != self.inverted;
         let npoint = pts.npoint();
         let ncoord_in = if effective_forward {

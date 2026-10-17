@@ -1417,7 +1417,7 @@ impl Mapping for SpecMap {
         forward: bool,
         mut out: PointsMut<'_>,
     ) -> AstResult<()> {
-        crate::mappings::validate_transform(self, &pts, forward, Some(&out))?;
+        crate::mappings::validate_transform_into(self, &pts, forward, Some(&out))?;
         let fwd = self.effective_forward(forward);
         if self.nin == 3 {
             self.transform_3d(&pts, fwd, &mut out);
