@@ -788,14 +788,11 @@ pub(crate) fn region_transform<R: RegionGeometry>(
 
     // Build output: passthrough for inside, BAD for outside.
     let mut out = PointSet::zeros(npoint, ncoord);
-    for (i, &effective_inside) in inside.iter().enumerate() {
-        if effective_inside {
-            let src = pts.point(i);
-            let mut dst = out.point_mut(i);
-            dst.copy_from_slice(&src);
-        } else {
-            let mut dst = out.point_mut(i);
-            dst.fill(BAD_VALUE);
+    for j in 0..ncoord {
+        for ((dst, &src), &effective_inside) in
+            out.axis_mut(j).iter_mut().zip(pts.axis(j)).zip(&inside)
+        {
+            *dst = if effective_inside { src } else { BAD_VALUE };
         }
     }
 
