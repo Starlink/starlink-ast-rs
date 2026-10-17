@@ -1,8 +1,8 @@
 # Per-axis PointSet and borrowed point views — design
 
 **Date:** 2026-10-16
-**Status:** draft for review
-**Amends:** [`2026-04-20-rust-port-design.md`](2026-04-20-rust-port-design.md), the `PointSet` layout and the claim that its buffers cross the C ABI without a copy (rev 7, see "Spec amendment").
+**Status:** implemented; every Mapping's transform kernel and the Region transform read and write whole axes (see "As built")
+**Amends:** [`2026-04-20-rust-port-design.md`](2026-04-20-rust-port-design.md), the `PointSet` layout and the claim that its buffers cross the C ABI without a copy (rev 34, see "Spec amendment").
 
 ## Purpose
 
@@ -147,7 +147,7 @@ The rule in `CLAUDE.md`'s bulk-transform section still applies to anything beyon
 ### Stage 4 — close out
 
 - Re-record the `docs/perf` sweep for the tech report, beside the first one.
-- Amend the design spec (rev 7), see below.
+- Amend the design spec (rev 34), see below.
 - Update `CLAUDE.md`'s bulk-transform section to describe axis-loop kernels over views.
 
 ## Testing
@@ -161,11 +161,25 @@ The rule in `CLAUDE.md`'s bulk-transform section still applies to anything beyon
 
 ## Spec amendment
 
-Rev 7 of `2026-04-20-rust-port-design.md`:
+Rev 34 of `2026-04-20-rust-port-design.md`:
 
 - `PointSet` is one contiguous array per axis, shape `(ncoord, npoint)`.
 - The statement that a row-major `Array2` lets `ast-capi` hand buffers to C without a copy is withdrawn; it was false for every C transform entry, all of which take per-axis arrays.
 - `transform_into` takes `Points` and `PointsMut`, and the C shim builds them over caller memory without copying.
+
+## As built
+
+Where the code differs from the design above:
+
+- `point_mut(i)` stays, returning `PointMut`, a guard that holds a copy of the point and writes it back when dropped.
+  Hand-placed `set_point` calls at 122 sites missed write-backs on `continue`, `?` and early-return paths.
+- The list of axis slices is `AxisList`, an enum of an inline array of 8 and a `Vec`, rather than a `SmallVec`, so that a `PointSet` can build its views without a loop.
+  The inline capacity stays 8.
+- Stage 3 covers every Mapping, not only the seven classes named there: the other kernels were converted to axis loops or to direct indexing of bound axis slices, so that no class is slower than before the change at large N.
+  Non-kernel code (Region geometry, `map_box`, `linear_approx`, the simplifier) still reads points with `point(i)`.
+- A view costs about 6 ns per transform call at N=1 over the old `&PointSet` arguments: building two views and passing them by value.
+  Rust callers at N=1 accept that cost; a C-shaped caller's single-point transform fell from about 61 ns to 13 ns, against C's 540 ns.
+- UnitNormMap's forward transform takes about 35 ns more per call than before at N=10; the per-point loop that avoids it is 10 to 13% slower at large N.
 
 ## Out of scope
 

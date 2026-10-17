@@ -2,6 +2,14 @@
 
 ## Revision history
 
+- **2026-10-17 (rev 34)**: `PointSet` holds one contiguous array per
+  axis, shape `(ncoord, npoint)`, and `Mapping::transform_into` takes
+  borrowed views, `Points` and `PointsMut`, instead of `PointSet`s.
+  `transform` is a provided method over it. Kernels loop down whole axes.
+  The statement that a row-major `Array2` lets `ast-capi` hand buffers to
+  C without a copy is withdrawn: every C transform entry takes per-axis
+  arrays, so it was never true. See
+  `2026-10-16-per-axis-pointset-design.md`.
 - **2026-10-15 (rev 33)**: The tier-5 crate is renamed `ast-oracle-bench`
   → `ast-bench`, a plain binary rather than criterion benches, in which
   the reference C library is an optional engine loaded at runtime
@@ -603,9 +611,9 @@ pub trait Mapping {
     fn nin(&self) -> usize;
     fn nout(&self) -> usize;
     fn is_inverted(&self) -> bool;
-    fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet>;
-    fn transform_into(&self, pts: &PointSet, forward: bool,
-                      out: &mut PointSet) -> AstResult<()>;
+    fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet>;  // rev 34: provided
+    fn transform_into(&self, pts: Points<'_>, forward: bool,
+                      out: PointsMut<'_>) -> AstResult<()>;           // rev 34: views
     fn invert(&mut self);
     fn simplified(&self) -> AstResult<DynMapping>;
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64>;
@@ -924,9 +932,11 @@ internal `PointSet` and the public `PointList`:
 use ndarray::{Array2, ArrayView2, ArrayViewMut2};
 
 /// Frame-unaware coordinate block. Used inside Mapping implementations.
-/// Row-major: shape = (npoint, ncoord).
+/// One contiguous array per axis: shape = (ncoord, npoint).  // rev 34
 pub struct PointSet {
-    data: Array2<f64>,
+    data: Vec<f64>,
+    ncoord: usize,
+    npoint: usize,
 }
 
 impl PointSet {
@@ -941,10 +951,23 @@ impl PointSet {
     pub fn view_mut(&mut self) -> ArrayViewMut2<f64>;
     pub fn into_ndarray(self) -> Array2<f64>;
 
-    pub fn point(&self, i: usize) -> &[f64];
-    pub fn point_mut(&mut self, i: usize) -> &mut [f64];
+    // rev 34: a point is spread across the axes, so it is copied out and
+    // written back rather than borrowed.
+    pub fn point(&self, i: usize) -> PointBuf;
+    pub fn set_point(&mut self, i: usize, coords: &[f64]);
+    pub fn point_mut(&mut self, i: usize) -> PointMut<'_, Self>;
+    pub fn axis(&self, j: usize) -> &[f64];                    // rev 34
+    pub fn axis_mut(&mut self, j: usize) -> &mut [f64];        // rev 34
     pub fn axis_iter(&self, j: usize) -> impl Iterator<Item = f64> + '_;  // rev 6: was `axis`
+    pub fn as_points(&self) -> Points<'_>;                     // rev 34
+    pub fn as_points_mut(&mut self) -> PointsMut<'_>;          // rev 34
 }
+
+/// Borrowed views of per-axis coordinate arrays, the arguments of
+/// `transform_into`. Each holds one slice per axis, all the same length,
+/// over a PointSet or over memory the caller owns.  // rev 34
+pub struct Points<'a> { .. }
+pub struct PointsMut<'a> { .. }
 
 /// Frame-aware point collection. Implements Region (inherits from it in
 /// the C object model). Changing the Frame triggers Region integrity:
@@ -958,17 +981,20 @@ pub struct PointList {
 impl Region for PointList { .. }
 ```
 
-- **`ndarray` is a public dependency of `ast-core`.** The C interop
-  remains cheap: `Array2<f64>` owns its data as a contiguous row-major
-  `Vec<f64>` which `ast-capi` can hand to C without copy. Users who want
-  to avoid the ndarray dependency can still consume `.view()` /
-  `.into_ndarray()` outputs trivially.
+- **`ndarray` is a public dependency of `ast-core`.** `PointSet::view`,
+  `from_ndarray` and `into_ndarray` exchange `(ncoord, npoint)` arrays.
+  *(rev 34: the C interop does not rest on ndarray. `transform_into` takes
+  `Points` and `PointsMut`, which the C shim builds over the caller's
+  per-axis arrays without copying, as C's `TranN` does with
+  `astSetPoints`. `ast-capi` is still a stub, so those entry points are
+  not written yet.)*
 - **`BAD_VALUE` = `-f64::MAX`**, bit-identical to `AST__BAD` (unchanged
-  from v1). NaN accepted on input, `BAD_VALUE` always on output. `Points`
-  / `PointSet` buffers cross the CFFI boundary zero-copy.
-- **Transform signature**:
-  `fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet>`,
-  with `transform_into(..., out: &mut PointSet)` for buffer reuse.
+  from v1). NaN accepted on input, `BAD_VALUE` always on output.
+- **Transform signature** *(rev 34)*:
+  `fn transform_into(&self, pts: Points<'_>, forward: bool, out: PointsMut<'_>) -> AstResult<()>`
+  is the method each class implements, and
+  `fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet>`
+  is provided over it.
 - **Single-axis / two-axis convenience** `Mapping::tran1` / `tran2` stay
   (avoid forcing users to allocate a `PointSet` for 1-D data). *(rev 6: built
   in `156cf68` as default trait methods, validating as C's `ValidateMapping`

@@ -136,14 +136,17 @@ reconsider — you're regressing the hot path.
 
 **The performance gate is `ast-bench`.**
 `cargo run --release -p ast-bench -- compare --set bench --base main` times the current tree against `main` on the same machine and fails on a slowdown; `crates/ast-bench/README.md` has the details.
-CI does not run it yet, so run it by hand when you touch a transform path.
+`cargo run --release -p ast-bench -- bits --base main` is the check for a change that must not alter results: it fails if any corpus transform's output bits differ from `main`'s.
+CI does not run either yet, so run them by hand when you touch a transform path.
 
 ## Bulk-transform optimisation (per-mapping evaluation)
 
-The default per-point loop pattern — `for i in 0..npoint { check
-point_has_bad; do math }` — has a known faster variant for transforms
-whose math is a polynomial in the inputs (no division, no
-log/sqrt/etc):
+The default kernel pattern: a `transform_into` loops down whole axes of
+its `Points` view into its `PointsMut` view, testing `is_bad` per value.
+A per-point loop through `point(i)` and `set_point` copies each point
+out of and back into the axes, so it is for code that is not a bulk
+kernel. This has a known faster variant for transforms whose math is a
+polynomial in the inputs (no division, no log/sqrt/etc):
 
 1. Substitute `BAD_VALUE` → `f64::NAN` on a copy of the input.
 2. Run the math without per-point branching (lets the compiler
