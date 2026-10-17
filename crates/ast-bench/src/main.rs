@@ -12,15 +12,15 @@ use ast_bench::compare::{
 use ast_bench::fingerprint::Fingerprint;
 use ast_bench::points::NPOINTS;
 use ast_bench::report::{Row, table, tsv};
-use ast_bench::run::{Engines, check_not_counting, run_set};
+use ast_bench::run::{Engines, check_not_counting, run_set, run_set_with};
 use ast_bench::snapshot::{latest_record, ratio_warnings, today, worst_ratios, write_record};
 use ast_bench::sweep::{SWEEP_NPOINTS, all_cases};
 
 const USAGE: &str = "usage: ast-bench <command> [options]
 commands:
-  run --set <name> | --set-file <path> [--engine rust|c|both] [--format table|tsv] [--save]
+  run --set <name> | --set-file <path> [--engine rust|c|both] [--nan] [--format table|tsv] [--save]
   compare --set <name> [--engine rust|c|both] [--base <git-ref>]
-  sweep
+  sweep [--nan]
   snapshot --set <name>
   bits [--base <git-ref>]
 ";
@@ -58,7 +58,8 @@ fn run(args: &[String]) -> Result<(Vec<Row>, Vec<String>), String> {
     let cases = cases(args)?;
     let mut rows = Vec::new();
     let mut errors = Vec::new();
-    for r in run_set(&cases, engines(args)?, &NPOINTS) {
+    let nan = args.iter().any(|a| a == "--nan");
+    for r in run_set_with(&cases, engines(args)?, &NPOINTS, nan) {
         match r {
             Ok(row) => rows.push(row),
             Err(e) => errors.push(e),
@@ -167,11 +168,12 @@ fn snapshot(args: &[String]) -> Result<Vec<String>, String> {
 
 /// `sweep`: time every oracle section on both engines; write the rows and
 /// print the worst ratios and the sections that could not be timed.
-fn sweep() -> Result<Vec<String>, String> {
+fn sweep(args: &[String]) -> Result<Vec<String>, String> {
     check_not_counting()?;
     let mut rows = Vec::new();
     let mut untimed = Vec::new();
-    for r in run_set(&all_cases()?, Engines::Both, &SWEEP_NPOINTS) {
+    let nan = args.iter().any(|a| a == "--nan");
+    for r in run_set_with(&all_cases()?, Engines::Both, &SWEEP_NPOINTS, nan) {
         match r {
             Ok(row) => rows.push(row),
             Err(e) => untimed.push(e),
@@ -230,6 +232,11 @@ fn main() -> ExitCode {
                 _ => print!("{}", table(&rows)),
             }
             if args.iter().any(|a| a == "--save") {
+                // compare runs without rust-nan, so a baseline holding it
+                // would leave those rows unmatched.
+                if args.iter().any(|a| a == "--nan") {
+                    return Err("--save cannot be combined with --nan".into());
+                }
                 let set = opt(&args, "--set").ok_or("--save needs --set")?;
                 let file = save_baseline(set, &fingerprint(engines(&args)?), &rows)?;
                 eprintln!("saved {}", file.display());
@@ -238,7 +245,7 @@ fn main() -> ExitCode {
         }),
         Some("compare") => compare(&args[1..]),
         Some("snapshot") => snapshot(&args[1..]),
-        Some("sweep") => sweep(),
+        Some("sweep") => sweep(&args[1..]),
         Some("bits") => bits(&args[1..]),
         Some(other) => Err(format!("unknown command {other:?}\n{USAGE}")),
     };

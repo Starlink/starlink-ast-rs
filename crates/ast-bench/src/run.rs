@@ -4,7 +4,10 @@
 
 use std::time::Duration;
 
+use ast_core::constants::BAD_VALUE;
 use ast_core::coords::{PointSet, Points, PointsMut};
+use ast_core::error::AstResult;
+use ast_core::mappings::Mapping;
 
 use crate::cases::Case;
 use crate::load::{Loaded, load_fixture};
@@ -47,9 +50,52 @@ fn budget(n: usize) -> Duration {
 /// The fewest samples taken of any timing.
 const MIN_SAMPLES: usize = 7;
 
+/// Transform `pts` by the NaN protocol (`transform_nan_protocol`), doing its
+/// boundary work in caller-owned buffers: BAD and non-finite inputs become
+/// NaN in `nan_in`, the Mapping's `transform_into_nan` writes `out`, and
+/// non-finite outputs become BAD. This is what an entry point using the
+/// protocol would cost per call once its buffers exist.
+pub fn nan_edges(
+    map: &dyn Mapping,
+    pts: &PointSet,
+    forward: bool,
+    nan_in: &mut PointSet,
+    out: &mut PointSet,
+) -> AstResult<()> {
+    for j in 0..pts.ncoord() {
+        for (d, &v) in nan_in.axis_mut(j).iter_mut().zip(pts.axis(j)) {
+            *d = if v == BAD_VALUE || !v.is_finite() {
+                f64::NAN
+            } else {
+                v
+            };
+        }
+    }
+    map.transform_into_nan(nan_in.as_points(), forward, out.as_points_mut())?;
+    for j in 0..out.ncoord() {
+        for v in out.axis_mut(j) {
+            if !v.is_finite() {
+                *v = BAD_VALUE;
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Time every case at every point count on `engines`. A case that cannot be
 /// timed gives an `Err` naming it and the point count; the rest still run.
 pub fn run_set(cases: &[Case], engines: Engines, npoints: &[usize]) -> Vec<Result<Row, String>> {
+    run_set_with(cases, engines, npoints, false)
+}
+
+/// [`run_set`], also timing the port through [`nan_edges`] as `rust-nan`
+/// when `nan` is true and the port is timed.
+pub fn run_set_with(
+    cases: &[Case],
+    engines: Engines,
+    npoints: &[usize],
+    nan: bool,
+) -> Vec<Result<Row, String>> {
     #[cfg(feature = "c-oracle")]
     let c_engine = match engines {
         Engines::Rust => None,
@@ -120,6 +166,12 @@ pub fn run_set(cases: &[Case], engines: Engines, npoints: &[usize]) -> Vec<Resul
                 let out = PointsMut::new(cols_out.chunks_exact_mut(n)).map_err(fail)?;
                 map.transform_into(input, s.forward, out).map_err(fail)
             };
+            let mut nan_in = PointSet::zeros(n, s.nin);
+            let mut nan_out = PointSet::zeros(n, s.nout);
+            let mut time_nan = || -> Result<(), String> {
+                nan_edges(map, &pts, s.forward, &mut nan_in, &mut nan_out)
+                    .map_err(|e| format!("{} {dir} N={n}: {e}", s.relpath))
+            };
             #[cfg(feature = "c-oracle")]
             let mut c_out = vec![0.0; s.nout * n];
             #[cfg(feature = "c-oracle")]
@@ -130,7 +182,7 @@ pub fn run_set(cases: &[Case], engines: Engines, npoints: &[usize]) -> Vec<Resul
                     .tran(s.forward, n, s.nin, &columns, s.nout, &mut c_out)
                     .map_err(|e| format!("{} {dir} N={n}: {e}", s.relpath))
             };
-            let (mut ops, names): (Vec<Op<'_>>, Vec<&str>) = match engines {
+            let (mut ops, mut names): (Vec<Op<'_>>, Vec<&str>) = match engines {
                 Engines::Rust => (
                     vec![&mut time_rust, &mut time_cols],
                     vec!["rust", "rust-cols"],
@@ -145,6 +197,10 @@ pub fn run_set(cases: &[Case], engines: Engines, npoints: &[usize]) -> Vec<Resul
                 #[cfg(not(feature = "c-oracle"))]
                 _ => unreachable!("refused above"),
             };
+            if nan && engines != Engines::C {
+                ops.push(&mut time_nan);
+                names.push("rust-nan");
+            }
             match measure(budget(n), MIN_SAMPLES, n, &mut ops) {
                 Ok(stats) => {
                     for (engine, st) in names.iter().zip(stats) {
@@ -214,6 +270,63 @@ mod tests {
                 .unwrap_err()
                 .contains("missing.map")
         );
+    }
+
+    #[test]
+    fn the_nan_engine_runs_only_when_asked() {
+        let cases = load_set("bench").unwrap();
+        let zoom: Vec<_> = cases
+            .into_iter()
+            .filter(|c| c.section.relpath == "zoommap_2d.map" && c.section.forward)
+            .collect();
+        let engines = |nan| -> Vec<String> {
+            run_set_with(&zoom, Engines::Rust, &[10], nan)
+                .into_iter()
+                .map(|r| r.unwrap().engine)
+                .collect()
+        };
+        assert_eq!(engines(false), ["rust", "rust-cols"]);
+        assert_eq!(engines(true), ["rust", "rust-cols", "rust-nan"]);
+    }
+
+    #[test]
+    fn nan_edges_gives_the_nan_protocols_bits() {
+        let mut checked = 0;
+        for case in crate::sweep::all_cases().unwrap() {
+            let s = &case.section;
+            let Ok(Loaded::Mapping(obj)) = load_fixture(&case.root, &s.relpath) else {
+                continue;
+            };
+            let map = obj.as_mapping().unwrap();
+            let rows: Vec<usize> = (0..s.npoint()).collect();
+            let pts = rows_to_pointset(s, &rows);
+            let mut nan_in = PointSet::zeros(pts.npoint(), s.nin);
+            let mut out = PointSet::zeros(pts.npoint(), s.nout);
+            let edges = nan_edges(map, &pts, s.forward, &mut nan_in, &mut out);
+            match map.transform_nan_protocol(&pts, s.forward) {
+                Ok(want) => {
+                    edges.unwrap_or_else(|e| panic!("{} {}: {e}", s.relpath, s.forward));
+                    let bits =
+                        |p: &PointSet| p.view().iter().map(|v| v.to_bits()).collect::<Vec<_>>();
+                    assert_eq!(
+                        bits(&out),
+                        bits(&want),
+                        "{} forward={}",
+                        s.relpath,
+                        s.forward
+                    );
+                }
+                Err(e) => assert_eq!(
+                    edges.map_err(|e| e.code()).err(),
+                    Some(e.code()),
+                    "{} forward={}",
+                    s.relpath,
+                    s.forward
+                ),
+            }
+            checked += 1;
+        }
+        assert!(checked > 2000, "only {checked} sections compared");
     }
 
     #[test]

@@ -11,6 +11,8 @@ The design is `docs/superpowers/specs/2026-10-15-transform-benchmarking-design.m
 
 Whenever the Rust engine runs, it also times `rust-cols`: the same transform called the way a C caller of `astTranN` calls it, with one input array per axis and one output array per axis, and any conversion the port needs inside the timing.
 `rust-cols` against `c` is what a C program would see on switching libraries; tables show it in the `cols ns/pt` column.
+`run --nan` and `sweep --nan` also time `rust-nan`: the port through the NaN protocol (`transform_nan_protocol`) with its BAD↔NaN boundary passes inside the timing and its buffers allocated once, which is what an entry point using the protocol would cost; tables show it in the `nan ns/pt` column.
+It is opt-in because `compare` reports a timing missing from the base as unmatched, and a baseline cannot be saved with it.
 
 ## Sets
 
