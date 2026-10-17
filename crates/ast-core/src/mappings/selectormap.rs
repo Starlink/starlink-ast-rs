@@ -292,11 +292,8 @@ impl Mapping for SelectorMap {
         if !effective_fwd {
             // Inverse not defined — return all BAD.
             let mut out = PointSet::zeros(npoint, ncoord);
-            for i in 0..npoint {
-                let mut row = out.point_mut(i);
-                for v in row.iter_mut() {
-                    *v = BAD_VALUE;
-                }
+            for j in 0..ncoord {
+                out.axis_mut(j).fill(BAD_VALUE);
             }
             return Ok(out);
         }
@@ -304,10 +301,13 @@ impl Mapping for SelectorMap {
         let mut out = PointSet::zeros(npoint, 1);
 
         // Initial classification: -1 sentinel = bad input, 0 = unassigned.
-        for i in 0..npoint {
-            let pt = pts.point(i);
-            let has_bad = pt.iter().take(ncoord).any(|&v| is_bad(v));
-            out.axis_mut(0)[i] = if has_bad { -1.0 } else { 0.0 };
+        let class = out.axis_mut(0);
+        for j in 0..ncoord {
+            for (c, &v) in class.iter_mut().zip(pts.axis(j)) {
+                if is_bad(v) {
+                    *c = -1.0;
+                }
+            }
         }
 
         // Test points against each region in turn. Negate + open the region

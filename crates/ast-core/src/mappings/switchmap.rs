@@ -617,10 +617,8 @@ impl Mapping for SwitchMap {
         let mut out = PointSet::zeros(npoint, ncout);
 
         if total_assigned < npoint {
-            for i in 0..npoint {
-                for j in 0..ncout {
-                    out.point_mut(i)[j] = BAD_VALUE;
-                }
+            for j in 0..ncout {
+                out.axis_mut(j).fill(BAD_VALUE);
             }
         }
 
@@ -639,7 +637,7 @@ impl Mapping for SwitchMap {
                     let idx = sv.round() as i64 - 1;
                     if idx == iroute as i64 {
                         for j in 0..ncin {
-                            batch_in.point_mut(k)[j] = pts.point(ipoint)[j];
+                            batch_in.axis_mut(j)[k] = pts.axis(j)[ipoint];
                         }
                         point_indices.push(ipoint);
                         k += 1;
@@ -651,7 +649,7 @@ impl Mapping for SwitchMap {
 
             for (k, &ipoint) in point_indices.iter().enumerate() {
                 for j in 0..ncout {
-                    out.point_mut(ipoint)[j] = batch_out.point(k)[j];
+                    out.axis_mut(j)[ipoint] = batch_out.axis(j)[k];
                 }
             }
         }

@@ -390,11 +390,8 @@ impl Mapping for MathMap {
 
         if exprs.is_empty() {
             // Undefined transformation: fill with BAD
-            for i in 0..npoint {
-                let mut row = out.point_mut(i);
-                for val in row.iter_mut().take(ncoord_out) {
-                    *val = BAD_VALUE;
-                }
+            for axis in out.axes_mut().iter_mut().take(ncoord_out) {
+                axis[..npoint].fill(BAD_VALUE);
             }
             return Ok(());
         }
@@ -405,11 +402,9 @@ impl Mapping for MathMap {
         // (CLAUDE.md), which the evaluator tests for as C's does.
         let input_data: Vec<Vec<f64>> = (0..ncoord_in)
             .map(|c| {
-                (0..npoint)
-                    .map(|p| {
-                        let v = pts.point(p)[c];
-                        if v.is_nan() { BAD_VALUE } else { v }
-                    })
+                pts.axis(c)[..npoint]
+                    .iter()
+                    .map(|&v| if v.is_nan() { BAD_VALUE } else { v })
                     .collect()
             })
             .collect();
