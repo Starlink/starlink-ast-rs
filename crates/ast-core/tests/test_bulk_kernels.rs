@@ -129,3 +129,63 @@ fn full_matrixmap_kernel_crosses_its_block_boundary() {
         assert_eq!(out[1][i], 0.0 + 3.0 * x[i] + 4.0 * y[i]);
     }
 }
+
+use ast_core::mappings::{CmpMap, Composition};
+
+#[test]
+fn a_parallel_cmpmap_splits_its_output_at_the_first_childs_output_count() {
+    // First child: 1 input -> 2 outputs (the input and the constant 9).
+    let first = PermMap::new(&[1], &[1, -1], &[9.0]).unwrap();
+    let second = ZoomMap::new(1, 2.0).unwrap();
+    let m = CmpMap::new(Box::new(first), Box::new(second), Composition::Parallel).unwrap();
+    let (x, y) = ([1.0, 2.0], [3.0, 4.0]);
+    let mut out = [vec![0.0; 2], vec![0.0; 2], vec![0.0; 2]];
+    let [a, b, c] = &mut out;
+    m.transform_into(
+        Points::new([&x[..], &y[..]]).unwrap(),
+        true,
+        PointsMut::new([&mut a[..], &mut b[..], &mut c[..]]).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(out, [vec![1.0, 2.0], vec![9.0, 9.0], vec![6.0, 8.0]]);
+}
+
+#[test]
+fn a_series_cmpmap_handles_a_partial_last_batch() {
+    let m = CmpMap::new(
+        Box::new(ZoomMap::new(1, 2.0).unwrap()),
+        Box::new(ShiftMap::new(vec![1.0])),
+        Composition::Series,
+    )
+    .unwrap();
+    let n = 8192 + 5;
+    let x: Vec<f64> = (0..n).map(|i| i as f64).collect();
+    let mut o = vec![0.0; n];
+    m.transform_into(
+        Points::new([&x[..]]).unwrap(),
+        true,
+        PointsMut::new([&mut o[..]]).unwrap(),
+    )
+    .unwrap();
+    assert!(o.iter().zip(&x).all(|(&o, &x)| o == 2.0 * x + 1.0));
+}
+
+#[test]
+fn a_series_cmpmap_of_no_points_still_checks_its_direction() {
+    // A non-square MatrixMap has no inverse, so neither has the series.
+    let first = MatrixMap::new(ndarray::array![[1.0], [2.0]]).unwrap();
+    let m = CmpMap::new(
+        Box::new(first),
+        Box::new(UnitMap::new(2)),
+        Composition::Series,
+    )
+    .unwrap();
+    let (x, y): ([f64; 0], [f64; 0]) = ([], []);
+    let mut a: [f64; 0] = [];
+    let r = m.transform_into(
+        Points::new([&x[..], &y[..]]).unwrap(),
+        false,
+        PointsMut::new([&mut a[..]]).unwrap(),
+    );
+    assert!(r.is_err(), "{r:?}");
+}
