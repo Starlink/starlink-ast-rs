@@ -148,20 +148,20 @@ impl Mapping for NormMap {
         let _ = forward;
         let naxes = self.naxes();
 
+        let pin = pts.axis_slices();
+        let pout = out.axes_mut();
+        let mut point = vec![0.0; naxes];
         for ipoint in 0..pts.npoint() {
-            let inp = pts.point(ipoint);
-            let mut outp = out.point_mut(ipoint);
-
             // C normalises every point, bad values included, and leaves each
             // Frame's Norm to decide what a bad value means (normmap.c
             // Transform): a SkyFrame still wraps the longitude of a point
             // whose latitude is bad. Both directions normalise.
-            outp[..naxes].copy_from_slice(&inp[..naxes]);
-            self.frame.norm(&mut outp[..naxes])?;
-            for v in &mut outp[..naxes] {
-                if v.is_nan() {
-                    *v = BAD_VALUE;
-                }
+            for (v, axis) in point.iter_mut().zip(pin) {
+                *v = axis[ipoint];
+            }
+            self.frame.norm(&mut point)?;
+            for (axis, &v) in pout.iter_mut().zip(&point) {
+                axis[ipoint] = if v.is_nan() { BAD_VALUE } else { v };
             }
         }
 
@@ -178,11 +178,17 @@ impl Mapping for NormMap {
     ) -> AstResult<()> {
         let _ = forward;
         let naxes = self.naxes();
+        let pin = pts.axis_slices();
+        let pout = out.axes_mut();
+        let mut point = vec![0.0; naxes];
         for ipoint in 0..pts.npoint() {
-            let inp = pts.point(ipoint);
-            let mut outp = out.point_mut(ipoint);
-            outp[..naxes].copy_from_slice(&inp[..naxes]);
-            self.frame.norm(&mut outp[..naxes])?;
+            for (v, axis) in point.iter_mut().zip(pin) {
+                *v = axis[ipoint];
+            }
+            self.frame.norm(&mut point)?;
+            for (axis, &v) in pout.iter_mut().zip(&point) {
+                axis[ipoint] = v;
+            }
         }
         Ok(())
     }

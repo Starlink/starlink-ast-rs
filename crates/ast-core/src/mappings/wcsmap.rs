@@ -871,9 +871,7 @@ impl Mapping for WcsMap {
     ) -> AstResult<()> {
         self.check_transformable()?;
         if self.proj == WcsProjection::Unknown {
-            for i in 0..pts.npoint() {
-                out.point_mut(i).copy_from_slice(&pts.point(i));
-            }
+            out.copy_from(&pts);
             return Ok(());
         }
 
@@ -897,17 +895,18 @@ impl Mapping for WcsMap {
         // (wcsmap.c:2808).
         let factor = if self.tpn_tan() { 1.0 } else { DD2R };
 
+        // Every axis passes through, then the longitude and latitude axes are
+        // overwritten point by point.
+        out.copy_from(&pts);
+        let (ilon, ilat) = (pts.axis(self.lonax), pts.axis(self.latax));
+        let (olon, olat) = out.axis_pair_mut(self.lonax, self.latax);
         for i in 0..pts.npoint() {
-            let inp = pts.point(i);
-            let mut outp = out.point_mut(i);
-            outp.copy_from_slice(&inp);
-
-            let v1 = inp[self.lonax];
-            let v2 = inp[self.latax];
+            let v1 = ilon[i];
+            let v2 = ilat[i];
 
             if is_bad(v1) || is_bad(v2) {
-                outp[self.lonax] = f64::NAN;
-                outp[self.latax] = f64::NAN;
+                olon[i] = f64::NAN;
+                olat[i] = f64::NAN;
                 continue;
             }
 
@@ -918,12 +917,12 @@ impl Mapping for WcsMap {
                 let (lon_deg, lat_deg) = forward_prep(v1, v2, factor);
                 match wcslib_result(prj.forward_raw(lon_deg, lat_deg))? {
                     Some((x, y)) => {
-                        outp[self.lonax] = (DD2R / factor) * x;
-                        outp[self.latax] = (DD2R / factor) * y;
+                        olon[i] = (DD2R / factor) * x;
+                        olat[i] = (DD2R / factor) * y;
                     }
                     None => {
-                        outp[self.lonax] = f64::NAN;
-                        outp[self.latax] = f64::NAN;
+                        olon[i] = f64::NAN;
+                        olat[i] = f64::NAN;
                     }
                 }
             } else {
@@ -967,16 +966,16 @@ impl Mapping for WcsMap {
                         if (!docheck || cyclic || (longitude < longhi && longitude >= longlo))
                             && abslat <= 90.0
                         {
-                            outp[self.lonax] = (DD2R / factor) * longitude;
-                            outp[self.latax] = (DD2R / factor) * latitude;
+                            olon[i] = (DD2R / factor) * longitude;
+                            olat[i] = (DD2R / factor) * latitude;
                         } else {
-                            outp[self.lonax] = f64::NAN;
-                            outp[self.latax] = f64::NAN;
+                            olon[i] = f64::NAN;
+                            olat[i] = f64::NAN;
                         }
                     }
                     None => {
-                        outp[self.lonax] = f64::NAN;
-                        outp[self.latax] = f64::NAN;
+                        olon[i] = f64::NAN;
+                        olat[i] = f64::NAN;
                     }
                 }
             }
@@ -994,9 +993,7 @@ impl Mapping for WcsMap {
         self.check_transformable()?;
         // Unknown/blank projection acts as identity — pass through all coords.
         if self.proj == WcsProjection::Unknown {
-            for i in 0..pts.npoint() {
-                out.point_mut(i).copy_from_slice(&pts.point(i));
-            }
+            out.copy_from(&pts);
             return Ok(());
         }
 
@@ -1021,19 +1018,18 @@ impl Mapping for WcsMap {
         // (wcsmap.c:2808).
         let factor = if self.tpn_tan() { 1.0 } else { DD2R };
 
+        // Every axis passes through, then the longitude and latitude axes are
+        // overwritten point by point.
+        out.copy_from(&pts);
+        let (ilon, ilat) = (pts.axis(self.lonax), pts.axis(self.latax));
+        let (olon, olat) = out.axis_pair_mut(self.lonax, self.latax);
         for i in 0..pts.npoint() {
-            let inp = pts.point(i);
-            let mut outp = out.point_mut(i);
-
-            // Copy all axes through first.
-            outp.copy_from_slice(&inp);
-
-            let v1 = inp[self.lonax];
-            let v2 = inp[self.latax];
+            let v1 = ilon[i];
+            let v2 = ilat[i];
 
             if is_bad(v1) || is_bad(v2) {
-                outp[self.lonax] = BAD_VALUE;
-                outp[self.latax] = BAD_VALUE;
+                olon[i] = BAD_VALUE;
+                olat[i] = BAD_VALUE;
                 continue;
             }
 
@@ -1045,12 +1041,12 @@ impl Mapping for WcsMap {
                 let (lon_deg, lat_deg) = forward_prep(v1, v2, factor);
                 match wcslib_result(prj.forward_raw(lon_deg, lat_deg))? {
                     Some((x, y)) => {
-                        outp[self.lonax] = (DD2R / factor) * x;
-                        outp[self.latax] = (DD2R / factor) * y;
+                        olon[i] = (DD2R / factor) * x;
+                        olat[i] = (DD2R / factor) * y;
                     }
                     None => {
-                        outp[self.lonax] = BAD_VALUE;
-                        outp[self.latax] = BAD_VALUE;
+                        olon[i] = BAD_VALUE;
+                        olat[i] = BAD_VALUE;
                     }
                 }
             } else {
@@ -1096,16 +1092,16 @@ impl Mapping for WcsMap {
                         if (!docheck || cyclic || (longitude < longhi && longitude >= longlo))
                             && abslat <= 90.0
                         {
-                            outp[self.lonax] = (DD2R / factor) * longitude;
-                            outp[self.latax] = (DD2R / factor) * latitude;
+                            olon[i] = (DD2R / factor) * longitude;
+                            olat[i] = (DD2R / factor) * latitude;
                         } else {
-                            outp[self.lonax] = BAD_VALUE;
-                            outp[self.latax] = BAD_VALUE;
+                            olon[i] = BAD_VALUE;
+                            olat[i] = BAD_VALUE;
                         }
                     }
                     None => {
-                        outp[self.lonax] = BAD_VALUE;
-                        outp[self.latax] = BAD_VALUE;
+                        olon[i] = BAD_VALUE;
+                        olat[i] = BAD_VALUE;
                     }
                 }
             }

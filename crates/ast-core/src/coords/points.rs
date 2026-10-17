@@ -388,6 +388,19 @@ impl<'a> PointsMut<'a> {
         }
     }
 
+    /// Axes `a` and `b` (0-based, distinct), both writable.
+    #[inline]
+    pub fn axis_pair_mut(&mut self, a: usize, b: usize) -> (&mut [f64], &mut [f64]) {
+        assert_ne!(a, b, "axis_pair_mut needs two different axes");
+        if a < b {
+            let (lo, hi) = self.axes.split_at_mut(b);
+            (&mut *lo[a], &mut *hi[0])
+        } else {
+            let (lo, hi) = self.axes.split_at_mut(a);
+            (&mut *hi[0], &mut *lo[b])
+        }
+    }
+
     /// Every axis, writable, so a kernel can hold several at once.
     #[inline]
     pub fn axes_mut(&mut self) -> &mut [&'a mut [f64]] {

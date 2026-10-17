@@ -1268,10 +1268,12 @@ impl Mapping for SlaMap {
 
         // Initialise the output by copying the input (slamap.c:3630).
         let npoint = pts.npoint();
-        for i in 0..npoint {
-            out.axis_mut(0)[i] = pts.axis(0)[i];
-            out.axis_mut(1)[i] = pts.axis(1)[i];
-        }
+        let [oa, od, ..] = out.axes_mut() else {
+            unreachable!("a SlaMap has two outputs")
+        };
+        let (oa, od) = (&mut oa[..npoint], &mut od[..npoint]);
+        oa.copy_from_slice(pts.axis(0));
+        od.copy_from_slice(pts.axis(1));
 
         // Apply each conversion in order (reverse for inverse), mutating the
         // output arrays in place — the scalar (alpha, delta) carrier.
@@ -1289,11 +1291,8 @@ impl Mapping for SlaMap {
             // point (subsequent conversions then propagate the bad values).
             let nargs = cvt.cvt_type.nargs();
             if cvt.args.iter().take(nargs).any(|&a| is_bad(a)) {
-                for i in 0..npoint {
-                    let mut p = out.point_mut(i);
-                    p[0] = BAD_VALUE;
-                    p[1] = BAD_VALUE;
-                }
+                oa.fill(BAD_VALUE);
+                od.fill(BAD_VALUE);
                 continue;
             }
 
@@ -1302,10 +1301,7 @@ impl Mapping for SlaMap {
             // TRAN_ARRAY (slamap.c:3652): per point, either axis bad -> both
             // bad, else apply the conversion.
             for i in 0..npoint {
-                let (alpha, delta) = {
-                    let p = out.point(i);
-                    (p[0], p[1])
-                };
+                let (alpha, delta) = (oa[i], od[i]);
                 let (a, d) = if is_bad(alpha) || is_bad(delta) {
                     (BAD_VALUE, BAD_VALUE)
                 } else if fwd {
@@ -1313,9 +1309,8 @@ impl Mapping for SlaMap {
                 } else {
                     apply_step_inverse(cvt.cvt_type, &cvt.args, alpha, delta, &step)
                 };
-                let mut p = out.point_mut(i);
-                p[0] = a;
-                p[1] = d;
+                oa[i] = a;
+                od[i] = d;
             }
         }
 

@@ -322,12 +322,14 @@ impl Mapping for XphMap {
     ) -> AstResult<()> {
         crate::mappings::validate_transform(self, &pts, forward, Some(&out))?;
         let forward = forward != self.inverted;
+        let (xs, ys) = (pts.axis(0), pts.axis(1));
+        let [ox, oy, ..] = out.axes_mut() else {
+            unreachable!("an XphMap has two outputs")
+        };
         for ip in 0..pts.npoint() {
-            let p = pts.point(ip);
-            let (x, y) = self.transform_point(forward, p[0], p[1]);
-            let mut o = out.point_mut(ip);
-            o[0] = x;
-            o[1] = y;
+            let (x, y) = self.transform_point(forward, xs[ip], ys[ip]);
+            ox[ip] = x;
+            oy[ip] = y;
         }
         Ok(())
     }

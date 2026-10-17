@@ -181,11 +181,9 @@ impl Mapping for UnitNormMap {
         // Check if any centre coordinate is bad — if so, all outputs are bad.
         for &c in &self.centre {
             if is_bad(c) {
-                for i in 0..pts.npoint() {
-                    let mut outp = out.point_mut(i);
-                    for o in outp.iter_mut() {
-                        *o = BAD_VALUE;
-                    }
+                let n = pts.npoint();
+                for axis in out.axes_mut() {
+                    axis[..n].fill(BAD_VALUE);
                 }
                 return Ok(());
             }
@@ -194,85 +192,111 @@ impl Mapping for UnitNormMap {
         if fwd {
             // Forward: vector → unit vector + norm
             let ncoord_out = ncoord + 1;
+            let pin = pts.axis_slices();
+            let pout = out.axes_mut();
+            let mut inp = vec![0.0; pin.len()];
+            let mut outp = vec![0.0; pout.len()];
             for i in 0..pts.npoint() {
-                let inp = pts.point(i);
-                let mut outp = out.point_mut(i);
-
-                // Check for any bad input — if so, all outputs are bad.
-                let mut any_bad = false;
-                let mut max_relin: f64 = 0.0;
-                for (coord, (&v, &c)) in inp.iter().zip(self.centre.iter()).enumerate() {
-                    if coord >= ncoord {
-                        break;
-                    }
-                    if is_bad(v) {
-                        any_bad = true;
-                        break;
-                    }
-                    let abs_relin = (v - c).abs();
-                    if abs_relin > max_relin {
-                        max_relin = abs_relin;
-                    }
+                for (v, axis) in inp.iter_mut().zip(pin) {
+                    *v = axis[i];
                 }
-
-                if any_bad {
-                    for o in outp[..ncoord_out].iter_mut() {
-                        *o = BAD_VALUE;
+                for (v, axis) in outp.iter_mut().zip(pout.iter()) {
+                    *v = axis[i];
+                }
+                'point: {
+                    // Check for any bad input — if so, all outputs are bad.
+                    let mut any_bad = false;
+                    let mut max_relin: f64 = 0.0;
+                    for (coord, (&v, &c)) in inp.iter().zip(self.centre.iter()).enumerate() {
+                        if coord >= ncoord {
+                            break;
+                        }
+                        if is_bad(v) {
+                            any_bad = true;
+                            break;
+                        }
+                        let abs_relin = (v - c).abs();
+                        if abs_relin > max_relin {
+                            max_relin = abs_relin;
+                        }
                     }
-                    continue;
-                }
 
-                if max_relin == 0.0 {
-                    // Norm is zero: unit vector is unknown, norm is 0.
-                    for o in outp[..ncoord].iter_mut() {
-                        *o = BAD_VALUE;
+                    if any_bad {
+                        for o in outp[..ncoord_out].iter_mut() {
+                            *o = BAD_VALUE;
+                        }
+                        break 'point;
                     }
-                    outp[ncoord] = 0.0;
-                    continue;
-                }
 
-                // Compute norm using scaled sum to avoid overflow.
-                let mut scaled_sum: f64 = 0.0;
-                for (&v, &c) in inp[..ncoord].iter().zip(self.centre.iter()) {
-                    let scaled = (v - c) / max_relin;
-                    scaled_sum += scaled * scaled;
-                }
-                let norm = max_relin * crate::math::sqrt(scaled_sum);
-
-                // Output unit vector and norm.
-                for (coord, (&v, &c)) in inp[..ncoord].iter().zip(self.centre.iter()).enumerate() {
-                    outp[coord] = (v - c) / norm;
-                }
-                outp[ncoord] = norm;
-            }
-        } else {
-            // Inverse: unit vector + norm → vector
-            for i in 0..pts.npoint() {
-                let inp = pts.point(i);
-                let mut outp = out.point_mut(i);
-
-                // The last input coordinate is the norm.
-                let norm = inp[ncoord];
-
-                if is_bad(norm) {
-                    // Norm is bad: all outputs bad.
-                    for o in outp[..ncoord].iter_mut() {
-                        *o = BAD_VALUE;
+                    if max_relin == 0.0 {
+                        // Norm is zero: unit vector is unknown, norm is 0.
+                        for o in outp[..ncoord].iter_mut() {
+                            *o = BAD_VALUE;
+                        }
+                        outp[ncoord] = 0.0;
+                        break 'point;
                     }
-                } else if norm == 0.0 {
-                    // Norm is zero: output is the centre.
-                    outp[..ncoord].copy_from_slice(&self.centre[..ncoord]);
-                } else {
-                    // Multiply unit vector by norm and add centre.
+
+                    // Compute norm using scaled sum to avoid overflow.
+                    let mut scaled_sum: f64 = 0.0;
+                    for (&v, &c) in inp[..ncoord].iter().zip(self.centre.iter()) {
+                        let scaled = (v - c) / max_relin;
+                        scaled_sum += scaled * scaled;
+                    }
+                    let norm = max_relin * crate::math::sqrt(scaled_sum);
+
+                    // Output unit vector and norm.
                     for (coord, (&v, &c)) in
                         inp[..ncoord].iter().zip(self.centre.iter()).enumerate()
                     {
-                        if is_bad(v) {
-                            outp[coord] = BAD_VALUE;
-                        } else {
-                            outp[coord] = v * norm + c;
+                        outp[coord] = (v - c) / norm;
+                    }
+                    outp[ncoord] = norm;
+                }
+                for (axis, &v) in pout.iter_mut().zip(&outp) {
+                    axis[i] = v;
+                }
+            }
+        } else {
+            // Inverse: unit vector + norm → vector
+            let pin = pts.axis_slices();
+            let pout = out.axes_mut();
+            let mut inp = vec![0.0; pin.len()];
+            let mut outp = vec![0.0; pout.len()];
+            for i in 0..pts.npoint() {
+                for (v, axis) in inp.iter_mut().zip(pin) {
+                    *v = axis[i];
+                }
+                for (v, axis) in outp.iter_mut().zip(pout.iter()) {
+                    *v = axis[i];
+                }
+                {
+                    // The last input coordinate is the norm.
+                    let norm = inp[ncoord];
+
+                    if is_bad(norm) {
+                        // Norm is bad: all outputs bad.
+                        for o in outp[..ncoord].iter_mut() {
+                            *o = BAD_VALUE;
+                        }
+                    } else if norm == 0.0 {
+                        // Norm is zero: output is the centre.
+                        outp[..ncoord].copy_from_slice(&self.centre[..ncoord]);
+                    } else {
+                        // Multiply unit vector by norm and add centre.
+                        for (coord, (&v, &c)) in
+                            inp[..ncoord].iter().zip(self.centre.iter()).enumerate()
+                        {
+                            if is_bad(v) {
+                                outp[coord] = BAD_VALUE;
+                            } else {
+                                outp[coord] = v * norm + c;
+                            }
                         }
                     }
+                }
+                for (axis, &v) in pout.iter_mut().zip(&outp) {
+                    axis[i] = v;
                 }
             }
         }
