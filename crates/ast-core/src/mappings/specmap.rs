@@ -1163,15 +1163,17 @@ fn frame_change_sign(cvt_type: SpecCvtType) -> f64 {
     }
 }
 
-/// Apply a frame-change conversion step whose frequency-correction factor
-/// is `fcorr` (`SpecMap::frame_factor`).
-fn apply_frame_change(fcorr: f64, val: f64, forward: bool) -> f64 {
+/// The factor a frame-change conversion step whose frequency-correction
+/// factor is `fcorr` (`SpecMap::frame_factor`) multiplies each good value
+/// by, or `BAD_VALUE` when the step makes every value bad.
+fn frame_change_factor(fcorr: f64, forward: bool) -> f64 {
     if fcorr == BAD_VALUE || fcorr == 0.0 {
-        return BAD_VALUE;
+        BAD_VALUE
+    } else if forward {
+        fcorr
+    } else {
+        1.0 / fcorr
     }
-
-    let factor = if forward { fcorr } else { 1.0 / fcorr };
-    val * factor
 }
 
 // ---------------------------------------------------------------------------
@@ -1435,11 +1437,15 @@ impl Mapping for SpecMap {
             let ci = if fwd { k } else { nconv - 1 - k };
             let cvt = &self.conversions[ci];
             if cvt.cvt_type.is_frame_change() {
-                let fcorr = self.frame_factor(ci, cvt);
+                let factor = frame_change_factor(self.frame_factor(ci, cvt), fwd);
                 for v in o.iter_mut() {
-                    if !is_bad(*v) {
-                        *v = apply_frame_change(fcorr, *v, fwd);
-                    }
+                    *v = if is_bad(*v) {
+                        *v
+                    } else if factor == BAD_VALUE {
+                        BAD_VALUE
+                    } else {
+                        *v * factor
+                    };
                 }
             } else {
                 for v in o.iter_mut() {
