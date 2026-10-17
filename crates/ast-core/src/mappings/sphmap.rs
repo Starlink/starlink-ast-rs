@@ -205,41 +205,55 @@ impl Mapping for SphMap {
         let fwd = self.effective_forward(forward);
         if fwd {
             let polarlong = self.polar_long;
-            let pin = pts.axis_slices();
-            let pout = out.axes_mut();
-            for i in 0..pts.npoint() {
-                let x = pin[0][i];
-                let y = pin[1][i];
-                let z = pin[2][i];
+            let n = pts.npoint();
+            let in0 = &pts.axis(0)[..n];
+            let in1 = &pts.axis(1)[..n];
+            let in2 = &pts.axis(2)[..n];
+            let [out0, out1, ..] = out.axes_mut() else {
+                unreachable!("validated output axes")
+            };
+            let out0 = &mut out0[..n];
+            let out1 = &mut out1[..n];
+            for i in 0..n {
+                let x = in0[i];
+                let y = in1[i];
+                let z = in2[i];
                 let mxerr = (1000.0 * z).abs() * f64::EPSILON;
                 if x.abs() < mxerr && y.abs() < mxerr {
                     // Pole branch: only entered when x,y,z are all finite
                     // (NaN comparisons against mxerr are false).
                     if z < 0.0 {
-                        pout[0][i] = polarlong;
-                        pout[1][i] = -std::f64::consts::FRAC_PI_2;
+                        out0[i] = polarlong;
+                        out1[i] = -std::f64::consts::FRAC_PI_2;
                     } else if z > 0.0 {
-                        pout[0][i] = polarlong;
-                        pout[1][i] = std::f64::consts::FRAC_PI_2;
+                        out0[i] = polarlong;
+                        out1[i] = std::f64::consts::FRAC_PI_2;
                     } else {
-                        pout[0][i] = f64::NAN;
-                        pout[1][i] = f64::NAN;
+                        out0[i] = f64::NAN;
+                        out1[i] = f64::NAN;
                     }
                 } else {
                     let v = [x, y, z];
                     let (lon, lat) = pal::dcc2s(&v);
-                    pout[0][i] = lon;
-                    pout[1][i] = lat;
+                    out0[i] = lon;
+                    out1[i] = lat;
                 }
             }
         } else {
-            let pin = pts.axis_slices();
-            let pout = out.axes_mut();
-            for i in 0..pts.npoint() {
-                let v = pal::dcs2c(pin[0][i], pin[1][i]);
-                pout[0][i] = v[0];
-                pout[1][i] = v[1];
-                pout[2][i] = v[2];
+            let n = pts.npoint();
+            let in0 = &pts.axis(0)[..n];
+            let in1 = &pts.axis(1)[..n];
+            let [out0, out1, out2, ..] = out.axes_mut() else {
+                unreachable!("validated output axes")
+            };
+            let out0 = &mut out0[..n];
+            let out1 = &mut out1[..n];
+            let out2 = &mut out2[..n];
+            for i in 0..n {
+                let v = pal::dcs2c(in0[i], in1[i]);
+                out0[i] = v[0];
+                out1[i] = v[1];
+                out2[i] = v[2];
             }
         }
         Ok(())
@@ -257,17 +271,23 @@ impl Mapping for SphMap {
         if fwd {
             // Forward: Cartesian (x, y, z) -> Spherical (lon, lat)
             let polarlong = self.polar_long;
-            let pin = pts.axis_slices();
-            let pout = out.axes_mut();
-            for i in 0..pts.npoint() {
-                if pin.iter().any(|ax| is_bad(ax[i])) {
-                    for ax in pout.iter_mut() {
-                        ax[i] = BAD_VALUE;
-                    }
+            let n = pts.npoint();
+            let in0 = &pts.axis(0)[..n];
+            let in1 = &pts.axis(1)[..n];
+            let in2 = &pts.axis(2)[..n];
+            let [out0, out1, ..] = out.axes_mut() else {
+                unreachable!("validated output axes")
+            };
+            let out0 = &mut out0[..n];
+            let out1 = &mut out1[..n];
+            for i in 0..n {
+                if is_bad(in0[i]) || is_bad(in1[i]) || is_bad(in2[i]) {
+                    out0[i] = BAD_VALUE;
+                    out1[i] = BAD_VALUE;
                 } else {
-                    let x = pin[0][i];
-                    let y = pin[1][i];
-                    let z = pin[2][i];
+                    let x = in0[i];
+                    let y = in1[i];
+                    let z = in2[i];
 
                     // Check for pole: x and y are effectively zero
                     // relative to z.  Use the same criterion as the C
@@ -279,42 +299,49 @@ impl Mapping for SphMap {
                     let mxerr = (1000.0 * z).abs() * f64::EPSILON;
                     if x.abs() < mxerr && y.abs() < mxerr {
                         if z < 0.0 {
-                            pout[0][i] = polarlong;
-                            pout[1][i] = -std::f64::consts::FRAC_PI_2;
+                            out0[i] = polarlong;
+                            out1[i] = -std::f64::consts::FRAC_PI_2;
                         } else if z > 0.0 {
-                            pout[0][i] = polarlong;
-                            pout[1][i] = std::f64::consts::FRAC_PI_2;
+                            out0[i] = polarlong;
+                            out1[i] = std::f64::consts::FRAC_PI_2;
                         } else {
                             // z == 0.0 (all three zero) — should not
                             // be reachable since mxerr would be 0, but
                             // kept for safety to match C behavior.
-                            pout[0][i] = BAD_VALUE;
-                            pout[1][i] = BAD_VALUE;
+                            out0[i] = BAD_VALUE;
+                            out1[i] = BAD_VALUE;
                         }
                     } else {
                         let v = [x, y, z];
                         let (lon, lat) = pal::dcc2s(&v);
-                        pout[0][i] = lon;
-                        pout[1][i] = lat;
+                        out0[i] = lon;
+                        out1[i] = lat;
                     }
                 }
             }
         } else {
             // Inverse: Spherical (lon, lat) -> Cartesian (x, y, z)
-            let pin = pts.axis_slices();
-            let pout = out.axes_mut();
-            for i in 0..pts.npoint() {
-                if pin.iter().any(|ax| is_bad(ax[i])) {
-                    for ax in pout.iter_mut() {
-                        ax[i] = BAD_VALUE;
-                    }
+            let n = pts.npoint();
+            let in0 = &pts.axis(0)[..n];
+            let in1 = &pts.axis(1)[..n];
+            let [out0, out1, out2, ..] = out.axes_mut() else {
+                unreachable!("validated output axes")
+            };
+            let out0 = &mut out0[..n];
+            let out1 = &mut out1[..n];
+            let out2 = &mut out2[..n];
+            for i in 0..n {
+                if is_bad(in0[i]) || is_bad(in1[i]) {
+                    out0[i] = BAD_VALUE;
+                    out1[i] = BAD_VALUE;
+                    out2[i] = BAD_VALUE;
                 } else {
-                    let lon = pin[0][i];
-                    let lat = pin[1][i];
+                    let lon = in0[i];
+                    let lat = in1[i];
                     let v = pal::dcs2c(lon, lat);
-                    pout[0][i] = v[0];
-                    pout[1][i] = v[1];
-                    pout[2][i] = v[2];
+                    out0[i] = v[0];
+                    out1[i] = v[1];
+                    out2[i] = v[2];
                 }
             }
         }

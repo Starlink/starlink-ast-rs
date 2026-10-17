@@ -578,10 +578,11 @@ impl Mapping for GrismMap {
     ) -> AstResult<()> {
         let fwd = self.effective_forward(forward);
 
+        let n = pts.npoint();
+        let xin = &pts.axis(0)[..n];
+        let xout = &mut out.axis_mut(0)[..n];
         if is_bad(self.k1) || is_bad(self.k2) || is_bad(self.k3) {
-            for i in 0..pts.npoint() {
-                out.axis_mut(0)[i] = f64::NAN;
-            }
+            xout.fill(f64::NAN);
             return Ok(());
         }
 
@@ -589,21 +590,19 @@ impl Mapping for GrismMap {
             // Forward division-by-zero guard: k2 is a constant, not per-
             // point; if it's zero every output is NaN.
             if self.k2 == 0.0 {
-                for i in 0..pts.npoint() {
-                    out.axis_mut(0)[i] = f64::NAN;
-                }
+                xout.fill(f64::NAN);
                 return Ok(());
             }
-            for i in 0..pts.npoint() {
-                let value_in = pts.axis(0)[i];
-                out.axis_mut(0)[i] =
+            for i in 0..n {
+                let value_in = xin[i];
+                xout[i] =
                     (self.k1 + crate::math::sin(crate::math::atan(value_in) + self.k3)) / self.k2;
             }
         } else {
-            for i in 0..pts.npoint() {
-                let value_in = pts.axis(0)[i];
+            for i in 0..n {
+                let value_in = xin[i];
                 let sinbeta = self.k2 * value_in - self.k1;
-                out.axis_mut(0)[i] = if !(-1.0..=1.0).contains(&sinbeta) {
+                xout[i] = if !(-1.0..=1.0).contains(&sinbeta) {
                     f64::NAN
                 } else {
                     crate::math::tan(crate::math::asin(sinbeta) - self.k3)
@@ -622,38 +621,38 @@ impl Mapping for GrismMap {
         crate::mappings::validate_transform_into(self, &pts, forward, Some(&out))?;
         let fwd = self.effective_forward(forward);
 
+        let n = pts.npoint();
+        let xin = &pts.axis(0)[..n];
+        let xout = &mut out.axis_mut(0)[..n];
         // If any derived constants are BAD, all output is BAD.
         if is_bad(self.k1) || is_bad(self.k2) || is_bad(self.k3) {
-            for i in 0..pts.npoint() {
-                out.axis_mut(0)[i] = BAD_VALUE;
-            }
+            xout.fill(BAD_VALUE);
             return Ok(());
         }
 
         if fwd {
             // Forward: grism parameter → wavelength
-            for i in 0..pts.npoint() {
-                let value_in = pts.axis(0)[i];
+            for i in 0..n {
+                let value_in = xin[i];
                 if is_bad(value_in) || self.k2 == 0.0 {
-                    out.axis_mut(0)[i] = BAD_VALUE;
+                    xout[i] = BAD_VALUE;
                 } else {
-                    out.axis_mut(0)[i] = (self.k1
-                        + crate::math::sin(crate::math::atan(value_in) + self.k3))
+                    xout[i] = (self.k1 + crate::math::sin(crate::math::atan(value_in) + self.k3))
                         / self.k2;
                 }
             }
         } else {
             // Inverse: wavelength → grism parameter
-            for i in 0..pts.npoint() {
-                let value_in = pts.axis(0)[i];
+            for i in 0..n {
+                let value_in = xin[i];
                 if is_bad(value_in) {
-                    out.axis_mut(0)[i] = BAD_VALUE;
+                    xout[i] = BAD_VALUE;
                 } else {
                     let sinbeta = self.k2 * value_in - self.k1;
                     if !(-1.0..=1.0).contains(&sinbeta) {
-                        out.axis_mut(0)[i] = BAD_VALUE;
+                        xout[i] = BAD_VALUE;
                     } else {
-                        out.axis_mut(0)[i] = crate::math::tan(crate::math::asin(sinbeta) - self.k3);
+                        xout[i] = crate::math::tan(crate::math::asin(sinbeta) - self.k3);
                     }
                 }
             }

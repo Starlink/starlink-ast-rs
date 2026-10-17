@@ -293,27 +293,39 @@ impl Mapping for PcdMap {
         let cen1 = self.effective_pcdcen()[1];
 
         if fwd {
-            let pin = pts.axis_slices();
-            let pout = out.axes_mut();
-            for i in 0..pts.npoint() {
-                let dx = pin[0][i] - cen0;
-                let dy = pin[1][i] - cen1;
+            let n = pts.npoint();
+            let in0 = &pts.axis(0)[..n];
+            let in1 = &pts.axis(1)[..n];
+            let [out0, out1, ..] = out.axes_mut() else {
+                unreachable!("validated output axes")
+            };
+            let out0 = &mut out0[..n];
+            let out1 = &mut out1[..n];
+            for i in 0..n {
+                let dx = in0[i] - cen0;
+                let dy = in1[i] - cen1;
                 let f = 1.0 + disco * (dx * dx + dy * dy);
-                pout[0][i] = dx * f + cen0;
-                pout[1][i] = dy * f + cen1;
+                out0[i] = dx * f + cen0;
+                out1[i] = dy * f + cen1;
             }
         } else {
-            let pin = pts.axis_slices();
-            let pout = out.axes_mut();
-            for i in 0..pts.npoint() {
-                let dxp = pin[0][i] - cen0;
-                let dyp = pin[1][i] - cen1;
+            let n = pts.npoint();
+            let in0 = &pts.axis(0)[..n];
+            let in1 = &pts.axis(1)[..n];
+            let [out0, out1, ..] = out.axes_mut() else {
+                unreachable!("validated output axes")
+            };
+            let out0 = &mut out0[..n];
+            let out1 = &mut out1[..n];
+            for i in 0..n {
+                let dxp = in0[i] - cen0;
+                let dyp = in1[i] - cen1;
                 let cr2 = disco * (dxp * dxp + dyp * dyp);
                 let a = (2.0 * cr2 + 1.0) / (3.0 * cr2 + 1.0);
                 let cr2a2 = cr2 * a * a;
                 let f = (2.0 * cr2a2 * a + 1.0) / (3.0 * cr2a2 + 1.0);
-                pout[0][i] = dxp * f + cen0;
-                pout[1][i] = dyp * f + cen1;
+                out0[i] = dxp * f + cen0;
+                out1[i] = dyp * f + cen1;
             }
         }
         Ok(())
@@ -333,37 +345,49 @@ impl Mapping for PcdMap {
 
         if fwd {
             // Forward: apply distortion
-            let pin = pts.axis_slices();
-            let pout = out.axes_mut();
-            for i in 0..pts.npoint() {
-                if is_bad(pin[0][i]) || is_bad(pin[1][i]) {
-                    pout[0][i] = BAD_VALUE;
-                    pout[1][i] = BAD_VALUE;
+            let n = pts.npoint();
+            let in0 = &pts.axis(0)[..n];
+            let in1 = &pts.axis(1)[..n];
+            let [out0, out1, ..] = out.axes_mut() else {
+                unreachable!("validated output axes")
+            };
+            let out0 = &mut out0[..n];
+            let out1 = &mut out1[..n];
+            for i in 0..n {
+                if is_bad(in0[i]) || is_bad(in1[i]) {
+                    out0[i] = BAD_VALUE;
+                    out1[i] = BAD_VALUE;
                 } else {
-                    let dx = pin[0][i] - cen0;
-                    let dy = pin[1][i] - cen1;
+                    let dx = in0[i] - cen0;
+                    let dy = in1[i] - cen1;
                     let f = 1.0 + disco * (dx * dx + dy * dy);
-                    pout[0][i] = dx * f + cen0;
-                    pout[1][i] = dy * f + cen1;
+                    out0[i] = dx * f + cen0;
+                    out1[i] = dy * f + cen1;
                 }
             }
         } else {
             // Inverse: remove distortion (SLA_UNPCD approximation)
-            let pin = pts.axis_slices();
-            let pout = out.axes_mut();
-            for i in 0..pts.npoint() {
-                if is_bad(pin[0][i]) || is_bad(pin[1][i]) {
-                    pout[0][i] = BAD_VALUE;
-                    pout[1][i] = BAD_VALUE;
+            let n = pts.npoint();
+            let in0 = &pts.axis(0)[..n];
+            let in1 = &pts.axis(1)[..n];
+            let [out0, out1, ..] = out.axes_mut() else {
+                unreachable!("validated output axes")
+            };
+            let out0 = &mut out0[..n];
+            let out1 = &mut out1[..n];
+            for i in 0..n {
+                if is_bad(in0[i]) || is_bad(in1[i]) {
+                    out0[i] = BAD_VALUE;
+                    out1[i] = BAD_VALUE;
                 } else {
-                    let dxp = pin[0][i] - cen0;
-                    let dyp = pin[1][i] - cen1;
+                    let dxp = in0[i] - cen0;
+                    let dyp = in1[i] - cen1;
                     let cr2 = disco * (dxp * dxp + dyp * dyp);
                     let a = (2.0 * cr2 + 1.0) / (3.0 * cr2 + 1.0);
                     let cr2a2 = cr2 * a * a;
                     let f = (2.0 * cr2a2 * a + 1.0) / (3.0 * cr2a2 + 1.0);
-                    pout[0][i] = dxp * f + cen0;
-                    pout[1][i] = dyp * f + cen1;
+                    out0[i] = dxp * f + cen0;
+                    out1[i] = dyp * f + cen1;
                 }
             }
         }

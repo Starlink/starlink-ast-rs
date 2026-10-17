@@ -487,48 +487,57 @@ impl Mapping for DssMap {
 
         if fwd {
             // Forward: pixel (x,y) -> (RA, Dec) in radians
-            let pin = pts.axis_slices();
-            let pout = out.axes_mut();
-            for i in 0..pts.npoint() {
-                if is_bad(pin[0][i]) || is_bad(pin[1][i]) {
-                    pout[0][i] = BAD_VALUE;
-                    pout[1][i] = BAD_VALUE;
+            let n = pts.npoint();
+            let in0 = &pts.axis(0)[..n];
+            let in1 = &pts.axis(1)[..n];
+            let [out0, out1, ..] = out.axes_mut() else {
+                unreachable!("validated output axes")
+            };
+            let out0 = &mut out0[..n];
+            let out1 = &mut out1[..n];
+            for i in 0..n {
+                if is_bad(in0[i]) || is_bad(in1[i]) {
+                    out0[i] = BAD_VALUE;
+                    out1[i] = BAD_VALUE;
                 } else {
                     let mut xpos = 0.0;
                     let mut ypos = 0.0;
-                    if self
-                        .platepos(pin[0][i], pin[1][i], &mut xpos, &mut ypos)
-                        .is_ok()
-                    {
+                    if self.platepos(in0[i], in1[i], &mut xpos, &mut ypos).is_ok() {
                         // platepos returns degrees; convert to radians
-                        pout[0][i] = xpos * DD2R;
-                        pout[1][i] = ypos * DD2R;
+                        out0[i] = xpos * DD2R;
+                        out1[i] = ypos * DD2R;
                     } else {
-                        pout[0][i] = BAD_VALUE;
-                        pout[1][i] = BAD_VALUE;
+                        out0[i] = BAD_VALUE;
+                        out1[i] = BAD_VALUE;
                     }
                 }
             }
         } else {
             // Inverse: (RA, Dec) in radians -> pixel (x,y)
-            let pin = pts.axis_slices();
-            let pout = out.axes_mut();
-            for i in 0..pts.npoint() {
-                if is_bad(pin[0][i]) || is_bad(pin[1][i]) {
-                    pout[0][i] = BAD_VALUE;
-                    pout[1][i] = BAD_VALUE;
+            let n = pts.npoint();
+            let in0 = &pts.axis(0)[..n];
+            let in1 = &pts.axis(1)[..n];
+            let [out0, out1, ..] = out.axes_mut() else {
+                unreachable!("validated output axes")
+            };
+            let out0 = &mut out0[..n];
+            let out1 = &mut out1[..n];
+            for i in 0..n {
+                if is_bad(in0[i]) || is_bad(in1[i]) {
+                    out0[i] = BAD_VALUE;
+                    out1[i] = BAD_VALUE;
                 } else {
                     // Convert from radians to degrees for platepix
-                    let ra_deg = pin[0][i] * DR2D;
-                    let dec_deg = pin[1][i] * DR2D;
+                    let ra_deg = in0[i] * DR2D;
+                    let dec_deg = in1[i] * DR2D;
                     let mut xpix = 0.0;
                     let mut ypix = 0.0;
                     if self.platepix(ra_deg, dec_deg, &mut xpix, &mut ypix).is_ok() {
-                        pout[0][i] = xpix;
-                        pout[1][i] = ypix;
+                        out0[i] = xpix;
+                        out1[i] = ypix;
                     } else {
-                        pout[0][i] = BAD_VALUE;
-                        pout[1][i] = BAD_VALUE;
+                        out0[i] = BAD_VALUE;
+                        out1[i] = BAD_VALUE;
                     }
                 }
             }

@@ -21,15 +21,15 @@ ChebyMap in a list of one (`mapping.c:16871-16883 (fn Simplify)`) and calls
 default.
 
 The Rust ChebyMap does not delegate to `PolyMap::map_merge`
-(`polymap.rs:1600-1622 (fn map_merge)`). It has its own
+(`polymap.rs:1601-1623 (fn map_merge)`). It has its own
 (`chebymap.rs:646-710 (fn map_merge)`), which runs the coefficient consolidation
 through `PolyMap::consolidated_terms`
-(`polymap.rs:761-805 (fn consolidated_terms)`) and then falls through to the
+(`polymap.rs:762-806 (fn consolidated_terms)`) and then falls through to the
 shared direct merge; the neighbour cancellation is
 `ChebyMap::try_merge` (`chebymap.rs:605-644 (fn try_merge)`).
 
 C's linear replacement is there too, reached through
-`PolyMap::linear_replacement` (`polymap.rs:820-883 (fn linear_replacement)`) with
+`PolyMap::linear_replacement` (`polymap.rs:821-884 (fn linear_replacement)`) with
 the ChebyMap's own `scale_f` / `offset_f` passed as the normalisation. Until AST
 9.5.0 that half dropped the Chebyshev domain scaling and so changed the
 transformation, and the port declined it; upstream `abe5baae` folds the
@@ -43,10 +43,10 @@ normalisation into the matrix and the offsets, and the port follows.
 | 4 | See if the PolyMap can be replaced by a simpler Mapping, without reference to its neighbours | polymap.c:3632-3634 (fn MapMerge) | chebymap.rs:668-707 (fn map_merge) | architecture | ported |
 | 5 | Get the input and output counts of the transformation as constructed | polymap.c:3636-3644 (fn MapMerge) | chebymap.rs:686-690 (fn map_merge) | architecture | ported |
 | 6 | Take a deep copy to modify | polymap.c:3646-3648 (fn MapMerge) | chebymap.rs:691-704 (fn map_merge) | architecture | ported |
-| 7 | Combine coefficients that refer to the same combination of input powers, forward then inverse | polymap.c:3650-3756 (fn MapMerge) | polymap.rs:761-805 (fn consolidated_terms) | architecture | ported |
-| 8 | If any transformation changed, store the new PolyMap in place of the old and report a change | polymap.c:3758-3771 (fn MapMerge) | polymap.rs:800-804 (fn consolidated_terms), chebymap.rs:705-706 (fn map_merge) | architecture | ported |
-| 9 | Test whether the forward transformation is linear, accumulating an offset vector and a matrix with the input normalisation folded in | polymap.c:3773-3890 (fn MapMerge) | polymap.rs:825-870 (fn linear_replacement), chebymap.rs:677-679 (fn map_merge) | architecture | ported |
-| 10 | If it is linear, build the ShiftMap and MatrixMap and compose them | polymap.c:3892-3903 (fn MapMerge) | polymap.rs:872-882 (fn linear_replacement) | architecture | ported |
+| 7 | Combine coefficients that refer to the same combination of input powers, forward then inverse | polymap.c:3650-3756 (fn MapMerge) | polymap.rs:762-806 (fn consolidated_terms) | architecture | ported |
+| 8 | If any transformation changed, store the new PolyMap in place of the old and report a change | polymap.c:3758-3771 (fn MapMerge) | polymap.rs:801-805 (fn consolidated_terms), chebymap.rs:705-706 (fn map_merge) | architecture | ported |
+| 9 | Test whether the forward transformation is linear, accumulating an offset vector and a matrix with the input normalisation folded in | polymap.c:3773-3890 (fn MapMerge) | polymap.rs:826-871 (fn linear_replacement), chebymap.rs:677-679 (fn map_merge) | architecture | ported |
+| 10 | If it is linear, build the ShiftMap and MatrixMap and compose them | polymap.c:3892-3903 (fn MapMerge) | polymap.rs:873-883 (fn linear_replacement) | architecture | ported |
 | 11 | Replace the PolyMap in the list with that composition | polymap.c:3905-3912 (fn MapMerge) | chebymap.rs:681 (fn map_merge) | architecture | ported |
 | 12 | Return the index of the first modified element | polymap.c:3913-3915 (fn MapMerge) | chebymap.rs:682 (fn map_merge) | architecture | ported |
 | 13 | Free the offset and matrix arrays | polymap.c:3917-3920 (fn MapMerge) | -- | ceremony | n/a: owned values are dropped |

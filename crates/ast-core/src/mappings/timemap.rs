@@ -1369,11 +1369,12 @@ impl Mapping for TimeMap {
         crate::mappings::validate_transform_into(self, &pts, forward, Some(&out))?;
         let fwd = self.effective_forward(forward);
 
-        for i in 0..pts.npoint() {
-            let mut time = pts.axis(0)[i];
+        let n = pts.npoint();
+        for (o, &t) in out.axis_mut(0)[..n].iter_mut().zip(pts.axis(0)) {
+            let mut time = t;
 
             if is_bad(time) {
-                out.axis_mut(0)[i] = BAD_VALUE;
+                *o = BAD_VALUE;
                 continue;
             }
 
@@ -1393,7 +1394,7 @@ impl Mapping for TimeMap {
                 }
             }
 
-            out.axis_mut(0)[i] = time;
+            *o = time;
         }
 
         Ok(())

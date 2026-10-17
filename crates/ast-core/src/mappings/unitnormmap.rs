@@ -195,12 +195,10 @@ impl Mapping for UnitNormMap {
             let pin = pts.axis_slices();
             let pout = out.axes_mut();
             let mut inp = vec![0.0; pin.len()];
-            let mut outp = vec![0.0; pout.len()];
+            // Every branch below sets all ncoord + 1 outputs.
+            let mut outp = vec![0.0; ncoord_out];
             for i in 0..pts.npoint() {
                 for (v, axis) in inp.iter_mut().zip(pin) {
-                    *v = axis[i];
-                }
-                for (v, axis) in outp.iter_mut().zip(pout.iter()) {
                     *v = axis[i];
                 }
                 'point: {
@@ -262,12 +260,10 @@ impl Mapping for UnitNormMap {
             let pin = pts.axis_slices();
             let pout = out.axes_mut();
             let mut inp = vec![0.0; pin.len()];
-            let mut outp = vec![0.0; pout.len()];
+            // Every branch below sets all ncoord outputs.
+            let mut outp = vec![0.0; ncoord];
             for i in 0..pts.npoint() {
                 for (v, axis) in inp.iter_mut().zip(pin) {
-                    *v = axis[i];
-                }
-                for (v, axis) in outp.iter_mut().zip(pout.iter()) {
                     *v = axis[i];
                 }
                 {

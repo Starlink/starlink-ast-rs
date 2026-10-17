@@ -701,12 +701,11 @@ impl PolyMap {
                 BAD_VALUE,
             );
             super::substitute_nan_to_bad_in_place(&mut work);
-            for ip in 0..npoint {
-                let t = target.point(ip);
-                let mut w = work.point_mut(ip);
-                for ic in 0..ncoord {
-                    w[ic] = if t[ic] != BAD_VALUE && w[ic] != BAD_VALUE {
-                        t[ic] - w[ic]
+            for ic in 0..ncoord {
+                let t = target.axis(ic);
+                for (w, &t) in work.axis_mut(ic).iter_mut().zip(t) {
+                    *w = if t != BAD_VALUE && *w != BAD_VALUE {
+                        t - *w
                     } else {
                         BAD_VALUE
                     };
@@ -722,23 +721,25 @@ impl PolyMap {
                 }
                 for irow in 0..ncoord {
                     for icol in 0..ncoord {
-                        mat[irow * ncoord + icol] = ps_jac[icol].point(ip)[irow];
+                        mat[irow * ncoord + icol] = ps_jac[icol].axis(irow)[ip];
                     }
-                    vec[irow] = work.point(ip)[irow];
+                    vec[irow] = work.axis(irow)[ip];
                 }
-                let mut x = result.point_mut(ip);
                 if !crate::pal::dmat(ncoord, &mut mat, &mut vec) {
-                    x.fill(BAD_VALUE);
+                    for ic in 0..ncoord {
+                        result.axis_mut(ic)[ip] = BAD_VALUE;
+                    }
                     *flag = true;
                     nconv += 1;
                 } else {
                     let mut vlensq = 0.0;
                     let mut xlensq = 0.0;
-                    for ic in 0..ncoord {
-                        let xx = x[ic] + vec[ic];
-                        x[ic] = xx;
+                    for (ic, &v) in vec.iter().enumerate().take(ncoord) {
+                        let x = result.axis_mut(ic);
+                        let xx = x[ip] + v;
+                        x[ip] = xx;
                         xlensq += xx * xx;
-                        vlensq += vec[ic] * vec[ic];
+                        vlensq += v * v;
                     }
                     if vlensq <= maxerr * xlensq {
                         *flag = true;
