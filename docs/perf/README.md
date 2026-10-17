@@ -13,6 +13,8 @@ Absolute times belong to that machine; the Rust/C ratios travel better, but libm
 | `2026-10-16-macos-aarch64-sweep.tsv` | `54d21ee6` | The first full sweep: every section of the three core oracles and `bench.oracle` at 100 and 100 000 points. |
 | `2026-10-16-macos-aarch64-sweep-intramap-retime.tsv` | `33db9f51` | The sweep's IntraMap sections again, after the harness's IntraMap transform stopped allocating per point. |
 | `2026-10-16-macos-aarch64-sweep-untimed.txt` | `54d21ee6` | The 256 sweep sections that could not be timed, with the reason for each. |
+| `2026-10-17-macos-aarch64-bench.tsv` | `35da6e94` | The `bench` set after transforms moved to per-axis `Points` views. |
+| `2026-10-17-macos-aarch64-sweep.tsv` | `35da6e94` | The full sweep again after the same change, with a `rust-cols` engine; the same 256 sections are untimed. |
 
 The pre-Phase-0 run uses that commit's `ast-core` with the current `ast-bench` harness, built in a git worktree, since the harness did not exist yet; it uses no `ast-core` API newer than that commit.
 
@@ -34,3 +36,37 @@ Rust/C geometric mean: 0.57 at N=100, 2.5 at N=100 000; 839 timings are over 3x,
 - Of the untimed sections, 232 have no row good on both engines (simplifier fixtures whose transforms are all BAD), and 24 are bare Frames or a refused CmpFrame slot, which the port does not treat as Mappings.
 
 The `framesets` set (`crates/ast-bench/sets/framesets.txt`) was chosen from this sweep.
+
+## After per-axis views
+
+A `PointSet` now holds one array per axis, and each `transform_into` loops down whole axes of a borrowed `Points` view into a `PointsMut` view.
+The `rust-cols` engine times the same transform called on caller-owned per-axis arrays, the shape a C caller of `astTranN` passes; it is within 10% of `rust` at large N, either side.
+Every corpus transform's output bits are unchanged (`ast-bench bits`).
+
+The `bench` set at N=1 000 000, forward, in ns per point:
+
+| Case | Rust 2026-10-16 | Rust 2026-10-17 | `rust-cols` | C |
+|---|---|---|---|---|
+| `cmpmap_parallel` | 7.56 | 0.54 | 0.54 | 0.61 |
+| `cmpmap_series` | 5.61 | 1.06 | 1.05 | 1.26 |
+| `matrixmap_3x3_full` | 17.65 | 6.62 | 6.62 | 12.05 |
+| `matrixmap_3x3_diag` | 3.73 | 0.85 | 0.85 | 0.85 |
+| `winmap_2d` | 3.11 | 0.59 | 0.59 | 0.47 |
+| `shiftmap_2d` | 2.65 | 0.52 | 0.52 | 0.48 |
+| `permmap_2d_swap` | 2.32 | 0.52 | 0.55 | 0.35 |
+| `tranmap_zoom_shift` | 1.64 | 0.52 | 0.52 | 0.68 |
+| `normmap_2d` | 6.55 | 4.92 | 4.86 | 34.12 |
+| `mathmap_2d_linear` | 12.02 | 8.03 | 7.91 | 4.10 |
+| `wcsmap_sin` | 36.15 | 32.84 | 32.84 | 31.66 |
+| `ratemap_polymap` | 2770 | 2373 | 2363 | 2627 |
+
+Classes whose cost is the per-point math (WcsMap, SlaMap, SphMap, PolyMap, ChebyMap, GrismMap, PcdMap) moved by at most 11% and stay within 7% of C.
+The worst remaining `bench` ratios at large N are SpecMap wavenumber to frequency (4.2 to 5.1x), MathMap (1.8 to 2.1x), SplineMap (1.6x), PermMap and UnitMap (1.5x, at under 0.6 ns per point) and LutMap (1.3x).
+A single-point call costs about 6 ns more than before, for building the two views; C's single-point calls take 540 ns or more on the same cases.
+
+The sweep took 33 minutes at load average 5.6 to 7.4.
+Rust's time per point fell to a geometric mean of 0.59 of the first sweep's at N=100 and 0.45 at N=100 000, while C's stayed within 3%.
+Rust/C geometric mean is now 0.34 at N=100 and 1.17 at N=100 000; timings over 3x at N=100 000 fell from 842 to 123:
+- IntraMap (20 to 33x): the harness's test transform, not the port's.
+- SpecMap chains and spectral FITS headers (3.6 to 10x), the same cause as the `bench` SpecMap row.
+- SwitchMap (up to 4x), and Region and PointList simplifier fixtures (3.1 to 4.5x).
