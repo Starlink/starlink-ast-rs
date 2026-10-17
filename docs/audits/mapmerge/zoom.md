@@ -43,11 +43,11 @@ must discard the simplified record.
 | 16 | Free the zoom factor array | zoommap.c:949-952 (fn MapMerge) | -- | ceremony | n/a: owned values are dropped |
 | 17 | Replace the condensed run with the new Mapping, close the gap, and return the first modified index | zoommap.c:953-985 (fn MapMerge) | mappings/simplify.rs:1048-1049 (fn zoom_map_merge) | architecture | ported |
 | 18 | If nothing condensed, and the ZoomMap is not first, try merging it with the previous Mapping | zoommap.c:992-1002 (fn MapMerge) | mappings/simplify.rs:964-972 (fn zoom_map_merge) | architecture | ported |
-| 19 | Absorb into a previous MatrixMap by scaling its elements | zoommap.c:1003-1018 (fn MapMerge) | matrix.rs:847-864 (fn try_merge) | architecture | ported |
+| 19 | Absorb into a previous MatrixMap by scaling its elements | zoommap.c:1003-1018 (fn MapMerge) | matrix.rs:878-895 (fn try_merge) | architecture | ported |
 | 20 | Absorb into a previous WinMap by scaling its coefficients | zoommap.c:1019-1035 (fn MapMerge) | zoom.rs:300-314 (fn try_merge) | architecture | ported |
 | 21 | Absorb into a previous ShiftMap, producing a WinMap | zoommap.c:1036-1064 (fn MapMerge) | zoom.rs:300-314 (fn try_merge) | architecture | ported |
 | 22 | If the previous Mapping absorbed nothing, and the ZoomMap is not last, consider the next Mapping | zoommap.c:1066-1071 (fn MapMerge) | mappings/simplify.rs:972 (fn zoom_map_merge) | architecture | ported |
-| 23 | Absorb into a following MatrixMap by scaling its elements | zoommap.c:1072-1085 (fn MapMerge) | matrix.rs:847-864 (fn try_merge) | architecture | ported |
+| 23 | Absorb into a following MatrixMap by scaling its elements | zoommap.c:1072-1085 (fn MapMerge) | matrix.rs:878-895 (fn try_merge) | architecture | ported |
 | 24 | Absorb into a following WinMap by scaling its coefficients | zoommap.c:1086-1101 (fn MapMerge) | zoom.rs:300-314 (fn try_merge) | architecture | ported |
 | 25 | Absorb into a following ShiftMap, producing a WinMap | zoommap.c:1102-1128 (fn MapMerge) | zoom.rs:300-314 (fn try_merge) | architecture | ported |
 | 26 | If anything absorbed, annul the neighbour and the ZoomMap, and store the new Mapping over the neighbour with its Invert flag | zoommap.c:1130-1143 (fn MapMerge) | mappings/simplify.rs:1510-1515 (fn default_map_merge) | architecture | ported |

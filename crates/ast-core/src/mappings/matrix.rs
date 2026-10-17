@@ -19,10 +19,34 @@ use super::perm::PermMap;
 use super::unit::UnitMap;
 use super::winmap::WinMap;
 
-/// Points per pass of the full-matrix kernel: one bit of a `u64` flags each
-/// point that is bad. The size only tiles the loop; it cannot change any
-/// result.
+/// Points per pass of the full-matrix kernel for more than four input axes.
+/// The size only tiles the loop; it cannot change any result.
 const BLOCK: usize = 64;
+
+/// One output axis of a full matrix with few input axes: `out[i]` is the
+/// sum over the inputs, in order, of coefficient times value, or BAD when an
+/// input with a non-zero coefficient is BAD (a BAD input through a zero
+/// coefficient is ignored). With the input axes known, each point's sum
+/// unrolls and the loop over points vectorizes. Adding 0.0 for a BAD input
+/// leaves the sum unchanged, since it is never -0.0.
+macro_rules! full_row_fixed {
+    ($coeffs:expr, $pin:expr, $out:expr, [$($c:tt),+]) => {{
+        let n = $out.len();
+        let coeffs = $coeffs;
+        let x = ($( &$pin[$c][..n], )+);
+        for (k, o) in $out.iter_mut().enumerate() {
+            let mut sum = 0.0;
+            let mut bad = false;
+            $(
+                let v = x.$c[k];
+                let v_bad = is_bad(v);
+                bad |= v_bad & (coeffs[$c] != 0.0);
+                sum += if v_bad { 0.0 } else { coeffs[$c] * v };
+            )+
+            *o = if bad { BAD_VALUE } else { sum };
+        }
+    }};
+}
 use super::zoom::ZoomMap;
 use super::{DynMapping, Mapping};
 use crate::mappings::SimplifiedRecord;
@@ -563,43 +587,24 @@ impl MatrixMap {
                 }
             }
             MatrixForm::Full => {
-                for row in 0..m.nrows() {
+                let pin = pts.axis_slices();
+                // Rows as plain slices: per-element ndarray access costs
+                // more than the arithmetic at small point counts.
+                let m = m.as_standard_layout();
+                let elems = m.as_slice().expect("standard layout is contiguous");
+                for (coeffs, o) in elems.chunks_exact(m.ncols()).zip(out.axes_mut()) {
+                    let o = &mut o[..n];
                     // A BAD element makes its whole row BAD.
-                    if (0..m.ncols()).any(|col| is_bad(m[[row, col]])) {
-                        out.axis_mut(row)[..n].fill(BAD_VALUE);
+                    if coeffs.iter().any(|&c| is_bad(c)) {
+                        o.fill(BAD_VALUE);
                         continue;
                     }
-                    let mut start = 0;
-                    while start < n {
-                        let end = (start + BLOCK).min(n);
-                        // The output axis holds the sums; each point's sum
-                        // runs over the input axes in order, as C's does.
-                        let sum = &mut out.axis_mut(row)[start..end];
-                        sum.fill(0.0);
-                        let mut bad: u64 = 0;
-                        for col in 0..m.ncols() {
-                            let coeff = m[[row, col]];
-                            let x = &pts.axis(col)[start..end];
-                            for (k, (s, &v)) in sum.iter_mut().zip(x).enumerate() {
-                                if is_bad(v) {
-                                    // A BAD input only matters through a
-                                    // non-zero coefficient.
-                                    if coeff != 0.0 {
-                                        bad |= 1 << k;
-                                    }
-                                } else {
-                                    *s += coeff * v;
-                                }
-                            }
-                        }
-                        if bad != 0 {
-                            for (k, s) in sum.iter_mut().enumerate() {
-                                if bad & (1 << k) != 0 {
-                                    *s = BAD_VALUE;
-                                }
-                            }
-                        }
-                        start = end;
+                    match coeffs.len() {
+                        1 => full_row_fixed!(coeffs, pin, o, [0]),
+                        2 => full_row_fixed!(coeffs, pin, o, [0, 1]),
+                        3 => full_row_fixed!(coeffs, pin, o, [0, 1, 2]),
+                        4 => full_row_fixed!(coeffs, pin, o, [0, 1, 2, 3]),
+                        _ => full_row_blocked(coeffs, pin, o),
                     }
                 }
             }
@@ -614,6 +619,32 @@ impl MatrixMap {
     /// Compose in parallel with another mapping.
     pub fn alongside(self, other: DynMapping) -> AstResult<CmpMap> {
         CmpMap::new(Box::new(self), other, Composition::Parallel)
+    }
+}
+
+/// [`full_row_fixed`] for any number of input axes, a block of points at a time:
+/// the output block holds the sums, then each input with a non-zero
+/// coefficient marks its BAD points.
+fn full_row_blocked(coeffs: &[f64], pin: &[&[f64]], out: &mut [f64]) {
+    let n = out.len();
+    for (start, sum) in (0..n).step_by(BLOCK).zip(out.chunks_mut(BLOCK)) {
+        let end = start + sum.len();
+        sum.fill(0.0);
+        // Selects rather than branches, so the loops vectorize. Adding 0.0
+        // leaves the sum unchanged, since it is never -0.0.
+        for (&coeff, x) in coeffs.iter().zip(pin) {
+            for (s, &v) in sum.iter_mut().zip(&x[start..end]) {
+                *s += if is_bad(v) { 0.0 } else { coeff * v };
+            }
+        }
+        for (&coeff, x) in coeffs.iter().zip(pin) {
+            if coeff == 0.0 {
+                continue;
+            }
+            for (s, &v) in sum.iter_mut().zip(&x[start..end]) {
+                *s = if is_bad(v) { BAD_VALUE } else { *s };
+            }
+        }
     }
 }
 

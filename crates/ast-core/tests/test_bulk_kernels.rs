@@ -304,3 +304,62 @@ fn unitnormmap_inverse_kernel_keeps_each_points_state() {
             .collect(),
     });
 }
+
+/// One output of a full MatrixMap (matrixmap.c `Transform`): BAD if any input
+/// with a non-zero coefficient is bad, otherwise the sum, in input order, of
+/// coefficient times value over the good inputs.
+fn matrix_row(coeffs: &[f64], p: &[f64]) -> f64 {
+    let bad = |v: f64| !v.is_finite() || v == BAD_VALUE;
+    if coeffs.iter().zip(p).any(|(&c, &v)| c != 0.0 && bad(v)) {
+        return BAD_VALUE;
+    }
+    let mut sum = 0.0;
+    for (&c, &v) in coeffs.iter().zip(p) {
+        if !bad(v) {
+            sum += c * v;
+        }
+    }
+    sum
+}
+
+#[test]
+fn full_matrixmap_kernel_matches_c_for_each_input_count() {
+    // Each input count has its own kernel up to four, and a blocked one
+    // above; 150 points cross the blocked kernel's block boundary.
+    let odd = [BAD_VALUE, f64::NAN, f64::INFINITY, -0.0];
+    for nin in 1..=6 {
+        // Row 0 has a zero coefficient on its last input, and a negative one
+        // so that -0.0 terms arise.
+        let rows: Vec<Vec<f64>> = (0..2)
+            .map(|r| {
+                (0..nin)
+                    .map(|c| {
+                        if r == 0 && c == nin - 1 {
+                            0.0
+                        } else {
+                            (r as f64 + 1.0) * 0.5 - c as f64 * 0.75
+                        }
+                    })
+                    .collect()
+            })
+            .collect();
+        let m = MatrixMap::new(ndarray::Array2::from_shape_vec((2, nin), rows.concat()).unwrap())
+            .unwrap();
+        let inp: Vec<Vec<f64>> = (0..nin)
+            .map(|j| {
+                (0..150)
+                    .map(|i| {
+                        if i % (5 + j) == 2 {
+                            odd[(i + j) % odd.len()]
+                        } else {
+                            i as f64 * 0.37 - 20.0 + j as f64
+                        }
+                    })
+                    .collect()
+            })
+            .collect();
+        assert_points(&m, true, &inp, 2, |p| {
+            rows.iter().map(|r| matrix_row(r, p)).collect()
+        });
+    }
+}
