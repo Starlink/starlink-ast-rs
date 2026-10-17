@@ -506,7 +506,7 @@ struct SpecConversion {
 /// let pts = PointSet::from_rows([[5.0e14_f64]]);
 /// let out = spec.transform(&pts, true).unwrap();
 /// // Should give ~6e-7 m (600 nm)
-/// let wv = out.point(0)[0];
+/// let wv = out.axis(0)[0];
 /// assert!((wv - 5.99584916e-7).abs() < 1e-13);
 /// ```
 #[derive(Debug, Clone)]

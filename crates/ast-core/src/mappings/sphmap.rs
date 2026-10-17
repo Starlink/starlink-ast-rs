@@ -547,8 +547,8 @@ mod tests {
         let m = SphMap::new();
         let pts = PointSet::from_rows([[1.0, 0.0, 0.0]]);
         let out = m.transform(&pts, true).unwrap();
-        assert_close(out.point(0)[0], 0.0, TOL); // lon
-        assert_close(out.point(0)[1], 0.0, TOL); // lat
+        assert_close(out.axis(0)[0], 0.0, TOL); // lon
+        assert_close(out.axis(1)[0], 0.0, TOL); // lat
     }
 
     #[test]
@@ -556,8 +556,8 @@ mod tests {
         let m = SphMap::new();
         let pts = PointSet::from_rows([[0.0, 1.0, 0.0]]);
         let out = m.transform(&pts, true).unwrap();
-        assert_close(out.point(0)[0], FRAC_PI_2, TOL); // lon = pi/2
-        assert_close(out.point(0)[1], 0.0, TOL); // lat = 0
+        assert_close(out.axis(0)[0], FRAC_PI_2, TOL); // lon = pi/2
+        assert_close(out.axis(1)[0], 0.0, TOL); // lat = 0
     }
 
     #[test]
@@ -565,8 +565,8 @@ mod tests {
         let m = SphMap::new();
         let pts = PointSet::from_rows([[0.0, 0.0, 1.0]]);
         let out = m.transform(&pts, true).unwrap();
-        assert_close(out.point(0)[0], 0.0, TOL); // polar_long default = 0
-        assert_close(out.point(0)[1], FRAC_PI_2, TOL);
+        assert_close(out.axis(0)[0], 0.0, TOL); // polar_long default = 0
+        assert_close(out.axis(1)[0], FRAC_PI_2, TOL);
     }
 
     #[test]
@@ -574,8 +574,8 @@ mod tests {
         let m = SphMap::new();
         let pts = PointSet::from_rows([[0.0, 0.0, -1.0]]);
         let out = m.transform(&pts, true).unwrap();
-        assert_close(out.point(0)[0], 0.0, TOL);
-        assert_close(out.point(0)[1], -FRAC_PI_2, TOL);
+        assert_close(out.axis(0)[0], 0.0, TOL);
+        assert_close(out.axis(1)[0], -FRAC_PI_2, TOL);
     }
 
     #[test]
@@ -584,8 +584,8 @@ mod tests {
         m.set_polar_long(1.5);
         let pts = PointSet::from_rows([[0.0, 0.0, 1.0]]);
         let out = m.transform(&pts, true).unwrap();
-        assert_close(out.point(0)[0], 1.5, TOL);
-        assert_close(out.point(0)[1], FRAC_PI_2, TOL);
+        assert_close(out.axis(0)[0], 1.5, TOL);
+        assert_close(out.axis(1)[0], FRAC_PI_2, TOL);
     }
 
     #[test]
@@ -593,9 +593,9 @@ mod tests {
         let m = SphMap::new();
         let pts = PointSet::from_rows([[0.0, 0.0]]);
         let out = m.transform(&pts, false).unwrap();
-        assert_close(out.point(0)[0], 1.0, TOL);
-        assert_close(out.point(0)[1], 0.0, TOL);
-        assert_close(out.point(0)[2], 0.0, TOL);
+        assert_close(out.axis(0)[0], 1.0, TOL);
+        assert_close(out.axis(1)[0], 0.0, TOL);
+        assert_close(out.axis(2)[0], 0.0, TOL);
     }
 
     #[test]
@@ -603,9 +603,9 @@ mod tests {
         let m = SphMap::new();
         let pts = PointSet::from_rows([[FRAC_PI_2, 0.0]]);
         let out = m.transform(&pts, false).unwrap();
-        assert_close(out.point(0)[0], 0.0, TOL);
-        assert_close(out.point(0)[1], 1.0, TOL);
-        assert_close(out.point(0)[2], 0.0, TOL);
+        assert_close(out.axis(0)[0], 0.0, TOL);
+        assert_close(out.axis(1)[0], 1.0, TOL);
+        assert_close(out.axis(2)[0], 0.0, TOL);
     }
 
     #[test]
@@ -616,9 +616,9 @@ mod tests {
         let sph = m.transform(&pts_cart, true).unwrap();
         // Inverse: spherical -> unit vector
         let cart_back = m.transform(&sph, false).unwrap();
-        assert_close(cart_back.point(0)[0], 0.6, TOL);
-        assert_close(cart_back.point(0)[1], 0.8, TOL);
-        assert_close(cart_back.point(0)[2], 0.0, TOL);
+        assert_close(cart_back.axis(0)[0], 0.6, TOL);
+        assert_close(cart_back.axis(1)[0], 0.8, TOL);
+        assert_close(cart_back.axis(2)[0], 0.0, TOL);
     }
 
     #[test]
@@ -627,8 +627,8 @@ mod tests {
         let m = SphMap::new();
         let pts = PointSet::from_rows([[2.0, 0.0, 0.0]]);
         let out = m.transform(&pts, true).unwrap();
-        assert_close(out.point(0)[0], 0.0, TOL);
-        assert_close(out.point(0)[1], 0.0, TOL);
+        assert_close(out.axis(0)[0], 0.0, TOL);
+        assert_close(out.axis(1)[0], 0.0, TOL);
     }
 
     #[test]
@@ -636,8 +636,8 @@ mod tests {
         let m = SphMap::new();
         let pts = PointSet::from_rows([[BAD_VALUE, 1.0, 0.0]]);
         let out = m.transform(&pts, true).unwrap();
-        assert_eq!(out.point(0)[0], BAD_VALUE);
-        assert_eq!(out.point(0)[1], BAD_VALUE);
+        assert_eq!(out.axis(0)[0], BAD_VALUE);
+        assert_eq!(out.axis(1)[0], BAD_VALUE);
     }
 
     #[test]
@@ -645,9 +645,9 @@ mod tests {
         let m = SphMap::new();
         let pts = PointSet::from_rows([[0.5, BAD_VALUE]]);
         let out = m.transform(&pts, false).unwrap();
-        assert_eq!(out.point(0)[0], BAD_VALUE);
-        assert_eq!(out.point(0)[1], BAD_VALUE);
-        assert_eq!(out.point(0)[2], BAD_VALUE);
+        assert_eq!(out.axis(0)[0], BAD_VALUE);
+        assert_eq!(out.axis(1)[0], BAD_VALUE);
+        assert_eq!(out.axis(2)[0], BAD_VALUE);
     }
 
     #[test]
@@ -680,8 +680,8 @@ mod tests {
         let m = SphMap::new();
         let pts = PointSet::from_rows([[-1.0, 0.0, 0.0]]);
         let out = m.transform(&pts, true).unwrap();
-        assert_close(out.point(0)[0], PI, TOL);
-        assert_close(out.point(0)[1], 0.0, TOL);
+        assert_close(out.axis(0)[0], PI, TOL);
+        assert_close(out.axis(1)[0], 0.0, TOL);
     }
 
     #[test]
@@ -691,7 +691,7 @@ mod tests {
         let m = SphMap::new();
         let pts = PointSet::from_rows([[0.0, 0.0, 0.0]]);
         let out = m.transform(&pts, true).unwrap();
-        assert_close(out.point(0)[0], 0.0, TOL);
-        assert_close(out.point(0)[1], 0.0, TOL);
+        assert_close(out.axis(0)[0], 0.0, TOL);
+        assert_close(out.axis(1)[0], 0.0, TOL);
     }
 }

@@ -97,8 +97,8 @@ fn forward_prep(in0: f64, in1: f64, factor: f64) -> (f64, f64) {
 /// let out = wcs.transform(&pts, true).unwrap();
 /// // Inverse should recover the original.
 /// let back = wcs.transform(&out, false).unwrap();
-/// assert!((back.point(0)[0] - lon).abs() < 1e-10);
-/// assert!((back.point(0)[1] - lat).abs() < 1e-10);
+/// assert!((back.axis(0)[0] - lon).abs() < 1e-10);
+/// assert!((back.axis(1)[0] - lat).abs() < 1e-10);
 /// ```
 #[derive(Debug)]
 pub struct WcsMap {

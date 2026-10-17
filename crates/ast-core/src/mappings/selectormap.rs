@@ -307,7 +307,7 @@ impl Mapping for SelectorMap {
         for i in 0..npoint {
             let pt = pts.point(i);
             let has_bad = pt.iter().take(ncoord).any(|&v| is_bad(v));
-            out.point_mut(i)[0] = if has_bad { -1.0 } else { 0.0 };
+            out.axis_mut(0)[i] = if has_bad { -1.0 } else { 0.0 };
         }
 
         // Test points against each region in turn. Negate + open the region
@@ -324,8 +324,8 @@ impl Mapping for SelectorMap {
             let transformed = (neg_reg.as_ref() as &dyn Mapping).transform(&working, true)?;
 
             for i in 0..npoint {
-                if out.point(i)[0] == 0.0 && is_bad(transformed.point(i)[0]) {
-                    out.point_mut(i)[0] = (ireg + 1) as f64;
+                if out.axis(0)[i] == 0.0 && is_bad(transformed.axis(0)[i]) {
+                    out.axis_mut(0)[i] = (ireg + 1) as f64;
                 }
             }
 
@@ -336,8 +336,8 @@ impl Mapping for SelectorMap {
 
         // Replace -1 sentinel with badval.
         for i in 0..npoint {
-            if out.point(i)[0] == -1.0 {
-                out.point_mut(i)[0] = self.badval;
+            if out.axis(0)[i] == -1.0 {
+                out.axis_mut(0)[i] = self.badval;
             }
         }
 

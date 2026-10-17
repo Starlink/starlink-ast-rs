@@ -1024,14 +1024,14 @@ mod tests {
         let pts = PointSet::from_rows([[1.0, 1.0]]);
         let out = dm.transform(&pts, true).unwrap();
         // Should produce valid (non-BAD) output
-        assert!(out.point(0)[0] != BAD_VALUE);
-        assert!(out.point(0)[1] != BAD_VALUE);
+        assert!(out.axis(0)[0] != BAD_VALUE);
+        assert!(out.axis(1)[0] != BAD_VALUE);
         // RA should be in [0, 2*pi] radians
-        assert!(out.point(0)[0] >= 0.0);
-        assert!(out.point(0)[0] < std::f64::consts::TAU);
+        assert!(out.axis(0)[0] >= 0.0);
+        assert!(out.axis(0)[0] < std::f64::consts::TAU);
         // Dec should be in [-pi/2, pi/2]
-        assert!(out.point(0)[1] >= -std::f64::consts::FRAC_PI_2);
-        assert!(out.point(0)[1] <= std::f64::consts::FRAC_PI_2);
+        assert!(out.axis(1)[0] >= -std::f64::consts::FRAC_PI_2);
+        assert!(out.axis(1)[0] <= std::f64::consts::FRAC_PI_2);
     }
 
     #[test]
@@ -1044,8 +1044,8 @@ mod tests {
         ]);
         let out = dm.transform(&pts, true).unwrap();
         for i in 0..3 {
-            assert_eq!(out.point(i)[0], BAD_VALUE);
-            assert_eq!(out.point(i)[1], BAD_VALUE);
+            assert_eq!(out.axis(0)[i], BAD_VALUE);
+            assert_eq!(out.axis(1)[i], BAD_VALUE);
         }
     }
 
@@ -1059,8 +1059,8 @@ mod tests {
         let pts = PointSet::from_rows([[BAD_VALUE, 0.5], [1.0, BAD_VALUE]]);
         let out = dm.transform(&pts, false).unwrap();
         for i in 0..2 {
-            assert_eq!(out.point(i)[0], BAD_VALUE);
-            assert_eq!(out.point(i)[1], BAD_VALUE);
+            assert_eq!(out.axis(0)[i], BAD_VALUE);
+            assert_eq!(out.axis(1)[i], BAD_VALUE);
         }
     }
 
@@ -1238,8 +1238,8 @@ mod tests {
         let out = dm.transform(&pts, true).unwrap();
         // Oracle: forward(1000,2000) = 2.8083346239617448  -1.0343153598165551.
         // The tiny residual is the plate-solution inverse precision (< 1 mas).
-        assert!((out.point(0)[0] - 2.808_334_623_961_745).abs() < 1e-7);
-        assert!((out.point(0)[1] - (-1.034_315_359_816_555)).abs() < 1e-7);
+        assert!((out.axis(0)[0] - 2.808_334_623_961_745).abs() < 1e-7);
+        assert!((out.axis(1)[0] - (-1.034_315_359_816_555)).abs() < 1e-7);
     }
 
     #[test]
@@ -1258,8 +1258,8 @@ mod tests {
         let out1 = dm.transform(&pts, true).unwrap();
         let out2 = dm2.transform(&pts, true).unwrap();
         for i in 0..pts.npoint() {
-            assert!((out1.point(i)[0] - out2.point(i)[0]).abs() < 1e-15);
-            assert!((out1.point(i)[1] - out2.point(i)[1]).abs() < 1e-15);
+            assert!((out1.axis(0)[i] - out2.axis(0)[i]).abs() < 1e-15);
+            assert!((out1.axis(1)[i] - out2.axis(1)[i]).abs() < 1e-15);
         }
     }
 
@@ -1342,8 +1342,8 @@ mod tests {
         let pts = PointSet::from_rows([[123.0, 45.0]]);
         let want = chain.transform(&pts, true).unwrap();
         let got = simp.transform(&pts, true).unwrap();
-        assert!((want.point(0)[0] - got.point(0)[0]).abs() < 1e-12);
-        assert!((want.point(0)[1] - got.point(0)[1]).abs() < 1e-12);
+        assert!((want.axis(0)[0] - got.axis(0)[0]).abs() < 1e-12);
+        assert!((want.axis(1)[0] - got.axis(1)[0]).abs() < 1e-12);
     }
 
     /// dssmap-08: an inverted DssMap absorbs a *following* WinMap. With the
@@ -1371,8 +1371,8 @@ mod tests {
         let pts = PointSet::from_rows([[2.83, -1.05]]);
         let want = chain.transform(&pts, true).unwrap();
         let got = simp.transform(&pts, true).unwrap();
-        assert!((want.point(0)[0] - got.point(0)[0]).abs() < 1e-9);
-        assert!((want.point(0)[1] - got.point(0)[1]).abs() < 1e-9);
+        assert!((want.axis(0)[0] - got.axis(0)[0]).abs() < 1e-9);
+        assert!((want.axis(1)[0] - got.axis(1)[0]).abs() < 1e-9);
     }
 
     /// dssmap-01: parallel composition is refused — `try_merge` only fires in

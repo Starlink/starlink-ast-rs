@@ -413,7 +413,7 @@ struct TimeConversion {
 ///
 /// let pts = PointSet::from_rows([[51544.5_f64]]);
 /// let out = tm.transform(&pts, true).unwrap();
-/// assert!((out.point(0)[0] - 2000.0).abs() < 1.0e-10);
+/// assert!((out.axis(0)[0] - 2000.0).abs() < 1.0e-10);
 /// ```
 #[derive(Debug, Clone)]
 pub struct TimeMap {
@@ -1370,10 +1370,10 @@ impl Mapping for TimeMap {
         let fwd = self.effective_forward(forward);
 
         for i in 0..pts.npoint() {
-            let mut time = pts.point(i)[0];
+            let mut time = pts.axis(0)[i];
 
             if is_bad(time) {
-                out.point_mut(i)[0] = BAD_VALUE;
+                out.axis_mut(0)[i] = BAD_VALUE;
                 continue;
             }
 
@@ -1393,7 +1393,7 @@ impl Mapping for TimeMap {
                 }
             }
 
-            out.point_mut(i)[0] = time;
+            out.axis_mut(0)[i] = time;
         }
 
         Ok(())

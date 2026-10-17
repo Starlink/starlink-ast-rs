@@ -203,7 +203,7 @@ pub(crate) fn linear_approx_default<M: Mapping + ?Sized>(
         // 1-D: distribute uniformly avoiding the endpoints.
         for point in 0..npoint {
             let frac = (point + 1) as f64 / (npoint + 1) as f64;
-            pts_in_t.point_mut(point)[0] = (1.0 - frac) * lbnd[0] + frac * ubnd[0];
+            pts_in_t.axis_mut(0)[point] = (1.0 - frac) * lbnd[0] + frac * ubnd[0];
         }
     } else {
         // Centre point, slightly offset from exact centre.

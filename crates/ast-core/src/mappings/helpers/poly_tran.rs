@@ -163,7 +163,7 @@ fn sample_poly_1d<M: Mapping + ?Sized>(
 
     let pts = PointSet::from_columns(&[&grid])?;
     let out = map.transform(&pts, forward)?;
-    let transformed: Vec<f64> = (0..npoint).map(|i| out.point(i)[0]).collect();
+    let transformed: Vec<f64> = (0..npoint).map(|i| out.axis(0)[i]).collect();
 
     let mut table = vec![transformed, grid];
     let scales = normalise_columns(&mut table);
@@ -206,8 +206,8 @@ fn sample_poly_2d<M: Mapping + ?Sized>(
 
     let pts = PointSet::from_columns(&[&g1, &g2])?;
     let out = map.transform(&pts, forward)?;
-    let t1: Vec<f64> = (0..nsamp).map(|i| out.point(i)[0]).collect();
-    let t2: Vec<f64> = (0..nsamp).map(|i| out.point(i)[1]).collect();
+    let t1: Vec<f64> = (0..nsamp).map(|i| out.axis(0)[i]).collect();
+    let t2: Vec<f64> = (0..nsamp).map(|i| out.axis(1)[i]).collect();
 
     let mut table = vec![t1, t2, g1, g2];
     let scales = normalise_columns(&mut table);

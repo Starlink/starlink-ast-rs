@@ -600,7 +600,7 @@ impl Mapping for SwitchMap {
         })?;
 
         let sel_out = sel.transform(pts, forward)?;
-        let sel_vals: Vec<f64> = (0..npoint).map(|i| sel_out.point(i)[0]).collect();
+        let sel_vals: Vec<f64> = (0..npoint).map(|i| sel_out.axis(0)[i]).collect();
 
         let mut pop: Vec<usize> = vec![0; nroute];
         for &sv in &sel_vals {
@@ -680,7 +680,7 @@ impl Mapping for SwitchMap {
 
         let pts = PointSet::from_rows([at]);
         let sel_out = sel.transform(&pts, true)?;
-        let sv = sel_out.point(0)[0];
+        let sv = sel_out.axis(0)[0];
 
         if is_bad(sv) {
             return Ok(BAD_VALUE);

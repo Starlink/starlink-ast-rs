@@ -1269,8 +1269,8 @@ impl Mapping for SlaMap {
         // Initialise the output by copying the input (slamap.c:3630).
         let npoint = pts.npoint();
         for i in 0..npoint {
-            out.point_mut(i)[0] = pts.point(i)[0];
-            out.point_mut(i)[1] = pts.point(i)[1];
+            out.axis_mut(0)[i] = pts.axis(0)[i];
+            out.axis_mut(1)[i] = pts.axis(1)[i];
         }
 
         // Apply each conversion in order (reverse for inverse), mutating the

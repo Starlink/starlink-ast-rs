@@ -125,8 +125,8 @@ pub fn analyse_poly(polymap: &PolyMap) -> AstResult<Option<AnalysePolyResult>> {
     use crate::coords::PointSet;
     let zero_in = PointSet::from_rows([[0.0_f64, 0.0]]);
     let inv_pts = working.transform(&zero_in, false)?;
-    let xo = inv_pts.point(0)[0];
-    let yo = inv_pts.point(0)[1];
+    let xo = inv_pts.axis(0)[0];
+    let yo = inv_pts.axis(1)[0];
 
     // Newton-Raphson on a singular (or ill-conditioned) Jacobian
     // can return non-finite values. Mirrors the C path's BAD-handling:
@@ -401,10 +401,10 @@ mod tests {
         let out = mm.transform(&pts, true).expect("transform");
         // Column-major: e0 → (a, c), e1 → (b, d).
         [
-            out.point(0)[0],
-            out.point(1)[0],
-            out.point(0)[1],
-            out.point(1)[1],
+            out.axis(0)[0],
+            out.axis(0)[1],
+            out.axis(1)[0],
+            out.axis(1)[1],
         ]
     }
 
@@ -413,7 +413,7 @@ mod tests {
         use crate::mappings::Mapping;
         let pts = PointSet::from_rows([[0.0_f64, 0.0]]);
         let out = sm.transform(&pts, true).expect("transform");
-        [out.point(0)[0], out.point(0)[1]]
+        [out.axis(0)[0], out.axis(1)[0]]
     }
 
     fn assert_close(a: f64, b: f64, tol: f64, label: &str) {

@@ -811,8 +811,8 @@ impl SplineMap {
                 let j10 = self.db2val(def_dv_dx, outp_x, outp_y, 1, 0, &self.cv);
                 let j11 = self.db2val(def_dv_dy, outp_x, outp_y, 0, 1, &self.cv);
 
-                let vec0 = work_pts.point(ipoint)[0];
-                let vec1 = work_pts.point(ipoint)[1];
+                let vec0 = work_pts.axis(0)[ipoint];
+                let vec1 = work_pts.axis(1)[ipoint];
 
                 // Solve 2x2 system: J * d = vec
                 if is_bad(vec0)

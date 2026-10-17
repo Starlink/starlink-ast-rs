@@ -1045,9 +1045,14 @@ pub(crate) fn poly_transform<P: PolyPowers + ?Sized>(
         .map(|&m| vec![0.0; m.max(1) + 1])
         .collect();
     let bad_coeff = tables.terms.iter().any(|t| t.coeff == BAD_VALUE);
+    let pin = pts.axis_slices();
+    let pout = out.axes_mut();
+    let mut inp = vec![0.0; pin.len()];
     for i in 0..pts.npoint() {
-        let all_good = basis.poly_powers(&mut work, tables.max_pows, &pts.point(i), forward);
-        let mut outp = out.point_mut(i);
+        for (v, axis) in inp.iter_mut().zip(pin) {
+            *v = axis[i];
+        }
+        let all_good = basis.poly_powers(&mut work, tables.max_pows, &inp, forward);
         if all_good && !bad_coeff {
             // No term can be bad, so this is the loop below without its checks.
             for (out_idx, term_indices) in tables.by_output.iter().enumerate() {
@@ -1055,7 +1060,7 @@ pub(crate) fn poly_transform<P: PolyPowers + ?Sized>(
                 for &idx in term_indices {
                     outval += eval_term_with_table(&tables.terms[idx], &work);
                 }
-                outp[out_idx] = if outval.is_nan() { bad } else { outval };
+                pout[out_idx][i] = if outval.is_nan() { bad } else { outval };
             }
             continue;
         }
@@ -1080,7 +1085,7 @@ pub(crate) fn poly_transform<P: PolyPowers + ?Sized>(
                 }
                 outval += value;
             }
-            outp[out_idx] = if outval == BAD_VALUE || outval.is_nan() {
+            pout[out_idx][i] = if outval == BAD_VALUE || outval.is_nan() {
                 bad
             } else {
                 outval

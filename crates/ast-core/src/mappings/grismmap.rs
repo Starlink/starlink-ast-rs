@@ -580,7 +580,7 @@ impl Mapping for GrismMap {
 
         if is_bad(self.k1) || is_bad(self.k2) || is_bad(self.k3) {
             for i in 0..pts.npoint() {
-                out.point_mut(i)[0] = f64::NAN;
+                out.axis_mut(0)[i] = f64::NAN;
             }
             return Ok(());
         }
@@ -590,20 +590,20 @@ impl Mapping for GrismMap {
             // point; if it's zero every output is NaN.
             if self.k2 == 0.0 {
                 for i in 0..pts.npoint() {
-                    out.point_mut(i)[0] = f64::NAN;
+                    out.axis_mut(0)[i] = f64::NAN;
                 }
                 return Ok(());
             }
             for i in 0..pts.npoint() {
-                let value_in = pts.point(i)[0];
-                out.point_mut(i)[0] =
+                let value_in = pts.axis(0)[i];
+                out.axis_mut(0)[i] =
                     (self.k1 + crate::math::sin(crate::math::atan(value_in) + self.k3)) / self.k2;
             }
         } else {
             for i in 0..pts.npoint() {
-                let value_in = pts.point(i)[0];
+                let value_in = pts.axis(0)[i];
                 let sinbeta = self.k2 * value_in - self.k1;
-                out.point_mut(i)[0] = if !(-1.0..=1.0).contains(&sinbeta) {
+                out.axis_mut(0)[i] = if !(-1.0..=1.0).contains(&sinbeta) {
                     f64::NAN
                 } else {
                     crate::math::tan(crate::math::asin(sinbeta) - self.k3)
@@ -625,7 +625,7 @@ impl Mapping for GrismMap {
         // If any derived constants are BAD, all output is BAD.
         if is_bad(self.k1) || is_bad(self.k2) || is_bad(self.k3) {
             for i in 0..pts.npoint() {
-                out.point_mut(i)[0] = BAD_VALUE;
+                out.axis_mut(0)[i] = BAD_VALUE;
             }
             return Ok(());
         }
@@ -633,11 +633,11 @@ impl Mapping for GrismMap {
         if fwd {
             // Forward: grism parameter → wavelength
             for i in 0..pts.npoint() {
-                let value_in = pts.point(i)[0];
+                let value_in = pts.axis(0)[i];
                 if is_bad(value_in) || self.k2 == 0.0 {
-                    out.point_mut(i)[0] = BAD_VALUE;
+                    out.axis_mut(0)[i] = BAD_VALUE;
                 } else {
-                    out.point_mut(i)[0] = (self.k1
+                    out.axis_mut(0)[i] = (self.k1
                         + crate::math::sin(crate::math::atan(value_in) + self.k3))
                         / self.k2;
                 }
@@ -645,16 +645,15 @@ impl Mapping for GrismMap {
         } else {
             // Inverse: wavelength → grism parameter
             for i in 0..pts.npoint() {
-                let value_in = pts.point(i)[0];
+                let value_in = pts.axis(0)[i];
                 if is_bad(value_in) {
-                    out.point_mut(i)[0] = BAD_VALUE;
+                    out.axis_mut(0)[i] = BAD_VALUE;
                 } else {
                     let sinbeta = self.k2 * value_in - self.k1;
                     if !(-1.0..=1.0).contains(&sinbeta) {
-                        out.point_mut(i)[0] = BAD_VALUE;
+                        out.axis_mut(0)[i] = BAD_VALUE;
                     } else {
-                        out.point_mut(i)[0] =
-                            crate::math::tan(crate::math::asin(sinbeta) - self.k3);
+                        out.axis_mut(0)[i] = crate::math::tan(crate::math::asin(sinbeta) - self.k3);
                     }
                 }
             }

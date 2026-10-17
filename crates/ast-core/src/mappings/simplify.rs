@@ -4000,7 +4000,7 @@ mod tests {
         // zoom(2) then shift(10): 5 → 10 → 20
         let pts = PointSet::from_rows([[5.0]]);
         let out = result.transform(&pts, true).unwrap();
-        assert!((out.point(0)[0] - 20.0).abs() < 1e-12);
+        assert!((out.axis(0)[0] - 20.0).abs() < 1e-12);
     }
 
     #[test]
@@ -4018,7 +4018,7 @@ mod tests {
         // 5 → 10 → 20 → 60
         let pts = PointSet::from_rows([[5.0]]);
         let out = result.transform(&pts, true).unwrap();
-        assert!((out.point(0)[0] - 60.0).abs() < 1e-12);
+        assert!((out.axis(0)[0] - 60.0).abs() < 1e-12);
     }
 
     #[test]
@@ -4031,8 +4031,8 @@ mod tests {
         assert_eq!(result.nin(), 2);
         let pts = PointSet::from_rows([[2.0, 5.0]]);
         let out = result.transform(&pts, true).unwrap();
-        assert!((out.point(0)[0] - 6.0).abs() < 1e-12);
-        assert!((out.point(0)[1] - 105.0).abs() < 1e-12);
+        assert!((out.axis(0)[0] - 6.0).abs() < 1e-12);
+        assert!((out.axis(1)[0] - 105.0).abs() < 1e-12);
     }
 
     // ------------------------------------------------------------ //
@@ -4058,7 +4058,7 @@ mod tests {
         // Must be functionally equivalent: 5 → 20.
         let pts = PointSet::from_rows([[5.0]]);
         let out = result.transform(&pts, true).unwrap();
-        assert!((out.point(0)[0] - 20.0).abs() < 1e-12);
+        assert!((out.axis(0)[0] - 20.0).abs() < 1e-12);
     }
 
     #[test]
@@ -4075,7 +4075,7 @@ mod tests {
         let result = simplify_mapping(&cmp).unwrap();
         let pts = PointSet::from_rows([[20.0]]);
         let out = result.transform(&pts, true).unwrap();
-        assert!((out.point(0)[0] - 5.0).abs() < 1e-12);
+        assert!((out.axis(0)[0] - 5.0).abs() < 1e-12);
     }
 
     // ------------------------------------------------------------ //
@@ -4110,8 +4110,8 @@ mod tests {
         // Verify the merged factor via transform.
         let pts = crate::coords::PointSet::from_rows([[1.0, 2.0]]);
         let out = result.transform(&pts, true).unwrap();
-        assert!((out.point(0)[0] - 6.0).abs() < 1e-12);
-        assert!((out.point(0)[1] - 12.0).abs() < 1e-12);
+        assert!((out.axis(0)[0] - 6.0).abs() < 1e-12);
+        assert!((out.axis(1)[0] - 12.0).abs() < 1e-12);
     }
 
     #[test]
@@ -4139,8 +4139,8 @@ mod tests {
         assert!(result.as_any().is::<ShiftMap>());
         let pts = crate::coords::PointSet::from_rows([[0.0, 0.0]]);
         let out = result.transform(&pts, true).unwrap();
-        assert!((out.point(0)[0] - 4.0).abs() < 1e-12);
-        assert!((out.point(0)[1] - 6.0).abs() < 1e-12);
+        assert!((out.axis(0)[0] - 4.0).abs() < 1e-12);
+        assert!((out.axis(1)[0] - 6.0).abs() < 1e-12);
     }
 
     #[test]
@@ -4219,7 +4219,7 @@ mod tests {
         let pts = PointSet::from_rows([[100.0]]);
         let before = cmp.transform(&pts, false).unwrap();
         let after = simplified.transform(&pts, false).unwrap();
-        assert!((before.point(0)[0] - after.point(0)[0]).abs() < 1e-12);
+        assert!((before.axis(0)[0] - after.axis(0)[0]).abs() < 1e-12);
     }
 
     // ------------------------------------------------------------ //
@@ -4256,7 +4256,7 @@ mod tests {
 
         let pts = PointSet::from_rows([[5.0]]);
         let out = result.transform(&pts, true).unwrap();
-        assert!((out.point(0)[0] - 43.0).abs() < 1e-12); // 13 + 6*5 = 43
+        assert!((out.axis(0)[0] - 43.0).abs() < 1e-12); // 13 + 6*5 = 43
     }
 
     #[test]
@@ -4336,8 +4336,8 @@ mod tests {
         // m2 * m1 = [[2,2],[0,1]]; apply to (1,2): (2*1+2*2, 0*1+1*2) = (6, 2)
         let pts = PointSet::from_rows([[1.0, 2.0]]);
         let out = simplified.transform(&pts, true).unwrap();
-        assert!((out.point(0)[0] - 6.0).abs() < 1e-12);
-        assert!((out.point(0)[1] - 2.0).abs() < 1e-12);
+        assert!((out.axis(0)[0] - 6.0).abs() < 1e-12);
+        assert!((out.axis(1)[0] - 2.0).abs() < 1e-12);
     }
 
     #[test]
@@ -4597,7 +4597,7 @@ mod tests {
         let pts = PointSet::from_rows([[5.0]]);
         let out = result.transform(&pts, true).unwrap();
         // 6*5 + 3 = 33
-        assert!((out.point(0)[0] - 33.0).abs() < 1e-12);
+        assert!((out.axis(0)[0] - 33.0).abs() < 1e-12);
     }
 
     #[test]
@@ -4613,11 +4613,11 @@ mod tests {
 
         let pts = PointSet::from_rows([[5.0]]);
         let out = result.transform(&pts, true).unwrap();
-        assert!((out.point(0)[0] - 31.0).abs() < 1e-12); // 6*5 + 1
+        assert!((out.axis(0)[0] - 31.0).abs() < 1e-12); // 6*5 + 1
 
         // Also verify transform equivalence.
         let before = cmp.transform(&pts, true).unwrap();
-        assert!((before.point(0)[0] - out.point(0)[0]).abs() < 1e-12);
+        assert!((before.axis(0)[0] - out.axis(0)[0]).abs() < 1e-12);
     }
 
     // ------------------------------------------------------------ //
@@ -4638,7 +4638,7 @@ mod tests {
 
         let pts = PointSet::from_rows([[5.0]]);
         let out = result.transform(&pts, true).unwrap();
-        assert!((out.point(0)[0] - 21.0).abs() < 1e-12); // 2*5 + 11
+        assert!((out.axis(0)[0] - 21.0).abs() < 1e-12); // 2*5 + 11
     }
 
     #[test]
@@ -4654,10 +4654,10 @@ mod tests {
 
         let pts = PointSet::from_rows([[5.0]]);
         let out = result.transform(&pts, true).unwrap();
-        assert!((out.point(0)[0] - 31.0).abs() < 1e-12); // 2*5 + 21
+        assert!((out.axis(0)[0] - 31.0).abs() < 1e-12); // 2*5 + 21
 
         let before = cmp.transform(&pts, true).unwrap();
-        assert!((before.point(0)[0] - out.point(0)[0]).abs() < 1e-12);
+        assert!((before.axis(0)[0] - out.axis(0)[0]).abs() < 1e-12);
     }
 
     // ------------------------------------------------------------ //
@@ -4679,10 +4679,10 @@ mod tests {
 
         let pts = PointSet::from_rows([[5.0]]);
         let out = result.transform(&pts, true).unwrap();
-        assert!((out.point(0)[0] - 25.0).abs() < 1e-12); // 3*5 + 10
+        assert!((out.axis(0)[0] - 25.0).abs() < 1e-12); // 3*5 + 10
 
         let before = cmp.transform(&pts, true).unwrap();
-        assert!((before.point(0)[0] - out.point(0)[0]).abs() < 1e-12);
+        assert!((before.axis(0)[0] - out.axis(0)[0]).abs() < 1e-12);
     }
 
     #[test]
@@ -4699,10 +4699,10 @@ mod tests {
 
         let pts = PointSet::from_rows([[5.0]]);
         let out = result.transform(&pts, true).unwrap();
-        assert!((out.point(0)[0] - 45.0).abs() < 1e-12); // 3*5 + 30
+        assert!((out.axis(0)[0] - 45.0).abs() < 1e-12); // 3*5 + 30
 
         let before = cmp.transform(&pts, true).unwrap();
-        assert!((before.point(0)[0] - out.point(0)[0]).abs() < 1e-12);
+        assert!((before.axis(0)[0] - out.axis(0)[0]).abs() < 1e-12);
     }
 
     // ------------------------------------------------------------ //
@@ -4723,10 +4723,10 @@ mod tests {
 
         let pts = PointSet::from_rows([[5.0]]);
         let out = result.transform(&pts, true).unwrap();
-        assert!((out.point(0)[0] - 7.0).abs() < 1e-12); // 5 + 2
+        assert!((out.axis(0)[0] - 7.0).abs() < 1e-12); // 5 + 2
 
         let before = cmp.transform(&pts, true).unwrap();
-        assert!((before.point(0)[0] - out.point(0)[0]).abs() < 1e-12);
+        assert!((before.axis(0)[0] - out.axis(0)[0]).abs() < 1e-12);
     }
 
     #[test]
@@ -4742,10 +4742,10 @@ mod tests {
 
         let pts = PointSet::from_rows([[15.0]]);
         let out = result.transform(&pts, true).unwrap();
-        assert!((out.point(0)[0] - 10.0).abs() < 1e-12); // 2*15 - 20
+        assert!((out.axis(0)[0] - 10.0).abs() < 1e-12); // 2*15 - 20
 
         let before = cmp.transform(&pts, true).unwrap();
-        assert!((before.point(0)[0] - out.point(0)[0]).abs() < 1e-12);
+        assert!((before.axis(0)[0] - out.axis(0)[0]).abs() < 1e-12);
     }
 
     // ------------------------------------------------------------ //
@@ -4767,12 +4767,12 @@ mod tests {
         // out = 3*(x + shift) = [3*(x1+1), 3*(x2+2)] = [3*x1+3, 3*x2+6]
         let pts = PointSet::from_rows([[10.0, 20.0]]);
         let out = result.transform(&pts, true).unwrap();
-        assert!((out.point(0)[0] - 33.0).abs() < 1e-12); // 3*10 + 3
-        assert!((out.point(0)[1] - 66.0).abs() < 1e-12); // 3*20 + 6
+        assert!((out.axis(0)[0] - 33.0).abs() < 1e-12); // 3*10 + 3
+        assert!((out.axis(1)[0] - 66.0).abs() < 1e-12); // 3*20 + 6
 
         let before = cmp.transform(&pts, true).unwrap();
-        assert!((before.point(0)[0] - out.point(0)[0]).abs() < 1e-12);
-        assert!((before.point(0)[1] - out.point(0)[1]).abs() < 1e-12);
+        assert!((before.axis(0)[0] - out.axis(0)[0]).abs() < 1e-12);
+        assert!((before.axis(1)[0] - out.axis(1)[0]).abs() < 1e-12);
     }
 
     // ------------------------------------------------------------ //
@@ -4812,7 +4812,7 @@ mod tests {
 
         let pts = PointSet::from_rows([[5.0]]);
         let out = result.transform(&pts, true).unwrap();
-        assert!((out.point(0)[0] - 28.0).abs() < 1e-12); // 3*5 + 13
+        assert!((out.axis(0)[0] - 28.0).abs() < 1e-12); // 3*5 + 13
 
         // Verify it reduced to a single mapping (not a CmpMap).
         assert!(!result.as_any().is::<CmpMap>());
@@ -4848,8 +4848,8 @@ mod tests {
 
         let pts = PointSet::from_rows([[2.0, 5.0]]);
         let out = result.transform(&pts, true).unwrap();
-        assert!((out.point(0)[0] - 6.0).abs() < 1e-12);
-        assert!((out.point(0)[1] - 15.0).abs() < 1e-12);
+        assert!((out.axis(0)[0] - 6.0).abs() < 1e-12);
+        assert!((out.axis(1)[0] - 15.0).abs() < 1e-12);
     }
 
     #[test]
@@ -4896,8 +4896,8 @@ mod tests {
         // Either way the forward transform divides by 4.
         let pts = PointSet::from_rows([[8.0, 12.0]]);
         let out = result.transform(&pts, true).unwrap();
-        assert!((out.point(0)[0] - 2.0).abs() < 1e-12);
-        assert!((out.point(0)[1] - 3.0).abs() < 1e-12);
+        assert!((out.axis(0)[0] - 2.0).abs() < 1e-12);
+        assert!((out.axis(1)[0] - 3.0).abs() < 1e-12);
     }
 
     // ------------------------------------------------------------ //
@@ -4923,8 +4923,8 @@ mod tests {
         let pts = PointSet::from_rows([[1.0, 2.0]]);
         let before = cmp.transform(&pts, true).unwrap();
         let after = simplified.transform(&pts, true).unwrap();
-        assert!((before.point(0)[0] - after.point(0)[0]).abs() < 1e-12);
-        assert!((before.point(0)[1] - after.point(0)[1]).abs() < 1e-12);
+        assert!((before.axis(0)[0] - after.axis(0)[0]).abs() < 1e-12);
+        assert!((before.axis(1)[0] - after.axis(1)[0]).abs() < 1e-12);
     }
 
     #[test]
@@ -4944,8 +4944,8 @@ mod tests {
         let pts = PointSet::from_rows([[1.0, 2.0]]);
         let before = cmp.transform(&pts, true).unwrap();
         let after = simplified.transform(&pts, true).unwrap();
-        assert!((before.point(0)[0] - after.point(0)[0]).abs() < 1e-12);
-        assert!((before.point(0)[1] - after.point(0)[1]).abs() < 1e-12);
+        assert!((before.axis(0)[0] - after.axis(0)[0]).abs() < 1e-12);
+        assert!((before.axis(1)[0] - after.axis(1)[0]).abs() < 1e-12);
     }
 
     #[test]
@@ -4984,8 +4984,8 @@ mod tests {
 
         let pts = PointSet::from_rows([[1.0, 2.0]]);
         let out = simplified.transform(&pts, true).unwrap();
-        assert!((out.point(0)[0] - 6.0).abs() < 1e-12);
-        assert!((out.point(0)[1] - 12.0).abs() < 1e-12);
+        assert!((out.axis(0)[0] - 6.0).abs() < 1e-12);
+        assert!((out.axis(1)[0] - 12.0).abs() < 1e-12);
     }
 
     // ------------------------------------------------------------ //
@@ -5030,8 +5030,8 @@ mod tests {
         // Verify transform: input [1.0, 1.0] → [2*5, 3*7] = [10, 21].
         let pts = PointSet::from_rows([[1.0, 1.0]]);
         let out = result.transform(&pts, true).unwrap();
-        assert!((out.point(0)[0] - 10.0).abs() < 1e-12);
-        assert!((out.point(0)[1] - 21.0).abs() < 1e-12);
+        assert!((out.axis(0)[0] - 10.0).abs() < 1e-12);
+        assert!((out.axis(1)[0] - 21.0).abs() < 1e-12);
     }
 
     #[test]
@@ -5054,8 +5054,8 @@ mod tests {
         // Verify transform: [1.0, 1.0] → [1+2+5, 1+3+7] = [8, 11].
         let pts = PointSet::from_rows([[1.0, 1.0]]);
         let out = result.transform(&pts, true).unwrap();
-        assert!((out.point(0)[0] - 8.0).abs() < 1e-12);
-        assert!((out.point(0)[1] - 11.0).abs() < 1e-12);
+        assert!((out.axis(0)[0] - 8.0).abs() < 1e-12);
+        assert!((out.axis(1)[0] - 11.0).abs() < 1e-12);
     }
 
     #[test]
@@ -5137,10 +5137,10 @@ mod tests {
         // Verify: [1,1,1,1] → [2*5, 2*5, 3*7, 3*7] = [10,10,21,21]
         let pts = PointSet::from_rows([[1.0, 1.0, 1.0, 1.0]]);
         let out = result.transform(&pts, true).unwrap();
-        assert!((out.point(0)[0] - 10.0).abs() < 1e-12);
-        assert!((out.point(0)[1] - 10.0).abs() < 1e-12);
-        assert!((out.point(0)[2] - 21.0).abs() < 1e-12);
-        assert!((out.point(0)[3] - 21.0).abs() < 1e-12);
+        assert!((out.axis(0)[0] - 10.0).abs() < 1e-12);
+        assert!((out.axis(1)[0] - 10.0).abs() < 1e-12);
+        assert!((out.axis(2)[0] - 21.0).abs() < 1e-12);
+        assert!((out.axis(3)[0] - 21.0).abs() < 1e-12);
     }
 
     #[test]
@@ -5168,8 +5168,8 @@ mod tests {
         // Verify transform: identity.
         let pts = PointSet::from_rows([[7.0, 13.0]]);
         let out = result.transform(&pts, true).unwrap();
-        assert!((out.point(0)[0] - 7.0).abs() < 1e-12);
-        assert!((out.point(0)[1] - 13.0).abs() < 1e-12);
+        assert!((out.axis(0)[0] - 7.0).abs() < 1e-12);
+        assert!((out.axis(1)[0] - 13.0).abs() < 1e-12);
     }
 
     #[test]
@@ -5220,8 +5220,8 @@ mod tests {
         let pts = PointSet::from_rows([[1.0, 2.0]]);
         let out_orig = series.transform(&pts, true).unwrap();
         let out_simp = result.transform(&pts, true).unwrap();
-        assert!((out_orig.point(0)[0] - out_simp.point(0)[0]).abs() < 1e-12);
-        assert!((out_orig.point(0)[1] - out_simp.point(0)[1]).abs() < 1e-12);
+        assert!((out_orig.axis(0)[0] - out_simp.axis(0)[0]).abs() < 1e-12);
+        assert!((out_orig.axis(1)[0] - out_simp.axis(1)[0]).abs() < 1e-12);
     }
 
     #[test]
@@ -5242,8 +5242,8 @@ mod tests {
         let pts = PointSet::from_rows([[1.0, 2.0]]);
         let out_orig = series.transform(&pts, true).unwrap();
         let out_simp = result.transform(&pts, true).unwrap();
-        assert!((out_orig.point(0)[0] - out_simp.point(0)[0]).abs() < 1e-12);
-        assert!((out_orig.point(0)[1] - out_simp.point(0)[1]).abs() < 1e-12);
+        assert!((out_orig.axis(0)[0] - out_simp.axis(0)[0]).abs() < 1e-12);
+        assert!((out_orig.axis(1)[0] - out_simp.axis(1)[0]).abs() < 1e-12);
     }
 
     #[test]
@@ -5330,7 +5330,7 @@ mod tests {
                 after.point(0)[k]
             );
         }
-        assert!((after.point(0)[2] - 11.5).abs() < 1e-12);
+        assert!((after.axis(2)[0] - 11.5).abs() < 1e-12);
     }
 
     /// C's base `Simplify` builds a one-element list and calls `astMapMerge`

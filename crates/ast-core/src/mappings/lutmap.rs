@@ -593,13 +593,13 @@ impl Mapping for LutMap {
         crate::mappings::validate_transform(self, &pts, forward, Some(&out))?;
         let fwd = self.effective_forward(forward);
         for i in 0..pts.npoint() {
-            let x = pts.point(i)[0];
+            let x = pts.axis(0)[i];
             let result = if fwd {
                 self.forward_one(x)
             } else {
                 self.inverse_one(x)
             };
-            out.point_mut(i)[0] = result;
+            out.axis_mut(0)[i] = result;
         }
         Ok(())
     }
