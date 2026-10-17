@@ -6,7 +6,7 @@
 //! (lowest range) gradient estimate.
 
 use crate::constants::BAD_VALUE;
-use crate::coords::PointSet;
+use crate::coords::{Points, PointsMut};
 use crate::error::{AstError, AstResult, ErrorCode};
 
 use super::Mapping;
@@ -271,25 +271,26 @@ fn evaluate_batch(
     ax2_idx: usize,
     x_vals: &[f64],
 ) -> AstResult<Vec<f64>> {
-    let nin = at.len();
     let npts = x_vals.len();
 
-    // Build column data: each axis gets a vec of npts values.
-    let columns: Vec<Vec<f64>> = (0..nin)
-        .map(|ax| {
-            if ax == ax2_idx {
-                x_vals.to_vec()
-            } else {
-                vec![at[ax]; npts]
-            }
-        })
-        .collect();
+    // One axis of npts values per input, and one per output.
+    let mut inp = vec![0.0; at.len() * npts];
+    for (ax, axis) in inp.chunks_exact_mut(npts).enumerate() {
+        if ax == ax2_idx {
+            axis.copy_from_slice(x_vals);
+        } else {
+            axis.fill(at[ax]);
+        }
+    }
+    let mut out = vec![0.0; mapping.nout() * npts];
+    mapping.transform_into(
+        Points::new(inp.chunks_exact(npts))?,
+        true,
+        PointsMut::new(out.chunks_exact_mut(npts))?,
+    )?;
 
-    let col_refs: Vec<&[f64]> = columns.iter().map(|c| c.as_slice()).collect();
-    let pts = PointSet::from_columns(&col_refs)?;
-    let out = mapping.transform(&pts, true)?;
-
-    // Extract the ax1 output values.
-    let result: Vec<f64> = (0..npts).map(|i| out.point(i)[ax1_idx]).collect();
-    Ok(result)
+    // Keep the ax1 output values.
+    out.truncate((ax1_idx + 1) * npts);
+    out.drain(..ax1_idx * npts);
+    Ok(out)
 }

@@ -24,7 +24,7 @@
 //! square grids included, with no error.
 
 use crate::constants::BAD_VALUE;
-use crate::coords::{PointSet, Points, PointsMut};
+use crate::coords::{Points, PointsMut};
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
 
@@ -695,16 +695,18 @@ impl SplineMap {
         let mut flags = vec![false; npoint];
         let mut nconv = 0usize;
 
+        let (tu, tv) = (&pts.axis(0)[..npoint], &pts.axis(1)[..npoint]);
+        let (ox, oy) = out.axis_pair_mut(0, 1);
+        let (ox, oy) = (&mut ox[..npoint], &mut oy[..npoint]);
+
         // Initial guess: x = 2*u - spline_u(u,v), y = 2*v - spline_v(u,v)
         for ipoint in 0..npoint {
-            let inp = pts.point(ipoint);
-            let u = inp[0];
-            let v = inp[1];
-            let mut outp = out.point_mut(ipoint);
+            let u = tu[ipoint];
+            let v = tv[ipoint];
 
             if is_bad(u) || is_bad(v) {
-                outp[0] = BAD_VALUE;
-                outp[1] = BAD_VALUE;
+                ox[ipoint] = BAD_VALUE;
+                oy[ipoint] = BAD_VALUE;
                 flags[ipoint] = true;
                 nconv += 1;
                 continue;
@@ -715,29 +717,30 @@ impl SplineMap {
 
             let a_val = self.db2val(def_u, u, v, 0, 0, &self.cu);
             if !is_bad(u) && !is_bad(a_val) {
-                outp[0] = 2.0 * u - a_val;
+                ox[ipoint] = 2.0 * u - a_val;
             } else {
-                outp[0] = u;
+                ox[ipoint] = u;
             }
 
             let a_val = self.db2val(def_v, u, v, 0, 0, &self.cv);
             if !is_bad(v) && !is_bad(a_val) {
-                outp[1] = 2.0 * v - a_val;
+                oy[ipoint] = 2.0 * v - a_val;
             } else {
-                outp[1] = v;
+                oy[ipoint] = v;
             }
 
             // Check if initial guess is bad
-            if is_bad(outp[0]) || is_bad(outp[1]) {
-                outp[0] = BAD_VALUE;
-                outp[1] = BAD_VALUE;
+            if is_bad(ox[ipoint]) || is_bad(oy[ipoint]) {
+                ox[ipoint] = BAD_VALUE;
+                oy[ipoint] = BAD_VALUE;
                 flags[ipoint] = true;
                 nconv += 1;
             }
         }
 
         // Newton-Raphson iterations
-        let mut work_pts = PointSet::zeros(npoint, 2);
+        let mut wu = vec![0.0; npoint];
+        let mut wv = vec![0.0; npoint];
 
         for _iter in 0..maxiter {
             if nconv >= npoint {
@@ -746,44 +749,42 @@ impl SplineMap {
 
             // Clamp every guess to the knot domain, converged ones included,
             // as C does at the start of each iteration.
-            for ipoint in 0..npoint {
-                let mut outp = out.point_mut(ipoint);
-                if !is_bad(outp[0]) {
-                    outp[0] = outp[0].clamp(xlo, xhi);
+            for x in ox.iter_mut() {
+                if !is_bad(*x) {
+                    *x = x.clamp(xlo, xhi);
                 }
-                if !is_bad(outp[1]) {
-                    outp[1] = outp[1].clamp(ylo, yhi);
+            }
+            for y in oy.iter_mut() {
+                if !is_bad(*y) {
+                    *y = y.clamp(ylo, yhi);
                 }
             }
 
             // Forward-transform the current input guesses
             for ipoint in 0..npoint {
-                let guess = out.point(ipoint);
-                let mut wp = work_pts.point_mut(ipoint);
-                if is_bad(guess[0]) || is_bad(guess[1]) {
-                    wp[0] = BAD_VALUE;
-                    wp[1] = BAD_VALUE;
+                let (x, y) = (ox[ipoint], oy[ipoint]);
+                if is_bad(x) || is_bad(y) {
+                    wu[ipoint] = BAD_VALUE;
+                    wv[ipoint] = BAD_VALUE;
                 } else {
-                    let (u, v) = self.forward_point(guess[0], guess[1]);
-                    wp[0] = u;
-                    wp[1] = v;
+                    (wu[ipoint], wv[ipoint]) = self.forward_point(x, y);
                 }
             }
 
             // Compute D_out = target - forward(guess)
-            for ipoint in 0..npoint {
-                let target = pts.point(ipoint);
-                let mut wp = work_pts.point_mut(ipoint);
-                if !is_bad(target[0]) && !is_bad(wp[0]) {
-                    wp[0] = target[0] - wp[0];
+            for (w, &t) in wu.iter_mut().zip(tu) {
+                *w = if !is_bad(t) && !is_bad(*w) {
+                    t - *w
                 } else {
-                    wp[0] = BAD_VALUE;
-                }
-                if !is_bad(target[1]) && !is_bad(wp[1]) {
-                    wp[1] = target[1] - wp[1];
+                    BAD_VALUE
+                };
+            }
+            for (w, &t) in wv.iter_mut().zip(tv) {
+                *w = if !is_bad(t) && !is_bad(*w) {
+                    t - *w
                 } else {
-                    wp[1] = BAD_VALUE;
-                }
+                    BAD_VALUE
+                };
             }
 
             // For each point, solve: Jacobian * D_in = D_out
@@ -792,13 +793,8 @@ impl SplineMap {
                     continue;
                 }
 
-                let outp_x;
-                let outp_y;
-                {
-                    let outp = out.point(ipoint);
-                    outp_x = outp[0];
-                    outp_y = outp[1];
-                }
+                let outp_x = ox[ipoint];
+                let outp_y = oy[ipoint];
 
                 // Compute Jacobian at current guess
                 let def_du_dx = if self.out_unit() { 1.0 } else { BAD_VALUE };
@@ -811,8 +807,8 @@ impl SplineMap {
                 let j10 = self.db2val(def_dv_dx, outp_x, outp_y, 1, 0, &self.cv);
                 let j11 = self.db2val(def_dv_dy, outp_x, outp_y, 0, 1, &self.cv);
 
-                let vec0 = work_pts.axis(0)[ipoint];
-                let vec1 = work_pts.axis(1)[ipoint];
+                let vec0 = wu[ipoint];
+                let vec1 = wv[ipoint];
 
                 // Solve 2x2 system: J * d = vec
                 if is_bad(vec0)
@@ -823,9 +819,8 @@ impl SplineMap {
                     || is_bad(j11)
                 {
                     // Singular or bad — mark as converged with BAD
-                    let mut outp = out.point_mut(ipoint);
-                    outp[0] = BAD_VALUE;
-                    outp[1] = BAD_VALUE;
+                    ox[ipoint] = BAD_VALUE;
+                    oy[ipoint] = BAD_VALUE;
                     flags[ipoint] = true;
                     nconv += 1;
                     continue;
@@ -836,9 +831,8 @@ impl SplineMap {
                 let mut mat = [j00, j01, j10, j11];
                 let mut vec = [vec0, vec1];
                 if !crate::pal::dmat(2, &mut mat, &mut vec) {
-                    let mut outp = out.point_mut(ipoint);
-                    outp[0] = BAD_VALUE;
-                    outp[1] = BAD_VALUE;
+                    ox[ipoint] = BAD_VALUE;
+                    oy[ipoint] = BAD_VALUE;
                     flags[ipoint] = true;
                     nconv += 1;
                     continue;
@@ -846,12 +840,11 @@ impl SplineMap {
                 let [dx, dy] = vec;
 
                 // Update guess
-                let mut outp = out.point_mut(ipoint);
-                outp[0] += dx;
-                outp[1] += dy;
+                ox[ipoint] += dx;
+                oy[ipoint] += dy;
 
                 // Check convergence
-                let xlensq = outp[0] * outp[0] + outp[1] * outp[1];
+                let xlensq = ox[ipoint] * ox[ipoint] + oy[ipoint] * oy[ipoint];
                 let vlensq = dx * dx + dy * dy;
                 if vlensq <= maxerr * xlensq {
                     flags[ipoint] = true;
@@ -864,9 +857,8 @@ impl SplineMap {
         if nconv < npoint {
             for ipoint in 0..npoint {
                 if !flags[ipoint] {
-                    let mut outp = out.point_mut(ipoint);
-                    outp[0] = BAD_VALUE;
-                    outp[1] = BAD_VALUE;
+                    ox[ipoint] = BAD_VALUE;
+                    oy[ipoint] = BAD_VALUE;
                 }
             }
         }
@@ -933,16 +925,16 @@ impl Mapping for SplineMap {
 
         if fwd {
             // Forward: evaluate B-splines
-            for i in 0..pts.npoint() {
-                let inp = pts.point(i);
-                let mut outp = out.point_mut(i);
-                if is_bad(inp[0]) || is_bad(inp[1]) {
-                    outp[0] = BAD_VALUE;
-                    outp[1] = BAD_VALUE;
+            let n = pts.npoint();
+            let (x, y) = (&pts.axis(0)[..n], &pts.axis(1)[..n]);
+            let (ou, ov) = out.axis_pair_mut(0, 1);
+            let (ou, ov) = (&mut ou[..n], &mut ov[..n]);
+            for i in 0..n {
+                if is_bad(x[i]) || is_bad(y[i]) {
+                    ou[i] = BAD_VALUE;
+                    ov[i] = BAD_VALUE;
                 } else {
-                    let (u, v) = self.forward_point(inp[0], inp[1]);
-                    outp[0] = u;
-                    outp[1] = v;
+                    (ou[i], ov[i]) = self.forward_point(x[i], y[i]);
                 }
             }
         } else {

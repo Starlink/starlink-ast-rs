@@ -580,6 +580,15 @@ impl CmpMap {
         let nmid = if d1 { m1.nout() } else { m1.nin() };
         let mut mid = PointSet::zeros(npoint.min(SERIES_BATCH), nmid);
         let mut mid = mid.as_points_mut();
+        if npoint <= SERIES_BATCH {
+            return if nan {
+                m1.transform_into_nan(pts, d1, mid.reborrow())?;
+                m2.transform_into_nan(mid.as_points(), d2, out)
+            } else {
+                m1.transform_into(pts, d1, mid.reborrow())?;
+                m2.transform_into(mid.as_points(), d2, out)
+            };
+        }
         let mut start = 0;
         loop {
             let end = (start + SERIES_BATCH).min(npoint);
