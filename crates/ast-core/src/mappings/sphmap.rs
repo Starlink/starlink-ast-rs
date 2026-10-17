@@ -7,7 +7,7 @@ use crate::pal;
 use crate::serial::{Node, Serializable, read_mapping_base};
 
 use super::cmpmap::{CmpMap, Composition};
-use super::helpers::{ast_equal, is_bad, point_has_bad};
+use super::helpers::{ast_equal, is_bad};
 use super::rate::numeric_rate;
 use super::unit::UnitMap;
 use super::{DynMapping, Mapping};
@@ -257,15 +257,17 @@ impl Mapping for SphMap {
         if fwd {
             // Forward: Cartesian (x, y, z) -> Spherical (lon, lat)
             let polarlong = self.polar_long;
+            let pin = pts.axis_slices();
+            let pout = out.axes_mut();
             for i in 0..pts.npoint() {
-                let inp = pts.point(i);
-                let mut outp = out.point_mut(i);
-                if point_has_bad(&inp) {
-                    outp.fill(BAD_VALUE);
+                if pin.iter().any(|ax| is_bad(ax[i])) {
+                    for ax in pout.iter_mut() {
+                        ax[i] = BAD_VALUE;
+                    }
                 } else {
-                    let x = inp[0];
-                    let y = inp[1];
-                    let z = inp[2];
+                    let x = pin[0][i];
+                    let y = pin[1][i];
+                    let z = pin[2][i];
 
                     // Check for pole: x and y are effectively zero
                     // relative to z.  Use the same criterion as the C
@@ -277,40 +279,42 @@ impl Mapping for SphMap {
                     let mxerr = (1000.0 * z).abs() * f64::EPSILON;
                     if x.abs() < mxerr && y.abs() < mxerr {
                         if z < 0.0 {
-                            outp[0] = polarlong;
-                            outp[1] = -std::f64::consts::FRAC_PI_2;
+                            pout[0][i] = polarlong;
+                            pout[1][i] = -std::f64::consts::FRAC_PI_2;
                         } else if z > 0.0 {
-                            outp[0] = polarlong;
-                            outp[1] = std::f64::consts::FRAC_PI_2;
+                            pout[0][i] = polarlong;
+                            pout[1][i] = std::f64::consts::FRAC_PI_2;
                         } else {
                             // z == 0.0 (all three zero) — should not
                             // be reachable since mxerr would be 0, but
                             // kept for safety to match C behavior.
-                            outp[0] = BAD_VALUE;
-                            outp[1] = BAD_VALUE;
+                            pout[0][i] = BAD_VALUE;
+                            pout[1][i] = BAD_VALUE;
                         }
                     } else {
                         let v = [x, y, z];
                         let (lon, lat) = pal::dcc2s(&v);
-                        outp[0] = lon;
-                        outp[1] = lat;
+                        pout[0][i] = lon;
+                        pout[1][i] = lat;
                     }
                 }
             }
         } else {
             // Inverse: Spherical (lon, lat) -> Cartesian (x, y, z)
+            let pin = pts.axis_slices();
+            let pout = out.axes_mut();
             for i in 0..pts.npoint() {
-                let inp = pts.point(i);
-                let mut outp = out.point_mut(i);
-                if point_has_bad(&inp) {
-                    outp.fill(BAD_VALUE);
+                if pin.iter().any(|ax| is_bad(ax[i])) {
+                    for ax in pout.iter_mut() {
+                        ax[i] = BAD_VALUE;
+                    }
                 } else {
-                    let lon = inp[0];
-                    let lat = inp[1];
+                    let lon = pin[0][i];
+                    let lat = pin[1][i];
                     let v = pal::dcs2c(lon, lat);
-                    outp[0] = v[0];
-                    outp[1] = v[1];
-                    outp[2] = v[2];
+                    pout[0][i] = v[0];
+                    pout[1][i] = v[1];
+                    pout[2][i] = v[2];
                 }
             }
         }
