@@ -18,7 +18,7 @@
 use std::fmt;
 
 use crate::constants::BAD_VALUE;
-use crate::coords::{PointSet, Points, PointsMut};
+use crate::coords::{Points, PointsMut};
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::serial::{
     MappingToNode, Node, Serializable, mapping_from_node, read_mapping_base, write_mapping_base,
@@ -253,19 +253,21 @@ impl Mapping for RateMap {
         self.inverted = !self.inverted;
     }
 
-    fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
-        crate::mappings::validate_transform(self, pts, forward, None)?;
-        // Determine the effective direction.
-        let effective_fwd = forward != self.inverted;
-
-        if !effective_fwd {
+    fn transform_into(
+        &self,
+        pts: Points<'_>,
+        forward: bool,
+        mut out: PointsMut<'_>,
+    ) -> AstResult<()> {
+        crate::mappings::validate_transform_into(self, &pts, forward, Some(&out))?;
+        let npoint = pts.npoint();
+        if forward == self.inverted {
             // The RateMap class does not define an inverse transformation
             // (or forward when inverted). Return BAD for all outputs.
-            let npoint = pts.npoint();
-            let nout = if forward { self.nout() } else { self.nin() };
-            let columns: Vec<Vec<f64>> = (0..nout).map(|_| vec![BAD_VALUE; npoint]).collect();
-            let col_refs: Vec<&[f64]> = columns.iter().map(|c| c.as_slice()).collect();
-            return PointSet::from_columns(&col_refs);
+            for j in 0..out.ncoord() {
+                out.axis_mut(j)[..npoint].fill(BAD_VALUE);
+            }
+            return Ok(());
         }
 
         // ratemap.c Transform asks the encapsulated Mapping's Rate at every
@@ -281,27 +283,13 @@ impl Mapping for RateMap {
         } else {
             self.map.as_ref()
         };
-        let results = (0..pts.npoint())
-            .map(|ipoint| emap.rate(&pts.point(ipoint), self.ax1, self.ax2))
-            .collect::<AstResult<Vec<f64>>>()?;
-
-        PointSet::from_columns(&[&results])
-    }
-
-    fn transform_into(
-        &self,
-        pts: Points<'_>,
-        forward: bool,
-        mut out: PointsMut<'_>,
-    ) -> AstResult<()> {
-        crate::mappings::validate_transform_into(self, &pts, forward, Some(&out))?;
-        let result = self.transform(&PointSet::from_points(&pts), forward)?;
-        let npoint = result.npoint();
-        let nout = result.ncoord();
-        for i in 0..npoint {
-            let src = result.point(i);
-            let mut dst = out.point_mut(i);
-            dst[..nout].copy_from_slice(&src[..nout]);
+        let mut at = vec![0.0; pts.ncoord()];
+        let rates = &mut out.axis_mut(0)[..npoint];
+        for (i, rate) in rates.iter_mut().enumerate() {
+            for (v, axis) in at.iter_mut().zip(pts.axis_slices()) {
+                *v = axis[i];
+            }
+            *rate = emap.rate(&at, self.ax1, self.ax2)?;
         }
         Ok(())
     }
