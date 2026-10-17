@@ -18,9 +18,9 @@ when the base-to-current Mapping is not a UnitMap, rebuilds the NullRegion on th
 current Frame. `GetDefUnc` (`nullregion.c:224-244 (fn GetDefUnc)`) is a zero-radius Circle
 at the origin.
 
-`NullRegion::map_merge` (`nullregion.rs:812-815 (fn map_merge)`) delegates to
+`NullRegion::map_merge` (`nullregion.rs:806-809 (fn map_merge)`) delegates to
 `simplify::region_map_merge` (`mappings/simplify.rs:1545-1591 (fn region_map_merge)`), which every
-Region shares; `NullRegion::simplified` (`nullregion.rs:707-777 (fn simplified)`) and
+Region shares; `NullRegion::simplified` (`nullregion.rs:701-771 (fn simplified)`) and
 `NullRegion::get_def_unc` (`nullregion.rs:341-351 (fn get_def_unc)`) are the other two.
 
 | # | C step | C site | Rust site | extension point | verdict |
@@ -46,15 +46,15 @@ Region shares; `NullRegion::simplified` (`nullregion.rs:707-777 (fn simplified)`
 | 19 | `Simplify`: initialise the returned pointer | nullregion.c:1374-1376 (fn Simplify) | -- | ceremony | n/a: the Rust returns `AstResult<(DynMapping, bool)>`, so there is no sentinel to initialise |
 | 20 | Check the global error status and bail out | nullregion.c:1377-1379 (fn Simplify) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 21 | Get a pointer to the supplied Region structure | nullregion.c:1380-1382 (fn Simplify) | -- | ceremony | n/a: the Rust method already has `&self` |
-| 22 | Invoke the parent Region Simplify, which simplifies the encapsulated FrameSet and the uncertainty | nullregion.c:1383-1386 (fn Simplify) | nullregion.rs:707-720 (fn simplified) | architecture | ported |
-| 23 | If the base-to-current Mapping is a UnitMap, no further simplification is possible, so clone the parent's result | nullregion.c:1387-1392 (fn Simplify) | nullregion.rs:724-731 (fn simplified) | architecture | ported |
-| 24 | Otherwise take the other branch | nullregion.c:1393-1394 (fn Simplify) | nullregion.rs:732 (fn simplified) | architecture | ported |
-| 25 | Create a NullRegion from the current Frame, carrying the parent's uncertainty | nullregion.c:1395-1398 (fn Simplify) | nullregion.rs:735-758 (fn simplified) | architecture | ported |
+| 22 | Invoke the parent Region Simplify, which simplifies the encapsulated FrameSet and the uncertainty | nullregion.c:1383-1386 (fn Simplify) | nullregion.rs:701-714 (fn simplified) | architecture | ported |
+| 23 | If the base-to-current Mapping is a UnitMap, no further simplification is possible, so clone the parent's result | nullregion.c:1387-1392 (fn Simplify) | nullregion.rs:718-725 (fn simplified) | architecture | ported |
+| 24 | Otherwise take the other branch | nullregion.c:1393-1394 (fn Simplify) | nullregion.rs:726 (fn simplified) | architecture | ported |
+| 25 | Create a NullRegion from the current Frame, carrying the parent's uncertainty | nullregion.c:1395-1398 (fn Simplify) | nullregion.rs:729-752 (fn simplified) | architecture | ported |
 | 26 | Free the Frame | nullregion.c:1399-1402 (fn Simplify) | -- | ceremony | n/a: owned values are dropped |
 | 27 | Annul the Mapping and the parent's Region | nullregion.c:1403-1405 (fn Simplify) | -- | ceremony | n/a: owned values are dropped |
-| 28 | If anything simplified, overlay the supplied Region's attributes onto the result | nullregion.c:1406-1411 (fn Simplify) | nullregion.rs:770-772 (fn simplified) | architecture | ported |
+| 28 | If anything simplified, overlay the supplied Region's attributes onto the result | nullregion.c:1406-1411 (fn Simplify) | nullregion.rs:764-766 (fn simplified) | architecture | ported |
 | 29 | Annul the returned pointer if an error occurred | nullregion.c:1412-1414 (fn Simplify) | -- | ceremony | n/a: an error is a `Result::Err`, not a value to be cleared alongside one |
-| 30 | Return the result | nullregion.c:1415-1417 (fn Simplify) | nullregion.rs:773 (fn simplified),746 (fn simplified) | architecture | ported |
+| 30 | Return the result | nullregion.c:1415-1417 (fn Simplify) | nullregion.rs:767 (fn simplified),740 (fn simplified) | architecture | ported |
 | 31 | `GetDefUnc`: initialise | nullregion.c:224-226 (fn GetDefUnc) | -- | ceremony | n/a: the Rust returns `AstResult<DynRegion>`, so there is no sentinel to initialise |
 | 32 | Check the inherited status | nullregion.c:227-229 (fn GetDefUnc) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 33 | Create a Circle centred on the base Frame origin with zero radius | nullregion.c:230-241 (fn GetDefUnc) | nullregion.rs:345-350 (fn get_def_unc) | architecture | ported |
@@ -73,7 +73,7 @@ The rebuilt NullRegion is created on the *parent-simplified* current Frame and
 carries the parent's uncertainty, not the original's, so the FrameSet and
 uncertainty simplification the parent performed is not discarded by the rebuild.
 The remaining Region attributes are copied across the rebuild as well
-(`nullregion.rs:738-746 (fn simplified)`), because a fresh `RegionData` would otherwise
+(`nullregion.rs:732-740 (fn simplified)`), because a fresh `RegionData` would otherwise
 default them; row 28's `reg_overlay` then restores the *supplied* Region's
 values over the top, which is what C's `astRegOverlay` does.
 
@@ -83,7 +83,7 @@ C has no `simpler` flag: it compares `result != this_mapping`
 (`nullregion.c:1410 (fn Simplify)`), which is true whenever the non-UnitMap branch built a
 fresh NullRegion, and true through the UnitMap branch only when the parent
 returned something other than the supplied pointer — `astClone( new )` is that
-pointer exactly when the parent simplified nothing. `nullregion.rs:770 (fn simplified)`
+pointer exactly when the parent simplified nothing. `nullregion.rs:764 (fn simplified)`
 spells the same condition as `simpler || !map.as_any().is::<UnitMap>()`, where
 `simpler` records whether the parent changed anything.
 
@@ -93,7 +93,7 @@ C offers the lower neighbour before the upper, and passes `intfirst = 0` for the
 first and `1` for the second, which is the order the merged Region's axes end up
 in. `region_map_merge` keeps that order and that flag
 (`mappings/simplify.rs:1569 (fn region_map_merge)`,1480). The lower-neighbour case cannot come
-through `NullRegion::try_merge` (`nullregion.rs:793-806 (fn try_merge)`), because
+through `NullRegion::try_merge` (`nullregion.rs:787-800 (fn try_merge)`), because
 `default_map_merge` only ever offers a nominee the entry at `where + 1`; sharing
 this body across the Region classes is what gives every one of them C's
 lower-neighbour branch.

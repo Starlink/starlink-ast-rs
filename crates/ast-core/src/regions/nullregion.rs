@@ -679,8 +679,8 @@ impl Mapping for NullRegion {
         crate::mappings::validate_transform(self, pts, forward, None)?;
         let mut out = pts.clone();
         if !self.data.negated {
-            for i in 0..out.npoint() {
-                out.point_mut(i).fill(BAD_VALUE);
+            for j in 0..out.ncoord() {
+                out.axis_mut(j).fill(BAD_VALUE);
             }
         }
         Ok(out)
@@ -694,13 +694,7 @@ impl Mapping for NullRegion {
     ) -> AstResult<()> {
         crate::mappings::validate_transform_into(self, &pts, forward, Some(&out))?;
         let result = self.transform(&PointSet::from_points(&pts), forward)?;
-        let npoint = result.npoint();
-        let ncoord = result.ncoord();
-        for i in 0..npoint {
-            let src = result.point(i);
-            let mut dst = out.point_mut(i);
-            dst[..ncoord].copy_from_slice(&src);
-        }
+        out.copy_from(&result.as_points());
         Ok(())
     }
 

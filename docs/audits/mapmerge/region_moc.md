@@ -11,7 +11,7 @@ Uncited C steps:
 
 moc.c has neither a `MapMerge` nor a `Simplify`. A Moc inherits region.c's
 `Simplify`, which simplifies the FrameSet and the uncertainty a Region carries;
-`Moc::simplified` (`moc.rs:3318-3323 (fn simplified)`) reaches it through
+`Moc::simplified` (`moc.rs:3315-3320 (fn simplified)`) reaches it through
 `parent_region_simplify`, since a Rust trait has no parent method to inherit,
 and `test_simplify_seams.rs` names the class in `REGION_SIMPLIFY_INHERITORS`
 for that reason. Its rows are region.c's, in `region_mod.md`.

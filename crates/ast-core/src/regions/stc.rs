@@ -1063,10 +1063,7 @@ impl<K: StcKind> Mapping for Stc<K> {
     ) -> AstResult<()> {
         crate::mappings::validate_transform_into(self, &pts, forward, Some(&out))?;
         let result = self.transform(&PointSet::from_points(&pts), forward)?;
-        let ncoord = result.ncoord();
-        for i in 0..result.npoint() {
-            out.point_mut(i)[..ncoord].copy_from_slice(&result.point(i));
-        }
+        out.copy_from(&result.as_points());
         Ok(())
     }
 

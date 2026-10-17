@@ -1244,13 +1244,7 @@ impl Mapping for Ellipse {
     ) -> AstResult<()> {
         crate::mappings::validate_transform_into(self, &pts, forward, Some(&out))?;
         let result = self.transform(&PointSet::from_points(&pts), forward)?;
-        let npoint = result.npoint();
-        let ncoord = result.ncoord();
-        for i in 0..npoint {
-            let src = result.point(i);
-            let mut dst = out.point_mut(i);
-            dst[..ncoord].copy_from_slice(&src);
-        }
+        out.copy_from(&result.as_points());
         Ok(())
     }
 
