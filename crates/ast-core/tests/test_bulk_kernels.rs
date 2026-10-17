@@ -189,3 +189,118 @@ fn a_series_cmpmap_of_no_points_still_checks_its_direction() {
     );
     assert!(r.is_err(), "{r:?}");
 }
+
+use ast_core::mappings::UnitNormMap;
+
+/// Transform `inp` with `map` into outputs one point longer, which must keep
+/// their last value, and check every point bit for bit against `expect`.
+fn assert_points(
+    map: &dyn Mapping,
+    forward: bool,
+    inp: &[Vec<f64>],
+    nout: usize,
+    expect: impl Fn(&[f64]) -> Vec<f64>,
+) {
+    let n = inp[0].len();
+    let mut out = vec![vec![7.0; n + 1]; nout];
+    map.transform_into(
+        Points::new(inp.iter().map(|a| &a[..])).unwrap(),
+        forward,
+        PointsMut::new(out.iter_mut().map(|a| &mut a[..])).unwrap(),
+    )
+    .unwrap();
+    for i in 0..n {
+        let point: Vec<f64> = inp.iter().map(|a| a[i]).collect();
+        let got: Vec<f64> = out.iter().map(|a| a[i]).collect();
+        let want = expect(&point);
+        assert_eq!(
+            got.iter().map(|v| v.to_bits()).collect::<Vec<_>>(),
+            want.iter().map(|v| v.to_bits()).collect::<Vec<_>>(),
+            "point {i} {point:?}: got {got:?}, want {want:?}"
+        );
+    }
+    assert!(
+        out.iter().all(|a| a[n] == 7.0),
+        "a point past the input was written"
+    );
+}
+
+const CENTRE: [f64; 2] = [1.0, -2.0];
+
+/// One point of UnitNormMap's forward transformation (unitnormmap.c).
+fn unit_norm(p: &[f64]) -> Vec<f64> {
+    if p.iter().any(|v| !v.is_finite() || *v == BAD_VALUE) {
+        return vec![BAD_VALUE; 3];
+    }
+    let rel: Vec<f64> = p.iter().zip(CENTRE).map(|(v, c)| v - c).collect();
+    let max = rel
+        .iter()
+        .fold(0.0_f64, |m, r| if r.abs() > m { r.abs() } else { m });
+    if max == 0.0 {
+        return vec![BAD_VALUE, BAD_VALUE, 0.0];
+    }
+    let sum = rel.iter().fold(0.0, |s, r| s + (r / max) * (r / max));
+    let norm = max * sum.sqrt();
+    vec![rel[0] / norm, rel[1] / norm, norm]
+}
+
+#[test]
+fn unitnormmap_kernel_keeps_each_points_state_across_blocks() {
+    let m = UnitNormMap::new(CENTRE.to_vec()).unwrap();
+    // Cycle through a good point, a bad first coordinate followed by a larger
+    // good one, a bad second coordinate, the centre itself and an infinity,
+    // over enough points to cross the kernel's block boundaries.
+    let n = 1030;
+    let mut inp: Vec<Vec<f64>> = (0..2).map(|_| Vec::with_capacity(n)).collect();
+    for i in 0..n {
+        let t = f64::from(u32::try_from(i).unwrap());
+        let p = match i % 5 {
+            0 => [t, -t * 0.5],
+            1 => [BAD_VALUE, 1.0e6 + t],
+            2 => [3.0 * t, f64::NAN],
+            3 => CENTRE,
+            _ => [f64::INFINITY, t],
+        };
+        for (axis, v) in inp.iter_mut().zip(p) {
+            axis.push(v);
+        }
+    }
+    assert_points(&m, true, &inp, 3, unit_norm);
+}
+
+#[test]
+fn unitnormmap_inverse_kernel_keeps_each_points_state() {
+    let m = UnitNormMap::new(CENTRE.to_vec()).unwrap();
+    // A good point, a bad norm, a zero norm, a bad component, and a bad
+    // component with a zero norm, which gives the centre.
+    let n = 1030;
+    let mut inp: Vec<Vec<f64>> = (0..3).map(|_| Vec::with_capacity(n)).collect();
+    for i in 0..n {
+        let t = f64::from(u32::try_from(i).unwrap());
+        let p = match i % 5 {
+            0 => [0.6, 0.8, t],
+            1 => [0.6, 0.8, BAD_VALUE],
+            2 => [0.6, 0.8, 0.0],
+            3 => [f64::NAN, 0.8, t],
+            _ => [BAD_VALUE, 0.8, 0.0],
+        };
+        for (axis, v) in inp.iter_mut().zip(p) {
+            axis.push(v);
+        }
+    }
+    assert_points(&m, false, &inp, 2, |p| match p[2] {
+        norm if norm == BAD_VALUE => vec![BAD_VALUE; 2],
+        0.0 => CENTRE.to_vec(),
+        norm => p[..2]
+            .iter()
+            .zip(CENTRE)
+            .map(|(&v, c)| {
+                if v.is_finite() {
+                    v * norm + c
+                } else {
+                    BAD_VALUE
+                }
+            })
+            .collect(),
+    });
+}

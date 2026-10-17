@@ -189,110 +189,89 @@ impl Mapping for UnitNormMap {
             }
         }
 
+        let n = pts.npoint();
+        let pin = pts.axis_slices();
         if fwd {
-            // Forward: vector → unit vector + norm
-            let ncoord_out = ncoord + 1;
-            let pin = pts.axis_slices();
-            let pout = out.axes_mut();
-            let mut inp = vec![0.0; pin.len()];
-            // Every branch below sets all ncoord + 1 outputs.
-            let mut outp = vec![0.0; ncoord_out];
-            for i in 0..pts.npoint() {
-                for (v, axis) in inp.iter_mut().zip(pin) {
-                    *v = axis[i];
-                }
-                'point: {
-                    // Check for any bad input — if so, all outputs are bad.
-                    let mut any_bad = false;
-                    let mut max_relin: f64 = 0.0;
-                    for (coord, (&v, &c)) in inp.iter().zip(self.centre.iter()).enumerate() {
-                        if coord >= ncoord {
-                            break;
-                        }
-                        if is_bad(v) {
-                            any_bad = true;
-                            break;
-                        }
+            // Forward: vector → unit vector + norm.
+            // The passes below run over blocks of points that stay in cache,
+            // doing each point's arithmetic in the same order as a per-point
+            // loop. The norm output axis holds each point's state between
+            // passes: BAD_VALUE for a bad input, otherwise the largest
+            // |v - c|, and finally the norm. The first unit-vector axis holds
+            // the scaled sum of squares until the last pass overwrites it.
+            const BLOCK: usize = 512;
+            let (units, rest) = out.axes_mut().split_at_mut(ncoord);
+            for lo in (0..n).step_by(BLOCK) {
+                let hi = (lo + BLOCK).min(n);
+                let norms = &mut rest[0][lo..hi];
+                norms.fill(0.0);
+                for (axis, &c) in pin[..ncoord].iter().zip(&self.centre) {
+                    for (m, &v) in norms.iter_mut().zip(&axis[lo..hi]) {
                         let abs_relin = (v - c).abs();
-                        if abs_relin > max_relin {
-                            max_relin = abs_relin;
-                        }
+                        *m = if *m == BAD_VALUE || is_bad(v) {
+                            BAD_VALUE
+                        } else if abs_relin > *m {
+                            abs_relin
+                        } else {
+                            *m
+                        };
                     }
-
-                    if any_bad {
-                        for o in outp[..ncoord_out].iter_mut() {
-                            *o = BAD_VALUE;
-                        }
-                        break 'point;
-                    }
-
-                    if max_relin == 0.0 {
-                        // Norm is zero: unit vector is unknown, norm is 0.
-                        for o in outp[..ncoord].iter_mut() {
-                            *o = BAD_VALUE;
-                        }
-                        outp[ncoord] = 0.0;
-                        break 'point;
-                    }
-
-                    // Compute norm using scaled sum to avoid overflow.
-                    let mut scaled_sum: f64 = 0.0;
-                    for (&v, &c) in inp[..ncoord].iter().zip(self.centre.iter()) {
-                        let scaled = (v - c) / max_relin;
-                        scaled_sum += scaled * scaled;
-                    }
-                    let norm = max_relin * crate::math::sqrt(scaled_sum);
-
-                    // Output unit vector and norm.
-                    for (coord, (&v, &c)) in
-                        inp[..ncoord].iter().zip(self.centre.iter()).enumerate()
-                    {
-                        outp[coord] = (v - c) / norm;
-                    }
-                    outp[ncoord] = norm;
                 }
-                for (axis, &v) in pout.iter_mut().zip(&outp) {
-                    axis[i] = v;
+
+                // Compute norm using scaled sum to avoid overflow.
+                let sums = &mut units[0][lo..hi];
+                sums.fill(0.0);
+                for (axis, &c) in pin[..ncoord].iter().zip(&self.centre) {
+                    for ((s, &m), &v) in sums.iter_mut().zip(norms.iter()).zip(&axis[lo..hi]) {
+                        let scaled = (v - c) / m;
+                        *s += scaled * scaled;
+                    }
+                }
+                for (m, &s) in norms.iter_mut().zip(sums.iter()) {
+                    // A zero largest |v - c| leaves the norm 0.
+                    let norm = *m * crate::math::sqrt(s);
+                    if *m != BAD_VALUE && *m != 0.0 {
+                        *m = norm;
+                    }
+                }
+
+                // Output unit vector. A bad input makes every output bad, and
+                // a zero norm leaves the unit vector unknown.
+                for ((unit, axis), &c) in units.iter_mut().zip(&pin[..ncoord]).zip(&self.centre) {
+                    for ((u, &v), &norm) in
+                        unit[lo..hi].iter_mut().zip(&axis[lo..hi]).zip(norms.iter())
+                    {
+                        *u = if norm == BAD_VALUE || norm == 0.0 {
+                            BAD_VALUE
+                        } else {
+                            (v - c) / norm
+                        };
+                    }
                 }
             }
         } else {
-            // Inverse: unit vector + norm → vector
-            let pin = pts.axis_slices();
-            let pout = out.axes_mut();
-            let mut inp = vec![0.0; pin.len()];
-            // Every branch below sets all ncoord outputs.
-            let mut outp = vec![0.0; ncoord];
-            for i in 0..pts.npoint() {
-                for (v, axis) in inp.iter_mut().zip(pin) {
-                    *v = axis[i];
-                }
-                {
-                    // The last input coordinate is the norm.
-                    let norm = inp[ncoord];
-
-                    if is_bad(norm) {
+            // Inverse: unit vector + norm → vector.
+            // The last input coordinate is the norm.
+            let norms = &pin[ncoord][..n];
+            for ((outp, axis), &c) in out
+                .axes_mut()
+                .iter_mut()
+                .zip(&pin[..ncoord])
+                .zip(&self.centre)
+            {
+                for ((o, &v), &norm) in outp[..n].iter_mut().zip(&axis[..n]).zip(norms) {
+                    *o = if is_bad(norm) {
                         // Norm is bad: all outputs bad.
-                        for o in outp[..ncoord].iter_mut() {
-                            *o = BAD_VALUE;
-                        }
+                        BAD_VALUE
                     } else if norm == 0.0 {
                         // Norm is zero: output is the centre.
-                        outp[..ncoord].copy_from_slice(&self.centre[..ncoord]);
+                        c
+                    } else if is_bad(v) {
+                        BAD_VALUE
                     } else {
                         // Multiply unit vector by norm and add centre.
-                        for (coord, (&v, &c)) in
-                            inp[..ncoord].iter().zip(self.centre.iter()).enumerate()
-                        {
-                            if is_bad(v) {
-                                outp[coord] = BAD_VALUE;
-                            } else {
-                                outp[coord] = v * norm + c;
-                            }
-                        }
-                    }
-                }
-                for (axis, &v) in pout.iter_mut().zip(&outp) {
-                    axis[i] = v;
+                        v * norm + c
+                    };
                 }
             }
         }
