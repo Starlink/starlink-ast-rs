@@ -618,9 +618,9 @@ impl SplineMap {
             lefty
         };
 
-        // Work array: size 3*max(kx,ky) + ky
-        let max_k = kx.max(ky);
-        let mut work = vec![0.0f64; 3 * max_k + ky];
+        // Work array: 3*max(kx,ky) + ky values at most, on the stack as in C,
+        // since this runs once per point.
+        let mut work = [0.0f64; 4 * MAX_K];
         let iw = ky;
 
         // Evaluate the ky 1-D B-splines in x for each relevant row
