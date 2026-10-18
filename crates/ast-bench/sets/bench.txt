@@ -1,4 +1,5 @@
-# The bench set: one plain Mapping of each class (fixtures/README.md).
+# The bench set: one plain Mapping of each class (fixtures/README.md),
+# then the real-world FrameSets and Mappings in the core fixtures.
 # Each line: <oracle> <relpath> # reason. <oracle> is "bench" for
 # fixtures/bench.oracle or the name of a core oracle without ".oracle".
 bench chebymap_2d_deg3.map # one plain ChebyMap
@@ -28,3 +29,14 @@ bench wcsmap_tan.map # one plain WcsMap
 bench wcsmap_zpn.map # one plain WcsMap
 bench winmap_2d.map # one plain WinMap
 bench zoommap_2d.map # one plain ZoomMap
+# Real-world FrameSets and Mappings.
+framesets wcsconv/inputs/lsst.ast # Rubin LSST FrameSet
+framesets wcsconv/inputs/lsst2.ast # Rubin LSST FrameSet with a SplineMap distortion
+framesets wcsconv/inputs/a20070718_00010_02_cube.ast # JCMT ACSIS spectral cube
+framesets wcsconv/inputs/dss.ast # DSS plate solution
+framesets wcsconv/inputs/timj.ast # real-world celestial FrameSet
+framesets wcsconv/expected/jan.ast # real-world 3-d spectral cube FrameSet
+simplify_fixtures simplify/brad.map # real-world Mapping (upstream 2006)
+simplify_fixtures simplify/rigby.map # real-world Mapping (upstream 2015)
+simplify_fixtures simplify/lsst1.map # Rubin LSST Mapping (upstream 2020)
+simplify_fixtures simplify/lsst.map # Rubin LSST Mapping

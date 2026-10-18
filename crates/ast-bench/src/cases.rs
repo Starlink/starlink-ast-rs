@@ -86,7 +86,11 @@ mod tests {
 
     #[test]
     fn bench_set_covers_every_bench_section() {
-        let cases = load_set("bench").unwrap();
+        let cases: Vec<_> = load_set("bench")
+            .unwrap()
+            .into_iter()
+            .filter(|c| c.root == Path::new(crate::oracle::BENCH_FIXTURES))
+            .collect();
         let text = std::fs::read_to_string(format!(
             "{}/{}",
             crate::oracle::BENCH_FIXTURES,
