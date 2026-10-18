@@ -24,6 +24,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [`CompressMatrix` recomputes `sqrt( DBL_EPSILON )` for every row and column](#compressmatrix-recomputes-sqrt-dbl_epsilon--for-every-row-and-column)
 - [PolyMap's `Transform` branches on every power of every term](#polymaps-transform-branches-on-every-power-of-every-term)
 - [MatrixMap's full-matrix `Transform` loops over points outermost and branches on every value](#matrixmaps-full-matrix-transform-loops-over-points-outermost-and-branches-on-every-value)
+- [SplineMap's `Dbvalu` loops to the spline order at run time](#splinemaps-dbvalu-loops-to-the-spline-order-at-run-time)
 - [SwitchMap converts its selector to `int` without a range check](#switchmap-converts-its-selector-to-int-without-a-range-check)
 - [Moc converts transformed grid bounds to `AstDim` without a range check](#moc-converts-transformed-grid-bounds-to-astdim-without-a-range-check)
 - [A Region's default uncertainty is not reset when the Region moves](#a-regions-default-uncertainty-is-not-reset-when-the-region-moves)
@@ -217,6 +218,20 @@ For up to four inputs each row's sum is unrolled.
 The port's 3x3 full MatrixMap (the direction-cosine case) takes 3.3 ns per point at 1 000 000 points, where C takes 11.5, on macOS aarch64.
 The port's own earlier per-point version, with a branch that set a flag, took 6.8, which is the part of that gap a change of loop shape explains; the gain in C has not been measured.
 A C speed-up: loop over outputs outside points, and replace the early exit with a bad flag and a conditional add.
+
+### SplineMap's `Dbvalu` loops to the spline order at run time
+
+C location: `splinemap.c` `Dbvalu` (from line 478), called `ky + 1` times per output value by `Db2val`, so ten times per point for a bicubic spline's forward transform.
+
+Every loop in `Dbvalu` runs to the order `k`, a run-time argument, and the coefficients, `dp` and `dm` share one work array indexed by sums of `k` and the loop counters.
+The compiler cannot unroll or keep the values in registers, though `k` is at most `MAX_K` (6) and is almost always 4.
+
+Consequence: a performance cost only; the result is the same.
+
+The port (`dbvalu_k` in `crates/ast-core/src/mappings/splinemap.rs`) has one copy per order, chosen by a `match` on `k`, with the coefficients, `dp` and `dm` in three fixed-size arrays and C's arithmetic in C's order; output bits are unchanged on every corpus transform.
+With that, and `Dintrv` inlined, the bicubic SplineMap from the Rubin `lsst2.ast` FrameSet takes 170 ns per point forward and 762 inverse at 100 000 points, where C takes 206 and 850, on macOS aarch64.
+Part of the port's own gain (281 to 170 forward) came from removing bounds checks C never had, so the gain in C will be smaller; it has not been measured.
+A C speed-up: a `Dbvalu` per order (or a macro instantiated for each `k` up to `MAX_K`) with constant loop bounds, selected by a `switch` on `k`.
 
 ### SwitchMap converts its selector to `int` without a range check
 

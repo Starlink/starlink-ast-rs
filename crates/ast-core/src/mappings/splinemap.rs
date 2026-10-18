@@ -386,7 +386,9 @@ impl SplineMap {
     ///
     /// Port of CMLIB `Dintrv`. The `ilo` parameter is the initial search
     /// hint (set to 0 on first call).
+    #[inline]
     fn dintrv(xt: &[f64], lxt: usize, x: f64, ilo: &mut usize) -> (usize, i32) {
+        let xt = &xt[..lxt];
         let mut ihi = *ilo + 1;
 
         if ihi >= lxt - 1 {
@@ -466,24 +468,39 @@ impl SplineMap {
     /// - `t`: knot vector of length n + k
     /// - `a`: coefficient vector of length n
     /// - `n`: number of coefficients
-    /// - `k`: order of the B-spline (>= 1)
+    /// - `k`: order of the B-spline (1 to `MAX_K`)
     /// - `ideriv`: derivative order (0 = function value)
     /// - `x`: evaluation point
     /// - `inbv`: initial search hint (set to 0 for first call)
     ///
     /// Returns the value or BAD_VALUE if out of range.
-    #[allow(clippy::too_many_arguments, clippy::needless_range_loop)]
-    fn dbvalu(
+    ///
+    /// This runs several times per point, so each order has its own copy
+    /// ([`Self::dbvalu_k`]) whose loops have fixed lengths; the arithmetic
+    /// is C's, in C's order.
+    fn dbvalu(t: &[f64], a: &[f64], n: usize, k: usize, ideriv: usize, x: f64, inbv: usize) -> f64 {
+        match k {
+            1 => Self::dbvalu_k::<1>(t, a, n, ideriv, x, inbv),
+            2 => Self::dbvalu_k::<2>(t, a, n, ideriv, x, inbv),
+            3 => Self::dbvalu_k::<3>(t, a, n, ideriv, x, inbv),
+            4 => Self::dbvalu_k::<4>(t, a, n, ideriv, x, inbv),
+            5 => Self::dbvalu_k::<5>(t, a, n, ideriv, x, inbv),
+            6 => Self::dbvalu_k::<6>(t, a, n, ideriv, x, inbv),
+            _ => BAD_VALUE,
+        }
+    }
+
+    /// [`Self::dbvalu`] for order `K`. C's work array holds the coefficients,
+    /// then `dp`, then `dm`, `K` values each; here they are three arrays.
+    fn dbvalu_k<const K: usize>(
         t: &[f64],
         a: &[f64],
         n: usize,
-        k: usize,
         ideriv: usize,
         x: f64,
         inbv: usize,
-        work: &mut [f64],
     ) -> f64 {
-        if k < 1 || n < k {
+        if n < K {
             return BAD_VALUE;
         }
 
@@ -491,16 +508,13 @@ impl SplineMap {
         // derivative of order k or higher is zero within each piece; the
         // iterative inverse asks for it when taking the Jacobian of an
         // order-1 spline (splinemap.c `Dbvalu`).
-        if ideriv >= k {
+        if ideriv >= K {
             return 0.0;
         }
 
-        if x < t[k - 1] {
+        if x < t[K - 1] {
             return BAD_VALUE;
         }
-
-        let km1 = k - 1;
-        let kmider = k - ideriv;
 
         // Find i such that t[i] <= x < t[i+1]
         let mut inbv_local = inbv;
@@ -511,7 +525,7 @@ impl SplineMap {
                 return BAD_VALUE;
             }
             // Handle upper boundary
-            while i != k - 1 {
+            while i != K - 1 {
                 i -= 1;
                 if x != t[i] {
                     break;
@@ -521,53 +535,42 @@ impl SplineMap {
             // if i == k - 1 { return BAD_VALUE; }
         }
 
-        // Difference the coefficients ideriv times.
-        // work[j] = aj, work[k+j] = dp[j], work[2k+j] = dm[j]
-        let imk = i as isize - k as isize + 1;
-        for j in 0..k {
-            let imkpj = (imk + j as isize) as usize;
-            work[j] = a[imkpj];
-        }
+        // The coefficients and knots the rest reads: a[i+1-K..=i] and
+        // t[i+1-K..=i+K], so t[i+d] is tw[d+K-1].
+        let mut aj: [f64; K] = a[i + 1 - K..=i].try_into().unwrap();
+        let tw: &[f64; 2 * MAX_K] = &{
+            let mut w = [0.0; 2 * MAX_K];
+            w[..2 * K].copy_from_slice(&t[i + 1 - K..=i + K]);
+            w
+        };
 
-        if ideriv != 0 {
-            for j in 1..=ideriv {
-                let kmj = k - j;
-                let fkmj = kmj as f64;
-                for jj in 0..kmj {
-                    let ihi = i + jj + 1;
-                    let ihmkmj = ihi - kmj;
-                    work[jj] = (work[jj + 1] - work[jj]) / (t[ihi] - t[ihmkmj]) * fkmj;
-                }
+        // Difference the coefficients ideriv times.
+        for j in 1..=ideriv {
+            let kmj = K - j;
+            let fkmj = kmj as f64;
+            for jj in 0..kmj {
+                aj[jj] = (aj[jj + 1] - aj[jj]) / (tw[jj + K] - tw[jj + K - kmj]) * fkmj;
             }
         }
 
         // Compute value at x
-        if ideriv != km1 {
-            let ip1 = i + 1;
-            let kpk = k + k;
-
-            for (jj, j) in (1..=kmider).enumerate() {
-                let j1 = k + jj;
-                let j2 = kpk + jj;
-                let ipj = i + j;
-                work[j1] = t[ipj] - x;
-                let ip1mj = ip1 - j;
-                work[j2] = x - t[ip1mj];
+        if ideriv != K - 1 {
+            let mut dp = [0.0f64; K];
+            let mut dm = [0.0f64; K];
+            for j in 1..=K - ideriv {
+                dp[j - 1] = tw[j + K - 1] - x;
+                dm[j - 1] = x - tw[K - j];
             }
-
-            let iderp1 = ideriv + 1;
-            for j in iderp1..=km1 {
-                let kmj = k - j;
-                let mut ilo_idx = kmj - 1;
+            for j in ideriv + 1..K {
+                let kmj = K - j;
                 for jj in 0..kmj {
-                    work[jj] = (work[jj + 1] * work[kpk + ilo_idx] + work[jj] * work[k + jj])
-                        / (work[kpk + ilo_idx] + work[k + jj]);
-                    ilo_idx = ilo_idx.saturating_sub(1);
+                    let ilo = kmj - 1 - jj;
+                    aj[jj] = (aj[jj + 1] * dm[ilo] + aj[jj] * dp[jj]) / (dm[ilo] + dp[jj]);
                 }
             }
         }
 
-        work[0]
+        aj[0]
     }
 
     /// Evaluate a 2-D B-spline or its partial derivative at (xval, yval).
@@ -618,45 +621,19 @@ impl SplineMap {
             lefty
         };
 
-        // Work array: 3*max(kx,ky) + ky values at most, on the stack as in C,
-        // since this runs once per point.
-        let mut work = [0.0f64; 4 * MAX_K];
-        let iw = ky;
-
-        // Evaluate the ky 1-D B-splines in x for each relevant row
+        // Evaluate the ky 1-D B-splines in x for each relevant row, giving
+        // the coefficients of a 1-D B-spline in y.
+        let mut ycoef = [0.0f64; MAX_K];
         let mut kcol = lefty as isize - ky as isize;
-        for k_idx in 0..ky {
+        for c in ycoef.iter_mut().take(ky) {
             kcol += 1;
             let coef_offset = nx * kcol as usize;
-            work[k_idx] = Self::dbvalu(
-                tx,
-                &bcoef[coef_offset..],
-                nx,
-                kx,
-                idx,
-                xval,
-                0,
-                &mut work[iw..],
-            );
+            *c = Self::dbvalu(tx, &bcoef[coef_offset..], nx, kx, idx, xval, 0);
         }
 
         // Now evaluate the resulting 1-D B-spline in y.
-        // We need the first ky elements as coefficients and iw.. as scratch.
-        // Since iw == ky, these regions don't overlap, but Rust borrow checker
-        // doesn't know that. Copy the coefficients to a separate buffer.
         let kcol_start = (lefty as isize - ky as isize + 1) as usize;
-        let mut y_coeffs = [0.0f64; MAX_K];
-        y_coeffs[..ky].copy_from_slice(&work[..ky]);
-        Self::dbvalu(
-            &ty[kcol_start..],
-            &y_coeffs[..ky],
-            ky,
-            ky,
-            idy,
-            yval,
-            0,
-            &mut work[iw..],
-        )
+        Self::dbvalu(&ty[kcol_start..], &ycoef[..ky], ky, ky, idy, yval, 0)
     }
 
     /// Evaluate the forward transform for a single point.
@@ -1293,8 +1270,7 @@ mod tests {
     fn dbvalu_high_order_derivative_is_zero() {
         let t = [0.0, 1.0];
         let a = [1.5];
-        let mut work = [0.0; 3];
-        assert_eq!(SplineMap::dbvalu(&t, &a, 1, 1, 0, 0.5, 0, &mut work), 1.5);
-        assert_eq!(SplineMap::dbvalu(&t, &a, 1, 1, 1, 0.5, 0, &mut work), 0.0);
+        assert_eq!(SplineMap::dbvalu(&t, &a, 1, 1, 0, 0.5, 0), 1.5);
+        assert_eq!(SplineMap::dbvalu(&t, &a, 1, 1, 1, 0.5, 0), 0.0);
     }
 }
