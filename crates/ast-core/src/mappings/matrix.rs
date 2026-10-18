@@ -29,6 +29,13 @@ const BLOCK: usize = 64;
 /// coefficient is ignored). With the input axes known, each point's sum
 /// unrolls and the loop over points vectorizes. Adding 0.0 for a BAD input
 /// leaves the sum unchanged, since it is never -0.0.
+///
+/// It is a macro so that the input axes are a tuple of slices, each cut to
+/// the output length: the compiler can then drop every bounds check and
+/// vectorize. A generic function over an array of slices keeps the checks
+/// and runs about twice as slow. The BAD flag is built with `|` and `&`
+/// rather than a branch for the same reason: a branch that sets a flag
+/// stops the loop vectorizing.
 macro_rules! full_row_fixed {
     ($coeffs:expr, $pin:expr, $out:expr, [$($c:tt),+]) => {{
         let n = $out.len();
@@ -599,6 +606,11 @@ impl MatrixMap {
                         o.fill(BAD_VALUE);
                         continue;
                     }
+                    // One to four inputs, which covers the matrices AST
+                    // builds (direction cosines, linear WCS), get an unrolled
+                    // loop. More inputs take a pass per input over a
+                    // cache-sized block, which costs more per call but works
+                    // for any count.
                     match coeffs.len() {
                         1 => full_row_fixed!(coeffs, pin, o, [0]),
                         2 => full_row_fixed!(coeffs, pin, o, [0, 1]),
@@ -622,7 +634,7 @@ impl MatrixMap {
     }
 }
 
-/// [`full_row_fixed`] for any number of input axes, a block of points at a time:
+/// `full_row_fixed` for any number of input axes, a block of points at a time:
 /// the output block holds the sums, then each input with a non-zero
 /// coefficient marks its BAD points.
 fn full_row_blocked(coeffs: &[f64], pin: &[&[f64]], out: &mut [f64]) {
