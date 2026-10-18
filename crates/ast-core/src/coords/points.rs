@@ -511,16 +511,17 @@ impl<'a> PointsMut<'a> {
         PointMut::new(buf, i, self)
     }
 
-    /// Copy `src` into the first `src.npoint()` points of each axis.
+    /// Copy `src` into the first `src.npoint()` points of the first
+    /// `src.ncoord()` axes, leaving the rest as they were: an output may have
+    /// more points and axes than a transformation writes.
     #[inline]
     pub fn copy_from(&mut self, src: &Points<'_>) {
-        assert_eq!(
-            src.ncoord(),
-            self.ncoord(),
-            "copy_from needs the same number of axes"
+        assert!(
+            src.ncoord() <= self.ncoord(),
+            "copy_from needs at least as many axes as its source"
         );
         let n = src.npoint();
-        for (j, a) in self.axes.iter_mut().enumerate() {
+        for (j, a) in self.axes.iter_mut().take(src.ncoord()).enumerate() {
             a[..n].copy_from_slice(src.axis(j));
         }
     }

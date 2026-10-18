@@ -416,3 +416,50 @@ fn unitnormmap_forward_kernel_matches_c_for_each_axis_count() {
         assert_points(&m, true, &inp, ncoord + 1, |p| unit_norm_about(&centre, p));
     }
 }
+
+/// Transform two points with `map` through both entry points into outputs
+/// one point and one axis larger than it needs, filled with 7.0, and check
+/// that the surplus keeps that value. Returns how many calls succeeded.
+fn surplus_kept(map: &dyn Mapping, forward: bool) -> usize {
+    let (nin, nout) = if forward {
+        (map.nin(), map.nout())
+    } else {
+        (map.nout(), map.nin())
+    };
+    let inp: Vec<Vec<f64>> = (0..nin).map(|j| vec![0.5 + j as f64, 2.0]).collect();
+    let mut ok = 0;
+    for nan in [false, true] {
+        let mut out = vec![vec![7.0; 3]; nout + 1];
+        let pts = Points::new(inp.iter().map(|a| &a[..])).unwrap();
+        let view = PointsMut::new(out.iter_mut().map(|a| &mut a[..])).unwrap();
+        let r = if nan {
+            map.transform_into_nan(pts, forward, view)
+        } else {
+            map.transform_into(pts, forward, view)
+        };
+        if r.is_err() {
+            continue;
+        }
+        ok += 1;
+        assert!(
+            out[..nout].iter().all(|a| a[2] == 7.0) && out[nout].iter().all(|&v| v == 7.0),
+            "nan={nan}: surplus output written: {out:?}"
+        );
+    }
+    ok
+}
+
+#[test]
+fn transforms_that_fill_every_output_leave_surplus_axes_alone() {
+    use ast_core::frames::BasicFrameBuilder;
+    use ast_core::regions::NullRegionBuilder;
+
+    // A bad centre makes every UnitNormMap output bad.
+    let unm = UnitNormMap::new(vec![BAD_VALUE, 0.0]).unwrap();
+    assert_eq!(surplus_kept(&unm, true), 2);
+
+    // A NullRegion's transform is all bad.
+    let frame = BasicFrameBuilder::new(2).build().unwrap();
+    let null = NullRegionBuilder::new(frame).build().unwrap();
+    assert_eq!(surplus_kept(&null, true), 2);
+}

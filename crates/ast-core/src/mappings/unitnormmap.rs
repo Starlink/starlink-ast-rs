@@ -205,14 +205,9 @@ impl Mapping for UnitNormMap {
         forward: bool,
         mut out: PointsMut<'_>,
     ) -> AstResult<()> {
+        let npoint = pts.npoint();
         self.transform_into(pts, forward, out.reborrow())?;
-        for j in 0..out.ncoord() {
-            for v in out.axis_mut(j) {
-                if *v == BAD_VALUE {
-                    *v = f64::NAN;
-                }
-            }
-        }
+        crate::mappings::bad_to_nan(self, forward, npoint, &mut out);
         Ok(())
     }
 
@@ -230,7 +225,8 @@ impl Mapping for UnitNormMap {
         for &c in &self.centre {
             if is_bad(c) {
                 let n = pts.npoint();
-                for axis in out.axes_mut() {
+                let nout = if fwd { ncoord + 1 } else { ncoord };
+                for axis in out.axes_mut().iter_mut().take(nout) {
                     axis[..n].fill(BAD_VALUE);
                 }
                 return Ok(());

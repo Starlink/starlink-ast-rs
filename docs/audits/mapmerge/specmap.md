@@ -14,7 +14,7 @@ TimeMap: gather the conversion steps of a run of adjacent SpecMaps, normalise
 each for its applied direction, cancel adjacent inverse pairs until nothing more
 goes, and rebuild one SpecMap or a UnitMap.
 
-`SpecMap::map_merge` (`specmap.rs:1503-1510 (fn map_merge)`) delegates to `spec_map_merge`
+`SpecMap::map_merge` (`specmap.rs:1498-1505 (fn map_merge)`) delegates to `spec_map_merge`
 (`specmap.rs:1293-1362 (fn spec_map_merge)`); the helpers are `normalized_steps`
 (`specmap.rs:1211-1235 (fn normalized_steps)`), `steps_cancel`
 (`specmap.rs:1188-1202 (fn steps_cancel)`), `simplify_steps`

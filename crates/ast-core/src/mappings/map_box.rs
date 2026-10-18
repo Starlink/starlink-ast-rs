@@ -430,7 +430,7 @@ fn special_bounds(
     let mut sxl: Vec<f64> = vec![0.0; ncoord];
     let mut sxu: Vec<f64> = vec![0.0; ncoord];
 
-    // Build the input PointSet (npoint x ncoord, row-major).
+    // Build the input PointSet, one array per axis.
     let mut pts_in = PointSet::zeros(npoint, ncoord);
 
     // Populate corners with a binary counter (`limit`).

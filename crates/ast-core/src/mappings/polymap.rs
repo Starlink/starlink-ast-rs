@@ -1513,8 +1513,9 @@ impl Mapping for PolyMap {
                 poly_transform(self, false, &tables, &pts, &mut out, BAD_VALUE);
             } else {
                 // No inverse available: fill with BAD.
-                for i in 0..pts.npoint() {
-                    out.point_mut(i).fill(BAD_VALUE);
+                let n = pts.npoint();
+                for axis in out.axes_mut().iter_mut().take(self.nin) {
+                    axis[..n].fill(BAD_VALUE);
                 }
             }
         }
@@ -1583,19 +1584,14 @@ impl Mapping for PolyMap {
             let mut result = PointSet::zeros(bad_in.npoint(), self.nin);
             self.newton_raphson_inverse(&bad_in, &mut result)?;
             out.copy_from(&result.as_points());
-            for j in 0..out.ncoord() {
-                for v in out.axis_mut(j) {
-                    if *v == BAD_VALUE {
-                        *v = f64::NAN;
-                    }
-                }
-            }
+            crate::mappings::bad_to_nan(self, forward, result.npoint(), &mut out);
         } else if let Some(tables) = self.term_tables(false) {
             poly_transform(self, false, &tables, &pts, &mut out, f64::NAN);
         } else {
-            // No inverse available: emit NaN (was BAD).
-            for i in 0..pts.npoint() {
-                out.point_mut(i).fill(f64::NAN);
+            // No inverse available: every output is bad, which is NaN here.
+            let n = pts.npoint();
+            for axis in out.axes_mut().iter_mut().take(self.nin) {
+                axis[..n].fill(f64::NAN);
             }
         }
         Ok(())

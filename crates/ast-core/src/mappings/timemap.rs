@@ -1349,14 +1349,9 @@ impl Mapping for TimeMap {
         forward: bool,
         mut out: PointsMut<'_>,
     ) -> AstResult<()> {
+        let npoint = pts.npoint();
         self.transform_into(pts, forward, out.reborrow())?;
-        for j in 0..out.ncoord() {
-            for v in out.axis_mut(j) {
-                if *v == BAD_VALUE {
-                    *v = f64::NAN;
-                }
-            }
-        }
+        crate::mappings::bad_to_nan(self, forward, npoint, &mut out);
         Ok(())
     }
 

@@ -39,7 +39,7 @@ pub fn select_rows(s: &Section, n: usize) -> Result<Vec<usize>, String> {
     Ok((0..n).map(|i| candidates[i % candidates.len()]).collect())
 }
 
-/// The selected rows' inputs as a row-major `PointSet`, the port's layout.
+/// The selected rows' inputs as a `PointSet`, one array per axis.
 pub fn rows_to_pointset(s: &Section, rows: &[usize]) -> PointSet {
     PointSet::from_rows(
         rows.iter()

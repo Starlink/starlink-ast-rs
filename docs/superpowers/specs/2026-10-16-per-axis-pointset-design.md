@@ -179,7 +179,8 @@ Where the code differs from the design above:
   Non-kernel code (Region geometry, `map_box`, `linear_approx`, the simplifier) still reads points with `point(i)`.
 - A view costs about 6 ns per transform call at N=1 over the old `&PointSet` arguments: building two views and passing them by value.
   Rust callers at N=1 accept that cost; a C-shaped caller's single-point transform fell from about 61 ns to 13 ns, against C's 540 ns.
-- UnitNormMap's forward transform takes about 35 ns more per call than before at N=10; the per-point loop that avoids it is 10 to 13% slower at large N.
+- Storage is a plain `Vec<f64>` holding the axes one after another, not an ndarray `Array2`; `view()` and `view_mut()` still give `(ncoord, npoint)` ndarray views of it.
+- MatrixMap's full kernel and UnitNormMap's forward kernel unroll their per-point arithmetic for small axis counts, with selects in place of branches, so that the loop over points vectorizes; larger axis counts use blocked passes.
 
 ## Out of scope
 

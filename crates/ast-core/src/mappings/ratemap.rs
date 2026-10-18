@@ -264,8 +264,9 @@ impl Mapping for RateMap {
         if forward == self.inverted {
             // The RateMap class does not define an inverse transformation
             // (or forward when inverted). Return BAD for all outputs.
-            for j in 0..out.ncoord() {
-                out.axis_mut(j)[..npoint].fill(BAD_VALUE);
+            let nout = if forward { self.nout() } else { self.nin() };
+            for axis in out.axes_mut().iter_mut().take(nout) {
+                axis[..npoint].fill(BAD_VALUE);
             }
             return Ok(());
         }
@@ -306,14 +307,9 @@ impl Mapping for RateMap {
         forward: bool,
         mut out: PointsMut<'_>,
     ) -> AstResult<()> {
+        let npoint = pts.npoint();
         self.transform_into(pts, forward, out.reborrow())?;
-        for j in 0..out.ncoord() {
-            for v in out.axis_mut(j) {
-                if *v == BAD_VALUE {
-                    *v = f64::NAN;
-                }
-            }
-        }
+        crate::mappings::bad_to_nan(self, forward, npoint, &mut out);
         Ok(())
     }
 

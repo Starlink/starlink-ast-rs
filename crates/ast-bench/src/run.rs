@@ -330,6 +330,59 @@ mod tests {
     }
 
     #[test]
+    fn transforms_leave_surplus_output_points_and_axes_alone() {
+        // Every corpus transform, through both entry points, into an output
+        // one point and one axis larger than it needs, pre-filled with BAD so
+        // that a BAD-to-NaN pass over the surplus would show. The NaN
+        // protocol's input has its bad values as NaN, as `nan_edges` gives.
+        let mut checked = 0;
+        for case in crate::sweep::all_cases().unwrap() {
+            let s = &case.section;
+            let Ok(Loaded::Mapping(obj)) = load_fixture(&case.root, &s.relpath) else {
+                continue;
+            };
+            let map = obj.as_mapping().unwrap();
+            let rows: Vec<usize> = (0..s.npoint()).collect();
+            let pts = rows_to_pointset(s, &rows);
+            let n = pts.npoint();
+            let mut nan_pts = PointSet::zeros(n, s.nin);
+            for j in 0..s.nin {
+                for (d, &v) in nan_pts.axis_mut(j).iter_mut().zip(pts.axis(j)) {
+                    *d = if v == BAD_VALUE || !v.is_finite() {
+                        f64::NAN
+                    } else {
+                        v
+                    };
+                }
+            }
+            for nan in [false, true] {
+                let mut out = vec![vec![BAD_VALUE; n + 1]; s.nout + 1];
+                let view = PointsMut::new(out.iter_mut().map(|a| &mut a[..])).unwrap();
+                let r = if nan {
+                    map.transform_into_nan(nan_pts.as_points(), s.forward, view)
+                } else {
+                    map.transform_into(pts.as_points(), s.forward, view)
+                };
+                if r.is_err() {
+                    continue;
+                }
+                let surplus_point = out[..s.nout].iter().map(|a| a[n]);
+                let surplus_axis = out[s.nout].iter().copied();
+                assert!(
+                    surplus_point
+                        .chain(surplus_axis)
+                        .all(|v| v.to_bits() == BAD_VALUE.to_bits()),
+                    "{} forward={} nan={nan}: surplus output written",
+                    s.relpath,
+                    s.forward
+                );
+                checked += 1;
+            }
+        }
+        assert!(checked > 4000, "only {checked} transforms checked");
+    }
+
+    #[test]
     fn a_timed_build_does_not_count_calls() {
         check_not_counting().unwrap();
     }

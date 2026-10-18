@@ -1106,6 +1106,25 @@ pub(crate) fn validate_transform<M: Mapping + ?Sized>(
     }
 }
 
+/// Set each `BAD_VALUE` that `map` wrote for `npoint` points in direction
+/// `forward` to NaN, for a `transform_into_nan` built on `transform_into`.
+/// Only the points and axes the transformation writes are touched.
+pub(crate) fn bad_to_nan<M: Mapping + ?Sized>(
+    map: &M,
+    forward: bool,
+    npoint: usize,
+    out: &mut PointsMut<'_>,
+) {
+    let nout = if forward { map.nout() } else { map.nin() };
+    for axis in out.axes_mut().iter_mut().take(nout) {
+        for v in &mut axis[..npoint] {
+            if *v == crate::constants::BAD_VALUE {
+                *v = f64::NAN;
+            }
+        }
+    }
+}
+
 /// [`validate_transform`] with the output's type known, so its checks
 /// inline into each class's `transform_into`.
 #[inline]
