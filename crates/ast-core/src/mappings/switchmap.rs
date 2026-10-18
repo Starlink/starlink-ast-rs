@@ -441,6 +441,22 @@ impl Clone for SwitchMap {
     }
 }
 
+/// The 0-based route a selector value picks, if any: C takes
+/// `(int)round(sel) - 1` and ignores an index outside the routes. Testing the
+/// rounded value against `1..=nroute` before converting it gives the same
+/// answer for every value, including those beyond any integer.
+fn route_index(sel: f64, nroute: usize) -> Option<usize> {
+    if is_bad(sel) {
+        return None;
+    }
+    let r = sel.round();
+    if r >= 1.0 && r <= nroute as f64 {
+        Some(r as usize - 1)
+    } else {
+        None
+    }
+}
+
 impl Mapping for SwitchMap {
     fn mapping_flags(&self) -> &crate::mappings::MappingFlags {
         &self.mapping_flags
@@ -604,11 +620,8 @@ impl Mapping for SwitchMap {
 
         let mut pop: Vec<usize> = vec![0; nroute];
         for &sv in &sel_vals {
-            if !is_bad(sv) {
-                let idx = sv.round() as i64 - 1;
-                if idx >= 0 && (idx as usize) < nroute {
-                    pop[idx as usize] += 1;
-                }
+            if let Some(idx) = route_index(sv, nroute) {
+                pop[idx] += 1;
             }
         }
 
@@ -633,15 +646,12 @@ impl Mapping for SwitchMap {
             let mut point_indices: Vec<usize> = Vec::with_capacity(count);
             let mut k = 0;
             for (ipoint, &sv) in sel_vals.iter().enumerate() {
-                if !is_bad(sv) {
-                    let idx = sv.round() as i64 - 1;
-                    if idx == iroute as i64 {
-                        for j in 0..ncin {
-                            batch_in.axis_mut(j)[k] = pts.axis(j)[ipoint];
-                        }
-                        point_indices.push(ipoint);
-                        k += 1;
+                if route_index(sv, nroute) == Some(iroute) {
+                    for j in 0..ncin {
+                        batch_in.axis_mut(j)[k] = pts.axis(j)[ipoint];
                     }
+                    point_indices.push(ipoint);
+                    k += 1;
                 }
             }
 
@@ -680,18 +690,13 @@ impl Mapping for SwitchMap {
         let sel_out = sel.transform(&pts, true)?;
         let sv = sel_out.axis(0)[0];
 
-        if is_bad(sv) {
+        let Some(idx) = route_index(sv, self.route_maps.len()) else {
             return Ok(BAD_VALUE);
-        }
-
-        let idx = sv.round() as i64 - 1;
-        if idx < 0 || idx as usize >= self.route_maps.len() {
-            return Ok(BAD_VALUE);
-        }
+        };
 
         // The resolved route is oriented as this SwitchMap applies it, and
         // C asks that route's own Rate whatever its orientation.
-        self.resolve_route(idx as usize).rate(at, ax1, ax2)
+        self.resolve_route(idx).rate(at, ax1, ax2)
     }
 
     fn equal(&self, other: &dyn Mapping) -> bool {

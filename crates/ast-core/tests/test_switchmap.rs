@@ -467,3 +467,24 @@ mod testswitchmap_c {
         }
     }
 }
+
+#[test]
+fn a_selector_value_beyond_any_integer_selects_no_route() {
+    // The selector is the input itself, so each input picks its route: C
+    // takes round(sel) - 1 as the route index and ignores one out of range.
+    let routes: Vec<DynMapping> = vec![
+        Box::new(ZoomMap::new(1, 2.0).unwrap()),
+        Box::new(ZoomMap::new(1, 3.0).unwrap()),
+    ];
+    let m = SwitchMap::new(Some(Box::new(UnitMap::new(1))), None, routes).unwrap();
+    let inp = [-1.0e30, 0.49, 0.5, 2.25, 2.5, 1.0e30, -f64::MAX];
+    let out = m
+        .transform(&PointSet::from_rows(inp.iter().map(|&v| vec![v])), true)
+        .unwrap();
+    let want = [
+        BAD_VALUE, BAD_VALUE, 1.0, 6.75, BAD_VALUE, BAD_VALUE, BAD_VALUE,
+    ];
+    assert_eq!(out.axis(0), &want[..]);
+    assert_eq!(m.rate(&[-1.0e30], 1, 1).unwrap(), BAD_VALUE);
+    assert_eq!(m.rate(&[1.0e30], 1, 1).unwrap(), BAD_VALUE);
+}
