@@ -15,6 +15,7 @@ Absolute times belong to that machine; the Rust/C ratios travel better, but libm
 | `2026-10-16-macos-aarch64-sweep-untimed.txt` | `54d21ee6` | The 256 sweep sections that could not be timed, with the reason for each. |
 | `2026-10-17-macos-aarch64-bench.tsv` | `35da6e94` | The `bench` set after transforms moved to per-axis `Points` views. |
 | `2026-10-17-macos-aarch64-sweep.tsv` | `35da6e94` | The full sweep again after the same change, with a `rust-cols` engine; the same 256 sections are untimed. |
+| `2026-10-18-macos-aarch64-roman.txt` | `be015c2d` | `ast-bench roman`, Starlink/ast pull request 51's Roman WCS benchmark, on both engines: SphMap at parity with C at large N, PolyMap 1.4x and the full 2x2 MatrixMap 3.5x faster, the diagonal 2x2 MatrixMap 0.54x C while its data fits in cache; outputs identical on all 200M values. |
 
 The pre-Phase-0 run uses that commit's `ast-core` with the current `ast-bench` harness, built in a git worktree, since the harness did not exist yet; it uses no `ast-core` API newer than that commit.
 

@@ -1,0 +1,114 @@
+# commit=be015c2d date=2026-10-18 benchmark=ast-bench roman (Starlink/ast PR 51 bench_simd.c) engines=rust,c reps=5
+# machine=Apple M1 Ultra; Darwin 27.0.0
+# rustc=rustc 1.99.1 (58cf8f9c3 2026-10-13) (Homebrew) profile=release
+# c=variant=bench; cc=Apple clang version 21.0.0 (clang-2100.3.34.2); cflags=-O3 -ffp-contract=off; submodule=15871852f91deedab9696387155f98f1c3185402
+# Throughput is the median of 5 calibrated batches, in millions of points per second; rust/c speed above 1 means Rust is faster.
+transform              N   rust Mpx/s      c Mpx/s  rust/c speed
+sphmap_fwd             1         16.1          1.8         9.11x
+sphmap_fwd             4         37.6          6.6         5.65x
+sphmap_fwd             8         47.6         12.2         3.90x
+sphmap_fwd            16         54.7         20.3         2.69x
+sphmap_fwd            32         60.1         31.5         1.91x
+sphmap_fwd            64         63.1         42.7         1.48x
+sphmap_fwd           128         63.6         52.3         1.22x
+sphmap_fwd           256         64.6         59.8         1.08x
+sphmap_fwd           512         63.2         58.7         1.08x
+sphmap_fwd          1024         32.6         32.6         1.00x
+sphmap_fwd          4096         20.0         20.5         0.97x
+sphmap_fwd         16384         18.6         18.9         0.99x
+sphmap_fwd         65536         18.1         18.4         0.99x
+sphmap_fwd        262144         18.0         18.4         0.98x
+sphmap_fwd       1048576         18.1         18.4         0.98x
+sphmap_fwd       4194304         18.0         18.4         0.98x
+sphmap_fwd      16711744         18.1         18.3         0.99x
+sphmap_inv             1         16.2          1.8         8.86x
+sphmap_inv             4         43.5          7.0         6.24x
+sphmap_inv             8         56.9         12.7         4.47x
+sphmap_inv            16         69.8         23.0         3.04x
+sphmap_inv            32         78.8         37.1         2.13x
+sphmap_inv            64         80.9         52.0         1.56x
+sphmap_inv           128         82.0         65.1         1.26x
+sphmap_inv           256         82.1         73.9         1.11x
+sphmap_inv           512         77.3         75.4         1.03x
+sphmap_inv          1024         66.6         68.0         0.98x
+sphmap_inv          4096         57.6         58.1         0.99x
+sphmap_inv         16384         52.8         53.1         0.99x
+sphmap_inv         65536         50.5         51.7         0.98x
+sphmap_inv        262144         51.0         51.5         0.99x
+sphmap_inv       1048576         51.8         51.1         1.01x
+sphmap_inv       4194304         50.6         51.5         0.98x
+sphmap_inv      16711744         51.6         51.6         1.00x
+poly5_fwd              1          8.5          1.5         5.67x
+poly5_fwd              4         20.2          5.2         3.88x
+poly5_fwd              8         27.8          8.6         3.21x
+poly5_fwd             16         33.5         13.4         2.50x
+poly5_fwd             32         37.4         18.2         2.05x
+poly5_fwd             64         40.1         21.7         1.85x
+poly5_fwd            128         41.3         24.7         1.67x
+poly5_fwd            256         42.3         26.3         1.61x
+poly5_fwd            512         42.2         27.1         1.56x
+poly5_fwd           1024         43.2         27.9         1.55x
+poly5_fwd           4096         43.2         28.7         1.50x
+poly5_fwd          16384         42.7         29.3         1.46x
+poly5_fwd          65536         43.0         29.2         1.48x
+poly5_fwd         262144         43.3         29.0         1.49x
+poly5_fwd        1048576         42.3         28.1         1.50x
+poly5_fwd        4194304         43.1         29.7         1.45x
+poly5_fwd       16711744         43.3         29.6         1.46x
+poly1_fwd              1          9.7          1.6         6.24x
+poly1_fwd              4         27.8          5.7         4.85x
+poly1_fwd              8         38.9         10.1         3.86x
+poly1_fwd             16         51.9         16.8         3.09x
+poly1_fwd             32         61.6         25.3         2.43x
+poly1_fwd             64         68.2         33.6         2.03x
+poly1_fwd            128         71.3         40.3         1.77x
+poly1_fwd            256         74.4         45.0         1.65x
+poly1_fwd            512         75.4         47.8         1.58x
+poly1_fwd           1024         75.1         49.6         1.51x
+poly1_fwd           4096         74.3         52.1         1.43x
+poly1_fwd          16384         75.6         54.0         1.40x
+poly1_fwd          65536         76.1         55.6         1.37x
+poly1_fwd         262144         75.8         55.1         1.38x
+poly1_fwd        1048576         75.6         54.3         1.39x
+poly1_fwd        4194304         75.7         55.3         1.37x
+poly1_fwd       16711744         76.0         54.1         1.40x
+matdiag2_fwd           1         25.5          1.8        13.89x
+matdiag2_fwd           4         90.2          7.3        12.37x
+matdiag2_fwd           8        185.6         14.8        12.58x
+matdiag2_fwd          16        346.5         29.3        11.82x
+matdiag2_fwd          32        587.9         59.6         9.87x
+matdiag2_fwd          64        923.2        117.0         7.89x
+matdiag2_fwd         128       1272.9        227.3         5.60x
+matdiag2_fwd         256       1580.9        414.5         3.81x
+matdiag2_fwd         512       1780.4        737.3         2.41x
+matdiag2_fwd        1024       1875.7       1232.7         1.52x
+matdiag2_fwd        4096       2014.6       2559.6         0.79x
+matdiag2_fwd       16384       2002.4       3312.3         0.60x
+matdiag2_fwd       65536       1992.1       3659.8         0.54x
+matdiag2_fwd      262144       2019.8       3710.2         0.54x
+matdiag2_fwd     1048576       1825.7       2034.1         0.90x
+matdiag2_fwd     4194304       1820.2       1872.5         0.97x
+matdiag2_fwd    16711744       1828.8       2056.9         0.89x
+matfull2_fwd           1         21.5          1.9        11.57x
+matfull2_fwd           4         72.4          7.3         9.97x
+matfull2_fwd           8        132.8         13.9         9.57x
+matfull2_fwd          16        219.5         26.0         8.44x
+matfull2_fwd          32        334.7         45.9         7.29x
+matfull2_fwd          64        448.2         73.8         6.07x
+matfull2_fwd         128        546.1        106.9         5.11x
+matfull2_fwd         256        586.9        135.1         4.34x
+matfull2_fwd         512        636.1        161.0         3.95x
+matfull2_fwd        1024        661.1        176.6         3.74x
+matfull2_fwd        4096        677.2        185.4         3.65x
+matfull2_fwd       16384        685.0        193.6         3.54x
+matfull2_fwd       65536        685.8        192.0         3.57x
+matfull2_fwd      262144        682.5        191.3         3.57x
+matfull2_fwd     1048576        669.0        193.3         3.46x
+matfull2_fwd     4194304        677.9        191.4         3.54x
+matfull2_fwd    16711744        666.4        193.9         3.44x
+sphmap_fwd: Rust and C outputs identical (33423488 values)
+sphmap_inv: Rust and C outputs identical (50135232 values)
+poly5_fwd: Rust and C outputs identical (33423488 values)
+poly1_fwd: Rust and C outputs identical (33423488 values)
+matdiag2_fwd: Rust and C outputs identical (33423488 values)
+matfull2_fwd: Rust and C outputs identical (33423488 values)
