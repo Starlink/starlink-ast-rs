@@ -591,3 +591,48 @@ fn an_inverted_non_square_matrixmap_equals_its_copy() {
     other.invert();
     assert!(!m.equal(&other));
 }
+
+/// A diagonal MatrixMap over a long array: a bad, NaN or infinite input
+/// gives a bad output, and a finite input whose product overflows gives the
+/// infinite product, wherever in the array they fall.
+#[test]
+fn matrix_diagonal_long_array_with_non_finite_inputs() {
+    let diag = [2.0, 0.0, 1e300];
+    let mm = MatrixMap::diagonal(3, 3, &diag).unwrap();
+    let n = 2051;
+    let specials = [
+        BAD_VALUE,
+        f64::NAN,
+        f64::INFINITY,
+        f64::NEG_INFINITY,
+        f64::MAX,
+        1e10,
+    ];
+    let value = |axis: usize, i: usize| {
+        if i % 97 == axis * 13 || i == n - 1 - axis {
+            specials[(i / 97 + axis) % specials.len()]
+        } else {
+            (i as f64 - 1000.0) * 0.37
+        }
+    };
+    let pts = PointSet::from_rows((0..n).map(|i| (0..3).map(|a| value(a, i)).collect::<Vec<_>>()));
+    let out = mm.transform(&pts, true).unwrap();
+    for i in 0..n {
+        for (a, &d) in diag.iter().enumerate() {
+            let v = value(a, i);
+            let want = if v == BAD_VALUE || !v.is_finite() {
+                BAD_VALUE
+            } else {
+                d * v
+            };
+            assert_eq!(
+                out.point(i)[a].to_bits(),
+                want.to_bits(),
+                "point {i} axis {a}, input {v}"
+            );
+        }
+    }
+    // Every kind of special value, and an overflow, occurs.
+    assert!((0..n).any(|i| value(2, i) == 1e10));
+    assert!((0..n).any(|i| value(1, i).is_nan()));
+}
