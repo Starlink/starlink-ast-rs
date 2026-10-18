@@ -24,6 +24,8 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [`CompressMatrix` recomputes `sqrt( DBL_EPSILON )` for every row and column](#compressmatrix-recomputes-sqrt-dbl_epsilon--for-every-row-and-column)
 - [PolyMap's `Transform` branches on every power of every term](#polymaps-transform-branches-on-every-power-of-every-term)
 - [MatrixMap's full-matrix `Transform` loops over points outermost and branches on every value](#matrixmaps-full-matrix-transform-loops-over-points-outermost-and-branches-on-every-value)
+- [A LutMap returns a stale result after its LutInterp changes](#a-lutmap-returns-a-stale-result-after-its-lutinterp-changes)
+- [LutMap's inverse interleaves each point's bisection with the rest of its work](#lutmaps-inverse-interleaves-each-points-bisection-with-the-rest-of-its-work)
 - [SplineMap's `Dbvalu` loops to the spline order at run time](#splinemaps-dbvalu-loops-to-the-spline-order-at-run-time)
 - [SwitchMap converts its selector to `int` without a range check](#switchmap-converts-its-selector-to-int-without-a-range-check)
 - [Moc converts transformed grid bounds to `AstDim` without a range check](#moc-converts-transformed-grid-bounds-to-astdim-without-a-range-check)
@@ -218,6 +220,34 @@ For up to four inputs each row's sum is unrolled.
 The port's 3x3 full MatrixMap (the direction-cosine case) takes 3.3 ns per point at 1 000 000 points, where C takes 11.5, on macOS aarch64.
 The port's own earlier per-point version, with a branch that set a flag, took 6.8, which is the part of that gap a change of loop shape explains; the gain in C has not been measured.
 A C speed-up: loop over outputs outside points, and replace the early exit with a bad flag and a conditional add.
+
+### A LutMap returns a stale result after its LutInterp changes
+
+C location: `lutmap.c` `Transform` (the `last_fwd_in` and `last_inv_in` tests at lines 1545 and 1646, and the stores at 1611 and 1745), and the `LutInterp` accessors (`astMAKE_CLEAR1` and `astMAKE_SET1`, lines 1802 and 1805).
+
+`Transform` keeps the last input and output of each direction in the LutMap and returns the stored output whenever the next input equals the stored input, even in a later call.
+Only the constructor and the loader reset them; setting or clearing `LutInterp` does not.
+
+Consequence: a value transformed before `LutInterp` changes gets the old method's result afterwards.
+A probe against the reference library: a LutMap with table 0, 10, 20 (start 1, increment 1) maps 1.4 to 4 by linear interpolation; after `astSetI( map, "LutInterp", 1 )` it still maps 1.4 to 4, where a new LutMap with `LutInterp=1` gives 0.
+The inverse likewise maps 4 to 1 by nearest neighbour, and still to 1 after `LutInterp` is cleared, where linear interpolation gives 1.4.
+
+The port keeps no such cache, so each transform uses the current `LutInterp`; `lutmap_interp_change_applies_to_a_repeated_value` in `tests/test_lutmap.rs` pins it.
+A C fix: reset the four stored values in `SetLutInterp` and `ClearLutInterp`, or drop the cache across calls.
+
+### LutMap's inverse interleaves each point's bisection with the rest of its work
+
+C location: `lutmap.c` `Transform`, inverse branch (from line 1639, the point loop).
+
+For each point C runs a bisection over the table, then the flat-run, bad-neighbour and interpolation steps, before starting the next point.
+The bisection is a chain of dependent loads; the processor overlaps the chains of neighbouring points only as far as the steps between them allow.
+
+Consequence: a performance cost only; the result is the same.
+
+The port (`inverse_slice` in `crates/ast-core/src/mappings/lutmap.rs`) runs the bisections for a block of 32 points in one loop and the remaining steps in a second loop over the block, with bit-identical output on every corpus transform.
+That took the port's inverse of a 100-entry table from 16.7 to 13.8 ns per point at 1 000 000 points on macOS aarch64, where C takes 13.0.
+C's loop is shorter than the port's single-loop version was, so its gain will be smaller; it has not been measured.
+A C speed-up: the same split, with the bisection results for a block held in a small array.
 
 ### SplineMap's `Dbvalu` loops to the spline order at run time
 

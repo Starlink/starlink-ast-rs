@@ -769,3 +769,56 @@ fn flat_start_and_bad_value_tables() {
     back[4] = y[4];
     assert_eq!(&back[3..], &y[3..], "Error 12");
 }
+
+/// A long inverse array, with bad values, flat runs and values beyond both
+/// ends of a table with a bad entry, gives each point the result it gets
+/// alone.
+#[test]
+fn lutmap_inverse_of_a_long_array_matches_each_point_alone() {
+    let lut = [
+        -3.0, 0.0, 0.0, 2.0, BAD_VALUE, 5.0, 7.5, 7.5, 7.5, 9.0, 12.0, 20.0,
+    ];
+    for interp in [LutInterp::Linear, LutInterp::Nearest] {
+        let mut m = LutMap::new(&lut, 1.0, 0.5).unwrap();
+        m.set_interp(interp);
+        let ys: Vec<f64> = (0..1000)
+            .map(|i| {
+                if i % 37 == 0 {
+                    BAD_VALUE
+                } else {
+                    -5.0 + (i % 101) as f64 * 0.27
+                }
+            })
+            .collect();
+        let all = m
+            .transform(&PointSet::from_rows(ys.iter().map(|&y| vec![y])), false)
+            .unwrap();
+        for (i, &y) in ys.iter().enumerate() {
+            let one = m.transform(&PointSet::from_rows([vec![y]]), false).unwrap();
+            assert_eq!(
+                all.point(i)[0].to_bits(),
+                one.point(0)[0].to_bits(),
+                "{interp:?} point {i}, y = {y}"
+            );
+        }
+    }
+}
+
+/// Changing LutInterp between transforms changes the result for a value
+/// transformed before. C keeps the last input and output and does not
+/// forget them when LutInterp changes (c-library-quirks.md).
+#[test]
+fn lutmap_interp_change_applies_to_a_repeated_value() {
+    let mut m = LutMap::new(&[0.0, 10.0, 20.0], 1.0, 1.0).unwrap();
+    let at = |m: &LutMap, x: f64, fwd: bool| {
+        m.transform(&PointSet::from_rows([vec![x]]), fwd)
+            .unwrap()
+            .point(0)[0]
+    };
+    assert_eq!(at(&m, 1.5, true), 5.0);
+    m.set_interp(LutInterp::Nearest);
+    assert_eq!(at(&m, 1.5, true), 10.0);
+    assert_eq!(at(&m, 4.0, false), 1.0);
+    m.clear_interp();
+    assert_eq!(at(&m, 4.0, false), 1.0 + 4.0 / 10.0);
+}

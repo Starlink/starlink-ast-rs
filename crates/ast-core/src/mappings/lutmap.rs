@@ -384,17 +384,19 @@ impl LutMap {
         }
     }
 
-    /// Inverse transform for a single output value (lutmap.c `Transform`,
-    /// inverse branch).
+    /// Inverse transform of `input` into `out` (lutmap.c `Transform`,
+    /// inverse branch), with the table and interpolation method fetched once
+    /// for the array, as C does.
     ///
     /// The search runs over the table with its bad entries removed
     /// ([`InverseTable`]) when it has any, and over the full table otherwise.
     /// A bisection finds the adjacent pair of entries `i1`, `i2 = i1 + 1`
     /// bracketing `y`; `i1` is -1 when `y` lies beyond the first entry, and
     /// `nlut - 2` when it lies beyond the last.
-    fn inverse_one(&self, y: f64) -> f64 {
-        if is_bad(y) || self.monotonic == 0 {
-            return BAD_VALUE;
+    fn inverse_slice(&self, input: &[f64], out: &mut [f64]) {
+        if self.monotonic == 0 {
+            out[..input.len()].fill(BAD_VALUE);
+            return;
         }
         let (lut, flags, index) = match &self.inverse_table {
             Some(t) => (&t.lut[..], Some(&t.flags[..]), Some(&t.index[..])),
@@ -402,71 +404,107 @@ impl LutMap {
         };
         let nlutm1 = lut.len() - 1;
         let up = lut[nlutm1] > lut[0];
-
-        let mut i1: isize = -1;
-        let mut i2: isize = nlutm1 as isize;
-        while i2 > i1 + 1 {
-            let i = (i1 + i2) / 2;
-            if (y >= lut[i as usize]) == up {
-                i1 = i;
-            } else {
-                i2 = i;
-            }
-        }
-        let i2 = i2 as usize;
-
-        // C reads `lut[i1]` and `flags[i1]` here even when `i1` is -1, which
-        // is outside the array. Below, an `i1` of -1 has no entry, so it
-        // equals no value and is not adjacent to a bad entry.
-        let lo = usize::try_from(i1).ok();
-        let lut_lo = lo.map(|i| lut[i]);
-
-        // A value inside a flat run of the table has no unique inverse.
-        let flat = if let Some(i1) = lo
-            && lut[i1] == y
-        {
-            (i1 > 0 && lut[i1 - 1] == y) || lut[i2] == y
-        } else {
-            lut[i2] == y && i2 < nlutm1 && lut[i2 + 1] == y
-        };
-        if flat {
-            return BAD_VALUE;
-        }
-
-        // Both entries were next to a bad entry in the full table.
-        if let (Some(flags), Some(i1)) = (flags, lo)
-            && flags[i1]
-            && flags[i2]
-        {
-            return BAD_VALUE;
-        }
-
+        let near = self.interp() == LutInterp::Nearest;
         let table_index = |i: usize| index.map_or(i, |index| index[i]);
 
-        if self.interp() == LutInterp::Nearest {
-            // With no lower entry, C's sign test passes only when `y` equals
-            // the first entry, whatever `d1` holds (a decreasing table at its
-            // first value); any other value is beyond the table.
-            let Some(lut_lo) = lut_lo else {
-                return if lut[i2] == y {
-                    self.start + self.inc * table_index(i2) as f64
-                } else {
-                    BAD_VALUE
-                };
-            };
-            let d1 = lut_lo - y;
-            let d2 = lut[i2] - y;
-            if (d1 > 0.0 && d2 > 0.0) || (d1 < 0.0 && d2 < 0.0) {
+        // The index `i1` of the lower entry bracketing `y`, or `isize::MIN`
+        // for a bad `y`.
+        let search = |y: f64| -> isize {
+            if is_bad(y) {
+                return isize::MIN;
+            }
+            // The bisection picks which end moves with a select rather
+            // than a branch, as C's `*( cond ? &i1 : &i2 ) = i` does: the
+            // comparison is unpredictable, so a branch mispredicts about
+            // half the time.
+            let mut i1: isize = -1;
+            let mut i2: isize = nlutm1 as isize;
+            while i2 > i1 + 1 {
+                // i1 >= -1 and i2 >= i1 + 2, so the sum is never negative
+                // and an unsigned halving (one shift) gives C's index.
+                let i = ((i1 + i2) as usize / 2) as isize;
+                let below = (y >= lut[i as usize]) == up;
+                i1 = if below { i } else { i1 };
+                i2 = if below { i2 } else { i };
+            }
+            i1
+        };
+        let one = |y: f64, i1: isize| -> f64 {
+            if i1 == isize::MIN {
                 return BAD_VALUE;
             }
-            let nearest = if d1.abs() < d2.abs() { i1 as usize } else { i2 };
-            return self.start + self.inc * table_index(nearest) as f64;
-        }
+            let i2 = (i1 + 1) as usize;
 
-        // Linear: interpolate within the bracketing pair, or extrapolate from
-        // the first or last pair when `y` lies outside the table.
-        let i1 = i1.clamp(0, nlutm1 as isize - 1) as usize;
-        self.start + self.inc * (table_index(i1) as f64 + (y - lut[i1]) / (lut[i1 + 1] - lut[i1]))
+            // C reads `lut[i1]` and `flags[i1]` here even when `i1` is -1,
+            // which is outside the array. Below, an `i1` of -1 has no entry,
+            // so it equals no value and is not adjacent to a bad entry.
+            let lo = usize::try_from(i1).ok();
+            let lut_lo = lo.map(|i| lut[i]);
+
+            // A value inside a flat run of the table has no unique inverse.
+            let flat = if let Some(i1) = lo
+                && lut[i1] == y
+            {
+                (i1 > 0 && lut[i1 - 1] == y) || lut[i2] == y
+            } else {
+                lut[i2] == y && i2 < nlutm1 && lut[i2 + 1] == y
+            };
+            if flat {
+                return BAD_VALUE;
+            }
+
+            // Both entries were next to a bad entry in the full table.
+            if let (Some(flags), Some(i1)) = (flags, lo)
+                && flags[i1]
+                && flags[i2]
+            {
+                return BAD_VALUE;
+            }
+
+            if near {
+                // With no lower entry, C's sign test passes only when `y`
+                // equals the first entry, whatever `d1` holds (a decreasing
+                // table at its first value); any other value is beyond the
+                // table.
+                let Some(lut_lo) = lut_lo else {
+                    return if lut[i2] == y {
+                        self.start + self.inc * table_index(i2) as f64
+                    } else {
+                        BAD_VALUE
+                    };
+                };
+                let d1 = lut_lo - y;
+                let d2 = lut[i2] - y;
+                if (d1 > 0.0 && d2 > 0.0) || (d1 < 0.0 && d2 < 0.0) {
+                    return BAD_VALUE;
+                }
+                let nearest = if d1.abs() < d2.abs() { i1 as usize } else { i2 };
+                return self.start + self.inc * table_index(nearest) as f64;
+            }
+
+            // Linear: interpolate within the bracketing pair, or extrapolate
+            // from the first or last pair when `y` lies outside the table.
+            let i1 = i1.clamp(0, nlutm1 as isize - 1) as usize;
+            self.start
+                + self.inc * (table_index(i1) as f64 + (y - lut[i1]) / (lut[i1 + 1] - lut[i1]))
+        };
+        // Each bisection is a chain of dependent loads, so its speed depends
+        // on how many points' chains the processor runs at once. A loop
+        // doing only the searches for a block of points keeps those chains
+        // close together; the checks and interpolation follow in a second
+        // loop over the same block. The result for each point is unchanged.
+        // The block is small because its buffer is zeroed on every call,
+        // which a one-point call must not pay much for.
+        const CHUNK: usize = 32;
+        let mut found = [0isize; CHUNK];
+        for (ins, outs) in input.chunks(CHUNK).zip(out.chunks_mut(CHUNK)) {
+            for (f, &y) in found.iter_mut().zip(ins) {
+                *f = search(y);
+            }
+            for ((o, &y), &i1) in outs.iter_mut().zip(ins).zip(&found) {
+                *o = one(y, i1);
+            }
+        }
     }
 
     /// Compose in series with another mapping.
@@ -588,12 +626,14 @@ impl Mapping for LutMap {
         crate::mappings::validate_transform_into(self, &pts, forward, Some(&out))?;
         let fwd = self.effective_forward(forward);
         let n = pts.npoint();
-        for (o, &x) in out.axis_mut(0)[..n].iter_mut().zip(pts.axis(0)) {
-            *o = if fwd {
-                self.forward_one(x)
-            } else {
-                self.inverse_one(x)
-            };
+        let input = &pts.axis(0)[..n];
+        let output = &mut out.axis_mut(0)[..n];
+        if fwd {
+            for (o, &x) in output.iter_mut().zip(input) {
+                *o = self.forward_one(x);
+            }
+        } else {
+            self.inverse_slice(input, output);
         }
         Ok(())
     }
