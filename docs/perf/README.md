@@ -70,3 +70,17 @@ Rust/C geometric mean is now 0.34 at N=100 and 1.17 at N=100 000; timings over 3
 - IntraMap (20 to 33x): the harness's test transform, not the port's.
 - SpecMap chains and spectral FITS headers (3.6 to 10x), the same cause as the `bench` SpecMap row.
 - SwitchMap (up to 4x), and Region and PointList simplifier fixtures (3.1 to 4.5x).
+
+### Branchless kernels
+
+Three kernels were then rewritten so that the loop over points has no branch, timed with `ast-bench run` on the same machine, in ns per point (not in the recorded TSVs):
+
+| Case | N | Before | After | C |
+|---|---|---|---|---|
+| `matrixmap_3x3_full` forward | 1 000 000 | 6.8 | 3.3 | 11.5 |
+| `unitnormmap_2d` forward | 10 | 8.2 | 5.3 | |
+| `polymap_2d_deg5` forward | 1 000 000 | 53 | 38 | 58 |
+
+A branch that sets a flag stops a loop vectorizing, so MatrixMap builds its BAD flag with a select and unrolls each row's sum for one to four inputs, and UnitNormMap does the same for up to three coordinates.
+PolyMap multiplies each term by the zeroth power of an input (exactly 1) where C skips it, which removes the branch from the term loop; ChebyMap shares that loop.
+With these, the checked path is faster than the NaN protocol (`ast-bench run --nan`) for MatrixMap at every N, the one class where the NaN path had won.
