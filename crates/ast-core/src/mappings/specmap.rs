@@ -819,11 +819,11 @@ fn user_vel(ra: f64, dec: f64, veluser: f64, refra: f64, refdec: f64) -> f64 {
 // Core transform logic
 // ---------------------------------------------------------------------------
 
-/// Apply a single system-change conversion in the forward direction.
-///
-/// Returns the transformed value, or BAD_VALUE on error.
-fn system_change_forward(cvt: &SpecConversion, val: f64) -> f64 {
-    match cvt.cvt_type {
+/// Apply the system-change conversion `cvt_type`, with arguments `args`, to
+/// one value. Returns the transformed value, or BAD_VALUE on error.
+#[inline(always)]
+fn system_change(cvt_type: SpecCvtType, args: &[f64], val: f64) -> f64 {
+    match cvt_type {
         SpecCvtType::FrToVl => {
             // Frequency to relativistic velocity:
             //   v = c * ((rf² - f²) / (rf² + f²))
@@ -834,10 +834,10 @@ fn system_change_forward(cvt: &SpecConversion, val: f64) -> f64 {
             // by ~6e-5 in the output for typical mm-wave inputs,
             // surfacing as a ~30 mm/s VELO-LSR error after the
             // VlToVr step. Match C's grouping exactly.
-            if cvt.args[0] == BAD_VALUE {
+            if args[0] == BAD_VALUE {
                 return BAD_VALUE;
             }
-            let rf2 = cvt.args[0] * cvt.args[0];
+            let rf2 = args[0] * args[0];
             let f2 = val * val;
             let d = rf2 + f2;
             if d > 0.0 {
@@ -853,14 +853,14 @@ fn system_change_forward(cvt: &SpecConversion, val: f64) -> f64 {
         }
         SpecCvtType::VlToFr => {
             // Relativistic velocity to frequency: f = rf * sqrt((c-v)/(c+v))
-            if cvt.args[0] == BAD_VALUE {
+            if args[0] == BAD_VALUE {
                 return BAD_VALUE;
             }
             let d = C_LIGHT + val;
             if d != 0.0 {
                 let ratio = (C_LIGHT - val) / d;
                 if ratio >= 0.0 {
-                    let result = cvt.args[0] * crate::math::sqrt(ratio);
+                    let result = args[0] * crate::math::sqrt(ratio);
                     if result.is_finite() {
                         result
                     } else {
@@ -1057,11 +1057,41 @@ fn system_change_forward(cvt: &SpecConversion, val: f64) -> f64 {
 ///
 /// The C code handles inverse by calling the forward function of the inverse type.
 fn system_change_inverse(cvt: &SpecConversion, val: f64) -> f64 {
-    let inv_cvt = SpecConversion {
-        cvt_type: cvt.cvt_type.inverse(),
-        args: cvt.args.clone(),
-    };
-    system_change_forward(&inv_cvt, val)
+    system_change(cvt.cvt_type.inverse(), &cvt.args, val)
+}
+
+/// Apply a system change in the forward direction.
+fn system_change_forward(cvt: &SpecConversion, val: f64) -> f64 {
+    system_change(cvt.cvt_type, &cvt.args, val)
+}
+
+/// Apply the system change `cvt_type` with arguments `args` to every good
+/// value of `o`, as C's `SystemChange` does over its array (specmap.c:3065):
+/// the conversion is chosen once, outside the loop over values. Each arm
+/// passes its type as a constant, so the match inside `system_change` folds
+/// away and a cheap conversion's loop vectorizes.
+fn system_change_slice(cvt_type: SpecCvtType, args: &[f64], o: &mut [f64]) {
+    macro_rules! unswitched {
+        ($($t:ident),*) => {
+            match cvt_type {
+                $(SpecCvtType::$t => {
+                    for v in o.iter_mut() {
+                        *v = if is_bad(*v) {
+                            *v
+                        } else {
+                            system_change(SpecCvtType::$t, args, *v)
+                        };
+                    }
+                })*
+                // Frame changes are applied by the caller.
+                _ => {}
+            }
+        };
+    }
+    unswitched!(
+        FrToVl, VlToFr, EnToFr, FrToEn, WnToFr, FrToWn, WvToFr, FrToWv, AwToFr, FrToAw, VrToVl,
+        VlToVr, VoToVl, VlToVo, ZoToVl, VlToZo, BtToVl, VlToBt
+    );
 }
 
 /// The component away from a source at `ra`, `dec` of the velocity of the
@@ -1443,15 +1473,12 @@ impl Mapping for SpecMap {
                     };
                 }
             } else {
-                for v in o.iter_mut() {
-                    if !is_bad(*v) {
-                        *v = if fwd {
-                            system_change_forward(cvt, *v)
-                        } else {
-                            system_change_inverse(cvt, *v)
-                        };
-                    }
-                }
+                let cvt_type = if fwd {
+                    cvt.cvt_type
+                } else {
+                    cvt.cvt_type.inverse()
+                };
+                system_change_slice(cvt_type, &cvt.args, o);
             }
         }
         for v in o.iter_mut() {
