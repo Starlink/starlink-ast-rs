@@ -8,9 +8,14 @@ use crate::constants::BAD_VALUE;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::mappings::{CmpMap, Composition, DynMapping, Mapping, PermMap};
 
+/// Whether `v` is bad: `BAD_VALUE` or not finite.
+///
+/// Both tests are always made (`|`, not `||`). With a short-circuit, the
+/// compiler turns a kernel's `if bad { BAD_VALUE } else { .. }` select back
+/// into a branch that skips the arithmetic, and the loop no longer vectorizes.
 #[inline]
 pub fn is_bad(v: f64) -> bool {
-    v == BAD_VALUE || !v.is_finite()
+    (v == BAD_VALUE) | !v.is_finite()
 }
 
 #[inline]

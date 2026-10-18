@@ -353,17 +353,16 @@ impl Mapping for PcdMap {
             };
             let out0 = &mut out0[..n];
             let out1 = &mut out1[..n];
-            for i in 0..n {
-                if is_bad(in0[i]) || is_bad(in1[i]) {
-                    out0[i] = BAD_VALUE;
-                    out1[i] = BAD_VALUE;
-                } else {
-                    let dx = in0[i] - cen0;
-                    let dy = in1[i] - cen1;
-                    let f = 1.0 + disco * (dx * dx + dy * dy);
-                    out0[i] = dx * f + cen0;
-                    out1[i] = dy * f + cen1;
-                }
+            // Every point takes the arithmetic and a bad one then takes
+            // BAD_VALUE, as selects rather than a branch, so the loop
+            // vectorizes.
+            for (((o0, o1), &x), &y) in out0.iter_mut().zip(out1.iter_mut()).zip(in0).zip(in1) {
+                let bad = is_bad(x) | is_bad(y);
+                let dx = x - cen0;
+                let dy = y - cen1;
+                let f = 1.0 + disco * (dx * dx + dy * dy);
+                *o0 = if bad { BAD_VALUE } else { dx * f + cen0 };
+                *o1 = if bad { BAD_VALUE } else { dy * f + cen1 };
             }
         } else {
             // Inverse: remove distortion (SLA_UNPCD approximation)
@@ -375,20 +374,17 @@ impl Mapping for PcdMap {
             };
             let out0 = &mut out0[..n];
             let out1 = &mut out1[..n];
+            // Selects rather than a branch, as for the forward direction.
             for i in 0..n {
-                if is_bad(in0[i]) || is_bad(in1[i]) {
-                    out0[i] = BAD_VALUE;
-                    out1[i] = BAD_VALUE;
-                } else {
-                    let dxp = in0[i] - cen0;
-                    let dyp = in1[i] - cen1;
-                    let cr2 = disco * (dxp * dxp + dyp * dyp);
-                    let a = (2.0 * cr2 + 1.0) / (3.0 * cr2 + 1.0);
-                    let cr2a2 = cr2 * a * a;
-                    let f = (2.0 * cr2a2 * a + 1.0) / (3.0 * cr2a2 + 1.0);
-                    out0[i] = dxp * f + cen0;
-                    out1[i] = dyp * f + cen1;
-                }
+                let bad = is_bad(in0[i]) | is_bad(in1[i]);
+                let dxp = in0[i] - cen0;
+                let dyp = in1[i] - cen1;
+                let cr2 = disco * (dxp * dxp + dyp * dyp);
+                let a = (2.0 * cr2 + 1.0) / (3.0 * cr2 + 1.0);
+                let cr2a2 = cr2 * a * a;
+                let f = (2.0 * cr2a2 * a + 1.0) / (3.0 * cr2a2 + 1.0);
+                out0[i] = if bad { BAD_VALUE } else { dxp * f + cen0 };
+                out1[i] = if bad { BAD_VALUE } else { dyp * f + cen1 };
             }
         }
         Ok(())
