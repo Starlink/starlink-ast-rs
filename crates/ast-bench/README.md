@@ -79,3 +79,20 @@ The warning never sets the exit status, since the ratio moves with the machine a
 
 times every section of the three core transform oracles and the bench oracle at 100 and 100 000 points on both engines, writes the rows to `target/perf/sweep-<date>.tsv`, and prints the 20 worst Rust/C ratios and the sections that could not be timed, with the reason for each.
 It is meant to be run overnight.
+
+## The Roman benchmark
+
+    ast-bench roman [--engine rust|c|both] [--max-n N] [--reps R] [--markdown] [-o file.csv]
+
+repeats `perf/bench_simd.c` from [Starlink/ast pull request 51](https://github.com/Starlink/ast/pull/51), which times the transforms that dominate the Roman Space Telescope's WCS: SphMap both ways, a degree-5 and a degree-1 PolyMap, and a diagonal and a full 2x2 MatrixMap.
+The Mappings are that program's, written by `tools/perf/gen_roman_fixtures.c` into `fixtures/roman`; the inputs are its `drand48` values from seed 42, reproduced bit for bit; the point counts run from 1 to 4088x4088, the full Roman WFI science area.
+The timing is also the pull request's rather than `measure`'s: each point count runs a batch of calls that doubles until it takes at least 20 ms, times that batch `R` times (default 5) and keeps the median time per call, so the numbers are comparable with the tables in the pull request.
+Both engines get the same buffer, one axis after another, as `astTranP` callers hold them.
+With both engines it prints the summary in millions of points per second, the Rust/C speed ratio, and how many output values differ between the engines at the largest point count, in units in the last place.
+`-o` writes the pull request's CSV (`transform,n_points,rep,time_s`), with the engine appended to each transform's name.
+The engine defaults to `both` with the `c-oracle` feature and `rust` without; the largest point count needs more than 1 GB of memory, and `--max-n` limits the sweep.
+
+Regenerate the fixtures from the reference library:
+
+    tools/perf/build_c_engine.sh bench
+    target/perf/c/bench/gen_roman_fixtures crates/ast-bench/fixtures/roman

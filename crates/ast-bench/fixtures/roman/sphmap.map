@@ -1,0 +1,7 @@
+ Begin SphMap 	# Cartesian to Spherical mapping
+    Nin = 3 	# Number of input coordinates
+    Nout = 2 	# Number of output coordinates
+ IsA Mapping 	# Mapping between coordinate systems
+    UntRd = 1 	# All input vectors have unit length
+#   PlrLg = 0 	# Polar longitude (rad.s)
+ End SphMap

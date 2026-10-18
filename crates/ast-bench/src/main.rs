@@ -23,6 +23,7 @@ commands:
   sweep [--nan]
   snapshot --set <name>
   bits [--base <git-ref>]
+  roman [--engine rust|c|both] [--max-n N] [--reps R] [--markdown] [-o file.csv]
 ";
 
 /// The value following `flag` in `args`, if present.
@@ -219,6 +220,66 @@ fn bits(args: &[String]) -> Result<Vec<String>, String> {
     }
 }
 
+/// `roman`: Starlink/ast pull request 51's benchmark of the Roman WCS
+/// transforms, on the engines named; prints the summary and how the engines'
+/// outputs compare, and with `-o` writes the pull request's CSV.
+fn roman(args: &[String]) -> Result<Vec<String>, String> {
+    use ast_bench::roman;
+    check_not_counting()?;
+    let default_engine = if cfg!(feature = "c-oracle") {
+        "both"
+    } else {
+        "rust"
+    };
+    let engines = match opt(args, "--engine").unwrap_or(default_engine) {
+        "rust" => roman::Engines::Rust,
+        "c" => roman::Engines::C,
+        "both" => roman::Engines::Both,
+        other => return Err(format!("unknown engine {other:?}")),
+    };
+    let num = |flag: &str, default: usize| -> Result<usize, String> {
+        opt(args, flag).map_or(Ok(default), |v| {
+            v.parse().map_err(|e| format!("{flag} {v}: {e}"))
+        })
+    };
+    let max_n = num("--max-n", *roman::N_SWEEP.last().expect("non-empty"))?;
+    let reps = num("--reps", roman::DEFAULT_REPS)?.max(1);
+    let mut timings = Vec::new();
+    let checks = roman::run(engines, max_n, reps, &mut |t| {
+        eprintln!(
+            "  {:<14} {:<4} N={:<9} median={:12.6} ms ({:8.1} Mpx/s)",
+            t.label,
+            t.engine,
+            t.n,
+            roman::median(&t.rep_times) * 1e3,
+            t.mpxs()
+        );
+        timings.push(t.clone());
+    })?;
+    print!(
+        "{}",
+        roman::summary(&timings, args.iter().any(|a| a == "--markdown"))
+    );
+    for (label, c) in &checks {
+        if c.differ == 0 {
+            println!(
+                "{label}: Rust and C outputs identical ({} values)",
+                c.values
+            );
+        } else {
+            println!(
+                "{label}: {} of {} output values differ between Rust and C, by at most {} ULP",
+                c.differ, c.values, c.max_ulps
+            );
+        }
+    }
+    if let Some(path) = opt(args, "-o") {
+        std::fs::write(path, roman::csv(&timings)).map_err(|e| format!("{path}: {e}"))?;
+        eprintln!("wrote {path}");
+    }
+    Ok(Vec::new())
+}
+
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let result = match args.first().map(String::as_str) {
@@ -247,6 +308,7 @@ fn main() -> ExitCode {
         Some("snapshot") => snapshot(&args[1..]),
         Some("sweep") => sweep(&args[1..]),
         Some("bits") => bits(&args[1..]),
+        Some("roman") => roman(&args[1..]),
         Some(other) => Err(format!("unknown command {other:?}\n{USAGE}")),
     };
     match result {

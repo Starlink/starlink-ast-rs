@@ -66,6 +66,11 @@ if [ "$VARIANT" = bench ]; then
       -I "$B" -I "$DEST/src" -I "$DEST/src/ast_tester" \
       "$HERE/tools/perf/gen_bench_fixtures.c" "$DEST/src/ast_tester/transform_oracle_util.c" \
       $ARCHIVES ${YAML:+-L "$YAML"} -lyaml -lm
+   # The program that writes the Roman benchmark's fixtures.
+   # shellcheck disable=SC2086
+   cc $CFLAGS_PINNED -o "$DEST/gen_roman_fixtures" \
+      -I "$B" -I "$DEST/src" "$HERE/tools/perf/gen_roman_fixtures.c" \
+      $ARCHIVES ${YAML:+-L "$YAML"} -lyaml -lm
 fi
 
 { echo "variant=$VARIANT"; echo "cc=$(cc --version | head -1)"; echo "cflags=$CFLAGS_PINNED";

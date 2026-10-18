@@ -14,6 +14,7 @@ pub mod load;
 pub mod oracle;
 pub mod points;
 pub mod report;
+pub mod roman;
 pub mod run;
 pub mod snapshot;
 pub mod sweep;
