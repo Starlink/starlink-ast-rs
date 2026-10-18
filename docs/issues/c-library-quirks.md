@@ -22,6 +22,8 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [A PointList's `Transform` moves its shared uncertainty Region twice per list point](#a-pointlists-transform-moves-its-shared-uncertainty-region-twice-per-list-point)
 - [SelectorMap's `Transform` negates and re-closes each selector Region in place](#selectormaps-transform-negates-and-re-closes-each-selector-region-in-place)
 - [`CompressMatrix` recomputes `sqrt( DBL_EPSILON )` for every row and column](#compressmatrix-recomputes-sqrt-dbl_epsilon--for-every-row-and-column)
+- [PolyMap's `Transform` branches on every power of every term](#polymaps-transform-branches-on-every-power-of-every-term)
+- [MatrixMap's full-matrix `Transform` loops over points outermost and branches on every value](#matrixmaps-full-matrix-transform-loops-over-points-outermost-and-branches-on-every-value)
 - [A Region's default uncertainty is not reset when the Region moves](#a-regions-default-uncertainty-is-not-reset-when-the-region-moves)
 - [`astLoadXphMap` leaks the projection-type string it reads](#astloadxphmap-leaks-the-projection-type-string-it-reads)
 - [Table's `Equal` compares only class names, and discards its column comparison](#tables-equal-compares-only-class-names-and-discards-its-column-comparison)
@@ -177,6 +179,42 @@ That includes the MatrixMap a PolyMap builds for its iterative inverse's first g
 Consequence: negligible on its own, but it shows up in the call-count parity test for every FrameSet with an iteratively inverted PolyMap (the LSST and SIP headers), which licenses it.
 The port computes the factor once per compression (`compress_matrix`).
 A C speed-up: compute it once, or make it a static.
+
+### PolyMap's `Transform` branches on every power of every term
+
+C location: `polymap.c` `Transform`, the term loop (`if( pow > 0 )` at line 6279 and the `xp == AST__BAD` test after it), with `PolyPowers` (polymap.c:4743) and ChebyMap's override (chebymap.c:1068).
+
+For each term C multiplies the coefficient by each input's power, skipping an input whose power is zero and testing every factor for `AST__BAD`.
+Both branches sit in the innermost loop, so a compiler cannot turn the term product into straight-line arithmetic.
+Neither is needed for the result.
+`PolyPowers` and ChebyMap's `PolyPowers` both set `work[ coord ][ 0 ]` to exactly 1.0, so multiplying by it leaves the term unchanged, bit for bit.
+And a factor can only be `AST__BAD` when that point's input is bad, which `PolyPowers` already knows.
+
+Consequence: a performance cost only; the result is the same.
+
+The port does both, and gives bit-identical output on every corpus transform (`ast-bench bits`):
+`eval_term_with_table` in `crates/ast-core/src/mappings/polymap.rs` multiplies by every power without a branch, and `poly_transform` uses that unchecked loop for a point whose powers are all good and whose coefficients are all good, keeping C's checked loop for the rest.
+In the port, dropping the zero-power branch alone took a 2-D degree-5 PolyMap's forward transform from 53 to 38 ns per point at 1 000 000 points, on macOS aarch64, where C takes 58.
+That is the port's measurement; the gain in C has not been measured.
+A C speed-up: drop the `pow > 0` test, and have `PolyPowers` return whether every power is good so that `Transform` can skip the `AST__BAD` tests for that point.
+ChebyMap shares the loop, so it gains too, and FITS-WCS SIP and TPN distortions are PolyMaps.
+
+### MatrixMap's full-matrix `Transform` loops over points outermost and branches on every value
+
+C location: `matrixmap.c` `Transform`, the `map->form == FULL` branch (from line 5177).
+
+For each point, then each output, then each input, C tests the input value and the matrix element for `AST__BAD` and leaves the inner loop at the first bad pair.
+The early exit and the point-outermost order keep the compiler from vectorizing the loop, though the input and output are already one array per axis.
+
+Consequence: a performance cost only; the result is the same.
+
+The port (`apply_matrix` and `full_row_fixed` in `crates/ast-core/src/mappings/matrix.rs`) loops over outputs, then points, and gives bit-identical output on every corpus transform.
+A row with a bad matrix element is filled with `AST__BAD` once.
+For each point, a bad input adds 0.0 to the sum and sets a bad flag only when its matrix element is non-zero, so the zero-element rule still holds, and both steps are selects, not branches.
+For up to four inputs each row's sum is unrolled.
+The port's 3x3 full MatrixMap (the direction-cosine case) takes 3.3 ns per point at 1 000 000 points, where C takes 11.5, on macOS aarch64.
+The port's own earlier per-point version, with a branch that set a flag, took 6.8, which is the part of that gap a change of loop shape explains; the gain in C has not been measured.
+A C speed-up: loop over outputs outside points, and replace the early exit with a bad flag and a conditional add.
 
 ### A Region's default uncertainty is not reset when the Region moves
 
