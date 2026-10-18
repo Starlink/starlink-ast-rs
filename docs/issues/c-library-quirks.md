@@ -24,6 +24,8 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [`CompressMatrix` recomputes `sqrt( DBL_EPSILON )` for every row and column](#compressmatrix-recomputes-sqrt-dbl_epsilon--for-every-row-and-column)
 - [PolyMap's `Transform` branches on every power of every term](#polymaps-transform-branches-on-every-power-of-every-term)
 - [MatrixMap's full-matrix `Transform` loops over points outermost and branches on every value](#matrixmaps-full-matrix-transform-loops-over-points-outermost-and-branches-on-every-value)
+- [SwitchMap converts its selector to `int` without a range check](#switchmap-converts-its-selector-to-int-without-a-range-check)
+- [Moc converts transformed grid bounds to `AstDim` without a range check](#moc-converts-transformed-grid-bounds-to-astdim-without-a-range-check)
 - [A Region's default uncertainty is not reset when the Region moves](#a-regions-default-uncertainty-is-not-reset-when-the-region-moves)
 - [`astLoadXphMap` leaks the projection-type string it reads](#astloadxphmap-leaks-the-projection-type-string-it-reads)
 - [Table's `Equal` compares only class names, and discards its column comparison](#tables-equal-compares-only-class-names-and-discards-its-column-comparison)
@@ -215,6 +217,32 @@ For up to four inputs each row's sum is unrolled.
 The port's 3x3 full MatrixMap (the direction-cosine case) takes 3.3 ns per point at 1 000 000 points, where C takes 11.5, on macOS aarch64.
 The port's own earlier per-point version, with a branch that set a flag, took 6.8, which is the part of that gap a change of loop shape explains; the gain in C has not been measured.
 A C speed-up: loop over outputs outside points, and replace the early exit with a bad flag and a conditional add.
+
+### SwitchMap converts its selector to `int` without a range check
+
+C location: `switchmap.c` `GetRoute` (line 493) and `Transform` (lines 1731, 1790 and 1809), each `rindex = (int)( round( sel ) ) - 1;`.
+
+C excludes only `AST__BAD` before the conversion.
+A selector beyond the range of `int` (about ±2.1e9), an infinity or a NaN makes the conversion undefined behavior, and a result of `INT_MIN` makes the `- 1` signed overflow.
+The input comes straight from the caller's selector array, so any user data can reach it.
+
+Consequence: on common hardware the conversion saturates or gives `INT_MIN`, the index lands out of range and the point gets no route, which is the documented result for an out-of-range selector; nothing guarantees that.
+
+The port (`route_index` in `crates/ast-core/src/mappings/switchmap.rs`) compares the rounded value with 1 and the number of routes as a `double` before converting, so such a selector selects no route by definition; `a_selector_value_beyond_any_integer_selects_no_route` in `tests/test_switchmap.rs` pins it.
+A C fix: test `round( sel )` against 1 and `nroute` before the cast.
+
+### Moc converts transformed grid bounds to `AstDim` without a range check
+
+C location: `moc.c` `AddRegion` (lines 2805 to 2808) and `AddPixelMask<X>` (lines 2315 to 2318), each `(AstDim)round( outa[ 0 ] ) - 1` and so on, after `astTran2` takes the bounding box from `maxorder` to `minorder`.
+
+The transformed corners are converted with no test for `AST__BAD` or for a value beyond the range of `AstDim`, and the margin of one is then added or subtracted.
+No path from a real Region or pixel array to a bad or out-of-range corner has been found: the Mapping simplifies to a WinMap that shrinks the grid, so finite corners stay finite.
+The bounds fed to it are converted the same way earlier (lines 2734 to 2738 and 2229 to 2233), also unchecked.
+
+Consequence: none observed; if a corner were bad, C's behavior would be undefined and the cell loop would cover a nonsense range.
+
+The port (`grid_index` in `crates/ast-core/src/regions/moc.rs`) reports AST__NODEF for a bad or out-of-range corner; `bounds_beyond_any_grid_index_are_an_error` pins it with a hand-built Mapping, since no public input reaches it.
+A C fix: check each corner before the cast and report an error.
 
 ### A Region's default uncertainty is not reset when the Region moves
 

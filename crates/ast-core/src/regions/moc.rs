@@ -2136,6 +2136,7 @@ fn bounds_at_minorder(
     maxorder: i32,
     minorder: i32,
     b: [i64; 4],
+    method: &str,
 ) -> AstResult<[i64; 4]> {
     let top = maps[maxorder as usize]
         .as_ref()
@@ -2155,11 +2156,28 @@ fn bounds_at_minorder(
     );
     let out = map.transform(&pts, true)?;
     Ok([
-        out.point(0)[0].round() as i64 - 1,
-        out.point(0)[1].round() as i64 - 1,
-        out.point(1)[0].round() as i64 + 1,
-        out.point(1)[1].round() as i64 + 1,
+        grid_index(out.point(0)[0], -1, method)?,
+        grid_index(out.point(0)[1], -1, method)?,
+        grid_index(out.point(1)[0], 1, method)?,
+        grid_index(out.point(1)[1], 1, method)?,
     ])
+}
+
+/// `v` rounded to a grid index, plus `margin`. C converts with
+/// `(AstDim)round(v)`, which is undefined for a bad value or one beyond the
+/// index range, so either is reported as AST__NODEF.
+fn grid_index(v: f64, margin: i64, method: &str) -> AstResult<i64> {
+    let r = v.round();
+    // i64::MAX is not representable; 2^63 is the first value beyond the range.
+    let index = (!is_bad(r) && r >= i64::MIN as f64 && r < i64::MAX as f64)
+        .then(|| (r as i64).checked_add(margin))
+        .flatten();
+    index.ok_or_else(|| {
+        AstError::new(
+            ErrorCode::Nodef,
+            format!("{method}(Moc): The bounding box cannot be mapped to HEALPix grid indices."),
+        )
+    })
 }
 
 impl Moc {
@@ -2260,7 +2278,7 @@ impl Moc {
         };
 
         let maps = order_maps(Box::new(UnitMap::new(2)), maxorder, minorder)?;
-        let b = bounds_at_minorder(&maps, maxorder, minorder, b)?;
+        let b = bounds_at_minorder(&maps, maxorder, minorder, b, method)?;
         let test = |pts: &PointSet| -> AstResult<Vec<bool>> {
             let out = mapped_min.transform(pts, true)?;
             Ok((0..out.npoint())
@@ -2437,7 +2455,7 @@ impl Moc {
         let (iproj_min, b, mut array2proj_min) = best.expect("four projections tried");
         array2proj_min.invert();
         let maps = order_maps(array2proj_min, maxorder, minorder)?;
-        let b = bounds_at_minorder(&maps, maxorder, minorder, b)?;
+        let b = bounds_at_minorder(&maps, maxorder, minorder, b, &method)?;
         let (nx, ny) = (dims[0] as i64, dims[1] as i64);
         let test = |pts: &PointSet| -> AstResult<Vec<bool>> {
             Ok((0..pts.npoint())
@@ -3330,5 +3348,34 @@ impl Mapping for Moc {
 
     fn clone_box(&self) -> DynMapping {
         Box::new(self.clone())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bounds_beyond_any_grid_index_are_an_error() {
+        // The map from the order-2 grid to the order-1 grid scales by 1e300
+        // (either sign), so the corners land beyond any 64-bit index. With a
+        // negative scale each corner goes to the infinity its margin moves
+        // away from, so the margin alone cannot overflow.
+        for scale in [1e-300, -1e-300] {
+            let shrink = crate::mappings::WinMap::from_corners(
+                &[0.0, 0.0],
+                &[1.0, 1.0],
+                &[0.0, 0.0],
+                &[scale, scale],
+            )
+            .unwrap();
+            let maps: Vec<Option<DynMapping>> = vec![
+                None,
+                Some(Box::new(shrink)),
+                Some(Box::new(UnitMap::new(2))),
+            ];
+            let err = bounds_at_minorder(&maps, 2, 1, [-5, -5, 5, 5], "astAddRegion").unwrap_err();
+            assert_eq!(err.code(), ErrorCode::Nodef, "scale {scale}");
+        }
     }
 }
