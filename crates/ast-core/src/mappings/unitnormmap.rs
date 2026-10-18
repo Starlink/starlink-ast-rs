@@ -101,6 +101,54 @@ impl UnitNormMap {
     }
 }
 
+/// The forward transformation for a fixed number of coordinates, as one
+/// branchless loop over points so that it vectorizes. Each point's
+/// arithmetic is done in the order of a per-point loop. A bad input makes
+/// every output bad, and a zero norm leaves the unit vector unknown.
+///
+/// It is a macro so that the input and output axes are tuples of slices,
+/// each cut to the point count: the compiler can then drop every bounds
+/// check and vectorize. Each choice is a select rather than a branch for the
+/// same reason, so the square root is taken for every point and counted, as
+/// a C call, only where C takes it.
+macro_rules! forward_fixed {
+    ($centre:expr, $pin:expr, $units:expr, $norms:expr, [$($c:tt),+]) => {{
+        let n = $norms.len();
+        let x = ($( &$pin[$c][..n], )+);
+        let cen = ($( $centre[$c], )+);
+        let mut axes = $units.iter_mut();
+        let u = ($( { let _ = $c; &mut axes.next().expect("one axis per coordinate")[..n] }, )+);
+        for (k, norm_out) in $norms.iter_mut().enumerate() {
+            let mut bad = false;
+            let mut max = 0.0_f64;
+            $(
+                let v = x.$c[k];
+                bad |= is_bad(v);
+                let abs_relin = (v - cen.$c).abs();
+                max = if abs_relin > max { abs_relin } else { max };
+            )+
+            let mut sum = 0.0;
+            $(
+                let scaled = (x.$c[k] - cen.$c) / max;
+                sum += scaled * scaled;
+            )+
+            // As in C, only a good point with a non-zero norm takes a root.
+            let good = !bad && max != 0.0;
+            let norm = max * crate::math::sqrt_counted_if(sum, good);
+            $(
+                u.$c[k] = if good { (x.$c[k] - cen.$c) / norm } else { BAD_VALUE };
+            )+
+            *norm_out = if bad {
+                BAD_VALUE
+            } else if max == 0.0 {
+                0.0
+            } else {
+                norm
+            };
+        }
+    }};
+}
+
 impl Mapping for UnitNormMap {
     fn mapping_flags(&self) -> &crate::mappings::MappingFlags {
         &self.mapping_flags
@@ -191,7 +239,19 @@ impl Mapping for UnitNormMap {
 
         let n = pts.npoint();
         let pin = pts.axis_slices();
-        if fwd {
+        // Up to three coordinates, which covers the unit vectors AST builds,
+        // use one unrolled loop over points. More use the blocked passes
+        // below; their extra passes cost little at large point counts but
+        // dominate a call of a few points.
+        if fwd && ncoord <= 3 {
+            let (units, rest) = out.axes_mut().split_at_mut(ncoord);
+            let norms = &mut rest[0][..n];
+            match ncoord {
+                1 => forward_fixed!(self.centre, pin, units, norms, [0]),
+                2 => forward_fixed!(self.centre, pin, units, norms, [0, 1]),
+                _ => forward_fixed!(self.centre, pin, units, norms, [0, 1, 2]),
+            }
+        } else if fwd {
             // Forward: vector → unit vector + norm.
             // The passes below run over blocks of points that stay in cache,
             // doing each point's arithmetic in the same order as a per-point

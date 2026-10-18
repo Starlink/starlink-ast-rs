@@ -88,6 +88,16 @@ pub(crate) fn sqrt(x: f64) -> f64 {
     x.sqrt()
 }
 
+/// The square root of `x`, counted as a call only when `counted`: for a
+/// branchless kernel that takes a root C skips and then discards it.
+#[inline(always)]
+pub(crate) fn sqrt_counted_if(x: f64, counted: bool) -> f64 {
+    if counted {
+        hit("sqrt");
+    }
+    x.sqrt()
+}
+
 #[inline(always)]
 pub(crate) fn hypot(x: f64, y: f64) -> f64 {
     hit("hypot");

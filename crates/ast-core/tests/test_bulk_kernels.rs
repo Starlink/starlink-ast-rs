@@ -363,3 +363,56 @@ fn full_matrixmap_kernel_matches_c_for_each_input_count() {
         });
     }
 }
+
+/// One point of UnitNormMap's forward transformation (unitnormmap.c) about
+/// any centre.
+fn unit_norm_about(centre: &[f64], p: &[f64]) -> Vec<f64> {
+    let n = centre.len();
+    if p.iter().any(|v| !v.is_finite() || *v == BAD_VALUE) {
+        return vec![BAD_VALUE; n + 1];
+    }
+    let rel: Vec<f64> = p.iter().zip(centre).map(|(v, c)| v - c).collect();
+    let max = rel
+        .iter()
+        .fold(0.0_f64, |m, r| if r.abs() > m { r.abs() } else { m });
+    let mut out = vec![BAD_VALUE; n + 1];
+    if max == 0.0 {
+        out[n] = 0.0;
+        return out;
+    }
+    let sum = rel.iter().fold(0.0, |s, r| s + (r / max) * (r / max));
+    let norm = max * sum.sqrt();
+    for (o, r) in out.iter_mut().zip(&rel) {
+        *o = r / norm;
+    }
+    out[n] = norm;
+    out
+}
+
+#[test]
+fn unitnormmap_forward_kernel_matches_c_for_each_axis_count() {
+    // Each small axis count has its own kernel and larger ones a blocked
+    // kernel; 1030 points cross its block boundary. Every seventh point is
+    // the centre, giving a zero norm.
+    let odd = [BAD_VALUE, f64::NAN, f64::INFINITY, -0.0];
+    for ncoord in 1..=5 {
+        let centre: Vec<f64> = (0..ncoord).map(|j| j as f64 * 1.5 - 2.0).collect();
+        let m = UnitNormMap::new(centre.clone()).unwrap();
+        let inp: Vec<Vec<f64>> = (0..ncoord)
+            .map(|j| {
+                (0..1030)
+                    .map(|i| {
+                        if i % 7 == 3 {
+                            centre[j]
+                        } else if i % (5 + j) == 2 {
+                            odd[(i + j) % odd.len()]
+                        } else {
+                            i as f64 * 0.37 - 20.0 + j as f64
+                        }
+                    })
+                    .collect()
+            })
+            .collect();
+        assert_points(&m, true, &inp, ncoord + 1, |p| unit_norm_about(&centre, p));
+    }
+}
