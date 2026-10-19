@@ -1015,6 +1015,13 @@ pub(crate) trait PolyPowers {
         input: &[f64],
         forward: bool,
     ) -> bool;
+
+    /// Whether the values are plain powers formed as [`monomial_powers`]
+    /// forms them, by repeated multiplication from 1, which lets
+    /// [`poly_transform`] form them for a block of points at once.
+    fn is_monomial(&self) -> bool {
+        false
+    }
 }
 
 /// The coefficients of one of a PolyMap's original transformations, with the
@@ -1049,48 +1056,168 @@ pub(crate) fn poly_transform<P: PolyPowers + ?Sized>(
     let pin = pts.axis_slices();
     let pout = out.axis_list_mut();
     let mut inp = vec![0.0; pin.len()];
-    for i in 0..pts.npoint() {
-        for (v, axis) in inp.iter_mut().zip(pin) {
-            *v = axis[i];
+    // Below this many points the per-point loop is faster: the blocked
+    // loop's buffers cost more than its vectorized arithmetic saves. Both
+    // give the same results.
+    const BLOCKED_MIN: usize = 16;
+    if basis.is_monomial() && !bad_coeff && pts.npoint() >= BLOCKED_MIN {
+        let mut eval = |i: usize, pout: &mut [&mut [f64]]| {
+            eval_point(
+                basis, forward, tables, bad_coeff, pin, pout, &mut work, &mut inp, i, bad,
+            );
+        };
+        poly_transform_blocked(tables, pin, pout, pts.npoint(), bad, &mut eval);
+    } else {
+        for i in 0..pts.npoint() {
+            eval_point(
+                basis, forward, tables, bad_coeff, pin, pout, &mut work, &mut inp, i, bad,
+            );
         }
-        let all_good = basis.poly_powers(&mut work, tables.max_pows, &inp, forward);
-        if all_good && !bad_coeff {
-            // No term can be bad, so this is the loop below without its checks.
-            for (out_idx, term_indices) in tables.by_output.iter().enumerate() {
-                let mut outval = 0.0;
-                for &idx in term_indices {
-                    outval += eval_term_with_table(&tables.terms[idx], &work);
-                }
-                pout[out_idx][i] = if outval.is_nan() { bad } else { outval };
-            }
-            continue;
-        }
+    }
+}
+
+/// One point of [`poly_transform`]: polymap.c:6180-6283 for point `i`.
+#[allow(clippy::too_many_arguments)]
+#[inline(always)]
+fn eval_point<P: PolyPowers + ?Sized>(
+    basis: &P,
+    forward: bool,
+    tables: &TermTables<'_>,
+    bad_coeff: bool,
+    pin: &[&[f64]],
+    pout: &mut [&mut [f64]],
+    work: &mut [Vec<f64>],
+    inp: &mut [f64],
+    i: usize,
+    bad: f64,
+) {
+    for (v, axis) in inp.iter_mut().zip(pin) {
+        *v = axis[i];
+    }
+    let all_good = basis.poly_powers(work, tables.max_pows, inp, forward);
+    if all_good && !bad_coeff {
+        // No term can be bad, so this is the loop below without its checks.
         for (out_idx, term_indices) in tables.by_output.iter().enumerate() {
             let mut outval = 0.0;
-            'terms: for &idx in term_indices {
-                let term = &tables.terms[idx];
-                let mut value = term.coeff;
-                if value == BAD_VALUE {
-                    outval = BAD_VALUE;
-                    break;
+            for &idx in term_indices {
+                outval += eval_term_with_table(&tables.terms[idx], work);
+            }
+            pout[out_idx][i] = if outval.is_nan() { bad } else { outval };
+        }
+        return;
+    }
+    for (out_idx, term_indices) in tables.by_output.iter().enumerate() {
+        let mut outval = 0.0;
+        'terms: for &idx in term_indices {
+            let term = &tables.terms[idx];
+            let mut value = term.coeff;
+            if value == BAD_VALUE {
+                outval = BAD_VALUE;
+                break;
+            }
+            for (axis, &pow) in term.powers.iter().enumerate() {
+                if pow > 0 {
+                    let xp = work[axis][pow];
+                    if xp == BAD_VALUE {
+                        outval = BAD_VALUE;
+                        break 'terms;
+                    }
+                    value *= xp;
                 }
-                for (axis, &pow) in term.powers.iter().enumerate() {
+            }
+            outval += value;
+        }
+        pout[out_idx][i] = if outval == BAD_VALUE || outval.is_nan() {
+            bad
+        } else {
+            outval
+        };
+    }
+}
+
+/// [`poly_transform`] for plain powers and good coefficients, over blocks of
+/// points with the point loop innermost: each input's powers for the block,
+/// then each output's terms, one term at a time across the block. This is
+/// the loop order of `TransformLoopSIMD` in Starlink/ast pull request 51; it
+/// lets the compiler vectorize across points.
+///
+/// Each point's arithmetic is [`eval_point`]'s fast path in the same order
+/// (the term is the coefficient times each power above zero in axis order,
+/// and the terms are added to 0.0 in order; the fast path's multiplications
+/// by a zero power's 1.0 change nothing), so the results are identical. A
+/// point with a bad input is then evaluated again by `eval`, which applies
+/// C's per-term checks; so, unlike the pull request, an output that uses no
+/// power of a bad input stays good, as in C.
+// Kept out of line, with `eval_point` inlined into the loop that calls it:
+// otherwise the per-point loop, which small point counts use, is about 15%
+// slower.
+#[inline(never)]
+fn poly_transform_blocked(
+    tables: &TermTables<'_>,
+    pin: &[&[f64]],
+    pout: &mut [&mut [f64]],
+    npoint: usize,
+    bad: f64,
+    eval: &mut dyn FnMut(usize, &mut [&mut [f64]]),
+) {
+    const BLOCK: usize = 256;
+    let blen = BLOCK.min(npoint);
+    // The rows of powers, axis by axis: row `first[axis] + p` holds the
+    // block's values of that axis to the power `p`.
+    let first: Vec<usize> = tables
+        .max_pows
+        .iter()
+        .scan(0, |next, &m| {
+            let f = *next;
+            *next += m + 1;
+            Some(f)
+        })
+        .collect();
+    let nrows = tables.max_pows.iter().map(|&m| m + 1).sum::<usize>();
+    let mut powers = vec![0.0; nrows * blen];
+    let mut acc = vec![0.0; blen];
+    let mut term = vec![0.0; blen];
+    for lo in (0..npoint).step_by(BLOCK) {
+        let len = BLOCK.min(npoint - lo);
+        for ((axis, &first), &mp) in pin.iter().zip(&first).zip(tables.max_pows) {
+            let x = &axis[lo..lo + len];
+            let rows = &mut powers[first * blen..(first + mp + 1) * blen];
+            rows[..len].fill(1.0);
+            for p in 1..=mp {
+                let (done, rest) = rows.split_at_mut(p * blen);
+                let prev = &done[(p - 1) * blen..][..len];
+                for ((v, &w), &xv) in rest[..len].iter_mut().zip(prev).zip(x) {
+                    *v = w * xv;
+                }
+            }
+        }
+        for (out_idx, term_indices) in tables.by_output.iter().enumerate() {
+            let acc = &mut acc[..len];
+            acc.fill(0.0);
+            for &idx in term_indices {
+                let t = &tables.terms[idx];
+                let term = &mut term[..len];
+                term.fill(t.coeff);
+                for ((&first, &pow), _) in first.iter().zip(&t.powers).zip(pin) {
                     if pow > 0 {
-                        let xp = work[axis][pow];
-                        if xp == BAD_VALUE {
-                            outval = BAD_VALUE;
-                            break 'terms;
+                        let row = &powers[(first + pow) * blen..][..len];
+                        for (v, &w) in term.iter_mut().zip(row) {
+                            *v *= w;
                         }
-                        value *= xp;
                     }
                 }
-                outval += value;
+                for (a, &v) in acc.iter_mut().zip(term.iter()) {
+                    *a += v;
+                }
             }
-            pout[out_idx][i] = if outval == BAD_VALUE || outval.is_nan() {
-                bad
-            } else {
-                outval
-            };
+            for (o, &a) in pout[out_idx][lo..lo + len].iter_mut().zip(acc.iter()) {
+                *o = if a.is_nan() { bad } else { a };
+            }
+        }
+        for i in lo..lo + len {
+            if pin.iter().any(|axis| axis[i] == BAD_VALUE) {
+                eval(i, pout);
+            }
         }
     }
 }
@@ -1155,6 +1282,10 @@ impl PolyPowers for PolyMap {
         _forward: bool,
     ) -> bool {
         monomial_powers(work, max_pows, input)
+    }
+
+    fn is_monomial(&self) -> bool {
+        true
     }
 }
 

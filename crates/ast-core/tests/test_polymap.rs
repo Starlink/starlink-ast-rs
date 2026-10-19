@@ -1689,3 +1689,53 @@ fn c_iter_inverse_attributes() {
     .unwrap();
     assert_eq!(state(&pm2), (true, false, false), "Error 8016-8018");
 }
+
+/// Over a long array, each point gets the result it gets alone, and a bad
+/// input makes bad only the outputs whose terms use a power of it above
+/// zero, as in C: the second output here does not depend on the first input.
+#[test]
+fn polymap_long_array_matches_each_point_and_keeps_independent_outputs() {
+    let t = |coeff: f64, powers: [usize; 2], out_axis: usize| PolyTerm {
+        coeff,
+        powers: powers.to_vec(),
+        out_axis,
+    };
+    let terms = [
+        t(0.5, [0, 0], 1),
+        t(1.25, [1, 0], 1),
+        t(-0.75, [2, 1], 1),
+        t(1e-3, [0, 3], 1),
+        t(2.0, [0, 1], 2),
+        t(-0.5, [0, 2], 2),
+        t(0.0, [0, 0], 2),
+    ];
+    let m = PolyMap::new(2, 2, &terms, None).unwrap();
+    let n = 1000;
+    let x = |i: usize| match i % 53 {
+        0 => BAD_VALUE,
+        7 => f64::NAN,
+        _ => (i as f64 - 500.0) * 0.731,
+    };
+    let y = |i: usize| match i % 61 {
+        0 => BAD_VALUE,
+        _ => (i as f64 * 0.0137).sin() * 40.0,
+    };
+    let pts = PointSet::from_rows((0..n).map(|i| vec![x(i), y(i)]));
+    let all = m.transform(&pts, true).unwrap();
+    for i in 0..n {
+        let one = m
+            .transform(&PointSet::from_rows([vec![x(i), y(i)]]), true)
+            .unwrap();
+        for a in 0..2 {
+            assert_eq!(
+                all.point(i)[a].to_bits(),
+                one.point(0)[a].to_bits(),
+                "point {i} output {a}"
+            );
+        }
+        if x(i) == BAD_VALUE && y(i) != BAD_VALUE {
+            assert_eq!(all.point(i)[0], BAD_VALUE, "point {i}");
+            assert_ne!(all.point(i)[1], BAD_VALUE, "point {i}");
+        }
+    }
+}
