@@ -64,7 +64,7 @@ Two principles:
 ```shell
 cargo build                                  # everything, no submodule needed
 cargo test -p ast-core                       # tier 1: idiomatic Rust tests
-cargo test -p ast-core --test meta test_simplify_regression::  # tier 2: native-format byte-exact
+cargo test -p ast-core --test meta test_simplify_regression::  # tier 2: native-format, byte-exact but for last-bit numeric drift
 
 # Tiers requiring the submodule:
 git submodule update --init reference/starlink-ast

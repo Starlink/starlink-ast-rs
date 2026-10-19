@@ -6,13 +6,17 @@
 //! so the module is annotated to allow it.
 #![allow(dead_code)]
 
-/// Compare two native (`.ast`) serialisations for equivalence: byte-equal
-/// after trimming, or equal modulo ≤`max_ulps`-ULP differences in any numeric
-/// token. This absorbs the last-bit libm drift that differs between platforms
-/// (and between the Rust port and the C oracle).
+/// Compare two native (`.ast`) serialisations: byte-equal, except that a
+/// number may differ in value by up to `max_ulps` ULP. This absorbs the
+/// last-bit libm drift that differs between platforms (and between the Rust
+/// port and the C oracle); every other byte, whitespace included, must match
+/// ([`line_tokens_equivalent`]).
 pub fn native_strings_equivalent(got: &str, want: &str, max_ulps: u64) -> bool {
-    if got.trim() == want.trim() {
+    if got == want {
         return true;
+    }
+    if got.ends_with('\n') != want.ends_with('\n') {
+        return false;
     }
     let mut g = got.lines();
     let mut w = want.lines();
@@ -33,8 +37,11 @@ pub fn native_strings_equivalent(got: &str, want: &str, max_ulps: u64) -> bool {
 /// [`native_strings_equivalent`] with AST's own `astEQUAL` tolerance on
 /// numeric tokens instead of a fixed ULP budget.
 pub fn native_strings_astequal(got: &str, want: &str) -> bool {
-    if got.trim() == want.trim() {
+    if got == want {
         return true;
+    }
+    if got.ends_with('\n') != want.ends_with('\n') {
+        return false;
     }
     let mut g = got.lines();
     let mut w = want.lines();
@@ -82,60 +89,72 @@ pub fn is_issimp_tag_card(line: &str) -> bool {
     key.starts_with("ISSIMP") && key.len() == 8
 }
 
-/// Compare two whitespace-tokenised lines for equivalence: tokens must be
-/// byte-equal, except numeric tokens that parse as `f64` may differ by up to
-/// `max_ulps` ULP.
-pub fn line_tokens_equivalent(got: &str, want: &str, max_ulps: u64) -> bool {
-    if got == want {
-        return true;
-    }
-    let mut gt = got.split_whitespace();
-    let mut wt = want.split_whitespace();
-    loop {
-        match (gt.next(), wt.next()) {
-            (None, None) => return true,
-            (Some(g), Some(w)) if g == w => continue,
-            (Some(g), Some(w)) => {
-                let (Ok(gv), Ok(wv)) = (g.parse::<f64>(), w.parse::<f64>()) else {
-                    return false;
-                };
-                if !ulp_close(gv, wv, max_ulps) {
-                    return false;
-                }
-            }
-            _ => return false,
+/// A line as alternating runs of whitespace and of everything else, in order.
+fn runs(line: &str) -> Vec<&str> {
+    let mut out = Vec::new();
+    let mut start = 0;
+    let mut ws = None;
+    for (i, c) in line.char_indices() {
+        let w = c.is_whitespace();
+        if ws.is_some_and(|prev| prev != w) {
+            out.push(&line[start..i]);
+            start = i;
         }
+        ws = Some(w);
     }
+    if start < line.len() {
+        out.push(&line[start..]);
+    }
+    out
 }
 
-/// Compare two whitespace-tokenised lines using AST's `astEQUAL` tolerance on
-/// numeric tokens (non-numeric tokens must be byte-equal). This is the
-/// floating-point-equivalence comparison the C oracle applies via `astEqual`:
-/// looser than [`line_tokens_equivalent`]'s fixed ULP budget, so it absorbs
-/// platform-libm differences that are amplified by cancellation (e.g. an
-/// observatory altitude derived from geocentric coordinates), while still
-/// rejecting genuine (≳1e-8 relative) discrepancies.
-pub fn line_tokens_astequal(got: &str, want: &str) -> bool {
+/// Whether two lines match under `close`: the same runs of whitespace and of
+/// other text, byte for byte, except that a token both sides read as a number
+/// may be written differently when its value differs and `close` accepts the
+/// difference. The same value written another way (`1` and `1.0`) is a
+/// formatting difference and fails. Whitespace may differ only to absorb
+/// such a number's change of width in a fixed-width line, as an 80-column
+/// FITS card does: some number in the line must differ, and the whitespace
+/// must change in total by exactly the opposite of the numbers' width change.
+fn line_matches(got: &str, want: &str, close: impl Fn(f64, f64) -> bool) -> bool {
     if got == want {
         return true;
     }
-    let mut gt = got.split_whitespace();
-    let mut wt = want.split_whitespace();
-    loop {
-        match (gt.next(), wt.next()) {
-            (None, None) => return true,
-            (Some(g), Some(w)) if g == w => continue,
-            (Some(g), Some(w)) => {
-                let (Ok(gv), Ok(wv)) = (g.parse::<f64>(), w.parse::<f64>()) else {
-                    return false;
-                };
-                if !ast_equal_close(gv, wv) {
-                    return false;
-                }
+    let (g, w) = (runs(got), runs(want));
+    if g.len() != w.len() {
+        return false;
+    }
+    let (mut numbers_differ, mut ws_differ) = (false, false);
+    let (mut num_width, mut ws_width) = (0isize, 0isize);
+    for (g, w) in g.iter().zip(&w) {
+        if g == w {
+            continue;
+        }
+        let width = g.len() as isize - w.len() as isize;
+        if g.trim().is_empty() && w.trim().is_empty() {
+            ws_differ = true;
+            ws_width += width;
+            continue;
+        }
+        match (g.parse::<f64>(), w.parse::<f64>()) {
+            (Ok(gv), Ok(wv)) if gv.to_bits() != wv.to_bits() && close(gv, wv) => {
+                numbers_differ = true;
+                num_width += width;
             }
             _ => return false,
         }
     }
+    !ws_differ || (numbers_differ && ws_width == -num_width)
+}
+
+/// [`line_matches`] with numbers within `max_ulps` ULP.
+pub fn line_tokens_equivalent(got: &str, want: &str, max_ulps: u64) -> bool {
+    line_matches(got, want, |a, b| ulp_close(a, b, max_ulps))
+}
+
+/// [`line_matches`] with numbers within AST's `astEQUAL` tolerance.
+pub fn line_tokens_astequal(got: &str, want: &str) -> bool {
+    line_matches(got, want, ast_equal_close)
 }
 
 /// Port of C `astEQUAL` (object.h): `|a-b| <= max(1e5*(|a|+|b|)*DBL_EPSILON,
