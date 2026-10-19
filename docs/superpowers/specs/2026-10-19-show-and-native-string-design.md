@@ -79,13 +79,15 @@ This applies equally to the result of `Channel::read`.
 
 ## Tests
 
-- **`show` and `to_native_string` byte for byte against C.**
-  A probe under `tools/oracle_fixtures/` runs `astShow` (with standard output redirected to a file) and `astToString` on one object of each class, built from the existing serialization corpus, and the expected text is committed.
+The tests check the mechanism, not every class's serialization, which the existing round-trip and simplify corpora already cover.
+
+- **`show` and `to_native_string` byte for byte against C, for four cases** that each exercise one part of the mechanism: a ZoomMap with `ID` and `Ident` set (set attributes survive `Full=-1`), a FrameSet (nesting, so indentation and comments), a Box (a Rust type whose AST class name differs) and a KeyMap (an `AnyObject` variant that is boxed).
+  A probe under `tools/oracle_fixtures/` runs `astShow` (with standard output redirected to a file) and `astToString` on each, and the expected text is committed.
   The Rust tests compare exactly, with no normalization.
   `show` is checked through the same internal string builder it prints, so the test needs no captured standard output.
-- **Round trip for every class:** `from_native_string(&x.to_native_string()?)` equals `x` (by `Equal` where the class has it, otherwise by comparing the two serializations).
-- **`TryFrom`:** the right class succeeds; a wrong class gives `Objin` with C's message.
-- **Coverage:** a test fails if an `AnyObject` variant lacks the methods, which the macro makes structural; the test is there so that a hand-written impl cannot drift from the list.
+- **Read back:** each case's `to_native_string` text reads back and writes the same text again.
+- **A concrete class and its `AnyObject` write the same text.**
+- **`TryFrom`:** the right class succeeds, a boxed variant comes back unboxed, and a wrong class gives `Objin` with C's message.
 
 ## Documentation
 
