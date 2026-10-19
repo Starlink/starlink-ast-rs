@@ -102,7 +102,7 @@ The August review's finding still holds: Rust uses about 1.8 lines per statement
 The whole-repository history in `code-metrics-data/repos/starlink-astrs.csv` shows the same thing over time.
 Rust code went from 115,955 lines at `bc620a6` to 229,873 now, roughly doubling in October.
 Most of October's growth is test code and generated oracle data from the C test migration and the per-subsystem audits, not production code: production `src/` grew by about 29k lines over the whole period.
-Over the same period the C repository's history (`starlink-ast.csv`, whole repository, first-parent on master) went from 228,801 C code lines at the August pin `50c2b21b` to 234,733 at `011d1ee6` (2026-10-05), most of the growth in tests rather than `src/`.
+Over the same period the C repository's history (`starlink-ast.csv`, whole repository, first-parent on master) went from 228,801 C code lines at the August pin `50c2b21b` to 234,733 at `011d1ee6` (2026-10-05); `src/` gained 3,307 lines net over that range, comments included.
 
 ---
 
