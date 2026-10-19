@@ -53,7 +53,9 @@ fn timeplot_loads() {
 /// A successful NATIVE read consumes the cards it read, as C `Read` does by
 /// calling `FixUsed` with `remove` set for NATIVE encoding
 /// (fitschan.c:25923-25929). The AST banner COMMENT blocks go with them
-/// (C `ComBlock`, fitschan.c:7972).
+/// (C `ComBlock`, fitschan.c:7972). Each header has one blank line, a blank
+/// card the read does not use; C leaves exactly that card (Ncard 1 after the
+/// read, from a probe of the reference library).
 #[test]
 fn native_read_consumes_its_cards() {
     for name in ["specflux.head", "timeplot.head", "polco.head"] {
@@ -68,7 +70,7 @@ fn native_read_consumes_its_cards() {
             .unwrap_or_else(|| panic!("read {name}: returned None"));
         assert_eq!(
             fc.ncard().unwrap(),
-            0,
+            1,
             "{name}: cards left after a NATIVE read"
         );
     }

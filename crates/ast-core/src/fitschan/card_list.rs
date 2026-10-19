@@ -1036,10 +1036,6 @@ impl CardList {
         let mut list = Self::new();
         let mut warnings = Vec::new();
         for line in text.lines() {
-            // Skip completely empty lines.
-            if line.trim().is_empty() {
-                continue;
-            }
             match FitsCard::split(line) {
                 Ok((card, bad_value)) => {
                     // Validate the keyword name (original case, columns 1-8)
@@ -1450,11 +1446,15 @@ mod tests {
         );
     }
 
+    /// An empty line is a blank card, as C's FitsChan stores one: reading a
+    /// header line by line through a source function, C counts each in Ncard
+    /// and writes it back out as 80 spaces.
     #[test]
-    fn from_header_skips_empty_lines() {
+    fn from_header_keeps_empty_lines_as_blank_cards() {
         let text = "NAXIS   =                    2 / Number of axes\n\n\nEND\n";
         let list = CardList::from_header(text).unwrap();
-        assert_eq!(list.len(), 2);
+        let keywords: Vec<&str> = list.iter().map(|c| c.keyword.as_str()).collect();
+        assert_eq!(keywords, ["NAXIS", "", "", "END"]);
     }
 
     // -----------------------------------------------------------------

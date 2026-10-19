@@ -368,15 +368,11 @@ fn run_case(case: &TestCase, force_comparison: bool) -> Result<(), String> {
             None => fc_out.to_header().unwrap(),
         };
 
-        // Normalize: trim trailing whitespace per line, skip empty lines,
-        // and drop the trailing FITS `END` marker (some upstream expected
-        // files include it, others omit it; our writer always emits one).
+        // Compare every line as written, dropping only a final FITS `END`
+        // card (some upstream expected files include it, others omit it; the
+        // writer always emits one).
         fn normalize(text: &str) -> Vec<&str> {
-            let mut lines: Vec<&str> = text
-                .lines()
-                .map(|l| l.trim_end())
-                .filter(|l| !l.is_empty())
-                .collect();
+            let mut lines: Vec<&str> = text.lines().collect();
             if lines.last().is_some_and(|l| l.trim() == "END") {
                 lines.pop();
             }
