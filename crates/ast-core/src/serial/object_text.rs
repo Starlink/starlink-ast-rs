@@ -104,7 +104,29 @@ macro_rules! object_text {
             /// [`BoxRegion`](crate::regions::BoxRegion)).
             pub fn class_name(&self) -> &'static str {
                 match self {
+                    $(AnyObject::$variant(x) => Serializable::class_name(object_text!(@ref x $(, $boxed)?)),)*
+                }
+            }
+
+            /// The class name the [`TryFrom`] impl for this variant's type
+            /// reports as wanted, checked against [`class_name`](Self::class_name)
+            /// by the tests below.
+            #[cfg(test)]
+            fn wanted_class_name(&self) -> &'static str {
+                match self {
                     $(AnyObject::$variant(_) => $class,)*
+                }
+            }
+
+            /// The variant names, in declaration order.
+            #[cfg(test)]
+            const VARIANTS: &'static [&'static str] = &[$(stringify!($variant)),*];
+
+            /// This object's variant name.
+            #[cfg(test)]
+            fn variant_name(&self) -> &'static str {
+                match self {
+                    $(AnyObject::$variant(_) => stringify!($variant),)*
                 }
             }
 
@@ -119,8 +141,7 @@ macro_rules! object_text {
             }
 
             /// The text [`show`](Self::show) prints.
-            #[doc(hidden)]
-            pub fn show_text(&self) -> AstResult<String> {
+            pub(crate) fn show_text(&self) -> AstResult<String> {
                 match self {
                     $(AnyObject::$variant(x) => show_text(object_text!(@ref x $(, $boxed)?)),)*
                 }
@@ -201,4 +222,222 @@ object_text! {
     NativeChannel: crate::channel::NativeChannel = "Channel", boxed;
     MocChan: crate::channel::MocChan = "MocChan", boxed;
     FitsChan: crate::fitschan::FitsChan = "FitsChan", boxed;
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeSet;
+    use std::path::{Path, PathBuf};
+
+    use super::AnyObject;
+    use crate::serial::any_object_to_node;
+
+    include!("../../tests/show_tostring_oracle/cases.rs");
+
+    #[test]
+    fn show_text_matches_ast_show() {
+        for (name, _, show, _) in CASES {
+            let obj = crate::from_native_string(show).unwrap_or_else(|e| panic!("{name}: {e}"));
+            assert_eq!(obj.show_text().unwrap(), *show, "{name}");
+        }
+    }
+
+    #[test]
+    fn show_text_is_what_a_default_channel_writes() {
+        use crate::channel::{Channel, NativeChannel};
+        for (name, _, show, _) in CASES {
+            let obj = crate::from_native_string(show).unwrap();
+            let mut ch = NativeChannel::with_string_sink();
+            ch.write(&obj).unwrap();
+            assert_eq!(obj.show_text().unwrap(), ch.into_string(), "{name}");
+        }
+    }
+
+    /// Every file under `tests/fixtures` whose first line that is neither
+    /// blank nor a comment is a `Begin` line: the Native dumps.
+    fn native_dumps(dir: &Path, out: &mut Vec<PathBuf>) {
+        let mut entries: Vec<_> = std::fs::read_dir(dir)
+            .unwrap()
+            .map(|e| e.unwrap().path())
+            .collect();
+        entries.sort();
+        for path in entries {
+            if path.is_dir() {
+                native_dumps(&path, out);
+            } else if let Ok(text) = std::fs::read_to_string(&path)
+                && text
+                    .lines()
+                    .find(|l| !l.trim().is_empty() && !l.trim_start().starts_with('#'))
+                    .is_some_and(|l| l.trim_start().starts_with("Begin "))
+            {
+                out.push(path);
+            }
+        }
+    }
+
+    /// The three places a class name lives agree for `obj`: the name the
+    /// `TryFrom` error reports as wanted, `class_name`, and the name its
+    /// dump's `Begin` line carries.
+    fn check_names(obj: &AnyObject, what: &str) {
+        let written = any_object_to_node(obj).unwrap().class;
+        assert_eq!(obj.class_name(), written, "{what}: class_name");
+        assert_eq!(
+            obj.wanted_class_name(),
+            written,
+            "{what}: TryFrom's wanted name"
+        );
+    }
+
+    #[test]
+    fn every_class_name_matches_the_class_its_dump_names() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+        let mut files = Vec::new();
+        native_dumps(&root, &mut files);
+        // The transformations the corpus's IntraMap fixtures name.
+        let mut registry = crate::mappings::IntraRegistry::new();
+        for name in [
+            "simplifyidentity",
+            "simplifyidentity2",
+            "nosimpfi",
+            "nosimpif",
+        ] {
+            registry
+                .register(std::sync::Arc::new(Identity(name)))
+                .unwrap();
+        }
+        let mut seen = BTreeSet::new();
+        let mut unread = Vec::new();
+        for path in &files {
+            let text = std::fs::read_to_string(path).unwrap();
+            match crate::from_native_string_with(&text, &registry) {
+                Ok(obj) => {
+                    check_names(&obj, &path.display().to_string());
+                    seen.insert(obj.variant_name());
+                }
+                Err(_) => unread.push(path.strip_prefix(&root).unwrap().display().to_string()),
+            }
+        }
+        // A Frame in a Mapping slot is refused by decision
+        // (docs/issues/frame-in-a-mapping-slot.md); any other dump must read.
+        assert_eq!(unread, ["serialisation/frame_in_map_slot.ast"]);
+        for (what, obj) in objects_without_a_fixture() {
+            check_names(&obj, what);
+            seen.insert(obj.variant_name());
+        }
+        let missing: Vec<_> = AnyObject::VARIANTS
+            .iter()
+            .filter(|v| !seen.contains(*v))
+            .collect();
+        assert!(missing.is_empty(), "no object checked for {missing:?}");
+    }
+
+    /// An identity transformation under `name`: the IntraMap built below,
+    /// and the transformations the corpus's IntraMap fixtures name.
+    struct Identity(&'static str);
+
+    impl crate::mappings::IntraTransform for Identity {
+        fn name(&self) -> &str {
+            self.0
+        }
+        fn nin(&self) -> Option<usize> {
+            Some(1)
+        }
+        fn nout(&self) -> Option<usize> {
+            Some(1)
+        }
+        fn flags(&self) -> crate::mappings::IntraFlags {
+            crate::mappings::IntraFlags::default()
+        }
+        fn purpose(&self) -> &str {
+            "Copy the value"
+        }
+        fn author(&self) -> &str {
+            "test"
+        }
+        fn contact(&self) -> &str {
+            "test"
+        }
+        fn transform(
+            &self,
+            _map: &crate::mappings::IntraMap,
+            input: &crate::coords::Points<'_>,
+            _forward: bool,
+            out: &mut crate::coords::PointsMut<'_>,
+        ) -> crate::error::AstResult<()> {
+            out.axis_mut(0).copy_from_slice(input.axis(0));
+            Ok(())
+        }
+    }
+
+    /// One object of each class that is never the top-level object of a
+    /// Native dump under `tests/fixtures`.
+    fn objects_without_a_fixture() -> Vec<(&'static str, AnyObject)> {
+        use crate::frames::{FluxFrame, SkyFrame, SkySystem};
+        use crate::mappings::{IntraMap, SphMap, SplineMap, XphMap, XphProjection};
+        use crate::regions::{
+            CircleBuilder, Moc, StcCatalogEntryLocationBuilder, StcObsDataLocationBuilder,
+            StcSearchLocationBuilder,
+        };
+        let circle = || {
+            CircleBuilder::new(SkyFrame::new(SkySystem::Icrs), vec![1.0, 0.5])
+                .unwrap()
+                .radius(0.01)
+                .build()
+                .unwrap()
+        };
+        let spline = SplineMap::new(
+            2,
+            2,
+            2,
+            2,
+            vec![0.0, 0.0, 1.0, 1.0],
+            vec![0.0, 0.0, 1.0, 1.0],
+            vec![0.0, 1.0, 0.0, 1.0],
+            vec![0.0, 0.0, 1.0, 1.0],
+        )
+        .unwrap();
+        vec![
+            ("SphMap", AnyObject::SphMap(SphMap::new())),
+            (
+                "XphMap",
+                AnyObject::XphMap(XphMap::new(3, XphProjection::Hpx0)),
+            ),
+            (
+                "IntraMap",
+                AnyObject::IntraMap(
+                    IntraMap::new(std::sync::Arc::new(Identity("identity")), 1, 1).unwrap(),
+                ),
+            ),
+            ("SplineMap", AnyObject::SplineMap(spline)),
+            (
+                "FluxFrame",
+                AnyObject::FluxFrame(FluxFrame::with_spec_val(1.0e9, None)),
+            ),
+            ("Moc", AnyObject::Moc(Moc::new())),
+            (
+                "StcSearchLocation",
+                AnyObject::StcSearchLocation(
+                    StcSearchLocationBuilder::new(circle()).build().unwrap(),
+                ),
+            ),
+            (
+                "StcCatalogEntryLocation",
+                AnyObject::StcCatalogEntryLocation(
+                    StcCatalogEntryLocationBuilder::new(circle())
+                        .build()
+                        .unwrap(),
+                ),
+            ),
+            (
+                "StcObsDataLocation",
+                AnyObject::StcObsDataLocation(
+                    StcObsDataLocationBuilder::new(circle()).build().unwrap(),
+                ),
+            ),
+            ("Table", AnyObject::Table(Box::default())),
+            ("FitsTable", AnyObject::FitsTable(Box::default())),
+            ("NativeChannel", AnyObject::NativeChannel(Box::default())),
+            ("MocChan", AnyObject::MocChan(Box::default())),
+        ]
+    }
 }

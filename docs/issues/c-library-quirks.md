@@ -29,6 +29,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [SplineMap's `Dbvalu` loops to the spline order at run time](#splinemaps-dbvalu-loops-to-the-spline-order-at-run-time)
 - [SwitchMap converts its selector to `int` without a range check](#switchmap-converts-its-selector-to-int-without-a-range-check)
 - [Moc converts transformed grid bounds to `AstDim` without a range check](#moc-converts-transformed-grid-bounds-to-astdim-without-a-range-check)
+- [The Channel `Indent` documentation gives the wrong default](#the-channel-indent-documentation-gives-the-wrong-default)
 - [A Region's default uncertainty is not reset when the Region moves](#a-regions-default-uncertainty-is-not-reset-when-the-region-moves)
 - [`astLoadXphMap` leaks the projection-type string it reads](#astloadxphmap-leaks-the-projection-type-string-it-reads)
 - [Table's `Equal` compares only class names, and discards its column comparison](#tables-equal-compares-only-class-names-and-discards-its-column-comparison)
@@ -297,6 +298,22 @@ Consequence: none observed; if a corner were bad, C's behavior would be undefine
 
 The port (`grid_index` in `crates/ast-core/src/regions/moc.rs`) reports AST__NODEF for a bad or out-of-range corner; `bounds_beyond_any_grid_index_are_an_error` pins it with a hand-built Mapping, since no public input reaches it.
 A C fix: check each corner before the cast and report an error.
+
+### The Channel `Indent` documentation gives the wrong default
+
+C location: `channel.c`, the `Indent` attribute prologue (from line 5557) and its accessor (line 5630).
+
+The prologue's Description ends "[3]", but its Applicability section says "The default value is zero for a basic Channel".
+The code gives 3: `astMAKE_GET(Channel,Indent,int,3,( this->indent != -INT_MAX ? this->indent : 3 ))`, and `astShow` output is indented by 3 per nesting level.
+
+Consequence: documentation only; a reader of SUN/211 expects unindented output from a default Channel and gets indented output.
+
+The port's `ChannelConfig::indent` defaults to 3, as the code does.
+A C fix: change the Applicability line to "The default value is 3 for a basic Channel".
+
+Related, and not a defect: with `Indent` 0, C still starts every line with one character, because the first column is not indentation.
+Each value writer starts its line with `set ? " " : "#"` (`WriteDouble` and its siblings, for example line 4435), so a value that was set gets a space and an unset default written as a hint gets `#`; `WriteBegin` and `WriteEnd` start with a space to keep that column aligned (line 4296).
+`astToString` (`Indent=0`) therefore writes one leading space on every line, and the port does the same.
 
 ### A Region's default uncertainty is not reset when the Region moves
 

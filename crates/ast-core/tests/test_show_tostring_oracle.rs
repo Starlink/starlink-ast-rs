@@ -5,7 +5,8 @@
 //! exercising one part of the mechanism (set attributes under `Full=-1`,
 //! nesting, a Rust type whose AST class name differs, a boxed `AnyObject`
 //! variant), with the text C writes for each. Each case is read back from
-//! C's `astShow` text and must write both texts exactly.
+//! C's `astShow` text and must write C's `astToString` text exactly; the
+//! `show` text is checked by the unit tests in `src/serial/object_text.rs`.
 
 use ast_core::AnyObject;
 use ast_core::KeyMap;
@@ -24,14 +25,6 @@ fn to_native_string_matches_ast_to_string() {
         let obj = from_native_string(show).unwrap_or_else(|e| panic!("{name}: {e}"));
         assert_eq!(obj.class_name(), *class, "{name}");
         assert_c_text(&obj.to_native_string().unwrap(), compact, name);
-    }
-}
-
-#[test]
-fn show_text_matches_ast_show() {
-    for (name, _, show, _) in CASES {
-        let obj = from_native_string(show).unwrap();
-        assert_c_text(&obj.show_text().unwrap(), show, name);
     }
 }
 

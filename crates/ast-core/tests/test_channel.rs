@@ -391,12 +391,6 @@ fn to_native_string_matches_a_channel_set_as_ast_to_string_sets_it() {
     assert_eq!(cmp.to_native_string().unwrap(), want);
 }
 
-#[test]
-fn show_writes_what_a_default_channel_writes() {
-    let obj = nested_object();
-    assert_eq!(obj.show_text().unwrap(), channel_write(&obj, |_| {}));
-}
-
 // ===========================================================================
 // 8. Error: read with no source
 // ===========================================================================
