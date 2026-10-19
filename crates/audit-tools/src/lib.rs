@@ -486,9 +486,11 @@ fn c_definition_name(lines: &[&str], i: usize) -> Option<CDefinition> {
 pub mod c_docs_ledger;
 pub mod c_headers;
 mod c_steps;
+pub mod doc_aliases;
 pub use c_docs_ledger::{LedgerRow, parse_ledger};
 pub use c_headers::{CHeader, HeaderKind, c_headers, headers_tsv, parse_headers_tsv};
 pub use c_steps::c_step_comments;
+pub use doc_aliases::doc_aliases;
 
 #[cfg(test)]
 mod tests {

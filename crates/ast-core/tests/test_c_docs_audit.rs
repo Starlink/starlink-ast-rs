@@ -86,3 +86,61 @@ fn the_unreviewed_count_only_goes_down() {
         "lower UNREVIEWED_ROWS to {n} when rows are reviewed; it may never rise"
     );
 }
+
+/// Every alias in ast-core's source, as (alias, item, owner).
+fn source_aliases() -> Vec<(String, String, String)> {
+    let mut out = Vec::new();
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src");
+    let mut stack = vec![root];
+    while let Some(dir) = stack.pop() {
+        for e in std::fs::read_dir(dir).unwrap() {
+            let p = e.unwrap().path();
+            if p.is_dir() {
+                stack.push(p);
+            } else if p.extension().is_some_and(|x| x == "rs") {
+                out.extend(audit_tools::doc_aliases(
+                    &std::fs::read_to_string(&p).unwrap(),
+                ));
+            }
+        }
+    }
+    out
+}
+
+#[test]
+fn every_mapped_row_has_its_alias_on_its_item() {
+    let aliases_by_name: BTreeMap<String, String> =
+        parse_headers_tsv(&std::fs::read_to_string(audit_dir().join("c-headers.tsv")).unwrap())
+            .into_iter()
+            .map(|(_, name, alias, _)| (name, alias))
+            .collect();
+    let found: BTreeSet<_> = source_aliases().into_iter().collect();
+    let mut wanted = BTreeSet::new();
+    let mut missing = Vec::new();
+    for r in ledger() {
+        let Some(alias) = aliases_by_name.get(&r.name) else {
+            // `every_header_has_exactly_one_row` reports a row with no header.
+            if !r.rust_item.is_empty() {
+                missing.push(format!("{}: no entry in c-headers.tsv", r.name));
+            }
+            continue;
+        };
+        for item in &r.rust_item {
+            let (owner, name) = item.split_once("::").unwrap_or((item, item));
+            let key = (alias.clone(), name.to_string(), owner.to_string());
+            if !found.contains(&key) {
+                missing.push(format!(
+                    "{} -> {item}: no #[doc(alias = \"{alias}\")] on it",
+                    r.name
+                ));
+            }
+            wanted.insert(key);
+        }
+    }
+    let unlisted: Vec<_> = found.iter().filter(|k| !wanted.contains(*k)).collect();
+    assert!(
+        missing.is_empty() && unlisted.is_empty(),
+        "missing:\n{}\naliases with no ledger row: {unlisted:?}",
+        missing.join("\n")
+    );
+}
