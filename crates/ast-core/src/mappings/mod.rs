@@ -1116,7 +1116,7 @@ pub(crate) fn bad_to_nan<M: Mapping + ?Sized>(
     out: &mut PointsMut<'_>,
 ) {
     let nout = if forward { map.nout() } else { map.nin() };
-    for axis in out.axes_mut().iter_mut().take(nout) {
+    for axis in out.axes_iter_mut().take(nout) {
         for v in &mut axis[..npoint] {
             if *v == crate::constants::BAD_VALUE {
                 *v = f64::NAN;

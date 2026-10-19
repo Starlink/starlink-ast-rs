@@ -226,7 +226,7 @@ impl Mapping for UnitNormMap {
             if is_bad(c) {
                 let n = pts.npoint();
                 let nout = if fwd { ncoord + 1 } else { ncoord };
-                for axis in out.axes_mut().iter_mut().take(nout) {
+                for axis in out.axes_iter_mut().take(nout) {
                     axis[..n].fill(BAD_VALUE);
                 }
                 return Ok(());
@@ -240,12 +240,31 @@ impl Mapping for UnitNormMap {
         // below; their extra passes cost little at large point counts but
         // dominate a call of a few points.
         if fwd && ncoord <= 3 {
-            let (units, rest) = out.axes_mut().split_at_mut(ncoord);
-            let norms = &mut rest[0][..n];
+            // The unit-vector axes, then the norm: fixed-size, so taking them
+            // costs nothing per call.
+            let missing = || unreachable!("validated output axes");
             match ncoord {
-                1 => forward_fixed!(self.centre, pin, units, norms, [0]),
-                2 => forward_fixed!(self.centre, pin, units, norms, [0, 1]),
-                _ => forward_fixed!(self.centre, pin, units, norms, [0, 1, 2]),
+                1 => {
+                    let Some([u0, nm]) = out.first_axes_mut() else {
+                        missing()
+                    };
+                    let mut units = [u0];
+                    forward_fixed!(self.centre, pin, units, &mut nm[..n], [0])
+                }
+                2 => {
+                    let Some([u0, u1, nm]) = out.first_axes_mut() else {
+                        missing()
+                    };
+                    let mut units = [u0, u1];
+                    forward_fixed!(self.centre, pin, units, &mut nm[..n], [0, 1])
+                }
+                _ => {
+                    let Some([u0, u1, u2, nm]) = out.first_axes_mut() else {
+                        missing()
+                    };
+                    let mut units = [u0, u1, u2];
+                    forward_fixed!(self.centre, pin, units, &mut nm[..n], [0, 1, 2])
+                }
             }
         } else if fwd {
             // Forward: vector → unit vector + norm.
@@ -256,7 +275,8 @@ impl Mapping for UnitNormMap {
             // |v - c|, and finally the norm. The first unit-vector axis holds
             // the scaled sum of squares until the last pass overwrites it.
             const BLOCK: usize = 512;
-            let (units, rest) = out.axes_mut().split_at_mut(ncoord);
+            let axes = out.axis_list_mut();
+            let (units, rest) = axes.split_at_mut(ncoord);
             for lo in (0..n).step_by(BLOCK) {
                 let hi = (lo + BLOCK).min(n);
                 let norms = &mut rest[0][lo..hi];
@@ -309,12 +329,7 @@ impl Mapping for UnitNormMap {
             // Inverse: unit vector + norm → vector.
             // The last input coordinate is the norm.
             let norms = &pin[ncoord][..n];
-            for ((outp, axis), &c) in out
-                .axes_mut()
-                .iter_mut()
-                .zip(&pin[..ncoord])
-                .zip(&self.centre)
-            {
+            for ((outp, axis), &c) in out.axes_iter_mut().zip(&pin[..ncoord]).zip(&self.centre) {
                 for ((o, &v), &norm) in outp[..n].iter_mut().zip(&axis[..n]).zip(norms) {
                     *o = if is_bad(norm) {
                         // Norm is bad: all outputs bad.

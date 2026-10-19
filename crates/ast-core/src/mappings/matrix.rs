@@ -599,7 +599,7 @@ impl MatrixMap {
                 // more than the arithmetic at small point counts.
                 let m = m.as_standard_layout();
                 let elems = m.as_slice().expect("standard layout is contiguous");
-                for (coeffs, o) in elems.chunks_exact(m.ncols()).zip(out.axes_mut()) {
+                for (coeffs, o) in elems.chunks_exact(m.ncols()).zip(out.axes_iter_mut()) {
                     let o = &mut o[..n];
                     // A BAD element makes its whole row BAD.
                     if coeffs.iter().any(|&c| is_bad(c)) {

@@ -265,7 +265,7 @@ impl Mapping for RateMap {
             // The RateMap class does not define an inverse transformation
             // (or forward when inverted). Return BAD for all outputs.
             let nout = if forward { self.nout() } else { self.nin() };
-            for axis in out.axes_mut().iter_mut().take(nout) {
+            for axis in out.axes_iter_mut().take(nout) {
                 axis[..npoint].fill(BAD_VALUE);
             }
             return Ok(());

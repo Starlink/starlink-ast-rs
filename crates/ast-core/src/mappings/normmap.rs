@@ -149,7 +149,7 @@ impl Mapping for NormMap {
         let naxes = self.naxes();
 
         let pin = pts.axis_slices();
-        let pout = out.axes_mut();
+        let pout = out.axis_list_mut();
         let mut point = vec![0.0; naxes];
         for ipoint in 0..pts.npoint() {
             // C normalises every point, bad values included, and leaves each
@@ -179,7 +179,7 @@ impl Mapping for NormMap {
         let _ = forward;
         let naxes = self.naxes();
         let pin = pts.axis_slices();
-        let pout = out.axes_mut();
+        let pout = out.axis_list_mut();
         let mut point = vec![0.0; naxes];
         for ipoint in 0..pts.npoint() {
             for (v, axis) in point.iter_mut().zip(pin) {

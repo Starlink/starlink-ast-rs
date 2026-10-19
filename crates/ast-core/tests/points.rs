@@ -178,3 +178,23 @@ fn a_transform_of_no_points_still_checks_the_axes() {
         .unwrap_err();
     assert_eq!(e.code(), ErrorCode::Ncpin);
 }
+
+/// The writable axes a kernel takes are reborrowed: rearranging them leaves
+/// the view's own axes in order, and asking for more axes than the view has
+/// gives nothing.
+#[test]
+fn writable_axes_are_reborrowed_and_counted() {
+    let mut buf = [0.0; 6];
+    let mut o = PointsMut::from_strided(&mut buf, 2, 3, 3).unwrap();
+    assert!(o.first_axes_mut::<3>().is_none());
+    let Some(mut axes) = o.first_axes_mut::<2>() else {
+        panic!("two axes")
+    };
+    axes.swap(0, 1);
+    axes[0][0] = 5.0;
+    for axis in o.axes_iter_mut() {
+        axis[2] = 7.0;
+    }
+    assert_eq!(o.axis(0), &[0.0, 0.0, 7.0]);
+    assert_eq!(o.axis(1), &[5.0, 0.0, 7.0]);
+}

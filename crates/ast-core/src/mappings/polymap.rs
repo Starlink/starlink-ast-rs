@@ -1047,7 +1047,7 @@ pub(crate) fn poly_transform<P: PolyPowers + ?Sized>(
         .collect();
     let bad_coeff = tables.terms.iter().any(|t| t.coeff == BAD_VALUE);
     let pin = pts.axis_slices();
-    let pout = out.axes_mut();
+    let pout = out.axis_list_mut();
     let mut inp = vec![0.0; pin.len()];
     for i in 0..pts.npoint() {
         for (v, axis) in inp.iter_mut().zip(pin) {
@@ -1514,7 +1514,7 @@ impl Mapping for PolyMap {
             } else {
                 // No inverse available: fill with BAD.
                 let n = pts.npoint();
-                for axis in out.axes_mut().iter_mut().take(self.nin) {
+                for axis in out.axes_iter_mut().take(self.nin) {
                     axis[..n].fill(BAD_VALUE);
                 }
             }
@@ -1590,7 +1590,7 @@ impl Mapping for PolyMap {
         } else {
             // No inverse available: every output is bad, which is NaN here.
             let n = pts.npoint();
-            for axis in out.axes_mut().iter_mut().take(self.nin) {
+            for axis in out.axes_iter_mut().take(self.nin) {
                 axis[..n].fill(f64::NAN);
             }
         }

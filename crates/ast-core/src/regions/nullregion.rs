@@ -688,7 +688,7 @@ impl Mapping for NullRegion {
             out.copy_from(&pts);
         } else {
             let n = pts.npoint();
-            for axis in out.axes_mut().iter_mut().take(pts.ncoord()) {
+            for axis in out.axes_iter_mut().take(pts.ncoord()) {
                 axis[..n].fill(BAD_VALUE);
             }
         }

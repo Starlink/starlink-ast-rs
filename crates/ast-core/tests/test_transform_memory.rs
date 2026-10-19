@@ -147,3 +147,16 @@ fn nested_series_transform_into_nan_holds_no_full_size_intermediates() {
     assert_eq!(out.point(1)[0], 256.0);
     assert!(peak < BATCHES, "peak {peak} bytes");
 }
+
+/// Splitting a writable view into two, as a parallel CmpMap does on every
+/// call, allocates nothing for the axis counts held inline.
+#[test]
+fn splitting_a_view_allocates_nothing() {
+    let mut buf = vec![0.0; 4 * 16];
+    let (_, peak) = peak_during(|| {
+        let out = ast_core::coords::PointsMut::from_strided(&mut buf, 4, 16, 16).unwrap();
+        let (left, right) = out.split_axes_at(1);
+        (left.ncoord(), right.ncoord())
+    });
+    assert_eq!(peak, 0);
+}

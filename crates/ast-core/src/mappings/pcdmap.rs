@@ -296,7 +296,7 @@ impl Mapping for PcdMap {
             let n = pts.npoint();
             let in0 = &pts.axis(0)[..n];
             let in1 = &pts.axis(1)[..n];
-            let [out0, out1, ..] = out.axes_mut() else {
+            let Some([out0, out1]) = out.first_axes_mut() else {
                 unreachable!("validated output axes")
             };
             let out0 = &mut out0[..n];
@@ -312,7 +312,7 @@ impl Mapping for PcdMap {
             let n = pts.npoint();
             let in0 = &pts.axis(0)[..n];
             let in1 = &pts.axis(1)[..n];
-            let [out0, out1, ..] = out.axes_mut() else {
+            let Some([out0, out1]) = out.first_axes_mut() else {
                 unreachable!("validated output axes")
             };
             let out0 = &mut out0[..n];
@@ -348,7 +348,7 @@ impl Mapping for PcdMap {
             let n = pts.npoint();
             let in0 = &pts.axis(0)[..n];
             let in1 = &pts.axis(1)[..n];
-            let [out0, out1, ..] = out.axes_mut() else {
+            let Some([out0, out1]) = out.first_axes_mut() else {
                 unreachable!("validated output axes")
             };
             let out0 = &mut out0[..n];
@@ -369,7 +369,7 @@ impl Mapping for PcdMap {
             let n = pts.npoint();
             let in0 = &pts.axis(0)[..n];
             let in1 = &pts.axis(1)[..n];
-            let [out0, out1, ..] = out.axes_mut() else {
+            let Some([out0, out1]) = out.first_axes_mut() else {
                 unreachable!("validated output axes")
             };
             let out0 = &mut out0[..n];

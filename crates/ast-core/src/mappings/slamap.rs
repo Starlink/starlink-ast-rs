@@ -1268,7 +1268,7 @@ impl Mapping for SlaMap {
 
         // Initialise the output by copying the input (slamap.c:3630).
         let npoint = pts.npoint();
-        let [oa, od, ..] = out.axes_mut() else {
+        let Some([oa, od]) = out.first_axes_mut() else {
             unreachable!("a SlaMap has two outputs")
         };
         let (oa, od) = (&mut oa[..npoint], &mut od[..npoint]);

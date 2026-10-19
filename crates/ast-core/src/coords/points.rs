@@ -43,14 +43,6 @@ impl<T: Default> AxisList<T> {
             Self::Heap(heap) => heap.push(v),
         }
     }
-
-    /// The axes as a vector, leaving this list empty.
-    fn take_all(&mut self) -> Vec<T> {
-        match std::mem::replace(self, Self::new()) {
-            Self::Inline(mut buf, len) => buf[..len].iter_mut().map(std::mem::take).collect(),
-            Self::Heap(heap) => heap,
-        }
-    }
 }
 
 impl<T: Default> FromIterator<T> for AxisList<T> {
@@ -501,9 +493,27 @@ impl<'a> PointsMut<'a> {
         }
     }
 
-    /// Every axis, writable, so a kernel can hold several at once.
+    /// The first `K` axes, writable, so a kernel can hold several at once;
+    /// `None` when the view has fewer than `K`. They are reborrowed, so the
+    /// view's own axes cannot be swapped or shortened through them.
     #[inline]
-    pub fn axes_mut(&mut self) -> &mut [&'a mut [f64]] {
+    pub fn first_axes_mut<const K: usize>(&mut self) -> Option<[&mut [f64]; K]> {
+        let (head, _) = self.axes.split_first_chunk_mut::<K>()?;
+        Some(head.each_mut().map(|a| &mut **a))
+    }
+
+    /// Every axis, writable, in order; reborrowed as for
+    /// [`first_axes_mut`](Self::first_axes_mut).
+    #[inline]
+    pub fn axes_iter_mut(&mut self) -> impl ExactSizeIterator<Item = &mut [f64]> {
+        self.axes.iter_mut().map(|a| &mut **a)
+    }
+
+    /// Every axis, writable and indexable, for a kernel in this crate that
+    /// picks axes by number. It is the view's own list, so it costs nothing;
+    /// such a kernel must not swap or shorten the slices.
+    #[inline]
+    pub(crate) fn axis_list_mut(&mut self) -> &mut [&'a mut [f64]] {
         &mut self.axes
     }
 
@@ -566,7 +576,10 @@ impl<'a> PointsMut<'a> {
     pub fn split_axes_at(self, k: usize) -> (PointsMut<'a>, PointsMut<'a>) {
         let npoint = self.npoint;
         let mut this = self;
-        let mut axes = this.axes.take_all().into_iter();
+        // Move each axis out, leaving an empty slice behind, rather than
+        // collecting them into a vector: a parallel CmpMap splits on every
+        // call.
+        let mut axes = this.axes.iter_mut().map(std::mem::take);
         let left: AxisList<_> = axes.by_ref().take(k).collect();
         let right: AxisList<_> = axes.collect();
         (

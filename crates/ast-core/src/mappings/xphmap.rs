@@ -323,7 +323,7 @@ impl Mapping for XphMap {
         crate::mappings::validate_transform_into(self, &pts, forward, Some(&out))?;
         let forward = forward != self.inverted;
         let (xs, ys) = (pts.axis(0), pts.axis(1));
-        let [ox, oy, ..] = out.axes_mut() else {
+        let Some([ox, oy]) = out.first_axes_mut() else {
             unreachable!("an XphMap has two outputs")
         };
         for ip in 0..pts.npoint() {

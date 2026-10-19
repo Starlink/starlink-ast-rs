@@ -631,7 +631,7 @@ impl SpecMap {
     fn transform_3d(&self, pts: &Points<'_>, forward: bool, out: &mut PointsMut<'_>) {
         let n = pts.npoint();
         let (spec, ras, decs) = (pts.axis(0), pts.axis(1), pts.axis(2));
-        let [o_spec, o_ra, o_dec, ..] = out.axes_mut() else {
+        let Some([o_spec, o_ra, o_dec]) = out.first_axes_mut() else {
             unreachable!("a 3-D SpecMap has three outputs")
         };
         let nconv = self.conversions.len();

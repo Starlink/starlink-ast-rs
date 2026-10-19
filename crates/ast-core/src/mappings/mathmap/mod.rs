@@ -385,7 +385,7 @@ impl Mapping for MathMap {
 
         if exprs.is_empty() {
             // Undefined transformation: fill with BAD
-            for axis in out.axes_mut().iter_mut().take(ncoord_out) {
+            for axis in out.axes_iter_mut().take(ncoord_out) {
                 axis[..npoint].fill(BAD_VALUE);
             }
             return Ok(());
