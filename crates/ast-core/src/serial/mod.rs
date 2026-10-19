@@ -4,6 +4,7 @@ pub(crate) mod native_read;
 pub(crate) mod native_stream;
 pub(crate) mod native_write;
 pub(crate) mod node;
+mod object_text;
 
 pub(crate) use node::{Node, NodeValue};
 

@@ -143,13 +143,7 @@ impl Channel for NativeChannel {
     fn write(&mut self, obj: &AnyObject) -> AstResult<usize> {
         self.base.warnings.clear();
         let node = serial::any_object_to_node(obj)?;
-        let options = serial::native_write::RenderOptions {
-            comment: self.base.config.comment(),
-            full: self.base.config.full() as i8,
-            // C's indentation loops run no times for a negative Indent, so
-            // it writes what an Indent of 0 would.
-            indent: self.base.config.indent().max(0) as usize,
-        };
+        let options = serial::native_write::RenderOptions::from_config(&self.base.config);
         let text = serial::native_write::render_native_with_options(&node, &options)?;
 
         for line in text.lines() {

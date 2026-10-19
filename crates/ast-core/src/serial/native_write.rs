@@ -129,6 +129,19 @@ pub(crate) struct RenderOptions {
     pub indent: usize,
 }
 
+impl RenderOptions {
+    /// The options a Native Channel with `config` writes with. C's
+    /// indentation loops run no times for a negative Indent, so it writes
+    /// what an Indent of 0 would.
+    pub(crate) fn from_config(config: &crate::channel::ChannelConfig) -> Self {
+        RenderOptions {
+            comment: config.comment(),
+            full: config.full() as i8,
+            indent: config.indent().max(0) as usize,
+        }
+    }
+}
+
 impl Default for RenderOptions {
     fn default() -> Self {
         Self {
