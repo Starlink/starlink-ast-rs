@@ -19,25 +19,26 @@
 //! When a class has both kinds of failure (corpus + targeted-attribute),
 //! fix the corpus failure first — that's the C-byte-exact contract.
 
+use crate::common::native_dump;
 use ast_core::frames::BasicFrameBuilder;
 use ast_core::mappings::{
     ChebyMap, GrismMap, LutInterp, LutMap, MathMap, NormMap, PcdMap, PolyMap, PolyTerm, RateMap,
     ShiftMap, SlaCvtType, SlaMap, SpecCvtType, SpecMap, SphMap, SplineMap, TimeCvtType, TimeMap,
     TranMap, UnitNormMap, WcsMap, WcsProjection, WinMap, ZoomMap,
 };
-use ast_core::{AnyObject, from_native_string, to_native_string};
+use ast_core::{AnyObject, from_native_string};
 
 /// Helper: serialise twice and check the two texts match. If they don't,
 /// produce a unified diff so the missing/changed lines are easy to spot.
 fn assert_double_round_trip(obj: AnyObject, name: &str) {
-    let text1 = to_native_string(&obj).unwrap_or_else(|e| {
-        panic!("{name}: first to_native_string failed: {e}");
+    let text1 = native_dump(&obj).unwrap_or_else(|e| {
+        panic!("{name}: first native_dump failed: {e}");
     });
     let restored = from_native_string(&text1).unwrap_or_else(|e| {
         panic!("{name}: from_native_string failed: {e}\ntext:\n{text1}");
     });
-    let text2 = to_native_string(&restored).unwrap_or_else(|e| {
-        panic!("{name}: second to_native_string failed: {e}");
+    let text2 = native_dump(&restored).unwrap_or_else(|e| {
+        panic!("{name}: second native_dump failed: {e}");
     });
 
     if text1 != text2 {
@@ -181,7 +182,7 @@ fn round_trip_unitnormmap() {
     // (Double round-trip passes for both [0,0] and [0.5,-0.5] because
     // Rust's parser defaults centre to [0,0] if absent — symmetric loss.
     // The C library has no such default, so the bench harness crashes.)
-    let text = to_native_string(&AnyObject::UnitNormMap(m)).unwrap();
+    let text = native_dump(&AnyObject::UnitNormMap(m)).unwrap();
     let mentions_centre = text.contains("0.5") && text.contains("-0.5");
     assert!(
         mentions_centre,

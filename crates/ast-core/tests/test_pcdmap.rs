@@ -2,10 +2,11 @@
 //!
 //! Ancestor: reference/starlink-ast/src/pcdmap.c
 
+use crate::common::native_dump;
 use ast_core::constants::BAD_VALUE;
 use ast_core::coords::PointSet;
 use ast_core::mappings::{CmpMap, Composition, DynMapping, Mapping, PcdMap, UnitMap, ZoomMap};
-use ast_core::{AnyObject, from_native_string, to_native_string};
+use ast_core::{AnyObject, from_native_string};
 
 // ------------------------------------------------------------------ //
 // Construction                                                         //
@@ -250,7 +251,7 @@ fn pcdmap_merge_with_unitmap() {
 fn pcdmap_serialization_roundtrip() {
     let pm = PcdMap::new(0.001, [1.25, -0.75]);
     let obj = AnyObject::PcdMap(pm.clone());
-    let text = to_native_string(&obj).unwrap();
+    let text = native_dump(&obj).unwrap();
     let obj2 = from_native_string(&text).unwrap();
     let mapping = obj2.into_mapping().unwrap();
     let pm2 = mapping.as_any().downcast_ref::<PcdMap>().unwrap();
@@ -262,7 +263,7 @@ fn pcdmap_serialization_inverted() {
     let mut pm = PcdMap::new(0.005, [10.0, 20.0]);
     pm.invert();
     let obj = AnyObject::PcdMap(pm.clone());
-    let text = to_native_string(&obj).unwrap();
+    let text = native_dump(&obj).unwrap();
     let obj2 = from_native_string(&text).unwrap();
     let mapping = obj2.into_mapping().unwrap();
     let pm2 = mapping.as_any().downcast_ref::<PcdMap>().unwrap();
@@ -275,7 +276,7 @@ fn pcdmap_serialization_zero_disc() {
     // A PcdMap with disc=0 should round-trip through serialization.
     let pm = PcdMap::new(0.0, [0.0, 0.0]);
     let obj = AnyObject::PcdMap(pm.clone());
-    let text = to_native_string(&obj).unwrap();
+    let text = native_dump(&obj).unwrap();
     let obj2 = from_native_string(&text).unwrap();
     let mapping = obj2.into_mapping().unwrap();
     let pm2 = mapping.as_any().downcast_ref::<PcdMap>().unwrap();

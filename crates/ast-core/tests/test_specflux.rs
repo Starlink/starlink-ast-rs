@@ -9,10 +9,11 @@
 //! here that is [`FluxFrame::with_spec_val`] followed by the setters the
 //! attribute string calls.
 
+use crate::common::native_dump;
 use ast_core::frames::{
     FluxFrame, FluxSystem, Frame, FrameRef, FrameSet, SpecFluxFrame, SpecFrame, SpecSystem,
 };
-use ast_core::{AnyObject, from_native_string, to_native_string};
+use ast_core::{AnyObject, from_native_string};
 
 fn ghz() -> SpecFrame {
     let mut sf = SpecFrame::new(SpecSystem::Freq);
@@ -66,7 +67,7 @@ fn spec_val_defaults_to_the_flux_frame_value() {
     assert!(!sff.flux_frame().test_spec_val(), "Error 6");
 
     // CheckDump 1.
-    let text = to_native_string(&AnyObject::SpecFluxFrame(Box::new(sff.clone()))).unwrap();
+    let text = native_dump(&AnyObject::SpecFluxFrame(Box::new(sff.clone()))).unwrap();
     let AnyObject::SpecFluxFrame(read) = from_native_string(&text).unwrap() else {
         panic!("CheckDump 1: not a SpecFluxFrame");
     };

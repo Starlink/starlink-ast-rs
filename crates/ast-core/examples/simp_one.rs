@@ -5,7 +5,7 @@
 //! A FrameSet input is reduced to its base→current Mapping first, matching what
 //! the simplify regression harness feeds to `simplify`.
 
-use ast_core::{AnyObject, from_native_string, to_native_string};
+use ast_core::{AnyObject, from_native_string};
 
 /// Print the `ast::simplify` events the `tracing` feature emits, filtered by
 /// `RUST_LOG` (default `ast::simplify=debug`, which gives the nomination and
@@ -45,7 +45,7 @@ fn main() {
     };
     let simplified = mapping.simplify().expect("simplify");
     match AnyObject::from_mapping(simplified.as_ref()) {
-        Some(obj) => println!("{}", to_native_string(&obj).expect("serialize")),
+        Some(obj) => obj.show().expect("serialize"),
         None => println!("(result class is not one this example can serialize)"),
     }
 }

@@ -4,11 +4,12 @@
 //! file I/O, configuration options (comment, full, indent), multiple object
 //! types, and equivalence between Channel-based and convenience-function APIs.
 
+use crate::common::native_dump;
 use ast_core::channel::{Channel, NativeChannel};
 use ast_core::coords::PointSet;
 use ast_core::frames::{BasicFrameBuilder, FrameRef, FrameSet, SkyFrame, SkySystem};
 use ast_core::mappings::{ShiftMap, ZoomMap};
-use ast_core::{AnyObject, from_native_string, to_native_string};
+use ast_core::{AnyObject, from_native_string};
 
 // ===========================================================================
 // Helper
@@ -286,21 +287,21 @@ fn round_trip_multiple_types() {
     // ZoomMap.
     let zoom = ZoomMap::new(2, 5.0).unwrap();
     let obj = AnyObject::ZoomMap(zoom);
-    let text = to_native_string(&obj).unwrap();
+    let text = native_dump(&obj).unwrap();
     let restored = from_native_string(&text).unwrap();
     assert_eq!(restored.as_mapping().unwrap().nin(), 2);
 
     // ShiftMap.
     let shift = ShiftMap::new(vec![1.0, 2.0]);
     let obj = AnyObject::ShiftMap(shift);
-    let text = to_native_string(&obj).unwrap();
+    let text = native_dump(&obj).unwrap();
     let restored = from_native_string(&text).unwrap();
     assert_eq!(restored.as_mapping().unwrap().nin(), 2);
 
     // SkyFrame.
     let sky = SkyFrame::new(SkySystem::Galactic);
     let obj = AnyObject::SkyFrame(sky);
-    let text = to_native_string(&obj).unwrap();
+    let text = native_dump(&obj).unwrap();
     let restored = from_native_string(&text).unwrap();
     let f = restored.as_frame().unwrap();
     assert_eq!(f.naxes(), 2);
@@ -314,7 +315,7 @@ fn round_trip_multiple_types() {
     fs.add_frame(FrameRef::Base, Box::new(zoom_map), Box::new(current))
         .unwrap();
     let obj = AnyObject::FrameSet(fs);
-    let text = to_native_string(&obj).unwrap();
+    let text = native_dump(&obj).unwrap();
     assert!(text.contains("Begin FrameSet"));
     let restored = from_native_string(&text).unwrap();
     let f = restored.as_frame().unwrap();
@@ -362,7 +363,7 @@ fn to_native_string_matches_channel_write() {
     let obj = AnyObject::ShiftMap(shift);
 
     // Via convenience function.
-    let text_convenience = to_native_string(&obj).unwrap();
+    let text_convenience = native_dump(&obj).unwrap();
 
     // Via Channel.
     let mut ch = NativeChannel::with_string_sink();
@@ -567,11 +568,11 @@ fn converted_frameset_string_round_trip() {
     let mut bf = BasicFrameBuilder::new(2).build().unwrap();
     bf.set_domain("SKY");
     let fs = bf.convert_to(&sf, &[]).unwrap().expect("astConvert failed");
-    let pickle1 = to_native_string(&AnyObject::FrameSet(fs.clone())).unwrap();
+    let pickle1 = native_dump(&AnyObject::FrameSet(fs.clone())).unwrap();
     let AnyObject::FrameSet(fs2) = from_native_string(&pickle1).unwrap() else {
         panic!("the string did not read back as a FrameSet");
     };
-    let pickle2 = to_native_string(&AnyObject::FrameSet(fs2.clone())).unwrap();
+    let pickle2 = native_dump(&AnyObject::FrameSet(fs2.clone())).unwrap();
     assert_eq!(pickle1, pickle2, "round-tripped strings differ");
     assert!(
         Frame::equal(&fs2, &fs),

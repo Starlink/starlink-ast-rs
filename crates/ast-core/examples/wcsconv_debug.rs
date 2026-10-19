@@ -144,9 +144,8 @@ fn main() {
     // `native` is a FitsChan write under NATIVE encoding (the
     // COMMENT-banner + BEGAST/ENDAST keyword-card form).
     if target_enc == "ast" {
-        let dump = ast_core::to_native_string(&obj).unwrap();
         println!("=== {} → {} ===", fixture, target_enc);
-        println!("{dump}");
+        obj.show().unwrap();
         return;
     }
     fc_out.write(&obj).unwrap();

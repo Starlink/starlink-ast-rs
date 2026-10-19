@@ -3,6 +3,7 @@
 //! Covers: construction (radius and edge_point), point_in_region,
 //! negation, Mapping::transform, Frame delegation, bounding box, mesh.
 
+use crate::common::native_dump;
 use ast_core::constants::BAD_VALUE;
 use ast_core::coords::PointSet;
 use ast_core::frames::{BasicFrameBuilder, Frame};
@@ -794,7 +795,7 @@ fn reg_pins_circle_full_mesh_on_boundary() {
 fn loaded_frameless_uncertainty_takes_the_base_frame() {
     use ast_core::frames::FrameRef;
     use ast_core::mappings::ZoomMap;
-    use ast_core::{AnyObject, from_native_string, to_native_string};
+    use ast_core::{AnyObject, from_native_string};
 
     let foo = || {
         let mut f = BasicFrameBuilder::new(2).build().unwrap();
@@ -818,7 +819,7 @@ fn loaded_frameless_uncertainty_takes_the_base_frame() {
         .unwrap();
     mapped.set_uncertainty(Box::new(unc)).unwrap();
 
-    let text = to_native_string(&AnyObject::from_mapping(mapped.as_ref()).unwrap()).unwrap();
+    let text = native_dump(&AnyObject::from_mapping(mapped.as_ref()).unwrap()).unwrap();
     let restored = from_native_string(&text).unwrap().into_region().unwrap();
     let unc = restored.get_unc_frm(FrameRef::Base).unwrap();
     assert_eq!(unc.get_region_frame().domain(), "FOO");
@@ -835,7 +836,7 @@ fn copy_keeps_ident_report_and_own_use_defs() {
         .build()
         .unwrap();
     Frame::set_ident(&mut circle, "C1").unwrap();
-    let text = ast_core::to_native_string(&ast_core::AnyObject::Circle(circle)).unwrap();
+    let text = native_dump(&ast_core::AnyObject::Circle(circle)).unwrap();
     let text = text.replacen(
         "    Ident = \"C1\" \t# Permanent Object identification string\n",
         "    Ident = \"C1\" \t# Permanent Object identification string\n    UseDfs = 0 \t# Use default values\n",

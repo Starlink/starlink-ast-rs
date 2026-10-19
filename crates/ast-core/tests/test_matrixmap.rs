@@ -3,6 +3,7 @@
 //! Ancestor: (no direct C test — MatrixMap tests derived from the C AST
 //! MatrixMap documentation and reference behaviour.)
 
+use crate::common::native_dump;
 use ast_core::constants::BAD_VALUE;
 use ast_core::coords::PointSet;
 use ast_core::mappings::{Mapping, MatrixMap};
@@ -428,7 +429,7 @@ fn diagonal_matrix_merge_with_winmap_scales() {
 
 #[test]
 fn simplified_switches_full_to_diagonal_when_offdiagonals_are_zero() {
-    use ast_core::{AnyObject, from_native_string, to_native_string};
+    use ast_core::{AnyObject, from_native_string};
 
     // Same fixture as crates/ast-core/tests/fixtures/simplify/
     // matrix_full_to_diagonal.map (Form="Full" with off-diagonals == 0).
@@ -454,7 +455,7 @@ fn simplified_switches_full_to_diagonal_when_offdiagonals_are_zero() {
         .downcast_ref::<MatrixMap>()
         .expect("still a MatrixMap");
 
-    let s = to_native_string(&AnyObject::MatrixMap(mm.clone())).unwrap();
+    let s = native_dump(&AnyObject::MatrixMap(mm.clone())).unwrap();
     assert!(
         s.contains("Form = \"Diagonal\""),
         "expected Diagonal form after simplify, got:\n{s}"

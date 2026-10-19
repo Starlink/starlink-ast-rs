@@ -3,11 +3,12 @@
 //! Ported from reference/starlink-ast/ast_tester concepts and the
 //! simplify regression fixtures.
 
+use crate::common::native_dump;
 use ast_core::error::ErrorCode;
 use ast_core::mappings::{
     CmpMap, Composition, DynMapping, Mapping, RateMap, ShiftMap, UnitMap, ZoomMap,
 };
-use ast_core::{AnyObject, from_native_string, to_native_string};
+use ast_core::{AnyObject, from_native_string};
 
 const BAD_VALUE: f64 = -f64::MAX;
 
@@ -348,7 +349,7 @@ fn test_ratemap_serialization_roundtrip() {
     let rm = RateMap::new(zm, 2, 1).unwrap();
 
     let obj = AnyObject::RateMap(rm);
-    let native = to_native_string(&obj).unwrap();
+    let native = native_dump(&obj).unwrap();
 
     let obj2 = from_native_string(&native).unwrap();
     let rm2 = obj2.as_mapping().unwrap();
@@ -380,7 +381,7 @@ fn test_ratemap_serialization_roundtrip_diagonal() {
     let rm = RateMap::new(zm, 1, 1).unwrap();
 
     let obj = AnyObject::RateMap(rm);
-    let native = to_native_string(&obj).unwrap();
+    let native = native_dump(&obj).unwrap();
 
     let obj2 = from_native_string(&native).unwrap();
     let rm2 = obj2.as_mapping().unwrap();
@@ -403,7 +404,7 @@ fn test_ratemap_serialization_default_axes() {
     let rm = RateMap::new(zm, 1, 1).unwrap();
 
     let obj = AnyObject::RateMap(rm);
-    let native = to_native_string(&obj).unwrap();
+    let native = native_dump(&obj).unwrap();
 
     // Should NOT contain IIn or IOut since they default to 0.
     assert!(

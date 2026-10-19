@@ -2,6 +2,7 @@
 //!
 //! Ancestor: behaviour derived from the C AST PermMap documentation.
 
+use crate::common::native_dump;
 use ast_core::constants::BAD_VALUE;
 use ast_core::coords::PointSet;
 use ast_core::mappings::{Mapping, PermMap, UnitMap};
@@ -267,9 +268,9 @@ fn perm_c_dump_with_negative_entry_no_nconst_roundtrips() {
     // as `Out1 = -1` / `In1 = -1` with NO `Nconst` line. Rust must be able
     // to read this native form and transform it to BAD, matching C's reread
     // behaviour (oracle probe: reread forward == AST__BAD).
-    use ast_core::{AnyObject, from_native_string, to_native_string};
+    use ast_core::{AnyObject, from_native_string};
     let pm = PermMap::new(&[-1], &[-1], &[]).unwrap();
-    let text = to_native_string(&AnyObject::PermMap(pm)).unwrap();
+    let text = native_dump(&AnyObject::PermMap(pm)).unwrap();
     let obj = from_native_string(&text).unwrap();
     let AnyObject::PermMap(reread) = obj else {
         panic!("expected PermMap");
@@ -393,11 +394,11 @@ fn perm_split_alternative_rejects_duplicate_output() {
 
 #[test]
 fn perm_split_roundtrips_through_native_dump() {
-    use ast_core::{AnyObject, from_native_string, to_native_string};
+    use ast_core::{AnyObject, from_native_string};
     let mut pm = PermMap::new(&[2, 1, -1], &[2, 1], &[99.0]).unwrap();
     pm.set_perm_split(true);
 
-    let text = to_native_string(&AnyObject::PermMap(pm)).unwrap();
+    let text = native_dump(&AnyObject::PermMap(pm)).unwrap();
     assert!(text.contains("pmsplt"), "dump must carry pmsplt: {text}");
 
     let AnyObject::PermMap(reread) = from_native_string(&text).unwrap() else {
@@ -423,9 +424,8 @@ fn perm_map_keeping_leading_axes_simplifies_once() {
     let pm = PermMap::new(&[1, 2, 0], &[1, 2], &[]).unwrap();
     let once = <dyn Mapping>::simplify(&pm).unwrap();
     let twice = once.simplify().unwrap();
-    let dump = |m: &dyn Mapping| {
-        ast_core::to_native_string(&ast_core::AnyObject::from_mapping(m).unwrap()).unwrap()
-    };
+    let dump =
+        |m: &dyn Mapping| native_dump(&ast_core::AnyObject::from_mapping(m).unwrap()).unwrap();
     let text = dump(once.as_ref());
     assert!(
         text.contains("Out2 = 2") && text.contains("In3 = 0") && !text.contains("Cpy"),

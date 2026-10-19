@@ -4,6 +4,7 @@
 //! Adapted to use the Rust public API (BasicFrameBuilder, BoxRegionBuilder,
 //! WinMap::from_corners, PointSet::from_rows).
 
+use crate::common::native_dump;
 use ast_core::constants::BAD_VALUE;
 use ast_core::coords::PointSet;
 use ast_core::frames::BasicFrameBuilder;
@@ -11,7 +12,7 @@ use ast_core::mappings::{
     DynMapping, Mapping, SelectorMapBuilder, SwitchMap, UnitMap, WinMap, ZoomMap,
 };
 use ast_core::regions::{BoxRegionBuilder, DynRegion, remove_regions};
-use ast_core::{AnyObject, from_native_string, to_native_string};
+use ast_core::{AnyObject, from_native_string};
 
 /// Create a SwitchMap with two routes:
 ///
@@ -196,7 +197,7 @@ fn switchmap_simplify_invert_normalize_fixture() {
 fn switchmap_serialization_roundtrip() {
     let sw = make_1d_switchmap();
     let obj = AnyObject::SwitchMap(sw.clone());
-    let text = to_native_string(&obj).unwrap();
+    let text = native_dump(&obj).unwrap();
     let obj2 = from_native_string(&text).unwrap();
     let loaded: SwitchMap = match obj2 {
         AnyObject::SwitchMap(m) => m,
@@ -227,6 +228,7 @@ mod testswitchmap_c {
     //! on the SwitchMap, which records the selector's orientation when it is
     //! built, so it has no counterpart.
 
+    use crate::common::native_dump;
     use ast_core::channel::Channel;
     use ast_core::constants::BAD_VALUE;
     use ast_core::coords::PointSet;
@@ -237,7 +239,7 @@ mod testswitchmap_c {
         UnitMap, WinMap,
     };
     use ast_core::regions::{BoxRegionBuilder, DynRegion};
-    use ast_core::{AnyObject, from_native_string, to_native_string};
+    use ast_core::{AnyObject, from_native_string};
 
     fn win(x1: f64, x2: f64, l1: f64, l2: f64) -> WinMap {
         WinMap::from_corners(&[x1], &[x2], &[l1], &[l2]).unwrap()
@@ -264,7 +266,7 @@ mod testswitchmap_c {
         // simplify, astSimplify returns the same pointer.
         let (_, changed) = (swm as &dyn Mapping).simplify_reporting_change().unwrap();
         assert!(!changed, "{label}");
-        let plain = to_native_string(&AnyObject::from_mapping(swm).unwrap()).unwrap();
+        let plain = native_dump(&AnyObject::from_mapping(swm).unwrap()).unwrap();
 
         let mut inv = swm.clone();
         inv.invert();
@@ -285,7 +287,7 @@ mod testswitchmap_c {
         }
 
         let back = from_native_string(&plain).unwrap();
-        let again = to_native_string(&back).unwrap();
+        let again = native_dump(&back).unwrap();
         assert_eq!(again, plain, "{label}: dump round trip");
     }
 

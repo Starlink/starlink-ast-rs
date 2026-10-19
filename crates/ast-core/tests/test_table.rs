@@ -10,13 +10,14 @@
 //! - C's `astColumnShape` pads the shape with ones to the length of the
 //!   caller's array; `column_shape` returns the shape alone.
 
+use crate::common::native_dump;
 use ast_core::error::ErrorCode;
-use ast_core::{AnyObject, AstType, Table, from_native_string, to_native_string};
+use ast_core::{AnyObject, AstType, Table, from_native_string};
 
 /// Write `table` to its native dump and read it back, checking that the
 /// result is a Table with the same number of rows and the same entries.
 fn check_dump(table: &Table) {
-    let text = to_native_string(&AnyObject::Table(Box::new(table.clone()))).unwrap();
+    let text = native_dump(&AnyObject::Table(Box::new(table.clone()))).unwrap();
     let AnyObject::Table(result) = from_native_string(&text).unwrap() else {
         panic!("object read from the dump is not a Table");
     };

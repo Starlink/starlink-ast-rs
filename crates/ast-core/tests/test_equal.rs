@@ -5,6 +5,7 @@
 //! recursive compound equality, float tolerance, and BAD_VALUE
 //! handling.
 
+use crate::common::native_dump;
 use ndarray::array;
 
 use ast_core::constants::BAD_VALUE;
@@ -878,8 +879,7 @@ fn frameset_different_mapping() {
 #[allow(clippy::approx_constant)] // 3.14159 is opaque test zoom factor
 fn serialise_round_trip_zoommap() {
     let original = ZoomMap::new(2, 3.14159).unwrap();
-    let native =
-        ast_core::to_native_string(&ast_core::AnyObject::ZoomMap(original.clone())).unwrap();
+    let native = native_dump(&ast_core::AnyObject::ZoomMap(original.clone())).unwrap();
     let parsed = ast_core::from_native_string(&native).unwrap();
     if let ast_core::AnyObject::ZoomMap(ref restored) = parsed {
         assert!(original.equal(restored));
@@ -891,8 +891,7 @@ fn serialise_round_trip_zoommap() {
 #[test]
 fn serialise_round_trip_shiftmap() {
     let original = ShiftMap::new(vec![1.5, -2.7, 0.001]);
-    let native =
-        ast_core::to_native_string(&ast_core::AnyObject::ShiftMap(original.clone())).unwrap();
+    let native = native_dump(&ast_core::AnyObject::ShiftMap(original.clone())).unwrap();
     let parsed = ast_core::from_native_string(&native).unwrap();
     if let ast_core::AnyObject::ShiftMap(ref restored) = parsed {
         assert!(original.equal(restored));
@@ -909,8 +908,7 @@ fn serialise_round_trip_skyframe() {
     original.set_neg_lon(true);
     original.set_title("Test Sky");
 
-    let native =
-        ast_core::to_native_string(&ast_core::AnyObject::SkyFrame(original.clone())).unwrap();
+    let native = native_dump(&ast_core::AnyObject::SkyFrame(original.clone())).unwrap();
     let parsed = ast_core::from_native_string(&native).unwrap();
     if let ast_core::AnyObject::SkyFrame(ref restored) = parsed {
         assert!(original.equal(restored));

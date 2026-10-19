@@ -10,6 +10,8 @@
 // and 2*pi to the digits C wrote.
 #![allow(clippy::approx_constant)]
 
+use crate::common::native_dump;
+
 use ast_core::constants::BAD_VALUE;
 use ast_core::coords::PointSet;
 use ast_core::frames::{BasicFrameBuilder, SkyFrame, SkySystem};
@@ -214,7 +216,7 @@ fn overlap(a: &dyn Region, b: &dyn Region) -> i32 {
 /// C's `hasframeset`: whether the Region's dump holds a FrameSet before its
 /// uncertainty, i.e. whether its own Frame needs one.
 fn has_frameset(reg: &ast_core::AnyObject) -> bool {
-    let text = ast_core::to_native_string(reg).unwrap();
+    let text = native_dump(reg).unwrap();
     for line in text.lines() {
         if line.contains("Unc =") {
             return false;
@@ -229,9 +231,9 @@ fn has_frameset(reg: &ast_core::AnyObject) -> bool {
 /// C's `checkdump`: the dump reads back to a Region that dumps the same, or
 /// failing that has the same boundary (overlap 5).
 fn check_dump(reg: &dyn Region, any: &ast_core::AnyObject, text: &str) {
-    let s1 = ast_core::to_native_string(any).unwrap();
+    let s1 = native_dump(any).unwrap();
     let back = ast_core::from_native_string(&s1).unwrap_or_else(|e| panic!("{text}: {e}"));
-    let s2 = ast_core::to_native_string(&back).unwrap();
+    let s2 = native_dump(&back).unwrap();
     if s1 != s2 {
         let reg2 = back
             .as_region()

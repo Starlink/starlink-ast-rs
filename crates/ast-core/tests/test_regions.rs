@@ -6,6 +6,7 @@
 //! correctly use great-circle (spherical) geometry for distance
 //! computations, membership tests, and overlap detection.
 
+use crate::common::native_dump;
 use std::f64::consts::{FRAC_PI_2, PI};
 
 use ast_core::AnyObject;
@@ -2838,7 +2839,7 @@ fn system_change_simplified_transform_consistent() {
 
 #[test]
 fn system_change_circle_serialization_roundtrip() {
-    use ast_core::{AnyObject, from_native_string, to_native_string};
+    use ast_core::{AnyObject, from_native_string};
 
     // Create a Circle on SkyFrame(ICRS) and change system to Galactic.
     let sky = SkyFrame::new(SkySystem::Icrs);
@@ -2858,7 +2859,7 @@ fn system_change_circle_serialization_roundtrip() {
 
     // Serialize to native format.
     let obj = AnyObject::Circle(circle.clone());
-    let text = to_native_string(&obj).unwrap();
+    let text = native_dump(&obj).unwrap();
 
     // Deserialize.
     let restored_obj = from_native_string(&text).unwrap();
@@ -3551,7 +3552,7 @@ fn set_uncertainty_unitmap_clears_region_fs() {
 
     region.set_uncertainty(Box::new(unc)).unwrap();
 
-    let got = ast_core::to_native_string(&AnyObject::BoxRegion(region)).unwrap();
+    let got = native_dump(&AnyObject::BoxRegion(region)).unwrap();
     assert_eq!(got, setunc_fixture_map("setunc_unitmap_regionfs_omitted"));
 }
 
@@ -3577,7 +3578,7 @@ fn set_uncertainty_negates_unbounded() {
 
     region.set_uncertainty(Box::new(unc)).unwrap();
 
-    let got = ast_core::to_native_string(&AnyObject::BoxRegion(region)).unwrap();
+    let got = native_dump(&AnyObject::BoxRegion(region)).unwrap();
     assert_eq!(got, setunc_fixture_map("setunc_unbounded_negated"));
 }
 
@@ -3626,7 +3627,7 @@ fn defunc_native(region: &dyn Region) -> String {
     } else {
         panic!("unexpected default-uncertainty Region class");
     };
-    ast_core::to_native_string(&any).unwrap()
+    native_dump(&any).unwrap()
 }
 
 #[test]
@@ -3847,7 +3848,7 @@ fn simpstab_simplified_native(map_name: &str) -> String {
     let any = AnyObject::from_mapping(r).unwrap_or_else(|| {
         panic!("{map_name} simplified to a class AnyObject::from_mapping does not cover")
     });
-    ast_core::to_native_string(&any).unwrap()
+    native_dump(&any).unwrap()
 }
 
 #[test]

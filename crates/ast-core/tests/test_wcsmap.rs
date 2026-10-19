@@ -1,10 +1,11 @@
 //! Tests for WcsMap — FITS-WCS sky projection mapping.
 
+use crate::common::native_dump;
 use ast_core::constants::BAD_VALUE;
 use ast_core::coords::PointSet;
 use ast_core::error::ErrorCode;
 use ast_core::mappings::{CmpMap, Mapping, PermMap, WcsMap, WcsProjection};
-use ast_core::{AnyObject, from_native_string, to_native_string};
+use ast_core::{AnyObject, from_native_string};
 
 // ===========================================================================
 // Helpers
@@ -374,7 +375,7 @@ fn rate_numeric() {
 #[test]
 fn serialisation_round_trip_tan() {
     let wcs = WcsMap::new(2, WcsProjection::Tan, 1, 2).unwrap();
-    let text = to_native_string(&AnyObject::WcsMap(wcs)).unwrap();
+    let text = native_dump(&AnyObject::WcsMap(wcs)).unwrap();
 
     // Structural markers.
     assert!(text.contains("Begin WcsMap"), "missing Begin WcsMap");
@@ -401,7 +402,7 @@ fn serialisation_round_trip_tan() {
 #[test]
 fn serialisation_round_trip_non_default_axes() {
     let wcs = WcsMap::new(4, WcsProjection::Car, 3, 4).unwrap();
-    let text = to_native_string(&AnyObject::WcsMap(wcs)).unwrap();
+    let text = native_dump(&AnyObject::WcsMap(wcs)).unwrap();
 
     // Should write WcsAx1 and WcsAx2 since they differ from defaults.
     assert!(text.contains("WcsAx1"), "missing WcsAx1");
@@ -422,7 +423,7 @@ fn serialisation_round_trip_non_default_axes() {
 fn serialisation_round_trip_with_pv() {
     let mut wcs = WcsMap::new(2, WcsProjection::Azp, 1, 2).unwrap();
     wcs.set_pv(2, 1, 45.0).unwrap();
-    let text = to_native_string(&AnyObject::WcsMap(wcs)).unwrap();
+    let text = native_dump(&AnyObject::WcsMap(wcs)).unwrap();
 
     // Should contain PV parameter.
     assert!(text.contains("PV2_1"), "missing PV2_1");
@@ -447,7 +448,7 @@ fn serialisation_round_trip_with_pv() {
 fn serialisation_inverted() {
     let mut wcs = WcsMap::new(2, WcsProjection::Tan, 1, 2).unwrap();
     wcs.invert();
-    let text = to_native_string(&AnyObject::WcsMap(wcs)).unwrap();
+    let text = native_dump(&AnyObject::WcsMap(wcs)).unwrap();
     assert!(text.contains("Invert"), "missing Invert attribute");
 
     let restored = from_native_string(&text).unwrap();

@@ -2,11 +2,12 @@
 //!
 //! Ported from C's testpolymap.c and the Step 6 design spec.
 
+use crate::common::native_dump;
 use ast_core::constants::BAD_VALUE;
 use ast_core::coords::PointSet;
 use ast_core::error::ErrorCode;
 use ast_core::mappings::{Mapping, PolyMap, PolyTerm};
-use ast_core::{AnyObject, from_native_string, to_native_string};
+use ast_core::{AnyObject, from_native_string};
 
 // ---------------------------------------------------------------------------
 // Construction and basic properties
@@ -473,7 +474,7 @@ fn polymap_serialisation_roundtrip() {
     ];
     let m = PolyMap::new(2, 2, &fwd, Some(&inv)).unwrap();
 
-    let native = to_native_string(&AnyObject::PolyMap(m.clone())).unwrap();
+    let native = native_dump(&AnyObject::PolyMap(m.clone())).unwrap();
     let obj = from_native_string(&native).unwrap();
     let m2 = match obj {
         AnyObject::PolyMap(p) => p,
@@ -529,7 +530,7 @@ fn polymap_serialisation_forward_only() {
     ];
     let m = PolyMap::new(1, 1, &fwd, None).unwrap();
 
-    let native = to_native_string(&AnyObject::PolyMap(m.clone())).unwrap();
+    let native = native_dump(&AnyObject::PolyMap(m.clone())).unwrap();
     let obj = from_native_string(&native).unwrap();
     let m2 = match obj {
         AnyObject::PolyMap(p) => p,
@@ -563,7 +564,7 @@ fn polymap_serialisation_iter_inverse_attributes() {
     m.set_niter_inverse(10);
     m.set_tol_inverse(1e-8);
 
-    let native = to_native_string(&AnyObject::PolyMap(m)).unwrap();
+    let native = native_dump(&AnyObject::PolyMap(m)).unwrap();
     let obj = from_native_string(&native).unwrap();
     let m2 = match obj {
         AnyObject::PolyMap(p) => p,
@@ -1078,7 +1079,7 @@ fn general_affine_then_zoom() -> ast_core::mappings::CmpMap {
 
 /// The classes in a Mapping's dump, in order.
 fn dump_classes(m: &dyn Mapping) -> Vec<String> {
-    ast_core::to_native_string(&AnyObject::from_mapping(m).unwrap())
+    native_dump(&AnyObject::from_mapping(m).unwrap())
         .unwrap()
         .lines()
         .filter_map(|l| l.trim().strip_prefix("Begin "))
@@ -1436,8 +1437,8 @@ fn polymap_with_more_outputs_than_inputs_equals_its_copy() {
 
 #[test]
 fn ident_set_polymap_nominated_in_a_list_is_left_alone() {
+    use ast_core::AnyObject;
     use ast_core::mappings::{CmpMap, Composition, ZoomMap};
-    use ast_core::{AnyObject, to_native_string};
 
     // Two cubic terms over the same powers would consolidate into one, but the
     // PolyMap carries an Ident. C's MapMerge dispatcher returns without calling
@@ -1457,7 +1458,7 @@ fn ident_set_polymap_nominated_in_a_list_is_left_alone() {
     .unwrap();
     let s = <dyn Mapping>::simplify(&cm).unwrap();
 
-    let text = to_native_string(&AnyObject::from_mapping(s.as_ref()).unwrap()).unwrap();
+    let text = native_dump(&AnyObject::from_mapping(s.as_ref()).unwrap()).unwrap();
     assert!(
         text.contains("Ident = \"keepme\""),
         "the Ident survives:\n{text}"
@@ -1656,7 +1657,7 @@ fn polymap_affine_general_merges_with_a_neighbour() {
         .simplify()
         .unwrap();
     assert_eq!(dump_classes(s.as_ref()), ["CmpMap", "MatrixMap", "WinMap"]);
-    let text = ast_core::to_native_string(&AnyObject::from_mapping(s.as_ref()).unwrap()).unwrap();
+    let text = native_dump(&AnyObject::from_mapping(s.as_ref()).unwrap()).unwrap();
     assert!(
         text.contains("Sft1 = 20") && text.contains("Sft2 = 40"),
         "{text}"

@@ -18,6 +18,7 @@
 //! against the library with moc.c's `AddRegion` and `IncorporateCells` fixed
 //! upstream (28473801).
 
+use crate::common::native_dump;
 // Generated; formatted by its generator rather than rustfmt.
 #[rustfmt::skip]
 #[allow(clippy::excessive_precision)]
@@ -31,7 +32,7 @@ use ast_core::mappings::Mapping;
 use ast_core::regions::{
     BoxRegionBuilder, CircleBuilder, CmpOperator, Moc, PixelOper, PolygonBuilder, Region,
 };
-use ast_core::{AnyObject, Channel, to_native_string};
+use ast_core::{AnyObject, Channel};
 
 const NX: usize = 20;
 const NY: usize = 15;
@@ -43,7 +44,7 @@ fn fnv(s: &str) -> u64 {
 }
 
 fn dump(moc: &Moc) -> String {
-    to_native_string(&AnyObject::from_mapping(moc as &dyn Mapping).unwrap()).unwrap()
+    native_dump(&AnyObject::from_mapping(moc as &dyn Mapping).unwrap()).unwrap()
 }
 
 fn icrs() -> SkyFrame {

@@ -3,6 +3,7 @@
 //! Covers: bounded intervals (both axes), unbounded axes, BAD handling,
 //! open/closed boundary, excluded intervals, batch transform, bounds query.
 
+use crate::common::native_dump;
 use ast_core::constants::BAD_VALUE;
 use ast_core::coords::PointSet;
 use ast_core::error::ErrorCode;
@@ -489,14 +490,14 @@ fn batch_10k_points() {
 /// native string whose X-key sequence matches C's iteration order.
 #[test]
 fn builder_serialised_pointset_uses_c_layout() {
-    use ast_core::{AnyObject, to_native_string};
+    use ast_core::AnyObject;
 
     let frame = BasicFrameBuilder::new(2).build().unwrap();
     let interval = IntervalBuilder::new(frame, vec![3.0, 4.0], vec![7.0, 8.0])
         .unwrap()
         .build()
         .unwrap();
-    let s = to_native_string(&AnyObject::Interval(interval)).unwrap();
+    let s = native_dump(&AnyObject::Interval(interval)).unwrap();
 
     // C convention: lbnd's coords come first (X1=3, X2=4), then ubnd's
     // coords (X3=7, X4=8). Our writer's transposed iteration emits

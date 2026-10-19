@@ -4,6 +4,7 @@
 //! Tests verify the core time conversions: MJD↔JD, MJD↔Julian epoch,
 //! MJD↔Besselian epoch, UTC↔TAI, TAI↔TT, and serialization round-trip.
 
+use crate::common::native_dump;
 use ast_core::coords::PointSet;
 use ast_core::mappings::{Mapping, TimeCvtType, TimeMap};
 
@@ -410,7 +411,7 @@ fn chain_utc_to_tt() {
 
 #[test]
 fn serialisation_round_trip() {
-    use ast_core::{AnyObject, from_native_string, to_native_string};
+    use ast_core::{AnyObject, from_native_string};
 
     let mut tm = TimeMap::new();
     tm.add(TimeCvtType::MjdToJd, &[100.0, 200.0]).unwrap();
@@ -422,7 +423,7 @@ fn serialisation_round_trip() {
     tm.add(TimeCvtType::TaiToTt, &[51544.0]).unwrap();
 
     // Serialise.
-    let text = to_native_string(&AnyObject::TimeMap(tm.clone())).unwrap();
+    let text = native_dump(&AnyObject::TimeMap(tm.clone())).unwrap();
 
     // Deserialise.
     let restored = from_native_string(&text).unwrap();

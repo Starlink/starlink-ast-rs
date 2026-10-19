@@ -8,9 +8,10 @@
 //! what the attribute string does in C. `astGetMapping` returns a simplified
 //! Mapping, so the Mappings are simplified before they are examined.
 
+use crate::common::native_dump;
 use ast_core::frames::{FluxFrame, FluxSystem, Frame, FrameRef, SpecFrame, SpecSystem};
 use ast_core::mappings::{DynMapping, Mapping, UnitMap, ZoomMap};
-use ast_core::{AnyObject, from_native_string, to_native_string};
+use ast_core::{AnyObject, from_native_string};
 
 fn spec(system: SpecSystem, unit: &str) -> SpecFrame {
     let mut sf = SpecFrame::new(system);
@@ -59,7 +60,7 @@ fn spec_val_defaults_to_the_constructor_value() {
     assert!(!ff.test_spec_val(), "Error 6");
 
     // CheckDump 1: the default SpecVal survives a dump.
-    let text = to_native_string(&AnyObject::FluxFrame(ff.clone())).unwrap();
+    let text = native_dump(&AnyObject::FluxFrame(ff.clone())).unwrap();
     let AnyObject::FluxFrame(read) = from_native_string(&text).unwrap() else {
         panic!("not a FluxFrame");
     };
@@ -152,7 +153,7 @@ fn per_wavelength_surface_brightness_reads_back() {
     ff.set_system(FluxSystem::parse("SFCBRW").expect("Error 30"))
         .unwrap();
     assert_eq!(ff.system().unwrap().as_str(), "SFCBRW", "Error 31");
-    let text = to_native_string(&AnyObject::FluxFrame(ff)).unwrap();
+    let text = native_dump(&AnyObject::FluxFrame(ff)).unwrap();
     let AnyObject::FluxFrame(read) = from_native_string(&text).unwrap() else {
         panic!("Error 32: not a FluxFrame");
     };

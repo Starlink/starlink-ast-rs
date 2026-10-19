@@ -8,18 +8,19 @@
 //!
 //! The values come from `tools/oracle_fixtures/region_compound_attr_probe.c`.
 
+use crate::common::native_dump;
 // Generated; formatted by its generator rather than rustfmt.
 #[rustfmt::skip]
 #[path = "region_compound_attr_oracle/cases.rs"]
 mod cases;
 
+use ast_core::AnyObject;
 use ast_core::frames::{BasicFrame, BasicFrameBuilder};
 use ast_core::mappings::Mapping;
 use ast_core::regions::{
     BoxRegion, BoxRegionBuilder, CmpOperator, CmpRegionBuilder, IntervalBuilder, PrismBuilder,
     Region,
 };
-use ast_core::{AnyObject, to_native_string};
 
 fn frame(naxes: usize) -> BasicFrame {
     BasicFrameBuilder::new(naxes).build().unwrap()
@@ -33,7 +34,7 @@ fn boxr(l: [f64; 2], u: [f64; 2]) -> BoxRegion {
 }
 
 fn dump(m: &dyn Mapping) -> String {
-    to_native_string(&AnyObject::from_mapping(m).unwrap()).unwrap()
+    native_dump(&AnyObject::from_mapping(m).unwrap()).unwrap()
 }
 
 #[test]

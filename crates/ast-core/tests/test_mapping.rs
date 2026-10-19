@@ -17,10 +17,11 @@
 //! * The rest of `testmapping.c` (PolyMap / LinearApprox, converted from
 //!   `testmapping.f`) is covered by `test_polymap.rs` and `test_polytran.rs`.
 
+use crate::common::native_dump;
+use ast_core::AnyObject;
 use ast_core::mappings::{
     CmpMap, Composition, DynMapping, Mapping, PcdMap, PolyMap, PolyTerm, UnitMap, ZoomMap,
 };
-use ast_core::{AnyObject, to_native_string};
 
 /// `x -> x^2`, `y -> y^2`: non-linear, so it stops the tree collapsing.
 fn square_map() -> PolyMap {
@@ -70,7 +71,7 @@ fn dump(m: &DynMapping) -> String {
     } else {
         panic!("no AnyObject wrapper for this test's Mapping")
     };
-    to_native_string(&obj).unwrap()
+    native_dump(&obj).unwrap()
 }
 
 /// Two ZoomMaps in series, simplified: a single ZoomMap that is the result of

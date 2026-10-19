@@ -12,6 +12,7 @@
 //! against the library with moc.c's `RegBaseBox`, `RegPins`, `Comp_corner`
 //! and `Transform` fixed upstream (2b631e08, c95aa801).
 
+use crate::common::native_dump;
 // Generated; formatted by its generator rather than rustfmt. Its values are
 // C's to 17 significant digits, which is more than some of them need, and
 // some are pi/2 to the last bit.
@@ -25,7 +26,7 @@ use ast_core::error::ErrorCode;
 use ast_core::frames::{SkyFrame, SkySystem};
 use ast_core::mappings::Mapping;
 use ast_core::regions::{CircleBuilder, CmpOperator, DynRegion, Moc, Overlap, Region};
-use ast_core::{AnyObject, Channel, NativeChannel, from_native_string, to_native_string};
+use ast_core::{AnyObject, Channel, NativeChannel, from_native_string};
 
 fn low() -> Moc {
     let mut moc = Moc::new();
@@ -77,7 +78,7 @@ fn built(name: &str) -> Moc {
 }
 
 fn dump(region: &dyn Region) -> String {
-    to_native_string(&AnyObject::from_mapping(region as &dyn Mapping).unwrap()).unwrap()
+    native_dump(&AnyObject::from_mapping(region as &dyn Mapping).unwrap()).unwrap()
 }
 
 fn grid() -> PointSet {

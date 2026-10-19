@@ -3,6 +3,7 @@
 //! UnitNormMap decomposes a vector into a unit vector and its norm,
 //! relative to a specified centre.
 
+use crate::common::native_dump;
 use ast_core::constants::BAD_VALUE;
 use ast_core::coords::PointSet;
 use ast_core::mappings::{CmpMap, Composition, Mapping, ShiftMap, UnitNormMap, WinMap};
@@ -265,11 +266,11 @@ fn equal_different_invert() {
 
 #[test]
 fn serialization_roundtrip() {
-    use ast_core::{AnyObject, from_native_string, to_native_string};
+    use ast_core::{AnyObject, from_native_string};
 
     let unm = UnitNormMap::new(vec![1.5, -2.0, 0.0]).unwrap();
     let obj = AnyObject::UnitNormMap(unm.clone());
-    let s = to_native_string(&obj).unwrap();
+    let s = native_dump(&obj).unwrap();
 
     // Check the string contains expected tokens.
     assert!(s.contains("UnitNormMap"));
@@ -290,13 +291,13 @@ fn serialization_roundtrip() {
 
 #[test]
 fn serialization_inverted_roundtrip() {
-    use ast_core::{AnyObject, from_native_string, to_native_string};
+    use ast_core::{AnyObject, from_native_string};
 
     let mut unm = UnitNormMap::new(vec![10.0, 20.0]).unwrap();
     unm.invert();
 
     let obj = AnyObject::UnitNormMap(unm.clone());
-    let s = to_native_string(&obj).unwrap();
+    let s = native_dump(&obj).unwrap();
     assert!(s.contains("Invert"));
 
     let obj2 = from_native_string(&s).unwrap();
@@ -576,9 +577,7 @@ fn c_testsimplify() {
     for (i, (m1, m2, cls)) in cases.into_iter().enumerate() {
         let cmp = CmpMap::new(m1, m2, Composition::Series).unwrap();
         let simp = (&cmp as &dyn Mapping).simplify().unwrap();
-        let dump =
-            ast_core::to_native_string(&ast_core::AnyObject::from_mapping(simp.as_ref()).unwrap())
-                .unwrap();
+        let dump = native_dump(&ast_core::AnyObject::from_mapping(simp.as_ref()).unwrap()).unwrap();
         let got = dump
             .lines()
             .find_map(|l| l.trim().strip_prefix("Begin "))

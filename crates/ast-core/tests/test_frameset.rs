@@ -4,6 +4,8 @@
 
 #![allow(clippy::approx_constant)] // intentional opaque test values, not π
 
+use crate::common::native_dump;
+
 use ast_core::coords::PointSet;
 use ast_core::error::ErrorCode;
 use ast_core::frames::{BasicFrameBuilder, Frame, FrameRef, FrameSet};
@@ -567,7 +569,7 @@ fn add_frameset_reverses_links_and_round_trips() {
     assert_eq!(outer.nframe(), 3);
     assert_eq!(outer.current().domain(), "B");
 
-    let native = ast_core::to_native_string(&AnyObject::FrameSet(outer.clone())).unwrap();
+    let native = native_dump(&AnyObject::FrameSet(outer.clone())).unwrap();
     assert!(native.contains("Inv2 = 1"), "{native}");
     let AnyObject::FrameSet(back) = ast_core::from_native_string(&native).unwrap() else {
         panic!("expected a FrameSet");

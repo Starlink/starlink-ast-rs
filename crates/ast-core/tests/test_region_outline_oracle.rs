@@ -12,18 +12,19 @@
 //!
 //! The values come from `tools/oracle_fixtures/region_outline_probe.c`.
 
+use crate::common::native_dump;
 // Generated; formatted by its generator rather than rustfmt.
 #[rustfmt::skip]
 #[path = "region_outline_oracle/cases.rs"]
 mod cases;
 
+use ast_core::AnyObject;
 use ast_core::error::ErrorCode;
 use ast_core::frames::{BasicFrameBuilder, Frame, SkyFrame, SkySystem};
 use ast_core::regions::{PixelOper, Polygon, PolygonBuilder};
-use ast_core::{AnyObject, to_native_string};
 
 fn dump(poly: Polygon) -> String {
-    to_native_string(&AnyObject::Polygon(poly)).unwrap()
+    native_dump(&AnyObject::Polygon(poly)).unwrap()
 }
 
 fn polygon(frame: impl Frame + 'static, xy: &[[f64; 36]; 2]) -> Polygon {

@@ -13,6 +13,7 @@
 //! `tools/oracle_fixtures/channel_dump_probe.c`, which needs the C library
 //! as fixed upstream at `228a0310`, and fitschan.c as fixed at `c16f9b11`.
 
+use crate::common::native_dump;
 // Generated; formatted by its generator rather than rustfmt.
 #[rustfmt::skip]
 #[path = "channel_dump_oracle/cases.rs"]
@@ -21,7 +22,7 @@ mod cases;
 use ast_core::{
     AltAxes, AnyObject, Channel, Encoding, FitsChan, MocChan, MocFormat, NativeChannel,
 };
-use ast_core::{StringSource, from_native_string, to_native_string};
+use ast_core::{StringSource, from_native_string};
 
 fn channel(f: impl FnOnce(&mut NativeChannel)) -> AnyObject {
     let mut ch = NativeChannel::new();
@@ -194,10 +195,10 @@ fn lines(text: &str) -> Vec<&str> {
 #[test]
 fn dumps_match_c() {
     for &(name, dump, reread) in cases::DUMPS {
-        let text = to_native_string(&object(name)).unwrap();
+        let text = native_dump(&object(name)).unwrap();
         assert_eq!(lines(&text), dump, "{name}: dump");
         let back = from_native_string(&text).unwrap();
-        let text = to_native_string(&back).unwrap();
+        let text = native_dump(&back).unwrap();
         assert_eq!(lines(&text), reread, "{name}: dump read back");
     }
 }
@@ -218,7 +219,7 @@ fn loads_match_c() {
         match from_native_string(&text.join("\n")) {
             Ok(obj) => {
                 assert_eq!(status, 0, "{name}: C reported an error");
-                let out = to_native_string(&obj).unwrap();
+                let out = native_dump(&obj).unwrap();
                 assert_eq!(lines(&out), dump, "{name}");
             }
             Err(e) => {
@@ -244,7 +245,7 @@ fn a_clone_shares_the_sink() {
 
 #[test]
 fn a_channel_read_from_a_dump_has_no_source() {
-    let text = to_native_string(&object("mocchan_string")).unwrap();
+    let text = native_dump(&object("mocchan_string")).unwrap();
     let AnyObject::MocChan(mut ch) = from_native_string(&text).unwrap() else {
         panic!("expected a MocChan");
     };
@@ -260,8 +261,8 @@ fn a_dump_leaves_the_source_cards_in_the_fitschan() {
     let mut fc = FitsChan::new();
     fc.set_source(Box::new(StringSource::new(SOURCE)));
     let obj = AnyObject::FitsChan(Box::new(fc));
-    let first = to_native_string(&obj).unwrap();
-    assert_eq!(to_native_string(&obj).unwrap(), first);
+    let first = native_dump(&obj).unwrap();
+    assert_eq!(native_dump(&obj).unwrap(), first);
     let AnyObject::FitsChan(mut fc) = obj else {
         unreachable!()
     };
@@ -276,7 +277,7 @@ fn a_keymap_holding_a_fitschan_round_trips() {
     let mut km = ast_core::KeyMap::new();
     km.put_0a("fc", AnyObject::FitsChan(Box::new(fc)), None)
         .unwrap();
-    let text = to_native_string(&AnyObject::KeyMap(Box::new(km))).unwrap();
+    let text = native_dump(&AnyObject::KeyMap(Box::new(km))).unwrap();
     let AnyObject::KeyMap(km) = from_native_string(&text).unwrap() else {
         panic!("expected a KeyMap");
     };

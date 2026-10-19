@@ -9,6 +9,7 @@
 //! recorded state of the current Frame to its new state with `astConvert`,
 //! and reports `AST__ILOST` when no conversion exists.
 
+use crate::common::native_dump;
 // Generated; formatted by its generator rather than rustfmt.
 #[rustfmt::skip]
 #[path = "integrity_oracle/cases.rs"]
@@ -305,8 +306,8 @@ fn unit_change_leaves_mappings_alone() {
     let ast_core::AnyObject::FrameSet(mut fs) = ast_core::from_native_string(&text).unwrap() else {
         panic!("sparse.ast is not a FrameSet");
     };
-    let before = ast_core::to_native_string(&ast_core::AnyObject::FrameSet(fs.clone())).unwrap();
+    let before = native_dump(&ast_core::AnyObject::FrameSet(fs.clone())).unwrap();
     fs.with_integrity(|_| Ok(())).unwrap();
-    let after = ast_core::to_native_string(&ast_core::AnyObject::FrameSet(fs)).unwrap();
+    let after = native_dump(&ast_core::AnyObject::FrameSet(fs)).unwrap();
     assert_eq!(before, after);
 }

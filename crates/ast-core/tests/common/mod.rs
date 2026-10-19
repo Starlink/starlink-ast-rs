@@ -417,3 +417,13 @@ pub fn from_native_string(text: &str) -> ast_core::error::AstResult<ast_core::An
     }
     ast_core::from_native_string_with(text, &registry)
 }
+
+/// The Native dump a Channel with no attributes set writes for `obj`:
+/// comments included and nested objects indented, as the reference
+/// fixtures were written.
+pub fn native_dump(obj: &ast_core::AnyObject) -> ast_core::error::AstResult<String> {
+    use ast_core::{Channel, NativeChannel};
+    let mut ch = NativeChannel::with_string_sink();
+    ch.write(obj)?;
+    Ok(ch.into_string())
+}

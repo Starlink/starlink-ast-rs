@@ -27,7 +27,7 @@ pub use channel::{Channel, ChannelConfig, MocChan, MocFormat, NativeChannel, Sin
 pub use fitschan::{AltAxes, Encoding, FitsChan};
 pub use fitstable::{ColumnData, ColumnNull, FitsTable};
 pub use keymap::{AstType, KeyMap, SortBy};
-pub use serial::{AnyObject, from_native_string, from_native_string_with, to_native_string};
+pub use serial::{AnyObject, from_native_string, from_native_string_with};
 pub use table::Table;
 
 /// Whether this build counts library calls (the `call-counts` feature).

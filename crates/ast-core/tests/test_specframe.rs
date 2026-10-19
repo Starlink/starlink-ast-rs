@@ -7,11 +7,12 @@
 //! Rust equivalent of reference/starlink-ast/ast_tester/testspecframe.c
 //! (subset — tests the features implemented in Step 7c).
 
+use crate::common::native_dump;
 use ast_core::constants::BAD_VALUE;
 use ast_core::coords::PointSet;
 use ast_core::frames::{Frame, FrameSet, SpecFrame, SpecSystem, StdOfRest};
 use ast_core::mappings::Mapping;
-use ast_core::{AnyObject, from_native_string, to_native_string};
+use ast_core::{AnyObject, from_native_string};
 
 // ===========================================================================
 // Helpers
@@ -412,7 +413,7 @@ fn test_serialise_roundtrip() {
     sf.set_align_std_of_rest(StdOfRest::Barycentric);
 
     let obj = AnyObject::SpecFrame(sf);
-    let text = to_native_string(&obj).unwrap();
+    let text = native_dump(&obj).unwrap();
 
     // Verify it contains expected keywords.
     assert!(text.contains("SpecFrame"), "Missing class name");
@@ -448,7 +449,7 @@ fn test_serialise_minimal() {
     // A minimal SpecFrame should round-trip cleanly.
     let sf = SpecFrame::new(SpecSystem::Freq);
     let obj = AnyObject::SpecFrame(sf);
-    let text = to_native_string(&obj).unwrap();
+    let text = native_dump(&obj).unwrap();
     let obj2 = from_native_string(&text).unwrap();
     let sf2 = match obj2 {
         AnyObject::SpecFrame(f) => f,

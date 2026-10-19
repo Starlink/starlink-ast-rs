@@ -3,9 +3,10 @@
 //! Ported from `reference/starlink-ast/ast_tester/testtime.c`.
 //! Uses the public Rust API only.
 
+use crate::common::native_dump;
 use ast_core::coords::PointSet;
 use ast_core::frames::{Frame, FrameRef, TimeFrame, TimeScale, TimeSystem};
-use ast_core::{AnyObject, from_native_string, to_native_string};
+use ast_core::{AnyObject, from_native_string};
 
 // ---------------------------------------------------------------------------
 // Helper
@@ -346,7 +347,7 @@ fn test_serialisation_round_trip() {
     tf.set_dtai(37.0);
 
     let obj = AnyObject::TimeFrame(tf.clone());
-    let text = to_native_string(&obj).unwrap();
+    let text = native_dump(&obj).unwrap();
 
     let parsed = from_native_string(&text).unwrap();
     let tf2 = match parsed {
@@ -368,7 +369,7 @@ fn test_serialisation_with_align_timescale() {
     tf.set_lt_offset(5.5);
 
     let obj = AnyObject::TimeFrame(tf.clone());
-    let text = to_native_string(&obj).unwrap();
+    let text = native_dump(&obj).unwrap();
 
     let parsed = from_native_string(&text).unwrap();
     let tf2 = match parsed {
@@ -391,7 +392,7 @@ fn test_serialisation_with_unit_and_format() {
     tf.set_format_str(1, "iso.2").unwrap();
 
     let obj = AnyObject::TimeFrame(tf);
-    let text = to_native_string(&obj).unwrap();
+    let text = native_dump(&obj).unwrap();
     // The Axis node carries the active Unit and Format lines.
     assert!(text.contains("Unit = \"s\""), "missing Unit: {text}");
     assert!(
@@ -421,7 +422,7 @@ fn test_serialisation_with_unit_and_format() {
 /// Extract the default (commented, un-set) Title from a TimeFrame's native
 /// dump. The line looks like: `#   Title = "..." \t# Title of ...`.
 fn default_title(tf: TimeFrame) -> String {
-    let text = to_native_string(&AnyObject::TimeFrame(tf)).unwrap();
+    let text = native_dump(&AnyObject::TimeFrame(tf)).unwrap();
     for line in text.lines() {
         if let Some(rest) = line.trim_start().strip_prefix("#   Title = \"") {
             if let Some(end) = rest.find('"') {

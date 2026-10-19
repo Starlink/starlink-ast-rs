@@ -1,9 +1,10 @@
 //! Round-trip tests for FITS-WCS alternate planes.
 
+use crate::common::native_dump;
 use ast_core::AnyObject;
 use ast_core::channel::Channel;
 use ast_core::fitschan::FitsChan;
-use ast_core::{from_native_string, to_native_string};
+use ast_core::from_native_string;
 
 const FITS_WCS_MULTI: &str = include_str!("fixtures/wcsconv/inputs/multi-wcs.head");
 
@@ -13,7 +14,7 @@ fn fits_wcs_multi_native_round_trip_preserves_alt() {
     let obj = fc.read().unwrap().unwrap();
 
     // Render to native and re-parse.
-    let native = to_native_string(&obj).unwrap();
+    let native = native_dump(&obj).unwrap();
     let parsed = from_native_string(&native).unwrap();
 
     let nframe_before = match &obj {
@@ -28,6 +29,6 @@ fn fits_wcs_multi_native_round_trip_preserves_alt() {
     assert!(nframe_after >= 3, "expect base + primary + ≥1 alt");
 
     // Round-trip through native is byte-stable.
-    let native2 = to_native_string(&parsed).unwrap();
+    let native2 = native_dump(&parsed).unwrap();
     assert_eq!(native, native2, "native round-trip must be byte-stable");
 }

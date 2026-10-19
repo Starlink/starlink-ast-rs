@@ -2,6 +2,7 @@
 //!
 //! Port of relevant tests from `reference/starlink-ast/ast_tester/testspecmap.c`.
 
+use crate::common::native_dump;
 use ast_core::coords::PointSet;
 use ast_core::mappings::{Mapping, SpecCvtType, SpecMap};
 
@@ -562,7 +563,7 @@ fn multistep_chain() {
 /// Serialisation round-trip.
 #[test]
 fn serialisation_roundtrip() {
-    use ast_core::{AnyObject, from_native_string, to_native_string};
+    use ast_core::{AnyObject, from_native_string};
 
     let mut spec = SpecMap::new();
     spec.add(SpecCvtType::FrToWv, &[]).unwrap();
@@ -570,7 +571,7 @@ fn serialisation_roundtrip() {
     spec.add(SpecCvtType::FrToVl, &[1.42e9]).unwrap();
     spec.add(SpecCvtType::LkF2Hl, &[1.0, 0.5]).unwrap();
 
-    let native = to_native_string(&AnyObject::SpecMap(spec.clone())).unwrap();
+    let native = native_dump(&AnyObject::SpecMap(spec.clone())).unwrap();
 
     // Parse back
     let obj = from_native_string(&native).unwrap();

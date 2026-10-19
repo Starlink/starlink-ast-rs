@@ -6,6 +6,7 @@
 //!
 //! The values come from `tools/oracle_fixtures/region_interval_remap_probe.c`.
 
+use crate::common::native_dump;
 // Generated; formatted by its generator rather than rustfmt.
 #[rustfmt::skip]
 #[path = "region_interval_remap_oracle/cases.rs"]
@@ -13,7 +14,7 @@ mod cases;
 
 use ast_core::frames::{BasicFrameBuilder, Frame};
 use ast_core::mappings::Mapping;
-use ast_core::{AnyObject, from_native_string, to_native_string};
+use ast_core::{AnyObject, from_native_string};
 
 #[test]
 fn mapped_interval_is_redefined_in_the_new_frame() {
@@ -23,9 +24,8 @@ fn mapped_interval_is_redefined_in_the_new_frame() {
         let mut frame = BasicFrameBuilder::new(2).build().unwrap();
         Frame::set_domain(&mut frame, "NEW").unwrap();
         let mapped = region.map_region(mapping.as_ref(), &frame).unwrap();
-        let got =
-            to_native_string(&AnyObject::from_mapping(mapped.as_ref() as &dyn Mapping).unwrap())
-                .unwrap();
+        let got = native_dump(&AnyObject::from_mapping(mapped.as_ref() as &dyn Mapping).unwrap())
+            .unwrap();
         assert_eq!(got, want, "{name}");
     }
 }

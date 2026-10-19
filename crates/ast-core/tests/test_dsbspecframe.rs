@@ -4,9 +4,10 @@
 //! explicit sideband override, Frame trait basics, convert/alignment tests,
 //! and serialization round-trips.
 
+use crate::common::native_dump;
 use ast_core::coords::PointSet;
 use ast_core::frames::{DSBSpecFrame, Frame, FrameRef, FrameSet, SideBand, SpecSystem, StdOfRest};
-use ast_core::{AnyObject, from_native_string, to_native_string};
+use ast_core::{AnyObject, from_native_string};
 
 #[test]
 fn construction_defaults() {
@@ -386,7 +387,7 @@ fn serialization_round_trip() {
     dsb.set_rest_freq(220398676500.0);
 
     let obj = AnyObject::DSBSpecFrame(dsb.clone());
-    let text = to_native_string(&obj).unwrap();
+    let text = native_dump(&obj).unwrap();
 
     assert!(text.contains("Begin DSBSpecFrame"));
     assert!(text.contains("IsA SpecFrame"));

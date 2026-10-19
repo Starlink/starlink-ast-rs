@@ -6,6 +6,7 @@
 //! set through it goes to the encapsulated Frame and is written in that
 //! Frame's dump (region.c `SetAttrib`, `GetUseDefs`).
 
+use crate::common::native_dump;
 #[path = "region_object_oracle/cases.rs"]
 mod cases;
 
@@ -13,7 +14,7 @@ use ast_core::frames::{BasicFrame, BasicFrameBuilder, Frame};
 use ast_core::regions::{
     BoxRegionBuilder, CircleBuilder, CmpOperator, CmpRegionBuilder, IntervalBuilder, PolygonBuilder,
 };
-use ast_core::{AnyObject, from_native_string, to_native_string};
+use ast_core::{AnyObject, from_native_string};
 
 fn frame() -> BasicFrame {
     BasicFrameBuilder::new(2).build().unwrap()
@@ -97,7 +98,7 @@ fn region_object_parts_match_the_c_library() {
                 (ident, use_defs, set)
             ));
         }
-        let written = to_native_string(&obj).unwrap();
+        let written = native_dump(&obj).unwrap();
         if written != dump {
             failures.push(format!("{name}: dump differs\n{written}\nC:\n{dump}"));
         }

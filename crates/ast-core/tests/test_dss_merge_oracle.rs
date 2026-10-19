@@ -9,12 +9,13 @@
 //! `tools/oracle_fixtures/dss_merge_probe.c`, from the simplify fixture
 //! `dssmap_winmap_absorb.map` with its PltRA and PltDec replaced.
 
+use crate::common::native_dump;
 // Generated; formatted by its generator rather than rustfmt.
 #[rustfmt::skip]
 #[path = "dss_merge_oracle/cases.rs"]
 mod cases;
 
-use ast_core::{AnyObject, from_native_string, to_native_string};
+use ast_core::{AnyObject, from_native_string};
 
 /// `text` with the value of `key` (up to the tab before its comment)
 /// replaced by `value`.
@@ -48,7 +49,7 @@ fn merged_plate_centre_matches_the_c_library() {
             matches!(any, AnyObject::DssMap(_)),
             "{ra} {dec} did not merge"
         );
-        let dump = to_native_string(&any).unwrap();
+        let dump = native_dump(&any).unwrap();
         let (got_ra, got_dec) = (get_value(&dump, "PltRA = "), get_value(&dump, "PltDec = "));
         assert_eq!(
             got_ra.to_bits(),

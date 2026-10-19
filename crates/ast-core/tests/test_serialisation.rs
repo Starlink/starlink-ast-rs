@@ -5,6 +5,8 @@
 //! then deserialised and verified for both attribute fidelity and functional equivalence.
 
 use crate::common::from_native_string;
+use crate::common::native_dump;
+use ast_core::AnyObject;
 use ast_core::coords::PointSet;
 use ast_core::frames::{
     BasicFrameBuilder, CmpFrame, Frame, FrameRef, FrameSet, SkyFrame, SkyRefIs, SkySystem,
@@ -17,7 +19,6 @@ use ast_core::regions::{
     BoxRegionBuilder, CircleBuilder, CmpOperator, CmpRegionBuilder, EllipseBuilder,
     IntervalBuilder, NullRegionBuilder, PointListBuilder, PolygonBuilder, PrismBuilder, Region,
 };
-use ast_core::{AnyObject, to_native_string};
 
 use ndarray::array;
 
@@ -41,7 +42,7 @@ fn assert_close(actual: f64, expected: f64, tol: f64, label: &str) {
 #[test]
 fn round_trip_unit_map() {
     let original = UnitMap::new(3);
-    let text = to_native_string(&AnyObject::UnitMap(original)).unwrap();
+    let text = native_dump(&AnyObject::UnitMap(original)).unwrap();
 
     // Structural markers.
     assert!(text.contains("Begin UnitMap"), "missing Begin UnitMap");
@@ -63,7 +64,7 @@ fn round_trip_unit_map() {
 #[test]
 fn round_trip_unit_map_inverse() {
     let original = UnitMap::new(2);
-    let text = to_native_string(&AnyObject::UnitMap(original)).unwrap();
+    let text = native_dump(&AnyObject::UnitMap(original)).unwrap();
     let restored = from_native_string(&text).unwrap();
     let mapping = restored.as_mapping().unwrap();
 
@@ -79,7 +80,7 @@ fn round_trip_unit_map_inverse() {
 #[test]
 fn round_trip_zoom_map() {
     let original = ZoomMap::new(2, 3.5).unwrap();
-    let text = to_native_string(&AnyObject::ZoomMap(original)).unwrap();
+    let text = native_dump(&AnyObject::ZoomMap(original)).unwrap();
 
     assert!(text.contains("Begin ZoomMap"), "missing Begin ZoomMap");
     assert!(text.contains("End ZoomMap"), "missing End ZoomMap");
@@ -98,7 +99,7 @@ fn round_trip_zoom_map() {
 #[test]
 fn round_trip_zoom_map_inverse() {
     let original = ZoomMap::new(2, 4.0).unwrap();
-    let text = to_native_string(&AnyObject::ZoomMap(original)).unwrap();
+    let text = native_dump(&AnyObject::ZoomMap(original)).unwrap();
     let restored = from_native_string(&text).unwrap();
     let mapping = restored.as_mapping().unwrap();
 
@@ -111,7 +112,7 @@ fn round_trip_zoom_map_inverse() {
 #[test]
 fn round_trip_zoom_map_fractional_factor() {
     let original = ZoomMap::new(1, 0.1).unwrap();
-    let text = to_native_string(&AnyObject::ZoomMap(original)).unwrap();
+    let text = native_dump(&AnyObject::ZoomMap(original)).unwrap();
     let restored = from_native_string(&text).unwrap();
     let mapping = restored.as_mapping().unwrap();
 
@@ -127,7 +128,7 @@ fn round_trip_zoom_map_fractional_factor() {
 #[test]
 fn round_trip_shift_map() {
     let original = ShiftMap::new([1.5, -2.7]);
-    let text = to_native_string(&AnyObject::ShiftMap(original)).unwrap();
+    let text = native_dump(&AnyObject::ShiftMap(original)).unwrap();
 
     assert!(text.contains("Begin ShiftMap"), "missing Begin ShiftMap");
     assert!(text.contains("End ShiftMap"), "missing End ShiftMap");
@@ -146,7 +147,7 @@ fn round_trip_shift_map() {
 #[test]
 fn round_trip_shift_map_inverse() {
     let original = ShiftMap::new([1.5, -2.7]);
-    let text = to_native_string(&AnyObject::ShiftMap(original)).unwrap();
+    let text = native_dump(&AnyObject::ShiftMap(original)).unwrap();
     let restored = from_native_string(&text).unwrap();
     let mapping = restored.as_mapping().unwrap();
 
@@ -164,7 +165,7 @@ fn round_trip_shift_map_inverse() {
 fn round_trip_matrix_map_rotation() {
     // 90-degree rotation: [[0, -1], [1, 0]]
     let original = MatrixMap::new(array![[0.0, -1.0], [1.0, 0.0]]).unwrap();
-    let text = to_native_string(&AnyObject::MatrixMap(original)).unwrap();
+    let text = native_dump(&AnyObject::MatrixMap(original)).unwrap();
 
     assert!(text.contains("Begin MatrixMap"), "missing Begin MatrixMap");
     assert!(text.contains("End MatrixMap"), "missing End MatrixMap");
@@ -185,7 +186,7 @@ fn round_trip_matrix_map_rotation() {
 fn round_trip_matrix_map_scale() {
     // Diagonal scale: [[2, 0], [0, 3]]
     let original = MatrixMap::new(array![[2.0, 0.0], [0.0, 3.0]]).unwrap();
-    let text = to_native_string(&AnyObject::MatrixMap(original)).unwrap();
+    let text = native_dump(&AnyObject::MatrixMap(original)).unwrap();
     let restored = from_native_string(&text).unwrap();
     let mapping = restored.as_mapping().unwrap();
 
@@ -198,7 +199,7 @@ fn round_trip_matrix_map_scale() {
 #[test]
 fn round_trip_matrix_map_inverse() {
     let original = MatrixMap::new(array![[2.0, 0.0], [0.0, 4.0]]).unwrap();
-    let text = to_native_string(&AnyObject::MatrixMap(original)).unwrap();
+    let text = native_dump(&AnyObject::MatrixMap(original)).unwrap();
     let restored = from_native_string(&text).unwrap();
     let mapping = restored.as_mapping().unwrap();
 
@@ -215,7 +216,7 @@ fn round_trip_matrix_map_inverse() {
 #[test]
 fn round_trip_perm_map_swap() {
     let original = PermMap::new(&[2, 1], &[2, 1], &[]).unwrap();
-    let text = to_native_string(&AnyObject::PermMap(original)).unwrap();
+    let text = native_dump(&AnyObject::PermMap(original)).unwrap();
 
     assert!(text.contains("Begin PermMap"), "missing Begin PermMap");
     assert!(text.contains("End PermMap"), "missing End PermMap");
@@ -234,7 +235,7 @@ fn round_trip_perm_map_swap() {
 fn round_trip_perm_map_with_constant() {
     // outperm=[1, -1] maps x -> (x, constant[0])
     let original = PermMap::new(&[1], &[1, -1], &[42.0]).unwrap();
-    let text = to_native_string(&AnyObject::PermMap(original)).unwrap();
+    let text = native_dump(&AnyObject::PermMap(original)).unwrap();
 
     let restored = from_native_string(&text).unwrap();
     let mapping = restored.as_mapping().unwrap();
@@ -250,7 +251,7 @@ fn round_trip_perm_map_with_constant() {
 #[test]
 fn round_trip_perm_map_inverse() {
     let original = PermMap::new(&[2, 1], &[2, 1], &[]).unwrap();
-    let text = to_native_string(&AnyObject::PermMap(original)).unwrap();
+    let text = native_dump(&AnyObject::PermMap(original)).unwrap();
     let restored = from_native_string(&text).unwrap();
     let mapping = restored.as_mapping().unwrap();
 
@@ -268,7 +269,7 @@ fn round_trip_cmp_map_series() {
     let z: Box<dyn Mapping> = Box::new(ZoomMap::new(2, 2.0).unwrap());
     let s: Box<dyn Mapping> = Box::new(ShiftMap::new([10.0, 20.0]));
     let original = CmpMap::new(z, s, Composition::Series).unwrap();
-    let text = to_native_string(&AnyObject::CmpMap(original)).unwrap();
+    let text = native_dump(&AnyObject::CmpMap(original)).unwrap();
 
     assert!(text.contains("Begin CmpMap"), "missing Begin CmpMap");
     assert!(text.contains("End CmpMap"), "missing End CmpMap");
@@ -293,7 +294,7 @@ fn round_trip_cmp_map_parallel() {
     let z: Box<dyn Mapping> = Box::new(ZoomMap::new(1, 3.0).unwrap());
     let s: Box<dyn Mapping> = Box::new(ShiftMap::new([100.0]));
     let original = CmpMap::new(z, s, Composition::Parallel).unwrap();
-    let text = to_native_string(&AnyObject::CmpMap(original)).unwrap();
+    let text = native_dump(&AnyObject::CmpMap(original)).unwrap();
 
     let restored = from_native_string(&text).unwrap();
     let mapping = restored.as_mapping().unwrap();
@@ -312,7 +313,7 @@ fn round_trip_cmp_map_series_inverse() {
     let z: Box<dyn Mapping> = Box::new(ZoomMap::new(1, 2.0).unwrap());
     let s: Box<dyn Mapping> = Box::new(ShiftMap::new([10.0]));
     let original = CmpMap::new(z, s, Composition::Series).unwrap();
-    let text = to_native_string(&AnyObject::CmpMap(original)).unwrap();
+    let text = native_dump(&AnyObject::CmpMap(original)).unwrap();
     let restored = from_native_string(&text).unwrap();
     let mapping = restored.as_mapping().unwrap();
 
@@ -336,7 +337,7 @@ fn round_trip_basic_frame() {
         .unit(1, "m")
         .build()
         .unwrap();
-    let text = to_native_string(&AnyObject::BasicFrame(original)).unwrap();
+    let text = native_dump(&AnyObject::BasicFrame(original)).unwrap();
 
     assert!(text.contains("Begin Frame"), "missing Begin Frame");
     assert!(text.contains("End Frame"), "missing End Frame");
@@ -362,7 +363,7 @@ fn round_trip_basic_frame() {
 #[test]
 fn round_trip_basic_frame_default_attributes() {
     let original = BasicFrameBuilder::new(3).build().unwrap();
-    let text = to_native_string(&AnyObject::BasicFrame(original)).unwrap();
+    let text = native_dump(&AnyObject::BasicFrame(original)).unwrap();
 
     let restored = from_native_string(&text).unwrap();
     let frame = restored.as_frame().unwrap();
@@ -382,7 +383,7 @@ fn round_trip_basic_frame_default_attributes() {
 fn round_trip_basic_frame_geometry() {
     // Verify the round-tripped frame still computes distance correctly.
     let original = BasicFrameBuilder::new(2).build().unwrap();
-    let text = to_native_string(&AnyObject::BasicFrame(original)).unwrap();
+    let text = native_dump(&AnyObject::BasicFrame(original)).unwrap();
     let restored = from_native_string(&text).unwrap();
     let frame = restored.as_frame().unwrap();
 
@@ -394,7 +395,7 @@ fn round_trip_basic_frame_geometry() {
 fn round_trip_basic_frame_with_epoch() {
     let mut original = BasicFrameBuilder::new(1).build().unwrap();
     original.set_epoch_year(2000.0);
-    let text = to_native_string(&AnyObject::BasicFrame(original)).unwrap();
+    let text = native_dump(&AnyObject::BasicFrame(original)).unwrap();
 
     let restored = from_native_string(&text).unwrap();
     match restored {
@@ -415,7 +416,7 @@ fn round_trip_cmp_frame() {
     let f1: Box<dyn Frame> = Box::new(BasicFrameBuilder::new(1).label(1, "RA").build().unwrap());
     let f2: Box<dyn Frame> = Box::new(BasicFrameBuilder::new(1).label(1, "Dec").build().unwrap());
     let original = CmpFrame::new(f1, f2);
-    let text = to_native_string(&AnyObject::CmpFrame(original)).unwrap();
+    let text = native_dump(&AnyObject::CmpFrame(original)).unwrap();
 
     assert!(text.contains("Begin CmpFrame"), "missing Begin CmpFrame");
     assert!(text.contains("End CmpFrame"), "missing End CmpFrame");
@@ -430,7 +431,7 @@ fn round_trip_cmp_frame_3plus2() {
     let f1: Box<dyn Frame> = Box::new(BasicFrameBuilder::new(3).build().unwrap());
     let f2: Box<dyn Frame> = Box::new(BasicFrameBuilder::new(2).build().unwrap());
     let original = CmpFrame::new(f1, f2);
-    let text = to_native_string(&AnyObject::CmpFrame(original)).unwrap();
+    let text = native_dump(&AnyObject::CmpFrame(original)).unwrap();
 
     let restored = from_native_string(&text).unwrap();
     let frame = restored.as_frame().unwrap();
@@ -442,7 +443,7 @@ fn round_trip_cmp_frame_distance() {
     let f1: Box<dyn Frame> = Box::new(BasicFrameBuilder::new(1).build().unwrap());
     let f2: Box<dyn Frame> = Box::new(BasicFrameBuilder::new(1).build().unwrap());
     let original = CmpFrame::new(f1, f2);
-    let text = to_native_string(&AnyObject::CmpFrame(original)).unwrap();
+    let text = native_dump(&AnyObject::CmpFrame(original)).unwrap();
 
     let restored = from_native_string(&text).unwrap();
     let frame = restored.as_frame().unwrap();
@@ -463,7 +464,7 @@ fn round_trip_frameset_with_zoom() {
     let z: DynMapping = Box::new(ZoomMap::new(2, 5.0).unwrap());
     fs.add_frame(FrameRef::Base, z, current).unwrap();
 
-    let text = to_native_string(&AnyObject::FrameSet(fs)).unwrap();
+    let text = native_dump(&AnyObject::FrameSet(fs)).unwrap();
 
     assert!(text.contains("Begin FrameSet"), "missing Begin FrameSet");
     assert!(text.contains("End FrameSet"), "missing End FrameSet");
@@ -488,7 +489,7 @@ fn round_trip_frameset_inverse() {
     let z: DynMapping = Box::new(ZoomMap::new(2, 3.0).unwrap());
     fs.add_frame(FrameRef::Base, z, current).unwrap();
 
-    let text = to_native_string(&AnyObject::FrameSet(fs)).unwrap();
+    let text = native_dump(&AnyObject::FrameSet(fs)).unwrap();
     let restored = from_native_string(&text).unwrap();
     let mapping = restored.as_mapping().unwrap();
 
@@ -507,7 +508,7 @@ fn round_trip_frameset_as_frame() {
     let u: DynMapping = Box::new(UnitMap::new(2));
     fs.add_frame(FrameRef::Base, u, current).unwrap();
 
-    let text = to_native_string(&AnyObject::FrameSet(fs)).unwrap();
+    let text = native_dump(&AnyObject::FrameSet(fs)).unwrap();
     let restored = from_native_string(&text).unwrap();
 
     // FrameSet is accessible both as Mapping and as Frame.
@@ -530,7 +531,7 @@ fn round_trip_frameset_chain() {
     let s: DynMapping = Box::new(ShiftMap::new([10.0, 20.0]));
     fs.add_frame(FrameRef::Current, s, fc).unwrap();
 
-    let text = to_native_string(&AnyObject::FrameSet(fs)).unwrap();
+    let text = native_dump(&AnyObject::FrameSet(fs)).unwrap();
     let restored = from_native_string(&text).unwrap();
     let mapping = restored.as_mapping().unwrap();
 
@@ -593,18 +594,18 @@ fn any_object_frameset_is_both() {
 #[test]
 fn double_round_trip_zoom_map() {
     let original = ZoomMap::new(2, 7.77).unwrap();
-    let text1 = to_native_string(&AnyObject::ZoomMap(original)).unwrap();
+    let text1 = native_dump(&AnyObject::ZoomMap(original)).unwrap();
     let restored = from_native_string(&text1).unwrap();
-    let text2 = to_native_string(&restored).unwrap();
+    let text2 = native_dump(&restored).unwrap();
     assert_eq!(text1, text2, "double round-trip text mismatch for ZoomMap");
 }
 
 #[test]
 fn double_round_trip_shift_map() {
     let original = ShiftMap::new([1.5, -2.7, 0.0]);
-    let text1 = to_native_string(&AnyObject::ShiftMap(original)).unwrap();
+    let text1 = native_dump(&AnyObject::ShiftMap(original)).unwrap();
     let restored = from_native_string(&text1).unwrap();
-    let text2 = to_native_string(&restored).unwrap();
+    let text2 = native_dump(&restored).unwrap();
     assert_eq!(text1, text2, "double round-trip text mismatch for ShiftMap");
 }
 
@@ -617,9 +618,9 @@ fn double_round_trip_basic_frame() {
         .label(2, "B")
         .build()
         .unwrap();
-    let text1 = to_native_string(&AnyObject::BasicFrame(original)).unwrap();
+    let text1 = native_dump(&AnyObject::BasicFrame(original)).unwrap();
     let restored = from_native_string(&text1).unwrap();
-    let text2 = to_native_string(&restored).unwrap();
+    let text2 = native_dump(&restored).unwrap();
     assert_eq!(
         text1, text2,
         "double round-trip text mismatch for BasicFrame"
@@ -634,9 +635,9 @@ fn double_round_trip_frameset() {
     let z: DynMapping = Box::new(ZoomMap::new(2, 2.5).unwrap());
     fs.add_frame(FrameRef::Base, z, current).unwrap();
 
-    let text1 = to_native_string(&AnyObject::FrameSet(fs)).unwrap();
+    let text1 = native_dump(&AnyObject::FrameSet(fs)).unwrap();
     let restored = from_native_string(&text1).unwrap();
-    let text2 = to_native_string(&restored).unwrap();
+    let text2 = native_dump(&restored).unwrap();
     assert_eq!(text1, text2, "double round-trip text mismatch for FrameSet");
 }
 
@@ -646,27 +647,27 @@ fn double_round_trip_cmp_map() {
     let s: Box<dyn Mapping> = Box::new(ShiftMap::new([10.0]));
     let original = CmpMap::new(z, s, Composition::Series).unwrap();
 
-    let text1 = to_native_string(&AnyObject::CmpMap(original)).unwrap();
+    let text1 = native_dump(&AnyObject::CmpMap(original)).unwrap();
     let restored = from_native_string(&text1).unwrap();
-    let text2 = to_native_string(&restored).unwrap();
+    let text2 = native_dump(&restored).unwrap();
     assert_eq!(text1, text2, "double round-trip text mismatch for CmpMap");
 }
 
 #[test]
 fn double_round_trip_perm_map() {
     let original = PermMap::new(&[2, 1], &[2, 1], &[]).unwrap();
-    let text1 = to_native_string(&AnyObject::PermMap(original)).unwrap();
+    let text1 = native_dump(&AnyObject::PermMap(original)).unwrap();
     let restored = from_native_string(&text1).unwrap();
-    let text2 = to_native_string(&restored).unwrap();
+    let text2 = native_dump(&restored).unwrap();
     assert_eq!(text1, text2, "double round-trip text mismatch for PermMap");
 }
 
 #[test]
 fn double_round_trip_matrix_map() {
     let original = MatrixMap::new(array![[0.0, -1.0], [1.0, 0.0]]).unwrap();
-    let text1 = to_native_string(&AnyObject::MatrixMap(original)).unwrap();
+    let text1 = native_dump(&AnyObject::MatrixMap(original)).unwrap();
     let restored = from_native_string(&text1).unwrap();
-    let text2 = to_native_string(&restored).unwrap();
+    let text2 = native_dump(&restored).unwrap();
     assert_eq!(
         text1, text2,
         "double round-trip text mismatch for MatrixMap"
@@ -678,18 +679,18 @@ fn double_round_trip_cmp_frame() {
     let f1: Box<dyn Frame> = Box::new(BasicFrameBuilder::new(2).build().unwrap());
     let f2: Box<dyn Frame> = Box::new(BasicFrameBuilder::new(1).build().unwrap());
     let original = CmpFrame::new(f1, f2);
-    let text1 = to_native_string(&AnyObject::CmpFrame(original)).unwrap();
+    let text1 = native_dump(&AnyObject::CmpFrame(original)).unwrap();
     let restored = from_native_string(&text1).unwrap();
-    let text2 = to_native_string(&restored).unwrap();
+    let text2 = native_dump(&restored).unwrap();
     assert_eq!(text1, text2, "double round-trip text mismatch for CmpFrame");
 }
 
 #[test]
 fn double_round_trip_unit_map() {
     let original = UnitMap::new(4);
-    let text1 = to_native_string(&AnyObject::UnitMap(original)).unwrap();
+    let text1 = native_dump(&AnyObject::UnitMap(original)).unwrap();
     let restored = from_native_string(&text1).unwrap();
-    let text2 = to_native_string(&restored).unwrap();
+    let text2 = native_dump(&restored).unwrap();
     assert_eq!(text1, text2, "double round-trip text mismatch for UnitMap");
 }
 
@@ -700,7 +701,7 @@ fn double_round_trip_unit_map() {
 #[test]
 fn round_trip_zoom_map_multi_point() {
     let original = ZoomMap::new(2, 3.0).unwrap();
-    let text = to_native_string(&AnyObject::ZoomMap(original)).unwrap();
+    let text = native_dump(&AnyObject::ZoomMap(original)).unwrap();
     let restored = from_native_string(&text).unwrap();
     let mapping = restored.as_mapping().unwrap();
 
@@ -714,7 +715,7 @@ fn round_trip_zoom_map_multi_point() {
 #[test]
 fn round_trip_shift_map_multi_point() {
     let original = ShiftMap::new([100.0, -50.0]);
-    let text = to_native_string(&AnyObject::ShiftMap(original)).unwrap();
+    let text = native_dump(&AnyObject::ShiftMap(original)).unwrap();
     let restored = from_native_string(&text).unwrap();
     let mapping = restored.as_mapping().unwrap();
 
@@ -743,7 +744,7 @@ fn from_native_string_garbage_input() {
 #[test]
 fn from_native_string_truncated() {
     let original = ZoomMap::new(2, 3.5).unwrap();
-    let text = to_native_string(&AnyObject::ZoomMap(original)).unwrap();
+    let text = native_dump(&AnyObject::ZoomMap(original)).unwrap();
     // Truncate the text before the End marker.
     let truncated = &text[..text.len() / 2];
     let result = from_native_string(truncated);
@@ -757,7 +758,7 @@ fn from_native_string_truncated() {
 #[test]
 fn native_text_has_isa_markers() {
     let original = ZoomMap::new(2, 3.5).unwrap();
-    let text = to_native_string(&AnyObject::ZoomMap(original)).unwrap();
+    let text = native_dump(&AnyObject::ZoomMap(original)).unwrap();
     assert!(
         text.contains("IsA Mapping"),
         "missing IsA Mapping marker in ZoomMap"
@@ -772,7 +773,7 @@ fn native_text_frameset_has_nested_objects() {
     let z: DynMapping = Box::new(ZoomMap::new(2, 2.0).unwrap());
     fs.add_frame(FrameRef::Base, z, current).unwrap();
 
-    let text = to_native_string(&AnyObject::FrameSet(fs)).unwrap();
+    let text = native_dump(&AnyObject::FrameSet(fs)).unwrap();
     // FrameSet should contain nested Frame and Mapping objects.
     assert!(
         text.contains("Begin Frame"),
@@ -789,7 +790,7 @@ fn native_text_cmpmap_has_series_flag() {
     let z: Box<dyn Mapping> = Box::new(ZoomMap::new(1, 2.0).unwrap());
     let s: Box<dyn Mapping> = Box::new(ShiftMap::new([10.0]));
     let cm = CmpMap::new(z, s, Composition::Series).unwrap();
-    let text = to_native_string(&AnyObject::CmpMap(cm)).unwrap();
+    let text = native_dump(&AnyObject::CmpMap(cm)).unwrap();
 
     // MapA and MapB keys should be present for the two component mappings.
     assert!(text.contains("MapA"), "missing MapA key in CmpMap");
@@ -814,7 +815,7 @@ fn any_object_debug() {
 #[test]
 fn round_trip_skyframe_default_fk5() {
     let original = SkyFrame::new(SkySystem::Fk5);
-    let text = to_native_string(&AnyObject::SkyFrame(original)).unwrap();
+    let text = native_dump(&AnyObject::SkyFrame(original)).unwrap();
 
     assert!(text.contains("Begin SkyFrame"), "missing Begin SkyFrame");
     assert!(text.contains("End SkyFrame"), "missing End SkyFrame");
@@ -857,7 +858,7 @@ fn round_trip_skyframe_galactic_with_attributes() {
     original.set_projection("TAN");
     original.set_align_offset(true);
 
-    let text = to_native_string(&AnyObject::SkyFrame(original)).unwrap();
+    let text = native_dump(&AnyObject::SkyFrame(original)).unwrap();
 
     assert!(text.contains("GALACTIC"), "missing GALACTIC system");
     assert!(text.contains("Galactic Test"), "missing title");
@@ -888,7 +889,7 @@ fn round_trip_skyframe_with_equinox() {
     let j2010_mjd = 55197.0; // approximate MJD for 2010-01-01
     original.set_equinox_mjd(j2010_mjd);
 
-    let text = to_native_string(&AnyObject::SkyFrame(original)).unwrap();
+    let text = native_dump(&AnyObject::SkyFrame(original)).unwrap();
     assert!(text.contains("Eqnox"), "missing Eqnox");
 
     let restored = from_native_string(&text).unwrap();
@@ -907,7 +908,7 @@ fn round_trip_skyframe_with_sky_ref() {
     original.set_sky_ref_lon_lat(1.5, 0.75);
     original.set_sky_ref_p_lon_lat(0.3, 1.2);
 
-    let text = to_native_string(&AnyObject::SkyFrame(original)).unwrap();
+    let text = native_dump(&AnyObject::SkyFrame(original)).unwrap();
     assert!(text.contains("SRefIs"), "missing SRefIs");
     assert!(text.contains("SRef1"), "missing SRef1");
     assert!(text.contains("SRef2"), "missing SRef2");
@@ -936,7 +937,7 @@ fn round_trip_skyframe_with_observer() {
     original.set_dtai(37.0);
     original.set_dut1(0.27);
 
-    let text = to_native_string(&AnyObject::SkyFrame(original)).unwrap();
+    let text = native_dump(&AnyObject::SkyFrame(original)).unwrap();
 
     let restored = from_native_string(&text).unwrap();
     match restored {
@@ -996,7 +997,7 @@ fn round_trip_skyframe_with_domain() {
     let mut original = SkyFrame::new(SkySystem::Fk5);
     original.set_domain("CUSTOM_SKY");
 
-    let text = to_native_string(&AnyObject::SkyFrame(original)).unwrap();
+    let text = native_dump(&AnyObject::SkyFrame(original)).unwrap();
     assert!(text.contains("CUSTOM_SKY"), "missing custom domain");
 
     let restored = from_native_string(&text).unwrap();
@@ -1012,7 +1013,7 @@ fn round_trip_skyframe_with_domain() {
 fn round_trip_skyframe_geometry() {
     // Verify the round-tripped frame still computes distance correctly.
     let original = SkyFrame::new(SkySystem::Fk5);
-    let text = to_native_string(&AnyObject::SkyFrame(original)).unwrap();
+    let text = native_dump(&AnyObject::SkyFrame(original)).unwrap();
     let restored = from_native_string(&text).unwrap();
     let frame = restored.as_frame().unwrap();
 
@@ -1040,9 +1041,9 @@ fn double_round_trip_skyframe() {
     original.set_projection("SIN");
     original.set_align_offset(true);
 
-    let text1 = to_native_string(&AnyObject::SkyFrame(original)).unwrap();
+    let text1 = native_dump(&AnyObject::SkyFrame(original)).unwrap();
     let restored = from_native_string(&text1).unwrap();
-    let text2 = to_native_string(&restored).unwrap();
+    let text2 = native_dump(&restored).unwrap();
     assert_eq!(text1, text2, "double round-trip text mismatch for SkyFrame");
 }
 
@@ -1071,7 +1072,7 @@ fn round_trip_frameset_with_skyframe() {
     let z: DynMapping = Box::new(ZoomMap::new(2, 0.01).unwrap());
     fs.add_frame(FrameRef::Base, z, current).unwrap();
 
-    let text = to_native_string(&AnyObject::FrameSet(fs)).unwrap();
+    let text = native_dump(&AnyObject::FrameSet(fs)).unwrap();
     assert!(text.contains("Begin SkyFrame"), "missing nested SkyFrame");
 
     let restored = from_native_string(&text).unwrap();
@@ -1093,7 +1094,7 @@ fn round_trip_skyframe_fk4_besselian_equinox() {
     let b1950_mjd = 33281.92346; // approximate B1950 MJD
     original.set_equinox_mjd(b1950_mjd);
 
-    let text = to_native_string(&AnyObject::SkyFrame(original)).unwrap();
+    let text = native_dump(&AnyObject::SkyFrame(original)).unwrap();
     assert!(text.contains("Eqnox"), "missing Eqnox for FK4");
 
     let restored = from_native_string(&text).unwrap();
@@ -1215,7 +1216,7 @@ fn strip_leading_comments(text: &str) -> String {
     }
 }
 
-/// Read a C-generated .ast/.map/.simp file, write it back via to_native_string,
+/// Read a C-generated .ast/.map/.simp file, write it back via native_dump,
 /// and verify the output reproduces the input.
 ///
 /// Reading a dump and writing it straight back is the identity, so any
@@ -1232,7 +1233,7 @@ fn native_round_trip_fixture(path: &std::path::Path) -> Result<(), String> {
     let text =
         std::fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
     let obj = from_native_string(&text).map_err(|e| format!("parse {}: {e}", path.display()))?;
-    let output = to_native_string(&obj).map_err(|e| format!("render {}: {e}", path.display()))?;
+    let output = native_dump(&obj).map_err(|e| format!("render {}: {e}", path.display()))?;
     let text = strip_leading_comments(&text);
     let output = strip_leading_comments(&output);
     if output == text {
@@ -1521,7 +1522,7 @@ fn round_trip_circle() {
         .build()
         .unwrap();
 
-    let text = to_native_string(&AnyObject::Circle(circle)).unwrap();
+    let text = native_dump(&AnyObject::Circle(circle)).unwrap();
 
     // Structural markers.
     assert!(text.contains("Begin Circle"), "missing Begin Circle");
@@ -1547,7 +1548,7 @@ fn round_trip_box_region() {
         .build()
         .unwrap();
 
-    let text = to_native_string(&AnyObject::BoxRegion(box_region)).unwrap();
+    let text = native_dump(&AnyObject::BoxRegion(box_region)).unwrap();
 
     assert!(text.contains("Begin Box"), "missing Begin Box");
     assert!(text.contains("End Box"), "missing End Box");
@@ -1576,7 +1577,7 @@ fn round_trip_polygon() {
     .build()
     .unwrap();
 
-    let text = to_native_string(&AnyObject::Polygon(polygon)).unwrap();
+    let text = native_dump(&AnyObject::Polygon(polygon)).unwrap();
 
     assert!(text.contains("Begin Polygon"), "missing Begin Polygon");
     assert!(text.contains("End Polygon"), "missing End Polygon");
@@ -1599,7 +1600,7 @@ fn round_trip_interval() {
         .build()
         .unwrap();
 
-    let text = to_native_string(&AnyObject::Interval(interval)).unwrap();
+    let text = native_dump(&AnyObject::Interval(interval)).unwrap();
 
     assert!(text.contains("Begin Interval"), "missing Begin Interval");
     assert!(text.contains("End Interval"), "missing End Interval");
@@ -1619,7 +1620,7 @@ fn round_trip_null_region() {
     let frame = BasicFrameBuilder::new(2).build().unwrap();
     let null = NullRegionBuilder::new(frame).build().unwrap();
 
-    let text = to_native_string(&AnyObject::NullRegion(null)).unwrap();
+    let text = native_dump(&AnyObject::NullRegion(null)).unwrap();
 
     assert!(
         text.contains("Begin NullRegion"),
@@ -1648,7 +1649,7 @@ fn round_trip_ellipse() {
     .build()
     .unwrap();
 
-    let text = to_native_string(&AnyObject::Ellipse(ellipse)).unwrap();
+    let text = native_dump(&AnyObject::Ellipse(ellipse)).unwrap();
 
     assert!(text.contains("Begin Ellipse"), "missing Begin Ellipse");
     assert!(text.contains("End Ellipse"), "missing End Ellipse");
@@ -1672,7 +1673,7 @@ fn round_trip_pointlist() {
             .build()
             .unwrap();
 
-    let text = to_native_string(&AnyObject::PointList(pointlist)).unwrap();
+    let text = native_dump(&AnyObject::PointList(pointlist)).unwrap();
 
     assert!(text.contains("Begin PointList"), "missing Begin PointList");
     assert!(text.contains("End PointList"), "missing End PointList");
@@ -1707,7 +1708,7 @@ fn round_trip_cmpregion() {
         .build()
         .unwrap();
 
-    let text = to_native_string(&AnyObject::CmpRegion(cmp)).unwrap();
+    let text = native_dump(&AnyObject::CmpRegion(cmp)).unwrap();
 
     assert!(text.contains("Begin CmpRegion"), "missing Begin CmpRegion");
     assert!(text.contains("End CmpRegion"), "missing End CmpRegion");
@@ -1744,7 +1745,7 @@ fn round_trip_prism() {
         .build()
         .unwrap();
 
-    let text = to_native_string(&AnyObject::Prism(prism)).unwrap();
+    let text = native_dump(&AnyObject::Prism(prism)).unwrap();
 
     assert!(text.contains("Begin Prism"), "missing Begin Prism");
     assert!(text.contains("End Prism"), "missing End Prism");
@@ -1773,7 +1774,7 @@ fn round_trip_negated_circle() {
         .unwrap();
     circle.negate();
 
-    let text = to_native_string(&AnyObject::Circle(circle)).unwrap();
+    let text = native_dump(&AnyObject::Circle(circle)).unwrap();
 
     assert!(text.contains("Negate"), "missing Negate attribute");
 
@@ -1808,7 +1809,7 @@ fn keymap_round_trips_through_native_text() {
     )
     .unwrap();
 
-    let text = to_native_string(&AnyObject::KeyMap(Box::new(km.clone()))).unwrap();
+    let text = native_dump(&AnyObject::KeyMap(Box::new(km.clone()))).unwrap();
     assert!(text.contains("Begin KeyMap"));
     assert!(text.contains("Map of key/value pairs"));
     // A nested Object entry nests its own Begin/End block.
@@ -1838,7 +1839,7 @@ fn keymap_round_trips_through_native_text() {
     assert_eq!(zm.rate(&[0.0, 0.0], 1, 1).unwrap(), 3.0);
 
     // Re-serialising the reloaded object gives identical text.
-    assert_eq!(to_native_string(&AnyObject::KeyMap(back)).unwrap(), text);
+    assert_eq!(native_dump(&AnyObject::KeyMap(back)).unwrap(), text);
 }
 
 #[test]

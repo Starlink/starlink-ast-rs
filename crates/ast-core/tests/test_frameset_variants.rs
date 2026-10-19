@@ -10,6 +10,7 @@
 //! The transform values (e.g. (50.5,100.5) → (150,150) under FP2) are the C
 //! oracle's, confirmed by the reference `testframeset.c`.
 
+use crate::common::native_dump;
 use ast_core::coords::PointSet;
 use ast_core::error::ErrorCode;
 use ast_core::frames::{BasicFrameBuilder, FrameRef, FrameSet};
@@ -227,10 +228,10 @@ fn matches_current_index(fs: &FrameSet) -> usize {
 /// are all preserved (C `Vrnts` object on the member Frame).
 #[test]
 fn variants_native_round_trip() {
-    use ast_core::{AnyObject, from_native_string, to_native_string};
+    use ast_core::{AnyObject, from_native_string};
 
     let fs = three_variant_fs(); // FP1/FP2/FP3, FP2 selected
-    let text = to_native_string(&AnyObject::FrameSet(fs)).unwrap();
+    let text = native_dump(&AnyObject::FrameSet(fs)).unwrap();
     assert!(text.contains("Vrnts"), "dump must carry the Vrnts object");
 
     let AnyObject::FrameSet(fs2) = from_native_string(&text).unwrap() else {

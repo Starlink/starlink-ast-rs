@@ -3,10 +3,11 @@
 //! A TranMap combines the forward transformation of one Mapping with
 //! the inverse transformation of another Mapping.
 
+use crate::common::native_dump;
 use ast_core::constants::BAD_VALUE;
 use ast_core::coords::PointSet;
 use ast_core::mappings::{CmpMap, Composition, Mapping, TranMap, ZoomMap};
-use ast_core::{AnyObject, from_native_string, to_native_string};
+use ast_core::{AnyObject, from_native_string};
 
 fn is_bad(v: f64) -> bool {
     v == BAD_VALUE
@@ -292,7 +293,7 @@ fn serialization_roundtrip() {
     let tm = TranMap::new(Box::new(z2), Box::new(z3)).unwrap();
 
     let obj = AnyObject::TranMap(tm.clone());
-    let text = to_native_string(&obj).unwrap();
+    let text = native_dump(&obj).unwrap();
 
     // Verify the text contains expected markers.
     assert!(text.contains("TranMap"));
@@ -322,7 +323,7 @@ fn serialization_roundtrip_inverted() {
     tm.invert();
 
     let obj = AnyObject::TranMap(tm.clone());
-    let text = to_native_string(&obj).unwrap();
+    let text = native_dump(&obj).unwrap();
     assert!(text.contains("Invert"));
 
     let restored = from_native_string(&text).unwrap();
@@ -343,7 +344,7 @@ fn serialization_with_inv_a_flag() {
     let tm = TranMap::new(Box::new(z2), Box::new(z3)).unwrap();
 
     let obj = AnyObject::TranMap(tm.clone());
-    let text = to_native_string(&obj).unwrap();
+    let text = native_dump(&obj).unwrap();
     assert!(text.contains("InvA"));
 
     // Round-trip.
@@ -493,7 +494,7 @@ fn simplify_invert_normalize_fixture_roundtrip() {
     // Verify byte-exact serialization.
     if let Some(tm) = simplified.as_any().downcast_ref::<TranMap>() {
         let obj = AnyObject::TranMap(tm.clone());
-        let text = to_native_string(&obj).unwrap();
+        let text = native_dump(&obj).unwrap();
         assert_eq!(text, ref_text);
     }
 }

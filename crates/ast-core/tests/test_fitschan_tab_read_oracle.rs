@@ -13,6 +13,7 @@
 //! C's table source stores the table it reads with `astPutTable`; here the
 //! source returns it, and the FitsChan stores it under the name asked for.
 
+use crate::common::native_dump;
 // Generated; formatted by its generator rather than rustfmt.
 #[rustfmt::skip]
 #[path = "fitschan_tab_read_oracle/cases.rs"]
@@ -21,7 +22,7 @@ mod cases;
 use std::sync::{Arc, Mutex};
 
 use ast_core::error::AstError;
-use ast_core::{AnyObject, AstType, Channel, FitsChan, FitsTable, to_native_string};
+use ast_core::{AnyObject, AstType, Channel, FitsChan, FitsTable};
 
 /// Cases that differ from C for a reason unrelated to `-TAB`, each with the
 /// reason. `excluded_cases_still_differ` fails when one starts to match.
@@ -189,7 +190,7 @@ fn run(
                         _ => "another class",
                     };
                     text.push_str(&format!("= {class}\n"));
-                    for line in to_native_string(&obj).unwrap().lines() {
+                    for line in native_dump(&obj).unwrap().lines() {
                         text.push_str(&format!("|{line}\n"));
                     }
                     (text, None)

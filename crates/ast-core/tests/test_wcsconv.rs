@@ -8,6 +8,7 @@
 //! on any difference from the reference. Every case is compared:
 //! [`NATIVE_READ_EXCLUDED`] is empty and gated so it cannot silently refill.
 
+use crate::common::native_dump;
 use std::path::PathBuf;
 
 use ast_core::AnyObject;
@@ -310,7 +311,7 @@ fn run_case(case: &TestCase, force_comparison: bool) -> Result<(), String> {
     //                encoding string is the discriminator.
     let is_ast_text = case.encoding.eq_ignore_ascii_case("ast");
     let text_output = if is_ast_text {
-        Some(ast_core::to_native_string(&obj).map_err(|e| format!("to_native_string: {e}"))?)
+        Some(native_dump(&obj).map_err(|e| format!("native_dump: {e}"))?)
     } else {
         None
     };

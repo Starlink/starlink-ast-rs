@@ -4,13 +4,14 @@
 //! `BoxRegionBuilder::from_bounds` constructor and `PointSet::from_rows`,
 //! diverging from the C library's PointSet column-major layout.
 
+use crate::common::native_dump;
 use ast_core::constants::BAD_VALUE;
 use ast_core::coords::PointSet;
 use ast_core::error::ErrorCode;
 use ast_core::frames::BasicFrameBuilder;
 use ast_core::mappings::{Mapping, SelectorMap, SelectorMapBuilder};
 use ast_core::regions::{BoxRegionBuilder, DynRegion};
-use ast_core::{AnyObject, from_native_string, to_native_string};
+use ast_core::{AnyObject, from_native_string};
 
 fn make_2d_frame() -> ast_core::frames::BasicFrame {
     BasicFrameBuilder::new(2).build().unwrap()
@@ -189,7 +190,7 @@ fn selectormap_serialization_roundtrip() {
         .badval(99.0)
         .build();
     let obj = AnyObject::SelectorMap(sm.clone());
-    let text = to_native_string(&obj).unwrap();
+    let text = native_dump(&obj).unwrap();
     let obj2 = from_native_string(&text).unwrap();
     let loaded: SelectorMap = match obj2 {
         AnyObject::SelectorMap(m) => m,
@@ -219,7 +220,7 @@ fn selectormap_serialization_roundtrip() {
 fn selectormap_dump_matches_the_c_library() {
     use ast_core::frames::BasicFrameBuilder;
     use ast_core::regions::CircleBuilder;
-    use ast_core::{AnyObject, from_native_string, to_native_string};
+    use ast_core::{AnyObject, from_native_string};
 
     let want = std::fs::read_to_string(concat!(
         env!("CARGO_MANIFEST_DIR"),
@@ -238,8 +239,8 @@ fn selectormap_dump_matches_the_c_library() {
     let sm = SelectorMapBuilder::new(vec![circle(vec![0.0, 0.0]), circle(vec![5.0, 5.0])])
         .unwrap()
         .build();
-    assert_eq!(to_native_string(&AnyObject::SelectorMap(sm)).unwrap(), want);
+    assert_eq!(native_dump(&AnyObject::SelectorMap(sm)).unwrap(), want);
 
     let loaded = from_native_string(&want).unwrap();
-    assert_eq!(to_native_string(&loaded).unwrap(), want);
+    assert_eq!(native_dump(&loaded).unwrap(), want);
 }

@@ -1,11 +1,12 @@
 //! Tests for SlaMap — celestial coordinate conversion chain.
 
+use crate::common::native_dump;
 use std::f64::consts::PI;
 
 use ast_core::constants::BAD_VALUE;
 use ast_core::coords::PointSet;
 use ast_core::mappings::{Mapping, SlaCvtType, SlaMap};
-use ast_core::{AnyObject, from_native_string, to_native_string};
+use ast_core::{AnyObject, from_native_string};
 
 // ===========================================================================
 // Helpers
@@ -363,7 +364,7 @@ fn serialisation_round_trip() {
     sla.add(SlaCvtType::Eqgal, &[]).unwrap();
 
     let obj = AnyObject::SlaMap(sla.clone());
-    let text = to_native_string(&obj).unwrap();
+    let text = native_dump(&obj).unwrap();
 
     let restored = from_native_string(&text).unwrap();
     let sla2 = match restored {
@@ -394,7 +395,7 @@ fn text_structure() {
     sla.add(SlaCvtType::Eqgal, &[]).unwrap();
 
     let obj = AnyObject::SlaMap(sla);
-    let text = to_native_string(&obj).unwrap();
+    let text = native_dump(&obj).unwrap();
 
     assert!(text.contains("Begin SlaMap"), "should contain Begin SlaMap");
     assert!(text.contains("Nsla"), "should contain Nsla");
@@ -577,7 +578,7 @@ fn serialise_inverted() {
     sla.invert();
 
     let obj = AnyObject::SlaMap(sla);
-    let text = to_native_string(&obj).unwrap();
+    let text = native_dump(&obj).unwrap();
 
     let restored = from_native_string(&text).unwrap();
     let sla2 = match restored {
@@ -828,7 +829,7 @@ fn simplify_inverted_map_step_swaps_date_and_equinox() {
         .expect("simplified SlaMap");
     assert!(!sla.is_inverted(), "replacement is applied forward");
 
-    let dump = to_native_string(&AnyObject::SlaMap(sla.clone())).unwrap();
+    let dump = native_dump(&AnyObject::SlaMap(sla.clone())).unwrap();
     assert!(dump.contains("\"AMP\""), "step type inverted:\n{dump}");
     let args: Vec<&str> = dump
         .lines()

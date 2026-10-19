@@ -10,6 +10,7 @@
 //! holds C's forward and inverse transformations of each projection type
 //! over a half-pixel grid, compared bit for bit.
 
+use crate::common::native_dump;
 // Generated; formatted by its generator rather than rustfmt.
 #[rustfmt::skip]
 #[path = "xphmap_oracle/cases.rs"]
@@ -18,7 +19,7 @@ mod cases;
 use ast_core::constants::BAD_VALUE;
 use ast_core::error::ErrorCode;
 use ast_core::mappings::{Mapping, XphMap};
-use ast_core::{AnyObject, from_native_string, to_native_string};
+use ast_core::{AnyObject, from_native_string};
 
 fn dump(order: i64, projection: &str) -> String {
     format!(
@@ -42,7 +43,7 @@ fn every_projection_type_loads_and_round_trips() {
     for (projection, order) in [("HPX0", 14), ("HPX12", 8), ("XPHN", 10), ("XPHS", 10)] {
         let map = load(order, projection);
         assert_eq!((map.nin(), map.nout()), (2, 2), "{projection}");
-        let text = to_native_string(&AnyObject::XphMap(map.clone())).unwrap();
+        let text = native_dump(&AnyObject::XphMap(map.clone())).unwrap();
         assert!(
             text.contains(&format!("Type = \"{projection}\"")),
             "{projection}: {text}"

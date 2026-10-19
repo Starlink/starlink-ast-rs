@@ -4,10 +4,11 @@
 //! `reference/starlink-ast/src/specfluxframe.c`.
 //! Uses the public Rust API only.
 
+use crate::common::native_dump;
 use ast_core::constants::BAD_VALUE;
 use ast_core::coords::PointSet;
 use ast_core::frames::{FluxFrame, FluxSystem, Frame, SpecFluxFrame, SpecFrame, SpecSystem};
-use ast_core::{AnyObject, from_native_string, to_native_string};
+use ast_core::{AnyObject, from_native_string};
 
 // ===========================================================================
 // FluxFrame tests
@@ -364,7 +365,7 @@ fn test_fluxframe_incompatible_unit_is_badun() {
 fn test_fluxframe_unit_serialisation_round_trip() {
     let mut ff = FluxFrame::new(FluxSystem::FluxDen);
     ff.set_unit(1, "Jy").unwrap();
-    let text = to_native_string(&AnyObject::FluxFrame(ff)).unwrap();
+    let text = native_dump(&AnyObject::FluxFrame(ff)).unwrap();
     assert!(text.contains("Unit = \"Jy\""), "missing Unit: {text}");
 
     let parsed = from_native_string(&text).unwrap();
@@ -381,7 +382,7 @@ fn test_fluxframe_unit_serialisation_round_trip() {
 fn test_fluxframe_serialisation_roundtrip_fluxden() {
     let ff = FluxFrame::new(FluxSystem::FluxDen);
     let obj = AnyObject::FluxFrame(ff.clone());
-    let text = to_native_string(&obj).unwrap();
+    let text = native_dump(&obj).unwrap();
     assert!(text.contains("FluxFrame"));
     assert!(text.contains("FLXDN"));
 
@@ -395,7 +396,7 @@ fn test_fluxframe_serialisation_roundtrip_sbrightw() {
     let mut ff = FluxFrame::new(FluxSystem::SBrightW);
     ff.set_spec_val(5.0e14); // ~600 nm
     let obj = AnyObject::FluxFrame(ff.clone());
-    let text = to_native_string(&obj).unwrap();
+    let text = native_dump(&obj).unwrap();
     assert!(text.contains("SFCBRW"));
     assert!(text.contains("SpcVl"));
 
@@ -409,7 +410,7 @@ fn test_fluxframe_serialisation_with_title() {
     let mut ff = FluxFrame::new(FluxSystem::FluxDen);
     ff.set_title("Test Title");
     let obj = AnyObject::FluxFrame(ff.clone());
-    let text = to_native_string(&obj).unwrap();
+    let text = native_dump(&obj).unwrap();
     assert!(text.contains("Test Title"));
 
     let obj2 = from_native_string(&text).unwrap();
@@ -590,7 +591,7 @@ fn test_specfluxframe_serialisation_roundtrip() {
     let ff = FluxFrame::new(FluxSystem::FluxDen);
     let sff = SpecFluxFrame::new(sf, ff);
     let obj = AnyObject::SpecFluxFrame(Box::new(sff.clone()));
-    let text = to_native_string(&obj).unwrap();
+    let text = native_dump(&obj).unwrap();
     assert!(text.contains("SpecFluxFrame"));
     assert!(text.contains("SpecFrame"));
     assert!(text.contains("FluxFrame"));
@@ -608,7 +609,7 @@ fn test_specfluxframe_serialisation_with_attributes() {
     ff.set_spec_val(4.57e14);
     let sff = SpecFluxFrame::new(sf, ff);
     let obj = AnyObject::SpecFluxFrame(Box::new(sff.clone()));
-    let text = to_native_string(&obj).unwrap();
+    let text = native_dump(&obj).unwrap();
 
     let obj2 = from_native_string(&text).unwrap();
     let sff2 = obj2.as_frame().unwrap();

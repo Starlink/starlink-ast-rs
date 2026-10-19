@@ -924,7 +924,7 @@ mod tests {
     use crate::constants::BAD_VALUE;
     use crate::coords::PointSet;
     use crate::mappings::{CmpMap, Composition, WinMap, ZoomMap};
-    use crate::{AnyObject, from_native_string, to_native_string};
+    use crate::{AnyObject, from_native_string};
 
     /// Helper to create a realistic DssMap from a simplified DSS plate solution.
     /// These values approximate a real DSS plate (POSS-I E survey).
@@ -1176,7 +1176,7 @@ mod tests {
     fn dssmap_serialization_roundtrip() {
         let dm = make_test_dssmap();
         let obj = AnyObject::DssMap(dm.clone());
-        let text = to_native_string(&obj).unwrap();
+        let text = obj.to_native_string().unwrap();
         let obj2 = from_native_string(&text).unwrap();
         let dm2 = match obj2 {
             AnyObject::DssMap(m) => m,
@@ -1197,7 +1197,7 @@ mod tests {
         let mut dm = make_test_dssmap();
         dm.invert();
         let obj = AnyObject::DssMap(dm.clone());
-        let text = to_native_string(&obj).unwrap();
+        let text = obj.to_native_string().unwrap();
         let obj2 = from_native_string(&text).unwrap();
         let dm2 = match obj2 {
             AnyObject::DssMap(m) => m,
@@ -1251,7 +1251,7 @@ mod tests {
         // Verify that a deserialized DssMap produces the same transform results.
         let dm = make_test_dssmap();
         let obj = AnyObject::DssMap(dm.clone());
-        let text = to_native_string(&obj).unwrap();
+        let text = obj.to_native_string().unwrap();
         let obj2 = from_native_string(&text).unwrap();
         let dm2 = match obj2 {
             AnyObject::DssMap(m) => m,

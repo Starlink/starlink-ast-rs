@@ -3,6 +3,7 @@
 //! Ported from reference/starlink-ast/ast_tester/testnormmap.c
 //! where applicable.
 
+use crate::common::native_dump;
 use std::f64::consts::PI;
 
 use ast_core::constants::BAD_VALUE;
@@ -11,7 +12,7 @@ use ast_core::frames::{
     BasicFrameBuilder, CmpFrame, Frame, SkyFrame, SkySystem, SpecFrame, SpecSystem,
 };
 use ast_core::mappings::{CmpMap, Composition, Mapping, NormMap, UnitMap};
-use ast_core::{AnyObject, from_native_string, to_native_string};
+use ast_core::{AnyObject, from_native_string};
 
 /// Helper: check if a value equals BAD_VALUE.
 fn is_bad(v: f64) -> bool {
@@ -189,7 +190,7 @@ fn normmap_serialization_roundtrip() {
     let nm = NormMap::new(Box::new(sky));
 
     let obj = AnyObject::NormMap(nm.clone());
-    let text = to_native_string(&obj).unwrap();
+    let text = native_dump(&obj).unwrap();
 
     // Check it contains the expected class marker.
     assert!(text.contains("NormMap"));

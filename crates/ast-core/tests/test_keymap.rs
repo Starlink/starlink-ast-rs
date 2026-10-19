@@ -36,9 +36,10 @@
 //!   as message strings: the test name and the assertion line locate a
 //!   Rust failure.
 
+use crate::common::native_dump;
 use ast_core::frames::{SkyFrame, SkySystem, SpecFrame, SpecSystem};
 use ast_core::keymap::{AstType, KeyMap, SortBy};
-use ast_core::{AnyObject, error::ErrorCode, from_native_string, to_native_string};
+use ast_core::{AnyObject, error::ErrorCode, from_native_string};
 
 #[test]
 fn scalar_put_and_get_round_trip_every_type() {
@@ -936,7 +937,7 @@ fn map_copy_entry_locked_destination_error_keeps_trailing_spaces() {
 /// `checkdump` (`testkeymap.c:64`), which compares sizes, then per key the
 /// type and either the Object class name or the string rendering.
 fn check_dump(km: &KeyMap) {
-    let text = to_native_string(&AnyObject::KeyMap(Box::new(km.clone()))).unwrap();
+    let text = native_dump(&AnyObject::KeyMap(Box::new(km.clone()))).unwrap();
     let AnyObject::KeyMap(result) = from_native_string(&text).unwrap() else {
         panic!("round trip did not give a KeyMap");
     };
@@ -1905,11 +1906,11 @@ fn dump_is_stable_against_insertion_order() {
     for (i, k) in keys.iter().enumerate() {
         km1.put_0i(k, i as i32 + 1, Some(" ")).unwrap();
     }
-    let dump1 = to_native_string(&AnyObject::KeyMap(Box::new(km1))).unwrap();
+    let dump1 = native_dump(&AnyObject::KeyMap(Box::new(km1))).unwrap();
 
     // Error dumpstable-2.
     let reload = from_native_string(&dump1).unwrap();
-    let dump2 = to_native_string(&reload).unwrap();
+    let dump2 = native_dump(&reload).unwrap();
     assert_eq!(dump1, dump2, "dump changed on a write, read, write cycle");
 
     // Error dumpstable-3.
@@ -1917,7 +1918,7 @@ fn dump_is_stable_against_insertion_order() {
     for &i in &order {
         km2.put_0i(keys[i], i as i32 + 1, Some(" ")).unwrap();
     }
-    let dump3 = to_native_string(&AnyObject::KeyMap(Box::new(km2))).unwrap();
+    let dump3 = native_dump(&AnyObject::KeyMap(Box::new(km2))).unwrap();
     assert_eq!(
         dump1, dump3,
         "dump depends on the order the entries were added"
@@ -2037,7 +2038,7 @@ fn a_zero_length_vector_is_refused() {
 
     // Error emptyvec-dump: the KeyMap must still dump.
     km.put_0i("REAL", 7, Some(" ")).unwrap();
-    to_native_string(&AnyObject::KeyMap(Box::new(km))).unwrap();
+    native_dump(&AnyObject::KeyMap(Box::new(km))).unwrap();
 }
 
 /// `testundefelem` — the element accessors must report failure for an
@@ -2077,7 +2078,7 @@ fn a_locked_keymap_survives_a_round_trip() {
         .unwrap();
 
     km.set_map_locked(true);
-    let dump = to_native_string(&AnyObject::KeyMap(Box::new(km))).unwrap();
+    let dump = native_dump(&AnyObject::KeyMap(Box::new(km))).unwrap();
 
     // Error locked-reload.
     let reloaded = from_native_string(&dump).unwrap();

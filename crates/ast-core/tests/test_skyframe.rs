@@ -8,6 +8,7 @@
 //! Rust equivalent of reference/starlink-ast/ast_tester/testskyframe.c
 //! (subset — tests only the features that have landed in Step 7b).
 
+use crate::common::native_dump;
 use std::f64::consts::{FRAC_PI_2, FRAC_PI_4, PI};
 
 use ast_core::constants::BAD_VALUE;
@@ -16,7 +17,7 @@ use ast_core::frames::{
     BasicFrameBuilder, Frame, FrameRef, FrameSet, SkyFrame, SkyRefIs, SkySystem,
 };
 use ast_core::mappings::{DynMapping, Mapping, ZoomMap};
-use ast_core::{AnyObject, from_native_string, to_native_string};
+use ast_core::{AnyObject, from_native_string};
 
 // ===========================================================================
 // Helpers
@@ -949,7 +950,7 @@ fn convert_between_offset_frames() {
 #[test]
 fn serialise_default_fk5() {
     let original = SkyFrame::new(SkySystem::Fk5);
-    let text = to_native_string(&AnyObject::SkyFrame(original)).unwrap();
+    let text = native_dump(&AnyObject::SkyFrame(original)).unwrap();
 
     // Structural markers.
     assert!(text.contains("Begin SkyFrame"), "missing Begin SkyFrame");
@@ -977,7 +978,7 @@ fn serialise_preserves_equinox() {
     let j2010_mjd = 55197.0;
     original.set_equinox_mjd(j2010_mjd);
 
-    let text = to_native_string(&AnyObject::SkyFrame(original)).unwrap();
+    let text = native_dump(&AnyObject::SkyFrame(original)).unwrap();
     assert!(text.contains("Eqnox"), "missing Eqnox");
 
     let restored = from_native_string(&text).unwrap();
@@ -996,7 +997,7 @@ fn serialise_preserves_sky_ref() {
     original.set_sky_ref_lon_lat(1.5, 0.75);
     original.set_sky_ref_p_lon_lat(0.3, 1.2);
 
-    let text = to_native_string(&AnyObject::SkyFrame(original)).unwrap();
+    let text = native_dump(&AnyObject::SkyFrame(original)).unwrap();
     assert!(text.contains("SRefIs"), "missing SRefIs");
     assert!(text.contains("SRef1"), "missing SRef1");
     assert!(text.contains("SRef2"), "missing SRef2");
@@ -1030,7 +1031,7 @@ fn serialise_preserves_all_attributes() {
     original.set_dtai(37.0);
     original.set_dut1(0.3);
 
-    let text = to_native_string(&AnyObject::SkyFrame(original)).unwrap();
+    let text = native_dump(&AnyObject::SkyFrame(original)).unwrap();
     let restored = from_native_string(&text).unwrap();
 
     match restored {
@@ -1106,9 +1107,9 @@ fn double_round_trip_skyframe() {
     original.set_sky_tol(1.0e-8);
     original.set_projection("TAN");
 
-    let text1 = to_native_string(&AnyObject::SkyFrame(original)).unwrap();
+    let text1 = native_dump(&AnyObject::SkyFrame(original)).unwrap();
     let restored = from_native_string(&text1).unwrap();
-    let text2 = to_native_string(&restored).unwrap();
+    let text2 = native_dump(&restored).unwrap();
     assert_eq!(text1, text2, "double round-trip text mismatch");
 }
 
@@ -1116,7 +1117,7 @@ fn double_round_trip_skyframe() {
 fn serialise_skyframe_geometry_preserved() {
     // Verify the round-tripped frame still computes distance correctly.
     let original = SkyFrame::new(SkySystem::Fk5);
-    let text = to_native_string(&AnyObject::SkyFrame(original)).unwrap();
+    let text = native_dump(&AnyObject::SkyFrame(original)).unwrap();
     let restored = from_native_string(&text).unwrap();
     let frame = restored.as_frame().unwrap();
 
@@ -1143,7 +1144,7 @@ fn serialise_frameset_with_skyframe() {
     let z: DynMapping = Box::new(ZoomMap::new(2, 0.01).unwrap());
     fs.add_frame(FrameRef::Base, z, current).unwrap();
 
-    let text = to_native_string(&AnyObject::FrameSet(fs)).unwrap();
+    let text = native_dump(&AnyObject::FrameSet(fs)).unwrap();
     assert!(
         text.contains("Begin SkyFrame"),
         "missing SkyFrame in FrameSet"

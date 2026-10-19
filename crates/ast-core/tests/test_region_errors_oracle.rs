@@ -17,6 +17,7 @@
 //!
 //! The values come from `tools/oracle_fixtures/region_errors_probe.c`.
 
+use crate::common::native_dump;
 // Generated; formatted by its generator rather than rustfmt.
 #[rustfmt::skip]
 #[path = "region_errors_oracle/cases.rs"]
@@ -268,8 +269,8 @@ fn loader_rejects_points_of_the_wrong_length() {
 
 #[test]
 fn set_uncertainty_matches_any_frame_of_the_uncertainty() {
+    use ast_core::AnyObject;
     use ast_core::mappings::ZoomMap;
-    use ast_core::{AnyObject, to_native_string};
 
     assert_eq!(cases::SETUNC_OTHER_CURRENT, 0);
     let with_domain = |d: &str| {
@@ -289,6 +290,6 @@ fn set_uncertainty_matches_any_frame_of_the_uncertainty() {
         .reg_map_region(&ZoomMap::new(2, 2.0).unwrap(), &with_domain("BAR"))
         .unwrap();
     target.set_uncertainty(unc).unwrap();
-    let text = to_native_string(&AnyObject::from_mapping(&target).unwrap()).unwrap();
+    let text = native_dump(&AnyObject::from_mapping(&target).unwrap()).unwrap();
     assert_eq!(text, cases::SETUNC_OTHER_CURRENT_DUMP);
 }

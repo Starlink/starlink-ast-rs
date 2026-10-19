@@ -4,10 +4,11 @@
 //! Tests the forward/inverse transforms, serialization round-trip,
 //! equal() semantics, and simplification rules.
 
+use crate::common::native_dump;
 use ast_core::constants::BAD_VALUE;
 use ast_core::coords::PointSet;
 use ast_core::mappings::{GrismMap, Mapping};
-use ast_core::{AnyObject, from_native_string, to_native_string};
+use ast_core::{AnyObject, from_native_string};
 
 /// Helper: check if a value is BAD_VALUE.
 fn is_bad(v: f64) -> bool {
@@ -208,7 +209,7 @@ fn not_equal_different_inversion() {
 fn native_serialization_roundtrip() {
     let gm = GrismMap::new(1.5, -1e-6, 5000.0, 0.1, 2e-4, 1, 0.02, 0.03);
     let obj = AnyObject::GrismMap(gm.clone());
-    let text = to_native_string(&obj).unwrap();
+    let text = native_dump(&obj).unwrap();
 
     // Parse back
     let parsed = from_native_string(&text).unwrap();
@@ -235,7 +236,7 @@ fn native_serialization_roundtrip_inverted() {
     let mut gm = GrismMap::new(1.5, -1e-6, 5000.0, 0.1, 2e-4, 1, 0.02, 0.03);
     gm.invert();
     let obj = AnyObject::GrismMap(gm.clone());
-    let text = to_native_string(&obj).unwrap();
+    let text = native_dump(&obj).unwrap();
     let parsed = from_native_string(&text).unwrap();
     let mapping = parsed.as_mapping().unwrap();
     assert!(gm.equal(mapping));
@@ -245,7 +246,7 @@ fn native_serialization_roundtrip_inverted() {
 fn native_serialization_roundtrip_defaults() {
     let gm = GrismMap::default_map();
     let obj = AnyObject::GrismMap(gm.clone());
-    let text = to_native_string(&obj).unwrap();
+    let text = native_dump(&obj).unwrap();
     let parsed = from_native_string(&text).unwrap();
     let mapping = parsed.as_mapping().unwrap();
     assert!(gm.equal(mapping));
@@ -349,7 +350,6 @@ fn default_grismmap_dumps_as_c_does() {
     ]
     .join("\n")
         + "\n";
-    let got = ast_core::to_native_string(&ast_core::AnyObject::GrismMap(GrismMap::default_map()))
-        .unwrap();
+    let got = native_dump(&ast_core::AnyObject::GrismMap(GrismMap::default_map())).unwrap();
     assert_eq!(got, want);
 }

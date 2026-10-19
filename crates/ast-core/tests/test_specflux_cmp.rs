@@ -4,6 +4,7 @@
 //! SpecFrame or FluxFrame class, and a SpecFluxFrame template matches the
 //! components of a plain CmpFrame (specfluxframe.c `Match`, `SubFrame`).
 
+use crate::common::native_dump;
 #[path = "specflux_cmp_oracle/cases.rs"]
 mod cases;
 
@@ -85,8 +86,7 @@ fn native_dump_matches_the_c_library() {
     let mut s = SpecFluxFrame::new(spec("GHz"), flux());
     Frame::set_title(&mut s, "MyT").unwrap();
     s.perm_axes(&[2, 1]).unwrap();
-    let text = ast_core::to_native_string(&ast_core::AnyObject::SpecFluxFrame(Box::new(s.clone())))
-        .unwrap();
+    let text = native_dump(&ast_core::AnyObject::SpecFluxFrame(Box::new(s.clone()))).unwrap();
     assert_eq!(text, include_str!("fixtures/specfluxframe_swapped.native"));
 
     let ast_core::AnyObject::SpecFluxFrame(back) = ast_core::from_native_string(&text).unwrap()
@@ -98,6 +98,6 @@ fn native_dump_matches_the_c_library() {
         assert_eq!(back.label(axis).unwrap(), s.label(axis).unwrap());
         assert_eq!(back.unit(axis).unwrap(), s.unit(axis).unwrap());
     }
-    let text2 = ast_core::to_native_string(&ast_core::AnyObject::SpecFluxFrame(back)).unwrap();
+    let text2 = native_dump(&ast_core::AnyObject::SpecFluxFrame(back)).unwrap();
     assert_eq!(text2, text);
 }

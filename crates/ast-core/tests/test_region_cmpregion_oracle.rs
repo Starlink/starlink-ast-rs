@@ -6,6 +6,7 @@
 //!
 //! The values come from `tools/oracle_fixtures/region_cmpregion_probe.c`.
 
+use crate::common::native_dump;
 // Generated; formatted by its generator rather than rustfmt.
 #[rustfmt::skip]
 #[path = "region_cmpregion_oracle/cases.rs"]
@@ -17,7 +18,7 @@ use ast_core::mappings::Mapping;
 use ast_core::regions::{
     BoxRegionBuilder, CircleBuilder, CmpOperator, CmpRegion, CmpRegionBuilder, Region,
 };
-use ast_core::{AnyObject, from_native_string, to_native_string};
+use ast_core::{AnyObject, from_native_string};
 
 fn membership(reg: &dyn Region, x: &[f64], y: &[f64]) -> String {
     let (xo, _) = reg.tran2(x, y, true).unwrap();
@@ -89,7 +90,7 @@ fn xor_is_made_dumped_and_read_as_c_does() {
     let cmp = xor();
     assert_eq!(cmp.operator(), CmpOperator::Xor);
     assert_eq!(membership(&cmp, &x, &x), cases::XOR);
-    let dump = to_native_string(&AnyObject::from_mapping(&cmp as &dyn Mapping).unwrap()).unwrap();
+    let dump = native_dump(&AnyObject::from_mapping(&cmp as &dyn Mapping).unwrap()).unwrap();
     assert_eq!(dump, cases::XOR_DUMP);
 
     let back = from_native_string(cases::XOR_DUMP)

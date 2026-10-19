@@ -9,6 +9,7 @@
 //! (GHz, km/s, hours, the Frame's current units) to the ones the API takes,
 //! so the test also shows which method corresponds to each C attribute.
 
+use crate::common::native_dump;
 // Generated; formatted by its generator rather than rustfmt.
 #[rustfmt::skip]
 #[path = "class_attrs_oracle/cases.rs"]
@@ -20,7 +21,7 @@ use ast_core::frames::{
     DSBSpecFrame, FluxFrame, FluxSystem, Frame, SideBand, SkyFrame, SkySystem, SpecFrame,
     SpecSystem, StdOfRest, TimeFrame, TimeScale, TimeSystem,
 };
-use ast_core::{AnyObject, from_native_string, to_native_string};
+use ast_core::{AnyObject, from_native_string};
 
 enum Obj {
     Time(TimeFrame),
@@ -309,14 +310,14 @@ fn every_attribute_matches_the_c_library() {
 fn dump_matches_the_c_library() {
     let mut failures = Vec::new();
     for &(class, setting, expected) in cases::DUMP_CASES {
-        let written = to_native_string(&make(class, setting).any()).unwrap();
+        let written = native_dump(&make(class, setting).any()).unwrap();
         if written != expected {
             failures.push(format!(
                 "dump for {class} {setting:?}:\n--- port\n{written}--- C\n{expected}"
             ));
             continue;
         }
-        let rewritten = to_native_string(&from_native_string(expected).unwrap()).unwrap();
+        let rewritten = native_dump(&from_native_string(expected).unwrap()).unwrap();
         if rewritten != expected {
             failures.push(format!(
                 "round trip of C's dump for {class} {setting:?}:\n--- port\n{rewritten}--- C\n{expected}"

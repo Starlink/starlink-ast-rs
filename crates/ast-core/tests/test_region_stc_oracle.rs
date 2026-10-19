@@ -17,6 +17,7 @@
 //! `Nobj`, counts the port does not have. The values come from
 //! `tools/oracle_fixtures/region_stc_probe.c`.
 
+use crate::common::native_dump;
 // Generated; formatted by its generator rather than rustfmt. Its values are
 // C's to 17 significant digits, which is more than some of them need.
 #[rustfmt::skip]
@@ -34,7 +35,7 @@ use ast_core::regions::{
     StcCatalogEntryLocationBuilder, StcObsDataLocationBuilder, StcResourceProfile,
     StcResourceProfileBuilder, StcSearchLocationBuilder,
 };
-use ast_core::{AnyObject, Channel, NativeChannel, from_native_string, to_native_string};
+use ast_core::{AnyObject, Channel, NativeChannel, from_native_string};
 
 fn circle(frame: impl Frame + 'static, centre: [f64; 2], radius: f64) -> DynRegion {
     Box::new(
@@ -195,7 +196,7 @@ fn assert_dump(name: &str, got: &str, want: &str, what: &str) {
 }
 
 fn dump(region: &dyn Region) -> String {
-    to_native_string(&AnyObject::from_mapping(region as &dyn Mapping).unwrap()).unwrap()
+    native_dump(&AnyObject::from_mapping(region as &dyn Mapping).unwrap()).unwrap()
 }
 
 #[test]
@@ -268,7 +269,7 @@ fn error_ellipse_licence_is_still_needed() {
         return;
     }
     let coord = sky().get_stc_coord(1).unwrap();
-    let got = to_native_string(&AnyObject::KeyMap(Box::new(coord))).unwrap();
+    let got = native_dump(&AnyObject::KeyMap(Box::new(coord))).unwrap();
     assert!(
         !crate::common::c_text_eq(&got, cases::SKY_COORD),
         "the sky Error Ellipse now matches C here; remove ERROR_ELLIPSE_LICENSED"
@@ -280,7 +281,7 @@ fn astro_coords_match_c() {
     let stc = sky();
     assert_eq!(stc.get_stc_n_coord() as i32, cases::SKY_NCOORD);
     let coord = stc.get_stc_coord(1).unwrap();
-    let got = to_native_string(&AnyObject::KeyMap(Box::new(coord))).unwrap();
+    let got = native_dump(&AnyObject::KeyMap(Box::new(coord))).unwrap();
     assert_dump("sky_coord", &got, cases::SKY_COORD, "sky coord");
     assert_eq!(stc.region_class(), "Circle");
 

@@ -7,6 +7,7 @@
 //!
 //! The values come from `tools/oracle_fixtures/region_ellipse_probe.c`.
 
+use crate::common::native_dump;
 // Generated; formatted by its generator rather than rustfmt.
 // `test_region_ellipsepars_oracle` reads its form-0 dump.
 #[rustfmt::skip]
@@ -17,7 +18,7 @@ use ast_core::constants::BAD_VALUE;
 use ast_core::frames::{BasicFrameBuilder, Frame, SkyFrame, SkySystem};
 use ast_core::mappings::Mapping;
 use ast_core::regions::EllipseBuilder;
-use ast_core::{AnyObject, from_native_string, to_native_string};
+use ast_core::{AnyObject, from_native_string};
 
 #[test]
 fn membership_matches_the_c_library() {
@@ -52,7 +53,7 @@ fn built(frame: impl Frame + 'static, centre: [f64; 2], axes: [f64; 2], angle: f
         .unwrap()
         .build()
         .unwrap();
-    to_native_string(&AnyObject::from_mapping(&e as &dyn Mapping).unwrap()).unwrap()
+    native_dump(&AnyObject::from_mapping(&e as &dyn Mapping).unwrap()).unwrap()
 }
 
 /// `EllipseBuilder` takes the arguments of `astEllipse` form 1, the angle

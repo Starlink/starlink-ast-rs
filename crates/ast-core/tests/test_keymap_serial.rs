@@ -6,9 +6,10 @@
 //! `common::is_map_sz_card` and `tests/fixtures/oracle/keymap_mapsz.txt`.
 
 use crate::common;
+use crate::common::native_dump;
 
 use ast_core::keymap::{KeyMap, SortBy};
-use ast_core::{AnyObject, from_native_string, to_native_string};
+use ast_core::{AnyObject, from_native_string};
 use std::collections::BTreeMap;
 
 /// One card of a Native dump, with indentation removed.
@@ -214,7 +215,7 @@ fn the_c_fixture_keymap_round_trips() {
     }
     assert_eq!(km.map_length("Name"), 4);
 
-    let out = to_native_string(&AnyObject::KeyMap(km)).unwrap();
+    let out = native_dump(&AnyObject::KeyMap(km)).unwrap();
 
     let want = split_keymap(&block);
     let got = split_keymap(&out);
@@ -259,7 +260,7 @@ fn map_sz_card_of(text: &str) -> i64 {
 
 /// The `MapSz` a freshly dumped `KeyMap` carries.
 fn dumped_map_sz(km: &KeyMap) -> i64 {
-    let text = to_native_string(&AnyObject::KeyMap(Box::new(km.clone()))).unwrap();
+    let text = native_dump(&AnyObject::KeyMap(Box::new(km.clone()))).unwrap();
     map_sz_card_of(&text)
 }
 
@@ -447,13 +448,13 @@ fn map_sz_matches_c_oracle() {
 /// A dump that is not a fixed point means `to_node` and `from_node` disagree
 /// about some default, comment, or ordering.
 fn assert_double_round_trip(km: &KeyMap, name: &str) -> KeyMap {
-    let text1 = to_native_string(&AnyObject::KeyMap(Box::new(km.clone()))).unwrap();
+    let text1 = native_dump(&AnyObject::KeyMap(Box::new(km.clone()))).unwrap();
     let AnyObject::KeyMap(loaded) =
         from_native_string(&text1).unwrap_or_else(|e| panic!("{name}: load failed: {e}\n{text1}"))
     else {
         panic!("{name}: did not load as a KeyMap");
     };
-    let text2 = to_native_string(&AnyObject::KeyMap(loaded.clone())).unwrap();
+    let text2 = native_dump(&AnyObject::KeyMap(loaded.clone())).unwrap();
     assert_eq!(text1, text2, "{name}: dump is not a fixed point");
     *loaded
 }
@@ -537,7 +538,7 @@ fn a_bad_double_round_trips_as_bad() {
     )
     .unwrap();
 
-    let text = to_native_string(&AnyObject::KeyMap(Box::new(km.clone()))).unwrap();
+    let text = native_dump(&AnyObject::KeyMap(Box::new(km.clone()))).unwrap();
     // "bad" sorts before "part_bad" under key_cmp ('b' 0x62 < 'p' 0x70), so
     // the bad scalar is dumped as entry 1 and this checks Val1 specifically,
     // not "some Val card is missing".
@@ -599,7 +600,7 @@ fn a_non_first_object_vector_element_has_no_trailing_space() {
     )
     .unwrap();
 
-    let text = to_native_string(&AnyObject::KeyMap(Box::new(km.clone()))).unwrap();
+    let text = native_dump(&AnyObject::KeyMap(Box::new(km.clone()))).unwrap();
     // `normalise()` only trims leading whitespace, so check the raw line.
     let line = text
         .lines()
@@ -682,7 +683,7 @@ fn a_dump_is_independent_of_insertion_order() {
             let idx = (i + rotate) % keys.len();
             km.put_0i(keys[idx], idx as i32, None).unwrap();
         }
-        let text = to_native_string(&AnyObject::KeyMap(Box::new(km))).unwrap();
+        let text = native_dump(&AnyObject::KeyMap(Box::new(km))).unwrap();
         // MemCnt counts puts, not keys, so it is order-independent here only
         // because every rotation does the same number of fresh puts.
         match &first {

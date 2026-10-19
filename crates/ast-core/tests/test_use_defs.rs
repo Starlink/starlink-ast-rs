@@ -7,6 +7,7 @@
 //! (cmpframe.c, frameset.c `GetUseDefs`). A dump writes `UseDfs` when it is
 //! set (object.c `Dump`).
 
+use crate::common::native_dump;
 #[path = "use_defs_oracle/cases.rs"]
 mod cases;
 
@@ -14,7 +15,7 @@ use ast_core::frames::{
     BasicFrameBuilder, CmpFrame, Frame, FrameRef, FrameSet, SkyFrame, SpecFrame, TimeFrame,
 };
 use ast_core::mappings::UnitMap;
-use ast_core::{AnyObject, from_native_string, to_native_string};
+use ast_core::{AnyObject, from_native_string};
 
 fn basic(naxes: usize) -> ast_core::frames::BasicFrame {
     BasicFrameBuilder::new(naxes).build().unwrap()
@@ -76,7 +77,7 @@ fn use_defs_matches_the_c_library() {
         if got != (value, set) {
             failures.push(format!("{name}: got {got:?}, C gives {:?}", (value, set)));
         }
-        let written = to_native_string(&obj).unwrap();
+        let written = native_dump(&obj).unwrap();
         if written != dump {
             failures.push(format!("{name}: dump differs\n{written}\nC:\n{dump}"));
         }

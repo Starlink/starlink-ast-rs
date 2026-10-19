@@ -7,6 +7,7 @@
 //! transformations for a doubling function and one without a forward
 //! transformation, registered as here.
 
+use crate::common::native_dump;
 // Generated; formatted by its generator rather than rustfmt.
 #[rustfmt::skip]
 #[path = "intramap_oracle/cases.rs"]
@@ -21,7 +22,7 @@ use ast_core::error::{AstError, AstResult, ErrorCode};
 use ast_core::mappings::{
     CmpMap, Composition, IntraFlags, IntraMap, IntraRegistry, IntraTransform, Mapping, ZoomMap,
 };
-use ast_core::{AnyObject, from_native_string, from_native_string_with, to_native_string};
+use ast_core::{AnyObject, from_native_string, from_native_string_with};
 
 /// A doubling transformation, as the probe registers it: forward y = 2x,
 /// inverse x = y/2, bad staying bad.
@@ -98,7 +99,7 @@ fn nofwd() -> Arc<dyn IntraTransform> {
 }
 
 fn dump_of(map: &IntraMap) -> String {
-    to_native_string(&AnyObject::IntraMap(map.clone())).unwrap()
+    native_dump(&AnyObject::IntraMap(map.clone())).unwrap()
 }
 
 /// The dumps of the probe's IntraMaps, byte for byte against C's: the
@@ -240,7 +241,7 @@ fn from_native_string_with_reads_a_nested_intramap() {
         Composition::Series,
     )
     .unwrap();
-    let text = to_native_string(&AnyObject::CmpMap(cmp.clone())).unwrap();
+    let text = native_dump(&AnyObject::CmpMap(cmp.clone())).unwrap();
 
     let mut reg = IntraRegistry::new();
     reg.register(nofwd()).unwrap();
@@ -256,7 +257,7 @@ fn from_native_string_with_reads_a_nested_intramap() {
         .unwrap();
     assert_eq!(back.tran1(&[1.5], true).unwrap(), [9.0]);
     assert_eq!(
-        to_native_string(&AnyObject::from_mapping(back.as_ref()).unwrap()).unwrap(),
+        native_dump(&AnyObject::from_mapping(back.as_ref()).unwrap()).unwrap(),
         text
     );
 }

@@ -12,6 +12,7 @@
 //! as fixed upstream at `5ac21af5`: before it, adding a variant left the
 //! unset Domain of the current CmpFrame set.
 
+use crate::common::native_dump;
 #[rustfmt::skip]
 #[path = "frameset_variants_oracle/cases.rs"]
 mod cases;
@@ -21,7 +22,7 @@ use ast_core::frames::{
     SpecSystem,
 };
 use ast_core::mappings::{UnitMap, ZoomMap};
-use ast_core::{AnyObject, Channel, NativeChannel, from_native_string, to_native_string};
+use ast_core::{AnyObject, Channel, NativeChannel, from_native_string};
 
 fn basic(naxes: usize, domain: &str) -> DynFrame {
     Box::new(
@@ -75,14 +76,10 @@ fn frameset(name: &str) -> AnyObject {
 fn dumps_match_c() {
     for &(name, dump, reread, full) in cases::CASES {
         let fs = frameset(name);
-        let text = to_native_string(&fs).unwrap();
+        let text = native_dump(&fs).unwrap();
         assert_eq!(text, dump, "{name}: dump");
         let back = from_native_string(&text).unwrap();
-        assert_eq!(
-            to_native_string(&back).unwrap(),
-            reread,
-            "{name}: read back"
-        );
+        assert_eq!(native_dump(&back).unwrap(), reread, "{name}: read back");
 
         let mut ch = NativeChannel::with_string_sink();
         ch.config_mut().set_full(1);

@@ -3,6 +3,7 @@
 //! Ancestor: behaviour derived from the C AST CmpMap documentation and
 //! reference implementation.
 
+use crate::common::native_dump;
 use ast_core::constants::BAD_VALUE;
 use ast_core::coords::PointSet;
 use ast_core::mappings::{CmpMap, Composition, Mapping, ShiftMap, UnitMap, ZoomMap};
@@ -188,8 +189,8 @@ fn series_inverse_pair_of_mathmaps_cancels_to_unitmap() {
 /// before and after canonicalisation.
 #[test]
 fn parallel_with_inverted_cmpmap_child_canonicalises_for_serialisation() {
+    use ast_core::AnyObject;
     use ast_core::mappings::{DynMapping, MathMap};
-    use ast_core::{AnyObject, to_native_string};
     fn make_inner_series() -> CmpMap {
         let mut a = MathMap::new(1, 1, &["y=2*x"], &["x=0.5*y"]).unwrap();
         a.set_simp_fi(true);
@@ -217,7 +218,7 @@ fn parallel_with_inverted_cmpmap_child_canonicalises_for_serialisation() {
 
     let simp = outer_dyn.simplify().unwrap();
     let cmp = simp.as_any().downcast_ref::<CmpMap>().unwrap().clone();
-    let s = to_native_string(&AnyObject::CmpMap(cmp)).unwrap();
+    let s = native_dump(&AnyObject::CmpMap(cmp)).unwrap();
     // Outer should NOT carry InvA. Inner-A SHOULD carry InvA=1, InvB=1.
     // We check by counting Begin CmpMap occurrences and the position of
     // any InvA = 1 line.
@@ -282,8 +283,8 @@ fn cmpmap_equality_compares_components_as_applied() {
 /// construction.
 #[test]
 fn a_frameset_component_becomes_its_mapping() {
+    use ast_core::AnyObject;
     use ast_core::frames::{BasicFrameBuilder, FrameRef, FrameSet};
-    use ast_core::{AnyObject, to_native_string};
 
     let frame = || Box::new(BasicFrameBuilder::new(2).build().unwrap());
     let mut fs = FrameSet::new(frame());
@@ -313,5 +314,5 @@ fn a_frameset_component_becomes_its_mapping() {
     ]
     .join("\n")
         + "\n";
-    assert_eq!(to_native_string(&AnyObject::CmpMap(cmp)).unwrap(), want);
+    assert_eq!(native_dump(&AnyObject::CmpMap(cmp)).unwrap(), want);
 }

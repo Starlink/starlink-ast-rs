@@ -13,23 +13,24 @@
 //!
 //! The values come from `tools/oracle_fixtures/region_mapregion_probe.c`.
 
+use crate::common::native_dump;
 // Generated; formatted by its generator rather than rustfmt.
 #[rustfmt::skip]
 #[path = "region_mapregion_oracle/cases.rs"]
 mod cases;
 
+use ast_core::AnyObject;
 use ast_core::constants::BAD_VALUE;
 use ast_core::frames::{BasicFrame, BasicFrameBuilder};
 use ast_core::mappings::{Mapping, PermMap};
 use ast_core::regions::{BoxRegionBuilder, IntervalBuilder, Region};
-use ast_core::{AnyObject, to_native_string};
 
 fn frame(naxes: usize) -> BasicFrame {
     BasicFrameBuilder::new(naxes).build().unwrap()
 }
 
 fn dump(m: &dyn Mapping) -> String {
-    to_native_string(&AnyObject::from_mapping(m).unwrap()).unwrap()
+    native_dump(&AnyObject::from_mapping(m).unwrap()).unwrap()
 }
 
 #[test]

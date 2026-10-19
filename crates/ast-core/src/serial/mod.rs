@@ -2559,7 +2559,7 @@ pub(crate) fn any_object_from_node(node: &Node) -> AstResult<AnyObject> {
 }
 
 // ---------------------------------------------------------------------------
-// AnyObject → Node helper (used by Channel and to_native_string)
+// AnyObject → Node helper (used by Channel)
 // ---------------------------------------------------------------------------
 
 /// Convert an [`AnyObject`] reference to a [`Node`] tree.
@@ -2627,22 +2627,8 @@ pub(crate) fn any_object_to_node(obj: &AnyObject) -> AstResult<Node> {
 }
 
 // ---------------------------------------------------------------------------
-// Public API: to_native_string / from_native_string
+// Public API: from_native_string
 // ---------------------------------------------------------------------------
-
-/// Serialise any AST object to Native text format.
-///
-/// The returned string is in the AST Native serialisation format, compatible
-/// with the C library's `astWrite` / `astRead` channel functions.
-///
-/// This delegates to [`NativeChannel`](crate::channel::NativeChannel) with
-/// default configuration (comments enabled, full=0).
-pub fn to_native_string(obj: &AnyObject) -> AstResult<String> {
-    use crate::channel::{Channel, NativeChannel};
-    let mut ch = NativeChannel::with_string_sink();
-    ch.write(obj)?;
-    Ok(ch.into_string())
-}
 
 /// Deserialise an AST object from Native text format.
 ///

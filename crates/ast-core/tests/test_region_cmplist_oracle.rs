@@ -6,16 +6,17 @@
 //!
 //! The values come from `tools/oracle_fixtures/region_cmplist_probe.c`.
 
+use crate::common::native_dump;
 // Generated; formatted by its generator rather than rustfmt.
 #[rustfmt::skip]
 #[path = "region_cmplist_oracle/cases.rs"]
 mod cases;
 
+use ast_core::AnyObject;
 use ast_core::frames::BasicFrameBuilder;
 use ast_core::regions::{
     CircleBuilder, CmpOperator, CmpRegion, CmpRegionBuilder, DynRegion, Region,
 };
-use ast_core::{AnyObject, to_native_string};
 
 fn circle(x: f64) -> DynRegion {
     Box::new(
@@ -52,7 +53,7 @@ fn hand_xor() -> CmpRegion {
 }
 
 fn dump(r: &dyn Region) -> String {
-    to_native_string(&AnyObject::from_mapping(r).unwrap()).unwrap()
+    native_dump(&AnyObject::from_mapping(r).unwrap()).unwrap()
 }
 
 #[test]

@@ -9,13 +9,14 @@
 //! `tools/oracle_fixtures/remove_regions_probe.c`, against C with the
 //! TranMap dimensionality fix (upstream 80d66b0a).
 
+use crate::common::native_dump;
 // Generated; formatted by its generator rather than rustfmt.
 #[rustfmt::skip]
 #[path = "remove_regions_oracle/cases.rs"]
 mod cases;
 
 use ast_core::regions::remove_regions;
-use ast_core::{AnyObject, from_native_string, to_native_string};
+use ast_core::{AnyObject, from_native_string};
 
 fn text(lines: &[&str]) -> String {
     let mut s = lines.join("\n");
@@ -31,8 +32,7 @@ fn removing_regions_matches_the_c_library() {
         let map = obj.as_mapping().expect("a Mapping");
         let result = remove_regions(map);
         let got =
-            to_native_string(&AnyObject::from_mapping(result.as_ref()).expect("a known class"))
-                .unwrap();
+            native_dump(&AnyObject::from_mapping(result.as_ref()).expect("a known class")).unwrap();
         if got != text(want) {
             failures.push(format!("{name}:\n{got}\nC gives:\n{}", text(want)));
         }

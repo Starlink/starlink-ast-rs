@@ -5,17 +5,18 @@
 //!
 //! The values come from `tools/oracle_fixtures/region_convex_probe.c`.
 
+use crate::common::native_dump;
 // Generated; formatted by its generator rather than rustfmt.
 #[rustfmt::skip]
 #[path = "region_convex_oracle/cases.rs"]
 mod cases;
 
+use ast_core::AnyObject;
 use ast_core::regions::{PixelOper, Polygon};
-use ast_core::{AnyObject, to_native_string};
 
 fn dump(poly: Option<Polygon>) -> String {
     poly.map_or_else(String::new, |p| {
-        to_native_string(&AnyObject::Polygon(p)).unwrap()
+        native_dump(&AnyObject::Polygon(p)).unwrap()
     })
 }
 

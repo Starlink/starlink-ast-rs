@@ -4,12 +4,13 @@
 //! forward/inverse transforms, BAD propagation, attribute access,
 //! inversion, and serialisation round-trips.
 
+use crate::common::native_dump;
 use std::f64::consts::{FRAC_PI_2, PI};
 
 use ast_core::constants::BAD_VALUE;
 use ast_core::coords::PointSet;
 use ast_core::mappings::{Mapping, SphMap};
-use ast_core::{AnyObject, from_native_string, to_native_string};
+use ast_core::{AnyObject, from_native_string};
 
 const TOL: f64 = 1.0e-10;
 
@@ -316,7 +317,7 @@ fn sphmap_cancellation_requires_matching_polar_long() {
 #[test]
 fn serialise_default() {
     let m = SphMap::new();
-    let s = to_native_string(&AnyObject::SphMap(m)).unwrap();
+    let s = native_dump(&AnyObject::SphMap(m)).unwrap();
     assert!(s.contains("SphMap"));
     let obj = from_native_string(&s).unwrap();
     let m2 = obj.as_mapping().unwrap();
@@ -330,7 +331,7 @@ fn serialise_with_attributes() {
     let mut m = SphMap::new();
     m.set_unit_radius(true);
     m.set_polar_long(1.5);
-    let s = to_native_string(&AnyObject::SphMap(m)).unwrap();
+    let s = native_dump(&AnyObject::SphMap(m)).unwrap();
     assert!(s.contains("UntRd"));
     assert!(s.contains("PlrLg"));
     let obj = from_native_string(&s).unwrap();
@@ -346,7 +347,7 @@ fn serialise_with_attributes() {
 fn serialise_inverted() {
     let mut m = SphMap::new();
     m.invert();
-    let s = to_native_string(&AnyObject::SphMap(m)).unwrap();
+    let s = native_dump(&AnyObject::SphMap(m)).unwrap();
     let obj = from_native_string(&s).unwrap();
     let m2 = obj.as_mapping().unwrap();
     assert!(m2.is_inverted());
@@ -361,7 +362,7 @@ fn serialise_transform_equivalence() {
     let pts = PointSet::from_rows([[0.3, 0.5, 0.8]]);
     let out1 = m.transform(&pts, true).unwrap();
 
-    let s = to_native_string(&AnyObject::SphMap(m)).unwrap();
+    let s = native_dump(&AnyObject::SphMap(m)).unwrap();
     let obj = from_native_string(&s).unwrap();
     let m2 = obj.as_mapping().unwrap();
     let out2 = m2.transform(&pts, true).unwrap();

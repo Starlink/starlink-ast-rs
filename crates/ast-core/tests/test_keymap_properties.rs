@@ -3,9 +3,10 @@
 //! The two invariants that make the `HashMap`-backed storage safe: a dump is
 //! independent of insertion order, and a dump/load cycle is a fixed point.
 
+use crate::common::native_dump;
 use ast_core::constants::BAD_VALUE;
 use ast_core::keymap::KeyMap;
-use ast_core::{AnyObject, AstType, SortBy, from_native_string, to_native_string};
+use ast_core::{AnyObject, AstType, SortBy, from_native_string};
 
 /// A deterministic xorshift generator. Fixed seeds keep a CI failure
 /// reproducible; `HashMap`'s own iteration order varies per process, which is
@@ -185,7 +186,7 @@ fn apply(km: &mut KeyMap, puts: &[Put]) {
 }
 
 fn dump(km: &KeyMap) -> String {
-    to_native_string(&AnyObject::KeyMap(Box::new(km.clone()))).unwrap()
+    native_dump(&AnyObject::KeyMap(Box::new(km.clone()))).unwrap()
 }
 
 fn load(text: &str) -> KeyMap {
@@ -295,7 +296,7 @@ fn a_dump_load_cycle_is_a_fixed_point() {
 /// Recursively dump a nested Object so that two Object entries can be
 /// compared by content — `AnyObject` has no equality relation.
 fn dump_object(obj: &Option<AnyObject>) -> Option<String> {
-    obj.as_ref().map(|o| to_native_string(o).unwrap())
+    obj.as_ref().map(|o| native_dump(o).unwrap())
 }
 
 #[test]

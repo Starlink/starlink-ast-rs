@@ -2,11 +2,12 @@
 //!
 //! Ported from C's testchebymap.c and the Step 6 design spec.
 
+use crate::common::native_dump;
 use ast_core::constants::BAD_VALUE;
 use ast_core::coords::PointSet;
 use ast_core::error::ErrorCode;
 use ast_core::mappings::{ChebyMap, Mapping, PolyTerm, UnitMap};
-use ast_core::{AnyObject, from_native_string, to_native_string};
+use ast_core::{AnyObject, from_native_string};
 
 // ---------------------------------------------------------------------------
 // Construction and basic properties
@@ -653,7 +654,7 @@ fn chebymap_serialisation_roundtrip() {
     )
     .unwrap();
 
-    let native = to_native_string(&AnyObject::ChebyMap(m.clone())).unwrap();
+    let native = native_dump(&AnyObject::ChebyMap(m.clone())).unwrap();
     let obj = from_native_string(&native).unwrap();
     let m2 = match obj {
         AnyObject::ChebyMap(c) => c,
@@ -706,7 +707,7 @@ fn chebymap_serialisation_forward_only() {
     ];
     let m = ChebyMap::new(1, 1, &fwd, None, &[-5.0], &[5.0], None, None).unwrap();
 
-    let native = to_native_string(&AnyObject::ChebyMap(m.clone())).unwrap();
+    let native = native_dump(&AnyObject::ChebyMap(m.clone())).unwrap();
     let obj = from_native_string(&native).unwrap();
     let m2 = match obj {
         AnyObject::ChebyMap(c) => c,
@@ -756,7 +757,7 @@ fn chebymap_2d_serialisation_roundtrip() {
     ];
     let m = ChebyMap::new(2, 2, &fwd, None, &[0.0, 0.0], &[10.0, 20.0], None, None).unwrap();
 
-    let native = to_native_string(&AnyObject::ChebyMap(m.clone())).unwrap();
+    let native = native_dump(&AnyObject::ChebyMap(m.clone())).unwrap();
     let obj = from_native_string(&native).unwrap();
     let m2 = match obj {
         AnyObject::ChebyMap(c) => c,
@@ -793,7 +794,7 @@ fn chebymap_serialisation_preserves_class() {
     }];
     let m = ChebyMap::new(1, 1, &terms, None, &[0.0], &[10.0], None, None).unwrap();
 
-    let native = to_native_string(&AnyObject::ChebyMap(m)).unwrap();
+    let native = native_dump(&AnyObject::ChebyMap(m)).unwrap();
     assert!(
         native.contains("ChebyMap"),
         "native string should contain ChebyMap class name"
@@ -1400,7 +1401,7 @@ fn c_1d_poly_tran_wide() {
     let cm3 = cm2.clone();
     assert!(cm2.equal(&cm3), "Error 9");
     let back =
-        from_native_string(&to_native_string(&AnyObject::ChebyMap(cm2.clone())).unwrap()).unwrap();
+        from_native_string(&native_dump(&AnyObject::ChebyMap(cm2.clone())).unwrap()).unwrap();
     let AnyObject::ChebyMap(back) = back else {
         panic!("Error -2: not a ChebyMap");
     };

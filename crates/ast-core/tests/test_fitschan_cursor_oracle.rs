@@ -9,6 +9,7 @@
 //! public API and the two transcripts compared byte for byte. The probe's
 //! header describes the operations.
 
+use crate::common::native_dump;
 // Generated; formatted by its generator rather than rustfmt.
 #[rustfmt::skip]
 #[path = "fitschan_cursor_oracle/cases.rs"]
@@ -402,7 +403,7 @@ fn run(fc: &mut FitsChan, op: &str, out: &mut String, h: &mut Harness) {
                     _ => "another class",
                 };
                 let mut out = format!("= {class}\n");
-                for line in ast_core::to_native_string(&obj).unwrap().lines() {
+                for line in native_dump(&obj).unwrap().lines() {
                     out.push_str(&format!("|{line}\n"));
                 }
                 out

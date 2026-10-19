@@ -14,11 +14,12 @@
 //! `other_log_crval_zero` case needs the C fix f6c0d187, without which C
 //! crashes.
 
+use crate::common::native_dump;
 #[rustfmt::skip]
 #[path = "fitschan_read_chain_oracle/cases.rs"]
 mod cases;
 
-use ast_core::{Channel, FitsChan, to_native_string};
+use ast_core::{Channel, FitsChan};
 
 /// The transcript the port gives for `header`.
 fn transcript(header: &[&str]) -> String {
@@ -30,7 +31,7 @@ fn transcript(header: &[&str]) -> String {
     match fc.read() {
         Err(e) => format!("! {}\n", e.code() as u32),
         Ok(None) => "= none\n".to_string(),
-        Ok(Some(obj)) => to_native_string(&obj).unwrap(),
+        Ok(Some(obj)) => native_dump(&obj).unwrap(),
     }
 }
 

@@ -2,11 +2,12 @@
 //!
 //! Ported from C's testlutmap.c and the Step 6 design spec.
 
+use crate::common::native_dump;
 use ast_core::constants::BAD_VALUE;
 use ast_core::coords::PointSet;
 use ast_core::error::ErrorCode;
 use ast_core::mappings::{CmpMap, Composition, LutInterp, LutMap, Mapping, UnitMap};
-use ast_core::{AnyObject, from_native_string, to_native_string};
+use ast_core::{AnyObject, from_native_string};
 
 // ---------------------------------------------------------------------------
 // Construction
@@ -391,7 +392,7 @@ fn lutmap_rate() {
 #[test]
 fn lutmap_serialisation_round_trip() {
     let m = LutMap::new(&[0.0, 10.0, 20.0, 30.0], 5.0, 2.0).unwrap();
-    let text = to_native_string(&AnyObject::LutMap(m.clone())).unwrap();
+    let text = native_dump(&AnyObject::LutMap(m.clone())).unwrap();
     let restored = from_native_string(&text).unwrap();
     let m2 = restored.into_mapping().unwrap();
 
@@ -410,7 +411,7 @@ fn lutmap_serialisation_round_trip() {
 #[test]
 fn lutmap_serialisation_text_content() {
     let m = LutMap::new(&[0.0, 10.0, 20.0, 30.0], 5.0, 2.0).unwrap();
-    let text = to_native_string(&AnyObject::LutMap(m)).unwrap();
+    let text = native_dump(&AnyObject::LutMap(m)).unwrap();
     assert!(text.contains("Begin LutMap"), "missing Begin LutMap");
     assert!(text.contains("Nlut"), "missing Nlut");
     assert!(text.contains("Start"), "missing Start");
@@ -425,7 +426,7 @@ fn lutmap_serialisation_default_commented() {
     // start=0 and inc=1 are defaults; both should appear commented to
     // match the C library's Dump output (`astWriteDouble` with helpful=1).
     let m = LutMap::new(&[0.0, 10.0, 20.0], 0.0, 1.0).unwrap();
-    let text = to_native_string(&AnyObject::LutMap(m)).unwrap();
+    let text = native_dump(&AnyObject::LutMap(m)).unwrap();
     assert!(
         text.contains("# ") && text.contains("Start = 0"),
         "Start should be commented for default 0"
@@ -440,7 +441,7 @@ fn lutmap_serialisation_default_commented() {
 fn lutmap_serialisation_nearest_interp() {
     let mut m = LutMap::new(&[0.0, 10.0, 20.0], 0.0, 1.0).unwrap();
     m.set_interp(LutInterp::Nearest);
-    let text = to_native_string(&AnyObject::LutMap(m)).unwrap();
+    let text = native_dump(&AnyObject::LutMap(m)).unwrap();
     assert!(
         text.contains("LutInt"),
         "LutInt should be present for Nearest"
@@ -459,7 +460,7 @@ fn lutmap_serialisation_nearest_interp() {
 fn lutmap_serialisation_bad_entries() {
     // BAD entries should not be written to the node (missing = BAD default)
     let m = LutMap::new(&[0.0, BAD_VALUE, 20.0], 0.0, 1.0).unwrap();
-    let text = to_native_string(&AnyObject::LutMap(m.clone())).unwrap();
+    let text = native_dump(&AnyObject::LutMap(m.clone())).unwrap();
     // L1 and L3 should be present, L2 should not
     assert!(text.contains("L1"), "L1 should be present");
     assert!(!text.contains("L2"), "L2 should be omitted for BAD_VALUE");
@@ -478,7 +479,7 @@ fn lutmap_serialisation_bad_entries() {
 fn lutmap_serialisation_inverted() {
     let mut m = LutMap::new(&[0.0, 10.0, 20.0], 0.0, 1.0).unwrap();
     m.invert();
-    let text = to_native_string(&AnyObject::LutMap(m)).unwrap();
+    let text = native_dump(&AnyObject::LutMap(m)).unwrap();
     assert!(text.contains("Invert"), "Invert should be present");
 
     let restored = from_native_string(&text).unwrap();

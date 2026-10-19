@@ -13,18 +13,19 @@
 //! Region that is not Adaptive; fixed upstream (bb287a61), which the probe
 //! needs.
 
+use crate::common::native_dump;
 // Generated; formatted by its generator rather than rustfmt.
 #[rustfmt::skip]
 #[path = "region_attrib_oracle/cases.rs"]
 mod cases;
 
+use ast_core::AnyObject;
 use ast_core::frames::{BasicFrameBuilder, Frame};
 use ast_core::mappings::Mapping;
 use ast_core::regions::{
     BoxRegionBuilder, CmpOperator, CmpRegionBuilder, DynRegion, IntervalBuilder, PrismBuilder,
     Region,
 };
-use ast_core::{AnyObject, to_native_string};
 
 /// The unit square in a Frame with axes in metres and ActiveUnit set.
 fn metre_box() -> DynRegion {
@@ -146,8 +147,7 @@ fn settings_match_the_c_library() {
         let reg = region(name);
         assert_eq!(inside(reg.as_ref()), want_inside, "{name}: (0.5, 0.5)");
         let dump =
-            to_native_string(&AnyObject::from_mapping(reg.as_ref() as &dyn Mapping).unwrap())
-                .unwrap();
+            native_dump(&AnyObject::from_mapping(reg.as_ref() as &dyn Mapping).unwrap()).unwrap();
         assert_eq!(dump, want_dump, "{name}: dump");
     }
 }

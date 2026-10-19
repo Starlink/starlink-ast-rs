@@ -7,6 +7,7 @@
 //!
 //! The values come from `tools/oracle_fixtures/region_attr_test_probe.c`.
 
+use crate::common::native_dump;
 // Generated; formatted by its generator rather than rustfmt.
 #[rustfmt::skip]
 #[path = "region_attr_test_oracle/cases.rs"]
@@ -14,7 +15,7 @@ mod cases;
 
 use ast_core::frames::BasicFrameBuilder;
 use ast_core::regions::{BoxRegionBuilder, DynRegion, Region};
-use ast_core::{AnyObject, from_native_string, to_native_string};
+use ast_core::{AnyObject, from_native_string};
 
 fn state(r: &dyn Region) -> [bool; 6] {
     [
@@ -28,7 +29,7 @@ fn state(r: &dyn Region) -> [bool; 6] {
 }
 
 fn reread(r: &dyn Region) -> DynRegion {
-    let text = to_native_string(&AnyObject::from_mapping(r).unwrap()).unwrap();
+    let text = native_dump(&AnyObject::from_mapping(r).unwrap()).unwrap();
     from_native_string(&text).unwrap().into_region().unwrap()
 }
 
@@ -80,6 +81,6 @@ fn not_adaptive_dump_matches_the_c_library() {
     .build()
     .unwrap();
     bx.set_adaptive(false);
-    let text = to_native_string(&AnyObject::from_mapping(&bx).unwrap()).unwrap();
+    let text = native_dump(&AnyObject::from_mapping(&bx).unwrap()).unwrap();
     assert_eq!(text, cases::NOT_ADAPTIVE_DUMP);
 }

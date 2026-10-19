@@ -3,6 +3,8 @@
 
 #![allow(clippy::approx_constant)] // 3.14 is intentional opaque test value, not π
 
+use crate::common::native_dump;
+
 use std::f64::consts::{FRAC_PI_2, PI};
 
 use ast_core::constants::BAD_VALUE;
@@ -145,7 +147,7 @@ fn cmpframe_axis_permutation_round_trips() {
     // per-axis labels let us confirm each external axis still maps to
     // the right child axis after round-trip.
     use ast_core::frames::Frame;
-    use ast_core::{AnyObject, from_native_string, to_native_string};
+    use ast_core::{AnyObject, from_native_string};
 
     let f1 = BasicFrameBuilder::new(2)
         .label(1, "lon")
@@ -161,7 +163,7 @@ fn cmpframe_axis_permutation_round_trips() {
     let labels_before: Vec<String> = (1..=3).map(|a| cmp.label(a).unwrap()).collect();
     assert_eq!(labels_before, ["wave", "lon", "lat"]);
 
-    let text = to_native_string(&AnyObject::CmpFrame(cmp)).unwrap();
+    let text = native_dump(&AnyObject::CmpFrame(cmp)).unwrap();
     assert!(
         text.contains("Axp1"),
         "permuted CmpFrame must emit Axp tokens:\n{text}"

@@ -7,6 +7,7 @@
 //! settings through the public API, so the test also shows which method
 //! corresponds to each C attribute.
 
+use crate::common::native_dump;
 // Generated; formatted by its generator rather than rustfmt.
 #[rustfmt::skip]
 #[path = "skyframe_attrs_oracle/cases.rs"]
@@ -15,7 +16,7 @@ mod cases;
 use cases::V;
 
 use ast_core::frames::{Frame, SkyFrame, SkyRefIs, SkySystem};
-use ast_core::{AnyObject, from_native_string, to_native_string};
+use ast_core::{AnyObject, from_native_string};
 
 /// A default SkyFrame with each `;`-separated setting applied in turn, as
 /// the probe applies them.
@@ -161,7 +162,7 @@ fn dump_matches_the_c_library() {
     let mut failures = Vec::new();
     for &(setting, expected) in cases::DUMP_CASES {
         let f = sky_frame(setting);
-        let written = to_native_string(&AnyObject::SkyFrame(f)).unwrap();
+        let written = native_dump(&AnyObject::SkyFrame(f)).unwrap();
         if written != expected {
             failures.push(format!(
                 "dump for {setting:?}:\n--- port\n{written}--- C\n{expected}"
@@ -169,7 +170,7 @@ fn dump_matches_the_c_library() {
             continue;
         }
         let read = from_native_string(expected).unwrap();
-        let rewritten = to_native_string(&read).unwrap();
+        let rewritten = native_dump(&read).unwrap();
         if rewritten != expected {
             failures.push(format!(
                 "round trip of C's dump for {setting:?}:\n--- port\n{rewritten}--- C\n{expected}"

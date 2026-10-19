@@ -7,16 +7,17 @@
 //! whose per-axis items (`Lbl1`, `Fmt2`, ...) override the Axis objects,
 //! which have no axes, or which name a System the class does not know.
 
+use crate::common::native_dump;
 // Generated; formatted by its generator rather than rustfmt.
 #[rustfmt::skip]
 #[path = "frame_load_oracle/cases.rs"]
 mod cases;
 
 use ast_core::frames::{Frame, SpecFrame, SpecSystem, TimeFrame, TimeSystem};
-use ast_core::{AnyObject, from_native_string, to_native_string};
+use ast_core::{AnyObject, from_native_string};
 
 fn round_trip(f: &dyn Frame, obj: AnyObject) -> Box<dyn Frame> {
-    let text = to_native_string(&obj).unwrap();
+    let text = native_dump(&obj).unwrap();
     let back = from_native_string(&text).unwrap();
     let frame = back.as_frame().expect("a Frame");
     assert_eq!(frame.naxes(), f.naxes());

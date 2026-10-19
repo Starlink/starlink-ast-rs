@@ -23,6 +23,7 @@
 //! makes the assertions falsifiable — it pins an operation C does *not* cover,
 //! so the flag has to be able to survive.
 
+use crate::common::native_dump;
 use ast_core::constants::BAD_VALUE;
 use ast_core::coords::PointSet;
 use ast_core::error::ErrorCode;
@@ -30,7 +31,7 @@ use ast_core::mappings::{
     GrismMap, LutInterp, LutMap, Mapping, MathMap, PcdMap, PermMap, PolyMap, PolyTerm, ShiftMap,
     SphMap, SplineMap, WcsMap, WcsProjection, ZoomMap,
 };
-use ast_core::{AnyObject, from_native_string, to_native_string};
+use ast_core::{AnyObject, from_native_string};
 
 /// Record the flag on `m`, run `mutate`, and require the flag to be gone.
 fn discards<M: Mapping>(mut m: M, what: &str, mutate: impl FnOnce(&mut M)) {
@@ -349,7 +350,7 @@ fn grism_setters_recompute_the_constants() {
 fn grism_sentinel_restores_the_default_and_untests_the_attribute() {
     let mut m = GrismMap::new(1.5, 0.0, 6000.0, 0.0, 1000.0, 1, 0.0, 0.0);
     assert!(
-        to_native_string(&AnyObject::GrismMap(m.clone()))
+        native_dump(&AnyObject::GrismMap(m.clone()))
             .unwrap()
             .contains("GrmNR = 1.5"),
         "a constructed GrismMap should write GrmNR as a set card"
@@ -358,7 +359,7 @@ fn grism_sentinel_restores_the_default_and_untests_the_attribute() {
     m.set_grism_nr(BAD_VALUE);
     assert_eq!(m.grism_nr(), 1.0, "the sentinel should restore the default");
 
-    let dump = to_native_string(&AnyObject::GrismMap(m)).unwrap();
+    let dump = native_dump(&AnyObject::GrismMap(m)).unwrap();
     assert!(
         dump.contains("#   GrmNR = 1 "),
         "the sentinel should leave GrmNR untested, so the card is commented out; got:\n{dump}"
@@ -400,7 +401,7 @@ fn record_survives_invert_and_back() {
 fn load_preserves(mut m: impl Mapping, what: &str) {
     m.set_has_been_simplified(true);
     let obj = AnyObject::from_mapping(&m).expect("class is not in AnyObject");
-    let text = to_native_string(&obj).expect("dump failed");
+    let text = native_dump(&obj).expect("dump failed");
     assert!(
         text.contains("IsSimp"),
         "{what}: the dump carries no IsSimp card, so the case proves nothing"
@@ -468,7 +469,7 @@ fn re_setting_an_explicit_seed_to_the_same_value_keeps_the_record() {
 fn load_keeps_the_record_for_a_class_that_routes_nothing() {
     let mut m = ShiftMap::new([1.0, 2.0]);
     m.set_has_been_simplified(true);
-    let text = to_native_string(&AnyObject::from_mapping(&m).unwrap()).unwrap();
+    let text = native_dump(&AnyObject::from_mapping(&m).unwrap()).unwrap();
     let back = from_native_string(&text).unwrap();
     assert!(
         back.as_mapping().unwrap().has_been_simplified(),

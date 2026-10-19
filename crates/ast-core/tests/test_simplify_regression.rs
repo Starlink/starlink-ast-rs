@@ -13,14 +13,15 @@
 //!      the native serialization of the simplified result must match the
 //!      .simp file, numeric tokens equal to within 4 ULP.
 
+use crate::common::native_dump;
 use std::path::PathBuf;
 
 use crate::common::from_native_string;
+use ast_core::AnyObject;
 use ast_core::constants::BAD_VALUE;
 use ast_core::coords::PointSet;
 use ast_core::frames::FrameRef;
 use ast_core::mappings::Mapping;
-use ast_core::{AnyObject, to_native_string};
 
 use crate::common;
 
@@ -467,7 +468,7 @@ fn mapping_to_any_object(m: &dyn Mapping) -> Option<AnyObject> {
 
 /// Render `m` with the default options (comments on, indent 3).
 fn mapping_to_native_string(m: &dyn Mapping) -> Option<String> {
-    to_native_string(&mapping_to_any_object(m)?).ok()
+    native_dump(&mapping_to_any_object(m)?).ok()
 }
 
 /// `m` written to a dump and read back, as the C harness reads the
@@ -1868,7 +1869,6 @@ fn count_class(serialized: &str, class: &str) -> usize {
 fn render_mapping(m: &dyn Mapping) -> String {
     use ast_core::AnyObject;
     use ast_core::mappings::{CmpMap, MatrixMap, PermMap, ShiftMap, WinMap, ZoomMap};
-    use ast_core::to_native_string;
 
     let obj = if let Some(x) = m.as_any().downcast_ref::<CmpMap>() {
         AnyObject::CmpMap(x.clone())
@@ -1885,7 +1885,7 @@ fn render_mapping(m: &dyn Mapping) -> String {
     } else {
         return format!("{m:?}");
     };
-    to_native_string(&obj).unwrap_or_else(|e| format!("(serialize failed: {e})"))
+    native_dump(&obj).unwrap_or_else(|e| format!("(serialize failed: {e})"))
 }
 
 /// WinMap before a parallel CmpMap whose branches each contain a non-linear

@@ -1,7 +1,8 @@
+use crate::common::native_dump;
 use ast_core::constants::BAD_VALUE;
 use ast_core::coords::PointSet;
 use ast_core::mappings::{Mapping, WinMap};
-use ast_core::{AnyObject, from_native_string, to_native_string};
+use ast_core::{AnyObject, from_native_string};
 
 #[test]
 fn winmap_dimensions() {
@@ -153,7 +154,7 @@ fn winmap_invert_flag() {
 #[test]
 fn winmap_serialisation_round_trip() {
     let m = WinMap::new(&[10.0, 20.0], &[2.0, 3.0]).unwrap();
-    let text = to_native_string(&AnyObject::WinMap(m.clone())).unwrap();
+    let text = native_dump(&AnyObject::WinMap(m.clone())).unwrap();
     let restored = from_native_string(&text).unwrap();
     let m2 = restored.into_mapping().unwrap();
 
@@ -167,7 +168,7 @@ fn winmap_serialisation_round_trip() {
 #[test]
 fn winmap_serialisation_text_content() {
     let m = WinMap::new(&[10.0, 20.0], &[2.0, 3.0]).unwrap();
-    let text = to_native_string(&AnyObject::WinMap(m)).unwrap();
+    let text = native_dump(&AnyObject::WinMap(m)).unwrap();
     assert!(text.contains("Begin WinMap"));
     assert!(text.contains("Sft1"));
     assert!(text.contains("Sft2"));
@@ -180,7 +181,7 @@ fn winmap_serialisation_text_content() {
 fn winmap_serialisation_default_omission() {
     // Zero shifts and unit scales are omitted from native output
     let m = WinMap::new(&[0.0, 0.0], &[1.0, 1.0]).unwrap();
-    let text = to_native_string(&AnyObject::WinMap(m)).unwrap();
+    let text = native_dump(&AnyObject::WinMap(m)).unwrap();
     assert!(text.contains("Begin WinMap"));
     assert!(!text.contains("Sft1"));
     assert!(!text.contains("Sft2"));
@@ -411,7 +412,7 @@ fn offdiagonal_cd_chain_fuses_deg2rad_into_the_matrixmap() {
         .as_any()
         .downcast_ref::<CmpMap>()
         .expect("simplified chain is a series CmpMap");
-    let text = to_native_string(&AnyObject::CmpMap(outer.clone())).unwrap();
+    let text = native_dump(&AnyObject::CmpMap(outer.clone())).unwrap();
 
     // Exactly three leaves, in series order: ShiftMap, MatrixMap, WcsMap. No
     // WinMap survives, and no second MatrixMap is stranded behind the
@@ -493,7 +494,7 @@ fn nonuniform_cdelt_chain_keeps_deg2rad_in_the_winmap() {
         .as_any()
         .downcast_ref::<CmpMap>()
         .expect("simplified chain is a series CmpMap");
-    let text = to_native_string(&AnyObject::CmpMap(outer.clone())).unwrap();
+    let text = native_dump(&AnyObject::CmpMap(outer.clone())).unwrap();
 
     // Three leaves: the fused PC·CDELT matrix first, then the WinMap carrying
     // the CRPIX shift and the deg2rad scaling, then the projection. No
@@ -544,7 +545,7 @@ fn winmap_merge_with_a_bad_term_is_undefined() {
     let m: DynMapping = Box::new(CmpMap::new(w, s, Composition::Series).unwrap());
     let simplified = m.simplify().unwrap();
     assert!(simplified.as_any().is::<WinMap>());
-    let dump = to_native_string(&AnyObject::from_mapping(simplified.as_ref()).unwrap()).unwrap();
+    let dump = native_dump(&AnyObject::from_mapping(simplified.as_ref()).unwrap()).unwrap();
     assert!(
         dump.contains("Sft1 = <bad>") && dump.contains("Scl1 = <bad>"),
         "{dump}"

@@ -3,10 +3,11 @@
 //! Ported from reference/starlink-ast/ast_tester concepts and the
 //! simplify fixture tests.
 
+use crate::common::native_dump;
 use ast_core::constants::BAD_VALUE;
 use ast_core::coords::PointSet;
 use ast_core::mappings::{Mapping, SplineMap};
-use ast_core::{AnyObject, from_native_string, to_native_string};
+use ast_core::{AnyObject, from_native_string};
 
 /// Helper to build a simple order-1 (linear) SplineMap with known behaviour.
 ///
@@ -262,7 +263,7 @@ fn test_equal_inverted_not_equal() {
 fn test_serialization_roundtrip() {
     let m = make_perturbed_identity();
     let obj = AnyObject::SplineMap(m.clone());
-    let native_str = to_native_string(&obj).unwrap();
+    let native_str = native_dump(&obj).unwrap();
 
     // Verify we can read it back
     let obj2 = from_native_string(&native_str).unwrap();
@@ -286,7 +287,7 @@ fn test_serialization_roundtrip_with_attributes() {
     m.set_out_unit(true);
 
     let obj = AnyObject::SplineMap(m);
-    let native_str = to_native_string(&obj).unwrap();
+    let native_str = native_dump(&obj).unwrap();
     let obj2 = from_native_string(&native_str).unwrap();
     let m2 = match obj2 {
         AnyObject::SplineMap(s) => s,

@@ -7,6 +7,7 @@
 //! setting string through the public `BasicFrame` API, so the test also shows
 //! which method corresponds to each C attribute.
 
+use crate::common::native_dump;
 // Generated; formatted by its generator rather than rustfmt.
 #[rustfmt::skip]
 #[path = "frame_oracle/cases.rs"]
@@ -15,7 +16,7 @@ mod cases;
 use cases::V;
 
 use ast_core::frames::{BasicFrame, BasicFrameBuilder, Frame, FrameSystem};
-use ast_core::{AnyObject, from_native_string, to_native_string};
+use ast_core::{AnyObject, from_native_string};
 
 /// Degrees in a sexagesimal or decimal string such as `10:20:30`, `-30`.
 fn degrees(text: &str) -> f64 {
@@ -221,13 +222,13 @@ fn every_attribute_matches_the_c_library() {
 fn dump_matches_the_c_library() {
     for &(setting, expected) in cases::DUMP_CASES {
         let f = frame(setting);
-        let written = to_native_string(&AnyObject::BasicFrame(f.clone())).unwrap();
+        let written = native_dump(&AnyObject::BasicFrame(f.clone())).unwrap();
         assert_eq!(written, expected, "dump for {setting:?}");
 
         let AnyObject::BasicFrame(read) = from_native_string(expected).unwrap() else {
             panic!("not a Frame");
         };
-        let rewritten = to_native_string(&AnyObject::BasicFrame(read.clone())).unwrap();
+        let rewritten = native_dump(&AnyObject::BasicFrame(read.clone())).unwrap();
         assert_eq!(
             rewritten, expected,
             "round trip of C's dump for {setting:?}"
@@ -281,7 +282,7 @@ fn clearing_restores_every_default() {
         .find(|(s, _)| *s == " ")
         .expect("the default case");
     assert_eq!(
-        to_native_string(&AnyObject::BasicFrame(f)).unwrap(),
+        native_dump(&AnyObject::BasicFrame(f)).unwrap(),
         *default_dump
     );
 }

@@ -9,6 +9,7 @@
 //! than a test: `Mapping::simplified` takes a `ViaSimplify`, which only
 //! `mappings::simplify_entry` can construct.
 
+use crate::common::native_dump;
 use std::path::{Path, PathBuf};
 
 /// Port files whose C counterpart overrides the `Simplify` vtab slot.
@@ -111,7 +112,7 @@ fn only_c_simplify_classes_implement_simplified() {
 #[test]
 fn frameset_with_no_reducible_edge_returns_the_original() {
     use ast_core::mappings::Mapping;
-    use ast_core::{AnyObject, from_native_string, to_native_string};
+    use ast_core::{AnyObject, from_native_string};
 
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/simplify");
     let input = std::fs::read_to_string(dir.join("cap_frameset_nochange.map")).expect("read .map");
@@ -127,7 +128,7 @@ fn frameset_with_no_reducible_edge_returns_the_original() {
         matches!(obj, AnyObject::FrameSet(_)),
         "C returns the FrameSet itself, not the Mapping it composes"
     );
-    let got = to_native_string(&obj).expect("serialise");
+    let got = native_dump(&obj).expect("serialise");
 
     assert_eq!(
         got.trim_end(),

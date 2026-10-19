@@ -14,11 +14,12 @@
 //! functions over a static array. The C sink drops blank lines; none is
 //! written.
 
+use crate::common::native_dump;
 use ast_core::error::ErrorCode;
 use ast_core::frames::{SkyFrame, SkySystem};
 use ast_core::mappings::Mapping;
 use ast_core::regions::{CircleBuilder, CmpOperator, Moc};
-use ast_core::{AnyObject, Channel, MocChan, MocFormat, from_native_string, to_native_string};
+use ast_core::{AnyObject, Channel, MocChan, MocFormat, from_native_string};
 
 /// Write `moc` through a MocChan with the given format, returning the lines.
 fn write(moc: &Moc, format: MocFormat) -> String {
@@ -101,7 +102,7 @@ fn dump_names_the_format() {
     for (format, name) in [(MocFormat::String, "STRING"), (MocFormat::Json, "JSON")] {
         let mut ch = MocChan::new();
         ch.set_moc_format(format);
-        let text = to_native_string(&AnyObject::MocChan(Box::new(ch))).unwrap();
+        let text = native_dump(&AnyObject::MocChan(Box::new(ch))).unwrap();
         assert!(text.contains(&format!("MocEnc = \"{name}\"")), "{text}");
         let AnyObject::MocChan(back) = from_native_string(&text).unwrap() else {
             panic!("expected a MocChan");

@@ -13,13 +13,14 @@
 //! Formats; the tables here cover more Formats, Digits and AsTime settings
 //! and the values they format.
 
+use crate::common::native_dump;
 // Generated; formatted by its generator rather than rustfmt.
 #[rustfmt::skip]
 #[path = "skyframe_oracle/cases.rs"]
 mod cases;
 
 use ast_core::frames::{Frame, SkyFrame, SkySystem};
-use ast_core::{AnyObject, from_native_string, to_native_string};
+use ast_core::{AnyObject, from_native_string};
 
 /// Build a SkyFrame from a System name and an `astSet`-style setting string
 /// such as `"Digits(2)=10,Format(2)=dms.*"`.
@@ -105,11 +106,11 @@ fn dump_matches_the_c_library() {
     for &(attrs, expected) in cases::DUMP_CASES {
         let mut sky = SkyFrame::unset_system();
         apply(&mut sky, attrs);
-        let written = to_native_string(&AnyObject::SkyFrame(sky)).unwrap();
+        let written = native_dump(&AnyObject::SkyFrame(sky)).unwrap();
         assert_eq!(written, expected, "dump for {attrs:?}");
 
         let read = from_native_string(expected).unwrap();
-        let rewritten = to_native_string(&read).unwrap();
+        let rewritten = native_dump(&read).unwrap();
         assert_eq!(rewritten, expected, "round trip of C's dump for {attrs:?}");
     }
 }
