@@ -27,6 +27,11 @@ fn ref_pos_follows_the_c_library() {
         ("galactic", sf.ref_pos(Some(&gal)).unwrap()),
         ("fk4_swapped", sf.ref_pos(Some(&fk4)).unwrap()),
     ];
+    assert_eq!(
+        got.len(),
+        cases::REF_POS.len(),
+        "the test runs every case the C probe recorded"
+    );
     for ((name, (lon, lat)), &(want_name, want)) in got.iter().zip(cases::REF_POS) {
         assert_eq!(*name, want_name);
         crate::common::assert_c_values(&[*lon, *lat], &want, name);
@@ -42,6 +47,11 @@ fn density_follows_the_c_library() {
         ("System=SFCBRW", FluxFrame::new(FluxSystem::SBrightW)),
         ("Unit=W/m^2/Angstrom", by_unit),
     ];
+    assert_eq!(
+        got.len(),
+        cases::DENSITY.len(),
+        "the test runs every case the C probe recorded"
+    );
     for ((name, ff), &(want_name, system, unit)) in got.iter().zip(cases::DENSITY) {
         assert_eq!(*name, want_name);
         assert_eq!(ff.density_system().unwrap().as_str(), system, "{name}");

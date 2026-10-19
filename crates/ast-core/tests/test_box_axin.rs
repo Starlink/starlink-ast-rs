@@ -80,6 +80,11 @@ fn box_containment_follows_the_c_library() {
     got.push(("cmpframe", inside(&corners(cmp(), 3), 3)));
 
     let mut failures = Vec::new();
+    assert_eq!(
+        got.len(),
+        cases::CASES.len(),
+        "the test runs every case the C probe recorded"
+    );
     for ((name, got), (want_name, want)) in got.iter().zip(cases::CASES) {
         assert_eq!(name, want_name, "the test runs the probe's cases");
         if got[..] != want[..] {

@@ -71,6 +71,11 @@ fn norm_points_follows_the_c_library() {
     ];
 
     let mut failures = Vec::new();
+    assert_eq!(
+        got.len(),
+        cases::CASES.len(),
+        "the test runs every case the C probe recorded"
+    );
     for ((name, ps), &(want_name, want)) in got.iter().zip(cases::CASES) {
         assert_eq!(*name, want_name, "the test runs the probe's cases");
         let want: Vec<Vec<f64>> = want.iter().map(|r| r.to_vec()).collect();
