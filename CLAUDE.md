@@ -469,9 +469,11 @@ The C ABI is **frozen**. Existing applications must keep linking.
 - **Vendored C provenance**: `vendor/README.md` records where each
   vendored directory was copied from and what AST-specific local
   modifications were applied.
-- **AST documentation**:
-  - SUN/210 (user guide): https://www.starlink.ac.uk/docs/sun210.htx/sun210.html
-  - SUN/211 (class reference): https://www.starlink.ac.uk/docs/sun211.htx/sun211.html
+- **AST documentation**: one LaTeX source,
+  `reference/starlink-ast/sun_master.tex`, is built by `builddocs` into
+  two editions of the same guide and reference:
+  - SUN/211 (C): https://www.starlink.ac.uk/docs/sun211.htx/sun211.html
+  - SUN/210 (Fortran): https://www.starlink.ac.uk/docs/sun210.htx/sun210.html
 
 ## Workflow notes
 

@@ -2,6 +2,16 @@
 
 ## Revision history
 
+- **2026-10-19 (rev 35)**: Every class, and `AnyObject`, has `show()`
+  and `to_native_string()`, C's `astShow` and `astToString`: the first
+  prints the Native dump a Channel with no attributes set writes, the
+  second returns the compact form C writes with
+  `Comment=0,Full=-1,Indent=0`. The free function
+  `to_native_string(&AnyObject)` is removed; it wrote the `astShow` text
+  under the `astToString` name. Every class implements
+  `TryFrom<AnyObject>`, which reports another class as `AST__OBJIN` with
+  C's message, and `AnyObject::class_name` gives the AST class name. See
+  `2026-10-19-show-and-native-string-design.md`.
 - **2026-10-17 (rev 34)**: `PointSet` holds one contiguous array per
   axis, shape `(ncoord, npoint)`, and `Mapping::transform_into` takes
   borrowed views, `Points` and `PointsMut`, instead of `PointSet`s.
