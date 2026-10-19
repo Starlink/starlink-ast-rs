@@ -50,6 +50,25 @@ fn a_stride_below_npoint_is_dimin() {
     );
 }
 
+/// A stride so large that the axes' extent overflows is too large for any
+/// buffer, not a wrapped size that passes the length check.
+#[test]
+fn a_stride_whose_extent_overflows_is_dimin() {
+    let buf = [0.0; 8];
+    let stride = usize::MAX / 2 + 1;
+    assert_eq!(
+        Points::from_strided(&buf, 3, 1, stride).unwrap_err().code(),
+        ErrorCode::Dimin
+    );
+    let mut buf = [0.0; 8];
+    assert_eq!(
+        PointsMut::from_strided(&mut buf, 3, 1, stride)
+            .unwrap_err()
+            .code(),
+        ErrorCode::Dimin
+    );
+}
+
 #[test]
 fn a_buffer_too_short_for_its_stride_is_dimin() {
     let buf = [0.0; 7];

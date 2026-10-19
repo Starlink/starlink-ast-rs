@@ -285,16 +285,19 @@ fn check_stride(len: usize, ncoord: usize, npoint: usize, stride: usize) -> AstR
             format!("the array dimension ({stride}) is less than the number of points ({npoint})"),
         ));
     }
-    let need = (ncoord - 1) * stride + npoint;
-    if len < need {
-        return Err(AstError::new(
+    // An extent that overflows is larger than any buffer.
+    let need = (ncoord - 1)
+        .checked_mul(stride)
+        .and_then(|n| n.checked_add(npoint));
+    match need {
+        Some(need) if len >= need => Ok(need),
+        _ => Err(AstError::new(
             ErrorCode::Dimin,
             format!(
-                "{ncoord} axes at a dimension of {stride} need {need} values; the array has {len}"
+                "{ncoord} axes at a dimension of {stride} need more values than the array's {len}"
             ),
-        ));
+        )),
     }
-    Ok(need)
 }
 
 /// A read-only view of `npoint` points, one slice per axis.
