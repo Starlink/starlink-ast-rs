@@ -70,7 +70,7 @@ Known places:
 - SwitchMap and SelectorMap: a bad selector selects no route;
 - LutMap: a bad table entry, and the flags marking entries next to one;
 - Regions: `AST__BAD` marks a point outside;
-- every kernel that writes `AST__BAD` for a point outside its domain (projections, SphMap's zero vector at `sphmap.c:1259`, iterative inverses that fail to converge).
+- every kernel that writes `AST__BAD` for a point outside its domain (projections, iterative inverses that fail to converge).
 
 ## Options
 
