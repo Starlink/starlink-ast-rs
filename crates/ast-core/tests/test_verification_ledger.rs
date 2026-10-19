@@ -33,6 +33,77 @@ fn fixtures() -> PathBuf {
 /// Fields: source file, const name, expected entry count, reason.
 const LEDGER: &[(&str, &str, usize, &str)] = &[
     (
+        "test_transform_oracle.rs",
+        "UNTRANSFORMABLE",
+        11,
+        "fixtures that load as a bare Frame, which has no transform in the \
+         port; each records whether C's outputs equal its inputs per direction, \
+         and the gates check that against the oracle. region_in_cmpframe's \
+         forward direction is C masking points through a Region, which the \
+         port does not reproduce (PLAN.md 9.6)",
+    ),
+    (
+        "test_fitschan_cursor_oracle.rs",
+        "EXCLUDED",
+        5,
+        "four NATIVE reads the port parses whole where C reads card by card, \
+         and native_full_1, whose RefCnt and Nobj comment cards the port has \
+         no counterpart for (the rest is compared)",
+    ),
+    (
+        "test_object_id_oracle.rs",
+        "EXCLUDED",
+        6,
+        "C copies or shares an Object where the port moves or clones it, so \
+         object IDs differ (feedback-no-clone-copy-emulation)",
+    ),
+    (
+        "test_channel_read_oracle.rs",
+        "EXCLUDED",
+        2,
+        "C reports AST__BADIN for a string read as a number and stops part way \
+         through the Object; the port reads the string without error",
+    ),
+    (
+        "test_fixture_read_warnings_oracle.rs",
+        "EXCLUDED",
+        1,
+        "frame_in_map_slot.ast: a CmpFrame in a Mapping slot, refused by design",
+    ),
+    (
+        "test_fixture_full_dump_oracle.rs",
+        "EXCLUDED",
+        1,
+        "frame_in_map_slot.ast: a CmpFrame in a Mapping slot, refused by design",
+    ),
+    (
+        "test_fitschan_sipok_oracle.rs",
+        "EXCLUDED",
+        0,
+        "empty: every SipOK encoding write matches C",
+    ),
+    (
+        "test_fitschan_encodings_oracle.rs",
+        "EXCLUDED",
+        0,
+        "empty: every encoding write matches C",
+    ),
+    (
+        "test_simplify_regression.rs",
+        "DEFERRED",
+        0,
+        "empty: every simplify manifest fixture loads",
+    ),
+    (
+        "../../ast-oracle-tests/tests/call_count_parity.rs",
+        "COUNT_PARITY_EXCLUDED",
+        53,
+        "tier 4, not run in CI: sections whose libm/PAL/ERFA call counts differ \
+         from C's because C does work the port does not need (selector Regions \
+         re-closed in place, CompressMatrix's per-row sqrt); never the port \
+         skipping work",
+    ),
+    (
         "test_region_stc_oracle.rs",
         "ERROR_ELLIPSE_LICENSED",
         3,
@@ -186,9 +257,11 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
         "test_transform_oracle.rs",
         "RTRIP_REFERENCE_GAPS_LICENSED",
         5,
-        "two fixtures, 25 rows, where C's own recorded inverse does not \
-         recover the pixel either: tnx-cheb.head (all 24 rows -- a ChebyMap \
-         has no usable inverse) and tsc.head row 10 (a 360 deg alias). \
+        "five fixtures, 51 rows, where C's own recorded inverse does not \
+         recover the pixel either: tnx-cheb.head and its dump (all 24 rows \
+         each -- a ChebyMap has no usable inverse), tsc.head and its dump \
+         (row 10, a 360 deg alias) and total_hi.head (row 3, an all-sky \
+         corner). \
          Asserted as an exact set against the corpus with no fixture loaded, \
          and reached only after the live result has failed both the direct \
          and the aliased comparison",
@@ -197,17 +270,16 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
         "test_transform_oracle.rs",
         "FMA_SUBSTITUTIONS_LICENSED",
         0,
-        "two rows of one UnitNormMap inverse section where the generator \
-         host's compiler fused the multiply-add at unitnormmap.c:1079 and \
-         stepped past C's own zero-norm branch. The substituted expectation \
-         is the unfused value C's source prescribes, asserted exactly, and a \
-         test fails if the recorded values ever stop differing from it",
+        "empty: holds oracle rows a generator host's compiler produced by \
+         fusing a multiply-add, replaced by the unfused value C's source \
+         prescribes and asserted exactly; a test fails if a recorded value \
+         ever stops differing from its replacement",
     ),
     (
         "test_simplify_regression.rs",
         "NUMERIC_PLATFORM_DRIFT",
         4,
-        "one inverse-matrix element of `rigby`, the two sky half-widths of \
+        "the two sky half-widths of \
          `cap_interval_01`'s uncertainty Box, and the two sky coordinates of \
          `cap_pointlist_01`'s re-centred uncertainty corner, whose references \
          were captured on arm64: an x86-64 build of the pinned C does not \
@@ -494,33 +566,58 @@ fn every_relaxation_is_the_size_the_ledger_says() {
     );
 }
 
+/// Every test source the scan reads, with the name a `LEDGER` entry uses for
+/// it: this crate's top-level tests by file name, and the transform oracle
+/// tests of `ast-oracle-tests` and `ast-bench` by their path from here.
+fn scanned_test_files() -> Vec<(PathBuf, String)> {
+    let mut out = Vec::new();
+    for (dir, prefix) in [
+        (tests_dir(), ""),
+        (
+            tests_dir().join("../../ast-oracle-tests/tests"),
+            "../../ast-oracle-tests/tests/",
+        ),
+        (
+            tests_dir().join("../../ast-bench/tests"),
+            "../../ast-bench/tests/",
+        ),
+    ] {
+        for entry in std::fs::read_dir(&dir).expect("tests dir readable") {
+            let path = entry.expect("dir entry").path();
+            if path.extension().and_then(|e| e.to_str()) != Some("rs") {
+                continue;
+            }
+            let name = path.file_name().unwrap().to_str().unwrap();
+            out.push((path.clone(), format!("{prefix}{name}")));
+        }
+    }
+    out
+}
+
 #[test]
 fn no_relaxation_hides_outside_the_ledger() {
     let listed: BTreeMap<(&str, &str), ()> =
         LEDGER.iter().map(|(f, n, _, _)| ((*f, *n), ())).collect();
     // Names that read as a bypass. A `const` matching one of these must be in
     // the ledger, which is where its reason gets written down.
+    // Matched as substrings, so a bare `EXCLUDED` counts as well as a
+    // `NAME_EXCLUDED`.
     const MARKERS: &[&str] = &[
-        "_EXCLUDED",
-        "_LICENSED",
-        "_SKIPPED",
-        "_IGNORED",
-        "_DEFERRED",
-        "_RELAXED",
-        "_ALLOWED",
-        "DEFERRED_",
-        "_UNGATED",
-        "_DISAGREEMENTS",
-        "_DRIFT",
-        "_DECLINED",
+        "EXCLUDED",
+        "LICENSED",
+        "SKIPPED",
+        "IGNORED",
+        "DEFERRED",
+        "RELAXED",
+        "ALLOWED",
+        "UNGATED",
+        "DISAGREEMENTS",
+        "DRIFT",
+        "DECLINED",
+        "UNTRANSFORMABLE",
     ];
     let mut unlisted = Vec::new();
-    for entry in std::fs::read_dir(tests_dir()).expect("tests dir readable") {
-        let path = entry.expect("dir entry").path();
-        if path.extension().and_then(|e| e.to_str()) != Some("rs") {
-            continue;
-        }
-        let file = path.file_name().unwrap().to_str().unwrap().to_string();
+    for (path, file) in scanned_test_files() {
         let src = std::fs::read_to_string(&path).expect("test source readable");
         for line in src.lines() {
             let Some(rest) = line.trim_start().strip_prefix("const ") else {

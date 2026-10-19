@@ -990,11 +990,11 @@ fn simplify_regression() {
          the entry silently stops excluding anything.",
         DEFERRED.len()
     );
-    assert!(
-        passed >= 481,
-        "only {passed} cases passed; the corpus held 481 when this floor was \
-         set and fixtures are only ever added. A drop means cases stopped being \
-         run, which no failure count would show."
+    assert_eq!(
+        passed, 515,
+        "{passed} cases passed, where the manifest holds 515: a change means \
+         cases stopped being run, which no failure count would show, or were \
+         added without this count"
     );
 }
 
