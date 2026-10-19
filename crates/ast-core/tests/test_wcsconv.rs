@@ -450,14 +450,14 @@ fn run_named_case(name: &str) {
         .find(|c| c.name == name)
         .unwrap_or_else(|| panic!("manifest has no case named {name:?}"));
 
+    // A missing input fails: a case that cannot run has not been compared.
     let input_path = fixtures_dir().join(&case.input_file);
-    if !input_path.exists() {
-        // Skip silently: missing input fixture isn't a failure of the
-        // code under test. Use eprintln so the user can see why
-        // `cargo test <name>` reported "ok" without doing real work.
-        eprintln!("[skip] {}: input fixture missing", case.name);
-        return;
-    }
+    assert!(
+        input_path.exists(),
+        "{}: input fixture {} is missing",
+        case.name,
+        input_path.display()
+    );
 
     if let Err(msg) = run_test_case(case) {
         panic!("{}: {}", case.name, msg);
