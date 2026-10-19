@@ -1,0 +1,594 @@
+kind	name	file	rust_item	reason	reviewed	note
+class	Axis	axis.c			no
+class	Box	box.c			no
+function	astBox	box.c			no
+class	Channel	channel.c			no
+function	astChannelData	channel.c			no
+function	astWarnings	channel.c			no
+function	astPutChannelData	channel.c			no
+function	astRead	channel.c			no
+function	astWrite	channel.c			no
+attribute	SourceFile	channel.c			no
+attribute	SinkFile	channel.c			no
+attribute	Comment	channel.c			no
+attribute	Full	channel.c			no
+attribute	Indent	channel.c			no
+attribute	ReportLevel	channel.c			no
+attribute	Skip	channel.c			no
+attribute	Strict	channel.c			no
+function	astChannel	channel.c			no
+class	ChebyMap	chebymap.c			no
+function	astChebyDomain	chebymap.c			no
+function	astChebyMap	chebymap.c			no
+class	Circle	circle.c			no
+function	astCirclePars	circle.c			no
+function	astCircle	circle.c			no
+class	CmpFrame	cmpframe.c			no
+function	astCmpFrame	cmpframe.c			no
+class	CmpMap	cmpmap.c			no
+function	astCmpMap	cmpmap.c			no
+class	CmpRegion	cmpregion.c			no
+function	astCmpRegion	cmpregion.c			no
+class	DSBSpecFrame	dsbspecframe.c			no
+attribute	ImagFreq	dsbspecframe.c			no
+attribute	DSBCentre	dsbspecframe.c			no
+attribute	IF	dsbspecframe.c			no
+attribute	SideBand	dsbspecframe.c			no
+attribute	AlignSideBand	dsbspecframe.c			no
+function	astDSBSpecFrame	dsbspecframe.c			no
+class	DssMap	dssmap.c			no
+class	Ellipse	ellipse.c			no
+function	astEllipsePars	ellipse.c			no
+function	astEllipse	ellipse.c			no
+function	astClearStatus	error.c			no
+function	astOK	error.c			no
+function	astSetPutErr	error.c			no
+function	astSetStatus	error.c			no
+function	astStatus	error.c			no
+function	astWatch	error.c			no
+class	FitsChan	fitschan.c			no
+function	astDelFits	fitschan.c			no
+function	astEmptyFits	fitschan.c			no
+function	astGetTables	fitschan.c			no
+function	astFindFits	fitschan.c			no
+function	astGetFits<X>	fitschan.c			no
+function	astSetFits<X>	fitschan.c			no
+function	astSetFitsU	fitschan.c			no
+function	astSetFitsCM	fitschan.c			no
+function	astPurgeWCS	fitschan.c			no
+function	astPutCards	fitschan.c			no
+function	astPutFits	fitschan.c			no
+function	astPutTable	fitschan.c			no
+function	astPutTables	fitschan.c			no
+function	astReadFits	fitschan.c			no
+function	astRemoveTables	fitschan.c			no
+function	astRetainFits	fitschan.c			no
+function	astShowFits	fitschan.c			no
+function	astTableSource	fitschan.c			no
+function	astTestFits	fitschan.c			no
+function	astWriteFits	fitschan.c			no
+attribute	FitsTol	fitschan.c			no
+attribute	Card	fitschan.c			no
+attribute	Encoding	fitschan.c			no
+attribute	DefB1950	fitschan.c			no
+attribute	TabOK	fitschan.c			no
+attribute	ForceTab	fitschan.c			no
+attribute	IgnoreBadAlt	fitschan.c			no
+attribute	CarLin	fitschan.c			no
+attribute	SipReplace	fitschan.c			no
+attribute	PolyTan	fitschan.c			no
+attribute	SipOK	fitschan.c			no
+attribute	Iwc	fitschan.c			no
+attribute	CDMatrix	fitschan.c			no
+attribute	Clean	fitschan.c			no
+attribute	FitsAxisOrder	fitschan.c			no
+attribute	FitsDigits	fitschan.c			no
+attribute	FitsRounding	fitschan.c			no
+attribute	AltAxes	fitschan.c			no
+attribute	CardComm	fitschan.c			no
+attribute	CardName	fitschan.c			no
+attribute	CardType	fitschan.c			no
+attribute	Ncard	fitschan.c			no
+attribute	Nkey	fitschan.c			no
+attribute	Warnings	fitschan.c			no
+attribute	AllWarnings	fitschan.c			no
+function	astFitsChan	fitschan.c			no
+class	FitsTable	fitstable.c			no
+function	astColumnNull	fitstable.c			no
+function	astColumnNullK	fitstable.c			no
+function	astColumnSize	fitstable.c			no
+function	astGetColumnData	fitstable.c			no
+function	astGetTableHeader	fitstable.c			no
+function	astPutColumnData	fitstable.c			no
+function	astPutTableHeader	fitstable.c			no
+function	astFitsTable	fitstable.c			no
+class	FluxFrame	fluxframe.c			no
+attribute	SpecVal	fluxframe.c			no
+function	astFluxFrame	fluxframe.c			no
+class	Frame	frame.c			no
+function	astAngle	frame.c			no
+function	astAxAngle	frame.c			no
+function	astAxDistance	frame.c			no
+function	astAxNorm	frame.c			no
+function	astAxOffset	frame.c			no
+function	astConvert	frame.c			no
+function	astDistance	frame.c			no
+function	astFindFrame	frame.c			no
+function	astGetActiveUnit	frame.c			no
+function	astIntersect	frame.c			no
+function	astMatchAxes	frame.c			no
+function	astNorm	frame.c			no
+function	astNormPoints	frame.c			no
+function	astOffset2	frame.c			no
+function	astOffset	frame.c			no
+function	astResolve	frame.c			no
+function	astSetActiveUnit	frame.c			no
+attribute	Naxes	frame.c			no
+attribute	Direction	frame.c			no
+attribute	Dtai	frame.c			no
+attribute	Dut1	frame.c			no
+attribute	Epoch	frame.c			no
+attribute	Top	frame.c			no
+attribute	Bottom	frame.c			no
+attribute	Format	frame.c			no
+attribute	Label	frame.c			no
+attribute	Symbol	frame.c			no
+attribute	Unit	frame.c			no
+attribute	NormUnit	frame.c			no
+attribute	InternalUnit	frame.c			no
+attribute	Digits	frame.c			no
+attribute	MatchEnd	frame.c			no
+attribute	MaxAxes	frame.c			no
+attribute	MinAxes	frame.c			no
+attribute	Domain	frame.c			no
+attribute	Permute	frame.c			no
+attribute	PreserveAxes	frame.c			no
+attribute	AlignSystem	frame.c			no
+attribute	System	frame.c			no
+attribute	Title	frame.c			no
+attribute	ObsLat	frame.c			no
+attribute	ObsAlt	frame.c			no
+attribute	ObsLon	frame.c			no
+function	astFormat	frame.c			no
+function	astFrame	frame.c			no
+function	astPermAxes	frame.c			no
+function	astPickAxes	frame.c			no
+function	astUnformat	frame.c			no
+class	FrameSet	frameset.c			no
+function	astAddFrame	frameset.c			no
+function	astAddVariant	frameset.c			no
+function	astGetFrame	frameset.c			no
+function	astGetMapping	frameset.c			no
+function	astMirrorVariants	frameset.c			no
+function	astRemapFrame	frameset.c			no
+function	astRemoveFrame	frameset.c			no
+attribute	AllVariants	frameset.c			no
+attribute	Base	frameset.c			no
+attribute	Current	frameset.c			no
+attribute	Nframe	frameset.c			no
+attribute	Variant	frameset.c			no
+function	astFrameSet	frameset.c			no
+class	GrismMap	grismmap.c			no
+attribute	GrismNR	grismmap.c			no
+attribute	GrismNRP	grismmap.c			no
+attribute	GrismWaveR	grismmap.c			no
+attribute	GrismAlpha	grismmap.c			no
+attribute	GrismG	grismmap.c			no
+attribute	GrismM	grismmap.c			no
+attribute	GrismEps	grismmap.c			no
+attribute	GrismTheta	grismmap.c			no
+function	astGrismMap	grismmap.c			no
+class	Interval	interval.c			no
+function	astInterval	interval.c			no
+class	IntraMap	intramap.c			no
+function	astIntraReg	intramap.c			no
+attribute	IntraFlag	intramap.c			no
+function	astIntraMap	intramap.c			no
+class	KeyMap	keymap.c			no
+function	astMapCopy	keymap.c			no
+function	astMapCopyEntry	keymap.c			no
+function	astMapKey	keymap.c			no
+function	astMapPut0<X>	keymap.c			no
+function	astMapPut1<X>	keymap.c			no
+function	astMapPutU	keymap.c			no
+function	astMapGet0<X>	keymap.c			no
+function	astMapGet1<X>	keymap.c			no
+function	astMapGetC	keymap.c			no
+function	astMapGetElem<X>	keymap.c			no
+function	astMapDefined	keymap.c			no
+function	astMapHasKey	keymap.c			no
+function	astMapRemove	keymap.c			no
+function	astMapRename	keymap.c			no
+function	astMapSize	keymap.c			no
+function	astMapLenC	keymap.c			no
+function	astMapLength	keymap.c			no
+function	astMapPutElem<X>	keymap.c			no
+function	astMapType	keymap.c			no
+attribute	SizeGuess	keymap.c			no
+attribute	KeyCase	keymap.c			no
+attribute	KeyError	keymap.c			no
+attribute	MapLocked	keymap.c			no
+attribute	SortBy	keymap.c			no
+function	astKeyMap	keymap.c			no
+class	LutMap	lutmap.c			no
+attribute	LutInterp	lutmap.c			no
+attribute	LutEpsilon	lutmap.c			no
+function	astLutMap	lutmap.c			no
+class	Mapping	mapping.c			no
+function	astInvert	mapping.c			no
+function	astLinearApprox	mapping.c			no
+function	astQuadApprox	mapping.c			no
+function	astRebin<X>	mapping.c			no
+function	astRebinSeq<X>	mapping.c			no
+function	astRemoveRegions	mapping.c			no
+function	astResample<X>	mapping.c			no
+function	astSimplify	mapping.c			no
+function	astTran1	mapping.c			no
+function	astTran2	mapping.c			no
+function	astTranGrid	mapping.c			no
+function	astTranN	mapping.c			no
+function	astTranP	mapping.c			no
+function	astUinterp	mapping.c			no
+function	astUkern1	mapping.c			no
+attribute	Invert	mapping.c			no
+attribute	IsLinear	mapping.c			no
+attribute	IsSimple	mapping.c			no
+attribute	Nin	mapping.c			no
+attribute	Nout	mapping.c			no
+attribute	Report	mapping.c			no
+attribute	TranForward	mapping.c			no
+attribute	TranInverse	mapping.c			no
+function	astDecompose	mapping.c			no
+function	astMapBox	mapping.c			no
+function	astRate	mapping.c			no
+function	astMapSplit	mapping.c			no
+class	MathMap	mathmap.c			no
+attribute	Seed	mathmap.c			no
+attribute	SimpFI	mathmap.c			no
+attribute	SimpIF	mathmap.c			no
+function	astMathMap	mathmap.c			no
+class	MatrixMap	matrixmap.c			no
+function	astMatrixMap	matrixmap.c			no
+function	astAppendString	memory.c			no
+function	astAppendStringf	memory.c			no
+function	astBrackets	memory.c			no
+function	astCalloc	memory.c			no
+function	astChr2Double	memory.c			no
+function	astChrCase	memory.c			no
+function	astChrClean	memory.c			no
+function	astChrMatch	memory.c			no
+function	astChrMatchN	memory.c			no
+function	astChrRemoveBlanks	memory.c			no
+function	astChrSplit	memory.c			no
+function	astChrSplitC	memory.c			no
+function	astChrSplitRE	memory.c			no
+function	astChrSub	memory.c			no
+function	astChrTrunc	memory.c			no
+function	astFandl	memory.c			no
+function	astFree	memory.c			no
+function	astFreeDouble	memory.c			no
+function	astGrow	memory.c			no
+function	astIsDynamic	memory.c			no
+function	astMalloc	memory.c			no
+function	astMemCaching	memory.c			no
+function	astRealloc	memory.c			no
+function	astRemoveLeadingBlanks	memory.c			no
+function	astSizeOf	memory.c			no
+function	astStore	memory.c			no
+function	astString	memory.c			no
+function	astStringArray	memory.c			no
+function	astStringCase	memory.c			no
+function	astChrLen	memory.c			no
+class	Moc	moc.c			no
+function	astAddCell	moc.c			no
+function	astAddMocData	moc.c			no
+function	astAddMocString	moc.c			no
+function	astAddPixelMask<X>	moc.c			no
+function	astAddRegion	moc.c			no
+function	astGetCell	moc.c			no
+function	astGetMocData	moc.c			no
+function	astGetMocHeader	moc.c			no
+function	astGetMocString	moc.c			no
+function	astTestCell	moc.c			no
+attribute	MaxOrder	moc.c			no
+attribute	MinOrder	moc.c			no
+attribute	MaxRes	moc.c			no
+attribute	MinRes	moc.c			no
+attribute	MocType	moc.c			no
+attribute	MocArea	moc.c			no
+attribute	MocLength	moc.c			no
+function	astMoc	moc.c			no
+class	MocChan	mocchan.c			no
+attribute	MocFormat	mocchan.c			no
+attribute	MocLineLen	mocchan.c			no
+function	astMocChan	mocchan.c			no
+class	NormMap	normmap.c			no
+function	astNormMap	normmap.c			no
+class	NullRegion	nullregion.c			no
+function	astNullRegion	nullregion.c			no
+class	Object	object.c			no
+function	astAnnul	object.c			no
+function	astClear	object.c			no
+function	astClone	object.c			no
+function	astCopy	object.c			no
+function	astDelete	object.c			no
+function	astGet<X>	object.c			no
+function	astHasAttribute	object.c			no
+function	astToString	object.c			no
+function	astSet	object.c			no
+function	astSame	object.c			no
+function	astSet<X>	object.c			no
+function	astShow	object.c			no
+function	astTest	object.c			no
+function	astTune	object.c			no
+function	astTuneC	object.c			no
+function	astFromString	object.c			no
+attribute	Class	object.c			no
+attribute	ID	object.c			no
+attribute	Ident	object.c			no
+attribute	UseDefs	object.c			no
+attribute	Nobject	object.c			no
+attribute	ObjSize	object.c			no
+attribute	RefCount	object.c			no
+function	astIsA<Class>	object.c			no
+function	astActiveObjects	object.c			no
+function	astBegin	object.c			no
+function	astCreatedAt	object.c			no
+function	astEnd	object.c			no
+function	astExempt	object.c			no
+function	astExport	object.c			no
+function	astImport	object.c			no
+function	astLock	object.c			no
+function	astUnlock	object.c			no
+function	astThread	object.c			no
+function	astVersion	object.c			no
+function	astEscapes	object.c			no
+class	PcdMap	pcdmap.c			no
+attribute	Disco	pcdmap.c			no
+attribute	PcdCen	pcdmap.c			no
+function	astPcdMap	pcdmap.c			no
+class	PermMap	permmap.c			no
+function	astPermMap	permmap.c			no
+class	Plot	plot.c		not-ported	yes
+attribute	Tol	plot.c		not-ported	yes
+attribute	Grid	plot.c		not-ported	yes
+attribute	Invisible	plot.c		not-ported	yes
+attribute	TickAll	plot.c		not-ported	yes
+attribute	Border	plot.c		not-ported	yes
+attribute	Clip	plot.c		not-ported	yes
+attribute	ClipOp	plot.c		not-ported	yes
+attribute	Grf	plot.c		not-ported	yes
+attribute	DrawTitle	plot.c		not-ported	yes
+attribute	LabelUp	plot.c		not-ported	yes
+attribute	DrawAxes	plot.c		not-ported	yes
+attribute	Abbrev	plot.c		not-ported	yes
+attribute	Escape	plot.c		not-ported	yes
+attribute	LabelAt	plot.c		not-ported	yes
+attribute	Gap	plot.c		not-ported	yes
+attribute	LogGap	plot.c		not-ported	yes
+attribute	LogPlot	plot.c		not-ported	yes
+attribute	LogTicks	plot.c		not-ported	yes
+attribute	LogLabel	plot.c		not-ported	yes
+attribute	MajTickLen	plot.c		not-ported	yes
+attribute	TitleGap	plot.c		not-ported	yes
+attribute	MinTickLen	plot.c		not-ported	yes
+attribute	TextGapType	plot.c		not-ported	yes
+attribute	Labelling	plot.c		not-ported	yes
+attribute	Edge	plot.c		not-ported	yes
+attribute	NumLab	plot.c		not-ported	yes
+attribute	NumLabGap	plot.c		not-ported	yes
+attribute	MinTick	plot.c		not-ported	yes
+attribute	TextLab	plot.c		not-ported	yes
+attribute	TextLabGap	plot.c		not-ported	yes
+attribute	LabelUnits	plot.c		not-ported	yes
+attribute	Style	plot.c		not-ported	yes
+attribute	Font	plot.c		not-ported	yes
+attribute	Colour	plot.c		not-ported	yes
+attribute	Width	plot.c		not-ported	yes
+attribute	Size	plot.c		not-ported	yes
+function	astBBuf	plot.c		not-ported	yes
+function	astBorder	plot.c		not-ported	yes
+function	astBoundingBox	plot.c		not-ported	yes
+function	astClip	plot.c		not-ported	yes
+function	astCurve	plot.c		not-ported	yes
+function	astEBuf	plot.c		not-ported	yes
+function	astGetGrfContext	plot.c		not-ported	yes
+function	astGenCurve	plot.c		not-ported	yes
+function	astGrfPop	plot.c		not-ported	yes
+function	astGrfPush	plot.c		not-ported	yes
+function	astGrfSet	plot.c		not-ported	yes
+function	astGrid	plot.c		not-ported	yes
+function	astGridLine	plot.c		not-ported	yes
+function	astMark	plot.c		not-ported	yes
+function	astPolyCurve	plot.c		not-ported	yes
+function	astRegionOutline	plot.c		not-ported	yes
+function	astStripEscapes	plot.c		not-ported	yes
+function	astText	plot.c		not-ported	yes
+function	astPlot	plot.c		not-ported	yes
+class	Plot3D	plot3d.c		not-ported	yes
+attribute	RootCorner	plot3d.c		not-ported	yes
+attribute	Norm	plot3d.c		not-ported	yes
+function	astPlot3D	plot3d.c		not-ported	yes
+class	PointList	pointlist.c			no
+attribute	ListSize	pointlist.c			no
+function	astPointList	pointlist.c			no
+class	Polygon	polygon.c			no
+function	astConvex<X>	polygon.c			no
+function	astDownsize	polygon.c			no
+function	astOutline<X>	polygon.c			no
+attribute	SimpVertices	polygon.c			no
+function	astPolygon	polygon.c			no
+class	PolyMap	polymap.c			no
+function	astPolyCoeffs	polymap.c			no
+function	astPolyTran	polymap.c			no
+attribute	IterInverse	polymap.c			no
+attribute	NiterInverse	polymap.c			no
+attribute	TolInverse	polymap.c			no
+function	astPolyMap	polymap.c			no
+class	Prism	prism.c			no
+function	astPrism	prism.c			no
+class	RateMap	ratemap.c			no
+function	astRateMap	ratemap.c			no
+class	Region	region.c			no
+function	astGetUnc	region.c			no
+function	astGetRegionFrame	region.c			no
+function	astGetRegionFrameSet	region.c			no
+function	astMask<X>	region.c			no
+function	astNegate	region.c			no
+function	astOverlap	region.c			no
+function	astPointInRegion	region.c			no
+function	astGetRegionBounds	region.c			no
+function	astGetRegionMesh	region.c			no
+function	astGetRegionPoints	region.c			no
+function	astGetRegionDisc	region.c			no
+function	astSetUnc	region.c			no
+function	astShowMesh	region.c			no
+attribute	Adaptive	region.c			no
+attribute	Negated	region.c			no
+attribute	Bounded	region.c			no
+attribute	FillFactor	region.c			no
+attribute	MeshSize	region.c			no
+attribute	Closed	region.c			no
+function	astMapRegion	region.c			no
+class	SelectorMap	selectormap.c			no
+function	astSelectorMap	selectormap.c			no
+class	ShiftMap	shiftmap.c			no
+function	astShiftMap	shiftmap.c			no
+class	SkyAxis	skyaxis.c			no
+class	SkyFrame	skyframe.c			no
+function	astSkyOffsetMap	skyframe.c			no
+attribute	AlignOffset	skyframe.c			no
+attribute	AsTime	skyframe.c			no
+attribute	Equinox	skyframe.c			no
+attribute	IsLatAxis	skyframe.c			no
+attribute	IsLonAxis	skyframe.c			no
+attribute	LatAxis	skyframe.c			no
+attribute	LonAxis	skyframe.c			no
+attribute	NegLon	skyframe.c			no
+attribute	SkyTol	skyframe.c			no
+attribute	Projection	skyframe.c			no
+attribute	SkyRefIs	skyframe.c			no
+attribute	SkyRef	skyframe.c			no
+attribute	SkyRefP	skyframe.c			no
+function	astSkyFrame	skyframe.c			no
+class	SlaMap	slamap.c			no
+function	astSlaAdd	slamap.c			no
+function	astSlaMap	slamap.c			no
+class	SpecFluxFrame	specfluxframe.c			no
+function	astSpecFluxFrame	specfluxframe.c			no
+class	SpecFrame	specframe.c			no
+function	astGetRefPos	specframe.c			no
+function	astSetRefPos	specframe.c			no
+attribute	AlignSpecOffset	specframe.c			no
+attribute	AlignStdOfRest	specframe.c			no
+attribute	RefDec	specframe.c			no
+attribute	RefRA	specframe.c			no
+attribute	RestFreq	specframe.c			no
+attribute	SourceVel	specframe.c			no
+attribute	SourceVRF	specframe.c			no
+attribute	SourceSys	specframe.c			no
+attribute	StdOfRest	specframe.c			no
+attribute	SpecOrigin	specframe.c			no
+function	astSpecFrame	specframe.c			no
+class	SpecMap	specmap.c			no
+function	astSpecAdd	specmap.c			no
+function	astSpecMap	specmap.c			no
+class	SphMap	sphmap.c			no
+attribute	UnitRadius	sphmap.c			no
+attribute	PolarLong	sphmap.c			no
+function	astSphMap	sphmap.c			no
+class	SplineMap	splinemap.c			no
+function	astSplineCoeffs	splinemap.c			no
+function	astSplineKnots	splinemap.c			no
+attribute	InvNiter	splinemap.c			no
+attribute	InvTol	splinemap.c			no
+attribute	OutUnit	splinemap.c			no
+attribute	SplineKx	splinemap.c			no
+attribute	SplineKy	splinemap.c			no
+attribute	SplineNx	splinemap.c			no
+attribute	SplineNy	splinemap.c			no
+function	astSplineMap	splinemap.c			no
+class	Stc	stc.c			no
+function	astGetStcCoord	stc.c			no
+function	astGetStcNCoord	stc.c			no
+function	astGetStcRegion	stc.c			no
+attribute	RegionClass	stc.c			no
+class	StcCatalogEntryLocation	stccatalogentrylocation.c			no
+function	astStcCatalogEntryLocation	stccatalogentrylocation.c			no
+class	StcObsDataLocation	stcobsdatalocation.c			no
+function	astStcObsDataLocation	stcobsdatalocation.c			no
+class	StcResourceProfile	stcresourceprofile.c			no
+function	astStcResourceProfile	stcresourceprofile.c			no
+class	StcsChan	stcschan.c		not-ported	yes
+attribute	StcsArea	stcschan.c		not-ported	yes
+attribute	StcsCoords	stcschan.c		not-ported	yes
+attribute	StcsProps	stcschan.c		not-ported	yes
+attribute	StcsLength	stcschan.c		not-ported	yes
+function	astStcsChan	stcschan.c		not-ported	yes
+class	StcSearchLocation	stcsearchlocation.c			no
+function	astStcSearchLocation	stcsearchlocation.c			no
+class	SwitchMap	switchmap.c			no
+function	astSwitchMap	switchmap.c			no
+class	Table	table.c			no
+function	astAddColumn	table.c			no
+function	astAddParameter	table.c			no
+function	astColumnName	table.c			no
+function	astColumnShape	table.c			no
+function	astHasColumn	table.c			no
+function	astHasParameter	table.c			no
+function	astParameterName	table.c			no
+function	astPurgeRows	table.c			no
+function	astRemoveColumn	table.c			no
+function	astRemoveParameter	table.c			no
+function	astRemoveRow	table.c			no
+attribute	ColumnLenC	table.c			no
+attribute	ColumnLength	table.c			no
+attribute	ColumnNdim	table.c			no
+attribute	ColumnType	table.c			no
+attribute	Ncolumn	table.c			no
+attribute	Nparameter	table.c			no
+attribute	Nrow	table.c			no
+function	astTable	table.c			no
+class	TemplateClass	templateclass.c			no
+attribute	AlignSpecOffset	templateclass.c			no
+function	astTemplateClass	templateclass.c			no
+class	TimeFrame	timeframe.c			no
+function	astCurrentTime	timeframe.c			no
+attribute	TimeOrigin	timeframe.c			no
+attribute	LTOffset	timeframe.c			no
+attribute	AlignTimeScale	timeframe.c			no
+attribute	TimeScale	timeframe.c			no
+function	astTimeFrame	timeframe.c			no
+class	TimeMap	timemap.c			no
+function	astTimeAdd	timemap.c			no
+function	astTimeMap	timemap.c			no
+class	TranMap	tranmap.c			no
+function	astTranMap	tranmap.c			no
+class	UnitMap	unitmap.c			no
+function	astUnitMap	unitmap.c			no
+class	UnitNormMap	unitnormmap.c			no
+function	astUnitNormMap	unitnormmap.c			no
+class	WcsMap	wcsmap.c			no
+attribute	ProjP	wcsmap.c			no
+attribute	PVi_m	wcsmap.c			no
+attribute	PVMax	wcsmap.c			no
+attribute	WcsType	wcsmap.c			no
+attribute	NatLat	wcsmap.c			no
+attribute	NatLon	wcsmap.c			no
+attribute	WcsAxis	wcsmap.c			no
+function	astWcsMap	wcsmap.c			no
+class	WinMap	winmap.c			no
+function	astWinMap	winmap.c			no
+class	XmlChan	xmlchan.c		not-ported	yes
+attribute	XmlFormat	xmlchan.c		not-ported	yes
+attribute	XmlLength	xmlchan.c		not-ported	yes
+attribute	XmlPrefix	xmlchan.c		not-ported	yes
+function	astXmlChan	xmlchan.c		not-ported	yes
+class	YamlChan	yamlchan.c		not-ported	yes
+attribute	VerboseRead	yamlchan.c		not-ported	yes
+attribute	PreserveName	yamlchan.c		not-ported	yes
+attribute	YamlEncoding	yamlchan.c		not-ported	yes
+function	astYamlChan	yamlchan.c		not-ported	yes
+class	ZoomMap	zoommap.c			no
+attribute	Zoom	zoommap.c			no
+function	astZoomMap	zoommap.c			no

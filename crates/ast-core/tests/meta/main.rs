@@ -27,6 +27,8 @@ mod test_area_membership;
 mod test_audit_citations;
 #[path = "../test_c_compare.rs"]
 mod test_c_compare;
+#[path = "../test_c_docs_audit.rs"]
+mod test_c_docs_audit;
 #[path = "../test_constructor_checks.rs"]
 mod test_constructor_checks;
 #[path = "../test_dump_comparator.rs"]
