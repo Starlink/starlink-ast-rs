@@ -3,7 +3,7 @@
 //! The authoritative serializer test is
 //! `test_serialisation::native_byte_exact_round_trip_simplify_fixtures`,
 //! which reads every C-generated `.map` / `.simp` file in the shared corpus and
-//! asserts each survives `from_native_string → to_native_string` byte-exact,
+//! asserts each survives `from_native_string → native_dump` byte-exact,
 //! alongside two more sweeps over the rest of the tree. This file
 //! is a supplement: it constructs Rust-side instances with specific
 //! non-default attribute values (e.g. non-zero `UnitNormMap` centre,

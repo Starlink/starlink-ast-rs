@@ -62,18 +62,22 @@ macro_rules! object_text {
         $(
             impl $ty {
                 /// Write this object's Native description to standard output,
-                /// as C's `astShow` does: comments included, default values
-                /// that help the reader written as comments, nested objects
-                /// indented.
+                /// as C's `astShow` does: the text a Channel with no attributes
+                /// set writes (`Comment` true, `Full` 0, `Indent` 3), so
+                /// comments are included, the default values that help a
+                /// reader are written as comments, and nested objects are
+                /// indented. Errors writing to standard output are ignored, as
+                /// C's `printf` sink ignores them.
                 pub fn show(&self) -> AstResult<()> {
                     print_text(&show_text(self)?);
                     Ok(())
                 }
 
                 /// This object's minimal Native serialisation, as C's
-                /// `astToString` returns it: no comments, no default values,
-                /// no indentation beyond one leading space, each line ending
-                /// in a newline. Read it back with
+                /// `astToString` returns it: the text a Channel set to
+                /// `Comment=0,Full=-1,Indent=0` writes, so no comments, no
+                /// default values and one leading space on every line, each
+                /// line ending in a newline. Read it back with
                 /// [`from_native_string`](crate::from_native_string).
                 pub fn to_native_string(&self) -> AstResult<String> {
                     compact_text(self)
@@ -105,7 +109,10 @@ macro_rules! object_text {
             }
 
             /// Write the object's Native description to standard output, as
-            /// C's `astShow` does.
+            /// C's `astShow` does: the text a Channel with no attributes set
+            /// writes (`Comment` true, `Full` 0, `Indent` 3). Errors writing
+            /// to standard output are ignored, as C's `printf` sink ignores
+            /// them.
             pub fn show(&self) -> AstResult<()> {
                 print_text(&self.show_text()?);
                 Ok(())
@@ -120,7 +127,8 @@ macro_rules! object_text {
             }
 
             /// The object's minimal Native serialisation, as C's
-            /// `astToString` returns it. Read it back with
+            /// `astToString` returns it: the text a Channel set to
+            /// `Comment=0,Full=-1,Indent=0` writes. Read it back with
             /// [`from_native_string`](crate::from_native_string).
             pub fn to_native_string(&self) -> AstResult<String> {
                 match self {

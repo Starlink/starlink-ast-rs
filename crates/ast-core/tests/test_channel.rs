@@ -8,7 +8,7 @@ use crate::common::native_dump;
 use ast_core::channel::{Channel, NativeChannel};
 use ast_core::coords::PointSet;
 use ast_core::frames::{BasicFrameBuilder, FrameRef, FrameSet, SkyFrame, SkySystem};
-use ast_core::mappings::{ShiftMap, ZoomMap};
+use ast_core::mappings::{CmpMap, Composition, Mapping, ShiftMap, ZoomMap};
 use ast_core::{AnyObject, from_native_string};
 
 // ===========================================================================
@@ -357,21 +357,44 @@ fn channel_from_string_matches_convenience_function() {
     assert_close(out1.point(0)[1], out2.point(0)[1], 1e-15, "axis 2");
 }
 
-#[test]
-fn to_native_string_matches_channel_write() {
-    let shift = ShiftMap::new(vec![100.0, -200.0]);
-    let obj = AnyObject::ShiftMap(shift);
-
-    // Via convenience function.
-    let text_convenience = native_dump(&obj).unwrap();
-
-    // Via Channel.
+/// The text a NativeChannel with `configure` applied writes for `obj`.
+fn channel_write(obj: &AnyObject, configure: impl FnOnce(&mut NativeChannel)) -> String {
     let mut ch = NativeChannel::with_string_sink();
-    ch.write(&obj).unwrap();
-    let text_channel = ch.into_string();
+    configure(&mut ch);
+    ch.write(obj).unwrap();
+    ch.into_string()
+}
 
-    // Should produce identical output.
-    assert_eq!(text_convenience, text_channel);
+/// A CmpMap of a ZoomMap with an ID and a ShiftMap: nested objects and a set
+/// Object attribute, which the compact form must keep.
+fn nested_object() -> AnyObject {
+    let mut zoom = ZoomMap::new(2, 4.0).unwrap();
+    zoom.set_id("zoom_id");
+    let shift = ShiftMap::new(vec![100.0, -200.0]);
+    let cmp = CmpMap::new(Box::new(zoom), Box::new(shift), Composition::Series).unwrap();
+    AnyObject::CmpMap(cmp)
+}
+
+#[test]
+fn to_native_string_matches_a_channel_set_as_ast_to_string_sets_it() {
+    let obj = nested_object();
+    let want = channel_write(&obj, |ch| {
+        let config = ch.config_mut();
+        config.set_comment(false);
+        config.set_full(-1);
+        config.set_indent(0);
+    });
+    assert_eq!(obj.to_native_string().unwrap(), want);
+    let AnyObject::CmpMap(cmp) = &obj else {
+        unreachable!()
+    };
+    assert_eq!(cmp.to_native_string().unwrap(), want);
+}
+
+#[test]
+fn show_writes_what_a_default_channel_writes() {
+    let obj = nested_object();
+    assert_eq!(obj.show_text().unwrap(), channel_write(&obj, |_| {}));
 }
 
 // ===========================================================================
