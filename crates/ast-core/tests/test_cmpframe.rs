@@ -349,3 +349,41 @@ fn norm_box_bounds_do_not_depend_on_component_order() {
         );
     }
 }
+
+/// testcmpframe.c Errors 1-9: NormPoints on a CmpFrame whose axes are
+/// permuted (3, 1, 2), holding a 1-D Frame and a SkyFrame whose own axes are
+/// swapped, so the CmpFrame's axes are (RA, PX, Dec). With `contig` the
+/// longitudes are brought into one range (the two near 2pi go below zero);
+/// without it every value is returned as given.
+#[test]
+fn norm_points_on_a_permuted_cmpframe_holding_a_swapped_skyframe() {
+    use ast_core::coords::PointSet;
+    use ast_core::frames::{BasicFrameBuilder, CmpFrame, Frame, SkyFrame};
+    let mut sky = SkyFrame::unset_system();
+    sky.perm_axes(&[2, 1]).unwrap();
+    let plane = BasicFrameBuilder::new(1).domain("FPLANE").build().unwrap();
+    let mut cmp = CmpFrame::new(Box::new(plane), Box::new(sky));
+    cmp.perm_axes(&[3, 1, 2]).unwrap();
+
+    let ra = [6.1, 6.1, 0.04, 0.04];
+    let dec = [0.2, -0.2, -0.2, 0.2];
+    let px = [-100.0, -10.0, 10.0, 100.0];
+    let pts = PointSet::from_rows((0..4).map(|i| vec![ra[i], px[i], dec[i]]));
+
+    let normed = cmp.norm_points(&pts, true).unwrap();
+    for i in 0..4 {
+        let want_ra = if i < 2 { ra[i] - 2.0 * PI } else { ra[i] };
+        assert_eq!(normed.point(i)[0], want_ra, "Errors 1-4, point {i}");
+        assert_eq!(normed.point(i)[1], px[i], "Error 5, point {i}");
+        assert_eq!(normed.point(i)[2], dec[i], "Error 6, point {i}");
+    }
+
+    let passed = cmp.norm_points(&pts, false).unwrap();
+    for i in 0..4 {
+        assert_eq!(
+            passed.point(i).to_vec(),
+            vec![ra[i], px[i], dec[i]],
+            "Errors 7-9, point {i}"
+        );
+    }
+}

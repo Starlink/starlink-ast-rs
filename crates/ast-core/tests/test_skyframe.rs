@@ -1363,3 +1363,52 @@ fn an_icrs_template_converts_as_the_c_library_does() {
         assert_eq!([x[0], y[0]], want, "template System {system}");
     }
 }
+
+/// testskyframe.c Errors 0-4: two FK5 SkyFrames whose epochs differ by less
+/// than SkyTol (default 0.001 arcsec of resulting shift) convert with a
+/// UnitMap; a smaller SkyTol, or a larger epoch difference, does not.
+#[test]
+fn an_epoch_change_within_skytol_converts_with_a_unitmap() {
+    use ast_core::mappings::UnitMap;
+    let fk5 = |year: f64| {
+        let mut f = SkyFrame::new(SkySystem::Fk5);
+        f.set_epoch_year(year);
+        f
+    };
+    let is_unit = |a: &SkyFrame, b: &SkyFrame| {
+        let fs = a
+            .convert_to(b, &["SKY"])
+            .unwrap()
+            .expect("FK5 SkyFrames convert");
+        fs.mapping(FrameRef::Base, FrameRef::Current)
+            .unwrap()
+            .as_any()
+            .is::<UnitMap>()
+    };
+    let sf1 = fk5(2015.0);
+    let mut sf2 = fk5(2015.1);
+    assert!(is_unit(&sf1, &sf2), "Error 1");
+    assert_eq!(sf1.sky_tol(), 0.001, "Error 2");
+    sf2.set_sky_tol(1.0e-6);
+    assert!(!is_unit(&sf1, &sf2), "Error 3");
+    assert!(!is_unit(&sf1, &fk5(2016.6)), "Error 4");
+}
+
+/// testskyframe.c Errors 5-6: AxNorm on the longitude axis, with oper 0
+/// (each value into [0, 2pi)) and oper 1 (all values into one range, here
+/// shifted down by 2pi together).
+#[test]
+fn ax_norm_on_the_longitude_axis_matches_c() {
+    let sf1 = {
+        let mut f = SkyFrame::new(SkySystem::Fk5);
+        f.set_epoch_year(2015.0);
+        f
+    };
+    let mut vals = [6.1, 6.15, 6.2, 6.25, 6.3];
+    sf1.ax_norm(1, 0, &mut vals).unwrap();
+    assert_eq!(vals, [6.1, 6.15, 6.2, 6.25, 6.3 - 2.0 * PI], "Error 5");
+    sf1.ax_norm(1, 1, &mut vals).unwrap();
+    for (v, x) in vals.iter().zip([6.1, 6.15, 6.2, 6.25, 6.3]) {
+        assert!((v - (x - 2.0 * PI)).abs() <= 1.0e-10, "Error 6: {vals:?}");
+    }
+}

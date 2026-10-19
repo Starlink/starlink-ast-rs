@@ -677,3 +677,28 @@ fn set_system_rescales_spec_origin() {
     let o = sf.spec_origin();
     assert!((o - 10.0).abs() < 1e-8, "FREQ->VRAD origin: got {o}");
 }
+
+/// testspecframe.c Errors 11-12: SourceVel, in C's units (km/s for a
+/// velocity), is re-expressed when SourceVRF and SourceSys change. 1000 km/s relative to the LSRK, as an optical
+/// redshift relative to the barycentre, is 0.00334028336870307, and back.
+#[test]
+fn source_vel_follows_source_vrf_and_source_sys() {
+    let mut sf = SpecFrame::new(SpecSystem::Freq);
+    sf.set_unit(1, "Hz").unwrap();
+    sf.set_source_vrf(StdOfRest::Lsrk).unwrap();
+    sf.set_source_vel_cur(1000.0);
+    sf.set_source_vrf(StdOfRest::Barycentric).unwrap();
+    sf.set_source_sys(SpecSystem::Redshift).unwrap();
+    assert!(
+        (sf.source_vel_cur() - 0.00334028336870307).abs() <= 1.0e-10,
+        "Error 11: {}",
+        sf.source_vel_cur()
+    );
+    sf.set_source_vrf(StdOfRest::Lsrk).unwrap();
+    sf.set_source_sys(SpecSystem::Vrel).unwrap();
+    assert!(
+        (sf.source_vel_cur() - 1000.0).abs() <= 1.0e-6,
+        "Error 12: {}",
+        sf.source_vel_cur()
+    );
+}
