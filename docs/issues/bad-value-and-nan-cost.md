@@ -58,11 +58,11 @@ In every chain but `rigby` the edge-only path is no faster, and for cheap Mappin
 The kernels' per-value tests are branchless selects, which cost little next to real arithmetic, so skipping them saves little; the two boundary passes cost about 1.2 ns per point for two axes, because the caller's input cannot be changed in place and has to be copied.
 Converting once at the edge only pays when the stages are many and cheap.
 
-### The edge-only path is not yet correct everywhere
+### Keeping the edge-only path correct
 
-Of 2 313 corpus transforms, four give different bits on the two paths (`ast-bench bits`, which records both): `cap_xphmap_01.map` forward, `cap_xphmap_02.map` and its `.simp` inverse, and `neg_switchmap_series_lower.map` inverse.
-The per-stage path is the one checked against C, so these are faults in the NaN path's XphMap and SwitchMap handling.
-They show the general risk: wherever `AST__BAD` means more than "a value that poisons arithmetic", NaN propagation is not the same rule.
+All 2 313 corpus transforms give the same bits on the two paths, and `ast-bench bits` fails on any that do not.
+Four did not until `21f29412`: a Mapping with no NaN path of its own wrote `AST__BAD` into the pipeline, where a later stage scaled it as a number (`cap_xphmap_01.map`, `cap_xphmap_02.map` and its `.simp`, `neg_switchmap_series_lower.map`).
+That is the general risk: wherever `AST__BAD` means more than "a value that poisons arithmetic", NaN propagation is not the same rule, and each such place needs its own handling on the NaN path.
 Known places:
 
 - MatrixMap: a zero element masks a bad input (`0 * NaN` is NaN);
@@ -83,7 +83,7 @@ No work.
 ### B. Make the edge-only path the default
 
 Keeps the output contract, and tests each value once instead of once per stage.
-The measurements above say it gains nothing on real chains and loses on cheap ones, and it needs the four faults fixed and the list above audited first.
+The measurements above say it gains nothing on real chains and loses on cheap ones, and the list above would need auditing first.
 Not worth doing as it stands.
 
 ### C. Follow C: test only `BAD_VALUE`, let NaN and infinity through
@@ -98,7 +98,7 @@ Gain: the cheap kernels' 2x while in cache, and a contract that matches the libr
 
 A caller declares, for a transform call or a Mapping, that it uses no `AST__BAD`: bad values are NaN on input, NaN and infinity follow IEEE rules through every Mapping, and outputs are left as they are.
 Kernels in that mode have no per-value tests at all, which is what lets compilers vectorize them (the SIMD kernels in [Starlink/ast pull request 51](https://github.com/Starlink/ast/pull/51) already need a scalar fix-up pass for bad values), and the input copy and output sweep of option B disappear because nothing is converted.
-What it needs, in C and here alike: every place listed under "not yet correct everywhere" given a NaN rule (a zero matrix element masking NaN, a NaN selector selecting no route, out-of-domain points written as NaN rather than `AST__BAD`), and a test corpus run in both modes.
+What it needs, in C and here alike: every place listed under "Keeping the edge-only path correct" given a NaN rule (a zero matrix element masking NaN, a NaN selector selecting no route, out-of-domain points written as NaN rather than `AST__BAD`), and a test corpus run in both modes.
 This is a design discussion for upstream first; the port would follow the API C adopts.
 
 ## Open questions
