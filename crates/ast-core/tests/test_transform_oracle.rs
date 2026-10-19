@@ -221,13 +221,13 @@ impl LoadOutcome {
 /// `Mapping` sibling traits, so a Frame has no transform to call, and these
 /// sections are skipped rather than checked.
 ///
-/// Nothing is lost: used as a Mapping, a Frame implements a unit transform
-/// in both directions (`frame.c:115-119`), so the recorded values are an
-/// identity by construction rather than a result worth re-deriving. The one
-/// Frame class that overrides `Transform` is CmpFrame, and it departs from
-/// the identity only when a component is a Region (`cmpframe.c:9920-9922`),
-/// which the port would load as a Region — a Mapping — and so transform
-/// normally.
+/// Used as a Mapping, a Frame implements a unit transform in both directions
+/// (`frame.c:115-119`), so for most of these the recorded values are an
+/// identity. The one Frame class that overrides `Transform` is CmpFrame, and
+/// it departs from the identity when a component is a Region
+/// (`cmpframe.c:9920-9922`); the port loads such a CmpFrame as a CmpFrame,
+/// with no transform. `UNTRANSFORMABLE` names every such fixture and records
+/// which are identities in C, and the gates check both.
 fn load_fixture(relpath: &str) -> Result<LoadOutcome, String> {
     let path = match resolve_fixture(relpath) {
         Some(p) => p,
@@ -1152,7 +1152,12 @@ mod check_tests {
 enum Outcome {
     Pass,
     LoadFail(String),
-    Skipped(String),
+    /// Loads as something with no transform in the port (a bare Frame);
+    /// `identity` says whether C's recorded outputs equal the inputs.
+    Untransformable {
+        reason: String,
+        identity: bool,
+    },
     SkippedByOverride(String),
     Arity(String),
     Mismatch(Vec<AxisMiss>),
@@ -1162,6 +1167,10 @@ struct SectionReport {
     relpath: String,
     forward: bool,
     outcome: Outcome,
+    /// The round-trip check ran for this section.
+    rtrip: bool,
+    /// The `.map`/`.simp` equivalence check ran for this section.
+    equiv: bool,
 }
 
 /// Does relpath end with the given extension?
@@ -1191,10 +1200,20 @@ fn run_oracle(oracle_text: &str, overrides: &Overrides) -> Vec<SectionReport> {
         let loaded = match load_fixture(&s.relpath) {
             Ok(Transformable(l)) => *l,
             Ok(Untransformable(reason)) => {
+                let identity = s.nin == s.nout
+                    && s.inputs
+                        .iter()
+                        .zip(&s.outputs)
+                        .all(|(i, o)| i.iter().zip(o).all(|(a, b)| a.to_bits() == b.to_bits()));
                 reports.push(SectionReport {
                     relpath: s.relpath.clone(),
                     forward: s.forward,
-                    outcome: Outcome::Skipped(reason.into()),
+                    outcome: Outcome::Untransformable {
+                        reason: reason.into(),
+                        identity,
+                    },
+                    rtrip: false,
+                    equiv: false,
                 });
                 continue;
             }
@@ -1203,6 +1222,8 @@ fn run_oracle(oracle_text: &str, overrides: &Overrides) -> Vec<SectionReport> {
                     relpath: s.relpath.clone(),
                     forward: s.forward,
                     outcome: Outcome::LoadFail(e),
+                    rtrip: false,
+                    equiv: false,
                 });
                 continue;
             }
@@ -1215,6 +1236,8 @@ fn run_oracle(oracle_text: &str, overrides: &Overrides) -> Vec<SectionReport> {
                     relpath: s.relpath.clone(),
                     forward: s.forward,
                     outcome: Outcome::Arity(e),
+                    rtrip: false,
+                    equiv: false,
                 });
                 continue;
             }
@@ -1222,6 +1245,7 @@ fn run_oracle(oracle_text: &str, overrides: &Overrides) -> Vec<SectionReport> {
         let angular = angular_flags(&loaded, &s);
         let mut misses: Vec<AxisMiss> = Vec::new();
         let mut skipped_by_override = false;
+        let (mut rtrip_ran, mut equiv_ran) = (false, false);
 
         // Golden check (fwd or inv), unless disabled by an override. A row
         // list narrows the skip to the named rows rather than the direction,
@@ -1249,6 +1273,7 @@ fn run_oracle(oracle_text: &str, overrides: &Overrides) -> Vec<SectionReport> {
             {
                 if let Some((rtol, atol)) = overrides.rtrip(&s.relpath) {
                     misses.extend(compare_rtrip(map, fwd, &live, &s.outputs, rtol, atol));
+                    rtrip_ran = true;
                 }
             }
         }
@@ -1267,6 +1292,7 @@ fn run_oracle(oracle_text: &str, overrides: &Overrides) -> Vec<SectionReport> {
                     &s.outputs,
                     &angular,
                 ));
+                equiv_ran = true;
             }
         }
 
@@ -1289,6 +1315,8 @@ fn run_oracle(oracle_text: &str, overrides: &Overrides) -> Vec<SectionReport> {
             relpath: s.relpath,
             forward: s.forward,
             outcome,
+            rtrip: rtrip_ran,
+            equiv: equiv_ran,
         });
     }
     reports
@@ -1401,9 +1429,9 @@ fn write_json_report(path: &str, reports: &[SectionReport]) -> std::io::Result<(
                 load_fail += 1;
                 ("load-fail".to_string(), e.clone())
             }
-            Outcome::Skipped(e) => {
+            Outcome::Untransformable { reason, .. } => {
                 skipped += 1;
-                ("skipped".to_string(), e.clone())
+                ("skipped".to_string(), reason.clone())
             }
             Outcome::SkippedByOverride(e) => {
                 skipped_override += 1;
@@ -1509,10 +1537,12 @@ const SLAMAP_ORACLE_EXCLUDED: &[(&str, bool, &str)] = &[
     // with a specific reason.
 ];
 
-/// Number of SlaMap-family oracle section-directions currently in the corpus.
-/// The gate asserts it examined at least this many, so a future rename or
-/// deletion of the fixtures cannot make the gate pass vacuously.
+/// SlaMap-family sections the gate compares, exactly, so that a rename,
+/// deletion or addition of a fixture fails it; then the round-trip and
+/// equivalence checks those sections run.
 const SLAMAP_SECTION_FLOOR: usize = 136;
+const SLAMAP_RTRIP_CHECKS: usize = 0;
+const SLAMAP_EQUIV_CHECKS: usize = 31;
 
 /// Is this oracle section owned by SlaMap transform math (a *sla* fixture in
 /// the simplify corpus)?
@@ -1558,7 +1588,7 @@ fn slamap_sections_match_oracle() {
     let mut checked = 0usize;
 
     for r in &reports {
-        if !is_slamap_section(&r.relpath) {
+        if !is_slamap_section(&r.relpath) || matches!(r.outcome, Outcome::Untransformable { .. }) {
             continue;
         }
         checked += 1;
@@ -1588,11 +1618,109 @@ fn slamap_sections_match_oracle() {
         "SLAMAP_ORACLE_EXCLUDED entries now pass — remove them:\n{:?}",
         stale_exclusions,
     );
-    assert!(
-        checked >= SLAMAP_SECTION_FLOOR,
-        "gate examined only {checked} SlaMap sections (expected >= {SLAMAP_SECTION_FLOOR}); \
-         fixtures may have been renamed or removed",
+    assert_eq!(
+        checked, SLAMAP_SECTION_FLOOR,
+        "gate compared {checked} SlaMap sections, not {SLAMAP_SECTION_FLOOR}; fixtures may \
+         have been renamed, removed or added"
     );
+    let t = tally(&reports, is_slamap_section);
+    assert!(t.problems.is_empty(), "{}", t.problems.join("\n"));
+    assert_eq!(
+        (t.rtrip, t.equiv),
+        (SLAMAP_RTRIP_CHECKS, SLAMAP_EQUIV_CHECKS),
+        "SlaMap round-trip and equivalence checks run; a regenerated oracle that \
+         reorders sections stops them silently"
+    );
+}
+
+/// Fixtures that load as something with no transform in the port (a bare
+/// Frame; see `load_fixture`), so every gate skips their sections, as
+/// `(relpath, (forward identity, inverse identity), reason)`: whether C's
+/// recorded outputs equal its inputs in each direction, which is what C's
+/// unit transform for a Frame gives; a `false` is C behavior the port does
+/// not reproduce. A gate fails on a skipped section not listed here, on a
+/// listed fixture that is no longer skipped, and on an `identity` that does
+/// not match the oracle.
+const UNTRANSFORMABLE: &[(&str, (bool, bool), &str)] = &[
+    ("serialisation/basicframe.ast", (true, true), "a Frame"),
+    (
+        "serialisation/cmpframe.ast",
+        (true, true),
+        "a CmpFrame of two Frames",
+    ),
+    ("serialisation/jan-dsb.ast", (true, true), "a DSBSpecFrame"),
+    (
+        "serialisation/region_in_cmpframe.ast",
+        (false, true),
+        "a CmpFrame whose first component is a Box; C's CmpFrame forward \
+         Transform applies the Region (cmpframe.c:9920-9922), so points \
+         outside it are bad, and the port, where a Frame is not a Mapping, \
+         has no transform for it (PLAN.md 9.6)",
+    ),
+    ("serialisation/skyframe.ast", (true, true), "a SkyFrame"),
+    (
+        "serialisation/skyframe_galactic.ast",
+        (true, true),
+        "a SkyFrame",
+    ),
+    ("serialisation/specframe.ast", (true, true), "a SpecFrame"),
+    ("serialisation/timeframe.ast", (true, true), "a TimeFrame"),
+    (
+        "wcsconv/framesets/specflux-head.ast",
+        (true, true),
+        "a CmpFrame",
+    ),
+    (
+        "wcsconv/framesets/timeplot-head.ast",
+        (true, true),
+        "a CmpFrame",
+    ),
+    ("wcsconv/inputs/specflux.ast", (true, true), "a CmpFrame"),
+];
+
+/// What a gate saw over the sections it covers, beyond pass and fail.
+struct Tally {
+    /// Sections whose round-trip check ran.
+    rtrip: usize,
+    /// Sections whose `.map`/`.simp` equivalence check ran.
+    equiv: usize,
+    /// Untransformable sections that do not match `UNTRANSFORMABLE`.
+    problems: Vec<String>,
+}
+
+fn tally(reports: &[SectionReport], in_gate: impl Fn(&str) -> bool) -> Tally {
+    let mut t = Tally {
+        rtrip: 0,
+        equiv: 0,
+        problems: Vec::new(),
+    };
+    let mut seen = std::collections::BTreeSet::new();
+    for r in reports.iter().filter(|r| in_gate(&r.relpath)) {
+        t.rtrip += usize::from(r.rtrip);
+        t.equiv += usize::from(r.equiv);
+        let Outcome::Untransformable { identity, .. } = &r.outcome else {
+            continue;
+        };
+        seen.insert(r.relpath.as_str());
+        match UNTRANSFORMABLE.iter().find(|(p, ..)| *p == r.relpath) {
+            None => t.problems.push(format!(
+                "{} (forward={}) has no transform in the port and is not in UNTRANSFORMABLE",
+                r.relpath, r.forward
+            )),
+            Some((_, (fwd, inv), _)) if (if r.forward { fwd } else { inv }) != identity => t.problems.push(format!(
+                "{} (forward={}): UNTRANSFORMABLE disagrees with C's oracle, which says identity={identity}",
+                r.relpath, r.forward
+            )),
+            Some(_) => {}
+        }
+    }
+    for (p, ..) in UNTRANSFORMABLE.iter().filter(|(p, ..)| in_gate(p)) {
+        if !seen.contains(p) {
+            t.problems
+                .push(format!("UNTRANSFORMABLE entry {p} is no longer skipped"));
+        }
+    }
+    t
 }
 
 /// Short human description of a non-pass outcome for gate failure messages.
@@ -1600,7 +1728,7 @@ fn describe_outcome(o: &Outcome) -> String {
     match o {
         Outcome::Pass => "pass".to_string(),
         Outcome::LoadFail(e) => format!("load-fail: {e}"),
-        Outcome::Skipped(e) => format!("skipped: {e}"),
+        Outcome::Untransformable { reason, .. } => format!("untransformable: {reason}"),
         Outcome::SkippedByOverride(e) => format!("skipped-override: {e}"),
         Outcome::Arity(e) => format!("arity: {e}"),
         Outcome::Mismatch(m) => {
@@ -1626,10 +1754,12 @@ fn describe_outcome(o: &Outcome) -> String {
 /// artifacts — the `.ast`/`.simp` corpus is already byte-exact.
 const HEAD_ORACLE_EXCLUDED: &[(&str, bool, &str)] = &[];
 
-/// Number of `.head` oracle section-directions currently in the corpus. The
-/// gate asserts it examined at least this many, so a rename or deletion of a
-/// fixture cannot make the gate pass vacuously.
+/// `.head` sections the gate compares, exactly, so that a rename, deletion or
+/// addition of a fixture fails it; then the round-trip and equivalence checks
+/// those sections run.
 const HEAD_SECTION_FLOOR: usize = 277;
+const HEAD_RTRIP_CHECKS: usize = 137;
+const HEAD_EQUIV_CHECKS: usize = 0;
 
 /// Is this oracle section a `.head` FITS-read fixture?
 fn is_head_section(relpath: &str) -> bool {
@@ -1672,7 +1802,7 @@ fn head_sections_match_oracle() {
     let mut checked = 0usize;
 
     for r in &reports {
-        if !is_head_section(&r.relpath) {
+        if !is_head_section(&r.relpath) || matches!(r.outcome, Outcome::Untransformable { .. }) {
             continue;
         }
         checked += 1;
@@ -1702,10 +1832,18 @@ fn head_sections_match_oracle() {
         "HEAD_ORACLE_EXCLUDED entries now pass — remove them:\n{:?}",
         stale_exclusions,
     );
-    assert!(
-        checked >= HEAD_SECTION_FLOOR,
-        "gate examined only {checked} head sections (expected >= {HEAD_SECTION_FLOOR}); \
-         fixtures may have been renamed or removed",
+    assert_eq!(
+        checked, HEAD_SECTION_FLOOR,
+        "gate compared {checked} head sections, not {HEAD_SECTION_FLOOR}; fixtures may \
+         have been renamed, removed or added"
+    );
+    let t = tally(&reports, is_head_section);
+    assert!(t.problems.is_empty(), "{}", t.problems.join("\n"));
+    assert_eq!(
+        (t.rtrip, t.equiv),
+        (HEAD_RTRIP_CHECKS, HEAD_EQUIV_CHECKS),
+        "head round-trip and equivalence checks run; a regenerated oracle that \
+         reorders sections stops them silently"
     );
 }
 
@@ -1720,14 +1858,15 @@ fn head_sections_match_oracle() {
 /// fix.
 const SIMPLIFY_ORACLE_EXCLUDED: &[(&str, bool, &str)] = &[];
 
-/// Number of simplify-corpus oracle section-directions currently gated. The
-/// gate asserts it examined at least this many, so a rename or deletion of a
-/// fixture cannot make the gate pass vacuously.
-/// Of the 2261 sections, 277 are `.head` and 136 are SlaMap, leaving 1848
-/// here, of which 18 are the deferred-class load-fails licensed below.
-// 1848 sections are simplify-class; the gate skips the 20 DEFERRED_LOAD fixtures
-// in both directions, so it examines 40 fewer.
-const SIMPLIFY_SECTION_FLOOR: usize = 1808;
+/// Simplify-corpus sections the gate compares, exactly, so that a rename,
+/// deletion or addition of a fixture fails it. Of the 2261 sections, 277 are
+/// `.head` and 136 are SlaMap, leaving 1848; the gate leaves out the 2
+/// sections of the one `DEFERRED_LOAD` fixture and the 22 of the
+/// `UNTRANSFORMABLE` ones. The round-trip and equivalence counts after it are
+/// the checks those sections run, which depend on the oracle's section order.
+const SIMPLIFY_SECTION_FLOOR: usize = 1824;
+const SIMPLIFY_RTRIP_CHECKS: usize = 162;
+const SIMPLIFY_EQUIV_CHECKS: usize = 304;
 
 /// Is this oracle section part of the simplify corpus (a `simplify/`
 /// relpath or a top-level `.ast`/`.map`/`.simp` fixture)? This is everything
@@ -1831,6 +1970,9 @@ fn simplify_sections_match_oracle() {
         if matches!(r.outcome, Outcome::LoadFail(_)) && is_deferred_class_fixture(&r.relpath) {
             continue;
         }
+        if matches!(r.outcome, Outcome::Untransformable { .. }) {
+            continue;
+        }
         checked += 1;
         let key = (r.relpath.as_str(), r.forward);
         if excluded.contains(&key) {
@@ -1858,10 +2000,18 @@ fn simplify_sections_match_oracle() {
         "SIMPLIFY_ORACLE_EXCLUDED entries now pass — remove them:\n{:?}",
         stale_exclusions,
     );
-    assert!(
-        checked >= SIMPLIFY_SECTION_FLOOR,
-        "gate examined only {checked} simplify sections (expected >= \
-         {SIMPLIFY_SECTION_FLOOR}); fixtures may have been renamed or removed",
+    assert_eq!(
+        checked, SIMPLIFY_SECTION_FLOOR,
+        "gate compared {checked} simplify sections, not {SIMPLIFY_SECTION_FLOOR}; fixtures may \
+         have been renamed, removed or added"
+    );
+    let t = tally(&reports, is_simplify_section);
+    assert!(t.problems.is_empty(), "{}", t.problems.join("\n"));
+    assert_eq!(
+        (t.rtrip, t.equiv),
+        (SIMPLIFY_RTRIP_CHECKS, SIMPLIFY_EQUIV_CHECKS),
+        "simplify round-trip and equivalence checks run; a regenerated oracle that \
+         reorders sections stops them silently"
     );
 }
 
