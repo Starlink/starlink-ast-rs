@@ -17,7 +17,6 @@
 
 use std::fmt;
 
-use crate::constants::BAD_VALUE;
 use crate::coords::{Points, PointsMut};
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::serial::{
@@ -261,15 +260,9 @@ impl Mapping for RateMap {
     ) -> AstResult<()> {
         crate::mappings::validate_transform_into(self, &pts, forward, Some(&out))?;
         let npoint = pts.npoint();
-        if forward == self.inverted {
-            // The RateMap class does not define an inverse transformation
-            // (or forward when inverted). Return BAD for all outputs.
-            let nout = if forward { self.nout() } else { self.nin() };
-            for axis in out.axes_iter_mut().take(nout) {
-                axis[..npoint].fill(BAD_VALUE);
-            }
-            return Ok(());
-        }
+        // A RateMap defines no inverse (no forward when inverted), and
+        // validate_transform_into has refused that direction.
+        debug_assert!(forward != self.inverted);
 
         // ratemap.c Transform asks the encapsulated Mapping's Rate at every
         // point, bad inputs included, since an analytic Rate may not depend

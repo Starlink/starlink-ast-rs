@@ -190,6 +190,28 @@ fn a_series_cmpmap_of_no_points_still_checks_its_direction() {
     assert!(r.is_err(), "{r:?}");
 }
 
+/// The same series through the NaN protocol's entry point, which has no
+/// top-level check of its own: the error comes from the series asking each
+/// component for its stage, even with no points to transform.
+#[test]
+fn a_series_cmpmap_of_no_points_checks_each_component_on_the_nan_path() {
+    let first = MatrixMap::new(ndarray::array![[1.0], [2.0]]).unwrap();
+    let m = CmpMap::new(
+        Box::new(first),
+        Box::new(UnitMap::new(2)),
+        Composition::Series,
+    )
+    .unwrap();
+    let (x, y): ([f64; 0], [f64; 0]) = ([], []);
+    let mut a: [f64; 0] = [];
+    let r = m.transform_into_nan(
+        Points::new([&x[..], &y[..]]).unwrap(),
+        false,
+        PointsMut::new([&mut a[..]]).unwrap(),
+    );
+    assert!(r.is_err(), "{r:?}");
+}
+
 use ast_core::mappings::UnitNormMap;
 
 /// Transform `inp` with `map` into outputs one point longer, which must keep

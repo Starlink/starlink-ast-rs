@@ -21,7 +21,7 @@ ChebyMap in a list of one (`mapping.c:16871-16883 (fn Simplify)`) and calls
 default.
 
 The Rust ChebyMap does not delegate to `PolyMap::map_merge`
-(`polymap.rs:1731-1753 (fn map_merge)`). It has its own
+(`polymap.rs:1724-1746 (fn map_merge)`). It has its own
 (`chebymap.rs:646-710 (fn map_merge)`), which runs the coefficient consolidation
 through `PolyMap::consolidated_terms`
 (`polymap.rs:762-806 (fn consolidated_terms)`) and then falls through to the

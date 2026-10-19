@@ -1739,3 +1739,37 @@ fn polymap_long_array_matches_each_point_and_keeps_independent_outputs() {
         }
     }
 }
+
+/// A PolyMap with no inverse refuses an inverse transformation on either
+/// path: the NaN protocol's entry point gives the same error as
+/// `transform_into` rather than outputs.
+#[test]
+fn polymap_without_an_inverse_refuses_it_on_the_nan_path_too() {
+    use ast_core::coords::{Points, PointsMut};
+    // Two inputs and one output, so there is no iterative inverse either.
+    let terms = [PolyTerm {
+        coeff: 2.0,
+        powers: vec![1, 1],
+        out_axis: 1,
+    }];
+    let m = PolyMap::new(2, 1, &terms, None).unwrap();
+    assert!(!m.has_inverse());
+    let x = [1.0, 2.0];
+    let (mut a0, mut a1) = ([0.0; 2], [0.0; 2]);
+    let (mut b0, mut b1) = ([0.0; 2], [0.0; 2]);
+    let plain = m.transform_into(
+        Points::new([&x[..]]).unwrap(),
+        false,
+        PointsMut::new([&mut a0[..], &mut a1[..]]).unwrap(),
+    );
+    let nan = m.transform_into_nan(
+        Points::new([&x[..]]).unwrap(),
+        false,
+        PointsMut::new([&mut b0[..], &mut b1[..]]).unwrap(),
+    );
+    let b = [b0, b1];
+    let code = |r: &ast_core::error::AstResult<()>| r.as_ref().unwrap_err().code();
+    assert!(plain.is_err(), "{plain:?}");
+    assert!(nan.is_err(), "{nan:?} wrote {b:?}");
+    assert_eq!(code(&plain), code(&nan));
+}

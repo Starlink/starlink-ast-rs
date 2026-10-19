@@ -1643,11 +1643,7 @@ impl Mapping for PolyMap {
                 // to nin-space.
                 poly_transform(self, false, &tables, &pts, &mut out, BAD_VALUE);
             } else {
-                // No inverse available: fill with BAD.
-                let n = pts.npoint();
-                for axis in out.axes_iter_mut().take(self.nin) {
-                    axis[..n].fill(BAD_VALUE);
-                }
+                unreachable!("validate_transform_into refuses an undefined inverse")
             }
         }
         Ok(())
@@ -1673,6 +1669,7 @@ impl Mapping for PolyMap {
         forward: bool,
         mut out: PointsMut<'_>,
     ) -> AstResult<()> {
+        crate::mappings::require_direction(self, forward, "astTransform")?;
         let fwd = self.effective_forward(forward);
 
         if fwd {
@@ -1719,11 +1716,7 @@ impl Mapping for PolyMap {
         } else if let Some(tables) = self.term_tables(false) {
             poly_transform(self, false, &tables, &pts, &mut out, f64::NAN);
         } else {
-            // No inverse available: every output is bad, which is NaN here.
-            let n = pts.npoint();
-            for axis in out.axes_iter_mut().take(self.nin) {
-                axis[..n].fill(f64::NAN);
-            }
+            unreachable!("require_direction refuses an undefined inverse")
         }
         Ok(())
     }
