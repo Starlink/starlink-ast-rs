@@ -177,6 +177,8 @@ Where the code differs from the design above:
   The inline capacity stays 8.
 - Stage 3 covers every Mapping, not only the seven classes named there: the other kernels were converted to axis loops or to direct indexing of bound axis slices, so that no class is slower than before the change at large N.
   Non-kernel code (Region geometry, `map_box`, `linear_approx`, the simplifier) still reads points with `point(i)`.
+- The views avoid a copy only where a Mapping's kernel reads and writes them directly.
+  Every Region, SelectorMap, SwitchMap and PolyMap's iterative inverse still implement `transform_into` by copying the input view into a `PointSet`, transforming that, and copying the result into the output view, so a C-shaped caller pays two copies for them.
 - A view costs about 6 ns per transform call at N=1 over the old `&PointSet` arguments: building two views and passing them by value.
   Rust callers at N=1 accept that cost; a C-shaped caller's single-point transform fell from about 61 ns to 13 ns, against C's 540 ns.
 - Storage is a plain `Vec<f64>` holding the axes one after another, not an ndarray `Array2`; `view()` and `view_mut()` still give `(ncoord, npoint)` ndarray views of it.
