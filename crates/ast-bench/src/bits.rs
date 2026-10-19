@@ -116,6 +116,24 @@ pub fn diff_bits(base: &str, cur: &str) -> Result<Vec<String>, String> {
     Ok(out)
 }
 
+/// Every case whose output differs between the two paths: `transform` and
+/// the NaN protocol must give the same bits. A case that does not load, or
+/// has nothing to transform, is not compared.
+pub fn path_mismatches(text: &str) -> Result<Vec<String>, String> {
+    let mut out = Vec::new();
+    for l in text.lines().filter(|l| !l.is_empty()) {
+        let mut f = l.split('\t');
+        let (Some(key), Some(plain), Some(nan)) = (f.next(), f.next(), f.next()) else {
+            return Err(format!("bad bits line {l:?}"));
+        };
+        let compared = !(plain.starts_with("untransformable") || plain.starts_with("load error"));
+        if compared && plain != nan {
+            out.push(format!("{key}: transform {plain}, NaN protocol {nan}"));
+        }
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -151,5 +169,15 @@ mod tests {
             .unwrap();
         assert_eq!(case_bits(c), case_bits(c));
         assert!(case_bits(c).0.len() == 16, "{:?}", case_bits(c));
+    }
+
+    #[test]
+    fn the_two_paths_must_agree() {
+        let text = "a.map forward #0\t00ff\t00ff\n\
+                    b.map forward #0\t00ff\t00fe\n\
+                    c.ast forward #0\tuntransformable: bare Frame\t\n";
+        let m = path_mismatches(text).unwrap();
+        assert_eq!(m.len(), 1, "{m:?}");
+        assert!(m[0].starts_with("b.map forward #0"), "{m:?}");
     }
 }

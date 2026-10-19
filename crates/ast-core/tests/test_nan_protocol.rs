@@ -395,3 +395,37 @@ fn nan_protocol_propagates_bad_and_nan_inputs() {
     assert!(p1[0].is_finite() && p1[0] != BAD_VALUE);
     assert!(p1[1].is_finite() && p1[1] != BAD_VALUE);
 }
+
+/// A Mapping with no NaN path of its own writes `BAD_VALUE` for a bad
+/// output; inside the NaN protocol that must reach the next stage as NaN,
+/// not as a number for it to scale.
+#[test]
+fn nan_protocol_carries_a_bad_output_of_a_mapping_without_its_own_nan_path() {
+    use ast_core::mappings::{CmpMap, Composition, ZoomMap};
+    let xph = from_native_string(
+        " Begin XphMap\n    Nin = 2\n IsA Mapping\n    Order = 3\n    Type = \"HPX12\"\n End XphMap\n",
+    )
+    .unwrap()
+    .into_mapping()
+    .unwrap();
+    let map: Box<dyn Mapping> = Box::new(
+        CmpMap::new(
+            xph,
+            Box::new(ZoomMap::new(2, 0.5).unwrap()),
+            Composition::Series,
+        )
+        .unwrap(),
+    );
+    // The first point is outside the projection, so XphMap makes it bad.
+    let pts = PointSet::from_rows([[1000.0, 1000.0], [20.0, 20.0]]);
+    let regular = map.transform(&pts, true).unwrap();
+    let via_nan = map.transform_nan_protocol(&pts, true).unwrap();
+    assert_eq!(regular.point(0).to_vec(), vec![BAD_VALUE, BAD_VALUE]);
+    for i in 0..2 {
+        assert_eq!(
+            regular.point(i).to_vec(),
+            via_nan.point(i).to_vec(),
+            "point {i}"
+        );
+    }
+}

@@ -62,6 +62,7 @@ That slowdown is real for that binary, so `compare` is right to report it, but r
     ast-bench bits [--base <git-ref>]
 
 prints a hash of the output bits of every transform in the sweep corpus, through `transform` and through the NaN protocol, at 10 000 points per case.
+It fails on any case where the two paths give different bits, since the NaN protocol must not change a result.
 With `--base`, it builds `ast-bench` at that commit, runs the same command there, and fails on any case whose hashes differ, including a case that fails to load or transform on one side only.
 Use it for changes that must not alter any result, such as a change of data layout.
 The hashes depend on the platform's libm, so they are only ever compared on one machine, never committed.

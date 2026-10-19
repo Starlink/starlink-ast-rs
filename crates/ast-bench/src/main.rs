@@ -197,10 +197,20 @@ fn sweep(args: &[String]) -> Result<Vec<String>, String> {
 }
 
 /// `bits`: print the output-bit hashes of every corpus transform, or with
-/// `--base`, list every case whose hashes differ from that commit's.
+/// `--base`, list every case whose hashes differ from that commit's; either
+/// way, list every case whose two paths (`transform` and the NaN protocol)
+/// give different bits.
 fn bits(args: &[String]) -> Result<Vec<String>, String> {
     check_not_counting()?;
     let cur = ast_bench::bits::all_bits()?;
+    // The NaN protocol must give the same bits as `transform`, here and now.
+    let mismatches: Vec<String> = ast_bench::bits::path_mismatches(&cur)?
+        .into_iter()
+        .map(|m| format!("paths differ: {m}"))
+        .collect();
+    if !mismatches.is_empty() {
+        return Ok(mismatches);
+    }
     match opt(args, "--base") {
         None => {
             print!("{cur}");

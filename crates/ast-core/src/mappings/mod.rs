@@ -399,9 +399,11 @@ pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
     /// - The output is allowed to contain `f64::NAN` for bad points; the
     ///   top-level entry converts NaN → `BAD_VALUE` once at the bottom.
     ///
-    /// The default implementation delegates to [`Mapping::transform_into`], which
-    /// preserves the original BAD-checking semantics. Classes that opt in to
-    /// the protocol override this method to drop the per-point checks.
+    /// The default implementation runs [`Mapping::transform_into`], whose
+    /// `is_bad` checks treat a NaN input as bad, and turns the `BAD_VALUE` it
+    /// writes into NaN, so that a later stage of the pipeline, which may not
+    /// check, cannot take it for a number. Classes that opt in to the
+    /// protocol override this method to drop the per-point checks.
     ///
     /// Compositional mappings (`CmpMap`, `FrameSet`-as-Mapping, etc.) should
     /// override this to recursively call `transform_into_nan` on their
@@ -411,12 +413,12 @@ pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
         &self,
         pts: Points<'_>,
         forward: bool,
-        out: PointsMut<'_>,
+        mut out: PointsMut<'_>,
     ) -> AstResult<()> {
-        // Default: behave exactly like the existing path. Safe because
-        // `is_bad` already includes `!is_finite()`, so a NaN input handed to
-        // an unconverted Mapping still produces BAD output.
-        self.transform_into(pts, forward, out)
+        let npoint = pts.npoint();
+        self.transform_into(pts, forward, out.reborrow())?;
+        bad_to_nan(self, forward, npoint, &mut out);
+        Ok(())
     }
 
     /// Reduce this Mapping without the `IsSimple` gate — C's `Simplify` vtab
