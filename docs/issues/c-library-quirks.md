@@ -202,9 +202,10 @@ The port does both, and gives bit-identical output on every corpus transform (`a
 In the port, dropping the zero-power branch alone took a 2-D degree-5 PolyMap's forward transform from 53 to 38 ns per point at 1 000 000 points, on macOS aarch64, where C takes 58.
 That is the port's measurement; the gain in C has not been measured.
 A C speed-up: drop the `pow > 0` test, and have `PolyPowers` return whether every power is good so that `Transform` can skip the `AST__BAD` tests for that point.
-[Starlink/ast pull request 51](https://github.com/Starlink/ast/pull/51) makes a related change, evaluating each term over a block of points with the point loop innermost, only in its opt-in SIMD build (`TransformLoopSIMD`, compiled only with `AST_HAVE_SIMD` and `-ffast-math`); its default `TransformLoopScalar` keeps the loop above.
-The reordering needs neither: each output value is still summed in the same order, so the result is bit-identical (the port's MatrixMap kernel is the evidence), and it can go into the default build.
-Only the pull request's vector `atan2`, `sin` and `cos` (SphMap) need `-ffast-math` and change results, by a few ULP.
+[Starlink/ast pull request 51](https://github.com/Starlink/ast/pull/51) evaluates each term over a block of points with the point loop innermost, but only in its opt-in SIMD build (`TransformLoopSIMD`, compiled only with `AST_HAVE_SIMD` and `-ffast-math`); its default `TransformLoopScalar` keeps the loop above.
+That reordering keeps C's operations in C's order (powers by repeated multiplication from 1.0, each term's product in input order, the terms summed in coefficient order from 0.0), so on its own it needs no `-ffast-math` and would give C's results in the default build.
+The port has not made this change (its PolyMap still evaluates one point at a time), so that is reasoning, not a measurement.
+The pull request's version also differs from C in two ways besides rounding: it skips zero coefficients, where C adds `0 * term` (which matters only for the sign of a zero result, or when a term overflows to infinity), and its bad-value fix-up makes every output bad when any input is `AST__BAD`, where C makes an output bad only when one of its terms uses that input with a non-zero power; a PolyMap whose second output depends only on its second input keeps a good second output in C when the first input is bad.
 ChebyMap shares the loop, so it gains too, and FITS-WCS SIP and TPN distortions are PolyMaps.
 
 ### MatrixMap's full-matrix `Transform` loops over points outermost and branches on every value
@@ -223,9 +224,10 @@ For up to four inputs each row's sum is unrolled.
 The port's 3x3 full MatrixMap (the direction-cosine case) takes 3.3 ns per point at 1 000 000 points, where C takes 11.5, on macOS aarch64.
 The port's own earlier per-point version, with a branch that set a flag, took 6.8, which is the part of that gap a change of loop shape explains; the gain in C has not been measured.
 A C speed-up: loop over outputs outside points, and replace the early exit with a bad flag and a conditional add.
-[Starlink/ast pull request 51](https://github.com/Starlink/ast/pull/51) makes this change, with the point loop innermost, only in its opt-in SIMD build (`TransformLoopSIMD`, compiled only with `AST_HAVE_SIMD` and `-ffast-math`); its default `TransformLoopScalar` keeps the loop above.
-The reordering needs neither: each output value is still summed in the same order, so the result is bit-identical (the port's MatrixMap kernel is the evidence), and it can go into the default build.
-Only the pull request's vector `atan2`, `sin` and `cos` (SphMap) need `-ffast-math` and change results, by a few ULP.
+[Starlink/ast pull request 51](https://github.com/Starlink/ast/pull/51) makes this change, with the point loop innermost, but only in its opt-in SIMD build (`TransformLoopSIMD`, compiled only with `AST_HAVE_SIMD` and `-ffast-math`); its default `TransformLoopScalar` keeps the loop above.
+The reordering itself needs neither: each output is still summed from 0.0 over the inputs in C's order, and the port's kernel, which does exactly this, gives C's bits on every corpus transform, so it can go into the default build.
+The pull request's version keeps C's bad-value rules (its fix-up leaves an output alone where the matrix element is zero), but differs from C's results in two ways that are not the reordering: its fused multiply-adds (`VFMADD`) round differently, and it starts each sum from the first contributing term rather than adding it to 0.0, which matters only for the sign of a zero.
+Only the pull request's vector `atan2`, `sin` and `cos` (SphMap) truly need `-ffast-math`.
 
 ### A LutMap returns a stale result after its LutInterp changes
 
