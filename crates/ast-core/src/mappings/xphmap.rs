@@ -20,6 +20,7 @@
 use crate::constants::BAD_VALUE;
 use crate::coords::{Points, PointsMut};
 use crate::error::{AstError, AstResult, ErrorCode};
+use crate::mappings::helpers::is_bad;
 use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
 
 use super::unit::UnitMap;
@@ -117,7 +118,9 @@ impl XphMap {
     /// indices are C `int`s, so integer division truncates toward zero).
     fn transform_point(&self, forward: bool, x: f64, y: f64) -> (f64, f64) {
         const BAD: (f64, f64) = (BAD_VALUE, BAD_VALUE);
-        if x == BAD_VALUE || y == BAD_VALUE {
+        // C tests for AST__BAD only; NaN and infinity are bad here too, as
+        // for every Mapping, rather than truncated into a grid index.
+        if is_bad(x) || is_bad(y) {
             return BAD;
         }
         let nppf: i64 = 1 << self.order;

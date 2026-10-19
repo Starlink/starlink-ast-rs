@@ -155,3 +155,26 @@ fn only_hpx12_is_linear() {
         assert_eq!(load(4, projection).is_linear(), linear, "{projection}");
     }
 }
+
+/// A NaN or infinite input is bad, as for every Mapping (a NaN input counts
+/// as bad), in both directions and for every projection; it is not taken as
+/// a position in a cell.
+#[test]
+fn a_non_finite_input_gives_bad_outputs() {
+    use ast_core::coords::PointSet;
+    for projection in ["HPX0", "HPX12", "XPHN", "XPHS"] {
+        let map = load(3, projection);
+        for forward in [true, false] {
+            for v in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+                for pt in [[v, 5.0], [5.0, v]] {
+                    let out = map.transform(&PointSet::from_rows([pt]), forward).unwrap();
+                    assert_eq!(
+                        out.point(0).to_vec(),
+                        vec![BAD_VALUE, BAD_VALUE],
+                        "{projection} forward={forward} input {pt:?}"
+                    );
+                }
+            }
+        }
+    }
+}
