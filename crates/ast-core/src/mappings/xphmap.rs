@@ -1,7 +1,7 @@
 //! Mapping between grid coordinates in different HEALPix projections.
 //!
 //! An `XphMap` maps between grid coordinates within different types of
-//! HEALPix projection (xphmap.c):
+//! HEALPix projection:
 //!
 //! - `Hpx0`: an HPX projection centred on RA=0h.
 //! - `Hpx12`: an HPX projection centred on RA=12h.
@@ -44,7 +44,8 @@ pub enum XphProjection {
 impl XphProjection {
     const ALL: [XphProjection; 4] = [Self::Hpx0, Self::Hpx12, Self::Xphn, Self::Xphs];
 
-    /// The name a dump uses (xphmap.c `proj_name`).
+    /// The name a dump uses.
+    // C: xphmap.c `proj_name`.
     pub fn name(self) -> &'static str {
         match self {
             Self::Hpx0 => "HPX0",
@@ -54,7 +55,8 @@ impl XphProjection {
         }
     }
 
-    /// The comment a dump writes with the name (xphmap.c `proj_comm`).
+    /// The comment a dump writes with the name.
+    // C: xphmap.c `proj_comm`.
     fn comment(self) -> &'static str {
         match self {
             Self::Hpx0 => "HPX projection centred on RA=0h",
@@ -114,7 +116,7 @@ impl XphMap {
         self.projection
     }
 
-    /// Transform one position, transcribing xphmap.c `Transform` (grid
+    /// Transform one position (grid
     /// indices are C `int`s, so integer division truncates toward zero).
     fn transform_point(&self, forward: bool, x: f64, y: f64) -> (f64, f64) {
         const BAD: (f64, f64) = (BAD_VALUE, BAD_VALUE);
@@ -343,13 +345,15 @@ impl Mapping for XphMap {
         super::rate::numeric_rate(self, at, ax1, ax2)
     }
 
-    /// xphmap.c `GetIsLinear`: only an HPX12 XphMap is linear, though even
+    // C: xphmap.c `GetIsLinear`.
+    /// Only an HPX12 XphMap is linear, though even
     /// that one makes positions outside the used area bad.
     fn is_linear(&self) -> bool {
         self.projection == XphProjection::Hpx12
     }
 
-    /// xphmap.c `MapMerge`: in series, an XphMap and an adjacent XphMap (the
+    // C: xphmap.c `MapMerge`.
+    /// In series, an XphMap and an adjacent XphMap (the
     /// previous one if that is an XphMap, otherwise the next) that are equal
     /// and opposite in the orientations the merge list gives them become a
     /// UnitMap. Nothing else merges: even an HPX12 XphMap is not a UnitMap,
@@ -386,7 +390,8 @@ impl Mapping for XphMap {
         Some(imap1)
     }
 
-    /// xphmap.c `Equal`: the same Invert flag, projection and order.
+    // C: xphmap.c `Equal`.
+    /// The same Invert flag, projection and order.
     fn equal(&self, other: &dyn Mapping) -> bool {
         other.as_any().downcast_ref::<XphMap>().is_some_and(|o| {
             self.inverted == o.inverted && self.projection == o.projection && self.order == o.order
@@ -465,7 +470,8 @@ impl Serializable for XphMap {
         Ok(node)
     }
 
-    /// xphmap.c `astLoadXphMap`: Order defaults to 19 and Type to HPX12;
+    // C: xphmap.c `astLoadXphMap`.
+    /// Order defaults to 19 and Type to HPX12;
     /// a Type that is not one of the projection names is AST__OPT.
     fn from_node(node: &Node) -> AstResult<Self> {
         let whole = node;

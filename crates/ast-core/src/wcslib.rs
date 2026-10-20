@@ -134,8 +134,9 @@ impl WcsProjection {
     }
 
     /// Return the textual projection description used for a SkyFrame's
-    /// `Projection` attribute. Mirrors C `astWcsPrjDesc` (wcsmap.c:4419) and
-    /// the `desc` column of the `PrjInfo` table (wcsmap.c:685-716).
+    /// `Projection` attribute.
+    // C: `astWcsPrjDesc` (wcsmap.c:4419) and the `desc` column of the
+    // `PrjInfo` table (wcsmap.c:685-716).
     pub fn description(&self) -> &'static str {
         match self {
             Self::Azp => "zenithal perspective",
@@ -175,10 +176,12 @@ impl WcsProjection {
 
     /// Largest legal `m` in `PVi_m` on the *latitude* axis.
     ///
-    /// The `mxpar` column of C's `PrjInfo` table (wcsmap.c:684-716). C sizes
-    /// `params.p` as `mxpar + 1` doubles (wcsmap.c:5862) and `astGetPVMax`
-    /// reports that allocation minus one for the latitude axis
-    /// (wcsmap.c:2208-2212), so the limit is `mxpar` itself.
+    /// Each projection allocates one more parameter slot than its
+    /// `mxpar` limit, so the largest legal index is `mxpar` itself.
+    // C: the `mxpar` column of the `PrjInfo` table (wcsmap.c:684-716). C
+    // sizes `params.p` as `mxpar + 1` doubles (wcsmap.c:5862) and
+    // `astGetPVMax` reports that allocation minus one for the latitude axis
+    // (wcsmap.c:2208-2212).
     pub fn pv_max_lat(&self) -> usize {
         match self {
             Self::Azp
