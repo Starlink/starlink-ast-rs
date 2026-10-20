@@ -314,3 +314,34 @@ fn test_boolean_and_tristate() {
     let result = transform_1d(&map, BAD_VALUE, true);
     assert!((result - 1.0).abs() < 1e-10);
 }
+
+/// Evaluate `expr` as the forward transformation of a 1-in, 1-out MathMap at
+/// `x`.
+fn eval_at(expr: &str, x: f64) -> f64 {
+    let fwd = format!("y = {expr}");
+    let map = MathMap::new(1, 1, &[fwd.as_str()], &["x"]).unwrap();
+    transform_1d(&map, x, true)
+}
+
+/// The binary operators bind with the priorities of C's operator table
+/// (mathmap.c, the `symbol` array): `.neqv.` and `.xor.` compute what `^^`
+/// computes but bind as loosely as `.eqv.`. Expected values are from the C
+/// library at x = 2 and x = 1.
+#[test]
+fn binary_operator_priorities_match_c() {
+    let cases: &[(&str, f64, f64)] = &[
+        ("x .or. x .xor. x", 0.0, 0.0),
+        ("x .or. x .neqv. x", 0.0, 0.0),
+        ("x || x ^^ x", 1.0, 1.0),
+        ("x ^^ x .eqv. x", 0.0, 0.0),
+        ("x .and. x .xor. x", 0.0, 0.0),
+        ("x .xor. x .eqv. 0", 1.0, 1.0),
+        ("x < 3 == 1", 1.0, 1.0),
+        ("x << 1 < 3", 0.0, 1.0),
+        ("-x * 3", -6.0, -3.0),
+    ];
+    for &(expr, at2, at1) in cases {
+        assert_eq!(eval_at(expr, 2.0), at2, "{expr} at x = 2");
+        assert_eq!(eval_at(expr, 1.0), at1, "{expr} at x = 1");
+    }
+}

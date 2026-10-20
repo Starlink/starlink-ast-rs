@@ -140,7 +140,8 @@ use rng::MathMapRng;
 ///
 /// - `x1 && x2` (or `.and.`): 1 if both are non-zero, tri-state.
 /// - `x1 || x2` (or `.or.`): 1 if either is non-zero, tri-state.
-/// - `x1 ^^ x2` (or `.neqv.`, `.xor.`): 1 if exactly one is non-zero.
+/// - `x1 ^^ x2`: 1 if exactly one is non-zero.
+///   `.neqv.` and `.xor.` compute the same, but bind as loosely as `.eqv.`.
 /// - `x1 .eqv. x2`: 1 if both have the same truth value.
 /// - `! x` (or `.not.`): 1 if `x` is zero.
 ///

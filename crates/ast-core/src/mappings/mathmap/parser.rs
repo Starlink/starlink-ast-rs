@@ -349,9 +349,12 @@ fn infix_binding(tok: &Token) -> Option<(u8, Opcode)> {
         Token::Caret => Some((8, Opcode::BitXor)),
         Token::Pipe => Some((7, Opcode::BitOr)),
         Token::AndAnd => Some((6, Opcode::And)),
-        Token::CaretCaret | Token::DotXor | Token::DotNeqv => Some((5, Opcode::Xor)),
+        Token::CaretCaret => Some((5, Opcode::Xor)),
         Token::OrOr => Some((4, Opcode::Or)),
         Token::DotEqv => Some((3, Opcode::Eqv)),
+        // C computes `.neqv.` and `.xor.` as `^^` does but gives them the
+        // priority of `.eqv.` (mathmap.c, the `symbol` array).
+        Token::DotXor | Token::DotNeqv => Some((3, Opcode::Xor)),
         _ => None,
     }
 }
