@@ -500,7 +500,7 @@ function	astSphMap	sphmap.c	SphMap::new		yes	The header says a zero vector trans
 class	SplineMap	splinemap.c	SplineMap		yes
 function	astSplineCoeffs	splinemap.c	SplineMap::coeffs		yes	Returns a Vec of nx*ny values; C's nel argument (truncate or zero-fill) has no equivalent
 function	astSplineKnots	splinemap.c	SplineMap::tx;SplineMap::ty		yes	One method per input axis in place of C's axis argument; C's nel argument (truncate or zero-fill) has no equivalent
-attribute	InvNiter	splinemap.c	SplineMap::inv_niter		yes
+attribute	InvNiter	splinemap.c	SplineMap::inv_niter		yes	The header's note that OutUnit changes the value returned for a non-converged point is dropped: C sets such points to AST__BAD whatever OutUnit is (splinemap.c:1595-1610), as the port does
 attribute	InvTol	splinemap.c	SplineMap::inv_tol		yes
 attribute	OutUnit	splinemap.c	SplineMap::out_unit		yes
 attribute	SplineKx	splinemap.c	SplineMap::kx		yes
