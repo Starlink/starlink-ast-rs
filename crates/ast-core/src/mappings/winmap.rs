@@ -15,13 +15,20 @@ use super::zoom::ZoomMap;
 use super::{DynMapping, Mapping};
 use crate::mappings::SimplifiedRecord;
 
-/// A mapping that applies a per-axis linear transformation:
-/// `output[i] = shift[i] + scale[i] * input[i]`.
+/// Map one window on to another by scaling and shifting each axis.
 ///
-/// This is equivalent to mapping one "window" (bounding box) on to another,
-/// with independent linear scaling along each axis. It generalises
-/// [`ShiftMap`](super::ShiftMap) (which has unit scales) and
-/// [`ZoomMap`](super::ZoomMap) (which has a single uniform scale and no shift).
+/// A WinMap is a linear Mapping which transforms a rectangular window in one
+/// coordinate system into a similar window in another coordinate system by
+/// scaling and shifting each axis, the window edges being parallel to the
+/// coordinate axes.
+/// Its forward transformation is `output[i] = shift[i] + scale[i] * input[i]`.
+///
+/// A WinMap is specified either by the coordinates of two opposite corners of
+/// the window in both the input and output coordinate systems
+/// ([`from_corners`](WinMap::from_corners)), or by the shift and scale of each
+/// axis ([`new`](WinMap::new)).
+/// It generalizes [`ShiftMap`](super::ShiftMap) (unit scales) and
+/// [`ZoomMap`](super::ZoomMap) (a single uniform scale and no shift).
 #[derive(Debug, Clone)]
 pub struct WinMap {
     shifts: Vec<f64>,
@@ -46,12 +53,16 @@ impl WinMap {
         &self.scales
     }
 
-    /// Create a new `WinMap` from explicit per-axis shifts and scales.
+    /// Create a WinMap from explicit per-axis shifts and scales.
     ///
-    /// `shifts` and `scales` must have the same length (the number of axes)
-    /// and must not be empty.
+    /// The forward transformation is
+    /// `output[i] = shifts[i] + scales[i] * input[i]`, and the number of input
+    /// and output coordinates is the length of `shifts`.
     ///
-    /// The forward transformation is `output[i] = shifts[i] + scales[i] * input[i]`.
+    /// # Errors
+    ///
+    /// `ErrorCode::Badwm` if `shifts` and `scales` differ in length or are
+    /// empty.
     pub fn new(shifts: &[f64], scales: &[f64]) -> AstResult<Self> {
         if shifts.len() != scales.len() {
             return Err(AstError::new(
@@ -80,14 +91,31 @@ impl WinMap {
         })
     }
 
-    /// Create a `WinMap` from input and output corner coordinates.
+    /// Create a WinMap that maps the window with opposite corners
+    /// `corner1_in` and `corner2_in` in the input coordinate system on to the
+    /// window with corners `corner1_out` and `corner2_out` in the output
+    /// coordinate system.
     ///
-    /// The mapping linearly transforms the box defined by `corner1_in` /
-    /// `corner2_in` to the box defined by `corner1_out` / `corner2_out`.
+    /// Each slice holds one coordinate per axis, and their common length is
+    /// the number of input and output coordinates.
+    /// Corner 1 of the input window maps to corner 1 of the output window,
+    /// and corner 2 to corner 2.
+    /// An axis on which the two input corners coincide, or on which any of
+    /// the four corners is [`BAD_VALUE`] or not finite, has no defined
+    /// transformation: it transforms every value to [`BAD_VALUE`].
     ///
-    /// All four slices must have the same length (the number of axes).
-    /// If the input range on any axis is zero or any coordinate is
-    /// [`BAD_VALUE`], that axis gets [`BAD_VALUE`] for both shift and scale.
+    /// ```
+    /// use ast_core::mappings::{Mapping, WinMap};
+    ///
+    /// // Map the pixel range [0, 10] on to [100, 200].
+    /// let map = WinMap::from_corners(&[0.0], &[10.0], &[100.0], &[200.0]).unwrap();
+    /// assert_eq!(map.tran1(&[5.0], true).unwrap(), vec![150.0]);
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// `ErrorCode::Badwm` if the four slices differ in length or are empty.
+    #[doc(alias = "astWinMap")]
     pub fn from_corners(
         corner1_in: &[f64],
         corner2_in: &[f64],
@@ -188,7 +216,8 @@ impl Mapping for WinMap {
         &mut self.mapping_flags
     }
 
-    /// Linear, as C's `GetIsLinear` for the class reports.
+    /// Always true: a WinMap is linear.
+    // C's GetIsLinear for the class reports it linear.
     fn is_linear(&self) -> bool {
         true
     }

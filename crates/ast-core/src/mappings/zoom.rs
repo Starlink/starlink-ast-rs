@@ -13,7 +13,12 @@ use super::winmap::{compose_linear, extract_linear_params};
 use super::{DynMapping, Mapping};
 use crate::mappings::SimplifiedRecord;
 
-/// A mapping that scales all input coordinates by a constant factor.
+/// Zoom coordinates about the origin.
+///
+/// A ZoomMap performs a "zoom" transformation by multiplying all coordinate
+/// values by the same scale factor, [`zoom`](ZoomMap::zoom); the inverse
+/// transformation divides by it.
+/// The number of coordinate values representing each point is unchanged.
 #[derive(Debug, Clone)]
 pub struct ZoomMap {
     ncoord: usize,
@@ -28,9 +33,25 @@ pub struct ZoomMap {
 }
 
 impl ZoomMap {
-    /// Create a new `ZoomMap` that scales `ncoord` coordinates by `factor`.
+    /// Create a ZoomMap with `ncoord` input and output coordinates, whose
+    /// forward transformation multiplies each coordinate by `factor` and whose
+    /// inverse divides by it.
     ///
-    /// Returns an error if `factor` is zero.
+    /// `factor` may be positive or negative, and may later be changed with
+    /// [`set_zoom`](ZoomMap::set_zoom).
+    ///
+    /// ```
+    /// use ast_core::mappings::{Mapping, ZoomMap};
+    ///
+    /// let map = ZoomMap::new(1, 2.0).unwrap();
+    /// assert_eq!(map.tran1(&[3.0], true).unwrap(), vec![6.0]);
+    /// assert_eq!(map.tran1(&[3.0], false).unwrap(), vec![1.5]);
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// `ErrorCode::Zoomi` if `factor` is zero.
+    #[doc(alias = "astZoomMap")]
     pub fn new(ncoord: usize, factor: f64) -> AstResult<Self> {
         if factor == 0.0 {
             return Err(AstError::new(
@@ -49,30 +70,49 @@ impl ZoomMap {
         })
     }
 
-    /// The zoom factor — C's `Zoom` attribute.
+    /// The ZoomMap scale factor, by which the forward transformation
+    /// multiplies coordinate values.
     ///
-    /// C reports 1.0 for an unset attribute (`zoommap.c:1699-1700`, where 0.0 is
-    /// the unset sentinel). A constructed `ZoomMap` has its factor set; only
-    /// [`ZoomMap::clear_zoom`] unsets it.
+    /// The value describes the forward transformation of the ZoomMap as it
+    /// was created.
+    /// When the ZoomMap is inverted, its forward transformation in effect uses
+    /// the reciprocal of this factor.
+    /// The factor is never zero.
+    ///
+    /// Default: 1.
+    /// [`new`](ZoomMap::new) sets it, so only
+    /// [`clear_zoom`](ZoomMap::clear_zoom) returns it to the default.
+    ///
+    /// [`set_zoom`](ZoomMap::set_zoom), [`test_zoom`](ZoomMap::test_zoom) and
+    /// [`clear_zoom`](ZoomMap::clear_zoom) set, test and clear it.
+    #[doc(alias = "Zoom")]
     pub fn zoom(&self) -> f64 {
+        // C reports 1.0 for an unset attribute (zoommap.c:1699-1700, where 0.0
+        // is the unset sentinel).
         if self.factor == 0.0 { 1.0 } else { self.factor }
     }
 
-    /// Set the zoom factor — C's `astSetZoom`.
+    /// Set [`zoom`](ZoomMap::zoom).
     ///
-    /// Zero is rejected with `ErrorCode::Zoomi` and leaves the factor unchanged,
-    /// as C does (`zoommap.c:1703-1710`, whose assign expression evaluates to
-    /// `this->zoom` after the `astError`).
+    /// A value different from the one held clears the record that the ZoomMap
+    /// has been simplified ([`has_been_simplified`](Mapping::has_been_simplified)).
     ///
-    /// `Zoom` is the whole of the transformation and so feeds the first part of
-    /// ZoomMap's own `MapMerge`, which can replace the run of ZoomMaps and
-    /// UnitMaps it accumulates with a single `UnitMap` (`zoommap.c:747`). Both
-    /// simplified records are discarded when the new value differs from the one
-    /// held, and the test is on the raw argument, so a rejected zero still
-    /// discards them: `astClearIsSimple` is the first term of C's comma
-    /// expression and the validation lives in the term that yields the stored
-    /// value (`zoommap.c:1705`, the convention at `mapping.h:449-472`).
+    /// # Errors
+    ///
+    /// `ErrorCode::Zoomi` if `factor` is zero; the factor is left unchanged.
     pub fn set_zoom(&mut self, factor: f64) -> AstResult<()> {
+        // Zero is rejected and leaves the factor unchanged, as C does
+        // (zoommap.c:1703-1710, whose assign expression evaluates to
+        // `this->zoom` after the astError).
+        //
+        // Zoom is the whole of the transformation and so feeds the first part
+        // of ZoomMap's own MapMerge, which can replace the run of ZoomMaps and
+        // UnitMaps it accumulates with a single UnitMap (zoommap.c:747). Both
+        // simplified records are discarded when the new value differs from the
+        // one held, and the test is on the raw argument, so a rejected zero
+        // still discards them: astClearIsSimple is the first term of C's comma
+        // expression and the validation lives in the term that yields the
+        // stored value (zoommap.c:1705, the convention at mapping.h:449-472).
         if factor != self.factor {
             self.simplified.clear();
         }
@@ -86,14 +126,17 @@ impl ZoomMap {
         Ok(())
     }
 
-    /// Whether Zoom is set (zoommap.c `TestZoom`: a non-zero stored value).
+    /// Whether [`zoom`](ZoomMap::zoom) is set.
     pub fn test_zoom(&self) -> bool {
+        // zoommap.c TestZoom: a non-zero stored value.
         self.factor != 0.0
     }
 
-    /// Unset Zoom, so that it reads as 1.0 (zoommap.c `ClearZoom`, which also
-    /// discards both simplified records).
+    /// Clear [`zoom`](ZoomMap::zoom), so that it reads as the default 1.
+    ///
+    /// This also clears the record that the ZoomMap has been simplified.
     pub fn clear_zoom(&mut self) {
+        // zoommap.c ClearZoom, which also discards both simplified records.
         self.simplified.clear();
         self.factor = 0.0;
     }
@@ -122,7 +165,8 @@ impl Mapping for ZoomMap {
         &mut self.mapping_flags
     }
 
-    /// Linear, as C's `GetIsLinear` for the class reports.
+    /// Always true: a ZoomMap is linear.
+    // C's GetIsLinear for the class reports it linear.
     fn is_linear(&self) -> bool {
         true
     }

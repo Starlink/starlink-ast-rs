@@ -73,11 +73,19 @@ enum MatrixForm {
     Unit,
 }
 
-/// A linear mapping defined by a matrix multiplication.
+/// Map coordinates by multiplying by a matrix.
 ///
-/// Forward transform: `out = M × in` where `M` is an `nout × nin` matrix.
-/// Inverse transform: `in = M⁻¹ × out` (only available for square, invertible
-/// matrices).
+/// A MatrixMap performs a general linear transformation.
+/// Each set of input coordinates, regarded as a column vector, is
+/// pre-multiplied by an `nout × nin` matrix, whose elements are given when the
+/// MatrixMap is created, to give a new column vector holding the output
+/// coordinates.
+///
+/// The forward transformation is always available.
+/// The inverse transformation multiplies by the inverse matrix, and is
+/// available when the matrix is diagonal or unit (see
+/// [`diagonal`](MatrixMap::diagonal)), or is square, non-singular and free of
+/// bad elements; [`has_inverse`](Mapping::has_inverse) reports which.
 #[derive(Debug, Clone)]
 pub struct MatrixMap {
     /// The forward transformation matrix, shape (nout, nin).
@@ -100,22 +108,38 @@ pub struct MatrixMap {
 }
 
 impl MatrixMap {
-    /// Create a new `MatrixMap` from the given matrix.
+    /// Create a MatrixMap from a full `nout × nin` matrix: the number of
+    /// output coordinates is `matrix.nrows()` and the number of input
+    /// coordinates `matrix.ncols()`.
     ///
-    /// The matrix shape determines the number of inputs and outputs:
-    /// - `nin = matrix.ncols()`
-    /// - `nout = matrix.nrows()`
+    /// The inverse transformation is available when the matrix is square,
+    /// non-singular and free of bad elements, or when it is diagonal: a matrix
+    /// whose off-diagonal elements are zero, or negligible beside the other
+    /// elements of their row and column, is stored and inverted as a diagonal
+    /// one (and one whose diagonal elements are also exactly 1 as a unit one),
+    /// whatever its shape.
+    /// Transforming in a direction that is not available is an
+    /// `ErrorCode::Trnnd` error.
     ///
-    /// The inverse is available whenever C would compute one: for a matrix that
-    /// compresses to DIAGONAL or UNIT form always, and for one that stays FULL
-    /// only when it is square, non-singular and free of bad elements.
-    /// Transforming in a direction with no inverse returns an error.
+    /// ```
+    /// use ast_core::mappings::{Mapping, MatrixMap};
+    /// use ndarray::array;
     ///
-    /// The supplied matrix is always taken as a FULL matrix and then
-    /// compressed, mirroring C `astInitMatrixMap` (matrixmap.c:6032-6073),
-    /// which stores the caller's array, builds the inverse with
-    /// `InvertMatrix`, and finally runs `CompressMatrix` on the result.
+    /// // Swap and scale two axes.
+    /// let map = MatrixMap::new(array![[0.0, 2.0], [3.0, 0.0]]).unwrap();
+    /// let (x, y) = map.tran2(&[1.0], &[1.0], true).unwrap();
+    /// assert_eq!((x, y), (vec![2.0], vec![3.0]));
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// `ErrorCode::Mtrmt` if the matrix is empty or holds only bad values.
+    #[doc(alias = "astMatrixMap")]
     pub fn new(matrix: Array2<f64>) -> AstResult<Self> {
+        // The supplied matrix is always taken as a FULL matrix and then
+        // compressed, mirroring C astInitMatrixMap (matrixmap.c:6032-6073),
+        // which stores the caller's array, builds the inverse with
+        // InvertMatrix, and finally runs CompressMatrix on the result.
         let nrows = matrix.nrows();
         let ncols = matrix.ncols();
         if nrows == 0 || ncols == 0 {
@@ -175,18 +199,41 @@ impl MatrixMap {
         })
     }
 
-    /// Create a diagonal `MatrixMap` with `nin` inputs and `nout` outputs
-    /// from its `min(nin, nout)` diagonal elements, as C's `astMatrixMap`
-    /// does when given the diagonal form (matrixmap.c:6015-6076).
+    /// Create a MatrixMap with `nin` inputs and `nout` outputs whose matrix is
+    /// diagonal, from its `min(nin, nout)` diagonal elements; every other
+    /// element is zero.
     ///
-    /// An infinite or NaN element is stored as [`BAD_VALUE`], and the inverse
-    /// holds the reciprocal of each element, or [`BAD_VALUE`] for a zero or
-    /// bad one. The result is a unit `MatrixMap` when every element is equal
-    /// to 1.0 within `astEQUAL` (matrixmap.c:676), a tolerance
-    /// [`MatrixMap::new`] does not apply to a full matrix, so a matrix of
-    /// diagonal values that differ from 1.0 in the last place is a unit
-    /// MatrixMap here and a diagonal one there.
+    /// Passing 1.0 for every element gives a unit matrix.
+    /// An infinite or NaN element is stored as [`BAD_VALUE`].
+    ///
+    /// The inverse transformation is always available: it multiplies by the
+    /// reciprocal of each element, giving [`BAD_VALUE`] for a zero or bad one.
+    /// When the matrix is not square, some input coordinates cannot be
+    /// recovered from the output coordinates, and the inverse transformation
+    /// sets them to zero.
+    ///
+    /// The result is a unit MatrixMap when every element equals 1.0 to within
+    /// about 4e-11, a tolerance [`MatrixMap::new`] does not apply to a full
+    /// matrix: diagonal values that differ from 1.0 in the last place give a
+    /// unit MatrixMap here and a diagonal one there.
+    ///
+    /// ```
+    /// use ast_core::mappings::{Mapping, MatrixMap};
+    ///
+    /// // Three inputs, two outputs: the third input is dropped.
+    /// let map = MatrixMap::diagonal(3, 2, &[2.0, 4.0]).unwrap();
+    /// assert_eq!((map.nin(), map.nout()), (3, 2));
+    /// assert!(map.has_inverse());
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// `ErrorCode::Mtrmt` if `diag` does not hold `min(nin, nout)` elements,
+    /// that number is zero, or every element is bad.
+    #[doc(alias = "astMatrixMap")]
     pub fn diagonal(nin: usize, nout: usize, diag: &[f64]) -> AstResult<Self> {
+        // C's astMatrixMap given the diagonal form (matrixmap.c:6015-6076);
+        // the unit test on the elements is astEQUAL (matrixmap.c:676).
         let ndiag = nin.min(nout);
         if ndiag == 0 || diag.len() != ndiag {
             return Err(AstError::new(
@@ -309,16 +356,18 @@ impl MatrixMap {
     /// Multiply this MatrixMap by another, returning the product `a × self`
     /// (i.e. `self` applied first, then `a`).
     ///
-    /// Mirrors C `astMtrMult` (matrixmap.c:3526): the number of columns in
-    /// `a` must equal the number of rows in `self`; the product has `a`'s
-    /// row count and `self`'s column count. Both MatrixMaps' *effective*
-    /// forward matrices (honouring their Invert flags) are used. `BAD_VALUE`
-    /// in either factor propagates to `BAD_VALUE` in the corresponding
-    /// product element.
+    /// The number of columns in `a` must equal the number of rows in `self`;
+    /// the product has `a`'s row count and `self`'s column count.
+    /// Both MatrixMaps' *effective* forward matrices (honoring their Invert
+    /// flags) are used.
+    /// `BAD_VALUE` in either factor propagates to `BAD_VALUE` in the
+    /// corresponding product element.
     ///
-    /// Errors with [`ErrorCode::Mtrml`] when either map lacks a forward
-    /// transform or the shapes are incompatible.
+    /// # Errors
+    ///
+    /// [`ErrorCode::Mtrml`] when the shapes are incompatible.
     pub fn mtr_mult(&self, a: &MatrixMap) -> AstResult<MatrixMap> {
+        // C astMtrMult (matrixmap.c:3526).
         // C requires both to have a defined forward transform. A MatrixMap
         // always has a forward transform in this crate (it is stored
         // directly), so the only failure mode is a shape mismatch.
@@ -419,18 +468,22 @@ impl MatrixMap {
 
     /// Return a copy of this MatrixMap rotated by `theta` radians.
     ///
-    /// Mirrors C `astMtrRot` (matrixmap.c:3766). Valid only for 2- or 3-row
-    /// MatrixMaps. The current (effective) forward matrix is post-multiplied
-    /// by the rotation matrix:
+    /// Valid only for 2- or 3-row MatrixMaps.
+    /// The current (effective) forward matrix is post-multiplied by the
+    /// rotation matrix:
     /// - 2-row: clockwise rotation about the origin (from the +2 axis toward
     ///   the +1 axis); `axis` is ignored.
     /// - 3-row: clockwise rotation about `axis` (a 3-vector through the
     ///   origin) when looking along it.
     ///
     /// A rotation angle that is a multiple of 2π returns an unchanged copy.
-    /// Errors with [`ErrorCode::Mtrax`] for a null/zero-length 3-D axis and
+    ///
+    /// # Errors
+    ///
+    /// [`ErrorCode::Mtrax`] for a null or zero-length 3-D axis and
     /// [`ErrorCode::Mtr23`] for any row count other than 2 or 3.
     pub fn mtr_rot(&self, theta: f64, axis: &[f64]) -> AstResult<MatrixMap> {
+        // C astMtrRot (matrixmap.c:3766).
         let costh = crate::math::cos(theta);
         let sinth = crate::math::sin(theta);
 
@@ -669,7 +722,8 @@ impl Mapping for MatrixMap {
         &mut self.mapping_flags
     }
 
-    /// Linear, as C's `GetIsLinear` for the class reports.
+    /// Always true: a MatrixMap is linear.
+    // C's GetIsLinear for the class reports it linear.
     fn is_linear(&self) -> bool {
         true
     }

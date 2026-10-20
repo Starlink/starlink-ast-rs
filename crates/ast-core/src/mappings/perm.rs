@@ -18,21 +18,31 @@ use super::unit::UnitMap;
 use super::{DynMapping, Mapping};
 use crate::mappings::SimplifiedRecord;
 
-/// Axis permutation and constant-injection mapping.
+/// Coordinate permutation Mapping.
 ///
-/// # Permutation encoding (1-based, matching C AST)
+/// A PermMap is a Mapping which permutes the order of coordinates, and
+/// possibly also changes the number of coordinates, between its input and
+/// output.
 ///
-/// Each element of `inperm` and `outperm` is interpreted as follows:
+/// In addition to permuting the coordinate order, a PermMap may also assign
+/// constant values to coordinates.
+/// This is useful when the number of coordinates is being increased, as it
+/// allows fixed values to be assigned to any new ones.
+///
+/// # Permutation encoding
+///
+/// Each element of `inperm` and `outperm` (see [`new`](PermMap::new)) is
+/// interpreted as follows, with coordinates numbered from 1:
 ///
 /// | Value | Meaning |
 /// |-------|---------|
-/// | `+j`  | Take the value from input axis `j` (1-based). |
-/// | `-j`  | Use `constants[j-1]` (a stored constant). |
-/// | `0`   | Set the output to `BAD_VALUE`. |
+/// | `+j`  | Take the value of coordinate `j` on the other side of the Mapping. |
+/// | `-j`  | Use `constants[j-1]`, a stored constant. |
+/// | `0`   | Set the coordinate to `BAD_VALUE`. |
 ///
-/// `outperm` drives the **forward** transform (maps `nin` inputs → `nout`
-/// outputs).  `inperm` drives the **inverse** transform (maps `nout` inputs
-/// back to `nin` outputs).
+/// `outperm` drives the **forward** transformation (`nin` inputs to `nout`
+/// outputs), and `inperm` the **inverse** transformation (`nout` outputs back
+/// to `nin` inputs).
 #[derive(Debug, Clone)]
 pub struct PermMap {
     /// Forward permutation: length = nout.
@@ -62,21 +72,56 @@ pub struct PermMap {
 }
 
 impl PermMap {
-    /// Create a new `PermMap`.
+    /// Create a PermMap with `inperm.len()` input coordinates and
+    /// `outperm.len()` output coordinates.
     ///
-    /// - `inperm`: length = nin; drives the inverse transform.
-    /// - `outperm`: length = nout; drives the forward transform.
-    /// - `constants`: values referenced by negative perm entries.
+    /// # Arguments
     ///
-    /// No validation is performed on the perm-array values, mirroring C
-    /// `astInitPermMap` (permmap.c:2849-2903), which stores the supplied
-    /// arrays verbatim. A positive entry referring to a non-existent axis,
-    /// or a negative entry referring past the end of `constants`, is
-    /// substituted with `BAD_VALUE` at transform time (permmap.c:1976-1997),
-    /// not rejected here. This is required so that PermMaps deserialised from
-    /// a C native dump — which may legitimately carry such entries (e.g. a
-    /// negative entry with no `Nconst`) — round-trip and transform as C does.
+    /// - `inperm`: for each input coordinate, the number of the output
+    ///   coordinate whose value it takes, so this array defines the inverse
+    ///   transformation.
+    /// - `outperm`: for each output coordinate, the number of the input
+    ///   coordinate whose value it takes, so this array defines the forward
+    ///   transformation.
+    /// - `constants`: values that may be assigned to input or output
+    ///   coordinates instead of deriving them from other coordinates; a
+    ///   negative entry `-j` in either array takes `constants[j-1]`.
+    ///
+    /// Coordinates are numbered from 1, as the [type-level table](PermMap)
+    /// describes.
+    /// A zero entry, a positive entry that does not identify a valid
+    /// coordinate, or a negative entry addressing past the end of
+    /// `constants` gives the coordinate the value `BAD_VALUE`; such entries
+    /// are accepted here, not rejected.
+    /// An empty `constants` therefore acts as an endless array of
+    /// `BAD_VALUE`.
+    ///
+    /// No attempt is made to make the forward and inverse transformations
+    /// consistent with each other, so the arrays may be chosen to give
+    /// whatever effect is wanted.
+    ///
+    /// ```
+    /// use ast_core::mappings::{Mapping, PermMap};
+    ///
+    /// // Forward: output 1 is input 2 and output 2 the constant 7.
+    /// // Inverse: the two coordinates are swapped.
+    /// let map = PermMap::new(&[2, 1], &[2, -1], &[7.0]).unwrap();
+    /// let (a, b) = map.tran2(&[1.0], &[2.0], true).unwrap();
+    /// assert_eq!((a, b), (vec![2.0], vec![7.0]));
+    /// let (x, y) = map.tran2(&[1.0], &[2.0], false).unwrap();
+    /// assert_eq!((x, y), (vec![2.0], vec![1.0]));
+    /// ```
+    #[doc(alias = "astPermMap")]
     pub fn new(inperm: &[i64], outperm: &[i64], constants: &[f64]) -> AstResult<Self> {
+        // No validation is performed on the perm-array values, mirroring C
+        // astInitPermMap (permmap.c:2849-2903), which stores the supplied
+        // arrays verbatim. A positive entry referring to a non-existent axis,
+        // or a negative entry referring past the end of `constants`, is
+        // substituted with BAD_VALUE at transform time (permmap.c:1976-1997),
+        // not rejected here. This is required so that PermMaps deserialized
+        // from a C native dump, which may legitimately carry such entries
+        // (e.g. a negative entry with no Nconst), round-trip and transform as
+        // C does.
         Ok(Self {
             outperm: outperm.to_vec(),
             inperm: inperm.to_vec(),
@@ -250,21 +295,27 @@ impl PermMap {
         (inperm, outperm, pool)
     }
 
-    /// Return the `PermSplit` attribute (default `false`).
+    /// Which strategy [`Mapping::map_split`] uses to split the PermMap.
     ///
-    /// When `false`, [`Mapping::map_split`] follows the public documentation,
-    /// splitting on the forward (`outperm`) transform. When `true`, the
-    /// forward transform is ignored and `inperm` is assumed to be its exact
-    /// inverse, yielding a `UnitMap`-based split (permmap.c `PermSplit`).
+    /// When false, `map_split` splits on the forward (`outperm`)
+    /// transformation.
+    /// When true, the forward transformation is ignored and `inperm` is
+    /// assumed to be its exact inverse, yielding a `UnitMap`-based split.
+    ///
+    /// Default: false.
+    ///
+    /// [`set_perm_split`](PermMap::set_perm_split),
+    /// [`test_perm_split`](PermMap::test_perm_split) and
+    /// [`clear_perm_split`](PermMap::clear_perm_split) set, test and clear it.
     pub fn perm_split(&self) -> bool {
+        // permmap.c PermSplit.
         self.perm_split.unwrap_or(false)
     }
 
-    /// Set the `PermSplit` attribute.
+    /// Set [`perm_split`](PermMap::perm_split).
     ///
-    /// Unlike most Mapping attributes this may be changed at any time, because
-    /// it changes neither the forward nor the inverse transform — only how
-    /// `astMapSplit` decomposes the Mapping (permmap.c `SetPermSplit`).
+    /// It changes neither the forward nor the inverse transformation, only how
+    /// [`Mapping::map_split`] decomposes the PermMap.
     pub fn set_perm_split(&mut self, value: bool) {
         // `PermSplit` changes only how astMapSplit decomposes the PermMap and
         // PermMap's own MapMerge does not read it, but C discards the records on
@@ -279,13 +330,13 @@ impl PermMap {
         self.perm_split = Some(value);
     }
 
-    /// Whether `PermSplit` has been set, `false` included (permmap.c
-    /// `TestPermSplit`).
+    /// Whether [`perm_split`](PermMap::perm_split) is set, to either value.
     pub fn test_perm_split(&self) -> bool {
+        // permmap.c TestPermSplit.
         self.perm_split.is_some()
     }
 
-    /// Clear the `PermSplit` attribute, restoring the `false` default.
+    /// Clear [`perm_split`](PermMap::perm_split), restoring the default.
     pub fn clear_perm_split(&mut self) {
         // As for `set_perm_split` (permmap.c:2067).
         self.simplified.clear();

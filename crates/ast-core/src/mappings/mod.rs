@@ -287,9 +287,7 @@ pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
     /// number of dimensions of the space the Mapping's input points lie in.
     ///
     /// Inverting the Mapping exchanges this with [`nout`](Mapping::nout).
-    /// A series [`CmpMap`] has the inputs of the component it applies first,
-    /// and a parallel one the sum of its components' inputs, each component
-    /// taken in the orientation the CmpMap applies it in.
+    /// A [`CmpMap`] derives it from its components.
     /// A [`FrameSet`](crate::frames::FrameSet) has the number of axes of its
     /// base Frame, so selecting a new base Frame may change it.
     #[doc(alias = "Nin")]
@@ -299,9 +297,7 @@ pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
     /// number of dimensions of the space the Mapping's output points lie in.
     ///
     /// Inverting the Mapping exchanges this with [`nin`](Mapping::nin).
-    /// A series [`CmpMap`] has the outputs of the component it applies last,
-    /// and a parallel one the sum of its components' outputs, each component
-    /// taken in the orientation the CmpMap applies it in.
+    /// A [`CmpMap`] derives it from its components.
     /// A [`FrameSet`](crate::frames::FrameSet) has the number of axes of its
     /// current Frame, so selecting a new current Frame may change it.
     #[doc(alias = "Nout")]
@@ -323,7 +319,6 @@ pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
     /// [`set_invert`](Mapping::set_invert),
     /// [`clear_invert`](Mapping::clear_invert) and
     /// [`test_invert`](Mapping::test_invert) set, clear and test it.
-    /// Inverting a [`UnitMap`] has no effect on how it behaves.
     /// Inverting a [`FrameSet`](crate::frames::FrameSet) exchanges its base
     /// and current Frames, which may change its other properties; selecting
     /// a new base or current Frame does not change whether it is inverted.
@@ -903,8 +898,7 @@ pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
     /// when this is false.
     /// Inverting the Mapping exchanges this with
     /// [`has_inverse`](Mapping::has_inverse).
-    /// A [`CmpMap`] has a forward transformation when every component it
-    /// applies has one in the direction it applies it.
+    /// A [`CmpMap`] derives it from its components.
     /// A [`FrameSet`](crate::frames::FrameSet) reports the Mapping from its
     /// base Frame to its current Frame, so selecting a new base or current
     /// Frame may change it.
@@ -920,9 +914,9 @@ pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
     /// transformations, such as [`MathMap`], reports false; whether a
     /// particular instance is linear over a region can be tested with
     /// [`linear_approx`](Mapping::linear_approx).
-    /// A [`CmpMap`] is linear when both its components are, and a
-    /// [`FrameSet`](crate::frames::FrameSet) when the Mapping from its base
-    /// Frame to its current Frame is.
+    /// A [`CmpMap`] derives it from its components, and a
+    /// [`FrameSet`](crate::frames::FrameSet) is linear when the Mapping from
+    /// its base Frame to its current Frame is.
     #[doc(alias = "IsLinear")]
     fn is_linear(&self) -> bool {
         // The base class does not claim it (mapping.c `GetIsLinear`); the
@@ -947,8 +941,7 @@ pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
     /// when this is false.
     /// Inverting the Mapping exchanges this with
     /// [`has_forward`](Mapping::has_forward).
-    /// A [`CmpMap`] has an inverse transformation when every component it
-    /// applies has one in the direction it applies it.
+    /// A [`CmpMap`] derives it from its components.
     /// A [`FrameSet`](crate::frames::FrameSet) reports the Mapping from its
     /// base Frame to its current Frame, so selecting a new base or current
     /// Frame may change it.
@@ -1094,8 +1087,8 @@ pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
     ///
     /// Default: false.
     ///
-    /// Only the Report of the Mapping transformed is used: the components of
-    /// a [`CmpMap`] never report individually.
+    /// Only the Report of the Mapping transformed is used, not that of any
+    /// Mapping it holds, such as a [`CmpMap`]'s components.
     /// A [`FrameSet`](crate::frames::FrameSet) formats the input and output
     /// coordinates with its base and current Frames, and a Region with its
     /// Frame, as [`report_points`](Mapping::report_points) describes.

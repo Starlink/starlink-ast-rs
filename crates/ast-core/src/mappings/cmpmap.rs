@@ -79,29 +79,42 @@ pub enum Composition {
 /// The most points cmpmap.c `Transform` passes through a series at once.
 const SERIES_BATCH: usize = 8192;
 
-/// A mapping formed by composing two component mappings.
+/// Compound Mapping.
 ///
-/// See [`Composition`] for the two modes.
+/// A CmpMap connects two component Mappings, of any class, to form a more
+/// complex Mapping.
+/// The connection is either in series, where the first Mapping transforms the
+/// coordinates of each point and the second is then applied to the result, or
+/// in parallel, where the first Mapping transforms the earlier coordinates of
+/// each point and the second simultaneously transforms the later ones; see
+/// [`Composition`] and [`CmpMap::new`].
 ///
-/// `inv_a`/`inv_b` record each child's Invert flag at the time the CmpMap
-/// was constructed or loaded.  Children are stored with their native Invert
-/// state; the effective transform direction for each child is computed at
-/// runtime as `forward XOR (inv_a != child.is_inverted())`.
+/// Since a CmpMap is itself a Mapping, it can be a component of further
+/// CmpMaps, so Mappings of arbitrary complexity may be built from simple
+/// individual Mappings.
 ///
-/// The snapshot is not vestigial C bookkeeping, even though nothing outside
-/// this struct can reach a child.  A serialised CmpMap records **two
-/// independent bits** — the parent's snapshot and the child's own flag — and
-/// they legitimately disagree: 539 loads across the reference corpus produce a
-/// CmpMap whose `InvA`/`InvB` differs from the child's serialised `Invert`.
-/// So a loaded CmpMap can be in a state [`CmpMap::new`] cannot construct
-/// (`new` always sets `inv_a = first.is_inverted()`), and reading those dumps
-/// correctly needs both fields.
-///
-/// A second, separable use of the same field is the simplifier's
-/// `set_first_orientation` / `set_second_orientation`,
-/// which shape the dump without changing the transform.  Whether that half can
-/// be retired depends on whether upstream stops emitting the disagreeing state;
-/// `PLAN.md` §2 records the measurement and the go/no-go test.
+/// Only the CmpMap's own [`report`](Mapping::report) is used: its components
+/// never report individually.
+//
+// `inv_a`/`inv_b` record each child's Invert flag at the time the CmpMap
+// was constructed or loaded. Children are stored with their native Invert
+// state; the effective transform direction for each child is computed at
+// runtime as `forward XOR (inv_a != child.is_inverted())`.
+//
+// The snapshot is not vestigial C bookkeeping, even though nothing outside
+// this struct can reach a child. A serialized CmpMap records two independent
+// bits, the parent's snapshot and the child's own flag, and they
+// legitimately disagree: 539 loads across the reference corpus produce a
+// CmpMap whose InvA/InvB differs from the child's serialized Invert. So a
+// loaded CmpMap can be in a state `CmpMap::new` cannot construct (`new`
+// always sets `inv_a = first.is_inverted()`), and reading those dumps
+// correctly needs both fields.
+//
+// A second, separable use of the same field is the simplifier's
+// `set_first_orientation` / `set_second_orientation`, which shape the dump
+// without changing the transform. Whether that half can be retired depends on
+// whether upstream stops emitting the disagreeing state; PLAN.md §2 records
+// the measurement and the go/no-go test.
 pub struct CmpMap {
     first: DynMapping,
     second: DynMapping,
@@ -124,14 +137,54 @@ pub struct CmpMap {
 }
 
 impl CmpMap {
-    /// Create a new `CmpMap`.
+    /// Create a CmpMap that connects `first` and `second` in series or in
+    /// parallel, as `kind` says.
     ///
-    /// - `Series`: `first.nout()` must equal `second.nin()`.
-    /// - `Parallel`: no dimension constraint.
+    /// In series ([`Composition::Series`]) the forward transformation applies
+    /// `first` and then `second`, and the inverse transformation applies them
+    /// in the reverse order and the reverse direction.
+    /// The number of output coordinates of `first` must equal the number of
+    /// input coordinates of `second`.
     ///
-    /// A FrameSet component is replaced by its base-to-current Mapping, as
-    /// C's `astInitCmpMap` does.
+    /// In parallel ([`Composition::Parallel`]) `first` transforms the earlier
+    /// input coordinates of each point, producing the earlier output
+    /// coordinates, and `second` simultaneously transforms the remaining input
+    /// coordinates, producing the remaining output coordinates.
+    /// The inverse transformation applies each Mapping to the same
+    /// coordinates in the reverse direction.
+    /// There is no restriction on the numbers of coordinates.
+    ///
+    /// The CmpMap takes ownership of its components; clone a component first
+    /// to keep using it.
+    /// A [`FrameSet`](crate::frames::FrameSet) component is replaced by the
+    /// Mapping from its base Frame to its current Frame.
+    /// A CmpMap is created even when it cannot transform in either direction,
+    /// since simplifying it may give a Mapping that can: a Mapping with only a
+    /// forward transformation in series with its own inverse usually
+    /// simplifies to a [`UnitMap`].
+    ///
+    /// ```
+    /// use ast_core::mappings::{CmpMap, Composition, Mapping, ShiftMap, ZoomMap};
+    ///
+    /// // Multiply by 2, then add 1.
+    /// let zoom = ZoomMap::new(1, 2.0).unwrap();
+    /// let shift = ShiftMap::new([1.0]);
+    /// let map = CmpMap::new(Box::new(zoom), Box::new(shift), Composition::Series).unwrap();
+    /// assert_eq!(map.tran1(&[3.0], true).unwrap(), vec![7.0]);
+    /// assert_eq!(map.tran1(&[7.0], false).unwrap(), vec![3.0]);
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Innco` if the components are in series and the number
+    ///   of output coordinates of `first` differs from the number of input
+    ///   coordinates of `second`.
+    /// - Any error from taking a FrameSet component's base-to-current
+    ///   Mapping.
+    #[doc(alias = "astCmpMap")]
     pub fn new(first: DynMapping, second: DynMapping, kind: Composition) -> AstResult<Self> {
+        // A FrameSet component is replaced by its base-to-current Mapping, as
+        // C's astInitCmpMap does.
         let as_mapping = |map: DynMapping| -> AstResult<DynMapping> {
             match map.as_any().downcast_ref::<crate::frames::FrameSet>() {
                 Some(fs) => fs.mapping(
@@ -690,15 +743,18 @@ impl Mapping for CmpMap {
         &mut self.mapping_flags
     }
 
-    /// cmpmap.c `GetIsLinear`: linear when both components are.
+    /// Whether the CmpMap is linear: true when both its components are.
+    ///
+    /// See [`Mapping::is_linear`].
+    // cmpmap.c GetIsLinear.
     fn is_linear(&self) -> bool {
         self.first.is_linear() && self.second.is_linear()
     }
 
-    /// cmpmap.c `RemoveRegions`: remove the Regions from both components.
-    /// In series, a component that became a UnitMap drops out and the other
-    /// is returned with the Invert flag the CmpMap applies to it; in
-    /// parallel, two UnitMaps become one.
+    // cmpmap.c RemoveRegions: remove the Regions from both components.
+    // In series, a component that became a UnitMap drops out and the other
+    // is returned with the Invert flag the CmpMap applies to it; in
+    // parallel, two UnitMaps become one.
     fn mapping_without_regions(&self) -> Option<DynMapping> {
         let new1 = self.first.mapping_without_regions();
         let new2 = self.second.mapping_without_regions();
@@ -733,6 +789,12 @@ impl Mapping for CmpMap {
         })
     }
 
+    /// The number of input coordinates.
+    ///
+    /// A series CmpMap has the inputs of the component it applies first, and
+    /// a parallel one the sum of its components' inputs, each component taken
+    /// in the orientation the CmpMap applies it in.
+    /// See [`Mapping::nin`].
     fn nin(&self) -> usize {
         // The "forward nin" of the CmpMap (before considering self.inverted)
         // is determined by the children in the CmpMap's nominal forward direction.
@@ -751,6 +813,12 @@ impl Mapping for CmpMap {
         if self.inverted { fwd_nout } else { fwd_nin }
     }
 
+    /// The number of output coordinates.
+    ///
+    /// A series CmpMap has the outputs of the component it applies last, and
+    /// a parallel one the sum of its components' outputs, each component
+    /// taken in the orientation the CmpMap applies it in.
+    /// See [`Mapping::nout`].
     fn nout(&self) -> usize {
         let fwd_nin = match self.kind {
             Composition::Series => self.effective_first_nin(true),
@@ -956,6 +1024,11 @@ impl Mapping for CmpMap {
         self.has_been_simplified()
     }
 
+    /// Whether the CmpMap can transform in the forward direction: true when
+    /// every component it applies can transform in the direction it applies
+    /// it.
+    ///
+    /// See [`Mapping::has_forward`].
     fn has_forward(&self) -> bool {
         if self.inverted {
             self.tran_inverse
@@ -964,6 +1037,11 @@ impl Mapping for CmpMap {
         }
     }
 
+    /// Whether the CmpMap can transform in the inverse direction: true when
+    /// every component it applies can transform in the direction it applies
+    /// it.
+    ///
+    /// See [`Mapping::has_inverse`].
     fn has_inverse(&self) -> bool {
         if self.inverted {
             self.tran_forward

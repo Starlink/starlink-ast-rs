@@ -9,7 +9,15 @@ use super::cmpmap::{CmpMap, Composition};
 use super::{DynMapping, Mapping};
 use crate::mappings::SimplifiedRecord;
 
-/// The identity mapping: every output coordinate equals the corresponding input.
+/// Unit (null) Mapping.
+///
+/// A UnitMap is a Mapping that has no effect on the coordinates supplied to
+/// it: they are simply copied.
+/// This is useful where a Mapping is required, for example to pass to another
+/// function, but it should have no effect.
+///
+/// Its [`nin`](Mapping::nin) and [`nout`](Mapping::nout) are always equal
+/// and are fixed when it is created.
 #[derive(Debug, Clone)]
 pub struct UnitMap {
     ncoord: usize,
@@ -23,7 +31,16 @@ pub struct UnitMap {
 }
 
 impl UnitMap {
-    /// Create a new `UnitMap` with `ncoord` coordinates.
+    /// Create a UnitMap with `ncoord` input and output coordinates.
+    ///
+    /// ```
+    /// use ast_core::mappings::{Mapping, UnitMap};
+    ///
+    /// let map = UnitMap::new(2);
+    /// let (x, y) = map.tran2(&[1.0, 2.0], &[3.0, 4.0], true).unwrap();
+    /// assert_eq!((x, y), (vec![1.0, 2.0], vec![3.0, 4.0]));
+    /// ```
+    #[doc(alias = "astUnitMap")]
     pub fn new(ncoord: usize) -> Self {
         Self {
             ncoord,
@@ -55,7 +72,8 @@ impl Mapping for UnitMap {
         &mut self.mapping_flags
     }
 
-    /// Linear, as C's `GetIsLinear` for the class reports.
+    /// Always true: a UnitMap is linear.
+    // C's GetIsLinear for the class reports it linear.
     fn is_linear(&self) -> bool {
         true
     }
@@ -66,6 +84,10 @@ impl Mapping for UnitMap {
     fn nout(&self) -> usize {
         self.ncoord
     }
+    /// Whether the UnitMap is inverted.
+    ///
+    /// Inverting a UnitMap has no effect on how it behaves.
+    /// See [`Mapping::is_inverted`].
     fn is_inverted(&self) -> bool {
         self.inverted
     }

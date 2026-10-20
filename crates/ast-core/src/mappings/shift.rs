@@ -13,7 +13,11 @@ use super::winmap::{compose_linear, extract_linear_params};
 use super::{DynMapping, Mapping};
 use crate::mappings::SimplifiedRecord;
 
-/// A mapping that adds a constant shift vector to all input coordinates.
+/// Add a constant value to each coordinate.
+///
+/// A ShiftMap is a linear Mapping which shifts each axis by a specified
+/// constant value: the forward transformation adds the value and the inverse
+/// subtracts it.
 #[derive(Debug, Clone)]
 pub struct ShiftMap {
     shift: Vec<f64>,
@@ -27,9 +31,19 @@ pub struct ShiftMap {
 }
 
 impl ShiftMap {
-    /// Create a new `ShiftMap` with the given shift offsets.
+    /// Create a ShiftMap that adds `shift[i]` to input coordinate `i + 1`
+    /// to give the output coordinates.
     ///
-    /// The number of coordinates is determined by the length of `shift`.
+    /// The number of input and output coordinates is the length of `shift`.
+    ///
+    /// ```
+    /// use ast_core::mappings::{Mapping, ShiftMap};
+    ///
+    /// let map = ShiftMap::new([10.0, -1.0]);
+    /// let (x, y) = map.tran2(&[1.0], &[2.0], true).unwrap();
+    /// assert_eq!((x, y), (vec![11.0], vec![1.0]));
+    /// ```
+    #[doc(alias = "astShiftMap")]
     pub fn new(shift: impl Into<Vec<f64>>) -> Self {
         Self {
             shift: shift.into(),
@@ -70,7 +84,8 @@ impl Mapping for ShiftMap {
         &mut self.mapping_flags
     }
 
-    /// Linear, as C's `GetIsLinear` for the class reports.
+    /// Always true: a ShiftMap is linear.
+    // C's GetIsLinear for the class reports it linear.
     fn is_linear(&self) -> bool {
         true
     }

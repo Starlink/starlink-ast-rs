@@ -25,8 +25,8 @@ function	astCirclePars	circle.c			no
 function	astCircle	circle.c			no
 class	CmpFrame	cmpframe.c			no
 function	astCmpFrame	cmpframe.c			no
-class	CmpMap	cmpmap.c			no
-function	astCmpMap	cmpmap.c			no
+class	CmpMap	cmpmap.c	CmpMap		yes
+function	astCmpMap	cmpmap.c	CmpMap::new		yes	C keeps references to the components; the port's CmpMap takes ownership of them
 class	CmpRegion	cmpregion.c			no
 function	astCmpRegion	cmpregion.c			no
 class	DSBSpecFrame	dsbspecframe.c			no
@@ -247,8 +247,8 @@ attribute	Seed	mathmap.c			no
 attribute	SimpFI	mathmap.c			no
 attribute	SimpIF	mathmap.c			no
 function	astMathMap	mathmap.c			no
-class	MatrixMap	matrixmap.c			no
-function	astMatrixMap	matrixmap.c			no
+class	MatrixMap	matrixmap.c	MatrixMap		yes
+function	astMatrixMap	matrixmap.c	MatrixMap::new;MatrixMap::diagonal		yes	form 0 is new, form 1 is diagonal, and form 2 (unit) is diagonal with every element 1.0
 function	astAppendString	memory.c			no
 function	astAppendStringf	memory.c			no
 function	astBrackets	memory.c			no
@@ -347,8 +347,8 @@ class	PcdMap	pcdmap.c			no
 attribute	Disco	pcdmap.c			no
 attribute	PcdCen	pcdmap.c			no
 function	astPcdMap	pcdmap.c			no
-class	PermMap	permmap.c			no
-function	astPermMap	permmap.c			no
+class	PermMap	permmap.c	PermMap		yes
+function	astPermMap	permmap.c	PermMap::new		yes	C accepts a NULL inperm or outperm for the null permutation, dumped as InCpy/OutCpy; the port needs explicit arrays, which transform the same but dump every element (PLAN.md §2)
 class	Plot	plot.c		not-ported	yes
 attribute	Tol	plot.c		not-ported	yes
 attribute	Grid	plot.c		not-ported	yes
@@ -452,8 +452,8 @@ attribute	Closed	region.c			no
 function	astMapRegion	region.c			no
 class	SelectorMap	selectormap.c			no
 function	astSelectorMap	selectormap.c			no
-class	ShiftMap	shiftmap.c			no
-function	astShiftMap	shiftmap.c			no
+class	ShiftMap	shiftmap.c	ShiftMap		yes
+function	astShiftMap	shiftmap.c	ShiftMap::new		yes
 class	SkyAxis	skyaxis.c			no
 class	SkyFrame	skyframe.c			no
 function	astSkyOffsetMap	skyframe.c			no
@@ -564,8 +564,8 @@ function	astTimeAdd	timemap.c			no
 function	astTimeMap	timemap.c			no
 class	TranMap	tranmap.c			no
 function	astTranMap	tranmap.c			no
-class	UnitMap	unitmap.c			no
-function	astUnitMap	unitmap.c			no
+class	UnitMap	unitmap.c	UnitMap		yes
+function	astUnitMap	unitmap.c	UnitMap::new		yes
 class	UnitNormMap	unitnormmap.c			no
 function	astUnitNormMap	unitnormmap.c			no
 class	WcsMap	wcsmap.c			no
@@ -577,8 +577,8 @@ attribute	NatLat	wcsmap.c			no
 attribute	NatLon	wcsmap.c			no
 attribute	WcsAxis	wcsmap.c			no
 function	astWcsMap	wcsmap.c			no
-class	WinMap	winmap.c			no
-function	astWinMap	winmap.c			no
+class	WinMap	winmap.c	WinMap		yes
+function	astWinMap	winmap.c	WinMap::from_corners		yes
 class	XmlChan	xmlchan.c		not-ported	yes
 attribute	XmlFormat	xmlchan.c		not-ported	yes
 attribute	XmlLength	xmlchan.c		not-ported	yes
@@ -589,6 +589,6 @@ attribute	VerboseRead	yamlchan.c		not-ported	yes
 attribute	PreserveName	yamlchan.c		not-ported	yes
 attribute	YamlEncoding	yamlchan.c		not-ported	yes
 function	astYamlChan	yamlchan.c		not-ported	yes
-class	ZoomMap	zoommap.c			no
-attribute	Zoom	zoommap.c			no
-function	astZoomMap	zoommap.c			no
+class	ZoomMap	zoommap.c	ZoomMap		yes
+attribute	Zoom	zoommap.c	ZoomMap::zoom		yes	C forbids setting or clearing Zoom on a ZoomMap with more than one reference; the port has owned values, so set_zoom and clear_zoom always apply
+function	astZoomMap	zoommap.c	ZoomMap::new		yes
