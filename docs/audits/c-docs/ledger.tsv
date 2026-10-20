@@ -19,7 +19,7 @@ attribute	Strict	channel.c			no
 function	astChannel	channel.c			no
 class	ChebyMap	chebymap.c	ChebyMap		yes
 function	astChebyDomain	chebymap.c	ChebyMap::domain		yes
-function	astChebyMap	chebymap.c	ChebyMap::new		yes	C reads lbnd_i/ubnd_i whenever inverse coefficients are given; the port takes them as Option and, without them, evaluates the inverse coefficients as plain powers
+function	astChebyMap	chebymap.c	ChebyMap::new		yes	C reads lbnd_i/ubnd_i whenever inverse coefficients are given and dereferences a NULL; the port refuses the call with Badin. C ignores lbnd_f/ubnd_f when there are no forward coefficients; the port requires them and keeps a forward box (CH-8, docs/audits/mapping-c-parity.md; PLAN.md §2 row for that audit)
 class	Circle	circle.c			no
 function	astCirclePars	circle.c			no
 function	astCircle	circle.c			no

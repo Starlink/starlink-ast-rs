@@ -115,9 +115,8 @@ impl ChebyMap {
     /// defined.
     /// `lbnd_i` and `ubnd_i` hold the bounds, one per output, of the output
     /// bounding box within which the inverse transformation is defined.
-    /// They are used only when inverse coefficients are given, and without
-    /// them the inverse coefficients multiply plain powers of the unscaled
-    /// outputs, as a [`PolyMap`]'s do.
+    /// They are required when inverse coefficients are given, and ignored
+    /// otherwise.
     ///
     /// ```
     /// use ast_core::mappings::{ChebyMap, Mapping, PolyTerm};
@@ -135,12 +134,42 @@ impl ChebyMap {
     /// # Errors
     ///
     /// - `ErrorCode::Badin` if `nin` or `nout` is zero, a bounds slice has
-    ///   the wrong length, or a term has the wrong number of powers.
+    ///   the wrong length, inverse coefficients are given without `lbnd_i`
+    ///   and `ubnd_i`, or a term has the wrong number of powers.
     /// - `ErrorCode::Badbx` if a bounding box has zero width on any axis.
     /// - `ErrorCode::Badci` if a term's `out_axis` is out of range.
     #[doc(alias = "astChebyMap")]
     #[allow(clippy::too_many_arguments)]
     pub fn new(
+        nin: usize,
+        nout: usize,
+        forward: &[PolyTerm],
+        inverse: Option<&[PolyTerm]>,
+        lbnd_f: &[f64],
+        ubnd_f: &[f64],
+        lbnd_i: Option<&[f64]>,
+        ubnd_i: Option<&[f64]>,
+    ) -> AstResult<Self> {
+        // C's astInitChebyMap reads lbnd_i and ubnd_i whenever there are
+        // inverse coefficients (chebymap.c:2144-2151) and has no defined
+        // result without them, so the call is refused.
+        if inverse.is_some_and(|t| !t.is_empty()) && (lbnd_i.is_none() || ubnd_i.is_none()) {
+            return Err(AstError::new(
+                ErrorCode::Badin,
+                "ChebyMap: inverse coefficients were supplied without the bounds of \
+                 the inverse transformation's domain",
+            ));
+        }
+        Self::build(nin, nout, forward, inverse, lbnd_f, ubnd_f, lbnd_i, ubnd_i)
+    }
+
+    /// [`ChebyMap::new`] without the requirement that inverse coefficients
+    /// come with inverse bounds: an inverse without them is the state a dump
+    /// with no `ISCL` cards loads, whose coefficients multiply plain powers
+    /// (C's PolyPowers with no inverse scaling), and a merge that rebuilds
+    /// such a ChebyMap has to keep it.
+    #[allow(clippy::too_many_arguments)]
+    fn build(
         nin: usize,
         nout: usize,
         forward: &[PolyTerm],
@@ -765,7 +794,7 @@ impl Mapping for ChebyMap {
             } else {
                 (self.nin(), self.nout())
             };
-            let mut rebuilt = ChebyMap::new(
+            let mut rebuilt = ChebyMap::build(
                 nin,
                 nout,
                 &fwd,

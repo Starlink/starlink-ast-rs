@@ -65,6 +65,42 @@ fn chebymap_zero_width_bounds_rejected() {
     assert!(ChebyMap::new(1, 1, &terms, None, &[10.0], &[0.0], None, None).is_ok());
 }
 
+#[test]
+fn chebymap_inverse_without_bounds_rejected() {
+    // C's astInitChebyMap reads lbnd_i and ubnd_i whenever there are inverse
+    // coefficients, so they are required; without them there is no box to
+    // scale the inverse's inputs into.
+    let terms = vec![PolyTerm {
+        coeff: 1.0,
+        powers: vec![1],
+        out_axis: 1,
+    }];
+    for (lbnd_i, ubnd_i) in [
+        (None, None),
+        (Some(&[0.0][..]), None),
+        (None, Some(&[1.0][..])),
+    ] {
+        let err =
+            ChebyMap::new(1, 1, &terms, Some(&terms), &[0.0], &[1.0], lbnd_i, ubnd_i).unwrap_err();
+        assert_eq!(err.code(), ErrorCode::Badin);
+    }
+    // An empty inverse defines nothing, so it needs no box.
+    assert!(ChebyMap::new(1, 1, &terms, Some(&[]), &[0.0], &[1.0], None, None).is_ok());
+    assert!(
+        ChebyMap::new(
+            1,
+            1,
+            &terms,
+            Some(&terms),
+            &[0.0],
+            &[1.0],
+            Some(&[0.0]),
+            Some(&[1.0])
+        )
+        .is_ok()
+    );
+}
+
 // ---------------------------------------------------------------------------
 // 1D constant: f(x) = 1.5 via T_0 for any x in [0, 10]
 // ---------------------------------------------------------------------------
