@@ -1,14 +1,6 @@
 //! Mapping with specified forward and inverse transformations.
 //!
-//! A `TranMap` combines the forward transformation of one Mapping with
-//! the inverse transformation of another Mapping, ignoring the unused
-//! transformation in each (indeed the unused transformation need not exist).
-//!
-//! When the forward transformation of the TranMap is used, the actual
-//! transformation applied is the forward transformation of the first
-//! Mapping supplied when the TranMap was constructed. When the inverse
-//! transformation is used, the actual transformation applied is the
-//! inverse transformation of the second Mapping.
+//! See [`TranMap`].
 
 use std::fmt;
 
@@ -23,15 +15,35 @@ use super::unit::UnitMap;
 use super::{DynMapping, Mapping};
 use crate::mappings::SimplifiedRecord;
 
-/// A mapping that combines the forward transformation of one Mapping
-/// with the inverse transformation of another.
+/// Mapping with specified forward and inverse transformations.
 ///
-/// The forward transformation uses `map1`'s forward direction.
-/// The inverse transformation uses `map2`'s inverse direction.
+/// A TranMap is a Mapping which combines the forward transformation of a
+/// supplied Mapping with the inverse transformation of another supplied
+/// Mapping, ignoring the unused transformation in each Mapping (indeed the
+/// unused transformation need not exist).
 ///
-/// `inv_a`/`inv_b` record each child's Invert flag at the time the TranMap
-/// was constructed or loaded. The effective transform direction for each
-/// child is computed at runtime based on these recorded states.
+/// When the forward transformation of the TranMap is referred to, the
+/// transformation actually used is the forward transformation of the first
+/// Mapping supplied when the TranMap was constructed.
+/// Likewise, when the inverse transformation of the TranMap is referred to,
+/// the transformation actually used is the inverse transformation of the
+/// second Mapping supplied when the TranMap was constructed.
+///
+/// ```
+/// use ast_core::mappings::{Mapping, TranMap, ZoomMap};
+///
+/// // Forward multiplies by 2, inverse divides by 4.
+/// let map = TranMap::new(
+///     Box::new(ZoomMap::new(1, 2.0).unwrap()),
+///     Box::new(ZoomMap::new(1, 4.0).unwrap()),
+/// )
+/// .unwrap();
+/// assert_eq!(map.tran1(&[3.0], true).unwrap(), vec![6.0]);
+/// assert_eq!(map.tran1(&[8.0], false).unwrap(), vec![2.0]);
+/// ```
+// `inv_a`/`inv_b` record each child's Invert flag at the time the TranMap
+// was constructed or loaded. The effective transform direction for each
+// child is computed at runtime based on these recorded states.
 pub struct TranMap {
     map1: DynMapping,
     map2: DynMapping,
@@ -59,15 +71,18 @@ impl TranMap {
         (&mut self.map1, &mut self.map2)
     }
 
-    /// Create a new `TranMap`.
+    /// Create a TranMap from `map1`, which defines the forward
+    /// transformation, and `map2`, which defines the inverse transformation.
     ///
-    /// - `map1` defines the forward transformation.
-    /// - `map2` defines the inverse transformation.
+    /// The TranMap takes ownership of both Mappings.
     ///
-    /// Requirements:
-    /// - `map1.nin() == map2.nin()` and `map1.nout() == map2.nout()`
-    /// - `map1` must have a forward transformation defined.
-    /// - `map2` must have an inverse transformation defined.
+    /// # Errors
+    ///
+    /// - `ErrorCode::Intrd` if `map1` has no forward transformation or
+    ///   `map2` has no inverse transformation.
+    /// - `ErrorCode::Innco` if the two Mappings have different numbers of
+    ///   inputs or of outputs.
+    #[doc(alias = "astTranMap")]
     pub fn new(map1: DynMapping, map2: DynMapping) -> AstResult<Self> {
         // The forward transformation is map1's and the inverse map2's, so C
         // requires both to exist (tranmap.c astInitTranMap).

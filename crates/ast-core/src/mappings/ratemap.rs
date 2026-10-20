@@ -1,19 +1,6 @@
 //! Mapping which represents differentiation (a single Jacobian element).
 //!
-//! A `RateMap` is a Mapping which represents a single element of the
-//! Jacobian matrix of another Mapping. The Mapping for which the
-//! Jacobian is required is specified when the new RateMap is created,
-//! and is referred to as the "encapsulated Mapping" below.
-//!
-//! The number of inputs to a RateMap is the same as the number of inputs
-//! to its encapsulated Mapping. The number of outputs from a RateMap
-//! is always one. This one output equals the rate of change of a
-//! specified output of the encapsulated Mapping with respect to a
-//! specified input of the encapsulated Mapping.
-//!
-//! A RateMap which has not been inverted does not define an inverse
-//! transformation. If a RateMap has been inverted then it will define
-//! an inverse transformation but not a forward transformation.
+//! See [`RateMap`].
 
 use std::fmt;
 
@@ -27,20 +14,35 @@ use super::unit::UnitMap;
 use super::{DynMapping, Mapping};
 use crate::mappings::SimplifiedRecord;
 
-/// A mapping that computes a single element of the Jacobian matrix
-/// of an encapsulated Mapping.
+/// Mapping which represents differentiation.
 ///
-/// The single output equals the rate of change of a specified output
-/// of the encapsulated Mapping with respect to a specified input.
+/// A RateMap is a Mapping which represents a single element of the Jacobian
+/// matrix of another Mapping.
+/// The Mapping for which the Jacobian is required is specified when the new
+/// RateMap is created, and is referred to as the "encapsulated Mapping"
+/// below.
 ///
-/// # Axis indices
+/// The number of inputs to a RateMap is the same as the number of inputs to
+/// its encapsulated Mapping.
+/// The number of outputs from a RateMap is always one.
+/// This one output equals the rate of change of a specified output of the
+/// encapsulated Mapping with respect to a specified input of the encapsulated
+/// Mapping ([`ax1`](RateMap::ax1) and [`ax2`](RateMap::ax2)).
 ///
-/// Both `ax1` (output) and `ax2` (input) use 1-based indexing.
+/// A RateMap which has not been inverted does not define an inverse
+/// transformation.
+/// If a RateMap has been inverted then it defines an inverse transformation
+/// but not a forward transformation.
 ///
-/// # Transform directions
+/// ```
+/// use ast_core::mappings::{Mapping, MathMap, RateMap};
 ///
-/// When not inverted: forward is defined (computes the rate), inverse is not.
-/// When inverted: inverse is defined (computes the rate), forward is not.
+/// let square = MathMap::new(1, 1, &["y = x * x"], &["x = sqrt(y)"]).unwrap();
+/// let rate = RateMap::new(Box::new(square), 1, 1).unwrap();
+/// assert!(!rate.has_inverse());
+/// let d = rate.tran1(&[3.0], true).unwrap();
+/// assert!((d[0] - 6.0).abs() < 1e-6);
+/// ```
 pub struct RateMap {
     /// The encapsulated mapping whose derivative is computed.
     map: DynMapping,
@@ -68,13 +70,22 @@ pub struct RateMap {
 }
 
 impl RateMap {
-    /// Create a new `RateMap`.
+    /// Create a RateMap for the rate of change of output `ax1` of `map` with
+    /// respect to its input `ax2`.
     ///
-    /// - `map`: The encapsulated mapping to differentiate.
-    /// - `ax1`: 1-based index of the output axis being differentiated.
-    /// - `ax2`: 1-based index of the input axis being varied.
+    /// `ax1` is the 1-based index of the output of the encapsulated Mapping
+    /// whose rate of change is required: the numerator of the Jacobian
+    /// element.
+    /// `ax2` is the 1-based index of the input of the encapsulated Mapping
+    /// which is varied: the denominator.
+    /// The RateMap takes ownership of `map`.
     ///
-    /// The encapsulated mapping must have a forward transformation defined.
+    /// # Errors
+    ///
+    /// - `ErrorCode::Intrd` if `map` has no forward transformation.
+    /// - `ErrorCode::Innco` if `ax1` is not an output of `map` or `ax2` is not
+    ///   one of its inputs.
+    #[doc(alias = "astRateMap")]
     pub fn new(map: DynMapping, ax1: usize, ax2: usize) -> AstResult<Self> {
         // The encapsulated mapping must have a forward transformation.
         if !map.has_forward() {
@@ -121,13 +132,15 @@ impl RateMap {
         self.map.as_ref()
     }
 
-    /// 1-based index of the output axis being differentiated.
+    /// The 1-based index of the output of the encapsulated Mapping whose rate
+    /// of change this RateMap gives.
     #[allow(dead_code)]
     pub fn ax1(&self) -> usize {
         self.ax1
     }
 
-    /// 1-based index of the input axis being varied.
+    /// The 1-based index of the input of the encapsulated Mapping that is
+    /// varied.
     #[allow(dead_code)]
     pub fn ax2(&self) -> usize {
         self.ax2

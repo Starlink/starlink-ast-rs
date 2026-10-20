@@ -180,10 +180,10 @@ attribute	GrismTheta	grismmap.c	GrismMap::grism_theta		yes	C refuses to set it o
 function	astGrismMap	grismmap.c	GrismMap::new;GrismMap::default_map		yes	C takes only an options string; new sets every attribute and default_map sets none
 class	Interval	interval.c			no
 function	astInterval	interval.c			no
-class	IntraMap	intramap.c			no
-function	astIntraReg	intramap.c			no
-attribute	IntraFlag	intramap.c			no
-function	astIntraMap	intramap.c			no
+class	IntraMap	intramap.c	IntraMap		yes	The transformation is an Arc<dyn IntraTransform> held by the IntraMap; registration is needed only to read a dump
+function	astIntraReg	intramap.c	IntraRegistry::register		yes	C keeps one process-wide table; the port's registry belongs to the Channel that reads (Channel::register_intra), and an IntraMap made in code needs none. The name, numbers of coordinates, flags, purpose, author and contact are IntraTransform methods. C accepts a repeat registration whose arguments are all identical; the port accepts a repeat of the same Arc
+attribute	IntraFlag	intramap.c	IntraMap::intra_flag		yes	The header gives an empty-string default; the getter returns None while unset, and the merge compares an unset value as an empty string, as C does
+function	astIntraMap	intramap.c	IntraMap::new		yes	Takes the transformation itself rather than its registered name
 class	KeyMap	keymap.c			no
 function	astMapCopy	keymap.c			no
 function	astMapCopyEntry	keymap.c			no
@@ -242,11 +242,11 @@ function	astDecompose	mapping.c		not-ported	yes	CmpMap and TranMap components ar
 function	astMapBox	mapping.c	Mapping::map_box		yes
 function	astRate	mapping.c	Mapping::rate		yes
 function	astMapSplit	mapping.c	Mapping::map_split		yes
-class	MathMap	mathmap.c			no
-attribute	Seed	mathmap.c			no
-attribute	SimpFI	mathmap.c			no
-attribute	SimpIF	mathmap.c			no
-function	astMathMap	mathmap.c			no
+class	MathMap	mathmap.c	MathMap		yes	The expression syntax from the astMathMap header is on the struct doc
+attribute	Seed	mathmap.c	MathMap::seed		yes
+attribute	SimpFI	mathmap.c	MathMap::simp_fi		yes
+attribute	SimpIF	mathmap.c	MathMap::simp_if		yes
+function	astMathMap	mathmap.c	MathMap::new		yes	C validates every variable name (AST__MISVN, AST__VARIN, AST__DUVAR); the port does not (PLAN.md §2). For nout < 1 C's final status is AST__BADNI (its second astError uses that code); the port returns Badno
 class	MatrixMap	matrixmap.c	MatrixMap		yes
 function	astMatrixMap	matrixmap.c	MatrixMap::new;MatrixMap::diagonal		yes	form 0 is new, form 1 is diagonal, and form 2 (unit) is diagonal with every element 1.0
 function	astAppendString	memory.c			no
@@ -427,8 +427,8 @@ attribute	TolInverse	polymap.c	PolyMap::tol_inverse		yes
 function	astPolyMap	polymap.c	PolyMap::new		yes	C takes powers as doubles rounded to the nearest integer and rejects negative ones; the port takes PolyTerm with usize powers
 class	Prism	prism.c			no
 function	astPrism	prism.c			no
-class	RateMap	ratemap.c			no
-function	astRateMap	ratemap.c			no
+class	RateMap	ratemap.c	RateMap		yes
+function	astRateMap	ratemap.c	RateMap::new		yes	The RateMap owns the encapsulated Mapping; C keeps a reference to it
 class	Region	region.c			no
 function	astGetUnc	region.c			no
 function	astGetRegionFrame	region.c			no
@@ -562,8 +562,8 @@ function	astTimeFrame	timeframe.c			no
 class	TimeMap	timemap.c	TimeMap		yes
 function	astTimeAdd	timemap.c	TimeMap::add		yes	C takes the conversion as a string; the port takes TimeCvtType, whose variants carry the conversion list and TimeCvtType::from_code parses the strings; the C header describes LASTTOLMST and LMSTTOLAST as GMST/LMST conversions, the port documents what they do (docs/issues/c-library-quirks.md)
 function	astTimeMap	timemap.c	TimeMap::new		yes	C's reserved flags argument is dropped
-class	TranMap	tranmap.c			no
-function	astTranMap	tranmap.c			no
+class	TranMap	tranmap.c	TranMap		yes
+function	astTranMap	tranmap.c	TranMap::new		yes	The TranMap owns its components; C keeps references to them
 class	UnitMap	unitmap.c	UnitMap		yes
 function	astUnitMap	unitmap.c	UnitMap::new		yes
 class	UnitNormMap	unitnormmap.c	UnitNormMap		yes

@@ -1,8 +1,6 @@
 //! MathMap: transform coordinates using mathematical expressions.
 //!
-//! A `MathMap` allows specifying forward and/or inverse transformation
-//! functions using arithmetic operations and mathematical functions similar
-//! to those available in C. The expressions are interpreted at run-time.
+//! See [`MathMap`].
 
 mod evaluator;
 pub(crate) mod opcode;
@@ -25,12 +23,229 @@ use crate::mappings::SimplifiedRecord;
 use opcode::CompiledExpr;
 use rng::MathMapRng;
 
-/// A Mapping defined by user-supplied mathematical expressions.
+/// Transform coordinates using mathematical expressions.
 ///
-/// The forward transformation converts input coordinates to output
-/// using the forward expressions; the inverse uses the inverse expressions.
-/// Expressions support arithmetic, trigonometric, logarithmic, and other
-/// functions, plus random number generation.
+/// A MathMap is a Mapping which allows you to specify a set of forward and/or
+/// inverse transformation functions using arithmetic operations and
+/// mathematical functions similar to those available in C.
+/// The MathMap interprets these functions at run time, whenever its forward or
+/// inverse transformation is required.
+/// Because the functions are not compiled in the normal sense (unlike an
+/// [`IntraMap`](super::IntraMap)), they may be used to describe coordinate
+/// transformations in a transportable manner.
+/// A MathMap therefore provides a flexible way of defining new types of
+/// Mapping whose descriptions may be stored as part of a dataset and
+/// interpreted by other programs.
+///
+/// [`seed`](MathMap::seed) controls the random number functions, and
+/// [`simp_fi`](MathMap::simp_fi) and [`simp_if`](MathMap::simp_if) allow a
+/// MathMap in series with its own inverse to simplify away.
+/// Otherwise, compound Mappings which involve MathMaps are not simplified,
+/// because it cannot be known how different MathMaps will interact.
+///
+/// # Defining transformation functions
+///
+/// A MathMap's transformation functions are supplied as a set of expressions.
+/// Normally you supply the same number of expressions for the forward
+/// transformation as there are output coordinates.
+/// For instance, with two outputs you might use:
+///
+/// - `r = sqrt( x * x + y * y )`
+/// - `theta = atan2( y, x )`
+///
+/// which defines a transformation from Cartesian to polar coordinates.
+/// The variables on the left of each expression (`r` and `theta`) name the
+/// output variables, and those on the right (`x` and `y`) are references to
+/// input variables.
+///
+/// To complement this, you supply expressions for the inverse transformation,
+/// normally as many as there are input coordinates:
+///
+/// - `x = r * cos( theta )`
+/// - `y = r * sin( theta )`
+///
+/// Here the input variables (`x` and `y`) are named on the left of each
+/// expression, and the output variables (`r` and `theta`) are referenced on
+/// the right.
+///
+/// You cannot normally refer to a variable on the right of an expression
+/// unless it is named on the left of an expression in the complementary set
+/// of functions, so both sets must use the same consistent set of variable
+/// names.
+/// To leave one of the transformations undefined, supply dummy expressions
+/// which simply name each of the output (or input) variables: `x` and `y`
+/// for the inverse transformation above name the input variables without
+/// defining an inverse transformation.
+///
+/// # Calculating intermediate values
+///
+/// Additional expressions calculate intermediate values, which later
+/// expressions may use.
+/// These five forward expressions describe 2-dimensional pincushion
+/// distortion:
+///
+/// - `r = sqrt( xin * xin + yin * yin )`
+/// - `rout = r * ( 1 + 0.1 * r * r )`
+/// - `theta = atan2( yin, xin )`
+/// - `xout = rout * cos( theta )`
+/// - `yout = rout * sin( theta )`
+///
+/// The last `nout` expressions give the output variables; you may define as
+/// many intermediate variables before them as you choose, and refer to each
+/// in any later expression.
+/// The intermediate variables are private to their transformation: the
+/// inverse transformation may refer only to the output variables (`xout` and
+/// `yout`), though it may define its own private intermediate variables.
+///
+/// # Expression syntax
+///
+/// The expressions closely follow the syntax of C, with some extensions for
+/// compatibility with Fortran.
+/// They may contain references to variables and literal constants, together
+/// with arithmetic, boolean, relational and bitwise operators, and function
+/// invocations.
+/// Parentheses may be used to override the normal order of evaluation.
+/// There is no built-in limit to the length of expressions, and they are
+/// insensitive to case and to additional white space.
+///
+/// - **Variables.**
+///   Variable names must begin with an alphabetic character and may contain
+///   only alphabetic characters, digits and the underscore character `_`.
+/// - **Literal constants**, such as `0`, `1`, `0.007` or `2.505e-16`.
+///   The decimal point and exponent are optional, and `D` may also be used as
+///   the exponent character.
+///   A unary minus may be used as a prefix.
+/// - **Arithmetic** is all double-precision floating point.
+///
+/// ## Missing data
+///
+/// Unless indicated otherwise, if any argument of a function or operator is
+/// [`BAD_VALUE`] (missing data), the result is also [`BAD_VALUE`], so such
+/// values propagate automatically through a MathMap's transformations.
+/// [`BAD_VALUE`] is written `<bad>` in expressions.
+/// A bad result is also produced by any numerical error (such as division by
+/// zero or overflow), or by an invalid argument to a function or operator.
+///
+/// ## Arithmetic operators
+///
+/// `x1 + x2`, `x1 - x2`, `x1 * x2`, `x1 / x2`, `x1 ** x2` (power), unary `+`
+/// (no effect) and unary `-` (negation).
+///
+/// ## Boolean operators
+///
+/// Zero is false and non-zero is true; [`BAD_VALUE`] means "unknown", so a
+/// boolean operator returns 0, 1 or bad.
+/// Where appropriate, tri-state logic is used: `a || b` is 1 when `a` is
+/// non-zero, even if `b` is bad.
+///
+/// - `x1 && x2` (or `.and.`): 1 if both are non-zero, tri-state.
+/// - `x1 || x2` (or `.or.`): 1 if either is non-zero, tri-state.
+/// - `x1 ^^ x2` (or `.neqv.`, `.xor.`): 1 if exactly one is non-zero.
+/// - `x1 .eqv. x2`: 1 if both have the same truth value.
+/// - `! x` (or `.not.`): 1 if `x` is zero.
+///
+/// ## Relational operators
+///
+/// `x1 == x2` (`.eq.`), `x1 != x2` (`.ne.`), `x1 > x2` (`.gt.`),
+/// `x1 >= x2` (`.ge.`), `x1 < x2` (`.lt.`) and `x1 <= x2` (`.le.`) return 0
+/// or 1, or bad if either argument is bad.
+/// They cannot usefully compare a value with `<bad>`, since the result is
+/// always bad; use `isbad()` instead.
+///
+/// ## Bitwise operators
+///
+/// The operands are floating-point values regarded as fixed-point binary
+/// numbers, with negative numbers in two's complement, so that integer values
+/// give the results of the pure integer case; bits of the fractional part are
+/// operated on as well.
+///
+/// - `x1 >> x2`: shift `x1` right by the integer part of `x2` (left if
+///   negative), dividing by the corresponding power of 2.
+/// - `x1 << x2`: shift `x1` left by the integer part of `x2` (right if
+///   negative), multiplying by the corresponding power of 2.
+/// - `x1 & x2`, `x1 | x2`, `x1 ^ x2`: bitwise AND, OR and exclusive OR.
+///
+/// There is no bit inversion operator, because inverting the bits of a
+/// two's-complement fixed-point number is the same as negating it; to invert
+/// only the bits left of the binary point, use `x ^ -1`.
+///
+/// ## Functions
+///
+/// | Function | Value |
+/// |---|---|
+/// | `abs(x)`, `fabs(x)` | absolute value |
+/// | `acos(x)`, `asin(x)`, `atan(x)` | inverse cosine, sine and tangent, in radians |
+/// | `acosd(x)`, `asind(x)`, `atand(x)` | the same, in degrees |
+/// | `atan2(x1, x2)`, `atan2d(x1, x2)` | inverse tangent of `x1/x2`, in radians or degrees |
+/// | `acosh(x)`, `asinh(x)`, `atanh(x)`, `acoth(x)`, `acsch(x)`, `asech(x)` | inverse hyperbolic functions |
+/// | `aint(x)`, `int(x)` | integer part (round towards zero) |
+/// | `ceil(x)` | smallest integer not less than `x` |
+/// | `floor(x)` | largest integer not greater than `x` |
+/// | `nint(x)` | nearest integer |
+/// | `cos(x)`, `sin(x)`, `tan(x)` | cosine, sine and tangent of `x` in radians |
+/// | `cosd(x)`, `sind(x)`, `tand(x)` | the same, of `x` in degrees |
+/// | `cosh(x)`, `sinh(x)`, `tanh(x)`, `coth(x)`, `csch(x)`, `sech(x)` | hyperbolic functions |
+/// | `dim(x1, x2)` | `x1 - x2` if `x1` is greater than `x2`, otherwise 0 |
+/// | `exp(x)` | exponential |
+/// | `fmod(x1, x2)`, `mod(x1, x2)` | remainder of `x1` divided by `x2` |
+/// | `gauss(x1, x2)` | random sample from a Gaussian distribution with mean `x1` and standard deviation `x2` |
+/// | `isbad(x)` | 1 if `x` is bad, otherwise 0 |
+/// | `log(x)`, `log10(x)` | natural and base-10 logarithm |
+/// | `max(x1, x2, ...)`, `min(x1, x2, ...)` | maximum and minimum of two or more values |
+/// | `poisson(x)` | random integer-valued sample from a Poisson distribution with mean `x` |
+/// | `pow(x1, x2)` | `x1` raised to the power `x2` |
+/// | `qif(x1, x2, x3)` | `x2` if `x1` is true, otherwise `x3` |
+/// | `rand(x1, x2)` | random sample from a uniform distribution from `x1` to `x2` inclusive |
+/// | `sign(x1, x2)` | absolute value of `x1` with the sign of `x2` |
+/// | `sinc(x)` | `sin(x)/x` |
+/// | `sqr(x)` | `x*x` |
+/// | `sqrt(x)` | square root |
+///
+/// ## Symbolic constants
+///
+/// The enclosing `<>` brackets are part of the name.
+///
+/// | Constant | Value |
+/// |---|---|
+/// | `<bad>` | [`BAD_VALUE`], flagging missing data |
+/// | `<dig>` | number of decimal digits of precision in an `f64` |
+/// | `<e>` | base of natural logarithms |
+/// | `<epsilon>` | smallest positive number such that `1.0 + <epsilon>` differs from 1 |
+/// | `<mant_dig>` | number of base-`<radix>` digits in the mantissa of an `f64` |
+/// | `<max>` | largest representable `f64` |
+/// | `<max_10_exp>` | largest integer such that 10 raised to it is representable |
+/// | `<max_exp>` | largest integer such that `<radix>` raised to it minus 1 is representable |
+/// | `<min>` | smallest positive normalized `f64` |
+/// | `<min_10_exp>` | smallest negative integer such that 10 raised to it is a normalized `f64` |
+/// | `<min_exp>` | smallest negative integer such that `<radix>` raised to it minus 1 is a normalized `f64` |
+/// | `<pi>` | ratio of a circle's circumference to its diameter |
+/// | `<radix>` | radix of the mantissa of an `f64` |
+/// | `<rounds>` | rounding mode after addition: -1 indeterminate, 0 toward zero, 1 to nearest, 2 toward plus infinity, 3 toward minus infinity |
+///
+/// ## Precedence and associativity
+///
+/// From highest to lowest precedence:
+///
+/// 1. constants and variables;
+/// 2. function arguments and parenthesized expressions;
+/// 3. function invocations;
+/// 4. unary `+ - ! .not.`;
+/// 5. `**`;
+/// 6. `* /`;
+/// 7. `+ -`;
+/// 8. `<< >>`;
+/// 9. `< .lt. <= .le. > .gt. >= .ge.`;
+/// 10. `== .eq. != .ne.`;
+/// 11. `&`;
+/// 12. `^`;
+/// 13. `|`;
+/// 14. `&& .and.`;
+/// 15. `^^`;
+/// 16. `|| .or.`;
+/// 17. `.eqv. .neqv. .xor.`.
+///
+/// All operators associate from left to right, except unary `+`, unary `-`,
+/// `!`, `.not.` and `**`, which associate from right to left.
 pub struct MathMap {
     nin: usize,
     nout: usize,
@@ -105,17 +320,42 @@ impl Clone for MathMap {
 }
 
 impl MathMap {
-    /// Create a new `MathMap`.
+    /// Create a MathMap with `nin` inputs and `nout` outputs from the
+    /// expressions defining its forward (`fwd`) and inverse (`inv`)
+    /// transformations.
     ///
-    /// # Arguments
-    /// - `nin`: number of input coordinates
-    /// - `nout`: number of output coordinates
-    /// - `fwd`: forward transformation expressions (at least `nout` required)
-    /// - `inv`: inverse transformation expressions (at least `nin` required)
+    /// `fwd` must hold at least `nout` expressions and `inv` at least `nin`;
+    /// any extra expressions define intermediate variables.
+    /// The [`MathMap`] type documentation describes the expressions.
     ///
-    /// Each expression is of the form `"y = expr"` where `y` is an output
-    /// variable name. Input variables are `x1`, `x2`, etc. (1-based).
-    /// Intermediate variables may also be defined.
+    /// ```
+    /// use ast_core::mappings::{Mapping, MathMap};
+    ///
+    /// let map = MathMap::new(
+    ///     2,
+    ///     2,
+    ///     &["r = sqrt( x * x + y * y )", "theta = atan2( y, x )"],
+    ///     &["x = r * cos( theta )", "y = r * sin( theta )"],
+    /// )
+    /// .unwrap();
+    /// let (r, theta) = map.tran2(&[3.0], &[4.0], true).unwrap();
+    /// assert_eq!(r[0], 5.0);
+    /// assert!((theta[0] - 4.0_f64.atan2(3.0)).abs() < 1e-15);
+    /// let (x, y) = map.tran2(&r, &theta, false).unwrap();
+    /// assert!((x[0] - 3.0).abs() < 1e-14 && (y[0] - 4.0).abs() < 1e-14);
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Badni` if `nin` is zero.
+    /// - `ErrorCode::Badno` if `nout` is zero.
+    /// - `ErrorCode::Inntf` if `fwd` has fewer than `nout` expressions or
+    ///   `inv` fewer than `nin`.
+    /// - Any of the expression errors, such as `ErrorCode::Miopa` (a missing
+    ///   operand), `ErrorCode::Mrpar` (a missing right parenthesis) or
+    ///   `ErrorCode::Udvof` (an undefined variable or function), if an
+    ///   expression cannot be parsed.
+    #[doc(alias = "astMathMap")]
     pub fn new(nin: usize, nout: usize, fwd: &[&str], inv: &[&str]) -> AstResult<Self> {
         if nin == 0 {
             return Err(AstError::new(
@@ -182,12 +422,38 @@ impl MathMap {
         })
     }
 
-    /// Get the SimpFI attribute (forward-inverse pairs simplify).
+    /// Whether applying the MathMap's forward transformation followed
+    /// immediately by the matching inverse always restores the original
+    /// coordinates.
+    ///
+    /// If true, simplification may replace such a sequence by a
+    /// [`UnitMap`](super::UnitMap).
+    /// For it to happen, the two MathMaps must be in series and identical,
+    /// with textually identical transformation functions; functional
+    /// equivalence is not sufficient.
+    /// Both MathMaps must consent: if either has `simp_fi` false, nothing is
+    /// simplified.
+    /// It does not apply to an inverse transformation followed by a forward
+    /// one, which [`simp_if`](MathMap::simp_if) controls.
+    ///
+    /// "Forward" and "inverse" refer to the transformations defined when the
+    /// MathMap was created; if the MathMap is inverted, the roles of
+    /// `simp_fi` and `simp_if` are interchanged.
+    ///
+    /// Default: false.
+    ///
+    /// [`set_simp_fi`](MathMap::set_simp_fi),
+    /// [`test_simp_fi`](MathMap::test_simp_fi) and
+    /// [`clear_simp_fi`](MathMap::clear_simp_fi) set, test and clear it.
+    #[doc(alias = "SimpFI")]
     pub fn simp_fi(&self) -> bool {
         self.simp_fi.unwrap_or(false)
     }
 
-    /// Set the SimpFI attribute.
+    /// Set [`simp_fi`](MathMap::simp_fi).
+    ///
+    /// A value different from the one held clears the record that the
+    /// MathMap has been simplified.
     pub fn set_simp_fi(&mut self, val: bool) {
         // `SimpFI` is read by MathMap's own MapMerge, which cancels a
         // forward-then-inverse pair only when both MathMaps permit it
@@ -200,12 +466,28 @@ impl MathMap {
         self.simp_fi = Some(val);
     }
 
-    /// Get the SimpIF attribute (inverse-forward pairs simplify).
+    /// Whether applying the MathMap's inverse transformation followed
+    /// immediately by the matching forward transformation always restores the
+    /// original coordinates.
+    ///
+    /// It is the counterpart of [`simp_fi`](MathMap::simp_fi), whose
+    /// conditions apply in the same way, for an inverse transformation
+    /// followed by a forward one.
+    ///
+    /// Default: false.
+    ///
+    /// [`set_simp_if`](MathMap::set_simp_if),
+    /// [`test_simp_if`](MathMap::test_simp_if) and
+    /// [`clear_simp_if`](MathMap::clear_simp_if) set, test and clear it.
+    #[doc(alias = "SimpIF")]
     pub fn simp_if(&self) -> bool {
         self.simp_if.unwrap_or(false)
     }
 
-    /// Set the SimpIF attribute.
+    /// Set [`simp_if`](MathMap::simp_if).
+    ///
+    /// A value different from the one held clears the record that the
+    /// MathMap has been simplified.
     pub fn set_simp_if(&mut self, val: bool) {
         // `SimpIF` is read by the same MapMerge test (mathmap.c:5771-5778).
         if Some(val) != self.simp_if {
@@ -214,37 +496,60 @@ impl MathMap {
         self.simp_if = Some(val);
     }
 
-    /// Whether SimpFI is set, `false` included (mathmap.c `TestSimpFI`).
+    /// Whether [`simp_fi`](MathMap::simp_fi) is set, to either value.
     pub fn test_simp_fi(&self) -> bool {
         self.simp_fi.is_some()
     }
 
-    /// Unset SimpFI, so that it reads as `false` (mathmap.c `ClearSimpFI`,
-    /// which also discards both simplified records).
+    /// Clear [`simp_fi`](MathMap::simp_fi), so that it reads as the default
+    /// of false.
+    ///
+    /// This also clears the record that the MathMap has been simplified.
     pub fn clear_simp_fi(&mut self) {
+        // mathmap.c ClearSimpFI.
         self.simplified.clear();
         self.simp_fi = None;
     }
 
-    /// Whether SimpIF is set, `false` included (mathmap.c `TestSimpIF`).
+    /// Whether [`simp_if`](MathMap::simp_if) is set, to either value.
     pub fn test_simp_if(&self) -> bool {
         self.simp_if.is_some()
     }
 
-    /// Unset SimpIF, so that it reads as `false` (mathmap.c `ClearSimpIF`,
-    /// which also discards both simplified records).
+    /// Clear [`simp_if`](MathMap::simp_if), so that it reads as the default
+    /// of false.
+    ///
+    /// This also clears the record that the MathMap has been simplified.
     pub fn clear_simp_if(&mut self) {
+        // mathmap.c ClearSimpIF.
         self.simplified.clear();
         self.simp_if = None;
     }
 
-    /// Get the Seed attribute.
+    /// The seed that determines the sequence of random numbers produced by
+    /// the random number functions in the MathMap's expressions.
+    ///
+    /// It may take any integer value.
+    /// Set it to a value of your choosing to make the random number functions
+    /// repeatable.
+    /// You may also read an unpredictable default and use it to reproduce the
+    /// resulting sequence, from the same MathMap or another.
+    ///
+    /// Default: an unpredictable value chosen when the MathMap is created, so
+    /// that each MathMap uses a different set of random numbers.
+    ///
+    /// [`set_seed`](MathMap::set_seed), [`test_seed`](MathMap::test_seed) and
+    /// [`clear_seed`](MathMap::clear_seed) set, test and clear it.
+    #[doc(alias = "Seed")]
     pub fn seed(&self) -> i32 {
         // Safety: single-threaded access
         unsafe { (*self.rng.get()).seed }
     }
 
-    /// Set the Seed attribute.
+    /// Set [`seed`](MathMap::seed), restarting the random number sequence.
+    ///
+    /// Setting a value, or setting the default value explicitly, clears the
+    /// record that the MathMap has been simplified.
     pub fn set_seed(&mut self, seed: i32) {
         // `Seed` changes the sequence the random-number functions return, hence
         // the transformation itself (mathmap.c:5629-5635).
@@ -262,13 +567,16 @@ impl MathMap {
         self.rng.get_mut().set_seed(seed);
     }
 
-    /// Test whether the Seed attribute has been explicitly set.
+    /// Whether [`seed`](MathMap::seed) is set.
     pub fn test_seed(&self) -> bool {
         // Safety: single-threaded access
         unsafe { (*self.rng.get()).seed_set }
     }
 
-    /// Clear the Seed attribute back to its default.
+    /// Clear [`seed`](MathMap::seed), which gives it a new unpredictable
+    /// default value.
+    ///
+    /// This also clears the record that the MathMap has been simplified.
     pub fn clear_seed(&mut self) {
         // As for `set_seed` (mathmap.c:5616).
         self.simplified.clear();

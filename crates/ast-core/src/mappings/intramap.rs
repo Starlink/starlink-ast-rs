@@ -1,29 +1,35 @@
 //! Mapping that applies a transformation supplied by the caller.
 //!
-//! An `IntraMap` wraps a transformation the caller provides as an
-//! [`IntraTransform`] (intramap.c). The transformation has a name, by which a
-//! dump refers to it, and flags saying whether it has forward and inverse
-//! directions and whether a forward and inverse pair simplifies away.
+//! An [`IntraMap`] wraps a transformation the caller provides as an
+//! [`IntraTransform`].
+//! The transformation has a name, by which a dump refers to it, and flags
+//! saying whether it has forward and inverse directions and whether a forward
+//! and inverse pair simplifies away.
 //!
 //! # Registration
 //!
-//! C registers transformation functions with `astIntraReg` in one
-//! process-wide table, and an IntraMap read from a dump finds its function
-//! there by name. A transformation cannot be written to a dump, so a reader
-//! still has to find it by name; here the table belongs to the Channel that
-//! reads: [`IntraRegistry`] holds the transformations a Channel knows, added
-//! by [`Channel::register_intra`](crate::channel::Channel::register_intra).
+//! A transformation cannot be written to a dump, so a reader has to find it
+//! by name.
+//! The names a reader knows belong to the Channel that reads:
+//! [`IntraRegistry`] holds the transformations a Channel knows, added by
+//! [`Channel::register_intra`](crate::channel::Channel::register_intra).
 //! While a Channel reads, it lends its registry to the loaders through a
-//! thread-local slot that only that read can see ([`with_registry`]), since
-//! the loaders of the Mappings an IntraMap can sit inside see only their own
-//! part of the dump. An IntraMap made in code holds its transformation
-//! directly and needs no registry. Reading from a string,
+//! thread-local slot that only that read can see, since the loaders of the
+//! Mappings an IntraMap can sit inside see only their own part of the dump.
+//! An IntraMap made in code holds its transformation directly and needs no
+//! registry.
+//! Reading from a string,
 //! [`from_native_string_with`](crate::from_native_string_with) takes a
 //! registry in place of a Channel.
 //!
 //! The transformation is shared, as `Arc<dyn IntraTransform>`, because one
 //! transformation serves every IntraMap that names it and the registries
 //! that hold it.
+
+// C registers transformation functions with astIntraReg in one process-wide
+// table (intramap.c), and an IntraMap read from a dump finds its function
+// there by name; the port keeps that table per Channel. The thread-local slot
+// is `with_registry`.
 
 use std::cell::RefCell;
 use std::fmt;
@@ -37,24 +43,44 @@ use super::unit::UnitMap;
 use super::{DynMapping, Mapping};
 use crate::mappings::SimplifiedRecord;
 
-/// The properties of an [`IntraTransform`] that C gives `astIntraReg` as its
-/// `flags` argument.
+/// Flags describing an [`IntraTransform`], which may affect the behavior of
+/// any [`IntraMap`] that uses it.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct IntraFlags {
-    /// There is no forward transformation (C's `AST__NOFWD`).
+    /// The transformation does not implement a forward transformation.
+    ///
+    /// An IntraMap which uses it has no forward transformation
+    /// ([`has_forward`](Mapping::has_forward) is false), and the
+    /// transformation is never called with `forward` true.
     pub no_fwd: bool,
-    /// There is no inverse transformation (C's `AST__NOINV`).
+    /// The transformation does not implement an inverse transformation.
+    ///
+    /// An IntraMap which uses it has no inverse transformation
+    /// ([`has_inverse`](Mapping::has_inverse) is false), and the
+    /// transformation is never called with `forward` false.
     pub no_inv: bool,
-    /// The forward transformation followed by the inverse is the identity,
-    /// so such a pair simplifies away (C's `AST__SIMPFI`).
+    /// Applying the forward transformation followed immediately by the
+    /// matching inverse always restores the original coordinates.
+    ///
+    /// Simplification may then replace such a pair of IntraMaps in series by
+    /// a [`UnitMap`].
+    /// Both transformations need not actually be implemented.
     pub simp_fi: bool,
-    /// The inverse transformation followed by the forward is the identity
-    /// (C's `AST__SIMPIF`).
+    /// Applying the inverse transformation followed immediately by the
+    /// matching forward transformation always restores the original
+    /// coordinates.
+    ///
+    /// Simplification may then replace such a pair of IntraMaps in series by
+    /// a [`UnitMap`].
     pub simp_if: bool,
 }
 
-/// A transformation an [`IntraMap`] applies, supplied by the caller: what C
-/// registers with `astIntraReg`.
+/// A privately-defined coordinate transformation, supplied by the caller,
+/// that an [`IntraMap`] applies.
+///
+/// The purpose, author and contact details are written to a dump with any
+/// IntraMap that uses the transformation, so that a user who receives the
+/// dump without the transformation can find out how to obtain it.
 pub trait IntraTransform: Send + Sync {
     /// The name a dump refers to the transformation by. White space in it is
     /// ignored, as C's `astIntraReg` removes it, and a name that is all white
@@ -82,9 +108,14 @@ pub trait IntraTransform: Send + Sync {
 
     /// Transform the points in `input` with the forward (`forward`) or
     /// inverse transformation into `out`, which has the IntraMap's number of
-    /// coordinates in that direction. Both hold one slice per axis, as C's
-    /// transformation functions receive them. `map` is the IntraMap applying it, so
-    /// its [`IntraMap::intra_flag`] can select a variant.
+    /// coordinates in that direction.
+    ///
+    /// Both hold one slice per axis.
+    /// `map` is the IntraMap applying it, so its [`IntraMap::intra_flag`] can
+    /// select a variant.
+    /// An error returned here ends the operation that called the IntraMap and
+    /// is passed on to its caller; `ErrorCode::Itfer` is available for the
+    /// purpose, but any code may be used.
     fn transform(
         &self,
         map: &IntraMap,
@@ -113,6 +144,15 @@ fn clean_name(name: &str, caller: &str) -> AstResult<String> {
 
 /// The transformations a Channel can give to the IntraMaps it reads, by
 /// name.
+///
+/// A dump of an IntraMap does not include its transformation, only the
+/// transformation's name.
+/// A program can therefore read it only if the transformation has been
+/// registered under the same name with the Channel that reads it
+/// ([`Channel::register_intra`](crate::channel::Channel::register_intra)),
+/// or in the registry passed to
+/// [`from_native_string_with`](crate::from_native_string_with); otherwise the
+/// read fails.
 #[derive(Clone, Default)]
 pub struct IntraRegistry {
     entries: Vec<(String, Arc<dyn IntraTransform>)>,
@@ -124,9 +164,21 @@ impl IntraRegistry {
         Self::default()
     }
 
-    /// Add a transformation, as C's `astIntraReg` does. A name already held
-    /// is refused with AST__MRITF unless it is the same transformation, and a
-    /// blank name with AST__ITFNI.
+    /// Register a transformation under its
+    /// [`name`](IntraTransform::name), so that IntraMaps read with this
+    /// registry can use it.
+    ///
+    /// White space in the name is removed; the name is case-sensitive.
+    /// The same transformation may be registered more than once, which lets
+    /// registration be done independently at several places in a program,
+    /// but a different transformation cannot take over a name already held.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Itfni` if the name is blank.
+    /// - `ErrorCode::Mritf` if the name is already held by a different
+    ///   transformation (not the same `Arc`).
+    #[doc(alias = "astIntraReg")]
     pub fn register(&mut self, transform: Arc<dyn IntraTransform>) -> AstResult<()> {
         let name = clean_name(transform.name(), "astIntraReg")?;
         if let Some((_, held)) = self.entries.iter().find(|(n, _)| *n == name) {
@@ -184,7 +236,23 @@ pub(crate) fn with_registry<T>(registry: &IntraRegistry, f: impl FnOnce() -> T) 
     f()
 }
 
-/// A Mapping that applies a transformation supplied by the caller.
+/// Map points using a private transformation function.
+///
+/// An IntraMap is a specialized form of Mapping which encapsulates a
+/// privately-defined coordinate transformation, an [`IntraTransform`], so that
+/// it may be used like any other Mapping.
+/// This allows you to create Mappings that perform any conceivable coordinate
+/// transformation.
+///
+/// An IntraMap is intended for use within a single program or a private suite
+/// of software, where all programs have access to the same transformations.
+/// IntraMaps should not normally be stored in datasets which may be exported
+/// for processing by other software, since that software will not have the
+/// transformation available, and reading the dataset will fail there; see
+/// [`IntraRegistry`].
+///
+/// [`intra_flag`](IntraMap::intra_flag) distinguishes one IntraMap from
+/// others that use the same transformation.
 #[derive(Clone)]
 pub struct IntraMap {
     /// The transformation, shared with the registries and other IntraMaps
@@ -206,9 +274,54 @@ pub struct IntraMap {
 }
 
 impl IntraMap {
-    /// An IntraMap applying `transform` with `nin` inputs and `nout` outputs,
-    /// as C's `astIntraMap` makes one: a number that the transformation fixes
-    /// and that differs is AST__BADNI or AST__BADNO.
+    /// Create an IntraMap applying `transform` with `nin` inputs and `nout`
+    /// outputs.
+    ///
+    /// `nin` and `nout` must be compatible with the numbers of coordinates the
+    /// transformation accepts and produces
+    /// ([`IntraTransform::nin`] and [`IntraTransform::nout`]).
+    /// The transformation does not need to be registered.
+    ///
+    /// ```
+    /// use std::sync::Arc;
+    /// use ast_core::coords::{Points, PointsMut};
+    /// use ast_core::error::AstResult;
+    /// use ast_core::mappings::{IntraFlags, IntraMap, IntraTransform, Mapping};
+    ///
+    /// struct Double;
+    /// impl IntraTransform for Double {
+    ///     fn name(&self) -> &str { "Double" }
+    ///     fn nin(&self) -> Option<usize> { None }
+    ///     fn nout(&self) -> Option<usize> { None }
+    ///     fn flags(&self) -> IntraFlags { IntraFlags::default() }
+    ///     fn purpose(&self) -> &str { "Multiply by two" }
+    ///     fn author(&self) -> &str { "A. Author" }
+    ///     fn contact(&self) -> &str { "author@example.org" }
+    ///     fn transform(&self, _map: &IntraMap, input: &Points<'_>, forward: bool,
+    ///                  out: &mut PointsMut<'_>) -> AstResult<()> {
+    ///         let f = if forward { 2.0 } else { 0.5 };
+    ///         for j in 0..input.ncoord() {
+    ///             for (o, i) in out.axis_mut(j).iter_mut().zip(input.axis(j)) {
+    ///                 *o = i * f;
+    ///             }
+    ///         }
+    ///         Ok(())
+    ///     }
+    /// }
+    ///
+    /// let map = IntraMap::new(Arc::new(Double), 1, 1).unwrap();
+    /// assert_eq!(map.tran1(&[3.0], true).unwrap(), vec![6.0]);
+    /// assert_eq!(map.tran1(&[3.0], false).unwrap(), vec![1.5]);
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Itfni` if the transformation's name is blank.
+    /// - `ErrorCode::Badni` if the transformation fixes its number of inputs
+    ///   and `nin` differs.
+    /// - `ErrorCode::Badno` if the transformation fixes its number of outputs
+    ///   and `nout` differs.
+    #[doc(alias = "astIntraMap")]
     pub fn new(transform: Arc<dyn IntraTransform>, nin: usize, nout: usize) -> AstResult<Self> {
         let name = clean_name(transform.name(), "astIntraMap")?;
         if let Some(n) = transform.nin()
@@ -258,28 +371,48 @@ impl IntraMap {
         &self.transform
     }
 
-    /// The IntraFlag attribute: a string the transformation can read to
-    /// select a variant, and which IntraMaps must share to be equal or to
-    /// simplify together. `None` while unset.
+    /// A string which distinguishes this IntraMap from other IntraMaps.
+    ///
+    /// The transformation may enquire this value and adapt the transformation
+    /// it provides to the particular IntraMap involved.
+    /// Numerical values encoded as a string can be passed this way, though it
+    /// is not suited to large amounts of data.
+    ///
+    /// A pair of IntraMaps whose transformations could cancel is simplified to
+    /// a [`UnitMap`] only if their values are the same (compared
+    /// case-sensitively, with an unset value reading as an empty string).
+    ///
+    /// Default: `None` (unset).
+    ///
+    /// [`set_intra_flag`](IntraMap::set_intra_flag),
+    /// [`test_intra_flag`](IntraMap::test_intra_flag) and
+    /// [`clear_intra_flag`](IntraMap::clear_intra_flag) set, test and clear
+    /// it.
+    #[doc(alias = "IntraFlag")]
     pub fn intra_flag(&self) -> Option<&str> {
         self.intra_flag.as_deref()
     }
 
-    /// Set IntraFlag, discarding both simplified records, as C's
-    /// `SetIntraFlag` does whatever the value.
+    /// Set [`intra_flag`](IntraMap::intra_flag).
+    ///
+    /// This clears the record that the IntraMap has been simplified, whatever
+    /// the value.
     pub fn set_intra_flag(&mut self, flag: &str) {
+        // As C's SetIntraFlag, whatever the value.
         self.simplified.clear();
         self.intra_flag = Some(flag.to_string());
     }
 
-    /// Whether IntraFlag is set (intramap.c `TestIntraFlag`).
+    /// Whether [`intra_flag`](IntraMap::intra_flag) is set.
     pub fn test_intra_flag(&self) -> bool {
         self.intra_flag.is_some()
     }
 
-    /// Unset IntraFlag, discarding both simplified records (intramap.c
-    /// `ClearIntraFlag`).
+    /// Clear [`intra_flag`](IntraMap::intra_flag).
+    ///
+    /// This also clears the record that the IntraMap has been simplified.
     pub fn clear_intra_flag(&mut self) {
+        // intramap.c ClearIntraFlag.
         self.simplified.clear();
         self.intra_flag = None;
     }
