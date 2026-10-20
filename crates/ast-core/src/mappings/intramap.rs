@@ -89,10 +89,12 @@ pub trait IntraTransform: Send + Sync {
     fn name(&self) -> &str;
 
     /// The number of input coordinates the transformation takes, or `None`
-    /// for any number (C's `AST__ANY`).
+    /// if it accepts any number.
+    // `None` is C's AST__ANY.
     fn nin(&self) -> Option<usize>;
 
-    /// The number of output coordinates it gives, or `None` for any number.
+    /// The number of output coordinates it gives, or `None` if it can give any
+    /// number.
     fn nout(&self) -> Option<usize>;
 
     /// Its flags.

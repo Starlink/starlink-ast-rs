@@ -35,6 +35,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [The `astSphMap` documentation says a zero vector transforms to `AST__BAD`](#the-astsphmap-documentation-says-a-zero-vector-transforms-to-ast__bad)
 - [The DssMap documentation says a DSS FitsChan read creates a DssMap](#the-dssmap-documentation-says-a-dss-fitschan-read-creates-a-dssmap)
 - [The `astMathMap` precedence list puts unary operators above `**`](#the-astmathmap-precedence-list-puts-unary-operators-above-)
+- [`astInitMathMap` reports AST__BADNI for a bad output count](#astinitmathmap-reports-ast__badni-for-a-bad-output-count)
 - [A Region's default uncertainty is not reset when the Region moves](#a-regions-default-uncertainty-is-not-reset-when-the-region-moves)
 - [`astLoadXphMap` leaks the projection-type string it reads](#astloadxphmap-leaks-the-projection-type-string-it-reads)
 - [Table's `Equal` compares only class names, and discards its column comparison](#tables-equal-compares-only-class-names-and-discards-its-column-comparison)
@@ -384,6 +385,19 @@ Consequence: documentation only; the code follows the usual mathematical convent
 
 The port's parser follows the code, and its `MathMap` doc lists `**` above the unary operators.
 A C fix: move "**" above "Unary + - ! .not." in the prologue.
+
+### `astInitMathMap` reports AST__BADNI for a bad output count
+
+C location: `mathmap.c`, `astInitMathMap` (lines 7126-7130).
+
+When `nout` is less than 1, the first `astError` reports AST__BADNO ("Bad number of output coordinates"), but its continuation line, "This number should be one or more.", is reported with AST__BADNI, which replaces the status.
+A caller therefore sees AST__BADNI for a bad output count (checked against the library with `astMathMap( 1, 0, ... )`).
+The `nin` branch above it, and the other constructors (for example `astInitIntraMap`), use the same code for both lines.
+
+Consequence: a caller testing the status for AST__BADNO after a bad output count does not see it.
+
+The port's `MathMap::new` returns `ErrorCode::Badno` for a zero `nout`, deliberately not mirroring the slip.
+A C fix: report the continuation line with `astStatus` (or AST__BADNO).
 
 ### A Region's default uncertainty is not reset when the Region moves
 

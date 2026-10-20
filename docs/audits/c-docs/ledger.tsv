@@ -246,7 +246,7 @@ class	MathMap	mathmap.c	MathMap		yes	The expression syntax from the astMathMap h
 attribute	Seed	mathmap.c	MathMap::seed		yes
 attribute	SimpFI	mathmap.c	MathMap::simp_fi		yes
 attribute	SimpIF	mathmap.c	MathMap::simp_if		yes
-function	astMathMap	mathmap.c	MathMap::new		yes	C validates every variable name (AST__MISVN, AST__VARIN, AST__DUVAR); the port does not (PLAN.md §2). For nout < 1 C's final status is AST__BADNI (its second astError uses that code); the port returns Badno
+function	astMathMap	mathmap.c	MathMap::new		yes	C validates every variable name (AST__MISVN, AST__VARIN, AST__DUVAR); the port does not (PLAN.md §2). For nout < 1 C's final status is AST__BADNI (its second astError uses that code); the port returns Badno (docs/issues/c-library-quirks.md)
 class	MatrixMap	matrixmap.c	MatrixMap		yes
 function	astMatrixMap	matrixmap.c	MatrixMap::new;MatrixMap::diagonal		yes	form 0 is new, form 1 is diagonal, and form 2 (unit) is diagonal with every element 1.0
 function	astAppendString	memory.c			no
