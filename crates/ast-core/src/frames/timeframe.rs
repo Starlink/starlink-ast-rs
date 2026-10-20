@@ -42,18 +42,17 @@ impl TimeSystem {
 
     /// Parse a time system name, ignoring case.
     ///
-    /// Accepts the names [`as_str`](Self::as_str) gives, each System's
+    /// Accepts the names [`as_str`](Self::as_str) gives and each System's
     /// descriptive name ([`label`](Self::label), such as
-    /// `"Modified Julian Date"`), and the abbreviations `"JEP"` and `"BEP"`.
-    // C: timeframe.c `SystemCode`, which matches whole names with
-    // `astChrMatch`; it does not accept "JEP" or "BEP".
+    /// `"Modified Julian Date"`), as whole names; trailing white space is
+    /// ignored.
+    // C: timeframe.c `SystemCode`, which matches with `astChrMatch`.
     pub fn parse(s: &str) -> Option<Self> {
-        let upper = s.to_ascii_uppercase();
-        match upper.as_str() {
+        match crate::mappings::helpers::chr_match_key(s).as_str() {
             "MJD" | "MODIFIED JULIAN DATE" => Some(Self::Mjd),
             "JD" | "JULIAN DATE" => Some(Self::Jd),
-            "JEPOCH" | "JULIAN EPOCH" | "JEP" => Some(Self::Jepoch),
-            "BEPOCH" | "BESSELIAN EPOCH" | "BEP" => Some(Self::Bepoch),
+            "JEPOCH" | "JULIAN EPOCH" => Some(Self::Jepoch),
+            "BEPOCH" | "BESSELIAN EPOCH" => Some(Self::Bepoch),
             _ => None,
         }
     }
@@ -130,10 +129,11 @@ impl TimeScale {
         }
     }
 
-    /// Parse from string (case-insensitive).
+    /// Parse a time scale name, the one [`as_str`](Self::as_str) gives,
+    /// ignoring case and trailing white space.
+    // C: timeframe.c `TimeScaleCode`, which matches with `astChrMatch`.
     pub fn parse(s: &str) -> Option<Self> {
-        let upper = s.to_ascii_uppercase();
-        match upper.as_str() {
+        match crate::mappings::helpers::chr_match_key(s).as_str() {
             "TAI" => Some(Self::Tai),
             "UTC" => Some(Self::Utc),
             "UT1" => Some(Self::Ut1),

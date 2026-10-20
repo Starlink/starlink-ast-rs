@@ -542,6 +542,24 @@ fn time_system_parse_accepts_c_descriptive_names() {
     assert_eq!(TimeSystem::parse("Julian"), None);
 }
 
+/// C's `SystemCode` (timeframe.c) rejects the abbreviations "JEP" and
+/// "BEP", which are only the default axis Symbols, and ignores trailing
+/// white space, as `astChrMatch` does.
+#[test]
+fn time_system_parse_matches_c_names_only() {
+    assert_eq!(TimeSystem::parse("JEP"), None);
+    assert_eq!(TimeSystem::parse("bep"), None);
+    assert_eq!(TimeSystem::parse("MJD  "), Some(TimeSystem::Mjd));
+    assert_eq!(TimeSystem::parse(" MJD"), None);
+}
+
+/// C's `TimeScaleCode` (timeframe.c) matches with `astChrMatch` too.
+#[test]
+fn time_scale_parse_ignores_trailing_white_space() {
+    assert_eq!(TimeScale::parse("tai "), Some(TimeScale::Tai));
+    assert_eq!(TimeScale::parse(" TAI"), None);
+}
+
 #[test]
 fn test_time_scale_parse() {
     assert_eq!(TimeScale::parse("TAI"), Some(TimeScale::Tai));
