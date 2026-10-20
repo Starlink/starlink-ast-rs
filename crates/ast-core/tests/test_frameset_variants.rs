@@ -276,3 +276,40 @@ fn reads_c_generated_variant_dump() {
         "FP1: ({x},{y})"
     );
 }
+
+/// Remapping a Frame drops its variant Mappings, keeping the selected one,
+/// as C's `astRemapFrame` clears the Variant attribute first; C reports
+/// AllVariants `"SKYX"` after remapping a Frame with variants SKYX and V2.
+/// Permuting the current Frame's axes remaps it, so it drops them too.
+#[test]
+fn remapping_a_frame_drops_its_variants() {
+    let mut fs = FrameSet::new(Box::new(frm("PIX")));
+    fs.add_frame(
+        FrameRef::Base,
+        Box::new(ast_core::mappings::ZoomMap::new(2, 2.0).unwrap()),
+        Box::new(frm("SKYX")),
+    )
+    .unwrap();
+    fs.add_variant(
+        Some(Box::new(ast_core::mappings::ShiftMap::new([1.0, 1.0]))),
+        "V2",
+    )
+    .unwrap();
+    assert_eq!(fs.all_variants(), "SKYX V2");
+    fs.remap_frame(
+        FrameRef::Current,
+        Box::new(ast_core::mappings::ZoomMap::new(2, 3.0).unwrap()),
+    )
+    .unwrap();
+    assert_eq!(fs.all_variants(), "SKYX");
+    assert!(!fs.test_variant());
+
+    fs.add_variant(
+        Some(Box::new(ast_core::mappings::ShiftMap::new([1.0, 1.0]))),
+        "V3",
+    )
+    .unwrap();
+    assert_eq!(fs.all_variants(), "SKYX V3");
+    fs.perm_axes(&[2, 1]).unwrap();
+    assert_eq!(fs.all_variants(), "SKYX");
+}

@@ -596,6 +596,18 @@ impl FrameSet {
     /// run to collapse any redundant nodes left in the graph.
     pub fn remap_frame(&mut self, which: FrameRef, map: DynMapping) -> AstResult<()> {
         let idx = self.resolve(which)?;
+        // C clears the Variant of the Frame before remapping it, since its
+        // variant Mappings are stored against the node it leaves; a Frame
+        // that only mirrors another's variants keeps the mirror
+        // (frameset.c RemapFrame).
+        self.frame_variants[idx] = None;
+        self.remap_node(idx, map)
+    }
+
+    /// Move the Frame at 0-based `idx` to a new node linked to its old one
+    /// by `map`, keeping its variant Mappings: the remapping `set_variant`
+    /// needs, which C's `SetVariant` does by replacing the node's Mapping.
+    fn remap_node(&mut self, idx: usize, map: DynMapping) -> AstResult<()> {
         let old_node = self.node_map[idx];
 
         // Validate map dimensions match the frame's axis count.
@@ -1075,7 +1087,7 @@ impl FrameSet {
 
         // Apply the correction to the current frame's node and mark the new
         // variant current within the Variants FrameSet.
-        self.remap_frame(FrameRef::Current, correction)?;
+        self.remap_node(icur, correction)?;
         if let Some(vfs) = &mut self.frame_variants[owner] {
             vfs.current_idx = target_1based - 1;
             vfs.current_set = true;
