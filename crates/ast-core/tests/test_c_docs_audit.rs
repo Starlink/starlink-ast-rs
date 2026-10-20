@@ -87,8 +87,8 @@ fn the_unreviewed_count_only_goes_down() {
     );
 }
 
-/// Every alias in ast-core's source, as (alias, item, owner).
-fn source_aliases() -> Vec<(String, String, String)> {
+/// The text of every Rust source file in ast-core.
+fn source_files() -> Vec<String> {
     let mut out = Vec::new();
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src");
     let mut stack = vec![root];
@@ -98,13 +98,19 @@ fn source_aliases() -> Vec<(String, String, String)> {
             if p.is_dir() {
                 stack.push(p);
             } else if p.extension().is_some_and(|x| x == "rs") {
-                out.extend(audit_tools::doc_aliases(
-                    &std::fs::read_to_string(&p).unwrap(),
-                ));
+                out.push(std::fs::read_to_string(&p).unwrap());
             }
         }
     }
     out
+}
+
+/// Every alias in ast-core's source, as (alias, item, owner).
+fn source_aliases() -> Vec<(String, String, String)> {
+    source_files()
+        .iter()
+        .flat_map(|src| audit_tools::doc_aliases(src))
+        .collect()
 }
 
 #[test]
@@ -115,6 +121,13 @@ fn every_mapped_row_has_its_alias_on_its_item() {
             .map(|(_, name, alias, _)| (name, alias))
             .collect();
     let found: BTreeSet<_> = source_aliases().into_iter().collect();
+    // rustdoc rejects an alias equal to the item's own name, so a row whose
+    // alias is the name of the type or trait it maps to is checked against
+    // the declarations instead.
+    let types: BTreeSet<String> = source_files()
+        .iter()
+        .flat_map(|src| audit_tools::top_level_types(src))
+        .collect();
     let mut wanted = BTreeSet::new();
     let mut missing = Vec::new();
     for r in ledger() {
@@ -127,6 +140,15 @@ fn every_mapped_row_has_its_alias_on_its_item() {
         };
         for item in &r.rust_item {
             let (owner, name) = item.split_once("::").unwrap_or((item, item));
+            if !item.contains("::") && name == alias {
+                if !types.contains(name) {
+                    missing.push(format!(
+                        "{} -> {item}: no top-level type or trait of that name",
+                        r.name
+                    ));
+                }
+                continue;
+            }
             let key = (alias.clone(), name.to_string(), owner.to_string());
             if !found.contains(&key) {
                 missing.push(format!(

@@ -491,7 +491,7 @@ mod rendered_docs;
 pub use c_docs_ledger::{LedgerRow, parse_ledger};
 pub use c_headers::{CHeader, HeaderKind, c_headers, headers_tsv, parse_headers_tsv};
 pub use c_steps::c_step_comments;
-pub use doc_aliases::doc_aliases;
+pub use doc_aliases::{doc_aliases, top_level_types};
 pub use rendered_docs::c_references;
 
 #[cfg(test)]

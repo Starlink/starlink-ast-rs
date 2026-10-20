@@ -52,13 +52,47 @@ pub fn doc_aliases(src: &str) -> Vec<(String, String, String)> {
         let owner = match enclosing_rust_block(src, at + 1) {
             Some(h) => match h.split_once(" for ") {
                 Some((_, ty)) => ty.trim().to_string(),
-                None => h.strip_prefix("trait ").unwrap_or(&h).trim().to_string(),
+                // A trait's supertraits follow a `:` in its header.
+                None => match h.strip_prefix("trait ") {
+                    Some(t) => t.split(':').next().unwrap_or(t).trim().to_string(),
+                    None => h.trim().to_string(),
+                },
             },
             None => item.clone(),
         };
         out.push((alias, item, owner));
     }
     out
+}
+
+/// The names of the types and traits `src` declares outside any `impl` or
+/// `trait` block.
+///
+/// rustdoc rejects a `#[doc(alias)]` equal to the item's own name, so a
+/// ledger row whose alias is the name of the Rust type it maps to cannot
+/// carry the attribute; the alias gate checks such a row against this list
+/// instead.
+pub fn top_level_types(src: &str) -> Vec<String> {
+    src.lines()
+        .enumerate()
+        .filter(|(_, l)| {
+            let l = l.trim_start();
+            !l.starts_with("//") && !l.starts_with("#[")
+        })
+        .filter_map(|(i, l)| {
+            let kind = l
+                .split_whitespace()
+                .map(|w| w.split('(').next().unwrap_or(w))
+                .find(|w| !matches!(*w, "pub" | "unsafe"))?;
+            if !matches!(kind, "trait" | "struct" | "enum" | "type") {
+                return None;
+            }
+            let name = declared_name(l)?;
+            // The block open at the end of the previous line: a declaration
+            // that opens its own block on its line is not inside it.
+            enclosing_rust_block(src, i).is_none().then_some(name)
+        })
+        .collect()
 }
 
 /// Whether a line carries, or opens, a `doc(alias …)` attribute.
@@ -116,7 +150,7 @@ fn ident(s: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::doc_aliases;
+    use super::{doc_aliases, top_level_types};
 
     fn t(a: &str, i: &str, o: &str) -> (String, String, String) {
         (a.into(), i.into(), o.into())
@@ -197,6 +231,18 @@ impl Mapping for PermMap {
     fn whitespace_in_the_attribute_is_tolerated() {
         let src = "  #[ doc( alias = \"Lbl\" ) ]\nenum E {}\n";
         assert_eq!(doc_aliases(src), [t("Lbl", "E", "E")]);
+    }
+
+    #[test]
+    fn a_trait_with_supertraits_owns_its_methods_aliases() {
+        let src = "pub trait Mapping: AsAny + Send + fmt::Debug {\n    #[doc(alias = \"Nin\")]\n    fn nin(&self) -> usize;\n}\n";
+        assert_eq!(doc_aliases(src), [t("Nin", "nin", "Mapping")]);
+    }
+
+    #[test]
+    fn top_level_types_skip_items_inside_blocks() {
+        let src = "pub trait Mapping {\n    type Out;\n}\npub(crate) struct S;\nimpl S {\n    fn f() {}\n}\npub enum E {}\npub fn g() {}\n";
+        assert_eq!(top_level_types(src), ["Mapping", "S", "E"]);
     }
 
     #[test]
