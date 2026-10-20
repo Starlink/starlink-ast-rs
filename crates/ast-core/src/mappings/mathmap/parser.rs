@@ -166,6 +166,9 @@ impl<'a> Compiler<'a> {
             }
 
             // Unary operators
+            // A prefix operator's right priority in C is 16, so its operand
+            // takes in `**` (left priority 18) and nothing that binds less
+            // tightly.
             Token::Plus => {
                 // Unary plus: no-op, just parse the operand
                 self.parse_expr(17)?;
@@ -330,9 +333,17 @@ impl<'a> Compiler<'a> {
 }
 
 /// Return (left binding power, opcode) for infix operators.
+///
+/// The left binding power is the operator's priority seen from the left in
+/// C's operator table, and [`right_bp`] is its priority seen from the right
+/// plus one, so that an operator is taken into the right operand of the one
+/// before it exactly when C pushes it on to its sort stack (left priority
+/// greater than the stack top's right priority).
 fn infix_binding(tok: &Token) -> Option<(u8, Opcode)> {
+    // mathmap.c, the `symbol` array and the push test in EvaluationSort's
+    // sort loop.
     match tok {
-        Token::DoubleStar => Some((15, Opcode::Pow)),
+        Token::DoubleStar => Some((18, Opcode::Pow)),
         Token::Star => Some((14, Opcode::Mul)),
         Token::Slash => Some((14, Opcode::Div)),
         Token::Plus => Some((13, Opcode::Add)),
@@ -359,11 +370,16 @@ fn infix_binding(tok: &Token) -> Option<(u8, Opcode)> {
     }
 }
 
-/// Right binding power for infix operators.
-/// ** is right-associative, everything else is left-associative.
+/// Right binding power for infix operators: C's priority seen from the
+/// right, plus one.
+///
+/// `**` has a left priority of 18 and a right priority of 15, so it is
+/// right-associative and is taken into the operand of a prefix operator
+/// (whose right priority is 16): `-x**2` is `-(x**2)`. Every other binary
+/// operator has equal priorities on both sides and is left-associative.
 fn right_bp(tok: &Token) -> u8 {
     match tok {
-        Token::DoubleStar => 15, // Right-associative: same as left bp
+        Token::DoubleStar => 16,
         _ => {
             if let Some((lbp, _)) = infix_binding(tok) {
                 lbp + 1

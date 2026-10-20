@@ -230,8 +230,8 @@ use rng::MathMapRng;
 /// 1. constants and variables;
 /// 2. function arguments and parenthesized expressions;
 /// 3. function invocations;
-/// 4. unary `+ - ! .not.`;
-/// 5. `**`;
+/// 4. `**`;
+/// 5. unary `+ - ! .not.`;
 /// 6. `* /`;
 /// 7. `+ -`;
 /// 8. `<< >>`;
@@ -244,6 +244,11 @@ use rng::MathMapRng;
 /// 15. `^^`;
 /// 16. `|| .or.`;
 /// 17. `.eqv. .neqv. .xor.`.
+///
+/// So `**` binds more tightly than a unary operator on its left: `-x**2` is
+/// `-(x**2)`.
+/// A unary operator on the right of `**` applies to its operand: `x**-2` is
+/// `x**(-2)`.
 ///
 /// All operators associate from left to right, except unary `+`, unary `-`,
 /// `!`, `.not.` and `**`, which associate from right to left.

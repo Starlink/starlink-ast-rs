@@ -34,6 +34,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [The `astTimeAdd` documentation describes LASTTOLMST and LMSTTOLAST as GMST conversions](#the-asttimeadd-documentation-describes-lasttolmst-and-lmsttolast-as-gmst-conversions)
 - [The `astSphMap` documentation says a zero vector transforms to `AST__BAD`](#the-astsphmap-documentation-says-a-zero-vector-transforms-to-ast__bad)
 - [The DssMap documentation says a DSS FitsChan read creates a DssMap](#the-dssmap-documentation-says-a-dss-fitschan-read-creates-a-dssmap)
+- [The `astMathMap` precedence list puts unary operators above `**`](#the-astmathmap-precedence-list-puts-unary-operators-above-)
 - [A Region's default uncertainty is not reset when the Region moves](#a-regions-default-uncertainty-is-not-reset-when-the-region-moves)
 - [`astLoadXphMap` leaks the projection-type string it reads](#astloadxphmap-leaks-the-projection-type-string-it-reads)
 - [Table's `Equal` compares only class names, and discards its column comparison](#tables-equal-compares-only-class-names-and-discards-its-column-comparison)
@@ -368,6 +369,21 @@ Consequence: documentation only.
 
 The port's `DssMap` doc says it is produced by reading a dump or by simplification, and that a DSS read gives a TPN projection.
 A C fix: change the Constructor Function section to say a DssMap is created only by reading one from a Channel.
+
+### The `astMathMap` precedence list puts unary operators above `**`
+
+C location: `mathmap.c`, the `astMathMap` prologue's "Evaluation Precedence and Associativity" section; the `symbol` array (lines 468-476); `EvaluationSort` (lines 2898-2899).
+
+The prologue lists "Unary + - ! .not." above "**", which says that `-x**2` is `(-x)**2`.
+The code says otherwise.
+`EvaluationSort` pushes an incoming symbol when its priority seen from the left is greater than the stack top's priority seen from the right.
+The unary operators have a right priority of 16 and `**` a left priority of 18, so `**` is taken into the unary operator's operand: `-x**2` is `-(x**2)`, which gives -4 at x = 2 (checked against the library).
+A unary operator on the right of `**` still applies to its operand, so `x**-2` is `x**(-2)`.
+
+Consequence: documentation only; the code follows the usual mathematical convention, and a reader of the list expects the other.
+
+The port's parser follows the code, and its `MathMap` doc lists `**` above the unary operators.
+A C fix: move "**" above "Unary + - ! .not." in the prologue.
 
 ### A Region's default uncertainty is not reset when the Region moves
 

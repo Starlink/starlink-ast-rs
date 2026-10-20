@@ -345,3 +345,26 @@ fn binary_operator_priorities_match_c() {
         assert_eq!(eval_at(expr, 1.0), at1, "{expr} at x = 1");
     }
 }
+
+/// A prefix operator binds less tightly than a `**` on its right, as in C's
+/// operator table: `-x**2` is `-(x**2)`. A prefix operator on the right of
+/// `**` still applies to its operand. Expected values are from the C library
+/// at x = 2 and x = 1.
+#[test]
+fn prefix_operators_bind_below_power() {
+    let cases: &[(&str, f64, f64)] = &[
+        ("-x**2", -4.0, -1.0),
+        ("+x**2", 4.0, 1.0),
+        (".not. x**2", 0.0, 0.0),
+        ("!x**2", 0.0, 0.0),
+        ("-x**2**2", -16.0, -1.0),
+        ("x**-2", 0.25, 1.0),
+        ("2**-x**2", 0.0625, 0.5),
+        ("!x == 0", 1.0, 1.0),
+        ("-x < -1", 1.0, 0.0),
+    ];
+    for &(expr, at2, at1) in cases {
+        assert_eq!(eval_at(expr, 2.0), at2, "{expr} at x = 2");
+        assert_eq!(eval_at(expr, 1.0), at1, "{expr} at x = 1");
+    }
+}
