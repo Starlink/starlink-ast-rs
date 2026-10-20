@@ -1,6 +1,6 @@
 //! Resampling a gridded array through a Mapping.
 //!
-//! Each output pixel's centre is taken back through the Mapping's inverse to
+//! Each output pixel's center is taken back through the Mapping's inverse to
 //! a position in the input grid, and the input is interpolated there. To save
 //! transforming every pixel, the output region is divided recursively along
 //! its longest axis until the inverse is linear within the tolerance over a
@@ -41,7 +41,7 @@ use kernels::Builtin;
 /// integer; where it is zero or less a default applies, as the variants
 /// say. Where a variant uses `params[1]`, `params` needs two elements.
 pub enum Interp<'a, T> {
-    /// The value of the input pixel whose centre is nearest
+    /// The value of the input pixel whose center is nearest
     /// (`AST__NEAREST`).
     Nearest,
     /// Linear interpolation between the nearest input pixels along each axis
@@ -251,10 +251,10 @@ pub struct ResampleOptions<'a, T> {
 /// `map` takes input grid positions to output grid positions, and must have
 /// one input per input grid axis and one output per output grid axis; the
 /// two grids may have different numbers of axes.
-/// Pixel centres are at integer coordinates, each pixel having unit extent
+/// Pixel centers are at integer coordinates, each pixel having unit extent
 /// on each axis, and the arrays are stored with the first axis varying
 /// fastest.
-/// Each output pixel's centre in the region is transformed to the input
+/// Each output pixel's center in the region is transformed to the input
 /// grid, and the input interpolated there as `opts.interp` says.
 ///
 /// This samples the input rather than integrating it, so the total data
@@ -549,7 +549,7 @@ fn grid_size(lbnd: &[i64], ubnd: &[i64], what: &str) -> AstResult<usize> {
 }
 
 /// The interpolator `ResampleSection` calls, with the kernel, number of
-/// neighbouring pixels and kernel parameters it sets up for a kernel scheme.
+/// neighboring pixels and kernel parameters it sets up for a kernel scheme.
 enum Scheme<'a, T> {
     Nearest,
     Linear,

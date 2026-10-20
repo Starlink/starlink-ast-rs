@@ -1,6 +1,6 @@
 //! Rebinning a gridded array through a Mapping.
 //!
-//! Each input pixel's centre is taken through the Mapping's forward
+//! Each input pixel's center is taken through the Mapping's forward
 //! transformation to a position in the output grid, and its value spread over
 //! the output pixels around that position. To save transforming every pixel,
 //! the input region is divided recursively along its longest axis until the
@@ -38,7 +38,7 @@ use crate::pixel::RebinValue;
 /// The kernel schemes share each input pixel between the output pixels
 /// within a distance `N` of its position along each axis, weighted by the
 /// product of a 1-d kernel evaluated at their offsets along each axis and
-/// normalised to sum to one; weight falling off the output grid is
+/// normalized to sum to one; weight falling off the output grid is
 /// reflected back onto it. The kernels and `params` are as for
 /// [`Interp`](crate::mappings::Interp)'s variants of the same names.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -166,7 +166,7 @@ pub struct RebinOptions<'a> {
 /// `map` takes input grid positions to output grid positions, and must have
 /// one input per input grid axis and one output per output grid axis; the
 /// two grids may have different numbers of axes.
-/// Pixel centres are at integer coordinates, each pixel having unit extent
+/// Pixel centers are at integer coordinates, each pixel having unit extent
 /// on each axis, and the arrays are stored with the first axis varying
 /// fastest.
 /// The output arrays are set to zero, and each good input pixel in the
@@ -328,7 +328,7 @@ pub struct RebinSeqFlags {
     /// and the count of input pixels used are set to zero before the input
     /// is added (`AST__REBININIT`).
     pub rebin_init: bool,
-    /// This is the last call of a sequence: the sums are normalised into
+    /// This is the last call of a sequence: the sums are normalized into
     /// the output values and variances (`AST__REBINEND`).
     pub rebin_end: bool,
     /// Output variances are formed from the spread of the input values
@@ -341,7 +341,7 @@ pub struct RebinSeqFlags {
     /// Variances generated with `gen_var` are of the spread of the input
     /// values rather than of their mean (`AST__DISVAR`).
     pub dis_var: bool,
-    /// The sums are left unnormalised, and the weights and count are not
+    /// The sums are left unnormalized, and the weights and count are not
     /// needed (`AST__NONORM`).
     pub no_norm: bool,
     /// `params[0]` weights every input pixel, and the scheme's parameters
@@ -366,7 +366,7 @@ pub struct RebinSeqOptions<'a> {
     pub tol: f64,
     /// As for [`RebinOptions::maxpix`].
     pub maxpix: usize,
-    /// When the sums are normalised, output pixels whose effective number of
+    /// When the sums are normalized, output pixels whose effective number of
     /// contributing input pixels is below this (at least 1e-10) are set bad
     /// (C's `wlim`).
     pub wlim: f64,
@@ -384,17 +384,17 @@ pub struct RebinSeqOptions<'a> {
 /// it, counting a fraction of a pixel's value as that fraction of a pixel.
 /// The first call of a sequence sets [`RebinSeqFlags::rebin_init`], which
 /// sets the output, the weights and the count to zero first; the last sets
-/// [`RebinSeqFlags::rebin_end`], which normalises the sums.
-/// The last call may have no input, to normalise only.
+/// [`RebinSeqFlags::rebin_end`], which normalizes the sums.
+/// The last call may have no input, to normalize only.
 ///
-/// Normalising divides each output value by its weight, giving the
+/// Normalizing divides each output value by its weight, giving the
 /// weighted mean of the input values around the output pixel and removing
 /// artifacts of aliasing between the grids, and divides each variance by
 /// the square of the weight.
 /// Output values whose weight is below [`RebinSeqOptions::wlim`] are then
 /// set to `badval`; only then are bad output values produced.
 /// With [`RebinSeqFlags::conserve_flux`], set on every call of the
-/// sequence, normalised values are scaled by the ratio of output to input
+/// sequence, normalized values are scaled by the ratio of output to input
 /// pixel size, so that the total data value in a feature is kept, which
 /// suits data that are a flux per pixel rather than a density.
 /// The ratio is found once for each section of the linear approximation, so
@@ -409,7 +409,7 @@ pub struct RebinSeqOptions<'a> {
 /// `weights` has one element per output pixel, or two with
 /// [`RebinSeqFlags::gen_var`], the second half accumulating the squares of
 /// the weights; with [`RebinSeqFlags::no_norm`], which leaves the sums
-/// unnormalised, it and `nused` may be omitted.
+/// unnormalized, it and `nused` may be omitted.
 ///
 /// # Errors
 ///
@@ -418,11 +418,11 @@ pub struct RebinSeqOptions<'a> {
 ///   arrays that are not given, or missing weights or count.
 /// - `ErrorCode::Cnflx` when the Mapping is too non-linear to conserve
 ///   flux.
-/// - `ErrorCode::Badin` when normalising sums to which no good input pixel
+/// - `ErrorCode::Badin` when normalizing sums to which no good input pixel
 ///   contributed.
 ///
 /// The output and weights are still set to zero by
-/// [`RebinSeqFlags::rebin_init`], and normalised by
+/// [`RebinSeqFlags::rebin_init`], and normalized by
 /// [`RebinSeqFlags::rebin_end`], after an error in the arguments.
 #[doc(alias = "astRebinSeq")]
 pub fn rebin_seq<T: RebinValue>(
@@ -726,7 +726,7 @@ pub fn rebin_seq<T: RebinValue>(
     }
 }
 
-/// The final normalisation of `RebinSeq<X>`: each output value divided by
+/// The final normalization of `RebinSeq<X>`: each output value divided by
 /// its weight, and its variance formed, or set bad where the effective
 /// number of contributing input pixels is below `wlim`. Without
 /// `gen_var`, that number is the weight over the mean weight per input
@@ -912,7 +912,7 @@ fn check_params(spread: Spread, params: &[f64], extra: usize, method: &str) -> A
 }
 
 /// `RebinSection`'s set-up of a spreading scheme: the kernel, the number of
-/// neighbouring pixels and the kernel's parameters.
+/// neighboring pixels and the kernel's parameters.
 fn spread_setup(spread: Spread, params: &[f64]) -> (Option<KernelFn>, i64, Vec<f64>) {
     match spread.builtin() {
         Some(b) => {

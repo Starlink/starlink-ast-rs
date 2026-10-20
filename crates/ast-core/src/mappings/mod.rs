@@ -201,10 +201,10 @@ impl SimplifiedRecord {
     ///
     /// A class needs this when it lets something change that feeds its own
     /// simplification — an input to the part of its merge that runs "without
-    /// reference to the neighbouring Mappings in the list". Nothing else reads
-    /// the records: a Mapping is offered to its neighbours' merge whatever
+    /// reference to the neighboring Mappings in the list". Nothing else reads
+    /// the records: a Mapping is offered to its neighbors' merge whatever
     /// they hold, so a change that only affects whether this Mapping merges
-    /// with a neighbour need not discard them. Discarding anyway is safe, since
+    /// with a neighbor need not discard them. Discarding anyway is safe, since
     /// the records can only ever suppress a simplification and never make one
     /// wrong, so err towards it when in doubt.
     pub(crate) fn clear(&mut self) {
@@ -553,7 +553,7 @@ pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
     ///
     /// Override this only for a class that holds other Mappings and reduces
     /// them itself: [`CmpMap`], `FrameSet` and the Region classes do, and the
-    /// other classes keep every reduction in their merge with neighbouring
+    /// other classes keep every reduction in their merge with neighboring
     /// Mappings.
     ///
     /// The default nominates this Mapping in a list of one and merges it with
@@ -663,7 +663,7 @@ pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
     }
 
     /// Attempt to simplify a sequence of mappings by merging this
-    /// (nominated) mapping with its neighbours.
+    /// (nominated) mapping with its neighbors.
     ///
     /// Port of C's protected `astMapMerge` (mapping.c:7660). When the
     /// simplification engine nominates this mapping at index `where_` in
@@ -678,10 +678,10 @@ pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
     /// or `None` for "no change" (C's `-1`).
     ///
     /// The default implementation performs a single direct pairwise merge
-    /// of the nominated component with its right neighbour
+    /// of the nominated component with its right neighbor
     /// ([`simplify::default_map_merge`]) — the "direct merge" step (C's
     /// `MapMerge` step 2) shared by every class. Classes that additionally
-    /// swap past, seek toward, or rewrite distant neighbours override this
+    /// swap past, seek toward, or rewrite distant neighbors override this
     /// to add that logic (still calling the direct merge first).
     #[doc(hidden)]
     fn map_merge(
@@ -859,7 +859,7 @@ pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
     /// Finds the lowest and highest values that output `coord_out` (1-based)
     /// takes as the input ranges over the box from `lbnd_in` to `ubnd_in`, and
     /// an input position (not necessarily unique) where each is reached.
-    /// A bound below its partner is swapped with it.
+    /// A lower bound above its upper bound is swapped with it.
     /// Calling this once per output gives the bounding box of the
     /// transformed input box, for instance the size of an image after it has
     /// been transformed.

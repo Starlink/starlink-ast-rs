@@ -61,8 +61,7 @@ impl dyn Mapping {
         self.simplify_reporting_change().map(|(result, _)| result)
     }
 
-    /// `simplify`, also reporting whether anything
-    /// reduced.
+    /// `simplify`, also reporting whether anything reduced.
     ///
     /// Returns the Mapping and `true` when it is a different object from this
     /// one, or a copy of this one and `false` when nothing reduced.
