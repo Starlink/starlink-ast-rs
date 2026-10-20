@@ -38,16 +38,18 @@ impl FluxSystem {
         }
     }
 
-    /// Parse from string (case-insensitive).
+    /// Parse a flux system name, the one [`as_str`](Self::as_str) gives,
+    /// ignoring case and trailing white space.
+    /// `"SRCBR"` is also accepted for [`SBrightW`](Self::SBrightW).
+    // C: fluxframe.c `SystemCode`, which matches with `astChrMatch` and
+    // accepts "SRCBR", the only name it read for SFCBRW before upstream
+    // b4457da9.
     pub fn parse(s: &str) -> Option<Self> {
-        let upper = s.to_ascii_uppercase();
-        match upper.as_str() {
-            "FLXDN" | "FLUXDEN" => Some(Self::FluxDen),
-            "FLXDNW" | "FLUXDENW" => Some(Self::FluxDenW),
-            "SFCBR" | "SBRIGHT" => Some(Self::SBright),
-            // C reads "SRCBR" (fluxframe.c:3203) but writes "SFCBRW"
-            // (fluxframe.c:733); both are accepted so that either reads.
-            "SFCBRW" | "SRCBR" | "SBRIGHTW" => Some(Self::SBrightW),
+        match crate::mappings::helpers::chr_match_key(s).as_str() {
+            "FLXDN" => Some(Self::FluxDen),
+            "FLXDNW" => Some(Self::FluxDenW),
+            "SFCBR" => Some(Self::SBright),
+            "SFCBRW" | "SRCBR" => Some(Self::SBrightW),
             _ => None,
         }
     }

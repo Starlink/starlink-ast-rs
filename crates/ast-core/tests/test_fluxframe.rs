@@ -61,11 +61,20 @@ fn test_flux_system_parse() {
     assert_eq!(FluxSystem::parse("FLXDNW"), Some(FluxSystem::FluxDenW));
     assert_eq!(FluxSystem::parse("SFCBR"), Some(FluxSystem::SBright));
     assert_eq!(FluxSystem::parse("SFCBRW"), Some(FluxSystem::SBrightW));
-    assert_eq!(FluxSystem::parse("FLUXDEN"), Some(FluxSystem::FluxDen));
-    assert_eq!(FluxSystem::parse("FLUXDENW"), Some(FluxSystem::FluxDenW));
-    assert_eq!(FluxSystem::parse("SBRIGHT"), Some(FluxSystem::SBright));
-    assert_eq!(FluxSystem::parse("SBRIGHTW"), Some(FluxSystem::SBrightW));
+    assert_eq!(FluxSystem::parse("SRCBR"), Some(FluxSystem::SBrightW));
     assert_eq!(FluxSystem::parse("NONSENSE"), None);
+}
+
+/// C's `SystemCode` (fluxframe.c) accepts only the names above, matched
+/// with `astChrMatch`, which ignores case and trailing white space.
+#[test]
+fn flux_system_parse_matches_c_names_only() {
+    assert_eq!(FluxSystem::parse("sfcbr "), Some(FluxSystem::SBright));
+    assert_eq!(FluxSystem::parse(" SFCBR"), None);
+    assert_eq!(FluxSystem::parse("FLUXDEN"), None);
+    assert_eq!(FluxSystem::parse("FLUXDENW"), None);
+    assert_eq!(FluxSystem::parse("SBRIGHT"), None);
+    assert_eq!(FluxSystem::parse("SBRIGHTW"), None);
 }
 
 // ---------------------------------------------------------------------------
