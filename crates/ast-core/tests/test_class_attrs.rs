@@ -355,3 +355,13 @@ fn dsb_centre_with_no_topocentric_frequency_is_rejected() {
     assert_eq!(dsb.dsb_centre(), before);
     assert!(!dsb.test_dsb_centre());
 }
+
+/// A TimeFrame stores its Domain with white space removed and letters in
+/// upper case, as C's `astSetC( timeframe, "Domain", "my time" )` gives
+/// `"MYTIME"`.
+#[test]
+fn time_frame_domain_is_cleaned() {
+    let mut tf = TimeFrame::new(TimeSystem::Mjd);
+    tf.set_domain("my time");
+    assert_eq!(Frame::domain(&tf), "MYTIME");
+}

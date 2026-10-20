@@ -774,7 +774,7 @@ impl TimeFrame {
 
     /// Set the domain.
     pub fn set_domain(&mut self, domain: &str) {
-        self.attrs.domain = Some(domain.to_string());
+        self.attrs.domain = Some(super::frame_attrs::clean_domain(domain));
     }
 
     /// Test whether the domain attribute has been explicitly set.
