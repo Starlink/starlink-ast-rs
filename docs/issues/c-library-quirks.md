@@ -70,6 +70,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [The `SkyRef` documentation says a SkyRef alone changes the default Labels, Symbols and Title](#the-skyref-documentation-says-a-skyref-alone-changes-the-default-labels-symbols-and-title)
 - [The `AlignSpecOffset` documentation names a SpecOffset attribute](#the-alignspecoffset-documentation-names-a-specoffset-attribute)
 - [The `astCurrentTime` documentation says the time scales defined by the Earth's rotation are an error](#the-astcurrenttime-documentation-says-the-time-scales-defined-by-the-earths-rotation-are-an-error)
+- [`SetVariant` reads `map[-1]` when the variant owner is on the root node](#setvariant-reads-map-1-when-the-variant-owner-is-on-the-root-node)
 
 ### [Addressed here, and not going upstream](#addressed-here-and-not-going-upstream)
 
@@ -1066,6 +1067,19 @@ Consequence: documentation only.
 
 `TimeFrame::current_time` (`crates/ast-core/src/frames/timeframe.rs`) gives the same values, to the second, and documents `ErrorCode::Incts` only for a time scale UTC cannot be converted to.
 A C fix: drop the note, or name a time scale that cannot be reached.
+
+### `SetVariant` reads `map[-1]` when the variant owner is on the root node
+
+C location: `frameset.c`, `SetVariant` (`inode = this->node[ icur - 1 ]` at line 10059 and `map0 = this->map[ inode - 1 ]` at line 10062).
+
+`SetVariant` changes a variant by replacing the Mapping that generates the owner Frame's node from its parent.
+Node 0, the root, which holds the first Frame added unless it has been remapped, has no such Mapping, and `inode - 1` is then -1, so C reads and writes outside the `map` and `invert` arrays.
+`astAddVariant` with a Mapping calls `SetVariant`, so adding a variant to a Frame on the root node reaches this.
+
+Consequence: undefined behaviour in C for variants on the root node.
+
+The port's `FrameSet::set_variant` (`crates/ast-core/src/frames/frameset.rs`) replaces the parent Mapping as C does for any other node, and for the root node moves the owner Frame to a new node linked to the root by the change of variant, so Frames derived from it do not move.
+A C fix: handle the root node, for instance by remapping the Frame as `astRemapFrame` does.
 
 ## Addressed here, and not going upstream
 

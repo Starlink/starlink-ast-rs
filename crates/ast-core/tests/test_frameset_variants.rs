@@ -313,3 +313,56 @@ fn remapping_a_frame_drops_its_variants() {
     fs.perm_axes(&[2, 1]).unwrap();
     assert_eq!(fs.all_variants(), "SKYX");
 }
+
+/// The point (1,1) mapped from Frame `a` to Frame `b`.
+fn map11(fs: &FrameSet, a: usize, b: usize) -> (f64, f64) {
+    let m = fs.mapping(FrameRef::Index(a), FrameRef::Index(b)).unwrap();
+    let (x, y) = m.tran2(&[1.0], &[1.0], true).unwrap();
+    (x[0], y[0])
+}
+
+/// Selecting a variant replaces the Mapping of the variant owner's node in
+/// place, as C's `SetVariant` does, so a Frame derived from the owner moves
+/// with it, and selecting through a mirror changes the owner.
+/// C (PIX -Zoom 2-> SKY with variants SKY and V2 = Shift 1, then FOO from
+/// SKY by Zoom 3): after `Variant = SKY`, PIX->SKY (2,2), PIX->FOO (6,6) and
+/// SKY->FOO (3,3); then with FOO mirroring SKY, `Variant = V2` from FOO
+/// gives PIX->SKY (3,3), PIX->FOO (9,9) and SKY->FOO (3,3).
+#[test]
+fn set_variant_replaces_the_owner_node_mapping() {
+    let mut fs = FrameSet::new(Box::new(frm("PIX")));
+    fs.add_frame(
+        FrameRef::Base,
+        Box::new(ast_core::mappings::ZoomMap::new(2, 2.0).unwrap()),
+        Box::new(frm("SKY")),
+    )
+    .unwrap();
+    fs.add_variant(
+        Some(Box::new(ast_core::mappings::ShiftMap::new([1.0, 1.0]))),
+        "V2",
+    )
+    .unwrap();
+    assert_eq!(map11(&fs, 1, 2), (3.0, 3.0));
+    fs.add_frame(
+        FrameRef::Index(2),
+        Box::new(ast_core::mappings::ZoomMap::new(2, 3.0).unwrap()),
+        Box::new(frm("FOO")),
+    )
+    .unwrap();
+    assert_eq!(map11(&fs, 1, 3), (9.0, 9.0));
+
+    fs.set_current(FrameRef::Index(2)).unwrap();
+    fs.set_variant("SKY").unwrap();
+    assert_eq!(fs.variant(), "SKY");
+    assert_eq!(map11(&fs, 1, 2), (2.0, 2.0));
+    assert_eq!(map11(&fs, 1, 3), (6.0, 6.0));
+    assert_eq!(map11(&fs, 2, 3), (3.0, 3.0));
+
+    fs.set_current(FrameRef::Index(3)).unwrap();
+    fs.mirror_variants(FrameRef::Index(2)).unwrap();
+    fs.set_variant("V2").unwrap();
+    assert_eq!(fs.variant(), "V2");
+    assert_eq!(map11(&fs, 1, 2), (3.0, 3.0));
+    assert_eq!(map11(&fs, 1, 3), (9.0, 9.0));
+    assert_eq!(map11(&fs, 2, 3), (3.0, 3.0));
+}

@@ -824,8 +824,7 @@ impl FrameSet {
     }
 
     /// Move the Frame at 0-based `idx` to a new node linked to its old one
-    /// by `map`, keeping its variant Mappings: the remapping `set_variant`
-    /// needs, which C's `SetVariant` does by replacing the node's Mapping.
+    /// by `map`, keeping its variant Mappings.
     fn remap_node(&mut self, idx: usize, map: DynMapping) -> AstResult<()> {
         let old_node = self.node_map[idx];
 
@@ -1325,31 +1324,49 @@ impl FrameSet {
             return Ok(());
         }
 
-        // Build the correction Mapping from the old variant to the new variant,
-        // expressed in current-Frame coordinates (frameset.c:9998-10032):
-        //   map1 = current(this) -> current(vfs)   [old variant]
-        //   map2 = current(vfs)  -> target(vfs)    [old variant -> new variant]
-        //   map3 = target(vfs)   -> current(this)  [new variant]
-        // The composite maps current-Frame coords through the variant change
-        // and back, so `remap_frame(Current, ..)` updates the node Mapping
-        // exactly as C recomposes it.
-        let frm = self.frames[icur].snapshot();
+        // Build the Mapping from the old variant to the new one, in the
+        // coordinates of the variant owner, which for a mirror is not the
+        // current Frame (frameset.c:9998-10032):
+        //   map1 = owner        -> current(vfs)   [old variant]
+        //   map2 = current(vfs) -> target(vfs)    [old variant -> new variant]
+        //   map3 = target(vfs)  -> owner          [new variant]
+        let frm = self.frames[owner].snapshot();
         let vcur = vfs.current().snapshot();
         let map1 = convert_current_to(frm.as_ref(), vcur.as_ref())?;
         let map2 = vfs.mapping(FrameRef::Current, FrameRef::Index(target_1based))?;
         let vnew = vfs.frame(FrameRef::Index(target_1based))?.snapshot();
         let map3 = convert_current_to(vnew.as_ref(), frm.as_ref())?;
 
-        let map45 = CmpMap::new(
+        let map5: DynMapping = Box::new(CmpMap::new(
             Box::new(CmpMap::new(map1, map2, Composition::Series)?),
             map3,
             Composition::Series,
-        )?;
-        let correction = <dyn Mapping>::simplify(&map45)?;
+        )?);
 
-        // Apply the correction to the current frame's node and mark the new
-        // variant current within the Variants FrameSet.
-        self.remap_node(icur, correction)?;
+        // C replaces the Mapping that generates the owner's node, from its
+        // parent node, with that Mapping followed by `map5`, simplified, so
+        // every Frame derived from the owner's node moves with it.
+        let inode = self.node_map[owner];
+        if inode == 0 {
+            // The root node has no parent Mapping; C indexes `map[-1]` there
+            // (docs/issues/c-library-quirks.md). The port moves the owner to
+            // a new node instead, so Frames derived from it do not move.
+            let correction = <dyn Mapping>::simplify(map5.as_ref())?;
+            self.remap_node(owner, correction)?;
+        } else {
+            let parent = self.find_path(inode, 0)?[1];
+            let map0 = self.edge_mapping(parent, inode)?;
+            let map6 = CmpMap::new(map0, map5, Composition::Series)?;
+            let new_map = <dyn Mapping>::simplify(&map6)?;
+            let k = self
+                .edges
+                .iter()
+                .position(|e| {
+                    (e.from, e.to) == (parent, inode) || (e.from, e.to) == (inode, parent)
+                })
+                .expect("a node on a path has a link to its parent");
+            self.edges[k] = Edge::new(parent, inode, new_map);
+        }
         if let Some(vfs) = &mut self.frame_variants[owner] {
             vfs.current_idx = target_1based - 1;
             vfs.current_set = true;
