@@ -771,95 +771,359 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     // Frame they present, applying FrameSet integrity on the setters.
     // -----------------------------------------------------------------
 
-    /// Title, set or default. Mirrors `astGetTitle`, which fails where the
-    /// default depends on a System that cannot be determined (a FluxFrame
-    /// whose Unit fits no flux system).
+    /// The Frame title: the Title attribute, set or default.
+    ///
+    /// A string used as a title in, for instance, graphical output, to
+    /// describe the coordinate system the Frame represents, such as
+    /// `"Detector Coordinates"` or `"Galactic Coordinates"`.
+    /// It is meant for human readers, not software.
+    /// When it is not set, a default suited to the class of Frame is
+    /// supplied.
+    ///
+    /// Default: `"<n>-d coordinate system"`, where `<n>` is
+    /// [`naxes`](Frame::naxes).
+    ///
+    /// - CmpFrame: the default is `"<n>-d compound coordinate system"`.
+    /// - FrameSet: the Title of its current Frame.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Badun` when the default depends on a System that cannot
+    ///   be determined: a FluxFrame whose Unit fits no flux system.
+    #[doc(alias = "Title")]
     fn title(&self) -> AstResult<String>;
-    /// Set Title. Mirrors `astSetTitle`.
+    /// Set the Title; see [`title`](Frame::title).
     fn set_title(&mut self, title: &str) -> AstResult<()>;
-    /// Whether Title is set. Mirrors `astTestTitle`.
+    /// Whether the Title is set; see [`title`](Frame::title).
     fn test_title(&self) -> bool;
-    /// Clear Title. Mirrors `astClearTitle`.
+    /// Clear the Title; see [`title`](Frame::title).
     fn clear_title(&mut self) -> AstResult<()>;
 
-    /// Domain, set or default. Mirrors `astGetDomain`.
+    /// The coordinate system domain: the Domain attribute, set or default.
+    ///
+    /// Identifies the physical domain of the coordinate system the Frame
+    /// describes.
+    /// It also controls matching when the Frame is the template of
+    /// [`find_frame_template`](Frame::find_frame_template): with Domain set,
+    /// the template matches only targets with the same Domain; unset, the
+    /// target's Domain is ignored.
+    /// Domain values are stored with white space removed and letters in
+    /// upper case.
+    ///
+    /// Default: an empty string.
+    ///
+    /// - SkyFrame: `"SKY"`.
+    /// - SpecFrame: `"SPECTRUM"`.
+    /// - DSBSpecFrame: `"DSBSPECTRUM"`.
+    /// - FluxFrame: `"FLUX"`.
+    /// - SpecFluxFrame: `"SPECTRUM-FLUX"`.
+    /// - TimeFrame: `"TIME"`.
+    /// - CmpFrame: `"<dom1>-<dom2>"`, from the Domains of its two component
+    ///   Frames, or `"CMP"` when both are blank.
+    /// - FrameSet: the Domain of its current Frame.
+    #[doc(alias = "Domain")]
     fn domain(&self) -> &str;
-    /// Set Domain, cleaned as C's `CleanDomain` does (white space removed,
-    /// letters upper-cased). Mirrors `astSetDomain`.
+    /// Set the Domain, removing white space and upper-casing letters; see
+    /// [`domain`](Frame::domain).
     fn set_domain(&mut self, domain: &str) -> AstResult<()>;
-    /// Whether Domain is set. Mirrors `astTestDomain`.
+    /// Whether the Domain is set; see [`domain`](Frame::domain).
     fn test_domain(&self) -> bool;
-    /// Clear Domain. Mirrors `astClearDomain`.
+    /// Clear the Domain; see [`domain`](Frame::domain).
     fn clear_domain(&mut self) -> AstResult<()>;
 
-    /// Epoch as a TDB Modified Julian Date, set or default. Mirrors
-    /// `astGetEpoch`.
+    /// The epoch of observation: the Epoch attribute, set or default, as a
+    /// Modified Julian Date.
+    ///
+    /// Qualifies the coordinate systems a Frame describes by giving the
+    /// moment at which the coordinates are known to be correct, often the
+    /// date of observation.
+    /// It matters where coordinate systems move with respect to each other
+    /// over time.
+    /// Strictly the value is in the TDB timescale, but for some purposes,
+    /// such as converting sky positions between types of equatorial system,
+    /// the timescale is not significant and UTC may be used.
+    ///
+    /// Default: J2000.0 (Julian).
+    ///
+    /// - Frame: the plain Frame makes no use of the Epoch, as it does not
+    ///   distinguish between Cartesian coordinate systems.
+    /// - CmpFrame: the default is the Epoch of the first component Frame if
+    ///   set there, else that of the second if set there, else the first
+    ///   component's default; setting or clearing the Epoch of a CmpFrame
+    ///   sets or clears it in both components.
+    /// - FrameSet: the Epoch of its current Frame.
+    /// - SkyFrame: the coordinates of sources can change with time through
+    ///   the changing aberration of light from the observer's motion,
+    ///   changing gravitational deflection by the Sun, and the fictitious
+    ///   motion of non-inertial systems such as FK4 (but not the proper
+    ///   motion of a source, which belongs to the source rather than the
+    ///   coordinate system).
+    ///   The default is B1950.0 (Besselian) for the FK4-based systems and
+    ///   J2000.0 (Julian) for the others.
+    ///   The Epoch relates to motion of the source; the similar-sounding
+    ///   Equinox qualifies a coordinate system that is itself in motion
+    ///   because it is referred to a slowly moving plane such as the equator.
+    /// - TimeFrame: a time axis is not characterized by one Epoch, so the
+    ///   TimeFrame makes no use of it, though user code may use it for a
+    ///   "typical" time.
+    ///   The default is the TDB equivalent of the TimeOrigin if set, else
+    ///   J2000.0.
+    #[doc(alias = "Epoch")]
     fn epoch_mjd(&self) -> f64;
-    /// Set Epoch, as a TDB Modified Julian Date. Mirrors `astSetEpoch`.
+    /// Set the Epoch, as a TDB Modified Julian Date; see
+    /// [`epoch_mjd`](Frame::epoch_mjd).
     fn set_epoch_mjd(&mut self, mjd: f64) -> AstResult<()>;
-    /// Whether Epoch is set. Mirrors `astTestEpoch`.
+    /// Whether the Epoch is set; see [`epoch_mjd`](Frame::epoch_mjd).
     fn test_epoch(&self) -> bool;
-    /// Clear Epoch. Mirrors `astClearEpoch`.
+    /// Clear the Epoch; see [`epoch_mjd`](Frame::epoch_mjd).
     fn clear_epoch(&mut self) -> AstResult<()>;
 
-    /// Digits, set or default (7). Mirrors `astGetDigits`.
+    /// The number of digits of precision for the Frame as a whole: the
+    /// Digits attribute, set or default.
+    ///
+    /// How many digits of precision are wanted by default when a coordinate
+    /// value is formatted for an axis with [`format`](Frame::format).
+    /// A value set for an individual axis with
+    /// [`set_axis_digits`](Frame::set_axis_digits) over-rides this one for
+    /// that axis.
+    /// Digits only chooses the default [`format_str`](Frame::format_str):
+    /// a Format set on an axis over-rides it, except that a Format giving
+    /// its precision as `.*` takes the number of decimal places from Digits.
+    ///
+    /// Default: 7.
+    /// A value below 1 is stored as 1.
+    ///
+    /// - FrameSet: the Digits of its current Frame.
+    /// - TimeFrame: ignored when a value is formatted as a date and time.
+    #[doc(alias = "Digits")]
     fn digits(&self) -> i32;
-    /// Set Digits, constrained to at least 1 (frame.c:13251).
+    /// Set the Frame's Digits, stored as at least 1; see
+    /// [`digits`](Frame::digits).
     fn set_digits(&mut self, value: i32) -> AstResult<()>;
-    /// Whether Digits is set. Mirrors `astTestDigits`.
+    /// Whether the Frame's Digits is set; see [`digits`](Frame::digits).
     fn test_digits(&self) -> bool;
-    /// Clear Digits. Mirrors `astClearDigits`.
+    /// Clear the Frame's Digits; see [`digits`](Frame::digits).
     fn clear_digits(&mut self) -> AstResult<()>;
 
-    /// Observer's geodetic latitude in radians, set or default (0).
+    /// The geodetic latitude of the observer, in radians: the ObsLat
+    /// attribute, set or default.
+    ///
+    /// Relative to the IAU 1976 reference ellipsoid.
+    /// The plain Frame makes no use of it, but specialized classes such as
+    /// SpecFrame, SkyFrame and TimeFrame do.
+    ///
+    /// Default: 0.
+    ///
+    /// - SpecFrame: with ObsLon, Epoch, RefRA and RefDec, it defines the
+    ///   Doppler shift from the observer's diurnal motion about the Earth's
+    ///   axis, needed when converting to or from the topocentric standard of
+    ///   rest; an incorrect value causes a velocity error of at most
+    ///   0.5 km/s.
+    /// - TimeFrame: with ObsLon, it is used when converting between some
+    ///   time scales (TDB, TCB, LMST, LAST).
+    #[doc(alias = "ObsLat")]
     fn obs_lat(&self) -> f64;
-    /// Set ObsLat, in radians.
+    /// Set ObsLat, in radians; see [`obs_lat`](Frame::obs_lat).
     fn set_obs_lat(&mut self, rad: f64) -> AstResult<()>;
-    /// Whether ObsLat is set.
+    /// Whether ObsLat is set; see [`obs_lat`](Frame::obs_lat).
     fn test_obs_lat(&self) -> bool;
-    /// Clear ObsLat.
+    /// Clear ObsLat; see [`obs_lat`](Frame::obs_lat).
     fn clear_obs_lat(&mut self) -> AstResult<()>;
 
-    /// Observer's geodetic longitude in radians, set or default (0).
+    /// The geodetic longitude of the observer, in radians: the ObsLon
+    /// attribute, set or default.
+    ///
+    /// Measured positive eastwards; geodetic and geocentric longitude are
+    /// the same.
+    /// The plain Frame makes no use of it, but specialized classes such as
+    /// SpecFrame, SkyFrame and TimeFrame do.
+    ///
+    /// Default: 0.
+    ///
+    /// - SpecFrame: with ObsLat, Epoch, RefRA and RefDec, it defines the
+    ///   Doppler shift from the observer's diurnal motion about the Earth's
+    ///   axis, needed when converting to or from the topocentric standard of
+    ///   rest; an incorrect value causes a velocity error of at most
+    ///   0.5 km/s.
+    /// - TimeFrame: with ObsLat, it is used when converting between some
+    ///   time scales (TDB, TCB, LMST, LAST).
+    #[doc(alias = "ObsLon")]
     fn obs_lon(&self) -> f64;
-    /// Set ObsLon, in radians.
+    /// Set ObsLon, in radians; see [`obs_lon`](Frame::obs_lon).
     fn set_obs_lon(&mut self, rad: f64) -> AstResult<()>;
-    /// Whether ObsLon is set.
+    /// Whether ObsLon is set; see [`obs_lon`](Frame::obs_lon).
     fn test_obs_lon(&self) -> bool;
-    /// Clear ObsLon.
+    /// Clear ObsLon; see [`obs_lon`](Frame::obs_lon).
     fn clear_obs_lon(&mut self) -> AstResult<()>;
 
-    /// Observer's geodetic altitude in metres, set or default (0).
+    /// The geodetic altitude of the observer, in meters: the ObsAlt
+    /// attribute, set or default.
+    ///
+    /// Relative to the IAU 1976 reference ellipsoid.
+    /// The plain Frame makes no use of it, but specialized classes such as
+    /// SpecFrame, SkyFrame and TimeFrame do.
+    ///
+    /// Default: 0.
+    ///
+    /// - SpecFrame: with ObsLon, ObsLat, Epoch, RefRA and RefDec, it defines
+    ///   the Doppler shift from the observer's diurnal motion about the
+    ///   Earth's axis, needed when converting to or from the topocentric
+    ///   standard of rest; an incorrect value causes a velocity error of at
+    ///   most 0.5 km/s.
+    /// - TimeFrame: with ObsLon and ObsLat, it is used when converting
+    ///   between some time scales (TDB, TCB, LMST, LAST).
+    #[doc(alias = "ObsAlt")]
     fn obs_alt(&self) -> f64;
-    /// Set ObsAlt, in metres.
+    /// Set ObsAlt, in meters; see [`obs_alt`](Frame::obs_alt).
     fn set_obs_alt(&mut self, metres: f64) -> AstResult<()>;
-    /// Whether ObsAlt is set.
+    /// Whether ObsAlt is set; see [`obs_alt`](Frame::obs_alt).
     fn test_obs_alt(&self) -> bool;
-    /// Clear ObsAlt.
+    /// Clear ObsAlt; see [`obs_alt`](Frame::obs_alt).
     fn clear_obs_alt(&mut self) -> AstResult<()>;
 
-    /// TAI-UTC in seconds, or `BAD_VALUE` when unset, meaning the value
-    /// comes from AST's leap-second table (frame.c `GetDtai`).
+    /// The TAI-UTC correction, in seconds: the Dtai attribute, set or
+    /// default.
+    ///
+    /// The difference between TAI and UTC (the number of leap seconds) at
+    /// the moment of the Frame's [`epoch_mjd`](Frame::epoch_mjd).
+    /// When it is not set, the number of leap seconds comes from AST's
+    /// internal table, which is kept up to date by hand, so a value is
+    /// needed only when the table predates leap seconds that occurred
+    /// before the Epoch.
+    ///
+    /// Default: `BAD_VALUE`, meaning the table is used.
+    #[doc(alias = "Dtai")]
     fn dtai(&self) -> f64;
-    /// Set Dtai, in seconds.
+    /// Set Dtai, in seconds; see [`dtai`](Frame::dtai).
     fn set_dtai(&mut self, seconds: f64) -> AstResult<()>;
-    /// Whether Dtai is set.
+    /// Whether Dtai is set; see [`dtai`](Frame::dtai).
     fn test_dtai(&self) -> bool;
-    /// Clear Dtai.
+    /// Clear Dtai; see [`dtai`](Frame::dtai).
     fn clear_dtai(&mut self) -> AstResult<()>;
 
-    /// UT1-UTC in seconds, set or default (0).
+    /// The UT1-UTC correction, in seconds: the Dut1 attribute, set or
+    /// default.
+    ///
+    /// Used when calculating the Local Apparent Sidereal Time for a
+    /// SkyFrame's Epoch, which converting positions to or from the AzEl
+    /// system needs.
+    /// It should be the difference between the UT1 and UTC timescales at the
+    /// moment of the Epoch.
+    /// The value depends on unpredictable changes in the Earth's rotation;
+    /// values are published by the International Earth Rotation and
+    /// Reference Systems Service (IERS).
+    /// Leap seconds currently keep it below 1 second, so leaving it unset
+    /// usually causes no great error, but it could grow if leap seconds were
+    /// abandoned.
+    ///
+    /// Default: 0.
+    #[doc(alias = "Dut1")]
     fn dut1(&self) -> f64;
-    /// Set Dut1, in seconds.
+    /// Set Dut1, in seconds; see [`dut1`](Frame::dut1).
     fn set_dut1(&mut self, seconds: f64) -> AstResult<()>;
-    /// Whether Dut1 is set.
+    /// Whether Dut1 is set; see [`dut1`](Frame::dut1).
     fn test_dut1(&self) -> bool;
-    /// Clear Dut1.
+    /// Clear Dut1; see [`dut1`](Frame::dut1).
     fn clear_dut1(&mut self) -> AstResult<()>;
 
-    /// Coordinate system name (e.g., "FK5", "GALACTIC"), if applicable.
-    /// Mirrors `astGetC( this, "System" )`, which fails for a FluxFrame
-    /// whose System follows from a Unit that fits no flux system.
+    /// The coordinate system used to describe positions within the domain:
+    /// the System attribute, as its name, or `None` for a class with no
+    /// System.
+    ///
+    /// Positions within one physical domain can often be described in
+    /// several coordinate systems: a SkyFrame can use galactic or equatorial
+    /// coordinates, a SpecFrame frequency, wavelength or velocity.
+    /// The System identifies the one a Frame uses, from a set each class
+    /// defines; names are case-insensitive, and where a System has
+    /// alternative names the first is the one reported.
+    /// Each class sets its System with a typed setter, such as
+    /// [`BasicFrame::set_system`] and [`SkyFrame::set_system`].
+    ///
+    /// - Frame: always `"Cartesian"`, and cannot be altered.
+    /// - CmpFrame: always `"Compound"`, and cannot be altered.
+    /// - FrameSet: the System of its current Frame.
+    /// - SkyFrame (default `"ICRS"`, which may change as astrometric
+    ///   standards evolve, so set ICRS explicitly if it is what you need):
+    ///   - `"AZEL"`: horizon coordinates, azimuth zero at geographic north
+    ///     and +pi/2 at east, elevation +pi/2 at the zenith.
+    ///     No correction is applied for atmospheric refraction or polar
+    ///     motion, but diurnal aberration is corrected.
+    ///     Unlike most celestial systems it is right-handed, and it is
+    ///     sensitive to the timescale of the Epoch, since its diurnal
+    ///     rotation turns a small change of time into a large rotation: give
+    ///     the Epoch of both source and destination SkyFrames as TDB (TT,
+    ///     within 1 to 2 milliseconds of TDB and equal to TAI + 32.184
+    ///     seconds, will usually do).
+    ///   - `"ECLIPTIC"`: ecliptic coordinates (IAU 1980), referred to the
+    ///     ecliptic and mean equinox of the Equinox.
+    ///   - `"FK4"`: the old FK4 (barycentric) equatorial system, qualified by
+    ///     an Equinox, and by an Epoch for accurate work since its model
+    ///     rotates slowly with time.
+    ///   - `"FK4-NO-E"` or `"FK4_NO_E"`: FK4 without the E-terms of
+    ///     aberration (as in some radio catalogs), qualified by both an
+    ///     Equinox and an Epoch.
+    ///   - `"FK5"` or `"EQUATORIAL"`: the modern FK5 (barycentric)
+    ///     equatorial system, qualified by an Equinox.
+    ///   - `"GALACTIC"`: galactic coordinates (IAU 1958).
+    ///   - `"GAPPT"`, `"GEOCENTRIC"` or `"APPARENT"`: geocentric apparent
+    ///     equatorial coordinates, relative to the true equator and equinox
+    ///     at the Epoch (no Equinox is needed).
+    ///     They are the apparent right ascension and declination for a
+    ///     fictitious observer at the Earth's center, derived from FK5
+    ///     J2000.0 by allowing for the Sun's gravitational deflection, the
+    ///     aberration from the Earth's motion about the barycenter, and
+    ///     precession and nutation; atmospheric refraction and the
+    ///     aberration from the Earth's rotation are ignored.
+    ///   - `"HELIOECLIPTIC"`: ecliptic coordinates (IAU 1980) referred to
+    ///     the ecliptic and mean equinox of J2000.0, with the longitude
+    ///     offset so that the Sun is at zero longitude at the Epoch; any
+    ///     Equinox set is ignored.
+    ///   - `"ICRS"`: the International Celestial Reference System, realized
+    ///     through the Hipparcos catalog; very close to FK5 J2000, differing
+    ///     only at the 50 milli-arcsecond level; no Equinox is needed.
+    ///   - `"J2000"`: the mean dynamical equator and equinox of J2000, which
+    ///     differ slightly from FK5's, so it differs slightly from FK5 with
+    ///     Equinox J2000; no Equinox is needed.
+    ///   - `"SUPERGALACTIC"`: de Vaucouleurs supergalactic coordinates.
+    ///   - `"UNKNOWN"`: any other spherical system; no Mapping can be made
+    ///     between two SkyFrames if either has this System.
+    /// - SpecFrame (default `"WAVE"`), the systems of FITS-WCS Paper III,
+    ///   with the default Unit of each in parentheses: `"FREQ"`, frequency
+    ///   (GHz); `"ENER"` or `"ENERGY"`, energy (J); `"WAVN"` or
+    ///   `"WAVENUM"`, wave-number (1/m); `"WAVE"` or `"WAVELEN"`, vacuum
+    ///   wavelength (Angstrom); `"AWAV"` or `"AIRWAVE"`, wavelength in air
+    ///   (Angstrom); `"VRAD"` or `"VRADIO"`, radio velocity (km/s);
+    ///   `"VOPT"` or `"VOPTICAL"`, optical velocity (km/s); `"ZOPT"` or
+    ///   `"REDSHIFT"`, redshift (dimensionless); `"BETA"`, beta factor
+    ///   (dimensionless); `"VELO"` or `"VREL"`, apparent radial
+    ///   ("relativistic") velocity (km/s).
+    ///   A SpecFrame always uses active units (see
+    ///   [`set_active_unit`](Frame::set_active_unit)), so changing its Unit
+    ///   re-maps it within its FrameSet.
+    /// - TimeFrame (default `"MJD"`), with the default Unit in parentheses:
+    ///   `"MJD"`, Modified Julian Date (d); `"JD"`, Julian Date (d);
+    ///   `"JEPOCH"`, Julian epoch (yr); `"BEPOCH"`, Besselian epoch (yr).
+    ///   Other units are allowed for all but BEPOCH, converted by simple
+    ///   scaling (1 yr = 365.25 d, 1 d = 24 h, 1 h = 60 min, 1 min = 60 s);
+    ///   Besselian epochs use tropical years of 365.2422 days, so selecting
+    ///   BEPOCH sets the Unit to `"yr"` and a later change of Unit is an
+    ///   error.
+    ///   A TimeFrame always uses active units, so changing its Unit re-maps
+    ///   it within its FrameSet.
+    /// - FluxFrame, with the default Unit in parentheses: `"FLXDN"`, flux
+    ///   per unit frequency (W/m^2/Hz); `"FLXDNW"`, flux per unit wavelength
+    ///   (W/m^2/Angstrom); `"SFCBR"`, surface brightness in frequency units
+    ///   (W/m^2/Hz/arcmin**2); `"SFCBRW"`, surface brightness in wavelength
+    ///   units (W/m^2/Angstrom/arcmin**2).
+    ///   With a Unit set and no System, the System follows from the Unit,
+    ///   and reading it is an error if the Unit suits none of them; with
+    ///   neither set, the System is FLXDN and the Unit W/m^2/Hz.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Badun` for a FluxFrame whose System follows from a Unit
+    ///   that fits no flux system.
+    #[doc(alias = "System")]
     fn system_string(&self) -> AstResult<Option<&str>> {
         Ok(None)
     }
@@ -912,54 +1176,131 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
 
     // Match-control attributes, used by `astFindFrame` / `astMatch`.
 
-    /// MinAxes, set or default (the number of axes). Mirrors
-    /// `astGetMinAxes`.
+    /// The minimum number of Frame axes to match: the MinAxes attribute,
+    /// set or default.
+    ///
+    /// Controls how the Frame behaves as the template of
+    /// [`find_frame_template`](Frame::find_frame_template): the fewest axes
+    /// a target may have to match.
+    /// Normally it equals [`naxes`](Frame::naxes), so a template matches
+    /// only Frames with as many axes as itself; other values let matching
+    /// find Frames with given numbers of axes.
+    /// Setting MinAxes raises a set [`max_axes`](Frame::max_axes) that is
+    /// smaller, and the default is lowered to stay within a set MaxAxes.
+    /// When template and target have different numbers of axes,
+    /// [`match_end`](Frame::match_end) decides which axes match.
+    ///
+    /// Default: [`naxes`](Frame::naxes).
+    ///
+    /// - CmpFrame: the default is 0, which with the MaxAxes default of
+    ///   1000000 lets a CmpFrame template match any target made of a subset
+    ///   of its axes; set both to the number of axes to match only Frames of
+    ///   that size.
+    /// - FrameSet: the MinAxes of its current Frame.
+    #[doc(alias = "MinAxes")]
     fn min_axes(&self) -> usize;
-    /// Set MinAxes.
+    /// Set MinAxes; see [`min_axes`](Frame::min_axes).
     fn set_min_axes(&mut self, n: usize) -> AstResult<()>;
-    /// Whether MinAxes is set.
+    /// Whether MinAxes is set; see [`min_axes`](Frame::min_axes).
     fn test_min_axes(&self) -> bool;
-    /// Clear MinAxes.
+    /// Clear MinAxes; see [`min_axes`](Frame::min_axes).
     fn clear_min_axes(&mut self) -> AstResult<()>;
 
-    /// MaxAxes, set or default (the number of axes). Mirrors
-    /// `astGetMaxAxes`.
+    /// The maximum number of Frame axes to match: the MaxAxes attribute,
+    /// set or default.
+    ///
+    /// Controls how the Frame behaves as the template of
+    /// [`find_frame_template`](Frame::find_frame_template): the most axes a
+    /// target may have to match.
+    /// Normally it equals [`naxes`](Frame::naxes), so a template matches
+    /// only Frames with as many axes as itself; other values let matching
+    /// find Frames with given numbers of axes.
+    /// Setting MaxAxes lowers a set [`min_axes`](Frame::min_axes) that is
+    /// larger, and the default is raised to stay within a set MinAxes.
+    /// When template and target have different numbers of axes,
+    /// [`match_end`](Frame::match_end) decides which axes match.
+    ///
+    /// Default: [`naxes`](Frame::naxes).
+    ///
+    /// - CmpFrame: the default is 1000000, which with the MinAxes default of
+    ///   0 lets a CmpFrame template match any target made of a subset of its
+    ///   axes; set both to the number of axes to match only Frames of that
+    ///   size.
+    /// - FrameSet: the MaxAxes of its current Frame.
+    #[doc(alias = "MaxAxes")]
     fn max_axes(&self) -> usize;
-    /// Set MaxAxes.
+    /// Set MaxAxes; see [`max_axes`](Frame::max_axes).
     fn set_max_axes(&mut self, n: usize) -> AstResult<()>;
-    /// Whether MaxAxes is set.
+    /// Whether MaxAxes is set; see [`max_axes`](Frame::max_axes).
     fn test_max_axes(&self) -> bool;
-    /// Clear MaxAxes.
+    /// Clear MaxAxes; see [`max_axes`](Frame::max_axes).
     fn clear_max_axes(&mut self) -> AstResult<()>;
 
-    /// MatchEnd, set or default (false): match the final target axes
-    /// rather than the initial ones. Mirrors `astGetMatchEnd`.
+    /// Match trailing axes? The MatchEnd attribute, set or default.
+    ///
+    /// Controls how the Frame behaves as the template of
+    /// [`find_frame_template`](Frame::find_frame_template) when template and
+    /// target have different numbers of axes.
+    /// When false, the first axes of each are matched and any trailing axes
+    /// of either are disregarded; when true, the last axes are matched and
+    /// any unmatched leading axes are disregarded.
+    ///
+    /// Default: false.
+    ///
+    /// - FrameSet: the MatchEnd of its current Frame.
+    #[doc(alias = "MatchEnd")]
     fn match_end(&self) -> bool;
-    /// Set MatchEnd.
+    /// Set MatchEnd; see [`match_end`](Frame::match_end).
     fn set_match_end(&mut self, v: bool) -> AstResult<()>;
-    /// Whether MatchEnd is set.
+    /// Whether MatchEnd is set; see [`match_end`](Frame::match_end).
     fn test_match_end(&self) -> bool;
-    /// Clear MatchEnd.
+    /// Clear MatchEnd; see [`match_end`](Frame::match_end).
     fn clear_match_end(&mut self) -> AstResult<()>;
 
-    /// PreserveAxes, set or default (false). Mirrors
-    /// `astGetPreserveAxes`.
+    /// Preserve axes? The PreserveAxes attribute, set or default.
+    ///
+    /// Controls how the Frame behaves as the template of
+    /// [`find_frame_template`](Frame::find_frame_template): which axes appear,
+    /// and in what order, in the Frame found.
+    /// When false, that Frame has the number and order of axes of the
+    /// template; when true, it keeps those of the target.
+    ///
+    /// Default: false, so the Frame found resembles the template.
+    ///
+    /// - FrameSet: the PreserveAxes of its current Frame.
+    #[doc(alias = "PreserveAxes")]
     fn preserve_axes(&self) -> bool;
-    /// Set PreserveAxes.
+    /// Set PreserveAxes; see [`preserve_axes`](Frame::preserve_axes).
     fn set_preserve_axes(&mut self, v: bool) -> AstResult<()>;
-    /// Whether PreserveAxes is set.
+    /// Whether PreserveAxes is set; see
+    /// [`preserve_axes`](Frame::preserve_axes).
     fn test_preserve_axes(&self) -> bool;
-    /// Clear PreserveAxes.
+    /// Clear PreserveAxes; see [`preserve_axes`](Frame::preserve_axes).
     fn clear_preserve_axes(&mut self) -> AstResult<()>;
 
-    /// Permute, set or default (true, the Frame class's default, which no
-    /// subclass over-rides; frame.c:13572). Mirrors `astGetPermute`.
+    /// Permute axis order? The Permute attribute, set or default.
+    ///
+    /// Controls how the Frame behaves as the template of
+    /// [`find_frame_template`](Frame::find_frame_template): whether the axes
+    /// of the target may be permuted to obtain a match.
+    /// When false, the template matches a target only without changing the
+    /// order of its axes; when true, it permutes the target's axes as
+    /// needed.
+    ///
+    /// Default: true.
+    ///
+    /// - Frame: the plain Frame behaves as if Permute were true whatever its
+    ///   value, since its axes cannot be told apart and match any other
+    ///   Frame in any order.
+    /// - SkyFrame: uses the attribute.
+    /// - FrameSet: the Permute of its current Frame.
+    #[doc(alias = "Permute")]
     fn permute(&self) -> bool;
-    /// Set Permute.
+    /// Set Permute; see [`permute`](Frame::permute).
     fn set_permute(&mut self, v: bool) -> AstResult<()>;
-    /// Whether Permute is set.
+    /// Whether Permute is set; see [`permute`](Frame::permute).
     fn test_permute(&self) -> bool;
-    /// Clear Permute.
+    /// Clear Permute; see [`permute`](Frame::permute).
     fn clear_permute(&mut self) -> AstResult<()>;
 
     /// Determine how the Unit attribute will be used: the ActiveUnit flag.
@@ -1026,90 +1367,289 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     // (frame.c `MAKE_GET`); a class over-rides the getters for which C's
     // does.
 
-    /// `Label(axis)`, set or default. Mirrors `astGetLabel`; a plain
-    /// Frame's default is `"Axis <n>"` (frame.c:12891).
+    /// The label of an axis: the `Label(axis)` attribute of the 1-based
+    /// `axis`, set or default.
+    ///
+    /// A label attached to the axis when it is represented in, for
+    /// instance, graphical output.
+    /// It is meant for human readers, not software.
+    /// When it is not set, a suitable default is supplied.
+    ///
+    /// Default: `"Axis <n>"`, where `<n>` is 1, 2, ... for successive axes
+    /// (counted before any axis permutation).
+    ///
+    /// - SkyFrame: a default suited to the celestial coordinate system, such
+    ///   as `"Right ascension"` or `"Galactic latitude"`.
+    /// - TimeFrame: a default suited to the time system.
+    /// - FrameSet: the Label of the axis of its current Frame.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Axiin` when `axis` is not between 1 and
+    ///   [`naxes`](Frame::naxes).
+    #[doc(alias = "Label")]
     fn label(&self, axis: usize) -> AstResult<String>;
-    /// Set `Label(axis)`.
+    /// Set `Label(axis)`; see [`label`](Frame::label).
     fn set_label(&mut self, axis: usize, label: &str) -> AstResult<()>;
-    /// Whether `Label(axis)` is set.
+    /// Whether `Label(axis)` is set; see [`label`](Frame::label).
     fn test_label(&self, axis: usize) -> AstResult<bool>;
-    /// Clear `Label(axis)`.
+    /// Clear `Label(axis)`; see [`label`](Frame::label).
     fn clear_label(&mut self, axis: usize) -> AstResult<()>;
 
-    /// `Symbol(axis)`, set or default. Mirrors `astGetSymbol`; a plain
-    /// Frame's default is built from its Domain (frame.c:12952).
+    /// The symbol of an axis: the `Symbol(axis)` attribute of the 1-based
+    /// `axis`, set or default.
+    ///
+    /// A short-form symbol for coordinate values on the axis, for use where
+    /// a full description would be out of place, such as in algebraic
+    /// expressions: `"RA"` and `"Dec"`, for instance.
+    /// When it is not set, a suitable default is supplied.
+    ///
+    /// Default: `"<Domain><n>"`, where `<n>` is 1, 2, ... for successive
+    /// axes (counted before any axis permutation) and `<Domain>` is the
+    /// Frame's [`domain`](Frame::domain), or `"x"` if no Domain is set; the
+    /// Domain is truncated if needed so that the whole is at most 50
+    /// characters, and white space is replaced by underscores.
+    ///
+    /// - SkyFrame: a default suited to the celestial coordinate system, such
+    ///   as `"RA"` or `"Dec"`.
+    /// - TimeFrame: a default suited to the time system.
+    /// - FrameSet: the Symbol of the axis of its current Frame.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Axiin` when `axis` is not between 1 and
+    ///   [`naxes`](Frame::naxes).
+    #[doc(alias = "Symbol")]
     fn symbol(&self, axis: usize) -> AstResult<String>;
-    /// Set `Symbol(axis)`.
+    /// Set `Symbol(axis)`; see [`symbol`](Frame::symbol).
     fn set_symbol(&mut self, axis: usize, symbol: &str) -> AstResult<()>;
-    /// Whether `Symbol(axis)` is set.
+    /// Whether `Symbol(axis)` is set; see [`symbol`](Frame::symbol).
     fn test_symbol(&self, axis: usize) -> AstResult<bool>;
-    /// Clear `Symbol(axis)`.
+    /// Clear `Symbol(axis)`; see [`symbol`](Frame::symbol).
     fn clear_symbol(&mut self, axis: usize) -> AstResult<()>;
 
-    /// `Unit(axis)`, set or default. Mirrors `astGetUnit`; a plain Frame's
-    /// default is blank, and SpecFrame, TimeFrame, FluxFrame and SkyFrame
-    /// supply their own.
+    /// The physical units of formatted values on an axis: the `Unit(axis)`
+    /// attribute of the 1-based `axis`, set or default.
+    ///
+    /// A textual description of the units of coordinate values on the axis
+    /// once formatted into a string with [`format`](Frame::format).
+    /// These may differ from the units of the floating point values
+    /// application code handles (a SkyFrame always uses radians for those);
+    /// [`internal_unit`](Frame::internal_unit) gives the latter.
+    /// [`set_active_unit`](Frame::set_active_unit) controls how the units
+    /// are used.
+    /// Trailing spaces are removed when the Unit is set.
+    ///
+    /// Default: an empty string.
+    ///
+    /// - SkyFrame: a default, such as `"hh:mm:ss.sss"`, that describes the
+    ///   string `format` returns.
+    /// - SpecFrame: a default suited to the System; using a Unit that does
+    ///   not suit it is an error (`ErrorCode::Badun` when the Frame is
+    ///   matched).
+    /// - TimeFrame: a default suited to the System; a Unit that does not
+    ///   suit it, such as `"km"`, is an error, and a Besselian epoch takes
+    ///   only `"yr"` (`ErrorCode::Attin` from `set_unit`).
+    /// - FrameSet: the Unit of the axis of its current Frame.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Axiin` when `axis` is not between 1 and
+    ///   [`naxes`](Frame::naxes).
+    #[doc(alias = "Unit")]
     fn unit(&self, axis: usize) -> AstResult<String>;
-    /// Set `Unit(axis)`. Mirrors `astSetUnit`; SpecFrame, TimeFrame and
-    /// FluxFrame also record it against their System, as C's do.
+    /// Set `Unit(axis)`; see [`unit`](Frame::unit).
+    /// SpecFrame, TimeFrame and FluxFrame also record it against their
+    /// System.
     fn set_unit(&mut self, axis: usize, unit: &str) -> AstResult<()>;
-    /// Whether `Unit(axis)` is set.
+    /// Whether `Unit(axis)` is set; see [`unit`](Frame::unit).
     fn test_unit(&self, axis: usize) -> AstResult<bool>;
-    /// Clear `Unit(axis)`.
+    /// Clear `Unit(axis)`; see [`unit`](Frame::unit).
     fn clear_unit(&mut self, axis: usize) -> AstResult<()>;
 
-    /// `Format(axis)`, set or default. Mirrors `astGetFormat`; a plain
-    /// axis's default is `"%1.<Digits>G"` (axis.c `GetAxisFormat`).
+    /// The format specification for values on an axis: the `Format(axis)`
+    /// attribute of the 1-based `axis`, set or default.
+    ///
+    /// The format [`format`](Frame::format) uses to turn coordinate values on
+    /// the axis into text.
+    /// When it is not set, a default is chosen from the axis's
+    /// [`axis_digits`](Frame::axis_digits) so that it shows that many
+    /// digits of precision.
+    ///
+    /// Default: `"%1.<Digits>G"`.
+    ///
+    /// - Frame: a C `printf` format specification, such as `"%1.7G"`, for
+    ///   formatting one value as a double precision number.
+    /// - FrameSet: the Format of the axis of its current Frame, whose class
+    ///   also decides the syntax.
+    /// - SkyFrame: a syntax and default for sexagesimal values suited to the
+    ///   celestial coordinate system, described below.
+    /// - TimeFrame: the Frame syntax, extended to format values as Gregorian
+    ///   calendar dates and times, described below.
+    ///
+    /// # SkyFrame formats
+    ///
+    /// A SkyFrame Format holds zero or more of these characters, in any
+    /// order (the order given here is clearest), case-insensitive:
+    ///
+    /// - `+`: prefix a plus sign to positive values (none by default).
+    /// - `z`: prefix leading zeros so the first field has a constant width,
+    ///   as for a fixed-width table (later fields always have them); none by
+    ///   default.
+    /// - `i`: separate fields with the ISO separator, a colon; the default.
+    /// - `b`: separate fields with a blank.
+    /// - `l`: separate fields with a letter (`h`/`d`, `m` or `s`).
+    /// - `g`: separate fields with letters and symbols marked up by escape
+    ///   sequences for graphical output; the port has no escape sequences,
+    ///   so it behaves as `l`.
+    /// - `d`: include a degrees field; expressing the angle purely in
+    ///   degrees is also the default when none of `h`, `m`, `s` or `t` is
+    ///   given.
+    /// - `h`: express the angle as a time (24 hours to 360 degrees) and
+    ///   include an hours field; purely hours is also the default when `t`
+    ///   is given without `m` or `s`.
+    /// - `m`: include a minutes field (not by default).
+    /// - `s`: include a seconds field (not by default); ignored with `d` or
+    ///   `h` unless a minutes field is included too.
+    /// - `t`: express the angle as a time with no hours field, purely in
+    ///   minutes and/or seconds; ignored with `d` or `h`, and equivalent to
+    ///   `h` when none of `d`, `h`, `m` or `s` is given.
+    /// - `.`: give decimal places in the last field, followed by the number
+    ///   of places or by `*`, which takes the number from Digits.
+    ///
+    /// Where characters conflict (`i` and `b`, say) the last wins, except
+    /// that `d` and `h` always over-ride `t`.
+    /// A Format starting with `%` follows the Frame syntax, and formats the
+    /// value as decimal radians.
+    ///
+    /// # TimeFrame formats
+    ///
+    /// A TimeFrame Format is either a Frame (`printf`) format, the default,
+    /// or the `iso` syntax:
+    ///
+    /// - A `printf` format such as `"%1.7G"` formats the value as it is: an
+    ///   offset from the TimeOrigin in units of the Unit.
+    /// - A Format starting with `iso` converts the value to an absolute MJD,
+    ///   adding the TimeOrigin, and formats it as a Gregorian date
+    ///   `yyyy-mm-dd`.
+    ///   A precision after it (`iso.2`) appends the time of day with that
+    ///   many decimal places in the seconds (`iso.0` gives `hh:mm:ss`,
+    ///   `iso.2` gives `hh:mm:ss.ss`); without one, the date is rounded to
+    ///   the nearest day.
+    ///   Date and time are separated by a space, or by `T` if the Format
+    ///   ends with `T`.
+    ///   Digits is ignored for this syntax.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Axiin` when `axis` is not between 1 and
+    ///   [`naxes`](Frame::naxes).
+    #[doc(alias = "Format")]
     fn format_str(&self, axis: usize) -> AstResult<String>;
-    /// Set `Format(axis)`.
+    /// Set `Format(axis)`; see [`format_str`](Frame::format_str).
     fn set_format_str(&mut self, axis: usize, format: &str) -> AstResult<()>;
-    /// Whether `Format(axis)` is set.
+    /// Whether `Format(axis)` is set; see [`format_str`](Frame::format_str).
     fn test_format_str(&self, axis: usize) -> AstResult<bool>;
-    /// Clear `Format(axis)`.
+    /// Clear `Format(axis)`; see [`format_str`](Frame::format_str).
     fn clear_format_str(&mut self, axis: usize) -> AstResult<()>;
 
-    /// `Digits(axis)`: the axis's own Digits if set, else this Frame's
-    /// [`digits`](Self::digits). Mirrors frame.c `GetAttrib` (frame.c:4885),
-    /// the only way C reads it.
+    /// The number of digits of precision for an axis: the `Digits(axis)`
+    /// attribute of the 1-based `axis`, set, or else the Frame's
+    /// [`digits`](Frame::digits).
+    ///
+    /// A value set for an axis over-rides the Frame's Digits for that axis;
+    /// [`digits`](Frame::digits) describes the attribute.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Axiin` when `axis` is not between 1 and
+    ///   [`naxes`](Frame::naxes).
+    #[doc(alias = "Digits")]
     fn axis_digits(&self, axis: usize) -> AstResult<i32>;
-    /// Set `Digits(axis)`.
+    /// Set `Digits(axis)`; see [`axis_digits`](Frame::axis_digits).
     fn set_axis_digits(&mut self, axis: usize, digits: i32) -> AstResult<()>;
-    /// Whether `Digits(axis)` is set.
+    /// Whether `Digits(axis)` is set; see
+    /// [`axis_digits`](Frame::axis_digits).
     fn test_axis_digits(&self, axis: usize) -> AstResult<bool>;
-    /// Clear `Digits(axis)`.
+    /// Clear `Digits(axis)`; see [`axis_digits`](Frame::axis_digits).
     fn clear_axis_digits(&mut self, axis: usize) -> AstResult<()>;
 
-    /// `Direction(axis)`, set or default (true), the hint that the axis
-    /// plots in the conventional direction. Mirrors `astGetDirection`;
-    /// a SkyFrame's longitude axis defaults to false.
+    /// Display an axis in the conventional direction? The
+    /// `Direction(axis)` attribute of the 1-based `axis`, set or default.
+    ///
+    /// A hint for how the axis should be displayed in, for instance,
+    /// graphical output: true for the conventional sense (increasing left
+    /// to right for an abscissa, bottom to top for an ordinate), false for
+    /// reversed, as is often done for astronomical magnitude or right
+    /// ascension.
+    /// It does not affect the behavior of the library; applications are
+    /// free to ignore it.
+    ///
+    /// Default: true.
+    ///
+    /// - SkyFrame: the default is false for the longitude axis (right
+    ///   ascension, for instance), so it is plotted in reverse.
+    /// - FrameSet: the Direction of the axis of its current Frame.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Axiin` when `axis` is not between 1 and
+    ///   [`naxes`](Frame::naxes).
+    #[doc(alias = "Direction")]
     fn direction(&self, axis: usize) -> AstResult<bool>;
-    /// Set `Direction(axis)`.
+    /// Set `Direction(axis)`; see [`direction`](Frame::direction).
     fn set_direction(&mut self, axis: usize, direction: bool) -> AstResult<()>;
-    /// Whether `Direction(axis)` is set.
+    /// Whether `Direction(axis)` is set; see [`direction`](Frame::direction).
     fn test_direction(&self, axis: usize) -> AstResult<bool>;
-    /// Clear `Direction(axis)`.
+    /// Clear `Direction(axis)`; see [`direction`](Frame::direction).
     fn clear_direction(&mut self, axis: usize) -> AstResult<()>;
 
-    /// `Top(axis)`, set or default (`f64::MAX`), the largest legal axis
-    /// value. Mirrors `astGetTop`; a SkyFrame's latitude axis defaults to
-    /// pi/2.
+    /// The highest axis value to display: the `Top(axis)` attribute of the
+    /// 1-based `axis`, set or default.
+    ///
+    /// The highest value to be displayed on the axis, by a grid plot for
+    /// instance.
+    ///
+    /// Default: `f64::MAX`, so all values are displayed.
+    ///
+    /// - SkyFrame: the default is pi/2 (+90 degrees) for the latitude axis;
+    ///   the longitude axis displays all values.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Axiin` when `axis` is not between 1 and
+    ///   [`naxes`](Frame::naxes).
+    #[doc(alias = "Top")]
     fn top(&self, axis: usize) -> AstResult<f64>;
-    /// Set `Top(axis)`.
+    /// Set `Top(axis)`; see [`top`](Frame::top).
     fn set_top(&mut self, axis: usize, top: f64) -> AstResult<()>;
-    /// Whether `Top(axis)` is set.
+    /// Whether `Top(axis)` is set; see [`top`](Frame::top).
     fn test_top(&self, axis: usize) -> AstResult<bool>;
-    /// Clear `Top(axis)`.
+    /// Clear `Top(axis)`; see [`top`](Frame::top).
     fn clear_top(&mut self, axis: usize) -> AstResult<()>;
 
-    /// `Bottom(axis)`, set or default (`-f64::MAX`), the smallest legal
-    /// axis value. Mirrors `astGetBottom`; a SkyFrame's latitude axis
-    /// defaults to -pi/2.
+    /// The lowest axis value to display: the `Bottom(axis)` attribute of the
+    /// 1-based `axis`, set or default.
+    ///
+    /// The lowest value to be displayed on the axis, by a grid plot for
+    /// instance.
+    ///
+    /// Default: `-f64::MAX`, so all values are displayed.
+    ///
+    /// - SkyFrame: the default is -pi/2 (-90 degrees) for the latitude
+    ///   axis; the longitude axis displays all values.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Axiin` when `axis` is not between 1 and
+    ///   [`naxes`](Frame::naxes).
+    #[doc(alias = "Bottom")]
     fn bottom(&self, axis: usize) -> AstResult<f64>;
-    /// Set `Bottom(axis)`.
+    /// Set `Bottom(axis)`; see [`bottom`](Frame::bottom).
     fn set_bottom(&mut self, axis: usize, bottom: f64) -> AstResult<()>;
-    /// Whether `Bottom(axis)` is set.
+    /// Whether `Bottom(axis)` is set; see [`bottom`](Frame::bottom).
     fn test_bottom(&self, axis: usize) -> AstResult<bool>;
-    /// Clear `Bottom(axis)`.
+    /// Clear `Bottom(axis)`; see [`bottom`](Frame::bottom).
     fn clear_bottom(&mut self, axis: usize) -> AstResult<()>;
 
     /// The Top that the Axis object of a 1-based axis reports itself: C's
@@ -1143,33 +1683,48 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
         self.bottom(axis)
     }
 
-    /// Internal `Unit(axis)` (1-based): the units in which this Frame's
-    /// Mapping actually computes, before any external-unit conversion.
-    /// Mirrors C `astGetInternalUnit` (frame.c). The base default
-    /// equals the external [`unit`](Self::unit), so
-    /// frames whose internal and external units agree trigger no
-    /// remapping in `MakeFitsFrameSet`. `SkyFrame` overrides this to
-    /// `"rad"` (its axes are angles stored in radians but presented in
-    /// degrees).
+    /// The physical units of unformatted values on an axis: the read-only
+    /// `InternalUnit(axis)` attribute of the 1-based `axis`.
+    ///
+    /// A textual description of the units of the floating point values on
+    /// the axis, as application code handles them.
+    /// Usually it equals [`unit`](Frame::unit), since formatted and
+    /// unformatted values normally share units; the main exception is a
+    /// SkyFrame, whose values are in radians (`"rad"`) whatever its Unit.
+    /// An `axis` out of range gives an empty string.
+    #[doc(alias = "InternalUnit")]
     fn internal_unit(&self, axis: usize) -> String {
+        // C `astGetInternalUnit` (frame.c). Frames whose internal and
+        // external units agree trigger no remapping in `MakeFitsFrameSet`.
         self.unit(axis).unwrap_or_default()
     }
 
-    /// Read-only `NormUnit(axis)` (1-based): the Unit this Frame reports
-    /// for the axis, simplified where possible (`"s*(m/s)"` gives `"m"`),
-    /// and equal to it when no simplification can be performed, as for a
-    /// blank Unit or a description of axis values such as `"ddd:mm:ss"`.
+    /// The normalized physical units of formatted values on an axis: the
+    /// read-only `NormUnit(axis)` attribute of the 1-based `axis`.
     ///
-    /// Mirrors C `astGetNormUnit` (frame.c:13149), which normalises the
-    /// Unit the Frame reports rather than the one stored in the Axis,
-    /// because SpecFrame, TimeFrame, FluxFrame and SkyFrame each report
-    /// Units of their own. C takes the Axis method instead when the Axis
-    /// Unit is set, which normalises the same string. `SkyFrame`
-    /// overrides this, as it does in C.
+    /// The [`unit`](Frame::unit) of the axis in an equivalent but possibly
+    /// simpler form: a Unit of `"s*(m/s)"` gives `"m"`.
+    /// When no simplification can be made, as for a blank Unit or a
+    /// description of axis values such as `"ddd:mm:ss"`, it equals the Unit.
+    /// An `axis` out of range gives an empty string.
     ///
-    /// C reports `AST__FMTER` for a result longer than its 127-character
-    /// buffer; the port has no such limit.
+    /// # Examples
+    ///
+    /// ```
+    /// use ast_core::frames::{BasicFrameBuilder, Frame};
+    ///
+    /// let frame = BasicFrameBuilder::new(1).unit(1, "s*(m/s)").build().unwrap();
+    /// assert_eq!(frame.norm_unit(1), "m");
+    /// ```
+    #[doc(alias = "NormUnit")]
     fn norm_unit(&self, axis: usize) -> String {
+        // C `astGetNormUnit` (frame.c:13149) normalizes the Unit the Frame
+        // reports rather than the one stored in the Axis, because SpecFrame,
+        // TimeFrame, FluxFrame and SkyFrame each report Units of their own.
+        // C takes the Axis method instead when the Axis Unit is set, which
+        // normalizes the same string. `SkyFrame` overrides this, as it does
+        // in C. C reports `AST__FMTER` for a result longer than its
+        // 127-character buffer; the port has no such limit.
         crate::units::norm_unit(&self.unit(axis).unwrap_or_default())
     }
 

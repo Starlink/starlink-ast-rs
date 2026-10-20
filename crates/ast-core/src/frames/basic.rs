@@ -454,42 +454,81 @@ impl BasicFrame {
         self.attrs.epoch = None;
     }
 
-    /// The System, which for a plain Frame is always Cartesian.
+    /// The coordinate system used to describe positions within the domain:
+    /// the System attribute, which for a plain Frame is always Cartesian
+    /// and cannot be altered.
+    ///
+    /// [`Frame::system_string`] describes the attribute and the Systems of
+    /// every class.
+    ///
+    /// Default: [`FrameSystem::Cartesian`].
+    #[doc(alias = "System")]
     pub fn system(&self) -> FrameSystem {
         FrameSystem::Cartesian
     }
 
-    /// Set the System. Mirrors `astSetSystem`.
+    /// Set the System, which can only be Cartesian; see
+    /// [`system`](BasicFrame::system).
     pub fn set_system(&mut self, _system: FrameSystem) {
         self.system_set = true;
     }
 
-    /// Test whether the System has been set.
+    /// Whether the System is set; see [`system`](BasicFrame::system).
     pub fn test_system(&self) -> bool {
         self.system_set
     }
 
-    /// Clear the System.
+    /// Clear the System; see [`system`](BasicFrame::system).
     pub fn clear_system(&mut self) {
         self.system_set = false;
     }
 
-    /// The AlignSystem, which for a plain Frame is always Cartesian.
+    /// The coordinate system in which to align the Frame: the AlignSystem
+    /// attribute, which for a plain Frame is always Cartesian and cannot be
+    /// altered.
+    ///
+    /// Controls how the Frame behaves as the template of
+    /// [`find_frame_template`](Frame::find_frame_template) or the `to` Frame
+    /// of [`convert_to`](Frame::convert_to): it is the coordinate system in
+    /// which the two Frames are aligned.
+    /// The Mapping found maps positions from the first Frame into this
+    /// intermediate system using the attributes of the first Frame, then
+    /// from it into the second Frame using the attributes of the second.
+    /// In general it takes any value the class's System takes, and its
+    /// values and default depend on the class:
+    ///
+    /// - Frame: always Cartesian.
+    /// - CmpFrame: always `"Compound"`.
+    /// - FrameSet: the AlignSystem of its current Frame.
+    /// - SkyFrame: default ICRS ([`SkyFrame::align_system`]).
+    /// - SpecFrame: default WAVE, wavelength
+    ///   ([`SpecFrame::align_system`]).
+    /// - TimeFrame: default MJD ([`TimeFrame::align_system`]).
+    ///
+    /// Default: [`FrameSystem::Cartesian`].
+    ///
+    /// [`SkyFrame::align_system`]: super::SkyFrame::align_system
+    /// [`SpecFrame::align_system`]: super::SpecFrame::align_system
+    /// [`TimeFrame::align_system`]: super::TimeFrame::align_system
+    #[doc(alias = "AlignSystem")]
     pub fn align_system(&self) -> FrameSystem {
         FrameSystem::Cartesian
     }
 
-    /// Set the AlignSystem. Mirrors `astSetAlignSystem`.
+    /// Set the AlignSystem, which can only be Cartesian; see
+    /// [`align_system`](BasicFrame::align_system).
     pub fn set_align_system(&mut self, _system: FrameSystem) {
         self.align_system_set = true;
     }
 
-    /// Test whether the AlignSystem has been set.
+    /// Whether the AlignSystem is set; see
+    /// [`align_system`](BasicFrame::align_system).
     pub fn test_align_system(&self) -> bool {
         self.align_system_set
     }
 
-    /// Clear the AlignSystem.
+    /// Clear the AlignSystem; see
+    /// [`align_system`](BasicFrame::align_system).
     pub fn clear_align_system(&mut self) {
         self.align_system_set = false;
     }

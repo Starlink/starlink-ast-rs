@@ -124,31 +124,31 @@ function	astOffset	frame.c	Frame::offset		yes
 function	astResolve	frame.c	Frame::resolve		yes
 function	astSetActiveUnit	frame.c	Frame::set_active_unit		yes	C's header says a CmpFrame defaults to active units when both components use them, and that units with no Mapping between them raise an error; C's code uses either component, and treats such units as no match, as the port does (docs/issues/c-library-quirks.md)
 attribute	Naxes	frame.c	Frame::naxes		yes
-attribute	Direction	frame.c			no
-attribute	Dtai	frame.c			no
-attribute	Dut1	frame.c			no
-attribute	Epoch	frame.c			no
-attribute	Top	frame.c			no
-attribute	Bottom	frame.c			no
-attribute	Format	frame.c			no
-attribute	Label	frame.c			no
-attribute	Symbol	frame.c			no
-attribute	Unit	frame.c			no
-attribute	NormUnit	frame.c			no
-attribute	InternalUnit	frame.c			no
-attribute	Digits	frame.c			no
-attribute	MatchEnd	frame.c			no
-attribute	MaxAxes	frame.c			no
-attribute	MinAxes	frame.c			no
-attribute	Domain	frame.c			no
-attribute	Permute	frame.c			no
-attribute	PreserveAxes	frame.c			no
-attribute	AlignSystem	frame.c			no
-attribute	System	frame.c			no
-attribute	Title	frame.c			no
-attribute	ObsLat	frame.c			no
-attribute	ObsAlt	frame.c			no
-attribute	ObsLon	frame.c			no
+attribute	Direction	frame.c	Frame::direction		yes	Plot is not ported, so the Plot applicability is dropped
+attribute	Dtai	frame.c	Frame::dtai		yes
+attribute	Dut1	frame.c	Frame::dut1		yes
+attribute	Epoch	frame.c	Frame::epoch_mjd		yes	The Rust API takes and gives an MJD; C's string input formats (Besselian and Julian epochs, years, JD, MJD, dates) and year output are not on it, though BasicFrame and SkyFrame have year forms
+attribute	Top	frame.c	Frame::top		yes	C's header gives a co-latitude default of 180 degrees; SkyFrame's code has no co-latitude axes (docs/issues/c-library-quirks.md)
+attribute	Bottom	frame.c	Frame::bottom		yes	C's header gives a co-latitude default of 0 degrees; SkyFrame's code has no co-latitude axes (docs/issues/c-library-quirks.md)
+attribute	Format	frame.c	Frame::format_str		yes	The g SkyFrame flag behaves as l: the port has no escape sequences, as C without astEscapes; astSetSkyDelim has no counterpart. The note on doubling % for astSet does not apply to the typed setter
+attribute	Label	frame.c	Frame::label		yes
+attribute	Symbol	frame.c	Frame::symbol		yes	C's header says the default is truncated to 15 characters; the code's limit is SYMBOL_BUFF_LEN, 50, as the port's doc says (docs/issues/c-library-quirks.md)
+attribute	Unit	frame.c	Frame::unit		yes
+attribute	NormUnit	frame.c	Frame::norm_unit		yes	An axis out of range gives an empty string where C reports AST__AXIIN (PLAN.md 2)
+attribute	InternalUnit	frame.c	Frame::internal_unit		yes	An axis out of range gives an empty string where C reports AST__AXIIN (PLAN.md 2)
+attribute	Digits	frame.c	Frame::digits;Frame::axis_digits		yes	Plot is not ported, so the Plot applicability is dropped
+attribute	MatchEnd	frame.c	Frame::match_end		yes
+attribute	MaxAxes	frame.c	Frame::max_axes		yes
+attribute	MinAxes	frame.c	Frame::min_axes		yes
+attribute	Domain	frame.c	Frame::domain		yes
+attribute	Permute	frame.c	Frame::permute		yes
+attribute	PreserveAxes	frame.c	Frame::preserve_axes		yes
+attribute	AlignSystem	frame.c	BasicFrame::align_system		yes	No trait getter: each class has a typed align_system of its own
+attribute	System	frame.c	Frame::system_string;BasicFrame::system		yes	Each class sets its System with a typed setter; the CmpFrame System(axis) form for a component's System has no counterpart
+attribute	Title	frame.c	Frame::title		yes
+attribute	ObsLat	frame.c	Frame::obs_lat		yes	Radians on the Rust API; C's sexagesimal degree strings are for its string interface
+attribute	ObsAlt	frame.c	Frame::obs_alt		yes
+attribute	ObsLon	frame.c	Frame::obs_lon		yes	Radians on the Rust API; C's sexagesimal degree strings are for its string interface
 function	astFormat	frame.c	Frame::format		yes
 function	astFrame	frame.c	BasicFrameBuilder::new		yes	Attributes are set with the builder's typed methods rather than an options string
 function	astPermAxes	frame.c	Frame::perm_axes		yes

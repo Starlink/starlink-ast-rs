@@ -64,6 +64,8 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [The `astFindFrame` documentation describes a preference among FrameSet matches that the code does not make](#the-astfindframe-documentation-describes-a-preference-among-frameset-matches-that-the-code-does-not-make)
 - [The `astSetActiveUnit` documentation says a CmpFrame needs both components to use active units](#the-astsetactiveunit-documentation-says-a-cmpframe-needs-both-components-to-use-active-units)
 - [The `astSetActiveUnit` documentation says units with no Mapping between them raise an error](#the-astsetactiveunit-documentation-says-units-with-no-mapping-between-them-raise-an-error)
+- [The `Symbol` documentation says the default is at most 15 characters](#the-symbol-documentation-says-the-default-is-at-most-15-characters)
+- [The `Top` and `Bottom` documentation gives SkyFrame defaults for co-latitude axes](#the-top-and-bottom-documentation-gives-skyframe-defaults-for-co-latitude-axes)
 
 ### [Addressed here, and not going upstream](#addressed-here-and-not-going-upstream)
 
@@ -987,6 +989,30 @@ Consequence: documentation only.
 
 The port's `find_frame` (`crates/ast-core/src/frames/find_frame.rs`) treats such units as no match, as C does, and `Frame::set_active_unit` documents that.
 A C fix: say in the prologue that the Frames then do not match.
+
+### The `Symbol` documentation says the default is at most 15 characters
+
+C location: `frame.c`, the `Symbol` attribute prologue (Applicability, Frame); `GetSymbol` (line 5465) and `SYMBOL_BUFF_LEN` (line 328).
+
+The prologue says the default `<Domain><n>` is truncated if necessary so that it does not exceed 15 characters.
+The code truncates the Domain so that the whole fits `SYMBOL_BUFF_LEN`, which is 50.
+
+Consequence: documentation only; a Domain of 15 to 49 characters appears in full in the default Symbol.
+
+The port's `default_symbol` (`crates/ast-core/src/frames/frame_attrs.rs`) uses 50, and `Frame::symbol` documents that.
+A C fix: change 15 to 50 in the prologue.
+
+### The `Top` and `Bottom` documentation gives SkyFrame defaults for co-latitude axes
+
+C location: `frame.c`, the `Top` and `Bottom` attribute prologues (Applicability, SkyFrame); `skyframe.c`, `GetTop` and `GetBottom`.
+
+The prologues say a SkyFrame's default Top is 180 degrees and Bottom 0 degrees for co-latitude axes.
+A SkyFrame has no co-latitude axes: `GetTop` and `GetBottom` give pi/2 and -pi/2 for the latitude axis and no limit for the longitude axis.
+
+Consequence: documentation only.
+
+The port's `SkyFrame` mirrors the code, and `Frame::top` and `Frame::bottom` document only the latitude and longitude defaults.
+A C fix: drop the co-latitude clause from both prologues.
 
 ## Addressed here, and not going upstream
 
