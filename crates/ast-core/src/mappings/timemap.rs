@@ -100,10 +100,10 @@ pub enum TimeCvtType {
     TaiToUtc = 8,
     /// `UTCTOTAI` (`MJDOFF`, `DTAI`): convert a UTC MJD to a TAI MJD.
     UtcToTai = 9,
-    /// `TAITOTT` (`MJDOFF`): convert a TAI MJD to a TT MJD.
-    TaiToTt = 10,
     /// `TTTOTAI` (`MJDOFF`): convert a TT MJD to a TAI MJD.
-    TtToTai = 11,
+    TtToTai = 10,
+    /// `TAITOTT` (`MJDOFF`): convert a TAI MJD to a TT MJD.
+    TaiToTt = 11,
     /// `TDBTOTT` (`MJDOFF`, `OBSLON`, `OBSLAT`, `OBSALT`, `DTAI`): convert a
     /// TDB MJD to a TT MJD.
     TdbToTt = 12,
@@ -304,8 +304,8 @@ impl TimeCvtType {
             7 => Some(Self::JepToMjd),
             8 => Some(Self::TaiToUtc),
             9 => Some(Self::UtcToTai),
-            10 => Some(Self::TaiToTt),
-            11 => Some(Self::TtToTai),
+            10 => Some(Self::TtToTai),
+            11 => Some(Self::TaiToTt),
             12 => Some(Self::TdbToTt),
             13 => Some(Self::TtToTdb),
             14 => Some(Self::TcgToTt),

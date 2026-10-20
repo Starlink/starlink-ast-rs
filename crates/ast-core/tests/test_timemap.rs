@@ -559,6 +559,46 @@ fn try_merge_cancellation() {
 // TimeCvtType utility methods
 // ---------------------------------------------------------------------------
 
+/// Every conversion's integer code is C's `AST__*` value (timemap.c), both as
+/// the discriminant and through `from_int`.
+#[test]
+fn cvt_type_codes_match_c() {
+    use TimeCvtType::*;
+    let c_codes = [
+        (MjdToMjd, 1),
+        (MjdToJd, 2),
+        (JdToMjd, 3),
+        (MjdToBep, 4),
+        (BepToMjd, 5),
+        (MjdToJep, 6),
+        (JepToMjd, 7),
+        (TaiToUtc, 8),
+        (UtcToTai, 9),
+        (TtToTai, 10),
+        (TaiToTt, 11),
+        (TdbToTt, 12),
+        (TtToTdb, 13),
+        (TcgToTt, 14),
+        (TtToTcg, 15),
+        (TcbToTdb, 16),
+        (TdbToTcb, 17),
+        (UtToGmst, 18),
+        (GmstToUt, 19),
+        (GmstToLmst, 20),
+        (LmstToGmst, 21),
+        (LastToLmst, 22),
+        (LmstToLast, 23),
+        (UtToUtc, 24),
+        (UtcToUt, 25),
+        (LtToUtc, 26),
+        (UtcToLt, 27),
+    ];
+    for (cvt, code) in c_codes {
+        assert_eq!(cvt as i32, code, "{cvt:?} discriminant");
+        assert_eq!(TimeCvtType::from_int(code), Some(cvt), "from_int({code})");
+    }
+}
+
 #[test]
 fn cvt_type_from_int() {
     assert_eq!(TimeCvtType::from_int(1), Some(TimeCvtType::MjdToMjd));
