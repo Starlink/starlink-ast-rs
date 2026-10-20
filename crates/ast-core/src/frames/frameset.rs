@@ -354,6 +354,12 @@ impl FrameSet {
             let _ = map;
             return self.append_axes(new_frame);
         }
+        // C uses a FrameSet given as the Mapping as the Mapping from its
+        // base Frame to its current Frame (frameset.c AddFrame).
+        let map = match map.as_ref().as_any().downcast_ref::<FrameSet>() {
+            Some(fs) => fs.mapping(FrameRef::Base, FrameRef::Current)?,
+            None => map,
+        };
         let anchor_idx = self.resolve(anchor)?;
         // C's astAddFrame checks the Mapping's Nin against the anchor Frame
         // and its Nout against the new Frame (frameset.c AddFrame).
@@ -378,6 +384,10 @@ impl FrameSet {
                     new_frame.naxes()
                 ),
             ));
+        }
+        // C merges a FrameSet given as the new Frame.
+        if let Some(other) = new_frame.as_ref().as_any().downcast_ref::<FrameSet>() {
+            return self.add_frameset(anchor, map, other.clone());
         }
         let anchor_node = self.node_map[anchor_idx];
         let new_node = self.nnode;
