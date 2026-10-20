@@ -30,6 +30,8 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [SwitchMap converts its selector to `int` without a range check](#switchmap-converts-its-selector-to-int-without-a-range-check)
 - [Moc converts transformed grid bounds to `AstDim` without a range check](#moc-converts-transformed-grid-bounds-to-astdim-without-a-range-check)
 - [The Channel `Indent` documentation gives the wrong default](#the-channel-indent-documentation-gives-the-wrong-default)
+- [The ChebyMap documentation gives the Chebyshev recurrence with the wrong sign](#the-chebymap-documentation-gives-the-chebyshev-recurrence-with-the-wrong-sign)
+- [The `astTimeAdd` documentation describes LASTTOLMST and LMSTTOLAST as GMST conversions](#the-asttimeadd-documentation-describes-lasttolmst-and-lmsttolast-as-gmst-conversions)
 - [A Region's default uncertainty is not reset when the Region moves](#a-regions-default-uncertainty-is-not-reset-when-the-region-moves)
 - [`astLoadXphMap` leaks the projection-type string it reads](#astloadxphmap-leaks-the-projection-type-string-it-reads)
 - [Table's `Equal` compares only class names, and discards its column comparison](#tables-equal-compares-only-class-names-and-discards-its-column-comparison)
@@ -314,6 +316,30 @@ A C fix: change the Applicability line to "The default value is 3 for a basic Ch
 Related, and not a defect: with `Indent` 0, C still starts every line with one character, because the first column is not indentation.
 Each value writer starts its line with `set ? " " : "#"` (`WriteDouble` and its siblings, for example line 4435), so a value that was set gets a space and an unset default written as a hint gets `#`; `WriteBegin` and `WriteEnd` start with a space to keep that column aligned (line 4296).
 `astToString` (`Indent=0`) therefore writes one leading space on every line, and the port does the same.
+
+### The ChebyMap documentation gives the Chebyshev recurrence with the wrong sign
+
+C location: `chebymap.c`, the class prologue (line 60), the `astChebyMap` prologue (line 1679) and the comment above `PolyPowers`'s loop (line 1187).
+
+All three write the recurrence as `Tn+1(x') = 2.x'.Tn(x') + Tn-1(x')`.
+The Chebyshev polynomials of the first kind satisfy `Tn+1 = 2x Tn - Tn-1`, and the code subtracts: `t[ 1 ] = 2.0*x*t[ 0 ] - t[ -1 ]` (line 1189).
+
+Consequence: documentation only; the transformation is correct.
+
+The port's `ChebyMap` doc gives the recurrence with the minus sign, as the code computes it.
+A C fix: change `+ Tn-1(x')` to `- Tn-1(x')` in the three places.
+
+### The `astTimeAdd` documentation describes LASTTOLMST and LMSTTOLAST as GMST conversions
+
+C location: `timemap.c`, the `astTimeAdd` prologue's list of conversions (lines 3744-3745).
+
+The list says `"LASTTOLMST"` will "Convert a GMST MJD to a LMST MJD" and `"LMSTTOLAST"` will "Convert a LMST MJD to a GMST MJD", repeating the GMSTTOLMST and LMSTTOGMST lines above them.
+The code converts between LAST and LMST: `CvtString` describes them as "Convert LAST to LMST" and "Convert LMST to LAST" (line 1256 onwards), and `Transform` adds or subtracts the equation of the equinoxes.
+
+Consequence: documentation only.
+
+The port's `TimeCvtType::LastToLmst` and `LmstToLast` docs describe the LAST and LMST conversions the code performs.
+A C fix: change the two descriptions to "Convert a LAST MJD to a LMST MJD" and "Convert a LMST MJD to a LAST MJD".
 
 ### A Region's default uncertainty is not reset when the Region moves
 

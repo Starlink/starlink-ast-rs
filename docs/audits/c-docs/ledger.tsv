@@ -17,8 +17,8 @@ attribute	ReportLevel	channel.c			no
 attribute	Skip	channel.c			no
 attribute	Strict	channel.c			no
 function	astChannel	channel.c			no
-class	ChebyMap	chebymap.c	ChebyMap		yes
-function	astChebyDomain	chebymap.c	ChebyMap::domain		yes
+class	ChebyMap	chebymap.c	ChebyMap		yes	The C class and astChebyMap headers write the recurrence as Tn+1 = 2x Tn + Tn-1; the code subtracts Tn-1, as the port's doc says (docs/issues/c-library-quirks.md)
+function	astChebyDomain	chebymap.c	ChebyMap::domain		yes	C keeps no forward box when there are no forward coefficients and finds the forward domain by MapBox; the port always keeps the forward box given at creation (CH-8, docs/audits/mapping-c-parity.md; PLAN.md §2 row for that audit)
 function	astChebyMap	chebymap.c	ChebyMap::new		yes	C reads lbnd_i/ubnd_i whenever inverse coefficients are given and dereferences a NULL; the port refuses the call with Badin. C ignores lbnd_f/ubnd_f when there are no forward coefficients; the port requires them and keeps a forward box (CH-8, docs/audits/mapping-c-parity.md; PLAN.md §2 row for that audit)
 class	Circle	circle.c			no
 function	astCirclePars	circle.c			no
@@ -560,7 +560,7 @@ attribute	AlignTimeScale	timeframe.c			no
 attribute	TimeScale	timeframe.c			no
 function	astTimeFrame	timeframe.c			no
 class	TimeMap	timemap.c	TimeMap		yes
-function	astTimeAdd	timemap.c	TimeMap::add		yes	C takes the conversion as a string; the port takes TimeCvtType, whose variants carry the conversion list and TimeCvtType::from_code parses the strings; the C header describes LASTTOLMST and LMSTTOLAST as GMST/LMST conversions, the port documents what they do
+function	astTimeAdd	timemap.c	TimeMap::add		yes	C takes the conversion as a string; the port takes TimeCvtType, whose variants carry the conversion list and TimeCvtType::from_code parses the strings; the C header describes LASTTOLMST and LMSTTOLAST as GMST/LMST conversions, the port documents what they do (docs/issues/c-library-quirks.md)
 function	astTimeMap	timemap.c	TimeMap::new		yes	C's reserved flags argument is dropped
 class	TranMap	tranmap.c			no
 function	astTranMap	tranmap.c			no
@@ -570,7 +570,7 @@ class	UnitNormMap	unitnormmap.c			no
 function	astUnitNormMap	unitnormmap.c			no
 class	WcsMap	wcsmap.c	WcsMap		yes
 attribute	ProjP	wcsmap.c		merged	yes	PVi_m
-attribute	PVi_m	wcsmap.c	WcsMap::get_pv		yes	C refuses a change on a WcsMap with more than one reference; owned values have no shared references
+attribute	PVi_m	wcsmap.c	WcsMap::get_pv		yes	C refuses a change on a WcsMap with more than one reference; owned values have no shared references; the header's zero default for parameters the projection does not use holds only on the latitude axis, in C as in the port (wcsmap.c GetPV)
 attribute	PVMax	wcsmap.c	WcsMap::pv_max		yes	C returns -1 for an axis that is neither longitude nor latitude; the port returns None
 attribute	WcsType	wcsmap.c	WcsMap::projection		yes
 attribute	NatLat	wcsmap.c	WcsMap::nat_lat		yes

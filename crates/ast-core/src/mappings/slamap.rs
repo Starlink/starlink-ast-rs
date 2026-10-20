@@ -422,7 +422,9 @@ struct SlaConversion {
 /// // RA=0, Dec=0 in FK5 J2000 -> Galactic
 /// let pts = PointSet::from_rows([[0.0_f64, 0.0_f64]]);
 /// let out = sla.transform(&pts, true).unwrap();
-/// // Should give galactic coords for the FK5 origin.
+/// // The FK5 origin is at galactic l = 96.34 deg, b = -60.19 deg.
+/// assert!((out.axis(0)[0] - 1.6814).abs() < 1e-4);
+/// assert!((out.axis(1)[0] - -1.0505).abs() < 1e-4);
 /// ```
 #[derive(Debug, Clone)]
 pub struct SlaMap {

@@ -323,10 +323,13 @@ impl ChebyMap {
     /// These are the bounds given when the ChebyMap was created, with one
     /// value per input for the forward transformation and one per output for
     /// the inverse, both for the ChebyMap as it stands, after any inversion.
-    /// If the requested transformation has no bounding box (no coefficients
-    /// were given for it), the box is found by mapping the other
-    /// transformation's box with [`map_box`](Mapping::map_box), if that
-    /// transformation has one.
+    /// The original forward transformation always has the box given to
+    /// [`new`](ChebyMap::new), even when it has no coefficients.
+    /// The original inverse transformation has a box only when inverse
+    /// coefficients were given or fitted by
+    /// [`poly_tran`](ChebyMap::poly_tran); when the requested transformation
+    /// is an inverse without one, its box is found by mapping the forward box
+    /// with [`map_box`](Mapping::map_box).
     /// Bounds that cannot be found are [`BAD_VALUE`]; this is not an error.
     #[doc(alias = "astChebyDomain")]
     pub fn domain(&self, forward: bool) -> (Vec<f64>, Vec<f64>) {

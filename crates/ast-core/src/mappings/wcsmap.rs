@@ -206,6 +206,9 @@ impl WcsMap {
     ///
     /// let mut map = WcsMap::new(3, WcsProjection::Coe, 2, 3).unwrap();
     /// map.set_pv(3, 1, 40.0).unwrap();
+    /// assert_eq!(map.get_pv(3, 1).unwrap(), 40.0);
+    /// // A conic's reference point lies at the latitude PV3_1 gives.
+    /// assert!((map.nat_lat() - 40f64.to_radians()).abs() < 1e-15);
     /// ```
     ///
     /// # Errors
@@ -435,10 +438,13 @@ impl WcsMap {
     /// The `ProjP(m)` parameters of earlier versions of FITS-WCS, for `m`
     /// from 0 to 9, are parameters `m` of the latitude axis.
     ///
-    /// A parameter that has not been set takes the default the FITS-WCS paper
-    /// defines for it, or [`BAD_VALUE`] if the paper gives none (parameter 1
-    /// of the latitude axis for the conic and Bonne projections, for
-    /// instance).
+    /// A latitude-axis parameter that has not been set takes the default the
+    /// FITS-WCS paper defines for it.
+    /// Parameter 1 of the conic and Bonne projections has no default and
+    /// reads as [`BAD_VALUE`]; any other parameter with no default in the
+    /// paper, including one the projection does not use, reads as zero.
+    /// A longitude-axis parameter that has not been set reads as
+    /// [`BAD_VALUE`], except as follows.
     /// The paper reserves parameters 1 and 2 of the longitude axis for the
     /// native longitude and latitude of the projection's fiducial point, in
     /// degrees; unset, they default to [`nat_lon`](WcsMap::nat_lon) and
