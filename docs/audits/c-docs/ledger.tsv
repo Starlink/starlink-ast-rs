@@ -138,7 +138,7 @@ attribute	NormUnit	frame.c	Frame::norm_unit		yes	An axis out of range gives an e
 attribute	InternalUnit	frame.c	Frame::internal_unit		yes	An axis out of range gives an empty string where C reports AST__AXIIN (PLAN.md 2)
 attribute	Digits	frame.c	Frame::digits;Frame::axis_digits		yes	Plot is not ported, so the Plot applicability is dropped
 attribute	MatchEnd	frame.c	Frame::match_end		yes
-attribute	MaxAxes	frame.c	Frame::max_axes		yes
+attribute	MaxAxes	frame.c	Frame::max_axes		yes	C's header says the default may be reduced to stay consistent with MinAxes; DefaultMaxAxes raises it, as the port's doc says (docs/issues/c-library-quirks.md)
 attribute	MinAxes	frame.c	Frame::min_axes		yes
 attribute	Domain	frame.c	Frame::domain		yes
 attribute	Permute	frame.c	Frame::permute		yes

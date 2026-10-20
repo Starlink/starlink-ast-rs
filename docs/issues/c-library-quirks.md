@@ -66,6 +66,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [The `astSetActiveUnit` documentation says units with no Mapping between them raise an error](#the-astsetactiveunit-documentation-says-units-with-no-mapping-between-them-raise-an-error)
 - [The `Symbol` documentation says the default is at most 15 characters](#the-symbol-documentation-says-the-default-is-at-most-15-characters)
 - [The `Top` and `Bottom` documentation gives SkyFrame defaults for co-latitude axes](#the-top-and-bottom-documentation-gives-skyframe-defaults-for-co-latitude-axes)
+- [The `MaxAxes` documentation says its default may be reduced to stay consistent with MinAxes](#the-maxaxes-documentation-says-its-default-may-be-reduced-to-stay-consistent-with-minaxes)
 
 ### [Addressed here, and not going upstream](#addressed-here-and-not-going-upstream)
 
@@ -1013,6 +1014,18 @@ Consequence: documentation only.
 
 The port's `SkyFrame` mirrors the code, and `Frame::top` and `Frame::bottom` document only the latitude and longitude defaults.
 A C fix: drop the co-latitude clause from both prologues.
+
+### The `MaxAxes` documentation says its default may be reduced to stay consistent with MinAxes
+
+C location: `frame.c`, the `MaxAxes` attribute prologue (Notes); `DefaultMaxAxes`.
+
+The prologue says the default MaxAxes value may be reduced to remain consistent with the MinAxes value.
+`DefaultMaxAxes` raises it instead: `if ( result < min_axes ) result = min_axes;`, as it must, since MaxAxes may not be less than MinAxes.
+
+Consequence: documentation only.
+
+The port's `frame_attrs_match!` (`crates/ast-core/src/frames/frame_attrs.rs`) raises the default, and `Frame::max_axes` documents that.
+A C fix: change "reduced" to "increased" in the prologue.
 
 ## Addressed here, and not going upstream
 
