@@ -13,21 +13,40 @@ use crate::enclosing_rust_block;
 /// `trait` block (`"PermMap"` for `impl PermMap` and `impl Mapping for
 /// PermMap`, `"Mapping"` for `trait Mapping`), or the item's own name when
 /// there is no enclosing block.
+///
+/// An alias attribute the parser cannot read, or whose declaration it cannot
+/// resolve, is returned with an item of `<unparsed: line N>` or
+/// `<unresolved: line N>`, which no ledger row can name, so the gate fails on
+/// it rather than missing it.
 pub fn doc_aliases(src: &str) -> Vec<(String, String, String)> {
     let lines: Vec<&str> = src.lines().collect();
     let mut out = Vec::new();
     for (i, line) in lines.iter().enumerate() {
+        if line.trim_start().starts_with("//") || !mentions_alias(line) {
+            continue;
+        }
+        let unparsed = || {
+            (
+                "<unparsed>".to_string(),
+                format!("<unparsed: line {}>", i + 1),
+                "<unparsed>".to_string(),
+            )
+        };
         let Some(alias) = alias_of(line) else {
+            out.push(unparsed());
             continue;
         };
         let declaration = lines.iter().enumerate().skip(i + 1).find(|(_, l)| {
             let l = l.trim_start();
             !(l.is_empty() || l.starts_with("#[") || l.starts_with("//"))
         });
-        let Some((at, text)) = declaration else {
-            continue;
-        };
-        let Some(item) = declared_name(text) else {
+        let resolved = declaration.and_then(|(at, text)| Some((at, declared_name(text)?)));
+        let Some((at, item)) = resolved else {
+            out.push((
+                alias,
+                format!("<unresolved: line {}>", i + 1),
+                "<unresolved>".to_string(),
+            ));
             continue;
         };
         let owner = match enclosing_rust_block(src, at + 1) {
@@ -40,6 +59,15 @@ pub fn doc_aliases(src: &str) -> Vec<(String, String, String)> {
         out.push((alias, item, owner));
     }
     out
+}
+
+/// Whether a line carries, or opens, a `doc(alias …)` attribute.
+///
+/// Every such line has to surface in the result, parsed or not, so an alias
+/// the parser cannot read still reaches the gate instead of being invisible.
+fn mentions_alias(line: &str) -> bool {
+    let compact: String = line.split_whitespace().collect();
+    compact.contains("doc(alias") || compact.ends_with("#[doc(")
 }
 
 /// The alias in a line that is a `#[doc(alias = "…")]` attribute.
@@ -169,5 +197,27 @@ impl Mapping for PermMap {
     fn whitespace_in_the_attribute_is_tolerated() {
         let src = "  #[ doc( alias = \"Lbl\" ) ]\nenum E {}\n";
         assert_eq!(doc_aliases(src), [t("Lbl", "E", "E")]);
+    }
+
+    #[test]
+    fn an_alias_on_an_unresolvable_declaration_is_reported_not_dropped() {
+        let src =
+            "impl K {\n    #[doc(alias = \"astX\")]\n    #[cfg(unix)] pub fn f(&self) {}\n}\n";
+        let a = doc_aliases(src);
+        assert_eq!(a.len(), 1);
+        assert_eq!(a[0].0, "astX");
+        assert!(a[0].1.starts_with("<unresolved"), "{a:?}");
+    }
+
+    #[test]
+    fn a_multi_line_alias_attribute_is_reported_not_dropped() {
+        let src = "impl K {\n    #[doc(alias =\n        \"astX\")]\n    pub fn f(&self) {}\n}\n";
+        let a = doc_aliases(src);
+        assert_eq!(a.len(), 1, "{a:?}");
+        assert!(a[0].1.starts_with("<unparsed"), "{a:?}");
+        let src = "#[doc(\n    alias = \"astX\"\n)]\nfn f() {}\n";
+        let a = doc_aliases(src);
+        assert_eq!(a.len(), 1, "{a:?}");
+        assert!(a[0].1.starts_with("<unparsed"), "{a:?}");
     }
 }
