@@ -198,23 +198,103 @@ fn dtai_equal(a: f64, b: f64) -> bool {
 // TimeFrame
 // ---------------------------------------------------------------------------
 
-/// A coordinate frame for time coordinates.
+/// A time coordinate system description.
 ///
-/// `TimeFrame` is a 1-axis Frame representing time position. It supports
-/// a range of coordinate systems (MJD, JD, Julian epoch, Besselian epoch)
-/// and time scales (TAI, UTC, TT, TDB, UT1, GMST, LAST, LMST, TCB, TCG, LT).
+/// A TimeFrame is a specialized form of one-dimensional Frame which
+/// represents various coordinate systems used to describe positions in time.
+/// It represents a moment in time as a Modified Julian Date (MJD), a Julian
+/// Date (JD), a Besselian epoch or a Julian epoch, as its
+/// [`system`](TimeFrame::system) gives.
+/// Optionally a zero point can be set with
+/// [`set_time_origin`](TimeFrame::set_time_origin), which makes the
+/// TimeFrame represent time offsets from that point.
 ///
-/// Construct via [`TimeFrame::new`].
+/// Even though JD and MJD are defined in units of days, other units can be
+/// used through the [`unit`](Frame::unit), on the basis of simple scalings
+/// (60 seconds = 1 minute, 60 minutes = 1 hour, 24 hours = 1 day, 365.25
+/// days = 1 year).
+/// Likewise, Julian epochs can be described in units other than the usual
+/// years.
+/// Besselian epochs are always in (tropical) years.
+///
+/// The [`timescale`](TimeFrame::timescale) is the physical process used to
+/// define the rate of flow of time.
+/// MJD, JD and Julian epoch can represent a time in any supported time
+/// scale; a Besselian epoch only in TT (Terrestrial Time).
+/// The time scales include universal time and sidereal time, which strictly
+/// represent angles rather than time scales, but are often thought of as
+/// time scales.
+///
+/// A value is formatted either as a plain floating point value or as a
+/// Gregorian date; see [Formats](#formats).
+///
+/// The axis attributes of the Frame trait take axis index 1, the only axis.
+/// A TimeFrame always uses active units (see
+/// [`set_active_unit`](Frame::set_active_unit)), so a difference in the
+/// Unit of two TimeFrames is taken into account when they are converted,
+/// and changing the Unit of the current Frame of a FrameSet re-maps it
+/// within the FrameSet.
+/// The default [`label`](Frame::label), [`symbol`](Frame::symbol) and
+/// [`unit`](Frame::unit) suit the System.
+///
+/// Its Domain defaults to `"TIME"`, and its Title to the System's
+/// [`label`](TimeSystem::label), followed by the TimeScale in brackets when
+/// that is set (with the offset from UTC for Local Time), and by
+/// `"offset from <date>"` when a non-zero TimeOrigin is set and the Format
+/// is not a date format, as in
+/// `"Modified Julian Date [UTC] offset from 2000-01-01 12:00:00"`.
+/// The Digits are ignored when a value is formatted as a date and time.
+/// The observer's position ([`obs_lat`](Frame::obs_lat),
+/// [`obs_lon`](Frame::obs_lon) and [`obs_alt`](Frame::obs_alt)) is used when
+/// converting between some time scales (TDB, TCB, LMST and LAST).
+///
+/// # Attributes
+///
+/// In addition to the attributes common to all Frames, a TimeFrame has:
+///
+/// - [`align_timescale`](TimeFrame::align_timescale): time scale in which to
+///   align TimeFrames.
+/// - [`lt_offset`](TimeFrame::lt_offset): the offset of Local Time from
+///   UTC, in hours.
+/// - [`time_origin`](TimeFrame::time_origin): the zero point for TimeFrame
+///   axis values.
+/// - [`timescale`](TimeFrame::timescale): the time scale used by the
+///   TimeFrame.
+///
+/// [`current_time`](TimeFrame::current_time) gives the current system time
+/// as a value on the TimeFrame's axis.
+///
+/// # Formats
+///
+/// A TimeFrame [`format_str`](Frame::format_str) is either a Frame
+/// (`printf`) format, the default, or the `iso` syntax:
+///
+/// - A `printf` format such as `"%1.7G"` formats the value as it is: an
+///   offset from the TimeOrigin in units of the Unit.
+/// - A Format starting with `iso` converts the value to an absolute MJD,
+///   adding the TimeOrigin, and formats it as a Gregorian date
+///   `yyyy-mm-dd`.
+///   A precision after it (`iso.2`) appends the time of day with that
+///   many decimal places in the seconds (`iso.0` gives `hh:mm:ss`,
+///   `iso.2` gives `hh:mm:ss.ss`); without one, the date is rounded to
+///   the nearest day.
+///   Date and time are separated by a space, or by `T` if the Format
+///   ends with `T`.
+///   Digits is ignored for this syntax.
 ///
 /// # Examples
 ///
 /// ```
 /// use ast_core::frames::{Frame, TimeFrame, TimeSystem, TimeScale};
 ///
-/// let tf = TimeFrame::new(TimeSystem::Mjd);
+/// let mut tf = TimeFrame::new(TimeSystem::Mjd);
 /// assert_eq!(tf.naxes(), 1);
 /// assert_eq!(tf.system(), TimeSystem::Mjd);
 /// assert_eq!(tf.timescale(), TimeScale::Tai);
+/// assert_eq!(tf.domain(), "TIME");
+///
+/// tf.set_format_str(1, "iso.0").unwrap();
+/// assert_eq!(tf.format(1, 51544.5).unwrap(), "2000-01-01 12:00:00");
 /// ```
 #[derive(Debug, Clone)]
 pub struct TimeFrame {
@@ -264,9 +344,29 @@ impl TimeFrame {
         true
     }
 
-    /// Create a new `TimeFrame` with the given time coordinate system.
+    /// Create a TimeFrame with `system` set as its System.
     ///
-    /// Defaults: domain = "TIME", timescale = TAI (or TT for Bepoch).
+    /// Every other attribute has its default: the TimeScale is TT for a
+    /// Besselian epoch and TAI otherwise, and the TimeOrigin is zero.
+    /// When two TimeFrames are converted with
+    /// [`convert_to`](Frame::convert_to), account is taken of the time
+    /// systems, time scales, offsets and units they represent, and of the
+    /// AlignSystem and [`align_timescale`](TimeFrame::align_timescale).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ast_core::frames::{Frame, TimeFrame, TimeScale, TimeSystem};
+    /// use ast_core::mappings::Mapping;
+    ///
+    /// let mjd = TimeFrame::new(TimeSystem::Mjd);
+    /// let mut jd = TimeFrame::new(TimeSystem::Jd);
+    /// jd.set_timescale(TimeScale::Tai).unwrap();
+    /// let conv = mjd.convert_to(&jd, &[]).unwrap().unwrap();
+    /// let out = conv.tran1(&[51544.5], true).unwrap();
+    /// assert!((out[0] - 2451545.0).abs() < 1e-9);
+    /// ```
+    #[doc(alias = "astTimeFrame")]
     pub fn new(system: TimeSystem) -> Self {
         let timescale = if system == TimeSystem::Bepoch {
             TimeScale::Tt
@@ -295,8 +395,10 @@ impl TimeFrame {
         }
     }
 
-    /// A TimeFrame with no attribute set, as `astTimeFrame(" ")` makes one:
-    /// its System is MJD by default rather than by being set.
+    /// A TimeFrame with no attribute set: its System is MJD by default
+    /// rather than by being set, so [`test_system`](TimeFrame::test_system)
+    /// is false.
+    #[doc(alias = "astTimeFrame")]
     pub fn unset_system() -> Self {
         Self {
             system_set: false,
@@ -304,46 +406,61 @@ impl TimeFrame {
         }
     }
 
-    /// AlignSystem, set or default (MJD). Mirrors C `GetAlignSystem`
-    /// (timeframe.c:2858).
+    /// The time system in which to align TimeFrames: the AlignSystem
+    /// attribute, set or default.
+    ///
+    /// Default: [`TimeSystem::Mjd`].
+    // C: timeframe.c `GetAlignSystem`.
     pub fn align_system(&self) -> TimeSystem {
         self.align_system.unwrap_or(TimeSystem::Mjd)
     }
 
-    /// Set AlignSystem.
+    /// Set AlignSystem; see [`align_system`](TimeFrame::align_system).
     pub fn set_align_system(&mut self, sys: TimeSystem) {
         self.align_system = Some(sys);
     }
 
-    /// Whether AlignSystem is set.
+    /// Whether AlignSystem is set; see
+    /// [`align_system`](TimeFrame::align_system).
     pub fn test_align_system(&self) -> bool {
         self.align_system.is_some()
     }
 
-    /// Clear AlignSystem.
+    /// Clear AlignSystem; see [`align_system`](TimeFrame::align_system).
     pub fn clear_align_system(&mut self) {
         self.align_system = None;
     }
 
-    /// Clear AlignTimeScale.
+    /// Clear AlignTimeScale; see
+    /// [`align_timescale`](TimeFrame::align_timescale).
     pub fn clear_align_timescale(&mut self) {
         self.align_timescale = None;
     }
 
-    /// Clear LTOffset.
+    /// Clear LTOffset; see [`lt_offset`](TimeFrame::lt_offset).
     pub fn clear_lt_offset(&mut self) {
         self.lt_offset = None;
     }
 
-    /// TimeOrigin in the TimeFrame's current units, as C's `TimeOrigin`
-    /// attribute reports it (timeframe.c `GetTimeOriginCur`).
+    /// The TimeOrigin in the current [`unit`](Frame::unit); see
+    /// [`time_origin`](TimeFrame::time_origin), which gives it in the
+    /// System's default unit.
+    #[doc(alias = "TimeOrigin")]
+    // C: timeframe.c `GetTimeOriginCur`, which is what the TimeOrigin
+    // attribute reports.
     pub fn time_origin_cur(&self) -> f64 {
         self.get_time_origin_cur()
     }
 
-    /// Set TimeOrigin from a value in the TimeFrame's current units, as C's
-    /// `TimeOrigin` attribute reads a number with no units (timeframe.c:4748,
-    /// `ToUnits`).
+    /// Set the TimeOrigin from a value in the current
+    /// [`unit`](Frame::unit); see [`time_origin`](TimeFrame::time_origin).
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Badun` when the current Unit cannot be converted to the
+    ///   System's default unit.
+    // C: timeframe.c:4748 (`ToUnits`), the TimeOrigin setter for a number
+    // with no units.
     pub fn set_time_origin_cur(&mut self, value: f64) -> AstResult<()> {
         let def = self.system.default_units();
         let cur = self.unit_or_default().to_string();
@@ -360,20 +477,25 @@ impl TimeFrame {
         Ok(())
     }
 
-    /// Whether `System` has been explicitly set on this TimeFrame.
-    /// Mirrors C `astTestSystem`.
+    /// Whether the System is set; see [`system`](TimeFrame::system).
     pub fn test_system(&self) -> bool {
         self.system_set
     }
 
-    /// Clear System back to its class default. Mirrors C
-    /// `astClearSystem`: after clearing, `astGetSystem` returns the
-    /// TimeFrame default `AST__MJD` (timeframe.c:2911).
+    /// Clear the System, so that it is MJD by default; see
+    /// [`system`](TimeFrame::system).
     ///
-    /// As with [`Self::set_system`], the stored `TimeOrigin` is re-expressed
-    /// into the new (default) system (C `OriginSystem`). If the old system was
-    /// Besselian epoch, Unit and TimeScale are also cleared, since those are
-    /// constrained while System is Besselian epoch.
+    /// As with [`set_system`](TimeFrame::set_system), a set TimeOrigin is
+    /// re-expressed in the new System, and the Label, Symbol and Title are
+    /// cleared.
+    /// If the old System was a Besselian epoch, the Unit and TimeScale are
+    /// also cleared, since they are constrained while it is.
+    ///
+    /// # Errors
+    ///
+    /// Passes on any error from re-expressing the TimeOrigin.
+    // C: timeframe.c `ClearSystem` and `OriginSystem`; the default System
+    // is set at timeframe.c:2911.
     pub fn clear_system(&mut self) -> AstResult<()> {
         let oldsys = self.system;
         self.system = TimeSystem::Mjd;
@@ -392,66 +514,97 @@ impl TimeFrame {
         Ok(())
     }
 
-    /// Whether `TimeScale` has been explicitly set.
+    /// Whether the TimeScale is set; see
+    /// [`timescale`](TimeFrame::timescale).
     pub fn test_timescale(&self) -> bool {
         self.timescale_set
     }
 
-    /// Frame Title accessor. Returns the empty string when unset.
+    /// The Title, set or default; see [`Frame::title`] and, for the
+    /// default, [`TimeFrame`].
+    ///
+    /// # Errors
+    ///
+    /// Passes on the error of [`Frame::title`].
     pub fn title(&self) -> AstResult<String> {
         Frame::title(self)
     }
 
-    /// Whether Title has been explicitly set.
+    /// Whether the Title is set; see [`Frame::title`].
     pub fn test_title(&self) -> bool {
         self.attrs.title.is_some()
     }
 
-    /// Clear the Title attribute.
+    /// Clear the Title; see [`Frame::title`].
     pub fn clear_title(&mut self) {
         self.attrs.title = None;
     }
 
-    /// Whether `TimeOrigin` has been explicitly set.
+    /// Whether the TimeOrigin is set; see
+    /// [`time_origin`](TimeFrame::time_origin).
     pub fn test_time_origin(&self) -> bool {
         self.time_origin.is_some()
     }
 
-    /// Whether `LtOffset` has been explicitly set.
+    /// Whether LTOffset is set; see [`lt_offset`](TimeFrame::lt_offset).
     pub fn test_lt_offset(&self) -> bool {
         self.lt_offset.is_some()
     }
 
-    /// Whether `AlignTimeScale` has been explicitly set.
+    /// Whether AlignTimeScale is set; see
+    /// [`align_timescale`](TimeFrame::align_timescale).
     pub fn test_align_timescale(&self) -> bool {
         self.align_timescale.is_some()
     }
 
     // --- TimeFrame-specific attributes ---
 
-    /// Return the frame identification string.
+    /// The Ident, or an empty string when it is not set; see
+    /// [`Frame::ident`].
     pub fn ident(&self) -> &str {
         self.attrs.ident.as_deref().unwrap_or("")
     }
 
-    /// Set the frame identification string. Mirrors `astSetIdent`.
+    /// Set the Ident; see [`Frame::ident`].
     pub fn set_ident(&mut self, ident: impl Into<String>) {
         let s = ident.into();
         self.attrs.ident = Some(s);
     }
 
-    /// Return the time coordinate system.
+    /// The time coordinate system: the System attribute, set or default.
+    ///
+    /// The systems, with the default Unit of each in parentheses, are
+    /// [`Mjd`](TimeSystem::Mjd), Modified Julian Date (d);
+    /// [`Jd`](TimeSystem::Jd), Julian Date (d);
+    /// [`Jepoch`](TimeSystem::Jepoch), Julian epoch (yr); and
+    /// [`Bepoch`](TimeSystem::Bepoch), Besselian epoch (yr).
+    /// Other units are allowed for all but a Besselian epoch, converted by
+    /// simple scaling (1 yr = 365.25 d, 1 d = 24 h, 1 h = 60 min,
+    /// 1 min = 60 s).
+    /// Besselian epochs use tropical years of 365.2422 days, so selecting
+    /// one sets the Unit to `"yr"` and the TimeScale to TT, and a later
+    /// change of either is an error.
+    /// [`TimeSystem::parse`] reads a System name.
+    ///
+    /// Default: [`TimeSystem::Mjd`].
     pub fn system(&self) -> TimeSystem {
         self.system
     }
 
-    /// Set the time coordinate system.
+    /// Set the System; see [`system`](TimeFrame::system).
     ///
-    /// `TimeOrigin` records an absolute instant, so changing the system
-    /// re-expresses the stored origin into the new system (C `SetSystem`
-    /// → `OriginSystem`). Besselian epoch additionally forces Unit="yr" and
-    /// TimeScale=TT, applied (like C) before the system change so the origin is
-    /// first brought onto the TT timescale in the old system.
+    /// The TimeOrigin records an absolute instant, so a set TimeOrigin is
+    /// re-expressed in the new System.
+    /// A Besselian epoch first sets the Unit to `"yr"` and the TimeScale to
+    /// TT, so the TimeOrigin is first brought onto TT in the old System.
+    /// A change of System clears the Label, Symbol and Title, whose defaults
+    /// depend on it.
+    ///
+    /// # Errors
+    ///
+    /// Passes on any error from setting the Unit or TimeScale, or from
+    /// re-expressing the TimeOrigin.
+    // C: timeframe.c `SetSystem` and `OriginSystem`.
     pub fn set_system(&mut self, sys: TimeSystem) -> AstResult<()> {
         // Besselian epoch is defined in terms of TT and is always expressed in
         // years; set those before changing the system (C SetSystem).
@@ -475,20 +628,45 @@ impl TimeFrame {
         Ok(())
     }
 
-    /// Return the time scale.
+    /// The time scale to which the axis values refer: the TimeScale
+    /// attribute, set or default.
+    ///
+    /// The time scales are the [`TimeScale`] variants: TAI, UTC, UT1, GMST,
+    /// LAST, LMST, TT, TDB, TCB, TCG and LT, Local Time, whose offset from
+    /// UTC is the [`lt_offset`](TimeFrame::lt_offset).
+    /// [`TimeScale::parse`] reads a name.
+    ///
+    /// The time scales fall into two groups.
+    /// UT1, GMST, LAST and LMST define time by the orientation of the Earth;
+    /// the others define it by an atomic process.
+    /// Since the rate of rotation of the Earth varies unpredictably,
+    /// converting between time scales in different groups relies on the
+    /// [`dut1`](Frame::dut1), the difference between UT1 and UTC in seconds,
+    /// which defaults to zero.
+    ///
+    /// UTC should ideally be expressed with separate hours, minutes and
+    /// seconds fields if leap seconds are to be taken into account.
+    /// A TimeFrame represents each moment by one floating point number, so a
+    /// UTC time within a leap second is ambiguous, and converting it to
+    /// another time scale may be in error by up to one second.
+    ///
+    /// Default: TT when the System is a Besselian epoch, else TAI.
+    #[doc(alias = "TimeScale")]
     pub fn timescale(&self) -> TimeScale {
         self.timescale
     }
 
-    /// Set the time scale.
+    /// Set the TimeScale; see [`timescale`](TimeFrame::timescale).
     ///
-    /// `TimeOrigin` records an absolute instant, so changing the timescale
-    /// re-expresses the stored origin into the new timescale (C `SetTimeScale`
-    /// → `OriginScale`). The re-expression happens before the new timescale is
-    /// stored, so it converts from the current timescale to `ts`.
+    /// The TimeOrigin records an absolute instant, so a set TimeOrigin is
+    /// re-expressed from the current time scale to `ts`.
     ///
-    /// A Besselian epoch is defined in terms of TT, so with System BEPOCH
-    /// any other timescale is `AST__ATTIN` (C `SetTimeScale`).
+    /// # Errors
+    ///
+    /// - `ErrorCode::Attin` when the System is a Besselian epoch, which is
+    ///   defined in terms of TT, and `ts` is not TT.
+    /// - Passes on any error from re-expressing the TimeOrigin.
+    // C: timeframe.c `SetTimeScale` and `OriginScale`.
     pub fn set_timescale(&mut self, ts: TimeScale) -> AstResult<()> {
         if self.system == TimeSystem::Bepoch && ts != TimeScale::Tt {
             return Err(AstError::new(
@@ -507,12 +685,15 @@ impl TimeFrame {
         Ok(())
     }
 
-    /// Clear the time scale, reverting to the system default (TT for Besselian
-    /// epoch, otherwise TAI).
+    /// Clear the TimeScale; see [`timescale`](TimeFrame::timescale).
     ///
-    /// Mirrors C `astClearTimeScale`: unless the System is Besselian epoch
-    /// (whose timescale is always TT), the stored `TimeOrigin` is re-expressed
-    /// into the default TAI timescale before the timescale is cleared.
+    /// Unless the System is a Besselian epoch, a set TimeOrigin is first
+    /// re-expressed in TAI, the default.
+    ///
+    /// # Errors
+    ///
+    /// Passes on any error from re-expressing the TimeOrigin.
+    // C: timeframe.c `ClearTimeScale`.
     pub fn clear_timescale(&mut self) -> AstResult<()> {
         if self.system != TimeSystem::Bepoch {
             self.origin_scale(TimeScale::Tai)?;
@@ -526,10 +707,25 @@ impl TimeFrame {
         Ok(())
     }
 
-    /// Return the alignment time scale.
+    /// The time scale in which to align TimeFrames: the AlignTimeScale
+    /// attribute, set or default.
     ///
-    /// Defaults to UT1 if the current timescale is an earth-rotation scale
-    /// (UT1, GMST, LAST, LMST), otherwise defaults to TAI.
+    /// Controls how a TimeFrame behaves as the template of
+    /// [`find_frame_template`](Frame::find_frame_template) or
+    /// [`convert_to`](Frame::convert_to) when matched against another
+    /// TimeFrame.
+    /// The Mapping found between two TimeFrames is made of these steps, in
+    /// order:
+    ///
+    /// 1. from the target's System to the
+    ///    [`align_system`](TimeFrame::align_system);
+    /// 2. from the target's time scale to the AlignTimeScale;
+    /// 3. from the AlignTimeScale to the template's time scale;
+    /// 4. from the AlignSystem to the template's System.
+    ///
+    /// Default: UT1 when the [`timescale`](TimeFrame::timescale) is UT1,
+    /// GMST, LMST or LAST, else TAI.
+    #[doc(alias = "AlignTimeScale")]
     pub fn align_timescale(&self) -> TimeScale {
         self.align_timescale.unwrap_or_else(|| {
             if self.timescale.is_earth_rotation() {
@@ -540,16 +736,28 @@ impl TimeFrame {
         })
     }
 
-    /// Set the alignment time scale.
+    /// Set AlignTimeScale; see
+    /// [`align_timescale`](TimeFrame::align_timescale).
     pub fn set_align_timescale(&mut self, ts: TimeScale) {
         self.align_timescale = Some(ts);
     }
 
-    /// The current system time as a value on this TimeFrame's axis, in its
-    /// System, TimeScale, TimeOrigin and Unit. Mirrors `astCurrentTime`,
-    /// which reads the clock to the whole second (`time()`), so the value
-    /// changes once a second. Fails with `AST__INCTS` when UTC cannot be
-    /// converted to the TimeFrame's TimeScale.
+    /// The current system time, as a value on this TimeFrame's axis.
+    ///
+    /// The value is to be read with the TimeFrame's attributes: its System,
+    /// TimeOrigin, LTOffset, TimeScale and Unit.
+    /// The system clock is taken to count SI seconds since 1970-01-01
+    /// 00:00:00 UTC, as POSIX defines it, to a resolution of one second, so
+    /// the value changes once a second.
+    /// Any inaccuracy in the system clock is reflected in the value.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Incts` when UTC cannot be converted to the
+    ///   TimeFrame's TimeScale.
+    /// - Passes on the error of [`Frame::unit`].
+    #[doc(alias = "astCurrentTime")]
+    // C: timeframe.c `CurrentTime`, which reads `time()`.
     pub fn current_time(&self) -> AstResult<f64> {
         // C takes `difftime( time( NULL ), 0 )`, whole seconds since 1970.
         let systime = std::time::SystemTime::now()
@@ -588,17 +796,32 @@ impl TimeFrame {
         transform_scalar(map.as_ref(), systime, true)
     }
 
-    /// Return the time origin (in default units for current system).
+    /// The zero point for TimeFrame axis values: the TimeOrigin attribute,
+    /// set or default, in the System's default unit (days for MJD and JD,
+    /// years for the epochs), whatever the current Unit.
+    ///
+    /// The origin from which all time values are measured.
+    /// The default, zero, makes the TimeFrame describe absolute time values
+    /// in its [`system`](TimeFrame::system); a TimeFrame describing elapsed
+    /// time since some origin has TimeOrigin set to that origin.
+    /// The stored value is converted whenever the System or TimeScale
+    /// changes, so that it keeps referring to the same moment in time.
+    /// [`time_origin_cur`](TimeFrame::time_origin_cur) gives it in the
+    /// current [`unit`](Frame::unit).
+    ///
+    /// Default: 0.
+    #[doc(alias = "TimeOrigin")]
     pub fn time_origin(&self) -> f64 {
         self.time_origin.unwrap_or(0.0)
     }
 
-    /// Set the time origin (in default units for current system).
+    /// Set the TimeOrigin, in the System's default unit; see
+    /// [`time_origin`](TimeFrame::time_origin).
     pub fn set_time_origin(&mut self, origin: f64) {
         self.time_origin = Some(origin);
     }
 
-    /// Clear the time origin.
+    /// Clear the TimeOrigin; see [`time_origin`](TimeFrame::time_origin).
     pub fn clear_time_origin(&mut self) {
         self.time_origin = None;
     }
@@ -616,8 +839,7 @@ impl TimeFrame {
         Ok(&mut self.axis)
     }
 
-    /// Return the effective axis Unit string: the explicitly-set value, or
-    /// the current system's default units.
+    /// The axis Unit: the one set, or the System's default unit.
     pub fn unit_or_default(&self) -> &str {
         self.axis
             .unit
@@ -685,25 +907,37 @@ impl TimeFrame {
         result
     }
 
-    /// Return the Local Time offset from UTC (hours).
+    /// The offset from UTC to Local Time, in hours: the LTOffset attribute,
+    /// set or default.
+    ///
+    /// Fractional hours are allowed.
+    /// It is positive for time zones east of Greenwich, and is used as
+    /// given, with no correction for daylight saving.
+    /// It applies to the Local Time time scale, [`TimeScale::Lt`].
+    ///
+    /// Default: 0.
+    #[doc(alias = "LTOffset")]
     pub fn lt_offset(&self) -> f64 {
         self.lt_offset.unwrap_or(0.0)
     }
 
-    /// Set the Local Time offset from UTC (hours).
+    /// Set LTOffset, in hours; see [`lt_offset`](TimeFrame::lt_offset).
     pub fn set_lt_offset(&mut self, hours: f64) {
         self.lt_offset = Some(hours);
     }
 
-    /// Return the epoch as an absolute TDB MJD.
+    /// The Epoch, set or default, as a TDB Modified Julian Date; see
+    /// [`Frame::epoch_mjd`].
     ///
-    /// Mirrors C `timeframe.c::GetEpoch` (2458):
-    /// - if the Epoch attribute is set, return it;
-    /// - otherwise, if TimeOrigin is set, return the TimeOrigin converted to
-    ///   an absolute TDB MJD (earth-rotation timescales are routed through
-    ///   UT1 assuming DUT1 == 0, then UTC → TDB, since the default Epoch is
-    ///   not critical and DUT1 may be unknown);
-    /// - otherwise, the default J2000.0 (MJD 51544.5).
+    /// A time axis is not characterized by one Epoch, so a TimeFrame makes
+    /// no use of it, though user code may use it for a "typical" time.
+    ///
+    /// Default: the TimeOrigin as a TDB MJD when a TimeOrigin is set, else
+    /// J2000.0 (MJD 51544.5).
+    /// For a time scale defined by the Earth's rotation, the conversion
+    /// takes UT1 as UTC, since the default is not critical and DUT1 may be
+    /// unknown.
+    // C: timeframe.c `GetEpoch` (2458).
     pub fn epoch_mjd(&self) -> f64 {
         if let Some(e) = self.attrs.epoch {
             return e;
@@ -744,8 +978,9 @@ impl TimeFrame {
         transform_scalar(map.as_ref(), origin, true)
     }
 
-    /// Return the epoch as a decimal year (Besselian if MJD < J1984,
-    /// Julian otherwise — mirrors `frame.c::Dump`).
+    /// The Epoch as a decimal year: Besselian before 1984, Julian from
+    /// then on; see [`epoch_mjd`](TimeFrame::epoch_mjd).
+    // C: frame.c `Dump`.
     pub fn epoch_year(&self) -> f64 {
         let mjd = self.epoch_mjd();
         if mjd < crate::pal::epj2d(1984.0) {
@@ -755,76 +990,80 @@ impl TimeFrame {
         }
     }
 
-    /// Whether the Epoch attribute has been explicitly set. Mirrors
-    /// `astTestEpoch`.
+    /// Whether the Epoch is set; see [`epoch_mjd`](TimeFrame::epoch_mjd).
     pub fn test_epoch(&self) -> bool {
         self.attrs.epoch.is_some()
     }
 
-    /// Set the epoch as a TDB Modified Julian Date.
+    /// Set the Epoch as a TDB Modified Julian Date; see
+    /// [`epoch_mjd`](TimeFrame::epoch_mjd).
+    /// `BAD_VALUE` clears it.
     pub fn set_epoch_mjd(&mut self, mjd: f64) {
         // A bad Epoch is no Epoch (frame.c `TestEpoch` is `!= AST__BAD`).
         self.attrs.epoch = (mjd != crate::constants::BAD_VALUE).then_some(mjd);
     }
 
-    /// Set the epoch as a decimal year (IAU 1984 rule:
-    /// year < 1984 ⇒ Besselian, ≥ 1984 ⇒ Julian).
+    /// Set the Epoch from a decimal year, Besselian before 1984 and Julian
+    /// from then on; see [`epoch_mjd`](TimeFrame::epoch_mjd).
     pub fn set_epoch_year(&mut self, year: f64) {
         self.attrs.epoch = Some(crate::frames::date_time::year_to_mjd_iau1984(year));
     }
 
-    /// Set the title.
+    /// Set the Title; see [`Frame::title`].
     pub fn set_title(&mut self, title: &str) {
         self.attrs.title = Some(title.to_string());
     }
 
-    /// Set the domain.
+    /// Set the Domain, removing white space and upper-casing letters; see
+    /// [`Frame::domain`].
     pub fn set_domain(&mut self, domain: &str) {
         self.attrs.domain = Some(super::frame_attrs::clean_domain(domain));
     }
 
-    /// Test whether the domain attribute has been explicitly set.
-    /// Mirrors C's `astTestDomain` for `TimeFrame`.
+    /// Whether the Domain is set; see [`Frame::domain`].
     pub fn test_domain(&self) -> bool {
         self.attrs.domain.is_some()
     }
 
-    /// Clear the domain attribute, reverting to the default `"TIME"`.
+    /// Clear the Domain, so that it is `"TIME"` by default; see
+    /// [`Frame::domain`].
     pub fn clear_domain(&mut self) {
         self.attrs.domain = None;
     }
 
-    /// Set the observer geodetic latitude (radians).
+    /// Set ObsLat, in radians; see [`Frame::obs_lat`].
     pub fn set_obs_lat(&mut self, lat: f64) {
         self.attrs.obs_lat = Some(lat);
     }
 
-    /// Set the observer geodetic longitude (radians).
+    /// Set ObsLon, in radians; see [`Frame::obs_lon`].
     pub fn set_obs_lon(&mut self, lon: f64) {
         self.attrs.obs_lon = Some(lon);
     }
 
-    /// Set the observer altitude (metres).
+    /// Set ObsAlt, in meters; see [`Frame::obs_alt`].
     pub fn set_obs_alt(&mut self, alt: f64) {
         self.attrs.obs_alt = Some(alt);
     }
 
-    /// Return the DUT1 value (UT1-UTC in seconds).
+    /// The Dut1, UT1-UTC in seconds, or 0 when it is not set; see
+    /// [`Frame::dut1`].
     pub fn get_dut1(&self) -> f64 {
         self.attrs.dut1.unwrap_or(0.0)
     }
 
-    /// Set the DUT1 value (UT1-UTC in seconds).
+    /// Set the Dut1, in seconds; see [`Frame::dut1`].
     pub fn set_dut1(&mut self, dut1: f64) {
         self.attrs.dut1 = Some(dut1);
     }
 
-    /// Return the DTAI value (TAI-UTC in seconds).
+    /// The Dtai, TAI-UTC in seconds, or `BAD_VALUE` when it is not set; see
+    /// [`Frame::dtai`].
     pub fn get_dtai(&self) -> f64 {
         self.attrs.dtai.unwrap_or(BAD_VALUE)
     }
 
-    /// Set the DTAI value (TAI-UTC in seconds).
+    /// Set the Dtai, in seconds; see [`Frame::dtai`].
     pub fn set_dtai(&mut self, dtai: f64) {
         self.attrs.dtai = Some(dtai);
     }
@@ -1461,11 +1700,14 @@ fn date_format(fmt: &str) -> (bool, i32, char) {
 // ---------------------------------------------------------------------------
 
 impl Frame for TimeFrame {
-    /// A TimeFrame always has active units and reports ActiveUnit as unset
-    /// (timeframe.c `GetActiveUnit`, `TestActiveUnit`).
+    /// Always true: a TimeFrame always uses active units, and reports the
+    /// flag as not set.
+    // C: timeframe.c `GetActiveUnit`, `TestActiveUnit`.
     fn get_active_unit(&self) -> bool {
         true
     }
+    /// Does nothing: a TimeFrame always uses active units; see
+    /// [`get_active_unit`](TimeFrame::get_active_unit).
     fn set_active_unit(&mut self, _value: bool) {}
     fn test_active_unit(&self) -> bool {
         false
@@ -1487,7 +1729,16 @@ impl Frame for TimeFrame {
         (self, axis)
     }
 
-    /// Mirrors C `TimeFrame::GetLabel` (timeframe.c:2579).
+    /// The Label, set or default; see [`Frame::label`].
+    ///
+    /// The default is the System's [`label`](TimeSystem::label), such as
+    /// `"Modified Julian Date"`, followed by `" offset from <date>"` when a
+    /// non-zero TimeOrigin is set; with a date Format it is `"Date/Time"`,
+    /// or `"Date"` for a Format with no time of day.
+    /// A Unit set to a function of the default unit rewrites it, so
+    /// `"log(d)"` gives `"log( Modified Julian Date )"`, and for Local Time
+    /// the offset from UTC is appended, as in `" (UTC+2)"`.
+    // C: timeframe.c `GetLabel` (2579).
     fn label(&self, axis: usize) -> AstResult<String> {
         Ok(match &self.ax(axis)?.label {
             Some(label) => label.clone(),
@@ -1495,7 +1746,12 @@ impl Frame for TimeFrame {
         })
     }
 
-    /// Mirrors C `TimeFrame::GetSymbol` (timeframe.c:2741).
+    /// The Symbol, set or default; see [`Frame::symbol`].
+    ///
+    /// The default is `"MJD"`, `"JD"`, `"BEP"` or `"JEP"` for the System,
+    /// rewritten for a Unit set to a function of the default unit, as the
+    /// [`label`](TimeFrame::label) is.
+    // C: timeframe.c `GetSymbol` (2741).
     fn symbol(&self, axis: usize) -> AstResult<String> {
         if let Some(symbol) = &self.ax(axis)?.symbol {
             return Ok(symbol.clone());
@@ -1513,7 +1769,13 @@ impl Frame for TimeFrame {
         ))
     }
 
-    /// Mirrors C `TimeFrame::GetUnit` (timeframe.c:3253).
+    /// The Unit, set or default; see [`Frame::unit`].
+    ///
+    /// The default is the System's default unit, as
+    /// [`system`](TimeFrame::system) lists.
+    /// A Unit that does not suit the System, such as `"km"`, can be set, but
+    /// a conversion that needs it then fails with `ErrorCode::Badun`.
+    // C: timeframe.c `GetUnit` (3253).
     fn unit(&self, axis: usize) -> AstResult<String> {
         Ok(match &self.ax(axis)?.unit {
             Some(unit) => unit.clone(),
@@ -1521,8 +1783,14 @@ impl Frame for TimeFrame {
         })
     }
 
-    /// Mirrors C `TimeFrame::SetUnit` (timeframe.c:4958): a Besselian
-    /// epoch is in years and takes no other Unit.
+    /// Set the Unit; see [`unit`](TimeFrame::unit).
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Axiin` when `axis` is not 1.
+    /// - `ErrorCode::Attin` when the System is a Besselian epoch, which is
+    ///   in years, and `unit` is not `"yr"`.
+    // C: timeframe.c `SetUnit` (4958).
     fn set_unit(&mut self, axis: usize, unit: &str) -> AstResult<()> {
         self.ax(axis)?;
         if self.system == TimeSystem::Bepoch && unit != "yr" {

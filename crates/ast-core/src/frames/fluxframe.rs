@@ -64,9 +64,10 @@ impl FluxSystem {
         }
     }
 
-    /// Human-readable label for this system: C's `SystemLabel`
-    /// (fluxframe.c:3212) with its first letter capitalised, which is how C
-    /// reports the default Label and Title.
+    /// Human-readable label for this system, which is the default Label and
+    /// starts the default Title.
+    // C: fluxframe.c `SystemLabel` (3212), with its first letter
+    // capitalized as C's default Label and Title have it.
     pub fn label(&self) -> &'static str {
         match self {
             Self::FluxDen => "Flux density",
@@ -110,16 +111,17 @@ impl FluxSystem {
 
     /// Whether this system is a surface-brightness system (`SBright` /
     /// `SBrightW`) rather than a flux-density system (`FluxDen` /
-    /// `FluxDenW`). Mirrors the `sb_in`/`sb_out` flags in
-    /// `fluxframe.c::MakeFluxMapping`.
+    /// `FluxDenW`).
+    // C: the `sb_in`/`sb_out` flags in fluxframe.c `MakeFluxMapping`.
     pub fn is_surface_brightness(&self) -> bool {
         matches!(self, Self::SBright | Self::SBrightW)
     }
 
     /// The corresponding flux-density system, collapsing a surface-brightness
     /// system onto its flux-density counterpart (`SBright` → `FluxDen`,
-    /// `SBrightW` → `FluxDenW`). Mirrors the `sys_in`/`sys_out` mapping in
-    /// `fluxframe.c::MakeFluxMapping` (lines 2086-2112).
+    /// `SBrightW` → `FluxDenW`).
+    // C: the `sys_in`/`sys_out` mapping in fluxframe.c `MakeFluxMapping`
+    // (2086-2112).
     pub fn density_flux_system(&self) -> Self {
         match self {
             Self::SBright => Self::FluxDen,
@@ -128,9 +130,10 @@ impl FluxSystem {
         }
     }
 
-    /// The spectral [`SpecSystem`](crate::frames::SpecSystem) describing this flux system's density
-    /// axis: frequency for "per Hz" systems, wavelength for "per Angstrom"
-    /// systems. Mirrors C `DensitySystem` (fluxframe.c:537).
+    /// The spectral [`SpecSystem`](crate::frames::SpecSystem) describing
+    /// this flux system's density axis: frequency for "per Hz" systems,
+    /// wavelength for "per Angstrom" systems.
+    // C: fluxframe.c `DensitySystem` (537).
     pub fn density_spec_system(&self) -> super::specframe::SpecSystem {
         if self.is_per_frequency() {
             super::specframe::SpecSystem::Freq
@@ -140,8 +143,8 @@ impl FluxSystem {
     }
 
     /// The default unit for this flux system's density axis: "Hz" for "per
-    /// frequency" systems, "Angstrom" for "per wavelength" systems. Mirrors
-    /// C `DensityUnit` (fluxframe.c:602).
+    /// frequency" systems, "Angstrom" for "per wavelength" systems.
+    // C: fluxframe.c `DensityUnit` (602).
     pub fn density_unit(&self) -> &'static str {
         if self.is_per_frequency() {
             "Hz"
@@ -155,14 +158,32 @@ impl FluxSystem {
 // FluxFrame
 // ---------------------------------------------------------------------------
 
-/// A coordinate frame for flux (brightness) measurements.
+/// A measured flux description.
 ///
-/// `FluxFrame` is a 1-axis Frame representing measured flux or surface
-/// brightness. It supports flux density per unit frequency or per unit
-/// wavelength. All flux values are assumed to be measured at the same
-/// spectral position (given by the `spec_val` attribute).
+/// A FluxFrame is a specialized form of one-dimensional Frame which
+/// represents various systems used to represent the signal level in an
+/// observation.
+/// The particular system is its [`system`](FluxFrame::system), qualified as
+/// necessary by other attributes such as the units.
 ///
-/// Construct via [`FluxFrame::new`].
+/// All flux values are assumed to be measured at the same frequency or
+/// wavelength, the [`spec_val`](FluxFrame::spec_val), so this class is more
+/// appropriate for use with images than with spectra.
+///
+/// The axis attributes of the Frame trait take axis index 1, the only axis.
+/// A FluxFrame always uses active units (see
+/// [`set_active_unit`](Frame::set_active_unit)), so a difference in the
+/// Unit of two FluxFrames is taken into account when they are converted.
+/// Its Domain defaults to `"FLUX"`, and its Title to the System's
+/// [`label`](FluxSystem::label), followed by `" at = <SpecVal> <unit>"`
+/// when a SpecVal is known, as in `"Flux density at = 1000 GHz"`.
+///
+/// # Attributes
+///
+/// In addition to the attributes common to all Frames, a FluxFrame has:
+///
+/// - [`spec_val`](FluxFrame::spec_val): the spectral position at which the
+///   flux values are measured.
 ///
 /// # Examples
 ///
@@ -237,9 +258,20 @@ impl FluxFrame {
         true
     }
 
-    /// Create a new `FluxFrame` with the given flux coordinate system.
+    /// Create a FluxFrame in the flux system `system`, with no SpecVal.
     ///
-    /// Defaults: domain = "FLUX".
+    /// `system` is set as the System unless it is
+    /// [`FluxDen`](FluxSystem::FluxDen), the default, which leaves the System
+    /// unset, as [`unset_system`](FluxFrame::unset_system) does, so that it
+    /// follows a Unit that is set.
+    /// [`with_spec_val`](FluxFrame::with_spec_val) also gives the spectral
+    /// position.
+    ///
+    /// When two FluxFrames are converted with
+    /// [`convert_to`](Frame::convert_to), account is taken of the flux
+    /// systems they represent, of their AlignSystem and other attributes,
+    /// and of any difference in their Units.
+    #[doc(alias = "astFluxFrame")]
     pub fn new(system: FluxSystem) -> Self {
         Self {
             attrs: super::frame_attrs::FrameAttrs::default(),
@@ -259,17 +291,37 @@ impl FluxFrame {
         }
     }
 
-    /// A FluxFrame with no attribute set, as `astFluxFrame( AST__BAD, NULL,
-    /// " " )` makes one.
+    /// A FluxFrame with no attribute set and no SpecVal.
+    #[doc(alias = "astFluxFrame")]
     pub fn unset_system() -> Self {
         Self::new(FluxSystem::FluxDen)
     }
 
-    /// A FluxFrame measured at the spectral position `spec_val`, given in
-    /// the coordinate system of `spec_frame`, as `astFluxFrame( specval,
-    /// specfrm, " " )` makes one (fluxframe.c `astInitFluxFrame`):
-    /// `spec_val` is the default SpecVal rather than a set one, and the
-    /// System is unset, so it follows a Unit when one is set.
+    /// Create a FluxFrame measured at the spectral position `spec_val`,
+    /// given in the spectral system and units of `spec_frame`.
+    ///
+    /// `spec_val` becomes the default [`spec_val`](FluxFrame::spec_val)
+    /// rather than a set one, and the System is unset, so it follows a Unit
+    /// when one is set.
+    /// `spec_val` may be `BAD_VALUE` if the spectral position is unknown,
+    /// but then [`convert_to`](Frame::convert_to) may find no conversion to
+    /// another FluxFrame.
+    /// With no `spec_frame`, `spec_val` is a frequency in Hz for a "per Hz"
+    /// System and a wavelength in Angstrom for a "per Angstrom" one.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ast_core::frames::{Frame, FluxFrame, FluxSystem, SpecFrame, SpecSystem};
+    ///
+    /// let ff = FluxFrame::with_spec_val(1000.0, Some(SpecFrame::new(SpecSystem::Freq)));
+    /// assert_eq!(ff.spec_val(), 1000.0);
+    /// assert!(!ff.test_spec_val());
+    /// assert_eq!(ff.system().unwrap(), FluxSystem::FluxDen);
+    /// assert_eq!(ff.title().unwrap(), "Flux density at = 1000 GHz");
+    /// ```
+    #[doc(alias = "astFluxFrame")]
+    // C: fluxframe.c `astInitFluxFrame`.
     pub fn with_spec_val(spec_val: f64, spec_frame: Option<super::specframe::SpecFrame>) -> Self {
         let mut f = Self::unset_system();
         f.def_spec_val = spec_val;
@@ -277,93 +329,133 @@ impl FluxFrame {
         f
     }
 
-    /// AlignSystem, set or default (flux density).
+    /// The flux system in which to align FluxFrames: the AlignSystem
+    /// attribute, set or default.
+    ///
+    /// Default: [`FluxSystem::FluxDen`].
     pub fn align_system(&self) -> FluxSystem {
         self.align_system.unwrap_or(FluxSystem::FluxDen)
     }
 
-    /// Set AlignSystem.
+    /// Set AlignSystem; see [`align_system`](FluxFrame::align_system).
     pub fn set_align_system(&mut self, sys: FluxSystem) {
         self.align_system = Some(sys);
     }
 
-    /// Whether AlignSystem is set.
+    /// Whether AlignSystem is set; see
+    /// [`align_system`](FluxFrame::align_system).
     pub fn test_align_system(&self) -> bool {
         self.align_system.is_some()
     }
 
-    /// Clear AlignSystem.
+    /// Clear AlignSystem; see [`align_system`](FluxFrame::align_system).
     pub fn clear_align_system(&mut self) {
         self.align_system = None;
     }
 
-    /// Whether SpecVal is set.
+    /// Whether SpecVal is set; see [`spec_val`](FluxFrame::spec_val).
     pub fn test_spec_val(&self) -> bool {
         self.spec_val.is_some()
     }
 
-    /// Whether `System` has been explicitly set on this FluxFrame.
-    /// Mirrors C `astTestSystem`.
+    /// Whether the System is set; see [`system`](FluxFrame::system).
     pub fn test_system(&self) -> bool {
         self.system_set
     }
 
-    /// Clear the explicit-set state of System.
+    /// Clear the System; see [`system`](FluxFrame::system).
+    ///
+    /// When this changes the System, the Unit last used with the new System
+    /// is re-instated, and the Label, Symbol and Title are cleared.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Badun` when the System before or after follows from a
+    ///   Unit that fits no flux system.
     pub fn clear_system(&mut self) -> AstResult<()> {
         let old = self.system()?;
         self.system_set = false;
         self.system_changed(old)
     }
 
-    /// Frame Title accessor. Returns the empty string when unset.
+    /// The Title, set or default; see [`Frame::title`] and, for the
+    /// default, [`FluxFrame`].
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Badun` when the Title is not set and the System follows
+    ///   from a Unit that fits no flux system.
     pub fn title(&self) -> AstResult<String> {
         Frame::title(self)
     }
 
-    /// Whether Title has been explicitly set. Mirrors `astTestTitle`.
+    /// Whether the Title is set; see [`Frame::title`].
     pub fn test_title(&self) -> bool {
         self.attrs.title.is_some()
     }
 
-    /// Clear the Title attribute.
+    /// Clear the Title; see [`Frame::title`].
     pub fn clear_title(&mut self) {
         self.attrs.title = None;
     }
 
     // --- FluxFrame-specific attributes ---
 
-    /// Return the frame identification string.
+    /// The Ident, or an empty string when it is not set; see
+    /// [`Frame::ident`].
     pub fn ident(&self) -> &str {
         self.attrs.ident.as_deref().unwrap_or("")
     }
 
-    /// Set the frame identification string. Mirrors `astSetIdent`.
+    /// Set the Ident; see [`Frame::ident`].
     pub fn set_ident(&mut self, ident: impl Into<String>) {
         let s = ident.into();
         self.attrs.ident = Some(s);
     }
 
     /// The spectral system the flux is a density in: frequency for a "per
-    /// Hz" System, wavelength for a "per Angstrom" one. Mirrors
-    /// `astGetDensitySystem` (fluxframe.c), which reads the System as
-    /// `astGetSystem` gives it.
+    /// Hz" System, wavelength for a "per Angstrom" one.
+    ///
+    /// # Errors
+    ///
+    /// Passes on the error of [`system`](FluxFrame::system).
+    // C: fluxframe.c `GetDensitySystem`.
     pub fn density_system(&self) -> AstResult<super::specframe::SpecSystem> {
         Ok(self.system()?.density_spec_system())
     }
 
     /// The default unit of the spectral system the flux is a density in:
-    /// "Hz" or "Angstrom". Mirrors `astGetDensityUnit` (fluxframe.c).
+    /// "Hz" or "Angstrom".
+    ///
+    /// # Errors
+    ///
+    /// Passes on the error of [`system`](FluxFrame::system).
+    // C: fluxframe.c `GetDensityUnit`.
     pub fn density_unit(&self) -> AstResult<&'static str> {
         Ok(self.system()?.density_unit())
     }
 
-    /// Return the flux coordinate system.
+    /// The flux system: the System attribute, set or default.
     ///
-    /// Mirrors C `GetSystem` (fluxframe.c:1514): when System has not been set
-    /// explicitly but a Unit *has*, the default System is the first flux
-    /// system whose default units are convertible from the set Unit (scanned
-    /// in declaration order). Otherwise the stored System (default FluxDen)
-    /// is returned.
+    /// The systems, with the default Unit of each in parentheses, are
+    /// [`FluxDen`](FluxSystem::FluxDen), `"FLXDN"`, flux per unit frequency
+    /// (W/m^2/Hz); [`FluxDenW`](FluxSystem::FluxDenW), `"FLXDNW"`, flux per
+    /// unit wavelength (W/m^2/Angstrom); [`SBright`](FluxSystem::SBright),
+    /// `"SFCBR"`, surface brightness in frequency units
+    /// (W/m^2/Hz/arcmin**2); and [`SBrightW`](FluxSystem::SBrightW),
+    /// `"SFCBRW"`, surface brightness in wavelength units
+    /// (W/m^2/Angstrom/arcmin**2).
+    /// [`FluxSystem::parse`] reads a System name.
+    ///
+    /// Default: with a Unit set and no System, the first of these systems
+    /// whose default Unit can be converted to the Unit; with neither set,
+    /// FLXDN, with the Unit W/m^2/Hz.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Badun` when the System is not set and the Unit fits no
+    ///   flux system.
+    // C: fluxframe.c `GetSystem` (1514).
     pub fn system(&self) -> AstResult<FluxSystem> {
         if self.system_set {
             return Ok(self.system);
@@ -390,8 +482,16 @@ impl FluxFrame {
         ))
     }
 
-    /// Set the flux coordinate system. C's SetSystem reads the old System
-    /// first, so this fails as [`system`](Self::system) does.
+    /// Set the System; see [`system`](FluxFrame::system).
+    ///
+    /// When this changes the System, the Unit last used with the new System
+    /// is re-instated (or the Unit cleared if none was), and the Label,
+    /// Symbol and Title are cleared, since their defaults depend on it.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Badun` when the old System follows from a Unit that
+    ///   fits no flux system, as [`system`](FluxFrame::system) reports.
     pub fn set_system(&mut self, sys: FluxSystem) -> AstResult<()> {
         let old = self.system()?;
         self.system = sys;
@@ -432,9 +532,8 @@ impl FluxFrame {
         self.axis.unit = None;
     }
 
-    /// The effective axis Unit string: the explicitly-set value, or the
-    /// (unit-derived or stored) system's default units. Mirrors C `GetUnit`
-    /// (fluxframe.c:1650).
+    /// The axis Unit: the one set, or the System's default unit.
+    // C: fluxframe.c `GetUnit` (1650).
     pub fn unit_or_default(&self) -> &str {
         match self.axis.unit.as_deref() {
             Some(u) => u,
@@ -446,14 +545,22 @@ impl FluxFrame {
         }
     }
 
-    /// Return the spectral position at which flux values are measured.
+    /// The spectral position at which flux values are measured: the SpecVal
+    /// attribute, set or default.
     ///
-    /// Returns `BAD_VALUE` if not set.
+    /// A frequency, wavelength or other spectral position, in the spectral
+    /// system and units of the [`spec_frame`](FluxFrame::spec_frame).
+    /// It is used when determining the Mapping between FluxFrames.
+    ///
+    /// Default: the value given to
+    /// [`with_spec_val`](FluxFrame::with_spec_val), or `BAD_VALUE`.
+    #[doc(alias = "SpecVal")]
     pub fn spec_val(&self) -> f64 {
         self.spec_val.unwrap_or(self.def_spec_val)
     }
 
-    /// Set the spectral position at which flux values are measured.
+    /// Set SpecVal; see [`spec_val`](FluxFrame::spec_val).
+    /// `BAD_VALUE` clears it.
     pub fn set_spec_val(&mut self, val: f64) {
         if is_bad(val) {
             self.spec_val = None;
@@ -462,21 +569,21 @@ impl FluxFrame {
         }
     }
 
-    /// Clear the spectral position.
+    /// Clear SpecVal; see [`spec_val`](FluxFrame::spec_val).
     pub fn clear_spec_val(&mut self) {
         self.spec_val = None;
     }
 
-    /// The encapsulated SpecFrame defining the coordinate system of SpecVal,
-    /// if one has been attached.
+    /// The SpecFrame giving the spectral system and units of the SpecVal, if
+    /// one has been attached.
+    /// With none, the SpecVal is a frequency in Hz for a "per Hz" System and
+    /// a wavelength in Angstrom for a "per Angstrom" one.
     pub fn spec_frame(&self) -> Option<&super::specframe::SpecFrame> {
         self.specframe.as_deref()
     }
 
-    /// Attach a SpecFrame defining the coordinate system of SpecVal. Mirrors
-    /// setting `this->specframe` in C. Required for a meaningful
-    /// cross-density-system flux conversion (otherwise SpecVal is interpreted
-    /// in the density system and cross-system pairs do not align).
+    /// Attach the SpecFrame giving the spectral system and units of the
+    /// SpecVal; see [`spec_frame`](FluxFrame::spec_frame).
     pub fn set_spec_frame(&mut self, sf: super::specframe::SpecFrame) {
         self.specframe = Some(Box::new(sf));
     }
@@ -500,18 +607,23 @@ impl FluxFrame {
 
     /// Generate the Mapping that converts flux values from `self` (target) to
     /// `result`, taking account of the differing flux systems and the
-    /// spectral position (SpecVal). Mirrors C `MakeFluxMapping`
-    /// (fluxframe.c:1971).
+    /// spectral position (SpecVal).
     ///
     /// Returns `Ok(Some(map))` on success (forward = target → result),
     /// `Ok(None)` when the two FluxFrames are too unrelated to convert
     /// (exactly one is a surface-brightness system, or the SpecVal positions
     /// differ / are absent for a cross-density conversion).
     ///
-    /// The full chain mirrors C: a units Mapping from the target's user units
-    /// to the target system's default units (`map1`), the density-system zoom
-    /// (`map2`), and a units Mapping from the result system's default units to
-    /// the result's user units (`map3`), composed in series and simplified.
+    /// The Mapping is a units Mapping from the target's units to the target
+    /// system's default units, the change of density system, and a units
+    /// Mapping from the result system's default units to the result's units,
+    /// composed in series and simplified.
+    ///
+    /// # Errors
+    ///
+    /// Passes on the error of [`system`](FluxFrame::system) on either
+    /// FluxFrame, or of building or simplifying the Mapping.
+    // C: fluxframe.c `MakeFluxMapping` (1971).
     pub fn make_flux_mapping(&self, result: &FluxFrame) -> AstResult<Option<DynMapping>> {
         use crate::mappings::{CmpMap, Composition, Mapping, ZoomMap};
 
@@ -628,31 +740,33 @@ impl FluxFrame {
         Ok(Some(<dyn Mapping>::simplify(&chain)?))
     }
 
-    /// Convert from `self`'s flux system to `result`'s, applying the
-    /// [`make_flux_mapping`](Self::make_flux_mapping) Mapping. Returns `None`
-    /// when no conversion exists. This is the FluxFrame analogue of
-    /// `astConvert`'s mapping for the 1-D flux axis.
+    /// The same as [`make_flux_mapping`](FluxFrame::make_flux_mapping).
+    ///
+    /// # Errors
+    ///
+    /// Passes on the error of [`make_flux_mapping`](FluxFrame::make_flux_mapping).
     pub fn convert_flux_to(&self, result: &FluxFrame) -> AstResult<Option<DynMapping>> {
         self.make_flux_mapping(result)
     }
 
-    /// Set the title.
+    /// Set the Title; see [`Frame::title`].
     pub fn set_title(&mut self, title: &str) {
         self.attrs.title = Some(title.to_string());
     }
 
-    /// Set the domain.
+    /// Set the Domain, removing white space and upper-casing letters; see
+    /// [`Frame::domain`].
     pub fn set_domain(&mut self, domain: &str) {
         self.attrs.domain = Some(super::frame_attrs::clean_domain(domain));
     }
 
-    /// Test whether the domain attribute has been explicitly set.
-    /// Mirrors C's `astTestDomain` for `FluxFrame`.
+    /// Whether the Domain is set; see [`Frame::domain`].
     pub fn test_domain(&self) -> bool {
         self.attrs.domain.is_some()
     }
 
-    /// Clear the domain attribute, reverting to the default `"FLUX"`.
+    /// Clear the Domain, so that it is `"FLUX"` by default; see
+    /// [`Frame::domain`].
     pub fn clear_domain(&mut self) {
         self.attrs.domain = None;
     }
@@ -700,18 +814,31 @@ impl Frame for FluxFrame {
         (self, axis)
     }
 
+    /// Always true: a FluxFrame always uses active units, and reports the
+    /// flag as not set.
     fn get_active_unit(&self) -> bool {
         true // FluxFrame always uses active units (frame.c:9882).
     }
 
+    /// Does nothing: a FluxFrame always uses active units; see
+    /// [`get_active_unit`](FluxFrame::get_active_unit).
     fn set_active_unit(&mut self, _value: bool) {}
 
     fn test_active_unit(&self) -> bool {
         false
     }
 
-    /// Mirrors C `FluxFrame::GetLabel` (fluxframe.c:1107): a Label that
-    /// has been set, else the System's name.
+    /// The Label, set or default; see [`Frame::label`].
+    ///
+    /// The default is the System's [`label`](FluxSystem::label), rewritten
+    /// for a Unit set to a function of the default unit, so `"log(W/m^2/Hz)"`
+    /// gives `"log( Flux density )"`.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Axiin` when `axis` is not 1.
+    /// - Passes on the error of [`system`](FluxFrame::system).
+    // C: fluxframe.c `GetLabel` (1107).
     fn label(&self, axis: usize) -> AstResult<String> {
         if let Some(label) = &self.ax(axis)?.label {
             return Ok(label.clone());
@@ -726,8 +853,16 @@ impl Frame for FluxFrame {
         ))
     }
 
-    /// Mirrors C `FluxFrame::GetSymbol`: a Symbol that has been set, else
-    /// the System's.
+    /// The Symbol, set or default; see [`Frame::symbol`].
+    ///
+    /// The default is the System's [`symbol`](FluxSystem::symbol), rewritten
+    /// for a Unit as the [`label`](FluxFrame::label) is.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Axiin` when `axis` is not 1.
+    /// - Passes on the error of [`system`](FluxFrame::system).
+    // C: fluxframe.c `GetSymbol`.
     fn symbol(&self, axis: usize) -> AstResult<String> {
         if let Some(symbol) = &self.ax(axis)?.symbol {
             return Ok(symbol.clone());
@@ -740,15 +875,26 @@ impl Frame for FluxFrame {
         ))
     }
 
-    /// Mirrors C `FluxFrame::GetUnit` (fluxframe.c:1650).
+    /// The Unit, set or default: the System's default unit, as
+    /// [`system`](FluxFrame::system) lists; see [`Frame::unit`].
+    // C: fluxframe.c `GetUnit` (1650).
     fn unit(&self, axis: usize) -> AstResult<String> {
         self.ax(axis)?;
         Ok(self.unit_or_default().to_string())
     }
 
-    /// Mirrors C `FluxFrame::SetUnit` (fluxframe.c:2803): a Unit that suits
-    /// the System is recorded as the one used with it, and one that does
-    /// not clears the System, which is then taken from the Unit.
+    /// Set the Unit; see [`unit`](FluxFrame::unit).
+    ///
+    /// A Unit that suits the System is recorded as the one used with it,
+    /// which [`set_system`](FluxFrame::set_system) re-instates; one that
+    /// does not clears the System, which then follows from the Unit.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Axiin` when `axis` is not 1.
+    /// - `ErrorCode::Badun` when the System is not set and the Unit fits no
+    ///   flux system.
+    // C: fluxframe.c `SetUnit` (2803).
     fn set_unit(&mut self, axis: usize, unit: &str) -> AstResult<()> {
         // The Frame class's SetUnit (frame.c:10775).
         let unit = unit.trim_end();
@@ -766,8 +912,9 @@ impl Frame for FluxFrame {
         Ok(())
     }
 
-    /// Mirrors C `FluxFrame::ClearUnit` (fluxframe.c:404), which also
-    /// forgets the Unit used with the current System.
+    /// Clear the Unit, also forgetting the Unit used with the current
+    /// System; see [`unit`](FluxFrame::unit).
+    // C: fluxframe.c `ClearUnit` (404).
     fn clear_unit(&mut self, axis: usize) -> AstResult<()> {
         self.ax(axis)?;
         let system = self.system()?;

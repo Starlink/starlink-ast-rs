@@ -7,15 +7,26 @@ use crate::mappings::helpers::{is_bad, point_has_bad};
 use crate::mappings::{DynMapping, UnitMap};
 use crate::serial::{Node, Serializable};
 
-/// A compound 2-axis frame combining a SpecFrame (axis 1) and a FluxFrame (axis 2).
+/// A compound spectrum/flux Frame.
 ///
-/// A `SpecFluxFrame` is used to describe a spectrum plot where the first axis
-/// represents spectral position and the second axis represents flux. It is
-/// essentially a [`CmpFrame`](crate::frames::CmpFrame) with known component
-/// types, enabling type-safe access to the spectral and flux components.
+/// A SpecFluxFrame combines a [`SpecFrame`] and a [`FluxFrame`] into a
+/// single 2-dimensional compound Frame.
+/// Such a Frame can, for instance, describe a plot of a spectrum in which
+/// the first axis represents spectral position and the second axis
+/// represents flux.
 ///
-/// In the C library, `SpecFluxFrame` inherits from `CmpFrame`. In this Rust
-/// port, it stores the two components directly with their concrete types.
+/// It behaves as a [`CmpFrame`](crate::frames::CmpFrame) of the two, but
+/// holds them with their concrete types:
+/// [`spec_frame`](SpecFluxFrame::spec_frame) and
+/// [`flux_frame`](SpecFluxFrame::flux_frame) give them, and their `_mut`
+/// forms change them.
+/// The per-axis attributes of the Frame trait are those of the component
+/// holding the axis.
+///
+/// Its Domain defaults to `"<spectral domain>-<flux domain>"`, which is
+/// `"SPECTRUM-FLUX"` when neither component's Domain is set, and its Title
+/// to `"<flux label> versus <spectral label>"`, as in
+/// `"Flux density versus Frequency"`.
 ///
 /// # Examples
 ///
@@ -26,7 +37,12 @@ use crate::serial::{Node, Serializable};
 /// let ff = FluxFrame::new(FluxSystem::FluxDen);
 /// let sff = SpecFluxFrame::new(sf, ff);
 /// assert_eq!(sff.naxes(), 2);
+/// assert_eq!(sff.domain(), "SPECTRUM-FLUX");
+/// assert_eq!(sff.title().unwrap(), "Flux density versus Frequency");
 /// ```
+// In C a SpecFluxFrame is a subclass of CmpFrame; here it holds its two
+// components directly and builds a CmpFrame (`as_cmp_frame`) for the
+// methods C inherits.
 #[derive(Debug, Clone)]
 pub struct SpecFluxFrame {
     /// The Frame-class attributes.
@@ -65,9 +81,15 @@ impl SpecFluxFrame {
         true
     }
 
-    /// Create a new `SpecFluxFrame` from a SpecFrame and a FluxFrame.
+    /// Create a SpecFluxFrame of a SpecFrame and a FluxFrame.
     ///
-    /// The SpecFrame forms axis 1, and the FluxFrame forms axis 2.
+    /// The SpecFrame forms axis 1 and the FluxFrame axis 2.
+    /// The FluxFrame's [`spec_val`](FluxFrame::spec_val) is not used, so it
+    /// may be `BAD_VALUE`.
+    /// The SpecFluxFrame owns the two Frames; changes to them afterwards
+    /// are made through [`spec_frame_mut`](SpecFluxFrame::spec_frame_mut)
+    /// and [`flux_frame_mut`](SpecFluxFrame::flux_frame_mut).
+    #[doc(alias = "astSpecFluxFrame")]
     pub fn new(spec_frame: SpecFrame, flux_frame: FluxFrame) -> Self {
         Self {
             attrs: super::frame_attrs::FrameAttrs::default(),
@@ -105,30 +127,29 @@ impl SpecFluxFrame {
         if self.swap { vec![1, 0] } else { vec![0, 1] }
     }
 
-    /// Whether the external axis order is (Flux, Spec) instead of
-    /// the default (Spec, Flux). Mirrors a non-identity perm on a
-    /// 2-axis CmpFrame.
+    /// Whether the axis order is (flux, spectral) rather than the default
+    /// (spectral, flux), as [`perm_axes`](Frame::perm_axes) can make it.
     pub fn axes_swapped(&self) -> bool {
         self.swap
     }
 
-    /// Return a reference to the embedded SpecFrame (axis 1).
+    /// The SpecFrame component, axis 1 unless the axes are swapped.
     pub fn spec_frame(&self) -> &SpecFrame {
         &self.spec_frame
     }
 
-    /// Return a mutable reference to the embedded SpecFrame (axis 1).
+    /// The SpecFrame component, to change.
     pub fn spec_frame_mut(&mut self) -> &mut SpecFrame {
         self.domain_default = std::cell::OnceCell::new();
         &mut self.spec_frame
     }
 
-    /// Return a reference to the embedded FluxFrame (axis 2).
+    /// The FluxFrame component, axis 2 unless the axes are swapped.
     pub fn flux_frame(&self) -> &FluxFrame {
         &self.flux_frame
     }
 
-    /// Return a mutable reference to the embedded FluxFrame (axis 2).
+    /// The FluxFrame component, to change.
     pub fn flux_frame_mut(&mut self) -> &mut FluxFrame {
         self.domain_default = std::cell::OnceCell::new();
         &mut self.flux_frame

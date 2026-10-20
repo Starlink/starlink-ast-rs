@@ -69,6 +69,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [The `MaxAxes` documentation says its default may be reduced to stay consistent with MinAxes](#the-maxaxes-documentation-says-its-default-may-be-reduced-to-stay-consistent-with-minaxes)
 - [The `SkyRef` documentation says a SkyRef alone changes the default Labels, Symbols and Title](#the-skyref-documentation-says-a-skyref-alone-changes-the-default-labels-symbols-and-title)
 - [The `AlignSpecOffset` documentation names a SpecOffset attribute](#the-alignspecoffset-documentation-names-a-specoffset-attribute)
+- [The `astCurrentTime` documentation says the time scales defined by the Earth's rotation are an error](#the-astcurrenttime-documentation-says-the-time-scales-defined-by-the-earths-rotation-are-an-error)
 
 ### [Addressed here, and not going upstream](#addressed-here-and-not-going-upstream)
 
@@ -1052,6 +1053,19 @@ Consequence: documentation only.
 
 `SpecFrame::align_spec_offset` names SpecOrigin.
 A C fix: change "SpecOffset" to "SpecOrigin" in the prologue.
+
+### The `astCurrentTime` documentation says the time scales defined by the Earth's rotation are an error
+
+C location: `timeframe.c`, the `astCurrentTime` prologue (Notes, line 1175); `CurrentTime` (line 1122).
+
+The prologue says an error is reported if the TimeFrame's TimeScale cannot be converted to TAI, giving UT1, GMST, LMST and LAST as examples.
+Since conversions between UTC and UT1 were allowed (the 16-OCT-2006 History entry), `CurrentTime` converts the system time to each of them through the Dut1 attribute and reports no error.
+A probe built against `reference/starlink-ast/build/libast.dylib` gets a value and status 0 from `astCurrentTime` for every TimeScale, UT1, GMST, LMST and LAST included.
+
+Consequence: documentation only.
+
+`TimeFrame::current_time` (`crates/ast-core/src/frames/timeframe.rs`) gives the same values, to the second, and documents `ErrorCode::Incts` only for a time scale UTC cannot be converted to.
+A C fix: drop the note, or name a time scale that cannot be reached.
 
 ## Addressed here, and not going upstream
 

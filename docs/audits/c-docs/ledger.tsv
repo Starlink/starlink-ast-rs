@@ -102,9 +102,9 @@ function	astGetTableHeader	fitstable.c			no
 function	astPutColumnData	fitstable.c			no
 function	astPutTableHeader	fitstable.c			no
 function	astFitsTable	fitstable.c			no
-class	FluxFrame	fluxframe.c			no
-attribute	SpecVal	fluxframe.c			no
-function	astFluxFrame	fluxframe.c			no
+class	FluxFrame	fluxframe.c	FluxFrame		yes
+attribute	SpecVal	fluxframe.c	FluxFrame::spec_val		yes
+function	astFluxFrame	fluxframe.c	FluxFrame::with_spec_val;FluxFrame::new;FluxFrame::unset_system		yes	Attributes are set with typed setters rather than an options string; with_spec_val is astFluxFrame(specval, specfrm, ""), and new(system) sets the System unless it is FluxDen, which it leaves unset as unset_system does
 class	Frame	frame.c	BasicFrame		yes	A plain Frame does not implement Mapping, where C's Frame is a unit Mapping with Nin = Nout = Naxes (PLAN.md 9.6: a bare Frame in a Mapping slot is not supported)
 function	astAngle	frame.c	Frame::angle		yes
 function	astAxAngle	frame.c	Frame::ax_angle		yes	C's header gives -PI/2 to +PI/2 for a 2-D Frame; the code returns astAngle's -PI to +PI, as the port's doc says (docs/issues/c-library-quirks.md)
@@ -474,8 +474,8 @@ function	astSkyFrame	skyframe.c	SkyFrame::new;SkyFrame::unset_system		yes	Attrib
 class	SlaMap	slamap.c	SlaMap		yes
 function	astSlaAdd	slamap.c	SlaMap::add		yes	C takes the conversion as a string; the port takes SlaCvtType, whose variants carry the conversion list and SlaCvtType::from_code parses the strings
 function	astSlaMap	slamap.c	SlaMap::new		yes	C's reserved flags argument is dropped
-class	SpecFluxFrame	specfluxframe.c			no
-function	astSpecFluxFrame	specfluxframe.c			no
+class	SpecFluxFrame	specfluxframe.c	SpecFluxFrame		yes	Holds its SpecFrame and FluxFrame directly rather than being a CmpFrame subclass; their attributes are reached through spec_frame and flux_frame rather than forwarded by name
+function	astSpecFluxFrame	specfluxframe.c	SpecFluxFrame::new		yes	Takes ownership of the two Frames, where C stores the pointers supplied, so later changes go through spec_frame_mut and flux_frame_mut
 class	SpecFrame	specframe.c	SpecFrame		yes
 function	astGetRefPos	specframe.c	SpecFrame::ref_pos		yes
 function	astSetRefPos	specframe.c	SpecFrame::set_ref_pos		yes
@@ -552,13 +552,13 @@ function	astTable	table.c			no
 class	TemplateClass	templateclass.c			no
 attribute	AlignSpecOffset	templateclass.c			no
 function	astTemplateClass	templateclass.c			no
-class	TimeFrame	timeframe.c			no
-function	astCurrentTime	timeframe.c			no
-attribute	TimeOrigin	timeframe.c			no
-attribute	LTOffset	timeframe.c			no
-attribute	AlignTimeScale	timeframe.c			no
-attribute	TimeScale	timeframe.c			no
-function	astTimeFrame	timeframe.c			no
+class	TimeFrame	timeframe.c	TimeFrame		yes
+function	astCurrentTime	timeframe.c	TimeFrame::current_time		yes	C's header says the time scales defined by the Earth's rotation are an error; C's code and the port convert to them (docs/issues/c-library-quirks.md)
+attribute	TimeOrigin	timeframe.c	TimeFrame::time_origin;TimeFrame::time_origin_cur		yes	C's attribute is in the current units, as time_origin_cur; time_origin gives the stored value in the System's default unit; C's input formats (epochs, JD and MJD, calendar dates, values with units) are for its string interface
+attribute	LTOffset	timeframe.c	TimeFrame::lt_offset		yes
+attribute	AlignTimeScale	timeframe.c	TimeFrame::align_timescale		yes
+attribute	TimeScale	timeframe.c	TimeFrame::timescale		yes
+function	astTimeFrame	timeframe.c	TimeFrame::new;TimeFrame::unset_system		yes	Attributes are set with typed setters rather than an options string; unset_system is astTimeFrame("")
 class	TimeMap	timemap.c	TimeMap		yes
 function	astTimeAdd	timemap.c	TimeMap::add		yes	C takes the conversion as a string; the port takes TimeCvtType, whose variants carry the conversion list and TimeCvtType::from_code parses the strings; the C header describes LASTTOLMST and LMSTTOLAST as GMST/LMST conversions, the port documents what they do (docs/issues/c-library-quirks.md)
 function	astTimeMap	timemap.c	TimeMap::new		yes	C's reserved flags argument is dropped
