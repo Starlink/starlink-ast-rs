@@ -1,10 +1,11 @@
-//! Where a Mapping with its `Report` attribute set writes the effect of
-//! each transformation (mapping.c `ReportPoints`).
+//! Where a Mapping with its [`Report`](super::Mapping::report) attribute set
+//! writes the effect of each transformation.
 //!
-//! C prints the report to standard output. Here it goes to a writer that
-//! can be replaced, standard output by default. The writer is per thread,
-//! so reporting takes no lock: Mappings are `Send` but not `Sync`, and each
-//! thread reports to its own writer.
+//! The report goes to a writer that can be replaced, standard output by
+//! default. The writer is per thread, so reporting takes no lock: Mappings
+//! are `Send` but not `Sync`, and each thread reports to its own writer.
+
+// mapping.c `ReportPoints`, which prints to standard output.
 
 use std::cell::RefCell;
 use std::io::Write;

@@ -26,33 +26,61 @@ use super::{AstResult, DynMapping, Mapping, simplify};
 pub struct ViaSimplify(());
 
 impl dyn Mapping {
-    /// Simplify this mapping and mark the result as simplified.
+    /// Simplify this Mapping, eliminating redundant computational steps or
+    /// merging separate steps that can be performed more efficiently as one.
     ///
-    /// This is the public entry point equivalent to C's `astSimplify`
-    /// (`mapping.c:24755`). It calls the type-specific
-    /// [`Mapping::simplified`] and then sets the `has_been_simplified` flag on
-    /// the result, which causes `IsSimp = 1` to appear in the serialized
-    /// output.
+    /// For example, a Mapping that multiplies coordinates by 5 and then by
+    /// 10 simplifies to one that multiplies by 50, and one that multiplies by
+    /// 5 and then divides by 5 reduces to a [`UnitMap`](super::UnitMap).
+    /// Simplifying is worthwhile for a Mapping that has been through
+    /// substantial processing or was built by combining other Mappings,
+    /// before using it to transform a large number of points.
     ///
-    /// This is the only way to reach a per-class reduction: [`ViaSimplify`] is
-    /// constructible only here, so anything that wants one calls this.
+    /// Returns the simplified Mapping, which is a copy of this one when
+    /// nothing could be simplified.
+    /// The result records that it has been simplified
+    /// ([`Mapping::has_been_simplified`]), so simplifying it again returns it
+    /// unchanged.
+    /// A Mapping whose [`ident`](Mapping::ident) is set is returned unchanged,
+    /// so that it keeps its identity; this does not apply to a FrameSet or a
+    /// Region.
+    /// A [`FrameSet`](crate::frames::FrameSet) is returned as a copy in which
+    /// every Mapping between its Frames has been simplified.
+    ///
+    /// # Errors
+    ///
+    /// An error raised while reducing the Mapping is returned.
+    #[doc(alias = "astSimplify")]
     pub fn simplify(&self) -> AstResult<DynMapping> {
+        // C's astSimplify (mapping.c:24755): this calls the type-specific
+        // `Mapping::simplified` and then sets the `has_been_simplified` flag on
+        // the result, which causes `IsSimp = 1` to appear in the serialized
+        // output. This is the only way to reach a per-class reduction:
+        // `ViaSimplify` is constructible only here, so anything that wants one
+        // calls this.
         self.simplify_reporting_change().map(|(result, _)| result)
     }
 
-    /// `simplify`, also reporting whether anything reduced.
+    /// `simplify`, also reporting whether anything
+    /// reduced.
     ///
-    /// `false` is C's `astClone( this )` exit: the per-class slot handed back the
-    /// object it was given, so the identity test C's generic drivers apply to
-    /// the returned pointer (`frameset.c:10208`, `mapping.c:16891`,
-    /// `cmpmap.c:1456`) says "no change". Callers that need that answer ask for
-    /// it here; `simplify` is the same gate with the answer dropped.
+    /// Returns the Mapping and `true` when it is a different object from this
+    /// one, or a copy of this one and `false` when nothing reduced.
+    /// The copy is returned either way because it carries the records of
+    /// the components that were simplified on the way.
     ///
-    /// The Mapping comes back either way, because C's no-change pointer is the
-    /// caller's own object and carries whatever `IsSimple` stamps the reduction
-    /// wrote into it through aliases. The port has only `&self`, so those stamps
-    /// arrive on the returned clone; discarding it would drop them.
+    /// # Errors
+    ///
+    /// As for `simplify`.
     pub fn simplify_reporting_change(&self) -> AstResult<(DynMapping, bool)> {
+        // `false` is C's `astClone( this )` exit: the per-class slot handed
+        // back the object it was given, so the identity test C's generic
+        // drivers apply to the returned pointer (frameset.c:10208,
+        // mapping.c:16891, cmpmap.c:1456) says "no change". C's no-change
+        // pointer is the caller's own object and carries whatever `IsSimple`
+        // stamps the reduction wrote into it through aliases; the port has only
+        // `&self`, so those stamps arrive on the returned clone.
+        //
         // The closest analogue of C's `astSimplify`, so the trace counts here
         // line up with the C library's `SIMPLIFY-ENTER`.
         simplify::trace::simplify_enter("public-simplify", self);

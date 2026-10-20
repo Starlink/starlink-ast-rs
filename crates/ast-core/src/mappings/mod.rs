@@ -103,10 +103,9 @@ impl Clone for Box<dyn Mapping> {
 
 /// Provides downcasting from `&dyn Mapping` to a concrete type.
 ///
-/// This is the Rust equivalent of the C library's `astIsAFoo` family of
-/// class-membership checks. A blanket impl gives every `T: Any` an
-/// `as_any` method automatically, so concrete mapping classes do not
-/// need per-class boilerplate.
+/// Downcasting is how a class-membership test is made. A blanket impl gives
+/// every `T: Any` an `as_any` method automatically, so concrete mapping
+/// classes do not need per-class boilerplate.
 ///
 /// Use as `m.as_any().is::<UnitMap>()` or
 /// `m.as_any().downcast_ref::<MatrixMap>()`.
@@ -251,23 +250,93 @@ impl Clone for MappingFlags {
     }
 }
 
-/// A coordinate transformation.
+/// A relationship between two coordinate systems.
 ///
-/// All concrete mapping classes implement this trait. Mappings are `Send`
-/// (movable between threads) but not `Sync` (no shared references across
-/// threads — mutation is lock-free).
+/// A Mapping transforms a set of coordinates representing "input" points
+/// into a new set representing "output" points.
+/// It describes how two coordinate systems are related and drives the
+/// operations that use that relationship, such as transforming coordinates
+/// and resampling grids of data.
+/// The trait has no constructor of its own: each concrete class, such as
+/// [`ZoomMap`] or [`CmpMap`], implements a particular kind of
+/// transformation.
+///
+/// Every Mapping has these attributes:
+///
+/// - [`Invert`](Mapping::is_inverted): whether the Mapping is inverted.
+/// - [`IsLinear`](Mapping::is_linear): whether the Mapping is linear.
+/// - [`IsSimple`](Mapping::has_been_simplified): whether the Mapping has
+///   been simplified.
+/// - [`Nin`](Mapping::nin): the number of input coordinates.
+/// - [`Nout`](Mapping::nout): the number of output coordinates.
+/// - [`Report`](Mapping::report): whether transformed coordinates are
+///   reported.
+/// - [`TranForward`](Mapping::has_forward): whether the forward
+///   transformation is defined.
+/// - [`TranInverse`](Mapping::has_inverse): whether the inverse
+///   transformation is defined.
+///
+/// Besides the methods here, grids of data are transformed by the free
+/// functions [`resample()`], [`rebin()`] and [`rebin_seq`], and the Regions in a
+/// Mapping are removed by [`remove_regions`](crate::regions::remove_regions).
+///
+/// Mappings are `Send` (movable between threads) but not `Sync` (no shared
+/// references across threads — mutation is lock-free).
 pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
-    /// Number of input coordinates.
+    /// The number of coordinates needed to specify an input point: the
+    /// number of dimensions of the space the Mapping's input points lie in.
+    ///
+    /// Inverting the Mapping exchanges this with [`nout`](Mapping::nout).
+    /// A series [`CmpMap`] has the inputs of the component it applies first,
+    /// and a parallel one the sum of its components' inputs, each component
+    /// taken in the orientation the CmpMap applies it in.
+    /// A [`FrameSet`](crate::frames::FrameSet) has the number of axes of its
+    /// base Frame, so selecting a new base Frame may change it.
+    #[doc(alias = "Nin")]
     fn nin(&self) -> usize;
 
-    /// Number of output coordinates.
+    /// The number of coordinates generated for each output point: the
+    /// number of dimensions of the space the Mapping's output points lie in.
+    ///
+    /// Inverting the Mapping exchanges this with [`nin`](Mapping::nin).
+    /// A series [`CmpMap`] has the outputs of the component it applies last,
+    /// and a parallel one the sum of its components' outputs, each component
+    /// taken in the orientation the CmpMap applies it in.
+    /// A [`FrameSet`](crate::frames::FrameSet) has the number of axes of its
+    /// current Frame, so selecting a new current Frame may change it.
+    #[doc(alias = "Nout")]
     fn nout(&self) -> usize;
 
-    /// Whether this mapping is currently inverted.
+    /// Whether the Mapping is inverted.
+    ///
+    /// When false, the Mapping transforms coordinates as it did when it was
+    /// created.
+    /// When true, its forward and inverse transformations are exchanged, so
+    /// that it behaves as the inverse of the original: [`nin`](Mapping::nin)
+    /// and [`nout`](Mapping::nout) are exchanged, as are
+    /// [`has_forward`](Mapping::has_forward) and
+    /// [`has_inverse`](Mapping::has_inverse).
+    ///
+    /// Default: false.
+    ///
+    /// [`invert`](Mapping::invert) reverses it, and
+    /// [`set_invert`](Mapping::set_invert),
+    /// [`clear_invert`](Mapping::clear_invert) and
+    /// [`test_invert`](Mapping::test_invert) set, clear and test it.
+    /// Inverting a [`UnitMap`] has no effect on how it behaves.
+    /// Inverting a [`FrameSet`](crate::frames::FrameSet) exchanges its base
+    /// and current Frames, which may change its other properties; selecting
+    /// a new base or current Frame does not change whether it is inverted.
+    #[doc(alias = "Invert")]
     fn is_inverted(&self) -> bool;
 
-    /// Invert this mapping in place, as C's `astInvert` does: Invert is left
-    /// set when the result is inverted and unset when it is not.
+    /// Invert the Mapping in place, reversing
+    /// [`is_inverted`](Mapping::is_inverted).
+    ///
+    /// The attribute is left set when the result is inverted and unset when
+    /// it is not, so [`test_invert`](Mapping::test_invert) reports whether
+    /// the Mapping is now inverted.
+    #[doc(alias = "astInvert")]
     fn invert(&mut self) {
         self.invert_orientation();
         self.mapping_flags_mut().invert_zero = false;
@@ -278,9 +347,11 @@ pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
     #[doc(hidden)]
     fn invert_orientation(&mut self);
 
-    /// Set the Invert attribute (C's `astSetInvert`), inverting this mapping
-    /// if it is not already in the orientation asked for. Setting it to
-    /// `false` leaves it set, so [`Mapping::test_invert`] is true.
+    /// Set [`is_inverted`](Mapping::is_inverted), inverting the Mapping if it
+    /// is not already in the orientation asked for.
+    ///
+    /// Setting it to `false` still leaves it set, so
+    /// [`test_invert`](Mapping::test_invert) is true.
     fn set_invert(&mut self, invert: bool) {
         if self.is_inverted() != invert {
             self.invert_orientation();
@@ -288,8 +359,8 @@ pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
         self.mapping_flags_mut().invert_zero = !invert;
     }
 
-    /// Clear the Invert attribute, returning this mapping to its original
-    /// orientation (C's `astClearInvert`, whose default is 0).
+    /// Clear [`is_inverted`](Mapping::is_inverted), returning the Mapping to
+    /// its original orientation.
     fn clear_invert(&mut self) {
         if self.is_inverted() {
             self.invert_orientation();
@@ -297,16 +368,34 @@ pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
         self.mapping_flags_mut().invert_zero = false;
     }
 
-    /// Whether the Invert attribute is set (C's `astTestInvert`): true when
-    /// this mapping is inverted, or when Invert has been set to `false`.
+    /// Whether [`is_inverted`](Mapping::is_inverted) is set: true when the
+    /// Mapping is inverted, or when it has been set to `false`.
     fn test_invert(&self) -> bool {
         self.is_inverted() || self.mapping_flags().invert_zero
     }
 
-    /// Transform a set of points.
+    /// Transform a set of points in any number of dimensions.
     ///
     /// If `forward` is true, applies the forward transformation; otherwise
     /// applies the inverse.
+    /// `pts` holds one coordinate per input of the transformation used: the
+    /// Mapping's [`nin`](Mapping::nin) for the forward transformation and
+    /// its [`nout`](Mapping::nout) for the inverse.
+    /// The result holds the same number of points, each with one coordinate
+    /// per output of the transformation used.
+    ///
+    /// To transform coordinates held in separate per-axis arrays without
+    /// copying them, use [`transform_into`](Mapping::transform_into).
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Trnnd` when the requested transformation is not defined.
+    /// - `ErrorCode::Ncpin` when `pts` has the wrong number of coordinates.
+    ///
+    /// # See also
+    ///
+    /// `astTranN`.
+    #[doc(alias = "astTranN")]
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
         validate_transform(self, pts, forward, None)?;
         let nout = if forward { self.nout() } else { self.nin() };
@@ -317,20 +406,41 @@ pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
 
     /// Transform points into a caller's buffer.
     ///
+    /// As [`transform`](Mapping::transform), but the input and output are
+    /// views that may borrow a caller's own per-axis arrays, so coordinates
+    /// held in one array per axis are transformed without a copy.
     /// `out` must have at least the Mapping's output axis count for the
     /// direction and at least `pts.npoint()` points; only the first
-    /// `pts.npoint()` points of each output axis are written. Both views may
-    /// borrow a caller's own per-axis arrays, so a caller holding one array
-    /// per axis, as C's `astTranN` callers do, pays no copy.
+    /// `pts.npoint()` points of each output axis are written.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Trnnd` when the requested transformation is not defined.
+    /// - `ErrorCode::Ncpin` when `pts` has the wrong number of coordinates.
+    /// - `ErrorCode::Nopts` when `out` holds too few points.
+    /// - `ErrorCode::Nocts` when `out` holds too few coordinates.
+    ///
+    /// # See also
+    ///
+    /// `astTranP`.
+    #[doc(alias = "astTranP")]
     fn transform_into(&self, pts: Points<'_>, forward: bool, out: PointsMut<'_>) -> AstResult<()>;
 
     /// Transform a set of 1-dimensional coordinates.
     ///
-    /// Mirrors C `astTran1` (`mapping.c:89`): the Mapping must have `Nin` and
-    /// `Nout` both equal to 1, and the requested direction must be defined.
-    /// Saves the caller building a one-column [`PointSet`] for scalar data.
+    /// Applies the forward transformation when `forward` is true and the
+    /// inverse otherwise, and returns the transformed coordinates, one per
+    /// element of `xin`.
+    /// This saves building a one-column [`PointSet`] for scalar data.
+    /// When [`report`](Mapping::report) is true, each point is reported.
     ///
-    /// The returned vector has the same length as `xin`.
+    /// # Errors
+    ///
+    /// - `ErrorCode::Trnnd` when the requested transformation is not defined.
+    /// - `ErrorCode::Ncpin` when [`nin`](Mapping::nin) and
+    ///   [`nout`](Mapping::nout) are not both 1.
+    /// - `ErrorCode::Nptin` when `xin` is empty.
+    #[doc(alias = "astTran1")]
     fn tran1(&self, xin: &[f64], forward: bool) -> AstResult<Vec<f64>> {
         validate_tran(self, forward, xin.len(), 1, "tran1")?;
         let mut xout = vec![0.0; xin.len()];
@@ -351,12 +461,22 @@ pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
 
     /// Transform a set of 2-dimensional coordinates.
     ///
-    /// Mirrors C `astTran2` (`mapping.c:~150`): the Mapping must have `Nin` and
-    /// `Nout` both equal to 2, and the requested direction must be defined.
+    /// Applies the forward transformation when `forward` is true and the
+    /// inverse otherwise to the points (`xin[i]`, `yin[i]`), and returns the
+    /// transformed X and Y coordinates.
+    /// When [`report`](Mapping::report) is true, each point is reported.
     ///
-    /// `xin` and `yin` must be the same length; C cannot express that mismatch
-    /// because it takes a single `npoint` argument for both arrays.
+    /// # Errors
+    ///
+    /// - `ErrorCode::Nptin` when `xin` and `yin` differ in length, or are
+    ///   empty.
+    /// - `ErrorCode::Trnnd` when the requested transformation is not defined.
+    /// - `ErrorCode::Ncpin` when [`nin`](Mapping::nin) and
+    ///   [`nout`](Mapping::nout) are not both 2.
+    #[doc(alias = "astTran2")]
     fn tran2(&self, xin: &[f64], yin: &[f64], forward: bool) -> AstResult<(Vec<f64>, Vec<f64>)> {
+        // C takes a single `npoint` for both arrays, so it cannot be given
+        // arrays of different lengths.
         if xin.len() != yin.len() {
             return Err(AstError::new(
                 ErrorCode::Nptin,
@@ -421,46 +541,69 @@ pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
         Ok(())
     }
 
-    /// Reduce this Mapping without the `IsSimple` gate — C's `Simplify` vtab
-    /// slot.
+    /// Reduce this Mapping without the `IsSimple` gate: the per-class step of
+    /// `<dyn Mapping>::simplify`.
     ///
     /// The reduced mapping is functionally equivalent but may be more
     /// efficient (e.g. cancelling inverse pairs, merging linear maps).
     ///
     /// Reachable only from `<dyn Mapping>::simplify`, which is what supplies the
-    /// [`ViaSimplify`]. That mirrors C, where `mapping.c:24772` is the slot's
-    /// only caller, so no reduction can happen without being short-circuited
-    /// and recorded.
+    /// [`ViaSimplify`], so no reduction can happen without being
+    /// short-circuited and recorded.
     ///
-    /// Override this only if the matching C class overrides the slot: `CmpMap`,
-    /// `FrameSet` and the nine Region classes do, and the other 25 keep every
-    /// reduction in [`Mapping::map_merge`].
+    /// Override this only for a class that holds other Mappings and reduces
+    /// them itself: [`CmpMap`], `FrameSet` and the Region classes do, and the
+    /// other classes keep every reduction in their merge with neighbouring
+    /// Mappings.
     ///
-    /// The default is C's base `Simplify` (`mapping.c:16752`), which nominates
-    /// this Mapping in a list of one and calls its own [`Mapping::map_merge`]
-    /// until nothing further changes.
+    /// The default nominates this Mapping in a list of one and merges it with
+    /// itself until nothing further changes.
     ///
     /// Returns the reduced Mapping and whether it is a different object from
-    /// this one. C's `Simplify` returns `astClone( this )` when nothing reduced,
-    /// and all three of its generic drivers test the returned pointer against
-    /// the input to decide whether to keep going (`frameset.c:10208`,
-    /// `mapping.c:16891`, `cmpmap.c:1456`). An owned-value port cannot make that
-    /// comparison after the fact, so the callee reports it.
-    ///
-    /// The `false` case still carries an object rather than nothing, because C's
-    /// `astClone( this )` is not a bare copy of the input: the nominate loop
-    /// writes `IsSimple` through aliases into `this`'s own children, and those
-    /// stamps are on the pointer C hands back. The port has only `&self`, so it
-    /// returns them on the clone.
+    /// this one.
+    /// The `false` case still carries an object rather than nothing, because
+    /// a reduction that changes nothing at this level may still have recorded
+    /// the components it simplified, and those records are on the returned
+    /// clone.
     fn simplified(&self, _gate: ViaSimplify) -> AstResult<(DynMapping, bool)> {
+        // C's `Simplify` vtab slot; the default is C's base `Simplify`
+        // (mapping.c:16752). Its only caller is astSimplify_ (mapping.c:24772),
+        // as `ViaSimplify` makes `<dyn Mapping>::simplify` the only caller
+        // here. CmpMap, FrameSet and the nine Region classes override the
+        // slot; the other 25 keep every reduction in `map_merge`.
+        //
+        // C's `Simplify` returns `astClone( this )` when nothing reduced, and
+        // all three of its generic drivers test the returned pointer against
+        // the input to decide whether to keep going (frameset.c:10208,
+        // mapping.c:16891, cmpmap.c:1456). An owned-value port cannot make that
+        // comparison after the fact, so the callee reports it. C's
+        // `astClone( this )` is not a bare copy of the input: the nominate loop
+        // writes `IsSimple` through aliases into `this`'s own children, and
+        // those stamps are on the pointer C hands back. The port has only
+        // `&self`, so it returns them on the clone.
         simplify::base_simplify(self.as_dyn_mapping())
     }
 
-    /// Rate of change of a specified output with respect to a specified input.
+    /// The rate of change of output `ax1` with respect to input `ax2`, at the
+    /// input position `at`.
     ///
-    /// `ax1` is the 1-based index of the output axis.
-    /// `ax2` is the 1-based index of the input axis.
-    /// `at` is the position at which to evaluate the rate.
+    /// `ax1` and `ax2` are 1-based, and `at` holds one value per input.
+    /// Classes whose rates are known exactly return them; otherwise the rate
+    /// is estimated by fitting a polynomial to the Mapping in the
+    /// neighborhood of `at`, choosing the size of the neighborhood that gives
+    /// the most consistent gradient.
+    /// This is accurate but may evaluate the Mapping 100 or more times.
+    /// Returns `BAD_VALUE` when the rate cannot be found, for instance when
+    /// `at` holds a bad value.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Axiin` when `ax1` is not an output or `ax2` not an
+    ///   input.
+    /// - `ErrorCode::Ncpin` when `at` does not hold one value per input.
+    /// - `ErrorCode::Nodef` when an estimate is needed and the forward
+    ///   transformation is not defined.
+    #[doc(alias = "astRate")]
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64>;
 
     /// Test whether this mapping is equal to another.
@@ -550,35 +693,35 @@ pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
         simplify::default_map_merge(ctx, where_, series)
     }
 
-    /// Split this mapping to produce a sub-mapping covering a chosen set of
-    /// inputs, using **1-based** axis indices throughout (public API).
+    /// Split off the part of this Mapping that connects a chosen set of
+    /// inputs to the outputs they feed.
     ///
-    /// Mirrors the C library's public `astMapSplit` (the `astMapSplitId_`
-    /// interface, mapping.c:25313): given 1-based input indices `in_axes`,
-    /// return the **1-based** original-mapping output axes those inputs feed
-    /// into, plus the sub-mapping that maps `in_axes` -> those outputs.
-    /// Returns `None` when no such split exists — i.e. when some retained
-    /// input feeds an output that *also* depends on a non-retained input, or
-    /// when some non-retained input feeds an output that depends only on
-    /// retained inputs.
+    /// Given the 1-based indices of the inputs to pick, in any order, returns
+    /// the 1-based indices of the outputs of this Mapping that those inputs
+    /// feed, and a new Mapping from the picked inputs to those outputs: its
+    /// `i`th output is output `outputs[i]` of this Mapping, and it has one
+    /// input per entry of `in_axes`, in that order.
+    /// The new Mapping is independent of this one.
     ///
-    /// `in_axes` indices are 1-based (per the design-spec axis convention,
-    /// matching [`Mapping::rate`]) and may be in any order. The returned
-    /// `Vec<usize>` holds 1-based output indices and has length equal to the
-    /// sub-mapping's nout.
+    /// A split exists only if some subset of the outputs depends on the
+    /// picked inputs alone, and no other output depends on any of them.
+    /// `Ok(None)` means there is no such subset.
     ///
-    /// `Ok(None)` means the selected inputs cannot be split off. Whether an
-    /// index out of range is an error (`ErrorCode::Axiin`) or no split
-    /// depends on the class, as in C: the base `MapSplit` and the classes
-    /// that call it first report it, and the others return no split. A
-    /// repeated index is likewise handled as each class's C handles it.
+    /// # Errors
     ///
-    /// This is a thin ±1 wrapper over [`Mapping::map_split_zero_based`], which
-    /// implements the algorithm in C's protected, 0-based encoding. Concrete
-    /// classes override the zero-based method, not this one — exactly as C
-    /// keeps a 0-based protected `MapSplit` (mapping.c:7798) behind the
-    /// 1-based public shim.
+    /// `ErrorCode::Axiin` for an index that is not an input, from the classes
+    /// that check it; the other classes return `Ok(None)` for one.
+    #[doc(alias = "astMapSplit")]
     fn map_split(&self, in_axes: &[usize]) -> AstResult<Option<(Vec<usize>, DynMapping)>> {
+        // A thin wrapper over `map_split_zero_based`, which implements the
+        // algorithm in C's protected, 0-based encoding: C keeps a 0-based
+        // protected `MapSplit` (mapping.c:7798) behind the 1-based public
+        // `astMapSplitId_` (mapping.c:25313). Whether an index out of range is
+        // an error or no split depends on the class, as in C: the base
+        // `MapSplit` and the classes that call it first report it, and the
+        // others return no split. A repeated index is likewise handled as
+        // each class's C handles it.
+        //
         // Decrement to 0-based (astMapSplitId_, mapping.c:25429). C turns an
         // index of 0 into -1, which every class's range check refuses; the
         // wrapped `usize::MAX` is refused by the same checks.
@@ -589,53 +732,71 @@ pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
             .map(|(out_zero, sub)| (out_zero.into_iter().map(|o| o + 1).collect(), sub)))
     }
 
-    /// Protected, **0-based** implementation of [`Mapping::map_split`].
+    /// The **0-based** implementation of [`Mapping::map_split`], which
+    /// concrete classes override.
     ///
-    /// Mirrors the C library's protected `astMapSplit` (mapping.c:7798): the
-    /// algorithm operates entirely in 0-based axis indices, both for the
-    /// supplied `in_axes` and for the returned output-axis vector. This is the
-    /// method concrete classes override; the public 1-based [`Mapping::map_split`]
-    /// wraps it with ±1 conversion at the boundary.
+    /// Both the supplied `in_axes` and the returned output indices are
+    /// 0-based; [`Mapping::map_split`] converts at the boundary.
     ///
-    /// The default implementation is C's base `MapSplit`: an index out of
-    /// range is `ErrorCode::Axiin`, and only a selection of every input,
-    /// each once, splits, by composing a `PermMap` with `self`. Classes that
-    /// can split partial selections override.
+    /// The default reports an index out of range as `ErrorCode::Axiin`, and
+    /// splits only a selection of every input, each once, by composing a
+    /// [`PermMap`] with `self`. Classes that can split partial selections
+    /// override it.
     fn map_split_zero_based(
         &self,
         in_axes: &[usize],
     ) -> AstResult<Option<(Vec<usize>, DynMapping)>> {
+        // C's protected `MapSplit` (mapping.c:7798); the default is its base
+        // implementation.
         helpers::base_map_split(self, in_axes)
     }
 
-    /// Best-fit affine approximation to the forward transform over a
-    /// sample box.
+    /// A linear approximation to the forward transformation over a box of
+    /// input coordinates, if the transformation is linear there.
     ///
-    /// Returns `Some(fit)` when the transform is linear (within `tol`,
-    /// Cartesian distance, output space) over the input box `[lbnd,
-    /// ubnd]`; `None` otherwise. Subclasses with an exact linear form
-    /// (e.g. `MatrixMap`, `ZoomMap`) may override for accuracy and
-    /// speed; the default implementation samples and fits, mirroring
-    /// `mapping.c::astLinearApprox`.
+    /// The box runs from `lbnd` to `ubnd` on each input.
+    /// Returns `Some(fit)` when a linear fit deviates from the transformation
+    /// by no more than `tol` at every point tested, `tol` being a Cartesian
+    /// distance in the output space; `None` otherwise.
+    /// To fit the inverse transformation, [`invert`](Mapping::invert) the
+    /// Mapping first.
     ///
-    /// `lbnd` / `ubnd` must each have length `self.nin()`, or it is
-    /// `ErrorCode::Ncpin`; an error transforming the sample points is
-    /// returned, as it propagates from C's `astLinearApprox`.
+    /// An output that is bad at any of the points tested has its offset and
+    /// gradients in the fit set to `BAD_VALUE`, but does not stop the other
+    /// outputs being fitted, so check the coefficients before using them.
+    /// When every output is bad, the result is `None`.
+    ///
+    /// The transformation is sampled at test points spread over the box and
+    /// the fit made to them.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Ncpin` when `lbnd` or `ubnd` does not have one value per
+    ///   input.
+    /// - An error transforming the sample points is returned.
+    #[doc(alias = "astLinearApprox")]
     fn linear_approx(&self, lbnd: &[f64], ubnd: &[f64], tol: f64) -> AstResult<Option<LinearFit>> {
         linear_approx::linear_approx_default(self, lbnd, ubnd, tol)
     }
 
-    /// Quadratic least-squares fit to the forward transform of a Mapping
-    /// with 2 inputs (C's `astQuadApprox`).
+    /// A quadratic least-squares fit to the forward transformation of a
+    /// Mapping with 2 inputs.
     ///
     /// Each output is modeled as
-    /// `a0 + a1*x + a2*y + a3*x*y + a4*x*x + a5*y*y`, fitted to a grid of
-    /// `nx` × `ny` positions (each at least 3) spanning `lbnd` to `ubnd`,
-    /// first and last positions on the bounds. Positions where an output is
-    /// bad are left out of that output's fit. To fit the inverse, invert the
+    /// `a0 + a1*x + a2*y + a3*x*y + a4*x*x + a5*y*y` and fitted to a grid of
+    /// `nx` × `ny` positions spanning `lbnd` to `ubnd`, with the first and
+    /// last positions on the bounds; an `nx` or `ny` below 3 is taken as 3.
+    /// Positions where an output is bad are left out of that output's fit.
+    /// The result holds the coefficients, the RMS residual over every fitted
+    /// output, and whether every output was fitted.
+    /// To fit the inverse transformation, [`invert`](Mapping::invert) the
     /// Mapping first.
     ///
-    /// A Mapping without exactly 2 inputs is `ErrorCode::Badni`.
+    /// # Errors
+    ///
+    /// - `ErrorCode::Badni` when the Mapping does not have exactly 2 inputs.
+    /// - An error transforming the grid is returned.
+    #[doc(alias = "astQuadApprox")]
     fn quad_approx(
         &self,
         lbnd: [f64; 2],
@@ -646,24 +807,42 @@ pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
         quad_approx::quad_approx(self, lbnd, ubnd, nx, ny)
     }
 
-    /// Transform every position of a regular grid (C's `astTranGrid`).
+    /// Transform every position of a regular grid.
     ///
     /// The grid holds the integer positions from `lbnd` to `ubnd` inclusive
-    /// on each input axis. The result has one row per position, first axis
-    /// varying fastest, and one column per output of the transform used.
+    /// on each input axis, each position being the center of a pixel of unit
+    /// extent.
+    /// The result has one point per position, the first axis varying
+    /// fastest, with one coordinate per output of the transformation used:
+    /// the forward one when `forward` is true and the inverse otherwise.
     ///
     /// When `tol` is positive, the Mapping is replaced by linear fits over
-    /// sections of the grid wherever they are accurate to within `tol`
-    /// (an output-space distance), which is much faster for large grids.
-    /// The grid is first divided until no section is longer than `maxpix`
-    /// on any axis. A `tol` of zero transforms every position through the
-    /// Mapping.
+    /// sections of the grid wherever they are accurate to within `tol` (a
+    /// distance in the output space), which is much faster for large grids.
+    /// A fit is first tried over the whole grid; where it is not accurate
+    /// enough, the section is divided in two along its longest axis and the
+    /// fit tried again, until a fit is found or the section is too small,
+    /// when the Mapping is used directly.
+    /// A large `tol` makes the joins between adjacent sections more visible.
+    /// A `tol` of zero transforms every position through the Mapping.
     ///
-    /// Bounds of different lengths, or a length that is not the number of
-    /// inputs of the transform used, is `ErrorCode::Ncpin`; a lower bound
-    /// above its upper bound is `ErrorCode::Gbdin`; a negative `tol` is
-    /// `ErrorCode::Patin`; and a transform that is not defined is
-    /// `ErrorCode::Trnnd`.
+    /// Before any fit is tried, the grid is divided until no section is
+    /// longer than `maxpix` positions on any axis.
+    /// Normally `maxpix` is larger than the grid, so that the first fit is
+    /// tried over all of it; a value of 50 to 100 guards against a Mapping
+    /// that looks linear on large scales but has small-scale irregularities,
+    /// at little cost, and a value too small to fit anything gives the
+    /// result of a zero `tol`.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Ncpin` when the bounds differ in length, or do not have
+    ///   one value per input of the transformation used.
+    /// - `ErrorCode::Gbdin` when a lower bound is above its upper bound.
+    /// - `ErrorCode::Exspix` when the grid has too many positions.
+    /// - `ErrorCode::Patin` when `tol` is negative.
+    /// - `ErrorCode::Trnnd` when the transformation used is not defined.
+    #[doc(alias = "astTranGrid")]
     fn tran_grid(
         &self,
         lbnd: &[i64],
@@ -675,21 +854,32 @@ pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
         tran_grid::tran_grid(self.as_dyn_mapping(), lbnd, ubnd, tol, maxpix, forward)
     }
 
-    /// Find the bounding box of a nominated output coordinate over a
-    /// constrained input region.
+    /// The bounds of one output coordinate over a box of input coordinates.
     ///
-    /// Mirrors C `astMapBox` (mapping.c:7121). Given input bounds
-    /// `lbnd_in`/`ubnd_in` (length = effective `nin` for the chosen
-    /// direction, with `lbnd > ubnd` accepted and silently swapped),
-    /// returns the lowest and highest values of output coordinate
-    /// `coord_out` (1-based, as in C's public `astMapBox`) reached within
-    /// that input volume, together with positions where those bounds are
-    /// attained. An index outside `1..=nout` is `AST__BADCI`.
+    /// Finds the lowest and highest values that output `coord_out` (1-based)
+    /// takes as the input ranges over the box from `lbnd_in` to `ubnd_in`, and
+    /// an input position (not necessarily unique) where each is reached.
+    /// A bound below its partner is swapped with it.
+    /// Calling this once per output gives the bounding box of the
+    /// transformed input box, for instance the size of an image after it has
+    /// been transformed.
     ///
-    /// The default implementation simplifies the Mapping, runs
-    /// SpecialBounds (when nin <= 12) for an initial estimate, then
-    /// refines via the GlobalBounds simplex search. Concrete classes
-    /// with closed-form bounds (e.g. linear maps) may override.
+    /// With `forward` false the inverse transformation is used, and inputs
+    /// and outputs exchange roles: the bounds have one value per output of
+    /// the Mapping, and `coord_out` names one of its inputs.
+    ///
+    /// Input positions that transform to a bad value on any output are
+    /// ignored, even when the nominated output is good there.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Badci` when `coord_out` is not an output, or a bound has
+    ///   too few values.
+    /// - `ErrorCode::Mbbnf` when no bounds are found, typically because every
+    ///   position tested transformed to a bad value; many positions are
+    ///   tested, so this is unlikely unless good positions are confined to a
+    ///   very small part of the box.
+    #[doc(alias = "astMapBox")]
     fn map_box(
         &self,
         lbnd_in: &[f64],
@@ -699,19 +889,44 @@ pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
     ) -> AstResult<MapBoxResult> {
         // C's public interface takes a 1-based index and the method a 0-based
         // one (mapping.c astMapBoxId_); an index of 0 wraps past every output
-        // and is refused there with the others.
+        // and is refused there with the others. The default simplifies the
+        // Mapping, runs C's SpecialBounds (when nin <= 12) for an initial
+        // estimate, then refines with its GlobalBounds simplex search
+        // (mapping.c:7121).
         map_box::map_box_default(self, lbnd_in, ubnd_in, forward, coord_out.wrapping_sub(1))
     }
 
-    /// Whether the forward transform is defined.
+    /// Whether the Mapping can transform coordinates in the forward
+    /// direction, from input coordinates to output coordinates.
+    ///
+    /// Transforming in the forward direction is an `ErrorCode::Trnnd` error
+    /// when this is false.
+    /// Inverting the Mapping exchanges this with
+    /// [`has_inverse`](Mapping::has_inverse).
+    /// A [`CmpMap`] has a forward transformation when every component it
+    /// applies has one in the direction it applies it.
+    /// A [`FrameSet`](crate::frames::FrameSet) reports the Mapping from its
+    /// base Frame to its current Frame, so selecting a new base or current
+    /// Frame may change it.
+    #[doc(alias = "TranForward")]
     fn has_forward(&self) -> bool {
         true
     }
 
-    /// The read-only `IsLinear` attribute: whether the Mapping is known to be
-    /// linear (mapping.c `GetIsLinear`). The base class does not claim it;
-    /// the classes C marks linear override it.
+    /// Whether the Mapping is linear: true for a class whose transformation
+    /// is always linear.
+    ///
+    /// A class that can represent either linear or non-linear
+    /// transformations, such as [`MathMap`], reports false; whether a
+    /// particular instance is linear over a region can be tested with
+    /// [`linear_approx`](Mapping::linear_approx).
+    /// A [`CmpMap`] is linear when both its components are, and a
+    /// [`FrameSet`](crate::frames::FrameSet) when the Mapping from its base
+    /// Frame to its current Frame is.
+    #[doc(alias = "IsLinear")]
     fn is_linear(&self) -> bool {
+        // The base class does not claim it (mapping.c `GetIsLinear`); the
+        // classes C marks linear override it.
         false
     }
 
@@ -725,79 +940,97 @@ pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
         None
     }
 
-    /// Whether the inverse transform is defined.
+    /// Whether the Mapping can transform coordinates in the inverse
+    /// direction, from output coordinates back to input coordinates.
+    ///
+    /// Transforming in the inverse direction is an `ErrorCode::Trnnd` error
+    /// when this is false.
+    /// Inverting the Mapping exchanges this with
+    /// [`has_forward`](Mapping::has_forward).
+    /// A [`CmpMap`] has an inverse transformation when every component it
+    /// applies has one in the direction it applies it.
+    /// A [`FrameSet`](crate::frames::FrameSet) reports the Mapping from its
+    /// base Frame to its current Frame, so selecting a new base or current
+    /// Frame may change it.
+    #[doc(alias = "TranInverse")]
     fn has_inverse(&self) -> bool {
         true
     }
 
-    /// Intrinsic (pre-invert) transform-definedness flags as written to
-    /// native dumps.
+    /// Whether the forward and inverse transformations are defined, before
+    /// any inversion, as written to a Native dump.
     ///
-    /// C dumps `Fwd`/`Inv` from the Mapping base-struct fields, which
-    /// only CmpMap populates with computed values at construction —
-    /// every other class passes `(1, 1)` to `astInitMapping` and
-    /// reports availability dynamically via `GetTranForward` /
-    /// `GetTranInverse`, which the Dump function never consults.
-    /// Override only where the C class passes computed flags.
+    /// Every class but [`CmpMap`] writes both as defined, whatever
+    /// [`has_forward`](Mapping::has_forward) and
+    /// [`has_inverse`](Mapping::has_inverse) report.
     fn dump_tran_flags(&self) -> (bool, bool) {
+        // C dumps `Fwd`/`Inv` from the Mapping base-struct fields, which only
+        // CmpMap populates with computed values at construction — every other
+        // class passes `(1, 1)` to `astInitMapping` and reports availability
+        // dynamically via `GetTranForward` / `GetTranInverse`, which the Dump
+        // function never consults. Override only where the C class passes
+        // computed flags.
         (true, true)
     }
 
-    /// Whether this mapping has already been simplified **in its current
-    /// orientation**.
+    /// Whether the Mapping has been simplified **in its current
+    /// orientation**, so that simplifying it again would gain nothing.
     ///
-    /// Mirrors C's `IsSimple` attribute (mapping.c): `Mapping::simplify`
-    /// sets it on its result so a later `simplify` of the same object is a
-    /// fast no-op (`simplified()` returns self unchanged and the merge loop
-    /// skips it). It is an optimisation flag, not a permanent "never simplify"
-    /// lock.
+    /// `<dyn Mapping>::simplify` records this on its result, and returns a
+    /// Mapping that has it unchanged.
+    /// The inverse of a Mapping may simplify differently, so each orientation
+    /// has its own record: inverting a simplified Mapping makes this false,
+    /// and inverting it back makes it true again.
+    /// It is written to a Native dump as the `IsSimp` item.
     ///
-    /// Simplifying a Mapping produces something equivalent to the orientation
-    /// it had at the time, and the inverse may simplify differently, so each
-    /// orientation carries its own record, held in the crate-private
-    /// `SimplifiedRecord`.
-    /// `invert()` therefore changes which record applies rather than
-    /// discarding one, and inverting and inverting back leaves the Mapping
-    /// reporting exactly what it reported before. Serialised as the `IsSimp`
-    /// token.
-    ///
-    /// A Frame, a FrameSet and a Region always report `false` and keep this
-    /// default: C overrides the getter on the Frame class to return zero
-    /// unconditionally (`frame.c:5590`), because a Frame is mutable and so no
-    /// record of having been simplified can stay true. They hold no
-    /// `SimplifiedRecord` for the same reason, and
-    /// `test_simplify_regression.rs` gates the resulting absence of an
-    /// `IsSimp` card on every Frame-kind result in the corpus.
+    /// A FrameSet and every Region report false, since a Frame can be changed
+    /// in ways that alter the Mapping it represents, so no record of having
+    /// been simplified could be relied on.
+    #[doc(alias = "IsSimple")]
     fn has_been_simplified(&self) -> bool {
+        // C overrides the getter on the Frame class to return zero
+        // unconditionally (frame.c:5590). Frame-kind classes hold no
+        // `SimplifiedRecord` for the same reason, and
+        // `test_simplify_regression.rs` gates the resulting absence of an
+        // `IsSimp` card on every Frame-kind result in the corpus.
         false
     }
 
-    /// Set (or clear) the "already simplified" record for the current
-    /// orientation (C `astSetIsSimple`, mapping.h:428).
+    /// Set (or clear) the record read by
+    /// [`has_been_simplified`](Mapping::has_been_simplified) for the current
+    /// orientation.
     ///
-    /// `Mapping::simplify` sets it `true` on its result. Discarding the record
-    /// is a class-level decision, made through `SimplifiedRecord::clear`.
-    fn set_has_been_simplified(&mut self, _flag: bool) {}
+    /// `<dyn Mapping>::simplify` sets it `true` on its result. A class that
+    /// keeps no record ignores this.
+    fn set_has_been_simplified(&mut self, _flag: bool) {
+        // C `astSetIsSimple` (mapping.h:428). Discarding the record is a
+        // class-level decision, made through `SimplifiedRecord::clear`.
+    }
 
-    /// Whether the `IsSimp` token is written for this Mapping.
+    /// Whether the `IsSimp` item is written for this Mapping in a Native
+    /// dump.
     ///
-    /// C reads one record for both this and the `astSimplify` short-circuit.
-    /// [`CmpMap`] splits them — see `CmpMap::dump_simplified` for why — so it
-    /// overrides this; for every other class the two are the same thing.
+    /// For every class but [`CmpMap`] this is
+    /// [`has_been_simplified`](Mapping::has_been_simplified).
     fn dump_is_simple(&self) -> bool {
+        // C reads one record for both this and the astSimplify short-circuit.
+        // CmpMap splits them — see `CmpMap::dump_simplified` for why.
         self.has_been_simplified()
     }
 
     /// Record `flag` for the named orientation, whatever orientation this
     /// Mapping is currently in.
     ///
-    /// This is C's idiom for tagging a Mapping the caller is holding at the
-    /// wrong orientation — set `Invert`, set the flag, set `Invert` back — and
-    /// it works only because setting `Invert` no longer discards the record
-    /// (mapping.c:23272). The engine needs it because it normalises a
-    /// simplified component to the forward orientation while the tree still
-    /// serialises that component inverted.
+    /// The Mapping is inverted, if need be, to reach that orientation, has
+    /// the record set, and is inverted back; inverting does not discard the
+    /// record.
     fn set_simplified_in(&mut self, inverted: bool, flag: bool) {
+        // C's idiom for tagging a Mapping the caller is holding at the wrong
+        // orientation — set `Invert`, set the flag, set `Invert` back — which
+        // works only because setting `Invert` no longer discards the record
+        // (mapping.c:23272). The engine needs it because it normalises a
+        // simplified component to the forward orientation while the tree
+        // still serialises that component inverted.
         let restore = self.is_inverted();
         if restore != inverted {
             self.invert();
@@ -808,18 +1041,22 @@ pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
         }
     }
 
-    /// Whether this mapping carries the `RestrictedSimplify` flag (C `ReSimp`,
-    /// mapping.h `AST__RESTRICTED_SIMPLIFY_FLAG`). When set, a simplification
-    /// of this mapping may nominate only those components that carry
-    /// `AllowSimplify`, and the base driver declines outright for a mapping
-    /// that does not (mapping.c:16853-16855). Kept in the Mapping's
-    /// [`MappingFlags`], as C keeps it in the Mapping `flags` word.
-    /// Serialised as the `ReSimp` token.
+    /// Whether this mapping carries the `RestrictedSimplify` flag.
+    ///
+    /// When set, a simplification of this mapping may nominate only those
+    /// components that carry [`allow_simplify`](Mapping::allow_simplify), and
+    /// declines outright for a mapping that does not.
+    /// A simplification clears it on its result.
+    /// Written to a Native dump as the `ReSimp` item.
     fn restricted_simplify(&self) -> bool {
+        // C `AST__RESTRICTED_SIMPLIFY_FLAG` (mapping.h), kept in the Mapping
+        // `flags` word as the port keeps it in `MappingFlags`; the base driver
+        // declines at mapping.c:16853-16855.
         self.mapping_flags().restricted_simplify
     }
 
-    /// Set (or clear) the `RestrictedSimplify` flag (C `ReSimp`).
+    /// Set (or clear) the
+    /// [`restricted_simplify`](Mapping::restricted_simplify) flag.
     fn set_restricted_simplify(&mut self, flag: bool) {
         self.mapping_flags_mut().restricted_simplify = flag;
     }
@@ -846,35 +1083,55 @@ pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
     }
 
     /// Whether [`tran1`](Mapping::tran1) and [`tran2`](Mapping::tran2) report
-    /// the effect of each transformation, one line per point, to the
-    /// thread's report writer ([`report::set_report_sink`], standard output
-    /// by default). Mirrors the `Report` attribute (mapping.c), false unless
-    /// set.
+    /// the coordinates of each point before and after it is transformed, one
+    /// line per point, to the thread's report writer
+    /// ([`report::set_report_sink`], standard output by default).
+    ///
+    /// This is an aid to debugging, and saves reporting values explicitly in
+    /// simple programs.
+    /// [`transform`](Mapping::transform) and
+    /// [`transform_into`](Mapping::transform_into) do not report.
+    ///
+    /// Default: false.
+    ///
+    /// Only the Report of the Mapping transformed is used: the components of
+    /// a [`CmpMap`] never report individually.
+    /// A [`FrameSet`](crate::frames::FrameSet) formats the input and output
+    /// coordinates with its base and current Frames, and a Region with its
+    /// Frame, as [`report_points`](Mapping::report_points) describes.
+    /// A clone keeps the value, and a Native dump records it when set.
+    ///
+    /// [`set_report`](Mapping::set_report),
+    /// [`test_report`](Mapping::test_report) and
+    /// [`clear_report`](Mapping::clear_report) set, test and clear it.
+    #[doc(alias = "Report")]
     fn report(&self) -> bool {
         self.report_attr().unwrap_or(false)
     }
 
-    /// Set `Report`.
+    /// Set [`report`](Mapping::report).
     fn set_report(&mut self, value: bool) {
         self.set_report_attr(Some(value));
     }
 
-    /// Whether `Report` is set.
+    /// Whether [`report`](Mapping::report) is set.
     fn test_report(&self) -> bool {
         self.report_attr().is_some()
     }
 
-    /// Clear `Report`.
+    /// Clear [`report`](Mapping::report).
     fn clear_report(&mut self) {
         self.set_report_attr(None);
     }
 
     /// Write the effect of a transformation, `inp` mapped to `out`, to the
-    /// thread's report writer. Mirrors C `astReportPoints`, a per-class
-    /// method: a Mapping writes each value to 17 significant digits or as
-    /// `<bad>`; a FrameSet formats them with its base and current Frames,
-    /// and a Region with its current Frame.
+    /// thread's report writer.
+    ///
+    /// A Mapping writes each value to 17 significant digits or as `<bad>`; a
+    /// FrameSet formats them with its base and current Frames, and a Region
+    /// with its current Frame.
     fn report_points(&self, forward: bool, inp: &PointSet, out: &PointSet) {
+        // C `astReportPoints`, a per-class method.
         let _ = forward;
         report::write_report(&report::report_lines(
             inp,
@@ -884,72 +1141,84 @@ pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
         ));
     }
 
-    /// Whether this mapping carries the `AllowSimplify` flag (C `AlSimp`,
-    /// mapping.h `AST__ALLOW_SIMPLIFY_FLAG`). Only consulted when the
-    /// enclosing CmpMap has `RestrictedSimplify` set: under a restricted
-    /// simplify, only components with this flag may be nominated for
-    /// merging. Cleared on each component as the simplified sequence is folded
-    /// back into a CmpMap (cmpmap.c:3692) and on the result of every
-    /// simplification (mapping.c:24788), so it never reaches a public dump.
-    /// Serialised as the `AlSimp` token.
+    /// Whether this mapping carries the `AllowSimplify` flag.
+    ///
+    /// Only consulted when the enclosing CmpMap has
+    /// [`restricted_simplify`](Mapping::restricted_simplify) set: under a
+    /// restricted simplify, only components with this flag may be nominated
+    /// for merging.
+    /// It is cleared on each component as a simplified sequence is folded back
+    /// into a CmpMap, and on the result of every simplification.
+    /// Written to a Native dump as the `AlSimp` item.
     fn allow_simplify(&self) -> bool {
+        // C `AST__ALLOW_SIMPLIFY_FLAG` (mapping.h); cleared at cmpmap.c:3692
+        // and mapping.c:24788, so it never reaches a public dump.
         self.mapping_flags().allow_simplify
     }
 
-    /// Set (or clear) the `AllowSimplify` flag (C `AlSimp`).
+    /// Set (or clear) the [`allow_simplify`](Mapping::allow_simplify) flag.
     fn set_allow_simplify(&mut self, flag: bool) {
         self.mapping_flags_mut().allow_simplify = flag;
     }
 
-    /// The `Ident` token — a user-supplied permanent name for this mapping,
-    /// empty when unset. C keeps it on Object (`object.c:5221`), so it applies
-    /// to every class; the `Frame` side of the port carries the same four
+    /// The `Ident` attribute — a user-supplied permanent name for this
+    /// mapping, empty when unset.
+    ///
+    /// The [`Frame`](crate::frames::Frame) side carries the same four
     /// accessors ([`crate::frames::Frame::ident`]).
     fn ident(&self) -> &str {
+        // C keeps it on Object (object.c:5221), so it applies to every class.
         ""
     }
 
-    /// Set the `Ident` token. Default no-op; concrete classes with an `Ident`
-    /// field override this. Mirrors C `astSetIdent` (`object.c:5225`).
-    fn set_ident(&mut self, _ident: &str) {}
+    /// Set the `Ident` attribute. The default does nothing; concrete classes
+    /// with an `Ident` field override this.
+    fn set_ident(&mut self, _ident: &str) {
+        // C `SetIdent` (object.c:5225).
+    }
 
-    /// Clear `Ident`, restoring the unset state. Mirrors C `astClearIdent`
-    /// (`object.c:5217`).
-    fn clear_ident(&mut self) {}
+    /// Clear `Ident`, restoring the unset state.
+    fn clear_ident(&mut self) {
+        // C `ClearIdent` (object.c:5217).
+    }
 
-    /// Whether `Ident` has been explicitly set. Mirrors C `astTestIdent`
-    /// (`object.c:5229`), which tests the stored pointer rather than the
-    /// string's contents.
+    /// Whether `Ident` has been explicitly set, even to an empty string.
     fn test_ident(&self) -> bool {
+        // C `TestIdent` (object.c:5229) tests the stored pointer rather than
+        // the string's contents.
         false
     }
 
     /// The `ID` attribute — a string identifying this object, empty when
-    /// unset. C keeps it on Object (`object.c:5175`). Unlike Ident, a clone
-    /// does not inherit it, as C's `astCopy` does not copy it; the `Frame`
-    /// side of the port carries the same four accessors
-    /// ([`crate::frames::Frame::id`]).
+    /// unset.
+    ///
+    /// Unlike `Ident`, a clone does not inherit it.
+    /// The [`Frame`](crate::frames::Frame) side carries the same four
+    /// accessors ([`crate::frames::Frame::id`]).
+    // C keeps it on Object (object.c:5175), and `astCopy` does not copy it.
     fn id(&self) -> &str;
 
-    /// Set `ID`. Mirrors C `astSetID`.
+    /// Set `ID`.
     fn set_id(&mut self, id: &str);
 
-    /// Clear `ID`. Mirrors C `astClearID`.
+    /// Clear `ID`.
     fn clear_id(&mut self);
 
-    /// Whether `ID` has been set. Mirrors C `astTestID`.
+    /// Whether `ID` has been set.
     fn test_id(&self) -> bool;
 
-    /// C `astDoNotSimplify` (`mapping.c:1107`): whether this mapping must be
-    /// left intact. Consulted by both of C's generic drivers — the
-    /// `astSimplify_` gate (`mapping.c:24764`) and `astMapList`'s refusal to
-    /// decompose a CmpMap (`cmpmap.c:1154`).
+    /// Whether this mapping must be left intact by a simplification.
     ///
-    /// The base rule is "`Ident` is set", on the reasoning that a user who
-    /// named a mapping wants it to survive (`mapping.c:1150`). `Frame`
-    /// overrides it to `false` (`frame.c:3511-3554`), so a named Frame,
-    /// FrameSet or Region is still simplified.
+    /// True when [`ident`](Mapping::ident) is set, so that a Mapping a user
+    /// has named keeps its identity.
+    /// A FrameSet and every Region return false, so a named one is still
+    /// simplified.
     fn do_not_simplify(&self) -> bool {
+        // C `astDoNotSimplify` (mapping.c:1107), consulted by both of C's
+        // generic drivers — the astSimplify_ gate (mapping.c:24764) and
+        // astMapList's refusal to decompose a CmpMap (cmpmap.c:1154). The base
+        // rule is at mapping.c:1150; `Frame` overrides it to `false`
+        // (frame.c:3511-3554).
         self.test_ident()
     }
 

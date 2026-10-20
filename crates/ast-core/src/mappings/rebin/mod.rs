@@ -1,21 +1,24 @@
-//! Rebinning a gridded array through a Mapping: C's `astRebin<X>` and
-//! `astRebinSeq<X>`.
+//! Rebinning a gridded array through a Mapping.
 //!
-//! A port of mapping.c `Rebin<X>`, `RebinSeq<X>` and their drivers. Each input pixel's
-//! centre is taken through the Mapping's forward transformation to a
-//! position in the output grid, and its value spread over the output pixels
-//! around that position. The input region is divided recursively along its
-//! longest axis until a section is too small to be worth a linear fit or
-//! `astLinearApprox` finds the Mapping linear within `tol` over it
-//! (`RebinAdaptively`); each section is then handled in blocks of at most
-//! 2048 input pixels (`RebinWithBlocking`), whose output positions come from
-//! the linear fit or the Mapping (`RebinSection`) and are passed to the
-//! spreading function.
-//!
-//! C writes each driver once over a `void *` array and a type code, and each
-//! spreading function once per type from a macro. The port is generic over
-//! [`RebinValue`], whose items are the macro arguments and the arithmetic
-//! the macros do in the pixel type.
+//! Each input pixel's centre is taken through the Mapping's forward
+//! transformation to a position in the output grid, and its value spread over
+//! the output pixels around that position. To save transforming every pixel,
+//! the input region is divided recursively along its longest axis until the
+//! Mapping is linear within the tolerance over a section, or the section is too
+//! small to be worth a linear fit; each section's output positions then come
+//! from the fit or from the Mapping.
+
+// A port of mapping.c `Rebin<X>`, `RebinSeq<X>` and their drivers. The
+// recursive division is `RebinAdaptively`, which asks astLinearApprox whether
+// the Mapping is linear within `tol`; each section is then handled in blocks
+// of at most 2048 input pixels (`RebinWithBlocking`), whose output positions
+// come from the linear fit or the Mapping (`RebinSection`) and are passed to
+// the spreading function.
+//
+// C writes each driver once over a `void *` array and a type code, and each
+// spreading function once per type from a macro. The port is generic over
+// `RebinValue`, whose items are the macro arguments and the arithmetic the
+// macros do in the pixel type.
 
 // The loops mirror the C source index for index.
 #![allow(clippy::needless_range_loop, clippy::explicit_counter_loop)]
@@ -158,22 +161,62 @@ pub struct RebinOptions<'a> {
 }
 
 /// Rebin the region of `input` into `output` through the forward
-/// transformation of `map`, as C's `astRebin<X>` does.
+/// transformation of `map`.
 ///
-/// `map` takes input grid positions to output grid positions; pixel
-/// centres are at integer coordinates. The output arrays are set to zero
-/// and each good input pixel in the region is added into the output pixels
-/// around its position, as `opts.spread` shares it.
+/// `map` takes input grid positions to output grid positions, and must have
+/// one input per input grid axis and one output per output grid axis; the
+/// two grids may have different numbers of axes.
+/// Pixel centres are at integer coordinates, each pixel having unit extent
+/// on each axis, and the arrays are stored with the first axis varying
+/// fastest.
+/// The output arrays are set to zero, and each good input pixel in the
+/// region is transformed to the output grid and its value shared among the
+/// output pixels around that position, as `opts.spread` says.
+/// Each output pixel is the sum of all the contributions it receives.
+/// When [`RebinOptions::wlim`] is positive, output pixels whose summed
+/// weights fall short of it are set to `badval`.
+/// An input pixel equal to `badval` is ignored when
+/// [`RebinFlags::use_bad`] is set.
 ///
-/// Errors: grids whose axis counts do not match the Mapping's inputs and
-/// outputs, or that have none, are AST__NGDIN; a lower bound above its upper
-/// bound, or a region outside the input grid, is AST__GBDIN; too many pixels
-/// is AST__EXSPIX; a negative `tol` is AST__PATIN; a Mapping with no forward
-/// transformation is AST__TRNND; and a data or variance array of the wrong
-/// length, bounds of different lengths, or fewer `params` than the scheme
-/// uses, is AST__DIMIN. As in C, the output arrays are set to zero after any
-/// error but AST__DIMIN, but only their first element when the axis counts
-/// or bounds are in error.
+/// Output variances, when both grids have them and
+/// [`RebinFlags::use_var`] is set, assume that the errors on the input
+/// values are independent and that their variances can be summed with
+/// suitable weights; even then, the errors on neighboring output values are
+/// often correlated, because of the spreading.
+///
+/// To transform fewer pixels, the Mapping is approximated by linear fits
+/// over sections of the input region wherever they are accurate to within
+/// [`RebinOptions::tol`] output pixels, as for
+/// [`Mapping::tran_grid`], which describes `tol` and
+/// [`RebinOptions::maxpix`].
+/// A large `tol` can make the edges of the sections visible in an output
+/// viewed at high contrast.
+///
+/// Rebinning can show artifacts that resampling does not: systems of curved
+/// lines across the whole output, from beating between the input and output
+/// pixel positions, whose strength depends on the Mapping and the spreading
+/// scheme.
+/// [`Spread::Nearest`] shows them most, and should be used with caution.
+/// To rebin a sequence of inputs into one output, [`rebin_seq`] is more
+/// efficient.
+///
+/// # Errors
+///
+/// - `ErrorCode::Ngdin` when the grids' axis counts do not match the
+///   Mapping's inputs and outputs, or a grid has no axes.
+/// - `ErrorCode::Gbdin` when a lower bound is above its upper bound, or the
+///   region is not inside the input grid.
+/// - `ErrorCode::Exspix` when a grid has too many pixels.
+/// - `ErrorCode::Patin` when `tol` is negative.
+/// - `ErrorCode::Trnnd` when the Mapping has no forward transformation.
+/// - `ErrorCode::Dimin` when a data or variance array has the wrong length,
+///   bounds differ in length, or `params` has fewer values than the scheme
+///   uses.
+///
+/// The output arrays are still set to zero after any error but
+/// `ErrorCode::Dimin`, but only their first element when the axis counts or
+/// bounds are in error.
+#[doc(alias = "astRebin")]
 pub fn rebin<T: RebinValue>(
     map: &dyn Mapping,
     input: &RebinInput<'_, T>,
@@ -330,25 +373,58 @@ pub struct RebinSeqOptions<'a> {
 }
 
 /// Add the region of `input` into `output` through the forward
-/// transformation of `map`, as one of a sequence of calls to C's
-/// `astRebinSeq<X>`.
+/// transformation of `map`, as one of a sequence of calls that forms a
+/// mosaic of the inputs.
 ///
-/// Each call adds weighted input values into `output`, and their weights
-/// into `weights`, as [`rebin`] spreads them, and counts the input pixels it
-/// uses in `nused`; the first call of a sequence sets
-/// [`RebinSeqFlags::rebin_init`] and the last
-/// [`RebinSeqFlags::rebin_end`], which normalises the sums. The last call
-/// may have no input, to normalise only. `weights` has one element per
-/// output pixel, or two with [`RebinSeqFlags::gen_var`]; it and `nused`
-/// may be omitted with [`RebinSeqFlags::no_norm`].
+/// Each call spreads the input as [`rebin`] does, but adds the weighted
+/// values into `output` rather than overwriting it, adds the weight given to
+/// each output pixel into `weights`, and adds the number of input pixels it
+/// uses to `nused`.
+/// An output pixel's weight is the number of input pixels accumulated in
+/// it, counting a fraction of a pixel's value as that fraction of a pixel.
+/// The first call of a sequence sets [`RebinSeqFlags::rebin_init`], which
+/// sets the output, the weights and the count to zero first; the last sets
+/// [`RebinSeqFlags::rebin_end`], which normalises the sums.
+/// The last call may have no input, to normalise only.
 ///
-/// Errors are those of [`rebin`], and AST__BDPAR for incompatible flags,
-/// flags that need variance arrays that are not given, or missing weights
-/// or count. A Mapping too non-linear to conserve flux is AST__CNFLX, and
-/// normalising sums to which no good input pixel contributed is AST__BADIN.
-/// As in C, the output and weights are still set to zero by
+/// Normalising divides each output value by its weight, giving the
+/// weighted mean of the input values around the output pixel and removing
+/// artifacts of aliasing between the grids, and divides each variance by
+/// the square of the weight.
+/// Output values whose weight is below [`RebinSeqOptions::wlim`] are then
+/// set to `badval`; only then are bad output values produced.
+/// With [`RebinSeqFlags::conserve_flux`], set on every call of the
+/// sequence, normalised values are scaled by the ratio of output to input
+/// pixel size, so that the total data value in a feature is kept, which
+/// suits data that are a flux per pixel rather than a density.
+/// The ratio is found once for each section of the linear approximation, so
+/// the joins between sections may show at high contrast; a smaller `tol`
+/// reduces this.
+///
+/// Output variances come either from the input variances
+/// ([`RebinSeqFlags::use_var`]), or from the spread of the input values
+/// contributing to each output pixel ([`RebinSeqFlags::gen_var`], set on
+/// every call of the sequence, which uses the output variances to
+/// accumulate the sums it needs until the sequence ends).
+/// `weights` has one element per output pixel, or two with
+/// [`RebinSeqFlags::gen_var`], the second half accumulating the squares of
+/// the weights; with [`RebinSeqFlags::no_norm`], which leaves the sums
+/// unnormalised, it and `nused` may be omitted.
+///
+/// # Errors
+///
+/// - The errors of [`rebin`].
+/// - `ErrorCode::Bdpar` for incompatible flags, flags that need variance
+///   arrays that are not given, or missing weights or count.
+/// - `ErrorCode::Cnflx` when the Mapping is too non-linear to conserve
+///   flux.
+/// - `ErrorCode::Badin` when normalising sums to which no good input pixel
+///   contributed.
+///
+/// The output and weights are still set to zero by
 /// [`RebinSeqFlags::rebin_init`], and normalised by
 /// [`RebinSeqFlags::rebin_end`], after an error in the arguments.
+#[doc(alias = "astRebinSeq")]
 pub fn rebin_seq<T: RebinValue>(
     map: &dyn Mapping,
     input: Option<&RebinInput<'_, T>>,

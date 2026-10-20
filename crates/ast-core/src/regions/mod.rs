@@ -1843,15 +1843,25 @@ pub fn region_disc(region: &dyn Region) -> AstResult<(Vec<f64>, f64)> {
     Ok((centre, radius * 1.000001))
 }
 
-/// Remove every Region from a Mapping: C's `astRemoveRegions`.
+/// A copy of a Mapping with every Region in it removed.
 ///
-/// A Region becomes a [`UnitMap`] with its number of axes, so the Mapping
-/// keeps its dimensionality but no longer clips points. C returns the Region's
-/// Frame, which is a unit Mapping too; the port's Frames are not Mappings.
-/// Each class that holds other Mappings or Frames removes them from its own
-/// components, as its C `RemoveRegions` does; a Mapping holding no Region is
-/// returned unchanged.
+/// The Mapping, which may be a compound one such as a
+/// [`CmpMap`](crate::mappings::CmpMap), is searched for components that are
+/// Regions.
+/// Each one is dropped where it can simply be removed, as from a series
+/// CmpMap, and otherwise replaced by a [`UnitMap`] with its number of axes,
+/// so the Mapping keeps its dimensionality but no longer clips points.
+/// A Region itself becomes such a UnitMap, and a
+/// [`FrameSet`] has the Regions removed from every
+/// Mapping between its Frames and every Region among its Frames replaced by
+/// its Frame.
+/// A Mapping holding no Region is returned unchanged.
+#[doc(alias = "astRemoveRegions")]
 pub fn remove_regions(mapping: &dyn Mapping) -> DynMapping {
+    // C returns the Region's Frame, which is a unit Mapping too; the port's
+    // Frames are not Mappings (PLAN.md §9.6). Each class that holds other
+    // Mappings or Frames removes them from its own components, as its C
+    // `RemoveRegions` does.
     mapping
         .mapping_without_regions()
         .unwrap_or_else(|| mapping.clone_box())

@@ -1,18 +1,22 @@
-//! Resampling a gridded array through a Mapping: C's `astResample<X>`.
+//! Resampling a gridded array through a Mapping.
 //!
-//! A port of mapping.c `Resample<X>` and its drivers. Each output pixel's
-//! centre is taken back through the Mapping's inverse to a position in the
-//! input grid, and the input is interpolated there. The output region is
-//! divided recursively along its longest axis until a section is too small
-//! to be worth a linear fit or `astLinearApprox` finds the inverse linear
-//! within `tol` over it (`ResampleAdaptively`); each section is then handled
-//! in blocks of at most 2048 output pixels (`ResampleWithBlocking`), whose
-//! input positions come from the linear fit or the Mapping
-//! (`ResampleSection`) and are passed to the interpolator.
-//!
-//! C writes each driver once over a `void *` array and a type code, and each
-//! interpolator once per type from a macro. The port is generic over
-//! [`PixelValue`], whose items are the macro arguments.
+//! Each output pixel's centre is taken back through the Mapping's inverse to
+//! a position in the input grid, and the input is interpolated there. To save
+//! transforming every pixel, the output region is divided recursively along
+//! its longest axis until the inverse is linear within the tolerance over a
+//! section, or the section is too small to be worth a linear fit; each
+//! section's input positions then come from the fit or from the Mapping.
+
+// A port of mapping.c `Resample<X>` and its drivers. The recursive division is
+// `ResampleAdaptively`, which asks astLinearApprox whether the inverse is
+// linear within `tol`; each section is then handled in blocks of at most 2048
+// output pixels (`ResampleWithBlocking`), whose input positions come from the
+// linear fit or the Mapping (`ResampleSection`) and are passed to the
+// interpolator.
+//
+// C writes each driver once over a `void *` array and a type code, and each
+// interpolator once per type from a macro. The port is generic over
+// `PixelValue`, whose items are the macro arguments.
 
 // The loops mirror the C source index for index.
 #![allow(clippy::needless_range_loop, clippy::explicit_counter_loop)]
@@ -86,11 +90,39 @@ pub enum Interp<'a, T> {
 
 /// A caller's 1-d kernel ([`Interp::UKern1`]): the kernel's value at an
 /// offset, given the offset, the parameters and the flags.
+///
+/// The offset is that of an input pixel from the interpolation point, in
+/// pixels, and may be negative; most kernels ignore its sign.
+/// In more than one dimension, a pixel's weight is the product of the
+/// kernel's values at its offsets along each axis.
+/// `params` are those given to [`resample`], whose first value has already
+/// set how many neighboring pixels contribute.
+/// A good kernel is usually symmetric about zero, peaks (usually at 1) at
+/// zero, and is zero at every other integer offset, so that the
+/// interpolated values pass through the data; it may be negative in places.
+/// An error returned by the kernel ends the resampling with that error.
+#[doc(alias = "astUkern1")]
 pub type Kernel1Fn<'a> = &'a dyn Fn(f64, &[f64], ResampleFlags) -> AstResult<f64>;
 
 /// A caller's interpolator ([`Interp::UInterp`]): given the input and the
 /// positions of a block of output pixels, it sets the output values (and
 /// variances, if given) and returns the number it set bad.
+///
+/// It may be called more than once per call of [`resample`].
+/// It should put each output point's value in the output array at the
+/// point's offset ([`InterpArgs::offset`]), and leave the elements no point
+/// names as they are.
+/// It should give a point with a bad input coordinate `badval`, or leave it
+/// as it is when [`ResampleFlags::no_bad`] is set, and treat input pixels
+/// equal to `badval` as bad only when [`ResampleFlags::use_bad`] is set.
+/// Output variances should assume that the errors on the input values are
+/// independent and that their variances can be summed with suitable
+/// weights.
+/// The count it returns is of points for which no value could be found, from
+/// zero to the number of points.
+/// An error returned by the interpolator ends the resampling with that
+/// error.
+#[doc(alias = "astUinterp")]
 pub type InterpFn<'a, T> =
     &'a dyn Fn(&InterpArgs<'_, T>, &mut [T], Option<&mut [T]>) -> AstResult<usize>;
 
@@ -213,26 +245,65 @@ pub struct ResampleOptions<'a, T> {
 }
 
 /// Resample `input` into the region of `output` through the inverse of
-/// `map`, as C's `astResample<X>` does, returning the number of output
-/// pixels (and variances) given the bad value.
+/// `map`, returning the number of output pixels (and variances) given the
+/// bad value.
 ///
-/// `map` takes input grid positions to output grid positions; pixel
-/// centres are at integer coordinates. An output pixel whose input position
-/// is bad or outside the input grid, or whose interpolated value cannot be
-/// formed, is set to `badval` (or left as it is with
-/// [`ResampleFlags::no_bad`]).
+/// `map` takes input grid positions to output grid positions, and must have
+/// one input per input grid axis and one output per output grid axis; the
+/// two grids may have different numbers of axes.
+/// Pixel centres are at integer coordinates, each pixel having unit extent
+/// on each axis, and the arrays are stored with the first axis varying
+/// fastest.
+/// Each output pixel's centre in the region is transformed to the input
+/// grid, and the input interpolated there as `opts.interp` says.
 ///
-/// Errors: grids whose axis counts do not match the Mapping's inputs and
-/// outputs, or that have none, are AST__NGDIN; a lower bound above its upper
-/// bound, or a region outside the output grid, is AST__GBDIN; too many
-/// pixels is AST__EXSPIX; a negative `tol` is AST__PATIN; a Mapping with no
-/// inverse is AST__TRNND; and a data or variance array of the wrong length,
-/// bounds of different lengths, or fewer `params` than the scheme uses, is
-/// AST__DIMIN. Flux conservation with a zero `tol`, a Mapping with different
-/// numbers of inputs and outputs, or a section of the output over which no
-/// linear fit is found, is AST__CNFLX, and with `no_bad` is AST__BADFLG. An
-/// error from a caller's kernel or interpolator is returned with context
-/// added.
+/// This samples the input rather than integrating it, so the total data
+/// value is not in general kept.
+/// [`ResampleFlags::conserve_flux`] scales the output to keep it
+/// approximately, by the ratio of output to input pixel size, found once for
+/// each section of the linear approximation, so the joins between sections
+/// may show at high contrast; for accurate flux conservation use
+/// [`rebin`](crate::mappings::rebin()) or
+/// [`rebin_seq`](crate::mappings::rebin_seq).
+///
+/// An output pixel is set to `badval` (or left as it is with
+/// [`ResampleFlags::no_bad`], and counted either way) when its input
+/// position is bad or outside the input grid, falls in a bad input pixel
+/// (one equal to `badval`, with [`ResampleFlags::use_bad`]), has
+/// neighboring input pixels unsuitable for the scheme, or gives a value the
+/// pixel type cannot represent.
+/// A position on a pixel boundary belongs to the pixel with the larger
+/// index.
+/// An output variance is bad when its value is, or when the contributing
+/// input variances include a bad or negative one.
+/// Output variances, formed when both grids have them, assume that the
+/// errors on the input values are independent.
+///
+/// To transform fewer pixels, the inverse is approximated by linear fits
+/// over sections of the output region wherever they are accurate to within
+/// [`ResampleOptions::tol`] input pixels, as for [`Mapping::tran_grid`],
+/// which describes `tol` and [`ResampleOptions::maxpix`].
+///
+/// # Errors
+///
+/// - `ErrorCode::Ngdin` when the grids' axis counts do not match the
+///   Mapping's inputs and outputs, or a grid has no axes.
+/// - `ErrorCode::Gbdin` when a lower bound is above its upper bound, or the
+///   region is not inside the output grid.
+/// - `ErrorCode::Exspix` when a grid has too many pixels.
+/// - `ErrorCode::Patin` when `tol` is negative.
+/// - `ErrorCode::Trnnd` when the Mapping has no inverse transformation.
+/// - `ErrorCode::Dimin` when a data or variance array has the wrong length,
+///   bounds differ in length, or `params` has fewer values than the scheme
+///   uses.
+/// - `ErrorCode::Cnflx` when flux conservation is asked for with a zero
+///   `tol`, a Mapping with different numbers of inputs and outputs, or a
+///   section of the output over which no linear fit is found.
+/// - `ErrorCode::Badflg` when flux conservation is asked for with
+///   [`ResampleFlags::no_bad`].
+/// - An error from a caller's kernel or interpolator is returned with
+///   context added.
+#[doc(alias = "astResample")]
 pub fn resample<T: PixelValue>(
     map: &dyn Mapping,
     input: &ResampleInput<'_, T>,

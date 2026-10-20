@@ -214,34 +214,34 @@ class	LutMap	lutmap.c			no
 attribute	LutInterp	lutmap.c			no
 attribute	LutEpsilon	lutmap.c			no
 function	astLutMap	lutmap.c			no
-class	Mapping	mapping.c			no
-function	astInvert	mapping.c			no
-function	astLinearApprox	mapping.c			no
-function	astQuadApprox	mapping.c			no
-function	astRebin<X>	mapping.c			no
-function	astRebinSeq<X>	mapping.c			no
-function	astRemoveRegions	mapping.c			no
-function	astResample<X>	mapping.c			no
-function	astSimplify	mapping.c			no
-function	astTran1	mapping.c			no
-function	astTran2	mapping.c			no
-function	astTranGrid	mapping.c			no
-function	astTranN	mapping.c			no
-function	astTranP	mapping.c			no
-function	astUinterp	mapping.c			no
-function	astUkern1	mapping.c			no
-attribute	Invert	mapping.c			no
-attribute	IsLinear	mapping.c			no
-attribute	IsSimple	mapping.c			no
-attribute	Nin	mapping.c			no
-attribute	Nout	mapping.c			no
-attribute	Report	mapping.c			no
-attribute	TranForward	mapping.c			no
-attribute	TranInverse	mapping.c			no
-function	astDecompose	mapping.c			no
-function	astMapBox	mapping.c			no
-function	astRate	mapping.c			no
-function	astMapSplit	mapping.c			no
+class	Mapping	mapping.c	Mapping		yes	rustdoc rejects an alias equal to the item's name, so the gate checks the trait's declaration
+function	astInvert	mapping.c	Mapping::invert		yes
+function	astLinearApprox	mapping.c	Mapping::linear_approx		yes	C's header says an all-bad box gives unit-transformation coefficients with bad offsets; C's code returns all-bad coefficients and zero, which the port returns as None
+function	astQuadApprox	mapping.c	Mapping::quad_approx		yes
+function	astRebin<X>	mapping.c	rebin		yes	one function generic over RebinValue for the type codes
+function	astRebinSeq<X>	mapping.c	rebin_seq		yes	one function generic over RebinValue for the type codes
+function	astRemoveRegions	mapping.c	remove_regions		yes	a Region becomes a UnitMap rather than its Frame, since the port's Frames are not Mappings (PLAN.md §9.6)
+function	astResample<X>	mapping.c	resample		yes	ResampleFlags has no AST__URESAMP1-4 user flags (PLAN.md §2)
+function	astSimplify	mapping.c	dyn Mapping::simplify		yes	C returns the Mapping unsimplified when a reduction raises AST__NODEF or AST__TRNND; the port returns the error (PLAN.md §2)
+function	astTran1	mapping.c	Mapping::tran1		yes
+function	astTran2	mapping.c	Mapping::tran2		yes
+function	astTranGrid	mapping.c	Mapping::tran_grid		yes
+function	astTranN	mapping.c	Mapping::transform		yes	transform does not honor Report, which astTranN does (PLAN.md §2)
+function	astTranP	mapping.c	Mapping::transform_into		yes	transform_into does not honor Report, which astTranP does (PLAN.md §2)
+function	astUinterp	mapping.c	InterpFn		yes	no AST__URESAMP1-4 user flags reach it (see astResample<X>)
+function	astUkern1	mapping.c	Kernel1Fn		yes	no AST__URESAMP1-4 user flags reach it (see astResample<X>)
+attribute	Invert	mapping.c	Mapping::is_inverted		yes
+attribute	IsLinear	mapping.c	Mapping::is_linear		yes
+attribute	IsSimple	mapping.c	Mapping::has_been_simplified		yes
+attribute	Nin	mapping.c	Mapping::nin		yes
+attribute	Nout	mapping.c	Mapping::nout		yes
+attribute	Report	mapping.c	Mapping::report		yes	a clone keeps Report where C's copy clears it, and only tran1/tran2 report (PLAN.md §2); C's header says a dump drops it, but C's Dump writes it when set, as the port does
+attribute	TranForward	mapping.c	Mapping::has_forward		yes
+attribute	TranInverse	mapping.c	Mapping::has_inverse		yes
+function	astDecompose	mapping.c		not-ported	yes	CmpMap and TranMap components are crate-private; CmpFrame::frame1/frame2 cover a CmpFrame (PLAN.md §2)
+function	astMapBox	mapping.c	Mapping::map_box		yes
+function	astRate	mapping.c	Mapping::rate		yes
+function	astMapSplit	mapping.c	Mapping::map_split		yes
 class	MathMap	mathmap.c			no
 attribute	Seed	mathmap.c			no
 attribute	SimpFI	mathmap.c			no
