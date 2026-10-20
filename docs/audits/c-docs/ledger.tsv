@@ -567,7 +567,7 @@ function	astTranMap	tranmap.c	TranMap::new		yes	The TranMap owns its components;
 class	UnitMap	unitmap.c	UnitMap		yes
 function	astUnitMap	unitmap.c	UnitMap::new		yes
 class	UnitNormMap	unitnormmap.c	UnitNormMap		yes
-function	astUnitNormMap	unitnormmap.c	UnitNormMap::new		yes	ncoord is the length of the centre slice; C's NULL centre (every axis AST__BAD) has no equivalent
+function	astUnitNormMap	unitnormmap.c	UnitNormMap::new		yes	ncoord is the length of the centre slice; C's undocumented NULL centre is equivalent to BAD_VALUE on every axis
 class	WcsMap	wcsmap.c	WcsMap		yes
 attribute	ProjP	wcsmap.c		merged	yes	PVi_m
 attribute	PVi_m	wcsmap.c	WcsMap::get_pv		yes	C refuses a change on a WcsMap with more than one reference; owned values have no shared references; the header's zero default for parameters the projection does not use holds only on the latitude axis, in C as in the port (wcsmap.c GetPV)
