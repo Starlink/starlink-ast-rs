@@ -519,6 +519,10 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     ///
     /// The result is `BAD_VALUE` if any input coordinate is `BAD_VALUE`.
     ///
+    /// # Panics
+    ///
+    /// If any point holds fewer than [`naxes`](Frame::naxes) coordinates.
+    ///
     /// # Errors
     ///
     /// No Frame class raises an error of its own; a CmpFrame, FrameSet or
@@ -540,6 +544,10 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     ///
     /// The result is `BAD_VALUE` if any input coordinate is `BAD_VALUE`, or
     /// if `a` and `b`, or `b` and `c`, coincide.
+    ///
+    /// # Panics
+    ///
+    /// If any point holds fewer than [`naxes`](Frame::naxes) coordinates.
     ///
     /// # Errors
     ///
@@ -573,6 +581,10 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// coordinate is `BAD_VALUE`, or if the two points coincide (or
     /// otherwise fail to fix a unique geodesic) and `dist` is not zero.
     ///
+    /// # Panics
+    ///
+    /// If any point holds fewer than [`naxes`](Frame::naxes) coordinates.
+    ///
     /// # Errors
     ///
     /// No Frame class raises an error of its own; a CmpFrame, FrameSet or
@@ -602,6 +614,10 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// any coordinates into a form suitable for display.
     /// A [`NormMap`](crate::mappings::NormMap) applies a Frame's `norm` as a
     /// Mapping.
+    ///
+    /// # Panics
+    ///
+    /// If `coords` holds fewer than [`naxes`](Frame::naxes) coordinates.
     ///
     /// # Errors
     ///
@@ -2061,6 +2077,10 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     ///
     /// Every output is `BAD_VALUE` if any input is `BAD_VALUE`.
     ///
+    /// # Panics
+    ///
+    /// If any point holds fewer than 2 coordinates.
+    ///
     /// # Errors
     ///
     /// - `ErrorCode::Naxin` when the Frame is not 2-dimensional.
@@ -2084,6 +2104,7 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
                 "astOffset2 can only be used with 2-dimensional Frames",
             ));
         }
+        assert_points_len("offset2", 2, &[point1]);
         if is_bad(point1[0]) || is_bad(point1[1]) || is_bad(angle) || is_bad(offset) {
             return Ok((vec![BAD_VALUE, BAD_VALUE], BAD_VALUE));
         }
@@ -2108,6 +2129,10 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// Every coordinate of the result is `BAD_VALUE` if any input
     /// coordinate is `BAD_VALUE`, if the two points of either curve
     /// coincide, or if the curves do not cross.
+    ///
+    /// # Panics
+    ///
+    /// If any point holds fewer than 2 coordinates.
     ///
     /// # Errors
     ///
@@ -2134,6 +2159,7 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
                 "astIntersect can only be used with 2-dimensional Frames",
             ));
         }
+        assert_points_len("intersect", 2, &[a1, a2, b1, b2]);
         let mut cross = vec![BAD_VALUE, BAD_VALUE];
         if [a1[0], a1[1], a2[0], a2[1], b1[0], b1[1], b2[0], b2[1]]
             .iter()
@@ -2410,6 +2436,10 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// The result is `BAD_VALUE` if any input coordinate is `BAD_VALUE`, or
     /// if the angle is undefined.
     ///
+    /// # Panics
+    ///
+    /// If any point holds fewer than [`naxes`](Frame::naxes) coordinates.
+    ///
     /// # Errors
     ///
     /// - `ErrorCode::Axiin` when `axis` is not between 1 and
@@ -2438,6 +2468,7 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
         use crate::mappings::helpers::is_bad;
         // frame.c:1442 validates the axis first.
         self.validate_frame_axis(axis, "astAxAngle")?;
+        assert_points_len("ax_angle", self.naxes(), &[a, b]);
         let naxes = self.naxes();
         let mut aa = vec![0.0; naxes];
         let mut mxab = 0.0;
@@ -2540,6 +2571,10 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// or if the outputs are undefined, as for a basis vector of zero
     /// length.
     ///
+    /// # Panics
+    ///
+    /// If any point holds fewer than [`naxes`](Frame::naxes) coordinates.
+    ///
     /// # Errors
     ///
     /// No Frame class raises an error of its own; a CmpFrame, FrameSet or
@@ -2564,6 +2599,7 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
         use crate::constants::BAD_VALUE;
         use crate::mappings::helpers::is_bad;
         let naxes = self.naxes();
+        assert_points_len("resolve", naxes, &[point1, point2, point3]);
         let mut point4 = vec![BAD_VALUE; naxes];
         let mut d1 = BAD_VALUE;
         let mut d2 = BAD_VALUE;
@@ -2600,6 +2636,11 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// 1-axis case returns `(ax_distance, 0)`. Mirrors C
     /// `astResolvePoints` (frame.c:9588). SkyFrame overrides with
     /// great-circle geometry.
+    ///
+    /// # Panics
+    ///
+    /// If `point1` or `point2` holds fewer than [`naxes`](Frame::naxes)
+    /// coordinates.
     fn resolve_points(
         &self,
         point1: &[f64],
@@ -2609,6 +2650,7 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
         use crate::constants::BAD_VALUE;
         use crate::mappings::helpers::is_bad;
         let nax = self.naxes();
+        assert_points_len("resolve_points", nax, &[point1, point2]);
         let npoint = input.npoint();
         let mut d1v = vec![BAD_VALUE; npoint];
         let mut d2v = vec![BAD_VALUE; npoint];
@@ -3058,6 +3100,22 @@ pub fn validate_permutation(perm: &[usize], naxes: usize) -> AstResult<()> {
         seen[p - 1] = true;
     }
     Ok(())
+}
+
+/// Panic unless every point in `points` holds at least `naxes` coordinates.
+///
+/// A point given as a slice shorter than the Frame's axes is a caller error,
+/// which C cannot detect; this makes it a panic that names the shortfall
+/// rather than a computation over the coordinates given.
+#[track_caller]
+pub(crate) fn assert_points_len(method: &str, naxes: usize, points: &[&[f64]]) {
+    for p in points {
+        assert!(
+            p.len() >= naxes,
+            "{method}: a point has {} coordinates but the Frame has {naxes} axes",
+            p.len()
+        );
+    }
 }
 
 /// Cartesian distance between two points, the Frame-class algorithm

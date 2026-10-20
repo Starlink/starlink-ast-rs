@@ -890,23 +890,30 @@ impl Frame for BasicFrame {
     }
 
     fn distance(&self, a: &[f64], b: &[f64]) -> AstResult<f64> {
-        Ok(super::cartesian_distance(a, b))
+        let n = self.naxes;
+        super::assert_points_len("distance", n, &[a, b]);
+        Ok(super::cartesian_distance(&a[..n], &b[..n]))
     }
 
     fn angle(&self, a: &[f64], b: &[f64], c: &[f64]) -> AstResult<f64> {
         // Frame-class algorithm (frame.c:1230-1320): signed in 2-D,
         // AST__BAD for bad inputs or zero-length vectors.
-        Ok(super::cartesian_angle(a, b, c))
+        let n = self.naxes;
+        super::assert_points_len("angle", n, &[a, b, c]);
+        Ok(super::cartesian_angle(&a[..n], &b[..n], &c[..n]))
     }
 
     fn offset(&self, from: &[f64], to: &[f64], dist: f64) -> AstResult<Vec<f64>> {
-        Ok(super::cartesian_offset(from, to, dist))
+        let n = self.naxes;
+        super::assert_points_len("offset", n, &[from, to]);
+        Ok(super::cartesian_offset(&from[..n], &to[..n], dist))
     }
 
     /// frame.c `Norm`: each axis value is normalised by its own Axis
     /// object, so a SkyAxis picked out of a SkyFrame wraps its angle and a
     /// plain Axis leaves its value alone.
     fn norm(&self, coords: &mut [f64]) -> AstResult<()> {
+        super::assert_points_len("norm", self.naxes, &[&*coords]);
         for (value, &phys) in coords.iter_mut().zip(&self.perm) {
             if let FrameAxis::Sky(sky) = &self.axes[phys] {
                 *value = sky.axis_norm(*value);

@@ -140,3 +140,63 @@ fn is_unit_frame_base_true() {
     let f = bf(2);
     assert!(f.is_unit_frame());
 }
+
+// A point given as a slice shorter than the Frame's axes is a caller error.
+// Each method panics with a message naming the shortfall, rather than
+// computing over the coordinates it was given.
+
+#[test]
+#[should_panic(expected = "has 3 axes")]
+fn distance_panics_on_a_short_point() {
+    let _ = bf(3).distance(&[0.0, 0.0], &[3.0, 4.0]);
+}
+
+#[test]
+#[should_panic(expected = "has 3 axes")]
+fn angle_panics_on_a_short_point() {
+    let _ = bf(3).angle(&[0.0, 1.0], &[0.0, 0.0], &[1.0, 0.0]);
+}
+
+#[test]
+#[should_panic(expected = "has 3 axes")]
+fn offset_panics_on_a_short_point() {
+    let _ = bf(3).offset(&[0.0, 0.0], &[3.0, 4.0], 1.0);
+}
+
+#[test]
+#[should_panic(expected = "has 3 axes")]
+fn norm_panics_on_a_short_point() {
+    let mut p = [0.0, 0.0];
+    let _ = bf(3).norm(&mut p);
+}
+
+#[test]
+#[should_panic(expected = "has 3 axes")]
+fn resolve_panics_on_a_short_point() {
+    let _ = bf(3).resolve(&[0.0, 0.0], &[1.0, 0.0], &[3.0, 4.0]);
+}
+
+#[test]
+#[should_panic(expected = "has 3 axes")]
+fn ax_angle_panics_on_a_short_point() {
+    let _ = bf(3).ax_angle(&[0.0, 0.0], &[1.0, 0.0], 1);
+}
+
+#[test]
+#[should_panic(expected = "has 2 axes")]
+fn offset2_panics_on_a_short_point() {
+    let _ = bf(2).offset2(&[1.0], 0.0, 1.0);
+}
+
+#[test]
+#[should_panic(expected = "has 2 axes")]
+fn intersect_panics_on_a_short_point() {
+    let _ = bf(2).intersect(&[0.0, 0.0], &[2.0], &[0.0, 2.0], &[2.0, 0.0]);
+}
+
+#[test]
+#[should_panic(expected = "has 2 axes")]
+fn resolve_points_panics_on_a_short_point() {
+    let pts = PointSet::from_columns(&[&[1.0], &[1.0]]).unwrap();
+    let _ = bf(2).resolve_points(&[0.0], &[1.0, 0.0], &pts);
+}
