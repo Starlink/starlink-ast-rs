@@ -80,11 +80,9 @@ impl CmpFrame {
         Frame::title(self)
     }
 
-    /// Set the Frame Title. Mirrors `astSetTitle`. Empty input clears
-    /// the explicit set state (i.e. reverts to the default).
+    /// Set the Frame Title. Mirrors `astSetTitle`.
     pub fn set_title(&mut self, title: impl Into<String>) {
-        let s = title.into();
-        self.attrs.title = if s.is_empty() { None } else { Some(s) };
+        self.attrs.title = Some(title.into());
     }
 
     /// Whether Title has been explicitly set. Mirrors `astTestTitle`.
@@ -92,11 +90,9 @@ impl CmpFrame {
         self.attrs.title.is_some()
     }
 
-    /// Set the Frame Domain. Mirrors `astSetDomain`. Empty input
-    /// clears the explicit set state.
+    /// Set the Frame Domain. Mirrors `astSetDomain`.
     pub fn set_domain(&mut self, domain: impl Into<String>) {
-        let s = domain.into();
-        self.attrs.domain = if s.is_empty() { None } else { Some(s) };
+        self.attrs.domain = Some(super::frame_attrs::clean_domain(&domain.into()));
     }
 
     /// Return the frame identification string.

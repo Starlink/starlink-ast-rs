@@ -18,7 +18,7 @@ mod cases;
 use cases::V;
 
 use ast_core::frames::{
-    DSBSpecFrame, FluxFrame, FluxSystem, Frame, SideBand, SkyFrame, SkySystem, SpecFrame,
+    CmpFrame, DSBSpecFrame, FluxFrame, FluxSystem, Frame, SideBand, SkyFrame, SkySystem, SpecFrame,
     SpecSystem, StdOfRest, TimeFrame, TimeScale, TimeSystem,
 };
 use ast_core::{AnyObject, from_native_string};
@@ -373,4 +373,24 @@ fn flux_frame_domain_is_cleaned() {
     let mut ff = FluxFrame::new(FluxSystem::FluxDen);
     ff.set_domain("my flux");
     assert_eq!(Frame::domain(&ff), "MYFLUX");
+}
+
+/// A CmpFrame stores its Domain cleaned, and an empty Domain or Title is
+/// a set value rather than a clear, as C's `astSetC( cmpframe, "Domain",
+/// "my cmp" )` gives `"MYCMP"`, `astSetC( cmpframe, "Domain", "" )`
+/// leaves `astTest( cmpframe, "Domain" )` true with the value `""`, and
+/// `astSetC( cmpframe, "Title", "" )` leaves `astTest( cmpframe, "Title" )`
+/// true.
+#[test]
+fn cmp_frame_domain_is_cleaned_and_empty_is_set() {
+    let a = TimeFrame::new(TimeSystem::Mjd);
+    let b = FluxFrame::new(FluxSystem::FluxDen);
+    let mut cf = CmpFrame::new(Box::new(a), Box::new(b));
+    cf.set_domain("my cmp");
+    assert_eq!(Frame::domain(&cf), "MYCMP");
+    cf.set_domain("");
+    assert!(cf.test_domain());
+    assert_eq!(Frame::domain(&cf), "");
+    cf.set_title("");
+    assert!(cf.test_title());
 }
