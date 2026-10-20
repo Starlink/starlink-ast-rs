@@ -168,16 +168,16 @@ attribute	Current	frameset.c			no
 attribute	Nframe	frameset.c			no
 attribute	Variant	frameset.c			no
 function	astFrameSet	frameset.c			no
-class	GrismMap	grismmap.c			no
-attribute	GrismNR	grismmap.c			no
-attribute	GrismNRP	grismmap.c			no
-attribute	GrismWaveR	grismmap.c			no
-attribute	GrismAlpha	grismmap.c			no
-attribute	GrismG	grismmap.c			no
-attribute	GrismM	grismmap.c			no
-attribute	GrismEps	grismmap.c			no
-attribute	GrismTheta	grismmap.c			no
-function	astGrismMap	grismmap.c			no
+class	GrismMap	grismmap.c	GrismMap		yes
+attribute	GrismNR	grismmap.c	GrismMap::grism_nr		yes	C refuses to set it on a GrismMap with more than one reference; owned values have no such restriction
+attribute	GrismNRP	grismmap.c	GrismMap::grism_nrp		yes	C refuses to set it on a GrismMap with more than one reference
+attribute	GrismWaveR	grismmap.c	GrismMap::grism_wave_r		yes	C refuses to set it on a GrismMap with more than one reference
+attribute	GrismAlpha	grismmap.c	GrismMap::grism_alpha		yes	C refuses to set it on a GrismMap with more than one reference
+attribute	GrismG	grismmap.c	GrismMap::grism_g		yes	C refuses to set it on a GrismMap with more than one reference
+attribute	GrismM	grismmap.c	GrismMap::grism_m		yes	C refuses to set it on a GrismMap with more than one reference; the unset sentinel is INT_MAX, which set_grism_m(i32::MAX) mirrors
+attribute	GrismEps	grismmap.c	GrismMap::grism_eps		yes	C refuses to set it on a GrismMap with more than one reference
+attribute	GrismTheta	grismmap.c	GrismMap::grism_theta		yes	C refuses to set it on a GrismMap with more than one reference
+function	astGrismMap	grismmap.c	GrismMap::new;GrismMap::default_map		yes	C takes only an options string; new sets every attribute and default_map sets none
 class	Interval	interval.c			no
 function	astInterval	interval.c			no
 class	IntraMap	intramap.c			no
@@ -343,10 +343,10 @@ function	astUnlock	object.c			no
 function	astThread	object.c			no
 function	astVersion	object.c			no
 function	astEscapes	object.c			no
-class	PcdMap	pcdmap.c			no
-attribute	Disco	pcdmap.c			no
-attribute	PcdCen	pcdmap.c			no
-function	astPcdMap	pcdmap.c			no
+class	PcdMap	pcdmap.c	PcdMap		yes
+attribute	Disco	pcdmap.c	PcdMap::disc		yes	C refuses to set it on a PcdMap with more than one reference; owned values have no such restriction
+attribute	PcdCen	pcdmap.c	PcdMap::pcdcen		yes	The getter returns both axes; C's PcdCen without an axis reads axis 1. C refuses to set it on a PcdMap with more than one reference
+function	astPcdMap	pcdmap.c	PcdMap::new		yes	The options string is replaced by the typed setters
 class	PermMap	permmap.c	PermMap		yes
 function	astPermMap	permmap.c	PermMap::new		yes	C accepts a NULL inperm or outperm for the null permutation, dumped as InCpy/OutCpy; the port needs explicit arrays, which transform the same but dump every element (PLAN.md §2)
 class	Plot	plot.c		not-ported	yes
@@ -493,10 +493,10 @@ function	astSpecFrame	specframe.c			no
 class	SpecMap	specmap.c	SpecMap		yes
 function	astSpecAdd	specmap.c	SpecMap::add		yes	C takes the conversion as a string; the port takes SpecCvtType, whose variants carry the conversion list and SpecCvtType::from_code parses the strings
 function	astSpecMap	specmap.c	SpecMap::new;SpecMap::with_nin		yes	new is nin = 1; C's reserved flags argument is dropped
-class	SphMap	sphmap.c			no
-attribute	UnitRadius	sphmap.c			no
-attribute	PolarLong	sphmap.c			no
-function	astSphMap	sphmap.c			no
+class	SphMap	sphmap.c	SphMap		yes
+attribute	UnitRadius	sphmap.c	SphMap::unit_radius		yes	C refuses to set it on a SphMap with more than one reference; owned values have no such restriction
+attribute	PolarLong	sphmap.c	SphMap::polar_long		yes	C refuses to set it on a SphMap with more than one reference
+function	astSphMap	sphmap.c	SphMap::new		yes	The header says a zero vector transforms to AST__BAD; C's code (and the port) give (0, 0) from palDcc2s (docs/issues/c-library-quirks.md)
 class	SplineMap	splinemap.c			no
 function	astSplineCoeffs	splinemap.c			no
 function	astSplineKnots	splinemap.c			no
@@ -566,8 +566,8 @@ class	TranMap	tranmap.c			no
 function	astTranMap	tranmap.c			no
 class	UnitMap	unitmap.c	UnitMap		yes
 function	astUnitMap	unitmap.c	UnitMap::new		yes
-class	UnitNormMap	unitnormmap.c			no
-function	astUnitNormMap	unitnormmap.c			no
+class	UnitNormMap	unitnormmap.c	UnitNormMap		yes
+function	astUnitNormMap	unitnormmap.c	UnitNormMap::new		yes	ncoord is the length of the centre slice; C's NULL centre (every axis AST__BAD) has no equivalent
 class	WcsMap	wcsmap.c	WcsMap		yes
 attribute	ProjP	wcsmap.c		merged	yes	PVi_m
 attribute	PVi_m	wcsmap.c	WcsMap::get_pv		yes	C refuses a change on a WcsMap with more than one reference; owned values have no shared references; the header's zero default for parameters the projection does not use holds only on the latitude axis, in C as in the port (wcsmap.c GetPV)

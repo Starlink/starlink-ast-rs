@@ -1,14 +1,7 @@
 //! 2-D pincushion/barrel distortion mapping.
 //!
-//! A `PcdMap` transforms 2-dimensional positions to correct for the
-//! radial distortion introduced by some cameras and telescopes.  The
-//! forward transformation applies the distortion:
-//!
-//!   RD = R * (1 + C * R^2)
-//!
-//! where R is the undistorted radial distance from the distortion
-//! centre, RD is the distorted radial distance, and C is the
-//! distortion coefficient.
+//! A [`PcdMap`] transforms 2-dimensional positions to correct for the
+//! radial distortion introduced by some cameras and telescopes.
 
 use crate::constants::BAD_VALUE;
 use crate::coords::{Points, PointsMut};
@@ -23,24 +16,38 @@ use super::unit::UnitMap;
 use super::{DynMapping, Mapping};
 use crate::mappings::SimplifiedRecord;
 
-/// A 2-D pincushion/barrel distortion mapping.
+/// Apply 2-dimensional pincushion/barrel distortion.
 ///
-/// The forward transformation applies radial distortion characterised
-/// by a single coefficient `disc`:
+/// A PcdMap is a non-linear Mapping which transforms 2-dimensional positions
+/// to correct for the radial distortion introduced by some cameras and
+/// telescopes.
+/// This can take the form either of pincushion or barrel distortion, and is
+/// characterized by a single distortion coefficient.
+///
+/// A PcdMap is specified by giving this distortion coefficient and the
+/// coordinates of the center of the radial distortion.
+/// The forward transformation of a PcdMap applies the distortion:
 ///
 /// ```text
-/// dx = x - cen[0]
-/// dy = y - cen[1]
-/// f = 1 + disc * (dx^2 + dy^2)
-/// x_out = dx * f + cen[0]
-/// y_out = dy * f + cen[1]
+/// RD = R * (1 + C * R * R)
 /// ```
 ///
-/// Positive `disc` gives pincushion distortion; negative gives barrel
-/// distortion; zero gives no distortion (identity).
+/// where R is the undistorted radial distance from the distortion center
+/// ([`pcdcen`](PcdMap::pcdcen)), RD is the radial distance from the same
+/// center in the presence of distortion, and C is the distortion coefficient
+/// ([`disc`](PcdMap::disc)).
 ///
-/// The inverse is an approximate iterative solution (from SLA_UNPCD)
-/// that is accurate to negligible levels for astrometric purposes.
+/// The inverse transformation removes the distortion produced by the forward
+/// transformation.
+/// The expression used to derive R from RD is an approximate inverse of the
+/// expression above, obtained from two iterations of the Newton-Raphson
+/// method.
+/// The mismatch between the forward and inverse expressions is negligible
+/// for astrometric applications.
+///
+/// If the PcdMap is inverted, the forward transformation removes the
+/// distortion and the inverse transformation applies it; the coefficient
+/// itself is unchanged.
 #[derive(Debug, Clone)]
 pub struct PcdMap {
     /// The distortion coefficient as C's getter reports it, 0.0 in place of the
@@ -65,15 +72,33 @@ pub struct PcdMap {
 }
 
 impl PcdMap {
-    /// Create a new `PcdMap` with the given distortion coefficient and centre.
+    /// Create a PcdMap from a distortion coefficient and the center of the
+    /// distortion.
     ///
-    /// `disc` is the distortion coefficient (positive = pincushion,
-    /// negative = barrel, zero = no distortion).
-    /// `pcdcen` is the `[x, y]` centre of the distortion.
-    /// `AST__BAD` for either leaves that attribute unset, as C's initialiser
-    /// stores it raw and its getter then reports the default
-    /// (`pcdmap.c:96-98`).
+    /// `disc` is the distortion coefficient: negative values give barrel
+    /// distortion, positive values give pincushion distortion, and zero gives
+    /// no distortion.
+    /// `pcdcen` holds the coordinates of the center of the distortion.
+    /// [`BAD_VALUE`] for either leaves that attribute unset, so that it reads as
+    /// its default of zero.
+    ///
+    /// ```
+    /// use ast_core::mappings::{Mapping, PcdMap};
+    ///
+    /// let map = PcdMap::new(1.0e-3, [10.0, 0.0]);
+    /// // A point 10 units from the center moves out to 10 * (1 + 0.1).
+    /// let (x, y) = (vec![20.0], vec![0.0]);
+    /// let out = map.tran2(&x, &y, true).unwrap();
+    /// assert!((out.0[0] - 21.0).abs() < 1e-12);
+    /// assert_eq!(out.1[0], 0.0);
+    /// // The inverse removes the distortion again, approximately.
+    /// let back = map.tran2(&out.0, &out.1, false).unwrap();
+    /// assert!((back.0[0] - 20.0).abs() < 1e-3);
+    /// ```
+    #[doc(alias = "astPcdMap")]
     pub fn new(disc: f64, pcdcen: [f64; 2]) -> Self {
+        // C's initializer stores a bad value raw and its getter then reports
+        // the default (pcdmap.c:96-98).
         let disc_set = disc != BAD_VALUE;
         let pcdcen_set = [pcdcen[0] != BAD_VALUE, pcdcen[1] != BAD_VALUE];
         Self {
@@ -92,7 +117,21 @@ impl PcdMap {
         }
     }
 
-    /// The distortion coefficient.
+    /// The pincushion/barrel distortion coefficient.
+    ///
+    /// For pincushion distortion the value is positive; for barrel distortion
+    /// it is negative.
+    /// The forward transformation applies the distortion and the inverse
+    /// removes it.
+    /// If the PcdMap is inverted, the forward transformation removes the
+    /// distortion and the inverse applies it, but the distortion is still
+    /// given by the same value.
+    ///
+    /// Default: 0, which gives no distortion.
+    ///
+    /// [`set_disc`](PcdMap::set_disc), [`test_disc`](PcdMap::test_disc) and
+    /// [`clear_disc`](PcdMap::clear_disc) set, test and clear it.
+    #[doc(alias = "Disco")]
     pub fn disc(&self) -> f64 {
         self.disc
     }
@@ -115,22 +154,25 @@ impl PcdMap {
         }
     }
 
-    /// Set the distortion coefficient — C's `astSetDisco`.
+    /// Set [`disc`](PcdMap::disc).
     ///
-    /// A zero coefficient is what PcdMap's own `MapMerge` tests for when it
-    /// replaces the PcdMap with a `UnitMap`, in the section C marks "without
-    /// reference to the neighbouring Mappings in the list"
-    /// (`pcdmap.c:1418-1422`), so a conclusion an earlier simplification reached
-    /// no longer holds. Both simplified records are discarded (`pcdmap.c:2586`,
-    /// the convention at `mapping.h:449-472`).
-    ///
-    /// C stores the value raw and reads it back through a getter that reports
-    /// 0.0 in place of the `AST__BAD` unset sentinel (`pcdmap.c:2584-2585`).
-    /// The port stores what that getter would report and carries the sentinel
-    /// test as a flag, so passing `BAD_VALUE` here restores the default and
-    /// leaves the attribute untested, exactly as `astSetDisco( map, AST__BAD )`
-    /// does.
+    /// [`BAD_VALUE`] clears it instead.
+    /// A value different from the one held clears the record that the PcdMap
+    /// has been simplified.
     pub fn set_disc(&mut self, disc: f64) {
+        // A zero coefficient is what PcdMap's own MapMerge tests for when it
+        // replaces the PcdMap with a UnitMap, in the section C marks "without
+        // reference to the neighbouring Mappings in the list"
+        // (pcdmap.c:1418-1422), so a conclusion an earlier simplification
+        // reached no longer holds. Both simplified records are discarded
+        // (pcdmap.c:2586, the convention at mapping.h:449-472).
+        //
+        // C stores the value raw and reads it back through a getter that
+        // reports 0.0 in place of the AST__BAD unset sentinel
+        // (pcdmap.c:2584-2585). The port stores what that getter would report
+        // and carries the sentinel test as a flag, so BAD_VALUE restores the
+        // default and leaves the attribute untested, exactly as
+        // astSetDisco( map, AST__BAD ) does.
         if disc != self.stored_disc() {
             self.simplified.clear();
         }
@@ -138,17 +180,22 @@ impl PcdMap {
         self.disc = if self.disc_set { disc } else { 0.0 };
     }
 
-    /// Set the distortion centre on one axis — C's `astSetPcdCen`.
+    /// Set [`pcdcen`](PcdMap::pcdcen) on one axis.
     ///
-    /// `axis` is 1-based. An index outside 1..=2 is rejected with
-    /// `ErrorCode::Axiin` and changes nothing, as C's class-local `MAKE_SET`
-    /// does (`pcdmap.c:490-494`); that macro then discards both simplified
-    /// records before storing (`pcdmap.c:506-507`, the convention at
-    /// `mapping.h:449-472`).
+    /// `axis` is 1-based.
+    /// [`BAD_VALUE`] clears the axis instead.
+    /// A value different from the one held clears the record that the PcdMap
+    /// has been simplified.
     ///
-    /// `BAD_VALUE` restores the default and leaves the axis untested, as the
-    /// sentinel does in C (`pcdmap.c:2637-2639`).
+    /// # Errors
+    ///
+    /// - `ErrorCode::Axiin` if `axis` is not 1 or 2; nothing changes.
     pub fn set_pcd_cen(&mut self, axis: usize, value: f64) -> AstResult<()> {
+        // As C's class-local MAKE_SET (pcdmap.c:490-494), which then discards
+        // both simplified records before storing (pcdmap.c:506-507, the
+        // convention at mapping.h:449-472). BAD_VALUE restores the default and
+        // leaves the axis untested, as the sentinel does in C
+        // (pcdmap.c:2637-2639).
         if !(1..=2).contains(&axis) {
             return Err(AstError::new(
                 ErrorCode::Axiin,
@@ -164,33 +211,51 @@ impl PcdMap {
         Ok(())
     }
 
-    /// The distortion centre.
+    /// The coordinates of the center of the pincushion/barrel distortion, one
+    /// value per axis.
+    ///
+    /// Default: 0 on both axes.
+    ///
+    /// [`set_pcd_cen`](PcdMap::set_pcd_cen),
+    /// [`test_pcd_cen`](PcdMap::test_pcd_cen) and
+    /// [`clear_pcd_cen`](PcdMap::clear_pcd_cen) set, test and clear one axis.
+    #[doc(alias = "PcdCen")]
     pub fn pcdcen(&self) -> [f64; 2] {
         self.pcdcen
     }
 
-    /// Whether `Disco` is set (pcdmap.c `TestDisco`).
+    /// Whether [`disc`](PcdMap::disc) is set.
     pub fn test_disc(&self) -> bool {
         self.disc_set
     }
 
-    /// Unset `Disco`, so that it reads as 0.0 (pcdmap.c `ClearDisco`, which
-    /// also discards both simplified records).
+    /// Clear [`disc`](PcdMap::disc), so that it reads as the default of zero.
+    ///
+    /// This also clears the record that the PcdMap has been simplified.
     pub fn clear_disc(&mut self) {
+        // pcdmap.c ClearDisco, which also discards both simplified records.
         self.simplified.clear();
         self.disc_set = false;
         self.disc = 0.0;
     }
 
-    /// Whether `PcdCen` is set on `axis` (1-based), as C's `astTestPcdCen`
-    /// reports; an index outside 1..=2 is `ErrorCode::Axiin`.
+    /// Whether [`pcdcen`](PcdMap::pcdcen) is set on `axis` (1-based).
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Axiin` if `axis` is not 1 or 2.
     pub fn test_pcd_cen(&self, axis: usize) -> AstResult<bool> {
         Ok(self.pcdcen_set[Self::pcd_cen_index(axis, "astTestPcdCen")?])
     }
 
-    /// Unset `PcdCen` on `axis` (1-based), so that it reads as 0.0, as C's
-    /// `astClearPcdCen` does, discarding both simplified records; an index
-    /// outside 1..=2 is `ErrorCode::Axiin` and changes nothing.
+    /// Clear [`pcdcen`](PcdMap::pcdcen) on `axis` (1-based), so that it reads
+    /// as the default of zero.
+    ///
+    /// This also clears the record that the PcdMap has been simplified.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Axiin` if `axis` is not 1 or 2; nothing changes.
     pub fn clear_pcd_cen(&mut self, axis: usize) -> AstResult<()> {
         let i = Self::pcd_cen_index(axis, "astClearPcdCen")?;
         self.simplified.clear();

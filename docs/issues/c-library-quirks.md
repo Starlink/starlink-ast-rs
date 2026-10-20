@@ -32,6 +32,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [The Channel `Indent` documentation gives the wrong default](#the-channel-indent-documentation-gives-the-wrong-default)
 - [The ChebyMap documentation gives the Chebyshev recurrence with the wrong sign](#the-chebymap-documentation-gives-the-chebyshev-recurrence-with-the-wrong-sign)
 - [The `astTimeAdd` documentation describes LASTTOLMST and LMSTTOLAST as GMST conversions](#the-asttimeadd-documentation-describes-lasttolmst-and-lmsttolast-as-gmst-conversions)
+- [The `astSphMap` documentation says a zero vector transforms to `AST__BAD`](#the-astsphmap-documentation-says-a-zero-vector-transforms-to-ast__bad)
 - [A Region's default uncertainty is not reset when the Region moves](#a-regions-default-uncertainty-is-not-reset-when-the-region-moves)
 - [`astLoadXphMap` leaks the projection-type string it reads](#astloadxphmap-leaks-the-projection-type-string-it-reads)
 - [Table's `Equal` compares only class names, and discards its column comparison](#tables-equal-compares-only-class-names-and-discards-its-column-comparison)
@@ -340,6 +341,19 @@ Consequence: documentation only.
 
 The port's `TimeCvtType::LastToLmst` and `LmstToLast` docs describe the LAST and LMST conversions the code performs.
 A C fix: change the two descriptions to "Convert a LAST MJD to a LMST MJD" and "Convert a LMST MJD to a LAST MJD".
+
+### The `astSphMap` documentation says a zero vector transforms to `AST__BAD`
+
+C location: `sphmap.c`, the `astSphMap` prologue's Notes (line 1671) and `Transform` (lines 1250-1266).
+
+The note says "If the Cartesian coordinates are all zero, then the longitude and latitude are set to the value AST__BAD".
+The code sends a point to the `AST__BAD` branch only when `fabs( v[0] )` and `fabs( v[1] )` are below `mxerr = fabs( 1000.0*v[2] )*DBL_EPSILON`, which is zero for a zero vector, so the strict comparisons fail.
+The zero vector then goes to `palDcc2s`, which returns a longitude and latitude of zero.
+
+Consequence: documentation only; a caller testing for `AST__BAD` to detect a zero vector never sees it.
+
+The port's `SphMap` doc says a zero vector transforms to zero, as the code computes it.
+A C fix: either change the note to say the result is zero, or test for a zero vector explicitly before the pole test.
 
 ### A Region's default uncertainty is not reset when the Region moves
 

@@ -13,24 +13,26 @@ use super::unit::UnitMap;
 use super::{DynMapping, Mapping};
 use crate::mappings::SimplifiedRecord;
 
-/// A mapping that converts between 3-D Cartesian coordinates and
-/// 2-D spherical coordinates (longitude, latitude).
+/// Map 3-d Cartesian to 2-d spherical coordinates.
 ///
-/// The forward transformation converts Cartesian `(x, y, z)` to
-/// spherical `(longitude, latitude)` in radians.  The inverse
-/// transformation converts `(longitude, latitude)` back to a unit
-/// Cartesian vector `(x, y, z)`.
+/// A SphMap is a Mapping which transforms points from a 3-dimensional
+/// Cartesian coordinate system into a 2-dimensional spherical coordinate
+/// system (longitude and latitude on a unit sphere centered at the origin).
+/// It works by regarding the input coordinates as position vectors and finding
+/// their intersection with the sphere surface.
+/// The inverse transformation always produces points which are a unit distance
+/// from the origin (unit vectors).
 ///
-/// # Attributes
+/// The spherical coordinates are longitude (positive anti-clockwise looking
+/// from the positive latitude pole) and latitude, in radians.
+/// The Cartesian coordinates are right-handed, with the x axis (axis 1) at zero
+/// longitude and latitude, and the z axis (axis 3) at the positive latitude
+/// pole.
+/// At either pole the longitude is [`polar_long`](SphMap::polar_long).
+/// A zero vector transforms to a longitude and latitude of zero.
 ///
-/// - **`unit_radius`** (default `false`): if `true`, input Cartesian
-///   vectors are assumed to already have unit length, enabling
-///   simplification of a forward-then-inverse `CmpMap` pair into a
-///   `UnitMap`.
-///
-/// - **`polar_long`** (default `0.0`): the longitude value returned
-///   when the input Cartesian vector lies exactly at either pole
-///   (i.e. `x == 0` and `y == 0`).
+/// [`unit_radius`](SphMap::unit_radius) states that the input vectors have
+/// unit length, which lets a SphMap and its inverse cancel when simplified.
 #[derive(Debug, Clone)]
 pub struct SphMap {
     /// `None` while unset (C's -1), reading as false.
@@ -52,9 +54,25 @@ pub struct SphMap {
 }
 
 impl SphMap {
-    /// Create a new `SphMap` with default attributes.
+    /// Create a SphMap with every attribute unset, taking its default.
     ///
-    /// Default: `unit_radius = false`, `polar_long = 0.0`.
+    /// ```
+    /// use ast_core::coords::PointSet;
+    /// use ast_core::mappings::{Mapping, SphMap};
+    ///
+    /// let map = SphMap::new();
+    /// // The y axis is at longitude 90 degrees on the equator.
+    /// let out = map.transform(&PointSet::from_rows([[0.0, 2.0, 0.0]]), true).unwrap();
+    /// assert!((out.axis(0)[0] - std::f64::consts::FRAC_PI_2).abs() < 1e-15);
+    /// assert_eq!(out.axis(1)[0], 0.0);
+    /// // The inverse gives a unit vector.
+    /// let back = map.transform(&out, false).unwrap();
+    /// assert!((back.axis(1)[0] - 1.0).abs() < 1e-15);
+    /// // A zero vector gives a longitude and latitude of zero.
+    /// let zero = map.transform(&PointSet::from_rows([[0.0, 0.0, 0.0]]), true).unwrap();
+    /// assert_eq!((zero.axis(0)[0], zero.axis(1)[0]), (0.0, 0.0));
+    /// ```
+    #[doc(alias = "astSphMap")]
     pub fn new() -> Self {
         Self {
             unit_radius: None,
@@ -68,12 +86,44 @@ impl SphMap {
         }
     }
 
-    /// Whether input Cartesian vectors are assumed to have unit length.
+    /// Whether the 3-dimensional vectors supplied as input are known always to
+    /// have unit length, so that they lie on a unit sphere centered on the
+    /// origin.
+    ///
+    /// If true, a CmpMap composed of a SphMap applied in the forward direction
+    /// followed by a similar SphMap applied in the inverse direction may be
+    /// simplified to a [`UnitMap`], because the input and output vectors both
+    /// have unit length and therefore the same coordinate values.
+    /// If false, the output vector of such a CmpMap still has unit length but
+    /// the input vector may not, which in general changes the coordinate
+    /// values, so the pair of SphMaps is not simplified.
+    ///
+    /// This is intended mainly for SphMaps in a sequence of Mappings which
+    /// projects a dataset onto the celestial sphere.
+    /// Regarding the celestial sphere as a unit sphere lets the SphMaps, along
+    /// with associated sky projections, cancel when two datasets are aligned
+    /// using celestial coordinates, which often improves performance
+    /// considerably.
+    /// The FITS-WCS reader sets it for the SphMaps it creates.
+    ///
+    /// It only controls simplification and has no effect on the coordinates
+    /// a SphMap transforms: the lengths of the input Cartesian vectors are
+    /// always ignored.
+    ///
+    /// Default: false.
+    ///
+    /// [`set_unit_radius`](SphMap::set_unit_radius),
+    /// [`test_unit_radius`](SphMap::test_unit_radius) and
+    /// [`clear_unit_radius`](SphMap::clear_unit_radius) set, test and clear it.
+    #[doc(alias = "UnitRadius")]
     pub fn unit_radius(&self) -> bool {
         self.unit_radius.unwrap_or(false)
     }
 
-    /// Set whether input Cartesian vectors are assumed to have unit length.
+    /// Set [`unit_radius`](SphMap::unit_radius).
+    ///
+    /// A value different from the one held clears the record that the SphMap
+    /// has been simplified.
     pub fn set_unit_radius(&mut self, unit_radius: bool) {
         // `UnitRadius` is read by SphMap's own MapMerge, which cancels an
         // inverse-then-forward pair only when the first SphMap has it set
@@ -86,20 +136,31 @@ impl SphMap {
         self.unit_radius = Some(unit_radius);
     }
 
-    /// Whether UnitRadius is set, `false` included (sphmap.c
-    /// `TestUnitRadius`).
+    /// Whether [`unit_radius`](SphMap::unit_radius) is set, to either value.
     pub fn test_unit_radius(&self) -> bool {
         self.unit_radius.is_some()
     }
 
-    /// Unset UnitRadius, so that it reads as `false` (sphmap.c
-    /// `ClearUnitRadius`, which also discards both simplified records).
+    /// Clear [`unit_radius`](SphMap::unit_radius), so that it reads as the
+    /// default of false.
+    ///
+    /// This also clears the record that the SphMap has been simplified.
     pub fn clear_unit_radius(&mut self) {
+        // sphmap.c ClearUnitRadius, which also discards both simplified
+        // records.
         self.simplified.clear();
         self.unit_radius = None;
     }
 
-    /// The longitude value returned at either pole.
+    /// The longitude, in radians, returned when a Cartesian position at either
+    /// the north or the south pole is transformed into spherical coordinates.
+    ///
+    /// Default: 0.
+    ///
+    /// [`set_polar_long`](SphMap::set_polar_long),
+    /// [`test_polar_long`](SphMap::test_polar_long) and
+    /// [`clear_polar_long`](SphMap::clear_polar_long) set, test and clear it.
+    #[doc(alias = "PolarLong")]
     pub fn polar_long(&self) -> f64 {
         self.polar_long
     }
@@ -116,10 +177,14 @@ impl SphMap {
         }
     }
 
-    /// Set the longitude value returned at either pole (radians).
-    /// `BAD_VALUE` is C's unset value, so it unsets the attribute, which then
-    /// reads as 0.0 (sphmap.c:1437-1441).
+    /// Set [`polar_long`](SphMap::polar_long).
+    ///
+    /// [`BAD_VALUE`] clears it instead.
+    /// A value different from the one held clears the record that the SphMap
+    /// has been simplified.
     pub fn set_polar_long(&mut self, polar_long: f64) {
+        // BAD_VALUE is C's unset value, so it unsets the attribute, which then
+        // reads as 0.0 (sphmap.c:1437-1441).
         // `PolarLong` is read by the same MapMerge, which requires the pair
         // to agree on it (sphmap.c:762-763, :932); the record goes for the same
         // reason (sphmap.c:1434-1436).
@@ -130,14 +195,18 @@ impl SphMap {
         self.polar_long = if self.polar_long_set { polar_long } else { 0.0 };
     }
 
-    /// Whether PolarLong is set (sphmap.c `TestPolarLong`).
+    /// Whether [`polar_long`](SphMap::polar_long) is set.
     pub fn test_polar_long(&self) -> bool {
         self.polar_long_set
     }
 
-    /// Unset PolarLong, so that it reads as 0.0 (sphmap.c `ClearPolarLong`,
-    /// which also discards both simplified records).
+    /// Clear [`polar_long`](SphMap::polar_long), so that it reads as the
+    /// default of zero.
+    ///
+    /// This also clears the record that the SphMap has been simplified.
     pub fn clear_polar_long(&mut self) {
+        // sphmap.c ClearPolarLong, which also discards both simplified
+        // records.
         self.simplified.clear();
         self.polar_long_set = false;
         self.polar_long = 0.0;

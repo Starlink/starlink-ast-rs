@@ -1,16 +1,6 @@
 //! Mapping that decomposes a vector into a unit vector and its norm.
 //!
-//! A `UnitNormMap` converts a vector to a unit vector and its norm,
-//! relative to a specified centre.
-//!
-//! The forward transformation subtracts the specified centre and then
-//! transforms the resulting vector to a unit vector and the vector norm.
-//! The output contains one more coordinate than the input: the initial
-//! Nin outputs are in the same order as the input; the final output is
-//! the norm.
-//!
-//! The inverse transformation multiplies each component of the provided
-//! unit vector by the provided norm and adds the specified centre.
+//! See [`UnitNormMap`].
 
 use crate::constants::BAD_VALUE;
 use crate::coords::{PointSet, Points, PointsMut};
@@ -26,19 +16,53 @@ use super::winmap::WinMap;
 use super::{DynMapping, Mapping};
 use crate::mappings::SimplifiedRecord;
 
-/// A mapping that decomposes a vector into unit vector and norm.
+/// Convert a vector to a unit vector and its norm, relative to a specified
+/// center.
 ///
-/// The forward transformation subtracts the given centre from the input
-/// vector, then computes the unit vector and norm (length) of the result.
-/// Output has one more axis than input: the first Nin axes hold the unit
-/// vector components, the last axis holds the norm.
+/// The forward transformation of a UnitNormMap subtracts the specified
+/// center and then transforms the resulting vector to a unit vector and the
+/// vector norm.
+/// The output contains one more coordinate than the input: the initial `nin`
+/// outputs are in the same order as the input; the final output is the norm.
+/// If the norm is 0, the output of the forward transformation is
+/// [`BAD_VALUE`] for each component of the unit vector and 0 for the norm.
 ///
-/// If the norm is zero, the unit vector components are set to
-/// [`BAD_VALUE`] and the norm output is zero.
+/// The inverse transformation multiplies each component of the provided
+/// vector by the provided norm and adds the specified center.
+/// The output contains one fewer coordinate than the input: the initial `nin`
+/// inputs are in the same order as the output; the final input is the norm.
+/// If the provided norm is 0, the other input values are ignored and the
+/// output vector is the center.
 ///
-/// Example: centre = `[1, -1]`, input = `[5, 2]`.
-/// After subtracting centre: `[4, 3]`, norm = 5.
-/// Output: `[0.8, 0.6, 5.0]`.
+/// For example, if the center is `[1, -1]` then `[5, 2]` becomes `[4, 3]`
+/// after subtracting the center; the norm is 5, so the output is
+/// `[0.8, 0.6, 5]`.
+///
+/// A UnitNormMap enables radially symmetric transformations:
+///
+/// - apply a UnitNormMap to produce a unit vector and norm (radius);
+/// - apply a one-dimensional Mapping to the norm, while passing the unit
+///   vector unchanged;
+/// - apply the same UnitNormMap in the inverse direction to produce the
+///   result.
+///
+/// Both transformations are discontinuous at the center.
+/// The forward transformation tests whether the supplied position coincides
+/// with the center, and the inverse tests whether the supplied norm is zero;
+/// each test is exact, because a position that differs from the center by
+/// any representable amount does have a direction.
+/// A consequence is that a Mapping which computes a position close to a
+/// UnitNormMap's center, rather than supplying one directly, may not give the
+/// same result on every platform.
+/// The case to watch is the inverse of one UnitNormMap composed with the
+/// forward transformation of another whose center is the position the first
+/// one reconstructs: the reconstruction is a multiply-add, which a compiler
+/// may contract into a fused multiply-add that rounds once instead of twice.
+/// Where the unfused arithmetic lands exactly on the second center, the fused
+/// arithmetic can land a few ulp away, so one build reports no direction while
+/// the other reports a direction derived from that residue.
+/// A caller that needs the same answer everywhere should avoid depending on
+/// an exact coincidence with the center.
 #[derive(Debug, Clone)]
 pub struct UnitNormMap {
     centre: Vec<f64>,
@@ -52,12 +76,31 @@ pub struct UnitNormMap {
 }
 
 impl UnitNormMap {
-    /// Create a new `UnitNormMap` with the given centre.
+    /// Create a UnitNormMap with the given center.
     ///
-    /// `centre` defines the origin from which the unit vector and norm
-    /// are computed. Its length determines the number of spatial axes; an
-    /// empty centre is an `AST__BADSM` error (unitnormmap.c
-    /// astInitUnitNormMap).
+    /// `centre` holds the values subtracted from the input coordinates before
+    /// the unit vector and norm are computed, one per coordinate; its length
+    /// is the number of inputs, and the output has one more coordinate.
+    ///
+    /// ```
+    /// use ast_core::coords::PointSet;
+    /// use ast_core::mappings::{Mapping, UnitNormMap};
+    ///
+    /// let map = UnitNormMap::new([1.0, -1.0]).unwrap();
+    /// assert_eq!((map.nin(), map.nout()), (2, 3));
+    /// let out = map.transform(&PointSet::from_rows([[5.0, 2.0]]), true).unwrap();
+    /// assert!((out.axis(0)[0] - 0.8).abs() < 1e-15);
+    /// assert!((out.axis(1)[0] - 0.6).abs() < 1e-15);
+    /// assert_eq!(out.axis(2)[0], 5.0);
+    /// // The inverse with a zero norm gives the center.
+    /// let back = map.transform(&PointSet::from_rows([[0.3, 0.4, 0.0]]), false).unwrap();
+    /// assert_eq!((back.axis(0)[0], back.axis(1)[0]), (1.0, -1.0));
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Badsm` if `centre` is empty.
+    #[doc(alias = "astUnitNormMap")]
     pub fn new(centre: impl Into<Vec<f64>>) -> AstResult<Self> {
         let centre = centre.into();
         if centre.is_empty() {
@@ -76,7 +119,8 @@ impl UnitNormMap {
         })
     }
 
-    /// The centre vector.
+    /// The center subtracted from each input position, one value per input
+    /// coordinate.
     pub fn centre(&self) -> &[f64] {
         &self.centre
     }

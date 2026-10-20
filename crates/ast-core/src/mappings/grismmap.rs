@@ -1,15 +1,6 @@
 //! 1-D spectral dispersion mapping (grism/grating/prism).
 //!
-//! A `GrismMap` transforms 1-dimensional coordinates using the spectral
-//! dispersion equation described in FITS-WCS paper III "Representation of
-//! spectral coordinates in FITS".  This describes the dispersion produced
-//! by gratings, prisms and grisms.
-//!
-//! When initially created, the forward transformation of a GrismMap
-//! transforms input "grism parameter" values into output wavelength
-//! values.  The "grism parameter" is a dimensionless value linearly
-//! related to position on the detector, defined as the offset from the
-//! camera axis intersection measured in units of the effective focal length.
+//! See [`GrismMap`].
 
 use crate::constants::BAD_VALUE;
 use crate::coords::{Points, PointsMut};
@@ -23,13 +14,41 @@ use super::unit::UnitMap;
 use super::{DynMapping, Mapping};
 use crate::mappings::SimplifiedRecord;
 
-/// A 1-D spectral dispersion mapping for grisms, gratings and prisms.
+/// Transform 1-dimensional coordinates using a grism dispersion equation.
 ///
-/// The forward transformation converts the "grism parameter" (a
-/// dimensionless detector position offset) into wavelength.  The inverse
-/// converts wavelength back to the grism parameter.
+/// A GrismMap is a specialized form of Mapping which transforms
+/// 1-dimensional coordinates using the spectral dispersion equation
+/// described in FITS-WCS paper III "Representation of spectral coordinates in
+/// FITS".
+/// This describes the dispersion produced by gratings, prisms and grisms.
 ///
-/// The physical model and equations are from FITS-WCS Paper III.
+/// When initially created, the forward transformation of a GrismMap
+/// transforms input "grism parameter" values into output wavelength values.
+/// The "grism parameter" is a dimensionless value which is linearly related to
+/// position on the detector.
+/// It is defined in FITS-WCS paper III as "the offset on the detector from the
+/// point of intersection of the camera axis, measured in units of the
+/// effective local length".
+///
+/// The units in which wavelength values are expected or returned are those
+/// used for [`grism_wave_r`](GrismMap::grism_wave_r),
+/// [`grism_nrp`](GrismMap::grism_nrp) and [`grism_g`](GrismMap::grism_g).
+///
+/// The dispersion is described by these attributes:
+///
+/// - [`grism_nr`](GrismMap::grism_nr): the refractive index at the reference
+///   wavelength;
+/// - [`grism_nrp`](GrismMap::grism_nrp): the rate of change of refractive
+///   index with wavelength;
+/// - [`grism_wave_r`](GrismMap::grism_wave_r): the reference wavelength;
+/// - [`grism_alpha`](GrismMap::grism_alpha): the angle of incidence of the
+///   incoming light;
+/// - [`grism_g`](GrismMap::grism_g): the grating ruling density;
+/// - [`grism_m`](GrismMap::grism_m): the interference order;
+/// - [`grism_eps`](GrismMap::grism_eps): the angle between the normal and the
+///   dispersion plane;
+/// - [`grism_theta`](GrismMap::grism_theta): the angle between the normal to
+///   the detector plane and the reference ray.
 #[derive(Debug, Clone)]
 pub struct GrismMap {
     /// Refractive index at reference wavelength (default 1.0).
@@ -95,17 +114,32 @@ fn stored_int(set: bool, value: i32) -> i32 {
 }
 
 impl GrismMap {
-    /// Create a new `GrismMap` with the given physical parameters.
+    /// Create a GrismMap with every attribute set to the value given.
     ///
-    /// All parameters use the default values from the C library:
-    /// - `nr`: refractive index at reference wavelength (default 1.0)
-    /// - `nrp`: dn/dlambda at reference wavelength (default 0.0)
-    /// - `wave_r`: reference wavelength (default 5000.0)
-    /// - `alpha`: angle of incidence on grating in radians (default 0.0)
-    /// - `g`: grating ruling density (default 0.0)
-    /// - `m`: diffraction order (default 0)
-    /// - `eps`: angle between grating normal and dispersion plane in radians (default 0.0)
-    /// - `theta`: angle between detector normal and reference ray in radians (default 0.0)
+    /// The arguments are, in order, [`grism_nr`](GrismMap::grism_nr),
+    /// [`grism_nrp`](GrismMap::grism_nrp),
+    /// [`grism_wave_r`](GrismMap::grism_wave_r),
+    /// [`grism_alpha`](GrismMap::grism_alpha), [`grism_g`](GrismMap::grism_g),
+    /// [`grism_m`](GrismMap::grism_m), [`grism_eps`](GrismMap::grism_eps) and
+    /// [`grism_theta`](GrismMap::grism_theta); each attribute's doc gives its
+    /// meaning and units.
+    /// Every attribute is set, so each `test_` method reports true.
+    /// [`default_map`](GrismMap::default_map) creates a GrismMap with every
+    /// attribute unset.
+    ///
+    /// ```
+    /// use ast_core::mappings::{GrismMap, Mapping};
+    ///
+    /// // A pure grating, 1000 rulings per mm (wavelengths in mm), first order.
+    /// let map = GrismMap::new(1.0, 0.0, 5.0e-4, 0.0, 1000.0, 1, 0.0, 0.0);
+    /// // A grism parameter of zero is the reference wavelength.
+    /// let wave = map.tran1(&[0.0], true).unwrap();
+    /// assert!((wave[0] - 5.0e-4).abs() < 1e-15);
+    /// let back = map.tran1(&[6.0e-4], false).unwrap();
+    /// let again = map.tran1(&back, true).unwrap();
+    /// assert!((again[0] - 6.0e-4).abs() < 1e-15);
+    /// ```
+    #[doc(alias = "astGrismMap")]
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         nr: f64,
@@ -153,191 +187,295 @@ impl GrismMap {
         map
     }
 
-    /// Create a `GrismMap` with every attribute unset, taking its default
-    /// value, as C's `astGrismMap` with no attribute settings does; its dump
-    /// writes the defaults commented out.
+    /// Create a GrismMap with every attribute unset, so that each reads as its
+    /// default.
+    #[doc(alias = "astGrismMap")]
     pub fn default_map() -> Self {
         let mut map = Self::new(1.0, 0.0, 5000.0, 0.0, 0.0, 0, 0.0, 0.0);
         map.set_flags = GrismSetFlags::default();
         map
     }
 
-    /// The refractive index at the reference wavelength.
+    /// The refractive index of the grism material at the reference wavelength
+    /// ([`grism_wave_r`](GrismMap::grism_wave_r)).
+    ///
+    /// Default: 1.0.
+    ///
+    /// [`set_grism_nr`](GrismMap::set_grism_nr),
+    /// [`test_grism_nr`](GrismMap::test_grism_nr) and
+    /// [`clear_grism_nr`](GrismMap::clear_grism_nr) set, test and clear it.
+    #[doc(alias = "GrismNR")]
     pub fn grism_nr(&self) -> f64 {
         self.grism_nr
     }
 
-    /// The rate of change of refractive index with wavelength.
+    /// The rate of change of the refractive index of the grism material with
+    /// respect to wavelength, at the reference wavelength
+    /// ([`grism_wave_r`](GrismMap::grism_wave_r)).
+    ///
+    /// Its units should be consistent with those of
+    /// [`grism_wave_r`](GrismMap::grism_wave_r) and
+    /// [`grism_g`](GrismMap::grism_g).
+    ///
+    /// Default: 0.0, the appropriate value for a pure grating disperser with no
+    /// prism.
+    ///
+    /// [`set_grism_nrp`](GrismMap::set_grism_nrp),
+    /// [`test_grism_nrp`](GrismMap::test_grism_nrp) and
+    /// [`clear_grism_nrp`](GrismMap::clear_grism_nrp) set, test and clear it.
+    #[doc(alias = "GrismNRP")]
     pub fn grism_nrp(&self) -> f64 {
         self.grism_nrp
     }
 
     /// The reference wavelength.
+    ///
+    /// Its units should be consistent with those of
+    /// [`grism_nrp`](GrismMap::grism_nrp) and [`grism_g`](GrismMap::grism_g),
+    /// and are the units of the wavelength values the GrismMap transforms.
+    ///
+    /// Default: 5000 (Angstrom).
+    ///
+    /// [`set_grism_wave_r`](GrismMap::set_grism_wave_r),
+    /// [`test_grism_wave_r`](GrismMap::test_grism_wave_r) and
+    /// [`clear_grism_wave_r`](GrismMap::clear_grism_wave_r) set, test and clear it.
+    #[doc(alias = "GrismWaveR")]
     pub fn grism_wave_r(&self) -> f64 {
         self.grism_wave_r
     }
 
-    /// The angle of incidence of incoming light on the grating.
+    /// The angle between the incoming light and the normal to the grating
+    /// surface, in radians.
+    ///
+    /// Default: 0.
+    ///
+    /// [`set_grism_alpha`](GrismMap::set_grism_alpha),
+    /// [`test_grism_alpha`](GrismMap::test_grism_alpha) and
+    /// [`clear_grism_alpha`](GrismMap::clear_grism_alpha) set, test and clear it.
+    #[doc(alias = "GrismAlpha")]
     pub fn grism_alpha(&self) -> f64 {
         self.grism_alpha
     }
 
-    /// The grating ruling density.
+    /// The grating ruling density: the number of grating rulings per unit
+    /// length.
+    ///
+    /// The unit of length should be consistent with the units of
+    /// [`grism_wave_r`](GrismMap::grism_wave_r) and
+    /// [`grism_nrp`](GrismMap::grism_nrp).
+    ///
+    /// Default: 0.0, the appropriate value for a pure prism disperser with no
+    /// grating.
+    ///
+    /// [`set_grism_g`](GrismMap::set_grism_g),
+    /// [`test_grism_g`](GrismMap::test_grism_g) and
+    /// [`clear_grism_g`](GrismMap::clear_grism_g) set, test and clear it.
+    #[doc(alias = "GrismG")]
     pub fn grism_g(&self) -> f64 {
         self.grism_g
     }
 
-    /// The diffraction order.
+    /// The interference order being considered.
+    ///
+    /// Default: 0.
+    ///
+    /// [`set_grism_m`](GrismMap::set_grism_m),
+    /// [`test_grism_m`](GrismMap::test_grism_m) and
+    /// [`clear_grism_m`](GrismMap::clear_grism_m) set, test and clear it.
+    #[doc(alias = "GrismM")]
     pub fn grism_m(&self) -> i32 {
         self.grism_m
     }
 
-    /// The angle between grating normal and dispersion plane.
+    /// The angle, in radians, between the normal to the grating or exit prism
+    /// face and the dispersion plane.
+    ///
+    /// The dispersion plane is the plane spanned by the incoming and outgoing
+    /// ray.
+    ///
+    /// Default: 0.0.
+    ///
+    /// [`set_grism_eps`](GrismMap::set_grism_eps),
+    /// [`test_grism_eps`](GrismMap::test_grism_eps) and
+    /// [`clear_grism_eps`](GrismMap::clear_grism_eps) set, test and clear it.
+    #[doc(alias = "GrismEps")]
     pub fn grism_eps(&self) -> f64 {
         self.grism_eps
     }
 
-    /// The angle between detector normal and reference ray.
+    /// The angle of incidence of light of the reference wavelength
+    /// ([`grism_wave_r`](GrismMap::grism_wave_r)) onto the detector.
+    ///
+    /// Specifically, it is the angle, in radians, between the normal to the
+    /// detector plane and an incident ray at the reference wavelength.
+    ///
+    /// Default: 0.0.
+    ///
+    /// [`set_grism_theta`](GrismMap::set_grism_theta),
+    /// [`test_grism_theta`](GrismMap::test_grism_theta) and
+    /// [`clear_grism_theta`](GrismMap::clear_grism_theta) set, test and clear it.
+    #[doc(alias = "GrismTheta")]
     pub fn grism_theta(&self) -> f64 {
         self.grism_theta
     }
 
-    /// Whether `GrismNR` is set (grismmap.c `TestGrismNR`).
+    /// Whether [`grism_nr`](GrismMap::grism_nr) is set.
     pub fn test_grism_nr(&self) -> bool {
         self.set_flags.nr
     }
 
-    /// Unset `GrismNR`, so that it reads as its default, `1.0` (grismmap.c
-    /// `ClearGrismNR`, which discards both simplified records and recalculates
-    /// the derived constants).
+    /// Clear [`grism_nr`](GrismMap::grism_nr), so that it reads as its default.
+    ///
+    /// This also clears the record that the GrismMap has been simplified.
     pub fn clear_grism_nr(&mut self) {
+        // grismmap.c ClearGrismNR, which discards both simplified records and
+        // recalculates the derived constants.
         self.simplified.clear();
         self.set_flags.nr = false;
         self.grism_nr = 1.0;
         self.update_constants();
     }
 
-    /// Whether `GrismNRP` is set (grismmap.c `TestGrismNRP`).
+    /// Whether [`grism_nrp`](GrismMap::grism_nrp) is set.
     pub fn test_grism_nrp(&self) -> bool {
         self.set_flags.nrp
     }
 
-    /// Unset `GrismNRP`, so that it reads as its default, `0.0` (grismmap.c
-    /// `ClearGrismNRP`, which discards both simplified records and recalculates
-    /// the derived constants).
+    /// Clear [`grism_nrp`](GrismMap::grism_nrp), so that it reads as its default.
+    ///
+    /// This also clears the record that the GrismMap has been simplified.
     pub fn clear_grism_nrp(&mut self) {
+        // grismmap.c ClearGrismNRP, which discards both simplified records and
+        // recalculates the derived constants.
         self.simplified.clear();
         self.set_flags.nrp = false;
         self.grism_nrp = 0.0;
         self.update_constants();
     }
 
-    /// Whether `GrismWaveR` is set (grismmap.c `TestGrismWaveR`).
+    /// Whether [`grism_wave_r`](GrismMap::grism_wave_r) is set.
     pub fn test_grism_wave_r(&self) -> bool {
         self.set_flags.wave_r
     }
 
-    /// Unset `GrismWaveR`, so that it reads as its default, `5000.0` (grismmap.c
-    /// `ClearGrismWaveR`, which discards both simplified records and recalculates
-    /// the derived constants).
+    /// Clear [`grism_wave_r`](GrismMap::grism_wave_r), so that it reads as its default.
+    ///
+    /// This also clears the record that the GrismMap has been simplified.
     pub fn clear_grism_wave_r(&mut self) {
+        // grismmap.c ClearGrismWaveR, which discards both simplified records and
+        // recalculates the derived constants.
         self.simplified.clear();
         self.set_flags.wave_r = false;
         self.grism_wave_r = 5000.0;
         self.update_constants();
     }
 
-    /// Whether `GrismAlpha` is set (grismmap.c `TestGrismAlpha`).
+    /// Whether [`grism_alpha`](GrismMap::grism_alpha) is set.
     pub fn test_grism_alpha(&self) -> bool {
         self.set_flags.alpha
     }
 
-    /// Unset `GrismAlpha`, so that it reads as its default, `0.0` (grismmap.c
-    /// `ClearGrismAlpha`, which discards both simplified records and recalculates
-    /// the derived constants).
+    /// Clear [`grism_alpha`](GrismMap::grism_alpha), so that it reads as its default.
+    ///
+    /// This also clears the record that the GrismMap has been simplified.
     pub fn clear_grism_alpha(&mut self) {
+        // grismmap.c ClearGrismAlpha, which discards both simplified records and
+        // recalculates the derived constants.
         self.simplified.clear();
         self.set_flags.alpha = false;
         self.grism_alpha = 0.0;
         self.update_constants();
     }
 
-    /// Whether `GrismG` is set (grismmap.c `TestGrismG`).
+    /// Whether [`grism_g`](GrismMap::grism_g) is set.
     pub fn test_grism_g(&self) -> bool {
         self.set_flags.g
     }
 
-    /// Unset `GrismG`, so that it reads as its default, `0.0` (grismmap.c
-    /// `ClearGrismG`, which discards both simplified records and recalculates
-    /// the derived constants).
+    /// Clear [`grism_g`](GrismMap::grism_g), so that it reads as its default.
+    ///
+    /// This also clears the record that the GrismMap has been simplified.
     pub fn clear_grism_g(&mut self) {
+        // grismmap.c ClearGrismG, which discards both simplified records and
+        // recalculates the derived constants.
         self.simplified.clear();
         self.set_flags.g = false;
         self.grism_g = 0.0;
         self.update_constants();
     }
 
-    /// Whether `GrismM` is set (grismmap.c `TestGrismM`).
+    /// Whether [`grism_m`](GrismMap::grism_m) is set.
     pub fn test_grism_m(&self) -> bool {
         self.set_flags.m
     }
 
-    /// Unset `GrismM`, so that it reads as its default, `0` (grismmap.c
-    /// `ClearGrismM`, which discards both simplified records and recalculates
-    /// the derived constants).
+    /// Clear [`grism_m`](GrismMap::grism_m), so that it reads as its default.
+    ///
+    /// This also clears the record that the GrismMap has been simplified.
     pub fn clear_grism_m(&mut self) {
+        // grismmap.c ClearGrismM, which discards both simplified records and
+        // recalculates the derived constants.
         self.simplified.clear();
         self.set_flags.m = false;
         self.grism_m = 0;
         self.update_constants();
     }
 
-    /// Whether `GrismEps` is set (grismmap.c `TestGrismEps`).
+    /// Whether [`grism_eps`](GrismMap::grism_eps) is set.
     pub fn test_grism_eps(&self) -> bool {
         self.set_flags.eps
     }
 
-    /// Unset `GrismEps`, so that it reads as its default, `0.0` (grismmap.c
-    /// `ClearGrismEps`, which discards both simplified records and recalculates
-    /// the derived constants).
+    /// Clear [`grism_eps`](GrismMap::grism_eps), so that it reads as its default.
+    ///
+    /// This also clears the record that the GrismMap has been simplified.
     pub fn clear_grism_eps(&mut self) {
+        // grismmap.c ClearGrismEps, which discards both simplified records and
+        // recalculates the derived constants.
         self.simplified.clear();
         self.set_flags.eps = false;
         self.grism_eps = 0.0;
         self.update_constants();
     }
 
-    /// Whether `GrismTheta` is set (grismmap.c `TestGrismTheta`).
+    /// Whether [`grism_theta`](GrismMap::grism_theta) is set.
     pub fn test_grism_theta(&self) -> bool {
         self.set_flags.theta
     }
 
-    /// Unset `GrismTheta`, so that it reads as its default, `0.0` (grismmap.c
-    /// `ClearGrismTheta`, which discards both simplified records and recalculates
-    /// the derived constants).
+    /// Clear [`grism_theta`](GrismMap::grism_theta), so that it reads as its default.
+    ///
+    /// This also clears the record that the GrismMap has been simplified.
     pub fn clear_grism_theta(&mut self) {
+        // grismmap.c ClearGrismTheta, which discards both simplified records and
+        // recalculates the derived constants.
         self.simplified.clear();
         self.set_flags.theta = false;
         self.grism_theta = 0.0;
         self.update_constants();
     }
 
-    /// Set the refractive index at the reference wavelength — C's
-    /// `astSetGrismNR`.
+    /// Set [`grism_nr`](GrismMap::grism_nr).
     ///
-    /// GrismMap's setters come from a class-local `MAKE_SET`
-    /// (`grismmap.c:236-262`) rather than `astMAKE_SET1`. It opens with the same
-    /// `astClearIsSimple`, so both simplified records are discarded
-    /// (`mapping.h:449-472`), and it ends by recalculating the derived constants
-    /// the transformation uses.
-    ///
-    /// C stores the value raw and reads it back through a getter that reports
-    /// the default in place of the `AST__BAD` unset sentinel
-    /// (`grismmap.c:1733-1737`). The port stores what that getter would report
-    /// and carries the sentinel test as a flag, so passing `BAD_VALUE` here
-    /// restores the default and leaves the attribute untested, exactly as
-    /// `astSetGrismNR( map, AST__BAD )` does.
+    /// [`BAD_VALUE`] clears it instead.
+    /// A value different from the one held clears the record that the GrismMap
+    /// has been simplified.
     pub fn set_grism_nr(&mut self, value: f64) {
+        // Set the refractive index at the reference wavelength — C's
+        // `astSetGrismNR`.
+        //
+        // GrismMap's setters come from a class-local `MAKE_SET`
+        // (`grismmap.c:236-262`) rather than `astMAKE_SET1`. It opens with the same
+        // `astClearIsSimple`, so both simplified records are discarded
+        // (`mapping.h:449-472`), and it ends by recalculating the derived constants
+        // the transformation uses.
+        //
+        // C stores the value raw and reads it back through a getter that reports
+        // the default in place of the `AST__BAD` unset sentinel
+        // (`grismmap.c:1733-1737`). The port stores what that getter would report
+        // and carries the sentinel test as a flag, so passing `BAD_VALUE` here
+        // restores the default and leaves the attribute untested, exactly as
+        // `astSetGrismNR( map, AST__BAD )` does.
         if value != stored(self.set_flags.nr, self.grism_nr) {
             self.simplified.clear();
         }
@@ -346,12 +484,17 @@ impl GrismMap {
         self.update_constants();
     }
 
-    /// Set the rate of change of refractive index with wavelength — C's
-    /// `astSetGrismNRP` (`grismmap.c:1775-1779`).
+    /// Set [`grism_nrp`](GrismMap::grism_nrp).
     ///
-    /// Discards both simplified records and recalculates the derived constants,
-    /// as [`set_grism_nr`](Self::set_grism_nr) describes.
+    /// [`BAD_VALUE`] clears it instead.
+    /// A value different from the one held clears the record that the GrismMap
+    /// has been simplified.
     pub fn set_grism_nrp(&mut self, value: f64) {
+        // Set the rate of change of refractive index with wavelength — C's
+        // `astSetGrismNRP` (`grismmap.c:1775-1779`).
+        //
+        // Discards both simplified records and recalculates the derived constants,
+        // as set_grism_nr does.
         if value != stored(self.set_flags.nrp, self.grism_nrp) {
             self.simplified.clear();
         }
@@ -360,12 +503,17 @@ impl GrismMap {
         self.update_constants();
     }
 
-    /// Set the reference wavelength — C's `astSetGrismWaveR`
-    /// (`grismmap.c:1814-1818`).
+    /// Set [`grism_wave_r`](GrismMap::grism_wave_r).
     ///
-    /// Discards both simplified records and recalculates the derived constants,
-    /// as [`set_grism_nr`](Self::set_grism_nr) describes.
+    /// [`BAD_VALUE`] clears it instead.
+    /// A value different from the one held clears the record that the GrismMap
+    /// has been simplified.
     pub fn set_grism_wave_r(&mut self, value: f64) {
+        // Set the reference wavelength — C's `astSetGrismWaveR`
+        // (`grismmap.c:1814-1818`).
+        //
+        // Discards both simplified records and recalculates the derived constants,
+        // as set_grism_nr does.
         if value != stored(self.set_flags.wave_r, self.grism_wave_r) {
             self.simplified.clear();
         }
@@ -374,12 +522,17 @@ impl GrismMap {
         self.update_constants();
     }
 
-    /// Set the angle of incidence of incoming light on the grating — C's
-    /// `astSetGrismAlpha` (`grismmap.c:1852-1856`).
+    /// Set [`grism_alpha`](GrismMap::grism_alpha).
     ///
-    /// Discards both simplified records and recalculates the derived constants,
-    /// as [`set_grism_nr`](Self::set_grism_nr) describes.
+    /// [`BAD_VALUE`] clears it instead.
+    /// A value different from the one held clears the record that the GrismMap
+    /// has been simplified.
     pub fn set_grism_alpha(&mut self, value: f64) {
+        // Set the angle of incidence of incoming light on the grating — C's
+        // `astSetGrismAlpha` (`grismmap.c:1852-1856`).
+        //
+        // Discards both simplified records and recalculates the derived constants,
+        // as set_grism_nr does.
         if value != stored(self.set_flags.alpha, self.grism_alpha) {
             self.simplified.clear();
         }
@@ -388,12 +541,17 @@ impl GrismMap {
         self.update_constants();
     }
 
-    /// Set the grating ruling density — C's `astSetGrismG`
-    /// (`grismmap.c:1892-1896`).
+    /// Set [`grism_g`](GrismMap::grism_g).
     ///
-    /// Discards both simplified records and recalculates the derived constants,
-    /// as [`set_grism_nr`](Self::set_grism_nr) describes.
+    /// [`BAD_VALUE`] clears it instead.
+    /// A value different from the one held clears the record that the GrismMap
+    /// has been simplified.
     pub fn set_grism_g(&mut self, value: f64) {
+        // Set the grating ruling density — C's `astSetGrismG`
+        // (`grismmap.c:1892-1896`).
+        //
+        // Discards both simplified records and recalculates the derived constants,
+        // as set_grism_nr does.
         if value != stored(self.set_flags.g, self.grism_g) {
             self.simplified.clear();
         }
@@ -402,14 +560,19 @@ impl GrismMap {
         self.update_constants();
     }
 
-    /// Set the diffraction order — C's `astSetGrismM`
-    /// (`grismmap.c:1930-1934`).
+    /// Set [`grism_m`](GrismMap::grism_m).
     ///
-    /// Discards both simplified records and recalculates the derived constants,
-    /// as [`set_grism_nr`](Self::set_grism_nr) describes. This attribute's unset
-    /// sentinel is `INT_MAX` rather than `AST__BAD` (`grismmap.c:1930`), so
-    /// `i32::MAX` is what restores the default here.
+    /// `i32::MAX` clears it instead.
+    /// A value different from the one held clears the record that the GrismMap
+    /// has been simplified.
     pub fn set_grism_m(&mut self, value: i32) {
+        // Set the diffraction order — C's `astSetGrismM`
+        // (`grismmap.c:1930-1934`).
+        //
+        // Discards both simplified records and recalculates the derived constants,
+        // as set_grism_nr does. This attribute's unset
+        // sentinel is `INT_MAX` rather than `AST__BAD` (`grismmap.c:1930`), so
+        // `i32::MAX` is what restores the default here.
         if value != stored_int(self.set_flags.m, self.grism_m) {
             self.simplified.clear();
         }
@@ -418,12 +581,17 @@ impl GrismMap {
         self.update_constants();
     }
 
-    /// Set the angle between grating normal and dispersion plane — C's
-    /// `astSetGrismEps` (`grismmap.c:1970-1974`).
+    /// Set [`grism_eps`](GrismMap::grism_eps).
     ///
-    /// Discards both simplified records and recalculates the derived constants,
-    /// as [`set_grism_nr`](Self::set_grism_nr) describes.
+    /// [`BAD_VALUE`] clears it instead.
+    /// A value different from the one held clears the record that the GrismMap
+    /// has been simplified.
     pub fn set_grism_eps(&mut self, value: f64) {
+        // Set the angle between grating normal and dispersion plane — C's
+        // `astSetGrismEps` (`grismmap.c:1970-1974`).
+        //
+        // Discards both simplified records and recalculates the derived constants,
+        // as set_grism_nr does.
         if value != stored(self.set_flags.eps, self.grism_eps) {
             self.simplified.clear();
         }
@@ -432,12 +600,17 @@ impl GrismMap {
         self.update_constants();
     }
 
-    /// Set the angle between detector normal and reference ray — C's
-    /// `astSetGrismTheta` (`grismmap.c:2011-2015`).
+    /// Set [`grism_theta`](GrismMap::grism_theta).
     ///
-    /// Discards both simplified records and recalculates the derived constants,
-    /// as [`set_grism_nr`](Self::set_grism_nr) describes.
+    /// [`BAD_VALUE`] clears it instead.
+    /// A value different from the one held clears the record that the GrismMap
+    /// has been simplified.
     pub fn set_grism_theta(&mut self, value: f64) {
+        // Set the angle between detector normal and reference ray — C's
+        // `astSetGrismTheta` (`grismmap.c:2011-2015`).
+        //
+        // Discards both simplified records and recalculates the derived constants,
+        // as set_grism_nr does.
         if value != stored(self.set_flags.theta, self.grism_theta) {
             self.simplified.clear();
         }
