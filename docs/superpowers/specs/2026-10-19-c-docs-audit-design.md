@@ -87,7 +87,7 @@ The setter, `test_` and `clear_` methods link to the getter instead of repeating
 - Axis indices stay 1-based, as the API is.
 - C examples are not copied.
   Where an example earns its place it is written as a Rust doctest, which then runs in CI; encouraged on constructors and principal methods, not required.
-- Every mapped item gets `#[doc(alias = "<C name>")]`.
+- Every mapped item gets `#[doc(alias = "<C name>")]`, except a public top-level type or trait named exactly as the C name, which rustdoc does not allow to carry an alias of its own name.
 - A `# See also` section naming the public C function is added only where the correspondence is not obvious from the Rust name: `PermMap::new` needs none, `Frame::convert_to` names `astConvert`.
 - Documentation describes the Rust code as it is.
   When a C header documents a default or behaviour the port lacks or does differently, the docs describe the port, the ledger note records the difference, and a `PLAN.md` row records the gap.
@@ -105,6 +105,7 @@ All in `crates/audit-tools/tests/` or `crates/ast-core/tests/meta/`, failing har
 2. **Rows are well formed.** A row has a Rust item or a reason, not both; a reason is one of the three; a `merged` row names a C name that has a row with a Rust item.
 3. **Aliases land on their items.** For every row with a Rust item, the source has `#[doc(alias = "<C name>")]` attached to an item of that name, inside that type's `impl`, `trait` or definition. The test parses the source textually: it finds each alias attribute, the item it is attached to (the next `fn`, `struct`, `enum`, `trait` or `type` line), and the enclosing `impl` or `trait` block.
    An alias with no ledger row also fails, so the two cannot drift apart.
+   A row whose Rust item is a public top-level type or trait named exactly as the C name (`Mapping`, `PermMap`) is checked against that declaration instead, because rustdoc rejects an alias equal to the item's own name; a type named differently from the C name (`Box` → `BoxRegion`) still carries the alias.
 4. **Rendered docs carry no C internals.** After `cargo doc -p ast-core --no-deps`, no HTML page under `ast_core/` contains a C source reference (a `<name>.c` file name, with or without a line number) or a name of the form `ast<Name>` that is not in `c-headers.tsv`.
    Modules not yet cleaned are listed in a named exclusion, `C_CITATIONS_UNCLEANED`, with a reason, and a companion test fails when a listed module becomes clean, so the list can only shrink.
 5. **Review progress.** The number of rows with `reviewed = no` is pinned in the test and may only go down; it reaches zero at the end of the work.

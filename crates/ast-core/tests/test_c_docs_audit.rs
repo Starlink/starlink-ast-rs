@@ -122,8 +122,8 @@ fn every_mapped_row_has_its_alias_on_its_item() {
             .collect();
     let found: BTreeSet<_> = source_aliases().into_iter().collect();
     // rustdoc rejects an alias equal to the item's own name, so a row whose
-    // alias is the name of the type or trait it maps to is checked against
-    // the declarations instead.
+    // Rust item is a public top-level type or trait with the C name is checked
+    // against the declarations instead.
     let types: BTreeSet<String> = source_files()
         .iter()
         .flat_map(|src| audit_tools::top_level_types(src))
@@ -140,13 +140,7 @@ fn every_mapped_row_has_its_alias_on_its_item() {
         };
         for item in &r.rust_item {
             let (owner, name) = item.split_once("::").unwrap_or((item, item));
-            if !item.contains("::") && name == alias {
-                if !types.contains(name) {
-                    missing.push(format!(
-                        "{} -> {item}: no top-level type or trait of that name",
-                        r.name
-                    ));
-                }
+            if audit_tools::alias_satisfied_by_name(item, alias, &types) {
                 continue;
             }
             let key = (alias.clone(), name.to_string(), owner.to_string());

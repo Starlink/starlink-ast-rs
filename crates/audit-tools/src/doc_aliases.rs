@@ -65,34 +65,40 @@ pub fn doc_aliases(src: &str) -> Vec<(String, String, String)> {
     out
 }
 
-/// The names of the types and traits `src` declares outside any `impl` or
-/// `trait` block.
+/// The names of the public types and traits `src` declares at the top level
+/// of the file.
 ///
-/// rustdoc rejects a `#[doc(alias)]` equal to the item's own name, so a
-/// ledger row whose alias is the name of the Rust type it maps to cannot
-/// carry the attribute; the alias gate checks such a row against this list
-/// instead.
+/// A declaration counts only when it starts in column 0 with `pub ` (not
+/// `pub(crate)` or another restricted visibility): rustfmt indents anything
+/// inside an `impl`, `trait`, `mod` or `fn` body, so column 0 is the file's
+/// own scope.
 pub fn top_level_types(src: &str) -> Vec<String> {
     src.lines()
-        .enumerate()
-        .filter(|(_, l)| {
-            let l = l.trim_start();
-            !l.starts_with("//") && !l.starts_with("#[")
-        })
-        .filter_map(|(i, l)| {
-            let kind = l
-                .split_whitespace()
-                .map(|w| w.split('(').next().unwrap_or(w))
-                .find(|w| !matches!(*w, "pub" | "unsafe"))?;
+        .filter_map(|l| {
+            let rest = l.strip_prefix("pub ")?;
+            let kind = rest.split_whitespace().find(|w| *w != "unsafe")?;
             if !matches!(kind, "trait" | "struct" | "enum" | "type") {
                 return None;
             }
-            let name = declared_name(l)?;
-            // The block open at the end of the previous line: a declaration
-            // that opens its own block on its line is not inside it.
-            enclosing_rust_block(src, i).is_none().then_some(name)
+            declared_name(l)
         })
         .collect()
+}
+
+/// Whether a ledger row may go without a `#[doc(alias)]` because its Rust
+/// item already has the C name.
+///
+/// rustdoc rejects a `#[doc(alias)]` equal to the item's own name, so a row
+/// whose Rust item is a public top-level type or trait (one of `types`, from
+/// [`top_level_types`]) named exactly as the C name cannot carry the
+/// attribute; the name itself is what a search finds. Every other row,
+/// including a type named differently from the C name, needs its alias.
+pub fn alias_satisfied_by_name(
+    rust_item: &str,
+    alias: &str,
+    types: &std::collections::BTreeSet<String>,
+) -> bool {
+    !rust_item.contains("::") && rust_item == alias && types.contains(rust_item)
 }
 
 /// Whether a line carries, or opens, a `doc(alias …)` attribute.
@@ -150,7 +156,7 @@ fn ident(s: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{doc_aliases, top_level_types};
+    use super::{alias_satisfied_by_name, doc_aliases, top_level_types};
 
     fn t(a: &str, i: &str, o: &str) -> (String, String, String) {
         (a.into(), i.into(), o.into())
@@ -240,9 +246,45 @@ impl Mapping for PermMap {
     }
 
     #[test]
-    fn top_level_types_skip_items_inside_blocks() {
-        let src = "pub trait Mapping {\n    type Out;\n}\npub(crate) struct S;\nimpl S {\n    fn f() {}\n}\npub enum E {}\npub fn g() {}\n";
+    fn top_level_types_are_public_items_outside_every_block() {
+        let src = "pub trait Mapping {\n    type Out;\n}\npub struct S;\nimpl S {\n    fn f() {}\n}\npub enum E {}\npub fn g() {}\n";
         assert_eq!(top_level_types(src), ["Mapping", "S", "E"]);
+    }
+
+    #[test]
+    fn a_crate_private_type_is_not_top_level() {
+        let src = "pub(crate) struct Axis {\n    x: f64,\n}\nstruct Hidden;\n";
+        assert!(
+            top_level_types(src).is_empty(),
+            "{:?}",
+            top_level_types(src)
+        );
+    }
+
+    #[test]
+    fn a_type_inside_a_mod_or_fn_body_is_not_top_level() {
+        let src = "mod inner {\n    pub struct Axis;\n}\nfn f() {\n    pub struct Local;\n}\n";
+        assert!(
+            top_level_types(src).is_empty(),
+            "{:?}",
+            top_level_types(src)
+        );
+    }
+
+    #[test]
+    fn the_same_name_exception_needs_a_public_type_of_the_alias_name() {
+        let types = ["Mapping".to_string()].into_iter().collect();
+        assert!(alias_satisfied_by_name("Mapping", "Mapping", &types));
+        // A Rust item named differently from the C name still needs its alias.
+        let types = ["BoxRegion".to_string()].into_iter().collect();
+        assert!(!alias_satisfied_by_name("BoxRegion", "Box", &types));
+        // A method row never takes the exception.
+        let types = ["nin".to_string()].into_iter().collect();
+        assert!(!alias_satisfied_by_name("Mapping::nin", "nin", &types));
+        // A same-name item that is not a public top-level type is refused.
+        let src = "pub(crate) struct Axis;\n";
+        let types = top_level_types(src).into_iter().collect();
+        assert!(!alias_satisfied_by_name("Axis", "Axis", &types));
     }
 
     #[test]
