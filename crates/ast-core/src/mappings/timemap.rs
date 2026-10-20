@@ -42,65 +42,105 @@ const AST_AU: f64 = 1.49597870e11;
 // TimeCvtType — conversion step types
 // ---------------------------------------------------------------------------
 
-/// A time coordinate conversion type supported by [`TimeMap`].
+/// A time coordinate conversion that [`TimeMap::add`] can add to a
+/// [`TimeMap`].
 ///
-/// Each variant corresponds to a specific time system conversion operation.
-/// The integer discriminant matches the C AST library's `AST__*` constants.
+/// The arguments a conversion takes are listed with each variant, in the
+/// order they are passed to [`TimeMap::add`]; "MJD" means Modified Julian
+/// Date.
+/// [`nargs`](TimeCvtType::nargs) gives the number of arguments,
+/// [`code_string`](TimeCvtType::code_string) the conversion's string code and
+/// [`from_code`](TimeCvtType::from_code) parses one, case-insensitively.
+///
+/// The values the conversions process have these units:
+///
+/// - Julian epochs and offsets: Julian years;
+/// - Besselian epochs and offsets: tropical years;
+/// - Modified Julian Dates and offsets: days;
+/// - Julian Dates and offsets: days.
+///
+/// The offset arguments are zero-points: the values a TimeMap transforms are
+/// offsets from them.
+/// The arguments are:
+///
+/// - `MJDOFF`: the zero-point used with MJD values;
+/// - `JDOFF`: the zero-point used with Julian Date values;
+/// - `BEPOFF`: the zero-point used with Besselian epoch values;
+/// - `JEPOFF`: the zero-point used with Julian epoch values;
+/// - `OBSLON`: observer longitude in radians (positive westwards);
+/// - `OBSLAT`: observer geodetic latitude (IAU 1975) in radians (positive
+///   northwards);
+/// - `OBSALT`: observer geodetic altitude (IAU 1975) in meters;
+/// - `DTAI`: the value of TAI-UTC in seconds; if it is [`BAD_VALUE`], the
+///   value from the built-in table of leap seconds is used;
+/// - `DUT1`: the value of UT1-UTC in seconds;
+/// - `LTOFF`: the offset between Local Time and UTC in hours, positive for
+///   time zones east of Greenwich.
+///
+/// The integer discriminant is the conversion's integer code in the C
+/// library.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TimeCvtType {
-    /// Convert MJD between offsets.
+    /// `MJDTOMJD` (`MJDOFF1`, `MJDOFF2`): convert an MJD from one zero-point
+    /// to another.
     MjdToMjd = 1,
-    /// Convert MJD to JD.
+    /// `MJDTOJD` (`MJDOFF`, `JDOFF`): convert an MJD to a Julian Date.
     MjdToJd = 2,
-    /// Convert JD to MJD.
+    /// `JDTOMJD` (`JDOFF`, `MJDOFF`): convert a Julian Date to an MJD.
     JdToMjd = 3,
-    /// Convert MJD to Besselian epoch.
+    /// `MJDTOBEP` (`MJDOFF`, `BEPOFF`): convert an MJD to a Besselian epoch.
     MjdToBep = 4,
-    /// Convert Besselian epoch to MJD.
+    /// `BEPTOMJD` (`BEPOFF`, `MJDOFF`): convert a Besselian epoch to an MJD.
     BepToMjd = 5,
-    /// Convert MJD to Julian epoch.
+    /// `MJDTOJEP` (`MJDOFF`, `JEPOFF`): convert an MJD to a Julian epoch.
     MjdToJep = 6,
-    /// Convert Julian epoch to MJD.
+    /// `JEPTOMJD` (`JEPOFF`, `MJDOFF`): convert a Julian epoch to an MJD.
     JepToMjd = 7,
-    /// Convert TAI to UTC.
+    /// `TAITOUTC` (`MJDOFF`, `DTAI`): convert a TAI MJD to a UTC MJD.
     TaiToUtc = 8,
-    /// Convert UTC to TAI.
+    /// `UTCTOTAI` (`MJDOFF`, `DTAI`): convert a UTC MJD to a TAI MJD.
     UtcToTai = 9,
-    /// Convert TAI to TT.
+    /// `TAITOTT` (`MJDOFF`): convert a TAI MJD to a TT MJD.
     TaiToTt = 10,
-    /// Convert TT to TAI.
+    /// `TTTOTAI` (`MJDOFF`): convert a TT MJD to a TAI MJD.
     TtToTai = 11,
-    /// Convert TDB to TT.
+    /// `TDBTOTT` (`MJDOFF`, `OBSLON`, `OBSLAT`, `OBSALT`, `DTAI`): convert a
+    /// TDB MJD to a TT MJD.
     TdbToTt = 12,
-    /// Convert TT to TDB.
+    /// `TTTOTDB` (`MJDOFF`, `OBSLON`, `OBSLAT`, `OBSALT`, `DTAI`): convert a
+    /// TT MJD to a TDB MJD.
     TtToTdb = 13,
-    /// Convert TCG to TT.
+    /// `TCGTOTT` (`MJDOFF`): convert a TCG MJD to a TT MJD.
     TcgToTt = 14,
-    /// Convert TT to TCG.
+    /// `TTTOTCG` (`MJDOFF`): convert a TT MJD to a TCG MJD.
     TtToTcg = 15,
-    /// Convert TCB to TDB.
+    /// `TCBTOTDB` (`MJDOFF`): convert a TCB MJD to a TDB MJD.
     TcbToTdb = 16,
-    /// Convert TDB to TCB.
+    /// `TDBTOTCB` (`MJDOFF`): convert a TDB MJD to a TCB MJD.
     TdbToTcb = 17,
-    /// Convert UT to GMST.
+    /// `UTTOGMST` (`MJDOFF`): convert a UT MJD to a GMST MJD.
     UtToGmst = 18,
-    /// Convert GMST to UT.
+    /// `GMSTTOUT` (`MJDOFF`): convert a GMST MJD to a UT MJD.
     GmstToUt = 19,
-    /// Convert GMST to LMST.
+    /// `GMSTTOLMST` (`MJDOFF`, `OBSLON`, `OBSLAT`): convert a GMST MJD to an
+    /// LMST MJD.
     GmstToLmst = 20,
-    /// Convert LMST to GMST.
+    /// `LMSTTOGMST` (`MJDOFF`, `OBSLON`, `OBSLAT`): convert an LMST MJD to a
+    /// GMST MJD.
     LmstToGmst = 21,
-    /// Convert LAST to LMST.
+    /// `LASTTOLMST` (`MJDOFF`, `OBSLON`, `OBSLAT`): convert a LAST MJD to an
+    /// LMST MJD.
     LastToLmst = 22,
-    /// Convert LMST to LAST.
+    /// `LMSTTOLAST` (`MJDOFF`, `OBSLON`, `OBSLAT`): convert an LMST MJD to a
+    /// LAST MJD.
     LmstToLast = 23,
-    /// Convert UT1 to UTC.
+    /// `UTTOUTC` (`DUT1`): convert a UT1 MJD to a UTC MJD.
     UtToUtc = 24,
-    /// Convert UTC to UT1.
+    /// `UTCTOUT` (`DUT1`): convert a UTC MJD to a UT1 MJD.
     UtcToUt = 25,
-    /// Convert Local Time to UTC.
+    /// `LTTOUTC` (`LTOFF`): convert a Local Time MJD to a UTC MJD.
     LtToUtc = 26,
-    /// Convert UTC to Local Time.
+    /// `UTCTOLT` (`LTOFF`): convert a UTC MJD to a Local Time MJD.
     UtcToLt = 27,
 }
 
@@ -148,7 +188,7 @@ impl TimeCvtType {
         }
     }
 
-    /// Uppercase code string for serialisation (e.g. `"MJDTOMJD"`, `"TAITOUTC"`).
+    /// Uppercase code string for serialization (e.g. `"MJDTOMJD"`, `"TAITOUTC"`).
     pub fn code_string(&self) -> &'static str {
         match self {
             Self::MjdToMjd => "MJDTOMJD",
@@ -181,7 +221,10 @@ impl TimeCvtType {
         }
     }
 
-    /// Parse a code string (case-insensitive) into a conversion type.
+    /// Parse a conversion's string code, such as `"MJDTOJD"` or `"taitoutc"`,
+    /// ignoring case and trailing white space.
+    ///
+    /// Returns `None` for an unrecognized code.
     pub fn from_code(s: &str) -> Option<Self> {
         // C's CvtCode matches with astChrMatch.
         match crate::mappings::helpers::chr_match_key(s).as_str() {
@@ -283,10 +326,10 @@ impl TimeCvtType {
         }
     }
 
-    /// Human-readable descriptions for each serialised argument slot.
+    /// Human-readable descriptions for each serialized argument slot.
     ///
     /// The slice length matches `szargs()`. Used as comments in the Native
-    /// serialisation format. Derived (not stored) slots use empty strings.
+    /// serialization format. Derived (not stored) slots use empty strings.
     pub fn arg_descriptions(&self) -> &'static [&'static str] {
         match self {
             Self::MjdToMjd => &["Input MJD offset", "Output MJD offset", "Combined offset"],
@@ -344,7 +387,7 @@ impl TimeCvtType {
         }
     }
 
-    /// Human-readable description for serialisation comments.
+    /// Human-readable description for serialization comments.
     pub fn description(&self) -> &'static str {
         match self {
             Self::MjdToMjd => "Convert MJD between offsets",
@@ -394,12 +437,17 @@ struct TimeConversion {
 // TimeMap
 // ---------------------------------------------------------------------------
 
-/// A mapping that chains time coordinate system conversions.
+/// Sequence of time coordinate conversions.
 ///
-/// `TimeMap` applies a sequence of time-system transformations (e.g.
-/// MJD↔JD, UTC↔TAI, TT↔TDB, etc.). The input and output are each a
-/// single coordinate representing time, typically expressed as an offset
-/// in days from some MJD zero-point.
+/// A TimeMap is a 1-dimensional Mapping that represents a sequence of
+/// conversions between standard time coordinate systems, such as MJD to
+/// Julian Date, UTC to TAI or TT to TDB.
+///
+/// When first created, a TimeMap is a unit (null) Mapping.
+/// [`add`](TimeMap::add) then appends coordinate conversion steps, so that
+/// multi-step conversions between a variety of time coordinate systems can be
+/// assembled out of a set of building blocks.
+/// [`TimeCvtType`] lists the conversions available.
 ///
 /// # Example
 ///
@@ -428,7 +476,14 @@ pub struct TimeMap {
 }
 
 impl TimeMap {
-    /// Create a new, empty `TimeMap` (identity transform).
+    /// Create a TimeMap with no conversion steps, which performs a unit
+    /// Mapping until steps are added with [`add`](TimeMap::add).
+    ///
+    /// The nature and units of the values supplied to the TimeMap must suit
+    /// the first conversion step it applies, and those it returns are set by
+    /// the last: if the first step is [`TimeCvtType::MjdToBep`], the input is
+    /// a Modified Julian Date in days.
+    #[doc(alias = "astTimeMap")]
     pub fn new() -> Self {
         Self {
             conversions: Vec::new(),
@@ -440,11 +495,41 @@ impl TimeMap {
         }
     }
 
-    /// Append a conversion step to the chain, as C's `astTimeAdd` does.
+    /// Add a time coordinate conversion to the TimeMap.
     ///
-    /// `args` must hold exactly `cvt_type.nargs()` values; any other number is
-    /// an `AST__TIMIN` error (timemap.c AddTimeCvt).
+    /// `cvt_type` selects the conversion, and `args` holds its arguments in
+    /// the order listed for that [`TimeCvtType`] variant, in the units listed
+    /// there.
+    ///
+    /// The forward transformation of the TimeMap applies its conversions in
+    /// the order they were added, the most recently added last.
+    /// The inverse transformation, or the forward transformation of an
+    /// inverted TimeMap, applies the inverse of each conversion in the
+    /// reverse order, the inverse of the most recently added first.
+    ///
+    /// No check is made that the sequence of conversions is physically
+    /// meaningful.
+    /// When assembling a multi-step conversion, it is often simplest to
+    /// include every step that is logically needed and then simplify the
+    /// TimeMap (`simplify` on `dyn Mapping`), which removes the steps that
+    /// turn out not to be needed.
+    ///
+    /// ```
+    /// use ast_core::mappings::{Mapping, TimeCvtType, TimeMap};
+    ///
+    /// // MJD offsets from MJD 50000 to Julian Date offsets from JD 2450000.
+    /// let mut map = TimeMap::new();
+    /// map.add(TimeCvtType::MjdToJd, &[50000.0, 2450000.0]).unwrap();
+    /// assert_eq!(map.tran1(&[1.0], true).unwrap(), vec![1.5]);
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// `ErrorCode::Timin` if `args` does not hold exactly
+    /// [`cvt_type.nargs()`](TimeCvtType::nargs) values.
+    #[doc(alias = "astTimeAdd")]
     pub fn add(&mut self, cvt_type: TimeCvtType, args: &[f64]) -> AstResult<()> {
+        // The argument count check is timemap.c AddTimeCvt's.
         if args.len() != cvt_type.nargs() {
             return Err(AstError::new(
                 ErrorCode::Timin,

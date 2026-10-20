@@ -25,16 +25,42 @@ use super::unit::UnitMap;
 use super::{DynMapping, Mapping};
 use crate::mappings::SimplifiedRecord;
 
-/// A Chebyshev polynomial transformation mapping.
+/// Map coordinates using Chebyshev polynomial functions.
 ///
-/// Each output coordinate is a linear combination of Chebyshev polynomials
-/// of the first kind, evaluated on input coordinates normalized to the
-/// range [-1, 1]. Input points outside the defined domain produce
-/// [`BAD_VALUE`] outputs.
+/// A ChebyMap performs a Chebyshev polynomial transformation.
+/// Each output coordinate is a linear combination of Chebyshev polynomials of
+/// the first kind, of order zero up to a specified maximum order, evaluated at
+/// the input coordinates.
+/// The coefficients of the linear combination are specified separately for
+/// each output coordinate, as [`PolyTerm`]s.
 ///
-/// The forward transformation maps from input space to output space.
-/// An optional explicit inverse can be provided that maps from output
-/// space back to input space.
+/// For a 1-dimensional ChebyMap the forward transformation is
+///
+/// ```text
+/// f(x) = c0 T0(x') + c1 T1(x') + c2 T2(x') + ...
+/// ```
+///
+/// where `Tn` is the Chebyshev polynomial of the first kind of order `n`
+/// (`T0(x') = 1`, `T1(x') = x'`, `Tn+1(x') = 2 x' Tn(x') - Tn-1(x')`), and `x'`
+/// is the input value `x` offset and scaled to the range [-1, 1] as `x` ranges
+/// over a bounding box given when the ChebyMap is created.
+/// Input positions must fall within the bounding box: a point outside it
+/// transforms to [`BAD_VALUE`].
+///
+/// For an N-dimensional ChebyMap each output value is the sum of its terms,
+/// where each term is the product of a coefficient and N factors `Tn(x'_i)`,
+/// `x'_i` being the normalized value of input `i`.
+///
+/// The forward and inverse transformations are defined independently by
+/// separate sets of coefficients.
+/// If no inverse coefficients are supplied, [`poly_tran`](ChebyMap::poly_tran)
+/// can create an inverse transformation: a Chebyshev polynomial whose
+/// coefficients minimize the residuals left by a round trip (forward
+/// transformation followed by inverse transformation).
+/// Unlike a [`PolyMap`], a ChebyMap never provides an iterative inverse.
+///
+/// [`domain`](ChebyMap::domain) returns the bounding box of either
+/// transformation.
 #[derive(Debug, Clone)]
 pub struct ChebyMap {
     /// Inner PolyMap that stores the term structure (used for serialisation).
@@ -67,22 +93,52 @@ pub struct ChebyMap {
 }
 
 impl ChebyMap {
-    /// Create a new `ChebyMap` with the given Chebyshev polynomial terms.
+    /// Create a ChebyMap with `nin` input and `nout` output coordinates from
+    /// the given Chebyshev polynomial terms.
     ///
     /// `forward` defines the forward transformation: each term's `powers`
-    /// are Chebyshev polynomial orders (not raw exponents), `powers` must
-    /// have length `nin`, and `out_axis` must be in `1..=nout`.
+    /// holds one Chebyshev polynomial order per input, and its `out_axis` is
+    /// in `1..=nout`.
+    /// For instance, with three inputs, the term
+    /// `PolyTerm { coeff: 1.2, powers: vec![1, 3, 0], out_axis: 2 }` adds to
+    /// output 2 the product of 1.2, `T1` evaluated at input 1 and `T3`
+    /// evaluated at input 2; input 3 is not used.
+    /// A term whose powers are all zero adds a constant.
+    /// An empty `forward` leaves the forward transformation undefined.
     ///
-    /// `inverse`, if provided, defines the explicit inverse transformation.
+    /// `inverse`, if given and not empty, defines the inverse transformation
+    /// the same way with inputs and outputs transposed; otherwise the inverse
+    /// is undefined.
     ///
-    /// `lbnd_f` and `ubnd_f` define the input domain for the forward
-    /// transformation. Points outside this box produce [`BAD_VALUE`].
+    /// `lbnd_f` and `ubnd_f` hold the lower and upper bounds, one per input,
+    /// of the input bounding box within which the forward transformation is
+    /// defined.
+    /// `lbnd_i` and `ubnd_i` hold the bounds, one per output, of the output
+    /// bounding box within which the inverse transformation is defined.
+    /// They are used only when inverse coefficients are given, and without
+    /// them the inverse coefficients multiply plain powers of the unscaled
+    /// outputs, as a [`PolyMap`]'s do.
     ///
-    /// `lbnd_i` and `ubnd_i`, if provided, define the input domain for
-    /// the inverse transformation. As in C (chebymap.c `astInitChebyMap`),
-    /// they are used only when inverse coefficients are supplied; otherwise
-    /// the inverse domain is found from the forward one (see
-    /// [`domain`](ChebyMap::domain)).
+    /// ```
+    /// use ast_core::mappings::{ChebyMap, Mapping, PolyTerm};
+    ///
+    /// // f(x) = 1 + 2 T2(x') with x in [0, 10]: T2(x') = 2 x'^2 - 1.
+    /// let terms = [
+    ///     PolyTerm { coeff: 1.0, powers: vec![0], out_axis: 1 },
+    ///     PolyTerm { coeff: 2.0, powers: vec![2], out_axis: 1 },
+    /// ];
+    /// let map = ChebyMap::new(1, 1, &terms, None, &[0.0], &[10.0], None, None).unwrap();
+    /// // x = 10 gives x' = 1 and T2 = 1.
+    /// assert_eq!(map.tran1(&[10.0], true).unwrap(), vec![3.0]);
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Badin` if `nin` or `nout` is zero, a bounds slice has
+    ///   the wrong length, or a term has the wrong number of powers.
+    /// - `ErrorCode::Badbx` if a bounding box has zero width on any axis.
+    /// - `ErrorCode::Badci` if a term's `out_axis` is out of range.
+    #[doc(alias = "astChebyMap")]
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         nin: usize,
@@ -115,6 +171,8 @@ impl ChebyMap {
             ));
         }
 
+        // The bounds handling follows astInitChebyMap: lbnd_i and ubnd_i are
+        // read only when there are inverse coefficients.
         // Only a box of zero width is an error (chebymap.c astInitChebyMap):
         // reversed bounds give a negative scale.
         for i in 0..nin {
@@ -230,12 +288,21 @@ impl ChebyMap {
         self.poly.inverse_terms()
     }
 
-    /// The bounding box of the input of the forward (`forward`) or inverse
-    /// transformation, as C's `astChebyDomain` gives it (chebymap.c
-    /// `ChebyDomain`): worked out from the stored scaling into [-1, 1], or,
-    /// when that transformation has no box, found by MapBox from the other
-    /// transformation's box. Bounds that cannot be found are `BAD_VALUE`.
+    /// The bounding box of the domain of the forward (`forward` true) or
+    /// inverse transformation, as `(lbnd, ubnd)`.
+    ///
+    /// These are the bounds given when the ChebyMap was created, with one
+    /// value per input for the forward transformation and one per output for
+    /// the inverse, both for the ChebyMap as it stands, after any inversion.
+    /// If the requested transformation has no bounding box (no coefficients
+    /// were given for it), the box is found by mapping the other
+    /// transformation's box with [`map_box`](Mapping::map_box), if that
+    /// transformation has one.
+    /// Bounds that cannot be found are [`BAD_VALUE`]; this is not an error.
+    #[doc(alias = "astChebyDomain")]
     pub fn domain(&self, forward: bool) -> (Vec<f64>, Vec<f64>) {
+        // chebymap.c ChebyDomain: worked out from the stored scaling into
+        // [-1, 1], or by MapBox from the other transformation's box.
         let box_of = |scale: &[f64], offset: &[f64]| -> (Vec<f64>, Vec<f64>) {
             scale
                 .iter()
@@ -279,17 +346,25 @@ impl ChebyMap {
         forward != self.inverted
     }
 
-    /// Fit a replacement forward or inverse transformation by least
-    /// squares, returning a new ChebyMap that uses the fit, or `None` if no
-    /// fit achieves `maxacc`.
+    /// Fit a ChebyMap inverse or forward transformation.
     ///
-    /// As [`PolyMap::poly_tran`], with the fit made in Chebyshev form over
-    /// the box spanned by the sampled values, which becomes the new
-    /// transformation's bounding box (chebymap.c `PolyTran`,
-    /// `FitPoly1DInit` and `FitPoly2DInit`). `lbnd` and `ubnd` are in the
-    /// input space of the transformation that is sampled; either may be
-    /// `None` to use that transformation's own bounding box, which is an
-    /// `AST__NOBOX` error when it has none.
+    /// As [`PolyMap::poly_tran`], returning a ChebyMap whose new
+    /// transformation is a weighted sum of Chebyshev functions of the first
+    /// kind, or `None` if no fit achieves `maxacc`.
+    /// The bounding box of the new transformation is the box spanned by the
+    /// sampled values.
+    ///
+    /// `lbnd` and `ubnd` bound the rectangle sampled, in the input space of
+    /// the transformation that is sampled.
+    /// Either may be `None` to use the bounding box given for that
+    /// transformation when the ChebyMap was created.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Nobox` if `lbnd` or `ubnd` is `None` and the sampled
+    ///   transformation has no bounding box.
+    /// - The errors of [`PolyMap::poly_tran`].
+    #[doc(alias = "astPolyTran")]
     pub fn poly_tran(
         &self,
         forward: bool,
@@ -338,7 +413,9 @@ impl ChebyMap {
         let this_lbnd = bound(lbnd, "lower", -1.0)?;
         let this_ubnd = bound(ubnd, "upper", 1.0)?;
 
-        // As PolyMap's: replace a transformation of a copy.
+        // As PolyMap's: replace a transformation of a copy. The fit is made
+        // in Chebyshev form (chebymap.c PolyTran, FitPoly1DInit and
+        // FitPoly2DInit).
         let mut result = self.clone();
         result.simplified = SimplifiedRecord::default();
         let Some(new_terms) = crate::mappings::helpers::poly_tran::replace_transformation(

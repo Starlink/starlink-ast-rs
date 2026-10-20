@@ -17,68 +17,121 @@ use crate::mappings::SimplifiedRecord;
 // SlaCvtType — conversion step types
 // ---------------------------------------------------------------------------
 
-/// A celestial coordinate conversion type supported by [`SlaMap`].
+/// A celestial coordinate conversion that [`SlaMap::add`] can add to an
+/// [`SlaMap`].
 ///
-/// Each variant corresponds to a specific PAL (positional astronomy library)
-/// operation.  The integer discriminant matches the C AST library's
-/// `AST__SLA_*` constants.
+/// Most conversions are derived from the SLALIB Positional Astronomy Library
+/// routine of the same name (Starlink User Note SUN/67), which should be
+/// consulted for details; the arguments, listed with each variant in the
+/// order they are passed to [`SlaMap::add`], take exactly the units, time
+/// scale and calendar SUN/67 describes.
+/// [`nargs`](SlaCvtType::nargs) gives the number of arguments,
+/// [`code_string`](SlaCvtType::code_string) the conversion's string code and
+/// [`from_code`](SlaCvtType::from_code) parses one, case-insensitively.
+///
+/// The helioprojective and helio-ecliptic conversions correspond to no single
+/// SLALIB routine.
+/// Their `DATE` argument is the Modified Julian Date of the observation, and
+/// `OBSX`, `OBSY` and `OBSZ` are the Heliocentric-Aries-Ecliptic Cartesian
+/// coordinates of the observer, in meters.
+///
+/// The integer discriminant is the conversion's integer code in the C
+/// library.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SlaCvtType {
-    /// Add E-terms of aberration.
+    /// `ADDET` (`EQ`): add E-terms of aberration.
+    /// `EQ` is the Besselian epoch of the mean equator and equinox.
     Addet = 1,
-    /// Remove E-terms of aberration.
+    /// `SUBET` (`EQ`): subtract E-terms of aberration.
+    /// `EQ` is the Besselian epoch of the mean equator and equinox.
     Subet = 2,
-    /// Bessel-Newcomb precession (FK4).
+    /// `PREBN` (`BEP0`, `BEP1`): apply the Bessel-Newcomb pre-IAU 1976 (FK4)
+    /// precession model from Besselian epoch `BEP0` to `BEP1`.
     Prebn = 3,
-    /// IAU 1976 precession (FK5).
+    /// `PREC` (`EP0`, `EP1`): apply the IAU 1975 (FK5) precession model from
+    /// Julian epoch `EP0` to `EP1`.
     Prec = 4,
-    /// FK4 to FK5 (zero proper motion).
+    /// `FK45Z` (`BEPOCH`): convert FK4 to FK5 (no proper motion or
+    /// parallax).
+    /// `BEPOCH` is the Besselian epoch of the FK4 coordinates.
     Fk45z = 5,
-    /// FK5 to FK4 (zero proper motion).
+    /// `FK54Z` (`BEPOCH`): convert FK5 to FK4 (no proper motion or
+    /// parallax).
+    /// `BEPOCH` is the Besselian epoch of the FK4 system.
     Fk54z = 6,
-    /// Geocentric apparent to mean place.
+    /// `AMP` (`DATE`, `EQ`): convert geocentric apparent to mean place.
+    /// `DATE` is the TDB of the apparent place as a Modified Julian Date, and
+    /// `EQ` the Julian epoch of the mean equinox.
     Amp = 7,
-    /// Mean place to geocentric apparent.
+    /// `MAP` (`EQ`, `DATE`): convert mean place to geocentric apparent.
+    /// `EQ` is the Julian epoch of the mean equinox, and `DATE` the TDB of the
+    /// apparent place as a Modified Julian Date.
     Map = 8,
-    /// Ecliptic to equatorial.
+    /// `ECLEQ` (`DATE`): convert ecliptic coordinates to FK5 J2000.0
+    /// equatorial.
+    /// `DATE` is the TDB of the mean ecliptic as a Modified Julian Date.
     Ecleq = 9,
-    /// Equatorial to ecliptic.
+    /// `EQECL` (`DATE`): convert equatorial FK5 J2000.0 to ecliptic
+    /// coordinates.
+    /// `DATE` is the TDB of the mean ecliptic as a Modified Julian Date.
     Eqecl = 10,
-    /// Galactic to equatorial.
+    /// `GALEQ`: convert galactic coordinates to FK5 J2000.0 equatorial.
     Galeq = 11,
-    /// Equatorial to galactic.
+    /// `EQGAL`: convert FK5 J2000.0 equatorial to galactic coordinates.
     Eqgal = 12,
-    /// Galactic to supergalactic.
+    /// `GALSUP`: convert galactic to supergalactic coordinates.
     Galsup = 13,
-    /// Supergalactic to galactic.
+    /// `SUPGAL`: convert supergalactic coordinates to galactic.
     Supgal = 14,
-    /// Helioprojective-Cartesian to J2000 equatorial.
+    /// `HPCEQ` (`DATE`, `OBSX`, `OBSY`, `OBSZ`): convert
+    /// Helioprojective-Cartesian coordinates to J2000.0 equatorial.
     Hpceq = 15,
-    /// J2000 equatorial to helioprojective-Cartesian.
+    /// `EQHPC` (`DATE`, `OBSX`, `OBSY`, `OBSZ`): convert J2000.0 equatorial
+    /// coordinates to Helioprojective-Cartesian.
     Eqhpc = 16,
-    /// Helioprojective-Radial to J2000 equatorial.
+    /// `HPREQ` (`DATE`, `OBSX`, `OBSY`, `OBSZ`): convert
+    /// Helioprojective-Radial coordinates to J2000.0 equatorial.
     Hpreq = 17,
-    /// J2000 equatorial to helioprojective-Radial.
+    /// `EQHPR` (`DATE`, `OBSX`, `OBSY`, `OBSZ`): convert J2000.0 equatorial
+    /// coordinates to Helioprojective-Radial.
     Eqhpr = 18,
-    /// ICRS (Hipparcos) to FK5.
+    /// `HFK5Z` (`JEPOCH`): convert ICRS coordinates to FK5 J2000.0
+    /// equatorial.
+    /// `JEPOCH` is the Julian epoch of the FK5 coordinates.
     Hfk5z = 19,
-    /// FK5 to ICRS (Hipparcos).
+    /// `FK5HZ` (`JEPOCH`): convert FK5 J2000.0 equatorial coordinates to
+    /// ICRS.
+    /// `JEPOCH` is the Julian epoch of the FK5 coordinates.
     Fk5hz = 20,
-    /// Helio-ecliptic to equatorial.
+    /// `HEEQ` (`DATE`): convert helio-ecliptic coordinates to J2000.0
+    /// equatorial.
     Heeq = 21,
-    /// Equatorial to helio-ecliptic.
+    /// `EQHE` (`DATE`): convert J2000.0 equatorial coordinates to
+    /// helio-ecliptic.
     Eqhe = 22,
-    /// Dynamical J2000 to ICRS.
+    /// `J2000H`: convert dynamical J2000.0 to ICRS.
     J2000h = 23,
-    /// ICRS to dynamical J2000.
+    /// `HJ2000`: convert ICRS to dynamical J2000.0.
     Hj2000 = 24,
-    /// Horizon (az/el) to equatorial (ha/dec).
+    /// `H2E` (`LAT`, `DIURAB`): convert topocentric horizon coordinates
+    /// (azimuth, elevation) to apparent local equatorial coordinates (hour
+    /// angle, declination).
+    /// `LAT` is the geodetic latitude of the observer, in radians, and `DIURAB` the
+    /// magnitude of the diurnal aberration vector in units of day/(2 pi).
+    /// Diurnal aberration is taken into account; atmospheric refraction is
+    /// not.
     Dh2e = 25,
-    /// Equatorial (ha/dec) to horizon (az/el).
+    /// `E2H` (`LAT`, `DIURAB`): convert apparent local equatorial coordinates
+    /// (hour angle, declination) to topocentric horizon coordinates (azimuth,
+    /// elevation), the inverse of [`Dh2e`](SlaCvtType::Dh2e).
     De2h = 26,
-    /// RA to hour angle: `ha = last - ra`.
+    /// `R2H` (`LAST`): convert right ascension to hour angle,
+    /// `ha = LAST - ra`.
+    /// `LAST` is the local apparent sidereal time, in radians.
     R2h = 27,
-    /// Hour angle to RA: `ra = last - ha`.
+    /// `H2R` (`LAST`): convert hour angle to right ascension,
+    /// `ra = LAST - ha`.
+    /// `LAST` is the local apparent sidereal time, in radians.
     H2r = 28,
 }
 
@@ -109,7 +162,7 @@ impl SlaCvtType {
         }
     }
 
-    /// Uppercase code string for serialisation (e.g. `"PREC"`, `"EQGAL"`).
+    /// Uppercase code string for serialization (e.g. `"PREC"`, `"EQGAL"`).
     pub fn code_string(&self) -> &'static str {
         match self {
             Self::Addet => "ADDET",
@@ -143,9 +196,12 @@ impl SlaCvtType {
         }
     }
 
-    /// Parse a code string into a conversion type, as slamap.c `CvtCode`
-    /// does: case-insensitive and ignoring trailing white space.
+    /// Parse a conversion's string code, such as `"PREC"` or `"h2e"`,
+    /// ignoring case and trailing white space.
+    ///
+    /// Returns `None` for an unrecognized code.
     pub fn from_code(s: &str) -> Option<Self> {
+        // As slamap.c CvtCode.
         // C's CvtCode matches with astChrMatch.
         match crate::mappings::helpers::chr_match_key(s).as_str() {
             "ADDET" => Some(Self::Addet),
@@ -252,10 +308,10 @@ impl SlaCvtType {
         }
     }
 
-    /// Human-readable descriptions for each serialised argument.
+    /// Human-readable descriptions for each serialized argument.
     ///
     /// The slice length matches `nargs()`. Used as comments in the Native
-    /// serialisation format.
+    /// serialization format.
     pub fn arg_descriptions(&self) -> &'static [&'static str] {
         match self {
             Self::Prec => &["From Julian epoch", "To Julian epoch"],
@@ -289,7 +345,7 @@ impl SlaCvtType {
         }
     }
 
-    /// Human-readable description for serialisation comments.
+    /// Human-readable description for serialization comments.
     pub fn description(&self) -> &'static str {
         match self {
             Self::Addet => "Add E-terms of aberration",
@@ -339,13 +395,20 @@ struct SlaConversion {
 // SlaMap
 // ---------------------------------------------------------------------------
 
-/// A mapping that chains celestial coordinate system conversions.
+/// Sequence of celestial coordinate conversions.
 ///
-/// `SlaMap` applies a sequence of celestial-coordinate transformations
-/// (precession, frame rotations, aberration, etc.) via the PAL library.
-/// Each step is one of the [`SlaCvtType`] conversion types.
+/// An SlaMap represents a sequence of conversions between standard celestial
+/// (longitude, latitude) coordinate systems.
+/// It always has two input and two output coordinates: the first is the
+/// celestial longitude and the second the celestial latitude, both in
+/// radians.
 ///
-/// Input and output coordinates are (longitude, latitude) in radians.
+/// When first created, an SlaMap is a unit (null) Mapping.
+/// [`add`](SlaMap::add) then appends coordinate conversion steps, selected
+/// from those provided by the SLALIB Positional Astronomy Library (SUN/67),
+/// so that multi-step conversions between a variety of celestial coordinate
+/// systems can be assembled out of SLALIB's building blocks.
+/// [`SlaCvtType`] lists the conversions available.
 ///
 /// # Example
 ///
@@ -378,7 +441,10 @@ pub struct SlaMap {
 }
 
 impl SlaMap {
-    /// Create a new, empty `SlaMap` (identity transform).
+    /// Create an SlaMap with no conversion steps, which performs a unit
+    /// Mapping on a pair of coordinates until steps are added with
+    /// [`add`](SlaMap::add).
+    #[doc(alias = "astSlaMap")]
     pub fn new() -> Self {
         Self {
             conversions: Vec::new(),
@@ -405,11 +471,43 @@ impl SlaMap {
         step
     }
 
-    /// Append a conversion step to the chain, as C's `astSlaAdd` does.
+    /// Add a celestial coordinate conversion to the SlaMap.
     ///
-    /// `args` must hold exactly `cvt_type.nargs()` values; any other number is
-    /// an `AST__TIMIN` error (slamap.c AddSlaCvt).
+    /// `cvt_type` selects the conversion, and `args` holds its arguments in
+    /// the order and units listed for that [`SlaCvtType`] variant; it is
+    /// empty for a conversion that takes none.
+    ///
+    /// The forward transformation of the SlaMap applies its conversions in
+    /// the order they were added, the most recently added last.
+    /// The inverse transformation, or the forward transformation of an
+    /// inverted SlaMap, applies the inverse of each conversion in the reverse
+    /// order, the inverse of the most recently added first.
+    ///
+    /// No check is made that the sequence of conversions is physically
+    /// meaningful.
+    /// When assembling a multi-step conversion, it is often simplest to
+    /// include every step that is logically needed (converting to FK5 as an
+    /// intermediate stage, for instance) and then
+    /// simplify the SlaMap (`simplify` on `dyn Mapping`), which removes the steps
+    /// that turn out not to be needed.
+    ///
+    /// ```
+    /// use ast_core::mappings::{Mapping, SlaCvtType, SlaMap};
+    ///
+    /// // FK4 B1950 to galactic, through FK5 J2000.
+    /// let mut map = SlaMap::new();
+    /// map.add(SlaCvtType::Fk45z, &[1950.0]).unwrap();
+    /// map.add(SlaCvtType::Eqgal, &[]).unwrap();
+    /// assert_eq!(map.len(), 2);
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// `ErrorCode::Timin` if `args` does not hold exactly
+    /// [`cvt_type.nargs()`](SlaCvtType::nargs) values.
+    #[doc(alias = "astSlaAdd")]
     pub fn add(&mut self, cvt_type: SlaCvtType, args: &[f64]) -> AstResult<()> {
+        // The argument count check is slamap.c AddSlaCvt's.
         if args.len() != cvt_type.nargs() {
             return Err(AstError::new(
                 ErrorCode::Timin,
@@ -1436,7 +1534,7 @@ impl Mapping for SlaMap {
 
 /// Argument index to letter: 0 -> 'a', 1 -> 'b', etc.
 ///
-/// The native serialisation format uses lowercase letters for argument
+/// The native serialization format uses lowercase letters for argument
 /// suffixes (e.g. `Sla1a`, `Sla1b`).
 fn arg_letter(j: usize) -> char {
     (b'a' + j as u8) as char

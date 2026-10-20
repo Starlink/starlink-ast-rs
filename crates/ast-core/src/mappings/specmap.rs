@@ -33,79 +33,132 @@ const AU_TO_KMS: f64 = 149.597870e6;
 // SpecCvtType — conversion step types
 // ---------------------------------------------------------------------------
 
-/// A spectral coordinate conversion type supported by [`SpecMap`].
+/// A spectral coordinate conversion that [`SpecMap::add`] can add to a
+/// [`SpecMap`].
 ///
-/// Each variant corresponds to a specific spectral conversion operation.
-/// The integer discriminant matches the C AST library's `AST__*` constants.
+/// The arguments a conversion takes are listed with each variant, in the
+/// order they are passed to [`SpecMap::add`].
+/// [`nargs`](SpecCvtType::nargs) gives the number of arguments,
+/// [`code_string`](SpecCvtType::code_string) the conversion's string code and
+/// [`from_code`](SpecCvtType::from_code) parses one, case-insensitively.
+///
+/// The values the conversions process have these units:
+///
+/// - all velocities: meters per second, positive if the source recedes from
+///   the observer;
+/// - frequency: Hertz;
+/// - all wavelengths: meters;
+/// - energy: Joules;
+/// - wave number: cycles per meter.
+///
+/// The arguments are:
+///
+/// - `RF`: rest frequency (Hz);
+/// - `OBSALT`: geodetic altitude of the observer (IAU 1975, meters);
+/// - `OBSLAT`: geodetic latitude of the observer (IAU 1975, radians);
+/// - `OBSLON`: longitude of the observer (radians, positive eastwards);
+/// - `EPOCH`: epoch of observation (UT1 as a Modified Julian Date);
+/// - `RA`: right ascension of the source (radians, FK5 J2000);
+/// - `DEC`: declination of the source (radians, FK5 J2000);
+/// - `VOFF`: velocity of the user-defined reference frame towards the
+///   position given by `RA` and `DEC`, measured in the heliocentric reference
+///   frame (meters per second).
+///
+/// In a 3-dimensional SpecMap ([`SpecMap::with_nin`]) the source position of
+/// each point is given by its second and third coordinates instead of by
+/// `RA` and `DEC`.
+/// Usable `RA` and `DEC` values are still needed to define the user-defined
+/// reference frame of [`UsF2Hl`](SpecCvtType::UsF2Hl) and
+/// [`HlF2Us`](SpecCvtType::HlF2Us), but [`BAD_VALUE`] may be given for them
+/// when that frame is not needed.
+///
+/// The integer discriminant is the conversion's integer code in the C
+/// library.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SpecCvtType {
-    /// Frequency to relativistic velocity.
+    /// `FRTOVL` (`RF`): convert frequency to relativistic velocity.
     FrToVl = 1,
-    /// Relativistic velocity to frequency.
+    /// `VLTOFR` (`RF`): convert relativistic velocity to frequency.
     VlToFr = 2,
-    /// Energy to frequency.
+    /// `ENTOFR`: convert energy to frequency.
     EnToFr = 3,
-    /// Frequency to energy.
+    /// `FRTOEN`: convert frequency to energy.
     FrToEn = 4,
-    /// Wave number to frequency.
+    /// `WNTOFR`: convert wave number to frequency.
     WnToFr = 5,
-    /// Frequency to wave number.
+    /// `FRTOWN`: convert frequency to wave number.
     FrToWn = 6,
-    /// Wavelength (vacuum) to frequency.
+    /// `WVTOFR`: convert wavelength (vacuum) to frequency.
     WvToFr = 7,
-    /// Frequency to wavelength (vacuum).
+    /// `FRTOWV`: convert frequency to wavelength (vacuum).
     FrToWv = 8,
-    /// Wavelength (air) to frequency.
+    /// `AWTOFR`: convert wavelength (air) to frequency.
     AwToFr = 9,
-    /// Frequency to wavelength (air).
+    /// `FRTOAW`: convert frequency to wavelength (air).
     FrToAw = 10,
-    /// Radio velocity to relativistic velocity.
+    /// `VRTOVL`: convert radio to relativistic velocity.
     VrToVl = 11,
-    /// Relativistic to radio velocity.
+    /// `VLTOVR`: convert relativistic to radio velocity.
     VlToVr = 12,
-    /// Optical velocity to relativistic velocity.
+    /// `VOTOVL`: convert optical to relativistic velocity.
     VoToVl = 13,
-    /// Relativistic to optical velocity.
+    /// `VLTOVO`: convert relativistic to optical velocity.
     VlToVo = 14,
-    /// Redshift to relativistic velocity.
+    /// `ZOTOVL`: convert redshift to relativistic velocity.
     ZoToVl = 15,
-    /// Relativistic velocity to redshift.
+    /// `VLTOZO`: convert relativistic velocity to redshift.
     VlToZo = 16,
-    /// Beta factor to relativistic velocity.
+    /// `BTTOVL`: convert beta factor to relativistic velocity.
     BtToVl = 17,
-    /// Relativistic velocity to beta factor.
+    /// `VLTOBT`: convert relativistic velocity to beta factor.
     VlToBt = 18,
-    /// User-defined to heliocentric frequency.
+    /// `USF2HL` (`VOFF`, `RA`, `DEC`): convert frequency from a user-defined
+    /// reference frame to heliocentric.
     UsF2Hl = 19,
-    /// Heliocentric to user-defined frequency.
+    /// `HLF2US` (`VOFF`, `RA`, `DEC`): convert frequency from heliocentric
+    /// reference frame to user-defined.
     HlF2Us = 20,
-    /// Topocentric to heliocentric frequency.
+    /// `TPF2HL` (`OBSLON`, `OBSLAT`, `OBSALT`, `EPOCH`, `RA`, `DEC`): convert
+    /// frequency from topocentric reference frame to heliocentric.
     TpF2Hl = 21,
-    /// Heliocentric to topocentric frequency.
+    /// `HLF2TP` (`OBSLON`, `OBSLAT`, `OBSALT`, `EPOCH`, `RA`, `DEC`): convert
+    /// frequency from heliocentric reference frame to topocentric.
     HlF2Tp = 22,
-    /// Geocentric to heliocentric frequency.
+    /// `GEF2HL` (`EPOCH`, `RA`, `DEC`): convert frequency from geocentric
+    /// reference frame to heliocentric.
     GeF2Hl = 23,
-    /// Heliocentric to geocentric frequency.
+    /// `HLF2GE` (`EPOCH`, `RA`, `DEC`): convert frequency from heliocentric
+    /// reference frame to geocentric.
     HlF2Ge = 24,
-    /// Barycentric to heliocentric frequency.
+    /// `BYF2HL` (`EPOCH`, `RA`, `DEC`): convert frequency from barycentric
+    /// reference frame to heliocentric.
     ByF2Hl = 25,
-    /// Heliocentric to barycentric frequency.
+    /// `HLF2BY` (`EPOCH`, `RA`, `DEC`): convert frequency from heliocentric
+    /// reference frame to barycentric.
     HlF2By = 26,
-    /// LSRK to heliocentric frequency.
+    /// `LKF2HL` (`RA`, `DEC`): convert frequency from kinematic LSR reference
+    /// frame to heliocentric.
     LkF2Hl = 27,
-    /// Heliocentric to LSRK frequency.
+    /// `HLF2LK` (`RA`, `DEC`): convert frequency from heliocentric reference
+    /// frame to kinematic LSR.
     HlF2Lk = 28,
-    /// LSRD to heliocentric frequency.
+    /// `LDF2HL` (`RA`, `DEC`): convert frequency from dynamical LSR reference
+    /// frame to heliocentric.
     LdF2Hl = 29,
-    /// Heliocentric to LSRD frequency.
+    /// `HLF2LD` (`RA`, `DEC`): convert frequency from heliocentric reference
+    /// frame to dynamical LSR.
     HlF2Ld = 30,
-    /// Local group to heliocentric frequency.
+    /// `LGF2HL` (`RA`, `DEC`): convert frequency from local group reference
+    /// frame to heliocentric.
     LgF2Hl = 31,
-    /// Heliocentric to local group frequency.
+    /// `HLF2LG` (`RA`, `DEC`): convert frequency from heliocentric reference
+    /// frame to local group.
     HlF2Lg = 32,
-    /// Galactic to heliocentric frequency.
+    /// `GLF2HL` (`RA`, `DEC`): convert frequency from galactic reference
+    /// frame to heliocentric.
     GlF2Hl = 33,
-    /// Heliocentric to galactic frequency.
+    /// `HLF2GL` (`RA`, `DEC`): convert frequency from heliocentric reference
+    /// frame to galactic.
     HlF2Gl = 34,
 }
 
@@ -198,7 +251,7 @@ impl SpecCvtType {
         (*self as i32) >= 19
     }
 
-    /// Argument descriptions for serialisation comments.
+    /// Argument descriptions for serialization comments.
     ///
     /// Returns a slice of descriptions, one per stored argument slot.
     /// Indexed by argument position; indices beyond the slice length have no comment.
@@ -264,7 +317,7 @@ impl SpecCvtType {
         }
     }
 
-    /// Uppercase code string for serialisation (e.g. `"FRTOVL"`, `"VLTOFR"`).
+    /// Uppercase code string for serialization (e.g. `"FRTOVL"`, `"VLTOFR"`).
     pub fn code_string(&self) -> &'static str {
         match self {
             Self::FrToVl => "FRTOVL",
@@ -304,7 +357,10 @@ impl SpecCvtType {
         }
     }
 
-    /// Parse a code string (case-insensitive) into a conversion type.
+    /// Parse a conversion's string code, such as `"FRTOVL"` or `"frtowv"`,
+    /// ignoring case and trailing white space.
+    ///
+    /// Returns `None` for an unrecognized code.
     pub fn from_code(s: &str) -> Option<Self> {
         // C's CvtCode matches with astChrMatch.
         match crate::mappings::helpers::chr_match_key(s).as_str() {
@@ -427,7 +483,7 @@ impl SpecCvtType {
         }
     }
 
-    /// Human-readable description for serialisation comments.
+    /// Human-readable description for serialization comments.
     pub fn description(&self) -> &'static str {
         match self {
             Self::FrToVl => "Convert frequency to rel. velocity",
@@ -483,15 +539,30 @@ struct SpecConversion {
 // SpecMap
 // ---------------------------------------------------------------------------
 
-/// A mapping that chains spectral coordinate system conversions.
+/// Sequence of spectral coordinate conversions.
 ///
-/// `SpecMap` applies a sequence of spectral-coordinate transformations
-/// (frequency, wavelength, velocity, energy, reference frame Doppler shifts).
-/// Each step is one of the [`SpecCvtType`] conversion types.
+/// A SpecMap represents a sequence of conversions between standard spectral
+/// coordinate systems: frequency, wavelength and various forms of velocity,
+/// and different standards of rest.
 ///
-/// Input and output are single spectral-axis values, except in a SpecMap
-/// made by [`SpecMap::with_nin`] with 3 axes, whose second and third axes give
-/// the RA and Dec of each point's source.
+/// When first created, a SpecMap is a unit (null) Mapping.
+/// [`add`](SpecMap::add) then appends coordinate conversion steps, so that
+/// multi-step conversions between a variety of spectral coordinate systems
+/// can be assembled out of a set of building blocks.
+/// [`SpecCvtType`] lists the conversions available.
+///
+/// The conversions between standards of rest need the source position as an
+/// RA and Dec.
+/// It can be given as arguments of those conversions, in which case the
+/// SpecMap is 1-dimensional ([`new`](SpecMap::new)), transforming only the
+/// spectral axis values, and always uses the same source position.
+/// That may not describe a 3-D spectral cube accurately, since changes of
+/// spatial position can change the Doppler shift between standards of rest
+/// significantly.
+/// For that case a 3-dimensional SpecMap ([`with_nin`](SpecMap::with_nin))
+/// takes the source RA and Dec from its second and third coordinates, which
+/// it copies unchanged from input to output, and modifies the first (the
+/// spectral axis) appropriately.
 ///
 /// # Example
 ///
@@ -531,7 +602,16 @@ pub struct SpecMap {
 }
 
 impl SpecMap {
-    /// Create a new, empty `SpecMap` (identity transform).
+    /// Create a 1-dimensional SpecMap with no conversion steps, which
+    /// performs a unit Mapping until steps are added with
+    /// [`add`](SpecMap::add).
+    ///
+    /// The nature and units of the values supplied to the SpecMap must suit
+    /// the first conversion step it applies, and those it returns are set by
+    /// the last: if the first step is [`SpecCvtType::FrToVl`] the input is a
+    /// frequency in Hz, and if the last is [`SpecCvtType::VlToVo`] the output
+    /// is an optical velocity in meters per second.
+    #[doc(alias = "astSpecMap")]
     pub fn new() -> Self {
         Self {
             conversions: Vec::new(),
@@ -545,17 +625,23 @@ impl SpecMap {
         }
     }
 
-    /// Create a new, empty `SpecMap` with `nin` axes.
+    /// Create a SpecMap with `nin` input and output coordinates and no
+    /// conversion steps.
     ///
-    /// `nin` is 1, or 3 for a SpecMap whose second and third axes give the
-    /// RA and Dec (FK5 J2000, radians) of each point's source. A rest-frame
-    /// conversion then uses each point's position in place of the source
-    /// position in its arguments, and the RA and Dec pass through unchanged
-    /// (specmap.c `Transform` and `FrameChange`).
+    /// `nin` is 1, or 3 for a SpecMap whose second and third coordinates give
+    /// the RA and Dec (FK5 J2000, radians) of each point's source.
+    /// The first coordinate is the spectral axis, as for
+    /// [`new`](SpecMap::new).
+    /// In a 3-dimensional SpecMap a conversion between standards of rest uses
+    /// each point's position in place of the `RA` and `DEC` arguments, and
+    /// the RA and Dec are copied unchanged to the output.
     ///
-    /// Returns an `AST__BADNI` error for any other `nin`, as `astSpecMap`
-    /// does.
+    /// # Errors
+    ///
+    /// `ErrorCode::Badni` if `nin` is neither 1 nor 3.
+    #[doc(alias = "astSpecMap")]
     pub fn with_nin(nin: usize) -> AstResult<Self> {
+        // specmap.c Transform and FrameChange use the point's position.
         if nin != 1 && nin != 3 {
             return Err(AstError::new(
                 ErrorCode::Badni,
@@ -565,11 +651,44 @@ impl SpecMap {
         Ok(Self { nin, ..Self::new() })
     }
 
-    /// Append a conversion step to the chain, as C's `astSpecAdd` does.
+    /// Add a spectral coordinate conversion to the SpecMap.
     ///
-    /// `args` must hold exactly `cvt_type.nargs()` values; any other number is
-    /// an `AST__TIMIN` error (specmap.c AddSpecCvt).
+    /// `cvt_type` selects the conversion, and `args` holds its arguments in
+    /// the order listed for that [`SpecCvtType`] variant, in the units listed
+    /// there; it is empty for a conversion that takes none.
+    ///
+    /// The forward transformation of the SpecMap applies its conversions in
+    /// the order they were added, the most recently added last.
+    /// The inverse transformation, or the forward transformation of an
+    /// inverted SpecMap, applies the inverse of each conversion in the
+    /// reverse order, the inverse of the most recently added first.
+    ///
+    /// No check is made that the sequence of conversions is physically
+    /// meaningful.
+    /// When assembling a multi-step conversion, it is often simplest to
+    /// include every step that is logically needed (converting to the
+    /// heliocentric reference frame as an intermediate stage, for instance)
+    /// and then simplify the SpecMap (`simplify` on `dyn Mapping`), which
+    /// removes the steps that turn out not to be needed.
+    ///
+    /// ```
+    /// use ast_core::mappings::{Mapping, SpecCvtType, SpecMap};
+    ///
+    /// // Frequency (Hz) to optical velocity (m/s) for a rest frequency of
+    /// // 1.42 GHz.
+    /// let mut map = SpecMap::new();
+    /// map.add(SpecCvtType::FrToVl, &[1.42e9]).unwrap();
+    /// map.add(SpecCvtType::VlToVo, &[]).unwrap();
+    /// assert_eq!(map.tran1(&[1.42e9], true).unwrap(), vec![0.0]);
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// `ErrorCode::Timin` if `args` does not hold exactly
+    /// [`cvt_type.nargs()`](SpecCvtType::nargs) values.
+    #[doc(alias = "astSpecAdd")]
     pub fn add(&mut self, cvt_type: SpecCvtType, args: &[f64]) -> AstResult<()> {
+        // The argument count check is specmap.c AddSpecCvt's.
         if args.len() != cvt_type.nargs() {
             return Err(AstError::new(
                 ErrorCode::Timin,

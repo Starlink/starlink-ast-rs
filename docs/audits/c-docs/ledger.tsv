@@ -17,9 +17,9 @@ attribute	ReportLevel	channel.c			no
 attribute	Skip	channel.c			no
 attribute	Strict	channel.c			no
 function	astChannel	channel.c			no
-class	ChebyMap	chebymap.c			no
-function	astChebyDomain	chebymap.c			no
-function	astChebyMap	chebymap.c			no
+class	ChebyMap	chebymap.c	ChebyMap		yes
+function	astChebyDomain	chebymap.c	ChebyMap::domain		yes
+function	astChebyMap	chebymap.c	ChebyMap::new		yes	C reads lbnd_i/ubnd_i whenever inverse coefficients are given; the port takes them as Option and, without them, evaluates the inverse coefficients as plain powers
 class	Circle	circle.c			no
 function	astCirclePars	circle.c			no
 function	astCircle	circle.c			no
@@ -210,10 +210,10 @@ attribute	KeyError	keymap.c			no
 attribute	MapLocked	keymap.c			no
 attribute	SortBy	keymap.c			no
 function	astKeyMap	keymap.c			no
-class	LutMap	lutmap.c			no
-attribute	LutInterp	lutmap.c			no
-attribute	LutEpsilon	lutmap.c			no
-function	astLutMap	lutmap.c			no
+class	LutMap	lutmap.c	LutMap		yes
+attribute	LutInterp	lutmap.c	LutMap::interp		yes	C takes an integer (0 linear, otherwise nearest) and refuses a change on a LutMap with more than one reference; the port takes the LutInterp enum and owned values have no shared references
+attribute	LutEpsilon	lutmap.c	LutMap::lut_epsilon		yes	C refuses a change on a LutMap with more than one reference; owned values have no shared references
+function	astLutMap	lutmap.c	LutMap::new		yes
 class	Mapping	mapping.c	Mapping		yes	rustdoc rejects an alias equal to the item's name, so the gate checks the trait's declaration
 function	astInvert	mapping.c	Mapping::invert		yes
 function	astLinearApprox	mapping.c	Mapping::linear_approx		yes	C's header says an all-bad box gives unit-transformation coefficients with bad offsets; C's code returns all-bad coefficients and zero, which the port returns as None
@@ -418,13 +418,13 @@ function	astDownsize	polygon.c			no
 function	astOutline<X>	polygon.c			no
 attribute	SimpVertices	polygon.c			no
 function	astPolygon	polygon.c			no
-class	PolyMap	polymap.c			no
-function	astPolyCoeffs	polymap.c			no
-function	astPolyTran	polymap.c			no
-attribute	IterInverse	polymap.c			no
-attribute	NiterInverse	polymap.c			no
-attribute	TolInverse	polymap.c			no
-function	astPolyMap	polymap.c			no
+class	PolyMap	polymap.c	PolyMap		yes
+function	astPolyCoeffs	polymap.c	PolyMap::coeffs		yes	C also applies to a ChebyMap; ChebyMap has no coeffs and gives only the uninverted forward_terms/inverse_terms (PLAN.md §2)
+function	astPolyTran	polymap.c	PolyMap::poly_tran;ChebyMap::poly_tran		yes	ChebyMap's Applicability text (NULL bounds use the ChebyMap's own box, Chebyshev result) is on ChebyMap::poly_tran
+attribute	IterInverse	polymap.c	PolyMap::iter_inverse		yes	ChebyMap's Applicability (always zero, setting has no effect) is on the ChebyMap struct doc: ChebyMap has no iter_inverse methods
+attribute	NiterInverse	polymap.c	PolyMap::niter_inverse		yes
+attribute	TolInverse	polymap.c	PolyMap::tol_inverse		yes
+function	astPolyMap	polymap.c	PolyMap::new		yes	C takes powers as doubles rounded to the nearest integer and rejects negative ones; the port takes PolyTerm with usize powers
 class	Prism	prism.c			no
 function	astPrism	prism.c			no
 class	RateMap	ratemap.c			no
@@ -471,9 +471,9 @@ attribute	SkyRefIs	skyframe.c			no
 attribute	SkyRef	skyframe.c			no
 attribute	SkyRefP	skyframe.c			no
 function	astSkyFrame	skyframe.c			no
-class	SlaMap	slamap.c			no
-function	astSlaAdd	slamap.c			no
-function	astSlaMap	slamap.c			no
+class	SlaMap	slamap.c	SlaMap		yes
+function	astSlaAdd	slamap.c	SlaMap::add		yes	C takes the conversion as a string; the port takes SlaCvtType, whose variants carry the conversion list and SlaCvtType::from_code parses the strings
+function	astSlaMap	slamap.c	SlaMap::new		yes	C's reserved flags argument is dropped
 class	SpecFluxFrame	specfluxframe.c			no
 function	astSpecFluxFrame	specfluxframe.c			no
 class	SpecFrame	specframe.c			no
@@ -490,9 +490,9 @@ attribute	SourceSys	specframe.c			no
 attribute	StdOfRest	specframe.c			no
 attribute	SpecOrigin	specframe.c			no
 function	astSpecFrame	specframe.c			no
-class	SpecMap	specmap.c			no
-function	astSpecAdd	specmap.c			no
-function	astSpecMap	specmap.c			no
+class	SpecMap	specmap.c	SpecMap		yes
+function	astSpecAdd	specmap.c	SpecMap::add		yes	C takes the conversion as a string; the port takes SpecCvtType, whose variants carry the conversion list and SpecCvtType::from_code parses the strings
+function	astSpecMap	specmap.c	SpecMap::new;SpecMap::with_nin		yes	new is nin = 1; C's reserved flags argument is dropped
 class	SphMap	sphmap.c			no
 attribute	UnitRadius	sphmap.c			no
 attribute	PolarLong	sphmap.c			no
@@ -559,24 +559,24 @@ attribute	LTOffset	timeframe.c			no
 attribute	AlignTimeScale	timeframe.c			no
 attribute	TimeScale	timeframe.c			no
 function	astTimeFrame	timeframe.c			no
-class	TimeMap	timemap.c			no
-function	astTimeAdd	timemap.c			no
-function	astTimeMap	timemap.c			no
+class	TimeMap	timemap.c	TimeMap		yes
+function	astTimeAdd	timemap.c	TimeMap::add		yes	C takes the conversion as a string; the port takes TimeCvtType, whose variants carry the conversion list and TimeCvtType::from_code parses the strings; the C header describes LASTTOLMST and LMSTTOLAST as GMST/LMST conversions, the port documents what they do
+function	astTimeMap	timemap.c	TimeMap::new		yes	C's reserved flags argument is dropped
 class	TranMap	tranmap.c			no
 function	astTranMap	tranmap.c			no
 class	UnitMap	unitmap.c	UnitMap		yes
 function	astUnitMap	unitmap.c	UnitMap::new		yes
 class	UnitNormMap	unitnormmap.c			no
 function	astUnitNormMap	unitnormmap.c			no
-class	WcsMap	wcsmap.c			no
-attribute	ProjP	wcsmap.c			no
-attribute	PVi_m	wcsmap.c			no
-attribute	PVMax	wcsmap.c			no
-attribute	WcsType	wcsmap.c			no
-attribute	NatLat	wcsmap.c			no
-attribute	NatLon	wcsmap.c			no
-attribute	WcsAxis	wcsmap.c			no
-function	astWcsMap	wcsmap.c			no
+class	WcsMap	wcsmap.c	WcsMap		yes
+attribute	ProjP	wcsmap.c		merged	yes	PVi_m
+attribute	PVi_m	wcsmap.c	WcsMap::get_pv		yes	C refuses a change on a WcsMap with more than one reference; owned values have no shared references
+attribute	PVMax	wcsmap.c	WcsMap::pv_max		yes	C returns -1 for an axis that is neither longitude nor latitude; the port returns None
+attribute	WcsType	wcsmap.c	WcsMap::projection		yes
+attribute	NatLat	wcsmap.c	WcsMap::nat_lat		yes
+attribute	NatLon	wcsmap.c	WcsMap::nat_lon		yes
+attribute	WcsAxis	wcsmap.c	WcsMap::lonax;WcsMap::latax		yes	WcsAxis(1) is lonax, WcsAxis(2) latax
+function	astWcsMap	wcsmap.c	WcsMap::new		yes	C sets projection parameters through the options string; the port sets them with set_pv after construction
 class	WinMap	winmap.c	WinMap		yes
 function	astWinMap	winmap.c	WinMap::from_corners		yes
 class	XmlChan	xmlchan.c		not-ported	yes

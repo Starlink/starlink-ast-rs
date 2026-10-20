@@ -17,9 +17,18 @@ use super::unit::UnitMap;
 use super::{DynMapping, Mapping};
 use crate::mappings::SimplifiedRecord;
 
-/// A single polynomial term: `coeff * x0^p0 * x1^p1 * ... * xN^pN`.
+/// A single coefficient of a [`PolyMap`] or [`ChebyMap`](super::ChebyMap)
+/// transformation.
 ///
-/// Each term contributes to exactly one output axis.
+/// For a PolyMap the term is `coeff * x1^p1 * x2^p2 * ... * xN^pN`, where `xi`
+/// is input `i` and `pi` is `powers[i - 1]`; for a ChebyMap each power is
+/// instead the order of a Chebyshev polynomial evaluated at that input.
+/// Each term adds to exactly one output, `out_axis`, and each output is the
+/// sum of its terms.
+///
+/// For an inverse transformation "input" and "output" are transposed: the
+/// powers apply to the Mapping's outputs and `out_axis` names one of its
+/// inputs.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PolyTerm {
     /// Coefficient value.
@@ -30,12 +39,23 @@ pub struct PolyTerm {
     pub out_axis: usize,
 }
 
-/// An N-dimensional polynomial transformation mapping.
+/// Map coordinates using polynomial functions.
 ///
-/// The forward transformation is defined by a set of polynomial terms,
-/// each contributing to a specified output axis. An optional explicit
-/// inverse can be provided, or an iterative Newton-Raphson inverse
-/// can be enabled.
+/// A PolyMap performs a general polynomial transformation.
+/// Each output coordinate is a polynomial function of all the input
+/// coordinates, built from [`PolyTerm`]s whose coefficients are specified
+/// separately for each output.
+/// The forward and inverse transformations are defined independently by
+/// separate sets of coefficients.
+/// If no inverse transformation is supplied, the default is an iterative
+/// inverse that uses only the forward transformation (see
+/// [`iter_inverse`](PolyMap::iter_inverse)).
+///
+/// [`coeffs`](PolyMap::coeffs) returns the coefficients, and
+/// [`poly_tran`](PolyMap::poly_tran) fits a polynomial to replace either
+/// transformation.
+/// [`niter_inverse`](PolyMap::niter_inverse) and
+/// [`tol_inverse`](PolyMap::tol_inverse) control the iterative inverse.
 #[derive(Debug, Clone)]
 pub struct PolyMap {
     nin: usize,
@@ -109,17 +129,43 @@ fn compute_terms_by_output(terms: &[PolyTerm], nout: usize) -> Vec<Vec<usize>> {
 }
 
 impl PolyMap {
-    /// Create a new `PolyMap` with the given polynomial terms.
+    /// Create a PolyMap with `nin` input and `nout` output coordinates from
+    /// the given polynomial terms.
     ///
-    /// `forward` defines the forward transformation: each term's
-    /// `powers` must have length `nin`, and `out_axis` must be in `1..=nout`.
+    /// `forward` defines the forward transformation: each term's `powers` has
+    /// one entry per input, and its `out_axis` is in `1..=nout`.
+    /// Each output is the sum of the terms naming it.
+    /// An empty `forward` leaves the forward transformation undefined.
     ///
-    /// `inverse`, if provided, defines the explicit inverse: each term's
-    /// `powers` must have length `nout`, and `out_axis` must be in `1..=nin`.
+    /// `inverse`, if given, defines the inverse transformation the same way
+    /// with inputs and outputs transposed: each term's `powers` has one entry
+    /// per output, and its `out_axis` is in `1..=nin`.
+    /// When `inverse` is `None` or empty and `nin` equals `nout`, the inverse
+    /// is the iterative one described at
+    /// [`iter_inverse`](PolyMap::iter_inverse); otherwise it is undefined.
     ///
-    /// A term with a zero coefficient contributes nothing and is dropped, as
-    /// C's `AddCoeff` drops it (polymap.c). Returns an error if any term is
-    /// invalid.
+    /// A term with a zero coefficient contributes nothing and is dropped.
+    ///
+    /// ```
+    /// use ast_core::mappings::{Mapping, PolyMap, PolyTerm};
+    ///
+    /// // out1 = 1 + 2 x1 x2^2, out2 = 3 x1
+    /// let terms = [
+    ///     PolyTerm { coeff: 1.0, powers: vec![0, 0], out_axis: 1 },
+    ///     PolyTerm { coeff: 2.0, powers: vec![1, 2], out_axis: 1 },
+    ///     PolyTerm { coeff: 3.0, powers: vec![1, 0], out_axis: 2 },
+    /// ];
+    /// let map = PolyMap::new(2, 2, &terms, None).unwrap();
+    /// let (out1, out2) = map.tran2(&[2.0], &[3.0], true).unwrap();
+    /// assert_eq!((out1, out2), (vec![37.0], vec![6.0]));
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Badin` if `nin` or `nout` is zero, or a term has the
+    ///   wrong number of powers.
+    /// - `ErrorCode::Badci` if a term's `out_axis` is out of range.
+    #[doc(alias = "astPolyMap")]
     pub fn new(
         nin: usize,
         nout: usize,
@@ -133,6 +179,7 @@ impl PolyMap {
             return Err(AstError::new(ErrorCode::Badin, "PolyMap nout must be > 0"));
         }
 
+        // A zero coefficient is dropped as polymap.c AddCoeff drops it.
         // Validate forward terms.
         for (i, term) in forward.iter().enumerate() {
             if term.powers.len() != nin {
@@ -231,24 +278,55 @@ impl PolyMap {
         Ok(pm)
     }
 
-    /// Whether the iterative (Newton-Raphson) inverse is enabled.
+    /// Whether the inverse transformation of the original PolyMap is an
+    /// iterative Newton-Raphson approximation.
     ///
-    /// When unset, it is set if no inverse coefficients were supplied and
-    /// the PolyMap has as many inputs as outputs, as C's `GetIterInverse`
-    /// default is (polymap.c:6384-6387), which makes such a forward-only
-    /// PolyMap invertible out of the box.
+    /// The iterative inverse uses the forward transformation to transform
+    /// candidate input positions until it finds one whose output is close to
+    /// the required output position.
+    /// [`niter_inverse`](PolyMap::niter_inverse) and
+    /// [`tol_inverse`](PolyMap::tol_inverse) control it.
+    ///
+    /// The iterative inverse transforms a position at which the inverse is
+    /// undefined to [`BAD_VALUE`]: for a forward transformation `y = x*x`,
+    /// `y = -1` gives `x = BAD_VALUE`.
+    /// Where the inverse has several solutions, it returns the one closest
+    /// to the supplied position: for `y = x*x`, `y = 4` gives `x = 2`, the
+    /// solution closer to 4.
+    ///
+    /// "Inverse", "input" and "output" here refer to the PolyMap as created,
+    /// ignoring any later inversion.
+    /// The transformation the iterative algorithm provides is always the one
+    /// from the original output space to the original input space, so in an
+    /// inverted PolyMap it is the forward transformation.
+    /// The other transformation cannot be made iterative.
+    ///
+    /// Default: true if no inverse coefficients were supplied and the PolyMap
+    /// has as many inputs as outputs, false otherwise.
+    ///
+    /// [`set_iter_inverse`](PolyMap::set_iter_inverse),
+    /// [`test_iter_inverse`](PolyMap::test_iter_inverse) and
+    /// [`clear_iter_inverse`](PolyMap::clear_iter_inverse) set, test and
+    /// clear it.
+    #[doc(alias = "IterInverse")]
     pub fn iter_inverse(&self) -> bool {
+        // The default is C's GetIterInverse default (polymap.c:6384-6387).
         self.iter_inverse.unwrap_or_else(|| {
             self.inverse.as_ref().is_none_or(|v| v.is_empty()) && self.nin == self.nout
         })
     }
 
-    /// Enable or disable the iterative inverse.
+    /// Set [`iter_inverse`](PolyMap::iter_inverse).
     ///
-    /// An iterative inverse needs as many inputs as outputs, so enabling it
-    /// on any other PolyMap is an `AST__ATTIN` error that leaves the value
-    /// unchanged, as C's `SetIterInverse` is (polymap.c:6388-6393).
+    /// A value different from the one held clears the record that the PolyMap
+    /// has been simplified.
+    ///
+    /// # Errors
+    ///
+    /// `ErrorCode::Attin` if `v` is true and the PolyMap has unequal numbers
+    /// of inputs and outputs; the value is left unchanged.
     pub fn set_iter_inverse(&mut self, v: bool) -> AstResult<()> {
+        // As C's SetIterInverse (polymap.c:6388-6393).
         if v && self.nin != self.nout {
             return Err(AstError::new(
                 ErrorCode::Attin,
@@ -276,14 +354,15 @@ impl PolyMap {
         Ok(())
     }
 
-    /// Whether IterInverse has been explicitly set. Mirrors C
-    /// `astTestIterInverse`.
+    /// Whether [`iter_inverse`](PolyMap::iter_inverse) is set.
     pub fn test_iter_inverse(&self) -> bool {
         self.iter_inverse.is_some()
     }
 
-    /// Clear IterInverse back to its default. Mirrors C
-    /// `astClearIterInverse`.
+    /// Clear [`iter_inverse`](PolyMap::iter_inverse), so that it reads as its
+    /// default.
+    ///
+    /// This also clears the record that the PolyMap has been simplified.
     pub fn clear_iter_inverse(&mut self) {
         // As for `set_iter_inverse` (polymap.c:6340).
         self.simplified.clear();
@@ -297,12 +376,28 @@ impl PolyMap {
         }
     }
 
-    /// Maximum number of iterations for the iterative inverse.
+    /// The maximum number of Newton-Raphson iterations the iterative inverse
+    /// transformation makes for each transformed position.
+    ///
+    /// It has an effect only when [`iter_inverse`](PolyMap::iter_inverse) is
+    /// true.
+    /// See also [`tol_inverse`](PolyMap::tol_inverse).
+    ///
+    /// Default: 4.
+    ///
+    /// [`set_niter_inverse`](PolyMap::set_niter_inverse),
+    /// [`test_niter_inverse`](PolyMap::test_niter_inverse) and
+    /// [`clear_niter_inverse`](PolyMap::clear_niter_inverse) set, test and
+    /// clear it.
+    #[doc(alias = "NiterInverse")]
     pub fn niter_inverse(&self) -> usize {
         self.niter_inverse.unwrap_or(4)
     }
 
-    /// Set the maximum number of iterations for the iterative inverse.
+    /// Set [`niter_inverse`](PolyMap::niter_inverse).
+    ///
+    /// A value different from the one held clears the record that the PolyMap
+    /// has been simplified.
     pub fn set_niter_inverse(&mut self, v: usize) {
         // `NiterInverse` changes what the iterative inverse computes
         // (polymap.c:6383-6385).
@@ -312,24 +407,47 @@ impl PolyMap {
         self.niter_inverse = Some(v);
     }
 
-    /// Whether NiterInverse is set (polymap.c `TestNiterInverse`).
+    /// Whether [`niter_inverse`](PolyMap::niter_inverse) is set.
     pub fn test_niter_inverse(&self) -> bool {
+        // polymap.c TestNiterInverse.
         self.niter_inverse.is_some()
     }
 
-    /// Unset NiterInverse, so that it reads as 4 (polymap.c
-    /// `ClearNiterInverse`, which also discards both simplified records).
+    /// Clear [`niter_inverse`](PolyMap::niter_inverse), so that it reads as
+    /// the default 4.
+    ///
+    /// This also clears the record that the PolyMap has been simplified.
     pub fn clear_niter_inverse(&mut self) {
+        // polymap.c ClearNiterInverse, which also discards both simplified
+        // records.
         self.simplified.clear();
         self.niter_inverse = None;
     }
 
-    /// Target relative error for the iterative inverse.
+    /// The target relative error in the axis values of each position
+    /// transformed by the iterative inverse transformation.
+    ///
+    /// Iterations continue until this relative error is reached, or until
+    /// [`niter_inverse`](PolyMap::niter_inverse) iterations have been made.
+    /// It has an effect only when [`iter_inverse`](PolyMap::iter_inverse) is
+    /// true.
+    ///
+    /// Default: 1e-6.
+    ///
+    /// [`set_tol_inverse`](PolyMap::set_tol_inverse),
+    /// [`test_tol_inverse`](PolyMap::test_tol_inverse) and
+    /// [`clear_tol_inverse`](PolyMap::clear_tol_inverse) set, test and clear
+    /// it.
+    #[doc(alias = "TolInverse")]
     pub fn tol_inverse(&self) -> f64 {
         self.tol_inverse.unwrap_or(1e-6)
     }
 
-    /// Set the target relative error for the iterative inverse.
+    /// Set [`tol_inverse`](PolyMap::tol_inverse).
+    ///
+    /// [`BAD_VALUE`] leaves the attribute unset.
+    /// A value different from the one held clears the record that the PolyMap
+    /// has been simplified.
     pub fn set_tol_inverse(&mut self, v: f64) {
         // `TolInverse` changes what the iterative inverse computes
         // (polymap.c:6420-6422).
@@ -341,22 +459,27 @@ impl PolyMap {
         self.tol_inverse = (v != BAD_VALUE).then_some(v);
     }
 
-    /// Whether TolInverse is set (polymap.c `TestTolInverse`).
+    /// Whether [`tol_inverse`](PolyMap::tol_inverse) is set.
     pub fn test_tol_inverse(&self) -> bool {
+        // polymap.c TestTolInverse.
         self.tol_inverse.is_some()
     }
 
-    /// Unset TolInverse, so that it reads as 1e-6 (polymap.c
-    /// `ClearTolInverse`, which also discards both simplified records).
+    /// Clear [`tol_inverse`](PolyMap::tol_inverse), so that it reads as the
+    /// default 1e-6.
+    ///
+    /// This also clears the record that the PolyMap has been simplified.
     pub fn clear_tol_inverse(&mut self) {
+        // polymap.c ClearTolInverse, which also discards both simplified
+        // records.
         self.simplified.clear();
         self.tol_inverse = None;
     }
 
     /// Return a reference to the forward polynomial terms of the original,
     /// uninverted PolyMap, in the order they were given.
-    /// [`PolyMap::coeffs`] is C's `astPolyCoeffs`, relative to the Invert
-    /// flag.
+    /// [`coeffs`](PolyMap::coeffs) gives them relative to the PolyMap as it
+    /// stands.
     pub fn forward_terms(&self) -> &[PolyTerm] {
         &self.forward
     }
@@ -367,12 +490,18 @@ impl PolyMap {
         self.inverse.as_deref()
     }
 
-    /// The coefficients of the forward (`forward`) or inverse transformation
-    /// of this PolyMap as it stands, as C's `astPolyCoeffs` returns them: the
-    /// transformation is relative to the Invert flag, so an inverted
-    /// PolyMap's forward coefficients are the original inverse ones, and they
-    /// are grouped by the output each defines, in the order each output's
-    /// were given. Empty when the transformation has no coefficients.
+    /// The coefficients of the forward (`forward` true) or inverse
+    /// transformation of this PolyMap, in the form [`new`](PolyMap::new)
+    /// takes them.
+    ///
+    /// The transformation is that of the PolyMap as it stands, so the
+    /// forward coefficients of an inverted PolyMap are the inverse
+    /// coefficients it was created with.
+    /// The terms are grouped by the output each defines, in output order, and
+    /// within each output in the order they were given.
+    /// The result is empty when the transformation has no defining
+    /// polynomials, such as an iterative inverse.
+    #[doc(alias = "astPolyCoeffs")]
     pub fn coeffs(&self, forward: bool) -> Vec<PolyTerm> {
         let (terms, by_output) = if forward != self.inverted {
             (Some(&self.forward), Some(&self.forward_by_output))
@@ -396,9 +525,6 @@ impl PolyMap {
         !self.forward.is_empty()
     }
 
-    /// Whether the original (uninverted) inverse transformation is
-    /// defined: inverse coefficients were supplied or the iterative
-    /// inverse is enabled. Mirrors C `GetTranInverse` (polymap.c:2285).
     /// The coefficient tables of the original forward (`forward`) or inverse
     /// transformation, if it has coefficients.
     pub(crate) fn term_tables(&self, forward: bool) -> Option<TermTables<'_>> {
@@ -417,32 +543,63 @@ impl PolyMap {
         }
     }
 
+    /// Whether the original (uninverted) inverse transformation is
+    /// defined: inverse coefficients were supplied or the iterative
+    /// inverse is enabled. Mirrors C `GetTranInverse` (polymap.c:2285).
     fn inverse_defined(&self) -> bool {
         self.inverse.as_ref().is_some_and(|v| !v.is_empty()) || self.iter_inverse()
     }
 
-    /// Fit a replacement forward or inverse transformation by least
-    /// squares, returning a new PolyMap that uses the fit.
+    /// Fit a PolyMap inverse or forward transformation.
     ///
-    /// Mirrors `astPolyTran` (polymap.c:4746 / ReplaceTransformation):
-    /// the *other* transformation is sampled on a regular grid of
-    /// `2*order` points per axis over the rectangle `[lbnd, ubnd]`
-    /// (in the replaced transformation's input space), and polynomials
-    /// of increasing order are fitted until the RMS residual is below
-    /// `acc` or `maxorder` is reached; the max-order fit is accepted
-    /// if its RMS residual is below `maxacc`.
+    /// Returns a copy of this PolyMap in which one transformation has been
+    /// replaced by a new polynomial transformation, whose coefficients are
+    /// estimated by sampling the other transformation and making a least
+    /// squares polynomial fit in the opposite direction.
+    /// Only PolyMaps with one input and one output, or two inputs and two
+    /// outputs, can be used.
     ///
-    /// `forward` selects the (effective-orientation) transformation to
-    /// replace. `maxorder` is one more than the maximum power, so 3
-    /// allows a quadratic; values below 2 are treated as 2.
+    /// Write `X` for the inputs of the PolyMap and `Y` for its outputs, so
+    /// that the forward transformation is `Y = P_f(X)` and the inverse is
+    /// `X = P_i(Y)`.
+    /// With `forward` false (the more usual case) a new inverse is created:
+    /// the forward transformation, which must have coefficients, is used to
+    /// find `Y` at a regular grid of points `X` covering the rectangle
+    /// `lbnd`..`ubnd` of the input space, and `P_i` is chosen to minimize the
+    /// sum of the squared residuals between the sampled `X` and `P_i(Y)`.
+    /// With `forward` true a new forward transformation is created the same
+    /// way, sampling the inverse transformation over a rectangle of the
+    /// output space.
+    /// The transformations are those of the PolyMap as it stands, after any
+    /// inversion.
     ///
-    /// Returns `Ok(None)` — without an error — when no fit achieves
-    /// `maxacc`. The returned PolyMap always has `IterInverse`
-    /// cleared, so the new fit is used in preference to any iterative
-    /// inverse. Only 1- and 2-dimensional PolyMaps with equal input
-    /// and output counts are supported, and the transformation being
-    /// sampled must have explicit coefficients (an iterative inverse
-    /// cannot be sampled).
+    /// The fit is repeated with increasing polynomial order, starting with
+    /// linear, until the RMS residual is below `acc` or the order reaches
+    /// `maxorder`.
+    /// If even the maximum-order fit misses `acc`, it is returned as long as
+    /// its residual is below `maxacc`; otherwise the result is `Ok(None)`.
+    /// `acc` and `maxacc` are distances in the space the new transformation
+    /// transforms into (the input space when `forward` is false).
+    ///
+    /// `maxorder` is one more than the maximum power of either input, so 3
+    /// gives a quadratic; a value below 2 is treated as 2.
+    /// Cross terms with a total power of `maxorder` or more are not included,
+    /// so each fitted polynomial has at most `maxorder * (maxorder + 1) / 2`
+    /// terms.
+    ///
+    /// [`iter_inverse`](PolyMap::iter_inverse) is always cleared in the
+    /// returned PolyMap, so that it uses the new fit by default rather than
+    /// an iterative inverse.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Badni` if the PolyMap does not have one input and one
+    ///   output, or two of each.
+    /// - `ErrorCode::Nodef` if the transformation to be sampled has no
+    ///   coefficients (an iterative inverse cannot be sampled), if `lbnd` or
+    ///   `ubnd` does not have one value per axis, or if an upper bound is not
+    ///   greater than its lower bound.
+    #[doc(alias = "astPolyTran")]
     pub fn poly_tran(
         &self,
         forward: bool,

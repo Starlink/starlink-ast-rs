@@ -71,14 +71,49 @@ fn forward_prep(in0: f64, in1: f64, factor: f64) -> (f64, f64) {
     }
 }
 
-/// A mapping that applies a FITS-WCS sky projection.
+/// Implement a FITS-WCS sky projection.
 ///
-/// `WcsMap` transforms between native spherical coordinates (longitude, latitude
-/// in radians) and projected coordinates (x, y), using the wcslib projection
-/// library.  It supports all 31 FITS-WCS projection types defined in the
-/// [`WcsProjection`] enum.
+/// A WcsMap represents the sky coordinate projections described in the FITS
+/// world coordinate system (FITS-WCS) paper II, "Representations of Celestial
+/// Coordinates in FITS" by M. Calabretta and E.W. Greisen.
+/// That paper defines a set of functions, or sky projections, which transform
+/// longitude-latitude pairs representing spherical celestial coordinates into
+/// pairs of Cartesian coordinates, and back.
 ///
-/// Axes other than the longitude and latitude axes are passed through unchanged.
+/// A WcsMap applies one of these projections to a specified pair of its
+/// coordinates.
+/// All the projections in the FITS-WCS paper are supported (see
+/// [`WcsProjection`]), plus the deprecated "TAN with polynomial correction
+/// terms" projection, TPN.
+/// In FITS-WCS terms, the forward transformation converts "native spherical"
+/// coordinates into "projection plane" coordinates (also called "intermediate
+/// world coordinates"), and the inverse converts back; inverting the WcsMap
+/// reverses this.
+/// The two coordinates may be embedded in a space of more than two
+/// dimensions, the other coordinates being copied unchanged.
+/// For consistency with the rest of the library, a WcsMap handles angles in
+/// radians, not the degrees used by FITS-WCS.
+/// A point that cannot be transformed (many projections do not cover the
+/// whole celestial sphere) transforms to [`BAD_VALUE`].
+///
+/// The projection type and the axes it applies to are fixed when the WcsMap
+/// is created, and are given by [`projection`](WcsMap::projection),
+/// [`lonax`](WcsMap::lonax) and [`latax`](WcsMap::latax).
+///
+/// Each of the two axes can also carry projection parameters, which specify
+/// the precise form of the projection; see [`get_pv`](WcsMap::get_pv).
+/// The parameters a projection needs, and their meanings, depend on its type:
+/// most projections need none, or use parameters 1 and 2 of the latitude axis.
+/// Consult the FITS-WCS paper for which parameters are required and which
+/// have defaults, and set every required parameter that has no default with
+/// [`set_pv`](WcsMap::set_pv) before transforming.
+/// Transforming is an error (`ErrorCode::Wcspa`) if a required parameter is
+/// not set or the parameters do not satisfy the paper's constraints, and
+/// (`ErrorCode::Wcsty`) for an NCP projection, which has no transformation of
+/// its own.
+///
+/// [`nat_lon`](WcsMap::nat_lon) and [`nat_lat`](WcsMap::nat_lat) give the
+/// native coordinates of the projection's reference point.
 ///
 /// # Example
 ///
@@ -150,15 +185,35 @@ pub struct WcsMap {
 }
 
 impl WcsMap {
-    /// Create a new `WcsMap`.
+    /// Create a WcsMap that applies the FITS-WCS projection `proj` to axes
+    /// `lonax` (longitude) and `latax` (latitude) of an `ncoord`-dimensional
+    /// space.
     ///
-    /// - `ncoord`: total number of coordinate axes (must be >= 2).
-    /// - `proj`: the FITS-WCS projection type.
-    /// - `lonax`: 1-based index of the longitude axis.
-    /// - `latax`: 1-based index of the latitude axis.
+    /// `ncoord` is the number of coordinates of both input and output points,
+    /// and must be at least 2; coordinates other than `lonax` and `latax` are
+    /// copied unchanged.
+    /// `lonax` and `latax` are 1-based and distinct.
     ///
-    /// Returns an error if the arguments are invalid or the projection
-    /// cannot be initialised.
+    /// Projection parameters are set afterwards with
+    /// [`set_pv`](WcsMap::set_pv); their validity is not checked until the
+    /// WcsMap transforms coordinates.
+    /// A conical equal-area projection on axes 2 and 3 of a 3-dimensional
+    /// space, for instance, needs parameter 1 of the latitude axis (FITS
+    /// keyword `PV3_1`), which has no default:
+    ///
+    /// ```
+    /// use ast_core::mappings::{WcsMap, WcsProjection};
+    ///
+    /// let mut map = WcsMap::new(3, WcsProjection::Coe, 2, 3).unwrap();
+    /// map.set_pv(3, 1, 40.0).unwrap();
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Wcsnc` if `ncoord` is less than 2.
+    /// - `ErrorCode::Wcsax` if `lonax` or `latax` is not in `1..=ncoord`, or
+    ///   they are equal.
+    #[doc(alias = "astWcsMap")]
     pub fn new(ncoord: usize, proj: WcsProjection, lonax: usize, latax: usize) -> AstResult<Self> {
         if ncoord < 2 {
             return Err(AstError::new(
@@ -247,16 +302,20 @@ impl WcsMap {
         })
     }
 
-    /// Largest legal projection-parameter index for a 1-based axis index, or
-    /// `None` when the axis is neither the longitude nor the latitude axis.
+    /// The largest legal projection parameter index `m` for the 1-based axis
+    /// `axis`, as used by [`get_pv`](WcsMap::get_pv), or `None` when the axis
+    /// is neither the longitude nor the latitude axis.
     ///
-    /// Mirrors `astGetPVMax` (wcsmap.c:2152-2217), which reads the limit off
-    /// the size of the per-axis parameter array — allocated from the
-    /// projection table's `mxpar` / `mxpar2` columns — and returns -1 for any
-    /// other axis. The lookup uses the declared projection type, as C's
-    /// `FindPrjData( this->type )` does: `NCP` and `GLS` keep their own limits
-    /// even though they transform through `SIN` and `SFL`.
+    /// The limits are fixed by the projection type the WcsMap was created
+    /// with.
+    #[doc(alias = "PVMax")]
     pub fn pv_max(&self, axis: usize) -> Option<usize> {
+        // Mirrors astGetPVMax (wcsmap.c:2152-2217), which reads the limit off
+        // the size of the per-axis parameter array — allocated from the
+        // projection table's mxpar / mxpar2 columns — and returns -1 for any
+        // other axis. The lookup uses the declared projection type, as C's
+        // FindPrjData( this->type ) does: NCP and GLS keep their own limits
+        // even though they transform through SIN and SFL.
         if axis == 0 || axis > self.ncoord {
             return None;
         }
@@ -269,12 +328,16 @@ impl WcsMap {
         }
     }
 
-    /// Set a projection parameter.
+    /// Set projection parameter `m` of the 1-based axis `axis`; see
+    /// [`get_pv`](WcsMap::get_pv).
     ///
-    /// - `axis`: 1-based axis index. Must be either `lonax()` or `latax()`.
-    /// - `m`: parameter number (0-based), no greater than [`WcsMap::pv_max`]
-    ///   for that axis.
-    /// - `value`: the parameter value.
+    /// [`BAD_VALUE`] leaves the parameter unset.
+    ///
+    /// # Errors
+    ///
+    /// `ErrorCode::Axiin` if `axis` is not in `1..=ncoord`, is neither the
+    /// longitude nor the latitude axis, or `m` is greater than
+    /// [`pv_max`](WcsMap::pv_max) for the axis.
     pub fn set_pv(&mut self, axis: usize, m: usize, value: f64) -> AstResult<()> {
         // Determine which wcslib axis this corresponds to.
         // axis is 1-based.  latax is 0-based internally.
@@ -342,22 +405,62 @@ impl WcsMap {
         Ok(())
     }
 
-    /// Return the FITS-WCS projection type.
+    /// The type of FITS-WCS projection the WcsMap performs.
+    ///
+    /// Each [`WcsProjection`] corresponds to the 3-character code the FITS-WCS
+    /// `CTYPEi` keyword uses to identify the projection, such as `TAN` (the
+    /// tangent plane or gnomonic projection) or `AIT` (Hammer-Aitoff).
+    /// [`WcsProjection::Tpn`] is an exception: it is not part of the FITS-WCS
+    /// standard, and represents a TAN projection with polynomial correction
+    /// terms as defined in an early draft of the FITS-WCS paper.
+    /// See the FITS-WCS paper for the available projections.
+    ///
+    /// It is fixed when the WcsMap is created.
+    #[doc(alias = "WcsType")]
     pub fn projection(&self) -> WcsProjection {
         self.proj
     }
 
-    /// The value of the projection parameter `m` (0-based) of axis `axis`
-    /// (1-based), as C's `astGetPV` gives it (wcsmap.c `GetPV`).
+    /// The value of projection parameter `m` of the 1-based axis `axis`, the
+    /// FITS-WCS `PVi_m` value with `i` = `axis`.
     ///
-    /// A latitude parameter not set takes its default, which is bad for the
-    /// conic and Bonne projections' PV2_1; a longitude parameter not set is
-    /// bad, except that, other than for TPN, PVi_0 defaults to 0 and PVi_1
-    /// and PVi_2 to the native longitude and latitude of the reference point
-    /// in degrees. An axis index outside the Mapping, or a parameter index
-    /// beyond [`Self::pv_max`] for the axis, is an `AST__AXIIN` error; an axis
-    /// that is neither the longitude nor the latitude axis has no parameters.
+    /// The parameters correspond exactly to the values of the FITS-WCS
+    /// keywords `PV1_1`, `PV1_2` and so on, so a parameter that is an angle is
+    /// in degrees, although the coordinates and other angles a WcsMap uses
+    /// are in radians.
+    /// The parameters a WcsMap uses depend on its
+    /// [`projection`](WcsMap::projection); most projections use none, or
+    /// parameters 1 and 2 of the latitude axis.
+    /// `m` runs from 0 to [`pv_max`](WcsMap::pv_max) for the axis.
+    /// The `ProjP(m)` parameters of earlier versions of FITS-WCS, for `m`
+    /// from 0 to 9, are parameters `m` of the latitude axis.
+    ///
+    /// A parameter that has not been set takes the default the FITS-WCS paper
+    /// defines for it, or [`BAD_VALUE`] if the paper gives none (parameter 1
+    /// of the latitude axis for the conic and Bonne projections, for
+    /// instance).
+    /// The paper reserves parameters 1 and 2 of the longitude axis for the
+    /// native longitude and latitude of the projection's fiducial point, in
+    /// degrees; unset, they default to [`nat_lon`](WcsMap::nat_lon) and
+    /// [`nat_lat`](WcsMap::nat_lat) in degrees, and parameter 0 to 0.
+    /// The TPN projection does not follow this convention: all its
+    /// parameters on both axes are polynomial correction terms, and the
+    /// native longitude and latitude of its fiducial point are fixed at 0 and
+    /// 90 degrees.
+    ///
+    /// Default: as above, from the FITS-WCS paper.
+    ///
+    /// [`set_pv`](WcsMap::set_pv), [`test_pv`](WcsMap::test_pv) and
+    /// [`clear_pv`](WcsMap::clear_pv) set, test and clear it.
+    ///
+    /// # Errors
+    ///
+    /// `ErrorCode::Axiin` if `axis` is not in `1..=ncoord`, is neither the
+    /// longitude nor the latitude axis, or `m` is greater than
+    /// [`pv_max`](WcsMap::pv_max) for the axis.
+    #[doc(alias = "PVi_m")]
     pub fn get_pv(&self, axis: usize, m: usize) -> AstResult<f64> {
+        // As C's astGetPV (wcsmap.c GetPV).
         if axis == 0 || axis > self.ncoord {
             return Err(AstError::new(
                 ErrorCode::Axiin,
@@ -429,10 +532,16 @@ impl WcsMap {
         }
     }
 
-    /// Unset projection parameter `m` of axis `axis` (1-based), as C's
-    /// `astClearPV` does: an axis out of range is `ErrorCode::Axiin`, and a
-    /// parameter the axis does not use is ignored.
+    /// Clear projection parameter `m` of the 1-based axis `axis`, so that it
+    /// reads as its default; see [`get_pv`](WcsMap::get_pv).
+    ///
+    /// A parameter the axis does not use is ignored.
+    ///
+    /// # Errors
+    ///
+    /// `ErrorCode::Axiin` if `axis` is not in `1..=ncoord`.
     pub fn clear_pv(&mut self, axis: usize, m: usize) -> AstResult<()> {
+        // As C's astClearPV.
         if axis == 0 || axis > self.ncoord {
             return Err(AstError::new(
                 ErrorCode::Axiin,
@@ -462,8 +571,8 @@ impl WcsMap {
         Ok(())
     }
 
-    /// Whether projection parameter `m` of axis `axis` (1-based) has been
-    /// set, as C's `astTestPV` reports.
+    /// Whether projection parameter `m` of the 1-based axis `axis` has been
+    /// set; see [`get_pv`](WcsMap::get_pv).
     pub fn test_pv(&self, axis: usize, m: usize) -> bool {
         self.stored_pv(axis, m).is_some()
     }
@@ -483,11 +592,13 @@ impl WcsMap {
         self.params[prj_axis].get(m).copied().flatten()
     }
 
-    /// Set the protected `LonCheck` attribute (wcsmap.c:4787). When `false`,
-    /// the inverse projection accepts longitude values outside the
-    /// projection's primary range instead of setting them bad. Mirrors C
-    /// `astSetLonCheck`, whose `astMAKE_SET` stores `value != 0`.
+    /// Set whether the inverse projection checks returned longitudes.
+    ///
+    /// When `false`, the inverse projection accepts longitude values outside
+    /// the projection's primary range instead of setting them bad.
     pub fn set_lon_check(&mut self, value: bool) {
+        // The protected LonCheck attribute (wcsmap.c:4787). Mirrors C
+        // astSetLonCheck, whose astMAKE_SET stores `value != 0`.
         // `LonCheck` changes what the inverse projection returns for a
         // longitude outside the projection's primary range (wcsmap.c:2805), so a
         // conclusion an earlier simplification reached about this WcsMap no
@@ -503,30 +614,37 @@ impl WcsMap {
         self.lon_check = Some(value);
     }
 
-    /// Return the effective `LonCheck` value (default `true` when unset),
-    /// mirroring C `astGetLonCheck` (wcsmap.c:4818).
+    /// Whether the inverse projection sets bad a returned longitude that lies
+    /// outside the projection's primary range.
+    ///
+    /// Default: true.
     pub fn lon_check(&self) -> bool {
+        // C astGetLonCheck (wcsmap.c:4818).
         self.lon_check.unwrap_or(true)
     }
 
-    /// Whether `LonCheck` has been explicitly set, mirroring C
-    /// `astTestLonCheck` (wcsmap.c:4821).
+    /// Whether [`lon_check`](WcsMap::lon_check) has been set.
     pub fn test_lon_check(&self) -> bool {
+        // C astTestLonCheck (wcsmap.c:4821).
         self.lon_check.is_some()
     }
 
-    /// Unset `LonCheck`, so that it reads as `true` (wcsmap.c `ClearLonCheck`,
-    /// which also discards both simplified records).
+    /// Clear [`lon_check`](WcsMap::lon_check), so that it reads as true.
+    ///
+    /// This also clears the record that the WcsMap has been simplified.
     pub fn clear_lon_check(&mut self) {
+        // wcsmap.c ClearLonCheck, which also discards both simplified records.
         self.simplified.clear();
         self.lon_check = None;
     }
 
-    /// Set the protected `FITSProj` attribute, mirroring C `astSetFITSProj`
-    /// (wcsmap.c:4744). Clear it on a WcsMap that only supplies a distortion
-    /// correction, so the FitsChan write path does not mistake it for the
-    /// header's FITS-WCS projection.
+    /// Set whether this WcsMap defines the FITS-WCS projection when a
+    /// compound Mapping containing it is written through a FitsChan.
+    ///
+    /// Set it false on a WcsMap that only supplies a distortion correction,
+    /// so that it is not mistaken for the header's FITS-WCS projection.
     pub fn set_fits_proj(&mut self, value: bool) {
+        // The protected FITSProj attribute, C astSetFITSProj (wcsmap.c:4744).
         // As for `set_lon_check` (wcsmap.c:4750-4753).
         if Some(value) != self.fits_proj {
             self.simplified.clear();
@@ -534,52 +652,62 @@ impl WcsMap {
         self.fits_proj = Some(value);
     }
 
-    /// Return the effective `FITSProj` value (default `true` when unset),
-    /// mirroring C `astGetFITSProj` (wcsmap.c:4742).
+    /// Whether this WcsMap defines the FITS-WCS projection when written
+    /// through a FitsChan; see [`set_fits_proj`](WcsMap::set_fits_proj).
+    ///
+    /// Default: true.
     pub fn fits_proj(&self) -> bool {
+        // C astGetFITSProj (wcsmap.c:4742).
         self.fits_proj.unwrap_or(true)
     }
 
-    /// Whether `FITSProj` has been explicitly set, mirroring C
-    /// `astTestFITSProj` (wcsmap.c:4746).
+    /// Whether [`fits_proj`](WcsMap::fits_proj) has been set.
     pub fn test_fits_proj(&self) -> bool {
+        // C astTestFITSProj (wcsmap.c:4746).
         self.fits_proj.is_some()
     }
 
-    /// Unset `FITSProj`, so that it reads as `true` (wcsmap.c
-    /// `ClearFITSProj`, which also discards both simplified records).
+    /// Clear [`fits_proj`](WcsMap::fits_proj), so that it reads as true.
+    ///
+    /// This also clears the record that the WcsMap has been simplified.
     pub fn clear_fits_proj(&mut self) {
+        // wcsmap.c ClearFITSProj, which also discards both simplified records.
         self.simplified.clear();
         self.fits_proj = None;
     }
 
-    /// Set the protected `TPNTan` attribute, mirroring C `astSetTPNTan`
-    /// (wcsmap.c:3942). Clearing it makes a TPN projection apply only its
-    /// polynomial correction, omitting the TAN projection itself. Like C, the
-    /// change re-initialises the wcslib parameter block, which is what tells
-    /// `astTPNfwd`/`astTPNrev` which form to use.
+    /// Set whether a TPN projection includes the TAN projection.
+    ///
+    /// When `false`, a TPN projection applies only its polynomial
+    /// correction, omitting the TAN projection itself.
     pub fn set_tpn_tan(&mut self, value: bool) {
+        // The protected TPNTan attribute, C astSetTPNTan (wcsmap.c:3942).
+        // Like C, the change re-initializes the wcslib parameter block, which
+        // is what tells astTPNfwd/astTPNrev which form to use.
         self.tpn_tan = Some(value);
         self.prj
             .borrow_mut()
             .init_prj_prm(&self.params, self.tpn_tan());
     }
 
-    /// Return the effective `TPNTan` value (default `true` when unset),
-    /// mirroring C `astGetTPNTan` (wcsmap.c:4780).
+    /// Whether a TPN projection includes the TAN projection as well as its
+    /// polynomial correction; see [`set_tpn_tan`](WcsMap::set_tpn_tan).
+    ///
+    /// Default: true.
     pub fn tpn_tan(&self) -> bool {
+        // C astGetTPNTan (wcsmap.c:4780).
         self.tpn_tan.unwrap_or(true)
     }
 
-    /// Whether `TPNTan` has been explicitly set, mirroring C `astTestTPNTan`
-    /// (wcsmap.c:4782).
+    /// Whether [`tpn_tan`](WcsMap::tpn_tan) has been set.
     pub fn test_tpn_tan(&self) -> bool {
+        // C astTestTPNTan (wcsmap.c:4782).
         self.tpn_tan.is_some()
     }
 
-    /// Unset `TPNTan`, so that it reads as `true`, and re-initialise the
-    /// wcslib parameter block, as C's `ClearTPNTan` does.
+    /// Clear [`tpn_tan`](WcsMap::tpn_tan), so that it reads as true.
     pub fn clear_tpn_tan(&mut self) {
+        // Re-initializes the wcslib parameter block, as C's ClearTPNTan does.
         self.tpn_tan = None;
         self.prj
             .borrow_mut()
@@ -628,28 +756,58 @@ impl WcsMap {
         (cyclic, high, low)
     }
 
-    /// Return the 1-based longitude axis index.
+    /// The 1-based index of the longitude axis of the projection within the
+    /// coordinate space of the WcsMap.
+    ///
+    /// It is fixed when the WcsMap is created.
+    /// [`latax`](WcsMap::latax) gives the latitude axis.
+    #[doc(alias = "WcsAxis")]
     pub fn lonax(&self) -> usize {
         self.lonax + 1
     }
 
-    /// Return the 1-based latitude axis index.
+    /// The 1-based index of the latitude axis of the projection within the
+    /// coordinate space of the WcsMap.
+    ///
+    /// It is fixed when the WcsMap is created.
+    /// [`lonax`](WcsMap::lonax) gives the longitude axis.
+    #[doc(alias = "WcsAxis")]
     pub fn latax(&self) -> usize {
         self.latax + 1
     }
 
-    /// Native longitude of the fiducial point (radians): C's `GetNatLon`,
-    /// which is 0 for every projection (wcsmap.c).
+    /// The longitude of the reference point of the projection, in radians in
+    /// the native spherical coordinate system.
+    ///
+    /// It is zero for every projection.
+    /// See [`nat_lat`](WcsMap::nat_lat).
+    #[doc(alias = "NatLon")]
     pub fn nat_lon(&self) -> f64 {
+        // C's GetNatLon, which is 0 for every projection (wcsmap.c).
         0.0
     }
 
-    /// Native latitude of the fiducial point (radians): C's `GetNatLat`,
-    /// the `theta0` column of the `PrjInfo` table (wcsmap.c:703-737).
+    /// The latitude of the reference point of the projection, in radians in
+    /// the native spherical coordinate system.
     ///
-    /// For zenithal projections (TAN, SIN, STG, ARC, etc.) this is pi/2.
-    /// For cylindrical projections (CAR, MER, CEA, etc.) this is 0.
+    /// It is fixed for most projections: pi/2 (90 degrees) for every zenithal
+    /// projection (TAN, SIN, STG, ARC and so on) and 0 for the cylindrical
+    /// ones (CAR, MER, CEA and so on).
+    /// For the conics it is parameter 1 of the latitude axis (see
+    /// [`get_pv`](WcsMap::get_pv)), converted to radians, and [`BAD_VALUE`]
+    /// while that parameter is unset.
+    ///
+    /// FITS-WCS paper II distinguishes the projection's reference point from
+    /// its fiducial point, the point whose celestial coordinates the `CRVAL`
+    /// keywords give.
+    /// The native coordinates of the fiducial point default to
+    /// [`nat_lon`](WcsMap::nat_lon) and `nat_lat`, but parameters 1 and 2 of
+    /// the longitude axis can override them, so by default `CRVAL` gives the
+    /// celestial coordinates of the reference point.
+    #[doc(alias = "NatLat")]
     pub fn nat_lat(&self) -> f64 {
+        // C's GetNatLat: the theta0 column of the PrjInfo table
+        // (wcsmap.c:703-737).
         // The conics have no fixed native latitude (C's table holds
         // AST__BAD, wcsmap.c:721-724): it is projection parameter 1 on the
         // latitude axis, through `astGetPV`, so bad when that is unset.
