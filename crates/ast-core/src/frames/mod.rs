@@ -356,6 +356,9 @@ impl<T: Frame> AsDynFrame for T {
 /// [`norm_unit`](Frame::norm_unit) derived from the Unit.
 /// They are used chiefly in textual output, such as formatting a coordinate
 /// value with [`format`](Frame::format).
+// The crate-private Axis class is documented here, through these per-axis
+// attributes, which is why its C documentation ledger row is merged into
+// Frame.
 pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// The number of axes in this Frame: the Naxes attribute.
     ///

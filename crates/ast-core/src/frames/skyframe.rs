@@ -90,6 +90,9 @@ const AST_DD2R: f64 = 0.017_453_292_519_943_295;
 /// assert_eq!(sky.naxes(), 2);
 /// assert_eq!(sky.system(), SkySystem::Fk5);
 /// ```
+// The crate-private SkyAxis class is documented here (and on the Frame
+// trait's per-axis attributes), which is why its C documentation ledger row
+// is merged into SkyFrame.
 #[derive(Debug, Clone)]
 pub struct SkyFrame {
     /// The Frame-class attributes.
@@ -400,7 +403,7 @@ impl SkyFrame {
     /// [`format_str`](SkyFrame::format_str) of the axis, which in turn may
     /// change its default [`unit`](SkyFrame::unit).
     /// Only the default style is affected: a Format set on the axis
-    /// over-rides AsTime.
+    /// overrides AsTime.
     ///
     /// # Errors
     ///
@@ -491,7 +494,8 @@ impl SkyFrame {
     /// The celestial coordinate system: the System attribute, set or
     /// default.
     ///
-    /// [`Frame::system_string`] gives its name.
+    /// [`Frame::system_string`] gives its name, and [`SkySystem::parse`]
+    /// accepts any of the names below, ignoring case.
     /// The systems are:
     ///
     /// - [`SkySystem::Azel`] (`"AZEL"`): horizon coordinates, azimuth zero
@@ -514,13 +518,13 @@ impl SkyFrame {
     /// - [`SkySystem::Fk4NoE`] (`"FK4-NO-E"` or `"FK4_NO_E"`): FK4 without
     ///   the E-terms of aberration (as in some radio catalogs), qualified by
     ///   both an Equinox and an Epoch.
-    /// - [`SkySystem::Fk5`] (`"FK5"`): the modern FK5 (barycentric)
+    /// - [`SkySystem::Fk5`] (`"FK5"` or `"EQUATORIAL"`): the modern FK5 (barycentric)
     ///   equatorial system, qualified by an Equinox.
     /// - [`SkySystem::Galactic`] (`"GALACTIC"`): galactic coordinates (IAU
     ///   1958).
-    /// - [`SkySystem::Gappt`] (`"GAPPT"`): geocentric apparent equatorial
-    ///   coordinates, relative to the true equator and equinox at the Epoch
-    ///   (no Equinox is needed).
+    /// - [`SkySystem::Gappt`] (`"GAPPT"`, `"GEOCENTRIC"` or `"APPARENT"`):
+    ///   geocentric apparent equatorial coordinates, relative to the true
+    ///   equator and equinox at the Epoch (no Equinox is needed).
     ///   They are the apparent right ascension and declination for a
     ///   fictitious observer at the Earth's center, derived from FK5 J2000.0
     ///   by allowing for the Sun's gravitational deflection, the aberration
@@ -1992,7 +1996,7 @@ impl Frame for SkyFrame {
     ///   of places or by `*`, which takes the number from Digits.
     ///
     /// Where characters conflict (`i` and `b`, say) the last wins, except
-    /// that `d` and `h` always over-ride `t`.
+    /// that `d` and `h` always override `t`.
     /// A Format starting with `%` follows the Frame syntax, and formats the
     /// value as decimal radians.
     ///
