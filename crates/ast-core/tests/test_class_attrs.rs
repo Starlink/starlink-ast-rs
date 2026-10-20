@@ -365,3 +365,12 @@ fn time_frame_domain_is_cleaned() {
     tf.set_domain("my time");
     assert_eq!(Frame::domain(&tf), "MYTIME");
 }
+
+/// A FluxFrame stores its Domain cleaned, as C's
+/// `astSetC( fluxframe, "Domain", "my flux" )` gives `"MYFLUX"`.
+#[test]
+fn flux_frame_domain_is_cleaned() {
+    let mut ff = FluxFrame::new(FluxSystem::FluxDen);
+    ff.set_domain("my flux");
+    assert_eq!(Frame::domain(&ff), "MYFLUX");
+}
