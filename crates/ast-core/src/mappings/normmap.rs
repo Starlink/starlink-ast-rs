@@ -1,17 +1,6 @@
-//! Mapping that normalises coordinates using a supplied Frame.
+//! Mapping that normalizes coordinates using a supplied Frame.
 //!
-//! A `NormMap` is a Mapping which normalises coordinate values using the
-//! [`norm()`](crate::frames::Frame::norm) method of a supplied Frame.
-//! The number of inputs and outputs of a NormMap are both equal to the
-//! number of axes in the supplied Frame.
-//!
-//! The forward and inverse transformations of a NormMap are both defined
-//! but are identical (that is, they do not form a real inverse pair in
-//! that the inverse transformation does not undo the normalisation,
-//! instead it reapplies it). However, the simplification engine will
-//! replace neighbouring pairs of forward and inverse NormMaps by a single
-//! UnitMap (so long as the Frames encapsulated by the two NormMaps are
-//! equal).
+//! See [`NormMap`].
 
 use std::fmt;
 
@@ -27,17 +16,35 @@ use super::unit::UnitMap;
 use super::{DynMapping, Mapping};
 use crate::mappings::SimplifiedRecord;
 
-/// A mapping that normalises coordinates using the `norm()` method of
-/// a stored Frame.
+/// Normalize coordinates using a supplied Frame.
 ///
-/// Both the forward and inverse transformations perform normalisation
-/// (they are identical). The simplification engine cancels adjacent
-/// forward/inverse pairs to a UnitMap and eliminates duplicate
-/// consecutive NormMaps.
+/// A NormMap is a Mapping which normalizes coordinate values using the
+/// [`norm`](crate::frames::Frame::norm) method of a supplied Frame.
+/// The number of inputs and outputs of a NormMap are both equal to the number
+/// of axes in the Frame.
 ///
-/// A NormMap whose Frame itself simplifies is rebuilt around the simplified
-/// Frame, and one encapsulating a basic Frame (whose `norm()` is identity)
-/// simplifies to a UnitMap.
+/// The forward and inverse transformations of a NormMap are both defined but
+/// are identical: they do not form a real inverse pair, in that the inverse
+/// transformation does not undo the normalization but reapplies it.
+/// However, simplification replaces neighboring pairs of forward and inverse
+/// NormMaps by a single [`UnitMap`], so long as the Frames encapsulated by
+/// the two NormMaps are equal (the same class and the same attribute values).
+/// This means, for instance, that a CmpMap containing a NormMap still cancels
+/// with its own inverse.
+/// Simplification also merges consecutive identical NormMaps, rebuilds a
+/// NormMap whose Frame simplifies around the simplified Frame, and replaces
+/// one encapsulating a basic Frame, whose normalization does nothing, by a
+/// [`UnitMap`].
+///
+/// ```
+/// use ast_core::frames::{SkyFrame, SkySystem};
+/// use ast_core::mappings::{Mapping, NormMap};
+///
+/// let map = NormMap::new(Box::new(SkyFrame::new(SkySystem::Fk5)));
+/// let (lon, lat) = map.tran2(&[-0.5], &[0.25], true).unwrap();
+/// assert!((lon[0] - (2.0 * std::f64::consts::PI - 0.5)).abs() < 1e-15);
+/// assert_eq!(lat[0], 0.25);
+/// ```
 pub struct NormMap {
     /// The frame whose `norm()` method is called.
     frame: DynFrame,
@@ -53,10 +60,12 @@ pub struct NormMap {
 }
 
 impl NormMap {
-    /// Create a new `NormMap` with the given frame.
+    /// Create a NormMap which normalizes coordinates with `frame`.
     ///
-    /// The number of inputs and outputs equals the number of axes in
-    /// the frame.
+    /// The number of inputs and outputs equals the number of axes in the
+    /// Frame.
+    /// The NormMap takes ownership of the Frame.
+    #[doc(alias = "astNormMap")]
     pub fn new(frame: DynFrame) -> Self {
         Self {
             frame,
@@ -68,7 +77,7 @@ impl NormMap {
         }
     }
 
-    /// The encapsulated frame.
+    /// The Frame used to normalize coordinates.
     pub fn frame(&self) -> &dyn Frame {
         self.frame.as_ref()
     }

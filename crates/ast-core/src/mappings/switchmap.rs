@@ -1,4 +1,6 @@
-//! SwitchMap — alternate regionalised Mapping.
+//! SwitchMap: a Mapping that encapsulates a set of alternate Mappings.
+//!
+//! See [`SwitchMap`].
 
 use std::fmt;
 
@@ -49,18 +51,52 @@ fn simplify_child_with_invert(
     }
 }
 
-/// A Mapping that dispatches positions to one of several route Mappings
-/// based on a selector value.
+/// A Mapping that encapsulates a set of alternate Mappings.
 ///
-/// A SwitchMap encapsulates:
-/// - A forward selector Mapping (used for the forward transform)
-/// - An inverse selector Mapping (used for the inverse transform)
-/// - A set of route Mappings, all sharing the same nin and nout
+/// A SwitchMap is a Mapping which represents a set of alternate Mappings,
+/// each of which is used to transform positions within a particular region of
+/// the input or output coordinate system of the SwitchMap.
 ///
-/// The selector Mapping produces a single output value. This value is
-/// rounded to the nearest integer and used as a 1-based index into the
-/// route Mappings array. The selected route Mapping is then used to
-/// transform the input position.
+/// A SwitchMap can encapsulate any number of Mappings, but they must all have
+/// the same number of inputs and the same number of outputs, which the
+/// SwitchMap shares.
+/// Each of these Mappings represents a "route" through the switch, and is
+/// referred to as a route Mapping below.
+/// Each route Mapping transforms positions between the input and output
+/// coordinate spaces of the entire SwitchMap, but only one route Mapping is
+/// used to transform any given position.
+///
+/// The route Mapping to use for a given position is chosen by another
+/// Mapping, called the selector Mapping.
+/// A SwitchMap has two selector Mappings in addition to its route Mappings:
+/// the forward selector Mapping, used with the forward transformation, and
+/// the inverse selector Mapping, used with the inverse transformation.
+/// The forward selector Mapping must have the same number of inputs as the
+/// route Mappings and one output; the inverse selector Mapping must have the
+/// same number of outputs as the route Mappings and one input.
+///
+/// When the SwitchMap transforms a position in the forward direction, the
+/// input position is first transformed by the forward transformation of the
+/// forward selector Mapping, giving a selector value.
+/// The nearest integer to the selector value is used to index the route
+/// Mappings, the first having index 1.
+/// If the index is less than 1 or greater than the number of route Mappings,
+/// the output position is [`BAD_VALUE`] on every axis.
+/// Otherwise the forward transformation of the selected route Mapping
+/// transforms the input position to give the output position.
+///
+/// The inverse direction works the same way: the inverse transformation of
+/// the inverse selector Mapping gives the selector value, and the inverse
+/// transformation of the selected route Mapping gives the result, which is
+/// [`BAD_VALUE`] on every axis for an index out of range.
+///
+/// Appropriate selector Mappings associate a different route Mapping with
+/// each region of coordinate space; a [`SelectorMap`](super::SelectorMap) is
+/// particularly suited to this.
+///
+/// If a compound Mapping contains a SwitchMap in series with its own inverse,
+/// the two adjacent SwitchMaps are replaced by a [`UnitMap`] when the
+/// compound Mapping is simplified.
 pub struct SwitchMap {
     fsmap: Option<DynMapping>,
     ismap: Option<DynMapping>,
@@ -80,14 +116,49 @@ pub struct SwitchMap {
 }
 
 impl SwitchMap {
-    /// Create a new SwitchMap.
+    /// Create a SwitchMap from its forward selector Mapping `fsmap`, its
+    /// inverse selector Mapping `ismap` and its route Mappings.
     ///
-    /// - `fsmap`: forward selector Mapping (required for forward transform)
-    /// - `ismap`: inverse selector Mapping (required for inverse transform)
-    /// - `route_maps`: array of route Mappings (at least one required)
+    /// `fsmap` must have a forward transformation, one output, and as many
+    /// inputs as the route Mappings; `None` leaves the SwitchMap without a
+    /// forward transformation.
+    /// `ismap` must have an inverse transformation, one input, and as many
+    /// outputs as the route Mappings; `None` leaves the SwitchMap without an
+    /// inverse transformation.
+    /// The route Mappings must all have the same numbers of inputs and
+    /// outputs, which become those of the SwitchMap.
+    /// The SwitchMap takes ownership of all the Mappings.
     ///
-    /// At least one of `fsmap` or `ismap` must be `Some`.
-    /// All route Mappings must share the same `nin()` and `nout()`.
+    /// ```
+    /// use ast_core::mappings::{Mapping, MathMap, SwitchMap, ZoomMap};
+    ///
+    /// // Route 1 (negating) for negative inputs, route 2 (doubling) otherwise.
+    /// let selector = MathMap::new(1, 1, &["s = qif( x < 0, 1, 2 )"], &["x"]).unwrap();
+    /// let map = SwitchMap::new(
+    ///     Some(Box::new(selector)),
+    ///     None,
+    ///     vec![
+    ///         Box::new(ZoomMap::new(1, -1.0).unwrap()),
+    ///         Box::new(ZoomMap::new(1, 2.0).unwrap()),
+    ///     ],
+    /// )
+    /// .unwrap();
+    /// assert_eq!(map.tran1(&[-3.0, 3.0], true).unwrap(), vec![3.0, 6.0]);
+    /// assert!(!map.has_inverse());
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Bdpar` if `route_maps` is empty.
+    /// - `ErrorCode::Intrd` if both selector Mappings are `None`, `fsmap` has
+    ///   no forward transformation, or `ismap` has no inverse transformation.
+    /// - `ErrorCode::Badni` if a route Mapping's number of inputs differs from
+    ///   the first's, `fsmap`'s number of inputs differs from the route
+    ///   Mappings', or `ismap` does not have exactly one input.
+    /// - `ErrorCode::Badno` if a route Mapping's number of outputs differs
+    ///   from the first's, `ismap`'s number of outputs differs from the route
+    ///   Mappings', or `fsmap` does not have exactly one output.
+    #[doc(alias = "astSwitchMap")]
     pub fn new(
         fsmap: Option<DynMapping>,
         ismap: Option<DynMapping>,
@@ -278,12 +349,12 @@ impl SwitchMap {
         Ok(Some(normalized))
     }
 
-    /// The forward selector Mapping (if any).
+    /// The forward selector Mapping, if the SwitchMap has one.
     pub fn forward_selector(&self) -> Option<&dyn Mapping> {
         self.fsmap.as_deref()
     }
 
-    /// The inverse selector Mapping (if any).
+    /// The inverse selector Mapping, if the SwitchMap has one.
     pub fn inverse_selector(&self) -> Option<&dyn Mapping> {
         self.ismap.as_deref()
     }
@@ -293,7 +364,7 @@ impl SwitchMap {
         &self.route_maps
     }
 
-    /// Number of route Mappings.
+    /// The number of route Mappings.
     pub fn nroute(&self) -> usize {
         self.route_maps.len()
     }

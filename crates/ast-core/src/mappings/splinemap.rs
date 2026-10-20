@@ -1,27 +1,13 @@
 //! 2-D mapping using bivariate B-splines.
 //!
-//! A `SplineMap` transforms 2-dimensional positions using a pair of
-//! two-dimensional B-splines. Each output coordinate is the value of
-//! one of these two bivariate splines evaluated at the input position.
-//! The two splines share the same knot positions and order but have
-//! independently specified coefficients.
-//!
-//! The inverse is evaluated using a Newton-Raphson iteration that
-//! assumes the forward transformation represents a small perturbation
-//! of the identity: u = x + Pu(x,y), v = y + Pv(x,y).
-//!
-//! # Coefficient order differs from C's C API
-//!
-//! [`SplineMap::new`] takes the coefficients in CMLIB order, X index
-//! fastest (`i + j*nx`), which is the order of C's Fortran API
-//! (`AST_SPLINEMAP`) and of the internal storage, the Native dump and
-//! [`SplineMap::cu`] / [`SplineMap::cv`]. C's C API (`astSplineMap`, and
-//! pyast through it) takes the SciPy `RectBivariateSpline.get_coeffs()`
-//! order, Y index fastest (`j + i*ny`), and transposes it on entry
-//! (splinemap.c `astSplineMapId_`); [`SplineMap::from_scipy`] and
-//! [`SplineMap::coeffs`] are that API's order. Both orders have `nx * ny`
-//! elements, so SciPy coefficients given to `new` build a transposed spline,
-//! square grids included, with no error.
+//! See [`SplineMap`].
+
+// SplineMap::new takes the coefficients in CMLIB order, X index fastest
+// (i + j*nx), which is the order of C's Fortran API (AST_SPLINEMAP) and of
+// the internal storage, the Native dump and cu/cv. C's C API (astSplineMap,
+// and pyast through it) takes the SciPy order, Y index fastest (j + i*ny),
+// and transposes it on entry (splinemap.c astSplineMapId_); from_scipy and
+// coeffs are that API's order.
 
 use crate::constants::BAD_VALUE;
 use crate::coords::{Points, PointsMut};
@@ -43,18 +29,56 @@ const DEFAULT_INV_NITER: usize = 6;
 /// Default relative error tolerance for the iterative inverse.
 const DEFAULT_INV_TOL: f64 = 1.0e-6;
 
-/// A 2-D mapping using a pair of bivariate B-splines.
+/// Map coordinates using spline functions.
 ///
-/// The forward transformation evaluates two bivariate B-splines at
-/// each input (x, y) position to produce output (u, v):
+/// A SplineMap is a Mapping that has two input axes and two output axes and
+/// contains a pair of two-dimensional splines, stored in B-spline form.
+/// Each output coordinate is the value of one of these two-dimensional
+/// splines defined over the two input coordinates.
+/// The two splines, one generating the first output coordinate and the other
+/// the second, share the same order and the same knot positions, but have
+/// coefficients that are specified separately.
 ///
-/// ```text
-/// u = spline_u(x, y)
-/// v = spline_v(x, y)
-/// ```
+/// No extrapolation is performed: input positions outside the area covered by
+/// the knots cannot be transformed (but see
+/// [`out_unit`](SplineMap::out_unit)).
 ///
-/// The inverse uses a Newton-Raphson iteration, assuming the
-/// transformation is a small perturbation of the identity.
+/// An iterative method is used to evaluate the inverse transformation from
+/// the forward transformation (see [`inv_tol`](SplineMap::inv_tol) and
+/// [`inv_niter`](SplineMap::inv_niter)).
+/// This restricts how a SplineMap can be used: the output axis values must
+/// represent perturbed input axis values, rather than the perturbations
+/// themselves, and the perturbations must be small.
+/// If the input axis values are (x, y), the output axis values are (u, v)
+/// and the perturbations in u and v are Pu(x, y) and Pv(x, y), then:
+///
+/// - u = x + Pu(x, y)
+/// - v = y + Pv(x, y)
+///
+/// The perturbations should be small enough that u always increases with x
+/// and v always increases with y.
+/// The knots and coefficients supplied when the SplineMap is constructed
+/// should make each B-spline represent the sum of the input axis value and
+/// the perturbation: the first B-spline should have the value x + Pu(x, y),
+/// not just Pu(x, y).
+///
+/// The order and number of coefficients along each input axis are
+/// [`kx`](SplineMap::kx), [`ky`](SplineMap::ky), [`nx`](SplineMap::nx) and
+/// [`ny`](SplineMap::ny); [`tx`](SplineMap::tx), [`ty`](SplineMap::ty) and
+/// [`coeffs`](SplineMap::coeffs) return the knots and coefficients.
+///
+/// # Coefficient order
+///
+/// [`SplineMap::new`] takes the coefficients with the X index varying
+/// fastest: element `i + j*nx` is the coefficient for X index `i` and Y index
+/// `j`.
+/// This is the order [`cu`](SplineMap::cu) and [`cv`](SplineMap::cv) return.
+/// [`SplineMap::from_scipy`] takes them with the Y index varying fastest
+/// (element `j + i*ny`), the order of SciPy's
+/// `BivariateSpline.get_coeffs()`, and [`coeffs`](SplineMap::coeffs) returns
+/// that order.
+/// Both orders have `nx * ny` elements, so coefficients in one order given to
+/// the constructor for the other build a transposed spline, without error.
 #[derive(Debug, Clone)]
 pub struct SplineMap {
     /// Polynomial order in X input direction (e.g. 4 = cubic).
@@ -92,24 +116,53 @@ pub struct SplineMap {
 }
 
 impl SplineMap {
-    /// Create a new `SplineMap`.
+    /// Create a SplineMap from its spline orders, knots and coefficients,
+    /// with the coefficients in X-fastest order.
     ///
-    /// # Parameters
+    /// # Arguments
     ///
-    /// - `kx`: Order of the spline in X direction (1..=6, where 4 = cubic).
-    /// - `ky`: Order of the spline in Y direction (1..=6, where 4 = cubic).
-    /// - `nx`: Number of B-spline coefficients in X direction (>= kx).
-    /// - `ny`: Number of B-spline coefficients in Y direction (>= ky).
-    /// - `tx`: Knot positions in X direction (length nx + kx), non-decreasing.
-    /// - `ty`: Knot positions in Y direction (length ny + ky), non-decreasing.
-    /// - `cu`: Coefficients for the first output (length nx * ny), in the
-    ///   CMLIB order of C's Fortran API: element `i + j*nx` is the
+    /// - `kx`, `ky`: the order of the splines along the first (x) and second
+    ///   (y) input axes, in the range 1 to 6 (4 for a bicubic spline).
+    /// - `nx`, `ny`: the number of B-spline coefficients along each input
+    ///   axis, at least `kx` and `ky` respectively.
+    /// - `tx`, `ty`: the knots along each input axis, `nx + kx` and
+    ///   `ny + ky` of them, in non-decreasing order.
+    /// - `cu`, `cv`: the `nx * ny` coefficients of the splines that generate
+    ///   the first (u) and second (v) outputs, element `i + j*nx` being the
     ///   coefficient for X index `i` and Y index `j`.
-    /// - `cv`: Coefficients for the second output (length nx * ny), in the
-    ///   same order.
     ///
-    /// [`SplineMap::from_scipy`] takes the coefficients in the SciPy order
-    /// of C's `astSplineMap`.
+    /// [`SplineMap::from_scipy`] takes the coefficients in SciPy's order.
+    ///
+    /// ```
+    /// use ast_core::constants::BAD_VALUE;
+    /// use ast_core::mappings::{Mapping, SplineMap};
+    ///
+    /// // Linear splines over the unit square giving u = x and v = y + 0.1 x.
+    /// let knots = vec![0.0, 0.0, 1.0, 1.0];
+    /// let mut map = SplineMap::new(
+    ///     2, 2, 2, 2,
+    ///     knots.clone(), knots,
+    ///     vec![0.0, 1.0, 0.0, 1.0],
+    ///     vec![0.0, 0.1, 1.0, 1.1],
+    /// )
+    /// .unwrap();
+    /// let (u, v) = map.tran2(&[0.5], &[0.25], true).unwrap();
+    /// assert!((u[0] - 0.5).abs() < 1e-12 && (v[0] - 0.3).abs() < 1e-12);
+    /// // The iterative inverse recovers the input.
+    /// let (x, y) = map.tran2(&u, &v, false).unwrap();
+    /// assert!((x[0] - 0.5).abs() < 1e-6 && (y[0] - 0.25).abs() < 1e-6);
+    /// // Outside the knots the result is bad, unless OutUnit is set.
+    /// assert_eq!(map.tran2(&[2.0], &[0.5], true).unwrap().0[0], BAD_VALUE);
+    /// map.set_out_unit(true);
+    /// assert_eq!(map.tran2(&[2.0], &[0.5], true).unwrap().0[0], 2.0);
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Attin` if an order is outside 1 to 6, a number of
+    ///   coefficients is smaller than the order, an array has the wrong
+    ///   length, or the knots along an axis decrease.
+    #[doc(alias = "astSplineMap")]
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         kx: usize,
@@ -175,12 +228,19 @@ impl SplineMap {
         })
     }
 
-    /// Create a new `SplineMap` from coefficients in the order SciPy's
-    /// `RectBivariateSpline` gives them, as C's `astSplineMap` takes them:
-    /// element `j + i*ny` is the coefficient for X index `i` and Y index
-    /// `j`. They are transposed into the CMLIB order [`SplineMap::new`]
-    /// takes (splinemap.c `astSplineMapId_`); the other arguments are as
-    /// for [`SplineMap::new`].
+    /// Create a SplineMap from coefficients in SciPy's order, the Y index
+    /// varying fastest.
+    ///
+    /// Element `j + i*ny` of `cu` and `cv` is the coefficient for X index `i`
+    /// and Y index `j`, the order of SciPy's `BivariateSpline.get_coeffs()`:
+    /// the first `ny` elements hold the coefficients for the first column,
+    /// the next `ny` those for the second column, and so on.
+    /// The other arguments are as for [`SplineMap::new`].
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Attin` as for [`SplineMap::new`].
+    #[doc(alias = "astSplineMap")]
     #[allow(clippy::too_many_arguments)]
     pub fn from_scipy(
         kx: usize,
@@ -192,6 +252,7 @@ impl SplineMap {
         cu: &[f64],
         cv: &[f64],
     ) -> AstResult<Self> {
+        // The transposition C's astSplineMapId_ makes on entry.
         if cu.len() != nx * ny || cv.len() != nx * ny {
             return Err(AstError::new(
                 ErrorCode::Attin,
@@ -210,11 +271,16 @@ impl SplineMap {
         Self::new(kx, ky, nx, ny, tx, ty, transpose(cu), transpose(cv))
     }
 
-    /// The coefficients of the spline giving output `axis` (1 for u, 2 for
-    /// v), in the SciPy order [`SplineMap::from_scipy`] takes, as C's
-    /// `astSplineCoeffs` returns them. The Invert flag is ignored: they are
-    /// always those of the forward transformation as constructed. An axis
-    /// other than 1 or 2 is `ErrorCode::Axiin`.
+    /// The coefficients of the spline that generates output `axis` (1 for u,
+    /// 2 for v), in the SciPy order [`SplineMap::from_scipy`] takes.
+    ///
+    /// Inversion is ignored: they always refer to the forward transformation
+    /// of the SplineMap as originally constructed.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Axiin` if `axis` is not 1 or 2.
+    #[doc(alias = "astSplineCoeffs")]
     pub fn coeffs(&self, axis: usize) -> AstResult<Vec<f64>> {
         let c = match axis {
             1 => &self.cu,
@@ -236,54 +302,93 @@ impl SplineMap {
         Ok(out)
     }
 
-    /// The spline order in the X direction.
+    /// The order of the splines along the first input axis (x).
+    ///
+    /// It is one more than the degree of the piecewise polynomial used by
+    /// the spline (4 for a cubic spline in the x direction).
+    /// It is fixed when the SplineMap is created.
+    #[doc(alias = "SplineKx")]
     pub fn kx(&self) -> usize {
         self.kx
     }
 
-    /// The spline order in the Y direction.
+    /// The order of the splines along the second input axis (y).
+    ///
+    /// It is one more than the degree of the piecewise polynomial used by
+    /// the spline (4 for a cubic spline in the y direction).
+    /// It is fixed when the SplineMap is created.
+    #[doc(alias = "SplineKy")]
     pub fn ky(&self) -> usize {
         self.ky
     }
 
-    /// Number of coefficients in X direction.
+    /// The number of spline coefficients along the first input axis (x).
+    ///
+    /// It is fixed when the SplineMap is created.
+    #[doc(alias = "SplineNx")]
     pub fn nx(&self) -> usize {
         self.nx
     }
 
-    /// Number of coefficients in Y direction.
+    /// The number of spline coefficients along the second input axis (y).
+    ///
+    /// It is fixed when the SplineMap is created.
+    #[doc(alias = "SplineNy")]
     pub fn ny(&self) -> usize {
         self.ny
     }
 
-    /// Knot positions in X direction.
+    /// The knot positions along the first input axis (x), `nx + kx` of them.
+    ///
+    /// Inversion is ignored: they always refer to the forward transformation
+    /// as originally constructed.
+    #[doc(alias = "astSplineKnots")]
     pub fn tx(&self) -> &[f64] {
         &self.tx
     }
 
-    /// Knot positions in Y direction.
+    /// The knot positions along the second input axis (y), `ny + ky` of them.
+    ///
+    /// Inversion is ignored: they always refer to the forward transformation
+    /// as originally constructed.
+    #[doc(alias = "astSplineKnots")]
     pub fn ty(&self) -> &[f64] {
         &self.ty
     }
 
-    /// Coefficients for the first (u) output, in the CMLIB order
-    /// [`SplineMap::new`] takes.
+    /// The coefficients of the spline that generates the first (u) output, in
+    /// the X-fastest order [`SplineMap::new`] takes.
     pub fn cu(&self) -> &[f64] {
         &self.cu
     }
 
-    /// Coefficients for the second (v) output, in the CMLIB order
-    /// [`SplineMap::new`] takes.
+    /// The coefficients of the spline that generates the second (v) output, in
+    /// the X-fastest order [`SplineMap::new`] takes.
     pub fn cv(&self) -> &[f64] {
         &self.cv
     }
 
-    /// Maximum iterations for the iterative inverse.
+    /// The maximum number of Newton-Raphson iterations the iterative inverse
+    /// transformation uses for each transformed position.
+    ///
+    /// If the iteration does not converge to the relative error given by
+    /// [`inv_tol`](SplineMap::inv_tol) within this number of iterations,
+    /// [`BAD_VALUE`] is returned for both output axis values.
+    ///
+    /// Default: 6.
+    ///
+    /// [`set_inv_niter`](SplineMap::set_inv_niter),
+    /// [`test_inv_niter`](SplineMap::test_inv_niter) and
+    /// [`clear_inv_niter`](SplineMap::clear_inv_niter) set, test and clear it.
+    #[doc(alias = "InvNiter")]
     pub fn inv_niter(&self) -> usize {
         self.inv_niter.unwrap_or(DEFAULT_INV_NITER)
     }
 
-    /// Set the maximum number of iterations for the iterative inverse.
+    /// Set [`inv_niter`](SplineMap::inv_niter).
+    ///
+    /// A value different from the one held clears the record that the
+    /// SplineMap has been simplified.
     pub fn set_inv_niter(&mut self, n: usize) {
         // `InvNiter` changes what the iterative inverse computes, so a
         // conclusion an earlier simplification reached about this SplineMap no
@@ -299,12 +404,28 @@ impl SplineMap {
         self.inv_niter = Some(n);
     }
 
-    /// Target relative error for the iterative inverse.
+    /// The target relative error of the iterative inverse transformation: the
+    /// change in an axis value divided by the absolute axis value.
+    ///
+    /// Iterations continue until this is reached or
+    /// [`inv_niter`](SplineMap::inv_niter) iterations have been made; if it is
+    /// not reached, [`BAD_VALUE`] is returned for both output axis values.
+    ///
+    /// Default: 1.0e-6.
+    ///
+    /// [`set_inv_tol`](SplineMap::set_inv_tol),
+    /// [`test_inv_tol`](SplineMap::test_inv_tol) and
+    /// [`clear_inv_tol`](SplineMap::clear_inv_tol) set, test and clear it.
+    #[doc(alias = "InvTol")]
     pub fn inv_tol(&self) -> f64 {
         self.inv_tol.unwrap_or(DEFAULT_INV_TOL)
     }
 
-    /// Set the target relative error for the iterative inverse.
+    /// Set [`inv_tol`](SplineMap::inv_tol).
+    ///
+    /// [`BAD_VALUE`] clears it instead.
+    /// A value different from the one held clears the record that the
+    /// SplineMap has been simplified.
     pub fn set_inv_tol(&mut self, tol: f64) {
         // As for `set_inv_niter` (splinemap.c:2586-2588).
         // C compares the raw value, AST__BAD while unset (splinemap.c:2590).
@@ -315,15 +436,30 @@ impl SplineMap {
         self.inv_tol = (tol != BAD_VALUE).then_some(tol);
     }
 
-    /// Whether out-of-bounds inputs are handled as unit (identity) mapping.
+    /// How the original forward transformation (that of the SplineMap before
+    /// any inversion) handles input positions outside the bounds of the
+    /// knots.
+    ///
+    /// If false, [`BAD_VALUE`] is returned for both output axes at such
+    /// points.
+    /// If true, the forward transformation behaves like a unit Mapping there,
+    /// copying the input axis values to the outputs.
+    /// It also affects the value [`rate`](Mapping::rate) returns.
+    ///
+    /// Default: false.
+    ///
+    /// [`set_out_unit`](SplineMap::set_out_unit),
+    /// [`test_out_unit`](SplineMap::test_out_unit) and
+    /// [`clear_out_unit`](SplineMap::clear_out_unit) set, test and clear it.
+    #[doc(alias = "OutUnit")]
     pub fn out_unit(&self) -> bool {
         self.out_unit.unwrap_or(false)
     }
 
-    /// Set how out-of-bounds inputs are handled.
+    /// Set [`out_unit`](SplineMap::out_unit).
     ///
-    /// If `true`, out-of-bounds inputs pass through unchanged (unit mapping).
-    /// If `false` (default), out-of-bounds inputs produce BAD_VALUE.
+    /// A value different from the one held clears the record that the
+    /// SplineMap has been simplified.
     pub fn set_out_unit(&mut self, flag: bool) {
         // `OutUnit` changes what the transformation returns outside the
         // spline's bounds (splinemap.c:2630-2632).
@@ -333,38 +469,47 @@ impl SplineMap {
         self.out_unit = Some(flag);
     }
 
-    /// Whether InvNiter is set (splinemap.c `TestInvNiter`).
+    /// Whether [`inv_niter`](SplineMap::inv_niter) is set.
     pub fn test_inv_niter(&self) -> bool {
         self.inv_niter.is_some()
     }
 
-    /// Unset InvNiter, so that it reads as 6 (splinemap.c `ClearInvNiter`,
-    /// which also discards both simplified records).
+    /// Clear [`inv_niter`](SplineMap::inv_niter), so that it reads as the
+    /// default of 6.
+    ///
+    /// This also clears the record that the SplineMap has been simplified.
     pub fn clear_inv_niter(&mut self) {
+        // splinemap.c ClearInvNiter.
         self.simplified.clear();
         self.inv_niter = None;
     }
 
-    /// Whether InvTol is set (splinemap.c `TestInvTol`).
+    /// Whether [`inv_tol`](SplineMap::inv_tol) is set.
     pub fn test_inv_tol(&self) -> bool {
         self.inv_tol.is_some()
     }
 
-    /// Unset InvTol, so that it reads as 1e-6 (splinemap.c `ClearInvTol`,
-    /// which also discards both simplified records).
+    /// Clear [`inv_tol`](SplineMap::inv_tol), so that it reads as the default
+    /// of 1.0e-6.
+    ///
+    /// This also clears the record that the SplineMap has been simplified.
     pub fn clear_inv_tol(&mut self) {
+        // splinemap.c ClearInvTol.
         self.simplified.clear();
         self.inv_tol = None;
     }
 
-    /// Whether OutUnit is set, `false` included (splinemap.c `TestOutUnit`).
+    /// Whether [`out_unit`](SplineMap::out_unit) is set, to either value.
     pub fn test_out_unit(&self) -> bool {
         self.out_unit.is_some()
     }
 
-    /// Unset OutUnit, so that it reads as `false` (splinemap.c
-    /// `ClearOutUnit`, which also discards both simplified records).
+    /// Clear [`out_unit`](SplineMap::out_unit), so that it reads as the
+    /// default of false.
+    ///
+    /// This also clears the record that the SplineMap has been simplified.
     pub fn clear_out_unit(&mut self) {
+        // splinemap.c ClearOutUnit.
         self.simplified.clear();
         self.out_unit = None;
     }

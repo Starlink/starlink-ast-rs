@@ -1,10 +1,7 @@
-//! SelectorMap — region-membership classifier mapping.
+//! SelectorMap: a Mapping that locates positions within one of a set of
+//! alternate Regions.
 //!
-//! A `SelectorMap` encapsulates a list of `Region`s sharing the same
-//! number of axes. Its forward transform takes a point in that axis space
-//! and returns a single coordinate giving the 1-based index of the first
-//! containing region (0 when no region matches; `badval` when the input is
-//! itself bad). The inverse transform is undefined.
+//! See [`SelectorMap`].
 
 use std::fmt;
 
@@ -20,12 +17,63 @@ use crate::regions::{
     Prism,
 };
 
-/// A `Mapping` that classifies points by region membership.
+/// A Mapping that locates positions within one of a set of alternate
+/// Regions.
 ///
-/// Forward transform produces a 1-based region index per point (0 if no
-/// region contains the point; [`SelectorMap::badval`] for bad input).
-/// `nin` equals the regions' shared axis count; `nout` is always 1.
-/// No inverse is defined.
+/// A SelectorMap is a Mapping that identifies which Region contains a given
+/// input position.
+///
+/// A SelectorMap encapsulates a number of Regions that all have the same
+/// number of axes and represent the same coordinate Frame.
+/// The number of inputs of the SelectorMap equals the number of axes spanned
+/// by one of the encapsulated Regions.
+/// All SelectorMaps have a single output, and SelectorMaps do not define an
+/// inverse transformation.
+///
+/// For each input position, the forward transformation searches through the
+/// encapsulated Regions, in the order supplied when the SelectorMap was
+/// created, until a Region is found which contains the input position.
+/// The output is the index of that Region in the list, starting at 1 for the
+/// first Region.
+/// If an input position is not contained within any Region, the output is
+/// zero.
+/// An input position with a bad value on any axis gives
+/// [`badval`](SelectorMap::badval).
+///
+/// If a compound Mapping contains a SelectorMap in series with its own
+/// inverse, the two adjacent SelectorMaps are replaced by a [`UnitMap`] when
+/// the compound Mapping is simplified.
+///
+/// SelectorMaps are often used with [`SwitchMap`](super::SwitchMap)s.
+///
+/// ```
+/// use ast_core::frames::BasicFrameBuilder;
+/// use ast_core::mappings::{Mapping, SelectorMapBuilder};
+/// use ast_core::regions::{CircleBuilder, DynRegion};
+///
+/// let circle = |x: f64| -> DynRegion {
+///     Box::new(
+///         CircleBuilder::new(BasicFrameBuilder::new(2).build().unwrap(), vec![x, 0.0])
+///             .unwrap()
+///             .radius(1.0)
+///             .build()
+///             .unwrap(),
+///     )
+/// };
+/// let map = SelectorMapBuilder::new(vec![circle(0.0), circle(5.0)])
+///     .unwrap()
+///     .badval(-1.0)
+///     .build();
+/// assert_eq!((map.nin(), map.nout()), (2, 1));
+/// let pts = ast_core::coords::PointSet::from_rows([
+///     [0.5, 0.0],
+///     [5.5, 0.0],
+///     [9.0, 0.0],
+///     [ast_core::constants::BAD_VALUE, 0.0],
+/// ]);
+/// let out = map.transform(&pts, true).unwrap();
+/// assert_eq!(out.axis(0), [1.0, 2.0, 0.0, -1.0]);
+/// ```
 pub struct SelectorMap {
     regions: Vec<DynRegion>,
     badval: f64,
@@ -39,17 +87,29 @@ pub struct SelectorMap {
 }
 
 /// Builder for [`SelectorMap`].
+///
+/// The Regions are given to [`new`](SelectorMapBuilder::new), and the value
+/// returned for bad input positions to [`badval`](SelectorMapBuilder::badval).
 pub struct SelectorMapBuilder {
     regions: Vec<DynRegion>,
     badval: f64,
 }
 
 impl SelectorMapBuilder {
-    /// Create a builder around a non-empty `Vec` of regions.
+    /// Start a SelectorMap that searches `regions`, in order.
     ///
-    /// Every Region must refer to the same coordinate Frame as the first, or
-    /// it is an `AST__BADNI` error (selectormap.c astInitSelectorMap).
+    /// All the Regions must relate to the same coordinate Frame, whose number
+    /// of axes is the number of inputs of the SelectorMap.
+    /// The SelectorMap takes ownership of the Regions.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Bdpar` if `regions` is empty.
+    /// - `ErrorCode::Badni` if a Region does not refer to the same coordinate
+    ///   Frame as the first.
+    #[doc(alias = "astSelectorMap")]
     pub fn new(regions: Vec<DynRegion>) -> AstResult<Self> {
+        // The checks follow selectormap.c astInitSelectorMap.
         if regions.is_empty() {
             return Err(AstError::new(
                 ErrorCode::Bdpar,
@@ -75,7 +135,10 @@ impl SelectorMapBuilder {
         })
     }
 
-    /// Set the value returned for bad input positions.
+    /// Set the value the forward transformation returns for an input position
+    /// that has a bad value on any axis.
+    ///
+    /// Default: [`BAD_VALUE`].
     pub fn badval(mut self, val: f64) -> Self {
         self.badval = val;
         self
@@ -96,12 +159,13 @@ impl SelectorMapBuilder {
 }
 
 impl SelectorMap {
-    /// Encapsulated regions.
+    /// The encapsulated Regions, in the order they are searched.
     pub fn regions(&self) -> &[DynRegion] {
         &self.regions
     }
 
-    /// The value returned for inputs containing a bad coordinate.
+    /// The value the forward transformation returns for an input position that
+    /// has a bad value on any axis.
     pub fn badval(&self) -> f64 {
         self.badval
     }

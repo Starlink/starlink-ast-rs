@@ -82,9 +82,10 @@ pub struct IntraFlags {
 /// IntraMap that uses the transformation, so that a user who receives the
 /// dump without the transformation can find out how to obtain it.
 pub trait IntraTransform: Send + Sync {
-    /// The name a dump refers to the transformation by. White space in it is
-    /// ignored, as C's `astIntraReg` removes it, and a name that is all white
-    /// space is refused.
+    /// The name a dump refers to the transformation by.
+    ///
+    /// White space in it is removed, and a name that is all white space is
+    /// refused.
     fn name(&self) -> &str;
 
     /// The number of input coordinates the transformation takes, or `None`
@@ -455,9 +456,9 @@ impl Mapping for IntraMap {
         self.inverted = !self.inverted;
     }
 
-    /// intramap.c `Transform`: the transformation applied in the direction
-    /// the Invert flag makes of `forward`, an error from it reported as one
-    /// signalled by the named function.
+    // intramap.c `Transform`: the transformation applied in the direction
+    // the Invert flag makes of `forward`, an error from it reported as one
+    // signalled by the named function.
     fn transform_into(
         &self,
         pts: Points<'_>,
@@ -486,8 +487,8 @@ impl Mapping for IntraMap {
         super::rate::numeric_rate(self, at, ax1, ax2)
     }
 
-    /// The transformation's NOFWD and NOINV flags, which C gives
-    /// `astInitMapping` (intramap.c `astInitIntraMap`).
+    // The transformation's NOFWD and NOINV flags, which C gives
+    // `astInitMapping` (intramap.c `astInitIntraMap`).
     fn has_forward(&self) -> bool {
         let flags = self.transform.flags();
         if self.inverted {
@@ -506,18 +507,18 @@ impl Mapping for IntraMap {
         }
     }
 
-    /// C passes the flags to `astInitMapping`, so its dump writes them.
+    // C passes the flags to `astInitMapping`, so its dump writes them.
     fn dump_tran_flags(&self) -> (bool, bool) {
         let flags = self.transform.flags();
         (!flags.no_fwd, !flags.no_inv)
     }
 
-    /// intramap.c `MapMerge`: in series, this IntraMap and the next Mapping,
-    /// if that is an IntraMap of the same transformation with the same
-    /// IntraFlag, become a UnitMap when together they keep the number of
-    /// coordinates and the transformation's flags say that direction pair
-    /// is the identity: forward then inverse with SIMPFI, inverse then
-    /// forward with SIMPIF.
+    // intramap.c `MapMerge`: in series, this IntraMap and the next Mapping,
+    // if that is an IntraMap of the same transformation with the same
+    // IntraFlag, become a UnitMap when together they keep the number of
+    // coordinates and the transformation's flags say that direction pair
+    // is the identity: forward then inverse with SIMPFI, inverse then
+    // forward with SIMPIF.
     fn map_merge(
         &self,
         ctx: &mut super::simplify::MergeCtx,
@@ -557,9 +558,9 @@ impl Mapping for IntraMap {
         Some(where_)
     }
 
-    /// intramap.c `Equal`: the same numbers of coordinates, the same Invert
-    /// flag and transformation, and an IntraFlag set on both and equal, so
-    /// two IntraMaps without one are not equal.
+    // intramap.c `Equal`: the same numbers of coordinates, the same Invert
+    // flag and transformation, and an IntraFlag set on both and equal, so
+    // two IntraMaps without one are not equal.
     fn equal(&self, other: &dyn Mapping) -> bool {
         let Some(o) = other.as_any().downcast_ref::<IntraMap>() else {
             return false;

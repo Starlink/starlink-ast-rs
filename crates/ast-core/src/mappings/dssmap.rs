@@ -1,15 +1,10 @@
-//! 2-D pixel to equatorial sky mapping via a Digitised Sky Survey plate solution.
+//! 2-D pixel to equatorial sky mapping via a Digitized Sky Survey plate solution.
 //!
-//! A `DssMap` transforms 2-dimensional pixel coordinates into equatorial
-//! sky coordinates (right ascension and declination) using a DSS astrometric
-//! plate solution.  The input coordinates are pixel numbers along the first
-//! and second dimensions of an image, where the centre of the first pixel is
-//! located at (1,1) and the spacing between pixel centres is unity.  The
-//! output coordinates are right ascension and declination in radians.
-//!
-//! The plate solution algorithm is ported from the SAOimage `platepos` /
-//! `platepix` routines (Doug Mink, Smithsonian Astrophysical Observatory,
-//! 1988/1996), as used by the C AST library.
+//! See [`DssMap`].
+
+// The plate solution algorithm is ported from the SAOimage `platepos` /
+// `platepix` routines (Doug Mink, Smithsonian Astrophysical Observatory,
+// 1988/1996), as used by the C AST library.
 
 use crate::constants::BAD_VALUE;
 use crate::coords::{Points, PointsMut};
@@ -45,19 +40,29 @@ const DD2R: f64 = std::f64::consts::PI / 180.0;
 /// 2 * pi.
 const TWOPI: f64 = std::f64::consts::TAU;
 
-/// A 2-D pixel to equatorial sky mapping via a DSS plate solution.
+/// Map points using a Digitized Sky Survey plate solution.
 ///
-/// The forward transformation converts pixel (x, y) to (RA, Dec) in
-/// radians.  The inverse converts (RA, Dec) in radians to pixel (x, y).
+/// A DssMap is a Mapping which transforms between 2-dimensional pixel
+/// coordinates and an equatorial sky coordinate system (right ascension and
+/// declination) using a Digitized Sky Survey (DSS) astrometric plate
+/// solution.
 ///
-/// There is no public constructor — mirroring C, where `astDssMap` is a
-/// *protected* function (only in `dssmap.h`, not the public `ast.h`). A
-/// `DssMap` is therefore produced only by deserialising a native AST dump
-/// (typically one written by an older AST, before the FITS-WCS DSS path was
-/// changed to emit a TPN/`WcsMap` pipeline) or internally when the simplifier
-/// rebuilds one while absorbing a neighbouring `WinMap`. The type itself is
-/// public so callers can recognise it (matching C's public `AstDssMap` type
-/// and `astIsADssMap`).
+/// The input coordinates are pixel numbers along the first and second
+/// dimensions of an image, where the center of the first pixel is located at
+/// (1, 1) and the spacing between pixel centers is unity.
+/// The output coordinates are right ascension and declination in radians.
+/// The celestial coordinate system used (FK4, FK5, etc.) is unspecified, and
+/// will usually be indicated by appropriate keywords in a FITS header.
+///
+/// A DssMap has no public constructor.
+/// One is produced only by reading a Native dump that contains one, or by
+/// simplification when a DssMap absorbs a neighboring [`WinMap`].
+/// Reading a FITS header with the DSS encoding produces a FrameSet whose
+/// Mapping is a FITS-WCS TPN projection, not a DssMap.
+// C's astDssMap is a protected function (only in dssmap.h, not the public
+// ast.h), so the port has no public constructor either; the type itself is
+// public so callers can recognize it, as C's AstDssMap type and astIsADssMap
+// are.
 #[derive(Debug, Clone)]
 pub struct DssMap {
     /// Right ascension of plate centre (radians).
@@ -130,52 +135,52 @@ impl DssMap {
         }
     }
 
-    /// Plate centre RA (radians).
+    /// The right ascension of the plate center, in radians.
     pub fn plate_ra(&self) -> f64 {
         self.plate_ra
     }
 
-    /// Plate centre Dec (radians).
+    /// The declination of the plate center, in radians.
     pub fn plate_dec(&self) -> f64 {
         self.plate_dec
     }
 
-    /// Plate scale (arcsec/mm).
+    /// The plate scale, in arcseconds per millimeter.
     pub fn plate_scale(&self) -> f64 {
         self.plate_scale
     }
 
-    /// X pixel offset.
+    /// The x pixel offset of the image corner.
     pub fn x_pixel_offset(&self) -> f64 {
         self.x_pixel_offset
     }
 
-    /// Y pixel offset.
+    /// The y pixel offset of the image corner.
     pub fn y_pixel_offset(&self) -> f64 {
         self.y_pixel_offset
     }
 
-    /// X pixel size (microns).
+    /// The x pixel size, in microns.
     pub fn x_pixel_size(&self) -> f64 {
         self.x_pixel_size
     }
 
-    /// Y pixel size (microns).
+    /// The y pixel size, in microns.
     pub fn y_pixel_size(&self) -> f64 {
         self.y_pixel_size
     }
 
-    /// PPO orientation coefficients.
+    /// The orientation coefficients PPO1 to PPO6.
     pub fn ppo_coeff(&self) -> &[f64; 6] {
         &self.ppo_coeff
     }
 
-    /// Plate solution X coefficients.
+    /// The plate solution x coefficients AMDX1 to AMDX19.
     pub fn amd_x_coeff(&self) -> &[f64; 19] {
         &self.amd_x_coeff
     }
 
-    /// Plate solution Y coefficients.
+    /// The plate solution y coefficients AMDY1 to AMDY19.
     pub fn amd_y_coeff(&self) -> &[f64; 19] {
         &self.amd_y_coeff
     }

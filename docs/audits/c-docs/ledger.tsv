@@ -36,7 +36,7 @@ attribute	IF	dsbspecframe.c			no
 attribute	SideBand	dsbspecframe.c			no
 attribute	AlignSideBand	dsbspecframe.c			no
 function	astDSBSpecFrame	dsbspecframe.c			no
-class	DssMap	dssmap.c			no
+class	DssMap	dssmap.c	DssMap		yes	The header says a DSS FitsChan read creates a DssMap; C's FitsChan builds a TPN WcsMap instead, as the port does (docs/issues/c-library-quirks.md)
 class	Ellipse	ellipse.c			no
 function	astEllipsePars	ellipse.c			no
 function	astEllipse	ellipse.c			no
@@ -302,8 +302,8 @@ class	MocChan	mocchan.c			no
 attribute	MocFormat	mocchan.c			no
 attribute	MocLineLen	mocchan.c			no
 function	astMocChan	mocchan.c			no
-class	NormMap	normmap.c			no
-function	astNormMap	normmap.c			no
+class	NormMap	normmap.c	NormMap		yes
+function	astNormMap	normmap.c	NormMap::new		yes	The NormMap owns its Frame
 class	NullRegion	nullregion.c			no
 function	astNullRegion	nullregion.c			no
 class	Object	object.c			no
@@ -450,8 +450,8 @@ attribute	FillFactor	region.c			no
 attribute	MeshSize	region.c			no
 attribute	Closed	region.c			no
 function	astMapRegion	region.c			no
-class	SelectorMap	selectormap.c			no
-function	astSelectorMap	selectormap.c			no
+class	SelectorMap	selectormap.c	SelectorMap		yes
+function	astSelectorMap	selectormap.c	SelectorMapBuilder::new		yes	badval is the builder's badval method, defaulting to BAD_VALUE
 class	ShiftMap	shiftmap.c	ShiftMap		yes
 function	astShiftMap	shiftmap.c	ShiftMap::new		yes
 class	SkyAxis	skyaxis.c			no
@@ -497,17 +497,17 @@ class	SphMap	sphmap.c	SphMap		yes
 attribute	UnitRadius	sphmap.c	SphMap::unit_radius		yes	C refuses to set it on a SphMap with more than one reference; owned values have no such restriction
 attribute	PolarLong	sphmap.c	SphMap::polar_long		yes	C refuses to set it on a SphMap with more than one reference
 function	astSphMap	sphmap.c	SphMap::new		yes	The header says a zero vector transforms to AST__BAD; C's code (and the port) give (0, 0) from palDcc2s (docs/issues/c-library-quirks.md)
-class	SplineMap	splinemap.c			no
-function	astSplineCoeffs	splinemap.c			no
-function	astSplineKnots	splinemap.c			no
-attribute	InvNiter	splinemap.c			no
-attribute	InvTol	splinemap.c			no
-attribute	OutUnit	splinemap.c			no
-attribute	SplineKx	splinemap.c			no
-attribute	SplineKy	splinemap.c			no
-attribute	SplineNx	splinemap.c			no
-attribute	SplineNy	splinemap.c			no
-function	astSplineMap	splinemap.c			no
+class	SplineMap	splinemap.c	SplineMap		yes
+function	astSplineCoeffs	splinemap.c	SplineMap::coeffs		yes	Returns a Vec of nx*ny values; C's nel argument (truncate or zero-fill) has no equivalent
+function	astSplineKnots	splinemap.c	SplineMap::tx;SplineMap::ty		yes	One method per input axis in place of C's axis argument; C's nel argument (truncate or zero-fill) has no equivalent
+attribute	InvNiter	splinemap.c	SplineMap::inv_niter		yes
+attribute	InvTol	splinemap.c	SplineMap::inv_tol		yes
+attribute	OutUnit	splinemap.c	SplineMap::out_unit		yes
+attribute	SplineKx	splinemap.c	SplineMap::kx		yes
+attribute	SplineKy	splinemap.c	SplineMap::ky		yes
+attribute	SplineNx	splinemap.c	SplineMap::nx		yes
+attribute	SplineNy	splinemap.c	SplineMap::ny		yes
+function	astSplineMap	splinemap.c	SplineMap::new;SplineMap::from_scipy		yes	from_scipy takes C's SciPy coefficient order; new takes the X-fastest order of C's Fortran API and the dump. The port also checks the array lengths C takes on trust
 class	Stc	stc.c			no
 function	astGetStcCoord	stc.c			no
 function	astGetStcNCoord	stc.c			no
@@ -527,8 +527,8 @@ attribute	StcsLength	stcschan.c		not-ported	yes
 function	astStcsChan	stcschan.c		not-ported	yes
 class	StcSearchLocation	stcsearchlocation.c			no
 function	astStcSearchLocation	stcsearchlocation.c			no
-class	SwitchMap	switchmap.c			no
-function	astSwitchMap	switchmap.c			no
+class	SwitchMap	switchmap.c	SwitchMap		yes
+function	astSwitchMap	switchmap.c	SwitchMap::new		yes	The SwitchMap owns its components; C keeps references to them
 class	Table	table.c			no
 function	astAddColumn	table.c			no
 function	astAddParameter	table.c			no
