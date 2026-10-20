@@ -29,18 +29,63 @@ impl FrameSystem {
     }
 }
 
-/// A basic coordinate frame with Euclidean (Cartesian) geometry.
+/// Coordinate system description: a plain Frame.
 ///
-/// `BasicFrame` is the simplest concrete `Frame` implementation, C's Frame
-/// class. It represents an N-dimensional Cartesian coordinate system with
-/// no special axis semantics. All geometry methods use straight-line
-/// Euclidean distance.
+/// A Frame represents a coordinate system, much as a frame around a graph
+/// describes the coordinate space in which data are plotted.
+/// It has a Title describing the coordinate space, and axes holding
+/// information such as Label and Unit strings for labelling, for instance,
+/// graphical output.
+/// The number of axes is not restricted to two.
+/// The [`Frame`] trait gives every class of Frame functions for formatting
+/// coordinate values for display and for calculating distances and offsets
+/// between positions, and lets Frames find out how to convert to and from
+/// related coordinate systems.
 ///
-/// Every attribute has a getter giving its value, set or default, as C's
-/// `astGet` does, and a setter, a `test_` and a `clear_` method.
+/// `BasicFrame` is the plain Frame class: an N-dimensional Cartesian
+/// coordinate system with no special axis semantics, whose geometry
+/// methods use straight-line Euclidean distance.
+/// Construct one with [`BasicFrameBuilder`].
 ///
-/// Construct via [`BasicFrameBuilder`].
+/// Every attribute has a getter giving its value, set or default, and a
+/// setter, a `test_` and a `clear_` method.
+/// The attributes, all on the [`Frame`] trait unless noted:
+///
+/// - [`align_system`](BasicFrame::align_system): coordinate system used to
+///   align Frames.
+/// - [`bottom`](Frame::bottom): lowest axis value to display.
+/// - [`digits`](Frame::digits) and [`axis_digits`](Frame::axis_digits):
+///   number of digits of precision.
+/// - [`direction`](Frame::direction): display axis in conventional
+///   direction?
+/// - [`domain`](Frame::domain): coordinate system domain.
+/// - [`dtai`](Frame::dtai): difference between the TAI and UTC timescales.
+/// - [`dut1`](Frame::dut1): difference between the UT1 and UTC timescales.
+/// - [`epoch_mjd`](Frame::epoch_mjd): epoch of observation.
+/// - [`format_str`](Frame::format_str): format specification for axis
+///   values.
+/// - [`internal_unit`](Frame::internal_unit): physical units for
+///   unformatted axis values.
+/// - [`label`](Frame::label): axis label.
+/// - [`match_end`](Frame::match_end): match trailing axes?
+/// - [`max_axes`](Frame::max_axes): maximum number of Frame axes to match.
+/// - [`min_axes`](Frame::min_axes): minimum number of Frame axes to match.
+/// - [`naxes`](Frame::naxes): number of Frame axes.
+/// - [`norm_unit`](Frame::norm_unit): normalized physical units for
+///   formatted axis values.
+/// - [`obs_alt`](Frame::obs_alt): geodetic altitude of observer.
+/// - [`obs_lat`](Frame::obs_lat): geodetic latitude of observer.
+/// - [`obs_lon`](Frame::obs_lon): geodetic longitude of observer.
+/// - [`permute`](Frame::permute): permute axis order?
+/// - [`preserve_axes`](Frame::preserve_axes): preserve axes?
+/// - [`symbol`](Frame::symbol): axis symbol.
+/// - [`system`](BasicFrame::system): coordinate system used to describe the
+///   domain.
+/// - [`title`](Frame::title): Frame title.
+/// - [`top`](Frame::top): highest axis value to display.
+/// - [`unit`](Frame::unit): physical units for formatted axis values.
 #[derive(Debug, Clone)]
+#[doc(alias = "Frame")]
 pub struct BasicFrame {
     naxes: usize,
     attrs: FrameAttrs,
@@ -82,7 +127,34 @@ pub struct BasicFrameBuilder {
 }
 
 impl BasicFrameBuilder {
-    /// Create a builder for a frame with `naxes` axes.
+    /// Create a Frame: start a builder for a [`BasicFrame`] with `naxes`
+    /// axes.
+    ///
+    /// `naxes` is the number of dimensions of the coordinate space the
+    /// Frame describes.
+    /// The builder's methods set attributes of the new Frame, and
+    /// [`build`](BasicFrameBuilder::build) creates it.
+    ///
+    /// # Errors
+    ///
+    /// This function does not fail; [`build`](BasicFrameBuilder::build)
+    /// raises `ErrorCode::Naxin` when `naxes` is zero.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ast_core::frames::{BasicFrameBuilder, Frame};
+    ///
+    /// let frame = BasicFrameBuilder::new(2)
+    ///     .title("Energy Spectrum")
+    ///     .label(1, "Energy")
+    ///     .label(2, "Response")
+    ///     .build()
+    ///     .unwrap();
+    /// assert_eq!(frame.label(1).unwrap(), "Energy");
+    /// assert!(BasicFrameBuilder::new(0).build().is_err());
+    /// ```
+    #[doc(alias = "astFrame")]
     pub fn new(naxes: usize) -> Self {
         Self {
             naxes,

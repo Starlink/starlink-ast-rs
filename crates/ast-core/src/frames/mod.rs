@@ -347,20 +347,50 @@ impl<T: Frame> AsDynFrame for T {
 /// All concrete frame classes implement this trait. Frames are `Send`
 /// but not `Sync`.
 pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
-    /// Number of axes in this frame.
+    /// The number of axes in this Frame: the Naxes attribute.
+    ///
+    /// This is the number of dimensions of the coordinate space the Frame
+    /// describes, fixed when the Frame is created.
+    ///
+    /// - FrameSet: the Naxes of its current Frame.
+    /// - CmpFrame: the sum of the Naxes of its two component Frames.
+    #[doc(alias = "Naxes")]
     fn naxes(&self) -> usize;
 
-    /// Format a coordinate value for display.
+    /// Format a coordinate value for a Frame axis.
     ///
-    /// `axis` is 1-based.
+    /// Returns the text form of `value` on the 1-based `axis`.
+    /// The formatting is set by the Frame's attributes, in particular the
+    /// [`format_str`](Frame::format_str) of the axis; when none is set, a
+    /// default based on [`axis_digits`](Frame::axis_digits) is used.
+    /// `BAD_VALUE` formats as `"<bad>"`.
+    /// [`unformat`](Frame::unformat) reads a formatted value back.
     ///
-    /// The default mirrors C base `astFormat` → `AxisFormat` (axis.c): the
-    /// `<bad>` token for the bad value, otherwise the effective per-axis
-    /// Format string (set value, else the default `"%1.<Digits>G"` with the
-    /// per-axis Digits) rendered by `axis_format::format_value`. Leaf Frame
-    /// classes that do not override Format in C (SpecFrame, FluxFrame,
-    /// DSBSpecFrame) inherit this; CmpFrame, TimeFrame and SkyFrame override.
+    /// # Errors
+    ///
+    /// - `ErrorCode::Axiin` when `axis` is not between 1 and
+    ///   [`naxes`](Frame::naxes).
+    /// - `ErrorCode::Fmter` when the axis's Format cannot format the value.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ast_core::constants::BAD_VALUE;
+    /// use ast_core::frames::{BasicFrameBuilder, Frame};
+    ///
+    /// let frame = BasicFrameBuilder::new(2).build().unwrap();
+    /// assert_eq!(frame.format(1, 1.5).unwrap(), "1.5");
+    /// assert_eq!(frame.format(2, BAD_VALUE).unwrap(), "<bad>");
+    /// ```
+    #[doc(alias = "astFormat")]
     fn format(&self, axis: usize, value: f64) -> AstResult<String> {
+        // The default is C's base `astFormat` → `AxisFormat` (axis.c): the
+        // `<bad>` token for the bad value, otherwise the effective per-axis
+        // Format string (set value, else the default `"%1.<Digits>G"` with
+        // the per-axis Digits) rendered by `axis_format::format_value`. Leaf
+        // Frame classes that do not override Format in C (SpecFrame,
+        // FluxFrame, DSBSpecFrame) inherit this; CmpFrame, TimeFrame and
+        // SkyFrame override.
         if axis < 1 || axis > self.naxes() {
             return Err(AstError::new(
                 ErrorCode::Axiin,
@@ -378,17 +408,98 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
         crate::frames::axis_format::format_value(&fmt, digits, value)
     }
 
-    /// Parse a formatted coordinate string back to a numeric value.
+    /// Read a formatted coordinate value for a Frame axis.
     ///
-    /// `axis` is 1-based. Returns `(value, characters_consumed)`.
+    /// Reads the value at the start of `text` for the 1-based `axis` and
+    /// returns `(value, nread)`, where `nread` is the number of bytes read,
+    /// including any white space before or after the value.
+    /// Reading stops at the first character that cannot be part of the
+    /// value, so `text` may carry more after it.
+    /// This is the inverse of [`format`](Frame::format), and is meant for
+    /// decoding free-format user input; where input is ambiguous it is read
+    /// with reference to the axis's [`format_str`](Frame::format_str).
     ///
-    /// The default mirrors C base `astUnformat` (frame.c:11819): validate the
-    /// axis, then apply the `astAxisUnformat` contract (axis.c:1284) — the
-    /// longest `"%lf %n"` numeric prefix (counting trailing whitespace), the
-    /// `<bad>` token, else `(BAD_VALUE, 0)` with no error. Leaf Frame classes
-    /// that do not override Unformat in C (SpecFrame, FluxFrame, DSBSpecFrame,
-    /// SpecFluxFrame) inherit this; CmpFrame, TimeFrame and SkyFrame override.
+    /// When `text` holds no suitably formatted value the result is
+    /// `(BAD_VALUE, 0)`, without error.
+    /// A typing error part way through can end the read early and still give
+    /// a plausible value (`"1.5r6"` reads as 1.5), so check that `nread`
+    /// covers the text you expected to be read.
+    /// The string `"<bad>"`, in any case and with embedded white space,
+    /// reads as `BAD_VALUE`.
+    ///
+    /// # Input formats
+    ///
+    /// A plain Frame axis reads an optional sign, then one or more digits
+    /// possibly holding a decimal point, then an optional exponent (`E` or
+    /// `e` and a possibly signed integer): `99`, `1.25`, `-1.6`, `1E8`,
+    /// `-.99e-17`.
+    ///
+    /// A FrameSet reads as its current Frame does.
+    ///
+    /// A SkyFrame axis reads angles and times, and returns radians:
+    ///
+    /// - An optional sign, then one to three fields giving degrees,
+    ///   arc-minutes and arc-seconds, or hours, minutes and seconds
+    ///   (`-12 42 03`).
+    /// - Each field is one or more digits, leading zeros allowed.
+    ///   At most one field may hold a decimal point, and it is then the last
+    ///   field (`124.707`, `-13 33.8`).
+    /// - The first field may take any value; later fields must be less than
+    ///   60 (`720 45 31` is valid, `11 45 61` is not).
+    /// - Fields are separated by white space or by `:`, used consistently,
+    ///   with extra white space allowed around fields and separators
+    ///   (`- 2: 04 : 7.1`).
+    /// - A field identifier may replace a separator or follow the last
+    ///   field: `d` (degrees), `h` (hours), `m` (minutes of arc or time),
+    ///   `s` (seconds of arc or time), `'` (minutes of arc) and `"` (seconds
+    ///   of arc), in either case, in order of decreasing significance
+    ///   (`-11D 3' 14.4"`, `22h14m11.2s`).
+    /// - `d`, `'` or `"` make the value an angle and `h` makes it a time
+    ///   (24 hours to 360 degrees); the two kinds may not be mixed
+    ///   (`10h14'3"` is invalid).
+    ///   With neither, the value is an angle if the axis's Format gives an
+    ///   angle and a time otherwise, so values from `format` read back
+    ///   correctly.
+    /// - Omitted fields are zero.
+    ///   The remaining ones are identified by field identifiers or by extra
+    ///   colons (`-05m13s` is `-:05:13`); an unidentified field is taken to
+    ///   be adjacent to its neighbors (`14:25.4s` is minutes and seconds,
+    ///   `14::25.4s` degrees and seconds).
+    /// - When the fields cannot be identified uniquely (`01:02`), the first
+    ///   is taken to be the most significant field the axis's Format would
+    ///   produce, normally degrees or hours; if that is inconsistent, the
+    ///   last is taken to be the least significant field it would produce.
+    ///
+    /// Examples, with alternatives depending on whether the Format gives an
+    /// angle or a time: `-14d 13m 22.2s`; `+ 12:34:56.7`; `001 : 02 : 03.4`;
+    /// `22h 30` (22h 30m 00s); `136::10"` (136d 00' 10"); `-14M 27S`;
+    /// `-:14:`; `-::4.1`; `.9"`; `d12m` (0d 12' 00"); `H 12:22.3s`.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Axiin` when `axis` is not between 1 and
+    ///   [`naxes`](Frame::naxes).
+    /// - `ErrorCode::Unfer` when a SkyFrame value has the right form but a
+    ///   field that is out of range, such as a minutes field of 60 or more.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ast_core::frames::{BasicFrameBuilder, Frame};
+    ///
+    /// let frame = BasicFrameBuilder::new(1).build().unwrap();
+    /// assert_eq!(frame.unformat(1, " -1.6e2 rest").unwrap(), (-160.0, 8));
+    /// assert_eq!(frame.unformat(1, "abc").unwrap().1, 0);
+    /// ```
+    #[doc(alias = "astUnformat")]
     fn unformat(&self, axis: usize, text: &str) -> AstResult<(f64, usize)> {
+        // The default is C's base `astUnformat` (frame.c:11819): validate the
+        // axis, then apply the `astAxisUnformat` contract (axis.c:1284) — the
+        // longest `"%lf %n"` numeric prefix (counting trailing whitespace),
+        // the `<bad>` token, else `(BAD_VALUE, 0)` with no error. Leaf Frame
+        // classes that do not override Unformat in C (SpecFrame, FluxFrame,
+        // DSBSpecFrame, SpecFluxFrame) inherit this; CmpFrame, TimeFrame and
+        // SkyFrame override.
         if axis < 1 || axis > self.naxes() {
             return Err(AstError::new(
                 ErrorCode::Axiin,
@@ -398,16 +509,105 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
         Ok(crate::frames::basic::axis_unformat(text))
     }
 
-    /// Geodesic distance between two points in this frame.
+    /// Calculate the distance between two points in this Frame.
+    ///
+    /// `a` and `b` each hold one coordinate per axis.
+    /// The distance is measured along the geodesic curve joining the two
+    /// points: in a plain Frame, the Cartesian distance along the straight
+    /// line between them; in a SkyFrame, the arc along the great circle
+    /// through the two sky positions.
+    ///
+    /// The result is `BAD_VALUE` if any input coordinate is `BAD_VALUE`.
+    ///
+    /// # Errors
+    ///
+    /// No Frame class raises an error of its own; a CmpFrame, FrameSet or
+    /// Region passes on any error from `distance` on the Frames it holds.
+    #[doc(alias = "astDistance")]
     fn distance(&self, a: &[f64], b: &[f64]) -> AstResult<f64>;
 
-    /// Angle at point `b` in the triangle a-b-c.
+    /// Calculate the angle subtended by two points at a third point.
+    ///
+    /// Returns the angle at point `b` from the line joining `a` and `b` to
+    /// the line joining `c` and `b`, in radians.
+    /// Each point holds one coordinate per axis, and the lines are the
+    /// geodesic curves of the Frame, great circles in a SkyFrame.
+    ///
+    /// In a 2-dimensional Frame the angle is in the range -pi to +pi, with
+    /// positive rotation in the sense from the positive direction of axis 2
+    /// to the positive direction of axis 1.
+    /// With more axes it is always positive, between zero and pi.
+    ///
+    /// The result is `BAD_VALUE` if any input coordinate is `BAD_VALUE`, or
+    /// if `a` and `b`, or `b` and `c`, coincide.
+    ///
+    /// # Errors
+    ///
+    /// No Frame class raises an error of its own; a CmpFrame, FrameSet or
+    /// Region passes on any error from `angle` on the Frames it holds.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ast_core::frames::{BasicFrameBuilder, Frame};
+    ///
+    /// let frame = BasicFrameBuilder::new(2).build().unwrap();
+    /// // From the +axis-2 direction to the +axis-1 direction is +pi/2.
+    /// let angle = frame.angle(&[0.0, 1.0], &[0.0, 0.0], &[1.0, 0.0]).unwrap();
+    /// assert!((angle - std::f64::consts::FRAC_PI_2).abs() < 1e-15);
+    /// ```
+    #[doc(alias = "astAngle")]
     fn angle(&self, a: &[f64], b: &[f64], c: &[f64]) -> AstResult<f64>;
 
-    /// Move along the geodesic from `from` toward `to` by distance `dist`.
+    /// Calculate an offset along a geodesic curve.
+    ///
+    /// Returns the point `dist` along the geodesic curve from `from` towards
+    /// `to`: along the straight line through them in a plain Frame, along
+    /// the great circle through them in a SkyFrame.
+    /// A negative `dist` goes in the opposite direction, and the curve is
+    /// extended as needed, so the point need not lie between the two given.
+    /// The geodesic is the path of shortest distance, as
+    /// [`distance`](Frame::distance) measures it.
+    ///
+    /// Every coordinate of the result is `BAD_VALUE` if any input
+    /// coordinate is `BAD_VALUE`, or if the two points coincide (or
+    /// otherwise fail to fix a unique geodesic) and `dist` is not zero.
+    ///
+    /// # Errors
+    ///
+    /// No Frame class raises an error of its own; a CmpFrame, FrameSet or
+    /// Region passes on any error from `offset` on the Frames it holds.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ast_core::frames::{BasicFrameBuilder, Frame};
+    ///
+    /// let frame = BasicFrameBuilder::new(2).build().unwrap();
+    /// let p = frame.offset(&[0.0, 0.0], &[3.0, 4.0], 10.0).unwrap();
+    /// assert_eq!(p, vec![6.0, 8.0]);
+    /// ```
+    #[doc(alias = "astOffset")]
     fn offset(&self, from: &[f64], to: &[f64], dist: f64) -> AstResult<Vec<f64>>;
 
-    /// Normalise coordinates to their canonical range.
+    /// Normalize a set of Frame coordinates representing one point.
+    ///
+    /// `coords` holds one value per axis.
+    /// Values that lie outside the range expected for display are replaced
+    /// in place by acceptable (normalized) ones; others are left unchanged.
+    /// A Frame whose coordinates are unconstrained never changes them, while
+    /// one whose axes are cyclic, such as a SkyFrame, wraps them into a
+    /// standard range such as zero to 2*pi.
+    /// Normalizing and then formatting with [`format`](Frame::format) puts
+    /// any coordinates into a form suitable for display.
+    /// A [`NormMap`](crate::mappings::NormMap) applies a Frame's `norm` as a
+    /// Mapping.
+    ///
+    /// # Errors
+    ///
+    /// No Frame class raises an error of its own; a CmpFrame, FrameSet or
+    /// Region passes on any error from `norm` on the Frames it holds.
+    #[doc(alias = "astNorm")]
     fn norm(&self, coords: &mut [f64]) -> AstResult<()>;
 
     /// Deep-clone this frame for integrity delta computation.
@@ -430,25 +630,109 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// maps coordinates in the old frame to coordinates in the new frame.
     fn map_from(&self, previous: &dyn Frame) -> AstResult<DynMapping>;
 
-    /// Find a mapping to convert coordinates from this frame to `to`.
+    /// Determine how to convert between two coordinate systems.
     ///
-    /// `domains` is a priority-ordered list of domain names to try when
-    /// searching for an alignment path. Returns a [`FrameSet`] connecting
-    /// `self` (base) to `to` (current) if conversion is possible, or
-    /// `None` if the frames are incompatible. Mirrors C `astConvert`
-    /// (frame.c:2965), which swaps its first two arguments and defers to
-    /// the generic `astConvertX` driver (frame.c:3028).
+    /// Compares this Frame, the source coordinate system (the one in which
+    /// coordinates are already available), with `to`, the destination, and
+    /// returns a [`FrameSet`] describing the conversion if one is possible,
+    /// or `None` if it is not.
+    /// The FrameSet holds two Frames: its base Frame describes the source
+    /// and its current Frame the destination, and the Mapping between them
+    /// performs the conversion.
+    /// Used as a Mapping, the FrameSet converts source coordinates to
+    /// destination coordinates (and back with its inverse); used as a Frame,
+    /// its attributes describe the destination.
+    /// Alignment takes place in the coordinate system given by the
+    /// AlignSystem attribute of `to`.
     ///
-    /// The body joins `domains` into the comma-separated list C expects (an
-    /// empty slice becomes a single blank field that permits any domain).
-    /// This is frame.c `Convert`, which dispatches `astConvertX` on the class
-    /// of `to`: when `to` is a FrameSet, the FrameSet `ConvertX`
-    /// (frameset.c:3204) searches every Frame of it; otherwise the generic
-    /// driver runs. FrameSet overrides this method, as frameset.c overrides
-    /// `Convert`, so that a FrameSet `self` reaches its `ConvertX` too. All
-    /// other class-specific alignment lives in `match_template` /
-    /// `sub_frame`, exactly as in C.
+    /// Either Frame may be a FrameSet, whose current Frame then describes
+    /// its coordinate system.
+    /// This is how, for instance, two images calibrated by attaching a
+    /// FrameSet to each are aligned: the conversion finds a celestial
+    /// coordinate system both have in common, and converts between their
+    /// pixel coordinates through it.
+    /// To convert between the base Frames of two FrameSets (usually their
+    /// pixel coordinates), invert both with
+    /// [`invert`](crate::mappings::Mapping::invert) first.
+    ///
+    /// # Arguments
+    ///
+    /// - `domains`: a priority order for the intermediate coordinate system.
+    ///   The conversion is first sought through an intermediate system whose
+    ///   Domain matches the first entry, then the second, and so on.
+    ///   An empty entry, or an empty slice, permits any Domain.
+    ///   Matching ignores case and white space.
+    ///   With two plain Frames there is usually only one possible
+    ///   intermediate system, so an empty slice is normal.
+    ///
+    /// # Per class
+    ///
+    /// - Frame: alignment occurs in the coordinate system given by
+    ///   AlignSystem.
+    /// - SpecFrame: alignment occurs in the spectral system and standard of
+    ///   rest given by AlignSystem and AlignStdOfRest.
+    /// - DSBSpecFrame: when AlignSideBand is true, alignment occurs in the
+    ///   upper sideband, in the system and standard of rest given by
+    ///   AlignSystem and AlignStdOfRest; when it is false, the two are
+    ///   aligned as plain SpecFrames and the SideBand is ignored.
+    /// - TimeFrame: alignment occurs in the time system and time scale
+    ///   given by AlignSystem and AlignTimeScale.
+    /// - FrameSet: every Frame of each FrameSet is considered as a way of
+    ///   reaching an intermediate coordinate system.
+    ///   Each entry of `domains` is taken in turn.
+    ///   Within it, each FrameSet's Frames are tried with its base Frame
+    ///   first, then the others in index order, then its current Frame
+    ///   last; every source Frame is tried against the first destination
+    ///   Frame, then against the second, and so on.
+    ///   Among the paths found, one with both transformations defined is
+    ///   preferred, then one with only the forward transformation.
+    ///   To force a particular Frame to be used, name its Domain in
+    ///   `domains` or make it the base Frame.
+    ///
+    /// # Errors
+    ///
+    /// Passes on the error of the class-specific matching of the Frames
+    /// involved ([`match_template`](Frame::match_template) and
+    /// [`sub_frame`](Frame::sub_frame)).
+    /// Units that cannot be converted into each other are not an error: that
+    /// pair of Frames does not match.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ast_core::frames::{BasicFrameBuilder, Frame};
+    /// use ast_core::mappings::Mapping;
+    ///
+    /// let a = BasicFrameBuilder::new(2).build().unwrap();
+    /// let b = BasicFrameBuilder::new(2).build().unwrap();
+    /// let cvt = a.convert_to(&b, &[]).unwrap().expect("plain Frames align");
+    /// assert_eq!(cvt.nin(), 2);
+    ///
+    /// let c = BasicFrameBuilder::new(3).build().unwrap();
+    /// assert!(a.convert_to(&c, &[]).unwrap().is_none());
+    /// ```
+    ///
+    /// # See also
+    ///
+    /// `astConvert`.
+    #[doc(alias = "astConvert")]
     fn convert_to(&self, to: &dyn Frame, domains: &[&str]) -> AstResult<Option<FrameSet>> {
+        // C `astConvert` (frame.c:2965) swaps its first two arguments and
+        // defers to the generic `astConvertX` driver (frame.c:3028).
+        //
+        // The body joins `domains` into the comma-separated list C expects
+        // (an empty slice becomes a single blank field that permits any
+        // domain). This is frame.c `Convert`, which dispatches `astConvertX`
+        // on the class of `to`: when `to` is a FrameSet, the FrameSet
+        // `ConvertX` (frameset.c:3204) searches every Frame of it; otherwise
+        // the generic driver runs. FrameSet overrides this method, as
+        // frameset.c overrides `Convert`, so that a FrameSet `self` reaches
+        // its `ConvertX` too. All other class-specific alignment lives in
+        // `match_template` / `sub_frame`, exactly as in C.
+        //
+        // C's `ConvertX` also sets the Base attribute of a FrameSet `self` or
+        // `to` to the Frame used (frameset.c:3502); the port takes both by
+        // shared reference and leaves them unchanged.
         let domainlist = if domains.is_empty() {
             " ".to_string()
         } else {
@@ -678,16 +962,62 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// Clear Permute.
     fn clear_permute(&mut self) -> AstResult<()>;
 
-    /// Whether unit differences affect alignment in `Match`/`Overlay`.
-    /// Mirrors C `astGetActiveUnit` (frame.c:4651): always false when the
-    /// Frame has a SkyAxis; otherwise the stored flag, default false.
+    /// Determine how the Unit attribute will be used: the ActiveUnit flag.
+    ///
+    /// See [`set_active_unit`](Frame::set_active_unit) for what the flag
+    /// does.
+    /// A Frame holding a sky axis always reports false, whatever was set.
+    #[doc(alias = "astGetActiveUnit")]
     fn get_active_unit(&self) -> bool;
-    /// Set the ActiveUnit flag. Mirrors C `astSetActiveUnit`
-    /// (frame.c:9882). SkyFrame ignores it (forced false); SpecFrame /
-    /// FluxFrame force true.
+    /// Specify how the Unit attribute should be used: set the ActiveUnit
+    /// flag.
+    ///
+    /// The flag controls how the Frame behaves when it is matched against
+    /// another by [`find_frame_template`](Frame::find_frame_template) or
+    /// [`convert_to`](Frame::convert_to).
+    /// When it is false in either Frame, the Mapping ignores any difference
+    /// in the [`unit`](Frame::unit) of corresponding template and target
+    /// axes, and the units are purely descriptive.
+    /// This is the default for a plain Frame, and the behavior of every Frame
+    /// before AST 2.0.
+    ///
+    /// When it is true in both, the Mapping takes account of differences in
+    /// units wherever possible: target and template axes with units of
+    /// `"km"` and `"m"` are connected by a [`ZoomMap`](crate::mappings::ZoomMap)
+    /// with a factor of 1000.
+    /// If no Mapping can be found between the units, the two Frames do not
+    /// match.
+    /// Unit strings are then expected to follow the syntax of FITS-WCS Paper
+    /// I, "Representations of world coordinates in FITS" (Greisen &
+    /// Calabretta): its named unit symbols, functions, operators and
+    /// multiplier prefixes.
+    /// Symbols the paper does not list are allowed, but convert only to
+    /// units built from the same unknown symbols (`"flops"` converts to
+    /// `"Mflops"`).
+    /// Common non-standard spellings are accepted too, such as a trailing
+    /// `s` on Angstrom, a lower-case `a` in `"angstrom"`, `"micron"` for
+    /// `"um"` and `"sec"` for `"s"`.
+    ///
+    /// With the flag true, setting a new Unit on an axis may also change its
+    /// Label and Symbol (Unit `"Hz"` with Label `"frequency"` becomes Label
+    /// `"log( frequency )"` when the Unit changes to `"log(Hz)"`), and a
+    /// change of Unit clears its Format.
+    /// Changing the Unit of the current Frame of a FrameSet then re-maps the
+    /// Frame within the FrameSet to take account of the new units.
+    ///
+    /// The flag is not an attribute: it cannot be cleared.
+    ///
+    /// # Per class
+    ///
+    /// - SkyFrame: always false; the value given is ignored.
+    /// - SpecFrame, TimeFrame and FluxFrame: always true; the value given is
+    ///   ignored.
+    /// - CmpFrame: unless set, true if either component Frame uses active
+    ///   units; the value given is also set on both component Frames.
+    /// - FrameSet and Region: the flag of the Frame they present.
+    #[doc(alias = "astSetActiveUnit")]
     fn set_active_unit(&mut self, value: bool);
-    /// Whether ActiveUnit has been explicitly set (for serialization).
-    /// Mirrors C `astTestActiveUnit` (used by `Dump`, frame.c:14614).
+    /// Whether the ActiveUnit flag has been set.
     fn test_active_unit(&self) -> bool;
 
     // Per-axis attributes. Each takes a 1-based external axis and reports
@@ -843,14 +1173,33 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
         crate::units::norm_unit(&self.unit(axis).unwrap_or_default())
     }
 
-    /// Permute the axes of this frame.
+    /// Permute the order of this Frame's axes.
     ///
-    /// `perm` is a 1-based permutation array of length `naxes`. After the
-    /// call, external axis `i` corresponds to what was previously axis
-    /// `perm[i-1]`. For example, `perm = &[2, 1]` swaps two axes.
+    /// `perm` has one element per axis and lists the axes in their new
+    /// order, using the original 1-based axis numbers: after the call, axis
+    /// `i` is what was axis `perm[i - 1]`, so `&[2, 1]` swaps two axes.
+    /// Only genuine permutations are accepted, each axis appearing once.
+    /// Successive permutations are cumulative.
     ///
-    /// The default implementation validates the permutation and returns Ok
-    /// for 1-axis frames (where the only valid permutation is `[1]`).
+    /// The default implementation only validates `perm`, which suits a
+    /// 1-axis Frame, whose only permutation is `[1]`.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Prmin` when `perm` does not have one element per axis,
+    ///   holds an axis number out of range, or names an axis twice.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ast_core::frames::{BasicFrameBuilder, Frame};
+    ///
+    /// let mut frame = BasicFrameBuilder::new(2).label(1, "X").label(2, "Y").build().unwrap();
+    /// frame.perm_axes(&[2, 1]).unwrap();
+    /// assert_eq!(frame.label(1).unwrap(), "Y");
+    /// assert!(frame.perm_axes(&[1, 1]).is_err());
+    /// ```
+    #[doc(alias = "astPermAxes")]
     fn perm_axes(&mut self, perm: &[usize]) -> AstResult<()> {
         validate_permutation(perm, self.naxes())?;
         Ok(())
@@ -935,17 +1284,132 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
         Ok(None)
     }
 
-    /// Top-level FindFrame — search self (or, in FrameSet / CmpFrame
-    /// overrides, self's components) for a Frame the supplied
-    /// template matches.
+    /// Find a coordinate system with specified characteristics.
     ///
-    /// `domainlist` is a comma-separated, case-insensitive priority
-    /// list. An empty field permits any domain. Mirrors C
-    /// `astFindFrame` (frame.c:3735).
+    /// Uses `template`, an instance of the kind of Frame wanted, to search
+    /// this Frame, the target, for a coordinate system with a given set of
+    /// characteristics, and returns a [`FrameSet`] describing the system
+    /// found and how to convert to and from it, or `None` if there is none.
+    /// It answers questions about coordinate information of unknown form,
+    /// such as whether there is a wavelength scale, a 2-dimensional
+    /// coordinate system or a celestial coordinate system, and reconciles a
+    /// preference for a coordinate system with what is available.
+    /// [`FrameSet::find_frame`] is the same search with the domain list as
+    /// a slice.
     ///
-    /// Default implementation: try `template.match_template(self, …)`,
-    /// gate on domain match, and wrap the result as a 2-frame
-    /// FrameSet.
+    /// The systems searched are the target's own and every "virtual"
+    /// system reachable from it by a built-in conversion, such as the
+    /// celestial coordinate conversions; for a FrameSet target, the union
+    /// of those of all its Frames.
+    /// An attribute set in the template must have the same value in the
+    /// system found; one left unset takes its value from one of the target's
+    /// actual (not virtual) systems.
+    /// The result is a hybrid Frame with the attributes set in the template
+    /// and the rest from the target, the best compromise between what was
+    /// asked for and what is available.
+    ///
+    /// The returned FrameSet holds two Frames: its base Frame is (the base
+    /// Frame of) the target, and its current Frame the system found, related
+    /// by the Mapping from target coordinates to the new system.
+    /// Used as a Mapping it converts between them; used as a Frame its
+    /// attributes describe the system found.
+    /// The Mapping aligns in the coordinate system given by the template's
+    /// AlignSystem attribute.
+    ///
+    /// # Arguments
+    ///
+    /// - `domainlist`: a comma-separated priority list of Domains.
+    ///   A system whose Domain is the first entry is sought first, then the
+    ///   second, and so on; an empty field (two adjacent commas, or an
+    ///   empty string) accepts any Domain.
+    ///   Matching ignores case and white space.
+    ///   Setting the template's Domain and then giving a list that holds
+    ///   neither that Domain nor an empty field finds nothing.
+    ///
+    /// # Using templates
+    ///
+    /// A Frame is found if the template matches it and its Domain is in
+    /// `domainlist` (or the list has an empty field).
+    /// The template matches according to these rules:
+    ///
+    /// - A template matches a Frame of its own class or of a more
+    ///   specialized class: a SkyFrame template matches any SkyFrame but not
+    ///   a plain Frame, and a plain Frame template matches any class of
+    ///   Frame.
+    /// - A template of any class can match a CmpFrame that contains a Frame
+    ///   of its class, provided its [`min_axes`](Frame::min_axes) is no more
+    ///   and its [`max_axes`](Frame::max_axes) no less than the number of
+    ///   axes of the CmpFrame.
+    /// - A CmpFrame template takes its MinAxes and MaxAxes from its
+    ///   components, so set those on the component templates before
+    ///   combining them.
+    /// - A template with one of its main attributes set matches only Frames
+    ///   with the same value, or that a built-in conversion can give that
+    ///   value; descriptive attributes such as Title, Label and Symbol do
+    ///   not restrict the match.
+    ///   Setting the template's [`domain`](Frame::domain) restricts the
+    ///   search to Frames of that Domain, as `domainlist` does.
+    /// - A template normally matches only a Frame with as many axes as
+    ///   itself; MinAxes, MaxAxes and [`match_end`](Frame::match_end) change
+    ///   that, and [`permute`](Frame::permute) and
+    ///   [`preserve_axes`](Frame::preserve_axes) control whether permuted
+    ///   axes match and whether their order is kept in the result.
+    ///
+    /// Some templates:
+    ///
+    /// - A 3-axis [`BasicFrame`] with nothing set finds any 3-dimensional
+    ///   coordinate system.
+    /// - A [`SkyFrame`] finds a celestial coordinate system of any kind; with
+    ///   MaxAxes set to 100 it also finds one inside a CmpFrame of up to 100
+    ///   axes, the returned Mapping including a [`PermMap`](crate::mappings::PermMap) that selects
+    ///   its axes.
+    ///   With System set to FK5 it finds an FK5 system, taking the Equinox
+    ///   from the target.
+    ///   With Permute false it finds one only if its axes are in the
+    ///   conventional (longitude, latitude) order.
+    /// - A 2-axis BasicFrame with `domainlist` `"SKY,PIXEL,"` seeks a SKY
+    ///   system, then a PIXEL one, then any 2-dimensional one.
+    /// - A 1-axis BasicFrame with Domain WAVELENGTH, or with nothing set and
+    ///   `domainlist` `"WAVELENGTH"`, finds a 1-dimensional wavelength
+    ///   system.
+    /// - A 1-axis BasicFrame with MaxAxes 3 finds a system of 1, 2 or 3
+    ///   dimensions and returns a 1-dimensional Frame related to it by a
+    ///   Mapping that extracts its first axis; with PreserveAxes set as well,
+    ///   the Frame returned has the axes of the system found.
+    ///
+    /// # Per class
+    ///
+    /// - FrameSet: each field of `domainlist` is taken in turn, and within
+    ///   it the template is matched against the target's Frames in the
+    ///   order current Frame, base Frame, then the others in the order they
+    ///   were added; the first match whose Frame has a Domain in that field
+    ///   is accepted.
+    ///
+    /// # Errors
+    ///
+    /// Passes on the error of the class-specific matching of the template
+    /// against the target ([`match_template`](Frame::match_template) and
+    /// [`sub_frame`](Frame::sub_frame)).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ast_core::frames::{BasicFrameBuilder, Frame};
+    ///
+    /// let target = BasicFrameBuilder::new(2).domain("PIXEL").build().unwrap();
+    /// let template = BasicFrameBuilder::new(2).build().unwrap();
+    /// let found = target
+    ///     .find_frame_template(&template, "sky,pixel,")
+    ///     .unwrap()
+    ///     .expect("a 2-dimensional system");
+    /// assert_eq!(found.current().domain(), "PIXEL");
+    /// assert!(target.find_frame_template(&template, "SKY").unwrap().is_none());
+    /// ```
+    ///
+    /// # See also
+    ///
+    /// `astFindFrame`.
+    #[doc(alias = "astFindFrame")]
     fn find_frame_template(
         &self,
         template: &dyn Frame,
@@ -1024,9 +1488,38 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// undo permutations.
     fn primary_frame(&self, axis: usize) -> (&dyn Frame, usize);
 
-    /// Offset along a geodesic at a given angle in a 2-D Frame. Returns
-    /// `(point2, ret_angle)`. Errors if the Frame is not 2-D. Bad inputs
-    /// give all-BAD outputs. Mirrors C `astOffset2` (frame.c:8228).
+    /// Calculate an offset along a geodesic curve in a 2-dimensional Frame.
+    ///
+    /// Returns `(point2, direction)`: `point2` is the point `offset` along
+    /// the geodesic curve that leaves `point1` at `angle`, and `direction` is
+    /// the direction of the curve at `point2`.
+    /// In a plain Frame the curve is a straight line; in a SkyFrame it is a
+    /// great circle.
+    /// The geodesic is the path of shortest distance, as
+    /// [`distance`](Frame::distance) measures it.
+    ///
+    /// Both angles are in radians, measured from the positive direction of
+    /// axis 2, with positive rotation from the positive direction of axis 2
+    /// to the positive direction of axis 1.
+    /// A positive `offset` goes in the direction of `angle`, a negative one
+    /// in the opposite direction.
+    ///
+    /// Every output is `BAD_VALUE` if any input is `BAD_VALUE`.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Naxin` when the Frame is not 2-dimensional.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ast_core::frames::{BasicFrameBuilder, Frame};
+    ///
+    /// let frame = BasicFrameBuilder::new(2).build().unwrap();
+    /// let (p, dir) = frame.offset2(&[1.0, 1.0], 0.0, 2.0).unwrap();
+    /// assert_eq!((p, dir), (vec![1.0, 3.0], 0.0));
+    /// ```
+    #[doc(alias = "astOffset2")]
     fn offset2(&self, point1: &[f64], angle: f64, offset: f64) -> AstResult<(Vec<f64>, f64)> {
         use crate::constants::BAD_VALUE;
         use crate::mappings::helpers::is_bad;
@@ -1046,9 +1539,37 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
         Ok((p2, angle))
     }
 
-    /// Point of intersection of two geodesics (straight lines) in a 2-D
-    /// Frame. Bad inputs, vertical/parallel degeneracies give all-BAD.
-    /// Mirrors C `astIntersect` (frame.c:6243).
+    /// Find the point of intersection between two geodesic curves.
+    ///
+    /// Each curve is given by two points on it, `a1` and `a2` for the
+    /// first, `b1` and `b2` for the second, and the result is the
+    /// coordinates where they cross.
+    /// In a plain Frame the curves are straight lines; in a SkyFrame they
+    /// are great circles, which in general cross at two diametrically
+    /// opposite points, and the one closer to `a1` is returned.
+    /// The geodesic is the path of shortest distance, as
+    /// [`distance`](Frame::distance) measures it.
+    ///
+    /// Every coordinate of the result is `BAD_VALUE` if any input
+    /// coordinate is `BAD_VALUE`, if the two points of either curve
+    /// coincide, or if the curves do not cross.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Naxin` when the Frame is not 2-dimensional.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ast_core::frames::{BasicFrameBuilder, Frame};
+    ///
+    /// let frame = BasicFrameBuilder::new(2).build().unwrap();
+    /// let cross = frame
+    ///     .intersect(&[0.0, 0.0], &[2.0, 2.0], &[0.0, 2.0], &[2.0, 0.0])
+    ///     .unwrap();
+    /// assert_eq!(cross, vec![1.0, 1.0]);
+    /// ```
+    #[doc(alias = "astIntersect")]
     fn intersect(&self, a1: &[f64], a2: &[f64], b1: &[f64], b2: &[f64]) -> AstResult<Vec<f64>> {
         use crate::constants::BAD_VALUE;
         use crate::mappings::helpers::is_bad;
@@ -1221,15 +1742,35 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
         AxisKind::Plain
     }
 
-    /// Normalise a set of points, each holding one value per axis. Mirrors C
-    /// `astNormalPoints` (frame.c), the per-class method behind the public
-    /// `astNormPoints`: each point is normalised as [`Frame::norm`] does,
-    /// and when `contig` is set a class whose axes wrap may also choose
-    /// among equivalent values so that the points form one contiguous group
-    /// (a SkyFrame keeps the longitudes on one side of the widest gap
-    /// between them). Fails with `AST__NCPIN` unless the points have one
-    /// value per axis.
+    /// Normalize a collection of points.
+    ///
+    /// `points` holds one coordinate per axis for each point, and the
+    /// normalized points are returned.
+    /// There are two ways to normalize:
+    ///
+    /// - With `contig` false, each point is normalized independently, as
+    ///   [`norm`](Frame::norm) does, which puts the values into the range
+    ///   expected for display.
+    /// - With `contig` true, the values are put into whichever range avoids
+    ///   discontinuities within the collection, which suits points that may
+    ///   span a discontinuity of the coordinate system.
+    ///   Points in a SkyFrame that span longitude zero are put into the
+    ///   longitude range -pi to +pi rather than 0 to 2*pi.
+    ///
+    /// A Frame whose coordinates are unconstrained never changes them.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Ncpin` when `points` does not have one coordinate per
+    ///   axis.
+    #[doc(alias = "astNormPoints")]
     fn norm_points(&self, points: &PointSet, contig: bool) -> AstResult<PointSet> {
+        // C's public `astNormPoints` validates its arguments and calls
+        // `astNormalPoints` (frame.c), the per-class method this is: each
+        // point is normalized as `norm` does, and when `contig` is set a
+        // class whose axes wrap may also choose among equivalent values so
+        // that the points form one contiguous group (a SkyFrame keeps the
+        // longitudes on one side of the widest gap between them).
         let _ = contig;
         norm_each_point(self.as_dyn_frame(), points)
     }
@@ -1257,31 +1798,87 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
         }
     }
 
-    /// Signed axis increment from `v1` to `v2` on a 1-based `axis`.
+    /// Find the distance between two axis values.
     ///
-    /// Dispatches to the Axis object on that axis. Mirrors C `astAxDistance`
-    /// (frame.c:1466), which fetches the Axis with `astGetAxis` and calls
-    /// `astAxisDistance` on it.
+    /// Returns the signed increment from `v1` to `v2` on the 1-based
+    /// `axis`.
+    /// On a plain axis this is the difference `v2 - v1`; on a sky axis it
+    /// is the difference wrapped into the range -pi to +pi.
+    /// The result is `BAD_VALUE` if either value is `BAD_VALUE`.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Axiin` when `axis` is not between 1 and
+    ///   [`naxes`](Frame::naxes).
+    #[doc(alias = "astAxDistance")]
     fn ax_distance(&self, axis: usize, v1: f64, v2: f64) -> AstResult<f64> {
+        // C `astAxDistance` (frame.c:1466) fetches the Axis with `astGetAxis`
+        // and calls `astAxisDistance` on it.
         self.validate_frame_axis(axis, "astAxDistance")?;
         Ok(self.get_axis(axis).distance(v1, v2))
     }
 
-    /// Axis value formed by adding `dist` to `v1` on a 1-based `axis`.
+    /// Add an increment onto a supplied axis value.
     ///
-    /// Dispatches to the Axis object on that axis. Mirrors C `astAxOffset`
-    /// (frame.c:1744), which fetches the Axis with `astGetAxis` and calls
-    /// `astAxisOffset` on it.
+    /// Returns the value formed by adding the signed increment `dist` to
+    /// `v1` on the 1-based `axis`.
+    /// On a plain axis this is the sum `v1 + dist`; on a sky axis the sum
+    /// is then wrapped as [`ax_norm`](Frame::ax_norm) with operation 0 wraps
+    /// it.
+    /// The result is `BAD_VALUE` if either value is `BAD_VALUE`.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Axiin` when `axis` is not between 1 and
+    ///   [`naxes`](Frame::naxes).
+    #[doc(alias = "astAxOffset")]
     fn ax_offset(&self, axis: usize, v1: f64, dist: f64) -> AstResult<f64> {
+        // C `astAxOffset` (frame.c:1744) fetches the Axis with `astGetAxis`
+        // and calls `astAxisOffset` on it.
         self.validate_frame_axis(axis, "astAxOffset")?;
         Ok(self.get_axis(axis).offset(v1, dist))
     }
 
-    /// Angle, as seen from `a`, between the positive direction of the
-    /// 1-based `axis` and the geodesic from `a` to `b`. Offsets `a`
-    /// slightly in the +axis direction and calls `angle`. Mirrors C
-    /// `astAxAngle` (frame.c:1324).
+    /// Return the angle from an axis to a line through two points.
+    ///
+    /// Returns the angle, as seen from point `a`, from the positive
+    /// direction of the 1-based `axis` to the geodesic curve joining `a` to
+    /// `b`, in radians.
+    /// The geodesic is the path of shortest distance, as
+    /// [`distance`](Frame::distance) measures it.
+    ///
+    /// In a 2-dimensional Frame the angle is in the range -pi to +pi, with
+    /// positive rotation in the sense from the positive direction of axis 2
+    /// to the positive direction of axis 1.
+    /// With more axes it is always positive, between zero and pi.
+    ///
+    /// The result is `BAD_VALUE` if any input coordinate is `BAD_VALUE`, or
+    /// if the angle is undefined.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Axiin` when `axis` is not between 1 and
+    ///   [`naxes`](Frame::naxes).
+    /// - Passes on the error of [`angle`](Frame::angle).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::f64::consts::{FRAC_PI_2, PI};
+    /// use ast_core::frames::{BasicFrameBuilder, Frame};
+    ///
+    /// let frame = BasicFrameBuilder::new(2).build().unwrap();
+    /// // A line along +axis 2 is a quarter turn from +axis 1.
+    /// let angle = frame.ax_angle(&[0.0, 0.0], &[0.0, 1.0], 1).unwrap();
+    /// assert!((angle + FRAC_PI_2).abs() < 1e-12);
+    /// // A line along -axis 1 is a half turn from +axis 1.
+    /// let angle = frame.ax_angle(&[0.0, 0.0], &[-1.0, 0.0], 1).unwrap();
+    /// assert!((angle.abs() - PI).abs() < 1e-12);
+    /// ```
+    #[doc(alias = "astAxAngle")]
     fn ax_angle(&self, a: &[f64], b: &[f64], axis: usize) -> AstResult<f64> {
+        // C `astAxAngle` (frame.c:1324) offsets `a` slightly in the +axis
+        // direction and calls `astAngle`.
         use crate::constants::BAD_VALUE;
         use crate::mappings::helpers::is_bad;
         // frame.c:1442 validates the axis first.
@@ -1315,13 +1912,33 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
         self.angle(&aa, a, b)
     }
 
-    /// Normalise an array of axis values on a 1-based `axis`. `oper`
-    /// selects the normalisation mode (0 = like `norm`, 1 = smallest range).
+    /// Normalize an array of axis values.
     ///
-    /// Dispatches to the Axis object on that axis. Mirrors C `astAxNorm`
-    /// (frame.c:1560), which fetches the Axis with `astGetAxis`, validates
-    /// `oper`, and calls `astAxisNormValues` on it.
+    /// Modifies `values`, all on the 1-based `axis`, so that they are
+    /// normalized in the manner `oper` selects:
+    ///
+    /// - 0: as [`norm`](Frame::norm) normalizes a value on this axis.
+    /// - 1: chosen automatically so that the values have the smallest
+    ///   range.
+    ///
+    /// Values on a plain axis are returned unchanged.
+    /// On a sky axis, which has a discontinuity at zero longitude, operation
+    /// 0 puts a longitude into the range 0 to 2*pi, and operation 1 puts the
+    /// longitudes into 0 to 2*pi or -pi to +pi, whichever gives the smaller
+    /// range; a latitude axis always takes the range -pi to +pi.
+    /// A SkyFrame's own axes are both treated as longitude axes, as C's are;
+    /// a latitude axis picked out of a SkyFrame into another Frame is
+    /// treated as a latitude axis.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Axiin` when `axis` is not between 1 and
+    ///   [`naxes`](Frame::naxes).
+    /// - `ErrorCode::Oprin` when `oper` is not 0 or 1.
+    #[doc(alias = "astAxNorm")]
     fn ax_norm(&self, axis: usize, oper: i32, values: &mut [f64]) -> AstResult<()> {
+        // C `astAxNorm` (frame.c:1560) fetches the Axis with `astGetAxis`,
+        // validates `oper`, and calls `astAxisNormValues` on it.
         self.validate_frame_axis(axis, "astAxNorm")?;
         if !(0..=1).contains(&oper) {
             return Err(AstError::new(
@@ -1347,12 +1964,42 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
         Ok(())
     }
 
-    /// Resolve the vector point1->point3 into components parallel and
-    /// perpendicular to the basis vector point1->point2. Returns
-    /// `(point4, d1, d2)` where point4 is the closest approach, d1 the
-    /// signed parallel length, d2 the (non-negative) perpendicular
-    /// length. Zero-length basis or bad inputs give BAD. Mirrors C
-    /// `astResolve` (frame.c:9429).
+    /// Resolve a vector into two orthogonal components.
+    ///
+    /// The vector from `point1` to `point2` is the basis vector, and the
+    /// vector from `point1` to `point3` is resolved into components parallel
+    /// and perpendicular to it.
+    /// Returns `(point4, d1, d2)`:
+    ///
+    /// - `point4`: the point of closest approach of the basis vector to
+    ///   `point3`.
+    /// - `d1`: the distance from `point1` to `point4`, the length of the
+    ///   parallel component, positive in the sense of movement from
+    ///   `point1` to `point2`.
+    /// - `d2`: the distance from `point4` to `point3`, the length of the
+    ///   perpendicular component, which is never negative.
+    ///
+    /// Each vector is the path of shortest distance between its points, as
+    /// [`distance`](Frame::distance) measures it.
+    /// Every output is `BAD_VALUE` if any input coordinate is `BAD_VALUE`,
+    /// or if the outputs are undefined, as for a basis vector of zero
+    /// length.
+    ///
+    /// # Errors
+    ///
+    /// No Frame class raises an error of its own; a CmpFrame, FrameSet or
+    /// Region passes on any error from `resolve` on the Frames it holds.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ast_core::frames::{BasicFrameBuilder, Frame};
+    ///
+    /// let frame = BasicFrameBuilder::new(2).build().unwrap();
+    /// let (p4, d1, d2) = frame.resolve(&[0.0, 0.0], &[1.0, 0.0], &[3.0, 4.0]).unwrap();
+    /// assert_eq!((p4, d1, d2), (vec![3.0, 0.0], 3.0, 4.0));
+    /// ```
+    #[doc(alias = "astResolve")]
     fn resolve(
         &self,
         point1: &[f64],
@@ -1476,10 +2123,33 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
         crate::coords::PointSet::from_columns(&[&d1v, &d2v])
     }
 
-    /// Find, for each axis of `frm2`, the corresponding 1-based axis
-    /// index within `self` (or 0 if none). Mirrors C `astMatchAxes`
-    /// (frame.c:7349), which delegates to `MatchAxesX` with args
-    /// swapped so it can be overridden on either class.
+    /// Find any corresponding axes in two Frames.
+    ///
+    /// Returns one element for each axis of `frm2`: the 1-based index of
+    /// the corresponding axis of this Frame, or 0 when it has none.
+    ///
+    /// Axes correspond when a Mapping can be found between them by
+    /// [`find_frame_template`](Frame::find_frame_template) or
+    /// [`convert_to`](Frame::convert_to), so they need not be identical:
+    /// the axes of two SkyFrames correspond even when they describe
+    /// different celestial coordinate systems.
+    ///
+    /// # Errors
+    ///
+    /// Passes on the error of the class-specific matching of the Frames'
+    /// axes ([`match_template`](Frame::match_template)).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ast_core::frames::{BasicFrameBuilder, CmpFrame, Frame, SkyFrame};
+    ///
+    /// let sky = SkyFrame::unset_system();
+    /// let spec = BasicFrameBuilder::new(1).build().unwrap();
+    /// let cmp = CmpFrame::new(Box::new(spec), Box::new(sky.clone()));
+    /// assert_eq!(cmp.match_axes(&sky).unwrap(), vec![2, 3]);
+    /// ```
+    #[doc(alias = "astMatchAxes")]
     fn match_axes(&self, frm2: &dyn Frame) -> AstResult<Vec<i32>>
     where
         Self: Sized,
@@ -1715,16 +2385,57 @@ pub(crate) fn norm_each_point(frame: &dyn Frame, points: &PointSet) -> AstResult
     Ok(out)
 }
 
-/// Select axes from `frame` into a new Frame, with the Mapping from the
-/// original Frame to the new one: C's `astPickAxes` (frame.c:8799).
+/// Create a new Frame by picking axes from an existing one.
 ///
-/// `axes` holds 1-based axis numbers. An axis number of 0 or beyond the
-/// Frame's axes gives a new axis with default attributes, whose Mapping
-/// output is bad; selecting the same axis twice is an error (`AST__SELIN`).
-/// The new Frame and Mapping are what the class's SubFrame produces with no
-/// template, so picking every axis of a SkyFrame gives a SkyFrame, a single
-/// sky axis keeps its SkyAxis, and an identity selection gives a UnitMap.
+/// Returns `(new_frame, map)`.
+/// The new Frame's axes are copied from `frame`, along with its other
+/// attributes such as its Title.
+/// `axes` lists the 1-based numbers of the axes of `frame` to copy, in the
+/// order wanted in the new Frame; any number of them may be picked, in any
+/// order, but each only once.
+/// An entry of 0 adds an axis with default attributes.
+///
+/// `map` converts coordinates from `frame` into the new Frame in its forward
+/// direction, and back in its inverse: a [`PermMap`](crate::mappings::PermMap),
+/// or a [`UnitMap`](crate::mappings::UnitMap) when the axes are picked in
+/// their original order.
+/// A default axis takes the value `BAD_VALUE` in the forward direction.
+///
+/// The new Frame is an independent copy: changing it does not change
+/// `frame`.
+/// Its class depends on the axes picked: picking both axes of a
+/// [`SkyFrame`] gives a SkyFrame, but a single axis cannot be a valid
+/// SkyFrame and gives a plain Frame instead (whose axis keeps behaving as a
+/// sky axis).
+/// Picking from a [`FrameSet`] is the same as picking from its current
+/// Frame, and the result is not a FrameSet.
+/// For a Region, [`pick_axes_region`](crate::regions::pick_axes_region)
+/// tries to keep the bounds on the axes picked.
+///
+/// # Errors
+///
+/// - `ErrorCode::Selin` when an axis is picked more than once.
+///
+/// # Examples
+///
+/// ```
+/// use ast_core::frames::{BasicFrameBuilder, Frame, pick_axes};
+/// use ast_core::mappings::Mapping;
+///
+/// let frame = BasicFrameBuilder::new(3).label(3, "Z").build().unwrap();
+/// let (picked, map) = pick_axes(&frame, &[3, 1]).unwrap();
+/// assert_eq!(picked.naxes(), 2);
+/// assert_eq!(picked.label(1).unwrap(), "Z");
+/// assert_eq!((map.nin(), map.nout()), (3, 2));
+/// assert!(pick_axes(&frame, &[1, 1]).is_err());
+/// ```
+#[doc(alias = "astPickAxes")]
 pub fn pick_axes(frame: &dyn Frame, axes: &[usize]) -> AstResult<(DynFrame, DynMapping)> {
+    // C's `astPickAxes` (frame.c:8799). An axis number of 0 or beyond the
+    // Frame's axes gives a new axis with default attributes. The new Frame
+    // and Mapping are what the class's SubFrame produces with no template,
+    // so picking every axis of a SkyFrame gives a SkyFrame, a single sky
+    // axis keeps its SkyAxis, and an identity selection gives a UnitMap.
     // The public interface is 1-based; C's internal one, and SubFrame's,
     // 0-based (frame.c:16220).
     let zero_based: Vec<i32> = axes.iter().map(|&ax| ax as i32 - 1).collect();

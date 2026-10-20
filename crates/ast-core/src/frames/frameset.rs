@@ -834,17 +834,29 @@ impl FrameSet {
     // find_frame                                                          //
     // ------------------------------------------------------------------ //
 
-    /// Search for a frame in the FrameSet matching a template.
+    /// Find a coordinate system with specified characteristics in this
+    /// FrameSet.
     ///
-    /// Mirrors C `FrameSet::FindFrame` (frameset.c:3790) — iterates the
-    /// internal frames in priority order (current → base → others),
-    /// invokes `Frame::find_frame_template` on each with the supplied
-    /// domain field, and prefixes the FrameSet's base→that-frame
-    /// Mapping when a match is found. The result is a 2-frame FrameSet
-    /// whose base is `self.base()` and current is the matched Frame.
+    /// The search of [`Frame::find_frame_template`] with this FrameSet as
+    /// the target, which describes it in full.
+    /// Each entry of `domains` is taken in turn, and within it `template` is
+    /// matched against the FrameSet's Frames in the order current Frame,
+    /// base Frame, then the others in the order they were added; the first
+    /// match whose Frame has a Domain matching the entry is accepted.
+    /// An empty entry, or an empty slice, accepts any Domain.
     ///
-    /// `domains` is a comma-priority list: each non-empty field is
-    /// tried in turn; an empty field permits any domain.
+    /// The result is a FrameSet of two Frames: the base Frame of this
+    /// FrameSet, and the Frame found, related by the Mapping from this
+    /// FrameSet's base Frame through the Frame matched to the Frame found.
+    /// This FrameSet is not changed: its Current is not moved to the Frame
+    /// matched.
+    ///
+    /// # Errors
+    ///
+    /// Passes on the error of [`Frame::find_frame_template`] on the Frames
+    /// searched, or of [`add_frame`](FrameSet::add_frame) building the
+    /// result.
+    #[doc(alias = "astFindFrame")]
     pub fn find_frame(
         &self,
         template: &dyn Frame,

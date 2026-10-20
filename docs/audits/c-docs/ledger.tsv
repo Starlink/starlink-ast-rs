@@ -105,25 +105,25 @@ function	astFitsTable	fitstable.c			no
 class	FluxFrame	fluxframe.c			no
 attribute	SpecVal	fluxframe.c			no
 function	astFluxFrame	fluxframe.c			no
-class	Frame	frame.c			no
-function	astAngle	frame.c			no
-function	astAxAngle	frame.c			no
-function	astAxDistance	frame.c			no
-function	astAxNorm	frame.c			no
-function	astAxOffset	frame.c			no
-function	astConvert	frame.c			no
-function	astDistance	frame.c			no
-function	astFindFrame	frame.c			no
-function	astGetActiveUnit	frame.c			no
-function	astIntersect	frame.c			no
-function	astMatchAxes	frame.c			no
-function	astNorm	frame.c			no
-function	astNormPoints	frame.c			no
-function	astOffset2	frame.c			no
-function	astOffset	frame.c			no
-function	astResolve	frame.c			no
-function	astSetActiveUnit	frame.c			no
-attribute	Naxes	frame.c			no
+class	Frame	frame.c	BasicFrame		yes	A plain Frame does not implement Mapping, where C's Frame is a unit Mapping with Nin = Nout = Naxes (PLAN.md 9.6: a bare Frame in a Mapping slot is not supported)
+function	astAngle	frame.c	Frame::angle		yes
+function	astAxAngle	frame.c	Frame::ax_angle		yes	C's header gives -PI/2 to +PI/2 for a 2-D Frame; the code returns astAngle's -PI to +PI, as the port's doc says (docs/issues/c-library-quirks.md)
+function	astAxDistance	frame.c	Frame::ax_distance		yes
+function	astAxNorm	frame.c	Frame::ax_norm		yes	C's header says SkyFrame latitudes always go into -PI to +PI; a SkyFrame's own SkyAxes are not latitude axes in C's code, and the port mirrors that (docs/issues/c-library-quirks.md)
+function	astAxOffset	frame.c	Frame::ax_offset		yes
+function	astConvert	frame.c	Frame::convert_to		yes	C sets the Base of a FrameSet argument to the Frame used for the conversion; the port takes both by shared reference and leaves them unchanged (PLAN.md 2)
+function	astDistance	frame.c	Frame::distance		yes
+function	astFindFrame	frame.c	Frame::find_frame_template;FrameSet::find_frame		yes	C sets the Current of a FrameSet target to the Frame matched; the port leaves it unchanged (PLAN.md 2). The header's preference for paths with both transformations in a FrameSet search is not in C's FindFrame code, which takes the first match (docs/issues/c-library-quirks.md)
+function	astGetActiveUnit	frame.c	Frame::get_active_unit		yes
+function	astIntersect	frame.c	Frame::intersect		yes
+function	astMatchAxes	frame.c	Frame::match_axes		yes
+function	astNorm	frame.c	Frame::norm		yes
+function	astNormPoints	frame.c	Frame::norm_points		yes	Takes a PointSet, so no 8-byte variant or dimension arguments. C's public function reports AST__DIMIN for a coordinate count that differs from Naxes; the port reports Ncpin, as C's protected astNormalPoints does (PLAN.md 2)
+function	astOffset2	frame.c	Frame::offset2		yes
+function	astOffset	frame.c	Frame::offset		yes
+function	astResolve	frame.c	Frame::resolve		yes
+function	astSetActiveUnit	frame.c	Frame::set_active_unit		yes	C's header says a CmpFrame defaults to active units when both components use them, and that units with no Mapping between them raise an error; C's code uses either component, and treats such units as no match, as the port does (docs/issues/c-library-quirks.md)
+attribute	Naxes	frame.c	Frame::naxes		yes
 attribute	Direction	frame.c			no
 attribute	Dtai	frame.c			no
 attribute	Dut1	frame.c			no
@@ -149,11 +149,11 @@ attribute	Title	frame.c			no
 attribute	ObsLat	frame.c			no
 attribute	ObsAlt	frame.c			no
 attribute	ObsLon	frame.c			no
-function	astFormat	frame.c			no
-function	astFrame	frame.c			no
-function	astPermAxes	frame.c			no
-function	astPickAxes	frame.c			no
-function	astUnformat	frame.c			no
+function	astFormat	frame.c	Frame::format		yes
+function	astFrame	frame.c	BasicFrameBuilder::new		yes	Attributes are set with the builder's typed methods rather than an options string
+function	astPermAxes	frame.c	Frame::perm_axes		yes
+function	astPickAxes	frame.c	pick_axes		yes	For a Region, regions::pick_axes_region keeps the bounds where C's astPickAxes does
+function	astUnformat	frame.c	Frame::unformat		yes
 class	FrameSet	frameset.c			no
 function	astAddFrame	frameset.c			no
 function	astAddVariant	frameset.c			no

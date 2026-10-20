@@ -60,6 +60,10 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [`astRebin<X>` zeroes only the first output element after an argument error](#astrebinx-zeroes-only-the-first-output-element-after-an-argument-error)
 - [Rebinning `B` and `UB` data relies on out-of-range conversions wrapping](#rebinning-b-and-ub-data-relies-on-out-of-range-conversions-wrapping)
 - [`astRebinSeq<X>` initialises and normalises after an argument error](#astrebinseqx-initialises-and-normalises-after-an-argument-error)
+- [The `astAxAngle` documentation gives a 2-D range of -PI/2 to +PI/2](#the-astaxangle-documentation-gives-a-2-d-range-of--pi2-to-pi2)
+- [The `astFindFrame` documentation describes a preference among FrameSet matches that the code does not make](#the-astfindframe-documentation-describes-a-preference-among-frameset-matches-that-the-code-does-not-make)
+- [The `astSetActiveUnit` documentation says a CmpFrame needs both components to use active units](#the-astsetactiveunit-documentation-says-a-cmpframe-needs-both-components-to-use-active-units)
+- [The `astSetActiveUnit` documentation says units with no Mapping between them raise an error](#the-astsetactiveunit-documentation-says-units-with-no-mapping-between-them-raise-an-error)
 
 ### [Addressed here, and not going upstream](#addressed-here-and-not-going-upstream)
 
@@ -933,6 +937,56 @@ When no input pixel has been used, normalisation reports AST__BADIN (only if no 
 The port mirrors the first two in `rebin_seq` (`crates/ast-core/src/mappings/rebin/mod.rs`) and takes the uninitialised value as zero in `normalise`, which gives the same all-bad output.
 `errors_match_c` in `crates/ast-core/tests/test_rebinseq_oracle.rs` records the output, weights and count after each error, and the `nothing_used` cases there pin the all-bad output; both fail if normalisation is skipped.
 Resolved when upstream returns before touching the arrays, or initialises the effective number of pixels.
+
+### The `astAxAngle` documentation gives a 2-D range of -PI/2 to +PI/2
+
+C location: `frame.c`, the `astAxAngle` prologue (Returned Value), and `AxAngle` (line 1342).
+
+The prologue says that in a 2-dimensional Frame the angle is in the range [-PI/2,+PI/2].
+`AxAngle` returns `astAngle( this, aa, a, b )`, where `aa` is `a` nudged along the axis, and `astAngle` returns -PI to +PI in two dimensions.
+A line from `a` along the negative direction of the axis gives an angle of magnitude PI.
+
+Consequence: documentation only.
+
+The port's `Frame::ax_angle` doc gives -pi to +pi, and its doctest checks the magnitude-PI case.
+A C fix: change the range in the prologue to [-PI,+PI].
+
+### The `astFindFrame` documentation describes a preference among FrameSet matches that the code does not make
+
+C location: `frame.c`, the `astFindFrame` prologue (Applicability, FrameSet); `frameset.c`, `FindFrame` (line 3790).
+
+The prologue says that, when the target is a FrameSet, the Mapping of each match is examined and a match with both transformations defined is preferred, then one with only the forward transformation.
+`FindFrame` stops at the first Frame the template matches, for each domain field in turn, and keeps no score.
+The scoring the prologue describes is what `ConvertX` (frameset.c) does for `astConvert`, whose prologue says the same.
+
+Consequence: documentation only; a FrameSet search returns the first match in the documented Frame order.
+
+The port's `frameset_find_frame` (`crates/ast-core/src/frames/frameset.rs`) takes the first match, as C does, and `Frame::find_frame_template` documents that.
+A C fix: drop the paragraph about preferring both transformations from the `astFindFrame` prologue.
+
+### The `astSetActiveUnit` documentation says a CmpFrame needs both components to use active units
+
+C location: `frame.c`, the `astSetActiveUnit` prologue (Applicability, CmpFrame); `cmpframe.c`, `GetActiveUnit`.
+
+The prologue says a CmpFrame's default ActiveUnit flag is 1 if both component Frames use active units, and zero otherwise, and the comment in `GetActiveUnit` says the same.
+The code is `astGetActiveUnit( frame1 ) || astGetActiveUnit( frame2 )`, so either component is enough.
+
+Consequence: a CmpFrame of a SpecFrame and a plain Frame uses active units by default, where the documentation says it does not.
+
+The port's `CmpFrame::get_active_unit` (`crates/ast-core/src/frames/cmpframe.rs`) mirrors the code, and `Frame::set_active_unit` documents "either".
+A C fix: change the code to `&&` if the documentation states the intent, or the prologue to "either" if the code does.
+
+### The `astSetActiveUnit` documentation says units with no Mapping between them raise an error
+
+C location: `frame.c`, the `astSetActiveUnit` prologue (Description); `SubFrame` (line 11131).
+
+The prologue says that when both Frames use active units and no Mapping can be found between the Unit strings of corresponding axes, an error is reported.
+`SubFrame` instead sets `match = 0` and annuls the Mapping, so the two Frames simply do not match and `astConvert` or `astFindFrame` returns `AST__NULL` without error.
+
+Consequence: documentation only.
+
+The port's `find_frame` (`crates/ast-core/src/frames/find_frame.rs`) treats such units as no match, as C does, and `Frame::set_active_unit` documents that.
+A C fix: say in the prologue that the Frames then do not match.
 
 ## Addressed here, and not going upstream
 
