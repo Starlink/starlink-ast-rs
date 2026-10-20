@@ -288,8 +288,7 @@ pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
     ///
     /// Inverting the Mapping exchanges this with [`nout`](Mapping::nout).
     /// A [`CmpMap`] derives it from its components.
-    /// A [`FrameSet`](crate::frames::FrameSet) has the number of axes of its
-    /// base Frame, so selecting a new base Frame may change it.
+    /// A [`FrameSet`](crate::frames::FrameSet) describes its own.
     #[doc(alias = "Nin")]
     fn nin(&self) -> usize;
 
@@ -298,8 +297,7 @@ pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
     ///
     /// Inverting the Mapping exchanges this with [`nin`](Mapping::nin).
     /// A [`CmpMap`] derives it from its components.
-    /// A [`FrameSet`](crate::frames::FrameSet) has the number of axes of its
-    /// current Frame, so selecting a new current Frame may change it.
+    /// A [`FrameSet`](crate::frames::FrameSet) describes its own.
     #[doc(alias = "Nout")]
     fn nout(&self) -> usize;
 
@@ -319,9 +317,7 @@ pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
     /// [`set_invert`](Mapping::set_invert),
     /// [`clear_invert`](Mapping::clear_invert) and
     /// [`test_invert`](Mapping::test_invert) set, clear and test it.
-    /// Inverting a [`FrameSet`](crate::frames::FrameSet) exchanges its base
-    /// and current Frames, which may change its other properties; selecting
-    /// a new base or current Frame does not change whether it is inverted.
+    /// A [`FrameSet`](crate::frames::FrameSet) describes its own.
     #[doc(alias = "Invert")]
     fn is_inverted(&self) -> bool;
 
@@ -899,9 +895,7 @@ pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
     /// Inverting the Mapping exchanges this with
     /// [`has_inverse`](Mapping::has_inverse).
     /// A [`CmpMap`] derives it from its components.
-    /// A [`FrameSet`](crate::frames::FrameSet) reports the Mapping from its
-    /// base Frame to its current Frame, so selecting a new base or current
-    /// Frame may change it.
+    /// A [`FrameSet`](crate::frames::FrameSet) describes its own.
     #[doc(alias = "TranForward")]
     fn has_forward(&self) -> bool {
         true
@@ -914,9 +908,8 @@ pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
     /// transformations, such as [`MathMap`], reports false; whether a
     /// particular instance is linear over a region can be tested with
     /// [`linear_approx`](Mapping::linear_approx).
-    /// A [`CmpMap`] derives it from its components, and a
-    /// [`FrameSet`](crate::frames::FrameSet) is linear when the Mapping from
-    /// its base Frame to its current Frame is.
+    /// A [`CmpMap`] derives it from its components.
+    /// A [`FrameSet`](crate::frames::FrameSet) describes its own.
     #[doc(alias = "IsLinear")]
     fn is_linear(&self) -> bool {
         // The base class does not claim it (mapping.c `GetIsLinear`); the
@@ -942,9 +935,7 @@ pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
     /// Inverting the Mapping exchanges this with
     /// [`has_forward`](Mapping::has_forward).
     /// A [`CmpMap`] derives it from its components.
-    /// A [`FrameSet`](crate::frames::FrameSet) reports the Mapping from its
-    /// base Frame to its current Frame, so selecting a new base or current
-    /// Frame may change it.
+    /// A [`FrameSet`](crate::frames::FrameSet) describes its own.
     #[doc(alias = "TranInverse")]
     fn has_inverse(&self) -> bool {
         true

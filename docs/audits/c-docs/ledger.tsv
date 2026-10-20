@@ -23,8 +23,8 @@ function	astChebyMap	chebymap.c	ChebyMap::new		yes	C reads lbnd_i/ubnd_i wheneve
 class	Circle	circle.c			no
 function	astCirclePars	circle.c			no
 function	astCircle	circle.c			no
-class	CmpFrame	cmpframe.c			no
-function	astCmpFrame	cmpframe.c			no
+class	CmpFrame	cmpframe.c	CmpFrame		yes	A CmpFrame is not a Mapping here (PLAN.md 9.6), so C's use of one holding a Region as a masking Mapping has no counterpart; component attributes are reached through frame1 and frame2 rather than forwarded by name
+function	astCmpFrame	cmpframe.c	CmpFrame::new		yes	Takes ownership of the two Frames, where C stores the pointers supplied, so later changes go through frame1_mut and frame2_mut
 class	CmpMap	cmpmap.c	CmpMap		yes
 function	astCmpMap	cmpmap.c	CmpMap::new		yes	C keeps references to the components; the port's CmpMap takes ownership of them
 class	CmpRegion	cmpregion.c			no
@@ -154,20 +154,20 @@ function	astFrame	frame.c	BasicFrameBuilder::new		yes	Attributes are set with th
 function	astPermAxes	frame.c	Frame::perm_axes		yes
 function	astPickAxes	frame.c	pick_axes		yes	For a Region, regions::pick_axes_region keeps the bounds where C's astPickAxes does
 function	astUnformat	frame.c	Frame::unformat		yes
-class	FrameSet	frameset.c			no
-function	astAddFrame	frameset.c			no
-function	astAddVariant	frameset.c			no
-function	astGetFrame	frameset.c			no
-function	astGetMapping	frameset.c			no
-function	astMirrorVariants	frameset.c			no
-function	astRemapFrame	frameset.c			no
-function	astRemoveFrame	frameset.c			no
-attribute	AllVariants	frameset.c			no
-attribute	Base	frameset.c			no
-attribute	Current	frameset.c			no
-attribute	Nframe	frameset.c			no
-attribute	Variant	frameset.c			no
-function	astFrameSet	frameset.c			no
+class	FrameSet	frameset.c	FrameSet		yes	A Region inside a CmpFrame does not mask the Mappings, since a CmpFrame is not a Mapping here (PLAN.md 9.6)
+function	astAddFrame	frameset.c	FrameSet::add_frame;FrameSet::add_frameset		yes
+function	astAddVariant	frameset.c	FrameSet::add_variant		yes
+function	astGetFrame	frameset.c	FrameSet::frame;FrameSet::frame_mut		yes	frame gives a shared reference; frame_mut gives a mutable one that bypasses the FrameSet's integrity, as changes through C's returned pointer do
+function	astGetMapping	frameset.c	FrameSet::mapping		yes
+function	astMirrorVariants	frameset.c	FrameSet::mirror_variants		yes	C's AST__NOFRAME is giving the current Frame
+function	astRemapFrame	frameset.c	FrameSet::remap_frame		yes
+function	astRemoveFrame	frameset.c	FrameSet::remove_frame		yes
+attribute	AllVariants	frameset.c	FrameSet::all_variants		yes
+attribute	Base	frameset.c	FrameSet::set_base		yes	No public getter gives the Base index; base gives the Frame (PLAN.md §2); C's setting by Domain name has no counterpart
+attribute	Current	frameset.c	FrameSet::set_current		yes	No public getter gives the Current index; current gives the Frame (PLAN.md §2); C's setting by Domain name has no counterpart
+attribute	Nframe	frameset.c	FrameSet::nframe		yes
+attribute	Variant	frameset.c	FrameSet::variant		yes	set_variant, test_variant and clear_variant are the setter, test and clear
+function	astFrameSet	frameset.c	FrameSet::new		yes	A FrameSet given is copied, where C shares its Frames and Mappings
 class	GrismMap	grismmap.c	GrismMap		yes
 attribute	GrismNR	grismmap.c	GrismMap::grism_nr		yes	C refuses to set it on a GrismMap with more than one reference; owned values have no such restriction
 attribute	GrismNRP	grismmap.c	GrismMap::grism_nrp		yes	C refuses to set it on a GrismMap with more than one reference

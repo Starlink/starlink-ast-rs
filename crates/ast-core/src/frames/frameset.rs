@@ -23,9 +23,10 @@ pub enum FrameRef {
     Index(usize),
     /// All frames at once — only valid as the `anchor` of
     /// [`FrameSet::add_frame`], where it appends the supplied frame's axes to
-    /// every frame in the set (mirrors C's `AST__ALLFRAMES`, frameset.h:465).
+    /// every frame in the set.
     /// It does not identify a single frame and cannot be passed to
     /// [`FrameSet::frame`], `set_base`, etc.
+    // C: `AST__ALLFRAMES` (frameset.h:465).
     AllFrames,
 }
 
@@ -67,26 +68,111 @@ impl fmt::Debug for Edge {
     }
 }
 
-/// A graph of [`Frame`]s connected by [`Mapping`]s.
+/// A set of inter-related coordinate systems.
 ///
-/// A `FrameSet` stores a collection of frames linked by coordinate
-/// transformations. Two distinguished frames — the *base* and the
-/// *current* — define the overall transformation: applying the
-/// `FrameSet` as a [`Mapping`] converts coordinates from the base
-/// frame to the current frame (forward) or vice-versa (inverse).
+/// A FrameSet consists of one or more [`Frame`]s, which describe coordinate
+/// systems, connected by [`Mapping`]s, which describe how the coordinate
+/// systems are inter-related.
+/// It gives a Mapping between any pair of its Frames
+/// ([`mapping`](FrameSet::mapping)), that is, a conversion between any two
+/// of the coordinate systems it describes.
+/// The Frames are numbered from 1 in the order they are added
+/// ([`add_frame`](FrameSet::add_frame)), and a [`FrameRef`] names one.
 ///
-/// Frames are numbered 1-based and can be addressed via [`FrameRef`].
+/// Every FrameSet has a *base* Frame and a *current* Frame, which may be the
+/// same.
+/// Any Frame may be made either ([`set_base`](FrameSet::set_base),
+/// [`set_current`](FrameSet::set_current)); by default the first Frame
+/// added is the base Frame and the last one added is the current Frame.
+/// The base Frame describes the "native" coordinate system of whatever the
+/// FrameSet calibrates, such as the pixel coordinates of an image, and the
+/// current Frame the "apparent" coordinate system in which it should be
+/// viewed.
+/// Any further Frames are a library of alternative coordinate systems,
+/// which may be selected by making them current.
 ///
-/// # Integrity
+/// # As a Frame
 ///
-/// When a frame attribute is mutated *through* a FrameSet (via
-/// [`with_integrity`](FrameSet::with_integrity)), the FrameSet
-/// automatically compensates by composing a correction mapping into
-/// all edges that touch the current frame, so that the overall
-/// coordinate transformation remains consistent.
+/// Where a Frame is needed, a FrameSet presents its current Frame, so it
+/// can be used in place of its current Frame in most situations.
+/// Every Frame attribute read through the [`Frame`] trait is that of the
+/// current Frame: its number of axes, Title, Domain, Epoch, Digits, System,
+/// observer's position, MinAxes, MaxAxes, MatchEnd, PreserveAxes, Permute
+/// and ActiveUnit flag, and the per-axis Label, Symbol, Unit, Format,
+/// Digits, Direction, Top and Bottom.
+/// Its Ident is its own.
+/// The attributes a class adds, such as a SkyFrame's Equinox, are read
+/// through [`current`](FrameSet::current), and the set of them may change
+/// when a new current Frame is selected.
 ///
-/// [`frame_mut`](FrameSet::frame_mut) is the escape hatch that
-/// bypasses integrity enforcement.
+/// Setting or clearing a Frame attribute through the [`Frame`] trait sets
+/// or clears it on the current Frame, and keeps the FrameSet's integrity:
+/// when the change alters the coordinate system the current Frame
+/// describes, as changing a SkyFrame's System or a SpecFrame's Unit does,
+/// the Mapping from the old coordinate system to the new one is found and
+/// the current Frame is remapped through it
+/// ([`remap_frame`](FrameSet::remap_frame)), so that the coordinates every
+/// other Frame gives a position are unchanged and those of the current
+/// Frame follow its new definition.
+/// [`with_integrity`](FrameSet::with_integrity) makes any change to the
+/// current Frame in this way, including one to an attribute the Frame trait
+/// does not have.
+/// [`frame_mut`](FrameSet::frame_mut) is the escape hatch: a change made
+/// through it leaves the Mappings as they are, so the Frame is relabeled
+/// rather than converted.
+///
+/// # As a Mapping
+///
+/// Where a Mapping is needed, a FrameSet is the Mapping from its base Frame
+/// to its current Frame, so it converts "native" coordinates to "apparent"
+/// ones and back.
+/// Its [`nin`](Mapping::nin) is the number of axes of its base Frame and its
+/// [`nout`](Mapping::nout) that of its current Frame, and
+/// [`has_forward`](Mapping::has_forward),
+/// [`has_inverse`](Mapping::has_inverse) and
+/// [`is_linear`](Mapping::is_linear) are those of the Mapping between them,
+/// so selecting a new base or current Frame may change them.
+/// Inverting a FrameSet ([`invert`](Mapping::invert)) exchanges its base
+/// and current Frames, which reverses the Mapping and may change its other
+/// properties.
+/// [`is_inverted`](Mapping::is_inverted) is always false for a FrameSet.
+///
+/// A Region may be added to a FrameSet as a Frame.
+/// The Mapping between two Frames then includes the masking effect of any
+/// Region on the path between them, the two Frames themselves included.
+/// A Region inside a CmpFrame has no such effect here, since a CmpFrame is
+/// not a Mapping.
+///
+/// # Attributes
+///
+/// In addition to the attributes of its current Frame, a FrameSet has:
+///
+/// - [`all_variants`](FrameSet::all_variants): the variant Mappings stored
+///   with the current Frame.
+/// - [`set_base`](FrameSet::set_base): the base Frame.
+/// - [`set_current`](FrameSet::set_current): the current Frame.
+/// - [`nframe`](FrameSet::nframe): the number of Frames.
+/// - [`variant`](FrameSet::variant): the variant Mapping in use by the
+///   current Frame.
+///
+/// # Examples
+///
+/// ```
+/// use ast_core::frames::{BasicFrameBuilder, Frame, FrameRef, FrameSet};
+/// use ast_core::mappings::{Mapping, ZoomMap};
+///
+/// let pixel = BasicFrameBuilder::new(2).domain("PIXEL").build().unwrap();
+/// let mm = BasicFrameBuilder::new(2).domain("MM").build().unwrap();
+/// let mut fs = FrameSet::new(Box::new(pixel));
+/// fs.add_frame(FrameRef::Base, Box::new(ZoomMap::new(2, 0.5).unwrap()), Box::new(mm))
+///     .unwrap();
+/// assert_eq!(fs.nframe(), 2);
+/// assert_eq!(fs.domain(), "MM");
+/// assert_eq!(fs.tran2(&[4.0], &[6.0], true).unwrap(), (vec![2.0], vec![3.0]));
+///
+/// fs.set_current(FrameRef::Index(1)).unwrap();
+/// assert_eq!(fs.domain(), "PIXEL");
+/// ```
 pub struct FrameSet {
     frames: Vec<DynFrame>,
     edges: Vec<Edge>,
@@ -219,9 +305,13 @@ impl FrameSet {
     // Construction                                                        //
     // ------------------------------------------------------------------ //
 
-    /// Create a new `FrameSet` containing a single frame.
+    /// Create a FrameSet holding one Frame, which is both its base and its
+    /// current Frame; further Frames are added with
+    /// [`add_frame`](FrameSet::add_frame).
     ///
-    /// The frame serves as both the base and the current frame.
+    /// A FrameSet given as `base` is held as one Frame, which presents its
+    /// current Frame.
+    #[doc(alias = "astFrameSet")]
     pub fn new(base: DynFrame) -> Self {
         Self {
             frames: vec![base],
@@ -245,7 +335,10 @@ impl FrameSet {
     // Frame access                                                        //
     // ------------------------------------------------------------------ //
 
-    /// Number of frames in this FrameSet.
+    /// The number of Frames in the FrameSet: the Nframe attribute.
+    ///
+    /// It changes as Frames are added or removed, and is always at least 1.
+    #[doc(alias = "Nframe")]
     pub fn nframe(&self) -> usize {
         self.frames.len()
     }
@@ -260,27 +353,43 @@ impl FrameSet {
         self.current_idx
     }
 
-    /// Return a reference to the base frame.
+    /// The base Frame, the one the Base attribute selects; see
+    /// [`set_base`](FrameSet::set_base).
     pub fn base(&self) -> &dyn Frame {
         self.frames[self.base_idx].as_ref()
     }
 
-    /// Return a reference to the current frame.
+    /// The current Frame, the one the Current attribute selects; see
+    /// [`set_current`](FrameSet::set_current).
     pub fn current(&self) -> &dyn Frame {
         self.frames[self.current_idx].as_ref()
     }
 
-    /// Return a reference to a frame identified by [`FrameRef`].
+    /// A Frame of the FrameSet.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Frmin` when `which` is an index outside 1 to
+    ///   [`nframe`](FrameSet::nframe), or is [`FrameRef::AllFrames`].
+    #[doc(alias = "astGetFrame")]
     pub fn frame(&self, which: FrameRef) -> AstResult<&dyn Frame> {
         let idx = self.resolve(which)?;
         Ok(self.frames[idx].as_ref())
     }
 
-    /// Return a mutable reference to a frame — **escape hatch**.
+    /// A Frame of the FrameSet, to change: the escape hatch from the
+    /// FrameSet's integrity.
     ///
-    /// Mutations through this reference bypass integrity enforcement.
-    /// Use [`with_integrity`](FrameSet::with_integrity) instead when
-    /// the FrameSet's internal mappings should be kept consistent.
+    /// A change made through it leaves the FrameSet's Mappings as they are.
+    /// Use [`with_integrity`](FrameSet::with_integrity) to change the
+    /// current Frame and keep the Mappings consistent with it; see
+    /// [`FrameSet`].
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Frmin` when `which` is an index outside 1 to
+    ///   [`nframe`](FrameSet::nframe), or is [`FrameRef::AllFrames`].
+    #[doc(alias = "astGetFrame")]
     pub fn frame_mut(&mut self, which: FrameRef) -> AstResult<&mut dyn Frame> {
         let idx = self.resolve(which)?;
         Ok(self.frames[idx].as_mut())
@@ -290,7 +399,19 @@ impl FrameSet {
     // Base / current selection                                             //
     // ------------------------------------------------------------------ //
 
-    /// Set the base frame.
+    /// Select the base Frame: set the Base attribute.
+    ///
+    /// The Base attribute is the index of the Frame regarded as the base
+    /// Frame; [`base`](FrameSet::base) gives that Frame.
+    /// Inverting the FrameSet exchanges its Base and Current.
+    ///
+    /// Default: 1, the first Frame added.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Frmin` when `which` is an index outside 1 to
+    ///   [`nframe`](FrameSet::nframe), or is [`FrameRef::AllFrames`].
+    #[doc(alias = "Base")]
     pub fn set_base(&mut self, which: FrameRef) -> AstResult<()> {
         let idx = self.resolve(which)?;
         self.base_idx = idx;
@@ -298,7 +419,19 @@ impl FrameSet {
         Ok(())
     }
 
-    /// Set the current frame.
+    /// Select the current Frame: set the Current attribute.
+    ///
+    /// The Current attribute is the index of the Frame regarded as the
+    /// current Frame; [`current`](FrameSet::current) gives that Frame.
+    /// Inverting the FrameSet exchanges its Base and Current.
+    ///
+    /// Default: [`nframe`](FrameSet::nframe), the most recent Frame added.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Frmin` when `which` is an index outside 1 to
+    ///   [`nframe`](FrameSet::nframe), or is [`FrameRef::AllFrames`].
+    #[doc(alias = "Current")]
     pub fn set_current(&mut self, which: FrameRef) -> AstResult<()> {
         let idx = self.resolve(which)?;
         self.current_idx = idx;
@@ -306,25 +439,27 @@ impl FrameSet {
         Ok(())
     }
 
-    /// Whether the Base attribute is set. Mirrors `astTestBase`.
+    /// Whether the Base attribute is set; see
+    /// [`set_base`](FrameSet::set_base).
     pub fn test_base(&self) -> bool {
         self.base_set
     }
 
-    /// Clear the Base attribute, so the first frame is the base frame.
-    /// Mirrors `astClearBase`.
+    /// Clear the Base attribute, so that the first Frame is the base Frame;
+    /// see [`set_base`](FrameSet::set_base).
     pub fn clear_base(&mut self) {
         self.base_set = false;
         self.base_idx = 0;
     }
 
-    /// Whether the Current attribute is set. Mirrors `astTestCurrent`.
+    /// Whether the Current attribute is set; see
+    /// [`set_current`](FrameSet::set_current).
     pub fn test_current(&self) -> bool {
         self.current_set
     }
 
-    /// Clear the Current attribute, so the last frame is the current frame.
-    /// Mirrors `astClearCurrent`.
+    /// Clear the Current attribute, so that the last Frame is the current
+    /// Frame; see [`set_current`](FrameSet::set_current).
     pub fn clear_current(&mut self) {
         self.current_set = false;
         self.current_idx = self.frames.len() - 1;
@@ -334,15 +469,43 @@ impl FrameSet {
     // Graph mutation                                                       //
     // ------------------------------------------------------------------ //
 
-    /// Add a new frame to the FrameSet.
+    /// Add a Frame to the FrameSet to define a new coordinate system,
+    /// derived from the one the `anchor` Frame describes.
     ///
-    /// The new frame is connected to `anchor` via `map`. After this call
-    /// the newly added frame becomes the current frame.
+    /// `map` converts coordinates from the `anchor` Frame's coordinate
+    /// system to the new one with its forward transformation, and back with
+    /// its inverse.
+    /// The new Frame becomes the current Frame.
+    /// Any class of Frame may be added, including a Region.
     ///
-    /// As a special case, when `anchor` is [`FrameRef::AllFrames`] the `map`
-    /// argument is **ignored** and the supplied frame's axes are appended to
-    /// *every* frame in the set (see `append_axes`); this mirrors
-    /// C `astAddFrame` with `iframe == AST__ALLFRAMES` (frameset.c:1336).
+    /// Two cases are special:
+    ///
+    /// - When `new_frame` is itself a FrameSet, the two FrameSets are
+    ///   merged, as [`add_frameset`](FrameSet::add_frameset) does: `map`
+    ///   converts from the `anchor` Frame to that FrameSet's current Frame,
+    ///   which becomes the current Frame.
+    /// - When `anchor` is [`FrameRef::AllFrames`], `map` is ignored and the
+    ///   axes of `new_frame` are appended to every Frame: each Frame is
+    ///   replaced by a [`CmpFrame`](crate::frames::CmpFrame) of itself and
+    ///   `new_frame`, and each Mapping by a parallel
+    ///   [`CmpMap`](crate::mappings::CmpMap) of itself and a
+    ///   [`UnitMap`](crate::mappings::UnitMap) with as many axes as
+    ///   `new_frame`, simplified.
+    ///
+    /// A FrameSet given as `map` is used as the Mapping from its base Frame
+    /// to its current Frame.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Frmin` when `anchor` is an index outside 1 to
+    ///   [`nframe`](FrameSet::nframe).
+    /// - `ErrorCode::Ncpin` when the [`nin`](Mapping::nin) of `map` is not
+    ///   the number of axes of the `anchor` Frame, or its
+    ///   [`nout`](Mapping::nout) is not that of `new_frame`.
+    /// - Passes on the error of building or simplifying the Mappings when
+    ///   appending axes.
+    #[doc(alias = "astAddFrame")]
+    // C: frameset.c `AddFrame`; the AST__ALLFRAMES case is at 1336.
     pub fn add_frame(
         &mut self,
         anchor: FrameRef,
@@ -402,13 +565,25 @@ impl FrameSet {
         Ok(())
     }
 
-    /// Add every Frame of `other` to the FrameSet, connecting `anchor` to
-    /// the current Frame of `other` via `map`; the current Frame of `other`
-    /// becomes the current Frame. Mirrors the FrameSet branch of C
-    /// `astAddFrame` (frameset.c:1360-1620): the Frames and nodes of `other`
-    /// are appended, its tree is re-rooted at its current Frame by reversing
-    /// each link on the path from that Frame to its first node, and the new
-    /// link is made from `anchor`.
+    /// Merge `other` into the FrameSet.
+    ///
+    /// The Frames of `other` are appended, in order, keeping the Mappings
+    /// between them, and `map` relates the `anchor` Frame to the current
+    /// Frame of `other`, which becomes the current Frame.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Frmin` when `anchor` is an index outside 1 to
+    ///   [`nframe`](FrameSet::nframe), or is [`FrameRef::AllFrames`].
+    /// - `ErrorCode::Ncpin` when the [`nin`](Mapping::nin) of `map` is not
+    ///   the number of axes of the `anchor` Frame, or its
+    ///   [`nout`](Mapping::nout) is not that of the current Frame of
+    ///   `other`.
+    #[doc(alias = "astAddFrame")]
+    // C: the FrameSet branch of frameset.c `AddFrame` (1360-1620): the
+    // Frames and nodes of `other` are appended, its tree is re-rooted at
+    // its current Frame by reversing each link on the path from that Frame
+    // to its first node, and the new link is made from `anchor`.
     pub fn add_frameset(
         &mut self,
         anchor: FrameRef,
@@ -526,11 +701,25 @@ impl FrameSet {
         Ok(())
     }
 
-    /// Remove a frame from the FrameSet.
+    /// Remove a Frame from the FrameSet.
     ///
-    /// The last remaining frame cannot be removed.
-    /// If the removed frame was base or current, those are reset to
-    /// the first remaining frame.
+    /// The other Frames are renumbered from 1 if necessary, but are
+    /// otherwise unchanged, and so are the relationships between them, even
+    /// those that depended on the Frame removed.
+    /// Removing the base or current Frame clears the Base or Current
+    /// attribute, so that another Frame takes its role by default; removing
+    /// any other Frame leaves the base and current Frames the same.
+    /// Any Frame that mirrored the removed Frame's variant Mappings no
+    /// longer mirrors.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Remin` when the FrameSet has only one Frame.
+    /// - `ErrorCode::Frmin` when `which` is an index outside 1 to
+    ///   [`nframe`](FrameSet::nframe), or is [`FrameRef::AllFrames`].
+    /// - Passes on the error of simplifying the Mappings joined where the
+    ///   Frame was.
+    #[doc(alias = "astRemoveFrame")]
     pub fn remove_frame(&mut self, which: FrameRef) -> AstResult<()> {
         if self.frames.len() <= 1 {
             return Err(AstError::new_tracked(
@@ -594,16 +783,36 @@ impl FrameSet {
         Ok(())
     }
 
-    /// Modify a Frame's relationship to other Frames in the FrameSet.
+    /// Modify a Frame's relationship to the other Frames in the FrameSet.
     ///
-    /// Mirrors C `astRemapFrame` (frameset.c:8486). The supplied `map`
-    /// describes how the new (modified) frame relates to the old (pre-
-    /// modification) frame: forward direction takes old-frame coords
-    /// into new-frame coords. The old node retains its position in the
-    /// graph; a new node is created associated with the named frame
-    /// (so subsequent mappings touch the new node), with `map` as the
-    /// link from old to new. Then `tidy_nodes` is
-    /// run to collapse any redundant nodes left in the graph.
+    /// `map` converts coordinates from the Frame's original coordinate
+    /// system to the new one with its forward transformation, and back with
+    /// its inverse.
+    /// This might be needed when the FrameSet calibrates an image that is
+    /// then re-binned: the image's Frame has undergone a coordinate
+    /// transformation, which is communicated to the FrameSet this way.
+    /// The relationships between the other Frames are unchanged.
+    /// It cannot change the number of axes of a Frame: add a new Frame and
+    /// remove the old one for that.
+    /// For a change of axis order, [`perm_axes`](FrameSet::perm_axes) may be
+    /// simpler.
+    ///
+    /// The Frame's variant Mappings, except the one in use, are removed
+    /// (see [`variant`](FrameSet::variant)), even when the remapping then
+    /// fails; a Frame that mirrors another's variants keeps the mirror.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Frmin` when `which` is an index outside 1 to
+    ///   [`nframe`](FrameSet::nframe), or is [`FrameRef::AllFrames`].
+    /// - `ErrorCode::Ncpin` when the [`nin`](Mapping::nin) or
+    ///   [`nout`](Mapping::nout) of `map` is not the Frame's number of axes.
+    /// - Passes on the error of simplifying the Mappings joined by the
+    ///   remapping.
+    #[doc(alias = "astRemapFrame")]
+    // C: frameset.c `RemapFrame` (8486). The old node keeps its place in
+    // the graph and the Frame moves to a new node linked to it by `map`;
+    // `tidy_nodes` then collapses any node left redundant.
     pub fn remap_frame(&mut self, which: FrameRef, map: DynMapping) -> AstResult<()> {
         let idx = self.resolve(which)?;
         // C clears the Variant of the Frame before remapping it, since its
@@ -804,16 +1013,29 @@ impl FrameSet {
     // Path finding and mapping composition                                //
     // ------------------------------------------------------------------ //
 
-    /// Get the compound mapping between two frames.
+    /// A Mapping that converts coordinates between two Frames of the
+    /// FrameSet.
     ///
-    /// Uses BFS to find the shortest path from `from` to `to` in the
-    /// undirected frame graph, then composes the edge mappings along that
-    /// path. As C's `Span` does (frameset.c:10263), a Frame on the path that
-    /// is not equivalent to a UnitMap (`is_unit_frame`), such as a Region, is
-    /// included as a Mapping at its node, the two end Frames among them, so
-    /// the result clips to any Region it passes through. For two equal
-    /// Frames the result is that Frame's Mapping, a UnitMap unless it is
-    /// such a Frame (frameset.c:5436-5450).
+    /// Its forward transformation converts from the coordinate system of
+    /// `from` to that of `to`, and its inverse back.
+    /// It includes the masking effect of any Region on the path between the
+    /// two Frames, the two Frames themselves included.
+    /// For the same Frame at both ends, it is a
+    /// [`UnitMap`](crate::mappings::UnitMap), unless that Frame is a Region.
+    /// A Mapping can always be made, but it may not be able to perform the
+    /// conversion: [`has_forward`](Mapping::has_forward) and
+    /// [`has_inverse`](Mapping::has_inverse) tell.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Frmin` when `from` or `to` is an index outside 1 to
+    ///   [`nframe`](FrameSet::nframe), or is [`FrameRef::AllFrames`].
+    /// - Passes on the error of composing the Mappings on the path.
+    #[doc(alias = "astGetMapping")]
+    // C: frameset.c `GetMapping` and `Span` (10263); the same-Frame case is
+    // at 5436-5450. The path is found breadth-first, and a Frame on it that
+    // is not equivalent to a UnitMap (`is_unit_frame`) is included as a
+    // Mapping at its node.
     pub fn mapping(&self, from: FrameRef, to: FrameRef) -> AstResult<DynMapping> {
         let from_idx = self.resolve(from)?;
         let to_idx = self.resolve(to)?;
@@ -848,17 +1070,24 @@ impl FrameSet {
     // Integrity                                                           //
     // ------------------------------------------------------------------ //
 
-    /// Mutate the current frame with integrity enforcement.
+    /// Change the current Frame with `f`, keeping the FrameSet's integrity.
     ///
-    /// Takes a snapshot of the current frame, applies `f` to mutate it,
-    /// then computes the correction mapping via `map_from` and adds a
-    /// new node carrying the delta as a fresh edge (mirrors C
-    /// `astRemapFrame` + `TidyNodes`, frameset.c:8486 / 11076).
-    /// `tidy_nodes` runs at the end to collapse any node that became
-    /// redundant — combining and simplifying the bridged mapping in
-    /// the process, which is where adjacent inverse pairs (e.g.
-    /// Hfk5z+Fk5hz from a SetSystem ICRS → FK5 → ICRS round-trip)
-    /// finally cancel.
+    /// After `f` has run, the Mapping from the current Frame's old
+    /// coordinate system to its new one is found and, unless it is a
+    /// [`UnitMap`](crate::mappings::UnitMap), the current Frame is remapped
+    /// through it with [`remap_frame`](FrameSet::remap_frame), which also
+    /// drops its variant Mappings but the one in use.
+    /// Setting a Frame attribute through the [`Frame`] trait on a FrameSet
+    /// does this; see [`FrameSet`].
+    ///
+    /// # Errors
+    ///
+    /// Passes on the error of `f`, of finding or simplifying the Mapping
+    /// between the old and new Frame, or of the remapping.
+    // C: frameset.c `RestoreIntegrity`, which calls `astRemapFrame` (8486)
+    // and so `TidyNodes` (11076); simplifying the joined Mappings there is
+    // where inverse pairs from a round trip such as ICRS -> FK5 -> ICRS
+    // cancel.
     pub fn with_integrity<F>(&mut self, f: F) -> AstResult<()>
     where
         F: FnOnce(&mut dyn Frame) -> AstResult<()>,
@@ -939,14 +1168,28 @@ impl FrameSet {
     }
 
     /// Store a new variant Mapping for the current Frame, or rename the
-    /// currently-selected variant. Mirrors C `astAddVariant` (frameset.c:1645).
+    /// variant in use.
     ///
-    /// `map` converts coordinates from the current Frame to the new variant of
-    /// the current Frame. If `None`, the currently-selected variant is simply
-    /// renamed to `name`. The new variant becomes current on exit.
+    /// `map` converts coordinates from the current Frame to the new variant
+    /// of it.
+    /// With no `map`, the variant in use is renamed `name` and no variant is
+    /// added.
+    /// The variant named becomes the one in use, as
+    /// [`set_variant`](FrameSet::set_variant) makes it.
+    /// `name` is stored with leading and trailing white space removed and
+    /// letters in upper case.
+    /// See [`variant`](FrameSet::variant) for what variants are.
     ///
-    /// Errors if the current Frame is a mirror (`Mirro`) or a variant with the
-    /// given name already exists (`Bdvnm`).
+    /// # Errors
+    ///
+    /// - `ErrorCode::Mirro` when the current Frame mirrors another's
+    ///   variants ([`mirror_variants`](FrameSet::mirror_variants)).
+    /// - `ErrorCode::Bdvnm` when the current Frame already has a variant
+    ///   named `name`.
+    /// - Passes on the error of finding the Mapping from the current Frame
+    ///   to its variants, or of selecting the variant.
+    #[doc(alias = "astAddVariant")]
+    // C: frameset.c `AddVariant` (1645).
     pub fn add_variant(&mut self, map: Option<DynMapping>, name: &str) -> AstResult<()> {
         let icur = self.current_idx; // 0-based
 
@@ -1027,10 +1270,19 @@ impl FrameSet {
         Ok(())
     }
 
-    /// Select a named variant of the current Frame, re-mapping the FrameSet so
-    /// its transform reflects the chosen variant. Mirrors C `SetVariant`
-    /// (frameset.c:9894). Errors (`Attin`) if the current Frame has no variant
-    /// with the given name.
+    /// Select the variant Mapping the current Frame uses; see
+    /// [`variant`](FrameSet::variant).
+    ///
+    /// `name` is compared with leading and trailing white space removed,
+    /// ignoring case.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Attin` when the current Frame has no variant named
+    ///   `name`; with no variants, its only one is named by its Domain.
+    /// - Passes on the error of finding the Mappings between the variants
+    ///   and the current Frame, or of the remapping.
+    // C: frameset.c `SetVariant` (9894).
     pub fn set_variant(&mut self, name: &str) -> AstResult<()> {
         let icur = self.current_idx;
         let owner = self.get_var_frm(icur + 1) - 1; // 0-based variant owner
@@ -1105,10 +1357,42 @@ impl FrameSet {
         Ok(())
     }
 
-    /// Name of the currently-selected variant of the current Frame. Mirrors C
-    /// `GetVariant` (frameset.c:6041): the Domain of the (mirror-resolved)
-    /// Variants FrameSet's current frame, or the current Frame's own Domain
-    /// when it has no variants.
+    /// The name of the variant Mapping in use by the current Frame: the
+    /// Variant attribute.
+    ///
+    /// By default each Frame is connected to the others by one Mapping,
+    /// which only [`remap_frame`](FrameSet::remap_frame) changes.
+    /// A Frame may instead have several variant Mappings, each with a name,
+    /// and selecting one with [`set_variant`](FrameSet::set_variant) remaps
+    /// the current Frame to use it.
+    ///
+    /// For instance, an image made by co-adding images of two parts of the
+    /// sky has two sky positions in each pixel, so its WCS could hold two
+    /// SkyFrames.
+    /// Software often finds a SkyFrame by its Domain, `"SKY"`, rather than
+    /// its class, so the two cannot be told apart by giving them different
+    /// Domains; instead one SkyFrame can be added with two variant Mappings,
+    /// and the variant selected decides which part of the sky it describes.
+    /// Any class of Frame can have variants.
+    ///
+    /// A Frame is added as usual with [`add_frame`](FrameSet::add_frame),
+    /// whose Mapping is the variant named by the Frame's Domain;
+    /// [`add_variant`](FrameSet::add_variant) with no Mapping renames it,
+    /// and with a Mapping adds a further variant.
+    /// Each Frame has its own variants, and to work with a Frame's variants
+    /// it must be the current Frame.
+    /// [`mirror_variants`](FrameSet::mirror_variants) lets another Frame
+    /// share them.
+    /// [`clear_variant`](FrameSet::clear_variant) removes all but the one in
+    /// use, as remapping the Frame does,
+    /// [`test_variant`](FrameSet::test_variant) tells whether the current
+    /// Frame has variants, and [`all_variants`](FrameSet::all_variants)
+    /// lists them.
+    ///
+    /// Default: the Domain of the current Frame, when it has no variants.
+    #[doc(alias = "Variant")]
+    // C: frameset.c `GetVariant` (6041): the Domain of the current Frame
+    // of the (mirror-resolved) Variants FrameSet.
     pub fn variant(&self) -> String {
         let owner = self.get_var_frm(self.current_idx + 1) - 1;
         match &self.frame_variants[owner] {
@@ -1117,25 +1401,29 @@ impl FrameSet {
         }
     }
 
-    /// Whether the current Frame has an explicitly-set variant (i.e. owns a
-    /// Variants FrameSet). Mirrors C `TestVariant` (frameset.c:11010).
+    /// Whether the current Frame has variant Mappings, its own or those of a
+    /// Frame it mirrors; see [`variant`](FrameSet::variant).
+    // C: frameset.c `TestVariant` (11010).
     pub fn test_variant(&self) -> bool {
         let owner = self.get_var_frm(self.current_idx + 1) - 1;
         self.frame_variants[owner].is_some()
     }
 
-    /// Clear all variants from the current Frame, reverting to its single
-    /// default calibration. Mirrors C `ClearVariant` (frameset.c:2905), which
-    /// sets the Frame's Variants FrameSet pointer to NULL.
+    /// Remove the variant Mappings of the current Frame, or of the Frame it
+    /// mirrors, except the one in use; see [`variant`](FrameSet::variant).
+    // C: frameset.c `ClearVariant` (2905).
     pub fn clear_variant(&mut self) {
         let owner = self.get_var_frm(self.current_idx + 1) - 1;
         self.frame_variants[owner] = None;
     }
 
-    /// Space-separated list of all variant names available for the current
-    /// Frame. Mirrors C `GetAllVariants` (frameset.c:6864): the Domains of the
-    /// (mirror-resolved) Variants FrameSet's member frames, or just the current
-    /// Frame's Domain when it has no variants.
+    /// The names of all the variant Mappings of the current Frame,
+    /// separated by spaces: the read-only AllVariants attribute.
+    ///
+    /// With no variants it is the Domain of the current Frame; see
+    /// [`variant`](FrameSet::variant).
+    #[doc(alias = "AllVariants")]
+    // C: frameset.c `GetAllVariants` (6864).
     pub fn all_variants(&self) -> String {
         let owner = self.get_var_frm(self.current_idx + 1) - 1;
         match &self.frame_variants[owner] {
@@ -1152,10 +1440,26 @@ impl FrameSet {
         }
     }
 
-    /// Make the current Frame mirror the variants of another Frame. Mirrors C
-    /// `astMirrorVariants` (frameset.c:7468): the current Frame's variant
-    /// access then forwards to `which`'s. Passing the current frame itself (or
-    /// the same index) disables mirroring.
+    /// Make the current Frame mirror the variant Mappings of another Frame.
+    ///
+    /// All access to the variants of the current Frame is then forwarded to
+    /// `which`: selecting a variant applies to `which` rather than the
+    /// current Frame, and [`variant`](FrameSet::variant) reports that of
+    /// `which`.
+    /// This propagates the effect of variant Mappings around a FrameSet:
+    /// a Frame added by connecting it to one with several variant Mappings
+    /// can mirror it, so that a variant can be selected through either.
+    /// Mirrors can be chained: a mirror of a mirror of `A` mirrors `A`.
+    /// While mirroring, the current Frame's own variants are ignored and
+    /// [`add_variant`](FrameSet::add_variant) fails.
+    /// Giving the current Frame itself ends any mirroring.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Frmin` when `which` is an index outside 1 to
+    ///   [`nframe`](FrameSet::nframe), or is [`FrameRef::AllFrames`].
+    #[doc(alias = "astMirrorVariants")]
+    // C: frameset.c `MirrorVariants` (7468).
     pub fn mirror_variants(&mut self, which: FrameRef) -> AstResult<()> {
         let icur = self.current_idx;
         let target = self.resolve(which)?; // 0-based
@@ -1163,12 +1467,21 @@ impl FrameSet {
         Ok(())
     }
 
-    /// Permute the axes of the current frame.
+    /// Permute the axes of the current Frame, and remap it so that each
+    /// coordinate value stays with its axis.
     ///
-    /// `perm` is a 1-based permutation array. This:
-    /// 1. Permutes the current frame's per-axis data
-    /// 2. Composes a PermMap onto the base→current edge so coordinate
-    ///    values are reordered to match the new axis assignment
+    /// `perm` lists the 1-based axes in their new order; see
+    /// [`Frame::perm_axes`].
+    /// The current Frame is remapped through a
+    /// [`PermMap`](crate::mappings::PermMap), as
+    /// [`remap_frame`](FrameSet::remap_frame) does, so its variant Mappings
+    /// but the one in use are removed.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Prmin` when `perm` is not a permutation of the current
+    ///   Frame's axes.
+    /// - Passes on the error of permuting the Frame or of the remapping.
     pub fn perm_axes(&mut self, perm: &[usize]) -> AstResult<()> {
         let naxes = self.current().naxes();
         super::validate_permutation(perm, naxes)?;
@@ -1515,8 +1828,8 @@ impl Frame for FrameSet {
         self.current().is_unit_frame()
     }
 
-    /// frameset.c `PermAxes`: the current Frame's axes are permuted and it
-    /// is remapped so the FrameSet's Mappings follow.
+    /// The same as [`FrameSet::perm_axes`].
+    // C: frameset.c `PermAxes`.
     fn perm_axes(&mut self, perm: &[usize]) -> AstResult<()> {
         FrameSet::perm_axes(self, perm)
     }

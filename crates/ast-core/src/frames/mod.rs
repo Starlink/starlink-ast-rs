@@ -365,8 +365,8 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// This is the number of dimensions of the coordinate space the Frame
     /// describes, fixed when the Frame is created.
     ///
-    /// - FrameSet: the Naxes of its current Frame.
-    /// - CmpFrame: the sum of the Naxes of its two component Frames.
+    /// - FrameSet: see [`FrameSet`].
+    /// - CmpFrame: see [`CmpFrame`].
     #[doc(alias = "Naxes")]
     fn naxes(&self) -> usize;
 
@@ -815,8 +815,11 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// Default: `"<n>-d coordinate system"`, where `<n>` is
     /// [`naxes`](Frame::naxes).
     ///
-    /// - CmpFrame: the default is `"<n>-d compound coordinate system"`.
-    /// - FrameSet: the Title of its current Frame.
+    /// - CmpFrame: see [`CmpFrame`].
+    /// - FrameSet: see [`FrameSet`].
+    /// - FluxFrame: see [`FluxFrame`].
+    /// - SpecFluxFrame: see [`SpecFluxFrame`].
+    /// - TimeFrame: see [`TimeFrame`].
     ///
     /// # Errors
     ///
@@ -847,12 +850,11 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// - SkyFrame: see [`SkyFrame::domain`].
     /// - SpecFrame: see [`SpecFrame`].
     /// - DSBSpecFrame: see [`DSBSpecFrame::domain`].
-    /// - FluxFrame: `"FLUX"`.
-    /// - SpecFluxFrame: `"SPECTRUM-FLUX"`.
-    /// - TimeFrame: `"TIME"`.
-    /// - CmpFrame: `"<dom1>-<dom2>"`, from the Domains of its two component
-    ///   Frames, or `"CMP"` when both are blank.
-    /// - FrameSet: the Domain of its current Frame.
+    /// - FluxFrame: see [`FluxFrame`].
+    /// - SpecFluxFrame: see [`SpecFluxFrame`].
+    /// - TimeFrame: see [`TimeFrame`].
+    /// - CmpFrame: see [`CmpFrame`].
+    /// - FrameSet: see [`FrameSet`].
     #[doc(alias = "Domain")]
     fn domain(&self) -> &str;
     /// Set the Domain, removing white space and upper-casing letters; see
@@ -879,17 +881,10 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     ///
     /// - Frame: the plain Frame makes no use of the Epoch, as it does not
     ///   distinguish between Cartesian coordinate systems.
-    /// - CmpFrame: the default is the Epoch of the first component Frame if
-    ///   set there, else that of the second if set there, else the first
-    ///   component's default; setting or clearing the Epoch of a CmpFrame
-    ///   sets or clears it in both components.
-    /// - FrameSet: the Epoch of its current Frame.
+    /// - CmpFrame: see [`CmpFrame`].
+    /// - FrameSet: see [`FrameSet`].
     /// - SkyFrame: see [`SkyFrame::epoch_mjd`].
-    /// - TimeFrame: a time axis is not characterized by one Epoch, so the
-    ///   TimeFrame makes no use of it, though user code may use it for a
-    ///   "typical" time.
-    ///   The default is the TDB equivalent of the TimeOrigin if set, else
-    ///   J2000.0.
+    /// - TimeFrame: see [`TimeFrame::epoch_mjd`].
     #[doc(alias = "Epoch")]
     fn epoch_mjd(&self) -> f64;
     /// Set the Epoch, as a TDB Modified Julian Date; see
@@ -915,8 +910,8 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// Default: 7.
     /// A value below 1 is stored as 1.
     ///
-    /// - FrameSet: the Digits of its current Frame.
-    /// - TimeFrame: ignored when a value is formatted as a date and time.
+    /// - FrameSet: see [`FrameSet`].
+    /// - TimeFrame: see [`TimeFrame`].
     #[doc(alias = "Digits")]
     fn digits(&self) -> i32;
     /// Set the Frame's Digits, stored as at least 1; see
@@ -937,8 +932,7 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// Default: 0.
     ///
     /// - SpecFrame: see [`SpecFrame`].
-    /// - TimeFrame: with ObsLon, it is used when converting between some
-    ///   time scales (TDB, TCB, LMST, LAST).
+    /// - TimeFrame: see [`TimeFrame`].
     #[doc(alias = "ObsLat")]
     fn obs_lat(&self) -> f64;
     /// Set ObsLat, in radians; see [`obs_lat`](Frame::obs_lat).
@@ -959,8 +953,7 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// Default: 0.
     ///
     /// - SpecFrame: see [`SpecFrame`].
-    /// - TimeFrame: with ObsLat, it is used when converting between some
-    ///   time scales (TDB, TCB, LMST, LAST).
+    /// - TimeFrame: see [`TimeFrame`].
     #[doc(alias = "ObsLon")]
     fn obs_lon(&self) -> f64;
     /// Set ObsLon, in radians; see [`obs_lon`](Frame::obs_lon).
@@ -980,8 +973,7 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// Default: 0.
     ///
     /// - SpecFrame: see [`SpecFrame`].
-    /// - TimeFrame: with ObsLon and ObsLat, it is used when converting
-    ///   between some time scales (TDB, TCB, LMST, LAST).
+    /// - TimeFrame: see [`TimeFrame`].
     #[doc(alias = "ObsAlt")]
     fn obs_alt(&self) -> f64;
     /// Set ObsAlt, in meters; see [`obs_alt`](Frame::obs_alt).
@@ -1050,28 +1042,12 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// [`BasicFrame::set_system`] and [`SkyFrame::set_system`].
     ///
     /// - Frame: always `"Cartesian"`, and cannot be altered.
-    /// - CmpFrame: always `"Compound"`, and cannot be altered.
-    /// - FrameSet: the System of its current Frame.
+    /// - CmpFrame: see [`CmpFrame`].
+    /// - FrameSet: see [`FrameSet`].
     /// - SkyFrame: see [`SkyFrame::system`].
     /// - SpecFrame: see [`SpecFrame::system`].
-    /// - TimeFrame (default `"MJD"`), with the default Unit in parentheses:
-    ///   `"MJD"`, Modified Julian Date (d); `"JD"`, Julian Date (d);
-    ///   `"JEPOCH"`, Julian epoch (yr); `"BEPOCH"`, Besselian epoch (yr).
-    ///   Other units are allowed for all but BEPOCH, converted by simple
-    ///   scaling (1 yr = 365.25 d, 1 d = 24 h, 1 h = 60 min, 1 min = 60 s);
-    ///   Besselian epochs use tropical years of 365.2422 days, so selecting
-    ///   BEPOCH sets the Unit to `"yr"` and a later change of Unit is an
-    ///   error.
-    ///   A TimeFrame always uses active units, so changing its Unit re-maps
-    ///   it within its FrameSet.
-    /// - FluxFrame, with the default Unit in parentheses: `"FLXDN"`, flux
-    ///   per unit frequency (W/m^2/Hz); `"FLXDNW"`, flux per unit wavelength
-    ///   (W/m^2/Angstrom); `"SFCBR"`, surface brightness in frequency units
-    ///   (W/m^2/Hz/arcmin**2); `"SFCBRW"`, surface brightness in wavelength
-    ///   units (W/m^2/Angstrom/arcmin**2).
-    ///   With a Unit set and no System, the System follows from the Unit,
-    ///   and reading it is an error if the Unit suits none of them; with
-    ///   neither set, the System is FLXDN and the Unit W/m^2/Hz.
+    /// - TimeFrame: see [`TimeFrame::system`].
+    /// - FluxFrame: see [`FluxFrame::system`].
     ///
     /// # Errors
     ///
@@ -1146,11 +1122,8 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     ///
     /// Default: [`naxes`](Frame::naxes).
     ///
-    /// - CmpFrame: the default is 0, which with the MaxAxes default of
-    ///   1000000 lets a CmpFrame template match any target made of a subset
-    ///   of its axes; set both to the number of axes to match only Frames of
-    ///   that size.
-    /// - FrameSet: the MinAxes of its current Frame.
+    /// - CmpFrame: see [`CmpFrame`].
+    /// - FrameSet: see [`FrameSet`].
     #[doc(alias = "MinAxes")]
     fn min_axes(&self) -> usize;
     /// Set MinAxes; see [`min_axes`](Frame::min_axes).
@@ -1176,11 +1149,8 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     ///
     /// Default: [`naxes`](Frame::naxes).
     ///
-    /// - CmpFrame: the default is 1000000, which with the MinAxes default of
-    ///   0 lets a CmpFrame template match any target made of a subset of its
-    ///   axes; set both to the number of axes to match only Frames of that
-    ///   size.
-    /// - FrameSet: the MaxAxes of its current Frame.
+    /// - CmpFrame: see [`CmpFrame`].
+    /// - FrameSet: see [`FrameSet`].
     #[doc(alias = "MaxAxes")]
     fn max_axes(&self) -> usize;
     /// Set MaxAxes; see [`max_axes`](Frame::max_axes).
@@ -1201,7 +1171,7 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     ///
     /// Default: false.
     ///
-    /// - FrameSet: the MatchEnd of its current Frame.
+    /// - FrameSet: see [`FrameSet`].
     #[doc(alias = "MatchEnd")]
     fn match_end(&self) -> bool;
     /// Set MatchEnd; see [`match_end`](Frame::match_end).
@@ -1221,7 +1191,7 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     ///
     /// Default: false, so the Frame found resembles the template.
     ///
-    /// - FrameSet: the PreserveAxes of its current Frame.
+    /// - FrameSet: see [`FrameSet`].
     #[doc(alias = "PreserveAxes")]
     fn preserve_axes(&self) -> bool;
     /// Set PreserveAxes; see [`preserve_axes`](Frame::preserve_axes).
@@ -1246,7 +1216,7 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// - Frame: the plain Frame behaves as if Permute were true whatever its
     ///   value, since its axes cannot be told apart and match any other
     ///   Frame in any order.
-    /// - FrameSet: the Permute of its current Frame.
+    /// - FrameSet: see [`FrameSet`].
     #[doc(alias = "Permute")]
     fn permute(&self) -> bool;
     /// Set Permute; see [`permute`](Frame::permute).
@@ -1305,10 +1275,11 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     ///
     /// - SkyFrame: see [`SkyFrame::set_active_unit`].
     /// - SpecFrame: see [`SpecFrame::set_active_unit`].
-    /// - TimeFrame and FluxFrame: always true; the value given is ignored.
-    /// - CmpFrame: unless set, true if either component Frame uses active
-    ///   units; the value given is also set on both component Frames.
-    /// - FrameSet and Region: the flag of the Frame they present.
+    /// - TimeFrame: see [`TimeFrame::get_active_unit`].
+    /// - FluxFrame: see [`FluxFrame::get_active_unit`].
+    /// - CmpFrame: see [`CmpFrame::get_active_unit`].
+    /// - FrameSet: see [`FrameSet`].
+    /// - Region: the flag of the Frame it presents.
     #[doc(alias = "astSetActiveUnit")]
     fn set_active_unit(&mut self, value: bool);
     /// Whether the ActiveUnit flag has been set.
@@ -1334,8 +1305,9 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// - SkyFrame: see [`SkyFrame::label`].
     /// - SpecFrame: see [`SpecFrame::label`].
     /// - DSBSpecFrame: see [`DSBSpecFrame::label`].
-    /// - TimeFrame: a default suited to the time system.
-    /// - FrameSet: the Label of the axis of its current Frame.
+    /// - TimeFrame: see [`TimeFrame::label`].
+    /// - FluxFrame: see [`FluxFrame::label`].
+    /// - FrameSet: see [`FrameSet`].
     ///
     /// # Errors
     ///
@@ -1366,8 +1338,9 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     ///
     /// - SkyFrame: see [`SkyFrame::symbol`].
     /// - SpecFrame: see [`SpecFrame::symbol`].
-    /// - TimeFrame: a default suited to the time system.
-    /// - FrameSet: the Symbol of the axis of its current Frame.
+    /// - TimeFrame: see [`TimeFrame::symbol`].
+    /// - FluxFrame: see [`FluxFrame::symbol`].
+    /// - FrameSet: see [`FrameSet`].
     ///
     /// # Errors
     ///
@@ -1398,10 +1371,9 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     ///
     /// - SkyFrame: see [`SkyFrame::unit`].
     /// - SpecFrame: see [`SpecFrame::unit`].
-    /// - TimeFrame: a default suited to the System; a Unit that does not
-    ///   suit it, such as `"km"`, is an error, and a Besselian epoch takes
-    ///   only `"yr"` (`ErrorCode::Attin` from `set_unit`).
-    /// - FrameSet: the Unit of the axis of its current Frame.
+    /// - TimeFrame: see [`TimeFrame::unit`].
+    /// - FluxFrame: see [`FluxFrame::unit`].
+    /// - FrameSet: see [`FrameSet`].
     ///
     /// # Errors
     ///
@@ -1410,8 +1382,8 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     #[doc(alias = "Unit")]
     fn unit(&self, axis: usize) -> AstResult<String>;
     /// Set `Unit(axis)`; see [`unit`](Frame::unit).
-    /// TimeFrame and FluxFrame also record it against their System, as
-    /// [`SpecFrame::set_unit`] does.
+    /// SpecFrame and FluxFrame also record it against their System; see
+    /// [`SpecFrame::set_unit`] and [`FluxFrame::set_unit`].
     fn set_unit(&mut self, axis: usize, unit: &str) -> AstResult<()>;
     /// Whether `Unit(axis)` is set; see [`unit`](Frame::unit).
     fn test_unit(&self, axis: usize) -> AstResult<bool>;
@@ -1431,30 +1403,11 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     ///
     /// - Frame: a C `printf` format specification, such as `"%1.7G"`, for
     ///   formatting one value as a double precision number.
-    /// - FrameSet: the Format of the axis of its current Frame, whose class
-    ///   also decides the syntax.
+    /// - FrameSet: see [`FrameSet`].
     /// - SkyFrame: a syntax and default for sexagesimal values suited to the
     ///   celestial coordinate system; see [`SkyFrame::format_str`].
     /// - TimeFrame: the Frame syntax, extended to format values as Gregorian
-    ///   calendar dates and times, described below.
-    ///
-    /// # TimeFrame formats
-    ///
-    /// A TimeFrame Format is either a Frame (`printf`) format, the default,
-    /// or the `iso` syntax:
-    ///
-    /// - A `printf` format such as `"%1.7G"` formats the value as it is: an
-    ///   offset from the TimeOrigin in units of the Unit.
-    /// - A Format starting with `iso` converts the value to an absolute MJD,
-    ///   adding the TimeOrigin, and formats it as a Gregorian date
-    ///   `yyyy-mm-dd`.
-    ///   A precision after it (`iso.2`) appends the time of day with that
-    ///   many decimal places in the seconds (`iso.0` gives `hh:mm:ss`,
-    ///   `iso.2` gives `hh:mm:ss.ss`); without one, the date is rounded to
-    ///   the nearest day.
-    ///   Date and time are separated by a space, or by `T` if the Format
-    ///   ends with `T`.
-    ///   Digits is ignored for this syntax.
+    ///   calendar dates and times; see [`TimeFrame`](TimeFrame#formats).
     ///
     /// # Errors
     ///
@@ -1504,7 +1457,7 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// Default: true.
     ///
     /// - SkyFrame: see [`SkyFrame::direction`].
-    /// - FrameSet: the Direction of the axis of its current Frame.
+    /// - FrameSet: see [`FrameSet`].
     ///
     /// # Errors
     ///

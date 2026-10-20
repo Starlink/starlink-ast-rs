@@ -10,17 +10,62 @@ use crate::serial::{FrameToNode, Node, Serializable, frame_from_node};
 
 use super::{AxisKind, DynFrame, Frame};
 
-/// A compound frame that concatenates the axes of two child frames.
+/// A compound Frame.
 ///
-/// If the first child has N1 axes and the second has N2 axes, the
-/// `CmpFrame` has N1 + N2 axes. Axes 1..=N1 are served by the first
-/// child and axes N1+1..=N1+N2 by the second.
+/// A CmpFrame merges two component Frames, of any class, into a more
+/// complex Frame.
+/// The axes of the two components appear together in the CmpFrame, those
+/// of the first followed by those of the second, so its
+/// [`naxes`](Frame::naxes) is the sum of theirs.
+/// Since a CmpFrame is itself a Frame, it can be a component of further
+/// CmpFrames, so Frames of arbitrary complexity may be built from simple
+/// ones.
 ///
-/// Geometry methods (`distance`, `angle`, `offset`) delegate to the
-/// component frames (great-circle for sky components) and use Euclidean
-/// (Cartesian) formulae over the full compound axis space.
-/// Per-axis operations (`format`, `unformat`, `norm`) are delegated
-/// to the owning child frame.
+/// The per-axis attributes of the Frame trait, and per-axis operations such
+/// as [`format`](Frame::format), [`unformat`](Frame::unformat) and
+/// [`norm`](Frame::norm), are those of the component holding the axis.
+/// Attributes a component class adds, such as a SkyFrame's Equinox, are
+/// reached through [`frame1`](CmpFrame::frame1) and
+/// [`frame2`](CmpFrame::frame2), or their `_mut` forms.
+/// Geometry methods ([`distance`](Frame::distance),
+/// [`angle`](Frame::angle), [`offset`](Frame::offset)) delegate to the
+/// component Frames, on great circles for a sky component, and use
+/// Cartesian formulae over the whole compound axis space.
+///
+/// Its own Frame attributes differ from a plain Frame's:
+///
+/// - Its System is always `"Compound"`, and cannot be altered.
+/// - Its Title defaults to `"<n>-d compound coordinate system"`, where
+///   `<n>` is the number of axes.
+/// - Its Domain defaults to `"<dom1>-<dom2>"`, from the Domains of its two
+///   components, or `"CMP"` when both are blank.
+/// - Its Epoch defaults to that of the first component if set there, else
+///   that of the second if set there, else the first component's default;
+///   setting or clearing it sets or clears it in both components.
+///   The observer's position, Dtai and Dut1 are shared with the components
+///   in the same way.
+/// - Its MinAxes defaults to 0 and its MaxAxes to 1000000, which lets a
+///   CmpFrame template match any target made of a subset of its axes; set
+///   both to the number of axes to match only Frames of that size.
+///
+/// In C a Frame is also a Mapping, and a CmpFrame holding a Region masks
+/// positions outside it when used as one.
+/// Here a CmpFrame is not a [`Mapping`](crate::mappings::Mapping), so it
+/// cannot be used in that way.
+///
+/// # Examples
+///
+/// ```
+/// use ast_core::frames::{CmpFrame, Frame, SkyFrame, SkySystem, SpecFrame, SpecSystem};
+///
+/// let sky = SkyFrame::new(SkySystem::Icrs);
+/// let spec = SpecFrame::new(SpecSystem::Freq);
+/// let cmp = CmpFrame::new(Box::new(sky), Box::new(spec));
+/// assert_eq!(cmp.naxes(), 3);
+/// assert_eq!(cmp.domain(), "SKY-SPECTRUM");
+/// assert_eq!(cmp.system_string().unwrap(), Some("Compound"));
+/// assert_eq!(cmp.title().unwrap(), "3-d compound coordinate system");
+/// ```
 pub struct CmpFrame {
     /// The Frame-class attributes.
     attrs: super::frame_attrs::FrameAttrs,
@@ -59,9 +104,14 @@ impl CmpFrame {
         true
     }
 
-    /// Create a compound frame from two child frames.
+    /// Create a CmpFrame of two component Frames.
     ///
-    /// The resulting frame has `frame1.naxes() + frame2.naxes()` axes.
+    /// The CmpFrame has `frame1.naxes() + frame2.naxes()` axes, those of
+    /// `frame1` first.
+    /// It owns the two Frames; changes to them afterwards are made through
+    /// [`frame1_mut`](CmpFrame::frame1_mut) and
+    /// [`frame2_mut`](CmpFrame::frame2_mut).
+    #[doc(alias = "astCmpFrame")]
     pub fn new(frame1: DynFrame, frame2: DynFrame) -> Self {
         let naxes = frame1.naxes() + frame2.naxes();
         Self {
@@ -73,57 +123,63 @@ impl CmpFrame {
         }
     }
 
-    /// Frame Title. When unset, returns the empty string;
-    /// serialisation defaults are computed in `Serializable::to_node`.
-    /// Mirrors `astGetTitle`.
+    /// The Title, set or default; see [`Frame::title`] and, for the
+    /// default, [`CmpFrame`].
+    ///
+    /// # Errors
+    ///
+    /// Passes on the error of [`Frame::title`].
     pub fn title(&self) -> AstResult<String> {
         Frame::title(self)
     }
 
-    /// Set the Frame Title. Mirrors `astSetTitle`.
+    /// Set the Title; see [`Frame::title`].
     pub fn set_title(&mut self, title: impl Into<String>) {
         self.attrs.title = Some(title.into());
     }
 
-    /// Whether Title has been explicitly set. Mirrors `astTestTitle`.
+    /// Whether the Title is set; see [`Frame::title`].
     pub fn test_title(&self) -> bool {
         self.attrs.title.is_some()
     }
 
-    /// Set the Frame Domain. Mirrors `astSetDomain`.
+    /// Set the Domain, removing white space and upper-casing letters; see
+    /// [`Frame::domain`].
     pub fn set_domain(&mut self, domain: impl Into<String>) {
         self.attrs.domain = Some(super::frame_attrs::clean_domain(&domain.into()));
     }
 
-    /// Return the frame identification string.
+    /// The Ident, or an empty string when it is not set; see
+    /// [`Frame::ident`].
     pub fn ident(&self) -> &str {
         self.attrs.ident.as_deref().unwrap_or("")
     }
 
-    /// Set the frame identification string. Mirrors `astSetIdent`.
+    /// Set the Ident; see [`Frame::ident`].
     pub fn set_ident(&mut self, ident: impl Into<String>) {
         let s = ident.into();
         self.attrs.ident = Some(s);
     }
 
-    /// Number of axes contributed by the first child frame.
+    /// The number of axes of the first component Frame.
     pub fn naxes1(&self) -> usize {
         self.frame1.naxes()
     }
 
-    /// External-to-internal axis permutation. `perm[ext]` returns the
-    /// zero-based original (internal, pre-`perm_axes`) axis index that
-    /// external axis `ext` references. Mirrors C `astGetPerm`.
+    /// The axis permutation: element `i` is the zero-based index, in the
+    /// order of the two components' axes, of the axis that 0-based axis `i`
+    /// of the CmpFrame refers to, after any [`perm_axes`](Frame::perm_axes).
+    // C: `astGetPerm`.
     pub fn perm(&self) -> &[usize] {
         &self.perm
     }
 
-    /// Access the first child frame.
+    /// The first component Frame.
     pub fn frame1(&self) -> &dyn Frame {
         self.frame1.as_ref()
     }
 
-    /// Access the second child frame.
+    /// The second component Frame.
     pub fn frame2(&self) -> &dyn Frame {
         self.frame2.as_ref()
     }
@@ -173,17 +229,19 @@ impl CmpFrame {
         })
     }
 
-    /// Mutable access to the first child frame — escape hatch.
+    /// The first component Frame, to change.
     ///
-    /// Mutations through this reference do not trigger any
-    /// integrity recomputation on enclosing FrameSets. Pair with
-    /// `FrameSet::with_integrity` when needed.
+    /// Changes made through it do not restore the integrity of a FrameSet
+    /// holding the CmpFrame; make them inside
+    /// [`FrameSet::with_integrity`](crate::frames::FrameSet::with_integrity)
+    /// when that is wanted.
     pub fn frame1_mut(&mut self) -> &mut dyn Frame {
         self.domain_default = std::cell::OnceCell::new();
         self.frame1.as_mut()
     }
 
-    /// Mutable access to the second child frame — escape hatch.
+    /// The second component Frame, to change; see
+    /// [`frame1_mut`](CmpFrame::frame1_mut).
     pub fn frame2_mut(&mut self) -> &mut dyn Frame {
         self.domain_default = std::cell::OnceCell::new();
         self.frame2.as_mut()
@@ -377,10 +435,12 @@ impl Frame for CmpFrame {
         self.attrs.domain.is_some()
     }
 
-    /// Mirrors C `CmpFrame::GetActiveUnit` (cmpframe.c:8369): when set, the
-    /// Frame class's value, which is false if any axis is a SkyAxis
-    /// (frame.c:4669); otherwise true when either component has active
-    /// units.
+    /// The ActiveUnit flag; see [`Frame::get_active_unit`].
+    ///
+    /// When set, the value set, except that it is false when any axis is a
+    /// sky axis; unset, true when either component Frame uses active units.
+    // C: cmpframe.c `GetActiveUnit` (8369), and frame.c:4669 for the sky
+    // axis rule.
     fn get_active_unit(&self) -> bool {
         match self.attrs.active_unit {
             Some(v) => {
@@ -391,8 +451,9 @@ impl Frame for CmpFrame {
         }
     }
 
-    /// Mirrors C `CmpFrame::SetActiveUnit` (cmpframe.c:8280): the value is
-    /// set on the CmpFrame and on both components.
+    /// Set the ActiveUnit flag on the CmpFrame and on both component
+    /// Frames; see [`get_active_unit`](CmpFrame::get_active_unit).
+    // C: cmpframe.c `SetActiveUnit` (8280).
     fn set_active_unit(&mut self, value: bool) {
         self.attrs.active_unit = Some(value);
         self.frame1.set_active_unit(value);
