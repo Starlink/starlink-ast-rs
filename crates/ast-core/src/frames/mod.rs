@@ -346,6 +346,16 @@ impl<T: Frame> AsDynFrame for T {
 ///
 /// All concrete frame classes implement this trait. Frames are `Send`
 /// but not `Sync`.
+///
+/// Each axis of a Frame carries attributes of its own, each taking a 1-based
+/// axis index: [`label`](Frame::label), [`symbol`](Frame::symbol),
+/// [`unit`](Frame::unit), [`format_str`](Frame::format_str),
+/// [`axis_digits`](Frame::axis_digits), [`direction`](Frame::direction),
+/// [`top`](Frame::top) and [`bottom`](Frame::bottom), together with the
+/// [`internal_unit`](Frame::internal_unit) and
+/// [`norm_unit`](Frame::norm_unit) derived from the Unit.
+/// They are used chiefly in textual output, such as formatting a coordinate
+/// value with [`format`](Frame::format).
 pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// The number of axes in this Frame: the Naxes attribute.
     ///
@@ -831,7 +841,7 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     ///
     /// Default: an empty string.
     ///
-    /// - SkyFrame: `"SKY"`.
+    /// - SkyFrame: see [`SkyFrame::domain`].
     /// - SpecFrame: `"SPECTRUM"`.
     /// - DSBSpecFrame: `"DSBSPECTRUM"`.
     /// - FluxFrame: `"FLUX"`.
@@ -871,17 +881,7 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     ///   component's default; setting or clearing the Epoch of a CmpFrame
     ///   sets or clears it in both components.
     /// - FrameSet: the Epoch of its current Frame.
-    /// - SkyFrame: the coordinates of sources can change with time through
-    ///   the changing aberration of light from the observer's motion,
-    ///   changing gravitational deflection by the Sun, and the fictitious
-    ///   motion of non-inertial systems such as FK4 (but not the proper
-    ///   motion of a source, which belongs to the source rather than the
-    ///   coordinate system).
-    ///   The default is B1950.0 (Besselian) for the FK4-based systems and
-    ///   J2000.0 (Julian) for the others.
-    ///   The Epoch relates to motion of the source; the similar-sounding
-    ///   Equinox qualifies a coordinate system that is itself in motion
-    ///   because it is referred to a slowly moving plane such as the equator.
+    /// - SkyFrame: see [`SkyFrame::epoch_mjd`].
     /// - TimeFrame: a time axis is not characterized by one Epoch, so the
     ///   TimeFrame makes no use of it, though user code may use it for a
     ///   "typical" time.
@@ -1061,51 +1061,7 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// - Frame: always `"Cartesian"`, and cannot be altered.
     /// - CmpFrame: always `"Compound"`, and cannot be altered.
     /// - FrameSet: the System of its current Frame.
-    /// - SkyFrame (default `"ICRS"`, which may change as astrometric
-    ///   standards evolve, so set ICRS explicitly if it is what you need):
-    ///   - `"AZEL"`: horizon coordinates, azimuth zero at geographic north
-    ///     and +pi/2 at east, elevation +pi/2 at the zenith.
-    ///     No correction is applied for atmospheric refraction or polar
-    ///     motion, but diurnal aberration is corrected.
-    ///     Unlike most celestial systems it is right-handed, and it is
-    ///     sensitive to the timescale of the Epoch, since its diurnal
-    ///     rotation turns a small change of time into a large rotation: give
-    ///     the Epoch of both source and destination SkyFrames as TDB (TT,
-    ///     within 1 to 2 milliseconds of TDB and equal to TAI + 32.184
-    ///     seconds, will usually do).
-    ///   - `"ECLIPTIC"`: ecliptic coordinates (IAU 1980), referred to the
-    ///     ecliptic and mean equinox of the Equinox.
-    ///   - `"FK4"`: the old FK4 (barycentric) equatorial system, qualified by
-    ///     an Equinox, and by an Epoch for accurate work since its model
-    ///     rotates slowly with time.
-    ///   - `"FK4-NO-E"` or `"FK4_NO_E"`: FK4 without the E-terms of
-    ///     aberration (as in some radio catalogs), qualified by both an
-    ///     Equinox and an Epoch.
-    ///   - `"FK5"` or `"EQUATORIAL"`: the modern FK5 (barycentric)
-    ///     equatorial system, qualified by an Equinox.
-    ///   - `"GALACTIC"`: galactic coordinates (IAU 1958).
-    ///   - `"GAPPT"`, `"GEOCENTRIC"` or `"APPARENT"`: geocentric apparent
-    ///     equatorial coordinates, relative to the true equator and equinox
-    ///     at the Epoch (no Equinox is needed).
-    ///     They are the apparent right ascension and declination for a
-    ///     fictitious observer at the Earth's center, derived from FK5
-    ///     J2000.0 by allowing for the Sun's gravitational deflection, the
-    ///     aberration from the Earth's motion about the barycenter, and
-    ///     precession and nutation; atmospheric refraction and the
-    ///     aberration from the Earth's rotation are ignored.
-    ///   - `"HELIOECLIPTIC"`: ecliptic coordinates (IAU 1980) referred to
-    ///     the ecliptic and mean equinox of J2000.0, with the longitude
-    ///     offset so that the Sun is at zero longitude at the Epoch; any
-    ///     Equinox set is ignored.
-    ///   - `"ICRS"`: the International Celestial Reference System, realized
-    ///     through the Hipparcos catalog; very close to FK5 J2000, differing
-    ///     only at the 50 milli-arcsecond level; no Equinox is needed.
-    ///   - `"J2000"`: the mean dynamical equator and equinox of J2000, which
-    ///     differ slightly from FK5's, so it differs slightly from FK5 with
-    ///     Equinox J2000; no Equinox is needed.
-    ///   - `"SUPERGALACTIC"`: de Vaucouleurs supergalactic coordinates.
-    ///   - `"UNKNOWN"`: any other spherical system; no Mapping can be made
-    ///     between two SkyFrames if either has this System.
+    /// - SkyFrame: see [`SkyFrame::system`].
     /// - SpecFrame (default `"WAVE"`), the systems of FITS-WCS Paper III,
     ///   with the default Unit of each in parentheses: `"FREQ"`, frequency
     ///   (GHz); `"ENER"` or `"ENERGY"`, energy (J); `"WAVN"` or
@@ -1311,7 +1267,6 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// - Frame: the plain Frame behaves as if Permute were true whatever its
     ///   value, since its axes cannot be told apart and match any other
     ///   Frame in any order.
-    /// - SkyFrame: uses the attribute.
     /// - FrameSet: the Permute of its current Frame.
     #[doc(alias = "Permute")]
     fn permute(&self) -> bool;
@@ -1369,7 +1324,7 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     ///
     /// # Per class
     ///
-    /// - SkyFrame: always false; the value given is ignored.
+    /// - SkyFrame: see [`SkyFrame::set_active_unit`].
     /// - SpecFrame, TimeFrame and FluxFrame: always true; the value given is
     ///   ignored.
     /// - CmpFrame: unless set, true if either component Frame uses active
@@ -1397,8 +1352,7 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// Default: `"Axis <n>"`, where `<n>` is 1, 2, ... for successive axes
     /// (counted before any axis permutation).
     ///
-    /// - SkyFrame: a default suited to the celestial coordinate system, such
-    ///   as `"Right ascension"` or `"Galactic latitude"`.
+    /// - SkyFrame: see [`SkyFrame::label`].
     /// - TimeFrame: a default suited to the time system.
     /// - FrameSet: the Label of the axis of its current Frame.
     ///
@@ -1429,8 +1383,7 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// Domain is truncated if needed so that the whole is at most 50
     /// characters, and white space is replaced by underscores.
     ///
-    /// - SkyFrame: a default suited to the celestial coordinate system, such
-    ///   as `"RA"` or `"Dec"`.
+    /// - SkyFrame: see [`SkyFrame::symbol`].
     /// - TimeFrame: a default suited to the time system.
     /// - FrameSet: the Symbol of the axis of its current Frame.
     ///
@@ -1461,8 +1414,7 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     ///
     /// Default: an empty string.
     ///
-    /// - SkyFrame: a default, such as `"hh:mm:ss.sss"`, that describes the
-    ///   string `format` returns.
+    /// - SkyFrame: see [`SkyFrame::unit`].
     /// - SpecFrame: a default suited to the System; using a Unit that does
     ///   not suit it is an error (`ErrorCode::Badun` when the Frame is
     ///   matched).
@@ -1502,44 +1454,9 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// - FrameSet: the Format of the axis of its current Frame, whose class
     ///   also decides the syntax.
     /// - SkyFrame: a syntax and default for sexagesimal values suited to the
-    ///   celestial coordinate system, described below.
+    ///   celestial coordinate system; see [`SkyFrame::format_str`].
     /// - TimeFrame: the Frame syntax, extended to format values as Gregorian
     ///   calendar dates and times, described below.
-    ///
-    /// # SkyFrame formats
-    ///
-    /// A SkyFrame Format holds zero or more of these characters, in any
-    /// order (the order given here is clearest), case-insensitive:
-    ///
-    /// - `+`: prefix a plus sign to positive values (none by default).
-    /// - `z`: prefix leading zeros so the first field has a constant width,
-    ///   as for a fixed-width table (later fields always have them); none by
-    ///   default.
-    /// - `i`: separate fields with the ISO separator, a colon; the default.
-    /// - `b`: separate fields with a blank.
-    /// - `l`: separate fields with a letter (`h`/`d`, `m` or `s`).
-    /// - `g`: separate fields with letters and symbols marked up by escape
-    ///   sequences for graphical output; the port has no escape sequences,
-    ///   so it behaves as `l`.
-    /// - `d`: include a degrees field; expressing the angle purely in
-    ///   degrees is also the default when none of `h`, `m`, `s` or `t` is
-    ///   given.
-    /// - `h`: express the angle as a time (24 hours to 360 degrees) and
-    ///   include an hours field; purely hours is also the default when `t`
-    ///   is given without `m` or `s`.
-    /// - `m`: include a minutes field (not by default).
-    /// - `s`: include a seconds field (not by default); ignored with `d` or
-    ///   `h` unless a minutes field is included too.
-    /// - `t`: express the angle as a time with no hours field, purely in
-    ///   minutes and/or seconds; ignored with `d` or `h`, and equivalent to
-    ///   `h` when none of `d`, `h`, `m` or `s` is given.
-    /// - `.`: give decimal places in the last field, followed by the number
-    ///   of places or by `*`, which takes the number from Digits.
-    ///
-    /// Where characters conflict (`i` and `b`, say) the last wins, except
-    /// that `d` and `h` always over-ride `t`.
-    /// A Format starting with `%` follows the Frame syntax, and formats the
-    /// value as decimal radians.
     ///
     /// # TimeFrame formats
     ///
@@ -1606,8 +1523,7 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     ///
     /// Default: true.
     ///
-    /// - SkyFrame: the default is false for the longitude axis (right
-    ///   ascension, for instance), so it is plotted in reverse.
+    /// - SkyFrame: see [`SkyFrame::direction`].
     /// - FrameSet: the Direction of the axis of its current Frame.
     ///
     /// # Errors
@@ -1631,8 +1547,7 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     ///
     /// Default: `f64::MAX`, so all values are displayed.
     ///
-    /// - SkyFrame: the default is pi/2 (+90 degrees) for the latitude axis;
-    ///   the longitude axis displays all values.
+    /// - SkyFrame: see [`SkyFrame::top`].
     ///
     /// # Errors
     ///
@@ -1655,8 +1570,7 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     ///
     /// Default: `-f64::MAX`, so all values are displayed.
     ///
-    /// - SkyFrame: the default is -pi/2 (-90 degrees) for the latitude
-    ///   axis; the longitude axis displays all values.
+    /// - SkyFrame: see [`SkyFrame::bottom`].
     ///
     /// # Errors
     ///

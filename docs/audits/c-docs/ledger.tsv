@@ -1,5 +1,5 @@
 kind	name	file	rust_item	reason	reviewed	note
-class	Axis	axis.c			no
+class	Axis	axis.c		merged	yes	Frame
 class	Box	box.c			no
 function	astBox	box.c			no
 class	Channel	channel.c			no
@@ -454,23 +454,23 @@ class	SelectorMap	selectormap.c	SelectorMap		yes
 function	astSelectorMap	selectormap.c	SelectorMapBuilder::new		yes	badval is the builder's badval method, defaulting to BAD_VALUE
 class	ShiftMap	shiftmap.c	ShiftMap		yes
 function	astShiftMap	shiftmap.c	ShiftMap::new		yes
-class	SkyAxis	skyaxis.c			no
-class	SkyFrame	skyframe.c			no
-function	astSkyOffsetMap	skyframe.c			no
-attribute	AlignOffset	skyframe.c			no
-attribute	AsTime	skyframe.c			no
-attribute	Equinox	skyframe.c			no
-attribute	IsLatAxis	skyframe.c			no
-attribute	IsLonAxis	skyframe.c			no
-attribute	LatAxis	skyframe.c			no
-attribute	LonAxis	skyframe.c			no
-attribute	NegLon	skyframe.c			no
-attribute	SkyTol	skyframe.c			no
-attribute	Projection	skyframe.c			no
-attribute	SkyRefIs	skyframe.c			no
-attribute	SkyRef	skyframe.c			no
-attribute	SkyRefP	skyframe.c			no
-function	astSkyFrame	skyframe.c			no
+class	SkyAxis	skyaxis.c		merged	yes	SkyFrame
+class	SkyFrame	skyframe.c	SkyFrame		yes
+function	astSkyOffsetMap	skyframe.c		not-ported	yes	The offset Mapping is built inside the SkyFrame conversions but not exposed (PLAN.md §2)
+attribute	AlignOffset	skyframe.c	SkyFrame::align_offset		yes
+attribute	AsTime	skyframe.c	SkyFrame::as_time		yes
+attribute	Equinox	skyframe.c	SkyFrame::equinox_mjd		yes	The Rust API takes and gives an MJD, or a decimal year through equinox_year and set_equinox_year; C's other string input formats are for its string interface
+attribute	IsLatAxis	skyframe.c	SkyFrame::is_lat_axis		yes
+attribute	IsLonAxis	skyframe.c	SkyFrame::is_lon_axis		yes
+attribute	LatAxis	skyframe.c	SkyFrame::lat_axis		yes
+attribute	LonAxis	skyframe.c	SkyFrame::lon_axis		yes
+attribute	NegLon	skyframe.c	SkyFrame::neg_lon		yes
+attribute	SkyTol	skyframe.c	SkyFrame::sky_tol		yes
+attribute	Projection	skyframe.c	SkyFrame::projection		yes	An unset Projection is None, where C gives an empty string
+attribute	SkyRefIs	skyframe.c	SkyFrame::sky_ref_is		yes
+attribute	SkyRef	skyframe.c	SkyFrame::sky_ref		yes	C's unsubscripted two-value string form is sky_ref_lon_lat here. C's header says assigning SkyRef alone changes the default Labels, Symbols and Title; the code also needs SkyRefIs not Ignored, as the port's doc says (docs/issues/c-library-quirks.md)
+attribute	SkyRefP	skyframe.c	SkyFrame::sky_ref_p		yes	C's unsubscripted two-value string form is sky_ref_p_lon_lat here
+function	astSkyFrame	skyframe.c	SkyFrame::new;SkyFrame::unset_system		yes	Attributes are set with typed setters rather than an options string; unset_system is astSkyFrame("")
 class	SlaMap	slamap.c	SlaMap		yes
 function	astSlaAdd	slamap.c	SlaMap::add		yes	C takes the conversion as a string; the port takes SlaCvtType, whose variants carry the conversion list and SlaCvtType::from_code parses the strings
 function	astSlaMap	slamap.c	SlaMap::new		yes	C's reserved flags argument is dropped

@@ -67,6 +67,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [The `Symbol` documentation says the default is at most 15 characters](#the-symbol-documentation-says-the-default-is-at-most-15-characters)
 - [The `Top` and `Bottom` documentation gives SkyFrame defaults for co-latitude axes](#the-top-and-bottom-documentation-gives-skyframe-defaults-for-co-latitude-axes)
 - [The `MaxAxes` documentation says its default may be reduced to stay consistent with MinAxes](#the-maxaxes-documentation-says-its-default-may-be-reduced-to-stay-consistent-with-minaxes)
+- [The `SkyRef` documentation says a SkyRef alone changes the default Labels, Symbols and Title](#the-skyref-documentation-says-a-skyref-alone-changes-the-default-labels-symbols-and-title)
 
 ### [Addressed here, and not going upstream](#addressed-here-and-not-going-upstream)
 
@@ -1026,6 +1027,18 @@ Consequence: documentation only.
 
 The port's `frame_attrs_match!` (`crates/ast-core/src/frames/frame_attrs.rs`) raises the default, and `Frame::max_axes` documents that.
 A C fix: change "reduced" to "increased" in the prologue.
+
+### The `SkyRef` documentation says a SkyRef alone changes the default Labels, Symbols and Title
+
+C location: `skyframe.c`, the `SkyRef` attribute prologue (Notes, line 11826); `GetLabel` (line 3687), `GetSymbol` (line 4277) and `GetTitle` (line 4587).
+
+The prologue says that once a value has been assigned to SkyRef, the default axis Labels gain " offset", the default Symbols gain a leading "D", and the default Title describes the origin in place of the projection.
+The code makes those changes only when SkyRefIs is also not "Ignored", and "Ignored" is the default, so assigning SkyRef alone changes none of them.
+
+Consequence: documentation only.
+
+The port's `SkyFrame` (`is_offset` in `crates/ast-core/src/frames/skyframe.rs`) mirrors the code, and `SkyFrame::sky_ref` documents both conditions.
+A C fix: say in the note that SkyRefIs must be "Origin" or "Pole" as well.
 
 ## Addressed here, and not going upstream
 

@@ -17,17 +17,69 @@ use crate::serial::{Node, Serializable};
 const AST_DR2D: f64 = 57.295_779_513_082_32;
 const AST_DD2R: f64 = 0.017_453_292_519_943_295;
 
-/// A celestial coordinate frame.
+/// A celestial coordinate system description.
 ///
-/// `SkyFrame` represents a coordinate frame on the celestial sphere.
-/// It supports a range of coordinate systems (FK4, FK5, ICRS, Galactic,
-/// etc.) and provides spherical geometry for distance, angle, offset,
-/// and normalisation operations.
+/// A SkyFrame is a specialized form of Frame which describes celestial
+/// longitude/latitude coordinate systems.
+/// The particular celestial coordinate system is given by its
+/// [`system`](SkyFrame::system) (ICRS unless set), qualified as necessary by
+/// a mean [`equinox_mjd`](SkyFrame::equinox_mjd) and/or an
+/// [`epoch_mjd`](SkyFrame::epoch_mjd).
+/// Distances, angles, offsets and normalization use spherical geometry.
 ///
-/// All angles are in radians. Axis indices are 1-based (axis 1 =
-/// longitude, axis 2 = latitude).
+/// For each of the supported celestial coordinate systems, a SkyFrame can
+/// apply an optional shift of origin to create a coordinate system
+/// representing offsets within the celestial coordinate system from some
+/// specified reference point.
+/// This offset coordinate system can also be rotated to define new
+/// longitude and latitude axes; see [`sky_ref`](SkyFrame::sky_ref),
+/// [`sky_ref_is`](SkyFrame::sky_ref_is), [`sky_ref_p`](SkyFrame::sky_ref_p)
+/// and [`align_offset`](SkyFrame::align_offset).
 ///
-/// Construct via [`SkyFrame::new`].
+/// All the coordinate values used by a SkyFrame are in radians.
+/// [`format`](Frame::format) turns them into the more conventional
+/// sexagesimal text that each axis's [`format_str`](SkyFrame::format_str)
+/// describes, and [`unformat`](Frame::unformat) reads such text back.
+/// The [`unit`](SkyFrame::unit) of a SkyFrame axis therefore describes the
+/// formatted value, such as `"h:m:s"` for colon-separated hours, minutes and
+/// seconds, while its [`internal_unit`](Frame::internal_unit) is always
+/// `"rad"`, the units of the floating point values application code uses.
+///
+/// A SkyFrame has two axes: longitude first, then latitude, unless
+/// [`perm_axes`](Frame::perm_axes) changes the order;
+/// [`lon_axis`](SkyFrame::lon_axis) and [`lat_axis`](SkyFrame::lat_axis)
+/// give their current indices.
+/// Axis indices are 1-based.
+/// Each axis has its own label, symbol, unit, format, digits, direction, top
+/// and bottom, as every Frame's axes do, with defaults suited to the
+/// celestial coordinate system, and [`as_time`](SkyFrame::as_time) chooses
+/// whether its values are formatted as angles or times.
+///
+/// # Attributes
+///
+/// In addition to the attributes common to all Frames, a SkyFrame has:
+///
+/// - [`align_offset`](SkyFrame::align_offset): align SkyFrames using the
+///   offset coordinate system?
+/// - [`as_time`](SkyFrame::as_time): format celestial coordinates as times?
+/// - [`equinox_mjd`](SkyFrame::equinox_mjd): epoch of the mean equinox.
+/// - [`is_lat_axis`](SkyFrame::is_lat_axis): is the given axis the latitude
+///   axis?
+/// - [`is_lon_axis`](SkyFrame::is_lon_axis): is the given axis the longitude
+///   axis?
+/// - [`lat_axis`](SkyFrame::lat_axis): index of the latitude axis.
+/// - [`lon_axis`](SkyFrame::lon_axis): index of the longitude axis.
+/// - [`neg_lon`](SkyFrame::neg_lon): display longitude values in the range
+///   -pi to pi?
+/// - [`projection`](SkyFrame::projection): sky projection description.
+/// - [`sky_ref`](SkyFrame::sky_ref): position defining the location of the
+///   offset coordinate system.
+/// - [`sky_ref_is`](SkyFrame::sky_ref_is): selects the nature of the offset
+///   coordinate system.
+/// - [`sky_ref_p`](SkyFrame::sky_ref_p): position defining the orientation
+///   of the offset coordinate system.
+/// - [`sky_tol`](SkyFrame::sky_tol): smallest significant shift in sky
+///   coordinates.
 ///
 /// # Examples
 ///
@@ -103,16 +155,26 @@ pub struct SkyFrame {
 }
 
 impl SkyFrame {
-    /// Create a new `SkyFrame` with no explicit coordinate system —
-    /// the equivalent of C's `astSkyFrame("")`.
+    /// Create a SkyFrame whose System is not set, so that it describes the
+    /// default celestial coordinate system, ICRS.
     ///
-    /// `system_set` is left `false`, so when this SkyFrame is used as
-    /// a `find_frame` template, the System attribute acts as "any"
-    /// and is inherited from the matched target. The struct-level
-    /// `system` field defaults to `Icrs` (AST's `AST__ICRS` default),
-    /// but is treated as unset until [`SkyFrame::set_system`] is
-    /// called. Use [`SkyFrame::new`] when you know the system at
-    /// construction time and want it marked as set.
+    /// Every attribute takes its default.
+    /// Because the System is unset, when the SkyFrame is the template of
+    /// [`find_frame_template`](Frame::find_frame_template), the Frame found
+    /// keeps the target's System rather than taking the template's.
+    /// The default System may change in future as new astrometric standards
+    /// evolve, so use [`SkyFrame::new`] with [`SkySystem::Icrs`] if ICRS is
+    /// what you need.
+    ///
+    /// ```
+    /// use ast_core::frames::{SkyFrame, SkySystem};
+    ///
+    /// let sky = SkyFrame::unset_system();
+    /// assert_eq!(sky.system(), SkySystem::Icrs);
+    /// assert!(!sky.test_system());
+    /// ```
+    // C: `astSkyFrame("")`.
+    #[doc(alias = "astSkyFrame")]
     pub fn unset_system() -> Self {
         // ICRS with the System unset. Mirrors C `astSkyFrame("")`.
         Self {
@@ -121,16 +183,47 @@ impl SkyFrame {
         }
     }
 
-    /// Create a new `SkyFrame` with the given coordinate system.
+    /// Create a SkyFrame describing the celestial coordinate system
+    /// `system`.
     ///
-    /// The default domain is `"SKY"`, the default epoch is J2000.0
-    /// (MJD 51544.5), and the default equinox is determined by the
-    /// coordinate system.
+    /// The System is set, so as a template of
+    /// [`find_frame_template`](Frame::find_frame_template) the SkyFrame asks
+    /// for that System even when it is the default, ICRS;
+    /// [`SkyFrame::unset_system`] makes one whose System is unset.
+    /// Every other attribute takes its default: among them the Domain is
+    /// `"SKY"`, and the Equinox and Epoch are B1950.0 for the FK4 systems and
+    /// J2000.0 for the others.
+    /// Qualify the system as necessary with the setters, such as
+    /// [`set_equinox_year`](SkyFrame::set_equinox_year) and
+    /// [`set_epoch_mjd`](SkyFrame::set_epoch_mjd), and request extra
+    /// precision for formatted values with [`set_digits`](Frame::set_digits).
     ///
-    /// The System is set, as C's `astSkyFrame("System=...")` sets it, so
-    /// as a `find_frame` template the Frame asks for that System even when
-    /// it is the default, ICRS. [`SkyFrame::unset_system`] makes a Frame
-    /// whose System is unset.
+    /// The SkyFrame has two axes, longitude then latitude, whose order
+    /// [`perm_axes`](Frame::perm_axes) can change.
+    /// When two SkyFrames are converted with
+    /// [`convert_to`](Frame::convert_to), the conversion takes account of
+    /// the celestial coordinate systems they represent, with any qualifying
+    /// Equinox and Epoch, and of their
+    /// [`align_system`](SkyFrame::align_system), so the result fully reflects
+    /// the relationship between positions on the sky measured in the two
+    /// systems.
+    ///
+    /// ```
+    /// use ast_core::frames::{Frame, SkyFrame, SkySystem};
+    ///
+    /// // FK5 with a mean equinox of J2005.0, and 10 digits of precision.
+    /// let mut fk5 = SkyFrame::new(SkySystem::Fk5);
+    /// fk5.set_equinox_year(2005.0);
+    /// fk5.set_digits(10).unwrap();
+    /// assert!((fk5.equinox_year() - 2005.0).abs() < 1e-9);
+    /// assert_eq!(fk5.lon_axis(), 1);
+    ///
+    /// // FK4 takes a default Epoch of B1950.0.
+    /// let fk4 = SkyFrame::new(SkySystem::Fk4);
+    /// assert!((fk4.epoch_year() - 1950.0).abs() < 1e-9);
+    /// ```
+    // C: `astSkyFrame("System=...")`.
+    #[doc(alias = "astSkyFrame")]
     pub fn new(system: SkySystem) -> Self {
         Self {
             // None = use the default "SKY". Mirrors C's astTestDomain
@@ -164,34 +257,66 @@ impl SkyFrame {
         }
     }
 
-    /// External-to-internal axis permutation. `axis_permutation()[i]`
-    /// returns the (zero-based) physical axis index (0 = longitude,
-    /// 1 = latitude) currently exposed at external axis `i`. Mirrors
-    /// the Frame `perm` array used by C `astPrimaryFrame`.
+    /// The axis permutation: `axis_permutation()[i]` is the zero-based
+    /// internal axis (0 for longitude, 1 for latitude) presented as the
+    /// zero-based axis `i`.
+    // C: the Frame `perm` array, as `astPrimaryFrame` uses it.
     #[inline]
     pub fn axis_permutation(&self) -> [usize; 2] {
         self.perm
     }
 
-    /// `IsLatAxis(axis)`: whether a 1-based external axis is the latitude
-    /// axis. Mirrors C `astGetIsLatAxis`.
+    /// Is the 1-based `axis` a celestial latitude axis? The read-only
+    /// `IsLatAxis(axis)` attribute.
+    ///
+    /// True if the axis is a celestial latitude axis (declination, galactic
+    /// latitude, and so on), false otherwise.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Axiin` when `axis` is not 1 or 2.
+    #[doc(alias = "IsLatAxis")]
     pub fn is_lat_axis(&self, axis: usize) -> AstResult<bool> {
         Ok(self.physical_axis(axis)? == 1)
     }
 
-    /// `IsLonAxis(axis)`: whether a 1-based external axis is the longitude
-    /// axis. Mirrors C `astGetIsLonAxis`.
+    /// Is the 1-based `axis` a celestial longitude axis? The read-only
+    /// `IsLonAxis(axis)` attribute.
+    ///
+    /// True if the axis is a celestial longitude axis (right ascension,
+    /// galactic longitude, and so on), false otherwise.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Axiin` when `axis` is not 1 or 2.
+    #[doc(alias = "IsLonAxis")]
     pub fn is_lon_axis(&self, axis: usize) -> AstResult<bool> {
         Ok(self.physical_axis(axis)? == 0)
     }
 
-    /// The 1-based index of the longitude axis. Mirrors `astGetLonAxis`.
+    /// The index of the longitude axis: the read-only LonAxis attribute.
+    ///
+    /// 1 or 2, taking account of any axis permutation.
+    #[doc(alias = "LonAxis")]
     #[inline]
     pub fn lon_axis(&self) -> usize {
         self.lon_pos() + 1
     }
 
-    /// The 1-based index of the latitude axis. Mirrors `astGetLatAxis`.
+    /// The index of the latitude axis: the read-only LatAxis attribute.
+    ///
+    /// 1 or 2, taking account of any axis permutation.
+    ///
+    /// ```
+    /// use ast_core::frames::{Frame, SkyFrame, SkySystem};
+    ///
+    /// let mut sky = SkyFrame::new(SkySystem::Galactic);
+    /// assert_eq!((sky.lon_axis(), sky.lat_axis()), (1, 2));
+    /// sky.perm_axes(&[2, 1]).unwrap();
+    /// assert_eq!((sky.lon_axis(), sky.lat_axis()), (2, 1));
+    /// assert!(sky.is_lat_axis(1).unwrap());
+    /// ```
+    #[doc(alias = "LatAxis")]
     #[inline]
     pub fn lat_axis(&self) -> usize {
         self.lat_pos() + 1
@@ -256,24 +381,57 @@ impl SkyFrame {
 
     // --- Per-axis Format / Unit / AsTime / Digits (1-based external API) ---
 
-    /// Whether `axis` (1-based) is formatted as a time: the value set, or
-    /// else true only for the longitude axis of an equatorial System.
-    /// Mirrors `astGetAsTime` (skyframe.c:2503).
+    /// Format celestial coordinates as times? The `AsTime(axis)` attribute
+    /// of the 1-based `axis`, set or default.
+    ///
+    /// The default style of formatting used (by [`format`](Frame::format),
+    /// for instance) for the celestial coordinate values on the axis: false
+    /// formats them as angles (degrees, minutes and seconds), true as times
+    /// (hours, minutes and seconds).
+    /// Each axis has its own value, so the style for latitude values, for
+    /// instance, is set on the latitude axis.
+    ///
+    /// Default: chosen from the [`system`](SkyFrame::system), so that
+    /// right ascension, for instance, is formatted as a time, following
+    /// normal conventions: true for the longitude axis of an equatorial
+    /// system (FK4, FK4-NO-E, FK5, J2000, ICRS or GAPPT), false otherwise.
+    ///
+    /// AsTime works by changing the default
+    /// [`format_str`](SkyFrame::format_str) of the axis, which in turn may
+    /// change its default [`unit`](SkyFrame::unit).
+    /// Only the default style is affected: a Format set on the axis
+    /// over-rides AsTime.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Axiin` when `axis` is not 1 or 2.
+    ///
+    /// ```
+    /// use ast_core::frames::{Frame, SkyFrame, SkySystem};
+    ///
+    /// let mut sky = SkyFrame::new(SkySystem::Fk5);
+    /// assert!(sky.as_time(1).unwrap());
+    /// assert!(!sky.as_time(2).unwrap());
+    /// sky.set_as_time(1, false).unwrap();
+    /// assert_eq!(sky.format(1, 0.5).unwrap(), "28:38:52");
+    /// ```
+    // C: `astGetAsTime` (skyframe.c:2503).
+    #[doc(alias = "AsTime")]
     pub fn as_time(&self, axis: usize) -> AstResult<bool> {
         Ok(self.effective_as_time(self.physical_axis(axis)?))
     }
 
-    /// Set AsTime for `axis` (1-based). Mirrors `astSetAsTime`, which first
-    /// replaces a plain Axis with a SkyAxis carrying its attributes
-    /// (skyframe.c:8851).
+    /// Set `AsTime(axis)`; see [`as_time`](SkyFrame::as_time).
+    // C: `astSetAsTime` first replaces a plain Axis with a SkyAxis carrying
+    // its attributes (skyframe.c:8851).
     pub fn set_as_time(&mut self, axis: usize, as_time: bool) -> AstResult<()> {
         let phys = self.physical_axis(axis)?;
         self.sky_axis_mut(phys).as_time = Some(as_time);
         Ok(())
     }
 
-    /// Test whether AsTime for `axis` (1-based) has been set, which only a
-    /// SkyAxis can have (skyframe.c:10632).
+    /// Whether `AsTime(axis)` is set; see [`as_time`](SkyFrame::as_time).
+    // C: only a SkyAxis can have AsTime set (skyframe.c:10632).
     pub fn test_as_time(&self, axis: usize) -> AstResult<bool> {
         Ok(match &self.axes[self.physical_axis(axis)?] {
             FrameAxis::Sky(sky) => sky.as_time.is_some(),
@@ -281,8 +439,8 @@ impl SkyFrame {
         })
     }
 
-    /// Clear AsTime for `axis` (1-based), which only a SkyAxis can have
-    /// (skyframe.c:1411).
+    /// Clear `AsTime(axis)`; see [`as_time`](SkyFrame::as_time).
+    // C: only a SkyAxis can have AsTime set (skyframe.c:1411).
     pub fn clear_as_time(&mut self, axis: usize) -> AstResult<()> {
         let phys = self.physical_axis(axis)?;
         if let FrameAxis::Sky(sky) = &mut self.axes[phys] {
@@ -330,16 +488,74 @@ impl SkyFrame {
 
     // --- SkyFrame-specific attributes ---
 
-    /// Return the celestial coordinate system.
+    /// The celestial coordinate system: the System attribute, set or
+    /// default.
+    ///
+    /// [`Frame::system_string`] gives its name.
+    /// The systems are:
+    ///
+    /// - [`SkySystem::Azel`] (`"AZEL"`): horizon coordinates, azimuth zero
+    ///   at geographic north and +pi/2 at east, elevation +pi/2 at the
+    ///   zenith.
+    ///   No correction is applied for atmospheric refraction or polar
+    ///   motion, but diurnal aberration is corrected.
+    ///   Unlike most celestial systems it is right-handed, and it is
+    ///   sensitive to the timescale of the Epoch, since its diurnal rotation
+    ///   turns a small change of time into a large rotation: give the Epoch
+    ///   of both source and destination SkyFrames as TDB (TT, within 1 to 2
+    ///   milliseconds of TDB and equal to TAI + 32.184 seconds, will usually
+    ///   do).
+    /// - [`SkySystem::Ecliptic`] (`"ECLIPTIC"`): ecliptic coordinates (IAU
+    ///   1980), referred to the ecliptic and mean equinox of the
+    ///   [`equinox_mjd`](SkyFrame::equinox_mjd).
+    /// - [`SkySystem::Fk4`] (`"FK4"`): the old FK4 (barycentric) equatorial
+    ///   system, qualified by an Equinox, and by an Epoch for accurate work
+    ///   since its model rotates slowly with time.
+    /// - [`SkySystem::Fk4NoE`] (`"FK4-NO-E"` or `"FK4_NO_E"`): FK4 without
+    ///   the E-terms of aberration (as in some radio catalogs), qualified by
+    ///   both an Equinox and an Epoch.
+    /// - [`SkySystem::Fk5`] (`"FK5"`): the modern FK5 (barycentric)
+    ///   equatorial system, qualified by an Equinox.
+    /// - [`SkySystem::Galactic`] (`"GALACTIC"`): galactic coordinates (IAU
+    ///   1958).
+    /// - [`SkySystem::Gappt`] (`"GAPPT"`): geocentric apparent equatorial
+    ///   coordinates, relative to the true equator and equinox at the Epoch
+    ///   (no Equinox is needed).
+    ///   They are the apparent right ascension and declination for a
+    ///   fictitious observer at the Earth's center, derived from FK5 J2000.0
+    ///   by allowing for the Sun's gravitational deflection, the aberration
+    ///   from the Earth's motion about the barycenter, and precession and
+    ///   nutation; atmospheric refraction and the aberration from the
+    ///   Earth's rotation are ignored.
+    /// - [`SkySystem::Helioecliptic`] (`"HELIOECLIPTIC"`): ecliptic
+    ///   coordinates (IAU 1980) referred to the ecliptic and mean equinox of
+    ///   J2000.0, with the longitude offset so that the Sun is at zero
+    ///   longitude at the Epoch; any Equinox set is ignored.
+    /// - [`SkySystem::Icrs`] (`"ICRS"`): the International Celestial
+    ///   Reference System, realized through the Hipparcos catalog; very close
+    ///   to FK5 J2000, differing only at the 50 milli-arcsecond level; no
+    ///   Equinox is needed.
+    /// - [`SkySystem::J2000`] (`"J2000"`): the mean dynamical equator and
+    ///   equinox of J2000, which differ slightly from FK5's, so it differs
+    ///   slightly from FK5 with Equinox J2000; no Equinox is needed.
+    /// - [`SkySystem::Supergalactic`] (`"SUPERGALACTIC"`): de Vaucouleurs
+    ///   supergalactic coordinates.
+    /// - [`SkySystem::Unknown`] (`"UNKNOWN"`): any other spherical system; no
+    ///   Mapping can be made between two SkyFrames if either has this
+    ///   System.
+    ///
+    /// Default: [`SkySystem::Icrs`], which may change as astrometric
+    /// standards evolve, so set ICRS explicitly if it is what you need.
     pub fn system(&self) -> SkySystem {
         self.system
     }
 
-    /// Set the celestial coordinate system.
+    /// Set the System; see [`system`](SkyFrame::system).
     ///
     /// A set SkyRef or SkyRefP is re-expressed in the new System, so that it
     /// stays at the same place on the sky, and is cleared if no conversion
-    /// to the new System exists (skyframe.c `SetSystem`).
+    /// to the new System exists.
+    // C: skyframe.c `SetSystem`.
     pub fn set_system(&mut self, sys: SkySystem) {
         let saved = self.saved_sky_refs();
         self.system = sys;
@@ -349,15 +565,17 @@ impl SkyFrame {
         }
     }
 
-    /// Test whether the `System` attribute has been explicitly set.
-    /// Mirrors C `astTestSystem` for `SkyFrame`.
+    /// Whether the System is set; see [`system`](SkyFrame::system).
     pub fn test_system(&self) -> bool {
         self.system_set
     }
 
-    /// Clear the System, which reverts to its default, ICRS. A set SkyRef or
-    /// SkyRefP is re-expressed in ICRS, as for
-    /// [`set_system`](Self::set_system) (skyframe.c `ClearSystem`).
+    /// Clear the System, which reverts to its default, ICRS; see
+    /// [`system`](SkyFrame::system).
+    ///
+    /// A set SkyRef or SkyRefP is re-expressed in ICRS, as for
+    /// [`set_system`](Self::set_system).
+    // C: skyframe.c `ClearSystem`.
     pub fn clear_system(&mut self) {
         let saved = self.saved_sky_refs();
         self.system = SkySystem::Icrs;
@@ -470,46 +688,85 @@ impl SkyFrame {
         let _ = self.set_sky_ref_p(2, axis2);
     }
 
-    /// Return the alignment coordinate system.
+    /// The coordinate system in which SkyFrames are aligned: the
+    /// AlignSystem attribute, set or default.
     ///
-    /// If not explicitly set, returns ICRS (mirrors C
-    /// `GetAlignSystem` for `SkyFrame`, skyframe.c:4281).
+    /// When two SkyFrames are aligned by
+    /// [`convert_to`](Frame::convert_to) or
+    /// [`find_frame_template`](Frame::find_frame_template), positions are
+    /// mapped through this system (see
+    /// [`BasicFrame::align_system`](super::BasicFrame::align_system) for the
+    /// general rule), unless both use their offset coordinate systems for
+    /// alignment (see [`align_offset`](SkyFrame::align_offset)).
+    ///
+    /// Default: [`SkySystem::Icrs`].
+    // C: skyframe.c:4281 `GetAlignSystem`.
     pub fn align_system(&self) -> SkySystem {
         self.align_system.unwrap_or(SkySystem::Icrs)
     }
 
-    /// Set the alignment coordinate system.
+    /// Set the AlignSystem; see [`align_system`](SkyFrame::align_system).
     pub fn set_align_system(&mut self, sys: SkySystem) {
         self.align_system = Some(sys);
     }
 
-    /// Test whether the `AlignSystem` attribute has been explicitly set.
+    /// Whether the AlignSystem is set; see
+    /// [`align_system`](SkyFrame::align_system).
     pub fn test_align_system(&self) -> bool {
         self.align_system.is_some()
     }
 
-    /// Clear AlignSystem.
+    /// Clear the AlignSystem; see [`align_system`](SkyFrame::align_system).
     pub fn clear_align_system(&mut self) {
         self.align_system = None;
     }
 
-    /// Return the equinox as a Modified Julian Date.
+    /// The epoch of the mean equinox, as a Modified Julian Date: the Equinox
+    /// attribute, set or default.
     ///
-    /// If not explicitly set, returns the default for the current system.
+    /// Qualifies the celestial coordinate systems which are notionally based
+    /// on the ecliptic (the plane of the Earth's orbit around the Sun) and/or
+    /// the Earth's equator.
+    /// Both planes are in motion and their positions are difficult to
+    /// specify precisely, so in practice a model ecliptic and/or equator are
+    /// used instead.
+    /// These, together with the point on the sky that defines the coordinate
+    /// origin (the intersection of the two planes, termed the "mean
+    /// equinox"), move with time according to a model which removes the more
+    /// rapid fluctuations; the FK4 and FK5 models are supported.
+    /// The position of a fixed source in any of these systems appears to
+    /// change with time because the coordinate system itself moves, so the
+    /// system must be qualified by a moment in time, the epoch of the mean
+    /// equinox or "equinox" for short, which places the model coordinate
+    /// system on the sky.
+    /// [`system`](SkyFrame::system) says which systems use it.
     ///
-    /// The Equinox dates the mean equinox of a time-dependent coordinate
-    /// system, and C attaches no timescale to it. Where one matters, C takes
-    /// it as UTC: its FITS-WCS writer compares it with the Epoch converted
-    /// from TDB to UTC to decide whether MJD-OBS and DATE-OBS can be left to
-    /// default to it (fitschan.c `SkySys`), and the port's writer does the
-    /// same.
+    /// Take care to distinguish the Equinox, which defines a time-dependent
+    /// coordinate system (based on solar system reference planes which are
+    /// in motion), from the superficially similar
+    /// [`epoch_mjd`](SkyFrame::epoch_mjd), which qualifies coordinate
+    /// systems in which the positions of sources change with time (or appear
+    /// to), for reasons such as the aberration of light caused by the
+    /// observer's motion.
+    ///
+    /// The Equinox has no timescale of its own; where one matters it is
+    /// taken as UTC, as when the FITS-WCS writer compares it with the Epoch
+    /// converted from TDB to UTC to decide whether MJD-OBS and DATE-OBS can
+    /// be left to default to it.
+    ///
+    /// Default: B1950.0 (Besselian) for the FK4-based systems and J2000.0
+    /// (Julian) for all others.
+    /// A helio-ecliptic SkyFrame always uses J2000.0.
+    // C: fitschan.c `SkySys` makes the UTC comparison.
+    #[doc(alias = "Equinox")]
     pub fn equinox_mjd(&self) -> f64 {
         self.equinox
             .unwrap_or_else(|| self.system.default_equinox_mjd())
     }
 
-    /// Return the equinox as a decimal year (Besselian if MJD <
-    /// J1984, Julian otherwise — mirrors `frame.c::Dump`).
+    /// The Equinox as a decimal year: a Besselian epoch before 1984.0, a
+    /// Julian one from then on; see [`equinox_mjd`](SkyFrame::equinox_mjd).
+    // C: as frame.c `Dump` writes it.
     pub fn equinox_year(&self) -> f64 {
         let mjd = self.equinox_mjd();
         if mjd < pal::epj2d(1984.0) {
@@ -519,19 +776,34 @@ impl SkyFrame {
         }
     }
 
-    /// Set the equinox as a Modified Julian Date, with no timescale of its
-    /// own (see [`equinox_mjd`](Self::equinox_mjd)).
+    /// Set the Equinox, as a Modified Julian Date; see
+    /// [`equinox_mjd`](SkyFrame::equinox_mjd).
+    ///
+    /// A helio-ecliptic SkyFrame has no Equinox of its own, so for one the
+    /// Equinox is cleared instead.
     pub fn set_equinox_mjd(&mut self, mjd: f64) {
         // A helio-ecliptic SkyFrame has no Equinox of its own, so setting
         // one clears it (skyframe.c:11436).
         self.equinox = (self.system != SkySystem::Helioecliptic).then_some(mjd);
     }
 
-    /// Return the epoch as a TDB Modified Julian Date.
+    /// The epoch of observation, as a TDB Modified Julian Date: the Epoch
+    /// attribute, set or default; see [`Frame::epoch_mjd`].
     ///
-    /// If not explicitly set, the default depends on the System (C
-    /// `GetEpoch` SkyFrame override, skyframe.c:3210-3225): B1950.0 for
-    /// FK4 / FK4-no-E, J2000.0 for every other system.
+    /// The coordinates of sources can change with time through the changing
+    /// aberration of light from the observer's motion, changing
+    /// gravitational deflection by the Sun, and the fictitious motion of
+    /// non-inertial systems such as FK4 (but not the proper motion of a
+    /// source, which belongs to the source rather than the coordinate
+    /// system).
+    /// The Epoch relates to such motion; the similar-sounding
+    /// [`equinox_mjd`](SkyFrame::equinox_mjd) qualifies a coordinate system
+    /// that is itself in motion because it is referred to a slowly moving
+    /// plane such as the equator.
+    ///
+    /// Default: B1950.0 (Besselian) for the FK4-based systems and J2000.0
+    /// (Julian) for the others.
+    // C: skyframe.c:3210-3225, the SkyFrame `GetEpoch`.
     pub fn epoch_mjd(&self) -> f64 {
         self.attrs
             .epoch
@@ -559,8 +831,9 @@ impl SkyFrame {
         true
     }
 
-    /// Return the epoch as a decimal year (Besselian if MJD <
-    /// J1984, Julian otherwise — mirrors `frame.c::Dump`).
+    /// The Epoch as a decimal year: a Besselian epoch before 1984.0, a
+    /// Julian one from then on; see [`epoch_mjd`](SkyFrame::epoch_mjd).
+    // C: as frame.c `Dump` writes it.
     pub fn epoch_year(&self) -> f64 {
         let mjd = self.epoch_mjd();
         if mjd < pal::epj2d(1984.0) {
@@ -570,52 +843,71 @@ impl SkyFrame {
         }
     }
 
-    /// Whether the epoch attribute has been explicitly set
-    /// (mirrors `astTestEpoch`).
+    /// Whether the Epoch is set; see [`epoch_mjd`](SkyFrame::epoch_mjd).
     pub fn test_epoch(&self) -> bool {
         self.attrs.epoch.is_some()
     }
 
-    /// Clear the explicit `Epoch` value so the attribute reverts to
-    /// its default. Mirrors C `astClearEpoch`.
+    /// Clear the Epoch; see [`epoch_mjd`](SkyFrame::epoch_mjd).
     pub fn clear_epoch(&mut self) {
         self.attrs.epoch = None;
     }
 
-    /// Clear the explicit `Equinox` value so the attribute reverts
-    /// to its default. Mirrors C `astClearEquinox`.
+    /// Clear the Equinox; see [`equinox_mjd`](SkyFrame::equinox_mjd).
     pub fn clear_equinox(&mut self) {
         self.equinox = None;
     }
 
-    /// Set the epoch as a TDB Modified Julian Date.
+    /// Set the Epoch, as a TDB Modified Julian Date; see
+    /// [`epoch_mjd`](SkyFrame::epoch_mjd).
+    /// `BAD_VALUE` clears it.
     pub fn set_epoch_mjd(&mut self, mjd: f64) {
         // A bad Epoch is no Epoch (frame.c `TestEpoch` is `!= AST__BAD`).
         self.attrs.epoch = (mjd != crate::constants::BAD_VALUE).then_some(mjd);
     }
 
-    /// Set the epoch from a bare decimal year (e.g. a FITS `EPOCH`
-    /// keyword or the value stored in a native-encoded `Epoch` node).
+    /// Set the Epoch from a decimal year, such as a FITS `EPOCH` keyword;
+    /// see [`epoch_mjd`](SkyFrame::epoch_mjd).
     ///
-    /// Applies the IAU 1984 convention to resolve the year to an MJD,
-    /// matching what C does when the value flows through
-    /// `astSet(skyframe, "Epoch=...")` → `astReadDateTime`.
+    /// A year before 1984.0 is a Besselian epoch, a later one Julian.
+    // C: `astSet(skyframe, "Epoch=...")` through `astReadDateTime`.
     pub fn set_epoch_year(&mut self, year: f64) {
         self.set_epoch_mjd(crate::frames::date_time::year_to_mjd_iau1984(year));
     }
 
-    /// Set the equinox from a bare decimal year (e.g. a FITS
-    /// `EQUINOX` keyword or the value stored in a native-encoded
-    /// `Eqnox` node).
+    /// Set the Equinox from a decimal year, such as a FITS `EQUINOX`
+    /// keyword; see [`equinox_mjd`](SkyFrame::equinox_mjd).
     ///
-    /// Applies the IAU 1984 convention to resolve the year to an MJD,
-    /// matching what C does when the value flows through
-    /// `astSet(skyframe, "Equinox=...")` → `astReadDateTime`.
+    /// A year before 1984.0 is a Besselian epoch, a later one Julian.
+    // C: `astSet(skyframe, "Equinox=...")` through `astReadDateTime`.
     pub fn set_equinox_year(&mut self, year: f64) {
         self.set_equinox_mjd(crate::frames::date_time::year_to_mjd_iau1984(year));
     }
 
-    /// Return whether longitude increases in the negative direction.
+    /// Display negative longitude values? The NegLon attribute, set or
+    /// default.
+    ///
+    /// Controls how longitude values are normalized for display by
+    /// [`norm`](Frame::norm): false gives normalized longitudes in the range
+    /// zero to 2 pi, true in the range -pi to pi.
+    ///
+    /// Default: true when [`sky_ref_is`](SkyFrame::sky_ref_is) is
+    /// [`SkyRefIs::Origin`], false otherwise.
+    ///
+    /// ```
+    /// use ast_core::frames::{Frame, SkyFrame, SkySystem};
+    ///
+    /// let mut sky = SkyFrame::new(SkySystem::Galactic);
+    /// let mut pos = [-0.5, 0.2];
+    /// sky.norm(&mut pos).unwrap();
+    /// assert!((pos[0] - (2.0 * std::f64::consts::PI - 0.5)).abs() < 1e-12);
+    ///
+    /// sky.set_neg_lon(true);
+    /// let mut pos = [-0.5, 0.2];
+    /// sky.norm(&mut pos).unwrap();
+    /// assert_eq!(pos[0], -0.5);
+    /// ```
+    #[doc(alias = "NegLon")]
     pub fn neg_lon(&self) -> bool {
         // skyframe.c:11592: offset coordinates centred on the origin
         // default to negative longitudes.
@@ -626,36 +918,99 @@ impl SkyFrame {
         }
     }
 
-    /// Set whether longitude increases in the negative direction.
+    /// Set NegLon; see [`neg_lon`](SkyFrame::neg_lon).
     pub fn set_neg_lon(&mut self, neg: bool) {
         self.neglon = neg;
         self.neglon_set = true;
     }
 
-    /// Test whether the `NegLon` attribute has been explicitly set.
+    /// Whether NegLon is set; see [`neg_lon`](SkyFrame::neg_lon).
     pub fn test_neg_lon(&self) -> bool {
         self.neglon_set
     }
 
-    /// Clear NegLon.
+    /// Clear NegLon; see [`neg_lon`](SkyFrame::neg_lon).
     pub fn clear_neg_lon(&mut self) {
         self.neglon = false;
         self.neglon_set = false;
     }
 
-    /// Return the sky reference point `[lon, lat]` in radians.
+    /// Both values of SkyRef, as `[longitude, latitude]` in radians,
+    /// whatever the axis order; see [`sky_ref`](SkyFrame::sky_ref).
     pub fn sky_ref_lon_lat(&self) -> [f64; 2] {
         self.sky_ref
     }
 
-    /// Set the sky reference point, longitude then latitude, in radians.
+    /// Set both values of SkyRef, longitude then latitude, in radians,
+    /// whatever the axis order; see [`sky_ref`](SkyFrame::sky_ref).
     pub fn set_sky_ref_lon_lat(&mut self, lon: f64, lat: f64) {
         self.sky_ref = [lon, lat];
         self.sky_ref_set = [true, true];
     }
 
-    /// `SkyRef(axis)` of a 1-based external axis, in radians, set or
-    /// default (0). Mirrors C `astGetSkyRef` (skyframe.c `MAKE_GET`).
+    /// The position defining the offset coordinate system: the
+    /// `SkyRef(axis)` attribute of the 1-based `axis`, in radians, set or
+    /// default.
+    ///
+    /// Lets a SkyFrame represent offsets, rather than absolute axis values,
+    /// within the coordinate system given by its
+    /// [`system`](SkyFrame::system).
+    /// SkyRef holds the longitude and latitude of a point in that system,
+    /// one value per axis ([`lon_axis`](SkyFrame::lon_axis) and
+    /// [`lat_axis`](SkyFrame::lat_axis) say which is which;
+    /// [`sky_ref_lon_lat`](SkyFrame::sky_ref_lon_lat) gives both in
+    /// longitude, latitude order).
+    /// The coordinate system the SkyFrame represents is rotated to put that
+    /// position at the origin or the pole of the new system, as
+    /// [`sky_ref_is`](SkyFrame::sky_ref_is) says, and
+    /// [`sky_ref_p`](SkyFrame::sky_ref_p) controls the orientation of the
+    /// result.
+    ///
+    /// When a SkyRef is set and SkyRefIs is not
+    /// [`SkyRefIs::Ignored`], the defaults of other attributes change: each
+    /// axis [`label`](SkyFrame::label) gains `" offset"` at the end, each
+    /// axis [`symbol`](SkyFrame::symbol) gains a `"D"` at the start, and the
+    /// default [`title`](SkyFrame::title) describes the origin or pole in
+    /// place of the projection.
+    /// A set SkyRef is re-expressed in the new System when the System
+    /// changes, so it stays at the same place on the sky.
+    ///
+    /// Default: zero longitude and zero latitude.
+    ///
+    /// # Aligning SkyFrames with offset coordinate systems
+    ///
+    /// The offset coordinate system should normally be considered a
+    /// superficial "re-badging" of the axes of the coordinate system given by
+    /// the System: it merely provides an alternative numerical label for each
+    /// position.
+    /// The SkyFrame retains full knowledge of the celestial coordinate
+    /// system on which the offset system is based, such as the way one
+    /// celestial coordinate system drifts with respect to another over time.
+    /// Normally, when two SkyFrames are aligned (by
+    /// [`convert_to`](Frame::convert_to) or
+    /// [`find_frame_template`](Frame::find_frame_template)), the effect of
+    /// any offset coordinate system in either is removed, and alignment
+    /// takes place in the system given by
+    /// [`align_system`](SkyFrame::align_system).
+    /// Setting [`align_offset`](SkyFrame::align_offset) true in both changes
+    /// this, so that the effect of the offset coordinate systems is kept.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Axiin` when `axis` is not 1 or 2.
+    ///
+    /// ```
+    /// use ast_core::frames::{Frame, SkyFrame, SkyRefIs, SkySystem};
+    ///
+    /// let mut sky = SkyFrame::new(SkySystem::Fk5);
+    /// sky.set_sky_ref(1, 1.0).unwrap();
+    /// sky.set_sky_ref(2, 0.5).unwrap();
+    /// sky.set_sky_ref_is(SkyRefIs::Origin);
+    /// assert_eq!(sky.label(1).unwrap(), "Right ascension offset");
+    /// assert_eq!(sky.symbol(2).unwrap(), "DDec");
+    /// ```
+    // C: `astGetSkyRef` (skyframe.c `MAKE_GET`).
+    #[doc(alias = "SkyRef")]
     pub fn sky_ref(&self, axis: usize) -> AstResult<f64> {
         let phys = self.physical_axis(axis)?;
         Ok(if self.sky_ref_set[phys] {
@@ -665,7 +1020,7 @@ impl SkyFrame {
         })
     }
 
-    /// Set `SkyRef(axis)` of a 1-based external axis, in radians.
+    /// Set `SkyRef(axis)`, in radians; see [`sky_ref`](SkyFrame::sky_ref).
     pub fn set_sky_ref(&mut self, axis: usize, value: f64) -> AstResult<()> {
         let phys = self.physical_axis(axis)?;
         self.sky_ref[phys] = value;
@@ -673,12 +1028,12 @@ impl SkyFrame {
         Ok(())
     }
 
-    /// Whether `SkyRef(axis)` of a 1-based external axis is set.
+    /// Whether `SkyRef(axis)` is set; see [`sky_ref`](SkyFrame::sky_ref).
     pub fn test_sky_ref(&self, axis: usize) -> AstResult<bool> {
         Ok(self.sky_ref_set[self.physical_axis(axis)?])
     }
 
-    /// Clear `SkyRef(axis)` of a 1-based external axis.
+    /// Clear `SkyRef(axis)`; see [`sky_ref`](SkyFrame::sky_ref).
     pub fn clear_sky_ref(&mut self, axis: usize) -> AstResult<()> {
         let phys = self.physical_axis(axis)?;
         self.sky_ref[phys] = 0.0;
@@ -691,35 +1046,84 @@ impl SkyFrame {
         self.sky_ref_set[0] || self.sky_ref_set[1]
     }
 
-    /// Return the interpretation of the sky reference point.
+    /// The nature of the offset coordinate system: the SkyRefIs attribute,
+    /// set or default.
+    ///
+    /// Controls how the [`sky_ref`](SkyFrame::sky_ref) and
+    /// [`sky_ref_p`](SkyFrame::sky_ref_p) values are used.
+    /// The three together let a SkyFrame represent offsets relative to some
+    /// origin or pole within the coordinate system given by its
+    /// [`system`](SkyFrame::system), rather than absolute axis values.
+    ///
+    /// - [`SkyRefIs::Origin`]: the coordinate system is modified to put the
+    ///   origin of longitude and latitude at the SkyRef position.
+    /// - [`SkyRefIs::Pole`]: the coordinate system is modified to put the
+    ///   north pole at the SkyRef position.
+    /// - [`SkyRefIs::Ignored`]: any SkyRef is ignored, and the SkyFrame
+    ///   represents the System directly, without rotation.
+    ///
+    /// Default: [`SkyRefIs::Ignored`].
+    #[doc(alias = "SkyRefIs")]
     pub fn sky_ref_is(&self) -> SkyRefIs {
         self.sky_ref_is
     }
 
-    /// Set the interpretation of the sky reference point.
+    /// Set SkyRefIs; see [`sky_ref_is`](SkyFrame::sky_ref_is).
     pub fn set_sky_ref_is(&mut self, mode: SkyRefIs) {
         self.sky_ref_is = mode;
         self.sky_ref_is_set = true;
     }
 
-    /// Test whether `SkyRefIs` has been explicitly set.
+    /// Whether SkyRefIs is set; see [`sky_ref_is`](SkyFrame::sky_ref_is).
     pub fn test_sky_ref_is(&self) -> bool {
         self.sky_ref_is_set
     }
 
-    /// Clear SkyRefIs, which then defaults to Ignored.
+    /// Clear SkyRefIs; see [`sky_ref_is`](SkyFrame::sky_ref_is).
     pub fn clear_sky_ref_is(&mut self) {
         self.sky_ref_is = SkyRefIs::Ignored;
         self.sky_ref_is_set = false;
     }
 
-    /// Return the sky reference meridian point `[lon, lat]` in radians.
+    /// Both values of SkyRefP, set or default, as `[longitude, latitude]`
+    /// in radians, whatever the axis order; see
+    /// [`sky_ref_p`](SkyFrame::sky_ref_p).
     pub fn sky_ref_p_lon_lat(&self) -> [f64; 2] {
         [self.phys_sky_ref_p(0), self.phys_sky_ref_p(1)]
     }
 
-    /// `SkyRefP(axis)` of a 1-based external axis, in radians, set or
-    /// default. Mirrors C `GetSkyRefP` (skyframe.c:4089).
+    /// The position on the primary meridian of the offset coordinate
+    /// system: the `SkyRefP(axis)` attribute of the 1-based `axis`, in
+    /// radians, set or default.
+    ///
+    /// Controls the orientation of the offset coordinate system defined by
+    /// [`sky_ref`](SkyFrame::sky_ref) and
+    /// [`sky_ref_is`](SkyFrame::sky_ref_is).
+    /// SkyRefP holds the longitude and latitude of a point in the
+    /// coordinate system given by the [`system`](SkyFrame::system), one value
+    /// per axis.
+    /// The offset coordinate system is rotated, about the axis from the
+    /// center of the celestial sphere to the SkyRef position, to put the
+    /// SkyRefP position on the zero longitude meridian.
+    ///
+    /// When SkyRef is the origin of the offset system, two orientations
+    /// put SkyRefP on the zero longitude meridian; the one used gives
+    /// SkyRefP a positive latitude in the offset system.
+    /// A SkyRefP which coincides with SkyRef, or is diametrically opposite
+    /// it, cannot define an orientation; the error is reported only when the
+    /// offset coordinate system is used, as `ErrorCode::Badoc`.
+    /// A set SkyRefP is re-expressed in the new System when the System
+    /// changes.
+    ///
+    /// Default: the north pole (latitude +pi/2 in the System), unless
+    /// SkyRef is itself at the north or south pole, when it is the origin
+    /// (0, 0).
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Axiin` when `axis` is not 1 or 2.
+    // C: skyframe.c:4089 `GetSkyRefP`.
+    #[doc(alias = "SkyRefP")]
     pub fn sky_ref_p(&self, axis: usize) -> AstResult<f64> {
         Ok(self.phys_sky_ref_p(self.physical_axis(axis)?))
     }
@@ -744,13 +1148,15 @@ impl SkyFrame {
         }
     }
 
-    /// Set the sky reference meridian point, longitude then latitude.
+    /// Set both values of SkyRefP, longitude then latitude, in radians,
+    /// whatever the axis order; see [`sky_ref_p`](SkyFrame::sky_ref_p).
     pub fn set_sky_ref_p_lon_lat(&mut self, lon: f64, lat: f64) {
         self.sky_ref_p = [lon, lat];
         self.sky_ref_p_set = [true, true];
     }
 
-    /// Set `SkyRefP(axis)` of a 1-based external axis, in radians.
+    /// Set `SkyRefP(axis)`, in radians; see
+    /// [`sky_ref_p`](SkyFrame::sky_ref_p).
     pub fn set_sky_ref_p(&mut self, axis: usize, value: f64) -> AstResult<()> {
         let phys = self.physical_axis(axis)?;
         self.sky_ref_p[phys] = value;
@@ -758,12 +1164,13 @@ impl SkyFrame {
         Ok(())
     }
 
-    /// Whether `SkyRefP(axis)` of a 1-based external axis is set.
+    /// Whether `SkyRefP(axis)` is set; see
+    /// [`sky_ref_p`](SkyFrame::sky_ref_p).
     pub fn test_sky_ref_p(&self, axis: usize) -> AstResult<bool> {
         Ok(self.sky_ref_p_set[self.physical_axis(axis)?])
     }
 
-    /// Clear `SkyRefP(axis)` of a 1-based external axis.
+    /// Clear `SkyRefP(axis)`; see [`sky_ref_p`](SkyFrame::sky_ref_p).
     pub fn clear_sky_ref_p(&mut self, axis: usize) -> AstResult<()> {
         let phys = self.physical_axis(axis)?;
         self.sky_ref_p[phys] = 0.0;
@@ -771,119 +1178,188 @@ impl SkyFrame {
         Ok(())
     }
 
-    /// Return the sky tolerance in arcseconds.
+    /// The smallest significant shift in sky coordinates, in arc-seconds:
+    /// the SkyTol attribute, set or default.
     ///
-    /// The smallest angular separation regarded as significant:
-    /// system-conversion chains whose effect everywhere on the sphere
-    /// is below this tolerance are replaced by a UnitMap.
+    /// Indicates the accuracy of the axis values the SkyFrame represents.
+    /// It is used only when the Mapping between two different SkyFrames is
+    /// constructed (by [`convert_to`](Frame::convert_to) or
+    /// [`find_frame_template`](Frame::find_frame_template), for instance):
+    /// if the transformation between them shifts positions by less than
+    /// SkyTol, it is replaced by a [`UnitMap`].
+    /// This can allow major simplifications of the transformation between
+    /// any pixel grids associated with the two SkyFrames, such as when each
+    /// is part of the WCS FrameSet of an image.
+    /// The smaller SkyTol of the two SkyFrames is used.
+    ///
+    /// A common case is two FK5 SkyFrames with slightly different Epochs.
+    /// With the default AlignSystem, ICRS, the transformation between them
+    /// includes a very small rotation, since FK5 rotates with respect to
+    /// ICRS at about 0.0005 arc-seconds per year.
+    /// Such a rotation is usually insignificant, and a suitably small
+    /// non-zero SkyTol lets it be ignored, so that much simpler
+    /// transformations can be used.
+    ///
+    /// The shift is found by transforming 14 positions spread evenly over
+    /// the whole sky and taking the largest.
+    ///
+    /// Default: 0.001.
+    /// The absolute value of a negative value is stored.
+    #[doc(alias = "SkyTol")]
     pub fn sky_tol(&self) -> f64 {
         // C default: 0.001 arcsec (skyframe.c:11549).
         self.sky_tol.unwrap_or(0.001)
     }
 
-    /// Set the sky tolerance in arcseconds.
+    /// Set SkyTol, in arc-seconds; see [`sky_tol`](SkyFrame::sky_tol).
     pub fn set_sky_tol(&mut self, tol: f64) {
         // skyframe.c:11658 stores the absolute value.
         self.sky_tol = Some(tol.abs());
     }
 
-    /// Test whether `SkyTol` has been explicitly set.
+    /// Whether SkyTol is set; see [`sky_tol`](SkyFrame::sky_tol).
     pub fn test_sky_tol(&self) -> bool {
         self.sky_tol.is_some()
     }
 
-    /// Clear SkyTol.
+    /// Clear SkyTol; see [`sky_tol`](SkyFrame::sky_tol).
     pub fn clear_sky_tol(&mut self) {
         self.sky_tol = None;
     }
 
-    /// Test whether `Equinox` has been explicitly set.
+    /// Whether the Equinox is set; see
+    /// [`equinox_mjd`](SkyFrame::equinox_mjd).
     pub fn test_equinox(&self) -> bool {
         self.equinox.is_some()
     }
 
-    /// Return whether alignment uses offset coordinates.
+    /// Align SkyFrames using the offset coordinate system? The AlignOffset
+    /// attribute, set or default.
+    ///
+    /// Controls how a SkyFrame behaves when it is used as a template to
+    /// match another (target) SkyFrame, by
+    /// [`find_frame_template`](Frame::find_frame_template) or
+    /// [`convert_to`](Frame::convert_to): it decides the coordinate system
+    /// in which the two are aligned if they match.
+    /// If both have an offset coordinate system (a
+    /// [`sky_ref_is`](SkyFrame::sky_ref_is) of [`SkyRefIs::Origin`] or
+    /// [`SkyRefIs::Pole`]) and both have AlignOffset true, alignment takes
+    /// place within the offset coordinate systems, so the two are always
+    /// connected by a [`UnitMap`].
+    /// If either has AlignOffset false, or SkyRefIs
+    /// [`SkyRefIs::Ignored`], alignment takes place in the coordinate system
+    /// given by [`align_system`](SkyFrame::align_system).
+    ///
+    /// Default: false.
+    #[doc(alias = "AlignOffset")]
     pub fn align_offset(&self) -> bool {
         self.align_offset
     }
 
-    /// Set whether alignment uses offset coordinates.
+    /// Set AlignOffset; see [`align_offset`](SkyFrame::align_offset).
     pub fn set_align_offset(&mut self, ao: bool) {
         self.align_offset = ao;
         self.align_offset_set = true;
     }
 
-    /// Test whether `AlignOffset` has been explicitly set.
+    /// Whether AlignOffset is set; see
+    /// [`align_offset`](SkyFrame::align_offset).
     pub fn test_align_offset(&self) -> bool {
         self.align_offset_set
     }
 
-    /// Clear AlignOffset.
+    /// Clear AlignOffset; see [`align_offset`](SkyFrame::align_offset).
     pub fn clear_align_offset(&mut self) {
         self.align_offset = false;
         self.align_offset_set = false;
     }
 
-    /// Return the projection description, if set.
+    /// The sky projection description: the Projection attribute, or `None`
+    /// when it is not set.
+    ///
+    /// A place to describe the type of sky projection used when the
+    /// SkyFrame is attached to a 2-dimensional object, such as an image or
+    /// plotting surface: `"orthographic"`, `"Hammer-Aitoff"` or
+    /// `"cylindrical equal area"`, for instance.
+    /// It is purely descriptive and does not affect the celestial coordinate
+    /// system the SkyFrame represents.
+    /// A non-blank value is used in the default [`title`](SkyFrame::title),
+    /// so that it typically appears in graphical output.
+    ///
+    /// Default: `None`.
+    #[doc(alias = "Projection")]
     pub fn projection(&self) -> Option<&str> {
         self.projection.as_deref()
     }
 
-    /// Set the projection description.
+    /// Set the Projection; see [`projection`](SkyFrame::projection).
     pub fn set_projection(&mut self, proj: &str) {
         self.projection = Some(proj.to_string());
     }
 
-    /// Test whether `Projection` has been explicitly set.
+    /// Whether the Projection is set; see
+    /// [`projection`](SkyFrame::projection).
     pub fn test_projection(&self) -> bool {
         self.projection.is_some()
     }
 
-    /// Clear Projection.
+    /// Clear the Projection; see [`projection`](SkyFrame::projection).
     pub fn clear_projection(&mut self) {
         self.projection = None;
     }
 
-    /// Test whether `Title` has been explicitly set.
+    /// Whether the Title is set; see [`title`](SkyFrame::title).
     pub fn test_title(&self) -> bool {
         self.attrs.title.is_some()
     }
 
-    /// Clear the title attribute.
+    /// Clear the Title; see [`title`](SkyFrame::title).
     pub fn clear_title(&mut self) {
         self.attrs.title = None;
     }
 
     // --- Frame-level attributes ---
 
-    /// Return the frame title.
-    /// The Title, set or default (skyframe.c `GetTitle`).
+    /// The Frame title: the Title attribute, set or default; see
+    /// [`Frame::title`].
+    ///
+    /// Default: a description of the celestial coordinate system, with its
+    /// Equinox and Epoch where they matter, followed by the
+    /// [`projection`](SkyFrame::projection) if one is set; for an offset
+    /// coordinate system "coordinates" becomes "offsets" and the origin or
+    /// pole is given in place of the projection, as in
+    /// `"FK5 equatorial offsets; mean equinox J2000; origin at ..."`.
+    /// It never fails for a SkyFrame.
+    // C: skyframe.c `GetTitle`.
     pub fn title(&self) -> AstResult<String> {
         Frame::title(self)
     }
 
-    /// Set the frame title.
+    /// Set the Title; see [`title`](SkyFrame::title).
     pub fn set_title(&mut self, title: &str) {
         self.attrs.title = Some(title.to_string());
     }
 
-    /// Return the frame domain.
+    /// The coordinate system domain: the Domain attribute, set or default;
+    /// see [`Frame::domain`].
+    ///
+    /// Default: `"SKY"`.
     pub fn domain(&self) -> &str {
         self.attrs.domain.as_deref().unwrap_or("SKY")
     }
 
-    /// Set the frame domain.
+    /// Set the Domain, removing white space and upper-casing letters; see
+    /// [`domain`](SkyFrame::domain).
     pub fn set_domain(&mut self, domain: &str) {
         self.attrs.domain = Some(super::frame_attrs::clean_domain(domain));
     }
 
-    /// Test whether the domain attribute has been explicitly set.
-    /// Mirrors C's `astTestDomain` for `SkyFrame`.
+    /// Whether the Domain is set; see [`domain`](SkyFrame::domain).
     pub fn test_domain(&self) -> bool {
         self.attrs.domain.is_some()
     }
 
-    /// Clear the domain attribute, reverting to the default `"SKY"`.
+    /// Clear the Domain; see [`domain`](SkyFrame::domain).
     pub fn clear_domain(&mut self) {
         self.attrs.domain = None;
     }
@@ -893,7 +1369,7 @@ impl SkyFrame {
         self.attrs.ident.as_deref().unwrap_or("")
     }
 
-    /// Set the frame identification string. Mirrors `astSetIdent`.
+    /// Set the frame identification string.
     pub fn set_ident(&mut self, ident: impl Into<String>) {
         let s = ident.into();
         self.attrs.ident = Some(s);
@@ -1376,16 +1852,23 @@ impl Frame for SkyFrame {
         (self, self.axis_permutation()[axis])
     }
 
-    /// Mirrors C `SkyFrame::GetDirection` (skyframe.c:2836): a Direction
-    /// that has been set, else false for the longitude axis and true for
-    /// the latitude axis, since every sky system is left-handed.
+    /// Display an axis in the conventional direction? See
+    /// [`Frame::direction`].
+    ///
+    /// The default is false for the longitude axis (right ascension, for
+    /// instance), so that it is plotted in reverse, as every celestial
+    /// system is left-handed, and true for the latitude axis.
+    // C: skyframe.c:2836 `GetDirection`.
     fn direction(&self, axis: usize) -> AstResult<bool> {
         let phys = self.physical_axis(axis)?;
         Ok(self.axes[phys].axis().direction.unwrap_or(phys != 0))
     }
 
-    /// Mirrors C `SkyFrame::GetTop` (skyframe.c:3242): a Top that has been
-    /// set, else pi/2 for the latitude axis and no limit for the longitude.
+    /// The highest axis value to display; see [`Frame::top`].
+    ///
+    /// The default is pi/2 (+90 degrees) for the latitude axis; the
+    /// longitude axis displays all values.
+    // C: skyframe.c:3242 `GetTop`.
     fn top(&self, axis: usize) -> AstResult<f64> {
         let phys = self.physical_axis(axis)?;
         Ok(self.axes[phys].axis().top.unwrap_or(if phys == 1 {
@@ -1395,8 +1878,11 @@ impl Frame for SkyFrame {
         }))
     }
 
-    /// Mirrors C `SkyFrame::GetBottom` (skyframe.c:2915), as
-    /// [`top`](Frame::top) does `GetTop`.
+    /// The lowest axis value to display; see [`Frame::bottom`].
+    ///
+    /// The default is -pi/2 (-90 degrees) for the latitude axis; the
+    /// longitude axis displays all values.
+    // C: skyframe.c:2915 `GetBottom`.
     fn bottom(&self, axis: usize) -> AstResult<f64> {
         let phys = self.physical_axis(axis)?;
         Ok(self.axes[phys].axis().bottom.unwrap_or(if phys == 1 {
@@ -1418,8 +1904,13 @@ impl Frame for SkyFrame {
         Ok(self.ax(axis)?.bottom.unwrap_or(-f64::MAX))
     }
 
-    /// Mirrors C `SkyFrame::GetLabel` (skyframe.c:3564): a Label that has
-    /// been set, else the System's name for the axis.
+    /// The label of an axis; see [`Frame::label`].
+    ///
+    /// The default suits the celestial coordinate system, such as
+    /// `"Right ascension"` or `"Galactic latitude"`, with `" offset"`
+    /// appended in an offset coordinate system (see
+    /// [`sky_ref`](SkyFrame::sky_ref)).
+    // C: skyframe.c:3564 `GetLabel`.
     fn label(&self, axis: usize) -> AstResult<String> {
         let phys = self.physical_axis(axis)?;
         if let Some(s) = &self.axes[phys].axis().label {
@@ -1429,9 +1920,12 @@ impl Frame for SkyFrame {
         Ok(if phys == 0 { lon } else { lat })
     }
 
-    /// Mirrors C `SkyFrame::GetSymbol` (skyframe.c:4230): a Symbol that has
-    /// been set, else the System's abbreviation for the axis, with a `D`
-    /// in front in an offset coordinate system.
+    /// The symbol of an axis; see [`Frame::symbol`].
+    ///
+    /// The default suits the celestial coordinate system, such as `"RA"`
+    /// or `"Dec"`, with a `"D"` in front in an offset coordinate system (see
+    /// [`sky_ref`](SkyFrame::sky_ref)).
+    // C: skyframe.c:4230 `GetSymbol`.
     fn symbol(&self, axis: usize) -> AstResult<String> {
         let phys = self.physical_axis(axis)?;
         if let Some(s) = &self.axes[phys].axis().symbol {
@@ -1446,21 +1940,79 @@ impl Frame for SkyFrame {
         })
     }
 
-    /// Mirrors C `SkyFrame::GetUnit` (skyframe.c:4778).
+    /// The units of formatted values on an axis; see [`Frame::unit`].
+    ///
+    /// The default describes the string [`format`](Frame::format)
+    /// returns, such as `"hh:mm:ss.sss"` for an axis formatted as a time,
+    /// following the axis's [`format_str`](SkyFrame::format_str); it is
+    /// `"rad"` for a Format starting with `%`.
+    /// The floating point values themselves are always in radians.
+    // C: skyframe.c:4778 `GetUnit`.
     fn unit(&self, axis: usize) -> AstResult<String> {
         Ok(self.phys_unit(self.physical_axis(axis)?))
     }
 
-    /// Mirrors C `SkyFrame::GetFormat` (skyframe.c:3394).
+    /// The format specification for values on an axis; see
+    /// [`Frame::format_str`].
+    ///
+    /// The default suits the celestial coordinate system: sexagesimal
+    /// hours, minutes and seconds or degrees, minutes and seconds (as
+    /// [`as_time`](SkyFrame::as_time) chooses) for an equatorial system,
+    /// and decimal degrees or hours for the others, with a precision that
+    /// follows the axis's [`axis_digits`](Frame::axis_digits).
+    ///
+    /// # SkyFrame formats
+    ///
+    /// A SkyFrame Format holds zero or more of these characters, in any
+    /// order (the order given here is clearest), case-insensitive:
+    ///
+    /// - `+`: prefix a plus sign to positive values (none by default).
+    /// - `z`: prefix leading zeros so the first field has a constant width,
+    ///   as for a fixed-width table (later fields always have them); none by
+    ///   default.
+    /// - `i`: separate fields with the ISO separator, a colon; the default.
+    /// - `b`: separate fields with a blank.
+    /// - `l`: separate fields with a letter (`h`/`d`, `m` or `s`).
+    /// - `g`: separate fields with letters and symbols marked up by escape
+    ///   sequences for graphical output; the port has no escape sequences,
+    ///   so it behaves as `l`.
+    /// - `d`: include a degrees field; expressing the angle purely in
+    ///   degrees is also the default when none of `h`, `m`, `s` or `t` is
+    ///   given.
+    /// - `h`: express the angle as a time (24 hours to 360 degrees) and
+    ///   include an hours field; purely hours is also the default when `t`
+    ///   is given without `m` or `s`.
+    /// - `m`: include a minutes field (not by default).
+    /// - `s`: include a seconds field (not by default); ignored with `d` or
+    ///   `h` unless a minutes field is included too.
+    /// - `t`: express the angle as a time with no hours field, purely in
+    ///   minutes and/or seconds; ignored with `d` or `h`, and equivalent to
+    ///   `h` when none of `d`, `h`, `m` or `s` is given.
+    /// - `.`: give decimal places in the last field, followed by the number
+    ///   of places or by `*`, which takes the number from Digits.
+    ///
+    /// Where characters conflict (`i` and `b`, say) the last wins, except
+    /// that `d` and `h` always over-ride `t`.
+    /// A Format starting with `%` follows the Frame syntax, and formats the
+    /// value as decimal radians.
+    ///
+    /// ```
+    /// use ast_core::frames::{Frame, SkyFrame, SkySystem};
+    ///
+    /// let mut sky = SkyFrame::new(SkySystem::Fk5);
+    /// sky.set_format_str(1, "lhms.1").unwrap();
+    /// assert_eq!(sky.format(1, 1.0).unwrap(), "3h49m11.0s");
+    /// sky.set_format_str(2, "+zbdms").unwrap();
+    /// assert_eq!(sky.format(2, 0.1).unwrap(), "+005 43 46");
+    /// ```
+    // C: skyframe.c:3394 `GetFormat`.
     fn format_str(&self, axis: usize) -> AstResult<String> {
         Ok(self.phys_format(self.physical_axis(axis)?))
     }
 
-    /// Set the Format for `axis` (1-based), in the SkyAxis syntax
-    /// (`"hms.2"`, `"+zdms"`, `"bhm"`, ...) described in SUN/211. A Format
-    /// starting with `%` makes the Unit `"rad"` and formats with the
-    /// default `%1.<Digits>G`, as in C. A SkyAxis keeps its own Format
-    /// (skyaxis.c `SetAxisFormat`).
+    /// Set `Format(axis)`, in the syntax described under
+    /// [`format_str`](SkyFrame::format_str).
+    // C: a SkyAxis keeps its own Format (skyaxis.c `SetAxisFormat`).
     fn set_format_str(&mut self, axis: usize, fmt: &str) -> AstResult<()> {
         let phys = self.physical_axis(axis)?;
         *self.axes[phys].format_slot_mut() = Some(fmt.to_string());
@@ -1483,10 +2035,13 @@ impl Frame for SkyFrame {
 
     axis_attrs_store!(label, symbol, unit, digits, direction, top, bottom);
 
+    /// Always false for a SkyFrame; see [`Frame::get_active_unit`].
     fn get_active_unit(&self) -> bool {
         false // SkyFrame always reports 0 (frame.c:4651, SkyAxis present).
     }
 
+    /// Has no effect on a SkyFrame, whose ActiveUnit flag is always false;
+    /// see [`Frame::set_active_unit`].
     fn set_active_unit(&mut self, _value: bool) {}
 
     fn test_active_unit(&self) -> bool {
