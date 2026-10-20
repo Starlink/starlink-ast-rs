@@ -15,14 +15,15 @@ use crate::serial::{Node, NodeValue, Serializable};
 // SideBand — which sideband the spectral values represent
 // ---------------------------------------------------------------------------
 
-/// Which sideband of a dual-sideband receiver the spectral values represent.
+/// Which sideband of a dual-sideband spectrum a [`DSBSpecFrame`] represents;
+/// see [`DSBSpecFrame::sideband`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SideBand {
-    /// Upper sideband (signal frequency above LO).
+    /// The upper sideband, above the local oscillator frequency.
     USB,
-    /// Lower sideband (signal frequency below LO).
+    /// The lower sideband, below the local oscillator frequency.
     LSB,
-    /// Local oscillator frequency itself.
+    /// The topocentric offset from the local oscillator frequency.
     LO,
 }
 
@@ -52,17 +53,47 @@ impl SideBand {
 // DSBSpecFrame
 // ---------------------------------------------------------------------------
 
-/// A coordinate frame for dual-sideband spectral observations.
+/// A dual sideband spectral coordinate system description.
 ///
-/// `DSBSpecFrame` wraps a [`SpecFrame`] and adds attributes that describe
-/// the relationship between the observed frequency and the local oscillator
-/// in a dual-sideband (DSB) receiver system. The key additional attributes are:
+/// A DSBSpecFrame is a specialized form of [`SpecFrame`] which represents
+/// positions in a spectrum obtained using a dual sideband instrument.
+/// Such an instrument produces a spectrum in which each point contains
+/// contributions from two distinctly different frequencies, one from the
+/// "lower side band" (LSB) and one from the "upper side band" (USB).
+/// Corresponding LSB and USB frequencies are an equal distance on either
+/// side of a fixed central frequency, the "local oscillator" (LO) frequency.
 ///
-/// - **DSBCentre**: the central frequency of the observation (LO frequency), in Hz.
-/// - **IF**: the intermediate frequency (half the sideband separation), in Hz.
-///   Positive IF means the stored frequency is in the lower sideband by default.
-/// - **SideBand**: which sideband (USB, LSB, or LO) the stored values represent.
-/// - **AlignSideBand**: whether sideband flipping is allowed during frame alignment.
+/// A position within such a spectrum must say whether it is the USB position
+/// or the corresponding LSB position; the [`sideband`](DSBSpecFrame::sideband)
+/// does this, and can also represent a spectral position by its topocentric
+/// offset from the LO frequency.
+///
+/// In practice the LO frequency is given as the distance from it to some
+/// "central" spectral position, typically that of an interesting spectral
+/// feature ([`dsb_centre_cur`](DSBSpecFrame::dsb_centre_cur)).
+/// That distance is the "intermediate frequency" (IF,
+/// [`if_ghz`](DSBSpecFrame::if_ghz)), which is signed to say whether the LO
+/// frequency is above or below the central position.
+///
+/// The SpecFrame attributes are reached through
+/// [`spec`](DSBSpecFrame::spec) and [`spec_mut`](DSBSpecFrame::spec_mut),
+/// with delegating methods for the commonest; the Domain defaults to
+/// `"DSBSPECTRUM"`.
+///
+/// # Attributes
+///
+/// In addition to the attributes of a SpecFrame, a DSBSpecFrame has:
+///
+/// - [`align_sideband`](DSBSpecFrame::align_sideband): should alignment
+///   occur between sidebands?
+/// - [`dsb_centre_cur`](DSBSpecFrame::dsb_centre_cur): the central position
+///   of interest.
+/// - [`if_ghz`](DSBSpecFrame::if_ghz): the intermediate frequency used to
+///   define the LO frequency.
+/// - [`imag_freq_ghz`](DSBSpecFrame::imag_freq_ghz): the image sideband
+///   equivalent of the rest frequency.
+/// - [`sideband`](DSBSpecFrame::sideband): which sideband the DSBSpecFrame
+///   represents.
 ///
 /// # Examples
 ///
@@ -100,14 +131,25 @@ impl DSBSpecFrame {
     /// Default intermediate frequency in Hz (4 GHz).
     const DEFAULT_IFR: f64 = 4.0e9;
 
-    /// Create a new `DSBSpecFrame` with the given spectral coordinate system.
+    /// Create a DSBSpecFrame describing the spectral coordinate system
+    /// `system`.
     ///
-    /// The Domain defaults to "DSBSPECTRUM" but is left *unset* (so
-    /// `test_domain` reports false), mirroring C `GetDomain`
-    /// (dsbspecframe.c:531) which supplies "DSBSPECTRUM" only as a
-    /// default. All DSB-specific attributes start at their defaults
-    /// (DSBCentre = 30 GHz, IF = 4 GHz, SideBand derived from IF
-    /// sign = LSB, AlignSideBand = false).
+    /// The System is set, as [`SpecFrame::new`] sets it; every other
+    /// attribute takes its default, so DSBCentre is 30 GHz, IF is 4 GHz, the
+    /// SideBand is the observed sideband (LSB) and AlignSideBand is false.
+    ///
+    /// ```
+    /// use ast_core::frames::{DSBSpecFrame, SideBand, SpecSystem};
+    ///
+    /// let dsb = DSBSpecFrame::new(SpecSystem::Freq);
+    /// assert_eq!(dsb.if_ghz(), 4.0);
+    /// assert_eq!(dsb.sideband(), SideBand::LSB);
+    /// // The LO is IF above the central position: 34 GHz.
+    /// assert_eq!(dsb.lo_freq().unwrap(), 3.4e10);
+    /// ```
+    // C: `astDSBSpecFrame("System=...")`; dsbspecframe.c:531 `GetDomain`
+    // supplies "DSBSPECTRUM" only as a default.
+    #[doc(alias = "astDSBSpecFrame")]
     pub fn new(system: SpecSystem) -> Self {
         let spec = SpecFrame::new(system);
         Self {
@@ -119,48 +161,55 @@ impl DSBSpecFrame {
         }
     }
 
-    /// A DSBSpecFrame with no attribute set, as `astDSBSpecFrame(" ")`
-    /// makes one.
+    /// Create a DSBSpecFrame with no attribute set; see
+    /// [`SpecFrame::unset_system`].
+    // C: `astDSBSpecFrame("")`.
+    #[doc(alias = "astDSBSpecFrame")]
     pub fn unset_system() -> Self {
         Self::from_spec_frame(SpecFrame::unset_system())
     }
 
-    /// Whether DSBCentre is set.
+    /// Whether DSBCentre is set; see
+    /// [`dsb_centre_cur`](DSBSpecFrame::dsb_centre_cur).
     pub fn test_dsb_centre(&self) -> bool {
         self.dsb_centre.is_some()
     }
 
-    /// Clear DSBCentre.
+    /// Clear DSBCentre; see
+    /// [`dsb_centre_cur`](DSBSpecFrame::dsb_centre_cur).
     pub fn clear_dsb_centre(&mut self) {
         self.dsb_centre = None;
     }
 
-    /// Whether IF is set.
+    /// Whether IF is set; see [`if_ghz`](DSBSpecFrame::if_ghz).
     pub fn test_if(&self) -> bool {
         self.ifr.is_some()
     }
 
-    /// Clear IF.
+    /// Clear IF; see [`if_ghz`](DSBSpecFrame::if_ghz).
     pub fn clear_if(&mut self) {
         self.ifr = None;
     }
 
-    /// Whether SideBand is set.
+    /// Whether SideBand is set; see [`sideband`](DSBSpecFrame::sideband).
     pub fn test_sideband(&self) -> bool {
         self.sideband.is_some()
     }
 
-    /// Clear SideBand, which then follows the sign of IF.
+    /// Clear SideBand, which then follows the sign of IF; see
+    /// [`sideband`](DSBSpecFrame::sideband).
     pub fn clear_sideband(&mut self) {
         self.sideband = None;
     }
 
-    /// Whether AlignSideBand is set.
+    /// Whether AlignSideBand is set; see
+    /// [`align_sideband`](DSBSpecFrame::align_sideband).
     pub fn test_align_sideband(&self) -> bool {
         self.align_sideband.is_some()
     }
 
-    /// Clear AlignSideBand.
+    /// Clear AlignSideBand; see
+    /// [`align_sideband`](DSBSpecFrame::align_sideband).
     pub fn clear_align_sideband(&mut self) {
         self.align_sideband = None;
     }
@@ -182,24 +231,46 @@ impl DSBSpecFrame {
 
     // --- DSB-specific attribute getters ---
 
-    /// Return the DSB centre frequency as a **topocentric frequency in Hz**
-    /// (the internal storage unit).
+    /// DSBCentre as it is stored, a topocentric frequency in Hz, set or
+    /// default; see [`dsb_centre_cur`](DSBSpecFrame::dsb_centre_cur).
     ///
-    /// Defaults to 3.0e10 Hz (30 GHz) if not explicitly set. To obtain the
-    /// value expressed in the frame's current spectral System (what C's
-    /// `astGetC("DSBCentre")` returns), use [`Self::dsb_centre_cur`].
+    /// Default: 3.0E10 Hz (30 GHz).
+    #[doc(alias = "DSBCentre")]
     pub fn dsb_centre(&self) -> f64 {
         self.dsb_centre.unwrap_or(Self::DEFAULT_DSB_CENTRE)
     }
 
-    /// Return the DSB centre expressed in the frame's **current spectral
-    /// System and units**.
+    /// The central position of interest in a dual sideband spectrum: the
+    /// DSBCentre attribute, set or default, in the current spectral system
+    /// and units.
     ///
-    /// Mirrors C `astGetAttrib(this, "DSBCentre")` (dsbspecframe.c:459-483):
-    /// the internal topocentric-frequency value is transformed through the
-    /// inverse of `to_topo_mapping` (i.e. topocentric Hz → current
-    /// system). This is the value the C string-attribute layer formats; the
-    /// ast-capi shim should call this for `astGetC` parity.
+    /// Its sole use is to determine the local oscillator frequency, the
+    /// frequency which marks the boundary between the lower and upper
+    /// sidebands; [`if_ghz`](DSBSpecFrame::if_ghz) says how.
+    /// The sideband containing this central position is the "observed"
+    /// sideband, and the other is the "image" sideband.
+    ///
+    /// The value is a position in the spectral system the SpecFrame
+    /// attributes describe, but is stored as a topocentric frequency
+    /// ([`dsb_centre`](DSBSpecFrame::dsb_centre)).
+    /// If the System is radio velocity, the Unit `"m/s"` and the StdOfRest
+    /// LSRK, for instance, the value is a radio velocity in m/s relative to
+    /// the kinematic LSR; if the Unit then changes to `"km/s"`, the stored
+    /// frequency is converted back to LSRK radio velocity in km/s.
+    /// Give the attributes which define the transformation to or from
+    /// topocentric frequency their correct values before using this
+    /// attribute: potentially System, Unit, StdOfRest, ObsLon, ObsLat,
+    /// ObsAlt, Epoch, RefRA, RefDec and RestFreq.
+    ///
+    /// Default: 30 GHz, as a topocentric frequency.
+    ///
+    /// # Errors
+    ///
+    /// Passes on any error from converting between the spectral system and
+    /// topocentric frequency, such as `ErrorCode::Inter` when no conversion
+    /// is found.
+    // C: `astGetAttrib(this, "DSBCentre")` (dsbspecframe.c:459-483).
+    #[doc(alias = "DSBCentre")]
     pub fn dsb_centre_cur(&self) -> AstResult<f64> {
         // TopoMap forward is current-system → topocentric Hz; the get-path
         // needs the inverse (topocentric Hz → current system).
@@ -209,13 +280,18 @@ impl DSBSpecFrame {
         Ok(out.point(0)[0])
     }
 
-    /// Set the DSB centre from a value expressed in the frame's **current
-    /// spectral System and units**, converting to internal topocentric Hz.
+    /// Set DSBCentre from a value in the current spectral system and units,
+    /// stored as a topocentric frequency; see
+    /// [`dsb_centre_cur`](DSBSpecFrame::dsb_centre_cur).
     ///
-    /// Mirrors C `astSetAttrib(this, "DSBCentre=...")` (dsbspecframe.c:1355-1370):
-    /// the supplied value is transformed through `to_topo_mapping`
-    /// (current system → topocentric Hz) before storage. The ast-capi shim
-    /// should call this for `astSetC` parity.
+    /// # Errors
+    ///
+    /// - `ErrorCode::Attin` when the value has no topocentric frequency (a
+    ///   redshift of -1, for instance); DSBCentre is then unchanged.
+    /// - Passes on any error from converting the spectral system to
+    ///   topocentric frequency, such as `ErrorCode::Inter` when no
+    ///   conversion is found.
+    // C: `astSetAttrib(this, "DSBCentre=...")` (dsbspecframe.c:1355-1370).
     pub fn set_dsb_centre_cur(&mut self, value: f64) -> AstResult<()> {
         let topo_map = self.to_topo_mapping()?;
         let pts = crate::coords::PointSet::from_rows([[value]]);
@@ -236,40 +312,80 @@ impl DSBSpecFrame {
         Ok(())
     }
 
-    /// Return the intermediate frequency as a **topocentric frequency in Hz**
-    /// (the internal storage unit).
+    /// IF in Hz, set or default; see [`if_ghz`](DSBSpecFrame::if_ghz).
     ///
-    /// Defaults to 4.0e9 Hz (4 GHz) if not explicitly set. C's
-    /// `astGetC("IF")` reports this value in GHz (×1e-9); use
-    /// [`Self::if_ghz`] for that external representation.
+    /// Default: 4.0E9 Hz (4 GHz).
+    #[doc(alias = "IF")]
     pub fn ifr(&self) -> f64 {
         self.ifr.unwrap_or(Self::DEFAULT_IFR)
     }
 
-    /// Return the intermediate frequency in **GHz**, matching C's external
-    /// `astGetC("IF")` representation (dsbspecframe.c:487-492, `× 1e-9`).
+    /// The intermediate frequency in a dual sideband spectrum, in GHz: the
+    /// IF attribute, set or default.
+    ///
+    /// The (topocentric) intermediate frequency, whose sole use is to
+    /// determine the local oscillator (LO) frequency, the frequency which
+    /// marks the boundary between the lower and upper sidebands.
+    /// The LO frequency is the sum of the center frequency and the IF, where
+    /// the center frequency is the topocentric frequency corresponding to
+    /// [`dsb_centre_cur`](DSBSpecFrame::dsb_centre_cur);
+    /// [`lo_freq`](DSBSpecFrame::lo_freq) gives it.
+    /// A positive IF puts the LO frequency above the central frequency, a
+    /// negative one below it, and the sign decides the default
+    /// [`sideband`](DSBSpecFrame::sideband).
+    /// [`ifr`](DSBSpecFrame::ifr) gives the value in Hz.
+    ///
+    /// Default: 4 GHz.
+    // C: dsbspecframe.c:487-492.
+    #[doc(alias = "IF")]
     pub fn if_ghz(&self) -> f64 {
         self.ifr() * 1.0e-9
     }
 
-    /// Set the intermediate frequency from a value in **GHz**, converting to
-    /// internal topocentric Hz (`× 1e9`). Mirrors C's `astSetC("IF=...")`
-    /// (dsbspecframe.c, the IF set-path).
+    /// Set IF, in GHz; see [`if_ghz`](DSBSpecFrame::if_ghz).
     pub fn set_if_ghz(&mut self, ghz: f64) {
         self.ifr = Some(ghz * 1.0e9);
     }
 
-    /// Return the image-sideband frequency in **GHz**, matching C's external
-    /// `astGetC("ImagFreq")` representation (dsbspecframe.c:496-501, `× 1e-9`).
+    /// The image sideband equivalent of the rest frequency, in GHz: the
+    /// read-only ImagFreq attribute.
+    ///
+    /// The frequency which corresponds to the rest frequency but is in the
+    /// opposite sideband.
+    /// The rest frequency ([`SpecFrame::rest_freq`]) is transformed from the
+    /// standard of rest of the source (given by SourceVel and SourceVRF) to
+    /// the topocentric standard of rest.
+    /// That topocentric frequency is taken to be in the observed sideband,
+    /// the one containing [`dsb_centre_cur`](DSBSpecFrame::dsb_centre_cur),
+    /// and is transformed to the image sideband.
+    /// The result is converted back to the standard of rest of the source.
+    /// [`imag_freq`](DSBSpecFrame::imag_freq) gives it in Hz.
+    ///
+    /// # Errors
+    ///
+    /// As [`imag_freq`](DSBSpecFrame::imag_freq).
+    // C: dsbspecframe.c:496-501.
+    #[doc(alias = "ImagFreq")]
     pub fn imag_freq_ghz(&self) -> AstResult<f64> {
         Ok(self.imag_freq()? * 1.0e-9)
     }
 
-    /// Return the sideband that the stored spectral values represent.
+    /// Which sideband the DSBSpecFrame represents: the SideBand attribute,
+    /// set or default.
     ///
-    /// If explicitly set, returns that value. Otherwise, derives the sideband
-    /// from the sign of the intermediate frequency: positive IF → LSB,
-    /// negative or zero IF → USB.
+    /// [`SideBand::USB`] for the upper sideband, [`SideBand::LSB`] for the
+    /// lower sideband, or [`SideBand::LO`] for an offset from the local
+    /// oscillator frequency.
+    /// The "observed" sideband is whichever of the upper and lower contains
+    /// the central position [`dsb_centre_cur`](DSBSpecFrame::dsb_centre_cur),
+    /// and the "image" sideband is the other; the sign of the IF decides
+    /// which is which.
+    /// [`observed_sideband`](DSBSpecFrame::observed_sideband) gives the
+    /// observed one, to set it by name.
+    ///
+    /// Default: the observed sideband: [`SideBand::LSB`] for a positive IF,
+    /// [`SideBand::USB`] otherwise.
+    #[doc(alias = "SideBand")]
     pub fn sideband(&self) -> SideBand {
         if let Some(sb) = self.sideband {
             return sb;
@@ -283,34 +399,59 @@ impl DSBSpecFrame {
         }
     }
 
-    /// Return whether sideband alignment is enabled.
+    /// Should the SideBand be taken into account when aligning this
+    /// DSBSpecFrame with another? The AlignSideBand attribute, set or
+    /// default.
     ///
-    /// Defaults to `false` if not explicitly set.
+    /// Controls how a DSBSpecFrame behaves when it is aligned with another
+    /// DSBSpecFrame by [`find_frame_template`](Frame::find_frame_template)
+    /// or [`convert_to`](Frame::convert_to).
+    /// If both have AlignSideBand true, the [`sideband`](DSBSpecFrame::sideband)
+    /// of each is used so that alignment occurs between sidebands: if one
+    /// represents USB and the other LSB, the Mapping takes the difference
+    /// into account.
+    /// If either has it false, the SideBands are ignored and the two align
+    /// as plain SpecFrames, so that a frequency in one maps onto the same
+    /// frequency in the other even though they refer to different sidebands.
+    ///
+    /// The Mapping between two DSBSpecFrames is made up of these steps in
+    /// order:
+    ///
+    /// 1. If both have AlignSideBand true, map values from the target's
+    ///    current sideband to its observed sideband (a [`UnitMap`] if the
+    ///    target already represents the observed sideband).
+    /// 2. Map the values from the spectral system of the target to that of
+    ///    the template, taking account of all the SpecFrame attributes, such
+    ///    as System, StdOfRest and Unit.
+    /// 3. If both have AlignSideBand true, map values from the result's
+    ///    observed sideband to its current sideband.
+    ///
+    /// Default: false.
+    #[doc(alias = "AlignSideBand")]
     pub fn align_sideband(&self) -> bool {
         self.align_sideband.unwrap_or(false)
     }
 
     // --- DSB-specific attribute setters ---
 
-    /// Set the DSB centre frequency in Hz.
+    /// Set DSBCentre, as a topocentric frequency in Hz; see
+    /// [`dsb_centre_cur`](DSBSpecFrame::dsb_centre_cur).
     pub fn set_dsb_centre(&mut self, hz: f64) {
         self.dsb_centre = Some(hz);
     }
 
-    /// Set the intermediate frequency in Hz.
-    ///
-    /// The sign of the IF value determines the default sideband when no
-    /// explicit sideband has been set: positive → LSB, negative/zero → USB.
+    /// Set IF, in Hz; see [`if_ghz`](DSBSpecFrame::if_ghz).
     pub fn set_ifr(&mut self, hz: f64) {
         self.ifr = Some(hz);
     }
 
-    /// Explicitly set the sideband.
+    /// Set the SideBand; see [`sideband`](DSBSpecFrame::sideband).
     pub fn set_sideband(&mut self, sb: SideBand) {
         self.sideband = Some(sb);
     }
 
-    /// Set whether sideband alignment is enabled.
+    /// Set AlignSideBand; see
+    /// [`align_sideband`](DSBSpecFrame::align_sideband).
     pub fn set_align_sideband(&mut self, val: bool) {
         self.align_sideband = Some(val);
     }
@@ -434,8 +575,8 @@ impl DSBSpecFrame {
     /// Configure this DSBSpecFrame's IF / DSBCentre / SideBand from a FITS
     /// header's image frequency and spectral CRVAL.
     ///
-    /// Mirrors C `DSBSetUp` (fitschan.c:9024-9158). `imagfreq` is the
-    /// `IMAGFREQ` keyword value (Hz, measured in the source rest frame);
+    /// `imagfreq` is the `IMAGFREQ` keyword value (Hz, measured in the
+    /// source rest frame);
     /// `crval` is the spectral CRVAL value expressed in this frame's current
     /// spectral System and Unit (the CTYPE system).
     ///
@@ -450,6 +591,11 @@ impl DSBSpecFrame {
     ///    a topocentric frequency, take the local-oscillator frequency to be
     ///    half-way between the topocentric rest and image frequencies, set
     ///    `IF = lo - dsbcentre`, and set the SideBand to the observed sideband.
+    ///
+    /// # Errors
+    ///
+    /// Passes on any error from converting between the spectral systems.
+    // C: fitschan.c:9024-9158 `DSBSetUp`.
     pub fn dsb_set_up(&mut self, imagfreq: f64, crval: f64) -> AstResult<()> {
         use crate::frames::Frame;
 
@@ -543,10 +689,15 @@ impl DSBSpecFrame {
         }
     }
 
-    /// Return the local oscillator frequency in Hz.
+    /// The local oscillator frequency, in Hz: the topocentric
+    /// [`dsb_centre`](DSBSpecFrame::dsb_centre) plus the
+    /// [`ifr`](DSBSpecFrame::ifr).
     ///
-    /// This is `dsb_centre + ifr`, which must be no less than the size of
-    /// the IF (dsbspecframe.c `GetLO`).
+    /// # Errors
+    ///
+    /// - `ErrorCode::Attin` when the result is less than the size of the
+    ///   IF, which a bad IF or DSBCentre can cause.
+    // C: dsbspecframe.c `GetLO`.
     pub fn lo_freq(&self) -> AstResult<f64> {
         let f_if = self.ifr();
         let lo = self.dsb_centre() + f_if;
@@ -566,18 +717,22 @@ impl DSBSpecFrame {
         Ok(lo)
     }
 
-    /// Compute the image-sideband frequency corresponding to the rest
-    /// frequency.
+    /// ImagFreq in Hz; see [`imag_freq_ghz`](DSBSpecFrame::imag_freq_ghz).
     ///
-    /// Mirrors `dsbspecframe.c::GetImagFreq` (line 599): the rest
-    /// frequency is interpreted as an observed-sideband frequency in
-    /// the source's rest frame (Hz). The mapping from observed to
-    /// the opposite sideband is built on a temporary copy with
-    /// `StdOfRest=Source`, `System=Freq`, `Unit=Hz`,
-    /// `SideBand=observed`; that mapping is applied to the rest
-    /// frequency to yield the image-sideband frequency.
+    /// # Errors
     ///
-    /// Uses RestFreq, set or default, as dsbspecframe.c:673 does.
+    /// - `ErrorCode::Noval` when UseDefs is false and IF or DSBCentre is
+    ///   not set.
+    /// - `ErrorCode::Attin` when the LO frequency is less than the size of
+    ///   the IF ([`lo_freq`](DSBSpecFrame::lo_freq)).
+    /// - Passes on any error from converting between the spectral system
+    ///   and topocentric frequency.
+    // C: dsbspecframe.c:599 `GetImagFreq`. The rest frequency (set or
+    // default, dsbspecframe.c:673) is taken as an observed-sideband
+    // frequency in the source's rest frame, and transformed by the
+    // observed-to-image Mapping of a copy with StdOfRest=Source, System=Freq,
+    // Unit=Hz and SideBand=observed.
+    #[doc(alias = "ImagFreq")]
     pub fn imag_freq(&self) -> AstResult<f64> {
         let rest_freq = self.spec.rest_freq();
 
@@ -789,6 +944,9 @@ impl Frame for DSBSpecFrame {
     fn set_frame_flags(&mut self, flags: u32) {
         self.spec.set_frame_flags(flags);
     }
+    /// The coordinate system domain; see [`Frame::domain`].
+    ///
+    /// Default: `"DSBSPECTRUM"`.
     fn domain(&self) -> &str {
         if self.spec.test_domain() {
             Frame::domain(&self.spec)
@@ -848,8 +1006,11 @@ impl Frame for DSBSpecFrame {
     // Ident is an Object-level attribute (`object.c:5217-5229`), and the
     // component SpecFrame supplies the storage the dump reads back.
 
-    /// Mirrors C `DSBSpecFrame::GetLabel` (dsbspecframe.c:688): the
-    /// SpecFrame's Label, followed by the sideband when it is a default.
+    /// The label of the axis; see [`Frame::label`].
+    ///
+    /// The default is the SpecFrame's, followed by the sideband, as in
+    /// `"Frequency (LSB)"`.
+    // C: dsbspecframe.c:688 `GetLabel`.
     fn label(&self, axis: usize) -> AstResult<String> {
         let label = Frame::label(&self.spec, axis)?;
         Ok(if Frame::test_label(&self.spec, axis)? {

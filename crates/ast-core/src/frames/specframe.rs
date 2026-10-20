@@ -256,13 +256,61 @@ impl StdOfRest {
 // SpecFrame
 // ---------------------------------------------------------------------------
 
-/// A coordinate frame for spectral coordinates.
+/// A spectral coordinate system description.
 ///
-/// `SpecFrame` is a 1-axis Frame representing spectral position. It supports
-/// a range of coordinate systems (frequency, wavelength, velocity, energy,
-/// redshift, etc.) and reference frames (heliocentric, barycentric, LSRK, etc.).
+/// A SpecFrame is a specialized form of one-dimensional Frame which
+/// represents various coordinate systems used to describe positions within an
+/// electro-magnetic spectrum.
+/// The particular coordinate system is given by its
+/// [`system`](SpecFrame::system) (wavelength unless set), qualified as
+/// necessary by other attributes such as the rest frequency, the standard of
+/// rest, the epoch of observation and the units.
+/// By setting a [`spec_origin`](SpecFrame::spec_origin), a SpecFrame can be
+/// made to represent offsets from a given spectral position, rather than
+/// absolute spectral values.
 ///
-/// Construct via [`SpecFrame::new`].
+/// The axis attributes of the Frame trait take axis index 1, the only axis.
+/// A SpecFrame always uses active units (see
+/// [`set_active_unit`](Frame::set_active_unit)), so a difference in the
+/// [`unit`](SpecFrame::unit) of two SpecFrames is taken into account when
+/// they are converted, and changing the Unit of the current Frame of a
+/// FrameSet re-maps it within the FrameSet.
+///
+/// Its Domain defaults to `"SPECTRUM"`, and its Title to the name of the
+/// System, followed by the standard of rest when that is set and, for a
+/// velocity-based System, the rest frequency, as in
+/// `"Radio velocity (LSRK), rest frequency = 1000 GHz"`.
+/// The observer's position ([`obs_lat`](Frame::obs_lat),
+/// [`obs_lon`](Frame::obs_lon) and [`obs_alt`](Frame::obs_alt)), with the
+/// [`epoch_mjd`](Frame::epoch_mjd), [`ref_ra`](SpecFrame::ref_ra) and
+/// [`ref_dec`](SpecFrame::ref_dec), defines the Doppler shift from the
+/// observer's diurnal motion about the Earth's axis, needed when converting
+/// to or from the topocentric standard of rest; an incorrect observer
+/// position causes a velocity error of at most 0.5 km/s.
+///
+/// # Attributes
+///
+/// In addition to the attributes common to all Frames, a SpecFrame has:
+///
+/// - [`align_spec_offset`](SpecFrame::align_spec_offset): align SpecFrames
+///   using the offset coordinate system?
+/// - [`align_std_of_rest`](SpecFrame::align_std_of_rest): standard of rest in
+///   which to align SpecFrames.
+/// - [`ref_dec`](SpecFrame::ref_dec): declination of the source (FK5
+///   J2000).
+/// - [`ref_ra`](SpecFrame::ref_ra): right ascension of the source (FK5
+///   J2000).
+/// - [`rest_freq`](SpecFrame::rest_freq): rest frequency.
+/// - [`source_sys`](SpecFrame::source_sys): source velocity spectral system.
+/// - [`source_vel`](SpecFrame::source_vel): source velocity.
+/// - [`source_vrf`](SpecFrame::source_vrf): source velocity rest frame.
+/// - [`spec_origin`](SpecFrame::spec_origin): the zero point for SpecFrame
+///   axis values.
+/// - [`std_of_rest`](SpecFrame::std_of_rest): standard of rest.
+///
+/// [`ref_pos`](SpecFrame::ref_pos) and
+/// [`set_ref_pos`](SpecFrame::set_ref_pos) get and set the reference
+/// position in any celestial coordinate system.
 ///
 /// # Examples
 ///
@@ -343,9 +391,45 @@ impl SpecFrame {
         true
     }
 
-    /// Create a new `SpecFrame` with the given spectral coordinate system.
+    /// Create a SpecFrame describing the spectral coordinate system
+    /// `system`.
     ///
-    /// Defaults: domain = "SPECTRUM", std_of_rest = Heliocentric.
+    /// The System is set; [`SpecFrame::unset_system`] makes one whose System
+    /// is unset.
+    /// Every other attribute takes its default; qualify the system as
+    /// necessary with the setters, such as
+    /// [`set_rest_freq`](SpecFrame::set_rest_freq) and
+    /// [`set_std_of_rest`](SpecFrame::set_std_of_rest).
+    ///
+    /// When two SpecFrames are converted with
+    /// [`convert_to`](Frame::convert_to), the conversion takes account of
+    /// the spectral coordinate systems they represent, with any qualifying
+    /// rest frequency, standard of rest and epoch, and of their
+    /// [`align_system`](SpecFrame::align_system) and
+    /// [`align_std_of_rest`](SpecFrame::align_std_of_rest), so the result
+    /// fully reflects the relationship between positions measured in the two
+    /// systems.
+    /// Any difference in their [`unit`](SpecFrame::unit) is taken into
+    /// account too.
+    ///
+    /// ```
+    /// use ast_core::frames::{Frame, SpecFrame, SpecSystem, StdOfRest};
+    ///
+    /// // Apparent radial velocity with a rest frequency of 1.0E15 Hz (about
+    /// // 3000 Angstrom), in the kinematic Local Standard of Rest.
+    /// let mut velo = SpecFrame::new(SpecSystem::Vrel);
+    /// velo.set_rest_freq(1.0e15);
+    /// velo.set_std_of_rest(StdOfRest::Lsrk).unwrap();
+    /// assert_eq!(velo.unit(1).unwrap(), "km/s");
+    ///
+    /// // Frequency in GHz, converted to velocity.
+    /// let mut freq = SpecFrame::new(SpecSystem::Freq);
+    /// freq.set_rest_freq(1.0e15);
+    /// freq.set_std_of_rest(StdOfRest::Lsrk).unwrap();
+    /// assert!(freq.convert_to(&velo, &[]).unwrap().is_some());
+    /// ```
+    // C: `astSpecFrame("System=...")`.
+    #[doc(alias = "astSpecFrame")]
     pub fn new(system: SpecSystem) -> Self {
         Self {
             attrs: super::frame_attrs::FrameAttrs::default(),
@@ -376,8 +460,15 @@ impl SpecFrame {
         }
     }
 
-    /// A SpecFrame with no attribute set, as `astSpecFrame(" ")` makes one:
-    /// its System is wavelength by default rather than by being set.
+    /// Create a SpecFrame with no attribute set, describing the default
+    /// spectral coordinate system, wavelength.
+    ///
+    /// Its System is wavelength by default rather than by being set, so when
+    /// it is the template of
+    /// [`find_frame_template`](Frame::find_frame_template), the Frame found
+    /// keeps the target's System rather than taking the template's.
+    // C: `astSpecFrame("")`.
+    #[doc(alias = "astSpecFrame")]
     pub fn unset_system() -> Self {
         Self {
             system_set: false,
@@ -392,19 +483,56 @@ impl SpecFrame {
         self.attrs.ident.as_deref().unwrap_or("")
     }
 
-    /// Set the frame identification string. Mirrors `astSetIdent`.
+    /// Set the frame identification string.
     pub fn set_ident(&mut self, ident: impl Into<String>) {
         let s = ident.into();
         self.attrs.ident = Some(s);
     }
 
-    /// Return the spectral coordinate system.
+    /// The spectral coordinate system: the System attribute, set or
+    /// default.
+    ///
+    /// [`Frame::system_string`] gives its name.
+    /// The systems are those of FITS-WCS Paper III, with the default
+    /// [`unit`](SpecFrame::unit) of each in parentheses:
+    ///
+    /// - [`SpecSystem::Freq`] (`"FREQ"`): frequency (GHz).
+    /// - [`SpecSystem::Energy`] (`"ENER"` or `"ENERGY"`): energy (J).
+    /// - [`SpecSystem::Wavenum`] (`"WAVN"` or `"WAVENUM"`): wave-number
+    ///   (1/m).
+    /// - [`SpecSystem::Wavelen`] (`"WAVE"` or `"WAVELEN"`): vacuum
+    ///   wavelength (Angstrom).
+    /// - [`SpecSystem::Airwave`] (`"AWAV"` or `"AIRWAVE"`): wavelength in
+    ///   air (Angstrom).
+    /// - [`SpecSystem::Vradio`] (`"VRAD"` or `"VRADIO"`): radio velocity
+    ///   (km/s).
+    /// - [`SpecSystem::Voptical`] (`"VOPT"` or `"VOPTICAL"`): optical
+    ///   velocity (km/s).
+    /// - [`SpecSystem::Redshift`] (`"ZOPT"` or `"REDSHIFT"`): redshift
+    ///   (dimensionless).
+    /// - [`SpecSystem::Beta`] (`"BETA"`): beta factor (dimensionless).
+    /// - [`SpecSystem::Vrel`] (`"VELO"` or `"VREL"`): apparent radial
+    ///   ("relativistic") velocity (km/s).
+    ///
+    /// A SpecFrame always uses active units, so changing its Unit re-maps
+    /// it within its FrameSet.
+    ///
+    /// Default: [`SpecSystem::Wavelen`].
     pub fn system(&self) -> SpecSystem {
         self.system
     }
 
-    /// Set the spectral coordinate system. Fails as C's `OriginSystem`
-    /// does when a set SpecOrigin cannot be expressed in the new System.
+    /// Set the System; see [`system`](SpecFrame::system).
+    ///
+    /// A change of System brings back the Unit last used with the new
+    /// System (or its default Unit), clears the Label, Symbol and Title,
+    /// and re-expresses a set SpecOrigin in the new System.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Atser` when a set SpecOrigin cannot be expressed in
+    ///   the new System.
+    // C: specframe.c `OriginSystem`.
     pub fn set_system(&mut self, sys: SpecSystem) -> AstResult<()> {
         let old = self.system;
         self.system = sys;
@@ -428,15 +556,20 @@ impl SpecFrame {
         Ok(())
     }
 
-    /// Test whether System has been explicitly set. Mirrors C
-    /// `astTestSystem` for SpecFrame.
+    /// Whether the System is set; see [`system`](SpecFrame::system).
     pub fn test_system(&self) -> bool {
         self.system_set
     }
 
-    /// Clear System back to its class default. Mirrors C
-    /// `astClearSystem` for SpecFrame: after clearing, `astGetSystem`
-    /// returns the SpecFrame default `AST__WAVELEN` (specframe.c:2015).
+    /// Clear the System, which reverts to wavelength; see
+    /// [`system`](SpecFrame::system) and
+    /// [`set_system`](SpecFrame::set_system).
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Atser` when a set SpecOrigin cannot be expressed in
+    ///   wavelength.
+    // C: specframe.c:2015, `astClearSystem`.
     pub fn clear_system(&mut self) -> AstResult<()> {
         // specframe.c `ClearSystem`: when the default System differs from
         // the old one, restore the Unit last used with it (or clear the
@@ -455,15 +588,79 @@ impl SpecFrame {
         Ok(())
     }
 
-    /// Return the standard of rest.
+    /// The standard of rest: the StdOfRest attribute, set or default.
+    ///
+    /// The standard of rest to which the spectral axis values of the
+    /// SpecFrame refer.
+    /// Each standard of rest must be qualified by other attributes:
+    ///
+    /// - [`StdOfRest::Topocentric`] (`"Topocentric"`, `"Topocent"` or
+    ///   `"Topo"`): the observer's rest-frame, assumed to be on the surface
+    ///   of the Earth.
+    ///   Spectra recorded in it suffer a Doppler shift which varies over the
+    ///   course of a day because of the rotation of the observer around the
+    ///   axis of the Earth.
+    ///   Qualified by ObsLat, ObsLon, ObsAlt, Epoch, RefRA and RefDec.
+    /// - [`StdOfRest::Geocentric`] (`"Geocentric"`, `"Geocentr"` or
+    ///   `"Geo"`): the rest-frame of the Earth's center.
+    ///   Spectra recorded in it suffer a Doppler shift which varies over the
+    ///   course of a year because of the rotation of the Earth around the
+    ///   Sun.
+    ///   Qualified by Epoch, RefRA and RefDec.
+    /// - [`StdOfRest::Barycentric`] (`"Barycentric"`, `"Barycent"` or
+    ///   `"Bary"`): the rest-frame of the solar-system barycenter.
+    ///   Spectra recorded in it suffer a Doppler shift which depends both on
+    ///   the velocity of the Sun through the Local Standard of Rest and on
+    ///   the movement of the planets through the solar system.
+    ///   Qualified by Epoch, RefRA and RefDec.
+    /// - [`StdOfRest::Heliocentric`] (`"Heliocentric"`, `"Heliocen"` or
+    ///   `"Helio"`): the rest-frame of the Sun.
+    ///   Spectra recorded in it suffer a Doppler shift which depends on the
+    ///   velocity of the Sun through the Local Standard of Rest.
+    ///   Qualified by RefRA and RefDec.
+    /// - [`StdOfRest::Lsrk`] (`"LSRK"` or `"LSR"`): the rest-frame of the
+    ///   kinematical Local Standard of Rest.
+    ///   Spectra recorded in it suffer a Doppler shift which depends on the
+    ///   velocity of the kinematical Local Standard of Rest through the
+    ///   galaxy.
+    ///   Qualified by RefRA and RefDec.
+    /// - [`StdOfRest::Lsrd`] (`"LSRD"`): the rest-frame of the dynamical
+    ///   Local Standard of Rest.
+    ///   Spectra recorded in it suffer a Doppler shift which depends on the
+    ///   velocity of the dynamical Local Standard of Rest through the galaxy.
+    ///   Qualified by RefRA and RefDec.
+    /// - [`StdOfRest::Galactic`] (`"Galactic"`, `"Galactoc"` or `"Gal"`):
+    ///   the rest-frame of the galactic center.
+    ///   Spectra recorded in it suffer a Doppler shift which depends on the
+    ///   velocity of the galactic center through the local group.
+    ///   Qualified by RefRA and RefDec.
+    /// - [`StdOfRest::LocalGroup`] (`"Local_group"`, `"Localgrp"` or
+    ///   `"LG"`): the rest-frame of the local group.
+    ///   Qualified by RefRA and RefDec.
+    /// - [`StdOfRest::Source`] (`"Source"` or `"src"`): the rest-frame of
+    ///   the source.
+    ///   Qualified by RefRA, RefDec and SourceVel.
+    ///
+    /// [`StdOfRest::parse`] accepts the names case-insensitively, and
+    /// [`StdOfRest::as_str`] gives the first.
+    ///
+    /// Default: [`StdOfRest::Heliocentric`].
+    #[doc(alias = "StdOfRest")]
     pub fn std_of_rest(&self) -> StdOfRest {
         self.std_of_rest
     }
 
-    /// Set the standard of rest.
+    /// Set the StdOfRest; see [`std_of_rest`](SpecFrame::std_of_rest).
     ///
-    /// A set SpecOrigin is first re-expressed in the new rest frame, and
-    /// this fails as C's `OriginStdOfRest` does when it cannot be.
+    /// A set SpecOrigin is first re-expressed in the new standard of rest.
+    ///
+    /// # Errors
+    ///
+    /// Passes on the error from re-expressing a set SpecOrigin, such as
+    /// `ErrorCode::Atser` when it cannot be expressed in the new standard of
+    /// rest; the StdOfRest is then left unchanged and the SpecOrigin
+    /// cleared.
+    // C: specframe.c `OriginStdOfRest`.
     pub fn set_std_of_rest(&mut self, sor: StdOfRest) -> AstResult<()> {
         self.origin_std_of_rest(sor, "astSetStdOfRest")?;
         self.std_of_rest = sor;
@@ -471,7 +668,8 @@ impl SpecFrame {
         Ok(())
     }
 
-    /// Test whether StdOfRest has been explicitly set.
+    /// Whether the StdOfRest is set; see
+    /// [`std_of_rest`](SpecFrame::std_of_rest).
     pub fn test_std_of_rest(&self) -> bool {
         self.sor_set
     }
@@ -496,9 +694,9 @@ impl SpecFrame {
         self.axis.unit = Some(unit.to_string());
     }
 
-    /// Return the user-facing unit, falling back to the system default
-    /// (e.g. "GHz" for FREQ, "km/s" for VRAD). Mirrors C's `astGetUnit`,
-    /// which always returns a non-NULL string.
+    /// The Unit of the axis, set or default, as
+    /// [`unit`](SpecFrame::unit) gives it: the default is the System's, such
+    /// as `"GHz"` for frequency or `"km/s"` for radio velocity.
     pub fn unit_or_default(&self) -> &str {
         self.axis
             .unit
@@ -507,30 +705,65 @@ impl SpecFrame {
             .unwrap_or_else(|| self.system.default_display_units())
     }
 
-    /// Return the alignment standard of rest.
+    /// The standard of rest in which to align SpecFrames: the
+    /// AlignStdOfRest attribute, set or default.
     ///
-    /// Defaults to Heliocentric if not explicitly set.
+    /// Controls how a SpecFrame behaves when it is used as a template to
+    /// match another (target) SpecFrame, by
+    /// [`find_frame_template`](Frame::find_frame_template) or
+    /// [`convert_to`](Frame::convert_to): it is the standard of rest in which
+    /// alignment occurs.
+    /// [`std_of_rest`](SpecFrame::std_of_rest) describes the values.
+    ///
+    /// The Mapping found between two SpecFrames, which may describe
+    /// different spectral coordinate systems, is made up of these steps in
+    /// order:
+    ///
+    /// 1. Map values from the system the target uses (wavelength, apparent
+    ///    radial velocity, and so on) to the template's
+    ///    [`align_system`](SpecFrame::align_system), using the target's rest
+    ///    frequency if necessary.
+    /// 2. Map these values from the target's standard of rest to the
+    ///    AlignStdOfRest, using the Epoch, ObsLat, ObsLon, ObsAlt, RefDec and
+    ///    RefRA of the target to define the two standards of rest.
+    /// 3. Map these values from the AlignStdOfRest to the template's standard
+    ///    of rest, using the Epoch, ObsLat, ObsLon, ObsAlt, RefDec and RefRA
+    ///    of the template to define the two standards of rest.
+    /// 4. Map these values from the AlignSystem to the system the template
+    ///    uses, using the template's rest frequency if necessary.
+    ///
+    /// Default: [`StdOfRest::Heliocentric`].
+    #[doc(alias = "AlignStdOfRest")]
     pub fn align_std_of_rest(&self) -> StdOfRest {
         self.align_std_of_rest.unwrap_or(StdOfRest::Heliocentric)
     }
 
-    /// Set the alignment standard of rest.
+    /// Set the AlignStdOfRest; see
+    /// [`align_std_of_rest`](SpecFrame::align_std_of_rest).
     pub fn set_align_std_of_rest(&mut self, sor: StdOfRest) {
         self.align_std_of_rest = Some(sor);
     }
 
-    /// Test whether AlignStdOfRest has been explicitly set.
+    /// Whether the AlignStdOfRest is set; see
+    /// [`align_std_of_rest`](SpecFrame::align_std_of_rest).
     pub fn test_align_std_of_rest(&self) -> bool {
         self.align_std_of_rest.is_some()
     }
 
-    /// Clear AlignStdOfRest.
+    /// Clear the AlignStdOfRest; see
+    /// [`align_std_of_rest`](SpecFrame::align_std_of_rest).
     pub fn clear_align_std_of_rest(&mut self) {
         self.align_std_of_rest = None;
     }
 
-    /// Clear StdOfRest, re-expressing a set SpecOrigin as heliocentric
-    /// first (specframe.c:650).
+    /// Clear the StdOfRest, re-expressing a set SpecOrigin as heliocentric
+    /// first; see [`std_of_rest`](SpecFrame::std_of_rest).
+    ///
+    /// # Errors
+    ///
+    /// Passes on the error from re-expressing a set SpecOrigin, as
+    /// [`set_std_of_rest`](SpecFrame::set_std_of_rest) does.
+    // C: specframe.c:650.
     pub fn clear_std_of_rest(&mut self) -> AstResult<()> {
         self.origin_std_of_rest(StdOfRest::Heliocentric, "astClearStdOfRest")?;
         self.std_of_rest = StdOfRest::Heliocentric;
@@ -538,93 +771,169 @@ impl SpecFrame {
         Ok(())
     }
 
-    /// Return the alignment system.
+    /// The spectral system in which SpecFrames are aligned: the
+    /// AlignSystem attribute, set or default.
     ///
-    /// Defaults to `Wavelen` if not explicitly set. Mirrors C
-    /// `GetAlignSystem` (specframe.c:1899-1957).
+    /// See [`BasicFrame::align_system`](super::BasicFrame::align_system) for
+    /// the general rule, and
+    /// [`align_std_of_rest`](SpecFrame::align_std_of_rest) for the steps of
+    /// the alignment.
+    ///
+    /// Default: [`SpecSystem::Wavelen`].
+    // C: specframe.c:1899-1957 `GetAlignSystem`.
     pub fn align_system(&self) -> SpecSystem {
         self.align_system.unwrap_or(SpecSystem::Wavelen)
     }
 
-    /// Set the alignment system.
+    /// Set the AlignSystem; see [`align_system`](SpecFrame::align_system).
     pub fn set_align_system(&mut self, sys: SpecSystem) {
         self.align_system = Some(sys);
     }
 
-    /// Test whether AlignSystem has been explicitly set.
+    /// Whether the AlignSystem is set; see
+    /// [`align_system`](SpecFrame::align_system).
     pub fn test_align_system(&self) -> bool {
         self.align_system.is_some()
     }
 
-    /// Clear AlignSystem back to its class default (`Wavelen`).
+    /// Clear the AlignSystem; see [`align_system`](SpecFrame::align_system).
     pub fn clear_align_system(&mut self) {
         self.align_system = None;
     }
 
-    /// RestFreq in Hz, set or default (1e14 Hz; specframe.c:6020).
+    /// The rest frequency, in Hz: the RestFreq attribute, set or default.
+    ///
+    /// The frequency corresponding to zero velocity, used when converting
+    /// between velocity-based coordinate systems and other coordinate
+    /// systems (such as frequency, wavelength or energy).
+    ///
+    /// Default: 1.0E14 Hz (1.0E5 GHz).
+    // C: specframe.c:6020.
+    #[doc(alias = "RestFreq")]
     pub fn rest_freq(&self) -> f64 {
         self.rest_freq.unwrap_or(1.0e14)
     }
 
-    /// Clear RestFreq.
+    /// Clear RestFreq; see [`rest_freq`](SpecFrame::rest_freq).
     pub fn clear_rest_freq(&mut self) {
         self.rest_freq = None;
     }
 
-    /// Set the rest frequency in Hz.
+    /// Set RestFreq, in Hz; see [`rest_freq`](SpecFrame::rest_freq).
     pub fn set_rest_freq(&mut self, hz: f64) {
         self.rest_freq = Some(hz);
     }
 
-    /// Test whether RestFreq has been explicitly set.
+    /// Whether RestFreq is set; see [`rest_freq`](SpecFrame::rest_freq).
     pub fn test_rest_freq(&self) -> bool {
         self.rest_freq.is_some()
     }
 
-    /// RefRA (FK5 J2000, radians), set or default (0).
+    /// The right ascension of the reference point, as an FK5 J2000.0
+    /// angle in radians: the RefRA attribute, set or default.
+    ///
+    /// With [`ref_dec`](SpecFrame::ref_dec), the FK5 J2000.0 coordinates of
+    /// a reference point on the sky.
+    /// For one-dimensional spectra this should normally be the position of
+    /// the source; for spectral data with spatial coverage (spectral cubes
+    /// and so on), a position close to the center of the spatial coverage.
+    /// It defines the correction for Doppler shift applied when
+    /// [`convert_to`](Frame::convert_to) or
+    /// [`find_frame_template`](Frame::find_frame_template) converts between
+    /// different standards of rest.
+    ///
+    /// The correction is assumed to be spatially invariant.
+    /// If one SpecFrame describes spectral values at different points on the
+    /// sky (as a component of a CmpFrame, for instance), the Doppler shift at
+    /// every position is taken to be that at the reference position.
+    /// The maximum velocity error this introduces is of the order of
+    /// V*SIN(FOV), where FOV is the angular field of view and V the relative
+    /// velocity of the two standards of rest.
+    /// Correcting from the topocentric rest frame to the kinematic Local
+    /// Standard of Rest, for instance, V is at most about 20 km/s, so the
+    /// error over a 5 arc-minute field is about 0.03 km/s; correcting from
+    /// the topocentric rest frame to the local group, the error is about
+    /// 5 km/s over a 1 degree field.
+    ///
+    /// [`ref_pos`](SpecFrame::ref_pos) and
+    /// [`set_ref_pos`](SpecFrame::set_ref_pos) express the reference point
+    /// in any celestial coordinate system.
+    ///
+    /// Default: 0.
+    #[doc(alias = "RefRA")]
     pub fn ref_ra(&self) -> f64 {
         self.ref_ra.unwrap_or(0.0)
     }
 
-    /// Clear RefRA.
+    /// Clear RefRA; see [`ref_ra`](SpecFrame::ref_ra).
     pub fn clear_ref_ra(&mut self) {
         self.ref_ra = None;
     }
 
-    /// Set the reference RA (FK5 J2000, radians).
+    /// Set RefRA, in radians; see [`ref_ra`](SpecFrame::ref_ra).
     pub fn set_ref_ra(&mut self, ra: f64) {
         self.ref_ra = Some(ra);
     }
 
-    /// Test whether RefRA has been explicitly set.
+    /// Whether RefRA is set; see [`ref_ra`](SpecFrame::ref_ra).
     pub fn test_ref_ra(&self) -> bool {
         self.ref_ra.is_some()
     }
 
-    /// RefDec (FK5 J2000, radians), set or default (0).
+    /// The declination of the reference point, as an FK5 J2000.0 angle in
+    /// radians: the RefDec attribute, set or default.
+    ///
+    /// See [`ref_ra`](SpecFrame::ref_ra) for how the reference point is
+    /// used.
+    ///
+    /// Default: 0.
+    #[doc(alias = "RefDec")]
     pub fn ref_dec(&self) -> f64 {
         self.ref_dec.unwrap_or(0.0)
     }
 
-    /// Clear RefDec.
+    /// Clear RefDec; see [`ref_dec`](SpecFrame::ref_dec).
     pub fn clear_ref_dec(&mut self) {
         self.ref_dec = None;
     }
 
-    /// Set the reference Dec (FK5 J2000, radians).
+    /// Set RefDec, in radians; see [`ref_dec`](SpecFrame::ref_dec).
     pub fn set_ref_dec(&mut self, dec: f64) {
         self.ref_dec = Some(dec);
     }
 
-    /// Test whether RefDec has been explicitly set.
+    /// Whether RefDec is set; see [`ref_dec`](SpecFrame::ref_dec).
     pub fn test_ref_dec(&self) -> bool {
         self.ref_dec.is_some()
     }
 
-    /// The reference position, as longitude and latitude in the supplied
-    /// SkyFrame, or the stored RefRA and RefDec (FK5 J2000) when none is
-    /// given. Mirrors `astGetRefPos`. Both values are `BAD_VALUE` when the
-    /// SkyFrame cannot be aligned with FK5.
+    /// Return the reference position in a specified celestial coordinate
+    /// system.
+    ///
+    /// The reference position ([`ref_ra`](SpecFrame::ref_ra) and
+    /// [`ref_dec`](SpecFrame::ref_dec)) converted to the celestial
+    /// coordinate system `frm` represents, as `(longitude, latitude)` in
+    /// radians.
+    /// With no SkyFrame, the stored FK5 J2000.0 RefRA and RefDec are
+    /// returned.
+    /// Both values are `BAD_VALUE` when `frm` cannot be aligned with FK5.
+    ///
+    /// # Errors
+    ///
+    /// Passes on any error from aligning `frm` with FK5 J2000.0
+    /// ([`find_frame_template`](Frame::find_frame_template)) or from
+    /// transforming the position.
+    ///
+    /// ```
+    /// use ast_core::frames::{SkyFrame, SkySystem, SpecFrame, SpecSystem};
+    ///
+    /// let mut spec = SpecFrame::new(SpecSystem::Freq);
+    /// let galactic = SkyFrame::new(SkySystem::Galactic);
+    /// spec.set_ref_pos(Some(&galactic), 1.0, 0.5).unwrap();
+    /// let (l, b) = spec.ref_pos(Some(&galactic)).unwrap();
+    /// assert!((l - 1.0).abs() < 1e-9 && (b - 0.5).abs() < 1e-9);
+    /// ```
+    #[doc(alias = "astGetRefPos")]
     pub fn ref_pos(&self, frm: Option<&super::SkyFrame>) -> AstResult<(f64, f64)> {
         // With no SkyFrame, the stored RefRA and RefDec (specframe.c
         // `GetRefPos`).
@@ -665,15 +974,24 @@ impl SpecFrame {
         })
     }
 
-    /// Set the reference position from a celestial coordinate system.
-    /// Mirrors C `astSetRefPos` (specframe.c:3913-4038).
+    /// Set the reference position in a specified celestial coordinate
+    /// system.
     ///
-    /// `frm` is the SkyFrame which defines the celestial coordinate
-    /// system in which the longitude and latitude values are supplied.
-    /// If `None`, the supplied longitude and latitude values are
-    /// assumed to already be FK5 J2000 RA and Dec.
+    /// Sets [`ref_ra`](SpecFrame::ref_ra) and
+    /// [`ref_dec`](SpecFrame::ref_dec) from `lon` and `lat`, in radians, in
+    /// the celestial coordinate system `frm` represents.
+    /// With no SkyFrame, `lon` and `lat` are taken to be FK5 J2000.0 right
+    /// ascension and declination.
+    /// The reference position is left unchanged when `frm` cannot be aligned
+    /// with FK5.
     ///
-    /// `lon` and `lat` are in radians within `frm`'s coordinate system.
+    /// # Errors
+    ///
+    /// Passes on any error from aligning `frm` with FK5 J2000.0
+    /// ([`find_frame_template`](Frame::find_frame_template)) or from
+    /// transforming the position.
+    // C: specframe.c:3913-4038.
+    #[doc(alias = "astSetRefPos")]
     pub fn set_ref_pos(
         &mut self,
         frm: Option<&super::SkyFrame>,
@@ -765,13 +1083,33 @@ impl SpecFrame {
         Ok(())
     }
 
-    /// SourceVel, set or default (0): a velocity in m/s, or a redshift or
-    /// beta factor, according to SourceSys.
+    /// The source velocity: the SourceVel attribute, set or default, as a
+    /// velocity in m/s or a redshift or beta factor.
+    ///
+    /// With [`source_sys`](SpecFrame::source_sys),
+    /// [`source_vrf`](SpecFrame::source_vrf), [`ref_ra`](SpecFrame::ref_ra)
+    /// and [`ref_dec`](SpecFrame::ref_dec), it defines the "Source" standard
+    /// of rest (see [`std_of_rest`](SpecFrame::std_of_rest)): a rest frame
+    /// moving towards the position given by RefRA and RefDec at this
+    /// velocity.
+    /// A positive value means the source is moving away from the observer.
+    ///
+    /// The value is in the spectral system given by SourceSys (a radio
+    /// velocity, a redshift, a beta factor, and so on) and in the rest frame
+    /// given by SourceVRF, both when it is set and when it is read.
+    /// Set SourceSys and SourceVRF before setting SourceVel: a later change
+    /// to either converts the stored SourceVel to the new system or rest
+    /// frame.
+    /// This getter gives a velocity in m/s;
+    /// [`source_vel_cur`](SpecFrame::source_vel_cur) gives it in km/s.
+    ///
+    /// Default: 0.
+    #[doc(alias = "SourceVel")]
     pub fn source_vel(&self) -> f64 {
         self.source_vel.unwrap_or(0.0)
     }
 
-    /// Clear SourceVel.
+    /// Clear SourceVel; see [`source_vel`](SpecFrame::source_vel).
     pub fn clear_source_vel(&mut self) {
         self.source_vel = None;
     }
@@ -785,8 +1123,9 @@ impl SpecFrame {
         )
     }
 
-    /// SourceVel as C's attribute reports it: km/s for a velocity, else the
-    /// redshift or beta factor.
+    /// SourceVel with a velocity in km/s, or the redshift or beta factor;
+    /// see [`source_vel`](SpecFrame::source_vel).
+    #[doc(alias = "SourceVel")]
     pub fn source_vel_cur(&self) -> f64 {
         if self.source_vel_is_velocity() {
             self.source_vel() * 1.0e-3
@@ -795,8 +1134,8 @@ impl SpecFrame {
         }
     }
 
-    /// Set SourceVel from a value as C's attribute reads it: km/s for a
-    /// velocity, else the redshift or beta factor.
+    /// Set SourceVel from a velocity in km/s, or a redshift or beta factor;
+    /// see [`source_vel`](SpecFrame::source_vel).
     pub fn set_source_vel_cur(&mut self, value: f64) {
         let v = if self.source_vel_is_velocity() {
             value * 1.0e3
@@ -806,25 +1145,39 @@ impl SpecFrame {
         self.set_source_vel(v);
     }
 
-    /// Set the source velocity.
+    /// Set SourceVel, with a velocity in m/s; see
+    /// [`source_vel`](SpecFrame::source_vel).
     pub fn set_source_vel(&mut self, vel: f64) {
         self.source_vel = Some(vel);
     }
 
-    /// Test whether SourceVel has been explicitly set.
+    /// Whether SourceVel is set; see [`source_vel`](SpecFrame::source_vel).
     pub fn test_source_vel(&self) -> bool {
         self.source_vel.is_some()
     }
 
-    /// Return the source velocity rest frame.
+    /// The rest frame in which the source velocity is stored: the SourceVRF
+    /// attribute, set or default.
     ///
-    /// Defaults to Heliocentric if not set.
+    /// The [`source_vel`](SpecFrame::source_vel) is given and returned in
+    /// this rest frame.
+    /// It takes the values of [`std_of_rest`](SpecFrame::std_of_rest),
+    /// except [`StdOfRest::Source`].
+    ///
+    /// Default: [`StdOfRest::Heliocentric`].
+    #[doc(alias = "SourceVRF")]
     pub fn source_vrf(&self) -> StdOfRest {
         self.source_vrf.unwrap_or(StdOfRest::Heliocentric)
     }
 
-    /// Set the source velocity rest frame, re-expressing a set SourceVel in
-    /// it (specframe.c:6134). The Source rest frame is not allowed.
+    /// Set SourceVRF, converting a set SourceVel to the new rest frame; see
+    /// [`source_vrf`](SpecFrame::source_vrf).
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Attin` for [`StdOfRest::Source`].
+    /// - Passes on any error from converting a set SourceVel.
+    // C: specframe.c:6134.
     pub fn set_source_vrf(&mut self, sor: StdOfRest) -> AstResult<()> {
         if sor == StdOfRest::Source {
             return Err(AstError::new(
@@ -839,8 +1192,13 @@ impl SpecFrame {
         Ok(())
     }
 
-    /// Clear SourceVRF, re-expressing a set SourceVel as heliocentric
-    /// (specframe.c:6126).
+    /// Clear SourceVRF, converting a set SourceVel to heliocentric; see
+    /// [`source_vrf`](SpecFrame::source_vrf).
+    ///
+    /// # Errors
+    ///
+    /// Passes on any error from converting a set SourceVel.
+    // C: specframe.c:6126.
     pub fn clear_source_vrf(&mut self) -> AstResult<()> {
         if self.test_source_vel() {
             self.source_vel =
@@ -850,21 +1208,41 @@ impl SpecFrame {
         Ok(())
     }
 
-    /// Test whether SourceVRF has been explicitly set.
+    /// Whether SourceVRF is set; see [`source_vrf`](SpecFrame::source_vrf).
     pub fn test_source_vrf(&self) -> bool {
         self.source_vrf.is_some()
     }
 
-    /// Return the source velocity spectral system.
+    /// The spectral system in which the source velocity is stored: the
+    /// SourceSys attribute, set or default.
     ///
-    /// Defaults to Vrel if not set.
+    /// The [`source_vel`](SpecFrame::source_vel) is given and returned in
+    /// this spectral system, one of:
+    ///
+    /// - [`SpecSystem::Vradio`] (`"VRAD"` or `"VRADIO"`): radio velocity.
+    /// - [`SpecSystem::Voptical`] (`"VOPT"` or `"VOPTICAL"`): optical
+    ///   velocity.
+    /// - [`SpecSystem::Redshift`] (`"ZOPT"` or `"REDSHIFT"`): redshift
+    ///   (dimensionless).
+    /// - [`SpecSystem::Beta`] (`"BETA"`): beta factor (dimensionless).
+    /// - [`SpecSystem::Vrel`] (`"VELO"` or `"VREL"`): apparent radial
+    ///   ("relativistic") velocity.
+    ///
+    /// Default: [`SpecSystem::Vrel`].
+    #[doc(alias = "SourceSys")]
     pub fn source_sys(&self) -> SpecSystem {
         self.source_sys.unwrap_or(SpecSystem::Vrel)
     }
 
-    /// Set the source velocity spectral system, re-expressing a set
-    /// SourceVel in it (specframe.c:6201). Only a velocity, a redshift or a
-    /// beta factor is allowed.
+    /// Set SourceSys, converting a set SourceVel to the new system; see
+    /// [`source_sys`](SpecFrame::source_sys).
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Attin` for a system that is not a velocity, a redshift
+    ///   or a beta factor.
+    /// - Passes on any error from converting a set SourceVel.
+    // C: specframe.c:6201.
     pub fn set_source_sys(&mut self, sys: SpecSystem) -> AstResult<()> {
         if !matches!(
             sys,
@@ -886,8 +1264,13 @@ impl SpecFrame {
         Ok(())
     }
 
-    /// Clear SourceSys, re-expressing a set SourceVel as relativistic
-    /// velocity (specframe.c:6194).
+    /// Clear SourceSys, converting a set SourceVel to apparent radial
+    /// velocity; see [`source_sys`](SpecFrame::source_sys).
+    ///
+    /// # Errors
+    ///
+    /// Passes on any error from converting a set SourceVel.
+    // C: specframe.c:6194.
     pub fn clear_source_sys(&mut self) -> AstResult<()> {
         if self.test_source_vel() {
             self.source_vel = Some(self.convert_source_vel(self.source_vrf(), SpecSystem::Vrel)?);
@@ -896,41 +1279,58 @@ impl SpecFrame {
         Ok(())
     }
 
-    /// Test whether SourceSys has been explicitly set.
+    /// Whether SourceSys is set; see [`source_sys`](SpecFrame::source_sys).
     pub fn test_source_sys(&self) -> bool {
         self.source_sys.is_some()
     }
 
-    /// SpecOrigin in the default units of the current System, set or
-    /// default (0).
+    /// The zero point for SpecFrame axis values: the SpecOrigin attribute,
+    /// set or default, in the default units of the current System.
+    ///
+    /// The origin from which all spectral values are measured.
+    /// The default, zero, makes the SpecFrame describe absolute spectral
+    /// values in its [`system`](SpecFrame::system); a SpecFrame describing
+    /// offsets from some origin has SpecOrigin set to that origin.
+    /// The value refers to the system, units and standard of rest the
+    /// SpecFrame describes, and is converted whenever any of them changes,
+    /// so that it keeps referring to the same spectral position.
+    /// [`spec_origin_cur`](SpecFrame::spec_origin_cur) gives it in the
+    /// current [`unit`](SpecFrame::unit).
+    ///
+    /// Default: 0.
+    #[doc(alias = "SpecOrigin")]
     pub fn spec_origin(&self) -> f64 {
         self.spec_origin.unwrap_or(0.0)
     }
 
-    /// Clear SpecOrigin.
+    /// Clear SpecOrigin; see [`spec_origin`](SpecFrame::spec_origin).
     pub fn clear_spec_origin(&mut self) {
         self.spec_origin = None;
     }
 
-    /// Set the spectral origin.
+    /// Set SpecOrigin, in the default units of the current System; see
+    /// [`spec_origin`](SpecFrame::spec_origin).
     pub fn set_spec_origin(&mut self, origin: f64) {
         self.spec_origin = Some(origin);
     }
 
-    /// Test whether SpecOrigin has been explicitly set.
+    /// Whether SpecOrigin is set; see
+    /// [`spec_origin`](SpecFrame::spec_origin).
     pub fn test_spec_origin(&self) -> bool {
         self.spec_origin.is_some()
     }
 
-    /// Return the epoch as a TDB Modified Julian Date.
+    /// The epoch of observation, as a TDB Modified Julian Date: the Epoch
+    /// attribute, set or default; see [`Frame::epoch_mjd`].
     ///
-    /// Defaults to J2000.0 (MJD 51544.5) if not set.
+    /// Default: J2000.0 (MJD 51544.5).
     pub fn epoch_mjd(&self) -> f64 {
         self.attrs.epoch.unwrap_or(51544.5)
     }
 
-    /// Return the epoch as a decimal year (Besselian if MJD < J1984,
-    /// Julian otherwise — mirrors `frame.c::Dump`).
+    /// The Epoch as a decimal year: a Besselian epoch before 1984.0, a
+    /// Julian one from then on; see [`epoch_mjd`](SpecFrame::epoch_mjd).
+    // C: as frame.c `Dump` writes it.
     pub fn epoch_year(&self) -> f64 {
         let mjd = self.epoch_mjd();
         if mjd < crate::pal::epj2d(1984.0) {
@@ -940,38 +1340,40 @@ impl SpecFrame {
         }
     }
 
-    /// Set the epoch as a TDB Modified Julian Date.
+    /// Set the Epoch, as a TDB Modified Julian Date; see
+    /// [`epoch_mjd`](SpecFrame::epoch_mjd).
+    /// `BAD_VALUE` clears it.
     pub fn set_epoch_mjd(&mut self, mjd: f64) {
         // A bad Epoch is no Epoch (frame.c `TestEpoch` is `!= AST__BAD`).
         self.attrs.epoch = (mjd != crate::constants::BAD_VALUE).then_some(mjd);
     }
 
-    /// Test whether Epoch has been explicitly set.
+    /// Whether the Epoch is set; see [`epoch_mjd`](SpecFrame::epoch_mjd).
     pub fn test_epoch(&self) -> bool {
         self.attrs.epoch.is_some()
     }
 
-    /// Set the epoch as a decimal year.
+    /// Set the Epoch from a decimal year; see
+    /// [`epoch_mjd`](SpecFrame::epoch_mjd).
     ///
-    /// Years strictly less than 1984.0 are interpreted as Besselian
-    /// epochs; >= 1984.0 as Julian epochs (IAU 1984 rule). Mirrors
-    /// `astReadDateTime` (frame.c:9028-9032) when called from
-    /// `astSetEpoch` via the `epoch=…` setting.
+    /// A year before 1984.0 is a Besselian epoch, a later one Julian.
+    // C: `astReadDateTime` (frame.c:9028-9032), reached from `astSetEpoch`
+    // through the `epoch=...` setting.
     pub fn set_epoch_year(&mut self, year: f64) {
         self.attrs.epoch = Some(crate::frames::date_time::year_to_mjd_iau1984(year));
     }
 
-    /// Set the title.
+    /// Set the Title; see [`Frame::title`].
     pub fn set_title(&mut self, title: &str) {
         self.attrs.title = Some(title.to_string());
     }
 
-    /// Test whether Title has been explicitly set.
+    /// Whether the Title is set; see [`Frame::title`].
     pub fn test_title(&self) -> bool {
         self.attrs.title.is_some()
     }
 
-    /// Clear Title back to its (computed) default.
+    /// Clear the Title; see [`Frame::title`].
     pub fn clear_title(&mut self) {
         self.attrs.title = None;
     }
@@ -997,19 +1399,19 @@ impl SpecFrame {
         title
     }
 
-    /// Set the domain.
+    /// Set the Domain, removing white space and upper-casing letters; see
+    /// [`Frame::domain`].
     pub fn set_domain(&mut self, domain: &str) {
         self.attrs.domain = Some(super::frame_attrs::clean_domain(domain));
     }
 
-    /// Test whether the domain attribute has been explicitly set.
-    /// Mirrors C's `astTestDomain` for `SpecFrame`.
+    /// Whether the Domain is set; see [`Frame::domain`].
     pub fn test_domain(&self) -> bool {
         self.attrs.domain.is_some()
     }
 
-    /// Clear the domain attribute, reverting to the default
-    /// `"SPECTRUM"`.
+    /// Clear the Domain, which reverts to `"SPECTRUM"`; see
+    /// [`Frame::domain`].
     pub fn clear_domain(&mut self) {
         self.attrs.domain = None;
     }
@@ -1039,23 +1441,40 @@ impl SpecFrame {
         self.attrs.dut1 = Some(dut1);
     }
 
-    /// Whether to align in offset coordinate system.
+    /// Align SpecFrames using the offset coordinate system? The
+    /// AlignSpecOffset attribute, set or default.
+    ///
+    /// Controls how a SpecFrame behaves when it is used as a template to
+    /// match another (target) SpecFrame, by
+    /// [`find_frame_template`](Frame::find_frame_template) or
+    /// [`convert_to`](Frame::convert_to): whether alignment occurs between
+    /// the offset values defined by the [`spec_origin`](SpecFrame::spec_origin)
+    /// of each, or between the corresponding absolute spectral values.
+    /// False aligns the two so that a given absolute spectral value in one
+    /// maps to the same absolute value in the other; true so that a given
+    /// offset value in one maps to the same offset value in the other.
+    ///
+    /// Default: false.
+    #[doc(alias = "AlignSpecOffset")]
     pub fn align_spec_offset(&self) -> bool {
         self.align_spec_offset
     }
 
-    /// Set whether to align in offset coordinate system.
+    /// Set AlignSpecOffset; see
+    /// [`align_spec_offset`](SpecFrame::align_spec_offset).
     pub fn set_align_spec_offset(&mut self, val: bool) {
         self.align_spec_offset = val;
         self.align_spec_offset_set = true;
     }
 
-    /// Test whether AlignSpecOffset has been explicitly set.
+    /// Whether AlignSpecOffset is set; see
+    /// [`align_spec_offset`](SpecFrame::align_spec_offset).
     pub fn test_align_spec_offset(&self) -> bool {
         self.align_spec_offset_set
     }
 
-    /// Clear AlignSpecOffset.
+    /// Clear AlignSpecOffset; see
+    /// [`align_spec_offset`](SpecFrame::align_spec_offset).
     pub fn clear_align_spec_offset(&mut self) {
         self.align_spec_offset = false;
         self.align_spec_offset_set = false;
@@ -1340,9 +1759,15 @@ impl SpecFrame {
         Ok(())
     }
 
-    /// Set SpecOrigin from a value in the SpecFrame's current units, as
-    /// C's `SpecOrigin` attribute reads a number with no units
-    /// (specframe.c:3893, `ToUnits`).
+    /// Set SpecOrigin from a value in the SpecFrame's current
+    /// [`unit`](SpecFrame::unit); see [`spec_origin`](SpecFrame::spec_origin).
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Badun` when the current Unit cannot be converted to the
+    ///   System's default units.
+    // C: specframe.c:3893, `ToUnits`, as the `SpecOrigin` attribute reads a
+    // number with no units.
     pub fn set_spec_origin_cur(&mut self, value: f64) -> AstResult<()> {
         let def = self.system.default_display_units();
         let cur = Frame::unit(self, 1)?;
@@ -1360,10 +1785,15 @@ impl SpecFrame {
         Ok(())
     }
 
-    /// The SpecOrigin value converted from its storage basis (the
-    /// default units of the current System) to the frame's current
-    /// units. Returns 0.0 when unset. Mirrors `GetSpecOriginCur`
-    /// (specframe.c:2129).
+    /// SpecOrigin in the SpecFrame's current [`unit`](SpecFrame::unit), or 0
+    /// when it is not set; see [`spec_origin`](SpecFrame::spec_origin).
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Badun` when the current Unit is not suitable for the
+    ///   System.
+    // C: specframe.c:2129 `GetSpecOriginCur`.
+    #[doc(alias = "SpecOrigin")]
     pub fn spec_origin_cur(&self) -> AstResult<f64> {
         let Some(origin) = self.spec_origin else {
             return Ok(0.0);
@@ -1785,19 +2215,27 @@ impl Frame for SpecFrame {
         (self, axis)
     }
 
+    /// Always true for a SpecFrame; see [`Frame::get_active_unit`].
     fn get_active_unit(&self) -> bool {
         true // SpecFrame always uses active units (frame.c:9882).
     }
 
+    /// Has no effect on a SpecFrame, whose ActiveUnit flag is always true;
+    /// see [`Frame::set_active_unit`].
     fn set_active_unit(&mut self, _value: bool) {}
 
     fn test_active_unit(&self) -> bool {
         false
     }
 
-    /// Mirrors C `SpecFrame::GetLabel` (specframe.c:1520): a Label that
-    /// has been set, else the System's name, followed by the SpecOrigin
-    /// when there is one.
+    /// The label of the axis; see [`Frame::label`].
+    ///
+    /// The default is the name of the System, such as `"Frequency"`,
+    /// followed by the formatted SpecOrigin when one is set
+    /// (`"Frequency offset from <origin>"`), and rewritten for a Unit that is a
+    /// function of the System's default unit (`"log( Frequency )"` for a
+    /// Unit of `"log(GHz)"`).
+    // C: specframe.c:1520 `GetLabel`.
     fn label(&self, axis: usize) -> AstResult<String> {
         if let Some(label) = &self.ax(axis)?.label {
             return Ok(label.clone());
@@ -1814,8 +2252,12 @@ impl Frame for SpecFrame {
         ))
     }
 
-    /// Mirrors C `SpecFrame::GetSymbol` (specframe.c:1770): a Symbol that
-    /// has been set, else the System's FITS code.
+    /// The symbol of the axis; see [`Frame::symbol`].
+    ///
+    /// The default is the System's FITS-WCS code, such as `"FREQ"`,
+    /// rewritten for a Unit that is a function of the System's default unit
+    /// as the Label is.
+    // C: specframe.c:1770 `GetSymbol`.
     fn symbol(&self, axis: usize) -> AstResult<String> {
         if let Some(symbol) = &self.ax(axis)?.symbol {
             return Ok(symbol.clone());
@@ -1827,8 +2269,13 @@ impl Frame for SpecFrame {
         ))
     }
 
-    /// Mirrors C `SpecFrame::GetUnit` (specframe.c:2220): a Unit that has
-    /// been set, else the System's default unit.
+    /// The units of the axis; see [`Frame::unit`].
+    ///
+    /// The default suits the [`system`](SpecFrame::system), such as `"GHz"`
+    /// for frequency.
+    /// A Unit that does not suit the System is an error
+    /// (`ErrorCode::Badun`) when the SpecFrame is matched or converted.
+    // C: specframe.c:2220 `GetUnit`.
     fn unit(&self, axis: usize) -> AstResult<String> {
         Ok(self
             .ax(axis)?
@@ -1837,9 +2284,11 @@ impl Frame for SpecFrame {
             .unwrap_or_else(|| self.system.default_display_units().to_string()))
     }
 
-    /// Mirrors C `SpecFrame::SetUnit` (specframe.c:4167), which also records
-    /// the Unit as the one used with the current System, so that it comes
-    /// back when the System does.
+    /// Set the Unit of the axis; see [`Frame::unit`].
+    ///
+    /// The Unit is also recorded as the one used with the current System, so
+    /// that it comes back when the System does.
+    // C: specframe.c:4167 `SetUnit`.
     fn set_unit(&mut self, axis: usize, unit: &str) -> AstResult<()> {
         self.ax(axis)?;
         let old = self.unit_or_default().to_string();
@@ -1852,8 +2301,9 @@ impl Frame for SpecFrame {
         Ok(())
     }
 
-    /// Mirrors C `SpecFrame::ClearUnit` (specframe.c:691), which also
-    /// forgets the Unit used with the current System.
+    /// Clear the Unit of the axis, also forgetting the Unit used with the
+    /// current System; see [`Frame::unit`].
+    // C: specframe.c:691 `ClearUnit`.
     fn clear_unit(&mut self, axis: usize) -> AstResult<()> {
         self.ax(axis)?;
         self.used_units[self.system.used_units_index()] = None;

@@ -29,13 +29,13 @@ class	CmpMap	cmpmap.c	CmpMap		yes
 function	astCmpMap	cmpmap.c	CmpMap::new		yes	C keeps references to the components; the port's CmpMap takes ownership of them
 class	CmpRegion	cmpregion.c			no
 function	astCmpRegion	cmpregion.c			no
-class	DSBSpecFrame	dsbspecframe.c			no
-attribute	ImagFreq	dsbspecframe.c			no
-attribute	DSBCentre	dsbspecframe.c			no
-attribute	IF	dsbspecframe.c			no
-attribute	SideBand	dsbspecframe.c			no
-attribute	AlignSideBand	dsbspecframe.c			no
-function	astDSBSpecFrame	dsbspecframe.c			no
+class	DSBSpecFrame	dsbspecframe.c	DSBSpecFrame		yes
+attribute	ImagFreq	dsbspecframe.c	DSBSpecFrame::imag_freq_ghz;DSBSpecFrame::imag_freq		yes	imag_freq_ghz gives GHz as C's attribute does, imag_freq Hz
+attribute	DSBCentre	dsbspecframe.c	DSBSpecFrame::dsb_centre_cur;DSBSpecFrame::dsb_centre		yes	dsb_centre_cur is C's attribute, in the current spectral system; dsb_centre is the stored topocentric frequency in Hz; C's strings with units are for its string interface
+attribute	IF	dsbspecframe.c	DSBSpecFrame::if_ghz;DSBSpecFrame::ifr		yes	if_ghz gives GHz as C's attribute does, ifr Hz; C's strings with units are for its string interface
+attribute	SideBand	dsbspecframe.c	DSBSpecFrame::sideband		yes	The setter takes a SideBand; C's "observed" and "image" setting names have no counterpart, and observed_sideband gives the observed one
+attribute	AlignSideBand	dsbspecframe.c	DSBSpecFrame::align_sideband		yes
+function	astDSBSpecFrame	dsbspecframe.c	DSBSpecFrame::new;DSBSpecFrame::unset_system		yes	Attributes are set with typed setters rather than an options string; unset_system is astDSBSpecFrame("")
 class	DssMap	dssmap.c	DssMap		yes	The header says a DSS FitsChan read creates a DssMap; C's FitsChan builds a TPN WcsMap instead, as the port does (docs/issues/c-library-quirks.md)
 class	Ellipse	ellipse.c			no
 function	astEllipsePars	ellipse.c			no
@@ -476,20 +476,20 @@ function	astSlaAdd	slamap.c	SlaMap::add		yes	C takes the conversion as a string;
 function	astSlaMap	slamap.c	SlaMap::new		yes	C's reserved flags argument is dropped
 class	SpecFluxFrame	specfluxframe.c			no
 function	astSpecFluxFrame	specfluxframe.c			no
-class	SpecFrame	specframe.c			no
-function	astGetRefPos	specframe.c			no
-function	astSetRefPos	specframe.c			no
-attribute	AlignSpecOffset	specframe.c			no
-attribute	AlignStdOfRest	specframe.c			no
-attribute	RefDec	specframe.c			no
-attribute	RefRA	specframe.c			no
-attribute	RestFreq	specframe.c			no
-attribute	SourceVel	specframe.c			no
-attribute	SourceVRF	specframe.c			no
-attribute	SourceSys	specframe.c			no
-attribute	StdOfRest	specframe.c			no
-attribute	SpecOrigin	specframe.c			no
-function	astSpecFrame	specframe.c			no
+class	SpecFrame	specframe.c	SpecFrame		yes
+function	astGetRefPos	specframe.c	SpecFrame::ref_pos		yes
+function	astSetRefPos	specframe.c	SpecFrame::set_ref_pos		yes
+attribute	AlignSpecOffset	specframe.c	SpecFrame::align_spec_offset		yes	C's header names a SpecOffset attribute where it means SpecOrigin (docs/issues/c-library-quirks.md)
+attribute	AlignStdOfRest	specframe.c	SpecFrame::align_std_of_rest		yes
+attribute	RefDec	specframe.c	SpecFrame::ref_dec		yes	Radians on the Rust API; C's "dd:mm:ss.s" strings are for its string interface
+attribute	RefRA	specframe.c	SpecFrame::ref_ra		yes	Radians on the Rust API; C's "hh:mm:ss.ss" strings are for its string interface
+attribute	RestFreq	specframe.c	SpecFrame::rest_freq		yes	Hz on the Rust API where C's attribute is in GHz; C's strings giving a frequency, wavelength or energy with units are for its string interface
+attribute	SourceVel	specframe.c	SpecFrame::source_vel;SpecFrame::source_vel_cur		yes	source_vel gives a velocity in m/s, source_vel_cur in km/s as C's attribute does
+attribute	SourceVRF	specframe.c	SpecFrame::source_vrf		yes
+attribute	SourceSys	specframe.c	SpecFrame::source_sys		yes
+attribute	StdOfRest	specframe.c	SpecFrame::std_of_rest		yes
+attribute	SpecOrigin	specframe.c	SpecFrame::spec_origin;SpecFrame::spec_origin_cur		yes	C's attribute is in the current units, as spec_origin_cur; spec_origin gives the stored value in the System's default units; C's strings with units are for its string interface
+function	astSpecFrame	specframe.c	SpecFrame::new;SpecFrame::unset_system		yes	Attributes are set with typed setters rather than an options string; unset_system is astSpecFrame("")
 class	SpecMap	specmap.c	SpecMap		yes
 function	astSpecAdd	specmap.c	SpecMap::add		yes	C takes the conversion as a string; the port takes SpecCvtType, whose variants carry the conversion list and SpecCvtType::from_code parses the strings
 function	astSpecMap	specmap.c	SpecMap::new;SpecMap::with_nin		yes	new is nin = 1; C's reserved flags argument is dropped

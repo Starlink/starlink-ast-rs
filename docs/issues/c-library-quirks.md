@@ -68,6 +68,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [The `Top` and `Bottom` documentation gives SkyFrame defaults for co-latitude axes](#the-top-and-bottom-documentation-gives-skyframe-defaults-for-co-latitude-axes)
 - [The `MaxAxes` documentation says its default may be reduced to stay consistent with MinAxes](#the-maxaxes-documentation-says-its-default-may-be-reduced-to-stay-consistent-with-minaxes)
 - [The `SkyRef` documentation says a SkyRef alone changes the default Labels, Symbols and Title](#the-skyref-documentation-says-a-skyref-alone-changes-the-default-labels-symbols-and-title)
+- [The `AlignSpecOffset` documentation names a SpecOffset attribute](#the-alignspecoffset-documentation-names-a-specoffset-attribute)
 
 ### [Addressed here, and not going upstream](#addressed-here-and-not-going-upstream)
 
@@ -1039,6 +1040,18 @@ Consequence: documentation only.
 
 The port's `SkyFrame` (`is_offset` in `crates/ast-core/src/frames/skyframe.rs`) mirrors the code, and `SkyFrame::sky_ref` documents both conditions.
 A C fix: say in the note that SkyRefIs must be "Origin" or "Pole" as well.
+
+### The `AlignSpecOffset` documentation names a SpecOffset attribute
+
+C location: `specframe.c`, the `AlignSpecOffset` attribute prologue (Description, line 5794).
+
+The prologue says alignment occurs between "the offset values defined by the current value of the SpecOffset attribute".
+SpecFrame has no SpecOffset attribute; the offset is the SpecOrigin.
+
+Consequence: documentation only.
+
+`SpecFrame::align_spec_offset` names SpecOrigin.
+A C fix: change "SpecOffset" to "SpecOrigin" in the prologue.
 
 ## Addressed here, and not going upstream
 

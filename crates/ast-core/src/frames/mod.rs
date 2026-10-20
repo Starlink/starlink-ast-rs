@@ -842,8 +842,8 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// Default: an empty string.
     ///
     /// - SkyFrame: see [`SkyFrame::domain`].
-    /// - SpecFrame: `"SPECTRUM"`.
-    /// - DSBSpecFrame: `"DSBSPECTRUM"`.
+    /// - SpecFrame: see [`SpecFrame`].
+    /// - DSBSpecFrame: see [`DSBSpecFrame::domain`].
     /// - FluxFrame: `"FLUX"`.
     /// - SpecFluxFrame: `"SPECTRUM-FLUX"`.
     /// - TimeFrame: `"TIME"`.
@@ -933,11 +933,7 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     ///
     /// Default: 0.
     ///
-    /// - SpecFrame: with ObsLon, Epoch, RefRA and RefDec, it defines the
-    ///   Doppler shift from the observer's diurnal motion about the Earth's
-    ///   axis, needed when converting to or from the topocentric standard of
-    ///   rest; an incorrect value causes a velocity error of at most
-    ///   0.5 km/s.
+    /// - SpecFrame: see [`SpecFrame`].
     /// - TimeFrame: with ObsLon, it is used when converting between some
     ///   time scales (TDB, TCB, LMST, LAST).
     #[doc(alias = "ObsLat")]
@@ -959,11 +955,7 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     ///
     /// Default: 0.
     ///
-    /// - SpecFrame: with ObsLat, Epoch, RefRA and RefDec, it defines the
-    ///   Doppler shift from the observer's diurnal motion about the Earth's
-    ///   axis, needed when converting to or from the topocentric standard of
-    ///   rest; an incorrect value causes a velocity error of at most
-    ///   0.5 km/s.
+    /// - SpecFrame: see [`SpecFrame`].
     /// - TimeFrame: with ObsLat, it is used when converting between some
     ///   time scales (TDB, TCB, LMST, LAST).
     #[doc(alias = "ObsLon")]
@@ -984,11 +976,7 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     ///
     /// Default: 0.
     ///
-    /// - SpecFrame: with ObsLon, ObsLat, Epoch, RefRA and RefDec, it defines
-    ///   the Doppler shift from the observer's diurnal motion about the
-    ///   Earth's axis, needed when converting to or from the topocentric
-    ///   standard of rest; an incorrect value causes a velocity error of at
-    ///   most 0.5 km/s.
+    /// - SpecFrame: see [`SpecFrame`].
     /// - TimeFrame: with ObsLon and ObsLat, it is used when converting
     ///   between some time scales (TDB, TCB, LMST, LAST).
     #[doc(alias = "ObsAlt")]
@@ -1062,19 +1050,7 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// - CmpFrame: always `"Compound"`, and cannot be altered.
     /// - FrameSet: the System of its current Frame.
     /// - SkyFrame: see [`SkyFrame::system`].
-    /// - SpecFrame (default `"WAVE"`), the systems of FITS-WCS Paper III,
-    ///   with the default Unit of each in parentheses: `"FREQ"`, frequency
-    ///   (GHz); `"ENER"` or `"ENERGY"`, energy (J); `"WAVN"` or
-    ///   `"WAVENUM"`, wave-number (1/m); `"WAVE"` or `"WAVELEN"`, vacuum
-    ///   wavelength (Angstrom); `"AWAV"` or `"AIRWAVE"`, wavelength in air
-    ///   (Angstrom); `"VRAD"` or `"VRADIO"`, radio velocity (km/s);
-    ///   `"VOPT"` or `"VOPTICAL"`, optical velocity (km/s); `"ZOPT"` or
-    ///   `"REDSHIFT"`, redshift (dimensionless); `"BETA"`, beta factor
-    ///   (dimensionless); `"VELO"` or `"VREL"`, apparent radial
-    ///   ("relativistic") velocity (km/s).
-    ///   A SpecFrame always uses active units (see
-    ///   [`set_active_unit`](Frame::set_active_unit)), so changing its Unit
-    ///   re-maps it within its FrameSet.
+    /// - SpecFrame: see [`SpecFrame::system`].
     /// - TimeFrame (default `"MJD"`), with the default Unit in parentheses:
     ///   `"MJD"`, Modified Julian Date (d); `"JD"`, Julian Date (d);
     ///   `"JEPOCH"`, Julian epoch (yr); `"BEPOCH"`, Besselian epoch (yr).
@@ -1325,8 +1301,8 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// # Per class
     ///
     /// - SkyFrame: see [`SkyFrame::set_active_unit`].
-    /// - SpecFrame, TimeFrame and FluxFrame: always true; the value given is
-    ///   ignored.
+    /// - SpecFrame: see [`SpecFrame::set_active_unit`].
+    /// - TimeFrame and FluxFrame: always true; the value given is ignored.
     /// - CmpFrame: unless set, true if either component Frame uses active
     ///   units; the value given is also set on both component Frames.
     /// - FrameSet and Region: the flag of the Frame they present.
@@ -1353,6 +1329,8 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// (counted before any axis permutation).
     ///
     /// - SkyFrame: see [`SkyFrame::label`].
+    /// - SpecFrame: see [`SpecFrame::label`].
+    /// - DSBSpecFrame: see [`DSBSpecFrame::label`].
     /// - TimeFrame: a default suited to the time system.
     /// - FrameSet: the Label of the axis of its current Frame.
     ///
@@ -1384,6 +1362,7 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// characters, and white space is replaced by underscores.
     ///
     /// - SkyFrame: see [`SkyFrame::symbol`].
+    /// - SpecFrame: see [`SpecFrame::symbol`].
     /// - TimeFrame: a default suited to the time system.
     /// - FrameSet: the Symbol of the axis of its current Frame.
     ///
@@ -1415,9 +1394,7 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// Default: an empty string.
     ///
     /// - SkyFrame: see [`SkyFrame::unit`].
-    /// - SpecFrame: a default suited to the System; using a Unit that does
-    ///   not suit it is an error (`ErrorCode::Badun` when the Frame is
-    ///   matched).
+    /// - SpecFrame: see [`SpecFrame::unit`].
     /// - TimeFrame: a default suited to the System; a Unit that does not
     ///   suit it, such as `"km"`, is an error, and a Besselian epoch takes
     ///   only `"yr"` (`ErrorCode::Attin` from `set_unit`).
@@ -1430,8 +1407,8 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     #[doc(alias = "Unit")]
     fn unit(&self, axis: usize) -> AstResult<String>;
     /// Set `Unit(axis)`; see [`unit`](Frame::unit).
-    /// SpecFrame, TimeFrame and FluxFrame also record it against their
-    /// System.
+    /// TimeFrame and FluxFrame also record it against their System, as
+    /// [`SpecFrame::set_unit`] does.
     fn set_unit(&mut self, axis: usize, unit: &str) -> AstResult<()>;
     /// Whether `Unit(axis)` is set; see [`unit`](Frame::unit).
     fn test_unit(&self, axis: usize) -> AstResult<bool>;

@@ -8,7 +8,7 @@ use audit_tools::{LedgerRow, parse_headers_tsv, parse_ledger};
 
 /// Rows not yet reviewed. It may only go down; it reaches zero when the
 /// audit is complete.
-const UNREVIEWED_ROWS: usize = 324;
+const UNREVIEWED_ROWS: usize = 303;
 
 fn audit_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../docs/audits/c-docs")
