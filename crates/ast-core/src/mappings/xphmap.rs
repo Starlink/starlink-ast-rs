@@ -116,7 +116,7 @@ impl XphMap {
         self.projection
     }
 
-    /// Transform one position (grid
+    /// Transform one position, transcribing xphmap.c `Transform` (grid
     /// indices are C `int`s, so integer division truncates toward zero).
     fn transform_point(&self, forward: bool, x: f64, y: f64) -> (f64, f64) {
         const BAD: (f64, f64) = (BAD_VALUE, BAD_VALUE);
