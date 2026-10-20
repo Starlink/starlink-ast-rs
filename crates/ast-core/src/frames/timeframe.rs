@@ -40,14 +40,20 @@ impl TimeSystem {
         }
     }
 
-    /// Parse from string (case-insensitive).
+    /// Parse a time system name, ignoring case.
+    ///
+    /// Accepts the names [`as_str`](Self::as_str) gives, each System's
+    /// descriptive name ([`label`](Self::label), such as
+    /// `"Modified Julian Date"`), and the abbreviations `"JEP"` and `"BEP"`.
+    // C: timeframe.c `SystemCode`, which matches whole names with
+    // `astChrMatch`; it does not accept "JEP" or "BEP".
     pub fn parse(s: &str) -> Option<Self> {
         let upper = s.to_ascii_uppercase();
         match upper.as_str() {
-            "MJD" => Some(Self::Mjd),
-            "JD" => Some(Self::Jd),
-            "JEPOCH" | "JEP" => Some(Self::Jepoch),
-            "BEPOCH" | "BEP" => Some(Self::Bepoch),
+            "MJD" | "MODIFIED JULIAN DATE" => Some(Self::Mjd),
+            "JD" | "JULIAN DATE" => Some(Self::Jd),
+            "JEPOCH" | "JULIAN EPOCH" | "JEP" => Some(Self::Jepoch),
+            "BEPOCH" | "BESSELIAN EPOCH" | "BEP" => Some(Self::Bepoch),
             _ => None,
         }
     }

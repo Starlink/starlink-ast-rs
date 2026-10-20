@@ -525,6 +525,23 @@ fn test_time_system_parse() {
     assert_eq!(TimeSystem::parse("invalid"), None);
 }
 
+/// C's `SystemCode` (timeframe.c) also accepts each System's descriptive
+/// name, ignoring case, as a whole name.
+#[test]
+fn time_system_parse_accepts_c_descriptive_names() {
+    assert_eq!(
+        TimeSystem::parse("Modified Julian Date"),
+        Some(TimeSystem::Mjd)
+    );
+    assert_eq!(TimeSystem::parse("julian date"), Some(TimeSystem::Jd));
+    assert_eq!(
+        TimeSystem::parse("Besselian Epoch"),
+        Some(TimeSystem::Bepoch)
+    );
+    assert_eq!(TimeSystem::parse("JULIAN EPOCH"), Some(TimeSystem::Jepoch));
+    assert_eq!(TimeSystem::parse("Julian"), None);
+}
+
 #[test]
 fn test_time_scale_parse() {
     assert_eq!(TimeScale::parse("TAI"), Some(TimeScale::Tai));
