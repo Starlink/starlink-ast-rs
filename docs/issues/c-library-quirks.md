@@ -955,7 +955,7 @@ A C fix: change the range in the prologue to [-PI,+PI].
 
 ### The `astFindFrame` documentation describes a preference among FrameSet matches that the code does not make
 
-C location: `frame.c`, the `astFindFrame` prologue (Applicability, FrameSet); `frameset.c`, `FindFrame` (line 3790).
+C location: `frame.c`, the `astFindFrame` prologue (Applicability, FrameSet); `frameset.c`, `FindFrame` (line 3803).
 
 The prologue says that, when the target is a FrameSet, the Mapping of each match is examined and a match with both transformations defined is preferred, then one with only the forward transformation.
 `FindFrame` stops at the first Frame the template matches, for each domain field in turn, and keeps no score.

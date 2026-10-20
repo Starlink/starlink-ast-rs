@@ -34,7 +34,7 @@ impl FrameSystem {
 /// A Frame represents a coordinate system, much as a frame around a graph
 /// describes the coordinate space in which data are plotted.
 /// It has a Title describing the coordinate space, and axes holding
-/// information such as Label and Unit strings for labelling, for instance,
+/// information such as Label and Unit strings for labeling, for instance,
 /// graphical output.
 /// The number of axes is not restricted to two.
 /// The [`Frame`] trait gives every class of Frame functions for formatting

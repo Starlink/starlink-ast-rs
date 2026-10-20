@@ -697,8 +697,11 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     ///   reaching an intermediate coordinate system.
     ///   Each entry of `domains` is taken in turn.
     ///   Within it, each FrameSet's Frames are tried with its base Frame
-    ///   first, then the others in index order, then its current Frame
-    ///   last; every source Frame is tried against the first destination
+    ///   first, then the others in ascending index order, then its current
+    ///   Frame last; the port uses this order for an inverted FrameSet too
+    ///   (whose base and current Frames have swapped), where C takes the
+    ///   other Frames in descending order.
+    ///   Every source Frame is tried against the first destination
     ///   Frame, then against the second, and so on.
     ///   Among the paths found, one with both transformations defined is
     ///   preferred, then one with only the forward transformation.
@@ -747,7 +750,7 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
         // `match_template` / `sub_frame`, exactly as in C.
         //
         // C's `ConvertX` also sets the Base attribute of a FrameSet `self` or
-        // `to` to the Frame used (frameset.c:3502); the port takes both by
+        // `to` to the Frame used (frameset.c:3515); the port takes both by
         // shared reference and leaves them unchanged.
         let domainlist = if domains.is_empty() {
             " ".to_string()
@@ -2990,7 +2993,8 @@ pub(crate) fn norm_each_point(frame: &dyn Frame, points: &PointSet) -> AstResult
 /// `axes` lists the 1-based numbers of the axes of `frame` to copy, in the
 /// order wanted in the new Frame; any number of them may be picked, in any
 /// order, but each only once.
-/// An entry of 0 adds an axis with default attributes.
+/// An entry of 0, or greater than the number of axes of `frame`, adds an
+/// axis with default attributes.
 ///
 /// `map` converts coordinates from `frame` into the new Frame in its forward
 /// direction, and back in its inverse: a [`PermMap`](crate::mappings::PermMap),
@@ -3025,6 +3029,9 @@ pub(crate) fn norm_each_point(frame: &dyn Frame, points: &PointSet) -> AstResult
 /// assert_eq!(picked.label(1).unwrap(), "Z");
 /// assert_eq!((map.nin(), map.nout()), (3, 2));
 /// assert!(pick_axes(&frame, &[1, 1]).is_err());
+/// // Axis 5 does not exist, so the second axis of the result is a default one.
+/// let (picked, _) = pick_axes(&frame, &[1, 5]).unwrap();
+/// assert_eq!(picked.naxes(), 2);
 /// ```
 #[doc(alias = "astPickAxes")]
 pub fn pick_axes(frame: &dyn Frame, axes: &[usize]) -> AstResult<(DynFrame, DynMapping)> {
