@@ -57,8 +57,9 @@ fn line_range_len(s: &[u8]) -> usize {
 /// in `public`.
 ///
 /// A file name is a lowercase word followed by `.c`, where the word is not
-/// itself preceded by a word character, `.` or `/` and `.c` is not followed
-/// by a word character. References are returned in order of appearance.
+/// itself preceded by a word character or `.` and `.c` is not followed by a
+/// word character. A path such as `reference/starlink-ast/src/table.c` is
+/// flagged by its file name. References are returned in order of appearance.
 pub fn c_references(html: &str, public: &BTreeSet<String>) -> Vec<String> {
     let text = visible_text(html);
     let bytes = text.as_bytes();
@@ -87,7 +88,7 @@ pub fn c_references(html: &str, public: &BTreeSet<String>) -> Vec<String> {
             && wb
                 .iter()
                 .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || *b == b'_');
-        let prev_ok = start == 0 || !matches!(bytes[start - 1], b'.' | b'/');
+        let prev_ok = start == 0 || bytes[start - 1] != b'.';
         if after_dot_c && lower && prev_ok {
             let mut end = i + 2;
             if bytes.get(end) == Some(&b':') {
@@ -122,6 +123,12 @@ mod tests {
     fn internal_c_names_are_flagged_and_public_ones_are_not() {
         let html = "<p>Like astPermMap; built by astInitPermMap.</p>";
         assert_eq!(c_references(html, &public()), ["astInitPermMap"]);
+    }
+
+    #[test]
+    fn a_c_file_path_is_flagged_by_its_file_name() {
+        let html = "<p>See reference/starlink-ast/src/table.c and vendor/wcslib/proj.c:12.</p>";
+        assert_eq!(c_references(html, &public()), ["table.c", "proj.c:12"]);
     }
 
     #[test]

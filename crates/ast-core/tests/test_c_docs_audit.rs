@@ -200,7 +200,7 @@ const C_CITATIONS_UNCLEANED: &[(&str, &str)] = &[
 /// someone else and does not wait on the outer `cargo test`'s lock. Only
 /// `ast_core/` is scanned: the source-view pages under `src/`, which show
 /// `//` comments, are not user-facing documentation.
-fn rendered_c_references() -> BTreeMap<String, Vec<String>> {
+fn rendered_c_references() -> (BTreeMap<String, Vec<String>>, BTreeMap<String, usize>) {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let target = manifest.join("../../target/c-docs-gate");
     let status = std::process::Command::new(env!("CARGO"))
@@ -229,6 +229,7 @@ fn rendered_c_references() -> BTreeMap<String, Vec<String>> {
         .max_by_key(|d| std::fs::metadata(d).and_then(|m| m.modified()).ok())
         .expect("rendered ast_core docs");
     let mut out: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let mut pages: BTreeMap<String, usize> = BTreeMap::new();
     let mut stack = vec![docs.clone()];
     while let Some(dir) = stack.pop() {
         for e in std::fs::read_dir(dir).unwrap() {
@@ -249,6 +250,7 @@ fn rendered_c_references() -> BTreeMap<String, Vec<String>> {
                 };
                 let refs =
                     audit_tools::c_references(&std::fs::read_to_string(&p).unwrap(), &public);
+                *pages.entry(module.clone()).or_default() += 1;
                 out.entry(module)
                     .or_default()
                     .extend(refs.into_iter().map(|r| format!("{}: {r}", rel.display())));
@@ -256,7 +258,34 @@ fn rendered_c_references() -> BTreeMap<String, Vec<String>> {
         }
     }
     out.retain(|_, v| !v.is_empty());
-    out
+    (out, pages)
+}
+
+/// The top-level public modules `ast-core`'s `lib.rs` declares.
+fn public_modules() -> Vec<String> {
+    let lib = std::fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/lib.rs"))
+        .unwrap();
+    lib.lines()
+        .filter_map(|l| l.strip_prefix("pub mod "))
+        .map(|m| m.trim_end_matches(';').trim().to_string())
+        .collect()
+}
+
+/// Fails unless the scan read at least one page of every public module and
+/// the crate root's `index.html`, so an empty or truncated documentation
+/// directory cannot pass as clean.
+fn assert_scan_covered_the_docs(pages: &BTreeMap<String, usize>) {
+    let modules = public_modules();
+    assert!(!modules.is_empty(), "no public modules found in lib.rs");
+    let missing: Vec<_> = modules
+        .iter()
+        .filter(|m| pages.get(m.as_str()).copied().unwrap_or(0) == 0)
+        .collect();
+    assert!(missing.is_empty(), "no rendered pages read for {missing:?}");
+    assert!(
+        pages.get("(crate root)").copied().unwrap_or(0) > 0,
+        "crate root pages (index.html) not read"
+    );
 }
 
 fn listed_uncleaned() -> BTreeSet<&'static str> {
@@ -265,7 +294,8 @@ fn listed_uncleaned() -> BTreeSet<&'static str> {
 
 #[test]
 fn rendered_docs_carry_no_c_references() {
-    let refs = rendered_c_references();
+    let (refs, pages) = rendered_c_references();
+    assert_scan_covered_the_docs(&pages);
     let listed = listed_uncleaned();
     let unlisted: Vec<_> = refs
         .iter()
@@ -279,7 +309,8 @@ fn rendered_docs_carry_no_c_references() {
 
 #[test]
 fn a_clean_module_cannot_stay_listed() {
-    let refs = rendered_c_references();
+    let (refs, pages) = rendered_c_references();
+    assert_scan_covered_the_docs(&pages);
     let clean: Vec<_> = listed_uncleaned()
         .into_iter()
         .filter(|m| !refs.contains_key(*m))
