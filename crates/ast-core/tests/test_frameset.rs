@@ -9,10 +9,15 @@ use crate::common::native_dump;
 use ast_core::coords::PointSet;
 use ast_core::error::ErrorCode;
 use ast_core::frames::{BasicFrameBuilder, Frame, FrameRef, FrameSet};
-use ast_core::mappings::{DynMapping, Mapping, ShiftMap, UnitMap, ZoomMap};
+use ast_core::mappings::{DynMapping, Mapping, PermMap, ShiftMap, UnitMap, ZoomMap};
 
 fn make_frame(naxes: usize) -> Box<dyn Frame> {
     Box::new(BasicFrameBuilder::new(naxes).build().unwrap())
+}
+
+/// A Mapping from 2 axes to 3, appending a constant third coordinate.
+fn two_to_three() -> DynMapping {
+    Box::new(PermMap::new(&[1, 2], &[1, 2, -1], &[0.0]).unwrap())
 }
 
 fn make_named_frame(naxes: usize, domain: &str) -> Box<dyn Frame> {
@@ -54,7 +59,7 @@ fn add_frame_increases_count() {
 #[test]
 fn add_frame_sets_current() {
     let mut fs = FrameSet::new(make_named_frame(2, "PIXEL"));
-    let z: DynMapping = Box::new(ZoomMap::new(2, 2.0).unwrap());
+    let z: DynMapping = two_to_three();
     fs.add_frame(FrameRef::Base, z, make_named_frame(3, "GRID"))
         .unwrap();
     assert_eq!(fs.current().naxes(), 3);
@@ -206,7 +211,7 @@ fn frameset_transform_multi_point() {
 #[test]
 fn frame_delegation_naxes() {
     let mut fs = FrameSet::new(make_frame(2));
-    let z: DynMapping = Box::new(ZoomMap::new(2, 2.0).unwrap());
+    let z: DynMapping = two_to_three();
     fs.add_frame(FrameRef::Base, z, make_frame(3)).unwrap();
     // Frame trait delegates to current (3-axis).
     assert_eq!(fs.naxes(), 3);
@@ -235,7 +240,7 @@ fn frame_delegation_format() {
 #[test]
 fn set_current_changes_naxes() {
     let mut fs = FrameSet::new(make_frame(2));
-    let z: DynMapping = Box::new(ZoomMap::new(2, 2.0).unwrap());
+    let z: DynMapping = two_to_three();
     fs.add_frame(FrameRef::Base, z, make_frame(3)).unwrap();
 
     assert_eq!(fs.naxes(), 3);
@@ -246,7 +251,7 @@ fn set_current_changes_naxes() {
 #[test]
 fn set_base_changes_nin() {
     let mut fs = FrameSet::new(make_frame(2));
-    let z: DynMapping = Box::new(ZoomMap::new(2, 2.0).unwrap());
+    let z: DynMapping = two_to_three();
     fs.add_frame(FrameRef::Base, z, make_frame(3)).unwrap();
 
     assert_eq!(fs.nin(), 2);
@@ -268,7 +273,7 @@ fn set_current_invalid_index() {
 #[test]
 fn frame_access_by_ref() {
     let mut fs = FrameSet::new(make_frame(2));
-    let z: DynMapping = Box::new(ZoomMap::new(2, 2.0).unwrap());
+    let z: DynMapping = two_to_three();
     fs.add_frame(FrameRef::Base, z, make_frame(3)).unwrap();
 
     let f1 = fs.frame(FrameRef::Index(1)).unwrap();
@@ -348,7 +353,7 @@ fn remove_last_frame_fails() {
 #[test]
 fn remove_current_resets_to_first() {
     let mut fs = FrameSet::new(make_frame(2));
-    let z: DynMapping = Box::new(ZoomMap::new(2, 2.0).unwrap());
+    let z: DynMapping = two_to_three();
     fs.add_frame(FrameRef::Base, z, make_frame(3)).unwrap();
 
     assert_eq!(fs.naxes(), 3); // current is the 3-axis frame
@@ -581,4 +586,29 @@ fn add_frameset_reverses_links_and_round_trips() {
         let out = map.transform(&PointSet::from_rows([[3.0]]), true).unwrap();
         assert_eq!(out.point(0)[0], -4.0);
     }
+}
+
+/// `add_frame` rejects a Mapping whose Nin is not the Naxes of the anchor
+/// Frame, or whose Nout is not the Naxes of the new Frame, with AST__NCPIN
+/// and leaves the FrameSet unchanged, as C's `astAddFrame` does.
+#[test]
+fn add_frame_rejects_a_mapping_of_the_wrong_size() {
+    let mut fs = FrameSet::new(make_named_frame(2, "PIX"));
+    let err = fs
+        .add_frame(
+            FrameRef::Base,
+            Box::new(ZoomMap::new(3, 2.0).unwrap()),
+            make_frame(3),
+        )
+        .unwrap_err();
+    assert_eq!(err.code(), ErrorCode::Ncpin);
+    let err = fs
+        .add_frame(
+            FrameRef::Base,
+            Box::new(ZoomMap::new(2, 2.0).unwrap()),
+            make_frame(3),
+        )
+        .unwrap_err();
+    assert_eq!(err.code(), ErrorCode::Ncpin);
+    assert_eq!(fs.nframe(), 1);
 }

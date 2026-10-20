@@ -355,6 +355,30 @@ impl FrameSet {
             return self.append_axes(new_frame);
         }
         let anchor_idx = self.resolve(anchor)?;
+        // C's astAddFrame checks the Mapping's Nin against the anchor Frame
+        // and its Nout against the new Frame (frameset.c AddFrame).
+        let naxes = self.frames[anchor_idx].naxes();
+        if map.nin() != naxes {
+            return Err(AstError::new_tracked(
+                ErrorCode::Ncpin,
+                format!(
+                    "astAddFrame(FrameSet): Bad number of Mapping input coordinate values \
+                     ({}); it should accept {naxes}.",
+                    map.nin()
+                ),
+            ));
+        }
+        if map.nout() != new_frame.naxes() {
+            return Err(AstError::new_tracked(
+                ErrorCode::Ncpin,
+                format!(
+                    "astAddFrame(FrameSet): Bad number of Mapping output coordinate values \
+                     ({}); it should generate {}.",
+                    map.nout(),
+                    new_frame.naxes()
+                ),
+            ));
+        }
         let anchor_node = self.node_map[anchor_idx];
         let new_node = self.nnode;
         self.nnode += 1;
