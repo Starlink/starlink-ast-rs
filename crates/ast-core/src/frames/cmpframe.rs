@@ -469,6 +469,7 @@ impl Frame for CmpFrame {
     }
 
     fn distance(&self, a: &[f64], b: &[f64]) -> AstResult<f64> {
+        super::assert_points_len("distance", self.naxes(), &[a, b]);
         if point_has_bad(a) || point_has_bad(b) {
             return Ok(BAD_VALUE);
         }
@@ -492,6 +493,7 @@ impl Frame for CmpFrame {
     }
 
     fn angle(&self, a: &[f64], b: &[f64], c: &[f64]) -> AstResult<f64> {
+        super::assert_points_len("angle", self.naxes(), &[a, b, c]);
         if point_has_bad(a) || point_has_bad(b) || point_has_bad(c) {
             return Ok(BAD_VALUE);
         }
@@ -537,6 +539,7 @@ impl Frame for CmpFrame {
         point2: &[f64],
         point3: &[f64],
     ) -> AstResult<(Vec<f64>, f64, f64)> {
+        super::assert_points_len("resolve", self.naxes(), &[point1, point2, point3]);
         let naxes = self.naxes();
         let bad = (vec![BAD_VALUE; naxes], BAD_VALUE, BAD_VALUE);
         if point_has_bad(&point1[..naxes])
@@ -589,6 +592,7 @@ impl Frame for CmpFrame {
         point2: &[f64],
         input: &crate::coords::PointSet,
     ) -> AstResult<crate::coords::PointSet> {
+        super::assert_points_len("resolve_points", self.naxes(), &[point1, point2]);
         let nax = self.naxes();
         let n1 = self.naxes1();
         let npoint = input.npoint();
@@ -641,6 +645,7 @@ impl Frame for CmpFrame {
     }
 
     fn offset(&self, from: &[f64], to: &[f64], dist: f64) -> AstResult<Vec<f64>> {
+        super::assert_points_len("offset", self.naxes(), &[from, to]);
         let n = self.naxes();
         if point_has_bad(from) || point_has_bad(to) || is_bad(dist) {
             return Ok(vec![BAD_VALUE; n]);
@@ -694,6 +699,7 @@ impl Frame for CmpFrame {
     }
 
     fn norm(&self, coords: &mut [f64]) -> AstResult<()> {
+        super::assert_points_len("norm", self.naxes(), &[&*coords]);
         let n = self.naxes();
         let n1 = self.frame1.naxes();
 

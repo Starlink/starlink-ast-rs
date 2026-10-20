@@ -200,3 +200,43 @@ fn resolve_points_panics_on_a_short_point() {
     let pts = PointSet::from_columns(&[&[1.0], &[1.0]]).unwrap();
     let _ = bf(2).resolve_points(&[0.0], &[1.0, 0.0], &pts);
 }
+
+// The same contract holds for the classes that override these methods.
+
+fn sky() -> ast_core::frames::SkyFrame {
+    ast_core::frames::SkyFrame::unset_system()
+}
+
+fn cmp_plain() -> ast_core::frames::CmpFrame {
+    ast_core::frames::CmpFrame::new(Box::new(bf_basic(1)), Box::new(bf_basic(2)))
+}
+
+fn bf_basic(n: usize) -> ast_core::frames::BasicFrame {
+    BasicFrameBuilder::new(n).build().unwrap()
+}
+
+#[test]
+#[should_panic(expected = "has 2 axes")]
+fn sky_norm_panics_on_a_short_point() {
+    let mut p = [0.0];
+    let _ = sky().norm(&mut p);
+}
+
+#[test]
+#[should_panic(expected = "has 2 axes")]
+fn sky_distance_panics_on_a_short_point() {
+    let _ = sky().distance(&[0.0], &[0.0]);
+}
+
+#[test]
+#[should_panic(expected = "has 3 axes")]
+fn cmp_angle_panics_on_a_short_point() {
+    // Every axis is a plain axis, so this takes the Cartesian path.
+    let _ = cmp_plain().angle(&[0.0, 1.0], &[0.0, 0.0], &[1.0, 0.0]);
+}
+
+#[test]
+#[should_panic(expected = "has 3 axes")]
+fn cmp_distance_panics_on_a_short_point() {
+    let _ = cmp_plain().distance(&[0.0, 0.0], &[3.0, 4.0]);
+}

@@ -1565,6 +1565,7 @@ impl Frame for SkyFrame {
     }
 
     fn distance(&self, a: &[f64], b: &[f64]) -> AstResult<f64> {
+        super::assert_points_len("distance", self.naxes(), &[a, b]);
         if is_bad(a[0]) || is_bad(a[1]) || is_bad(b[0]) || is_bad(b[1]) {
             return Ok(BAD_VALUE);
         }
@@ -1586,6 +1587,7 @@ impl Frame for SkyFrame {
         point2: &[f64],
         point3: &[f64],
     ) -> AstResult<(Vec<f64>, f64, f64)> {
+        super::assert_points_len("resolve", self.naxes(), &[point1, point2, point3]);
         let mut point4 = vec![BAD_VALUE, BAD_VALUE];
         let (mut d1, mut d2) = (BAD_VALUE, BAD_VALUE);
         if [point1, point2, point3]
@@ -1632,6 +1634,7 @@ impl Frame for SkyFrame {
     /// of the two crossings the one nearer `a1`. BAD for a bad input or
     /// great circles that coincide.
     fn intersect(&self, a1: &[f64], a2: &[f64], b1: &[f64], b2: &[f64]) -> AstResult<Vec<f64>> {
+        super::assert_points_len("intersect", 2, &[a1, a2, b1, b2]);
         let mut cross = vec![BAD_VALUE, BAD_VALUE];
         if [a1, a2, b1, b2]
             .iter()
@@ -1671,6 +1674,7 @@ impl Frame for SkyFrame {
         point2: &[f64],
         input: &crate::coords::PointSet,
     ) -> AstResult<crate::coords::PointSet> {
+        super::assert_points_len("resolve_points", self.naxes(), &[point1, point2]);
         // Faithful port of `skyframe.c::ResolvePoints` (8399). Unlike the
         // planar base-Frame implementation, this resolves each vector using
         // spherical (great-circle) geometry: the parallel component is the
@@ -1741,6 +1745,7 @@ impl Frame for SkyFrame {
     }
 
     fn angle(&self, a: &[f64], b: &[f64], c: &[f64]) -> AstResult<f64> {
+        super::assert_points_len("angle", self.naxes(), &[a, b, c]);
         if a.iter().chain(b.iter()).chain(c.iter()).any(|&v| is_bad(v)) {
             return Ok(BAD_VALUE);
         }
@@ -1765,6 +1770,7 @@ impl Frame for SkyFrame {
     }
 
     fn offset(&self, from: &[f64], to: &[f64], dist: f64) -> AstResult<Vec<f64>> {
+        super::assert_points_len("offset", self.naxes(), &[from, to]);
         if from.iter().chain(to.iter()).any(|&v| is_bad(v)) || is_bad(dist) {
             return Ok(vec![BAD_VALUE; 2]);
         }
@@ -1824,9 +1830,7 @@ impl Frame for SkyFrame {
     /// be normalised alone.
     fn norm(&self, coords: &mut [f64]) -> AstResult<()> {
         use std::f64::consts::PI;
-        if coords.len() < 2 {
-            return Ok(());
-        }
+        super::assert_points_len("norm", self.naxes(), &[&*coords]);
         let lp = self.lon_pos();
         let bp = self.lat_pos();
         let mut lon = coords[lp];
@@ -2035,6 +2039,7 @@ impl Frame for SkyFrame {
     /// vectors via Shcal, offsets via Shapp, normalises, and returns the
     /// bearing of the great circle at the end point.
     fn offset2(&self, point1: &[f64], angle: f64, offset: f64) -> AstResult<(Vec<f64>, f64)> {
+        super::assert_points_len("offset2", 2, &[point1]);
         let perm = self.perm;
 
         // Bad inputs give all-BAD output and a BAD returned angle.

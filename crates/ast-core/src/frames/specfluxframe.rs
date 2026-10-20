@@ -314,6 +314,7 @@ impl Frame for SpecFluxFrame {
     }
 
     fn distance(&self, a: &[f64], b: &[f64]) -> AstResult<f64> {
+        super::assert_points_len("distance", self.naxes(), &[a, b]);
         if point_has_bad(a) || point_has_bad(b) {
             return Ok(BAD_VALUE);
         }
@@ -324,6 +325,7 @@ impl Frame for SpecFluxFrame {
     }
 
     fn angle(&self, a: &[f64], b: &[f64], c: &[f64]) -> AstResult<f64> {
+        super::assert_points_len("angle", self.naxes(), &[a, b, c]);
         if point_has_bad(a) || point_has_bad(b) || point_has_bad(c) {
             return Ok(BAD_VALUE);
         }
@@ -343,6 +345,7 @@ impl Frame for SpecFluxFrame {
     }
 
     fn offset(&self, from: &[f64], to: &[f64], dist: f64) -> AstResult<Vec<f64>> {
+        super::assert_points_len("offset", self.naxes(), &[from, to]);
         // C inherits CmpFrame's Offset (cmpframe.c Offset): the offset is
         // split between the two one-axis components in proportion to their
         // distances, so the path passes through the second point, and each
@@ -370,6 +373,7 @@ impl Frame for SpecFluxFrame {
     }
 
     fn norm(&self, coords: &mut [f64]) -> AstResult<()> {
+        super::assert_points_len("norm", self.naxes(), &[&*coords]);
         // Delegate axis 1 to SpecFrame, axis 2 to FluxFrame.
         self.spec_frame.norm(&mut coords[..1])?;
         self.flux_frame.norm(&mut coords[1..2])?;

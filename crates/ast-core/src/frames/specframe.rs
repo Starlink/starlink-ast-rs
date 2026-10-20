@@ -1875,10 +1875,12 @@ impl Frame for SpecFrame {
     axis_attrs_store!(label, symbol, format, digits, direction, top, bottom);
 
     fn distance(&self, a: &[f64], b: &[f64]) -> AstResult<f64> {
+        super::assert_points_len("distance", self.naxes(), &[a, b]);
         Ok(super::cartesian_distance(&a[..1], &b[..1]))
     }
 
     fn angle(&self, a: &[f64], b: &[f64], c: &[f64]) -> AstResult<f64> {
+        super::assert_points_len("angle", self.naxes(), &[a, b, c]);
         // For a 1-D frame, angle at b in triangle a-b-c is either 0 or PI.
         let va = a[0];
         let vb = b[0];
@@ -1896,10 +1898,12 @@ impl Frame for SpecFrame {
     }
 
     fn offset(&self, from: &[f64], to: &[f64], dist: f64) -> AstResult<Vec<f64>> {
+        super::assert_points_len("offset", self.naxes(), &[from, to]);
         Ok(super::cartesian_offset(&from[..1], &to[..1], dist))
     }
 
-    fn norm(&self, _coords: &mut [f64]) -> AstResult<()> {
+    fn norm(&self, coords: &mut [f64]) -> AstResult<()> {
+        super::assert_points_len("norm", self.naxes(), &[&*coords]);
         // Spectral coordinates are unbounded — no normalisation needed.
         Ok(())
     }
