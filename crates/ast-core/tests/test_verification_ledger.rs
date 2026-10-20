@@ -380,6 +380,14 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
          the component is not established. Gated by \
          issimp_component_exclusions_still_differ",
     ),
+    (
+        "test_c_docs_audit.rs",
+        "C_CITATIONS_UNCLEANED",
+        11,
+        "modules whose rendered docs still cite C source; each subsystem's review \
+         task in the C documentation audit removes its modules, and a companion test \
+         fails when a listed module is clean",
+    ),
 ];
 
 /// Relaxations that are not a `const` at all, counted from their manifest.

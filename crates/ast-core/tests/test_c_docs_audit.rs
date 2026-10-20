@@ -144,3 +144,148 @@ fn every_mapped_row_has_its_alias_on_its_item() {
         missing.join("\n")
     );
 }
+
+/// Top-level modules whose rendered docs still carry C references, each
+/// with why. The list only shrinks; `a_clean_module_cannot_stay_listed`
+/// fails when a listed module is clean.
+const C_CITATIONS_UNCLEANED: &[(&str, &str)] = &[
+    (
+        "(crate root)",
+        "C source citations in public docs; cleaned in its subsystem's review task",
+    ),
+    (
+        "call_counts",
+        "C source citations in public docs; cleaned in its subsystem's review task",
+    ),
+    (
+        "channel",
+        "C source citations in public docs; cleaned in its subsystem's review task",
+    ),
+    (
+        "fitschan",
+        "C source citations in public docs; cleaned in its subsystem's review task",
+    ),
+    (
+        "fitstable",
+        "C source citations in public docs; cleaned in its subsystem's review task",
+    ),
+    (
+        "frames",
+        "C source citations in public docs; cleaned in its subsystem's review task",
+    ),
+    (
+        "keymap",
+        "C source citations in public docs; cleaned in its subsystem's review task",
+    ),
+    (
+        "mappings",
+        "C source citations in public docs; cleaned in its subsystem's review task",
+    ),
+    (
+        "pixel",
+        "C source citations in public docs; cleaned in its subsystem's review task",
+    ),
+    (
+        "regions",
+        "C source citations in public docs; cleaned in its subsystem's review task",
+    ),
+    (
+        "table",
+        "C source citations in public docs; cleaned in its subsystem's review task",
+    ),
+];
+
+/// The C references in each top-level module's rendered pages. Builds the
+/// docs into its own target directory, so it never reads docs built by
+/// someone else and does not wait on the outer `cargo test`'s lock. Only
+/// `ast_core/` is scanned: the source-view pages under `src/`, which show
+/// `//` comments, are not user-facing documentation.
+fn rendered_c_references() -> BTreeMap<String, Vec<String>> {
+    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let target = manifest.join("../../target/c-docs-gate");
+    let status = std::process::Command::new(env!("CARGO"))
+        .args(["doc", "-q", "-p", "ast-core", "--no-deps"])
+        .env("CARGO_TARGET_DIR", &target)
+        .current_dir(&manifest)
+        .status()
+        .unwrap();
+    assert!(status.success(), "cargo doc failed");
+    let public: BTreeSet<String> =
+        parse_headers_tsv(&std::fs::read_to_string(audit_dir().join("c-headers.tsv")).unwrap())
+            .into_iter()
+            .map(|(_, _, alias, _)| alias)
+            .collect();
+    // `target/doc`, or `target/<triple>/doc` when a build target is set.
+    let mut roots = vec![target.join("doc")];
+    roots.extend(
+        std::fs::read_dir(&target)
+            .unwrap()
+            .map(|e| e.unwrap().path().join("doc")),
+    );
+    let docs = roots
+        .into_iter()
+        .map(|d| d.join("ast_core"))
+        .filter(|d| d.is_dir())
+        .max_by_key(|d| std::fs::metadata(d).and_then(|m| m.modified()).ok())
+        .expect("rendered ast_core docs");
+    let mut out: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let mut stack = vec![docs.clone()];
+    while let Some(dir) = stack.pop() {
+        for e in std::fs::read_dir(dir).unwrap() {
+            let p = e.unwrap().path();
+            if p.is_dir() {
+                stack.push(p);
+            } else if p.extension().is_some_and(|x| x == "html") {
+                let rel = p.strip_prefix(&docs).unwrap();
+                let module = match rel.components().count() {
+                    1 => "(crate root)".to_string(),
+                    _ => rel
+                        .components()
+                        .next()
+                        .unwrap()
+                        .as_os_str()
+                        .to_string_lossy()
+                        .into_owned(),
+                };
+                let refs =
+                    audit_tools::c_references(&std::fs::read_to_string(&p).unwrap(), &public);
+                out.entry(module)
+                    .or_default()
+                    .extend(refs.into_iter().map(|r| format!("{}: {r}", rel.display())));
+            }
+        }
+    }
+    out.retain(|_, v| !v.is_empty());
+    out
+}
+
+fn listed_uncleaned() -> BTreeSet<&'static str> {
+    C_CITATIONS_UNCLEANED.iter().map(|(m, _)| *m).collect()
+}
+
+#[test]
+fn rendered_docs_carry_no_c_references() {
+    let refs = rendered_c_references();
+    let listed = listed_uncleaned();
+    let unlisted: Vec<_> = refs
+        .iter()
+        .filter(|(m, _)| !listed.contains(m.as_str()))
+        .collect();
+    assert!(
+        unlisted.is_empty(),
+        "C references in rendered docs: {unlisted:#?}"
+    );
+}
+
+#[test]
+fn a_clean_module_cannot_stay_listed() {
+    let refs = rendered_c_references();
+    let clean: Vec<_> = listed_uncleaned()
+        .into_iter()
+        .filter(|m| !refs.contains_key(*m))
+        .collect();
+    assert!(
+        clean.is_empty(),
+        "now clean; remove from C_CITATIONS_UNCLEANED: {clean:?}"
+    );
+}

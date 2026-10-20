@@ -487,10 +487,12 @@ pub mod c_docs_ledger;
 pub mod c_headers;
 mod c_steps;
 pub mod doc_aliases;
+mod rendered_docs;
 pub use c_docs_ledger::{LedgerRow, parse_ledger};
 pub use c_headers::{CHeader, HeaderKind, c_headers, headers_tsv, parse_headers_tsv};
 pub use c_steps::c_step_comments;
 pub use doc_aliases::doc_aliases;
+pub use rendered_docs::c_references;
 
 #[cfg(test)]
 mod tests {
