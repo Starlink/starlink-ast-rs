@@ -220,7 +220,19 @@ impl DSBSpecFrame {
         let topo_map = self.to_topo_mapping()?;
         let pts = crate::coords::PointSet::from_rows([[value]]);
         let out = topo_map.transform(&pts, true)?;
-        self.dsb_centre = Some(out.point(0)[0]);
+        let centre = out.point(0)[0];
+        // A value with no topocentric frequency is rejected
+        // (dsbspecframe.c:1366).
+        if crate::mappings::helpers::is_bad(centre) {
+            return Err(AstError::new(
+                ErrorCode::Attin,
+                format!(
+                    "astSetAttrib(DSBSpecFrame): The setting \"dsbcentre={value}\" is invalid \
+                     for a DSBSpecFrame."
+                ),
+            ));
+        }
+        self.dsb_centre = Some(centre);
         Ok(())
     }
 

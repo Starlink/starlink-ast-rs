@@ -332,3 +332,26 @@ fn dump_matches_the_c_library() {
         failures.join("\n")
     );
 }
+
+/// A SpecFrame stores its Domain with white space removed and letters in
+/// upper case, as C's `astSetC( specframe, "Domain", "my spec" )` gives
+/// `"MYSPEC"`.
+#[test]
+fn spec_frame_domain_is_cleaned() {
+    let mut sf = SpecFrame::new(SpecSystem::Freq);
+    sf.set_domain("my spec");
+    assert_eq!(Frame::domain(&sf), "MYSPEC");
+}
+
+/// A DSBCentre with no topocentric frequency, such as a redshift of -1, is
+/// rejected with AST__ATTIN and leaves the DSBCentre unchanged, as C's
+/// `astSetC( dsb, "DSBCentre", "-1.0" )` does for System=ZOPT.
+#[test]
+fn dsb_centre_with_no_topocentric_frequency_is_rejected() {
+    let mut dsb = DSBSpecFrame::new(SpecSystem::Redshift);
+    let before = dsb.dsb_centre();
+    let err = dsb.set_dsb_centre_cur(-1.0).unwrap_err();
+    assert_eq!(err.code(), ast_core::error::ErrorCode::Attin);
+    assert_eq!(dsb.dsb_centre(), before);
+    assert!(!dsb.test_dsb_centre());
+}
