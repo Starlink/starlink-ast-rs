@@ -13,33 +13,36 @@ use crate::units::unit_mapper;
 // SpecSystem — spectral coordinate system type
 // ---------------------------------------------------------------------------
 
-/// Spectral coordinate system type.
+/// Spectral coordinate system: the System of a [`SpecFrame`].
 ///
 /// Each variant corresponds to a way of measuring spectral position.
 /// The "absolute" systems (Freq, Energy, Wavenum, Wavelen, Airwave) do not
 /// require a rest frequency, while the "relative" systems (Vradio, Voptical,
 /// Redshift, Beta, Vrel) define coordinates relative to a rest frequency.
+/// Each variant gives the default unit a SpecFrame uses for it;
+/// [`SpecFrame::system`] lists them with their names.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SpecSystem {
-    /// Frequency (Hz).
+    /// Frequency; a SpecFrame's default unit is GHz.
     Freq,
-    /// Energy (J).
+    /// Energy; a SpecFrame's default unit is J.
     Energy,
-    /// Wave number (1/m).
+    /// Wave-number; a SpecFrame's default unit is 1/m.
     Wavenum,
-    /// Wavelength in vacuum (m).
+    /// Wavelength in vacuum; a SpecFrame's default unit is Angstrom.
     Wavelen,
-    /// Wavelength in air (m).
+    /// Wavelength in air; a SpecFrame's default unit is Angstrom.
     Airwave,
-    /// Radio velocity (m/s).
+    /// Radio velocity; a SpecFrame's default unit is km/s.
     Vradio,
-    /// Optical velocity (m/s).
+    /// Optical velocity; a SpecFrame's default unit is km/s.
     Voptical,
     /// Redshift (dimensionless).
     Redshift,
     /// Beta factor v/c (dimensionless).
     Beta,
-    /// Relativistic velocity (m/s).
+    /// Apparent radial ("relativistic") velocity; a SpecFrame's default
+    /// unit is km/s.
     Vrel,
 }
 
@@ -91,7 +94,9 @@ impl SpecSystem {
         !self.is_velocity()
     }
 
-    /// Default units for SpecMap (SI-like).
+    /// The SI unit a [`SpecMap`] uses for this system, such as `"Hz"` or
+    /// `"m/s"`.
+    /// A SpecFrame's default unit differs; see [`SpecFrame::system`].
     pub fn specmap_units(&self) -> &'static str {
         match self {
             Self::Freq => "Hz",
@@ -103,9 +108,9 @@ impl SpecSystem {
         }
     }
 
-    /// Human-readable label for this system.
-    /// System label with a capitalised first letter, matching C's
-    /// `SystemLabel` (specframe.c) as used by both GetLabel and GetTitle.
+    /// A human-readable label for this system, such as `"Frequency"`, as
+    /// the default Label and Title of a SpecFrame use it.
+    // C: specframe.c `SystemLabel`, as used by `GetLabel` and `GetTitle`.
     pub fn label(&self) -> &'static str {
         match self {
             Self::Freq => "Frequency",
@@ -413,7 +418,8 @@ impl SpecFrame {
     /// account too.
     ///
     /// ```
-    /// use ast_core::frames::{Frame, SpecFrame, SpecSystem, StdOfRest};
+    /// use ast_core::frames::{Frame, FrameRef, SpecFrame, SpecSystem, StdOfRest};
+    /// use ast_core::mappings::Mapping;
     ///
     /// // Apparent radial velocity with a rest frequency of 1.0E15 Hz (about
     /// // 3000 Angstrom), in the kinematic Local Standard of Rest.
@@ -426,7 +432,11 @@ impl SpecFrame {
     /// let mut freq = SpecFrame::new(SpecSystem::Freq);
     /// freq.set_rest_freq(1.0e15);
     /// freq.set_std_of_rest(StdOfRest::Lsrk).unwrap();
-    /// assert!(freq.convert_to(&velo, &[]).unwrap().is_some());
+    /// let fs = freq.convert_to(&velo, &[]).unwrap().unwrap();
+    /// let map = fs.mapping(FrameRef::Base, FrameRef::Current).unwrap();
+    /// // The rest frequency, 1.0E6 GHz, is zero velocity.
+    /// let v = map.tran1(&[1.0e6], true).unwrap();
+    /// assert!(v[0].abs() < 1e-6);
     /// ```
     // C: `astSpecFrame("System=...")`.
     #[doc(alias = "astSpecFrame")]
@@ -1285,7 +1295,9 @@ impl SpecFrame {
     }
 
     /// The zero point for SpecFrame axis values: the SpecOrigin attribute,
-    /// set or default, in the default units of the current System.
+    /// set or default, in the System's default unit, the one
+    /// [`system`](SpecFrame::system) lists (GHz for frequency, Angstrom for
+    /// wavelengths, km/s for velocities), whatever the current Unit.
     ///
     /// The origin from which all spectral values are measured.
     /// The default, zero, makes the SpecFrame describe absolute spectral
@@ -1308,7 +1320,8 @@ impl SpecFrame {
         self.spec_origin = None;
     }
 
-    /// Set SpecOrigin, in the default units of the current System; see
+    /// Set SpecOrigin, in the System's default unit (GHz for frequency,
+    /// Angstrom for wavelengths, km/s for velocities); see
     /// [`spec_origin`](SpecFrame::spec_origin).
     pub fn set_spec_origin(&mut self, origin: f64) {
         self.spec_origin = Some(origin);

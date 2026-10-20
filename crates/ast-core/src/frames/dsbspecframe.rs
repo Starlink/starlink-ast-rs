@@ -1,9 +1,11 @@
 //! The dual-sideband spectral coordinate frame (DSBSpecFrame).
 //!
 //! A DSBSpecFrame extends a SpecFrame to represent spectral position in a
-//! dual-sideband instrument. It adds the concept of a local oscillator (LO)
-//! frequency split into a DSB centre frequency and an intermediate frequency (IF),
-//! and tracks which sideband (USB, LSB, or LO) the stored spectral values refer to.
+//! dual-sideband instrument.
+//! It adds a local oscillator (LO) frequency, given by a central position
+//! (DSBCentre) and an intermediate frequency (IF) measured from it, and
+//! records which sideband (USB, LSB, or an offset from the LO) the spectral
+//! values refer to.
 
 use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
@@ -110,7 +112,7 @@ pub struct DSBSpecFrame {
     /// The underlying spectral frame.
     spec: SpecFrame,
 
-    /// DSB centre frequency in Hz (LO frequency). Default: 3.0e10.
+    /// DSBCentre as a topocentric frequency in Hz. Default: 3.0e10.
     dsb_centre: Option<f64>,
 
     /// Intermediate frequency in Hz. Default: 4.0e9.
@@ -381,7 +383,20 @@ impl DSBSpecFrame {
     /// and the "image" sideband is the other; the sign of the IF decides
     /// which is which.
     /// [`observed_sideband`](DSBSpecFrame::observed_sideband) gives the
-    /// observed one, to set it by name.
+    /// observed one, to set it by name, and the image sideband is the other
+    /// of [`SideBand::USB`] and [`SideBand::LSB`]:
+    ///
+    /// ```
+    /// use ast_core::frames::{DSBSpecFrame, SideBand, SpecSystem};
+    ///
+    /// let mut dsb = DSBSpecFrame::new(SpecSystem::Freq);
+    /// let image = match dsb.observed_sideband() {
+    ///     SideBand::LSB => SideBand::USB,
+    ///     _ => SideBand::LSB,
+    /// };
+    /// dsb.set_sideband(image);
+    /// assert_eq!(dsb.sideband(), SideBand::USB);
+    /// ```
     ///
     /// Default: the observed sideband: [`SideBand::LSB`] for a positive IF,
     /// [`SideBand::USB`] otherwise.

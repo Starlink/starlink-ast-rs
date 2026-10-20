@@ -33,7 +33,7 @@ class	DSBSpecFrame	dsbspecframe.c	DSBSpecFrame		yes
 attribute	ImagFreq	dsbspecframe.c	DSBSpecFrame::imag_freq_ghz;DSBSpecFrame::imag_freq		yes	imag_freq_ghz gives GHz as C's attribute does, imag_freq Hz
 attribute	DSBCentre	dsbspecframe.c	DSBSpecFrame::dsb_centre_cur;DSBSpecFrame::dsb_centre		yes	dsb_centre_cur is C's attribute, in the current spectral system; dsb_centre is the stored topocentric frequency in Hz; C's strings with units are for its string interface
 attribute	IF	dsbspecframe.c	DSBSpecFrame::if_ghz;DSBSpecFrame::ifr		yes	if_ghz gives GHz as C's attribute does, ifr Hz; C's strings with units are for its string interface
-attribute	SideBand	dsbspecframe.c	DSBSpecFrame::sideband		yes	The setter takes a SideBand; C's "observed" and "image" setting names have no counterpart, and observed_sideband gives the observed one
+attribute	SideBand	dsbspecframe.c	DSBSpecFrame::sideband		yes	The setter takes a SideBand; C's "observed" and "image" setting names have no counterpart: set_sideband(observed_sideband()) gives "observed", and set_sideband with the other of USB and LSB (USB for a positive IF, else LSB) gives "image", as the sideband doc shows
 attribute	AlignSideBand	dsbspecframe.c	DSBSpecFrame::align_sideband		yes
 function	astDSBSpecFrame	dsbspecframe.c	DSBSpecFrame::new;DSBSpecFrame::unset_system		yes	Attributes are set with typed setters rather than an options string; unset_system is astDSBSpecFrame("")
 class	DssMap	dssmap.c	DssMap		yes	The header says a DSS FitsChan read creates a DssMap; C's FitsChan builds a TPN WcsMap instead, as the port does (docs/issues/c-library-quirks.md)
