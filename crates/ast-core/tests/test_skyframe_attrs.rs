@@ -211,3 +211,15 @@ fn own_axes_have_no_is_latitude() {
     assert_eq!(Frame::top(&cmp, 2).unwrap(), f64::MAX);
     assert_eq!(Frame::top(&sky, 2).unwrap(), std::f64::consts::FRAC_PI_2);
 }
+
+/// A Native SkyFrame whose System is one of C's alternative names, here
+/// `EQUATORIAL` for FK5, reads as C reads it.
+#[test]
+fn native_system_alternative_name_is_read() {
+    let fk5 = native_dump(&AnyObject::SkyFrame(SkyFrame::new(SkySystem::Fk5))).unwrap();
+    assert!(fk5.contains("System = \"FK5\""), "{fk5}");
+    let text = fk5.replace("System = \"FK5\"", "System = \"EQUATORIAL\"");
+    let obj = from_native_string(&text).unwrap();
+    let sky = obj.as_frame().unwrap();
+    assert_eq!(sky.system_string().unwrap(), Some("FK5"));
+}

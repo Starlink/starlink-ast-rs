@@ -88,16 +88,19 @@ impl SkySystem {
         )
     }
 
-    /// Parse a coordinate system name (case-insensitive).
+    /// Parse a coordinate system name, ignoring case.
     ///
-    /// Accepts the canonical forms plus the underscore variant
-    /// `"FK4_NO_E"`.
+    /// Accepts the names [`as_str`](Self::as_str) gives, and the
+    /// alternatives `"FK4_NO_E"` for FK4-NO-E, `"EQUATORIAL"` for FK5, and
+    /// `"GEOCENTRIC"` or `"APPARENT"` for GAPPT.
+    // C: skyframe.c `SystemCode`, which matches whole names with
+    // `astChrMatch`.
     pub fn parse(s: &str) -> Option<Self> {
         match s.to_ascii_uppercase().as_str() {
             "FK4" => Some(Self::Fk4),
             "FK4-NO-E" | "FK4_NO_E" => Some(Self::Fk4NoE),
-            "FK5" => Some(Self::Fk5),
-            "GAPPT" => Some(Self::Gappt),
+            "FK5" | "EQUATORIAL" => Some(Self::Fk5),
+            "GAPPT" | "GEOCENTRIC" | "APPARENT" => Some(Self::Gappt),
             "ECLIPTIC" => Some(Self::Ecliptic),
             "GALACTIC" => Some(Self::Galactic),
             "SUPERGALACTIC" => Some(Self::Supergalactic),
@@ -812,6 +815,16 @@ mod tests {
         assert_eq!(SkySystem::parse("FK4-NO-E"), Some(SkySystem::Fk4NoE));
         assert_eq!(SkySystem::parse("FK4_NO_E"), Some(SkySystem::Fk4NoE));
         assert_eq!(SkySystem::parse("nonsense"), None);
+    }
+
+    /// C's `SystemCode` (skyframe.c) also accepts "Equatorial" for FK5 and
+    /// "GEOCENTRIC" or "APPARENT" for GAPPT, ignoring case, as whole names.
+    #[test]
+    fn sky_system_parse_accepts_c_alternative_names() {
+        assert_eq!(SkySystem::parse("Equatorial"), Some(SkySystem::Fk5));
+        assert_eq!(SkySystem::parse("GEOCENTRIC"), Some(SkySystem::Gappt));
+        assert_eq!(SkySystem::parse("apparent"), Some(SkySystem::Gappt));
+        assert_eq!(SkySystem::parse("Equat"), None);
     }
 
     #[test]
