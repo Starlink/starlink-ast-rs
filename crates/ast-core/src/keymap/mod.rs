@@ -2061,17 +2061,18 @@ impl KeyMap {
     /// This is 1 for a scalar and for a key with no value, the length of a
     /// vector, and 0 for a key that is not in the KeyMap.
     /// [KeyError](Self::key_error) is not consulted.
-    /// A key with more than 200 characters when [KeyCase](Self::key_case) is
-    /// false also gives 0.
+    ///
+    /// # Errors
+    ///
+    /// - [`ErrorCode::Bigkey`] if [KeyCase](Self::key_case) is false and
+    ///   `key` has more than 200 characters.
     #[doc(alias = "astMapLength")]
-    pub fn map_length(&self, key: &str) -> usize {
-        let Ok(nkey) = table::convert_key(key, self.key_case(), "astMapLength") else {
-            return 0;
-        };
-        match self.lookup(&nkey) {
+    pub fn map_length(&self, key: &str) -> AstResult<usize> {
+        let nkey = table::convert_key(key, self.key_case(), "astMapLength")?;
+        Ok(match self.lookup(&nkey) {
             Some(entry) => entry.value.len().max(1),
             None => 0,
-        }
+        })
     }
 
     /// The length in bytes of the longest value stored under `key`, when
@@ -2144,9 +2145,8 @@ impl KeyMap {
     pub fn map_get_c(&self, key: &str) -> AstResult<Option<String>> {
         // C's astMapGetC asks astMapLength for the entry's length first, so a
         // key too long for a case-insensitive KeyMap is reported under that
-        // name. `map_length` cannot report it, so the key is checked here.
-        table::convert_key(key, self.key_case(), "astMapLength")?;
-        let nval = self.map_length(key);
+        // name.
+        let nval = self.map_length(key)?;
         if nval == 0 {
             return Ok(None);
         }

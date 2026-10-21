@@ -1152,7 +1152,7 @@ impl FitsChan {
         for ientry in 0..tables.map_size() {
             let key = tables.map_key(ientry)?;
             if tables.map_type(&key)? == crate::keymap::AstType::Object
-                && tables.map_length(&key) == 1
+                && tables.map_length(&key)? == 1
                 && let Some(Some(AnyObject::FitsTable(table))) = tables.get_0a(&key)?
             {
                 self.put_table(&table, &key)?;

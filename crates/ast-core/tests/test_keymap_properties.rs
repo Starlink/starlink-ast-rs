@@ -323,8 +323,8 @@ fn a_dump_load_cycle_preserves_every_value() {
                 "seed {seed}: type of {key}"
             );
             assert_eq!(
-                back.map_length(&key),
-                km.map_length(&key),
+                back.map_length(&key).unwrap(),
+                km.map_length(&key).unwrap(),
                 "seed {seed}: length of {key}"
             );
             assert_eq!(

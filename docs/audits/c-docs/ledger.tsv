@@ -201,7 +201,7 @@ function	astMapRemove	keymap.c	KeyMap::map_remove		yes
 function	astMapRename	keymap.c	KeyMap::map_rename		yes
 function	astMapSize	keymap.c	KeyMap::map_size		yes
 function	astMapLenC	keymap.c	KeyMap::map_len_c		yes
-function	astMapLength	keymap.c	KeyMap::map_length		yes	gives 0 rather than an AST__BIGKEY error for a key too long for a case-insensitive KeyMap (PLAN.md §2)
+function	astMapLength	keymap.c	KeyMap::map_length		yes
 function	astMapPutElem<X>	keymap.c	KeyMap::put_elem_i;KeyMap::put_elem_s;KeyMap::put_elem_k;KeyMap::put_elem_b;KeyMap::put_elem_f;KeyMap::put_elem_d;KeyMap::put_elem_c;KeyMap::put_elem_a		yes	one method per <X>; elem is a usize, so only an index past the end appends; P has no counterpart
 function	astMapType	keymap.c	KeyMap::map_type		yes
 attribute	SizeGuess	keymap.c	KeyMap::size_guess		yes	the header gives a default of 300, but the code gives 160, here and in C (c-library-quirks.md)

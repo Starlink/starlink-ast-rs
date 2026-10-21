@@ -377,7 +377,7 @@ impl Table {
                     ),
                 ));
             }
-            let oldndim = col.map_length(SHAPE);
+            let oldndim = col.map_length(SHAPE)?;
             if oldndim != dims.len() {
                 return Err(AstError::new(
                     ErrorCode::Oldcol,
@@ -585,7 +585,7 @@ impl Table {
     /// - [`ErrorCode::Badcol`] if there is no column called `column`.
     #[doc(alias = "ColumnNdim")]
     pub fn column_ndim(&self, column: &str) -> AstResult<usize> {
-        self.with_column(column, "astGetColumnNdim", |col| Ok(col.map_length(SHAPE)))
+        self.with_column(column, "astGetColumnNdim", |col| col.map_length(SHAPE))
     }
 
     /// The number of elements in the value in each cell of `column` (the

@@ -473,7 +473,7 @@ fn make_astro_coords_key_map(reg: &dyn Region, coord: &KeyMap, class: &str) -> A
     let naxes = reg.naxes();
     for j in 0..result.map_size() {
         let key = result.map_key(j)?;
-        let nv = result.map_length(&key);
+        let nv = result.map_length(&key)?;
         let ty = result.map_type(&key)?;
         if ![STC_NAME, STC_VALUE, STC_ERROR, STC_RES, STC_SIZE, STC_PIXSZ].contains(&key.as_str()) {
             return Err(stckey(format!(

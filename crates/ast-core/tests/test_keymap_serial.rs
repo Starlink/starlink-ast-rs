@@ -213,7 +213,7 @@ fn the_c_fixture_keymap_round_trips() {
     for key in ["Size", "Name", "Resolution", "Error"] {
         assert!(km.map_has_key(key).unwrap(), "missing {key}");
     }
-    assert_eq!(km.map_length("Name"), 4);
+    assert_eq!(km.map_length("Name").unwrap(), 4);
 
     let out = native_dump(&AnyObject::KeyMap(km)).unwrap();
 
@@ -518,8 +518,8 @@ fn every_vector_type_round_trips() {
         back.get_1c("strings").unwrap().unwrap(),
         vec!["a".to_string(), String::new(), "c c".to_string()]
     );
-    assert_eq!(back.map_length("floats"), 3);
-    assert_eq!(back.map_length("bytes"), 2);
+    assert_eq!(back.map_length("floats").unwrap(), 3);
+    assert_eq!(back.map_length("bytes").unwrap(), 2);
 }
 
 #[test]
@@ -665,7 +665,7 @@ fn a_nested_key_map_round_trips() {
         panic!("nested entry did not load as a KeyMap");
     };
     assert_eq!(got.get_0i("b3").unwrap(), Some(3));
-    assert_eq!(got.map_length("b4"), 2);
+    assert_eq!(got.map_length("b4").unwrap(), 2);
 }
 
 #[test]

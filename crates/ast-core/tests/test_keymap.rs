@@ -175,13 +175,13 @@ fn vector_put_and_get_round_trip() {
         ])
     );
 
-    assert_eq!(km.map_length("VI"), 3);
-    assert_eq!(km.map_length("VC"), 4);
+    assert_eq!(km.map_length("VI").unwrap(), 3);
+    assert_eq!(km.map_length("VC").unwrap(), 4);
     // A scalar has length 1 through astMapLength, even though its nel is 0.
     km.put_0i("S", 1, None).unwrap();
-    assert_eq!(km.map_length("S"), 1);
+    assert_eq!(km.map_length("S").unwrap(), 1);
     // A missing key has length 0.
-    assert_eq!(km.map_length("NOPE"), 0);
+    assert_eq!(km.map_length("NOPE").unwrap(), 0);
 }
 
 #[test]
@@ -193,7 +193,7 @@ fn map_length_honours_key_case() {
     let mut km = KeyMap::new();
     km.set_key_case(false).unwrap();
     km.put_1i("FREDS", &[1, 2, 3], None).unwrap();
-    assert_eq!(km.map_length("fReDs"), 3);
+    assert_eq!(km.map_length("fReDs").unwrap(), 3);
 }
 
 #[test]
@@ -241,7 +241,7 @@ fn put_elem_creates_and_appends() {
 
     // Absent key: creates a length-1 vector.
     km.put_elem_i("A", 0, 10).unwrap();
-    assert_eq!(km.map_length("A"), 1);
+    assert_eq!(km.map_length("A").unwrap(), 1);
     assert_eq!(km.get_1i("A").unwrap(), Some(vec![10]));
 
     // In-range index: overwrites.
@@ -1163,7 +1163,7 @@ fn clone_preserves_every_entry() {
     );
 
     // Error -1: a scalar has length 1 through astMapLength.
-    assert_eq!(map2.map_length("Fredi"), 1);
+    assert_eq!(map2.map_length("Fredi").unwrap(), 1);
 
     // Error 1 / 2, 1k / 2k, 1 / 2B, 3 / 4, 3b / 4b.
     assert_eq!(map2.get_0i("Fredi").unwrap(), Some(1999));
@@ -1261,10 +1261,10 @@ fn vector_key_map() -> KeyMap {
     let mut map = seven_key_map();
     map.put_1i("Fredi", &[1999, 0], Some("com 1")).unwrap();
     // Error 29b.
-    assert_eq!(map.map_length("Fredi"), 2);
+    assert_eq!(map.map_length("Fredi").unwrap(), 2);
     map.put_1s("Freds", &[1999, 0], Some("com 1")).unwrap();
     // Error 29c.
-    assert_eq!(map.map_length("Freds"), 2);
+    assert_eq!(map.map_length("Freds").unwrap(), 2);
     map.put_1d("Fredd", &[1999.9, -0.01], Some("com2")).unwrap();
     map.put_1c("Fredc", &["Hello", " ", "  Hello"], Some(" "))
         .unwrap();
@@ -1449,19 +1449,19 @@ fn put_elem_grows_the_vector() {
     // MAKE_MAPPUTELEM's `new = ( elem >= nel || elem < 0 )`
     // (keymap.c:8392) treats identically to any index at or past the
     // length; put_elem_i takes a usize, so pass the length itself.
-    let n = map.map_length("Fredi");
+    let n = map.map_length("Fredi").unwrap();
     map.put_elem_i("Fredi", n, -3).unwrap();
     assert_eq!(map.get_elem_i("Fredi", 3).unwrap(), Some(-3));
 
     // Error GETELEM_7.
-    assert_eq!(map.map_length("Fredi"), 4);
+    assert_eq!(map.map_length("Fredi").unwrap(), 4);
 
     // Error GETELEM_8: put_elem_a on an absent key creates a length-1
     // vector, whatever the index.
     let mut map2 = KeyMap::new();
     map2.put_elem_a("A A", 0, Some(AnyObject::KeyMap(Box::new(map))))
         .unwrap();
-    assert_eq!(map2.map_length("A A"), 1);
+    assert_eq!(map2.map_length("A A").unwrap(), 1);
 
     // Error GETELEM_9 / GETELEM_10 / GETELEM_11: the nested KeyMap still
     // holds the four-element vector.
@@ -1572,7 +1572,7 @@ fn put_elem_c_appends() {
 
     // Error GETELEM_13: the scalar was promoted to a vector, and index 2
     // being past its length appended at index 1.
-    assert_eq!(map.map_length(" B"), 2);
+    assert_eq!(map.map_length(" B").unwrap(), 2);
     // Error GETELEM_14 / GETELEM_15.
     assert_eq!(
         map.get_elem_c(" B ", 1).unwrap().as_deref(),
@@ -1838,11 +1838,11 @@ fn put_elem_d_appends_five_times() {
     // usize, so pass the length. The first call creates the entry.
     let mut map = KeyMap::new();
     for value in [1.0, 2.0, 3.0, 4.0, 15.0] {
-        let n = map.map_length("HHH");
+        let n = map.map_length("HHH").unwrap();
         map.put_elem_d("HHH", n, value).unwrap();
     }
     // Error MAPPUTELEM_7.
-    assert_eq!(map.map_length("HHH"), 5);
+    assert_eq!(map.map_length("HHH").unwrap(), 5);
     assert_eq!(
         map.get_1d("HHH").unwrap(),
         Some(vec![1.0, 2.0, 3.0, 4.0, 15.0])
@@ -1862,12 +1862,12 @@ fn int64_edge_values() {
     map.put_1k("AAA", &kvec, Some("com 1")).unwrap();
     // C appends with index -1; put_elem_* takes a usize, so pass the
     // length. Both appends convert to the entry's own KInt type.
-    let n = map.map_length("AAA");
+    let n = map.map_length("AAA").unwrap();
     map.put_elem_i("AAA", n, 1).unwrap();
-    let n = map.map_length("AAA");
+    let n = map.map_length("AAA").unwrap();
     map.put_elem_k("AAA", n, 1).unwrap();
     // Error I8_1.
-    assert_eq!(map.map_length("AAA"), 4);
+    assert_eq!(map.map_length("AAA").unwrap(), 4);
 
     map.put_0c("bb1", "No", Some(" ")).unwrap();
 
@@ -2166,6 +2166,21 @@ fn map_get_c_reports_an_over_long_key() {
     km.put_0i("A", 1, None).unwrap();
 
     let err = km.map_get_c(&"a".repeat(201)).unwrap_err();
+    assert_eq!(err.code(), ErrorCode::Bigkey);
+    assert!(err.to_string().contains("astMapLength(KeyMap): "), "{err}");
+}
+
+/// `map_length` reports a key too long for a case-insensitive KeyMap rather
+/// than giving 0, as for a key that is not in the KeyMap.
+/// The C library's `astMapLength` reports `AST__BIGKEY` (C-oracle probe).
+#[test]
+fn map_length_reports_an_over_long_key() {
+    let mut km = KeyMap::new();
+    km.set_key_case(false).unwrap();
+    km.put_0i("A", 1, None).unwrap();
+
+    assert_eq!(km.map_length(&"a".repeat(200)).unwrap(), 0);
+    let err = km.map_length(&"a".repeat(201)).unwrap_err();
     assert_eq!(err.code(), ErrorCode::Bigkey);
     assert!(err.to_string().contains("astMapLength(KeyMap): "), "{err}");
 }
