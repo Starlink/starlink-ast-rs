@@ -222,36 +222,47 @@ impl CardFlags {
     }
 }
 
-/// The data type of a FITS card, as C's `CardType` gives it (the `AST__*`
-/// type codes of fitschan.h).
+/// The data type of the value of a FITS header card, as the
+/// [CardType](super::FitsChan::card_type) attribute gives it.
+///
+/// # See also
+///
+/// The C constants `AST__NOTYPE`, `AST__COMMENT`, `AST__INT`, `AST__FLOAT`,
+/// `AST__STRING`, `AST__COMPLEXF`, `AST__COMPLEXI`, `AST__LOGICAL`,
+/// `AST__CONTINUE`, `AST__UNDEF` and `AST__KINT`, one per variant in that
+/// order, whose values [`code`](Self::code) gives.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CardType {
-    /// No current card (`AST__NOTYPE`).
+    /// No current card: the FitsChan is at end-of-file.
     NoType,
-    /// A commentary card (`AST__COMMENT`).
+    /// A commentary card, with no value.
     Comment,
-    /// An integer held as an `int` (`AST__INT`).
+    /// An integer held as an `i32`.
     Int,
-    /// A floating value (`AST__FLOAT`).
+    /// A floating value.
     Float,
-    /// A string (`AST__STRING`).
+    /// A string.
     String,
-    /// A complex floating value (`AST__COMPLEXF`).
+    /// A complex floating value.
     ComplexF,
-    /// A complex integer value (`AST__COMPLEXI`).
+    /// A complex integer value.
     ComplexI,
-    /// A logical value (`AST__LOGICAL`).
+    /// A logical value.
     Logical,
-    /// A CONTINUE card (`AST__CONTINUE`).
+    /// A `CONTINUE` card, continuing a long string.
     Continue,
-    /// A keyword with no value (`AST__UNDEF`).
+    /// A keyword with no value.
     Undef,
-    /// An integer held as an `int64_t` (`AST__KINT`).
+    /// An integer held as an `i64`: one read from a card with too many
+    /// digits or too large a value for an `i32`, or stored by
+    /// [`set_fits_k`](super::FitsChan::set_fits_k).
     KInt,
 }
 
 impl CardType {
-    /// C's integer code for the type.
+    /// The type's integer code: -1 for `NoType`, then 0 to 9 for
+    /// `Comment`, `Int`, `Float`, `String`, `ComplexF`, `ComplexI`,
+    /// `Logical`, `Continue`, `Undef` and `KInt`.
     pub fn code(self) -> i32 {
         match self {
             CardType::NoType => -1,

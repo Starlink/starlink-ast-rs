@@ -113,21 +113,22 @@ pub(crate) fn chr_match(a: &str, b: &str) -> bool {
     chr_match_n(a, b, usize::MAX)
 }
 
-/// Which Frames a FITS-WCS write describes with alternate axes: the
-/// FitsChan's AltAxes attribute.
+/// Which Frames a FITS-WCS write describes with alternate axes: the values
+/// of a FitsChan's [AltAxes](FitsChan::alt_axes) attribute.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum AltAxes {
     /// Every Frame other than the base and current Frames (the default).
     #[default]
     All,
-    /// Only Frames whose Ident is a single upper case letter.
+    /// Only Frames whose Ident is a single upper case letter, `A` to `Z`.
     Ident,
     /// No Frame.
     None,
 }
 
 impl AltAxes {
-    /// The value's name (fitschan.c `xaltax`): `ALL`, `IDENT` or `NONE`.
+    /// The value's name: `ALL`, `IDENT` or `NONE`.
+    // C: fitschan.c `xaltax`.
     pub fn name(self) -> &'static str {
         match self {
             AltAxes::All => "ALL",
@@ -144,31 +145,195 @@ impl AltAxes {
     }
 }
 
-/// The encoding format used by a [`FitsChan`] to store AST objects.
+/// The conventions a [`FitsChan`] uses to describe AST objects as FITS
+/// header cards: the values of its [Encoding](FitsChan::encoding)
+/// attribute.
+///
+/// The encodings differ in the objects they can describe, in how many
+/// descriptions one set of cards can hold, and in which other software can
+/// read the cards.
+/// They are not mutually exclusive: the same object may be written to one
+/// set of cards in several encodings, which makes it more likely that other
+/// software can read one of them.
+/// Mixing the foreign encodings (all but `Native`) in one FitsChan is best
+/// avoided, as their keywords may clash.
+///
+/// Every encoding but `Native` describes a single [`FrameSet`] whose base
+/// Frame is the pixel coordinate system and whose current Frame is the
+/// world coordinate system.
+/// A read of one of them returns `None` unless the first card is current,
+/// and a successful read consumes the cards it used and leaves the
+/// FitsChan at end-of-file, so a second read returns `None` even after
+/// rewinding.
+/// A write first simplifies the FrameSet to see whether the encoding can
+/// describe it.
+/// If it can, the description replaces any description already written in
+/// that encoding, leaving other cards alone; cards consumed by an earlier
+/// read are put back where they were.
+/// If it cannot, or the object is not a FrameSet, nothing is written,
+/// [`Channel::write`] returns 0 and there is no error.
+///
+/// [`FrameSet`]: crate::frames::FrameSet
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Encoding {
-    /// AST Native text format stored in COMMENT cards.
+    /// `NATIVE`: any AST object, in keywords private to AST that follow the
+    /// FITS standard and are chosen not to clash with other keywords.
+    ///
+    /// Any number of objects may be written to the same cards, one after
+    /// another, which makes a FITS header an almost loss-less way of
+    /// passing AST objects between programs that use AST.
+    /// A write inserts the description in front of the current card and
+    /// never overwrites an earlier one; writing one description inside
+    /// another is not supported.
+    /// It always writes the object and returns 1, barring errors.
+    /// A read starts at the current card, passes over cards until the start
+    /// of the next description (as the Channel's Skip attribute, true by
+    /// default for a FitsChan, allows), and returns the object described, of
+    /// whatever class it is.
+    /// The cards of the description are removed, and the card after them is
+    /// current, so repeated reads return the objects in the order they were
+    /// written, until none is left before end-of-file.
     Native,
-    /// FITS-WCS Paper I/II/III encoding.
+    /// `FITS-WCS`: the conventions of the FITS world coordinate system
+    /// papers by Greisen, Calabretta and others, which any FITS-WCS
+    /// software should understand.
+    ///
+    /// The FrameSet's current Frame gives the primary axis descriptions,
+    /// and its other Frames, apart from the base Frame, may give alternate
+    /// axis descriptions (see [AltAxes](FitsChan::alt_axes)); a read makes a
+    /// Frame for each alternate axis description it finds.
+    /// The rotation and scaling of the pixel axes are written with `CDi_j`
+    /// keywords, or `PCi_j` and `CDELTi`, as
+    /// [CDMatrix](FitsChan::cd_matrix) chooses.
+    /// A write puts its cards where cards consumed by an earlier read were,
+    /// otherwise after any other FITS-WCS cards, and otherwise in front of
+    /// the current card.
+    ///
+    /// Beyond the standard:
+    ///
+    /// - The `TPN` projection, a tangent plane projection with polynomial
+    ///   distortion terms, is written as `-TAN` with its parameters in `QVi_m`
+    ///   keywords in place of `PVi_m`, which other software ignores, reading
+    ///   a plain tangent plane projection.
+    ///   How a `-TAN` header with `PVi_m` keywords is read depends on
+    ///   [PolyTan](FitsChan::poly_tan).
+    /// - `AZ--` and `EL--` in CTYPE describe azimuth and elevation, for an
+    ///   observer whose position is given by the `OBSGEO-X/Y/Z` keywords.
+    ///   The model includes diurnal aberration but not refraction or polar
+    ///   motion.
+    /// - A SkyFrame giving offset coordinates (see its SkyRefIs attribute)
+    ///   is written as two axis descriptions: one of the offsets, with axis
+    ///   codes `OFLN` and `OFLT`, and one of the absolute coordinates, which
+    ///   also holds the AST keywords (`SREF1/2`, `SREFP1/2` and `SREFIS`)
+    ///   that let a read make the original SkyFrame again.
+    /// - SIP distortion is read and, with [SipOK](FitsChan::sip_ok),
+    ///   written.
+    /// - The `-TAB` algorithm is used as [TabOK](FitsChan::tab_ok) allows.
     FitsWcs,
-    /// FITS-WCS using PCi_j matrix notation.
+    /// `FITS-PC`: an earlier draft of the FITS-WCS conventions, which
+    /// describes the rotation and scaling of the pixel axes with `CDELTi` and
+    /// `PCiiijjj` keywords.
+    ///
+    /// It is used as `FitsWcs` is, with the same restrictions, and is
+    /// provided for existing data and software; `FitsWcs` is to be
+    /// preferred.
     FitsPc,
-    /// IRAF-style WCS encoding.
+    /// `FITS-IRAF`: the conventions of "World Coordinate Systems
+    /// Representations Within the FITS Format" by Hanisch and Wells (1988),
+    /// used by IRAF.
+    ///
+    /// It is used as `FitsWcs` is, with these further restrictions:
+    ///
+    /// - The only celestial coordinate systems are equatorial, galactic and
+    ///   ecliptic.
+    /// - A sky projection can be written only if its projection parameters
+    ///   all have their default values.
+    /// - There are no alternate axis descriptions: a write uses only the
+    ///   base and current Frames.
+    ///
+    /// The rotation is written with `CDi_j` keywords; the `CDiiijjj` form is
+    /// read but never written.
+    /// IRAF's `ZPX` and `TNX` projections are read, but written as the `ZPN`
+    /// and distorted `TAN` projections.
+    /// A `ZPX` projection's `lngcor` and `latcor` correction surfaces are
+    /// not supported, nor are `TNX` surfaces other than cubic polynomials
+    /// with half cross-terms; a projection that uses them is read without
+    /// them, which may be inaccurate, with a `Tnx` or `Zpx` warning.
     FitsIraf,
-    /// AIPS-style WCS encoding (CDELTi + CROTA).
+    /// `FITS-AIPS`: the conventions introduced by AIPS, which describe the
+    /// scale and rotation of each axis with `CDELTi` and `CROTAi` keywords.
+    ///
+    /// It is used as `FitsWcs` is, with these further restrictions:
+    ///
+    /// - The only celestial coordinate systems are equatorial, galactic and
+    ///   ecliptic.
+    /// - A spectral axis must be frequency, radio velocity or optical
+    ///   velocity, sampled linearly in frequency, in the LSRK, LSRD,
+    ///   barycentric or geocentric standard of rest.
+    /// - A sky projection can be written only if its projection parameters
+    ///   all have their default values, and the AIT, SFL and MER
+    ///   projections only if the longitude and latitude CRVAL are zero.
+    /// - There are no alternate axis descriptions: a write uses only the
+    ///   base and current Frames.
+    /// - With more than 2 axes, any rotation must be confined to the
+    ///   celestial plane and have no shear.
     FitsAips,
-    /// AIPS++ WCS encoding.
+    /// `FITS-AIPS++`: the conventions of the AIPS++ project, which extend
+    /// `FitsAips` with some features of `FitsIraf` and `FitsPc`.
+    ///
+    /// Any celestial projection `FitsPc` supports may be used, including
+    /// those with projection parameters, and the rotation and scaling may be
+    /// given by `CDi_j` keywords.
+    /// A write uses `CROTAi` and `CDELTi` where it can, and `CDi_j`
+    /// otherwise.
     FitsAipsPP,
-    /// CLASS (Grenoble) WCS encoding.
+    /// `FITS-CLASS`: the conventions of CLASS, a package for reducing
+    /// single-dish radio and sub-mm spectra (the "CLASS FITS format" section
+    /// of its documentation,
+    /// <http://www.iram.fr/IRAMFR/GILDAS/doc/html/class-html/class.html>).
+    ///
+    /// It is like `FitsAips`, with these restrictions:
+    ///
+    /// - A SpecFrame read from a header has its ObsLat, ObsLon and ObsAlt
+    ///   unset, since CLASS does not record the observer's position, so
+    ///   conversions to or from the topocentric standard of rest are
+    ///   inaccurate (by up to about 0.5 km/s) unless they are set.
+    /// - To be written, the current Frame must have at least 3 axes, one of
+    ///   them a linear spectral axis, which is written as frequency.
+    /// - There must be a pair of celestial axes, either RA and Dec, in
+    ///   FK4 B1950 or FK5 J2000, or galactic longitude and latitude.
+    /// - Only the TAN, ARC, STG, AIT, SFL and SIN projections can be used:
+    ///   for AIT and SFL the reference point must be at the origin of
+    ///   longitude and latitude, and for SIN both projection parameters must
+    ///   be zero.
+    /// - The celestial axes may not be rotated, unless they span a single
+    ///   pixel.
+    /// - The frequency axis is written in the source's rest frame, as
+    ///   offsets from the rest frequency, so the source velocity
+    ///   (SpecFrame's SourceVel and SourceVRF) must be set.
+    ///
+    /// To make the header, a write may change a copy of the current Frame,
+    /// with the Mapping to match: reordering the world axes, changing the
+    /// spectral system, standard of rest, celestial system and equinox, and
+    /// changing axis units.
     FitsClass,
-    /// DSS (Digitized Sky Survey) plate solution encoding.
+    /// `DSS`: the conventions the Space Telescope Science Institute
+    /// developed for the plate solutions of the Digitized Sky Survey,
+    /// widely available and understood by many established programs.
+    ///
+    /// The cards describe a polynomial relating pixel positions on a
+    /// digitized photographic plate to right ascension and declination.
+    /// To be written, the FrameSet must simplify to the DSS model: an FK5
+    /// current Frame, and a tangent plane projection with polynomial
+    /// corrections DSS can describe (a DssMap, or a WcsMap of type TAN or
+    /// TPN), with north parallel to the second pixel axis.
     Dss,
 }
 
 impl Encoding {
-    /// The encoding's name (fitschan.c `xencod`): `NATIVE`, `FITS-PC`,
-    /// `DSS`, `FITS-WCS`, `FITS-IRAF`, `FITS-AIPS`, `FITS-AIPS++` or
-    /// `FITS-CLASS`.
+    /// The encoding's name: `NATIVE`, `FITS-PC`, `DSS`, `FITS-WCS`,
+    /// `FITS-IRAF`, `FITS-AIPS`, `FITS-AIPS++` or `FITS-CLASS`.
+    // C: fitschan.c `xencod`.
     pub fn name(self) -> &'static str {
         match self {
             Encoding::Native => "NATIVE",
@@ -389,45 +554,89 @@ impl FitsChan {
     // The current card
     // -----------------------------------------------------------------------
 
-    /// The `Card` attribute: the 1-based index of the current card, counting
-    /// only cards not consumed by a read; one more than [`ncard`](Self::ncard)
-    /// at end-of-file, and 0 when there are no cards.
+    /// The Card attribute: the index of the current card, the first card
+    /// being 1.
+    ///
+    /// The current card is the one that [`del_fits`](Self::del_fits),
+    /// [`find_fits`](Self::find_fits), [`put_fits`](Self::put_fits) and the
+    /// other card methods act on.
+    /// Setting Card moves to any card; reading it tells where the FitsChan
+    /// is.
+    /// Clearing it rewinds the FitsChan, so that the first card is current.
+    /// Cards consumed by a read are not counted.
+    /// A FitsChan past its last card is at end-of-file, and its Card is one
+    /// more than [Ncard](Self::ncard).
+    ///
+    /// Default: 1, the first card, or 0 when there are no cards.
+    ///
+    /// # Errors
+    ///
+    /// Passes on the error of storing the cards of a
+    /// [source](Self::set_source) not yet read, as for
+    /// [`put_fits`](Self::put_fits).
+    #[doc(alias = "Card")]
     pub fn card(&mut self) -> AstResult<usize> {
         self.read_from_source()?;
         Ok(self.cards.get_card())
     }
 
-    /// Set `Card`: rewind, then move forward `icard - 1` cards, stopping at
-    /// end-of-file. A value below 1 makes the first card current.
+    /// Set [Card](Self::card): rewind, then move forward `icard - 1` cards,
+    /// stopping at end-of-file.
+    /// A value below 1 makes the first card current.
+    ///
+    /// # Errors
+    ///
+    /// As for [`card`](Self::card).
     pub fn set_card(&mut self, icard: i64) -> AstResult<()> {
         self.read_from_source()?;
         self.cards.set_card(icard);
         Ok(())
     }
 
-    /// Clear `Card`: make the first card current (C's "rewind").
+    /// Clear [Card](Self::card), rewinding the FitsChan so that the first
+    /// card is current.
+    ///
+    /// # Errors
+    ///
+    /// As for [`card`](Self::card).
     pub fn clear_card(&mut self) -> AstResult<()> {
         self.read_from_source()?;
         self.cards.clear_card();
         Ok(())
     }
 
-    /// Whether `Card` is set, which C defines as the current card not being
-    /// the first.
+    /// Whether [Card](Self::card) is set, which is whether the current card
+    /// is other than the first.
+    ///
+    /// # Errors
+    ///
+    /// As for [`card`](Self::card).
     pub fn test_card(&mut self) -> AstResult<bool> {
         self.read_from_source()?;
         Ok(self.cards.test_card())
     }
 
-    /// The `CardName` attribute: the keyword of the current card (eight
-    /// spaces for a blank keyword), or `None` at end-of-file.
+    /// The read-only CardName attribute: the keyword of the current card,
+    /// eight spaces for a blank keyword, or `None` at end-of-file.
+    ///
+    /// # Errors
+    ///
+    /// As for [`card`](Self::card).
+    #[doc(alias = "CardName")]
     pub fn card_name(&mut self) -> AstResult<Option<String>> {
         self.read_from_source()?;
         Ok(self.cards.current().map(|c| c.c_name().to_string()))
     }
 
-    /// The `CardComm` attribute: the comment of the current card, or the text
-    /// of a commentary card; empty when there is none.
+    /// The read-only CardComm attribute: the comment of the current card, or
+    /// the text of a commentary card.
+    ///
+    /// It is empty when the card has no comment, and at end-of-file.
+    ///
+    /// # Errors
+    ///
+    /// As for [`card`](Self::card).
+    #[doc(alias = "CardComm")]
     pub fn card_comm(&mut self) -> AstResult<String> {
         self.read_from_source()?;
         Ok(self
@@ -438,8 +647,13 @@ impl FitsChan {
             .to_string())
     }
 
-    /// The `CardType` attribute: the data type of the current card, or
-    /// [`CardType::NoType`] at end-of-file.
+    /// The read-only CardType attribute: the data type of the value of the
+    /// current card, or [`CardType::NoType`] at end-of-file.
+    ///
+    /// # Errors
+    ///
+    /// As for [`card`](Self::card).
+    #[doc(alias = "CardType")]
     pub fn card_type(&mut self) -> AstResult<CardType> {
         self.read_from_source()?;
         Ok(self
@@ -448,15 +662,28 @@ impl FitsChan {
             .map_or(CardType::NoType, |c| c.card_type()))
     }
 
-    /// The `Ncard` attribute: the number of cards, not counting those a read
-    /// consumed.
+    /// The read-only Ncard attribute: the number of cards in the FitsChan,
+    /// not counting those a read consumed.
+    ///
+    /// # Errors
+    ///
+    /// As for [`card`](Self::card).
+    #[doc(alias = "Ncard")]
     pub fn ncard(&mut self) -> AstResult<usize> {
         self.read_from_source()?;
         Ok(self.cards.ncard())
     }
 
-    /// The `Nkey` attribute: the number of different keywords among the cards
-    /// a read has not consumed.
+    /// The read-only Nkey attribute: the number of different keywords among
+    /// the cards a read has not consumed.
+    ///
+    /// It equals [Ncard](Self::ncard) when no keyword appears twice, and is
+    /// smaller otherwise.
+    ///
+    /// # Errors
+    ///
+    /// As for [`card`](Self::card).
+    #[doc(alias = "Nkey")]
     pub fn nkey(&mut self) -> AstResult<usize> {
         self.read_from_source()?;
         Ok(self.cards.nkey())
@@ -1149,132 +1376,229 @@ impl FitsChan {
     // Attribute accessors
     // -----------------------------------------------------------------------
 
-    /// Set the encoding format explicitly.
-    ///
-    /// After this call [`FitsChan::test_encoding`] returns `true` and
-    /// [`FitsChan::encoding`] returns the supplied value verbatim.
-    /// Mirrors C `astSetEncoding`.
+    /// Set [Encoding](Self::encoding).
     pub fn set_encoding(&mut self, enc: Encoding) {
         self.encoding = Some(enc);
     }
 
-    /// Clear the explicit encoding setting.
-    ///
-    /// After this call [`FitsChan::test_encoding`] returns `false` and
-    /// [`FitsChan::encoding`] auto-detects from the cards on demand.
-    /// Mirrors C `astClearEncoding`.
+    /// Clear [Encoding](Self::encoding), so that it is chosen from the cards
+    /// again.
     pub fn clear_encoding(&mut self) {
         self.encoding = None;
     }
 
-    /// Whether the encoding has been explicitly set. Mirrors C
-    /// `astTestEncoding`.
+    /// Whether [Encoding](Self::encoding) has been set.
     pub fn test_encoding(&self) -> bool {
         self.encoding.is_some()
     }
 
-    /// Return the current encoding.
+    /// The Encoding attribute: the conventions a read or write uses to
+    /// describe objects as FITS header cards.
     ///
-    /// If the user explicitly set the encoding via
-    /// [`FitsChan::set_encoding`], that value is returned. Otherwise the
-    /// encoding is auto-detected from the header cards on each call —
-    /// no internal state is mutated. Mirrors C `astGetEncoding`
-    /// (fitschan.c:12560) which lazily evaluates the encoding from the
-    /// cards when no explicit value has been set via `astSetEncoding`.
+    /// [`Encoding`] describes each encoding.
+    /// Setting it ensures that encoding is used whatever cards are already
+    /// present.
+    /// When writing, choose the encoding by the software expected to read
+    /// the header; if that is not known, writing the object several times,
+    /// in different encodings, may help.
+    ///
+    /// Default: chosen, each time it is asked for, from the keywords of
+    /// the cards a read has not consumed, so that a read or write follows
+    /// the conventions already in use.
+    /// The first of these that holds gives the encoding:
+    ///
+    /// 1. A keyword beginning `BEGAST`: `NATIVE`.
+    /// 2. A `DELTAV` keyword and one of `VELO-OBS`, `VELO-HEL`, `VELO-EAR`,
+    ///    `VELO-LSR` or `VLSR`: `FITS-CLASS`.
+    /// 3. A CTYPE keyword holding a spectral axis type as AIPS and AIPS++
+    ///    write it (such as `FELO-LSR`): `FITS-AIPS++` if there is also a
+    ///    `CDi_j`, `PROJPi`, `LONPOLE` or `LATPOLE` keyword, and `FITS-AIPS`
+    ///    otherwise.
+    /// 4. A `PLTRAH` keyword: `DSS`.
+    /// 5. A keyword of the form `PCiiijjj`: `FITS-PC`.
+    /// 6. A keyword of the form `CDiiijjj`: `FITS-IRAF`.
+    /// 7. A `CDi_j` keyword: `FITS-IRAF` if there is also a `RADECSYS`
+    ///    keyword without `RADESYS`, a `PROJPi` keyword without any `PVi_m`,
+    ///    or a `CjVALi` keyword, and `FITS-WCS` otherwise.
+    /// 8. No `CDi_j` or `PCi_j` keyword, and a `RADECSYS` keyword without
+    ///    `RADESYS`, a `PROJPi` keyword without any `PVi_m`, or a `CjVALi`
+    ///    keyword: `FITS-PC`.
+    /// 9. A `CROTAi` keyword: `FITS-AIPS`.
+    /// 10. A `CRVALi` keyword: `FITS-WCS`.
+    /// 11. Otherwise, as for an empty FitsChan: `NATIVE`.
+    ///
+    /// Each case but 1 and 4 also needs a CTYPE, CRPIX or CRVAL keyword,
+    /// for the primary or an alternate axis description, and is passed
+    /// over without one.
+    /// A [source](Self::set_source) not yet read is not consulted: until the
+    /// FitsChan's first use reads it, the default comes from the cards
+    /// already held.
+    ///
+    /// Reading a FrameSet usually consumes the keywords the default was
+    /// chosen from, so the default after a read is usually different; to
+    /// write in the encoding that was read, ask for the default before the
+    /// read and set it.
+    #[doc(alias = "Encoding")]
     pub fn encoding(&self) -> Encoding {
         self.encoding
             .unwrap_or_else(|| guess_encoding::guess_encoding(&self.cards))
     }
 
-    /// Set the FitsDigits attribute: the number of significant digits a
-    /// floating point value is written with. A negative value `-n` means
-    /// at most `n`, fewer if the value would otherwise be wider than the 20
-    /// columns FITS allows it.
+    /// Set [FitsDigits](Self::fits_digits).
     pub fn set_fits_digits(&mut self, digits: i32) {
         self.fits_digits = digits;
     }
 
-    /// The FitsDigits attribute (default 17).
+    /// The FitsDigits attribute: the number of significant decimal digits a
+    /// floating point value is formatted with in a header card.
+    ///
+    /// The default loses no information from an `f64`, which is usually
+    /// what is wanted.
+    /// The FITS standard, however, recommends that a value, with its sign,
+    /// decimal point and exponent, be no wider than 20 characters.
+    /// To keep to that, set a negative value such as -15: its absolute
+    /// value is then the most digits used, and fewer are used where the
+    /// value would otherwise be too wide, so the number used depends on the
+    /// value.
+    ///
+    /// It applies whenever cards are formatted: by
+    /// [`find_fits`](Self::find_fits), [`to_header`](Self::to_header) and
+    /// [`show_fits`](Self::show_fits), and when the cards are written to the
+    /// sink.
+    ///
+    /// Default: 17.
+    #[doc(alias = "FitsDigits")]
     pub fn fits_digits(&self) -> i32 {
         self.fits_digits
     }
 
-    /// Whether FitsDigits differs from its default. As in C, which tests
-    /// the value rather than whether one was set, a FitsDigits set to 17
-    /// tests as unset.
+    /// Whether [FitsDigits](Self::fits_digits) differs from its default.
+    ///
+    /// This tests the value rather than whether one was set, so a
+    /// FitsDigits set to 17 tests as unset.
     pub fn test_fits_digits(&self) -> bool {
         self.fits_digits != DEFAULT_FITS_DIGITS
     }
 
-    /// Clear FitsDigits, restoring its default.
+    /// Clear [FitsDigits](Self::fits_digits), restoring its default.
     pub fn clear_fits_digits(&mut self) {
         self.fits_digits = DEFAULT_FITS_DIGITS;
     }
 
-    /// Set the FitsRounding attribute: the number of leading significant
-    /// digits of a floating point value that are never changed when long
-    /// runs of 0s or 9s after them are rounded out. A negative value is
-    /// stored as 0, as C stores it.
+    /// Set [FitsRounding](Self::fits_rounding).
+    /// A negative value is stored as 0.
     pub fn set_fits_rounding(&mut self, fitsrnd: i32) {
         self.fits_rounding = Some(fitsrnd.max(0));
     }
 
-    /// The FitsRounding attribute (default 10).
+    /// The FitsRounding attribute: how a floating point value is rounded
+    /// when it is formatted in a header card.
+    ///
+    /// The value is first formatted with [FitsDigits](Self::fits_digits)
+    /// digits.
+    /// If that holds a run of 4 or more adjacent `9`s or `0`s that extends
+    /// beyond the significant digit FitsRounding gives, it is cut at the
+    /// start of the run, the last digit kept being rounded up for a run of
+    /// `9`s.
+    /// With FitsRounding 10, for instance, only runs extending beyond the
+    /// tenth significant digit are rounded.
+    ///
+    /// Default: 10.
+    #[doc(alias = "FitsRounding")]
     pub fn fits_rounding(&self) -> i32 {
         self.fits_rounding.unwrap_or(10)
     }
 
-    /// Whether FitsRounding has been set.
+    /// Whether [FitsRounding](Self::fits_rounding) has been set.
     pub fn test_fits_rounding(&self) -> bool {
         self.fits_rounding.is_some()
     }
 
-    /// Clear FitsRounding, restoring its default.
+    /// Clear [FitsRounding](Self::fits_rounding), restoring its default.
     pub fn clear_fits_rounding(&mut self) {
         self.fits_rounding = None;
     }
 
     /// The Clean attribute: whether a read that fails still removes the
-    /// cards it used, and, as C does, whether warnings are suppressed. The
-    /// default is false.
+    /// cards it used.
+    ///
+    /// A successful read always removes the cards that described the object
+    /// it returns.
+    /// When a read fails, because cards have illegal values or required
+    /// cards are missing, no cards are removed unless Clean is true, in
+    /// which case the cards used in the attempt are removed.
+    /// This cleans a FitsChan of WCS cards even when they do not form a
+    /// legal description, as [`purge_wcs`](Self::purge_wcs) does.
+    /// While Clean is true no warnings are recorded, as cards or in
+    /// [`warning_texts`](Channel::warning_texts), whatever
+    /// [Warnings](Self::warning_conditions) holds.
+    ///
+    /// Default: false.
+    #[doc(alias = "Clean")]
     pub fn clean(&self) -> bool {
         self.clean.unwrap_or(false)
     }
 
-    /// Set Clean.
+    /// Set [Clean](Self::clean).
     pub fn set_clean(&mut self, clean: bool) {
         self.clean = Some(clean);
     }
 
-    /// Whether Clean is set.
+    /// Whether [Clean](Self::clean) is set.
     pub fn test_clean(&self) -> bool {
         self.clean.is_some()
     }
 
-    /// Clear Clean.
+    /// Clear [Clean](Self::clean).
     pub fn clear_clean(&mut self) {
         self.clean = None;
     }
 
     /// The SipOK attribute: whether a FITS-WCS write may describe
-    /// distortion with SIP coefficients. Without them, or with another
-    /// encoding, the write uses a linear approximation if FitsTol allows.
-    /// The default is true.
+    /// distortion with the SIP keywords, a scheme first defined for the
+    /// Spitzer Space Telescope
+    /// (<http://irsa.ipac.caltech.edu/data/SPITZER/docs/files/spitzer/shupeADASS.pdf>).
+    ///
+    /// A read of a FITS-WCS header with SIP keywords always includes a
+    /// PolyMap for them, whatever SipOK holds, just before the MatrixMap of
+    /// the PC or CD matrix.
+    ///
+    /// A write includes SIP keywords when SipOK is true and the pixel to
+    /// sky Mapping can be arranged as the SIP scheme needs: a PolyMap
+    /// somewhere before the WcsMap, with only a shift of origin, scaling or
+    /// rotation between them, and only a shift of origin and scaling before
+    /// the PolyMap.
+    /// Scaling before the PolyMap and shifts after it are absorbed into a
+    /// modified PolyMap, and any shift, scaling or rotation in the PolyMap
+    /// itself is moved out, a shift into the Mapping that gives CRPIX and
+    /// scaling or rotation into the one that gives the CD matrix.
+    /// SIP keywords are written only for the axes of a SkyFrame.
+    /// When SipOK is false, or the Mapping cannot be so arranged, the write
+    /// uses a linear approximation to the pixel to intermediate world
+    /// coordinates Mapping, and writes nothing if that departs from
+    /// linearity by more than [FitsTol](Self::fits_tol).
+    ///
+    /// SIP is independent of the TPN and TPV distortion schemes (see
+    /// [PolyTan](Self::poly_tan)); a header could hold both, though that is
+    /// unlikely.
+    ///
+    /// Default: true.
+    #[doc(alias = "SipOK")]
     pub fn sip_ok(&self) -> bool {
         self.sip_ok.unwrap_or(true)
     }
 
-    /// Set SipOK.
+    /// Set [SipOK](Self::sip_ok).
     pub fn set_sip_ok(&mut self, sip_ok: bool) {
         self.sip_ok = Some(sip_ok);
     }
 
-    /// Whether SipOK is set.
+    /// Whether [SipOK](Self::sip_ok) is set.
     pub fn test_sip_ok(&self) -> bool {
         self.sip_ok.is_some()
     }
 
-    /// Clear SipOK.
+    /// Clear [SipOK](Self::sip_ok).
     pub fn clear_sip_ok(&mut self) {
         self.sip_ok = None;
     }
@@ -1298,304 +1622,447 @@ impl FitsChan {
         }
     }
 
-    /// Set the CDMatrix attribute: whether a FITS-WCS write describes the
-    /// linear transformation with CDi_j keywords rather than PCi_j and
-    /// CDELTi.
+    /// Set [CDMatrix](Self::cd_matrix).
     pub fn set_cd_matrix(&mut self, use_cd: bool) {
         self.cd_matrix = Some(use_cd);
     }
 
-    /// Whether CDMatrix has been set.
+    /// Whether [CDMatrix](Self::cd_matrix) has been set.
     pub fn test_cd_matrix(&self) -> bool {
         self.cd_matrix.is_some()
     }
 
-    /// Clear CDMatrix, restoring its default.
+    /// Clear [CDMatrix](Self::cd_matrix), restoring its default.
     pub fn clear_cd_matrix(&mut self) {
         self.cd_matrix = None;
     }
 
-    /// Set the SipReplace attribute: whether reading a SIP header replaces
-    /// any inverse it supplies by a polynomial fitted to the forward
-    /// transformation.
+    /// Set [SipReplace](Self::sip_replace).
     pub fn set_sip_replace(&mut self, v: bool) {
         self.sip_replace = Some(v);
     }
 
-    /// The SipReplace attribute (default true).
+    /// The SipReplace attribute: whether a read of a FITS-WCS header with
+    /// SIP keywords replaces the inverse transformation they describe.
+    ///
+    /// When true, the SIP keywords describing the inverse transformation,
+    /// from world to pixel coordinates, are ignored, and a new inverse is
+    /// found by fitting the forward transformation.
+    /// When false, the inverse keywords are used as they are.
+    /// The SIP scheme is described at
+    /// <http://irsa.ipac.caltech.edu/data/SPITZER/docs/files/spitzer/shupeADASS.pdf>.
+    ///
+    /// Default: true.
+    #[doc(alias = "SipReplace")]
     pub fn sip_replace(&self) -> bool {
         self.sip_replace.unwrap_or(true)
     }
 
-    /// Whether SipReplace has been set.
+    /// Whether [SipReplace](Self::sip_replace) has been set.
     pub fn test_sip_replace(&self) -> bool {
         self.sip_replace.is_some()
     }
 
-    /// Clear SipReplace, restoring its default.
+    /// Clear [SipReplace](Self::sip_replace), restoring its default.
     pub fn clear_sip_replace(&mut self) {
         self.sip_replace = None;
     }
 
-    /// Set the CarLin attribute: whether a `-CAR` projection is read as a
-    /// linear transformation from pixel to sky coordinates rather than as
-    /// a spherical Cartesian projection.
+    /// Set [CarLin](Self::car_lin).
     pub fn set_car_lin(&mut self, v: bool) {
         self.car_lin = Some(v);
     }
 
-    /// The CarLin attribute (default false).
+    /// The CarLin attribute: whether a read of a foreign encoding takes a
+    /// `CAR` (plate carrée) projection to be a linear transformation from
+    /// pixel to celestial coordinates.
+    ///
+    /// FITS-WCS paper II ("Representation of Celestial Coordinates in
+    /// FITS", Calabretta and Greisen) makes a `CAR` projection a linear
+    /// Mapping from pixel coordinates to native spherical coordinates, which
+    /// a 3-D rotation then takes to celestial coordinates, so that the whole
+    /// Mapping is not linear.
+    /// When CarLin is false the header is read that way.
+    /// When it is true the rotation is left out, which suits some older data
+    /// that claim a `CAR` projection but do not follow the paper.
+    ///
+    /// Default: false.
+    #[doc(alias = "CarLin")]
     pub fn car_lin(&self) -> bool {
         self.car_lin.unwrap_or(false)
     }
 
-    /// Whether CarLin has been set.
+    /// Whether [CarLin](Self::car_lin) has been set.
     pub fn test_car_lin(&self) -> bool {
         self.car_lin.is_some()
     }
 
-    /// Clear CarLin, restoring its default.
+    /// Clear [CarLin](Self::car_lin), restoring its default.
     pub fn clear_car_lin(&mut self) {
         self.car_lin = None;
     }
 
-    /// Set the FitsTol attribute: the maximum departure from linearity, in
-    /// pixels, that a Mapping may show and still be described by the
-    /// linear FITS-WCS keywords (CRPIX, CD, PC, CDELT), with or without SIP
-    /// distortion. A Mapping that departs further has no FITS-WCS
-    /// representation and [`Channel::write`] reports that it wrote
-    /// nothing. A negative value is stored as 0, as C stores it.
+    /// Set [FitsTol](Self::fits_tol).
+    /// A negative value is stored as 0.
     pub fn set_fits_tol(&mut self, tol: f64) {
         self.fits_tol = Some(tol.max(0.0));
     }
 
-    /// The FitsTol attribute (default 0.1).
+    /// The FitsTol attribute: the largest departure from linearity, in
+    /// pixels, that a write of a foreign encoding allows on any axis of the
+    /// Mapping from pixel to intermediate world coordinates.
+    ///
+    /// If the Mapping is linear to within FitsTol, a linear approximation to
+    /// it gives the keyword values written (CRPIX, CD, PC, CDELT and the
+    /// like); if not, the write fails: [`Channel::write`] writes nothing and
+    /// returns 0.
+    ///
+    /// Default: 0.1, a tenth of a pixel.
+    #[doc(alias = "FitsTol")]
     pub fn fits_tol(&self) -> f64 {
         self.fits_tol.unwrap_or(fset_to_store::FITS_TOL_DEFAULT)
     }
 
-    /// Whether FitsTol has been set.
+    /// Whether [FitsTol](Self::fits_tol) has been set.
     pub fn test_fits_tol(&self) -> bool {
         self.fits_tol.is_some()
     }
 
-    /// Clear FitsTol, restoring its default.
+    /// Clear [FitsTol](Self::fits_tol), restoring its default.
     pub fn clear_fits_tol(&mut self) {
         self.fits_tol = None;
     }
 
-    /// Set the DefB1950 attribute: whether a celestial coordinate system
-    /// read from a header with neither RADESYS nor EQUINOX is FK4 B1950
-    /// rather than ICRS.
+    /// Set [DefB1950](Self::def_b1950).
     pub fn set_def_b1950(&mut self, v: bool) {
         self.def_b1950 = Some(v);
     }
 
-    /// The DefB1950 attribute. Unless set, it is true when the Encoding is
-    /// not FITS-WCS (C's `GetDefB1950`).
+    /// The DefB1950 attribute: whether a read of a foreign encoding takes
+    /// RA and Dec axes with no reference frame or equinox in the header to
+    /// be FK4 B1950, rather than ICRS.
+    ///
+    /// It is used only when the header has RA and Dec axes and says
+    /// nothing of their reference frame or equinox.
+    ///
+    /// Default: false when the [Encoding](Self::encoding) is `FITS-WCS`,
+    /// and true for every other encoding.
+    /// When the Encoding is not set, its default is used, which does not
+    /// consult a [source](Self::set_source) not yet read.
+    #[doc(alias = "DefB1950")]
     pub fn def_b1950(&self) -> bool {
         self.def_b1950
             .unwrap_or_else(|| self.encoding() != Encoding::FitsWcs)
     }
 
-    /// Whether DefB1950 has been set.
+    /// Whether [DefB1950](Self::def_b1950) has been set.
     pub fn test_def_b1950(&self) -> bool {
         self.def_b1950.is_some()
     }
 
-    /// Clear DefB1950, restoring its default.
+    /// Clear [DefB1950](Self::def_b1950), restoring its default.
     pub fn clear_def_b1950(&mut self) {
         self.def_b1950 = None;
     }
 
-    /// Set the PolyTan attribute: whether a `-TAN` projection with PVi_m
-    /// distortion terms is read as the polynomial (`-TPN`) form of the
-    /// distorted TAN convention. Zero reads it as plain TAN, ignoring the
-    /// PV terms; a positive value as `-TPN`; a negative value decides from
-    /// the cards, using `-TPN` when there are latitude PV terms, or
-    /// longitude PV terms with m above 4, not all zero.
+    /// Set [PolyTan](Self::poly_tan).
     pub fn set_poly_tan(&mut self, v: i32) {
         self.poly_tan = Some(v);
     }
 
-    /// The PolyTan attribute (default -1).
+    /// The PolyTan attribute: how a read of a foreign encoding treats a
+    /// `TAN` projection with `PVi_m` keywords.
+    ///
+    /// An early draft of FITS-WCS paper II gave the `PVi_m` keywords of a
+    /// `TAN` projection the coefficients of a polynomial distortion of the
+    /// intermediate world coordinates.
+    /// The published standard dropped the convention, and gives the first
+    /// five `PVi_m` keywords of the longitude axis other meanings, but it is
+    /// now in the registry of FITS conventions
+    /// (<http://fits.gsfc.nasa.gov/registry/tpvwcs.html>) and is used by the
+    /// SCAMP program and the Dark Energy Camera.
+    /// A projection read under the convention is the AST `TPN` projection.
+    ///
+    /// - 0: the header follows the published standard.
+    /// - Positive: the header follows the distorted `TAN` convention.
+    /// - Negative: the header decides: the distorted `TAN` convention is used
+    ///   if there are `PVi_m` keywords for the latitude axis, or for the
+    ///   longitude axis with `m` greater than 4, and the standard otherwise.
+    ///   Distortion coefficients that are all zero on either axis are then
+    ///   ignored, with a `BadPV` warning.
+    ///
+    /// Default: -1.
+    #[doc(alias = "PolyTan")]
     pub fn poly_tan(&self) -> i32 {
         self.poly_tan.unwrap_or(-1)
     }
 
-    /// Whether PolyTan has been set.
+    /// Whether [PolyTan](Self::poly_tan) has been set.
     pub fn test_poly_tan(&self) -> bool {
         self.poly_tan.is_some()
     }
 
-    /// Clear PolyTan, restoring its default.
+    /// Clear [PolyTan](Self::poly_tan), restoring its default.
     pub fn clear_poly_tan(&mut self) {
         self.poly_tan = None;
     }
 
-    /// Set the IgnoreBadAlt attribute: whether a FITS-WCS read leaves out an
-    /// alternate axis description that cannot be read, rather than failing.
+    /// Set [IgnoreBadAlt](Self::ignore_bad_alt).
     pub fn set_ignore_bad_alt(&mut self, v: bool) {
         self.ignore_bad_alt = Some(v);
     }
 
-    /// The IgnoreBadAlt attribute (default false).
+    /// The IgnoreBadAlt attribute: whether a read leaves out an alternate
+    /// FITS-WCS axis description it cannot read, rather than failing.
+    ///
+    /// An alternate axis description may be unreadable because it uses a
+    /// feature of FITS-WCS that is not supported, or is malformed.
+    /// When IgnoreBadAlt is false the read then fails with an error.
+    /// When it is true the description is left out, with a `BadAlt` warning
+    /// (see [Warnings](Self::warning_conditions)), and the FrameSet holds the
+    /// axes that could be read.
+    ///
+    /// Default: false.
+    #[doc(alias = "IgnoreBadAlt")]
     pub fn ignore_bad_alt(&self) -> bool {
         self.ignore_bad_alt.unwrap_or(false)
     }
 
-    /// Whether IgnoreBadAlt has been set.
+    /// Whether [IgnoreBadAlt](Self::ignore_bad_alt) has been set.
     pub fn test_ignore_bad_alt(&self) -> bool {
         self.ignore_bad_alt.is_some()
     }
 
-    /// Clear IgnoreBadAlt, restoring its default.
+    /// Clear [IgnoreBadAlt](Self::ignore_bad_alt), restoring its default.
     pub fn clear_ignore_bad_alt(&mut self) {
         self.ignore_bad_alt = None;
     }
 
-    /// Set the Warnings attribute: the conditions, separated by white space
-    /// and in any case, whose warnings a read or write records (C's
-    /// `SetWarnings`). An unknown condition is AST__ATTIN, and leaves the
-    /// attribute as it was.
+    /// Set [Warnings](Self::warning_conditions): the names of the
+    /// conditions to report, separated by white space, in any case.
+    ///
+    /// # Errors
+    ///
+    /// [`ErrorCode::Attin`] if a name is not one of
+    /// [AllWarnings](Self::all_warning_conditions); the attribute is then
+    /// left as it was.
     pub fn set_warning_conditions(&mut self, value: &str) -> AstResult<()> {
         warning::good_warns(value)?;
         self.warning_conditions = Some(value.to_string());
         Ok(())
     }
 
-    /// The Warnings attribute, as set, or by default
-    /// `"BadKeyName BadKeyValue Tnx Zpx BadPV BadCel BadMat BadCTYPE"`.
+    /// The Warnings attribute: the conditions met when reading or writing
+    /// an object or keyword that are reported as warnings.
     ///
-    /// A warning for a condition it names is stored as `ASTWARN` cards in
-    /// front of the current card and added to the warnings
-    /// [`warning_texts`](Channel::warning_texts) reports.
+    /// It is a list of condition names separated by spaces;
+    /// [AllWarnings](Self::all_warning_conditions) lists every condition and
+    /// what it means.
+    /// A warning for a condition it names is added to the warnings
+    /// [`warning_texts`](Channel::warning_texts) gives, and stored in the
+    /// FitsChan as one or more `ASTWARN` cards.
+    /// After a read or write, the `ASTWARN` cards can be found with
+    /// [`find_fits`](Self::find_fits) and shown to the user; they stay in
+    /// any header written out unless deleted with
+    /// [`del_fits`](Self::del_fits).
+    /// A warning for a condition it does not name is not recorded at all,
+    /// and while [Clean](Self::clean) is true none is.
+    ///
+    /// Default: `"BadKeyName BadKeyValue Tnx Zpx BadPV BadCel BadMat
+    /// BadCTYPE"`.
+    #[doc(alias = "Warnings")]
     pub fn warning_conditions(&self) -> &str {
         self.warning_conditions
             .as_deref()
             .unwrap_or(warning::DEFAULT_WARNINGS)
     }
 
-    /// Whether Warnings has been set.
+    /// Whether [Warnings](Self::warning_conditions) has been set.
     pub fn test_warning_conditions(&self) -> bool {
         self.warning_conditions.is_some()
     }
 
-    /// Clear Warnings, restoring its default.
+    /// Clear [Warnings](Self::warning_conditions), restoring its default.
     pub fn clear_warning_conditions(&mut self) {
         self.warning_conditions = None;
     }
 
-    /// Set the AltAxes attribute: which Frames a write describes with
-    /// alternate axes.
+    /// Set [AltAxes](Self::alt_axes).
     pub fn set_alt_axes(&mut self, v: AltAxes) {
         self.alt_axes = Some(v);
     }
 
-    /// The AltAxes attribute (default [`AltAxes::All`]).
+    /// The AltAxes attribute: which Frames of the FrameSet a write
+    /// describes with FITS-WCS alternate axis descriptions.
+    ///
+    /// The current Frame always gives the primary axis descriptions, and the
+    /// base Frame never gives an alternate one.
+    /// [`AltAxes`] describes the values.
+    /// It is used only when the [Encoding](Self::encoding) is, or defaults
+    /// to, `FITS-WCS` or `FITS-PC`.
+    ///
+    /// Default: [`AltAxes::All`].
+    #[doc(alias = "AltAxes")]
     pub fn alt_axes(&self) -> AltAxes {
         self.alt_axes.unwrap_or_default()
     }
 
-    /// Whether AltAxes has been set.
+    /// Whether [AltAxes](Self::alt_axes) has been set.
     pub fn test_alt_axes(&self) -> bool {
         self.alt_axes.is_some()
     }
 
-    /// Clear AltAxes, restoring its default.
+    /// Clear [AltAxes](Self::alt_axes), restoring its default.
     pub fn clear_alt_axes(&mut self) {
         self.alt_axes = None;
     }
 
-    /// Set the Iwc attribute: whether a FrameSet read with a foreign
-    /// encoding includes a Frame of FITS-WCS intermediate world coordinates
-    /// for each axis description, with Domain `IWC`, or `IWCa` for
-    /// alternate axes `a`.
+    /// Set [Iwc](Self::iwc).
     pub fn set_iwc(&mut self, v: bool) {
         self.iwc = Some(v);
     }
 
-    /// The Iwc attribute (default false).
+    /// The Iwc attribute: whether a FrameSet read from a foreign encoding
+    /// includes Frames of FITS-WCS intermediate world coordinates.
+    ///
+    /// When true, each axis description read adds such a Frame, with Domain
+    /// `IWC` for the primary axis description and `IWCa` for alternate
+    /// description `a`.
+    /// FITS-WCS paper I defines intermediate world coordinates as a
+    /// Cartesian system with one axis per world axis, the result of the
+    /// matrix given by the `PCi_j`, `CDi_j` or similar keywords.
+    /// For a 2-D celestial projection, for instance, they are offsets in
+    /// degrees from the reference point in the plane of projection.
+    ///
+    /// Default: false.
+    #[doc(alias = "Iwc")]
     pub fn iwc(&self) -> bool {
         self.iwc.unwrap_or(false)
     }
 
-    /// Whether Iwc has been set.
+    /// Whether [Iwc](Self::iwc) has been set.
     pub fn test_iwc(&self) -> bool {
         self.iwc.is_some()
     }
 
-    /// Clear Iwc, restoring its default.
+    /// Clear [Iwc](Self::iwc), restoring its default.
     pub fn clear_iwc(&mut self) {
         self.iwc = None;
     }
 
-    /// Set the FitsAxisOrder attribute: the order of the WCS axes in a
-    /// FITS-WCS header a write makes. `<auto>` (the default) puts each WCS
-    /// axis with the pixel axis it is most nearly parallel to; `<copy>`
-    /// keeps the order of the current Frame's axes; otherwise the value is a
-    /// list of axis Symbols, separated by white space, giving that order. A
-    /// write fails with AST__ATTIN if the list leaves out an axis or names
-    /// one twice; words naming no axis are ignored.
+    /// Set [FitsAxisOrder](Self::fits_axis_order).
+    /// The value is checked when it is used, by a write.
     pub fn set_fits_axis_order(&mut self, v: &str) {
         self.fits_axis_order = Some(v.to_string());
     }
 
-    /// The FitsAxisOrder attribute (default `<auto>`).
+    /// The FitsAxisOrder attribute: the order of the WCS axes in a
+    /// FITS-WCS header that a write makes.
+    ///
+    /// - `<auto>`: the i'th WCS axis of the header is the WCS axis most
+    ///   nearly parallel to the i'th pixel axis.
+    /// - `<copy>`: the i'th WCS axis of the header is the i'th axis of the
+    ///   current Frame.
+    /// - A list of axis Symbols separated by spaces: the axes of the current
+    ///   Frame appear in the order their Symbols appear in the list.
+    ///   Words that are not the Symbol of a current Frame axis are ignored,
+    ///   but a write fails with [`ErrorCode::Attin`] if the list leaves out
+    ///   an axis or names one twice.
+    ///
+    /// Default: `<auto>`.
+    #[doc(alias = "FitsAxisOrder")]
     pub fn fits_axis_order(&self) -> &str {
         self.fits_axis_order.as_deref().unwrap_or("<auto>")
     }
 
-    /// Whether FitsAxisOrder has been set.
+    /// Whether [FitsAxisOrder](Self::fits_axis_order) has been set.
     pub fn test_fits_axis_order(&self) -> bool {
         self.fits_axis_order.is_some()
     }
 
-    /// Clear FitsAxisOrder, restoring its default.
+    /// Clear [FitsAxisOrder](Self::fits_axis_order), restoring its default.
     pub fn clear_fits_axis_order(&mut self) {
         self.fits_axis_order = None;
     }
 
-    /// Set the TabOK attribute: a positive value allows the `-TAB`
-    /// algorithm and is the EXTVER of the binary table a write makes for
-    /// it.
+    /// Set [TabOK](Self::tab_ok).
     pub fn set_tab_ok(&mut self, v: i32) {
         self.tab_ok = Some(v);
     }
 
-    /// The TabOK attribute (default 0).
+    /// The TabOK attribute: whether the `-TAB` algorithm of FITS-WCS paper
+    /// III is supported, and if so the version number of the tables a write
+    /// makes.
+    ///
+    /// Axes described with the `-TAB` algorithm, which have `-TAB` in their
+    /// CTYPE, take their values from a look-up table held in a FITS binary
+    /// table.
+    /// When TabOK is zero or negative, the algorithm is not supported: a
+    /// write never uses it, and a read does not look up tables for such
+    /// axes.
+    ///
+    /// When TabOK is positive, a write uses the algorithm for an axis if no
+    /// other FITS-WCS algorithm can describe it (or whenever it can, with
+    /// [ForceTab](Self::force_tab)).
+    /// The table of coordinates and index vectors is stored in the FitsChan
+    /// as a [`FitsTable`](crate::fitstable::FitsTable) under the extension
+    /// name `WCS-TAB`, which the caller should look for with
+    /// [`get_tables`](Self::get_tables) after the write and copy, data and
+    /// headers, into a new FITS binary table extension.
+    /// The coordinates are in a column named `COORDS` and any index vectors,
+    /// made only where needed, in columns named `INDEX<i>`, `<i>` being the
+    /// FITS-WCS axis.
+    /// The table's `EXTVER` is TabOK, which lets several such extensions
+    /// share a name; no `EXTLEVEL` is stored, so it should be taken as 1.
+    ///
+    /// When TabOK is positive, a read makes a FrameSet from a header that
+    /// uses the algorithm, provided the tables it needs are available:
+    /// stored beforehand with [`put_table`](Self::put_table) or
+    /// [`put_tables`](Self::put_tables), or supplied when needed by a
+    /// [table source](Self::set_table_source).
+    /// Only 1-dimensional (separable) `-TAB` axes can be read.
+    ///
+    /// Default: 0.
+    #[doc(alias = "TabOK")]
     pub fn tab_ok(&self) -> i32 {
         self.tab_ok.unwrap_or(0)
     }
 
-    /// Whether TabOK has been set.
+    /// Whether [TabOK](Self::tab_ok) has been set.
     pub fn test_tab_ok(&self) -> bool {
         self.tab_ok.is_some()
     }
 
-    /// Clear TabOK, restoring its default.
+    /// Clear [TabOK](Self::tab_ok), restoring its default.
     pub fn clear_tab_ok(&mut self) {
         self.tab_ok = None;
     }
 
-    /// Set the ForceTab attribute: whether a write uses the `-TAB`
-    /// algorithm whenever TabOK allows it, in preference to any other
-    /// algorithm that could describe an axis.
+    /// Set [ForceTab](Self::force_tab).
     pub fn set_force_tab(&mut self, v: i32) {
         self.force_tab = Some(v);
     }
 
-    /// The ForceTab attribute (default 0).
+    /// The ForceTab attribute, a flag: whether a FITS-WCS write uses the
+    /// `-TAB` algorithm wherever it can.
+    ///
+    /// It has an effect only when [TabOK](Self::tab_ok) is positive.
+    /// When it is non-zero, the write uses the `-TAB` algorithm even where
+    /// another algorithm could describe an axis; when it is zero, only where
+    /// no other algorithm can.
+    ///
+    /// Default: 0.
+    #[doc(alias = "ForceTab")]
     pub fn force_tab(&self) -> i32 {
         self.force_tab.unwrap_or(0)
     }
 
-    /// Whether ForceTab has been set.
+    /// Whether [ForceTab](Self::force_tab) has been set.
     pub fn test_force_tab(&self) -> bool {
         self.force_tab.is_some()
     }
 
-    /// Clear ForceTab, restoring its default.
+    /// Clear [ForceTab](Self::force_tab), restoring its default.
     pub fn clear_force_tab(&mut self) {
         self.force_tab = None;
     }
@@ -1620,8 +2087,8 @@ impl FitsChan {
         self.ident = None;
     }
 
-    /// The Object-class `ID` attribute, blank unless set. Unlike `Ident`, a
-    /// clone does not inherit it, as C's `astCopy` does not copy it.
+    /// The Object-class `ID` attribute, blank unless set.
+    /// Unlike `Ident`, it is not copied to a clone.
     pub fn id(&self) -> &str {
         self.id.get()
     }
@@ -1641,8 +2108,63 @@ impl FitsChan {
         self.id.clear();
     }
 
-    /// The read-only AllWarnings attribute: every condition the Warnings
-    /// attribute accepts, in lower case, with a space before and after each.
+    /// The read-only AllWarnings attribute: the name of every condition
+    /// [Warnings](Self::warning_conditions) accepts, in lower case, with a
+    /// space before and after each.
+    ///
+    /// The names are not case sensitive.
+    /// The conditions are:
+    ///
+    /// - `BadAlt`: a read of a foreign encoding leaves out an alternate axis
+    ///   description it cannot read, because
+    ///   [IgnoreBadAlt](Self::ignore_bad_alt) is true (when it is false the
+    ///   read fails instead).
+    /// - `BadCel`: a read of a foreign encoding finds an unknown celestial
+    ///   coordinate system in the CTYPE keywords.
+    /// - `BadCTYPE`: a read of a foreign encoding finds an illegal algorithm
+    ///   code in a CTYPE keyword that can be converted to an equivalent legal
+    ///   code.
+    /// - `BadKeyName`: a keyword name holds a character the FITS standard
+    ///   does not allow.
+    /// - `BadKeyValue`: the value of a keyword cannot be determined from its
+    ///   card.
+    /// - `BadLat`: a read of a foreign encoding finds a reference point
+    ///   whose latitude is greater than 90 degrees in absolute value; 90
+    ///   degrees is used.
+    /// - `BadMat`: the matrix taking pixel offsets to intermediate world
+    ///   coordinates, given by keywords such as `PCi_j`, `CDi_j` or `CROTA`,
+    ///   cannot be inverted, for instance because a row or column is all
+    ///   zero.
+    ///   FITS-WCS paper I requires it to be invertible, and many operations,
+    ///   such as plotting a grid, need its inverse.
+    /// - `BadPV`: a read of a foreign encoding finds a `PVi_m` keyword for a
+    ///   projection parameter the CTYPE projection does not use, or `PV`
+    ///   values otherwise unsuited to the projection.
+    /// - `BadVal`: a read of a foreign encoding cannot convert the value of a
+    ///   keyword to the type expected, as when a string is given for a
+    ///   floating value or the keyword has no value, being a commentary
+    ///   card.
+    /// - `Distortion`: a read of a foreign encoding finds a CTYPE keyword
+    ///   naming a distortion code, in the "4-3-3" form of FITS-WCS paper
+    ///   IV, that is not supported; the code is ignored.
+    /// - `NoCTYPE`: a read of a foreign encoding uses a default CTYPE, as the
+    ///   header has none.
+    /// - `NoEquinox`: a read of a foreign encoding uses a default equinox, as
+    ///   the header has none.
+    /// - `NoRadesys`: a read of a foreign encoding uses a default reference
+    ///   frame for an equatorial coordinate system, as the header has none.
+    /// - `NoLonpole`: a read of a foreign encoding uses a default `LONPOLE`,
+    ///   as the header has none.
+    /// - `NoLatpole`: a read of a foreign encoding uses a default `LATPOLE`,
+    ///   as the header has none.
+    /// - `NoMjd-obs`: a read of a foreign encoding uses a default date of
+    ///   observation, as the header has none.
+    /// - `Tnx`: a read finds an IRAF `TNX` projection with terms that are not
+    ///   supported; they are ignored, so the FrameSet may be inaccurate.
+    /// - `Zpx`: a read finds an IRAF `ZPX` projection with `lngcor` or
+    ///   `latcor` correction terms, which are not supported; they are
+    ///   ignored, so the FrameSet may be inaccurate.
+    #[doc(alias = "AllWarnings")]
     pub fn all_warning_conditions(&self) -> &'static str {
         warning::all_warnings()
     }
@@ -1714,9 +2236,28 @@ impl FitsChan {
         }
     }
 
-    /// The CDMatrix attribute. Unless set, it is true when the FitsChan
-    /// holds a `CDi_j` card that a read has not consumed (C's
-    /// `GetCDMatrix`).
+    /// The CDMatrix attribute: whether a FITS-WCS write describes the
+    /// linear transformation from pixel to intermediate world coordinates,
+    /// the scaling, rotation and shear of the pixel axes, with `CDi_j`
+    /// keywords.
+    ///
+    /// When true the transformation is a square matrix of `CDi_j`
+    /// keywords, `i` being an intermediate world coordinate axis and `j` a
+    /// pixel axis.
+    /// When false it is a square matrix of `PCi_j` keywords with a scaling
+    /// for each axis in `CDELTi` keywords.
+    /// FITS-WCS paper II ("Representation of Celestial Coordinates in
+    /// FITS", Calabretta and Greisen) describes both.
+    ///
+    /// Default: chosen, each time it is asked for, from the cards: true if
+    /// the FitsChan holds a `CDi_j` card a read has not consumed, and false
+    /// otherwise.
+    /// Reading a FrameSet usually consumes the `CDi_j` cards, so the default
+    /// after a read is usually false even when the header had them; to keep
+    /// the value, ask for the default before the read and set it.
+    /// As for [Encoding](Self::encoding), a [source](Self::set_source) not
+    /// yet read is not consulted.
+    #[doc(alias = "CDMatrix")]
     pub fn cd_matrix(&self) -> bool {
         self.cd_matrix
             .unwrap_or_else(|| self.cards.key_fields("CD%1d_%1d", 0).0 > 0)

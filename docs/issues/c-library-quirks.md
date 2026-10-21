@@ -81,6 +81,10 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [The `astAddMocString` documentation says cells above `maxorder` are ignored](#the-astaddmocstring-documentation-says-cells-above-maxorder-are-ignored)
 - [The `MaxOrder` and `astAddPixelMask<X>` documentation give different defaults for a pixel mask](#the-maxorder-and-astaddpixelmaskx-documentation-give-different-defaults-for-a-pixel-mask)
 - [The `astStcObsDataLocation` documentation describes the class as an StcResourceProfile](#the-aststcobsdatalocation-documentation-describes-the-class-as-an-stcresourceprofile)
+- [The `Encoding` documentation lists the default choices in another order than the code](#the-encoding-documentation-lists-the-default-choices-in-another-order-than-the-code)
+- [The `Warnings` documentation says it does not affect the warnings stored in the Channel](#the-warnings-documentation-says-it-does-not-affect-the-warnings-stored-in-the-channel)
+- [The `Card` documentation implies 1 for an empty FitsChan](#the-card-documentation-implies-1-for-an-empty-fitschan)
+- [The `FitsAxisOrder` documentation gives its purpose as "Frame title"](#the-fitsaxisorder-documentation-gives-its-purpose-as-frame-title)
 
 ### [Addressed here, and not going upstream](#addressed-here-and-not-going-upstream)
 
@@ -1216,6 +1220,54 @@ Consequence: documentation only.
 
 `StcObsDataLocation` uses the class prologue's description.
 A C fix: use the class prologue's sentence in the constructor's Description.
+
+### The `Encoding` documentation lists the default choices in another order than the code
+
+C location: `fitschan.c`, the `Encoding` prologue ("Choice of Default Encoding", lines 42378 to 42426), and `GetEncoding` (lines 12803 to 12890).
+
+The prologue lists the checks with `PLTRAH` (DSS) next to last, after `CROTAi` (FITS-AIPS) and `CRVALi` (FITS-WCS), and says every check but those for NATIVE and DSS needs at least one CTYPE, CRPIX and CRVAL keyword.
+`GetEncoding` checks `PLTRAH` fourth, after the FITS-AIPS spectral axis check and before `PCiiijjj`, and needs any one of a CTYPE, CRPIX or CRVAL keyword (`haswcs`), not one of each.
+So a header with both `PLTRAH` and `CDi_j` cards, for instance, defaults to DSS, where the prologue's order gives FITS-IRAF or FITS-WCS.
+
+Consequence: documentation only.
+
+`FitsChan::encoding` lists the checks in the code's order and says any one of the three keywords is needed.
+A C fix: move the `PLTRAH` item to fourth place and say "at least one CTYPE, CRPIX or CRVAL keyword".
+
+### The `Warnings` documentation says it does not affect the warnings stored in the Channel
+
+C location: `fitschan.c`, the `Warnings` prologue (Notes, lines 43781 to 43788), and `Warn` (lines 35505 to 35515).
+
+The Notes say the attribute controls only the warnings stored as `ASTWARN` cards, has no effect on the warnings stored in the parent Channel, and that all warnings are stored there for `astWarnings`.
+`Warn` returns at once when Clean is set, and calls `astAddWarning` only inside the test that the condition is named in Warnings, so a warning for any other condition is stored nowhere.
+
+Consequence: documentation only, but a caller who relies on `astWarnings` for every warning misses those Warnings leaves out.
+
+`FitsChan::warning_conditions` says a warning for a condition it does not name is not recorded at all, and none is while Clean is set, as the code does.
+A C fix: say that Warnings selects the warnings stored in both places.
+
+### The `Card` documentation implies 1 for an empty FitsChan
+
+C location: `fitschan.c`, the `Card` prologue (Description, lines 42224 to 42232), and `GetCard` (line 17444).
+
+The prologue says the default is 1 and that at end-of-file Card is always one more than the number of cards, both of which give 1 for an empty FitsChan.
+`GetCard` returns 0 when the FitsChan holds no cards.
+
+Consequence: documentation only.
+
+`FitsChan::card` gives 0 for an empty FitsChan, as the code does, and says so.
+A C fix: say that Card is zero when the FitsChan is empty.
+
+### The `FitsAxisOrder` documentation gives its purpose as "Frame title"
+
+C location: `fitschan.c`, the `FitsAxisOrder` prologue (Purpose, line 43398).
+
+The Purpose section reads "Frame title.", copied from the `Title` prologue; the Description is right.
+
+Consequence: documentation only.
+
+`FitsChan::fits_axis_order` describes the attribute from the Description.
+A C fix: "Sets the order of WCS axes within new FITS-WCS headers.", the wording of the class prologue's attribute list.
 
 ## Addressed here, and not going upstream
 

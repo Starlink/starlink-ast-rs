@@ -67,31 +67,31 @@ function	astShowFits	fitschan.c			no
 function	astTableSource	fitschan.c			no
 function	astTestFits	fitschan.c			no
 function	astWriteFits	fitschan.c			no
-attribute	FitsTol	fitschan.c			no
-attribute	Card	fitschan.c			no
-attribute	Encoding	fitschan.c			no
-attribute	DefB1950	fitschan.c			no
-attribute	TabOK	fitschan.c			no
-attribute	ForceTab	fitschan.c			no
-attribute	IgnoreBadAlt	fitschan.c			no
-attribute	CarLin	fitschan.c			no
-attribute	SipReplace	fitschan.c			no
-attribute	PolyTan	fitschan.c			no
-attribute	SipOK	fitschan.c			no
-attribute	Iwc	fitschan.c			no
-attribute	CDMatrix	fitschan.c			no
-attribute	Clean	fitschan.c			no
-attribute	FitsAxisOrder	fitschan.c			no
-attribute	FitsDigits	fitschan.c			no
-attribute	FitsRounding	fitschan.c			no
-attribute	AltAxes	fitschan.c			no
-attribute	CardComm	fitschan.c			no
-attribute	CardName	fitschan.c			no
-attribute	CardType	fitschan.c			no
-attribute	Ncard	fitschan.c			no
-attribute	Nkey	fitschan.c			no
-attribute	Warnings	fitschan.c			no
-attribute	AllWarnings	fitschan.c			no
+attribute	FitsTol	fitschan.c	FitsChan::fits_tol		yes
+attribute	Card	fitschan.c	FitsChan::card		yes	0 for a FitsChan with no cards, as the C code gives, where the header implies 1 (c-library-quirks.md)
+attribute	Encoding	fitschan.c	FitsChan::encoding		yes	an Encoding enum; the default is chosen from the cards already held and does not read a source not yet read, where C reads it first (PLAN.md §2); the header lists the default choice in another order than the code, which the docs follow (c-library-quirks.md)
+attribute	DefB1950	fitschan.c	FitsChan::def_b1950		yes	its default follows the Encoding default, so the default is chosen from the cards already held and does not read a source not yet read, where C reads it first (PLAN.md §2)
+attribute	TabOK	fitschan.c	FitsChan::tab_ok		yes
+attribute	ForceTab	fitschan.c	FitsChan::force_tab		yes
+attribute	IgnoreBadAlt	fitschan.c	FitsChan::ignore_bad_alt		yes
+attribute	CarLin	fitschan.c	FitsChan::car_lin		yes
+attribute	SipReplace	fitschan.c	FitsChan::sip_replace		yes
+attribute	PolyTan	fitschan.c	FitsChan::poly_tan		yes
+attribute	SipOK	fitschan.c	FitsChan::sip_ok		yes
+attribute	Iwc	fitschan.c	FitsChan::iwc		yes
+attribute	CDMatrix	fitschan.c	FitsChan::cd_matrix		yes	the default is chosen from the cards already held and does not read a source not yet read, where C reads it first (PLAN.md §2)
+attribute	Clean	fitschan.c	FitsChan::clean		yes
+attribute	FitsAxisOrder	fitschan.c	FitsChan::fits_axis_order		yes	the header gives the Purpose "Frame title." (c-library-quirks.md)
+attribute	FitsDigits	fitschan.c	FitsChan::fits_digits		yes
+attribute	FitsRounding	fitschan.c	FitsChan::fits_rounding		yes
+attribute	AltAxes	fitschan.c	FitsChan::alt_axes		yes	an AltAxes enum
+attribute	CardComm	fitschan.c	FitsChan::card_comm		yes
+attribute	CardName	fitschan.c	FitsChan::card_name		yes	None at end-of-file
+attribute	CardType	fitschan.c	FitsChan::card_type		yes	a CardType enum, whose code gives the AST__ constant values
+attribute	Ncard	fitschan.c	FitsChan::ncard		yes
+attribute	Nkey	fitschan.c	FitsChan::nkey		yes
+attribute	Warnings	fitschan.c	FitsChan::warning_conditions		yes	the header says it does not affect the warnings stored in the Channel, but the C code stores only those for conditions it names, as here (c-library-quirks.md)
+attribute	AllWarnings	fitschan.c	FitsChan::all_warning_conditions		yes
 function	astFitsChan	fitschan.c			no
 class	FitsTable	fitstable.c			no
 function	astColumnNull	fitstable.c			no
