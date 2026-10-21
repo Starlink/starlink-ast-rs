@@ -351,7 +351,7 @@ fn remove_last_frame_fails() {
 }
 
 #[test]
-fn remove_current_resets_to_first() {
+fn remove_current_resets_to_default() {
     let mut fs = FrameSet::new(make_frame(2));
     let z: DynMapping = two_to_three();
     fs.add_frame(FrameRef::Base, z, make_frame(3)).unwrap();
@@ -359,7 +359,26 @@ fn remove_current_resets_to_first() {
     assert_eq!(fs.naxes(), 3); // current is the 3-axis frame
     fs.remove_frame(FrameRef::Current).unwrap();
     assert_eq!(fs.nframe(), 1);
-    assert_eq!(fs.naxes(), 2); // current reset to first remaining
+    assert_eq!(fs.naxes(), 2); // current reset to the default, the last Frame
+}
+
+/// Removing the current Frame clears Current, so the last Frame becomes
+/// current, not the first.
+#[test]
+fn remove_current_makes_the_last_frame_current() {
+    let mut fs = FrameSet::new(make_named_frame(2, "A"));
+    for d in ["B", "C"] {
+        fs.add_frame(
+            FrameRef::Base,
+            Box::new(UnitMap::new(2)),
+            make_named_frame(2, d),
+        )
+        .unwrap();
+    }
+    fs.set_current(FrameRef::Index(2)).unwrap();
+    fs.remove_frame(FrameRef::Current).unwrap();
+    assert!(!fs.test_current());
+    assert_eq!(fs.current().domain(), "C");
 }
 
 // ---- remap_frame ----

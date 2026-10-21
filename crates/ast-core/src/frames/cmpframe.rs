@@ -48,10 +48,8 @@ use super::{AxisKind, DynFrame, Frame};
 ///   CmpFrame template match any target made of a subset of its axes; set
 ///   both to the number of axes to match only Frames of that size.
 ///
-/// In C a Frame is also a Mapping, and a CmpFrame holding a Region masks
-/// positions outside it when used as one.
-/// Here a CmpFrame is not a [`Mapping`](crate::mappings::Mapping), so it
-/// cannot be used in that way.
+/// A CmpFrame is not a [`Mapping`](crate::mappings::Mapping), so a Region
+/// inside it masks nothing.
 ///
 /// # Examples
 ///
@@ -66,6 +64,8 @@ use super::{AxisKind, DynFrame, Frame};
 /// assert_eq!(cmp.system_string().unwrap(), Some("Compound"));
 /// assert_eq!(cmp.title().unwrap(), "3-d compound coordinate system");
 /// ```
+// In C a Frame is also a Mapping, and a CmpFrame holding a Region masks
+// positions outside the Region when used as one (PLAN.md 9.6).
 pub struct CmpFrame {
     /// The Frame-class attributes.
     attrs: super::frame_attrs::FrameAttrs,
