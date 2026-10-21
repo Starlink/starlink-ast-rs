@@ -77,8 +77,8 @@ const AST_AU: f64 = 1.49597870e11;
 /// - `LTOFF`: the offset between Local Time and UTC in hours, positive for
 ///   time zones east of Greenwich.
 ///
-/// The integer discriminant is the conversion's integer code in the C
-/// library.
+/// Each conversion has a fixed integer discriminant, which [`from_int`](Self::from_int) maps back to the conversion.
+// The discriminants are the C library's integer codes for the conversions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TimeCvtType {
     /// `MJDTOMJD` (`MJDOFF1`, `MJDOFF2`): convert an MJD from one zero-point
@@ -292,7 +292,8 @@ impl TimeCvtType {
         }
     }
 
-    /// Construct from the integer code used in the C library.
+    /// The conversion whose discriminant is `i` (`Self::MjdToMjd as i32` is 1), or `None` when no conversion has that value.
+    // The discriminants are the C library's integer codes for the conversions.
     pub fn from_int(i: i32) -> Option<Self> {
         match i {
             1 => Some(Self::MjdToMjd),

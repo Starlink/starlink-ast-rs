@@ -32,59 +32,46 @@ use crate::pixel::PixelValue;
 
 use kernels::Builtin;
 
-/// The sub-pixel interpolation scheme of [`resample`] (C's `interp` and
-/// `finterp`), for pixel type `T`.
+/// The sub-pixel interpolation scheme of [`resample`], for pixel type `T`.
 ///
-/// The kernel schemes weight the input pixels within a distance `N` of the
-/// position along each axis by the product of a 1-d kernel evaluated at
-/// their offsets along each axis. `N` is `params[0]` rounded to the nearest
-/// integer; where it is zero or less a default applies, as the variants
-/// say. Where a variant uses `params[1]`, `params` needs two elements.
+/// The kernel schemes weight the input pixels within a distance `N` of the position along each axis by the product of a 1-d kernel evaluated at their offsets along each axis.
+/// `N` is `params[0]` rounded to the nearest integer; where it is zero or less a default applies, as the variants say.
+/// Where a variant uses `params[1]`, `params` needs two elements.
+///
+/// # See also
+///
+/// The constants that select these schemes in `astResample<X>`: `AST__NEAREST`, `AST__LINEAR`, `AST__SINC`, `AST__SINCSINC`, `AST__SINCCOS`, `AST__SINCGAUSS`, `AST__GAUSS`, `AST__SOMB`, `AST__SOMBCOS`, `AST__BLOCKAVE`, `AST__UKERN1` and `AST__UINTERP`, one per variant in order.
+// The C `interp` and `finterp` arguments; C defaults to AST__LINEAR.
 pub enum Interp<'a, T> {
-    /// The value of the input pixel whose center is nearest
-    /// (`AST__NEAREST`).
+    /// The value of the input pixel whose center is nearest.
     Nearest,
-    /// Linear interpolation between the nearest input pixels along each axis
-    /// (`AST__LINEAR`, C's default).
+    /// Linear interpolation between the nearest input pixels along each axis.
     Linear,
-    /// The kernel `sinc(pi x)` (`AST__SINC`); `N` defaults to 2.
+    /// The kernel `sinc(pi x)`; `N` defaults to 2.
     Sinc,
-    /// The kernel `sinc(pi x) sinc(k pi x)`, out to the first zero of the
-    /// second factor, where `params[1]` is that zero's offset and `k` is a
-    /// half over it (`AST__SINCSINC`). `N` is at most `params[1]` rounded
-    /// up, and defaults to it.
+    /// The kernel `sinc(pi x) sinc(k pi x)`, out to the first zero of the second factor, where `params[1]` is that zero's offset and `k` is a half over it.
+    /// `N` is at most `params[1]` rounded up, and defaults to it.
     SincSinc,
-    /// The kernel `sinc(pi x) cos(k pi x)`, out to the first zero of the
-    /// second factor, defined as for [`Interp::SincSinc`]
-    /// (`AST__SINCCOS`).
+    /// The kernel `sinc(pi x) cos(k pi x)`, out to the first zero of the second factor, defined as for [`Interp::SincSinc`].
     SincCos,
-    /// The kernel `sinc(pi x) exp(-k x^2)`, where `params[1]` is the full
-    /// width at half maximum of the Gaussian (at least 0.1) (`AST__SINCGAUSS`).
+    /// The kernel `sinc(pi x) exp(-k x^2)`, where `params[1]` is the full width at half maximum of the Gaussian (at least 0.1).
     /// `N` defaults to where the Gaussian falls to 1% of its peak.
     SincGauss,
-    /// The kernel `exp(-k x^2)`, with `params[1]` and `N` as for
-    /// [`Interp::SincGauss`] (`AST__GAUSS`).
+    /// The kernel `exp(-k x^2)`, with `params[1]` and `N` as for [`Interp::SincGauss`].
     Gauss,
-    /// The kernel `somb(pi x)`, that is `2 J1(pi x) / (pi x)` (`AST__SOMB`);
-    /// `N` defaults to 2.
+    /// The kernel `somb(pi x)`, that is `2 J1(pi x) / (pi x)`; `N` defaults to 2.
     Somb,
-    /// The kernel `somb(pi x) cos(k pi x)`, with `params[1]` and `N` as for
-    /// [`Interp::SincCos`] (`AST__SOMBCOS`). As in C, the first factor is
-    /// `J1(pi x) / (pi x)`, half of [`Interp::Somb`]'s, except at zero
-    /// offset, where it is 1.
+    /// The kernel `somb(pi x) cos(k pi x)`, with `params[1]` and `N` as for [`Interp::SincCos`].
+    /// The first factor is `J1(pi x) / (pi x)`, half of [`Interp::Somb`]'s, except at zero offset, where it is 1.
+    // The halved first factor is what the C kernel computes.
     SombCos,
-    /// The mean of the input pixels in the block reaching `params[0]`
-    /// pixels (rounded) either side of the position along each axis,
-    /// weighted by the reciprocals of their variances when variances are
-    /// resampled (`AST__BLOCKAVE`).
+    /// The mean of the input pixels in the block reaching `params[0]` pixels (rounded) either side of the position along each axis, weighted by the reciprocals of their variances when variances are resampled.
     BlockAve,
-    /// A 1-d kernel of the caller's (`AST__UKERN1`), given each pixel's
-    /// offset along an axis, `params` and the flags. `N` is at least 1.
+    /// A 1-d kernel of the caller's, given each pixel's offset along an axis, `params` and the flags.
+    /// `N` is at least 1.
     UKern1(Kernel1Fn<'a>),
-    /// An interpolator of the caller's (`AST__UINTERP`). It is given the
-    /// input and the positions of a block of output pixels, sets each output
-    /// pixel (and variance, if any) at its offset, and returns the number
-    /// it set bad.
+    /// An interpolator of the caller's.
+    /// It is given the input and the positions of a block of output pixels, sets each output pixel (and variance, if any) at its offset, and returns the number it set bad.
     UInterp(InterpFn<'a, T>),
 }
 
@@ -153,19 +140,19 @@ impl<T> std::fmt::Debug for Interp<'_, T> {
     }
 }
 
-/// The flags of [`resample`] (C's `flags`).
+/// The flags of [`resample`].
+///
+/// # See also
+///
+/// The `astResample<X>` flag bits `AST__USEBAD`, `AST__NOBAD` and `AST__CONSERVEFLUX`, one per field in order.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct ResampleFlags {
-    /// Input pixels equal to the bad value are bad (`AST__USEBAD`).
+    /// Input pixels equal to the bad value are bad.
     pub use_bad: bool,
-    /// Output pixels that would be bad are left as they are
-    /// (`AST__NOBAD`).
+    /// Output pixels that would be bad are left as they are.
     pub no_bad: bool,
-    /// Output values are scaled by the ratio of output to input pixel
-    /// sizes, and variances by its square, so that total flux is conserved
-    /// (`AST__CONSERVEFLUX`). It needs a non-zero `tol`, a Mapping with as
-    /// many inputs as outputs and linear enough to fit within `tol`, and
-    /// cannot be used with `no_bad`.
+    /// Output values are scaled by the ratio of output to input pixel sizes, and variances by its square, so that total flux is conserved.
+    /// It needs a non-zero `tol`, a Mapping with as many inputs as outputs and linear enough to fit within `tol`, and cannot be used with `no_bad`.
     pub conserve_flux: bool,
 }
 
@@ -231,7 +218,7 @@ pub struct ResampleOutput<'a, T> {
 pub struct ResampleOptions<'a, T> {
     /// The interpolation scheme.
     pub interp: Interp<'a, T>,
-    /// The scheme's parameters (C's `params`), as [`Interp`] describes.
+    /// The scheme's parameters, as [`Interp`] describes.
     pub params: &'a [f64],
     /// The flags.
     pub flags: ResampleFlags,

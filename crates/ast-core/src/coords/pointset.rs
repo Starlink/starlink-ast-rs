@@ -9,9 +9,8 @@ use crate::error::{AstError, AstResult, ErrorCode};
 
 /// Frame-unaware coordinate block.
 ///
-/// One contiguous array per axis, as C's PointSet stores them: axis `j` is
-/// `data[j * npoint..(j + 1) * npoint]`, which [`PointSet::view`] presents as
-/// an `(ncoord, npoint)` array.
+/// One contiguous array per axis: axis `j` is `data[j * npoint..(j + 1) * npoint]`, which [`PointSet::view`] presents as an `(ncoord, npoint)` array.
+// This is the layout of the C PointSet.
 #[derive(Debug, Clone)]
 pub struct PointSet {
     data: Vec<f64>,

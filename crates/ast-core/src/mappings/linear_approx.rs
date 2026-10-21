@@ -44,8 +44,11 @@ impl LinearFit {
         }
     }
 
-    /// Flatten to the C-style fit array layout: `nout` shifts followed
-    /// by `nin*nout` row-major gradients.
+    /// Flatten into one array: `nout` shifts followed by `nin*nout` row-major gradients.
+    ///
+    /// # See also
+    ///
+    /// `astLinearApprox`, whose `fit` array has this layout.
     pub fn as_c_layout(&self) -> Vec<f64> {
         let mut v = self.shift.clone();
         v.extend_from_slice(&self.matrix);

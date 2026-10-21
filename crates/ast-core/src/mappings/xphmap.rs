@@ -66,7 +66,9 @@ impl XphProjection {
         }
     }
 
-    /// The projection a name gives, matched as C's `astChrMatch` matches.
+    /// The projection a name gives, or `None` for a name that is none of them.
+    ///
+    /// The comparison ignores case and trailing white space.
     pub fn from_name(name: &str) -> Option<Self> {
         let key = crate::mappings::helpers::chr_match_key(name);
         Self::ALL.into_iter().find(|p| p.name() == key)
@@ -339,7 +341,8 @@ impl Mapping for XphMap {
         Ok(())
     }
 
-    /// C's XphMap inherits the base `Rate`, a numeric estimate.
+    /// A numerical estimate of the rate, as for any Mapping without an analytic one.
+    // C's XphMap inherits the base Rate.
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
         crate::mappings::validate_rate(self, at, ax1, ax2)?;
         super::rate::numeric_rate(self, at, ax1, ax2)

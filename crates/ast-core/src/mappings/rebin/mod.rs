@@ -33,35 +33,34 @@ use crate::mappings::resample::matrix_det;
 use crate::mappings::{DynMapping, Mapping, substitute_nan_to_bad_in_place};
 use crate::pixel::RebinValue;
 
-/// The pixel spreading scheme of [`rebin`] (C's `spread`).
+/// The pixel spreading scheme of [`rebin`].
 ///
-/// The kernel schemes share each input pixel between the output pixels
-/// within a distance `N` of its position along each axis, weighted by the
-/// product of a 1-d kernel evaluated at their offsets along each axis and
-/// normalized to sum to one; weight falling off the output grid is
-/// reflected back onto it. The kernels and `params` are as for
-/// [`Interp`](crate::mappings::Interp)'s variants of the same names.
+/// The kernel schemes share each input pixel between the output pixels within a distance `N` of its position along each axis, weighted by the product of a 1-d kernel evaluated at their offsets along each axis and normalized to sum to one; weight falling off the output grid is reflected back onto it.
+/// The kernels and `params` are as for [`Interp`](crate::mappings::Interp)'s variants of the same names.
+///
+/// # See also
+///
+/// The constants that select these schemes in `astRebin<X>` and `astRebinSeq<X>`: `AST__NEAREST`, `AST__LINEAR`, `AST__SINC`, `AST__SINCSINC`, `AST__SINCCOS`, `AST__SINCGAUSS`, `AST__GAUSS`, `AST__SOMB` and `AST__SOMBCOS`, one per variant in order.
+// The C `spread` argument; C defaults to AST__LINEAR.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Spread {
-    /// All of the value to the output pixel containing the position
-    /// (`AST__NEAREST`).
+    /// All of the value to the output pixel containing the position.
     Nearest,
-    /// The value shared between the nearest output pixels along each axis
-    /// in proportion to their nearness (`AST__LINEAR`, C's default).
+    /// The value shared between the nearest output pixels along each axis in proportion to their nearness.
     Linear,
-    /// The kernel `sinc(pi x)` (`AST__SINC`).
+    /// The kernel `sinc(pi x)`.
     Sinc,
-    /// The kernel `sinc(pi x) sinc(k pi x)` (`AST__SINCSINC`).
+    /// The kernel `sinc(pi x) sinc(k pi x)`.
     SincSinc,
-    /// The kernel `sinc(pi x) cos(k pi x)` (`AST__SINCCOS`).
+    /// The kernel `sinc(pi x) cos(k pi x)`.
     SincCos,
-    /// The kernel `sinc(pi x) exp(-k x^2)` (`AST__SINCGAUSS`).
+    /// The kernel `sinc(pi x) exp(-k x^2)`.
     SincGauss,
-    /// The kernel `exp(-k x^2)` (`AST__GAUSS`).
+    /// The kernel `exp(-k x^2)`.
     Gauss,
-    /// The kernel `somb(pi x)` (`AST__SOMB`).
+    /// The kernel `somb(pi x)`.
     Somb,
-    /// The kernel `somb(pi x) cos(k pi x)` (`AST__SOMBCOS`).
+    /// The kernel `somb(pi x) cos(k pi x)`.
     SombCos,
 }
 
@@ -80,14 +79,16 @@ impl Spread {
     }
 }
 
-/// The flags of [`rebin`] (C's `flags`).
+/// The flags of [`rebin`].
+///
+/// # See also
+///
+/// The `astRebin<X>` flag bits `AST__USEBAD` and `AST__USEVAR`, one per field in order.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct RebinFlags {
-    /// Input pixels (and variances) equal to the bad value are bad
-    /// (`AST__USEBAD`).
+    /// Input pixels (and variances) equal to the bad value are bad.
     pub use_bad: bool,
-    /// Output variances are formed from the input variances
-    /// (`AST__USEVAR`), when both are given.
+    /// Output variances are formed from the input variances, when both are given.
     pub use_var: bool,
 }
 
@@ -143,8 +144,7 @@ pub struct RebinOutput<'a, T> {
 pub struct RebinOptions<'a> {
     /// The spreading scheme.
     pub spread: Spread,
-    /// The scheme's parameters (C's `params`), as for the
-    /// [`Interp`](crate::mappings::Interp) variants of the same names.
+    /// The scheme's parameters, as for the [`Interp`](crate::mappings::Interp) variants of the same names.
     pub params: &'a [f64],
     /// The flags.
     pub flags: RebinFlags,
@@ -155,8 +155,7 @@ pub struct RebinOptions<'a> {
     /// The largest extent, in input pixels, over which a linear
     /// approximation is first tried.
     pub maxpix: usize,
-    /// When positive, output pixels whose weights sum to less than this are
-    /// set bad (C's `wlim`).
+    /// When positive, output pixels whose weights sum to less than this are set bad.
     pub wlim: f64,
 }
 
@@ -315,40 +314,32 @@ pub fn rebin<T: RebinValue>(
     Ok(())
 }
 
-/// The flags of [`rebin_seq`] (C's `flags`).
+/// The flags of [`rebin_seq`].
+///
+/// # See also
+///
+/// The `astRebinSeq<X>` flag bits `AST__USEBAD`, `AST__USEVAR`, `AST__REBININIT`, `AST__REBINEND`, `AST__GENVAR`, `AST__VARWGT`, `AST__DISVAR`, `AST__NONORM`, `AST__PARWGT` and `AST__CONSERVEFLUX`, one per field in order.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct RebinSeqFlags {
-    /// Input pixels (and variances) equal to the bad value are bad
-    /// (`AST__USEBAD`).
+    /// Input pixels (and variances) equal to the bad value are bad.
     pub use_bad: bool,
-    /// Output variances are formed from the input variances
-    /// (`AST__USEVAR`).
+    /// Output variances are formed from the input variances.
     pub use_var: bool,
-    /// This is the first call of a sequence: the output arrays, the weights
-    /// and the count of input pixels used are set to zero before the input
-    /// is added (`AST__REBININIT`).
+    /// This is the first call of a sequence: the output arrays, the weights and the count of input pixels used are set to zero before the input is added.
     pub rebin_init: bool,
-    /// This is the last call of a sequence: the sums are normalized into
-    /// the output values and variances (`AST__REBINEND`).
+    /// This is the last call of a sequence: the sums are normalized into the output values and variances.
     pub rebin_end: bool,
-    /// Output variances are formed from the spread of the input values
-    /// added into each output pixel (`AST__GENVAR`); the weights then need
-    /// twice as many elements as the output.
+    /// Output variances are formed from the spread of the input values added into each output pixel; the weights then need twice as many elements as the output.
     pub gen_var: bool,
-    /// Input pixels are weighted by the reciprocals of their variances
-    /// (`AST__VARWGT`).
+    /// Input pixels are weighted by the reciprocals of their variances.
     pub var_wgt: bool,
-    /// Variances generated with `gen_var` are of the spread of the input
-    /// values rather than of their mean (`AST__DISVAR`).
+    /// Variances generated with `gen_var` are of the spread of the input values rather than of their mean.
     pub dis_var: bool,
-    /// The sums are left unnormalized, and the weights and count are not
-    /// needed (`AST__NONORM`).
+    /// The sums are left unnormalized, and the weights and count are not needed.
     pub no_norm: bool,
-    /// `params[0]` weights every input pixel, and the scheme's parameters
-    /// follow it (`AST__PARWGT`).
+    /// `params[0]` weights every input pixel, and the scheme's parameters follow it.
     pub par_wgt: bool,
-    /// Input values are scaled by the ratio of input to output pixel sizes,
-    /// so that total flux is conserved (`AST__CONSERVEFLUX`).
+    /// Input values are scaled by the ratio of input to output pixel sizes, so that total flux is conserved.
     pub conserve_flux: bool,
 }
 
@@ -357,8 +348,7 @@ pub struct RebinSeqFlags {
 pub struct RebinSeqOptions<'a> {
     /// The spreading scheme.
     pub spread: Spread,
-    /// The scheme's parameters (C's `params`), preceded by the weight of
-    /// every input pixel with [`RebinSeqFlags::par_wgt`].
+    /// The scheme's parameters, preceded by the weight of every input pixel with [`RebinSeqFlags::par_wgt`].
     pub params: &'a [f64],
     /// The flags.
     pub flags: RebinSeqFlags,
@@ -366,9 +356,7 @@ pub struct RebinSeqOptions<'a> {
     pub tol: f64,
     /// As for [`RebinOptions::maxpix`].
     pub maxpix: usize,
-    /// When the sums are normalized, output pixels whose effective number of
-    /// contributing input pixels is below this (at least 1e-10) are set bad
-    /// (C's `wlim`).
+    /// When the sums are normalized, output pixels whose effective number of contributing input pixels is below this (at least 1e-10) are set bad.
     pub wlim: f64,
 }
 

@@ -19,14 +19,15 @@ pub struct QuadFit {
     /// `[a0, a1 (x), a2 (y), a3 (x*y), a4 (x*x), a5 (y*y)]`: output `i` is
     /// `coeffs[6*i..6*i + 6]`.
     ///
-    /// When `fitted` is false, the output whose fit failed and every output
-    /// after it hold `BAD_VALUE`. Outputs fitted before the failure keep their
-    /// coefficients, as C leaves them in its `fit` array.
+    /// When `fitted` is false, the output whose fit failed and every output after it hold `BAD_VALUE`.
+    /// Outputs fitted before the failure keep their coefficients.
+    // This is what C leaves in its `fit` array.
     pub coeffs: Vec<f64>,
     /// The RMS residual between the fit and the Mapping, over every fitted
     /// output, or `BAD_VALUE` when no output was fitted.
     pub rms: f64,
-    /// Whether every output was fitted (C's returned value).
+    /// Whether every output was fitted.
+    // C's returned value.
     pub fitted: bool,
 }
 

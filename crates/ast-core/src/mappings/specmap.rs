@@ -72,8 +72,8 @@ const AU_TO_KMS: f64 = 149.597870e6;
 /// [`HlF2Us`](SpecCvtType::HlF2Us), but [`BAD_VALUE`] may be given for them
 /// when that frame is not needed.
 ///
-/// The integer discriminant is the conversion's integer code in the C
-/// library.
+/// Each conversion has a fixed integer discriminant, which [`from_int`](Self::from_int) maps back to the conversion.
+// The discriminants are the C library's integer codes for the conversions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SpecCvtType {
     /// `FRTOVL` (`RF`): convert frequency to relativistic velocity.
@@ -442,7 +442,8 @@ impl SpecCvtType {
         }
     }
 
-    /// Construct from the integer code used in the C library.
+    /// The conversion whose discriminant is `i` (`Self::FrToVl as i32` is 1), or `None` when no conversion has that value.
+    // The discriminants are the C library's integer codes for the conversions.
     pub fn from_int(i: i32) -> Option<Self> {
         match i {
             1 => Some(Self::FrToVl),

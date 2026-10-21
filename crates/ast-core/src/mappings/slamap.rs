@@ -35,8 +35,8 @@ use crate::mappings::SimplifiedRecord;
 /// `OBSX`, `OBSY` and `OBSZ` are the Heliocentric-Aries-Ecliptic Cartesian
 /// coordinates of the observer, in meters.
 ///
-/// The integer discriminant is the conversion's integer code in the C
-/// library.
+/// Each conversion has a fixed integer discriminant, which [`from_int`](Self::from_int) maps back to the conversion.
+// The discriminants are the C library's integer codes for the conversions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SlaCvtType {
     /// `ADDET` (`EQ`): add E-terms of aberration.
@@ -273,7 +273,8 @@ impl SlaCvtType {
         }
     }
 
-    /// Construct from the integer code used in the C library.
+    /// The conversion whose discriminant is `i` (`Self::Addet as i32` is 1), or `None` when no conversion has that value.
+    // The discriminants are the C library's integer codes for the conversions.
     pub fn from_int(i: i32) -> Option<Self> {
         match i {
             1 => Some(Self::Addet),

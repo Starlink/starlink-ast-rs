@@ -308,9 +308,11 @@ impl<'a> Points<'a> {
         Ok(Self { axes, npoint })
     }
 
-    /// A view of `ncoord` axes of `npoint` points held one after another in
-    /// `data`, axis `j` starting at `j * stride`: C's `astTranN` layout,
-    /// whose `indim` is `stride`.
+    /// A view of `ncoord` axes of `npoint` points held one after another in `data`, axis `j` starting at `j * stride`.
+    ///
+    /// # See also
+    ///
+    /// `astTranN`, whose arrays have this layout with `indim` (or `outdim`) as `stride`.
     #[inline]
     pub fn from_strided(
         data: &'a [f64],

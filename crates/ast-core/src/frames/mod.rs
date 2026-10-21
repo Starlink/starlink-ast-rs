@@ -65,13 +65,12 @@ pub enum AxisKind {
     /// A celestial axis, whose values wrap into a cyclic range.
     // C: the `SkyAxis` class, `skyaxis.c`.
     Sky {
-        /// True for a latitude axis, which is always wrapped into
-        /// `[-PI,PI]`. Mirrors the `IsLatitude` Axis attribute.
+        /// True for a latitude axis, which is always wrapped into `[-PI,PI]`.
+        /// This is the axis's `IsLatitude` attribute.
         is_latitude: bool,
         /// True when the axis range is centred on zero (`[-PI,PI]`) rather
         /// than on PI (`[0,2*PI]`).
-        /// Mirrors the `CentreZero` Axis attribute, whose default is
-        /// `IsLatitude`.
+        /// This is the axis's `CentreZero` attribute, whose default is `IsLatitude`.
         // C: `skyaxis.c:4620`.
         centre_zero: bool,
     },
@@ -1470,8 +1469,8 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     ///
     /// Default: `"%1.<Digits>G"`.
     ///
-    /// - Frame: a C `printf` format specification, such as `"%1.7G"`, for
-    ///   formatting one value as a double precision number.
+    /// - Frame: text holding one `%` conversion, such as `"%1.7G"` or `"%.3f"`, with optional flags, width and precision after the `%`.
+    ///   The conversions `e`, `E`, `f`, `F`, `g` and `G` format the value as a double, and `d`, `i`, `u`, `o`, `x`, `X` and `c` format it truncated to a 32-bit integer.
     /// - FrameSet: see [`FrameSet`].
     /// - SkyFrame: a syntax and default for sexagesimal values suited to the
     ///   celestial coordinate system; see [`SkyFrame::format_str`].
@@ -2292,8 +2291,10 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// the longer axes among those that share a Unit.
     /// A SkyFrame lays them on parallels, roughly equal-area.
     /// A CmpFrame takes the cross product of its components' grids.
-    /// Fails with `AST__ATTIN` for a `size` below 1 or a bound pair that is
-    /// bad.
+    ///
+    /// # Errors
+    ///
+    /// - [`ErrorCode::Attin`] for a `size` below 1 or a bound pair that is bad.
     // C: `astFrameGrid` (frame.c), a per-class method.
     fn frame_grid(&self, size: i32, lbnd: &[f64], ubnd: &[f64]) -> AstResult<PointSet> {
         frame_grid_default(self.as_dyn_frame(), size, lbnd, ubnd)

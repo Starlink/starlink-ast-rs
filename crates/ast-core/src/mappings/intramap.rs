@@ -200,8 +200,10 @@ impl IntraRegistry {
         Ok(())
     }
 
-    /// The transformation registered under `name`, compared exactly as C's
-    /// loader compares the name a dump holds.
+    /// The transformation registered under `name`, or `None` when none is.
+    ///
+    /// The name is compared exactly, so it must match the name [`register`](Self::register) stored, which has every white-space character removed.
+    // This is the comparison C's IntraMap loader makes with the name a dump holds.
     pub fn get(&self, name: &str) -> Option<Arc<dyn IntraTransform>> {
         self.entries
             .iter()
@@ -483,7 +485,8 @@ impl Mapping for IntraMap {
             })
     }
 
-    /// C's IntraMap inherits the base `Rate`, a numeric estimate.
+    /// A numerical estimate of the rate, as for any Mapping without an analytic one.
+    // C's IntraMap inherits the base Rate.
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
         crate::mappings::validate_rate(self, at, ax1, ax2)?;
         super::rate::numeric_rate(self, at, ax1, ax2)
