@@ -57,7 +57,8 @@ use super::{CircleBuilder, CmpOperator, DynRegion, PixelOper, PixelValue, Region
 use crate::frames::FrameRef;
 use crate::mappings::{XphMap, XphProjection};
 
-/// The highest HEALPix order a Moc may use (xphmap.h `AST__MXORDHPX`).
+/// The highest HEALPix order a [`Moc`] may use.
+// C: xphmap.h `AST__MXORDHPX`.
 pub const MOC_MAX_ORDER: i32 = 27;
 
 /// The Dec at the corners where three HEALPix cells meet (moc.c `THETAX`).
@@ -231,7 +232,70 @@ impl Clone for MocCache {
     }
 }
 
-/// A region of the sky made of HEALPix cells (C's `Moc`).
+/// An arbitrary region of the sky made of HEALPix cells.
+///
+/// A Moc describes a region of the sky as the IVOA MOC (Multi-Order
+/// Coverage) recommendation does
+/// (<http://www.ivoa.net/documents/MOC/>): a collection of cells from the
+/// HEALPix tessellation of the sky.
+/// It can describe any area, provided its edges follow the edges of the
+/// cells.
+/// Other Regions describe exact geometric shapes in any coordinate system;
+/// a Moc describes a set of cells on the sky.
+///
+/// A MOC always describes its area in ICRS.
+/// Like any Region, a Moc can be given another celestial coordinate system
+/// by setting a Frame attribute such as System through it; while it is
+/// [Adaptive](Region::is_adaptive) it then describes the same area in the
+/// new system.
+///
+/// A Moc is made empty, describing no area of the sky, by [`Moc::new`].
+/// Areas are then combined with it by
+/// [`add_region`](Self::add_region), [`add_pixel_mask`](Self::add_pixel_mask),
+/// [`add_cell`](Self::add_cell), [`add_moc_data`](Self::add_moc_data) and
+/// [`add_moc_string`](Self::add_moc_string), each taking a [`CmpOperator`]
+/// saying whether to keep the intersection, the union or the exclusive
+/// disjunction.
+/// [`test_cell`](Self::test_cell) and [`get_cell`](Self::get_cell) look at
+/// single cells.
+/// For a FITS binary table, [`get_moc_data`](Self::get_moc_data) gives the
+/// values and [`get_moc_header`](Self::get_moc_header) the headers;
+/// [`get_moc_string`](Self::get_moc_string) gives the string or JSON form
+/// of the recommendation.
+///
+/// The attributes are [MaxOrder](Self::max_order), [MaxRes](Self::max_res),
+/// [MinOrder](Self::min_order), [MinRes](Self::min_res),
+/// [MocArea](Self::moc_area), [MocLength](Self::moc_length) and
+/// [MocType](Self::moc_type).
+/// MaxOrder fixes the resolution of the Moc: every cell is held at that
+/// order, a cell added at a lower order being held as the cells at
+/// MaxOrder that it contains.
+///
+/// A Moc has no defining points, so
+/// [`region_points`](Region::region_points) returns none.
+/// Its default uncertainty is a [`Circle`](super::Circle) whose radius is
+/// the size of a cell at MaxOrder.
+/// It is always [bounded](Region::is_bounded), since it lies on the sky.
+/// [Closed](Self::is_closed) and [MeshSize](Self::mesh_size) work as their
+/// documentation here describes.
+///
+/// The number of cells in the normalized Moc, [MocLength](Self::moc_length),
+/// must fit in an `i32`.
+///
+/// # Examples
+///
+/// ```
+/// use ast_core::regions::{CmpOperator, Moc, Region};
+///
+/// let mut moc = Moc::new();
+/// moc.add_cell(CmpOperator::Or, 3, 100)?;
+/// assert_eq!(moc.max_order(), 3);
+/// assert!(moc.test_cell(3, 100, false)?);
+/// assert!(!moc.test_cell(3, 101, false)?);
+/// assert_eq!(moc.get_moc_string(false)?, "3/100");
+/// assert!(moc.is_bounded()?);
+/// # Ok::<(), ast_core::error::AstError>(())
+/// ```
 #[derive(Debug, Clone)]
 pub struct Moc {
     pub(crate) data: RegionData,
@@ -253,7 +317,12 @@ impl Default for Moc {
 }
 
 impl Moc {
-    /// An empty Moc, describing no area of the sky (C's `astMoc`).
+    /// An empty Moc, describing no area of the sky.
+    ///
+    /// Its Frame is an ICRS [`SkyFrame`], and none of its attributes is set.
+    /// Set [MaxOrder](Self::max_order) before adding the first area if the
+    /// value that area would give it is not wanted.
+    #[doc(alias = "astMoc")]
     pub fn new() -> Self {
         let frame: DynFrame = Box::new(SkyFrame::new(SkySystem::Icrs));
         Moc {
@@ -281,11 +350,22 @@ impl Moc {
         }
     }
 
-    /// Mutate the current frame with region integrity enforcement: remapping
-    /// the Region when it is Adaptive, otherwise changing both Frames.
+    /// Make a change to the Frame this Moc represents, keeping the Moc
+    /// consistent with it.
     ///
+    /// `f` is applied as a Frame attribute set through the Moc is.
+    /// While the Moc is [Adaptive](Region::is_adaptive), the change is made
+    /// to the Frame it represents, and the Moc is remapped into the new
+    /// coordinate system so that it covers the same area.
+    /// Otherwise the change is made to both the Frame it represents and the
+    /// Frame it was defined in.
     /// `f` makes the change to each Frame it is made to, so it may be called
     /// more than once.
+    ///
+    /// # Errors
+    ///
+    /// Passes on the error returned by `f`, and the error of remapping the
+    /// Moc.
     pub fn with_integrity<F>(&mut self, f: F) -> AstResult<()>
     where
         F: Fn(&mut dyn Frame) -> AstResult<()>,
@@ -318,19 +398,51 @@ impl Moc {
     // Attributes
     // ------------------------------------------------------------------
 
-    /// The HEALPix order of the Moc's finest cells, -1 until it is set
-    /// (`MaxOrder`).
+    /// The MaxOrder attribute: the HEALPix order of the Moc's cells, which
+    /// fixes its best resolution.
+    ///
+    /// It lies in the range 0 to [`MOC_MAX_ORDER`].
+    /// Each order halves the size of the cells of the order below it: order
+    /// 18 gives a resolution of about 0.8 arc-seconds, and 19 about 0.4.
+    /// [MaxRes](Self::max_res) gives the same resolution in arc-seconds.
+    ///
+    /// It can be set only once: once set, it cannot be set again or
+    /// cleared.
+    /// If it has not been set when the first area is added to the Moc, the
+    /// method adding the area sets it:
+    ///
+    /// - [`add_cell`](Self::add_cell): the order of the cell.
+    /// - [`add_region`](Self::add_region): for a Moc, its MaxOrder;
+    ///   otherwise the order whose cells are closest in size to 0.1% of the
+    ///   radius of the Region's bounding disc
+    ///   ([`get_region_disc`](Region::get_region_disc)).
+    /// - [`add_pixel_mask`](Self::add_pixel_mask): an order whose cells are
+    ///   no larger than half the size of the pixel at the center of the
+    ///   array.
+    /// - [`add_moc_data`](Self::add_moc_data) and
+    ///   [`add_moc_string`](Self::add_moc_string): their `maxorder`
+    ///   argument, or, if that is negative, the highest order in the MOC
+    ///   they are given.
+    ///
+    /// Default: -1, until it is set.
+    #[doc(alias = "MaxOrder")]
     pub fn max_order(&self) -> i32 {
         self.max_order.unwrap_or(-1)
     }
 
-    /// Whether `MaxOrder` has been set.
+    /// Whether [MaxOrder](Self::max_order) has been set, which also tells
+    /// whether [MaxRes](Self::max_res) has.
     pub fn test_max_order(&self) -> bool {
         self.max_order.is_some()
     }
 
-    /// Set `MaxOrder`, as `astSet` does: AST__NOWRT once it is set, and
-    /// AST__INVAR for an order outside 0 to [`MOC_MAX_ORDER`].
+    /// Set [MaxOrder](Self::max_order).
+    ///
+    /// # Errors
+    ///
+    /// - [`ErrorCode::Nowrt`] if MaxOrder is already set.
+    /// - [`ErrorCode::Invar`] if `value` is outside the range 0 to
+    ///   [`MOC_MAX_ORDER`].
     pub fn set_max_order(&mut self, value: i32) -> AstResult<()> {
         if self.test_max_order() {
             return Err(self.max_order_fixed(&format!("MaxOrder={value}"), "MaxOrder"));
@@ -338,7 +450,14 @@ impl Moc {
         self.store_max_order(value)
     }
 
-    /// Clear `MaxOrder`, as `astClear` does: AST__NOWRT once it is set.
+    /// Clear [MaxOrder](Self::max_order) and so [MaxRes](Self::max_res).
+    ///
+    /// Since MaxOrder cannot be cleared once set, this succeeds only while it
+    /// is not set, when it changes nothing.
+    ///
+    /// # Errors
+    ///
+    /// [`ErrorCode::Nowrt`] if MaxOrder is set.
     pub fn clear_max_order(&mut self) -> AstResult<()> {
         if self.test_max_order() {
             return Err(AstError::new(
@@ -352,8 +471,16 @@ impl Moc {
         Ok(())
     }
 
-    /// The best resolution of the Moc, in arc-seconds, 0 until `MaxOrder`
-    /// is set (`MaxRes`).
+    /// The MaxRes attribute: the best resolution of the Moc, in
+    /// arc-seconds, the mean size of a cell at [MaxOrder](Self::max_order).
+    ///
+    /// It is MaxOrder expressed in arc-seconds, and like MaxOrder it can be
+    /// set only once.
+    /// [`test_max_order`](Self::test_max_order) and
+    /// [`clear_max_order`](Self::clear_max_order) test and clear it.
+    ///
+    /// Default: 0, until MaxOrder is set.
+    #[doc(alias = "MaxRes")]
     pub fn max_res(&self) -> f64 {
         if self.test_max_order() {
             order_to_res(self.max_order())
@@ -362,8 +489,14 @@ impl Moc {
         }
     }
 
-    /// Set `MaxRes`, the order whose cells are nearest `res` arc-seconds in
-    /// size becoming `MaxOrder`: AST__NOWRT once `MaxOrder` is set.
+    /// Set [MaxRes](Self::max_res): [MaxOrder](Self::max_order) becomes the
+    /// order whose cells are closest to `res` arc-seconds in size.
+    ///
+    /// # Errors
+    ///
+    /// - [`ErrorCode::Nowrt`] if MaxOrder is already set.
+    /// - [`ErrorCode::Invar`] if that order is outside the range 0 to
+    ///   [`MOC_MAX_ORDER`].
     pub fn set_max_res(&mut self, res: f64) -> AstResult<()> {
         if self.test_max_order() {
             return Err(self.max_order_fixed(&format!("MaxRes={res}"), "MaxRes"));
@@ -400,41 +533,78 @@ impl Moc {
         Ok(())
     }
 
-    /// The order at which to search when adding a Region, by default five
-    /// less than `MaxOrder` and at least 0 (`MinOrder`).
+    /// The MinOrder attribute: the HEALPix order at which
+    /// [`add_region`](Self::add_region) and
+    /// [`add_pixel_mask`](Self::add_pixel_mask) start their search.
+    ///
+    /// It is the order of the initial grid of cells those methods use to
+    /// find the parts of the sky inside or outside the Region or pixel
+    /// mask, in the range 0 to [`MOC_MAX_ORDER`].
+    /// It sets the size of the largest hole or island that may be missed:
+    /// a hole in the selected area, or an island of it, smaller than one
+    /// cell at this order may be filled in or left out.
+    /// For instance, with MaxOrder 16 (a resolution of 3.2 arc-seconds) the
+    /// default MinOrder is 11, so holes smaller than about 100 arc-seconds
+    /// may be filled in.
+    /// A higher value misses smaller features but takes longer.
+    /// To miss no pixels, set MinOrder to MaxOrder, or a little higher to
+    /// include features smaller than a cell at MaxOrder.
+    /// [MinRes](Self::min_res) gives the same resolution in arc-seconds.
+    ///
+    /// Default: [MaxOrder](Self::max_order) minus 5, but not less than 0.
+    #[doc(alias = "MinOrder")]
     pub fn min_order(&self) -> i32 {
         self.min_order
             .unwrap_or_else(|| (self.max_order() - 5).max(0))
     }
 
-    /// Whether `MinOrder` has been set.
+    /// Whether [MinOrder](Self::min_order) has been set, which also tells
+    /// whether [MinRes](Self::min_res) has.
     pub fn test_min_order(&self) -> bool {
         self.min_order.is_some()
     }
 
-    /// Set `MinOrder`, limited to 0 to [`MOC_MAX_ORDER`].
+    /// Set [MinOrder](Self::min_order); a value outside the range 0 to
+    /// [`MOC_MAX_ORDER`] is stored as the nearer end of the range.
     pub fn set_min_order(&mut self, value: i32) {
         self.min_order = Some(value.clamp(0, MOC_MAX_ORDER));
     }
 
-    /// Clear `MinOrder`.
+    /// Clear [MinOrder](Self::min_order), reverting to its default; this
+    /// also clears [MinRes](Self::min_res).
     pub fn clear_min_order(&mut self) {
         self.min_order = None;
     }
 
-    /// The resolution, in arc-seconds, at which to search when adding a
-    /// Region (`MinRes`).
+    /// The MinRes attribute: the resolution, in arc-seconds, at which
+    /// [`add_region`](Self::add_region) and
+    /// [`add_pixel_mask`](Self::add_pixel_mask) start their search.
+    ///
+    /// It is [MinOrder](Self::min_order) expressed in arc-seconds: the mean
+    /// size of a cell at that order, which is the size of the largest hole
+    /// or island those methods may miss.
+    /// [`test_min_order`](Self::test_min_order) and
+    /// [`clear_min_order`](Self::clear_min_order) test and clear it.
+    ///
+    /// Default: the resolution of the default MinOrder.
+    #[doc(alias = "MinRes")]
     pub fn min_res(&self) -> f64 {
         order_to_res(self.min_order())
     }
 
-    /// Set `MinRes`, the order whose cells are nearest `res` arc-seconds in
-    /// size becoming `MinOrder`.
+    /// Set [MinRes](Self::min_res): [MinOrder](Self::min_order) becomes the
+    /// order whose cells are closest to `res` arc-seconds in size.
     pub fn set_min_res(&mut self, res: f64) {
         self.set_min_order(res_to_order(res));
     }
 
-    /// The area of the Moc, in square arc-minutes (`MocArea`).
+    /// The MocArea attribute: the area the Moc covers, in square
+    /// arc-minutes.
+    ///
+    /// It is the number of cells at [MaxOrder](Self::max_order) times the
+    /// mean area of a cell.
+    /// It is read-only.
+    #[doc(alias = "MocArea")]
     pub fn moc_area(&self) -> f64 {
         if let Some(area) = self.cache.borrow().area {
             return area;
@@ -446,15 +616,36 @@ impl Moc {
         area
     }
 
-    /// The number of cells in the normalised Moc, the table length used to
-    /// describe it in FITS (`MocLength`).
+    /// The MocLength attribute: the number of cells in the normalized Moc,
+    /// which is the number of rows needed to describe it in a FITS binary
+    /// table.
+    ///
+    /// The normalized Moc, as the MOC recommendation defines it, holds each
+    /// area in the largest cells that fit it, so its cells have a mix of
+    /// orders.
+    /// It is read-only.
+    ///
+    /// # Errors
+    ///
+    /// [`ErrorCode::Bgmoc`] if the normalized Moc has too many cells to
+    /// count in an `i32`.
+    #[doc(alias = "MocLength")]
     pub fn moc_length(&self) -> AstResult<usize> {
         self.with_norm("astGetMocLength", |norm, _| norm.len())
     }
 
-    /// The number of bytes in each value of the normalised Moc, 4 or 8, the
-    /// data type used to describe it in FITS (`MocType`). A Moc with no
-    /// cells has no 4 byte form, so it is 8.
+    /// The MocType attribute: the number of bytes, 4 or 8, in each value
+    /// needed to describe the Moc in a FITS binary table.
+    ///
+    /// The table has a single column of signed integers of this size.
+    /// It is 4 while [MaxOrder](Self::max_order) is below 14, except for a
+    /// Moc with no cells, for which it is 8.
+    /// It is read-only.
+    ///
+    /// # Errors
+    ///
+    /// [`ErrorCode::Bgmoc`] as for [`moc_length`](Self::moc_length).
+    #[doc(alias = "MocType")]
     pub fn moc_type(&self) -> AstResult<i32> {
         self.with_norm("astGetMocType", |norm, is32| {
             if is32 && !norm.is_empty() { 4 } else { 8 }
@@ -517,10 +708,27 @@ impl Moc {
     // Cells
     // ------------------------------------------------------------------
 
-    /// Combine one cell with the Moc (C's `astAddCell`): AND removes it, OR
-    /// adds it, and XOR toggles it. Its order must be no greater than
-    /// `MaxOrder`, which it becomes if `MaxOrder` is not set; AST__INVAR for
-    /// an order or `npix` out of range.
+    /// Combine a single HEALPix cell with the Moc.
+    ///
+    /// The cell is the one at HEALPix `order` with nested index `npix`, as
+    /// the MOC recommendation numbers them.
+    /// `cmode` says how it is combined:
+    ///
+    /// - [`CmpOperator::And`]: the cell is removed, if the Moc includes it.
+    /// - [`CmpOperator::Or`]: the cell is added, if the Moc does not include
+    ///   it.
+    /// - [`CmpOperator::Xor`]: the cell is toggled, removed if the Moc
+    ///   includes it and added if not.
+    ///
+    /// If [MaxOrder](Self::max_order) is not set, it is set to `order`, so
+    /// the cells of the highest order should usually be added first.
+    ///
+    /// # Errors
+    ///
+    /// [`ErrorCode::Invar`] if `order` is outside the range 0 to
+    /// [`MOC_MAX_ORDER`] or above MaxOrder, or `npix` is negative or beyond
+    /// the last cell at `order`.
+    #[doc(alias = "astAddCell")]
     pub fn add_cell(&mut self, cmode: CmpOperator, order: i32, npix: i64) -> AstResult<()> {
         if !(0..=MOC_MAX_ORDER).contains(&order) {
             return Err(AstError::new(
@@ -801,10 +1009,21 @@ impl Moc {
         Ok(())
     }
 
-    /// Whether a cell is in the Moc (C's `astTestCell`). A cell at an order
-    /// greater than `MaxOrder` is not. Unless `parent` is set, a cell whose
-    /// parent is wholly in the Moc is not either. AST__INVAR for an order or
-    /// `npix` out of range.
+    /// Whether the Moc includes a single HEALPix cell.
+    ///
+    /// The cell is the one at HEALPix `order` with nested index `npix`.
+    /// A cell at an order above [MaxOrder](Self::max_order) is never
+    /// included, and nor is any cell while MaxOrder is not set.
+    /// `parent` decides the result for a cell that the Moc includes only as
+    /// part of its parent cell, at the order below, which the Moc includes
+    /// whole: true if `parent` is, and false otherwise.
+    ///
+    /// # Errors
+    ///
+    /// [`ErrorCode::Invar`] if `order` is outside the range 0 to
+    /// [`MOC_MAX_ORDER`], or `npix` is negative or beyond the last cell at
+    /// `order`.
+    #[doc(alias = "astTestCell")]
     pub fn test_cell(&self, order: i32, npix: i64, parent: bool) -> AstResult<bool> {
         if !(0..=MOC_MAX_ORDER).contains(&order) {
             return Err(AstError::new(
@@ -842,9 +1061,18 @@ impl Moc {
         Ok(result)
     }
 
-    /// The order and `npix` of cell `icell`, counting from zero, of the
-    /// normalised Moc (C's `astGetCell`); AST__INVAR for an index out of
-    /// range.
+    /// The HEALPix order and nested index of a cell of the normalized Moc.
+    ///
+    /// `icell` counts the cells of the normalized Moc, as
+    /// [`moc_length`](Self::moc_length) describes it, from zero, in the
+    /// order of the MOC recommendation: by order, then by index.
+    ///
+    /// # Errors
+    ///
+    /// - [`ErrorCode::Invar`] if `icell` is negative, or not less than
+    ///   [MocLength](Self::moc_length).
+    /// - [`ErrorCode::Bgmoc`] as for [`moc_length`](Self::moc_length).
+    #[doc(alias = "astGetCell")]
     pub fn get_cell(&self, icell: i32) -> AstResult<(i32, i64)> {
         let moclen = self.moc_length()? as i32;
         if icell < 0 {
@@ -1308,14 +1536,17 @@ impl Moc {
 // MOC text and data
 // ============================================================================
 
-/// The NUNIQ values of a normalised Moc, as a FITS binary table holds them:
-/// 4 byte values while every cell is below order 14, otherwise 8 byte ones
-/// (`MocType`).
+/// The cells of a normalized [`Moc`] as the NUNIQ values of the MOC
+/// recommendation, the column of a FITS binary table.
+///
+/// The values are 4-byte integers while the Moc's
+/// [MaxOrder](Moc::max_order) is below 14, and 8-byte ones otherwise, as
+/// [MocType](Moc::moc_type) says.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MocData {
-    /// 4 byte values (`MocType` 4).
+    /// 4-byte values, for a [MocType](Moc::moc_type) of 4.
     Int32(Vec<i32>),
-    /// 8 byte values (`MocType` 8).
+    /// 8-byte values, for a [MocType](Moc::moc_type) of 8.
     Int64(Vec<i64>),
 }
 
@@ -1344,13 +1575,32 @@ fn snippet(text: &[u8], at: usize, n: usize) -> String {
 }
 
 impl Moc {
-    /// Combine a MOC held as NUNIQ values, as a FITS binary table holds one,
-    /// with the Moc (C's `astAddMocData`). `cmode` combines them as
-    /// `add_region` does; `negate` uses the cells the data do not hold.
-    /// `maxorder` is the order to use if MaxOrder is not set, which it then
-    /// becomes; if it is negative the highest order in the data is used.
-    /// Cells above that order are degraded to it. A value below 4, which
-    /// encodes no cell, is AST__INMOC, and leaves the Moc unchanged.
+    /// Combine a MOC read from a FITS binary table with the Moc.
+    ///
+    /// `data` holds the column of the table, the NUNIQ values of the MOC
+    /// recommendation, as 4-byte or 8-byte signed integers (`i32` or `i64`).
+    /// `cmode` says how the two are combined:
+    ///
+    /// - [`CmpOperator::And`]: the intersection of the Moc and the data.
+    /// - [`CmpOperator::Or`]: their union.
+    /// - [`CmpOperator::Xor`]: their exclusive disjunction.
+    ///
+    /// If `negate` is true, the cells combined with the Moc are those the
+    /// data do not include, rather than those they do.
+    ///
+    /// If [MaxOrder](Self::max_order) is not set, it is set to `maxorder`,
+    /// or, if that is negative, to the highest order in the data, which
+    /// takes longer to find.
+    /// Cells in the data at an order above MaxOrder are degraded to it.
+    /// Empty `data` with [`CmpOperator::And`] empties the Moc.
+    ///
+    /// # Errors
+    ///
+    /// - [`ErrorCode::Invar`] if `maxorder` is above [`MOC_MAX_ORDER`], or
+    ///   MaxOrder is not set and the order it would be set to is.
+    /// - [`ErrorCode::Inmoc`] if a value is below 4, which encodes no cell;
+    ///   the Moc is then unchanged.
+    #[doc(alias = "astAddMocData")]
     pub fn add_moc_data<T: Copy + Into<i64>>(
         &mut self,
         cmode: CmpOperator,
@@ -1415,8 +1665,20 @@ impl Moc {
         self.moc_norm(negate, cmode, nold, maxorder, method)
     }
 
-    /// The NUNIQ values of the normalised Moc, for a FITS binary table (C's
-    /// `astGetMocData`), with the header `get_moc_header` gives.
+    /// The values of the FITS binary table describing the Moc.
+    ///
+    /// Such a table has a single column in which each row holds the NUNIQ
+    /// value of one cell of the normalized Moc, as the MOC recommendation
+    /// describes.
+    /// There are [MocLength](Self::moc_length) values, of the size
+    /// [MocType](Self::moc_type) gives.
+    /// [`get_moc_header`](Self::get_moc_header) gives the headers of the
+    /// table.
+    ///
+    /// # Errors
+    ///
+    /// [`ErrorCode::Bgmoc`] as for [`moc_length`](Self::moc_length).
+    #[doc(alias = "astGetMocData")]
     pub fn get_moc_data(&self) -> AstResult<MocData> {
         self.with_norm("astGetMocData", |norm, is32| {
             if is32 && !norm.is_empty() {
@@ -1427,8 +1689,16 @@ impl Moc {
         })
     }
 
-    /// The headers of a FITS binary table holding the Moc's NUNIQ values
-    /// (C's `astGetMocHeader`), as the IVOA MOC recommendation describes it.
+    /// The headers of the FITS binary table extension describing the Moc,
+    /// as the MOC recommendation describes them.
+    ///
+    /// [`get_moc_data`](Self::get_moc_data) gives the values of the table.
+    ///
+    /// # Errors
+    ///
+    /// [`ErrorCode::Bgmoc`] as for [`moc_length`](Self::moc_length), and
+    /// passes on the error of storing a header in the [`FitsChan`].
+    #[doc(alias = "astGetMocHeader")]
     pub fn get_moc_header(&self) -> AstResult<FitsChan> {
         let mtype = self.moc_type()?;
         let moclen = self.moc_length()?;
@@ -1457,13 +1727,26 @@ impl Moc {
         Ok(fc)
     }
 
-    /// Combine a MOC in the string or JSON serialisation of the IVOA MOC
-    /// recommendation with the Moc (C's `astAddMocString`), returning whether
-    /// it was JSON, which a first non-blank `{` selects. `cmode`, `negate`
-    /// and `maxorder` are as for `add_moc_data`; cells above `maxorder` are
-    /// degraded to it, as C's code does, although its documentation says
-    /// they are ignored. The text ends at a null character if it has one.
-    /// Malformed text is AST__INMOC, and leaves the Moc unchanged.
+    /// Combine a MOC in the string or JSON serialization of the MOC
+    /// recommendation with the Moc, returning whether `text` was JSON.
+    ///
+    /// The serialization is decided by the first character that is not
+    /// white space: `{` for JSON, a digit for the string form.
+    /// The text ends at its first null character, if it has one.
+    /// `cmode`, `negate` and `maxorder` are as for
+    /// [`add_moc_data`](Self::add_moc_data): MaxOrder, if not set, becomes
+    /// `maxorder` or the highest order in the text, and cells in the text at
+    /// an order above MaxOrder are degraded to it.
+    /// Empty `text` with [`CmpOperator::And`] empties the Moc.
+    ///
+    /// # Errors
+    ///
+    /// - [`ErrorCode::Invar`] as for [`add_moc_data`](Self::add_moc_data).
+    /// - [`ErrorCode::Inmoc`] if the text cannot be read as a MOC, for
+    ///   instance if it starts with anything but `{` or a digit, gives no
+    ///   order, or gives a cell index beyond the cells at its order; the Moc
+    ///   is then unchanged.
+    #[doc(alias = "astAddMocString")]
     pub fn add_moc_string(
         &mut self,
         cmode: CmpOperator,
@@ -1495,8 +1778,15 @@ impl Moc {
         Ok(json)
     }
 
-    /// The Moc in the string or JSON serialisation of the IVOA MOC
-    /// recommendation (C's `astGetMocString`).
+    /// The Moc in the string or JSON serialization of the MOC
+    /// recommendation.
+    ///
+    /// `json` chooses JSON; otherwise the string serialization is used.
+    ///
+    /// # Errors
+    ///
+    /// [`ErrorCode::Bgmoc`] as for [`moc_length`](Self::moc_length).
+    #[doc(alias = "astGetMocString")]
     pub fn get_moc_string(&self, json: bool) -> AstResult<String> {
         let mut out = String::new();
         self.get_moc_text(
@@ -1864,11 +2154,23 @@ impl Moc {
         Ok(json)
     }
 
-    /// moc.c `astGetMocText`: write the Moc in the string or JSON
-    /// serialisation, passing it to `sink` in pieces of at most `buflen`
-    /// bytes, each but the last ending after a space or comma; AST__SMBUF
-    /// if a value does not fit in what is left of the buffer after the last
-    /// space or comma.
+    /// Write the Moc in the string or JSON serialization of the MOC
+    /// recommendation, passing it to `sink` in pieces of at most `buflen`
+    /// bytes.
+    ///
+    /// Each piece but the last ends after a space or comma, so that no value
+    /// is split between pieces.
+    /// `method` names the operation in error messages.
+    /// [`get_moc_string`](Self::get_moc_string) gives the whole text as one
+    /// string.
+    ///
+    /// # Errors
+    ///
+    /// - [`ErrorCode::Smbuf`] if `buflen` is too small to hold a value after
+    ///   the last space or comma.
+    /// - [`ErrorCode::Bgmoc`] as for [`moc_length`](Self::moc_length).
+    /// - Passes on the error returned by `sink`.
+    // C: moc.c `astGetMocText`, which MocChan shares.
     pub fn get_moc_text(
         &self,
         json: bool,
@@ -2181,15 +2483,53 @@ fn grid_index(v: f64, margin: i64, method: &str) -> AstResult<i64> {
 }
 
 impl Moc {
-    /// Combine a Region with the Moc (C's `astAddRegion`): AND keeps what
-    /// both cover, OR what either covers, and XOR what one but not both
-    /// covers. The Moc's own Negated is ignored. A Moc is combined cell for
-    /// cell. Any other Region must have a pair of sky axes (AST__NOSKY);
-    /// cells at `MinOrder` over its bounding box in the HPX-like projection
-    /// where it is smallest are tested at nine points, those wholly inside
-    /// kept, those partly inside divided, down to `MaxOrder`, where a cell is
-    /// in if its centre is. MaxOrder, if not set, becomes the order whose
-    /// cells are about 0.1% of the Region's size.
+    /// Combine a Region with the Moc.
+    ///
+    /// `region` must be defined in a [`SkyFrame`], or in a
+    /// [`CmpFrame`](crate::frames::CmpFrame) holding one; only its sky axes
+    /// are used, and it is converted to ICRS before being combined.
+    /// `cmode` says how the two are combined:
+    ///
+    /// - [`CmpOperator::And`]: the intersection of the Moc and the Region.
+    /// - [`CmpOperator::Or`]: their union.
+    /// - [`CmpOperator::Xor`]: their exclusive disjunction.
+    ///
+    /// The Moc is taken as not negated, whatever its
+    /// [Negated](Region::is_negated) attribute; a negated `region` is
+    /// combined as the outside of its area.
+    ///
+    /// A Moc is combined cell for cell, taken to this Moc's MaxOrder.
+    /// For any other Region the cells inside it are found by a search: a
+    /// grid of the HEALPix cells at [MinOrder](Self::min_order) is placed
+    /// over the Region's bounding box, and each cell is tested at nine
+    /// points (its corners, the centers of its edges and its center).
+    /// A cell with all nine inside the Region is taken to be inside, and one
+    /// with none inside to be outside; a cell with some of each is divided
+    /// into its four cells at the next order, which are tested in the same
+    /// way.
+    /// At [MaxOrder](Self::max_order) a cell is tested only at its center,
+    /// and is inside if that is.
+    /// So a hole in the Region, or an island of it, smaller than a cell at
+    /// MinOrder may be missed.
+    /// If MinOrder is not below MaxOrder, the search goes down to MinOrder,
+    /// and the cells it finds are taken to MaxOrder.
+    ///
+    /// If MaxOrder is not set, it is set as its documentation describes.
+    ///
+    /// # Errors
+    ///
+    /// - [`ErrorCode::Nosky`] if the Region's Frame has no pair of sky axes.
+    /// - [`ErrorCode::Bdsky`] if the part of the Region on its sky axes
+    ///   cannot be found.
+    /// - [`ErrorCode::Nodef`] if the Region cannot be mapped to the HEALPix
+    ///   grid.
+    /// - [`ErrorCode::Invar`] if MaxOrder and MinOrder are both zero, or
+    ///   MaxOrder is not set and the order it would be set to is outside the
+    ///   range 0 to [`MOC_MAX_ORDER`].
+    /// - [`ErrorCode::Bgmoc`] if the normalized Moc would have too many
+    ///   cells.
+    /// - Passes on the errors of mapping and testing the Region.
+    #[doc(alias = "astAddRegion")]
     pub fn add_region(&mut self, cmode: CmpOperator, region: &dyn Region) -> AstResult<()> {
         if let Some(that) = region.as_any().downcast_ref::<Moc>() {
             return self.add_moc(cmode, that);
@@ -2320,14 +2660,60 @@ impl Moc {
         self.moc_norm(that.is_negated(), cmode, nold, maxorder, "astAddRegion")
     }
 
-    /// Combine the pixels of a 2-dimensional array that pass a test with the
-    /// Moc (C's `astAddPixelMask<X>`): those whose value compares with
-    /// `value` as `oper` says, and, if `bad` is given, whose value is not
-    /// `bad`. `wcs` takes grid coordinates in the array to coordinates with
-    /// a pair of sky axes (AST__NOSKY); `dims` are the array's dimensions,
-    /// its first axis varying fastest. MaxOrder, if not set, becomes the
-    /// lowest order whose cells are no larger than a quarter of the pixel at
-    /// the array's centre. The cells are found as `add_region` finds them.
+    /// Combine the pixels of a 2-dimensional array that pass a test with
+    /// the Moc.
+    ///
+    /// A pixel is selected if its value compares with `value` as `oper`
+    /// says and, if `bad` is given, its value is not `bad`; a pixel with the
+    /// `bad` value is never selected.
+    /// `array` holds the pixels, the index of the first axis varying
+    /// fastest, and `dims` gives the length of each axis.
+    /// `cmode` says how the Moc and the selected pixels are combined:
+    ///
+    /// - [`CmpOperator::And`]: the intersection of the Moc and the selected
+    ///   pixels.
+    /// - [`CmpOperator::Or`]: their union.
+    /// - [`CmpOperator::Xor`]: their exclusive disjunction.
+    ///
+    /// `wcs` describes the coordinates of the array.
+    /// Its base Frame gives grid coordinates, in which the first pixel is
+    /// centered at (1, 1, …) and pixel centers are 1 apart, and has as many
+    /// axes as its current Frame, which must be a [`SkyFrame`] or a
+    /// [`CmpFrame`](crate::frames::CmpFrame) holding one.
+    /// `array` is the 2-dimensional slice of the grid spanned by the grid
+    /// axes on which the sky axes depend.
+    ///
+    /// The cells inside the selected pixels are found by the search
+    /// [`add_region`](Self::add_region) describes, so a hole or island
+    /// smaller than a cell at [MinOrder](Self::min_order) may be missed.
+    /// If [MaxOrder](Self::max_order) is not set, it is set as its
+    /// documentation describes.
+    /// If no pixel passes the comparison with `value`,
+    /// [`CmpOperator::And`] empties the Moc and the others leave it
+    /// unchanged.
+    ///
+    /// # Errors
+    ///
+    /// - [`ErrorCode::Invar`] if a dimension is zero, `array` holds fewer
+    ///   values than `dims` needs, MaxOrder and MinOrder are both zero, or
+    ///   MaxOrder is not set and the order it would be set to is outside the
+    ///   range 0 to [`MOC_MAX_ORDER`].
+    /// - [`ErrorCode::Nosky`] if the current Frame of `wcs` has no pair of
+    ///   sky axes.
+    /// - [`ErrorCode::Bdsky`] if the sky axes cannot be split from the other
+    ///   axes.
+    /// - [`ErrorCode::Nodef`] if the array cannot be mapped to the HEALPix
+    ///   grid.
+    /// - [`ErrorCode::Bgmoc`] if the normalized Moc would have too many
+    ///   cells.
+    /// - Passes on the errors of transforming positions through `wcs`.
+    ///
+    /// # See also
+    ///
+    /// `astAddPixelMask<X>`, one function per data type, where `T` chooses
+    /// the type here; the `AST__USEBAD` flag and `badval` argument are
+    /// `bad`.
+    #[doc(alias = "astAddPixelMask")]
     #[allow(clippy::too_many_arguments)]
     pub fn add_pixel_mask<T: PixelValue>(
         &mut self,
@@ -2894,6 +3280,12 @@ impl Region for Moc {
         self.data.invalidate_cache();
     }
 
+    /// The Closed attribute, which a Moc stores but does not use.
+    ///
+    /// Whether a position on the boundary of a Moc is inside it is
+    /// undefined: it may be inside or outside, depending on the position
+    /// and the Moc.
+    /// [`Region::is_closed`] describes the attribute for other Regions.
     fn is_closed(&self) -> bool {
         self.data.closed
     }
@@ -2930,6 +3322,19 @@ impl Region for Moc {
         self.data.clear_fill_factor();
     }
 
+    /// The MeshSize attribute, which a Moc uses only for meshes covering its
+    /// interior.
+    ///
+    /// A mesh covering the boundary of a Moc, such as
+    /// [`region_mesh`](Region::region_mesh) gives, has a point at the
+    /// outer corners of every HEALPix cell, at
+    /// [MaxOrder](Moc::max_order), that touches the boundary, whatever the
+    /// MeshSize.
+    /// A Moc that is empty or covers the whole sky has no boundary, and its
+    /// boundary mesh is a single point with [`BAD_VALUE`] on both axes.
+    /// A mesh covering the interior, such as
+    /// [`region_grid`](Region::region_grid) gives, uses MeshSize as for any
+    /// Region; [`Region::mesh_size`] describes the attribute.
     fn mesh_size(&self) -> usize {
         self.data.effective_mesh_size()
     }
@@ -3033,8 +3438,8 @@ impl Region for Moc {
         self.data.uncertainty.clone()
     }
 
-    /// moc.c `GetDefUnc`: a Circle at the ICRS origin whose radius is the
-    /// resolution at MaxOrder.
+    // moc.c `GetDefUnc`: a Circle at the ICRS origin whose radius is the
+    // resolution at MaxOrder.
     fn get_def_unc(&self) -> AstResult<DynRegion> {
         if let Some(unc) = &self.cache.borrow().unc {
             return Ok(unc.clone_region());
@@ -3054,10 +3459,10 @@ impl Region for Moc {
         self.data.perm_axes(perm)
     }
 
-    /// moc.c `RegPins`: each point is on the boundary if a mesh point lies
-    /// within the resolution at MaxOrder plus the diagonal of the
-    /// uncertainty's bounding box of it, in Dec and in RA scaled by
-    /// cos(Dec). The points are taken in order of Dec, then RA.
+    // moc.c `RegPins`: each point is on the boundary if a mesh point lies
+    // within the resolution at MaxOrder plus the diagonal of the
+    // uncertainty's bounding box of it, in Dec and in RA scaled by
+    // cos(Dec). The points are taken in order of Dec, then RA.
     fn reg_pins_mask(
         &self,
         pts: &PointSet,
@@ -3220,7 +3625,7 @@ impl Frame for Moc {
         self.data.frameset.current().get_axis(axis)
     }
 
-    /// region.c `RemoveRegions`: a Region becomes its Frame.
+    // region.c `RemoveRegions`: a Region becomes its Frame.
     fn frame_without_regions(&self) -> Option<DynFrame> {
         Some(self.get_region_frame())
     }
@@ -3266,19 +3671,19 @@ impl Mapping for Moc {
         &mut self.data.mapping_flags
     }
 
-    /// A Region is a Frame, which C's frame.c `GetIsLinear` reports as
-    /// linear.
+    // A Region is a Frame, which C's frame.c `GetIsLinear` reports as
+    // linear.
     fn is_linear(&self) -> bool {
         true
     }
 
-    /// region.c `RemoveRegions`: a Region becomes its Frame, which as a
-    /// Mapping is a UnitMap with its number of axes.
+    // region.c `RemoveRegions`: a Region becomes its Frame, which as a
+    // Mapping is a UnitMap with its number of axes.
     fn mapping_without_regions(&self) -> Option<DynMapping> {
         Some(Box::new(UnitMap::new(self.nin())))
     }
 
-    /// region.c `ReportPoints`: the current Frame formats the values.
+    // region.c `ReportPoints`: the current Frame formats the values.
     fn report_points(&self, _forward: bool, inp: &PointSet, out: &PointSet) {
         let frame = self.data.frameset.current();
         crate::mappings::report::write_report(&crate::frames::frame_report_lines(
@@ -3326,8 +3731,8 @@ impl Mapping for Moc {
         Ok(())
     }
 
-    /// A Moc inherits region.c `Simplify`, which simplifies the FrameSet and
-    /// the uncertainty.
+    // A Moc inherits region.c `Simplify`, which simplifies the FrameSet and
+    // the uncertainty.
     fn simplified(&self, _gate: ViaSimplify) -> AstResult<(DynMapping, bool)> {
         match self.parent_region_simplify()? {
             Some(new) => Ok((new.clone_box(), true)),
@@ -3340,7 +3745,7 @@ impl Mapping for Moc {
         crate::mappings::rate::numeric_rate(self, at, ax1, ax2)
     }
 
-    /// moc.c `Equal`: region.c `Equal`, then the same MaxOrder and ranges.
+    // moc.c `Equal`: region.c `Equal`, then the same MaxOrder and ranges.
     fn equal(&self, other: &dyn Mapping) -> bool {
         super::data::region_equal(self, other)
             .is_some_and(|other| self.max_order() == other.max_order() && self.range == other.range)

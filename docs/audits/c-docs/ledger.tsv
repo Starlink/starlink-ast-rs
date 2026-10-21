@@ -279,25 +279,25 @@ function	astString	memory.c			no
 function	astStringArray	memory.c			no
 function	astStringCase	memory.c			no
 function	astChrLen	memory.c			no
-class	Moc	moc.c			no
-function	astAddCell	moc.c			no
-function	astAddMocData	moc.c			no
-function	astAddMocString	moc.c			no
-function	astAddPixelMask<X>	moc.c			no
-function	astAddRegion	moc.c			no
-function	astGetCell	moc.c			no
-function	astGetMocData	moc.c			no
-function	astGetMocHeader	moc.c			no
-function	astGetMocString	moc.c			no
-function	astTestCell	moc.c			no
-attribute	MaxOrder	moc.c			no
-attribute	MinOrder	moc.c			no
-attribute	MaxRes	moc.c			no
-attribute	MinRes	moc.c			no
-attribute	MocType	moc.c			no
-attribute	MocArea	moc.c			no
-attribute	MocLength	moc.c			no
-function	astMoc	moc.c			no
+class	Moc	moc.c	Moc		yes
+function	astAddCell	moc.c	Moc::add_cell		yes
+function	astAddMocData	moc.c	Moc::add_moc_data		yes	data is a slice of i32 or i64, which replaces len, nbyte and the data pointer; the header has negate the wrong way round: true combines the cells the data do not hold, as the C code does (c-library-quirks.md)
+function	astAddMocString	moc.c	Moc::add_moc_string		yes	takes a &str ending at its end or first null, which replaces len, and returns the JSON flag; negate as for astAddMocData; cells above maxorder are degraded, as the C code does, not ignored as the header says (c-library-quirks.md)
+function	astAddPixelMask<X>	moc.c	Moc::add_pixel_mask		yes	one function generic over PixelValue for the type codes; bad: Option<T> replaces the AST__USEBAD flag and badval; dims are usize, so the 8-byte interface is the same function; Invar for a zero dimension or an array shorter than dims needs
+function	astAddRegion	moc.c	Moc::add_region		yes
+function	astGetCell	moc.c	Moc::get_cell		yes	returns (order, npix)
+function	astGetMocData	moc.c	Moc::get_moc_data		yes	returns MocData, i32 or i64 values by MocType, instead of filling a buffer of mxsize bytes
+function	astGetMocHeader	moc.c	Moc::get_moc_header		yes
+function	astGetMocString	moc.c	Moc::get_moc_string		yes	returns a String instead of filling a buffer and its size; get_moc_text writes it in pieces
+function	astTestCell	moc.c	Moc::test_cell		yes
+attribute	MaxOrder	moc.c	Moc::max_order		yes	the header gives astAddPixelMask<X> a default of cells no larger than the pixels; the code and the astAddPixelMask<X> header use half (c-library-quirks.md)
+attribute	MinOrder	moc.c	Moc::min_order		yes	default MaxOrder-5 as the C code has it; the header says MaxOrder-4 (c-library-quirks.md)
+attribute	MaxRes	moc.c	Moc::max_res		yes	no test_max_res or clear_max_res: test_max_order and clear_max_order, which C uses for MaxRes too
+attribute	MinRes	moc.c	Moc::min_res		yes	no test_min_res or clear_min_res: test_min_order and clear_min_order, which C uses for MinRes too
+attribute	MocType	moc.c	Moc::moc_type		yes
+attribute	MocArea	moc.c	Moc::moc_area		yes
+attribute	MocLength	moc.c	Moc::moc_length		yes	returns usize
+function	astMoc	moc.c	Moc::new		yes	takes no attribute options; set MaxOrder and MinOrder with their setters
 class	MocChan	mocchan.c			no
 attribute	MocFormat	mocchan.c			no
 attribute	MocLineLen	mocchan.c			no
@@ -508,25 +508,25 @@ attribute	SplineKy	splinemap.c	SplineMap::ky		yes
 attribute	SplineNx	splinemap.c	SplineMap::nx		yes
 attribute	SplineNy	splinemap.c	SplineMap::ny		yes
 function	astSplineMap	splinemap.c	SplineMap::new;SplineMap::from_scipy		yes	from_scipy takes C's SciPy coefficient order; new takes the X-fastest order of C's Fortran API and the dump. The port also checks the array lengths C takes on trust
-class	Stc	stc.c			no
-function	astGetStcCoord	stc.c			no
-function	astGetStcNCoord	stc.c			no
-function	astGetStcRegion	stc.c			no
-attribute	RegionClass	stc.c			no
-class	StcCatalogEntryLocation	stccatalogentrylocation.c			no
-function	astStcCatalogEntryLocation	stccatalogentrylocation.c			no
-class	StcObsDataLocation	stcobsdatalocation.c			no
-function	astStcObsDataLocation	stcobsdatalocation.c			no
-class	StcResourceProfile	stcresourceprofile.c			no
-function	astStcResourceProfile	stcresourceprofile.c			no
+class	Stc	stc.c	Stc		yes	generic over a StcKind marker, used through the four class aliases
+function	astGetStcCoord	stc.c	Stc::get_stc_coord		yes
+function	astGetStcNCoord	stc.c	Stc::get_stc_n_coord		yes	returns usize
+function	astGetStcRegion	stc.c	Stc::get_stc_region		yes
+attribute	RegionClass	stc.c	Stc::region_class		yes
+class	StcCatalogEntryLocation	stccatalogentrylocation.c	StcCatalogEntryLocation		yes	a type alias of Stc
+function	astStcCatalogEntryLocation	stccatalogentrylocation.c	StcBuilder::new		yes	one generic builder for the four classes, through StcCatalogEntryLocationBuilder; the AstroCoords KeyMaps are given with coords
+class	StcObsDataLocation	stcobsdatalocation.c	StcObsDataLocation		yes	a type alias of Stc; obs and stc_set_obs give and set the observatory position
+function	astStcObsDataLocation	stcobsdatalocation.c	StcBuilder::new		yes	one generic builder for the four classes, through StcObsDataLocationBuilder; the header describes the class as StcResourceProfile's does (c-library-quirks.md)
+class	StcResourceProfile	stcresourceprofile.c	StcResourceProfile		yes	a type alias of Stc
+function	astStcResourceProfile	stcresourceprofile.c	StcBuilder::new		yes	one generic builder for the four classes, through StcResourceProfileBuilder; the AstroCoords KeyMaps are given with coords
 class	StcsChan	stcschan.c		not-ported	yes
 attribute	StcsArea	stcschan.c		not-ported	yes
 attribute	StcsCoords	stcschan.c		not-ported	yes
 attribute	StcsProps	stcschan.c		not-ported	yes
 attribute	StcsLength	stcschan.c		not-ported	yes
 function	astStcsChan	stcschan.c		not-ported	yes
-class	StcSearchLocation	stcsearchlocation.c			no
-function	astStcSearchLocation	stcsearchlocation.c			no
+class	StcSearchLocation	stcsearchlocation.c	StcSearchLocation		yes	a type alias of Stc
+function	astStcSearchLocation	stcsearchlocation.c	StcBuilder::new		yes	one generic builder for the four classes, through StcSearchLocationBuilder; the AstroCoords KeyMaps are given with coords
 class	SwitchMap	switchmap.c	SwitchMap		yes
 function	astSwitchMap	switchmap.c	SwitchMap::new		yes	The SwitchMap owns its components; C keeps references to them
 class	Table	table.c			no

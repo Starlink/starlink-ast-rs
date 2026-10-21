@@ -388,7 +388,8 @@ pub trait Region: Frame + Mapping + AsDynRegion {
     ///
     /// Default: false.
     ///
-    /// - Stc: the Negated attribute of the Region it encapsulates.
+    /// An [`Stc`] reads and sets the attribute on the Region it
+    /// encapsulates, as its documentation describes.
     #[doc(alias = "Negated")]
     fn is_negated(&self) -> bool;
 
@@ -440,12 +441,8 @@ pub trait Region: Frame + Mapping + AsDynRegion {
     ///
     /// Default: true.
     ///
-    /// [`PointList`], [`CmpRegion`] and [`Prism`] treat it in their own way,
-    /// which their documentation describes.
-    ///
-    /// - Stc: the Closed attribute of the Region it encapsulates.
-    /// - Moc: the attribute is ignored, and whether a point on the boundary
-    ///   is inside is undefined.
+    /// [`PointList`], [`CmpRegion`], [`Prism`], [`Moc`] and [`Stc`] treat it
+    /// in their own way, which their documentation describes.
     #[doc(alias = "Closed")]
     fn is_closed(&self) -> bool;
 
@@ -477,9 +474,8 @@ pub trait Region: Frame + Mapping + AsDynRegion {
     /// Its value lies in the range 0.0 to 1.0.
     ///
     /// Default: 1.0, except for [`CmpRegion`] and [`Prism`], whose defaults
-    /// come from their component Regions.
-    ///
-    /// - Stc: the FillFactor of the Region it encapsulates.
+    /// come from their component Regions, and [`Stc`], which reads the
+    /// attribute from the Region it encapsulates.
     #[doc(alias = "FillFactor")]
     fn fill_factor(&self) -> f64;
 
@@ -512,13 +508,10 @@ pub trait Region: Frame + Mapping + AsDynRegion {
     /// dimensions, and 2 for a 1-D Region, whose boundary is two points.
     ///
     /// [`CmpRegion`] and [`Prism`] pass a value set on them on to their
-    /// component Regions.
-    ///
-    /// - Moc: a mesh covering the boundary has a point at the outer corners
-    ///   of every HEALPix cell, at the Moc's maximum order, that touches the
-    ///   boundary, whatever the MeshSize; a mesh covering the interior uses
-    ///   MeshSize as other classes do.
-    /// - Stc: the MeshSize of the Region it encapsulates.
+    /// component Regions, and [`Stc`] reads it from the Region it
+    /// encapsulates.
+    /// A [`Moc`] does not use it for a mesh covering its boundary, as its
+    /// documentation describes.
     // C: region.c `astGetMeshSize`, `astSetMeshSize`.
     #[doc(alias = "MeshSize")]
     fn mesh_size(&self) -> usize;
@@ -540,10 +533,8 @@ pub trait Region: Frame + Mapping + AsDynRegion {
     /// A Region is bounded unless it is negated, and always bounded in a sky
     /// Frame, where the complement of a finite area is finite too.
     /// [`Polygon`], [`Interval`], [`CmpRegion`] and [`Prism`] work it out
-    /// from their shape instead, as their documentation describes.
-    ///
-    /// - Moc: always bounded, since it is defined on the sky.
-    /// - Stc: whether the Region it encapsulates is bounded.
+    /// from their shape instead, and an [`Stc`] is bounded if the Region it
+    /// encapsulates is, as their documentation describes.
     ///
     /// # Errors
     ///
@@ -945,8 +936,6 @@ pub trait Region: Frame + Mapping + AsDynRegion {
     /// What the points are depends on the class, and each class's
     /// documentation says.
     ///
-    /// - Moc and Stc: no points.
-    ///
     /// # Errors
     ///
     /// Passes on the error of transforming the points.
@@ -1262,8 +1251,9 @@ pub trait Region: Frame + Mapping + AsDynRegion {
     /// On an axis where the box has no width it is 1.0E-6 of the axis value,
     /// or 1.0E-12 where that value is zero, and on an axis with no limit it
     /// has zero width at 0.
-    /// [`Interval`], [`NullRegion`], [`CmpRegion`] and [`Prism`] have
-    /// defaults of their own, which their documentation describes.
+    /// [`Interval`], [`NullRegion`], [`CmpRegion`], [`Prism`], [`Moc`] and
+    /// [`Stc`] have defaults of their own, which their documentation
+    /// describes.
     ///
     /// # Errors
     ///

@@ -76,6 +76,11 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [The `astInterval` documentation says at least one axis limit must be supplied](#the-astinterval-documentation-says-at-least-one-axis-limit-must-be-supplied)
 - [The `astDownsize` documentation does not say which Frame `maxerr` is measured in](#the-astdownsize-documentation-does-not-say-which-frame-maxerr-is-measured-in)
 - [A CmpRegion that ANDs two nested unbounded Regions reports itself as bounded](#a-cmpregion-that-ands-two-nested-unbounded-regions-reports-itself-as-bounded)
+- [The `MinOrder` documentation gives a default of MaxOrder minus 4](#the-minorder-documentation-gives-a-default-of-maxorder-minus-4)
+- [The `astAddMocData` and `astAddMocString` documentation describes `negate` the wrong way round](#the-astaddmocdata-and-astaddmocstring-documentation-describes-negate-the-wrong-way-round)
+- [The `astAddMocString` documentation says cells above `maxorder` are ignored](#the-astaddmocstring-documentation-says-cells-above-maxorder-are-ignored)
+- [The `MaxOrder` and `astAddPixelMask<X>` documentation give different defaults for a pixel mask](#the-maxorder-and-astaddpixelmaskx-documentation-give-different-defaults-for-a-pixel-mask)
+- [The `astStcObsDataLocation` documentation describes the class as an StcResourceProfile](#the-aststcobsdatalocation-documentation-describes-the-class-as-an-stcresourceprofile)
 
 ### [Addressed here, and not going upstream](#addressed-here-and-not-going-upstream)
 
@@ -1149,6 +1154,67 @@ Consequence: the Bounded attribute of such CmpRegions is wrong.
 
 The port mirrors the test (`CmpRegion::get_bounded`); `and_of_nested_unbounded_regions_reports_bounded_as_c_does` in `tests/test_cmpregion.rs` pins it.
 Question for upstream: should overlap results 2, 3 and 5 make the AND unbounded, and 1 make it bounded?
+
+### The `MinOrder` documentation gives a default of MaxOrder minus 4
+
+C location: `moc.c`, the `MinOrder` prologue (Description, line 10033), and the `astMAKE_GET` for MinOrder (line 10056).
+
+The Description says the default is (MaxOrder-4), with a lower limit of zero, and gives MaxOrder 16 a default MinOrder of 12, so that holes smaller than 51 arc-seconds may be filled in.
+`astMAKE_GET` computes `astMAX(0,astGetMaxOrder(this)-5)`, so MaxOrder 16 gives 11, and holes smaller than about 100 arc-seconds may be filled in.
+
+Consequence: documentation only.
+
+`Moc::min_order` gives MaxOrder minus 5, as the code does, and the example with 11.
+A C fix: say (MaxOrder-5), with MinOrder 11 and about 100 arc-seconds in the example.
+
+### The `astAddMocData` and `astAddMocString` documentation describes `negate` the wrong way round
+
+C location: `moc.c`, the `astAddMocData` prologue (Parameters, lines 795 to 802) and the `astAddMocString` prologue (Parameters, lines 1058 to 1065).
+
+Both say that with `negate` non-zero the cells added are those included in the supplied MOC, and with it zero those not included.
+Both functions pass `negate` to `astMocNorm`, which replaces the new ranges with the gaps between them when it is non-zero, so non-zero combines the cells the supplied MOC does not include.
+`testmoc.c` relies on the code: Error 42 calls `astAddMocString( moc, AST__AND, 1, -1, 100, "5/0,3", &json )` to remove cells 0 and 3 at order 5.
+
+Consequence: documentation only, but a caller who follows it gets the complement of the area meant.
+
+`Moc::add_moc_data` and `Moc::add_moc_string` say that `negate` true combines the cells the data do not include.
+A C fix: swap "non-zero" and "zero" in both prologues.
+
+### The `astAddMocString` documentation says cells above `maxorder` are ignored
+
+C location: `moc.c`, the `astAddMocString` prologue (Parameters, line 1078), and `astAddMocText` (lines 1735 to 1755).
+
+The `maxorder` parameter says HEALPix cells in the supplied MOC at an order greater than `maxorder` are ignored, and the comment above the loop in `astAddMocText` says the same.
+The loop runs to `astMAX( maxorder, mxord )` and shifts each value right by the difference in order, so such cells are degraded to the cell at `maxorder` that contains them, as `astAddMocData` documents for its own data.
+
+Consequence: documentation only.
+
+`Moc::add_moc_string` says the cells are degraded, as the code does.
+A C fix: say "are degraded to that resolution", as the `astAddMocData` prologue does.
+
+### The `MaxOrder` and `astAddPixelMask<X>` documentation give different defaults for a pixel mask
+
+C location: `moc.c`, the `MaxOrder` prologue (Description, line 9975) and the `astAddPixelMask<X>` prologue (Description, line 1842).
+
+The `MaxOrder` prologue says `astAddPixelMask<X>` sets MaxOrder to the smallest order whose cells are no larger than the pixels at the center of the mask.
+The `astAddPixelMask<X>` prologue says no larger than half the size of the pixels, which is what the code does: it takes the square root of a quarter of the pixel area.
+
+Consequence: documentation only.
+
+`Moc::max_order` says half the size of the pixel.
+A C fix: say "half the size" in the `MaxOrder` prologue.
+
+### The `astStcObsDataLocation` documentation describes the class as an StcResourceProfile
+
+C location: `stcobsdatalocation.c`, the `astStcObsDataLocation` prologue (Description, line 578).
+
+The constructor's Description says the class is used to describe the coverage of the datasets contained in some VO resource, the words of the `StcResourceProfile` prologue.
+The class prologue says it describes the coordinate space occupied by a particular observational dataset.
+
+Consequence: documentation only.
+
+`StcObsDataLocation` uses the class prologue's description.
+A C fix: use the class prologue's sentence in the constructor's Description.
 
 ## Addressed here, and not going upstream
 
