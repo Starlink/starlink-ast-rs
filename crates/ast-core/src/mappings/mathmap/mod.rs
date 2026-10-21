@@ -1161,15 +1161,15 @@ fn extract_variables(
         let lhs = fun.split('=').next().unwrap_or("");
         let error = if lhs.is_empty() {
             let msg = if fun.contains('=') {
-                format!("MathMap: no left hand side in expression: \"{fun}\"")
+                format!("no left hand side in expression: \"{fun}\"")
             } else {
-                "MathMap: transformation function contains no variable name".to_string()
+                "transformation function contains no variable name".to_string()
             };
             Some(AstError::new(ErrorCode::Misvn, msg))
         } else if token::parse_name(lhs, 0) != Some(lhs.len()) {
             Some(AstError::new(
                 ErrorCode::Varin,
-                format!("MathMap: variable name is invalid: \"{lhs}\""),
+                format!("variable name is invalid: \"{lhs}\""),
             ))
         } else {
             None
@@ -1189,10 +1189,7 @@ fn extract_variables(
             };
             return Err(AstError::new(
                 ErrorCode::Duvar,
-                format!(
-                    "MathMap: duplicate definition of variable name: \"{}\"",
-                    names[i1]
-                ),
+                format!("duplicate definition of variable name: \"{}\"", names[i1]),
             )
             .with_context(format!("Conflict between {} and {}.", label(i1), label(i2))));
         }
@@ -1213,7 +1210,7 @@ fn extract_expressions(funs: &[String], forward: bool) -> AstResult<Option<Vec<S
             Some((_, "")) => {
                 return Err(AstError::new(
                     ErrorCode::Norhs,
-                    format!("MathMap: missing right hand side in expression: \"{fun}\""),
+                    format!("missing right hand side in expression: \"{fun}\""),
                 )
                 .with_context(format!(
                     "Error in {dir} transformation function {}.",
@@ -1231,10 +1228,7 @@ fn extract_expressions(funs: &[String], forward: bool) -> AstResult<Option<Vec<S
         Some(_) if exprs.is_empty() => Ok(None),
         Some(iud) => Err(AstError::new(
             ErrorCode::Norhs,
-            format!(
-                "MathMap: missing right hand side in function: \"{}\"",
-                funs[iud]
-            ),
+            format!("missing right hand side in function: \"{}\"", funs[iud]),
         )
         .with_context(format!(
             "Error in {dir} transformation function {}.",
