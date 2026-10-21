@@ -68,17 +68,6 @@ impl CmpRegionBuilder {
         region2: impl Region + 'static,
         operator: CmpOperator,
     ) -> AstResult<Self> {
-        let n1 = region1.naxes();
-        let n2 = region2.naxes();
-        if n1 != n2 {
-            return Err(AstError::new(
-                ErrorCode::Naxin,
-                format!(
-                    "CmpRegion component regions have different numbers of axes ({} vs {})",
-                    n1, n2
-                ),
-            ));
-        }
         Ok(CmpRegionBuilder {
             region1: Box::new(region1),
             region2: Box::new(region2),
@@ -95,17 +84,6 @@ impl CmpRegionBuilder {
         region2: DynRegion,
         operator: CmpOperator,
     ) -> AstResult<Self> {
-        let n1 = region1.naxes();
-        let n2 = region2.naxes();
-        if n1 != n2 {
-            return Err(AstError::new(
-                ErrorCode::Naxin,
-                format!(
-                    "CmpRegion component regions have different numbers of axes ({} vs {})",
-                    n1, n2
-                ),
-            ));
-        }
         Ok(CmpRegionBuilder {
             region1,
             region2,

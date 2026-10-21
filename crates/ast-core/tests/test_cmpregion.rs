@@ -5,6 +5,7 @@
 
 use ast_core::constants::BAD_VALUE;
 use ast_core::coords::PointSet;
+use ast_core::error::ErrorCode;
 use ast_core::frames::{BasicFrameBuilder, Frame};
 use ast_core::mappings::Mapping;
 use ast_core::regions::{
@@ -58,6 +59,9 @@ fn construct_or_region() {
     assert_eq!(cmp.operator(), CmpOperator::Or);
 }
 
+/// Regions with different numbers of axes have no Mapping between their
+/// Frames, so building the CmpRegion fails with `Intrd`, the error
+/// `astCmpRegion` reports for a 2-D Circle and a 3-D Box (C-oracle probe).
 #[test]
 fn construct_mismatched_naxes_fails() {
     let frame2 = BasicFrameBuilder::new(2).build().unwrap();
@@ -74,8 +78,10 @@ fn construct_mismatched_naxes_fails() {
         .build()
         .unwrap();
 
-    let result = CmpRegionBuilder::new(c1, c2, CmpOperator::And);
-    assert!(result.is_err());
+    let err = CmpRegionBuilder::new(c1, c2, CmpOperator::And)
+        .and_then(|b| b.build())
+        .unwrap_err();
+    assert_eq!(err.code(), ErrorCode::Intrd);
 }
 
 // ---- AND (intersection) point tests ----
