@@ -8,8 +8,10 @@ use crate::error::AstResult;
 
 /// An ordered collection of [`FitsCard`]s with position-based iteration.
 ///
-/// CardList maintains a current position pointer that advances during
-/// search operations, mimicking the C library's "current card" semantics.
+/// A CardList has a current position, which identifies the current card and
+/// advances as cards are found and stored, as a
+/// [`FitsChan`](super::FitsChan)'s [Card](super::FitsChan::card) attribute
+/// does.
 #[derive(Debug, Clone)]
 pub struct CardList {
     cards: Vec<FitsCard>,
@@ -177,10 +179,13 @@ impl CardList {
     /// is appended.
     ///
     /// In both cases the position is left identifying the card *after* the one
-    /// stored, so a run of stores appends in call order. That is C's contract
-    /// for `astPutFits`/`astSetFits<X>`: "In either case, the Card attribute is
-    /// then incremented by one so that it subsequently identifies the card
-    /// following the one stored" (fitschan.c:25613).
+    /// stored, so a run of stores appends in call order, as
+    /// [`FitsChan::put_fits`](super::FitsChan::put_fits) and the
+    /// [`FitsChan`](super::FitsChan) `set_fits_*` methods leave the Card
+    /// attribute.
+    // C: the astPutFits / astSetFits<X> contract, "In either case, the Card
+    // attribute is then incremented by one so that it subsequently identifies
+    // the card following the one stored" (fitschan.c:25613).
     pub fn put(&mut self, card: FitsCard, overwrite: bool) {
         if overwrite {
             // Search for existing card with same keyword.
@@ -202,7 +207,8 @@ impl CardList {
     }
 
     /// Find the first card matching the given keyword (case-insensitive),
-    /// passing over cards a read has consumed, as C's `MoveCard` does.
+    /// passing over cards a read has consumed.
+    // C: consumed cards are passed over as fitschan.c `MoveCard` does.
     pub fn find(&self, keyword: &str) -> Option<&FitsCard> {
         self.cards
             .iter()
@@ -224,10 +230,11 @@ impl CardList {
         None
     }
 
-    /// Like [`Self::find_next`], but skips cards consumed by a read (mirrors C
-    /// `CARDUSED` / `ignore_used` in the public card-search path). Used by the
-    /// public `find_fits`; internal callers use [`Self::find_next`] so they still
-    /// see consumed cards (e.g. for write-position bookkeeping).
+    /// Like [`Self::find_next`], but skips cards consumed by a read.
+    ///
+    /// [`Self::find_next`] still sees consumed cards, which is what code that
+    /// tracks a position for writing needs.
+    // C: `CARDUSED` / `ignore_used` in the public card-search path.
     pub fn find_next_visible(&mut self, keyword: &str) -> Option<&FitsCard> {
         let start = self.position;
         for i in start..self.cards.len() {
@@ -249,9 +256,11 @@ impl CardList {
     }
 
     /// Get the floating-point value of the first card matching keyword,
-    /// converted as C's `CnvType` converts it, so that a logical, the real
-    /// part of a complex value and a string holding a number are accepted.
+    /// converted as [`FitsChan::get_fits_f`](super::FitsChan::get_fits_f)
+    /// converts it, so that a logical, the real part of a complex value and a
+    /// string holding a number are accepted.
     /// `None` when there is no such card or its value does not convert.
+    // C: fitschan.c `CnvType`.
     pub fn get_float(&self, keyword: &str) -> Option<f64> {
         let card = self.find(keyword)?;
         match super::card_value::cnv_type(
@@ -568,8 +577,8 @@ impl CardList {
 
     /// Set the current position, clamped to end-of-file.
     ///
-    /// Passing `usize::MAX` is the idiom for "end of file", mirroring C's
-    /// `astSetCard( this, INT_MAX )`.
+    /// Passing `usize::MAX` is the idiom for "end of file".
+    // C: as `astSetCard( this, INT_MAX )`.
     pub fn set_position(&mut self, pos: usize) {
         self.position = pos.min(self.cards.len());
     }
@@ -1022,9 +1031,12 @@ impl CardList {
 
     /// Parse multi-line FITS header text into a CardList.
     ///
-    /// Each line is parsed as a FITS card. Lines that fail to parse are
-    /// skipped with a warning (not an error), following the C library's
-    /// permissive behaviour.
+    /// Each line is parsed as a FITS card, and a line that fails to parse is
+    /// skipped without an error.
+    /// A card whose keyword name holds an illegal character is kept, and one
+    /// whose value has no recognizable type becomes a commentary card holding
+    /// the keyword; either is preceded by `ASTWARN` cards describing the
+    /// problem.
     pub fn from_header(text: &str) -> AstResult<Self> {
         Ok(Self::from_header_with_warnings(text)?.0)
     }

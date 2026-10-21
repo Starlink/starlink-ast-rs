@@ -1,5 +1,10 @@
-//! C's formatting of floating point values in FITS header cards:
-//! `EncodeFloat` and the `CheckZero` / `RoundFString` clean-up it applies.
+//! The formatting of floating point values in FITS header cards.
+//!
+//! A value is written to the requested number of significant digits, a zero
+//! loses any minus sign, and long runs of 0s and 9s are rounded out, as
+//! [`FitsChan`](super::FitsChan) writes it in a card.
+// C: fitschan.c `EncodeFloat`, with the `CheckZero` and `RoundFString`
+// clean-up it applies.
 
 use crate::frames::axis_format::sprintf_double;
 
@@ -11,10 +16,15 @@ pub(crate) const VALUE_WIDTH: usize = 20;
 /// `AST__FITSCHAN_FITSCARDLEN - col + 1`.
 pub(crate) const VALUE_MAXWIDTH: usize = 70;
 
-/// A floating point value as C's `EncodeFloat` formats it for the value of
-/// a header card (right-justified to column 30), with FitsDigits `digits`
-/// and FitsRounding `fitsrnd`, or `None` if it cannot be formatted in the
-/// card (an infinity or NaN, or a value too wide).
+/// A floating point value formatted for the value of a header card,
+/// right-justified to column 30.
+///
+/// `digits` is the number of significant digits, as the FitsDigits attribute
+/// gives it, and `fitsrnd` the number of leading digits protected from
+/// rounding, as the FitsRounding attribute gives it.
+/// Returns `None` if the value cannot be formatted in the card: an infinity,
+/// a NaN, or a value too wide.
+// C: fitschan.c `EncodeFloat`.
 pub fn encode_float(value: f64, digits: i32, fitsrnd: usize) -> Option<String> {
     encode_float_in(value, digits, VALUE_WIDTH, VALUE_MAXWIDTH, fitsrnd)
 }

@@ -96,11 +96,12 @@ const INT_DIG: usize = 10;
 /// A typed value from a FITS header card.
 #[derive(Debug, Clone, PartialEq)]
 pub enum FitsValue {
-    /// Integer value that C holds as an `int` (`AST__INT`).
+    /// Integer value of type [`CardType::Int`], one held as an `i32`.
     Int(i64),
-    /// Integer value that C holds as an `int64_t` (`AST__KINT`): one read
-    /// from a card with too many digits or too large a value for an `int`,
-    /// or stored by [`FitsChan::set_fits_k`](super::FitsChan::set_fits_k).
+    /// Integer value of type [`CardType::KInt`], one held as an `i64`: one
+    /// read from a card with too many digits or too large a value for an
+    /// `i32`, or stored by
+    /// [`FitsChan::set_fits_k`](super::FitsChan::set_fits_k).
     KInt(i64),
     /// Floating-point value.
     Float(f64),
@@ -334,7 +335,9 @@ pub struct FitsCard {
 }
 
 impl FitsCard {
-    /// The card's data type (C's `CardType`).
+    /// The card's data type, as the FitsChan
+    /// [CardType](super::FitsChan::card_type) attribute gives it for the
+    /// current card.
     pub fn card_type(&self) -> CardType {
         match self.value {
             FitsValue::Int(_) => CardType::Int,
@@ -380,11 +383,16 @@ impl FitsCard {
     /// Parse an 80-character FITS header card.
     ///
     /// If the input is shorter than 80 characters it is right-padded with spaces.
-    /// If longer, it is truncated to 80 characters. Non-printing trailing
-    /// characters (e.g. newlines) are stripped before padding. A value whose
-    /// type cannot be determined gives a commentary card holding just the
-    /// keyword, as the C library stores it. An `=` within the keyword name
-    /// is AST__BDFTS.
+    /// If longer, it is truncated to 80 characters.
+    /// Non-printing trailing characters (e.g. newlines) are stripped before
+    /// padding.
+    /// A value whose type cannot be determined gives a commentary card holding
+    /// just the keyword, which is how a [`FitsChan`](super::FitsChan) stores
+    /// such a card.
+    ///
+    /// # Errors
+    ///
+    /// [`ErrorCode::Bdfts`] if the keyword name holds an `=`.
     pub fn parse(card: &str) -> AstResult<Self> {
         Self::split(card).map(|(card, _)| card)
     }
@@ -497,18 +505,29 @@ impl FitsCard {
         ))
     }
 
-    /// Format the card back to an 80-character FITS header card string.
     /// Format this card as an 80-character FITS header string using a
     /// specific number of significant digits for float values, with the
     /// formatter's default sequence-rounding protection (`fitsrnd = 10`).
+    ///
+    /// # Errors
+    ///
+    /// [`ErrorCode::Bdfts`] if a string value cannot fit in the card, or a
+    /// floating point value cannot be formatted in it (see [`encode_float`]).
     pub fn format_with_digits(&self, digits: i32) -> AstResult<String> {
         self.format_internal(digits, 10)
     }
 
     /// Format this card with the given digit count and FitsRounding
-    /// protection. `fitsrnd` is the number of leading significant digits
-    /// the formatter protects from sequence-rounding (mirrors the C
-    /// library's `FitsRounding` attribute).
+    /// protection.
+    ///
+    /// `fitsrnd` is the number of leading significant digits the formatter
+    /// protects from sequence-rounding, as the FitsChan
+    /// [FitsRounding](super::FitsChan::fits_rounding) attribute gives it.
+    ///
+    /// # Errors
+    ///
+    /// [`ErrorCode::Bdfts`] if a string value cannot fit in the card, or a
+    /// floating point value cannot be formatted in it (see [`encode_float`]).
     pub fn format_with_digits_and_rounding(
         &self,
         digits: i32,
@@ -517,7 +536,12 @@ impl FitsCard {
         self.format_internal(digits, fitsrnd)
     }
 
-    /// Format this card as an 80-character FITS header string.
+    /// Format this card as an 80-character FITS header string, with 15
+    /// significant digits for a float value.
+    ///
+    /// # Errors
+    ///
+    /// As [`format_with_digits`](Self::format_with_digits).
     pub fn format(&self) -> AstResult<String> {
         self.format_internal(15, 10)
     }
