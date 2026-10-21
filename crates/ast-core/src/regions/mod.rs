@@ -593,17 +593,22 @@ pub trait Region: Frame + Mapping + AsDynRegion {
         self.set_adaptive_raw(true, false);
     }
 
-    /// Whether this region currently carries a *dummy* FrameSet, i.e. it
-    /// was deserialised without its own `Frm`/`FrmSet` and inherits the
-    /// frame of its container. Mirrors C `astRegDummyFS`
-    /// (`region.c:8874`). The parent compound loader must re-associate the
-    /// real frame via [`Region::set_region_fs`] before use.
+    /// Whether this Region carries a *dummy* FrameSet.
+    ///
+    /// A Region read from a dump without its own `Frm` or `FrmSet` inherits
+    /// the Frame of the Region that contains it, and holds a dummy FrameSet
+    /// until then.
+    /// The containing Region's reader must install the real Frame with
+    /// [`set_region_fs`](Region::set_region_fs) before the Region is used.
+    // C: region.c `astRegDummyFS` (region.c:8874).
     fn has_dummy_fs(&self) -> bool;
 
-    /// Replace this region's (dummy) FrameSet with a real one built from
-    /// `frame`, clearing the dummy-FS flag. Mirrors C `astSetRegFS`
-    /// (`region.c:10674`). Also re-associates a dummy-FS uncertainty
-    /// region with the same frame.
+    /// Replace this Region's FrameSet with one built from `frame`, so the
+    /// Region no longer carries a dummy FrameSet.
+    ///
+    /// An uncertainty Region that carries a dummy FrameSet is given the same
+    /// Frame.
+    // C: region.c `astSetRegFS` (region.c:10674).
     fn set_region_fs(&mut self, frame: &dyn Frame);
 
     // ------------------------------------------------------------------
@@ -646,19 +651,20 @@ pub trait Region: Frame + Mapping + AsDynRegion {
 
     /// Bounding box of this Region in its *base* Frame.
     ///
-    /// Mirrors C `astRegBaseBox` (region.c:7855). The Negated attribute is
-    /// ignored, and the bounds are un-mapped: the base→current Mapping is not
-    /// applied. Where the two Frames coincide this is the same box
+    /// The Negated attribute is ignored, and the bounds are not mapped: the
+    /// base→current Mapping is not applied.
+    /// Where the two Frames coincide this is the same box
     /// [`get_region_bounds`](Region::get_region_bounds) returns.
+    // C: region.c `astRegBaseBox` (region.c:7855).
     fn region_base_box(&self) -> AstResult<(Vec<f64>, Vec<f64>)>;
 
     /// Bounding box of the *un-negated* region in the base Frame, ignoring the
     /// Negated attribute of any component Regions.
     ///
-    /// Mirrors C `astRegBaseBox2` (region.c:7909). The base-class behaviour is
-    /// identical to [`region_base_box`](Region::region_base_box); only compound
-    /// classes (CmpRegion) override it so the un-negated assumption is
-    /// propagated to their components.
+    /// The default is [`region_base_box`](Region::region_base_box).
+    /// [`CmpRegion`] overrides it to take each of its component Regions
+    /// un-negated as well.
+    // C: region.c `astRegBaseBox2` (region.c:7909).
     fn reg_base_box2(&self) -> AstResult<(Vec<f64>, Vec<f64>)> {
         self.region_base_box()
     }
@@ -666,10 +672,11 @@ pub trait Region: Frame + Mapping + AsDynRegion {
     /// Bounding box of the un-negated region in the *current* Frame, ignoring
     /// the Negated attribute of any component Regions.
     ///
-    /// Mirrors C `astGetRegionBounds2` (region.c:9139): compute the base-Frame
-    /// box via [`reg_base_box2`](Region::reg_base_box2), then map it through the
-    /// simplified base→current Mapping (a `UnitMap` copies the bounds directly;
-    /// otherwise each output axis is bounded with `astMapBox`).
+    /// The base-Frame box from [`reg_base_box2`](Region::reg_base_box2) is
+    /// mapped through the simplified base→current Mapping.
+    /// A [`UnitMap`] leaves the bounds as they are; otherwise each output axis
+    /// is bounded with [`Mapping::map_box`].
+    // C: region.c `astGetRegionBounds2` (region.c:9139).
     fn get_region_bounds2(&self) -> AstResult<(Vec<f64>, Vec<f64>)> {
         let (lbndb, ubndb) = self.reg_base_box2()?;
         let fs = self.get_region_frameset();
@@ -1058,15 +1065,20 @@ pub trait Region: Frame + Mapping + AsDynRegion {
 
     /// Clear `RegionFS` on this Region and on every Region nested inside it.
     ///
-    /// C's Region `Copy` ends with `astClearRegionFS( out )`
-    /// (region.c:12936-12940), and each Region nested in the copy is itself a
-    /// copy, so the clear reaches all of them. A cleared `RegionFS` yields the
-    /// default of 1, so a deep copy always dumps its own Frame — which is what
-    /// restores the Frame on a component Region that had it suppressed.
+    /// `RegionFS` controls whether a Region's FrameSet is included when it is
+    /// dumped.
+    /// Cleared, it takes its default of true, so the Region dumps its own
+    /// Frame, which restores the Frame on a component Region that had it
+    /// suppressed.
+    /// [`copy_region`](Region::copy_region) calls this on the copy.
     ///
-    /// This deliberately is not part of [`Clone`]: the port also clones where C
-    /// takes a new reference with `astClone`, and those must leave `RegionFS`
-    /// alone. Compound classes override this to reach their component Regions.
+    /// [`Clone`] does not clear `RegionFS`.
+    /// Compound classes override this to reach their component Regions.
+    // C: the Region `Copy` ends with `astClearRegionFS( out )`
+    // (region.c:12936-12940), and each Region nested in the copy is itself a
+    // copy, so the clear reaches all of them. It is not part of `Clone`
+    // because the port also clones where C takes a new reference with
+    // `astClone`, and those must leave `RegionFS` alone.
     fn clear_region_fs_deep(&mut self) {
         self.clear_region_fs();
         if let Some(mut unc) = self.get_uncertainty() {
@@ -1075,13 +1087,18 @@ pub trait Region: Frame + Mapping + AsDynRegion {
         }
     }
 
-    /// A deep copy of this Region, as C's `astCopy` produces one.
+    /// A deep copy of this Region with `RegionFS` cleared throughout.
     ///
-    /// [`clone_region`](Region::clone_region) alone is the port of `astClone` —
-    /// a second reference to the same Region. `astCopy` differs in one
-    /// observable way: it clears `RegionFS` throughout the copy
-    /// (region.c:12936-12940), so use this wherever the C source says
+    /// It differs from a plain clone in one observable way: the copy, and
+    /// every Region nested in it, dumps its own FrameSet
+    /// (see [`clear_region_fs_deep`](Region::clear_region_fs_deep)).
+    ///
+    /// # See also
+    ///
     /// `astCopy`.
+    // C: `clone_region` alone stands for `astClone`, a second reference to
+    // the same Region; `astCopy` also clears RegionFS (region.c:12936-12940),
+    // so the port uses this wherever the C source says `astCopy`.
     fn copy_region(&self) -> DynRegion {
         let mut out = self.clone_region();
         out.clear_region_fs_deep();
@@ -1288,34 +1305,34 @@ pub trait Region: Frame + Mapping + AsDynRegion {
         Ok(Some(self.get_unc_frm(FrameRef::Current)?.copy_region()))
     }
 
-    /// Whether an explicit (non-default) uncertainty has been assigned.
+    /// Whether an uncertainty has been set on this Region.
     ///
-    /// Mirrors C `astTestUnc` (region.c): true iff a specific uncertainty
-    /// Region has been stored, false when the Region relies on its default
-    /// uncertainty ([`get_def_unc`](Region::get_def_unc)).
+    /// It is false when the Region relies on its default uncertainty
+    /// ([`get_def_unc`](Region::get_def_unc)).
+    // C: region.c `astTestUnc`.
     fn test_unc(&self) -> bool {
         self.get_uncertainty().is_some()
     }
 
-    /// The base-class default uncertainty: a Box covering `1.0E-6` of this
-    /// Region's base-Frame bounding box, centred on the box centre.
+    /// The default uncertainty most Regions use: a Box covering `1.0E-6` of
+    /// this Region's base-Frame bounding box, centered on the box center.
     ///
-    /// Mirrors C base `GetDefUnc` (region.c:3488). For each axis with finite
-    /// bounds the half-width is `|0.5E-6 * (ubnd - lbnd)|`, or `c * 0.5E-6`
-    /// (with `c` the axis centre) when that width is zero, or `0.5E-12` when
-    /// that is zero too — the absolute floor `astEQUAL` applies to values near
-    /// zero (region.c:3578). At zero there is no scale to be proportional to,
-    /// and a zero-width uncertainty makes a membership test at the Region's own
-    /// points fail. Axes with infinite bounds collapse to a zero-width `[0, 0]`
-    /// interval.
+    /// For each axis with finite bounds the half-width is
+    /// `|0.5E-6 * (ubnd - lbnd)|`, or `c * 0.5E-6` (with `c` the axis center)
+    /// when that width is zero, or `0.5E-12` when that is zero too.
+    /// At zero there is no scale to be proportional to, and a zero-width
+    /// uncertainty makes a membership test at the Region's own points fail.
+    /// Axes with infinite bounds collapse to a zero-width `[0, 0]` interval.
     ///
-    /// The bounding box is taken from [`reg_base_box2`](Region::reg_base_box2)
-    /// (not [`get_region_bounds`](Region::get_region_bounds)) because C uses
-    /// `astRegBaseBox2` here: for compound Regions the un-negated assumption
-    /// must be propagated to the component Regions.
+    /// The bounding box is taken from [`reg_base_box2`](Region::reg_base_box2),
+    /// not [`get_region_bounds`](Region::get_region_bounds), so that the
+    /// component Regions of a compound Region are taken un-negated too.
     ///
-    /// Classes that override [`get_def_unc`](Region::get_def_unc) call this to
-    /// reach the inherited (parent) behaviour when their bespoke rule defers.
+    /// Classes that override [`get_def_unc`](Region::get_def_unc) call this
+    /// when their own rule does not apply.
+    // C: region.c base `GetDefUnc` (region.c:3488), which bounds the box with
+    // `astRegBaseBox2`. The 0.5E-12 floor is the absolute one `astEQUAL`
+    // applies to values near zero (region.c:3578).
     fn default_bounding_box_unc(&self) -> AstResult<DynRegion> {
         let (mut lbnd, mut ubnd) = self.reg_base_box2()?;
         let nax = lbnd.len();
@@ -1348,10 +1365,11 @@ pub trait Region: Frame + Mapping + AsDynRegion {
     /// Return the default uncertainty Region for this Region, in its base
     /// Frame.
     ///
-    /// Mirrors C `astGetDefUnc` (region.c:3488). The base-class rule is the
-    /// bounding-box Box in [`default_bounding_box_unc`](Region::default_bounding_box_unc);
-    /// Interval, NullRegion, Prism, and CmpRegion override this with their own
-    /// C-defined defaults.
+    /// The default is the bounding-box Box of
+    /// [`default_bounding_box_unc`](Region::default_bounding_box_unc).
+    /// [`Interval`], [`NullRegion`], [`Prism`], [`CmpRegion`], [`Moc`] and
+    /// [`Stc`] override this with defaults of their own.
+    // C: region.c `astGetDefUnc` (region.c:3488).
     fn get_def_unc(&self) -> AstResult<DynRegion> {
         self.default_bounding_box_unc()
     }
@@ -1372,11 +1390,13 @@ pub trait Region: Frame + Mapping + AsDynRegion {
 
     /// Return the uncertainty Region for this Region in the requested Frame.
     ///
-    /// Mirrors C `astGetUncFrm` (region.c:3912): the explicit uncertainty if
-    /// one is set, otherwise the default ([`get_def_unc`](Region::get_def_unc)).
-    /// For [`FrameRef::Base`] the uncertainty (which is always defined in the
-    /// base Frame) is returned directly; for [`FrameRef::Current`] it is
-    /// mapped through the base→current Mapping unless that is a `UnitMap`.
+    /// This is the uncertainty that has been set, if there is one, and
+    /// otherwise the default ([`get_def_unc`](Region::get_def_unc)).
+    /// For [`FrameRef::Base`] the uncertainty, which is always defined in the
+    /// base Frame, is returned directly.
+    /// For [`FrameRef::Current`] it is mapped through the base→current Mapping
+    /// unless that is a [`UnitMap`].
+    // C: region.c `astGetUncFrm` (region.c:3912).
     fn get_unc_frm(&self, ifrm: FrameRef) -> AstResult<DynRegion> {
         let explicit = match self.explicit_unc() {
             // Work out the stored Region's bounds on the stored Region itself,
@@ -1424,23 +1444,29 @@ pub trait Region: Frame + Mapping + AsDynRegion {
     /// Frame) lies on this Region's boundary, to within the joint
     /// uncertainty of this Region and the supplied `unc`.
     ///
-    /// Mirrors C `astRegPins` (region.c:8879 abstract). The tolerance band on
-    /// each axis is half the total width of the two uncertainty bounding
-    /// boxes (this Region's uncertainty plus the supplied `unc`); with
-    /// `unc = None`, only this Region's own uncertainty contributes. A point
-    /// is "on the boundary" iff it lies inside a Region widened by that band
-    /// and outside a Region narrowed by it.
+    /// The tolerance band on each axis is half the total width of the two
+    /// uncertainty bounding boxes (this Region's uncertainty plus the supplied
+    /// `unc`); with `unc = None`, only this Region's own uncertainty
+    /// contributes.
+    /// A point is "on the boundary" if it lies inside a Region widened by
+    /// that band and outside a Region narrowed by it.
     ///
-    /// This is a *boundary* test, distinct from the interior membership test
-    /// in `RegionGeometry::reg_base_inside`.
-    /// The abstract default reports [`ErrorCode::Inter`]; every concrete class
-    /// used by Simplify/Overlap overrides it.
+    /// This is a *boundary* test, distinct from the test of whether a point
+    /// is inside the Region.
     ///
-    /// Returns the overall flag only. Callers needing the per-point boundary
-    /// mask (C `astRegPins`'s `int **mask` argument) call [`reg_pins_mask`]
-    /// directly. The default forwards to it and discards the mask.
+    /// Returns the overall flag only.
+    /// Callers needing the per-point boundary mask call [`reg_pins_mask`].
+    /// The default forwards to it and discards the mask.
+    ///
+    /// # Errors
+    ///
+    /// [`ErrorCode::Inter`] from a class that does not implement the test;
+    /// every class that simplification or overlap uses implements it.
     ///
     /// [`reg_pins_mask`]: Region::reg_pins_mask
+    // C: region.c `astRegPins` (region.c:8879, abstract). Its `int **mask`
+    // argument is `reg_pins_mask`. The interior test is
+    // `RegionGeometry::reg_base_inside`.
     fn reg_pins(&self, pts: &PointSet, unc: Option<&dyn Region>) -> AstResult<bool> {
         Ok(self.reg_pins_mask(pts, unc)?.0)
     }
@@ -1448,15 +1474,20 @@ pub trait Region: Frame + Mapping + AsDynRegion {
     /// Like [`reg_pins`](Region::reg_pins), but also returns the per-point
     /// boundary mask.
     ///
-    /// Mirrors the full C `astRegPins(this, pset, unc, int **mask)` signature:
-    /// the returned `bool` is non-zero iff *every* supplied point lies on this
-    /// Region's boundary, and `mask[i]` is `true` iff point `i` individually
-    /// lies on the boundary. `OverlapX` (region.c:6996) uses the mask to split
-    /// a mesh into on- and off-boundary sub-meshes, so the per-point flags must
-    /// be computed even when the overall flag is already known to be false.
+    /// The returned `bool` is true if *every* supplied point lies on this
+    /// Region's boundary, and `mask[i]` is true if point `i` lies on the
+    /// boundary.
+    /// [`overlap`](Region::overlap) uses the mask to split a mesh into on- and
+    /// off-boundary parts, so the per-point flags are computed even when the
+    /// overall flag is already known to be false.
     ///
-    /// The abstract default reports [`ErrorCode::Inter`]; every concrete class
-    /// used by Simplify/Overlap overrides it.
+    /// # Errors
+    ///
+    /// The default reports [`ErrorCode::Inter`]; every class that
+    /// simplification or overlap uses overrides it.
+    // C: the full `astRegPins(this, pset, unc, int **mask)` signature
+    // (region.c:8879); the mask is used by region.c `OverlapX`
+    // (region.c:6996).
     fn reg_pins_mask(
         &self,
         _pts: &PointSet,
@@ -1470,10 +1501,10 @@ pub trait Region: Frame + Mapping + AsDynRegion {
 
     /// Transform a single point between this Region's base and current Frames.
     ///
-    /// Faithful port of C `astRegTranPoint` (region.c:11788). When `forward` is
-    /// true the supplied point is in the base Frame and is transformed to the
-    /// current Frame; when false it is in the current Frame and is transformed
-    /// to the base Frame.
+    /// When `forward` is true the supplied point is in the base Frame and is
+    /// transformed to the current Frame; when false it is in the current Frame
+    /// and is transformed to the base Frame.
+    // C: region.c `astRegTranPoint` (region.c:11788).
     fn reg_tran_point(&self, point: &[f64], forward: bool) -> AstResult<Vec<f64>> {
         let fs = self.get_region_frameset();
         let map = if forward {
@@ -1488,19 +1519,22 @@ pub trait Region: Frame + Mapping + AsDynRegion {
 
     /// Shift the centre of this Region to the supplied position.
     ///
-    /// `cen` holds the new centre coordinates (length equal to the number of
-    /// axes in the base Frame when `ifrm` is [`FrameRef::Base`], or the current
-    /// Frame when [`FrameRef::Current`]); any
-    /// [`BAD_VALUE`](crate::constants::BAD_VALUE) component leaves the
-    /// corresponding centre axis unchanged. Mirrors the set-path of C
-    /// `astRegCentre` (region.c:8397 abstract): when `ifrm` is
-    /// [`FrameRef::Current`] the supplied point is first transformed into the
-    /// base Frame via the region's base→current Mapping.
+    /// `cen` holds the new center, with one value for each axis of the base
+    /// Frame when `ifrm` is [`FrameRef::Base`], or of the current Frame when it
+    /// is [`FrameRef::Current`].
+    /// A [`BAD_VALUE`](crate::constants::BAD_VALUE) value leaves that axis of
+    /// the center unchanged.
+    /// With [`FrameRef::Current`] the point is first transformed into the base
+    /// Frame by the Region's base→current Mapping.
     ///
-    /// The abstract default reports [`ErrorCode::Inter`], matching the C
-    /// behaviour of erroring when the set-path is invoked on a Region class
-    /// that has no centre. Only centro-symmetric classes (`Box`, `Circle`,
-    /// `Ellipse`, `Interval`-when-a-Box, `Prism`-of-such) override it.
+    /// # Errors
+    ///
+    /// The default reports [`ErrorCode::Inter`], for a Region class that has no
+    /// center.
+    /// Only centro-symmetric classes ([`BoxRegion`], [`Circle`], [`Ellipse`],
+    /// an [`Interval`] equivalent to a Box, and a [`Prism`] of such Regions)
+    /// override it.
+    // C: the set path of region.c `astRegCentre` (region.c:8397, abstract).
     fn reg_centre_set(&mut self, _cen: &[f64], _ifrm: FrameRef) -> AstResult<()> {
         Err(AstError::new(
             ErrorCode::Inter,
@@ -1510,20 +1544,21 @@ pub trait Region: Frame + Mapping + AsDynRegion {
 
     /// Return the centre of this Region, or `None` if the class has no centre.
     ///
-    /// Mirrors the *query* path of C `astRegCentre` (region.c:8397 abstract),
-    /// invoked with both `cen` and `ptr` NULL. The centre is returned in the
-    /// base Frame for [`FrameRef::Base`] and transformed through the
-    /// base→current Mapping for [`FrameRef::Current`]. Classes that are not
-    /// centro-symmetric — the same set that cannot serve as an uncertainty
-    /// Region (`PointList`, `Polygon`, `CmpRegion`, `NullRegion`) — return
-    /// `None`, matching the C base method which returns a NULL pointer without
-    /// error for the query path. `Box`, `Circle`, `Ellipse` always return a
-    /// centre; `Interval` only when it is effectively a `Box`; `Prism` only
-    /// when both component Regions are re-centreable.
+    /// The center is returned in the base Frame for [`FrameRef::Base`] and
+    /// transformed through the base→current Mapping for
+    /// [`FrameRef::Current`].
+    /// Classes that are not centro-symmetric, the same set that cannot serve
+    /// as an uncertainty Region ([`PointList`], [`Polygon`], [`CmpRegion`],
+    /// [`NullRegion`]), return `None`.
+    /// [`BoxRegion`], [`Circle`] and [`Ellipse`] always return a center, an
+    /// [`Interval`] only when it is equivalent to a Box, and a [`Prism`] only
+    /// when both its component Regions have one.
     ///
-    /// This is distinct from the geometric-centroid
-    /// `RegionGeometry::reg_centre`, which
-    /// always returns a value.
+    /// This is not the geometric centroid of the Region, which every Region
+    /// has.
+    // C: the query path of region.c `astRegCentre` (region.c:8397, abstract),
+    // called with both `cen` and `ptr` NULL; the base method returns NULL
+    // without error. The centroid is `RegionGeometry::reg_centre`.
     fn reg_centre_query(&self, _ifrm: FrameRef) -> AstResult<Option<Vec<f64>>> {
         Ok(None)
     }
@@ -1780,16 +1815,19 @@ pub trait Region: Frame + Mapping + AsDynRegion {
     /// Return a Region formed by picking selected *base* Frame axes from
     /// this Region, or `None` if no same-class sub-region can be formed.
     ///
-    /// `axes` holds zero-based base-Frame axis indices. Mirrors C
-    /// `astRegBasePick` (region.c:8277). The base implementation returns a
-    /// same-class copy only when *all* base-Frame axes are selected, possibly
-    /// in a permuted order; a strict subset yields `None`. Classes that can
-    /// slice their defining geometry per-axis (Box, Interval, PointList,
-    /// NullRegion) override this to support subset picks; the compound classes
-    /// (CmpRegion, Prism) override it to recurse into their components.
-    /// Classes whose geometry cannot be sliced axis-wise (Circle, Ellipse,
-    /// Polygon) inherit this default, so an all-axes permutation still
-    /// preserves the Region type.
+    /// `axes` holds zero-based base-Frame axis indices.
+    /// The default returns a same-class copy only when *all* base-Frame axes
+    /// are selected, possibly in a permuted order; a strict subset yields
+    /// `None`.
+    /// Classes that can slice their defining geometry per axis ([`BoxRegion`],
+    /// [`Interval`], [`PointList`], [`NullRegion`]) override this to support
+    /// subset picks, and the compound classes ([`CmpRegion`], [`Prism`])
+    /// override it to recurse into their components.
+    /// An [`Stc`] picks from the Region it encapsulates.
+    /// Classes whose geometry cannot be sliced axis by axis ([`Circle`],
+    /// [`Ellipse`], [`Polygon`]) use the default, so an all-axes permutation
+    /// still preserves the Region type.
+    // C: region.c `astRegBasePick` (region.c:8277).
     fn reg_base_pick_axes(&self, axes: &[usize]) -> AstResult<Option<DynRegion>> {
         // Port of the base astRegBasePick (region.c:8277). We only proceed if
         // every base-Frame axis is selected exactly once (a genuine
@@ -1836,10 +1874,8 @@ pub trait Region: Frame + Mapping + AsDynRegion {
 
     /// Simplify the encapsulated FrameSet and any explicit uncertainty Region.
     ///
-    /// Faithful port of the parent `Region::Simplify` (region.c:11042). Each
-    /// concrete Region's [`simplified`](Mapping::simplified) invokes this first
-    /// (matching C, where every subclass `Simplify` calls `(*parent_simplify)`),
-    /// then continues re-fitting from the returned Region.
+    /// Each Region class's [`simplified`](Mapping::simplified) calls this
+    /// first, then goes on from the Region it returns.
     ///
     /// Returns `Some(new)` when either the FrameSet or the uncertainty was
     /// simplified, and `None` when nothing changed (the caller should keep the
@@ -1849,9 +1885,11 @@ pub trait Region: Frame + Mapping + AsDynRegion {
     ///
     /// The uncertainty is simplified only if its simplified form is *stable*
     /// across the extent of this Region: the simplified uncertainty is
-    /// re-centred at opposite corners of a test box (this Region's base
+    /// re-centered at opposite corners of a test box (this Region's base
     /// bounding box when bounded, else a box 100× the uncertainty size) and its
     /// per-axis bounding-box widths must agree to within 0.5% of their sum.
+    // C: region.c `Simplify` (region.c:11042), which every subclass
+    // `Simplify` calls through `(*parent_simplify)` before its own work.
     fn parent_region_simplify(&self) -> AstResult<Option<DynRegion>> {
         // Deep-copy the supplied Region so the result differs from the input
         // when simplification occurs (region.c:11131).
@@ -1972,14 +2010,16 @@ pub trait Region: Frame + Mapping + AsDynRegion {
 
     /// Copy selected properties from `that` onto this Region.
     ///
-    /// Faithful port of C `astRegOverlay` (region.c:9861): copies Negated,
-    /// Closed, RegionFS, and Adaptive; when the axis counts match, copies
-    /// MeshSize/FillFactor only where `that` has an explicit value, otherwise
-    /// clears both. When `clear_unc` is true and `that` has no *explicit*
-    /// uncertainty ([`test_unc`](Region::test_unc) false), this Region's
-    /// uncertainty is cleared — mirroring the C `if( unc && !astTestUnc(that) )
-    /// astClearUnc(this)` branch, which is how a simplified Region built from a
-    /// default-uncertainty source ends up carrying no explicit uncertainty.
+    /// Negated, Closed, RegionFS and Adaptive are copied, each with whether it
+    /// is set.
+    /// When the axis counts match, MeshSize and FillFactor are copied where
+    /// `that` has them set; otherwise both are cleared.
+    /// When `clear_unc` is true and `that` has no uncertainty set
+    /// ([`test_unc`](Region::test_unc) false), this Region's uncertainty is
+    /// cleared, so a simplified Region built from one that used its default
+    /// uncertainty has no uncertainty set either.
+    // C: region.c `astRegOverlay` (region.c:9861); `clear_unc` is its
+    // `if( unc && !astTestUnc(that) ) astClearUnc(this)` branch.
     fn reg_overlay(&mut self, that: &dyn Region, clear_unc: bool) -> AstResult<()> {
         // C `astRegOverlay` copies `negated`, `closed`, `regionfs` and
         // `adaptive` as raw field assignments, propagating the `-INT_MAX`
@@ -2008,11 +2048,12 @@ pub trait Region: Frame + Mapping + AsDynRegion {
         Ok(())
     }
 
-    /// Permute the axes of this region's current Frame, updating the
-    /// encapsulated FrameSet and defining points to preserve the region
-    /// integrity invariant. Mirrors C `astPermAxes` applied to a Region.
+    /// Permute the axes of this Region's current Frame, updating the
+    /// encapsulated FrameSet and defining points so the Region still covers
+    /// the same area.
     ///
     /// `perm` holds zero-based target indices, one per current axis.
+    // C: `astPermAxes` applied to a Region.
     fn reg_perm_axes(&mut self, perm: &[usize]) -> AstResult<()>;
 
     // ------------------------------------------------------------------
@@ -2159,9 +2200,8 @@ where
 
 /// Result of picking axes from a Region: either a same-class sub-Region
 /// (when the current→base Mapping splits cleanly) or a plain Frame.
-///
-/// Mirrors the dual return of C `region.c::PickAxes` (region.c:7579), which
-/// returns a Frame that `astIsARegion` may or may not accept.
+// C: the two kinds of Frame region.c `PickAxes` (region.c:7579) can return,
+// told apart by `astIsARegion`.
 pub enum PickedAxes {
     /// A Region spanning the selected axes.
     Region(DynRegion),
@@ -2173,8 +2213,7 @@ pub enum PickedAxes {
 /// [`PickedAxes::Region`] when the current→base Mapping splits cleanly on the
 /// selected axes and the region's class can form a base sub-region, else a
 /// [`PickedAxes::Frame`].
-///
-/// Faithful port of C `region.c::PickAxes` (region.c:7579).
+// C: region.c `PickAxes` (region.c:7579).
 pub fn pick_axes_region(region: &dyn Region, axes: &[usize]) -> AstResult<PickedAxes> {
     use crate::frames::FrameRef;
 

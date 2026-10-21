@@ -383,7 +383,7 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
     (
         "test_c_docs_audit.rs",
         "C_CITATIONS_UNCLEANED",
-        9,
+        8,
         "modules whose rendered docs still cite C source; each subsystem's review \
          task in the C documentation audit removes its modules, and a companion test \
          fails when a listed module is clean",
