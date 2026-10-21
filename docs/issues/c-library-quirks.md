@@ -84,7 +84,10 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [The `Encoding` documentation lists the default choices in another order than the code](#the-encoding-documentation-lists-the-default-choices-in-another-order-than-the-code)
 - [The `Warnings` documentation says it does not affect the warnings stored in the Channel](#the-warnings-documentation-says-it-does-not-affect-the-warnings-stored-in-the-channel)
 - [The `Card` documentation implies 1 for an empty FitsChan](#the-card-documentation-implies-1-for-an-empty-fitschan)
+- [The `astFindFits` documentation says a template of 8 spaces matches a blank keyword](#the-astfindfits-documentation-says-a-template-of-8-spaces-matches-a-blank-keyword)
+- [The `astGetFits<X>` documentation says a keyword name that does not conform to FITS is an error](#the-astgetfitsx-documentation-says-a-keyword-name-that-does-not-conform-to-fits-is-an-error)
 - [The `FitsAxisOrder` documentation gives its purpose as "Frame title"](#the-fitsaxisorder-documentation-gives-its-purpose-as-frame-title)
+- [The `astTableSource` documentation gets the table source function's failure signal wrong](#the-asttablesource-documentation-gets-the-table-source-functions-failure-signal-wrong)
 
 ### [Addressed here, and not going upstream](#addressed-here-and-not-going-upstream)
 
@@ -1258,6 +1261,31 @@ Consequence: documentation only.
 `FitsChan::card` gives 0 for an empty FitsChan, as the code does, and says so.
 A C fix: say that Card is zero when the FitsChan is empty.
 
+### The `astFindFits` documentation says a template of 8 spaces matches a blank keyword
+
+C location: `fitschan.c`, the `astFindFits` prologue (Keyword Templates, line 14939), and `FindFits` (lines 14976 to 14977).
+
+The prologue says a template of 8 spaces matches a blank keyword, and only a blank keyword.
+`FindFits` removes the template's trailing spaces before matching, leaving an empty template, which matches no keyword; a C-oracle probe finds no card in a FitsChan holding a blank-keyword card and leaves it at end-of-file.
+
+Consequence: documentation only; `%f` finds a blank keyword, along with every other.
+
+`FitsChan::find_fits` says a blank template matches no keyword, as the code does.
+A C fix: drop the sentence, or keep a blank template as a blank keyword in `FindFits`.
+
+### The `astGetFits<X>` documentation says a keyword name that does not conform to FITS is an error
+
+C location: `fitschan.c`, the `astGetFits<X>`, `astSetFits<X>`, `astSetFitsU` and `astTestFits` prologues (Notes), and `CheckFitsName` (lines 6080 to 6215).
+
+Each Notes section says an error is reported if the keyword name does not conform to FITS requirements.
+`CheckFitsName`, which `Split` calls on the name, reports an error only for an equals sign in the name (or a name of more than 8 characters, which `Split` never passes it); any other illegal character gives a `BadKeyName` warning, and the call goes on.
+A C-oracle probe: `astGetFitsI( fc, "BAD!KEY", &ival )` returns 1 and the value, with the status still good.
+
+Consequence: documentation only.
+
+The `get_fits_*` and `set_fits_*` methods, `set_fits_u` and `test_fits` say that an `=` in the name is AST__BDFTS and an illegal character gives a `BadKeyName` warning.
+A C fix: say that an error is reported for an equals sign in the keyword name, and a warning for other illegal characters.
+
 ### The `FitsAxisOrder` documentation gives its purpose as "Frame title"
 
 C location: `fitschan.c`, the `FitsAxisOrder` prologue (Purpose, line 43398).
@@ -1268,6 +1296,20 @@ Consequence: documentation only.
 
 `FitsChan::fits_axis_order` describes the attribute from the Description.
 A C fix: "Sets the order of WCS axes within new FITS-WCS headers.", the wording of the class prologue's attribute list.
+
+### The `astTableSource` documentation gets the table source function's failure signal wrong
+
+C location: `fitschan.c`, the `astTableSource` prologue (Parameters, lines 33842 to 33869), and the `astPutTable` and `astPutTables` prologues (Description, lines 25859 and 25938).
+
+The `tabsource` parameter says the function takes five arguments, the fifth a pointer to the status, and then that on failure it should return zero for "the final (third) argument", and any non-zero integer otherwise.
+The final argument is the fifth, and it is the inherited status, whose convention is the reverse: `GetNamedTable` calls the function and then looks for the table, reporting AST__NOTAB if it is not there, so a function that followed the C edition and set the status non-zero on success would make `astRead` fail.
+The Fortran edition says non-zero on failure, which agrees with the status convention.
+The `astPutTable` and `astPutTables` prologues call the function `astTablesSource`.
+
+Consequence: documentation only, but a C caller who follows it makes every read fail.
+
+`TableSource::read_table` returns the table, `None` when it cannot be read, or an error, so there is no status to set.
+A C fix: say "the final (fifth)" argument and "a non-zero error status on failure", as the Fortran edition does, and spell `astTableSource` in the other two prologues.
 
 ## Addressed here, and not going upstream
 

@@ -98,9 +98,15 @@ fn chr_len(s: &[u8]) -> usize {
 }
 
 impl FitsChan {
-    /// Read cards from `source` the first time the FitsChan is used, as C's
-    /// `astFitsChan` does with its source function. The cards are appended
-    /// and the first of them made current.
+    /// Read cards from `source` the first time the FitsChan is used.
+    ///
+    /// `source` gives one card per line, such as the cards of a FITS file,
+    /// and `None` when there are no more.
+    /// The source is read by the first method that uses the cards, not by
+    /// this one: the cards are then appended, and the first of them made
+    /// current.
+    /// [`read_fits`](Self::read_fits) reads it again.
+    /// Without a source the FitsChan holds only the cards put in it.
     pub fn set_source(&mut self, source: Box<dyn Source>) {
         *self.source.0.get_mut() = SourceState {
             source: Some(source),
@@ -109,8 +115,15 @@ impl FitsChan {
     }
 
     /// Write the cards to `sink` when the FitsChan is dropped, or by
-    /// [`write_fits`](Self::write_fits), as C's `astFitsChan` does with its
-    /// sink function. The `SinkFile` attribute, when set, takes its place.
+    /// [`write_fits`](Self::write_fits).
+    ///
+    /// Each card a read has not consumed is given to the sink as one line.
+    /// No `END` card is added: if the header needs one, write it after the
+    /// FitsChan is dropped, unless the FitsChan holds one.
+    /// The [SinkFile](Self::sink_file) attribute, when set, takes the sink's
+    /// place.
+    /// Without a sink or SinkFile, the cards are lost when the FitsChan is
+    /// dropped.
     pub fn set_sink(&mut self, sink: Box<dyn Sink>) {
         self.sink = NotCopied(Some(sink));
     }
@@ -166,10 +179,21 @@ impl FitsChan {
         copy
     }
 
-    /// Read the source again, appending any cards it now gives and making
-    /// the first of them current (C's `astReadFits`). The source is read
-    /// anyway on first use, so this is needed only for a source whose cards
-    /// arrive later.
+    /// Read the [source](Self::set_source) again, appending any cards it now
+    /// gives and making the first of them current.
+    ///
+    /// The source is read anyway on first use, so this is needed only to
+    /// read cards that have reached it since, such as cards newly added to
+    /// an external store.
+    /// Without a source this does nothing.
+    /// The [SourceFile](Self::source_file) is not read again; cards are read
+    /// from it whenever it is set.
+    ///
+    /// # Errors
+    ///
+    /// Passes on the error of storing a card from the source, as for
+    /// [`put_fits`](Self::put_fits).
+    #[doc(alias = "astReadFits")]
     pub fn read_fits(&mut self) -> AstResult<()> {
         // Cards a clone read are those C stored before this call.
         if self.source.0.get_mut().pending.is_some() {
@@ -182,9 +206,22 @@ impl FitsChan {
         self.read_from_source()
     }
 
-    /// Write the cards to the sink, or the `SinkFile`, then delete them
-    /// (C's `astWriteFits`). Unlike a drop, this reports a failure to
-    /// open the `SinkFile`.
+    /// Write the cards to the [SinkFile](Self::sink_file), if set, or else
+    /// to the [sink](Self::set_sink), then delete every card.
+    ///
+    /// With neither a SinkFile nor a sink, this only empties the FitsChan,
+    /// as [`empty_fits`](Self::empty_fits) does.
+    /// Unlike a drop, this reports a failure.
+    ///
+    /// # Errors
+    ///
+    /// - [`ErrorCode::Wrerr`] if the SinkFile cannot be created.
+    /// - [`ErrorCode::Bdfts`] if a card cannot be formatted, as for
+    ///   [`to_header`](Self::to_header).
+    /// - As for [`card`](Self::card).
+    ///
+    /// The cards are deleted even when writing them fails.
+    #[doc(alias = "astWriteFits")]
     pub fn write_fits(&mut self) -> AstResult<()> {
         self.read_from_source()?;
         let written = self.write_to_sink();
@@ -192,8 +229,17 @@ impl FitsChan {
         written
     }
 
-    /// Print each card a read has not consumed to standard output, leaving
-    /// the current card as it was (C's `astShowFits`).
+    /// Print each card a read has not consumed to standard output, one per
+    /// line, leaving the current card as it was.
+    ///
+    /// The cards are formatted as by [`find_fits`](Self::find_fits).
+    ///
+    /// # Errors
+    ///
+    /// - [`ErrorCode::Bdfts`] if a card cannot be formatted, as for
+    ///   [`to_header`](Self::to_header); nothing is printed.
+    /// - As for [`card`](Self::card).
+    #[doc(alias = "astShowFits")]
     pub fn show_fits(&mut self) -> AstResult<()> {
         self.read_from_source()?;
         let stdout = io::stdout();
@@ -257,10 +303,18 @@ impl FitsChan {
     }
 
     /// Set `SourceFile`, and append the cards in the file, one per line,
-    /// leaving the FitsChan at end-of-file (C's FitsChan `SetSourceFile`).
-    /// A line longer than a card is read as several cards, as C's `fgets`
-    /// reads it. A file that cannot be opened is AST__RDERR, and the
-    /// attribute is set anyway.
+    /// leaving the FitsChan at end-of-file.
+    ///
+    /// A line longer than a card is read as several cards.
+    ///
+    /// # Errors
+    ///
+    /// - [`ErrorCode::Rderr`] if the file cannot be opened; the attribute is
+    ///   set anyway.
+    /// - Passes on the error of storing a card, as for
+    ///   [`put_fits`](Self::put_fits).
+    // C: FitsChan's `SetSourceFile`; a long line is split as `fgets` splits
+    // it.
     pub fn set_source_file(&mut self, source_file: &str) -> AstResult<()> {
         self.source_file = NotCopied(Some(source_file.to_string()));
         let file = File::open(source_file).map_err(|e| {
@@ -318,8 +372,10 @@ impl FitsChan {
 }
 
 impl Drop for FitsChan {
-    /// C's FitsChan `Delete`: write the cards to the `SinkFile` or sink. A
-    /// failure cannot be reported here; [`FitsChan::write_fits`] reports it.
+    /// Write the cards to the SinkFile, if set, or else the sink.
+    /// A failure cannot be reported here; [`FitsChan::write_fits`] reports
+    /// it.
+    // C: FitsChan's `Delete`.
     fn drop(&mut self) {
         let _ = self.write_to_sink();
     }

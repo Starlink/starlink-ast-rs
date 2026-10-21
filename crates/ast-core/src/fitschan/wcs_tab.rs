@@ -23,15 +23,29 @@ use crate::serial::AnyObject;
 const METHOD: &str = "astRead";
 const CLASS: &str = "FitsChan";
 
-/// A source of the FITS binary tables a `-TAB` header refers to (C's
-/// `astTableSource`).
+/// A source of the FITS binary tables a `-TAB` header refers to, which
+/// [`FitsChan::set_table_source`](super::FitsChan::set_table_source)
+/// registers.
 ///
 /// [`read_table`](TableSource::read_table) is called with the extension
 /// name (`EXTNAME`), version (`EXTVER`) and level (`EXTLEVEL`) of a table
-/// the read needs, and returns the table, or `None` when it cannot be read.
+/// the read needs.
+/// It should read the whole binary table, headers and data, from that
+/// extension of the external FITS file, and return it as a
+/// [`FitsTable`], or `None` when it cannot be read.
 /// Any closure of that signature is a `TableSource`.
+///
+/// # See also
+///
+/// The table source function `astTableSource` registers, which stores the
+/// table it reads with `astPutTable` and reports failure through its status
+/// argument, where a `TableSource` returns the table.
 pub trait TableSource: Send {
     /// The table in the named extension, or `None` if it cannot be read.
+    ///
+    /// # Errors
+    ///
+    /// An error returned here ends the read and is passed on by it.
     fn read_table(
         &mut self,
         extname: &str,

@@ -373,11 +373,76 @@ impl Encoding {
 /// fixtures use `FitsDigits=8` for the FITS encodings).
 const DEFAULT_FITS_DIGITS: i32 = 17;
 
-/// A channel that reads and writes AST objects via FITS header cards.
+/// A [`Channel`] that represents AST objects as FITS header cards.
 ///
-/// FitsChan stores a list of FITS header cards and can encode/decode AST
-/// objects in various formats. The Native encoding stores AST objects as
-/// COMMENT cards with special markers.
+/// A FitsChan holds a list of 80-character FITS header cards.
+/// Writing an object to it with [`Channel::write`] adds a description of
+/// the object made of header cards, if the object can be described, and
+/// reading from it with [`Channel::read`] makes a new object from such a
+/// description.
+///
+/// # The cards
+///
+/// Any sequence of cards may be held.
+/// An `END` card is not needed: [`from_header`](Self::from_header) and
+/// [`put_cards`](Self::put_cards) keep one they are given as an ordinary
+/// commentary card, and [`to_header`](Self::to_header) adds one only when
+/// there is none.
+/// The [Card](Self::card) attribute picks out a current card, to which
+/// most operations apply, so the cards can be visited in any order:
+/// [`find_fits`](Self::find_fits) searches for a keyword,
+/// [`put_fits`](Self::put_fits), [`put_cards`](Self::put_cards) and the
+/// `set_fits_*` methods add or replace cards, the `get_fits_*` methods
+/// return values, and [`del_fits`](Self::del_fits) deletes the current
+/// card.
+///
+/// A [source](Self::set_source) fills the FitsChan with cards the first
+/// time it is used; without one, it is empty until cards are put in it, by
+/// the methods above, by a write, or by setting the
+/// [SourceFile](Self::set_source_file) attribute to read them from a text
+/// file.
+/// When the FitsChan is dropped, the cards in it are written to the file
+/// named by [SinkFile](Self::sink_file), if set, or else to the
+/// [sink](Self::set_sink); with neither, they are lost, so take a copy
+/// first if they are needed (with [`to_header`](Self::to_header), for
+/// instance).
+/// No `END` card is written to a sink unless one is held.
+///
+/// # Encodings
+///
+/// There are several conventions, or encodings, for describing coordinate
+/// systems with FITS header cards.
+/// The [Encoding](Self::encoding) attribute chooses the one a read or write
+/// uses, and by default it is chosen from the cards already present.
+/// The encodings differ in the objects they can describe, in how many
+/// descriptions one FitsChan can hold, and in which other software can read
+/// them; [`Encoding`] describes each.
+///
+/// Reading is destructive: the cards that describe the object read are
+/// removed from the FitsChan, though [`retain_fits`](Self::retain_fits)
+/// keeps a card from being removed.
+/// A read that fails leaves the cards as they were, unless
+/// [Clean](Self::clean) is set.
+/// An encoding that holds a single description (all but `NATIVE`) has a
+/// write replace any description already there; with `NATIVE`, descriptions
+/// are written one after another and are read back in the same order.
+///
+/// # Attributes
+///
+/// Besides those of every [`Channel`], a FitsChan has the attributes
+/// [AllWarnings](Self::all_warning_conditions),
+/// [AltAxes](Self::alt_axes), [Card](Self::card),
+/// [CardComm](Self::card_comm), [CardName](Self::card_name),
+/// [CardType](Self::card_type), [CarLin](Self::car_lin),
+/// [CDMatrix](Self::cd_matrix), [Clean](Self::clean),
+/// [DefB1950](Self::def_b1950), [Encoding](Self::encoding),
+/// [FitsAxisOrder](Self::fits_axis_order), [FitsDigits](Self::fits_digits),
+/// [FitsRounding](Self::fits_rounding), [FitsTol](Self::fits_tol),
+/// [ForceTab](Self::force_tab), [IgnoreBadAlt](Self::ignore_bad_alt),
+/// [Iwc](Self::iwc), [Ncard](Self::ncard), [Nkey](Self::nkey),
+/// [PolyTan](Self::poly_tan), [SipOK](Self::sip_ok),
+/// [SipReplace](Self::sip_replace), [TabOK](Self::tab_ok) and
+/// [Warnings](Self::warning_conditions).
 ///
 /// # Example
 ///
@@ -465,11 +530,14 @@ pub struct FitsChan {
 }
 
 impl FitsChan {
-    /// Create an empty FitsChan with no explicit encoding.
+    /// Create an empty FitsChan, with no attribute set.
     ///
-    /// The encoding is left unset — [`FitsChan::encoding`] returns the
-    /// auto-detected encoding (default `FitsWcs` for an empty chan).
-    /// Mirrors C `astFitsChan(...)` followed by `astTestEncoding == 0`.
+    /// Attributes are set with their setters, a source of cards with
+    /// [`set_source`](Self::set_source) and a sink for them with
+    /// [`set_sink`](Self::set_sink).
+    /// With the [Encoding](Self::encoding) unset, the encoding is chosen
+    /// from the cards when it is needed: `NATIVE` while there are none.
+    #[doc(alias = "astFitsChan")]
     pub fn new() -> Self {
         Self {
             config: ChannelConfig::fitschan(),
@@ -508,10 +576,13 @@ impl FitsChan {
 
     /// Create a FitsChan from FITS header text, with the first card current.
     ///
-    /// The text is split into lines and each is parsed as a FITS card. An
-    /// `END` card has no `=` in column 9, so it is stored as an ordinary
+    /// The text is split into lines and each is parsed as a FITS card.
+    /// An `END` card has no `=` in column 9, so it is stored as an ordinary
     /// commentary card, just like `HISTORY`, `COMMENT` or a blank keyword.
-    /// Unparseable lines are silently ignored.
+    /// A line that cannot be read as a card, one with an `=` in its first 8
+    /// characters, is left out, so this does not fail.
+    /// The warnings for illegal keyword names and values are stored as
+    /// [`put_fits`](Self::put_fits) stores them.
     pub fn from_header(text: &str) -> AstResult<Self> {
         let (mut cards, warnings) = CardList::from_header_with_warnings(text)?;
         cards.clear_card();
@@ -738,18 +809,44 @@ impl FitsChan {
         Ok((keyword, comment))
     }
 
-    /// Mark the current card to be kept when a read would otherwise consume
-    /// it (C's `astRetainFits`). Does nothing at end-of-file.
+    /// Mark the current card to be kept when a read would otherwise remove
+    /// it.
+    ///
+    /// A successful read removes the cards it used to make the object it
+    /// returns, unless they are marked by this method; cards it did not use
+    /// are kept whether marked or not.
+    /// The current card is not changed, and at end-of-file this does
+    /// nothing.
+    ///
+    /// # Errors
+    ///
+    /// As for [`card`](Self::card).
+    #[doc(alias = "astRetainFits")]
     pub fn retain_fits(&mut self) -> AstResult<()> {
         self.read_from_source()?;
         self.cards.protect_current();
         Ok(())
     }
 
-    /// Whether keyword `name`, or the current card when `name` is `None`, is
-    /// present (C's `astTestFits`): `None` if not, otherwise whether it has a
-    /// value. The card is searched for as by [`get_fits_f`](Self::get_fits_f),
-    /// and the current card is left as it was.
+    /// Whether keyword `name` has a value: `None` if the keyword is not
+    /// present, `Some(false)` if it is present with no value, and
+    /// `Some(true)` if it has a value.
+    ///
+    /// With `name` `None`, the current card is tested, and at end-of-file
+    /// the result is `None`.
+    /// A commentary card counts as having a value.
+    /// `name` is read as for [`get_fits_f`](Self::get_fits_f), and the card
+    /// is searched for in the same way, but the current card is left as it
+    /// was.
+    ///
+    /// # Errors
+    ///
+    /// - [`ErrorCode::Bdfts`] if `name` has an `=` within its first 8
+    ///   characters.
+    /// - [`ErrorCode::Bdfmt`] if `name` holds an illegal field specifier
+    ///   (see [`find_fits`](Self::find_fits)).
+    /// - As for [`card`](Self::card).
+    #[doc(alias = "astTestFits")]
     pub fn test_fits(&mut self, name: Option<&str>) -> AstResult<Option<bool>> {
         self.read_from_source()?;
         let lname = match name {
@@ -774,10 +871,19 @@ impl FitsChan {
         result
     }
 
-    /// Delete the WCS a read can find, and every WCS-related card left over
-    /// (C's `astPurgeWCS`): every object is read with Clean set, discarding
-    /// it, then each remaining card whose keyword is a WCS keyword is marked
-    /// as used, which hides it. The first card is then current.
+    /// Delete every card that describes WCS information in any of the
+    /// encodings.
+    ///
+    /// Each object a read can find is read with [Clean](Self::clean) set and
+    /// discarded, which removes the cards it used even when the read fails,
+    /// and then every remaining card whose keyword is a WCS keyword is
+    /// removed as a read removes it.
+    /// The first remaining card is then current.
+    ///
+    /// # Errors
+    ///
+    /// As for [`card`](Self::card); a read that fails is not an error.
+    #[doc(alias = "astPurgeWCS")]
     pub fn purge_wcs(&mut self) -> AstResult<()> {
         self.read_from_source()?;
         let old = self.clean;
@@ -792,12 +898,29 @@ impl FitsChan {
         Ok(())
     }
 
-    /// Store a FITS header card (C's `astPutFits`).
+    /// Store a FITS header card.
     ///
     /// The card is inserted in front of the current card, or, with
-    /// `overwrite`, replaces it; either way the card after it becomes
-    /// current. At end-of-file the card is appended. A blank comment, when
-    /// overwriting, keeps the comment of the card replaced.
+    /// `overwrite`, replaces it; either way the card after the one stored
+    /// becomes current.
+    /// At end-of-file the card is appended.
+    /// Only the first 80 characters of `card` are used, and trailing
+    /// newlines and other non-printing characters are ignored.
+    /// A blank comment, when overwriting, keeps the comment of the card
+    /// replaced.
+    ///
+    /// A keyword name with an illegal character, or a value whose type
+    /// cannot be determined, is stored with a `BadKeyName` or `BadKeyValue`
+    /// warning (see [Warnings](Self::warning_conditions)); a value whose
+    /// type cannot be determined gives a commentary card holding just the
+    /// keyword.
+    ///
+    /// # Errors
+    ///
+    /// - [`ErrorCode::Bdfts`] if `card` has an `=` within its first 8
+    ///   characters, in the keyword name.
+    /// - As for [`card`](Self::card).
+    #[doc(alias = "astPutFits")]
     pub fn put_fits(&mut self, card: &str, overwrite: bool) -> AstResult<()> {
         self.read_from_source()?;
         let (parsed, bad_value) = FitsCard::split(card)?;
@@ -819,10 +942,21 @@ impl FitsChan {
         Ok(())
     }
 
-    /// Replace every card with `cards`, a string holding header cards of 80
-    /// characters each with no separators (the last may be shorter), and
-    /// make the first card current (C's `astPutCards`). Storing stops at the
-    /// first card that cannot be read, whose error is returned.
+    /// Replace every card with `cards`, and rewind.
+    ///
+    /// `cards` holds the header cards concatenated, 80 characters each with
+    /// no separators or newlines between them; the last may be shorter.
+    /// This is the form CFITSIO's `fits_hdr2str` produces.
+    /// Every card already in the FitsChan is deleted first, as by
+    /// [`empty_fits`](Self::empty_fits), and the first card is current at
+    /// the end, so a read can follow at once.
+    ///
+    /// # Errors
+    ///
+    /// - [`ErrorCode::Bdfts`] if a card has an `=` within its first 8
+    ///   characters; the cards before it have been stored.
+    /// - As for [`card`](Self::card).
+    #[doc(alias = "astPutCards")]
     pub fn put_cards(&mut self, cards: &str) -> AstResult<()> {
         self.empty_fits()?;
         let bytes = cards.as_bytes();
@@ -835,15 +969,65 @@ impl FitsChan {
     }
 
     /// Search forward from the current card for one whose keyword matches
-    /// `name` (C's `astFindFits`), and return the card's text.
+    /// the template `name`, and return the card's text.
     ///
-    /// `name` is a template in which `%d` matches digits, `%c` upper-case
-    /// letters and `%f` any keyword character, each with an optional width
-    /// (`%1d`; `%0d` for zero or more); `%f` or `%0f` alone matches the
-    /// current card. Trailing spaces in `name` are ignored. The card found
-    /// becomes current, or the next one with `inc`; if none is found the
-    /// FitsChan is left at end-of-file. An illegal field type is
-    /// AST__BDFMT.
+    /// The search starts at the current card, so rewind first (clear
+    /// [Card](Self::card)) to search the whole FitsChan.
+    /// If a card is found it becomes current, or with `inc` the card after
+    /// it does, and its text is returned, formatted with
+    /// [FitsDigits](Self::fits_digits) and
+    /// [FitsRounding](Self::fits_rounding).
+    /// If none is found the result is `None` and the FitsChan is left at
+    /// end-of-file.
+    ///
+    /// # Keyword templates
+    ///
+    /// The match ignores case, and trailing spaces in `name` are ignored.
+    /// Literal characters must match the keyword exactly.
+    /// A field specifier, `%` followed by an optional single digit giving a
+    /// width and then a type character, matches a range of characters:
+    ///
+    /// - `%c` matches upper case letters.
+    /// - `%d` matches decimal digits.
+    /// - `%f` matches any character allowed in a FITS keyword: upper case
+    ///   letters, digits, underscores and hyphens.
+    ///
+    /// With no width the field matches one or more characters, with width 0
+    /// it matches zero or more, and otherwise exactly that many.
+    /// The template `%f` matches any keyword, including a blank one, so
+    /// `find_fits("%f", true)` returns the current card and moves on to the
+    /// next.
+    /// A blank template, its trailing spaces being ignored, matches no
+    /// keyword, not even a blank one.
+    /// For instance, `BitPix` matches `BITPIX` only, `crpix%1d` matches
+    /// `CRPIX` followed by one digit, `P%c` matches `P` followed by one or
+    /// more letters, and `E%0f` matches any keyword beginning with `E`.
+    ///
+    /// # Errors
+    ///
+    /// - [`ErrorCode::Bdfmt`] if `name` holds an illegal field type or
+    ///   width, or ends in an incomplete field specifier.
+    /// - [`ErrorCode::Bdfts`] if the card found cannot be formatted: a
+    ///   string value too long for a card, or a floating value that cannot
+    ///   be encoded.
+    /// - As for [`card`](Self::card).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ast_core::fitschan::FitsChan;
+    ///
+    /// let mut fc = FitsChan::from_header(
+    ///     "CRVAL1  =                 10.5\nCRVAL2  =                 -3.0\nEND",
+    /// )?;
+    /// let card = fc.find_fits("CRVAL%1d", true)?.expect("a CRVAL card");
+    /// assert!(card.starts_with("CRVAL1  ="));
+    /// assert_eq!(fc.card()?, 2);
+    /// assert!(fc.find_fits("CRVAL%1d", true)?.unwrap().starts_with("CRVAL2"));
+    /// assert_eq!(fc.find_fits("CRVAL%1d", true)?, None);
+    /// # Ok::<(), ast_core::error::AstError>(())
+    /// ```
+    #[doc(alias = "astFindFits")]
     pub fn find_fits(&mut self, name: &str, inc: bool) -> AstResult<Option<String>> {
         self.read_from_source()?;
         let lname = name.trim_end_matches(' ');
@@ -866,16 +1050,35 @@ impl FitsChan {
         Ok(Some(text))
     }
 
-    /// Delete the current card, making the next card current (C's
-    /// `astDelFits`). Does nothing at end-of-file.
+    /// Delete the current card, making the next card current.
+    ///
+    /// The current card is chosen with [Card](Self::card), or by keyword
+    /// with [`find_fits`](Self::find_fits).
+    /// Deleting the last card leaves the FitsChan at end-of-file, and at
+    /// end-of-file this does nothing.
+    ///
+    /// # Errors
+    ///
+    /// As for [`card`](Self::card).
+    #[doc(alias = "astDelFits")]
     pub fn del_fits(&mut self) -> AstResult<()> {
         self.read_from_source()?;
         self.cards.delete_card();
         Ok(())
     }
 
-    /// Delete every card, including those a read consumed, without writing
-    /// them to the sink, and every stored table (C's `astEmptyFits`).
+    /// Delete every card, including those a read consumed, and every stored
+    /// table.
+    ///
+    /// Unlike [`write_fits`](Self::write_fits), this does not write the
+    /// cards to the sink or [SinkFile](Self::sink_file) first.
+    /// The warnings of the last read or write
+    /// ([`warning_texts`](Channel::warning_texts)) are kept.
+    ///
+    /// # Errors
+    ///
+    /// As for [`card`](Self::card).
+    #[doc(alias = "astEmptyFits")]
     pub fn empty_fits(&mut self) -> AstResult<()> {
         self.read_from_source()?;
         self.empty_fits_inner();
@@ -893,10 +1096,26 @@ impl FitsChan {
     // FitsTables
     // -----------------------------------------------------------------------
 
-    /// Store a copy of `table` under the extension name `extnam`, replacing
-    /// any table stored under that name (C's `astPutTable`). The tables
-    /// provide the look-up tables a FITS-WCS header using the `-TAB`
-    /// algorithm refers to.
+    /// Store a copy of `table`, a FITS binary table, under the extension
+    /// name `extnam`, replacing any table stored under that name.
+    ///
+    /// The tables stored provide the look-up tables that a FITS-WCS header
+    /// using the `-TAB` algorithm refers to, which a read needs (see
+    /// [TabOK](Self::tab_ok)).
+    /// Changing `table` afterwards does not change the copy stored.
+    /// Since which tables a read will need is often not known in advance, a
+    /// [table source](Self::set_table_source) can supply them as the read
+    /// asks for them instead.
+    /// [`get_tables`](Self::get_tables) returns the tables stored, and
+    /// [`put_tables`](Self::put_tables) stores several at once.
+    ///
+    /// # Errors
+    ///
+    /// Passes on the error of
+    /// [`KeyMap::put_0a`](crate::keymap::KeyMap::put_0a) storing the table.
+    /// The FitsChan never locks its KeyMap of tables, so in practice there is
+    /// none.
+    #[doc(alias = "astPutTable")]
     pub fn put_table(
         &mut self,
         table: &crate::fitstable::FitsTable,
@@ -908,8 +1127,19 @@ impl FitsChan {
     }
 
     /// Store a copy of each FitsTable in `tables` under its key, as
-    /// [`put_table`](Self::put_table) does (C's `astPutTables`). Entries
-    /// that are not a single FitsTable are ignored.
+    /// [`put_table`](Self::put_table) does.
+    ///
+    /// Each key is the name of the FITS extension the table was read from,
+    /// and each entry should hold a single
+    /// [`FitsTable`](crate::fitstable::FitsTable); other entries are ignored.
+    /// The tables are added to those already stored, replacing any stored
+    /// under the same name.
+    ///
+    /// # Errors
+    ///
+    /// Passes on the errors of reading `tables` and of
+    /// [`put_table`](Self::put_table).
+    #[doc(alias = "astPutTables")]
     pub fn put_tables(&mut self, tables: &crate::keymap::KeyMap) -> AstResult<()> {
         for ientry in 0..tables.map_size() {
             let key = tables.map_key(ientry)?;
@@ -923,31 +1153,67 @@ impl FitsChan {
         Ok(())
     }
 
-    /// Register `source` to supply the tables a `-TAB` header refers to,
-    /// as they are needed when the header is read, replacing any source
-    /// registered before (C's `astTableSource`). A table it supplies is
-    /// stored under the extension name asked for, replacing any stored
-    /// there, and is used in preference to it. A copy of the FitsChan has no
-    /// source.
+    /// Register `source` to supply the FITS binary tables a `-TAB` header
+    /// refers to, as a read needs them, replacing any source registered
+    /// before.
+    ///
+    /// A read of a header that describes axes with the `-TAB` algorithm
+    /// needs the tables holding their look-up values, and reads such axes
+    /// only when [TabOK](Self::tab_ok) is positive.
+    /// The tables can be stored beforehand with
+    /// [`put_table`](Self::put_table) or [`put_tables`](Self::put_tables),
+    /// but that needs the extension names, which are held in the header and
+    /// so are often not known in advance.
+    /// A source is instead asked for each table by the read, with the
+    /// extension's name, version and level, when the table is needed.
+    /// A table it supplies is stored under the extension name asked for,
+    /// replacing any stored there, and used; when it supplies none, a table
+    /// already stored under that name is used.
+    /// Data the source needs, such as an open file, can be captured by the
+    /// closure or held by the type that implements [`TableSource`].
+    /// A copy of the FitsChan has no source.
+    #[doc(alias = "astTableSource")]
     pub fn set_table_source(&mut self, source: impl TableSource + 'static) {
         self.table_source.0 = Some(Box::new(source));
     }
 
-    /// Remove any table source (C's `astTableSource` with a NULL function).
+    /// Remove any [table source](Self::set_table_source).
+    #[doc(alias = "astTableSource")]
     pub fn clear_table_source(&mut self) {
         self.table_source.0 = None;
     }
 
-    /// A copy of the stored tables, keyed by extension name, or `None` when
-    /// there are none (C's `astGetTables`).
+    /// A copy of the stored tables, each a
+    /// [`FitsTable`](crate::fitstable::FitsTable) keyed by the name of the
+    /// FITS extension it belongs in, or `None` when there are none.
+    ///
+    /// Tables are stored by [`put_table`](Self::put_table),
+    /// [`put_tables`](Self::put_tables) and a
+    /// [table source](Self::set_table_source), and by a write of a FrameSet
+    /// that needs a look-up table to describe an axis.
+    /// Such a write, with [TabOK](Self::tab_ok) positive, uses the `-TAB`
+    /// algorithm and stores the table under the extension name `WCS-TAB`;
+    /// see [TabOK](Self::tab_ok) for how to write it out.
+    #[doc(alias = "astGetTables")]
     pub fn get_tables(&self) -> Option<crate::keymap::KeyMap> {
         self.tables.as_ref().filter(|t| t.map_size() > 0).cloned()
     }
 
-    /// Remove the tables named in `key`, a single name or a ','-separated
-    /// list in which `\,` stands for a comma in a name; a blank `key`
-    /// removes every table. Names are used as given, spaces included, and a
-    /// name with no table is ignored (C's `astRemoveTables`).
+    /// Remove the tables named in `key`, if they are stored.
+    ///
+    /// `key` is a single name or a list of names separated by commas, in
+    /// which `\,` stands for a comma within a name.
+    /// A blank `key` removes every table.
+    /// A name is matched as a [`KeyMap`](crate::keymap::KeyMap) key is,
+    /// case included and trailing spaces ignored, and a name with no table
+    /// is not an error.
+    ///
+    /// # Errors
+    ///
+    /// Passes on the error of
+    /// [`KeyMap::map_remove`](crate::keymap::KeyMap::map_remove), of which
+    /// there is none in practice.
+    #[doc(alias = "astRemoveTables")]
     pub fn remove_tables(&mut self, key: &str) -> AstResult<()> {
         let Some(tables) = self.tables.as_mut() else {
             return Ok(());
@@ -965,15 +1231,21 @@ impl FitsChan {
         Ok(())
     }
 
-    /// Format all stored cards as a FITS header string.
+    /// Format the cards as a FITS header string.
     ///
-    /// Each card is formatted as an 80-character line, joined with newlines.
-    /// `END` cards already present in the card list (stored verbatim by
-    /// `from_header`/`put_cards`) are written out in their original
-    /// position, matching C `WriteToSink`, which never synthesises one on a
-    /// read-then-rewrite round trip. A trailing `END` is appended only when
-    /// the card list has none at all — e.g. a `FitsChan` built purely from
-    /// typed setters. A string value too long for its card is AST__BDFTS.
+    /// Each card a read has not consumed is formatted as an 80-character
+    /// line, with [FitsDigits](Self::fits_digits) and
+    /// [FitsRounding](Self::fits_rounding), and the lines are joined with
+    /// newlines.
+    /// An `END` card held in the FitsChan, as [`from_header`](Self::from_header)
+    /// and [`put_cards`](Self::put_cards) keep one, is written where it is.
+    /// A final `END` card is added only when the FitsChan holds none, as for
+    /// a FitsChan filled by the `set_fits_*` methods.
+    ///
+    /// # Errors
+    ///
+    /// [`ErrorCode::Bdfts`] if a card cannot be formatted: a string value
+    /// too long for a card, or a floating value that cannot be encoded.
     pub fn to_header(&self) -> AstResult<String> {
         let visible: Vec<&FitsCard> = self
             .cards
@@ -1060,9 +1332,15 @@ impl FitsChan {
     }
 
     /// The value of keyword `name`, or of the current card when `name` is
-    /// `None`, as an `int` (C's `astGetFitsI`); the search is as for
-    /// [`get_fits_f`](Self::get_fits_f). A value that cannot be converted is
-    /// AST__FTCNV, an undefined one AST__FUNDEF.
+    /// `None`, as an `i32`.
+    ///
+    /// The card is found, and the value converted, as by
+    /// [`get_fits_f`](Self::get_fits_f).
+    ///
+    /// # Errors
+    ///
+    /// As for [`get_fits_f`](Self::get_fits_f).
+    #[doc(alias = "astGetFits")]
     pub fn get_fits_i(&mut self, name: Option<&str>) -> AstResult<Option<i32>> {
         Ok(match self.get_value(name, Want::Int, "astGetFitsI")? {
             Some(Got::Int(v)) => Some(v),
@@ -1070,8 +1348,16 @@ impl FitsChan {
         })
     }
 
-    /// As [`get_fits_i`](Self::get_fits_i) for a 64-bit integer (C's
-    /// `astGetFitsK`).
+    /// The value of keyword `name`, or of the current card when `name` is
+    /// `None`, as an `i64`.
+    ///
+    /// The card is found, and the value converted, as by
+    /// [`get_fits_f`](Self::get_fits_f).
+    ///
+    /// # Errors
+    ///
+    /// As for [`get_fits_f`](Self::get_fits_f).
+    #[doc(alias = "astGetFits")]
     pub fn get_fits_k(&mut self, name: Option<&str>) -> AstResult<Option<i64>> {
         Ok(match self.get_value(name, Want::KInt, "astGetFitsK")? {
             Some(Got::KInt(v)) => Some(v),
@@ -1080,14 +1366,70 @@ impl FitsChan {
     }
 
     /// The value of keyword `name`, or of the current card when `name` is
-    /// `None`, as a floating value (C's `astGetFitsF`).
+    /// `None`, as an `f64`.
     ///
-    /// The card searched for is the one after the current card if it has
-    /// that keyword, otherwise the first that does (`name` may be a
-    /// template, as for [`find_fits`](Self::find_fits)); it becomes current.
-    /// A missing keyword gives `None` and leaves the FitsChan at
-    /// end-of-file. A value that cannot be converted is AST__FTCNV, an
-    /// undefined one AST__FUNDEF.
+    /// `name` is read as a header card: its first 8 characters are the
+    /// keyword, and the rest, up to 80 characters in all, is ignored, so a
+    /// whole card may be given.
+    /// It may also be a template, as for [`find_fits`](Self::find_fits).
+    /// The card after the current card is tried first, and if it does not
+    /// have the keyword the FitsChan is searched from its first card, so
+    /// reading the cards in the order they are stored is quickest.
+    /// The card found becomes current, and its value is returned, converted
+    /// to `f64` if it is of another type.
+    /// If no card has the keyword, the result is `None` and the FitsChan is
+    /// left at end-of-file.
+    /// [`test_fits`](Self::test_fits) tells whether a keyword has a value
+    /// before asking for it.
+    ///
+    /// A keyword name with an illegal character is not an error, but gives
+    /// a `BadKeyName` warning (see [Warnings](Self::warning_conditions)).
+    ///
+    /// Each FITS data type has its own method:
+    ///
+    /// | Method | Type returned | FITS data type |
+    /// |---|---|---|
+    /// | [`get_fits_cf`](Self::get_fits_cf) | `(f64, f64)` | complex floating point (`CF`) |
+    /// | [`get_fits_ci`](Self::get_fits_ci) | `(i32, i32)` | complex integer (`CI`) |
+    /// | `get_fits_f` | `f64` | floating point (`F`) |
+    /// | [`get_fits_i`](Self::get_fits_i) | `i32` | integer (`I`) |
+    /// | [`get_fits_k`](Self::get_fits_k) | `i64` | 64-bit integer (`K`) |
+    /// | [`get_fits_l`](Self::get_fits_l) | `bool` | logical (`L`) |
+    /// | [`get_fits_s`](Self::get_fits_s) | `String` | string (`S`) |
+    /// | [`get_fits_cn`](Self::get_fits_cn) | `String` | `CONTINUE` string (`CN`) |
+    ///
+    /// Complex values are returned as their real and imaginary parts.
+    ///
+    /// # Errors
+    ///
+    /// - [`ErrorCode::Fundef`] if the card has no value.
+    /// - [`ErrorCode::Ftcnv`] if the value cannot be converted, if the card
+    ///   is a commentary card, or if `name` is `None` at end-of-file.
+    /// - [`ErrorCode::Bdfts`] if `name` has an `=` within its first 8
+    ///   characters.
+    /// - [`ErrorCode::Bdfmt`] if `name` holds an illegal field specifier.
+    /// - As for [`card`](Self::card).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ast_core::fitschan::FitsChan;
+    ///
+    /// let mut fc = FitsChan::from_header(
+    ///     "NAXIS   =                    2\nCDELT1  =                 0.25\nEND",
+    /// )?;
+    /// assert_eq!(fc.get_fits_f(Some("CDELT1"))?, Some(0.25));
+    /// assert_eq!(fc.get_fits_f(Some("NAXIS"))?, Some(2.0));
+    /// assert_eq!(fc.get_fits_i(Some("NAXIS"))?, Some(2));
+    /// assert_eq!(fc.get_fits_f(Some("CRVAL1"))?, None);
+    /// # Ok::<(), ast_core::error::AstError>(())
+    /// ```
+    ///
+    /// # See also
+    ///
+    /// `astGetFits<X>`, one function per FITS data type `<X>`, as in the
+    /// table above.
+    #[doc(alias = "astGetFits")]
     pub fn get_fits_f(&mut self, name: Option<&str>) -> AstResult<Option<f64>> {
         Ok(match self.get_value(name, Want::Float, "astGetFitsF")? {
             Some(Got::Float(v)) => Some(v),
@@ -1095,9 +1437,20 @@ impl FitsChan {
         })
     }
 
-    /// As [`get_fits_f`](Self::get_fits_f) for a string (C's
-    /// `astGetFitsS`). A string of 8 characters or fewer loses its trailing
-    /// spaces.
+    /// The value of keyword `name`, or of the current card when `name` is
+    /// `None`, as a string.
+    ///
+    /// The card is found, and the value converted, as by
+    /// [`get_fits_f`](Self::get_fits_f).
+    /// The FITS standard pads a string shorter than 8 characters with
+    /// spaces to 8, so a string of 8 characters or fewer, trailing spaces
+    /// included, is returned without its trailing spaces; a longer string
+    /// keeps them.
+    ///
+    /// # Errors
+    ///
+    /// As for [`get_fits_f`](Self::get_fits_f).
+    #[doc(alias = "astGetFits")]
     pub fn get_fits_s(&mut self, name: Option<&str>) -> AstResult<Option<String>> {
         Ok(match self.get_value(name, Want::String, "astGetFitsS")? {
             Some(Got::Str(v)) => Some(if v.len() <= 8 {
@@ -1109,8 +1462,17 @@ impl FitsChan {
         })
     }
 
-    /// As [`get_fits_f`](Self::get_fits_f) for a CONTINUE (long) string
-    /// (C's `astGetFitsCN`).
+    /// The value of keyword `name`, or of the current card when `name` is
+    /// `None`, as a `CONTINUE` string: a string written without an equals
+    /// sign, as the continuation of a long string is.
+    ///
+    /// The card is found, and the value converted, as by
+    /// [`get_fits_f`](Self::get_fits_f).
+    ///
+    /// # Errors
+    ///
+    /// As for [`get_fits_f`](Self::get_fits_f).
+    #[doc(alias = "astGetFits")]
     pub fn get_fits_cn(&mut self, name: Option<&str>) -> AstResult<Option<String>> {
         Ok(
             match self.get_value(name, Want::Continue, "astGetFitsCN")? {
@@ -1120,8 +1482,16 @@ impl FitsChan {
         )
     }
 
-    /// As [`get_fits_f`](Self::get_fits_f) for a logical value (C's
-    /// `astGetFitsL`).
+    /// The value of keyword `name`, or of the current card when `name` is
+    /// `None`, as a logical value.
+    ///
+    /// The card is found, and the value converted, as by
+    /// [`get_fits_f`](Self::get_fits_f).
+    ///
+    /// # Errors
+    ///
+    /// As for [`get_fits_f`](Self::get_fits_f).
+    #[doc(alias = "astGetFits")]
     pub fn get_fits_l(&mut self, name: Option<&str>) -> AstResult<Option<bool>> {
         Ok(match self.get_value(name, Want::Logical, "astGetFitsL")? {
             Some(Got::Logical(v)) => Some(v),
@@ -1129,8 +1499,16 @@ impl FitsChan {
         })
     }
 
-    /// As [`get_fits_f`](Self::get_fits_f) for a complex floating value,
-    /// real part first (C's `astGetFitsCF`).
+    /// The value of keyword `name`, or of the current card when `name` is
+    /// `None`, as a complex floating value: its real and imaginary parts.
+    ///
+    /// The card is found, and the value converted, as by
+    /// [`get_fits_f`](Self::get_fits_f).
+    ///
+    /// # Errors
+    ///
+    /// As for [`get_fits_f`](Self::get_fits_f).
+    #[doc(alias = "astGetFits")]
     pub fn get_fits_cf(&mut self, name: Option<&str>) -> AstResult<Option<(f64, f64)>> {
         Ok(
             match self.get_value(name, Want::ComplexF, "astGetFitsCF")? {
@@ -1140,8 +1518,16 @@ impl FitsChan {
         )
     }
 
-    /// As [`get_fits_f`](Self::get_fits_f) for a complex integer value,
-    /// real part first (C's `astGetFitsCI`).
+    /// The value of keyword `name`, or of the current card when `name` is
+    /// `None`, as a complex integer value: its real and imaginary parts.
+    ///
+    /// The card is found, and the value converted, as by
+    /// [`get_fits_f`](Self::get_fits_f).
+    ///
+    /// # Errors
+    ///
+    /// As for [`get_fits_f`](Self::get_fits_f).
+    #[doc(alias = "astGetFits")]
     pub fn get_fits_ci(&mut self, name: Option<&str>) -> AstResult<Option<(i32, i32)>> {
         Ok(
             match self.get_value(name, Want::ComplexI, "astGetFitsCI")? {
@@ -1203,11 +1589,13 @@ impl FitsChan {
         self.cards.ins_card(card, overwrite);
     }
 
-    /// Store an integer (C's `astSetFitsI`). The card is inserted in front of
-    /// the current card, or replaces it with `overwrite`, and the card after
-    /// it becomes current. The first 8 characters of `name` are the keyword;
-    /// with a blank `comment` any further text is the comment, and failing
-    /// that, when overwriting, the comment of the card replaced.
+    /// Store an integer value under keyword `name`, inserting a card or overwriting
+    /// the current card as for [`set_fits_f`](Self::set_fits_f).
+    ///
+    /// # Errors
+    ///
+    /// As for [`set_fits_f`](Self::set_fits_f).
+    #[doc(alias = "astSetFits")]
     pub fn set_fits_i(
         &mut self,
         name: &str,
@@ -1218,8 +1606,13 @@ impl FitsChan {
         self.set_value(name, FitsValue::Int(i64::from(value)), comment, overwrite)
     }
 
-    /// As [`set_fits_i`](Self::set_fits_i) for a 64-bit integer (C's
-    /// `astSetFitsK`).
+    /// Store a 64-bit integer value under keyword `name`, inserting a card or overwriting
+    /// the current card as for [`set_fits_f`](Self::set_fits_f).
+    ///
+    /// # Errors
+    ///
+    /// As for [`set_fits_f`](Self::set_fits_f).
+    #[doc(alias = "astSetFits")]
     pub fn set_fits_k(
         &mut self,
         name: &str,
@@ -1230,9 +1623,75 @@ impl FitsChan {
         self.set_value(name, FitsValue::KInt(value), comment, overwrite)
     }
 
-    /// As [`set_fits_i`](Self::set_fits_i) for a floating value (C's
-    /// `astSetFitsF`). The value is formatted with the FitsDigits and
-    /// FitsRounding attributes when the card is written.
+    /// Store a floating value under keyword `name`, at the current card.
+    ///
+    /// `name` is read as a header card: its first 8 characters are the
+    /// keyword, and any text after them, up to 80 characters in all, is
+    /// the comment if `comment` is blank.
+    /// If `comment` is blank and `name` holds no comment either, the card
+    /// keeps the comment of the card it overwrites, if any; otherwise it has
+    /// none.
+    ///
+    /// Without `overwrite`, the new card is inserted in front of the current
+    /// card, which stays current.
+    /// With `overwrite`, the new card replaces the current card, and the
+    /// card after it becomes current.
+    /// Either way, at end-of-file the card is appended, and the FitsChan
+    /// stays at end-of-file.
+    /// To give an existing keyword a new value, find its card with
+    /// [`find_fits`](Self::find_fits), then overwrite it.
+    ///
+    /// The value is formatted with [FitsDigits](Self::fits_digits) and
+    /// [FitsRounding](Self::fits_rounding) when the card is written out.
+    /// A keyword name with an illegal character is not an error, but gives
+    /// a `BadKeyName` warning (see [Warnings](Self::warning_conditions)).
+    ///
+    /// Each FITS data type has its own method:
+    ///
+    /// | Method | Type stored | FITS data type |
+    /// |---|---|---|
+    /// | [`set_fits_cf`](Self::set_fits_cf) | `(f64, f64)` | complex floating point (`CF`) |
+    /// | [`set_fits_ci`](Self::set_fits_ci) | `(i32, i32)` | complex integer (`CI`) |
+    /// | `set_fits_f` | `f64` | floating point (`F`) |
+    /// | [`set_fits_i`](Self::set_fits_i) | `i32` | integer (`I`) |
+    /// | [`set_fits_k`](Self::set_fits_k) | `i64` | 64-bit integer (`K`) |
+    /// | [`set_fits_l`](Self::set_fits_l) | `bool` | logical (`L`) |
+    /// | [`set_fits_s`](Self::set_fits_s) | `&str` | string (`S`) |
+    /// | [`set_fits_cn`](Self::set_fits_cn) | `&str` | `CONTINUE` string (`CN`) |
+    ///
+    /// Complex values are given as their real and imaginary parts.
+    /// [`set_fits_u`](Self::set_fits_u) stores a keyword with no value, and
+    /// [`set_fits_cm`](Self::set_fits_cm) a commentary card with a blank
+    /// keyword.
+    ///
+    /// # Errors
+    ///
+    /// - [`ErrorCode::Bdfts`] if `name` has an `=` within its first 8
+    ///   characters.
+    /// - As for [`card`](Self::card).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ast_core::fitschan::FitsChan;
+    ///
+    /// let mut fc = FitsChan::new();
+    /// fc.set_fits_f("CDELT1", 0.5, "Degrees per pixel", false)?;
+    /// fc.set_fits_s("CTYPE1", "RA---TAN", "", false)?;
+    /// // Overwrite the first card, keeping its comment.
+    /// fc.clear_card()?;
+    /// fc.set_fits_f("CDELT1", 0.25, "", true)?;
+    /// assert_eq!(fc.get_fits_f(Some("CDELT1"))?, Some(0.25));
+    /// assert_eq!(fc.card_comm()?, "Degrees per pixel");
+    /// assert_eq!(fc.ncard()?, 2);
+    /// # Ok::<(), ast_core::error::AstError>(())
+    /// ```
+    ///
+    /// # See also
+    ///
+    /// `astSetFits<X>`, one function per FITS data type `<X>`, as in the
+    /// table above.
+    #[doc(alias = "astSetFits")]
     pub fn set_fits_f(
         &mut self,
         name: &str,
@@ -1243,8 +1702,13 @@ impl FitsChan {
         self.set_value(name, FitsValue::Float(value), comment, overwrite)
     }
 
-    /// As [`set_fits_i`](Self::set_fits_i) for a string (C's
-    /// `astSetFitsS`).
+    /// Store a string value under keyword `name`, inserting a card or overwriting
+    /// the current card as for [`set_fits_f`](Self::set_fits_f).
+    ///
+    /// # Errors
+    ///
+    /// As for [`set_fits_f`](Self::set_fits_f).
+    #[doc(alias = "astSetFits")]
     pub fn set_fits_s(
         &mut self,
         name: &str,
@@ -1260,8 +1724,14 @@ impl FitsChan {
         )
     }
 
-    /// As [`set_fits_i`](Self::set_fits_i) for a CONTINUE (long) string
-    /// (C's `astSetFitsCN`).
+    /// Store a `CONTINUE` string under keyword `name`, a string written
+    /// without an equals sign, inserting a card or overwriting the current
+    /// card as for [`set_fits_f`](Self::set_fits_f).
+    ///
+    /// # Errors
+    ///
+    /// As for [`set_fits_f`](Self::set_fits_f).
+    #[doc(alias = "astSetFits")]
     pub fn set_fits_cn(
         &mut self,
         name: &str,
@@ -1277,8 +1747,13 @@ impl FitsChan {
         )
     }
 
-    /// As [`set_fits_i`](Self::set_fits_i) for a logical value (C's
-    /// `astSetFitsL`).
+    /// Store a logical value under keyword `name`, inserting a card or overwriting
+    /// the current card as for [`set_fits_f`](Self::set_fits_f).
+    ///
+    /// # Errors
+    ///
+    /// As for [`set_fits_f`](Self::set_fits_f).
+    #[doc(alias = "astSetFits")]
     pub fn set_fits_l(
         &mut self,
         name: &str,
@@ -1289,8 +1764,14 @@ impl FitsChan {
         self.set_value(name, FitsValue::Logical(value), comment, overwrite)
     }
 
-    /// As [`set_fits_i`](Self::set_fits_i) for a complex floating value,
-    /// real part first (C's `astSetFitsCF`).
+    /// Store a complex floating value, given as its real and imaginary
+    /// parts, under keyword `name`, inserting a card or overwriting
+    /// the current card as for [`set_fits_f`](Self::set_fits_f).
+    ///
+    /// # Errors
+    ///
+    /// As for [`set_fits_f`](Self::set_fits_f).
+    #[doc(alias = "astSetFits")]
     pub fn set_fits_cf(
         &mut self,
         name: &str,
@@ -1306,8 +1787,14 @@ impl FitsChan {
         )
     }
 
-    /// As [`set_fits_i`](Self::set_fits_i) for a complex integer value, real
-    /// part first (C's `astSetFitsCI`).
+    /// Store a complex integer value, given as its real and imaginary
+    /// parts, under keyword `name`, inserting a card or overwriting
+    /// the current card as for [`set_fits_f`](Self::set_fits_f).
+    ///
+    /// # Errors
+    ///
+    /// As for [`set_fits_f`](Self::set_fits_f).
+    #[doc(alias = "astSetFits")]
     pub fn set_fits_ci(
         &mut self,
         name: &str,
@@ -1323,15 +1810,32 @@ impl FitsChan {
         )
     }
 
-    /// As [`set_fits_i`](Self::set_fits_i) for a keyword with no value (C's
-    /// `astSetFitsU`).
+    /// Store keyword `name` with no value, inserting a card or overwriting
+    /// the current card as for [`set_fits_f`](Self::set_fits_f).
+    ///
+    /// The keyword's card has an equals sign but no value, which
+    /// [`test_fits`](Self::test_fits) reports as `Some(false)` and the
+    /// `get_fits_*` methods as [`ErrorCode::Fundef`].
+    ///
+    /// # Errors
+    ///
+    /// As for [`set_fits_f`](Self::set_fits_f).
+    #[doc(alias = "astSetFitsU")]
     pub fn set_fits_u(&mut self, name: &str, comment: &str, overwrite: bool) -> AstResult<()> {
         self.set_value(name, FitsValue::Undef, comment, overwrite)
     }
 
-    /// Store a commentary card with a blank keyword and the text `comment`
-    /// (C's `astSetFitsCM`), inserted or overwriting as for
-    /// [`set_fits_i`](Self::set_fits_i).
+    /// Store a commentary card, one with a blank keyword and no equals sign,
+    /// holding the text `comment`.
+    ///
+    /// The card is inserted in front of the current card, or overwrites it,
+    /// as for [`set_fits_f`](Self::set_fits_f).
+    /// A blank `comment` gives a wholly blank card.
+    ///
+    /// # Errors
+    ///
+    /// As for [`card`](Self::card).
+    #[doc(alias = "astSetFitsCM")]
     pub fn set_fits_cm(&mut self, comment: &str, overwrite: bool) -> AstResult<()> {
         self.set_fits_com("", comment, overwrite)
     }
@@ -2543,8 +3047,10 @@ impl FitsChan {
 }
 
 impl Clone for FitsChan {
-    /// C's `astCopy`: read the source, then copy everything but the source
-    /// and sink, which a copy does not inherit.
+    /// A copy of the FitsChan, holding the cards of any source not yet
+    /// read, but with no source, sink, table source, SourceFile or SinkFile
+    /// of its own, so it never writes the cards a second time.
+    // C: `astCopy`, which reads the source before FitsChan's `Copy`.
     fn clone(&self) -> Self {
         let copy = Self {
             config: self.config.clone(),

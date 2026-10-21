@@ -46,27 +46,27 @@ function	astSetPutErr	error.c			no
 function	astSetStatus	error.c			no
 function	astStatus	error.c			no
 function	astWatch	error.c			no
-class	FitsChan	fitschan.c			no
-function	astDelFits	fitschan.c			no
-function	astEmptyFits	fitschan.c			no
-function	astGetTables	fitschan.c			no
-function	astFindFits	fitschan.c			no
-function	astGetFits<X>	fitschan.c			no
-function	astSetFits<X>	fitschan.c			no
-function	astSetFitsU	fitschan.c			no
-function	astSetFitsCM	fitschan.c			no
-function	astPurgeWCS	fitschan.c			no
-function	astPutCards	fitschan.c			no
-function	astPutFits	fitschan.c			no
-function	astPutTable	fitschan.c			no
-function	astPutTables	fitschan.c			no
-function	astReadFits	fitschan.c			no
-function	astRemoveTables	fitschan.c			no
-function	astRetainFits	fitschan.c			no
-function	astShowFits	fitschan.c			no
-function	astTableSource	fitschan.c			no
-function	astTestFits	fitschan.c			no
-function	astWriteFits	fitschan.c			no
+class	FitsChan	fitschan.c	FitsChan		yes
+function	astDelFits	fitschan.c	FitsChan::del_fits		yes
+function	astEmptyFits	fitschan.c	FitsChan::empty_fits		yes
+function	astGetTables	fitschan.c	FitsChan::get_tables		yes
+function	astFindFits	fitschan.c	FitsChan::find_fits		yes	returns the text of the card found, or None, in place of the flag and card buffer; the header says a template of 8 spaces matches a blank keyword, but trailing spaces are removed and the empty template matches nothing, in the C code and here (c-library-quirks.md)
+function	astGetFits<X>	fitschan.c	FitsChan::get_fits_cf;FitsChan::get_fits_ci;FitsChan::get_fits_f;FitsChan::get_fits_i;FitsChan::get_fits_k;FitsChan::get_fits_l;FitsChan::get_fits_s;FitsChan::get_fits_cn		yes	one method per <X>: cf (f64, f64), ci (i32, i32), f f64, i i32, k i64, l bool, s and cn String; returns None for a missing keyword in place of the flag; the header says a keyword name that does not conform to FITS is an error, but only an = in it is (Bdfts) and an illegal character gives a BadKeyName warning, in the C code and here (c-library-quirks.md)
+function	astSetFits<X>	fitschan.c	FitsChan::set_fits_cf;FitsChan::set_fits_ci;FitsChan::set_fits_f;FitsChan::set_fits_i;FitsChan::set_fits_k;FitsChan::set_fits_l;FitsChan::set_fits_s;FitsChan::set_fits_cn		yes	one method per <X>: cf (f64, f64), ci (i32, i32), f f64, i i32, k i64, l bool, s and cn &str; a keyword name is checked as for astGetFits<X> (c-library-quirks.md)
+function	astSetFitsU	fitschan.c	FitsChan::set_fits_u		yes	a keyword name is checked as for astGetFits<X> (c-library-quirks.md)
+function	astSetFitsCM	fitschan.c	FitsChan::set_fits_cm		yes
+function	astPurgeWCS	fitschan.c	FitsChan::purge_wcs		yes
+function	astPutCards	fitschan.c	FitsChan::put_cards		yes
+function	astPutFits	fitschan.c	FitsChan::put_fits		yes
+function	astPutTable	fitschan.c	FitsChan::put_table		yes	the astPutTable and astPutTables headers name the table source function astTablesSource, for astTableSource (c-library-quirks.md)
+function	astPutTables	fitschan.c	FitsChan::put_tables		yes
+function	astReadFits	fitschan.c	FitsChan::read_fits		yes
+function	astRemoveTables	fitschan.c	FitsChan::remove_tables		yes
+function	astRetainFits	fitschan.c	FitsChan::retain_fits		yes
+function	astShowFits	fitschan.c	FitsChan::show_fits		yes
+function	astTableSource	fitschan.c	FitsChan::set_table_source;FitsChan::clear_table_source		yes	a TableSource returns the table, which the FitsChan stores under the extension name asked for, in place of a function that stores it with astPutTable and reports failure through its status; data reach it by capture rather than astPutChannelData; clear_table_source stands for a NULL function; the C edition of the header gets the failure convention and the position of the status argument wrong (c-library-quirks.md)
+function	astTestFits	fitschan.c	FitsChan::test_fits		yes	returns None for a missing keyword and Some(has a value) otherwise, in place of the flag and there; a keyword name is checked as for astGetFits<X> (c-library-quirks.md)
+function	astWriteFits	fitschan.c	FitsChan::write_fits		yes	reports Wrerr for a SinkFile that cannot be created, which a drop cannot
 attribute	FitsTol	fitschan.c	FitsChan::fits_tol		yes
 attribute	Card	fitschan.c	FitsChan::card		yes	0 for a FitsChan with no cards, as the C code gives, where the header implies 1 (c-library-quirks.md)
 attribute	Encoding	fitschan.c	FitsChan::encoding		yes	an Encoding enum; the default is chosen from the cards already held and does not read a source not yet read, where C reads it first (PLAN.md §2); the header lists the default choice in another order than the code, which the docs follow (c-library-quirks.md)
@@ -92,7 +92,7 @@ attribute	Ncard	fitschan.c	FitsChan::ncard		yes
 attribute	Nkey	fitschan.c	FitsChan::nkey		yes
 attribute	Warnings	fitschan.c	FitsChan::warning_conditions		yes	the header says it does not affect the warnings stored in the Channel, but the C code stores only those for conditions it names, as here (c-library-quirks.md)
 attribute	AllWarnings	fitschan.c	FitsChan::all_warning_conditions		yes
-function	astFitsChan	fitschan.c			no
+function	astFitsChan	fitschan.c	FitsChan::new		yes	no source, sink or options arguments: set_source, set_sink and the attribute setters take their place, and the FITSCHAN_OPTIONS environment variable is not read (PLAN.md §2)
 class	FitsTable	fitstable.c			no
 function	astColumnNull	fitstable.c			no
 function	astColumnNullK	fitstable.c			no
