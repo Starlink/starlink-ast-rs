@@ -1963,9 +1963,9 @@ impl Frame for FrameSet {
         Box::new(self.clone())
     }
 
-    /// A FrameSet simplifies through its Mapping side. That reduction can
-    /// hand back something that is no longer a Frame, which the helper's
-    /// conversion drops.
+    /// A FrameSet simplifies through its Mapping side.
+    /// That reduction can hand back something that is no longer a Frame,
+    /// which the helper's conversion drops.
     // C: there is one `Simplify` slot (`frameset.c:10111`); the case that is
     // no longer a Frame is the one `astIsAFrame` guards (`cmpframe.c:9024`).
     fn simplify_frame(&self) -> AstResult<Option<DynFrame>> {

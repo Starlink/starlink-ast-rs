@@ -2060,8 +2060,8 @@ impl Frame for SkyFrame {
     }
 
     /// A Unit that describes the axis values, such as `"hh:mm:ss.s"`, has no
-    /// normalised form and is returned unchanged, whether it is the default or
-    /// has been set to that same description.
+    /// normalised form and is returned unchanged, whether it is the default
+    /// or has been set to that same description.
     /// This has to be decided here rather than by the units parser, which
     /// reads the spaces in a description such as `"hh mm ss"` as
     /// multiplication.
@@ -2389,8 +2389,8 @@ impl Frame for SkyFrame {
 
     /// Longitude into 0..2pi (or -pi..pi with NegLon), latitude into
     /// -pi/2..pi/2, moving the longitude through the pole when the latitude
-    /// passes it. A value that is bad leaves the other to be normalised
-    /// alone.
+    /// passes it.
+    /// A value that is bad leaves the other to be normalised alone.
     // C: skyframe.c `Norm`.
     fn norm(&self, coords: &mut [f64]) -> AstResult<()> {
         use std::f64::consts::PI;
@@ -2592,7 +2592,8 @@ impl Frame for SkyFrame {
     }
 
     /// Every SkyFrame axis carries a SkyAxis, so the per-axis methods get
-    /// celestial wrapping. Which SkyAxis depends on the axis permutation.
+    /// celestial wrapping.
+    /// Which SkyAxis depends on the axis permutation.
     // C: the Axis array a SkyFrame inherits from Frame, reached through
     // `astGetAxis` (frame.c:5309) after `astValidateAxis` permutes.
     fn get_axis(&self, axis: usize) -> AxisKind {
@@ -2676,8 +2677,8 @@ impl Frame for SkyFrame {
 
     /// Extend a box to include the effect of the celestial poles.
     /// Tests whether the box (via the supplied region-membership predicate)
-    /// includes either pole and, if so, expands the longitude range to 0..2*PI
-    /// and pins the latitude limit to the pole.
+    /// includes either pole and, if so, expands the longitude range to
+    /// 0..2*PI and pins the latitude limit to the pole.
     ///
     /// If testing a pole fails, the error is returned and the limits are left
     /// as they arrived.

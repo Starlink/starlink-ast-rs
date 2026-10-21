@@ -69,8 +69,9 @@ pub enum AxisKind {
         /// `[-PI,PI]`. Mirrors the `IsLatitude` Axis attribute.
         is_latitude: bool,
         /// True when the axis range is centred on zero (`[-PI,PI]`) rather
-        /// than on PI (`[0,2*PI]`). Mirrors the `CentreZero` Axis attribute,
-        /// whose default is `IsLatitude`.
+        /// than on PI (`[0,2*PI]`).
+        /// Mirrors the `CentreZero` Axis attribute, whose default is
+        /// `IsLatitude`.
         // C: `skyaxis.c:4620`.
         centre_zero: bool,
     },
@@ -303,8 +304,8 @@ pub struct LineDef {
     pub dir: [f64; 2],
     /// Unit vector perpendicular to the line (dir rotated +90°).
     pub q: [f64; 2],
-    /// Great-circle geometry for a line defined within a SkyFrame. `None` for
-    /// planar Frames.
+    /// Great-circle geometry for a line defined within a SkyFrame.
+    /// `None` for planar Frames.
     /// The spherical state is carried alongside the planar fields, and the
     /// SkyFrame line methods use it in place of the planar geometry.
     // C: `SkyLineDef` (skyframe.c:814) is a distinct struct from the planar
@@ -317,8 +318,8 @@ pub struct LineDef {
 /// Positions are held as 3-D unit vectors rather than (lon, lat) pairs.
 /// `start` and `end` are the segment end-points.
 /// `dir` is the point 90° along the great circle from `start`, so that `q`,
-/// `dir` and `start` form the spherical analogue of the planar
-/// direction and normal.
+/// `dir` and `start` form the spherical analogue of the planar direction and
+/// normal.
 /// `q` is the pole of the great circle, oriented so the pole lies to the left
 /// of the line travelling start to end.
 // C: `SkyLineDef` (skyframe.c:814).
@@ -1085,8 +1086,8 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     // C: `object.c:5229`; astTestIdent.
     fn test_ident(&self) -> bool;
 
-    /// The Object-class ID attribute, blank unless set. Unlike Ident, a
-    /// clone does not inherit it.
+    /// The Object-class ID attribute, blank unless set.
+    /// Unlike Ident, a clone does not inherit it.
     // C: `astCopy` does not copy it.
     fn id(&self) -> &str;
     /// Set ID.
@@ -1107,8 +1108,9 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// Store UseDefs, `None` to clear it.
     fn store_use_defs(&mut self, value: Option<bool>);
     /// UseDefs, set or default: whether default values may be used for
-    /// attributes that have not been set. A FrameSet, Region or CmpFrame
-    /// takes an unset value from a Frame it contains.
+    /// attributes that have not been set.
+    /// A FrameSet, Region or CmpFrame takes an unset value from a Frame it
+    /// contains.
     // C: `object.c:5304`.
     fn use_defs(&self) -> bool {
         self.stored_use_defs().unwrap_or(true)
@@ -1565,7 +1567,8 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
         0
     }
 
-    /// Set the frame flags. CmpFrame passes them on to its components.
+    /// Set the frame flags.
+    /// CmpFrame passes them on to its components.
     // C: frame.c `SetFrameFlags`; cmpframe.c `SetFrameFlags`.
     #[doc(hidden)]
     fn set_frame_flags(&mut self, _flags: u32) {}
@@ -1892,11 +1895,10 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
         Ok(Box::new(frame))
     }
 
-    /// Overlay the attributes set on this Frame, the template, onto
-    /// `result`. `template_axes` is parallel to `result`'s axes, giving the
-    /// (zero-based) template axis from which each result axis takes its
-    /// axis attributes, or `-1` for none; an empty slice means the same
-    /// index.
+    /// Overlay the attributes set on this Frame, the template, onto `result`.
+    /// `template_axes` is parallel to `result`'s axes, giving the
+    /// (zero-based) template axis from which each result axis takes its axis
+    /// attributes, or `-1` for none; an empty slice means the same index.
     /// This is a method of the template: each class transfers the attributes
     /// it defines, and only onto a result of its own class.
     ///
@@ -1927,11 +1929,12 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
         Ok(())
     }
 
-    /// Identify the primary (leaf, non-compound) Frame and underlying
-    /// axis for a given axis of this Frame. `axis` is 0-based (matching
-    /// the existing `primary_frame_walk` callers).
-    /// Returns the leaf frame and the 0-based axis within it, undoing all axis
-    /// permutations and Frame combination.
+    /// Identify the primary (leaf, non-compound) Frame and underlying axis
+    /// for a given axis of this Frame.
+    /// `axis` is 0-based (matching the existing `primary_frame_walk`
+    /// callers).
+    /// Returns the leaf frame and the 0-based axis within it, undoing all
+    /// axis permutations and Frame combination.
     /// Leaf Frames are already primary, so return `(self, axis)`.
     /// Compound and permuting Frames (CmpFrame, SkyFrame) override to descend
     /// and undo permutations.
@@ -2072,8 +2075,8 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     }
 
     /// Create a cached description of the line segment from `start` to `end`
-    /// in this 2-D Frame. Returns `None` (without error) if any supplied axis
-    /// value is BAD.
+    /// in this 2-D Frame.
+    /// Returns `None` (without error) if any supplied axis value is BAD.
     /// SkyFrame overrides with great-circle geometry.
     // C: `astLineDef` (frame.c:6716).
     fn line_def(&self, start: &[f64], end: &[f64]) -> AstResult<Option<LineDef>> {
@@ -2123,12 +2126,12 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
         ])
     }
 
-    /// Determine whether two line segments cross. Returns `(crossed, cross,
-    /// dist)`: `crossed` is true only when the crossing lies within the
-    /// `[start, end)` segment of every finite line (an infinite line imposes
-    /// no upper bound); `cross` is the axis values at the crossing point (BAD
-    /// when the lines are parallel); `dist` is the signed distance from the
-    /// start of `l1` to the crossing.
+    /// Determine whether two line segments cross.
+    /// Returns `(crossed, cross, dist)`: `crossed` is true only when the
+    /// crossing lies within the `[start, end)` segment of every finite line
+    /// (an infinite line imposes no upper bound); `cross` is the axis values
+    /// at the crossing point (BAD when the lines are parallel); `dist` is the
+    /// signed distance from the start of `l1` to the crossing.
     /// SkyFrame overrides with great-circle geometry.
     // C: `astLineCrossing` (frame.c:6562).
     fn line_crossing(&self, l1: &LineDef, l2: &LineDef) -> AstResult<(bool, [f64; 2], f64)> {
@@ -2165,10 +2168,10 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
         }
     }
 
-    /// Determine whether `point` lies on the line `l`. The start point is
-    /// considered part of the line, the end point is not: the nearest point on
-    /// the line must be in `[start, end)` and the perpendicular offset must be
-    /// within `1e-7` of the line length.
+    /// Determine whether `point` lies on the line `l`.
+    /// The start point is considered part of the line, the end point is not:
+    /// the nearest point on the line must be in `[start, end)` and the
+    /// perpendicular offset must be within `1e-7` of the line length.
     /// SkyFrame overrides with great-circle geometry.
     // C: `astLineContains` (frame.c:6466).
     fn line_contains(&self, l: &LineDef, point: &[f64]) -> AstResult<bool> {
@@ -2242,8 +2245,8 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
         norm_each_point(self.as_dyn_frame(), points)
     }
 
-    /// A grid of about `size` points covering the box from `lbnd` to
-    /// `ubnd`, one bound per axis.
+    /// A grid of about `size` points covering the box from `lbnd` to `ubnd`,
+    /// one bound per axis.
     /// Each class makes its own grid.
     /// A Frame spaces the points evenly along each axis, giving more ticks to
     /// the longer axes among those that share a Unit.
@@ -2522,10 +2525,11 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
 
     /// Batch form of `resolve`: resolve every vector `point1->in[i]` into
     /// `(parallel, perpendicular)` components, returned as a 2-coord
-    /// PointSet. For 2-D Frames the perpendicular component is signed
-    /// (positive when basis->vector rotation matches axis1->axis2). The
-    /// 1-axis case returns `(ax_distance, 0)`. SkyFrame overrides with
-    /// great-circle geometry.
+    /// PointSet.
+    /// For 2-D Frames the perpendicular component is signed (positive when
+    /// basis->vector rotation matches axis1->axis2).
+    /// The 1-axis case returns `(ax_distance, 0)`.
+    /// SkyFrame overrides with great-circle geometry.
     ///
     /// # Panics
     ///
@@ -2694,8 +2698,8 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// The base Frame has none, so the bounds are left unchanged.
     /// SkyFrame overrides this (pole inclusion).
     ///
-    /// `inside` is a membership predicate for the box: it returns `true`
-    /// when a supplied point lies inside.
+    /// `inside` is a membership predicate for the box: it returns `true` when
+    /// a supplied point lies inside.
     /// The SkyFrame override uses it to test the poles.
     // C: the predicate mirrors the `reg` Mapping argument, which leaves
     // interior points unchanged and sets exterior points bad.

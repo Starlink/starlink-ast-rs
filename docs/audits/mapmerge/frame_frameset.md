@@ -18,7 +18,7 @@ reduced.
 
 `FrameSet::simplified` (`frameset.rs:2492-2486 (fn simplified)`) is the whole
 port of it, and `FrameSet::simplify_frame`
-(`frameset.rs:1966 (fn simplify_frame)`) is what lets a Frame-level caller reach
+(`frameset.rs:1971 (fn simplify_frame)`) is what lets a Frame-level caller reach
 it.
 
 | # | C step | C site | Rust site | extension point | verdict |

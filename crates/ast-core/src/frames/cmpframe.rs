@@ -585,8 +585,8 @@ impl Frame for CmpFrame {
     }
 
     /// Each component resolves its part of the vector.
-    /// The parallel distances are combined weighted by the length of the basis
-    /// vector in each component.
+    /// The parallel distances are combined weighted by the length of the
+    /// basis vector in each component.
     /// Point 4 and the perpendicular distance then come from this Frame's own
     /// `offset` and `distance`.
     /// A component in which the basis vector has no length contributes
@@ -640,7 +640,8 @@ impl Frame for CmpFrame {
     }
 
     /// The batch form of [`resolve`](Frame::resolve).
-    /// Each component resolves its share of the points in internal axis order.
+    /// Each component resolves its share of the points in internal axis
+    /// order.
     /// Point 4 and the perpendicular distance come from this Frame's `offset`
     /// and `distance`, which take external order, so they are given the
     /// supplied points.
@@ -748,8 +749,8 @@ impl Frame for CmpFrame {
         Ok(result)
     }
 
-    /// A CmpFrame's axes belong to its components, so the kind of a given axis
-    /// is whatever the owning component has there.
+    /// A CmpFrame's axes belong to its components, so the kind of a given
+    /// axis is whatever the owning component has there.
     /// The two components need not agree.
     /// The axis index is permuted and forwarded to the owner.
     // C: `CmpFrame::GetAxis` (cmpframe.c:3474).
@@ -897,8 +898,8 @@ impl Frame for CmpFrame {
     /// the box, and a CmpFrame does not widen the box for a singularity in
     /// either component: the bounds it returns are those it was given.
     /// Whether a Region on a CmpFrame contains a component's singular point
-    /// cannot in general be decomposed by component, since the Region need not
-    /// be a product of per-component Regions.
+    /// cannot in general be decomposed by component, since the Region need
+    /// not be a product of per-component Regions.
     // C: `CmpFrame::NormBox` (cmpframe.c:5838); the probe PermMaps that supply
     // the bad values are at cmpframe.c:5965-5969, 5981-5991.
     fn norm_box(

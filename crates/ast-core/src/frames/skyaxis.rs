@@ -78,7 +78,8 @@ impl SkyAxis {
         self.axis.digits.unwrap_or(frame_digits)
     }
 
-    /// The Format, set or default. Mirrors `GetAxisFormat`.
+    /// The Format, set or default.
+    /// Mirrors `GetAxisFormat`.
     // C: skyaxis.c:2888.
     pub fn format_value(&self, frame_digits: i32) -> String {
         match &self.format {
@@ -98,7 +99,8 @@ impl SkyAxis {
     }
 
     /// The Unit, set or default: `"rad"` for a `%`-style Format, else the one
-    /// the Format describes. Mirrors `GetAxisUnit`.
+    /// the Format describes.
+    /// Mirrors `GetAxisUnit`.
     // C: skyaxis.c:3288.
     pub fn unit_value(&self, frame_digits: i32) -> String {
         if let Some(u) = &self.axis.unit {
@@ -112,10 +114,11 @@ impl SkyAxis {
         }
     }
 
-    /// The NormUnit. Mirrors `GetAxisNormUnit`: a description of the axis
-    /// values is returned unchanged when the Unit is the default or has been
-    /// set to that description; anything else is a units expression,
-    /// normalised as the Axis class does.
+    /// The NormUnit.
+    /// Mirrors `GetAxisNormUnit`: a description of the axis values is
+    /// returned unchanged when the Unit is the default or has been set to
+    /// that description; anything else is a units expression, normalised as
+    /// the Axis class does.
     // C: skyaxis.c:3101.
     pub fn norm_unit_value(&self, frame_digits: i32) -> String {
         let fmt = self.format_value(frame_digits);
@@ -134,7 +137,8 @@ impl SkyAxis {
         crate::units::norm_unit(&self.unit_value(frame_digits))
     }
 
-    /// The Label, set or default. Mirrors `GetAxisLabel`.
+    /// The Label, set or default.
+    /// Mirrors `GetAxisLabel`.
     // C: skyaxis.c:3012.
     pub fn label_value(&self) -> String {
         if let Some(l) = &self.axis.label {
@@ -152,7 +156,8 @@ impl SkyAxis {
         .to_string()
     }
 
-    /// The Symbol, set or default. Mirrors `GetAxisSymbol`.
+    /// The Symbol, set or default.
+    /// Mirrors `GetAxisSymbol`.
     // C: skyaxis.c:3205.
     pub fn symbol_value(&self) -> String {
         if let Some(s) = &self.axis.symbol {
@@ -166,7 +171,8 @@ impl SkyAxis {
     }
 
     /// The Direction, set or default: an axis formatted as a time plots in
-    /// reverse. Mirrors `GetAxisDirection`.
+    /// reverse.
+    /// Mirrors `GetAxisDirection`.
     // C: skyaxis.c:2820.
     pub fn direction_value(&self) -> bool {
         self.axis.direction.unwrap_or(!self.as_time_value())
