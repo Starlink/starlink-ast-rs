@@ -1,7 +1,7 @@
 //! Channel I/O abstraction for reading and writing AST objects.
 //!
 //! A [`Channel`] connects a [`Source`] (text line supplier) and a [`Sink`]
-//! (text line consumer) to the serialisation machinery, allowing AST objects
+//! (text line consumer) to the serialization machinery, allowing AST objects
 //! to be read from and written to external storage.
 //!
 //! The built-in [`NativeChannel`] uses the AST Native text format, and
@@ -377,9 +377,12 @@ pub trait Channel {
     ///
     /// - [`ErrorCode::Badin`] if a line cannot be interpreted while Skip is
     ///   not set, an object does not start with a `Begin` line, the classes
-    ///   in a description are out of order, or Strict is set and an item is
-    ///   not recognized.
-    /// - [`ErrorCode::Eochn`] if the text ends within an object.
+    ///   in a description are out of order, the `End` line that should
+    ///   follow the last class's data is missing, or Strict is set and an
+    ///   item is not recognized.
+    /// - [`ErrorCode::Eochn`] if the text ends within a class's data.
+    /// - [`ErrorCode::Lderr`] if an object's `End` line comes before the
+    ///   data of all of its classes.
     /// - [`ErrorCode::Ocluk`] if an object's class is unknown.
     /// - Passes on the error of making the object from its description.
     ///
@@ -392,6 +395,7 @@ pub trait Channel {
     /// [`FitsChan`]: crate::fitschan::FitsChan
     /// [`ErrorCode::Badin`]: crate::error::ErrorCode::Badin
     /// [`ErrorCode::Eochn`]: crate::error::ErrorCode::Eochn
+    /// [`ErrorCode::Lderr`]: crate::error::ErrorCode::Lderr
     /// [`ErrorCode::Ocluk`]: crate::error::ErrorCode::Ocluk
     /// [`ErrorCode::Inmoc`]: crate::error::ErrorCode::Inmoc
     #[doc(alias = "astRead")]
@@ -443,9 +447,12 @@ pub trait Channel {
     /// [`ErrorCode::Mritf`] if another transformation is already registered
     /// here under the same name.
     ///
+    /// # See also
+    ///
+    /// `astIntraReg`, which registers a transformation for the whole
+    /// process; here each Channel holds its own registrations.
+    ///
     /// [`ErrorCode::Mritf`]: crate::error::ErrorCode::Mritf
-    // C registers a transformation for the whole process with `astIntraReg`;
-    // here each Channel holds its own.
     fn register_intra(&mut self, transform: Arc<dyn IntraTransform>) -> AstResult<()>;
 
     /// The texts of the warnings from the most recent read or write, in the

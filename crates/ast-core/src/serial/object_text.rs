@@ -73,7 +73,7 @@ macro_rules! object_text {
                     Ok(())
                 }
 
-                /// This object's minimal Native serialisation, as C's
+                /// This object's minimal Native serialization, as C's
                 /// `astToString` returns it: the text a Channel set to
                 /// `Comment=0,Full=-1,Indent=0` writes, so no comments, no
                 /// default values and one leading space on every line, each
@@ -147,7 +147,7 @@ macro_rules! object_text {
                 }
             }
 
-            /// The object's minimal Native serialisation, as C's
+            /// The object's minimal Native serialization, as C's
             /// `astToString` returns it: the text a Channel set to
             /// `Comment=0,Full=-1,Indent=0` writes. Read it back with
             /// [`from_native_string`](crate::from_native_string).
