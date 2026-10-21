@@ -1025,7 +1025,7 @@ pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
         }
     }
 
-    /// Whether this mapping carries the `RestrictedSimplify` flag.
+    /// Whether simplification of this mapping is restricted.
     ///
     /// When set, a simplification of this mapping may nominate only those
     /// components that carry [`allow_simplify`](Mapping::allow_simplify), and
@@ -1033,7 +1033,8 @@ pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
     /// A simplification clears it on its result.
     /// Written to a Native dump as the `ReSimp` item.
     fn restricted_simplify(&self) -> bool {
-        // C `AST__RESTRICTED_SIMPLIFY_FLAG` (mapping.h), kept in the Mapping
+        // C's protected `RestrictedSimplify`:
+        // `AST__RESTRICTED_SIMPLIFY_FLAG` (mapping.h), kept in the Mapping
         // `flags` word as the port keeps it in `MappingFlags`; the base driver
         // declines at mapping.c:16853-16855.
         self.mapping_flags().restricted_simplify
@@ -1125,7 +1126,7 @@ pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
         ));
     }
 
-    /// Whether this mapping carries the `AllowSimplify` flag.
+    /// Whether this mapping may be merged by a restricted simplification.
     ///
     /// Only consulted when the enclosing CmpMap has
     /// [`restricted_simplify`](Mapping::restricted_simplify) set: under a
@@ -1135,7 +1136,8 @@ pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
     /// into a CmpMap, and on the result of every simplification.
     /// Written to a Native dump as the `AlSimp` item.
     fn allow_simplify(&self) -> bool {
-        // C `AST__ALLOW_SIMPLIFY_FLAG` (mapping.h); cleared at cmpmap.c:3692
+        // C's protected `AllowSimplify`:
+        // `AST__ALLOW_SIMPLIFY_FLAG` (mapping.h); cleared at cmpmap.c:3692
         // and mapping.c:24788, so it never reaches a public dump.
         self.mapping_flags().allow_simplify
     }

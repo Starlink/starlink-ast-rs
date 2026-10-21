@@ -1063,18 +1063,19 @@ pub trait Region: Frame + Mapping + AsDynRegion {
     #[doc(hidden)]
     fn region_fs_flag(&self) -> bool;
 
-    /// Clear `RegionFS` on this Region and on every Region nested inside it.
+    /// Make this Region, and every Region nested inside it, write its own
+    /// Frame when it is dumped.
     ///
-    /// `RegionFS` controls whether a Region's FrameSet is included when it is
-    /// dumped.
-    /// Cleared, it takes its default of true, so the Region dumps its own
-    /// Frame, which restores the Frame on a component Region that had it
-    /// suppressed.
+    /// A Region held inside another can leave its Frame out of a dump, when
+    /// the Frame is implied by the Region holding it.
+    /// This restores the default, under which each Region writes its own
+    /// Frame, as a component Region needs once it stands alone.
     /// [`copy_region`](Region::copy_region) calls this on the copy.
     ///
-    /// [`Clone`] does not clear `RegionFS`.
+    /// [`Clone`] leaves the setting alone.
     /// Compound classes override this to reach their component Regions.
-    // C: the Region `Copy` ends with `astClearRegionFS( out )`
+    // C: this clears the protected `RegionFS` attribute throughout. The
+    // Region `Copy` ends with `astClearRegionFS( out )`
     // (region.c:12936-12940), and each Region nested in the copy is itself a
     // copy, so the clear reaches all of them. It is not part of `Clone`
     // because the port also clones where C takes a new reference with
@@ -1087,10 +1088,11 @@ pub trait Region: Frame + Mapping + AsDynRegion {
         }
     }
 
-    /// A deep copy of this Region with `RegionFS` cleared throughout.
+    /// A deep copy of this Region in which every Region writes its own Frame
+    /// when it is dumped.
     ///
     /// It differs from a plain clone in one observable way: the copy, and
-    /// every Region nested in it, dumps its own FrameSet
+    /// every Region nested in it, writes its own Frame when it is dumped
     /// (see [`clear_region_fs_deep`](Region::clear_region_fs_deep)).
     ///
     /// # See also
@@ -2011,15 +2013,16 @@ pub trait Region: Frame + Mapping + AsDynRegion {
 
     /// Copy selected properties from `that` onto this Region.
     ///
-    /// Negated, Closed, RegionFS and Adaptive are copied, each with whether it
-    /// is set.
+    /// Negated, Closed and Adaptive, and whether the Region writes its Frame
+    /// when it is dumped, are copied, each with whether it is set.
     /// When the axis counts match, MeshSize and FillFactor are copied where
     /// `that` has them set; otherwise both are cleared.
     /// When `clear_unc` is true and `that` has no uncertainty set
     /// ([`test_unc`](Region::test_unc) false), this Region's uncertainty is
     /// cleared, so a simplified Region built from one that used its default
     /// uncertainty has no uncertainty set either.
-    // C: region.c `astRegOverlay` (region.c:9861); `clear_unc` is its
+    // C: region.c `astRegOverlay` (region.c:9861), which also copies the
+    // protected `RegionFS` attribute; `clear_unc` is its
     // `if( unc && !astTestUnc(that) ) astClearUnc(this)` branch.
     fn reg_overlay(&mut self, that: &dyn Region, clear_unc: bool) -> AstResult<()> {
         // C `astRegOverlay` copies `negated`, `closed`, `regionfs` and
