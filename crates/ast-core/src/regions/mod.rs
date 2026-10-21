@@ -1517,7 +1517,7 @@ pub trait Region: Frame + Mapping + AsDynRegion {
         Ok(out.point(0).to_vec())
     }
 
-    /// Shift the centre of this Region to the supplied position.
+    /// Shift the center of this Region to the supplied position.
     ///
     /// `cen` holds the new center, with one value for each axis of the base
     /// Frame when `ifrm` is [`FrameRef::Base`], or of the current Frame when it
@@ -1542,7 +1542,7 @@ pub trait Region: Frame + Mapping + AsDynRegion {
         ))
     }
 
-    /// Return the centre of this Region, or `None` if the class has no centre.
+    /// Return the center of this Region, or `None` if the class has no center.
     ///
     /// The center is returned in the base Frame for [`FrameRef::Base`] and
     /// transformed through the base→current Mapping for
@@ -1550,6 +1550,7 @@ pub trait Region: Frame + Mapping + AsDynRegion {
     /// Classes that are not centro-symmetric, the same set that cannot serve
     /// as an uncertainty Region ([`PointList`], [`Polygon`], [`CmpRegion`],
     /// [`NullRegion`]), return `None`.
+    /// A [`Moc`] and an [`Stc`] also return `None`.
     /// [`BoxRegion`], [`Circle`] and [`Ellipse`] always return a center, an
     /// [`Interval`] only when it is equivalent to a Box, and a [`Prism`] only
     /// when both its component Regions have one.
@@ -1829,9 +1830,9 @@ pub trait Region: Frame + Mapping + AsDynRegion {
     /// still preserves the Region type.
     // C: region.c `astRegBasePick` (region.c:8277).
     fn reg_base_pick_axes(&self, axes: &[usize]) -> AstResult<Option<DynRegion>> {
-        // Port of the base astRegBasePick (region.c:8277). We only proceed if
-        // every base-Frame axis is selected exactly once (a genuine
-        // permutation); otherwise no same-class sub-region can be formed.
+        // Proceed only if every base-Frame axis is selected exactly once
+        // (a genuine permutation); otherwise no same-class sub-region can be
+        // formed.
         let nax = self.get_region_frameset().base().naxes();
         if axes.len() != nax {
             return Ok(None);
