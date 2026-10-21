@@ -88,6 +88,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [The `astGetFits<X>` documentation says a keyword name that does not conform to FITS is an error](#the-astgetfitsx-documentation-says-a-keyword-name-that-does-not-conform-to-fits-is-an-error)
 - [The `FitsAxisOrder` documentation gives its purpose as "Frame title"](#the-fitsaxisorder-documentation-gives-its-purpose-as-frame-title)
 - [The `astTableSource` documentation gets the table source function's failure signal wrong](#the-asttablesource-documentation-gets-the-table-source-functions-failure-signal-wrong)
+- [The `TabOK` documentation says a read of a `-TAB` header returns NULL when TabOK is not positive](#the-tabok-documentation-says-a-read-of-a--tab-header-returns-null-when-tabok-is-not-positive)
 
 ### [Addressed here, and not going upstream](#addressed-here-and-not-going-upstream)
 
@@ -1228,9 +1229,10 @@ A C fix: use the class prologue's sentence in the constructor's Description.
 
 C location: `fitschan.c`, the `Encoding` prologue ("Choice of Default Encoding", lines 42378 to 42426), and `GetEncoding` (lines 12803 to 12890).
 
-The prologue lists the checks with `PLTRAH` (DSS) next to last, after `CROTAi` (FITS-AIPS) and `CRVALi` (FITS-WCS), and says every check but those for NATIVE and DSS needs at least one CTYPE, CRPIX and CRVAL keyword.
-`GetEncoding` checks `PLTRAH` fourth, after the FITS-AIPS spectral axis check and before `PCiiijjj`, and needs any one of a CTYPE, CRPIX or CRVAL keyword (`haswcs`), not one of each.
-So a header with both `PLTRAH` and `CDi_j` cards, for instance, defaults to DSS, where the prologue's order gives FITS-IRAF or FITS-WCS.
+The prologue lists the checks with `PLTRAH` (DSS) next to last, after `CROTAi` (FITS-AIPS) and `CRVALi` (FITS-WCS).
+It also says every check but those for NATIVE and DSS requires "at least one CTYPE, CRPIX and CRVAL keyword", which can be read as needing one of each.
+`GetEncoding` checks `PLTRAH` fourth, after the FITS-AIPS spectral axis check and before `PCiiijjj`, and needs any one of a CTYPE, CRPIX or CRVAL keyword (`haswcs`), as its own private header (line 12765) says: "at least one of the keywords".
+So a header with `PLTRAH`, `CDi_j` and a CRVAL card, for instance, defaults to DSS, where the prologue's order gives FITS-IRAF or FITS-WCS.
 
 Consequence: documentation only.
 
@@ -1303,13 +1305,26 @@ C location: `fitschan.c`, the `astTableSource` prologue (Parameters, lines 33842
 
 The `tabsource` parameter says the function takes five arguments, the fifth a pointer to the status, and then that on failure it should return zero for "the final (third) argument", and any non-zero integer otherwise.
 The final argument is the fifth, and it is the inherited status, whose convention is the reverse: `GetNamedTable` calls the function and then looks for the table, reporting AST__NOTAB if it is not there, so a function that followed the C edition and set the status non-zero on success would make `astRead` fail.
-The Fortran edition says non-zero on failure, which agrees with the status convention.
+The Fortran edition gets the sense right, a non-zero value on failure, but also calls it the "third" argument.
 The `astPutTable` and `astPutTables` prologues call the function `astTablesSource`.
 
 Consequence: documentation only, but a C caller who follows it makes every read fail.
 
 `TableSource::read_table` returns the table, `None` when it cannot be read, or an error, so there is no status to set.
-A C fix: say "the final (fifth)" argument and "a non-zero error status on failure", as the Fortran edition does, and spell `astTableSource` in the other two prologues.
+A C fix: in both editions say "the final (fifth)" argument, and in the C edition "a non-zero error status on failure", the sense the Fortran edition gives; and spell `astTableSource` in the other two prologues.
+
+### The `TabOK` documentation says a read of a `-TAB` header returns NULL when TabOK is not positive
+
+C location: `fitschan.c`, the `TabOK` prologue (Description, lines 42857 to 42872), and `TabMapping`, which makes no Mapping, returning NULL, unless TabOK is positive (line 34018).
+
+The prologue says that with TabOK zero or negative `astRead` returns a NULL pointer if any axis in the header uses the `-TAB` algorithm.
+The read instead takes the `-TAB` code in CTYPE as it stands.
+A C-oracle probe gives AST__BDFTS for a spectral axis (`WAVE-TAB`: "Cannot implement spectral algorithm code '-TAB'") and for celestial axes (`RA---TAB` and `DEC--TAB`: "unknown projection type '-TAB'"), and a FrameSet, with no error, for any other axis (`FOO--TAB`).
+
+Consequence: documentation only, but a caller who tests for NULL gets an error instead for spectral and celestial axes, and a FrameSet without the look-up for the rest.
+
+`FitsChan::tab_ok` describes the three outcomes, which the port shares with C.
+A C fix: describe the outcomes, or have `astRead` return NULL, as documented, when a `-TAB` axis is met with TabOK not positive.
 
 ## Addressed here, and not going upstream
 

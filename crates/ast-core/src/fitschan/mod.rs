@@ -579,8 +579,9 @@ impl FitsChan {
     /// The text is split into lines and each is parsed as a FITS card.
     /// An `END` card has no `=` in column 9, so it is stored as an ordinary
     /// commentary card, just like `HISTORY`, `COMMENT` or a blank keyword.
-    /// A line that cannot be read as a card, one with an `=` in its first 8
-    /// characters, is left out, so this does not fail.
+    /// A line that cannot be read as a card, one whose keyword name (its
+    /// first 8 characters) holds an `=` before any other illegal character,
+    /// is left out, so this does not fail.
     /// The warnings for illegal keyword names and values are stored as
     /// [`put_fits`](Self::put_fits) stores them.
     pub fn from_header(text: &str) -> AstResult<Self> {
@@ -841,8 +842,8 @@ impl FitsChan {
     ///
     /// # Errors
     ///
-    /// - [`ErrorCode::Bdfts`] if `name` has an `=` within its first 8
-    ///   characters.
+    /// - [`ErrorCode::Bdfts`] if the keyword name in `name` (its first 8
+    ///   characters) holds an `=` before any other illegal character.
     /// - [`ErrorCode::Bdfmt`] if `name` holds an illegal field specifier
     ///   (see [`find_fits`](Self::find_fits)).
     /// - As for [`card`](Self::card).
@@ -917,8 +918,8 @@ impl FitsChan {
     ///
     /// # Errors
     ///
-    /// - [`ErrorCode::Bdfts`] if `card` has an `=` within its first 8
-    ///   characters, in the keyword name.
+    /// - [`ErrorCode::Bdfts`] if the keyword name of `card` (its first 8
+    ///   characters) holds an `=` before any other illegal character.
     /// - As for [`card`](Self::card).
     #[doc(alias = "astPutFits")]
     pub fn put_fits(&mut self, card: &str, overwrite: bool) -> AstResult<()> {
@@ -953,8 +954,9 @@ impl FitsChan {
     ///
     /// # Errors
     ///
-    /// - [`ErrorCode::Bdfts`] if a card has an `=` within its first 8
-    ///   characters; the cards before it have been stored.
+    /// - [`ErrorCode::Bdfts`] if the keyword name of a card (its first 8
+    ///   characters) holds an `=` before any other illegal character; the
+    ///   cards before it have been stored.
     /// - As for [`card`](Self::card).
     #[doc(alias = "astPutCards")]
     pub fn put_cards(&mut self, cards: &str) -> AstResult<()> {
@@ -1405,8 +1407,8 @@ impl FitsChan {
     /// - [`ErrorCode::Fundef`] if the card has no value.
     /// - [`ErrorCode::Ftcnv`] if the value cannot be converted, if the card
     ///   is a commentary card, or if `name` is `None` at end-of-file.
-    /// - [`ErrorCode::Bdfts`] if `name` has an `=` within its first 8
-    ///   characters.
+    /// - [`ErrorCode::Bdfts`] if the keyword name in `name` (its first 8
+    ///   characters) holds an `=` before any other illegal character.
     /// - [`ErrorCode::Bdfmt`] if `name` holds an illegal field specifier.
     /// - As for [`card`](Self::card).
     ///
@@ -1589,8 +1591,8 @@ impl FitsChan {
         self.cards.ins_card(card, overwrite);
     }
 
-    /// Store an integer value under keyword `name`, inserting a card or overwriting
-    /// the current card as for [`set_fits_f`](Self::set_fits_f).
+    /// Store an integer value under keyword `name`, inserting a card or
+    /// overwriting the current card as for [`set_fits_f`](Self::set_fits_f).
     ///
     /// # Errors
     ///
@@ -1606,8 +1608,8 @@ impl FitsChan {
         self.set_value(name, FitsValue::Int(i64::from(value)), comment, overwrite)
     }
 
-    /// Store a 64-bit integer value under keyword `name`, inserting a card or overwriting
-    /// the current card as for [`set_fits_f`](Self::set_fits_f).
+    /// Store a 64-bit integer value under keyword `name`, inserting a card or
+    /// overwriting the current card as for [`set_fits_f`](Self::set_fits_f).
     ///
     /// # Errors
     ///
@@ -1666,8 +1668,8 @@ impl FitsChan {
     ///
     /// # Errors
     ///
-    /// - [`ErrorCode::Bdfts`] if `name` has an `=` within its first 8
-    ///   characters.
+    /// - [`ErrorCode::Bdfts`] if the keyword name in `name` (its first 8
+    ///   characters) holds an `=` before any other illegal character.
     /// - As for [`card`](Self::card).
     ///
     /// # Examples
@@ -1702,8 +1704,8 @@ impl FitsChan {
         self.set_value(name, FitsValue::Float(value), comment, overwrite)
     }
 
-    /// Store a string value under keyword `name`, inserting a card or overwriting
-    /// the current card as for [`set_fits_f`](Self::set_fits_f).
+    /// Store a string value under keyword `name`, inserting a card or
+    /// overwriting the current card as for [`set_fits_f`](Self::set_fits_f).
     ///
     /// # Errors
     ///
@@ -1747,8 +1749,8 @@ impl FitsChan {
         )
     }
 
-    /// Store a logical value under keyword `name`, inserting a card or overwriting
-    /// the current card as for [`set_fits_f`](Self::set_fits_f).
+    /// Store a logical value under keyword `name`, inserting a card or
+    /// overwriting the current card as for [`set_fits_f`](Self::set_fits_f).
     ///
     /// # Errors
     ///

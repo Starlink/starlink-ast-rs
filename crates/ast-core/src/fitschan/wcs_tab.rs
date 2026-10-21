@@ -37,9 +37,10 @@ const CLASS: &str = "FitsChan";
 ///
 /// # See also
 ///
-/// The table source function `astTableSource` registers, which stores the
-/// table it reads with `astPutTable` and reports failure through its status
-/// argument, where a `TableSource` returns the table.
+/// `astTableSource`, which registers a table source function.
+// C: the table source function stores the table it reads with
+// `astPutTable` and reports failure through its status argument; a
+// `TableSource` returns the table, which the FitsChan stores.
 pub trait TableSource: Send {
     /// The table in the named extension, or `None` if it cannot be read.
     ///
