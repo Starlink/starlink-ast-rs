@@ -2132,3 +2132,25 @@ fn a_copied_key_takes_the_destinations_key_case() {
     assert_eq!(bulk.map_key(0).unwrap(), "MIXEDKEY");
     assert_eq!(bulk.get_0i("MIXEDKEY").unwrap(), Some(11));
 }
+
+/// With `KeyCase` false a key may be up to 200 characters long, as the
+/// C library's `AST__MXKEYLEN` allows (C-oracle probe: 200 is stored, 201
+/// reports `AST__BIGKEY`).
+#[test]
+fn a_case_insensitive_key_may_have_200_characters() {
+    let mut km = KeyMap::new();
+    km.set_key_case(false).unwrap();
+
+    let longest = "a".repeat(200);
+    km.put_0i(&longest, 1, None).unwrap();
+    assert_eq!(km.get_0i(&longest).unwrap(), Some(1));
+
+    let too_long = "a".repeat(201);
+    let err = km.put_0i(&too_long, 2, None).unwrap_err();
+    assert_eq!(err.code(), ErrorCode::Bigkey);
+    assert!(
+        err.to_string()
+            .contains("keys must be no more than 200 characters long"),
+        "{err}"
+    );
+}

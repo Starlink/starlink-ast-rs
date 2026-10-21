@@ -13,9 +13,8 @@ pub(crate) const MIN_TABLE_SIZE: usize = 16;
 /// entries.
 pub(crate) const MAX_ENTRIES_PER_TABLE_ENTRY: usize = 10;
 
-/// `AST__MXKEYLEN`: the key buffer length used when `KeyCase` is 0.
-/// The longest usable key is one character shorter, because C
-/// null-terminates within the buffer.
+/// `AST__MXKEYLEN`: the longest key accepted when `KeyCase` is 0.
+/// C's key buffer is one character longer, for the terminating null.
 pub(crate) const MXKEYLEN: usize = 200;
 
 /// The used length of a string, ignoring trailing white space and
@@ -97,13 +96,12 @@ pub(crate) fn convert_key(key: &str, key_case: bool, method: &str) -> AstResult<
     if key_case {
         return Ok(key.to_string());
     }
-    if chr_len(key) >= MXKEYLEN {
+    if chr_len(key) > MXKEYLEN {
         return Err(AstError::new(
             ErrorCode::Bigkey,
             format!(
                 "{method}(KeyMap): Supplied key '{key}' is too long (keys must be \
-                 no more than {} characters long).",
-                MXKEYLEN - 1
+                 no more than {MXKEYLEN} characters long)."
             ),
         ));
     }
@@ -262,17 +260,17 @@ mod tests {
     fn convert_key_rejects_over_long_keys_when_case_insensitive() {
         // astChrLen strips trailing whitespace and non-printing characters
         // before the length test, so a padded 200-character key passes.
-        let exact = "x".repeat(MXKEYLEN - 1);
+        let exact = "x".repeat(MXKEYLEN);
         assert!(convert_key(&exact, false, "astMapPut0I").is_ok());
         let padded = format!("{exact}          ");
         assert!(convert_key(&padded, false, "astMapPut0I").is_ok());
 
-        let too_long = "x".repeat(MXKEYLEN);
+        let too_long = "x".repeat(MXKEYLEN + 1);
         let err = convert_key(&too_long, false, "astMapPut0I").unwrap_err();
         assert_eq!(err.code(), ErrorCode::Bigkey);
         assert!(
             err.to_string()
-                .contains("keys must be no more than 199 characters long"),
+                .contains("keys must be no more than 200 characters long"),
             "{err}"
         );
     }
