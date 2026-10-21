@@ -91,6 +91,8 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [The `TabOK` documentation says a read of a `-TAB` header returns NULL when TabOK is not positive](#the-tabok-documentation-says-a-read-of-a--tab-header-returns-null-when-tabok-is-not-positive)
 - [The `Full` documentation gives a FitsChan a default of zero](#the-full-documentation-gives-a-fitschan-a-default-of-zero)
 - [The `astRead` documentation says a Channel with no further objects returns NULL without error, which a MocChan does not](#the-astread-documentation-says-a-channel-with-no-further-objects-returns-null-without-error-which-a-mocchan-does-not)
+- [The `SizeGuess` documentation gives a default of 300](#the-sizeguess-documentation-gives-a-default-of-300)
+- [The `KeyError` documentation says every `astMapGet...` function reports a missing key](#the-keyerror-documentation-says-every-astmapget-function-reports-a-missing-key)
 
 ### [Addressed here, and not going upstream](#addressed-here-and-not-going-upstream)
 
@@ -1352,6 +1354,32 @@ Consequence: documentation only, but a caller that reads a MocChan until it retu
 
 `Channel::read` says a MocChan never returns `Ok(None)` and fails with `ErrorCode::Inmoc` when there is no text, as the code does.
 A C fix: add a MocChan entry to the prologue's Applicability section saying that a read with no text left is an error.
+
+### The `SizeGuess` documentation gives a default of 300
+
+C location: `keymap.c`, the `SizeGuess` prologue (Description, lines 10383 to 10384), and `GetSizeGuess` (line 3818).
+
+The prologue says "The default value is 300."
+`GetSizeGuess` returns `MIN_TABLE_SIZE*MAX_ENTRIES_PER_TABLE_ENTRY` when SizeGuess is not set, which is 16 times 10, or 160; a C-oracle probe gets 160 for a new KeyMap.
+
+Consequence: documentation only.
+
+`KeyMap::size_guess` gives 160, as the code does, and says so.
+A C fix: "The default value is 160."
+
+### The `KeyError` documentation says every `astMapGet...` function reports a missing key
+
+C location: `keymap.c`, the `KeyError` prologue (Description, from line 10449), `MapGetC` (line 6822) and `MapDefined` (line 7699).
+
+The prologue says KeyError controls how "the astMapGet... functions" behave for a missing key, and that when it is non-zero they report an error.
+`astMapGetC` is one of them but never does: it asks `astMapLength` for the entry's length and returns zero, without error, when that is zero.
+`astMapDefined`, which the prologue does not name, does report AST__MPKER for a missing key when KeyError is set.
+A C-oracle probe with KeyError set gets zero and no error from `astMapGetC` and AST__MPKER from `astMapDefined` for a missing key; `astMapLenC` also reports nothing.
+
+Consequence: documentation only, but a caller who relies on KeyError to catch a missing key read with `astMapGetC` gets no error.
+
+`KeyMap::key_error` names the methods that consult it, `map_defined` among them, and those that do not, `map_get_c` among them, as the code does.
+A C fix: name the functions, or have `astMapGetC` report AST__MPKER as the other `astMapGet...` functions do.
 
 ## Addressed here, and not going upstream
 

@@ -9,35 +9,44 @@ use crate::error::{AstError, AstResult, ErrorCode};
 use crate::keymap::entry::MapEntry;
 use crate::keymap::table;
 
-/// The order [`crate::keymap::KeyMap::map_key`] and `map_iterate` present
-/// keys.
+/// The orders in which [`KeyMap::map_key`](crate::keymap::KeyMap::map_key)
+/// and [`KeyMap::map_iterate`](crate::keymap::KeyMap::map_iterate) return
+/// keys, chosen by the [SortBy](crate::keymap::KeyMap::sort_by) attribute.
 ///
-/// "Up" orders the newest entry first; "Down" orders the oldest first —
-/// this reads backwards from the names, but follows `CompareEntries`
-/// (`keymap.c:1463`). The `Age` variants track the age of the *value*,
-/// which a re-put advances, and the `KeyAge` variants the age of the
-/// *key*, which it does not.
+/// The age orders measure a key's age in one of two ways.
+/// `AgeUp` and `AgeDown` use the time a value was last stored under the
+/// key, so storing a new value under an existing key makes it the newest.
+/// `KeyAgeUp` and `KeyAgeDown` use the time the key was first stored, which
+/// storing a new value under it does not change.
+// "Up" orders the newest entry first and "Down" the oldest first, which
+// reads backwards from the names but follows CompareEntries
+// (keymap.c:1463).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SortBy {
-    /// No sorting requested. Keys are read out in alphabetical order.
+    /// No order is asked for; keys are returned in the order of
+    /// [`KeyUp`](Self::KeyUp).
     #[default]
     None,
-    /// Newest value first.
+    /// The key with the most recently stored value first.
     AgeUp,
-    /// Oldest value first.
+    /// The key with the most recently stored value last.
     AgeDown,
-    /// Alphabetical, ascending.
+    /// Alphabetical order, comparing the keys byte by byte, with `A...`
+    /// first.
     KeyUp,
-    /// Alphabetical, descending.
+    /// Reverse alphabetical order, with `A...` last.
     KeyDown,
-    /// Newest key first, ignoring later re-puts of an existing key.
+    /// The most recently added key first.
     KeyAgeUp,
-    /// Oldest key first, ignoring later re-puts of an existing key.
+    /// The most recently added key last.
     KeyAgeDown,
 }
 
 impl SortBy {
-    /// The integer code C uses for this value (`keymap.c:239`).
+    /// The integer code for this order: 0 for [`None`](Self::None) to 6
+    /// for [`KeyAgeDown`](Self::KeyAgeDown), in the order the variants are
+    /// declared.
+    // The codes are C's (keymap.c:239).
     pub fn code(self) -> i32 {
         match self {
             SortBy::None => 0,
@@ -50,8 +59,8 @@ impl SortBy {
         }
     }
 
-    /// The value with the given integer code, or `None` if the code is not
-    /// one C defines.
+    /// The order with integer code `code` (see [`code`](Self::code)), or
+    /// `None` if `code` is not from 0 to 6.
     pub fn from_code(code: i32) -> Option<Self> {
         Some(match code {
             0 => SortBy::None,
@@ -65,14 +74,12 @@ impl SortBy {
         })
     }
 
-    /// The string form written to a dump. Mirrors `SortByString`
-    /// (`keymap.c:9742`).
-    ///
-    /// `SortByString` can also fail, for an integer `sortby` value that
-    /// is none of the seven known codes — but that path has no
-    /// reachable call site here: this method matches over the closed
-    /// `SortBy` enum, so every value is one of the seven, and the
-    /// failure case is not representable.
+    /// The name of this order, as a dumped KeyMap records it and as
+    /// [`parse`](Self::parse) reads it.
+    // SortByString (keymap.c:9742). SortByString can also fail, for an
+    // integer `sortby` value that is none of the seven known codes, but this
+    // method matches over the closed SortBy enum, so the failure case is not
+    // representable.
     pub fn as_str(self) -> &'static str {
         match self {
             SortBy::None => "None",
@@ -85,15 +92,20 @@ impl SortBy {
         }
     }
 
-    /// Parse a string form. Mirrors `SortByInt` (`keymap.c:9666`), which
-    /// compares with `astChrMatch`: case is folded and trailing
-    /// whitespace on either side is ignored, but leading whitespace is
-    /// significant.
+    /// The order named by `text`, one of the names
+    /// [`as_str`](Self::as_str) gives.
     ///
-    /// `method` names the calling function, and is interpolated into the
-    /// error message exactly as C's `method` parameter is, matching the
-    /// two call sites `SortByInt` has: `astSetAttrib` (`keymap.c:9225`)
-    /// and `astRead` (`keymap.c:11019`).
+    /// Case and trailing white space are ignored, but leading white space
+    /// is not.
+    /// `method` names the operation in the error message.
+    ///
+    /// # Errors
+    ///
+    /// - [`ErrorCode::Inter`] if `text` names no order.
+    // SortByInt (keymap.c:9666), which compares with astChrMatch. `method` is
+    // interpolated into the error message as C's `method` parameter is, for
+    // the two call sites SortByInt has: astSetAttrib (keymap.c:9225) and
+    // astRead (keymap.c:11019).
     pub fn parse(text: &str, method: &str) -> AstResult<Self> {
         let trimmed = text.trim_end();
         for candidate in [

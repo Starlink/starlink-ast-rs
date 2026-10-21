@@ -8,7 +8,7 @@ use audit_tools::{LedgerRow, parse_headers_tsv, parse_ledger};
 
 /// Rows not yet reviewed. It may only go down; it reaches zero when the
 /// audit is complete.
-const UNREVIEWED_ROWS: usize = 131;
+const UNREVIEWED_ROWS: usize = 105;
 
 fn audit_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../docs/audits/c-docs")
@@ -175,10 +175,6 @@ const C_CITATIONS_UNCLEANED: &[(&str, &str)] = &[
     ),
     (
         "fitstable",
-        "C source citations in public docs; cleaned in its subsystem's review task",
-    ),
-    (
-        "keymap",
         "C source citations in public docs; cleaned in its subsystem's review task",
     ),
     (

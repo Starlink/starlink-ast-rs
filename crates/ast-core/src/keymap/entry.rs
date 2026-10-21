@@ -5,40 +5,48 @@ use crate::keymap::KeyMap;
 use crate::keymap::convert::RawValue;
 use crate::serial::AnyObject;
 
-/// The AST data type of a KeyMap entry.
+/// The type of the value stored in a KeyMap entry, as
+/// [`KeyMap::map_type`] gives it.
 ///
-/// The discriminants are C's `AST__*TYPE` constants from `ast.h`.
-/// `AST__POINTERTYPE` (6) holds a raw C pointer and is not representable
-/// in the Rust API, so its code is reserved but unhandled.
+/// # See also
+///
+/// The C constants `AST__BADTYPE`, `AST__INTTYPE`, `AST__DOUBLETYPE`,
+/// `AST__STRINGTYPE`, `AST__OBJECTTYPE`, `AST__FLOATTYPE`, `AST__SINTTYPE`,
+/// `AST__UNDEFTYPE`, `AST__BYTETYPE` and `AST__KINTTYPE`, one per variant
+/// in that order, whose values [`code`](Self::code) gives.
+/// `AST__POINTERTYPE`, for a generic pointer, has no variant.
+// The discriminants are C's AST__*TYPE constants from ast.h.
+// AST__POINTERTYPE (6) holds a raw C pointer and is not representable in the
+// Rust API, so its code is reserved but unhandled.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AstType {
-    /// `AST__BADTYPE`: C's "no type" marker, reported by `astMapType` for
-    /// a key that is not present. No entry is ever stored with this type,
-    /// so it is not part of [`AstType::ALL`] and does not round-trip
-    /// through [`AstType::from_code`].
+    /// No type: what [`KeyMap::map_type`] gives for a key that is not in
+    /// the KeyMap.
+    /// No entry has this type, so it is not in [`AstType::ALL`] and
+    /// [`AstType::from_code`] does not return it.
     BadType = 0,
-    /// `AST__INTTYPE`: `int`.
+    /// `i32`.
     Int = 1,
-    /// `AST__DOUBLETYPE`: `double`.
+    /// `f64`.
     Double = 2,
-    /// `AST__STRINGTYPE`: null-terminated string.
+    /// A string.
     String = 3,
-    /// `AST__OBJECTTYPE`: a nested AST Object.
+    /// An AST Object ([`AnyObject`]).
     Object = 4,
-    /// `AST__FLOATTYPE`: `float`.
+    /// `f32`.
     Float = 5,
-    /// `AST__SINTTYPE`: `short int`.
+    /// `i16`.
     SInt = 7,
-    /// `AST__UNDEFTYPE`: the key exists but has no value.
+    /// No value: the key is in the KeyMap, stored by [`KeyMap::put_u`].
     Undef = 8,
-    /// `AST__BYTETYPE`: `unsigned char`.
+    /// `u8`.
     Byte = 9,
-    /// `AST__KINTTYPE`: 64-bit integer.
+    /// `i64`.
     KInt = 10,
 }
 
 impl AstType {
-    /// Every representable type, in ascending code order.
+    /// Every type an entry can have, in ascending code order.
     pub const ALL: [AstType; 9] = [
         AstType::Int,
         AstType::Double,
@@ -51,22 +59,25 @@ impl AstType {
         AstType::KInt,
     ];
 
-    /// The C `AST__*TYPE` code for this type.
+    /// The integer code of this type, which a dumped KeyMap records for each
+    /// entry.
     pub fn code(self) -> i64 {
         self as i64
     }
 
-    /// The type for a C `AST__*TYPE` code, or `None` when the code is
-    /// `AST__BADTYPE`, `AST__POINTERTYPE`, or out of range.
+    /// The type with integer code `code` (see [`code`](Self::code)), or
+    /// `None` for 0 ([`BadType`](Self::BadType)), for 6 (a generic pointer,
+    /// which has no variant), and for any code not in [`AstType::ALL`].
     pub fn from_code(code: i64) -> Option<AstType> {
         AstType::ALL.into_iter().find(|t| t.code() == code)
     }
 
-    /// The comment written alongside the `Typ%d` card, matching
-    /// `DumpEntry` in `keymap.c`.
+    /// The comment a dumped KeyMap writes beside an entry's type.
     ///
-    /// Panics on `BadType`: no entry is ever stored with that type, so
-    /// there is nothing for `DumpEntry` to write a comment for.
+    /// # Panics
+    ///
+    /// If `self` is [`BadType`](Self::BadType), which no entry has.
+    // The comment on the Typ%d card, as DumpEntry in keymap.c writes it.
     pub fn type_comment(self) -> &'static str {
         match self {
             AstType::String => "Item data type (string)",

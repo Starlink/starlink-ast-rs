@@ -184,32 +184,32 @@ class	IntraMap	intramap.c	IntraMap		yes	The transformation is an Arc<dyn IntraTr
 function	astIntraReg	intramap.c	IntraRegistry::register		yes	C keeps one process-wide table; the port's registry belongs to the Channel that reads (Channel::register_intra), and an IntraMap made in code needs none. The name, numbers of coordinates, flags, purpose, author and contact are IntraTransform methods. C accepts a repeat registration whose arguments are all identical; the port accepts a repeat of the same Arc
 attribute	IntraFlag	intramap.c	IntraMap::intra_flag		yes	The header gives an empty-string default; the getter returns None while unset, and the merge compares an unset value as an empty string, as C does
 function	astIntraMap	intramap.c	IntraMap::new		yes	Takes the transformation itself rather than its registered name
-class	KeyMap	keymap.c			no
-function	astMapCopy	keymap.c			no
-function	astMapCopyEntry	keymap.c			no
-function	astMapKey	keymap.c			no
-function	astMapPut0<X>	keymap.c			no
-function	astMapPut1<X>	keymap.c			no
-function	astMapPutU	keymap.c			no
-function	astMapGet0<X>	keymap.c			no
-function	astMapGet1<X>	keymap.c			no
-function	astMapGetC	keymap.c			no
-function	astMapGetElem<X>	keymap.c			no
-function	astMapDefined	keymap.c			no
-function	astMapHasKey	keymap.c			no
-function	astMapRemove	keymap.c			no
-function	astMapRename	keymap.c			no
-function	astMapSize	keymap.c			no
-function	astMapLenC	keymap.c			no
-function	astMapLength	keymap.c			no
-function	astMapPutElem<X>	keymap.c			no
-function	astMapType	keymap.c			no
-attribute	SizeGuess	keymap.c			no
-attribute	KeyCase	keymap.c			no
-attribute	KeyError	keymap.c			no
-attribute	MapLocked	keymap.c			no
-attribute	SortBy	keymap.c			no
-function	astKeyMap	keymap.c			no
+class	KeyMap	keymap.c	KeyMap		yes
+function	astMapCopy	keymap.c	KeyMap::map_copy		yes
+function	astMapCopyEntry	keymap.c	KeyMap::map_copy_entry		yes
+function	astMapKey	keymap.c	KeyMap::map_key		yes
+function	astMapPut0<X>	keymap.c	KeyMap::put_0i;KeyMap::put_0s;KeyMap::put_0k;KeyMap::put_0b;KeyMap::put_0f;KeyMap::put_0d;KeyMap::put_0c;KeyMap::put_0a		yes	one method per <X>: i i32, s i16, k i64, b u8, f f32, d f64, c &str, a AnyObject (owned, read back as a copy); P has no counterpart
+function	astMapPut1<X>	keymap.c	KeyMap::put_1i;KeyMap::put_1s;KeyMap::put_1k;KeyMap::put_1b;KeyMap::put_1f;KeyMap::put_1d;KeyMap::put_1c;KeyMap::put_1a		yes	one method per <X>: i, s, k, b, f, d slices, c &[&str], a Vec<Option<AnyObject>>; P has no counterpart; no size argument
+function	astMapPutU	keymap.c	KeyMap::put_u		yes
+function	astMapGet0<X>	keymap.c	KeyMap::get_0i;KeyMap::get_0s;KeyMap::get_0k;KeyMap::get_0b;KeyMap::get_0f;KeyMap::get_0d;KeyMap::get_0c;KeyMap::get_0a		yes	one method per <X>, as for astMapPut0<X>; returns Ok(None) in place of the zero flag; a stored Object is returned as a copy, not a new reference to it
+function	astMapGet1<X>	keymap.c	KeyMap::get_1i;KeyMap::get_1s;KeyMap::get_1k;KeyMap::get_1b;KeyMap::get_1f;KeyMap::get_1d;KeyMap::get_1c;KeyMap::get_1a		yes	one method per <X>, returning a Vec the length of the entry, so no mxval, nval or string length arguments; Ok(None) in place of the zero flag
+function	astMapGetC	keymap.c	KeyMap::map_get_c		yes
+function	astMapGetElem<X>	keymap.c	KeyMap::get_elem_i;KeyMap::get_elem_s;KeyMap::get_elem_k;KeyMap::get_elem_b;KeyMap::get_elem_f;KeyMap::get_elem_d;KeyMap::get_elem_c;KeyMap::get_elem_a		yes	one method per <X>; no string length argument; Ok(None) in place of the zero flag
+function	astMapDefined	keymap.c	KeyMap::map_defined		yes	consults KeyError for a missing key, which the header does not say (c-library-quirks.md)
+function	astMapHasKey	keymap.c	KeyMap::map_has_key		yes
+function	astMapRemove	keymap.c	KeyMap::map_remove		yes
+function	astMapRename	keymap.c	KeyMap::map_rename		yes
+function	astMapSize	keymap.c	KeyMap::map_size		yes
+function	astMapLenC	keymap.c	KeyMap::map_len_c		yes
+function	astMapLength	keymap.c	KeyMap::map_length		yes	gives 0 rather than an AST__BIGKEY error for a key too long for a case-insensitive KeyMap (PLAN.md §2)
+function	astMapPutElem<X>	keymap.c	KeyMap::put_elem_i;KeyMap::put_elem_s;KeyMap::put_elem_k;KeyMap::put_elem_b;KeyMap::put_elem_f;KeyMap::put_elem_d;KeyMap::put_elem_c;KeyMap::put_elem_a		yes	one method per <X>; elem is a usize, so only an index past the end appends; P has no counterpart
+function	astMapType	keymap.c	KeyMap::map_type		yes
+attribute	SizeGuess	keymap.c	KeyMap::size_guess		yes	the header gives a default of 300, but the code gives 160, here and in C (c-library-quirks.md)
+attribute	KeyCase	keymap.c	KeyMap::key_case		yes
+attribute	KeyError	keymap.c	KeyMap::key_error		yes	the header says the astMapGet... functions report a missing key, but astMapGetC does not, here and in C (c-library-quirks.md)
+attribute	MapLocked	keymap.c	KeyMap::map_locked		yes
+attribute	SortBy	keymap.c	KeyMap::sort_by		yes	None returns keys in KeyUp order, where C leaves the order arbitrary (c-library-quirks.md)
+function	astKeyMap	keymap.c	KeyMap::new		yes	no options argument: the attribute setters and KeyMap::with_size_guess take its place
 class	LutMap	lutmap.c	LutMap		yes
 attribute	LutInterp	lutmap.c	LutMap::interp		yes	C takes an integer (0 linear, otherwise nearest) and refuses a change on a LutMap with more than one reference; the port takes the LutInterp enum and owned values have no shared references
 attribute	LutEpsilon	lutmap.c	LutMap::lut_epsilon		yes	C refuses a change on a LutMap with more than one reference; owned values have no shared references
