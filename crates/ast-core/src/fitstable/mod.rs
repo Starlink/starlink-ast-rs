@@ -115,7 +115,8 @@ impl ColumnData {
 /// The null value of an integer column, from [`FitsTable::column_null`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ColumnNull {
-    /// The null value in use before the call.
+    /// The null value set before the call, or else `set`, or else a default
+    /// not in the column; see [`FitsTable::column_null`].
     pub value: i64,
     /// Whether `value` was set by an earlier call rather than being a
     /// default.
@@ -185,7 +186,7 @@ fn scan_int(s: &str) -> Option<(i64, usize)> {
 /// | `Double` | `D` | `Double(Vec<f64>)` |
 /// | `String` | `A` | `String { len, values }` |
 ///
-/// A FitsTable is made for the `-TAB` algorithm of FITS-WCS, and does not
+/// A FitsTable is made for the `-TAB` algorithm of FITS-WCS Paper III, and does not
 /// cover every feature of a FITS binary table: it has no heap
 /// data following the main table, and no columns of complex, logical or
 /// bit values, of variable-length arrays, or with scaling or a display
@@ -856,6 +857,10 @@ impl FitsTable {
     ///   hold.
     /// - The errors of the `put_1` methods, such as [`Table::put_1i`], which
     ///   store each cell.
+    // The skipping of non-finite cells follows fitstable.c PutColumnData; its
+    // prologue does not mention it (c-library-quirks.md, "The
+    // `astPutColumnData` documentation does not say a cell of non-finite
+    // values keeps its old value").
     // C's astPutColumnData takes the data as untyped memory and so cannot
     // check its type.
     #[doc(alias = "astPutColumnData")]

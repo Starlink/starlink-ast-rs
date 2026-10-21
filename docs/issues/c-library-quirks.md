@@ -99,6 +99,8 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [The `astGetColumnData` documentation says strings are null terminated](#the-astgetcolumndata-documentation-says-strings-are-null-terminated)
 - [The `astPutTableHeader` documentation leaves `TUNIT%d` out of the keywords it removes](#the-astputtableheader-documentation-leaves-tunitd-out-of-the-keywords-it-removes)
 - [The FitsTable class documentation says it has no 8-byte integer columns](#the-fitstable-class-documentation-says-it-has-no-8-byte-integer-columns)
+- [The FitsTable class documentation attributes `-TAB` to FITS-WCS paper 2](#the-fitstable-class-documentation-attributes--tab-to-fits-wcs-paper-2)
+- [The `astPutColumnData` documentation does not say a cell of non-finite values keeps its old value](#the-astputcolumndata-documentation-does-not-say-a-cell-of-non-finite-values-keeps-its-old-value)
 
 ### [Addressed here, and not going upstream](#addressed-here-and-not-going-upstream)
 
@@ -1425,11 +1427,11 @@ A C fix: add "Nrow is reduced by astRemoveRow when the last row is removed, and 
 
 ### The `astGetColumnData` documentation says strings are null terminated
 
-C location: `fitstable.c`, the `astGetColumnData` prologue (Parameters, line 1389), `GetColumnData` (from line 1522) and `CopyStrings` (from line 931).
+C location: `fitstable.c`, the `astGetColumnData` prologue (Parameters, line 1389), `GetColumnData` (from line 1307; the replacement at lines 1518–1536) and `CopyStrings` (from line 931).
 
 The prologue says "If the column holds strings, the returned strings will be null terminated."
 `GetColumnData` reads each cell with `astMapGet1C` and `CopyStrings` copies the first `nb` characters of each string, `nb` being ColumnLenC, leaving out the terminating null; a string of ColumnLenC characters has none, and a shorter one is padded with nulls.
-The prologue also says `fnull` and `dnull` are the values returned for empty cells; the code also puts them in place of every infinite or NaN value read from a cell, when they are not themselves NaN.
+The prologue also says `fnull` and `dnull` are the values returned for empty cells; the code also puts them in place of every infinite or NaN value read from a cell, when they are themselves finite.
 
 Consequence: a C caller that reads a returned string as null terminated reads past it for the longest strings.
 
@@ -1459,6 +1461,31 @@ Consequence: documentation only.
 
 The `FitsTable` docs list `KInt` columns with the `K` code, as the code has them.
 A C fix: remove "8-byte integer values" from the list of unsupported features.
+
+### The FitsTable class documentation attributes `-TAB` to FITS-WCS paper 2
+
+C location: `fitstable.c`, the FitsTable class prologue (Description, line 23).
+
+The prologue says FitsTables serve "the "-TAB" algorithm defined in FITS-WCS paper 2".
+The `-TAB` algorithm is defined in FITS-WCS Paper III (Greisen, Calabretta, Valdes & Allen 2006, A&A 446, 747, section 6); Paper II covers celestial coordinates.
+AST's own `fitschan.c` says Paper III (line 14053, and lines 5633 and 19774).
+
+Consequence: documentation only.
+
+The `FitsTable` docs say Paper III.
+A C fix: "paper 2" → "paper III".
+
+### The `astPutColumnData` documentation does not say a cell of non-finite values keeps its old value
+
+C location: `fitstable.c`, the `astPutColumnData` prologue (Description, line 2098), and `PutColumnData` (the floating-point branches after line 2222).
+
+The prologue says the function copies the buffer into the column, the first element becoming the first element of the first row, and that trailing rows not covered by the buffer are filled with null values.
+For a double or float column, `PutColumnData` stores a cell only when at least one of its elements is finite, so a cell whose supplied values are all NaN or infinite is skipped and keeps whatever it held before; it is neither replaced nor emptied.
+
+Consequence: stale values survive a whole-column put, and such a cell does not read back as `fnull` or `dnull`.
+
+`FitsTable::put_column_data` says such a cell is not stored and keeps any value it held, as the code does.
+A C fix: document it, or remove the cell's entry so it reads back as null.
 
 ## Addressed here, and not going upstream
 

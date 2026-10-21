@@ -93,7 +93,9 @@ const LENGTH: &str = "Length";
 /// The `get` methods, [`get_0i`](Self::get_0i), [`get_1i`](Self::get_1i)
 /// and [`get_elem_i`](Self::get_elem_i) and their versions for the other
 /// types, read a cell as any type, as [`KeyMap`] describes.
-/// A cell in which nothing has been stored reads as `Ok(None)`.
+/// A cell in which nothing has been stored reads as `Ok(None)`, or fails
+/// with [`ErrorCode::Mpker`] when [KeyError](KeyMap::key_error) is true;
+/// a cell beyond the last row always reads as `Ok(None)`.
 ///
 /// # Parameters
 ///
@@ -496,7 +498,8 @@ impl Table {
     /// A copy of the column definitions.
     ///
     /// It holds one KeyMap per column, under the column name.
-    /// Each holds the column's name under `Name`, the code of its data type
+    /// Each holds the column's name, as given to
+    /// [`add_column`](Self::add_column), under `Name`, the code of its data type
     /// ([`AstType::code`]) under `Type`, its unit string under `Unit`, and,
     /// for a column of arrays, its shape under `Shape`.
     /// Once [`column_length`](Self::column_length) has been asked for, it
@@ -843,8 +846,10 @@ impl Table {
     /// Removes every empty row, renumbering the rows that follow each one
     /// so that the rows left are numbered from 1 without gaps.
     ///
-    /// A row is empty when no cell in it holds a value.
-    /// [`nrow`](Self::nrow) becomes the number of rows left.
+    /// A row is empty when no cell in it has an entry; a cell stored with
+    /// [`put_u`](Self::put_u) keeps its row.
+    /// When the Table has columns, [`nrow`](Self::nrow) becomes the number
+    /// of rows left.
     ///
     /// # Errors
     ///
