@@ -249,36 +249,36 @@ attribute	SimpIF	mathmap.c	MathMap::simp_if		yes
 function	astMathMap	mathmap.c	MathMap::new		yes	C validates every variable name (AST__MISVN, AST__VARIN, AST__DUVAR); the port does not (PLAN.md §2). For nout < 1 C's final status is AST__BADNI (its second astError uses that code); the port returns Badno (docs/issues/c-library-quirks.md)
 class	MatrixMap	matrixmap.c	MatrixMap		yes
 function	astMatrixMap	matrixmap.c	MatrixMap::new;MatrixMap::diagonal		yes	form 0 is new, form 1 is diagonal, and form 2 (unit) is diagonal with every element 1.0
-function	astAppendString	memory.c			no
-function	astAppendStringf	memory.c			no
-function	astBrackets	memory.c			no
-function	astCalloc	memory.c			no
-function	astChr2Double	memory.c			no
-function	astChrCase	memory.c			no
-function	astChrClean	memory.c			no
-function	astChrMatch	memory.c			no
-function	astChrMatchN	memory.c			no
-function	astChrRemoveBlanks	memory.c			no
-function	astChrSplit	memory.c			no
-function	astChrSplitC	memory.c			no
-function	astChrSplitRE	memory.c			no
-function	astChrSub	memory.c			no
-function	astChrTrunc	memory.c			no
-function	astFandl	memory.c			no
-function	astFree	memory.c			no
-function	astFreeDouble	memory.c			no
-function	astGrow	memory.c			no
-function	astIsDynamic	memory.c			no
-function	astMalloc	memory.c			no
-function	astMemCaching	memory.c			no
-function	astRealloc	memory.c			no
-function	astRemoveLeadingBlanks	memory.c			no
-function	astSizeOf	memory.c			no
-function	astStore	memory.c			no
-function	astString	memory.c			no
-function	astStringArray	memory.c			no
-function	astStringCase	memory.c			no
-function	astChrLen	memory.c			no
+function	astAppendString	memory.c		c-api-only	yes	Heap string building for C callers; Rust code uses String and Vec<String>
+function	astAppendStringf	memory.c		c-api-only	yes	Heap string building for C callers; Rust code uses String and Vec<String>
+function	astBrackets	memory.c		c-api-only	yes	C string utility; Rust code uses the str and String methods
+function	astCalloc	memory.c		c-api-only	yes	Memory management for C callers; Rust values own and free their memory
+function	astChr2Double	memory.c		c-api-only	yes	C string utility; Rust code uses the str and String methods
+function	astChrCase	memory.c		c-api-only	yes	C string utility; Rust code uses the str and String methods
+function	astChrClean	memory.c		c-api-only	yes	C string utility; Rust code uses the str and String methods
+function	astChrMatch	memory.c		c-api-only	yes	C string utility; Rust code uses the str and String methods
+function	astChrMatchN	memory.c		c-api-only	yes	C string utility; Rust code uses the str and String methods
+function	astChrRemoveBlanks	memory.c		c-api-only	yes	C string utility; Rust code uses the str and String methods
+function	astChrSplit	memory.c		c-api-only	yes	C string utility; Rust code uses the str and String methods
+function	astChrSplitC	memory.c		c-api-only	yes	C string utility; Rust code uses the str and String methods
+function	astChrSplitRE	memory.c		c-api-only	yes	C string utility; Rust code uses the str and String methods
+function	astChrSub	memory.c		c-api-only	yes	C string utility; Rust code uses the str and String methods
+function	astChrTrunc	memory.c		c-api-only	yes	C string utility; Rust code uses the str and String methods
+function	astFandl	memory.c		c-api-only	yes	C string utility; Rust code uses the str and String methods
+function	astFree	memory.c		c-api-only	yes	Memory management for C callers; Rust values own and free their memory
+function	astFreeDouble	memory.c		c-api-only	yes	Memory management for C callers; Rust values own and free their memory
+function	astGrow	memory.c		c-api-only	yes	Memory management for C callers; Rust values own and free their memory
+function	astIsDynamic	memory.c		c-api-only	yes	Memory management for C callers; Rust values own and free their memory
+function	astMalloc	memory.c		c-api-only	yes	Memory management for C callers; Rust values own and free their memory
+function	astMemCaching	memory.c		c-api-only	yes	Memory management for C callers; Rust values own and free their memory
+function	astRealloc	memory.c		c-api-only	yes	Memory management for C callers; Rust values own and free their memory
+function	astRemoveLeadingBlanks	memory.c		c-api-only	yes	C string utility; Rust code uses the str and String methods
+function	astSizeOf	memory.c		c-api-only	yes	Memory management for C callers; Rust values own and free their memory
+function	astStore	memory.c		c-api-only	yes	Memory management for C callers; Rust values own and free their memory
+function	astString	memory.c		c-api-only	yes	Heap string building for C callers; Rust code uses String and Vec<String>
+function	astStringArray	memory.c		c-api-only	yes	Heap string building for C callers; Rust code uses String and Vec<String>
+function	astStringCase	memory.c		c-api-only	yes	C string utility; Rust code uses the str and String methods
+function	astChrLen	memory.c		c-api-only	yes	C string utility; Rust code uses the str and String methods
 class	Moc	moc.c	Moc		yes
 function	astAddCell	moc.c	Moc::add_cell		yes
 function	astAddMocData	moc.c	Moc::add_moc_data		yes	data is a slice of i32 or i64, which replaces len, nbyte and the data pointer; the C edition of the header has negate the wrong way round: true combines the cells the data do not hold, as the C code does (c-library-quirks.md)

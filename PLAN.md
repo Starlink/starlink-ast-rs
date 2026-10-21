@@ -222,7 +222,7 @@ list as empty, so a ledger row for one would have passed at any size.
 | hand-written Frame descriptions (`test_frame_load.rs`) | 17 | 0 | `FRAME_LOAD_EXCLUDED` — empty: a SkyFrame with no `Ax` objects now holds the plain Axis objects C gives it. `excluded_descriptions_still_differ` fails if an entry is added that matches |
 | Frame in a Mapping slot (`test_frame_in_map_slot.rs`) | 1 | 1 | `FRAME_IN_MAP_SLOT_DECLINED` — one C-written dump the reader refuses, a bare Frame in a `Map<n>` slot, declined by decision on 2026-10-13; question, decision and artifact in `docs/issues/frame-in-a-mapping-slot.md` (§9.6). The exclusion carries the reason string, and two companion tests keep the refusal narrow: the settled Region-in-`CmpMap` and Region-in-`CmpFrame` nestings must keep reading |
 | C documentation audit (`test_c_docs_audit.rs`) | 2 modules | 2 | `C_CITATIONS_UNCLEANED` — top-level modules whose rendered rustdoc still cites C source files or internal C names. Each subsystem's review task in the audit removes its modules, and `a_clean_module_cannot_stay_listed` fails when a listed module is clean |
-| C documentation audit | 30 rows | 30 | `UNREVIEWED_ROWS` — ledger rows not yet reviewed, pinned by its own test rather than counted by the ledger; it may only fall and reaches zero when the audit is complete |
+| C documentation audit | 0 rows | 0 | `UNREVIEWED_ROWS` — ledger rows not yet reviewed, pinned by its own test rather than counted by the ledger. The review is complete: every row is reviewed, and the count may never rise |
 
 What the upstream `IsSimp` fix did and did not do, since the two get conflated:
 `e40e71b4` made **C's** placement deterministic — a property of the Mapping tree
