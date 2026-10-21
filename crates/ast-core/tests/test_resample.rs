@@ -367,3 +367,89 @@ fn test9_no_bad_leaves_bad_output_alone() {
         assert_eq!(out[i], input[i]);
     }
 }
+
+/// The four user flags reach a caller's interpolator and kernel unchanged,
+/// as C passes the whole flags value, AST__URESAMP1-4 included, to the
+/// caller's functions, and the predefined schemes ignore them.
+#[test]
+fn user_flags_reach_the_callers_interpolator_and_kernel() {
+    use std::cell::Cell;
+    let flags = ResampleFlags {
+        user2: true,
+        user4: true,
+        ..Default::default()
+    };
+    let seen = Cell::new(None);
+    let interp =
+        |a: &ast_core::mappings::InterpArgs<'_, f64>, out: &mut [f64], _var: Option<&mut [f64]>| {
+            seen.set(Some(a.flags));
+            for &off in a.offset {
+                out[off as usize] = 1.0;
+            }
+            Ok(0)
+        };
+    let data = [1.0, 2.0, 3.0, 4.0];
+    let mut out = [0.0; 4];
+    run(
+        &UnitMap::new(1),
+        &[1],
+        &[4],
+        &data,
+        None,
+        Interp::UInterp(&interp),
+        flags,
+        BAD_VALUE,
+        &[1],
+        &[4],
+        &mut out,
+        None,
+    );
+    assert_eq!(seen.get(), Some(flags));
+
+    let kernel_seen = Cell::new(None);
+    let kernel = |offset: f64, _params: &[f64], f: ResampleFlags| {
+        kernel_seen.set(Some(f));
+        Ok(if offset == 0.0 { 1.0 } else { 0.0 })
+    };
+    let mut out = [0.0; 4];
+    run(
+        &UnitMap::new(1),
+        &[1],
+        &[4],
+        &data,
+        None,
+        Interp::UKern1(&kernel),
+        flags,
+        BAD_VALUE,
+        &[1],
+        &[4],
+        &mut out,
+        None,
+    );
+    assert_eq!(kernel_seen.get(), Some(flags));
+    assert_eq!(out, data);
+
+    // A predefined scheme ignores them.
+    let mut plain = [0.0; 4];
+    let mut flagged = [0.0; 4];
+    for (f, out) in [
+        (ResampleFlags::default(), &mut plain),
+        (flags, &mut flagged),
+    ] {
+        run(
+            &ShiftMap::new(vec![0.3]),
+            &[1],
+            &[4],
+            &data,
+            None,
+            Interp::Linear,
+            f,
+            BAD_VALUE,
+            &[1],
+            &[4],
+            out,
+            None,
+        );
+    }
+    assert_eq!(plain, flagged);
+}

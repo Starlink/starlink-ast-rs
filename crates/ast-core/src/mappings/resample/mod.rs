@@ -144,7 +144,7 @@ impl<T> std::fmt::Debug for Interp<'_, T> {
 ///
 /// # See also
 ///
-/// The `astResample<X>` flag bits `AST__USEBAD`, `AST__NOBAD` and `AST__CONSERVEFLUX`, one per field in order.
+/// The `astResample<X>` flag bits `AST__USEBAD`, `AST__NOBAD`, `AST__CONSERVEFLUX` and `AST__URESAMP1` to `AST__URESAMP4`, one per field in order.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct ResampleFlags {
     /// Input pixels equal to the bad value are bad.
@@ -154,6 +154,15 @@ pub struct ResampleFlags {
     /// Output values are scaled by the ratio of output to input pixel sizes, and variances by its square, so that total flux is conserved.
     /// It needs a non-zero `tol`, a Mapping with as many inputs as outputs and linear enough to fit within `tol`, and cannot be used with `no_bad`.
     pub conserve_flux: bool,
+    /// The first of four flags reserved for the caller, to pass private information to an [`Interp::UInterp`] interpolator or [`Interp::UKern1`] kernel of its own.
+    /// The predefined schemes ignore all four.
+    pub user1: bool,
+    /// The second flag reserved for the caller, as [`user1`](Self::user1).
+    pub user2: bool,
+    /// The third flag reserved for the caller, as [`user1`](Self::user1).
+    pub user3: bool,
+    /// The fourth flag reserved for the caller, as [`user1`](Self::user1).
+    pub user4: bool,
 }
 
 /// What an interpolator is given: the input grid, and for each output

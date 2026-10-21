@@ -221,15 +221,15 @@ function	astQuadApprox	mapping.c	Mapping::quad_approx		yes
 function	astRebin<X>	mapping.c	rebin		yes	one function generic over RebinValue for the type codes
 function	astRebinSeq<X>	mapping.c	rebin_seq		yes	one function generic over RebinValue for the type codes
 function	astRemoveRegions	mapping.c	remove_regions		yes	a Region becomes a UnitMap rather than its Frame, since the port's Frames are not Mappings (PLAN.md §9.6)
-function	astResample<X>	mapping.c	resample		yes	ResampleFlags has no AST__URESAMP1-4 user flags (PLAN.md §2)
+function	astResample<X>	mapping.c	resample		yes
 function	astSimplify	mapping.c	dyn Mapping::simplify		yes
 function	astTran1	mapping.c	Mapping::tran1		yes
 function	astTran2	mapping.c	Mapping::tran2		yes
 function	astTranGrid	mapping.c	Mapping::tran_grid		yes
 function	astTranN	mapping.c	Mapping::transform		yes	transform does not honor Report, which astTranN does (PLAN.md §2)
 function	astTranP	mapping.c	Mapping::transform_into		yes	transform_into does not honor Report, which astTranP does (PLAN.md §2)
-function	astUinterp	mapping.c	InterpFn		yes	no AST__URESAMP1-4 user flags reach it (see astResample<X>)
-function	astUkern1	mapping.c	Kernel1Fn		yes	no AST__URESAMP1-4 user flags reach it (see astResample<X>)
+function	astUinterp	mapping.c	InterpFn		yes
+function	astUkern1	mapping.c	Kernel1Fn		yes
 attribute	Invert	mapping.c	Mapping::is_inverted		yes
 attribute	IsLinear	mapping.c	Mapping::is_linear		yes
 attribute	IsSimple	mapping.c	Mapping::has_been_simplified		yes

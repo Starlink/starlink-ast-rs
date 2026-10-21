@@ -209,6 +209,7 @@ fn run<T: PixelValue>(c: &cases::Case) -> (i32, usize, u64, Vec<f64>) {
                 use_bad,
                 no_bad,
                 conserve_flux,
+                ..Default::default()
             },
             tol,
             maxpix,
