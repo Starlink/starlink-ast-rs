@@ -13,9 +13,9 @@ use super::frame_attrs::{
 };
 use super::{AxisKind, DynFrame, Frame};
 
-/// The coordinate systems a plain Frame can have. C's Frame class knows only
-/// one, `AST__CART`.
-// C: frame.c, `ValidateSystem`.
+/// The coordinate systems a plain Frame can have.
+/// There is only one: Cartesian.
+// C: frame.c `ValidateSystem`; the Frame class knows only `AST__CART`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum FrameSystem {
     /// Cartesian coordinates, the only System of a plain Frame.
@@ -24,8 +24,8 @@ pub enum FrameSystem {
 }
 
 impl FrameSystem {
-    /// The name C gives the System.
-    // C: frame.c, `SystemString`.
+    /// The name of the System, as written in a dump.
+    // C: frame.c `SystemString`.
     pub fn as_str(&self) -> &'static str {
         "Cartesian"
     }
@@ -176,7 +176,7 @@ impl BasicFrameBuilder {
     }
 
     /// Set the frame domain, with white space removed and letters
-    /// upper-cased as C stores it.
+    /// upper-cased.
     pub fn domain(mut self, domain: impl Into<String>) -> Self {
         self.attrs.domain = Some(clean_domain(&domain.into()));
         self
@@ -418,8 +418,9 @@ impl BasicFrame {
         self.attrs.ident.as_deref().unwrap_or("")
     }
 
-    /// Set the Ident string; see [`ident`](BasicFrame::ident). Used by the FITS-WCS reader to
-    /// label alternate-plane frames with their version letter (`'A'..'Z'`).
+    /// Set the Ident string; see [`ident`](BasicFrame::ident).
+    /// The FITS-WCS reader uses it to label alternate-plane frames with their
+    /// version letter (`'A'..'Z'`).
     // C: astSetIdent.
     pub fn set_ident(&mut self, ident: impl Into<String>) {
         let s = ident.into();
@@ -441,9 +442,10 @@ impl BasicFrame {
         self.attrs.epoch = (mjd != crate::constants::BAD_VALUE).then_some(mjd);
     }
 
-    /// The Epoch as a year, Besselian before 1984 and Julian from then on,
-    /// which is how C reports it.
-    // C: frame.c `GetAttrib`.
+    /// The Epoch as a year: Besselian before 1984, Julian from then on.
+    ///
+    /// See [`epoch_mjd`](BasicFrame::epoch_mjd) for the attribute.
+    // C: frame.c `GetAttrib` reports the Epoch this way.
     pub fn epoch_year(&self) -> f64 {
         let mjd = self.epoch_mjd();
         if mjd < crate::pal::epj2d(1984.0) {
@@ -454,8 +456,8 @@ impl BasicFrame {
     }
 
     /// Set the Epoch from a year, read as Besselian before 1984 and Julian
-    /// from then on, as C reads a bare year.
-    // C: frame.c `astReadDateTime`.
+    /// from then on; see [`epoch_mjd`](BasicFrame::epoch_mjd).
+    // C: frame.c `astReadDateTime` reads a bare year this way.
     pub fn set_epoch_year(&mut self, year: f64) {
         self.attrs.epoch = Some(crate::frames::date_time::year_to_mjd_iau1984(year));
     }
@@ -562,7 +564,7 @@ impl BasicFrame {
         set_obs_lat,
         test_obs_lat,
         clear_obs_lat,
-        "the observer's geodetic latitude, in radians"
+        "the observer's geodetic latitude (radians)"
     );
 
     /// The observer's geodetic longitude in radians, set or default.
@@ -578,7 +580,7 @@ impl BasicFrame {
         set_obs_lon,
         test_obs_lon,
         clear_obs_lon,
-        "the observer's geodetic longitude, in radians"
+        "the observer's geodetic longitude (radians)"
     );
 
     /// The observer's geodetic altitude in metres, set or default.
@@ -594,7 +596,7 @@ impl BasicFrame {
         set_obs_alt,
         test_obs_alt,
         clear_obs_alt,
-        "the observer's geodetic altitude, in metres"
+        "the observer's geodetic altitude (metres)"
     );
 
     /// TAI-UTC in seconds, or `BAD_VALUE` when unset, which means the value
@@ -611,7 +613,7 @@ impl BasicFrame {
         set_dtai,
         test_dtai,
         clear_dtai,
-        "TAI-UTC, in seconds"
+        "TAI-UTC (seconds)"
     );
 
     /// UT1-UTC in seconds, set or default.
@@ -627,7 +629,7 @@ impl BasicFrame {
         set_dut1,
         test_dut1,
         clear_dut1,
-        "UT1-UTC, in seconds"
+        "UT1-UTC (seconds)"
     );
 
     /// Frame-level Digits, defaulting to 7.
@@ -796,8 +798,9 @@ impl Frame for BasicFrame {
         Ok(Some("Cartesian"))
     }
 
-    /// The Label of a 1-based axis, set or default (`"Axis <n>"`, with `n`
-    /// the internal axis number, as C's `MAKE_GET` computes it).
+    /// The Label of a 1-based axis, set or default.
+    /// The default is `"Axis <n>"`, with `n` the internal axis number.
+    // C: frame.c `MAKE_GET` computes the default.
     fn label(&self, axis: usize) -> AstResult<String> {
         let i = self.internal(axis)?;
         Ok(self.axes[i]
@@ -870,8 +873,8 @@ impl Frame for BasicFrame {
         }
     }
 
-    /// Mirrors C `Frame::GetNormUnit`: a SkyAxis supplies its own.
-    // C: frame.c:13149; skyaxis.c:3101.
+    /// A SkyAxis supplies its own.
+    // C: `Frame::GetNormUnit` (frame.c:13149); skyaxis.c:3101.
     fn norm_unit(&self, axis: usize) -> String {
         match self
             .axis_object(axis)
@@ -965,9 +968,9 @@ impl Frame for BasicFrame {
     }
 
     // Match-control attributes — mirror C `astGet/SetMinAxes` etc.
-    /// Compose `perm` with the existing permutation, as C's `PermAxes` does:
-    /// the axes themselves stay in internal order.
-    // C: frame.c.
+    /// Compose `perm` with the existing permutation: the axes themselves stay
+    /// in internal order.
+    // C: frame.c `PermAxes`.
     fn perm_axes(&mut self, perm: &[usize]) -> AstResult<()> {
         super::validate_permutation(perm, self.naxes)?;
         let old = self.perm.clone();

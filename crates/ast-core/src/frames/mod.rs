@@ -42,32 +42,28 @@ pub type DynFrame = Box<dyn Frame>;
 
 /// The Axis object attached to one axis of a [`Frame`].
 ///
-/// C's Frame holds an array of `Axis` objects, one per axis, and reaches
-/// per-axis behaviour by fetching one and calling an Axis method on it.
-/// The Axis class matters: a `SkyAxis` wraps values into a cyclic range where
-/// a plain `Axis` does not.
+/// Each axis of a Frame has an Axis object whose class decides how values on
+/// that axis are measured, offset and wrapped.
+/// A sky axis wraps values into a cyclic range where a plain axis does not.
 ///
-/// Crucially the axes of one Frame need not share a class. `CmpFrame` routes
-/// each axis to its owning component, and `SubFrame` re-uses the target's
-/// Axis objects on the result, so a sky axis picked out of a `SkyFrame` stays
-/// a sky axis even when it ends up alongside a plain axis on a `CmpFrame`.
+/// The axes of one Frame need not share a class.
+/// A `CmpFrame` routes each axis to its owning component.
+/// Picking axes out of a `SkyFrame` keeps each sky axis a sky axis, even when
+/// it ends up alongside a plain axis on a `CmpFrame`.
 /// This enum is that per-axis fact.
 ///
-/// Where C hands out a counted reference to the Axis object, this carries the
-/// attributes that the per-axis methods read, already resolved to their
-/// effective values.
+/// It carries the attributes that the per-axis methods read, already resolved
+/// to their effective values.
 // C: `astGetAxis` and the `astAxis*` methods (`frame.c:1466` for
 // `astAxDistance`, and likewise for `astAxOffset` and `astAxNorm`);
 // `cmpframe.c:3474`; `frame.c:11023`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AxisKind {
-    /// A plain Cartesian axis, with no constraint on its values. The
-    /// behaviour of C's base `Axis` class.
-    // C: `axis.c`.
+    /// A plain Cartesian axis, with no constraint on its values.
+    // C: the base `Axis` class, `axis.c`.
     Plain,
-    /// A celestial axis, whose values wrap into a cyclic range. The behaviour
-    /// of C's `SkyAxis` class.
-    // C: `skyaxis.c`.
+    /// A celestial axis, whose values wrap into a cyclic range.
+    // C: the `SkyAxis` class, `skyaxis.c`.
     Sky {
         /// True for a latitude axis, which is always wrapped into
         /// `[-PI,PI]`. Mirrors the `IsLatitude` Axis attribute.
@@ -83,8 +79,8 @@ pub enum AxisKind {
 impl AxisKind {
     /// Signed increment from `v1` to `v2` along this axis.
     ///
-    /// A plain axis gives `v2 - v1`; a sky axis gives the same difference
-    /// wrapped into +PI to -PI.
+    /// A plain axis gives `v2 - v1`.
+    /// A sky axis gives the same difference wrapped into +PI to -PI.
     // C: `astAxisDistance`: `axis.c:353` for a plain axis, `skyaxis.c:412` for
     // a sky axis.
     pub fn distance(&self, v1: f64, v2: f64) -> f64 {
@@ -101,8 +97,8 @@ impl AxisKind {
 
     /// The value reached by adding `dist` to `v1` along this axis.
     ///
-    /// A plain axis gives `v1 + dist`; a sky axis gives the same sum, then
-    /// normalised.
+    /// A plain axis gives `v1 + dist`.
+    /// A sky axis gives the same sum, then normalised.
     // C: `astAxisOffset`: `axis.c:1165` for a plain axis, `skyaxis.c:1300` for
     // a sky axis.
     pub fn offset(&self, v1: f64, dist: f64) -> f64 {
@@ -727,9 +723,9 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     ///   Each entry of `domains` is taken in turn.
     ///   Within it, each FrameSet's Frames are tried with its base Frame
     ///   first, then the others in ascending index order, then its current
-    ///   Frame last; the port uses this order for an inverted FrameSet too
-    ///   (whose base and current Frames have swapped), where C takes the
-    ///   other Frames in descending order.
+    ///   Frame last.
+    ///   This order is used for an inverted FrameSet too, whose base and
+    ///   current Frames have swapped.
     ///   Every source Frame is tried against the first destination
     ///   Frame, then against the second, and so on.
     ///   Among the paths found, one with both transformations defined is
@@ -759,7 +755,12 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// let c = BasicFrameBuilder::new(3).build().unwrap();
     /// assert!(a.convert_to(&c, &[]).unwrap().is_none());
     /// ```
-    // C: astConvert.
+    ///
+    /// # See also
+    ///
+    /// `astConvert`.
+    // C: for an inverted FrameSet, C takes the other Frames in descending
+    // order; this port keeps the ascending order.
     #[doc(alias = "astConvert")]
     fn convert_to(&self, to: &dyn Frame, domains: &[&str]) -> AstResult<Option<FrameSet>> {
         // C `astConvert` (frame.c:2965) swaps its first two arguments and
@@ -792,16 +793,14 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
         find_frame::convert_frames_or_regions(self.as_dyn_frame(), to, &domainlist)
     }
 
-    /// Simplify this Frame, as the Mapping `Simplify` slot every Frame
-    /// inherits.
+    /// Simplify this Frame.
     ///
-    /// `None` means no simplification took place, which is what C signals by
-    /// returning a clone of the input pointer: the caller's identity test is a
-    /// `None` check here.
+    /// `None` means no simplification took place.
     ///
     /// The default is `None`: a Frame with no internal structure has nothing
-    /// to reduce. [`CmpFrame`] overrides it, as does every class that is both
-    /// a Frame and a Mapping — each `Region` and `FrameSet`, through
+    /// to reduce.
+    /// [`CmpFrame`] overrides it, as does every class that is both a Frame and
+    /// a Mapping: each `Region` and `FrameSet`, through
     /// `simplify_frame_via_mapping`.
     // C: `astSimplify` applied to a Frame; `frame.c` defines no Simplify of its
     // own, so a plain Frame gets `mapping.c:16853`, which returns a clone. The
@@ -1101,8 +1100,9 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     fn test_id(&self) -> bool;
 
     /// The Object-class UseDefs attribute as stored on this object, `None`
-    /// when unset. C keeps it on every Object, but only Frame classes read
-    /// it, so the port keeps it on Frames.
+    /// when unset.
+    /// Only Frames hold it.
+    // C: every Object keeps UseDefs, but only Frame classes read it.
     fn stored_use_defs(&self) -> Option<bool>;
     /// Store UseDefs, `None` to clear it.
     fn store_use_defs(&mut self, value: Option<bool>);
@@ -1679,14 +1679,12 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// Returns `Some(MatchResult)` if `target` can be reached from this
     /// template's coordinate system, `None` otherwise.
     ///
-    /// `match_sub`: when `true`, allow the target to be a more
-    /// specialised class than the template (the target is cast down).
-    /// `false` requires the target to be the same class or more
-    /// specialised.
+    /// `match_sub`: when `true`, allow the target to be a more specialised
+    /// class than the template (the target is cast down).
+    /// `false` requires the target to be the same class or more specialised.
     ///
-    /// Default implementation returns `Ok(None)` — the trampoline is
-    /// only meaningful once a per-class override lands. Concrete
-    /// classes override with their own matching kernels.
+    /// The default implementation returns `Ok(None)`.
+    /// Concrete classes override it with their own matching kernels.
     // C: frame.c:7073; astMatch. The `matchsub` parameter is handled by the
     // `astMatch_` global wrapper.
     fn match_template(
@@ -1700,9 +1698,10 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
 
     /// Cast `self` down into the class of `other`, returning a copy of
     /// `self`'s ancestral component that matches `other`'s class, or `None`
-    /// if `self` is not a subclass of `other`'s class. Used by the matchsub
-    /// retry so a specialised template can probe a plainer target. Default:
-    /// not castable.
+    /// if `self` is not a subclass of `other`'s class.
+    /// Used by the `match_sub` retry so a specialised template can probe a
+    /// plainer target.
+    /// The default is not castable.
     // C: object.c / cmpframe.c:1245; astCast.
     fn cast(&self, _other: &dyn Frame) -> AstResult<Option<DynFrame>> {
         Ok(None)
@@ -1720,7 +1719,7 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// Returns `Some((map, result))` where `map` transforms `self` (target)
     /// coordinates into `result` coordinates.
     ///
-    /// Default implementation returns `Ok(None)`.
+    /// The default implementation returns `Ok(None)`.
     // C: frame.c:10838; astSubFrame.
     fn sub_frame(
         &self,
@@ -1854,7 +1853,10 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// assert_eq!(found.current().domain(), "PIXEL");
     /// assert!(target.find_frame_template(&template, "SKY").unwrap().is_none());
     /// ```
-    // C: astFindFrame.
+    ///
+    /// # See also
+    ///
+    /// `astFindFrame`.
     #[doc(alias = "astFindFrame")]
     fn find_frame_template(
         &self,
@@ -1867,15 +1869,16 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// Snapshot of `self` with only the axes listed in `target_axes`.
     ///
     /// `target_axes` entries are zero-based indices into `self`'s axis space
-    /// (with `-1` meaning "no association — use defaults"). The returned
-    /// Frame has `target_axes.len()` axes, in the order given. Per-axis
-    /// metadata (Label/Unit/Symbol/Format) follows the picked axes;
+    /// (with `-1` meaning "no association — use defaults").
+    /// The returned Frame has `target_axes.len()` axes, in the order given.
+    /// Per-axis metadata (Label/Unit/Symbol/Format) follows the picked axes.
     /// Frame-level metadata (Title/Domain) is preserved from `self`.
     ///
-    /// The default implementation falls back to a plain BasicFrame
-    /// snapshot with `target_axes.len()` axes — only correct for
-    /// classes whose per-axis metadata isn't load-bearing. Concrete
-    /// classes with strong axis identity (SkyFrame, SpecFrame,
+    /// The default implementation falls back to a plain BasicFrame snapshot
+    /// with `target_axes.len()` axes.
+    /// That is only correct for classes whose per-axis metadata is not
+    /// load-bearing.
+    /// Concrete classes with strong axis identity (SkyFrame, SpecFrame,
     /// FluxFrame) override this.
     // C: frame.c:8400; astPickAxes.
     fn pick_axes_snapshot(&self, target_axes: &[i32]) -> AstResult<DynFrame> {
@@ -1893,8 +1896,9 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// `result`. `template_axes` is parallel to `result`'s axes, giving the
     /// (zero-based) template axis from which each result axis takes its
     /// axis attributes, or `-1` for none; an empty slice means the same
-    /// index. This is a method of the template: each class transfers the
-    /// attributes it defines, and only onto a result of its own class.
+    /// index.
+    /// This is a method of the template: each class transfers the attributes
+    /// it defines, and only onto a result of its own class.
     ///
     /// The default is the Frame-class part of the overlay alone.
     // C: `astOverlay` (frame.c:8513).
@@ -1925,11 +1929,12 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
 
     /// Identify the primary (leaf, non-compound) Frame and underlying
     /// axis for a given axis of this Frame. `axis` is 0-based (matching
-    /// the existing `primary_frame_walk` callers). Returns the leaf frame and
-    /// the 0-based axis within it, undoing all axis permutations and Frame
-    /// combination. Leaf Frames are already primary, so return
-    /// `(self, axis)`; compound and permuting Frames (CmpFrame, SkyFrame)
-    /// override to descend and undo permutations.
+    /// the existing `primary_frame_walk` callers).
+    /// Returns the leaf frame and the 0-based axis within it, undoing all axis
+    /// permutations and Frame combination.
+    /// Leaf Frames are already primary, so return `(self, axis)`.
+    /// Compound and permuting Frames (CmpFrame, SkyFrame) override to descend
+    /// and undo permutations.
     // C: `astPrimaryFrame` (frame.c:8818).
     fn primary_frame(&self, axis: usize) -> (&dyn Frame, usize);
 
@@ -2068,7 +2073,8 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
 
     /// Create a cached description of the line segment from `start` to `end`
     /// in this 2-D Frame. Returns `None` (without error) if any supplied axis
-    /// value is BAD. SkyFrame overrides with great-circle geometry.
+    /// value is BAD.
+    /// SkyFrame overrides with great-circle geometry.
     // C: `astLineDef` (frame.c:6716).
     fn line_def(&self, start: &[f64], end: &[f64]) -> AstResult<Option<LineDef>> {
         use crate::mappings::helpers::is_bad;
@@ -2101,8 +2107,8 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     }
 
     /// Return a position formed by moving `par` along `line` from its start
-    /// and then `prp` at right angles to it. SkyFrame overrides with
-    /// great-circle geometry.
+    /// and then `prp` at right angles to it.
+    /// SkyFrame overrides with great-circle geometry.
     // C: `astLineOffset` (frame.c:6829).
     fn line_offset(&self, line: &LineDef, par: f64, prp: f64) -> AstResult<[f64; 2]> {
         if self.naxes() != 2 {
@@ -2122,8 +2128,8 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// `[start, end)` segment of every finite line (an infinite line imposes
     /// no upper bound); `cross` is the axis values at the crossing point (BAD
     /// when the lines are parallel); `dist` is the signed distance from the
-    /// start of `l1` to the crossing. SkyFrame overrides with great-circle
-    /// geometry.
+    /// start of `l1` to the crossing.
+    /// SkyFrame overrides with great-circle geometry.
     // C: `astLineCrossing` (frame.c:6562).
     fn line_crossing(&self, l1: &LineDef, l2: &LineDef) -> AstResult<(bool, [f64; 2], f64)> {
         use crate::constants::BAD_VALUE;
@@ -2162,8 +2168,8 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// Determine whether `point` lies on the line `l`. The start point is
     /// considered part of the line, the end point is not: the nearest point on
     /// the line must be in `[start, end)` and the perpendicular offset must be
-    /// within `1e-7` of the line length. SkyFrame overrides with great-circle
-    /// geometry.
+    /// within `1e-7` of the line length.
+    /// SkyFrame overrides with great-circle geometry.
     // C: `astLineContains` (frame.c:6466).
     fn line_contains(&self, l: &LineDef, point: &[f64]) -> AstResult<bool> {
         use crate::mappings::helpers::is_bad;
@@ -2187,14 +2193,18 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
 
     /// The kind of Axis object attached to a 1-based `axis` of this Frame.
     ///
-    /// This is the per-axis `Axis` object that the axis methods and the
-    /// formatting methods dispatch to. A Frame's axes need not all be of the same class — a CmpFrame can
-    /// hold a sky axis beside a plain one — so the per-axis rule cannot be
-    /// derived from the Frame's own class.
+    /// The kind decides how the per-axis methods
+    /// ([`ax_distance`](Frame::ax_distance), [`ax_offset`](Frame::ax_offset),
+    /// [`ax_norm`](Frame::ax_norm)) and the formatting methods treat values
+    /// on that axis.
+    /// A Frame's axes need not all be of the same class: a CmpFrame can hold a
+    /// sky axis beside a plain one, so the per-axis rule cannot be derived
+    /// from the Frame's own class.
     ///
-    /// The base Frame holds plain `Axis` objects on every axis. Compound and
-    /// permuting Frames (CmpFrame, SkyFrame, FrameSet, Region) override to
-    /// route to the axis's true owner, exactly as C's `GetAxis` overrides do.
+    /// The base Frame has plain axes throughout.
+    /// Compound and permuting Frames (CmpFrame, SkyFrame, FrameSet, Region)
+    /// override this to route to the axis's true owner.
+    // C: the `GetAxis` overrides route to the axis's true owner.
     fn get_axis(&self, _axis: usize) -> AxisKind {
         AxisKind::Plain
     }
@@ -2233,21 +2243,23 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     }
 
     /// A grid of about `size` points covering the box from `lbnd` to
-    /// `ubnd`, one bound per axis. Each class makes its own grid: a Frame
-    /// spaces the points evenly along each axis, giving more ticks to the
-    /// longer axes among those that share a Unit; a SkyFrame lays them on
-    /// parallels, roughly equal-area; a CmpFrame takes the cross product of
-    /// its components' grids. Fails with `AST__ATTIN` for a `size` below 1 or
-    /// a bound pair that is bad.
+    /// `ubnd`, one bound per axis.
+    /// Each class makes its own grid.
+    /// A Frame spaces the points evenly along each axis, giving more ticks to
+    /// the longer axes among those that share a Unit.
+    /// A SkyFrame lays them on parallels, roughly equal-area.
+    /// A CmpFrame takes the cross product of its components' grids.
+    /// Fails with `AST__ATTIN` for a `size` below 1 or a bound pair that is
+    /// bad.
     // C: `astFrameGrid` (frame.c), a per-class method.
     fn frame_grid(&self, size: i32, lbnd: &[f64], ubnd: &[f64]) -> AstResult<PointSet> {
         frame_grid_default(self.as_dyn_frame(), size, lbnd, ubnd)
     }
 
     /// Whether `val` lies between `lo` and `hi` on a 1-based `axis`,
-    /// including the limits when `closed`. The Axis object decides: a plain
-    /// Axis compares the values, and a SkyAxis first moves `val` by whole
-    /// turns into the range.
+    /// including the limits when `closed`.
+    /// The Axis object decides: a plain Axis compares the values, and a
+    /// SkyAxis first moves `val` by whole turns into the range.
     // C: `astAxIn` (frame.c), which asks the Axis object (axis.c `AxisIn`,
     // skyaxis.c `AxisIn`).
     fn ax_in(&self, axis: usize, lo: f64, hi: f64, val: f64, closed: bool) -> bool {
@@ -2390,9 +2402,9 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// 0 puts a longitude into the range 0 to 2*pi, and operation 1 puts the
     /// longitudes into 0 to 2*pi or -pi to +pi, whichever gives the smaller
     /// range; a latitude axis always takes the range -pi to +pi.
-    /// A SkyFrame's own axes are both treated as longitude axes, as C's are;
-    /// a latitude axis picked out of a SkyFrame into another Frame is
-    /// treated as a latitude axis.
+    /// A SkyFrame's own axes are both treated as longitude axes.
+    /// A latitude axis picked out of a SkyFrame into another Frame is treated
+    /// as a latitude axis.
     ///
     /// # Errors
     ///
@@ -2633,11 +2645,12 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
         frm2.match_axes_x(self)
     }
 
-    /// Implementation half of `match_axes` (args swapped). `self` plays the
-    /// role of C's `frm2`; `frm1` is the Frame whose axes are reported. For
-    /// each axis of `self`, identify its primary frame and match it against
-    /// `frm1`, recording the 1-based `frm1` axis index (or 0).
-    // C: frame.c:7438; astMatchAxesX.
+    /// Implementation half of [`match_axes`](Frame::match_axes), with the
+    /// arguments swapped.
+    /// `frm1` is the Frame whose axes are reported.
+    /// For each axis of `self`, identify its primary frame and match it
+    /// against `frm1`, recording the 1-based `frm1` axis index (or 0).
+    // C: frame.c:7438; astMatchAxesX. `self` plays the role of `frm2`.
     fn match_axes_x(&self, frm1: &dyn Frame) -> AstResult<Vec<i32>> {
         let nax2 = self.naxes();
         let mut axes = vec![0i32; nax2];
@@ -2670,20 +2683,22 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     }
 
     /// Whether this Frame is equivalent to a UnitMap when treated as a
-    /// Mapping. Base Frame is always unit-equivalent.
+    /// Mapping.
+    /// A base Frame is always unit-equivalent.
     // C: frame.c:6417; astIsUnitFrame.
     fn is_unit_frame(&self) -> bool {
         true
     }
 
     /// Extend a box to include the effect of coordinate-system singularities.
-    /// The base Frame has none, so the bounds are left unchanged. SkyFrame
-    /// overrides this (pole inclusion).
+    /// The base Frame has none, so the bounds are left unchanged.
+    /// SkyFrame overrides this (pole inclusion).
     ///
     /// `inside` is a membership predicate for the box: it returns `true`
-    /// when a supplied point lies inside. It mirrors the C `reg` Mapping
-    /// argument (which leaves interior points unchanged and sets exterior
-    /// points bad); the SkyFrame override uses it to test the poles.
+    /// when a supplied point lies inside.
+    /// The SkyFrame override uses it to test the poles.
+    // C: the predicate mirrors the `reg` Mapping argument, which leaves
+    // interior points unchanged and sets exterior points bad.
     // C: frame.c:7766; astNormBox.
     fn norm_box(
         &self,

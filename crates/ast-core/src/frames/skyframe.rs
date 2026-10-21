@@ -1832,11 +1832,11 @@ impl Frame for SkyFrame {
         2
     }
 
-    /// Mirrors C `SkyFrame::MatchAxesX`: rather than matching each axis's
-    /// primary Frame, the whole SkyFrame is used as the target and the two
-    /// template axes the match associates with it are reported, so a permuted
-    /// SkyFrame reports its axes in its own order.
-    // C: skyframe.c:6977.
+    /// Rather than matching each axis's primary Frame, the whole SkyFrame is
+    /// used as the target.
+    /// The two template axes the match associates with it are reported, so a
+    /// permuted SkyFrame reports its axes in its own order.
+    // C: `SkyFrame::MatchAxesX` (skyframe.c:6977).
     fn match_axes_x(&self, frm1: &dyn Frame) -> AstResult<Vec<i32>> {
         let mut probe = frm1.snapshot();
         probe.set_preserve_axes(true)?;
@@ -2059,15 +2059,16 @@ impl Frame for SkyFrame {
         "rad".to_string()
     }
 
-    /// Mirrors C `SkyFrame::GetNormUnit`, which asks the SkyAxis, and
-    /// `SkyAxis::GetAxisNormUnit`. A Unit that describes the axis values,
-    /// such as `"hh:mm:ss.s"`, has no normalised form and is returned
-    /// unchanged, whether it is the default or has been set to that same
-    /// description; this has to be decided here rather than by the units
-    /// parser, which reads the spaces in a description such as `"hh mm ss"`
-    /// as multiplication. Any other Unit, and every Unit of an axis with a
-    /// `%`-style Format, is normalised.
-    // C: skyframe.c:4349; skyaxis.c:3095.
+    /// A Unit that describes the axis values, such as `"hh:mm:ss.s"`, has no
+    /// normalised form and is returned unchanged, whether it is the default or
+    /// has been set to that same description.
+    /// This has to be decided here rather than by the units parser, which
+    /// reads the spaces in a description such as `"hh mm ss"` as
+    /// multiplication.
+    /// Any other Unit, and every Unit of an axis with a `%`-style Format, is
+    /// normalised.
+    // C: `SkyFrame::GetNormUnit` (skyframe.c:4349), which asks the SkyAxis
+    // (`SkyAxis::GetAxisNormUnit`, skyaxis.c:3095).
     fn norm_unit(&self, axis: usize) -> String {
         let Ok(phys) = self.physical_axis(axis) else {
             return String::new();
@@ -2092,9 +2093,9 @@ impl Frame for SkyFrame {
         crate::units::norm_unit(&self.phys_unit(phys))
     }
 
-    /// Mirrors C `SkyFrame::Format`: the axis Format, set or default, formats
-    /// the value as `SkyAxis::AxisFormat` does.
-    // C: skyframe.c:2025.
+    /// The axis Format, set or default, formats the value as a sky axis does.
+    // C: `SkyFrame::Format` (skyframe.c:2025) formats as `SkyAxis::AxisFormat`
+    // does.
     fn format(&self, axis: usize, value: f64) -> AstResult<String> {
         let phys = self.physical_axis(axis)?;
         if is_bad(value) {
@@ -2136,13 +2137,13 @@ impl Frame for SkyFrame {
         Ok(pal::dsep(a[lp], a[bp], b[lp], b[bp]))
     }
 
-    /// Mirrors C `SkyFrame::Resolve`: the vector from point 1 to point 3
-    /// resolved along and across the great circle from point 1 to point 2.
+    /// The vector from point 1 to point 3 is resolved along and across the
+    /// great circle from point 1 to point 2.
     /// `d1` is the signed arc from point 1 to point 4, the closest approach,
     /// and `d2` the unsigned arc from point 4 to point 3, both in radians.
     /// Everything is BAD for a bad input, for points 1 and 2 that coincide or
     /// are opposite, or for a point 3 at the pole of the great circle.
-    // C: skyframe.c:8321.
+    // C: `SkyFrame::Resolve` (skyframe.c:8321).
     fn resolve(
         &self,
         point1: &[f64],
@@ -2191,11 +2192,10 @@ impl Frame for SkyFrame {
         Ok((point4, d1, d2))
     }
 
-    /// Mirrors C `SkyFrame::Intersect`: where the great circle through `a1`
-    /// and `a2` crosses the one through `b1` and `b2`, choosing of the two
-    /// crossings the one nearer `a1`. BAD for a bad input or great circles
-    /// that coincide.
-    // C: skyframe.c.
+    /// Where the great circle through `a1` and `a2` crosses the one through
+    /// `b1` and `b2`, choosing of the two crossings the one nearer `a1`.
+    /// BAD for a bad input or great circles that coincide.
+    // C: `SkyFrame::Intersect` (skyframe.c).
     fn intersect(&self, a1: &[f64], a2: &[f64], b1: &[f64], b2: &[f64]) -> AstResult<Vec<f64>> {
         super::assert_points_len("intersect", 2, &[a1, a2, b1, b2]);
         let mut cross = vec![BAD_VALUE, BAD_VALUE];
@@ -2599,11 +2599,11 @@ impl Frame for SkyFrame {
         self.axes[self.perm[axis - 1]].kind()
     }
 
-    /// Offset along a great circle at a given bearing. Mirrors C
-    /// `SkyFrame::Offset2`: builds the reference vectors via Shcal, offsets
-    /// via Shapp, normalises, and returns the bearing of the great circle at
-    /// the end point.
-    // C: skyframe.c:7937.
+    /// Offset along a great circle at a given bearing.
+    /// Builds the reference vectors, offsets along the great circle,
+    /// normalises, and returns the bearing of the great circle at the end
+    /// point.
+    // C: `SkyFrame::Offset2` (skyframe.c:7937), through `Shcal` and `Shapp`.
     fn offset2(&self, point1: &[f64], angle: f64, offset: f64) -> AstResult<(Vec<f64>, f64)> {
         super::assert_points_len("offset2", 2, &[point1]);
         let perm = self.perm;
@@ -2674,18 +2674,17 @@ impl Frame for SkyFrame {
         Ok((point2, result))
     }
 
-    /// Extend a box to include the effect of the celestial poles. Mirrors C
-    /// `SkyFrame::NormBox`: tests whether the box (via the supplied
-    /// region-membership predicate) includes either pole and, if so, expands
-    /// the longitude range to 0..2*PI and pins the latitude limit to the
-    /// pole.
+    /// Extend a box to include the effect of the celestial poles.
+    /// Tests whether the box (via the supplied region-membership predicate)
+    /// includes either pole and, if so, expands the longitude range to 0..2*PI
+    /// and pins the latitude limit to the pole.
     ///
-    /// C tests its error status after transforming the two poles and treats a
-    /// failed transformation as finding neither pole, because the values it
-    /// would otherwise read were never written. Here the predicate returns a
-    /// `Result`, so a failure propagates instead and the limits are left as
-    /// they arrived — the same outcome without the read.
-    // C: skyframe.c:7244; skyframe.c:7338-7342.
+    /// If testing a pole fails, the error is returned and the limits are left
+    /// as they arrived.
+    // C: `SkyFrame::NormBox` (skyframe.c:7244). C tests its error status after
+    // transforming the two poles and treats a failed transformation as finding
+    // neither pole, because the values it would otherwise read were never
+    // written (skyframe.c:7338-7342).
     fn norm_box(
         &self,
         lbnd: &mut [f64],

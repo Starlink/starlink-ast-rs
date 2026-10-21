@@ -469,10 +469,10 @@ impl Frame for CmpFrame {
         self.frame1.naxes() + self.frame2.naxes()
     }
 
-    /// Mirrors C `CmpFrame::MatchAxesX`: each component Frame is matched by
-    /// its own `match_axes_x`, and the results, which are in internal axis
-    /// order, are put into the CmpFrame's external order.
-    // C: cmpframe.c:5444.
+    /// Each component Frame is matched by its own `match_axes_x`.
+    /// The results, which are in internal axis order, are put into the
+    /// CmpFrame's external order.
+    // C: `CmpFrame::MatchAxesX` (cmpframe.c:5444).
     fn match_axes_x(&self, frm1: &dyn Frame) -> AstResult<Vec<i32>> {
         let mut work = self.frame1.match_axes_x(frm1)?;
         work.extend(self.frame2.match_axes_x(frm1)?);
@@ -584,13 +584,14 @@ impl Frame for CmpFrame {
         }
     }
 
-    /// Mirrors C `CmpFrame::Resolve`: each component resolves its part of the
-    /// vector, the parallel distances are combined weighted by the length of
-    /// the basis vector in each component, and point 4 and the perpendicular
-    /// distance then come from this Frame's own `offset` and `distance`. A
-    /// component in which the basis vector has no length contributes nothing,
-    /// so its bad parallel distance is taken as zero.
-    // C: cmpframe.c:7753.
+    /// Each component resolves its part of the vector.
+    /// The parallel distances are combined weighted by the length of the basis
+    /// vector in each component.
+    /// Point 4 and the perpendicular distance then come from this Frame's own
+    /// `offset` and `distance`.
+    /// A component in which the basis vector has no length contributes
+    /// nothing, so its bad parallel distance is taken as zero.
+    // C: `CmpFrame::Resolve` (cmpframe.c:7753).
     fn resolve(
         &self,
         point1: &[f64],
@@ -638,12 +639,12 @@ impl Frame for CmpFrame {
         Ok((point4, d1, d2))
     }
 
-    /// Mirrors C `CmpFrame::ResolvePoints`, the batch form of
-    /// [`resolve`](Frame::resolve). Each component resolves its share of the
-    /// points in internal axis order; point 4 and the perpendicular distance
-    /// come from this Frame's `offset` and `distance`, which take external
-    /// order, so they are given the supplied points.
-    // C: cmpframe.c:7962.
+    /// The batch form of [`resolve`](Frame::resolve).
+    /// Each component resolves its share of the points in internal axis order.
+    /// Point 4 and the perpendicular distance come from this Frame's `offset`
+    /// and `distance`, which take external order, so they are given the
+    /// supplied points.
+    // C: `CmpFrame::ResolvePoints` (cmpframe.c:7962).
     fn resolve_points(
         &self,
         point1: &[f64],
@@ -747,11 +748,11 @@ impl Frame for CmpFrame {
         Ok(result)
     }
 
-    /// A CmpFrame's axes belong to its components, so the Axis on a given
-    /// axis is whatever the owning component has there — the two components
-    /// need not agree. Mirrors C `CmpFrame::GetAxis`, which permutes the
-    /// index and forwards to the owner.
-    // C: cmpframe.c:3474.
+    /// A CmpFrame's axes belong to its components, so the kind of a given axis
+    /// is whatever the owning component has there.
+    /// The two components need not agree.
+    /// The axis index is permuted and forwarded to the owner.
+    // C: `CmpFrame::GetAxis` (cmpframe.c:3474).
     fn get_axis(&self, axis: usize) -> AxisKind {
         let (frame, local) = self.route_axis(axis);
         frame.get_axis(local)
@@ -882,24 +883,24 @@ impl Frame for CmpFrame {
     }
 
     /// Extend a box to include the effect of singularities in either
-    /// component Frame. Mirrors C `CmpFrame::NormBox`: the bounds are
-    /// permuted into the internal order the components use, split at the
-    /// first component's axis count, and each component's `norm_box` is
-    /// invoked with a predicate that expands a component sub-position back
-    /// into a full external position before consulting the caller's
-    /// predicate.
+    /// component Frame.
+    /// The bounds are permuted into the internal order the components use and
+    /// split at the first component's axis count.
+    /// Each component's `norm_box` is then invoked with a predicate that
+    /// expands a component sub-position back into a full external position
+    /// before consulting the caller's predicate.
     ///
-    /// Each probe fills the other component's axes with [`BAD_VALUE`], because
-    /// that is what C's probe PermMaps supply there. Every caller passes an un-negated Region, which reports a
-    /// point carrying a bad axis as outside, so a component's singularity test
-    /// never sees a position inside the box, and a CmpFrame does not widen the
-    /// box for a singularity in either component: the bounds it returns are
-    /// those it was given. Whether a Region on a CmpFrame contains a
-    /// component's singular point cannot in general be decomposed by
-    /// component, since the Region need not be a product of per-component
-    /// Regions.
-    // C: cmpframe.c:5838; the probe PermMaps are at cmpframe.c:5965-5969,
-    // 5981-5991.
+    /// Each probe fills the other component's axes with [`BAD_VALUE`].
+    /// Every caller passes an un-negated Region, which reports a point
+    /// carrying a bad axis as outside.
+    /// A component's singularity test therefore never sees a position inside
+    /// the box, and a CmpFrame does not widen the box for a singularity in
+    /// either component: the bounds it returns are those it was given.
+    /// Whether a Region on a CmpFrame contains a component's singular point
+    /// cannot in general be decomposed by component, since the Region need not
+    /// be a product of per-component Regions.
+    // C: `CmpFrame::NormBox` (cmpframe.c:5838); the probe PermMaps that supply
+    // the bad values are at cmpframe.c:5965-5969, 5981-5991.
     fn norm_box(
         &self,
         lbnd: &mut [f64],

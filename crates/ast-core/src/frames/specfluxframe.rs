@@ -234,9 +234,8 @@ impl Frame for SpecFluxFrame {
     frame_attrs_digits!();
     frame_attrs_ident!();
 
-    /// An unset UseDefs is the SpecFrame component's own, as CmpFrame's
-    /// `GetUseDefs` reads its first component.
-    // C: cmpframe.c.
+    /// An unset UseDefs is the SpecFrame component's own.
+    // C: cmpframe.c `GetUseDefs` reads the first component.
     fn use_defs(&self) -> bool {
         self.attrs
             .use_defs

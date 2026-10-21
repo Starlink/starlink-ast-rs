@@ -1836,9 +1836,8 @@ impl Frame for FrameSet {
         self.current().naxes()
     }
 
-    /// Mirrors C `FrameSet::MatchAxesX`: the current Frame's axes are
-    /// matched.
-    // C: frameset.c:7398.
+    /// The current Frame's axes are matched.
+    // C: `FrameSet::MatchAxesX` (frameset.c:7398).
     fn match_axes_x(&self, frm1: &dyn Frame) -> AstResult<Vec<i32>> {
         self.current().match_axes_x(frm1)
     }
@@ -1910,9 +1909,8 @@ impl Frame for FrameSet {
         self.current().offset2(point1, angle, offset)
     }
 
-    /// A FrameSet's axes are its current Frame's axes. Mirrors C
-    /// `FrameSet::GetAxis`.
-    // C: frameset.c:4948.
+    /// A FrameSet's axes are its current Frame's axes.
+    // C: `FrameSet::GetAxis` (frameset.c:4948).
     fn get_axis(&self, axis: usize) -> AxisKind {
         self.current().get_axis(axis)
     }
@@ -2399,7 +2397,7 @@ impl Mapping for FrameSet {
         &mut self.mapping_flags
     }
 
-    /// Whether the base-to-current Mapping is.
+    /// Whether the base-to-current Mapping is linear.
     // C: frameset.c `GetIsLinear`.
     fn is_linear(&self) -> bool {
         self.mapping(FrameRef::Base, FrameRef::Current)
