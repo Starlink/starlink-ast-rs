@@ -349,8 +349,48 @@ fn get_elem_rejects_an_out_of_range_index() {
     assert_eq!(err.code(), ErrorCode::Mpvin);
     assert!(
         err.to_string().contains(
-            "Illegal zero-based vector index 3 supplied for KeyMap entry 'V' \
-             - the vector has 3 elements."
+            "astMapGetElem<X>(KeyMap): Illegal zero-based vector index 3 supplied \
+             for KeyMap entry 'V' - the vector has 3 elements."
+        ),
+        "{err}"
+    );
+}
+
+/// The out-of-range message is the C library's text for each method: the
+/// numeric methods share one that names the method `astMapGetElem<X>`, and
+/// the string and Object methods each have their own, whose upper limit is
+/// one more than the vector length (C-oracle probe).
+#[test]
+fn get_elem_out_of_range_messages_match_the_c_library() {
+    let mut km = KeyMap::new();
+    km.put_1i("V", &[1, 2, 3], None).unwrap();
+    let obj = || Some(AnyObject::KeyMap(Box::new(KeyMap::new())));
+    km.put_1a("O", vec![obj(), obj(), obj()], None).unwrap();
+
+    let err = km.get_elem_d("V", 3).unwrap_err();
+    assert_eq!(err.code(), ErrorCode::Mpvin);
+    assert!(
+        err.to_string()
+            .contains("astMapGetElem<X>(KeyMap): Illegal zero-based vector index 3"),
+        "{err}"
+    );
+
+    let err = km.get_elem_c("V", 3).unwrap_err();
+    assert_eq!(err.code(), ErrorCode::Mpvin);
+    assert!(
+        err.to_string().contains(
+            "astMapGetElemC(KeyMap): Illegal vector index 4 supplied for KeyMap \
+             entry 'V' - should be in the range 1 to 4."
+        ),
+        "{err}"
+    );
+
+    let err = km.get_elem_a("O", 3).unwrap_err();
+    assert_eq!(err.code(), ErrorCode::Mpvin);
+    assert!(
+        err.to_string().contains(
+            "astMapGetElemA(KeyMap): Illegal vector index 4 supplied for KeyMap \
+             entry 'O' - should be in the range 1 to 4."
         ),
         "{err}"
     );

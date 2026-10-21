@@ -102,6 +102,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [The `UseDefs` documentation leaves out attributes and default titles it affects](#the-usedefs-documentation-leaves-out-attributes-and-default-titles-it-affects)
 - [The FitsTable class documentation attributes `-TAB` to FITS-WCS paper 2](#the-fitstable-class-documentation-attributes--tab-to-fits-wcs-paper-2)
 - [The `astPutColumnData` documentation does not say a cell of non-finite values keeps its old value](#the-astputcolumndata-documentation-does-not-say-a-cell-of-non-finite-values-keeps-its-old-value)
+- [`astMapGetElemC` and `astMapGetElemA` give an out-of-range upper limit one past the vector](#astmapgetelemc-and-astmapgetelema-give-an-out-of-range-upper-limit-one-past-the-vector)
 
 ### [Addressed here, and not going upstream](#addressed-here-and-not-going-upstream)
 
@@ -1502,6 +1503,18 @@ Consequence: documentation only, but a caller who sets UseDefs to zero meets err
 
 `Frame::use_defs` lists the attributes each class checks and the two default titles, as the code does.
 A C fix: move the Frame entry's attributes into the SkyFrame and SpecFrame entries, add ObsAlt to the SpecFrame entry, add a TimeFrame entry for TimeScale, and mention the default Title of a SkyFrame and SpecFrame.
+
+### `astMapGetElemC` and `astMapGetElemA` give an out-of-range upper limit one past the vector
+
+C location: `keymap.c`, `MapGetElemC` (line 7364) and `astMapGetElemAId_` (line 7568), beside the `MAKE_MAPGETELEM` macro (line 7152).
+
+For an element index out of range, the numeric `astMapGetElem<X>` functions report "Illegal zero-based vector index %d supplied for KeyMap entry '%s' - the vector has %d elements.", naming the function with a literal `astMapGetElem<X>` rather than the data type.
+`astMapGetElemC` and the public `astMapGetElemA` instead report "Illegal vector index %d supplied for KeyMap entry '%s' - should be in the range 1 to %d.", with the index made one-based and the upper limit computed as `nel + 1`, so a three-element vector is said to accept indices 1 to 4 (C-oracle probe).
+
+Consequence: the message for the string and Object functions names one more valid index than the vector has, and the three messages describe the same error in two ways.
+
+`KeyMap::get_elem` mirrors all three texts, including the `nel + 1`.
+A C fix: give the upper limit as `nel`, and name each numeric function by its type.
 
 ## Addressed here, and not going upstream
 

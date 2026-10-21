@@ -2027,13 +2027,24 @@ impl KeyMap {
 
         let n = entry.value.len().max(1);
         if elem >= n {
-            return Err(AstError::new(
-                ErrorCode::Mpvin,
-                format!(
-                    "{method}(KeyMap): Illegal zero-based vector index {elem} \
+            // The numeric methods share MAKE_MAPGETELEM's message, which
+            // names the method with a literal `<X>`. MapGetElemC and the
+            // public astMapGetElemAId_ have their own, giving the index
+            // one-based and an upper limit of `nel + 1`, one more than the
+            // vector length (c-library-quirks.md).
+            let message = match want {
+                AstType::String | AstType::Object => format!(
+                    "{method}(KeyMap): Illegal vector index {} supplied for KeyMap \
+                     entry '{nkey}' - should be in the range 1 to {}.",
+                    elem + 1,
+                    n + 1
+                ),
+                _ => format!(
+                    "astMapGetElem<X>(KeyMap): Illegal zero-based vector index {elem} \
                      supplied for KeyMap entry '{nkey}' - the vector has {n} elements."
                 ),
-            ));
+            };
+            return Err(AstError::new(ErrorCode::Mpvin, message));
         }
 
         if !entry.value.defined() {
