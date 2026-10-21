@@ -1,35 +1,37 @@
-//! A Table: a two-dimensional table of values, held as a KeyMap.
+//! Tables: two-dimensional tables of values, held in a KeyMap.
 //!
-//! Ported from `reference/starlink-ast/src/table.c`.
-//!
-//! Each cell is a KeyMap entry whose key is the column name followed by the
-//! one-based row index in parentheses (`"FLUX(3)"`). The column definitions
-//! (name, data type, shape and unit of each column) are held in a second
-//! KeyMap, and the names of the global parameters in a third. A parameter's
-//! value is a KeyMap entry whose key is the parameter name.
-//!
-//! # How the C class maps onto owned values
-//!
-//! C's Table is a subclass of KeyMap that overrides every `MapPut0`,
-//! `MapPut1`, `MapPutElem`, `MapGet0`, `MapGet1` and `MapGetElem` method,
-//! `MapPutU`, `SetKeyCase` and `ClearKeyCase`, and inherits the rest. Here
-//! the KeyMap is held by value: the overridden methods are methods of
-//! [`Table`] that check the key and then use the KeyMap's own, the
-//! inherited methods that only read are reached through
-//! [`Table::as_keymap`], and those that change the KeyMap are forwarded.
-//!
-//! C's `astColumnProps` and `astParameterProps` return a new pointer to the
-//! Table's own KeyMaps, so a caller can change the Table's column
-//! definitions through it; [`Table::column_props`] and
-//! [`Table::parameter_props`] return copies.
-//!
-//! C's `astGetColumnLength` stores the length it computes in the column's
-//! definition, where it is seen by a dump. The column definitions are held
-//! in a `RefCell` so that [`Table::column_length`], which only reads the
-//! Table, can store it as C does.
-//!
-//! A column may not hold `AST__POINTERTYPE` values, which have no Rust
-//! counterpart.
+//! See [`Table`] for columns, rows, cell keys and parameters.
+
+// Ported from reference/starlink-ast/src/table.c.
+//
+// Each cell is a KeyMap entry whose key is the column name followed by the
+// one-based row index in parentheses ("FLUX(3)"). The column definitions
+// (name, data type, shape and unit of each column) are held in a second
+// KeyMap, and the names of the global parameters in a third. A parameter's
+// value is a KeyMap entry whose key is the parameter name.
+//
+// How the C class maps onto owned values:
+//
+// C's Table is a subclass of KeyMap that overrides every MapPut0, MapPut1,
+// MapPutElem, MapGet0, MapGet1 and MapGetElem method, MapPutU, SetKeyCase
+// and ClearKeyCase, and inherits the rest. Here the KeyMap is held by
+// value: the overridden methods are methods of Table that check the key
+// and then use the KeyMap's own, the inherited methods that only read are
+// reached through Table::as_keymap, and those that change the KeyMap are
+// forwarded.
+//
+// C's astColumnProps and astParameterProps (protected) return a new
+// pointer to the Table's own KeyMaps, so a caller can change the Table's
+// column definitions through it; Table::column_props and
+// Table::parameter_props return copies.
+//
+// C's astGetColumnLength stores the length it computes in the column's
+// definition, where it is seen by a dump. The column definitions are held
+// in a RefCell so that Table::column_length, which only reads the Table,
+// can store it as C does.
+//
+// A column may not hold AST__POINTERTYPE values, which have no Rust
+// counterpart.
 
 mod serial;
 
@@ -38,7 +40,9 @@ use crate::keymap::{AstType, KeyMap, SortBy};
 use crate::serial::AnyObject;
 use std::cell::RefCell;
 
-/// The longest column or parameter name, `AST__MXCOLNAMLEN` (table.h).
+/// The largest number of characters in a column or parameter name, not
+/// counting trailing spaces.
+// AST__MXCOLNAMLEN in table.h.
 pub const MXCOLNAMLEN: usize = 100;
 
 /// The keys of a column definition (table.c).
@@ -49,6 +53,115 @@ const UNIT: &str = "Unit";
 const LENGTH: &str = "Length";
 
 /// A two-dimensional table of values.
+///
+/// A Table holds its values in a [`KeyMap`], one entry per cell, so a cell
+/// holds a value of any of the KeyMap's types and is read with the
+/// KeyMap's conversions between them.
+/// A Table can also hold global parameters, values that describe the table
+/// as a whole.
+/// Each value is stored and read through a string key, which is slow, so a
+/// Table is not suited to very large tables.
+///
+/// # Columns
+///
+/// A column is added with [`add_column`](Self::add_column) before any value
+/// is stored in it.
+/// Adding it fixes the data type, the shape and the unit string of the
+/// values in every cell of the column.
+/// A cell holds a scalar, or an array whose shape is a list of axis
+/// lengths; an array is stored and read as a vector of all its elements.
+///
+/// Column names are not case sensitive: a name is converted to upper case,
+/// and trailing spaces are ignored, though other spaces are kept.
+/// A name may have up to [`MXCOLNAMLEN`] characters.
+///
+/// # Cells
+///
+/// The key of a cell is the column name followed by the row index in
+/// parentheses: `"FLUX(3)"` is the cell in row 3 of column `FLUX`.
+/// The first row is row 1.
+///
+/// The `put` methods, [`put_0i`](Self::put_0i), [`put_1i`](Self::put_1i)
+/// and [`put_elem_i`](Self::put_elem_i) and their versions for the other
+/// types, check a cell key before storing the value:
+/// the key must name a cell of a column that has been added, the value must
+/// have the column's type, and it must have the column's number of
+/// elements.
+/// Storing a value in a row beyond the last makes that row the last; the
+/// rows between hold no values.
+///
+/// The `get` methods, [`get_0i`](Self::get_0i), [`get_1i`](Self::get_1i)
+/// and [`get_elem_i`](Self::get_elem_i) and their versions for the other
+/// types, read a cell as any type, as [`KeyMap`] describes.
+/// A cell in which nothing has been stored reads as `Ok(None)`.
+///
+/// # Parameters
+///
+/// A parameter is added with [`add_parameter`](Self::add_parameter) before
+/// a value is stored under its name, which is the parameter's key.
+/// Unlike a column, a parameter has no fixed type or shape, and its value
+/// is stored and read as in a KeyMap, without the checks made for a cell.
+/// Parameter names follow the rules for column names.
+///
+/// # The KeyMap
+///
+/// [`as_keymap`](Self::as_keymap) gives the KeyMap holding the cells and the
+/// parameter values, for the KeyMap methods that only read, such as
+/// [`KeyMap::map_size`], [`KeyMap::map_key`] and [`KeyMap::map_type`].
+/// Its keys are never case sensitive, and the Table's
+/// [`set_key_case`](Self::set_key_case) does nothing.
+/// Its other attributes are set through the Table, with
+/// [`set_key_error`](Self::set_key_error),
+/// [`set_map_locked`](Self::set_map_locked),
+/// [`set_sort_by`](Self::set_sort_by) and
+/// [`set_size_guess`](Self::set_size_guess).
+///
+/// # Attributes
+///
+/// All are read-only.
+///
+/// - [Ncolumn](Self::ncolumn): the number of columns.
+/// - [Nrow](Self::nrow): the number of rows.
+/// - [Nparameter](Self::nparameter): the number of parameters.
+/// - [ColumnType](Self::column_type): the data type of a column.
+/// - [ColumnUnit](Self::column_unit): the unit string of a column.
+/// - [ColumnNdim](Self::column_ndim): the number of axes of each value in a
+///   column.
+/// - [ColumnLength](Self::column_length): the number of elements in each
+///   value in a column.
+/// - [ColumnLenC](Self::column_len_c): the length of the longest value in a
+///   column, formatted as a string.
+///
+/// # Examples
+///
+/// ```
+/// use ast_core::error::ErrorCode;
+/// use ast_core::{AstType, Table};
+///
+/// let mut table = Table::new();
+/// table.add_column("Flux", AstType::Double, &[], "Jy")?;
+/// table.add_column("Pos", AstType::Double, &[2], "deg")?;
+/// table.put_0d("FLUX(1)", 1.5, None)?;
+/// table.put_1d("pos(3)", &[10.0, 20.0], None)?;
+///
+/// assert_eq!(table.ncolumn(), 2);
+/// assert_eq!(table.nrow(), 3);
+/// assert_eq!(table.column_name(2)?, "POS");
+/// assert_eq!(table.get_0c("Flux(1)")?.as_deref(), Some("1.5"));
+/// assert_eq!(table.get_1d("POS(2)")?, None);
+///
+/// // A value of the wrong type or the wrong length is refused.
+/// let err = table.put_0i("FLUX(2)", 1, None).unwrap_err();
+/// assert_eq!(err.code(), ErrorCode::Badtyp);
+/// let err = table.put_1d("POS(2)", &[1.0], None).unwrap_err();
+/// assert_eq!(err.code(), ErrorCode::Badtyp);
+///
+/// table.add_parameter("Epoch")?;
+/// table.put_0c("EPOCH", "J2000", None)?;
+/// assert_eq!(table.nparameter(), 1);
+/// assert_eq!(table.get_0c("Epoch")?.as_deref(), Some("J2000"));
+/// # Ok::<(), ast_core::error::AstError>(())
+/// ```
 #[derive(Debug, Clone)]
 pub struct Table {
     /// The cells and the parameter values.
@@ -140,7 +253,11 @@ fn split_cell_key(key: &str) -> Option<(&str, i64)> {
 }
 
 impl Table {
-    /// An empty Table, with no columns, parameters or rows.
+    /// Creates an empty Table, with no columns, parameters or rows.
+    ///
+    /// Columns are added with [`add_column`](Self::add_column) and
+    /// parameters with [`add_parameter`](Self::add_parameter).
+    #[doc(alias = "astTable")]
     pub fn new() -> Self {
         let mut map = KeyMap::new();
         map.set_key_case(false)
@@ -159,8 +276,10 @@ impl Table {
         self.class = class;
     }
 
-    /// The KeyMap holding the cells and parameter values, for the KeyMap
-    /// methods a Table inherits unchanged that only read it.
+    /// The KeyMap holding the cells and the parameter values, for the
+    /// KeyMap methods that only read it.
+    ///
+    /// Its keys are the cell keys and the parameter names, in upper case.
     pub fn as_keymap(&self) -> &KeyMap {
         &self.map
     }
@@ -169,12 +288,28 @@ impl Table {
     // Columns
     // -----------------------------------------------------------------
 
-    /// Add a column. Mirrors `astAddColumn`.
+    /// Adds a column, with no values in it.
     ///
-    /// `dims` gives the shape of the array of values in each cell, and is
-    /// empty for a column of scalars. Adding a column that already exists
-    /// with the same type, unit and shape does nothing; with a different
-    /// one it is an `AST__OLDCOL` error.
+    /// `name` is the column name, which is converted to upper case and
+    /// whose trailing spaces are ignored.
+    /// `ty` is the data type of the values in every cell, any [`AstType`]
+    /// but [`AstType::BadType`].
+    /// `dims` is the shape of the array each cell holds, one length per
+    /// axis, and is empty for a column of scalars.
+    /// `unit` is the unit string of the values, blank for none.
+    ///
+    /// Adding a column that already exists with the same type, unit and
+    /// shape does nothing.
+    ///
+    /// # Errors
+    ///
+    /// - [`ErrorCode::Badkey`] if `name` is blank or has more than
+    ///   [`MXCOLNAMLEN`] characters.
+    /// - [`ErrorCode::Naxin`] if `ty` is [`AstType::BadType`].
+    /// - [`ErrorCode::Dimin`] if any length in `dims` is zero.
+    /// - [`ErrorCode::Oldcol`] if a column called `name` already exists
+    ///   with a different type, unit or shape.
+    #[doc(alias = "astAddColumn")]
     pub fn add_column(
         &mut self,
         name: &str,
@@ -276,8 +411,20 @@ impl Table {
         cols.put_0a(name, AnyObject::KeyMap(Box::new(col)), None)
     }
 
-    /// Remove a column and every value in it. Removing a column that does
-    /// not exist does nothing. Mirrors `astRemoveColumn`.
+    /// Removes a column and every value in it.
+    ///
+    /// `name` is not case sensitive, and its trailing spaces are ignored.
+    /// Removing a column that does not exist does nothing.
+    /// The number of rows does not change.
+    ///
+    /// # Errors
+    ///
+    /// - [`ErrorCode::Badkey`] if `name` is blank.
+    /// - [`ErrorCode::Bigkey`] if `name` has more than 200 characters.
+    // The C documentation says the case of the name is significant; the
+    // column definitions and the cells are held in KeyMaps whose KeyCase is
+    // zero, so it is not (docs/issues/c-library-quirks.md).
+    #[doc(alias = "astRemoveColumn")]
     pub fn remove_column(&mut self, name: &str) -> AstResult<()> {
         let class = self.class;
         if chr_len(name) == 0 {
@@ -296,13 +443,29 @@ impl Table {
         Ok(())
     }
 
-    /// The number of columns. Mirrors the `Ncolumn` attribute.
+    /// The number of columns in the Table (the Ncolumn attribute).
+    ///
+    /// Columns are added with [`add_column`](Self::add_column) and removed
+    /// with [`remove_column`](Self::remove_column).
+    #[doc(alias = "Ncolumn")]
     pub fn ncolumn(&self) -> usize {
         self.columns.borrow().map_size()
     }
 
-    /// The name of column `index` (one-based, in the order the columns were
-    /// added), in upper case. Mirrors `astColumnName`.
+    /// The name of the column at `index`, in upper case.
+    ///
+    /// Columns are numbered from 1, in the order they were added, so the
+    /// oldest is column 1 and the newest is column [`ncolumn`](Self::ncolumn);
+    /// a loop over `1..=ncolumn()` gives every column name.
+    ///
+    /// # Errors
+    ///
+    /// - [`ErrorCode::Mpind`] if `index` is 0 or greater than
+    ///   [`ncolumn`](Self::ncolumn).
+    // The C edition of the astColumnName documentation says to loop from
+    // zero to one less than Ncolumn; the index is one-based
+    // (docs/issues/c-library-quirks.md).
+    #[doc(alias = "astColumnName")]
     pub fn column_name(&self, index: usize) -> AstResult<String> {
         let class = self.class;
         let cols = self.columns.borrow();
@@ -318,16 +481,29 @@ impl Table {
         cols.map_key(index - 1)
     }
 
-    /// Whether the Table has a column called `column`. Mirrors
-    /// `astHasColumn`.
+    /// Whether the Table has a column called `column`.
+    ///
+    /// `column` is not case sensitive, and its trailing spaces are ignored.
+    ///
+    /// # Errors
+    ///
+    /// - [`ErrorCode::Bigkey`] if `column` has more than 200 characters.
+    #[doc(alias = "astHasColumn")]
     pub fn has_column(&self, column: &str) -> AstResult<bool> {
         self.columns.borrow().map_has_key(column)
     }
 
-    /// A copy of the column definitions: one KeyMap per column, keyed by
-    /// column name, holding the keys `Name`, `Type`, `Unit` and, for a
-    /// column of arrays, `Shape`. Mirrors `astColumnProps`, which returns
-    /// the Table's own KeyMap rather than a copy.
+    /// A copy of the column definitions.
+    ///
+    /// It holds one KeyMap per column, under the column name.
+    /// Each holds the column's name under `Name`, the code of its data type
+    /// ([`AstType::code`]) under `Type`, its unit string under `Unit`, and,
+    /// for a column of arrays, its shape under `Shape`.
+    /// Once [`column_length`](Self::column_length) has been asked for, it
+    /// also holds the number of elements in each cell under `Length`.
+    /// Changing the copy does not change the Table.
+    // C's astColumnProps (protected) returns the Table's own KeyMap rather
+    // than a copy.
     pub fn column_props(&self) -> KeyMap {
         self.columns.borrow().clone()
     }
@@ -366,8 +542,15 @@ impl Table {
         }
     }
 
-    /// The data type of the values in `column`. Mirrors the `ColumnType`
-    /// attribute.
+    /// The data type of the values in `column` (the ColumnType attribute),
+    /// as given to [`add_column`](Self::add_column).
+    ///
+    /// `column` is not case sensitive, and its trailing spaces are ignored.
+    ///
+    /// # Errors
+    ///
+    /// - [`ErrorCode::Badcol`] if there is no column called `column`.
+    #[doc(alias = "ColumnType")]
     pub fn column_type(&self, column: &str) -> AstResult<AstType> {
         self.with_column(column, "astGetColumnType", |col| {
             let code = col.get_0i(TYPE)?.unwrap_or(0);
@@ -375,22 +558,45 @@ impl Table {
         })
     }
 
-    /// The unit string of `column`. Mirrors the `ColumnUnit` attribute.
+    /// The unit string of the values in `column` (the ColumnUnit
+    /// attribute), as given to [`add_column`](Self::add_column).
+    ///
+    /// # Errors
+    ///
+    /// - [`ErrorCode::Badcol`] if there is no column called `column`.
     pub fn column_unit(&self, column: &str) -> AstResult<String> {
         self.with_column(column, "astGetColumnUnit", |col| {
             Ok(col.get_0c(UNIT)?.unwrap_or_default())
         })
     }
 
-    /// The number of axes of the array in each cell of `column`, zero for
-    /// a column of scalars. Mirrors the `ColumnNdim` attribute.
+    /// The number of axes of the value in each cell of `column` (the
+    /// ColumnNdim attribute).
+    ///
+    /// This is 0 for a column of scalars, 1 for a column whose cells each
+    /// hold a vector such as a spectrum, 2 for one whose cells each hold an
+    /// image, and so on.
+    ///
+    /// # Errors
+    ///
+    /// - [`ErrorCode::Badcol`] if there is no column called `column`.
+    #[doc(alias = "ColumnNdim")]
     pub fn column_ndim(&self, column: &str) -> AstResult<usize> {
         self.with_column(column, "astGetColumnNdim", |col| Ok(col.map_length(SHAPE)))
     }
 
-    /// The number of values in each cell of `column`, the product of its
-    /// shape. Mirrors the `ColumnLength` attribute, and like C stores the
-    /// value in the column's definition the first time it is asked for.
+    /// The number of elements in the value in each cell of `column` (the
+    /// ColumnLength attribute).
+    ///
+    /// This is 1 for a column of scalars, and otherwise the product of the
+    /// lengths of the column's axes.
+    ///
+    /// # Errors
+    ///
+    /// - [`ErrorCode::Badcol`] if there is no column called `column`.
+    // Like C's astGetColumnLength, this stores the value in the column's
+    // definition the first time it is asked for, where a dump sees it.
+    #[doc(alias = "ColumnLength")]
     pub fn column_length(&self, column: &str) -> AstResult<usize> {
         self.with_column(column, "astGetColumnLength", |col| {
             if let Some(len) = col.get_0i(LENGTH)? {
@@ -403,10 +609,15 @@ impl Table {
         })
     }
 
-    /// The shape of the array in each cell of `column`, empty for a column
-    /// of scalars or a column that does not exist. Mirrors
-    /// `astColumnShape`, which also pads the shape with ones to the length
-    /// of the caller's array.
+    /// The shape of the value in each cell of `column`: the length of each
+    /// axis, as given to [`add_column`](Self::add_column).
+    ///
+    /// The shape is empty for a column of scalars, and for a column that
+    /// does not exist, which is not an error.
+    /// Its length is [`column_ndim`](Self::column_ndim).
+    // C's astColumnShape also pads the shape with ones to the length of the
+    // caller's array.
+    #[doc(alias = "astColumnShape")]
     pub fn column_shape(&self, column: &str) -> AstResult<Vec<usize>> {
         let mut cols = self.columns.borrow_mut();
         match cols.object_mut(column) {
@@ -420,8 +631,19 @@ impl Table {
         }
     }
 
-    /// The length of the longest string a value in `column` is formatted
-    /// as. Mirrors the `ColumnLenC` attribute.
+    /// The length of the longest value in `column`, in any row, when
+    /// formatted as a string (the ColumnLenC attribute).
+    ///
+    /// For a column of arrays, this is the length of the longest element.
+    /// For a column of numbers, it is the length of the longest string the
+    /// values give when read as strings, as [`KeyMap`] formats them.
+    /// It is 0 for a column with no values.
+    ///
+    /// # Errors
+    ///
+    /// - [`ErrorCode::Badcol`] if there is no column called `column`.
+    /// - [`ErrorCode::Bigkey`] if `column` has more than 200 characters.
+    #[doc(alias = "ColumnLenC")]
     pub fn column_len_c(&self, column: &str) -> AstResult<usize> {
         let class = self.class;
         if !self.columns.borrow().map_has_key(column)? {
@@ -443,8 +665,20 @@ impl Table {
     // Parameters
     // -----------------------------------------------------------------
 
-    /// Add a global parameter. Adding one that exists does nothing.
-    /// Mirrors `astAddParameter`.
+    /// Adds a global parameter, with no value.
+    ///
+    /// `name` is the parameter name, which is converted to upper case and
+    /// whose trailing spaces are ignored.
+    /// A value is then stored and read with the `put` and `get` methods,
+    /// using the name as the key; unlike a column, a parameter has no fixed
+    /// type or shape.
+    /// Adding a parameter that already exists does nothing.
+    ///
+    /// # Errors
+    ///
+    /// - [`ErrorCode::Badkey`] if `name` is blank or has more than
+    ///   [`MXCOLNAMLEN`] characters.
+    #[doc(alias = "astAddParameter")]
     pub fn add_parameter(&mut self, name: &str) -> AstResult<()> {
         let class = self.class;
         let namlen = chr_len(name);
@@ -470,8 +704,19 @@ impl Table {
         Ok(())
     }
 
-    /// Remove a global parameter and its value. Removing a parameter that
-    /// does not exist does nothing. Mirrors `astRemoveParameter`.
+    /// Removes a global parameter and its value.
+    ///
+    /// `name` is not case sensitive, and its trailing spaces are ignored.
+    /// Removing a parameter that does not exist does nothing.
+    ///
+    /// # Errors
+    ///
+    /// - [`ErrorCode::Badkey`] if `name` is blank.
+    /// - [`ErrorCode::Bigkey`] if `name` has more than 200 characters.
+    // The C documentation says the case of the name is significant; the
+    // parameter definitions and values are held in KeyMaps whose KeyCase is
+    // zero, so it is not (docs/issues/c-library-quirks.md).
+    #[doc(alias = "astRemoveParameter")]
     pub fn remove_parameter(&mut self, name: &str) -> AstResult<()> {
         let class = self.class;
         if chr_len(name) == 0 {
@@ -487,14 +732,31 @@ impl Table {
         Ok(())
     }
 
-    /// The number of global parameters. Mirrors the `Nparameter`
-    /// attribute.
+    /// The number of global parameters in the Table (the Nparameter
+    /// attribute).
+    ///
+    /// Parameters are added with [`add_parameter`](Self::add_parameter) and
+    /// removed with [`remove_parameter`](Self::remove_parameter).
+    #[doc(alias = "Nparameter")]
     pub fn nparameter(&self) -> usize {
         self.parameters.map_size()
     }
 
-    /// The name of parameter `index` (one-based, in the order the
-    /// parameters were added), in upper case. Mirrors `astParameterName`.
+    /// The name of the global parameter at `index`, in upper case.
+    ///
+    /// Parameters are numbered from 1, in the order they were added, so the
+    /// oldest is parameter 1 and the newest is parameter
+    /// [`nparameter`](Self::nparameter); a loop over `1..=nparameter()`
+    /// gives every parameter name.
+    ///
+    /// # Errors
+    ///
+    /// - [`ErrorCode::Mpind`] if `index` is 0 or greater than
+    ///   [`nparameter`](Self::nparameter).
+    // The C edition of the astParameterName documentation says to loop from
+    // zero to one less than Nparameter; the index is one-based
+    // (docs/issues/c-library-quirks.md).
+    #[doc(alias = "astParameterName")]
     pub fn parameter_name(&self, index: usize) -> AstResult<String> {
         let class = self.class;
         if index < 1 || index > self.parameters.map_size() {
@@ -510,14 +772,26 @@ impl Table {
     }
 
     /// Whether the Table has a global parameter called `parameter`.
-    /// Mirrors `astHasParameter`.
+    ///
+    /// `parameter` is not case sensitive, and its trailing spaces are
+    /// ignored.
+    ///
+    /// # Errors
+    ///
+    /// - [`ErrorCode::Bigkey`] if `parameter` has more than 200 characters.
+    #[doc(alias = "astHasParameter")]
     pub fn has_parameter(&self, parameter: &str) -> AstResult<bool> {
         self.parameters.map_has_key(parameter)
     }
 
-    /// A copy of the parameter definitions, one entry per parameter keyed
-    /// by its name. Mirrors `astParameterProps`, which returns the Table's
-    /// own KeyMap rather than a copy.
+    /// A copy of the parameter definitions, one entry per parameter under
+    /// its name.
+    ///
+    /// The value of each entry is not the parameter's value, which is read
+    /// with the `get` methods.
+    /// Changing the copy does not change the Table.
+    // C's astParameterProps (protected) returns the Table's own KeyMap
+    // rather than a copy.
     pub fn parameter_props(&self) -> KeyMap {
         self.parameters.clone()
     }
@@ -526,16 +800,28 @@ impl Table {
     // Rows
     // -----------------------------------------------------------------
 
-    /// The number of rows: the highest row index any value has been
-    /// stored in, less the rows removed from the end. Mirrors the `Nrow`
-    /// attribute.
+    /// The number of rows in the Table (the Nrow attribute).
+    ///
+    /// This is the highest row index any value has been stored in by a
+    /// `put` method, the first row being row 1.
+    /// [`remove_row`](Self::remove_row) on the last row lowers it by one,
+    /// and [`purge_rows`](Self::purge_rows) lowers it to the number of rows
+    /// left; removing values in any other way does not change it.
+    // The C documentation says only that Nrow is the index of the last row
+    // to which a value has been added (docs/issues/c-library-quirks.md).
+    #[doc(alias = "Nrow")]
     pub fn nrow(&self) -> usize {
         self.nrow
     }
 
-    /// Remove every value in row `index` (one-based). The row is left
-    /// empty, and the number of rows changes only when it is the last.
-    /// An index outside the Table does nothing. Mirrors `astRemoveRow`.
+    /// Removes every value in the row at `index`, the first row being row
+    /// 1.
+    ///
+    /// The rows that follow keep their indices, so the row is left empty;
+    /// [`purge_rows`](Self::purge_rows) removes empty rows.
+    /// When it is the last row, [`nrow`](Self::nrow) is lowered by one.
+    /// An `index` of 0 or greater than [`nrow`](Self::nrow) does nothing.
+    #[doc(alias = "astRemoveRow")]
     pub fn remove_row(&mut self, index: usize) -> AstResult<()> {
         if index > 0 && index <= self.nrow {
             let names: Vec<String> = {
@@ -554,8 +840,18 @@ impl Table {
         Ok(())
     }
 
-    /// Remove every empty row, moving the rows below up. Mirrors
-    /// `astPurgeRows`.
+    /// Removes every empty row, renumbering the rows that follow each one
+    /// so that the rows left are numbered from 1 without gaps.
+    ///
+    /// A row is empty when no cell in it holds a value.
+    /// [`nrow`](Self::nrow) becomes the number of rows left.
+    ///
+    /// # Errors
+    ///
+    /// - [`ErrorCode::Inter`] if the KeyMap holds a key that is neither a
+    ///   parameter name nor the key of a cell within the Table, such as one
+    ///   given by [`map_rename`](Self::map_rename).
+    #[doc(alias = "astPurgeRows")]
     pub fn purge_rows(&mut self) -> AstResult<()> {
         let class = self.class;
         let nrow = self.nrow;
@@ -811,7 +1107,18 @@ impl Table {
         })
     }
 
-    /// Store an undefined value. Mirrors `astMapPutU`.
+    /// Stores `key` with no value, in a cell or a parameter, with an
+    /// optional comment.
+    ///
+    /// As [`KeyMap::put_u`], but `key` must name a parameter or a cell of a
+    /// column (see [`Table`]); the column's type is not checked.
+    /// A cell stored with no value reads as `Ok(None)`.
+    ///
+    /// # Errors
+    ///
+    /// - [`ErrorCode::Badkey`] if `key` is neither a parameter name nor the
+    ///   key of a cell of a column of the Table.
+    /// - Any error of [`KeyMap::put_u`], which stores the key.
     pub fn put_u(&mut self, key: &str, comment: Option<&str>) -> AstResult<()> {
         let irow = if self.has_parameter(key)? {
             None
@@ -838,21 +1145,45 @@ fn leading_int(s: &str) -> Option<i64> {
     s[..sign_len + ndigit].parse().ok()
 }
 
-/// The typed puts and gets of one data type, each checking the key as
-/// table.c does before using the KeyMap's own.
+// The typed puts and gets of one data type, each checking the key as
+// table.c's MapPut0<X>, MapGet0<X> and the other overrides do before using
+// the KeyMap's own.
 macro_rules! typed_access {
-    ($ty:expr, $tname:literal,
+    (AstType::$variant:ident, $tname:literal,
      $put0:ident, $get0:ident, $put1:ident, $get1:ident, $put_elem:ident, $get_elem:ident,
      $val:ty, $vals:ty, $out0:ty, $out1:ty, $elem_val:ty, $out_elem:ty, |$v:ident| $one:expr) => {
         impl Table {
-            #[doc = concat!("Store a ", $tname, " value in a cell or parameter. Mirrors `astMapPut0`.")]
+            #[doc = concat!("Stores a scalar ", $tname, " value in a cell or a parameter, with an optional comment.")]
+            ///
+            #[doc = concat!("As [`KeyMap::", stringify!($put0), "`], but a cell key is checked (see [`Table`]):")]
+            #[doc = concat!("the column must hold [`AstType::", stringify!($variant), "`] values, and scalars.")]
+            /// A parameter's value is stored without checks.
+            ///
+            /// # Errors
+            ///
+            /// - [`ErrorCode::Badkey`] if `key` is neither a parameter name nor the
+            ///   key of a cell of a column of the Table.
+            #[doc = concat!("- [`ErrorCode::Badtyp`] if `key` is a cell of a column that does not hold [`AstType::", stringify!($variant), "`] values, or that holds arrays.")]
+            #[doc = concat!("- Any error of [`KeyMap::", stringify!($put0), "`], which stores the value.")]
             pub fn $put0(&mut self, key: &str, value: $val, comment: Option<&str>) -> AstResult<()> {
-                let irow = self.check_put0(key, $ty, "astMapPut0")?;
+                let irow = self.check_put0(key, AstType::$variant, "astMapPut0")?;
                 self.extend_rows(irow);
                 self.map.$put0(key, value, comment)
             }
 
-            #[doc = concat!("The value of a cell or parameter as ", $tname, ", or `None` if it has none. Mirrors `astMapGet0`.")]
+            #[doc = concat!("Reads the value of a cell or a parameter as a scalar ", $tname, " value.")]
+            ///
+            #[doc = concat!("As [`KeyMap::", stringify!($get0), "`]: the value is converted as [`KeyMap`] describes, and a vector gives its first element.")]
+            /// A cell in a row beyond the last, and a cell that holds no value,
+            /// read as `Ok(None)`.
+            ///
+            /// # Errors
+            ///
+            /// - [`ErrorCode::Badkey`] if `key` is neither a parameter name nor the
+            ///   key of a cell of a column of the Table, and
+            ///   [KeyError](KeyMap::key_error) is true; otherwise such a key reads
+            ///   as `Ok(None)`.
+            #[doc = concat!("- Any error of [`KeyMap::", stringify!($get0), "`], which reads the value, such as [`ErrorCode::Mpker`] for a cell in which nothing has been stored when KeyError is true.")]
             pub fn $get0(&self, key: &str) -> AstResult<Option<$out0>> {
                 if self.gettable(key, "astMapGet0")? {
                     self.map.$get0(key)
@@ -861,14 +1192,35 @@ macro_rules! typed_access {
                 }
             }
 
-            #[doc = concat!("Store an array of ", $tname, " values in a cell or parameter. Mirrors `astMapPut1`.")]
+            #[doc = concat!("Stores a vector of ", $tname, " values in a cell or a parameter, with an optional comment.")]
+            ///
+            #[doc = concat!("As [`KeyMap::", stringify!($put1), "`], but a cell key is checked (see [`Table`]):")]
+            #[doc = concat!("the column must hold [`AstType::", stringify!($variant), "`] values, and `values` must have")]
+            /// [`column_length`](Self::column_length) elements, which is 1 for a
+            /// column of scalars.
+            /// A parameter's value is stored without checks.
+            ///
+            /// # Errors
+            ///
+            /// - [`ErrorCode::Badkey`] if `key` is neither a parameter name nor the
+            ///   key of a cell of a column of the Table.
+            #[doc = concat!("- [`ErrorCode::Badtyp`] if `key` is a cell of a column that does not hold [`AstType::", stringify!($variant), "`] values, or `values` has the wrong number of elements.")]
+            #[doc = concat!("- Any error of [`KeyMap::", stringify!($put1), "`], which stores the values.")]
             pub fn $put1(&mut self, key: &str, values: $vals, comment: Option<&str>) -> AstResult<()> {
-                let irow = self.check_put1(key, $ty, values.len(), "astMapPut1")?;
+                let irow = self.check_put1(key, AstType::$variant, values.len(), "astMapPut1")?;
                 self.extend_rows(irow);
                 self.map.$put1(key, values, comment)
             }
 
-            #[doc = concat!("The values of a cell or parameter as ", $tname, ", or `None` if it has none. Mirrors `astMapGet1`.")]
+            #[doc = concat!("Reads the value of a cell or a parameter as a vector of ", $tname, " values.")]
+            ///
+            #[doc = concat!("As [`KeyMap::", stringify!($get1), "`]: the values are converted as [`KeyMap`] describes, and a scalar gives a vector of one element.")]
+            /// A cell in a row beyond the last, and a cell that holds no value,
+            /// read as `Ok(None)`.
+            ///
+            /// # Errors
+            ///
+            #[doc = concat!("As for [`", stringify!($get0), "`](Self::", stringify!($get0), ").")]
             pub fn $get1(&self, key: &str) -> AstResult<Option<$out1>> {
                 if self.gettable(key, "astMapGet1")? {
                     self.map.$get1(key)
@@ -877,9 +1229,24 @@ macro_rules! typed_access {
                 }
             }
 
-            #[doc = concat!("Store one ", $tname, " element (zero-based) of a cell or parameter. Mirrors `astMapPutElem`.")]
+            #[doc = concat!("Stores one ", $tname, " element of the value in a cell or a parameter.")]
+            ///
+            #[doc = concat!("As [`KeyMap::", stringify!($put_elem), "`], with `elem` the zero-based index of the element, but a cell key is checked (see [`Table`]):")]
+            #[doc = concat!("the column must hold [`AstType::", stringify!($variant), "`] values, and `elem` must be less than")]
+            /// [`column_length`](Self::column_length).
+            /// A cell that holds no value is given a vector of the one element, so
+            /// an element can be stored in such a cell only when the column has
+            /// one element per cell.
+            /// A parameter's value is stored without checks.
+            ///
+            /// # Errors
+            ///
+            /// - [`ErrorCode::Badkey`] if `key` is neither a parameter name nor the
+            ///   key of a cell of a column of the Table.
+            #[doc = concat!("- [`ErrorCode::Badtyp`] if `key` is a cell of a column that does not hold [`AstType::", stringify!($variant), "`] values, `elem` is not less than the column length, or the cell holds no value and the column has more than one element per cell.")]
+            #[doc = concat!("- Any error of [`KeyMap::", stringify!($put_elem), "`], which stores the element.")]
             pub fn $put_elem(&mut self, key: &str, elem: usize, value: $elem_val) -> AstResult<()> {
-                let irow = self.check_put_elem(key, $ty, elem, "astMapPutElem")?;
+                let irow = self.check_put_elem(key, AstType::$variant, elem, "astMapPutElem")?;
                 if irow.is_some() && self.cell_is_empty(key)? {
                     let $v = value;
                     return self.$put1(key, $one, None);
@@ -888,7 +1255,15 @@ macro_rules! typed_access {
                 self.map.$put_elem(key, elem, value)
             }
 
-            #[doc = concat!("One element (zero-based) of a cell or parameter as ", $tname, ", or `None` if it has none. Mirrors `astMapGetElem`.")]
+            #[doc = concat!("Reads one element of the value in a cell or a parameter as a ", $tname, " value.")]
+            ///
+            #[doc = concat!("As [`KeyMap::", stringify!($get_elem), "`], with `elem` the zero-based index of the element: the value is converted as [`KeyMap`] describes.")]
+            /// A cell in a row beyond the last, and a cell that holds no value,
+            /// read as `Ok(None)`.
+            ///
+            /// # Errors
+            ///
+            #[doc = concat!("As for [`", stringify!($get0), "`](Self::", stringify!($get0), "), and those of [`KeyMap::", stringify!($get_elem), "`].")]
             pub fn $get_elem(&self, key: &str, elem: usize) -> AstResult<Option<$out_elem>> {
                 if self.gettable(key, "astMapGetElem")? {
                     self.map.$get_elem(key, elem)
@@ -902,7 +1277,7 @@ macro_rules! typed_access {
 
 typed_access!(
     AstType::Int,
-    "int",
+    "`i32`",
     put_0i,
     get_0i,
     put_1i,
@@ -919,7 +1294,7 @@ typed_access!(
 );
 typed_access!(
     AstType::SInt,
-    "short int",
+    "`i16`",
     put_0s,
     get_0s,
     put_1s,
@@ -936,7 +1311,7 @@ typed_access!(
 );
 typed_access!(
     AstType::KInt,
-    "64-bit int",
+    "`i64`",
     put_0k,
     get_0k,
     put_1k,
@@ -953,7 +1328,7 @@ typed_access!(
 );
 typed_access!(
     AstType::Byte,
-    "byte",
+    "`u8`",
     put_0b,
     get_0b,
     put_1b,
@@ -970,7 +1345,7 @@ typed_access!(
 );
 typed_access!(
     AstType::Float,
-    "float",
+    "`f32`",
     put_0f,
     get_0f,
     put_1f,
@@ -987,7 +1362,7 @@ typed_access!(
 );
 typed_access!(
     AstType::Double,
-    "double",
+    "`f64`",
     put_0d,
     get_0d,
     put_1d,
@@ -1037,73 +1412,104 @@ typed_access!(
     |v| vec![v]
 );
 
-/// The KeyMap methods a Table inherits unchanged that change the KeyMap.
+// The KeyMap methods a Table inherits unchanged that change the KeyMap.
 impl Table {
-    /// Remove an entry. The number of rows does not change. Mirrors
-    /// `astMapRemove`, which a Table inherits.
+    /// Removes the entry stored under `key`, a cell or a parameter value,
+    /// as [`KeyMap::map_remove`].
+    ///
+    /// The number of rows does not change, and removing a parameter's value
+    /// leaves the parameter defined.
+    ///
+    /// # Errors
+    ///
+    /// Any error of [`KeyMap::map_remove`].
     pub fn map_remove(&mut self, key: &str) -> AstResult<()> {
         self.map.map_remove(key)
     }
 
-    /// Rename an entry. Mirrors `astMapRename`, which a Table inherits and
-    /// which does not check that the new key names a cell.
+    /// Moves the entry stored under `old_key` to `new_key`, as
+    /// [`KeyMap::map_rename`].
+    ///
+    /// `new_key` is not checked: it need not name a cell or a parameter,
+    /// and the number of rows does not change.
+    ///
+    /// # Errors
+    ///
+    /// Any error of [`KeyMap::map_rename`].
     pub fn map_rename(&mut self, old_key: &str, new_key: &str) -> AstResult<()> {
         self.map.map_rename(old_key, new_key)
     }
 
-    /// The next key in read-out order. Mirrors `astMapIterate`.
+    /// The next key of a cell or parameter value, as
+    /// [`KeyMap::map_iterate`].
     pub fn map_iterate(&mut self, reset: bool) -> Option<String> {
         self.map.map_iterate(reset)
     }
 
-    /// Set KeyError. Mirrors the KeyMap attribute.
+    /// Sets [KeyError](KeyMap::key_error) of the KeyMap holding the values,
+    /// which [`as_keymap`](Self::as_keymap) gives.
     pub fn set_key_error(&mut self, key_error: bool) {
         self.map.set_key_error(key_error);
     }
 
-    /// Clear KeyError. Mirrors the KeyMap attribute.
+    /// Clears [KeyError](KeyMap::key_error) of the KeyMap holding the
+    /// values.
     pub fn clear_key_error(&mut self) {
         self.map.clear_key_error();
     }
 
-    /// Set MapLocked. Mirrors the KeyMap attribute.
+    /// Sets [MapLocked](KeyMap::map_locked) of the KeyMap holding the
+    /// values.
     pub fn set_map_locked(&mut self, map_locked: bool) {
         self.map.set_map_locked(map_locked);
     }
 
-    /// Clear MapLocked. Mirrors the KeyMap attribute.
+    /// Clears [MapLocked](KeyMap::map_locked) of the KeyMap holding the
+    /// values.
     pub fn clear_map_locked(&mut self) {
         self.map.clear_map_locked();
     }
 
-    /// Set SortBy. Mirrors the KeyMap attribute.
+    /// Sets [SortBy](KeyMap::sort_by) of the KeyMap holding the values.
     pub fn set_sort_by(&mut self, sort_by: SortBy) {
         self.map.set_sort_by(sort_by);
     }
 
-    /// Clear SortBy. Mirrors the KeyMap attribute.
+    /// Clears [SortBy](KeyMap::sort_by) of the KeyMap holding the values.
     pub fn clear_sort_by(&mut self) {
         self.map.clear_sort_by();
     }
 
-    /// Set SizeGuess. Mirrors the KeyMap attribute.
+    /// Sets [SizeGuess](KeyMap::size_guess) of the KeyMap holding the
+    /// values.
+    ///
+    /// # Errors
+    ///
+    /// - [`ErrorCode::Nowrt`] if the Table holds any values.
     pub fn set_size_guess(&mut self, sizeguess: usize) -> AstResult<()> {
         self.map.set_size_guess(sizeguess)
     }
 
-    /// Clear SizeGuess. Mirrors the KeyMap attribute.
+    /// Clears [SizeGuess](KeyMap::size_guess) of the KeyMap holding the
+    /// values.
+    ///
+    /// # Errors
+    ///
+    /// - [`ErrorCode::Nowrt`] if the Table holds any values.
     pub fn clear_size_guess(&mut self) -> AstResult<()> {
         self.map.clear_size_guess()
     }
 
-    /// Does nothing: a Table's keys are never case sensitive. Mirrors
-    /// table.c `SetKeyCase`.
+    /// Does nothing: a Table's keys are never case sensitive, so
+    /// [KeyCase](KeyMap::key_case) is always false.
+    // table.c SetKeyCase.
     pub fn set_key_case(&mut self, _key_case: bool) -> AstResult<()> {
         Ok(())
     }
 
-    /// Does nothing: a Table's keys are never case sensitive. Mirrors
-    /// table.c `ClearKeyCase`.
+    /// Does nothing: a Table's keys are never case sensitive, so
+    /// [KeyCase](KeyMap::key_case) is always false.
+    // table.c ClearKeyCase.
     pub fn clear_key_case(&mut self) -> AstResult<()> {
         Ok(())
     }

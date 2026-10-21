@@ -1,27 +1,28 @@
-//! A FitsTable: a FITS binary table, held as a Table of column data and a
+//! FitsTables: FITS binary tables, held as a Table of column data and a
 //! FitsChan of header cards.
 //!
-//! Ported from `reference/starlink-ast/src/fitstable.c`.
-//!
-//! # How the C class maps onto owned values
-//!
-//! C's FitsTable is a subclass of Table that overrides `AddColumn`, to
-//! refuse columns a FITS binary table cannot hold, and adds methods that
-//! read and write the header and whole columns. Here the Table is held by
-//! value. The Table methods that only read are reached through
-//! [`FitsTable::as_table`]; those that change the Table are methods of
-//! [`FitsTable`], so that a column cannot be added without the FitsTable's
-//! check.
-//!
-//! C's `astGetTableHeader` first rewrites the cards that describe the
-//! columns in the FitsTable's own header, where a dump sees them, so
-//! [`FitsTable::get_table_header`] takes `&mut self`. Creating a FitsTable
-//! from a header reads the caller's FitsChan in place, moving its current
-//! card, so [`FitsTable::from_header`] takes `&mut FitsChan`.
-//!
-//! C passes column data as untyped memory. Here it is a [`ColumnData`]
-//! holding a vector of the column's own data type, and sizes in bytes are
-//! those of the C types.
+//! See [`FitsTable`] for what a FitsTable holds and how its header is kept.
+
+// Ported from reference/starlink-ast/src/fitstable.c.
+//
+// How the C class maps onto owned values:
+//
+// C's FitsTable is a subclass of Table that overrides AddColumn, to refuse
+// columns a FITS binary table cannot hold, and adds methods that read and
+// write the header and whole columns. Here the Table is held by value. The
+// Table methods that only read are reached through FitsTable::as_table;
+// those that change the Table are methods of FitsTable, so that a column
+// cannot be added without the FitsTable's check.
+//
+// C's astGetTableHeader first rewrites the cards that describe the columns
+// in the FitsTable's own header, where a dump sees them, so
+// FitsTable::get_table_header takes &mut self. Creating a FitsTable from a
+// header reads the caller's FitsChan in place, moving its current card, so
+// FitsTable::from_header takes &mut FitsChan.
+//
+// C passes column data as untyped memory. Here it is a ColumnData holding a
+// vector of the column's own data type, and sizes in bytes are those of the
+// C types.
 
 mod serial;
 
@@ -43,25 +44,29 @@ const FIXED: [&str; 14] = [
     "TTYPE%d", "TNULL%d", "THEAP", "TDIM%d", "TUNIT%d",
 ];
 
-/// The values of a whole column, row by row, with the elements of each
-/// cell in Fortran order.
+/// The values of a whole column of a [`FitsTable`], row by row.
+///
+/// The values of the first row come first, and the elements of the array
+/// in each cell are in Fortran order, the first axis varying fastest.
+/// Each variant holds the values of a column of one data type.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ColumnData {
-    /// An `AST__BYTETYPE` column.
+    /// The values of an [`AstType::Byte`] column.
     Byte(Vec<u8>),
-    /// An `AST__SINTTYPE` column.
+    /// The values of an [`AstType::SInt`] column.
     SInt(Vec<i16>),
-    /// An `AST__INTTYPE` column.
+    /// The values of an [`AstType::Int`] column.
     Int(Vec<i32>),
-    /// An `AST__KINTTYPE` column.
+    /// The values of an [`AstType::KInt`] column.
     KInt(Vec<i64>),
-    /// An `AST__FLOATTYPE` column.
+    /// The values of an [`AstType::Float`] column.
     Float(Vec<f32>),
-    /// An `AST__DOUBLETYPE` column.
+    /// The values of an [`AstType::Double`] column.
     Double(Vec<f64>),
-    /// An `AST__STRINGTYPE` column: fixed-length strings of `len` bytes,
-    /// with no terminating nulls. A string shorter than the longest is
-    /// padded with nulls.
+    /// The values of an [`AstType::String`] column, as fixed-length strings
+    /// of `len` bytes with no terminating nulls.
+    ///
+    /// A string shorter than `len` is padded with nulls.
     String {
         /// The length of each string.
         len: usize,
@@ -72,7 +77,7 @@ pub enum ColumnData {
 }
 
 impl ColumnData {
-    /// The column data type the values belong to.
+    /// The data type of the column the values belong to.
     pub fn data_type(&self) -> AstType {
         match self {
             ColumnData::Byte(_) => AstType::Byte,
@@ -155,6 +160,86 @@ fn scan_int(s: &str) -> Option<(i64, usize)> {
 }
 
 /// A FITS binary table.
+///
+/// A FitsTable holds the data of the table in a [`Table`], one cell per
+/// row of each column, and the FITS header of the table in a
+/// [`FitsChan`].
+/// Columns, cells, cell keys and parameters are as for a Table, and the
+/// Table methods that change the table are methods of the FitsTable too;
+/// [`as_table`](Self::as_table) gives the Table for those that only read
+/// it, such as [`Table::nrow`] and [`Table::column_type`].
+/// Like a Table, a FitsTable is not suited to very large tables.
+///
+/// # Columns
+///
+/// A column holds one of these data types, written in the header as the
+/// data type code of its `TFORMn` keyword:
+///
+/// | [`AstType`] | `TFORMn` code | [`ColumnData`] |
+/// |---|---|---|
+/// | `Byte` | `B` | `Byte(Vec<u8>)` |
+/// | `SInt` | `I` | `SInt(Vec<i16>)` |
+/// | `Int` | `J` | `Int(Vec<i32>)` |
+/// | `KInt` | `K` | `KInt(Vec<i64>)` |
+/// | `Float` | `E` | `Float(Vec<f32>)` |
+/// | `Double` | `D` | `Double(Vec<f64>)` |
+/// | `String` | `A` | `String { len, values }` |
+///
+/// A FitsTable is made for the `-TAB` algorithm of FITS-WCS, and does not
+/// cover every feature of a FITS binary table: it has no heap
+/// data following the main table, and no columns of complex, logical or
+/// bit values, of variable-length arrays, or with scaling or a display
+/// format.
+///
+/// [`get_column_data`](Self::get_column_data) and
+/// [`put_column_data`](Self::put_column_data) read and store a whole
+/// column at once.
+/// An integer column may have a null value, which marks an element as
+/// null; see [`column_null`](Self::column_null).
+///
+/// # The header
+///
+/// The header holds the cards that describe the table.
+/// The cards whose values are set by the FITS standard or by the columns
+/// and rows of the table are `XTENSION`, `BITPIX`, `NAXIS`, `NAXIS1`,
+/// `NAXIS2`, `PCOUNT`, `GCOUNT`, `TFIELDS` and `THEAP`, and the `TFORMn`,
+/// `TTYPEn`, `TUNITn`, `TNULLn` and `TDIMn` of each column.
+/// They are removed from a header stored with
+/// [`put_table_header`](Self::put_table_header), and
+/// [`get_table_header`](Self::get_table_header) writes them, but for
+/// `THEAP`, from the table as it is.
+/// [`from_header`](Self::from_header) creates a FitsTable with the columns
+/// a header describes.
+///
+/// # Attributes
+///
+/// A FitsTable has the attributes of a Table, read through
+/// [`as_table`](Self::as_table).
+///
+/// # Examples
+///
+/// ```
+/// use ast_core::{AstType, ColumnData, FitsTable};
+///
+/// let mut table = FitsTable::new();
+/// table.add_column("Flux", AstType::Double, &[], "Jy")?;
+/// table.add_column("Flag", AstType::Int, &[], "")?;
+/// table.put_column_data("FLUX", &ColumnData::Double(vec![1.5, 2.5, 3.5]))?;
+/// table.put_0i("FLAG(2)", 1, None)?;
+/// assert_eq!(table.as_table().nrow(), 3);
+///
+/// // The empty cells of an integer column read as its null value.
+/// let null = table.column_null("FLAG", None, false)?.value as i32;
+/// let flags = table.get_column_data("FLAG", f32::NAN, f64::NAN, None)?;
+/// assert_eq!(flags, ColumnData::Int(vec![null, 1, null]));
+///
+/// let mut header = table.get_table_header()?;
+/// assert_eq!(header.get_fits_s(Some("XTENSION"))?.as_deref(), Some("BINTABLE"));
+/// assert_eq!(header.get_fits_i(Some("NAXIS2"))?, Some(3));
+/// assert_eq!(header.get_fits_s(Some("TFORM1"))?.as_deref(), Some("1D"));
+/// assert_eq!(header.get_fits_s(Some("TUNIT1"))?.as_deref(), Some("Jy"));
+/// # Ok::<(), ast_core::error::AstError>(())
+/// ```
 #[derive(Debug, Clone)]
 pub struct FitsTable {
     /// The column data and parameters.
@@ -170,8 +255,12 @@ impl Default for FitsTable {
 }
 
 impl FitsTable {
-    /// An empty FitsTable, with no columns and an empty header. Mirrors
-    /// `astFitsTable( NULL, ... )`.
+    /// Creates an empty FitsTable, with no columns and an empty header.
+    ///
+    /// [`from_header`](Self::from_header) creates one with the columns a
+    /// FITS header describes.
+    // astFitsTable with a NULL header.
+    #[doc(alias = "astFitsTable")]
     pub fn new() -> Self {
         let mut table = Table::new();
         table.set_class("FitsTable");
@@ -181,10 +270,38 @@ impl FitsTable {
         }
     }
 
-    /// A FitsTable with an empty column for each column `header` defines,
-    /// and a copy of `header` less the cards those columns determine.
-    /// Mirrors `astFitsTable( header, ... )`, which searches `header` in
-    /// place and so leaves its current card moved.
+    /// Creates a FitsTable with an empty column for each column of the FITS
+    /// binary table `header` describes, and a header copied from `header`.
+    ///
+    /// Each column has the index in the FitsTable that it has in `header`,
+    /// and takes its name from `TTYPEn` (`FCOLUMNn` when there is none),
+    /// its data type and length from `TFORMn`, its shape from `TDIMn`, its
+    /// unit from `TUNITn` and its null value from `TNULLn`.
+    /// A header with no `TFIELDS` keyword describes no columns.
+    /// The cards the table determines are left out of the copy, as by
+    /// [`put_table_header`](Self::put_table_header).
+    ///
+    /// `header` is searched in place, so its current card is moved.
+    ///
+    /// # Errors
+    ///
+    /// - [`ErrorCode::Nofts`] if `header` has no `TFORMn` keyword for a
+    ///   column.
+    /// - [`ErrorCode::Bdfts`] if a `TFORMn` has a negative repeat count or a
+    ///   data type code other than those in [`FitsTable`]'s table, if a
+    ///   `TDIMn` does not give as many elements as its `TFORMn`, or if a
+    ///   column is scaled, with `TSCALn` other than 1 or `TZEROn` other than
+    ///   0.
+    /// - The errors of [`add_column`](Self::add_column) for a column it
+    ///   cannot add, such as [`ErrorCode::Oldcol`] for two columns with the
+    ///   same name and different properties.
+    /// - The errors of [`column_null`](Self::column_null) for a `TNULLn` it
+    ///   cannot store.
+    /// - The errors of [`FitsChan::get_fits_s`] and the other
+    ///   `get_fits` methods for a keyword whose value cannot be read as the
+    ///   type it needs.
+    // astFitsTable with a header.
+    #[doc(alias = "astFitsTable")]
     pub fn from_header(header: &mut FitsChan) -> AstResult<Self> {
         let mut new = Self::new();
         new.generate_columns(header)?;
@@ -198,15 +315,24 @@ impl FitsTable {
         &mut self.header
     }
 
-    /// The Table holding the column data and parameters, for the Table and
-    /// KeyMap methods that only read it.
+    /// The Table holding the column data and the parameters, for the Table
+    /// methods that only read it.
     pub fn as_table(&self) -> &Table {
         &self.table
     }
 
-    /// Add a column. A FitsTable cannot hold Object, pointer or undefined
-    /// values, so such a column is an `AST__NAXIN` error; otherwise as
-    /// [`Table::add_column`]. Mirrors fitstable.c `AddColumn`.
+    /// Adds a column, with no values in it, as [`Table::add_column`].
+    ///
+    /// A FitsTable cannot hold [`AstType::Object`] or [`AstType::Undef`]
+    /// values, so a column of either type is refused.
+    ///
+    /// # Errors
+    ///
+    /// - [`ErrorCode::Naxin`] if `ty` is [`AstType::Object`] or
+    ///   [`AstType::Undef`].
+    /// - The errors of [`Table::add_column`].
+    // fitstable.c AddColumn.
+    #[doc(alias = "astAddColumn")]
     pub fn add_column(
         &mut self,
         name: &str,
@@ -231,8 +357,8 @@ impl FitsTable {
         self.table.add_column(name, ty, dims, unit)
     }
 
-    /// Add a column for each column defined in `header`. Mirrors
-    /// fitstable.c `GenerateColumns`.
+    /// Add a column for each column defined in `header` (fitstable.c
+    /// `GenerateColumns`).
     fn generate_columns(&mut self, header: &mut FitsChan) -> AstResult<()> {
         let bdfts = |msg: String| AstError::new(ErrorCode::Bdfts, msg);
         let ncol = header.get_fits_i(Some("TFIELDS"))?.unwrap_or(0);
@@ -346,19 +472,45 @@ impl FitsTable {
         Ok(())
     }
 
-    /// Get, and with `set` also set, the null value of an integer column:
-    /// the value that marks an element as null in the FITS table, stored
-    /// as its `TNULLn` keyword. With `check_nulls`, also find whether the
-    /// column holds that value or has an empty cell.
+    /// Gets, and with `set` also sets, the null value of an integer column.
     ///
-    /// The value returned is the one in use before the call, if one has
-    /// been set; otherwise `set` if given; otherwise a default that does
-    /// not occur in the column. When every value allowed by the column
-    /// type occurs, the default is zero if the column has no empty cells,
-    /// and an `AST__BADNULL` error if it has. A value of `set` outside the
-    /// range of the column type is also `AST__BADNULL`. A column that does
-    /// not hold integers has a null value of zero, never set. Mirrors
-    /// `astColumnNullK`.
+    /// An element of an integer column is null when it equals the column's
+    /// null value, or when it is in a cell in which no value has been
+    /// stored.
+    /// The null value is written to the header as the column's `TNULLn`
+    /// keyword, and is the value [`get_column_data`](Self::get_column_data)
+    /// gives for the elements of an empty cell.
+    /// Only an integer column ([`AstType::Byte`], [`AstType::SInt`],
+    /// [`AstType::Int`] or [`AstType::KInt`]) has a null value; for any
+    /// other column this does nothing, and returns a value of 0 that was
+    /// not set and, if asked for, no nulls.
+    ///
+    /// With `set`, the null value becomes `set`, replacing any set before.
+    /// The value returned, [`ColumnNull::value`], is the null value in use
+    /// before the call: the one set by an earlier call if there was one,
+    /// otherwise `set` if given, otherwise a default that does not occur in
+    /// the column.
+    /// When every value the column's type can hold occurs in the column, the
+    /// default is 0 if the column has no empty cells, and an error if it
+    /// has; a header written then has no `TNULLn` keyword for the column.
+    /// [`ColumnNull::was_set`] says whether the value returned was set by an
+    /// earlier call.
+    ///
+    /// With `check_nulls`, [`ColumnNull::has_null`] says whether the column
+    /// holds any null element: an element equal to the null value in use
+    /// after the call, or an element of an empty cell.
+    /// Without it, `has_null` is `None` and the column is not searched.
+    ///
+    /// # Errors
+    ///
+    /// - [`ErrorCode::Badcol`] if there is no column called `column`.
+    /// - [`ErrorCode::Badnull`] if `set` is outside the range of the
+    ///   column's type, when the null value is unchanged.
+    /// - [`ErrorCode::Badnull`] if a default is needed, every value the
+    ///   column's type can hold occurs in the column, and the column has an
+    ///   empty cell.
+    #[doc(alias = "astColumnNull")]
+    #[doc(alias = "astColumnNullK")]
     pub fn column_null(
         &mut self,
         column: &str,
@@ -369,7 +521,8 @@ impl FitsTable {
     }
 
     /// [`FitsTable::column_null`], which changes only the column's
-    /// definition, through the Table's shared access to it.
+    /// definition, through the Table's shared access to it (fitstable.c
+    /// `ColumnNullK`).
     fn null_value(
         &self,
         column: &str,
@@ -522,25 +675,58 @@ impl FitsTable {
         }
     }
 
-    /// The number of bytes a C array needs to hold every value in
-    /// `column`, with strings of the column's longest length. Mirrors
-    /// `astColumnSize`.
+    /// The number of bytes needed to hold every value in `column`.
+    ///
+    /// Each element counts as 1 byte in an [`AstType::Byte`] column, 2 in
+    /// an [`AstType::SInt`] column, 4 in an [`AstType::Int`] or
+    /// [`AstType::Float`] column, 8 in an [`AstType::KInt`] or
+    /// [`AstType::Double`] column, and the length of the longest string
+    /// ([`Table::column_len_c`]) in an [`AstType::String`] column, as in the
+    /// FITS binary table and in the [`ColumnData`] that
+    /// [`get_column_data`](Self::get_column_data) gives.
+    ///
+    /// # Errors
+    ///
+    /// - [`ErrorCode::Badcol`] if there is no column called `column`.
+    /// - [`ErrorCode::Inter`] if the column holds a type a FitsTable cannot
+    ///   hold.
+    #[doc(alias = "astColumnSize")]
     pub fn column_size(&self, column: &str) -> AstResult<usize> {
         let ty = self.table.column_type(column)?;
         let nb = self.column_elem_size(column, ty, "astColumnSize")?;
         Ok(nb * self.table.column_length(column)? * self.table.nrow())
     }
 
-    /// The values in `column`, row by row, for at most `max_rows` rows.
+    /// The values in `column`, row by row, from the first row, for at most
+    /// `max_rows` rows.
     ///
-    /// No type conversion is done: the values have the column's own type.
-    /// Strings have the length of the column's longest string. An element
-    /// of an empty cell is the column's null value
-    /// ([`FitsTable::column_null`]) for an integer column, nulls for a
-    /// string column, and `fnull` or `dnull` for a floating point column,
-    /// which with a value other than NaN also replaces any infinite or NaN
-    /// value stored. Mirrors `astGetColumnData`, which C's caller limits by
-    /// the size of its array.
+    /// No type conversion is done: the values have the column's own type,
+    /// in the [`ColumnData`] variant for it.
+    /// The elements of an array in each cell are in Fortran order.
+    /// Strings have the length of the column's longest string
+    /// ([`Table::column_len_c`]), a shorter one being padded with nulls.
+    ///
+    /// The elements of an empty cell are the column's null value
+    /// ([`column_null`](Self::column_null)) in an integer column, all nulls
+    /// in a string column, `fnull` in an [`AstType::Float`] column and
+    /// `dnull` in an [`AstType::Double`] column.
+    /// An `fnull` or `dnull` that is neither infinite nor NaN also replaces
+    /// any infinite or NaN value stored in the column.
+    ///
+    /// # Errors
+    ///
+    /// - [`ErrorCode::Badcol`] if there is no column called `column`.
+    /// - [`ErrorCode::Inter`] if the column holds a type a FitsTable cannot
+    ///   hold.
+    /// - [`ErrorCode::Badnull`] if the integer column has an empty cell and
+    ///   every value its type can hold occurs in it, so that it has no null
+    ///   value, as for [`column_null`](Self::column_null).
+    // The C documentation says strings are returned null terminated; C's
+    // GetColumnData copies them without the terminator, as here, and
+    // replaces non-finite values as here although the documentation does
+    // not say so (docs/issues/c-library-quirks.md). C limits the rows by the
+    // size of the caller's array, for which max_rows stands.
+    #[doc(alias = "astGetColumnData")]
     pub fn get_column_data(
         &self,
         column: &str,
@@ -643,16 +829,36 @@ impl FitsTable {
         })
     }
 
-    /// Store `data` in `column`, the first element in the first row, and
-    /// remove the values in any later rows. A cell of floating point
-    /// values all infinite or NaN is skipped, leaving any value it holds.
+    /// Stores `data` in `column`, one cell per row from the first row, and
+    /// removes the values in the rows that follow, leaving their cells
+    /// empty.
     ///
-    /// `data` must hold a whole number of cells; otherwise it is an
-    /// `AST__BADSIZ` error, with sizes in bytes as C reports them. No type
-    /// conversion is done: data of a type other than the column's is an
-    /// `AST__BADTYP` error. Each string is the bytes of a fixed-length
-    /// string up to the first null. Mirrors `astPutColumnData`, which
-    /// takes the data as untyped memory and so cannot check its type.
+    /// No type conversion is done: `data` must be the [`ColumnData`]
+    /// variant for the column's type, and must hold a whole number of
+    /// cells, each of [`Table::column_length`] elements in Fortran order.
+    /// Each string is the first `len` bytes of a fixed-length string, up to
+    /// the first null; `len` need not be the length of the strings already
+    /// in the column.
+    /// A cell of an [`AstType::Float`] or [`AstType::Double`] column whose
+    /// elements are all infinite or NaN is not stored, and keeps any value
+    /// it held.
+    /// Storing more rows than the table has adds rows.
+    ///
+    /// # Errors
+    ///
+    /// - [`ErrorCode::Badcol`] if there is no column called `column`.
+    /// - [`ErrorCode::Badtyp`] if `data` is not the variant for the
+    ///   column's type.
+    /// - [`ErrorCode::Badsiz`] if `data` does not hold a whole number of
+    ///   cells; the message gives the sizes in bytes, counted as for
+    ///   [`column_size`](Self::column_size) with strings of `len` bytes.
+    /// - [`ErrorCode::Inter`] if the column holds a type a FitsTable cannot
+    ///   hold.
+    /// - The errors of the `put_1` methods, such as [`Table::put_1i`], which
+    ///   store each cell.
+    // C's astPutColumnData takes the data as untyped memory and so cannot
+    // check its type.
+    #[doc(alias = "astPutColumnData")]
     pub fn put_column_data(&mut self, column: &str, data: &ColumnData) -> AstResult<()> {
         let ty = self.table.column_type(column)?;
         let nb = match (ty, data) {
@@ -723,25 +929,57 @@ impl FitsTable {
         Ok(())
     }
 
-    /// A copy of the header, with the cards that describe the columns
-    /// brought up to date, and its first card current. Mirrors
-    /// `astGetTableHeader`, which updates the FitsTable's own header.
+    /// A copy of the FITS header, with the cards that describe the table
+    /// written from the table as it is, and its first card current.
+    ///
+    /// The cards written are `XTENSION`, `BITPIX`, `NAXIS`, `NAXIS1`,
+    /// `NAXIS2`, `PCOUNT`, `GCOUNT` and `TFIELDS`, and for each column
+    /// `TFORMn`, `TTYPEn`, `TUNITn` (when the unit is not blank), `TNULLn`
+    /// (for an integer column whose null value has been set or which holds
+    /// nulls; see [`column_null`](Self::column_null)) and `TDIMn` (for a
+    /// column of arrays).
+    /// The FitsTable's own header is updated too.
+    /// Changing the copy does not change the FitsTable; store a changed
+    /// header with [`put_table_header`](Self::put_table_header).
+    ///
+    /// # Errors
+    ///
+    /// - [`ErrorCode::Badnull`] if an integer column has an empty cell and
+    ///   no value its type can hold is unused, as for
+    ///   [`column_null`](Self::column_null).
+    /// - [`ErrorCode::Inter`] if a column holds a type a FitsTable cannot
+    ///   hold.
+    #[doc(alias = "astGetTableHeader")]
     pub fn get_table_header(&mut self) -> AstResult<FitsChan> {
         self.update_header("astGetTableHeader")?;
         self.header.clear_card()?;
         Ok(self.header.clone())
     }
 
-    /// Replace the header with a copy of `header`, less the cards set by
-    /// the FITS standard or by the contents of the table. Mirrors
-    /// `astPutTableHeader`.
+    /// Replaces the FITS header with a copy of `header`, less the cards set
+    /// by the FITS standard or by the columns and rows of the table.
+    ///
+    /// The cards removed are `XTENSION`, `BITPIX`, `NAXIS`, `NAXIS1`,
+    /// `NAXIS2`, `PCOUNT`, `GCOUNT`, `TFIELDS` and `THEAP`, and every
+    /// `TFORMn`, `TTYPEn`, `TNULLn`, `TDIMn` and `TUNITn`;
+    /// [`get_table_header`](Self::get_table_header) writes them from the
+    /// table.
+    /// The copy keeps the attributes of `header`.
+    ///
+    /// # Errors
+    ///
+    /// Any error of [`FitsChan::find_fits`] or [`FitsChan::del_fits`], with
+    /// which the cards are removed.
+    // The C documentation's list of the cards removed leaves out TUNIT%d,
+    // which PurgeHeader removes (docs/issues/c-library-quirks.md).
+    #[doc(alias = "astPutTableHeader")]
     pub fn put_table_header(&mut self, header: &FitsChan) -> AstResult<()> {
         self.header = header.clone();
         self.purge_header()
     }
 
     /// Remove the cards set by the FITS standard or by the contents of the
-    /// table. Mirrors fitstable.c `PurgeHeader`.
+    /// table (fitstable.c `PurgeHeader`).
     fn purge_header(&mut self) -> AstResult<()> {
         for keyword in FIXED {
             self.header.clear_card()?;
@@ -753,8 +991,7 @@ impl FitsTable {
     }
 
     /// Write the cards set by the FITS standard or by the contents of the
-    /// table, naming `method` in errors. Mirrors fitstable.c
-    /// `UpdateHeader`.
+    /// table, naming `method` in errors (fitstable.c `UpdateHeader`).
     fn update_header(&mut self, method: &str) -> AstResult<()> {
         self.purge_header()?;
 
@@ -849,7 +1086,7 @@ impl FitsTable {
     }
 }
 
-/// The Table methods that change the Table, each the Table's own.
+// The Table methods that change the Table, each the Table's own.
 macro_rules! forward_puts {
     ($(($put0:ident, $put1:ident, $put_elem:ident, $val:ty, $vals:ty, $elem_val:ty)),* $(,)?) => {
         impl FitsTable {
@@ -1007,7 +1244,11 @@ impl FitsTable {
         self.table.clear_id();
     }
 
-    /// The column definitions, as [`Table::column_props`].
+    /// A copy of the column definitions, as [`Table::column_props`].
+    ///
+    /// The definition of an integer column whose null value has been set
+    /// (see [`column_null`](Self::column_null)) also holds it, under
+    /// `Null`.
     pub fn column_props(&self) -> KeyMap {
         self.table.column_props()
     }

@@ -93,15 +93,15 @@ attribute	Nkey	fitschan.c	FitsChan::nkey		yes
 attribute	Warnings	fitschan.c	FitsChan::warning_conditions		yes	the header says it does not affect the warnings stored in the Channel, but the C code stores only those for conditions it names, as here (c-library-quirks.md)
 attribute	AllWarnings	fitschan.c	FitsChan::all_warning_conditions		yes
 function	astFitsChan	fitschan.c	FitsChan::new		yes	no source, sink or options arguments: set_source, set_sink and the attribute setters take their place, and the FITSCHAN_OPTIONS environment variable is not read (PLAN.md §2)
-class	FitsTable	fitstable.c			no
-function	astColumnNull	fitstable.c			no
-function	astColumnNullK	fitstable.c			no
-function	astColumnSize	fitstable.c			no
-function	astGetColumnData	fitstable.c			no
-function	astGetTableHeader	fitstable.c			no
-function	astPutColumnData	fitstable.c			no
-function	astPutTableHeader	fitstable.c			no
-function	astFitsTable	fitstable.c			no
+class	FitsTable	fitstable.c	FitsTable		yes
+function	astColumnNull	fitstable.c	FitsTable::column_null		yes	int null values only, deprecated; FitsTable::column_null covers every integer type with i64 values, as astColumnNullK
+function	astColumnNullK	fitstable.c	FitsTable::column_null		yes	returns a ColumnNull in place of the wasset and hasnull arguments; check_nulls stands for a non-NULL hasnull
+function	astColumnSize	fitstable.c	FitsTable::column_size		yes
+function	astGetColumnData	fitstable.c	FitsTable::get_column_data		yes	returns a ColumnData; max_rows stands for mxsize; strings are not null terminated, as in C (quirk)
+function	astGetTableHeader	fitstable.c	FitsTable::get_table_header		yes
+function	astPutColumnData	fitstable.c	FitsTable::put_column_data		yes	takes a ColumnData, so a type mismatch is ErrorCode::Badtyp; clen is the String variant len
+function	astPutTableHeader	fitstable.c	FitsTable::put_table_header		yes
+function	astFitsTable	fitstable.c	FitsTable::new;FitsTable::from_header		yes	new for a NULL header, from_header otherwise; no options argument
 class	FluxFrame	fluxframe.c	FluxFrame		yes
 attribute	SpecVal	fluxframe.c	FluxFrame::spec_val		yes
 function	astFluxFrame	fluxframe.c	FluxFrame::with_spec_val;FluxFrame::new;FluxFrame::unset_system		yes	Attributes are set with typed setters rather than an options string; with_spec_val is astFluxFrame(specval, specfrm, ""), and new(system) sets the System unless it is FluxDen, which it leaves unset as unset_system does
@@ -529,26 +529,26 @@ class	StcSearchLocation	stcsearchlocation.c	StcSearchLocation		yes	a type alias 
 function	astStcSearchLocation	stcsearchlocation.c	StcBuilder::new		yes	one generic builder for the four classes, through StcSearchLocationBuilder; the AstroCoords KeyMaps are given with coords
 class	SwitchMap	switchmap.c	SwitchMap		yes
 function	astSwitchMap	switchmap.c	SwitchMap::new		yes	The SwitchMap owns its components; C keeps references to them
-class	Table	table.c			no
-function	astAddColumn	table.c			no
-function	astAddParameter	table.c			no
-function	astColumnName	table.c			no
-function	astColumnShape	table.c			no
-function	astHasColumn	table.c			no
-function	astHasParameter	table.c			no
-function	astParameterName	table.c			no
-function	astPurgeRows	table.c			no
-function	astRemoveColumn	table.c			no
-function	astRemoveParameter	table.c			no
-function	astRemoveRow	table.c			no
-attribute	ColumnLenC	table.c			no
-attribute	ColumnLength	table.c			no
-attribute	ColumnNdim	table.c			no
-attribute	ColumnType	table.c			no
-attribute	Ncolumn	table.c			no
-attribute	Nparameter	table.c			no
-attribute	Nrow	table.c			no
-function	astTable	table.c			no
+class	Table	table.c	Table		yes
+function	astAddColumn	table.c	Table::add_column;FitsTable::add_column		yes	dims slice in place of ndim and dims
+function	astAddParameter	table.c	Table::add_parameter		yes
+function	astColumnName	table.c	Table::column_name		yes
+function	astColumnShape	table.c	Table::column_shape		yes	returns the shape as a Vec, with no padding to mxdim
+function	astHasColumn	table.c	Table::has_column		yes
+function	astHasParameter	table.c	Table::has_parameter		yes
+function	astParameterName	table.c	Table::parameter_name		yes
+function	astPurgeRows	table.c	Table::purge_rows		yes
+function	astRemoveColumn	table.c	Table::remove_column		yes	header says case is significant; it is not, in C or here (quirk)
+function	astRemoveParameter	table.c	Table::remove_parameter		yes	header says case is significant; it is not, in C or here (quirk)
+function	astRemoveRow	table.c	Table::remove_row		yes
+attribute	ColumnLenC	table.c	Table::column_len_c		yes
+attribute	ColumnLength	table.c	Table::column_length		yes
+attribute	ColumnNdim	table.c	Table::column_ndim		yes
+attribute	ColumnType	table.c	Table::column_type		yes	AstType; no pointer type
+attribute	Ncolumn	table.c	Table::ncolumn		yes
+attribute	Nparameter	table.c	Table::nparameter		yes
+attribute	Nrow	table.c	Table::nrow		yes
+function	astTable	table.c	Table::new		yes	no options argument
 class	TemplateClass	templateclass.c			no
 attribute	AlignSpecOffset	templateclass.c			no
 function	astTemplateClass	templateclass.c			no

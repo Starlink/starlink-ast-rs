@@ -93,6 +93,12 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [The `astRead` documentation says a Channel with no further objects returns NULL without error, which a MocChan does not](#the-astread-documentation-says-a-channel-with-no-further-objects-returns-null-without-error-which-a-mocchan-does-not)
 - [The `SizeGuess` documentation gives a default of 300](#the-sizeguess-documentation-gives-a-default-of-300)
 - [The `KeyError` documentation says every `astMapGet...` function reports a missing key](#the-keyerror-documentation-says-every-astmapget-function-reports-a-missing-key)
+- [The `astColumnName` and `astParameterName` documentation gives a zero-based loop](#the-astcolumnname-and-astparametername-documentation-gives-a-zero-based-loop)
+- [The `astRemoveColumn` and `astRemoveParameter` documentation says the case of the name is significant](#the-astremovecolumn-and-astremoveparameter-documentation-says-the-case-of-the-name-is-significant)
+- [The `Nrow` documentation does not say that removing rows lowers it](#the-nrow-documentation-does-not-say-that-removing-rows-lowers-it)
+- [The `astGetColumnData` documentation says strings are null terminated](#the-astgetcolumndata-documentation-says-strings-are-null-terminated)
+- [The `astPutTableHeader` documentation leaves `TUNIT%d` out of the keywords it removes](#the-astputtableheader-documentation-leaves-tunitd-out-of-the-keywords-it-removes)
+- [The FitsTable class documentation says it has no 8-byte integer columns](#the-fitstable-class-documentation-says-it-has-no-8-byte-integer-columns)
 
 ### [Addressed here, and not going upstream](#addressed-here-and-not-going-upstream)
 
@@ -1380,6 +1386,79 @@ Consequence: documentation only, but a caller who relies on KeyError to catch a 
 
 `KeyMap::key_error` names the methods that consult it, `map_defined` among them, and those that do not, `map_get_c` among them, as the code does.
 A C fix: name the functions, or have `astMapGetC` report AST__MPKER as the other `astMapGet...` functions do.
+
+### The `astColumnName` and `astParameterName` documentation gives a zero-based loop
+
+C location: `table.c`, the `astColumnName` prologue (Description, line 825), and the `astParameterName` prologue (Description, line 3450).
+
+The C edition of each prologue says the function can be called in a loop "with the index value going from zero to one less than Ncolumn" (or Nparameter).
+The same prologue's Parameters section says the first column has index one and the last has index Ncolumn, the Fortran edition says "one to Ncolumn", and the code reports AST__MPIND for an index below one.
+
+Consequence: documentation only, but a C caller who follows the Description gets an error on the first call and misses the last column.
+
+`Table::column_name` and `Table::parameter_name` say the index runs from 1, as the code does.
+A C fix: "with the index value going from one to Ncolumn" in both editions, and the same for Nparameter.
+
+### The `astRemoveColumn` and `astRemoveParameter` documentation says the case of the name is significant
+
+C location: `table.c`, the `astRemoveColumn` prologue (Parameters, line 3849), the `astRemoveParameter` prologue (Parameters, line 3928), and `astInitTable` (from line 5036).
+
+Both prologues say of the name "Case is significant."
+The column and parameter definitions are held in KeyMaps created with KeyCase=0, and the Table's own KeyMap has KeyCase forced to zero, so the name is converted to upper case before it is looked up, and `astRemoveColumn( table, "fred" )` removes the column `FRED` that `astAddColumn( table, "Fred", ... )` added.
+
+Consequence: documentation only.
+
+`Table::remove_column` and `Table::remove_parameter` say the name is not case sensitive, as the code does.
+A C fix: "Case is not significant."
+
+### The `Nrow` documentation does not say that removing rows lowers it
+
+C location: `table.c`, the `Nrow` prologue (Description, line 4546), `RemoveRow` (line 4033) and `PurgeRows` (line 3805).
+
+The prologue says Nrow "holds the index of the last row to which any contents have been added using any of the astMapPut... functions".
+`astRemoveRow` on the last row lowers Nrow by one, and `astPurgeRows` lowers it to the number of rows left, though values were added to the rows removed.
+
+Consequence: documentation only.
+
+`Table::nrow` names both methods, as the code does.
+A C fix: add "Nrow is reduced by astRemoveRow when the last row is removed, and by astPurgeRows."
+
+### The `astGetColumnData` documentation says strings are null terminated
+
+C location: `fitstable.c`, the `astGetColumnData` prologue (Parameters, line 1389), `GetColumnData` (from line 1522) and `CopyStrings` (from line 931).
+
+The prologue says "If the column holds strings, the returned strings will be null terminated."
+`GetColumnData` reads each cell with `astMapGet1C` and `CopyStrings` copies the first `nb` characters of each string, `nb` being ColumnLenC, leaving out the terminating null; a string of ColumnLenC characters has none, and a shorter one is padded with nulls.
+The prologue also says `fnull` and `dnull` are the values returned for empty cells; the code also puts them in place of every infinite or NaN value read from a cell, when they are not themselves NaN.
+
+Consequence: a C caller that reads a returned string as null terminated reads past it for the longest strings.
+
+`FitsTable::get_column_data` and `ColumnData::String` say the strings are fixed-length with no terminator, padded with nulls, and that `fnull` and `dnull` replace non-finite values, as the code does.
+A C fix: "If the column holds strings, each is returned as a fixed-length string of ColumnLenC characters, padded with nulls, with no terminating null", and add the replacement of non-finite values to the `fnull` and `dnull` descriptions.
+
+### The `astPutTableHeader` documentation leaves `TUNIT%d` out of the keywords it removes
+
+C location: `fitstable.c`, the `astPutTableHeader` prologue (Notes, line 2327), and `PurgeHeader` (from line 2054).
+
+The Notes list the keywords that are generated automatically and ignored in the supplied FitsChan, ending with "TNULL%d", "THEAP", "TDIM%d".
+`PurgeHeader`'s list also has "TUNIT%d", which `UpdateHeader` writes from the column unit, so a `TUNITn` card in the supplied header is removed too.
+
+Consequence: documentation only, but a unit supplied only in the header is lost.
+
+`FitsTable::put_table_header` lists `TUNITn` among the cards removed, as the code does.
+A C fix: add "TUNIT%d" to the list.
+
+### The FitsTable class documentation says it has no 8-byte integer columns
+
+C location: `fitstable.c`, the FitsTable class prologue (Description, line 29), `GenerateColumns` (line 1164) and `UpdateHeader` (line 2450).
+
+The prologue says FitsTables do not provide any equivalent to "8-byte integer values".
+Since the 25-SEP-2024 change, a FitsTable holds AST__KINTTYPE columns, written with the `K` code in `TFORMn` and read from a header with that code.
+
+Consequence: documentation only.
+
+The `FitsTable` docs list `KInt` columns with the `K` code, as the code has them.
+A C fix: remove "8-byte integer values" from the list of unsupported features.
 
 ## Addressed here, and not going upstream
 
