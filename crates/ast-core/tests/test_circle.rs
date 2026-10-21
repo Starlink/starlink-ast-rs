@@ -826,10 +826,10 @@ fn loaded_frameless_uncertainty_takes_the_base_frame() {
 }
 
 #[test]
-fn copy_keeps_ident_report_and_own_use_defs() {
-    // A copy is C's astCopy, which keeps the Object and Mapping attributes:
-    // Ident, Report, and a UseDefs held by the Region itself (which only a
-    // dump supplies).
+fn copy_keeps_ident_and_own_use_defs_and_clears_report() {
+    // A copy is C's astCopy, which keeps Ident and a UseDefs held by the
+    // Region itself (which only a dump supplies), and clears Report
+    // (mapping.c `Copy`).
     let mut circle = CircleBuilder::new(BasicFrameBuilder::new(2).build().unwrap(), vec![1.0, 2.0])
         .unwrap()
         .radius(0.5)
@@ -851,7 +851,7 @@ fn copy_keeps_ident_report_and_own_use_defs() {
 
     let copy = circle.clone_region();
     assert_eq!(Frame::ident(copy.as_ref()), "C1");
-    assert!(copy.report());
+    assert!(!copy.test_report());
     assert!(!copy.use_defs());
 }
 

@@ -215,7 +215,7 @@ impl SimplifiedRecord {
 /// The flags and attributes C keeps on its base Mapping class, which every
 /// Mapping carries: the `Report` attribute and the `AllowSimplify` and
 /// `RestrictedSimplify` flags of the Mapping `flags` word (mapping.c). A copy
-/// keeps them, as `astCopy` does.
+/// keeps the flags and clears Report, as `astCopy` does (mapping.c `Copy`).
 #[derive(Debug, Default)]
 #[doc(hidden)]
 pub struct MappingFlags {
@@ -247,7 +247,11 @@ pub struct MappingFlags {
 impl Clone for MappingFlags {
     fn clone(&self) -> Self {
         MappingFlags {
-            report: self.report,
+            // C's copy clears Report (mapping.c `Copy`). Where C shares the
+            // object instead (`astClone`), such as a simplification that
+            // changes nothing, the shared object keeps it; a clone here is
+            // always a copy, so those results do not.
+            report: None,
             allow_simplify: self.allow_simplify,
             restricted_simplify: self.restricted_simplify,
             merge_tag: 0,
@@ -1092,7 +1096,9 @@ pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
     /// A [`FrameSet`](crate::frames::FrameSet) formats the input and output
     /// coordinates with its base and current Frames, and a Region with its
     /// Frame, as [`report_points`](Mapping::report_points) describes.
-    /// A clone keeps the value, and a Native dump records it when set.
+    /// A clone clears it, and a Native dump records it when set.
+    /// So does any copy made inside the library, such as the result of a
+    /// simplification, even one that changed nothing.
     ///
     /// [`set_report`](Mapping::set_report),
     /// [`test_report`](Mapping::test_report) and

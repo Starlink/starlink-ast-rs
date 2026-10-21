@@ -235,7 +235,7 @@ attribute	IsLinear	mapping.c	Mapping::is_linear		yes
 attribute	IsSimple	mapping.c	Mapping::has_been_simplified		yes
 attribute	Nin	mapping.c	Mapping::nin		yes
 attribute	Nout	mapping.c	Mapping::nout		yes
-attribute	Report	mapping.c	Mapping::report		yes	a clone keeps Report where C's copy clears it, and only tran1/tran2 report (PLAN.md §2); C's header says a dump drops it, but C's Dump writes it when set, as the port does
+attribute	Report	mapping.c	Mapping::report		yes	only tran1/tran2 report (PLAN.md §2); C's header says a dump drops it, but C's Dump writes it when set, as the port does
 attribute	TranForward	mapping.c	Mapping::has_forward		yes
 attribute	TranInverse	mapping.c	Mapping::has_inverse		yes
 function	astDecompose	mapping.c		not-ported	yes	CmpMap and TranMap components are crate-private; CmpFrame::frame1/frame2 cover a CmpFrame (PLAN.md §2)

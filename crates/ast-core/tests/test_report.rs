@@ -141,3 +141,27 @@ fn reports_follow_the_c_library() {
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
+
+/// A copy clears Report, as C's `astCopy` does for a Mapping, a FrameSet and
+/// a Region alike.
+#[test]
+fn a_clone_clears_report() {
+    let mut zoom = ZoomMap::new(3, 2.0).unwrap();
+    zoom.set_report(true);
+    let copy = zoom.clone();
+    assert!(!copy.test_report());
+    assert!(zoom.test_report() && zoom.report());
+
+    let mut fs = FrameSet::new(Box::new(plain2()));
+    fs.set_report(true);
+    assert!(!fs.clone().test_report());
+
+    let mut circle = CircleBuilder::new(plain2(), vec![0.0, 0.0])
+        .unwrap()
+        .radius(1.0)
+        .build()
+        .unwrap();
+    circle.set_report(true);
+    assert!(!circle.clone().test_report());
+    assert!(!ast_core::regions::Region::clone_region(&circle).test_report());
+}
