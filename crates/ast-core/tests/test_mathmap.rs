@@ -379,10 +379,7 @@ fn expression_error(expr: &str) -> ErrorCode {
     }
 }
 
-/// Each symbol is read as an operator or as an operand according to what
-/// precedes it, as in C: after an operand only an operator may follow, so a
-/// constant ending in `.` followed by a dotted operator's name is a missing
-/// operator, and text that reads as no operator is a missing operator.
+/// Each symbol is read as an operator or as an operand according to what precedes it, as in C: after an operand only an operator may follow, so a constant ending in `.` followed by a dotted operator's name is a missing operator, and text that reads as no operator is a missing operator.
 /// Expected codes are from the C library.
 #[test]
 fn malformed_expressions_report_c_error_codes() {

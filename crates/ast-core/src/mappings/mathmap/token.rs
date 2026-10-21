@@ -146,8 +146,7 @@ pub(crate) enum Token {
     Eof,
 }
 
-/// The symbols that may follow an operand: they read as operators from the
-/// left.
+/// The symbols that may follow an operand: they read as operators from the left.
 const OPERATORS: &[(&str, Token)] = &[
     (")", Token::RParen),
     ("**", Token::DoubleStar),
@@ -183,9 +182,7 @@ const OPERATORS: &[(&str, Token)] = &[
     (",", Token::Comma),
 ];
 
-/// The symbols that may start an operand: constants, function calls (the
-/// name with its opening parenthesis), an opening parenthesis and the prefix
-/// operators.
+/// The symbols that may start an operand: constants, function calls (the name with its opening parenthesis), an opening parenthesis and the prefix operators.
 const OPERANDS: &[(&str, Token)] = &[
     ("<bad>", Token::Bad),
     ("<dig>", Token::Dig),
@@ -270,8 +267,7 @@ fn longest_match(rest: &str, symbols: &[(&str, Token)]) -> Option<(Token, usize)
     best.map(|(tok, len)| (tok.clone(), len))
 }
 
-/// Whether a symbol leaves an operand behind it, so that the next symbol
-/// must be an operator: true for a constant and a closing parenthesis.
+/// Whether a symbol leaves an operand behind it, so that the next symbol must be an operator: true for a constant and a closing parenthesis.
 fn ends_operand(tok: &Token) -> bool {
     !matches!(
         tok,
@@ -364,13 +360,8 @@ fn is_function(tok: &Token) -> bool {
 /// `expr` must be lowercase with no whitespace.
 /// `variables` is the list of defined variable names (lowercase, no whitespace).
 ///
-/// Each symbol is read either as an operator or as an operand, according to
-/// the symbol before it, as C's `CompileExpression` does: after an operand
-/// only an operator may follow, and text that reads as no operator there is
-/// a missing operator (`ErrorCode::Miopr`) rather than the start of a name.
-/// Where an operand is expected, text that matches no operand symbol is read
-/// as a numeric constant, then as a variable name, and otherwise is a missing
-/// operand (`ErrorCode::Miopa`).
+/// Each symbol is read either as an operator or as an operand, according to the symbol before it, as C's `CompileExpression` does: after an operand only an operator may follow, and text that reads as no operator there is a missing operator (`ErrorCode::Miopr`) rather than the start of a name.
+/// Where an operand is expected, text that matches no operand symbol is read as a numeric constant, then as a variable name, and otherwise is a missing operand (`ErrorCode::Miopa`).
 pub(crate) fn tokenize(expr: &str, variables: &[&str]) -> AstResult<Vec<Token>> {
     let bytes = expr.as_bytes();
     let mut tokens = Vec::new();
@@ -430,15 +421,14 @@ pub(crate) fn tokenize(expr: &str, variables: &[&str]) -> AstResult<Vec<Token>> 
     Ok(tokens)
 }
 
-/// The expression up to and including the character at `pos`, which an
-/// error message quotes to show where reading stopped.
+/// The expression up to and including the character at `pos`, which an error message quotes to show where reading stopped.
 fn through_char_at(expr: &str, pos: usize) -> &str {
     let len = expr[pos..].chars().next().map_or(0, char::len_utf8);
     &expr[..pos + len]
 }
 
-/// The end of the name starting at `pos`: a letter followed by letters,
-/// digits and underscores. `None` if `pos` does not start with a letter.
+/// The end of the name starting at `pos`: a letter followed by letters, digits and underscores.
+/// `None` if `pos` does not start with a letter.
 pub(crate) fn parse_name(expr: &str, pos: usize) -> Option<usize> {
     let bytes = expr.as_bytes();
     if pos >= bytes.len() || !bytes[pos].is_ascii_alphabetic() {
@@ -451,14 +441,11 @@ pub(crate) fn parse_name(expr: &str, pos: usize) -> Option<usize> {
     Some(end)
 }
 
-/// Read the numeric constant starting at `pos`, which is a digit or `.`,
-/// returning its value and the end of its text.
+/// Read the numeric constant starting at `pos`, which is a digit or `.`, returning its value and the end of its text.
 ///
-/// The constant extends while each character may continue it: digits, one
-/// `.` before any exponent, one `d` or `e` exponent marker after a digit, and
-/// one sign directly after the marker. A `.`, exponent marker or sign that
-/// cannot continue it makes the constant invalid (`ErrorCode::Conin`), except
-/// that a sign after a digit ends it. Every field must contain a digit.
+/// The constant extends while each character may continue it: digits, one `.` before any exponent, one `d` or `e` exponent marker after a digit, and one sign directly after the marker.
+/// A `.`, exponent marker or sign that cannot continue it makes the constant invalid (`ErrorCode::Conin`), except that a sign after a digit ends it.
+/// Every field must contain a digit.
 fn parse_number(expr: &str, pos: usize) -> AstResult<(f64, usize)> {
     let bytes = expr.as_bytes();
     let mut numer = bytes[pos].is_ascii_digit();
