@@ -613,11 +613,10 @@ fn add_frame_rejects_a_mapping_of_the_wrong_size() {
     assert_eq!(fs.nframe(), 1);
 }
 
-/// Adding a FrameSet as a Frame merges its Frames, and a FrameSet given as
-/// the Mapping is used as the Mapping from its base Frame to its current
-/// Frame, as C's `astAddFrame` does: C reports Nframe 3 and Current 2 (the
-/// added FrameSet's current Frame), maps GRID (1,1) to SKYX (4,4), and
-/// gives a ZoomMap for the FrameSet used as a Mapping.
+/// Adding a FrameSet as a Frame merges its Frames, linking the anchor to
+/// its current Frame, and a FrameSet given as the Mapping is used as the
+/// Mapping from its base Frame to its current Frame, as C's `astAddFrame`
+/// does.
 #[test]
 fn add_frame_with_a_frameset_merges_it() {
     let mut a = FrameSet::new(make_named_frame(2, "PIX"));
@@ -627,7 +626,6 @@ fn add_frame_with_a_frameset_merges_it() {
         make_named_frame(2, "SKYX"),
     )
     .unwrap();
-    a.set_current(FrameRef::Index(1)).unwrap();
     let mut c = FrameSet::new(make_named_frame(2, "GRID"));
     c.add_frame(
         FrameRef::Base,
@@ -636,12 +634,15 @@ fn add_frame_with_a_frameset_merges_it() {
     )
     .unwrap();
     assert_eq!(c.nframe(), 3);
-    assert_eq!(c.current().domain(), "PIX");
-    c.set_current(FrameRef::Index(3)).unwrap();
+    // The added FrameSet's current Frame, SKYX, is Frame 3 and current, and
+    // the ShiftMap links GRID to it rather than to PIX.
+    assert_eq!(c.frame(FrameRef::Index(3)).unwrap().domain(), "SKYX");
+    assert_eq!(c.current().domain(), "SKYX");
     let out = c
         .transform(&PointSet::from_rows([[1.0, 1.0]]), true)
         .unwrap();
-    assert_eq!(out.point(0), [4.0, 4.0]);
+    assert_eq!(out.point(0), [2.0, 2.0]);
+    assert_eq!(map11(&c, 1, 2), (1.0, 1.0));
 
     let mut m = FrameSet::new(make_frame(2));
     m.add_frame(
@@ -655,6 +656,17 @@ fn add_frame_with_a_frameset_merges_it() {
         .unwrap();
     let map = d.mapping(FrameRef::Base, FrameRef::Current).unwrap();
     assert!(!map.as_ref().as_any().is::<FrameSet>());
+    assert_eq!(
+        map.tran2(&[1.0], &[1.0], true).unwrap(),
+        (vec![3.0], vec![3.0])
+    );
+}
+
+/// The point (1,1) mapped from Frame `a` to Frame `b`.
+fn map11(fs: &FrameSet, a: usize, b: usize) -> (f64, f64) {
+    let m = fs.mapping(FrameRef::Index(a), FrameRef::Index(b)).unwrap();
+    let (x, y) = m.tran2(&[1.0], &[1.0], true).unwrap();
+    (x[0], y[0])
 }
 
 /// C's dump of an inverted FrameSet (`r6c/inv.c`): A -ZoomMap 2-> B, then
