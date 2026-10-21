@@ -429,27 +429,27 @@ class	Prism	prism.c			no
 function	astPrism	prism.c			no
 class	RateMap	ratemap.c	RateMap		yes
 function	astRateMap	ratemap.c	RateMap::new		yes	The RateMap owns the encapsulated Mapping; C keeps a reference to it
-class	Region	region.c			no
-function	astGetUnc	region.c			no
-function	astGetRegionFrame	region.c			no
-function	astGetRegionFrameSet	region.c			no
-function	astMask<X>	region.c			no
-function	astNegate	region.c			no
-function	astOverlap	region.c			no
-function	astPointInRegion	region.c			no
-function	astGetRegionBounds	region.c			no
-function	astGetRegionMesh	region.c			no
-function	astGetRegionPoints	region.c			no
-function	astGetRegionDisc	region.c			no
-function	astSetUnc	region.c			no
-function	astShowMesh	region.c			no
-attribute	Adaptive	region.c			no
-attribute	Negated	region.c			no
-attribute	Bounded	region.c			no
-attribute	FillFactor	region.c			no
-attribute	MeshSize	region.c			no
-attribute	Closed	region.c			no
-function	astMapRegion	region.c			no
+class	Region	region.c	Region		yes	rustdoc rejects an alias equal to the item's name, so the gate checks the trait's declaration
+function	astGetUnc	region.c	Region::get_unc		yes	get_uncertainty gives the stored Region, in the base Frame
+function	astGetRegionFrame	region.c	Region::get_region_frame		yes
+function	astGetRegionFrameSet	region.c	Region::get_region_frameset		yes
+function	astMask<X>	region.c	mask		yes	one function generic over MaskValue for the type codes; the 8-byte interface is the i64 bounds
+function	astNegate	region.c	Region::negate		yes
+function	astOverlap	region.c	Region::overlap		yes	returns the Overlap enum for codes 0 to 6
+function	astPointInRegion	region.c	Region::point_in_region		yes
+function	astGetRegionBounds	region.c	Region::get_region_bounds		yes
+function	astGetRegionMesh	region.c	Region::region_mesh;Region::region_grid		yes	surface set and unset; get_region_mesh is the base-Frame boundary mesh; no maxpoint/maxcoord errors, the result is a PointSet
+function	astGetRegionPoints	region.c	Region::region_points		yes	get_region_points is the stored base-Frame points; no maxpoint/maxcoord errors, the result is a PointSet
+function	astGetRegionDisc	region.c	Region::get_region_disc;region_disc		yes	an unbounded Region gives a bad centre, where C leaves the caller centre array unchanged
+function	astSetUnc	region.c	Region::set_uncertainty		yes
+function	astShowMesh	region.c	Region::show_mesh		yes	show_mesh_text returns the same table
+attribute	Adaptive	region.c	Region::is_adaptive		yes
+attribute	Negated	region.c	Region::is_negated		yes
+attribute	Bounded	region.c	Region::is_bounded		yes
+attribute	FillFactor	region.c	Region::fill_factor		yes
+attribute	MeshSize	region.c	Region::mesh_size		yes	1-D default is 2, as in the code
+attribute	Closed	region.c	Region::is_closed		yes	CmpRegion takes the first component value at construction, if set, as the code does
+function	astMapRegion	region.c	Region::map_region		yes
 class	SelectorMap	selectormap.c	SelectorMap		yes
 function	astSelectorMap	selectormap.c	SelectorMapBuilder::new		yes	badval is the builder's badval method, defaulting to BAD_VALUE
 class	ShiftMap	shiftmap.c	ShiftMap		yes

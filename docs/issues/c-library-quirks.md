@@ -71,6 +71,8 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [The `AlignSpecOffset` documentation names a SpecOffset attribute](#the-alignspecoffset-documentation-names-a-specoffset-attribute)
 - [The `astCurrentTime` documentation says the time scales defined by the Earth's rotation are an error](#the-astcurrenttime-documentation-says-the-time-scales-defined-by-the-earths-rotation-are-an-error)
 - [`SetVariant` reads `map[-1]` when the variant owner is on the root node](#setvariant-reads-map-1-when-the-variant-owner-is-on-the-root-node)
+- [The `astGetRegionPoints` documentation calls it an attribute and sends Prism users to a CmpRegion](#the-astgetregionpoints-documentation-calls-it-an-attribute-and-sends-prism-users-to-a-cmpregion)
+- [The `astMask<X>` documentation counts pixels set to a "badval" it does not take](#the-astmaskx-documentation-counts-pixels-set-to-a-badval-it-does-not-take)
 
 ### [Addressed here, and not going upstream](#addressed-here-and-not-going-upstream)
 
@@ -1080,6 +1082,30 @@ Consequence: undefined behaviour in C for variants on the root node.
 
 The port's `FrameSet::set_variant` (`crates/ast-core/src/frames/frameset.rs`) replaces the parent Mapping as C does for any other node, and for the root node moves the owner Frame to a new node linked to the root by the change of variant, so Frames derived from it do not move.
 A C fix: handle the root node, for instance by remapping the Frame as `astRemapFrame` does.
+
+### The `astGetRegionPoints` documentation calls it an attribute and sends Prism users to a CmpRegion
+
+C location: `region.c`, the `astGetRegionPoints` prologue (Applicability, lines 9529 to 9579).
+
+The Applicability section opens with "Region: All Regions have this attribute.", copied from an attribute prologue, though `astGetRegionPoints` is a function.
+Its Prism entry says the points of the component Regions "can be accessed by invoking astDecompose on the CmpRegion", where the Region is a Prism.
+
+Consequence: documentation only.
+
+`Region::region_points` lists the points of each class and says that a Prism's component Regions have their own.
+A C fix: say "All Regions have this function." (or drop the line), and change "CmpRegion" to "Prism" in the Prism entry.
+
+### The `astMask<X>` documentation counts pixels set to a "badval" it does not take
+
+C location: `region.c`, the `astMask<X>` prologue (Returned Value, line 5922).
+
+The Returned Value says the function returns the number of pixels to which a value of "badval" has been assigned.
+The function has no "badval" argument; the value assigned is its "val" argument.
+
+Consequence: documentation only.
+
+`mask` says it returns the number of pixels set to `val`.
+A C fix: change "badval" to "val".
 
 ## Addressed here, and not going upstream
 

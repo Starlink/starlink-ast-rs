@@ -1,12 +1,12 @@
-//! Masking data arrays with Regions: C's `astMask<X>`.
-//!
-//! A Region class masks a grid through [`Region::mask_data`]: region.c
-//! `Mask<X>` for most classes, which resamples the data through the Region,
-//! and its own method for PointList (pointlist.c `Mask<X>`), which sets the
-//! pixels its points fall in. C has one `Mask<X>` per element type; the
-//! trait method takes the data as a [`MaskData`], one variant per type, so
-//! that it can be called on a `dyn Region`, and [`mask`] wraps a typed array
-//! in it.
+//! Masking data grids with Regions: see [`mask`].
+
+// C: `astMask<X>`. A Region class masks a grid through
+// `Region::mask_data`: region.c `Mask<X>` for most classes, which
+// resamples the data through the Region, and its own method for PointList
+// (pointlist.c `Mask<X>`), which sets the pixels its points fall in. C has
+// one `Mask<X>` per element type; the trait method takes the data as a
+// `MaskData`, one variant per type, so that it can be called on a
+// `dyn Region`, and `mask` wraps a typed array in it.
 
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::BasicFrameBuilder;
@@ -62,7 +62,8 @@ macro_rules! dispatch {
     };
 }
 
-/// An element type [`mask`] accepts: one of C's `astMask<X>` types.
+/// An element type [`mask`] accepts: `f64`, `f32`, `i64`, `u64`, `i32`,
+/// `u32`, `i16`, `u16`, `i8` or `u8`.
 pub trait MaskValue: PixelValue {
     /// `data` and `val` as the [`MaskData`] variant for this type.
     #[doc(hidden)]
@@ -84,18 +85,64 @@ mask_value!(
     u32 => UI, i16 => S, u16 => US, i8 => B, u8 => UB,
 );
 
-/// Set to `val` the pixels of `data` that lie inside `region` (`inside`
-/// true) or outside it, as C's `astMask<X>` does, and return the number of
-/// pixels it reports setting.
+/// Mask a region of a data grid: set to `val` every pixel of `data` that
+/// is inside `region` (with `inside` true) or not inside it (with `inside`
+/// false), leaving the other pixels unchanged.
 ///
-/// `data` is a grid with pixel index bounds `lbnd..=ubnd` on each axis,
-/// vectorised with the first axis varying fastest, whose pixel centres are
-/// at integer grid coordinates. `map` takes positions in the Region's
-/// Frame to grid coordinates; with no `map`, the Region is in grid
-/// coordinates already. The grid must have as many axes as `map` has
-/// outputs (or, with no `map`, as the Region), and `map` as many inputs as
-/// the Region (AST__NGDIN); a lower bound above its upper bound is
-/// AST__GBDIN. A data array of the wrong length is AST__DIMIN.
+/// The return value is the number of pixels set to `val`.
+///
+/// `data` is a grid with `lbnd.len()` dimensions, with pixel index bounds
+/// `lbnd[j]..=ubnd[j]` on dimension `j`, so that it is
+/// `ubnd[j] - lbnd[j] + 1` pixels long on that dimension.
+/// Each pixel has unit extent on each dimension and an integer coordinate
+/// at its center.
+/// The data are stored with the index of the first dimension varying
+/// fastest and that of the last slowest, as Fortran stores arrays.
+///
+/// `map` transforms positions in the coordinate system of `region` into
+/// grid coordinates.
+/// It must have as many inputs as `region` has axes, and as many outputs
+/// as the grid has dimensions.
+/// `None` means `region` is in grid coordinates already, as a
+/// [`UnitMap`](crate::mappings::UnitMap) would.
+///
+/// A pixel is inside `region` when its center is; which side is inside
+/// takes account of [`Negated`](Region::is_negated), so the inside of a
+/// Region is the outside of its negation.
+/// For a Region with no volume, such as a [`PointList`](crate::regions::PointList),
+/// a pixel center would rarely fall inside it, so a pixel is taken to be
+/// inside when any part of the Region falls in it: for a PointList, when
+/// it contains at least one of the points.
+///
+/// # Errors
+///
+/// - [`ErrorCode::Dimin`] if `lbnd` and `ubnd` differ in length, or `data`
+///   does not have one element per pixel of the grid.
+/// - [`ErrorCode::Ngdin`] if `map` has the wrong number of inputs or
+///   outputs, or, with no `map`, the grid does not have one dimension for
+///   each axis of `region`.
+/// - [`ErrorCode::Gbdin`] if a lower bound is above its upper bound.
+/// - Otherwise passes on the errors of mapping `region` into grid
+///   coordinates and of resampling the data through it.
+///
+/// # Examples
+///
+/// ```
+/// use ast_core::frames::BasicFrameBuilder;
+/// use ast_core::regions::{CircleBuilder, mask};
+///
+/// // The 3 x 3 pixels around (3, 3) have centers within 1.5 of it.
+/// let frame = BasicFrameBuilder::new(2).build()?;
+/// let circle = CircleBuilder::new(frame, vec![3.0, 3.0])?.radius(1.5).build()?;
+/// let mut data = vec![0.0f32; 25];
+/// let n = mask(&circle, None, true, &[1, 1], &[5, 5], &mut data, -1.0)?;
+/// assert_eq!(n, 9);
+/// assert_eq!(data.iter().filter(|&&v| v == -1.0).count(), 9);
+/// # Ok::<(), ast_core::error::AstError>(())
+/// ```
+// C: `astMask<X>`, one function per element type; region.c `Mask<X>` and
+// pointlist.c `Mask<X>`.
+#[doc(alias = "astMask")]
 pub fn mask<T: MaskValue>(
     region: &dyn Region,
     map: Option<&dyn Mapping>,

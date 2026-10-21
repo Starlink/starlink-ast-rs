@@ -55,27 +55,30 @@ use crate::mappings::{DynMapping, Mapping, UnitMap};
 /// An owned, dynamically-dispatched Region.
 pub type DynRegion = Box<dyn Region>;
 
-/// Result of comparing two regions for overlap.
+/// How two Regions overlap, as [`Region::overlap`] reports it.
 ///
-/// These values mirror the codes 0 to 6 C's `astOverlap` returns.
+/// # See also
+///
+/// `astOverlap`, which returns these as the codes 0 to 6, in the order they
+/// are declared here.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Overlap {
-    /// The regions cannot be compared, because the second could not be
-    /// mapped into the coordinate system of the first (C code 0).
+    /// The check could not be made, because the second Region could not be
+    /// mapped into the coordinate system of the first.
     Incomparable,
-    /// No overlap between the regions (neither contains any points of the other).
+    /// The Regions do not overlap.
     None,
-    /// The first region is entirely inside the second.
+    /// The first Region is entirely inside the second.
     FirstInside,
-    /// The second region is entirely inside the first.
+    /// The second Region is entirely inside the first.
     SecondInside,
-    /// Partial overlap (some points of each lie inside the other).
+    /// The Regions overlap partially.
     Partial,
-    /// The regions are identical to within their uncertainties (C code 5).
+    /// The Regions are identical to within their uncertainties.
     Same,
-    /// The second region is the exact negation of the first to within their
-    /// uncertainties (C code 6): the two regions are mutually exclusive and
-    /// together cover the whole coordinate system.
+    /// The second Region is the exact negation of the first to within their
+    /// uncertainties: the two Regions do not overlap and together cover the
+    /// whole coordinate system.
     Negation,
 }
 
@@ -87,8 +90,9 @@ pub enum CmpOperator {
     /// Boolean OR: interior is the union.
     Or,
     /// Boolean XOR: interior is where exactly one of the two is inside.
-    /// Made, as C makes it, as the OR of each Region ANDed with the
-    /// negation of the other.
+    /// It is made as the OR of each Region ANDed with the negation of the
+    /// other.
+    // C: cmpregion.c builds XOR the same way.
     Xor,
 }
 
@@ -106,45 +110,215 @@ impl<T: Region> AsDynRegion for T {
     }
 }
 
-/// A region of a coordinate frame.
+/// A region within a coordinate system.
 ///
-/// Regions implement both [`Frame`] (they describe a coordinate system)
-/// and [`Mapping`] (they transform points via the inside/outside
-/// predicate). A forward transform passes interior points unchanged
-/// and sets exterior points to [`BAD_VALUE`](crate::constants::BAD_VALUE);
-/// the inverse transform is the same.
+/// `Region` is implemented by a family of shapes, such as [`Circle`],
+/// [`BoxRegion`], [`Ellipse`], [`Polygon`] and [`Interval`]; there is no
+/// plain Region to construct.
+/// Every Region is built with a Frame, the *encapsulated Frame*, which
+/// describes the coordinate system the Region is defined in, and usually
+/// with one or more positions in that Frame that fix its place and extent.
+///
+/// # A Region as a Frame
+///
+/// A Region implements [`Frame`], so it can be used wherever a Frame is
+/// expected.
+/// Its Frame methods act on its encapsulated Frame: [`Frame::format`], for
+/// instance, formats an axis value as that Frame would.
+///
+/// # A Region as a Mapping
+///
+/// A Region also implements [`Mapping`], and transforming points through it
+/// is the way to find which of many points are inside it
+/// ([`point_in_region`](Region::point_in_region) tests one point).
+/// A point inside the Region is passed through unchanged, and a point
+/// outside it gives [`BAD_VALUE`](crate::constants::BAD_VALUE) on every
+/// axis.
+/// The inverse transformation does the same, so it is not a true inverse:
+/// a point outside the Region transformed forward and then back gives bad
+/// values, not the point.
+/// [`remove_regions`] takes this masking out of a compound Mapping or
+/// FrameSet by replacing each Region in it with a
+/// [`UnitMap`] or its Frame.
+///
+/// # Changing the coordinate system
+///
+/// Setting a Frame attribute through a Region's [`Frame`] methods, such as
+/// its System or an axis Unit, changes the coordinate system the Region
+/// describes.
+/// While the Region is [adaptive](Region::is_adaptive), which it is by
+/// default, the area it covers is mapped into the new coordinate system,
+/// so it keeps covering the same physical area.
+/// For instance, a Circle defined in FK4 equatorial coordinates on the sky
+/// whose System is set to FK5 then describes the same area in FK5
+/// coordinates.
+/// The mapping can change the shape: a circle becomes an ellipse when the
+/// new system scales its axes differently, so the class of a Region does not
+/// guarantee its shape in its current coordinate system.
+/// Simplifying a Region (`simplify`, as for any Mapping) tries to give a
+/// Region of a class that describes the shape in the current coordinate
+/// system, which is not always possible.
+/// Setting [`Adaptive`](Region::is_adaptive) to false makes such changes
+/// leave the numbers that define the Region as they are, so the Region
+/// then covers a different physical area.
+///
+/// [`get_region_frameset`](Region::get_region_frameset) returns the Frame
+/// the Region was defined in and the Frame it now describes, with the
+/// Mapping between them.
 ///
 /// # Negation
 ///
-/// A negated region inverts the inside/outside sense: points that were
-/// interior become exterior and vice-versa. Negation is a lightweight
-/// flag — it does not recompute geometry.
+/// A Region can be [negated](Region::negate), so that it covers every part
+/// of its Frame except the area it was created with.
 ///
-/// # Closed vs Open
+/// # Attributes
 ///
-/// A closed region (the default) includes boundary points; an open
-/// region excludes them. For most practical purposes with floating-point
-/// coordinates, boundary membership is academic.
+/// Besides the attributes of its encapsulated Frame, every Region has:
+///
+/// - [`Adaptive`](Region::is_adaptive): whether the area adapts to changes
+///   in the coordinate system;
+/// - [`Negated`](Region::is_negated): whether the original area has been
+///   negated;
+/// - [`Closed`](Region::is_closed): whether the boundary is inside the
+///   Region;
+/// - [`MeshSize`](Region::mesh_size): the number of points in a mesh
+///   covering the Region;
+/// - [`FillFactor`](Region::fill_factor): the fraction of the Region that is
+///   of interest;
+/// - [`Bounded`](Region::is_bounded): whether the Region is bounded
+///   (read-only).
+///
+/// # Functions
+///
+/// Besides the [`Frame`] and [`Mapping`] methods, every Region has:
+///
+/// - [`get_region_bounds`](Region::get_region_bounds): a box containing the
+///   Region;
+/// - [`get_region_disc`](Region::get_region_disc): a disc containing a 2-D
+///   Region;
+/// - [`get_region_frame`](Region::get_region_frame): a copy of the Frame
+///   the Region describes;
+/// - [`get_region_frameset`](Region::get_region_frameset): a copy of the
+///   FrameSet the Region holds;
+/// - [`region_mesh`](Region::region_mesh) and
+///   [`region_grid`](Region::region_grid): meshes of points covering the
+///   boundary or the interior;
+/// - [`region_points`](Region::region_points): the positions that define
+///   the Region;
+/// - [`get_unc`](Region::get_unc) and
+///   [`set_uncertainty`](Region::set_uncertainty): the uncertainty of the
+///   boundary;
+/// - [`map_region`](Region::map_region): the Region in another coordinate
+///   system;
+/// - [`negate`](Region::negate): toggle Negated;
+/// - [`overlap`](Region::overlap): how two Regions overlap;
+/// - [`point_in_region`](Region::point_in_region): whether one point is
+///   inside;
+/// - [`show_mesh`](Region::show_mesh): print a mesh of boundary points;
+/// - [`mask`]: mask the pixels of a data grid inside or outside the Region.
+///
+/// # Examples
+///
+/// Changing the unit of a 1-D Interval maps its bounds into the new unit
+/// while it is adaptive, and leaves the numbers alone when it is not:
+///
+/// ```
+/// use ast_core::frames::{BasicFrameBuilder, Frame};
+/// use ast_core::regions::{IntervalBuilder, Region};
+///
+/// let mut frame = BasicFrameBuilder::new(1).build()?;
+/// frame.set_unit(1, "Angstrom")?;
+/// frame.set_active_unit(true);
+///
+/// let mut interval = IntervalBuilder::new(frame.clone(), vec![2000.0], vec![4000.0])?.build()?;
+/// interval.set_unit(1, "nm")?;
+/// let (lbnd, ubnd) = interval.get_region_bounds()?;
+/// assert!((lbnd[0] - 200.0).abs() < 1e-9 && (ubnd[0] - 400.0).abs() < 1e-9);
+///
+/// let mut fixed = IntervalBuilder::new(frame, vec![2000.0], vec![4000.0])?.build()?;
+/// fixed.set_adaptive(false);
+/// fixed.set_unit(1, "nm")?;
+/// let (lbnd, ubnd) = fixed.get_region_bounds()?;
+/// assert_eq!((lbnd[0], ubnd[0]), (2000.0, 4000.0));
+/// # Ok::<(), ast_core::error::AstError>(())
+/// ```
 pub trait Region: Frame + Mapping + AsDynRegion {
     // ------------------------------------------------------------------
     // Point membership
     // ------------------------------------------------------------------
 
-    /// Test whether a single point is inside this region.
+    /// Whether a single point is inside this Region.
     ///
-    /// `point` must have length equal to `self.naxes()`. The coordinates
-    /// are in the current frame of the region's encapsulated FrameSet.
-    /// Returns `true` if the point is inside (respecting negation).
+    /// `point` holds one value for each axis of the Region, in the
+    /// coordinate system the Region describes.
+    /// The answer takes account of [`Negated`](Region::is_negated).
+    /// A point with [`BAD_VALUE`](crate::constants::BAD_VALUE) on any axis is
+    /// outside.
+    ///
+    /// To test many points, it is usually faster to transform them all
+    /// through the Region as a [`Mapping`]: a point outside the Region comes
+    /// out with bad values.
+    ///
+    /// # Errors
+    ///
+    /// Passes on the error of transforming the point into the Frame the
+    /// Region was defined in.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ast_core::frames::BasicFrameBuilder;
+    /// use ast_core::regions::{CircleBuilder, Region};
+    ///
+    /// let frame = BasicFrameBuilder::new(2).build()?;
+    /// let circle = CircleBuilder::new(frame, vec![0.0, 0.0])?.radius(1.0).build()?;
+    /// assert!(circle.point_in_region(&[0.5, 0.5])?);
+    /// assert!(!circle.point_in_region(&[2.0, 0.0])?);
+    /// # Ok::<(), ast_core::error::AstError>(())
+    /// ```
+    #[doc(alias = "astPointInRegion")]
     fn point_in_region(&self, point: &[f64]) -> AstResult<bool>;
 
-    /// Determine the overlap between this region and another, as
-    /// `astOverlap(this, that)`.
+    /// How this Region and `that` overlap.
     ///
-    /// The method accounts for any difference in coordinate frame between
-    /// the two regions by aligning them before comparison. The default is
-    /// region.c `Overlap`: the work is dispatched on the class of `that`,
-    /// through [`overlap_x`](Region::overlap_x). A class with its own
-    /// algorithm for the case where it is the first Region overrides this.
+    /// The two Regions are converted to a common coordinate system first.
+    /// If that is not possible, for instance because they describe areas in
+    /// different Domains, the result is [`Overlap::Incomparable`].
+    /// [`Overlap::FirstInside`] means this Region is inside `that`, and
+    /// [`Overlap::SecondInside`] the reverse.
+    /// [`Overlap::Same`] and [`Overlap::Negation`] do not take account of
+    /// the [`Closed`](Region::is_closed) attribute of either Region.
+    ///
+    /// The check tests a mesh of points on the boundary of one Region
+    /// against the other, so its reliability depends on
+    /// [`MeshSize`](Region::mesh_size).
+    ///
+    /// # Errors
+    ///
+    /// - [`ErrorCode::Inter`] if neither Region has a finite boundary, or if
+    ///   the overlap cannot be determined from the boundary of either.
+    /// - Otherwise passes on the errors of converting the Regions and of
+    ///   meshing their boundaries.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ast_core::frames::BasicFrameBuilder;
+    /// use ast_core::regions::{CircleBuilder, Overlap, Region};
+    ///
+    /// let frame = BasicFrameBuilder::new(2).build()?;
+    /// let big = CircleBuilder::new(frame.clone(), vec![0.0, 0.0])?.radius(2.0).build()?;
+    /// let small = CircleBuilder::new(frame.clone(), vec![0.5, 0.0])?.radius(0.5).build()?;
+    /// let apart = CircleBuilder::new(frame, vec![5.0, 0.0])?.radius(1.0).build()?;
+    /// assert_eq!(small.overlap(&big)?, Overlap::FirstInside);
+    /// assert_eq!(big.overlap(&small)?, Overlap::SecondInside);
+    /// assert_eq!(big.overlap(&apart)?, Overlap::None);
+    /// # Ok::<(), ast_core::error::AstError>(())
+    /// ```
+    // C: region.c `Overlap`, which dispatches on the class of `that` through
+    // `overlap_x` (region.c `OverlapX`); a class with its own algorithm for
+    // the case where it is the first Region overrides this.
+    #[doc(alias = "astOverlap")]
     fn overlap(&self, that: &dyn Region) -> AstResult<Overlap> {
         that.overlap_x(self.as_dyn_region())
     }
@@ -177,31 +351,63 @@ pub trait Region: Frame + Mapping + AsDynRegion {
     // Negation
     // ------------------------------------------------------------------
 
-    /// Return a deep-copy of this region with the negation flag toggled.
+    /// A copy of this Region with [`Negated`](Region::is_negated) toggled.
     fn negated_copy(&self) -> DynRegion;
 
-    /// Toggle the negation flag in place.
+    /// Negate the area this Region represents, in place.
+    ///
+    /// Points that were inside the Region are then outside it, and points
+    /// that were outside are inside.
+    /// This toggles [`Negated`](Region::is_negated), which is then set.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ast_core::frames::BasicFrameBuilder;
+    /// use ast_core::regions::{CircleBuilder, Region};
+    ///
+    /// let frame = BasicFrameBuilder::new(2).build()?;
+    /// let mut circle = CircleBuilder::new(frame, vec![0.0, 0.0])?.radius(1.0).build()?;
+    /// circle.negate();
+    /// assert!(circle.is_negated());
+    /// assert!(!circle.point_in_region(&[0.0, 0.0])?);
+    /// assert!(circle.point_in_region(&[2.0, 0.0])?);
+    /// # Ok::<(), ast_core::error::AstError>(())
+    /// ```
+    #[doc(alias = "astNegate")]
     fn negate(&mut self);
 
-    /// Whether this region is currently negated.
+    /// The Negated attribute: whether this Region represents the outside of
+    /// the area it was created with rather than the inside.
+    ///
+    /// [`negate`](Region::negate) toggles it.
+    /// Whether the boundary is inside the Region is controlled by
+    /// [`Closed`](Region::is_closed), which negation does not change: the
+    /// boundary of a closed Region is inside it whether or not it is
+    /// negated.
+    ///
+    /// Default: false.
+    ///
+    /// - Stc: the Negated attribute of the Region it encapsulates.
+    #[doc(alias = "Negated")]
     fn is_negated(&self) -> bool;
 
-    /// Whether `Negated` has been explicitly set (C `TestNegated`). Negating
-    /// a Region sets it.
+    /// Whether [`Negated`](Region::is_negated) has been set.
+    /// Negating a Region sets it.
     fn test_negated(&self) -> bool;
 
-    /// Store `Negated` together with its explicitly-set state, as C's raw
-    /// field assignment `this->negated = that->negated` does.
+    /// Store `Negated` together with whether it is set.
     #[doc(hidden)]
+    // C: the raw field assignment `this->negated = that->negated`.
     fn set_negated_raw(&mut self, negated: bool, set: bool);
 
-    /// Set `Negated` (C `astSetNegated`).
+    /// Set [`Negated`](Region::is_negated).
     fn set_negated(&mut self, negated: bool) {
         self.set_negated_raw(negated, true);
     }
 
-    /// Clear `Negated`, reverting to its default of false (C
-    /// `astClearNegated`).
+    /// Clear [`Negated`](Region::is_negated), reverting to its default of
+    /// false.
     fn clear_negated(&mut self) {
         self.set_negated_raw(false, false);
     }
@@ -227,83 +433,181 @@ pub trait Region: Frame + Mapping + AsDynRegion {
     // Attributes: Closed, FillFactor, MeshSize, Bounded, Adaptive
     // ------------------------------------------------------------------
 
-    /// Whether boundary points are included (closed) or excluded (open).
+    /// The Closed attribute: whether points on the boundary of this Region
+    /// are inside it.
+    ///
+    /// A closed Region contains its boundary, and an open one does not.
+    ///
+    /// Default: true.
+    ///
+    /// - PointList: the attribute is ignored; an un-negated PointList is
+    ///   always closed and a negated one always open, since points have no
+    ///   volume and are all boundary.
+    /// - CmpRegion: a CmpRegion is built with the Closed value of its first
+    ///   component Region, if that has been set; setting or clearing it also
+    ///   sets or clears it on both component Regions.
+    /// - Stc: the Closed attribute of the Region it encapsulates.
+    /// - Moc: the attribute is ignored, and whether a point on the boundary
+    ///   is inside is undefined.
+    #[doc(alias = "Closed")]
     fn is_closed(&self) -> bool;
 
-    /// Set the closed/open flag.
+    /// Set [`Closed`](Region::is_closed).
     fn set_closed(&mut self, closed: bool);
 
-    /// Whether the closed/open flag has been explicitly set (C `TestClosed`,
-    /// `this->closed != -INT_MAX`).
+    /// Whether [`Closed`](Region::is_closed) has been set.
     fn test_closed(&self) -> bool;
 
-    /// Copy the closed/open flag together with its explicitly-set state,
-    /// mirroring C's raw field assignment `this->closed = that->closed`
-    /// (which propagates the `-INT_MAX` unset sentinel). Unlike
-    /// [`set_closed`](Region::set_closed) this does not force the attribute to
-    /// appear explicitly set.
+    /// Store [`Closed`](Region::is_closed) together with whether it is set.
+    ///
+    /// Unlike [`set_closed`](Region::set_closed), this can leave the
+    /// attribute unset, and it does not pass the value on to any component
+    /// Regions.
+    // C: the raw field assignment `this->closed = that->closed`, which
+    // copies the `-INT_MAX` unset sentinel.
     fn set_closed_raw(&mut self, closed: bool, set: bool);
 
-    /// Clear the closed/open flag, reverting to its default of closed (C
-    /// `astClearClosed`).
+    /// Clear [`Closed`](Region::is_closed), reverting to its default of true.
     fn clear_closed(&mut self) {
         self.set_closed_raw(true, false);
     }
 
-    /// The fill factor (fraction of the bounding box that is interior).
+    /// The FillFactor attribute: the fraction of this Region that is of
+    /// interest.
     ///
-    /// Used by the mesh and overlap algorithms to estimate point density.
-    /// Defaults to 1.0 (the region fills its bounding box).
+    /// It is not used by any calculation in this crate; it could record, for
+    /// instance, the fraction of the Region for which data is available.
+    /// Its value lies in the range 0.0 to 1.0.
+    ///
+    /// Default: 1.0.
+    ///
+    /// - CmpRegion: the default is the FillFactor of its first component
+    ///   Region.
+    /// - Prism: the default is the product of the FillFactors of its two
+    ///   component Regions.
+    /// - Stc: the FillFactor of the Region it encapsulates.
+    #[doc(alias = "FillFactor")]
     fn fill_factor(&self) -> f64;
 
-    /// Set the fill factor.
+    /// Set [`FillFactor`](Region::fill_factor).
     ///
-    /// Fails with `AST__ATSER`, leaving the attribute unchanged, unless
-    /// `factor` lies in `0.0..=1.0` (C `astSetFillFactor`, region.c:12669).
+    /// # Errors
+    ///
+    /// [`ErrorCode::Atser`] if `factor` is outside the range 0.0 to 1.0; the
+    /// attribute is then unchanged.
+    // C: region.c `astSetFillFactor`, region.c:12669.
     fn set_fill_factor(&mut self, factor: f64) -> AstResult<()>;
 
-    /// Whether the fill factor has been explicitly set (C `TestFillFactor`).
+    /// Whether [`FillFactor`](Region::fill_factor) has been set.
     fn test_fill_factor(&self) -> bool;
 
-    /// Clear the fill factor, reverting to the default (C `ClearFillFactor`).
+    /// Clear [`FillFactor`](Region::fill_factor), reverting to its default.
     fn clear_fill_factor(&mut self);
 
-    /// The number of points used to represent the boundary mesh.
+    /// The MeshSize attribute: the number of points in a mesh covering the
+    /// boundary or the interior of this Region.
     ///
-    /// When unset, this is the naxes-dependent default (1-D → 2, 2-D → 200,
-    /// ≥3-D → 2000), mirroring C `astGetMeshSize`.
+    /// [`region_mesh`](Region::region_mesh) and
+    /// [`region_grid`](Region::region_grid) give such meshes.
+    /// [`overlap`](Region::overlap) also tests each point of a boundary mesh
+    /// of one Region against the other, so a low value can let an overlap go
+    /// unnoticed, and a high one makes the test slow.
+    /// A value below 5 is stored as 5.
+    ///
+    /// Default: 200 for a 2-D Region, 2000 for a Region of three or more
+    /// dimensions, and 2 for a 1-D Region, whose boundary is two points.
+    ///
+    /// - CmpRegion: a CmpRegion is built with the MeshSize of its first
+    ///   component Region, if that has been set; setting or clearing it also
+    ///   sets or clears it on both component Regions.
+    /// - Moc: a mesh covering the boundary has a point at the outer corners
+    ///   of every HEALPix cell, at the Moc's maximum order, that touches the
+    ///   boundary, whatever the MeshSize; a mesh covering the interior uses
+    ///   MeshSize as other classes do.
+    /// - Stc: the MeshSize of the Region it encapsulates.
+    // C: region.c `astGetMeshSize`, `astSetMeshSize`.
+    #[doc(alias = "MeshSize")]
     fn mesh_size(&self) -> usize;
 
-    /// Set the boundary mesh size.
+    /// Set [`MeshSize`](Region::mesh_size).
     fn set_mesh_size(&mut self, size: usize);
 
-    /// Whether the mesh size has been explicitly set (C `TestMeshSize`).
+    /// Whether [`MeshSize`](Region::mesh_size) has been set.
     fn test_mesh_size(&self) -> bool;
 
-    /// Clear the mesh size, reverting to the default (C `ClearMeshSize`).
+    /// Clear [`MeshSize`](Region::mesh_size), reverting to its default.
     fn clear_mesh_size(&mut self);
 
-    /// Whether this region is bounded (has finite extent in all directions).
+    /// The Bounded attribute: whether this Region lies entirely within some
+    /// finite box.
+    ///
+    /// It is read-only.
+    ///
+    /// - Box, Circle, Ellipse, NullRegion and PointList: bounded unless
+    ///   negated, and always bounded in a sky Frame, where the complement of
+    ///   a finite area is finite too.
+    /// - Moc: always bounded, since it is defined on the sky.
+    /// - Polygon: always bounded in a sky Frame; otherwise it depends on the
+    ///   order of the vertices and on negation.
+    /// - Interval: bounded when every axis has both limits and none is an
+    ///   excluded interval (a lower limit above the upper one); Negated is
+    ///   not consulted.
+    /// - CmpRegion and Prism: worked out from their component Regions.
+    /// - Stc: whether the Region it encapsulates is bounded.
+    ///
+    /// # Errors
+    ///
+    /// Passes on the errors of the class's test, which for compound Regions
+    /// may need their component Regions in a common Frame.
+    #[doc(alias = "Bounded")]
     fn is_bounded(&self) -> AstResult<bool>;
 
-    /// Whether adaptive meshing is enabled.
+    /// The Adaptive attribute: whether the area this Region covers adapts to
+    /// changes in its coordinate system.
+    ///
+    /// The coordinate system a Region describes changes when a Frame
+    /// attribute, such as System or an axis Unit, is set through its
+    /// [`Frame`] methods.
+    /// A Region on the sky in ICRS coordinates, for instance, may have its
+    /// System set to Galactic.
+    ///
+    /// While Adaptive is true, the numbers that define the area are mapped
+    /// from the old coordinate system into the new one, so the Region goes on
+    /// representing the same physical area.
+    /// A Region covering 2000 to 4000 Angstrom whose Unit is changed to nm
+    /// then covers 200 to 400 nm.
+    ///
+    /// While Adaptive is false, the numbers are left as they are, so the
+    /// physical area usually changes: the same Region would cover 2000 to
+    /// 4000 nm.
+    /// This is how to correct an attribute that was wrong when the Region
+    /// was made.
+    /// A Region made before its Epoch was known, for instance, would be
+    /// mapped from the default Epoch to the correct one if the Epoch were
+    /// set while it is adaptive, so Adaptive should be set false for the
+    /// change.
+    ///
+    /// Default: true.
+    ///
+    /// See the [`Region`] example.
+    #[doc(alias = "Adaptive")]
     fn is_adaptive(&self) -> bool;
 
-    /// Whether `Adaptive` has been explicitly set (C `TestAdaptive`).
+    /// Whether [`Adaptive`](Region::is_adaptive) has been set.
     fn test_adaptive(&self) -> bool;
 
-    /// Store `Adaptive` together with its explicitly-set state, as C's raw
-    /// field assignment `this->adaptive = that->adaptive` does.
+    /// Store `Adaptive` together with whether it is set.
     #[doc(hidden)]
+    // C: the raw field assignment `this->adaptive = that->adaptive`.
     fn set_adaptive_raw(&mut self, adaptive: bool, set: bool);
 
-    /// Set the adaptive meshing flag (C `astSetAdaptive`).
+    /// Set [`Adaptive`](Region::is_adaptive).
     fn set_adaptive(&mut self, adaptive: bool) {
         self.set_adaptive_raw(adaptive, true);
     }
 
-    /// Clear `Adaptive`, reverting to its default of true (C
-    /// `astClearAdaptive`).
+    /// Clear [`Adaptive`](Region::is_adaptive), reverting to its default of
+    /// true.
     fn clear_adaptive(&mut self) {
         self.set_adaptive_raw(true, false);
     }
@@ -325,15 +629,38 @@ pub trait Region: Frame + Mapping + AsDynRegion {
     // Geometry queries
     // ------------------------------------------------------------------
 
-    /// Bounding box of this Region within the Frame it represents, i.e. its
-    /// *current* Frame.
+    /// The bounds of a box that just contains this Region, as
+    /// `(lower, upper)`, each with one value per axis.
     ///
-    /// Mirrors C `astGetRegionBounds` (region.c:8948). Returns
-    /// `(lower, upper)`, each of length `naxes()`. The Negated attribute is
-    /// ignored, so the box encloses the un-negated Region. An axis with no
-    /// extent reports a lower bound above its upper bound; an axis whose bounds
-    /// cannot be determined reports
-    /// [`BAD_VALUE`](crate::constants::BAD_VALUE) for both.
+    /// The bounds are axis values in the Frame the Region represents.
+    /// [`Negated`](Region::is_negated) is ignored: the box contains the
+    /// Region as it would be if it were not negated.
+    /// An axis with no lower limit gives `-f64::MAX`, the same value as
+    /// [`BAD_VALUE`](crate::constants::BAD_VALUE), and one with no upper
+    /// limit gives `f64::MAX`.
+    /// An axis on which the Region has no extent gives a lower bound above
+    /// its upper bound, which differs from an axis on which the Region has a
+    /// constant value: both bounds are then that value.
+    /// An axis whose bounds cannot be determined gives `BAD_VALUE` for both.
+    ///
+    /// # Errors
+    ///
+    /// Passes on the errors of meshing the boundary and of transforming the
+    /// mesh into the Frame the Region represents.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ast_core::frames::BasicFrameBuilder;
+    /// use ast_core::regions::{CircleBuilder, Region};
+    ///
+    /// let frame = BasicFrameBuilder::new(2).build()?;
+    /// let circle = CircleBuilder::new(frame, vec![1.0, 2.0])?.radius(1.0).build()?;
+    /// let (lbnd, ubnd) = circle.get_region_bounds()?;
+    /// assert_eq!((lbnd, ubnd), (vec![0.0, 1.0], vec![2.0, 3.0]));
+    /// # Ok::<(), ast_core::error::AstError>(())
+    /// ```
+    #[doc(alias = "astGetRegionBounds")]
     fn get_region_bounds(&self) -> AstResult<(Vec<f64>, Vec<f64>)>;
 
     /// Bounding box of this Region in its *base* Frame.
@@ -381,58 +708,142 @@ pub trait Region: Frame + Mapping + AsDynRegion {
         Ok((lbnd, ubnd))
     }
 
-    /// A disc in the current Frame that encloses this 2-dimensional Region,
-    /// as `(centre, radius)`, the radius measured as the Frame measures
-    /// distance (an arc on the sky). An unbounded Region gives a bad centre
-    /// and radius, and a Region that is not 2-dimensional is AST__INVAR.
+    /// The center and radius of a disc that just contains this 2-D Region,
+    /// as `(center, radius)`.
     ///
-    /// region.c `GetRegionDisc`, which no class overrides: see
-    /// [`region_disc`].
+    /// The center is a pair of axis values in the Frame the Region
+    /// represents, and the radius is a distance as that Frame measures it,
+    /// an arc on the sky.
+    /// [`Negated`](Region::is_negated) is ignored: the disc contains the
+    /// Region as it would be if it were not negated.
+    /// An unbounded Region gives [`BAD_VALUE`](crate::constants::BAD_VALUE)
+    /// for the center and the radius.
+    /// It is [`region_disc`] applied to this Region.
+    ///
+    /// # Errors
+    ///
+    /// - [`ErrorCode::Invar`] if the Region is not 2-dimensional.
+    /// - Otherwise passes on the errors of [`region_disc`].
+    // C: region.c `GetRegionDisc`, which no class overrides.
+    #[doc(alias = "astGetRegionDisc")]
     fn get_region_disc(&self) -> AstResult<(Vec<f64>, f64)> {
         region_disc(self.as_dyn_region())
     }
 
-    /// Get a mesh of points on the boundary of this region.
+    /// A mesh of points on the boundary of this Region, in the Frame it was
+    /// defined in (the base Frame of its FrameSet).
     ///
-    /// The mesh is in the base frame of the encapsulated FrameSet.
-    /// The number of points is approximately [`mesh_size()`](Region::mesh_size).
+    /// The number of points is about [`MeshSize`](Region::mesh_size).
+    /// [`region_mesh`](Region::region_mesh) gives the mesh in the Frame the
+    /// Region represents.
     fn get_region_mesh(&self) -> AstResult<PointSet>;
 
-    /// A mesh of points on the boundary of this region, in its current
-    /// Frame. Mirrors C `astGetRegionMesh` with `surface` set (region.c
-    /// `GetRegionMesh`): the current-Frame boundary mesh
-    /// ([`reg_mesh`](Region::reg_mesh)) normalised as one contiguous group
-    /// ([`Frame::norm_points`]), so a mesh crossing zero longitude does not
-    /// jump. Fails with `AST__MBBNF` for an unbounded region.
+    /// A mesh of points covering the boundary of this Region, in the Frame
+    /// it represents.
+    ///
+    /// The number of points is set by [`MeshSize`](Region::mesh_size).
+    /// If the coordinate system has changed since the Region was made, the
+    /// points are in the new system; a non-linear change can distort the
+    /// shape, so it may not match the class of the Region.
+    /// The points are normalized as one group
+    /// ([`Frame::norm_points`]), so the mesh of a Region on the sky that
+    /// crosses zero longitude does not jump by 2 pi: it includes longitudes
+    /// below zero or above 2 pi instead.
+    /// [`region_grid`](Region::region_grid) fills the interior instead.
+    ///
+    /// # Errors
+    ///
+    /// [`ErrorCode::Mbbnf`] if the Region is unbounded.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ast_core::frames::BasicFrameBuilder;
+    /// use ast_core::regions::{CircleBuilder, Region};
+    ///
+    /// let frame = BasicFrameBuilder::new(2).build()?;
+    /// let mut circle = CircleBuilder::new(frame, vec![0.0, 0.0])?.radius(1.0).build()?;
+    /// circle.set_mesh_size(20);
+    /// let mesh = circle.region_mesh()?;
+    /// assert_eq!(mesh.npoint(), 20);
+    /// for i in 0..mesh.npoint() {
+    ///     let p = mesh.point(i);
+    ///     assert!((p[0].hypot(p[1]) - 1.0).abs() < 1e-9);
+    /// }
+    /// # Ok::<(), ast_core::error::AstError>(())
+    /// ```
+    ///
+    /// # See also
+    ///
+    /// `astGetRegionMesh`, with its `surface` argument set.
+    // C: region.c `GetRegionMesh` with `surface` set: the current-Frame
+    // boundary mesh (`reg_mesh`) normalized by `norm_points` as one group.
+    #[doc(alias = "astGetRegionMesh")]
     fn region_mesh(&self) -> AstResult<PointSet> {
         self.bounded_for_mesh()?;
         self.norm_points(&self.reg_mesh()?, true)
     }
 
-    /// A grid of points spread through this region, in its current Frame.
-    /// Mirrors C `astGetRegionMesh` with `surface` unset: the current-Frame
-    /// grid ([`reg_grid`](Region::reg_grid)) normalised as one contiguous
-    /// group. Fails with `AST__MBBNF` for an unbounded region.
+    /// A mesh of points filling the interior of this Region, in the Frame it
+    /// represents.
+    ///
+    /// The number of points is about [`MeshSize`](Region::mesh_size).
+    /// The points are normalized as for [`region_mesh`](Region::region_mesh),
+    /// which covers the boundary instead.
+    ///
+    /// # Errors
+    ///
+    /// [`ErrorCode::Mbbnf`] if the Region is unbounded.
+    ///
+    /// # See also
+    ///
+    /// `astGetRegionMesh`, with its `surface` argument unset.
+    // C: region.c `GetRegionMesh` with `surface` unset: the current-Frame
+    // grid (`reg_grid`) normalized as one group.
+    #[doc(alias = "astGetRegionMesh")]
     fn region_grid(&self) -> AstResult<PointSet> {
         self.bounded_for_mesh()?;
         self.norm_points(&self.reg_grid()?, true)
     }
 
-    /// Write a table of the points of this region's boundary mesh to standard
-    /// output, as C's public `astShowMesh` does (region.c `ShowMesh`); the
-    /// text is [`show_mesh_text`](Region::show_mesh_text).
+    /// Write to standard output a table of the axis values at a mesh of
+    /// points covering the boundary of this Region.
+    ///
+    /// The table is [`show_mesh_text`](Region::show_mesh_text): the title
+    /// `ttl`, if given, then one row of tab-separated axis values per point,
+    /// one for each axis of the Frame the Region represents, then a line
+    /// holding `ENDMESH`.
+    /// The values are formatted by each axis's Format when `format` is true,
+    /// and as plain floating point values otherwise.
+    /// The number of points is set by [`MeshSize`](Region::mesh_size).
+    ///
+    /// # Errors
+    ///
+    /// Passes on the errors of meshing the boundary and of formatting the
+    /// values.
+    // C: region.c `ShowMesh`.
+    #[doc(alias = "astShowMesh")]
     fn show_mesh(&self, format: bool, ttl: Option<&str>) -> AstResult<()> {
         print!("{}", self.show_mesh_text(format, ttl)?);
         Ok(())
     }
 
-    /// The table [`show_mesh`](Region::show_mesh) writes (region.c
-    /// `ShowMesh`): the title, if any, between blank lines; one line per
-    /// point of the current-Frame boundary mesh, normalised as one contiguous
-    /// group, giving each axis value followed by a tab; then `ENDMESH` and a
-    /// blank line. A bad value is `<bad>`; otherwise a value is formatted by
-    /// the axis Format when `format` is set, and as C's `%g` when it is not.
-    /// The number of points is set by MeshSize.
+    /// The table [`show_mesh`](Region::show_mesh) writes.
+    ///
+    /// It is the title, if any, between blank lines; one line per point of
+    /// the boundary mesh in the Frame the Region represents, normalized as
+    /// one group, giving each axis value followed by a tab; then `ENDMESH`
+    /// and a blank line.
+    /// A bad value is `<bad>`; otherwise a value is formatted by the axis
+    /// Format when `format` is true, and as the `%g` format gives it when it
+    /// is not.
+    /// The number of points is set by [`MeshSize`](Region::mesh_size).
+    ///
+    /// # Errors
+    ///
+    /// Passes on the errors of meshing the boundary and of formatting the
+    /// values.
+    // C: region.c `ShowMesh`.
     fn show_mesh_text(&self, format: bool, ttl: Option<&str>) -> AstResult<String> {
         let mesh = self.norm_points(&self.reg_mesh()?, true)?;
         let mut out = String::new();
@@ -513,17 +924,43 @@ pub trait Region: Frame + Mapping + AsDynRegion {
     /// with `AST__MBBNF` for an unbounded region.
     fn get_region_grid(&self) -> AstResult<PointSet>;
 
-    /// Get the defining points of this region in the base frame, as the
-    /// Region stores them (C's `this->points`); [`region_points`](Region::region_points)
-    /// gives them in the current Frame, as `astGetRegionPoints` does.
+    /// The positions that define this Region, in the Frame it was defined
+    /// in (the base Frame of its FrameSet), as the Region stores them.
     ///
-    /// The meaning depends on the concrete region type (e.g., centre +
-    /// edge for Circle, corners for Box).
+    /// [`region_points`](Region::region_points) gives them in the Frame the
+    /// Region represents, and says what they are for each class.
+    // C: the Region's `points` PointSet.
     fn get_region_points(&self) -> AstResult<PointSet>;
 
-    /// The defining points of this Region in its current Frame, as C's
-    /// public `astGetRegionPoints` returns them (region.c `GetRegionPoints`):
-    /// the stored base-Frame points transformed by the FrameSet.
+    /// The positions that define this Region, in the Frame it represents.
+    ///
+    /// If the coordinate system has changed since the Region was made, the
+    /// points are in the new system; a non-linear change can distort the
+    /// shape, so it may not match the class of the Region.
+    /// What the points are depends on the class:
+    ///
+    /// - Box: the center, then a corner.
+    /// - Circle: the center, then a point on the circumference.
+    /// - Ellipse: the center, then the end of one axis of the ellipse, then
+    ///   another point on the circumference.
+    /// - Interval: the lower bounds, then the upper bounds, as it was made
+    ///   with them; on an axis with an excluded interval the lower bound is
+    ///   above the upper one.
+    /// - PointList: the points it was made with.
+    /// - Polygon: the vertices it was made with.
+    /// - CmpRegion, Prism, NullRegion, Moc and Stc: no points; the component
+    ///   Regions of a CmpRegion or Prism have points of their own.
+    ///
+    /// # Errors
+    ///
+    /// Passes on the error of transforming the points.
+    ///
+    /// # See also
+    ///
+    /// `astGetRegionPoints`.
+    // C: region.c `GetRegionPoints`: the stored base-Frame points
+    // transformed by the FrameSet.
+    #[doc(alias = "astGetRegionPoints")]
     fn region_points(&self) -> AstResult<PointSet> {
         self.get_region_frameset()
             .transform(&self.get_region_points()?, true)
@@ -533,10 +970,20 @@ pub trait Region: Frame + Mapping + AsDynRegion {
     // Frame access
     // ------------------------------------------------------------------
 
-    /// Get a copy of the current frame of this region's encapsulated FrameSet.
+    /// A copy of the Frame this Region represents.
+    ///
+    /// Changing the copy has no effect on the Region; to change the Region,
+    /// set the attributes through its own [`Frame`] methods.
+    #[doc(alias = "astGetRegionFrame")]
     fn get_region_frame(&self) -> DynFrame;
 
-    /// Get a copy of the encapsulated FrameSet (base → current).
+    /// A copy of the FrameSet this Region holds.
+    ///
+    /// Its base Frame is the Frame the Region was defined in, and its current
+    /// Frame is the Frame the Region now represents, the same Frame as
+    /// [`get_region_frame`](Region::get_region_frame) gives.
+    /// Changing the copy has no effect on the Region.
+    #[doc(alias = "astGetRegionFrameSet")]
     fn get_region_frameset(&self) -> FrameSet;
 
     /// Mutable access to the encapsulated FrameSet.
@@ -656,30 +1103,45 @@ pub trait Region: Frame + Mapping + AsDynRegion {
         out
     }
 
-    /// Set the uncertainty region associated with boundary positions.
+    /// Give this Region a new uncertainty.
     ///
-    /// Faithful port of C `astSetUnc` (region.c:10754). Each Region may carry
-    /// an uncertainty Region describing the positional uncertainty of points
-    /// on its boundary. The supplied `unc` must be of a centro-symmetric class
-    /// (`Box`, `Circle`, `Ellipse`) or a `Prism` of such — i.e. a class that
-    /// can be re-centred, and its Frame must be convertible to this Region's
-    /// base Frame. Either failure is reported as [`ErrorCode::Ncpin`], the
-    /// status C's second `astError` leaves, and leaves this Region with no
-    /// uncertainty, as C annuls the old one first.
+    /// Every Region has an uncertainty, the uncertainty of the positions on
+    /// its boundary, which is itself a Region.
+    /// The uncertainty of a boundary point is the area the uncertainty
+    /// Region covers when it is shifted to be centered on that point; it is
+    /// taken to be the same for every point.
+    /// An uncertainty is usually given when a Region is built, but this
+    /// replaces it at any time.
+    /// A Region with none set uses a default (see
+    /// [`get_unc`](Region::get_unc)).
     ///
-    /// The supplied Region is deep-copied and remapped into this Region's base
-    /// Frame, negated if it is unbounded (so it becomes bounded), tagged to omit
-    /// its FrameSet from dumps when the base→current Mapping simplifies to a
-    /// UnitMap, and re-centred at this Region's first defining point.
+    /// `unc` must be of a class that has a center, that is, one whose every
+    /// instance is centro-symmetric: a Box, Circle or Ellipse, an Interval
+    /// equivalent to a Box, or a Prism of such Regions.
+    /// It is mapped into the Frame this Region was defined in, so its Frame
+    /// must be convertible to that one, and it is centered on the first point
+    /// that defines this Region.
+    /// An unbounded `unc` is negated, which makes it bounded.
+    /// Later changes to the `unc` passed in have no effect on this Region.
     ///
-    /// This is a shared default; the C body is fully generic (it touches only
-    /// the FrameSet, defining points, uncertainty field, and cache).
+    /// # Errors
     ///
-    /// Every route that installs an uncertainty goes through here, as in C:
-    /// the builders (C's constructor, region.c:13372), the simplifier
-    /// (region.c:11303-11305) and the cross-class merges. The one exception is
-    /// the loader, which stores what the Channel read verbatim
-    /// (region.c:13559), so reading a Region back is an identity.
+    /// - [`ErrorCode::Ncpin`] if `unc` has no center, or its Frame cannot be
+    ///   converted to the Frame this Region was defined in.
+    ///   This Region then has no uncertainty set.
+    /// - Otherwise passes on the errors of converting and mapping `unc`.
+    // C: region.c `SetUnc` (region.c:10754). The body is fully generic: it
+    // touches only the FrameSet, defining points, uncertainty field and
+    // cache, so this is a shared default. Every route that installs an
+    // uncertainty goes through here, as in C: the builders (C's
+    // constructor, region.c:13372), the simplifier (region.c:11303-11305)
+    // and the cross-class merges. The one exception is the loader, which
+    // stores what the Channel read verbatim (region.c:13559), so reading a
+    // Region back is an identity. Ncpin is the status C's second `astError`
+    // leaves, and C annuls the old uncertainty first. The uncertainty is
+    // tagged to omit its FrameSet from dumps when its base->current Mapping
+    // simplifies to a UnitMap.
+    #[doc(alias = "astSetUnc")]
     fn set_uncertainty(&mut self, unc: DynRegion) -> AstResult<()> {
         // C annuls any existing uncertainty before validating the new one
         // (region.c:10826-10832), so every failure below leaves the Region
@@ -776,13 +1238,62 @@ pub trait Region: Frame + Mapping + AsDynRegion {
         Ok(())
     }
 
-    /// Get a copy of the uncertainty region, if one has been set.
+    /// A copy of the uncertainty Region set on this Region, if one has been
+    /// set, as the Region stores it: in the Frame the Region was defined in.
+    ///
+    /// [`get_unc`](Region::get_unc) gives the uncertainty in the Frame the
+    /// Region represents.
     fn get_uncertainty(&self) -> Option<DynRegion>;
 
-    /// The uncertainty of positions in this Region, in its current Frame.
+    /// The uncertainty of positions in this Region, as a Region in the Frame
+    /// this Region represents.
     ///
-    /// With `def` true, a Region with no uncertainty set gives its default
-    /// uncertainty; with `def` false it gives `None`.
+    /// See [`set_uncertainty`](Region::set_uncertainty) for what an
+    /// uncertainty is.
+    /// If an uncertainty has been set, it is returned, mapped into the
+    /// current coordinate system of this Region if that has changed since
+    /// it was set (by setting a Frame attribute such as System, or by
+    /// [`map_region`](Region::map_region)).
+    /// If none has been set, `def` true gives the default uncertainty that
+    /// is used in its place, and `def` false gives `None`.
+    ///
+    /// The default uncertainty is:
+    ///
+    /// - most classes: a Box 1.0E-6 of the size of the Region's bounding
+    ///   box on each axis, centered on the box; on an axis where the box has
+    ///   no width, 1.0E-6 of the axis value, or 1.0E-12 where that value is
+    ///   zero;
+    /// - CmpRegion: the uncertainty set on its first component Region, or
+    ///   else the one set on its second, or else as for most classes;
+    /// - Prism: the uncertainties of its two component Regions combined, each
+    ///   the one set or else that component's default;
+    /// - Interval: as for most classes, measured on the Interval's own
+    ///   limits;
+    /// - NullRegion: a Circle of zero radius at the origin.
+    ///
+    /// # Errors
+    ///
+    /// Passes on the errors of building the default and of mapping the
+    /// uncertainty into the Frame this Region represents.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ast_core::frames::BasicFrameBuilder;
+    /// use ast_core::regions::{CircleBuilder, Region};
+    ///
+    /// let frame = BasicFrameBuilder::new(2).build()?;
+    /// let mut circle = CircleBuilder::new(frame.clone(), vec![0.0, 0.0])?.radius(1.0).build()?;
+    /// assert!(circle.get_unc(false)?.is_none());
+    /// assert!(circle.get_unc(true)?.is_some());
+    ///
+    /// let unc = CircleBuilder::new(frame, vec![0.0, 0.0])?.radius(0.01).build()?;
+    /// circle.set_uncertainty(Box::new(unc))?;
+    /// let (lbnd, ubnd) = circle.get_unc(false)?.unwrap().get_region_bounds()?;
+    /// assert!((ubnd[0] - lbnd[0] - 0.02).abs() < 1e-12);
+    /// # Ok::<(), ast_core::error::AstError>(())
+    /// ```
+    #[doc(alias = "astGetUnc")]
     fn get_unc(&self, def: bool) -> AstResult<Option<DynRegion>> {
         // C: region.c `GetUnc`, which copies the result (clearing RegionFS
         // throughout) and clears RegionFS again, so a dump of it carries its
@@ -1037,16 +1548,49 @@ pub trait Region: Frame + Mapping + AsDynRegion {
     // Remapping
     // ------------------------------------------------------------------
 
-    /// Map this region into a new frame.
+    /// This Region described in another coordinate system.
     ///
-    /// The `mapping` transforms coordinates from this region's current Frame
-    /// to the new `frame`. Returns a new Region representing the same area in
-    /// the new coordinate system.
+    /// `mapping` transforms positions from the coordinate system this Region
+    /// represents to the one `frame` describes.
+    /// It must have both a forward and an inverse transformation, and they
+    /// should be true inverses of each other: a position transformed forward
+    /// and then back should come back unchanged.
+    /// Some Mappings, such as a PermMap, MathMap or SphMap, can fail that.
     ///
-    /// Port of C's public `astMapRegion` (`astMapRegionId_`, region.c:13947):
-    /// the Region [`reg_map_region`](Region::reg_map_region) returns,
-    /// simplified, so a Box mapped through a PermMap comes back as a Box in
-    /// `frame`.
+    /// The result is a new Region covering, in `frame`, the area that
+    /// corresponds to this Region.
+    /// It is simplified, so it need not be of the same class: a Box mapped
+    /// through a PermMap comes back as a Box, but a Circle mapped through a
+    /// Mapping that scales its axes differently does not stay a Circle.
+    /// The uncertainty of this Region is mapped too.
+    ///
+    /// # Errors
+    ///
+    /// - [`ErrorCode::Nodef`] if `mapping` lacks a forward or an inverse
+    ///   transformation, or if the forward transformation gives bad values
+    ///   for the points that define this Region.
+    /// - [`ErrorCode::Inter`] if simplifying the result does not give a
+    ///   Region, which would be an internal error.
+    /// - Otherwise passes on the errors of transforming the points and of
+    ///   simplifying the result.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ast_core::frames::BasicFrameBuilder;
+    /// use ast_core::mappings::ZoomMap;
+    /// use ast_core::regions::{CircleBuilder, Region};
+    ///
+    /// let frame = BasicFrameBuilder::new(2).build()?;
+    /// let circle = CircleBuilder::new(frame.clone(), vec![1.0, 1.0])?.radius(1.0).build()?;
+    /// let mapped = circle.map_region(&ZoomMap::new(2, 2.0)?, &frame)?;
+    /// let (lbnd, ubnd) = mapped.get_region_bounds()?;
+    /// assert_eq!((lbnd, ubnd), (vec![0.0, 0.0], vec![4.0, 4.0]));
+    /// # Ok::<(), ast_core::error::AstError>(())
+    /// ```
+    // C: the public `astMapRegion` (`astMapRegionId_`, region.c:13947): the
+    // Region `reg_map_region` returns, simplified.
+    #[doc(alias = "astMapRegion")]
     fn map_region(&self, mapping: &dyn Mapping, frame: &dyn Frame) -> AstResult<DynRegion> {
         let mapped = self.reg_map_region(mapping, frame)?;
         let simplified = (mapped.as_ref() as &dyn Mapping).simplify()?;
@@ -1777,17 +2321,29 @@ pub(crate) fn class_name(region: &dyn std::any::Any) -> &'static str {
     }
 }
 
-/// region.c `GetRegionDisc`: a disc enclosing a 2-dimensional Region.
+/// The center and radius of a disc that just contains a 2-D Region, as
+/// [`Region::get_region_disc`] gives them.
 ///
-/// The Region is taken un-negated. Its boundary mesh in the current Frame
-/// may lie on the sky, so its centre is found in a local system: distances
-/// parallel and perpendicular to the line from the first mesh point to the
-/// one half way round, from `resolve`. The centre of the bounding box of
-/// about 200 mesh points in that system is taken back into the Frame with
-/// `offset2`, and the radius is the greatest distance from it to a mesh
-/// point, increased by one part in 10^6 for rounding. A centre and radius
-/// that cannot be found (an unbounded Region, or bad first mesh points) are
-/// bad, where C leaves the caller's centre unchanged.
+/// The Region is taken un-negated.
+/// Its boundary mesh in the Frame it represents may lie on the sky, so its
+/// center is found in a local system: distances parallel and perpendicular
+/// to the line from the first mesh point to the one half way round, from
+/// [`Frame::resolve`].
+/// The center of the bounding box of about 200 mesh points in that system is
+/// taken back into the Frame with [`Frame::offset2`], and the radius is the
+/// greatest distance from it to a mesh point, increased by one part in 10^6
+/// for rounding.
+/// A center and radius that cannot be found (for an unbounded Region, or
+/// bad first mesh points) are [`BAD_VALUE`](crate::constants::BAD_VALUE).
+///
+/// # Errors
+///
+/// - [`ErrorCode::Invar`] if the Region is not 2-dimensional.
+/// - Otherwise passes on the errors of meshing the boundary and of the
+///   Frame's geometry methods.
+// C: region.c `GetRegionDisc`. For an unbounded Region C leaves the
+// caller's center array unchanged; the port returns bad values.
+#[doc(alias = "astGetRegionDisc")]
 pub fn region_disc(region: &dyn Region) -> AstResult<(Vec<f64>, f64)> {
     if region.naxes() != 2 {
         return Err(AstError::new(
