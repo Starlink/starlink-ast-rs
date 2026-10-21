@@ -799,7 +799,7 @@ pub(crate) fn evaluate(
                     if x1 != BAD_VALUE {
                         let x2 = stack[slot2][point];
                         if x2 != BAD_VALUE {
-                            stack[slot1][point] = bitwise_op(x1, x2, |a, b| a & b);
+                            stack[slot1][point] = bit_oper(x1, x2, |a, b| a & b);
                         } else {
                             stack[slot1][point] = BAD_VALUE;
                         }
@@ -815,7 +815,7 @@ pub(crate) fn evaluate(
                     if x1 != BAD_VALUE {
                         let x2 = stack[slot2][point];
                         if x2 != BAD_VALUE {
-                            stack[slot1][point] = bitwise_op(x1, x2, |a, b| a | b);
+                            stack[slot1][point] = bit_oper(x1, x2, |a, b| a | b);
                         } else {
                             stack[slot1][point] = BAD_VALUE;
                         }
@@ -831,7 +831,7 @@ pub(crate) fn evaluate(
                     if x1 != BAD_VALUE {
                         let x2 = stack[slot2][point];
                         if x2 != BAD_VALUE {
-                            stack[slot1][point] = bitwise_op(x1, x2, |a, b| a ^ b);
+                            stack[slot1][point] = bit_oper(x1, x2, |a, b| a ^ b);
                         } else {
                             stack[slot1][point] = BAD_VALUE;
                         }
@@ -1119,24 +1119,85 @@ fn tristate_or(x1: f64, x2: f64) -> f64 {
     }
 }
 
-/// Bitwise operation on f64 values using i64 reinterpretation.
-fn bitwise_op(x1: f64, x2: f64, op: impl Fn(i64, i64) -> i64) -> f64 {
-    let b1 = x1.to_bits() as i64;
-    let b2 = x2.to_bits() as i64;
-    let result = op(b1, b2);
-    f64::from_bits(result as u64)
-}
+/// A bit-wise operation on two values, each read as a fixed-point binary number with negative values in two's complement, so that integer arguments give the result of the integer operation.
+///
+/// Both values are first brought to a common power of two, as fractions in [0, 1).
+/// A negative value's fraction is then subtracted from 2 to form its two's complement; a fraction that has underflowed below twice the machine epsilon is taken as that bound, so that the sign extends into every bit.
+/// The leading 64 bits of each fraction, the sign bit first, are combined by `op`, and the result is returned to the common power of two.
+fn bit_oper(x1: f64, x2: f64, op: impl Fn(u64, u64) -> u64) -> f64 {
+    const EPS: f64 = 2.0 * f64::EPSILON;
+    const SCALE1: f64 = 9_223_372_036_854_775_808.0; // 2**63
+    const RSCALE1: f64 = 1.0 / SCALE1;
+    const SIGNBIT: u64 = 1 << 63;
 
-fn frexp(x: f64) -> (f64, i32) {
-    if x == 0.0 {
-        return (0.0, 0);
+    let (mut frac1, expon1) = frexp(x1.abs());
+    let (mut frac2, expon2) = frexp(x2.abs());
+    let mut expon = expon1;
+    if expon2 > expon1 {
+        expon = expon2;
+        frac1 = ldexp(frac1, expon1 - expon);
+    } else if expon1 > expon2 {
+        frac2 = ldexp(frac2, expon2 - expon);
     }
-    let bits = x.to_bits();
-    let exp = ((bits >> 52) & 0x7FF) as i32 - 1022;
-    let frac_bits = (bits & 0x800F_FFFF_FFFF_FFFF) | (1022_u64 << 52);
-    (f64::from_bits(frac_bits), exp)
+    if x1 < 0.0 {
+        frac1 = 2.0 - if frac1 > EPS { frac1 } else { EPS };
+    }
+    if x2 < 0.0 {
+        frac2 = 2.0 - if frac2 > EPS { frac2 } else { EPS };
+    }
+
+    // A 64-bit block holds every bit a double's fraction can carry, so one block covers the whole value.
+    let b = op((frac1 * SCALE1) as u64, (frac2 * SCALE1) as u64);
+    let mut result = b as f64 * RSCALE1;
+    if b & SIGNBIT != 0 {
+        result -= 2.0;
+    }
+    ldexp(result, expon)
 }
 
-fn ldexp(frac: f64, exp: i32) -> f64 {
-    frac * crate::math::powi(2.0_f64, exp)
+/// Split `x` into a fraction of magnitude in [0.5, 1) with the sign of `x` and a power of two, as C's `frexp` does.
+/// Zero, infinities and NaN are returned unchanged with a power of zero.
+fn frexp(x: f64) -> (f64, i32) {
+    let bits = x.to_bits();
+    let biased = ((bits >> 52) & 0x7ff) as i32;
+    if biased == 0 {
+        if x == 0.0 {
+            return (x, 0);
+        }
+        // A subnormal: scale it into the normal range by 2**64 first.
+        let (frac, expon) = frexp(x * f64::from_bits(0x43f0_0000_0000_0000));
+        return (frac, expon - 64);
+    }
+    if biased == 0x7ff {
+        return (x, 0);
+    }
+    let frac_bits = (bits & 0x800f_ffff_ffff_ffff) | (0x3fe_u64 << 52);
+    (f64::from_bits(frac_bits), biased - 0x3fe)
+}
+
+/// `x` times 2 to the power `n`, rounded once, as C's `ldexp` does.
+/// The result overflows to infinity, or underflows through the subnormals to zero, only where the exact product does.
+fn ldexp(x: f64, mut n: i32) -> f64 {
+    let two_1023 = f64::from_bits(0x7fe0_0000_0000_0000);
+    // 2**-1022 * 2**53: a step down that keeps 53 bits clear of the subnormal range, so that only the final multiplication rounds.
+    let two_m969 = f64::from_bits(0x0010_0000_0000_0000) * f64::from_bits(0x4340_0000_0000_0000);
+    let mut y = x;
+    if n > 1023 {
+        y *= two_1023;
+        n -= 1023;
+        if n > 1023 {
+            y *= two_1023;
+            n -= 1023;
+            n = n.min(1023);
+        }
+    } else if n < -1022 {
+        y *= two_m969;
+        n += 1022 - 53;
+        if n < -1022 {
+            y *= two_m969;
+            n += 1022 - 53;
+            n = n.max(-1022);
+        }
+    }
+    y * f64::from_bits(((0x3ff + n) as u64) << 52)
 }

@@ -411,3 +411,58 @@ fn malformed_expressions_report_c_error_codes() {
     assert_eq!(eval_at("x.or.1", 0.0), 1.0);
     assert_eq!(eval_at("1.e1 + 1.d1 + .5e-1 + 2.5d+1", 0.0), 45.05);
 }
+
+/// The bit-wise operators read each value as a fixed-point binary number
+/// with negative values in two's complement, as C does, so integer arguments
+/// give the integer results and fractional bits take part too. Expected
+/// values are from the C library.
+#[test]
+fn bitwise_operators_act_on_fixed_point_values() {
+    let cases: &[(&str, f64)] = &[
+        ("2^3", 1.0),
+        ("2|1", 3.0),
+        ("1&3", 1.0),
+        ("-1&3", 3.0),
+        ("-2|1", -1.0),
+        ("-1^-1", 0.0),
+        ("0.5|0.25", 0.75),
+        ("1.5^0.75", 1.25),
+        ("-0.5&1", 1.0),
+        ("3&-1e300", 0.0),
+        ("<max>|0", f64::MAX),
+        ("1e-310|1", 1.0),
+        ("1e-320|1e-310", 1.000_000_000_022_13e-310),
+        ("1e308&1e308", 1e308),
+        ("-<max>|1", -f64::MAX),
+        ("0&0", 0.0),
+        ("-0^1", 1.0),
+        ("3.75&-2.5", 1.5),
+        ("1e20|1", 1e20),
+        ("1e-20^-1", -1.0),
+        ("<min>|-<min>", -f64::MIN_POSITIVE),
+        ("x|2", 2.0),
+        ("-1&-1", -1.0),
+    ];
+    for &(expr, expected) in cases {
+        assert_eq!(eval_at(expr, 0.0), expected, "{expr}");
+    }
+}
+
+/// The shift operators scale by a power of two with a single rounding, so
+/// they reach through the subnormal numbers and up to the largest double.
+/// Expected values are from the C library.
+#[test]
+fn shift_operators_scale_exactly() {
+    let cases: &[(&str, f64)] = &[
+        ("1e-310<<1", 2e-310),
+        ("<max>>>1<<1", f64::MAX),
+        ("1<<-1074", 5e-324),
+        ("1<<-1075", 0.0),
+        ("1.5<<-1074", 1e-323),
+        ("<min>>>3", 2.781_342_323_134e-309),
+        ("0.75<<1024", 1.348_269_851_146_737e308),
+    ];
+    for &(expr, expected) in cases {
+        assert_eq!(eval_at(expr, 0.0), expected, "{expr}");
+    }
+}
