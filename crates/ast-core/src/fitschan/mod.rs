@@ -2343,7 +2343,7 @@ impl FitsChan {
     }
 
     /// Set [Warnings](Self::warning_conditions): the names of the
-    /// conditions to report, separated by white space, in any case.
+    /// conditions to report, separated by spaces, in any case.
     ///
     /// # Errors
     ///
@@ -2501,9 +2501,19 @@ impl FitsChan {
     /// Axes described with the `-TAB` algorithm, which have `-TAB` in their
     /// CTYPE, take their values from a look-up table held in a FITS binary
     /// table.
-    /// When TabOK is zero or negative, the algorithm is not supported: a
-    /// write never uses it, and a read does not look up tables for such
-    /// axes.
+    /// When TabOK is zero or negative, the algorithm is not supported.
+    /// A write never uses it, and a FrameSet that needs it is not written:
+    /// [`Channel::write`] returns 0.
+    /// A read does not look up tables, and takes the `-TAB` code in CTYPE as
+    /// it stands:
+    ///
+    /// - a spectral axis, such as `WAVE-TAB`, makes the read fail with
+    ///   [`ErrorCode::Bdfts`], as `-TAB` is not a spectral algorithm it can
+    ///   implement;
+    /// - celestial axes, such as `RA---TAB` and `DEC--TAB`, make it fail with
+    ///   [`ErrorCode::Bdfts`], as `TAB` is not a projection;
+    /// - any other axis, such as `FOO--TAB`, is read with no error, without
+    ///   a look-up table.
     ///
     /// When TabOK is positive, a write uses the algorithm for an axis if no
     /// other FITS-WCS algorithm can describe it (or whenever it can, with

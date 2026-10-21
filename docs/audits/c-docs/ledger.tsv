@@ -71,7 +71,7 @@ attribute	FitsTol	fitschan.c	FitsChan::fits_tol		yes
 attribute	Card	fitschan.c	FitsChan::card		yes	0 for a FitsChan with no cards, as the C code gives, where the header implies 1 (c-library-quirks.md)
 attribute	Encoding	fitschan.c	FitsChan::encoding		yes	an Encoding enum; the default is chosen from the cards already held and does not read a source not yet read, where C reads it first (PLAN.md §2); the header lists the default choice in another order than the code, which the docs follow (c-library-quirks.md)
 attribute	DefB1950	fitschan.c	FitsChan::def_b1950		yes	its default follows the Encoding default, so the default is chosen from the cards already held and does not read a source not yet read, where C reads it first (PLAN.md §2)
-attribute	TabOK	fitschan.c	FitsChan::tab_ok		yes
+attribute	TabOK	fitschan.c	FitsChan::tab_ok		yes	with TabOK not positive a read of a -TAB header fails with Bdfts for spectral and celestial axes and reads other axes without error, as the C code does; the header says astRead returns NULL (c-library-quirks.md)
 attribute	ForceTab	fitschan.c	FitsChan::force_tab		yes
 attribute	IgnoreBadAlt	fitschan.c	FitsChan::ignore_bad_alt		yes
 attribute	CarLin	fitschan.c	FitsChan::car_lin		yes
