@@ -60,7 +60,8 @@ const NOT_PORTED_FILES: [&str; 10] = [
 
 fn init_ledger(tsv: &Path) -> Result<(), String> {
     println!("kind\tname\tfile\trust_item\treason\treviewed\tnote");
-    for (kind, name, _, file) in parse_headers_tsv(&read(tsv)?) {
+    for row in parse_headers_tsv(&read(tsv)?) {
+        let (kind, name, file) = (row.kind, row.name, row.file);
         if NOT_PORTED_FILES.contains(&file.as_str()) {
             println!("{kind}\t{name}\t{file}\t\tnot-ported\tyes\t");
         } else {

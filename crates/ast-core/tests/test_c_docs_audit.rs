@@ -18,7 +18,7 @@ fn headers() -> Vec<(String, String, String)> {
     let text = std::fs::read_to_string(audit_dir().join("c-headers.tsv")).unwrap();
     parse_headers_tsv(&text)
         .into_iter()
-        .map(|(k, n, _, f)| (k.to_string(), n, f))
+        .map(|r| (r.kind.to_string(), r.name, r.file))
         .collect()
 }
 
@@ -118,7 +118,7 @@ fn every_mapped_row_has_its_alias_on_its_item() {
     let aliases_by_name: BTreeMap<String, String> =
         parse_headers_tsv(&std::fs::read_to_string(audit_dir().join("c-headers.tsv")).unwrap())
             .into_iter()
-            .map(|(_, name, alias, _)| (name, alias))
+            .map(|r| (r.name, r.alias))
             .collect();
     let found: BTreeSet<_> = source_aliases().into_iter().collect();
     // rustdoc rejects an alias equal to the item's own name, so a row whose
@@ -186,7 +186,7 @@ fn rendered_c_references() -> (BTreeMap<String, Vec<String>>, BTreeMap<String, u
     let public: BTreeSet<String> =
         parse_headers_tsv(&std::fs::read_to_string(audit_dir().join("c-headers.tsv")).unwrap())
             .into_iter()
-            .map(|(_, _, alias, _)| alias)
+            .map(|r| r.alias)
             .collect();
     // `target/doc`, or `target/<triple>/doc` when a build target is set.
     let mut roots = vec![target.join("doc")];

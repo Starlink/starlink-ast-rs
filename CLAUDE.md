@@ -438,7 +438,7 @@ The C ABI is **frozen**. Existing applications must keep linking.
   platform-drifted in its values: take the cards from a fresh capture and keep
   the values, which is what `tools/oracle_fixtures/merge_card_hunks.py` does.
   Regenerate in the same commit range as the pin move.
-  Also run `tools/oracle_fixtures/check_c_headers_fresh.sh`; new or changed C documentation headers need ledger rows in `docs/audits/c-docs/ledger.tsv`.
+  Also run `tools/oracle_fixtures/check_c_headers_fresh.sh`; a new C documentation header needs a row in `docs/audits/c-docs/ledger.tsv`, and a header whose body changed (its `digest` column differs) needs its row re-reviewed against the new C text and the Rust docs updated to match.
 - **Design spec** (authoritative for API shape and the reasoning behind it):
   [`docs/superpowers/specs/2026-04-20-rust-port-design.md`](docs/superpowers/specs/2026-04-20-rust-port-design.md).
   This is *the* overarching port design — the one document that fixes the

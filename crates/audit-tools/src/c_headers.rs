@@ -158,27 +158,78 @@ pub fn c_headers(src: &str, file: &str) -> Vec<CHeader> {
     out
 }
 
-/// A TSV of `headers`, one row per header, after a `kind\tname\talias\tfile`
-/// line. Rows are sorted by file, then by position.
+/// Sections of a header that record its provenance rather than document the
+/// item; [`text_digest`] leaves them out.
+const UNDIGESTED_SECTIONS: [&str; 4] = ["Authors:", "Copyright:", "History:", "Licence:"];
+
+/// A stable digest of what a header body documents: FNV-1a 64 of its UTF-8
+/// bytes, as 16 lower-case hex digits.
+///
+/// A section heading is a line with no leading space that ends in `:`; the
+/// sections named in [`UNDIGESTED_SECTIONS`] are skipped, so a new `History:`
+/// entry does not change the digest but any change to the documentation does.
+/// It identifies the text; it is not a cryptographic hash.
+pub fn text_digest(text: &str) -> String {
+    const OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
+    const PRIME: u64 = 0x0000_0100_0000_01b3;
+    let mut hash = OFFSET;
+    let mut skipping = false;
+    for line in text.split('\n') {
+        if !line.starts_with(' ') && line.ends_with(':') {
+            skipping = UNDIGESTED_SECTIONS.contains(&line);
+        }
+        if skipping {
+            continue;
+        }
+        for b in line.bytes().chain(std::iter::once(b'\n')) {
+            hash = (hash ^ u64::from(b)).wrapping_mul(PRIME);
+        }
+    }
+    format!("{hash:016x}")
+}
+
+/// One row of [`headers_tsv`], as read back by [`parse_headers_tsv`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HeaderRow {
+    /// What the header documents.
+    pub kind: HeaderKind,
+    /// The normalized name, as [`CHeader::name`].
+    pub name: String,
+    /// The name with every `<…>` removed, as [`CHeader::alias`].
+    pub alias: String,
+    /// Source file the header is in.
+    pub file: String,
+    /// [`text_digest`] of the header body.
+    pub digest: String,
+}
+
+/// A TSV of `headers`, one row per header, after a
+/// `kind\tname\talias\tfile\tdigest` line. Rows are sorted by file, then by
+/// position. The digest column is [`text_digest`] of the body, so a header
+/// whose text changes shows as a changed row.
 pub fn headers_tsv(headers: &[CHeader]) -> String {
     let mut order: Vec<usize> = (0..headers.len()).collect();
     order.sort_by(|&a, &b| headers[a].file.cmp(&headers[b].file).then(a.cmp(&b)));
-    let mut out = String::from("kind\tname\talias\tfile\n");
+    let mut out = String::from("kind\tname\talias\tfile\tdigest\n");
     for i in order {
         let h = &headers[i];
         out.push_str(&format!(
-            "{}\t{}\t{}\t{}\n",
-            h.kind, h.name, h.alias, h.file
+            "{}\t{}\t{}\t{}\t{}\n",
+            h.kind,
+            h.name,
+            h.alias,
+            h.file,
+            text_digest(&h.text)
         ));
     }
     out
 }
 
-/// Parse the output of [`headers_tsv`] into `(kind, name, alias, file)` rows.
+/// Parse the output of [`headers_tsv`] into rows.
 ///
-/// The header line and any row that does not have four fields with a known
+/// The header line and any row that does not have five fields with a known
 /// kind are skipped.
-pub fn parse_headers_tsv(text: &str) -> Vec<(HeaderKind, String, String, String)> {
+pub fn parse_headers_tsv(text: &str) -> Vec<HeaderRow> {
     text.lines()
         .filter_map(|line| {
             let mut f = line.split('\t');
@@ -186,7 +237,14 @@ pub fn parse_headers_tsv(text: &str) -> Vec<(HeaderKind, String, String, String)
             let name = f.next()?.to_string();
             let alias = f.next()?.to_string();
             let file = f.next()?.to_string();
-            f.next().is_none().then_some((kind, name, alias, file))
+            let digest = f.next()?.to_string();
+            f.next().is_none().then_some(HeaderRow {
+                kind,
+                name,
+                alias,
+                file,
+                digest,
+            })
         })
         .collect()
 }
@@ -296,9 +354,51 @@ f--
     fn key_includes_the_file() {
         let a = c_headers(SRC, "a.c");
         let b = c_headers(SRC, "b.c");
-        let tsv = headers_tsv(&[a, b].concat());
+        let tsv = headers_tsv(&[a.clone(), b].concat());
         let rows = parse_headers_tsv(&tsv);
         assert_eq!(rows.len(), 12);
-        assert_eq!(rows.iter().filter(|r| r.1 == "PermMap").count(), 2);
+        let permmaps: Vec<_> = rows.iter().filter(|r| r.name == "PermMap").collect();
+        assert_eq!(permmaps.len(), 2);
+        assert_eq!(permmaps[0].file, "a.c");
+        assert_eq!(permmaps[1].file, "b.c");
+        assert_eq!(permmaps[0].digest, text_digest(&a[0].text));
+    }
+
+    #[test]
+    fn the_digest_follows_the_body() {
+        let before = headers_tsv(&c_headers(SRC, "x.c"));
+        assert_eq!(before, headers_tsv(&c_headers(SRC, "x.c")));
+        let edited = SRC.replace("Create a PermMap.", "Create a new PermMap.");
+        let after = headers_tsv(&c_headers(&edited, "x.c"));
+        let (old, new) = (parse_headers_tsv(&before), parse_headers_tsv(&after));
+        assert_eq!(old.len(), new.len());
+        let changed: Vec<_> = old
+            .iter()
+            .zip(&new)
+            .filter(|(o, n)| o != n)
+            .map(|(o, _)| o.name.as_str())
+            .collect();
+        assert_eq!(changed, ["astPermMap"]);
+    }
+
+    #[test]
+    fn text_digest_is_fnv1a_64_of_the_lines() {
+        // FNV-1a 64 of "a\n".
+        assert_eq!(text_digest("a"), "089bdc07b544e7b2");
+    }
+
+    #[test]
+    fn provenance_sections_are_not_digested() {
+        let doc = "Name:\n   Box\n\nPurpose:\n   A box.\n";
+        let history = format!("{doc}History:\n   1-JAN-2000 (DSB):\n      Original.\n");
+        let more = format!("{history}   2-JAN-2000 (DSB):\n      Fixed.\n");
+        assert_eq!(text_digest(&history), text_digest(&more));
+        let copyright = |year: &str| format!("{doc}Copyright:\n   Copyright (C) {year} X\n");
+        assert_eq!(
+            text_digest(&copyright("2000")),
+            text_digest(&copyright("2026"))
+        );
+        let after = format!("{history}Notes:\n   - A note.\n");
+        assert_ne!(text_digest(&after), text_digest(doc));
     }
 }
