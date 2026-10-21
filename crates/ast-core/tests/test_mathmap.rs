@@ -8,6 +8,7 @@
 //! expressions' LHS names. This cross-referencing is how the C library works.
 
 use ast_core::coords::PointSet;
+use ast_core::error::ErrorCode;
 use ast_core::mappings::{Mapping, MathMap};
 
 /// Helper: transform a single point through a 1-in, 1-out MathMap.
@@ -367,4 +368,46 @@ fn prefix_operators_bind_below_power() {
         assert_eq!(eval_at(expr, 2.0), at2, "{expr} at x = 2");
         assert_eq!(eval_at(expr, 1.0), at1, "{expr} at x = 1");
     }
+}
+
+/// The error code `MathMap::new` reports for a malformed forward expression.
+fn expression_error(expr: &str) -> ErrorCode {
+    let fwd = format!("y = {expr}");
+    match MathMap::new(1, 1, &[fwd.as_str()], &["x"]) {
+        Ok(_) => panic!("\"{expr}\" compiled"),
+        Err(e) => e.code(),
+    }
+}
+
+/// Each symbol is read as an operator or as an operand according to what
+/// precedes it, as in C: after an operand only an operator may follow, so a
+/// constant ending in `.` followed by a dotted operator's name is a missing
+/// operator, and text that reads as no operator is a missing operator.
+/// Expected codes are from the C library.
+#[test]
+fn malformed_expressions_report_c_error_codes() {
+    let cases: &[(&str, ErrorCode)] = &[
+        ("1.or.0", ErrorCode::Miopr),
+        ("1 .and. 1", ErrorCode::Miopr),
+        ("x .not. 1", ErrorCode::Miopr),
+        ("2x", ErrorCode::Miopr),
+        ("x(1)", ErrorCode::Miopr),
+        ("x!", ErrorCode::Miopr),
+        ("(x)(x)", ErrorCode::Miopr),
+        ("2.eq.2", ErrorCode::Conin),
+        (".eq.x", ErrorCode::Conin),
+        ("1.e", ErrorCode::Conin),
+        ("1.0.5", ErrorCode::Conin),
+        ("x<bad>", ErrorCode::Udvof),
+        ("sin", ErrorCode::Udvof),
+        ("q", ErrorCode::Udvof),
+        ("*x", ErrorCode::Miopa),
+        ("max(1,)", ErrorCode::Miopa),
+        ("x\u{b7}2", ErrorCode::Miopr),
+    ];
+    for &(expr, code) in cases {
+        assert_eq!(expression_error(expr), code, "{expr}");
+    }
+    assert_eq!(eval_at("x.or.1", 0.0), 1.0);
+    assert_eq!(eval_at("1.e1 + 1.d1 + .5e-1 + 2.5d+1", 0.0), 45.05);
 }
