@@ -277,10 +277,10 @@ impl FluxFrame {
             attrs: super::frame_attrs::FrameAttrs::default(),
             // None = use the default "FLUX"; mirrors astTestDomain.
             system,
-            // Match the SpecFrame convention: when the constructor is
-            // called with the default system (FluxDen here), treat it
-            // as unset; otherwise mark it as explicitly set so it can
-            // act as a template-side discriminator.
+            // C's astFluxFrame has no System argument, so FLXDN, the
+            // default, is left unset, as `astFluxFrame( specval, specfrm,
+            // "" )` leaves it; any other System is set, as an options
+            // string "System=..." sets it.
             system_set: !matches!(system, FluxSystem::FluxDen),
             axis: super::axis::Axis::default(),
             spec_val: None,
