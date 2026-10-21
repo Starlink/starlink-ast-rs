@@ -656,3 +656,76 @@ fn add_frame_with_a_frameset_merges_it() {
     let map = d.mapping(FrameRef::Base, FrameRef::Current).unwrap();
     assert!(!map.as_ref().as_any().is::<FrameSet>());
 }
+
+/// C's dump of an inverted FrameSet (`r6c/inv.c`): A -ZoomMap 2-> B, then
+/// `astInvert`. C keeps Base 1 and Current 2 and writes `Invert = 1`.
+const C_INVERTED_FRAMESET: &str = concat!(
+    " Begin FrameSet \t# Set of inter-related coordinate systems\n",
+    "    Invert = 1 \t# Mapping inverted\n",
+    " IsA Mapping \t# Mapping between coordinate systems\n",
+    "#   Title = \"1-d coordinate system\" \t# Title of coordinate system\n",
+    "#   Naxes = 1 \t# Number of coordinate axes\n",
+    "#   Domain = \"A\" \t# Coordinate system domain\n",
+    "#   Lbl1 = \"Axis 1\" \t# Label for axis 1\n",
+    " IsA Frame \t# Coordinate system description\n",
+    "    Nframe = 2 \t# Number of Frames in FrameSet\n",
+    "#   Base = 1 \t# Index of base Frame\n",
+    "    Currnt = 2 \t# Index of current Frame\n",
+    "    Lnk2 = 1 \t# Node 2 is derived from node 1\n",
+    "    Frm1 = \t# Frame number 1\n",
+    "       Begin Frame \t# Coordinate system description\n",
+    "#         Title = \"1-d coordinate system\" \t# Title of coordinate system\n",
+    "          Naxes = 1 \t# Number of coordinate axes\n",
+    "          Domain = \"A\" \t# Coordinate system domain\n",
+    "#         Lbl1 = \"Axis 1\" \t# Label for axis 1\n",
+    "          Ax1 = \t# Axis number 1\n",
+    "             Begin Axis \t# Coordinate axis\n",
+    "             End Axis\n",
+    "       End Frame\n",
+    "    Frm2 = \t# Frame number 2\n",
+    "       Begin Frame \t# Coordinate system description\n",
+    "#         Title = \"1-d coordinate system\" \t# Title of coordinate system\n",
+    "          Naxes = 1 \t# Number of coordinate axes\n",
+    "          Domain = \"B\" \t# Coordinate system domain\n",
+    "#         Lbl1 = \"Axis 1\" \t# Label for axis 1\n",
+    "          Ax1 = \t# Axis number 1\n",
+    "             Begin Axis \t# Coordinate axis\n",
+    "             End Axis\n",
+    "       End Frame\n",
+    "    Map2 = \t# Mapping between nodes 1 and 2\n",
+    "       Begin ZoomMap \t# Zoom about the origin\n",
+    "          Nin = 1 \t# Number of input coordinates\n",
+    "       IsA Mapping \t# Mapping between coordinate systems\n",
+    "          Zoom = 2 \t# Zoom factor\n",
+    "       End ZoomMap\n",
+    " End FrameSet\n",
+);
+
+/// A FrameSet read with `Invert = 1` is inverted, as C's, which maps 3 to
+/// 1.5, and a FrameSet inverted here is dumped as C dumps it.
+#[test]
+fn an_inverted_frameset_reads_and_writes_as_c_does() {
+    use ast_core::AnyObject;
+    let AnyObject::FrameSet(back) = ast_core::from_native_string(C_INVERTED_FRAMESET).unwrap()
+    else {
+        panic!("expected a FrameSet");
+    };
+    assert!(back.is_inverted());
+    assert_eq!(back.base().domain(), "B");
+    assert_eq!(back.current().domain(), "A");
+    assert_eq!(back.tran1(&[3.0], true).unwrap(), vec![1.5]);
+
+    let mut fs = FrameSet::new(make_named_frame(1, "A"));
+    fs.add_frame(
+        FrameRef::Base,
+        Box::new(ZoomMap::new(1, 2.0).unwrap()),
+        make_named_frame(1, "B"),
+    )
+    .unwrap();
+    fs.invert();
+    assert!(fs.is_inverted());
+    assert_eq!(
+        native_dump(&AnyObject::FrameSet(fs)).unwrap(),
+        C_INVERTED_FRAMESET
+    );
+}

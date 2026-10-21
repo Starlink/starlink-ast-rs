@@ -134,8 +134,8 @@ impl fmt::Debug for Edge {
 /// so selecting a new base or current Frame may change them.
 /// Inverting a FrameSet ([`invert`](Mapping::invert)) exchanges its base
 /// and current Frames, which reverses the Mapping and may change its other
-/// properties.
-/// [`is_inverted`](Mapping::is_inverted) is always false for a FrameSet.
+/// properties, and inverting it again exchanges them back;
+/// [`is_inverted`](Mapping::is_inverted) tells whether it is inverted.
 ///
 /// A Region may be added to a FrameSet as a Frame.
 /// The Mapping between two Frames then includes the masking effect of any
@@ -223,6 +223,11 @@ pub struct FrameSet {
     mapping_flags: crate::mappings::MappingFlags,
     /// The FrameSet's own `UseDefs`, `None` when unset.
     use_defs: Option<bool>,
+    /// The Invert attribute. `base_idx`/`current_idx` (and their `_set`
+    /// flags) are the effective base and current Frames, already exchanged
+    /// when this is true, as C's `GetBase`/`GetCurrent` exchange its stored
+    /// `base`/`current`; a dump writes the stored ones.
+    inverted: bool,
 }
 
 impl Clone for FrameSet {
@@ -251,6 +256,7 @@ impl Clone for FrameSet {
             id: Default::default(),
             mapping_flags: self.mapping_flags.clone(),
             use_defs: self.use_defs,
+            inverted: self.inverted,
         }
     }
 }
@@ -328,6 +334,7 @@ impl FrameSet {
             id: Default::default(),
             mapping_flags: crate::mappings::MappingFlags::default(),
             use_defs: None,
+            inverted: false,
         }
     }
 
@@ -2434,14 +2441,13 @@ impl Mapping for FrameSet {
     }
 
     fn is_inverted(&self) -> bool {
-        // Inversion is handled by swapping base/current, so this is
-        // always false.
-        false
+        self.inverted
     }
 
     fn invert_orientation(&mut self) {
         std::mem::swap(&mut self.base_idx, &mut self.current_idx);
         std::mem::swap(&mut self.base_set, &mut self.current_set);
+        self.inverted = !self.inverted;
     }
 
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
@@ -2614,7 +2620,7 @@ impl Serializable for FrameSet {
                     &self.mapping_flags,
                     Mapping::nin(self),
                     Mapping::nout(self),
-                    false,
+                    self.inverted,
                     self.has_forward(),
                     self.has_inverse(),
                 )),
@@ -2632,20 +2638,34 @@ impl Serializable for FrameSet {
             Some("Number of Frames in FrameSet".to_string()),
         );
 
+        // C writes its stored `base` and `current`, which an inverted
+        // FrameSet's effective ones are exchanged from.
+        let ((base_idx, base_set), (current_idx, current_set)) = if self.inverted {
+            (
+                (self.current_idx, self.current_set),
+                (self.base_idx, self.base_set),
+            )
+        } else {
+            (
+                (self.base_idx, self.base_set),
+                (self.current_idx, self.current_set),
+            )
+        };
+
         // Base — 1-based base frame index. C writes it as an active value
         // only when the Base attribute is explicitly set (frameset.c:12554,
         // `set = (this->base != -INT_MAX)`); otherwise it emits the default
         // (frame 1) as a commented-out line.
-        if self.base_set {
+        if base_set {
             node.push_int(
                 "Base",
-                (self.base_idx + 1) as i64,
+                (base_idx + 1) as i64,
                 Some("Index of base Frame".to_string()),
             );
         } else {
             node.push_unset(
                 "Base",
-                NodeValue::Int(self.base_idx as i64 + 1),
+                NodeValue::Int(base_idx as i64 + 1),
                 Some("Index of base Frame".to_string()),
             );
         }
@@ -2653,16 +2673,16 @@ impl Serializable for FrameSet {
         // Currnt — 1-based current frame index, active only when the
         // Current attribute is set (frameset.c:12561), otherwise its default
         // commented out.
-        if self.current_set {
+        if current_set {
             node.push_int(
                 "Currnt",
-                (self.current_idx + 1) as i64,
+                (current_idx + 1) as i64,
                 Some("Index of current Frame".to_string()),
             );
         } else {
             node.push_unset(
                 "Currnt",
-                NodeValue::Int(self.current_idx as i64 + 1),
+                NodeValue::Int(current_idx as i64 + 1),
                 Some("Index of current Frame".to_string()),
             );
         }
@@ -2886,7 +2906,16 @@ impl Serializable for FrameSet {
             });
         }
 
+        // An inverted FrameSet's stored Base and Current are exchanged to
+        // give its effective ones, as C's `GetBase`/`GetCurrent` do.
+        let inverted = crate::serial::read_mapping_base(whole).inverted;
+        let ((base, base_set), (current, current_set)) = if inverted {
+            ((current, current_set), (base, base_set))
+        } else {
+            ((base, base_set), (current, current_set))
+        };
         Ok(FrameSet {
+            inverted,
             frames,
             edges,
             base_idx: base - 1,
