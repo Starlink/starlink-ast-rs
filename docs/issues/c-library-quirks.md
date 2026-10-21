@@ -89,6 +89,8 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [The `FitsAxisOrder` documentation gives its purpose as "Frame title"](#the-fitsaxisorder-documentation-gives-its-purpose-as-frame-title)
 - [The `astTableSource` documentation gets the table source function's failure signal wrong](#the-asttablesource-documentation-gets-the-table-source-functions-failure-signal-wrong)
 - [The `TabOK` documentation says a read of a `-TAB` header returns NULL when TabOK is not positive](#the-tabok-documentation-says-a-read-of-a--tab-header-returns-null-when-tabok-is-not-positive)
+- [The `Full` documentation gives a FitsChan a default of zero](#the-full-documentation-gives-a-fitschan-a-default-of-zero)
+- [The `astRead` documentation says a Channel with no further objects returns NULL without error, which a MocChan does not](#the-astread-documentation-says-a-channel-with-no-further-objects-returns-null-without-error-which-a-mocchan-does-not)
 
 ### [Addressed here, and not going upstream](#addressed-here-and-not-going-upstream)
 
@@ -345,6 +347,7 @@ Consequence: documentation only; a reader of SUN/211 expects unindented output f
 
 The port's `ChannelConfig::indent` defaults to 3, as the code does.
 A C fix: change the Applicability line to "The default value is 3 for a basic Channel".
+The prologue's Synopsis also calls the attribute "Integer (boolean)" (line 5569), where it is an integer count of spaces.
 
 Related, and not a defect: with `Indent` 0, C still starts every line with one character, because the first column is not indentation.
 Each value writer starts its line with `set ? " " : "#"` (`WriteDouble` and its siblings, for example line 4435), so a value that was set gets a space and an unset default written as a hint gets `#`; `WriteBegin` and `WriteEnd` start with a space to keep that column aligned (line 4296).
@@ -1325,6 +1328,30 @@ Consequence: documentation only, but a caller who tests for NULL gets an error i
 
 `FitsChan::tab_ok` describes the three outcomes, which the port shares with C.
 A C fix: describe the outcomes, or have `astRead` return NULL, as documented, when a `-TAB` axis is met with TabOK not positive.
+
+### The `Full` documentation gives a FitsChan a default of zero
+
+C location: `channel.c`, the `Full` prologue (Applicability, line 5534), and FitsChan's `GetFull` in `fitschan.c` (from line 17613).
+
+The Applicability section says "The default value is zero for a FitsChan".
+`GetFull` gives -1 when Full is not set, and its own Notes say it changes the default from 0 to -1 so that non-essential information is written only on request; a C-oracle probe gets -1 for a new FitsChan.
+
+Consequence: documentation only; a reader expects the commented default values a basic Channel writes and gets none from a FitsChan writing in the `NATIVE` encoding.
+
+`ChannelConfig::full` gives -1 for a FitsChan, as the code does, and says so.
+A C fix: "The default value is -1 for a FitsChan."
+
+### The `astRead` documentation says a Channel with no further objects returns NULL without error, which a MocChan does not
+
+C location: `channel.c`, the `astRead` prologue (Notes), and MocChan's `Read` in `mocchan.c` (from line 575).
+
+The Notes say a null Object pointer is returned, without error, if the Channel contains no further Objects to be read.
+MocChan's `Read` hands all the source's text to the MOC text reader, which reports AST__INMOC ("Blank MOC text supplied") when there is none; a C-oracle probe of `astRead` on a MocChan whose source gives no lines gets NULL with AST__INMOC.
+
+Consequence: documentation only, but a caller that reads a MocChan until it returns NULL ends with an error.
+
+`Channel::read` says a MocChan never returns `Ok(None)` and fails with `ErrorCode::Inmoc` when there is no text, as the code does.
+A C fix: add a MocChan entry to the prologue's Applicability section saying that a read with no text left is an error.
 
 ## Addressed here, and not going upstream
 

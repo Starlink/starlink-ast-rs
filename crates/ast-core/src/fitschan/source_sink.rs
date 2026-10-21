@@ -296,14 +296,25 @@ impl FitsChan {
         Ok(())
     }
 
-    /// The `SourceFile` attribute: the file cards were last read from, or
-    /// `None` when unset.
+    /// The `SourceFile` attribute: the name of a text file from which cards
+    /// have been read, or `None` when unset.
+    ///
+    /// Default: unset.
+    ///
+    /// The file holds one header card per line; it is a text file, not a
+    /// FITS file.
+    /// Setting the attribute reads the file at once, appending its cards to
+    /// any already in the FitsChan, in addition to those of any
+    /// [source](Self::set_source).
+    /// Clearing it only forgets the name.
+    /// A clone does not inherit it.
+    #[doc(alias = "SourceFile")]
     pub fn source_file(&self) -> Option<&str> {
         self.source_file.0.as_deref()
     }
 
-    /// Set `SourceFile`, and append the cards in the file, one per line,
-    /// leaving the FitsChan at end-of-file.
+    /// Set the [SourceFile](Self::source_file) attribute, and append the
+    /// cards in the file, one per line, leaving the FitsChan at end-of-file.
     ///
     /// A line longer than a card is read as several cards.
     ///
@@ -321,8 +332,8 @@ impl FitsChan {
             AstError::new(
                 ErrorCode::Rderr,
                 format!(
-                    "astSetSourceFile(FitsChan): Failed to open input SourceFile \
-                     '{source_file}' - {e}."
+                    "{} '{source_file}' - {e}.",
+                    "astSetSourceFile(FitsChan): Failed to open input SourceFile"
                 ),
             )
         })?;
@@ -337,35 +348,48 @@ impl FitsChan {
         Ok(())
     }
 
-    /// Whether `SourceFile` is set.
+    /// Whether the [SourceFile](Self::source_file) attribute is set.
     pub fn test_source_file(&self) -> bool {
         self.source_file.0.is_some()
     }
 
-    /// Clear `SourceFile`. The cards read from the file are kept.
+    /// Clear the [SourceFile](Self::source_file) attribute.
+    /// The cards read from the file are kept.
     pub fn clear_source_file(&mut self) {
         self.source_file = NotCopied(None);
     }
 
-    /// The `SinkFile` attribute: the file the cards are written to when the
-    /// FitsChan is dropped or [`write_fits`](Self::write_fits) is called, in
-    /// place of the sink; `None` when unset.
+    /// The `SinkFile` attribute: the name of the text file to which the
+    /// cards are written when the FitsChan is dropped or
+    /// [`write_fits`](Self::write_fits) is called, or `None` when unset.
+    ///
+    /// Default: unset, when the cards go to the [sink](Self::set_sink), if
+    /// there is one.
+    ///
+    /// When it is set, the file takes the place of the sink.
+    /// It holds one header card per line; it is a text file, not a FITS
+    /// file.
+    /// The file is created when the cards are written, replacing any file
+    /// of that name; [`write_fits`](Self::write_fits) reports a file that
+    /// cannot be created, which a drop cannot.
+    /// A clone does not inherit it.
+    #[doc(alias = "SinkFile")]
     pub fn sink_file(&self) -> Option<&str> {
         self.sink_file.0.as_deref()
     }
 
-    /// Set `SinkFile`. The file is created, replacing any file of that
-    /// name, only when the cards are written.
+    /// Set the [SinkFile](Self::sink_file) attribute.
+    /// The file is created only when the cards are written.
     pub fn set_sink_file(&mut self, sink_file: &str) {
         self.sink_file = NotCopied(Some(sink_file.to_string()));
     }
 
-    /// Whether `SinkFile` is set.
+    /// Whether the [SinkFile](Self::sink_file) attribute is set.
     pub fn test_sink_file(&self) -> bool {
         self.sink_file.0.is_some()
     }
 
-    /// Clear `SinkFile`.
+    /// Clear the [SinkFile](Self::sink_file) attribute.
     pub fn clear_sink_file(&mut self) {
         self.sink_file = NotCopied(None);
     }

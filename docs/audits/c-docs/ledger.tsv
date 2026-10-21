@@ -2,21 +2,21 @@ kind	name	file	rust_item	reason	reviewed	note
 class	Axis	axis.c		merged	yes	Frame
 class	Box	box.c	BoxRegion		yes
 function	astBox	box.c	BoxRegionBuilder::new;BoxRegionBuilder::from_bounds		yes	new takes a center and a corner (form 0), from_bounds two opposite corners (form 1)
-class	Channel	channel.c			no
-function	astChannelData	channel.c			no
-function	astWarnings	channel.c			no
-function	astPutChannelData	channel.c			no
-function	astRead	channel.c			no
-function	astWrite	channel.c			no
-attribute	SourceFile	channel.c			no
-attribute	SinkFile	channel.c			no
-attribute	Comment	channel.c			no
-attribute	Full	channel.c			no
-attribute	Indent	channel.c			no
-attribute	ReportLevel	channel.c			no
-attribute	Skip	channel.c			no
-attribute	Strict	channel.c			no
-function	astChannel	channel.c			no
+class	Channel	channel.c	NativeChannel		yes	With no source a read finds no object and with no sink the text is discarded, where C reads standard input and writes standard output (PLAN.md §2)
+function	astChannelData	channel.c		c-api-only	yes	A Source or Sink implementation holds its own data
+function	astWarnings	channel.c	Channel::warnings		yes
+function	astPutChannelData	channel.c		c-api-only	yes	A Source or Sink implementation holds its own data
+function	astRead	channel.c	Channel::read		yes	A MocChan with no text left fails with AST__INMOC, as C's does, where the header promises no object and no error (c-library-quirks.md)
+function	astWrite	channel.c	Channel::write		yes
+attribute	SourceFile	channel.c	FitsChan::source_file		yes	Only a FitsChan has it; NativeChannel::from_file and MocChan::from_file read a file instead (PLAN.md §2)
+attribute	SinkFile	channel.c	FitsChan::sink_file		yes	Only a FitsChan has it; NativeChannel::to_file and MocChan::to_file write a file instead (PLAN.md §2)
+attribute	Comment	channel.c	ChannelConfig::comment		yes
+attribute	Full	channel.c	ChannelConfig::full		yes	The FitsChan default is -1, as the code gives, not the 0 the header says (c-library-quirks.md)
+attribute	Indent	channel.c	ChannelConfig::indent		yes	The default is 3, as the code gives, not the 0 the header says (c-library-quirks.md)
+attribute	ReportLevel	channel.c	ChannelConfig::report_level		yes
+attribute	Skip	channel.c	ChannelConfig::skip		yes
+attribute	Strict	channel.c	ChannelConfig::strict		yes	A FitsChan warning is not an error when Strict is set, where C reports AST__BADIN (PLAN.md §2)
+function	astChannel	channel.c	NativeChannel::new		yes	No source, sink or options arguments: set_source, set_sink and the attribute setters take their place, and from_string, with_string_sink, from_file and to_file make one with a source or sink
 class	ChebyMap	chebymap.c	ChebyMap		yes	The C class and astChebyMap headers write the recurrence as Tn+1 = 2x Tn + Tn-1; the code subtracts Tn-1, as the port's doc says (docs/issues/c-library-quirks.md)
 function	astChebyDomain	chebymap.c	ChebyMap::domain		yes	C keeps no forward box when there are no forward coefficients and finds the forward domain by MapBox; the port always keeps the forward box given at creation (CH-8, docs/audits/mapping-c-parity.md; PLAN.md §2 row for that audit)
 function	astChebyMap	chebymap.c	ChebyMap::new		yes	C reads lbnd_i/ubnd_i whenever inverse coefficients are given and dereferences a NULL; the port refuses the call with Badin. C ignores lbnd_f/ubnd_f when there are no forward coefficients; the port requires them and keeps a forward box (CH-8, docs/audits/mapping-c-parity.md; PLAN.md §2 row for that audit)
@@ -298,10 +298,10 @@ attribute	MocType	moc.c	Moc::moc_type		yes
 attribute	MocArea	moc.c	Moc::moc_area		yes
 attribute	MocLength	moc.c	Moc::moc_length		yes	returns usize
 function	astMoc	moc.c	Moc::new		yes	takes no attribute options; set MaxOrder and MinOrder with their setters
-class	MocChan	mocchan.c			no
-attribute	MocFormat	mocchan.c			no
-attribute	MocLineLen	mocchan.c			no
-function	astMocChan	mocchan.c			no
+class	MocChan	mocchan.c	MocChan		yes
+attribute	MocFormat	mocchan.c	MocChan::moc_format		yes
+attribute	MocLineLen	mocchan.c	MocChan::moc_line_len		yes
+function	astMocChan	mocchan.c	MocChan::new		yes	No source, sink or options arguments: set_source, set_sink and the attribute setters take their place; with no source or sink C uses standard input or output (PLAN.md §2)
 class	NormMap	normmap.c	NormMap		yes
 function	astNormMap	normmap.c	NormMap::new		yes	The NormMap owns its Frame
 class	NullRegion	nullregion.c	NullRegion		yes

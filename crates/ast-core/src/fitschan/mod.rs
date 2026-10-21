@@ -440,8 +440,9 @@ const DEFAULT_FITS_DIGITS: i32 = 17;
 /// [FitsRounding](Self::fits_rounding), [FitsTol](Self::fits_tol),
 /// [ForceTab](Self::force_tab), [IgnoreBadAlt](Self::ignore_bad_alt),
 /// [Iwc](Self::iwc), [Ncard](Self::ncard), [Nkey](Self::nkey),
-/// [PolyTan](Self::poly_tan), [SipOK](Self::sip_ok),
-/// [SipReplace](Self::sip_replace), [TabOK](Self::tab_ok) and
+/// [PolyTan](Self::poly_tan), [SinkFile](Self::sink_file),
+/// [SipOK](Self::sip_ok), [SipReplace](Self::sip_replace),
+/// [SourceFile](Self::source_file), [TabOK](Self::tab_ok) and
 /// [Warnings](Self::warning_conditions).
 ///
 /// # Example

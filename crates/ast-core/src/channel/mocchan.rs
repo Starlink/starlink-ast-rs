@@ -1,17 +1,17 @@
 //! [`MocChan`] — a Channel that reads and writes MOCs as text.
 //!
-//! A port of C `mocchan.c`. It reads and writes [`Moc`] objects in the
-//! string or JSON serialization of the IVOA MOC recommendation, through
-//! `Moc::add_moc_text` and [`Moc::get_moc_text`], which are `astAddMocText`
-//! and `astGetMocText` in C.
+//! It reads and writes [`Moc`] objects in the string or JSON serialization
+//! of the IVOA MOC recommendation, version 1.1.
 //!
 //! Reading takes lines from the source until it has none left and treats
 //! them as one text, so a value may continue from one line to the next; the
-//! lines after a malformed one are left for the next read. Writing passes
-//! the text to the sink in lines of at most `MocLineLen` characters.
-//!
-//! C's MocChan Dump and Load are not ported: no Channel is a serializable
-//! object in this port.
+//! lines after a malformed one are left for the next read.
+//! Writing passes the text to the sink in lines of at most `MocLineLen`
+//! characters.
+
+// C: mocchan.c. A read goes through moc.c `astAddMocText`, here
+// `Moc::add_moc_text`, and a write through `astGetMocText`, here
+// `Moc::get_moc_text`.
 
 use std::io;
 use std::path::Path;
@@ -25,14 +25,15 @@ use crate::mappings::IntraTransform;
 use crate::regions::{CmpOperator, Moc};
 use crate::serial::{AnyObject, Node, NodeValue, Serializable};
 
-/// The `MocFormat` attribute of a [`MocChan`]: the serialization of the
-/// last MOC read, and the one used to write.
+/// The values of the [MocFormat](MocChan::moc_format) attribute of a
+/// [`MocChan`]: the serializations of the IVOA MOC recommendation, version
+/// 1.1, in which a MOC is written as text.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum MocFormat {
-    /// Not known; MOCs are written as strings. The default.
+    /// Not known, the default; MOCs are written as strings.
     #[default]
     Unknown,
-    /// The string serialization, such as `"1/3 2/37,101-103"`.
+    /// The string serialization, such as `1/3 2/37,101-103`.
     String,
     /// The JSON serialization, such as `{"1":[3],"2":[37,101,102,103]}`.
     Json,
@@ -41,12 +42,50 @@ pub enum MocFormat {
 /// The default `MocLineLen`.
 const DEFAULT_LINE_LEN: i32 = 80;
 
-/// A Channel that reads and writes MOCs in the string or JSON serialization
-/// of the IVOA MOC recommendation (C's `MocChan`).
+/// A [`Channel`] that reads and writes [`Moc`] objects as text, in the
+/// string or JSON serialization of the IVOA MOC recommendation, version 1.1.
 ///
-/// Writing an object other than a [`Moc`] writes nothing and returns 0.
-/// Reading makes a Moc from all the remaining source text; reading when
-/// there is none, or text that is not a MOC, is `ErrorCode::Inmoc`.
+/// Writing a Moc to a MocChan with [`Channel::write`] makes a textual
+/// description of it, in the serialization the
+/// [MocFormat](Self::moc_format) attribute names; writing any other object
+/// writes nothing and returns 0.
+/// Reading from a MocChan with [`Channel::read`] makes a new Moc from all
+/// the text left in its source, whichever serialization it is in.
+///
+/// The text is read from a [source](Self::set_source) and written to a
+/// [sink](Self::set_sink), which connect the MocChan to wherever the text is
+/// kept, and which should convert between any other character encoding the
+/// text is kept in and ASCII.
+/// [`from_string`](Self::from_string) and
+/// [`with_string_sink`](Self::with_string_sink) read from and write to a
+/// string, and [`from_file`](Self::from_file) and [`to_file`](Self::to_file)
+/// read from and write to a file.
+/// Without a source, a read finds no text and fails; without a sink, the
+/// text written is discarded.
+/// A clone shares the original's source and sink.
+///
+/// Besides the attributes of every Channel, in [`ChannelConfig`], none of
+/// which it uses, a MocChan has the [MocFormat](Self::moc_format) and
+/// [MocLineLen](Self::moc_line_len) attributes, and the [Ident](Self::ident)
+/// and [ID](Self::id) attributes.
+///
+/// # Example
+///
+/// ```
+/// use ast_core::{Channel, MocChan, MocFormat};
+///
+/// let mut input = MocChan::from_string("1/3 2/37,101-103");
+/// let moc = input.read().unwrap().expect("a Moc");
+/// assert_eq!(input.moc_format(), MocFormat::String);
+///
+/// let mut out = MocChan::with_string_sink();
+/// out.set_moc_format(MocFormat::Json);
+/// assert_eq!(out.write(&moc).unwrap(), 1);
+/// assert_eq!(out.into_string(), "{\"1\":[3],\"2\":[37,101,102,103]}\n");
+/// ```
+// C: the MocChan class (mocchan.c). C reads standard input and writes
+// standard output when a MocChan has no source or sink function (PLAN.md
+// §2).
 #[derive(Debug, Clone, Default)]
 pub struct MocChan {
     base: ChannelBase,
@@ -55,7 +94,13 @@ pub struct MocChan {
 }
 
 impl MocChan {
-    /// Create a `MocChan` with no source or sink.
+    /// Create a MocChan with no source or sink, and every attribute unset.
+    ///
+    /// Set a source with [`set_source`](Self::set_source) before reading
+    /// and a sink with [`set_sink`](Self::set_sink) before writing, and the
+    /// attributes with their setters; the other constructors make a MocChan
+    /// with a source or sink already set.
+    #[doc(alias = "astMocChan")]
     pub fn new() -> Self {
         Self::default()
     }
@@ -79,13 +124,22 @@ impl MocChan {
     }
 
     /// Create a `MocChan` that reads from the file at `path`.
+    ///
+    /// # Errors
+    ///
+    /// Passes on the I/O error of opening the file.
     pub fn from_file(path: &Path) -> io::Result<Self> {
         let mut ch = Self::new();
         ch.set_source(Box::new(FileSource::open(path)?));
         Ok(ch)
     }
 
-    /// Create a `MocChan` that writes to the file at `path`.
+    /// Create a `MocChan` that writes to the file at `path`, replacing any
+    /// file of that name.
+    ///
+    /// # Errors
+    ///
+    /// Passes on the I/O error of creating the file.
     pub fn to_file(path: &Path) -> io::Result<Self> {
         let mut ch = Self::new();
         ch.set_sink(Box::new(FileSink::create(path)?));
@@ -129,8 +183,9 @@ impl MocChan {
         self.base.ident = None;
     }
 
-    /// The Object-class `ID` attribute, blank unless set. Unlike `Ident`, a
-    /// clone does not inherit it, as C's `astCopy` does not copy it.
+    /// The Object-class `ID` attribute, blank unless set.
+    /// Unlike `Ident`, a clone does not inherit it.
+    // C's `astCopy` does not copy the ID.
     pub fn id(&self) -> &str {
         self.base.id.get()
     }
@@ -150,57 +205,71 @@ impl MocChan {
         self.base.id.clear();
     }
 
-    /// The `MocFormat` attribute. A read sets it to the serialization it
-    /// found; a write uses JSON if it is [`MocFormat::Json`] and strings
-    /// otherwise.
+    /// The `MocFormat` attribute: the serialization in which a MOC is
+    /// written.
+    ///
+    /// Default: [`MocFormat::Unknown`].
+    ///
+    /// A write uses the JSON serialization when it is [`MocFormat::Json`],
+    /// and the string serialization otherwise.
+    /// A read finds the serialization from the text it reads, whatever the
+    /// value of MocFormat, and then sets MocFormat to it.
+    #[doc(alias = "MocFormat")]
     pub fn moc_format(&self) -> MocFormat {
         self.moc_format
     }
 
-    /// Set the `MocFormat` attribute. Setting [`MocFormat::Unknown`] is the
-    /// same as clearing it.
+    /// Set the [MocFormat](Self::moc_format) attribute.
+    /// Setting [`MocFormat::Unknown`] is the same as clearing it.
     pub fn set_moc_format(&mut self, format: MocFormat) {
         self.moc_format = format;
     }
 
-    /// Whether the `MocFormat` attribute is set (to other than
-    /// [`MocFormat::Unknown`]).
+    /// Whether the [MocFormat](Self::moc_format) attribute is set, which is
+    /// whether it is other than [`MocFormat::Unknown`].
     pub fn test_moc_format(&self) -> bool {
         self.moc_format != MocFormat::Unknown
     }
 
-    /// Clear the `MocFormat` attribute.
+    /// Clear the [MocFormat](Self::moc_format) attribute.
     pub fn clear_moc_format(&mut self) {
         self.moc_format = MocFormat::Unknown;
     }
 
-    /// The `MocLineLen` attribute: the most characters written in one line.
-    /// The default is 80.
+    /// The `MocLineLen` attribute: the most characters in each line a write
+    /// passes to the sink.
+    ///
+    /// Default: 80.
+    ///
+    /// A line may be shorter, since a value is never split between lines:
+    /// each line but the last ends after a space or comma.
+    /// A write fails with [`ErrorCode::Smbuf`] if MocLineLen is too short to
+    /// hold a value.
+    #[doc(alias = "MocLineLen")]
     pub fn moc_line_len(&self) -> i32 {
         self.moc_line_len.unwrap_or(DEFAULT_LINE_LEN)
     }
 
-    /// Set the `MocLineLen` attribute; a negative value is stored as zero.
-    /// A length shorter than a value in the MOC makes writing it
-    /// `ErrorCode::Smbuf`.
+    /// Set the [MocLineLen](Self::moc_line_len) attribute.
+    /// A negative value is stored as zero.
     pub fn set_moc_line_len(&mut self, len: i32) {
         self.moc_line_len = Some(len.max(0));
     }
 
-    /// Whether the `MocLineLen` attribute is set.
+    /// Whether the [MocLineLen](Self::moc_line_len) attribute is set.
     pub fn test_moc_line_len(&self) -> bool {
         self.moc_line_len.is_some()
     }
 
-    /// Clear the `MocLineLen` attribute.
+    /// Clear the [MocLineLen](Self::moc_line_len) attribute.
     pub fn clear_moc_line_len(&mut self) {
         self.moc_line_len = None;
     }
 }
 
 impl Channel for MocChan {
-    /// mocchan.c `Read`: a Moc with no MaxOrder set from all the source
-    /// text, normalized; `MocFormat` is then set to the serialization read.
+    // C: mocchan.c `Read`: a Moc with no MaxOrder set from all the source
+    // text, normalized; `MocFormat` is then set to the serialization read.
     fn read(&mut self) -> AstResult<Option<AnyObject>> {
         self.base.warnings.clear();
         let mut moc = Moc::new();
@@ -217,8 +286,8 @@ impl Channel for MocChan {
         Ok(Some(AnyObject::Moc(moc)))
     }
 
-    /// mocchan.c `Write`: a Moc as text in lines of at most `MocLineLen`
-    /// characters, returning 1; anything else writes nothing and returns 0.
+    // C: mocchan.c `Write`: a Moc as text in lines of at most `MocLineLen`
+    // characters, returning 1; anything else writes nothing and returns 0.
     fn write(&mut self, obj: &AnyObject) -> AstResult<usize> {
         self.base.warnings.clear();
         let AnyObject::Moc(moc) = obj else {
