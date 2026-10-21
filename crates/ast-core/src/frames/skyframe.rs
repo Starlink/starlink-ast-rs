@@ -1368,7 +1368,8 @@ impl SkyFrame {
         self.attrs.domain = None;
     }
 
-    /// Return the frame identification string.
+    /// The Ident, or an empty string when it is not set; see
+    /// [`Frame::ident`].
     pub fn ident(&self) -> &str {
         self.attrs.ident.as_deref().unwrap_or("")
     }

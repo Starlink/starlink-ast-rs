@@ -1490,16 +1490,18 @@ A C fix: document it, or remove the cell's entry so it reads back as null.
 
 ### The `UseDefs` documentation leaves out attributes and default titles it affects
 
-C location: `object.c`, the `UseDefs` prologue (Description, line 5259, and Applicability, from line 5270); `skyframe.c` `VerifyMSMAttrs` calls (from line 6198) and `GetTitle` (from line 4598); `specframe.c` `GetTitle` (line 2120); `timeframe.c` `VerifyAttrs` (line 6398) and its call (line 5366).
+C location: `object.c`, the `UseDefs` prologue (Description, line 5259, and Applicability, from line 5270); `frame.c`, which never reads UseDefs; `specframe.c` `VerifyAttrs` calls (lines 4366 and 4405); `skyframe.c` `VerifyMSMAttrs` calls (from line 6198) and `GetTitle` (from line 4598); `specframe.c` `GetTitle` (line 2120); `timeframe.c` `VerifyAttrs` (line 6398) and its call (line 5366).
 
-The prologue says a SkyFrame with UseDefs zero reports an error when Epoch or Equinox is needed and unset, and lists no TimeFrame entry.
-It also says UseDefs only affects access to attributes "internally within AST", while the public accessors are unaffected.
-The code also checks ObsLon and ObsLat for a SkyFrame conversion from AzEl, checks TimeScale for a TimeFrame conversion between time systems, and leaves an unset Equinox or Epoch out of a SkyFrame's default Title, and an unset RestFreq out of a SpecFrame's, when UseDefs is zero, so `astGetC( frame, "Title" )` does change with it.
+The prologue's Frame entry says that with UseDefs zero an error is reported when aligning Frames if Epoch, ObsLat or ObsLon is needed and unset, but `frame.c` never reads UseDefs, so a plain Frame checks nothing; the checks are made by the subclasses.
+SkyFrame checks ObsLon and ObsLat for a conversion from AzEl, besides the Epoch and Equinox its own entry names.
+SpecFrame also checks ObsAlt, alongside ObsLon, ObsLat and Epoch, and no entry names ObsAlt.
+There is no TimeFrame entry, though a TimeFrame checks TimeScale for a conversion between time systems.
+The prologue also says UseDefs only affects access to attributes "internally within AST", while the public accessors are unaffected; but with UseDefs zero an unset Equinox or Epoch is left out of a SkyFrame's default Title, and an unset RestFreq out of a SpecFrame's, so `astGetC( frame, "Title" )` does change with it.
 
 Consequence: documentation only, but a caller who sets UseDefs to zero meets errors and titles the prologue does not mention.
 
 `Frame::use_defs` lists the attributes each class checks and the two default titles, as the code does.
-A C fix: add ObsLon and ObsLat to the SkyFrame entry, add a TimeFrame entry for TimeScale, and mention the default Title of a SkyFrame and SpecFrame.
+A C fix: move the Frame entry's attributes into the SkyFrame and SpecFrame entries, add ObsAlt to the SpecFrame entry, add a TimeFrame entry for TimeScale, and mention the default Title of a SkyFrame and SpecFrame.
 
 ## Addressed here, and not going upstream
 

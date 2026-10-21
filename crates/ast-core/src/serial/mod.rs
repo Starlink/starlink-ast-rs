@@ -1869,9 +1869,10 @@ impl Serializable for Prism {
 ///
 /// - a class name, [`class_name`](AnyObject::class_name) (the Class attribute);
 /// - Ident and ID, two strings a user may set to label the object, which the
-///   library stores and writes to a dump but does not otherwise interpret
-///   (see [`Mapping::ident`] and [`Mapping::id`], or [`Frame::ident`] and
-///   [`Frame::id`]); a clone keeps Ident but not ID;
+///   library stores and writes to a dump (see [`Mapping::ident`] and
+///   [`Mapping::id`], or [`Frame::ident`] and [`Frame::id`]); a Mapping with
+///   Ident set is also left intact by simplification (see
+///   [`Mapping::do_not_simplify`]), and a clone keeps Ident but not ID;
 /// - [`Clone`], which makes a deep copy, sharing nothing with the original,
 ///   so that changing one never changes the other (a Channel's clone is the
 ///   exception: see the variants below);
@@ -2016,16 +2017,17 @@ pub enum AnyObject {
     /// Table and a FitsChan header. Implements neither [`Mapping`] nor
     /// [`Frame`].
     FitsTable(Box<crate::fitstable::FitsTable>),
-    /// A [`crate::channel::NativeChannel`], the AST Channel class. Implements neither
-    /// [`Mapping`] nor [`Frame`]. It shares its source and sink with the
+    /// A [`crate::channel::NativeChannel`], the AST Channel class.
+    /// Implements neither [`Mapping`] nor [`Frame`].
+    /// It shares its source and sink with the
     /// channel it was cloned from; one read from a dump has neither.
     NativeChannel(Box<crate::channel::NativeChannel>),
-    /// A [`crate::channel::MocChan`]. Implements neither [`Mapping`] nor
-    /// [`Frame`]; its source and sink are shared as a `NativeChannel`'s are.
+    /// A [`crate::channel::MocChan`].
+    /// Implements neither [`Mapping`] nor [`Frame`]; its source and sink are shared as a `NativeChannel`'s are.
     MocChan(Box<crate::channel::MocChan>),
-    /// A [`crate::fitschan::FitsChan`]. Implements neither [`Mapping`] nor
-    /// [`Frame`]. A clone has no source or sink, and nor has one read from
-    /// a dump.
+    /// A [`crate::fitschan::FitsChan`].
+    /// Implements neither [`Mapping`] nor [`Frame`].
+    /// A clone has no source or sink, and nor has one read from a dump.
     FitsChan(Box<crate::fitschan::FitsChan>),
 }
 
