@@ -270,8 +270,8 @@ fn warnings_keymap_mirrors_c_astwarnings() {
 fn report_level_zero_keeps_astwarn_cards_but_records_no_warnings() {
     // A C-oracle probe (`astPutFits` of `BAD!KEY = 1` with Warnings set to
     // BadKeyName) gives two warnings and four ASTWARN cards by default, and
-    // with ReportLevel 0 no warnings (`astWarnings` returns NULL) but the
-    // same four cards.
+    // with ReportLevel 0 or -1 no warnings (`astWarnings` returns NULL) but
+    // the same four cards; ReportLevel 2 gives the default's.
     let count = |report_level: Option<i32>| {
         let mut fc = FitsChan::new();
         if let Some(level) = report_level {
@@ -286,4 +286,6 @@ fn report_level_zero_keeps_astwarn_cards_but_records_no_warnings() {
     };
     assert_eq!(count(None), (Some(2), 4));
     assert_eq!(count(Some(0)), (None, 4));
+    assert_eq!(count(Some(2)), (Some(2), 4));
+    assert_eq!(count(Some(-1)), (None, 4));
 }
