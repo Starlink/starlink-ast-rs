@@ -12,9 +12,7 @@
 //!
 //! - **Angle-bracket system constants** (`<bad>`, `<pi>`, `<max_10_exp>`)
 //!   require context-sensitive longest-match against a fixed set.
-//! - **Dotted Fortran-style logical operators** (`.and.`, `.or.`, `.not.`,
-//!   `.eqv.`, `.xor.`) overlap with the `.` in floating-point literals; which
-//!   reading applies depends on whether an operator or an operand is expected.
+//! - **Dotted Fortran-style logical operators** (`.and.`, `.or.`, `.not.`, `.eqv.`, `.xor.`) overlap with the `.` in floating-point literals; which reading applies depends on whether an operator or an operand is expected.
 //! - **Function recognition** requires longest-match among ~50 names that
 //!   share common prefixes (`sin`/`sinc`/`sind`/`sinh`, `a`/`abs`/`acos`/
 //!   `acosd`/`acosh`/`acoth`/`acsch`/`asech`/`asin`/...).
