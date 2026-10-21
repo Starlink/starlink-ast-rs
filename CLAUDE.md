@@ -304,6 +304,13 @@ it lands).
    `crates/ast-core/tests/fixtures/`.
 8. Mark the test ported in `PLAN.md`'s "C → Rust test migration"
    tracker.
+9. Give each public item mapped from a C header its `#[doc(alias)]` and
+   ledger row; the C documentation gates in `test_c_docs_audit.rs` fail
+   otherwise.
+   Write the docs for the Rust: no C file or line citations and no
+   internal C names in rendered docs (keep provenance in `//` comments),
+   and name a public C function only in a `# See also` section where the
+   correspondence is not obvious.
 
 ### Landing several classes in one pass
 
@@ -431,6 +438,7 @@ The C ABI is **frozen**. Existing applications must keep linking.
   platform-drifted in its values: take the cards from a fresh capture and keep
   the values, which is what `tools/oracle_fixtures/merge_card_hunks.py` does.
   Regenerate in the same commit range as the pin move.
+  Also run `tools/oracle_fixtures/check_c_headers_fresh.sh`; new or changed C documentation headers need ledger rows in `docs/audits/c-docs/ledger.tsv`.
 - **Design spec** (authoritative for API shape and the reasoning behind it):
   [`docs/superpowers/specs/2026-04-20-rust-port-design.md`](docs/superpowers/specs/2026-04-20-rust-port-design.md).
   This is *the* overarching port design — the one document that fixes the

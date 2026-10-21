@@ -2,6 +2,14 @@
 
 ## Revision history
 
+- **2026-10-21 (rev 36)**: Every public item mapped from a C
+  documentation header carries a `#[doc(alias)]` with its C name, and
+  `docs/audits/c-docs/ledger.tsv` maps every C header to a Rust item or
+  a reason (`c-api-only`, `not-ported`, `merged`). Rendered docs stand on
+  their own for the Rust: they carry no C source citations or internal
+  C names, and name a public C function only in a See also section.
+  `test_c_docs_audit.rs` enforces all three. See
+  `2026-10-19-c-docs-audit-design.md`.
 - **2026-10-19 (rev 35)**: Every class, and `AnyObject`, has `show()`
   and `to_native_string()`, C's `astShow` and `astToString`: the first
   prints the Native dump a Channel with no attributes set writes, the
