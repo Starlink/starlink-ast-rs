@@ -174,9 +174,9 @@ impl CardList {
     /// Insert or replace a card, then advance the position past it.
     ///
     /// If `overwrite` is true and a card with the same keyword already exists,
-    /// the first matching card is replaced. Otherwise, the card is inserted in
-    /// front of the current card, which for a position at end-of-file means it
-    /// is appended.
+    /// the first matching card is replaced.
+    /// Otherwise, the card is inserted in front of the current card, which for
+    /// a position at end-of-file means it is appended.
     ///
     /// In both cases the position is left identifying the card *after* the one
     /// stored, so a run of stores appends in call order, as
@@ -232,8 +232,7 @@ impl CardList {
 
     /// Like [`Self::find_next`], but skips cards consumed by a read.
     ///
-    /// [`Self::find_next`] still sees consumed cards, which is what code that
-    /// tracks a position for writing needs.
+    /// [`Self::find_next`] still sees consumed cards.
     // C: `CARDUSED` / `ignore_used` in the public card-search path.
     pub fn find_next_visible(&mut self, keyword: &str) -> Option<&FitsCard> {
         let start = self.position;

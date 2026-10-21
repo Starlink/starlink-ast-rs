@@ -96,7 +96,7 @@ const INT_DIG: usize = 10;
 /// A typed value from a FITS header card.
 #[derive(Debug, Clone, PartialEq)]
 pub enum FitsValue {
-    /// Integer value of type [`CardType::Int`], one held as an `i32`.
+    /// Integer value of type [`CardType::Int`], one whose value fits in an `i32`.
     Int(i64),
     /// Integer value of type [`CardType::KInt`], one held as an `i64`: one
     /// read from a card with too many digits or too large a value for an
@@ -238,7 +238,7 @@ pub enum CardType {
     NoType,
     /// A commentary card, with no value.
     Comment,
-    /// An integer held as an `i32`.
+    /// An integer whose value fits in an `i32`.
     Int,
     /// A floating value.
     Float,
