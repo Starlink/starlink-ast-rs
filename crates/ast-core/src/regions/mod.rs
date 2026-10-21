@@ -440,8 +440,8 @@ pub trait Region: Frame + Mapping + AsDynRegion {
     ///
     /// Default: true.
     ///
-    /// [`PointList`] and [`CmpRegion`] treat it in their own way, which
-    /// their documentation describes.
+    /// [`PointList`], [`CmpRegion`] and [`Prism`] treat it in their own way,
+    /// which their documentation describes.
     ///
     /// - Stc: the Closed attribute of the Region it encapsulates.
     /// - Moc: the attribute is ignored, and whether a point on the boundary

@@ -193,7 +193,7 @@ impl Prism {
     /// `f` is applied as a Frame attribute set through the Prism is.
     /// While the Prism is [Adaptive](Region::is_adaptive), the change is made
     /// to the Frame it represents, and the Prism is remapped into the new
-    /// coordinate system so that it covers the same area.
+    /// coordinate system so that it covers the same volume.
     /// Otherwise the change is made to both the Frame it represents and the
     /// Frame it was defined in, and to its component Regions, so the numbers
     /// that define it keep their values.

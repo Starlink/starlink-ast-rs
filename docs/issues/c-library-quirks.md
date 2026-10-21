@@ -1143,11 +1143,12 @@ When neither component of an AND is bounded, `GetBounded` calls the AND unbounde
 When one component lies inside the other (2 or 3), the AND is the inner component, which is unbounded.
 A C-oracle probe ANDs two Intervals, x > 0 and x > 1: both are unbounded, `astOverlap` gives 3, and the CmpRegion reports `Bounded` as 1 while containing the point (1e30, 1e30).
 The same happens for two identical unbounded Regions (5).
+Conversely, when the two do not overlap (1), the AND is empty, yet it is reported as unbounded, while an empty Region such as a NullRegion is bounded.
 
-Consequence: the Bounded attribute of such a CmpRegion is wrong.
+Consequence: the Bounded attribute of such CmpRegions is wrong.
 
 The port mirrors the test (`CmpRegion::get_bounded`); `and_of_nested_unbounded_regions_reports_bounded_as_c_does` in `tests/test_cmpregion.rs` pins it.
-Question for upstream: should overlap results 2, 3 and 5 make the AND unbounded too?
+Question for upstream: should overlap results 2, 3 and 5 make the AND unbounded, and 1 make it bounded?
 
 ## Addressed here, and not going upstream
 

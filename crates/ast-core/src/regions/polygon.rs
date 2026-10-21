@@ -931,6 +931,9 @@ fn pixel_polygon(frame: crate::frames::BasicFrame, points: Vec<Vec<f64>>) -> Pol
 /// bounded when not negated, so a Polygon whose vertices were given in the
 /// order that covers the outside reports itself as
 /// [negated](Region::is_negated), with its vertices reversed.
+/// In a SkyFrame, where both parts are bounded, the Polygon is stored so
+/// that when not negated it is the smaller part, so a Polygon covering more
+/// than half the sky reports itself as negated.
 ///
 /// In a SkyFrame, neighboring vertices are always joined by the shorter
 /// great circle arc, so an edge 180 degrees or more long has to be split by
@@ -1078,7 +1081,8 @@ impl PolygonBuilder {
     /// - [`ErrorCode::Badin`] if a vertex has a [`BAD_VALUE`].
     /// - Passes on the error of [`Region::set_uncertainty`] for an
     ///   uncertainty given to [`uncertainty`](Self::uncertainty), and the
-    ///   errors of working out whether the Polygon is bounded.
+    ///   error of [`is_bounded`](Region::is_bounded), or of measuring the
+    ///   area of the Polygon in a sky Frame.
     pub fn build(self) -> AstResult<Polygon> {
         let frameset = FrameSet::new(self.frame);
 
