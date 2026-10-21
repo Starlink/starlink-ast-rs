@@ -183,13 +183,15 @@ pub struct FrameSet {
     /// serialised as an active value or a commented-out default: a FrameSet
     /// assembled from a FITS header has Base explicitly set (C `astSetBase`,
     /// fitschan.c:12084), whereas one built by `astAddFrame` leaves it
-    /// defaulted. When `false`, `base_idx` still holds the effective base
-    /// (frame 0), it is simply written as the implicit default.
+    /// defaulted. When `false`, `base_idx` still holds the effective base,
+    /// [`default_base_idx`](FrameSet::default_base_idx); it is simply written
+    /// as the implicit default.
     base_set: bool,
     /// Whether the Current attribute has been set (C's `current !=
-    /// -INT_MAX`). When `false`, `current_idx` holds the default, the last
-    /// Frame, and Current is written as a commented-out default. Adding a
-    /// Frame sets it, as `astAddFrame` calls `astSetCurrent`.
+    /// -INT_MAX`). When `false`, `current_idx` holds the default,
+    /// [`default_current_idx`](FrameSet::default_current_idx), and Current is
+    /// written as a commented-out default. Adding a Frame sets it, as
+    /// `astAddFrame` calls `astSetCurrent`.
     current_set: bool,
     /// Per-frame Variants FrameSet (indexed 0-based by frame). `Some(fs)` means
     /// the frame owns a set of named variant Mappings: `fs`'s member frames are
@@ -452,11 +454,12 @@ impl FrameSet {
         self.base_set
     }
 
-    /// Clear the Base attribute, so that the first Frame is the base Frame;
-    /// see [`set_base`](FrameSet::set_base).
+    /// Clear the Base attribute, so that the first Frame is the base Frame,
+    /// or the last Frame while the FrameSet is inverted; see
+    /// [`set_base`](FrameSet::set_base).
     pub fn clear_base(&mut self) {
         self.base_set = false;
-        self.base_idx = 0;
+        self.base_idx = self.default_base_idx();
     }
 
     /// Whether the Current attribute is set; see
@@ -466,10 +469,45 @@ impl FrameSet {
     }
 
     /// Clear the Current attribute, so that the last Frame is the current
-    /// Frame; see [`set_current`](FrameSet::set_current).
+    /// Frame, or the first Frame while the FrameSet is inverted; see
+    /// [`set_current`](FrameSet::set_current).
     pub fn clear_current(&mut self) {
         self.current_set = false;
-        self.current_idx = self.frames.len() - 1;
+        self.current_idx = self.default_current_idx();
+    }
+
+    // C's GetBase and GetCurrent give an unset stored `base` the default 1
+    // and an unset stored `current` the default Nframe, and exchange the two
+    // while the FrameSet is inverted. `base_idx` and `current_idx` hold the
+    // effective (already exchanged) Frames, so their defaults exchange too.
+
+    /// The 0-based base Frame used when Base is not set.
+    fn default_base_idx(&self) -> usize {
+        if self.inverted {
+            self.frames.len() - 1
+        } else {
+            0
+        }
+    }
+
+    /// The 0-based current Frame used when Current is not set.
+    fn default_current_idx(&self) -> usize {
+        if self.inverted {
+            0
+        } else {
+            self.frames.len() - 1
+        }
+    }
+
+    /// Move an unset Base or Current to its default after the number of
+    /// Frames changes, as C's defaults follow Nframe.
+    fn track_defaults(&mut self) {
+        if !self.base_set {
+            self.base_idx = self.default_base_idx();
+        }
+        if !self.current_set {
+            self.current_idx = self.default_current_idx();
+        }
     }
 
     // ------------------------------------------------------------------ //
@@ -569,6 +607,7 @@ impl FrameSet {
         self.edges.push(Edge::new(anchor_node, new_node, map));
         self.current_idx = self.frames.len() - 1;
         self.current_set = true;
+        self.track_defaults();
         Ok(())
     }
 
@@ -664,6 +703,7 @@ impl FrameSet {
         self.nnode += nnode;
         self.current_idx = current;
         self.current_set = true;
+        self.track_defaults();
         Ok(())
     }
 
@@ -760,31 +800,26 @@ impl FrameSet {
         self.varfrm.remove(idx);
 
         // Fix base/current indices. C only adjusts the Base attribute when
-        // it is explicitly set (frameset.c:8759 `astTestBase`): if the removed
-        // frame *was* the base, clear the attribute so the default (first
-        // frame) applies; if it was below the base, decrement. When Base is
-        // not set, the default already tracks the first frame, so nothing is
-        // done. Current is treated the same way, but its default is the
-        // *last* frame, which moves when a frame is removed.
+        // it is set (frameset.c RemoveFrame, `astTestBase`): if the removed
+        // frame *was* the base, clear the attribute so the default applies;
+        // if it was below the base, decrement. Current is treated the same
+        // way. An unset attribute then takes its default, which is the
+        // first or last Frame, so it moves when the last Frame does.
         if self.base_set {
             if self.base_idx == idx {
                 self.base_set = false;
-                self.base_idx = 0;
             } else if self.base_idx > idx {
                 self.base_idx -= 1;
             }
         }
-
         if self.current_set {
             if self.current_idx == idx {
                 self.current_set = false;
-                self.current_idx = self.frames.len() - 1;
             } else if self.current_idx > idx {
                 self.current_idx -= 1;
             }
-        } else {
-            self.current_idx = self.frames.len() - 1;
         }
+        self.track_defaults();
 
         self.tidy_nodes()?;
         Ok(())

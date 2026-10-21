@@ -760,3 +760,156 @@ fn an_inverted_frameset_reads_and_writes_as_c_does() {
         C_INVERTED_FRAMESET
     );
 }
+
+// ---- Default Base and Current of an inverted FrameSet ----
+//
+// The expected values are those of a C-oracle probe: an inverted FrameSet's
+// unset Current defaults to the first Frame and its unset Base to the last,
+// and the defaults track the Frames as they are added or removed.
+
+/// Frames A, B and C, with A to B a ZoomMap of 2 and B to C one of 3.
+fn three_domains() -> FrameSet {
+    let mut fs = FrameSet::new(make_named_frame(1, "A"));
+    fs.add_frame(
+        FrameRef::Current,
+        Box::new(ZoomMap::new(1, 2.0).unwrap()),
+        make_named_frame(1, "B"),
+    )
+    .unwrap();
+    fs.add_frame(
+        FrameRef::Current,
+        Box::new(ZoomMap::new(1, 3.0).unwrap()),
+        make_named_frame(1, "C"),
+    )
+    .unwrap();
+    fs
+}
+
+/// Base and current Domains, whether Base and Current are set, and where the
+/// FrameSet maps 1.
+fn base_current(fs: &FrameSet) -> (String, String, bool, bool, f64) {
+    (
+        fs.base().domain().to_string(),
+        fs.current().domain().to_string(),
+        fs.test_base(),
+        fs.test_current(),
+        fs.tran1(&[1.0], true).unwrap()[0],
+    )
+}
+
+/// Check `fs` against `want`, before and after a Native dump and reload.
+fn assert_base_current(fs: &FrameSet, want: (&str, &str, bool, bool, f64)) {
+    use ast_core::AnyObject;
+    let want = (
+        want.0.to_string(),
+        want.1.to_string(),
+        want.2,
+        want.3,
+        want.4,
+    );
+    let check = |fs: &FrameSet, when: &str| {
+        let got = base_current(fs);
+        assert_eq!(
+            (&got.0, &got.1, got.2, got.3),
+            (&want.0, &want.1, want.2, want.3),
+            "{when}"
+        );
+        assert!(
+            (got.4 - want.4).abs() < 1e-12,
+            "{when}: tran1 {} != {}",
+            got.4,
+            want.4
+        );
+    };
+    check(fs, "in memory");
+    let text = native_dump(&AnyObject::FrameSet(fs.clone())).unwrap();
+    let AnyObject::FrameSet(back) = ast_core::from_native_string(&text).unwrap() else {
+        panic!("expected a FrameSet");
+    };
+    check(&back, "after a dump and reload");
+}
+
+#[test]
+fn inverted_clear_current_defaults_to_the_first_frame() {
+    let mut fs = three_domains();
+    fs.invert();
+    assert_base_current(&fs, ("C", "A", true, false, 1.0 / 6.0));
+    fs.clear_current();
+    assert_base_current(&fs, ("C", "A", true, false, 1.0 / 6.0));
+
+    let mut fs = three_domains();
+    fs.set_base(FrameRef::Index(2)).unwrap();
+    fs.invert();
+    assert_base_current(&fs, ("C", "B", true, true, 1.0 / 3.0));
+    fs.clear_current();
+    assert_base_current(&fs, ("C", "A", true, false, 1.0 / 6.0));
+}
+
+#[test]
+fn inverted_clear_base_defaults_to_the_last_frame() {
+    let mut fs = three_domains();
+    fs.invert();
+    fs.clear_base();
+    assert_base_current(&fs, ("C", "A", false, false, 1.0 / 6.0));
+}
+
+#[test]
+fn inverted_remove_frame_keeps_the_default_current_first() {
+    let mut fs = three_domains();
+    fs.invert();
+    fs.remove_frame(FrameRef::Index(2)).unwrap();
+    assert_base_current(&fs, ("C", "A", true, false, 1.0 / 6.0));
+
+    let mut fs = three_domains();
+    fs.invert();
+    fs.remove_frame(FrameRef::Index(1)).unwrap();
+    assert_base_current(&fs, ("C", "B", true, false, 1.0 / 3.0));
+}
+
+#[test]
+fn inverted_remove_frame_moves_the_default_base_to_the_last_frame() {
+    let mut fs = three_domains();
+    fs.invert();
+    fs.remove_frame(FrameRef::Index(3)).unwrap();
+    assert_base_current(&fs, ("B", "A", false, false, 0.5));
+
+    let mut fs = three_domains();
+    fs.invert();
+    fs.clear_base();
+    fs.set_current(FrameRef::Index(2)).unwrap();
+    fs.remove_frame(FrameRef::Index(1)).unwrap();
+    assert_base_current(&fs, ("C", "B", false, true, 1.0 / 3.0));
+
+    let mut fs = three_domains();
+    fs.invert();
+    fs.clear_base();
+    fs.set_current(FrameRef::Index(2)).unwrap();
+    fs.remove_frame(FrameRef::Index(3)).unwrap();
+    assert_base_current(&fs, ("B", "B", false, true, 1.0));
+}
+
+#[test]
+fn inverted_add_frame_moves_the_default_base_to_the_new_frame() {
+    let mut fs = three_domains();
+    fs.invert();
+    fs.clear_base();
+    fs.add_frame(
+        FrameRef::Base,
+        Box::new(ZoomMap::new(1, 5.0).unwrap()),
+        make_named_frame(1, "D"),
+    )
+    .unwrap();
+    assert_base_current(&fs, ("D", "D", false, true, 1.0));
+
+    let mut fs = three_domains();
+    fs.invert();
+    fs.clear_base();
+    fs.clear_current();
+    fs.add_frame(
+        FrameRef::Index(2),
+        Box::new(ZoomMap::new(1, 5.0).unwrap()),
+        make_named_frame(1, "D"),
+    )
+    .unwrap();
+    assert_base_current(&fs, ("D", "D", false, true, 1.0));
+}
