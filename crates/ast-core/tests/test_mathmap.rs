@@ -409,6 +409,39 @@ fn malformed_expressions_report_c_error_codes() {
     assert_eq!(eval_at("1.e1 + 1.d1 + .5e-1 + 2.5d+1", 0.0), 45.05);
 }
 
+/// Parentheses and commas are checked as each is read, as in C: a comma outside a function's argument list is spurious, a closing parenthesis needs an opening one, and a function call must have the number of arguments the function takes.
+/// An operand still expected at the end is reported before an unclosed parenthesis.
+/// Expected codes are from the C library.
+#[test]
+fn parentheses_and_arguments_report_c_error_codes() {
+    let cases: &[(&str, ErrorCode)] = &[
+        ("x,1", ErrorCode::Comin),
+        ("(x,1)", ErrorCode::Comin),
+        ("sin((x,1))", ErrorCode::Comin),
+        ("max(x,(1,2))", ErrorCode::Comin),
+        ("x,1)+(", ErrorCode::Comin),
+        ("x)", ErrorCode::Mlpar),
+        ("x)+(", ErrorCode::Mlpar),
+        ("sin(x,1)", ErrorCode::Wrnfa),
+        ("atan2(x)", ErrorCode::Wrnfa),
+        ("atan2(x,1,2)", ErrorCode::Wrnfa),
+        ("qif(1,2)", ErrorCode::Wrnfa),
+        ("max(x)", ErrorCode::Wrnfa),
+        ("max(x)+(", ErrorCode::Wrnfa),
+        ("min(x,)", ErrorCode::Miopa),
+        ("x+", ErrorCode::Miopa),
+        ("x+)", ErrorCode::Miopa),
+        ("(,x)", ErrorCode::Miopa),
+        (")", ErrorCode::Miopa),
+        ("(x", ErrorCode::Mrpar),
+        ("sin(x", ErrorCode::Mrpar),
+    ];
+    for &(expr, code) in cases {
+        assert_eq!(expression_error(expr), code, "{expr}");
+    }
+    assert_eq!(eval_at("max(1,2,3)", 0.0), 3.0);
+}
+
 /// The bit-wise operators read each value as a fixed-point binary number with negative values in two's complement, as C does, so integer arguments give the integer results and fractional bits take part too.
 /// Expected values are from the C library.
 #[test]

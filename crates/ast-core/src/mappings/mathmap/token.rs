@@ -367,6 +367,7 @@ pub(crate) fn tokenize(expr: &str, variables: &[&str]) -> AstResult<Vec<Token>> 
     let mut tokens = Vec::new();
     let mut pos = 0;
     let mut operator_next = false;
+    let mut levels: Vec<ParenLevel> = Vec::new();
 
     while pos < bytes.len() {
         let rest = &expr[pos..];
@@ -380,10 +381,12 @@ pub(crate) fn tokenize(expr: &str, variables: &[&str]) -> AstResult<Vec<Token>> 
                     ),
                 ));
             };
+            validate_symbol(&tok, &mut levels, &expr[..pos + len])?;
             operator_next = ends_operand(&tok);
             tokens.push(tok);
             pos += len;
         } else if let Some((tok, len)) = longest_match(rest, OPERANDS) {
+            validate_symbol(&tok, &mut levels, &expr[..pos + len])?;
             operator_next = ends_operand(&tok);
             tokens.push(tok);
             pos += len;
@@ -417,8 +420,93 @@ pub(crate) fn tokenize(expr: &str, variables: &[&str]) -> AstResult<Vec<Token>> 
         }
     }
 
+    if !operator_next {
+        return Err(AstError::new(
+            ErrorCode::Miopa,
+            format!("missing or invalid operand in the expression \"{expr}\""),
+        ));
+    }
+    if !levels.is_empty() {
+        return Err(AstError::new(
+            ErrorCode::Mrpar,
+            format!("missing right parenthesis in the expression \"{expr}\""),
+        ));
+    }
+
     tokens.push(Token::Eof);
     Ok(tokens)
+}
+
+/// An open level of parentheses: the number of arguments the symbol that opened it takes, and the number of arguments read so far.
+///
+/// `nargs` is 0 for a bare `(`, the fixed count for a function, or minus the minimum count for a function taking a variable number of arguments.
+/// `argcount` is 0 at a bare `(` and stays there, and counts the arguments of a function call.
+struct ParenLevel {
+    nargs: i32,
+    argcount: i32,
+}
+
+/// The number of arguments the symbol `tok` opens a level of parentheses for, as `ParenLevel::nargs` describes, or `None` if it opens none.
+fn opened_nargs(tok: &Token) -> Option<i32> {
+    match tok {
+        Token::LParen => Some(0),
+        Token::Qif => Some(3),
+        Token::Atan2
+        | Token::Atan2d
+        | Token::Dim
+        | Token::Gauss
+        | Token::FMod
+        | Token::Pow
+        | Token::Rand
+        | Token::Sign => Some(2),
+        Token::FnMax | Token::FnMin => Some(-2),
+        _ if is_function(tok) => Some(1),
+        _ => None,
+    }
+}
+
+/// Check a symbol against the parentheses and function arguments read so far, as C's `ValidateSymbol` does, updating `levels`.
+///
+/// A comma must be inside a function call's parentheses (`ErrorCode::Comin`), a closing parenthesis must have an opening one (`ErrorCode::Mlpar`), and a function call must close with the number of arguments the function takes (`ErrorCode::Wrnfa`).
+/// `quoted` is the expression through the symbol, which an error message quotes.
+fn validate_symbol(tok: &Token, levels: &mut Vec<ParenLevel>, quoted: &str) -> AstResult<()> {
+    if *tok == Token::Comma {
+        match levels.last_mut() {
+            Some(level) if level.argcount != 0 => level.argcount += 1,
+            _ => {
+                return Err(AstError::new(
+                    ErrorCode::Comin,
+                    format!("spurious comma encountered in the expression \"{quoted}\""),
+                ));
+            }
+        }
+    } else if let Some(nargs) = opened_nargs(tok) {
+        levels.push(ParenLevel {
+            nargs,
+            argcount: i32::from(nargs != 0),
+        });
+    } else if *tok == Token::RParen {
+        let Some(level) = levels.last() else {
+            return Err(AstError::new(
+                ErrorCode::Mlpar,
+                format!("missing left parenthesis in the expression \"{quoted}\""),
+            ));
+        };
+        if level.nargs > 0 && level.argcount != level.nargs {
+            return Err(AstError::new(
+                ErrorCode::Wrnfa,
+                format!("wrong number of function arguments in the expression \"{quoted}\""),
+            ));
+        }
+        if level.nargs < 0 && level.argcount < -level.nargs {
+            return Err(AstError::new(
+                ErrorCode::Wrnfa,
+                format!("insufficient function arguments in the expression \"{quoted}\""),
+            ));
+        }
+        levels.pop();
+    }
+    Ok(())
 }
 
 /// The expression up to and including the character at `pos`, which an error message quotes to show where reading stopped.
