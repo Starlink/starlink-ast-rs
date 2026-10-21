@@ -1980,8 +1980,8 @@ impl Frame for SkyFrame {
     /// - `b`: separate fields with a blank.
     /// - `l`: separate fields with a letter (`h`/`d`, `m` or `s`).
     /// - `g`: separate fields with letters and symbols marked up by escape
-    ///   sequences for graphical output; the port has no escape sequences,
-    ///   so it behaves as `l`.
+    ///   sequences for graphical output.
+    ///   Escape sequences are not produced, so `g` behaves as `l`.
     /// - `d`: include a degrees field; expressing the angle purely in
     ///   degrees is also the default when none of `h`, `m`, `s` or `t` is
     ///   given.

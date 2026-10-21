@@ -1817,7 +1817,8 @@ impl Mapping for PolyMap {
     /// 2. **Explicit inverse polynomial.** Same shape as forward — drop the
     ///    `point_has_bad` check, NaN propagates.
     /// 3. **Iterative NR inverse.** SIMD path is NaN-correct.
-    ///    The scalar fallback (`newton_raphson_inverse`) works in `BAD_VALUE`, so NaN inputs are translated to `BAD_VALUE` before it and bad outputs to NaN after it.
+    ///    The scalar fallback marks bad values with `BAD_VALUE`, so NaN inputs are translated to `BAD_VALUE` before it and bad outputs to NaN after it.
+    // The scalar fallback is `newton_raphson_inverse`.
     fn transform_into_nan(
         &self,
         pts: Points<'_>,

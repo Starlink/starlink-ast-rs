@@ -1022,11 +1022,11 @@ impl Mapping for WcsMap {
     /// produce numerical garbage through their arithmetic.
     ///
     /// The is_bad gate at the top is *kept* because the underlying
-    /// projection routines (`wcslib`-port `prj.forward`/`reverse`) don't
-    /// handle `BAD_VALUE` or `NaN` inputs gracefully — they may return
+    /// projection routines don't handle `BAD_VALUE` or `NaN` inputs gracefully — they may return
     /// Err, NaN, or garbage depending on which trig path they take. Gating
     /// here is cheap (one comparison per point per axis) and keeps the
     /// projection math on the well-tested finite-input path.
+    // The projection routines are the wcslib port's `prj.forward`/`reverse`.
     fn transform_into_nan(
         &self,
         pts: Points<'_>,

@@ -268,8 +268,7 @@ fn dtai_equal(a: f64, b: f64) -> bool {
 ///
 /// A TimeFrame [`format_str`](Frame::format_str) is either a Frame format, the default, or the `iso` syntax:
 ///
-/// - A Frame format such as `"%1.7G"` formats the value as it is: an
-///   offset from the TimeOrigin in units of the Unit.
+/// - A [Frame format](Frame::format_str) such as `"%1.7G"` formats the value as it is: an offset from the TimeOrigin in units of the Unit.
 /// - A Format starting with `iso` converts the value to an absolute MJD,
 ///   adding the TimeOrigin, and formats it as a Gregorian date
 ///   `yyyy-mm-dd`.

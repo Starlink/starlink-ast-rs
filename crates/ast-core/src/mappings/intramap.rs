@@ -485,7 +485,8 @@ impl Mapping for IntraMap {
             })
     }
 
-    /// A numerical estimate of the rate, as for any Mapping without an analytic one.
+    /// A numerical estimate of the rate, as [`Mapping::rate`] describes for any
+    /// Mapping without an analytic one.
     // C's IntraMap inherits the base Rate.
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
         crate::mappings::validate_rate(self, at, ax1, ax2)?;

@@ -66,11 +66,11 @@ pub enum AxisKind {
     // C: the `SkyAxis` class, `skyaxis.c`.
     Sky {
         /// True for a latitude axis, which is always wrapped into `[-PI,PI]`.
-        /// This is the axis's `IsLatitude` attribute.
+        // C: the SkyAxis `IsLatitude` attribute.
         is_latitude: bool,
-        /// True when the axis range is centred on zero (`[-PI,PI]`) rather
-        /// than on PI (`[0,2*PI]`).
-        /// This is the axis's `CentreZero` attribute, whose default is `IsLatitude`.
+        /// True when the axis range is centered on zero (`[-PI,PI]`) rather than on PI (`[0,2*PI]`).
+        /// When not set explicitly, it is the same as `is_latitude`.
+        // C: the SkyAxis `CentreZero` attribute, whose default is `IsLatitude`.
         // C: `skyaxis.c:4620`.
         centre_zero: bool,
     },
@@ -1470,7 +1470,9 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// Default: `"%1.<Digits>G"`.
     ///
     /// - Frame: text holding one `%` conversion, such as `"%1.7G"` or `"%.3f"`, with optional flags, width and precision after the `%`.
-    ///   The conversions `e`, `E`, `f`, `F`, `g` and `G` format the value as a double, and `d`, `i`, `u`, `o`, `x`, `X` and `c` format it truncated to a 32-bit integer.
+    ///   The conversions `e`, `E`, `f`, `F`, `g` and `G` format the value as a double, and `d`, `i`, `u`, `o`, `x`, `X` and `c` format it truncated toward zero and saturated to a 32-bit integer.
+    ///   A `.*` precision takes the axis's [`axis_digits`](Frame::axis_digits).
+    ///   A `&` flag formats a nonzero value as `10^x`, with `x` formatted by the rest of the specification; a `+` or space flag then applies to the value's sign rather than to `x`.
     /// - FrameSet: see [`FrameSet`].
     /// - SkyFrame: a syntax and default for sexagesimal values suited to the
     ///   celestial coordinate system; see [`SkyFrame::format_str`].
@@ -2295,6 +2297,10 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// # Errors
     ///
     /// - [`ErrorCode::Attin`] for a `size` below 1 or a bound pair that is bad.
+    ///
+    /// # Panics
+    ///
+    /// If `lbnd` or `ubnd` has fewer than [`naxes`](Frame::naxes) elements.
     // C: `astFrameGrid` (frame.c), a per-class method.
     fn frame_grid(&self, size: i32, lbnd: &[f64], ubnd: &[f64]) -> AstResult<PointSet> {
         frame_grid_default(self.as_dyn_frame(), size, lbnd, ubnd)
