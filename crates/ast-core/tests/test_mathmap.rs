@@ -7,6 +7,7 @@
 //! transform's input variable names are taken from the last `nout` forward
 //! expressions' LHS names. This cross-referencing is how the C library works.
 
+use ast_core::constants::BAD_VALUE;
 use ast_core::coords::PointSet;
 use ast_core::error::ErrorCode;
 use ast_core::mappings::{Mapping, MathMap};
@@ -488,6 +489,9 @@ fn shift_operators_scale_exactly() {
         ("1.5<<-1074", 1e-323),
         ("<min>>>3", 2.781_342_323_134e-309),
         ("0.75<<1024", 1.348_269_851_146_737e308),
+        // C traps an overflowing result through `errno`, which glibc's `ldexp` sets; macOS libm does not, so a macOS build of C gives infinity here.
+        ("<max><<1", BAD_VALUE),
+        ("1<<2000", BAD_VALUE),
     ];
     for &(expr, expected) in cases {
         assert_eq!(eval_at(expr, 0.0), expected, "{expr}");
