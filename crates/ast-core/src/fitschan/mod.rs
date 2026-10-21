@@ -768,6 +768,9 @@ impl FitsChan {
     /// C's `Warn`: unless Clean is set, a warning whose condition the
     /// Warnings attribute names is added to the Channel's warnings and stored
     /// as an `ASTWARN` block in front of the current card.
+    /// The Channel's warnings take it only when ReportLevel is at least 1,
+    /// as C's `astAddWarning` reports a FitsChan warning at level 1; the
+    /// `ASTWARN` block is stored whatever the ReportLevel.
     fn warn(&mut self, warning: Warning) {
         if self.clean()
             || warning.text.is_empty()
@@ -776,7 +779,9 @@ impl FitsChan {
             return;
         }
         self.cards.push_astwarn(&warning.text);
-        self.warnings.push(warning.text);
+        if self.config.report_level() >= 1 {
+            self.warnings.push(warning.text);
+        }
     }
 
     /// The warnings C's `Split` gives for `card`, of an illegal keyword name
