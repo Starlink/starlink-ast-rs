@@ -779,6 +779,20 @@ pub trait Region: Frame + Mapping + AsDynRegion {
     /// Get a copy of the uncertainty region, if one has been set.
     fn get_uncertainty(&self) -> Option<DynRegion>;
 
+    /// The uncertainty of positions in this Region, in its current Frame.
+    ///
+    /// With `def` true, a Region with no uncertainty set gives its default
+    /// uncertainty; with `def` false it gives `None`.
+    fn get_unc(&self, def: bool) -> AstResult<Option<DynRegion>> {
+        // C: region.c `GetUnc`, which copies the result (clearing RegionFS
+        // throughout) and clears RegionFS again, so a dump of it carries its
+        // Frame.
+        if !def && !self.test_unc() {
+            return Ok(None);
+        }
+        Ok(Some(self.get_unc_frm(FrameRef::Current)?.copy_region()))
+    }
+
     /// Whether an explicit (non-default) uncertainty has been assigned.
     ///
     /// Mirrors C `astTestUnc` (region.c): true iff a specific uncertainty

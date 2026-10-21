@@ -854,3 +854,50 @@ fn copy_keeps_ident_report_and_own_use_defs() {
     assert!(copy.report());
     assert!(!copy.use_defs());
 }
+
+/// `get_unc` gives the uncertainty in the Region's current Frame, as
+/// `astGetUnc` does, with `RegionFS` cleared so a dump of it carries its
+/// Frame; with `def` false it gives `None` unless an uncertainty was set.
+#[test]
+fn get_unc_gives_the_uncertainty_in_the_current_frame() {
+    use ast_core::mappings::ZoomMap;
+
+    let foo = || {
+        let mut f = BasicFrameBuilder::new(2).build().unwrap();
+        f.set_domain("FOO");
+        f
+    };
+    let mut bar = BasicFrameBuilder::new(2).build().unwrap();
+    bar.set_domain("BAR");
+    let circle = CircleBuilder::new(foo(), vec![1.0, 0.5])
+        .unwrap()
+        .radius(0.1)
+        .build()
+        .unwrap();
+    assert!(circle.get_unc(false).unwrap().is_none());
+    assert!(circle.get_unc(true).unwrap().is_some());
+
+    let unc = CircleBuilder::new(foo(), vec![1.0, 0.5])
+        .unwrap()
+        .radius(0.001)
+        .build()
+        .unwrap();
+    let mut mapped = circle
+        .reg_map_region(&ZoomMap::new(2, 2.0).unwrap(), &bar)
+        .unwrap();
+    mapped.set_uncertainty(Box::new(unc)).unwrap();
+
+    let got = mapped
+        .get_unc(false)
+        .unwrap()
+        .expect("an uncertainty was set");
+    let (lbnd, ubnd) = got.get_region_bounds().unwrap();
+    let want_l = [1.998, 0.998];
+    let want_u = [2.002, 1.002];
+    for i in 0..2 {
+        assert!((lbnd[i] - want_l[i]).abs() < 1e-9, "lbnd {lbnd:?}");
+        assert!((ubnd[i] - want_u[i]).abs() < 1e-9, "ubnd {ubnd:?}");
+    }
+    assert_eq!(got.get_region_frame().domain(), "BAR");
+    assert!(!got.test_region_fs());
+}
