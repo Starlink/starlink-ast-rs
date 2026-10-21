@@ -1145,6 +1145,10 @@ pub trait Region: Frame + Mapping + AsDynRegion {
     ///   converted to the Frame this Region was defined in.
     ///   This Region then has no uncertainty set.
     /// - Otherwise passes on the errors of converting and mapping `unc`.
+    ///
+    /// # See also
+    ///
+    /// `astSetUnc`.
     // C: region.c `SetUnc` (region.c:10754). The body is fully generic: it
     // touches only the FrameSet, defining points, uncertainty field and
     // cache, so this is a shared default. Every route that installs an
@@ -1277,7 +1281,7 @@ pub trait Region: Frame + Mapping + AsDynRegion {
     /// - most classes: a Box 1.0E-6 of the size of the Region's bounding
     ///   box on each axis, centered on the box; on an axis where the box has
     ///   no width, 1.0E-6 of the axis value, or 1.0E-12 where that value is
-    ///   zero;
+    ///   zero; on an axis with no limit, zero width at 0;
     /// - CmpRegion: the uncertainty set on its first component Region, or
     ///   else the one set on its second, or else as for most classes;
     /// - Prism: the uncertainties of its two component Regions combined, each
