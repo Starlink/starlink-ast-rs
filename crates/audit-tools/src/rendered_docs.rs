@@ -1,9 +1,10 @@
 //! C references in rendered documentation.
 //!
-//! The documentation of the Rust API should describe the Rust API. A C source
-//! file name (`permmap.c:2849`, `frame.h:646`) or an internal C function (`astInitPermMap`)
-//! in a rendered page points a reader at code they are not using, and line
-//! numbers in the C source change with every upstream sync.
+//! The documentation of the Rust API should describe the Rust API.
+//! A C source file name (`permmap.c:2849`, `frame.h:646`) or an internal C
+//! function (`astInitPermMap`) in a rendered page points a reader at code they
+//! are not using, and line numbers in the C source change with every upstream
+//! sync.
 
 use std::collections::BTreeSet;
 
@@ -92,7 +93,8 @@ pub fn c_references(html: &str, public: &BTreeSet<String>) -> Vec<String> {
                 .iter()
                 .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || *b == b'_');
         let prev_ok = start == 0 || bytes[start - 1] != b'.';
-        if after_dot_c && lower && prev_ok {
+        // `self.h` is a Rust field access, not a header.
+        if after_dot_c && lower && prev_ok && word != "self" {
             let mut end = i + 2;
             if bytes.get(end) == Some(&b':') {
                 let n = line_range_len(&bytes[end + 1..]);
@@ -126,6 +128,12 @@ mod tests {
     fn a_c_header_name_is_flagged_with_its_line() {
         let html = "<p>See frame.h:646 and permmap.h.</p>";
         assert_eq!(c_references(html, &public()), ["frame.h:646", "permmap.h"]);
+    }
+
+    #[test]
+    fn rust_text_that_looks_like_a_header_is_not_flagged() {
+        let html = "<a href=\"x.html\">page</a><p>foo.hash and self.h and self.c</p>";
+        assert!(c_references(html, &public()).is_empty());
     }
 
     #[test]
