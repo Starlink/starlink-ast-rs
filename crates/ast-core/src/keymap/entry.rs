@@ -99,7 +99,7 @@ impl AstType {
 /// C distinguishes these with `Entry.nel`: 0 for a scalar, the element
 /// count for a vector. The distinction is visible in the dump (`Val%d`
 /// versus `Nel%d` plus `V%d_%d`) and in `astMapLength`, so it is
-/// preserved rather than normalised to a length-1 vector.
+/// preserved rather than normalized to a length-1 vector.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum Scalar1D<T> {
     /// `nel == 0`.

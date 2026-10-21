@@ -33,6 +33,8 @@ pub enum SortBy {
     AgeDown,
     /// Alphabetical order, comparing the keys byte by byte, with `A...`
     /// first.
+    /// A key holding a non-ASCII character sorts before one holding an ASCII
+    /// character at the same position.
     KeyUp,
     /// Reverse alphabetical order, with `A...` last.
     KeyDown,

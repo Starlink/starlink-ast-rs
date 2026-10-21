@@ -84,8 +84,12 @@ const DEFAULT_SIZE_GUESS: usize = MIN_TABLE_SIZE * MAX_ENTRIES_PER_TABLE_ENTRY;
 ///   nearest integer, and any value outside the range of an integer type
 ///   is clamped to that type's limits.
 ///   A NaN reads as 0.
-/// - A number read as a string is formatted in decimal: an `f32` with up
-///   to 6 significant digits, and an `f64` with up to 17, or up to 14 when
+/// - An `f64` read as an `f32` is rounded to the nearest `f32`, and one
+///   beyond its range, [`BAD_VALUE`](crate::constants::BAD_VALUE) included,
+///   reads as an infinity.
+/// - A number read as a string is formatted as a decimal number, in
+///   exponent notation such as `1e+20` for very large or small values:
+///   an `f32` with up to 6 significant digits, and an `f64` with up to 17, or up to 14 when
 ///   that gives a string at least ten characters shorter.
 ///   [`BAD_VALUE`](crate::constants::BAD_VALUE) formats as `"<bad>"`.
 /// - A string read as a number must hold nothing but the number and
@@ -143,7 +147,7 @@ const DEFAULT_SIZE_GUESS: usize = MIN_TABLE_SIZE * MAX_ENTRIES_PER_TABLE_ENTRY;
 /// ```
 #[derive(Debug, Clone, Default)]
 pub struct KeyMap {
-    /// Keys are normalised on the way in, so the `String` key is directly
+    /// Keys are normalized on the way in, so the `String` key is directly
     /// comparable and `HashMap` equality agrees with `KeyCmp`.
     entries: HashMap<String, MapEntry>,
     /// The source of both age counters. Incremented twice when a new key
@@ -556,8 +560,8 @@ impl KeyMap {
     ///
     /// # See also
     ///
-    /// `astMapPut0<X>`, one function per data type `<X>`, as in the table
-    /// above.
+    /// `astMapPut0<X>`, one function per data type `<X>`, where `<X>` is the last
+    /// letter of the matching method in upper case (`I` for the `i` method).
     /// Its generic pointer type `P` has no counterpart.
     #[doc(alias = "astMapPut0")]
     pub fn put_0i(&mut self, key: &str, value: i32, comment: Option<&str>) -> AstResult<()> {
@@ -725,7 +729,7 @@ impl KeyMap {
     }
 
     /// Store an entry, applying C's key trimming, `MapLocked` check and age
-    /// counter rules. The key must already be normalised (see
+    /// counter rules. The key must already be normalized (see
     /// [`table::convert_key`]).
     ///
     /// Mirrors the shared tail of every `MAKE_MAPPUT0` / `MAKE_MAPPUT1`
@@ -800,7 +804,7 @@ impl KeyMap {
     /// Mirrors `AddTableEntry` (`keymap.c:622`) called with `keymember ==
     /// -1`: the case where the key is brand new to this KeyMap, so there
     /// is no previous `keymember` to inherit. `key` must already be
-    /// normalised, trimmed, and absent from `self.entries`. Used by
+    /// normalized, trimmed, and absent from `self.entries`. Used by
     /// [`KeyMap::insert_entry`] for a fresh key, and by
     /// [`KeyMap::copy_one`] to install a cloned source entry without
     /// re-deriving its value.
@@ -1005,8 +1009,8 @@ impl KeyMap {
     ///
     /// # See also
     ///
-    /// `astMapGet0<X>`, one function per data type `<X>`, as in the table
-    /// above.
+    /// `astMapGet0<X>`, one function per data type `<X>`, where `<X>` is the last
+    /// letter of the matching method in upper case (`I` for the `i` method).
     #[doc(alias = "astMapGet0")]
     pub fn get_0i(&self, key: &str) -> AstResult<Option<i32>> {
         match self.get_scalar(key, AstType::Int, "astMapGet0I")? {
@@ -1205,8 +1209,8 @@ impl KeyMap {
     ///
     /// # See also
     ///
-    /// `astMapPut1<X>`, one function per data type `<X>`, as in the table
-    /// above.
+    /// `astMapPut1<X>`, one function per data type `<X>`, where `<X>` is the last
+    /// letter of the matching method in upper case (`I` for the `i` method).
     /// Its generic pointer type `P` has no counterpart.
     #[doc(alias = "astMapPut1")]
     pub fn put_1i(&mut self, key: &str, values: &[i32], comment: Option<&str>) -> AstResult<()> {
@@ -1399,8 +1403,8 @@ impl KeyMap {
     ///
     /// # See also
     ///
-    /// `astMapGet1<X>`, one function per data type `<X>`, as in the table
-    /// above.
+    /// `astMapGet1<X>`, one function per data type `<X>`, where `<X>` is the last
+    /// letter of the matching method in upper case (`I` for the `i` method).
     /// The vector returned has the length of the entry, so there is no
     /// buffer size to give.
     #[doc(alias = "astMapGet1")]
@@ -1616,8 +1620,8 @@ impl KeyMap {
     ///
     /// # See also
     ///
-    /// `astMapPutElem<X>`, one function per data type `<X>`, as in the
-    /// table above.
+    /// `astMapPutElem<X>`, one function per data type `<X>`, where `<X>` is the last
+    /// letter of the matching method in upper case (`I` for the `i` method).
     /// Its generic pointer type `P` has no counterpart.
     #[doc(alias = "astMapPutElem")]
     pub fn put_elem_i(&mut self, key: &str, elem: usize, value: i32) -> AstResult<()> {
@@ -1870,8 +1874,8 @@ impl KeyMap {
     ///
     /// # See also
     ///
-    /// `astMapGetElem<X>`, one function per data type `<X>`, as in the
-    /// table above.
+    /// `astMapGetElem<X>`, one function per data type `<X>`, where `<X>` is the last
+    /// letter of the matching method in upper case (`I` for the `i` method).
     #[doc(alias = "astMapGetElem")]
     pub fn get_elem_i(&self, key: &str, elem: usize) -> AstResult<Option<i32>> {
         Ok(self
@@ -2251,7 +2255,7 @@ impl KeyMap {
     /// KeyMap, has no comment, or has more than 200 characters when
     /// [KeyCase](Self::key_case) is false.
     // No C counterpart: C exposes an entry's comment only through the
-    // serialised form. Rust adds it because `to_node` needs it and because a
+    // serialized form. Rust adds it because `to_node` needs it and because a
     // caller who can set a comment should be able to read it back.
     pub fn map_comment(&self, key: &str) -> Option<String> {
         let nkey = table::convert_key(key, self.key_case(), "map_comment").ok()?;
@@ -2274,7 +2278,7 @@ impl KeyMap {
     ///   unchanged.
     /// - [`ErrorCode::Bigkey`] if [KeyCase](Self::key_case) is false and
     ///   either key has more than 200 characters.
-    // keymap.c:7608. A no-op if the two normalised keys are equal (C's whole
+    // keymap.c:7608. A no-op if the two normalized keys are equal (C's whole
     // body is guarded on `strcmp(oldkey, newkey)`), and silent if `old_key`
     // is absent (C's RemoveTableEntry returns NULL and the rest of the body
     // is skipped). Otherwise the destination's `keymember` is inherited if it

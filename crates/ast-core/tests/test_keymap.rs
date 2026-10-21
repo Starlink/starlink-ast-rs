@@ -2156,8 +2156,8 @@ fn a_case_insensitive_key_may_have_200_characters() {
 }
 
 /// `map_get_c` reports a key too long for a case-insensitive KeyMap, as
-/// every other read does, rather than treating it as absent. The C library
-/// reports `AST__BIGKEY` from the length query `astMapGetC` makes first
+/// every other read does, rather than treating it as absent.
+/// The C library reports `AST__BIGKEY` from the length query `astMapGetC` makes first
 /// (C-oracle probe).
 #[test]
 fn map_get_c_reports_an_over_long_key() {
