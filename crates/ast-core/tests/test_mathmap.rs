@@ -409,10 +409,8 @@ fn malformed_expressions_report_c_error_codes() {
     assert_eq!(eval_at("1.e1 + 1.d1 + .5e-1 + 2.5d+1", 0.0), 45.05);
 }
 
-/// The bit-wise operators read each value as a fixed-point binary number
-/// with negative values in two's complement, as C does, so integer arguments
-/// give the integer results and fractional bits take part too. Expected
-/// values are from the C library.
+/// The bit-wise operators read each value as a fixed-point binary number with negative values in two's complement, as C does, so integer arguments give the integer results and fractional bits take part too.
+/// Expected values are from the C library.
 #[test]
 fn bitwise_operators_act_on_fixed_point_values() {
     let cases: &[(&str, f64)] = &[
@@ -445,8 +443,7 @@ fn bitwise_operators_act_on_fixed_point_values() {
     }
 }
 
-/// The shift operators scale by a power of two with a single rounding, so
-/// they reach through the subnormal numbers and up to the largest double.
+/// The shift operators scale by a power of two with a single rounding, so they reach through the subnormal numbers and up to the largest double.
 /// Expected values are from the C library.
 #[test]
 fn shift_operators_scale_exactly() {
