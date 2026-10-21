@@ -298,6 +298,39 @@ impl Mapping for PermMap {
     }
 
     #[test]
+    fn a_continued_string_does_not_hide_the_owner() {
+        // The continuation line opens with `'{`, inside the string, which is
+        // neither a char literal nor a brace.
+        let src = r#"impl FitsChan {
+    pub fn set_source_file(&mut self, source_file: &str) {
+        let e = 1;
+        let _ = format!("Failed to open input SourceFile \
+            '{source_file}' - {e}.");
+    }
+
+    #[doc(alias = "SinkFile")]
+    pub fn sink_file(&self) {}
+}
+"#;
+        assert_eq!(doc_aliases(src), [t("SinkFile", "sink_file", "FitsChan")]);
+    }
+
+    #[test]
+    fn a_raw_string_spanning_lines_does_not_hide_the_owner() {
+        let src = r##"impl K {
+    pub fn f(&self) {
+        let _ = r#"a "quoted" {
+            line with } and "#;
+    }
+
+    #[doc(alias = "astX")]
+    pub fn g(&self) {}
+}
+"##;
+        assert_eq!(doc_aliases(src), [t("astX", "g", "K")]);
+    }
+
+    #[test]
     fn a_multi_line_alias_attribute_is_reported_not_dropped() {
         let src = "impl K {\n    #[doc(alias =\n        \"astX\")]\n    pub fn f(&self) {}\n}\n";
         let a = doc_aliases(src);

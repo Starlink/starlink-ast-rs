@@ -146,27 +146,87 @@ fn parse_citation_at(text: &str, colon: usize) -> Option<(Citation, std::ops::Ra
     ))
 }
 
-/// Strip line comments and string / char literal bodies so their braces do not
-/// count as block structure.
-fn code_only(line: &str) -> String {
+/// The string literal a line ends inside, if any, which the next line
+/// continues.
+#[derive(Clone, Copy, Default)]
+enum OpenLiteral {
+    #[default]
+    None,
+    /// A `"…"` or `b"…"` string, including one continued with a trailing `\`.
+    Str,
+    /// A raw string closed by `"` and this many `#`.
+    Raw(usize),
+}
+
+/// Every line of `src` with line comments and string and char literal bodies
+/// stripped, so their braces do not count as block structure.
+///
+/// A string literal may span lines, so the state of each line carries into
+/// the next.
+fn code_lines(src: &str) -> Vec<String> {
+    let mut open = OpenLiteral::None;
+    src.lines().map(|l| code_only(l, &mut open)).collect()
+}
+
+/// One line of [`code_lines`]: `open` is the literal the previous line ended
+/// inside, and is updated to the one this line ends inside.
+fn code_only(line: &str, open: &mut OpenLiteral) -> String {
     let mut out = String::with_capacity(line.len());
-    let bytes: Vec<char> = line.chars().collect();
+    let chars: Vec<char> = line.chars().collect();
     let mut i = 0;
-    while i < bytes.len() {
-        match bytes[i] {
-            '/' if bytes.get(i + 1) == Some(&'/') => break,
-            '"' => {
-                i += 1;
-                while i < bytes.len() {
-                    match bytes[i] {
-                        '\\' => i += 2,
-                        '"' => break,
-                        _ => i += 1,
+    while i < chars.len() {
+        match *open {
+            OpenLiteral::Str => {
+                match chars[i] {
+                    '\\' => i += 2,
+                    '"' => {
+                        *open = OpenLiteral::None;
+                        i += 1;
                     }
+                    _ => i += 1,
                 }
+                continue;
+            }
+            OpenLiteral::Raw(hashes) => {
+                if chars[i] == '"'
+                    && chars[i + 1..]
+                        .iter()
+                        .take(hashes)
+                        .filter(|c| **c == '#')
+                        .count()
+                        == hashes
+                {
+                    *open = OpenLiteral::None;
+                    i += 1 + hashes;
+                } else {
+                    i += 1;
+                }
+                continue;
+            }
+            OpenLiteral::None => {}
+        }
+        match chars[i] {
+            '/' if chars.get(i + 1) == Some(&'/') => break,
+            '"' => {
+                *open = OpenLiteral::Str;
                 i += 1;
             }
-            '\'' if bytes.get(i + 1) == Some(&'{') || bytes.get(i + 1) == Some(&'}') => i += 3,
+            'r' if raw_string_hashes(&chars, i).is_some() => {
+                let hashes = raw_string_hashes(&chars, i).expect("just tested");
+                *open = OpenLiteral::Raw(hashes);
+                i += 2 + hashes;
+            }
+            // A char literal: an escape such as `'\''` or `'\u{7b}'`, or one
+            // character between quotes. Anything else is a lifetime.
+            '\'' if chars.get(i + 1) == Some(&'\\') => {
+                i = chars
+                    .get(i + 3..)
+                    .unwrap_or_default()
+                    .iter()
+                    .position(|c| *c == '\'')
+                    .map_or(chars.len(), |at| i + 3 + at + 1);
+            }
+            '\'' if chars.get(i + 2) == Some(&'\'') => i += 3,
             c => {
                 out.push(c);
                 i += 1;
@@ -174,6 +234,18 @@ fn code_only(line: &str) -> String {
         }
     }
     out
+}
+
+/// The number of `#` in the raw string literal opening at `chars[at]`, an `r`,
+/// or `None` when `r` there starts no raw string.
+fn raw_string_hashes(chars: &[char], at: usize) -> Option<usize> {
+    // `r` must begin a token, or follow the `b` that begins one in `br"…"`.
+    let starts_token = |k: usize| k == 0 || !is_ident(chars[k - 1]);
+    if !(starts_token(at) || (chars[at - 1] == 'b' && starts_token(at - 1))) {
+        return None;
+    }
+    let hashes = chars[at + 1..].iter().take_while(|c| **c == '#').count();
+    (chars.get(at + 1 + hashes) == Some(&'"')).then_some(hashes)
 }
 
 fn rust_fn_name(code: &str) -> Option<String> {
@@ -223,9 +295,8 @@ pub fn rust_items(src: &str) -> Vec<(String, usize, usize)> {
     let mut parens = 0usize;
     let mut brackets = 0usize;
     let mut pending: Option<(String, usize)> = None;
-    for (i, text) in raw.iter().enumerate() {
-        let code = code_only(text);
-        if let Some(name) = rust_fn_name(&code) {
+    for (i, code) in code_lines(src).iter().enumerate() {
+        if let Some(name) = rust_fn_name(code) {
             pending = Some((name, attached_start(&raw, i)));
         }
         for c in code.chars() {
@@ -285,8 +356,7 @@ fn block_headers(src: &str) -> Vec<Option<String>> {
     let mut stack: Vec<(String, usize)> = Vec::new();
     let mut depth = 0usize;
     let mut pending: Option<String> = None;
-    for text in src.lines() {
-        let code = code_only(text);
+    for code in code_lines(src) {
         if let Some(header) = block_header(&code) {
             pending = Some(header);
         }
@@ -1023,15 +1093,16 @@ pub fn trait_method_names(src: &str) -> Vec<String> {
 }
 
 /// A Rust source's lines and items, parsed once for the call-graph search.
-struct Parsed<'a> {
-    lines: Vec<&'a str>,
+struct Parsed {
+    /// Each line with comments and literal bodies stripped.
+    code: Vec<String>,
     items: Vec<(String, usize, usize)>,
 }
 
-impl<'a> Parsed<'a> {
-    fn new(src: &'a str) -> Self {
+impl Parsed {
+    fn new(src: &str) -> Self {
         Parsed {
-            lines: src.lines().collect(),
+            code: code_lines(src),
             items: rust_items(src),
         }
     }
@@ -1050,8 +1121,7 @@ fn called_names(src: &Parsed, item: &str) -> Vec<String> {
         return Vec::new();
     };
     let mut out = Vec::new();
-    for line in &src.lines[first - 1..*last] {
-        let code = code_only(line);
+    for code in &src.code[first - 1..*last] {
         let chars: Vec<char> = code.chars().collect();
         for (i, c) in chars.iter().enumerate() {
             if *c != '(' {
