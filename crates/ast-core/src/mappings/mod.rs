@@ -227,6 +227,13 @@ pub struct MappingFlags {
     /// in for C's comparison of Mapping pointers, so it stays with the
     /// Mapping as it moves and a copy does not take it.
     pub(crate) merge_tag: usize,
+    /// Which entry of a CmpMap's component list the Mapping was when the
+    /// CmpMap's simplification began; 0 for a Mapping made during it.
+    /// C's list entries alias the CmpMap's own components, so a record of
+    /// simplification written on an entry is on the component; this stands
+    /// in for that alias, so it stays with the Mapping as it moves and a copy
+    /// does not take it.
+    pub(crate) origin: usize,
     /// Whether Invert is set to 0, which C tells from an unset Invert
     /// (mapping.c `TestInvert`); a set 1 is `is_inverted`.
     pub(crate) invert_zero: bool,
@@ -244,6 +251,7 @@ impl Clone for MappingFlags {
             allow_simplify: self.allow_simplify,
             restricted_simplify: self.restricted_simplify,
             merge_tag: 0,
+            origin: 0,
             invert_zero: self.invert_zero,
             frozen: self.frozen,
         }

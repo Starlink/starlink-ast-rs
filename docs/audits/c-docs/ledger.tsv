@@ -222,7 +222,7 @@ function	astRebin<X>	mapping.c	rebin		yes	one function generic over RebinValue f
 function	astRebinSeq<X>	mapping.c	rebin_seq		yes	one function generic over RebinValue for the type codes
 function	astRemoveRegions	mapping.c	remove_regions		yes	a Region becomes a UnitMap rather than its Frame, since the port's Frames are not Mappings (PLAN.md §9.6)
 function	astResample<X>	mapping.c	resample		yes	ResampleFlags has no AST__URESAMP1-4 user flags (PLAN.md §2)
-function	astSimplify	mapping.c	dyn Mapping::simplify		yes	C returns the Mapping unsimplified when a reduction raises AST__NODEF or AST__TRNND; the port returns the error (PLAN.md §2)
+function	astSimplify	mapping.c	dyn Mapping::simplify		yes
 function	astTran1	mapping.c	Mapping::tran1		yes
 function	astTran2	mapping.c	Mapping::tran2		yes
 function	astTranGrid	mapping.c	Mapping::tran_grid		yes

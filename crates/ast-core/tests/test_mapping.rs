@@ -457,3 +457,68 @@ fn perm_map_equality_compares_referenced_constant_values() {
     assert!(pm(-1, &[5.0]).equal(&pm(-2, &[9.0, 5.0])), "Error 7");
     assert!(pm(-1, &[5.0, 7.0]).equal(&pm(-1, &[5.0, 9.0])), "Error 8");
 }
+
+/// C's `astSimplify` clears an AST__TRNND or AST__NODEF raised while reducing
+/// a Mapping and returns the Mapping unsimplified.
+/// A PermMap whose outputs are both constants, followed by a parallel CmpMap,
+/// is swapped with it by transforming the constants through the CmpMap's
+/// components, and the first component here has no forward transformation.
+/// The expected dump is what the C library writes for the same Mappings: the
+/// outer CmpMap carries no `IsSimp`, while the parallel CmpMap, simplified
+/// before the merge failed, does.
+#[test]
+fn simplify_clears_an_undefined_transformation_error() {
+    use ast_core::mappings::{MathMap, PermMap};
+    let pm = PermMap::new(&[1, 2], &[-1, -2], &[3.0, 4.0]).unwrap();
+    let mm = MathMap::new(1, 1, &["y"], &["x=y"]).unwrap();
+    assert!(!mm.has_forward());
+    let par = CmpMap::new(
+        Box::new(mm),
+        Box::new(UnitMap::new(1)),
+        Composition::Parallel,
+    )
+    .unwrap();
+    let ser = CmpMap::new(Box::new(pm), Box::new(par), Composition::Series).unwrap();
+    let simplified = <dyn Mapping>::simplify(&ser).unwrap();
+    let got = native_dump(&AnyObject::from_mapping(simplified.as_ref()).unwrap()).unwrap();
+    let want = " Begin CmpMap 	# Compound Mapping
+    Nin = 2 	# Number of input coordinates
+    Fwd = 0 	# Forward transformation not defined
+ IsA Mapping 	# Mapping between coordinate systems
+    MapA = 	# First component Mapping
+       Begin PermMap 	# Coordinate permutation
+          Nin = 2 	# Number of input coordinates
+       IsA Mapping 	# Mapping between coordinate systems
+          Out1 = -1 	# Output coordinate 1 = constant no. 1
+          Out2 = -2 	# Output coordinate 2 = constant no. 2
+          In1 = 1 	# Input coordinate 1 = output coordinate 1
+          In2 = 2 	# Input coordinate 2 = output coordinate 2
+          Nconst = 2 	# Number of constants
+          Con1 = 3 	# Constant number 1
+          Con2 = 4 	# Constant number 2
+       End PermMap
+    MapB = 	# Second component Mapping
+       Begin CmpMap 	# Compound Mapping
+          Nin = 2 	# Number of input coordinates
+          IsSimp = 1 	# Mapping has been simplified
+          Fwd = 0 	# Forward transformation not defined
+       IsA Mapping 	# Mapping between coordinate systems
+          Series = 0 	# Component Mappings applied in parallel
+          MapA = 	# First component Mapping
+             Begin MathMap 	# Transformation using mathematical functions
+                Nin = 1 	# Number of input coordinates
+                Fwd = 0 	# Forward transformation not defined
+             IsA Mapping 	# Mapping between coordinate systems
+                Fwd1 = \"y\" 	# Forward function 1
+                Inv1 = \"x=y\" 	# Inverse function 1
+             End MathMap
+          MapB = 	# Second component Mapping
+             Begin UnitMap 	# Unit (null) Mapping
+                Nin = 1 	# Number of input coordinates
+             IsA Mapping 	# Mapping between coordinate systems
+             End UnitMap
+       End CmpMap
+ End CmpMap
+";
+    assert_eq!(got, want);
+}

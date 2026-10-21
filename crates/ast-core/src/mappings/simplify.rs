@@ -16,9 +16,10 @@
 use std::cell::RefCell;
 
 use crate::constants::BAD_VALUE;
-use crate::error::AstResult;
+use crate::error::{AstError, AstResult};
 use crate::mappings::helpers::ast_equal;
 
+use super::ViaSimplify;
 use super::cmpmap::{CmpMap, Composition};
 use super::grismmap::GrismMap;
 use super::matrix::{MatrixMap, is_diagonal};
@@ -503,6 +504,16 @@ pub struct MergeCtx {
     /// true, only components whose `AllowSimplify` flag is set may be
     /// nominated (C `cmpmap.c:3518-3564`).
     restricted: bool,
+    /// An error a merge raised, which C leaves in its global status: the
+    /// nominate loop stops at it (`while ( astOK && ... )`, cmpmap.c:3754)
+    /// and the simplification fails with it.
+    error: Option<AstError>,
+    /// A copy of each component of the CmpMap being simplified that the
+    /// nominate loop recorded as simplified, by the component's position in
+    /// the list the simplification began with (`MappingFlags::origin`).
+    /// C writes those records through its list's aliases onto the CmpMap's
+    /// own components, where they stay whatever later merges do to the list.
+    stamped: Vec<(usize, DynMapping)>,
 }
 
 impl MergeCtx {
@@ -513,6 +524,36 @@ impl MergeCtx {
         Self {
             list,
             restricted: false,
+            error: None,
+            stamped: Vec::new(),
+        }
+    }
+
+    /// Record an error a merge raised, as C's merges leave it in the global
+    /// status for the loop driving them to find.
+    /// The first error is kept, as C keeps the first status set.
+    pub(crate) fn fail(&mut self, error: AstError) {
+        self.error.get_or_insert(error);
+    }
+
+    /// Take the error a merge raised, if any.
+    pub(crate) fn take_error(&mut self) -> Option<AstError> {
+        self.error.take()
+    }
+
+    /// Keep a copy of the entry at `index` if it is one of the components the
+    /// simplification began with, so the records of simplification on it can
+    /// be returned on the CmpMap if the simplification fails.
+    fn record_component_stamp(&mut self, index: usize) {
+        let entry = &self.list[index].0;
+        let origin = entry.mapping_flags().origin;
+        if origin == 0 {
+            return;
+        }
+        let copy = entry.clone_box();
+        match self.stamped.iter_mut().find(|(o, _)| *o == origin) {
+            Some(slot) => slot.1 = copy,
+            None => self.stamped.push((origin, copy)),
         }
     }
 
@@ -670,6 +711,10 @@ impl MergeCtx {
         let mut sub = MergeCtx::new(suffix);
         let nominee = sub.list[sub_index].0.clone_box();
         let modified = dispatch_map_merge(nominee.as_ref(), &mut sub, sub_index, series);
+        if let Some(e) = sub.take_error() {
+            self.fail(e);
+        }
+        self.stamped.append(&mut sub.stamped);
         self.list.extend(sub.list);
         modified
     }
@@ -770,11 +815,14 @@ pub(crate) fn cmp_map_merge(
             if adopted.is_inverted() {
                 adopted.invert();
             }
-            let (eff, orig) = (ctx.entry(where_).1, ctx.entry(where_).2);
+            let (entry, eff, orig) = ctx.entry(where_);
+            let (eff, orig) = (*eff, *orig);
+            adopted.mapping_flags_mut().origin = entry.mapping_flags().origin;
             ctx.set_pair_single(where_, (adopted, eff, orig));
         }
 
         ctx.set_component_simple_tag(where_);
+        ctx.record_component_stamp(where_);
     } else {
         // C's `astSimplify` hands a tagged Mapping straight back, so its head
         // still runs and finds nothing simpler.
@@ -858,7 +906,7 @@ pub(crate) fn cmp_map_merge(
             .downcast_ref::<CmpMap>()
             .is_some_and(|c| c.composition() == Composition::Parallel)
         && ctx.entry(where_ - 1).0.as_any().is::<PermMap>()
-        && try_swap_permmap_parallel_at(&mut ctx.list, where_ - 1)
+        && try_swap_permmap_parallel_at(ctx, where_ - 1)
     {
         return Some(where_ - 1);
     }
@@ -1318,6 +1366,9 @@ pub(crate) fn base_simplify(this: &dyn Mapping) -> AstResult<(DynMapping, bool)>
     while !ctx.is_frozen(0) {
         let nominee = ctx.entry(0).0.clone_box();
         let modified = dispatch_map_merge(nominee.as_ref(), &mut ctx, 0, true);
+        if let Some(e) = ctx.take_error() {
+            return Err(e);
+        }
 
         if ctx.len() > 1 || modified.is_none() {
             break;
@@ -1666,12 +1717,17 @@ fn pattern_check(val: i64, check: i64, list: &mut Vec<i64>) -> i64 {
 /// change.
 ///
 /// Returns `true` if any merge occurred.
+///
+/// # Errors
+///
+/// The first error a merge raises, which ends the loop as C's
+/// `while ( astOK && ... )` does (cmpmap.c:3754).
 fn run_nominate_loop(
     ctx: &mut MergeCtx,
     series: bool,
     mlist: &mut Vec<i64>,
     nlist: &mut Vec<i64>,
-) -> bool {
+) -> AstResult<bool> {
     let mut any = false;
     let mut improved = true;
     while improved {
@@ -1695,6 +1751,9 @@ fn run_nominate_loop(
                 let _nomination = trace::enter_nomination();
                 dispatch_map_merge(nominee.as_ref(), ctx, nominated, series)
             };
+            if let Some(e) = ctx.take_error() {
+                return Err(e);
+            }
 
             // Move on to nominate the next mapping (C `nominated++`).
             nominated += 1;
@@ -1735,7 +1794,7 @@ fn run_nominate_loop(
             }
         }
     }
-    any
+    Ok(any)
 }
 
 /// Simplify a flattened series/parallel component list in place.
@@ -1749,17 +1808,26 @@ fn run_nominate_loop(
 /// Returns `true` if the list was modified.
 #[cfg(test)]
 pub(crate) fn merge_loop(list: &mut Vec<(DynMapping, bool, bool)>, series: bool) -> bool {
-    merge_loop_restricted(list, series, false)
+    merge_loop_restricted(list, series, false, &mut Vec::new()).expect("no merge fails")
 }
 
 /// Simplify a flattened component list in place. When `restricted` is true,
 /// only components carrying `AllowSimplify` may be nominated
 /// (`cmpmap.c:3563-3573`).
+///
+/// `stamped` receives the copies [`MergeCtx`] keeps of the components the
+/// loop recorded as simplified.
+///
+/// # Errors
+///
+/// The first error a merge raises; `list` then holds the working list as the
+/// merges before it left it.
 fn merge_loop_restricted(
     list: &mut Vec<(DynMapping, bool, bool)>,
     series: bool,
     restricted: bool,
-) -> bool {
+    stamped: &mut Vec<(usize, DynMapping)>,
+) -> AstResult<bool> {
     let mut ctx = MergeCtx::new(std::mem::take(list));
     ctx.clear_frozen();
     ctx.set_restricted(restricted);
@@ -1772,6 +1840,7 @@ fn merge_loop_restricted(
     let changed = run_nominate_loop(&mut ctx, series, &mut mlist, &mut nlist);
 
     *list = ctx.list;
+    *stamped = ctx.stamped;
     changed
 }
 
@@ -2418,7 +2487,23 @@ fn compute_merge_series_pair_in_parallel(
 /// Attempt the PermMap↔parallel-CmpMap swap at position `i` (PermMap)
 /// and `i+1` (parallel CmpMap).
 #[allow(clippy::needless_range_loop)]
-fn try_swap_permmap_parallel_at(list: &mut Vec<(DynMapping, bool, bool)>, i: usize) -> bool {
+///
+/// The constants the PermMap supplies are transformed through the CmpMap's
+/// components, and an error raised there, such as a component lacking the
+/// transformation, is recorded on `ctx` and the swap is not made, as C's
+/// merge leaves it in the global status.
+fn try_swap_permmap_parallel_at(ctx: &mut MergeCtx, i: usize) -> bool {
+    match swap_permmap_parallel_at(&mut ctx.list, i) {
+        Ok(swapped) => swapped,
+        Err(e) => {
+            ctx.fail(e);
+            false
+        }
+    }
+}
+
+#[allow(clippy::needless_range_loop)]
+fn swap_permmap_parallel_at(list: &mut Vec<(DynMapping, bool, bool)>, i: usize) -> AstResult<bool> {
     let (ref perm_map, perm_inv, _) = list[i];
     let (ref par_map, par_inv, _) = list[i + 1];
 
@@ -2440,17 +2525,17 @@ fn try_swap_permmap_parallel_at(list: &mut Vec<(DynMapping, bool, bool)>, i: usi
 
     // Must be one-to-one (same number of inputs and outputs).
     if npin != npout {
-        return false;
+        return Ok(false);
     }
 
     // Get the parallel CmpMap's component dimensions.
     // Flatten for parallel to get the components.
     let Ok(par_list) = flatten(par_map.as_ref(), par_inv, false) else {
-        return false;
+        return Ok(false);
     };
     if par_list.len() != 2 {
         // Only handle the 2-component case (matching C implementation).
-        return false;
+        return Ok(false);
     }
 
     let nin_a = effective_nin(par_list[0].0.as_ref(), par_list[0].1);
@@ -2458,7 +2543,7 @@ fn try_swap_permmap_parallel_at(list: &mut Vec<(DynMapping, bool, bool)>, i: usi
 
     // Verify total dimensions match.
     if nin_a + nin_b != npout {
-        return false;
+        return Ok(false);
     }
 
     // Check block-swap structure: first nin_a outputs must come from
@@ -2477,10 +2562,10 @@ fn try_swap_permmap_parallel_at(list: &mut Vec<(DynMapping, bool, bool)>, i: usi
         let j = npin - nin_a + idx;
         if aconstants {
             if eff_outperm[idx] >= 0 {
-                return false;
+                return Ok(false);
             }
         } else if eff_outperm[idx] != (j as i64 + 1) || eff_inperm[j] != (idx as i64 + 1) {
-            return false;
+            return Ok(false);
         }
     }
 
@@ -2489,10 +2574,10 @@ fn try_swap_permmap_parallel_at(list: &mut Vec<(DynMapping, bool, bool)>, i: usi
         let j = npout - nin_b + idx;
         if bconstants {
             if eff_outperm[j] >= 0 {
-                return false;
+                return Ok(false);
             }
         } else if eff_inperm[idx] != (j as i64 + 1) || eff_outperm[j] != (idx as i64 + 1) {
-            return false;
+            return Ok(false);
         }
     }
 
@@ -2524,41 +2609,22 @@ fn try_swap_permmap_parallel_at(list: &mut Vec<(DynMapping, bool, bool)>, i: usi
         // Transform all-BAD inputs through the PermMap to extract constant outputs.
         let p = vec![BAD_VALUE; npin];
         let pts = PointSet::from_rows(vec![p]);
-        let q_pts = perm.transform(&pts, !perm_inv).ok();
-        let q = q_pts.as_ref().map(|ps| ps.point(0).to_vec());
+        let q = perm.transform(&pts, !perm_inv)?.point(0).to_vec();
 
         // Transform the first nin_a outputs through component A.
         let qa = if aconstants {
-            if let Some(ref qv) = q {
-                let a_input: Vec<f64> = qv[..nin_a].to_vec();
-                let a_pts = PointSet::from_rows(vec![a_input]);
-                let comp_a = &par_list[0];
-                comp_a
-                    .0
-                    .transform(&a_pts, !comp_a.1)
-                    .ok()
-                    .map(|r| r.point(0).to_vec())
-            } else {
-                None
-            }
+            let a_pts = PointSet::from_rows(vec![q[..nin_a].to_vec()]);
+            let comp_a = &par_list[0];
+            Some(comp_a.0.transform(&a_pts, !comp_a.1)?.point(0).to_vec())
         } else {
             None
         };
 
         // Transform the last nin_b outputs through component B.
         let qb = if bconstants {
-            if let Some(ref qv) = q {
-                let b_input: Vec<f64> = qv[nin_a..nin_a + nin_b].to_vec();
-                let b_pts = PointSet::from_rows(vec![b_input]);
-                let comp_b = &par_list[1];
-                comp_b
-                    .0
-                    .transform(&b_pts, !comp_b.1)
-                    .ok()
-                    .map(|r| r.point(0).to_vec())
-            } else {
-                None
-            }
+            let b_pts = PointSet::from_rows(vec![q[nin_a..nin_a + nin_b].to_vec()]);
+            let comp_b = &par_list[1];
+            Some(comp_b.0.transform(&b_pts, !comp_b.1)?.point(0).to_vec())
         } else {
             None
         };
@@ -2682,7 +2748,7 @@ fn try_swap_permmap_parallel_at(list: &mut Vec<(DynMapping, bool, bool)>, i: usi
     };
 
     let Ok(new_cm) = CmpMap::new(new_b, new_a, Composition::Parallel) else {
-        return false;
+        return Ok(false);
     };
 
     // Build the new PermMap (or detect if it's identity).
@@ -2700,13 +2766,13 @@ fn try_swap_permmap_parallel_at(list: &mut Vec<(DynMapping, bool, bool)>, i: usi
         list.remove(i + 1);
     } else {
         let Ok(new_pm) = PermMap::new(&inperm_new, &outperm_new, &constants_new) else {
-            return false;
+            return Ok(false);
         };
         // CmpMap goes first (was second), PermMap goes second (was first).
         list[i] = (Box::new(new_cm), false, false);
         list[i + 1] = (Box::new(new_pm), false, false);
     }
-    true
+    Ok(true)
 }
 
 /// Try to merge the GrismMap/ZoomMap pair at indices `(i, i+1)`, mirroring the
@@ -3462,7 +3528,7 @@ fn apply_component_stamps(
     node: &mut DynMapping,
     inv: bool,
     series: bool,
-    entries: &[DynMapping],
+    entries: &[Option<DynMapping>],
     next: &mut usize,
 ) {
     let target_kind = if series {
@@ -3503,7 +3569,7 @@ fn apply_component_stamps(
         return;
     }
     // Leaf: `flatten` emitted exactly one entry for this component.
-    if let Some(entry) = entries.get(*next) {
+    if let Some(Some(entry)) = entries.get(*next) {
         mirror_simple_tags(entry.as_ref(), node);
     }
     *next += 1;
@@ -3553,6 +3619,33 @@ pub(crate) fn simplify_mapping_reporting_change(
     let Some(cmp) = mapping.as_any().downcast_ref::<CmpMap>() else {
         return mapping.simplify_reporting_change();
     };
+    simplify_cmpmap_into(cmp, &mut None)
+}
+
+/// [`CmpMap`]'s per-class simplification, reached through the gate.
+///
+/// When a merge fails, the CmpMap carrying the records of the components
+/// simplified before the failure is handed to the gate, as C returns the
+/// CmpMap whose components it wrote them to.
+pub(crate) fn simplify_cmpmap(
+    cmp: &CmpMap,
+    gate: &mut ViaSimplify,
+) -> AstResult<(DynMapping, bool)> {
+    let mut unsimplified = None;
+    let result = simplify_cmpmap_into(cmp, &mut unsimplified);
+    if let Some(m) = unsimplified {
+        gate.unsimplified_on_failure(m);
+    }
+    result
+}
+
+/// The body of [`simplify_cmpmap`]: on a failed merge, `unsimplified` receives
+/// a copy of `cmp` carrying the records of the components simplified first.
+fn simplify_cmpmap_into(
+    cmp: &CmpMap,
+    unsimplified: &mut Option<DynMapping>,
+) -> AstResult<(DynMapping, bool)> {
+    let mapping: &dyn Mapping = cmp;
 
     // C's recursion guard (cmpmap.c:3487-3491): if an equal Mapping is already
     // being simplified further up the stack, hand this one back unchanged.
@@ -3571,8 +3664,32 @@ pub(crate) fn simplify_mapping_reporting_change(
     let restricted = cmp.restricted_simplify();
 
     let mut list = flatten(mapping, false, series)?;
+    let ncomponents = list.len();
+    for (i, (m, _, _)) in list.iter_mut().enumerate() {
+        m.mapping_flags_mut().origin = i + 1;
+    }
 
-    let changed = merge_loop_restricted(&mut list, series, restricted);
+    let mut stamped = Vec::new();
+    let changed = merge_loop_restricted(&mut list, series, restricted, &mut stamped);
+    for (m, _, _) in &mut list {
+        m.mapping_flags_mut().origin = 0;
+    }
+    let changed = match changed {
+        Ok(changed) => changed,
+        Err(e) => {
+            // C's `Simplify` returns nothing and leaves the error for
+            // `astSimplify` (cmpmap.c:3954), whose `astClone( this )` carries
+            // the records written through the list's aliases.
+            let mut cloned = mapping.clone_box();
+            let mut entries: Vec<Option<DynMapping>> = (0..ncomponents).map(|_| None).collect();
+            for (origin, copy) in stamped {
+                entries[origin - 1] = Some(copy);
+            }
+            apply_component_stamps(&mut cloned, false, series, &entries, &mut 0);
+            *unsimplified = Some(cloned);
+            return Err(e);
+        }
+    };
 
     // C's `simpler` (cmpmap.c:3634) decides between cloning the supplied CmpMap
     // and rebuilding it from the component list. `astMapList` sets it when the
@@ -3592,7 +3709,7 @@ pub(crate) fn simplify_mapping_reporting_change(
         // (cmpmap.c:1437) writes through that alias. So the tags are still on
         // `this`'s children when `Simplify` returns `astClone( this )`
         // (cmpmap.c:3634), and they must be transplanted onto our fresh clone.
-        let entries: Vec<DynMapping> = list.into_iter().map(|(m, _, _)| m).collect();
+        let entries: Vec<Option<DynMapping>> = list.into_iter().map(|(m, _, _)| Some(m)).collect();
         apply_component_stamps(&mut cloned, false, series, &entries, &mut 0);
         return Ok((cloned, false));
     }

@@ -789,7 +789,7 @@ fn try_speculative_swap(
 /// Whether a speculative swap should be kept: the two neighbours surrounding
 /// the swapped WinMap can merge, OR one of the swapped maps simplifies.
 fn swap_is_worthwhile(
-    ctx: &MergeCtx,
+    ctx: &mut MergeCtx,
     where_: usize,
     _i1: usize,
     swap_lower: bool,
@@ -826,9 +826,14 @@ fn swap_is_worthwhile(
         // Do the neighbours merge? Probe via a 2-element MergeCtx.
         let mut probe = MergeCtx::new(vec![(ma, ia, false), (mb, ib, false)]);
         let nominee = probe.entry(0).0.clone_box();
-        if super::simplify::dispatch_map_merge(nominee.as_ref(), &mut probe, 0, series).is_some()
-            && probe.len() < 2
-        {
+        let merged = super::simplify::dispatch_map_merge(nominee.as_ref(), &mut probe, 0, series);
+        // C's probe shares the global status, so an error it raises fails the
+        // enclosing simplification.
+        if let Some(e) = probe.take_error() {
+            ctx.fail(e);
+            return false;
+        }
+        if merged.is_some() && probe.len() < 2 {
             return true;
         }
     }

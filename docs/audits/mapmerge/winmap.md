@@ -48,8 +48,8 @@ and, only if nothing else fired, convert an all-unit-scale WinMap to a ShiftMap.
 | 24 | Choose the neighbour so the WinMap moves toward the nearer target | winmap.c:1527-1541 (fn MapMerge) | winmap_merge.rs:711-719 (fn try_swap_strategy) | architecture | ported |
 | 25 | Swap the pair, then merge them if possible | winmap.c:1542-1581 (fn MapMerge) | winmap_merge.rs:332-350 (fn swap_pair), winmap_merge.rs:725-742 (fn try_swap_strategy) | architecture | ported |
 | 26 | With no target, swap speculatively with each neighbour in turn | winmap.c:1582-1626 (fn MapMerge) | winmap_merge.rs:749-790 (fn try_speculative_swap) | architecture | ported |
-| 27 | After a speculative swap, check whether the two neighbours can now merge with each other | winmap.c:1627-1669 (fn MapMerge) | winmap_merge.rs:799-832 (fn swap_is_worthwhile) | architecture | ported |
-| 28 | Failing that, check whether either swapped Mapping simplifies on its own | winmap.c:1670-1683 (fn MapMerge) | winmap_merge.rs:834-842 (fn swap_is_worthwhile) | architecture | ported |
+| 27 | After a speculative swap, check whether the two neighbours can now merge with each other | winmap.c:1627-1669 (fn MapMerge) | winmap_merge.rs:799-837 (fn swap_is_worthwhile) | architecture | ported |
+| 28 | Failing that, check whether either swapped Mapping simplifies on its own | winmap.c:1670-1683 (fn MapMerge) | winmap_merge.rs:839-847 (fn swap_is_worthwhile) | architecture | ported |
 | 29 | Keep the swap only if it bought something, otherwise discard it | winmap.c:1684-1704 (fn MapMerge) | winmap_merge.rs:777-786 (fn try_speculative_swap) | architecture | ported |
 | 30 | In parallel, a WinMap merges with a neighbouring WinMap, ZoomMap or UnitMap | winmap.c:1705-1736 (fn MapMerge) | winmap_merge.rs:386-389 (fn win_map_merge) | architecture | ported |
 | 31 | Create that merged Mapping | winmap.c:1737-1797 (fn MapMerge) | winmap_merge.rs:629-661 (fn merge_linear_pair) | architecture | ported |
@@ -93,4 +93,4 @@ C's speculative swap is kept only if something can be simplified afterwards, and
 it checks two different things in order: whether the two Mappings that were
 separated by the WinMap can now merge with each other, and only then whether
 either swapped Mapping simplifies on its own. `swap_is_worthwhile`
-(`winmap_merge.rs:791-845 (fn swap_is_worthwhile)`) keeps both tests in that order.
+(`winmap_merge.rs:791-850 (fn swap_is_worthwhile)`) keeps both tests in that order.

@@ -16,7 +16,7 @@ and UnitMaps in series; the same in parallel; and, when neither condensed
 anything, absorb the ZoomMap into an adjacent MatrixMap, WinMap or ShiftMap.
 
 The Rust `ZoomMap::map_merge` (`zoom.rs:228-235 (fn map_merge)`) delegates to
-`simplify::zoom_map_merge` (`mappings/simplify.rs:894-1050 (fn zoom_map_merge)`), so Rust sites below are in
+`simplify::zoom_map_merge` (`mappings/simplify.rs:942-1098 (fn zoom_map_merge)`), so Rust sites below are in
 `mappings/simplify.rs` unless stated.
 
 The last row is not part of `MapMerge` but of the rule that governs it: an
@@ -27,33 +27,33 @@ must discard the simplified record.
 |---|---|---|---|---|---|
 | 1 | Initialise the returned result to -1 | zoommap.c:729-730 (fn MapMerge) | -- | ceremony | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index |
 | 2 | Check the global error status and bail out | zoommap.c:732-733 (fn MapMerge) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
-| 3 | In series: obtain the effective zoom factor of the nominated Mapping | zoommap.c:740-749 (fn MapMerge) | mappings/simplify.rs:920-924 (fn zoom_map_merge) | architecture | ported |
-| 4 | Search adjacent lower-numbered Mappings, accumulating the zoom factors of ZoomMaps and treating UnitMaps as unity | zoommap.c:750-777 (fn MapMerge) | mappings/simplify.rs:926-937 (fn zoom_map_merge) | architecture | ported |
-| 5 | Search adjacent higher-numbered Mappings the same way | zoommap.c:778-797 (fn MapMerge) | mappings/simplify.rs:939-950 (fn zoom_map_merge) | architecture | ported |
-| 6 | Count how many Mappings condensing the run would eliminate | zoommap.c:798-801 (fn MapMerge) | mappings/simplify.rs:952 (fn zoom_map_merge) | architecture | ported |
-| 7 | Decide whether the replacement can be a UnitMap | zoommap.c:802-806 (fn MapMerge) | mappings/simplify.rs:953 (fn zoom_map_merge) | architecture | ported |
-| 8 | Decide whether simplification is possible at all | zoommap.c:807-816 (fn MapMerge) | mappings/simplify.rs:954 (fn zoom_map_merge) | architecture | ported |
-| 9 | Obtain the input and output counts for the replacement Mapping | zoommap.c:817-826 (fn MapMerge) | mappings/simplify.rs:975-979 (fn zoom_map_merge) | architecture | ported |
-| 10 | In parallel: obtain the nominated Mapping's coordinate counts | zoommap.c:827-834 (fn MapMerge) | mappings/simplify.rs:1017-1019 (fn zoom_map_merge) | architecture | ported |
-| 11 | Search both directions for adjacent ZoomMaps and UnitMaps, accumulating coordinate counts | zoommap.c:835-868 (fn MapMerge) | mappings/simplify.rs:990-1005 (fn zoom_map_merge) | architecture | ported |
-| 12 | Build a per-axis zoom factor array, unity for each UnitMap axis | zoommap.c:869-910 (fn MapMerge) | mappings/simplify.rs:1007-1022 (fn zoom_map_merge) | architecture | ported |
-| 13 | Note the minimum and maximum zoom factors encountered | zoommap.c:905-910 (fn MapMerge) | mappings/simplify.rs:1023-1028 (fn zoom_map_merge) | architecture | ported |
-| 14 | Decide whether the replacement can be a single ZoomMap, a UnitMap, or a diagonal MatrixMap | zoommap.c:911-933 (fn MapMerge) | mappings/simplify.rs:1031-1034 (fn zoom_map_merge) | architecture | ported |
-| 15 | Create that replacement | zoommap.c:934-948 (fn MapMerge) | mappings/simplify.rs:1040-1047 (fn zoom_map_merge) | architecture | ported |
+| 3 | In series: obtain the effective zoom factor of the nominated Mapping | zoommap.c:740-749 (fn MapMerge) | mappings/simplify.rs:968-972 (fn zoom_map_merge) | architecture | ported |
+| 4 | Search adjacent lower-numbered Mappings, accumulating the zoom factors of ZoomMaps and treating UnitMaps as unity | zoommap.c:750-777 (fn MapMerge) | mappings/simplify.rs:974-985 (fn zoom_map_merge) | architecture | ported |
+| 5 | Search adjacent higher-numbered Mappings the same way | zoommap.c:778-797 (fn MapMerge) | mappings/simplify.rs:987-998 (fn zoom_map_merge) | architecture | ported |
+| 6 | Count how many Mappings condensing the run would eliminate | zoommap.c:798-801 (fn MapMerge) | mappings/simplify.rs:1000 (fn zoom_map_merge) | architecture | ported |
+| 7 | Decide whether the replacement can be a UnitMap | zoommap.c:802-806 (fn MapMerge) | mappings/simplify.rs:1001 (fn zoom_map_merge) | architecture | ported |
+| 8 | Decide whether simplification is possible at all | zoommap.c:807-816 (fn MapMerge) | mappings/simplify.rs:1002 (fn zoom_map_merge) | architecture | ported |
+| 9 | Obtain the input and output counts for the replacement Mapping | zoommap.c:817-826 (fn MapMerge) | mappings/simplify.rs:1023-1027 (fn zoom_map_merge) | architecture | ported |
+| 10 | In parallel: obtain the nominated Mapping's coordinate counts | zoommap.c:827-834 (fn MapMerge) | mappings/simplify.rs:1065-1067 (fn zoom_map_merge) | architecture | ported |
+| 11 | Search both directions for adjacent ZoomMaps and UnitMaps, accumulating coordinate counts | zoommap.c:835-868 (fn MapMerge) | mappings/simplify.rs:1038-1053 (fn zoom_map_merge) | architecture | ported |
+| 12 | Build a per-axis zoom factor array, unity for each UnitMap axis | zoommap.c:869-910 (fn MapMerge) | mappings/simplify.rs:1055-1070 (fn zoom_map_merge) | architecture | ported |
+| 13 | Note the minimum and maximum zoom factors encountered | zoommap.c:905-910 (fn MapMerge) | mappings/simplify.rs:1071-1076 (fn zoom_map_merge) | architecture | ported |
+| 14 | Decide whether the replacement can be a single ZoomMap, a UnitMap, or a diagonal MatrixMap | zoommap.c:911-933 (fn MapMerge) | mappings/simplify.rs:1079-1082 (fn zoom_map_merge) | architecture | ported |
+| 15 | Create that replacement | zoommap.c:934-948 (fn MapMerge) | mappings/simplify.rs:1088-1095 (fn zoom_map_merge) | architecture | ported |
 | 16 | Free the zoom factor array | zoommap.c:949-952 (fn MapMerge) | -- | ceremony | n/a: owned values are dropped |
-| 17 | Replace the condensed run with the new Mapping, close the gap, and return the first modified index | zoommap.c:953-985 (fn MapMerge) | mappings/simplify.rs:1048-1049 (fn zoom_map_merge) | architecture | ported |
-| 18 | If nothing condensed, and the ZoomMap is not first, try merging it with the previous Mapping | zoommap.c:992-1002 (fn MapMerge) | mappings/simplify.rs:964-972 (fn zoom_map_merge) | architecture | ported |
+| 17 | Replace the condensed run with the new Mapping, close the gap, and return the first modified index | zoommap.c:953-985 (fn MapMerge) | mappings/simplify.rs:1096-1097 (fn zoom_map_merge) | architecture | ported |
+| 18 | If nothing condensed, and the ZoomMap is not first, try merging it with the previous Mapping | zoommap.c:992-1002 (fn MapMerge) | mappings/simplify.rs:1012-1020 (fn zoom_map_merge) | architecture | ported |
 | 19 | Absorb into a previous MatrixMap by scaling its elements | zoommap.c:1003-1018 (fn MapMerge) | matrix.rs:944-961 (fn try_merge) | architecture | ported |
 | 20 | Absorb into a previous WinMap by scaling its coefficients | zoommap.c:1019-1035 (fn MapMerge) | zoom.rs:344-358 (fn try_merge) | architecture | ported |
 | 21 | Absorb into a previous ShiftMap, producing a WinMap | zoommap.c:1036-1064 (fn MapMerge) | zoom.rs:344-358 (fn try_merge) | architecture | ported |
-| 22 | If the previous Mapping absorbed nothing, and the ZoomMap is not last, consider the next Mapping | zoommap.c:1066-1071 (fn MapMerge) | mappings/simplify.rs:972 (fn zoom_map_merge) | architecture | ported |
+| 22 | If the previous Mapping absorbed nothing, and the ZoomMap is not last, consider the next Mapping | zoommap.c:1066-1071 (fn MapMerge) | mappings/simplify.rs:1020 (fn zoom_map_merge) | architecture | ported |
 | 23 | Absorb into a following MatrixMap by scaling its elements | zoommap.c:1072-1085 (fn MapMerge) | matrix.rs:944-961 (fn try_merge) | architecture | ported |
 | 24 | Absorb into a following WinMap by scaling its coefficients | zoommap.c:1086-1101 (fn MapMerge) | zoom.rs:344-358 (fn try_merge) | architecture | ported |
 | 25 | Absorb into a following ShiftMap, producing a WinMap | zoommap.c:1102-1128 (fn MapMerge) | zoom.rs:344-358 (fn try_merge) | architecture | ported |
-| 26 | If anything absorbed, annul the neighbour and the ZoomMap, and store the new Mapping over the neighbour with its Invert flag | zoommap.c:1130-1143 (fn MapMerge) | mappings/simplify.rs:1510-1515 (fn default_map_merge) | architecture | ported |
-| 27 | Shuffle the later Mappings down, clear the vacated element, decrement the count and return the lower of the two indices | zoommap.c:1145-1159 (fn MapMerge) | mappings/simplify.rs:1515-1516 (fn default_map_merge) | architecture | ported |
+| 26 | If anything absorbed, annul the neighbour and the ZoomMap, and store the new Mapping over the neighbour with its Invert flag | zoommap.c:1130-1143 (fn MapMerge) | mappings/simplify.rs:1561-1566 (fn default_map_merge) | architecture | ported |
+| 27 | Shuffle the later Mappings down, clear the vacated element, decrement the count and return the lower of the two indices | zoommap.c:1145-1159 (fn MapMerge) | mappings/simplify.rs:1566-1567 (fn default_map_merge) | architecture | ported |
 | 28 | Clear the returned result if an error occurred | zoommap.c:1163-1164 (fn MapMerge) | -- | ceremony | n/a: an error is a `Result::Err`, not a value to be cleared alongside one |
-| 29 | Return the result | zoommap.c:1166-1167 (fn MapMerge) | mappings/simplify.rs:968-972 (fn zoom_map_merge) | architecture | ported |
+| 29 | Return the result | zoommap.c:1166-1167 (fn MapMerge) | mappings/simplify.rs:1016-1020 (fn zoom_map_merge) | architecture | ported |
 | 30 | Setting or clearing Zoom clears the simplified record, both orientations | zoommap.c:1698 (fn astMAKE_CLEAR1),1704 (fn astMAKE_SET1) | zoom.rs:103-142 (fn set_zoom) | ceremony | ported |
 
 ## Rows 7 and 8 — the lone ZoomMap is a run of one
@@ -69,7 +69,7 @@ every leaf to forward.
 ## Rows 18 to 25 — the ordering is deliberate
 
 C tries the previous neighbour before the next one, and the port keeps that
-order at `mappings/simplify.rs:964-972 (fn zoom_map_merge)`. It is observable when only one side is eligible,
+order at `mappings/simplify.rs:1012-1020 (fn zoom_map_merge)`. It is observable when only one side is eligible,
 for instance under a restricted simplify where the trailing Mapping is not
 flagged. The pairwise fusion itself goes through `default_map_merge`, which
 offers the pair to the neighbour first and to the ZoomMap second. That is why

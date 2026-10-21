@@ -13,17 +13,32 @@
 //! **Do not add anything else to this file.** It holds the gate
 //! (`simplify_reporting_change`), the caller that drops the gate's answer to
 //! "did anything change?" (`simplify`) and the tail they share
-//! (`record_simplified`); there is exactly one `ViaSimplify(())` in the file and
-//! the guarantee is that nothing outside it can write a second one.
+//! (`record_simplified`); there is exactly one `ViaSimplify` construction in the
+//! file and the guarantee is that nothing outside it can write a second one.
 
 use super::{AstResult, DynMapping, Mapping, simplify};
+use crate::error::ErrorCode;
 
 /// Proof that a per-class reduction was reached through
 /// `<dyn Mapping>::simplify`, and therefore through the `IsSimple` gate.
 ///
 /// Constructible only in this module. Implementations of
 /// [`Mapping::simplified`] receive one and never build one.
-pub struct ViaSimplify(());
+pub struct ViaSimplify<'a>(&'a mut Option<DynMapping>);
+
+impl ViaSimplify<'_> {
+    /// Supply the Mapping to return if the reduction fails because it
+    /// reached an undefined transformation.
+    ///
+    /// C returns the Mapping it was given in that case (mapping.c
+    /// `astSimplify_`), and that object carries the records of the components
+    /// simplified before the failure, written through aliases; a reduction
+    /// that writes such records supplies a copy of itself carrying them.
+    /// Without one, the failure returns a plain copy.
+    pub(crate) fn unsimplified_on_failure(&mut self, unsimplified: DynMapping) {
+        *self.0 = Some(unsimplified);
+    }
+}
 
 impl dyn Mapping {
     /// Simplify this Mapping, eliminating redundant computational steps or
@@ -47,9 +62,13 @@ impl dyn Mapping {
     /// A [`FrameSet`](crate::frames::FrameSet) is returned as a copy in which
     /// every Mapping between its Frames has been simplified.
     ///
+    /// A reduction that reaches an undefined transformation, such as one that
+    /// needs to transform points through a component lacking it, ends without
+    /// error and returns this Mapping unsimplified.
+    ///
     /// # Errors
     ///
-    /// An error raised while reducing the Mapping is returned.
+    /// Any other error raised while reducing the Mapping is returned.
     #[doc(alias = "astSimplify")]
     pub fn simplify(&self) -> AstResult<DynMapping> {
         // C's astSimplify (mapping.c:24755): this calls the type-specific
@@ -97,9 +116,20 @@ impl dyn Mapping {
             return Ok((self.clone_box(), false));
         }
 
-        let (mut result, changed) = self.simplified(ViaSimplify(()))?;
-        record_simplified(self, &mut result);
-        Ok((result, changed))
+        let mut unsimplified = None;
+        match self.simplified(ViaSimplify(&mut unsimplified)) {
+            Ok((mut result, changed)) => {
+                record_simplified(self, &mut result);
+                Ok((result, changed))
+            }
+            // C clears an AST__NODEF or AST__TRNND raised by the reduction and
+            // returns `astClone( this )`, which is not recorded as simplified
+            // (mapping.c `astSimplify_`).
+            Err(e) if matches!(e.code(), ErrorCode::Nodef | ErrorCode::Trnnd) => {
+                Ok((unsimplified.unwrap_or_else(|| self.clone_box()), false))
+            }
+            Err(e) => Err(e),
+        }
     }
 }
 
