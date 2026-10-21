@@ -1836,18 +1836,20 @@ impl Frame for FrameSet {
         self.current().naxes()
     }
 
-    /// Mirrors C `FrameSet::MatchAxesX` (frameset.c:7398): the current
-    /// Frame's axes are matched.
+    /// Mirrors C `FrameSet::MatchAxesX`: the current Frame's axes are
+    /// matched.
+    // C: frameset.c:7398.
     fn match_axes_x(&self, frm1: &dyn Frame) -> AstResult<Vec<i32>> {
         self.current().match_axes_x(frm1)
     }
 
-    /// frameset.c `PrimaryFrame`: the current Frame's primary Frame.
+    /// The current Frame's primary Frame.
+    // C: frameset.c `PrimaryFrame`.
     fn primary_frame(&self, axis: usize) -> (&dyn Frame, usize) {
         self.current().primary_frame(axis)
     }
 
-    /// frameset.c `IsUnitFrame`.
+    // C: frameset.c `IsUnitFrame`.
     fn is_unit_frame(&self) -> bool {
         self.current().is_unit_frame()
     }
@@ -1858,8 +1860,8 @@ impl Frame for FrameSet {
         FrameSet::perm_axes(self, perm)
     }
 
-    /// frameset.c `Resolve`: resolved in the current Frame, so on great
-    /// circles for a SkyFrame.
+    /// Resolved in the current Frame, so on great circles for a SkyFrame.
+    // C: frameset.c `Resolve`.
     fn resolve(
         &self,
         point1: &[f64],
@@ -1869,7 +1871,7 @@ impl Frame for FrameSet {
         self.current().resolve(point1, point2, point3)
     }
 
-    /// frameset.c `ResolvePoints`.
+    // C: frameset.c `ResolvePoints`.
     fn resolve_points(
         &self,
         point1: &[f64],
@@ -1879,7 +1881,7 @@ impl Frame for FrameSet {
         self.current().resolve_points(point1, point2, input)
     }
 
-    /// frameset.c `Intersect`.
+    // C: frameset.c `Intersect`.
     fn intersect(&self, a1: &[f64], a2: &[f64], b1: &[f64], b2: &[f64]) -> AstResult<Vec<f64>> {
         self.current().intersect(a1, a2, b1, b2)
     }
@@ -1909,7 +1911,8 @@ impl Frame for FrameSet {
     }
 
     /// A FrameSet's axes are its current Frame's axes. Mirrors C
-    /// `FrameSet::GetAxis` (frameset.c:4948).
+    /// `FrameSet::GetAxis`.
+    // C: frameset.c:4948.
     fn get_axis(&self, axis: usize) -> AxisKind {
         self.current().get_axis(axis)
     }
@@ -1927,7 +1930,8 @@ impl Frame for FrameSet {
         self.current().norm(coords)
     }
 
-    /// frameset.c `FrameGrid`: the current Frame makes the grid.
+    /// The current Frame makes the grid.
+    // C: frameset.c `FrameGrid`.
     fn frame_grid(
         &self,
         size: i32,
@@ -1937,7 +1941,8 @@ impl Frame for FrameSet {
         self.current().frame_grid(size, lbnd, ubnd)
     }
 
-    /// frameset.c `NormalPoints`: the current Frame normalises the points.
+    /// The current Frame normalises the points.
+    // C: frameset.c `NormalPoints`.
     fn norm_points(
         &self,
         points: &crate::coords::PointSet,
@@ -1960,10 +1965,11 @@ impl Frame for FrameSet {
         Box::new(self.clone())
     }
 
-    /// C has one `Simplify` slot, so a FrameSet simplifies through its Mapping
-    /// side (`frameset.c:10111`). That reduction can hand back something that
-    /// is no longer a Frame, which is the case `astIsAFrame` guards
-    /// (`cmpframe.c:9024`) and which the helper's conversion drops.
+    /// A FrameSet simplifies through its Mapping side. That reduction can
+    /// hand back something that is no longer a Frame, which the helper's
+    /// conversion drops.
+    // C: there is one `Simplify` slot (`frameset.c:10111`); the case that is
+    // no longer a Frame is the one `astIsAFrame` guards (`cmpframe.c:9024`).
     fn simplify_frame(&self) -> AstResult<Option<DynFrame>> {
         simplify_frame_via_mapping(self)
     }
@@ -2019,9 +2025,10 @@ impl Frame for FrameSet {
         true
     }
 
-    /// frameset.c `Convert` (frameset.c:3106) overrides the Frame method so
-    /// that a FrameSet `from` reaches the FrameSet `ConvertX` whatever the
-    /// class of `to`.
+    /// A FrameSet `from` reaches the FrameSet conversion whatever the class
+    /// of `to`.
+    // C: frameset.c `Convert` (frameset.c:3106) overrides the Frame method
+    // so that a FrameSet `from` reaches the FrameSet `ConvertX`.
     fn convert_to(&self, to: &dyn Frame, domains: &[&str]) -> AstResult<Option<FrameSet>> {
         let domainlist = if domains.is_empty() {
             " ".to_string()
@@ -2392,13 +2399,15 @@ impl Mapping for FrameSet {
         &mut self.mapping_flags
     }
 
-    /// frameset.c `GetIsLinear`: whether the base-to-current Mapping is.
+    /// Whether the base-to-current Mapping is.
+    // C: frameset.c `GetIsLinear`.
     fn is_linear(&self) -> bool {
         self.mapping(FrameRef::Base, FrameRef::Current)
             .is_ok_and(|map| map.is_linear())
     }
 
-    /// frameset.c `MapSplit`: split the base-to-current Mapping.
+    /// Split the base-to-current Mapping.
+    // C: frameset.c `MapSplit`.
     fn map_split_zero_based(
         &self,
         in_axes: &[usize],
@@ -2407,15 +2416,15 @@ impl Mapping for FrameSet {
             .map_split_zero_based(in_axes)
     }
 
-    /// frameset.c `RemoveRegions`: remove the Regions from every Mapping
-    /// and every Frame.
+    /// Remove the Regions from every Mapping and every Frame.
+    // C: frameset.c `RemoveRegions`.
     fn mapping_without_regions(&self) -> Option<DynMapping> {
         self.without_regions().map(|fs| Box::new(fs) as DynMapping)
     }
 
-    /// frameset.c `ReportPoints`: the input values are formatted by the
-    /// base Frame and the output values by the current Frame, the other way
-    /// round for the inverse.
+    /// The input values are formatted by the base Frame and the output values
+    /// by the current Frame, the other way round for the inverse.
+    // C: frameset.c `ReportPoints`.
     fn report_points(&self, forward: bool, inp: &PointSet, out: &PointSet) {
         let (from, to) = if forward {
             (self.base(), self.current())

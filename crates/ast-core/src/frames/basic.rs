@@ -14,7 +14,8 @@ use super::frame_attrs::{
 use super::{AxisKind, DynFrame, Frame};
 
 /// The coordinate systems a plain Frame can have. C's Frame class knows only
-/// one, `AST__CART` (frame.c, `ValidateSystem`).
+/// one, `AST__CART`.
+// C: frame.c, `ValidateSystem`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum FrameSystem {
     /// Cartesian coordinates, the only System of a plain Frame.
@@ -23,7 +24,8 @@ pub enum FrameSystem {
 }
 
 impl FrameSystem {
-    /// The name C gives the System (frame.c, `SystemString`).
+    /// The name C gives the System.
+    // C: frame.c, `SystemString`.
     pub fn as_str(&self) -> &'static str {
         "Cartesian"
     }
@@ -259,17 +261,17 @@ impl BasicFrameBuilder {
 /// attribute stored in `FrameAttrs`.
 macro_rules! frame_attr_methods {
     ($field:ident, $ty:ty, $set:ident, $test:ident, $clear:ident, $what:literal) => {
-        #[doc = concat!("Set ", $what, ".")]
+        #[doc = concat!("Set ", $what, "; see [`", stringify!($field), "`](BasicFrame::", stringify!($field), ").")]
         pub fn $set(&mut self, value: $ty) {
             self.attrs.$field = Some(value);
         }
 
-        #[doc = concat!("Test whether ", $what, " has been set.")]
+        #[doc = concat!("Whether ", $what, " is set; see [`", stringify!($field), "`](BasicFrame::", stringify!($field), ").")]
         pub fn $test(&self) -> bool {
             self.attrs.$field.is_some()
         }
 
-        #[doc = concat!("Clear ", $what, ", which then takes its default.")]
+        #[doc = concat!("Clear ", $what, "; see [`", stringify!($field), "`](BasicFrame::", stringify!($field), ").")]
         pub fn $clear(&mut self) {
             self.attrs.$field = None;
         }
@@ -358,8 +360,11 @@ impl BasicFrame {
 
     // --- Frame-level attributes ---
 
-    /// The Title, set or default (`"<naxes>-d coordinate system"`,
-    /// frame.c `GetDefaultTitle`).
+    /// The Title, set or default.
+    ///
+    /// See [`Frame::title`] for the attribute.
+    /// The default is `"<naxes>-d coordinate system"`.
+    // C: frame.c `GetDefaultTitle`.
     pub fn title(&self) -> String {
         self.attrs
             .title
@@ -367,68 +372,78 @@ impl BasicFrame {
             .unwrap_or_else(|| format!("{}-d coordinate system", self.naxes))
     }
 
-    /// Set the frame title.
+    /// Set the Title; see [`title`](BasicFrame::title).
     pub fn set_title(&mut self, title: impl Into<String>) {
         self.attrs.title = Some(title.into());
     }
 
-    /// Test whether the title attribute has been explicitly set.
+    /// Whether the Title is set; see [`title`](BasicFrame::title).
     pub fn test_title(&self) -> bool {
         self.attrs.title.is_some()
     }
 
-    /// Clear the title attribute, reverting to the default.
+    /// Clear the Title; see [`title`](BasicFrame::title).
     pub fn clear_title(&mut self) {
         self.attrs.title = None;
     }
 
-    /// Return the frame domain, which is blank unless set.
+    /// The Domain, which is blank unless set.
+    ///
+    /// See [`Frame::domain`] for the attribute.
     pub fn domain(&self) -> &str {
         self.attrs.domain.as_deref().unwrap_or("")
     }
 
-    /// Set the frame domain, with white space removed and letters
-    /// upper-cased as C stores it (frame.c `CleanDomain`).
+    /// Set the Domain, removing white space and upper-casing letters; see
+    /// [`domain`](BasicFrame::domain).
+    // C: frame.c `CleanDomain`.
     pub fn set_domain(&mut self, domain: impl Into<String>) {
         self.attrs.domain = Some(clean_domain(&domain.into()));
     }
 
-    /// Test whether the domain attribute has been explicitly set.
+    /// Whether the Domain is set; see [`domain`](BasicFrame::domain).
     pub fn test_domain(&self) -> bool {
         self.attrs.domain.is_some()
     }
 
-    /// Clear the domain attribute, reverting to the default.
+    /// Clear the Domain; see [`domain`](BasicFrame::domain).
     pub fn clear_domain(&mut self) {
         self.attrs.domain = None;
     }
 
-    /// Return the frame identification string.
+    /// The Ident string, blank unless set.
+    ///
+    /// See [`Frame::ident`] for the attribute.
     pub fn ident(&self) -> &str {
         self.attrs.ident.as_deref().unwrap_or("")
     }
 
-    /// Set the frame identification string. Mirrors `astSetIdent`.
-    /// Used by the FITS-WCS reader to label alternate-plane frames
-    /// with their version letter (`'A'..'Z'`).
+    /// Set the Ident string; see [`ident`](BasicFrame::ident). Used by the FITS-WCS reader to
+    /// label alternate-plane frames with their version letter (`'A'..'Z'`).
+    // C: astSetIdent.
     pub fn set_ident(&mut self, ident: impl Into<String>) {
         let s = ident.into();
         self.attrs.ident = Some(s);
     }
 
-    /// The Epoch as a TDB Modified Julian Date, set or default (J2000.0).
+    /// The Epoch as a TDB Modified Julian Date, set or default.
+    ///
+    /// See [`Frame::epoch_mjd`] for the attribute.
+    /// The default is J2000.0.
     pub fn epoch_mjd(&self) -> f64 {
         self.attrs.epoch.unwrap_or_else(default_epoch_mjd)
     }
 
-    /// Set the Epoch as a TDB Modified Julian Date.
+    /// Set the Epoch as a TDB Modified Julian Date; see
+    /// [`epoch_mjd`](BasicFrame::epoch_mjd).
     pub fn set_epoch_mjd(&mut self, mjd: f64) {
         // A bad Epoch is no Epoch (frame.c `TestEpoch` is `!= AST__BAD`).
         self.attrs.epoch = (mjd != crate::constants::BAD_VALUE).then_some(mjd);
     }
 
     /// The Epoch as a year, Besselian before 1984 and Julian from then on,
-    /// which is how C reports it (frame.c `GetAttrib`).
+    /// which is how C reports it.
+    // C: frame.c `GetAttrib`.
     pub fn epoch_year(&self) -> f64 {
         let mjd = self.epoch_mjd();
         if mjd < crate::pal::epj2d(1984.0) {
@@ -439,17 +454,18 @@ impl BasicFrame {
     }
 
     /// Set the Epoch from a year, read as Besselian before 1984 and Julian
-    /// from then on, as C reads a bare year (frame.c `astReadDateTime`).
+    /// from then on, as C reads a bare year.
+    // C: frame.c `astReadDateTime`.
     pub fn set_epoch_year(&mut self, year: f64) {
         self.attrs.epoch = Some(crate::frames::date_time::year_to_mjd_iau1984(year));
     }
 
-    /// Test whether the epoch attribute has been explicitly set.
+    /// Whether the Epoch is set; see [`epoch_mjd`](BasicFrame::epoch_mjd).
     pub fn test_epoch(&self) -> bool {
         self.attrs.epoch.is_some()
     }
 
-    /// Clear the epoch attribute.
+    /// Clear the Epoch; see [`epoch_mjd`](BasicFrame::epoch_mjd).
     pub fn clear_epoch(&mut self) {
         self.attrs.epoch = None;
     }
@@ -533,7 +549,10 @@ impl BasicFrame {
         self.align_system_set = false;
     }
 
-    /// The observer's geodetic latitude in radians, set or default (0).
+    /// The observer's geodetic latitude in radians, set or default.
+    ///
+    /// See [`Frame::obs_lat`] for the attribute.
+    /// The default is 0.
     pub fn obs_lat(&self) -> f64 {
         self.attrs.obs_lat.unwrap_or(0.0)
     }
@@ -546,7 +565,10 @@ impl BasicFrame {
         "the observer's geodetic latitude, in radians"
     );
 
-    /// The observer's geodetic longitude in radians, set or default (0).
+    /// The observer's geodetic longitude in radians, set or default.
+    ///
+    /// See [`Frame::obs_lon`] for the attribute.
+    /// The default is 0.
     pub fn obs_lon(&self) -> f64 {
         self.attrs.obs_lon.unwrap_or(0.0)
     }
@@ -559,7 +581,10 @@ impl BasicFrame {
         "the observer's geodetic longitude, in radians"
     );
 
-    /// The observer's geodetic altitude in metres, set or default (0).
+    /// The observer's geodetic altitude in metres, set or default.
+    ///
+    /// See [`Frame::obs_alt`] for the attribute.
+    /// The default is 0.
     pub fn obs_alt(&self) -> f64 {
         self.attrs.obs_alt.unwrap_or(0.0)
     }
@@ -572,8 +597,11 @@ impl BasicFrame {
         "the observer's geodetic altitude, in metres"
     );
 
-    /// TAI-UTC in seconds, or `BAD_VALUE` when unset, which means the
-    /// value is taken from AST's leap-second table (frame.c `GetDtai`).
+    /// TAI-UTC in seconds, or `BAD_VALUE` when unset, which means the value
+    /// is taken from AST's leap-second table.
+    ///
+    /// See [`Frame::dtai`] for the attribute.
+    // C: frame.c `GetDtai`.
     pub fn dtai(&self) -> f64 {
         self.attrs.dtai.unwrap_or(BAD_VALUE)
     }
@@ -586,7 +614,10 @@ impl BasicFrame {
         "TAI-UTC, in seconds"
     );
 
-    /// UT1-UTC in seconds, set or default (0).
+    /// UT1-UTC in seconds, set or default.
+    ///
+    /// See [`Frame::dut1`] for the attribute.
+    /// The default is 0.
     pub fn dut1(&self) -> f64 {
         self.attrs.dut1.unwrap_or(0.0)
     }
@@ -599,47 +630,52 @@ impl BasicFrame {
         "UT1-UTC, in seconds"
     );
 
-    /// Frame-level Digits, defaulting to 7. Mirrors `astGetDigits`.
+    /// Frame-level Digits, defaulting to 7.
+    ///
+    /// See [`Frame::digits`] for the attribute.
+    // C: astGetDigits.
     pub fn digits(&self) -> i32 {
         self.attrs.digits.unwrap_or(7)
     }
 
-    /// Set frame-level Digits, constrained to >= 1 (frame.c:13251).
+    /// Set frame-level Digits, constrained to >= 1; see
+    /// [`digits`](BasicFrame::digits).
+    // C: frame.c:13251.
     pub fn set_digits(&mut self, value: i32) {
         self.attrs.digits = Some(value.max(1));
     }
 
-    /// Test whether frame-level Digits is explicitly set.
+    /// Whether Digits is set; see [`digits`](BasicFrame::digits).
     pub fn test_digits(&self) -> bool {
         self.attrs.digits.is_some()
     }
 
-    /// Clear frame-level Digits.
+    /// Clear Digits; see [`digits`](BasicFrame::digits).
     pub fn clear_digits(&mut self) {
         self.attrs.digits = None;
     }
 
-    /// Clear MinAxes.
+    /// Clear MinAxes; see [`min_axes`](Frame::min_axes).
     pub fn clear_min_axes(&mut self) {
         self.attrs.min_axes = None;
     }
 
-    /// Clear MaxAxes.
+    /// Clear MaxAxes; see [`max_axes`](Frame::max_axes).
     pub fn clear_max_axes(&mut self) {
         self.attrs.max_axes = None;
     }
 
-    /// Clear MatchEnd.
+    /// Clear MatchEnd; see [`match_end`](Frame::match_end).
     pub fn clear_match_end(&mut self) {
         self.attrs.match_end = None;
     }
 
-    /// Clear Permute.
+    /// Clear Permute; see [`permute`](Frame::permute).
     pub fn clear_permute(&mut self) {
         self.attrs.permute = None;
     }
 
-    /// Clear PreserveAxes.
+    /// Clear PreserveAxes; see [`preserve_axes`](Frame::preserve_axes).
     pub fn clear_preserve_axes(&mut self) {
         self.attrs.preserve_axes = None;
     }
@@ -771,9 +807,9 @@ impl Frame for BasicFrame {
             .unwrap_or_else(|| format!("Axis {}", i + 1)))
     }
 
-    /// The Symbol of a 1-based axis, set or default: the Domain if set,
-    /// else `"x"`, followed by the internal axis number (frame.c
-    /// `GetDefaultSymbol`).
+    /// The Symbol of a 1-based axis, set or default: the Domain if set, else
+    /// `"x"`, followed by the internal axis number.
+    // C: frame.c `GetDefaultSymbol`.
     fn symbol(&self, axis: usize) -> AstResult<String> {
         let i = self.internal(axis)?;
         Ok(self.axes[i]
@@ -816,9 +852,9 @@ impl Frame for BasicFrame {
     axis_attrs_base_get!(digits);
     axis_attrs_store!(label, symbol, unit, digits, direction, top, bottom);
 
-    /// Mirrors C `Frame::Format` (frame.c:4260), which formats with the
-    /// Axis object, lending it the Frame's Digits: axis.c `AxisFormat` or
-    /// skyaxis.c `AxisFormat`.
+    /// Formats with the Axis object, lending it the Frame's Digits.
+    // C: `Frame::Format` (frame.c:4260), which calls axis.c `AxisFormat` or
+    // skyaxis.c `AxisFormat`.
     fn format(&self, axis: usize, value: f64) -> AstResult<String> {
         let digits = self.digits();
         match self.axis_object(axis)? {
@@ -834,8 +870,8 @@ impl Frame for BasicFrame {
         }
     }
 
-    /// Mirrors C `Frame::GetNormUnit` (frame.c:13149): a SkyAxis supplies its
-    /// own (skyaxis.c:3101).
+    /// Mirrors C `Frame::GetNormUnit`: a SkyAxis supplies its own.
+    // C: frame.c:13149; skyaxis.c:3101.
     fn norm_unit(&self, axis: usize) -> String {
         match self
             .axis_object(axis)
@@ -857,8 +893,8 @@ impl Frame for BasicFrame {
         self.attrs.active_unit.unwrap_or(false)
     }
 
-    /// The Axis attached to a 1-based `axis`. Mirrors C `astGetAxis`
-    /// (frame.c:5309), which returns the Frame's own Axis object.
+    /// The Axis attached to a 1-based `axis`: the Frame's own Axis object.
+    // C: `astGetAxis` (frame.c:5309).
     fn get_axis(&self, axis: usize) -> AxisKind {
         self.internal(axis)
             .map(|i| self.axes[i].kind())
@@ -873,8 +909,9 @@ impl Frame for BasicFrame {
         self.attrs.active_unit.is_some()
     }
 
-    /// Mirrors C `Frame::Unformat` (frame.c:11819): axis.c `AxisUnformat`,
-    /// or skyaxis.c `AxisUnformat` for a SkyAxis.
+    /// Reads the value with the Axis object: a plain axis or a SkyAxis.
+    // C: `Frame::Unformat` (frame.c:11819): axis.c `AxisUnformat`, or
+    // skyaxis.c `AxisUnformat` for a SkyAxis.
     fn unformat(&self, axis: usize, text: &str) -> AstResult<(f64, usize)> {
         match self.axis_object(axis)? {
             FrameAxis::Plain(_) => Ok(axis_unformat(text)),
@@ -909,9 +946,10 @@ impl Frame for BasicFrame {
         Ok(super::cartesian_offset(&from[..n], &to[..n], dist))
     }
 
-    /// frame.c `Norm`: each axis value is normalised by its own Axis
-    /// object, so a SkyAxis picked out of a SkyFrame wraps its angle and a
-    /// plain Axis leaves its value alone.
+    /// Each axis value is normalised by its own Axis object, so a SkyAxis
+    /// picked out of a SkyFrame wraps its angle and a plain Axis leaves its
+    /// value alone.
+    // C: frame.c `Norm`.
     fn norm(&self, coords: &mut [f64]) -> AstResult<()> {
         super::assert_points_len("norm", self.naxes, &[&*coords]);
         for (value, &phys) in coords.iter_mut().zip(&self.perm) {
@@ -927,8 +965,9 @@ impl Frame for BasicFrame {
     }
 
     // Match-control attributes — mirror C `astGet/SetMinAxes` etc.
-    /// Compose `perm` with the existing permutation, as C's `PermAxes`
-    /// does (frame.c): the axes themselves stay in internal order.
+    /// Compose `perm` with the existing permutation, as C's `PermAxes` does:
+    /// the axes themselves stay in internal order.
+    // C: frame.c.
     fn perm_axes(&mut self, perm: &[usize]) -> AstResult<()> {
         super::validate_permutation(perm, self.naxes)?;
         let old = self.perm.clone();

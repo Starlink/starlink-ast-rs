@@ -43,7 +43,8 @@ impl SkyAxis {
     }
 
     /// AsTime, set or default: true only for an axis explicitly marked as a
-    /// longitude (skyaxis.c:4619).
+    /// longitude.
+    // C: skyaxis.c:4619.
     pub fn as_time_value(&self) -> bool {
         self.as_time.unwrap_or(self.is_latitude == Some(false))
     }
@@ -71,12 +72,14 @@ impl SkyAxis {
     }
 
     /// The Digits used for this axis: its own, else the one the Frame lends
-    /// it (frame.c `MAKE_GET`).
+    /// it.
+    // C: frame.c `MAKE_GET`.
     pub fn digits_value(&self, frame_digits: i32) -> i32 {
         self.axis.digits.unwrap_or(frame_digits)
     }
 
-    /// The Format, set or default. Mirrors `GetAxisFormat` (skyaxis.c:2888).
+    /// The Format, set or default. Mirrors `GetAxisFormat`.
+    // C: skyaxis.c:2888.
     pub fn format_value(&self, frame_digits: i32) -> String {
         match &self.format {
             Some(f) => f.clone(),
@@ -84,7 +87,8 @@ impl SkyAxis {
         }
     }
 
-    /// A value formatted as `SkyAxis::AxisFormat` does (skyaxis.c:809).
+    /// A value formatted as `SkyAxis::AxisFormat` does.
+    // C: skyaxis.c:809.
     pub fn format_axis_value(&self, frame_digits: i32, value: f64) -> AstResult<String> {
         sky_format(
             &self.format_value(frame_digits),
@@ -93,8 +97,9 @@ impl SkyAxis {
         )
     }
 
-    /// The Unit, set or default: `"rad"` for a `%`-style Format, else the
-    /// one the Format describes. Mirrors `GetAxisUnit` (skyaxis.c:3288).
+    /// The Unit, set or default: `"rad"` for a `%`-style Format, else the one
+    /// the Format describes. Mirrors `GetAxisUnit`.
+    // C: skyaxis.c:3288.
     pub fn unit_value(&self, frame_digits: i32) -> String {
         if let Some(u) = &self.axis.unit {
             return u.clone();
@@ -107,10 +112,11 @@ impl SkyAxis {
         }
     }
 
-    /// The NormUnit. Mirrors `GetAxisNormUnit` (skyaxis.c:3101): a
-    /// description of the axis values is returned unchanged when the Unit is
-    /// the default or has been set to that description; anything else is a
-    /// units expression, normalised as the Axis class does.
+    /// The NormUnit. Mirrors `GetAxisNormUnit`: a description of the axis
+    /// values is returned unchanged when the Unit is the default or has been
+    /// set to that description; anything else is a units expression,
+    /// normalised as the Axis class does.
+    // C: skyaxis.c:3101.
     pub fn norm_unit_value(&self, frame_digits: i32) -> String {
         let fmt = self.format_value(frame_digits);
         if !fmt.starts_with('%') {
@@ -128,7 +134,8 @@ impl SkyAxis {
         crate::units::norm_unit(&self.unit_value(frame_digits))
     }
 
-    /// The Label, set or default. Mirrors `GetAxisLabel` (skyaxis.c:3012).
+    /// The Label, set or default. Mirrors `GetAxisLabel`.
+    // C: skyaxis.c:3012.
     pub fn label_value(&self) -> String {
         if let Some(l) = &self.axis.label {
             return l.clone();
@@ -145,7 +152,8 @@ impl SkyAxis {
         .to_string()
     }
 
-    /// The Symbol, set or default. Mirrors `GetAxisSymbol` (skyaxis.c:3205).
+    /// The Symbol, set or default. Mirrors `GetAxisSymbol`.
+    // C: skyaxis.c:3205.
     pub fn symbol_value(&self) -> String {
         if let Some(s) = &self.axis.symbol {
             return s.clone();
@@ -158,13 +166,15 @@ impl SkyAxis {
     }
 
     /// The Direction, set or default: an axis formatted as a time plots in
-    /// reverse. Mirrors `GetAxisDirection` (skyaxis.c:2820).
+    /// reverse. Mirrors `GetAxisDirection`.
+    // C: skyaxis.c:2820.
     pub fn direction_value(&self) -> bool {
         self.axis.direction.unwrap_or(!self.as_time_value())
     }
 
     /// The Top, set or default: pi/2 for a latitude axis, else no limit.
-    /// Mirrors `GetAxisTop` (skyaxis.c:2755).
+    /// Mirrors `GetAxisTop`.
+    // C: skyaxis.c:2755.
     pub fn top_value(&self) -> f64 {
         self.axis.top.unwrap_or(if self.is_latitude_value() {
             std::f64::consts::FRAC_PI_2
@@ -174,7 +184,8 @@ impl SkyAxis {
     }
 
     /// The Bottom, set or default, as [`top_value`](Self::top_value) is.
-    /// Mirrors `GetAxisBottom` (skyaxis.c:2647).
+    /// Mirrors `GetAxisBottom`.
+    // C: skyaxis.c:2647.
     pub fn bottom_value(&self) -> f64 {
         self.axis.bottom.unwrap_or(if self.is_latitude_value() {
             -std::f64::consts::FRAC_PI_2

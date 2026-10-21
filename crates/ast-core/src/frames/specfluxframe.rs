@@ -235,7 +235,8 @@ impl Frame for SpecFluxFrame {
     frame_attrs_ident!();
 
     /// An unset UseDefs is the SpecFrame component's own, as CmpFrame's
-    /// `GetUseDefs` reads its first component (cmpframe.c).
+    /// `GetUseDefs` reads its first component.
+    // C: cmpframe.c.
     fn use_defs(&self) -> bool {
         self.attrs
             .use_defs
@@ -258,8 +259,9 @@ impl Frame for SpecFluxFrame {
     cmp_frame_shared_attr!(concrete spec_frame, flux_frame; dut1, dut1, set_dut1, test_dut1, clear_dut1);
     cmp_frame_axis_attrs!();
 
-    /// The Domain, set or else the components' joined with a hyphen, or
-    /// "CMP" when both are blank (cmpframe.c `GetDomain`).
+    /// The Domain, set or else the components' joined with a hyphen, or "CMP"
+    /// when both are blank.
+    // C: cmpframe.c `GetDomain`.
     fn domain(&self) -> &str {
         if let Some(d) = self.attrs.domain.as_deref() {
             return d;
@@ -286,8 +288,9 @@ impl Frame for SpecFluxFrame {
         Ok(())
     }
 
-    /// CmpFrame's rule (cmpframe.c:8369): the Frame class's value when set,
-    /// else true when either component has active units.
+    /// CmpFrame's rule: the Frame class's value when set, else true when
+    /// either component has active units.
+    // C: cmpframe.c:8369.
     fn get_active_unit(&self) -> bool {
         match self.attrs.active_unit {
             Some(v) => v,
@@ -309,8 +312,9 @@ impl Frame for SpecFluxFrame {
         2
     }
 
-    /// Inherited from CmpFrame (cmpframe.c `PrimaryFrame`): each axis
-    /// belongs to the one-axis SpecFrame or FluxFrame component.
+    /// Inherited from CmpFrame: each axis belongs to the one-axis SpecFrame
+    /// or FluxFrame component.
+    // C: cmpframe.c `PrimaryFrame`.
     fn primary_frame(&self, axis: usize) -> (&dyn Frame, usize) {
         if self.perm()[axis] == 0 {
             self.spec_frame.primary_frame(0)
@@ -417,8 +421,8 @@ impl Frame for SpecFluxFrame {
         super::find_frame::frames_equal(self, other)
     }
 
-    /// Inherited from CmpFrame, whose System is always "Compound"
-    /// (cmpframe.c `GetSystem`).
+    /// Inherited from CmpFrame, whose System is always "Compound".
+    // C: cmpframe.c `GetSystem`.
     fn system_string(&self) -> AstResult<Option<&str>> {
         Ok(Some("Compound"))
     }

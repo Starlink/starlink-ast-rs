@@ -186,10 +186,6 @@ const C_CITATIONS_UNCLEANED: &[(&str, &str)] = &[
         "C source citations in public docs; cleaned in its subsystem's review task",
     ),
     (
-        "frames",
-        "C source citations in public docs; cleaned in its subsystem's review task",
-    ),
-    (
         "keymap",
         "C source citations in public docs; cleaned in its subsystem's review task",
     ),

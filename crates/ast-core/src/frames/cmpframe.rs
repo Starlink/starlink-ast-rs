@@ -360,7 +360,8 @@ impl Frame for CmpFrame {
     frame_attrs_ident!();
 
     /// An unset UseDefs is the first component's own, read without that
-    /// component's override (cmpframe.c `GetUseDefs`).
+    /// component's override.
+    // C: cmpframe.c `GetUseDefs`.
     fn use_defs(&self) -> bool {
         self.attrs
             .use_defs
@@ -383,10 +384,10 @@ impl Frame for CmpFrame {
         }
     }
 
-    /// frame.c `GetInternalUnit` takes the InternalUnit of the Axis, and a
-    /// CmpFrame's Axis is its component's (cmpframe.c `GetAxis`), so the
-    /// component holding the axis answers: a SkyFrame axis is in radians
-    /// whatever its Unit.
+    /// The component holding the axis answers, because a CmpFrame's Axis is
+    /// its component's: a SkyFrame axis is in radians whatever its Unit.
+    // C: frame.c `GetInternalUnit` takes the InternalUnit of the Axis, and
+    // the CmpFrame's Axis comes from cmpframe.c `GetAxis`.
     fn internal_unit(&self, axis: usize) -> String {
         match self.component_axis(axis) {
             Some((1, a)) => self.frame1.internal_unit(a),
@@ -468,10 +469,10 @@ impl Frame for CmpFrame {
         self.frame1.naxes() + self.frame2.naxes()
     }
 
-    /// Mirrors C `CmpFrame::MatchAxesX` (cmpframe.c:5444): each component
-    /// Frame is matched by its own `match_axes_x`, and the results, which
-    /// are in internal axis order, are put into the CmpFrame's external
-    /// order.
+    /// Mirrors C `CmpFrame::MatchAxesX`: each component Frame is matched by
+    /// its own `match_axes_x`, and the results, which are in internal axis
+    /// order, are put into the CmpFrame's external order.
+    // C: cmpframe.c:5444.
     fn match_axes_x(&self, frm1: &dyn Frame) -> AstResult<Vec<i32>> {
         let mut work = self.frame1.match_axes_x(frm1)?;
         work.extend(self.frame2.match_axes_x(frm1)?);
@@ -583,13 +584,13 @@ impl Frame for CmpFrame {
         }
     }
 
-    /// Mirrors C `CmpFrame::Resolve` (cmpframe.c:7753): each component
-    /// resolves its part of the vector, the parallel distances are combined
-    /// weighted by the length of the basis vector in each component, and
-    /// point 4 and the perpendicular distance then come from this Frame's
-    /// own `offset` and `distance`. A component in which the basis vector
-    /// has no length contributes nothing, so its bad parallel distance is
-    /// taken as zero.
+    /// Mirrors C `CmpFrame::Resolve`: each component resolves its part of the
+    /// vector, the parallel distances are combined weighted by the length of
+    /// the basis vector in each component, and point 4 and the perpendicular
+    /// distance then come from this Frame's own `offset` and `distance`. A
+    /// component in which the basis vector has no length contributes nothing,
+    /// so its bad parallel distance is taken as zero.
+    // C: cmpframe.c:7753.
     fn resolve(
         &self,
         point1: &[f64],
@@ -637,12 +638,12 @@ impl Frame for CmpFrame {
         Ok((point4, d1, d2))
     }
 
-    /// Mirrors C `CmpFrame::ResolvePoints` (cmpframe.c:7962), the batch
-    /// form of [`resolve`](Frame::resolve). Each component resolves its
-    /// share of the points in internal axis order; point 4 and the
-    /// perpendicular distance come from this Frame's `offset` and
-    /// `distance`, which take external order, so they are given the
-    /// supplied points.
+    /// Mirrors C `CmpFrame::ResolvePoints`, the batch form of
+    /// [`resolve`](Frame::resolve). Each component resolves its share of the
+    /// points in internal axis order; point 4 and the perpendicular distance
+    /// come from this Frame's `offset` and `distance`, which take external
+    /// order, so they are given the supplied points.
+    // C: cmpframe.c:7962.
     fn resolve_points(
         &self,
         point1: &[f64],
@@ -748,8 +749,9 @@ impl Frame for CmpFrame {
 
     /// A CmpFrame's axes belong to its components, so the Axis on a given
     /// axis is whatever the owning component has there — the two components
-    /// need not agree. Mirrors C `CmpFrame::GetAxis` (cmpframe.c:3474), which
-    /// permutes the index and forwards to the owner.
+    /// need not agree. Mirrors C `CmpFrame::GetAxis`, which permutes the
+    /// index and forwards to the owner.
+    // C: cmpframe.c:3474.
     fn get_axis(&self, axis: usize) -> AxisKind {
         let (frame, local) = self.route_axis(axis);
         frame.get_axis(local)
@@ -777,11 +779,12 @@ impl Frame for CmpFrame {
         Ok(())
     }
 
-    /// cmpframe.c `FrameGrid`: the bounds are put in the internal axis
-    /// order and split between the components, each component makes a grid
-    /// of a share of the points in proportion to its axes, and the result is
-    /// their cross product, every point of the first component's grid with
-    /// each point of the second's in turn, permuted back.
+    /// The bounds are put in the internal axis order and split between the
+    /// components, each component makes a grid of a share of the points in
+    /// proportion to its axes, and the result is their cross product, every
+    /// point of the first component's grid with each point of the second's in
+    /// turn, permuted back.
+    // C: cmpframe.c `FrameGrid`.
     fn frame_grid(
         &self,
         size: i32,
@@ -829,9 +832,9 @@ impl Frame for CmpFrame {
         Ok(crate::coords::PointSet::from_rows(rows))
     }
 
-    /// cmpframe.c `NormalPoints`: the points are put back in the internal
-    /// axis order, split between the two component Frames, normalised by
-    /// each, and permuted back.
+    /// The points are put back in the internal axis order, split between the
+    /// two component Frames, normalised by each, and permuted back.
+    // C: cmpframe.c `NormalPoints`.
     fn norm_points(
         &self,
         points: &crate::coords::PointSet,
@@ -879,15 +882,15 @@ impl Frame for CmpFrame {
     }
 
     /// Extend a box to include the effect of singularities in either
-    /// component Frame. Mirrors C `CmpFrame::NormBox` (cmpframe.c:5838): the
-    /// bounds are permuted into the internal order the components use, split
-    /// at the first component's axis count, and each component's `norm_box` is
+    /// component Frame. Mirrors C `CmpFrame::NormBox`: the bounds are
+    /// permuted into the internal order the components use, split at the
+    /// first component's axis count, and each component's `norm_box` is
     /// invoked with a predicate that expands a component sub-position back
-    /// into a full external position before consulting the caller's predicate.
+    /// into a full external position before consulting the caller's
+    /// predicate.
     ///
     /// Each probe fills the other component's axes with [`BAD_VALUE`], because
-    /// that is what C's probe PermMaps supply there (cmpframe.c:5965-5969,
-    /// 5981-5991). Every caller passes an un-negated Region, which reports a
+    /// that is what C's probe PermMaps supply there. Every caller passes an un-negated Region, which reports a
     /// point carrying a bad axis as outside, so a component's singularity test
     /// never sees a position inside the box, and a CmpFrame does not widen the
     /// box for a singularity in either component: the bounds it returns are
@@ -895,6 +898,8 @@ impl Frame for CmpFrame {
     /// component's singular point cannot in general be decomposed by
     /// component, since the Region need not be a product of per-component
     /// Regions.
+    // C: cmpframe.c:5838; the probe PermMaps are at cmpframe.c:5965-5969,
+    // 5981-5991.
     fn norm_box(
         &self,
         lbnd: &mut [f64],
@@ -982,8 +987,8 @@ impl Frame for CmpFrame {
         Ok(())
     }
 
-    /// cmpframe.c `RemoveRegions`: remove the Regions from both component
-    /// Frames.
+    /// Remove the Regions from both component Frames.
+    // C: cmpframe.c `RemoveRegions`.
     fn frame_without_regions(&self) -> Option<DynFrame> {
         let new1 = self.frame1.frame_without_regions();
         let new2 = self.frame2.frame_without_regions();
@@ -1021,13 +1026,13 @@ impl Frame for CmpFrame {
         Box::new(cmp)
     }
 
-    /// Simplify both component Frames and rebuild around the results
-    /// (`cmpframe.c:9018-9034`).
+    /// Simplify both component Frames and rebuild around the results.
     ///
-    /// C tests `astIsAFrame` on each simplified component and abandons the
-    /// whole rebuild if either is no longer a Frame; here that result is not
-    /// representable, so a component whose reduction is Mapping-valued reports
-    /// no change (see `simplify_frame_via_mapping`) and is left in place.
+    /// A component whose reduction is Mapping-valued reports no change (see
+    /// `simplify_frame_via_mapping`) and is left in place.
+    // C: `cmpframe.c:9018-9034`. C tests `astIsAFrame` on each simplified
+    // component and abandons the whole rebuild if either is no longer a
+    // Frame; that result is not representable here.
     fn simplify_frame(&self) -> AstResult<Option<DynFrame>> {
         let f1 = self.frame1.simplify_frame()?;
         let f2 = self.frame2.simplify_frame()?;
