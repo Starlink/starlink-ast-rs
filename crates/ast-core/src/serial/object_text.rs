@@ -1,10 +1,12 @@
 //! `show`, `to_native_string` and `TryFrom<AnyObject>` for every class.
 //!
-//! C's `astShow` writes an Object through a Channel with no attributes set,
-//! to standard output; `astToString` writes it through a Channel set to
-//! `Comment=0,Full=-1,Indent=0`, ending each line with a newline
-//! (`object.c` `Show`, `astToString_`). Both render the class's own node, so
-//! neither copies the object into an [`AnyObject`].
+//! Both text forms render the class's own node, so neither copies the object
+//! into an [`AnyObject`].
+
+// `show` is `astShow`, which writes an Object through a Channel with no
+// attributes set to standard output; `to_native_string` is `astToString`,
+// which writes it through a Channel set to `Comment=0,Full=-1,Indent=0`,
+// ending each line with a newline (object.c `Show`, `astToString_`).
 
 use std::io::Write;
 
@@ -26,12 +28,12 @@ fn channel_text<T: Serializable + ?Sized>(obj: &T, config: &ChannelConfig) -> As
     Ok(out)
 }
 
-/// The text C's `astShow` writes for `obj`.
+/// The text `show` prints for `obj`.
 fn show_text<T: Serializable + ?Sized>(obj: &T) -> AstResult<String> {
     channel_text(obj, &ChannelConfig::default())
 }
 
-/// The text C's `astToString` returns for `obj`.
+/// The text `to_native_string` returns for `obj`.
 fn compact_text<T: Serializable + ?Sized>(obj: &T) -> AstResult<String> {
     let mut config = ChannelConfig::default();
     config.set_comment(false);
@@ -40,13 +42,14 @@ fn compact_text<T: Serializable + ?Sized>(obj: &T) -> AstResult<String> {
     channel_text(obj, &config)
 }
 
-/// Print `text` to standard output. Write errors are ignored, as C's
-/// default Channel sink, `printf`, ignores them.
+/// Print `text` to standard output, ignoring write errors.
+// C's default Channel sink, `printf`, ignores them too.
 fn print_text(text: &str) {
     let _ = std::io::stdout().lock().write_all(text.as_bytes());
 }
 
-/// C's `astMAKE_CHECK` error for an Object of the wrong class.
+/// The error for an object of the wrong class.
+// The message is the one C's `astMAKE_CHECK` reports.
 fn wrong_class(wanted: &str, got: &AnyObject) -> AstError {
     AstError::new(
         ErrorCode::Objin,
@@ -62,23 +65,38 @@ macro_rules! object_text {
         $(
             impl $ty {
                 /// Write this object's Native description to standard output,
-                /// as C's `astShow` does: the text a Channel with no attributes
-                /// set writes (`Comment` true, `Full` 0, `Indent` 3), so
-                /// comments are included, the default values that help a
-                /// reader are written as comments, and nested objects are
-                /// indented. Errors writing to standard output are ignored, as
-                /// C's `printf` sink ignores them.
+                /// as an aid to debugging.
+                ///
+                /// The text is what a [`NativeChannel`](crate::channel::NativeChannel)
+                /// with the default [`ChannelConfig`](crate::channel::ChannelConfig) writes
+                /// (Comment true, Full 0, Indent 3): it includes comments,
+                /// writes as comments the default values that help a reader,
+                /// and indents nested objects.
+                /// Errors writing to standard output are ignored.
+                ///
+                /// # Errors
+                ///
+                /// Passes on the error of writing this object to a Channel
+                /// ([`Channel::write`](crate::channel::Channel::write)).
+                #[doc(alias = "astShow")]
                 pub fn show(&self) -> AstResult<()> {
                     print_text(&show_text(self)?);
                     Ok(())
                 }
 
-                /// This object's minimal Native serialization, as C's
-                /// `astToString` returns it: the text a Channel set to
-                /// `Comment=0,Full=-1,Indent=0` writes, so no comments, no
-                /// default values and one leading space on every line, each
-                /// line ending in a newline. Read it back with
-                /// [`from_native_string`](crate::from_native_string).
+                /// This object's minimal Native serialization.
+                ///
+                /// The text is what a [`NativeChannel`](crate::channel::NativeChannel)
+                /// with Comment false, Full -1 and Indent 0 writes: no comments,
+                /// no default values and one leading space on every line, each
+                /// line ending in a newline.
+                /// Read it back with [`from_native_string`](crate::from_native_string).
+                ///
+                /// # Errors
+                ///
+                /// Passes on the error of writing this object to a Channel
+                /// ([`Channel::write`](crate::channel::Channel::write)).
+                #[doc(alias = "astToString")]
                 pub fn to_native_string(&self) -> AstResult<String> {
                     compact_text(self)
                 }
@@ -87,8 +105,12 @@ macro_rules! object_text {
             impl TryFrom<AnyObject> for $ty {
                 type Error = AstError;
 
-                /// The object, if `obj` holds this class; otherwise C's
-                /// AST__OBJIN error naming both classes.
+                /// The object, if `obj` holds this class.
+                ///
+                /// # Errors
+                ///
+                /// - `ErrorCode::Objin` if `obj` holds another class; the
+                ///   message names both classes.
                 fn try_from(obj: AnyObject) -> AstResult<Self> {
                     match obj {
                         AnyObject::$variant(x) => Ok(object_text!(@unbox x $(, $boxed)?)),
@@ -99,9 +121,15 @@ macro_rules! object_text {
         )*
 
         impl AnyObject {
-            /// The AST class name of the object held, as C's `astGetClass`
-            /// returns it (`"Box"` for a
-            /// [`BoxRegion`](crate::regions::BoxRegion)).
+            /// The AST class name of the object held, the Class attribute:
+            /// `"SkyFrame"` for a [`SkyFrame`](crate::frames::SkyFrame),
+            /// `"Frame"` for a [`BasicFrame`](crate::frames::BasicFrame),
+            /// `"Box"` for a [`BoxRegion`](crate::regions::BoxRegion) and
+            /// `"Channel"` for a [`NativeChannel`](crate::channel::NativeChannel).
+            ///
+            /// It is the name a Native dump of the object carries on its
+            /// `Begin` line.
+            #[doc(alias = "Class")]
             pub fn class_name(&self) -> &'static str {
                 match self {
                     $(AnyObject::$variant(x) => Serializable::class_name(object_text!(@ref x $(, $boxed)?)),)*
@@ -131,10 +159,18 @@ macro_rules! object_text {
             }
 
             /// Write the object's Native description to standard output, as
-            /// C's `astShow` does: the text a Channel with no attributes set
-            /// writes (`Comment` true, `Full` 0, `Indent` 3). Errors writing
-            /// to standard output are ignored, as C's `printf` sink ignores
-            /// them.
+            /// an aid to debugging.
+            ///
+            /// The text is what a [`NativeChannel`](crate::channel::NativeChannel)
+            /// with the default [`ChannelConfig`](crate::channel::ChannelConfig) writes
+            /// (Comment true, Full 0, Indent 3).
+            /// Errors writing to standard output are ignored.
+            ///
+            /// # Errors
+            ///
+            /// Passes on the error of writing the object to a Channel
+            /// ([`Channel::write`](crate::channel::Channel::write)).
+            #[doc(alias = "astShow")]
             pub fn show(&self) -> AstResult<()> {
                 print_text(&self.show_text()?);
                 Ok(())
@@ -147,10 +183,16 @@ macro_rules! object_text {
                 }
             }
 
-            /// The object's minimal Native serialization, as C's
-            /// `astToString` returns it: the text a Channel set to
-            /// `Comment=0,Full=-1,Indent=0` writes. Read it back with
-            /// [`from_native_string`](crate::from_native_string).
+            /// The object's minimal Native serialization: the text a
+            /// [`NativeChannel`](crate::channel::NativeChannel) with Comment
+            /// false, Full -1 and Indent 0 writes.
+            /// Read it back with [`from_native_string`](crate::from_native_string).
+            ///
+            /// # Errors
+            ///
+            /// Passes on the error of writing the object to a Channel
+            /// ([`Channel::write`](crate::channel::Channel::write)).
+            #[doc(alias = "astToString")]
             pub fn to_native_string(&self) -> AstResult<String> {
                 match self {
                     $(AnyObject::$variant(x) => compact_text(object_text!(@ref x $(, $boxed)?)),)*

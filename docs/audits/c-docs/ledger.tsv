@@ -40,12 +40,12 @@ class	DssMap	dssmap.c	DssMap		yes	The header says a DSS FitsChan read creates a 
 class	Ellipse	ellipse.c	Ellipse		yes
 function	astEllipsePars	ellipse.c	Ellipse::ellipse_pars		yes	returns an EllipsePars
 function	astEllipse	ellipse.c	EllipseBuilder::new;EllipseBuilder::from_points		yes	new takes the axes and angle (form 1), from_points the boundary points (form 0)
-function	astClearStatus	error.c			no
-function	astOK	error.c			no
-function	astSetPutErr	error.c			no
-function	astSetStatus	error.c			no
-function	astStatus	error.c			no
-function	astWatch	error.c			no
+function	astClearStatus	error.c		c-api-only	yes	The C error status; an Err result replaces it
+function	astOK	error.c		c-api-only	yes	The C error status; an Err result replaces it
+function	astSetPutErr	error.c		c-api-only	yes	Error delivery in the C interface; Rust returns each AstError to the caller
+function	astSetStatus	error.c		c-api-only	yes	The C error status; an Err result replaces it
+function	astStatus	error.c		c-api-only	yes	The C error status; AstError::code replaces it
+function	astWatch	error.c		c-api-only	yes	The C error status variable; an Err result replaces it
 class	FitsChan	fitschan.c	FitsChan		yes
 function	astDelFits	fitschan.c	FitsChan::del_fits		yes
 function	astEmptyFits	fitschan.c	FitsChan::empty_fits		yes
@@ -306,43 +306,43 @@ class	NormMap	normmap.c	NormMap		yes
 function	astNormMap	normmap.c	NormMap::new		yes	The NormMap owns its Frame
 class	NullRegion	nullregion.c	NullRegion		yes
 function	astNullRegion	nullregion.c	NullRegionBuilder::new		yes
-class	Object	object.c			no
-function	astAnnul	object.c			no
-function	astClear	object.c			no
-function	astClone	object.c			no
-function	astCopy	object.c			no
-function	astDelete	object.c			no
-function	astGet<X>	object.c			no
-function	astHasAttribute	object.c			no
-function	astToString	object.c			no
-function	astSet	object.c			no
-function	astSame	object.c			no
-function	astSet<X>	object.c			no
-function	astShow	object.c			no
-function	astTest	object.c			no
-function	astTune	object.c			no
-function	astTuneC	object.c			no
-function	astFromString	object.c			no
-attribute	Class	object.c			no
-attribute	ID	object.c			no
-attribute	Ident	object.c			no
-attribute	UseDefs	object.c			no
-attribute	Nobject	object.c			no
-attribute	ObjSize	object.c			no
-attribute	RefCount	object.c			no
-function	astIsA<Class>	object.c			no
-function	astActiveObjects	object.c			no
-function	astBegin	object.c			no
-function	astCreatedAt	object.c			no
-function	astEnd	object.c			no
-function	astExempt	object.c			no
-function	astExport	object.c			no
-function	astImport	object.c			no
-function	astLock	object.c			no
-function	astUnlock	object.c			no
-function	astThread	object.c			no
-function	astVersion	object.c			no
-function	astEscapes	object.c			no
+class	Object	object.c	AnyObject		yes	No common base trait: AnyObject holds any object and documents what all share
+function	astAnnul	object.c		c-api-only	yes	Handle management; an owned value is dropped
+function	astClear	object.c		c-api-only	yes	String-dispatch attribute access; each attribute has a typed clear_ method
+function	astClone	object.c		c-api-only	yes	Handle management; no shared objects or reference counts in ast-core
+function	astCopy	object.c	AnyObject		yes	Clone on every class is the deep copy; alias on AnyObject, as an impl Clone cannot carry one
+function	astDelete	object.c		c-api-only	yes	Handle management; an owned value is dropped
+function	astGet<X>	object.c		c-api-only	yes	String-dispatch attribute access; each attribute has a typed getter
+function	astHasAttribute	object.c		c-api-only	yes	String-dispatch attribute access; Rust attributes are methods, checked at compile time
+function	astToString	object.c	AnyObject::to_native_string; $ty::to_native_string		yes	$ty is every class the object_text! macro gives the method
+function	astSet	object.c		c-api-only	yes	String-dispatch attribute access; each attribute has a typed setter
+function	astSame	object.c		c-api-only	yes	Pointer identity; std::ptr::eq in Rust
+function	astSet<X>	object.c		c-api-only	yes	String-dispatch attribute access; each attribute has a typed setter
+function	astShow	object.c	AnyObject::show; $ty::show		yes	$ty is every class the object_text! macro gives the method
+function	astTest	object.c		c-api-only	yes	String-dispatch attribute access; each attribute has a typed test_ method
+function	astTune	object.c		c-api-only	yes	Global tuning: ObjectCaching and MemoryCaching control C memory caching, which Rust allocation does not have
+function	astTuneC	object.c		c-api-only	yes	Global tuning of the Plot escape strings for sky formatting; graphical escapes are not ported
+function	astFromString	object.c	from_native_string; from_native_string_with		yes
+attribute	Class	object.c	AnyObject::class_name		yes
+attribute	ID	object.c	Mapping::id; Frame::id; KeyMap::id; NativeChannel::id; MocChan::id; FitsChan::id		yes	Table and FitsTable read it through their KeyMap
+attribute	Ident	object.c	Mapping::ident; Frame::ident; KeyMap::ident; NativeChannel::ident; MocChan::ident; FitsChan::ident		yes	Table and FitsTable read it through their KeyMap
+attribute	UseDefs	object.c	Frame::use_defs		yes	Only Frames hold it, the only classes C lets it affect
+attribute	Nobject	object.c		c-api-only	yes	A count of live objects per class; ast-core keeps no object registry, so only the C interface can count its handles
+attribute	ObjSize	object.c		not-ported	yes	No in-memory size of an object; nothing in ast-core needs it (PLAN.md §7)
+attribute	RefCount	object.c		c-api-only	yes	Handle reference count; owned values have none
+function	astIsA<Class>	object.c	AnyObject::as_mapping; AnyObject::as_frame; AnyObject::as_region		yes	A plain Frame is not a Mapping (sibling traits), where astIsAMapping is true for any Frame
+function	astActiveObjects	object.c		c-api-only	yes	Handle bookkeeping
+function	astBegin	object.c		c-api-only	yes	Handle context
+function	astCreatedAt	object.c		c-api-only	yes	Handle bookkeeping
+function	astEnd	object.c		c-api-only	yes	Handle context
+function	astExempt	object.c		c-api-only	yes	Handle context
+function	astExport	object.c		c-api-only	yes	Handle context
+function	astImport	object.c		c-api-only	yes	Handle context
+function	astLock	object.c		c-api-only	yes	Thread locking of handles; objects are Send, not Sync
+function	astUnlock	object.c		c-api-only	yes	Thread locking of handles; objects are Send, not Sync
+function	astThread	object.c		c-api-only	yes	Thread locking of handles; objects are Send, not Sync
+function	astVersion	object.c	PACKAGE_STRING		yes	The version as text; no integer form (PLAN.md §7)
+function	astEscapes	object.c		not-ported	yes	Graphical escape sequences belong to Plot, which is not ported
 class	PcdMap	pcdmap.c	PcdMap		yes
 attribute	Disco	pcdmap.c	PcdMap::disc		yes	C refuses to set it on a PcdMap with more than one reference; owned values have no such restriction
 attribute	PcdCen	pcdmap.c	PcdMap::pcdcen		yes	The getter returns both axes; C's PcdCen without an axis reads axis 1. C refuses to set it on a PcdMap with more than one reference
@@ -549,9 +549,9 @@ attribute	Ncolumn	table.c	Table::ncolumn		yes
 attribute	Nparameter	table.c	Table::nparameter		yes
 attribute	Nrow	table.c	Table::nrow		yes
 function	astTable	table.c	Table::new		yes	no options argument
-class	TemplateClass	templateclass.c			no
-attribute	AlignSpecOffset	templateclass.c			no
-function	astTemplateClass	templateclass.c			no
+class	TemplateClass	templateclass.c		not-ported	yes	A template for writing a new C class, not a class of the library
+attribute	AlignSpecOffset	templateclass.c		not-ported	yes	A template for writing a new C class, not a class of the library
+function	astTemplateClass	templateclass.c		not-ported	yes	A template for writing a new C class, not a class of the library
 class	TimeFrame	timeframe.c	TimeFrame		yes
 function	astCurrentTime	timeframe.c	TimeFrame::current_time		yes	C's header says the time scales defined by the Earth's rotation are an error; C's code and the port convert to them (docs/issues/c-library-quirks.md)
 attribute	TimeOrigin	timeframe.c	TimeFrame::time_origin;TimeFrame::time_origin_cur		yes	C's attribute is in the current units, as time_origin_cur; time_origin gives the stored value in the System's default unit; C's input formats (epochs, JD and MJD, calendar dates, values with units) are for its string interface

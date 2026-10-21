@@ -8,7 +8,7 @@ use audit_tools::{LedgerRow, parse_headers_tsv, parse_ledger};
 
 /// Rows not yet reviewed. It may only go down; it reaches zero when the
 /// audit is complete.
-const UNREVIEWED_ROWS: usize = 76;
+const UNREVIEWED_ROWS: usize = 30;
 
 fn audit_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../docs/audits/c-docs")
@@ -165,10 +165,6 @@ fn every_mapped_row_has_its_alias_on_its_item() {
 /// with why. The list only shrinks; `a_clean_module_cannot_stay_listed`
 /// fails when a listed module is clean.
 const C_CITATIONS_UNCLEANED: &[(&str, &str)] = &[
-    (
-        "(crate root)",
-        "C source citations in public docs; cleaned in its subsystem's review task",
-    ),
     (
         "call_counts",
         "C source citations in public docs; cleaned in its subsystem's review task",

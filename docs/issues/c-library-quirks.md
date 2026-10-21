@@ -99,6 +99,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [The `astGetColumnData` documentation says strings are null terminated](#the-astgetcolumndata-documentation-says-strings-are-null-terminated)
 - [The `astPutTableHeader` documentation leaves `TUNIT%d` out of the keywords it removes](#the-astputtableheader-documentation-leaves-tunitd-out-of-the-keywords-it-removes)
 - [The FitsTable class documentation says it has no 8-byte integer columns](#the-fitstable-class-documentation-says-it-has-no-8-byte-integer-columns)
+- [The `UseDefs` documentation leaves out attributes and default titles it affects](#the-usedefs-documentation-leaves-out-attributes-and-default-titles-it-affects)
 - [The FitsTable class documentation attributes `-TAB` to FITS-WCS paper 2](#the-fitstable-class-documentation-attributes--tab-to-fits-wcs-paper-2)
 - [The `astPutColumnData` documentation does not say a cell of non-finite values keeps its old value](#the-astputcolumndata-documentation-does-not-say-a-cell-of-non-finite-values-keeps-its-old-value)
 
@@ -1486,6 +1487,19 @@ Consequence: stale values survive a whole-column put, and such a cell does not r
 
 `FitsTable::put_column_data` says such a cell is not stored and keeps any value it held, as the code does.
 A C fix: document it, or remove the cell's entry so it reads back as null.
+
+### The `UseDefs` documentation leaves out attributes and default titles it affects
+
+C location: `object.c`, the `UseDefs` prologue (Description, line 5259, and Applicability, from line 5270); `skyframe.c` `VerifyMSMAttrs` calls (from line 6198) and `GetTitle` (from line 4598); `specframe.c` `GetTitle` (line 2120); `timeframe.c` `VerifyAttrs` (line 6398) and its call (line 5366).
+
+The prologue says a SkyFrame with UseDefs zero reports an error when Epoch or Equinox is needed and unset, and lists no TimeFrame entry.
+It also says UseDefs only affects access to attributes "internally within AST", while the public accessors are unaffected.
+The code also checks ObsLon and ObsLat for a SkyFrame conversion from AzEl, checks TimeScale for a TimeFrame conversion between time systems, and leaves an unset Equinox or Epoch out of a SkyFrame's default Title, and an unset RestFreq out of a SpecFrame's, when UseDefs is zero, so `astGetC( frame, "Title" )` does change with it.
+
+Consequence: documentation only, but a caller who sets UseDefs to zero meets errors and titles the prologue does not mention.
+
+`Frame::use_defs` lists the attributes each class checks and the two default titles, as the code does.
+A C fix: add ObsLon and ObsLat to the SkyFrame entry, add a TimeFrame entry for TimeScale, and mention the default Title of a SkyFrame and SpecFrame.
 
 ## Addressed here, and not going upstream
 

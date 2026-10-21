@@ -438,14 +438,18 @@ impl KeyMap {
         self.sort_by.is_some()
     }
 
-    /// The Ident attribute, a string identifying the KeyMap, or `""` when
-    /// unset.
+    /// The Ident attribute: a permanent string identifying this KeyMap.
+    ///
+    /// A clone keeps it, and it is written to and read back from a Native
+    /// dump.
+    /// Default: an empty string.
     // As astGetIdent (object.c).
+    #[doc(alias = "Ident")]
     pub fn ident(&self) -> &str {
         self.ident.as_deref().unwrap_or("")
     }
 
-    /// Set Ident.
+    /// Set [`ident`](Self::ident).
     ///
     /// A blank Ident counts as set.
     // As in C, a blank value counts as set.
@@ -453,35 +457,39 @@ impl KeyMap {
         self.ident = Some(ident.to_string());
     }
 
-    /// Clear Ident.
+    /// Clear [`ident`](Self::ident).
     pub fn clear_ident(&mut self) {
         self.ident = None;
     }
 
-    /// The `ID` attribute, blank unless set.
+    /// The ID attribute: a string identifying this KeyMap, which the library
+    /// does not use.
     ///
-    /// Unlike `Ident`, a clone does not inherit it.
+    /// It is written to and read back from a Native dump, but unlike
+    /// [`ident`](Self::ident) a clone does not keep it.
+    /// Default: an empty string.
     // C's astCopy does not copy ID either.
+    #[doc(alias = "ID")]
     pub fn id(&self) -> &str {
         self.id.get()
     }
 
-    /// Set `ID`.
+    /// Set [`id`](Self::id).
     pub fn set_id(&mut self, id: &str) {
         self.id.set(id);
     }
 
-    /// Whether `ID` is set.
+    /// Whether [`id`](Self::id) is set.
     pub fn test_id(&self) -> bool {
         self.id.test()
     }
 
-    /// Clear `ID`.
+    /// Clear [`id`](Self::id).
     pub fn clear_id(&mut self) {
         self.id.clear();
     }
 
-    /// Whether Ident has been set.
+    /// Whether [`ident`](Self::ident) has been set.
     pub fn test_ident(&self) -> bool {
         self.ident.is_some()
     }

@@ -150,44 +150,54 @@ impl NativeChannel {
         self.base.set_sink(sink);
     }
 
-    /// The Object-class `Ident` attribute, blank unless set.
+    /// The Ident attribute: a permanent string identifying this Channel.
+    ///
+    /// A clone keeps it, and it is written to and read back from a Native
+    /// dump.
+    /// Default: an empty string.
+    #[doc(alias = "Ident")]
     pub fn ident(&self) -> &str {
         self.base.ident.as_deref().unwrap_or("")
     }
 
-    /// Set `Ident`.
+    /// Set [`ident`](Self::ident).
     pub fn set_ident(&mut self, ident: &str) {
         self.base.ident = Some(ident.to_string());
     }
 
-    /// Whether `Ident` is set.
+    /// Whether [`ident`](Self::ident) is set.
     pub fn test_ident(&self) -> bool {
         self.base.ident.is_some()
     }
 
-    /// Clear `Ident`.
+    /// Clear [`ident`](Self::ident).
     pub fn clear_ident(&mut self) {
         self.base.ident = None;
     }
 
-    /// The Object-class `ID` attribute, blank unless set.
-    /// Unlike `Ident`, a clone does not inherit it.
+    /// The ID attribute: a string identifying this Channel, which the library
+    /// does not use.
+    ///
+    /// It is written to and read back from a Native dump, but unlike
+    /// [`ident`](Self::ident) a clone does not keep it.
+    /// Default: an empty string.
     // C's `astCopy` does not copy the ID.
+    #[doc(alias = "ID")]
     pub fn id(&self) -> &str {
         self.base.id.get()
     }
 
-    /// Set `ID`.
+    /// Set [`id`](Self::id).
     pub fn set_id(&mut self, id: &str) {
         self.base.id.set(id);
     }
 
-    /// Whether `ID` is set.
+    /// Whether [`id`](Self::id) is set.
     pub fn test_id(&self) -> bool {
         self.base.id.test()
     }
 
-    /// Clear `ID`.
+    /// Clear [`id`](Self::id).
     pub fn clear_id(&mut self) {
         self.base.id.clear();
     }

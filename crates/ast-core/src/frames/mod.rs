@@ -1074,60 +1074,100 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
         Ok(None)
     }
 
-    /// The Object-class Ident attribute, blank unless set.
+    /// The Ident attribute: a permanent string identifying this Frame.
+    ///
+    /// The library places no restriction on its contents.
+    /// A clone keeps it, and it is written to and read back from a Native
+    /// dump, so it can identify an object after either.
+    /// Default: an empty string.
+    ///
+    /// A FrameSet or Region, which is also a
+    /// [`Mapping`], holds one Ident, which [`Mapping::ident`] reads too.
+    #[doc(alias = "Ident")]
     fn ident(&self) -> &str;
-    /// Set Ident.
+    /// Set [`ident`](Frame::ident).
+    /// An empty string counts as set.
+    /// Never fails.
     // C: `object.c:5225`; astSetIdent.
     fn set_ident(&mut self, ident: &str) -> AstResult<()>;
-    /// Clear Ident.
+    /// Clear [`ident`](Frame::ident).
+    /// Never fails.
     // C: `object.c:5217`; astClearIdent.
     fn clear_ident(&mut self) -> AstResult<()>;
-    /// Whether Ident is set.
+    /// Whether [`ident`](Frame::ident) is set, even to an empty string.
     // C: `object.c:5229`; astTestIdent.
     fn test_ident(&self) -> bool;
 
-    /// The Object-class ID attribute, blank unless set.
-    /// Unlike Ident, a clone does not inherit it.
+    /// The ID attribute: a string identifying this Frame.
+    ///
+    /// The library places no restriction on its contents and does not use
+    /// it.
+    /// It is written to and read back from a Native dump, so consistent IDs
+    /// identify objects read from a file without depending on the order they
+    /// were written in.
+    /// Unlike [`ident`](Frame::ident), a clone does not keep it: the clone's
+    /// ID is unset.
+    /// Default: an empty string.
     // C: `astCopy` does not copy it.
+    #[doc(alias = "ID")]
     fn id(&self) -> &str;
-    /// Set ID.
+    /// Set [`id`](Frame::id).
+    /// Never fails.
     // C: astSetID.
     fn set_id(&mut self, id: &str) -> AstResult<()>;
-    /// Clear ID.
+    /// Clear [`id`](Frame::id).
+    /// Never fails.
     // C: astClearID.
     fn clear_id(&mut self) -> AstResult<()>;
-    /// Whether ID is set.
+    /// Whether [`id`](Frame::id) is set.
     // C: astTestID.
     fn test_id(&self) -> bool;
 
-    /// The Object-class UseDefs attribute as stored on this object, `None`
-    /// when unset.
-    /// Only Frames hold it.
+    /// The UseDefs attribute as stored on this object, `None` when unset.
     // C: every Object keeps UseDefs, but only Frame classes read it.
     fn stored_use_defs(&self) -> Option<bool>;
     /// Store UseDefs, `None` to clear it.
     fn store_use_defs(&mut self, value: Option<bool>);
-    /// UseDefs, set or default: whether default values may be used for
-    /// attributes that have not been set.
-    /// A FrameSet, Region or CmpFrame takes an unset value from a Frame it
-    /// contains.
+    /// The UseDefs attribute: whether a default value may stand in for an
+    /// attribute that has not been set, where aligning Frames needs it.
+    ///
+    /// When false, building the Mapping between two Frames fails with
+    /// `ErrorCode::Noval` if the conversion needs one of these attributes and
+    /// it has no value set:
+    ///
+    /// - SkyFrame: Equinox, Epoch, ObsLon, ObsLat;
+    /// - SpecFrame: RefRA, RefDec, ObsLon, ObsLat, ObsAlt, Epoch, RestFreq,
+    ///   SourceVel, StdOfRest;
+    /// - DSBSpecFrame: as SpecFrame, and IF and DSBCentre to change sideband,
+    ///   which reading ImagFreq also needs;
+    /// - TimeFrame: TimeScale.
+    ///
+    /// It also shortens two default titles: with UseDefs false, a SkyFrame's
+    /// default Title leaves out an Equinox or Epoch that has not been set, and
+    /// a SpecFrame's leaves out a RestFreq that has not been set.
+    /// Other getters ignore it and give the default when no value is set; use
+    /// an attribute's `test_` method to see whether one is.
+    /// Default: true.
+    /// A FrameSet takes an unset value from its current Frame, a Region from
+    /// the Frame it encloses and a CmpFrame from its first component Frame.
     // C: `object.c:5304`.
+    #[doc(alias = "UseDefs")]
     fn use_defs(&self) -> bool {
         self.stored_use_defs().unwrap_or(true)
     }
-    /// Set UseDefs.
+    /// Set [`use_defs`](Frame::use_defs).
     // C: astSetUseDefs.
     fn set_use_defs(&mut self, value: bool) -> AstResult<()> {
         self.store_use_defs(Some(value));
         Ok(())
     }
-    /// Clear UseDefs.
+    /// Clear [`use_defs`](Frame::use_defs).
     // C: astClearUseDefs.
     fn clear_use_defs(&mut self) -> AstResult<()> {
         self.store_use_defs(None);
         Ok(())
     }
-    /// Whether UseDefs is set.
+    /// Whether [`use_defs`](Frame::use_defs) is set.
     // C: astTestUseDefs.
     fn test_use_defs(&self) -> bool {
         self.stored_use_defs().is_some()

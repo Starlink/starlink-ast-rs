@@ -1855,13 +1855,50 @@ impl Serializable for Prism {
 // AnyObject — type-erased AST object for serialisation round-trips
 // ---------------------------------------------------------------------------
 
-/// A type-erased AST object for serialisation round-trips.
+/// Any AST object, with one variant per class.
 ///
-/// Every concrete AST class that can be serialised has a variant here.
-/// The convenience methods [`as_mapping`](AnyObject::as_mapping),
-/// [`as_frame`](AnyObject::as_frame), [`into_mapping`](AnyObject::into_mapping),
-/// and [`into_frame`](AnyObject::into_frame) provide trait-object access
-/// without requiring the caller to match on variants.
+/// Each AST class is its own Rust type, and there is no common base trait.
+/// `AnyObject` is what reading a [`Channel`](crate::channel::Channel) or
+/// [`from_native_string`] returns, since the class is not known in advance.
+/// [`as_mapping`](AnyObject::as_mapping), [`as_frame`](AnyObject::as_frame)
+/// and [`as_region`](AnyObject::as_region), and their `into_` forms, give the
+/// object as a trait object without matching on variants, and each class's
+/// `TryFrom<AnyObject>` gives the concrete type.
+///
+/// Every AST object has:
+///
+/// - a class name, [`class_name`](AnyObject::class_name) (the Class attribute);
+/// - Ident and ID, two strings a user may set to label the object, which the
+///   library stores and writes to a dump but does not otherwise interpret
+///   (see [`Mapping::ident`] and [`Mapping::id`], or [`Frame::ident`] and
+///   [`Frame::id`]); a clone keeps Ident but not ID;
+/// - [`Clone`], which makes a deep copy, sharing nothing with the original,
+///   so that changing one never changes the other (a Channel's clone is the
+///   exception: see the variants below);
+/// - [`show`](AnyObject::show) and
+///   [`to_native_string`](AnyObject::to_native_string), which write its
+///   Native description; the same two methods exist on each class.
+///
+/// Objects are owned values with no reference count: an object lives until
+/// its owner drops it.
+///
+/// ```
+/// use ast_core::mappings::ZoomMap;
+///
+/// let text = ZoomMap::new(1, 2.0).unwrap().to_native_string().unwrap();
+/// let obj = ast_core::from_native_string(&text).unwrap();
+/// assert_eq!(obj.class_name(), "ZoomMap");
+/// assert!(obj.as_mapping().is_some());
+/// assert!(obj.as_frame().is_none());
+/// let zoom = ZoomMap::try_from(obj.clone()).unwrap();
+/// assert_eq!(zoom.zoom(), 2.0);
+/// ```
+///
+/// # See also
+///
+/// - `astCopy`: [`Clone`].
+#[doc(alias = "Object")]
+#[doc(alias = "astCopy")]
 #[derive(Debug, Clone)]
 pub enum AnyObject {
     /// A [`UnitMap`] (identity mapping).
@@ -1979,7 +2016,7 @@ pub enum AnyObject {
     /// Table and a FitsChan header. Implements neither [`Mapping`] nor
     /// [`Frame`].
     FitsTable(Box<crate::fitstable::FitsTable>),
-    /// A [`crate::channel::NativeChannel`], C's `Channel`. Implements neither
+    /// A [`crate::channel::NativeChannel`], the AST Channel class. Implements neither
     /// [`Mapping`] nor [`Frame`]. It shares its source and sink with the
     /// channel it was cloned from; one read from a dump has neither.
     NativeChannel(Box<crate::channel::NativeChannel>),
@@ -1987,8 +2024,8 @@ pub enum AnyObject {
     /// [`Frame`]; its source and sink are shared as a `NativeChannel`'s are.
     MocChan(Box<crate::channel::MocChan>),
     /// A [`crate::fitschan::FitsChan`]. Implements neither [`Mapping`] nor
-    /// [`Frame`]. A clone has no source or sink, as C's `astCopy` gives
-    /// none, and nor has one read from a dump.
+    /// [`Frame`]. A clone has no source or sink, and nor has one read from
+    /// a dump.
     FitsChan(Box<crate::fitschan::FitsChan>),
 }
 
@@ -2139,6 +2176,16 @@ impl AnyObject {
 
     /// Return a reference to the contained object as a `&dyn Mapping`,
     /// or `None` if the variant does not implement [`Mapping`].
+    ///
+    /// Every Mapping class, FrameSet and every Region implement it; the other
+    /// Frame classes, KeyMap, Table, FitsTable and the Channels do not.
+    ///
+    /// # See also
+    ///
+    /// - `astIsA<Class>`, one function per class `<Class>`, here `Mapping`; to
+    ///   test for a single class, use its `TryFrom<AnyObject>` or match the
+    ///   variant.
+    #[doc(alias = "astIsA")]
     pub fn as_mapping(&self) -> Option<&dyn Mapping> {
         match self {
             AnyObject::UnitMap(m) => Some(m),
@@ -2204,6 +2251,13 @@ impl AnyObject {
 
     /// Return a reference to the contained object as a `&dyn Frame`,
     /// or `None` if the variant does not implement [`Frame`].
+    ///
+    /// Every Frame class, FrameSet and every Region implement it.
+    ///
+    /// # See also
+    ///
+    /// - `astIsA<Class>`, one function per class `<Class>`, here `Frame`.
+    #[doc(alias = "astIsA")]
     pub fn as_frame(&self) -> Option<&dyn Frame> {
         match self {
             AnyObject::BasicFrame(f) => Some(f),
@@ -2399,6 +2453,11 @@ impl AnyObject {
 
     /// Return a reference to the contained object as a `&dyn Region`,
     /// or `None` if the variant does not implement [`Region`].
+    ///
+    /// # See also
+    ///
+    /// - `astIsA<Class>`, one function per class `<Class>`, here `Region`.
+    #[doc(alias = "astIsA")]
     pub fn as_region(&self) -> Option<&dyn Region> {
         match self {
             AnyObject::Circle(r) => Some(r),
@@ -2630,16 +2689,23 @@ pub(crate) fn any_object_to_node(obj: &AnyObject) -> AstResult<Node> {
 // Public API: from_native_string
 // ---------------------------------------------------------------------------
 
-/// Deserialise an AST object from Native text format.
+/// Re-create an AST object from its Native text, such as
+/// [`to_native_string`](AnyObject::to_native_string) gives.
 ///
-/// Parses the AST Native serialisation format and returns a type-erased
-/// [`AnyObject`]. Use [`AnyObject::as_mapping`], [`AnyObject::as_frame`],
+/// The text is read with a [`NativeChannel`](crate::channel::NativeChannel)
+/// and the first object in it is returned as an [`AnyObject`].
+/// Use [`AnyObject::as_mapping`], [`AnyObject::as_frame`],
 /// [`AnyObject::into_mapping`], or [`AnyObject::into_frame`] to extract
 /// the concrete trait object.
 ///
-/// This delegates to [`NativeChannel`](crate::channel::NativeChannel), which
-/// knows no IntraMap transformations, so text holding an IntraMap fails with
-/// AST__URITF; read it with [`from_native_string_with`].
+/// # Errors
+///
+/// - `ErrorCode::Rderr` if the text holds no object.
+/// - `ErrorCode::Uritf` if the text holds an IntraMap, since no IntraMap
+///   transformation is known here; read it with [`from_native_string_with`].
+/// - Otherwise passes on the error of
+///   [`Channel::read`](crate::channel::Channel::read).
+#[doc(alias = "astFromString")]
 pub fn from_native_string(s: &str) -> AstResult<AnyObject> {
     from_native_string_with(s, &IntraRegistry::new())
 }
@@ -2651,6 +2717,15 @@ pub fn from_native_string(s: &str) -> AstResult<AnyObject> {
 /// [`NativeChannel`](crate::channel::NativeChannel) that has had each
 /// transformation in `registry` registered with
 /// [`Channel::register_intra`](crate::channel::Channel::register_intra).
+///
+/// # Errors
+///
+/// - `ErrorCode::Rderr` if the text holds no object.
+/// - `ErrorCode::Uritf` if the text holds an IntraMap whose transformation is
+///   not in `registry`.
+/// - Otherwise passes on the error of
+///   [`Channel::read`](crate::channel::Channel::read).
+#[doc(alias = "astFromString")]
 pub fn from_native_string_with(s: &str, registry: &IntraRegistry) -> AstResult<AnyObject> {
     use crate::channel::{Channel, NativeChannel};
     let mut ch = NativeChannel::from_string_with(s, registry.clone());

@@ -222,14 +222,36 @@ fn generate_error_codes(vendor_dir: &Path) {
     }
 
     // Write the enum
-    writeln!(out, "/// Error codes defined by the AST library.").unwrap();
+    writeln!(out, "/// The conditions an [`AstError`] can report.").unwrap();
     writeln!(out, "///").unwrap();
     writeln!(
         out,
-        "/// Values match the Starlink MESSGEN formula for binary compatibility"
+        "/// Each variant's documentation and [`Display`](fmt::Display) form is"
     )
     .unwrap();
-    writeln!(out, "/// with the C library's `AST__*` error constants.").unwrap();
+    writeln!(
+        out,
+        "/// the condition's description, and its value ([`as_raw`](Self::as_raw))"
+    )
+    .unwrap();
+    writeln!(
+        out,
+        "/// is the AST error code for it, built by the Starlink MESSGEN formula."
+    )
+    .unwrap();
+    writeln!(out, "///").unwrap();
+    writeln!(out, "/// # See also").unwrap();
+    writeln!(out, "///").unwrap();
+    writeln!(
+        out,
+        "/// - The `AST__` error constants of the C interface, which have the same"
+    )
+    .unwrap();
+    writeln!(
+        out,
+        "///   values: `AST__OBJIN` is [`ErrorCode::Objin`], and so on."
+    )
+    .unwrap();
     writeln!(out, "#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]").unwrap();
     writeln!(out, "#[repr(u32)]").unwrap();
     writeln!(out, "#[non_exhaustive]").unwrap();
@@ -260,7 +282,7 @@ fn generate_error_codes(vendor_dir: &Path) {
 
     // Write as_raw method
     writeln!(out, "impl ErrorCode {{").unwrap();
-    writeln!(out, "    /// Return the raw numeric error code value.").unwrap();
+    writeln!(out, "    /// The numeric AST error code.").unwrap();
     writeln!(out, "    pub fn as_raw(self) -> u32 {{").unwrap();
     writeln!(out, "        self as u32").unwrap();
     writeln!(out, "    }}").unwrap();
@@ -269,7 +291,7 @@ fn generate_error_codes(vendor_dir: &Path) {
     // Write from_raw method
     writeln!(
         out,
-        "    /// Convert a raw numeric value to an ErrorCode, if valid."
+        "    /// The variant whose numeric code is `value`, if there is one."
     )
     .unwrap();
     writeln!(out, "    pub fn from_raw(value: u32) -> Option<Self> {{").unwrap();

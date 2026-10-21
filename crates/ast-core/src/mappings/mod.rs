@@ -1145,50 +1145,69 @@ pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
         self.mapping_flags_mut().allow_simplify = flag;
     }
 
-    /// The `Ident` attribute — a user-supplied permanent name for this
-    /// mapping, empty when unset.
+    /// The Ident attribute: a permanent string identifying this mapping.
     ///
-    /// The [`Frame`](crate::frames::Frame) side carries the same four
-    /// accessors ([`crate::frames::Frame::ident`]).
+    /// The library places no restriction on its contents.
+    /// A clone keeps it, and it is written to and read back from a Native
+    /// dump, so it can identify an object after either.
+    /// A Mapping with Ident set is left intact by simplification (see
+    /// [`do_not_simplify`](Mapping::do_not_simplify)).
+    /// Default: an empty string.
+    ///
+    /// A class that is also a [`Frame`](crate::frames::Frame) holds one
+    /// Ident, which [`Frame::ident`](crate::frames::Frame::ident) reads too.
+    #[doc(alias = "Ident")]
     fn ident(&self) -> &str {
         // C keeps it on Object (object.c:5221), so it applies to every class.
         ""
     }
 
-    /// Set the `Ident` attribute. The default does nothing; concrete classes
-    /// with an `Ident` field override this.
+    /// Set [`ident`](Mapping::ident).
+    /// An empty string counts as set.
+    ///
+    /// The default does nothing; every Mapping class in this crate overrides
+    /// it.
     fn set_ident(&mut self, _ident: &str) {
         // C `SetIdent` (object.c:5225).
     }
 
-    /// Clear `Ident`, restoring the unset state.
+    /// Clear [`ident`](Mapping::ident), restoring the unset state.
     fn clear_ident(&mut self) {
         // C `ClearIdent` (object.c:5217).
     }
 
-    /// Whether `Ident` has been explicitly set, even to an empty string.
+    /// Whether [`ident`](Mapping::ident) has been set, even to an empty
+    /// string.
     fn test_ident(&self) -> bool {
         // C `TestIdent` (object.c:5229) tests the stored pointer rather than
         // the string's contents.
         false
     }
 
-    /// The `ID` attribute — a string identifying this object, empty when
-    /// unset.
+    /// The ID attribute: a string identifying this mapping.
     ///
-    /// Unlike `Ident`, a clone does not inherit it.
-    /// The [`Frame`](crate::frames::Frame) side carries the same four
-    /// accessors ([`crate::frames::Frame::id`]).
+    /// The library places no restriction on its contents and does not use
+    /// it.
+    /// It is written to and read back from a Native dump, so consistent IDs
+    /// identify objects read from a file without depending on the order they
+    /// were written in.
+    /// Unlike [`ident`](Mapping::ident), a clone does not keep it: the
+    /// clone's ID is unset.
+    /// Default: an empty string.
+    ///
+    /// A class that is also a [`Frame`](crate::frames::Frame) holds one ID,
+    /// which [`Frame::id`](crate::frames::Frame::id) reads too.
     // C keeps it on Object (object.c:5175), and `astCopy` does not copy it.
+    #[doc(alias = "ID")]
     fn id(&self) -> &str;
 
-    /// Set `ID`.
+    /// Set [`id`](Mapping::id).
     fn set_id(&mut self, id: &str);
 
-    /// Clear `ID`.
+    /// Clear [`id`](Mapping::id).
     fn clear_id(&mut self);
 
-    /// Whether `ID` has been set.
+    /// Whether [`id`](Mapping::id) has been set.
     fn test_id(&self) -> bool;
 
     /// Whether this mapping must be left intact by a simplification.

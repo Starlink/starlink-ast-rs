@@ -1519,22 +1519,24 @@ impl Table {
         Ok(())
     }
 
-    /// Set the Object attribute Ident.
+    /// Set the Ident attribute; read it with
+    /// [`as_keymap`](Self::as_keymap) and [`KeyMap::ident`].
     pub fn set_ident(&mut self, ident: &str) {
         self.map.set_ident(ident);
     }
 
-    /// Clear the Object attribute Ident.
+    /// Clear the Ident attribute ([`KeyMap::ident`]).
     pub fn clear_ident(&mut self) {
         self.map.clear_ident();
     }
 
-    /// Set the Object attribute ID.
+    /// Set the ID attribute; read it with
+    /// [`as_keymap`](Self::as_keymap) and [`KeyMap::id`].
     pub fn set_id(&mut self, id: &str) {
         self.map.set_id(id);
     }
 
-    /// Clear the Object attribute ID.
+    /// Clear the ID attribute ([`KeyMap::id`]).
     pub fn clear_id(&mut self) {
         self.map.clear_id();
     }
