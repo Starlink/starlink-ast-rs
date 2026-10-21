@@ -77,7 +77,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [The `astDownsize` documentation does not say which Frame `maxerr` is measured in](#the-astdownsize-documentation-does-not-say-which-frame-maxerr-is-measured-in)
 - [A CmpRegion that ANDs two nested unbounded Regions reports itself as bounded](#a-cmpregion-that-ands-two-nested-unbounded-regions-reports-itself-as-bounded)
 - [The `MinOrder` documentation gives a default of MaxOrder minus 4](#the-minorder-documentation-gives-a-default-of-maxorder-minus-4)
-- [The `astAddMocData` and `astAddMocString` documentation describes `negate` the wrong way round](#the-astaddmocdata-and-astaddmocstring-documentation-describes-negate-the-wrong-way-round)
+- [The C edition of the `astAddMocData` and `astAddMocString` documentation describes `negate` the wrong way round](#the-c-edition-of-the-astaddmocdata-and-astaddmocstring-documentation-describes-negate-the-wrong-way-round)
 - [The `astAddMocString` documentation says cells above `maxorder` are ignored](#the-astaddmocstring-documentation-says-cells-above-maxorder-are-ignored)
 - [The `MaxOrder` and `astAddPixelMask<X>` documentation give different defaults for a pixel mask](#the-maxorder-and-astaddpixelmaskx-documentation-give-different-defaults-for-a-pixel-mask)
 - [The `astStcObsDataLocation` documentation describes the class as an StcResourceProfile](#the-aststcobsdatalocation-documentation-describes-the-class-as-an-stcresourceprofile)
@@ -1167,18 +1167,19 @@ Consequence: documentation only.
 `Moc::min_order` gives MaxOrder minus 5, as the code does, and the example with 11.
 A C fix: say (MaxOrder-5), with MinOrder 11 and about 100 arc-seconds in the example.
 
-### The `astAddMocData` and `astAddMocString` documentation describes `negate` the wrong way round
+### The C edition of the `astAddMocData` and `astAddMocString` documentation describes `negate` the wrong way round
 
 C location: `moc.c`, the `astAddMocData` prologue (Parameters, lines 795 to 802) and the `astAddMocString` prologue (Parameters, lines 1058 to 1065).
 
-Both say that with `negate` non-zero the cells added are those included in the supplied MOC, and with it zero those not included.
+In the C edition (the prologue's `c` lines), both say that with `negate` non-zero the cells added are those included in the supplied MOC, and with it zero those not included.
+The Fortran edition (the `f` lines) pairs `.FALSE.` with the cells included and `.TRUE.` with those not included, which agrees with the code.
 Both functions pass `negate` to `astMocNorm`, which replaces the new ranges with the gaps between them when it is non-zero, so non-zero combines the cells the supplied MOC does not include.
 `testmoc.c` relies on the code: Error 42 calls `astAddMocString( moc, AST__AND, 1, -1, 100, "5/0,3", &json )` to remove cells 0 and 3 at order 5.
 
-Consequence: documentation only, but a caller who follows it gets the complement of the area meant.
+Consequence: documentation only, but a C caller who follows it gets the complement of the area meant.
 
 `Moc::add_moc_data` and `Moc::add_moc_string` say that `negate` true combines the cells the data do not include.
-A C fix: swap "non-zero" and "zero" in both prologues.
+A C fix: swap the `c` lines "non-zero," and "zero," in both prologues, leaving the `f` lines as they are.
 
 ### The `astAddMocString` documentation says cells above `maxorder` are ignored
 

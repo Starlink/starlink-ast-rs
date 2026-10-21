@@ -281,7 +281,7 @@ function	astStringCase	memory.c			no
 function	astChrLen	memory.c			no
 class	Moc	moc.c	Moc		yes
 function	astAddCell	moc.c	Moc::add_cell		yes
-function	astAddMocData	moc.c	Moc::add_moc_data		yes	data is a slice of i32 or i64, which replaces len, nbyte and the data pointer; the header has negate the wrong way round: true combines the cells the data do not hold, as the C code does (c-library-quirks.md)
+function	astAddMocData	moc.c	Moc::add_moc_data		yes	data is a slice of i32 or i64, which replaces len, nbyte and the data pointer; the C edition of the header has negate the wrong way round: true combines the cells the data do not hold, as the C code does (c-library-quirks.md)
 function	astAddMocString	moc.c	Moc::add_moc_string		yes	takes a &str ending at its end or first null, which replaces len, and returns the JSON flag; negate as for astAddMocData; cells above maxorder are degraded, as the C code does, not ignored as the header says (c-library-quirks.md)
 function	astAddPixelMask<X>	moc.c	Moc::add_pixel_mask		yes	one function generic over PixelValue for the type codes; bad: Option<T> replaces the AST__USEBAD flag and badval; dims are usize, so the 8-byte interface is the same function; Invar for a zero dimension or an array shorter than dims needs
 function	astAddRegion	moc.c	Moc::add_region		yes

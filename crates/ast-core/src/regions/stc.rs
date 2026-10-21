@@ -340,8 +340,10 @@ impl<K: StcKind> StcBuilder<K> {
     /// Under [`STC_NAME`] it holds a vector of strings, the name of each
     /// axis of the encapsulated Region.
     /// Under each other key it holds a single Region describing that item
-    /// of the position (its value, error, resolution, size or pixel size),
-    /// in the coordinate system of the encapsulated Region.
+    /// of the position (its value, error, resolution, size or pixel size).
+    /// The Region may be in any coordinate system that can be converted to
+    /// that of the encapsulated Region; [`build`](Self::build) maps it
+    /// into the encapsulated Region's Frame.
     /// Without this call the Stc has no AstroCoords elements.
     pub fn coords(mut self, coords: Vec<KeyMap>) -> Self {
         self.coords = coords;
@@ -575,10 +577,14 @@ impl<K: StcKind> Stc<K> {
 
     /// A copy of the Region this Stc encapsulates.
     ///
-    /// It describes an area in the Frame the Stc was made in, so if the
-    /// Stc's coordinate system has changed since, the copy is in the
+    /// It describes an area in the Frame the Stc was made in, the base Frame
+    /// of the Stc's FrameSet.
+    /// A Frame attribute set through an [Adaptive](Region::is_adaptive) Stc
+    /// changes only the Stc's current Frame, so the copy stays in the
     /// original coordinate system.
-    /// It carries any change made through the Stc to the attributes it
+    /// On an Stc that is not Adaptive, such a setting is also made to the
+    /// encapsulated Region, and the copy has it.
+    /// It also carries any change made through the Stc to the attributes it
     /// shares with the encapsulated Region, such as Negated.
     #[doc(alias = "astGetStcRegion")]
     pub fn get_stc_region(&self) -> DynRegion {
@@ -603,10 +609,12 @@ impl<K: StcKind> Stc<K> {
     /// A copy of AstroCoords element `icoord`, counting from 1, as a KeyMap
     /// with the keys described by [`StcBuilder::coords`].
     ///
-    /// If the coordinate system of the Stc has changed since it was made
-    /// (for instance by setting its System), the Regions in the KeyMap are
-    /// mapped into the new system, and the axis names under [`STC_NAME`]
-    /// are removed, since they may no longer apply.
+    /// When the Mapping from the Stc's base Frame to its current Frame is
+    /// not a unit Mapping, as after System is set on an
+    /// [Adaptive](Region::is_adaptive) Stc, the Regions in the KeyMap are
+    /// mapped into the current Frame, and the axis names under
+    /// [`STC_NAME`] are removed, since they may no longer apply.
+    /// Otherwise the KeyMap holds the Regions as they are stored.
     /// Each Region in the KeyMap carries its own Frame when written to a
     /// Channel.
     ///

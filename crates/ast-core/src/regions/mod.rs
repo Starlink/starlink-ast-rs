@@ -533,8 +533,8 @@ pub trait Region: Frame + Mapping + AsDynRegion {
     /// A Region is bounded unless it is negated, and always bounded in a sky
     /// Frame, where the complement of a finite area is finite too.
     /// [`Polygon`], [`Interval`], [`CmpRegion`] and [`Prism`] work it out
-    /// from their shape instead, and an [`Stc`] is bounded if the Region it
-    /// encapsulates is, as their documentation describes.
+    /// from their shape instead, as their documentation describes.
+    /// An [`Stc`] is bounded if the Region it encapsulates is.
     ///
     /// # Errors
     ///
