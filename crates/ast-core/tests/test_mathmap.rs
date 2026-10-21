@@ -466,3 +466,43 @@ fn shift_operators_scale_exactly() {
         assert_eq!(eval_at(expr, 0.0), expected, "{expr}");
     }
 }
+
+/// The error code `MathMap::new` reports for a 1-input, 1-output MathMap.
+fn construction_error(fwd: &[&str], inv: &[&str]) -> ErrorCode {
+    match MathMap::new(1, 1, fwd, inv) {
+        Ok(_) => panic!("{fwd:?} / {inv:?} compiled"),
+        Err(e) => e.code(),
+    }
+}
+
+/// The left-hand side of every function, or the whole of one with no `=`, must be a variable name, and no name may be defined twice.
+/// Every function of a direction must have a right-hand side, or none may.
+/// Expected codes are from the C library.
+#[test]
+fn variable_names_are_validated() {
+    let cases: &[(&[&str], &[&str], ErrorCode)] = &[
+        (&["y = x1 + 1"], &["x + 1"], ErrorCode::Varin),
+        (&["y = x"], &["x <= y"], ErrorCode::Varin),
+        (&["y = x"], &["x + 1 = y"], ErrorCode::Varin),
+        (&["y = x"], &["_x"], ErrorCode::Varin),
+        (&["y = x"], &["1x"], ErrorCode::Varin),
+        (&["y = x + 1"], &["x = y - 1", "x = 2"], ErrorCode::Duvar),
+        (&["y = x"], &["y"], ErrorCode::Duvar),
+        (&["y = x + 1"], &["= y - 1"], ErrorCode::Misvn),
+        (&["y = x + 1"], &[""], ErrorCode::Misvn),
+        (&["y = x + 1"], &["   "], ErrorCode::Misvn),
+        (&["y =="], &["x"], ErrorCode::Miopa),
+        (&["y = = x"], &["x"], ErrorCode::Miopa),
+        (&["y ="], &["x"], ErrorCode::Norhs),
+        (&["t", "y = x"], &["x"], ErrorCode::Norhs),
+    ];
+    for &(fwd, inv, code) in cases {
+        assert_eq!(construction_error(fwd, inv), code, "{fwd:?} / {inv:?}");
+    }
+
+    let map = MathMap::new(1, 1, &["t = x * 2", "y = t + 1"], &["x"]).unwrap();
+    assert_eq!(transform_1d(&map, 0.0, true), 1.0);
+    let map = MathMap::new(1, 1, &["y = 1"], &["a = y", "x = a"]).unwrap();
+    assert_eq!(transform_1d(&map, 0.0, true), 1.0);
+    assert_eq!(transform_1d(&map, 3.0, false), 3.0);
+}

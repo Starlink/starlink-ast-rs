@@ -357,10 +357,9 @@ impl MathMap {
     /// - `ErrorCode::Badno` if `nout` is zero.
     /// - `ErrorCode::Inntf` if `fwd` has fewer than `nout` expressions or
     ///   `inv` fewer than `nin`.
-    /// - Any of the expression errors, such as `ErrorCode::Miopa` (a missing
-    ///   operand), `ErrorCode::Mrpar` (a missing right parenthesis) or
-    ///   `ErrorCode::Udvof` (an undefined variable or function), if an
-    ///   expression cannot be parsed.
+    /// - `ErrorCode::Misvn` if a function has no left-hand side, `ErrorCode::Varin` if a left-hand side (or a function with no `=`) is not a variable name, or `ErrorCode::Duvar` if a direction's inputs and functions name a variable twice.
+    /// - `ErrorCode::Norhs` if a function's `=` has nothing after it, or if some but not all of a direction's functions have an `=`.
+    /// - Any of the expression errors, such as `ErrorCode::Miopr` (a missing operator), `ErrorCode::Miopa` (a missing operand), `ErrorCode::Mrpar` (a missing right parenthesis) or `ErrorCode::Udvof` (an undefined variable or function), if an expression cannot be parsed.
     #[doc(alias = "astMathMap")]
     pub fn new(nin: usize, nout: usize, fwd: &[&str], inv: &[&str]) -> AstResult<Self> {
         if nin == 0 {
@@ -1129,118 +1128,153 @@ fn clean_expr(s: &str) -> String {
         .collect()
 }
 
-/// Extract variable names from the LHS of a set of expressions.
-///
-/// For an assignment (`name = expr`) the LHS up to `=` is the variable name.
-/// For a bare expression that is a single valid identifier (`in0`), the whole
-/// expression names the variable with no defined transformation — this
-/// mirrors C `ExtractVariables` (mathmap.c), which accepts a function string
-/// such as `"in0"` purely to declare the variable's name.
-fn extract_lhs_names(exprs: &[String]) -> Vec<String> {
-    exprs
-        .iter()
-        .filter_map(|expr| match find_assignment(expr) {
-            Some(eq_pos) => Some(expr[..eq_pos].to_string()),
-            None if is_identifier(expr) => Some(expr.clone()),
-            None => None,
-        })
-        .collect()
-}
-
-/// Whether `s` is a single bare identifier: a letter or `_` followed by
-/// letters, digits or `_` (the expressions are already lower-cased and
-/// whitespace-stripped by `clean_expr`).
-fn is_identifier(s: &str) -> bool {
-    let mut chars = s.chars();
-    match chars.next() {
-        Some(c) if c.is_ascii_alphabetic() || c == '_' => {}
-        _ => return false,
+/// The transformation direction and 1-based position, as the caller numbers them, of entry `index` in a list of functions whose names are extracted.
+/// The list starts with the `nprimary` functions of the other direction that name the primary variables, which follow `nextra` intermediate functions there, and continues with every function of the direction being compiled.
+fn function_label(index: usize, nprimary: usize, nextra: usize, forward: bool) -> String {
+    if index < nprimary {
+        let dir = if forward { "inverse" } else { "forward" };
+        format!("{dir} transformation function {}", index + 1 + nextra)
+    } else {
+        let dir = if forward { "forward" } else { "inverse" };
+        format!("{dir} transformation function {}", index + 1 - nprimary)
     }
-    chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
-/// Compile a set of mapping expressions.
+/// Extract the variable names from the left-hand sides of `funs`.
 ///
-/// `input_var_names` are the variable names available as inputs (e.g.,
-/// extracted from the *other* direction's last N expressions).
-///
-/// Returns `(compiled_exprs, max_stack_size, has_transform)`.
-fn compile_mapping_exprs_with_vars(
-    exprs: &[String],
-    input_var_names: &[String],
-) -> AstResult<(Vec<CompiledExpr>, usize, bool)> {
-    let nin = input_var_names.len();
-    let mut var_names: Vec<String> = input_var_names.to_vec();
-    let mut rhs_exprs: Vec<String> = Vec::new();
-    let mut has_transform = false;
-
-    for expr in exprs.iter() {
-        // Split on '=' (but not '==')
-        if let Some(eq_pos) = find_assignment(expr) {
-            has_transform = true;
-            let lhs = &expr[..eq_pos];
-            let rhs = &expr[eq_pos + 1..];
-
-            if rhs.is_empty() {
-                return Err(AstError::new(
-                    ErrorCode::Miopa,
-                    format!("empty expression after '=' in \"{}\"", expr),
-                ));
-            }
-
-            var_names.push(lhs.to_string());
-            rhs_exprs.push(rhs.to_string());
+/// Each function's left-hand side is the text before its first `=`, or the whole function if it has none.
+/// It must be a name (a letter followed by letters, digits and underscores), and no two may be equal.
+/// `funs` holds the functions of the other direction that name the primary variables (`nin` inverse functions when compiling forward, `nout` forward functions when compiling the inverse), followed by every function of the direction being compiled.
+/// The counts are used to number the functions in messages.
+fn extract_variables(
+    funs: &[&str],
+    nin: usize,
+    nout: usize,
+    nfwd: usize,
+    ninv: usize,
+    forward: bool,
+) -> AstResult<Vec<String>> {
+    let nprimary = if forward { nin } else { nout };
+    let nextra = if forward { ninv - nin } else { nfwd - nout };
+    let mut names: Vec<String> = Vec::with_capacity(funs.len());
+    for (ifun, fun) in funs.iter().enumerate() {
+        let lhs = fun.split('=').next().unwrap_or("");
+        let error = if lhs.is_empty() {
+            let msg = if fun.contains('=') {
+                format!("MathMap: no left hand side in expression: \"{fun}\"")
+            } else {
+                "MathMap: transformation function contains no variable name".to_string()
+            };
+            Some(AstError::new(ErrorCode::Misvn, msg))
+        } else if token::parse_name(lhs, 0) != Some(lhs.len()) {
+            Some(AstError::new(
+                ErrorCode::Varin,
+                format!("MathMap: variable name is invalid: \"{lhs}\""),
+            ))
         } else {
-            rhs_exprs.push(String::new());
+            None
+        };
+        if let Some(e) = error {
+            return Err(e.with_context(format!(
+                "Error in {}.",
+                function_label(ifun, nprimary, nextra, forward)
+            )));
         }
+        names.push(lhs.to_string());
     }
-
-    if !has_transform {
-        return Ok((Vec::new(), 0, false));
-    }
-
-    let mut compiled = Vec::with_capacity(exprs.len());
-    let mut max_stack = 0;
-
-    for (ifun, rhs) in rhs_exprs.iter().enumerate() {
-        if rhs.is_empty() {
+    for i1 in 1..names.len() {
+        if let Some(i2) = names[..i1].iter().position(|n| *n == names[i1]) {
+            let label = |i: usize| {
+                function_label(i, nprimary, nextra, forward).replace(" transformation", "")
+            };
             return Err(AstError::new(
-                ErrorCode::Miopa,
-                "missing expression in MathMap function".to_string(),
-            ));
+                ErrorCode::Duvar,
+                format!(
+                    "MathMap: duplicate definition of variable name: \"{}\"",
+                    names[i1]
+                ),
+            )
+            .with_context(format!("Conflict between {} and {}.", label(i1), label(i2))));
         }
+    }
+    Ok(names)
+}
 
-        let available_vars: Vec<&str> =
-            var_names[..nin + ifun].iter().map(|s| s.as_str()).collect();
-
-        let tokens = token::tokenize(rhs, &available_vars)?;
-        let expr = parser::compile(&tokens)?;
-        if expr.stack_size > max_stack {
-            max_stack = expr.stack_size;
+/// Extract the right-hand sides of `funs`, the text after each first `=`.
+///
+/// Returns `None` when no function has an `=`, so that the transformation is undefined.
+/// A function whose `=` has nothing after it, or a mixture of functions with and without an `=`, has a missing right-hand side.
+fn extract_expressions(funs: &[String], forward: bool) -> AstResult<Option<Vec<String>>> {
+    let dir = if forward { "forward" } else { "inverse" };
+    let mut exprs = Vec::with_capacity(funs.len());
+    let mut first_undefined = None;
+    for (ifun, fun) in funs.iter().enumerate() {
+        match fun.split_once('=') {
+            Some((_, "")) => {
+                return Err(AstError::new(
+                    ErrorCode::Norhs,
+                    format!("MathMap: missing right hand side in expression: \"{fun}\""),
+                )
+                .with_context(format!(
+                    "Error in {dir} transformation function {}.",
+                    ifun + 1
+                )));
+            }
+            Some((_, rhs)) => exprs.push(rhs.to_string()),
+            None => {
+                first_undefined.get_or_insert(ifun);
+            }
         }
+    }
+    match first_undefined {
+        None => Ok(Some(exprs)),
+        Some(_) if exprs.is_empty() => Ok(None),
+        Some(iud) => Err(AstError::new(
+            ErrorCode::Norhs,
+            format!(
+                "MathMap: missing right hand side in function: \"{}\"",
+                funs[iud]
+            ),
+        )
+        .with_context(format!(
+            "Error in {dir} transformation function {}.",
+            iud + 1
+        ))),
+    }
+}
+
+/// Compile the functions of one direction.
+///
+/// `names` are the variable names `extract_variables` returned for that direction: the `nprimary` input names, then one per function.
+/// Each expression may use the input names and the names defined before it.
+/// Returns `None` when the direction is undefined.
+fn compile_direction(
+    funs: &[String],
+    names: &[String],
+    nprimary: usize,
+    forward: bool,
+) -> AstResult<Option<Vec<CompiledExpr>>> {
+    let Some(exprs) = extract_expressions(funs, forward)? else {
+        return Ok(None);
+    };
+    let dir = if forward { "forward" } else { "inverse" };
+    let mut compiled = Vec::with_capacity(exprs.len());
+    for (ifun, rhs) in exprs.iter().enumerate() {
+        let vars: Vec<&str> = names[..nprimary + ifun]
+            .iter()
+            .map(String::as_str)
+            .collect();
+        let expr = token::tokenize(rhs, &vars)
+            .and_then(|tokens| parser::compile(&tokens))
+            .map_err(|e| {
+                e.with_context(format!(
+                    "Error in {dir} transformation function {}.",
+                    ifun + 1
+                ))
+            })?;
         compiled.push(expr);
     }
-
-    Ok((compiled, max_stack, true))
-}
-
-/// Find the position of the assignment '=' in an expression.
-/// Skips over '==' which is a comparison operator.
-fn find_assignment(expr: &str) -> Option<usize> {
-    let bytes = expr.as_bytes();
-    for i in 0..bytes.len() {
-        if bytes[i] == b'=' {
-            // Check it's not '==' or part of '!=' '<=' '>='
-            if i + 1 < bytes.len() && bytes[i + 1] == b'=' {
-                continue; // skip '=='
-            }
-            if i > 0 && (bytes[i - 1] == b'!' || bytes[i - 1] == b'<' || bytes[i - 1] == b'>') {
-                continue; // skip '!=', '<=', '>='
-            }
-            return Some(i);
-        }
-    }
-    None
+    Ok(Some(compiled))
 }
 
 /// Result of compiling both directions of a MathMap.
@@ -1251,42 +1285,46 @@ struct CompiledMapping {
     has_inv: bool,
 }
 
-/// Compile forward and inverse expressions together (cross-referencing names).
-#[allow(clippy::type_complexity)]
+/// Compile the forward and inverse functions of a MathMap.
+///
+/// Each direction's input variables are named by the left-hand sides of the last functions of the other direction: the last `nin` inverse functions name the inputs, and the last `nout` forward functions name the outputs.
+/// The forward direction is compiled first, its names validated, then its expressions; then the inverse direction.
 fn compile_mapping(
     fwd_exprs: &[String],
     inv_exprs: &[String],
     nin: usize,
     nout: usize,
 ) -> AstResult<CompiledMapping> {
-    // For the forward transform, input variable names come from the last
-    // `nin` inverse expressions' LHS. If the inverse doesn't define enough
-    // names, fall back to x1, x2, ...
-    let inv_lhs = extract_lhs_names(inv_exprs);
-    let fwd_input_vars: Vec<String> = if inv_lhs.len() >= nin {
-        inv_lhs[inv_lhs.len() - nin..].to_vec()
-    } else {
-        (1..=nin).map(|i| format!("x{}", i)).collect()
-    };
+    let (nfwd, ninv) = (fwd_exprs.len(), inv_exprs.len());
+    if nfwd < nout || ninv < nin {
+        return Err(AstError::new(
+            ErrorCode::Inntf,
+            format!(
+                "MathMap needs at least {nout} forward and {nin} inverse functions, got {nfwd} and {ninv}"
+            ),
+        ));
+    }
 
-    // For the inverse transform, input variable names come from the last
-    // `nout` forward expressions' LHS.
-    let fwd_lhs = extract_lhs_names(fwd_exprs);
-    let inv_input_vars: Vec<String> = if fwd_lhs.len() >= nout {
-        fwd_lhs[fwd_lhs.len() - nout..].to_vec()
-    } else {
-        (1..=nout).map(|i| format!("y{}", i)).collect()
-    };
+    let fwd_funs: Vec<&str> = inv_exprs[ninv - nin..]
+        .iter()
+        .chain(fwd_exprs)
+        .map(String::as_str)
+        .collect();
+    let fwd_names = extract_variables(&fwd_funs, nin, nout, nfwd, ninv, true)?;
+    let fwd = compile_direction(fwd_exprs, &fwd_names, nin, true)?;
 
-    let (fwd_compiled, _fwd_stack, has_fwd) =
-        compile_mapping_exprs_with_vars(fwd_exprs, &fwd_input_vars)?;
-    let (inv_compiled, _inv_stack, has_inv) =
-        compile_mapping_exprs_with_vars(inv_exprs, &inv_input_vars)?;
+    let inv_funs: Vec<&str> = fwd_exprs[nfwd - nout..]
+        .iter()
+        .chain(inv_exprs)
+        .map(String::as_str)
+        .collect();
+    let inv_names = extract_variables(&inv_funs, nin, nout, nfwd, ninv, false)?;
+    let inv = compile_direction(inv_exprs, &inv_names, nout, false)?;
 
     Ok(CompiledMapping {
-        fwd: fwd_compiled,
-        inv: inv_compiled,
-        has_fwd,
-        has_inv,
+        has_fwd: fwd.is_some(),
+        has_inv: inv.is_some(),
+        fwd: fwd.unwrap_or_default(),
+        inv: inv.unwrap_or_default(),
     })
 }
