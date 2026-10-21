@@ -1440,6 +1440,10 @@ impl KeyMap {
     /// exactly — an empty element contributes nothing between its commas,
     /// not `mxlen` spaces.
     pub fn map_get_c(&self, key: &str) -> AstResult<Option<String>> {
+        // C's astMapGetC asks astMapLength for the entry's length first, so a
+        // key too long for a case-insensitive KeyMap is reported under that
+        // name. `map_length` cannot report it, so the key is checked here.
+        table::convert_key(key, self.key_case(), "astMapLength")?;
         let nval = self.map_length(key);
         if nval == 0 {
             return Ok(None);
