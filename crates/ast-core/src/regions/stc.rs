@@ -767,16 +767,16 @@ impl<K: StcKind> Region for Stc<K> {
         self.reg_base_box()
     }
 
-    fn get_region_mesh(&self) -> AstResult<PointSet> {
+    fn base_mesh(&self) -> AstResult<PointSet> {
         let mesh = self.reg_base_mesh()?;
         Ok(PointSet::from_rows(mesh.iter().map(|p| p.as_slice())))
     }
 
-    fn get_region_grid(&self) -> AstResult<PointSet> {
+    fn base_grid(&self) -> AstResult<PointSet> {
         super::data::region_base_grid(self)
     }
 
-    fn get_region_points(&self) -> AstResult<PointSet> {
+    fn base_points(&self) -> AstResult<PointSet> {
         // An Stc has no defining points of its own.
         let naxes = self.data.frameset.base().naxes();
         Ok(PointSet::zeros(0, naxes))

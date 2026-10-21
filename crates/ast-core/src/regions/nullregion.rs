@@ -286,7 +286,7 @@ impl Region for NullRegion {
         Ok((vec![1.0; naxes], vec![-1.0; naxes]))
     }
 
-    fn get_region_mesh(&self) -> AstResult<PointSet> {
+    fn base_mesh(&self) -> AstResult<PointSet> {
         // NullRegion has no boundary mesh. Return a single-point PointSet
         // with BAD_VALUE on all axes (matching C behaviour).
         let naxes = self.data.frameset.base().naxes();
@@ -294,11 +294,11 @@ impl Region for NullRegion {
         Ok(PointSet::from_rows(std::iter::once(bad_point.as_slice())))
     }
 
-    fn get_region_grid(&self) -> AstResult<PointSet> {
+    fn base_grid(&self) -> AstResult<PointSet> {
         crate::regions::data::region_base_grid(self)
     }
 
-    fn get_region_points(&self) -> AstResult<PointSet> {
+    fn base_points(&self) -> AstResult<PointSet> {
         // No defining points.
         let naxes = self.data.frameset.base().naxes();
         Ok(PointSet::zeros(0, naxes))

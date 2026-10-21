@@ -842,7 +842,7 @@ where
     while ntry < 3 {
         ntry += 1;
         crate::regions::Region::set_mesh_size(&mut bx, np as usize);
-        let ps1 = crate::regions::Region::get_region_grid(&bx)?;
+        let ps1 = crate::regions::Region::base_grid(&bx)?;
         let inside = region_base_mask(region, &ps1)?;
         let kept: Vec<usize> = (0..ps1.npoint()).filter(|&i| inside[i]).collect();
         let ipr = kept.len() as i32;

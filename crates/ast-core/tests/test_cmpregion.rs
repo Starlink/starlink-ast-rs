@@ -600,7 +600,7 @@ fn and_mesh_is_nonempty_and_on_boundary() {
         .build()
         .unwrap();
 
-    let mesh = cmp.get_region_mesh().unwrap();
+    let mesh = cmp.base_mesh().unwrap();
     let npoint = mesh.npoint();
 
     // Mesh should not be empty.
@@ -656,7 +656,7 @@ fn or_mesh_is_nonempty_and_on_boundary() {
         .build()
         .unwrap();
 
-    let mesh = cmp.get_region_mesh().unwrap();
+    let mesh = cmp.base_mesh().unwrap();
     let npoint = mesh.npoint();
 
     // Mesh should not be empty.
@@ -701,7 +701,7 @@ fn and_mesh_overlapping_circles() {
         .build()
         .unwrap();
 
-    let mesh = cmp.get_region_mesh().unwrap();
+    let mesh = cmp.base_mesh().unwrap();
     let npoint = mesh.npoint();
     assert!(
         npoint > 0,
@@ -779,17 +779,14 @@ fn and_mesh_follows_closed_after_first_use() {
         cmp.set_closed(closed);
         cmp
     };
-    let fresh_open = build(false).get_region_mesh().unwrap();
+    let fresh_open = build(false).base_mesh().unwrap();
     let mut warmed = build(true);
-    let closed_mesh = warmed.get_region_mesh().unwrap();
+    let closed_mesh = warmed.base_mesh().unwrap();
     assert_ne!(
         closed_mesh.npoint(),
         fresh_open.npoint(),
         "the fixture must make Closed matter"
     );
     warmed.set_closed(false);
-    assert_eq!(
-        warmed.get_region_mesh().unwrap().npoint(),
-        fresh_open.npoint()
-    );
+    assert_eq!(warmed.base_mesh().unwrap().npoint(), fresh_open.npoint());
 }

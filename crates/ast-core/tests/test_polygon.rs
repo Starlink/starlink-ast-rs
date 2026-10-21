@@ -361,7 +361,7 @@ fn inverse_transform_masks_as_forward() {
 #[test]
 fn mesh_has_points_on_boundary() {
     let poly = make_square();
-    let mesh = poly.get_region_mesh().unwrap();
+    let mesh = poly.base_mesh().unwrap();
 
     // All mesh points should be on the boundary of the square.
     let npoint = mesh.npoint();
@@ -422,7 +422,7 @@ fn is_bounded() {
 #[test]
 fn region_points_returns_vertices() {
     let poly = make_triangle();
-    let pts = poly.get_region_points().unwrap();
+    let pts = poly.base_points().unwrap();
     assert_eq!(pts.npoint(), 3);
     assert!((pts.point(0)[0] - 0.0).abs() < 1e-10);
     assert!((pts.point(0)[1] - 0.0).abs() < 1e-10);

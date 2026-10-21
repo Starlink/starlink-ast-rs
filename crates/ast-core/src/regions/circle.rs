@@ -256,10 +256,7 @@ impl Circle {
     /// the defining points transformed by the FrameSet, and the radius the
     /// Frame's distance between them, so an arc on the sky.
     pub fn circle_pars(&self) -> AstResult<(Vec<f64>, f64, Vec<f64>)> {
-        let pts = self
-            .data
-            .frameset
-            .transform(&self.get_region_points()?, true)?;
+        let pts = self.data.frameset.transform(&self.base_points()?, true)?;
         let centre = pts.point(0).to_vec();
         let p1 = pts.point(1).to_vec();
         let radius = self.data.frameset.current().distance(&centre, &p1)?;
@@ -392,7 +389,7 @@ impl Circle {
             let mut boxr =
                 BoxRegion::from_corner_frame(base_frame.snapshot(), centre.to_vec(), approx_upper)?;
             boxr.set_mesh_size(np);
-            let box_mesh = boxr.get_region_mesh()?;
+            let box_mesh = boxr.base_mesh()?;
 
             // Move each point of that mesh radially so that its distance from
             // the centre equals this Circle's radius, tracking the bounds of
@@ -772,7 +769,7 @@ impl Region for Circle {
         self.reg_base_box()
     }
 
-    fn get_region_mesh(&self) -> AstResult<PointSet> {
+    fn base_mesh(&self) -> AstResult<PointSet> {
         // Check for a cached mesh first.
         {
             let cached = self.data.cached_base_mesh.borrow();
@@ -791,11 +788,11 @@ impl Region for Circle {
         Ok(result)
     }
 
-    fn get_region_grid(&self) -> AstResult<PointSet> {
+    fn base_grid(&self) -> AstResult<PointSet> {
         crate::regions::data::region_base_grid(self)
     }
 
-    fn get_region_points(&self) -> AstResult<PointSet> {
+    fn base_points(&self) -> AstResult<PointSet> {
         Ok(PointSet::from_rows(
             self.data.points.iter().map(|p| p.as_slice()),
         ))
@@ -1113,9 +1110,9 @@ impl Mapping for Circle {
             .mapping(FrameRef::Base, FrameRef::Current)?;
         if !map.as_any().is::<UnitMap>() {
             // A mesh of points covering the Circle in its current Frame
-            // (astRegMesh returns current-Frame points; get_region_mesh
+            // (astRegMesh returns current-Frame points; base_mesh
             // returns base-Frame points, so map them forward).
-            let base_mesh = this.get_region_mesh()?;
+            let base_mesh = this.base_mesh()?;
             let mesh = this.data.frameset.transform(&base_mesh, true)?;
 
             // The uncertainty Region within the Circle in its current Frame.

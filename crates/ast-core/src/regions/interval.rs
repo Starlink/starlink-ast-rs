@@ -1060,7 +1060,7 @@ impl Region for Interval {
 
         if closed {
             let bfrm = self.data.frameset.base().snapshot();
-            super::BoxRegion::from_bounds_frame(bfrm, &lbndb, &ubndb)?.get_region_mesh()
+            super::BoxRegion::from_bounds_frame(bfrm, &lbndb, &ubndb)?.base_mesh()
         } else {
             Ok(PointSet::from_rows(std::iter::once(
                 vec![BAD_VALUE; nbase].as_slice(),
@@ -1292,7 +1292,7 @@ impl Region for Interval {
         self.reg_base_box()
     }
 
-    fn get_region_mesh(&self) -> AstResult<PointSet> {
+    fn base_mesh(&self) -> AstResult<PointSet> {
         // Check for a cached mesh first.
         {
             let cached = self.data.cached_base_mesh.borrow();
@@ -1319,11 +1319,11 @@ impl Region for Interval {
         Ok(result)
     }
 
-    fn get_region_grid(&self) -> AstResult<PointSet> {
+    fn base_grid(&self) -> AstResult<PointSet> {
         crate::regions::data::region_base_grid(self)
     }
 
-    fn get_region_points(&self) -> AstResult<PointSet> {
+    fn base_points(&self) -> AstResult<PointSet> {
         Ok(PointSet::from_rows(
             self.data.points.iter().map(|p| p.as_slice()),
         ))

@@ -438,8 +438,8 @@ function	astNegate	region.c	Region::negate		yes
 function	astOverlap	region.c	Region::overlap		yes	returns the Overlap enum for codes 0 to 6
 function	astPointInRegion	region.c	Region::point_in_region		yes
 function	astGetRegionBounds	region.c	Region::get_region_bounds		yes
-function	astGetRegionMesh	region.c	Region::region_mesh;Region::region_grid		yes	surface set and unset; get_region_mesh is the base-Frame boundary mesh; no maxpoint/maxcoord errors, the result is a PointSet
-function	astGetRegionPoints	region.c	Region::region_points		yes	get_region_points is the stored base-Frame points; no maxpoint/maxcoord errors, the result is a PointSet
+function	astGetRegionMesh	region.c	Region::region_mesh;Region::region_grid		yes	surface set and unset; base_mesh is the base-Frame boundary mesh; no maxpoint/maxcoord errors, the result is a PointSet
+function	astGetRegionPoints	region.c	Region::region_points		yes	base_points is the stored base-Frame points; no maxpoint/maxcoord errors, the result is a PointSet
 function	astGetRegionDisc	region.c	Region::get_region_disc;region_disc		yes	an unbounded Region gives a bad centre, where C leaves the caller centre array unchanged
 function	astSetUnc	region.c	Region::set_uncertainty		yes
 function	astShowMesh	region.c	Region::show_mesh		yes	show_mesh_text returns the same table

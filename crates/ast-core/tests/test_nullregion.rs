@@ -174,7 +174,7 @@ fn mesh_is_single_bad_point() {
     let frame = BasicFrameBuilder::new(2).build().unwrap();
     let nr = NullRegionBuilder::new(frame).build().unwrap();
 
-    let mesh = nr.get_region_mesh().unwrap();
+    let mesh = nr.base_mesh().unwrap();
     // C returns a single point with BAD on all axes.
     assert_eq!(mesh.npoint(), 1);
     let p = mesh.point(0);

@@ -312,7 +312,7 @@ fn overlap_x(that: &dyn Region, this: &dyn Region) -> AstResult<i32> {
             // which means no mesh; an unbounded reg1 then gives the part of
             // its boundary inside a box twice the size of reg2's bounding box,
             // again with errors suppressed (region.c:7319-7350).
-            let ps3 = match reg1.get_region_mesh() {
+            let ps3 = match reg1.base_mesh() {
                 Ok(mesh) => mesh,
                 Err(_) => {
                     let lb2: Vec<f64> = lbnd[..nc].iter().map(|v| v * 2.0).collect();
@@ -397,7 +397,7 @@ pub(crate) fn region_bnd_base_mesh(
         let cmpreg =
             CmpRegionBuilder::from_dyn(reg.clone_region(), Box::new(boxreg), CmpOperator::And)?
                 .build()?;
-        cmpreg.get_region_mesh()
+        cmpreg.base_mesh()
     } else {
         let nc = reg.get_region_frameset().base().naxes();
         Ok(PointSet::from_rows(std::iter::once(

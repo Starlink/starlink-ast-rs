@@ -1214,7 +1214,7 @@ impl Moc {
     /// that lies on the boundary, in ICRS, sorted by Dec then RA, all RA in
     /// [0, 2PI[. An empty Moc, or one of the whole sky, has no boundary and
     /// gives one bad point. MeshSize is not used.
-    fn base_mesh(&self) -> AstResult<Vec<Vec<f64>>> {
+    fn base_mesh_rows(&self) -> AstResult<Vec<Vec<f64>>> {
         if let Some(mesh) = &self.cache.borrow().basemesh {
             return Ok(mesh.clone());
         }
@@ -2786,7 +2786,7 @@ impl RegionGeometry for Moc {
             self.cache.borrow_mut().bounds = Some(bounds);
             return Ok((bounds.0.to_vec(), bounds.1.to_vec()));
         }
-        let mesh = self.base_mesh()?;
+        let mesh = self.base_mesh_rows()?;
         let (mut mindec, mut maxdec) = (f64::MAX, -f64::MAX);
         let (mut minra0, mut maxra0) = (f64::MAX, -f64::MAX);
         let (mut minra12, mut maxra12) = (f64::MAX, -f64::MAX);
@@ -2836,7 +2836,7 @@ impl RegionGeometry for Moc {
     }
 
     fn reg_base_mesh(&self) -> AstResult<Vec<Vec<f64>>> {
-        self.base_mesh()
+        self.base_mesh_rows()
     }
 
     /// region.c `GetBounded`: a Region on the sky is bounded.
@@ -2979,16 +2979,16 @@ impl Region for Moc {
         self.reg_base_box()
     }
 
-    fn get_region_mesh(&self) -> AstResult<PointSet> {
-        let mesh = self.base_mesh()?;
+    fn base_mesh(&self) -> AstResult<PointSet> {
+        let mesh = self.base_mesh_rows()?;
         Ok(PointSet::from_rows(mesh.iter().map(|p| p.as_slice())))
     }
 
-    fn get_region_grid(&self) -> AstResult<PointSet> {
+    fn base_grid(&self) -> AstResult<PointSet> {
         super::data::region_base_grid(self)
     }
 
-    fn get_region_points(&self) -> AstResult<PointSet> {
+    fn base_points(&self) -> AstResult<PointSet> {
         Ok(PointSet::zeros(0, 2))
     }
 
@@ -3094,7 +3094,7 @@ impl Region for Moc {
             None => 0.0,
         };
         let drad = l1 + l2;
-        let mesh = self.base_mesh()?;
+        let mesh = self.base_mesh_rows()?;
         let len_mesh = mesh.len();
         let len_pins = pts.npoint();
 

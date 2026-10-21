@@ -999,7 +999,7 @@ impl Region for CmpRegion {
         Ok((lbnd, ubnd))
     }
 
-    fn get_region_mesh(&self) -> AstResult<PointSet> {
+    fn base_mesh(&self) -> AstResult<PointSet> {
         // Check for a cached mesh first.
         {
             let cached = self.data.cached_base_mesh.borrow();
@@ -1024,11 +1024,11 @@ impl Region for CmpRegion {
         Ok(result)
     }
 
-    fn get_region_grid(&self) -> AstResult<PointSet> {
+    fn base_grid(&self) -> AstResult<PointSet> {
         crate::regions::data::region_base_grid(self)
     }
 
-    fn get_region_points(&self) -> AstResult<PointSet> {
+    fn base_points(&self) -> AstResult<PointSet> {
         // CmpRegion has no defining points of its own.
         let naxes = self.data.frameset.base().naxes();
         Ok(PointSet::zeros(0, naxes))

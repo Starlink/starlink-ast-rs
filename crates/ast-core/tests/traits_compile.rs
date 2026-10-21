@@ -309,13 +309,13 @@ impl Region for DummyRegion {
     fn get_region_disc(&self) -> AstResult<(Vec<f64>, f64)> {
         Err(AstError::new(ErrorCode::Nodef, "not implemented"))
     }
-    fn get_region_mesh(&self) -> AstResult<PointSet> {
+    fn base_mesh(&self) -> AstResult<PointSet> {
         Err(AstError::new(ErrorCode::Nodef, "not implemented"))
     }
-    fn get_region_grid(&self) -> AstResult<PointSet> {
+    fn base_grid(&self) -> AstResult<PointSet> {
         Err(AstError::new(ErrorCode::Nodef, "not implemented"))
     }
-    fn get_region_points(&self) -> AstResult<PointSet> {
+    fn base_points(&self) -> AstResult<PointSet> {
         Err(AstError::new(ErrorCode::Nodef, "not implemented"))
     }
     fn get_region_frame(&self) -> DynFrame {

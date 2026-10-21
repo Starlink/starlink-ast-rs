@@ -453,10 +453,7 @@ impl Ellipse {
     /// second defining point. When either half-length is not positive, `a`,
     /// `b` and `angle` are BAD.
     pub fn ellipse_pars(&self) -> AstResult<EllipsePars> {
-        let pts = self
-            .data
-            .frameset
-            .transform(&self.get_region_points()?, true)?;
+        let pts = self.data.frameset.transform(&self.base_points()?, true)?;
         let centre = pts.point(0).to_vec();
         let p1 = pts.point(1).to_vec();
         let mut p2 = pts.point(2).to_vec();
@@ -614,9 +611,9 @@ impl RegionGeometry for Ellipse {
     fn reg_base_box(&self) -> AstResult<(Vec<f64>, Vec<f64>)> {
         // C computes nothing here: it forces the base mesh to exist and reads
         // the bounds RegBaseMesh accumulated while generating it
-        // (ellipse.c:988-998). `get_region_mesh` is the cached mesh, so the
+        // (ellipse.c:988-998). `base_mesh` is the cached mesh, so the
         // points below are the same points in the same order.
-        let mesh = self.get_region_mesh()?;
+        let mesh = self.base_mesh()?;
         let centre = &self.data.points[0];
         let frm = self.data.frameset.base();
 
@@ -942,7 +939,7 @@ impl Region for Ellipse {
         self.reg_base_box()
     }
 
-    fn get_region_mesh(&self) -> AstResult<PointSet> {
+    fn base_mesh(&self) -> AstResult<PointSet> {
         {
             let cached = self.data.cached_base_mesh.borrow();
             if let Some(mesh) = cached.as_ref() {
@@ -958,11 +955,11 @@ impl Region for Ellipse {
         Ok(result)
     }
 
-    fn get_region_grid(&self) -> AstResult<PointSet> {
+    fn base_grid(&self) -> AstResult<PointSet> {
         crate::regions::data::region_base_grid(self)
     }
 
-    fn get_region_points(&self) -> AstResult<PointSet> {
+    fn base_points(&self) -> AstResult<PointSet> {
         Ok(PointSet::from_rows(
             self.data.points.iter().map(|p| p.as_slice()),
         ))
@@ -1284,7 +1281,7 @@ impl Mapping for Ellipse {
             .mapping(FrameRef::Base, FrameRef::Current)?;
 
         // A mesh of points covering the Ellipse in its current Frame.
-        let base_mesh = this.get_region_mesh()?;
+        let base_mesh = this.base_mesh()?;
         let mesh = this.data.frameset.transform(&base_mesh, true)?;
 
         // The uncertainty Region within the Ellipse in its current Frame.

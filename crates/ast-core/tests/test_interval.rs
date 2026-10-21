@@ -371,7 +371,7 @@ fn mesh_of_bounded_2d_is_the_box_mesh() {
         .build()
         .unwrap();
 
-    let mesh = interval.get_region_mesh().unwrap();
+    let mesh = interval.base_mesh().unwrap();
     assert_eq!(mesh.npoint(), 200);
 }
 
@@ -385,7 +385,7 @@ fn mesh_of_unbounded_is_an_error() {
         .build()
         .unwrap();
 
-    assert!(interval.get_region_mesh().is_err());
+    assert!(interval.base_mesh().is_err());
 }
 
 // ---- map_region ----
@@ -717,7 +717,7 @@ fn point_interval_merges_into_a_pointlist() {
         .downcast_ref::<ast_core::regions::PointList>()
         .expect("a point Interval should merge into a PointList");
 
-    let pts = merged.get_region_points().unwrap();
+    let pts = merged.base_points().unwrap();
     assert_eq!(pts.npoint(), 2);
     assert_eq!(pts.point(0), &[5.0, 0.0, 3.0]);
     assert_eq!(pts.point(1), &[5.0, 0.0, 4.0]);

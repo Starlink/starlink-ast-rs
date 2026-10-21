@@ -1,6 +1,6 @@
 //! Tests for the PointList region implementation.
 //!
-//! Covers: construction, get_region_points, point matching (exact and
+//! Covers: construction, base_points, point matching (exact and
 //! non-matching), negation, multiple defining points, bounding box,
 //! is_bounded, batch transform.
 //!
@@ -58,7 +58,7 @@ fn construct_requires_matching_axes() {
     assert!(result.is_err());
 }
 
-// ---- get_region_points ----
+// ---- base_points ----
 
 #[test]
 fn get_region_points_returns_defining_points() {
@@ -69,7 +69,7 @@ fn get_region_points_returns_defining_points() {
         .build()
         .unwrap();
 
-    let pts = pl.get_region_points().unwrap();
+    let pts = pl.base_points().unwrap();
     assert_eq!(pts.npoint(), 3);
     assert_eq!(pts.ncoord(), 2);
 
@@ -450,7 +450,7 @@ fn mesh_is_defining_points() {
         .build()
         .unwrap();
 
-    let mesh = pl.get_region_mesh().unwrap();
+    let mesh = pl.base_mesh().unwrap();
     assert_eq!(mesh.npoint(), 3);
     assert_eq!(mesh.ncoord(), 2);
 

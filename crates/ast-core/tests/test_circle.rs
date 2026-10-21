@@ -417,7 +417,7 @@ fn mesh_2d_points_on_boundary() {
         .unwrap();
 
     circle.set_mesh_size(100);
-    let mesh = circle.get_region_mesh().unwrap();
+    let mesh = circle.base_mesh().unwrap();
     assert_eq!(mesh.npoint(), 100);
     assert_eq!(mesh.ncoord(), 2);
 
@@ -443,7 +443,7 @@ fn mesh_1d() {
         .build()
         .unwrap();
 
-    let mesh = circle.get_region_mesh().unwrap();
+    let mesh = circle.base_mesh().unwrap();
     // 1-D circle boundary is just 2 points.
     assert_eq!(mesh.npoint(), 2);
     assert_eq!(mesh.ncoord(), 1);
@@ -674,14 +674,14 @@ fn with_integrity_invalidates_cache() {
         .unwrap();
 
     // Force mesh computation to populate the cache.
-    let _mesh = circle.get_region_mesh().unwrap();
+    let _mesh = circle.base_mesh().unwrap();
 
     // Apply integrity change.
     circle.with_integrity(|_frame| Ok(())).unwrap();
 
     // The mesh should still be computable (cache was cleared but
     // the geometry is unchanged, so recomputation works fine).
-    let mesh = circle.get_region_mesh().unwrap();
+    let mesh = circle.base_mesh().unwrap();
     assert_eq!(mesh.npoint(), 200); // default mesh_size
 
     // Verify mesh points are still valid (on the boundary).
@@ -783,7 +783,7 @@ fn reg_pins_circle_full_mesh_on_boundary() {
         .build()
         .unwrap();
 
-    let mesh = c.get_region_mesh().unwrap();
+    let mesh = c.base_mesh().unwrap();
     assert!(c.reg_pins(&mesh, None).unwrap());
 }
 

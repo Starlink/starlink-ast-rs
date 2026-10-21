@@ -385,7 +385,7 @@ fn pointlist_mask_x<T: Copy>(
     let (used, npix) = grid_region(region, map, lbnd, ubnd)?;
     check_len(data, npix)?;
     let ndim = lbnd.len();
-    let points = used.to_current_frame(used.get_region_points()?)?;
+    let points = used.to_current_frame(used.base_points()?)?;
 
     // The index in the vectorised array of each point's pixel, if inside.
     let iv: Vec<Option<usize>> = (0..points.npoint())

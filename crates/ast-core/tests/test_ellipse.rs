@@ -380,7 +380,7 @@ fn mesh_points_lie_on_boundary() {
         .build()
         .unwrap();
 
-    let mesh = ellipse.get_region_mesh().unwrap();
+    let mesh = ellipse.base_mesh().unwrap();
     let npoints = mesh.npoint();
     assert!(npoints >= 100); // Default mesh_size is 200.
 
@@ -449,7 +449,7 @@ fn reg_pins_ellipse_full_mesh_on_boundary() {
         .build()
         .unwrap();
 
-    let mesh = e.get_region_mesh().unwrap();
+    let mesh = e.base_mesh().unwrap();
     assert!(e.reg_pins(&mesh, None).unwrap());
 }
 

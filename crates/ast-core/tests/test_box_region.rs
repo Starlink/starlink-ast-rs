@@ -406,7 +406,7 @@ fn mesh_2d_points_on_boundary() {
         .unwrap();
 
     b.set_mesh_size(100);
-    let mesh = b.get_region_mesh().unwrap();
+    let mesh = b.base_mesh().unwrap();
 
     // All mesh points should be on the boundary of the box.
     for i in 0..mesh.npoint() {
@@ -434,7 +434,7 @@ fn mesh_1d() {
         .build()
         .unwrap();
 
-    let mesh = b.get_region_mesh().unwrap();
+    let mesh = b.base_mesh().unwrap();
     assert_eq!(mesh.npoint(), 2);
     assert_eq!(mesh.ncoord(), 1);
 
@@ -542,7 +542,7 @@ fn reg_pins_full_boundary_mesh_all_on_boundary() {
         .build()
         .unwrap();
 
-    let mesh = b.get_region_mesh().unwrap();
+    let mesh = b.base_mesh().unwrap();
     assert!(b.reg_pins(&mesh, None).unwrap());
 }
 

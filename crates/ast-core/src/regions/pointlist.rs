@@ -494,7 +494,7 @@ impl Region for PointList {
         self.reg_base_box()
     }
 
-    fn get_region_mesh(&self) -> AstResult<PointSet> {
+    fn base_mesh(&self) -> AstResult<PointSet> {
         // Check for a cached mesh first.
         {
             let cached = self.data.cached_base_mesh.borrow();
@@ -513,11 +513,11 @@ impl Region for PointList {
         Ok(result)
     }
 
-    fn get_region_grid(&self) -> AstResult<PointSet> {
+    fn base_grid(&self) -> AstResult<PointSet> {
         crate::regions::data::region_base_grid(self)
     }
 
-    fn get_region_points(&self) -> AstResult<PointSet> {
+    fn base_points(&self) -> AstResult<PointSet> {
         Ok(PointSet::from_rows(
             self.data.points.iter().map(|p| p.as_slice()),
         ))

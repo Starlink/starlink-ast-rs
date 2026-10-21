@@ -731,12 +731,15 @@ pub trait Region: Frame + Mapping + AsDynRegion {
     }
 
     /// A mesh of points on the boundary of this Region, in the Frame it was
-    /// defined in (the base Frame of its FrameSet).
+    /// defined in (the base Frame of its FrameSet), not the Frame it
+    /// represents.
     ///
     /// The number of points is about [`MeshSize`](Region::mesh_size).
-    /// [`region_mesh`](Region::region_mesh) gives the mesh in the Frame the
-    /// Region represents.
-    fn get_region_mesh(&self) -> AstResult<PointSet>;
+    /// This is the mesh the Region classes work with internally; for the
+    /// boundary mesh in the Frame the Region represents, call
+    /// [`region_mesh`](Region::region_mesh).
+    // C: the per-class `astRegBaseMesh`.
+    fn base_mesh(&self) -> AstResult<PointSet>;
 
     /// A mesh of points covering the boundary of this Region, in the Frame
     /// it represents.
@@ -889,14 +892,14 @@ pub trait Region: Frame + Mapping + AsDynRegion {
     /// the simplified base->current Mapping (region.c `RegMesh`).
     #[doc(hidden)]
     fn reg_mesh(&self) -> AstResult<PointSet> {
-        self.to_current_frame(self.get_region_mesh()?)
+        self.to_current_frame(self.base_mesh()?)
     }
 
     /// The base-Frame grid transformed into the current Frame by the
     /// simplified base->current Mapping (region.c `RegGrid`).
     #[doc(hidden)]
     fn reg_grid(&self) -> AstResult<PointSet> {
-        self.to_current_frame(self.get_region_grid()?)
+        self.to_current_frame(self.base_grid()?)
     }
 
     /// Base-Frame points in the current Frame, by the simplified
@@ -915,22 +918,34 @@ pub trait Region: Frame + Mapping + AsDynRegion {
         }
     }
 
-    /// A grid of about [`mesh_size()`](Region::mesh_size) points spread
-    /// through this region in the base frame. Mirrors C `astRegBaseGrid`, a
-    /// per-class method: a Box spaces the points over itself with its base
-    /// Frame's `astFrameGrid`; every other class keeps the points of a
-    /// covering Box's grid that it contains, adjusting the Box's grid size
-    /// up to three times to bring the count near MeshSize (region.c). Fails
-    /// with `AST__MBBNF` for an unbounded region.
-    fn get_region_grid(&self) -> AstResult<PointSet>;
-
-    /// The positions that define this Region, in the Frame it was defined
-    /// in (the base Frame of its FrameSet), as the Region stores them.
+    /// A grid of about [`MeshSize`](Region::mesh_size) points filling the
+    /// interior of this Region, in the Frame it was defined in (the base
+    /// Frame of its FrameSet), not the Frame it represents.
     ///
-    /// [`region_points`](Region::region_points) gives them in the Frame the
-    /// Region represents, and says what they are for each class.
+    /// A Box spaces the points over itself with its base Frame's
+    /// [`frame_grid`](Frame::frame_grid); every other class keeps the points
+    /// of a covering Box's grid that it contains, adjusting the Box's grid
+    /// size up to three times to bring the count near MeshSize.
+    /// This is the grid the Region classes work with internally; for the
+    /// grid in the Frame the Region represents, call
+    /// [`region_grid`](Region::region_grid).
+    ///
+    /// # Errors
+    ///
+    /// [`ErrorCode::Mbbnf`] if the Region is unbounded.
+    // C: the per-class `astRegBaseGrid` (region.c and box.c).
+    fn base_grid(&self) -> AstResult<PointSet>;
+
+    /// The positions that define this Region, as the Region stores them: in
+    /// the Frame it was defined in (the base Frame of its FrameSet), not the
+    /// Frame it represents.
+    ///
+    /// This is what the Region classes work with internally; for the points
+    /// in the Frame the Region represents, call
+    /// [`region_points`](Region::region_points), which also says what they
+    /// are for each class.
     // C: the Region's `points` PointSet.
-    fn get_region_points(&self) -> AstResult<PointSet>;
+    fn base_points(&self) -> AstResult<PointSet>;
 
     /// The positions that define this Region, in the Frame it represents.
     ///
@@ -963,7 +978,7 @@ pub trait Region: Frame + Mapping + AsDynRegion {
     #[doc(alias = "astGetRegionPoints")]
     fn region_points(&self) -> AstResult<PointSet> {
         self.get_region_frameset()
-            .transform(&self.get_region_points()?, true)
+            .transform(&self.base_points()?, true)
     }
 
     // ------------------------------------------------------------------
@@ -1227,7 +1242,7 @@ pub trait Region: Frame + Mapping + AsDynRegion {
         // (region.c:10871-10876). The point is expressed in this Region's
         // base Frame, which is the uncertainty's current Frame, so it is
         // supplied to the uncertainty's set-path with `ifrm = Current`.
-        if let Ok(points) = self.get_region_points()
+        if let Ok(points) = self.base_points()
             && points.npoint() > 0
         {
             let first = points.point(0).to_vec();
@@ -1649,7 +1664,7 @@ pub trait Region: Frame + Mapping + AsDynRegion {
         // if the inverse transformation produces any good value for base axis
         // `i`; it is only consulted by the axis-dropping block below.
         let mut axflags: Option<Vec<bool>> = None;
-        let src_pts = self.get_region_points()?;
+        let src_pts = self.base_points()?;
         if src_pts.npoint() > 0 && src_pts.ncoord() > 0 {
             let np = src_pts.npoint();
             let ncoord = src_pts.ncoord();

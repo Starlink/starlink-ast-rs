@@ -3416,7 +3416,7 @@ fn convex_hull_basic() {
         .unwrap()
         .unwrap();
 
-    let pts = poly.get_region_points().unwrap();
+    let pts = poly.base_points().unwrap();
     let vertices: Vec<[f64; 2]> = (0..pts.npoint())
         .map(|i| [pts.point(i)[0], pts.point(i)[1]])
         .collect();

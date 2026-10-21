@@ -1313,7 +1313,7 @@ impl Region for BoxRegion {
         self.reg_base_box()
     }
 
-    fn get_region_mesh(&self) -> AstResult<PointSet> {
+    fn base_mesh(&self) -> AstResult<PointSet> {
         // Check for a cached mesh first.
         {
             let cached = self.data.cached_base_mesh.borrow();
@@ -1334,7 +1334,7 @@ impl Region for BoxRegion {
 
     /// box.c `RegBaseGrid`: the base Frame's grid of MeshSize points over
     /// the Box's bounds.
-    fn get_region_grid(&self) -> AstResult<PointSet> {
+    fn base_grid(&self) -> AstResult<PointSet> {
         if !self.is_bounded()? {
             return Err(AstError::new(
                 ErrorCode::Mbbnf,
@@ -1349,7 +1349,7 @@ impl Region for BoxRegion {
             .frame_grid(self.data.effective_mesh_size() as i32, &lbnd, &ubnd)
     }
 
-    fn get_region_points(&self) -> AstResult<PointSet> {
+    fn base_points(&self) -> AstResult<PointSet> {
         Ok(PointSet::from_rows(
             self.data.points.iter().map(|p| p.as_slice()),
         ))

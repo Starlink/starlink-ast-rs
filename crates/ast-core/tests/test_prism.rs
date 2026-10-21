@@ -347,7 +347,7 @@ fn mesh_is_nonempty_and_correct_dimensionality() {
         .build()
         .unwrap();
 
-    let mesh = prism.get_region_mesh().unwrap();
+    let mesh = prism.base_mesh().unwrap();
     let npoint = mesh.npoint();
 
     // Mesh should not be empty.
@@ -378,7 +378,7 @@ fn mesh_points_are_on_prism_boundary() {
         .build()
         .unwrap();
 
-    let mesh = prism.get_region_mesh().unwrap();
+    let mesh = prism.base_mesh().unwrap();
     let npoint = mesh.npoint();
 
     for i in 0..npoint {
@@ -428,7 +428,7 @@ fn mesh_has_both_face_types() {
         .build()
         .unwrap();
 
-    let mesh = prism.get_region_mesh().unwrap();
+    let mesh = prism.base_mesh().unwrap();
     let npoint = mesh.npoint();
 
     let mut has_side_wall = false;

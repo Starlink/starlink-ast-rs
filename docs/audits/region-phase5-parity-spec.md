@@ -472,7 +472,7 @@ UnitMap guard around it) and tries `astBestCircle` first, degrading
    ellipse.rs producing a current-Frame `Circle`/`Ellipse` from (mesh, centre,
    uncertainty).
 2. Rewrite both `simplified()` to: call the shared parent-simplify (the
-   SIMP-STAB helper); compute the current-Frame boundary mesh (`get_region_mesh`
+   SIMP-STAB helper); compute the current-Frame boundary mesh (`base_mesh`
    → transform to current, infra exists); transform the centre; try
    `best_circle` + `reg_pins_mask` (Circle::reg_pins_mask exists circle.rs:358),
    adopt on all-on-boundary; else if `nc==2` try `best_ellipse` +
