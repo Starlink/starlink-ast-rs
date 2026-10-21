@@ -282,12 +282,14 @@ pub(crate) fn simplify_frame_via_mapping(m: &dyn Mapping) -> AstResult<Option<Dy
 
 /// A cached description of a line segment within a 2-D [`Frame`].
 ///
-/// Mirrors C `AstLineDef` (frame.h:646). Created by [`Frame::line_def`] and
-/// consumed by [`Frame::line_crossing`] / [`Frame::line_offset`], it caches
-/// the intermediate values (length, unit direction, unit normal) that those
-/// methods reuse. For the base (planar) Frame the geometry is flat; SkyFrame
-/// overrides these methods with great-circle geometry (and stores extra
-/// spherical state, which is not represented here).
+/// Created by [`Frame::line_def`] and consumed by [`Frame::line_crossing`]
+/// and [`Frame::line_offset`].
+/// It caches the intermediate values (length, unit direction, unit normal)
+/// that those methods reuse.
+/// For the base (planar) Frame the geometry is flat.
+/// SkyFrame overrides these methods with great-circle geometry, which it
+/// holds in [`LineDef::sky`].
+// C: `AstLineDef` (frame.h:646).
 #[derive(Debug, Clone)]
 pub struct LineDef {
     /// Length of the line segment (geodesic distance start→end). For a planar
@@ -306,23 +308,24 @@ pub struct LineDef {
     /// Unit vector perpendicular to the line (dir rotated +90°).
     pub q: [f64; 2],
     /// Great-circle geometry for a line defined within a SkyFrame. `None` for
-    /// planar Frames. Mirrors C `SkyLineDef`, which is a distinct struct from
-    /// the planar `AstLineDef`; here the spherical state is carried alongside
-    /// the planar fields and the SkyFrame line methods use it in place of the
-    /// planar geometry.
-    // C: skyframe.c:814.
+    /// planar Frames.
+    /// The spherical state is carried alongside the planar fields, and the
+    /// SkyFrame line methods use it in place of the planar geometry.
+    // C: `SkyLineDef` (skyframe.c:814) is a distinct struct from the planar
+    // `AstLineDef`.
     pub sky: Option<SkyLineDef>,
 }
 
 /// Great-circle description of a line segment within a SkyFrame.
 ///
-/// Mirrors C `SkyLineDef`: positions are held as 3-D unit vectors rather than
-/// (lon, lat) pairs. `start`/`end` are the segment end-points; `dir` is the
-/// point 90° along the great circle from `start` (so that `q`, `dir`, `start`
-/// form the spherical analogue of the planar direction/normal); `q` is the
-/// pole of the great circle, oriented so the pole lies to the left of the
-/// line travelling start→end.
-// C: skyframe.c:814.
+/// Positions are held as 3-D unit vectors rather than (lon, lat) pairs.
+/// `start` and `end` are the segment end-points.
+/// `dir` is the point 90° along the great circle from `start`, so that `q`,
+/// `dir` and `start` form the spherical analogue of the planar
+/// direction and normal.
+/// `q` is the pole of the great circle, oriented so the pole lies to the left
+/// of the line travelling start to end.
+// C: `SkyLineDef` (skyframe.c:814).
 #[derive(Debug, Clone)]
 pub struct SkyLineDef {
     /// Unit vector at the line start.

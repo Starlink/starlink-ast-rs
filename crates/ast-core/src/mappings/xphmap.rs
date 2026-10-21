@@ -27,8 +27,8 @@ use super::unit::UnitMap;
 use super::{DynMapping, Mapping};
 use crate::mappings::SimplifiedRecord;
 
-/// The HEALPix projection an [`XphMap`] maps from (xphmap.h `AST__HPX0`
-/// and the rest, in the same order).
+/// The HEALPix projection an [`XphMap`] maps from.
+// C: xphmap.h `AST__HPX0` and the rest, in the same order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum XphProjection {
     /// An HPX projection centred on RA=0h.

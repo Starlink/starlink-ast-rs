@@ -21,7 +21,7 @@ Today the Rust docs have no cross-reference to C names (`ast-core` has no `#[doc
 3. **Nothing in the C headers is lost silently.**
    Every header has a ledger row, and the content a Rust user needs has been reviewed and moved.
 4. **No C internals in user-facing text.**
-   No C file or line references and no internal C function names appear in the rendered docs.
+   No C source or header file names, no line references, and no internal C function names appear in the rendered docs.
 
 ## The C headers
 
@@ -106,7 +106,7 @@ All in `crates/audit-tools/tests/` or `crates/ast-core/tests/meta/`, failing har
 3. **Aliases land on their items.** For every row with a Rust item, the source has `#[doc(alias = "<C name>")]` attached to an item of that name, inside that type's `impl`, `trait` or definition. The test parses the source textually: it finds each alias attribute, the item it is attached to (the next `fn`, `struct`, `enum`, `trait` or `type` line), and the enclosing `impl` or `trait` block.
    An alias with no ledger row also fails, so the two cannot drift apart.
    A row whose Rust item is a public top-level type or trait named exactly as the C name (`Mapping`, `PermMap`) is checked against that declaration instead, because rustdoc rejects an alias equal to the item's own name; a type named differently from the C name (`Box` → `BoxRegion`) still carries the alias.
-4. **Rendered docs carry no C internals.** After `cargo doc -p ast-core --no-deps`, no HTML page under `ast_core/` contains a C source reference (a `<name>.c` file name, with or without a line number) or a name of the form `ast<Name>` that is not in `c-headers.tsv`.
+4. **Rendered docs carry no C internals.** After `cargo doc -p ast-core --no-deps`, no HTML page under `ast_core/` contains a C source or header reference (a `<name>.c` or `<name>.h` file name, with or without a line number) or a name of the form `ast<Name>` that is not in `c-headers.tsv`.
    Modules not yet cleaned are listed in a named exclusion, `C_CITATIONS_UNCLEANED`, with a reason, and a companion test fails when a listed module becomes clean, so the list can only shrink.
 5. **Review progress.** The number of rows with `reviewed = no` is pinned in the test and may only go down; it reaches zero at the end of the work.
    The pinned count and `C_CITATIONS_UNCLEANED` are added to the verification ledger (`test_verification_ledger.rs`, PLAN §6).

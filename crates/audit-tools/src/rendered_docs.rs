@@ -1,7 +1,7 @@
 //! C references in rendered documentation.
 //!
 //! The documentation of the Rust API should describe the Rust API. A C source
-//! file name (`permmap.c:2849`) or an internal C function (`astInitPermMap`)
+//! file name (`permmap.c:2849`, `frame.h:646`) or an internal C function (`astInitPermMap`)
 //! in a rendered page points a reader at code they are not using, and line
 //! numbers in the C source change with every upstream sync.
 
@@ -52,14 +52,16 @@ fn line_range_len(s: &[u8]) -> usize {
     digits
 }
 
-/// The C references in one rendered page's visible text: C source file
-/// names (`permmap.c`, with or without `:line`) and `ast<Name>` words not
-/// in `public`.
+/// The C references in one rendered page's visible text: C source and header
+/// file names (`permmap.c`, `frame.h`, with or without `:line`) and
+/// `ast<Name>` words not in `public`.
 ///
-/// A file name is a lowercase word followed by `.c`, where the word is not
-/// itself preceded by a word character or `.` and `.c` is not followed by a
-/// word character. A path such as `reference/starlink-ast/src/table.c` is
-/// flagged by its file name. References are returned in order of appearance.
+/// A file name is a lowercase word followed by `.c` or `.h`, where the word is
+/// not itself preceded by a word character or `.` and the extension is not
+/// followed by a word character.
+/// A path such as `reference/starlink-ast/src/table.c` is flagged by its file
+/// name.
+/// References are returned in order of appearance.
 pub fn c_references(html: &str, public: &BTreeSet<String>) -> Vec<String> {
     let text = visible_text(html);
     let bytes = text.as_bytes();
@@ -83,7 +85,8 @@ pub fn c_references(html: &str, public: &BTreeSet<String>) -> Vec<String> {
             continue;
         }
         let rest = &bytes[i..];
-        let after_dot_c = rest.starts_with(b".c") && !rest.get(2).is_some_and(|b| is_word_char(*b));
+        let after_dot_c = (rest.starts_with(b".c") || rest.starts_with(b".h"))
+            && !rest.get(2).is_some_and(|b| is_word_char(*b));
         let lower = wb[0].is_ascii_lowercase()
             && wb
                 .iter()
@@ -117,6 +120,12 @@ mod tests {
     fn a_c_file_name_anywhere_in_text_is_flagged() {
         let html = "<p>As in permmap.c:2849 and <a href=\"x\">frame.c</a>.</p>";
         assert_eq!(c_references(html, &public()), ["permmap.c:2849", "frame.c"]);
+    }
+
+    #[test]
+    fn a_c_header_name_is_flagged_with_its_line() {
+        let html = "<p>See frame.h:646 and permmap.h.</p>";
+        assert_eq!(c_references(html, &public()), ["frame.h:646", "permmap.h"]);
     }
 
     #[test]
