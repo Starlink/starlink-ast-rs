@@ -440,12 +440,9 @@ pub trait Region: Frame + Mapping + AsDynRegion {
     ///
     /// Default: true.
     ///
-    /// - PointList: the attribute is ignored; an un-negated PointList is
-    ///   always closed and a negated one always open, since points have no
-    ///   volume and are all boundary.
-    /// - CmpRegion: a CmpRegion is built with the Closed value of its first
-    ///   component Region, if that has been set; setting or clearing it also
-    ///   sets or clears it on both component Regions.
+    /// [`PointList`] and [`CmpRegion`] treat it in their own way, which
+    /// their documentation describes.
+    ///
     /// - Stc: the Closed attribute of the Region it encapsulates.
     /// - Moc: the attribute is ignored, and whether a point on the boundary
     ///   is inside is undefined.
@@ -479,12 +476,9 @@ pub trait Region: Frame + Mapping + AsDynRegion {
     /// instance, the fraction of the Region for which data is available.
     /// Its value lies in the range 0.0 to 1.0.
     ///
-    /// Default: 1.0.
+    /// Default: 1.0, except for [`CmpRegion`] and [`Prism`], whose defaults
+    /// come from their component Regions.
     ///
-    /// - CmpRegion: the default is the FillFactor of its first component
-    ///   Region.
-    /// - Prism: the default is the product of the FillFactors of its two
-    ///   component Regions.
     /// - Stc: the FillFactor of the Region it encapsulates.
     #[doc(alias = "FillFactor")]
     fn fill_factor(&self) -> f64;
@@ -517,9 +511,9 @@ pub trait Region: Frame + Mapping + AsDynRegion {
     /// Default: 200 for a 2-D Region, 2000 for a Region of three or more
     /// dimensions, and 2 for a 1-D Region, whose boundary is two points.
     ///
-    /// - CmpRegion: a CmpRegion is built with the MeshSize of its first
-    ///   component Region, if that has been set; setting or clearing it also
-    ///   sets or clears it on both component Regions.
+    /// [`CmpRegion`] and [`Prism`] pass a value set on them on to their
+    /// component Regions.
+    ///
     /// - Moc: a mesh covering the boundary has a point at the outer corners
     ///   of every HEALPix cell, at the Moc's maximum order, that touches the
     ///   boundary, whatever the MeshSize; a mesh covering the interior uses
@@ -543,16 +537,12 @@ pub trait Region: Frame + Mapping + AsDynRegion {
     ///
     /// It is read-only.
     ///
-    /// - Box, Circle, Ellipse, NullRegion and PointList: bounded unless
-    ///   negated, and always bounded in a sky Frame, where the complement of
-    ///   a finite area is finite too.
+    /// A Region is bounded unless it is negated, and always bounded in a sky
+    /// Frame, where the complement of a finite area is finite too.
+    /// [`Polygon`], [`Interval`], [`CmpRegion`] and [`Prism`] work it out
+    /// from their shape instead, as their documentation describes.
+    ///
     /// - Moc: always bounded, since it is defined on the sky.
-    /// - Polygon: always bounded in a sky Frame; otherwise it depends on the
-    ///   order of the vertices and on negation.
-    /// - Interval: bounded when every axis has both limits and none is an
-    ///   excluded interval (a lower limit above the upper one); Negated is
-    ///   not consulted.
-    /// - CmpRegion and Prism: worked out from their component Regions.
     /// - Stc: whether the Region it encapsulates is bounded.
     ///
     /// # Errors
@@ -952,19 +942,10 @@ pub trait Region: Frame + Mapping + AsDynRegion {
     /// If the coordinate system has changed since the Region was made, the
     /// points are in the new system; a non-linear change can distort the
     /// shape, so it may not match the class of the Region.
-    /// What the points are depends on the class:
+    /// What the points are depends on the class, and each class's
+    /// documentation says.
     ///
-    /// - Box: the center, then a corner.
-    /// - Circle: the center, then a point on the circumference.
-    /// - Ellipse: the center, then the end of one axis of the ellipse, then
-    ///   another point on the circumference.
-    /// - Interval: the lower bounds, then the upper bounds, as it was made
-    ///   with them; on an axis with an excluded interval the lower bound is
-    ///   above the upper one.
-    /// - PointList: the points it was made with.
-    /// - Polygon: the vertices it was made with.
-    /// - CmpRegion, Prism, NullRegion, Moc and Stc: no points; the component
-    ///   Regions of a CmpRegion or Prism have points of their own.
+    /// - Moc and Stc: no points.
     ///
     /// # Errors
     ///
@@ -1276,19 +1257,13 @@ pub trait Region: Frame + Mapping + AsDynRegion {
     /// If none has been set, `def` true gives the default uncertainty that
     /// is used in its place, and `def` false gives `None`.
     ///
-    /// The default uncertainty is:
-    ///
-    /// - most classes: a Box 1.0E-6 of the size of the Region's bounding
-    ///   box on each axis, centered on the box; on an axis where the box has
-    ///   no width, 1.0E-6 of the axis value, or 1.0E-12 where that value is
-    ///   zero; on an axis with no limit, zero width at 0;
-    /// - CmpRegion: the uncertainty set on its first component Region, or
-    ///   else the one set on its second, or else as for most classes;
-    /// - Prism: the uncertainties of its two component Regions combined, each
-    ///   the one set or else that component's default;
-    /// - Interval: as for most classes, measured on the Interval's own
-    ///   limits;
-    /// - NullRegion: a Circle of zero radius at the origin.
+    /// The default uncertainty is a Box 1.0E-6 of the size of the Region's
+    /// bounding box on each axis, centered on the box.
+    /// On an axis where the box has no width it is 1.0E-6 of the axis value,
+    /// or 1.0E-12 where that value is zero, and on an axis with no limit it
+    /// has zero width at 0.
+    /// [`Interval`], [`NullRegion`], [`CmpRegion`] and [`Prism`] have
+    /// defaults of their own, which their documentation describes.
     ///
     /// # Errors
     ///

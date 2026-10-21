@@ -21,12 +21,51 @@ use super::data::{RegionData, RegionGeometry};
 use super::merge_util::{MergedRegion, finish_region_merge};
 use super::{DynRegion, Overlap, Region};
 
-/// An axis-aligned interval region within a coordinate frame.
+/// Upper and lower limits on one or more axes of a Frame.
 ///
-/// Defined by a lower bound and upper bound for each axis. A bound
-/// value of [`BAD_VALUE`] means no constraint in that direction.
-/// If `lbnd[i] > ubnd[i]` for axis `i`, that axis uses an excluded
-/// interval (points outside `[ubnd[i], lbnd[i]]` pass the test).
+/// A point is inside an Interval if it satisfies every limit on every axis,
+/// and outside if it fails any one of them.
+/// Each axis may have an upper limit, a lower limit, both or neither; an
+/// Interval with no limit at all contains every point.
+/// If both limits are given but the lower one is greater than the upper,
+/// the axis has an excluded interval: a point is inside if its value is
+/// outside the range between them.
+///
+/// An Interval makes no allowance for the cyclic nature of some coordinate
+/// systems, such as the longitude axis of a
+/// [`SkyFrame`](crate::frames::SkyFrame).
+/// A [`BoxRegion`](super::BoxRegion) is usually better there, since it
+/// makes the caller think about suitable limits.
+///
+/// The Interval keeps its lower limits and then its upper limits, which
+/// [`region_points`](Region::region_points) returns in that order, with
+/// [`BAD_VALUE`] for a missing limit.
+/// Its default uncertainty is measured on its own limits, with zero width
+/// on an axis that lacks one.
+/// It has no attributes or methods beyond those of every [`Region`].
+///
+/// A Frame attribute set through the Interval changes the coordinate system
+/// it is described in; while the Interval is
+/// [Adaptive](Region::is_adaptive) it keeps covering the same area.
+/// [`with_integrity`](Self::with_integrity) makes any other change to its
+/// Frame in the same way.
+///
+/// # Examples
+///
+/// ```
+/// use ast_core::constants::BAD_VALUE;
+/// use ast_core::frames::BasicFrameBuilder;
+/// use ast_core::regions::{IntervalBuilder, Region};
+///
+/// // x of at least 1, and y outside the range 2 to 3.
+/// let frame = BasicFrameBuilder::new(2).build()?;
+/// let iv = IntervalBuilder::new(frame, vec![1.0, 3.0], vec![BAD_VALUE, 2.0])?.build()?;
+/// assert!(iv.point_in_region(&[5.0, 0.0])?);
+/// assert!(!iv.point_in_region(&[5.0, 2.5])?);
+/// assert!(!iv.point_in_region(&[0.0, 0.0])?);
+/// assert!(!iv.is_bounded()?);
+/// # Ok::<(), ast_core::error::AstError>(())
+/// ```
 #[derive(Debug, Clone)]
 pub struct Interval {
     /// Shared region data (frameset, defining points, flags).
@@ -42,10 +81,17 @@ pub struct IntervalBuilder {
 }
 
 impl IntervalBuilder {
-    /// Create a builder for an Interval in the given frame.
+    /// Start an Interval in `frame` with lower limits `lbnd` and upper
+    /// limits `ubnd`, one for each axis.
     ///
-    /// `lbnd` and `ubnd` must each have length equal to `frame.naxes()`.
-    /// Use [`BAD_VALUE`] for any bound that should be unconstrained.
+    /// [`BAD_VALUE`] leaves an axis without that limit.
+    /// The Interval takes ownership of `frame`.
+    ///
+    /// # Errors
+    ///
+    /// [`ErrorCode::Naxin`] if `lbnd` or `ubnd` does not have one value for
+    /// each axis of `frame`.
+    #[doc(alias = "astInterval")]
     pub fn new(frame: impl Frame + 'static, lbnd: Vec<f64>, ubnd: Vec<f64>) -> AstResult<Self> {
         let naxes = frame.naxes();
         if lbnd.len() != naxes {
@@ -76,13 +122,29 @@ impl IntervalBuilder {
         })
     }
 
-    /// Set an uncertainty region.
+    /// Give the Interval an uncertainty: a Region that, centered on any point
+    /// of the boundary, covers the possible positions of that point.
+    ///
+    /// [`Region::set_uncertainty`] describes the Regions that can be used,
+    /// and [`build`](Self::build) fails as that method does with one that
+    /// cannot.
+    /// Without one, the Interval uses a default uncertainty 1.0E-6 of its
+    /// size.
+    /// The uncertainty is the tolerance [`overlap`](Region::overlap) uses
+    /// when it compares Regions, and decides whether the boundary of the
+    /// Interval mapped into another coordinate system can be described by a
+    /// simpler shape when it is simplified.
     pub fn uncertainty(mut self, unc: DynRegion) -> Self {
         self.uncertainty = Some(unc);
         self
     }
 
     /// Build the Interval.
+    ///
+    /// # Errors
+    ///
+    /// Passes on the error of [`Region::set_uncertainty`] for an
+    /// uncertainty given to [`uncertainty`](Self::uncertainty).
     pub fn build(self) -> AstResult<Interval> {
         let frameset = FrameSet::new(self.frame);
 
@@ -123,11 +185,23 @@ impl Interval {
 // ============================================================================
 
 impl Interval {
-    /// Mutate the current frame with region integrity enforcement: remapping
-    /// the Region when it is Adaptive, otherwise changing both Frames.
+    /// Make a change to the Frame this Interval represents, keeping the
+    /// Interval consistent with it.
     ///
+    /// `f` is applied as a Frame attribute set through the Interval is.
+    /// While the Interval is [Adaptive](Region::is_adaptive), the change is
+    /// made to the Frame it represents, and the Interval is remapped into the
+    /// new coordinate system so that it covers the same area.
+    /// Otherwise the change is made to both the Frame it represents and the
+    /// Frame it was defined in, so the numbers that define it keep their
+    /// values.
     /// `f` makes the change to each Frame it is made to, so it may be called
     /// more than once.
+    ///
+    /// # Errors
+    ///
+    /// Passes on the error returned by `f`, and the error of remapping the
+    /// Interval.
     pub fn with_integrity<F>(&mut self, f: F) -> AstResult<()>
     where
         F: Fn(&mut dyn Frame) -> AstResult<()>,
@@ -1259,6 +1333,10 @@ impl Region for Interval {
         self.data.clear_mesh_size();
     }
 
+    /// Whether this Interval is bounded: see [`Region::is_bounded`].
+    ///
+    /// An Interval is bounded when every axis has both limits and none is an
+    /// excluded interval, whether or not it is negated.
     fn is_bounded(&self) -> AstResult<bool> {
         self.is_bounded_inner()
     }
@@ -1699,15 +1777,15 @@ impl Frame for Interval {
         self.data.frameset.current().naxes()
     }
 
-    /// Mirrors C `Region::MatchAxesX` (region.c:6413): the axes of the
-    /// current Frame of the Region's FrameSet are matched.
+    // Mirrors C `Region::MatchAxesX` (region.c:6413): the axes of the
+    // current Frame of the Region's FrameSet are matched.
     fn match_axes_x(&self, frm1: &dyn Frame) -> AstResult<Vec<i32>> {
         self.data.frameset.current().match_axes_x(frm1)
     }
 
-    /// Mirrors C `Region::Match` (region.c:6214): the current Frame of the
-    /// Region's FrameSet is matched, through `astMatch` and so with its
-    /// cast retry.
+    // Mirrors C `Region::Match` (region.c:6214): the current Frame of the
+    // Region's FrameSet is matched, through `astMatch` and so with its
+    // cast retry.
     fn match_template(
         &self,
         target: &dyn Frame,
@@ -1748,9 +1826,9 @@ impl Frame for Interval {
         self.data.frameset.current().norm(coords)
     }
 
-    /// A Region's axes are its encapsulated current Frame's axes. Mirrors
-    /// C `Region::AxDistance` / `AxOffset` / `AxNorm` (region.c:1457, 1610,
-    /// 1536), which all forward to that Frame.
+    // A Region's axes are its encapsulated current Frame's axes. Mirrors
+    // C `Region::AxDistance` / `AxOffset` / `AxNorm` (region.c:1457, 1610,
+    // 1536), which all forward to that Frame.
     fn get_axis(&self, axis: usize) -> AxisKind {
         self.data.frameset.current().get_axis(axis)
     }
@@ -1764,9 +1842,9 @@ impl Frame for Interval {
         Box::new(self.clone())
     }
 
-    /// C has one `Simplify` slot, so a Region simplifies through its Mapping
-    /// side and the caller keeps the result because it is still a Frame
-    /// (`astIsAFrame`, `cmpframe.c:9024`).
+    // C has one `Simplify` slot, so a Region simplifies through its Mapping
+    // side and the caller keeps the result because it is still a Frame
+    // (`astIsAFrame`, `cmpframe.c:9024`).
     fn simplify_frame(&self) -> AstResult<Option<DynFrame>> {
         simplify_frame_via_mapping(self)
     }
@@ -1804,8 +1882,8 @@ impl Mapping for Interval {
         &mut self.data.mapping_flags
     }
 
-    /// A Region is a Frame, which C's frame.c `GetIsLinear` reports as
-    /// linear.
+    // A Region is a Frame, which C's frame.c `GetIsLinear` reports as
+    // linear.
     fn is_linear(&self) -> bool {
         true
     }
@@ -1816,7 +1894,7 @@ impl Mapping for Interval {
         Some(Box::new(crate::mappings::UnitMap::new(self.nin())))
     }
 
-    /// region.c `ReportPoints`: the current Frame formats the values.
+    // region.c `ReportPoints`: the current Frame formats the values.
     fn report_points(&self, _forward: bool, inp: &PointSet, out: &PointSet) {
         let frame = self.data.frameset.current();
         crate::mappings::report::write_report(&crate::frames::frame_report_lines(
@@ -1940,7 +2018,7 @@ impl Mapping for Interval {
         crate::mappings::rate::numeric_rate(self, at, ax1, ax2)
     }
 
-    /// region.c `Equal`, which this class does not extend.
+    // region.c `Equal`, which this class does not extend.
     fn equal(&self, other: &dyn Mapping) -> bool {
         super::data::region_equal(self, other).is_some()
     }

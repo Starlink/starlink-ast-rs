@@ -87,11 +87,38 @@ struct BaseMesh {
     upper: Vec<f64>,
 }
 
-/// A circular region within a coordinate frame.
+/// A circle or sphere within a Frame.
 ///
-/// Defined by a centre point and a point on the circumference (or
-/// equivalently, a centre and a radius computed as the frame distance
-/// between the two points).
+/// The radius is a distance as the Frame measures it, so in a
+/// [`SkyFrame`](crate::frames::SkyFrame) a Circle is a spherical cap whose
+/// radius is an arc of a great circle.
+/// [`CircleBuilder`] makes a Circle from its center and either a point on
+/// its circumference or its radius.
+/// The Circle keeps its center and a point on its circumference, which
+/// [`region_points`](Region::region_points) returns in that order, and
+/// [`circle_pars`](Self::circle_pars) gives its center, radius and that
+/// point.
+///
+/// A Frame attribute set through the Circle changes the coordinate system it
+/// is described in; while the Circle is [Adaptive](Region::is_adaptive) it
+/// keeps covering the same area.
+/// [`with_integrity`](Self::with_integrity) makes any other change to its
+/// Frame in the same way.
+///
+/// # Examples
+///
+/// ```
+/// use ast_core::frames::BasicFrameBuilder;
+/// use ast_core::regions::{CircleBuilder, Region};
+///
+/// let frame = BasicFrameBuilder::new(2).build()?;
+/// let circle = CircleBuilder::new(frame, vec![1.0, 1.0])?.radius(2.0).build()?;
+/// assert!(circle.point_in_region(&[2.0, 2.0])?);
+/// assert!(!circle.point_in_region(&[3.0, 3.0])?);
+/// let (center, radius, _) = circle.circle_pars()?;
+/// assert_eq!((center, radius), (vec![1.0, 1.0], 2.0));
+/// # Ok::<(), ast_core::error::AstError>(())
+/// ```
 #[derive(Debug, Clone)]
 pub struct Circle {
     /// Shared region data (frameset, defining points, flags).
@@ -108,9 +135,17 @@ pub struct CircleBuilder {
 }
 
 impl CircleBuilder {
-    /// Create a builder for a Circle in the given frame.
+    /// Start a Circle in `frame` with center `centre`.
     ///
-    /// `centre` must have length equal to `frame.naxes()`.
+    /// Give the circle its size with [`edge_point`](Self::edge_point) or
+    /// [`radius`](Self::radius) before building it.
+    /// The Circle takes ownership of `frame`.
+    ///
+    /// # Errors
+    ///
+    /// [`ErrorCode::Naxin`] if `centre` does not have one value for each
+    /// axis of `frame`.
+    #[doc(alias = "astCircle")]
     pub fn new(frame: impl Frame + 'static, centre: Vec<f64>) -> AstResult<Self> {
         let naxes = frame.naxes();
         if centre.len() != naxes {
@@ -132,7 +167,11 @@ impl CircleBuilder {
         })
     }
 
-    /// Create a builder for a Circle from a boxed (dynamic) frame.
+    /// [`new`](Self::new) for a Frame already boxed.
+    ///
+    /// # Errors
+    ///
+    /// As for [`new`](Self::new).
     pub fn from_dyn(frame: DynFrame, centre: Vec<f64>) -> AstResult<Self> {
         let naxes = frame.naxes();
         if centre.len() != naxes {
@@ -154,22 +193,38 @@ impl CircleBuilder {
         })
     }
 
-    /// Specify the circle by a point on the circumference.
+    /// Give the size of the circle by a point on its circumference, with one
+    /// value for each axis of the Frame.
+    ///
+    /// It takes precedence over a [`radius`](Self::radius).
     pub fn edge_point(mut self, point: Vec<f64>) -> Self {
         self.edge_point = Some(point);
         self
     }
 
-    /// Specify the circle by a radius value.
+    /// Give the size of the circle by its radius, a distance as the Frame
+    /// measures it: an arc of a great circle in a sky Frame, a straight
+    /// line in a flat one.
     ///
-    /// The radius is interpreted as a distance in the frame's metric
-    /// (great-circle for sky, Euclidean for flat).
+    /// The Circle keeps the point where the circle crosses the first axis
+    /// of the Frame as its point on the circumference.
     pub fn radius(mut self, r: f64) -> Self {
         self.radius = Some(r);
         self
     }
 
-    /// Set an uncertainty region.
+    /// Give the Circle an uncertainty: a Region that, centered on any point
+    /// of the boundary, covers the possible positions of that point.
+    ///
+    /// [`Region::set_uncertainty`] describes the Regions that can be used,
+    /// and [`build`](Self::build) fails as that method does with one that
+    /// cannot.
+    /// Without one, the Circle uses a default uncertainty 1.0E-6 of its
+    /// size.
+    /// The uncertainty is the tolerance [`overlap`](Region::overlap) uses
+    /// when it compares Regions, and decides whether the boundary of the
+    /// Circle mapped into another coordinate system can be described by a
+    /// simpler shape when it is simplified.
     pub fn uncertainty(mut self, unc: DynRegion) -> Self {
         self.uncertainty = Some(unc);
         self
@@ -177,7 +232,16 @@ impl CircleBuilder {
 
     /// Build the Circle.
     ///
-    /// Either `edge_point` or `radius` must have been specified.
+    /// # Errors
+    ///
+    /// - [`ErrorCode::Naxin`] if neither [`edge_point`](Self::edge_point)
+    ///   nor [`radius`](Self::radius) was given, or the point on the
+    ///   circumference does not have one value for each axis.
+    /// - [`ErrorCode::Badin`] if a value of the center or of the point on
+    ///   the circumference is [`BAD_VALUE`] or NaN.
+    /// - Passes on the error of finding the point on the circumference from
+    ///   a radius, and of [`Region::set_uncertainty`] for an uncertainty
+    ///   given to [`uncertainty`](Self::uncertainty).
     pub fn build(self) -> AstResult<Circle> {
         let naxes = self.frame.naxes();
 
@@ -251,10 +315,22 @@ impl CircleBuilder {
 // ============================================================================
 
 impl Circle {
-    /// The Circle's centre, radius and a point on its circumference, in its
-    /// current Frame, as `astCirclePars` gives them (circle.c `CirclePars`):
-    /// the defining points transformed by the FrameSet, and the radius the
-    /// Frame's distance between them, so an arc on the sky.
+    /// The center of this Circle, its radius and a point on its
+    /// circumference, as `(center, radius, point)`.
+    ///
+    /// They are in the Frame the Circle represents.
+    /// If its coordinate system has changed since the Circle was made, they
+    /// are in the new system; if the change is not linear, the Circle may
+    /// no longer be an accurate circle there.
+    /// The radius is the distance from the center to the point as that Frame
+    /// measures it, so an arc of a great circle on the sky.
+    ///
+    /// # Errors
+    ///
+    /// Passes on the errors of transforming the defining points into the
+    /// Frame the Circle represents and of measuring the distance.
+    // C: circle.c `CirclePars`.
+    #[doc(alias = "astCirclePars")]
     pub fn circle_pars(&self) -> AstResult<(Vec<f64>, f64, Vec<f64>)> {
         let pts = self.data.frameset.transform(&self.base_points()?, true)?;
         let centre = pts.point(0).to_vec();
@@ -263,18 +339,23 @@ impl Circle {
         Ok((centre, radius, p1))
     }
 
-    /// Mutate the current frame with region integrity enforcement.
+    /// Make a change to the Frame this Circle represents, keeping the Circle
+    /// consistent with it.
     ///
-    /// When adaptive (the default), the FrameSet's base→current mapping is
-    /// updated to account for the change, and defining points remain valid
-    /// in the base frame. When non-adaptive, the change is applied to both
-    /// frames without remapping.
-    ///
-    /// See the internal `with_region_integrity` function for the full
-    /// algorithm.
-    ///
+    /// `f` is applied as a Frame attribute set through the Circle is.
+    /// While the Circle is [Adaptive](Region::is_adaptive), the change is made
+    /// to the Frame it represents, and the Circle is remapped into the new
+    /// coordinate system so that it covers the same area.
+    /// Otherwise the change is made to both the Frame it represents and the
+    /// Frame it was defined in, so the numbers that define it keep their
+    /// values.
     /// `f` makes the change to each Frame it is made to, so it may be called
     /// more than once.
+    ///
+    /// # Errors
+    ///
+    /// Passes on the error returned by `f`, and the error of remapping the
+    /// Circle.
     pub fn with_integrity<F>(&mut self, f: F) -> AstResult<()>
     where
         F: Fn(&mut dyn Frame) -> AstResult<()>,
@@ -908,15 +989,15 @@ impl Frame for Circle {
         self.data.frameset.current().naxes()
     }
 
-    /// Mirrors C `Region::MatchAxesX` (region.c:6413): the axes of the
-    /// current Frame of the Region's FrameSet are matched.
+    // Mirrors C `Region::MatchAxesX` (region.c:6413): the axes of the
+    // current Frame of the Region's FrameSet are matched.
     fn match_axes_x(&self, frm1: &dyn Frame) -> AstResult<Vec<i32>> {
         self.data.frameset.current().match_axes_x(frm1)
     }
 
-    /// Mirrors C `Region::Match` (region.c:6214): the current Frame of the
-    /// Region's FrameSet is matched, through `astMatch` and so with its
-    /// cast retry.
+    // Mirrors C `Region::Match` (region.c:6214): the current Frame of the
+    // Region's FrameSet is matched, through `astMatch` and so with its
+    // cast retry.
     fn match_template(
         &self,
         target: &dyn Frame,
@@ -957,9 +1038,9 @@ impl Frame for Circle {
         self.data.frameset.current().norm(coords)
     }
 
-    /// A Region's axes are its encapsulated current Frame's axes. Mirrors
-    /// C `Region::AxDistance` / `AxOffset` / `AxNorm` (region.c:1457, 1610,
-    /// 1536), which all forward to that Frame.
+    // A Region's axes are its encapsulated current Frame's axes. Mirrors
+    // C `Region::AxDistance` / `AxOffset` / `AxNorm` (region.c:1457, 1610,
+    // 1536), which all forward to that Frame.
     fn get_axis(&self, axis: usize) -> AxisKind {
         self.data.frameset.current().get_axis(axis)
     }
@@ -973,9 +1054,9 @@ impl Frame for Circle {
         Box::new(self.clone())
     }
 
-    /// C has one `Simplify` slot, so a Region simplifies through its Mapping
-    /// side and the caller keeps the result because it is still a Frame
-    /// (`astIsAFrame`, `cmpframe.c:9024`).
+    // C has one `Simplify` slot, so a Region simplifies through its Mapping
+    // side and the caller keeps the result because it is still a Frame
+    // (`astIsAFrame`, `cmpframe.c:9024`).
     fn simplify_frame(&self) -> AstResult<Option<DynFrame>> {
         simplify_frame_via_mapping(self)
     }
@@ -1014,8 +1095,8 @@ impl Mapping for Circle {
         &mut self.data.mapping_flags
     }
 
-    /// A Region is a Frame, which C's frame.c `GetIsLinear` reports as
-    /// linear.
+    // A Region is a Frame, which C's frame.c `GetIsLinear` reports as
+    // linear.
     fn is_linear(&self) -> bool {
         true
     }
@@ -1026,7 +1107,7 @@ impl Mapping for Circle {
         Some(Box::new(crate::mappings::UnitMap::new(self.nin())))
     }
 
-    /// region.c `ReportPoints`: the current Frame formats the values.
+    // region.c `ReportPoints`: the current Frame formats the values.
     fn report_points(&self, _forward: bool, inp: &PointSet, out: &PointSet) {
         let frame = self.data.frameset.current();
         crate::mappings::report::write_report(&crate::frames::frame_report_lines(
@@ -1166,7 +1247,7 @@ impl Mapping for Circle {
         crate::mappings::rate::numeric_rate(self, at, ax1, ax2)
     }
 
-    /// region.c `Equal`, which this class does not extend.
+    // region.c `Equal`, which this class does not extend.
     fn equal(&self, other: &dyn Mapping) -> bool {
         super::data::region_equal(self, other).is_some()
     }

@@ -73,6 +73,9 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [`SetVariant` reads `map[-1]` when the variant owner is on the root node](#setvariant-reads-map-1-when-the-variant-owner-is-on-the-root-node)
 - [The `astGetRegionPoints` documentation calls it an attribute and sends Prism users to a CmpRegion](#the-astgetregionpoints-documentation-calls-it-an-attribute-and-sends-prism-users-to-a-cmpregion)
 - [The `astMask<X>` documentation counts pixels set to a "badval" it does not take](#the-astmaskx-documentation-counts-pixels-set-to-a-badval-it-does-not-take)
+- [The `astInterval` documentation says at least one axis limit must be supplied](#the-astinterval-documentation-says-at-least-one-axis-limit-must-be-supplied)
+- [The `astDownsize` documentation does not say which Frame `maxerr` is measured in](#the-astdownsize-documentation-does-not-say-which-frame-maxerr-is-measured-in)
+- [A CmpRegion that ANDs two nested unbounded Regions reports itself as bounded](#a-cmpregion-that-ands-two-nested-unbounded-regions-reports-itself-as-bounded)
 
 ### [Addressed here, and not going upstream](#addressed-here-and-not-going-upstream)
 
@@ -1106,6 +1109,45 @@ Consequence: documentation only.
 
 `mask` says it returns the number of pixels set to `val`.
 A C fix: change "badval" to "val".
+
+### The `astInterval` documentation says at least one axis limit must be supplied
+
+C location: `interval.c`, the `astInterval` prologue (Description, line 4127), and `astInitInterval`.
+
+The Description says "At least one axis limit must be supplied."
+`astInitInterval` does not check: an Interval whose limits are all `AST__BAD` is created without an error, and a C-oracle probe shows it contains every point and is unbounded.
+
+Consequence: documentation only.
+
+`IntervalBuilder::new` accepts such an Interval too, and the `Interval` documentation says it contains every point.
+A C fix: drop the sentence, or say that an Interval with no limits contains every point.
+
+### The `astDownsize` documentation does not say which Frame `maxerr` is measured in
+
+C location: `polygon.c`, the `astDownsize` prologue (Parameters, line 1365) and `Downsize`.
+
+The `maxerr` parameter is "a geodesic distance within the Polygon's coordinate frame".
+`Downsize` passes the base Frame to `DownsizePoly`, so the distance is measured in the Frame the Polygon was defined in.
+For a Polygon whose coordinate system has since changed, for instance by setting its System, that is not the Frame it represents, which a reader would take "the Polygon's coordinate frame" to mean.
+
+Consequence: documentation only.
+
+`Polygon::downsize` says the distance is measured in the Frame the Polygon was defined in.
+A C fix: say "within the Frame in which the Polygon was originally defined".
+
+### A CmpRegion that ANDs two nested unbounded Regions reports itself as bounded
+
+C location: `cmpregion.c` `GetBounded`, the AND branch (line 817).
+
+When neither component of an AND is bounded, `GetBounded` calls the AND unbounded only if `astOverlap` gives 1 (no overlap), 4 (partial overlap) or 6 (negation), and bounded otherwise.
+When one component lies inside the other (2 or 3), the AND is the inner component, which is unbounded.
+A C-oracle probe ANDs two Intervals, x > 0 and x > 1: both are unbounded, `astOverlap` gives 3, and the CmpRegion reports `Bounded` as 1 while containing the point (1e30, 1e30).
+The same happens for two identical unbounded Regions (5).
+
+Consequence: the Bounded attribute of such a CmpRegion is wrong.
+
+The port mirrors the test (`CmpRegion::get_bounded`); `and_of_nested_unbounded_regions_reports_bounded_as_c_does` in `tests/test_cmpregion.rs` pins it.
+Question for upstream: should overlap results 2, 3 and 5 make the AND unbounded too?
 
 ## Addressed here, and not going upstream
 

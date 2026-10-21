@@ -19,15 +19,27 @@ use crate::mappings::{DynMapping, Mapping, UnitMap, ViaSimplify};
 use super::data::{RegionData, RegionGeometry};
 use super::{DynRegion, Region};
 
-/// A region consisting of a discrete set of points within a coordinate frame.
+/// A collection of points in a Frame.
 ///
-/// The region interior is defined by the set of points themselves: a test
-/// point is inside if (and only if) it matches one of the defining points
-/// within the positional uncertainty. Without an explicit uncertainty region,
-/// matching uses the frame's `distance()` metric with a small relative
-/// tolerance.
+/// A position is inside a PointList if it coincides with one of its points
+/// to within the PointList's uncertainty: if it lies strictly inside the
+/// uncertainty Region centered on that point.
+/// Without an uncertainty set, the default is a Box 1.0E-6 of the size of
+/// the box that bounds the points.
+/// Points have no volume, so a PointList is all boundary, and its
+/// [Closed](Region::is_closed) attribute follows from whether it is
+/// negated.
 ///
-/// # Example
+/// The points are what [`region_points`](Region::region_points) returns,
+/// and [`list_size`](Self::list_size), the ListSize attribute, counts them.
+///
+/// A Frame attribute set through the PointList changes the coordinate
+/// system it is described in; while the PointList is
+/// [Adaptive](Region::is_adaptive) its points stay at the same positions.
+/// [`with_integrity`](Self::with_integrity) makes any other change to its
+/// Frame in the same way.
+///
+/// # Examples
 ///
 /// ```
 /// use ast_core::frames::BasicFrameBuilder;
@@ -54,20 +66,18 @@ pub struct PointListBuilder {
 }
 
 impl PointListBuilder {
-    /// Create a builder for a PointList in the given frame.
+    /// Start a PointList in `frame` holding `points`, each with one value
+    /// for each axis of the Frame.
     ///
-    /// # Parameters
-    ///
-    /// - `frame`: The coordinate frame for the points.
-    /// - `points`: A list of points, where each point is a `Vec<f64>` of
-    ///   length equal to `frame.naxes()`. Must contain at least one point.
+    /// The PointList takes ownership of `frame`.
     ///
     /// # Errors
     ///
-    /// - [`ErrorCode::Nptin`] if `points` is empty, as astPointSet reports
-    ///   it.
-    /// - [`ErrorCode::Ncpin`] if a point has a length different from
-    ///   `frame.naxes()`, as astInitPointList reports it.
+    /// - [`ErrorCode::Nptin`] if `points` is empty.
+    /// - [`ErrorCode::Ncpin`] if a point does not have one value for each
+    ///   axis of `frame`.
+    // C: astPointSet reports the Nptin, and astInitPointList the Ncpin.
+    #[doc(alias = "astPointList")]
     pub fn new(frame: impl Frame + 'static, points: Vec<Vec<f64>>) -> AstResult<Self> {
         let nin = frame.naxes();
 
@@ -99,13 +109,28 @@ impl PointListBuilder {
         })
     }
 
-    /// Set an uncertainty region.
+    /// Give the PointList an uncertainty: a Region that, centered on any of
+    /// its points, covers the possible positions of that point.
+    ///
+    /// [`Region::set_uncertainty`] describes the Regions that can be used,
+    /// and [`build`](Self::build) fails as that method does with one that
+    /// cannot.
+    /// Without one, the PointList uses a default uncertainty 1.0E-6 of the
+    /// size of the box that bounds its points.
+    /// The uncertainty decides which positions coincide with a point, and is
+    /// the tolerance [`overlap`](Region::overlap) uses when it compares
+    /// Regions.
     pub fn uncertainty(mut self, unc: DynRegion) -> Self {
         self.uncertainty = Some(unc);
         self
     }
 
     /// Build the PointList.
+    ///
+    /// # Errors
+    ///
+    /// Passes on the error of [`Region::set_uncertainty`] for an
+    /// uncertainty given to [`uncertainty`](Self::uncertainty).
     pub fn build(self) -> AstResult<PointList> {
         let frameset = FrameSet::new(self.frame);
         let data = RegionData::new(frameset, self.points);
@@ -125,10 +150,23 @@ impl PointListBuilder {
 // ============================================================================
 
 impl PointList {
-    /// Mutate the current frame with region integrity enforcement.
+    /// Make a change to the Frame this PointList represents, keeping the
+    /// PointList consistent with it.
     ///
-    /// See [`Circle::with_integrity`](super::Circle) for the full
-    /// description of the integrity mechanism.
+    /// `f` is applied as a Frame attribute set through the PointList is.
+    /// While the PointList is [Adaptive](Region::is_adaptive), the change is
+    /// made to the Frame it represents, and the PointList is remapped into the
+    /// new coordinate system so that it covers the same area.
+    /// Otherwise the change is made to both the Frame it represents and the
+    /// Frame it was defined in, so the numbers that define it keep their
+    /// values.
+    /// `f` makes the change to each Frame it is made to, so it may be called
+    /// more than once.
+    ///
+    /// # Errors
+    ///
+    /// Passes on the error returned by `f`, and the error of remapping the
+    /// PointList.
     pub fn with_integrity<F>(&mut self, f: F) -> AstResult<()>
     where
         F: Fn(&mut dyn Frame) -> AstResult<()>,
@@ -141,7 +179,10 @@ impl PointList {
         self.data.perm_axes(perm)
     }
 
-    /// Return the number of points in this PointList.
+    /// The ListSize attribute: the number of points in this PointList.
+    ///
+    /// It is read-only, and fixed when the PointList is made.
+    #[doc(alias = "ListSize")]
     pub fn list_size(&self) -> usize {
         self.data.points.len()
     }
@@ -404,11 +445,12 @@ impl Region for PointList {
         self.data.invalidate_cache();
     }
 
-    /// A PointList's Closed attribute is always the opposite of its Negated
-    /// attribute, whatever value was stored.
+    /// The Closed attribute of a PointList, which ignores the value set:
+    /// see [`Region::is_closed`].
     ///
-    /// Points have zero volume, so a PointList consists entirely of boundary
-    /// and is closed unless negated (`pointlist.c:400-421`).
+    /// Points have no volume, so a PointList is all boundary: it is closed
+    /// when it is not negated, and open when it is.
+    // C: pointlist.c:400-421.
     fn is_closed(&self) -> bool {
         !self.data.negated
     }
@@ -745,15 +787,15 @@ impl Frame for PointList {
         self.data.frameset.current().naxes()
     }
 
-    /// Mirrors C `Region::MatchAxesX` (region.c:6413): the axes of the
-    /// current Frame of the Region's FrameSet are matched.
+    // Mirrors C `Region::MatchAxesX` (region.c:6413): the axes of the
+    // current Frame of the Region's FrameSet are matched.
     fn match_axes_x(&self, frm1: &dyn Frame) -> AstResult<Vec<i32>> {
         self.data.frameset.current().match_axes_x(frm1)
     }
 
-    /// Mirrors C `Region::Match` (region.c:6214): the current Frame of the
-    /// Region's FrameSet is matched, through `astMatch` and so with its
-    /// cast retry.
+    // Mirrors C `Region::Match` (region.c:6214): the current Frame of the
+    // Region's FrameSet is matched, through `astMatch` and so with its
+    // cast retry.
     fn match_template(
         &self,
         target: &dyn Frame,
@@ -794,9 +836,9 @@ impl Frame for PointList {
         self.data.frameset.current().norm(coords)
     }
 
-    /// A Region's axes are its encapsulated current Frame's axes. Mirrors
-    /// C `Region::AxDistance` / `AxOffset` / `AxNorm` (region.c:1457, 1610,
-    /// 1536), which all forward to that Frame.
+    // A Region's axes are its encapsulated current Frame's axes. Mirrors
+    // C `Region::AxDistance` / `AxOffset` / `AxNorm` (region.c:1457, 1610,
+    // 1536), which all forward to that Frame.
     fn get_axis(&self, axis: usize) -> AxisKind {
         self.data.frameset.current().get_axis(axis)
     }
@@ -810,9 +852,9 @@ impl Frame for PointList {
         Box::new(self.clone())
     }
 
-    /// C has one `Simplify` slot, so a Region simplifies through its Mapping
-    /// side and the caller keeps the result because it is still a Frame
-    /// (`astIsAFrame`, `cmpframe.c:9024`).
+    // C has one `Simplify` slot, so a Region simplifies through its Mapping
+    // side and the caller keeps the result because it is still a Frame
+    // (`astIsAFrame`, `cmpframe.c:9024`).
     fn simplify_frame(&self) -> AstResult<Option<DynFrame>> {
         simplify_frame_via_mapping(self)
     }
@@ -850,8 +892,8 @@ impl Mapping for PointList {
         &mut self.data.mapping_flags
     }
 
-    /// A Region is a Frame, which C's frame.c `GetIsLinear` reports as
-    /// linear.
+    // A Region is a Frame, which C's frame.c `GetIsLinear` reports as
+    // linear.
     fn is_linear(&self) -> bool {
         true
     }
@@ -862,7 +904,7 @@ impl Mapping for PointList {
         Some(Box::new(crate::mappings::UnitMap::new(self.nin())))
     }
 
-    /// region.c `ReportPoints`: the current Frame formats the values.
+    // region.c `ReportPoints`: the current Frame formats the values.
     fn report_points(&self, _forward: bool, inp: &PointSet, out: &PointSet) {
         let frame = self.data.frameset.current();
         crate::mappings::report::write_report(&crate::frames::frame_report_lines(
@@ -975,7 +1017,7 @@ impl Mapping for PointList {
         crate::mappings::rate::numeric_rate(self, at, ax1, ax2)
     }
 
-    /// region.c `Equal`, which this class does not extend.
+    // region.c `Equal`, which this class does not extend.
     fn equal(&self, other: &dyn Mapping) -> bool {
         super::data::region_equal(self, other).is_some()
     }

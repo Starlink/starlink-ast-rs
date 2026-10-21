@@ -20,12 +20,49 @@ use super::data::{RegionData, RegionGeometry};
 use super::merge_util::MergedRegion;
 use super::{DynRegion, Interval, NullRegion, NullRegionBuilder, PointList, Region};
 
-/// An axis-aligned box region within a coordinate frame.
+/// A box with sides parallel to the axes of a Frame: the area that encloses
+/// a given range of values on each axis.
 ///
-/// Defined by a centre point and a corner point in the base frame.
-/// The box extends symmetrically around the centre: the effective
-/// bounds are `[2*centre - corner, corner]` per axis (with appropriate
-/// ordering so that `lbnd <= ubnd`).
+/// A Box is similar to an [`Interval`], the only real difference being that
+/// an Interval allows some axis limits to be left out.
+/// A Box only looks like a box if the geometry of its Frame is roughly flat.
+/// For instance, a Box centered close to a pole in a
+/// [`SkyFrame`](crate::frames::SkyFrame) looks more like a fan than a box;
+/// a [`Polygon`](super::Polygon) can describe a box-like area close to a
+/// pole.
+///
+/// [`BoxRegionBuilder::new`] makes a Box from its center and a corner, and
+/// [`BoxRegionBuilder::from_bounds`] from two opposite corners.
+/// Either way the Box keeps its center and one corner, which
+/// [`region_points`](Region::region_points) returns in that order; the
+/// opposite corner is the reflection of that corner through the center.
+///
+/// A Frame attribute set through the Box changes the coordinate system it
+/// is described in; while the Box is [Adaptive](Region::is_adaptive) it
+/// keeps covering the same area.
+/// [`with_integrity`](Self::with_integrity) makes any other change to its
+/// Frame in the same way.
+/// It has no attributes or methods beyond those of every [`Region`].
+///
+/// The type is named `BoxRegion` so that it does not collide with
+/// [`std::boxed::Box`].
+///
+/// # Examples
+///
+/// ```
+/// use ast_core::frames::BasicFrameBuilder;
+/// use ast_core::regions::{BoxRegionBuilder, Region};
+///
+/// let frame = BasicFrameBuilder::new(2).build()?;
+/// let bx = BoxRegionBuilder::from_bounds(frame, &[0.0, 0.0], &[4.0, 2.0])?.build()?;
+/// assert!(bx.point_in_region(&[3.0, 1.0])?);
+/// assert!(!bx.point_in_region(&[5.0, 1.0])?);
+/// let pts = bx.region_points()?;
+/// assert_eq!(pts.point(0), [2.0, 1.0]);
+/// assert_eq!(pts.point(1), [4.0, 2.0]);
+/// # Ok::<(), ast_core::error::AstError>(())
+/// ```
+#[doc(alias = "Box")]
 #[derive(Debug, Clone)]
 pub struct BoxRegion {
     /// Shared region data (frameset, defining points, flags).
@@ -61,12 +98,18 @@ fn check_box_points(point1: &[f64], point2: &[f64]) -> AstResult<()> {
 }
 
 impl BoxRegionBuilder {
-    /// Create a builder for a BoxRegion in the given frame from a centre
-    /// point and one corner.
+    /// Start a Box in `frame` from its center and any one of its corners.
     ///
-    /// `centre` and `corner` must each have length equal to `frame.naxes()`.
-    /// The box extends symmetrically around `centre`, so the opposite
+    /// The Box extends symmetrically around `centre`, so the opposite
     /// corner is at `2*centre - corner`.
+    /// The Box takes ownership of `frame`.
+    ///
+    /// # Errors
+    ///
+    /// - [`ErrorCode::Naxin`] if `centre` or `corner` does not have one
+    ///   value for each axis of `frame`.
+    /// - [`ErrorCode::Badin`] if a value is [`BAD_VALUE`] or NaN.
+    #[doc(alias = "astBox")]
     pub fn new(frame: impl Frame + 'static, centre: Vec<f64>, corner: Vec<f64>) -> AstResult<Self> {
         let naxes = frame.naxes();
         if centre.len() != naxes {
@@ -98,17 +141,26 @@ impl BoxRegionBuilder {
         })
     }
 
-    /// Create a builder from explicit lower and upper bounds.
+    /// Start a Box in `frame` from two opposite corners.
     ///
-    /// The centre is computed as the midpoint `(lbnd + ubnd) / 2` and
-    /// the corner is set to `ubnd`. Both must have length equal to
-    /// `frame.naxes()`.
+    /// The corners need not be the lower and upper ones: a value of `lbnd`
+    /// may be above the matching value of `ubnd`.
+    /// The Box keeps the midpoint of the two as its center, and `ubnd` as
+    /// its corner.
+    /// The Box takes ownership of `frame`.
+    ///
+    /// # Errors
+    ///
+    /// - [`ErrorCode::Naxin`] if `lbnd` or `ubnd` does not have one value for
+    ///   each axis of `frame`.
+    /// - [`ErrorCode::Badin`] if a value is [`BAD_VALUE`] or NaN.
+    #[doc(alias = "astBox")]
     pub fn from_bounds(frame: impl Frame + 'static, lbnd: &[f64], ubnd: &[f64]) -> AstResult<Self> {
         Self::from_dyn_bounds(Box::new(frame), lbnd, ubnd)
     }
 
-    /// [`from_bounds`](Self::from_bounds) for a Frame already boxed, as C's
-    /// `astBox( frame, 1, lbnd, ubnd, ... )` takes any Frame.
+    /// [`from_bounds`](Self::from_bounds) for a Frame already boxed.
+    // C: `astBox( frame, 1, lbnd, ubnd, ... )` takes any Frame.
     pub(crate) fn from_dyn_bounds(frame: DynFrame, lbnd: &[f64], ubnd: &[f64]) -> AstResult<Self> {
         let naxes = frame.naxes();
         if lbnd.len() != naxes {
@@ -147,13 +199,28 @@ impl BoxRegionBuilder {
         })
     }
 
-    /// Set an uncertainty region.
+    /// Give the Box an uncertainty: a Region that, centered on any point of
+    /// the boundary, covers the possible positions of that point.
+    ///
+    /// [`Region::set_uncertainty`] describes the Regions that can be used,
+    /// and [`build`](Self::build) fails as that method does with one that
+    /// cannot.
+    /// Without one, the Box uses a default uncertainty 1.0E-6 of its size.
+    /// The uncertainty is the tolerance [`overlap`](Region::overlap) uses
+    /// when it compares Regions, and decides whether the boundary of the Box
+    /// mapped into another coordinate system can be described by a simpler
+    /// shape when it is simplified.
     pub fn uncertainty(mut self, unc: DynRegion) -> Self {
         self.uncertainty = Some(unc);
         self
     }
 
-    /// Build the BoxRegion.
+    /// Build the Box.
+    ///
+    /// # Errors
+    ///
+    /// Passes on the error of [`Region::set_uncertainty`] for an
+    /// uncertainty given to [`uncertainty`](Self::uncertainty).
     pub fn build(self) -> AstResult<BoxRegion> {
         let frameset = FrameSet::new(self.frame);
 
@@ -214,15 +281,22 @@ impl BoxRegion {
         Ok(BoxRegion { data })
     }
 
-    /// Mutate the current frame with region integrity enforcement.
+    /// Make a change to the Frame this Box represents, keeping the Box
+    /// consistent with it.
     ///
-    /// When adaptive (the default), the FrameSet's base-to-current mapping is
-    /// updated to account for the change, and defining points remain valid
-    /// in the base frame. When non-adaptive, the change is applied to both
-    /// frames without remapping.
-    ///
+    /// `f` is applied as a Frame attribute set through the Box is.
+    /// While the Box is [Adaptive](Region::is_adaptive), the change is made to
+    /// the Frame it represents, and the Box is remapped into the new coordinate
+    /// system so that it covers the same area.
+    /// Otherwise the change is made to both the Frame it represents and the
+    /// Frame it was defined in, so the numbers that define it keep their
+    /// values.
     /// `f` makes the change to each Frame it is made to, so it may be called
     /// more than once.
+    ///
+    /// # Errors
+    ///
+    /// Passes on the error returned by `f`, and the error of remapping the Box.
     pub fn with_integrity<F>(&mut self, f: F) -> AstResult<()>
     where
         F: Fn(&mut dyn Frame) -> AstResult<()>,
@@ -1332,8 +1406,8 @@ impl Region for BoxRegion {
         Ok(result)
     }
 
-    /// box.c `RegBaseGrid`: the base Frame's grid of MeshSize points over
-    /// the Box's bounds.
+    // box.c `RegBaseGrid`: the base Frame's grid of MeshSize points over
+    // the Box's bounds.
     fn base_grid(&self) -> AstResult<PointSet> {
         if !self.is_bounded()? {
             return Err(AstError::new(
@@ -1670,15 +1744,15 @@ impl Frame for BoxRegion {
         self.data.frameset.current().naxes()
     }
 
-    /// Mirrors C `Region::MatchAxesX` (region.c:6413): the axes of the
-    /// current Frame of the Region's FrameSet are matched.
+    // Mirrors C `Region::MatchAxesX` (region.c:6413): the axes of the
+    // current Frame of the Region's FrameSet are matched.
     fn match_axes_x(&self, frm1: &dyn Frame) -> AstResult<Vec<i32>> {
         self.data.frameset.current().match_axes_x(frm1)
     }
 
-    /// Mirrors C `Region::Match` (region.c:6214): the current Frame of the
-    /// Region's FrameSet is matched, through `astMatch` and so with its
-    /// cast retry.
+    // Mirrors C `Region::Match` (region.c:6214): the current Frame of the
+    // Region's FrameSet is matched, through `astMatch` and so with its
+    // cast retry.
     fn match_template(
         &self,
         target: &dyn Frame,
@@ -1719,9 +1793,9 @@ impl Frame for BoxRegion {
         self.data.frameset.current().norm(coords)
     }
 
-    /// A Region's axes are its encapsulated current Frame's axes. Mirrors
-    /// C `Region::AxDistance` / `AxOffset` / `AxNorm` (region.c:1457, 1610,
-    /// 1536), which all forward to that Frame.
+    // A Region's axes are its encapsulated current Frame's axes. Mirrors
+    // C `Region::AxDistance` / `AxOffset` / `AxNorm` (region.c:1457, 1610,
+    // 1536), which all forward to that Frame.
     fn get_axis(&self, axis: usize) -> AxisKind {
         self.data.frameset.current().get_axis(axis)
     }
@@ -1735,9 +1809,9 @@ impl Frame for BoxRegion {
         Box::new(self.clone())
     }
 
-    /// C has one `Simplify` slot, so a Region simplifies through its Mapping
-    /// side and the caller keeps the result because it is still a Frame
-    /// (`astIsAFrame`, `cmpframe.c:9024`).
+    // C has one `Simplify` slot, so a Region simplifies through its Mapping
+    // side and the caller keeps the result because it is still a Frame
+    // (`astIsAFrame`, `cmpframe.c:9024`).
     fn simplify_frame(&self) -> AstResult<Option<DynFrame>> {
         simplify_frame_via_mapping(self)
     }
@@ -1775,8 +1849,8 @@ impl Mapping for BoxRegion {
         &mut self.data.mapping_flags
     }
 
-    /// A Region is a Frame, which C's frame.c `GetIsLinear` reports as
-    /// linear.
+    // A Region is a Frame, which C's frame.c `GetIsLinear` reports as
+    // linear.
     fn is_linear(&self) -> bool {
         true
     }
@@ -1787,7 +1861,7 @@ impl Mapping for BoxRegion {
         Some(Box::new(crate::mappings::UnitMap::new(self.nin())))
     }
 
-    /// region.c `ReportPoints`: the current Frame formats the values.
+    // region.c `ReportPoints`: the current Frame formats the values.
     fn report_points(&self, _forward: bool, inp: &PointSet, out: &PointSet) {
         let frame = self.data.frameset.current();
         crate::mappings::report::write_report(&crate::frames::frame_report_lines(
@@ -1945,7 +2019,7 @@ impl Mapping for BoxRegion {
         crate::mappings::rate::numeric_rate(self, at, ax1, ax2)
     }
 
-    /// region.c `Equal`, which this class does not extend.
+    // region.c `Equal`, which this class does not extend.
     fn equal(&self, other: &dyn Mapping) -> bool {
         super::data::region_equal(self, other).is_some()
     }

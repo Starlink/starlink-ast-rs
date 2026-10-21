@@ -1,7 +1,7 @@
 kind	name	file	rust_item	reason	reviewed	note
 class	Axis	axis.c		merged	yes	Frame
-class	Box	box.c			no
-function	astBox	box.c			no
+class	Box	box.c	BoxRegion		yes
+function	astBox	box.c	BoxRegionBuilder::new;BoxRegionBuilder::from_bounds		yes	new takes a center and a corner (form 0), from_bounds two opposite corners (form 1)
 class	Channel	channel.c			no
 function	astChannelData	channel.c			no
 function	astWarnings	channel.c			no
@@ -20,15 +20,15 @@ function	astChannel	channel.c			no
 class	ChebyMap	chebymap.c	ChebyMap		yes	The C class and astChebyMap headers write the recurrence as Tn+1 = 2x Tn + Tn-1; the code subtracts Tn-1, as the port's doc says (docs/issues/c-library-quirks.md)
 function	astChebyDomain	chebymap.c	ChebyMap::domain		yes	C keeps no forward box when there are no forward coefficients and finds the forward domain by MapBox; the port always keeps the forward box given at creation (CH-8, docs/audits/mapping-c-parity.md; PLAN.md §2 row for that audit)
 function	astChebyMap	chebymap.c	ChebyMap::new		yes	C reads lbnd_i/ubnd_i whenever inverse coefficients are given and dereferences a NULL; the port refuses the call with Badin. C ignores lbnd_f/ubnd_f when there are no forward coefficients; the port requires them and keeps a forward box (CH-8, docs/audits/mapping-c-parity.md; PLAN.md §2 row for that audit)
-class	Circle	circle.c			no
-function	astCirclePars	circle.c			no
-function	astCircle	circle.c			no
+class	Circle	circle.c	Circle		yes
+function	astCirclePars	circle.c	Circle::circle_pars		yes	returns the center, radius and circumference point as a tuple
+function	astCircle	circle.c	CircleBuilder::new		yes	edge_point gives form 0 and radius form 1
 class	CmpFrame	cmpframe.c	CmpFrame		yes	A CmpFrame is not a Mapping here (PLAN.md 9.6), so C's use of one holding a Region as a masking Mapping has no counterpart; component attributes are reached through frame1 and frame2 rather than forwarded by name
 function	astCmpFrame	cmpframe.c	CmpFrame::new		yes	Takes ownership of the two Frames, where C stores the pointers supplied, so later changes go through frame1_mut and frame2_mut
 class	CmpMap	cmpmap.c	CmpMap		yes
 function	astCmpMap	cmpmap.c	CmpMap::new		yes	C keeps references to the components; the port's CmpMap takes ownership of them
-class	CmpRegion	cmpregion.c			no
-function	astCmpRegion	cmpregion.c			no
+class	CmpRegion	cmpregion.c	CmpRegion		yes
+function	astCmpRegion	cmpregion.c	CmpRegionBuilder::new		yes	the builder can also set an uncertainty, which astCmpRegion cannot
 class	DSBSpecFrame	dsbspecframe.c	DSBSpecFrame		yes
 attribute	ImagFreq	dsbspecframe.c	DSBSpecFrame::imag_freq_ghz;DSBSpecFrame::imag_freq		yes	imag_freq_ghz gives GHz as C's attribute does, imag_freq Hz
 attribute	DSBCentre	dsbspecframe.c	DSBSpecFrame::dsb_centre_cur;DSBSpecFrame::dsb_centre		yes	dsb_centre_cur is C's attribute, in the current spectral system; dsb_centre is the stored topocentric frequency in Hz; C's strings with units are for its string interface
@@ -37,9 +37,9 @@ attribute	SideBand	dsbspecframe.c	DSBSpecFrame::sideband		yes	The setter takes a
 attribute	AlignSideBand	dsbspecframe.c	DSBSpecFrame::align_sideband		yes
 function	astDSBSpecFrame	dsbspecframe.c	DSBSpecFrame::new;DSBSpecFrame::unset_system		yes	Attributes are set with typed setters rather than an options string; unset_system is astDSBSpecFrame("")
 class	DssMap	dssmap.c	DssMap		yes	The header says a DSS FitsChan read creates a DssMap; C's FitsChan builds a TPN WcsMap instead, as the port does (docs/issues/c-library-quirks.md)
-class	Ellipse	ellipse.c			no
-function	astEllipsePars	ellipse.c			no
-function	astEllipse	ellipse.c			no
+class	Ellipse	ellipse.c	Ellipse		yes
+function	astEllipsePars	ellipse.c	Ellipse::ellipse_pars		yes	returns an EllipsePars
+function	astEllipse	ellipse.c	EllipseBuilder::new;EllipseBuilder::from_points		yes	new takes the axes and angle (form 1), from_points the boundary points (form 0)
 function	astClearStatus	error.c			no
 function	astOK	error.c			no
 function	astSetPutErr	error.c			no
@@ -178,8 +178,8 @@ attribute	GrismM	grismmap.c	GrismMap::grism_m		yes	C refuses to set it on a Gris
 attribute	GrismEps	grismmap.c	GrismMap::grism_eps		yes	C refuses to set it on a GrismMap with more than one reference
 attribute	GrismTheta	grismmap.c	GrismMap::grism_theta		yes	C refuses to set it on a GrismMap with more than one reference
 function	astGrismMap	grismmap.c	GrismMap::new;GrismMap::default_map		yes	C takes only an options string; new sets every attribute and default_map sets none
-class	Interval	interval.c			no
-function	astInterval	interval.c			no
+class	Interval	interval.c	Interval		yes
+function	astInterval	interval.c	IntervalBuilder::new		yes	an Interval with no limit is accepted, as the C code accepts it, though the header says at least one is needed (c-library-quirks.md)
 class	IntraMap	intramap.c	IntraMap		yes	The transformation is an Arc<dyn IntraTransform> held by the IntraMap; registration is needed only to read a dump
 function	astIntraReg	intramap.c	IntraRegistry::register		yes	C keeps one process-wide table; the port's registry belongs to the Channel that reads (Channel::register_intra), and an IntraMap made in code needs none. The name, numbers of coordinates, flags, purpose, author and contact are IntraTransform methods. C accepts a repeat registration whose arguments are all identical; the port accepts a repeat of the same Arc
 attribute	IntraFlag	intramap.c	IntraMap::intra_flag		yes	The header gives an empty-string default; the getter returns None while unset, and the merge compares an unset value as an empty string, as C does
@@ -304,8 +304,8 @@ attribute	MocLineLen	mocchan.c			no
 function	astMocChan	mocchan.c			no
 class	NormMap	normmap.c	NormMap		yes
 function	astNormMap	normmap.c	NormMap::new		yes	The NormMap owns its Frame
-class	NullRegion	nullregion.c			no
-function	astNullRegion	nullregion.c			no
+class	NullRegion	nullregion.c	NullRegion		yes
+function	astNullRegion	nullregion.c	NullRegionBuilder::new		yes
 class	Object	object.c			no
 function	astAnnul	object.c			no
 function	astClear	object.c			no
@@ -409,15 +409,15 @@ class	Plot3D	plot3d.c		not-ported	yes
 attribute	RootCorner	plot3d.c		not-ported	yes
 attribute	Norm	plot3d.c		not-ported	yes
 function	astPlot3D	plot3d.c		not-ported	yes
-class	PointList	pointlist.c			no
-attribute	ListSize	pointlist.c			no
-function	astPointList	pointlist.c			no
-class	Polygon	polygon.c			no
-function	astConvex<X>	polygon.c			no
-function	astDownsize	polygon.c			no
-function	astOutline<X>	polygon.c			no
-attribute	SimpVertices	polygon.c			no
-function	astPolygon	polygon.c			no
+class	PointList	pointlist.c	PointList		yes
+attribute	ListSize	pointlist.c	PointList::list_size		yes
+function	astPointList	pointlist.c	PointListBuilder::new		yes	points are given as one Vec per point rather than an [ncoord][dim] array
+class	Polygon	polygon.c	Polygon		yes
+function	astConvex<X>	polygon.c	Polygon::convex		yes	one function generic over PixelValue for the type codes; the i64 bounds are the 8-byte interface; Dimin where C reads past a short array
+function	astDownsize	polygon.c	Polygon::downsize		yes	maxerr is measured in the base Frame, as the C code measures it (c-library-quirks.md)
+function	astOutline<X>	polygon.c	Polygon::outline		yes	one function generic over PixelValue for the type codes; the i64 bounds are the 8-byte interface; Dimin where C reads past a short array
+attribute	SimpVertices	polygon.c	Polygon::simp_vertices		yes
+function	astPolygon	polygon.c	PolygonBuilder::new		yes	vertices are given as one Vec per vertex rather than a [2][dim] array
 class	PolyMap	polymap.c	PolyMap		yes
 function	astPolyCoeffs	polymap.c	PolyMap::coeffs		yes	C also applies to a ChebyMap; ChebyMap has no coeffs and gives only the uninverted forward_terms/inverse_terms (PLAN.md §2)
 function	astPolyTran	polymap.c	PolyMap::poly_tran;ChebyMap::poly_tran		yes	ChebyMap's Applicability text (NULL bounds use the ChebyMap's own box, Chebyshev result) is on ChebyMap::poly_tran
@@ -425,8 +425,8 @@ attribute	IterInverse	polymap.c	PolyMap::iter_inverse		yes	ChebyMap's Applicabil
 attribute	NiterInverse	polymap.c	PolyMap::niter_inverse		yes
 attribute	TolInverse	polymap.c	PolyMap::tol_inverse		yes
 function	astPolyMap	polymap.c	PolyMap::new		yes	C takes powers as doubles rounded to the nearest integer and rejects negative ones; the port takes PolyTerm with usize powers
-class	Prism	prism.c			no
-function	astPrism	prism.c			no
+class	Prism	prism.c	Prism		yes
+function	astPrism	prism.c	PrismBuilder::new		yes	the builder can also set an uncertainty, which astPrism cannot
 class	RateMap	ratemap.c	RateMap		yes
 function	astRateMap	ratemap.c	RateMap::new		yes	The RateMap owns the encapsulated Mapping; C keeps a reference to it
 class	Region	region.c	Region		yes	rustdoc rejects an alias equal to the item's name, so the gate checks the trait's declaration

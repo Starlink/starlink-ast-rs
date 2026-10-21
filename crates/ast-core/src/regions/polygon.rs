@@ -2,10 +2,8 @@
 //!
 //! A [`Polygon`] represents a closed polygonal area within a 2-D
 //! coordinate frame. It is defined by an ordered list of vertices.
-//! Point membership is determined by the crossing-number (ray-casting)
-//! algorithm: a ray cast from the test point in the +x direction, and
-//! the number of polygon edge crossings determines inside/outside.
-//! Odd crossings = inside, even = outside.
+//! Point membership counts the edges crossed by the line from a point known
+//! to be inside the polygon to the test point: an even number means inside.
 //!
 //! The polygon is restricted to 2-dimensional frames (naxes must be 2).
 
@@ -83,10 +81,15 @@ fn polywidth(
     Ok((result, cen))
 }
 
-/// The test `Polygon::convex` applies to each pixel value: a pixel is selected
-/// when its value compares with the supplied value in this way (polygon.c
-/// `ISVALID`, and the `AST__LT` ... `AST__NE` codes of polygon.h and
-/// timeframe.h).
+/// The test [`Polygon::convex`] and [`Polygon::outline`] apply to each pixel
+/// value: a pixel is selected when its value compares with the supplied
+/// value in this way.
+///
+/// # See also
+///
+/// `AST__LT`, `AST__LE`, `AST__EQ`, `AST__NE`, `AST__GE` and `AST__GT`.
+// C: polygon.c `ISVALID`, and the `AST__LT` ... `AST__NE` codes of polygon.h
+// and timeframe.h.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PixelOper {
     /// Pixel value less than the supplied value.
@@ -910,11 +913,65 @@ fn pixel_polygon(frame: crate::frames::BasicFrame, points: Vec<Vec<f64>>) -> Pol
     }
 }
 
-/// A polygonal region within a 2-D coordinate frame.
+/// A polygonal area, defined by a list of vertices, within a 2-dimensional
+/// Frame.
 ///
-/// Defined by an ordered list of N vertices (N >= 3). The polygon is
-/// implicitly closed (the last vertex connects back to the first).
-/// Point membership uses the crossing-number (ray-casting) algorithm.
+/// The vertices are joined by geodesic curves in the Frame, and the last
+/// vertex is joined back to the first.
+/// In a basic Frame the curves are straight lines, and in a
+/// [`SkyFrame`](crate::frames::SkyFrame) they are great circles.
+///
+/// The inside of the polygon is to the left of the boundary as the vertices
+/// are traversed in the order given, with the first axis of the Frame
+/// pointing right and the second up, so vertices given anticlockwise
+/// enclose the area inside them.
+/// Giving the vertices in the reverse order negates the Polygon: it then
+/// covers everything outside them.
+/// The Polygon is stored with its vertices in whichever order makes it
+/// bounded when not negated, so a Polygon whose vertices were given in the
+/// order that covers the outside reports itself as
+/// [negated](Region::is_negated), with its vertices reversed.
+///
+/// In a SkyFrame, neighboring vertices are always joined by the shorter
+/// great circle arc, so an edge 180 degrees or more long has to be split by
+/// extra vertices.
+/// The closed path through the vertices divides the sky into two parts,
+/// and the inside is the one to the left of the path, circled anticlockwise
+/// when seen from the inside of the celestial sphere.
+///
+/// The vertices, in the order the Polygon keeps them, are what
+/// [`region_points`](Region::region_points) returns.
+/// Beyond the attributes and methods of every [`Region`], a Polygon has
+/// [`SimpVertices`](Self::simp_vertices) and
+/// [`downsize`](Self::downsize), and [`convex`](Self::convex) and
+/// [`outline`](Self::outline) make Polygons from pixel arrays.
+///
+/// A Frame attribute set through the Polygon changes the coordinate system
+/// it is described in; while the Polygon is
+/// [Adaptive](Region::is_adaptive) it keeps covering the same area.
+/// [`with_integrity`](Self::with_integrity) makes any other change to its
+/// Frame in the same way.
+///
+/// # Examples
+///
+/// ```
+/// use ast_core::frames::BasicFrameBuilder;
+/// use ast_core::regions::{PolygonBuilder, Region};
+///
+/// let frame = BasicFrameBuilder::new(2).build()?;
+/// let square = vec![vec![0.0, 0.0], vec![1.0, 0.0], vec![1.0, 1.0], vec![0.0, 1.0]];
+/// let inside = PolygonBuilder::new(frame.clone(), square.clone())?.build()?;
+/// assert!(inside.point_in_region(&[0.5, 0.5])?);
+/// assert!(!inside.is_negated());
+///
+/// // The same vertices clockwise: everything outside the square.
+/// let reversed: Vec<_> = square.into_iter().rev().collect();
+/// let outside = PolygonBuilder::new(frame, reversed)?.build()?;
+/// assert!(!outside.point_in_region(&[0.5, 0.5])?);
+/// assert!(outside.point_in_region(&[5.0, 5.0])?);
+/// assert!(outside.is_negated());
+/// # Ok::<(), ast_core::error::AstError>(())
+/// ```
 #[derive(Debug, Clone)]
 pub struct Polygon {
     /// Shared region data (frameset, defining points, flags).
@@ -934,22 +991,22 @@ pub struct PolygonBuilder {
 }
 
 impl PolygonBuilder {
-    /// Create a builder for a Polygon in the given frame.
+    /// Start a Polygon in the 2-dimensional `frame` with the given vertices,
+    /// in order.
     ///
-    /// # Parameters
-    ///
-    /// - `frame`: A 2-D frame (naxes must be 2).
-    /// - `vertices`: Ordered list of vertex positions. Each vertex is a
-    ///   `Vec<f64>` of length 2.
+    /// The order decides which side of the boundary the Polygon covers; see
+    /// [`Polygon`].
+    /// One or two vertices are accepted.
+    /// The Polygon takes ownership of `frame`.
     ///
     /// # Errors
     ///
-    /// - [`ErrorCode::Badin`] if the frame does not have exactly 2 axes, as
-    ///   astInitPolygon reports it, or (from [`PolygonBuilder::build`]) a
-    ///   vertex is BAD.
-    /// - [`ErrorCode::Nptin`] if no vertices are supplied, as astPointSet
-    ///   reports it. One or two vertices are accepted, as C accepts them.
-    /// - [`ErrorCode::Naxin`] if a vertex does not have 2 coordinates.
+    /// - [`ErrorCode::Badin`] if `frame` does not have 2 axes.
+    /// - [`ErrorCode::Nptin`] if `vertices` is empty.
+    /// - [`ErrorCode::Naxin`] if a vertex does not have 2 values.
+    // C: astInitPolygon reports the Badin, and astPointSet the Nptin; C
+    // accepts one or two vertices too.
+    #[doc(alias = "astPolygon")]
     pub fn new(frame: impl Frame + 'static, vertices: Vec<Vec<f64>>) -> AstResult<Self> {
         Self::from_dyn(Box::new(frame), vertices)
     }
@@ -997,13 +1054,31 @@ impl PolygonBuilder {
         })
     }
 
-    /// Set an uncertainty region.
+    /// Give the Polygon an uncertainty: a Region that, centered on any point
+    /// of the boundary, covers the possible positions of that point.
+    ///
+    /// [`Region::set_uncertainty`] describes the Regions that can be used,
+    /// and [`build`](Self::build) fails as that method does with one that
+    /// cannot.
+    /// Without one, the Polygon uses a default uncertainty 1.0E-6 of its
+    /// size.
+    /// The uncertainty is the tolerance [`overlap`](Region::overlap) uses
+    /// when it compares Regions, and decides whether the boundary of the
+    /// Polygon mapped into another coordinate system can be described by a
+    /// simpler shape when it is simplified.
     pub fn uncertainty(mut self, unc: DynRegion) -> Self {
         self.uncertainty = Some(unc);
         self
     }
 
     /// Build the Polygon.
+    ///
+    /// # Errors
+    ///
+    /// - [`ErrorCode::Badin`] if a vertex has a [`BAD_VALUE`].
+    /// - Passes on the error of [`Region::set_uncertainty`] for an
+    ///   uncertainty given to [`uncertainty`](Self::uncertainty), and the
+    ///   errors of working out whether the Polygon is bounded.
     pub fn build(self) -> AstResult<Polygon> {
         let frameset = FrameSet::new(self.frame);
 
@@ -1051,27 +1126,39 @@ impl PolygonBuilder {
 // ============================================================================
 
 impl Polygon {
-    /// `SimpVertices`: may simplification re-define the Polygon by
-    /// transforming its vertices?
+    /// The SimpVertices attribute: whether simplifying the Polygon just
+    /// transforms its vertices.
     ///
-    /// When this is false, [`Mapping::simplified`] additionally checks that the
-    /// transformation left the edges straight, and abandons the replacement if
-    /// it did not. The default is true (polygon.c:6511).
+    /// Simplifying a Polygon whose coordinate system has changed makes a new
+    /// Polygon by transforming its vertices from the Frame it was defined in
+    /// into the Frame it represents.
+    /// When SimpVertices is true, that Polygon is the result, without
+    /// further checks.
+    /// When it is false, [`Mapping::simplified`] also checks that the edges
+    /// of the new Polygon do not depart from those of the original by more
+    /// than the Polygon's uncertainty, which can happen when the Mapping
+    /// between the two Frames is far from linear, and returns the original
+    /// Polygon unchanged when they do.
+    ///
+    /// Default: true.
+    // C: the default is in polygon.c:6511.
+    #[doc(alias = "SimpVertices")]
     pub fn simp_vertices(&self) -> bool {
         self.simp_vertices.unwrap_or(true)
     }
 
-    /// Set `SimpVertices`.
+    /// Set [`SimpVertices`](Self::simp_vertices).
     pub fn set_simp_vertices(&mut self, value: bool) {
         self.simp_vertices = Some(value);
     }
 
-    /// Has `SimpVertices` been set?
+    /// Whether [`SimpVertices`](Self::simp_vertices) has been set.
     pub fn test_simp_vertices(&self) -> bool {
         self.simp_vertices.is_some()
     }
 
-    /// Clear `SimpVertices`, restoring the default.
+    /// Clear [`SimpVertices`](Self::simp_vertices), restoring its default
+    /// of true.
     pub fn clear_simp_vertices(&mut self) {
         self.simp_vertices = None;
     }
@@ -1082,15 +1169,23 @@ impl Polygon {
 // ============================================================================
 
 impl Polygon {
-    /// Mutate the current frame with region integrity enforcement.
+    /// Make a change to the Frame this Polygon represents, keeping the Polygon
+    /// consistent with it.
     ///
-    /// When adaptive (the default), the FrameSet's base-to-current mapping is
-    /// updated to account for the change, and defining points remain valid
-    /// in the base frame. When non-adaptive, the change is applied to both
-    /// frames without remapping.
-    ///
+    /// `f` is applied as a Frame attribute set through the Polygon is.
+    /// While the Polygon is [Adaptive](Region::is_adaptive), the change is made
+    /// to the Frame it represents, and the Polygon is remapped into the new
+    /// coordinate system so that it covers the same area.
+    /// Otherwise the change is made to both the Frame it represents and the
+    /// Frame it was defined in, so the numbers that define it keep their
+    /// values.
     /// `f` makes the change to each Frame it is made to, so it may be called
     /// more than once.
+    ///
+    /// # Errors
+    ///
+    /// Passes on the error returned by `f`, and the error of remapping the
+    /// Polygon.
     pub fn with_integrity<F>(&mut self, f: F) -> AstResult<()>
     where
         F: Fn(&mut dyn Frame) -> AstResult<()>,
@@ -1103,25 +1198,41 @@ impl Polygon {
         self.data.perm_axes(perm)
     }
 
-    /// The convex hull of the pixels of a 2-D array whose values pass a test,
-    /// as a Polygon in a PIXEL Frame (polygon.c `astConvex<X>` and
-    /// `astConvex8<X>`).
+    /// The smallest Polygon that encloses every pixel of a 2-dimensional
+    /// array whose value passes a test: their convex hull.
     ///
-    /// `array` holds the pixels row by row, X varying fastest, with pixel
-    /// indices `lbnd` to `ubnd` inclusive on each axis. A pixel is selected
-    /// when its value compares with `value` as `oper` says. With `starpix`,
-    /// the Starlink convention, pixel centres are at half-integer PIXEL
-    /// coordinates; otherwise, as in `astResample`, at integers.
+    /// `array` holds the pixels row by row, the index on the first axis
+    /// varying fastest, with pixel indices `lbnd` to `ubnd` inclusive on
+    /// each axis.
+    /// A pixel is selected when its value compares with `value` as `oper`
+    /// says.
     ///
-    /// The vertices are the centres of selected pixels, one per corner of
-    /// each of the four parts of the hull, so a vertex may repeat. The result
-    /// is `None` when no pixel is selected, as C returns a null pointer
-    /// without an error.
+    /// The Polygon is in a basic 2-dimensional Frame describing pixel
+    /// coordinates, whose Domain is "PIXEL", Title "Pixel coordinates" and
+    /// axis Units "pixel", with no other attribute set.
+    /// With `starpix`, the standard Starlink definition of pixel coordinates
+    /// is used: the pixel with index I spans pixel coordinates I-1 to I, so
+    /// pixel corners have integer coordinates.
+    /// Otherwise the pixel with index I spans I-0.5 to I+0.5, so pixel
+    /// centers have integer coordinates, as in [`mask`](super::mask).
+    ///
+    /// The vertices are the centers of selected pixels, one per corner of
+    /// each of the four parts of the hull, so a vertex may repeat.
+    /// The result is `None`, without an error, when no pixel is selected.
     ///
     /// # Errors
     ///
     /// [`ErrorCode::Dimin`] if `ubnd` is below `lbnd` on either axis or
-    /// `array` is shorter than the pixel count, where C reads past the array.
+    /// `array` has fewer elements than the pixels the bounds describe.
+    ///
+    /// # See also
+    ///
+    /// `astConvex<X>`.
+    // C: polygon.c `astConvex<X>` and `astConvex8<X>`; the i64 bounds are
+    // the 8-byte interface.
+    // C reads past the array where this reports Dimin, and returns a null
+    // pointer without an error where this returns None.
+    #[doc(alias = "astConvex")]
     pub fn convex<T: PixelValue>(
         value: T,
         oper: PixelOper,
@@ -1138,16 +1249,25 @@ impl Polygon {
         Ok(Some(pixel_polygon(pixel_frame()?, points)))
     }
 
-    /// A Polygon with a subset of this one's vertices that approximates it
-    /// to within `maxerr`, a distance in its base Frame, or that has
-    /// `maxvert` vertices, whichever is reached first (polygon.c
-    /// `astDownsize`). `maxerr` at or below zero means no error limit, and
-    /// `maxvert` below 3 no vertex limit. The vertices kept are densest where
-    /// the boundary bends most.
+    /// A new Polygon with a subset of the vertices of this one, chosen so
+    /// that it is a good approximation to this one.
+    ///
+    /// The vertices kept are densest where the boundary bends most.
+    /// Vertices are removed until the new Polygon has `maxvert` vertices, or
+    /// until removing another would make it depart from this one by more
+    /// than `maxerr`, a distance as the Frame the Polygon was defined in
+    /// measures it.
+    /// A `maxerr` of zero or less sets no limit on the departure, so the
+    /// Polygon has `maxvert` vertices, and a `maxvert` below 3 sets no limit
+    /// on the number of vertices, so the Polygon has the fewest that keep
+    /// within `maxerr`.
     ///
     /// # Errors
     ///
-    /// Any error from the base Frame's `resolve_points`.
+    /// Passes on the error of the Frame's
+    /// [`resolve_points`](crate::frames::Frame::resolve_points).
+    // C: polygon.c `Downsize`, which measures in the base Frame.
+    #[doc(alias = "astDownsize")]
     pub fn downsize(&self, maxerr: f64, maxvert: usize) -> AstResult<Polygon> {
         let x: Vec<f64> = self.data.points.iter().map(|p| p[0]).collect();
         let y: Vec<f64> = self.data.points.iter().map(|p| p[1]).collect();
@@ -1158,29 +1278,45 @@ impl Polygon {
         Ok(result)
     }
 
-    /// A Polygon outlining the region of a 2-D array whose pixels pass a
-    /// test and that contains a given pixel, in a PIXEL Frame (polygon.c
-    /// `astOutline<X>` and `astOutline8<X>`).
+    /// A Polygon enclosing one contiguous set of the pixels of a
+    /// 2-dimensional array whose value passes a test.
     ///
-    /// `array` holds the pixels row by row, X varying fastest, with pixel
-    /// indices `lbnd` to `ubnd` inclusive on each axis, and a pixel is
-    /// selected when its value compares with `value` as `oper` says. The
-    /// outline is of the selected region containing pixel `inside`, given by
-    /// its pixel indices; if that pixel is outside the array or not selected,
-    /// the selected pixel nearest the centre of the array found by a spiral
-    /// search is used. The outline follows pixel edges, so holes in the
-    /// region are not part of it. With `starpix` pixel centres are at
-    /// half-integer PIXEL coordinates; otherwise, as in `astResample`, at
-    /// integers.
+    /// `array` holds the pixels row by row, the index on the first axis
+    /// varying fastest, with pixel indices `lbnd` to `ubnd` inclusive on
+    /// each axis; for a FITS image `lbnd` is 1 and `ubnd` the NAXISi values.
+    /// A pixel is selected when its value compares with `value` as `oper`
+    /// says.
+    /// The array may hold several separate sets of selected pixels, so
+    /// `inside` gives the pixel indices of a pixel in the one to outline.
+    /// If that pixel is outside the array or not selected, the first
+    /// selected pixel met by a search spiraling out from the central pixel
+    /// is used.
+    /// The Polygon is the outer boundary of the set: holes in it, where
+    /// pixels are not selected, are ignored.
     ///
-    /// When `maxerr` is above zero or `maxvert` above 2, the full outline is
-    /// smoothed and then reduced as [`Polygon::downsize`] reduces a Polygon.
+    /// The full outline follows the edges of the pixels.
+    /// When `maxerr` is above zero or `maxvert` above 2, it is smoothed and
+    /// then reduced as [`downsize`](Self::downsize) reduces a Polygon, with
+    /// `maxerr` a number of pixels; otherwise it keeps a vertex at every
+    /// change of direction.
+    ///
+    /// The Polygon is in the pixel coordinate Frame that
+    /// [`convex`](Self::convex) describes, and `starpix` chooses the
+    /// definition of pixel coordinates as it does there.
     ///
     /// # Errors
     ///
-    /// [`ErrorCode::Nonin`] if the spiral search finds no selected pixel, and
-    /// [`ErrorCode::Dimin`] if `ubnd` is below `lbnd` on either axis or
-    /// `array` is shorter than the pixel count, where C reads past the array.
+    /// - [`ErrorCode::Nonin`] if the search finds no selected pixel.
+    /// - [`ErrorCode::Dimin`] if `ubnd` is below `lbnd` on either axis or
+    ///   `array` has fewer elements than the pixels the bounds describe.
+    ///
+    /// # See also
+    ///
+    /// `astOutline<X>`.
+    // C: polygon.c `astOutline<X>` and `astOutline8<X>`; the i64 bounds are
+    // the 8-byte interface.
+    // C reads past the array where this reports Dimin.
+    #[doc(alias = "astOutline")]
     #[allow(clippy::too_many_arguments)]
     pub fn outline<T: PixelValue>(
         value: T,
@@ -1851,6 +1987,13 @@ impl Region for Polygon {
         self.data.clear_mesh_size();
     }
 
+    /// Whether this Polygon is bounded: see [`Region::is_bounded`].
+    ///
+    /// A Polygon in a sky Frame is always bounded.
+    /// Otherwise it is bounded when its vertices go anticlockwise and it is
+    /// not negated, or clockwise and it is negated, which is to say when it
+    /// covers the area inside its vertices; a newly built Polygon is bounded
+    /// unless it is negated.
     fn is_bounded(&self) -> AstResult<bool> {
         self.is_bounded_inner()
     }
@@ -1975,15 +2118,15 @@ impl Frame for Polygon {
         self.data.frameset.current().naxes()
     }
 
-    /// Mirrors C `Region::MatchAxesX` (region.c:6413): the axes of the
-    /// current Frame of the Region's FrameSet are matched.
+    // Mirrors C `Region::MatchAxesX` (region.c:6413): the axes of the
+    // current Frame of the Region's FrameSet are matched.
     fn match_axes_x(&self, frm1: &dyn Frame) -> AstResult<Vec<i32>> {
         self.data.frameset.current().match_axes_x(frm1)
     }
 
-    /// Mirrors C `Region::Match` (region.c:6214): the current Frame of the
-    /// Region's FrameSet is matched, through `astMatch` and so with its
-    /// cast retry.
+    // Mirrors C `Region::Match` (region.c:6214): the current Frame of the
+    // Region's FrameSet is matched, through `astMatch` and so with its
+    // cast retry.
     fn match_template(
         &self,
         target: &dyn Frame,
@@ -2024,9 +2167,9 @@ impl Frame for Polygon {
         self.data.frameset.current().norm(coords)
     }
 
-    /// A Region's axes are its encapsulated current Frame's axes. Mirrors
-    /// C `Region::AxDistance` / `AxOffset` / `AxNorm` (region.c:1457, 1610,
-    /// 1536), which all forward to that Frame.
+    // A Region's axes are its encapsulated current Frame's axes. Mirrors
+    // C `Region::AxDistance` / `AxOffset` / `AxNorm` (region.c:1457, 1610,
+    // 1536), which all forward to that Frame.
     fn get_axis(&self, axis: usize) -> AxisKind {
         self.data.frameset.current().get_axis(axis)
     }
@@ -2040,9 +2183,9 @@ impl Frame for Polygon {
         Box::new(self.clone())
     }
 
-    /// C has one `Simplify` slot, so a Region simplifies through its Mapping
-    /// side and the caller keeps the result because it is still a Frame
-    /// (`astIsAFrame`, `cmpframe.c:9024`).
+    // C has one `Simplify` slot, so a Region simplifies through its Mapping
+    // side and the caller keeps the result because it is still a Frame
+    // (`astIsAFrame`, `cmpframe.c:9024`).
     fn simplify_frame(&self) -> AstResult<Option<DynFrame>> {
         simplify_frame_via_mapping(self)
     }
@@ -2080,8 +2223,8 @@ impl Mapping for Polygon {
         &mut self.data.mapping_flags
     }
 
-    /// A Region is a Frame, which C's frame.c `GetIsLinear` reports as
-    /// linear.
+    // A Region is a Frame, which C's frame.c `GetIsLinear` reports as
+    // linear.
     fn is_linear(&self) -> bool {
         true
     }
@@ -2092,7 +2235,7 @@ impl Mapping for Polygon {
         Some(Box::new(crate::mappings::UnitMap::new(self.nin())))
     }
 
-    /// region.c `ReportPoints`: the current Frame formats the values.
+    // region.c `ReportPoints`: the current Frame formats the values.
     fn report_points(&self, _forward: bool, inp: &PointSet, out: &PointSet) {
         let frame = self.data.frameset.current();
         crate::mappings::report::write_report(&crate::frames::frame_report_lines(
@@ -2253,7 +2396,7 @@ impl Mapping for Polygon {
         crate::mappings::rate::numeric_rate(self, at, ax1, ax2)
     }
 
-    /// region.c `Equal`, which this class does not extend.
+    // region.c `Equal`, which this class does not extend.
     fn equal(&self, other: &dyn Mapping) -> bool {
         super::data::region_equal(self, other).is_some()
     }

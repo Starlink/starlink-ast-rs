@@ -26,16 +26,54 @@ use crate::mappings::{DynMapping, Mapping, ViaSimplify};
 use super::data::{RegionData, RegionGeometry};
 use super::{DynRegion, Overlap, Region};
 
-/// An extrusion of a region into higher dimensions.
+/// An extrusion of a Region into one or more further dimensions, given by
+/// another Region.
 ///
-/// The Prism combines two sub-regions of potentially different
-/// dimensionality. The first region defines the "base" shape and the
-/// second defines the extrusion. The combined number of axes is the
-/// sum of the two sub-regions' axes.
+/// If the Region being extruded has N axes and the Region defining the
+/// extrusion has M axes, the Prism has N + M axes, in a
+/// [`CmpFrame`](crate::frames::CmpFrame) of the two Regions' Frames.
+/// A point is inside the Prism if its first N axis values are a point
+/// inside the Region being extruded, and its other M values a point inside
+/// the Region defining the extrusion.
+/// For example, a cylinder is a [`Circle`](super::Circle) extruded with a
+/// 1-dimensional [`Interval`](super::Interval) giving the limits of its
+/// length.
 ///
-/// A point `[x1, ..., xN, y1, ..., yM]` is inside the Prism if
-/// `[x1, ..., xN]` is inside region1 (N axes) AND `[y1, ..., yM]` is
-/// inside region2 (M axes).
+/// A Prism has no defining points of its own, so
+/// [`region_points`](Region::region_points) returns none; its components
+/// have theirs.
+/// Unless one is set on it, its uncertainty combines those of its two
+/// components, each the one set on it or else its default.
+/// A [Closed](Region::is_closed) or [MeshSize](Region::mesh_size) value set
+/// on the Prism is passed on to its components, and its
+/// [FillFactor](Region::fill_factor) default comes from theirs.
+/// It has no attributes or methods beyond those of every [`Region`], except
+/// for access to its components.
+///
+/// A Frame attribute set through the Prism changes the coordinate system it
+/// is described in; while the Prism is [Adaptive](Region::is_adaptive) it
+/// keeps covering the same volume, and otherwise the change is passed on
+/// to the component holding the axis, or to both components.
+/// [`with_integrity`](Self::with_integrity) makes any other change to its
+/// Frame in the same way.
+///
+/// # Examples
+///
+/// ```
+/// use ast_core::frames::BasicFrameBuilder;
+/// use ast_core::regions::{CircleBuilder, IntervalBuilder, PrismBuilder, Region};
+///
+/// // A cylinder of radius 1 and length 4 along the third axis.
+/// let circle = CircleBuilder::new(BasicFrameBuilder::new(2).build()?, vec![0.0, 0.0])?
+///     .radius(1.0)
+///     .build()?;
+/// let length = IntervalBuilder::new(BasicFrameBuilder::new(1).build()?, vec![0.0], vec![4.0])?
+///     .build()?;
+/// let cylinder = PrismBuilder::new(circle, length)?.build()?;
+/// assert!(cylinder.point_in_region(&[0.5, 0.0, 3.0])?);
+/// assert!(!cylinder.point_in_region(&[0.5, 0.0, 5.0])?);
+/// # Ok::<(), ast_core::error::AstError>(())
+/// ```
 #[derive(Debug, Clone)]
 pub struct Prism {
     /// Shared region data (frameset, defining points, flags).
@@ -54,11 +92,16 @@ pub struct PrismBuilder {
 }
 
 impl PrismBuilder {
-    /// Create a builder for a Prism that extrudes `region1` along `region2`.
+    /// Start a Prism that extrudes `region1` into the dimensions of
+    /// `region2`.
     ///
-    /// The resulting Prism will have `region1.naxes() + region2.naxes()` axes.
-    /// `region1` defines the base shape (first N axes) and `region2` defines
-    /// the extrusion (remaining M axes).
+    /// The Prism has the axes of `region1` followed by those of `region2`.
+    /// It takes ownership of the two Regions.
+    ///
+    /// # Errors
+    ///
+    /// None: the result is for symmetry with the other Region builders.
+    #[doc(alias = "astPrism")]
     pub fn new(region1: impl Region + 'static, region2: impl Region + 'static) -> AstResult<Self> {
         Ok(PrismBuilder {
             region1: Box::new(region1),
@@ -67,7 +110,11 @@ impl PrismBuilder {
         })
     }
 
-    /// Create a builder from boxed (dynamic) regions.
+    /// [`new`](Self::new) for Regions already boxed.
+    ///
+    /// # Errors
+    ///
+    /// None, as for [`new`](Self::new).
     pub fn from_dyn(region1: DynRegion, region2: DynRegion) -> AstResult<Self> {
         Ok(PrismBuilder {
             region1,
@@ -76,13 +123,25 @@ impl PrismBuilder {
         })
     }
 
-    /// Set an uncertainty region.
+    /// Give the Prism an uncertainty: a Region that, centered on any point
+    /// of the boundary, covers the possible positions of that point.
+    ///
+    /// [`Region::set_uncertainty`] describes the Regions that can be used,
+    /// and [`build`](Self::build) fails as that method does with one that
+    /// cannot.
+    /// Without one, the Prism combines the uncertainties of its components,
+    /// as [`Prism`] describes.
     pub fn uncertainty(mut self, unc: DynRegion) -> Self {
         self.uncertainty = Some(unc);
         self
     }
 
     /// Build the Prism.
+    ///
+    /// # Errors
+    ///
+    /// Passes on the error of [`Region::set_uncertainty`] for an
+    /// uncertainty given to [`uncertainty`](Self::uncertainty).
     pub fn build(mut self) -> AstResult<Prism> {
         // astInitPrism takes deep copies of the components, and a copy clears
         // RegionFS throughout (prism.c:4218-4219, region.c Copy).
@@ -128,11 +187,23 @@ impl PrismBuilder {
 // ============================================================================
 
 impl Prism {
-    /// Mutate the current frame with region integrity enforcement: remapping
-    /// the Region when it is Adaptive, otherwise changing both Frames.
+    /// Make a change to the Frame this Prism represents, keeping the Prism
+    /// consistent with it.
     ///
+    /// `f` is applied as a Frame attribute set through the Prism is.
+    /// While the Prism is [Adaptive](Region::is_adaptive), the change is made
+    /// to the Frame it represents, and the Prism is remapped into the new
+    /// coordinate system so that it covers the same area.
+    /// Otherwise the change is made to both the Frame it represents and the
+    /// Frame it was defined in, and to its component Regions, so the numbers
+    /// that define it keep their values.
     /// `f` makes the change to each Frame it is made to, so it may be called
     /// more than once.
+    ///
+    /// # Errors
+    ///
+    /// Passes on the error returned by `f`, and the error of remapping the
+    /// Prism.
     pub fn with_integrity<F>(&mut self, f: F) -> AstResult<()>
     where
         F: Fn(&mut dyn Frame) -> AstResult<()>,
@@ -145,12 +216,13 @@ impl Prism {
         self.data.perm_axes(perm)
     }
 
-    /// Get a reference to the first component region (the extruded region).
+    /// The Region being extruded, which gives the first axes of the Prism.
     pub fn region1(&self) -> &dyn Region {
         self.region1.as_ref()
     }
 
-    /// Get a reference to the second component region (the extrusion region).
+    /// The Region defining the extrusion, which gives the last axes of the
+    /// Prism.
     pub fn region2(&self) -> &dyn Region {
         self.region2.as_ref()
     }
@@ -570,7 +642,9 @@ impl Region for Prism {
         self.data.closed
     }
 
-    /// prism.c `SetClosed` sets the value on both components too.
+    /// Set [`Closed`](Region::is_closed) on this Prism and on both its
+    /// component Regions.
+    // C: prism.c `SetClosed`.
     fn set_closed(&mut self, closed: bool) {
         self.data.closed = closed;
         self.data.closed_set = true;
@@ -579,7 +653,9 @@ impl Region for Prism {
         self.region2.set_closed(closed);
     }
 
-    /// prism.c `ClearClosed` clears the value on both components too.
+    /// Clear [`Closed`](Region::is_closed) on this Prism and on both its
+    /// component Regions.
+    // C: prism.c `ClearClosed`.
     fn clear_closed(&mut self) {
         self.data.closed = true;
         self.data.closed_set = false;
@@ -598,7 +674,10 @@ impl Region for Prism {
         self.data.invalidate_cache();
     }
 
-    /// prism.c `GetFillFactor`: the value set, or by default the product of the components'.
+    /// The FillFactor attribute of this Prism: see [`Region::fill_factor`].
+    ///
+    /// Default: the product of the FillFactors of its two component Regions.
+    // C: prism.c `GetFillFactor`.
     fn fill_factor(&self) -> f64 {
         if self.data.fill_factor_set {
             self.data.fill_factor
@@ -623,7 +702,9 @@ impl Region for Prism {
         self.data.effective_mesh_size()
     }
 
-    /// prism.c `SetMeshSize` sets the value on both components too.
+    /// Set [`MeshSize`](Region::mesh_size) on this Prism and on both its
+    /// component Regions.
+    // C: prism.c `SetMeshSize`.
     fn set_mesh_size(&mut self, size: usize) {
         self.data.set_mesh_size(size);
         self.region1.set_mesh_size(size);
@@ -634,13 +715,19 @@ impl Region for Prism {
         self.data.mesh_size_set
     }
 
-    /// prism.c `ClearMeshSize` clears the value on both components too.
+    /// Clear [`MeshSize`](Region::mesh_size) on this Prism and on both its
+    /// component Regions.
+    // C: prism.c `ClearMeshSize`.
     fn clear_mesh_size(&mut self) {
         self.data.clear_mesh_size();
         self.region1.clear_mesh_size();
         self.region2.clear_mesh_size();
     }
 
+    /// Whether this Prism is bounded: see [`Region::is_bounded`].
+    ///
+    /// A Prism is bounded when both its component Regions are, each negated
+    /// first if the Prism is negated.
     fn is_bounded(&self) -> AstResult<bool> {
         self.is_bounded_inner()
     }
@@ -992,15 +1079,15 @@ impl Frame for Prism {
         self.data.frameset.current().naxes()
     }
 
-    /// Mirrors C `Region::MatchAxesX` (region.c:6413): the axes of the
-    /// current Frame of the Region's FrameSet are matched.
+    // Mirrors C `Region::MatchAxesX` (region.c:6413): the axes of the
+    // current Frame of the Region's FrameSet are matched.
     fn match_axes_x(&self, frm1: &dyn Frame) -> AstResult<Vec<i32>> {
         self.data.frameset.current().match_axes_x(frm1)
     }
 
-    /// Mirrors C `Region::Match` (region.c:6214): the current Frame of the
-    /// Region's FrameSet is matched, through `astMatch` and so with its
-    /// cast retry.
+    // Mirrors C `Region::Match` (region.c:6214): the current Frame of the
+    // Region's FrameSet is matched, through `astMatch` and so with its
+    // cast retry.
     fn match_template(
         &self,
         target: &dyn Frame,
@@ -1041,9 +1128,9 @@ impl Frame for Prism {
         self.data.frameset.current().norm(coords)
     }
 
-    /// A Region's axes are its encapsulated current Frame's axes. Mirrors
-    /// C `Region::AxDistance` / `AxOffset` / `AxNorm` (region.c:1457, 1610,
-    /// 1536), which all forward to that Frame.
+    // A Region's axes are its encapsulated current Frame's axes. Mirrors
+    // C `Region::AxDistance` / `AxOffset` / `AxNorm` (region.c:1457, 1610,
+    // 1536), which all forward to that Frame.
     fn get_axis(&self, axis: usize) -> AxisKind {
         self.data.frameset.current().get_axis(axis)
     }
@@ -1057,9 +1144,9 @@ impl Frame for Prism {
         Box::new(self.clone())
     }
 
-    /// C has one `Simplify` slot, so a Region simplifies through its Mapping
-    /// side and the caller keeps the result because it is still a Frame
-    /// (`astIsAFrame`, `cmpframe.c:9024`).
+    // C has one `Simplify` slot, so a Region simplifies through its Mapping
+    // side and the caller keeps the result because it is still a Frame
+    // (`astIsAFrame`, `cmpframe.c:9024`).
     fn simplify_frame(&self) -> AstResult<Option<DynFrame>> {
         simplify_frame_via_mapping(self)
     }
@@ -1097,8 +1184,8 @@ impl Mapping for Prism {
         &mut self.data.mapping_flags
     }
 
-    /// A Region is a Frame, which C's frame.c `GetIsLinear` reports as
-    /// linear.
+    // A Region is a Frame, which C's frame.c `GetIsLinear` reports as
+    // linear.
     fn is_linear(&self) -> bool {
         true
     }
@@ -1109,7 +1196,7 @@ impl Mapping for Prism {
         Some(Box::new(crate::mappings::UnitMap::new(self.nin())))
     }
 
-    /// region.c `ReportPoints`: the current Frame formats the values.
+    // region.c `ReportPoints`: the current Frame formats the values.
     fn report_points(&self, _forward: bool, inp: &PointSet, out: &PointSet) {
         let frame = self.data.frameset.current();
         crate::mappings::report::write_report(&crate::frames::frame_report_lines(
@@ -1379,7 +1466,7 @@ impl Mapping for Prism {
         crate::mappings::rate::numeric_rate(self, at, ax1, ax2)
     }
 
-    /// prism.c `Equal`: region.c `Equal`, then equal components.
+    // prism.c `Equal`: region.c `Equal`, then equal components.
     fn equal(&self, other: &dyn Mapping) -> bool {
         super::data::region_equal(self, other).is_some_and(|other| {
             (self.region1.as_ref() as &dyn Mapping).equal(other.region1.as_ref() as &dyn Mapping)

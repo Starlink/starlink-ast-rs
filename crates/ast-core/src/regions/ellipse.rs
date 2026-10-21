@@ -212,16 +212,41 @@ pub(crate) fn best_ellipse(
     }
 }
 
-/// A rotated elliptical region within a 2-D coordinate frame.
+/// An ellipse within a 2-dimensional Frame.
 ///
-/// Defined by a centre point, semi-major axis length `a`, semi-minor
-/// axis length `b`, and a position angle (radians, measured from axis 1
-/// toward axis 2). The frame must have exactly 2 axes.
+/// [`EllipseBuilder::new`] makes an Ellipse from its center, the
+/// half-lengths of its two axes and the orientation of its first axis, and
+/// [`EllipseBuilder::from_points`] from its center and two points on its
+/// boundary.
+/// The Ellipse keeps its center, the end of its first axis and another
+/// point on its boundary (the end of its second axis when it was made from
+/// the axes), which [`region_points`](Region::region_points) returns in
+/// that order.
+/// [`ellipse_pars`](Self::ellipse_pars) gives its center, axes and
+/// orientation.
 ///
-/// The defining points stored internally are:
-/// - `points[0]`: centre
-/// - `points[1]`: end of semi-major axis
-/// - `points[2]`: a point on the boundary (end of semi-minor axis)
+/// A Frame attribute set through the Ellipse changes the coordinate system
+/// it is described in; while the Ellipse is [Adaptive](Region::is_adaptive)
+/// it keeps covering the same area.
+/// [`with_integrity`](Self::with_integrity) makes any other change to its
+/// Frame in the same way.
+///
+/// # Examples
+///
+/// ```
+/// use ast_core::frames::BasicFrameBuilder;
+/// use ast_core::regions::{EllipseBuilder, Region};
+///
+/// // Half-lengths 2 and 1, the first axis along the first Frame axis.
+/// let frame = BasicFrameBuilder::new(2).build()?;
+/// let angle = std::f64::consts::FRAC_PI_2;
+/// let ellipse = EllipseBuilder::new(frame, vec![0.0, 0.0], [2.0, 1.0], angle)?.build()?;
+/// assert!(ellipse.point_in_region(&[1.5, 0.0])?);
+/// assert!(!ellipse.point_in_region(&[0.0, 1.5])?);
+/// let pars = ellipse.ellipse_pars()?;
+/// assert!((pars.a - 2.0).abs() < 1e-12 && (pars.b - 1.0).abs() < 1e-12);
+/// # Ok::<(), ast_core::error::AstError>(())
+/// ```
 #[derive(Debug, Clone)]
 pub struct Ellipse {
     /// Shared region data (frameset, defining points, flags).
@@ -245,17 +270,25 @@ enum EllipseShape {
 }
 
 impl EllipseBuilder {
-    /// Create a builder for an Ellipse in the given frame.
+    /// Start an Ellipse in the 2-dimensional `frame` from its center, the
+    /// half-lengths of its two axes and the orientation of its first axis.
     ///
-    /// # Parameters
+    /// `semi_axes` holds the half-lengths of the first and second axes, as
+    /// distances as the Frame measures them.
+    /// `angle` is the angle in radians from the second axis of the Frame to
+    /// the first axis of the ellipse, positive in the sense of rotation from
+    /// the second axis of the Frame to the first: an angle of 0 lays the
+    /// first axis of the ellipse along the second axis of the Frame.
+    /// The ends of the two axes are found with the Frame's
+    /// [`offset2`](crate::frames::Frame::offset2), so in a sky Frame they
+    /// lie along great circles.
+    /// The Ellipse takes ownership of `frame`.
     ///
-    /// - `frame`: A 2-D frame (naxes must be 2).
-    /// - `centre`: Coordinates of the ellipse centre (length 2).
-    /// - `semi_axes`: `[a, b]`, the half-lengths of the primary and
-    ///   secondary axes, measured as the Frame measures distance.
-    /// - `angle`: the angle in radians from the second axis of the Frame to
-    ///   the primary axis, positive towards the first axis, as `astEllipse`
-    ///   takes it: an angle of 0 lays the primary axis along the second axis.
+    /// # Errors
+    ///
+    /// - [`ErrorCode::Badin`] if `frame` does not have 2 axes.
+    /// - [`ErrorCode::Naxin`] if `centre` does not have 2 values.
+    #[doc(alias = "astEllipse")]
     pub fn new(
         frame: impl Frame + 'static,
         centre: Vec<f64>,
@@ -265,9 +298,11 @@ impl EllipseBuilder {
         Self::from_dyn(Box::new(frame), centre, semi_axes, angle)
     }
 
-    /// Create a builder for an Ellipse from a boxed (dynamic) frame.
+    /// [`new`](Self::new) for a Frame already boxed.
     ///
-    /// The parameters are those of [`EllipseBuilder::new`].
+    /// # Errors
+    ///
+    /// As for [`new`](Self::new).
     pub fn from_dyn(
         frame: DynFrame,
         centre: Vec<f64>,
@@ -292,12 +327,21 @@ impl EllipseBuilder {
         })
     }
 
-    /// Create a builder for an Ellipse given by three points, as
-    /// `astEllipse` takes them with `form = 0`: the centre, the end of the
-    /// primary axis (`point1`) and any other point on the boundary
-    /// (`point2`). They are stored as given, and three points that do not
-    /// determine an ellipse are an error when the Ellipse is first used, as
-    /// in C.
+    /// Start an Ellipse in the 2-dimensional `frame` from its center, one of
+    /// the four points where an axis of the ellipse crosses its boundary
+    /// (`point1`), and any other point on its boundary (`point2`).
+    ///
+    /// The axis that ends at `point1` is the first axis of the Ellipse.
+    /// The points are kept as given; three points that do not determine an
+    /// ellipse are not detected here, but make the Ellipse fail with
+    /// [`ErrorCode::Badin`] when it is first used.
+    /// The Ellipse takes ownership of `frame`.
+    ///
+    /// # Errors
+    ///
+    /// - [`ErrorCode::Badin`] if `frame` does not have 2 axes.
+    /// - [`ErrorCode::Naxin`] if a point does not have 2 values.
+    #[doc(alias = "astEllipse")]
     pub fn from_points(
         frame: impl Frame + 'static,
         centre: Vec<f64>,
@@ -307,7 +351,11 @@ impl EllipseBuilder {
         Self::from_dyn_points(Box::new(frame), centre, point1, point2)
     }
 
-    /// [`EllipseBuilder::from_points`] from a boxed (dynamic) frame.
+    /// [`from_points`](Self::from_points) for a Frame already boxed.
+    ///
+    /// # Errors
+    ///
+    /// As for [`from_points`](Self::from_points).
     pub fn from_dyn_points(
         frame: DynFrame,
         centre: Vec<f64>,
@@ -338,16 +386,32 @@ impl EllipseBuilder {
         })
     }
 
-    /// Set an uncertainty region.
+    /// Give the Ellipse an uncertainty: a Region that, centered on any point
+    /// of the boundary, covers the possible positions of that point.
+    ///
+    /// [`Region::set_uncertainty`] describes the Regions that can be used,
+    /// and [`build`](Self::build) fails as that method does with one that
+    /// cannot.
+    /// Without one, the Ellipse uses a default uncertainty 1.0E-6 of its
+    /// size.
+    /// The uncertainty is the tolerance [`overlap`](Region::overlap) uses
+    /// when it compares Regions, and decides whether the boundary of the
+    /// Ellipse mapped into another coordinate system can be described by a
+    /// simpler shape when it is simplified.
     pub fn uncertainty(mut self, unc: DynRegion) -> Self {
         self.uncertainty = Some(unc);
         self
     }
 
-    /// Build the Ellipse, as `astEllipse` with form 1 does: the end of the
-    /// primary axis is `a` from the centre at `angle`, and the end of the
-    /// secondary axis `b` from it a quarter turn further, each placed with
-    /// the Frame's `offset2`, so on the sky they are along great circles.
+    /// Build the Ellipse.
+    ///
+    /// # Errors
+    ///
+    /// - [`ErrorCode::Badin`] if a value of the center or of a point on the
+    ///   boundary is [`BAD_VALUE`] or NaN.
+    /// - Passes on the error of finding the ends of the axes, and of
+    ///   [`Region::set_uncertainty`] for an uncertainty given to
+    ///   [`uncertainty`](Self::uncertainty).
     pub fn build(self) -> AstResult<Ellipse> {
         let mut region = match self.shape {
             EllipseShape::Axes { semi_axes, angle } => {
@@ -415,15 +479,23 @@ impl Ellipse {
         Ok(Ellipse { data })
     }
 
-    /// Mutate the current frame with region integrity enforcement.
+    /// Make a change to the Frame this Ellipse represents, keeping the Ellipse
+    /// consistent with it.
     ///
-    /// When adaptive (the default), the FrameSet's base→current mapping is
-    /// updated to account for the change, and defining points remain valid
-    /// in the base frame. When non-adaptive, the change is applied to both
-    /// frames without remapping.
-    ///
+    /// `f` is applied as a Frame attribute set through the Ellipse is.
+    /// While the Ellipse is [Adaptive](Region::is_adaptive), the change is made
+    /// to the Frame it represents, and the Ellipse is remapped into the new
+    /// coordinate system so that it covers the same area.
+    /// Otherwise the change is made to both the Frame it represents and the
+    /// Frame it was defined in, so the numbers that define it keep their
+    /// values.
     /// `f` makes the change to each Frame it is made to, so it may be called
     /// more than once.
+    ///
+    /// # Errors
+    ///
+    /// Passes on the error returned by `f`, and the error of remapping the
+    /// Ellipse.
     pub fn with_integrity<F>(&mut self, f: F) -> AstResult<()>
     where
         F: Fn(&mut dyn Frame) -> AstResult<()>,
@@ -445,13 +517,26 @@ impl Ellipse {
         Ok((a, b))
     }
 
-    /// The Ellipse's centre, axis half-lengths, angle and axis ends in its
-    /// current Frame, as `astEllipsePars` gives them (ellipse.c
-    /// `EllipsePars`): the defining points transformed by the FrameSet, and
-    /// the axes from ellipse.c `CalcPars` in the current Frame. `p2` is the
-    /// end of the secondary axis, which `CalcPars` puts in place of the
-    /// second defining point. When either half-length is not positive, `a`,
-    /// `b` and `angle` are BAD.
+    /// The center of this Ellipse, the half-lengths of its axes, the
+    /// orientation of its first axis and the ends of its two axes.
+    ///
+    /// They are in the Frame the Ellipse represents.
+    /// If its coordinate system has changed since the Ellipse was made, they
+    /// are in the new system; if the change is not linear, the Ellipse may
+    /// no longer be an accurate ellipse there.
+    /// When the ellipse is degenerate or undefined, `a`, `b` and `angle` are
+    /// [`BAD_VALUE`], without an error.
+    ///
+    /// # Errors
+    ///
+    /// Passes on the errors of transforming the defining points into the
+    /// Frame the Ellipse represents and of the Frame's distance and angle
+    /// calculations.
+    // C: ellipse.c `EllipsePars`: the defining points transformed by the
+    // FrameSet, and the axes from ellipse.c `CalcPars` in the current Frame;
+    // `p2` is the end of the secondary axis, which `CalcPars` puts in place
+    // of the second defining point.
+    #[doc(alias = "astEllipsePars")]
     pub fn ellipse_pars(&self) -> AstResult<EllipsePars> {
         let pts = self.data.frameset.transform(&self.base_points()?, true)?;
         let centre = pts.point(0).to_vec();
@@ -547,21 +632,22 @@ impl Ellipse {
     }
 }
 
-/// What [`Ellipse::ellipse_pars`] returns: the outputs of `astEllipsePars`.
+/// The geometry of an [`Ellipse`], as [`Ellipse::ellipse_pars`] returns it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct EllipsePars {
-    /// The centre, in the current Frame.
+    /// The center, in the Frame the Ellipse represents.
     pub centre: Vec<f64>,
-    /// The half-length of the primary axis.
+    /// The half-length of the first axis.
     pub a: f64,
-    /// The half-length of the secondary axis.
+    /// The half-length of the second axis.
     pub b: f64,
-    /// The angle from the second axis to the primary axis, positive towards
-    /// the first axis, in radians.
+    /// The angle in radians from the second axis of the Frame to the first
+    /// axis of the ellipse, positive in the sense of rotation from the second
+    /// axis of the Frame to the first.
     pub angle: f64,
-    /// The end of the primary axis.
+    /// One end of the first axis.
     pub p1: Vec<f64>,
-    /// The end of the secondary axis.
+    /// One end of the second axis.
     pub p2: Vec<f64>,
 }
 
@@ -1079,15 +1165,15 @@ impl Frame for Ellipse {
         self.data.frameset.current().naxes()
     }
 
-    /// Mirrors C `Region::MatchAxesX` (region.c:6413): the axes of the
-    /// current Frame of the Region's FrameSet are matched.
+    // Mirrors C `Region::MatchAxesX` (region.c:6413): the axes of the
+    // current Frame of the Region's FrameSet are matched.
     fn match_axes_x(&self, frm1: &dyn Frame) -> AstResult<Vec<i32>> {
         self.data.frameset.current().match_axes_x(frm1)
     }
 
-    /// Mirrors C `Region::Match` (region.c:6214): the current Frame of the
-    /// Region's FrameSet is matched, through `astMatch` and so with its
-    /// cast retry.
+    // Mirrors C `Region::Match` (region.c:6214): the current Frame of the
+    // Region's FrameSet is matched, through `astMatch` and so with its
+    // cast retry.
     fn match_template(
         &self,
         target: &dyn Frame,
@@ -1128,9 +1214,9 @@ impl Frame for Ellipse {
         self.data.frameset.current().norm(coords)
     }
 
-    /// A Region's axes are its encapsulated current Frame's axes. Mirrors
-    /// C `Region::AxDistance` / `AxOffset` / `AxNorm` (region.c:1457, 1610,
-    /// 1536), which all forward to that Frame.
+    // A Region's axes are its encapsulated current Frame's axes. Mirrors
+    // C `Region::AxDistance` / `AxOffset` / `AxNorm` (region.c:1457, 1610,
+    // 1536), which all forward to that Frame.
     fn get_axis(&self, axis: usize) -> AxisKind {
         self.data.frameset.current().get_axis(axis)
     }
@@ -1144,9 +1230,9 @@ impl Frame for Ellipse {
         Box::new(self.clone())
     }
 
-    /// C has one `Simplify` slot, so a Region simplifies through its Mapping
-    /// side and the caller keeps the result because it is still a Frame
-    /// (`astIsAFrame`, `cmpframe.c:9024`).
+    // C has one `Simplify` slot, so a Region simplifies through its Mapping
+    // side and the caller keeps the result because it is still a Frame
+    // (`astIsAFrame`, `cmpframe.c:9024`).
     fn simplify_frame(&self) -> AstResult<Option<DynFrame>> {
         simplify_frame_via_mapping(self)
     }
@@ -1184,8 +1270,8 @@ impl Mapping for Ellipse {
         &mut self.data.mapping_flags
     }
 
-    /// A Region is a Frame, which C's frame.c `GetIsLinear` reports as
-    /// linear.
+    // A Region is a Frame, which C's frame.c `GetIsLinear` reports as
+    // linear.
     fn is_linear(&self) -> bool {
         true
     }
@@ -1196,7 +1282,7 @@ impl Mapping for Ellipse {
         Some(Box::new(crate::mappings::UnitMap::new(self.nin())))
     }
 
-    /// region.c `ReportPoints`: the current Frame formats the values.
+    // region.c `ReportPoints`: the current Frame formats the values.
     fn report_points(&self, _forward: bool, inp: &PointSet, out: &PointSet) {
         let frame = self.data.frameset.current();
         crate::mappings::report::write_report(&crate::frames::frame_report_lines(
@@ -1332,7 +1418,7 @@ impl Mapping for Ellipse {
         crate::mappings::rate::numeric_rate(self, at, ax1, ax2)
     }
 
-    /// region.c `Equal`, which this class does not extend.
+    // region.c `Equal`, which this class does not extend.
     fn equal(&self, other: &dyn Mapping) -> bool {
         super::data::region_equal(self, other).is_some()
     }

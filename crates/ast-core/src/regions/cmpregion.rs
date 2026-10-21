@@ -1,8 +1,9 @@
-//! CmpRegion: a compound region combining two sub-regions with AND or OR.
+//! CmpRegion: a compound region combining two sub-regions with AND, OR or
+//! XOR.
 //!
-//! A [`CmpRegion`] represents either the intersection (AND) or union (OR)
-//! of two component regions. The component regions must have the same
-//! number of axes and be defined in the same coordinate frame.
+//! A [`CmpRegion`] represents the intersection (AND) or union (OR) of two
+//! component regions, an XOR being made from those.
+//! The second component is mapped into the Frame of the first.
 //!
 //! For AND (intersection): a point is inside the CmpRegion if it is
 //! inside *both* component regions.
@@ -20,12 +21,66 @@ use crate::mappings::{DynMapping, Mapping, ViaSimplify};
 use super::data::{RegionData, RegionGeometry};
 use super::{CmpOperator, DynRegion, NullRegion, NullRegionBuilder, Overlap, Region};
 
-/// A compound region combining two sub-regions with AND (intersection)
-/// or OR (union).
+/// A combination of two Regions within a single Frame.
 ///
-/// The component regions are stored as boxed trait objects and are
-/// tested independently. The CmpRegion's frame is taken from the
-/// first component region.
+/// The two component Regions, of any class, are combined with a boolean
+/// operator, a [`CmpOperator`]:
+///
+/// - AND: a position is inside the CmpRegion only if it is inside both
+///   components.
+/// - OR: a position is inside if it is inside either component, or both.
+/// - XOR: a position is inside if it is inside one component but not both.
+///
+/// Other operators can be formed by negating one or both components before
+/// combining them.
+/// Since a CmpRegion is itself a Region, it can be a component of further
+/// CmpRegions, so Regions of any complexity can be built from simple ones.
+///
+/// The two components need not be in the same Frame, but there must be a
+/// Mapping between their Frames, as
+/// [`convert_to`](crate::frames::Frame::convert_to) finds it.
+/// For instance, a CmpRegion may combine a Region in an ICRS
+/// [`SkyFrame`](crate::frames::SkyFrame) with one in a Galactic SkyFrame.
+/// The second component is then mapped into the Frame of the first, which
+/// is the Frame the CmpRegion represents.
+/// An XOR is held as the OR of two ANDs, each of one component with the
+/// negation of the other, which [`operator`](Self::operator) still reports
+/// as XOR.
+///
+/// A CmpRegion has no defining points of its own, so
+/// [`region_points`](Region::region_points) returns none; its components
+/// have theirs.
+/// Unless one is set on it, its uncertainty is the one set on its first
+/// component, or else the one set on its second, or else the default every
+/// Region has.
+/// It takes the [Closed](Region::is_closed) and
+/// [MeshSize](Region::mesh_size) values of its first component when they
+/// are set there, and the default of its
+/// [FillFactor](Region::fill_factor) from that component too.
+/// It has no attributes or methods beyond those of every [`Region`], except
+/// for access to its components.
+///
+/// A Frame attribute set through the CmpRegion changes the coordinate
+/// system it is described in; while the CmpRegion is
+/// [Adaptive](Region::is_adaptive) it keeps covering the same area, and
+/// otherwise the change is passed on to its components.
+/// [`with_integrity`](Self::with_integrity) makes any other change to its
+/// Frame in the same way.
+///
+/// # Examples
+///
+/// ```
+/// use ast_core::frames::BasicFrameBuilder;
+/// use ast_core::regions::{CircleBuilder, CmpOperator, CmpRegionBuilder, Region};
+///
+/// let frame = BasicFrameBuilder::new(2).build()?;
+/// let left = CircleBuilder::new(frame.clone(), vec![0.0, 0.0])?.radius(2.0).build()?;
+/// let right = CircleBuilder::new(frame, vec![2.0, 0.0])?.radius(2.0).build()?;
+/// let lens = CmpRegionBuilder::new(left, right, CmpOperator::And)?.build()?;
+/// assert!(lens.point_in_region(&[1.0, 0.0])?);
+/// assert!(!lens.point_in_region(&[-1.0, 0.0])?);
+/// # Ok::<(), ast_core::error::AstError>(())
+/// ```
 #[derive(Debug, Clone)]
 pub struct CmpRegion {
     /// Shared region data (frameset, defining points, flags).
@@ -60,9 +115,14 @@ pub struct CmpRegionBuilder {
 }
 
 impl CmpRegionBuilder {
-    /// Create a builder for a CmpRegion combining two regions.
+    /// Start a CmpRegion combining `region1` and `region2` with `operator`.
     ///
-    /// Both regions must have the same number of axes.
+    /// The CmpRegion takes ownership of the two Regions.
+    ///
+    /// # Errors
+    ///
+    /// None: [`build`](Self::build) checks that the Regions can be combined.
+    #[doc(alias = "astCmpRegion")]
     pub fn new(
         region1: impl Region + 'static,
         region2: impl Region + 'static,
@@ -76,9 +136,11 @@ impl CmpRegionBuilder {
         })
     }
 
-    /// Create a builder from boxed (dynamic) regions.
+    /// [`new`](Self::new) for Regions already boxed.
     ///
-    /// Both regions must have the same number of axes.
+    /// # Errors
+    ///
+    /// As for [`new`](Self::new).
     pub fn from_dyn(
         region1: DynRegion,
         region2: DynRegion,
@@ -92,16 +154,32 @@ impl CmpRegionBuilder {
         })
     }
 
-    /// Set an uncertainty region.
+    /// Give the CmpRegion an uncertainty: a Region that, centered on any
+    /// point of the boundary, covers the possible positions of that point.
+    ///
+    /// [`Region::set_uncertainty`] describes the Regions that can be used,
+    /// and [`build`](Self::build) fails as that method does with one that
+    /// cannot.
+    /// Without one, the CmpRegion uses the uncertainty of one of its
+    /// components, as [`CmpRegion`] describes.
     pub fn uncertainty(mut self, unc: DynRegion) -> Self {
         self.uncertainty = Some(unc);
         self
     }
 
-    /// Build the CmpRegion, as `astInitCmpRegion` does: the second Region is
-    /// mapped into the first's Frame when the two differ (AST__INTRD when no
-    /// Mapping joins them), and an XOR is made as the OR of each Region ANDed
-    /// with the negation of the other.
+    /// Build the CmpRegion.
+    ///
+    /// The second Region is mapped into the Frame of the first when the two
+    /// differ.
+    ///
+    /// # Errors
+    ///
+    /// - [`ErrorCode::Intrd`] if there is no Mapping between the Frames of
+    ///   the two Regions, as when they have different numbers of axes.
+    /// - Passes on the errors of finding that Mapping, of mapping the second
+    ///   Region, and of [`Region::set_uncertainty`] for an uncertainty given
+    ///   to [`uncertainty`](Self::uncertainty).
+    // C: astInitCmpRegion.
     pub fn build(self) -> AstResult<CmpRegion> {
         // astInitCmpRegion takes deep copies of the components, and a copy
         // clears RegionFS throughout (cmpregion.c:4758-4759, region.c Copy).
@@ -195,11 +273,23 @@ impl CmpRegionBuilder {
 // ============================================================================
 
 impl CmpRegion {
-    /// Mutate the current frame with region integrity enforcement: remapping
-    /// the Region when it is Adaptive, otherwise changing both Frames.
+    /// Make a change to the Frame this CmpRegion represents, keeping the
+    /// CmpRegion consistent with it.
     ///
+    /// `f` is applied as a Frame attribute set through the CmpRegion is.
+    /// While the CmpRegion is [Adaptive](Region::is_adaptive), the change is
+    /// made to the Frame it represents, and the CmpRegion is remapped into the
+    /// new coordinate system so that it covers the same area.
+    /// Otherwise the change is made to both the Frame it represents and the
+    /// Frame it was defined in, and to its component Regions, so the numbers
+    /// that define it keep their values.
     /// `f` makes the change to each Frame it is made to, so it may be called
     /// more than once.
+    ///
+    /// # Errors
+    ///
+    /// Passes on the error returned by `f`, and the error of remapping the
+    /// CmpRegion.
     pub fn with_integrity<F>(&mut self, f: F) -> AstResult<()>
     where
         F: Fn(&mut dyn Frame) -> AstResult<()>,
@@ -212,10 +302,12 @@ impl CmpRegion {
         self.data.perm_axes(perm)
     }
 
-    /// The boolean operator this CmpRegion combines its Regions with: XOR
-    /// for one made with XOR, whose components are then the two ANDs C makes
-    /// it from, or for an OR of two ANDs equivalent to an XOR, as cmpregion.c
-    /// `XORCheck` finds it.
+    /// The boolean operator this CmpRegion combines its Regions with.
+    ///
+    /// It is XOR for a CmpRegion made with XOR, whose components are then the
+    /// two ANDs it is made from, and for an OR of two ANDs that is equivalent
+    /// to an XOR.
+    // C: cmpregion.c `XORCheck` finds the equivalent XOR.
     pub fn operator(&self) -> CmpOperator {
         if self.xor_regions().is_some() {
             return CmpOperator::Xor;
@@ -299,12 +391,20 @@ impl CmpRegion {
         }
     }
 
-    /// Get a reference to the first component region.
+    /// The first component Region, in the Frame the CmpRegion was defined
+    /// in.
+    ///
+    /// For a CmpRegion made with XOR, it is the first of the two ANDs the XOR
+    /// is made from.
     pub fn region1(&self) -> &dyn Region {
         self.region1.as_ref()
     }
 
-    /// Get a reference to the second component region.
+    /// The second component Region, in the Frame the CmpRegion was defined
+    /// in.
+    ///
+    /// For a CmpRegion made with XOR, it is the second of the two ANDs the
+    /// XOR is made from.
     pub fn region2(&self) -> &dyn Region {
         self.region2.as_ref()
     }
@@ -832,11 +932,18 @@ impl Region for CmpRegion {
         self.data.invalidate_cache();
     }
 
+    /// The Closed attribute of this CmpRegion: see [`Region::is_closed`].
+    ///
+    /// A CmpRegion is built with the Closed value of its first component
+    /// Region, if that has been set, and setting or clearing it also sets or
+    /// clears it on both component Regions.
     fn is_closed(&self) -> bool {
         self.data.closed
     }
 
-    /// cmpregion.c `SetClosed` sets the value on both components too.
+    /// Set [`Closed`](Region::is_closed) on this CmpRegion and on both its
+    /// component Regions.
+    // C: cmpregion.c `SetClosed`.
     fn set_closed(&mut self, closed: bool) {
         self.data.closed = closed;
         self.data.closed_set = true;
@@ -845,7 +952,9 @@ impl Region for CmpRegion {
         self.region2.set_closed(closed);
     }
 
-    /// cmpregion.c `ClearClosed` clears the value on both components too.
+    /// Clear [`Closed`](Region::is_closed) on this CmpRegion and on both its
+    /// component Regions.
+    // C: cmpregion.c `ClearClosed`.
     fn clear_closed(&mut self) {
         self.data.closed = true;
         self.data.closed_set = false;
@@ -864,7 +973,11 @@ impl Region for CmpRegion {
         self.data.invalidate_cache();
     }
 
-    /// cmpregion.c `GetFillFactor`: the value set, or by default the first component's.
+    /// The FillFactor attribute of this CmpRegion: see
+    /// [`Region::fill_factor`].
+    ///
+    /// Default: the FillFactor of its first component Region.
+    // C: cmpregion.c `GetFillFactor`.
     fn fill_factor(&self) -> f64 {
         if self.data.fill_factor_set {
             self.data.fill_factor
@@ -885,11 +998,18 @@ impl Region for CmpRegion {
         self.data.clear_fill_factor();
     }
 
+    /// The MeshSize attribute of this CmpRegion: see [`Region::mesh_size`].
+    ///
+    /// A CmpRegion is built with the MeshSize of its first component Region,
+    /// if that has been set, and setting or clearing it also sets or clears
+    /// it on both component Regions.
     fn mesh_size(&self) -> usize {
         self.data.effective_mesh_size()
     }
 
-    /// cmpregion.c `SetMeshSize` sets the value on both components too.
+    /// Set [`MeshSize`](Region::mesh_size) on this CmpRegion and on both its
+    /// component Regions.
+    // C: cmpregion.c `SetMeshSize`.
     fn set_mesh_size(&mut self, size: usize) {
         self.data.set_mesh_size(size);
         self.region1.set_mesh_size(size);
@@ -900,13 +1020,26 @@ impl Region for CmpRegion {
         self.data.mesh_size_set
     }
 
-    /// cmpregion.c `ClearMeshSize` clears the value on both components too.
+    /// Clear [`MeshSize`](Region::mesh_size) on this CmpRegion and on both
+    /// its component Regions.
+    // C: cmpregion.c `ClearMeshSize`.
     fn clear_mesh_size(&mut self) {
         self.data.clear_mesh_size();
         self.region1.clear_mesh_size();
         self.region2.clear_mesh_size();
     }
 
+    /// Whether this CmpRegion is bounded: see [`Region::is_bounded`].
+    ///
+    /// It is worked out from its component Regions, each negated first if
+    /// the CmpRegion is negated, when AND and OR also swap.
+    /// An OR is bounded when both components are.
+    /// An AND is bounded when either component is; when neither is, it is
+    /// bounded unless the two overlap partially, do not overlap, or are each
+    /// other's negation, as [`overlap`](Region::overlap) finds them.
+    // C: cmpregion.c `GetBounded`.
+    // An AND of two unbounded Regions, one inside the other, is reported as
+    // bounded, as C reports it (docs/issues/c-library-quirks.md).
     fn is_bounded(&self) -> AstResult<bool> {
         self.get_bounded()
     }
@@ -1150,15 +1283,15 @@ impl Frame for CmpRegion {
         self.data.frameset.current().naxes()
     }
 
-    /// Mirrors C `Region::MatchAxesX` (region.c:6413): the axes of the
-    /// current Frame of the Region's FrameSet are matched.
+    // Mirrors C `Region::MatchAxesX` (region.c:6413): the axes of the
+    // current Frame of the Region's FrameSet are matched.
     fn match_axes_x(&self, frm1: &dyn Frame) -> AstResult<Vec<i32>> {
         self.data.frameset.current().match_axes_x(frm1)
     }
 
-    /// Mirrors C `Region::Match` (region.c:6214): the current Frame of the
-    /// Region's FrameSet is matched, through `astMatch` and so with its
-    /// cast retry.
+    // Mirrors C `Region::Match` (region.c:6214): the current Frame of the
+    // Region's FrameSet is matched, through `astMatch` and so with its
+    // cast retry.
     fn match_template(
         &self,
         target: &dyn Frame,
@@ -1199,9 +1332,9 @@ impl Frame for CmpRegion {
         self.data.frameset.current().norm(coords)
     }
 
-    /// A Region's axes are its encapsulated current Frame's axes. Mirrors
-    /// C `Region::AxDistance` / `AxOffset` / `AxNorm` (region.c:1457, 1610,
-    /// 1536), which all forward to that Frame.
+    // A Region's axes are its encapsulated current Frame's axes. Mirrors
+    // C `Region::AxDistance` / `AxOffset` / `AxNorm` (region.c:1457, 1610,
+    // 1536), which all forward to that Frame.
     fn get_axis(&self, axis: usize) -> AxisKind {
         self.data.frameset.current().get_axis(axis)
     }
@@ -1215,9 +1348,9 @@ impl Frame for CmpRegion {
         Box::new(self.clone())
     }
 
-    /// C has one `Simplify` slot, so a Region simplifies through its Mapping
-    /// side and the caller keeps the result because it is still a Frame
-    /// (`astIsAFrame`, `cmpframe.c:9024`).
+    // C has one `Simplify` slot, so a Region simplifies through its Mapping
+    // side and the caller keeps the result because it is still a Frame
+    // (`astIsAFrame`, `cmpframe.c:9024`).
     fn simplify_frame(&self) -> AstResult<Option<DynFrame>> {
         simplify_frame_via_mapping(self)
     }
@@ -1255,8 +1388,8 @@ impl Mapping for CmpRegion {
         &mut self.data.mapping_flags
     }
 
-    /// A Region is a Frame, which C's frame.c `GetIsLinear` reports as
-    /// linear.
+    // A Region is a Frame, which C's frame.c `GetIsLinear` reports as
+    // linear.
     fn is_linear(&self) -> bool {
         true
     }
@@ -1267,7 +1400,7 @@ impl Mapping for CmpRegion {
         Some(Box::new(crate::mappings::UnitMap::new(self.nin())))
     }
 
-    /// region.c `ReportPoints`: the current Frame formats the values.
+    // region.c `ReportPoints`: the current Frame formats the values.
     fn report_points(&self, _forward: bool, inp: &PointSet, out: &PointSet) {
         let frame = self.data.frameset.current();
         crate::mappings::report::write_report(&crate::frames::frame_report_lines(
@@ -1497,8 +1630,8 @@ impl Mapping for CmpRegion {
         crate::mappings::rate::numeric_rate(self, at, ax1, ax2)
     }
 
-    /// cmpregion.c `Equal`: region.c `Equal`, then equal components and the
-    /// same boolean operator.
+    // cmpregion.c `Equal`: region.c `Equal`, then equal components and the
+    // same boolean operator.
     fn equal(&self, other: &dyn Mapping) -> bool {
         super::data::region_equal(self, other).is_some_and(|other| {
             (self.region1.as_ref() as &dyn Mapping).equal(other.region1.as_ref() as &dyn Mapping)
