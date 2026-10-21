@@ -97,4 +97,5 @@ The Rust API is unreleased: where C can raise an error the Rust returns `AstResu
 
 ### Task 12: Docs and tests
 
+- `docs/issues/c-oracle-probe-recipe.md` says that on macOS a probe linked against `reference/starlink-ast/build` needs `-last_err -last_grf3d -last_grf_5.6`, or it crashes on the first error.
 - `MatrixMap::diagonal` doctest checks the inverse zero-fill; `CmpMap::new`'s second `# Errors` bullet names its error; `// C:` comments placed after the `///` blocks in `xphmap.rs`; British spellings in `//` comments; C line numbers in `//` comments refreshed against the pinned C source (with a tool if the re-anchor tool can do it).
