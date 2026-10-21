@@ -1,15 +1,15 @@
-//! Per-thread counts of calls into libm, PAL, ERFA and wcslib, keyed by the C
-//! function name, so the port's calls can be compared with C's.
+//! Per-thread counts of calls into libm, PAL, ERFA and wcslib, keyed by the name of the called function.
 //!
-//! Without the `call-counts` feature `hit` is an empty inline function and
-//! nothing is counted.
+//! The counts show how many calls into each numerical library a computation makes, so two builds can be compared call for call.
 //!
-//! To find where a counted call comes from, set `AST_COUNT_BACKTRACE` to its
-//! name (for example `pow` or `astPalDsep`): the first such call on each
-//! thread after a `reset` prints a backtrace to stderr. Set
-//! `AST_COUNT_TRACE_ALL` to a name instead to print, for every such call after
-//! a `reset`, one line naming the `ast_core` functions on the stack, which
-//! `sort | uniq -c` turns into a count per call path.
+//! Without the `call-counts` feature nothing is counted, and the counting hook compiles to nothing.
+//!
+//! To find where a counted call comes from, set `AST_COUNT_BACKTRACE` to its name as the counts report it (for example `pow`): the first such call on each thread after a `reset` prints a backtrace to stderr.
+//! Set `AST_COUNT_TRACE_ALL` to a name instead to print, for every such call after a `reset`, one line naming the `ast_core` functions on the stack, which `sort | uniq -c` turns into a count per call path.
+
+// The names are the symbols the C library calls (the vendored PAL and ERFA
+// routines carry their `astPal` / `astEra` prefixes), so the counts line up
+// with those from an instrumented build of the C library.
 
 #[cfg(feature = "call-counts")]
 mod imp {
@@ -66,7 +66,7 @@ mod imp {
         TRACED.with(|t| t.set(false));
     }
 
-    /// This thread's counts since the last `reset`, by C function name.
+    /// This thread's counts since the last `reset`, by the name of the called function.
     pub fn snapshot() -> BTreeMap<String, u64> {
         COUNTS.with(|c| {
             c.borrow()

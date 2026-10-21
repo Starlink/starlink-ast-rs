@@ -162,18 +162,11 @@ fn every_mapped_row_has_its_alias_on_its_item() {
 }
 
 /// Top-level modules whose rendered docs still carry C references, each
-/// with why. The list only shrinks; `a_clean_module_cannot_stay_listed`
-/// fails when a listed module is clean.
-const C_CITATIONS_UNCLEANED: &[(&str, &str)] = &[
-    (
-        "call_counts",
-        "C source citations in public docs; cleaned in its subsystem's review task",
-    ),
-    (
-        "pixel",
-        "C source citations in public docs; cleaned in its subsystem's review task",
-    ),
-];
+/// with why. Empty: every module is clean, and a module that gains a C
+/// reference fails `rendered_docs_carry_no_c_references`. The list survives
+/// so a module whose clean-up has to wait has a named home, and
+/// `a_clean_module_cannot_stay_listed` fails when a listed module is clean.
+const C_CITATIONS_UNCLEANED: &[(&str, &str)] = &[];
 
 /// The C references in each top-level module's rendered pages. Builds the
 /// docs into its own target directory, so it never reads docs built by
