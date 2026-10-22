@@ -511,6 +511,10 @@ pub struct FitsChan {
     sip_ok: Option<bool>,
     /// The Object-class Ident attribute, when set.
     ident: Option<String>,
+    /// The Object-class UseDefs attribute, when set: only through
+    /// `FITSCHAN_OPTIONS`, since nothing a FitsChan does reads it; its dump
+    /// holds it.
+    use_defs: Option<bool>,
     /// The Object-class ID attribute, which a clone does not inherit.
     id: crate::object_id::ObjectId,
     /// The TabOK attribute, when set.
@@ -602,6 +606,7 @@ impl FitsChan {
             clean: None,
             sip_ok: None,
             ident: None,
+            use_defs: None,
             id: Default::default(),
             tab_ok: None,
             force_tab: None,
@@ -3252,6 +3257,7 @@ impl Clone for FitsChan {
             clean: self.clean,
             sip_ok: self.sip_ok,
             ident: self.ident.clone(),
+            use_defs: self.use_defs,
             id: Default::default(),
             tab_ok: self.tab_ok,
             force_tab: self.force_tab,

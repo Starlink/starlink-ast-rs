@@ -326,7 +326,7 @@ function	astFromString	object.c	from_native_string; from_native_string_with		yes
 attribute	Class	object.c	AnyObject::class_name		yes
 attribute	ID	object.c	Mapping::id; Frame::id; KeyMap::id; NativeChannel::id; MocChan::id; FitsChan::id		yes	Table and FitsTable read it through their KeyMap
 attribute	Ident	object.c	Mapping::ident; Frame::ident; KeyMap::ident; NativeChannel::ident; MocChan::ident; FitsChan::ident		yes	Table and FitsTable read it through their KeyMap
-attribute	UseDefs	object.c	Frame::use_defs		yes	Only Frames hold it, the only classes C lets it affect
+attribute	UseDefs	object.c	Frame::use_defs		yes	Only Frames expose it, the only classes C lets it affect; a FitsChan keeps one set through FITSCHAN_OPTIONS for its dump
 attribute	Nobject	object.c		c-api-only	yes	A count of live objects per class; ast-core keeps no object registry, so only the C interface can count its handles
 attribute	ObjSize	object.c		not-ported	yes	No in-memory size of an object; nothing in ast-core needs it (PLAN.md §7)
 attribute	RefCount	object.c		c-api-only	yes	Handle reference count; owned values have none

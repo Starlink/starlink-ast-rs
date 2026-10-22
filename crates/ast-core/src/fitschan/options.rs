@@ -297,9 +297,9 @@ fn set_attrib(fc: &mut FitsChan, setting: &str) -> AstResult<()> {
     } else if let Some(v) = string_value(setting, "ident") {
         fc.set_ident(v);
         Ok(())
-    } else if int_value(setting, "usedefs").is_some() {
-        // UseDefs is held only by Frames, the only classes it affects, so
-        // a FitsChan accepts the setting and nothing reads it.
+    } else if let Some(v) = int_value(setting, "usedefs") {
+        // Nothing a FitsChan does reads UseDefs, but its dump holds it.
+        fc.use_defs = Some(v != 0);
         Ok(())
     } else if ["class", "nobject", "objsize", "refcount"]
         .into_iter()
@@ -370,8 +370,19 @@ mod tests {
         let fc = with("FitsTol=1e-3,strict=1").unwrap();
         assert_eq!(fc.fits_tol(), 1e-3);
         assert!(fc.config.strict());
-        // UseDefs is accepted and has no effect.
-        assert!(with("UseDefs=0").is_ok());
+    }
+
+    // C probe: with FITSCHAN_OPTIONS=UseDefs=0, astWrite of the FitsChan to
+    // a Channel gives "UseDfs = 0" as the only item of its Object part.
+    #[test]
+    fn use_defs_is_kept_and_dumped() {
+        let text = with("UseDefs=0").unwrap().to_native_string().unwrap();
+        let lines: Vec<&str> = text.lines().collect();
+        assert!(lines[0].starts_with(" Begin FitsChan"), "{text}");
+        assert_eq!(lines[1].trim(), "UseDfs = 0", "{text}");
+        assert_eq!(lines[2].trim(), "IsA Object", "{text}");
+        let back = crate::from_native_string(&text).unwrap();
+        assert_eq!(back.to_native_string().unwrap(), text);
     }
 
     #[test]

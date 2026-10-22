@@ -191,6 +191,7 @@ impl ChannelBase {
             node,
             &self.id,
             self.ident.as_deref(),
+            None,
             &self.config,
             own_class,
         );
@@ -212,10 +213,11 @@ pub(crate) fn write_parts(
     node: &mut Node,
     id: &ObjectId,
     ident: Option<&str>,
+    use_defs: Option<bool>,
     c: &ChannelConfig,
     own_class: bool,
 ) {
-    crate::frames::frame_attrs::write_object_part(node, id, ident, None, true);
+    crate::frames::frame_attrs::write_object_part(node, id, ident, use_defs, true);
     // channel.c `Dump`: each attribute active when set and otherwise the
     // default the class's getter gives, none of them helpful.
     node.write_int(
