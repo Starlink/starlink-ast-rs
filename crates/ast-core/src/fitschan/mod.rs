@@ -1933,18 +1933,23 @@ impl FitsChan {
     /// Each case but 1 and 4 also needs a CTYPE, CRPIX or CRVAL keyword,
     /// for the primary or an alternate axis description, and is passed
     /// over without one.
-    /// A [source](Self::set_source) not yet read is not consulted: until the
-    /// FitsChan's first use reads it, the default comes from the cards
-    /// already held.
+    /// A [source](Self::set_source) not yet read is read first, so its cards
+    /// are among those the default is chosen from.
     ///
     /// Reading a FrameSet usually consumes the keywords the default was
     /// chosen from, so the default after a read is usually different; to
     /// write in the encoding that was read, ask for the default before the
     /// read and set it.
+    ///
+    /// # Errors
+    ///
+    /// As for [`card`](Self::card).
     #[doc(alias = "Encoding")]
-    pub fn encoding(&self) -> Encoding {
-        self.encoding
-            .unwrap_or_else(|| guess_encoding::guess_encoding(&self.cards))
+    pub fn encoding(&mut self) -> AstResult<Encoding> {
+        self.read_from_source()?;
+        Ok(self
+            .encoding
+            .unwrap_or_else(|| guess_encoding::guess_encoding(&self.cards)))
     }
 
     /// Set [FitsDigits](Self::fits_digits).
@@ -2250,12 +2255,18 @@ impl FitsChan {
     ///
     /// Default: false when the [Encoding](Self::encoding) is `FITS-WCS`,
     /// and true for every other encoding.
-    /// When the Encoding is not set, its default is used, which does not
-    /// consult a [source](Self::set_source) not yet read.
+    /// When the Encoding is not set, its default is used, for which a
+    /// [source](Self::set_source) not yet read is read first.
+    ///
+    /// # Errors
+    ///
+    /// As for [`card`](Self::card), when DefB1950 is not set.
     #[doc(alias = "DefB1950")]
-    pub fn def_b1950(&self) -> bool {
-        self.def_b1950
-            .unwrap_or_else(|| self.encoding() != Encoding::FitsWcs)
+    pub fn def_b1950(&mut self) -> AstResult<bool> {
+        match self.def_b1950 {
+            Some(v) => Ok(v),
+            None => Ok(self.encoding()? != Encoding::FitsWcs),
+        }
     }
 
     /// Whether [DefB1950](Self::def_b1950) has been set.
@@ -2780,11 +2791,20 @@ impl FitsChan {
     /// after a read is usually false even when the header had them; to keep
     /// the value, ask for the default before the read and set it.
     /// As for [Encoding](Self::encoding), a [source](Self::set_source) not
-    /// yet read is not consulted.
+    /// yet read is read first.
+    ///
+    /// # Errors
+    ///
+    /// As for [`card`](Self::card), when CDMatrix is not set.
     #[doc(alias = "CDMatrix")]
-    pub fn cd_matrix(&self) -> bool {
-        self.cd_matrix
-            .unwrap_or_else(|| self.cards.key_fields("CD%1d_%1d", 0).0 > 0)
+    pub fn cd_matrix(&mut self) -> AstResult<bool> {
+        match self.cd_matrix {
+            Some(v) => Ok(v),
+            None => {
+                self.read_from_source()?;
+                Ok(self.cards.key_fields("CD%1d_%1d", 0).0 > 0)
+            }
+        }
     }
 
     /// Expose the internal card list for use in unit tests within this crate.
@@ -3134,8 +3154,8 @@ impl Channel for FitsChan {
         self.warnings.clear();
         self.read_from_source()?;
 
-        let enc = self.encoding();
-        let def_b1950 = self.def_b1950();
+        let enc = self.encoding()?;
+        let def_b1950 = self.def_b1950()?;
         // The encodings other than NATIVE hold one FrameSet, read only when
         // the first card is current; a successful read leaves the FitsChan at
         // end-of-file and any other rewinds it (fitschan.c `Read`).
@@ -3455,7 +3475,7 @@ impl Channel for FitsChan {
 impl FitsChan {
     /// The body of [`Channel::write`], run inside its card-rollback frame.
     fn write_inner(&mut self, obj: &AnyObject) -> AstResult<usize> {
-        let enc = self.encoding();
+        let enc = self.encoding()?;
         match enc {
             Encoding::Native => {
                 let node = serial::any_object_to_node(obj)?;
@@ -3502,7 +3522,7 @@ impl FitsChan {
                     }
                     _ => None,
                 };
-                let cd_matrix = self.cd_matrix();
+                let cd_matrix = self.cd_matrix()?;
                 let result = match enc {
                     Encoding::FitsWcs => {
                         wcs_write::encode_wcs(obj, &mut self.cards, cd_matrix, &dims, attrs)
@@ -3656,7 +3676,7 @@ mod tests {
         assert_eq!(fc.ncard().unwrap(), 0);
         // No explicit encoding set; auto-detect on an empty chan
         // returns Native per C `astGetEncoding` (fitschan.c:12603).
-        assert_eq!(fc.encoding(), Encoding::Native);
+        assert_eq!(fc.encoding().unwrap(), Encoding::Native);
         assert!(!fc.test_encoding());
         assert_eq!(fc.fits_digits(), DEFAULT_FITS_DIGITS);
     }
@@ -3757,7 +3777,7 @@ mod tests {
     fn encoding_accessors() {
         let mut fc = FitsChan::new();
         fc.set_encoding(Encoding::Native);
-        assert_eq!(fc.encoding(), Encoding::Native);
+        assert_eq!(fc.encoding().unwrap(), Encoding::Native);
     }
 
     #[test]

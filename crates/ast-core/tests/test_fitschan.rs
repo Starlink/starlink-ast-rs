@@ -377,8 +377,8 @@ fn native_round_trip_skyframe() {
 fn encoding_default_for_empty_chan_is_native() {
     // Mirrors C `astGetEncoding` (fitschan.c:12603): when none of the
     // recognised WCS keywords are present, Native encoding is assumed.
-    let fc = FitsChan::new();
-    assert_eq!(fc.encoding(), Encoding::Native);
+    let mut fc = FitsChan::new();
+    assert_eq!(fc.encoding().unwrap(), Encoding::Native);
 }
 
 #[test]
@@ -386,19 +386,19 @@ fn encoding_set_and_get() {
     let mut fc = FitsChan::new();
 
     fc.set_encoding(Encoding::Native);
-    assert_eq!(fc.encoding(), Encoding::Native);
+    assert_eq!(fc.encoding().unwrap(), Encoding::Native);
 
     fc.set_encoding(Encoding::FitsPc);
-    assert_eq!(fc.encoding(), Encoding::FitsPc);
+    assert_eq!(fc.encoding().unwrap(), Encoding::FitsPc);
 
     fc.set_encoding(Encoding::FitsIraf);
-    assert_eq!(fc.encoding(), Encoding::FitsIraf);
+    assert_eq!(fc.encoding().unwrap(), Encoding::FitsIraf);
 
     fc.set_encoding(Encoding::FitsAips);
-    assert_eq!(fc.encoding(), Encoding::FitsAips);
+    assert_eq!(fc.encoding().unwrap(), Encoding::FitsAips);
 
     fc.set_encoding(Encoding::Dss);
-    assert_eq!(fc.encoding(), Encoding::Dss);
+    assert_eq!(fc.encoding().unwrap(), Encoding::Dss);
 }
 
 #[test]
@@ -409,8 +409,8 @@ fn encoding_from_header_auto_detects() {
     // through to case 9 (CRVALi → FITS-WCS). Mirrors C's lazy
     // auto-detection when no explicit encoding has been set.
     let text = load_sip_header();
-    let fc = FitsChan::from_header(&text).unwrap();
-    assert_eq!(fc.encoding(), Encoding::FitsWcs);
+    let mut fc = FitsChan::from_header(&text).unwrap();
+    assert_eq!(fc.encoding().unwrap(), Encoding::FitsWcs);
 }
 
 // ===========================================================================
@@ -701,4 +701,41 @@ fn card_list_put_overwrites_the_current_card() {
         ]
     );
     assert_eq!(list.position(), 4);
+}
+
+// ===========================================================================
+// Defaults chosen from a source not yet read
+// ===========================================================================
+
+/// A FITS-WCS header with a CD matrix, given through a source.
+const CD_WCS_SOURCE: &str = "NAXIS   =                    2\n\
+NAXIS1  =                  100\n\
+NAXIS2  =                  100\n\
+CTYPE1  = 'RA---TAN'\n\
+CTYPE2  = 'DEC--TAN'\n\
+CRPIX1  =                   50\n\
+CRPIX2  =                   50\n\
+CRVAL1  =                   10\n\
+CRVAL2  =                   20\n\
+CD1_1   =               -0.001\n\
+CD2_2   =                0.001";
+
+fn fitschan_with_cd_source() -> FitsChan {
+    let mut fc = FitsChan::new();
+    fc.set_source(Box::new(ast_core::StringSource::new(CD_WCS_SOURCE)));
+    fc
+}
+
+/// Encoding, CDMatrix and DefB1950 are the first use of a FitsChan with a
+/// source: each reads the source before choosing its default.
+// C probe: on a fresh astFitsChan with this source, astGetC "Encoding" is
+// FITS-WCS, astGetI "CDMatrix" 1 and astGetI "DefB1950" 0.
+#[test]
+fn defaults_read_a_source_not_yet_read() {
+    assert_eq!(
+        fitschan_with_cd_source().encoding().unwrap(),
+        Encoding::FitsWcs
+    );
+    assert!(fitschan_with_cd_source().cd_matrix().unwrap());
+    assert!(!fitschan_with_cd_source().def_b1950().unwrap());
 }

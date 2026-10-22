@@ -420,7 +420,7 @@ fn encoding_and_clean_set_and_test() {
         "NATIVE",
     ] {
         fc.set_encoding(Encoding::from_name(name).unwrap());
-        assert_eq!(fc.encoding().name(), name, "Error 876");
+        assert_eq!(fc.encoding().unwrap().name(), name, "Error 876");
     }
     assert!(fc.test_encoding(), "Error 880");
     fc.set_clean(true);

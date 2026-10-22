@@ -292,7 +292,7 @@ fn run(fc: &mut FitsChan, op: &str, out: &mut String, h: &mut Harness) {
                 "CarLin" => (i32::from(fc.car_lin()), fc.test_car_lin()),
                 "FitsRounding" => (fc.fits_rounding(), fc.test_fits_rounding()),
                 "FitsDigits" => (fc.fits_digits(), fc.test_fits_digits()),
-                "DefB1950" => (i32::from(fc.def_b1950()), fc.test_def_b1950()),
+                "DefB1950" => (i32::from(fc.def_b1950().unwrap()), fc.test_def_b1950()),
                 "PolyTan" => (fc.poly_tan(), fc.test_poly_tan()),
                 "IgnoreBadAlt" => (i32::from(fc.ignore_bad_alt()), fc.test_ignore_bad_alt()),
                 "Iwc" => (i32::from(fc.iwc()), fc.test_iwc()),
@@ -451,7 +451,7 @@ fn run(fc: &mut FitsChan, op: &str, out: &mut String, h: &mut Harness) {
         }
         "QCD" => format!(
             "= {} {}\n",
-            i32::from(fc.cd_matrix()),
+            i32::from(fc.cd_matrix().unwrap()),
             i32::from(fc.test_cd_matrix())
         ),
         "SCD" => {
@@ -463,7 +463,7 @@ fn run(fc: &mut FitsChan, op: &str, out: &mut String, h: &mut Harness) {
             String::new()
         }
         "QE" => {
-            let name = match fc.encoding() {
+            let name = match fc.encoding().unwrap() {
                 Encoding::Native => "NATIVE",
                 Encoding::FitsWcs => "FITS-WCS",
                 Encoding::FitsPc => "FITS-PC",

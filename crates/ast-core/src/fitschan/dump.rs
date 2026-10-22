@@ -77,7 +77,7 @@ impl Serializable for FitsChan {
             &mut node,
             "Encod",
             fc.test_encoding(),
-            NodeValue::String(fc.encoding().name().to_string()),
+            NodeValue::String(fc.encoding()?.name().to_string()),
             "Encoding system",
         );
         put(
@@ -108,7 +108,7 @@ impl Serializable for FitsChan {
             NodeValue::String(fc.alt_axes().name().to_string()),
             "Creation of alternate axes",
         );
-        let b1950 = fc.def_b1950();
+        let b1950 = fc.def_b1950()?;
         put(
             &mut node,
             "DfB1950",
@@ -156,7 +156,7 @@ impl Serializable for FitsChan {
                 "Abort on unreadable alternate axes"
             },
         );
-        let cd = fc.cd_matrix();
+        let cd = fc.cd_matrix()?;
         put(
             &mut node,
             "CdMat",
