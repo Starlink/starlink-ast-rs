@@ -2516,7 +2516,7 @@ impl Frame for SkyFrame {
     /// opposite the widest gap between them, found from a histogram of
     /// one-degree bins.
     // C: skyframe.c `NormalPoints`.
-    fn norm_points(
+    fn normal_points(
         &self,
         points: &crate::coords::PointSet,
         contig: bool,

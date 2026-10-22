@@ -837,7 +837,7 @@ impl Frame for CmpFrame {
     /// The points are put back in the internal axis order, split between the
     /// two component Frames, normalised by each, and permuted back.
     // C: cmpframe.c `NormalPoints`.
-    fn norm_points(
+    fn normal_points(
         &self,
         points: &crate::coords::PointSet,
         contig: bool,
@@ -866,8 +866,8 @@ impl Frame for CmpFrame {
             .collect();
         let part1 = crate::coords::PointSet::from_rows(internal.iter().map(|r| &r[..n1]));
         let part2 = crate::coords::PointSet::from_rows(internal.iter().map(|r| &r[n1..]));
-        let out1 = self.frame1.norm_points(&part1, contig)?;
-        let out2 = self.frame2.norm_points(&part2, contig)?;
+        let out1 = self.frame1.normal_points(&part1, contig)?;
+        let out2 = self.frame2.normal_points(&part2, contig)?;
         let mut out = points.clone();
         for p in 0..npoint {
             let mut row = out.point_mut(p);

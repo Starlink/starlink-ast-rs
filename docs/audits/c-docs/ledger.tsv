@@ -118,7 +118,7 @@ function	astGetActiveUnit	frame.c	Frame::get_active_unit		yes
 function	astIntersect	frame.c	Frame::intersect		yes
 function	astMatchAxes	frame.c	Frame::match_axes		yes
 function	astNorm	frame.c	Frame::norm		yes
-function	astNormPoints	frame.c	Frame::norm_points		yes	Takes a PointSet, so no 8-byte variant or dimension arguments. C's public function reports AST__DIMIN for a coordinate count that differs from Naxes; the port reports Ncpin, as C's protected astNormalPoints does (PLAN.md 2)
+function	astNormPoints	frame.c	Frame::norm_points		yes	Takes a PointSet, so no 8-byte variant or dimension arguments
 function	astOffset2	frame.c	Frame::offset2		yes
 function	astOffset	frame.c	Frame::offset		yes
 function	astResolve	frame.c	Frame::resolve		yes

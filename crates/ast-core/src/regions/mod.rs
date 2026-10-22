@@ -768,11 +768,11 @@ pub trait Region: Frame + Mapping + AsDynRegion {
     ///
     /// `astGetRegionMesh`, with its `surface` argument set.
     // C: region.c `GetRegionMesh` with `surface` set: the current-Frame
-    // boundary mesh (`reg_mesh`) normalized by `norm_points` as one group.
+    // boundary mesh (`reg_mesh`) normalized by `normal_points` as one group.
     #[doc(alias = "astGetRegionMesh")]
     fn region_mesh(&self) -> AstResult<PointSet> {
         self.bounded_for_mesh()?;
-        self.norm_points(&self.reg_mesh()?, true)
+        self.normal_points(&self.reg_mesh()?, true)
     }
 
     /// A mesh of points filling the interior of this Region, in the Frame it
@@ -794,7 +794,7 @@ pub trait Region: Frame + Mapping + AsDynRegion {
     #[doc(alias = "astGetRegionMesh")]
     fn region_grid(&self) -> AstResult<PointSet> {
         self.bounded_for_mesh()?;
-        self.norm_points(&self.reg_grid()?, true)
+        self.normal_points(&self.reg_grid()?, true)
     }
 
     /// Write to standard output a table of the axis values at a mesh of
@@ -836,7 +836,7 @@ pub trait Region: Frame + Mapping + AsDynRegion {
     /// values.
     // C: region.c `ShowMesh`.
     fn show_mesh_text(&self, format: bool, ttl: Option<&str>) -> AstResult<String> {
-        let mesh = self.norm_points(&self.reg_mesh()?, true)?;
+        let mesh = self.normal_points(&self.reg_mesh()?, true)?;
         let mut out = String::new();
         if let Some(ttl) = ttl {
             out.push_str(&format!("\n{ttl}\n\n"));

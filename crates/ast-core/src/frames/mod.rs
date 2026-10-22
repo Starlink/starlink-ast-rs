@@ -2272,16 +2272,36 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     ///
     /// # Errors
     ///
-    /// - `ErrorCode::Ncpin` when `points` does not have one coordinate per
+    /// - `ErrorCode::Dimin` when `points` does not have one coordinate per
     ///   axis.
     #[doc(alias = "astNormPoints")]
     fn norm_points(&self, points: &PointSet, contig: bool) -> AstResult<PointSet> {
-        // C's public `astNormPoints` validates its arguments and calls
-        // `astNormalPoints` (frame.c), the per-class method this is: each
-        // point is normalized as `norm` does, and when `contig` is set a
-        // class whose axes wrap may also choose among equivalent values so
-        // that the points form one contiguous group (a SkyFrame keeps the
-        // longitudes on one side of the widest gap between them).
+        // C's public `astNormPoints` (frame.c) validates the coordinate
+        // count against Naxes, reporting AST__DIMIN, and then calls the
+        // per-class `astNormalPoints`, which is `normal_points` here.
+        let naxes = self.naxes();
+        if points.ncoord() != naxes {
+            return Err(AstError::new(
+                ErrorCode::Dimin,
+                format!(
+                    "astNormPoints: The number of input axes ({}) is not the same \
+                     as the number of axes in the Frame ({naxes}).",
+                    points.ncoord()
+                ),
+            ));
+        }
+        self.normal_points(points, contig)
+    }
+
+    /// The per-class part of [`norm_points`](Frame::norm_points), which
+    /// assumes nothing about the coordinate count of `points`.
+    // C: frame.c `NormalPoints`, the protected `astNormalPoints`: each point
+    // is normalized as `norm` does, and when `contig` is set a class whose
+    // axes wrap may also choose among equivalent values so that the points
+    // form one contiguous group (a SkyFrame keeps the longitudes on one side
+    // of the widest gap between them).
+    #[doc(hidden)]
+    fn normal_points(&self, points: &PointSet, contig: bool) -> AstResult<PointSet> {
         let _ = contig;
         norm_each_point(self.as_dyn_frame(), points)
     }

@@ -14,6 +14,7 @@
 mod cases;
 
 use ast_core::coords::PointSet;
+use ast_core::error::ErrorCode;
 use ast_core::frames::{BasicFrameBuilder, CmpFrame, Frame, FrameSet, SkyFrame};
 use ast_core::regions::{CircleBuilder, Region};
 
@@ -97,5 +98,39 @@ fn a_circle_mesh_is_normalised_as_c_does() {
     assert_eq!(mesh.len(), cases::CIRCLE_MESH.len(), "number of points");
     for (i, (got, want)) in mesh.iter().zip(cases::CIRCLE_MESH).enumerate() {
         crate::common::assert_c_values(got, want, &format!("point {i}"));
+    }
+}
+
+/// A PointSet whose coordinate count differs from the Frame's axis count is
+/// rejected with `Dimin`, whichever class normalizes it.
+#[test]
+fn norm_points_rejects_a_wrong_coordinate_count() {
+    let sky = SkyFrame::unset_system();
+    let cmp = CmpFrame::new(
+        Box::new(sky.clone()),
+        Box::new(BasicFrameBuilder::new(1).build().unwrap()),
+    );
+    let fs = FrameSet::new(Box::new(sky.clone()));
+    let circle = CircleBuilder::new(sky.clone(), vec![0.0, 0.0])
+        .unwrap()
+        .radius(0.1)
+        .build()
+        .unwrap();
+    let basic = BasicFrameBuilder::new(2).build().unwrap();
+    let frames: [(&str, &dyn Frame); 5] = [
+        ("basic", &basic),
+        ("sky", &sky),
+        ("cmpframe", &cmp),
+        ("frameset", &fs),
+        ("circle", &circle),
+    ];
+    for (name, frame) in frames {
+        for ncoord in [1, 4] {
+            let ps = PointSet::from_rows([vec![0.5; ncoord]]);
+            for contig in [false, true] {
+                let err = frame.norm_points(&ps, contig).unwrap_err();
+                assert_eq!(err.code(), ErrorCode::Dimin, "{name}, {ncoord} coordinates");
+            }
+        }
     }
 }

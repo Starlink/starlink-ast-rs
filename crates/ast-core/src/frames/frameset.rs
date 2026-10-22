@@ -1976,12 +1976,12 @@ impl Frame for FrameSet {
 
     /// The current Frame normalises the points.
     // C: frameset.c `NormalPoints`.
-    fn norm_points(
+    fn normal_points(
         &self,
         points: &crate::coords::PointSet,
         contig: bool,
     ) -> AstResult<crate::coords::PointSet> {
-        self.current().norm_points(points, contig)
+        self.current().normal_points(points, contig)
     }
 
     fn frame_without_regions(&self) -> Option<DynFrame> {
