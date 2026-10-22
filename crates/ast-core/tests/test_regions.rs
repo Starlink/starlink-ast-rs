@@ -4120,3 +4120,23 @@ fn the_default_uncertainty_keeps_a_non_zero_width_at_the_origin() {
         ubnd[0]
     );
 }
+
+// C probe: astFindFrame(circle, astFrame(2, ""), "") gives a FrameSet whose
+// base and current Frames are both plain Frames: a Region target is searched
+// as its Frame.
+#[test]
+fn find_frame_searches_a_region_target_as_its_frame() {
+    let frm = BasicFrameBuilder::new(2).build().unwrap();
+    let mut circle = CircleBuilder::new(frm, vec![0.0, 0.0])
+        .unwrap()
+        .radius(1.0)
+        .build()
+        .unwrap();
+    let template = BasicFrameBuilder::new(2).build().unwrap();
+    let found = circle
+        .find_frame_template(&template, "")
+        .unwrap()
+        .expect("a 2-dimensional system");
+    assert!(!found.base().as_any().is::<Circle>());
+    assert!(!found.current().as_any().is::<Circle>());
+}

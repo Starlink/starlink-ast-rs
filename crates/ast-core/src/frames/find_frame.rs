@@ -177,6 +177,12 @@ pub(crate) fn find_frame_route(
     if let Some(fs) = target.as_any().downcast_ref::<FrameSet>() {
         return super::frameset::frameset_find_frame(fs, template, domainlist);
     }
+    // region.c's `FindFrame` searches the current Frame of the Region's
+    // FrameSet in place of the Region.
+    if let Some(r) = crate::regions::any_as_region(target.as_any()) {
+        let frame = r.get_region_frame();
+        return Ok(find_frame_route(frame.as_ref(), template, domainlist)?.map(|(res, _)| (res, 1)));
+    }
     Ok(default_find_frame(target, template, domainlist)?.map(|r| (r, 1)))
 }
 
