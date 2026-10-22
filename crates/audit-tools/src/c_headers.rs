@@ -175,6 +175,27 @@ pub fn c_headers(src: &str, file: &str) -> Result<Vec<CHeader>, Vec<String>> {
     }
 }
 
+/// The headers of several files, each given as (file name, source), in the
+/// order given.
+///
+/// Every file is scanned; when any has a problem, the error lists the problems
+/// of all of them, so one run shows everything to fix.
+pub fn c_headers_of_files(files: &[(String, String)]) -> Result<Vec<CHeader>, Vec<String>> {
+    let mut all = Vec::new();
+    let mut problems = Vec::new();
+    for (name, src) in files {
+        match c_headers(src, name) {
+            Ok(h) => all.extend(h),
+            Err(e) => problems.extend(e),
+        }
+    }
+    if problems.is_empty() {
+        Ok(all)
+    } else {
+        Err(problems)
+    }
+}
+
 /// Write `text` to `out`, treating a closed pipe (`c-docs … | head`) as the
 /// reader having finished rather than as a failure.
 pub fn write_report(out: &mut impl std::io::Write, text: &str) -> std::io::Result<()> {
@@ -403,6 +424,25 @@ f--
         );
         let src = "f++\n*  Name:\n*     AST_BOX\n";
         assert!(c_headers(src, "x.c").is_err());
+    }
+
+    #[test]
+    fn every_files_errors_are_listed() {
+        let bad1 = "*++\n*  Purpose:\n*--\n";
+        let bad2 = "*class++\n*  Name:\n*     A\n";
+        let files = [
+            ("a.c".to_string(), bad1.to_string()),
+            ("ok.c".to_string(), SRC.to_string()),
+            ("b.c".to_string(), bad2.to_string()),
+        ];
+        let e = c_headers_of_files(&files).unwrap_err();
+        assert_eq!(e.len(), 2, "{e:?}");
+        assert!(
+            e[0].starts_with("a.c:") && e[1].starts_with("b.c:"),
+            "{e:?}"
+        );
+        let good = [("ok.c".to_string(), SRC.to_string())];
+        assert_eq!(c_headers_of_files(&good).unwrap().len(), 6);
     }
 
     #[test]

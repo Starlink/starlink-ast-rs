@@ -9,7 +9,7 @@
 //!       print the C text of each header in one file; `<src-dir>` defaults to
 //!       `reference/starlink-ast/src`
 
-use audit_tools::{c_headers, headers_tsv, parse_headers_tsv, write_report};
+use audit_tools::{c_headers, c_headers_of_files, headers_tsv, parse_headers_tsv, write_report};
 use std::path::Path;
 use std::process::ExitCode;
 
@@ -40,11 +40,12 @@ fn headers(dir: &Path) -> Result<(), String> {
         .filter(|p| p.extension().is_some_and(|x| x == "c"))
         .collect();
     files.sort();
-    let mut all = Vec::new();
+    let mut sources = Vec::new();
     for path in files {
         let name = path.file_name().expect("file has a name").to_string_lossy();
-        all.extend(c_headers(&read(&path)?, &name).map_err(|e| e.join("\n"))?);
+        sources.push((name.into_owned(), read(&path)?));
     }
+    let all = c_headers_of_files(&sources).map_err(|e| e.join("\n"))?;
     out(&headers_tsv(&all))
 }
 
