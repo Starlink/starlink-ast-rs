@@ -106,6 +106,7 @@ fn points(cvt: &FrameSet) -> [[f64; 2]; 3] {
 // of Epoch under 0.4 day extrapolates it.
 // Values from tools/oracle_fixtures/frameset_last_probe.c.
 #[test]
+#[allow(clippy::excessive_precision)] // 17 digits, so the C values read back exactly
 fn a_frameset_member_keeps_its_cached_last() {
     const STEPS: [(&str, f64, [[f64; 2]; 3]); 4] = [
         (
