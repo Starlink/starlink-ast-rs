@@ -177,8 +177,8 @@ enum OpenLiteral {
 /// Every line of `src` with comments and string and char literal bodies
 /// stripped, so their braces do not count as block structure.
 ///
-/// A string literal or a block comment may span lines, so the state of each line carries into
-/// the next.
+/// A string literal or a block comment may span lines.
+/// The state of each line carries into the next.
 fn code_lines(src: &str) -> Vec<String> {
     let mut open = OpenLiteral::None;
     src.lines().map(|l| code_only(l, &mut open)).collect()
