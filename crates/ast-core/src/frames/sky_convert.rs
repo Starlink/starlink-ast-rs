@@ -90,7 +90,8 @@ impl SkySystem {
         )
     }
 
-    /// Parse a coordinate system name, ignoring case.
+    /// Parse a coordinate system name, ignoring case and trailing white
+    /// space.
     ///
     /// Accepts the names [`as_str`](Self::as_str) gives, and the
     /// alternatives `"FK4_NO_E"` for FK4-NO-E, `"EQUATORIAL"` for FK5, and
@@ -98,7 +99,7 @@ impl SkySystem {
     // C: skyframe.c `SystemCode`, which matches whole names with
     // `astChrMatch`.
     pub fn parse(s: &str) -> Option<Self> {
-        match s.to_ascii_uppercase().as_str() {
+        match crate::mappings::helpers::chr_match_key(s).as_str() {
             "FK4" => Some(Self::Fk4),
             "FK4-NO-E" | "FK4_NO_E" => Some(Self::Fk4NoE),
             "FK5" | "EQUATORIAL" => Some(Self::Fk5),
@@ -163,9 +164,10 @@ impl SkyRefIs {
         }
     }
 
-    /// Parse a SkyRefIs value (case-insensitive).
+    /// Parse a SkyRefIs value, ignoring case and trailing white space.
+    // C: skyframe.c `SetAttrib`, which matches with `astChrMatch`.
     pub fn parse(s: &str) -> Option<Self> {
-        match s.to_ascii_uppercase().as_str() {
+        match crate::mappings::helpers::chr_match_key(s).as_str() {
             "ORIGIN" => Some(Self::Origin),
             "POLE" => Some(Self::Pole),
             "IGNORED" => Some(Self::Ignored),

@@ -1597,3 +1597,20 @@ fn sky_offset_map_follows_the_c_library() {
     let err = sky.sky_offset_map().unwrap_err();
     assert_eq!(err.code(), ErrorCode::Badoc);
 }
+
+/// System and SkyRefIs names match as C's `astChrMatch` matches them: case
+/// is ignored, and so is white space after the name, but not before it or
+/// within it.
+#[test]
+fn sky_names_ignore_trailing_white_space() {
+    assert_eq!(SkySystem::parse("FK5 "), Some(SkySystem::Fk5));
+    assert_eq!(SkySystem::parse("galactic\t\n"), Some(SkySystem::Galactic));
+    assert_eq!(
+        SkySystem::parse("fk4-no-e\x0b\x0c\r"),
+        Some(SkySystem::Fk4NoE)
+    );
+    assert_eq!(SkySystem::parse(" FK5"), None);
+    assert_eq!(SkySystem::parse("FK5 x"), None);
+    assert_eq!(SkyRefIs::parse("pole  "), Some(SkyRefIs::Pole));
+    assert_eq!(SkyRefIs::parse(" Pole"), None);
+}
