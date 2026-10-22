@@ -6,6 +6,7 @@
 use crate::common::native_dump;
 use ast_core::constants::BAD_VALUE;
 use ast_core::coords::PointSet;
+use ast_core::error::ErrorCode;
 use ast_core::mappings::{Mapping, MatrixMap};
 use ndarray::array;
 
@@ -562,6 +563,18 @@ fn mtr_mult_shape_mismatch_errors() {
     let this = MatrixMap::new(array![[1.0_f64, 0.0], [0.0, 1.0], [1.0, 1.0]]).unwrap();
     let a = MatrixMap::new(array![[2.0_f64, 0.0], [0.0, 3.0]]).unwrap();
     assert!(this.mtr_mult(&a).is_err());
+}
+
+/// A MatrixMap without a forward transformation, such as an inverted
+/// singular one, cannot be multiplied, whichever factor it is.
+#[test]
+fn mtr_mult_without_a_forward_transformation_errors() {
+    let mut singular = MatrixMap::new(array![[1.0_f64, 1.0], [1.0, 1.0]]).unwrap();
+    singular.invert();
+    let other = MatrixMap::new(array![[2.0_f64, 0.0], [0.0, 3.0]]).unwrap();
+    for result in [singular.mtr_mult(&other), other.mtr_mult(&singular)] {
+        assert_eq!(result.unwrap_err().code(), ErrorCode::Mtrml);
+    }
 }
 
 #[test]

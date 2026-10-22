@@ -372,12 +372,23 @@ impl MatrixMap {
     ///
     /// # Errors
     ///
-    /// [`ErrorCode::Mtrml`] when the shapes are incompatible.
+    /// [`ErrorCode::Mtrml`] when either MatrixMap has no forward
+    /// transformation, as an inverted singular one has none, or when the
+    /// shapes are incompatible.
     pub fn mtr_mult(&self, a: &MatrixMap) -> AstResult<MatrixMap> {
-        // C astMtrMult (matrixmap.c:3526).
-        // C requires both to have a defined forward transform. A MatrixMap
-        // always has a forward transform in this crate (it is stored
-        // directly), so the only failure mode is a shape mismatch.
+        // C astMtrMult (matrixmap.c:3526): both factors need a defined forward
+        // transformation (matrixmap.c:3626-3639).
+        for (factor, which) in [(self, "first"), (a, "second")] {
+            if !factor.has_forward() {
+                return Err(AstError::new(
+                    ErrorCode::Mtrml,
+                    format!(
+                        "astMtrMult(MatrixMap): Cannot find the product of 2 MatrixMaps- the \
+                         {which} MatrixMap has no forward transformation."
+                    ),
+                ));
+            }
+        }
         let this_matrix = self.effective_forward_matrix();
         let a_matrix = a.effective_forward_matrix();
 
