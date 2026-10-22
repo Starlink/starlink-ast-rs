@@ -142,7 +142,7 @@ pub(super) fn finish_region_merge(
     overlay: MergeOverlay,
     uncertainty: Option<DynRegion>,
     scaling: MergeScaling,
-) -> Option<DynMapping> {
+) -> AstResult<DynMapping> {
     let MergeFrames { bfrm, cfrm, bcmap } = frames;
 
     let apply_attrs = |data: &mut RegionData| {
@@ -175,16 +175,16 @@ pub(super) fn finish_region_merge(
     };
 
     if let Some(unc) = uncertainty {
-        new.set_uncertainty(unc).ok()?;
+        new.set_uncertainty(unc)?;
     }
 
-    let mut result = new.reg_map_region(bcmap.as_ref(), cfrm.as_ref()).ok()?;
-    apply_merge_scaling_to(result.as_mut(), &scaling).ok()?;
+    let mut result = new.reg_map_region(bcmap.as_ref(), cfrm.as_ref())?;
+    apply_merge_scaling_to(result.as_mut(), &scaling)?;
 
     // C returns the mapped Region as it stands. A fully-bounded Interval
     // reclassifies to a Box on the simplify loop's next visit to this list
     // entry, through `Interval::Simplify`'s equivalent-Box head.
-    Some(result.as_dyn_mapping().clone_box())
+    Ok(result.as_dyn_mapping().clone_box())
 }
 
 /// Convert a `DynMapping` to a `DynRegion` if it is a concrete Region
@@ -294,16 +294,16 @@ pub(super) fn combine_uncertainties(
     unc_this: Option<DynRegion>,
     unc_other: Option<DynRegion>,
     this_first: bool,
-) -> Option<DynRegion> {
-    let (u1, u2) = (unc_this?, unc_other?);
+) -> AstResult<Option<DynRegion>> {
+    let (Some(u1), Some(u2)) = (unc_this, unc_other) else {
+        return Ok(None);
+    };
     let (r1, r2) = if this_first { (u1, u2) } else { (u2, u1) };
 
-    let prism = PrismBuilder::from_dyn(r1, r2)
-        .and_then(|b| b.build())
-        .ok()?;
-    let simplified = <dyn Mapping>::simplify(&prism).ok()?;
+    let prism = PrismBuilder::from_dyn(r1, r2).and_then(|b| b.build())?;
+    let simplified = <dyn Mapping>::simplify(&prism)?;
 
     // `astSimplify` of a Region always yields a Region; keep the Prism itself
     // if the concrete simplified form is not a plain Region class.
-    mapping_into_region(simplified).or_else(|| Some(Box::new(prism) as DynRegion))
+    Ok(mapping_into_region(simplified).or_else(|| Some(Box::new(prism) as DynRegion)))
 }

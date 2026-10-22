@@ -230,10 +230,9 @@ impl Mapping for ShiftMap {
             self.shift.clone()
         };
         let scales = vec![1.0; n];
-        let win = match super::winmap::WinMap::new(&fwd_shifts, &scales) {
-            Ok(w) => w,
-            Err(_) => return super::simplify::default_map_merge(ctx, where_, series),
-        };
+        // C builds the WinMap with astWinMap, whose error would stay in the
+        // global status and end the merge.
+        let win = ctx.settle(super::winmap::WinMap::new(&fwd_shifts, &scales).map(Some))?;
 
         let old_len = ctx.len();
         ctx.set_pair_single(where_, (Box::new(win.clone()), false, false));

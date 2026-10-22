@@ -24,11 +24,11 @@ equivalent Box where there is one, and otherwise re-defines the Interval within
 its current Frame by way of a fully-bounded Box.
 
 `Interval::get_def_unc` (`interval.rs:1442-1485 (fn get_def_unc)`) is `GetDefUnc`.
-`Interval::map_merge` (`interval.rs:2037-2040 (fn map_merge)`) delegates to
-`simplify::region_map_merge` (`mappings/simplify.rs:1690-1745 (fn region_map_merge)`),
+`Interval::map_merge` (`interval.rs:2038-2041 (fn map_merge)`) delegates to
+`simplify::region_map_merge` (`mappings/simplify.rs:1690-1757 (fn region_map_merge)`),
 which every Region shares. `Interval::region_merge`
-(`interval.rs:1566-1758 (fn region_merge)`) is `MergeInterval`, and
-`Interval::simplified` (`interval.rs:1940-2002 (fn simplified)`) is `Simplify`, with
+(`interval.rs:1570-1757 (fn region_merge)`) is `MergeInterval`, and
+`Interval::simplified` (`interval.rs:1939-2001 (fn simplified)`) is `Simplify`, with
 its unbounded branch in `simplify_remapped`
 (`interval.rs:677-931 (fn simplify_remapped)`).
 
@@ -63,64 +63,64 @@ lives once.
 | 23 | Return the index of the first modified element | interval.c:1175-1178 (fn MapMerge) | mappings/simplify.rs:1707 (fn region_map_merge) | architecture | ported |
 | 24 | Failing that, merge with the Regions on either side — which is possible in parallel only | interval.c:1179-1183 (fn MapMerge) | mappings/simplify.rs:1717 (fn region_map_merge) | architecture | ported |
 | 25 | Annul the unwanted simplified pointer | interval.c:1184-1185 (fn MapMerge) | -- | ceremony | n/a: owned values are dropped |
-| 26 | Attempt to merge the Interval with its lower neighbor, if that neighbor is a Region | interval.c:1186-1194 (fn MapMerge) | mappings/simplify.rs:1720-1728 (fn region_map_merge) | architecture | ported |
-| 27 | Failing that, attempt the upper neighbor the same way | interval.c:1195-1205 (fn MapMerge) | mappings/simplify.rs:1732-1741 (fn region_map_merge) | architecture | ported |
-| 28 | Act only if one of the two produced a merged Region | interval.c:1206-1208 (fn MapMerge) | mappings/simplify.rs:1725 (fn region_map_merge),1734 (fn region_map_merge) | architecture | ported |
+| 26 | Attempt to merge the Interval with its lower neighbor, if that neighbor is a Region | interval.c:1186-1194 (fn MapMerge) | mappings/simplify.rs:1720-1734 (fn region_map_merge) | architecture | ported |
+| 27 | Failing that, attempt the upper neighbor the same way | interval.c:1195-1205 (fn MapMerge) | mappings/simplify.rs:1738-1753 (fn region_map_merge) | architecture | ported |
+| 28 | Act only if one of the two produced a merged Region | interval.c:1206-1208 (fn MapMerge) | mappings/simplify.rs:1728 (fn region_map_merge),1734 (fn region_map_merge) | architecture | ported |
 | 29 | Annul the first of the two Mappings, replace it with the merged Region, and clear its invert flag | interval.c:1209-1214 (fn MapMerge) | mappings/simplify.rs:678 (fn replace_pair_with) | architecture | ported |
 | 30 | Annul the second and shuffle the rest of the list down to fill the gap | interval.c:1215-1222 (fn MapMerge) | mappings/simplify.rs:678 (fn replace_pair_with) | architecture | ported |
 | 31 | Clear the vacated element at the end | interval.c:1223-1226 (fn MapMerge) | -- | ceremony | n/a: the list is a `Vec`, so the removed entry leaves no slot to blank |
-| 32 | Decrement the Mapping count and return the index of the first modified element | interval.c:1227-1232 (fn MapMerge) | mappings/simplify.rs:1727 (fn region_map_merge),1736 (fn region_map_merge) | architecture | ported |
+| 32 | Decrement the Mapping count and return the index of the first modified element | interval.c:1227-1232 (fn MapMerge) | mappings/simplify.rs:1730 (fn region_map_merge),1736 (fn region_map_merge) | architecture | ported |
 | 33 | In series, annul the simplified pointer and do nothing | interval.c:1233-1236 (fn MapMerge) | -- | ceremony | n/a: owned values are dropped, and the series case falls through to `None` |
-| 34 | Return the result | interval.c:1237-1239 (fn MapMerge) | mappings/simplify.rs:1744 (fn region_map_merge) | architecture | ported |
+| 34 | Return the result | interval.c:1237-1239 (fn MapMerge) | mappings/simplify.rs:1756 (fn region_map_merge) | architecture | ported |
 | 35 | `MergeInterval`: initialize the returned pointer and the bounds arrays | interval.c:1326-1330 (fn MergeInterval) | -- | ceremony | n/a: the Rust returns `Option<DynMapping>`, so "no merge" is `None` |
 | 36 | Check the local error status and bail out | interval.c:1331-1333 (fn MergeInterval) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
-| 37 | Both Regions must agree on Closed, and either both or neither must have a defined uncertainty | interval.c:1334-1340 (fn MergeInterval) | interval.rs:1571-1575 (fn region_merge) | architecture | ported |
-| 38 | Get the Negated attributes of the two Regions | interval.c:1341-1344 (fn MergeInterval) | interval.rs:1577 (fn region_merge) | architecture | ported |
-| 39 | Get the number of axes in the two supplied Regions | interval.c:1345-1348 (fn MergeInterval) | interval.rs:1578-1579 (fn region_merge) | architecture | ported |
-| 40 | Get the number of axes the combination will have | interval.c:1349-1352 (fn MergeInterval) | interval.rs:1586 (fn region_merge) | architecture | ported |
-| 41 | Get the base Frames from the two Region FrameSets | interval.c:1353-1357 (fn MergeInterval) | interval.rs:1669-1670 (fn region_merge) | architecture | ported |
-| 42 | Combine them into a single CmpFrame, in the requested order, for use in creating any new Region | interval.c:1358-1363 (fn MergeInterval) | interval.rs:1671-1675 (fn region_merge) | architecture | ported |
+| 37 | Both Regions must agree on Closed, and either both or neither must have a defined uncertainty | interval.c:1334-1340 (fn MergeInterval) | interval.rs:1575-1579 (fn region_merge) | architecture | ported |
+| 38 | Get the Negated attributes of the two Regions | interval.c:1341-1344 (fn MergeInterval) | interval.rs:1581 (fn region_merge) | architecture | ported |
+| 39 | Get the number of axes in the two supplied Regions | interval.c:1345-1348 (fn MergeInterval) | interval.rs:1582-1583 (fn region_merge) | architecture | ported |
+| 40 | Get the number of axes the combination will have | interval.c:1349-1352 (fn MergeInterval) | interval.rs:1590 (fn region_merge) | architecture | ported |
+| 41 | Get the base Frames from the two Region FrameSets | interval.c:1353-1357 (fn MergeInterval) | interval.rs:1675-1676 (fn region_merge) | architecture | ported |
+| 42 | Combine them into a single CmpFrame, in the requested order, for use in creating any new Region | interval.c:1358-1363 (fn MergeInterval) | interval.rs:1677-1681 (fn region_merge) | architecture | ported |
 | 43 | Annul the two base Frame pointers | interval.c:1364-1366 (fn MergeInterval) | -- | ceremony | n/a: owned values are dropped |
 | 44 | Indicate we do not yet have a merged Region | interval.c:1367-1369 (fn MergeInterval) | -- | ceremony | n/a: the Rust builds an `Option<MergedRegion>`, so "no merge yet" is the `None` any arm can return |
-| 45 | First attempt to merge with another Interval, which needs both Intervals un-negated | interval.c:1370-1373 (fn MergeInterval) | interval.rs:1597-1602 (fn region_merge) | architecture | ported |
+| 45 | First attempt to merge with another Interval, which needs both Intervals un-negated | interval.c:1370-1373 (fn MergeInterval) | interval.rs:1601-1606 (fn region_merge) | architecture | ported |
 | 46 | Allocate memory to store the bounds of the returned Interval | interval.c:1374-1377 (fn MergeInterval) | -- | ceremony | n/a: a `Vec` grows as the bounds are appended |
-| 47 | Copy the limits from the two supplied Intervals into those arrays, in the requested order | interval.c:1378-1387 (fn MergeInterval) | interval.rs:1603-1604 (fn region_merge),1286-1297 (fn set_closed) | architecture | ported |
+| 47 | Copy the limits from the two supplied Intervals into those arrays, in the requested order | interval.c:1378-1387 (fn MergeInterval) | interval.rs:1607-1608 (fn region_merge),1286-1297 (fn set_closed) | architecture | ported |
 | 48 | Create the new Interval, initially with no uncertainty | interval.c:1388-1391 (fn MergeInterval) | merge_util.rs:160-164 (fn finish_region_merge) | architecture | ported |
 | 49 | Free the bounds arrays | interval.c:1392-1395 (fn MergeInterval) | -- | ceremony | n/a: owned values are dropped |
-| 50 | Now attempt to merge with a Box, giving an Interval, which needs both Regions un-negated | interval.c:1396-1399 (fn MergeInterval) | interval.rs:1607-1611 (fn region_merge) | architecture | ported |
+| 50 | Now attempt to merge with a Box, giving an Interval, which needs both Regions un-negated | interval.c:1396-1399 (fn MergeInterval) | interval.rs:1611-1615 (fn region_merge) | architecture | ported |
 | 51 | Allocate memory to store the bounds of the returned Interval | interval.c:1400-1403 (fn MergeInterval) | -- | ceremony | n/a: a `Vec` grows as the bounds are appended |
-| 52 | Get the bounds from the Interval into its part of those arrays | interval.c:1404-1410 (fn MergeInterval) | interval.rs:1613-1614 (fn region_merge) | architecture | ported |
-| 53 | Copy the center and corner from the supplied Box into the other part | interval.c:1411-1421 (fn MergeInterval) | interval.rs:1612 (fn region_merge) | architecture | ported |
+| 52 | Get the bounds from the Interval into its part of those arrays | interval.c:1404-1410 (fn MergeInterval) | interval.rs:1617-1618 (fn region_merge) | architecture | ported |
+| 53 | Copy the center and corner from the supplied Box into the other part | interval.c:1411-1421 (fn MergeInterval) | interval.rs:1616 (fn region_merge) | architecture | ported |
 | 54 | Convert those center and corner positions into upper and lower bounds, swapping any pair the conversion inverts | interval.c:1422-1433 (fn MergeInterval) | box_region.rs:971 (fn reg_base_box) | architecture | ported |
 | 55 | Create the new Interval, initially with no uncertainty | interval.c:1434-1437 (fn MergeInterval) | merge_util.rs:160-164 (fn finish_region_merge) | architecture | ported |
 | 56 | Free the bounds arrays | interval.c:1438-1441 (fn MergeInterval) | -- | ceremony | n/a: owned values are dropped |
-| 57 | Now attempt to merge with a NullRegion, giving an Interval; the NullRegion must be negated and the Interval must not | interval.c:1442-1445 (fn MergeInterval) | interval.rs:1617-1621 (fn region_merge) | architecture | ported |
+| 57 | Now attempt to merge with a NullRegion, giving an Interval; the NullRegion must be negated and the Interval must not | interval.c:1442-1445 (fn MergeInterval) | interval.rs:1621-1625 (fn region_merge) | architecture | ported |
 | 58 | Allocate memory to store the bounds of the returned Interval | interval.c:1446-1449 (fn MergeInterval) | -- | ceremony | n/a: a `Vec` grows as the bounds are appended |
-| 59 | Copy the Interval's limits in and store bad values on the NullRegion's axes, marking them unbounded | interval.c:1450-1465 (fn MergeInterval) | interval.rs:1623-1625 (fn region_merge) | architecture | ported |
+| 59 | Copy the Interval's limits in and store bad values on the NullRegion's axes, marking them unbounded | interval.c:1450-1465 (fn MergeInterval) | interval.rs:1627-1629 (fn region_merge) | architecture | ported |
 | 60 | Create the new Interval, initially with no uncertainty | interval.c:1466-1469 (fn MergeInterval) | merge_util.rs:160-164 (fn finish_region_merge) | architecture | ported |
 | 61 | Free the bounds arrays | interval.c:1470-1473 (fn MergeInterval) | -- | ceremony | n/a: owned values are dropped |
-| 62 | Now attempt to merge with a PointList, giving a PointList, which needs both Regions un-negated | interval.c:1474-1477 (fn MergeInterval) | interval.rs:1628-1633 (fn region_merge) | architecture | ported |
-| 63 | Get the Interval's own base bounding box into the two bounds arrays | interval.c:1478-1483 (fn MergeInterval) | interval.rs:1645 (fn region_merge) | architecture | ported |
-| 64 | Get the size of the Interval's base-Frame uncertainty into its own two arrays | interval.c:1484-1489 (fn MergeInterval) | interval.rs:1646-1647 (fn region_merge) | architecture | ported |
-| 65 | Refuse the merge unless the Interval's half-width is under a quarter of the uncertainty width on every axis, replacing the lower bounds with the axis centers as it goes | interval.c:1490-1507 (fn MergeInterval) | interval.rs:1649-1655 (fn region_merge) | architecture | ported |
-| 66 | Go on to create a new PointList only if the Interval is a point | interval.c:1508-1510 (fn MergeInterval) | interval.rs:1652 (fn region_merge) | architecture | ported |
-| 67 | Get a PointSet holding the supplied PointList's axis values, its point count and pointers to its arrays | interval.c:1511-1517 (fn MergeInterval) | interval.rs:1657-1660 (fn region_merge) | architecture | ported |
-| 68 | Create a new PointSet with room for the same points but the extra axes, and get pointers to its arrays | interval.c:1518-1522 (fn MergeInterval) | interval.rs:1590 (fn region_merge) | architecture | ported |
-| 69 | Copy the PointList axis values into the new PointSet, in the requested order | interval.c:1523-1532 (fn MergeInterval) | interval.rs:1589-1599 (fn region_merge),1612 (fn region_merge) | architecture | ported |
-| 70 | Add the axis values the Interval defines to every point | interval.c:1533-1538 (fn MergeInterval) | interval.rs:1654 (fn region_merge),1612 (fn region_merge) | architecture | ported |
+| 62 | Now attempt to merge with a PointList, giving a PointList, which needs both Regions un-negated | interval.c:1474-1477 (fn MergeInterval) | interval.rs:1632-1637 (fn region_merge) | architecture | ported |
+| 63 | Get the Interval's own base bounding box into the two bounds arrays | interval.c:1478-1483 (fn MergeInterval) | interval.rs:1649 (fn region_merge) | architecture | ported |
+| 64 | Get the size of the Interval's base-Frame uncertainty into its own two arrays | interval.c:1484-1489 (fn MergeInterval) | interval.rs:1650-1651 (fn region_merge) | architecture | ported |
+| 65 | Refuse the merge unless the Interval's half-width is under a quarter of the uncertainty width on every axis, replacing the lower bounds with the axis centers as it goes | interval.c:1490-1507 (fn MergeInterval) | interval.rs:1653-1659 (fn region_merge) | architecture | ported |
+| 66 | Go on to create a new PointList only if the Interval is a point | interval.c:1508-1510 (fn MergeInterval) | interval.rs:1656 (fn region_merge) | architecture | ported |
+| 67 | Get a PointSet holding the supplied PointList's axis values, its point count and pointers to its arrays | interval.c:1511-1517 (fn MergeInterval) | interval.rs:1661-1664 (fn region_merge) | architecture | ported |
+| 68 | Create a new PointSet with room for the same points but the extra axes, and get pointers to its arrays | interval.c:1518-1522 (fn MergeInterval) | interval.rs:1594 (fn region_merge) | architecture | ported |
+| 69 | Copy the PointList axis values into the new PointSet, in the requested order | interval.c:1523-1532 (fn MergeInterval) | interval.rs:1593-1603 (fn region_merge),1616 (fn region_merge) | architecture | ported |
+| 70 | Add the axis values the Interval defines to every point | interval.c:1533-1538 (fn MergeInterval) | interval.rs:1658 (fn region_merge),1616 (fn region_merge) | architecture | ported |
 | 71 | Create the new PointList, initially with no uncertainty | interval.c:1539-1543 (fn MergeInterval) | merge_util.rs:170-174 (fn finish_region_merge) | architecture | ported |
 | 72 | Free the two PointSets | interval.c:1544-1548 (fn MergeInterval) | -- | ceremony | n/a: owned values are dropped |
 | 73 | Free the bounds arrays and the uncertainty | interval.c:1549-1556 (fn MergeInterval) | -- | ceremony | n/a: owned values are dropped |
 | 74 | If a new Region was created above, propagate the supplied Region's remaining attributes to it | interval.c:1557-1561 (fn MergeInterval) | merge_util.rs:148-157 (fn finish_region_merge) | architecture | ported |
 | 75 | Ensure the Negated attribute the constructors set is not the one the overlay left | interval.c:1562-1566 (fn MergeInterval) | merge_util.rs:155 (fn finish_region_merge) | architecture | ported |
-| 76 | Assign the new Region an uncertainty only when both supplied Regions have one | interval.c:1567-1570 (fn MergeInterval) | merge_util.rs:298 (fn combine_uncertainties) | architecture | ported |
-| 77 | Get the base-Frame uncertainties from the two supplied Regions | interval.c:1571-1574 (fn MergeInterval) | interval.rs:1717-1720 (fn region_merge) | architecture | ported |
-| 78 | Combine them into a single Prism, in the correct order | interval.c:1575-1581 (fn MergeInterval) | merge_util.rs:299 (fn combine_uncertainties),301-303 (fn combine_uncertainties) | architecture | ported |
+| 76 | Assign the new Region an uncertainty only when both supplied Regions have one | interval.c:1567-1570 (fn MergeInterval) | merge_util.rs:298-300 (fn combine_uncertainties) | architecture | ported |
+| 77 | Get the base-Frame uncertainties from the two supplied Regions | interval.c:1571-1574 (fn MergeInterval) | interval.rs:1715-1718 (fn region_merge) | architecture | ported |
+| 78 | Combine them into a single Prism, in the correct order | interval.c:1575-1581 (fn MergeInterval) | merge_util.rs:301 (fn combine_uncertainties),303 (fn combine_uncertainties) | architecture | ported |
 | 79 | Attempt to simplify the Prism | interval.c:1582-1584 (fn MergeInterval) | merge_util.rs:304 (fn combine_uncertainties) | architecture | ported |
 | 80 | Use the simplified Prism as the uncertainty for the returned Region | interval.c:1585-1587 (fn MergeInterval) | merge_util.rs:177-179 (fn finish_region_merge) | architecture | ported |
 | 81 | Free the uncertainty resources | interval.c:1588-1594 (fn MergeInterval) | -- | ceremony | n/a: owned values are dropped |
-| 82 | Get the current Frames from the two Region FrameSets and combine them into one CmpFrame | interval.c:1595-1605 (fn MergeInterval) | interval.rs:1678-1684 (fn region_merge) | architecture | ported |
-| 83 | Get the two base-to-current Mappings and combine them into one parallel CmpMap connecting the two combined Frames | interval.c:1606-1619 (fn MergeInterval) | interval.rs:1687-1714 (fn region_merge) | architecture | ported |
+| 82 | Get the current Frames from the two Region FrameSets and combine them into one CmpFrame | interval.c:1595-1605 (fn MergeInterval) | interval.rs:1684-1690 (fn region_merge) | architecture | ported |
+| 83 | Get the two base-to-current Mappings and combine them into one parallel CmpMap connecting the two combined Frames | interval.c:1606-1619 (fn MergeInterval) | interval.rs:1693-1714 (fn region_merge) | architecture | ported |
 | 84 | Map the new Region into the new current Frame | interval.c:1620-1622 (fn MergeInterval) | merge_util.rs:181 (fn finish_region_merge) | architecture | ported |
 | 85 | The result's FillFactor is the product of the two supplied FillFactors, set only when either was set | interval.c:1623-1629 (fn MergeInterval) | merge_util.rs:69-71 (fn apply_merge_scaling_to) | architecture | ported |
 | 86 | Scale the result's MeshSize only when either supplied MeshSize was set | interval.c:1630-1637 (fn MergeInterval) | merge_util.rs:73 (fn apply_merge_scaling_to) | architecture | ported |
@@ -136,11 +136,11 @@ lives once.
 | 96 | Check the global error status and bail out | interval.c:3207-3209 (fn Simplify) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 97 | Get a pointer to the supplied Region structure | interval.c:3210-3212 (fn Simplify) | -- | ceremony | n/a: the Rust method already has `&self` |
 | 98 | Get a pointer to the supplied Interval structure | interval.c:3213-3215 (fn Simplify) | -- | ceremony | n/a: the Rust method already has `&self` |
-| 99 | If this Interval is equivalent to a Box, simplify that Box and return the result | interval.c:3216-3221 (fn Simplify) | interval.rs:1942-1941 (fn simplified) | architecture | ported |
-| 100 | Otherwise use the implementation appropriate for unbounded intervals | interval.c:3222-3225 (fn Simplify) | interval.rs:1940 (fn simplified) | architecture | ported |
-| 101 | Invoke the parent Region Simplify, which simplifies the encapsulated FrameSet and uncertainty | interval.c:3226-3230 (fn Simplify) | interval.rs:1946 (fn simplified) | architecture | ported |
-| 102 | Note whether any simplification took place, from whether the returned pointer changed | interval.c:3231-3235 (fn Simplify) | interval.rs:1960 (fn simplified) | architecture | ported |
-| 103 | Attempt the re-definition only when the base-to-current Mapping is not a UnitMap | interval.c:3236-3240 (fn Simplify) | interval.rs:1962-1967 (fn simplified) | architecture | ported |
+| 99 | If this Interval is equivalent to a Box, simplify that Box and return the result | interval.c:3216-3221 (fn Simplify) | interval.rs:1941-1940 (fn simplified) | architecture | ported |
+| 100 | Otherwise use the implementation appropriate for unbounded intervals | interval.c:3222-3225 (fn Simplify) | interval.rs:1939 (fn simplified) | architecture | ported |
+| 101 | Invoke the parent Region Simplify, which simplifies the encapsulated FrameSet and uncertainty | interval.c:3226-3230 (fn Simplify) | interval.rs:1945 (fn simplified) | architecture | ported |
+| 102 | Note whether any simplification took place, from whether the returned pointer changed | interval.c:3231-3235 (fn Simplify) | interval.rs:1959 (fn simplified) | architecture | ported |
+| 103 | Attempt the re-definition only when the base-to-current Mapping is not a UnitMap | interval.c:3236-3240 (fn Simplify) | interval.rs:1961-1966 (fn simplified) | architecture | ported |
 | 104 | Copy the base-Frame bounds, giving a complete box by replacing any missing limit with an arbitrary non-bad value | interval.c:3241-3255 (fn Simplify) | interval.rs:686-712 (fn simplify_remapped) | architecture | ported |
 | 105 | Ensure a good upper bound on each axis, from the lower bound's sign where there is one | interval.c:3256-3271 (fn Simplify) | interval.rs:692-702 (fn simplify_remapped) | architecture | ported |
 | 106 | Ensure a good lower bound on each axis the same way | interval.c:3272-3286 (fn Simplify) | interval.rs:703-711 (fn simplify_remapped) | architecture | ported |
@@ -167,9 +167,9 @@ lives once.
 | 127 | Free the two PointSets and the simplified bounds arrays | interval.c:3506-3513 (fn Simplify) | -- | ceremony | n/a: owned values are dropped |
 | 128 | Free the Frames, the two Boxes, the simplified Region and the bounds arrays | interval.c:3514-3523 (fn Simplify) | -- | ceremony | n/a: owned values are dropped |
 | 129 | Free the base-to-current Mapping | interval.c:3524-3526 (fn Simplify) | -- | ceremony | n/a: owned values are dropped |
-| 130 | If anything simplified, overlay the supplied Region's attributes onto the result and return it; otherwise return a clone of the supplied pointer | interval.c:3527-3540 (fn Simplify) | interval.rs:1980-1997 (fn simplified) | architecture | ported |
+| 130 | If anything simplified, overlay the supplied Region's attributes onto the result and return it; otherwise return a clone of the supplied pointer | interval.c:3527-3540 (fn Simplify) | interval.rs:1979-1996 (fn simplified) | architecture | ported |
 | 131 | Annul the returned pointer if an error occurred | interval.c:3541-3543 (fn Simplify) | -- | ceremony | n/a: an error is a `Result::Err`, and owned values are dropped |
-| 132 | Return the result | interval.c:3544-3545 (fn Simplify) | interval.rs:1994 (fn simplified),1577 (fn region_merge) | architecture | ported |
+| 132 | Return the result | interval.c:3544-3545 (fn Simplify) | interval.rs:1993 (fn simplified),1577 (fn region_merge) | architecture | ported |
 
 ## Rows 11 and 12 — the guard the base class gets wrong
 
@@ -182,7 +182,7 @@ the reference for what that guard should look like.
 ## Row 99 — the Box path comes first, and it hands the Box to the simplifier
 
 C dispatches on Box-equivalence before doing any remap work, and the port keeps
-that order (`interval.rs:1942-1941 (fn simplified)`). The condition is C's: every
+that order (`interval.rs:1941-1940 (fn simplified)`). The condition is C's: every
 resolved limit finite, every axis sharing axis 1's included/excluded orientation,
 and axis 1 including rather than excluding its interval. A Negated Interval still
 yields a Box — C negates the Box (`interval.c:524 (fn Cache)`) rather than
@@ -210,7 +210,7 @@ equivalent Box. Three C bodies read them — `Simplify`
 so `Interval::cache` returns the pair of arrays alongside the optional Box and all
 three call sites take it from there. `interval.rs:575-662 (fn cache)` is the only
 copy of the classification, reached from `interval.rs:1169 (fn reg_pins_mask)`,
-`interval.rs:1442 (fn get_def_unc)` and `interval.rs:1942 (fn simplified)`.
+`interval.rs:1442 (fn get_def_unc)` and `interval.rs:1941 (fn simplified)`.
 
 ## Rows 104 to 109 — arbitrary limits, then reined back in
 
@@ -256,7 +256,7 @@ on any axis whose half-width exceeds a quarter of the uncertainty width
 Box's half-width. The axis values the merged PointList receives are the centers
 of the Interval's own axes (`interval.c:1504 (fn MergeInterval)`).
 
-`interval.rs:1645-1655 (fn region_merge)` is that test and those values. Only an
+`interval.rs:1649-1659 (fn region_merge)` is that test and those values. Only an
 unbounded Interval reaches the branch with non-zero width, because a bounded one
 simplifies to a Box first and `MergeBox` merges a Box that is a point, so the arm
 can only ever refuse; a missing limit is stored as `±f64::MAX` and fails any
@@ -273,7 +273,7 @@ Every arm's constructor builds an un-negated Region, and `astRegOverlay` would
 copy the supplied Interval's `Negated` onto it, so C clears it again
 (`interval.c:1565 (fn MergeInterval)`). The port never sets it in the first place:
 `finish_region_merge` takes `negated: false` from the caller
-(`interval.rs:1741 (fn region_merge)`) and applies it with the rest of the overlay
+(`interval.rs:1739 (fn region_merge)`) and applies it with the rest of the overlay
 (`merge_util.rs:155 (fn finish_region_merge)`). The arms that require a negated
 neighbor — the NullRegion arm at `interval.c:1444 (fn MergeInterval)` — encode
 that negation in the bounds they build, not in the result's flag.

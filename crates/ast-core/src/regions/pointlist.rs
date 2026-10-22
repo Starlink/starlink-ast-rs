@@ -631,7 +631,11 @@ impl Region for PointList {
         self.perm_axes(perm)
     }
 
-    fn region_merge(&self, other_reg: &dyn Region, intfirst: bool) -> Option<DynMapping> {
+    fn region_merge(
+        &self,
+        other_reg: &dyn Region,
+        intfirst: bool,
+    ) -> AstResult<Option<DynMapping>> {
         // Faithful port of `pointlist.c::MergePointList` (1205). A PointList
         // only merges with another PointList (other classes handle merging a
         // PointList with themselves). `intfirst` selects the axis order: when
@@ -640,14 +644,16 @@ impl Region for PointList {
         // Guard (pointlist.c:1289): same Closed, and either both or neither
         // have a defined uncertainty; both must have equal Negated and contain
         // exactly one point.
-        let other = other_reg.as_any().downcast_ref::<PointList>()?;
+        let Some(other) = other_reg.as_any().downcast_ref::<PointList>() else {
+            return Ok(None);
+        };
         if self.is_closed() != other.is_closed()
             || self.data.uncertainty.is_some() != other.data.uncertainty.is_some()
             || self.data.negated != other.data.negated
             || self.data.points.len() != 1
             || other.data.points.len() != 1
         {
-            return None;
+            return Ok(None);
         }
 
         let nax_this = self.naxes();
@@ -689,30 +695,22 @@ impl Region for PointList {
         let map_this = self
             .data
             .frameset
-            .mapping(FrameRef::Base, FrameRef::Current)
-            .ok()?;
+            .mapping(FrameRef::Base, FrameRef::Current)?;
         let map_reg = other_reg
             .get_region_frameset()
-            .mapping(FrameRef::Base, FrameRef::Current)
-            .ok()?;
+            .mapping(FrameRef::Base, FrameRef::Current)?;
         let bcmap: DynMapping = if intfirst {
-            Box::new(
-                crate::mappings::CmpMap::new(
-                    map_this,
-                    map_reg,
-                    crate::mappings::Composition::Parallel,
-                )
-                .ok()?,
-            )
+            Box::new(crate::mappings::CmpMap::new(
+                map_this,
+                map_reg,
+                crate::mappings::Composition::Parallel,
+            )?)
         } else {
-            Box::new(
-                crate::mappings::CmpMap::new(
-                    map_reg,
-                    map_this,
-                    crate::mappings::Composition::Parallel,
-                )
-                .ok()?,
-            )
+            Box::new(crate::mappings::CmpMap::new(
+                map_reg,
+                map_this,
+                crate::mappings::Composition::Parallel,
+            )?)
         };
 
         // Combine the base-Frame uncertainties in the requested order when
@@ -721,7 +719,7 @@ impl Region for PointList {
             self.data.uncertainty.clone(),
             other_reg.get_uncertainty(),
             intfirst,
-        );
+        )?;
 
         let scaling = super::merge_util::MergeScaling {
             msz_this: (
@@ -747,6 +745,7 @@ impl Region for PointList {
             unc,
             scaling,
         )
+        .map(Some)
     }
 
     fn reg_frame_attrib<'a>(
@@ -1030,7 +1029,9 @@ impl Mapping for PointList {
             return None;
         }
         let other_reg: &dyn Region = super::as_region(other)?;
-        Region::region_merge(self, other_reg, true)
+        // `try_merge` has no way to report an error; a simplification merges
+        // two Regions through `region_map_merge`, which passes one up.
+        Region::region_merge(self, other_reg, true).ok().flatten()
     }
 
     fn map_merge(

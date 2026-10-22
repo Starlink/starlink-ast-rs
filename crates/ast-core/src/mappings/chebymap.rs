@@ -829,7 +829,7 @@ impl Mapping for ChebyMap {
             } else {
                 (self.nin(), self.nout())
             };
-            let mut rebuilt = ChebyMap::build(
+            let rebuilt = ChebyMap::build(
                 nin,
                 nout,
                 &fwd,
@@ -838,8 +838,8 @@ impl Mapping for ChebyMap {
                 &self.ubnd_f,
                 self.lbnd_i.as_deref(),
                 self.ubnd_i.as_deref(),
-            )
-            .ok()?;
+            );
+            let mut rebuilt = ctx.settle(rebuilt.map(Some))?;
             if self.inverted {
                 rebuilt.invert();
             }

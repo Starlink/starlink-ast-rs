@@ -2077,11 +2077,11 @@ pub trait Region: Frame + Mapping + AsDynRegion {
     /// (`interval.c::MergeInterval`, `box.c::MergeBox`,
     /// `pointlist.c::MergePointList`, `nullregion.c::MergeNullRegion`), whose
     /// `intfirst`/`boxfirst`/`plsfirst` parameter this mirrors. The default
-    /// returns `None` (classes that never merge in parallel — Circle,
+    /// returns `Ok(None)` (classes that never merge in parallel — Circle,
     /// Ellipse, Polygon, CmpRegion, Prism).
     #[doc(hidden)]
-    fn region_merge(&self, _other: &dyn Region, _intfirst: bool) -> Option<DynMapping> {
-        None
+    fn region_merge(&self, _other: &dyn Region, _intfirst: bool) -> AstResult<Option<DynMapping>> {
+        Ok(None)
     }
 
     // ------------------------------------------------------------------

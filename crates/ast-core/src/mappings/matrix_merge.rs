@@ -57,9 +57,13 @@ pub(crate) fn matrix_map_merge(
     };
 
     // ---- Step 1: replace-with-simpler (no reference to neighbors).
-    if let Some(new) = replace_with_simpler(mm, eff_inv, nin, nout) {
+    let replacement = replace_with_simpler(mm, eff_inv, nin, nout);
+    if let Some(new) = ctx.settle(replacement) {
         ctx.set_pair_single(where_, (new, false, false));
         return Some(where_);
+    }
+    if ctx.failed() {
+        return None;
     }
 
     // The neighbor-merge and swap steps only apply in series (C wraps the
@@ -405,6 +409,8 @@ fn perm_ok(pm: &PermMap) -> bool {
     let p0: Vec<f64> = (0..nin).map(|i| (i + 1) as f64).collect();
     let p1: Vec<f64> = (0..nin).map(|i| -(i as f64)).collect();
     let pset = PointSet::from_rows([p0.as_slice(), p1.as_slice()]);
+    // A PermMap transforms in both directions, so these cannot fail; C's
+    // `astTransform` calls here raise nothing either.
     let Ok(fwd) = pm.transform(&pset, true) else {
         return false;
     };
@@ -596,6 +602,8 @@ fn perm_get(pm: &PermMap, inv: bool) -> (Vec<i64>, Vec<i64>, Vec<f64>) {
 
     // Input probes: point0 = [0,1,2,...], point1 = [-1,-1,...]. The first
     // enumerates the axes, the second detects constant output values.
+    // A PermMap transforms in both directions, so neither probe can fail;
+    // C's `astTransform` calls here raise nothing either.
     // Forward transform to determine the output axis permutation array.
     if nin > 0 {
         let p0: Vec<f64> = (0..nin).map(|i| i as f64).collect();
@@ -995,7 +1003,7 @@ fn replace_with_simpler(
     eff_inv: bool,
     nin: usize,
     nout: usize,
-) -> Option<DynMapping> {
+) -> AstResult<Option<DynMapping>> {
     // The effective forward matrix (honoring the applied direction) and the
     // stored forward matrix. C reads `mm->f_matrix` for the structural tests
     // (uniformity / off-diagonal-zero) and picks the zoom factor from
@@ -1004,7 +1012,7 @@ fn replace_with_simpler(
 
     // Square UNIT matrix → UnitMap.
     if mm.is_unit_form() && nin == nout {
-        return Some(Box::new(UnitMap::new(nin)));
+        return Ok(Some(Box::new(UnitMap::new(nin))));
     }
 
     // Square DIAGONAL matrix with equal diagonal terms → ZoomMap (unless the
@@ -1016,14 +1024,15 @@ fn replace_with_simpler(
         let uniform = (1..n).all(|i| ast_equal(fwd[[i, i]], fwd[[i - 1, i - 1]]));
         if uniform {
             let factor = if eff_inv {
-                mm.inverse_matrix()?[[0, 0]]
+                match mm.inverse_matrix() {
+                    Some(inverse) => inverse[[0, 0]],
+                    None => return Ok(None),
+                }
             } else {
                 fwd[[0, 0]]
             };
             if factor != 0.0 {
-                return ZoomMap::new(nin, factor)
-                    .ok()
-                    .map(|z| Box::new(z) as DynMapping);
+                return Ok(Some(Box::new(ZoomMap::new(nin, factor)?)));
             }
         }
     }
@@ -1045,11 +1054,9 @@ fn replace_with_simpler(
         }
         if off_diag_zero {
             let diag: Vec<f64> = (0..n).map(|i| fwd[[i, i]]).collect();
-            return MatrixMap::diagonal(n, n, &diag)
-                .ok()
-                .map(|m| Box::new(m) as DynMapping);
+            return Ok(Some(Box::new(MatrixMap::diagonal(n, n, &diag)?)));
         }
     }
 
-    None
+    Ok(None)
 }

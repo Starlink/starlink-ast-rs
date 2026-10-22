@@ -429,19 +429,25 @@ impl Region for NullRegion {
         self.perm_axes(perm)
     }
 
-    fn region_merge(&self, other_reg: &dyn Region, intfirst: bool) -> Option<DynMapping> {
+    fn region_merge(
+        &self,
+        other_reg: &dyn Region,
+        intfirst: bool,
+    ) -> AstResult<Option<DynMapping>> {
         // Faithful port of `nullregion.c::MergeNullRegion` (571). A NullRegion
         // only merges with another NullRegion (other classes handle merging a
         // NullRegion with themselves). `intfirst` selects the axis order.
         //
         // Guard (nullregion.c:645, 672): the same Closed, either both or
         // neither with a defined uncertainty, and equal Negated.
-        let other = other_reg.as_any().downcast_ref::<NullRegion>()?;
+        let Some(other) = other_reg.as_any().downcast_ref::<NullRegion>() else {
+            return Ok(None);
+        };
         if self.is_closed() != other.is_closed()
             || self.test_unc() != other.test_unc()
             || self.data.negated != other.data.negated
         {
-            return None;
+            return Ok(None);
         }
 
         // The merged Region is built on a CmpFrame of the two *base* Frames
@@ -463,7 +469,7 @@ impl Region for NullRegion {
         // overlays from `this` alone, not from a combination of the two, and
         // asks for the uncertainty to be cleared so the one installed below is
         // the only one.
-        new.reg_overlay(self, true).ok()?;
+        new.reg_overlay(self, true)?;
 
         // Ensure Negated is set correctly (nullregion.c:678-682): set when
         // true, cleared otherwise. The guard above already requires the two
@@ -475,19 +481,19 @@ impl Region for NullRegion {
         // uncertainty is a Prism of the two base-Frame uncertainties,
         // simplified, installed through astSetUnc (nullregion.c:685-705).
         if self.test_unc() && other.test_unc() {
-            let unc_this = self.get_unc_frm(FrameRef::Base).ok()?;
-            let unc_reg = other_reg.get_unc_frm(FrameRef::Base).ok()?;
+            let unc_this = self.get_unc_frm(FrameRef::Base)?;
+            let unc_reg = other_reg.get_unc_frm(FrameRef::Base)?;
             let (first, second) = if intfirst {
                 (unc_this, unc_reg)
             } else {
                 (unc_reg, unc_this)
             };
-            let bunc = super::PrismBuilder::from_dyn(first, second)
-                .and_then(|b| b.build())
-                .ok()?;
-            let sbunc = <dyn Mapping>::simplify(&bunc).ok()?;
-            let sbunc = super::merge_util::mapping_into_region(sbunc)?;
-            new.set_uncertainty(sbunc).ok()?;
+            let bunc = super::PrismBuilder::from_dyn(first, second).and_then(|b| b.build())?;
+            let sbunc = <dyn Mapping>::simplify(&bunc)?;
+            let Some(sbunc) = super::merge_util::mapping_into_region(sbunc) else {
+                return Ok(None);
+            };
+            new.set_uncertainty(sbunc)?;
         }
 
         // The current Frames, combined in the same order (nullregion.c:713-721).
@@ -503,20 +509,18 @@ impl Region for NullRegion {
         let map_this = self
             .data
             .frameset
-            .mapping(FrameRef::Base, FrameRef::Current)
-            .ok()?;
+            .mapping(FrameRef::Base, FrameRef::Current)?;
         let map_reg = other_reg
             .get_region_frameset()
-            .mapping(FrameRef::Base, FrameRef::Current)
-            .ok()?;
+            .mapping(FrameRef::Base, FrameRef::Current)?;
         let bcmap = if intfirst {
-            crate::mappings::CmpMap::new(map_this, map_reg, Composition::Parallel).ok()?
+            crate::mappings::CmpMap::new(map_this, map_reg, Composition::Parallel)?
         } else {
-            crate::mappings::CmpMap::new(map_reg, map_this, Composition::Parallel).ok()?
+            crate::mappings::CmpMap::new(map_reg, map_this, Composition::Parallel)?
         };
 
         // Map the merged Region into the new current Frame (nullregion.c:738).
-        let mut result = new.reg_map_region(&bcmap, &cfrm).ok()?;
+        let mut result = new.reg_map_region(&bcmap, &cfrm)?;
 
         // FillFactor product and MeshSize ratio scaling, applied to the mapped
         // result as C applies them (nullregion.c:740-776).
@@ -530,11 +534,11 @@ impl Region for NullRegion {
             fill_this: (self.data.effective_fill_factor(), self.data.fill_factor_set),
             fill_reg: (other.fill_factor(), other.test_fill_factor()),
         };
-        super::merge_util::apply_merge_scaling_to(result.as_mut(), &scaling).ok()?;
+        super::merge_util::apply_merge_scaling_to(result.as_mut(), &scaling)?;
 
         // A Region is a Mapping; the sibling-trait port needs the upcast
         // written down.
-        Some(result.as_dyn_mapping().clone_box())
+        Ok(Some(result.as_dyn_mapping().clone_box()))
     }
 
     fn reg_frame_attrib<'a>(
@@ -842,7 +846,9 @@ impl Mapping for NullRegion {
             return None;
         }
         let other_reg: &dyn Region = super::as_region(other)?;
-        Region::region_merge(self, other_reg, true)
+        // `try_merge` has no way to report an error; a simplification merges
+        // two Regions through `region_map_merge`, which passes one up.
+        Region::region_merge(self, other_reg, true).ok().flatten()
     }
 
     fn map_merge(

@@ -1719,11 +1719,17 @@ pub(crate) fn region_map_merge(
         if where_ > 0 {
             let merged = {
                 let (m, _, _) = ctx.entry(where_ - 1);
-                as_region(m.as_ref()).and_then(|lower| this.region_merge(lower, false))
+                match as_region(m.as_ref()) {
+                    Some(lower) => this.region_merge(lower, false),
+                    None => Ok(None),
+                }
             };
-            if let Some(merged) = merged {
+            if let Some(merged) = ctx.settle(merged) {
                 ctx.replace_pair_with(where_ - 1, merged, false);
                 return Some(where_ - 1);
+            }
+            if ctx.failed() {
+                return None;
             }
         }
 
@@ -1731,11 +1737,17 @@ pub(crate) fn region_map_merge(
         if where_ + 1 < ctx.len() {
             let merged = {
                 let (m, _, _) = ctx.entry(where_ + 1);
-                as_region(m.as_ref()).and_then(|upper| this.region_merge(upper, true))
+                match as_region(m.as_ref()) {
+                    Some(upper) => this.region_merge(upper, true),
+                    None => Ok(None),
+                }
             };
-            if let Some(merged) = merged {
+            if let Some(merged) = ctx.settle(merged) {
                 ctx.replace_pair_with(where_, merged, false);
                 return Some(where_);
+            }
+            if ctx.failed() {
+                return None;
             }
         }
     }
@@ -2641,9 +2653,7 @@ fn swap_permmap_parallel_at(list: &mut Vec<(DynMapping, bool, bool)>, i: usize) 
 
     // Get the parallel CmpMap's component dimensions.
     // Flatten for parallel to get the components.
-    let Ok(par_list) = flatten(par_map.as_ref(), par_inv, false) else {
-        return Ok(false);
-    };
+    let par_list = flatten(par_map.as_ref(), par_inv, false)?;
     if par_list.len() != 2 {
         // Only handle the 2-component case (matching C implementation).
         return Ok(false);
@@ -2858,9 +2868,7 @@ fn swap_permmap_parallel_at(list: &mut Vec<(DynMapping, bool, bool)>, i: usize) 
         b
     };
 
-    let Ok(new_cm) = CmpMap::new(new_b, new_a, Composition::Parallel) else {
-        return Ok(false);
-    };
+    let new_cm = CmpMap::new(new_b, new_a, Composition::Parallel)?;
 
     // Build the new PermMap (or detect if it's identity).
     let is_identity = !aconstants
@@ -2876,9 +2884,7 @@ fn swap_permmap_parallel_at(list: &mut Vec<(DynMapping, bool, bool)>, i: usize) 
         list[i] = (Box::new(new_cm), false, false);
         list.remove(i + 1);
     } else {
-        let Ok(new_pm) = PermMap::new(&inperm_new, &outperm_new, &constants_new) else {
-            return Ok(false);
-        };
+        let new_pm = PermMap::new(&inperm_new, &outperm_new, &constants_new)?;
         // CmpMap goes first (was second), PermMap goes second (was first).
         list[i] = (Box::new(new_cm), false, false);
         list[i + 1] = (Box::new(new_pm), false, false);
@@ -3087,8 +3093,8 @@ fn pcd_swap_strategy(ctx: &mut MergeCtx, where_: usize, series: bool) -> Option<
     };
 
     if let Some(i1) = target {
-        let swapped = pcd_swap_pair(pcd_clone_pair(ctx, i1), where_ - i1)?;
-        let [first, second] = swapped;
+        let swapped = pcd_swap_pair(pcd_clone_pair(ctx, i1), where_ - i1);
+        let [first, second] = ctx.settle(swapped)?;
         ctx.set_pair(i1, first, second);
 
         // C follows the swap with an `astMapMerge` over the sub-list that
@@ -3169,20 +3175,31 @@ fn pcd_speculative_swap(
             continue;
         };
 
-        let Some(swapped) = pcd_swap_pair(pcd_clone_pair(ctx, i1), where_ - i1) else {
-            continue;
+        let swapped = match pcd_swap_pair(pcd_clone_pair(ctx, i1), where_ - i1) {
+            Ok(Some(swapped)) => swapped,
+            Ok(None) => continue,
+            Err(e) => {
+                ctx.fail(e);
+                return None;
+            }
         };
 
-        // C compares the class of each swapped Mapping with the class of its
-        // simplification and discards the swap when neither changed
-        // (pcdmap.c:1694-1701).
-        let worthwhile = swapped.iter().any(|entry| {
-            entry
-                .0
-                .simplify()
-                .ok()
-                .is_some_and(|s| s.as_any().type_id() != entry.0.as_any().type_id())
-        });
+        // C simplifies both swapped Mappings, compares the class of each with
+        // the class of its simplification, and discards the swap when neither
+        // changed (pcdmap.c:1700-1704). An error simplifying either ends the
+        // merge, as C leaves it in the global status.
+        let simplified: AstResult<Vec<DynMapping>> =
+            swapped.iter().map(|entry| entry.0.simplify()).collect();
+        let worthwhile = match simplified {
+            Ok(simplified) => simplified
+                .iter()
+                .zip(&swapped)
+                .any(|(s, entry)| s.as_any().type_id() != entry.0.as_any().type_id()),
+            Err(e) => {
+                ctx.fail(e);
+                return None;
+            }
+        };
 
         if worthwhile {
             let [first, second] = swapped;
@@ -3225,14 +3242,16 @@ fn pcd_clone_pair(ctx: &MergeCtx, i1: usize) -> [(DynMapping, bool, bool); 2] {
 fn pcd_swap_pair(
     pair: [(DynMapping, bool, bool); 2],
     ipc: usize,
-) -> Option<[(DynMapping, bool, bool); 2]> {
+) -> AstResult<Option<[(DynMapping, bool, bool); 2]>> {
     let [lower, upper] = pair;
     let (pcd_entry, other) = if ipc == 0 {
         (lower, upper)
     } else {
         (upper, lower)
     };
-    let pcd = pcd_entry.0.as_any().downcast_ref::<PcdMap>()?;
+    let Some(pcd) = pcd_entry.0.as_any().downcast_ref::<PcdMap>() else {
+        return Ok(None);
+    };
     let pcd_inv = pcd_entry.1;
     let disco = pcd.disc();
     let [xcen, ycen] = pcd.pcdcen();
@@ -3255,7 +3274,7 @@ fn pcd_swap_pair(
             ([xcen / zoom, ycen / zoom], disco * zoom * zoom)
         };
         let new_pcd = PcdMap::new(disc, cen);
-        let new_zoom: DynMapping = Box::new(ZoomMap::new(2, zoom).ok()?);
+        let new_zoom: DynMapping = Box::new(ZoomMap::new(2, zoom)?);
         (new_pcd, (new_zoom, false, false))
     } else if other.0.as_any().is::<PermMap>() {
         // The PermMap is passed through unchanged, with its own Invert flag,
@@ -3264,7 +3283,7 @@ fn pcd_swap_pair(
         let new_pcd = PcdMap::new(disco, [ycen, xcen]);
         (new_pcd, (other.0.clone_box(), other.1, other.2))
     } else {
-        return None;
+        return Ok(None);
     };
 
     let mut new_pcd = new_pcd;
@@ -3273,11 +3292,11 @@ fn pcd_swap_pair(
     }
     let new_pcd_entry: (DynMapping, bool, bool) = (Box::new(new_pcd), false, false);
 
-    Some(if ipc == 0 {
+    Ok(Some(if ipc == 0 {
         [new_other, new_pcd_entry]
     } else {
         [new_pcd_entry, new_other]
-    })
+    }))
 }
 
 /// Detect and apply the diagonal-sandwich pattern anchored at index `i`,
@@ -3346,7 +3365,8 @@ fn try_sphmap_diagonal_pattern_at(list: &mut Vec<(DynMapping, bool, bool)>, i: u
         return false;
     }
 
-    // Build the WinMap.
+    // Build the WinMap. Two shifts and two scales always make one, so the
+    // error C's astWinMap could leave in the global status cannot arise.
     let Ok(winmap) = WinMap::new(&[lon_shift, 0.0], &[lon_scale, lat_scale]) else {
         return false;
     };

@@ -1562,7 +1562,11 @@ impl Region for Interval {
         self.perm_axes(perm)
     }
 
-    fn region_merge(&self, other_reg: &dyn Region, intfirst: bool) -> Option<DynMapping> {
+    fn region_merge(
+        &self,
+        other_reg: &dyn Region,
+        intfirst: bool,
+    ) -> AstResult<Option<DynMapping>> {
         // Faithful port of `interval.c::MergeInterval` (1224). `intfirst`
         // selects the axis order: when true the Interval's axes go first and
         // `other`'s second; when false `other`'s axes go first.
@@ -1574,7 +1578,7 @@ impl Region for Interval {
         if self.is_closed() != other_reg.is_closed()
             || self.data.uncertainty.is_some() != other_reg.get_uncertainty().is_some()
         {
-            return None;
+            return Ok(None);
         }
 
         let neg_this = self.data.negated;
@@ -1612,7 +1616,7 @@ impl Region for Interval {
             if neg_this || other.is_negated() {
                 None
             } else {
-                let (blb, bub) = other.reg_base_box().ok()?;
+                let (blb, bub) = other.reg_base_box()?;
                 let lbnd = concat(&self.data.points[0], &blb);
                 let ubnd = concat(&self.data.points[1], &bub);
                 Some(MergedRegion::Interval(lbnd, ubnd))
@@ -1641,14 +1645,14 @@ impl Region for Interval {
                 // half-width (interval.c:1481-1499). A missing limit is stored
                 // as -DBL_MAX or DBL_MAX, so an unbounded axis fails the test
                 // and the Interval is left alone.
-                let (lbnd, ubnd) = self.reg_base_box().ok()?;
-                let bunc = self.get_unc_frm(FrameRef::Base).ok()?;
-                let (lbnd_unc, ubnd_unc) = bunc.get_region_bounds().ok()?;
+                let (lbnd, ubnd) = self.reg_base_box()?;
+                let bunc = self.get_unc_frm(FrameRef::Base)?;
+                let (lbnd_unc, ubnd_unc) = bunc.get_region_bounds()?;
 
                 let mut axval = Vec::with_capacity(nax_this);
                 for i in 0..nax_this {
                     if 0.5 * (ubnd[i] - lbnd[i]).abs() > 0.25 * (ubnd_unc[i] - lbnd_unc[i]).abs() {
-                        return None;
+                        return Ok(None);
                     }
                     axval.push(0.5 * (lbnd[i] + ubnd[i]));
                 }
@@ -1665,7 +1669,9 @@ impl Region for Interval {
             None
         };
 
-        let built = built?;
+        let Some(built) = built else {
+            return Ok(None);
+        };
 
         // The merged Region is built on a CmpFrame of the two *base* Frames and
         // mapped into the combined current Frame at the end (interval.c:1335-1343).
@@ -1690,30 +1696,22 @@ impl Region for Interval {
         let map_this = self
             .data
             .frameset
-            .mapping(FrameRef::Base, FrameRef::Current)
-            .ok()?;
+            .mapping(FrameRef::Base, FrameRef::Current)?;
         let map_reg = other_reg
             .get_region_frameset()
-            .mapping(FrameRef::Base, FrameRef::Current)
-            .ok()?;
+            .mapping(FrameRef::Base, FrameRef::Current)?;
         let bcmap: DynMapping = if intfirst {
-            Box::new(
-                crate::mappings::CmpMap::new(
-                    map_this,
-                    map_reg,
-                    crate::mappings::Composition::Parallel,
-                )
-                .ok()?,
-            )
+            Box::new(crate::mappings::CmpMap::new(
+                map_this,
+                map_reg,
+                crate::mappings::Composition::Parallel,
+            )?)
         } else {
-            Box::new(
-                crate::mappings::CmpMap::new(
-                    map_reg,
-                    map_this,
-                    crate::mappings::Composition::Parallel,
-                )
-                .ok()?,
-            )
+            Box::new(crate::mappings::CmpMap::new(
+                map_reg,
+                map_this,
+                crate::mappings::Composition::Parallel,
+            )?)
         };
 
         // Combine uncertainties in the requested order when both are present.
@@ -1721,7 +1719,7 @@ impl Region for Interval {
             self.data.uncertainty.clone(),
             other_reg.get_uncertainty(),
             intfirst,
-        );
+        )?;
 
         let scaling = super::merge_util::MergeScaling {
             msz_this: (
@@ -1747,6 +1745,7 @@ impl Region for Interval {
             unc,
             scaling,
         )
+        .map(Some)
     }
 
     fn reg_frame_attrib<'a>(
@@ -2030,7 +2029,9 @@ impl Mapping for Interval {
             return None;
         }
         let other_reg: &dyn Region = super::as_region(other)?;
-        Region::region_merge(self, other_reg, true)
+        // `try_merge` has no way to report an error; a simplification merges
+        // two Regions through `region_map_merge`, which passes one up.
+        Region::region_merge(self, other_reg, true).ok().flatten()
     }
 
     fn map_merge(

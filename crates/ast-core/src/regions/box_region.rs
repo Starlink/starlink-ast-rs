@@ -1545,7 +1545,11 @@ impl Region for BoxRegion {
         self.perm_axes(perm)
     }
 
-    fn region_merge(&self, other_reg: &dyn Region, intfirst: bool) -> Option<DynMapping> {
+    fn region_merge(
+        &self,
+        other_reg: &dyn Region,
+        intfirst: bool,
+    ) -> AstResult<Option<DynMapping>> {
         // Faithful port of `box.c::MergeBox` (1658). `intfirst` selects the
         // axis order: when true this Box's axes go first and `other`'s second;
         // when false `other`'s axes go first.
@@ -1557,7 +1561,7 @@ impl Region for BoxRegion {
         if self.is_closed() != other_reg.is_closed()
             || self.data.uncertainty.is_some() != other_reg.get_uncertainty().is_some()
         {
-            return None;
+            return Ok(None);
         }
 
         let neg_this = self.data.negated;
@@ -1592,7 +1596,7 @@ impl Region for BoxRegion {
             if neg_this || other.is_negated() {
                 None
             } else {
-                let (blb, bub) = self.bounds().ok()?;
+                let (blb, bub) = self.bounds()?;
                 let lbnd = concat(&blb, &other.data.points[0]);
                 let ubnd = concat(&bub, &other.data.points[1]);
                 Some(MergedRegion::Interval(lbnd, ubnd))
@@ -1603,7 +1607,7 @@ impl Region for BoxRegion {
             if neg_this || !other.is_negated() {
                 None
             } else {
-                let (blb, bub) = self.bounds().ok()?;
+                let (blb, bub) = self.bounds()?;
                 let bad = vec![BAD_VALUE; nax_reg];
                 let lbnd = concat(&blb, &bad);
                 let ubnd = concat(&bub, &bad);
@@ -1616,7 +1620,7 @@ impl Region for BoxRegion {
             if neg_this || other.is_negated() {
                 None
             } else {
-                let (blb, bub) = self.bounds().ok()?;
+                let (blb, bub) = self.bounds()?;
                 if !super::merge_util::region_is_point(&blb, &bub, self.data.uncertainty.as_ref()) {
                     None
                 } else {
@@ -1633,7 +1637,9 @@ impl Region for BoxRegion {
             None
         };
 
-        let built = built?;
+        let Some(built) = built else {
+            return Ok(None);
+        };
 
         // The merged Region is built on a CmpFrame of the two *base* Frames and
         // mapped into the combined current Frame at the end (box.c:1764-1773).
@@ -1658,30 +1664,22 @@ impl Region for BoxRegion {
         let map_this = self
             .data
             .frameset
-            .mapping(FrameRef::Base, FrameRef::Current)
-            .ok()?;
+            .mapping(FrameRef::Base, FrameRef::Current)?;
         let map_reg = other_reg
             .get_region_frameset()
-            .mapping(FrameRef::Base, FrameRef::Current)
-            .ok()?;
+            .mapping(FrameRef::Base, FrameRef::Current)?;
         let bcmap: DynMapping = if intfirst {
-            Box::new(
-                crate::mappings::CmpMap::new(
-                    map_this,
-                    map_reg,
-                    crate::mappings::Composition::Parallel,
-                )
-                .ok()?,
-            )
+            Box::new(crate::mappings::CmpMap::new(
+                map_this,
+                map_reg,
+                crate::mappings::Composition::Parallel,
+            )?)
         } else {
-            Box::new(
-                crate::mappings::CmpMap::new(
-                    map_reg,
-                    map_this,
-                    crate::mappings::Composition::Parallel,
-                )
-                .ok()?,
-            )
+            Box::new(crate::mappings::CmpMap::new(
+                map_reg,
+                map_this,
+                crate::mappings::Composition::Parallel,
+            )?)
         };
 
         // Combine uncertainties in the requested order when both are present.
@@ -1689,7 +1687,7 @@ impl Region for BoxRegion {
             self.data.uncertainty.clone(),
             other_reg.get_uncertainty(),
             intfirst,
-        );
+        )?;
 
         let scaling = super::merge_util::MergeScaling {
             msz_this: (
@@ -1715,6 +1713,7 @@ impl Region for BoxRegion {
             unc,
             scaling,
         )
+        .map(Some)
     }
 
     fn reg_frame_attrib<'a>(
@@ -2032,7 +2031,9 @@ impl Mapping for BoxRegion {
             return None;
         }
         let other_reg: &dyn Region = super::as_region(other)?;
-        Region::region_merge(self, other_reg, true)
+        // `try_merge` has no way to report an error; a simplification merges
+        // two Regions through `region_map_merge`, which passes one up.
+        Region::region_merge(self, other_reg, true).ok().flatten()
     }
 
     fn map_merge(
