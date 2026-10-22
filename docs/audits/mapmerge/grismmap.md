@@ -26,7 +26,7 @@ whose per-pair body is
 | 1 | Initialize the returned result to -1 | grismmap.c:1198-1199 (fn MapMerge) | -- | ceremony | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index |
 | 2 | Check the global error status and bail out | grismmap.c:1201-1202 (fn MapMerge) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 3 | Initialize the pair indices to silence compiler warnings | grismmap.c:1204-1207 (fn MapMerge) | -- | ceremony | n/a: the Rust locals are initialized where they are declared |
-| 4 | A GrismMap can only merge in series, so do nothing in parallel | grismmap.c:1209-1213 (fn MapMerge) | mappings/simplify.rs:2905 (fn grism_map_merge) | architecture | ported |
+| 4 | A GrismMap can only merge in series, so do nothing in parallel | grismmap.c:1209-1213 (fn MapMerge) | mappings/simplify.rs:2956 (fn grism_map_merge) | architecture | ported |
 | 5 | Note that no mergeable neighbor has been found yet | grismmap.c:1214-1217 (fn MapMerge) | -- | ceremony | n/a: the Rust flow returns on the first success instead of carrying a found-flag |
 | 6 | Ask `CanMerge` about the lower neighbor first | grismmap.c:1218-1225 (fn MapMerge) | mappings/simplify.rs:2958-2961 (fn grism_map_merge) | architecture | ported |
 | 7 | If that failed, ask about the upper neighbor | grismmap.c:1226-1234 (fn MapMerge) | mappings/simplify.rs:2962-2965 (fn grism_map_merge) | architecture | ported |
