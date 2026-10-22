@@ -1413,3 +1413,187 @@ fn ax_norm_on_the_longitude_axis_matches_c() {
         assert!((v - (x - 2.0 * PI)).abs() <= 1.0e-10, "Error 6: {vals:?}");
     }
 }
+
+// ===========================================================================
+// sky_offset_map
+// ===========================================================================
+
+/// `sky_offset_map` gives the Mapping C's `astSkyOffsetMap` gives: a UnitMap
+/// without an offset coordinate system, and otherwise a CmpMap whose
+/// transformations match the C library's.
+/// Values captured by `tools/oracle_fixtures/sky_offset_map_probe.c`.
+#[test]
+fn sky_offset_map_follows_the_c_library() {
+    use ast_core::error::ErrorCode;
+    use ast_core::mappings::{CmpMap, UnitMap};
+
+    type Case = (
+        &'static str,
+        &'static [(usize, f64)],
+        &'static [(usize, f64)],
+        Option<SkyRefIs>,
+        bool,
+        bool,
+        [[f64; 2]; 3],
+        [[f64; 2]; 3],
+    );
+    const INPUT: [[f64; 2]; 3] = [[1.0, 0.5], [1.2, -0.3], [4.0, 1.1]];
+    const CASES: &[Case] = &[
+        (
+            "ignored",
+            &[(1, 1.0), (2, 0.5)],
+            &[],
+            Some(SkyRefIs::Ignored),
+            false,
+            true,
+            INPUT,
+            INPUT,
+        ),
+        (
+            "unset",
+            &[],
+            &[],
+            Some(SkyRefIs::Origin),
+            false,
+            true,
+            INPUT,
+            INPUT,
+        ),
+        (
+            "origin",
+            &[(1, 1.0), (2, 0.5)],
+            &[],
+            Some(SkyRefIs::Origin),
+            false,
+            false,
+            [
+                [-1.1102230246251563e-16, 0.0],
+                [0.27218691839587611, -0.78698270081011723],
+                [1.0925418109024947, 1.4986324283930401],
+            ],
+            [
+                [2.3237151508126428, 0.70503416433600519],
+                [2.1069058376653653, -0.09351516272737756],
+                [-1.6784670157476533, 0.69445018981625195],
+            ],
+        ),
+        (
+            "origin_refp",
+            &[(1, 1.0), (2, 0.5)],
+            &[(1, 0.2), (2, 1.2)],
+            Some(SkyRefIs::Origin),
+            false,
+            false,
+            [
+                [5.5511151231257815e-17, 1.1102230246251563e-16],
+                [-0.10210991864465951, -0.81817389036490573],
+                [1.4897499824922824, 1.1484701853536217],
+            ],
+            [
+                [2.4249301423352168, 1.0122189985077705],
+                [2.2733863215807153, 0.19733240519296935],
+                [-1.331861624286645, 0.50678292502143429],
+            ],
+        ),
+        (
+            "pole",
+            &[(1, 1.0), (2, 0.5)],
+            &[],
+            Some(SkyRefIs::Pole),
+            false,
+            false,
+            [
+                [0.0, 1.5707963267948966],
+                [-2.879757185700063, 0.74775553502988812],
+                [-0.064090627261980476, 0.033189282448934675],
+            ],
+            [
+                [-0.31463876459691453, 0.7022845055472241],
+                [-1.0164073910259139, 0.16283461017645623],
+                [1.3556251391076843, 0.16786011926334668],
+            ],
+        ),
+        (
+            "origin_lat_only",
+            &[(2, 0.5)],
+            &[],
+            Some(SkyRefIs::Origin),
+            false,
+            false,
+            [
+                [0.85211163828032066, 0.19463774791986274],
+                [1.3907003322727278, -0.4393019920225063],
+                [-1.1178516922472144, 1.179074360848845],
+            ],
+            [
+                [1.323715150812643, 0.70503416433600496],
+                [1.1069058376653655, -0.093515162727377643],
+                [-2.6784670157476533, 0.69445018981625206],
+            ],
+        ),
+        // SkyRef is set before the axes are swapped, so it is the same
+        // position as "origin", and the Mapping is unchanged by the swap:
+        // it works in (longitude, latitude) order.
+        (
+            "permuted_origin",
+            &[(1, 1.0), (2, 0.5)],
+            &[],
+            Some(SkyRefIs::Origin),
+            true,
+            false,
+            [
+                [-1.1102230246251563e-16, 0.0],
+                [0.27218691839587611, -0.78698270081011723],
+                [1.0925418109024947, 1.4986324283930401],
+            ],
+            [
+                [2.3237151508126428, 0.70503416433600519],
+                [2.1069058376653653, -0.09351516272737756],
+                [-1.6784670157476533, 0.69445018981625195],
+            ],
+        ),
+    ];
+    let input = PointSet::from_rows(INPUT);
+    for &(name, sky_ref, sky_ref_p, is, permute, unit, fwd, inv) in CASES {
+        let mut sky = SkyFrame::new(SkySystem::Icrs);
+        for &(axis, v) in sky_ref {
+            sky.set_sky_ref(axis, v).unwrap();
+        }
+        for &(axis, v) in sky_ref_p {
+            sky.set_sky_ref_p(axis, v).unwrap();
+        }
+        if let Some(is) = is {
+            sky.set_sky_ref_is(is);
+        }
+        if permute {
+            sky.perm_axes(&[2, 1]).unwrap();
+        }
+        let map = sky.sky_offset_map().unwrap();
+        if unit {
+            assert!(map.as_ref().as_any().is::<UnitMap>(), "{name}: a UnitMap");
+        } else {
+            assert!(map.as_ref().as_any().is::<CmpMap>(), "{name}: a CmpMap");
+        }
+        for (forward, want) in [(true, fwd), (false, inv)] {
+            let out = map.transform(&input, forward).unwrap();
+            for (i, w) in want.iter().enumerate() {
+                crate::common::assert_c_values(
+                    &out.point(i),
+                    w,
+                    &format!("{name} forward={forward} point {i}"),
+                );
+            }
+        }
+    }
+
+    // A SkyRefP that coincides with SkyRef defines no orientation.
+    let mut sky = SkyFrame::new(SkySystem::Icrs);
+    for axis in [1, 2] {
+        let v = [1.0, 0.5][axis - 1];
+        sky.set_sky_ref(axis, v).unwrap();
+        sky.set_sky_ref_p(axis, v).unwrap();
+    }
+    sky.set_sky_ref_is(SkyRefIs::Origin);
+    let err = sky.sky_offset_map().unwrap_err();
+    assert_eq!(err.code(), ErrorCode::Badoc);
+}

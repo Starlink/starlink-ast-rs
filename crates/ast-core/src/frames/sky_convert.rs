@@ -672,6 +672,43 @@ pub(crate) fn is_effectively_unit(map: &dyn Mapping, tol_arcsec: f64) -> bool {
     maxshift.to_degrees() * 3600.0 < tol_arcsec
 }
 
+/// Build the standard→offset Mapping of a SkyFrame, in C's own shape:
+/// `CmpMap(SphMap⁻¹, CmpMap(MatrixMap, SphMap))`, or a 2-axis UnitMap when
+/// `SkyRefIs` is Ignored or neither SkyRef axis is set.
+///
+/// Port of C `SkyOffsetMap` (skyframe.c), which `SkyFrame::sky_offset_map`
+/// exposes; the coordinates are in (longitude, latitude) order.
+pub(crate) fn sky_offset_map(
+    sky_ref: [f64; 2],
+    sky_ref_p: [f64; 2],
+    sky_ref_is: SkyRefIs,
+    sky_ref_set: bool,
+) -> AstResult<DynMapping> {
+    if !sky_ref_set || matches!(sky_ref_is, SkyRefIs::Ignored) {
+        return Ok(Box::new(UnitMap::new(2)));
+    }
+    let mat = build_offset_matrix(sky_ref, sky_ref_p, sky_ref_is)?;
+    let mut m = Array2::<f64>::zeros((3, 3));
+    for (i, row) in mat.iter().enumerate() {
+        for (j, &val) in row.iter().enumerate() {
+            m[[i, j]] = val;
+        }
+    }
+    // C: map1 = astMatrixMap( 3, 3, 0, mat ); map2 = astSphMap( "UnitRadius=1" );
+    // map3 = astCmpMap( map1, map2, 1 ); astInvert( map2 );
+    // result = astCmpMap( map2, map3, 1 ).
+    let map1 = MatrixMap::new(m)?;
+    let mut map2 = SphMap::new();
+    map2.set_unit_radius(true);
+    let map3 = CmpMap::new(Box::new(map1), Box::new(map2.clone()), Composition::Series)?;
+    map2.invert();
+    Ok(Box::new(CmpMap::new(
+        Box::new(map2),
+        Box::new(map3),
+        Composition::Series,
+    )?))
+}
+
 /// Build the offset→standard Mapping for a SkyFrame, or `None` when the
 /// frame does not use an offset coordinate system.
 ///

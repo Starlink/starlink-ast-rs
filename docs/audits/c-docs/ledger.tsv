@@ -456,7 +456,7 @@ class	ShiftMap	shiftmap.c	ShiftMap		yes
 function	astShiftMap	shiftmap.c	ShiftMap::new		yes
 class	SkyAxis	skyaxis.c		merged	yes	SkyFrame
 class	SkyFrame	skyframe.c	SkyFrame		yes
-function	astSkyOffsetMap	skyframe.c		not-ported	yes	The offset Mapping is built inside the SkyFrame conversions but not exposed (PLAN.md §2)
+function	astSkyOffsetMap	skyframe.c	SkyFrame::sky_offset_map		yes
 attribute	AlignOffset	skyframe.c	SkyFrame::align_offset		yes
 attribute	AsTime	skyframe.c	SkyFrame::as_time		yes
 attribute	Equinox	skyframe.c	SkyFrame::equinox_mjd		yes	The Rust API takes and gives an MJD, or a decimal year through equinox_year and set_equinox_year; C's other string input formats are for its string interface

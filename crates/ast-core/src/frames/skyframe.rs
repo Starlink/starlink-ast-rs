@@ -1089,6 +1089,49 @@ impl SkyFrame {
         self.sky_ref_is_set = false;
     }
 
+    /// The Mapping from absolute coordinates in this SkyFrame's
+    /// [`system`](SkyFrame::system) to the offset coordinates that its
+    /// [`sky_ref`](SkyFrame::sky_ref), [`sky_ref_p`](SkyFrame::sky_ref_p) and
+    /// [`sky_ref_is`](SkyFrame::sky_ref_is) define.
+    ///
+    /// Its inverse goes from offset coordinates back to absolute ones.
+    /// A 2-axis UnitMap is returned when the SkyFrame defines no offset
+    /// coordinate system: when SkyRefIs is [`SkyRefIs::Ignored`] or neither
+    /// axis of SkyRef is set.
+    /// The Mapping takes and gives (longitude, latitude) pairs in radians,
+    /// in that order whatever the axis order of the SkyFrame.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Badoc` when the SkyRefP position coincides with, or is
+    ///   opposite to, the SkyRef position.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ast_core::coords::PointSet;
+    /// use ast_core::frames::{SkyFrame, SkyRefIs, SkySystem};
+    ///
+    /// let mut sky = SkyFrame::new(SkySystem::Fk5);
+    /// sky.set_sky_ref(1, 1.0).unwrap();
+    /// sky.set_sky_ref(2, 0.5).unwrap();
+    /// sky.set_sky_ref_is(SkyRefIs::Origin);
+    /// let map = sky.sky_offset_map().unwrap();
+    /// // The SkyRef position is the origin of the offset coordinates.
+    /// let out = map.transform(&PointSet::from_rows([[1.0, 0.5]]), true).unwrap();
+    /// assert!(out.point(0)[0].abs() < 1e-12 && out.point(0)[1].abs() < 1e-12);
+    /// ```
+    // C: skyframe.c `SkyOffsetMap`.
+    #[doc(alias = "astSkyOffsetMap")]
+    pub fn sky_offset_map(&self) -> AstResult<DynMapping> {
+        crate::frames::sky_convert::sky_offset_map(
+            self.sky_ref,
+            self.sky_ref_p_lon_lat(),
+            self.sky_ref_is,
+            self.any_sky_ref_set(),
+        )
+    }
+
     /// Both values of SkyRefP, set or default, as `[longitude, latitude]`
     /// in radians, whatever the axis order; see
     /// [`sky_ref_p`](SkyFrame::sky_ref_p).
