@@ -537,6 +537,17 @@ impl MergeCtx {
         self.error.get_or_insert(error);
     }
 
+    /// The value of a merge step that can raise an error.
+    /// An error is recorded as [`fail`](Self::fail) records it, and the step
+    /// then counts as one that found nothing to do, since the loop driving
+    /// the merge stops at the error.
+    pub(crate) fn settle<T>(&mut self, result: AstResult<Option<T>>) -> Option<T> {
+        result.unwrap_or_else(|e| {
+            self.fail(e);
+            None
+        })
+    }
+
     /// Take the error a merge raised, if any.
     pub(crate) fn take_error(&mut self) -> Option<AstError> {
         self.error.take()
@@ -1881,7 +1892,7 @@ pub(crate) fn build_winperm_swap(
     outperm: &[i64],
     inperm: &[i64],
     consts: &[f64],
-) -> Option<(DynMapping, PermMap)> {
+) -> AstResult<Option<(DynMapping, PermMap)>> {
     use crate::constants::BAD_VALUE;
     use crate::mappings::helpers::is_bad;
 
@@ -1925,7 +1936,7 @@ pub(crate) fn build_winperm_swap(
     if shifts.len() != n_axis {
         // Shouldn't happen: WinMap dim must equal PermMap's nin (when Linear
         // is before) or nout (when Linear is after). Bail safely.
-        return None;
+        return Ok(None);
     }
     for i in 0..n_axis {
         let p = ref_perm[i];
@@ -1957,9 +1968,9 @@ pub(crate) fn build_winperm_swap(
         }
     }
 
-    let new_lin: DynMapping = Box::new(WinMap::new(&new_shifts, &new_scales).ok()?);
-    let new_pm = PermMap::new(inperm, outperm, &new_consts).ok()?;
-    Some((new_lin, new_pm))
+    let new_lin: DynMapping = Box::new(WinMap::new(&new_shifts, &new_scales)?);
+    let new_pm = PermMap::new(inperm, outperm, &new_consts)?;
+    Ok(Some((new_lin, new_pm)))
 }
 
 /// C's `CanMerge` (`wcsmap.c:820-928`) applied to the list entry at `i` and a

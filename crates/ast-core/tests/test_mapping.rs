@@ -626,3 +626,75 @@ fn records_from_a_changed_component_survive_a_later_failure() {
         include_str!("simplify_trnnd_oracle/nested_change_then_failure.ast")
     );
 }
+
+/// A 2x2 MatrixMap whose matrix is singular, so it has no inverse.
+fn singular_matrix() -> ast_core::mappings::MatrixMap {
+    ast_core::mappings::MatrixMap::new(ndarray::array![[1.0, 1.0], [1.0, 1.0]]).unwrap()
+}
+
+/// A WinMap with nonzero shifts and non-unit scales.
+fn shifting_winmap() -> ast_core::mappings::WinMap {
+    ast_core::mappings::WinMap::from_corners(&[0.0, 0.0], &[1.0, 1.0], &[1.0, 2.0], &[3.0, 5.0])
+        .unwrap()
+}
+
+/// Swapping a WinMap past a singular MatrixMap needs the inverse the matrix
+/// lacks, so the simplification ends there and returns the Mapping
+/// unsimplified, as C does.
+/// The expected dump is what the C library writes
+/// (`simplify_trnnd_oracle/singular_matrix_swap.ast`).
+#[test]
+fn a_swap_past_a_singular_matrix_leaves_the_mapping_unsimplified() {
+    let map = CmpMap::new(
+        Box::new(singular_matrix()),
+        Box::new(shifting_winmap()),
+        Composition::Series,
+    )
+    .unwrap();
+    assert_eq!(
+        dump_of_simplified(&map),
+        include_str!("simplify_trnnd_oracle/singular_matrix_swap.ast")
+    );
+}
+
+/// The same failed swap after a merge that succeeded: the whole
+/// simplification is abandoned, so the merged ZoomMap is not kept.
+/// The expected dump is what the C library writes
+/// (`simplify_trnnd_oracle/singular_matrix_swap_after_zoom.ast`).
+#[test]
+fn a_failed_swap_abandons_the_merges_before_it() {
+    let inner = CmpMap::new(
+        Box::new(singular_matrix()),
+        Box::new(shifting_winmap()),
+        Composition::Series,
+    )
+    .unwrap();
+    let map = CmpMap::new(
+        Box::new(ZoomMap::new(2, 3.0).unwrap()),
+        Box::new(inner),
+        Composition::Series,
+    )
+    .unwrap();
+    assert_eq!(
+        dump_of_simplified(&map),
+        include_str!("simplify_trnnd_oracle/singular_matrix_swap_after_zoom.ast")
+    );
+}
+
+/// A swap that needs the product with an inverted singular MatrixMap, which
+/// has no forward transformation, fails the simplification with the error
+/// the product raises, as in C, where only an undefined transformation is
+/// cleared.
+#[test]
+fn a_swap_past_an_inverted_singular_matrix_is_an_error() {
+    let mut inverted = singular_matrix();
+    inverted.invert();
+    let map = CmpMap::new(
+        Box::new(shifting_winmap()),
+        Box::new(inverted),
+        Composition::Series,
+    )
+    .unwrap();
+    let err = <dyn Mapping>::simplify(&map).unwrap_err();
+    assert_eq!(err.code(), ast_core::error::ErrorCode::Mtrml);
+}

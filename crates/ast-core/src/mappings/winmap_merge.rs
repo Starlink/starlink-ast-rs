@@ -37,7 +37,7 @@ use super::unit::UnitMap;
 use super::wcsmap::WcsMap;
 use super::winmap::{WinMap, extract_linear_params};
 use super::zoom::ZoomMap;
-use super::{DynMapping, Mapping};
+use super::{AstResult, DynMapping, Mapping};
 
 /// Classes a WinMap can merge with *directly* (C winmap.c:1145-1149):
 /// another WinMap, a ZoomMap, a ShiftMap, a UnitMap, or a **diagonal**
@@ -192,22 +192,29 @@ fn effective_perm(pm: &PermMap, inv: bool) -> (Vec<i64>, Vec<i64>) {
 ///
 /// `y = M (s + diag(c) x)` (WinMap first, iwm==0) becomes
 /// `M diag(c)` then a WinMap with scale 1 and shift `M s`.
+///
+/// An error raised on the way, such as a MatrixMap lacking the direction the
+/// swap needs, is returned, as C leaves it in the global status.
 pub(crate) fn win_mat(
     pair: [(DynMapping, bool, bool); 2],
     iwm: usize,
-) -> Option<[(DynMapping, bool, bool); 2]> {
+) -> AstResult<Option<[(DynMapping, bool, bool); 2]>> {
     let win = &pair[iwm];
     let mat_entry = &pair[1 - iwm];
-    let mm = mat_entry.0.as_any().downcast_ref::<MatrixMap>()?;
+    let Some(mm) = mat_entry.0.as_any().downcast_ref::<MatrixMap>() else {
+        return Ok(None);
+    };
     let mat_inv = mat_entry.1;
 
     // Effective WinMap terms (shift a, scale b) for its applied direction.
-    let (a, b) = extract_linear_params(win.0.as_ref(), win.1)?;
+    let Some((a, b)) = extract_linear_params(win.0.as_ref(), win.1) else {
+        return Ok(None);
+    };
     let nin = a.len();
 
     // Diagonal MatrixMap m1 holding the WinMap scale factors, as C makes it
     // (a unit MatrixMap when every scale equals 1 within astEQUAL).
-    let m1_map = MatrixMap::diagonal(nin, nin, &b).ok()?;
+    let m1_map = MatrixMap::diagonal(nin, nin, &b)?;
 
     // The supplied MatrixMap in the direction it is applied, keeping its
     // storage form, as C uses it.
@@ -221,15 +228,15 @@ pub(crate) fn win_mat(
 
     let (m2_map, pset2): (MatrixMap, PointSet) = if iwm == 0 {
         // WinMap first, then MatrixMap. m2 = mm × m1 (mtr_mult returns a×self).
-        let m2 = m1_map.mtr_mult(&mm_map).ok()?;
+        let m2 = m1_map.mtr_mult(&mm_map)?;
         // Transform shift point forward through the supplied matrix.
-        let p2 = mm_map.transform(&pset1, true).ok()?;
+        let p2 = mm_map.transform(&pset1, true)?;
         (m2, p2)
     } else {
         // MatrixMap first, then WinMap. m2 = m1 × mm.
-        let m2 = mm_map.mtr_mult(&m1_map).ok()?;
+        let m2 = mm_map.mtr_mult(&m1_map)?;
         // Transform shift point through the *inverse* of the returned matrix.
-        let p2 = m2.transform(&pset1, false).ok()?;
+        let p2 = m2.transform(&pset1, false)?;
         (m2, p2)
     };
 
@@ -237,12 +244,12 @@ pub(crate) fn win_mat(
     let nout = pset2.ncoord();
     let new_shifts: Vec<f64> = (0..nout).map(|i| pset2.point(0)[i]).collect();
     let new_scales = vec![1.0; nout];
-    let w1 = WinMap::new(&new_shifts, &new_scales).ok()?;
+    let w1 = WinMap::new(&new_shifts, &new_scales)?;
 
     // C simplifies both the returned WinMap and MatrixMap, and records each
     // one's resulting Invert flag. We do the same: simplify() may turn the
     // unit-scale WinMap into a ShiftMap, and the matrix into a ZoomMap etc.
-    let sw1 = <dyn Mapping>::simplify(&w1).ok()?;
+    let sw1 = <dyn Mapping>::simplify(&w1)?;
     let sw1_inv = sw1.is_inverted();
     let mut sw1_fwd = sw1;
     if sw1_inv {
@@ -250,7 +257,7 @@ pub(crate) fn win_mat(
     }
     sw1_fwd.set_has_been_simplified(true);
 
-    let sm2 = <dyn Mapping>::simplify(&m2_map).ok()?;
+    let sm2 = <dyn Mapping>::simplify(&m2_map)?;
     let sm2_inv = sm2.is_inverted();
     let mut sm2_fwd = sm2;
     if sm2_inv {
@@ -263,7 +270,7 @@ pub(crate) fn win_mat(
     let mut out: [Option<(DynMapping, bool, bool)>; 2] = [None, None];
     out[iwm] = Some((sm2_fwd, sm2_inv, false));
     out[1 - iwm] = Some((sw1_fwd, sw1_inv, false));
-    Some([out[0].take().unwrap(), out[1].take().unwrap()])
+    Ok(Some([out[0].take().unwrap(), out[1].take().unwrap()]))
 }
 
 /// C `winmap.c::WinPerm` (2973): swap a WinMap and a PermMap. `iwm` is the
@@ -271,13 +278,17 @@ pub(crate) fn win_mat(
 fn win_perm(
     pair: [(DynMapping, bool, bool); 2],
     iwm: usize,
-) -> Option<[(DynMapping, bool, bool); 2]> {
+) -> AstResult<Option<[(DynMapping, bool, bool); 2]>> {
     let win = &pair[iwm];
     let perm_entry = &pair[1 - iwm];
-    let pm = perm_entry.0.as_any().downcast_ref::<PermMap>()?;
+    let Some(pm) = perm_entry.0.as_any().downcast_ref::<PermMap>() else {
+        return Ok(None);
+    };
     let perm_inv = perm_entry.1;
 
-    let (shifts, scales) = extract_linear_params(win.0.as_ref(), win.1)?;
+    let Some((shifts, scales)) = extract_linear_params(win.0.as_ref(), win.1) else {
+        return Ok(None);
+    };
     let (outperm_eff, inperm_eff) = if perm_inv {
         (pm.inperm().to_vec(), pm.outperm().to_vec())
     } else {
@@ -287,25 +298,28 @@ fn win_perm(
 
     // `linear_iwm` for build_winperm_swap: 0 means Linear before PermMap.
     let linear_iwm = iwm;
-    let (new_lin, new_pm) = build_winperm_swap(
+    let Some((new_lin, new_pm)) = build_winperm_swap(
         linear_iwm,
         &shifts,
         &scales,
         &outperm_eff,
         &inperm_eff,
         &consts,
-    )?;
+    )?
+    else {
+        return Ok(None);
+    };
 
     // After the swap the PermMap occupies the WinMap's slot and vice-versa.
     // C simplifies both and records the resulting Invert flags.
-    let sp1 = <dyn Mapping>::simplify(&new_pm).ok()?;
+    let sp1 = <dyn Mapping>::simplify(&new_pm)?;
     let sp1_inv = sp1.is_inverted();
     let mut sp1_fwd = sp1;
     if sp1_inv {
         sp1_fwd.invert();
     }
     sp1_fwd.set_has_been_simplified(true);
-    let sw1 = new_lin.simplify().ok()?;
+    let sw1 = new_lin.simplify()?;
     let sw1_inv = sw1.is_inverted();
     let mut sw1_fwd = sw1;
     if sw1_inv {
@@ -316,7 +330,7 @@ fn win_perm(
     let mut out: [Option<(DynMapping, bool, bool)>; 2] = [None, None];
     out[iwm] = Some((sp1_fwd, sp1_inv, false));
     out[1 - iwm] = Some((sw1_fwd, sw1_inv, false));
-    Some([out[0].take().unwrap(), out[1].take().unwrap()])
+    Ok(Some([out[0].take().unwrap(), out[1].take().unwrap()]))
 }
 
 /// C `winmap.c::WinWcs` (3833): swap a WinMap and a WcsMap. The values are
@@ -333,11 +347,11 @@ fn swap_pair(
     nclass: SwapClass,
     pair: [(DynMapping, bool, bool); 2],
     iwm: usize,
-) -> Option<[(DynMapping, bool, bool); 2]> {
+) -> AstResult<Option<[(DynMapping, bool, bool); 2]>> {
     match nclass {
         SwapClass::Matrix => win_mat(pair, iwm),
         SwapClass::Perm => win_perm(pair, iwm),
-        SwapClass::Wcs => Some(win_wcs(pair, iwm)),
+        SwapClass::Wcs => Ok(Some(win_wcs(pair, iwm))),
     }
 }
 
@@ -378,10 +392,9 @@ pub(crate) fn win_map_merge(
     let (eff_shifts, eff_scales) = extract_linear_params(ctx.entry(where_).0.as_ref(), win_inv)?;
     let all_shifts_zero = win.shifts().iter().all(|&a| ast_equal(a, 0.0));
     if all_shifts_zero {
-        if let Ok(mm) = MatrixMap::diagonal(nin, nin, &eff_scales) {
-            ctx.set_pair_single(where_, (Box::new(mm), false, false));
-            return Some(where_);
-        }
+        let mm = ctx.settle(MatrixMap::diagonal(nin, nin, &eff_scales).map(Some))?;
+        ctx.set_pair_single(where_, (Box::new(mm), false, false));
+        return Some(where_);
     }
 
     // ---- Step 2: direct merge with a mergeable neighbor.
@@ -392,7 +405,8 @@ pub(crate) fn win_map_merge(
     // ---- Step 2b (series): distribute the WinMap into a neighboring
     // parallel CmpMap (C winmap.c:1264-1416).
     if series {
-        if let Some(result) = try_distribute_into_parallel(ctx, where_, win_inv) {
+        let distributed = try_distribute_into_parallel(ctx, where_, win_inv);
+        if let Some(result) = ctx.settle(distributed) {
             return Some(result);
         }
     }
@@ -455,7 +469,8 @@ fn try_direct_merge(
     // Compose the two linear maps in series/parallel.
     let (m1, inv1, _) = ctx.entry(i1);
     let (m2, inv2, _) = ctx.entry(i2);
-    let merged = merge_linear_pair(m1.as_ref(), *inv1, m2.as_ref(), *inv2, series, win_inv)?;
+    let merged = merge_linear_pair(m1.as_ref(), *inv1, m2.as_ref(), *inv2, series, win_inv);
+    let merged = ctx.settle(merged)?;
     ctx.replace_pair_with(i1, merged, false);
     Some(i1)
 }
@@ -475,7 +490,11 @@ fn try_direct_merge(
 /// the two merged mappings. The recombination back to the visible series form
 /// happens when that parallel CmpMap is next nominated (C: CmpMap MapMerge's
 /// self-simplify runs the "Series CmpMaps in parallel" merge, cmpmap.c).
-fn try_distribute_into_parallel(ctx: &mut MergeCtx, where_: usize, win_inv: bool) -> Option<usize> {
+fn try_distribute_into_parallel(
+    ctx: &mut MergeCtx,
+    where_: usize,
+    win_inv: bool,
+) -> AstResult<Option<usize>> {
     use super::cmpmap::{CmpMap, Composition};
     use super::simplify::reconstruct;
 
@@ -496,17 +515,21 @@ fn try_distribute_into_parallel(ctx: &mut MergeCtx, where_: usize, win_inv: bool
     } else if upper_par {
         (where_, where_ + 1, false)
     } else {
-        return None;
+        return Ok(None);
     };
 
     // Effective forward (shift a, scale b) terms of the nominated WinMap.
-    let (a, b) = extract_linear_params(ctx.entry(where_).0.as_ref(), win_inv)?;
+    let Some((a, b)) = extract_linear_params(ctx.entry(where_).0.as_ref(), win_inv) else {
+        return Ok(None);
+    };
 
     // C `astDecompose` yields the parallel CmpMap's two direct components
     // (mc[0], mc[1]); the WinMap is split by each component's dimension.
     let par_idx = if cmlow { i1 } else { i2 };
     let par_inv = ctx.entry(par_idx).1;
-    let cm = ctx.entry(par_idx).0.as_any().downcast_ref::<CmpMap>()?;
+    let Some(cm) = ctx.entry(par_idx).0.as_any().downcast_ref::<CmpMap>() else {
+        return Ok(None);
+    };
     // Direct children stripped to their forward orientation, each paired with
     // the absolute direction the CmpMap applies to it.
     //
@@ -561,7 +584,7 @@ fn try_distribute_into_parallel(ctx: &mut MergeCtx, where_: usize, win_inv: bool
     let dim0 = split_dim(components[0].0.as_ref(), components[0].1);
     let dim1 = split_dim(components[1].0.as_ref(), components[1].1);
     if dim0 + dim1 != a.len() {
-        return None;
+        return Ok(None);
     }
 
     // Build the two per-branch series CmpMaps and simplify each.
@@ -569,7 +592,7 @@ fn try_distribute_into_parallel(ctx: &mut MergeCtx, where_: usize, win_inv: bool
     let mut simpler = false;
     for (idx, (comp, comp_inv, comp_orig)) in components.iter().enumerate() {
         let (start, dim) = if idx == 0 { (0, dim0) } else { (dim0, dim1) };
-        let sub_win = WinMap::new(&a[start..start + dim], &b[start..start + dim]).ok()?;
+        let sub_win = WinMap::new(&a[start..start + dim], &b[start..start + dim])?;
 
         let mut comp_clone = comp.clone_box();
         if *comp_inv {
@@ -580,8 +603,7 @@ fn try_distribute_into_parallel(ctx: &mut MergeCtx, where_: usize, win_inv: bool
             CmpMap::new(comp_clone, Box::new(sub_win), Composition::Series)
         } else {
             CmpMap::new(Box::new(sub_win), comp_clone, Composition::Series)
-        }
-        .ok()?;
+        }?;
         // `CmpMap::new` has captured the effective direction into the branch's
         // `InvA`/`InvB`; now put the component back into the orientation it is
         // stored in, as C's `astSetInvert( mc[ i ], inc[ i + 2 ] )` restore
@@ -595,7 +617,7 @@ fn try_distribute_into_parallel(ctx: &mut MergeCtx, where_: usize, win_inv: bool
         }
 
         let branch_dyn: &dyn Mapping = &series_branch;
-        let (simplified, changed) = branch_dyn.simplify_reporting_change().ok()?;
+        let (simplified, changed) = branch_dyn.simplify_reporting_change()?;
         // C's test is `simpler = ( simp1 != nc[0] ) || ( simp2 != nc[1] )`
         // (winmap.c:1370) — pointer identity, which is what `changed` reports.
         if changed {
@@ -607,16 +629,16 @@ fn try_distribute_into_parallel(ctx: &mut MergeCtx, where_: usize, win_inv: bool
     // Only commit the distribution if at least one branch simplified (C's
     // `simpler` guard against an infinite parallel↔series oscillation).
     if !simpler {
-        return None;
+        return Ok(None);
     }
 
     // C commits `astCmpMap(simp1, simp2, 0)`, the parallel-of-series form
     // (winmap.c:1386). Its recombination into series form happens when that
     // CmpMap is next nominated, through CmpMap's own merge, so the order of
     // later merges, and which Mappings an oscillation freezes, follow C's.
-    let new_par = reconstruct(branches, false).ok()?;
+    let new_par = reconstruct(branches, false)?;
     ctx.replace_range_with(i1, i2, new_par);
-    Some(i1)
+    Ok(Some(i1))
 }
 
 /// Compose two linear mappings (one of which is the WinMap) into a single
@@ -633,9 +655,13 @@ fn merge_linear_pair(
     inv2: bool,
     series: bool,
     _win_inv: bool,
-) -> Option<DynMapping> {
-    let (s1, c1) = extract_linear_params(m1, inv1)?;
-    let (s2, c2) = extract_linear_params(m2, inv2)?;
+) -> AstResult<Option<DynMapping>> {
+    let (Some((s1, c1)), Some((s2, c2))) = (
+        extract_linear_params(m1, inv1),
+        extract_linear_params(m2, inv2),
+    ) else {
+        return Ok(None);
+    };
     if series {
         // Equal-and-opposite WinWin cancellation is handled inside
         // compose_linear via its rounding snaps; for the general case
@@ -643,20 +669,18 @@ fn merge_linear_pair(
         // through C's WinWin and gets the snaps; the other neighbor
         // classes (WinShift/WinZoom/WinUnit/WinDiagMat) do not snap.
         if s1.len() != s2.len() {
-            return None;
+            return Ok(None);
         }
         let both_win =
             m1.as_any().is::<super::winmap::WinMap>() && m2.as_any().is::<super::winmap::WinMap>();
-        super::winmap::compose_linear_win(&s1, &c1, &s2, &c2, both_win)
+        super::winmap::compose_linear_win(&s1, &c1, &s2, &c2, both_win).map(Some)
     } else {
         // Parallel: concatenate.
         let mut shifts = s1;
         shifts.extend(s2);
         let mut scales = c1;
         scales.extend(c2);
-        WinMap::new(&shifts, &scales)
-            .ok()
-            .map(|m| Box::new(m) as DynMapping)
+        Ok(Some(Box::new(WinMap::new(&shifts, &scales)?)))
     }
 }
 
@@ -726,7 +750,8 @@ fn try_swap_strategy(ctx: &mut MergeCtx, where_: usize, series: bool) -> Option<
     // iwm = position of the WinMap within the (i1, i1+1) pair = where_ - i1.
     let iwm = where_ - i1;
     let pair = clone_pair(ctx, i1);
-    let swapped = swap_pair(nclass, pair, iwm)?;
+    let swapped = swap_pair(nclass, pair, iwm);
+    let swapped = ctx.settle(swapped)?;
     ctx.set_pair(i1, swapped[0].clone(), swapped[1].clone());
 
     // Merge at the new adjacency (winmap.c:1537-1559). When merging upward,
@@ -770,13 +795,24 @@ fn try_speculative_swap(
         let iwm = where_ - i1;
         // Copy the pair (do not mutate the list yet).
         let pair = clone_pair(ctx, i1);
-        let Some(swapped) = swap_pair(nclass, pair, iwm) else {
-            continue;
+        let swapped = match swap_pair(nclass, pair, iwm) {
+            Ok(Some(swapped)) => swapped,
+            Ok(None) => continue,
+            Err(e) => {
+                ctx.fail(e);
+                return None;
+            }
         };
 
         // Determine if the swap is worthwhile: do the two outer neighbors
         // merge now, or does a swapped map simplify?
-        let worthwhile = swap_is_worthwhile(ctx, where_, i1, swap_lower, &swapped, series);
+        let worthwhile = match swap_is_worthwhile(ctx, where_, i1, swap_lower, &swapped, series) {
+            Ok(worthwhile) => worthwhile,
+            Err(e) => {
+                ctx.fail(e);
+                return None;
+            }
+        };
 
         if worthwhile {
             ctx.set_pair(i1, swapped[0].clone(), swapped[1].clone());
@@ -788,6 +824,8 @@ fn try_speculative_swap(
 
 /// Whether a speculative swap should be kept: the two neighbors surrounding
 /// the swapped WinMap can merge, OR one of the swapped maps simplifies.
+/// An error raised by either test is returned, as C leaves it in the global
+/// status.
 fn swap_is_worthwhile(
     ctx: &mut MergeCtx,
     where_: usize,
@@ -795,7 +833,7 @@ fn swap_is_worthwhile(
     swap_lower: bool,
     swapped: &[(DynMapping, bool, bool); 2],
     series: bool,
-) -> bool {
+) -> AstResult<bool> {
     // After swapping, the WinMap has moved to the outer side. Identify the
     // pair of mappings that are now adjacent (excluding the moved WinMap).
     let n = ctx.len();
@@ -830,23 +868,21 @@ fn swap_is_worthwhile(
         // C's probe shares the global status, so an error it raises fails the
         // enclosing simplification.
         if let Some(e) = probe.take_error() {
-            ctx.fail(e);
-            return false;
+            return Err(e);
         }
         if merged.is_some() && probe.len() < 2 {
-            return true;
+            return Ok(true);
         }
     }
 
     // Otherwise, does either swapped map simplify to a different class?
     for entry in swapped.iter() {
-        if let Ok(simp) = entry.0.simplify() {
-            if simplifies_to_different(entry.0.as_ref(), simp.as_ref()) {
-                return true;
-            }
+        let simp = entry.0.simplify()?;
+        if simplifies_to_different(entry.0.as_ref(), simp.as_ref()) {
+            return Ok(true);
         }
     }
-    false
+    Ok(false)
 }
 
 /// Whether `simp` is a structurally different (simpler) mapping than `orig`

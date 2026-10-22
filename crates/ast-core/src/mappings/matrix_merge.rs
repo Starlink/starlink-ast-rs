@@ -33,7 +33,7 @@ use super::simplify::{MergeCtx, default_map_merge};
 use super::unit::UnitMap;
 use super::winmap::{WinMap, extract_linear_params};
 use super::zoom::ZoomMap;
-use super::{DynMapping, Mapping};
+use super::{AstResult, DynMapping, Mapping};
 
 /// Entry point: MatrixMap's per-class `map_merge`. Faithful port of
 /// `matrixmap.c::MapMerge` (1653). `where_` is the nominated MatrixMap's
@@ -700,7 +700,8 @@ fn try_swap_strategy(
     // iwm = position of the MatrixMap within the (i1, i1+1) pair.
     let imm = where_ - i1;
     let pair = clone_pair(ctx, i1);
-    let swapped = swap_pair(nclass, pair, imm)?;
+    let swapped = swap_pair(nclass, pair, imm);
+    let swapped = ctx.settle(swapped)?;
     ctx.set_pair(i1, swapped[0].clone(), swapped[1].clone());
 
     // Merge at the new adjacency (matrixmap.c:2173-2193).
@@ -745,11 +746,13 @@ fn swap_class_of(m: &dyn Mapping) -> Option<SwapClass> {
 
 /// Swap the MatrixMap (at index `imm` within the pair) against its neighbor.
 /// Returns the swapped pair, or `None` if the swap is not yet supported.
+/// An error raised by the swap is returned, as C leaves it in the global
+/// status.
 fn swap_pair(
     nclass: SwapClass,
     pair: [(DynMapping, bool, bool); 2],
     imm: usize,
-) -> Option<[(DynMapping, bool, bool); 2]> {
+) -> AstResult<Option<[(DynMapping, bool, bool); 2]>> {
     match nclass {
         // MatWin (matrixmap.c:3050) is the same swap as winmap's WinMat: it
         // absorbs the WinMap scale into the matrix, leaving a unit-scale
@@ -771,16 +774,23 @@ fn swap_pair(
 fn mat_perm_swap(
     pair: [(DynMapping, bool, bool); 2],
     imm: usize,
-) -> Option<[(DynMapping, bool, bool); 2]> {
+) -> AstResult<Option<[(DynMapping, bool, bool); 2]>> {
     let mat_entry = &pair[imm];
     let perm_entry = &pair[1 - imm];
-    let mm = mat_entry.0.as_any().downcast_ref::<MatrixMap>()?;
+    let (Some(mm), Some(pm)) = (
+        mat_entry.0.as_any().downcast_ref::<MatrixMap>(),
+        perm_entry.0.as_any().downcast_ref::<PermMap>(),
+    ) else {
+        return Ok(None);
+    };
     let mat_inv = mat_entry.1;
-    let pm = perm_entry.0.as_any().downcast_ref::<PermMap>()?;
     let perm_inv = perm_entry.1;
 
     // Effective forward matrix of the MatrixMap (full form), row-major.
-    let matrix = eff_matrix(mm, mat_inv)?;
+    // `CanSwap` admits only a MatrixMap with both matrices (matrixmap.c:466-469).
+    let Some(matrix) = eff_matrix(mm, mat_inv) else {
+        return Ok(None);
+    };
     let nin_p = if perm_inv { pm.nout() } else { pm.nin() };
     let nout_p = if perm_inv { pm.nin() } else { pm.nout() };
 
@@ -862,7 +872,7 @@ fn mat_perm_swap(
         om
     };
 
-    let mmnew = MatrixMap::new(out_mat).ok()?;
+    let mmnew = MatrixMap::new(out_mat)?;
 
     // Rebuild the PermMap. Rust `PermMap::new` uses 1-based connected links
     // with negative constant refs; `perm_get` returned 0-based links, so add
@@ -872,19 +882,19 @@ fn mat_perm_swap(
             .map(|&p| if p >= 0 { p + 1 } else { p })
             .collect()
     };
-    let pmnew = PermMap::new(&to_one_based(&inperm), &to_one_based(&outperm), &consts).ok()?;
+    let pmnew = PermMap::new(&to_one_based(&inperm), &to_one_based(&outperm), &consts)?;
 
     // Simplify both, recording their resulting Invert flags (C stores each in
     // its forward direction with the simplified Invert). The PermMap takes the
     // MatrixMap's slot (imm) and the MatrixMap takes the PermMap's slot.
-    let sp = <dyn Mapping>::simplify(&pmnew).ok()?;
+    let sp = <dyn Mapping>::simplify(&pmnew)?;
     let sp_inv = sp.is_inverted();
     let mut sp_fwd = sp;
     if sp_inv {
         sp_fwd.invert();
     }
     sp_fwd.set_has_been_simplified(true);
-    let sm = <dyn Mapping>::simplify(&mmnew).ok()?;
+    let sm = <dyn Mapping>::simplify(&mmnew)?;
     let sm_inv = sm.is_inverted();
     let mut sm_fwd = sm;
     if sm_inv {
@@ -895,7 +905,7 @@ fn mat_perm_swap(
     let mut out: [Option<(DynMapping, bool, bool)>; 2] = [None, None];
     out[imm] = Some((sp_fwd, sp_inv, false));
     out[1 - imm] = Some((sm_fwd, sm_inv, false));
-    Some([out[0].take().unwrap(), out[1].take().unwrap()])
+    Ok(Some([out[0].take().unwrap(), out[1].take().unwrap()]))
 }
 
 /// Step 4: speculative swap with a neighbor, kept iff a swapped map then
@@ -922,19 +932,31 @@ fn try_speculative_swap(
 
         let imm = where_ - i1;
         let pair = clone_pair(ctx, i1);
-        let Some(swapped) = swap_pair(nclass, pair, imm) else {
-            continue;
+        let swapped = match swap_pair(nclass, pair, imm) {
+            Ok(Some(swapped)) => swapped,
+            Ok(None) => continue,
+            Err(e) => {
+                ctx.fail(e);
+                return None;
+            }
         };
 
         // Keep the swap iff either swapped map simplifies to a different class
         // (C: astGetClass(smc) != astGetClass(mc)).
-        let worthwhile = swapped.iter().any(|entry| {
-            entry
-                .0
-                .simplify()
-                .ok()
-                .is_some_and(|s| s.as_any().type_id() != entry.0.as_any().type_id())
-        });
+        let mut worthwhile = false;
+        for entry in &swapped {
+            match entry.0.simplify() {
+                Ok(s) if s.as_any().type_id() != entry.0.as_any().type_id() => {
+                    worthwhile = true;
+                    break;
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    ctx.fail(e);
+                    return None;
+                }
+            }
+        }
 
         if worthwhile {
             ctx.set_pair(i1, swapped[0].clone(), swapped[1].clone());

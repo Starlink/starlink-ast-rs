@@ -627,11 +627,9 @@ pub(crate) fn compose_linear_win(
     s2: &[f64],
     c2: &[f64],
     snap: bool,
-) -> Option<DynMapping> {
+) -> AstResult<DynMapping> {
     let (new_shifts, new_scales) = compose_linear_terms(s1, c1, s2, c2, snap);
-    WinMap::new(&new_shifts, &new_scales)
-        .ok()
-        .map(|m| Box::new(m) as DynMapping)
+    Ok(Box::new(WinMap::new(&new_shifts, &new_scales)?))
 }
 
 /// Per-axis arithmetic shared by [`compose_linear`] and

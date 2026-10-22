@@ -37,7 +37,7 @@ An effectively inverted one is rebuilt forward with negated shift terms by the
 revert path (rows 9 and 11, `shift.rs:257-273 (fn map_merge)`). An all-zero one never comes
 back at all: `win_map_merge`'s replace-with-simpler step sees every shift zero
 and yields a diagonal `MatrixMap`, which reduces on to a `UnitMap`
-(`winmap_merge.rs:375-385 (fn win_map_merge)`, C `winmap.c:1827 (fn MapMerge)`).
+(`winmap_merge.rs:389-398 (fn win_map_merge)`, C `winmap.c:1827 (fn MapMerge)`).
 
 ## Notes on rows 9 and 10
 
