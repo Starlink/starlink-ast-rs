@@ -437,3 +437,50 @@ fn check_tab2() {
     assert!((sky.sky_ref(1).unwrap() - 0.0001).abs() <= 1.0e-7, "2001");
     assert!((sky.sky_ref(2).unwrap() - 0.0001).abs() <= 1.0e-7, "2001");
 }
+
+/// With Strict set, a `-TAB` header holding a value the read cannot convert
+/// fails as the cards are swept, before the FrameSet is made, so the table
+/// source is never asked for a table and no table is kept.
+// C: `FitsToStore` sweeps the cards in `WcsFcRead` and frees the store on
+// the strict `badval` error, so `FsetFromStore`, which fetches the tables,
+// does nothing.
+#[test]
+fn strict_sweep_error_asks_no_table_source() {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    let mut sf = SpecFrame::new(SpecSystem::Freq);
+    sf.set_unit(1, "MHz").unwrap();
+    let mut fs = FrameSet::new(frame1("GRID"));
+    fs.add_frame(FrameRef::Base, Box::new(inverse_square()), Box::new(sf))
+        .unwrap();
+    let mut fc = fitschan(Encoding::FitsWcs, 1, &[100]);
+    assert_eq!(fc.write(&AnyObject::FrameSet(fs)).unwrap(), 1);
+    let source_table = table(&fc.get_tables().unwrap(), "WCS-TAB");
+    let header = fc.to_header().unwrap();
+    assert!(header.contains("-TAB"));
+
+    let mut fc = FitsChan::new().unwrap();
+    fc.set_tab_ok(1);
+    fc.set_warning_conditions("badval").unwrap();
+    fc.config_mut().set_strict(true);
+    for line in header.lines() {
+        let line = if line.starts_with("CRVAL1  =") {
+            "CRVAL1  = 'abc'"
+        } else {
+            line
+        };
+        fc.put_fits(line, false).unwrap();
+    }
+    let calls = Arc::new(AtomicUsize::new(0));
+    let seen = Arc::clone(&calls);
+    fc.set_table_source(move |_: &str, _: i32, _: i32| {
+        seen.fetch_add(1, Ordering::SeqCst);
+        Ok(Some(source_table.clone()))
+    });
+    fc.clear_card().unwrap();
+    let err = fc.read().expect_err("a strict badval");
+    assert_eq!(err.code(), ErrorCode::Badin);
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+    assert!(fc.get_tables().is_none());
+}

@@ -3051,12 +3051,42 @@ impl FitsChan {
     /// extraction, so it fails where C's read fails at a card with no value,
     /// and then the cards after that card, and the extraction's names, are
     /// not used.
-    #[allow(clippy::too_many_arguments)]
+    /// C's `WcsFcRead` sweep, after the warnings `SpecTrans` raised are
+    /// stored: flag every WCS card whose value converts as provisionally
+    /// used, warning in front of each card it cannot convert.
+    /// It fails where C's read fails at a card with no value, or, with
+    /// Strict in force, at the first warning the Warnings attribute names.
+    fn sweep_foreign(
+        &mut self,
+        entry: usize,
+        trans_warnings: spec_trans::TransWarnings,
+        trans: &CardList,
+    ) -> AstResult<()> {
+        let translated = trans.take_written_names();
+        let trans_issued = self.push_trans_warnings(entry, trans_warnings);
+        let sweep_policy = self.warn_list("astRead");
+        let (sweep_warnings, swept) =
+            wcs_mark::mark_wcs_cards(&mut self.cards, &translated, &sweep_policy);
+        let sweep_issued = self.push_sweep_warnings(sweep_warnings);
+        trans_issued.and(swept).and(sweep_issued)
+    }
+
+    /// The end of a read of an encoding other than NATIVE or DSS, mirroring
+    /// C's `Read` and its `FixUsed`, once [`Self::sweep_foreign`] has given
+    /// `swept` and, when it succeeded, the FrameSet has been made: on
+    /// success consume the cards the read used and store its warnings; on
+    /// failure consume them only when Clean is set.
+    ///
+    /// The cards used are those SpecTrans used (`spec_names`), every card
+    /// the sweep marked, which covers every copy of a repeated WCS keyword
+    /// whose value converts, and the other names the extraction recorded on
+    /// `trans`, each marking every matching card as C's `MarkAllCards` does.
+    /// When the sweep failed, the cards after the one it failed at, and the
+    /// extraction's names, are not used.
     fn finish_foreign_read(
         &mut self,
         decoded: AstResult<Option<AnyObject>>,
-        entry: usize,
-        trans_warnings: spec_trans::TransWarnings,
+        swept: AstResult<()>,
         read_warnings: Warnings,
         cursors: wcs_read::ReadCursors,
         trans: &CardList,
@@ -3069,21 +3099,12 @@ impl FitsChan {
             .into_iter()
             .filter(|name| !wcs_mark::is_wcs_keyword(name))
             .collect();
-        let translated = trans.take_written_names();
         let clean = self.clean();
         let mark = |cards: &mut CardList, names: &[String]| {
             for name in names {
                 cards.mark_all_cards(name);
             }
         };
-        // `SpecTrans` warns before `WcsFcRead` sweeps the cards, which warns
-        // in front of each card it cannot convert.
-        let trans_issued = self.push_trans_warnings(entry, trans_warnings);
-        let sweep_policy = self.warn_list("astRead");
-        let (sweep_warnings, swept) =
-            wcs_mark::mark_wcs_cards(&mut self.cards, &translated, &sweep_policy);
-        let sweep_issued = self.push_sweep_warnings(sweep_warnings);
-        let swept = trans_issued.and(swept).and(sweep_issued);
         match (decoded, swept) {
             (Ok(Some(obj)), Ok(())) => {
                 mark(&mut self.cards, &spec_names);
@@ -3362,14 +3383,23 @@ impl Channel for FitsChan {
                     )?;
                     // The cards SpecTrans used, which C marks before WcsFcRead runs.
                     let spec_names = trans.take_consumed_names();
+                    // C's `WcsFcRead` sweeps the cards before the FrameSet
+                    // is made, and makes nothing when the sweep fails.
+                    let swept = self.sweep_foreign(entry, trans_warnings, &trans);
                     let mut read_warnings = self.warn_list("astRead");
                     let mut cursors = Vec::new();
-                    let decoded =
-                        self.decode_wcs_stores(&trans, def_b1950, &mut cursors, &mut read_warnings);
+                    let decoded = match swept {
+                        Ok(()) => self.decode_wcs_stores(
+                            &trans,
+                            def_b1950,
+                            &mut cursors,
+                            &mut read_warnings,
+                        ),
+                        Err(_) => Ok(None),
+                    };
                     self.finish_foreign_read(
                         decoded,
-                        entry,
-                        trans_warnings,
+                        swept,
                         read_warnings,
                         cursors,
                         &trans,
@@ -3394,14 +3424,23 @@ impl Channel for FitsChan {
                     )?;
                     // The cards SpecTrans used, which C marks before WcsFcRead runs.
                     let spec_names = trans.take_consumed_names();
+                    // C's `WcsFcRead` sweeps the cards before the FrameSet
+                    // is made, and makes nothing when the sweep fails.
+                    let swept = self.sweep_foreign(entry, trans_warnings, &trans);
                     let mut read_warnings = self.warn_list("astRead");
                     let mut cursors = Vec::new();
-                    let decoded =
-                        self.decode_wcs_stores(&trans, def_b1950, &mut cursors, &mut read_warnings);
+                    let decoded = match swept {
+                        Ok(()) => self.decode_wcs_stores(
+                            &trans,
+                            def_b1950,
+                            &mut cursors,
+                            &mut read_warnings,
+                        ),
+                        Err(_) => Ok(None),
+                    };
                     self.finish_foreign_read(
                         decoded,
-                        entry,
-                        trans_warnings,
+                        swept,
                         read_warnings,
                         cursors,
                         &trans,
@@ -3420,14 +3459,23 @@ impl Channel for FitsChan {
                     )?;
                     // The cards SpecTrans used, which C marks before WcsFcRead runs.
                     let spec_names = trans.take_consumed_names();
+                    // C's `WcsFcRead` sweeps the cards before the FrameSet
+                    // is made, and makes nothing when the sweep fails.
+                    let swept = self.sweep_foreign(entry, trans_warnings, &trans);
                     let mut read_warnings = self.warn_list("astRead");
                     let mut cursors = Vec::new();
-                    let decoded =
-                        self.decode_wcs_stores(&trans, def_b1950, &mut cursors, &mut read_warnings);
+                    let decoded = match swept {
+                        Ok(()) => self.decode_wcs_stores(
+                            &trans,
+                            def_b1950,
+                            &mut cursors,
+                            &mut read_warnings,
+                        ),
+                        Err(_) => Ok(None),
+                    };
                     self.finish_foreign_read(
                         decoded,
-                        entry,
-                        trans_warnings,
+                        swept,
                         read_warnings,
                         cursors,
                         &trans,
@@ -3446,14 +3494,23 @@ impl Channel for FitsChan {
                     )?;
                     // The cards SpecTrans used, which C marks before WcsFcRead runs.
                     let spec_names = trans.take_consumed_names();
+                    // C's `WcsFcRead` sweeps the cards before the FrameSet
+                    // is made, and makes nothing when the sweep fails.
+                    let swept = self.sweep_foreign(entry, trans_warnings, &trans);
                     let mut read_warnings = self.warn_list("astRead");
                     let mut cursors = Vec::new();
-                    let decoded =
-                        self.decode_wcs_stores(&trans, def_b1950, &mut cursors, &mut read_warnings);
+                    let decoded = match swept {
+                        Ok(()) => self.decode_wcs_stores(
+                            &trans,
+                            def_b1950,
+                            &mut cursors,
+                            &mut read_warnings,
+                        ),
+                        Err(_) => Ok(None),
+                    };
                     self.finish_foreign_read(
                         decoded,
-                        entry,
-                        trans_warnings,
+                        swept,
                         read_warnings,
                         cursors,
                         &trans,
@@ -3472,14 +3529,23 @@ impl Channel for FitsChan {
                     )?;
                     // The cards SpecTrans used, which C marks before WcsFcRead runs.
                     let spec_names = trans.take_consumed_names();
+                    // C's `WcsFcRead` sweeps the cards before the FrameSet
+                    // is made, and makes nothing when the sweep fails.
+                    let swept = self.sweep_foreign(entry, trans_warnings, &trans);
                     let mut read_warnings = self.warn_list("astRead");
                     let mut cursors = Vec::new();
-                    let decoded =
-                        self.decode_wcs_stores(&trans, def_b1950, &mut cursors, &mut read_warnings);
+                    let decoded = match swept {
+                        Ok(()) => self.decode_wcs_stores(
+                            &trans,
+                            def_b1950,
+                            &mut cursors,
+                            &mut read_warnings,
+                        ),
+                        Err(_) => Ok(None),
+                    };
                     self.finish_foreign_read(
                         decoded,
-                        entry,
-                        trans_warnings,
+                        swept,
                         read_warnings,
                         cursors,
                         &trans,
