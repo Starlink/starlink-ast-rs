@@ -972,3 +972,30 @@ fn set_by_unknown_domain_is_attin() {
     assert_eq!(err.code(), ErrorCode::Attin);
     assert_eq!((fs.base_index(), fs.current_index()), (1, 4));
 }
+
+/// The value `cvt` maps 1.0 to.
+fn tran_one(cvt: &FrameSet) -> f64 {
+    let input = PointSet::from_rows([[1.0]]);
+    cvt.transform(&input, true).unwrap().point(0)[0]
+}
+
+// C probe of astConvert with this FrameSet inverted: its Frames 2 and 3 both
+// have Domain Y, and C takes an inverted FrameSet's other Frames in
+// descending order, so Frame 3 is used each way round (3 and 1/3).
+#[test]
+fn convert_takes_an_inverted_framesets_other_frames_in_descending_order() {
+    let y = BasicFrameBuilder::new(1).domain("Y").build().unwrap();
+    let mut fs = four_domains();
+    fs.invert();
+    let cvt = fs.convert_to(&y, &[]).unwrap().unwrap();
+    assert!((tran_one(&cvt) - 3.0).abs() < 1e-15);
+    let cvt = y.convert_to(&fs, &[]).unwrap().unwrap();
+    assert!((tran_one(&cvt) - 1.0 / 3.0).abs() < 1e-15);
+
+    // Uninverted, the ascending order reaches Frame 2 first (C: 0.4, 2.5).
+    let fs = four_domains();
+    let cvt = fs.convert_to(&y, &[]).unwrap().unwrap();
+    assert!((tran_one(&cvt) - 0.4).abs() < 1e-15);
+    let cvt = y.convert_to(&fs, &[]).unwrap().unwrap();
+    assert!((tran_one(&cvt) - 2.5).abs() < 1e-15);
+}

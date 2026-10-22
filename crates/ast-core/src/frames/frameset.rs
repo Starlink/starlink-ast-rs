@@ -2335,9 +2335,8 @@ fn convert_current_to(from: &dyn Frame, to: &dyn Frame) -> AstResult<DynMapping>
 /// Frame.
 ///
 /// The search order for each set is base first, then the remaining frames in
-/// index order, then the current frame last (frameset.c:3308-3348). FrameSet
-/// inversion is already materialised as a base/current index swap, so no
-/// separate reversed-order branch is needed.
+/// ascending index order, or descending for an inverted FrameSet, then the
+/// current frame last (frameset.c:3308-3348).
 ///
 /// Divergence from C: `ConvertX` also sets the *input* FrameSets' Base
 /// attribute to record the route used (frameset.c:3502-3503). The Frame trait
@@ -2351,14 +2350,18 @@ pub(crate) fn frameset_convert_x(
     let from_fs = from.as_any().downcast_ref::<FrameSet>();
     let to_fs = to.as_any().downcast_ref::<FrameSet>();
 
-    // Build the base-first / others / current-last search order (1-based).
-    fn search_order(nframe: usize, base: usize, current: usize) -> Vec<usize> {
+    // The 1-based search order: the base Frame, then the others in
+    // ascending index order (descending while the FrameSet is inverted),
+    // then the current Frame.
+    fn search_order(fs: &FrameSet) -> Vec<usize> {
+        let (nframe, base, current) = (fs.nframe(), fs.base_index(), fs.current_index());
+        let others = (1..=nframe).filter(|&i| i != base && i != current);
         let mut order = Vec::with_capacity(nframe);
         order.push(base);
-        for i in 1..=nframe {
-            if i != base && i != current {
-                order.push(i);
-            }
+        if fs.is_inverted() {
+            order.extend(others.rev());
+        } else {
+            order.extend(others);
         }
         if current != base {
             order.push(current);
@@ -2367,23 +2370,11 @@ pub(crate) fn frameset_convert_x(
     }
 
     let (from_current, from_order) = match from_fs {
-        Some(fs) => {
-            let current = fs.current_idx() + 1;
-            (
-                current,
-                search_order(fs.nframe(), fs.base_idx() + 1, current),
-            )
-        }
+        Some(fs) => (fs.current_index(), search_order(fs)),
         None => (1, vec![1]),
     };
     let (to_current, to_order) = match to_fs {
-        Some(fs) => {
-            let current = fs.current_idx() + 1;
-            (
-                current,
-                search_order(fs.nframe(), fs.base_idx() + 1, current),
-            )
-        }
+        Some(fs) => (fs.current_index(), search_order(fs)),
         None => (1, vec![1]),
     };
 

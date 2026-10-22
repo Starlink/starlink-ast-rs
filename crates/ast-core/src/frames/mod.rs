@@ -722,10 +722,8 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     ///   reaching an intermediate coordinate system.
     ///   Each entry of `domains` is taken in turn.
     ///   Within it, each FrameSet's Frames are tried with its base Frame
-    ///   first, then the others in ascending index order, then its current
-    ///   Frame last.
-    ///   This order is used for an inverted FrameSet too, whose base and
-    ///   current Frames have swapped.
+    ///   first, then the others in ascending index order (descending while
+    ///   the FrameSet is inverted), then its current Frame last.
     ///   Every source Frame is tried against the first destination
     ///   Frame, then against the second, and so on.
     ///   Among the paths found, one with both transformations defined is
@@ -759,8 +757,6 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// # See also
     ///
     /// `astConvert`.
-    // C: for an inverted FrameSet, C takes the other Frames in descending
-    // order; this port keeps the ascending order.
     #[doc(alias = "astConvert")]
     fn convert_to(&self, to: &dyn Frame, domains: &[&str]) -> AstResult<Option<FrameSet>> {
         // C `astConvert` (frame.c:2965) swaps its first two arguments and
