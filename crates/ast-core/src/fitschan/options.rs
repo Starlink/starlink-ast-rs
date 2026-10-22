@@ -386,13 +386,40 @@ mod tests {
     // a Channel gives "UseDfs = 0" as the only item of its Object part.
     #[test]
     fn use_defs_is_kept_and_dumped() {
-        let text = with("UseDefs=0").unwrap().to_native_string().unwrap();
-        let lines: Vec<&str> = text.lines().collect();
-        assert!(lines[0].starts_with(" Begin FitsChan"), "{text}");
-        assert_eq!(lines[1].trim(), "UseDfs = 0", "{text}");
-        assert_eq!(lines[2].trim(), "IsA Object", "{text}");
+        use crate::{AnyObject, Channel, NativeChannel};
+        // The C library's dump of a FitsChan made with FITSCHAN_OPTIONS
+        // set to "UseDefs=0", written through a default Channel (C probe).
+        const C_DUMP: &str = concat!(
+            " Begin FitsChan \t# I/O channels to FITS files\n",
+            "    UseDfs = 0 \t# Default values cannot be used\n",
+            " IsA Object \t# AST Object\n",
+            "    Card = 0 \t# Index of current card\n",
+            "#   Encod = \"NATIVE\" \t# Encoding system\n",
+            "#   FAxOrd = \"<auto>\" \t# Order of WCS axes in new FITS headers\n",
+            "#   FitsDg = 17 \t# No. of digits for floating point values\n",
+            "#   FitsRn = 10 \t# No. of digits guarded from rounding\n",
+            "#   AltAx = \"ALL\" \t# Creation of alternate axes\n",
+            "#   DfB1950 = 1 \t# Default to FK4 B1950\n",
+            "#   TabOK = 0 \t# Do not support -TAB CTYPE codes\n",
+            "#   FrcTab = 0 \t# Only use -TAB if necessary\n",
+            "#   IgBdAl = 0 \t# Abort on unreadable alternate axes\n",
+            "#   CdMat = 0 \t# Use PC matrix\n",
+            "#   CarLin = 0 \t# Use full FITS-WCS CAR projections\n",
+            "#   SipRpl = 1 \t# Replace SIP inverse coefficients?\n",
+            "#   FitsTol = 0.10000000000000001 \t# [pixel] Max allowed departure from linearity\n",
+            "#   Iwc = 0 \t# Do not include an IWC Frame\n",
+            "#   Warn = \"BadKeyName BadKeyValue Tnx Zpx BadPV BadCel BadMat BadCTYPE\" \t# Warnings to be reported\n",
+            " End FitsChan\n",
+        );
+        let dump = |obj: &AnyObject| {
+            let mut ch = NativeChannel::with_string_sink();
+            ch.write(obj).unwrap();
+            ch.into_string()
+        };
+        let text = dump(&AnyObject::FitsChan(Box::new(with("UseDefs=0").unwrap())));
+        assert_eq!(text, C_DUMP);
         let back = crate::from_native_string(&text).unwrap();
-        assert_eq!(back.to_native_string().unwrap(), text);
+        assert_eq!(dump(&back), C_DUMP);
     }
 
     #[test]
